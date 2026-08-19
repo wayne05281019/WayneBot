@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 第三階段：Telegram 機器人伺服端 ＆ 7x24 小時全自動推播伺服器
+WayneBot 第三階段 (Phase 3)：Telegram 機器人伺服端 (Render Web 0.01秒極速綁定版)
 """
 
 import os, sys, time, json, random, datetime, threading, requests
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8688883757:AAEpWVMX86lSMmY1PewTw60A8j0sdsFKXac")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8528875978")
 
 BASE_DIR = "waynebot_data"
 RAW_TWSE_DIR = os.path.join(BASE_DIR, "raw_twse")
@@ -27,6 +28,19 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
 ]
+
+# ==========================================
+# 0. Render Web 端口即時監聽服務 (0.01秒秒通 Render 檢查)
+# ==========================================
+class SimpleHealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("WayneBot 7x24h Daemon is Running Online!".encode("utf-8"))
+    
+    def log_message(self, format, *args):
+        return
 
 def get_headers():
     return {
@@ -55,14 +69,14 @@ def safe_div(num, den, default=0.0) -> float:
     except: return default
 
 def send_tg_message(text: str, chat_id: str = TELEGRAM_CHAT_ID, parse_mode: str = "HTML", reply_markup: Optional[dict] = None):
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print(f"[模擬發送 Telegram]:\n{text}\n")
-        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
     if reply_markup: payload["reply_markup"] = json.dumps(reply_markup)
-    try: requests.post(url, json=payload, timeout=10.0)
-    except Exception as e: print(f"Telegram 發送失敗: {e}")
+    try:
+        res = requests.post(url, json=payload, timeout=10.0)
+        print(f"Telegram 推播狀態: {res.status_code}")
+    except Exception as e:
+        print(f"Telegram 發送失敗: {e}")
 
 def parse_twse_stocks(raw: dict, date_str: str) -> Optional[pd.DataFrame]:
     tables = raw.get("tables", [])
@@ -239,6 +253,7 @@ class FullMarketQuantScreener:
         return df_rank.sort_values("score", ascending=False).reset_index(drop=True)
 
 def broadcast_evening_screener():
+    print("📢 正在執行每日 20:30 晚間海選推播任務 ...")
     df_stocks = get_or_build_history()
     if df_stocks.empty: return
     top_ranked = FullMarketQuantScreener.run_screening(df_stocks)
@@ -264,37 +279,26 @@ def broadcast_evening_screener():
     reply_markup = {"inline_keyboard": inline_buttons}
     send_tg_message(msg, reply_markup=reply_markup)
 
-def broadcast_morning_report():
-    msg = f"🌅 <b>【WayneBot 晨間大盤氣象站 ＆ 今日作戰晨報】</b>\n"
-    msg += f"📅 日期：<code>{datetime.datetime.now().strftime('%Y-%m-%d')}</code>\n"
-    msg += f"──────────────────────\n"
-    msg += f"🌤️ <b>大盤氣象預警</b>：【常態晴天模式 ｜ 積極作戰】\n"
-    msg += f"• 核心作戰：聚焦昨日 Top 10 雙綠脫離動能先鋒！\n"
-    msg += f"• 下單紀律：08:30~09:00 確認掛單，開高禁市價追價，限價回測低接！\n"
-    msg += f"──────────────────────\n"
-    msg += f"👉 輸入 <code>/查 股號</code> 即時展開決策卡 ＆ 同業比較！"
-    send_tg_message(msg)
-
 def scheduler_loop():
     print("⏰ WayneBot 自動排程已啟動 (每日 20:30 海選推播 / 08:00 晨報)")
+    # 伺服器啟動時，立即先發送一次最新海選戰報至 Telegram
+    broadcast_evening_screener()
     while True:
         now_str = datetime.datetime.now().strftime("%H:%M")
         if now_str == "20:30":
             broadcast_evening_screener()
             time.sleep(65)
-        elif now_str == "08:00":
-            broadcast_morning_report()
-            time.sleep(65)
         time.sleep(25)
 
 if __name__ == "__main__":
-    print("==================================================================")
-    print("🚀 WayneBot Telegram Bot 雲端伺服器已上線！")
-    print("==================================================================")
-    t = threading.Thread(target=scheduler_loop, daemon=True)
-    t.start()
+    port = int(os.getenv("PORT", 10000))
+    print(f"🚀 WayneBot Web Port {port} 正在以 0.01 秒極速綁定 ...")
     
-    # 啟動時先發送一次最新海選推播測試
-    broadcast_evening_screener()
+    # 在背景啟動 Telegram 排程與推播任務
+    t_sched = threading.Thread(target=scheduler_loop, daemon=True)
+    t_sched.start()
     
-    while True: time.sleep(3600)
+    # 主執行緒直接監聽 Render 端口 (Render 檢測瞬間 100% 通過)
+    server = HTTPServer(("0.0.0.0", port), SimpleHealthCheckHandler)
+    print(f"✅ WayneBot 伺服器已正式上線！監聽 Port: {port}")
+    server.serve_forever()
