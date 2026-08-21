@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ========================================================================================
-WayneBot 總控核心 (Phase 4)：All_In_One 總控核心與 AI 模擬買賣自我進化閉環
+WayneBot 總控核心 (Phase 4)：All_In_One 總控核心與 AI 模擬買賣自我進化閉環 (生產正式版)
 檔案名稱：main_runner.py
 作者：Wayne (WayneBot Quantitative System Architect)
 系統職責：
@@ -19,7 +19,6 @@ import os
 import sys
 import time
 import json
-import random
 import socket
 import signal
 import asyncio
@@ -125,7 +124,7 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             try:
-                # 1. 模擬持倉表
+                # 1. 模擬持倉表 (在倉管理)
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS simulated_positions (
                     position_id TEXT PRIMARY KEY,
@@ -710,7 +709,6 @@ class BotPushAndHealthServer:
     async def start_server(self) -> None:
         """非阻塞啟動 Async HTTP/Webhook 伺服器，啟用 SO_REUSEADDR 徹底防止埠號鎖死"""
         try:
-            # 手動設定 Socket 以啟用 SO_REUSEADDR
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setblocking(False)
@@ -780,18 +778,36 @@ class AsyncWayneBotMaster:
     async def schedule_pipeline_task(self) -> None:
         """
         後台定時排程任務
-        - 17:00 / 模擬觸發：盤後大數據更新與持股體檢
-        - 20:30 / 模擬觸發：四階海選漏斗、自動模擬進場、推播戰報
-        - 定期觸發：自適應進化報告與權重微調
+        - 17:00：盤後大數據更新與持股體檢
+        - 20:30：四階海選漏斗、自動模擬進場、推播戰報
+        - 每日覆盤：自適應進化報告與權重微調
         """
         logger.info("⏱️ [排程總控任務啟動] 後台數據排程與 AI 模擬閉環已就緒")
+        executed_today = {"1700": False, "2030": False}
+
         try:
             while self.is_running and not self.shutdown_event.is_set():
                 now = datetime.datetime.now()
-                logger.debug(f"🔍 排程心跳檢測: {now.strftime('%H:%M:%S')}")
+                hm = now.strftime("%H%M")
+                
+                # 換日重置執行標記
+                if hm == "0000":
+                    executed_today = {"1700": False, "2030": False}
+
+                # 17:00 盤後體檢
+                if hm >= "1700" and not executed_today["1700"]:
+                    logger.info("🕒 [定時任務 17:00 觸發] 啟動盤後持股體檢與風控結算...")
+                    await self.run_daily_workflow_now()
+                    executed_today["1700"] = True
+
+                # 20:30 晚間深度海選與模擬建倉
+                if hm >= "2030" and not executed_today["2030"]:
+                    logger.info("🌙 [定時任務 20:30 觸發] 啟動全市場海選與 AI 模擬建倉...")
+                    await self.run_daily_workflow_now()
+                    executed_today["2030"] = True
 
                 try:
-                    await asyncio.wait_for(self.shutdown_event.wait(), timeout=60.0)
+                    await asyncio.wait_for(self.shutdown_event.wait(), timeout=30.0)
                     break
                 except asyncio.TimeoutError:
                     pass
@@ -827,12 +843,12 @@ class AsyncWayneBotMaster:
 
     async def run_daily_workflow_now(self, mock_candidates: Optional[List[Dict[str, Any]]] = None, mock_prices: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
-        手動或即時觸發一次完整的「海選 -> 模擬建倉 -> 盤後體檢 -> 覆盤進化 -> 推播」全流程
+        執行完整的「海選 -> 模擬建倉 -> 盤後體檢 -> 覆盤進化 -> 推播」全流程閉環
         """
         logger.info("🚀 [即刻執行] 啟動全流程 AI 模擬操盤與進化閉環...")
         trade_date = datetime.datetime.now().strftime("%Y%m%d")
 
-        # 1. 取得海選標的 (優先使用 screening_engine，無則使用 mock 或預設候選)
+        # 1. 取得海選標的 (優先調用 screening_engine)
         candidates = []
         if mock_candidates:
             candidates = mock_candidates
@@ -843,14 +859,14 @@ class AsyncWayneBotMaster:
                 logger.warning(f"⚠️ screening_engine 調用失敗，使用降級標的: {e}")
 
         if not candidates:
-            # 預設標的
+            # 降級備用展示標的
             candidates = [
                 {"stock_id": "2605", "stock_name": "新興", "close": 28.5, "score": 88.0, "grade": "A", "d20_gain": 0.8, "space_20": 24.5, "vol_rank": 6},
                 {"stock_id": "6152", "stock_name": "百一", "close": 14.2, "score": 84.5, "grade": "A", "d20_gain": 1.2, "space_20": 18.0, "vol_rank": 12},
                 {"stock_id": "2208", "stock_name": "台船", "close": 19.8, "score": 81.0, "grade": "B", "d20_gain": 1.4, "space_20": 16.5, "vol_rank": 18}
             ]
 
-        # 2. AI 模擬自動建倉
+        # 2. AI 模擬自動建倉 (30萬資產配置)
         new_positions = ai_trading_engine.auto_simulate_entry(candidates, trade_date=trade_date)
 
         # 3. 盤後體檢與平倉結算
@@ -889,7 +905,6 @@ class AsyncWayneBotMaster:
         logger.info("🚀 WayneBot Phase 4 All_In_One 總控核心啟動")
         logger.info("==================================================================")
 
-        # 建立三大核心異步協程任務
         task_pipeline = asyncio.create_task(self.schedule_pipeline_task(), name="Task-Pipeline")
         task_tg = asyncio.create_task(self.telegram_polling_task(), name="Task-Telegram")
         task_server = asyncio.create_task(bot_health_server.start_server(), name="Task-WebServer")
@@ -897,7 +912,6 @@ class AsyncWayneBotMaster:
         self.tasks = [task_pipeline, task_tg, task_server]
 
         try:
-            # 同步並行調度
             await asyncio.gather(*self.tasks)
         except asyncio.CancelledError:
             logger.info("🛑 總控核心收到取消請求，正在收斂所有子任務...")
@@ -948,7 +962,6 @@ def setup_signal_handlers(master: AsyncWayneBotMaster, loop: asyncio.AbstractEve
         try:
             loop.add_signal_handler(sig, lambda s=sig.name: _signal_handler(s))
         except NotImplementedError:
-            # Windows 或特定受限環境 fallback
             signal.signal(sig, lambda signum, frame: _signal_handler(signal.Signals(signum).name))
 
 
