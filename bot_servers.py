@@ -1,6 +1,6 @@
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統 - Phase 8: 多管道互動指令與 Telegram 常駐精簡選單（完全體）
+WayneBot 旗艦量化交易系統 - Phase 8: 多管道互動指令與 Telegram 常駐精簡選單（完全體修復版）
 """
 
 import os
@@ -29,8 +29,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("WayneBot.BotServers")
 
-# 🔑 Token 設定
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "請在此填入您的_TELEGRAM_BOT_TOKEN")
+# 🔑 Token 與 Chat ID 配置
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8688883757:AAEpWVMX86lSMmY1PewTw6OA8j0sdsFKXac")
+DEFAULT_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8528875978")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 DATABASE_PATH = os.getenv("WAYNE_DB_PATH", "wayne_stock.db")
@@ -48,7 +49,67 @@ PERSISTENT_KEYBOARD = {
 }
 
 # ==============================================================================
-# 1. 資料庫與使用者狀態管理模組
+# 1. 訊息分片與相容性發送函式（供 screening_engine.py 與排程調用）
+# ==============================================================================
+def chunk_message(text: str, max_length: int = 4000) -> List[str]:
+    """安全分片機制（<= 4000 字元）"""
+    if not text:
+        return []
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    lines = text.split("\n")
+    current_chunk = []
+    current_length = 0
+
+    for line in lines:
+        line_length = len(line) + 1
+        if current_length + line_length > max_length:
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_length = 0
+            while len(line) > max_length:
+                chunks.append(line[:max_length])
+                line = line[max_length:]
+            if line:
+                current_chunk.append(line)
+                current_length = len(line) + 1
+        else:
+            current_chunk.append(line)
+            current_length += line_length
+
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
+    return chunks
+
+def init_telegram_bot(token: Optional[str] = None):
+    """相容性介面：初始化 Bot"""
+    global TELEGRAM_BOT_TOKEN
+    if token:
+        TELEGRAM_BOT_TOKEN = token
+    return bool(TELEGRAM_BOT_TOKEN)
+
+def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = "", parse_mode: str = "HTML", reply_markup: Optional[dict] = PERSISTENT_KEYBOARD) -> bool:
+    """相容性發送介面：供 screening_engine 等腳本安全推播"""
+    target_id = chat_id or DEFAULT_CHAT_ID
+    return TelegramSender.send_message(target_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
+
+def verify_line_signature(body: str, signature: str, secret: str) -> bool:
+    """LINE HMAC 簽章驗證"""
+    if not secret or not signature:
+        return False
+    hash_value = hmac.new(
+        secret.encode("utf-8"),
+        body.encode("utf-8"),
+        hashlib.sha256
+    ).digest()
+    expected_signature = base64.b64encode(hash_value).decode("utf-8")
+    return hmac.compare_digest(expected_signature, signature)
+
+# ==============================================================================
+# 2. 資料庫與使用者狀態管理模組
 # ==============================================================================
 class DatabaseManager:
     def __init__(self, db_path: str = DATABASE_PATH):
@@ -138,7 +199,7 @@ class DatabaseManager:
 db_manager = DatabaseManager()
 
 # ==============================================================================
-# 2. 選股引擎介面
+# 3. 選股引擎介面（已修正第 152 行字典語法）
 # ==============================================================================
 class StockDataEngine:
     @staticmethod
@@ -149,7 +210,7 @@ class StockDataEngine:
             {"symbol": "2454", "name": "聯發科", "score": 88.7, "price": 1280.0, "change_pct": 1.5, "foreign_buy": 1560, "trust_buy": -200, "patterns": ["破底翻", "高檔整理"]},
             {"symbol": "3035", "name": "智原", "score": 86.4, "price": 298.0, "change_pct": -1.2, "foreign_buy": 890, "trust_buy": 430, "patterns": ["回測頸線", "KD低檔背離"]},
             {"symbol": "6415", "name": "矽力*-KY", "score": 85.0, "price": 485.0, "change_pct": 4.1, "foreign_buy": 1100, "trust_buy": 310, "patterns": ["底部突破", "量增價漲"]},
-            {"symbol": "6526", "達發", "score": 83.2, "price": 630.0, "change_pct": 2.2, "foreign_buy": 420, "trust_buy": 210, "patterns": ["雙底成形", "投信進駐"]},
+            {"symbol": "6526", "name": "達發", "score": 83.2, "price": 630.0, "change_pct": 2.2, "foreign_buy": 420, "trust_buy": 210, "patterns": ["雙底成形", "投信進駐"]},
             {"symbol": "2344", "name": "華邦電", "score": 82.0, "price": 27.8, "change_pct": 0.9, "foreign_buy": 4500, "trust_buy": 150, "patterns": ["均線糾結向上"]},
             {"symbol": "5351", "name": "鈺創", "score": 80.5, "price": 43.5, "change_pct": 5.2, "foreign_buy": 2100, "trust_buy": 50, "patterns": ["量能爆發", "突破區間"]},
             {"symbol": "3231", "name": "緯創", "score": 79.0, "price": 108.5, "change_pct": -0.5, "foreign_buy": -1500, "trust_buy": 1200, "patterns": ["投信買外資賣", "支撐測底"]},
@@ -171,41 +232,6 @@ class StockDataEngine:
             "trust_buy": 0,
             "patterns": ["區間整理", "觀察量能"]
         }
-
-# ==============================================================================
-# 3. 訊息分片工具
-# ==============================================================================
-def chunk_message(text: str, max_length: int = 4000) -> List[str]:
-    if not text:
-        return []
-    if len(text) <= max_length:
-        return [text]
-
-    chunks = []
-    lines = text.split("\n")
-    current_chunk = []
-    current_length = 0
-
-    for line in lines:
-        line_length = len(line) + 1
-        if current_length + line_length > max_length:
-            if current_chunk:
-                chunks.append("\n".join(current_chunk))
-                current_chunk = []
-                current_length = 0
-            while len(line) > max_length:
-                chunks.append(line[:max_length])
-                line = line[max_length:]
-            if line:
-                current_chunk.append(line)
-                current_length = len(line) + 1
-        else:
-            current_chunk.append(line)
-            current_length += line_length
-
-    if current_chunk:
-        chunks.append("\n".join(current_chunk))
-    return chunks
 
 # ==============================================================================
 # 4. 指令解析中樞
@@ -300,8 +326,8 @@ class CommandProcessor:
 # ==============================================================================
 class TelegramSender:
     @staticmethod
-    def send_message(chat_id: Union[str, int], text: str, reply_markup: Optional[dict] = PERSISTENT_KEYBOARD) -> bool:
-        if not TELEGRAM_BOT_TOKEN or "請在此填入" in TELEGRAM_BOT_TOKEN:
+    def send_message(chat_id: Union[str, int], text: str, reply_markup: Optional[dict] = PERSISTENT_KEYBOARD, parse_mode: str = "HTML") -> bool:
+        if not TELEGRAM_BOT_TOKEN:
             return False
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         chunks = chunk_message(text, max_length=4000)
@@ -309,11 +335,13 @@ class TelegramSender:
             payload = {
                 "chat_id": chat_id,
                 "text": chunk,
-                "parse_mode": "HTML",
+                "parse_mode": parse_mode,
                 "reply_markup": reply_markup
             }
             try:
-                requests.post(url, json=payload, timeout=10)
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code != 200:
+                    logger.error(f"Telegram API 回應錯誤: {resp.text}")
             except Exception as e:
                 logger.error(f"Telegram 發送異常: {e}")
         return True
@@ -321,7 +349,7 @@ class TelegramSender:
     @staticmethod
     def register_bot_commands():
         """向 Telegram 註冊左下角 Menu 藍色按鈕指令"""
-        if not TELEGRAM_BOT_TOKEN or "請在此填入" in TELEGRAM_BOT_TOKEN:
+        if not TELEGRAM_BOT_TOKEN:
             return
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
         commands = [
@@ -340,7 +368,7 @@ class TelegramSender:
 # 6. Polling 輪詢主程式
 # ==============================================================================
 def run_polling_loop():
-    if not TELEGRAM_BOT_TOKEN or "請在此填入" in TELEGRAM_BOT_TOKEN:
+    if not TELEGRAM_BOT_TOKEN:
         logger.error("❌ 錯誤：未設定有效的 TELEGRAM_BOT_TOKEN！")
         return
 
@@ -363,7 +391,6 @@ def run_polling_loop():
                         u_id = str(msg["from"]["id"])
                         txt = msg["text"].strip()
 
-                        # 支援指令與常駐按鈕文字
                         if txt in ["/start", "開始", "選單"]:
                             r_text = CommandProcessor.handle_start(u_id, "telegram")
                             TelegramSender.send_message(c_id, r_text)
