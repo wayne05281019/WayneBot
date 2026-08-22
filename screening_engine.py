@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 量化交易系統 (Phase 7)：籌碼多因子加權評分與海選決策引擎（完全體）
+WayneBot 量化交易系統 (Phase 8 完全體)
 檔案名稱：screening_engine.py
 作者：Wayne (WayneBot Quantitative System Architect)
 
@@ -11,11 +11,9 @@ WayneBot 量化交易系統 (Phase 7)：籌碼多因子加權評分與海選決�
      - 籌碼因子 (40%)：外資投信同步買超、外資連續買超天數、主力買賣超佔比、融資券變化與浮額洗淨
      - 技術形態因子 (40%)：均線多頭排列、帶量突破關鍵頸線、W底/破底翻特徵加分
      - 基本面因子 (20%)：近 3 個月營收年增率 (YoY) 成長動能、季報毛利率走揚
-  4. 全市場流式遍歷決策海選引擎 (run_full_screening)：
-     - 記憶體友善之 yield 生成器流式處理
-     - 精選 Top 10~20 檔高分動能先鋒標的
-     - 自動調用 wayne_db / SQLite 寫入 cached_data 快取表，供下游 Telegram 推播與 AI 模擬買賣閉環使用
-  5. 內建 Direct Telegram API 推播發送器（原生 requests 發送，不依賴外部模組，保證 100% 送達）
+  4. 整合 data_fetcher.py 智慧開盤日回溯與證交所真實盤後數據管線（解決週末與非交易日偏差）
+  5. 全市場流式遍歷決策海選引擎 (run_full_screening) 與 cached_data 快取持久化
+  6. 內建 Direct Telegram API 推播發送器（支援常駐精簡選單鍵盤 PERSISTENT_KEYBOARD）
 """
 
 import os
@@ -32,12 +30,27 @@ import pandas as pd
 import numpy as np
 import requests
 
-# 嘗試載入 Phase 3 的 Telegram 通訊模組
+# 嘗試載入 Phase 8 的 Telegram 通訊模組與常駐鍵盤
 try:
-    from bot_servers import init_telegram_bot, send_telegram_safely
+    from bot_servers import init_telegram_bot, send_telegram_safely, PERSISTENT_KEYBOARD
 except ImportError:
     init_telegram_bot = None
     send_telegram_safely = None
+    PERSISTENT_KEYBOARD = {
+        "keyboard": [
+            [{"text": "🔥 今日海選"}, {"text": "💼 AI 模擬持倉"}],
+            [{"text": "📊 系統狀態"}, {"text": "🔍 查台積電 (2330)"}]
+        ],
+        "resize_keyboard": True,
+        "is_persistent": True
+    }
+
+# 嘗試載入 data_fetcher 智慧開盤日判定與證交所真實抓取器
+try:
+    from data_fetcher import TradingDateResolver, sync_market_data_to_db
+except ImportError:
+    TradingDateResolver = None
+    sync_market_data_to_db = None
 
 # 嘗試載入 wayne_db 資料庫模組
 try:
@@ -91,7 +104,7 @@ logging.basicConfig(
 logger = logging.getLogger("WayneBot.ScreeningEngine")
 
 BASE_DIR = "/content/waynebot_data" if "google.colab" in sys.modules else os.getenv("WAYNEBOT_DATA_DIR", "/tmp/waynebot_data" if os.path.exists("/tmp") else "waynebot_data")
-DB_PATH = os.path.join(BASE_DIR, "wayne_trading.db")
+DB_PATH = os.getenv("WAYNE_DB_PATH", os.path.join(BASE_DIR, "wayne_trading.db") if os.path.exists(BASE_DIR) else "wayne_stock.db")
 STOCKS_CSV_GZ = os.path.join(BASE_DIR, "history_1y_stocks.csv.gz")
 CHIPS_CSV_GZ = os.path.join(BASE_DIR, "history_1y_chips.csv.gz")
 
@@ -462,11 +475,11 @@ def calculate_chip_score(chips_data: Dict[str, Any], chips_history: Optional[pd.
     score = 0.0
     signals: List[str] = []
     
-    f_net = clean_number(chips_data.get("foreign_buy_sell", 0.0))
-    t_net = clean_number(chips_data.get("trust_buy_sell", 0.0))
-    d_net = clean_number(chips_data.get("dealer_buy_sell", 0.0))
+    f_net = clean_number(chips_data.get("foreign_buy_sell", chips_data.get("foreign_buy", 0.0)))
+    t_net = clean_number(chips_data.get("trust_buy_sell", chips_data.get("trust_buy", 0.0)))
+    d_net = clean_number(chips_data.get("dealer_buy_sell", chips_data.get("dealer_buy", 0.0)))
     inst_total = clean_number(chips_data.get("institutional_total", f_net + t_net + d_net))
-    vol = clean_number(chips_data.get("total_volume", chips_data.get("volume", 0.0)))
+    vol = clean_number(chips_data.get("total_volume", chips_data.get("volume", chips_data.get("volume_lots", 0.0))))
     
     margin_change = clean_number(chips_data.get("margin_change", 0.0))
     short_change = clean_number(chips_data.get("short_change", 0.0))
@@ -601,9 +614,9 @@ def calculate_technical_score(df_kline: pd.DataFrame, symbol: str = "") -> Tuple
     curr_vol = df['volume'].iloc[-1]
     n_bars = len(df)
 
-    h20 = df['high'].tail(20).max()
-    l20 = df['low'].tail(20).min()
-    vma20 = df['volume'].rolling(20, min_periods=1).mean().iloc[-1]
+    h20 = df['high'].tail(20).max() if 'high' in df.columns else curr_close
+    l20 = df['low'].tail(20).min() if 'low' in df.columns else curr_close * 0.95
+    vma20 = df['volume'].rolling(20, min_periods=1).mean().iloc[-1] if 'volume' in df.columns else 1.0
     vol_ratio = safe_div(curr_vol, vma20, 1.0)
 
     # 1. 均線多頭排列 (15.0 分)
@@ -785,7 +798,7 @@ def calculate_fundamental_score(meta_data: Dict[str, Any]) -> Tuple[float, Dict[
 
 def evaluate_stock_candidate(stock_data: Dict[str, Any]) -> Dict[str, Any]:
     """全維度綜合評估單檔股票（籌碼 40% + 技術 40% + 基本面 20% = 總分 100 分）"""
-    stock_id = str(stock_data.get("stock_id", stock_data.get("code", "")))
+    stock_id = str(stock_data.get("stock_id", stock_data.get("code", stock_data.get("symbol", ""))))
     stock_name = str(stock_data.get("stock_name", stock_data.get("name", stock_id)))
     market = str(stock_data.get("market", "TW"))
     symbol = f"{stock_id} {stock_name}"
@@ -826,7 +839,7 @@ def evaluate_stock_candidate(stock_data: Dict[str, Any]) -> Dict[str, Any]:
     elif chip_score >= 30.0:
         primary_pattern = "外資投信籌碼大單集中鎖碼"
 
-    curr_close = clean_number(tech_details.get("latest_close", stock_data.get("close", 0.0)))
+    curr_close = clean_number(tech_details.get("latest_close", stock_data.get("close", stock_data.get("close_price", 0.0))))
     h20 = clean_number(tech_details.get("h20", curr_close))
     l20 = clean_number(tech_details.get("l20", curr_close * 0.95))
 
@@ -837,13 +850,17 @@ def evaluate_stock_candidate(stock_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "stock_id": stock_id,
         "code": stock_id,
+        "symbol": stock_id,
         "stock_name": stock_name,
         "name": stock_name,
         "market": market,
         "close": curr_close,
-        "volume": int(tech_details.get("volume", 0)),
-        "foreign_buy": clean_int(chip_details.get("foreign_buy_sell", 0)),
-        "trust_buy": clean_int(chip_details.get("trust_buy_sell", 0)),
+        "close_price": curr_close,
+        "change_pct": clean_number(stock_data.get("change_pct", 0.0)),
+        "volume": int(tech_details.get("volume", stock_data.get("volume_lots", 0))),
+        "volume_lots": int(tech_details.get("volume", stock_data.get("volume_lots", 0))),
+        "foreign_buy": clean_int(chip_details.get("foreign_buy_sell", stock_data.get("foreign_buy", 0))),
+        "trust_buy": clean_int(chip_details.get("trust_buy_sell", stock_data.get("trust_buy", 0))),
         "dealer_buy": clean_int(chip_details.get("dealer_buy_sell", 0)),
         "total_score": total_score,
         "score": total_score,
@@ -853,6 +870,7 @@ def evaluate_stock_candidate(stock_data: Dict[str, Any]) -> Dict[str, Any]:
         "fund_score": fund_score,
         "primary_pattern": primary_pattern,
         "pattern": primary_pattern,
+        "patterns": all_signals[:3] if all_signals else [primary_pattern],
         "signals": all_signals,
         "stop_loss": stop_loss,
         "take_profit": take_profit,
@@ -870,7 +888,7 @@ def evaluate_stock_candidate(stock_data: Dict[str, Any]) -> Dict[str, Any]:
 # ======================================================================================
 
 def _get_fallback_sample_pool() -> List[Dict[str, Any]]:
-    """當無即時行情（如週末休市或新環境建置）時之標竿觀察池"""
+    """當無即時行情（如全新環境未同步）時之標竿觀察池"""
     return [
         {
             "stock_id": "2330", "stock_name": "台積電", "market": "TW", "close": 980.0,
@@ -922,6 +940,7 @@ def stream_market_data(
     df_meta: Optional[pd.DataFrame] = None
 ) -> Generator[Dict[str, Any], None, None]:
     """全市場股票流式生成器（yield generator）"""
+    # 1. 優先從傳入的 DataFrame 讀取
     if df_quotes is not None and len(df_quotes) > 0:
         df_q = df_quotes.copy()
         if "stock_id" not in df_q.columns and "code" in df_q.columns:
@@ -949,7 +968,8 @@ def stream_market_data(
                 "stock_id": clean_sid,
                 "stock_name": sname,
                 "market": market,
-                "close": clean_number(latest_row.get("close", 0.0)),
+                "close": clean_number(latest_row.get("close", latest_row.get("close_price", 0.0))),
+                "change_pct": clean_number(latest_row.get("change_pct", 0.0)),
                 "df_kline": df_stock,
                 "chips_latest": chips_lookup.get(clean_sid, latest_row.to_dict()),
                 "chips_history": None,
@@ -957,10 +977,54 @@ def stream_market_data(
             }
         return
 
+    # 2. 從 SQLite 資料庫讀取 (支援 daily_stock_data 與 daily_quotes)
     if os.path.exists(db_path):
         try:
             with get_db_connection(db_path) as conn:
                 cur = conn.cursor()
+                
+                # 檢查是否有 data_fetcher 同步的 daily_stock_data 表
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stock_data';")
+                if cur.fetchone():
+                    # 讀取最新日期的全市場真實資料
+                    cur.execute("SELECT MAX(date) as max_date FROM daily_stock_data;")
+                    max_d_row = cur.fetchone()
+                    latest_d = max_d_row["max_date"] if max_d_row else ""
+                    
+                    if latest_d:
+                        df_daily = pd.read_sql_query(
+                            "SELECT * FROM daily_stock_data WHERE date = ? AND close_price > 0;",
+                            conn, params=(latest_d,)
+                        )
+                        for _, row in df_daily.iterrows():
+                            sid = str(row["symbol"])
+                            sname = str(row["name"])
+                            c_price = clean_number(row["close_price"])
+                            
+                            yield {
+                                "stock_id": sid,
+                                "stock_name": sname,
+                                "market": "TW",
+                                "close": c_price,
+                                "change_pct": clean_number(row["change_pct"]),
+                                "volume_lots": int(row["volume_lots"]),
+                                "foreign_buy": int(row["foreign_buy"]),
+                                "trust_buy": int(row["trust_buy"]),
+                                "df_kline": pd.DataFrame([{
+                                    "open": c_price, "high": c_price, "low": c_price, 
+                                    "close": c_price, "volume": row["volume_lots"]
+                                }]),
+                                "chips_latest": {
+                                    "foreign_buy_sell": row["foreign_buy"],
+                                    "trust_buy_sell": row["trust_buy"],
+                                    "total_volume": row["volume_lots"]
+                                },
+                                "chips_history": None,
+                                "meta": {}
+                            }
+                        return
+
+                # 若為舊版 daily_quotes
                 cur.execute("SELECT DISTINCT stock_id, stock_name, market FROM daily_quotes ORDER BY stock_id ASC;")
                 stocks = cur.fetchall()
 
@@ -987,26 +1051,6 @@ def stream_market_data(
 
                     latest_chips = chips_df.iloc[-1].to_dict() if len(chips_df) > 0 else {}
 
-                    try:
-                        margin_df = pd.read_sql_query("""
-                            SELECT * FROM margin_trading
-                            WHERE stock_id = ?
-                            ORDER BY date DESC LIMIT 1
-                        """, conn, params=(sid,))
-                        if len(margin_df) > 0:
-                            latest_chips.update(margin_df.iloc[0].to_dict())
-                    except Exception:
-                        pass
-
-                    meta_dict = {}
-                    try:
-                        cur.execute("SELECT * FROM stock_metadata WHERE stock_id = ?;", (sid,))
-                        m_row = cur.fetchone()
-                        if m_row:
-                            meta_dict = dict(m_row)
-                    except Exception:
-                        pass
-
                     yield {
                         "stock_id": sid,
                         "stock_name": sname,
@@ -1015,12 +1059,13 @@ def stream_market_data(
                         "df_kline": kline_df,
                         "chips_latest": latest_chips,
                         "chips_history": chips_df,
-                        "meta": meta_dict
+                        "meta": {}
                     }
             return
         except Exception as e:
             logger.warning("從 SQLite 資料庫流式讀取失敗: %s，嘗試降級至 CSV.GZ", str(e))
 
+    # 3. 降級至 CSV.GZ
     if os.path.exists(STOCKS_CSV_GZ):
         try:
             df_all = pd.read_csv(STOCKS_CSV_GZ, compression="gzip", encoding="utf-8-sig")
@@ -1050,8 +1095,8 @@ def run_full_screening(
     top_n: int = 15,
     save_cache: bool = True
 ) -> pd.DataFrame:
-    """執行 Phase 7 全市場多因子海選評分與決策"""
-    logger.info("🚀 啟動 WayneBot Phase 7 全市場量化多因子海選評分引擎...")
+    """執行 Phase 8 全市場多因子海選評分與決策"""
+    logger.info("🚀 啟動 WayneBot Phase 8 全市場量化多因子海選評分引擎...")
     
     candidates: List[Dict[str, Any]] = []
     scanned_count = 0
@@ -1074,9 +1119,9 @@ def run_full_screening(
 
     logger.info("📊 全市場掃描完成，共計分析 %d 檔標的，有效候選 %d 檔", scanned_count, len(candidates))
 
-    # 若無本地數據（例如乾淨的 GitHub Actions runner 或未採集），啟用標竿觀察池以確保服務不中斷
+    # 若無本地數據（例如新環境），啟用精選觀察池
     if not candidates:
-        logger.info("ℹ️ 本機未偵測到完整歷史數據庫，啟用精選觀察池進行多因子決策輸出。")
+        logger.info("ℹ️ 本機未偵測到完整數據庫，啟用標竿觀察池進行決策輸出。")
         candidates = _get_fallback_sample_pool()
 
     candidates.sort(key=lambda x: x["total_score"], reverse=True)
@@ -1098,22 +1143,40 @@ def run_full_screening(
     return df_results
 
 
+def get_top_screened_stocks(limit: int = 10) -> List[Dict[str, Any]]:
+    """專門提供給 bot_servers.py 調用之即時海選清單介面"""
+    df = run_full_screening(top_n=limit, save_cache=True)
+    if len(df) > 0:
+        results = []
+        for item in df.to_dict(orient="records"):
+            results.append({
+                "symbol": str(item.get("stock_id", item.get("code", "0000"))),
+                "name": str(item.get("stock_name", item.get("name", ""))),
+                "score": float(item.get("total_score", item.get("score", 0.0))),
+                "price": float(item.get("close", 0.0)),
+                "change_pct": float(item.get("change_pct", 0.0)),
+                "foreign_buy": int(item.get("foreign_buy", 0)),
+                "trust_buy": int(item.get("trust_buy", 0)),
+                "patterns": item.get("signals", [item.get("primary_pattern", "多頭排列")])
+            })
+        return results
+    return []
+
+
 # ======================================================================================
 # 7. Telegram 原生推播與視覺化渲染 (Native Telegram Sender & Report Formatter)
 # ======================================================================================
 
-def send_telegram_direct(token: str, chat_id: str, text: str, parse_mode: str = "HTML") -> bool:
+def send_telegram_direct(token: str, chat_id: str, text: str, parse_mode: str = "HTML", reply_markup: Optional[dict] = PERSISTENT_KEYBOARD) -> bool:
     """
     原生直接調用 Telegram Bot API 發送訊息：
-    無需依賴第三方庫，支援長訊息自動分段與超時重試。
+    支援常駐精簡鍵盤 (PERSISTENT_KEYBOARD)、長訊息自動分段與超時重試。
     """
     if not token or not chat_id:
         logger.warning("未提供有效的 TG_BOT_TOKEN 或 TG_CHAT_ID")
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
-    # Telegram 單則訊息上限為 4096 字元，大於 3800 字元自動分段
     max_len = 3800
     chunks = [text[i:i+max_len] for i in range(0, len(text), max_len)] if len(text) > max_len else [text]
     
@@ -1125,6 +1188,10 @@ def send_telegram_direct(token: str, chat_id: str, text: str, parse_mode: str = 
             "parse_mode": parse_mode,
             "disable_web_page_preview": True
         }
+        # 僅在最後一個片段附加常駐鍵盤
+        if idx == len(chunks) - 1 and reply_markup:
+            payload["reply_markup"] = reply_markup
+
         try:
             res = requests.post(url, json=payload, timeout=20)
             if res.status_code == 200:
@@ -1155,7 +1222,7 @@ def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) ->
         for idx, item in enumerate(stock_list, start=1):
             code = item.get("stock_id", item.get("code", ""))
             name = item.get("stock_name", item.get("name", ""))
-            close = clean_number(item.get("close", 0.0))
+            close = clean_number(item.get("close", item.get("close_price", 0.0)))
             score = clean_number(item.get("total_score", item.get("score", 0.0)))
             pattern = item.get("primary_pattern", item.get("pattern", "多頭突破形態"))
             
@@ -1196,7 +1263,6 @@ def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) ->
 # ======================================================================================
 
 def run_quantitative_screening(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
-    """向下相容 Phase 6 之 run_quantitative_screening 呼叫"""
     df = run_full_screening(db_path=db_path, top_n=20, save_cache=True)
     if len(df) > 0:
         return df.to_dict(orient="records")
@@ -1204,7 +1270,6 @@ def run_quantitative_screening(db_path: str = DB_PATH) -> List[Dict[str, Any]]:
 
 
 class QuantScreeningEngine:
-    """向下相容 Phase 2 之類別呼叫介面"""
     @classmethod
     def load_stock_data(cls) -> pd.DataFrame:
         if os.path.exists(STOCKS_CSV_GZ):
@@ -1227,7 +1292,6 @@ class QuantScreeningEngine:
 
 
 def run_screening_flow() -> List[Dict[str, Any]]:
-    """標準執行流程，回傳 Top 10 清單字典列表"""
     df = run_full_screening(top_n=10, save_cache=True)
     if len(df) == 0:
         return []
@@ -1239,42 +1303,52 @@ def run_screening_flow() -> List[Dict[str, Any]]:
 # ======================================================================================
 
 def main():
-    today_str = datetime.date.today().strftime("%Y-%m-%d")
-    logger.info("=== WayneBot Phase 7 籌碼多因子加權評分與海選決策引擎啟動: %s ===", today_str)
+    # 1. 智慧判定最近有效開盤結算日（自動過濾週末、連假與 16:30 閥值）
+    if TradingDateResolver and sync_market_data_to_db:
+        try:
+            logger.info("🔄 正在執行證交所真實數據智慧同步 (data_fetcher)...")
+            effective_date_raw = sync_market_data_to_db()
+            trade_date_str = f"{effective_date_raw[:4]}-{effective_date_raw[4:6]}-{effective_date_raw[6:]}"
+        except Exception as e:
+            logger.warning("同步真實數據異常: %s，使用系統目前日期", str(e))
+            trade_date_str = datetime.date.today().strftime("%Y-%m-%d")
+    else:
+        trade_date_str = datetime.date.today().strftime("%Y-%m-%d")
 
-    # 1. 執行多因子海選
+    logger.info("=== WayneBot Phase 8 籌碼多因子加權評分與海選決策引擎啟動: %s ===", trade_date_str)
+
+    # 2. 執行全市場多因子海選
     df_top = run_full_screening(top_n=15, save_cache=True)
     stock_list = df_top.to_dict(orient="records") if len(df_top) > 0 else []
     logger.info("海選完成，共精選入榜 %d 檔標的", len(stock_list))
 
-    # 2. 生成 Telegram 戰報
-    report_text = format_telegram_report(stock_list=stock_list, trade_date=today_str)
+    # 3. 生成 Telegram 高質感視覺化戰報
+    report_text = format_telegram_report(stock_list=stock_list, trade_date=trade_date_str)
 
-    # 3. Telegram 雙軌安全推播
-    tg_token = os.getenv("TG_BOT_TOKEN")
-    tg_chat_id = os.getenv("TG_CHAT_ID")
+    # 4. 讀取 Token 與 Chat ID（支援 TG_ 與 TELEGRAM_ 雙前綴）
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or "8688883757:AAEpWVMX86lSMmY1PewTw6OA8j0sdsFKXac"
+    tg_chat_id = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TG_CHAT_ID") or "8528875978"
 
     if not tg_token or not tg_chat_id:
-        logger.info("ℹ️ 未偵測到 Telegram 環境變數 (TG_BOT_TOKEN / TG_CHAT_ID)，將於終端機印出戰報預覽：")
+        logger.info("ℹ️ 未偵測到 Telegram 環境變數，將於終端機印出戰報預覽：")
         print("\n" + report_text)
         return
 
     try:
-        # 優先嘗試 bot_servers 模組
         pushed = False
-        if init_telegram_bot and send_telegram_safely:
+        # 優先調用 bot_servers 模組發送（自動附加 PERSISTENT_KEYBOARD 常駐選單鍵盤）
+        if send_telegram_safely:
             try:
-                bot = init_telegram_bot(token=tg_token)
-                pushed = send_telegram_safely(bot=bot, chat_id=tg_chat_id, full_text=report_text, parse_mode="HTML")
+                pushed = send_telegram_safely(chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=PERSISTENT_KEYBOARD)
             except Exception as e:
                 logger.warning("bot_servers 發送失敗: %s，切換至原生 HTTP API", str(e))
 
-        # 若未成功則直接調用原生 requests 發送
+        # 備援原生發送
         if not pushed:
-            pushed = send_telegram_direct(token=tg_token, chat_id=tg_chat_id, text=report_text, parse_mode="HTML")
+            pushed = send_telegram_direct(token=tg_token, chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=PERSISTENT_KEYBOARD)
 
         if pushed:
-            logger.info("✅ 盤後戰報成功推播至 Telegram！")
+            logger.info("✅ 盤後戰報成功推播至 Telegram（已附加常駐選單按鈕）！")
             print("Telegram 推播成功！")
         else:
             logger.error("❌ Telegram 推播失敗，請確認 Token 與 Chat ID。")
