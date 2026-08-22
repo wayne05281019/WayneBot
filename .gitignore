@@ -1,0 +1,9 @@
+# 忽略資料庫與暫存檔案
+*.db
+*.db-wal
+*.db-shm
+waynebot_data/
+raw_cache/
+logs/
+__pycache__/
+*.pyc
