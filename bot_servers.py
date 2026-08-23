@@ -1,6 +1,6 @@
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統 - Phase 8: 多管道全品種股票/ETF智慧查詢與過濾伺服器（完全體防護版）
+WayneBot 旗艦量化交易系統 - Phase 8: 多管道全品種股票/ETF智慧查詢與 Web Port 雙核心伺服器（完全體）
 """
 
 import os
@@ -11,11 +11,13 @@ import re
 import sqlite3
 import datetime
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 import requests
 
-# 🛡️ 安全載入 psutil（若無套件則自動降級，確保伺服器永不崩潰）
+# 🛡️ 安全載入 psutil
 try:
     import psutil
 except ImportError:
@@ -34,6 +36,7 @@ logger = logging.getLogger("WayneBot.BotServers")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or "8688883757:AAEpWVMX86lSMmY1PewTw6OA8j0sdsFKXac"
 DEFAULT_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TG_CHAT_ID") or "8528875978"
 DATABASE_PATH = os.getenv("WAYNE_DB_PATH", "wayne_stock.db")
+SERVER_PORT = int(os.getenv("PORT", 10000))
 
 # ==============================================================================
 # 🌟 常駐精簡選單配置
@@ -46,6 +49,33 @@ PERSISTENT_KEYBOARD = {
     "resize_keyboard": True,
     "is_persistent": True
 }
+
+# ==============================================================================
+# 🌐 輕量 HTTP Web 伺服器（專供 Render Port 綁定與 UptimeRobot 防休眠）
+# ==============================================================================
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "application/json; charset=utf-8")
+        self.end_headers()
+        response = {
+            "status": "healthy",
+            "service": "WayneBot Multi-Channel Server",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        self.wfile.write(json.dumps(response, ensure_ascii=False).encode("utf-8"))
+
+    def log_message(self, format, *args):
+        return  # 靜音 HTTP 請求日誌以防洗版
+
+def start_health_server(port: int):
+    try:
+        server_address = ("0.0.0.0", port)
+        httpd = HTTPServer(server_address, HealthCheckHandler)
+        logger.info(f"🌐 輕量 Web 健康檢查伺服器已於 Port {port} 啟動 (Render 綠燈綁定成功)！")
+        httpd.serve_forever()
+    except Exception as e:
+        logger.error(f"HTTP Server 啟動異常: {e}")
 
 # ==============================================================================
 # 1. 訊息分片與發送工具
@@ -95,13 +125,13 @@ class SecurityFilter:
         if "牛" in nm or "熊" in nm:
             return True, "牛熊證衍生商品"
 
-        # 3. 特別股過濾 (帶有 甲特/乙特/特)
+        # 3. 特別股過濾
         if any(w in nm for w in ["甲特", "乙特", "丙特", "特別股"]) or (nm.endswith("特") and not nm.endswith("福特")):
             return True, "企業特別股 (無量化波段動能)"
         if re.match(r"^[0-9]{4}[A-Z]$", sym) and not sym.startswith("00"):
             return True, "特別股代號"
 
-        # 4. 債券與債券 ETF 過濾 (代號以 B 結尾之 ETF 或名稱含 債)
+        # 4. 債券過濾
         if (sym.startswith("00") and sym.endswith("B")) or "債" in nm:
             return True, "債券 / 債券型 ETF (本系統專注於股票與動能型ETF)"
 
@@ -112,7 +142,6 @@ class StockResolver:
     def query(keyword: str, db_conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         raw_key = keyword.strip().upper()
         
-        # 1. 本地資料庫查詢
         try:
             cur = db_conn.cursor()
             cur.execute("SELECT * FROM daily_stock_data WHERE UPPER(symbol) = ? ORDER BY date DESC LIMIT 1;", (raw_key,))
@@ -143,7 +172,6 @@ class StockResolver:
         except Exception as e:
             logger.warning(f"資料庫查詢異常: {e}")
 
-        # 2. Yahoo Finance 即時備援連線
         return StockResolver._fetch_from_yahoo(raw_key)
 
     @staticmethod
@@ -267,7 +295,7 @@ class CommandProcessor:
         return (
             "⚙️ <b>【WayneBot 系統運行健康度】</b>\n"
             "━" * 20 + "\n"
-            "🟢 <b>核心狀態</b>：Active / Render 雲端 24H 在線中\n"
+            "🟢 <b>核心狀態</b>：Active / Render 24H 綠燈在線中\n"
             "💾 <b>資料庫</b>：SQLite WAL Mode (正常)\n"
             f"🧠 <b>記憶體佔用</b>：{mem_str}\n"
             f"⚡ <b>CPU 使用率</b>：{cpu_str}\n"
@@ -328,7 +356,7 @@ class CommandProcessor:
         )
 
 # ==============================================================================
-# 4. Telegram 常駐輪詢監聽服務
+# 4. Telegram 發送與輪詢主程式
 # ==============================================================================
 class TelegramSender:
     @staticmethod
@@ -352,9 +380,7 @@ class TelegramSender:
         return True
 
 def run_polling_loop():
-    logger.info("🚀 【WayneBot Telegram 全品種常駐伺服器已啟動】")
-    logger.info("📡 支援股票、KY股、主動/槓桿ETF（如 00631L, 00981A）與中文股名查詢...")
-    
+    logger.info("🚀 【WayneBot Telegram 輪詢監聽核心已啟動】")
     offset = 0
     while True:
         try:
@@ -370,7 +396,7 @@ def run_polling_loop():
                         c_id = msg["chat"]["id"]
                         u_id = str(msg["from"]["id"])
                         txt = msg["text"].strip()
-                        logger.info(f"📥 收到查詢 [{u_id}]: {txt}")
+                        logger.info(f"📥 收到指令 [{u_id}]: {txt}")
 
                         if txt in ["/start", "開始", "選單"]:
                             r_text = CommandProcessor.handle_start(u_id)
@@ -397,5 +423,13 @@ def run_polling_loop():
             time.sleep(2)
         time.sleep(0.5)
 
+# ==============================================================================
+# 主程式入口（並行啟動 Web Port 伺服器與 Telegram Polling）
+# ==============================================================================
 if __name__ == "__main__":
+    # 1. 於獨立執行緒啟動 Web Port 伺服器（滿足 Render Web Service 檢查與 UptimeRobot Ping）
+    web_thread = threading.Thread(target=start_health_server, args=(SERVER_PORT,), daemon=True)
+    web_thread.start()
+
+    # 2. 於主執行緒啟動 Telegram Polling 監聽迴圈
     run_polling_loop()
