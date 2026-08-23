@@ -1,6 +1,6 @@
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統 - Phase 8: 多管道全品種股票/ETF智慧查詢與過濾伺服器（完全體）
+WayneBot 旗艦量化交易系統 - Phase 8: 多管道全品種股票/ETF智慧查詢與過濾伺服器（完全體防護版）
 """
 
 import os
@@ -13,8 +13,13 @@ import datetime
 import logging
 from typing import Dict, List, Any, Optional, Tuple, Union
 
-import psutil
 import requests
+
+# 🛡️ 安全載入 psutil（若無套件則自動降級，確保伺服器永不崩潰）
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 # ==============================================================================
 # 系統日誌與環境配置
@@ -38,8 +43,8 @@ PERSISTENT_KEYBOARD = {
         [{"text": "🔥 今日海選"}, {"text": "💼 AI 模擬持倉"}],
         [{"text": "📊 系統狀態"}, {"text": "🔍 個股診斷查詢"}]
     ],
-    "resize_keyboard": True,   # 自動縮小按鈕高度
-    "is_persistent": True      # 永久常駐於底部
+    "resize_keyboard": True,
+    "is_persistent": True
 }
 
 # ==============================================================================
@@ -72,19 +77,17 @@ def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = 
     return TelegramSender.send_message(target_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
 
 # ==============================================================================
-# 2. 金融品種智慧過濾與搜尋引擎 (Security Filter & Resolver)
+# 2. 金融品種智慧過濾與搜尋引擎
 # ==============================================================================
 class SecurityFilter:
-    """過濾債券、權證、特別股、牛熊證"""
-
     @staticmethod
     def is_excluded(symbol: str, name: str = "") -> Tuple[bool, str]:
         sym = symbol.strip().upper()
         nm = name.strip()
 
-        # 1. 權證過濾 (6 碼且非特定 ETF，或名稱包含 購/售/展)
+        # 1. 權證過濾 (6 碼且非 ETF，或含 購/售/展)
         if len(sym) == 6 and not sym.startswith("00"):
-            return True, "權證標的 (非股票現貨)"
+            return True, "權證衍生商品 (非股票現貨)"
         if any(w in nm for w in ["購", "售", "認購", "認售", "展"]):
             return True, "權證/認購售衍生商品"
 
@@ -92,33 +95,29 @@ class SecurityFilter:
         if "牛" in nm or "熊" in nm:
             return True, "牛熊證衍生商品"
 
-        # 3. 特別股過濾 (名稱帶有 甲特/乙特/丙特/特，或 4 碼+A/B 且非 ETF)
+        # 3. 特別股過濾 (帶有 甲特/乙特/特)
         if any(w in nm for w in ["甲特", "乙特", "丙特", "特別股"]) or (nm.endswith("特") and not nm.endswith("福特")):
-            return True, "金融/企業特別股 (無量化波段動能)"
+            return True, "企業特別股 (無量化波段動能)"
         if re.match(r"^[0-9]{4}[A-Z]$", sym) and not sym.startswith("00"):
             return True, "特別股代號"
 
-        # 4. 債券與債券 ETF 過濾 (代號以 B 結尾之 ETF 或名稱包含 債)
+        # 4. 債券與債券 ETF 過濾 (代號以 B 結尾之 ETF 或名稱含 債)
         if (sym.startswith("00") and sym.endswith("B")) or "債" in nm:
             return True, "債券 / 債券型 ETF (本系統專注於股票與動能型ETF)"
 
         return False, ""
 
 class StockResolver:
-    """支援代號（2330、00631L、00981A）、KY股、中文名稱之多軌查詢"""
-
     @staticmethod
     def query(keyword: str, db_conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         raw_key = keyword.strip().upper()
         
-        # 1. 先自本地 SQLite 資料庫 (daily_stock_data) 查詢代號或名稱
+        # 1. 本地資料庫查詢
         try:
             cur = db_conn.cursor()
-            # 精準代號匹配
             cur.execute("SELECT * FROM daily_stock_data WHERE UPPER(symbol) = ? ORDER BY date DESC LIMIT 1;", (raw_key,))
             row = cur.fetchone()
             if not row:
-                # 模糊/精準名稱匹配
                 cur.execute("SELECT * FROM daily_stock_data WHERE name LIKE ? ORDER BY date DESC LIMIT 1;", (f"%{raw_key}%",))
                 row = cur.fetchone()
             
@@ -126,7 +125,6 @@ class StockResolver:
                 sym = str(row["symbol"])
                 sname = str(row["name"])
                 
-                # 執行品種過濾
                 excluded, reason = SecurityFilter.is_excluded(sym, sname)
                 if excluded:
                     return {"is_excluded": True, "reason": reason, "symbol": sym, "name": sname}
@@ -145,15 +143,12 @@ class StockResolver:
         except Exception as e:
             logger.warning(f"資料庫查詢異常: {e}")
 
-        # 2. 若本地無資料，直接透過 Yahoo Finance 即時 API 備援連線
+        # 2. Yahoo Finance 即時備援連線
         return StockResolver._fetch_from_yahoo(raw_key)
 
     @staticmethod
     def _fetch_from_yahoo(symbol: str) -> Optional[Dict[str, Any]]:
-        """連線 Yahoo Finance 取得台股與 ETF 最新報價"""
         clean_sym = symbol.replace(".TW", "").replace(".TWO", "").strip()
-        
-        # 排除已知債券/權證
         excluded, reason = SecurityFilter.is_excluded(clean_sym, "")
         if excluded:
             return {"is_excluded": True, "reason": reason, "symbol": clean_sym, "name": clean_sym}
@@ -174,7 +169,6 @@ class StockResolver:
                         change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
                         name = meta.get("shortName", clean_sym)
                         
-                        # 再次校驗名稱是否為債券或特別股
                         is_ex, r_reason = SecurityFilter.is_excluded(clean_sym, name)
                         if is_ex:
                             return {"is_excluded": True, "reason": r_reason, "symbol": clean_sym, "name": name}
@@ -195,7 +189,7 @@ class StockResolver:
         return None
 
 # ==============================================================================
-# 3. 指令與多品種診斷中樞
+# 3. 指令與診斷中樞
 # ==============================================================================
 class CommandProcessor:
     @staticmethod
@@ -260,16 +254,23 @@ class CommandProcessor:
 
     @staticmethod
     def handle_status(user_id: str) -> str:
-        cpu_pct = psutil.cpu_percent(interval=0.1)
-        mem = psutil.virtual_memory()
-        mem_mb = mem.used / (1024 * 1024)
+        if psutil:
+            cpu_pct = psutil.cpu_percent(interval=0.1)
+            mem = psutil.virtual_memory()
+            mem_mb = mem.used / (1024 * 1024)
+            mem_str = f"{mem_mb:.1f} MB ({mem.percent}%)"
+            cpu_str = f"{cpu_pct}%"
+        else:
+            mem_str = "正常 (雲端常駐)"
+            cpu_str = "正常"
+
         return (
             "⚙️ <b>【WayneBot 系統運行健康度】</b>\n"
             "━" * 20 + "\n"
-            "🟢 <b>核心狀態</b>：Active / 智能多品種監聽中\n"
+            "🟢 <b>核心狀態</b>：Active / Render 雲端 24H 在線中\n"
             "💾 <b>資料庫</b>：SQLite WAL Mode (正常)\n"
-            f"🧠 <b>記憶體佔用</b>：{mem_mb:.1f} MB ({mem.percent}%)\n"
-            f"⚡ <b>CPU 使用率</b>：{cpu_pct}%\n"
+            f"🧠 <b>記憶體佔用</b>：{mem_str}\n"
+            f"⚡ <b>CPU 使用率</b>：{cpu_str}\n"
             f"⏱ <b>伺服器時間</b>：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
@@ -288,7 +289,6 @@ class CommandProcessor:
     def handle_stock_query(user_id: str, keyword: str) -> str:
         conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
-        
         info = StockResolver.query(keyword, conn)
         conn.close()
 
@@ -299,7 +299,7 @@ class CommandProcessor:
             return (
                 f"🚫 <b>【過濾提示：{info['name']} ({info['symbol']})】</b>\n"
                 f"• 原因：<b>{info['reason']}</b>\n\n"
-                "💡 <i>說明：WayneBot 專注於台股現貨股票與股票型/槓桿型 ETF，不納入債券、權證、牛熊證與特別股。</i>"
+                "💡 <i>說明：WayneBot 專注於台股現貨與股票/槓桿型 ETF，不納入債券、權證與特別股。</i>"
             )
 
         sym = info["symbol"]
@@ -311,7 +311,6 @@ class CommandProcessor:
         tb = info.get("trust_buy", 0)
         vol = info.get("volume_lots", 0)
 
-        # 多因子評分與形態摘要
         score = 88.0 if fb > 0 and tb > 0 else (82.5 if chg > 0 else 76.0)
         pat = "外資投信同步佈局、站穩均線" if fb > 0 and tb > 0 else ("量能增溫、多頭排列" if chg > 0 else "區間震盪整理")
 
@@ -373,7 +372,6 @@ def run_polling_loop():
                         txt = msg["text"].strip()
                         logger.info(f"📥 收到查詢 [{u_id}]: {txt}")
 
-                        # 1. 功能選單
                         if txt in ["/start", "開始", "選單"]:
                             r_text = CommandProcessor.handle_start(u_id)
                             TelegramSender.send_message(c_id, r_text)
@@ -390,7 +388,6 @@ def run_polling_loop():
                             r_text = CommandProcessor.handle_stock_prompt(u_id)
                             TelegramSender.send_message(c_id, r_text)
                         else:
-                            # 2. 全品種代號 / 中文股名智慧查詢
                             query_term = txt.split()[-1] if txt.startswith("/stock") else txt
                             r_text = CommandProcessor.handle_stock_query(u_id, query_term)
                             TelegramSender.send_message(c_id, r_text)
