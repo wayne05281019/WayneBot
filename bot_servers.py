@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：多管道智慧查詢 ＋ Web Port 防休眠 ＋ CaryBot 圖表渲染雙核心伺服器
+WayneBot 旗艦量化交易系統：多管道智慧查詢 ＋ Web Port 防休眠 ＋ CaryBot 圖表渲染雙核心伺服器 (防彈發送升級版)
 """
 
 import os
@@ -87,21 +87,58 @@ def init_telegram_bot(token: Optional[str] = None):
     return bool(TELEGRAM_BOT_TOKEN)
 
 
-def send_telegram_safely(bot: Any = None, chat_id: Optional[Union[str, int]] = None, text: str = "", parse_mode: str = "HTML", reply_markup: Optional[dict] = PERSISTENT_KEYBOARD) -> bool:
+def send_telegram_safely(
+    bot: Any = None,
+    chat_id: Optional[Union[str, int]] = None,
+    text: str = "",
+    parse_mode: str = "HTML",
+    reply_markup: Optional[dict] = PERSISTENT_KEYBOARD,
+    **kwargs
+) -> bool:
+    """
+    防彈 Telegram 發送器：
+    1. 相容所有參數呼叫方式。
+    2. 若 HTML 格式被 Telegram 拒絕，自動降級為純文字二次重發。
+    3. 印出 Telegram 官方詳細回傳狀態。
+    """
+    token = kwargs.get("token") or (bot if isinstance(bot, str) and len(str(bot)) > 20 else None) or TELEGRAM_BOT_TOKEN
     target_id = chat_id or DEFAULT_CHAT_ID
-    token = TELEGRAM_BOT_TOKEN
-    if not token or not target_id: return False
+
+    if not token or not target_id:
+        logger.error("❌ 未設定 Telegram Token 或 Chat ID")
+        return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": target_id, "text": text, "parse_mode": parse_mode,
-        "reply_markup": reply_markup, "disable_web_page_preview": False
+        "chat_id": str(target_id).strip(),
+        "text": text,
+        "parse_mode": parse_mode,
+        "reply_markup": reply_markup,
+        "disable_web_page_preview": False
     }
+
     try:
-        resp = requests.post(url, json=payload, timeout=10)
-        return resp.status_code == 200
+        resp = requests.post(url, json=payload, timeout=12)
+        if resp.status_code == 200:
+            logger.info("✅ Telegram 戰報已成功送達！")
+            return True
+        else:
+            logger.warning(f"⚠️ Telegram HTML 發送失敗 ({resp.status_code}): {resp.text}，啟動純文字自動降級重發...")
+            
+            # 自動清理 HTML 標籤降級為純文字重發
+            payload.pop("parse_mode", None)
+            clean_text = re.sub(r"<[^>]+>", "", text)
+            payload["text"] = clean_text
+            
+            retry_resp = requests.post(url, json=payload, timeout=12)
+            if retry_resp.status_code == 200:
+                logger.info("✅ Telegram 純文字降級重發成功送達！")
+                return True
+            else:
+                logger.error(f"❌ Telegram 官方伺服器退件: {retry_resp.text}")
+                return False
     except Exception as e:
-        logger.error(f"Telegram 訊息發送失敗: {e}")
+        logger.error(f"❌ Telegram 連線異常: {e}")
         return False
 
 
@@ -111,7 +148,7 @@ def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None
     if not token or not target_id or not os.path.exists(photo_path): return False
 
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    data = {"chat_id": target_id, "parse_mode": "HTML"}
+    data = {"chat_id": str(target_id).strip(), "parse_mode": "HTML"}
     if caption: data["caption"] = caption
     if reply_markup: data["reply_markup"] = json.dumps(reply_markup)
 
@@ -130,10 +167,7 @@ def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None
 class CommandProcessor:
     @staticmethod
     def handle_stock_query(user_id: str, keyword: str, chat_id: str):
-        """免打指令：輸入中文/股號直接打包送出戰報 + 導航趨勢圖"""
         clean_key = keyword.strip()
-        
-        # 產出 Yahoo 連結
         yahoo_url = f"https://tw.stock.yahoo.com/quote/{clean_key}"
 
         report_text = f"""🔥 <b>【{clean_key}】 盤後多因子深度量化卡</b>
@@ -143,7 +177,6 @@ class CommandProcessor:
 
         send_telegram_safely(chat_id=chat_id, text=report_text, reply_markup=PERSISTENT_KEYBOARD)
 
-        # 產出並發送 180 日趨勢圖
         if CaryBotChartGenerator:
             chart_path = os.path.join(BASE_DIR, f"{clean_key}_180d.png")
             try:
