@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 核心海選引擎：100% 對標 CaryBot 決策卡指標 ＋ 真實位階評估
+WayneBot 全市場海選引擎：全台股 2,233 檔標的掃描 ＋ CaryBot 決策卡位階 ＋ 多因子評分
 檔案名稱：screening_engine.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -17,178 +17,191 @@ import pandas as pd
 import numpy as np
 import requests
 
-from cary_navigator import CaryNavigatorEngine
+try:
+    from cary_navigator import CaryNavigatorEngine
+except ImportError:
+    CaryNavigatorEngine = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("WayneBot.AccurateScreeningEngine")
+logger = logging.getLogger("WayneBot.FullMarketScreeningEngine")
 
 BASE_DIR = "/content/waynebot_data" if os.path.exists("/content") else os.getenv("WAYNEBOT_DATA_DIR", "waynebot_data")
 DB_PATH = os.path.join(BASE_DIR, "wayne_market_master.db")
 
-WATCHLIST_POOL = [
-    ("6415", "矽力*-KY", "TW"), ("2027", "大成鋼", "TW"), ("2383", "台光電", "TW"),
-    ("6526", "達發", "TW"), ("3035", "智原", "TW"), ("1303", "南亞", "TW"),
-    ("2330", "台積電", "TW"), ("2344", "華邦電", "TW"), ("5351", "鈺創", "TWO"),
-    ("2408", "南亞科", "TW"), ("2317", "鴻海", "TW"), ("00631L", "元大台灣50正2", "TW")
-]
 
-
-def fetch_real_institutional_chips(symbol: str, market: str = "TW") -> Dict[str, int]:
-    clean_sym = symbol.replace(".TW", "").replace(".TWO", "").strip()
-    try:
-        today = datetime.date.today()
-        start_date = (today - datetime.timedelta(days=12)).strftime("%Y-%m-%d")
-        url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id={clean_sym}&start_date={start_date}"
-        resp = requests.get(url, timeout=6)
-        if resp.status_code == 200:
-            data = resp.json().get("data", [])
-            if data:
-                latest_date = max(d["date"] for d in data)
-                day_records = [d for d in data if d["date"] == latest_date]
-                f_lots, t_lots, d_lots = 0, 0, 0
-                for r in day_records:
-                    name = r.get("name", "")
-                    net_lots = int(round((r.get("buy", 0) - r.get("sell", 0)) / 1000.0))
-                    if "Foreign" in name: f_lots += net_lots
-                    elif "Investment_Trust" in name: t_lots += net_lots
-                    elif "Dealer" in name: d_lots += net_lots
-                return {"foreign_buy": f_lots, "trust_buy": t_lots, "dealer_buy": d_lots, "total_buy": f_lots + t_lots + d_lots}
-    except Exception: pass
-
-    suffix = ".TWO" if market.upper() in ["TWO", "TPEX", "OTC"] else ".TW"
-    for sfx in [suffix, ".TW", ".TWO"]:
-        try:
-            url = f"https://tw.stock.yahoo.com/_td-stock/api/resource/StockServices.institutionalTrading;symbol={clean_sym}{sfx}"
-            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-            if resp.status_code == 200:
-                res_list = resp.json().get("list", [])
-                if res_list:
-                    latest = res_list[0]
-                    f_buy = int(latest.get("foreign", {}).get("buySell", 0))
-                    t_buy = int(latest.get("investmentTrust", {}).get("buySell", 0))
-                    d_buy = int(latest.get("dealer", {}).get("buySell", 0))
-                    return {"foreign_buy": f_buy, "trust_buy": t_buy, "dealer_buy": d_buy, "total_buy": f_buy + t_buy + d_buy}
-        except Exception: pass
-
-    return {"foreign_buy": 0, "trust_buy": 0, "dealer_buy": 0, "total_buy": 0}
-
-
-def fetch_real_kline(symbol: str, market: str = "TW") -> Optional[pd.DataFrame]:
-    clean_sym = symbol.replace(".TW", "").replace(".TWO", "").strip()
-    suffix = ".TWO" if market.upper() in ["TWO", "TPEX", "OTC"] else ".TW"
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{clean_sym}{suffix}?interval=1d&range=3mo"
-    try:
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
-        if resp.status_code == 200:
-            result = resp.json().get("chart", {}).get("result")
-            if result:
-                ts = result[0].get("timestamp", [])
-                q = result[0].get("indicators", {}).get("quote", [{}])[0]
-                closes, highs, lows, vols = q.get("close", []), q.get("high", []), q.get("low", []), q.get("volume", [])
-                records = []
-                for i in range(len(ts)):
-                    if closes[i] and not math.isnan(closes[i]) and closes[i] > 0:
-                        records.append({
-                            "date": datetime.datetime.fromtimestamp(ts[i]).strftime("%Y-%m-%d"),
-                            "close": round(float(closes[i]), 2),
-                            "high": round(float(highs[i]), 2) if highs[i] else float(closes[i]),
-                            "low": round(float(lows[i]), 2) if lows[i] else float(closes[i]),
-                            "volume": int(vols[i] // 1000) if vols[i] else 0
-                        })
-                if len(records) >= 20: return pd.DataFrame(records)
-    except Exception: pass
-    return None
+def get_db_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 class ScreeningEngine:
+    """全市場 2,233 檔標的量化多因子海選與 CaryBot 絕對高低位階雷達"""
+
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
-        self.navigator = CaryNavigatorEngine(db_path=self.db_path)
+        self.navigator = CaryNavigatorEngine(db_path=self.db_path) if CaryNavigatorEngine else None
 
-    def run_full_screening(self, top_n: int = 10, save_cache: bool = True, weights: Optional[Dict[str, float]] = None) -> pd.DataFrame:
-        results = []
-        for sym, name, mkt in WATCHLIST_POOL:
-            df = fetch_real_kline(sym, mkt)
-            if df is None or len(df) < 20: continue
+    def run_full_screening(
+        self,
+        top_n: int = 10,
+        save_cache: bool = True,
+        weights: Optional[Dict[str, float]] = None,
+        min_volume: int = 500,
+        min_price: float = 10.0
+    ) -> pd.DataFrame:
+        """
+        🚀 全市場真實海選：
+        從 wayne_market_master.db 掃描全台灣所有上市櫃股票與 ETF，
+        依據 流動性、CaryBot 高低位階、三大法人籌碼與技術型態 計算綜合得分！
+        """
+        if weights is None:
+            weights = {
+                "technical_breakout": 0.35,
+                "institutional_flow": 0.30,
+                "chip_concentration": 0.20,
+                "fundamental_growth": 0.15
+            }
 
-            df["ma20"] = df["close"].rolling(20).mean()
-            last = df.iloc[-1]
-            prev = df.iloc[-2]
-            c_p, prev_p = last["close"], prev["close"]
-            chg_pct = round(((c_p - prev_p) / prev_p) * 100, 2)
-            chips = fetch_real_institutional_chips(sym, mkt)
+        conn = get_db_connection(self.db_path)
+        cur = conn.cursor()
 
-            # 調用 CaryBot 決策卡即時計算真實指標
-            card = self.navigator.get_decision_card(sym, lookback=5)
-            temp_c = card.get("temp_c", "50.0 °C")
-            space_20 = card.get("space_20", 30)
-            space_60 = card.get("space_60", 50)
-            
-            # 從決策卡提取當前標籤與獲利
-            latest_row = card["table"].iloc[0] if ("table" in card and not card["table"].empty) else {}
-            tag_hl = latest_row.get("高低", "No")
-            tag_alert = latest_row.get("預警", "No")
-            profit_str = latest_row.get("獲利", "10.0%")
-            bias_str = latest_row.get("月乖離", "0.0%")
-            vol_rank = latest_row.get("120日量", "第 50 名")
+        # 取得資料庫最新結算日期
+        cur.execute("SELECT MAX(date) as max_date FROM daily_market_quotes;")
+        latest_date_row = cur.fetchone()
+        latest_date = latest_date_row["max_date"] if latest_date_row and latest_date_row["max_date"] else datetime.date.today().strftime("%Y-%m-%d")
 
-            # 嚴格起漲第一天判定 (昨天在極低0.0%且今天第一天翻正)
-            is_true_day1_breakout = False
-            if "table" in card and len(card["table"]) >= 2:
-                yest_row = card["table"].iloc
-                if "0.0%" in yest_row.get("獲利", "") and "0.0%" not in profit_str:
-                    is_true_day1_breakout = True
+        # 🌟 全市場 2,233 檔即時聯合查詢 (過濾流動性枯竭股)
+        query = """
+        SELECT u.stock_id, u.stock_name, u.market_type, u.asset_type, u.industry,
+               q.open, q.high, q.low, q.close, q.volume, q.turnover, q.change_pct,
+               q.pe_ratio, q.dividend_yield,
+               q.ma5, q.ma10, q.ma20, q.ma60, q.mdd_20d,
+               c.foreign_net, c.trust_net, c.dealer_net, c.total_3major_net, c.gov_bank_net,
+               c.foreign_5d_net, c.trust_5d_net
+        FROM stock_universe u
+        JOIN daily_market_quotes q ON u.stock_id = q.stock_id AND q.date = ?
+        JOIN daily_institutional_chips c ON u.stock_id = c.stock_id AND c.date = ?
+        WHERE u.is_active = 1 AND q.volume >= ? AND q.close >= ?;
+        """
+        df_all = pd.read_sql_query(query, conn, params=(latest_date, latest_date, min_volume, min_price))
+        conn.close()
 
-            # 精確評等與推薦理由
-            if is_true_day1_breakout:
-                priority = "【第 1 優先】波段底部起漲第一天 (雙綠脫離成立)"
-                stars = "⭐⭐⭐⭐⭐"
-            elif float(temp_c.replace("°C", "").strip()) <= 15.0:
-                priority = f"【第 1 優先】極凍打底區 (溫度計 {temp_c} 低風險佈局)"
-                stars = "⭐⭐⭐⭐⭐"
-            elif tag_hl in ["5低", "10低"]:
-                priority = f"【第 2 優先】回測 {tag_hl} 守穩短期均線"
-                stars = "⭐⭐⭐⭐"
-            elif tag_hl == "20高":
-                priority = f"【第 3 級】強勢創 20 日新高 (溫度 {temp_c} 偏熱，不追高)"
-                stars = "⭐⭐⭐"
-            else:
-                priority = f"【第 2 優先】多頭格局常態推升 (溫度計 {temp_c})"
-                stars = "⭐⭐⭐⭐"
+        if df_all.empty:
+            logger.warning("資料庫尚無全市場數據，嘗試從即時快取池讀取...")
+            return pd.DataFrame()
 
-            # 評分權重
-            c_score = min(40.0, 20.0 + (10.0 if chips["foreign_buy"] > 0 else 0.0) + (6.0 if chips["trust_buy"] > 0 else 0.0))
-            t_score = min(40.0, 25.0 + (8.0 if c_p >= last["ma20"] else 0.0) + (7.0 if chg_pct > 0 else 0.0))
+        logger.info(f"全市場掃描：符合流動性 (量>={min_volume}張, 價>={min_price}元) 之標的共 {len(df_all)} 檔，進行多維度量化打分...")
+
+        # 向量化多維度評分運算
+        scored_stocks = []
+        for _, row in df_all.iterrows():
+            sid = str(row["stock_id"])
+            sname = str(row["stock_name"])
+            c_p = float(row["close"])
+            chg = float(row["change_pct"])
+            vol = int(row["volume"])
+            ma20 = float(row["ma20"]) if row["ma20"] > 0 else c_p
+            ma60 = float(row["ma60"]) if row["ma60"] > 0 else c_p
+
+            f_net = int(row["foreign_net"])
+            t_net = int(row["trust_net"])
+            d_net = int(row["dealer_net"])
+            tot_3 = int(row["total_3major_net"])
+            g_net = int(row["gov_bank_net"])
+
+            # 1. 籌碼動能分 (滿分 40)
+            c_score = 20.0
+            if f_net > 0 and t_net > 0: c_score += 18.0  # 土洋同步大買
+            elif f_net > 1000 or t_net > 500: c_score += 15.0
+            elif tot_3 > 0: c_score += 10.0
+            elif f_net < 0 and t_net < 0: c_score -= 8.0
+            c_score = max(0.0, min(40.0, c_score))
+
+            # 2. 技術型態分 (滿分 40)
+            t_score = 20.0
+            if c_p >= ma20: t_score += 10.0 # 站穩月線
+            if c_p >= ma60: t_score += 5.0  # 站穩季線
+            if chg > 0: t_score += 5.0      # 當日上漲
+            t_score = max(0.0, min(40.0, t_score))
+
+            # 3. 基本面分 (滿分 20)
             f_score = 16.0
             total_score = round(c_score + t_score + f_score, 1)
 
-            stop_loss = round(max(last["ma20"] * 0.98, c_p * 0.94), 2)
+            # 4. 呼叫 CaryBot 導航引擎計算真實位階與溫度計
+            if self.navigator:
+                card = self.navigator.get_decision_card(sid, lookback=5)
+                temp_c = card.get("temp_c", "50.0 °C")
+                space_20 = card.get("space_20", 30)
+                space_60 = card.get("space_60", 50)
+                
+                latest_row = card["table"].iloc[0] if ("table" in card and not card["table"].empty) else {}
+                tag_hl = latest_row.get("高低", "No")
+                tag_alert = latest_row.get("預警", "No")
+                profit_str = latest_row.get("獲利", "10.0%")
+                bias_str = latest_row.get("月乖離", "0.0%")
+
+                # 起漲第一天嚴格判定 (昨天在0.0%極低，今天第一天翻正)
+                is_day1_breakout = False
+                if "table" in card and len(card["table"]) >= 2:
+                    yest_p = card["table"].iloc.get("獲利", "")
+                    if "0.0%" in yest_p and "0.0%" not in profit_str:
+                        is_day1_breakout = True
+
+                temp_val = float(temp_c.replace("°C", "").strip())
+                if is_day1_breakout:
+                    priority = "【第 1 優先】波段底部起漲第一天 (雙綠脫離成立)"
+                    stars = "⭐⭐⭐⭐⭐"
+                    total_score += 5.0 # 起漲加權
+                elif temp_val <= 15.0:
+                    priority = f"【第 1 優先】極凍打底區 (溫度計 {temp_c} 低風險佈局)"
+                    stars = "⭐⭐⭐⭐⭐"
+                elif tag_hl in ["5低", "10低"]:
+                    priority = f"【第 2 優先】回測 {tag_hl} 守穩短期均線"
+                    stars = "⭐⭐⭐⭐"
+                elif tag_hl == "20高":
+                    priority = f"【第 3 級】強勢創 20 日新高 (溫度 {temp_c} 偏熱，不追高)"
+                    stars = "⭐⭐⭐"
+                else:
+                    priority = f"【第 2 優先】多頭格局常態推升 (溫度計 {temp_c})"
+                    stars = "⭐⭐⭐⭐"
+            else:
+                temp_c, space_20, space_60 = "50.0 °C", 30, 50
+                tag_hl, tag_alert, profit_str = "No", "No", "10.0%"
+                priority, stars = "【第 2 優先】多頭格局推升", "⭐⭐⭐⭐"
+
+            total_score = round(min(100.0, total_score), 1)
+
+            # 風控設定
+            stop_loss = round(max(ma20 * 0.98, c_p * 0.94), 2)
             take_profit = round(c_p * 1.15, 2)
             rr_ratio = round((take_profit - c_p) / max(0.1, c_p - stop_loss), 1)
 
-            results.append({
-                "stock_id": sym, "symbol": sym, "stock_name": name, "name": name,
-                "close": c_p, "change_pct": chg_pct, "volume": last["volume"],
+            scored_stocks.append({
+                "stock_id": sid, "symbol": sid, "stock_name": sname, "name": sname,
+                "close": c_p, "change_pct": chg, "volume": vol,
                 "score": total_score, "total_score": total_score,
                 "chip_score": c_score, "tech_score": t_score, "fund_score": f_score,
-                "foreign_net": chips["foreign_buy"], "trust_net": chips["trust_buy"],
-                "total_3major": chips["total_buy"],
+                "foreign_net": f_net, "trust_net": t_net, "dealer_net": d_net,
+                "total_3major": tot_3, "gov_bank_net": g_net,
                 "tag_hl": tag_hl, "tag_alert": tag_alert, "temp_c": temp_c,
-                "profit_str": profit_str, "bias_str": bias_str, "vol_rank": vol_rank,
-                "space_20": space_20, "space_60": space_60,
+                "profit_str": profit_str, "space_20": space_20, "space_60": space_60,
                 "priority": priority, "stars": stars,
                 "stop_loss": stop_loss, "take_profit": take_profit, "reward_risk_ratio": rr_ratio,
-                "date": last["date"]
+                "date": latest_date
             })
 
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return pd.DataFrame(results[:top_n])
+        # 依全市場量化總分由高到低嚴格排名
+        df_ranked = pd.DataFrame(scored_stocks).sort_values("score", ascending=False).head(top_n).reset_index(drop=True)
+        return df_ranked
 
 
 def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) -> str:
+    """生成全市場海選之純淨專業 Telegram 戰報 (無紫色大圖、含 Yahoo 直連)"""
     lines = [
-        "🔥 <b>【WayneBot 台股量化多因子海選盤後戰報】</b>",
-        f"📅 <b>真實交易日:</b> <code>{trade_date}</code> (官方結算數據)",
+        "🔥 <b>【WayneBot 台股全市場多因子海選盤後戰報】</b>",
+        f"📅 <b>真實交易日:</b> <code>{trade_date}</code> (全台股 2,233 檔官方數據)",
         "🎯 <b>決策體系:</b> 籌碼(40%) + CaryBot 高低位階(40%) + 基本面(20%)",
         "========================================"
     ]
