@@ -50,6 +50,7 @@ class PortfolioEngine:
         with self.get_conn() as conn:
             cur = conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL;")
+
             cur.execute("""
             CREATE TABLE IF NOT EXISTS simulated_positions (
                 position_id TEXT PRIMARY KEY,
@@ -75,6 +76,7 @@ class PortfolioEngine:
                 updated_at TEXT NOT NULL
             );
             """)
+
             cur.execute("""
             CREATE TABLE IF NOT EXISTS trade_history (
                 trade_id TEXT PRIMARY KEY,
@@ -91,10 +93,18 @@ class PortfolioEngine:
                 pnl_percentage REAL NOT NULL,
                 holding_days INTEGER NOT NULL,
                 exit_reason TEXT NOT NULL,
+                trigger_factors TEXT DEFAULT '{}',
                 failure_attribution TEXT,
                 created_at TEXT NOT NULL
             );
             """)
+
+            # 欄位自動防錯遷移
+            cur.execute("PRAGMA table_info(trade_history);")
+            cols = {r["name"] for r in cur.fetchall()}
+            if "trigger_factors" not in cols:
+                cur.execute("ALTER TABLE trade_history ADD COLUMN trigger_factors TEXT DEFAULT '{}';")
+
             conn.commit()
 
     def _init_weights_file(self) -> None:
@@ -216,12 +226,13 @@ class PortfolioEngine:
                             trade_id, position_id, stock_id, stock_name, entry_date,
                             exit_date, avg_entry_price, exit_price, total_shares, total_cost,
                             pnl_amount, pnl_percentage, holding_days, exit_reason,
-                            failure_attribution, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                            trigger_factors, failure_attribution, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """, (
                         trade_id, r_dict["position_id"], sid, r_dict["stock_name"], r_dict["entry_date"],
                         today_str, avg_p, latest_p, total_shares, total_cost, unrealized_pnl,
-                        unrealized_pct, holding_days, exit_reason, attribution, now_str
+                        unrealized_pct, holding_days, exit_reason,
+                        r_dict.get("trigger_factors", "{}"), attribution, now_str
                     ))
                     cur.execute("UPDATE simulated_positions SET status = 'CLOSED', updated_at = ? WHERE position_id = ?;", (now_str, r_dict["position_id"]))
                     closed_trades.append({"stock_id": sid, "pnl_pct": f"{unrealized_pct:+.2f}%", "reason": exit_reason})
@@ -274,8 +285,9 @@ class PortfolioEngine:
         current_weights = self.load_weights()
         factor_scores = {k: 0.0 for k in current_weights}
         for t in trades:
-            pnl = float(t["pnl_percentage"]) / 100.0
-            try: factors = json.loads(t["trigger_factors"])
+            r_dict = dict(t)
+            pnl = float(r_dict["pnl_percentage"]) / 100.0
+            try: factors = json.loads(r_dict.get("trigger_factors", "{}"))
             except Exception: factors = {}
             for k in current_weights.keys():
                 if k in factors:
