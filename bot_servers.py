@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：30萬4等份帳本 ＋ 免指令查詢 ＋ Render 24H 防休眠雙核心
+WayneBot 旗艦量化交易系統：模糊按鈕秒回 ＋ 30萬4等份帳本 ＋ Render 24H 防休眠
 檔案名稱：bot_servers.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -51,7 +51,6 @@ WATCHLIST_DB_PATH = os.path.join(BASE_DIR, "user_watchlist.db")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or "8688883757:AAEpWVMX86lSMmY1PewTw6OA8j0sdsFKXac"
 DEFAULT_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TG_CHAT_ID") or "8528875978"
 
-# 🌟 常駐選單
 PERSISTENT_KEYBOARD = {
     "keyboard": [
         [{"text": "🔥 今日海選"}, {"text": "💼 AI 模擬持倉"}],
@@ -134,7 +133,7 @@ def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = 
         try:
             resp = requests.post(url, json=payload, timeout=12)
             if resp.status_code == 200:
-                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段發送成功！")
+                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段已發送！")
             else:
                 payload.pop("parse_mode", None)
                 payload["text"] = re.sub(r"<[^>]+>", "", chunk)
@@ -181,11 +180,11 @@ def get_detailed_portfolio_report() -> str:
     history = cur.fetchall()
     conn.close()
 
-    total_cost = sum([float(p["total_cost"]) for p in active])
-    total_unrealized = sum([(float(p["current_price"]) - float(p["avg_entry_price"])) * int(p["total_shares"]) for p in active])
-    used_tranches = sum([int(p["tranches_used"]) for p in active])
+    total_cost = sum([float(dict(p)["total_cost"]) for p in active]) if active else 0.0
+    total_unrealized = sum([(float(dict(p)["current_price"]) - float(dict(p)["avg_entry_price"])) * int(dict(p)["total_shares"]) for p in active]) if active else 0.0
+    used_tranches = sum([int(dict(p).get("tranches_used", 1)) for p in active]) if active else 0
     free_tranches = 4 - used_tranches
-    free_cash = 300000.0 - total_cost + sum([float(h["pnl_amount"]) for h in history])
+    free_cash = 300000.0 - total_cost + (sum([float(dict(h)["pnl_amount"]) for h in history]) if history else 0.0)
     total_nav = free_cash + total_cost + total_unrealized
 
     lines = [
@@ -203,18 +202,19 @@ def get_detailed_portfolio_report() -> str:
         lines.append("<i>目前無在倉部位（4 等份資金 $300,000 隨時逢低抄底）。</i>")
     else:
         for idx, pos in enumerate(active, 1):
-            sid = pos["stock_id"]
-            sname = pos["stock_name"]
-            e_date = pos["entry_date"]
-            avg_p = float(pos["avg_entry_price"])
-            c_p = float(pos["current_price"])
-            shares = int(pos["total_shares"])
-            cost = float(pos["total_cost"])
-            tranches = int(pos["tranches_used"])
-            h_days = int(pos["holding_days"])
+            p = dict(pos)
+            sid = p["stock_id"]
+            sname = p["stock_name"]
+            e_date = p["entry_date"]
+            avg_p = float(p["avg_entry_price"])
+            c_p = float(p["current_price"])
+            shares = int(p["total_shares"])
+            cost = float(p["total_cost"])
+            tranches = int(p.get("tranches_used", 1))
+            h_days = int(p["holding_days"])
             pnl_amt = (c_p - avg_p) * shares
             pnl_pct = ((c_p - avg_p) / avg_p) * 100.0
-            mdd = float(pos["max_drawdown_pct"])
+            mdd = float(p["max_drawdown_pct"])
 
             pnl_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
             icon = "🔺" if pnl_pct >= 0 else "🔻"
@@ -225,9 +225,8 @@ def get_detailed_portfolio_report() -> str:
             lines.append(f"   • <b>投入成本</b>: <code>${cost:,.0f}</code> | <b>現價</b>: <code>${c_p:.2f}</code>")
             lines.append(f"   • <b>未實現損益</b>: {icon} <b>{pnl_str}</b> (${pnl_amt:+,.0f}) | MDD: <code>{mdd:.1f}%</code>")
 
-            # 顯示分批買進歷史
             try:
-                hist = json.loads(pos["entry_history"])
+                hist = json.loads(p.get("entry_history", "[]"))
                 for h_idx, h in enumerate(hist, 1):
                     lines.append(f"     └ 批次 {h_idx}: <code>{h['date']}</code> 以 <code>${h['price']}</code> 買進 <code>{h['shares']}</code> 股 ({h['type']})")
             except Exception: pass
@@ -239,13 +238,14 @@ def get_detailed_portfolio_report() -> str:
         lines.append("<i>尚無歷史平倉紀錄。</i>")
     else:
         for h in history:
-            pnl_pct = float(h["pnl_percentage"])
-            pnl_amt = float(h["pnl_amount"])
+            h_d = dict(h)
+            pnl_pct = float(h_d["pnl_percentage"])
+            pnl_amt = float(h_d["pnl_amount"])
             p_icon = "🔴" if pnl_pct < 0 else "🟢"
-            lines.append(f"{p_icon} <b>[{h['exit_date']} 賣出] {h['stock_id']} {h['stock_name']}</b> ({h['total_shares']:,} 股)")
-            lines.append(f"   • 均價: <code>${h['avg_entry_price']}</code> ➜ 出場: <code>${h['exit_price']}</code> (<b>{pnl_pct:+.2f}%</b>)")
-            lines.append(f"   • <b>獲利金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h['exit_reason']}")
-            lines.append(f"   • <b>本金增長歸因</b>: <i>{h['failure_attribution']}</i>\n")
+            lines.append(f"{p_icon} <b>[{h_d['exit_date']} 賣出] {h_d['stock_id']} {h_d['stock_name']}</b> ({h_d['total_shares']:,} 股)")
+            lines.append(f"   • 均價: <code>${h_d['avg_entry_price']}</code> ➜ 出場: <code>${h_d['exit_price']}</code> (<b>{pnl_pct:+.2f}%</b>)")
+            lines.append(f"   • <b>獲利金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h_d['exit_reason']}")
+            lines.append(f"   • <b>本金增長歸因</b>: <i>{h_d['failure_attribution']}</i>\n")
 
     perf = engine.evaluate_performance()
     lines.append("────────────────────────────────────────")
@@ -257,7 +257,6 @@ def get_detailed_portfolio_report() -> str:
 
 
 def get_watchlist_report() -> str:
-    """產出自選觀察名單"""
     conn = sqlite3.connect(WATCHLIST_DB_PATH)
     cur = conn.cursor()
     cur.execute("SELECT * FROM user_watchlist ORDER BY added_date DESC;")
@@ -300,8 +299,7 @@ class CommandProcessor:
             try:
                 CaryBotChartGenerator.draw_180d_chart(clean_key, clean_key, 100.0, 120.0, 80.0, 110.0, 90.0, chart_path)
                 send_photo_safely(photo_path=chart_path, chat_id=chat_id, caption=f"📈 {clean_key} 180日絕對高低點導航圖", reply_markup=action_buttons)
-            except Exception as e:
-                logger.warning(f"趨勢圖繪製異常: {e}")
+            except Exception: pass
 
 
 def run_polling_loop():
@@ -320,22 +318,24 @@ def run_polling_loop():
                         msg = item["message"]
                         c_id = msg["chat"]["id"]
                         txt = msg["text"].strip()
+                        logger.info(f"📥 收到指令: {txt}")
 
-                        if txt in ["/start", "開始", "選單"]:
+                        # 模糊比對：只要文字包含關鍵字即刻回應
+                        if any(k in txt for k in ["start", "開始", "選單"]):
                             welcome = "👋 <b>歡迎使用 WayneBot 台股量化決策系統！</b>\n請點擊下方選單，或直接輸入<b>股票名稱或代碼</b>（如 <code>台光電</code>、<code>2383</code>）！"
                             send_telegram_safely(chat_id=c_id, text=welcome)
-                        elif txt in ["/screen", "🔥 今日海選", "今日海選", "海選"]:
+                        elif any(k in txt for k in ["海選", "screen", "今日"]):
                             if screening_engine:
                                 df_top = screening_engine.run_full_screening(10)
                                 rep = screening_engine.format_telegram_report(df_top.to_dict(orient="records"), datetime.date.today().strftime("%Y-%m-%d"))
                                 send_telegram_safely(chat_id=c_id, text=rep)
-                        elif txt in ["/portfolio", "💼 AI 模擬持倉", "AI 模擬持倉", "持倉"]:
+                        elif any(k in txt for k in ["持倉", "portfolio", "模擬"]):
                             rep = get_detailed_portfolio_report()
                             send_telegram_safely(chat_id=c_id, text=rep)
-                        elif txt in ["⭐ 我的自選名單", "自選名單", "自選股"]:
+                        elif any(k in txt for k in ["自選", "名單", "觀察"]):
                             rep = get_watchlist_report()
                             send_telegram_safely(chat_id=c_id, text=rep)
-                        elif txt in ["/status", "📊 系統狀態", "系統狀態"]:
+                        elif any(k in txt for k in ["狀態", "status", "系統"]):
                             mem_str = f"{psutil.virtual_memory().percent}%" if psutil else "正常"
                             status_msg = f"⚙️ <b>【WayneBot 系統運行健康度】</b>\n🟢 <b>Render 24H Web 伺服器在線 (Port {SERVER_PORT})</b>\n💾 <b>資料庫</b>: SQLite WAL 模式 (正常)\n🧠 <b>記憶體使用</b>: {mem_str}\n⏱ <b>伺服器時間</b>: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                             send_telegram_safely(chat_id=c_id, text=status_msg)
