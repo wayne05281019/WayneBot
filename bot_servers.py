@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：模糊按鈕秒回 ＋ 30萬4等份帳本 ＋ Render 24H 防休眠
+WayneBot 旗艦量化交易系統：自動解鎖 Webhook ＋ 30萬4等份帳本 ＋ Render 24H 防休眠 (全功能暢通版)
 檔案名稱：bot_servers.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -304,6 +304,15 @@ class CommandProcessor:
 
 def run_polling_loop():
     token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
+
+    # 🔓 啟動前強制清除 Webhook 鎖定 (徹底解決收不到訊息問題)
+    try:
+        del_url = f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=False"
+        requests.post(del_url, timeout=8)
+        logger.info("🔓 已成功解除 Telegram Webhook 舊鎖定通道！")
+    except Exception as e:
+        logger.warning(f"Webhook 解鎖異常: {e}")
+
     logger.info("🚀 【WayneBot Telegram 輪詢監聽核心已啟動】")
     offset = 0
     while True:
@@ -320,7 +329,6 @@ def run_polling_loop():
                         txt = msg["text"].strip()
                         logger.info(f"📥 收到指令: {txt}")
 
-                        # 模糊比對：只要文字包含關鍵字即刻回應
                         if any(k in txt for k in ["start", "開始", "選單"]):
                             welcome = "👋 <b>歡迎使用 WayneBot 台股量化決策系統！</b>\n請點擊下方選單，或直接輸入<b>股票名稱或代碼</b>（如 <code>台光電</code>、<code>2383</code>）！"
                             send_telegram_safely(chat_id=c_id, text=welcome)
