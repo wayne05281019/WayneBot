@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：多管道智慧查詢 ＋ Web Port 防休眠 ＋ CaryBot 圖表渲染雙核心伺服器 (防彈發送升級版)
+WayneBot 旗艦量化交易系統：多管道智慧查詢 ＋ Web Port 防休眠 ＋ CaryBot 圖表渲染雙核心伺服器 (自動分段防彈版)
 """
 
 import os
@@ -41,7 +41,7 @@ BASE_DIR = "/content/waynebot_data" if os.path.exists("/content") else os.getenv
 DATABASE_PATH = os.path.join(BASE_DIR, "wayne_market_master.db")
 SERVER_PORT = int(os.getenv("PORT", 10000))
 
-# 🌟 常駐精簡選單配置
+# 🌟 常駐精簡選單配置 (完整保留)
 PERSISTENT_KEYBOARD = {
     "keyboard": [
         [{"text": "🔥 今日海選"}, {"text": "💼 AI 模擬持倉"}],
@@ -53,7 +53,7 @@ PERSISTENT_KEYBOARD = {
 
 
 # ==============================================================================
-# 🌐 輕量 HTTP Web 伺服器 (供 Render Port 綁定與 UptimeRobot 防休眠)
+# 🌐 輕量 HTTP Web 伺服器 (Render 24H 綠燈防休眠，完整保留)
 # ==============================================================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -81,6 +81,25 @@ def start_health_server(port: int):
         logger.error(f"HTTP Server 啟動異常: {e}")
 
 
+def chunk_message(text: str, max_length: int = 3500) -> List[str]:
+    """自動依段落將長訊息分段 (保證 100% 完整發送所有股票與文字)"""
+    if not text or len(text) <= max_length:
+        return [text] if text else []
+    chunks = []
+    lines = text.split("\n")
+    cur, cur_len = [], 0
+    for line in lines:
+        if cur_len + len(line) + 1 > max_length:
+            if cur:
+                chunks.append("\n".join(cur))
+                cur, cur_len = [], 0
+        cur.append(line)
+        cur_len += len(line) + 1
+    if cur:
+        chunks.append("\n".join(cur))
+    return chunks
+
+
 def init_telegram_bot(token: Optional[str] = None):
     global TELEGRAM_BOT_TOKEN
     if token: TELEGRAM_BOT_TOKEN = token
@@ -97,9 +116,9 @@ def send_telegram_safely(
 ) -> bool:
     """
     防彈 Telegram 發送器：
-    1. 相容所有參數呼叫方式。
-    2. 若 HTML 格式被 Telegram 拒絕，自動降級為純文字二次重發。
-    3. 印出 Telegram 官方詳細回傳狀態。
+    1. 自動分段發送 (保留 15 檔全部內容，不漏任何資訊)。
+    2. HTML 失敗自動降級純文字重發。
+    3. 相容所有呼叫方式。
     """
     token = kwargs.get("token") or (bot if isinstance(bot, str) and len(str(bot)) > 20 else None) or TELEGRAM_BOT_TOKEN
     target_id = chat_id or DEFAULT_CHAT_ID
@@ -109,37 +128,40 @@ def send_telegram_safely(
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": str(target_id).strip(),
-        "text": text,
-        "parse_mode": parse_mode,
-        "reply_markup": reply_markup,
-        "disable_web_page_preview": False
-    }
+    chunks = chunk_message(text, max_length=3500)
+    all_ok = True
 
-    try:
-        resp = requests.post(url, json=payload, timeout=12)
-        if resp.status_code == 200:
-            logger.info("✅ Telegram 戰報已成功送達！")
-            return True
-        else:
-            logger.warning(f"⚠️ Telegram HTML 發送失敗 ({resp.status_code}): {resp.text}，啟動純文字自動降級重發...")
-            
-            # 自動清理 HTML 標籤降級為純文字重發
-            payload.pop("parse_mode", None)
-            clean_text = re.sub(r"<[^>]+>", "", text)
-            payload["text"] = clean_text
-            
-            retry_resp = requests.post(url, json=payload, timeout=12)
-            if retry_resp.status_code == 200:
-                logger.info("✅ Telegram 純文字降級重發成功送達！")
-                return True
+    for i, chunk in enumerate(chunks):
+        payload = {
+            "chat_id": str(target_id).strip(),
+            "text": chunk,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": False
+        }
+        # 在最後一段附帶常駐選單
+        if reply_markup and i == len(chunks) - 1:
+            payload["reply_markup"] = reply_markup
+
+        try:
+            resp = requests.post(url, json=payload, timeout=12)
+            if resp.status_code == 200:
+                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段已成功送達！")
             else:
-                logger.error(f"❌ Telegram 官方伺服器退件: {retry_resp.text}")
-                return False
-    except Exception as e:
-        logger.error(f"❌ Telegram 連線異常: {e}")
-        return False
+                logger.warning(f"⚠️ 第 [{i+1}] 段 HTML 發送失敗 ({resp.status_code}): {resp.text}，啟動純文字降級重發...")
+                payload.pop("parse_mode", None)
+                payload["text"] = re.sub(r"<[^>]+>", "", chunk)
+                r_resp = requests.post(url, json=payload, timeout=12)
+                if r_resp.status_code == 200:
+                    logger.info(f"✅ Telegram 第 [{i+1}] 段純文字重發成功！")
+                else:
+                    logger.error(f"❌ Telegram 退件: {r_resp.text}")
+                    all_ok = False
+        except Exception as e:
+            logger.error(f"❌ Telegram 連線異常: {e}")
+            all_ok = False
+        time.sleep(0.3)
+
+    return all_ok
 
 
 def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None, caption: Optional[str] = None, reply_markup: Optional[dict] = None) -> bool:
@@ -162,7 +184,7 @@ def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None
 
 
 # ==============================================================================
-# 指令與自然語言診斷中樞
+# 指令與自然語言診斷中樞 (完全保留)
 # ==============================================================================
 class CommandProcessor:
     @staticmethod
