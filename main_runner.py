@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 總控核心：All_In_One 盤後 16:30 自動化量化總控流水線 (純淨推播版)
+WayneBot 總控核心：All_In_One 盤後 16:30 自動化量化總控流水線 (30萬分批池純淨版)
 檔案名稱：main_runner.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -33,18 +33,18 @@ def run_daily_pipeline():
 
     # 2. 讀取最新 AI 動態權重，執行籌碼多因子與雙綠脫離起漲海選 (Top 10 精選)
     logger.info(">>> [階段 2] 執行多因子海選評分與雙綠脫離起漲判定 (Top 10)...")
-    port_engine = PortfolioEngine()
+    port_engine = PortfolioEngine(total_capital=300000.0, tranches_count=4)
     current_weights = port_engine.load_weights()
     df_top = screening_engine.ScreeningEngine().run_full_screening(top_n=10, weights=current_weights)
     top_list = df_top.to_dict(orient="records") if len(df_top) > 0 else []
     logger.info(f"海選完成，共計評選出 {len(top_list)} 檔優質標的。")
 
-    # 3. Phase 9: 背景執行模擬自動建倉 (Score >= 85 且依槓鈴策略配置 40%/35%/25%)
-    logger.info(">>> [階段 3] Phase 9: 執行高分標的模擬自動建倉 (Score >= 85)...")
-    new_entries = port_engine.auto_entry(top_list, total_capital=100000.0, min_score=85.0)
+    # 3. Phase 9: 30萬本金 4 等份階梯建倉與逢低抄底
+    logger.info(">>> [階段 3] Phase 9: 執行 30 萬本金 4 等份階梯建倉與抄底機制...")
+    new_actions = port_engine.auto_entry(top_list, min_score=85.0)
 
-    # 4. Phase 9: 背景執行持倉健康度檢查與出場判定 (7% 停損 / 15% 停利 / 主力大賣)
-    logger.info(">>> [階段 4] Phase 9: 執行持倉部位體檢、損益結算與出場判定...")
+    # 4. Phase 9: 持倉部位體檢、加權損益結算與出場判定
+    logger.info(">>> [階段 4] Phase 9: 執行持倉部位體檢與出場判定...")
     checkup_result = port_engine.daily_portfolio_checkup()
 
     # 5. Phase 9: 績效覆盤與 AI 權重自我校準 (更新 model_weights.json)
@@ -56,7 +56,7 @@ def run_daily_pipeline():
     logger.info(">>> [階段 6] 生成 Telegram 純淨盤後視覺化戰報...")
     report_text = screening_engine.format_telegram_report(stock_list=top_list, trade_date=today_str)
 
-    # 發送 Telegram 推播 (已徹底關閉紫色預覽圖)
+    # 發送 Telegram 推播 (徹底關閉紫色預覽圖)
     tg_chat_id = os.getenv("TG_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
     bot_servers.send_telegram_safely(chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=bot_servers.PERSISTENT_KEYBOARD)
     logger.info("✅ 純淨盤後總控戰報與常駐選單已成功發送至 Telegram！")
