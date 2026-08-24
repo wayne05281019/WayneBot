@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 總控核心 (Phase 9)：All_In_One 盤後 16:30 自動化量化總控流水線
+WayneBot 總控核心：All_In_One 盤後 16:30 自動化量化總控流水線 (純淨推播版)
 檔案名稱：main_runner.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -31,19 +31,19 @@ def run_daily_pipeline():
     data_pipeline = QuantDataPipeline(db_engine)
     data_pipeline.daily_1630_incremental_update(today_str)
 
-    # 2. 讀取最新 AI 動態權重，執行籌碼多因子與雙綠脫離起漲海選
-    logger.info(">>> [階段 2] 執行多因子海選評分與雙綠脫離起漲判定...")
+    # 2. 讀取最新 AI 動態權重，執行籌碼多因子與雙綠脫離起漲海選 (Top 10 精選)
+    logger.info(">>> [階段 2] 執行多因子海選評分與雙綠脫離起漲判定 (Top 10)...")
     port_engine = PortfolioEngine()
     current_weights = port_engine.load_weights()
-    df_top = screening_engine.ScreeningEngine().run_full_screening(top_n=15, weights=current_weights)
+    df_top = screening_engine.ScreeningEngine().run_full_screening(top_n=10, weights=current_weights)
     top_list = df_top.to_dict(orient="records") if len(df_top) > 0 else []
     logger.info(f"海選完成，共計評選出 {len(top_list)} 檔優質標的。")
 
-    # 3. Phase 9: 模擬自動建倉 (Score >= 85 且依槓鈴策略配置 40%/35%/25%)
+    # 3. Phase 9: 背景執行模擬自動建倉 (Score >= 85 且依槓鈴策略配置 40%/35%/25%)
     logger.info(">>> [階段 3] Phase 9: 執行高分標的模擬自動建倉 (Score >= 85)...")
     new_entries = port_engine.auto_entry(top_list, total_capital=100000.0, min_score=85.0)
 
-    # 4. Phase 9: 持倉健康度檢查與出場判定 (7% 停損 / 15% 停利 / 主力大賣 3 日)
+    # 4. Phase 9: 背景執行持倉健康度檢查與出場判定 (7% 停損 / 15% 停利 / 主力大賣)
     logger.info(">>> [階段 4] Phase 9: 執行持倉部位體檢、損益結算與出場判定...")
     checkup_result = port_engine.daily_portfolio_checkup()
 
@@ -52,31 +52,14 @@ def run_daily_pipeline():
     perf_metrics = port_engine.evaluate_performance()
     weight_update = port_engine.self_evolving_loop()
 
-    # 6. 生成 Telegram 整合戰報 (含 Yahoo 直連與詳細評等)
-    logger.info(">>> [階段 6] 生成 Telegram 盤後視覺化戰報...")
+    # 6. 生成 Telegram 純淨盤後海選戰報 (不夾帶持倉洗版，持倉存於選單按鈕中)
+    logger.info(">>> [階段 6] 生成 Telegram 純淨盤後視覺化戰報...")
     report_text = screening_engine.format_telegram_report(stock_list=top_list, trade_date=today_str)
 
-    # 附加 Phase 9 持倉與平倉通知
-    if new_entries:
-        report_text += "\n\n🚀 <b>【AI 模擬今日建倉 (Score ≥ 85)】</b>\n"
-        for t in new_entries:
-            report_text += f"• <b>{t['stock_id']} {t['stock_name']}</b> ({t['type']})\n  進場: <code>{t['entry_price']}</code> | 停損: <code>{t['stop_loss']}</code> | 停利: <code>{t['take_profit']}</code>\n"
-
-    if checkup_result["closed"]:
-        report_text += "\n\n🔔 <b>【AI 模擬今日平倉出場】</b>\n"
-        for c in checkup_result["closed"]:
-            pnl_icon = "🟢" if "+" in c["pnl_pct"] else "🔴"
-            report_text += f"{pnl_icon} <b>{c['stock_id']} {c['stock_name']}</b> | 損益: <b>{c['pnl_pct']}</b> (${c['pnl_amount']})\n  原因: {c['reason']}\n  歸因: <i>{c['attribution']}</i>\n"
-
-    if checkup_result["active"]:
-        report_text += "\n\n💼 <b>【AI 模擬持倉即時監控】</b>\n"
-        for pos in checkup_result["active"]:
-            report_text += f"• <code>{pos['stock_id']} {pos['stock_name']}</code> | 損益: <b>{pos['pnl_pct']}</b> (${pos['pnl_amount']}) | MDD: <code>{pos['mdd_pct']}</code>\n"
-
-    # 發送 Telegram 推播 (已移除 token= 參數)
+    # 發送 Telegram 推播 (已徹底關閉紫色預覽圖)
     tg_chat_id = os.getenv("TG_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
     bot_servers.send_telegram_safely(chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=bot_servers.PERSISTENT_KEYBOARD)
-    logger.info("✅ 盤後總控戰報與常駐選單已成功發送至 Telegram！")
+    logger.info("✅ 純淨盤後總控戰報與常駐選單已成功發送至 Telegram！")
 
 
 if __name__ == "__main__":
