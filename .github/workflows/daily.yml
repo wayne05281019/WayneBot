@@ -2,8 +2,8 @@ name: WayneBot Daily Quantitative Screening & Alert
 
 on:
   schedule:
-    # 台灣時間 (UTC+8) 每週一至週五 16:00 自動執行 (對應 UTC 08:00)
-    - cron: '0 8 * * 1-5'
+    # 台灣時間 (UTC+8) 每週一至週五 16:30 自動執行 (對應 UTC 08:30)
+    - cron: '30 8 * * 1-5'
   workflow_dispatch: # 支援手動一鍵測試
 
 jobs:
@@ -25,10 +25,12 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: 執行每日台股量化篩選與推播 (Run Screening Engine)
+      - name: 執行每日台股量化總控流水線 (Run Main Runner)
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           PYTHONUNBUFFERED: "1"
         run: |
-          python screening_engine.py
+          python main_runner.py
