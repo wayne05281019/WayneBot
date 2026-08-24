@@ -73,14 +73,10 @@ def run_daily_pipeline():
         for pos in checkup_result["active"]:
             report_text += f"• <code>{pos['stock_id']} {pos['stock_name']}</code> | 損益: <b>{pos['pnl_pct']}</b> (${pos['pnl_amount']}) | MDD: <code>{pos['mdd_pct']}</code>\n"
 
-    # 發送 Telegram 推播
-    tg_token = os.getenv("TG_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+    # 發送 Telegram 推播 (已移除 token= 參數)
     tg_chat_id = os.getenv("TG_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
-    if tg_token and tg_chat_id:
-        bot_servers.send_telegram_safely(token=tg_token, chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=bot_servers.PERSISTENT_KEYBOARD)
-        logger.info("✅ 盤後總控戰報與常駐選單已成功發送至 Telegram！")
-    else:
-        print("\n" + report_text)
+    bot_servers.send_telegram_safely(chat_id=tg_chat_id, text=report_text, parse_mode="HTML", reply_markup=bot_servers.PERSISTENT_KEYBOARD)
+    logger.info("✅ 盤後總控戰報與常駐選單已成功發送至 Telegram！")
 
 
 if __name__ == "__main__":
