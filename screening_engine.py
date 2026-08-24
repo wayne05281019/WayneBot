@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 核心海選引擎：多因子海選評分 ＋ CaryBot 雙綠脫離起漲 ＋ 官方即時爬蟲
+WayneBot 核心海選引擎：100% 對標 CaryBot 決策卡指標 ＋ 真實位階評估
 檔案名稱：screening_engine.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -9,7 +9,6 @@ import os
 import sys
 import json
 import math
-import re
 import sqlite3
 import datetime
 import logging
@@ -18,10 +17,7 @@ import pandas as pd
 import numpy as np
 import requests
 
-try:
-    from cary_navigator import CaryNavigatorEngine
-except ImportError:
-    CaryNavigatorEngine = None
+from cary_navigator import CaryNavigatorEngine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("WayneBot.AccurateScreeningEngine")
@@ -30,10 +26,10 @@ BASE_DIR = "/content/waynebot_data" if os.path.exists("/content") else os.getenv
 DB_PATH = os.path.join(BASE_DIR, "wayne_market_master.db")
 
 WATCHLIST_POOL = [
-    ("6415", "矽力*-KY", "TW"), ("2383", "台光電", "TW"), ("5351", "鈺創", "TWO"),
-    ("2408", "南亞科", "TW"), ("1303", "南亞", "TW"), ("2027", "大成鋼", "TW"),
-    ("2330", "台積電", "TW"), ("2454", "聯發科", "TW"), ("6526", "達發", "TW"),
-    ("3035", "智原", "TW"), ("2344", "華邦電", "TW"), ("00631L", "元大台灣50正2", "TW")
+    ("6415", "矽力*-KY", "TW"), ("2027", "大成鋼", "TW"), ("2383", "台光電", "TW"),
+    ("6526", "達發", "TW"), ("3035", "智原", "TW"), ("1303", "南亞", "TW"),
+    ("2330", "台積電", "TW"), ("2344", "華邦電", "TW"), ("5351", "鈺創", "TWO"),
+    ("2408", "南亞科", "TW"), ("2317", "鴻海", "TW"), ("00631L", "元大台灣50正2", "TW")
 ]
 
 
@@ -107,7 +103,7 @@ def fetch_real_kline(symbol: str, market: str = "TW") -> Optional[pd.DataFrame]:
 class ScreeningEngine:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
-        self.navigator = CaryNavigatorEngine(db_path=self.db_path) if CaryNavigatorEngine else None
+        self.navigator = CaryNavigatorEngine(db_path=self.db_path)
 
     def run_full_screening(self, top_n: int = 10, save_cache: bool = True, weights: Optional[Dict[str, float]] = None) -> pd.DataFrame:
         results = []
@@ -115,41 +111,59 @@ class ScreeningEngine:
             df = fetch_real_kline(sym, mkt)
             if df is None or len(df) < 20: continue
 
-            df["ma5"] = df["close"].rolling(5).mean()
-            df["ma10"] = df["close"].rolling(10).mean()
             df["ma20"] = df["close"].rolling(20).mean()
-            df["ma60"] = df["close"].rolling(60, min_periods=20).mean()
-
             last = df.iloc[-1]
             prev = df.iloc[-2]
             c_p, prev_p = last["close"], prev["close"]
             chg_pct = round(((c_p - prev_p) / prev_p) * 100, 2)
             chips = fetch_real_institutional_chips(sym, mkt)
 
+            # 調用 CaryBot 決策卡即時計算真實指標
+            card = self.navigator.get_decision_card(sym, lookback=5)
+            temp_c = card.get("temp_c", "50.0 °C")
+            space_20 = card.get("space_20", 30)
+            space_60 = card.get("space_60", 50)
+            
+            # 從決策卡提取當前標籤與獲利
+            latest_row = card["table"].iloc[0] if ("table" in card and not card["table"].empty) else {}
+            tag_hl = latest_row.get("高低", "No")
+            tag_alert = latest_row.get("預警", "No")
+            profit_str = latest_row.get("獲利", "10.0%")
+            bias_str = latest_row.get("月乖離", "0.0%")
+            vol_rank = latest_row.get("120日量", "第 50 名")
+
+            # 嚴格起漲第一天判定 (昨天在極低0.0%且今天第一天翻正)
+            is_true_day1_breakout = False
+            if "table" in card and len(card["table"]) >= 2:
+                yest_row = card["table"].iloc
+                if "0.0%" in yest_row.get("獲利", "") and "0.0%" not in profit_str:
+                    is_true_day1_breakout = True
+
+            # 精確評等與推薦理由
+            if is_true_day1_breakout:
+                priority = "【第 1 優先】波段底部起漲第一天 (雙綠脫離成立)"
+                stars = "⭐⭐⭐⭐⭐"
+            elif float(temp_c.replace("°C", "").strip()) <= 15.0:
+                priority = f"【第 1 優先】極凍打底區 (溫度計 {temp_c} 低風險佈局)"
+                stars = "⭐⭐⭐⭐⭐"
+            elif tag_hl in ["5低", "10低"]:
+                priority = f"【第 2 優先】回測 {tag_hl} 守穩短期均線"
+                stars = "⭐⭐⭐⭐"
+            elif tag_hl == "20高":
+                priority = f"【第 3 級】強勢創 20 日新高 (溫度 {temp_c} 偏熱，不追高)"
+                stars = "⭐⭐⭐"
+            else:
+                priority = f"【第 2 優先】多頭格局常態推升 (溫度計 {temp_c})"
+                stars = "⭐⭐⭐⭐"
+
+            # 評分權重
             c_score = min(40.0, 20.0 + (10.0 if chips["foreign_buy"] > 0 else 0.0) + (6.0 if chips["trust_buy"] > 0 else 0.0))
             t_score = min(40.0, 25.0 + (8.0 if c_p >= last["ma20"] else 0.0) + (7.0 if chg_pct > 0 else 0.0))
             f_score = 16.0
             total_score = round(c_score + t_score + f_score, 1)
 
-            h60 = df["high"].tail(60).max()
-            l60 = df["low"].tail(60).min()
-            pos_60 = (c_p - l60) / max(0.1, h60 - l60)
-
-            if pos_60 <= 0.30:
-                priority = "【第 1 優先】波段底部起漲第一天 (雙綠脫離成立)"
-                pattern = "低檔底部築底轉強"
-                stars = "⭐⭐⭐⭐⭐"
-            elif pos_60 >= 0.75:
-                priority = "【第 2 優先】多頭高檔回測守穩短期均線"
-                pattern = "高檔創高後回測 10MA 強勢整理"
-                stars = "⭐⭐⭐⭐"
-            else:
-                priority = "【第 2 優先】多頭格局持續推升"
-                pattern = "波段中繼推升"
-                stars = "⭐⭐⭐⭐"
-
             stop_loss = round(max(last["ma20"] * 0.98, c_p * 0.94), 2)
-            take_profit = round(h60 * 1.08 if pos_60 >= 0.75 else c_p * 1.15, 2)
+            take_profit = round(c_p * 1.15, 2)
             rr_ratio = round((take_profit - c_p) / max(0.1, c_p - stop_loss), 1)
 
             results.append({
@@ -157,10 +171,12 @@ class ScreeningEngine:
                 "close": c_p, "change_pct": chg_pct, "volume": last["volume"],
                 "score": total_score, "total_score": total_score,
                 "chip_score": c_score, "tech_score": t_score, "fund_score": f_score,
-                "foreign_net": chips["foreign_buy"], "foreign_buy": chips["foreign_buy"],
-                "trust_net": chips["trust_buy"], "trust_buy": chips["trust_buy"],
-                "dealer_net": chips["dealer_buy"], "total_3major": chips["total_buy"],
-                "primary_pattern": pattern, "priority": priority, "stars": stars,
+                "foreign_net": chips["foreign_buy"], "trust_net": chips["trust_buy"],
+                "total_3major": chips["total_buy"],
+                "tag_hl": tag_hl, "tag_alert": tag_alert, "temp_c": temp_c,
+                "profit_str": profit_str, "bias_str": bias_str, "vol_rank": vol_rank,
+                "space_20": space_20, "space_60": space_60,
+                "priority": priority, "stars": stars,
                 "stop_loss": stop_loss, "take_profit": take_profit, "reward_risk_ratio": rr_ratio,
                 "date": last["date"]
             })
@@ -173,7 +189,7 @@ def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) ->
     lines = [
         "🔥 <b>【WayneBot 台股量化多因子海選盤後戰報】</b>",
         f"📅 <b>真實交易日:</b> <code>{trade_date}</code> (官方結算數據)",
-        "🎯 <b>決策體系:</b> 籌碼(40%) + 形態技術(40%) + 基本面(20%) 綜合評分",
+        "🎯 <b>決策體系:</b> 籌碼(40%) + CaryBot 高低位階(40%) + 基本面(20%)",
         "========================================"
     ]
     medals = ["🥇", "🥈", "🥉"]
@@ -188,14 +204,20 @@ def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) ->
         score = float(s.get("score", s.get("total_score", 80.0)))
         stars = s.get("stars", "⭐⭐⭐⭐")
         priority = s.get("priority", "【第 2 優先】多頭格局推升")
-        pattern = s.get("primary_pattern", "多頭排列推升")
         c_score = s.get("chip_score", 30.0)
         t_score = s.get("tech_score", 35.0)
         f_score = s.get("fund_score", 16.0)
 
-        f_net = int(s.get("foreign_net", s.get("foreign_buy", 0)))
-        t_net = int(s.get("trust_net", s.get("trust_buy", 0)))
+        f_net = int(s.get("foreign_net", 0))
+        t_net = int(s.get("trust_net", 0))
         tot_3 = int(s.get("total_3major", f_net + t_net))
+
+        temp_c = s.get("temp_c", "50.0 °C")
+        tag_hl = s.get("tag_hl", "No")
+        tag_alert = s.get("tag_alert", "No")
+        profit_str = s.get("profit_str", "10.0%")
+        space_20 = s.get("space_20", 30)
+        space_60 = s.get("space_60", 50)
 
         stop_loss = s.get("stop_loss", round(close * 0.94, 2))
         take_profit = s.get("take_profit", round(close * 1.15, 2))
@@ -203,15 +225,16 @@ def format_telegram_report(stock_list: List[Dict[str, Any]], trade_date: str) ->
         yahoo_url = f"https://tw.stock.yahoo.com/quote/{sid}"
 
         lines.append(f"{rank_icon} <b>{sid} {sname}</b> | <b>${close:.2f} ({chg_str})</b> {stars} (<code>{score:.1f}分</code>)")
-        lines.append(f"  • <b>優先評級</b>: <b>{priority}</b>")
+        lines.append(f"  • <b>真實位階</b>: <b>{priority}</b>")
+        lines.append(f"  • <b>決策指標</b>: 溫度計 <code>{temp_c}</code> | 獲利 <code>{profit_str}</code> | 標籤: <code>[{tag_hl} / {tag_alert}]</code>")
+        lines.append(f"  • <b>操作空間</b>: 20日 <b>{space_20}%</b> | 60日 <b>{space_60}%</b>")
         lines.append(f"  • <b>評分權重</b>: 籌碼 <code>{c_score:.1f}</code> | 技術 <code>{t_score:.1f}</code> | 基本 <code>{f_score:.1f}</code>")
         lines.append(f"  • <b>法人動向</b>: 外資 <code>{f_net:+d} 張</code> | 投信 <code>{t_net:+d} 張</code> | 三大法人 <code>{tot_3:+d} 張</code>")
-        lines.append(f"  • <b>核心型態</b>: <b>{pattern}</b>")
         lines.append(f"  • <b>波段風控</b>: 停損 <code>${stop_loss:.2f}</code> | 停利 <code>${take_profit:.2f}</code> (風報比 <code>{rr_ratio}</code>)")
         lines.append(f"  • <b>即時走勢</b>: 👉 <a href=\"{yahoo_url}\">點此直連 Yahoo 股市行情 ({sid})</a>")
         lines.append("----------------------------------------")
 
-    lines.append("\n💡 <i>※ 點擊下方【💼 AI 模擬持倉】可查看完整資金帳本，點擊【⭐ 我的自選名單】可查看收藏標的。</i>")
+    lines.append("\n💡 <i>※ 點擊下方【💼 AI 模擬持倉】可查看 30 萬 4 等份帳本，點擊【⭐ 我的自選名單】可查看收藏標的。</i>")
     return "\n".join(lines)
 
 
