@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：免指令中文查詢 ＋ 關閉網址大圖 ＋ 自選名單 ＋ 詳細持倉帳本
+WayneBot 旗艦量化交易系統：30萬4等份帳本 ＋ 免指令查詢 ＋ Render 24H 防休眠雙核心
 檔案名稱：bot_servers.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -125,7 +125,7 @@ def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = 
             "chat_id": str(target_id).strip(),
             "text": chunk,
             "parse_mode": parse_mode,
-            "disable_web_page_preview": True, # ✅ 徹底關閉 Yahoo 紫色巨大預覽圖！
+            "disable_web_page_preview": True,
             "link_preview_options": {"is_disabled": True}
         }
         if reply_markup and i == len(chunks) - 1:
@@ -134,7 +134,7 @@ def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = 
         try:
             resp = requests.post(url, json=payload, timeout=12)
             if resp.status_code == 200:
-                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段已發送！")
+                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段發送成功！")
             else:
                 payload.pop("parse_mode", None)
                 payload["text"] = re.sub(r"<[^>]+>", "", chunk)
@@ -166,7 +166,7 @@ def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None
 
 
 def get_detailed_portfolio_report() -> str:
-    """產出超詳細的 AI 模擬部位帳本、加碼記錄與資金流水帳"""
+    """產出 30 萬本金、4 等份階梯配置與詳細加碼流水帳"""
     if not portfolio_engine:
         return "💼 目前尚未啟動持倉引擎。"
 
@@ -181,47 +181,60 @@ def get_detailed_portfolio_report() -> str:
     history = cur.fetchall()
     conn.close()
 
+    total_cost = sum([float(p["total_cost"]) for p in active])
+    total_unrealized = sum([(float(p["current_price"]) - float(p["avg_entry_price"])) * int(p["total_shares"]) for p in active])
+    used_tranches = sum([int(p["tranches_used"]) for p in active])
+    free_tranches = 4 - used_tranches
+    free_cash = 300000.0 - total_cost + sum([float(h["pnl_amount"]) for h in history])
+    total_nav = free_cash + total_cost + total_unrealized
+
     lines = [
         "💼 <b>【WayneBot AI 模擬操盤與資金流水帳本】</b>",
         f"📅 <b>統計日期</b>：<code>{datetime.date.today().strftime('%Y-%m-%d')}</code>",
+        f"💰 <b>總本金</b>：<code>$300,000</code> (分 4 等份 | 每份 $75,000)",
+        f"💵 <b>可用現金</b>：<code>${free_cash:,.0f}</code> ({free_tranches} 等份待命中)",
+        f"📊 <b>持股現值</b>：<code>${total_cost + total_unrealized:,.0f}</code> ({used_tranches} 等份在倉)",
+        f"💎 <b>目前總淨值</b>：<b>${total_nav:,.0f}</b> (<code>{((total_nav-300000)/300000)*100:+.2f}%</code>)",
         "────────────────────────────────────────",
-        "📦 <b>【目前在庫持倉明細】</b>"
+        "📦 <b>【目前在庫持倉與階梯加碼明細】</b>"
     ]
 
-    total_cost = 0.0
-    total_unrealized = 0.0
-
     if not active:
-        lines.append("<i>目前無在倉部位（資金 100% 待命中）。</i>")
+        lines.append("<i>目前無在倉部位（4 等份資金 $300,000 隨時逢低抄底）。</i>")
     else:
         for idx, pos in enumerate(active, 1):
             sid = pos["stock_id"]
             sname = pos["stock_name"]
-            ptype = pos["position_type"]
             e_date = pos["entry_date"]
-            e_price = float(pos["entry_price"])
-            c_price = float(pos["current_price"])
-            shares = int(pos["shares"])
+            avg_p = float(pos["avg_entry_price"])
+            c_p = float(pos["current_price"])
+            shares = int(pos["total_shares"])
+            cost = float(pos["total_cost"])
+            tranches = int(pos["tranches_used"])
             h_days = int(pos["holding_days"])
-            cost = e_price * shares
-            pnl_amount = (c_price - e_price) * shares
-            pnl_pct = ((c_price - e_price) / e_price) * 100.0
+            pnl_amt = (c_p - avg_p) * shares
+            pnl_pct = ((c_p - avg_p) / avg_p) * 100.0
             mdd = float(pos["max_drawdown_pct"])
-
-            total_cost += cost
-            total_unrealized += pnl_amount
 
             pnl_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
             icon = "🔺" if pnl_pct >= 0 else "🔻"
 
-            lines.append(f"<b>{idx}. {sid} {sname}</b> ({ptype})")
-            lines.append(f"   • <b>進場日期</b>: <code>{e_date}</code> (持有 <code>{h_days}</code> 天)")
-            lines.append(f"   • <b>持有股數</b>: <code>{shares:,}</code> 股 | <b>單價</b>: <code>${e_price:.2f}</code>")
-            lines.append(f"   • <b>投入成本</b>: <code>${cost:,.0f}</code> | <b>現價</b>: <code>${c_price:.2f}</code>")
-            lines.append(f"   • <b>未實現損益</b>: {icon} <b>{pnl_str}</b> (${pnl_amount:+,.0f}) | MDD: <code>{mdd:.1f}%</code>\n")
+            lines.append(f"<b>{idx}. {sid} {sname}</b> (已動用 <code>{tranches}</code> 等份資金)")
+            lines.append(f"   • <b>首次進場</b>: <code>{e_date}</code> (持有 <code>{h_days}</code> 天)")
+            lines.append(f"   • <b>累計持有</b>: <code>{shares:,}</code> 股 | <b>加權均價</b>: <code>${avg_p:.2f}</code>")
+            lines.append(f"   • <b>投入成本</b>: <code>${cost:,.0f}</code> | <b>現價</b>: <code>${c_p:.2f}</code>")
+            lines.append(f"   • <b>未實現損益</b>: {icon} <b>{pnl_str}</b> (${pnl_amt:+,.0f}) | MDD: <code>{mdd:.1f}%</code>")
+
+            # 顯示分批買進歷史
+            try:
+                hist = json.loads(pos["entry_history"])
+                for h_idx, h in enumerate(hist, 1):
+                    lines.append(f"     └ 批次 {h_idx}: <code>{h['date']}</code> 以 <code>${h['price']}</code> 買進 <code>{h['shares']}</code> 股 ({h['type']})")
+            except Exception: pass
+            lines.append("")
 
     lines.append("────────────────────────────────────────")
-    lines.append("🔔 <b>【近期平倉與獲利來源紀錄 (紅字提醒)】</b>")
+    lines.append("🔔 <b>【歷史平倉與獲利來源紀錄 (紅字提醒)】</b>")
     if not history:
         lines.append("<i>尚無歷史平倉紀錄。</i>")
     else:
@@ -229,23 +242,22 @@ def get_detailed_portfolio_report() -> str:
             pnl_pct = float(h["pnl_percentage"])
             pnl_amt = float(h["pnl_amount"])
             p_icon = "🔴" if pnl_pct < 0 else "🟢"
-            lines.append(f"{p_icon} <b>[{h['exit_date']} 賣出] {h['stock_id']} {h['stock_name']}</b> ({h['shares']}股)")
-            lines.append(f"   • 進場: <code>${h['entry_price']}</code> ➜ 出場: <code>${h['exit_price']}</code> (<b>{pnl_pct:+.2f}%</b>)")
-            lines.append(f"   • <b>損益金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h['exit_reason']}")
-            lines.append(f"   • <b>歸因分析</b>: <i>{h['failure_attribution']}</i>\n")
+            lines.append(f"{p_icon} <b>[{h['exit_date']} 賣出] {h['stock_id']} {h['stock_name']}</b> ({h['total_shares']:,} 股)")
+            lines.append(f"   • 均價: <code>${h['avg_entry_price']}</code> ➜ 出場: <code>${h['exit_price']}</code> (<b>{pnl_pct:+.2f}%</b>)")
+            lines.append(f"   • <b>獲利金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h['exit_reason']}")
+            lines.append(f"   • <b>本金增長歸因</b>: <i>{h['failure_attribution']}</i>\n")
 
-    # 績效總評
     perf = engine.evaluate_performance()
     lines.append("────────────────────────────────────────")
     lines.append("📈 <b>【歷史累計總績效】</b>")
-    lines.append(f"• <b>累計平倉</b>: <code>{perf['total_trades']}</code> 筆 | <b>勝率</b>: <b>{perf['win_rate']}%</b> | <b>賺賠比</b>: <b>{perf['profit_loss_ratio']}</b>")
-    lines.append(f"• <b>累計複利報酬</b>: <b>{perf['cumulative_return_pct']:+}%</b>")
+    lines.append(f"• <b>累計交易</b>: <code>{perf['total_trades']}</code> 筆 | <b>總勝率</b>: <b>{perf['win_rate']}%</b> | <b>賺賠比</b>: <b>{perf['profit_loss_ratio']}</b>")
+    lines.append(f"• <b>累計獲利入帳</b>: <b>${perf['total_pnl_cash']:+,.0f}</b> | <b>複利報酬</b>: <b>{perf['cumulative_return_pct']:+}%</b>")
 
     return "\n".join(lines)
 
 
 def get_watchlist_report() -> str:
-    """產出使用者自選觀察名單"""
+    """產出自選觀察名單"""
     conn = sqlite3.connect(WATCHLIST_DB_PATH)
     cur = conn.cursor()
     cur.execute("SELECT * FROM user_watchlist ORDER BY added_date DESC;")
@@ -253,14 +265,13 @@ def get_watchlist_report() -> str:
     conn.close()
 
     if not rows:
-        return "⭐ <b>【我的自選觀察名單】</b>\n目前名單為空。\n💡 在海選戰報中點擊 <code>[ ⭐ 加入自選 ]</code> 即可快速收藏！"
+        return "⭐ <b>【我的自選觀察名單】</b>\n目前名單為空。\n💡 在查詢股票時點擊 <code>[ ⭐ 加入自選 ]</code> 即可快速收藏！"
 
     lines = ["⭐ <b>【我的自選觀察名單】</b>", "────────────────────────"]
     for r in rows:
-        sid, sname, price, dt = r[0], r, r, r
+        sid, sname = r[0], r
         yahoo_url = f"https://tw.stock.yahoo.com/quote/{sid}"
-        lines.append(f"• <b>{sid} {sname}</b> (加入價: ${price:.2f})")
-        lines.append(f"  👉 <a href='{yahoo_url}'>Yahoo 即時報價</a> | <a href='https://t.me/share/url?url={sid}'>點擊查決策卡</a>\n")
+        lines.append(f"• <b>{sid} {sname}</b> 👉 <a href='{yahoo_url}'>Yahoo 即時行情</a>")
     return "\n".join(lines)
 
 
