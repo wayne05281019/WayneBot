@@ -15,8 +15,52 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 
+def format_telegram_report(screen_result: Any) -> str:
+    """
+    格式化 CaryBot 量化海選 Telegram Markdown 決策報表
+    """
+    if isinstance(screen_result, str):
+        return screen_result
+    if not isinstance(screen_result, dict):
+        return "⚠️ 海選結果資料格式異常，請稍候重試。"
+    
+    scan_time = screen_result.get("scan_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    total_scanned = screen_result.get("total_scanned", 0)
+    day1_count = screen_result.get("day1_count", 0)
+    backup_count = screen_result.get("backup_count", 0)
+    strategy_status = screen_result.get("strategy_status", "🎯 策略運行中")
+    recommendations = screen_result.get("recommendations", [])
+
+    lines = [
+        "🏆 *【WayneBot / CaryBot 量化海選決策日報】*",
+        f"📅 掃描時間：`{scan_time}`",
+        f"📊 掃描總數：`{total_scanned} 檔` | 🎯 第 1 天：`{day1_count} 檔` | 🛡️ 備援：`{backup_count} 檔`",
+        f"📌 決策狀態：{strategy_status}",
+        "───────────────────"
+    ]
+
+    if not recommendations:
+        lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦觀望。")
+    else:
+        for idx, item in enumerate(recommendations, 1):
+            lines.extend([
+                f"*{idx}. {item.get('stock_name', '')} ({item.get('symbol', '')})*",
+                f"  • 收盤價: `{item.get('close_price', 0)} 元` ({item.get('change_pct', 0):+0.2f}%)",
+                f"  • 判定階段: `{item.get('breakout_stage', '起漲標的')}`",
+                f"  • 多空溫度: `{item.get('temperature', 50.0)}°C` | 位階: `{item.get('position_tag', '中位階')}`",
+                f"  • 距成本獲利: `{item.get('current_profit_from_cost', 0):+0.2f}%` (成本線: `{item.get('cost_line', 0)}`)",
+                f"  • 操作空間: 上 `{item.get('upside_room_pct', 0)}%` / 下防守 `{item.get('downside_risk_pct', 0)}%`",
+                f"  • 三大法人: `{item.get('total_inst_lots', 0):+d} 張` (外資 `{item.get('foreign_lots', 0):+d}` / 投信 `{item.get('trust_lots', 0):+d}`)",
+                f"  • 即時走勢: [點此直連 Yahoo 股市行情 ({item.get('symbol', '')})](https://tw.stock.yahoo.com/quote/{item.get('symbol', '')})",
+                "───────────────────"
+            ])
+
+    lines.append("🤖 _由 WayneBot AI 自動化量化引擎生成，嚴守停損停利紀律。_")
+    return "\n".join(lines)
+
+
 class FormattedReport(str):
-    """字串與字典雙模相容類別，同時支援 Telegram 訊息直接發送與字典欄位讀取"""
+    """字串與字典雙模相容類別"""
     def __new__(cls, text: str, data: dict):
         obj = super().__new__(cls, text)
         obj.data = data
@@ -33,13 +77,11 @@ class FormattedReport(str):
 
 class ScreeningEngine:
     def __init__(self, db_path: Any = "wayne_market.db", *args, **kwargs):
-        # 防呆解析：若傳入 chat_id (int) 或非路徑物件，自動還原為標準資料庫路徑
         if isinstance(db_path, str) and (db_path.endswith(".db") or db_path.endswith(".sqlite") or "/" in db_path or "\\" in db_path):
             self.db_path = db_path
         else:
             self.db_path = os.getenv("WAYNE_DB_PATH", "wayne_market.db")
 
-        # 自動偵測可能的資料庫所在目錄
         candidate_paths = [
             self.db_path,
             "wayne_market.db",
@@ -236,9 +278,6 @@ class ScreeningEngine:
         }
 
     def run_full_market_screening(self, *args, **kwargs) -> Any:
-        """
-        執行全市場掃描，回傳雙模（字串+字典）相容之推薦報告。
-        """
         if not os.path.exists(self.db_path):
             error_msg = "⚠️ 資料庫檔案尚未生成或正在初始化，請稍候重試。"
             return FormattedReport(error_msg, {"recommendations": [], "strategy_status": error_msg})
@@ -284,34 +323,6 @@ class ScreeningEngine:
 
             scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 組合 Telegram Markdown 格式報表
-            lines = [
-                "🏆 *【WayneBot / CaryBot 量化海選決策日報】*",
-                f"📅 掃描時間：`{scan_time}`",
-                f"📊 掃描總數：`{len(stocks)} 檔` | 🎯 第 1 天：`{len(day1_candidates)} 檔` | 🛡️ 備援：`{len(backup_candidates)} 檔`",
-                f"📌 決策狀態：{strategy_status}",
-                "───────────────────"
-            ]
-
-            if not final_selection:
-                lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦觀望。")
-            else:
-                for idx, item in enumerate(final_selection, 1):
-                    lines.extend([
-                        f"*{idx}. {item['stock_name']} ({item['symbol']})*",
-                        f"  • 收盤價: `{item['close_price']} 元` ({item['change_pct']:+0.2f}%)",
-                        f"  • 判定階段: `{item['breakout_stage']}`",
-                        f"  • 多空溫度: `{item['temperature']}°C` | 位階: `{item['position_tag']}`",
-                        f"  • 距成本獲利: `{item['current_profit_from_cost']:+0.2f}%` (成本線: `{item['cost_line']}`)",
-                        f"  • 操作空間: 上 `{item['upside_room_pct']}%` / 下防守 `{item['downside_risk_pct']}%`",
-                        f"  • 三大法人: `{item['total_inst_lots']:+d} 張` (外資 `{item['foreign_lots']:+d}` / 投信 `{item['trust_lots']:+d}`)",
-                        f"  • 即時走勢: [點此直連 Yahoo 股市行情 ({item['symbol']})](https://tw.stock.yahoo.com/quote/{item['symbol']})",
-                        "───────────────────"
-                    ])
-
-            lines.append("🤖 _由 WayneBot AI 自動化量化引擎生成，嚴守停損停利紀律。_")
-            report_text = "\n".join(lines)
-
             raw_dict = {
                 "scan_time": scan_time,
                 "total_scanned": len(stocks),
@@ -323,16 +334,16 @@ class ScreeningEngine:
                 "all_backup": backup_candidates
             }
 
+            report_text = format_telegram_report(raw_dict)
             return FormattedReport(report_text, raw_dict)
         finally:
             conn.close()
 
-    # 類別函式別名相容
     run_full_screening = run_full_market_screening
 
 
 # ==============================================================================
-# 模組層級相容包裝函式（無論傳入 chat_id、limit 或 db_path 均能安全執行）
+# 模組層級相容包裝函式
 # ==============================================================================
 def run_full_screening(*args, **kwargs) -> Any:
     engine = ScreeningEngine(*args, **kwargs)
