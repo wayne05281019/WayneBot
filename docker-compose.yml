@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  waynebot-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: waynebot_phase10
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+    environment:
+      - TZ=Asia/Taipei
+      - PORT=10000
+      - WAYNE_DB_PATH=/app/data/wayne_market.db
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
