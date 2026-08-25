@@ -7,6 +7,7 @@ screening_engine.py - WayneBot / CaryBot 量化海選與指標校準引擎
 4. 官方三大法人買賣超 (張)、多空溫度計 (°C)、高低位階標籤與操作空間精準對齊。
 """
 
+import os
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -14,9 +15,42 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 
+class FormattedReport(str):
+    """字串與字典雙模相容類別，同時支援 Telegram 訊息直接發送與字典欄位讀取"""
+    def __new__(cls, text: str, data: dict):
+        obj = super().__new__(cls, text)
+        obj.data = data
+        return obj
+
+    def __getitem__(self, key):
+        if isinstance(key, str) and key in self.data:
+            return self.data[key]
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+
 class ScreeningEngine:
-    def __init__(self, db_path: str = "wayne_market.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: Any = "wayne_market.db", *args, **kwargs):
+        # 防呆解析：若傳入 chat_id (int) 或非路徑物件，自動還原為標準資料庫路徑
+        if isinstance(db_path, str) and (db_path.endswith(".db") or db_path.endswith(".sqlite") or "/" in db_path or "\\" in db_path):
+            self.db_path = db_path
+        else:
+            self.db_path = os.getenv("WAYNE_DB_PATH", "wayne_market.db")
+
+        # 自動偵測可能的資料庫所在目錄
+        candidate_paths = [
+            self.db_path,
+            "wayne_market.db",
+            "data/wayne_market.db",
+            "/app/data/wayne_market.db",
+            "/app/wayne_market.db"
+        ]
+        for p in candidate_paths:
+            if p and isinstance(p, str) and os.path.exists(p):
+                self.db_path = p
+                break
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
@@ -25,9 +59,6 @@ class ScreeningEngine:
         return conn
 
     def fetch_stock_history(self, conn: sqlite3.Connection, symbol: str, lookback: int = 180) -> pd.DataFrame:
-        """
-        讀取指定個股最新 180 個交易日歷史日 K 線與籌碼資料。
-        """
         query = """
             SELECT 
                 trade_date, open_price, high_price, low_price, close_price, volume,
@@ -44,31 +75,24 @@ class ScreeningEngine:
         return df
 
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        計算均線、成交量均線、RSI、KD、MACD 與 180 日高低價。
-        """
         if len(df) < 20:
             return df
 
-        # 均線計算
         df["ma5"] = df["close_price"].rolling(window=5).mean()
         df["ma10"] = df["close_price"].rolling(window=10).mean()
         df["ma20"] = df["close_price"].rolling(window=20).mean()
         df["ma60"] = df["close_price"].rolling(window=60).mean()
         df["vol_ma20"] = df["volume"].rolling(window=20).mean()
 
-        # 180 日區間高低點
         df["range_high_180"] = df["high_price"].rolling(window=len(df), min_periods=20).max()
         df["range_low_180"] = df["low_price"].rolling(window=len(df), min_periods=20).min()
 
-        # RSI (14)
         delta = df["close_price"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-9)
         df["rsi14"] = 100 - (100 / (1 + rs))
 
-        # KD (9, 3, 3)
         low9 = df["low_price"].rolling(window=9).min()
         high9 = df["high_price"].rolling(window=9).max()
         rsv = ((df["close_price"] - low9) / (high9 - low9 + 1e-9)) * 100
@@ -83,7 +107,6 @@ class ScreeningEngine:
         df["k9"] = k_list[1:]
         df["d9"] = d_list[1:]
 
-        # MACD (12, 26, 9)
         ema12 = df["close_price"].ewm(span=12, adjust=False).mean()
         ema26 = df["close_price"].ewm(span=26, adjust=False).mean()
         df["dif"] = ema12 - ema26
@@ -93,9 +116,6 @@ class ScreeningEngine:
         return df
 
     def calculate_temperature(self, row: pd.Series, prev_row: pd.Series, inst_streak: int) -> float:
-        """
-        計算 CaryBot 多空溫度計 (°C)
-        """
         temp = 50.0
 
         if row["close_price"] > row["ma20"] > row["ma60"]:
@@ -120,9 +140,6 @@ class ScreeningEngine:
         return round(float(np.clip(temp, 0.0, 100.0)), 1)
 
     def analyze_stock(self, symbol: str, stock_name: str, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
-        """
-        校準分析單一檔股票是否符合 CaryBot 決策卡標準與起漲判定。
-        """
         if len(df) < 60:
             return None
 
@@ -130,11 +147,9 @@ class ScreeningEngine:
         curr = df.iloc[-1]
         prev1 = df.iloc[-2]
 
-        # 1. 基礎量能與流動性過濾（近 5 日均量需大於 300 張）
         if df["volume"].iloc[-5:].mean() < 300:
             return None
 
-        # 2. 180 日位階與操作空間
         low_180 = curr["range_low_180"]
         high_180 = curr["range_high_180"]
         curr_price = curr["close_price"]
@@ -151,7 +166,6 @@ class ScreeningEngine:
         upside_room = round(((high_180 - curr_price) / curr_price) * 100.0, 2)
         downside_risk = round(((curr_price - low_180) / curr_price) * 100.0, 2)
 
-        # 3. 法人連續買賣超與當日張數（以千股換算為張）
         foreign_lots = int(curr["foreign_buy_sell"] / 1000)
         trust_lots = int(curr["trust_buy_sell"] / 1000)
         dealer_lots = int(curr["dealer_buy_sell"] / 1000)
@@ -165,18 +179,14 @@ class ScreeningEngine:
             else:
                 break
 
-        # 4. 多空溫度計
         temperature = self.calculate_temperature(curr, prev1, inst_streak)
 
-        # 5. 波段累積漲幅（防追高機制：自 20 日最低點或平台起算累積漲幅）
         lowest_recent = df["low_price"].iloc[-20:].min()
         swing_gain = ((curr_price - lowest_recent) / lowest_recent) * 100.0
 
-        # 【核心校準規則】：波段獲利已達 15%~20% 以上者，一律嚴格排除！
         if swing_gain >= 15.0:
             return None
 
-        # 6. 起漲天數判定 (Day 1 / Day 2 / Day 3)
         cost_line = max(curr["ma20"], df["high_price"].iloc[-10:-1].max())
         prev_profit_pct = ((prev1["close_price"] - cost_line) / cost_line) * 100.0
         today_profit_pct = ((curr_price - cost_line) / cost_line) * 100.0
@@ -186,15 +196,12 @@ class ScreeningEngine:
         is_day2_3_backup = False
         breakout_stage = "非起漲結構"
 
-        # 條件 1：真・起漲第 1 天（昨日獲利 <= 0.5% 或未突破，今日第一天帶量突破翻正）
         if (prev1["close_price"] <= prev1["ma20"] or prev_profit_pct <= 0.5) and \
            (curr_price > curr["ma20"] and today_change_pct > 1.0) and \
            (curr["volume"] >= 1.3 * curr["vol_ma20"]) and \
            (today_profit_pct <= 5.0):
             is_day1_breakout = True
             breakout_stage = "🔥 真・起漲第 1 天（強烈推薦）"
-
-        # 條件 2：起漲第 2~3 天備援（獲利仍在 < 6%~8% 之內，且均線支撐完好）
         elif (prev_profit_pct > 0.0) and (today_profit_pct <= 7.5) and \
              (curr_price > curr["ma20"]) and (temperature >= 55.0):
             is_day2_3_backup = True
@@ -228,10 +235,14 @@ class ScreeningEngine:
             "swing_gain": round(swing_gain, 2)
         }
 
-    def run_full_market_screening(self) -> Dict[str, Any]:
+    def run_full_market_screening(self, *args, **kwargs) -> Any:
         """
-        執行全市場掃描，回傳排序後的推薦清單與備援標的。
+        執行全市場掃描，回傳雙模（字串+字典）相容之推薦報告。
         """
+        if not os.path.exists(self.db_path):
+            error_msg = "⚠️ 資料庫檔案尚未生成或正在初始化，請稍候重試。"
+            return FormattedReport(error_msg, {"recommendations": [], "strategy_status": error_msg})
+
         conn = self._get_connection()
         try:
             meta_query = "SELECT symbol, stock_name FROM stock_metadata WHERE is_active = 1"
@@ -255,7 +266,6 @@ class ScreeningEngine:
                     elif analysis["is_backup"]:
                         backup_candidates.append(analysis)
 
-            # 排序標準
             day1_candidates.sort(
                 key=lambda x: (x["temperature"], x["total_inst_lots"], x["upside_room_pct"]),
                 reverse=True
@@ -272,8 +282,38 @@ class ScreeningEngine:
                 final_selection = backup_candidates[:5]
                 strategy_status = "🛡️ 當日無符合第 1 天起漲股，啟用【起漲第 2~3 天貼近成本】備援推薦"
 
-            return {
-                "scan_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 組合 Telegram Markdown 格式報表
+            lines = [
+                "🏆 *【WayneBot / CaryBot 量化海選決策日報】*",
+                f"📅 掃描時間：`{scan_time}`",
+                f"📊 掃描總數：`{len(stocks)} 檔` | 🎯 第 1 天：`{len(day1_candidates)} 檔` | 🛡️ 備援：`{len(backup_candidates)} 檔`",
+                f"📌 決策狀態：{strategy_status}",
+                "───────────────────"
+            ]
+
+            if not final_selection:
+                lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦觀望。")
+            else:
+                for idx, item in enumerate(final_selection, 1):
+                    lines.extend([
+                        f"*{idx}. {item['stock_name']} ({item['symbol']})*",
+                        f"  • 收盤價: `{item['close_price']} 元` ({item['change_pct']:+0.2f}%)",
+                        f"  • 判定階段: `{item['breakout_stage']}`",
+                        f"  • 多空溫度: `{item['temperature']}°C` | 位階: `{item['position_tag']}`",
+                        f"  • 距成本獲利: `{item['current_profit_from_cost']:+0.2f}%` (成本線: `{item['cost_line']}`)",
+                        f"  • 操作空間: 上 `{item['upside_room_pct']}%` / 下防守 `{item['downside_risk_pct']}%`",
+                        f"  • 三大法人: `{item['total_inst_lots']:+d} 張` (外資 `{item['foreign_lots']:+d}` / 投信 `{item['trust_lots']:+d}`)",
+                        f"  • 即時走勢: [點此直連 Yahoo 股市行情 ({item['symbol']})](https://tw.stock.yahoo.com/quote/{item['symbol']})",
+                        "───────────────────"
+                    ])
+
+            lines.append("🤖 _由 WayneBot AI 自動化量化引擎生成，嚴守停損停利紀律。_")
+            report_text = "\n".join(lines)
+
+            raw_dict = {
+                "scan_time": scan_time,
                 "total_scanned": len(stocks),
                 "day1_count": len(day1_candidates),
                 "backup_count": len(backup_candidates),
@@ -282,20 +322,22 @@ class ScreeningEngine:
                 "all_day1": day1_candidates,
                 "all_backup": backup_candidates
             }
+
+            return FormattedReport(report_text, raw_dict)
         finally:
             conn.close()
 
-    # 類別別名相容
+    # 類別函式別名相容
     run_full_screening = run_full_market_screening
 
 
 # ==============================================================================
-# 模組層級相容包裝函式（支援舊版 Bot 直接以 screening_engine.run_full_screening() 呼叫）
+# 模組層級相容包裝函式（無論傳入 chat_id、limit 或 db_path 均能安全執行）
 # ==============================================================================
-def run_full_screening(db_path: str = "wayne_market.db") -> Dict[str, Any]:
-    engine = ScreeningEngine(db_path=db_path)
+def run_full_screening(*args, **kwargs) -> Any:
+    engine = ScreeningEngine(*args, **kwargs)
     return engine.run_full_market_screening()
 
-def run_full_market_screening(db_path: str = "wayne_market.db") -> Dict[str, Any]:
-    engine = ScreeningEngine(db_path=db_path)
+def run_full_market_screening(*args, **kwargs) -> Any:
+    engine = ScreeningEngine(*args, **kwargs)
     return engine.run_full_market_screening()
