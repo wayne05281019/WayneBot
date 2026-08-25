@@ -94,15 +94,7 @@ class ScreeningEngine:
 
     def calculate_temperature(self, row: pd.Series, prev_row: pd.Series, inst_streak: int) -> float:
         """
-        計算 CaryBot 多空溫度計 (°C)：
-        - 基礎體溫：50°C
-        - 均線多頭排列：+15°C
-        - 帶量紅 K（成交量 > 1.5 倍 20MA 且收紅）：+12°C
-        - KD 黃金交叉或強勢向上：+8°C
-        - MACD 柱狀體翻正擴大：+10°C
-        - 投信/外資連買：每多 1 日 +2.5°C（上限 +15°C）
-        - 均線空頭排列或跌破 20MA：-20°C
-        溫度範圍限制於 0.0°C ~ 100.0°C。
+        計算 CaryBot 多空溫度計 (°C)
         """
         temp = 50.0
 
@@ -292,3 +284,18 @@ class ScreeningEngine:
             }
         finally:
             conn.close()
+
+    # 類別別名相容
+    run_full_screening = run_full_market_screening
+
+
+# ==============================================================================
+# 模組層級相容包裝函式（支援舊版 Bot 直接以 screening_engine.run_full_screening() 呼叫）
+# ==============================================================================
+def run_full_screening(db_path: str = "wayne_market.db") -> Dict[str, Any]:
+    engine = ScreeningEngine(db_path=db_path)
+    return engine.run_full_market_screening()
+
+def run_full_market_screening(db_path: str = "wayne_market.db") -> Dict[str, Any]:
+    engine = ScreeningEngine(db_path=db_path)
+    return engine.run_full_market_screening()
