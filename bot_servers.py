@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 bot_servers.py
-WayneBot 旗艦量化交易系統：自動解鎖 Webhook ＋ 30萬4等份帳本 ＋ Render 24H 防休眠 (全功能暢通版)
+WayneBot 旗艦量化交易系統：全防護秒回 ＋ 30萬4等份帳本 ＋ Render 24H 防休眠伺服器
 檔案名稱：bot_servers.py
 作者：Wayne (WayneBot Quantitative System Architect)
 """
@@ -51,6 +51,7 @@ WATCHLIST_DB_PATH = os.path.join(BASE_DIR, "user_watchlist.db")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or "8688883757:AAEpWVMX86lSMmY1PewTw6OA8j0sdsFKXac"
 DEFAULT_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TG_CHAT_ID") or "8528875978"
 
+# 🌟 常駐選單
 PERSISTENT_KEYBOARD = {
     "keyboard": [
         [{"text": "🔥 今日海選"}, {"text": "💼 AI 模擬持倉"}],
@@ -62,28 +63,31 @@ PERSISTENT_KEYBOARD = {
 
 
 def init_watchlist_db():
-    conn = sqlite3.connect(WATCHLIST_DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_watchlist (
-        stock_id TEXT PRIMARY KEY,
-        stock_name TEXT NOT NULL,
-        added_price REAL,
-        added_date TEXT
-    );
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(WATCHLIST_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_watchlist (
+            stock_id TEXT PRIMARY KEY,
+            stock_name TEXT NOT NULL,
+            added_price REAL,
+            added_date TEXT
+        );
+        """)
+        conn.commit()
+        conn.close()
+    except Exception: pass
 
 init_watchlist_db()
 
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
+    """供 UptimeRobot 每 5 分鐘 Ping 一次，保持 24H 綠燈不休眠"""
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "application/json; charset=utf-8")
         self.end_headers()
-        res = {"status": "healthy", "service": "WayneBot Dual-Core", "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        res = {"status": "healthy", "service": "WayneBot 24H Online", "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
 
     def log_message(self, format, *args): return
@@ -133,7 +137,7 @@ def send_telegram_safely(chat_id: Optional[Union[str, int]] = None, text: str = 
         try:
             resp = requests.post(url, json=payload, timeout=12)
             if resp.status_code == 200:
-                logger.info(f"✅ Telegram 戰報第 [{i+1}/{len(chunks)}] 段已發送！")
+                logger.info(f"✅ Telegram 訊息已送達！")
             else:
                 payload.pop("parse_mode", None)
                 payload["text"] = re.sub(r"<[^>]+>", "", chunk)
@@ -165,113 +169,104 @@ def send_photo_safely(photo_path: str, chat_id: Optional[Union[str, int]] = None
 
 
 def get_detailed_portfolio_report() -> str:
-    """產出 30 萬本金、4 等份階梯配置與詳細加碼流水帳"""
-    if not portfolio_engine:
-        return "💼 目前尚未啟動持倉引擎。"
+    """產出 30 萬本金 4 等份詳細帳本"""
+    try:
+        if not portfolio_engine:
+            return "💼 目前尚未啟動持倉引擎。"
 
-    engine = portfolio_engine.PortfolioEngine()
-    conn = engine.get_conn()
-    cur = conn.cursor()
+        engine = portfolio_engine.PortfolioEngine()
+        conn = engine.get_conn()
+        cur = conn.cursor()
 
-    cur.execute("SELECT * FROM simulated_positions WHERE status = 'OPEN';")
-    active = cur.fetchall()
+        cur.execute("SELECT * FROM simulated_positions WHERE status = 'OPEN';")
+        active = cur.fetchall()
 
-    cur.execute("SELECT * FROM trade_history ORDER BY id DESC LIMIT 5;")
-    history = cur.fetchall()
-    conn.close()
+        cur.execute("SELECT * FROM trade_history ORDER BY id DESC LIMIT 5;")
+        history = cur.fetchall()
+        conn.close()
 
-    total_cost = sum([float(dict(p)["total_cost"]) for p in active]) if active else 0.0
-    total_unrealized = sum([(float(dict(p)["current_price"]) - float(dict(p)["avg_entry_price"])) * int(dict(p)["total_shares"]) for p in active]) if active else 0.0
-    used_tranches = sum([int(dict(p).get("tranches_used", 1)) for p in active]) if active else 0
-    free_tranches = 4 - used_tranches
-    free_cash = 300000.0 - total_cost + (sum([float(dict(h)["pnl_amount"]) for h in history]) if history else 0.0)
-    total_nav = free_cash + total_cost + total_unrealized
+        total_cost = sum([float(dict(p).get("total_cost", 0.0)) for p in active]) if active else 0.0
+        total_unrealized = sum([(float(dict(p).get("current_price", 0.0)) - float(dict(p).get("avg_entry_price", 0.0))) * int(dict(p).get("total_shares", 0)) for p in active]) if active else 0.0
+        used_tranches = sum([int(dict(p).get("tranches_used", 1)) for p in active]) if active else 0
+        free_tranches = 4 - used_tranches
+        free_cash = 300000.0 - total_cost + (sum([float(dict(h).get("pnl_amount", 0.0)) for h in history]) if history else 0.0)
+        total_nav = free_cash + total_cost + total_unrealized
 
-    lines = [
-        "💼 <b>【WayneBot AI 模擬操盤與資金流水帳本】</b>",
-        f"📅 <b>統計日期</b>：<code>{datetime.date.today().strftime('%Y-%m-%d')}</code>",
-        f"💰 <b>總本金</b>：<code>$300,000</code> (分 4 等份 | 每份 $75,000)",
-        f"💵 <b>可用現金</b>：<code>${free_cash:,.0f}</code> ({free_tranches} 等份待命中)",
-        f"📊 <b>持股現值</b>：<code>${total_cost + total_unrealized:,.0f}</code> ({used_tranches} 等份在倉)",
-        f"💎 <b>目前總淨值</b>：<b>${total_nav:,.0f}</b> (<code>{((total_nav-300000)/300000)*100:+.2f}%</code>)",
-        "────────────────────────────────────────",
-        "📦 <b>【目前在庫持倉與階梯加碼明細】</b>"
-    ]
+        lines = [
+            "💼 <b>【WayneBot AI 模擬操盤與資金流水帳本】</b>",
+            f"📅 <b>統計日期</b>：<code>{datetime.date.today().strftime('%Y-%m-%d')}</code>",
+            f"💰 <b>總本金</b>：<code>$300,000</code> (分 4 等份 | 每份 $75,000)",
+            f"💵 <b>可用現金</b>：<code>${free_cash:,.0f}</code> ({free_tranches} 等份待命中)",
+            f"📊 <b>持股現值</b>：<code>${total_cost + total_unrealized:,.0f}</code> ({used_tranches} 等份在倉)",
+            f"💎 <b>目前總淨值</b>：<b>${total_nav:,.0f}</b> (<code>{((total_nav-300000)/300000)*100:+.2f}%</code>)",
+            "────────────────────────────────────────",
+            "📦 <b>【目前在庫持倉與階梯加碼明細】</b>"
+        ]
 
-    if not active:
-        lines.append("<i>目前無在倉部位（4 等份資金 $300,000 隨時逢低抄底）。</i>")
-    else:
-        for idx, pos in enumerate(active, 1):
-            p = dict(pos)
-            sid = p["stock_id"]
-            sname = p["stock_name"]
-            e_date = p["entry_date"]
-            avg_p = float(p["avg_entry_price"])
-            c_p = float(p["current_price"])
-            shares = int(p["total_shares"])
-            cost = float(p["total_cost"])
-            tranches = int(p.get("tranches_used", 1))
-            h_days = int(p["holding_days"])
-            pnl_amt = (c_p - avg_p) * shares
-            pnl_pct = ((c_p - avg_p) / avg_p) * 100.0
-            mdd = float(p["max_drawdown_pct"])
+        if not active:
+            lines.append("<i>目前無在倉部位（4 等份資金 $300,000 隨時逢低抄底）。</i>")
+        else:
+            for idx, pos in enumerate(active, 1):
+                p = dict(pos)
+                sid, sname = p.get("stock_id", ""), p.get("stock_name", "")
+                e_date = p.get("entry_date", "")
+                avg_p = float(p.get("avg_entry_price", 0.0))
+                c_p = float(p.get("current_price", avg_p))
+                shares = int(p.get("total_shares", 0))
+                cost = float(p.get("total_cost", 0.0))
+                tranches = int(p.get("tranches_used", 1))
+                h_days = int(p.get("holding_days", 0))
+                pnl_amt = (c_p - avg_p) * shares
+                pnl_pct = ((c_p - avg_p) / avg_p * 100.0) if avg_p > 0 else 0.0
+                mdd = float(p.get("max_drawdown_pct", 0.0))
 
-            pnl_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
-            icon = "🔺" if pnl_pct >= 0 else "🔻"
+                pnl_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
+                icon = "🔺" if pnl_pct >= 0 else "🔻"
 
-            lines.append(f"<b>{idx}. {sid} {sname}</b> (已動用 <code>{tranches}</code> 等份資金)")
-            lines.append(f"   • <b>首次進場</b>: <code>{e_date}</code> (持有 <code>{h_days}</code> 天)")
-            lines.append(f"   • <b>累計持有</b>: <code>{shares:,}</code> 股 | <b>加權均價</b>: <code>${avg_p:.2f}</code>")
-            lines.append(f"   • <b>投入成本</b>: <code>${cost:,.0f}</code> | <b>現價</b>: <code>${c_p:.2f}</code>")
-            lines.append(f"   • <b>未實現損益</b>: {icon} <b>{pnl_str}</b> (${pnl_amt:+,.0f}) | MDD: <code>{mdd:.1f}%</code>")
+                lines.append(f"<b>{idx}. {sid} {sname}</b> (已動用 <code>{tranches}</code> 等份資金)")
+                lines.append(f"   • <b>首次進場</b>: <code>{e_date}</code> (持有 <code>{h_days}</code> 天)")
+                lines.append(f"   • <b>累計持有</b>: <code>{shares:,}</code> 股 | <b>加權均價</b>: <code>${avg_p:.2f}</code>")
+                lines.append(f"   • <b>投入成本</b>: <code>${cost:,.0f}</code> | <b>現價</b>: <code>${c_p:.2f}</code>")
+                lines.append(f"   • <b>未實現損益</b>: {icon} <b>{pnl_str}</b> (${pnl_amt:+,.0f}) | MDD: <code>{mdd:.1f}%</code>\n")
 
-            try:
-                hist = json.loads(p.get("entry_history", "[]"))
-                for h_idx, h in enumerate(hist, 1):
-                    lines.append(f"     └ 批次 {h_idx}: <code>{h['date']}</code> 以 <code>${h['price']}</code> 買進 <code>{h['shares']}</code> 股 ({h['type']})")
-            except Exception: pass
-            lines.append("")
+        lines.append("────────────────────────────────────────")
+        lines.append("🔔 <b>【歷史平倉與獲利來源紀錄 (紅字提醒)】</b>")
+        if not history:
+            lines.append("<i>尚無歷史平倉紀錄。</i>")
+        else:
+            for h in history:
+                h_d = dict(h)
+                pnl_pct = float(h_d.get("pnl_percentage", 0.0))
+                pnl_amt = float(h_d.get("pnl_amount", 0.0))
+                p_icon = "🔴" if pnl_pct < 0 else "🟢"
+                lines.append(f"{p_icon} <b>[{h_d.get('exit_date','')} 賣出] {h_d.get('stock_id','')} {h_d.get('stock_name','')}</b> ({h_d.get('total_shares',0):,} 股)")
+                lines.append(f"   • 均價: <code>${h_d.get('avg_entry_price',0)}</code> ➜ 出場: <code>${h_d.get('exit_price',0)}</code> (<b>{pnl_pct:+.2f}%</b>)")
+                lines.append(f"   • <b>獲利金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h_d.get('exit_reason','')}\n")
 
-    lines.append("────────────────────────────────────────")
-    lines.append("🔔 <b>【歷史平倉與獲利來源紀錄 (紅字提醒)】</b>")
-    if not history:
-        lines.append("<i>尚無歷史平倉紀錄。</i>")
-    else:
-        for h in history:
-            h_d = dict(h)
-            pnl_pct = float(h_d["pnl_percentage"])
-            pnl_amt = float(h_d["pnl_amount"])
-            p_icon = "🔴" if pnl_pct < 0 else "🟢"
-            lines.append(f"{p_icon} <b>[{h_d['exit_date']} 賣出] {h_d['stock_id']} {h_d['stock_name']}</b> ({h_d['total_shares']:,} 股)")
-            lines.append(f"   • 均價: <code>${h_d['avg_entry_price']}</code> ➜ 出場: <code>${h_d['exit_price']}</code> (<b>{pnl_pct:+.2f}%</b>)")
-            lines.append(f"   • <b>獲利金額</b>: <b>${pnl_amt:+,.0f}</b> | 原因: {h_d['exit_reason']}")
-            lines.append(f"   • <b>本金增長歸因</b>: <i>{h_d['failure_attribution']}</i>\n")
-
-    perf = engine.evaluate_performance()
-    lines.append("────────────────────────────────────────")
-    lines.append("📈 <b>【歷史累計總績效】</b>")
-    lines.append(f"• <b>累計交易</b>: <code>{perf['total_trades']}</code> 筆 | <b>總勝率</b>: <b>{perf['win_rate']}%</b> | <b>賺賠比</b>: <b>{perf['profit_loss_ratio']}</b>")
-    lines.append(f"• <b>累計獲利入帳</b>: <b>${perf['total_pnl_cash']:+,.0f}</b> | <b>複利報酬</b>: <b>{perf['cumulative_return_pct']:+}%</b>")
-
-    return "\n".join(lines)
+        return "\n".join(lines)
+    except Exception as e:
+        return f"💼 <b>【持倉帳本讀取中】</b>\n目前系統正重整中，請稍候重試 ({e})。"
 
 
 def get_watchlist_report() -> str:
-    conn = sqlite3.connect(WATCHLIST_DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM user_watchlist ORDER BY added_date DESC;")
-    rows = cur.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(WATCHLIST_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM user_watchlist ORDER BY added_date DESC;")
+        rows = cur.fetchall()
+        conn.close()
 
-    if not rows:
-        return "⭐ <b>【我的自選觀察名單】</b>\n目前名單為空。\n💡 在查詢股票時點擊 <code>[ ⭐ 加入自選 ]</code> 即可快速收藏！"
+        if not rows:
+            return "⭐ <b>【我的自選觀察名單】</b>\n目前名單為空。\n💡 在查詢股票時點擊 <code>[ ⭐ 加入自選 ]</code> 即可快速收藏！"
 
-    lines = ["⭐ <b>【我的自選觀察名單】</b>", "────────────────────────"]
-    for r in rows:
-        sid, sname = r[0], r
-        yahoo_url = f"https://tw.stock.yahoo.com/quote/{sid}"
-        lines.append(f"• <b>{sid} {sname}</b> 👉 <a href='{yahoo_url}'>Yahoo 即時行情</a>")
-    return "\n".join(lines)
+        lines = ["⭐ <b>【我的自選觀察名單】</b>", "────────────────────────"]
+        for r in rows:
+            sid, sname = r[0], r
+            yahoo_url = f"https://tw.stock.yahoo.com/quote/{sid}"
+            lines.append(f"• <b>{sid} {sname}</b> 👉 <a href='{yahoo_url}'>Yahoo 即時行情</a>")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"⭐ 自選名單讀取中 ({e})。"
 
 
 class CommandProcessor:
@@ -291,7 +286,6 @@ class CommandProcessor:
                 [{"text": "🔙 返回每日海選戰報", "callback_data": "BACK_MAIN"}]
             ]
         }
-
         send_telegram_safely(chat_id=chat_id, text=report_text, reply_markup=action_buttons)
 
         if CaryBotChartGenerator:
@@ -305,13 +299,11 @@ class CommandProcessor:
 def run_polling_loop():
     token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
 
-    # 🔓 啟動前強制清除 Webhook 鎖定 (徹底解決收不到訊息問題)
+    # 強制清除 Webhook 鎖定
     try:
-        del_url = f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=False"
-        requests.post(del_url, timeout=8)
+        requests.post(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=False", timeout=8)
         logger.info("🔓 已成功解除 Telegram Webhook 舊鎖定通道！")
-    except Exception as e:
-        logger.warning(f"Webhook 解鎖異常: {e}")
+    except Exception: pass
 
     logger.info("🚀 【WayneBot Telegram 輪詢監聽核心已啟動】")
     offset = 0
@@ -329,26 +321,32 @@ def run_polling_loop():
                         txt = msg["text"].strip()
                         logger.info(f"📥 收到指令: {txt}")
 
-                        if any(k in txt for k in ["start", "開始", "選單"]):
-                            welcome = "👋 <b>歡迎使用 WayneBot 台股量化決策系統！</b>\n請點擊下方選單，或直接輸入<b>股票名稱或代碼</b>（如 <code>台光電</code>、<code>2383</code>）！"
-                            send_telegram_safely(chat_id=c_id, text=welcome)
-                        elif any(k in txt for k in ["海選", "screen", "今日"]):
-                            if screening_engine:
-                                df_top = screening_engine.run_full_screening(10)
-                                rep = screening_engine.format_telegram_report(df_top.to_dict(orient="records"), datetime.date.today().strftime("%Y-%m-%d"))
+                        try:
+                            if any(k in txt for k in ["start", "開始", "選單"]):
+                                welcome = "👋 <b>歡迎使用 WayneBot 台股量化決策系統！</b>\n請點擊下方選單，或直接輸入<b>股票名稱或代碼</b>（如 <code>台光電</code>、<code>2383</code>）！"
+                                send_telegram_safely(chat_id=c_id, text=welcome)
+                            elif any(k in txt for k in ["海選", "screen", "今日"]):
+                                if screening_engine:
+                                    df_top = screening_engine.run_full_screening(10)
+                                    rep = screening_engine.format_telegram_report(df_top.to_dict(orient="records"), datetime.date.today().strftime("%Y-%m-%d"))
+                                    send_telegram_safely(chat_id=c_id, text=rep)
+                                else:
+                                    send_telegram_safely(chat_id=c_id, text="🔥 海選模組加載中...")
+                            elif any(k in txt for k in ["持倉", "portfolio", "模擬"]):
+                                rep = get_detailed_portfolio_report()
                                 send_telegram_safely(chat_id=c_id, text=rep)
-                        elif any(k in txt for k in ["持倉", "portfolio", "模擬"]):
-                            rep = get_detailed_portfolio_report()
-                            send_telegram_safely(chat_id=c_id, text=rep)
-                        elif any(k in txt for k in ["自選", "名單", "觀察"]):
-                            rep = get_watchlist_report()
-                            send_telegram_safely(chat_id=c_id, text=rep)
-                        elif any(k in txt for k in ["狀態", "status", "系統"]):
-                            mem_str = f"{psutil.virtual_memory().percent}%" if psutil else "正常"
-                            status_msg = f"⚙️ <b>【WayneBot 系統運行健康度】</b>\n🟢 <b>Render 24H Web 伺服器在線 (Port {SERVER_PORT})</b>\n💾 <b>資料庫</b>: SQLite WAL 模式 (正常)\n🧠 <b>記憶體使用</b>: {mem_str}\n⏱ <b>伺服器時間</b>: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                            send_telegram_safely(chat_id=c_id, text=status_msg)
-                        else:
-                            CommandProcessor.handle_stock_query(txt, str(c_id))
+                            elif any(k in txt for k in ["自選", "名單", "觀察"]):
+                                rep = get_watchlist_report()
+                                send_telegram_safely(chat_id=c_id, text=rep)
+                            elif any(k in txt for k in ["狀態", "status", "系統"]):
+                                mem_str = f"{psutil.virtual_memory().percent}%" if psutil else "正常"
+                                status_msg = f"⚙️ <b>【WayneBot 系統運行健康度】</b>\n🟢 <b>Render 24H Web 伺服器在線 (Port {SERVER_PORT})</b>\n💾 <b>資料庫</b>: SQLite WAL 模式 (正常)\n🧠 <b>記憶體使用</b>: {mem_str}\n⏱ <b>伺服器時間</b>: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                                send_telegram_safely(chat_id=c_id, text=status_msg)
+                            else:
+                                CommandProcessor.handle_stock_query(txt, str(c_id))
+                        except Exception as cmd_err:
+                            logger.error(f"指令處理異常: {cmd_err}")
+                            send_telegram_safely(chat_id=c_id, text=f"⚠️ 處理中請稍候 ({cmd_err})")
 
                     elif "callback_query" in item:
                         cq = item["callback_query"]
