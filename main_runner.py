@@ -1,10 +1,5 @@
 """
 main_runner.py - WayneBot Phase 10 全系統非同步總控排程器 (完整數據流水線版)
-功能：
-1. 自動環境感應：
-   - GitHub Actions 環境：自動執行「行情同步 (wayne_market_db) -> CaryBot 海選 -> Telegram 推播」，完成後安全退出 (0 錯誤)。
-   - Render / 生產環境：維持 24H 常駐監聽、Port 10000 防休眠 Web 伺服器與 16:30 定時自動同步海選。
-2. Graceful Shutdown：捕捉 SIGINT / SIGTERM，安全切斷連線並執行 SQLite WAL Checkpoint (TRUNCATE)。
 """
 
 import os
@@ -13,8 +8,9 @@ import asyncio
 import signal
 import logging
 import sqlite3
+import subprocess
 import requests
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Optional
 from aiohttp import web
 from dotenv import load_dotenv
@@ -61,30 +57,27 @@ class MasterRunner:
             logger.error(f"❌ [Database] WAL Checkpoint 執行失敗: {e}")
 
     def sync_market_data_if_needed(self):
-        """同步盤後行情資料庫 (呼叫 wayne_market_db 抓取全市場 2,233 檔最新行情)"""
-        logger.info("📥 [Database] 正在檢查並同步全市場行情資料庫...")
-        try:
-            import wayne_market_db
-            for func_name in ["update_market_data", "sync_daily_data", "update_daily_quotes", "fetch_market_data", "main"]:
-                if hasattr(wayne_market_db, func_name):
-                    func = getattr(wayne_market_db, func_name)
-                    logger.info(f"🔄 [Database] 正在執行 wayne_market_db.{func_name}()...")
-                    try:
-                        func(self.db_path)
-                    except TypeError:
-                        func()
-                    logger.info("✅ [Database] 全市場行情資料庫同步完成！")
+        """執行 wayne_market_db.py 下載全市場 2,233 檔行情數據"""
+        logger.info("📥 [Database] 正在執行全市場行情同步 (wayne_market_db.py)...")
+        if os.path.exists("wayne_market_db.py"):
+            try:
+                res = subprocess.run([sys.executable, "wayne_market_db.py"], capture_output=True, text=True, timeout=600)
+                if res.stdout:
+                    logger.info(f"wayne_market_db 輸出: {res.stdout[-300:]}")
+                if res.returncode == 0:
+                    logger.info("✅ [Database] 行情同步執行成功！")
                     return True
-        except ImportError:
-            logger.warning("⚠️ [Database] 未找到 wayne_market_db 模組，直接使用現有資料庫。")
-        except Exception as e:
-            logger.error(f"❌ [Database] 同步行情資料時發生異常: {e}")
+                else:
+                    logger.error(f"❌ [Database] 行情同步回傳錯誤碼 {res.returncode}: {res.stderr[-300:]}")
+            except Exception as e:
+                logger.error(f"❌ [Database] 執行 wayne_market_db.py 失敗: {e}")
+        else:
+            logger.warning("⚠️ [Database] 目錄中未找到 wayne_market_db.py。")
         return False
 
     def send_telegram_direct(self, text: str):
-        """直接透過 Telegram HTTP API 發送訊息"""
         if not self.tg_bot_token or not self.tg_chat_id:
-            logger.warning("⚠️ [Telegram] 未設定 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID，跳過發送。")
+            logger.warning("⚠️ [Telegram] 未設定金鑰，跳過發送。")
             return
         url = f"https://api.telegram.org/bot{self.tg_bot_token}/sendMessage"
         payload = {
@@ -101,36 +94,31 @@ class MasterRunner:
         except Exception as e:
             logger.error(f"❌ [Telegram] 發送請求異常: {e}")
 
-    # ------------------------------------------------------------------
-    # 模式 A：GitHub Actions 單次批次流水線
-    # ------------------------------------------------------------------
     def run_github_actions_batch(self):
         logger.info("⚡ [WayneBot] 偵測到 GitHub Actions 自動化環境，啟動【全市場量化流水線】...")
         
-        # 1. 抓取全市場 2,233 檔最新行情並寫入資料庫
+        # 1. 抓取證交所 2,233 檔資料
         self.sync_market_data_if_needed()
         
-        # 2. 執行 CaryBot 海選校準掃描
+        # 2. 重新連接並掃描海選
+        self.screening_engine = ScreeningEngine(db_path=self.db_path)
         logger.info("🔍 [Screening] 正在執行 CaryBot 全市場起漲第 1 天海選掃描...")
         results = self.screening_engine.run_full_market_screening()
         
-        # 3. 產出排版報表
+        # 3. 排版報表
         report_text = format_telegram_report(results)
         print("\n" + "=" * 50)
         print(report_text)
         print("=" * 50 + "\n")
         
-        # 4. 發送 Telegram 報表
+        # 4. 發送 Telegram
         self.send_telegram_direct(report_text)
         
-        # 5. 執行 WAL Checkpoint 並安全退出
+        # 5. 釋放 WAL
         self.execute_wal_checkpoint()
         logger.info("🏁 [WayneBot] GitHub Actions 批次任務順利完成，安全退出。")
         sys.exit(0)
 
-    # ------------------------------------------------------------------
-    # 模式 B：Render 24H 常駐伺服器核心
-    # ------------------------------------------------------------------
     async def handle_health_check(self, request: web.Request) -> web.Response:
         return web.json_response({
             "status": "online",
@@ -140,7 +128,6 @@ class MasterRunner:
         })
 
     async def handle_manual_screen(self, request: web.Request) -> web.Response:
-        logger.info("📡 [Web] 收到手動海選 API 請求...")
         loop = asyncio.get_running_loop()
         res = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
         return web.json_response(res)
@@ -179,7 +166,13 @@ class MasterRunner:
 
         while not self.shutdown_event.is_set():
             try:
-                now = datetime.now()
+                # 採用台北時間計算
+                try:
+                    from zoneinfo import ZoneInfo
+                    now = datetime.now(ZoneInfo("Asia/Taipei"))
+                except Exception:
+                    now = datetime.utcnow() + timedelta(hours=8)
+
                 target_time = time(16, 30, 0)
                 current_time = now.time()
                 today_str = now.strftime("%Y-%m-%d")
@@ -187,9 +180,7 @@ class MasterRunner:
                 if current_time >= target_time and last_executed_date != today_str:
                     logger.info("🎯 [Scheduler] 觸發 16:30 盤後官方增量更新與 CaryBot 海選運算...")
                     loop = asyncio.get_running_loop()
-                    # 1. 盤後資料同步
                     await loop.run_in_executor(None, self.sync_market_data_if_needed)
-                    # 2. 海選掃描
                     results = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
                     report = format_telegram_report(results)
                     self.send_telegram_direct(report)
