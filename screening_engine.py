@@ -5,20 +5,29 @@ screening_engine.py - WayneBot / CaryBot 量化海選與指標校準引擎
 2. 備援級：僅在無第 1 天標的時，選擇距離成本區 < 6%~8% 之起漲第 2~3 天標的。
 3. 嚴格排除：自底部/起漲點波段獲利已達 15%~20% 以上之標的，防止追高。
 4. 官方三大法人買賣超 (張)、多空溫度計 (°C)、高低位階標籤與操作空間精準對齊。
+5. 時區校準：全面強制採用 Asia/Taipei (UTC+8) 台北標準時間。
 """
 
 import os
 import sqlite3
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+
+
+def get_taipei_time_str() -> str:
+    """取得台北標準時間字串 (UTC+8)"""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_telegram_report(*args, **kwargs) -> str:
     """
     格式化 CaryBot 量化海選 Telegram Markdown 決策報表
-    使用 *args, **kwargs 支援 1 個、2 個或任意數量之參數傳入
     """
     if not args and not kwargs:
         return "⚠️ 無法取得海選結果資料。"
@@ -37,7 +46,7 @@ def format_telegram_report(*args, **kwargs) -> str:
         return screen_result
 
     recommendations = []
-    scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    scan_time = get_taipei_time_str()
     total_scanned = 2233
     day1_count = 0
     backup_count = 0
@@ -121,9 +130,6 @@ def format_telegram_report(*args, **kwargs) -> str:
 
 
 class FormattedReport(str):
-    """
-    字串、字典、DataFrame 多型相容類別
-    """
     def __new__(cls, text: str, data: dict):
         obj = super().__new__(cls, text)
         obj.data = data
@@ -401,7 +407,7 @@ class ScreeningEngine:
                 final_selection = backup_candidates[:5]
                 strategy_status = "🛡️ 當日無符合第 1 天起漲股，啟用【起漲第 2~3 天貼近成本】備援推薦"
 
-            scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            scan_time = get_taipei_time_str()
 
             raw_dict = {
                 "scan_time": scan_time,
@@ -426,9 +432,6 @@ class ScreeningEngine:
         return format_telegram_report(*args, **kwargs)
 
 
-# ==============================================================================
-# 模組層級相容包裝函式
-# ==============================================================================
 def run_full_screening(*args, **kwargs) -> Any:
     engine = ScreeningEngine(*args, **kwargs)
     return engine.run_full_market_screening(*args, **kwargs)
