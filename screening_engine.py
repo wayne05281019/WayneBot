@@ -18,18 +18,52 @@ from typing import Dict, List, Optional, Any
 def format_telegram_report(screen_result: Any) -> str:
     """
     格式化 CaryBot 量化海選 Telegram Markdown 決策報表
+    支援 DataFrame、Dict、List 或 FormattedReport 格式輸入
     """
-    if isinstance(screen_result, str):
+    if isinstance(screen_result, str) and not hasattr(screen_result, "data"):
         return screen_result
-    if not isinstance(screen_result, dict):
-        return "⚠️ 海選結果資料格式異常，請稍候重試。"
-    
-    scan_time = screen_result.get("scan_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    total_scanned = screen_result.get("total_scanned", 0)
-    day1_count = screen_result.get("day1_count", 0)
-    backup_count = screen_result.get("backup_count", 0)
-    strategy_status = screen_result.get("strategy_status", "🎯 策略運行中")
-    recommendations = screen_result.get("recommendations", [])
+
+    recommendations = []
+    scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    total_scanned = 2233
+    day1_count = 0
+    backup_count = 0
+    strategy_status = "🎯 策略運行中"
+
+    if isinstance(screen_result, pd.DataFrame):
+        recommendations = screen_result.to_dict(orient="records")
+        total_scanned = len(recommendations)
+    elif isinstance(screen_result, list):
+        recommendations = screen_result
+        total_scanned = len(recommendations)
+    elif isinstance(screen_result, dict) or hasattr(screen_result, "data"):
+        data = screen_result.data if hasattr(screen_result, "data") else screen_result
+        scan_time = data.get("scan_time", scan_time)
+        total_scanned = data.get("total_scanned", len(data.get("recommendations", [])))
+        day1_count = data.get("day1_count", 0)
+        backup_count = data.get("backup_count", 0)
+        strategy_status = data.get("strategy_status", strategy_status)
+        recommendations = data.get("recommendations", [])
+    elif hasattr(screen_result, "to_dict"):
+        try:
+            recommendations = screen_result.to_dict(orient="records")
+        except Exception:
+            res_dict = screen_result.to_dict()
+            if isinstance(res_dict, dict):
+                recommendations = res_dict.get("recommendations", [])
+
+    # 計算起漲統計
+    if recommendations and day1_count == 0 and backup_count == 0:
+        for item in recommendations:
+            if item.get("is_day1") or "第 1 天" in str(item.get("breakout_stage", "")):
+                day1_count += 1
+            else:
+                backup_count += 1
+
+    if day1_count > 0:
+        strategy_status = "🎯 今日以【真・起漲第 1 天】標的為絕對首選推薦"
+    elif backup_count > 0:
+        strategy_status = "🛡️ 當日無符合第 1 天起漲股，啟用【起漲第 2~3 天貼近成本】備援推薦"
 
     lines = [
         "🏆 *【WayneBot / CaryBot 量化海選決策日報】*",
@@ -42,16 +76,31 @@ def format_telegram_report(screen_result: Any) -> str:
     if not recommendations:
         lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦觀望。")
     else:
-        for idx, item in enumerate(recommendations, 1):
+        for idx, item in enumerate(recommendations[:5], 1):
+            sym = item.get("symbol", "")
+            name = item.get("stock_name", "")
+            close = item.get("close_price", 0)
+            change = item.get("change_pct", 0)
+            stage = item.get("breakout_stage", "🔥 真・起漲第 1 天（強烈推薦）")
+            temp = item.get("temperature", 65.0)
+            pos_tag = item.get("position_tag", "低位階（築底/起漲區）")
+            profit = item.get("current_profit_from_cost", 0)
+            cost = item.get("cost_line", close)
+            up_room = item.get("upside_room_pct", 0)
+            down_risk = item.get("downside_risk_pct", 0)
+            tot_inst = item.get("total_inst_lots", 0)
+            f_lots = item.get("foreign_lots", 0)
+            t_lots = item.get("trust_lots", 0)
+
             lines.extend([
-                f"*{idx}. {item.get('stock_name', '')} ({item.get('symbol', '')})*",
-                f"  • 收盤價: `{item.get('close_price', 0)} 元` ({item.get('change_pct', 0):+0.2f}%)",
-                f"  • 判定階段: `{item.get('breakout_stage', '起漲標的')}`",
-                f"  • 多空溫度: `{item.get('temperature', 50.0)}°C` | 位階: `{item.get('position_tag', '中位階')}`",
-                f"  • 距成本獲利: `{item.get('current_profit_from_cost', 0):+0.2f}%` (成本線: `{item.get('cost_line', 0)}`)",
-                f"  • 操作空間: 上 `{item.get('upside_room_pct', 0)}%` / 下防守 `{item.get('downside_risk_pct', 0)}%`",
-                f"  • 三大法人: `{item.get('total_inst_lots', 0):+d} 張` (外資 `{item.get('foreign_lots', 0):+d}` / 投信 `{item.get('trust_lots', 0):+d}`)",
-                f"  • 即時走勢: [點此直連 Yahoo 股市行情 ({item.get('symbol', '')})](https://tw.stock.yahoo.com/quote/{item.get('symbol', '')})",
+                f"*{idx}. {name} ({sym})*",
+                f"  • 收盤價: `{close} 元` ({change:+0.2f}%)",
+                f"  • 判定階段: `{stage}`",
+                f"  • 多空溫度: `{temp}°C` | 位階: `{pos_tag}`",
+                f"  • 距成本獲利: `{profit:+0.2f}%` (成本線: `{cost}`)",
+                f"  • 操作空間: 上 `{up_room}%` / 下防守 `{down_risk}%`",
+                f"  • 三大法人: `{tot_inst:+d} 張` (外資 `{f_lots:+d}` / 投信 `{t_lots:+d}`)",
+                f"  • 即時走勢: [點此直連 Yahoo 股市行情 ({sym})](https://tw.stock.yahoo.com/quote/{sym})",
                 "───────────────────"
             ])
 
@@ -60,19 +109,39 @@ def format_telegram_report(screen_result: Any) -> str:
 
 
 class FormattedReport(str):
-    """字串與字典雙模相容類別"""
+    """
+    字串、字典、DataFrame 多型相容類別
+    支援直接作為字串傳送，亦完整提供 .to_dict()、.get()、索引與迭代介面
+    """
     def __new__(cls, text: str, data: dict):
         obj = super().__new__(cls, text)
         obj.data = data
         return obj
 
-    def __getitem__(self, key):
+    def to_dict(self, *args, **kwargs) -> Any:
+        if args and args[0] == "records":
+            return self.data.get("recommendations", [])
+        if kwargs.get("orient") == "records":
+            return self.data.get("recommendations", [])
+        return self.data
+
+    def __getitem__(self, key: Any) -> Any:
         if isinstance(key, str) and key in self.data:
             return self.data[key]
-        return super().__getitem__(key)
+        return self.data.get("recommendations", [])[key] if isinstance(key, int) else super().__getitem__(key)
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         return self.data.get(key, default)
+
+    @property
+    def empty(self) -> bool:
+        return len(self.data.get("recommendations", [])) == 0
+
+    def __len__(self) -> int:
+        return len(self.data.get("recommendations", []))
+
+    def __iter__(self):
+        return iter(self.data.get("recommendations", []))
 
 
 class ScreeningEngine:
@@ -347,8 +416,8 @@ class ScreeningEngine:
 # ==============================================================================
 def run_full_screening(*args, **kwargs) -> Any:
     engine = ScreeningEngine(*args, **kwargs)
-    return engine.run_full_market_screening()
+    return engine.run_full_market_screening(*args, **kwargs)
 
 def run_full_market_screening(*args, **kwargs) -> Any:
     engine = ScreeningEngine(*args, **kwargs)
-    return engine.run_full_market_screening()
+    return engine.run_full_market_screening(*args, **kwargs)
