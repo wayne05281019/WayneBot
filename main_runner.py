@@ -1,9 +1,10 @@
 """
-main_runner.py - WayneBot Phase 10 全系統非同步總控排程器
+main_runner.py - WayneBot Phase 10 全系統非同步總控排程器 (智慧雙模版)
 功能：
-1. 異步整合調度：asyncio.gather 同步常駐 Telegram Bot、Aiohttp 10000 埠與 16:30 定時增量更新。
-2. Graceful Shutdown：安全切斷連線並執行 SQLite WAL Checkpoint (TRUNCATE)。
-3. 環境變數：自動讀取 .env 或預設參數。
+1. 自動環境感應：
+   - GitHub Actions 環境：自動切換為「單次批次模式」，海選推播後立即安全退出 (0 錯誤)。
+   - Render / 生產環境：維持 24H 常駐監聽、Port 10000 防休眠 Web 伺服器與 16:30 定時排程。
+2. Graceful Shutdown：捕捉 SIGINT / SIGTERM，安全切斷連線並執行 SQLite WAL Checkpoint (TRUNCATE)。
 """
 
 import os
@@ -12,17 +13,16 @@ import asyncio
 import signal
 import logging
 import sqlite3
+import requests
 from datetime import datetime, time
 from typing import Optional
 from aiohttp import web
 from dotenv import load_dotenv
 
-from screening_engine import ScreeningEngine
+from screening_engine import ScreeningEngine, format_telegram_report
 
-# 載入 .env 環境變數
 load_dotenv()
 
-# 設定日誌格式
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] (%(threadName)s) %(message)s",
@@ -46,9 +46,6 @@ class MasterRunner:
         self.background_tasks = []
 
     def execute_wal_checkpoint(self):
-        """
-        執行 SQLite WAL Checkpoint，將日誌寫回主庫並截斷。
-        """
         logger.info("🛠️ [Database] 正在執行 SQLite WAL Checkpoint (TRUNCATE)...")
         try:
             if os.path.exists(self.db_path):
@@ -63,8 +60,52 @@ class MasterRunner:
         except Exception as e:
             logger.error(f"❌ [Database] WAL Checkpoint 執行失敗: {e}")
 
+    def send_telegram_direct(self, text: str):
+        """直接透過 Telegram HTTP API 發送訊息 (適用於 GitHub Actions 單次推播)"""
+        if not self.tg_bot_token or not self.tg_chat_id:
+            logger.warning("⚠️ [Telegram] 未設定 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID，跳過發送。")
+            return
+        url = f"https://api.telegram.org/bot{self.tg_bot_token}/sendMessage"
+        payload = {
+            "chat_id": self.tg_chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=20)
+            if resp.status_code == 200:
+                logger.info("📢 [Telegram] GitHub Actions 批次推播成功發送！")
+            else:
+                logger.error(f"❌ [Telegram] 推播失敗 HTTP {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"❌ [Telegram] 發送請求異常: {e}")
+
     # ------------------------------------------------------------------
-    # 子任務一：Aiohttp 防休眠 Web 伺服器 (Port 10000)
+    # 模式 A：GitHub Actions 單次批次海選推播流水線
+    # ------------------------------------------------------------------
+    def run_github_actions_batch(self):
+        logger.info("⚡ [WayneBot] 偵測到 GitHub Actions 自動化環境，啟動【單次批次流水線】...")
+        
+        # 1. 執行海選運算
+        logger.info("🔍 [Screening] 正在執行 CaryBot 全市場起漲第 1 天海選掃描...")
+        results = self.screening_engine.run_full_market_screening()
+        
+        # 2. 產出排版報表
+        report_text = format_telegram_report(results)
+        print("\n" + "=" * 50)
+        print(report_text)
+        print("=" * 50 + "\n")
+        
+        # 3. 發送 Telegram
+        self.send_telegram_direct(report_text)
+        
+        # 4. 執行資料庫 Checkpoint 並安全退出
+        self.execute_wal_checkpoint()
+        logger.info("🏁 [WayneBot] GitHub Actions 批次任務順利完成，安全退出。")
+        sys.exit(0)
+
+    # ------------------------------------------------------------------
+    # 模式 B：Render 24H 常駐伺服器核心
     # ------------------------------------------------------------------
     async def handle_health_check(self, request: web.Request) -> web.Response:
         return web.json_response({
@@ -75,7 +116,6 @@ class MasterRunner:
         })
 
     async def handle_manual_screen(self, request: web.Request) -> web.Response:
-        """手動觸發海選 API 端點"""
         logger.info("📡 [Web] 收到手動海選 API 請求...")
         loop = asyncio.get_running_loop()
         res = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
@@ -100,36 +140,6 @@ class MasterRunner:
             await self.web_runner.cleanup()
             logger.info("✅ [Web Server] Web 伺服器已安全釋放。")
 
-    # ------------------------------------------------------------------
-    # 子任務二：Telegram 輪詢監聽工作元
-    # ------------------------------------------------------------------
-    async def format_telegram_report(self, screen_result: dict) -> str:
-        lines = [
-            "🏆 *【WayneBot / CaryBot 量化海選決策日報】*",
-            f"📅 掃描時間：`{screen_result['scan_time']}`",
-            f"📊 掃描總數：`{screen_result['total_scanned']} 檔` | 🎯 第 1 天：`{screen_result['day1_count']} 檔` | 🛡️ 備援：`{screen_result['backup_count']} 檔`",
-            f"📌 決策狀態：{screen_result['strategy_status']}",
-            "───────────────────"
-        ]
-
-        if not screen_result["recommendations"]:
-            lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦。")
-        else:
-            for idx, item in enumerate(screen_result["recommendations"], 1):
-                lines.extend([
-                    f"*{idx}. {item['stock_name']} ({item['symbol']})*",
-                    f"  • 收盤價: `{item['close_price']} 元` ({item['change_pct']:+0.2f}%)",
-                    f"  • 判定階段: `{item['breakout_stage']}`",
-                    f"  • 多空溫度: `{item['temperature']}°C` | 位階: `{item['position_tag']}`",
-                    f"  • 距成本獲利: `{item['current_profit_from_cost']:+0.2f}%` (成本線: `{item['cost_line']}`)",
-                    f"  • 操作空間: 上 `{item['upside_room_pct']}%` / 下防守 `{item['downside_risk_pct']}%`",
-                    f"  • 三大法人: `{item['total_inst_lots']:+d} 張` (外資 `{item['foreign_lots']:+d}` / 投信 `{item['trust_lots']:+d}`)",
-                    "───────────────────"
-                ])
-
-        lines.append("🤖 _由 WayneBot AI 自動化量化引擎生成，嚴守停損停利紀律。_")
-        return "\n".join(lines)
-
     async def run_telegram_worker(self):
         logger.info("🤖 [Telegram] Bot 常駐工作元已上線運作。")
         while not self.shutdown_event.is_set():
@@ -139,9 +149,6 @@ class MasterRunner:
                 break
         logger.info("✅ [Telegram] Telegram 工作元已安全退出。")
 
-    # ------------------------------------------------------------------
-    # 子任務三：每日 16:30 定時增量更新與自動推播排程
-    # ------------------------------------------------------------------
     async def run_daily_scheduler(self):
         logger.info("⏰ [Scheduler] 每日 16:30 自動化增量排程器已啟動。")
         last_executed_date = None
@@ -157,8 +164,8 @@ class MasterRunner:
                     logger.info("🎯 [Scheduler] 觸發 16:30 盤後官方增量更新與 CaryBot 海選運算...")
                     loop = asyncio.get_running_loop()
                     results = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
-                    report = await self.format_telegram_report(results)
-                    logger.info(f"📢 [推播報表預覽]\n{report}")
+                    report = format_telegram_report(results)
+                    self.send_telegram_direct(report)
                     last_executed_date = today_str
 
                 await asyncio.sleep(30)
@@ -170,11 +177,8 @@ class MasterRunner:
 
         logger.info("✅ [Scheduler] 排程器已安全退出。")
 
-    # ------------------------------------------------------------------
-    # 總控生命週期管理與 Graceful Shutdown
-    # ------------------------------------------------------------------
     async def run_forever(self):
-        logger.info("⚡ [WayneBot Phase 10] 全系統核心調度啟動中...")
+        logger.info("⚡ [WayneBot Phase 10] 全系統核心調度啟動中... (24H 常駐模式)")
 
         web_task = asyncio.create_task(self.start_web_server(), name="Task-WebServer")
         tg_task = asyncio.create_task(self.run_telegram_worker(), name="Task-TelegramWorker")
@@ -199,6 +203,13 @@ class MasterRunner:
 
 def main():
     runner = MasterRunner()
+
+    # 關鍵判斷：若在 GitHub Actions 環境或帶有 --once 參數，執行單次批次模式
+    if os.getenv("GITHUB_ACTIONS") == "true" or "--once" in sys.argv or "--batch" in sys.argv:
+        runner.run_github_actions_batch()
+        return
+
+    # 否則在 Render / 本機執行 24H 常駐調度
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
