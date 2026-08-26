@@ -15,11 +15,24 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 
-def format_telegram_report(screen_result: Any) -> str:
+def format_telegram_report(*args, **kwargs) -> str:
     """
     格式化 CaryBot 量化海選 Telegram Markdown 決策報表
-    支援 DataFrame、Dict、List 或 FormattedReport 格式輸入
+    使用 *args, **kwargs 支援 1 個、2 個或任意數量之參數傳入
     """
+    if not args and not kwargs:
+        return "⚠️ 無法取得海選結果資料。"
+
+    screen_result = args[0] if args else kwargs.get("screen_result", kwargs.get("df", kwargs.get("data", {})))
+
+    top_n = 5
+    if len(args) >= 2 and isinstance(args, int):
+        top_n = args
+    elif "top_n" in kwargs and isinstance(kwargs["top_n"], int):
+        top_n = kwargs["top_n"]
+    elif "limit" in kwargs and isinstance(kwargs["limit"], int):
+        top_n = kwargs["limit"]
+
     if isinstance(screen_result, str) and not hasattr(screen_result, "data"):
         return screen_result
 
@@ -52,7 +65,6 @@ def format_telegram_report(screen_result: Any) -> str:
             if isinstance(res_dict, dict):
                 recommendations = res_dict.get("recommendations", [])
 
-    # 計算起漲統計
     if recommendations and day1_count == 0 and backup_count == 0:
         for item in recommendations:
             if item.get("is_day1") or "第 1 天" in str(item.get("breakout_stage", "")):
@@ -76,7 +88,7 @@ def format_telegram_report(screen_result: Any) -> str:
     if not recommendations:
         lines.append("⚠️ 今日全市場均未出現符合標準之起漲標的，建議保持資金防禦觀望。")
     else:
-        for idx, item in enumerate(recommendations[:5], 1):
+        for idx, item in enumerate(recommendations[:top_n], 1):
             sym = item.get("symbol", "")
             name = item.get("stock_name", "")
             close = item.get("close_price", 0)
@@ -111,7 +123,6 @@ def format_telegram_report(screen_result: Any) -> str:
 class FormattedReport(str):
     """
     字串、字典、DataFrame 多型相容類別
-    支援直接作為字串傳送，亦完整提供 .to_dict()、.get()、索引與迭代介面
     """
     def __new__(cls, text: str, data: dict):
         obj = super().__new__(cls, text)
@@ -409,6 +420,10 @@ class ScreeningEngine:
             conn.close()
 
     run_full_screening = run_full_market_screening
+
+    @staticmethod
+    def format_telegram_report(*args, **kwargs) -> str:
+        return format_telegram_report(*args, **kwargs)
 
 
 # ==============================================================================
