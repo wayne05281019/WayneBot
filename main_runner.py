@@ -1,9 +1,9 @@
 """
-main_runner.py - WayneBot Phase 10 全系統非同步總控排程器 (智慧雙模版)
+main_runner.py - WayneBot Phase 10 全系統非同步總控排程器 (完整數據流水線版)
 功能：
 1. 自動環境感應：
-   - GitHub Actions 環境：自動切換為「單次批次模式」，海選推播後立即安全退出 (0 錯誤)。
-   - Render / 生產環境：維持 24H 常駐監聽、Port 10000 防休眠 Web 伺服器與 16:30 定時排程。
+   - GitHub Actions 環境：自動執行「行情同步 (wayne_market_db) -> CaryBot 海選 -> Telegram 推播」，完成後安全退出 (0 錯誤)。
+   - Render / 生產環境：維持 24H 常駐監聽、Port 10000 防休眠 Web 伺服器與 16:30 定時自動同步海選。
 2. Graceful Shutdown：捕捉 SIGINT / SIGTERM，安全切斷連線並執行 SQLite WAL Checkpoint (TRUNCATE)。
 """
 
@@ -60,8 +60,29 @@ class MasterRunner:
         except Exception as e:
             logger.error(f"❌ [Database] WAL Checkpoint 執行失敗: {e}")
 
+    def sync_market_data_if_needed(self):
+        """同步盤後行情資料庫 (呼叫 wayne_market_db 抓取全市場 2,233 檔最新行情)"""
+        logger.info("📥 [Database] 正在檢查並同步全市場行情資料庫...")
+        try:
+            import wayne_market_db
+            for func_name in ["update_market_data", "sync_daily_data", "update_daily_quotes", "fetch_market_data", "main"]:
+                if hasattr(wayne_market_db, func_name):
+                    func = getattr(wayne_market_db, func_name)
+                    logger.info(f"🔄 [Database] 正在執行 wayne_market_db.{func_name}()...")
+                    try:
+                        func(self.db_path)
+                    except TypeError:
+                        func()
+                    logger.info("✅ [Database] 全市場行情資料庫同步完成！")
+                    return True
+        except ImportError:
+            logger.warning("⚠️ [Database] 未找到 wayne_market_db 模組，直接使用現有資料庫。")
+        except Exception as e:
+            logger.error(f"❌ [Database] 同步行情資料時發生異常: {e}")
+        return False
+
     def send_telegram_direct(self, text: str):
-        """直接透過 Telegram HTTP API 發送訊息 (適用於 GitHub Actions 單次推播)"""
+        """直接透過 Telegram HTTP API 發送訊息"""
         if not self.tg_bot_token or not self.tg_chat_id:
             logger.warning("⚠️ [Telegram] 未設定 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID，跳過發送。")
             return
@@ -74,32 +95,35 @@ class MasterRunner:
         try:
             resp = requests.post(url, json=payload, timeout=20)
             if resp.status_code == 200:
-                logger.info("📢 [Telegram] GitHub Actions 批次推播成功發送！")
+                logger.info("📢 [Telegram] 批次推播成功發送！")
             else:
                 logger.error(f"❌ [Telegram] 推播失敗 HTTP {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"❌ [Telegram] 發送請求異常: {e}")
 
     # ------------------------------------------------------------------
-    # 模式 A：GitHub Actions 單次批次海選推播流水線
+    # 模式 A：GitHub Actions 單次批次流水線
     # ------------------------------------------------------------------
     def run_github_actions_batch(self):
-        logger.info("⚡ [WayneBot] 偵測到 GitHub Actions 自動化環境，啟動【單次批次流水線】...")
+        logger.info("⚡ [WayneBot] 偵測到 GitHub Actions 自動化環境，啟動【全市場量化流水線】...")
         
-        # 1. 執行海選運算
+        # 1. 抓取全市場 2,233 檔最新行情並寫入資料庫
+        self.sync_market_data_if_needed()
+        
+        # 2. 執行 CaryBot 海選校準掃描
         logger.info("🔍 [Screening] 正在執行 CaryBot 全市場起漲第 1 天海選掃描...")
         results = self.screening_engine.run_full_market_screening()
         
-        # 2. 產出排版報表
+        # 3. 產出排版報表
         report_text = format_telegram_report(results)
         print("\n" + "=" * 50)
         print(report_text)
         print("=" * 50 + "\n")
         
-        # 3. 發送 Telegram
+        # 4. 發送 Telegram 報表
         self.send_telegram_direct(report_text)
         
-        # 4. 執行資料庫 Checkpoint 並安全退出
+        # 5. 執行 WAL Checkpoint 並安全退出
         self.execute_wal_checkpoint()
         logger.info("🏁 [WayneBot] GitHub Actions 批次任務順利完成，安全退出。")
         sys.exit(0)
@@ -163,6 +187,9 @@ class MasterRunner:
                 if current_time >= target_time and last_executed_date != today_str:
                     logger.info("🎯 [Scheduler] 觸發 16:30 盤後官方增量更新與 CaryBot 海選運算...")
                     loop = asyncio.get_running_loop()
+                    # 1. 盤後資料同步
+                    await loop.run_in_executor(None, self.sync_market_data_if_needed)
+                    # 2. 海選掃描
                     results = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
                     report = format_telegram_report(results)
                     self.send_telegram_direct(report)
@@ -204,12 +231,10 @@ class MasterRunner:
 def main():
     runner = MasterRunner()
 
-    # 關鍵判斷：若在 GitHub Actions 環境或帶有 --once 參數，執行單次批次模式
     if os.getenv("GITHUB_ACTIONS") == "true" or "--once" in sys.argv or "--batch" in sys.argv:
         runner.run_github_actions_batch()
         return
 
-    # 否則在 Render / 本機執行 24H 常駐調度
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
