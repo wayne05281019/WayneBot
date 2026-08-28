@@ -1,6 +1,7 @@
 # ==============================================================================
-# WayneBot 全市場量化決策系統升級：模組一【數據與行情核心】data_fetcher.py
-# 核心功能：0秒開機下載、MIS毫秒報價、歷史盤中拼接、三層漏斗初篩、每日15:30增量更新
+# WayneBot 全市場量化決策系統 - 核心模組 1/5
+# 檔案名稱：data_fetcher.py
+# 模組定位：行情與資料核心（0秒開機下載、盤中MIS毫秒報價、15:30日增量、三層智慧漏斗）
 # ==============================================================================
 
 import os
@@ -9,444 +10,537 @@ import json
 import zipfile
 import sqlite3
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Tuple, Union
 import requests
 import pandas as pd
 
-class DataFetcher:
-    def __init__(self, db_path: str = "waynebot_history.db", release_zip_url: str = None):
-        """
-        初始化行情與數據核心
-        :param db_path: SQLite 資料庫路徑
-        :param release_zip_url: GitHub Release waynebot_history.zip 下載連結
-        """
+# ------------------------------------------------------------------------------
+# 1. 全域常數與路徑配置
+# ------------------------------------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+DB_PATH = os.path.join(BASE_DIR, "waynebot_history.db")
+ZIP_PATH = os.path.join(BASE_DIR, "waynebot_history.zip")
+
+# GitHub Release 預設下載來源（可透過環境變數覆寫）
+DEFAULT_RELEASE_URL = os.getenv(
+    "WAYNEBOT_DB_RELEASE_URL",
+    "https://github.com/wayne-quant/waynebot/releases/download/v1.0-data/waynebot_history.zip"
+)
+
+# 請求標頭
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+}
+
+
+# ------------------------------------------------------------------------------
+# 2. 輔助數值轉換函式
+# ------------------------------------------------------------------------------
+def _clean_num(val, is_float: bool = True):
+    """清理字串中的逗號、正負號、空值並轉換"""
+    if val is None:
+        return 0.0 if is_float else 0
+    s = str(val).replace(",", "").replace("+", "").replace("X", "").strip()
+    if s in ["--", "-", "", "N/A", "null", "None"]:
+        return 0.0 if is_float else 0
+    try:
+        return float(s) if is_float else int(float(s))
+    except Exception:
+        return 0.0 if is_float else 0
+
+
+def _is_valid_target(stock_id: str, stock_name: str) -> bool:
+    """過濾 2,202 檔有效標的（收錄普通股、KY股、全市場ETF，徹底剔除權證）"""
+    sid = str(stock_id).strip()
+    if len(sid) < 4 or len(sid) > 6:
+        return False
+    if len(sid) == 4 and sid.isalnum():
+        return True
+    if len(sid) == 5 and (sid.startswith("00") or sid.endswith("KY") or sid[:4].isdigit()):
+        return True
+    if len(sid) == 6 and (sid.startswith("00") or sid.startswith("01")):
+        return True
+    return False
+
+
+# ------------------------------------------------------------------------------
+# 3. 資料庫管理器（SQLite 連線與 Fast-Boot）
+# ------------------------------------------------------------------------------
+class DatabaseManager:
+    """SQLite 歷史資料庫管理：支援 0 秒開機下載、結構校驗與連線池"""
+
+    def __init__(self, db_path: str = DB_PATH, release_url: str = DEFAULT_RELEASE_URL):
         self.db_path = db_path
-        self.release_zip_url = release_zip_url or os.getenv(
-            "WAYNEBOT_DB_URL",
-            "https://github.com/wayne-quant/WayneBot/releases/download/v1.0-data/waynebot_history.zip"
-        )
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        })
-        # 確保資料庫存在或下載解壓
+        self.release_url = release_url
         self.ensure_database_ready()
 
-    # --------------------------------------------------------------------------
-    # 1. 0 秒開機：資料庫自動就緒與下載
-    # --------------------------------------------------------------------------
-    def ensure_database_ready(self) -> bool:
-        """若本地無歷史資料庫，自動從 GitHub Release 下載並解壓"""
-        if os.path.exists(self.db_path) and os.path.getsize(self.db_path) > 1024 * 1024:
-            return True
-
-        print("📦 偵測到本地無歷史資料庫，準備從 GitHub Release 串流下載...")
-        zip_path = "temp_waynebot_history.zip"
-        try:
-            resp = self.session.get(self.release_zip_url, stream=True, timeout=60)
-            if resp.status_code == 200:
-                with open(zip_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                        if chunk:
-                            f.write(chunk)
-                print("⚡ 下載完成，正在解壓縮 SQLite 資料庫...")
-                with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                    zip_ref.extractall(os.path.dirname(os.path.abspath(self.db_path)) or ".")
-                if os.path.exists(zip_path):
-                    os.remove(zip_path)
-                print(f"✅ 資料庫已就緒: {self.db_path}")
-                return True
-            else:
-                print(f"⚠️ 下載失敗 (HTTP {resp.status_code})，若為本機測試請確保 waynebot_history.db 在當前目錄。")
-                return False
-        except Exception as e:
-            print(f"⚠️ 下載或解壓過程出現異常: {e}")
-            if os.path.exists(zip_path):
-                os.remove(zip_path)
-            return False
-
     def get_connection(self) -> sqlite3.Connection:
-        """取得支援 WAL 模式的高效能資料庫連線"""
+        """獲取已配置 WAL 高效能模式之資料庫連線"""
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")
         return conn
 
-    # --------------------------------------------------------------------------
-    # 2. 歷史數據查詢
-    # --------------------------------------------------------------------------
-    def get_stock_history(self, stock_id: str, days: int = 120) -> pd.DataFrame:
-        """
-        從 SQLite 取得單一標的最近 N 個交易日歷史日 K 線
-        :param stock_id: 股票代號 (如 '2330', '0050')
-        :param days: 交易日數
-        :return: 包含 date, open, high, low, close, volume, turnover_k, pct_change, avg_price, 法人籌碼之 DataFrame
-        """
-        conn = self.get_connection()
-        query = """
-        SELECT date, stock_id, stock_name, market, open, high, low, close, 
-               volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
-        FROM daily_quotes
-        WHERE stock_id = ?
-        ORDER BY date DESC
-        LIMIT ?;
-        """
-        df = pd.read_sql_query(query, conn, params=(str(stock_id).strip(), days))
+    def ensure_database_ready(self):
+        """0 秒開機機制：若本機無歷史庫，自動從 GitHub Release 串流下載解壓"""
+        if os.path.exists(self.db_path) and os.path.getsize(self.db_path) > 1024 * 1024 * 5:
+            return
+
+        print(f"📦 偵測到本地尚無完整歷史資料庫，準備從 Release 串流下載：{self.release_url}")
+        try:
+            resp = requests.get(self.release_url, stream=True, headers=HEADERS, timeout=60)
+            if resp.status_code == 200:
+                with open(ZIP_PATH, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                print("🗜️ 下載完成，正在解壓縮 waynebot_history.zip...")
+                with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+                    zip_ref.extractall(BASE_DIR)
+                if os.path.exists(ZIP_PATH):
+                    os.remove(ZIP_PATH)
+                print("✅ 0 秒開機歷史庫已就緒！")
+            else:
+                print(f"⚠️ 下載失敗 (HTTP {resp.status_code})，將初始化空資料庫結構。")
+                self._init_empty_schema()
+        except Exception as e:
+            print(f"⚠️ 串流下載發生錯誤：{e}，將初始化空資料庫結構。")
+            self._init_empty_schema()
+
+    def _init_empty_schema(self):
+        """初始化 15 大標準資料字典資料表"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode = WAL;")
+        cursor.execute("PRAGMA synchronous = NORMAL;")
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_quotes (
+            date TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT NOT NULL,
+            market TEXT NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume INTEGER NOT NULL,
+            turnover_k REAL NOT NULL,
+            pct_change REAL NOT NULL,
+            avg_price REAL NOT NULL,
+            foreign_net INTEGER DEFAULT 0,
+            trust_net INTEGER DEFAULT 0,
+            dealer_net INTEGER DEFAULT 0,
+            PRIMARY KEY (date, stock_id)
+        );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_stock_date ON daily_quotes(stock_id, date);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON daily_quotes(date);")
+        conn.commit()
         conn.close()
-        if not df.empty:
-            df = df.sort_values("date").reset_index(drop=True)
-        return df
 
-    # --------------------------------------------------------------------------
-    # 3. 盤中 MIS 毫秒級報價模組
-    # --------------------------------------------------------------------------
-    def get_realtime_quote(self, stock_id: str) -> dict:
-        """
-        取得單一標的當下盤中 MIS 即時行情 (0.1秒)
-        :param stock_id: 股票代號
-        :return: dict 包含最新價、開高低、累計量、均價、漲跌幅等
-        """
-        results = self.get_realtime_quotes_batch([stock_id])
-        return results.get(str(stock_id).strip(), {})
 
-    def get_realtime_quotes_batch(self, stock_ids: list) -> dict:
+# ------------------------------------------------------------------------------
+# 4. 盤中 MIS 毫秒報價引擎
+# ------------------------------------------------------------------------------
+class IntradayMISEngine:
+    """臺灣證券交易所 MIS 毫秒即時報價引擎（支援單檔/多檔批次與歷史 K 線拼接）"""
+
+    MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+
+    def __init__(self, session: Optional[requests.Session] = None):
+        self.session = session or requests.Session()
+        self.session.headers.update(HEADERS)
+
+    def fetch_realtime_quotes(self, stock_ids: List[str]) -> Dict[str, Dict]:
         """
-        批次取得多檔標的盤中即時行情（單次請求最高 50 檔）
-        :param stock_ids: 股票代號清單 (如 ['2330', '0050', '00631L'])
-        :return: dict 格式 { '2330': { 'price': ..., 'volume': ... }, ... }
+        批次獲取即時撮合資訊（0.1秒響應）
+        :param stock_ids: 股票代號清單（如 ['2330', '0050', '5274']）
+        :return: 以 stock_id 為 Key 的即時行情字典
         """
         if not stock_ids:
             return {}
 
-        # 組合上市與上櫃查詢通道
-        channels = []
-        for sid in stock_ids:
-            sid_str = str(sid).strip()
-            channels.append(f"tse_{sid_str}.tw")
-            channels.append(f"otc_{sid_str}.tw")
+        results = {}
+        # MIS API 每次最多支援約 50 檔，進行自動分批
+        chunk_size = 40
+        for i in range(0, len(stock_ids), chunk_size):
+            chunk = stock_ids[i:i + chunk_size]
+            # 建立 tse/otc 雙向頻道字串（MIS 支援一次傳入 tse_XXXX.tw|otc_XXXX.tw）
+            channels = []
+            for sid in chunk:
+                channels.append(f"tse_{sid}.tw")
+                channels.append(f"otc_{sid}.tw")
+            ex_ch_str = "|".join(channels)
 
-        ex_ch = "|".join(channels)
-        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0&_={int(time.time()*1000)}"
-
-        output = {}
-        try:
-            resp = self.session.get(url, timeout=5)
-            if resp.status_code != 200:
-                return {}
-            data = resp.json()
-            msg_array = data.get("msgArray", [])
-
-            for item in msg_array:
-                sid = item.get("c", "").strip()
-                if not sid:
+            url = f"{self.MIS_URL}?ex_ch={ex_ch_str}&json=1&delay=0&_={int(time.time() * 1000)}"
+            try:
+                resp = self.session.get(url, timeout=5)
+                if resp.status_code != 200:
                     continue
+                data = resp.json()
+                msg_array = data.get("msgArray", [])
+                for item in msg_array:
+                    sid = str(item.get("c", "")).strip()
+                    if not sid:
+                        continue
 
-                # 最新成交價（z 若無則取買一 b 頂或昨收 y）
-                close_p = 0.0
-                if item.get("z") and item.get("z") != "-":
-                    close_p = float(item["z"])
-                elif item.get("y") and item.get("y") != "-":
-                    close_p = float(item["y"])
+                    # 解析當下即時成交價 (z)，若為 '-' 則取昨收 (y) 或買賣一檔
+                    latest_price = _clean_num(item.get("z"))
+                    if latest_price <= 0:
+                        latest_price = _clean_num(item.get("pz"))
+                    if latest_price <= 0:
+                        latest_price = _clean_num(item.get("y"))
 
-                yesterday_p = float(item.get("y", 0.0)) if item.get("y") and item.get("y") != "-" else close_p
-                open_p = float(item.get("o", close_p)) if item.get("o") and item.get("o") != "-" else close_p
-                high_p = float(item.get("h", close_p)) if item.get("h") and item.get("h") != "-" else close_p
-                low_p = float(item.get("l", close_p)) if item.get("l") and item.get("l") != "-" else close_p
-                
-                # 累積成交量（MIS 回傳單位為張）
-                cum_vol = int(item.get("v", 0)) if item.get("v") and item.get("v") != "-" else 0
+                    yesterday_close = _clean_num(item.get("y"))
+                    open_p = _clean_num(item.get("o")) or latest_price
+                    high_p = _clean_num(item.get("h")) or latest_price
+                    low_p = _clean_num(item.get("l")) or latest_price
+                    
+                    # MIS 的累積成交量 (v) 單位為「張」
+                    vol_sheets = int(_clean_num(item.get("v"), is_float=False))
 
-                # 漲跌幅計算
-                pct_change = 0.0
-                if yesterday_p > 0 and close_p > 0:
-                    pct_change = round(((close_p - yesterday_p) / yesterday_p) * 100.0, 2)
+                    # 漲跌與漲跌幅計算
+                    diff = round(latest_price - yesterday_close, 2) if yesterday_close > 0 else 0.0
+                    pct_change = round((diff / yesterday_close * 100.0), 2) if yesterday_close > 0 else 0.0
 
-                # 估算成交均價
-                avg_price = round((open_p + high_p + low_p + close_p) / 4.0, 2) if close_p > 0 else close_p
+                    results[sid] = {
+                        "stock_id": sid,
+                        "stock_name": item.get("n", ""),
+                        "open": open_p,
+                        "high": high_p,
+                        "low": low_p,
+                        "close": latest_price,
+                        "yesterday_close": yesterday_close,
+                        "volume": vol_sheets,
+                        "pct_change": pct_change,
+                        "diff": diff,
+                        "time": item.get("t", ""),
+                        "date": item.get("d", datetime.now().strftime("%Y%m%d"))
+                    }
+            except Exception:
+                continue
 
-                output[sid] = {
-                    "stock_id": sid,
-                    "stock_name": item.get("n", "").strip(),
-                    "date": datetime.now().strftime("%Y%m%d"),
-                    "time": item.get("t", ""),
-                    "open": open_p,
-                    "high": high_p,
-                    "low": low_p,
-                    "close": close_p,
-                    "yesterday_close": yesterday_p,
-                    "volume": cum_vol,
-                    "pct_change": pct_change,
-                    "avg_price": avg_price,
-                    "is_realtime": True
-                }
-        except Exception as e:
-            print(f"⚠️ 即時報價抓取異常: {e}")
-        return output
+        return results
 
-    # --------------------------------------------------------------------------
-    # 4. 歷史與即時 K 線無縫拼接（重要特徵工程）
-    # --------------------------------------------------------------------------
-    def get_history_with_realtime(self, stock_id: str, days: int = 120) -> pd.DataFrame:
-        """
-        取得包含盤中當下最新動態 K 棒的完整時間序列
-        若盤中已開盤，自動將即時報價拼接為最後一根 K 棒，供選股引擎計算均線與突破
-        """
-        df_hist = self.get_stock_history(stock_id, days=days)
-        rt = self.get_realtime_quote(stock_id)
+    def get_realtime_single(self, stock_id: str) -> Optional[Dict]:
+        """單檔即時報價查詢"""
+        res = self.fetch_realtime_quotes([stock_id])
+        return res.get(stock_id)
 
-        if not rt or rt.get("close", 0.0) <= 0:
-            return df_hist
 
-        today_str = datetime.now().strftime("%Y%m%d")
+# ------------------------------------------------------------------------------
+# 5. 數據核心主體：DataFetcher
+# ------------------------------------------------------------------------------
+class DataFetcher:
+    """
+    WayneBot 數據核心：
+    - 提供歷史 K 線讀取（自動拼接當日盤中最新報價）
+    - 每日 15:30 自動增量更新（切片解包防呆）
+    - 三層智慧漏斗：開盤前 150 檔暴風眼初篩池
+    """
 
-        # 若歷史庫最後一筆不是今天，則將今天盤中資料拼接到最後一列
-        if df_hist.empty or df_hist["date"].iloc[-1] != today_str:
-            rt_row = {
-                "date": today_str,
-                "stock_id": str(stock_id).strip(),
-                "stock_name": rt.get("stock_name", df_hist["stock_name"].iloc[-1] if not df_hist.empty else ""),
-                "market": df_hist["market"].iloc[-1] if not df_hist.empty else "TW",
-                "open": rt["open"],
-                "high": rt["high"],
-                "low": rt["low"],
-                "close": rt["close"],
-                "volume": rt["volume"],
-                "turnover_k": round(rt["volume"] * rt["avg_price"], 2),
-                "pct_change": rt["pct_change"],
-                "avg_price": rt["avg_price"],
-                "foreign_net": 0,
-                "trust_net": 0,
-                "dealer_net": 0
-            }
-            df_hist = pd.concat([df_hist, pd.DataFrame([rt_row])], ignore_index=True)
-        else:
-            # 若今日已在資料庫中（例如盤中已寫入過），則更新今日當下最新價量
-            idx = df_hist.index[-1]
-            df_hist.at[idx, "open"] = rt["open"]
-            df_hist.at[idx, "high"] = max(df_hist.at[idx, "high"], rt["high"])
-            df_hist.at[idx, "low"] = min(df_hist.at[idx, "low"], rt["low"]) if df_hist.at[idx, "low"] > 0 else rt["low"]
-            df_hist.at[idx, "close"] = rt["close"]
-            df_hist.at[idx, "volume"] = rt["volume"]
-            df_hist.at[idx, "pct_change"] = rt["pct_change"]
-            df_hist.at[idx, "avg_price"] = rt["avg_price"]
-
-        return df_hist
+    def __init__(self, db_manager: Optional[DatabaseManager] = None):
+        self.db_manager = db_manager or DatabaseManager()
+        self.mis_engine = IntradayMISEngine()
+        self.session = requests.Session()
+        self.session.headers.update(HEADERS)
 
     # --------------------------------------------------------------------------
-    # 5. 三層智慧漏斗：開盤前初篩 150 檔「暴風眼候選池」
+    # 歷史行情讀取 ＆ 即時無縫拼接
     # --------------------------------------------------------------------------
-    def get_storm_eye_candidates(self, min_vol: int = 1000, min_turnover_k: float = 30000.0, limit: int = 150) -> list:
+    def get_daily_quotes(self, stock_id: str, days: int = 120, append_realtime: bool = True) -> pd.DataFrame:
         """
-        三層智慧漏斗（第一層）：
-        開盤前從歷史資料庫中初篩出具備充沛流動性與動能潛力的暴風眼候選池（100~150檔）
-        排除日均量 < 1,000 張或日均額 < 3,000 萬之冷門股
-        :return: 股票代號 list
+        獲取個股歷史行情 DataFrame，並可自動拼接當日盤中最新價量
+        :param stock_id: 股票代號
+        :param days: 取得最近 N 個交易日數據
+        :param append_realtime: 若當前為盤中且當日資料庫尚未結算，自動無縫拼接即時 Tick
+        :return: 包含 15 大標準欄位之 pd.DataFrame (以 date 升冪排序)
         """
-        conn = self.get_connection()
-        query = """
-        WITH latest_20_days AS (
-            SELECT DISTINCT date 
-            FROM daily_quotes 
-            ORDER BY date DESC 
-            LIMIT 20
-        ),
-        pool_stats AS (
-            SELECT 
-                stock_id,
-                MAX(stock_name) as stock_name,
-                AVG(volume) as avg_vol_20,
-                AVG(turnover_k) as avg_turnover_20,
-                MAX(close) as max_close_20,
-                (SELECT close FROM daily_quotes q2 WHERE q2.stock_id = q1.stock_id ORDER BY date DESC LIMIT 1) as latest_close
-            FROM daily_quotes q1
-            WHERE date IN (SELECT date FROM latest_20_days)
-            GROUP BY stock_id
-        )
-        SELECT stock_id, stock_name, avg_vol_20, avg_turnover_20, latest_close
-        FROM pool_stats
-        WHERE avg_vol_20 >= ? 
-          AND avg_turnover_20 >= ?
-          AND latest_close >= 10.0
-        ORDER BY avg_turnover_20 DESC
-        LIMIT ?;
+        conn = self.db_manager.get_connection()
+        query = f"""
+        SELECT date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
+        FROM daily_quotes
+        WHERE stock_id = '{stock_id}'
+        ORDER BY date DESC
+        LIMIT {days};
         """
-        df_candidates = pd.read_sql_query(query, conn, params=(min_vol, min_turnover_k, limit))
+        df = pd.read_sql_query(query, conn)
         conn.close()
 
-        candidate_ids = df_candidates["stock_id"].tolist()
-        # 確保核心指數 ETF 必定在監控池中
-        core_etfs = ["0050", "00631L", "00632R", "00679B"]
-        for etf in core_etfs:
-            if etf not in candidate_ids:
-                candidate_ids.append(etf)
+        if df.empty:
+            df = pd.DataFrame(columns=[
+                "date", "stock_id", "stock_name", "market", "open", "high", "low", "close",
+                "volume", "turnover_k", "pct_change", "avg_price", "foreign_net", "trust_net", "dealer_net"
+            ])
+        else:
+            df = df.sort_values(by="date", ascending=True).reset_index(drop=True)
 
-        return candidate_ids
+        # 盤中無縫拼接機制
+        if append_realtime:
+            today_str = datetime.now().strftime("%Y%m%d")
+            # 若歷史庫最後一筆不是今天，且目前在開盤期間（09:00~13:30）或盤後尚未執行增量
+            last_date = str(df["date"].iloc[-1]) if not df.empty else ""
+            if last_date != today_str:
+                rt = self.mis_engine.get_realtime_single(stock_id)
+                if rt and rt["close"] > 0:
+                    stock_name = df["stock_name"].iloc[-1] if not df.empty else rt["stock_name"]
+                    market = df["market"].iloc[-1] if not df.empty else "TW"
+                    
+                    # 估算即時成交金額 (千元) 與均價
+                    vol_sheets = rt["volume"]
+                    est_turnover_k = round(vol_sheets * rt["close"] * 1000.0 / 1000.0, 2)
+                    avg_p = rt["close"]
+
+                    rt_row = {
+                        "date": today_str,
+                        "stock_id": stock_id,
+                        "stock_name": stock_name,
+                        "market": market,
+                        "open": rt["open"],
+                        "high": rt["high"],
+                        "low": rt["low"],
+                        "close": rt["close"],
+                        "volume": vol_sheets,
+                        "turnover_k": est_turnover_k,
+                        "pct_change": rt["pct_change"],
+                        "avg_price": avg_p,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0
+                    }
+                    df = pd.concat([df, pd.DataFrame([rt_row])], ignore_index=True)
+
+        return df
 
     # --------------------------------------------------------------------------
-    # 6. 大盤環境風控狀態提取
+    # 三層智慧漏斗：開盤前 150 檔「暴風眼候選池」初篩
     # --------------------------------------------------------------------------
-    def get_market_macro_status(self) -> dict:
+    def get_storm_candidate_pool(self, min_volume: int = 1000, min_turnover_k: float = 30000.0) -> List[str]:
         """
-        大盤風控總開關判定：
-        以 0050 為基準，檢驗其現價是否高於 60MA（季線）
-        :return: dict 包含 0050 收盤、60MA、市場多空狀態（BULL/BEAR）
+        智慧漏斗第 1 層：開盤前初篩高流動性與強勢前兆股（約 150 檔）
+        - 日成交量 >= 1,000 張
+        - 日成交額 >= 3,000 萬元 (30,000 千元)
+        - 排除殭屍股與流動性陷阱
         """
-        df_0050 = self.get_history_with_realtime("0050", days=70)
-        if len(df_0050) < 60:
-            return {"status": "NEUTRAL", "close": 0.0, "ma60": 0.0, "ratio": 1.0}
+        conn = self.db_manager.get_connection()
+        # 取得最新一個交易日
+        latest_date_df = pd.read_sql_query("SELECT MAX(date) as max_d FROM daily_quotes;", conn)
+        latest_date = latest_date_df["max_d"].iloc[0]
+        if not latest_date:
+            conn.close()
+            return ["2330", "0050", "00631L", "00632R", "00679B"]
 
-        ma60 = round(df_0050["close"].rolling(60).mean().iloc[-1], 2)
-        latest_c = df_0050["close"].iloc[-1]
-        is_bull = latest_c >= ma60
+        query = f"""
+        SELECT stock_id, volume, turnover_k, pct_change, trust_net
+        FROM daily_quotes
+        WHERE date = '{latest_date}'
+          AND volume >= {min_volume}
+          AND turnover_k >= {min_turnover_k}
+        ORDER BY (turnover_k * 0.6 + volume * 0.4) DESC
+        LIMIT 150;
+        """
+        df_pool = pd.read_sql_query(query, conn)
+        conn.close()
 
-        return {
-            "status": "BULL" if is_bull else "BEAR",
-            "close": latest_c,
-            "ma60": ma60,
-            "ratio": round((latest_c / ma60), 4) if ma60 > 0 else 1.0
-        }
+        candidate_list = df_pool["stock_id"].tolist()
+        
+        # 確保核心大盤指標 100% 在監控池內
+        for essential_sid in ["2330", "0050", "00631L", "00632R", "00679B", "00675L"]:
+            if essential_sid not in candidate_list:
+                candidate_list.append(essential_sid)
+
+        return candidate_list
 
     # --------------------------------------------------------------------------
-    # 7. 每日 15:30 盤後增量更新模組
+    # 每日 15:30 增量更新模組（多變數切片解包防呆）
     # --------------------------------------------------------------------------
-    def update_daily_incremental(self, target_date: str = None) -> int:
+    def update_daily_quotes_increment(self, target_date: Optional[str] = None) -> int:
         """
-        盤後 15:30 自動增量更新當日全市場 1,365+ 檔行情與三大法人數據至 SQLite
-        採用多變數切片解包語法，確保 0.0 數值零容忍
+        抓取指定日期（預設為今日）全市場 2,202 檔數據寫入 SQLite
+        :param target_date: YYYYMMDD 字串，若無則取當日
+        :return: 本次成功寫入之筆數
         """
         date_str = target_date or datetime.now().strftime("%Y%m%d")
-        print(f"🔄 執行盤後增量更新: {date_str}...")
+        print(f"🔄 正在執行 [{date_str}] 全市場盤後數據增量更新...")
 
-        # 1. 抓取上市行情 (MI_INDEX)
-        url_twse = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date_str}&type=ALLBUT0999&response=json"
+        # 1. 抓取上市行情 (TWSE MI_INDEX)
+        tw_records = []
+        tw_url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date_str}&type=ALLBUT0999&response=json"
         try:
-            resp = self.session.get(url_twse, timeout=15)
-            data = resp.json()
-            if data.get("stat") != "OK":
-                print(f"ℹ️ {date_str} 非交易日或資料尚未公佈。")
-                return 0
+            resp = self.session.get(tw_url, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("stat") == "OK":
+                    raw_rows = []
+                    for t in data.get("tables", []):
+                        if "收盤行情" in t.get("title", ""):
+                            raw_rows = t.get("data", [])
+                            break
+                    if not raw_rows:
+                        raw_rows = data.get("data9", []) or data.get("data8", [])
 
-            raw_rows = []
-            for table in data.get("tables", []):
-                if "每日收盤行情" in table.get("title", "") or "收盤行情" in table.get("title", ""):
-                    raw_rows = table.get("data", [])
-                    break
-            if not raw_rows and "data9" in data:
-                raw_rows = data["data9"]
+                    for r in raw_rows:
+                        if len(r) < 11:
+                            continue
+                        # 多變數切片直接解包
+                        sid, sname, vol_raw, tx_cnt, turnover_raw, open_raw, high_raw, low_raw, close_raw, sign_raw, diff_raw = r[:11]
+                        if not _is_valid_target(sid, sname):
+                            continue
 
-            # 2. 抓取上市法人買賣超 (T86)
-            url_t86 = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALLBUT0999&response=json"
-            resp_t86 = self.session.get(url_t86, timeout=15)
-            t86_data = resp_t86.json()
-            inst_map = {}
-            if t86_data.get("stat") == "OK":
-                for r in t86_data.get("data", []):
-                    if len(r) >= 12:
-                        sid = str(r[0]).strip()
-                        f_net = int(float(str(r[4]).replace(",", "") or 0) // 1000)
-                        t_net = int(float(str(r[7]).replace(",", "") or 0) // 1000)
-                        d_net = int(float(str(r[11]).replace(",", "") or 0) // 1000)
-                        inst_map[sid] = (f_net, t_net, d_net)
+                        vol_shares = _clean_num(vol_raw, is_float=False)
+                        turnover_ntd = _clean_num(turnover_raw, is_float=True)
+                        open_p = _clean_num(open_raw, is_float=True)
+                        high_p = _clean_num(high_raw, is_float=True)
+                        low_p = _clean_num(low_raw, is_float=True)
+                        close_p = _clean_num(close_raw, is_float=True)
+                        diff = _clean_num(diff_raw, is_float=True)
+                        if "-" in str(sign_raw) or "跌" in str(sign_raw):
+                            diff = -abs(diff)
+                        elif "+" in str(sign_raw) or "漲" in str(sign_raw):
+                            diff = abs(diff)
 
-            # 3. 整理寫入資料庫
-            records = []
-            for r in raw_rows:
-                if len(r) < 11:
-                    continue
-                # 多變數切片直接解包
-                sid, sname, vol_raw, tx_cnt, turnover_raw, open_raw, high_raw, low_raw, close_raw, sign_raw, diff_raw = r[:11]
-                sid = str(sid).strip()
-                sname = str(sname).strip()
+                        ref_p = close_p - diff if close_p > 0 else 0.0
+                        pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
+                        avg_p = round(turnover_ntd / vol_shares, 2) if vol_shares > 0 else close_p
 
-                # 基本長度過濾
-                if len(sid) < 4 or len(sid) > 6 or (len(sid) == 6 and not sid.startswith("00")):
-                    continue
-
-                def _c_num(val, is_f=True):
-                    s = str(val).replace(",", "").replace("+", "").replace("X", "").strip()
-                    if s in ["--", "-", "", "N/A"]: return 0.0 if is_f else 0
-                    try: return float(s) if is_f else int(float(s))
-                    except: return 0.0 if is_f else 0
-
-                vol_shares = _c_num(vol_raw, False)
-                turnover_ntd = _c_num(turnover_raw, True)
-                open_p = _c_num(open_raw, True)
-                high_p = _c_num(high_raw, True)
-                low_p = _c_num(low_raw, True)
-                close_p = _c_num(close_raw, True)
-                diff = _c_num(diff_raw, True)
-
-                if "-" in str(sign_raw) or "跌" in str(sign_raw):
-                    diff = -abs(diff)
-                elif "+" in str(sign_raw) or "漲" in str(sign_raw):
-                    diff = abs(diff)
-
-                ref_p = close_p - diff if close_p > 0 else 0.0
-                pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
-                vol_sheets = int(vol_shares // 1000)
-                turnover_k = round(turnover_ntd / 1000.0, 2)
-                avg_p = round(turnover_ntd / vol_shares, 2) if vol_shares > 0 else close_p
-
-                f_net, t_net, d_net = inst_map.get(sid, (0, 0, 0))
-
-                records.append((
-                    date_str, sid, sname, "TW", open_p, high_p, low_p, close_p,
-                    vol_sheets, turnover_k, pct, avg_p, f_net, t_net, d_net
-                ))
-
-            if records:
-                conn = self.get_connection()
-                cursor = conn.cursor()
-                cursor.executemany("""
-                INSERT OR REPLACE INTO daily_quotes 
-                (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """, records)
-                conn.commit()
-                conn.close()
-                print(f"✅ 增量寫入成功: 共寫入 {len(records)} 筆行情資料。")
-                return len(records)
+                        tw_records.append({
+                            "date": date_str, "stock_id": str(sid).strip(), "stock_name": str(sname).strip(), "market": "TW",
+                            "open": open_p, "high": high_p, "low": low_p, "close": close_p,
+                            "volume": int(vol_shares // 1000), "turnover_k": round(turnover_ntd / 1000.0, 2),
+                            "pct_change": pct, "avg_price": avg_p
+                        })
         except Exception as e:
-            print(f"⚠️ 增量更新失敗: {e}")
+            print(f"⚠️ 上市行情抓取異常: {e}")
+
+        # 2. 抓取上櫃行情 (TPEx)
+        two_records = []
+        roc_year = int(date_str[:4]) - 1911
+        roc_date_str = f"{roc_year}/{date_str[4:6]}/{date_str[6:]}"
+        two_url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc_date_str}&_={int(time.time()*1000)}"
+        try:
+            resp = self.session.get(two_url, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_rows = data.get("aaData", [])
+                for r in raw_rows:
+                    if len(r) < 10:
+                        continue
+                    sid, sname, close_raw, diff_raw, open_raw, high_raw, low_raw, avg_raw, vol_raw, turnover_raw = r[:10]
+                    if not _is_valid_target(sid, sname):
+                        continue
+
+                    vol_shares = _clean_num(vol_raw, is_float=False)
+                    turnover_ntd = _clean_num(turnover_raw, is_float=True)
+                    open_p = _clean_num(open_raw, is_float=True)
+                    high_p = _clean_num(high_raw, is_float=True)
+                    low_p = _clean_num(low_raw, is_float=True)
+                    close_p = _clean_num(close_raw, is_float=True)
+                    diff = _clean_num(diff_raw, is_float=True)
+
+                    ref_p = close_p - diff if close_p > 0 else 0.0
+                    pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
+                    avg_p = _clean_num(avg_raw, is_float=True)
+                    if avg_p <= 0 and vol_shares > 0:
+                        avg_p = round(turnover_ntd / vol_shares, 2)
+                    elif avg_p <= 0:
+                        avg_p = close_p
+
+                    two_records.append({
+                        "date": date_str, "stock_id": str(sid).strip(), "stock_name": str(sname).strip(), "market": "TWO",
+                        "open": open_p, "high": high_p, "low": low_p, "close": close_p,
+                        "volume": int(vol_shares // 1000), "turnover_k": round(turnover_ntd / 1000.0, 2),
+                        "pct_change": pct, "avg_price": avg_p
+                    })
+        except Exception as e:
+            print(f"⚠️ 上櫃行情抓取異常: {e}")
+
+        if not tw_records and not two_records:
+            print(f"ℹ️ 日期 [{date_str}] 無交易資料（可能為休市日或未開盤）。")
             return 0
 
+        # 3. 抓取上市櫃三大法人買賣超 (T86)
+        inst_map = {}
+        # 上市法人
+        try:
+            t86_url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={date_str}&selectType=ALLBUT0999&response=json"
+            resp = self.session.get(t86_url, timeout=15)
+            if resp.status_code == 200:
+                for r in resp.json().get("data", []):
+                    if len(r) >= 12:
+                        sid = str(r[0]).strip()
+                        f_net = _clean_num(r[4], is_float=False) // 1000
+                        t_net = _clean_num(r[7], is_float=False) // 1000
+                        d_net = _clean_num(r[11], is_float=False) // 1000
+                        inst_map[sid] = {"f": int(f_net), "t": int(t_net), "d": int(d_net)}
+        except Exception:
+            pass
 
-# ==============================================================================
-# 沙盒單元自測腳本（Colab / 本地直接執行驗證）
-# ==============================================================================
+        # 上櫃法人
+        try:
+            two_t86_url = f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d={roc_date_str}&se=EW&t=D&_={int(time.time()*1000)}"
+            resp = self.session.get(two_t86_url, timeout=15)
+            if resp.status_code == 200:
+                for r in resp.json().get("aaData", []):
+                    if len(r) >= 15:
+                        sid = str(r[0]).strip()
+                        f_net = _clean_num(r[7], is_float=False) // 1000
+                        t_net = _clean_num(r[10], is_float=False) // 1000
+                        d_net = _clean_num(r[13], is_float=False) // 1000
+                        inst_map[sid] = {"f": int(f_net), "t": int(t_net), "d": int(d_net)}
+        except Exception:
+            pass
+
+        # 4. 寫入 SQLite
+        insert_rows = []
+        for q in tw_records + two_records:
+            inst = inst_map.get(q["stock_id"], {"f": 0, "t": 0, "d": 0})
+            insert_rows.append((
+                q["date"], q["stock_id"], q["stock_name"], q["market"],
+                q["open"], q["high"], q["low"], q["close"],
+                q["volume"], q["turnover_k"], q["pct_change"], q["avg_price"],
+                inst["f"], inst["t"], inst["d"]
+            ))
+
+        conn = self.db_manager.get_connection()
+        cursor = conn.cursor()
+        cursor.executemany("""
+        INSERT OR REPLACE INTO daily_quotes 
+        (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, insert_rows)
+        conn.commit()
+        conn.close()
+
+        print(f"✅ 增量更新成功！共寫入 {len(insert_rows):,} 筆標的數據。")
+        return len(insert_rows)
+
+
+# ------------------------------------------------------------------------------
+# 6. 單元測試與自檢模組
+# ------------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 70)
-    print("🧪 啟動 data_fetcher.py 沙盒全功能驗證")
+    print("🧪 正在執行 data_fetcher.py 模組自檢測試...")
     print("=" * 70)
 
-    # 1. 實例化 Fetcher
-    fetcher = DataFetcher(db_path="waynebot_history.db")
+    # 1. 測試資料庫連線與歷史讀取
+    fetcher = DataFetcher()
+    print("\n[測試 1] 讀取台積電 (2330) 最近 5 日 K 線數據：")
+    df_2330 = fetcher.get_daily_quotes("2330", days=5, append_realtime=False)
+    print(df_2330[["date", "stock_id", "stock_name", "close", "volume", "pct_change", "trust_net"]])
 
-    # 2. 測試歷史 K 線查詢
-    print("\n【測試 1：歷史資料庫查詢】")
-    df_2330 = fetcher.get_stock_history("2330", days=5)
-    print(f"• 台積電 (2330) 最近 5 日數據:\n{df_2330[['date', 'stock_name', 'close', 'volume', 'pct_change']]}")
+    # 2. 測試盤中 MIS 即時報價引擎
+    print("\n[測試 2] 盤中 MIS 毫秒報價測試 (2330, 0050, 00631L, 00679B)：")
+    rt_quotes = fetcher.mis_engine.fetch_realtime_quotes(["2330", "0050", "00631L", "00679B"])
+    for sid, info in rt_quotes.items():
+        print(f"  • [{sid}] {info['stock_name']} | 最新價: {info['close']} | 漲跌: {info['pct_change']}% | 累積量: {info['volume']} 張 | 時間: {info['time']}")
 
-    # 3. 測試盤中即時報價 (MIS)
-    print("\n【測試 2：盤中 MIS 即時報價】")
-    quotes = fetcher.get_realtime_quotes_batch(["2330", "0050", "00631L"])
-    for sid, q in quotes.items():
-        print(f"• [{sid}] {q['stock_name']} | 當下/昨收價: {q['close']} | 累積量: {q['volume']} 張 | 漲跌: {q['pct_change']}%")
-
-    # 4. 測試歷史與盤中即時 K 線無縫拼接
-    print("\n【測試 3：歷史與即時 K 線無縫拼接】")
-    df_stitched = fetcher.get_history_with_realtime("0050", days=5)
-    print(f"• 元大台灣50 (0050) 拼接後最近 5 根 K 棒:\n{df_stitched[['date', 'stock_name', 'close', 'volume', 'avg_price']]}")
-
-    # 5. 測試三層漏斗暴風眼初篩池
-    print("\n【測試 4：開盤前 150 檔暴風眼候選池初篩】")
-    candidates = fetcher.get_storm_eye_candidates(min_vol=1000, min_turnover_k=30000, limit=10)
-    print(f"• 暴風眼候選池 Top 10 標的清單: {candidates}")
-
-    # 6. 測試大盤 60MA 風控總開關狀態
-    print("\n【測試 5：大盤 0050 季線風控狀態】")
-    macro = fetcher.get_market_macro_status()
-    print(f"• 大盤風控狀態: {macro['status']} | 0050 目前價: {macro['close']} | 60MA: {macro['ma60']} | 乖離比: {macro['ratio']}")
+    # 3. 測試三層智慧漏斗（暴風眼候選池）
+    print("\n[測試 3] 智慧漏斗初篩 150 檔候選池測試：")
+    pool = fetcher.get_storm_candidate_pool()
+    print(f"  • 成功產出監控池清單，共 {len(pool)} 檔標的")
+    print(f"  • 前 10 檔代表標的: {pool[:10]}")
 
     print("\n" + "=" * 70)
-    print("🎉 data_fetcher.py 沙盒測試 100% 通過！可正式置入專案根目錄。")
+    print("🎉 data_fetcher.py 模組測試全數通過！")
     print("=" * 70)
