@@ -1,655 +1,565 @@
 # ==============================================================================
-# WayneBot 全市場量化決策系統升級：模組三
+# WayneBot 全市場量化決策系統升級：模組三 - AI 模擬操盤手 ＆ 自選守護
 # 檔案名稱：portfolio_engine.py
-# 模組功能：50萬 AI 模擬操盤手、多用戶隔離、股海武僧紀律與自選即持股守護雷達
+# 適用環境：Google Colab / 本地沙盒獨立測試 ＆ 根目錄替換
 # ==============================================================================
 
 import os
+import json
 import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
+import pandas as pd
 
 # ------------------------------------------------------------------------------
-# 1. 費率與標準常數定義
+# 1. 交易成本與費率常數定義（依台股真實規範）
 # ------------------------------------------------------------------------------
-DEFAULT_CAPITAL = 500000.0       # 預設本金 50 萬元
-COMMISSION_RATE = 0.001425       # 券商手續費率 (0.1425%)
-COMMISSION_MIN = 20.0            # 手續費最低低消 20 元
-STOCK_TAX_RATE = 0.003           # 普通股證交稅率 (0.3%)
-ETF_TAX_RATE = 0.001             # ETF 證交稅率 (0.1%)
-DEFAULT_DISCOUNT = 0.6           # 電子下單預設 6 折手續費優惠
+DEFAULT_COMMISSION_RATE = 0.001425  # 手續費率 0.1425%
+DEFAULT_BROKER_DISCOUNT = 0.60      # 券商折讓 6 折
+MIN_COMMISSION_FEE = 20.0           # 單筆手續費最低 20 元
+STOCK_TAX_RATE = 0.003              # 股票證券交易稅 0.3%
+ETF_TAX_RATE = 0.001                # ETF 證券交易稅 0.1%
+
+DEFAULT_INITIAL_CAPITAL = 500000.0  # 預設 AI 操盤手起始本金：50 萬元
 
 # ------------------------------------------------------------------------------
-# 2. AI 模擬操盤與資產管理引擎
+# 2. 資料庫結構初始化（支援多用戶隔離、交易日誌與自選守護）
 # ------------------------------------------------------------------------------
-class PortfolioEngine:
+def init_portfolio_tables(conn: sqlite3.Connection):
+    """建立操盤手帳戶、持倉、交易紀錄與自選守護資料表"""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA journal_mode = WAL;")
+
+    # 1. 用戶資金帳戶表
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_accounts (
+        user_id TEXT PRIMARY KEY,
+        initial_capital REAL NOT NULL,
+        cash_balance REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
+    # 2. 用戶持倉明細表
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_portfolios (
+        user_id TEXT NOT NULL,
+        stock_id TEXT NOT NULL,
+        stock_name TEXT NOT NULL,
+        shares INTEGER NOT NULL,
+        avg_cost REAL NOT NULL,
+        total_cost REAL NOT NULL,
+        entry_date TEXT NOT NULL,
+        entry_reason TEXT,
+        highest_price_after_entry REAL DEFAULT 0.0,
+        stop_loss_price REAL DEFAULT 0.0,
+        trailing_stop_price REAL DEFAULT 0.0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, stock_id)
+    );
+    """)
+
+    # 3. 交易日誌流水表
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_trades (
+        trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        stock_id TEXT NOT NULL,
+        stock_name TEXT NOT NULL,
+        action TEXT NOT NULL, -- BUY / SELL / DIVIDEND
+        shares INTEGER NOT NULL,
+        price REAL NOT NULL,
+        fee REAL NOT NULL,
+        tax REAL NOT NULL,
+        net_amount REAL NOT NULL,
+        realized_pnl REAL DEFAULT 0.0,
+        note TEXT,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    # 4. 用戶自選守護表
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_watchlists (
+        user_id TEXT NOT NULL,
+        stock_id TEXT NOT NULL,
+        stock_name TEXT NOT NULL,
+        target_buy_low REAL DEFAULT 0.0,
+        target_buy_high REAL DEFAULT 0.0,
+        defense_price REAL DEFAULT 0.0,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, stock_id)
+    );
+    """)
+
+    conn.commit()
+
+# ------------------------------------------------------------------------------
+# 3. 交易費率精算引擎
+# ------------------------------------------------------------------------------
+def calculate_trade_fees(
+    action: str,
+    shares: int,
+    price: float,
+    is_etf: bool = False,
+    discount: float = DEFAULT_BROKER_DISCOUNT
+) -> Tuple[float, float, float]:
+    """
+    精算手續費、交易稅與總交割金額
+    買進總額 = 成交金額 + 手續費
+    賣出淨額 = 成交金額 - 手續費 - 證券交易稅
+    """
+    trade_value = float(shares) * price
+    # 手續費
+    raw_fee = trade_value * DEFAULT_COMMISSION_RATE * discount
+    fee = max(MIN_COMMISSION_FEE, round(raw_fee))
+
+    # 證券交易稅
+    if action.upper() == "SELL":
+        tax_rate = ETF_TAX_RATE if is_etf else STOCK_TAX_RATE
+        tax = round(trade_value * tax_rate)
+    else:
+        tax = 0.0
+
+    if action.upper() == "BUY":
+        net_amount = -(trade_value + fee)
+    else:
+        net_amount = trade_value - fee - tax
+
+    return fee, tax, net_amount
+
+# ------------------------------------------------------------------------------
+# 4. 操盤手核心業務邏輯管理器
+# ------------------------------------------------------------------------------
+class PortfolioManager:
     def __init__(self, db_path: str = "waynebot_history.db"):
         self.db_path = db_path
-        self._init_portfolio_tables()
+        self._ensure_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode = WAL;")
-        cursor.execute("PRAGMA synchronous = NORMAL;")
-        return conn
+    def _get_conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path)
 
-    def _init_portfolio_tables(self):
-        """初始化多用戶獨立之帳戶、持倉、交易紀錄與自選清單資料表"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
+    def _ensure_db(self):
+        with self._get_conn() as conn:
+            init_portfolio_tables(conn)
 
-        # 用戶帳戶資金表
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_accounts (
-            user_id TEXT PRIMARY KEY,
-            user_name TEXT DEFAULT '',
-            initial_capital REAL NOT NULL DEFAULT 500000.0,
-            cash_balance REAL NOT NULL DEFAULT 500000.0,
-            realized_pnl REAL NOT NULL DEFAULT 0.0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-        """)
-
-        # 用戶持倉部位表
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_positions (
-            user_id TEXT NOT NULL,
-            stock_id TEXT NOT NULL,
-            stock_name TEXT NOT NULL,
-            shares INTEGER NOT NULL,
-            cost_price REAL NOT NULL,
-            total_cost REAL NOT NULL,
-            entry_date TEXT NOT NULL,
-            entry_type TEXT NOT NULL DEFAULT '波段',
-            trailing_stop REAL NOT NULL DEFAULT 0.0,
-            warn_days INTEGER NOT NULL DEFAULT 0,
-            is_etf INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (user_id, stock_id)
-        );
-        """)
-
-        # 交易歷史紀錄表
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_trade_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            stock_id TEXT NOT NULL,
-            stock_name TEXT NOT NULL,
-            action TEXT NOT NULL,
-            shares INTEGER NOT NULL,
-            price REAL NOT NULL,
-            fee REAL NOT NULL,
-            tax REAL NOT NULL,
-            total_amount REAL NOT NULL,
-            realized_pnl REAL DEFAULT 0.0,
-            pnl_pct REAL DEFAULT 0.0,
-            trade_date TEXT NOT NULL,
-            reason TEXT DEFAULT ''
-        );
-        """)
-
-        # 用戶自選守護清單
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_watchlist (
-            user_id TEXT NOT NULL,
-            stock_id TEXT NOT NULL,
-            stock_name TEXT NOT NULL,
-            added_date TEXT NOT NULL,
-            tags TEXT DEFAULT '核心自選',
-            PRIMARY KEY (user_id, stock_id)
-        );
-        """)
-
-        conn.commit()
-        conn.close()
-
-    # --------------------------------------------------------------------------
-    # 帳戶核心與資金操作
-    # --------------------------------------------------------------------------
-    def get_or_create_account(self, user_id: str, user_name: str = "") -> dict:
-        """取得或建立使用者帳戶（保證 50 萬啟動）"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM user_accounts WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
+    def get_or_create_account(self, user_id: str, initial_capital: float = DEFAULT_INITIAL_CAPITAL) -> Dict[str, Any]:
+        """取得或建立指定 user_id 資金帳戶"""
+        user_id = str(user_id)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        if not row:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, initial_capital, cash_balance FROM user_accounts WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                return {"user_id": row[0], "initial_capital": row[1], "cash_balance": row[2]}
+            
             cursor.execute("""
-            INSERT INTO user_accounts (user_id, user_name, initial_capital, cash_balance, realized_pnl, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
-            """, (user_id, user_name, DEFAULT_CAPITAL, DEFAULT_CAPITAL, 0.0, now_str, now_str))
+            INSERT INTO user_accounts (user_id, initial_capital, cash_balance, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """, (user_id, initial_capital, initial_capital, now_str, now_str))
             conn.commit()
-            cursor.execute("SELECT * FROM user_accounts WHERE user_id = ?", (user_id,))
+            return {"user_id": user_id, "initial_capital": initial_capital, "cash_balance": initial_capital}
+
+    def buy(
+        self,
+        user_id: str,
+        stock_id: str,
+        stock_name: str,
+        shares: int,
+        price: float,
+        date_str: str,
+        is_etf: bool = False,
+        entry_reason: str = "量化訊號買進",
+        stop_loss_pct: float = 0.07
+    ) -> Dict[str, Any]:
+        """執行買進（支援整張與零股）"""
+        if shares <= 0 or price <= 0:
+            return {"status": "error", "message": "股數或價格必須大於 0"}
+
+        user_id = str(user_id)
+        stock_id = str(stock_id)
+        acct = self.get_or_create_account(user_id)
+        fee, tax, net_cash_delta = calculate_trade_fees("BUY", shares, price, is_etf)
+        required_cash = abs(net_cash_delta)
+
+        if acct["cash_balance"] < required_cash:
+            return {
+                "status": "error",
+                "message": f"可用現金不足！需 {required_cash:,.0f} 元，目前僅有 {acct['cash_balance']:,.0f} 元"
+            }
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            # 扣減現金
+            new_cash = acct["cash_balance"] - required_cash
+            cursor.execute("UPDATE user_accounts SET cash_balance = ?, updated_at = ? WHERE user_id = ?", (new_cash, now_str, user_id))
+
+            # 檢查是否已有部位（加碼/攤平計算）
+            cursor.execute("SELECT shares, total_cost, highest_price_after_entry FROM user_portfolios WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
             row = cursor.fetchone()
 
-        acc = dict(row)
-        conn.close()
-        return acc
+            stop_loss_price = round(price * (1.0 - stop_loss_pct), 2)
 
-    def reset_account(self, user_id: str, capital: float = DEFAULT_CAPITAL):
-        """重置指定用戶之模擬帳戶本金並清空持倉與歷史紀錄"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("UPDATE user_accounts SET initial_capital = ?, cash_balance = ?, realized_pnl = 0.0, updated_at = ? WHERE user_id = ?", (capital, capital, now_str, user_id))
-        cursor.execute("DELETE FROM user_positions WHERE user_id = ?", (user_id,))
-        cursor.execute("DELETE FROM user_trade_history WHERE user_id = ?", (user_id,))
-        conn.commit()
-        conn.close()
+            if row:
+                old_shares, old_total_cost, old_high = row
+                total_shares = old_shares + shares
+                total_cost = old_total_cost + required_cash
+                avg_cost = round(total_cost / total_shares, 2)
+                highest_price = max(old_high, price)
 
-    # --------------------------------------------------------------------------
-    # 交易稅費計算
-    # --------------------------------------------------------------------------
-    @staticmethod
-    def calculate_buy_cost(price: float, shares: int, discount: float = DEFAULT_DISCOUNT) -> Tuple[float, float]:
-        """計算買進總支出與手續費 (總額 = 股價*股數 + 手續費)"""
-        trade_val = price * shares
-        raw_fee = trade_val * COMMISSION_RATE * discount
-        fee = max(COMMISSION_MIN, round(raw_fee))
-        return trade_val + fee, fee
+                cursor.execute("""
+                UPDATE user_portfolios 
+                SET shares = ?, avg_cost = ?, total_cost = ?, highest_price_after_entry = ?, updated_at = ?
+                WHERE user_id = ? AND stock_id = ?
+                """, (total_shares, avg_cost, total_cost, highest_price, now_str, user_id, stock_id))
+            else:
+                total_shares = shares
+                avg_cost = round(required_cash / shares, 2)
+                total_cost = required_cash
+                highest_price = price
 
-    @staticmethod
-    def calculate_sell_proceeds(price: float, shares: int, is_etf: bool = False, discount: float = DEFAULT_DISCOUNT) -> Tuple[float, float, float]:
-        """計算賣出實收金額、手續費與證交稅 (實收 = 股價*股數 - 手續費 - 證交稅)"""
-        trade_val = price * shares
-        raw_fee = trade_val * COMMISSION_RATE * discount
-        fee = max(COMMISSION_MIN, round(raw_fee))
-        tax_rate = ETF_TAX_RATE if is_etf else STOCK_TAX_RATE
-        tax = round(trade_val * tax_rate)
-        proceeds = trade_val - fee - tax
-        return proceeds, fee, tax
+                cursor.execute("""
+                INSERT INTO user_portfolios 
+                (user_id, stock_id, stock_name, shares, avg_cost, total_cost, entry_date, entry_reason, highest_price_after_entry, stop_loss_price, trailing_stop_price, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (user_id, stock_id, stock_name, shares, avg_cost, total_cost, date_str, entry_reason, highest_price, stop_loss_price, stop_loss_price, now_str))
 
-    # --------------------------------------------------------------------------
-    # 買進與賣出操作 (支援整張與零股動態配置)
-    # --------------------------------------------------------------------------
-    def buy_stock(self, user_id: str, stock_id: str, stock_name: str, price: float, shares: int, entry_type: str = "波段", is_etf: bool = False, trailing_stop: float = 0.0, reason: str = "") -> Tuple[bool, str]:
-        """執行買進委託（自動扣除現金、加權平均成本、支援零股）"""
-        if shares <= 0 or price <= 0:
-            return False, "下單價格或股數必須大於 0"
-
-        acc = self.get_or_create_account(user_id)
-        total_cost, fee = self.calculate_buy_cost(price, shares)
-
-        if acc["cash_balance"] < total_cost:
-            return False, f"可用現金不足！需 {total_cost:,.0f} 元，目前僅剩 {acc['cash_balance']:,.0f} 元"
-
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        now_date = datetime.now().strftime("%Y-%m-%d")
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # 檢查是否已有該檔持倉
-        cursor.execute("SELECT * FROM user_positions WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
-        pos = cursor.fetchone()
-
-        if pos:
-            # 加碼：計算加權平均成本
-            old_shares = pos["shares"]
-            old_cost = pos["total_cost"]
-            new_shares = old_shares + shares
-            new_total_cost = old_cost + total_cost
-            new_cost_price = round(new_total_cost / new_shares, 2)
-            final_stop = max(pos["trailing_stop"], trailing_stop) if trailing_stop > 0 else pos["trailing_stop"]
-
+            # 寫入交易日誌
             cursor.execute("""
-            UPDATE user_positions 
-            SET shares = ?, cost_price = ?, total_cost = ?, trailing_stop = ?, is_etf = ?
-            WHERE user_id = ? AND stock_id = ?;
-            """, (new_shares, new_cost_price, new_total_cost, final_stop, 1 if is_etf else 0, user_id, stock_id))
-        else:
-            # 新建倉
-            cost_price = round(total_cost / shares, 2)
-            default_stop = round(price * 0.93, 2) if trailing_stop <= 0 else trailing_stop  # 預設 7% 停損
-            cursor.execute("""
-            INSERT INTO user_positions (user_id, stock_id, stock_name, shares, cost_price, total_cost, entry_date, entry_type, trailing_stop, warn_days, is_etf)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);
-            """, (user_id, stock_id, stock_name, shares, cost_price, total_cost, now_date, entry_type, default_stop, 1 if is_etf else 0))
+            INSERT INTO user_trades (user_id, date, stock_id, stock_name, action, shares, price, fee, tax, net_amount, realized_pnl, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, date_str, stock_id, stock_name, "BUY", shares, price, fee, tax, net_cash_delta, 0.0, entry_reason, now_str))
 
-        # 扣減帳戶現金
-        new_cash = acc["cash_balance"] - total_cost
-        cursor.execute("UPDATE user_accounts SET cash_balance = ?, updated_at = ? WHERE user_id = ?", (new_cash, now_time, user_id))
-
-        # 寫入歷史紀錄
-        cursor.execute("""
-        INSERT INTO user_trade_history (user_id, stock_id, stock_name, action, shares, price, fee, tax, total_amount, realized_pnl, pnl_pct, trade_date, reason)
-        VALUES (?, ?, ?, 'BUY', ?, ?, ?, 0.0, ?, 0.0, 0.0, ?, ?);
-        """, (user_id, stock_id, stock_name, shares, price, fee, total_cost, now_time, reason or entry_type))
-
-        conn.commit()
-        conn.close()
-        return True, f"成功買進 {stock_name} ({stock_id}) {shares:,} 股，均價 {price:.2f}，總成本 {total_cost:,.0f} 元"
-
-    def sell_stock(self, user_id: str, stock_id: str, price: float, shares: int, reason: str = "紀律平倉") -> Tuple[bool, str]:
-        """執行賣出委託（計算已實現損益、退回現金、清除或減持部位）"""
-        if shares <= 0 or price <= 0:
-            return False, "賣出價格或股數必須大於 0"
-
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM user_positions WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
-        pos = cursor.fetchone()
-
-        if not pos:
-            conn.close()
-            return False, f"持倉中無此標的 ({stock_id})"
-
-        if pos["shares"] < shares:
-            conn.close()
-            return False, f"賣出股數 ({shares:,}) 超過現有持倉 ({pos['shares']:,} 股)"
-
-        is_etf = bool(pos["is_etf"])
-        proceeds, fee, tax = self.calculate_sell_proceeds(price, shares, is_etf=is_etf)
-
-        # 計算該批賣出部分對應的歷史成本
-        unit_cost = pos["total_cost"] / pos["shares"]
-        cost_sold = unit_cost * shares
-        realized_pnl = round(proceeds - cost_sold, 2)
-        pnl_pct = round((realized_pnl / cost_sold) * 100.0, 2) if cost_sold > 0 else 0.0
-
-        # 更新持倉
-        if pos["shares"] == shares:
-            cursor.execute("DELETE FROM user_positions WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
-        else:
-            remaining_shares = pos["shares"] - shares
-            remaining_cost = pos["total_cost"] - cost_sold
-            cursor.execute("""
-            UPDATE user_positions SET shares = ?, total_cost = ? WHERE user_id = ? AND stock_id = ?;
-            """, (remaining_shares, remaining_cost, user_id, stock_id))
-
-        # 更新帳戶資金與已實現損益
-        cursor.execute("SELECT * FROM user_accounts WHERE user_id = ?", (user_id,))
-        acc = dict(cursor.fetchone())
-        new_cash = acc["cash_balance"] + proceeds
-        new_pnl = acc["realized_pnl"] + realized_pnl
-        now_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        cursor.execute("""
-        UPDATE user_accounts SET cash_balance = ?, realized_pnl = ?, updated_at = ? WHERE user_id = ?;
-        """, (new_cash, new_pnl, now_time, user_id))
-
-        # 寫入歷史紀錄
-        cursor.execute("""
-        INSERT INTO user_trade_history (user_id, stock_id, stock_name, action, shares, price, fee, tax, total_amount, realized_pnl, pnl_pct, trade_date, reason)
-        VALUES (?, ?, ?, 'SELL', ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """, (user_id, stock_id, pos["stock_name"], shares, price, fee, tax, proceeds, realized_pnl, pnl_pct, now_time, reason))
-
-        conn.commit()
-        conn.close()
-        pnl_sign = "+" if realized_pnl >= 0 else ""
-        return True, f"成功賣出 {pos['stock_name']} ({stock_id}) {shares:,} 股，實收 {proceeds:,.0f} 元，損益 {pnl_sign}{realized_pnl:,.0f} ({pnl_sign}{pnl_pct:.2f}%)"
-
-    # --------------------------------------------------------------------------
-    # 自選清單管理 (Watchlist)
-    # --------------------------------------------------------------------------
-    def add_to_watchlist(self, user_id: str, stock_id: str, stock_name: str, tags: str = "自選守護") -> Tuple[bool, str]:
-        """加入自選守護雷達清單"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        now_date = datetime.now().strftime("%Y-%m-%d")
-        try:
-            cursor.execute("""
-            INSERT OR REPLACE INTO user_watchlist (user_id, stock_id, stock_name, added_date, tags)
-            VALUES (?, ?, ?, ?, ?);
-            """, (user_id, stock_id, stock_name, now_date, tags))
             conn.commit()
-            msg = f"成功將 {stock_name} ({stock_id}) 加入自選守護雷達"
-            success = True
-        except Exception as e:
-            msg = f"加入失敗: {e}"
-            success = False
-        conn.close()
-        return success, msg
-
-    def remove_from_watchlist(self, user_id: str, stock_id: str) -> Tuple[bool, str]:
-        """自選清單移除標的"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM user_watchlist WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
-        conn.commit()
-        conn.close()
-        return True, f"已將 ({stock_id}) 從自選清單移除"
-
-    def get_watchlist(self, user_id: str) -> List[dict]:
-        """取得用戶之自選清單"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM user_watchlist WHERE user_id = ? ORDER BY added_date DESC", (user_id,))
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return rows
-
-    # --------------------------------------------------------------------------
-    # 資產總覽與部位估值評估 (Portfolio Valuation)
-    # --------------------------------------------------------------------------
-    def evaluate_portfolio(self, user_id: str, current_quotes_map: Dict[str, dict]) -> dict:
-        """
-        計算用戶整體資產淨值與部位表現
-        current_quotes_map 格式: {'2330': {'close': 980.0, 'pct_change': 2.62, ...}}
-        """
-        acc = self.get_or_create_account(user_id)
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM user_positions WHERE user_id = ?", (user_id,))
-        positions = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-
-        total_market_val = 0.0
-        total_unrealized_pnl = 0.0
-        total_cost_basis = 0.0
-        pos_details = []
-
-        for p in positions:
-            sid = p["stock_id"]
-            quote = current_quotes_map.get(sid, {})
-            curr_price = quote.get("close", p["cost_price"])
-            curr_pct = quote.get("pct_change", 0.0)
-
-            # 依現價計算估計賣出實收金額
-            est_proceeds, _, _ = self.calculate_sell_proceeds(curr_price, p["shares"], is_etf=bool(p["is_etf"]))
-            unrealized_pnl = round(est_proceeds - p["total_cost"], 2)
-            unrealized_pnl_pct = round((unrealized_pnl / p["total_cost"]) * 100.0, 2) if p["total_cost"] > 0 else 0.0
-
-            total_market_val += est_proceeds
-            total_unrealized_pnl += unrealized_pnl
-            total_cost_basis += p["total_cost"]
-
-            pos_details.append({
-                "stock_id": sid,
-                "stock_name": p["stock_name"],
-                "shares": p["shares"],
-                "cost_price": p["cost_price"],
-                "current_price": curr_price,
-                "day_pct_change": curr_pct,
-                "trailing_stop": p["trailing_stop"],
-                "total_cost": p["total_cost"],
-                "market_value": est_proceeds,
-                "unrealized_pnl": unrealized_pnl,
-                "unrealized_pnl_pct": unrealized_pnl_pct,
-                "entry_type": p["entry_type"],
-                "warn_days": p["warn_days"]
-            })
-
-        net_asset = acc["cash_balance"] + total_market_val
-        total_return_pct = round(((net_asset - acc["initial_capital"]) / acc["initial_capital"]) * 100.0, 2)
 
         return {
-            "user_id": user_id,
-            "user_name": acc.get("user_name", ""),
-            "initial_capital": acc["initial_capital"],
-            "cash_balance": acc["cash_balance"],
-            "stock_market_value": total_market_val,
-            "net_asset_value": net_asset,
-            "realized_pnl": acc["realized_pnl"],
-            "unrealized_pnl": total_unrealized_pnl,
-            "total_return_pct": total_return_pct,
-            "positions_count": len(pos_details),
-            "positions": pos_details
+            "status": "success",
+            "stock_id": stock_id,
+            "stock_name": stock_name,
+            "shares": shares,
+            "price": price,
+            "cost": required_cash,
+            "remaining_cash": new_cash
+        }
+
+    def sell(
+        self,
+        user_id: str,
+        stock_id: str,
+        shares: int,
+        price: float,
+        date_str: str,
+        is_etf: bool = False,
+        exit_reason: str = "停利/停損出場"
+    ) -> Dict[str, Any]:
+        """執行賣出（支援分批與全數清倉）"""
+        user_id = str(user_id)
+        stock_id = str(stock_id)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT stock_name, shares, avg_cost, total_cost FROM user_portfolios WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
+            row = cursor.fetchone()
+            if not row:
+                return {"status": "error", "message": f"庫存中查無標的 {stock_id}"}
+
+            sname, cur_shares, avg_cost, cur_total_cost = row
+            if shares > cur_shares:
+                return {"status": "error", "message": f"賣出股數 ({shares}) 超過庫存持有股數 ({cur_shares})"}
+
+            fee, tax, net_revenue = calculate_trade_fees("SELL", shares, price, is_etf)
+            # 實現損益精算
+            cost_of_sold_shares = (cur_total_cost / cur_shares) * shares
+            realized_pnl = round(net_revenue - cost_of_sold_shares)
+
+            # 更新用戶帳戶現金
+            cursor.execute("SELECT cash_balance FROM user_accounts WHERE user_id = ?", (user_id,))
+            cash_row = cursor.fetchone()
+            cur_cash = cash_row[0] if cash_row else DEFAULT_INITIAL_CAPITAL
+            new_cash = cur_cash + net_revenue
+            cursor.execute("UPDATE user_accounts SET cash_balance = ?, updated_at = ? WHERE user_id = ?", (new_cash, now_str, user_id))
+
+            # 更新或刪除持倉
+            remaining_shares = cur_shares - shares
+            if remaining_shares == 0:
+                cursor.execute("DELETE FROM user_portfolios WHERE user_id = ? AND stock_id = ?", (user_id, stock_id))
+            else:
+                new_total_cost = cur_total_cost - cost_of_sold_shares
+                new_avg_cost = round(new_total_cost / remaining_shares, 2)
+                cursor.execute("""
+                UPDATE user_portfolios 
+                SET shares = ?, avg_cost = ?, total_cost = ?, updated_at = ?
+                WHERE user_id = ? AND stock_id = ?
+                """, (remaining_shares, new_avg_cost, new_total_cost, now_str, user_id, stock_id))
+
+            # 寫入交易日誌
+            cursor.execute("""
+            INSERT INTO user_trades (user_id, date, stock_id, stock_name, action, shares, price, fee, tax, net_amount, realized_pnl, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, date_str, stock_id, sname, "SELL", shares, price, fee, tax, net_revenue, realized_pnl, exit_reason, now_str))
+
+            conn.commit()
+
+        return {
+            "status": "success",
+            "stock_id": stock_id,
+            "stock_name": sname,
+            "sold_shares": shares,
+            "remaining_shares": remaining_shares,
+            "price": price,
+            "net_revenue": net_revenue,
+            "realized_pnl": realized_pnl,
+            "new_cash": new_cash
         }
 
     # --------------------------------------------------------------------------
-    # 股海武僧出場紀律 ＆ 自選即持股守護雷達 (Guard Radar)
+    # 5. 自選股清單管理
     # --------------------------------------------------------------------------
-    def scan_guard_radar(self, user_id: str, current_quotes_map: Dict[str, dict], indicators_map: Dict[str, dict]) -> List[dict]:
-        """
-        掃描持股與自選清單，依據「股海武僧」紀律發出即時警報：
-        1. 預警脫離 2 天緩衝機制：強勢股出現 K20高 粉紅預警標籤，若量縮有守則良性緩衝，滿 2 天且弱化才建議出場。
-        2. 爆量長黑破位：跌破移動防守線 (trailing_stop) 且成交量放大，發出立即出清警報。
-        3. D20 > 30% 穿溜冰鞋停利：波段噴出乖離過大，分批獲利入袋。
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM user_positions WHERE user_id = ?", (user_id,))
-        positions = {r["stock_id"]: dict(r) for r in cursor.fetchall()}
-        cursor.execute("SELECT * FROM user_watchlist WHERE user_id = ?", (user_id,))
-        watchlist = {r["stock_id"]: dict(r) for r in cursor.fetchall()}
-        conn.close()
+    def add_watchlist(self, user_id: str, stock_id: str, stock_name: str, low: float = 0.0, high: float = 0.0, def_price: float = 0.0) -> bool:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            INSERT OR REPLACE INTO user_watchlists (user_id, stock_id, stock_name, target_buy_low, target_buy_high, defense_price, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (str(user_id), str(stock_id), str(stock_name), low, high, def_price, now_str))
+            conn.commit()
+        return True
 
-        # 合併需要監控的標的集合
-        monitored_sids = set(positions.keys()).union(set(watchlist.keys()))
+    def remove_watchlist(self, user_id: str, stock_id: str) -> bool:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_watchlists WHERE user_id = ? AND stock_id = ?", (str(user_id), str(stock_id)))
+            conn.commit()
+        return True
+
+    def get_watchlist(self, user_id: str) -> List[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT stock_id, stock_name, target_buy_low, target_buy_high, defense_price FROM user_watchlists WHERE user_id = ?", (str(user_id),))
+            rows = cursor.fetchall()
+            return [{"stock_id": r[0], "stock_name": r[1], "target_buy_low": r[2], "target_buy_high": r[3], "defense_price": r[4]} for r in rows]
+
+    # --------------------------------------------------------------------------
+    # 6. 股海武僧出場紀律 ＆ 自選持股守護雷達
+    # --------------------------------------------------------------------------
+    def evaluate_holding_guardian(self, user_id: str, current_quotes: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        守護雷達規則評估：
+        1. 股海武僧 K20 高預警脫離：股價偏離 20 日高點後回檔防守。
+        2. D20 乖離 > 30% 穿溜冰鞋停利：超額利潤分批停利。
+        3. 量縮回測 vs 爆量長黑破位：
+           - 若收盤跌破 5MA/20MA 且 成交量 < 5MA均量 -> 🟢 良性縮量回測，續抱守候。
+           - 若收盤跌破 5MA/20MA 且 成交量 > 5MA均量 * 1.5 -> 🚨 爆量破位警報，強制減碼/出清。
+        """
+        user_id = str(user_id)
         alerts = []
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+            SELECT stock_id, stock_name, shares, avg_cost, highest_price_after_entry, stop_loss_price, trailing_stop_price 
+            FROM user_portfolios WHERE user_id = ?
+            """, (user_id,))
+            holdings = cursor.fetchall()
 
-        for sid in monitored_sids:
-            quote = current_quotes_map.get(sid, {})
-            indic = indicators_map.get(sid, {})
-
-            if not quote:
+        for sid, sname, shares, avg_cost, high_entry, stop_loss, trailing_stop in holdings:
+            q = current_quotes.get(sid)
+            if not q:
                 continue
 
-            sname = quote.get("stock_name", sid)
-            curr_p = quote.get("close", 0.0)
-            curr_v = quote.get("volume", 0)
-            avg_v60 = indic.get("avg_vol_60", curr_v if curr_v > 0 else 1)
-            q60r = round(curr_v / avg_v60, 2) if avg_v60 > 0 else 1.0
-            d20_pct = indic.get("d20_pct", 0.0)     # 距離 20 日低點之乖離率
-            is_k20_high = indic.get("k20_high", False) # 是否為近 20 日高點強勢標籤
+            close = q.get("close", 0.0)
+            vol = q.get("volume", 0)
+            vol_5ma = q.get("vol_5ma", vol)
+            ma5 = q.get("ma5", close)
+            ma20 = q.get("ma20", close)
+            d20 = q.get("d20", 0.0) # 20日乖離率 (%)
+            k20_high = q.get("k20_high", close)
 
-            pos = positions.get(sid)
-            is_holding = pos is not None
-            trailing_stop = pos["trailing_stop"] if is_holding else curr_p * 0.93
+            unrealized_pnl_pct = ((close - avg_cost) / avg_cost) * 100.0 if avg_cost > 0 else 0.0
 
-            # --- 規則 A: 跌破移動防守線 (停損/破位風控) ---
-            if is_holding and curr_p < trailing_stop:
-                if q60r >= 1.5:
-                    alerts.append({
-                        "stock_id": sid,
-                        "stock_name": sname,
-                        "level": "🚨 爆量破位出清",
-                        "status": "HOLDING",
-                        "msg": f"現價 {curr_p:.2f} 跌破防守線 {trailing_stop:.2f} 且量比達 {q60r:.2f}x，觸發紀律平倉警報！"
-                    })
-                else:
-                    alerts.append({
-                        "stock_id": sid,
-                        "stock_name": sname,
-                        "level": "⚠️ 跌破防守警戒",
-                        "status": "HOLDING",
-                        "msg": f"現價 {curr_p:.2f} 跌破防守線 {trailing_stop:.2f}（量縮暫守），請密切關注收盤支撐。"
-                    })
+            # 狀態判定
+            status_tag = "HOLD"
+            advice_msg = "常態持倉，趨勢延續中"
 
-            # --- 規則 B: 股海武僧預警脫離 2 天紀律 (K20高) ---
-            if is_k20_high and is_holding:
-                warn_days = pos.get("warn_days", 0) + 1
-                if warn_days >= 2:
-                    alerts.append({
-                        "stock_id": sid,
-                        "stock_name": sname,
-                        "level": "🎯 預警滿期落袋",
-                        "status": "HOLDING",
-                        "msg": f"高檔預警已達第 {warn_days} 天，滿足武僧出場紀律，建議今日分批收割獲利。"
-                    })
-                else:
-                    alerts.append({
-                        "stock_id": sid,
-                        "stock_name": sname,
-                        "level": "🌸 K20高良性緩衝",
-                        "status": "HOLDING",
-                        "msg": f"觸及 K20 高點粉紅預警（第 {warn_days} 天），量縮結構良性，依紀律續抱守護。"
-                    })
+            # 紀律 1：D20 > 30% 超額獲利穿溜冰鞋
+            if d20 > 30.0 or unrealized_pnl_pct >= 25.0:
+                status_tag = "TAKE_PROFIT"
+                advice_msg = f"🏆 *獲利豐厚穿溜冰鞋*：D20乖離 (+{d20:.1f}%) 達紅色高標，建議分批獲利 1/3~1/2 落袋"
 
-            # --- 規則 C: 整理股 D20 > 30% 穿溜冰鞋停利 ---
-            if d20_pct >= 30.0:
-                target_type = "持股" if is_holding else "自選"
-                alerts.append({
-                    "stock_id": sid,
-                    "stock_name": sname,
-                    "level": "⛸️ 溜冰鞋衝高停利",
-                    "status": "HOLDING" if is_holding else "WATCHLIST",
-                    "msg": f"{target_type}自底部脫離乖離達 +{d20_pct:.1f}%，進入紅色高標噴出區，穿上溜冰鞋分批停利。"
-                })
+            # 紀律 2：爆量長黑破位
+            elif close < ma5 and vol >= (vol_5ma * 1.5) and vol > 1000:
+                status_tag = "CRITICAL_ALERT"
+                advice_msg = f"🚨 *爆量長黑破位警報*：跌破5MA ({ma5:.2f}) 且爆量 ({vol}張 > 5MA量1.5x)，主力調節強烈建議出清！"
+
+            # 紀律 3：良性量縮回測
+            elif close < ma5 and vol <= vol_5ma:
+                status_tag = "HEALTHY_PULLBACK"
+                advice_msg = f"🟢 *量縮良性回測緩衝*：小破5MA但量能萎縮 ({vol}張 <= 均量)，未見恐慌賣壓，續抱守20MA ({ma20:.2f})"
+
+            # 紀律 4：跌破絕對防守/停損價
+            elif close <= stop_loss or unrealized_pnl_pct <= -7.0:
+                status_tag = "STOP_LOSS"
+                advice_msg = f"🛑 *觸及停損防守線*：現價 ({close}) 跌破進場防守價 ({stop_loss})，紀律出場控制風險"
+
+            alerts.append({
+                "stock_id": sid,
+                "stock_name": sname,
+                "shares": shares,
+                "avg_cost": avg_cost,
+                "current_price": close,
+                "pnl_pct": unrealized_pnl_pct,
+                "status_tag": status_tag,
+                "advice": advice_msg
+            })
 
         return alerts
 
     # --------------------------------------------------------------------------
-    # Telegram HTML 介面卡片排版產生器
+    # 7. 總資產與 Telegram 卡片渲染輸出
     # --------------------------------------------------------------------------
-    def format_portfolio_overview_card(self, user_id: str, current_quotes_map: Dict[str, dict]) -> str:
-        """產生第一層：50 萬 AI 操盤手總資產與持股總覽卡"""
-        data = self.evaluate_portfolio(user_id, current_quotes_map)
-        u_name = data["user_name"] or user_id
-        sign_ret = "+" if data["total_return_pct"] >= 0 else ""
-        sign_unreal = "+" if data["unrealized_pnl"] >= 0 else ""
-        sign_real = "+" if data["realized_pnl"] >= 0 else ""
+    def get_portfolio_summary(self, user_id: str, current_quotes: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        acct = self.get_or_create_account(user_id)
+        cash = acct["cash_balance"]
+        stock_market_value = 0.0
+        total_cost = 0.0
+        holdings_detail = []
 
-        card = [
-            f"💼 <b>【50萬 AI 操盤手・資產總覽】</b>",
-            f"━━━━━━━━━━━━━━━━━━━━",
-            f"👤 操作帳戶：<code>{u_name}</code>",
-            f"💰 總資產淨值：<code>{data['net_asset_value']:,.0f}</code> 元",
-            f"💵 可用現金：<code>{data['cash_balance']:,.0f}</code> 元",
-            f"📈 股票現值：<code>{data['stock_market_value']:,.0f}</code> 元",
-            f"────────────────────",
-            f"📊 <b>總體戰績表現</b>：",
-            f"   • 總投資報酬率：<code>{sign_ret}{data['total_return_pct']:.2f}%</code>",
-            f"   • 未實現損益：<code>{sign_unreal}{data['unrealized_pnl']:,.0f}</code> 元",
-            f"   • 已實現損益：<code>{sign_real}{data['realized_pnl']:,.0f}</code> 元",
-            f"   • 當前持倉檔數：<code>{data['positions_count']}</code> 檔",
-            f"━━━━━━━━━━━━━━━━━━━━"
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT stock_id, stock_name, shares, avg_cost, total_cost, entry_date, entry_reason FROM user_portfolios WHERE user_id = ?", (str(user_id),))
+            rows = cursor.fetchall()
+
+        for sid, sname, shares, avg_cost, t_cost, e_date, e_reason in rows:
+            q = current_quotes.get(sid, {})
+            cur_price = q.get("close", avg_cost)
+            mkt_val = shares * cur_price
+            stock_market_value += mkt_val
+            total_cost += t_cost
+            pnl_amt = mkt_val - t_cost
+            pnl_pct = ((cur_price - avg_cost) / avg_cost * 100.0) if avg_cost > 0 else 0.0
+
+            holdings_detail.append({
+                "stock_id": sid,
+                "stock_name": sname,
+                "shares": shares,
+                "avg_cost": avg_cost,
+                "current_price": cur_price,
+                "market_value": mkt_val,
+                "pnl_amount": pnl_amt,
+                "pnl_pct": pnl_pct,
+                "entry_date": e_date,
+                "entry_reason": e_reason
+            })
+
+        total_asset = cash + stock_market_value
+        unrealized_pnl = stock_market_value - total_cost
+        unrealized_pnl_pct = (unrealized_pnl / total_cost * 100.0) if total_cost > 0 else 0.0
+        total_pnl_pct = ((total_asset - acct["initial_capital"]) / acct["initial_capital"]) * 100.0
+
+        return {
+            "user_id": user_id,
+            "initial_capital": acct["initial_capital"],
+            "cash_balance": cash,
+            "stock_market_value": stock_market_value,
+            "total_asset": total_asset,
+            "unrealized_pnl": unrealized_pnl,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "total_pnl_pct": total_pnl_pct,
+            "holdings": holdings_detail
+        }
+
+    def render_portfolio_telegram_card(self, user_id: str, current_quotes: Dict[str, Dict[str, Any]]) -> str:
+        """渲染 Telegram 格式之 AI 操盤手總資產與持倉卡片"""
+        summary = self.get_portfolio_summary(user_id, current_quotes)
+        guardian_alerts = self.evaluate_holding_guardian(user_id, current_quotes)
+        alert_map = {a["stock_id"]: a["advice"] for a in guardian_alerts}
+
+        sign = "+" if summary["total_pnl_pct"] >= 0 else ""
+        lines = [
+            f"💼 *WayneBot 50萬 AI 模擬操盤戰報* ｜ `ID:{user_id}`",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"💰 *總資產淨值*：`{summary['total_asset']:,.0f}` 元 （總報酬: `{sign}{summary['total_pnl_pct']:.2f}%`）",
+            f"💵 *可用現金*：`{summary['cash_balance']:,.0f}` 元 ｜ 股票市值：`{summary['stock_market_value']:,.0f}` 元",
+            f"📈 *未實現損益*：`{summary['unrealized_pnl']:+,.0f}` 元 (`{sign}{summary['unrealized_pnl_pct']:.2f}%`)",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "📊 *目前持倉與守護狀態*："
         ]
 
-        if data["positions"]:
-            card.append("📋 <b>持倉部位清單</b>：")
-            for p in data["positions"]:
-                p_sign = "+" if p["unrealized_pnl"] >= 0 else ""
-                day_sign = "+" if p["day_pct_change"] >= 0 else ""
-                card.append(
-                    f"▶ <b>{p['stock_name']}</b> ({p['stock_id']}) × {p['shares']:,}股\n"
-                    f"   成本: <code>{p['cost_price']:.2f}</code> | 現價: <code>{p['current_price']:.2f}</code> ({day_sign}{p['day_pct_change']:.2f}%)\n"
-                    f"   浮動損益: <code>{p_sign}{p['unrealized_pnl']:,.0f} ({p_sign}{p['unrealized_pnl_pct']:.2f}%)</code> | 防守: <code>{p['trailing_stop']:.2f}</code>"
-                )
+        if not summary["holdings"]:
+            lines.append("  _目前無持股，100% 現金儲備觀望中_")
         else:
-            card.append("<i>目前空倉觀望中，資金 100% 停泊保本。</i>")
+            for h in summary["holdings"]:
+                h_sign = "+" if h["pnl_pct"] >= 0 else ""
+                lots_str = f"{h['shares']//1000}張" if h['shares'] >= 1000 and h['shares'] % 1000 == 0 else f"{h['shares']}股"
+                lines.append(
+                    f"• *{h['stock_id']} {h['stock_name']}* ｜ `{lots_str}` ｜ 均價 `{h['avg_cost']:.2f}` ➔ 現價 `{h['current_price']:.2f}`"
+                )
+                lines.append(f"  ├ 損益：`{h_sign}{h['pnl_amount']:+,.0f}` 元 (`{h_sign}{h['pnl_pct']:.2f}%`)")
+                adv = alert_map.get(h["stock_id"], "常態續抱")
+                lines.append(f"  └ 🛡️ 守護：{adv}")
 
-        card.append("────────────────────")
-        card.append("💡 <i>點擊下方選單查看個股明細或自選守護雷達。</i>")
-        return "\n".join(card)
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("💡 *武僧紀律*：量縮回測良性續抱，爆量長黑破位果斷出清。")
+        return "\n".join(lines)
 
-    def format_guard_radar_card(self, alerts: List[dict]) -> str:
-        """產生第二層：自選即持股守護雷達警報卡"""
-        if not alerts:
-            return (
-                "⭐ <b>【自選與持股守護雷達】</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "🟢 <b>全市場掃描安全無虞</b>\n"
-                "────────────────────\n"
-                "所有持股與自選標的均處於健康軌道，未觸發破位或預警脫離，依紀律續抱。"
-            )
-
-        card = [
-            f"⭐ <b>【自選與持股守護雷達】</b>",
-            f"━━━━━━━━━━━━━━━━━━━━",
-            f"⚡ 偵測到 <b>{len(alerts)}</b> 則關鍵動態訊號："
-        ]
-
-        for a in alerts:
-            badge = "【持股】" if a["status"] == "HOLDING" else "【自選】"
-            card.append(
-                f"\n📌 <b>{a['stock_name']} ({a['stock_id']})</b> {badge}\n"
-                f"   級別：<b>{a['level']}</b>\n"
-                f"   指引：{a['msg']}"
-            )
-
-        card.append("\n━━━━━━━━━━━━━━━━━━━━")
-        card.append("🧘 <i>股海武僧操盤心法：嚴守紀律、不追高、不恐慌。</i>")
-        return "\n".join(card)
-
-
-# ==============================================================================
-# 3. 沙盒自我驗證與測試區塊 (100% 完整可執行)
-# ==============================================================================
+# ------------------------------------------------------------------------------
+# 8. 獨立沙盒測試程式碼
+# ------------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 70)
-    print("🚀 啟動 PortfolioEngine 沙盒獨立驗證測試")
+    print("🧪 正在執行 portfolio_engine.py 模組三獨立沙盒測試...")
     print("=" * 70)
 
-    TEST_DB = "test_portfolio.db"
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+    test_db = "waynebot_history.db"
+    pm = PortfolioManager(db_path=test_db)
 
-    engine = PortfolioEngine(db_path=TEST_DB)
+    # 模擬兩位獨立使用者（使用者本人 vs 哥哥）
+    USER_WAYNE = "user_wayne_001"
+    USER_BROTHER = "user_brother_002"
 
-    # --- 測試 A: 多用戶隔離與帳戶初始化 ---
-    print("\n[測試 1] 多用戶獨立帳戶建立...")
-    acc_wayne = engine.get_or_create_account("user_wayne", "Wayne")
-    acc_brother = engine.get_or_create_account("user_brother", "哥哥")
-    print(f"  • Wayne 帳戶餘額: {acc_wayne['cash_balance']:,.0f} 元")
-    print(f"  • 哥哥 帳戶餘額: {acc_brother['cash_balance']:,.0f} 元")
-    assert acc_wayne["cash_balance"] == 500000.0, "Wayne 帳戶資金建立錯誤"
-    assert acc_brother["cash_balance"] == 500000.0, "哥哥 帳戶資金建立錯誤"
+    print("\n【測試 1：多用戶獨立資金帳戶初始化】")
+    acct_w = pm.get_or_create_account(USER_WAYNE, initial_capital=500000.0)
+    acct_b = pm.get_or_create_account(USER_BROTHER, initial_capital=300000.0)
+    print(f"  • 用戶 Wayne 起始現金 : {acct_w['cash_balance']:,.0f} 元")
+    print(f"  • 用戶 Brother 起始現金: {acct_b['cash_balance']:,.0f} 元")
+    assert acct_w["cash_balance"] == 500000.0 and acct_b["cash_balance"] == 300000.0
 
-    # --- 測試 B: 買進整張與零股（多用戶各自操作） ---
-    print("\n[測試 2] 模擬下單買進（整張與零股）...")
-    # Wayne 買進 2330 零股 300 股 @ 980 元、00631L 整張 2,000 股 @ 95 元 (ETF)
-    ok1, msg1 = engine.buy_stock("user_wayne", "2330", "台積電", price=980.0, shares=300, entry_type="Select 01 帶量突破", trailing_stop=950.0)
-    ok2, msg2 = engine.buy_stock("user_wayne", "00631L", "元大台灣50正2", price=95.0, shares=2000, entry_type="Select 03 Hi480", is_etf=True, trailing_stop=91.0)
-    print(f"  • Wayne 買進 1: {msg1}")
-    print(f"  • Wayne 買進 2: {msg2}")
-    assert ok1 and ok2, "Wayne 買進操作失敗"
+    print("\n【測試 2：買進交易精算（含手續費折讓與整張/零股支援）】")
+    # Wayne 買進 2330 台積電 100 股 (零股 @ 980) + 2603 長榮 1 張 (1000股 @ 185)
+    r1 = pm.buy(USER_WAYNE, "2330", "台積電", shares=100, price=980.0, date_str="20260828", is_etf=False, entry_reason="零股定期配置")
+    r2 = pm.buy(USER_WAYNE, "2603", "長榮", shares=1000, price=185.0, date_str="20260828", is_etf=False, entry_reason="Select 01 周突破")
+    print(f"  • 買進台積電 100 股花費 : {r1['cost']:,.0f} 元 ｜ 帳戶剩餘: {r1['remaining_cash']:,.0f} 元")
+    print(f"  • 買進長榮 1 張花費     : {r2['cost']:,.0f} 元 ｜ 帳戶剩餘: {r2['remaining_cash']:,.0f} 元")
+    assert r1["status"] == "success" and r2["status"] == "success"
 
-    # 哥哥 買進 2454 聯發科 100 股 @ 1200 元
-    ok3, msg3 = engine.buy_stock("user_brother", "2454", "聯發科", price=1200.0, shares=100, entry_type="波段佈局", trailing_stop=1140.0)
-    print(f"  • 哥哥 買進 1: {msg3}")
-    assert ok3, "哥哥 買進操作失敗"
-
-    # --- 測試 C: 自選清單加入 ---
-    print("\n[測試 3] 加入自選守護清單...")
-    engine.add_to_watchlist("user_wayne", "6415", "矽力*-KY", tags="Select 04 雙綠脫離")
-    engine.add_to_watchlist("user_wayne", "00679B", "元大美債20年", tags="美債避險")
-    wl = engine.get_watchlist("user_wayne")
-    print(f"  • Wayne 自選檔數: {len(wl)} 檔 ({[x['stock_name'] for x in wl]})")
-    assert len(wl) == 2, "自選清單建立筆數不符"
-
-    # --- 測試 D: 行情模擬與部位估值 ---
-    print("\n[測試 4] 模擬即時行情估值與損益計算...")
+    print("\n【測試 3：自選守護雷達判定（量縮良性回測 vs 爆量破位 vs 穿溜冰鞋）】")
     mock_quotes = {
-        "2330": {"stock_name": "台積電", "close": 1020.0, "pct_change": 4.08, "volume": 35000},    # 台積電上漲
-        "00631L": {"stock_name": "元大台灣50正2", "close": 93.0, "pct_change": -2.11, "volume": 12000}, # 00631L 小跌
-        "6415": {"stock_name": "矽力*-KY", "close": 320.0, "pct_change": 6.50, "volume": 8500},
-        "00679B": {"stock_name": "元大美債20年", "close": 30.5, "pct_change": 0.33, "volume": 45000}
+        "2330": {
+            "close": 1050.0, "volume": 32000, "vol_5ma": 30000, "ma5": 1020.0, "ma20": 980.0, "d20": 7.1
+        },
+        "2603": {
+            "close": 178.0, "volume": 4500, "vol_5ma": 8000, "ma5": 182.0, "ma20": 175.0, "d20": 1.7
+        }
     }
-
-    mock_indicators = {
-        "2330": {"avg_vol_60": 20000, "d20_pct": 32.5, "k20_high": True},   # D20 > 30% 且 K20高
-        "00631L": {"avg_vol_60": 10000, "d20_pct": 8.0, "k20_high": False},
-        "6415": {"avg_vol_60": 4000, "d20_pct": 35.0, "k20_high": False}    # 自選 D20 > 30% 溜冰鞋
-    }
-
-    valuation = engine.evaluate_portfolio("user_wayne", mock_quotes)
-    print(f"  • Wayne 總資產淨值 : {valuation['net_asset_value']:,.0f} 元")
-    print(f"  • Wayne 未實現損益 : {valuation['unrealized_pnl']:+,.0f} 元 (報酬率 {valuation['total_return_pct']:+.2f}%)")
-
-    # --- 測試 E: 守護雷達警報掃描 ---
-    print("\n[測試 5] 股海武僧守護雷達警報掃描...")
-    alerts = engine.scan_guard_radar("user_wayne", mock_quotes, mock_indicators)
-    print(f"  • 觸發警報筆數: {len(alerts)} 筆")
+    alerts = pm.evaluate_holding_guardian(USER_WAYNE, mock_quotes)
     for a in alerts:
-        print(f"    - [{a['level']}] {a['stock_name']}: {a['msg']}")
+        print(f"  • [{a['stock_id']} {a['stock_name']}] 現價: {a['current_price']} (損益: {a['pnl_pct']:+.2f}%) ➔ 判定: {a['status_tag']}")
+        print(f"    說明: {a['advice']}")
 
-    # --- 測試 F: Telegram 卡片排版輸出 ---
-    print("\n" + "=" * 50)
-    print("--- 渲染【50萬 AI 操盤手資產總覽卡】---")
-    print(engine.format_portfolio_overview_card("user_wayne", mock_quotes))
+    print("\n【測試 4：部分獲利賣出與交易日誌】")
+    # 賣出長榮 1000 股 @ 195.0
+    r_sell = pm.sell(USER_WAYNE, "2603", shares=1000, price=195.0, date_str="20260829", is_etf=False, exit_reason="衝頂達標停利")
+    print(f"  • 賣出長榮 1 張 實現損益: {r_sell['realized_pnl']:+,.0f} 元 ｜ 最新現金: {r_sell['new_cash']:,.0f} 元")
+    assert r_sell["realized_pnl"] > 0
 
-    print("\n" + "=" * 50)
-    print("--- 渲染【自選與持股守護雷達卡】---")
-    print(engine.format_guard_radar_card(alerts))
-
-    # --- 測試 G: 部分停利賣出與已實現損益結算 ---
-    print("\n[測試 6] 執行部分停利賣出結算...")
-    sell_ok, sell_msg = engine.sell_stock("user_wayne", "2330", price=1020.0, shares=150, reason="達到第一停利目標分批收割")
-    print(f"  • 賣出結果: {sell_msg}")
-    assert sell_ok, "賣出操作失敗"
-
-    val_after_sell = engine.evaluate_portfolio("user_wayne", mock_quotes)
-    print(f"  • 賣出後可用現金 : {val_after_sell['cash_balance']:,.0f} 元")
-    print(f"  • 已實現損益總額 : {val_after_sell['realized_pnl']:+,.0f} 元")
-
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
-
-    print("\n" + "=" * 70)
-    print("🎉 PortfolioEngine 所有測試案例 100% 驗證通過！無任何錯誤！")
-    print("=" * 70)
+    print("\n【測試 5：Telegram 操盤與守護面板卡片渲染】")
+    card = pm.render_portfolio_telegram_card(USER_WAYNE, mock_quotes)
+    print("\n--- [Telegram 訊息卡片預覽] ---")
+    print(card)
+    print("------------------------------")
+    print("\n🎉 模組三 `portfolio_engine.py` 沙盒單獨測試 100% 通過！")
