@@ -1,14 +1,22 @@
 # ==============================================================================
-# WayneBot 全市場量化決策系統：即時選股與決策精算引擎 (screening_engine.py)
-# 模組功能：四大突破策略、當沖/隔日沖價位精算、S級籌碼濾網、Telegram 報表格式化
+# WayneBot 全市場量化決策系統：核心選股與價位精算引擎 (screening_engine.py)
+# 核心功能：CaryBot 四大選股策略、S級籌碼濾網、當沖/隔日沖動能精算、流動性防護
 # ==============================================================================
 
 import os
 import sqlite3
+import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import pandas as pd
 import numpy as np
+
+# 設定日誌格式
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] (%(threadName)s) %(message)s"
+)
+logger = logging.getLogger("ScreeningEngine")
 
 
 class ScreeningEngine:
@@ -18,295 +26,311 @@ class ScreeningEngine:
         :param db_path: SQLite 資料庫路徑
         """
         self.db_path = db_path
+        # 流動性防護門檻
+        self.min_volume_sheets = 1000       # 每日最低成交量 1,000 張
+        self.min_turnover_k = 30000.0       # 每日最低成交額 3,000 萬元 (30,000 千元)
 
     def _get_connection(self) -> sqlite3.Connection:
-        """建立 SQLite 連線並開啟唯讀最佳化"""
-        if not os.path.exists(self.db_path):
-            raise FileNotFoundError(f"找不到資料庫檔案：{self.db_path}，請先執行資料庫建置或下載 Release。")
+        """建立 SQLite 唯讀或快速連線"""
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
         return conn
 
-    def load_market_data(self, lookback_days: int = 150) -> pd.DataFrame:
-        """
-        載入全市場近 N 個交易日的歷史數據
-        :param lookback_days: 回溯交易日天數
-        :return: 包含歷史行情的 DataFrame
-        """
-        conn = self._get_connection()
-        query = f"""
-        SELECT 
-            date, stock_id, stock_name, market,
-            open, high, low, close,
-            volume, turnover_k, pct_change, avg_price,
-            foreign_net, trust_net, dealer_net
-        FROM daily_quotes
-        WHERE date IN (
-            SELECT DISTINCT date FROM daily_quotes ORDER BY date DESC LIMIT {lookback_days}
-        )
-        ORDER BY stock_id, date ASC;
-        """
-        df = pd.read_sql_query(query, conn)
-        conn.close()
-        return df
+    def get_latest_trading_date(self) -> Optional[str]:
+        """從資料庫獲取最新交易日期 (YYYYMMDD)"""
+        if not os.path.exists(self.db_path):
+            logger.error(f"資料庫檔案不存在: {self.db_path}")
+            return None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(date) FROM daily_quotes;")
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] if row and row[0] else None
+        except Exception as e:
+            logger.error(f"獲取最新交易日失敗: {e}")
+            return None
 
-    def run_screening(self, lookback_days: int = 150) -> Dict[str, Any]:
+    def _calculate_price_targets(self, close_p: float, avg_p: float) -> Dict[str, Any]:
         """
-        執行全市場量化篩選與價位精算
-        :return: 結構化選股結果字典
+        當沖與隔日沖動能價位精算
+        :param close_p: 當日收盤價
+        :param avg_p: 當日成交均價
+        :return: 包含進場、停利、衝頂、防守線的字典
         """
-        df = self.load_market_data(lookback_days=lookback_days)
-        if df.empty:
-            return {"error": "資料庫內無有效行情數據", "date": datetime.now().strftime("%Y%m%d")}
+        base_p = close_p if close_p > 0 else 1.0
+        avg_base = avg_p if avg_p > 0 else base_p
 
-        dates = sorted(df["date"].unique())
-        latest_date = dates[-1]
-        prev_date = dates[-2] if len(dates) >= 2 else latest_date
-
-        results = {
-            "date": latest_date,
-            "total_scanned": df[df["date"] == latest_date]["stock_id"].nunique(),
-            "select_01": [],      # 周帶量突破 (5日高 + Q60R > 2.0)
-            "select_02": [],      # 突破Hi120 (半年新高 + Q60R > 2.5)
-            "select_03": [],      # 突破Hi480 (兩年新高大底 + Q60R > 3.0)
-            "select_04": [],      # 雙綠脫離 (D20轉正 + 底部起漲)
-            "day_trade": [],      # 當沖動能專區
-            "overnight": [],      # 隔日沖精選專區
-            "s_class_chips": []   # S 級籌碼標的 (投信連買 + 5MA向上勾角)
+        # 當沖動能指標
+        day_trade = {
+            "entry_price": round(base_p, 2),
+            "take_profit_1": round(base_p * 1.03, 2),       # 第一停利 (+3%)
+            "take_profit_2": round(base_p * 1.06, 2),       # 第二衝頂 (+6%)
+            "stop_loss": round(avg_base, 2)                 # 均價停損價
         }
 
-        # 依個股分組計算指標
+        # 隔日沖精選指標
+        overnight_swing = {
+            "buy_range_low": round(base_p * 0.99, 2),       # 買進區間下緣
+            "buy_range_high": round(base_p * 1.005, 2),     # 買進區間上緣
+            "target_open_min": round(base_p * 1.035, 2),    # 明日開高目標下緣 (+3.5%)
+            "target_open_max": round(base_p * 1.048, 2),    # 明日開高目標上緣 (+4.8%)
+            "target_surge": round(base_p * 1.085, 2),       # 強勢衝頂價 (+8.5%)
+            "defense_price": round(avg_base * 0.99, 2)      # 保本防守價
+        }
+
+        return {
+            "day_trade": day_trade,
+            "overnight_swing": overnight_swing
+        }
+
+    def run_full_market_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        【主控制流水線進入點】執行全市場量化選股掃描
+        :param target_date: 指定掃描日期 (YYYYMMDD)，若無則自動取資料庫最新日期
+        :return: 包含各策略清單與統計之完整字典
+        """
+        if not os.path.exists(self.db_path):
+            logger.error(f"❌ 選股失敗：找不到歷史資料庫 {self.db_path}")
+            return {
+                "status": "error",
+                "message": f"Database not found: {self.db_path}",
+                "date": None,
+                "total_scanned": 0,
+                "results": {}
+            }
+
+        conn = self._get_connection()
+
+        # 確認目標日期
+        if not target_date:
+            target_date = self.get_latest_trading_date()
+        
+        if not target_date:
+            logger.error("❌ 無法確定有效交易日期")
+            conn.close()
+            return {"status": "error", "message": "No valid trading date found"}
+
+        logger.info(f"🔍 開始執行全市場量化選股掃描 (基準日: {target_date})...")
+
+        # 1. 取得近 480 交易日之歷史行情數據
+        query = """
+        SELECT 
+            date, stock_id, stock_name, market,
+            open, high, low, close, volume, turnover_k, pct_change, avg_price,
+            foreign_net, trust_net, dealer_net
+        FROM daily_quotes
+        WHERE date <= ?
+        ORDER BY stock_id, date ASC;
+        """
+        df = pd.read_sql_query(query, conn, params=(target_date,))
+        conn.close()
+
+        if df.empty:
+            logger.warning(f"⚠️ 日期 {target_date} 無任何行情數據")
+            return {
+                "status": "empty",
+                "date": target_date,
+                "total_scanned": 0,
+                "select_01_weekly_breakout": [],
+                "select_02_hi120_breakout": [],
+                "select_03_hi480_breakout": [],
+                "select_04_double_green_breakout": [],
+                "s_tier_picks": [],
+                "day_trade_momentum": [],
+                "overnight_swing": []
+            }
+
+        # 2. 分組計算技術與量能指標
         grouped = df.groupby("stock_id")
+        total_stocks = len(grouped)
+
+        # 策略清單容器
+        select_01_list = []  # Select 01 周帶量突破
+        select_02_list = []  # Select 02 突破Hi120
+        select_03_list = []  # Select 03 突破Hi480
+        select_04_list = []  # Select 04 雙綠脫離
+        s_tier_list = []     # S 級最高勝率標的
+        day_trade_list = []  # 當沖動能名單
+        swing_list = []      # 隔日沖精選名單
 
         for stock_id, group in grouped:
             if len(group) < 5:
                 continue
 
-            # 確保按日期升冪排序
-            g = group.sort_values("date").reset_index(drop=True)
-            today = g.iloc[-1]
-
-            # 檢查最後一筆是否為最新交易日
-            if today["date"] != latest_date:
+            # 最新一筆資料（當日）
+            latest = group.iloc[-1]
+            if str(latest["date"]) != str(target_date):
                 continue
 
-            # ------------------------------------------------------------------
-            # 1. 流動性過濾（嚴防殭屍股：日量 >= 1,000 張 且 日額 >= 3,000 萬元）
-            # ------------------------------------------------------------------
-            if today["volume"] < 1000 or today["turnover_k"] < 30000.0:
+            # 【防護機制 1】：流動性過濾（排除成交量 < 1000 張 且 成交金額 < 3000 萬之冷門股）
+            vol = float(latest["volume"])
+            turnover_k = float(latest["turnover_k"])
+            if vol < self.min_volume_sheets and turnover_k < self.min_turnover_k:
                 continue
 
-            close_p = float(today["close"])
-            open_p = float(today["open"])
-            high_p = float(today["high"])
-            low_p = float(today["low"])
-            avg_p = float(today["avg_price"]) if today["avg_price"] > 0 else close_p
-            pct_chg = float(today["pct_change"])
-            vol_today = int(today["volume"])
+            close_p = float(latest["close"])
+            open_p = float(latest["open"])
+            high_p = float(latest["high"])
+            low_p = float(latest["low"])
+            avg_p = float(latest["avg_price"])
+            pct_chg = float(latest["pct_change"])
+            trust_net = int(latest["trust_net"])
+            foreign_net = int(latest["foreign_net"])
+            stock_name = str(latest["stock_name"])
+            market = str(latest["market"])
 
-            # 技術指標序列
-            closes = g["close"].values
-            volumes = g["volume"].values
-            highs = g["high"].values
-            lows = g["low"].values
-            trust_nets = g["trust_net"].values
-            foreign_nets = g["foreign_net"].values
+            if close_p <= 0:
+                continue
 
-            # 均線計算
-            ma5 = np.mean(closes[-5:]) if len(closes) >= 5 else closes[-1]
-            ma5_prev = np.mean(closes[-6:-1]) if len(closes) >= 6 else ma5
-            ma20 = np.mean(closes[-20:]) if len(closes) >= 20 else closes[-1]
-            ma60 = np.mean(closes[-60:]) if len(closes) >= 60 else closes[-1]
+            # 計算 60MA 量比 (Q60R)
+            vol_series = group["volume"].values
+            vol_ma60 = np.mean(vol_series[-60:]) if len(vol_series) >= 60 else np.mean(vol_series)
+            q60r = round(vol / vol_ma60, 2) if vol_ma60 > 0 else 1.0
 
-            # 量比 Q60R (今日量 / 60日均量)
-            vol_ma60 = np.mean(volumes[-60:]) if len(volumes) >= 60 else np.mean(volumes)
-            q60r = round(vol_today / vol_ma60, 2) if vol_ma60 > 0 else 1.0
+            # 計算 5MA 及趨勢
+            close_series = group["close"].values
+            ma5 = np.mean(close_series[-5:]) if len(close_series) >= 5 else close_p
+            ma5_prev = np.mean(close_series[-6:-1]) if len(close_series) >= 6 else ma5
+            is_ma5_up = (ma5 > ma5_prev) and (close_p >= ma5)
 
-            # 位階指標 D20 (20日高低位階百分比: (Close - Low20) / (High20 - Low20))
-            h20 = np.max(highs[-20:]) if len(highs) >= 20 else np.max(highs)
-            l20 = np.min(lows[-20:]) if len(lows) >= 20 else np.min(lows)
-            d20 = round((close_p - l20) / (h20 - l20) * 100, 1) if h20 > l20 else 50.0
+            # 計算投信連買天數
+            trust_series = group["trust_net"].values
+            trust_consecutive_days = 0
+            for t_val in reversed(trust_series):
+                if t_val > 0:
+                    trust_consecutive_days += 1
+                else:
+                    break
 
-            # 5日高、120日高、480日高判定
-            h5_prev = np.max(highs[-6:-1]) if len(highs) >= 6 else highs[-1]
-            h120_prev = np.max(highs[-121:-1]) if len(highs) >= 121 else np.max(highs[:-1])
-            is_break_h5 = close_p > h5_prev
-            is_break_h120 = close_p > h120_prev
+            # S 級籌碼認定：投信連買 >= 2 天 或 投信當日大買 + 5MA 向上勾角
+            is_s_tier = (trust_consecutive_days >= 2 or (trust_net >= 300 and is_ma5_up))
 
-            # 籌碼指標
-            trust_today = int(today["trust_net"])
-            foreign_today = int(today["foreign_net"])
-            is_trust_continuous = (len(trust_nets) >= 3 and trust_nets[-1] > 0 and trust_nets[-2] > 0)
-            ma5_hook_up = (ma5 > ma5_prev and close_p > ma5)
+            # 歷史高低點計算
+            high_series = group["high"].values
+            low_series = group["low"].values
 
-            # 打包個股基礎資訊
-            stock_info = {
-                "stock_id": str(stock_id),
-                "stock_name": str(today["stock_name"]),
-                "market": str(today["market"]),
+            # 過去 5 日高點（不含今日）
+            hi5_prev = np.max(high_series[-6:-1]) if len(high_series) >= 6 else high_series[0]
+            # 過去 120 日高點（不含今日）
+            hi120_prev = np.max(high_series[-121:-1]) if len(high_series) >= 121 else np.max(high_series[:-1])
+            # 過去 480 日高點（不含今日）
+            hi480_prev = np.max(high_series[-481:-1]) if len(high_series) >= 481 else np.max(high_series[:-1])
+
+            # 20日最低價與 60日最低價
+            low20 = np.min(low_series[-20:]) if len(low_series) >= 20 else np.min(low_series)
+            low60 = np.min(low_series[-60:]) if len(low_series) >= 60 else np.min(low_series)
+            d20_pct = round(((close_p - low20) / low20 * 100.0), 2) if low20 > 0 else 0.0
+
+            # 價位精算
+            targets = self._calculate_price_targets(close_p, avg_p)
+
+            item_info = {
+                "stock_id": stock_id,
+                "stock_name": stock_name,
+                "market": market,
                 "close": close_p,
                 "pct_change": pct_chg,
-                "volume": vol_today,
-                "turnover_k": round(float(today["turnover_k"]), 1),
-                "q60r": q60r,
-                "d20": d20,
+                "volume": int(vol),
+                "turnover_k": turnover_k,
                 "avg_price": avg_p,
-                "foreign_net": foreign_today,
-                "trust_net": trust_today,
-                # 當沖價位計算
-                "day_entry": close_p,
-                "day_tp1": round(close_p * 1.03, 2),
-                "day_tp2": round(close_p * 1.06, 2),
-                "day_sl": round(min(avg_p, close_p * 0.98), 2),
-                # 隔日沖價位計算
-                "overnight_entry_low": round(min(close_p, avg_p), 2),
-                "overnight_entry_high": round(max(close_p, avg_p), 2),
-                "overnight_target_low": round(close_p * 1.035, 2),
-                "overnight_target_high": round(close_p * 1.048, 2),
-                "overnight_surge": round(close_p * 1.07, 2),
-                "overnight_defense": round(close_p * 0.975, 2)
+                "q60r": q60r,
+                "trust_net": trust_net,
+                "foreign_net": foreign_net,
+                "trust_consecutive_days": trust_consecutive_days,
+                "is_s_tier": is_s_tier,
+                "targets": targets
             }
 
             # ------------------------------------------------------------------
-            # 策略 1：周帶量突破 (5日新高 + Q60R >= 2.0 + 紅K)
+            # 策略判斷 1：Select 01 周帶量突破 (5日高 + Q60R > 2.0 + 實質漲幅)
             # ------------------------------------------------------------------
-            if is_break_h5 and q60r >= 2.0 and close_p >= open_p and pct_chg >= 2.5:
-                results["select_01"].append(stock_info)
-
-            # ------------------------------------------------------------------
-            # 策略 2：突破 Hi120 (半年新高 + Q60R >= 2.5)
-            # ------------------------------------------------------------------
-            if is_break_h120 and q60r >= 2.5 and pct_chg >= 3.0:
-                results["select_02"].append(stock_info)
+            if (close_p >= hi5_prev) and (q60r >= 2.0) and (pct_chg >= 2.0):
+                select_01_list.append(item_info)
 
             # ------------------------------------------------------------------
-            # 策略 3：突破 Hi480 (大底長期突破 + Q60R >= 3.0)
+            # 策略判斷 2：Select 02 突破Hi120 (半年新高 + Q60R > 2.5)
             # ------------------------------------------------------------------
-            if is_break_h120 and q60r >= 3.0 and pct_chg >= 4.0 and len(highs) >= 100:
-                results["select_03"].append(stock_info)
-
-            # ------------------------------------------------------------------
-            # 策略 4：雙綠脫離 (D20 由低檔轉正向上 + 站上 20MA)
-            # ------------------------------------------------------------------
-            if len(lows) >= 20:
-                l20_prev = np.min(lows[-21:-1]) if len(lows) >= 21 else l20
-                if low_p > l20_prev and d20 >= 15.0 and d20 <= 45.0 and close_p > ma20 and pct_chg >= 1.5:
-                    results["select_04"].append(stock_info)
+            if (close_p >= hi120_prev) and (q60r >= 2.5) and (pct_chg >= 2.5):
+                select_02_list.append(item_info)
 
             # ------------------------------------------------------------------
-            # S 級籌碼濾網：投信連買 + 外資同行 + 5MA 向上勾角
+            # 策略判斷 3：Select 03 突破Hi480 (兩年新高大底 + Q60R > 3.0)
             # ------------------------------------------------------------------
-            if is_trust_continuous and foreign_today >= 0 and ma5_hook_up and pct_chg >= 1.0:
-                results["s_class_chips"].append(stock_info)
-
-            # ------------------------------------------------------------------
-            # 當沖動能精選：漲幅 3%~7%、Q60R > 2.0、量能充沛
-            # ------------------------------------------------------------------
-            if 3.0 <= pct_chg <= 7.5 and q60r >= 2.0 and vol_today >= 2000:
-                results["day_trade"].append(stock_info)
+            if (close_p >= hi480_prev) and (q60r >= 3.0) and (pct_chg >= 3.0):
+                select_03_list.append(item_info)
 
             # ------------------------------------------------------------------
-            # 隔日沖精選：尾盤強勢（收盤接近最高價）、投信/外資買超、量比 >= 1.8
+            # 策略判斷 4：Select 04 雙綠脫離 (D20由底部剛轉正脫離 0.5%~12% 且 脫離60低)
             # ------------------------------------------------------------------
-            if close_p >= (high_p * 0.985) and pct_chg >= 3.5 and (trust_today > 0 or foreign_today > 500) and q60r >= 1.8:
-                results["overnight"].append(stock_info)
+            if (0.5 <= d20_pct <= 12.0) and (close_p > low60 * 1.03) and (pct_chg > 0):
+                select_04_list.append(item_info)
 
-        # 排序：優先以成交額與量比排序前 10 檔
-        for key in ["select_01", "select_02", "select_03", "select_04", "day_trade", "overnight", "s_class_chips"]:
-            results[key] = sorted(results[key], key=lambda x: (x["q60r"], x["turnover_k"]), reverse=True)[:8]
+            # S 級清單
+            if is_s_tier and (pct_chg > 1.5):
+                s_tier_list.append(item_info)
 
-        return results
+            # 當沖動能名單（帶量 + 振幅波動強）
+            if (q60r >= 1.8) and (pct_chg >= 3.0):
+                day_trade_list.append(item_info)
 
+            # 隔日沖精選名單（尾盤強勢 + 投信或外資同買）
+            if (pct_chg >= 3.5) and (trust_net > 0 or foreign_net > 0) and (close_p >= high_p * 0.985):
+                swing_list.append(item_info)
 
-def format_telegram_report(screening_results: Dict[str, Any], title: Optional[str] = None) -> str:
-    """
-    將量化選股與決策精算結果格式化為 Telegram 訊息
-    :param screening_results: run_screening 輸出的字典
-    :param title: 自訂標題
-    :return: 格式化後的文字內容
-    """
-    if "error" in screening_results:
-        return f"⚠️ **WayneBot 選股提醒**：{screening_results['error']}"
+        # 排序：優先以量比 Q60R 與 漲幅 排序
+        select_01_list.sort(key=lambda x: x["q60r"], reverse=True)
+        select_02_list.sort(key=lambda x: x["q60r"], reverse=True)
+        select_03_list.sort(key=lambda x: x["q60r"], reverse=True)
+        select_04_list.sort(key=lambda x: x["pct_change"], reverse=True)
+        s_tier_list.sort(key=lambda x: x["trust_consecutive_days"], reverse=True)
+        day_trade_list.sort(key=lambda x: x["q60r"], reverse=True)
+        swing_list.sort(key=lambda x: x["pct_change"], reverse=True)
 
-    dt = screening_results.get("date", datetime.now().strftime("%Y%m%d"))
-    date_formatted = f"{dt[:4]}-{dt[4:6]}-{dt[6:]}" if len(dt) == 8 else dt
-    total_scanned = screening_results.get("total_scanned", 0)
+        logger.info(f"✅ 選股完成！掃描標的: {total_stocks} 檔 | "
+                    f"周突破: {len(select_01_list)} | Hi120: {len(select_02_list)} | "
+                    f"Hi480: {len(select_03_list)} | 雙綠脫離: {len(select_04_list)} | "
+                    f"S級標的: {len(s_tier_list)}")
 
-    header = title or f"🚀 **WayneBot 台股量化決策日報** ({date_formatted})"
-    lines = [
-        header,
-        f"📊 全市場掃描標的：`{total_scanned:,}` 檔（已套用流動性防護）",
-        "═" * 32
-    ]
-
-    # 1. S 級籌碼專區
-    s_chips = screening_results.get("s_class_chips", [])
-    if s_chips:
-        lines.append("\n🌟 **【S 級法人連買＋均線勾角】**")
-        for s in s_chips[:4]:
-            lines.append(
-                f"• `{s['stock_id']}` **{s['stock_name']}** | 收: `{s['close']}` ({s['pct_change']:+.2f}%)"
-                f"\n  投信: `{s['trust_net']:+d}` 張 | 外資: `{s['foreign_net']:+d}` 張 | 量比: `{s['q60r']}x`"
-            )
-
-    # 2. 四大即時選股
-    s1 = screening_results.get("select_01", [])
-    if s1:
-        lines.append("\n⚡ **【Select 01 周帶量突破 (5日高+Q60R>2)】**")
-        for s in s1[:4]:
-            lines.append(f"• `{s['stock_id']}` {s['stock_name']} | `{s['close']}` ({s['pct_change']:+.2f}%) | 量比: `{s['q60r']}x` | 日量: `{s['volume']:,}`張")
-
-    s2 = screening_results.get("select_02", [])
-    if s2:
-        lines.append("\n🔥 **【Select 02 半年新高突破 (Hi120)】**")
-        for s in s2[:4]:
-            lines.append(f"• `{s['stock_id']}` {s['stock_name']} | `{s['close']}` ({s['pct_change']:+.2f}%) | 量比: `{s['q60r']}x`")
-
-    s4 = screening_results.get("select_04", [])
-    if s4:
-        lines.append("\n🌱 **【Select 04 雙綠脫離 (大底轉正)】**")
-        for s in s4[:3]:
-            lines.append(f"• `{s['stock_id']}` {s['stock_name']} | `{s['close']}` ({s['pct_change']:+.2f}%) | 位階 D20: `{s['d20']}%`")
-
-    # 3. 當沖動能專區
-    dt_list = screening_results.get("day_trade", [])
-    if dt_list:
-        lines.append("\n🎯 **【當沖動能價位精算】**")
-        for s in dt_list[:3]:
-            lines.append(
-                f"• `{s['stock_id']}` **{s['stock_name']}** (收 `{s['close']}`)"
-                f"\n  進場: `{s['day_entry']}` | 第一利(+3%): `{s['day_tp1']}` | 衝頂(+6%): `{s['day_tp2']}` | 停損: `{s['day_sl']}`"
-            )
-
-    # 4. 隔日沖精選專區
-    on_list = screening_results.get("overnight", [])
-    if on_list:
-        lines.append("\n🌙 **【隔日沖強勢佈局】**")
-        for s in on_list[:3]:
-            lines.append(
-                f"• `{s['stock_id']}` **{s['stock_name']}** (尾盤均價 `{s['avg_price']}`)"
-                f"\n  買進區間: `{s['overnight_entry_low']}~{s['overnight_entry_high']}`"
-                f"\n  開高目標(+3.5~4.8%): `{s['overnight_target_low']}~{s['overnight_target_high']}` | 防守: `{s['overnight_defense']}`"
-            )
-
-    if not (s_chips or s1 or s2 or s4 or dt_list or on_list):
-        lines.append("\nℹ️ 今日全市場行情未出現符合高勝率動能條件之標的，建議保留現金觀望。")
-
-    lines.append("\n" + "═" * 32)
-    lines.append("🤖 *WayneBot 量化操盤系統 | 嚴格執行紀律停損*")
-    return "\n".join(lines)
+        return {
+            "status": "success",
+            "date": target_date,
+            "total_scanned": total_stocks,
+            "select_01_weekly_breakout": select_01_list,
+            "select_02_hi120_breakout": select_02_list,
+            "select_03_hi480_breakout": select_03_list,
+            "select_04_double_green_breakout": select_04_list,
+            "s_tier_picks": s_tier_list,
+            "day_trade_momentum": day_trade_list,
+            "overnight_swing": swing_list,
+            "summary": {
+                "select_01_count": len(select_01_list),
+                "select_02_count": len(select_02_list),
+                "select_03_count": len(select_03_list),
+                "select_04_count": len(select_04_list),
+                "s_tier_count": len(s_tier_list),
+                "day_trade_count": len(day_trade_list),
+                "overnight_swing_count": len(swing_list)
+            }
+        }
 
 
-# ------------------------------------------------------------------------------
-# 單元測試入口
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# 單獨測試進入點 (方便沙盒與本機獨立驗證)
+# ==============================================================================
 if __name__ == "__main__":
-    db_file = "waynebot_history.db"
-    if os.path.exists(db_file):
-        print(f"🔍 測試執行 ScreeningEngine (使用 {db_file})...")
-        engine = ScreeningEngine(db_path=db_file)
-        res = engine.run_screening(lookback_days=120)
-        report = format_telegram_report(res)
-        print("\n" + report)
-    else:
-        print("💡 目前目錄無 waynebot_history.db，模組定義與匯出檢查完畢。")
+    engine = ScreeningEngine("waynebot_history.db")
+    res = engine.run_full_market_screening()
+    print("\n" + "=" * 60)
+    print(f"📊 WayneBot 選股引擎測試結果 [基準日: {res.get('date')}]")
+    print("=" * 60)
+    summary = res.get("summary", {})
+    for k, v in summary.items():
+        print(f"  • {k:<25}: {v:>4} 檔")
+
+    if res.get("select_01_weekly_breakout"):
+        top1 = res["select_01_weekly_breakout"][0]
+        print(f"\n🔥 周帶量突破首選範例: [{top1['stock_id']}] {top1['stock_name']} | 收盤: {top1['close']} (+{top1['pct_change']}%) | 量比: {top1['q60r']}x")
+        print(f"   👉 當沖建議: 進場 {top1['targets']['day_trade']['entry_price']} | 停利1 {top1['targets']['day_trade']['take_profit_1']} | 衝頂 {top1['targets']['day_trade']['take_profit_2']}")
