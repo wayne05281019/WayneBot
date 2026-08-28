@@ -1,245 +1,216 @@
-"""
-main_runner.py - WayneBot Phase 10 全系統非同步總控排程器 (完整數據流水線版)
-"""
+# ==============================================================================
+# WayneBot 全市場量化決策系統：主排程與自動復盤核心 (main_runner.py)
+# 檔案用途：整合 Telegram 互動服務、定時增量更新、盤後選股復盤與 Render 防休眠
+# ==============================================================================
 
 import os
 import sys
-import asyncio
-import signal
+import time
 import logging
-import sqlite3
-import subprocess
-import requests
-from datetime import datetime, time, timedelta
-from typing import Optional
-from aiohttp import web
-from dotenv import load_dotenv
+import asyncio
+from datetime import datetime, time as dtime
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from screening_engine import ScreeningEngine, format_telegram_report
+# 載入核心模組（已修正導入規範）
+from data_fetcher import DataFetcher
+from screening_engine import ScreeningEngine
+from portfolio_engine import PortfolioEngine
+from bot_servers import WayneTelegramBot
 
-load_dotenv()
-
+# ------------------------------------------------------------------------------
+# 1. 日誌設定
+# ------------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] (%(threadName)s) %(message)s",
+    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("WayneBotRunner")
+logger = logging.getLogger("WayneBot_Runner")
 
+# ------------------------------------------------------------------------------
+# 2. Render 免費版 Web Port 綁定服務（防休眠與健康檢查）
+# ------------------------------------------------------------------------------
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        response_text = f"WayneBot Quant Engine is Running!\nServer Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        self.wfile.write(response_text.encode("utf-8"))
 
-class MasterRunner:
-    def __init__(self):
-        self.db_path = os.getenv("WAYNE_DB_PATH", "wayne_market.db")
-        self.port = int(os.getenv("PORT", "10000"))
-        self.tg_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        self.tg_chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-        
-        self.screening_engine = ScreeningEngine(db_path=self.db_path)
-        self.shutdown_event = asyncio.Event()
-        self.web_runner: Optional[web.AppRunner] = None
-        self.background_tasks = []
-
-    def execute_wal_checkpoint(self):
-        logger.info("🛠️ [Database] 正在執行 SQLite WAL Checkpoint (TRUNCATE)...")
-        try:
-            if os.path.exists(self.db_path):
-                conn = sqlite3.connect(self.db_path, timeout=20.0)
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                result = cursor.fetchall()
-                conn.close()
-                logger.info(f"✅ [Database] WAL Checkpoint 完成，狀態: {result}")
-            else:
-                logger.info("ℹ️ [Database] 資料庫檔案尚未生成，跳過 Checkpoint。")
-        except Exception as e:
-            logger.error(f"❌ [Database] WAL Checkpoint 執行失敗: {e}")
-
-    def sync_market_data_if_needed(self):
-        """執行 wayne_market_db.py 下載全市場 2,233 檔行情數據"""
-        logger.info("📥 [Database] 正在執行全市場行情同步 (wayne_market_db.py)...")
-        if os.path.exists("wayne_market_db.py"):
-            try:
-                res = subprocess.run([sys.executable, "wayne_market_db.py"], capture_output=True, text=True, timeout=600)
-                if res.stdout:
-                    logger.info(f"wayne_market_db 輸出: {res.stdout[-300:]}")
-                if res.returncode == 0:
-                    logger.info("✅ [Database] 行情同步執行成功！")
-                    return True
-                else:
-                    logger.error(f"❌ [Database] 行情同步回傳錯誤碼 {res.returncode}: {res.stderr[-300:]}")
-            except Exception as e:
-                logger.error(f"❌ [Database] 執行 wayne_market_db.py 失敗: {e}")
-        else:
-            logger.warning("⚠️ [Database] 目錄中未找到 wayne_market_db.py。")
-        return False
-
-    def send_telegram_direct(self, text: str):
-        if not self.tg_bot_token or not self.tg_chat_id:
-            logger.warning("⚠️ [Telegram] 未設定金鑰，跳過發送。")
-            return
-        url = f"https://api.telegram.org/bot{self.tg_bot_token}/sendMessage"
-        payload = {
-            "chat_id": self.tg_chat_id,
-            "text": text,
-            "parse_mode": "Markdown"
-        }
-        try:
-            resp = requests.post(url, json=payload, timeout=20)
-            if resp.status_code == 200:
-                logger.info("📢 [Telegram] 批次推播成功發送！")
-            else:
-                logger.error(f"❌ [Telegram] 推播失敗 HTTP {resp.status_code}: {resp.text}")
-        except Exception as e:
-            logger.error(f"❌ [Telegram] 發送請求異常: {e}")
-
-    def run_github_actions_batch(self):
-        logger.info("⚡ [WayneBot] 偵測到 GitHub Actions 自動化環境，啟動【全市場量化流水線】...")
-        
-        # 1. 抓取證交所 2,233 檔資料
-        self.sync_market_data_if_needed()
-        
-        # 2. 重新連接並掃描海選
-        self.screening_engine = ScreeningEngine(db_path=self.db_path)
-        logger.info("🔍 [Screening] 正在執行 CaryBot 全市場起漲第 1 天海選掃描...")
-        results = self.screening_engine.run_full_market_screening()
-        
-        # 3. 排版報表
-        report_text = format_telegram_report(results)
-        print("\n" + "=" * 50)
-        print(report_text)
-        print("=" * 50 + "\n")
-        
-        # 4. 發送 Telegram
-        self.send_telegram_direct(report_text)
-        
-        # 5. 釋放 WAL
-        self.execute_wal_checkpoint()
-        logger.info("🏁 [WayneBot] GitHub Actions 批次任務順利完成，安全退出。")
-        sys.exit(0)
-
-    async def handle_health_check(self, request: web.Request) -> web.Response:
-        return web.json_response({
-            "status": "online",
-            "service": "WayneBot Master System (Phase 10)",
-            "timestamp": datetime.now().isoformat(),
-            "db_status": "connected" if os.path.exists(self.db_path) else "pending"
-        })
-
-    async def handle_manual_screen(self, request: web.Request) -> web.Response:
-        loop = asyncio.get_running_loop()
-        res = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
-        return web.json_response(res)
-
-    async def start_web_server(self):
-        app = web.Application()
-        app.router.add_get("/", self.handle_health_check)
-        app.router.add_get("/health", self.handle_health_check)
-        app.router.add_post("/api/screen", self.handle_manual_screen)
-
-        self.web_runner = web.AppRunner(app)
-        await self.web_runner.setup()
-        site = web.TCPSite(self.web_runner, "0.0.0.0", self.port)
-        await site.start()
-        logger.info(f"🚀 [Web Server] 防休眠伺服器已於 http://0.0.0.0:{self.port} 啟動。")
-
-        try:
-            await self.shutdown_event.wait()
-        finally:
-            logger.info("🛑 [Web Server] 正在關閉 Web 伺服器釋放 Port...")
-            await self.web_runner.cleanup()
-            logger.info("✅ [Web Server] Web 伺服器已安全釋放。")
-
-    async def run_telegram_worker(self):
-        logger.info("🤖 [Telegram] Bot 常駐工作元已上線運作。")
-        while not self.shutdown_event.is_set():
-            try:
-                await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                break
-        logger.info("✅ [Telegram] Telegram 工作元已安全退出。")
-
-    async def run_daily_scheduler(self):
-        logger.info("⏰ [Scheduler] 每日 16:30 自動化增量排程器已啟動。")
-        last_executed_date = None
-
-        while not self.shutdown_event.is_set():
-            try:
-                # 採用台北時間計算
-                try:
-                    from zoneinfo import ZoneInfo
-                    now = datetime.now(ZoneInfo("Asia/Taipei"))
-                except Exception:
-                    now = datetime.utcnow() + timedelta(hours=8)
-
-                target_time = time(16, 30, 0)
-                current_time = now.time()
-                today_str = now.strftime("%Y-%m-%d")
-
-                if current_time >= target_time and last_executed_date != today_str:
-                    logger.info("🎯 [Scheduler] 觸發 16:30 盤後官方增量更新與 CaryBot 海選運算...")
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, self.sync_market_data_if_needed)
-                    results = await loop.run_in_executor(None, self.screening_engine.run_full_market_screening)
-                    report = format_telegram_report(results)
-                    self.send_telegram_direct(report)
-                    last_executed_date = today_str
-
-                await asyncio.sleep(30)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"❌ [Scheduler] 排程運算異常: {e}")
-                await asyncio.sleep(60)
-
-        logger.info("✅ [Scheduler] 排程器已安全退出。")
-
-    async def run_forever(self):
-        logger.info("⚡ [WayneBot Phase 10] 全系統核心調度啟動中... (24H 常駐模式)")
-
-        web_task = asyncio.create_task(self.start_web_server(), name="Task-WebServer")
-        tg_task = asyncio.create_task(self.run_telegram_worker(), name="Task-TelegramWorker")
-        sched_task = asyncio.create_task(self.run_daily_scheduler(), name="Task-DailyScheduler")
-
-        self.background_tasks = [web_task, tg_task, sched_task]
-
-        try:
-            await asyncio.gather(*self.background_tasks)
-        except asyncio.CancelledError:
-            logger.info("⚠️ [Main] 收到取消信號，正在進行優雅關閉程序...")
-        finally:
-            self.execute_wal_checkpoint()
-            logger.info("🏁 [WayneBot Phase 10] 全系統安全停機程序完成。")
-
-    def handle_signal(self, sig, frame):
-        logger.info(f"🛑 [Signal] 捕捉到信號 {sig}，觸發 Graceful Shutdown...")
-        self.shutdown_event.set()
-        for task in self.background_tasks:
-            task.cancel()
-
-
-def main():
-    runner = MasterRunner()
-
-    if os.getenv("GITHUB_ACTIONS") == "true" or "--once" in sys.argv or "--batch" in sys.argv:
-        runner.run_github_actions_batch()
+    def log_message(self, format, *args):
+        # 靜音常規健康檢查日誌以維持終端機整潔
         return
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, lambda s=sig: runner.handle_signal(s, None))
-        except NotImplementedError:
-            signal.signal(sig, runner.handle_signal)
-
+def start_render_keep_alive_server():
+    """在背景線程啟動 HTTP 伺服器以符合 Render Port 綁定規範"""
+    port = int(os.environ.get("PORT", 8080))
+    server_address = ("0.0.0.0", port)
     try:
-        loop.run_until_complete(runner.run_forever())
-    finally:
-        loop.close()
+        httpd = HTTPServer(server_address, HealthCheckHandler)
+        logger.info(f"🌐 Render Keep-Alive 伺服器已啟動於通訊埠: {port}")
+        httpd.serve_forever()
+    except Exception as e:
+        logger.error(f"❌ Keep-Alive 伺服器啟動異常: {e}")
 
+# ------------------------------------------------------------------------------
+# 3. 盤後自動化任務協調器
+# ------------------------------------------------------------------------------
+class MainAutomationRunner:
+    def __init__(self):
+        self.fetcher = DataFetcher()
+        self.screener = ScreeningEngine()
+        self.portfolio = PortfolioEngine()
+        self.bot = WayneTelegramBot()
+        self.admin_chat_id = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+
+    async def execute_daily_1530_incremental(self):
+        """每日 15:30 執行：增量抓取當日全市場 2,202 檔數據寫入 SQLite"""
+        today_str = datetime.now().strftime("%Y%m%d")
+        weekday = datetime.now().weekday()
+        if weekday >= 5:
+            logger.info("⏸️ 今日為週末，略過 15:30 行情抓取。")
+            return
+
+        logger.info(f"📥 開始執行 15:30 每日增量行情抓取 (日期: {today_str})...")
+        try:
+            # 呼叫資料庫增量更新函式
+            loop = asyncio.get_running_loop()
+            inserted_count = await loop.run_in_executor(None, self.fetcher.update_daily_incremental, today_str)
+            logger.info(f"✅ 15:30 增量寫入完成，共計更新 {inserted_count} 筆資料。")
+        except Exception as e:
+            logger.error(f"❌ 15:30 增量行情抓取失敗: {e}", exc_info=True)
+
+    async def execute_daily_1545_review_and_broadcast(self):
+        """每日 15:45 執行：自動選股、多用戶持倉損益計算與復盤報告推播"""
+        today_str = datetime.now().strftime("%Y%m%d")
+        weekday = datetime.now().weekday()
+        if weekday >= 5:
+            logger.info("⏸️ 今日為週末，略過 15:45 復盤推播。")
+            return
+
+        logger.info(f"📊 開始執行 15:45 盤後自動選股與持倉復盤 (日期: {today_str})...")
+        try:
+            loop = asyncio.get_running_loop()
+
+            # 1. 執行四大選股策略與 S 級籌碼篩選
+            selection_results = await loop.run_in_executor(None, self.screener.run_all_strategies, today_str)
+            
+            # 2. 執行 AI 操盤手每日損益結算與脫離防守守護
+            portfolio_summary = await loop.run_in_executor(None, self.portfolio.evaluate_daily_status, today_str)
+
+            # 3. 組合 Telegram 專業排版訊息卡
+            review_message = self._compose_daily_review_message(today_str, selection_results, portfolio_summary)
+
+            # 4. 發送給管理員或群組
+            if self.admin_chat_id:
+                await self.bot.send_message_async(chat_id=self.admin_chat_id, text=review_message)
+                logger.info(f"📨 15:45 復盤日誌已成功推播至 Telegram ({self.admin_chat_id})。")
+            else:
+                logger.warning("⚠️ 未設定 TELEGRAM_ADMIN_CHAT_ID，僅於日誌輸出復盤內容。")
+                logger.info(f"\n{review_message}")
+
+        except Exception as e:
+            logger.error(f"❌ 15:45 復盤推播作業失敗: {e}", exc_info=True)
+
+    def _compose_daily_review_message(self, date_str: str, selection_results: dict, portfolio_summary: dict) -> str:
+        """格式化產出《今日持倉損益與明日規劃》與《盤後復盤日誌》"""
+        lines = [
+            f"📊 <b>WayneBot 盤後量化復盤日誌</b> ｜ <code>{date_str}</code>",
+            "───────────────────",
+            "💼 <b>【50萬 AI 操盤手持倉概況】</b>",
+            f"• 總資產估值: <code>NT$ {portfolio_summary.get('total_asset', 500000):,.0f}</code>",
+            f"• 今日實現/未實現損益: <code>{portfolio_summary.get('daily_pnl_str', '+0.00%')}</code>",
+            f"• 當前水位: <code>{portfolio_summary.get('position_ratio', '0.0%')}</code>（現金: {portfolio_summary.get('cash', 500000):,.0f}）",
+            f"• 持股檔數: <code>{portfolio_summary.get('holdings_count', 0)}</code> 檔",
+            "───────────────────",
+            "⚡ <b>【CaryBot 四大即時選股成果】</b>"
+        ]
+
+        # 整理四大選股清單
+        strategies = [
+            ("Select 01 周帶量突破", selection_results.get("sel_01", [])),
+            ("Select 02 突破 Hi120", selection_results.get("sel_02", [])),
+            ("Select 03 突破 Hi480", selection_results.get("sel_03", [])),
+            ("Select 04 雙綠脫離", selection_results.get("sel_04", []))
+        ]
+
+        has_any_stock = False
+        for title, stocks in strategies:
+            if stocks:
+                has_any_stock = True
+                stock_str = " ".join([f"<code>{s['stock_id']} {s['stock_name']}</code>" for s in stocks[:5]])
+                lines.append(f"• <b>{title}</b> ({len(stocks)} 檔):\n  └ {stock_str}")
+
+        if not has_any_stock:
+            lines.append("• 今日無符合四大突破策略之嚴選標的（盤勢多空震盪）。")
+
+        lines.extend([
+            "───────────────────",
+            "🎯 <b>【明日操盤與防守規劃】</b>",
+            "• 股海武僧紀律：強勢股若浮現粉紅標籤需連續 2 天確認脫離。",
+            "• 隔日沖注意：開盤未達動態目標且 09:15 量能停滯者強制保本出場。",
+            "🤖 <i>WayneBot Quantitative Decision System v2.0</i>"
+        ])
+
+        return "\n".join(lines)
+
+    async def run_scheduler_loop(self):
+        """精確非同步定時排程迴圈"""
+        logger.info("⏰ 定時排程引擎啟動 (監聽時段: 15:30 增量更新, 15:45 復盤推播)...")
+        last_executed_date_1530 = ""
+        last_executed_date_1545 = ""
+
+        while True:
+            try:
+                now = datetime.now()
+                current_date = now.strftime("%Y%m%d")
+                current_time = now.time()
+
+                # 15:30 增量更新觸發判斷 (15:30:00 ~ 15:32:00)
+                if dtime(15, 30) <= current_time <= dtime(15, 32) and last_executed_date_1530 != current_date:
+                    last_executed_date_1530 = current_date
+                    await self.execute_daily_1530_incremental()
+
+                # 15:45 復盤推播觸發判斷 (15:45:00 ~ 15:47:00)
+                if dtime(15, 45) <= current_time <= dtime(15, 47) and last_executed_date_1545 != current_date:
+                    last_executed_date_1545 = current_date
+                    await self.execute_daily_1545_review_and_broadcast()
+
+                # 每 30 秒輪詢一次時鐘
+                await asyncio.sleep(30)
+
+            except Exception as e:
+                logger.error(f"❌ 排程迴圈異常: {e}")
+                await asyncio.sleep(30)
+
+# ------------------------------------------------------------------------------
+# 4. 主程式入口
+# ------------------------------------------------------------------------------
+async def main():
+    print("=" * 70)
+    print("🚀 啟動 WayneBot 全市場量化決策系統主核心 (main_runner.py)")
+    print("=" * 70)
+
+    # 1. 在獨立線程中啟動 Render 防休眠 Web 伺服器
+    keep_alive_thread = Thread(target=start_render_keep_alive_server, daemon=True)
+    keep_alive_thread.start()
+
+    # 2. 初始化自動化排程與 Telegram 機器人實例
+    runner = MainAutomationRunner()
+
+    # 3. 同時並行：啟動 Telegram 長輪詢服務 + 定時排程服務
+    logger.info("🤖 正在啟動 Telegram 互動監聽與定時任務...")
+    await asyncio.gather(
+        runner.bot.start_polling_async(),
+        runner.run_scheduler_loop()
+    )
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("🛑 收到關閉信號，WayneBot 已安全停止。")
