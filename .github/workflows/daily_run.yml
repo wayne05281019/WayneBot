@@ -4,34 +4,38 @@ on:
   schedule:
     # 台灣時間週一至週五 16:30 自動執行 (對應 UTC 08:30)
     - cron: '30 8 * * 1-5'
-  workflow_dispatch: # 支援手動在網頁上隨時點擊測試
+  workflow_dispatch: # 支援手動隨時點擊測試
 
 jobs:
   run-screener:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: 檢出專案代碼 (Checkout)
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: setup-python@v5
+      - name: 設定 Python 環境 (Setup Python 3.11)
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Dependencies
+      - name: 安裝依賴套件 (Install dependencies)
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Download & Unzip Database from Releases
+      - name: 從 Releases 下載核心資料庫 (Download Database)
         run: |
           echo "📥 正在從 GitHub Releases 下載核心資料庫..."
           curl -L -o waynebot_production_complete.zip "https://github.com/wayne05281019/WayneBot/releases/download/v1.0-data/waynebot_production_complete.zip"
           unzip -o waynebot_production_complete.zip
 
-      - name: Run WayneBot Screener
+      - name: 執行每日選股流水線 (Run Main Runner)
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TG_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
         run: |
           python main_runner.py
