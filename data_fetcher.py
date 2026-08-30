@@ -386,6 +386,102 @@ class DataFetcher:
         candidates = df["stock_id"].tolist()
         return candidates
 
+    def _get_json_retry(self, url: str, tries: int = 3):
+        last = None
+        for i in range(max(1, int(tries))):
+            try:
+                resp = self.session.get(url, timeout=40)
+                if resp.status_code == 200:
+                    return resp.json()
+                last = f"HTTP {resp.status_code}"
+            except Exception as e:
+                last = e
+            time.sleep(1.1 * (i + 1))
+        print(f"⚠️ JSON 抓取失敗 {url.split('?')[0]}：{last}")
+        return None
+
+    def _fetch_tpex_daily(self, target_date: str) -> list:
+        """櫃買收盤。新版 JSON 在 tables[].data（欄名對應），舊版才是 aaData。"""
+        yyyy, mm, dd = target_date[:4], target_date[4:6], target_date[6:]
+        roc = f"{int(yyyy) - 1911}/{mm}/{dd}"
+        urls = [
+            f"https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?date={yyyy}/{mm}/{dd}&id=&response=json",
+            f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc}&o=json",
+        ]
+        payload = None
+        for url in urls:
+            payload = self._get_json_retry(url)
+            if payload:
+                break
+        if not payload:
+            self._tpex_status = "error"
+            return []
+        raw_rows, fields = [], []
+        if isinstance(payload, dict):
+            raw_rows = payload.get("aaData") or []
+            if not raw_rows:
+                best = None
+                for tb in payload.get("tables") or []:
+                    title = str(tb.get("title") or "")
+                    rows = tb.get("data") or []
+                    if not rows:
+                        continue
+                    if "管理" in title:
+                        continue
+                    score = len(rows)
+                    if "上櫃" in title or "收盤" in title:
+                        score += 10000
+                    if best is None or score > best[0]:
+                        best = (score, rows, tb.get("fields") or [])
+                if best:
+                    raw_rows, fields = best[1], best[2]
+        if not raw_rows:
+            self._tpex_status = "empty"
+            return []
+        self._tpex_status = "ok"
+        idx = {str(n): i for i, n in enumerate(fields)}
+
+        def col(row, name, fallback_i):
+            i = idx.get(name)
+            if i is None:
+                i = fallback_i
+            if i is None or i >= len(row):
+                return 0
+            return row[i]
+
+        out = []
+        for r in raw_rows:
+            if not r or len(r) < 8:
+                continue
+            sid = str(col(r, "代號", 0)).strip()
+            sname = str(col(r, "名稱", 1)).strip()
+            if not self.is_valid_target(sid, sname):
+                continue
+            close_p = self.clean_num(col(r, "收盤", 2), True)
+            diff = self.clean_num(col(r, "漲跌", 3), True)
+            open_p = self.clean_num(col(r, "開盤", 4), True)
+            high_p = self.clean_num(col(r, "最高", 5), True)
+            low_p = self.clean_num(col(r, "最低", 6), True)
+            avg_p = self.clean_num(col(r, "均價", 7), True)
+            volume_shares = self.clean_num(col(r, "成交股數", 8), False)
+            turnover_ntd = self.clean_num(col(r, "成交金額(元)", 9), True)
+            if turnover_ntd <= 0:
+                turnover_ntd = self.clean_num(col(r, "成交金額", 9), True)
+            ref_p = close_p - diff if close_p > 0 else 0.0
+            pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
+            if avg_p <= 0 and volume_shares > 0:
+                avg_p = round(turnover_ntd / volume_shares, 2)
+            elif avg_p <= 0:
+                avg_p = close_p
+            out.append({
+                "date": target_date, "stock_id": sid, "stock_name": sname,
+                "market": "TWO", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
+                "volume": int(volume_shares // 1000) if volume_shares >= 1000 else int(volume_shares),
+                "turnover_k": round(turnover_ntd / 1000.0, 2),
+                "pct_change": pct, "avg_price": avg_p,
+            })
+        return out
+
     # --------------------------------------------------------------------------
     # 6. 每日 15:30 增量更新閉環（自動排程調用）
     # --------------------------------------------------------------------------
@@ -396,17 +492,27 @@ class DataFetcher:
         :return: 成功寫入筆數
         """
         if not target_date:
-            target_date = datetime.now().strftime("%Y%m%d")
+            try:
+                from config import taipei_today_str
+                target_date = taipei_today_str()
+            except Exception:
+                target_date = datetime.now().strftime("%Y%m%d")
 
         print(f"🔄 啟動 {target_date} 盤後增量更新流程...")
 
         # 1. 抓取上市行情 (TWSE MI_INDEX)
         tw_records = []
+        tw_status = "error"
         tw_url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={target_date}&type=ALLBUT0999&response=json"
         try:
-            resp = self.session.get(tw_url, timeout=15)
+            resp = self.session.get(tw_url, timeout=40)
             if resp.status_code == 200:
                 data = resp.json()
+                stat = str(data.get("stat") or "")
+                if "沒有符合" in stat or "很抱歉" in stat:
+                    tw_status = "empty"
+                else:
+                    tw_status = "ok"
                 raw_rows = []
                 for table in data.get("tables", []):
                     if "收盤行情" in table.get("title", ""):
@@ -449,48 +555,32 @@ class DataFetcher:
         except Exception as e:
             print(f"⚠️ 上市增量抓取異常：{e}")
 
-        # 2. 抓取上櫃行情 (TPEx)
-        two_records = []
-        roc_year = int(target_date[:4]) - 1911
-        roc_date_str = f"{roc_year}/{target_date[4:6]}/{target_date[6:]}"
-        two_url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc_date_str}&_={int(time.time()*1000)}"
-        try:
-            resp = self.session.get(two_url, timeout=15)
-            if resp.status_code == 200:
-                raw_rows = resp.json().get("aaData", [])
-                for r in raw_rows:
-                    if len(r) < 10:
-                        continue
-                    sid, sname, close_raw, diff_raw, open_raw, high_raw, low_raw, avg_raw, vol_raw, turnover_raw = r[:10]
-                    if not self.is_valid_target(sid, sname):
-                        continue
+        two_records = self._fetch_tpex_daily(target_date)
+        tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
+        attempt = 0
+        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 400 and attempt < 4:
+            attempt += 1
+            print(f"🔁 上市已有 {len(tw_records)} 檔，上櫃只有 {len(two_records)}，第 {attempt} 次再抓櫃買")
+            time.sleep(1.15 * attempt)
+            extra = self._fetch_tpex_daily(target_date)
+            if len(extra) > len(two_records):
+                two_records = extra
+            tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
 
-                    volume_shares = self.clean_num(vol_raw, is_float=False)
-                    turnover_ntd = self.clean_num(turnover_raw, is_float=True)
-                    open_p = self.clean_num(open_raw, is_float=True)
-                    high_p = self.clean_num(high_raw, is_float=True)
-                    low_p = self.clean_num(low_raw, is_float=True)
-                    close_p = self.clean_num(close_raw, is_float=True)
-                    diff = self.clean_num(diff_raw, is_float=True)
+        if tw_status == "empty" and tpex_status == "empty" and not tw_records and not two_records:
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM daily_quotes WHERE date=?", (target_date,))
+            gone = cur.rowcount
+            conn.commit()
+            conn.close()
+            if gone:
+                print(f"📭 {target_date} 證交所與櫃買皆無收盤，已刪殘列 {gone}")
+            else:
+                print(f"📭 {target_date} 非交易日（兩邊官方都沒有行情）。")
+            return 0
 
-                    ref_p = close_p - diff if close_p > 0 else 0.0
-                    pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
-                    avg_p = self.clean_num(avg_raw, is_float=True)
-                    if avg_p <= 0 and volume_shares > 0:
-                        avg_p = round(turnover_ntd / volume_shares, 2)
-                    elif avg_p <= 0:
-                        avg_p = close_p
-
-                    two_records.append({
-                        "date": target_date, "stock_id": str(sid).strip(), "stock_name": str(sname).strip(),
-                        "market": "TWO", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
-                        "volume": int(volume_shares // 1000), "turnover_k": round(turnover_ntd / 1000.0, 2),
-                        "pct_change": pct, "avg_price": avg_p
-                    })
-        except Exception as e:
-            print(f"⚠️ 上櫃增量抓取異常：{e}")
-
-        # 3. 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
+        # 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
         tw_t86 = {}
         two_t86 = {}
         try:
@@ -525,17 +615,230 @@ class DataFetcher:
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.executemany("""
-            INSERT OR REPLACE INTO daily_quotes 
+            INSERT INTO daily_quotes
             (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, stock_id) DO UPDATE SET
+                stock_name=excluded.stock_name,
+                market=excluded.market,
+                open=excluded.open,
+                high=excluded.high,
+                low=excluded.low,
+                close=excluded.close,
+                volume=excluded.volume,
+                turnover_k=excluded.turnover_k,
+                pct_change=excluded.pct_change,
+                avg_price=excluded.avg_price,
+                foreign_net=CASE WHEN excluded.foreign_net=0 AND daily_quotes.foreign_net!=0
+                    THEN daily_quotes.foreign_net ELSE excluded.foreign_net END,
+                trust_net=CASE WHEN excluded.trust_net=0 AND daily_quotes.trust_net!=0
+                    THEN daily_quotes.trust_net ELSE excluded.trust_net END,
+                dealer_net=CASE WHEN excluded.dealer_net=0 AND daily_quotes.dealer_net!=0
+                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END;
             """, all_records)
             conn.commit()
             conn.close()
             print(f"✅ {target_date} 增量更新成功：寫入 {len(all_records)} 筆 (上市: {len(tw_records)}, 上櫃: {len(two_records)})")
+            try:
+                from import_health import audit_import
+                health = audit_import(self.db_path, target_date)
+                if health.get("problems"):
+                    print(f"⚠️ 匯入檢查 {target_date}：{health['problems']} tw={health['tw']} two={health['two']} chips={health['chips_nonzero']}")
+                else:
+                    print(f"匯入檢查 OK {target_date} 上市{health['tw']} 上櫃{health['two']} 法人非0 {health['chips_nonzero']}")
+            except Exception:
+                pass
             return len(all_records)
         else:
             print(f"⚠️ {target_date} 非交易日或尚無行情資料。")
             return 0
+
+    def fill_missing_market_days(self, end_date: str = None, max_days: int = 15) -> dict:
+        """從資料庫最新交易日的隔天補到台灣今日（假日自動略過）。"""
+        try:
+            from config import taipei_today_str
+            end_date = end_date or taipei_today_str()
+        except Exception:
+            end_date = end_date or datetime.now().strftime("%Y%m%d")
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM daily_quotes;")
+        row = cur.fetchone()
+        conn.close()
+        latest = str(row[0]) if row and row[0] else ""
+        filled, skipped = [], []
+        if not latest:
+            n = self.update_daily_market_data(end_date)
+            return {"from": "", "to": end_date, "filled": [end_date] if n else [], "skipped": []}
+        start = datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)
+        end = datetime.strptime(end_date, "%Y%m%d")
+        if start > end:
+            thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
+            paired = self.sync_paired_markets()
+            return {
+                "from": latest, "to": end_date, "filled": thin, "skipped": [],
+                "note": "已是最新", "refilled_thin": thin, "paired": paired,
+            }
+        days = 0
+        d = start
+        while d <= end and days < max_days:
+            ds = d.strftime("%Y%m%d")
+            days += 1
+            if d.weekday() >= 5:
+                skipped.append(ds)
+                d += timedelta(days=1)
+                continue
+            n = int(self.update_daily_market_data(ds) or 0)
+            if n > 50:
+                filled.append(ds)
+            else:
+                skipped.append(ds)
+            time.sleep(0.35)
+            d += timedelta(days=1)
+        thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
+        for ds in thin:
+            if ds not in filled:
+                filled.append(ds)
+        paired = self.sync_paired_markets()
+        return {
+            "from": latest,
+            "to": end_date,
+            "filled": filled,
+            "skipped": skipped,
+            "refilled_thin": thin,
+            "paired": paired,
+        }
+
+    def sync_paired_markets(self, min_tw: int = 800, min_two: int = 400) -> list:
+        """上市有開盤的日子，上櫃一定要同一天進庫；缺邊就整日重抓。"""
+        try:
+            from import_health import list_coverage_issues
+            issues = list_coverage_issues(self.db_path, min_tw=min_tw, min_two=min_two)
+        except Exception as e:
+            print(f"⚠️ 開盤日配對檢查失敗：{e}")
+            return []
+        filled = []
+        for item in issues:
+            ds = item.get("date")
+            if not ds:
+                continue
+            print(f"🔁 開盤日缺邊 {ds}：{item.get('problems')}")
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(0.4)
+        return filled
+
+    def _refill_thin_days(self, end_date: str, lookback: int = 25, min_rows: int = 1500) -> list:
+        """已有日期但檔數偏少、或上市／上櫃一邊缺，就整日重抓。開盤日兩邊都要有。"""
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT date,
+                   COUNT(*) AS n,
+                   SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
+                   SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
+            FROM daily_quotes
+            WHERE date <= ?
+            GROUP BY date
+            ORDER BY date DESC
+            LIMIT ?;
+            """,
+            (end_date, int(lookback) + 8),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        filled = []
+        for date, n, tw, two in rows:
+            ds = str(date)
+            try:
+                wd = datetime.strptime(ds, "%Y%m%d").weekday()
+            except Exception:
+                continue
+            if wd >= 5:
+                continue
+            thin = int(n or 0) < int(min_rows)
+            unbalanced = (int(tw or 0) >= 800 and int(two or 0) < 400) or (
+                int(two or 0) >= 400 and int(tw or 0) < 800
+            )
+            if not thin and not unbalanced:
+                continue
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(0.35)
+        return filled
+
+    def repair_quote_coverage(self, min_rows: int = 1800, sleep_s: float = 0.4) -> dict:
+        """核對開盤日覆蓋：檔數過少的交易日重抓；空白平日試抓（假日會得到 0 並略過）。
+
+        daily_quotes 欄位意義（張＝股/1000）：
+        date 開盤日 YYYYMMDD；stock_id 四碼代號；open/high/low/close 當日價；
+        volume 成交張數；turnover_k 成交金額千元；pct_change 漲跌％；
+        foreign_net/trust_net/dealer_net 外資／投信／自營買賣超（張，正買負賣）。
+        決策卡表頭 10/20/60 日高低＝近 N 根「收盤」最高／最低。
+        格子「獲利」＝相對最新日往前 60 個日曆日的收盤最低（與表頭 60 根低不同）。
+        量單位與法人一律為張。
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT date, COUNT(*) n,
+                   SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) tw,
+                   SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) two
+            FROM daily_quotes GROUP BY date ORDER BY date
+            """
+        )
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return {"thin": [], "filled": [], "holiday_or_empty": [], "still_thin": []}
+        thin = []
+        for d, n, tw, two in rows:
+            if int(n or 0) < int(min_rows) or (int(tw or 0) >= 800 and int(two or 0) < 400) or (
+                int(two or 0) >= 400 and int(tw or 0) < 800
+            ):
+                thin.append(str(d))
+        have = {str(d) for d, *_rest in rows}
+        start = datetime.strptime(str(rows[0][0]), "%Y%m%d")
+        end = datetime.strptime(str(rows[-1][0]), "%Y%m%d")
+        gaps = []
+        d = start
+        while d <= end:
+            ds = d.strftime("%Y%m%d")
+            if d.weekday() < 5 and ds not in have:
+                gaps.append(ds)
+            d += timedelta(days=1)
+        filled, empty = [], []
+        for ds in thin + gaps:
+            n = int(self.update_daily_market_data(ds) or 0)
+            if n > 50:
+                filled.append(ds)
+            elif ds in gaps:
+                empty.append(ds)
+            time.sleep(sleep_s)
+        conn = self.get_db_connection()
+        still = conn.execute(
+            """
+            SELECT date, COUNT(*) n,
+                   SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) tw,
+                   SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) two
+            FROM daily_quotes GROUP BY date
+            HAVING n < ? OR (tw >= 800 AND two < 400) OR (two >= 400 AND tw < 800)
+            ORDER BY date
+            """,
+            (int(min_rows),),
+        ).fetchall()
+        conn.close()
+        return {
+            "thin_before": thin,
+            "weekday_gaps_tried": gaps,
+            "filled": filled,
+            "holiday_or_empty": empty,
+            "still_thin": [(str(a), int(b), int(c or 0), int(d or 0)) for a, b, c, d in still],
+        }
 
 
 # ==============================================================================

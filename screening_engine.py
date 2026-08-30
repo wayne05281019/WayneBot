@@ -287,50 +287,150 @@ class ScreeningEngine:
         return execute_full_screening(self.db_path, target_date)
 
 
-def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
-    """將選股結果格式化為 Telegram 專用精美排版字串"""
-    lines = []
-    lines.append(f"⚡ <b>WayneBot 量化選股決策戰報</b> <code>[{target_date}]</code>")
-    lines.append("─────────────────────")
+def html_escape(val) -> str:
+    return (
+        str(val if val is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
-    def _render_section(title: str, emoji: str, items: List[Dict[str, Any]], max_display: int = 4):
-        lines.append(f"{emoji} <b>{title}</b> (共 {len(items)} 檔)")
+
+def _regime_label(item: Dict[str, Any]) -> str:
+    """海選旁的格局標籤（依收盤相對月／季線與月低）。"""
+    try:
+        c = float(item.get("close") or 0)
+        ma20 = float(item.get("ma20") or 0)
+        ma60 = float(item.get("ma60") or 0)
+        low20 = float(item.get("low20") or 0)
+        d20 = float(item.get("d20") or 0)
+    except (TypeError, ValueError):
+        return "整理格局"
+    if low20 and c > 0 and c <= low20 * 1.008:
+        return "弱勢破底"
+    if d20 <= 1.2:
+        return "貼近月低"
+    if ma20 and ma60 and c >= ma20 and ma20 >= ma60:
+        return "多頭排列"
+    if ma20 and ma60 and c <= ma20 and ma20 <= ma60:
+        return "空頭排列"
+    if ma20 and c >= ma20:
+        return "站上月線"
+    if ma20 and c < ma20:
+        return "月線下整理"
+    return "整理格局"
+
+
+def _pct_str(pct) -> str:
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
+
+
+def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
+    sid = str(item.get("stock_id") or item.get("code") or "")
+    sname = str(item.get("stock_name") or item.get("name") or "")
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(sid, sname)
+    except Exception:
+        title = f"{html_escape(sid)} {html_escape(sname)}"
+    s_tag = " · S級" if item.get("is_s_tier") else ""
+    regime = html_escape(_regime_label(item))
+    close = item.get("close")
+    vol = int(item.get("volume") or 0)
+    q = item.get("q60r")
+    body = [
+        f"<b>{idx}.</b> {title}　<b>{regime}</b>{html_escape(s_tag)}",
+        f"價 {close}　{_pct_str(item.get('pct_change'))}",
+        f"量比 {q}×　{vol:,}張",
+    ]
+    if "target_1" in item:
+        body.append(
+            f"進場 {item.get('entry_price')}　停利 {item.get('target_1')} / {item.get('target_2')}　停損 {item.get('stop_loss')}"
+        )
+    elif "buy_range" in item:
+        body.append(
+            f"買進 {html_escape(item.get('buy_range'))}　開高 {html_escape(item.get('target_gap'))}　防守 {item.get('defense_price')}"
+        )
+    return f"<blockquote>{chr(10).join(body)}</blockquote>"
+
+
+def _compact_line(item: Dict[str, Any]) -> str:
+    sid = str(item.get("stock_id") or item.get("code") or "")
+    sname = str(item.get("stock_name") or item.get("name") or "")
+    q = item.get("q60r")
+    return f"{html_escape(sid)} {html_escape(sname)}　{html_escape(_regime_label(item))}　{_pct_str(item.get('pct_change'))}　{q}×"
+
+
+def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
+    """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
+    payload: List[Dict[str, Any]] = []
+    specs = [
+        ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
+        ("select_01", "🔥", "Select 01", "周帶量突破", 8, True),
+        ("select_02", "🏆", "Select 02", "突破半年高 Hi120", 8, True),
+        ("select_03", "💎", "Select 03", "突破兩年高 Hi480", 8, True),
+        ("select_04", "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
+        ("day_trade", "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
+        ("overnight", "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
+    ]
+    first = True
+    for key, emoji, label, subtitle, cap, skip_empty in specs:
+        items = results.get(key) or []
+        if skip_empty and not items:
+            continue
+        head = f"{html_escape(subtitle)}　共 {len(items)} 檔"
+        if first:
+            head = f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n" + head
+            first = False
+        part: Dict[str, Any] = {
+            "mark_key": key,
+            "mark_label": f"{label} · {len(items)}檔",
+            "mark_hint": subtitle,
+        }
         if not items:
-            lines.append("  └ <i>今日無符合條件標的</i>\n")
-            return
-        
-        for item in items[:max_display]:
-            s_tag = "👑 <b>[S級投信]</b> " if item.get("is_s_tier") else ""
-            sid = item.get('stock_id') or item.get('code')
-            sname = item.get('stock_name') or item.get('name')
-            c = item['close']
-            pct = item['pct_change']
-            q = item['q60r']
-            vol = item['volume']
-            pct_str = f"+{pct}%" if pct > 0 else f"{pct}%"
+            part["html"] = head + "\n<i>今日無符合條件標的</i>"
+            payload.append(part)
+            continue
+        detail_n = min(cap, len(items))
+        cards = [_stock_card_html(it, n + 1) for n, it in enumerate(items[:detail_n])]
+        body = head + "\n" + "\n".join(cards)
+        rest = items[detail_n:]
+        if rest:
+            compact = "\n".join(_compact_line(it) for it in rest[:40])
+            more = f"\n…另 {len(rest) - 40} 檔" if len(rest) > 40 else ""
+            body += (
+                f"\n<i>其餘 {len(rest)} 檔</i>\n"
+                f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
+            )
+        part["html"] = body
+        part["picks"] = [
+            (
+                str(it.get("stock_id") or it.get("code") or ""),
+                str(it.get("stock_name") or it.get("name") or ""),
+            )
+            for it in items[:detail_n]
+            if it.get("stock_id") or it.get("code")
+        ]
+        payload.append(part)
 
-            lines.append(f"• {s_tag}<code>{sid}</code> <b>{sname}</b>")
-            lines.append(f"  價: <code>{c}</code> ({pct_str}) | 量比: <code>{q}x</code> | 量: <code>{vol:,}張</code>")
-            
-            # 若為當沖專區
-            if "target_1" in item:
-                lines.append(f"  🎯 建議進場: <code>{item['entry_price']}</code> | 停利: <code>{item['target_1']}</code> / 衝頂: <code>{item['target_2']}</code> | 停損: <code>{item['stop_loss']}</code>")
-            # 若為隔日沖專區
-            elif "buy_range" in item:
-                lines.append(f"  🚀 買進區間: <code>{item['buy_range']}</code> | 明日開高目標: <code>{item['target_gap']}</code> | 防守: <code>{item['defense_price']}</code>")
-        lines.append("")
+    if payload:
+        payload[-1]["html"] += "\n💡 <i>量化僅供輔助，進場請設移動停損。</i>"
+    else:
+        payload.append({"html": f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
+    return payload
 
-    _render_section("營收轉強 × 量價突破（優先看）", "📈", results.get("revenue_cross", []), max_display=8)
-    _render_section("Select 01 周帶量突破", "🔥", results.get("select_01", []))
-    _render_section("Select 02 突破半年新高 (Hi120)", "🏆", results.get("select_02", []))
-    _render_section("Select 03 突破兩年大底 (Hi480)", "💎", results.get("select_03", []))
-    _render_section("Select 04 雙綠脫離底部起漲", "🌱", results.get("select_04", []))
-    _render_section("🚀 當沖動能精算專區", "⚡", results.get("day_trade", []))
-    _render_section("🌙 隔日沖尾盤佈局專區", "🎯", results.get("overnight", []))
 
-    lines.append("─────────────────────")
-    lines.append("💡 <i>風險提示：量化數據僅供決策輔助，進場請務必設定移動停損。</i>")
-    return "\n".join(lines)
+def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[str]:
+    return [p["html"] for p in format_screening_payload(results, target_date)]
+
+
+def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
+    return "\n\n".join(format_screening_sections(results, target_date))
 
 
 # ------------------------------------------------------------------------------
@@ -381,7 +481,8 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         revenue_cross.append(engine._row_for_bot(item))
     results["revenue_cross"] = revenue_cross
 
-    report_text = format_telegram_screening_report(results, target_date)
+    payload = format_screening_payload(results, target_date)
+    report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
     major_alerts = []
@@ -400,6 +501,8 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "total_scanned": len(stock_dfs),
         "results": results,
         "message": report_text,
+        "payload": payload,
+        "sections": [p["html"] for p in payload],
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,

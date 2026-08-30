@@ -77,6 +77,20 @@ def is_once_mode(argv=None) -> bool:
     return mode in ("once", "daily", "pipeline", "runner")
 
 
+def taipei_now():
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei"))
+    except Exception:
+        from datetime import datetime
+        return datetime.now()
+
+
+def taipei_today_str() -> str:
+    return taipei_now().strftime("%Y%m%d")
+
+
 def daily_scheduler_enabled() -> bool:
     raw = (os.getenv("ENABLE_DAILY_SCHEDULER") or "true").strip().lower()
     return raw in ("1", "true", "yes", "on")

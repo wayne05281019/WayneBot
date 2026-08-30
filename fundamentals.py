@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -109,10 +110,17 @@ def ensure_fundamentals_tables(db_path: str) -> None:
 
 
 def _get(url: str) -> list:
-    resp = requests.get(url, headers=HEADERS, timeout=40)
-    resp.raise_for_status()
-    data = resp.json()
-    return data if isinstance(data, list) else []
+    last = None
+    for i in range(3):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=40)
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            last = e
+            time.sleep(1.2 * (i + 1))
+    raise last
 
 
 def parse_monthly_row(item: dict, market: str) -> Optional[Dict[str, Any]]:
@@ -260,13 +268,22 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
     m_n = _upsert_monthly(conn, monthly_rows)
     i_n = _upsert_income(conn, income_rows)
     conn.commit()
+    months = sorted({r["yyyymm"] for r in monthly_rows})
+    quarters = sorted({f"{r['year']}Q{r['season']}" for r in income_rows})
+    m_max = conn.execute("SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue").fetchone()
+    q_max = conn.execute("SELECT COUNT(*), MAX(year), MAX(season) FROM quarterly_income").fetchone()
     conn.close()
     stats = {
         "monthly_rows": m_n,
         "income_rows": i_n,
         "errors": errors,
-        "sample_month": monthly_rows[0]["yyyymm"] if monthly_rows else "",
-        "sample_quarter": f"{income_rows[0]['year']}Q{income_rows[0]['season']}" if income_rows else "",
+        "months_in_feed": months[-3:],
+        "quarters_in_feed": quarters[-4:],
+        "db_monthly": int(m_max[0] or 0),
+        "db_latest_month": m_max[1] or "",
+        "db_income": int(q_max[0] or 0),
+        "db_latest_quarter": f"{q_max[1]}Q{q_max[2]}" if q_max[1] else "",
+        "note": "官方 OpenAPI 永遠是目前最新一期；公司公布後隔日盤後就會寫入，不必指定財報日。月營收約每月10日前後、季報約5/8/11月中與隔年3月底陸續出表。",
     }
     logger.info("基本面同步完成 %s", stats)
     return stats
@@ -311,6 +328,44 @@ def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any
     return dict(row) if row else None
 
 
+def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
+    """[(標籤, 值), ...] 給第一眼圖／文字共用。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id).strip()
+    m = get_latest_monthly(path, sid)
+    q = get_latest_income(path, sid)
+    rows = []
+    if m:
+        yyyymm = str(m.get("yyyymm") or "")
+        label = f"{yyyymm[:4]}/{yyyymm[4:]}" if len(yyyymm) >= 6 else yyyymm
+        rows.append(
+            (
+                "月營收",
+                f"{label}　YoY {float(m['yoy_pct']):+.1f}%　MoM {float(m['mom_pct']):+.1f}%",
+            )
+        )
+        rows.append(("累計YoY", f"{float(m['ytd_yoy_pct']):+.1f}%"))
+    if q:
+        rev = float(q.get("revenue") or 0)
+        opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
+        rows.append(
+            (
+                "季報",
+                f"{q['year']}Q{q['season']}　毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
+            )
+        )
+    if not rows:
+        rows.append(("基本面", "尚無月營收／季報"))
+    return rows
+
+
+def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
+    """第一眼用的短基本面：月營收 YoY/MoM、季報毛利率／EPS。"""
+    from tg_layout import kv
+
+    return [kv(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
+
+
 def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
@@ -319,26 +374,46 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if not m and not q:
         return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（請先跑盤後流水線或 /fund 會自動同步）。"
     name = (m or q or {}).get("stock_name") or sid
-    lines = [f"📈 <b>【基本面】{sid} {name}</b>"]
+    from tg_layout import title_line, kv, section, join_sections
+
+    blocks = [title_line("基本面", sid, name)]
     if m:
         yyyymm = m["yyyymm"]
         label = f"{yyyymm[:4]}/{yyyymm[4:]}"
-        lines += [
-            f"月營收 {label}：{m['revenue']:,.0f} 千元",
-            f"MoM {m['mom_pct']:+.1f}%　YoY {m['yoy_pct']:+.1f}%　累計YoY {m['ytd_yoy_pct']:+.1f}%",
-        ]
+        blocks.append(
+            section(
+                kv("期間", label),
+                kv("月營收", f"{m['revenue']:,.0f} 千元"),
+                kv("MoM", f"{m['mom_pct']:+.1f}%"),
+                kv("YoY", f"{m['yoy_pct']:+.1f}%"),
+                kv("累計YoY", f"{m['ytd_yoy_pct']:+.1f}%"),
+            )
+        )
     if q:
         prev = prior_income(path, q)
-        qoq = ""
+        gm_note = ""
         if prev and prev.get("gross_margin_pct") is not None:
             diff = q["gross_margin_pct"] - prev["gross_margin_pct"]
-            qoq = f"　較上期 {diff:+.1f}pt（{prev['year']}Q{prev['season']}）"
-        lines += [
-            f"季報 {q['year']}Q{q['season']} 營收 {q['revenue']:,.0f} 千元",
-            f"毛利 {q['gross_profit']:,.0f}　毛利率 {q['gross_margin_pct']:.1f}%{qoq}",
-            f"EPS {q['eps']:.2f}　稅後淨利 {q['net_income']:,.0f} 千元",
-        ]
-    return "\n".join(lines)
+            gm_note = f"（較{prev['year']}Q{prev['season']} {diff:+.1f}pt）"
+        blocks.append(
+            section(
+                kv("季報", f"{q['year']}Q{q['season']}"),
+                kv("營收", f"{q['revenue']:,.0f} 千元"),
+                kv("毛利", f"{q['gross_profit']:,.0f} 千元"),
+                kv("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
+                kv("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
+                kv("EPS", f"{q['eps']:.2f}"),
+                kv("稅後淨利", f"{q['net_income']:,.0f} 千元"),
+            )
+        )
+    try:
+        from stock_links import yahoo_income_url
+
+        yurl = yahoo_income_url(sid, path)
+        blocks.append(f'<a href="{yurl}">奇摩損益表（人工核對用）</a>')
+    except Exception:
+        pass
+    return join_sections(*blocks)
 
 
 def hot_revenue_names(db_path: str, min_yoy: float = 20.0, min_mom: float = 0.0, limit: int = 12) -> List[Dict[str, Any]]:

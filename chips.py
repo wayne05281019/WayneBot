@@ -146,22 +146,33 @@ def fetch_chips_for_date(session: requests.Session, yyyymmdd: str) -> Dict[str, 
     merged: Dict[str, Dict[str, int]] = {}
     tw_url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={yyyymmdd}&selectType=ALLBUT0999&response=json"
     try:
-        resp = session.get(tw_url, timeout=20)
+        resp = session.get(tw_url, timeout=40)
         if resp.status_code == 200:
             merged.update(parse_twse_t86(resp.json()))
     except Exception as e:
         logger.warning("上市 T86 失敗 %s: %s", yyyymmdd, e)
+    n_tw = len(merged)
     roc = roc_date(yyyymmdd)
-    two_url = (
-        "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
-        f"?l=zh-tw&d={roc}&se=EW&t=D&_={int(time.time() * 1000)}"
-    )
-    try:
-        resp = session.get(two_url, timeout=20)
-        if resp.status_code == 200:
-            merged.update(parse_tpex_t86(resp.json()))
-    except Exception as e:
-        logger.warning("上櫃法人失敗 %s: %s", yyyymmdd, e)
+    yyyy, mm, dd = yyyymmdd[:4], yyyymmdd[4:6], yyyymmdd[6:]
+    two_urls = [
+        f"https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?date={yyyy}/{mm}/{dd}&type=Daily&id=&response=json",
+        (
+            "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
+            f"?l=zh-tw&d={roc}&se=EW&t=D&_={int(time.time() * 1000)}"
+        ),
+    ]
+    for two_url in two_urls:
+        try:
+            resp = session.get(two_url, timeout=40)
+            if resp.status_code != 200:
+                continue
+            parsed = parse_tpex_t86(resp.json())
+            if parsed:
+                merged.update(parsed)
+                break
+        except Exception as e:
+            logger.warning("上櫃法人失敗 %s: %s", yyyymmdd, e)
+    logger.info("法人 %s 上市後 %s 檔，合併後 %s 檔", yyyymmdd, n_tw, len(merged))
     return merged
 
 
@@ -242,33 +253,137 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
     return built[:limit]
 
 
+def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
+    """讀籌碼列；近日全 0 時先回補當日 T86。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id).strip()
+    rows = major_player_rows(path, sid, limit=limit)
+    if rows:
+        recent = rows[:5]
+        if all(int(r.get("three_net") or 0) == 0 for r in recent):
+            try:
+                conn = sqlite3.connect(path)
+                latest = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()[0]
+                conn.close()
+                if latest:
+                    update_chips_for_date(path, str(latest))
+            except Exception as e:
+                logger.warning("即時回補籌碼失敗: %s", e)
+            rows = major_player_rows(path, sid, limit=limit)
+    return rows
+
+
 def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
-    rows = major_player_rows(path, str(stock_id).strip(), limit=limit)
-    return format_major_player_html(rows, str(stock_id).strip()) if rows else ""
+    sid = str(stock_id).strip()
+    rows = load_major_player_rows(path, sid, limit=limit)
+    return format_major_player_html(rows, sid) if rows else ""
 
 
 def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     if not rows:
         return f"⚠️ 找不到 {stock_id} 的主力買賣超（請先完成盤後法人回補）。"
     name = rows[0].get("stock_name") or stock_id
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(stock_id, name)
+    except Exception:
+        title = f"{stock_id} {name}"
     lines = [
-        f"📊 <b>【主力買賣超】{stock_id} {name}</b>",
-        "<code>日期     收盤     量    超比    買賣超  10日累計</code>",
-        "───────────────────",
+        f"📊 <b>【主力買賣超】{title}</b>",
+        "完整虛線格子見下一則圖（外資／投信／自營分欄，避免對不齊）。",
+        "買賣超＝三大法人合計（張）；超比＝合計／成交量。",
     ]
+    return "\n".join(lines)
+
+
+def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
+    path = db_path or get_db_path()
+    rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit)
+    if not rows:
+        return ""
+    try:
+        from config import get_charts_dir
+        charts = get_charts_dir()
+    except Exception:
+        charts = os.path.join("data", "charts")
+    out = save_path or os.path.join(charts, f"{stock_id}_chips.png")
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    try:
+        from cary_navigator import FONT_PATH, _fp
+    except Exception:
+        FONT_PATH = None
+        def _fp(size, weight="bold"):
+            return None
+
+    def ink(size, w="bold"):
+        fp = _fp(size, w)
+        return {"fontproperties": fp} if fp is not None else {"fontsize": size, "fontweight": "bold"}
+
+    n = len(rows)
+    fig_h = 1.22 + n * 0.46
+    fig, ax = plt.subplots(figsize=(6.55, fig_h), dpi=175, facecolor="#eef1f6")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.025, right=0.975, top=0.99, bottom=0.01)
+
+    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+    xs = [1.6, 13.2, 23.0, 33.2, 43.8, 54.4, 65.0, 76.0, 86.2, 98.2]
+    top = 99.0
+    hdr_h = 4.2
+    body_h = (top - hdr_h - 0.8) / max(n, 1)
+
+    def box(x, y, w, h, fc="#fff"):
+        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#cfd8dc", linewidth=0.5))
+
+    for i, h in enumerate(headers):
+        box(xs[i], top - hdr_h, xs[i + 1] - xs[i], hdr_h, "#e3f2fd")
+        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, **ink(10), color="#0d47a1", ha="center", va="center")
+    y = top - hdr_h
     for r in rows:
+        y1 = y - body_h
+        three = int(r["three_net"])
         d = str(r["date"])
         if len(d) == 8:
-            d = f"{d[4:6]}/{d[6:]}"
-        three = r["three_net"]
-        mark = "🔴" if three > 0 else ("🟢" if three < 0 else "⚪")
-        lines.append(
-            f"{mark} <code>{d}</code> {r['close']:.0f} {r['volume']:,} "
-            f"{r['ratio_pct']:+.1f}% <b>{three:+d}</b> {r['acc_10d']:+d}"
-        )
-    lines.append("\n💡 買賣超＝外資+投信+自營（張）；超比＝三大法人／成交量。")
-    return "\n".join(lines)
+            d = f"{int(d[4:6])}/{int(d[6:])}"
+        nums = [
+            int(r["foreign_net"]),
+            int(r["trust_net"]),
+            int(r["dealer_net"]),
+            three,
+        ]
+        vals = [
+            d,
+            f"{float(r['close']):,.2f}",
+            f"{int(r['volume']):,}",
+            f"{nums[0]:+d}",
+            f"{nums[1]:+d}",
+            f"{nums[2]:+d}",
+            f"{three:+d}",
+            f"{r['ratio_pct']:+.1f}%",
+            f"{int(r['acc_10d']):+d}",
+        ]
+        for i, val in enumerate(vals):
+            fc = "#ffffff"
+            color = "#000000"
+            if i >= 3:
+                v = int(r["acc_10d"]) if i == 8 else (three if i in (6, 7) else nums[i - 3])
+                if i == 7:
+                    v = float(r["ratio_pct"])
+                if v > 0:
+                    fc, color = "#ffebee", "#b71c1c"
+                elif v < 0:
+                    fc, color = "#e8f5e9", "#1b5e20"
+            box(xs[i], y1, xs[i + 1] - xs[i], body_h, fc)
+            ax.text((xs[i] + xs[i + 1]) / 2, (y + y1) / 2, val, **ink(11), color=color, ha="center", va="center")
+        y = y1
+    plt.savefig(out, dpi=175, facecolor=fig.get_facecolor())
+    plt.close()
+    return out
 
 
 if __name__ == "__main__":

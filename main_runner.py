@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional
 
 import requests
 
-from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id
+from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str
 from wayne_db import ensure_core_schema
 
 logging.basicConfig(
@@ -61,7 +61,7 @@ class MainRunner:
         self.cache_dir = get_cache_dir()
         self.token = get_telegram_token()
         self.chat_id = get_telegram_chat_id()
-        self.today_str = datetime.now().strftime("%Y%m%d")
+        self.today_str = taipei_today_str()
         logger.info(f"🚀 初始化 WayneBot 主排程 (DB: {self.db_path}, 日期: {self.today_str})")
         ensure_core_schema(self.db_path)
 
@@ -159,20 +159,32 @@ class MainRunner:
         except Exception as e:
             logger.warning(f"母體同步略過：{e}")
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE date = ?;", (self.today_str,))
-        count = cursor.fetchone()[0]
-        conn.close()
-
-        inserted_count = count
-        if count > 500:
-            logger.info(f"ℹ️ {self.today_str} 行情已有 {count} 筆，略過價量重抓，改補法人。")
+        inserted_count = 0
+        if self.fetcher and hasattr(self.fetcher, "fill_missing_market_days"):
+            try:
+                gap = self.fetcher.fill_missing_market_days(end_date=self.today_str)
+                logger.info("缺日回補：%s", gap)
+                inserted_count = len(gap.get("filled") or [])
+                if hasattr(self.fetcher, "_refill_thin_days"):
+                    extra = self.fetcher._refill_thin_days(self.today_str, lookback=40, min_rows=1800)
+                    if extra:
+                        logger.info("稀薄日再補：%s", extra)
+                        inserted_count += len(extra)
+            except Exception as e:
+                logger.error(f"❌ 缺日回補異常: {e}", exc_info=True)
         elif self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
             try:
                 inserted_count = int(self.fetcher.update_daily_market_data(self.today_str) or 0)
             except Exception as e:
                 logger.error(f"❌ 增量更新異常: {e}", exc_info=True)
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE date = ?;", (self.today_str,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        if count > inserted_count:
+            inserted_count = count
 
         try:
             from chips import update_chips_for_date, backfill_chips
@@ -202,6 +214,30 @@ class MainRunner:
             logger.info(f"月營收／季報同步：{fund}")
         except Exception as e:
             logger.error(f"基本面同步失敗: {e}", exc_info=True)
+        try:
+            from import_health import audit_import, format_audit_plain
+            health = audit_import(self.db_path)
+            logger.info("盤後匯入檢查：%s", health)
+            if self.fetcher and hasattr(self.fetcher, "sync_paired_markets"):
+                paired = self.fetcher.sync_paired_markets()
+                if paired:
+                    logger.info("開盤日缺邊已重抓：%s", paired)
+                    health = audit_import(self.db_path)
+            elif health.get("history_issues") and self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
+                for item in health["history_issues"]:
+                    ds = item["date"]
+                    logger.warning("開盤日缺邊，重抓 %s：%s", ds, item["problems"])
+                    self.fetcher.update_daily_market_data(ds)
+                    time.sleep(0.4)
+                health = audit_import(self.db_path)
+            if health.get("problems") or health.get("history_issue_n"):
+                logger.warning("匯入異常：%s", format_audit_plain(health))
+                try:
+                    self.send_telegram_message("⚠️ " + format_audit_plain(health))
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning("匯入檢查略過：%s", e)
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:
@@ -315,8 +351,40 @@ class MainRunner:
         start_time = time.time()
         logger.info("🎬 === WayneBot 流水線開始 ===")
         self.run_daily_increment()
-        report_text = self.generate_screening_report()
-        self.send_telegram_message(report_text)
+        screening = None
+        if run_full_screening:
+            try:
+                screening = run_full_screening(db_path=self.db_path)
+            except Exception as e:
+                logger.error("四大選股失敗: %s", e, exc_info=True)
+        if self.bot and screening:
+            try:
+                self.bot.send_screening_report(screening)
+            except Exception as e:
+                logger.warning("分類戰報推播失敗，改送長文: %s", e)
+                self.send_telegram_message(screening.get("message") or self.generate_screening_report())
+        else:
+            report_text = (screening or {}).get("message") if screening else ""
+            self.send_telegram_message(report_text or self.generate_screening_report())
+        extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
+        try:
+            from fundamentals import format_hot_revenue_html
+            hot = format_hot_revenue_html(self.db_path)
+            if hot:
+                extra_bits.append(hot)
+        except Exception:
+            pass
+        extra_text = "\n".join(x for x in extra_bits if x)
+        if extra_text:
+            self.send_telegram_message(extra_text)
+        try:
+            from ai_trader import run_ai_desk
+
+            ai = run_ai_desk(self.db_path, (screening or {}).get("results") or {}, self.today_str)
+            if ai.get("html"):
+                self.send_telegram_message(ai["html"])
+        except Exception as e:
+            logger.warning("AI 模擬操盤略過：%s", e)
         elapsed = time.time() - start_time
         self._mark_pipeline("success", f"elapsed={elapsed:.1f}s")
         logger.info(f"🎉 === 流水線完畢 (耗時: {elapsed:.2f} 秒) ===")

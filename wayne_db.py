@@ -303,8 +303,118 @@ def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
+def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+    """用代號或中文名（如南亞、山太士）查標的；興櫃也查名稱目錄。"""
+    ensure_core_schema(db_path)
+    q = (query or "").strip()
+    if not q:
+        return []
+    with get_db_connection(db_path) as conn:
+        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        rows = []
+        if latest and q.isdigit() and 3 <= len(q) <= 6:
+            rows = conn.execute(
+                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                   WHERE date=? AND stock_id=? LIMIT 1;""",
+                (latest, q),
+            ).fetchall()
+        elif latest:
+            rows = conn.execute(
+                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                   WHERE date=? AND stock_name LIKE ?
+                   ORDER BY volume DESC LIMIT ?;""",
+                (latest, f"%{q}%", int(limit)),
+            ).fetchall()
+        hits = [dict(r) for r in rows]
+        if hits:
+            return hits
+    ensure_stock_directory(db_path)
+    with get_db_connection(db_path) as conn:
+        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        if q.isdigit() and 3 <= len(q) <= 6:
+            drows = conn.execute(
+                "SELECT stock_id, stock_name, market FROM stock_directory WHERE stock_id=? LIMIT 1;",
+                (q,),
+            ).fetchall()
+        else:
+            drows = conn.execute(
+                """SELECT stock_id, stock_name, market FROM stock_directory
+                   WHERE stock_name LIKE ? ORDER BY stock_id LIMIT ?;""",
+                (f"%{q}%", int(limit)),
+            ).fetchall()
+        out = []
+        for r in drows:
+            item = dict(r)
+            quote = None
+            if latest:
+                quote = conn.execute(
+                    """SELECT close, pct_change FROM daily_quotes
+                       WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
+                    (item["stock_id"],),
+                ).fetchone()
+            if quote:
+                item["close"] = quote["close"]
+                item["pct_change"] = quote["pct_change"]
+            else:
+                item["close"] = None
+                item["pct_change"] = None
+            out.append(item)
+        return out
+
+
+def ensure_stock_directory(db_path: str) -> None:
+    """名稱目錄：日K裡有的＋興櫃 ISIN，讓山太士這種興櫃打得到。"""
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS stock_directory (
+                stock_id TEXT PRIMARY KEY,
+                stock_name TEXT NOT NULL,
+                market TEXT DEFAULT ''
+            );"""
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO stock_directory (stock_id, stock_name, market)
+               SELECT stock_id, stock_name, market FROM daily_quotes
+               WHERE date = (SELECT MAX(date) FROM daily_quotes);"""
+        )
+        n_em = conn.execute(
+            "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
+        ).fetchone()[0]
+    if n_em >= 20:
+        return
+    try:
+        from universe import fetch_isin_universe
+
+        items = fetch_isin_universe()
+        with get_db_connection(db_path) as conn:
+            for u in items:
+                conn.execute(
+                    """INSERT INTO stock_directory (stock_id, stock_name, market)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(stock_id) DO UPDATE SET
+                         stock_name=excluded.stock_name,
+                         market=CASE WHEN stock_directory.market='' THEN excluded.market
+                                     ELSE stock_directory.market END;""",
+                    (u["stock_id"], u["stock_name"], u.get("market_type") or ""),
+                )
+    except Exception:
+        pass
+    # 興櫃常見漏網：ISIN 解析失敗時仍能打到名稱
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO stock_directory (stock_id, stock_name, market)
+               VALUES ('3595', '山太士', 'EM');"""
+        )
+
+
 def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: str = "") -> None:
     ensure_core_schema(db_path)
+    code = str(stock_code).strip()
+    name = (stock_name or "").strip()
+    if not name or name == code:
+        hits = lookup_stocks(db_path, code, limit=1)
+        if hits:
+            name = hits[0].get("stock_name") or code
     now = datetime.now().isoformat(timespec="seconds")
     with get_db_connection(db_path) as conn:
         conn.execute(
@@ -313,7 +423,7 @@ def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: st
             VALUES (?, ?, ?, ?)
             ON CONFLICT(user_id, stock_code) DO UPDATE SET stock_name=excluded.stock_name;
             """,
-            (str(user_id), str(stock_code).strip(), stock_name or stock_code, now),
+            (str(user_id), code, name or code, now),
         )
 
 
@@ -348,6 +458,39 @@ def add_to_portfolio(
             """,
             (str(user_id), str(stock_code).strip(), stock_name or stock_code, float(shares), float(cost_price), now),
         )
+
+
+def sell_from_holdings(
+    db_path: str, user_id: str, stock_code: str, shares: float, price: float
+) -> str:
+    """從 user_holdings 賣出（與買入紀錄同一張表）。"""
+    ensure_core_schema(db_path)
+    code = str(stock_code).strip()
+    with get_db_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT shares, cost_price, stock_name FROM user_holdings WHERE user_id=? AND stock_code=?;",
+            (str(user_id), code),
+        ).fetchone()
+        if not row:
+            return f"持股裡沒有 {code}"
+        held = float(row["shares"] or 0)
+        cost = float(row["cost_price"] or 0)
+        name = row["stock_name"] or code
+        sell_n = held if shares <= 0 or shares >= held else float(shares)
+        pnl = (float(price) - cost) * sell_n
+        remain = held - sell_n
+        now = datetime.now().isoformat(timespec="seconds")
+        if remain <= 1e-9:
+            conn.execute(
+                "DELETE FROM user_holdings WHERE user_id=? AND stock_code=?;",
+                (str(user_id), code),
+            )
+        else:
+            conn.execute(
+                "UPDATE user_holdings SET shares=?, updated_at=? WHERE user_id=? AND stock_code=?;",
+                (remain, now, str(user_id), code),
+            )
+        return f"已賣出 {code} {name} {sell_n:g}張 @ {price}，估損益 {pnl:+.0f}（成本 {cost}）"
 
 
 # ==============================================================================
