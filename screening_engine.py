@@ -429,8 +429,48 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
     return [p["html"] for p in format_screening_payload(results, target_date)]
 
 
-def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
-    return "\n\n".join(format_screening_sections(results, target_date))
+def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
+    """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
+    specs = [
+        ("revenue_cross", "優先看　營收轉強×量價"),
+        ("select_01", "Select01　周帶量突破"),
+        ("select_02", "Select02　突破半年高"),
+        ("select_03", "Select03　突破兩年高"),
+        ("select_04", "Select04　雙綠脫離"),
+        ("day_trade", "當沖"),
+        ("overnight", "隔日沖"),
+    ]
+
+    def one(it: Dict[str, Any]) -> str:
+        sid = str(it.get("stock_id") or it.get("code") or "")
+        sname = str(it.get("stock_name") or it.get("name") or "")
+        q = it.get("q60r")
+        q_s = f"{float(q):.1f}×" if q is not None else ""
+        s = " S級" if it.get("is_s_tier") else ""
+        return f"{sid} {sname} {_regime_label(it)} {_pct_str(it.get('pct_change'))} {q_s}{s}".strip()
+
+    lines = [
+        f"WayneBot 海選 {target_date}（昨收）",
+        "給家人轉貼用：量化輔助，不是立即下單清單。進場請設移動停損。",
+        "",
+    ]
+    for key, title in specs:
+        items = results.get(key) or []
+        lines.append(f"【{title}】{len(items)}檔")
+        if not items:
+            lines.append("無")
+            lines.append("")
+            continue
+        for it in items[:12]:
+            lines.append(one(it))
+        if len(items) > 12:
+            lines.append(f"…另 {len(items) - 12} 檔（完整請看 Telegram 分類則）")
+        lines.append("")
+    lines.append("（WayneBot）")
+    text = "\n".join(lines).strip()
+    if len(text) > 3900:
+        text = text[:3880].rstrip() + "\n…（已截短，完整名單看 Telegram）"
+    return text
 
 
 # ------------------------------------------------------------------------------
@@ -453,6 +493,7 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
             "date": target_date,
             "as_of": target_date,
             "message": f"⚠️ 查無 {target_date} 之有效交易行情或無標的通過流動性檢驗（日量>=1,000張且日額>=3,000萬）。",
+            "line_share": f"WayneBot 海選 {target_date}\n今日無通過流動性的標的。",
             "results": {},
             "daytrade": [],
             "overnight": [],
@@ -506,7 +547,7 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
-        "revenue_cross": revenue_cross,
+        "line_share": format_line_share_text(results, target_date),
     }
 
 

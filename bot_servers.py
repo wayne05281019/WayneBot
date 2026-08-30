@@ -318,6 +318,10 @@ class WayneTelegramBot:
                 kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
                 await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
+        line_txt = (result.get("line_share") or "").strip()
+        if line_txt:
+            await message.reply_text("↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
+            await message.reply_text(line_txt)
 
     def _cat_sticker_id(self, key: str) -> str:
         if not key:
@@ -359,6 +363,33 @@ class WayneTelegramBot:
             requests.post(url, json=payload, timeout=20)
         except Exception as e:
             logger.error("send_html: %s", e)
+
+    def _send_plain(self, chat_id: str, text: str):
+        try:
+            import requests
+
+            requests.post(
+                f"https://api.telegram.org/bot{self.token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+                timeout=20,
+            )
+        except Exception as e:
+            logger.error("send_plain: %s", e)
+
+    def _send_text_file(self, chat_id: str, file_path: str, caption: str = ""):
+        try:
+            import requests
+
+            url = f"https://api.telegram.org/bot{self.token}/sendDocument"
+            with open(file_path, "rb") as f:
+                requests.post(
+                    url,
+                    data={"chat_id": chat_id, "caption": caption[:1024]},
+                    files={"document": (os.path.basename(file_path), f, "text/plain; charset=utf-8")},
+                    timeout=40,
+                )
+        except Exception as e:
+            logger.error("send_text_file: %s", e)
 
     @staticmethod
     def _card_photo_paths(card_img):
@@ -408,6 +439,20 @@ class WayneTelegramBot:
                     attach_menu=False,
                 )
             _t.sleep(0.25)
+        line_txt = (result.get("line_share") or "").strip()
+        if line_txt:
+            self._send_plain(self.chat_id, "↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
+            self._send_plain(self.chat_id, line_txt)
+            try:
+                from config import get_charts_dir
+
+                path = os.path.join(get_charts_dir(), f"海選_{result.get('date') or ''}_轉貼LINE.txt")
+                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(line_txt + "\n")
+                self._send_text_file(self.chat_id, path, caption="同一份檔案：也可把這個 txt 傳到 LINE")
+            except Exception as e:
+                logger.error("line share file: %s", e)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
