@@ -410,7 +410,7 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         from stock_links import yahoo_income_url
 
         yurl = yahoo_income_url(sid, path)
-        blocks.append(section(kv("奇摩財報", f'<a href="{yurl}">損益表（核對用）</a>')))
+        blocks.append(f'<a href="{yurl}">奇摩損益表（人工核對用）</a>')
     except Exception:
         pass
     return join_sections(*blocks)

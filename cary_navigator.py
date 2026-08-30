@@ -46,6 +46,24 @@ else:
 plt.rcParams['axes.unicode_minus'] = False
 
 
+def pink_warning_note(card: dict) -> str:
+    """粉紅預警＝從最新一根往回連續 K20高的天數（滿 2 日才提紀律賣出，數字用實際連幾日）。"""
+    n = int(card.get("k20_high_streak") or 0)
+    if n <= 0:
+        table = card.get("table")
+        if table is not None and hasattr(table, "empty") and not table.empty:
+            for a in table["預警"].tolist():
+                if str(a) == "K20高":
+                    n += 1
+                else:
+                    break
+    if n >= 2:
+        return f"粉紅預警已連 {n} 日 → 紀律考慮賣出"
+    if n == 1:
+        return "粉紅預警第 1 日"
+    return ""
+
+
 class CaryNavigatorEngine:
     """CaryBot 買低賣高決策卡、多空溫度計與雙綠脫離海選引擎"""
 
@@ -89,8 +107,14 @@ class CaryNavigatorEngine:
         df["low_20"] = df["close"].rolling(20, min_periods=1).min()
         df["high_60"] = df["close"].rolling(60, min_periods=1).max()
         df["low_60"] = df["close"].rolling(60, min_periods=1).min()
-        # 獲利＝相對 60 日收盤低；0%＝貼底（獲利零）
-        df["profit_pct"] = ((df["close"] - df["low_60"]) / df["low_60"].replace(0, np.nan) * 100.0).round(1)
+        # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」對齊 CaryBot：相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
+        dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+        latest_dt = dts.iloc[-1]
+        cal_mask = (dts >= (latest_dt - pd.Timedelta(days=60))) & dts.notna()
+        cal60_low = float(df.loc[cal_mask, "close"].min()) if cal_mask.any() else float(df["low_60"].iloc[-1])
+        if cal60_low <= 0:
+            cal60_low = float(df["low_60"].iloc[-1] or 0) or 1.0
+        df["profit_pct"] = ((df["close"] - cal60_low) / cal60_low * 100.0).round(1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
 
@@ -165,6 +189,12 @@ class CaryNavigatorEngine:
         table = df.tail(lookback)[
             ["date", "close", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量", "profit_pct", "bias_monthly", "vol_rank_120"]
         ].iloc[::-1]
+        streak = 0
+        for a in reversed(alert_tags):
+            if a == "K20高":
+                streak += 1
+            else:
+                break
         return {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
@@ -182,7 +212,10 @@ class CaryNavigatorEngine:
             "temp_c": latest["溫度計"],
             "ma20": float(latest["ma20"]),
             "ma60s": ma60s,
-            "qty60": qty60,
+            "qty60": int(round(qty60 / 100.0) * 100) if qty60 else 0,
+            "cal60_low": round(cal60_low, 2),
+            "gain_pct": round((float(latest["close"]) - cal60_low) / cal60_low * 100.0, 1) if cal60_low else 0.0,
+            "k20_high_streak": streak,
             "vol_rank": int(latest["vol_rank_120"]),
             "badges": badges,
             "open": float(latest.get("open") or 0),
@@ -653,10 +686,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         web, mobile = yahoo_urls(sid, db_path or get_db_path())
     except Exception:
         web = mobile = ""
-    pink_note = ""
-    alerts = list(card["table"]["預警"].head(3))
-    if alerts.count("K20高") >= 2 or list(alerts[:2]) == ["K20高", "K20高"]:
-        pink_note = "🚨 粉紅預警已滿 2 日 → 紀律考慮賣出"
+    pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
     from tg_layout import kv, section, join_sections
     from chip_tape import build_tape, fmt_lots_align
@@ -705,7 +735,8 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ),
         section(
             kv("距20日高", f"{card['dist_h20']:+.1f}%"),
-            kv("距60日低", f"{card.get('dist_l60'):+.1f}%（獲利）"),
+            kv("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
+            kv("距60根低", f"{card.get('dist_l60'):+.1f}%"),
             kv("月空間", f"{card['space_20']}%"),
             kv("季空間", f"{card['space_60']}%"),
             kv("月乖離", bias_s),
@@ -791,9 +822,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     kv_block(61.55, 15.15, "空間／位置", [
         ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
-        ("距60日低（獲利）", f"{card.get('dist_l60'):+.1f}%", "#111111"),
+        ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
+        ("距60根低", f"{card.get('dist_l60'):+.1f}%", "#111111"),
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", "#111111"),
-        ("月乖離", f"{float(card.get('bias_monthly') or 0):+.1f}%", "#C62828" if float(card.get("bias_monthly") or 0) > 0 else "#00695C"),
     ])
     kv_block(48.55, 12.15, "熱度／量能", [
         ("溫度", str(card.get("temp_c") or "—"), "#111111"),
@@ -836,9 +867,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ink(4.8, fy, f"{a}　{b}", 12, "#111111")
         fy -= 3.15
     try:
-        alerts = list(card["table"]["預警"].head(3))
-        if alerts.count("K20高") >= 2 or list(alerts[:2]) == ["K20高", "K20高"]:
-            ink(4.8, fy, "粉紅預警已滿 2 日 → 紀律考慮賣出", 13, "#AD1457")
+        note2 = pink_warning_note(card)
+        if note2:
+            ink(4.8, fy, note2, 13, "#AD1457")
     except Exception:
         pass
     ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌）　▲連漲　▼連跌", 10, "#78909C")
@@ -897,7 +928,10 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         if vol_a:
             ax1.scatter([dt], [hi * 1.028], marker="v", color="#7b1fa2", s=52, zorder=5)
             ax_sig.scatter([dt], [2], marker="v", color="#7b1fa2", s=28)
-        if cl >= c20h * 0.99:
+        c20c = work["close"].iloc[max(0, i - 19) : i + 1].max()
+        ma20_i = float(work["ma20"].iloc[i] or 0)
+        bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
+        if cl >= c20c * 0.99 or bias_i >= 8.0:
             ax_sig.scatter([dt], [1], marker="s", color="#e53935", s=18)
         ax_sig.scatter([dt], [0], marker="s", color="#90caf9", s=12)
     ax1.plot(work["dt"], work["ma20"], color="#fbc02d", linewidth=1.7, label=f"SMA(20): {float(last['ma20']):.2f}", zorder=4)

@@ -414,6 +414,7 @@ class DataFetcher:
             if payload:
                 break
         if not payload:
+            self._tpex_status = "error"
             return []
         raw_rows, fields = [], []
         if isinstance(payload, dict):
@@ -434,6 +435,10 @@ class DataFetcher:
                         best = (score, rows, tb.get("fields") or [])
                 if best:
                     raw_rows, fields = best[1], best[2]
+        if not raw_rows:
+            self._tpex_status = "empty"
+            return []
+        self._tpex_status = "ok"
         idx = {str(n): i for i, n in enumerate(fields)}
 
         def col(row, name, fallback_i):
@@ -497,11 +502,17 @@ class DataFetcher:
 
         # 1. 抓取上市行情 (TWSE MI_INDEX)
         tw_records = []
+        tw_status = "error"
         tw_url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={target_date}&type=ALLBUT0999&response=json"
         try:
             resp = self.session.get(tw_url, timeout=40)
             if resp.status_code == 200:
                 data = resp.json()
+                stat = str(data.get("stat") or "")
+                if "沒有符合" in stat or "很抱歉" in stat:
+                    tw_status = "empty"
+                else:
+                    tw_status = "ok"
                 raw_rows = []
                 for table in data.get("tables", []):
                     if "收盤行情" in table.get("title", ""):
@@ -545,6 +556,20 @@ class DataFetcher:
             print(f"⚠️ 上市增量抓取異常：{e}")
 
         two_records = self._fetch_tpex_daily(target_date)
+        tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
+
+        if tw_status == "empty" and tpex_status == "empty" and not tw_records and not two_records:
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM daily_quotes WHERE date=?", (target_date,))
+            gone = cur.rowcount
+            conn.commit()
+            conn.close()
+            if gone:
+                print(f"📭 {target_date} 證交所與櫃買皆無收盤，已刪殘列 {gone}")
+            else:
+                print(f"📭 {target_date} 非交易日（兩邊官方都沒有行情）。")
+            return 0
 
         # 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
         tw_t86 = {}
@@ -711,8 +736,9 @@ class DataFetcher:
         date 開盤日 YYYYMMDD；stock_id 四碼代號；open/high/low/close 當日價；
         volume 成交張數；turnover_k 成交金額千元；pct_change 漲跌％；
         foreign_net/trust_net/dealer_net 外資／投信／自營買賣超（張，正買負賣）。
-        決策卡 10/20/60 日高低＝近 N 根「收盤」最高／最低（不是日曆窗、也不是影線）。
-        獲利＝相對近 60 根收盤最低。量單位與法人一律為張。
+        決策卡表頭 10/20/60 日高低＝近 N 根「收盤」最高／最低。
+        格子「獲利」＝相對最新日往前 60 個日曆日的收盤最低（與表頭 60 根低不同）。
+        量單位與法人一律為張。
         """
         conn = self.get_db_connection()
         cur = conn.cursor()
