@@ -19,7 +19,9 @@ MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str]] = {
 }
 
 SET_NAME = "waynebot_marks_by_WC_ai_trade_bot"
+BAR_SET_NAME = "waynebot_bars_by_WC_ai_trade_bot"
 IDS_PATH = os.path.join(os.path.dirname(__file__), "telegram_cat_mark_ids.json")
+STICKER_IDS_PATH = os.path.join(os.path.dirname(__file__), "telegram_cat_sticker_ids.json")
 
 
 def load_mark_ids() -> Dict[str, str]:
@@ -38,6 +40,17 @@ def tg_mark(key: str, fallback: str) -> str:
     if not eid:
         return fallback
     return f'<tg-emoji emoji-id="{eid}">{fallback}</tg-emoji>'
+
+
+def load_sticker_ids() -> Dict[str, str]:
+    if not os.path.isfile(STICKER_IDS_PATH):
+        return {}
+    try:
+        with open(STICKER_IDS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return {k: str(v) for k, v in data.items() if v}
+    except Exception:
+        return {}
 
 
 def _rot(cx, cy, x, y, a):
@@ -118,6 +131,27 @@ def render_webm(kind: str, rgb: Tuple[int, int, int], path: str, frames: int = 2
         "ffmpeg -y -framerate 8 -i "
         f"{tmp}/f%03d.png -c:v libvpx-vp9 -pix_fmt yuva420p -an "
         "-vf scale=100:100 -b:v 60k -deadline good -auto-alt-ref 0 "
+        f"{path} >/dev/null 2>&1"
+    )
+    return path
+
+
+def render_thin_sticker(kind: str, rgb: Tuple[int, int, int], path: str, frames: int = 24) -> str:
+    """512x128 細長貼紙：左邊小圖在轉，不會變成大方塊影片。"""
+    tmp = path + "_bar"
+    os.makedirs(tmp, exist_ok=True)
+    icon_path = path + "_icon.webm"
+    render_webm(kind, rgb, icon_path, frames=frames)
+    icon_dir = icon_path + "_frames"
+    for i in range(frames):
+        icon = Image.open(os.path.join(icon_dir, f"f{i:03d}.png")).convert("RGBA").resize((112, 112))
+        canvas = Image.new("RGBA", (512, 128), (0, 0, 0, 0))
+        canvas.paste(icon, (16, 8), icon)
+        canvas.save(os.path.join(tmp, f"f{i:03d}.png"))
+    os.system(
+        "ffmpeg -y -framerate 8 -i "
+        f"{tmp}/f%03d.png -c:v libvpx-vp9 -pix_fmt yuva420p -an "
+        "-vf scale=512:128 -b:v 90k -deadline good -auto-alt-ref 0 "
         f"{path} >/dev/null 2>&1"
     )
     return path

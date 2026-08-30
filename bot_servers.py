@@ -136,6 +136,12 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
+            fid = self._cat_sticker_id(part.get("mark_key") or "")
+            if fid:
+                try:
+                    await message.reply_sticker(sticker=fid)
+                except Exception:
+                    logger.exception("分類貼紙傳送失敗")
             chunks = chunk_telegram_text(part.get("html") or "", 3500)
             if not chunks:
                 continue
@@ -144,6 +150,28 @@ class WayneTelegramBot:
                 kb = self._section_markup(part, include_menu=is_last)
                 await message.reply_html(chunk, reply_markup=kb)
             await asyncio.sleep(0.25)
+
+    def _cat_sticker_id(self, key: str) -> str:
+        if not key:
+            return ""
+        try:
+            from telegram_cat_marks import load_sticker_ids
+
+            return load_sticker_ids().get(key) or ""
+        except Exception:
+            return ""
+
+    def _send_sticker(self, chat_id: str, file_id: str):
+        try:
+            import requests
+
+            requests.post(
+                f"https://api.telegram.org/bot{self.token}/sendSticker",
+                data={"chat_id": chat_id, "sticker": file_id},
+                timeout=30,
+            )
+        except Exception as e:
+            logger.error("send_sticker: %s", e)
 
     def _send_html(self, chat_id: str, html: str, extra_keyboard=None, attach_menu: bool = True):
         try:
@@ -187,6 +215,9 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
+            fid = self._cat_sticker_id(part.get("mark_key") or "")
+            if fid:
+                self._send_sticker(self.chat_id, fid)
             chunks = chunk_telegram_text(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last = i == last and j == len(chunks) - 1
