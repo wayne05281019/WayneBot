@@ -303,8 +303,40 @@ def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
+def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
+    """用代號或中文名（如南亞）查最新交易日標的。"""
+    ensure_core_schema(db_path)
+    q = (query or "").strip()
+    if not q:
+        return []
+    with get_db_connection(db_path) as conn:
+        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        if not latest:
+            return []
+        if q.isdigit() and 3 <= len(q) <= 6:
+            rows = conn.execute(
+                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                   WHERE date=? AND stock_id=? LIMIT 1;""",
+                (latest, q),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                   WHERE date=? AND stock_name LIKE ?
+                   ORDER BY volume DESC LIMIT ?;""",
+                (latest, f"%{q}%", int(limit)),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: str = "") -> None:
     ensure_core_schema(db_path)
+    code = str(stock_code).strip()
+    name = (stock_name or "").strip()
+    if not name or name == code:
+        hits = lookup_stocks(db_path, code, limit=1)
+        if hits:
+            name = hits[0].get("stock_name") or code
     now = datetime.now().isoformat(timespec="seconds")
     with get_db_connection(db_path) as conn:
         conn.execute(
@@ -313,7 +345,7 @@ def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: st
             VALUES (?, ?, ?, ?)
             ON CONFLICT(user_id, stock_code) DO UPDATE SET stock_name=excluded.stock_name;
             """,
-            (str(user_id), str(stock_code).strip(), stock_name or stock_code, now),
+            (str(user_id), code, name or code, now),
         )
 
 

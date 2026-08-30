@@ -348,6 +348,14 @@ class MainRunner:
         extra_text = "\n".join(x for x in extra_bits if x)
         if extra_text:
             self.send_telegram_message(extra_text)
+        try:
+            from ai_trader import run_ai_desk
+
+            ai = run_ai_desk(self.db_path, (screening or {}).get("results") or {}, self.today_str)
+            if ai.get("html"):
+                self.send_telegram_message(ai["html"])
+        except Exception as e:
+            logger.warning("AI 模擬操盤略過：%s", e)
         elapsed = time.time() - start_time
         self._mark_pipeline("success", f"elapsed={elapsed:.1f}s")
         logger.info(f"🎉 === 流水線完畢 (耗時: {elapsed:.2f} 秒) ===")

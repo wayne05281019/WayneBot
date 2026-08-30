@@ -376,6 +376,14 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
                 f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
             )
         part["html"] = body
+        part["picks"] = [
+            (
+                str(it.get("stock_id") or it.get("code") or ""),
+                str(it.get("stock_name") or it.get("name") or ""),
+            )
+            for it in items[:detail_n]
+            if it.get("stock_id") or it.get("code")
+        ]
         payload.append(part)
 
     if payload:
