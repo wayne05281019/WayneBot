@@ -269,6 +269,14 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_html: %s", e)
 
+    @staticmethod
+    def _card_photo_paths(card_img):
+        if not card_img:
+            return []
+        if isinstance(card_img, (list, tuple)):
+            return [p for p in card_img if p]
+        return [card_img]
+
     def _send_photo(self, chat_id: str, photo_path: str, caption: str = ""):
         try:
             import requests
@@ -317,8 +325,10 @@ class WayneTelegramBot:
             card_img = ""
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
         self._send_html(chat_id, html)
-        if card_img:
-            self._send_photo(chat_id, card_img, caption=f"{html_escape(code)} 決策卡")
+        captions = ["決策卡（股價）", "20日表 1/2（股價／獲利／高低／預警）", "20日表 2/2（溫度／月乖離／量排名）"]
+        for i, path in enumerate(self._card_photo_paths(card_img)):
+            cap = captions[i] if i < len(captions) else "決策卡"
+            self._send_photo(chat_id, path, caption=f"{html_escape(code)} {cap}")
         if chart_path:
             self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)} 高低導航")
         extra = fetch_major_player_html(code)
@@ -668,10 +678,12 @@ class WayneTelegramBot:
         packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
         html, card_img, chart = packed if len(packed) == 3 else (packed[0], "", packed[1] if len(packed) > 1 else "")
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
-        if card_img:
+        captions = ["決策卡（股價）", "20日表 1/2（股價／獲利／高低／預警）", "20日表 2/2（溫度／月乖離／量排名）"]
+        for i, path in enumerate(self._card_photo_paths(card_img)):
             try:
-                with open(card_img, "rb") as f:
-                    await message.reply_photo(photo=f, caption="決策卡格子（表頭與欄位對齊）")
+                with open(path, "rb") as f:
+                    cap = captions[i] if i < len(captions) else "決策卡"
+                    await message.reply_photo(photo=f, caption=cap)
             except Exception:
                 pass
         if chart:

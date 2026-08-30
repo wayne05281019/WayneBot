@@ -297,6 +297,11 @@ def _fmt_md(date_val) -> str:
 
 
 def _fp(size, weight="normal"):
+    # 可變字型若寫 normal/bold，matplotlib 常落到 100 細體；改用數值軸。
+    if isinstance(weight, str):
+        weight = {"light": 400, "normal": 500, "medium": 600, "bold": 700, "heavy": 800}.get(
+            weight.lower(), 500
+        )
     kwargs = {"size": size, "weight": weight}
     if os.path.exists(FONT_PATH):
         kwargs["fname"] = FONT_PATH
@@ -332,6 +337,76 @@ def _heat_pair(pct, lo=0.0, hi=45.0):
     bg = f"#{r:02x}{g:02x}{b:02x}"
     fg = "#111111"
     return bg, fg
+
+
+_WARN_COLORS = {"60低": "#1565C0", "K20低": "#2E7D32", "K20高": "#C62828", "No": "#6B7280"}
+
+
+def _fmt_num(v, nd=2) -> str:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if nd == 0:
+        return str(int(round(f)))
+    return f"{f:,.{nd}f}"
+
+
+def _fmt_pct(v) -> str:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{f:+.1f}%"
+
+
+def _chg_color(v) -> str:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "#111827"
+    if f > 0:
+        return "#C62828"
+    if f < 0:
+        return "#00695C"
+    return "#111827"
+
+
+def _temp_num(v):
+    if v is None:
+        return None
+    s = str(v).replace("°C", "").replace("℃", "").replace("C", "").strip()
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _temp_color(v) -> str:
+    t = _temp_num(v)
+    if t is None:
+        return "#111827"
+    if t >= 70:
+        return "#C62828"
+    if t <= 30:
+        return "#1565C0"
+    return "#111827"
+
+
+def _table_records(card: dict) -> list:
+    table = card.get("table")
+    if table is None:
+        return []
+    if hasattr(table, "to_dict"):
+        return table.to_dict("records")
+    return list(table)
+
+
+def _latest_profit(card: dict):
+    rows = _table_records(card)
+    if not rows:
+        return None
+    return rows[0].get("profit_pct")
 
 
 def render_decision_card_png(card: dict, save_path: str) -> str:
@@ -605,14 +680,157 @@ def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, sav
     return draw_from_ohlc(df, sid, name, out)
 
 
-def generate_card_image(stock_id: str, db_path: str = None, save_path: str = None) -> str:
+def render_decision_summary_png(card: dict, save_path: str) -> str:
+    """窄圖 + 超大字：Telegram 會把圖縮成對話框寬，只有窄圖大 pt 才看得清。"""
+    from matplotlib.patches import FancyBboxPatch
+
+    code = str(card.get("stock_id") or "")
+    name = str(card.get("stock_name") or "")
+    close = card.get("close")
+    chg = card.get("change_pct")
+    profit = _latest_profit(card)
+    dist = card.get("dist_h20")
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(4.4, 3.7), dpi=200)
+    fig.patch.set_facecolor("#F4F6FB")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.03, 0.05),
+            0.94,
+            0.90,
+            boxstyle="round,pad=0.02,rounding_size=0.04",
+            facecolor="#FFFFFF",
+            edgecolor="#D0D7E2",
+            linewidth=1.4,
+            transform=ax.transAxes,
+        )
+    )
+    ax.text(0.08, 0.86, f"{code}  {name}", transform=ax.transAxes, fontproperties=_fp(20, "bold"),
+            color="#111827", ha="left", va="center")
+    ax.text(0.08, 0.58, _fmt_num(close, 2), transform=ax.transAxes, fontproperties=_fp(48, "bold"),
+            color="#111827", ha="left", va="center")
+    ax.text(0.08, 0.34, _fmt_pct(chg), transform=ax.transAxes, fontproperties=_fp(28, "bold"),
+            color=_chg_color(chg), ha="left", va="center")
+    ax.text(0.08, 0.16, f"獲利 {_fmt_pct(profit)}", transform=ax.transAxes, fontproperties=_fp(18, "bold"),
+            color=_chg_color(profit), ha="left", va="center")
+    ax.text(0.08, 0.07, f"距20日高 {_fmt_pct(dist)}", transform=ax.transAxes, fontproperties=_fp(18, "bold"),
+            color=_chg_color(dist), ha="left", va="center")
+    fig.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0.08, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return save_path
+
+
+def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
+    """窄圖大字 20 日表。拆成兩張（各 4～5 欄），手機上才不會被壓成螞蟻字。"""
+    from matplotlib.patches import FancyBboxPatch
+
+    code = str(card.get("stock_id") or "")
+    name = str(card.get("stock_name") or "")
+    rows = _table_records(card)
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    n_rows = max(len(rows), 1)
+    fig_h = 2.2 + n_rows * 0.42
+    fig, ax = plt.subplots(figsize=(4.5, fig_h), dpi=200)
+    fig.patch.set_facecolor("#F4F6FB")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.015, 0.01),
+            0.97,
+            0.98,
+            boxstyle="round,pad=0.01,rounding_size=0.02",
+            facecolor="#FFFFFF",
+            edgecolor="#D0D7E2",
+            linewidth=1.2,
+            transform=ax.transAxes,
+        )
+    )
+    title = f"{code} {name}  ·  20日表 {part}/2"
+    ax.text(0.05, 0.965, title, transform=ax.transAxes, fontproperties=_fp(16, "bold"),
+            color="#111827", ha="left", va="center")
+
+    if part == 1:
+        headers = ["日期", "股價", "獲利", "高低", "預警"]
+        col_x = [0.08, 0.28, 0.48, 0.66, 0.86]
+    else:
+        headers = ["日期", "溫度", "月乖離", "量排名"]
+        col_x = [0.10, 0.36, 0.60, 0.84]
+
+    y0, y1 = 0.925, 0.03
+    row_h = (y0 - y1) / (n_rows + 1.2)
+    for i, h in enumerate(headers):
+        ax.text(col_x[i], y0 - row_h * 0.4, h, transform=ax.transAxes, fontproperties=_fp(14, "bold"),
+                color="#4B5563", ha="center", va="center")
+    ax.plot([0.04, 0.96], [y0 - row_h * 0.82, y0 - row_h * 0.82], color="#D1D5DB",
+            linewidth=1.0, transform=ax.transAxes)
+
+    for r, row in enumerate(rows):
+        y = y0 - row_h * (r + 1.55)
+        bg = "#EEF2FF" if r % 2 == 0 else "#FFFFFF"
+        ax.add_patch(
+            FancyBboxPatch(
+                (0.03, y - row_h * 0.42),
+                0.94,
+                row_h * 0.84,
+                boxstyle="square,pad=0",
+                facecolor=bg,
+                edgecolor="none",
+                transform=ax.transAxes,
+                zorder=0,
+            )
+        )
+        date_s = _fmt_md(row.get("date"))
+        if len(date_s) >= 5:
+            date_s = date_s[-5:]
+        profit = row.get("profit_pct")
+        hl = str(row.get("高低") or "—")
+        warn = str(row.get("預警") or "—")
+        temp = _temp_num(row.get("溫度計"))
+        bias = row.get("bias_monthly")
+        volr = row.get("vol_rank_120")
+        if part == 1:
+            hl_c = "#C62828" if "高" in hl else ("#2E7D32" if "低" in hl else "#111827")
+            vals = [
+                (date_s, "#111827"),
+                (_fmt_num(row.get("close"), 2), "#111827"),
+                (_fmt_pct(profit), _chg_color(profit)),
+                (hl, hl_c),
+                (warn, _WARN_COLORS.get(warn, "#6B7280")),
+            ]
+        else:
+            vals = [
+                (date_s, "#111827"),
+                (_fmt_num(temp, 0) if temp is not None else "—", _temp_color(temp)),
+                (_fmt_pct(bias), _chg_color(bias)),
+                (_fmt_num(volr, 0) if volr is not None else "—", "#111827"),
+            ]
+        for i, (txt, color) in enumerate(vals):
+            ax.text(col_x[i], y, txt, transform=ax.transAxes, fontproperties=_fp(20, "bold"),
+                    color=color, ha="center", va="center", zorder=1)
+
+    fig.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0.06, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return save_path
+
+
+def generate_card_image(stock_id: str, db_path: str = None, save_path: str = None) -> list:
     sid = str(stock_id).strip()
     engine = CaryNavigatorEngine(db_path or get_db_path())
     card = engine.get_decision_card(sid, lookback=20)
     if card.get("error"):
-        return ""
-    out = save_path or os.path.join(get_charts_dir(), f"{sid}_card.png")
-    return render_decision_card_png(card, out)
+        return []
+    base = save_path or os.path.join(get_charts_dir(), f"{sid}_card.png")
+    root, ext = os.path.splitext(base)
+    summary = render_decision_summary_png(card, f"{root}{ext}")
+    table1 = render_decision_table_png(card, f"{root}_t1{ext}", part=1)
+    table2 = render_decision_table_png(card, f"{root}_t2{ext}", part=2)
+    return [p for p in (summary, table1, table2) if p]
 
 
 def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
@@ -620,6 +838,6 @@ def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str
     html = generate_decision_card(sid, db_path, lookback=20)
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
-    card_img = generate_card_image(sid, db_path, os.path.join(charts_dir, f"{sid}_card.png"))
+    cards = generate_card_image(sid, db_path, os.path.join(charts_dir, f"{sid}_card.png"))
     chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"))
-    return html, card_img, chart
+    return html, cards, chart
