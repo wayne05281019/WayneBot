@@ -294,6 +294,14 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 1
             f"<code>{d}</code> {r['close']:.1f} {html_escape(r['獲利'])} "
             f"{html_escape(r['高低'])} {html_escape(r['預警'])} {html_escape(r['溫度計'])}"
         )
+    try:
+        from fundamentals import format_fundamentals_html
+        fund = format_fundamentals_html(sid, db_path or get_db_path())
+        if fund and "尚無" not in fund:
+            lines.append("")
+            lines.append(fund)
+    except Exception:
+        pass
     return "\n".join([x for x in lines if x is not None])
 
 

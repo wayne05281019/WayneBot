@@ -173,7 +173,7 @@ class WayneTelegramBot:
         await update.message.reply_html(
             "WayneBot 已上線。\n"
             "打股票代號看決策卡。\n"
-            "指令：/screen /daytrade /overnight /portfolio /watch /card /chips /buy /sell",
+            "指令：/screen /daytrade /overnight /portfolio /watch /card /chips /fund /buy /sell",
             reply_markup=self._keyboard(),
         )
 
@@ -228,6 +228,24 @@ class WayneTelegramBot:
             return
         extra = fetch_major_player_html(args[0].strip())
         await update.message.reply_html(extra or "查無籌碼", reply_markup=self._keyboard())
+
+    async def fund_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        args = context.args or []
+        if not args:
+            await update.message.reply_text("用法：/fund 2330")
+            return
+        from fundamentals import format_fundamentals_html, sync_fundamentals
+
+        code = args[0].strip()
+        html = format_fundamentals_html(code, self.db_path)
+        if "尚無" in html:
+            await update.message.reply_text("尚無快取，正在同步官方月營收／季報…")
+            try:
+                sync_fundamentals(self.db_path)
+            except Exception as e:
+                logger.error("fund sync: %s", e)
+            html = format_fundamentals_html(code, self.db_path)
+        await update.message.reply_html(html, reply_markup=self._keyboard())
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -313,6 +331,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("watch", self.watch_cmd))
         app.add_handler(CommandHandler("card", self.card_cmd))
         app.add_handler(CommandHandler("chips", self.chips_cmd))
+        app.add_handler(CommandHandler("fund", self.fund_cmd))
         app.add_handler(CommandHandler("buy", self.buy_cmd))
         app.add_handler(CommandHandler("sell", self.sell_cmd))
         app.add_handler(CallbackQueryHandler(self.on_callback))

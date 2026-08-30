@@ -246,6 +246,12 @@ def ensure_core_schema(db_path: str = None) -> None:
             );
             """
         )
+        try:
+            from fundamentals import ensure_fundamentals_tables
+
+            ensure_fundamentals_tables(path)
+        except Exception:
+            pass
 
 
 def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:

@@ -187,6 +187,13 @@ class MainRunner:
                 logger.info(f"法人回補：{bf}")
         except Exception as e:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
+
+        try:
+            from fundamentals import sync_fundamentals
+            fund = sync_fundamentals(self.db_path)
+            logger.info(f"月營收／季報同步：{fund}")
+        except Exception as e:
+            logger.error(f"基本面同步失敗: {e}", exc_info=True)
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:
@@ -221,8 +228,16 @@ class MainRunner:
         if not report_text:
             report_text = self._fallback_sql_report()
         extra = [report_text, self._format_portfolio_section(), self._format_watch_radar_section()]
+        try:
+            from fundamentals import format_hot_revenue_html
+            hot = format_hot_revenue_html(self.db_path)
+            if hot:
+                extra.append("───────────────────")
+                extra.append(hot)
+        except Exception as e:
+            logger.warning("月營收轉強區塊略過：%s", e)
         extra.append("🎯 <i>WayneBot 盤後四大選股已完成</i>")
-        extra.append("💡 <i>Telegram 輸入代號可查 Cary 決策卡；/chips 2383 看主力買賣超</i>")
+        extra.append("💡 <i>Telegram 輸入代號可查決策卡；/chips 看籌碼；/fund 看月營收與毛利率</i>")
         return "\n".join([s for s in extra if s])
 
     def _fallback_sql_report(self) -> str:
