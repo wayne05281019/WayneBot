@@ -46,6 +46,74 @@ else:
 plt.rcParams['axes.unicode_minus'] = False
 
 
+def normalize_ohlc(df: pd.DataFrame) -> tuple:
+    """除權／錯價還原。回傳 (df, notes)。
+
+    寶雅那種「720 突然變 74」是除權或未還原價；單日 10 倍跳動多半是匯入錯價。
+    還原後高低點才不會出現 -870%。無量且開高低收同一價的假 K 不參與滾動高低。
+    """
+    if df is None or df.empty:
+        return df, []
+    out = df.copy()
+    for col in ("open", "high", "low", "close"):
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+    if "volume" in out.columns:
+        out["volume"] = pd.to_numeric(out["volume"], errors="coerce").fillna(0.0)
+    else:
+        out["volume"] = 0.0
+    notes = []
+    n = len(out)
+    if n < 3:
+        out["is_halt"] = False
+        return out, notes
+
+    def _scale_row(i, factor):
+        for col in ("open", "high", "low", "close"):
+            if col in out.columns and pd.notna(out.at[out.index[i], col]):
+                out.at[out.index[i], col] = float(out.at[out.index[i], col]) * factor
+
+    # 1) 單日 8～12 倍錯價（前後都在正常尺度）
+    for i in range(1, n - 1):
+        p, c, nxt = float(out["close"].iloc[i - 1] or 0), float(out["close"].iloc[i] or 0), float(out["close"].iloc[i + 1] or 0)
+        if p <= 0 or c <= 0 or nxt <= 0:
+            continue
+        if c / p >= 8 and nxt / c <= 0.15:
+            factor = ((p + nxt) / 2.0) / c
+            _scale_row(i, factor)
+            notes.append(f"修正 {out['date'].iloc[i]} 錯價×{1/factor:.0f}")
+        elif c / p <= 0.15 and nxt / c >= 8:
+            factor = ((p + nxt) / 2.0) / c
+            _scale_row(i, factor)
+            notes.append(f"修正 {out['date'].iloc[i]} 錯價")
+
+    # 2) 持續跳空＝除權：當天整根都離開前收，之後不再跳回
+    for i in range(1, n):
+        p = float(out["close"].iloc[i - 1] or 0)
+        c = float(out["close"].iloc[i] or 0)
+        hi = float(out["high"].iloc[i] or 0)
+        lo = float(out["low"].iloc[i] or 0)
+        if p <= 0 or c <= 0:
+            continue
+        r = c / p
+        down = r < 0.72 and hi < p * 0.78 and hi > 0
+        up = r > 1.45 and lo > p * 1.28
+        if not (down or up):
+            continue
+        factor = c / p
+        if not (0.05 <= factor <= 20):
+            continue
+        idx = out.index[:i]
+        out.loc[idx, ["open", "high", "low", "close"]] = out.loc[idx, ["open", "high", "low", "close"]] * factor
+        notes.append(f"除權還原 {out['date'].iloc[i]} ×{factor:.4f}")
+
+    flat = (out["volume"] <= 0) & ((out["high"] - out["low"]).abs() <= 1e-8)
+    out["is_halt"] = flat.fillna(False)
+    if int(out["is_halt"].sum()) >= 2:
+        notes.append(f"略過 {int(out['is_halt'].sum())} 根無量假K")
+    return out, notes
+
+
 def pink_warning_note(card: dict) -> str:
     """粉紅預警＝從最新一根往回連續 K20高的天數（滿 2 日才提紀律賣出，數字用實際連幾日）。"""
     n = int(card.get("k20_high_streak") or 0)
@@ -96,17 +164,19 @@ class CaryNavigatorEngine:
             return {"error": f"標的 {stock_id} 歷史資料不足"}
 
         df = df.iloc[::-1].reset_index(drop=True)
-        df["ma20"] = df["close"].rolling(20, min_periods=1).mean()
-        df["ma60"] = df["close"].rolling(60, min_periods=1).mean()
-        # 決策卡格子：用收盤高低（與範本 8234 完全對得上）
-        df["high_5"] = df["close"].rolling(5, min_periods=1).max()
-        df["low_5"] = df["close"].rolling(5, min_periods=1).min()
-        df["high_10"] = df["close"].rolling(10, min_periods=1).max()
-        df["low_10"] = df["close"].rolling(10, min_periods=1).min()
-        df["high_20"] = df["close"].rolling(20, min_periods=1).max()
-        df["low_20"] = df["close"].rolling(20, min_periods=1).min()
-        df["high_60"] = df["close"].rolling(60, min_periods=1).max()
-        df["low_60"] = df["close"].rolling(60, min_periods=1).min()
+        df, xq_notes = normalize_ohlc(df)
+        close_s = df["close"].where(~df["is_halt"])
+        df["ma20"] = close_s.rolling(20, min_periods=1).mean()
+        df["ma60"] = close_s.rolling(60, min_periods=1).mean()
+        # 決策卡格子：用收盤高低（與範本 8234 完全對得上）；無量假K不進窗口
+        df["high_5"] = close_s.rolling(5, min_periods=1).max()
+        df["low_5"] = close_s.rolling(5, min_periods=1).min()
+        df["high_10"] = close_s.rolling(10, min_periods=1).max()
+        df["low_10"] = close_s.rolling(10, min_periods=1).min()
+        df["high_20"] = close_s.rolling(20, min_periods=1).max()
+        df["low_20"] = close_s.rolling(20, min_periods=1).min()
+        df["high_60"] = close_s.rolling(60, min_periods=1).max()
+        df["low_60"] = close_s.rolling(60, min_periods=1).min()
         # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」對齊 CaryBot：相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
         dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
         latest_dt = dts.iloc[-1]
@@ -120,6 +190,11 @@ class CaryNavigatorEngine:
 
         hl_tags, alert_tags, temps = [], [], []
         for i in range(len(df)):
+            if bool(df["is_halt"].iloc[i]):
+                hl_tags.append("No")
+                alert_tags.append("No")
+                temps.append("—")
+                continue
             c = float(df["close"].iloc[i])
             h20, l20 = float(df["high_20"].iloc[i]), float(df["low_20"].iloc[i])
             h10, l10 = float(df["high_10"].iloc[i]), float(df["low_10"].iloc[i])
@@ -163,10 +238,9 @@ class CaryNavigatorEngine:
 
         latest = df.iloc[-1]
         chg = float(latest.get("change_pct") or 0)
-        if len(df) >= 2:
-            prev_c = float(df["close"].iloc[-2] or 0)
-            if prev_c > 0:
-                chg = round((float(latest["close"]) - prev_c) / prev_c * 100.0, 2)
+        real_c = df.loc[~df["is_halt"], "close"] if "is_halt" in df.columns else df["close"]
+        if len(real_c) >= 2 and float(real_c.iloc[-2] or 0) > 0:
+            chg = round((float(real_c.iloc[-1]) - float(real_c.iloc[-2])) / float(real_c.iloc[-2]) * 100.0, 2)
         # 決策卡高／低：N 根「收盤」（對齊 CaryBot 南亞：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
@@ -184,16 +258,22 @@ class CaryNavigatorEngine:
         ma60s = 0.0
         if len(df) >= 7:
             ma60s = round(float(latest["ma60"]) - float(df["ma60"].iloc[-7]), 1)
-        qty60 = int(round(float(df["volume"].tail(60).mean() or 0)))
+        qty60 = int(round(float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)))
         badges = []
+        if any("除權" in x or "錯價" in x for x in xq_notes):
+            badges.append("已除權還原")
         if int(latest["vol_rank_120"]) <= 3:
             badges.append(f"120日量第 {int(latest['vol_rank_120'])} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
-        if qty60 < 800:
+        if qty60 < 900:
             badges.append("60日均量過小")
-        badges.append("多頭格局" if float(latest["close"]) >= float(latest["ma20"]) else "整理格局")
-        table = df.tail(lookback)[
+        if space_60 and space_60 < 16:
+            badges.append("60日區間過小")
+        badges.append("多頭格局" if float(latest["close"]) >= float(latest["ma20"] or latest["close"]) else "整理格局")
+        real = df.loc[~df["is_halt"]] if "is_halt" in df.columns else df
+        table_src = real if len(real) >= lookback else df
+        table = table_src.tail(lookback)[
             ["date", "close", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量", "profit_pct", "bias_monthly", "vol_rank_120"]
         ].iloc[::-1]
         streak = 0
@@ -219,7 +299,8 @@ class CaryNavigatorEngine:
             "temp_c": latest["溫度計"],
             "ma20": float(latest["ma20"]),
             "ma60s": ma60s,
-            "qty60": int(round(qty60 / 100.0) * 100) if qty60 else 0,
+            "qty60": (int(round(qty60 / 100.0) * 100) if qty60 >= 10000 else int(qty60)),
+            "xq_notes": xq_notes,
             "cal60_low": round(cal60_low, 2),
             "gain_pct": round((float(latest["close"]) - cal60_low) / cal60_low * 100.0, 1) if cal60_low else 0.0,
             "k20_high_streak": streak,
@@ -548,7 +629,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(30, "bold"), color="#000000", va="center")
     ax.text(42.0, 91.35, "漲跌幅", fontproperties=_fp(11), color="#607d8b", va="center")
     ax.text(52.0, 91.2, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c, va="center")
-    badges = [str(x) for x in (card.get("badges") or []) if x][-2:]
+    badges = [str(x) for x in (card.get("badges") or []) if x][:4]
     if not badges:
         badges = ["整理格局"]
     bx = 70.5 if len(badges) == 1 else 64.2
@@ -909,21 +990,21 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
 
 
-def _nav_triangle(ax, x, y, *, down: bool, face: str, span: float, z=7):
-    """實心三角＋黑邊：Telegram 縮圖後仍分得出深淺。down=True 為▼。"""
-    hy = max(span * 0.018, abs(y) * 0.006)
-    hx = 0.42
+def _nav_triangle(ax, x, y, *, down: bool, face: str, span: float, z=7, alpha=1.0, hx=0.38):
+    """實心三角。down=True 為▼。"""
+    hy = max(span * 0.016, abs(y) * 0.0055)
     if down:
-        pts = [(x, y - hy * 0.15), (x - hx, y + hy), (x + hx, y + hy)]
+        pts = [(x, y - hy * 0.12), (x - hx, y + hy), (x + hx, y + hy)]
     else:
-        pts = [(x, y + hy * 0.15), (x - hx, y - hy), (x + hx, y - hy)]
+        pts = [(x, y + hy * 0.12), (x - hx, y - hy), (x + hx, y - hy)]
     ax.add_patch(
         patches.Polygon(
             pts,
             closed=True,
             facecolor=face,
-            edgecolor="#111111",
-            linewidth=0.85,
+            edgecolor="#212121",
+            linewidth=0.55,
+            alpha=alpha,
             zorder=z,
             clip_on=False,
         )
@@ -931,189 +1012,203 @@ def _nav_triangle(ax, x, y, *, down: bool, face: str, span: float, z=7):
 
 
 def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
-    """橫式 180 日高低導航：粉紅／綠帶、深淺箭頭、警告列紅塊、量能紫▼。"""
+    """橫式高低導航，對齊 CaryBot：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     if df.empty:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    work = df.copy()
+    work, _notes = normalize_ohlc(df.copy())
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")
     work = work.dropna(subset=["dt"]).reset_index(drop=True)
     if work.empty:
         return ""
+    if "is_halt" not in work.columns:
+        work["is_halt"] = False
     n = len(work)
     xs = np.arange(n, dtype=float)
-    h20, l20 = float(work["high"].tail(20).max()), float(work["low"].tail(20).min())
-    h60, l60 = float(work["high"].tail(60).max()), float(work["low"].tail(60).min())
-    work["ma20"] = work["close"].rolling(20, min_periods=1).mean()
-    work["vol_ma"] = work["volume"].rolling(20, min_periods=1).mean()
+    halt = work["is_halt"].fillna(False).astype(bool)
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
+    work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (work["high"] - work["low"]).where(~halt)
+    work["atr20"] = tr.rolling(20, min_periods=5).mean()
     last = work.iloc[-1]
-    span = max(float(work["high"].max()) - float(work["low"].min()), 1.0)
+    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
 
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3,
         1,
-        figsize=(16.4, 9.15),
+        figsize=(16.8, 8.15),
         sharex=True,
-        gridspec_kw=dict(height_ratios=(4.55, 0.78, 1.22), hspace=0.045),
+        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.03),
         facecolor="#ffffff",
     )
-    ymin = float(work["low"].min()) - span * 0.065
-    ymax = float(work["high"].max()) + span * 0.085
-    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.42, zorder=0)
-    ax1.axhspan(l20, h20, color="#fff9c4", alpha=0.38, zorder=0)
-    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.42, zorder=0)
+    ymin = float(lo_s.min()) - span * 0.08
+    ymax = float(hi_s.max()) + span * 0.10
+    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.38, zorder=0)
+    ax1.axhspan(l20, h20, color="#fff9c4", alpha=0.32, zorder=0)
+    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.38, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
 
+    was_20h = was_20l = False
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
-        color = "#e53935" if cl >= op else "#00897b"
         x = xs[i]
-        ax1.plot([x, x], [lo, hi], color=color, linewidth=1.15, zorder=3, solid_capstyle="round")
+        is_halt = bool(halt.iloc[i])
+        color = "#e53935" if cl >= op else "#00897b"
+        ax1.plot([x, x], [lo, hi], color="#bdbdbd" if is_halt else color, linewidth=1.05, zorder=3, solid_capstyle="round")
         body = max(abs(cl - op), span * 0.0018)
         ax1.add_patch(
-            patches.Rectangle((x - 0.32, min(op, cl)), 0.64, body, facecolor=color, edgecolor=color, zorder=3)
+            patches.Rectangle(
+                (x - 0.32, min(op, cl)),
+                0.64,
+                body,
+                facecolor="#eeeeee" if is_halt else color,
+                edgecolor="#eeeeee" if is_halt else color,
+                zorder=3,
+            )
         )
-        wick_h20 = float(work["high"].iloc[max(0, i - 19) : i + 1].max())
-        wick_l20 = float(work["low"].iloc[max(0, i - 19) : i + 1].min())
-        close_h20 = float(work["close"].iloc[max(0, i - 19) : i + 1].max())
-        close_l20 = float(work["close"].iloc[max(0, i - 19) : i + 1].min())
-        wick_l60 = float(work["low"].iloc[max(0, i - 59) : i + 1].min())
-        close_l60 = float(work["close"].iloc[max(0, i - 59) : i + 1].min())
+        if is_halt:
+            ax_sig.add_patch(patches.Rectangle((x - 0.42, 0.05), 0.84, 0.9, facecolor="#eceff1", edgecolor="#ffffff", lw=0.15, zorder=2))
+            continue
+
+        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
+        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
+        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
+        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
+        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
         ma20_i = float(work["ma20"].iloc[i] or 0)
         bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
-        if cl <= close_l60 * 1.005:
-            k20_high, k20_low, k60_low = False, False, True
-        elif bias_i < 0.0:
-            k20_high, k20_low, k60_low = False, True, False
-        elif cl >= close_h20 * 0.99 or bias_i >= 4.0:
-            k20_high, k20_low, k60_low = True, False, False
-        else:
-            k20_high, k20_low, k60_low = False, False, False
-        wick_hi = hi >= wick_h20 * 0.999
-        wick_lo = lo <= wick_l20 * 1.001
-        close_hi = cl >= close_h20 * 0.998
-        close_lo = cl <= close_l20 * 1.002
-        vol_a = float(work["volume"].iloc[i]) >= float(work["vol_ma"].iloc[i] or 1) * 2.2
+        hh, ll = close_h20, close_l20
+        rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+        is_20h = hi >= wick_h20 * 0.999 or cl >= close_h20 * 0.998
+        is_20l = lo <= wick_l20 * 1.001 or cl <= close_l20 * 1.002
+        is_60l = lo <= wick_l60 * 1.001
+        leave_h = was_20h and not is_20h
+        leave_l = was_20l and not is_20l
+        vol_a = float(work["volume"].iloc[i] or 0) >= float(work["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(work["atr20"].iloc[i] or 0)
+        vol_low = bool(cl > 0 and atr / cl < 0.018)
+        warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
 
-        # 淺＝影線碰到 20 日極值；深＝當日收盤就是 20 日收盤高／低（警告列另標 K20）
-        if wick_hi:
-            _nav_triangle(ax1, x, hi + span * 0.012, down=True, face="#f48fb1", span=span, z=6)
-        if close_hi:
-            _nav_triangle(ax1, x, hi + span * 0.038, down=True, face="#880e4f", span=span, z=7)
-        if wick_lo:
-            _nav_triangle(ax1, x, lo - span * 0.012, down=False, face="#81c784", span=span, z=6)
-        if close_lo:
-            _nav_triangle(ax1, x, lo - span * 0.038, down=False, face="#1b5e20", span=span, z=7)
-        if lo <= wick_l60 * 1.001:
-            _nav_triangle(ax1, x, lo - span * 0.062, down=False, face="#00acc1", span=span, z=7)
+        # 價格列：20高／20高脫離／20低／20低脫離／60低（量能異常不畫在這裡）
+        if is_20h:
+            _nav_triangle(ax1, x, hi + span * 0.012, down=True, face="#f8bbd0", span=span, z=6, hx=0.36)
+        elif hi >= wick_h20 * 0.985:
+            _nav_triangle(ax1, x, hi + span * 0.008, down=True, face="#f8bbd0", span=span, z=5, alpha=0.28, hx=0.28)
+        if leave_h:
+            _nav_triangle(ax1, x, hi + span * 0.042, down=True, face="#6a1b9a", span=span, z=8, hx=0.40)
+        if is_20l:
+            _nav_triangle(ax1, x, lo - span * 0.012, down=False, face="#a5d6a7", span=span, z=6, hx=0.36)
+        elif lo <= wick_l20 * 1.015:
+            _nav_triangle(ax1, x, lo - span * 0.008, down=False, face="#c8e6c9", span=span, z=5, alpha=0.28, hx=0.28)
+        if leave_l:
+            _nav_triangle(ax1, x, lo - span * 0.042, down=False, face="#1b5e20", span=span, z=8, hx=0.40)
+        if is_60l:
+            _nav_triangle(ax1, x, lo - span * 0.068, down=False, face="#26c6da", span=span, z=7, hx=0.40)
+
+        # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
+        sq = "#ffe0b2" if (i // 3) % 2 == 0 else "#bbdefb"
+        if vol_low:
+            sq = "#90caf9"
+        ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84, facecolor=sq, edgecolor="#ffffff", lw=0.12, zorder=2))
+        if warn:
+            ax_sig.scatter([x], [0.72], marker="^", s=26, color="#e53935", edgecolors="#b71c1c", linewidths=0.25, zorder=5)
         if vol_a:
-            _nav_triangle(ax1, x, hi + span * 0.062, down=True, face="#6a1b9a", span=span, z=8)
+            ax_sig.scatter([x], [0.38], marker="^", s=34, color="#6a1b9a", edgecolors="#311b92", linewidths=0.3, zorder=6)
+        elif vol_low:
+            ax_sig.scatter([x], [0.38], marker="^", s=16, color="#ce93d8", edgecolors="#7b1fa2", linewidths=0.2, zorder=4, alpha=0.85)
 
-        ax_sig.add_patch(
-            patches.Rectangle((x - 0.42, -0.38), 0.84, 0.76, facecolor="#90caf9", edgecolor="#ffffff", linewidth=0.2, zorder=2)
-        )
-        if k20_high:
-            ax_sig.add_patch(
-                patches.Rectangle((x - 0.42, 0.62), 0.84, 0.76, facecolor="#e53935", edgecolor="#b71c1c", linewidth=0.25, zorder=3)
-            )
-        elif k20_low:
-            ax_sig.add_patch(
-                patches.Rectangle((x - 0.42, 0.62), 0.84, 0.76, facecolor="#81c784", edgecolor="#2e7d32", linewidth=0.25, zorder=3)
-            )
-        elif k60_low:
-            ax_sig.add_patch(
-                patches.Rectangle((x - 0.42, 0.62), 0.84, 0.76, facecolor="#4dd0e1", edgecolor="#00838f", linewidth=0.25, zorder=3)
-            )
-        if vol_a:
-            ax_sig.scatter([x], [2.05], marker="v", s=42, color="#6a1b9a", edgecolors="#111111", linewidths=0.4, zorder=4)
+        was_20h, was_20l = is_20h, is_20l
 
-    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=2.05, label=f"SMA(20): {float(last['ma20']):.2f}", zorder=4)
-    ax1.axhline(h60, color="#f48fb1", linewidth=1.55, label=f"季高點線 ({h60:.2f})")
-    ax1.axhline(l60, color="#43a047", linewidth=1.55, label=f"季低點線 ({l60:.2f})")
-    ax1.axhline(h20, color="#ab47bc", linewidth=1.15, linestyle="--", label=f"月高點線 ({h20:.2f})")
-    ax1.axhline(l20, color="#26c6da", linewidth=1.15, linestyle="--", label=f"月低點線 ({l20:.2f})")
+    ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
+    ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
+    ax1.axhline(l60, color="#81c784", linewidth=1.35)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--")
+    ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--")
     ax1.set_title(
         f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航   WayneBot ® 2026",
-        fontproperties=_fp(15, "bold"),
-        pad=8,
+        fontproperties=_fp(14, "bold"),
+        pad=6,
     )
-    ax1.legend(
-        loc="upper left",
-        ncol=3,
-        frameon=True,
-        facecolor="#ffffff",
-        edgecolor="#cfd8dc",
-        prop=_fp(9),
-        framealpha=0.92,
-    )
-    ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.55, color="#bdbdbd", zorder=1)
-    ax1.tick_params(labelsize=10)
-    ax1.set_ylabel("價格", fontproperties=_fp(11))
+    ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
+    ax1.yaxis.tick_right()
+    ax1.yaxis.set_label_position("right")
+    ax1.tick_params(labelsize=9)
     for lab in ax1.get_yticklabels():
-        lab.set_fontproperties(_fp(10))
+        lab.set_fontproperties(_fp(9))
     ax1.text(
-        0.995,
-        0.018,
-        f"Op:{float(last['open']):g}  Hi:{float(last['high']):g}  Lo:{float(last['low']):g}  Cl:{float(last['close']):g}",
+        0.004,
+        0.985,
+        f"Op:{float(last['open']):g}  Hi:{float(last['high']):g}  Lo:{float(last['low']):g}  Cl:{float(last['close']):g}"
+        f"    SMA(20): {float(last['ma20']):.1f}",
         transform=ax1.transAxes,
-        ha="right",
-        va="bottom",
-        fontproperties=_fp(11, "bold"),
-        color="#212121",
+        ha="left",
+        va="top",
+        fontproperties=_fp(10, "bold"),
+        color="#1b5e20",
         zorder=9,
+        bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
     )
 
-    ax_sig.set_yticks([0, 1, 2])
-    ax_sig.set_yticklabels(["月波動", "警告", "量能"], fontproperties=_fp(10))
-    ax_sig.set_ylim(-0.55, 2.55)
+    ax_sig.set_yticks([])
+    ax_sig.set_ylim(0, 1)
     ax_sig.set_xlim(-0.8, n - 0.2)
-    ax_sig.grid(True, axis="x", linestyle=(0, (1.2, 1.6)), linewidth=0.35, color="#cfd8dc")
-    ax_sig.tick_params(axis="x", labelbottom=False)
+    ax_sig.set_ylabel("訊號", fontproperties=_fp(8))
+    ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
     vol_colors = ["#ef5350" if work["close"].iloc[i] >= work["open"].iloc[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"] / 1000.0, color=vol_colors, width=0.72, zorder=3)
-    ax2.set_ylabel("Vol (千張)", fontproperties=_fp(11))
-    ax2.tick_params(labelsize=10)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
+    ax2.tick_params(labelsize=9)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.text(
         0.006,
         0.92,
         f"Vol: {float(last['volume']) / 1000:.2f}K",
         transform=ax2.transAxes,
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(10, "bold"),
         va="top",
         zorder=4,
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="#eceff1", edgecolor="none"),
     )
-    ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.55, color="#bdbdbd")
-    tick_n = max(1, n // 9)
-    ticks = list(range(0, n, tick_n))
-    if ticks[-1] != n - 1:
-        ticks.append(n - 1)
-    ax2.set_xticks(ticks)
-    ax2.set_xticklabels(
-        [work["dt"].iloc[i].strftime("%m/%d") for i in ticks],
-        fontproperties=_fp(10),
-    )
+    ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
+    # 月份刻度
+    months, mpos = [], []
+    prev_m = None
+    for i, dt in enumerate(work["dt"]):
+        key = (dt.year, dt.month)
+        if key != prev_m:
+            months.append(dt.strftime("%b"))
+            mpos.append(i)
+            prev_m = key
+    ax2.set_xticks(mpos)
+    ax2.set_xticklabels(months, fontproperties=_fp(9))
     for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(10))
+        lab.set_fontproperties(_fp(9))
 
-    fig.align_ylabels()
-    fig.subplots_adjust(left=0.055, right=0.985, top=0.935, bottom=0.125)
+    fig.subplots_adjust(left=0.03, right=0.96, top=0.90, bottom=0.11)
     fig.text(
         0.50,
-        0.018,
-        "粉紅帶＝月高以上壓力　黃帶＝月高低之間　綠帶＝月低以下支撐　黃線＝SMA20\n"
-        "淺粉▼＝影線碰到20日高　深紅▼＝收盤創／平20日高　淺綠▲＝影線碰到20日低　深綠▲＝收盤創／平20日低　青▲＝60日低　紫▼＝爆量　警告列紅＝K20高、綠＝K20低、青＝60低",
+        0.015,
+        "價格列：淺粉▼20高　紫▼20高脫離　淺綠▲20低　深綠▲20低脫離　青▲60低　　"
+        "量能列（價格列不一定有）：紫▲量能異常　紅▲警告　淺紫▲月波動低　藍／杏塊＝月波動",
         ha="center",
         va="bottom",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    plt.savefig(save_path, dpi=168, facecolor="#ffffff")
+    plt.savefig(save_path, dpi=170, facecolor="#ffffff")
     plt.close()
     return save_path
 

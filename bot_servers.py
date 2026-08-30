@@ -95,7 +95,7 @@ HELP_TOPICS = {
         "3 溫度＝20日收盤位置＋月乖離；120日量＝這檔自己近120根成交量排名\n"
         "4 預警 K20高＝月乖離轉正偏熱（≥4%）或靠近20日收盤高；K20低＝月乖離轉負\n"
         "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
-        "6 高低導航是橫式：淺箭頭＝影線碰到、深箭頭＝收盤確認／K20預警"
+        "6 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低"
     ),
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
     "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
@@ -432,7 +432,7 @@ class WayneTelegramBot:
             self._send_photo(
                 chat_id,
                 chart_path,
-                caption=f"{html_escape(code)} 高低導航（橫式）淺粉▼影線高／深紅▼收盤高　淺綠▲影線低／深綠▲收盤低　警告列紅＝K20高",
+                caption=f"{html_escape(code)} 高低導航：價格列20高／脫離／20低／60低；紫▲量能異常與紅▲警告只在量能列",
             )
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         last_kb = self._hub_keyboard(code)
@@ -884,7 +884,7 @@ class WayneTelegramBot:
         if chart:
             await send_photo(
                 chart,
-                "180日高低導航（橫式）：淺粉▼影線高／深紅▼收盤高；淺綠▲影線低／深綠▲收盤低；紫▼爆量；警告列紅＝K20高、綠＝K20低",
+                "180日高低導航：價格列＝淺粉▼20高、紫▼20高脫離、綠▲20低／脫離、青▲60低；量能列才有紫▲量能異常、紅▲警告（價格列不一定有）",
             )
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         if chip_img:
