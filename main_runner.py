@@ -214,6 +214,25 @@ class MainRunner:
             logger.info(f"月營收／季報同步：{fund}")
         except Exception as e:
             logger.error(f"基本面同步失敗: {e}", exc_info=True)
+        try:
+            from import_health import audit_import, format_audit_plain
+            health = audit_import(self.db_path)
+            logger.info("盤後匯入檢查：%s", health)
+            if health.get("history_issues") and self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
+                for item in health["history_issues"][:12]:
+                    ds = item["date"]
+                    logger.warning("開盤日缺邊，重抓 %s：%s", ds, item["problems"])
+                    self.fetcher.update_daily_market_data(ds)
+                    time.sleep(0.4)
+                health = audit_import(self.db_path)
+            if health.get("problems") or health.get("history_issue_n"):
+                logger.warning("匯入異常：%s", format_audit_plain(health))
+                try:
+                    self.send_telegram_message("⚠️ " + format_audit_plain(health))
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning("匯入檢查略過：%s", e)
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:

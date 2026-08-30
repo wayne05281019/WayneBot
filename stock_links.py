@@ -49,6 +49,12 @@ def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:
     return web, mobile
 
 
+def yahoo_income_url(stock_id: str, db_path: Optional[str] = None) -> str:
+    sid = str(stock_id or "").strip()
+    ex = yahoo_exchange(sid, db_path)
+    return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/income-statement"
+
+
 def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str] = None) -> str:
     sid = str(stock_id or "").strip()
     name = str(stock_name or "").strip()
