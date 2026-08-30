@@ -353,7 +353,8 @@ def hot_revenue_names(db_path: str, min_yoy: float = 20.0, min_mom: float = 0.0,
         """
         SELECT stock_id, stock_name, yyyymm, yoy_pct, mom_pct, ytd_yoy_pct, revenue
         FROM monthly_revenue
-        WHERE yyyymm=? AND yoy_pct >= ? AND mom_pct >= ?
+        WHERE yyyymm=? AND yoy_pct >= ? AND yoy_pct <= 200 AND mom_pct >= ?
+          AND revenue >= 5000
         ORDER BY yoy_pct DESC LIMIT ?
         """,
         (latest, min_yoy, min_mom, limit),

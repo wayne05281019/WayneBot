@@ -301,8 +301,8 @@ def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], t
         
         for item in items[:max_display]:
             s_tag = "👑 <b>[S級投信]</b> " if item.get("is_s_tier") else ""
-            sid = item['stock_id']
-            sname = item['stock_name']
+            sid = item.get('stock_id') or item.get('code')
+            sname = item.get('stock_name') or item.get('name')
             c = item['close']
             pct = item['pct_change']
             q = item['q60r']
@@ -320,6 +320,7 @@ def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], t
                 lines.append(f"  🚀 買進區間: <code>{item['buy_range']}</code> | 明日開高目標: <code>{item['target_gap']}</code> | 防守: <code>{item['defense_price']}</code>")
         lines.append("")
 
+    _render_section("營收轉強 × 量價突破（優先看）", "📈", results.get("revenue_cross", []), max_display=8)
     _render_section("Select 01 周帶量突破", "🔥", results.get("select_01", []))
     _render_section("Select 02 突破半年新高 (Hi120)", "🏆", results.get("select_02", []))
     _render_section("Select 03 突破兩年大底 (Hi480)", "💎", results.get("select_03", []))
@@ -356,9 +357,30 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
             "daytrade": [],
             "overnight": [],
             "major_alerts": [],
+            "revenue_cross": [],
         }
 
     results = engine.execute_all_strategies(stock_dfs)
+    try:
+        from fundamentals import hot_revenue_names
+        hot_ids = {h["stock_id"] for h in hot_revenue_names(engine.db_path, limit=80)}
+    except Exception:
+        hot_ids = set()
+    breakout = []
+    for key in ("select_01", "select_02", "day_trade"):
+        breakout.extend(results.get(key) or [])
+    seen = set()
+    revenue_cross = []
+    for item in breakout:
+        sid = str(item.get("stock_id") or "")
+        if sid in seen or sid not in hot_ids:
+            continue
+        if int(item.get("trust_net") or 0) < 0 and int(item.get("foreign_net") or 0) < 0:
+            continue
+        seen.add(sid)
+        revenue_cross.append(engine._row_for_bot(item))
+    results["revenue_cross"] = revenue_cross
+
     report_text = format_telegram_screening_report(results, target_date)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
@@ -381,6 +403,7 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
+        "revenue_cross": revenue_cross,
     }
 
 

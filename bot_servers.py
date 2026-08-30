@@ -157,8 +157,12 @@ class WayneTelegramBot:
             "<b>WayneBot 盤後報告</b>",
             f"日期：{html_escape(result.get('as_of') or '')}",
             "",
-            "<b>當沖候選</b>",
+            "<b>營收轉強 × 量價突破</b>",
         ]
+        for row in (result.get("revenue_cross") or [])[:10]:
+            lines.append(self._fmt_row(row))
+        lines.append("")
+        lines.append("<b>當沖候選</b>")
         for row in (result.get("daytrade") or [])[:10]:
             lines.append(self._fmt_row(row))
         lines.append("")
@@ -191,7 +195,9 @@ class WayneTelegramBot:
         await update.message.reply_text("海選執行中…")
         try:
             result = self.screener.run_full_screening()
-            await update.message.reply_html(self._format_screening_html(result), reply_markup=self._keyboard())
+            html = result.get("message") or self._format_screening_html(result)
+            for part in chunk_telegram_text(html, 3500):
+                await update.message.reply_html(part, reply_markup=self._keyboard())
         except Exception as e:
             logger.exception("海選失敗")
             await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
@@ -352,8 +358,14 @@ class WayneTelegramBot:
         data = q.data or ""
         fake = update
         if data == "screen":
-            result = self.screener.run_full_screening()
-            await q.message.reply_html(self._format_screening_html(result), reply_markup=self._keyboard())
+            try:
+                result = self.screener.run_full_screening()
+                html = result.get("message") or self._format_screening_html(result)
+                for part in chunk_telegram_text(html, 3500):
+                    await q.message.reply_html(part, reply_markup=self._keyboard())
+            except Exception as e:
+                logger.exception("海選失敗")
+                await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
         elif data == "daytrade":
             rows = self.screener.screen_daytrade()
             html = "<b>當沖候選</b>\n" + "\n".join(self._fmt_row(r) for r in rows[:15])
