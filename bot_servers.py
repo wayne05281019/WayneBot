@@ -325,10 +325,8 @@ class WayneTelegramBot:
             card_img = ""
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
         self._send_html(chat_id, html)
-        captions = ["決策卡（股價）", "20日表 1/2（股價／獲利／高低／預警）", "20日表 2/2（溫度／月乖離／量排名）"]
-        for i, path in enumerate(self._card_photo_paths(card_img)):
-            cap = captions[i] if i < len(captions) else "決策卡"
-            self._send_photo(chat_id, path, caption=f"{html_escape(code)} {cap}")
+        for path in self._card_photo_paths(card_img):
+            self._send_photo(chat_id, path, caption=f"{html_escape(code)} 買低賣高決策卡")
         if chart_path:
             self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)} 高低導航")
         extra = fetch_major_player_html(code)
@@ -678,18 +676,19 @@ class WayneTelegramBot:
         packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
         html, card_img, chart = packed if len(packed) == 3 else (packed[0], "", packed[1] if len(packed) > 1 else "")
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
-        captions = ["決策卡（股價）", "20日表 1/2（股價／獲利／高低／預警）", "20日表 2/2（溫度／月乖離／量排名）"]
-        for i, path in enumerate(self._card_photo_paths(card_img)):
+        for path in self._card_photo_paths(card_img):
             try:
                 with open(path, "rb") as f:
-                    cap = captions[i] if i < len(captions) else "決策卡"
-                    await message.reply_photo(photo=f, caption=cap)
+                    await message.reply_photo(photo=f, caption="買低賣高決策卡（單張，欄位對齊範本）")
             except Exception:
                 pass
         if chart:
             try:
                 with open(chart, "rb") as f:
-                    await message.reply_photo(photo=f, caption="180日高低導航（紅綠底區＝深淺）")
+                    await message.reply_photo(
+                        photo=f,
+                        caption="180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均；▼20日高 ▲20日低",
+                    )
             except Exception:
                 pass
         extra = fetch_major_player_html(code)
