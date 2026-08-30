@@ -304,29 +304,107 @@ def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
 
 
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號或中文名（如南亞）查最新交易日標的。"""
+    """用代號或中文名（如南亞、山太士）查標的；興櫃也查名稱目錄。"""
     ensure_core_schema(db_path)
     q = (query or "").strip()
     if not q:
         return []
     with get_db_connection(db_path) as conn:
         latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
-        if not latest:
-            return []
-        if q.isdigit() and 3 <= len(q) <= 6:
+        rows = []
+        if latest and q.isdigit() and 3 <= len(q) <= 6:
             rows = conn.execute(
                 """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
                    WHERE date=? AND stock_id=? LIMIT 1;""",
                 (latest, q),
             ).fetchall()
-        else:
+        elif latest:
             rows = conn.execute(
                 """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
                    WHERE date=? AND stock_name LIKE ?
                    ORDER BY volume DESC LIMIT ?;""",
                 (latest, f"%{q}%", int(limit)),
             ).fetchall()
-        return [dict(r) for r in rows]
+        hits = [dict(r) for r in rows]
+        if hits:
+            return hits
+    ensure_stock_directory(db_path)
+    with get_db_connection(db_path) as conn:
+        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        if q.isdigit() and 3 <= len(q) <= 6:
+            drows = conn.execute(
+                "SELECT stock_id, stock_name, market FROM stock_directory WHERE stock_id=? LIMIT 1;",
+                (q,),
+            ).fetchall()
+        else:
+            drows = conn.execute(
+                """SELECT stock_id, stock_name, market FROM stock_directory
+                   WHERE stock_name LIKE ? ORDER BY stock_id LIMIT ?;""",
+                (f"%{q}%", int(limit)),
+            ).fetchall()
+        out = []
+        for r in drows:
+            item = dict(r)
+            quote = None
+            if latest:
+                quote = conn.execute(
+                    """SELECT close, pct_change FROM daily_quotes
+                       WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
+                    (item["stock_id"],),
+                ).fetchone()
+            if quote:
+                item["close"] = quote["close"]
+                item["pct_change"] = quote["pct_change"]
+            else:
+                item["close"] = None
+                item["pct_change"] = None
+            out.append(item)
+        return out
+
+
+def ensure_stock_directory(db_path: str) -> None:
+    """名稱目錄：日K裡有的＋興櫃 ISIN，讓山太士這種興櫃打得到。"""
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS stock_directory (
+                stock_id TEXT PRIMARY KEY,
+                stock_name TEXT NOT NULL,
+                market TEXT DEFAULT ''
+            );"""
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO stock_directory (stock_id, stock_name, market)
+               SELECT stock_id, stock_name, market FROM daily_quotes
+               WHERE date = (SELECT MAX(date) FROM daily_quotes);"""
+        )
+        n_em = conn.execute(
+            "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
+        ).fetchone()[0]
+    if n_em >= 20:
+        return
+    try:
+        from universe import fetch_isin_universe
+
+        items = fetch_isin_universe()
+        with get_db_connection(db_path) as conn:
+            for u in items:
+                conn.execute(
+                    """INSERT INTO stock_directory (stock_id, stock_name, market)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(stock_id) DO UPDATE SET
+                         stock_name=excluded.stock_name,
+                         market=CASE WHEN stock_directory.market='' THEN excluded.market
+                                     ELSE stock_directory.market END;""",
+                    (u["stock_id"], u["stock_name"], u.get("market_type") or ""),
+                )
+    except Exception:
+        pass
+    # 興櫃常見漏網：ISIN 解析失敗時仍能打到名稱
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO stock_directory (stock_id, stock_name, market)
+               VALUES ('3595', '山太士', 'EM');"""
+        )
 
 
 def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: str = "") -> None:

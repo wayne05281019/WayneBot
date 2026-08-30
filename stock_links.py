@@ -21,13 +21,21 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
             "SELECT market FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1;",
             (sid,),
         ).fetchone()
+        if not row:
+            try:
+                row = conn.execute(
+                    "SELECT market FROM stock_directory WHERE stock_id=? LIMIT 1;",
+                    (sid,),
+                ).fetchone()
+            except Exception:
+                row = None
         conn.close()
         if row:
             market = str(row[0] or "")
     except Exception:
         market = ""
     m = market.upper()
-    if m in ("TWO", "TPEX", "OTC", "ROCO"):
+    if m in ("TWO", "TPEX", "OTC", "ROCO", "EM", "ESB", "EMERGING"):
         return "TWO"
     return "TW"
 

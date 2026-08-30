@@ -244,31 +244,118 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
 
 def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
-    rows = major_player_rows(path, str(stock_id).strip(), limit=limit)
-    return format_major_player_html(rows, str(stock_id).strip()) if rows else ""
+    sid = str(stock_id).strip()
+    rows = major_player_rows(path, sid, limit=limit)
+    if rows:
+        recent = rows[:5]
+        if all(int(r.get("three_net") or 0) == 0 for r in recent):
+            try:
+                conn = sqlite3.connect(path)
+                latest = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()[0]
+                conn.close()
+                if latest:
+                    update_chips_for_date(path, str(latest))
+            except Exception as e:
+                logger.warning("即時回補籌碼失敗: %s", e)
+            rows = major_player_rows(path, sid, limit=limit)
+    return format_major_player_html(rows, sid) if rows else ""
 
 
 def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     if not rows:
         return f"⚠️ 找不到 {stock_id} 的主力買賣超（請先完成盤後法人回補）。"
     name = rows[0].get("stock_name") or stock_id
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(stock_id, name)
+    except Exception:
+        title = f"{stock_id} {name}"
     lines = [
-        f"📊 <b>【主力買賣超】{stock_id} {name}</b>",
-        "<code>日期     收盤     量    超比    買賣超  10日累計</code>",
-        "───────────────────",
+        f"📊 <b>【主力買賣超】{title}</b>",
+        "完整虛線格子見下一則圖（外資／投信／自營分欄，避免對不齊）。",
+        "買賣超＝三大法人合計（張）；超比＝合計／成交量。",
     ]
+    return "\n".join(lines)
+
+
+def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
+    path = db_path or get_db_path()
+    rows = major_player_rows(path, str(stock_id).strip(), limit=limit)
+    if not rows:
+        return ""
+    try:
+        from config import get_charts_dir
+        charts = get_charts_dir()
+    except Exception:
+        charts = os.path.join("data", "charts")
+    out = save_path or os.path.join(charts, f"{stock_id}_chips.png")
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    import matplotlib.font_manager as fm
+    try:
+        from cary_navigator import FONT_PATH
+        if FONT_PATH and os.path.exists(FONT_PATH):
+            fm.fontManager.addfont(FONT_PATH)
+            plt.rcParams["font.sans-serif"] = ["Noto Sans TC", "DejaVu Sans"]
+            plt.rcParams["axes.unicode_minus"] = False
+    except Exception:
+        pass
+
+    name = rows[0].get("stock_name") or stock_id
+    n = len(rows)
+    fig_h = 2.8 + n * 0.38
+    fig, ax = plt.subplots(figsize=(12.2, fig_h), dpi=190, facecolor="#f7f7f8")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.03)
+    ax.text(2, 96, f"{stock_id}  {name}  主力買賣超", fontsize=15, fontweight="bold", va="top")
+    ax.text(2, 91.5, "單位：張　超比＝三大法人合計／成交量　10日累計＝近10日合計", fontsize=8, va="top", color="#616161")
+
+    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累計"]
+    xs = [1.5, 12.5, 22.5, 34, 45.5, 56.5, 67.5, 78.5, 88.5, 98.5]
+    top = 88.8
+    hdr_h = 4.2
+    body_h = (top - hdr_h - 3) / max(n, 1)
+
+    def box(x, y, w, h, fc="#fff"):
+        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#9e9e9e",
+                                       linewidth=0.5, linestyle=(0, (1.3, 1.1))))
+
+    for i, h in enumerate(headers):
+        box(xs[i], top - hdr_h, xs[i + 1] - xs[i], hdr_h, "#fafafa")
+        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontsize=7.4, ha="center", va="center")
+    y = top - hdr_h
     for r in rows:
+        y1 = y - body_h
+        three = int(r["three_net"])
+        fill_sum = "#ffcdd2" if three > 0 else ("#c8e6c9" if three < 0 else "#ffffff")
         d = str(r["date"])
         if len(d) == 8:
-            d = f"{d[4:6]}/{d[6:]}"
-        three = r["three_net"]
-        mark = "🔴" if three > 0 else ("🟢" if three < 0 else "⚪")
-        lines.append(
-            f"{mark} <code>{d}</code> {r['close']:.0f} {r['volume']:,} "
-            f"{r['ratio_pct']:+.1f}% <b>{three:+d}</b> {r['acc_10d']:+d}"
-        )
-    lines.append("\n💡 買賣超＝外資+投信+自營（張）；超比＝三大法人／成交量。")
-    return "\n".join(lines)
+            d = f"{d[0:4]}/{d[4:6]}/{d[6:]}"
+        vals = [
+            d,
+            f"{float(r['close']):,.2f}",
+            f"{int(r['volume']):,}",
+            f"{int(r['foreign_net']):+d}",
+            f"{int(r['trust_net']):+d}",
+            f"{int(r['dealer_net']):+d}",
+            f"{three:+d}",
+            f"{r['ratio_pct']:+.1f}%",
+            f"{int(r['acc_10d']):+d}",
+        ]
+        for i, val in enumerate(vals):
+            fc = fill_sum if i in (3, 4, 5, 6, 8) and three != 0 else "#ffffff"
+            if i == 6:
+                fc = fill_sum
+            box(xs[i], y1, xs[i + 1] - xs[i], body_h, fc)
+            ax.text((xs[i] + xs[i + 1]) / 2, (y + y1) / 2, val, fontsize=7.0, ha="center", va="center")
+        y = y1
+    plt.savefig(out, dpi=190, facecolor=fig.get_facecolor())
+    plt.close()
+    return out
 
 
 if __name__ == "__main__":

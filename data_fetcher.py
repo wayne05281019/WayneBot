@@ -529,9 +529,26 @@ class DataFetcher:
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.executemany("""
-            INSERT OR REPLACE INTO daily_quotes 
+            INSERT INTO daily_quotes
             (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, stock_id) DO UPDATE SET
+                stock_name=excluded.stock_name,
+                market=excluded.market,
+                open=excluded.open,
+                high=excluded.high,
+                low=excluded.low,
+                close=excluded.close,
+                volume=excluded.volume,
+                turnover_k=excluded.turnover_k,
+                pct_change=excluded.pct_change,
+                avg_price=excluded.avg_price,
+                foreign_net=CASE WHEN excluded.foreign_net=0 AND daily_quotes.foreign_net!=0
+                    THEN daily_quotes.foreign_net ELSE excluded.foreign_net END,
+                trust_net=CASE WHEN excluded.trust_net=0 AND daily_quotes.trust_net!=0
+                    THEN daily_quotes.trust_net ELSE excluded.trust_net END,
+                dealer_net=CASE WHEN excluded.dealer_net=0 AND daily_quotes.dealer_net!=0
+                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END;
             """, all_records)
             conn.commit()
             conn.close()

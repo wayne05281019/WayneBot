@@ -127,6 +127,7 @@ def fetch_isin_universe() -> List[Dict]:
     urls = [
         ("TW", "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2"),
         ("TWO", "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4"),
+        ("EM", "https://isin.twse.com.tw/isin/C_public.jsp?strMode=5"),
     ]
     session = requests.Session()
     session.headers.update(HEADERS)

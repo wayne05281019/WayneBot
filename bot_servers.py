@@ -29,7 +29,7 @@ from cary_navigator import (
     generate_decision_card,
     html_escape,
 )
-from chips import fetch_major_player_html
+from chips import fetch_major_player_html, generate_chips_image
 
 try:
     from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
@@ -647,6 +647,23 @@ class WayneTelegramBot:
 
     async def _send_card_to(self, message, code: str):
         code = str(code).strip()
+        hits = lookup_stocks(self.db_path, code)
+        if hits and hits[0].get("close") is None:
+            h = hits[0]
+            try:
+                from stock_links import html_stock_anchor
+
+                title = html_stock_anchor(h["stock_id"], h.get("stock_name") or "", self.db_path)
+            except Exception:
+                title = f"{html_escape(h['stock_id'])} {html_escape(h.get('stock_name') or '')}"
+            mkt = html_escape(h.get("market") or "EM")
+            await message.reply_html(
+                f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
+                "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。",
+                reply_markup=self._hub_keyboard(h["stock_id"]),
+                disable_web_page_preview=True,
+            )
+            return
         await message.reply_text(f"查詢 {code}…")
         packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
         html, card_img, chart = packed if len(packed) == 3 else (packed[0], "", packed[1] if len(packed) > 1 else "")
@@ -665,7 +682,14 @@ class WayneTelegramBot:
                 pass
         extra = fetch_major_player_html(code)
         if extra:
-            await message.reply_html(extra, reply_markup=self._hub_keyboard(code))
+            await message.reply_html(extra, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+            if chip_img:
+                try:
+                    with open(chip_img, "rb") as f:
+                        await message.reply_photo(photo=f, caption="主力買賣超格子（外資／投信／自營）")
+                except Exception:
+                    pass
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -697,8 +721,16 @@ class WayneTelegramBot:
             await self._send_card_to(q.message, data[2:])
             return
         if data.startswith("h:"):
-            extra = fetch_major_player_html(data[2:].strip())
-            await q.message.reply_html(extra or "查無籌碼", reply_markup=self._hub_keyboard(data[2:]))
+            code = data[2:].strip()
+            extra = fetch_major_player_html(code)
+            await q.message.reply_html(extra or "查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+            if chip_img:
+                try:
+                    with open(chip_img, "rb") as f:
+                        await q.message.reply_photo(photo=f, caption="主力買賣超格子（外資／投信／自營）")
+                except Exception:
+                    pass
             return
         if data.startswith("f:"):
             from fundamentals import format_fundamentals_html, sync_fundamentals
