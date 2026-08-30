@@ -335,7 +335,13 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
-    """每個分類一則訊息；表頭只佔一行，不加大型動畫。"""
+    """每個分類一則訊息；表頭用小型動態表情（跟字一樣大）。"""
+    try:
+        from telegram_cat_marks import tg_mark
+    except Exception:
+        def tg_mark(key: str, fallback: str) -> str:
+            return fallback
+
     payload: List[Dict[str, Any]] = []
     specs = [
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
@@ -346,17 +352,26 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         ("day_trade", "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
         ("overnight", "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
     ]
-    for i, (key, emoji, label, subtitle, cap, skip_empty) in enumerate(specs):
+    first = True
+    for key, emoji, label, subtitle, cap, skip_empty in specs:
         items = results.get(key) or []
         if skip_empty and not items:
             continue
+        mark = tg_mark(key, emoji)
         head = (
-            f"{emoji} <b>{html_escape(label)}</b>　{html_escape(subtitle)}　共 {len(items)} 檔"
+            f"{mark} <b>{html_escape(label)}</b>　{html_escape(subtitle)}　共 {len(items)} 檔"
         )
-        if i == 0:
+        if first:
             head = f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n" + head
+            first = False
+        part: Dict[str, Any] = {
+            "mark_key": key,
+            "mark_label": f"{label} · {len(items)}檔",
+            "mark_hint": subtitle,
+        }
         if not items:
-            payload.append({"html": head + "\n<i>今日無符合條件標的</i>"})
+            part["html"] = head + "\n<i>今日無符合條件標的</i>"
+            payload.append(part)
             continue
         detail_n = min(cap, len(items))
         cards = [_stock_card_html(it, n + 1) for n, it in enumerate(items[:detail_n])]
@@ -369,7 +384,8 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
                 f"\n<i>其餘 {len(rest)} 檔</i>\n"
                 f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
             )
-        payload.append({"html": body})
+        part["html"] = body
+        payload.append(part)
 
     if payload:
         payload[-1]["html"] += "\n💡 <i>量化僅供輔助，進場請設移動停損。</i>"

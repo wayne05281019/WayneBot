@@ -88,6 +88,34 @@ class WayneTelegramBot:
             ]
         )
 
+    def _section_markup(self, part: Dict[str, Any], include_menu: bool = False):
+        rows = []
+        key = part.get("mark_key") or ""
+        label = part.get("mark_label") or ""
+        eid = ""
+        try:
+            from telegram_cat_marks import load_mark_ids
+
+            eid = load_mark_ids().get(key) or ""
+        except Exception:
+            eid = ""
+        if label and TELEGRAM_AVAILABLE:
+            kwargs = {"api_kwargs": {"icon_custom_emoji_id": eid}} if eid else {}
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        label,
+                        callback_data=f"cat:{key}"[:64],
+                        **kwargs,
+                    )
+                ]
+            )
+        if include_menu:
+            rows.extend(self._keyboard().inline_keyboard)
+        if not rows:
+            return self._keyboard() if include_menu else None
+        return InlineKeyboardMarkup(rows)
+
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         from screening_engine import format_screening_payload
 
@@ -112,7 +140,8 @@ class WayneTelegramBot:
             if not chunks:
                 continue
             for j, chunk in enumerate(chunks):
-                kb = self._keyboard() if i == last and j == len(chunks) - 1 else None
+                is_last = i == last and j == len(chunks) - 1
+                kb = self._section_markup(part, include_menu=is_last)
                 await message.reply_html(chunk, reply_markup=kb)
             await asyncio.sleep(0.25)
 
@@ -161,11 +190,12 @@ class WayneTelegramBot:
             chunks = chunk_telegram_text(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last = i == last and j == len(chunks) - 1
+                kb = self._section_markup(part, include_menu=is_last)
                 self._send_html(
                     self.chat_id,
                     chunk,
-                    extra_keyboard=self._keyboard() if is_last else None,
-                    attach_menu=is_last,
+                    extra_keyboard=kb,
+                    attach_menu=False,
                 )
             _t.sleep(0.25)
 
@@ -384,9 +414,20 @@ class WayneTelegramBot:
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
-        await q.answer()
         data = q.data or ""
-        fake = update
+        if data.startswith("cat:") or data.startswith("noop"):
+            hints = {
+                "revenue_cross": "優先看：營收轉強 × 量價突破",
+                "select_01": "Select 01：周帶量突破",
+                "select_02": "Select 02：突破半年高",
+                "select_03": "Select 03：突破兩年高",
+                "select_04": "Select 04：雙綠脫離",
+                "day_trade": "當沖：進場 / 停利 / 停損",
+                "overnight": "隔日沖：尾盤佈局",
+            }
+            await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
+            return
+        await q.answer()
         if data == "screen":
             await q.message.reply_text("海選執行中…")
             try:
