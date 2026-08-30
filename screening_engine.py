@@ -287,50 +287,168 @@ class ScreeningEngine:
         return execute_full_screening(self.db_path, target_date)
 
 
-def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
-    """將選股結果格式化為 Telegram 專用精美排版字串"""
-    lines = []
-    lines.append(f"⚡ <b>WayneBot 量化選股決策戰報</b> <code>[{target_date}]</code>")
-    lines.append("─────────────────────")
+def html_escape(val) -> str:
+    return (
+        str(val if val is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
-    def _render_section(title: str, emoji: str, items: List[Dict[str, Any]], max_display: int = 4):
-        lines.append(f"{emoji} <b>{title}</b> (共 {len(items)} 檔)")
+
+def _pct_str(pct) -> str:
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
+
+
+def _banner_gif_path(key: str, rgb: tuple) -> Optional[str]:
+    """慢速旋轉色環 GIF，當分類表頭標記。失敗則回傳 None。"""
+    try:
+        from PIL import Image, ImageDraw
+        import math
+    except Exception:
+        return None
+    try:
+        from config import get_charts_dir
+        folder = os.path.join(get_charts_dir(), "banners")
+    except Exception:
+        folder = os.path.join("charts", "banners")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{key}.gif")
+    if os.path.isfile(path) and os.path.getsize(path) > 200:
+        return path
+    size, frames = 96, 18
+    images = []
+    bg = (18, 22, 28)
+    for i in range(frames):
+        im = Image.new("RGB", (size, size), bg)
+        d = ImageDraw.Draw(im)
+        d.ellipse((10, 10, size - 10, size - 10), outline=rgb, width=7)
+        ang = (i / frames) * 2 * math.pi
+        r = 28
+        x, y = size / 2 + r * math.cos(ang), size / 2 + r * math.sin(ang)
+        d.ellipse((x - 9, y - 9, x + 9, y + 9), fill=rgb)
+        images.append(im)
+    images[0].save(
+        path,
+        save_all=True,
+        append_images=images[1:],
+        duration=160,
+        loop=0,
+        disposal=2,
+    )
+    return path if os.path.isfile(path) else None
+
+
+def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
+    sid = html_escape(item.get("stock_id") or item.get("code") or "")
+    sname = html_escape(item.get("stock_name") or item.get("name") or "")
+    s_tag = " · S級" if item.get("is_s_tier") else ""
+    close = item.get("close")
+    vol = int(item.get("volume") or 0)
+    q = item.get("q60r")
+    body = [
+        f"<b>{idx}. {sid} {sname}</b>{html_escape(s_tag)}",
+        f"價 {close}　{_pct_str(item.get('pct_change'))}",
+        f"量比 {q}×　{vol:,}張",
+    ]
+    if "target_1" in item:
+        body.append(
+            f"進場 {item.get('entry_price')}　停利 {item.get('target_1')} / {item.get('target_2')}　停損 {item.get('stop_loss')}"
+        )
+    elif "buy_range" in item:
+        body.append(
+            f"買進 {html_escape(item.get('buy_range'))}　開高 {html_escape(item.get('target_gap'))}　防守 {item.get('defense_price')}"
+        )
+    return f"<blockquote>{chr(10).join(body)}</blockquote>"
+
+
+def _compact_line(item: Dict[str, Any]) -> str:
+    sid = html_escape(item.get("stock_id") or item.get("code") or "")
+    sname = html_escape(item.get("stock_name") or item.get("name") or "")
+    q = item.get("q60r")
+    return f"{sid} {sname}　{_pct_str(item.get('pct_change'))}　{q}×"
+
+
+def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
+    """
+    每個分類一則訊息：明顯表頭 + 個股卡片。
+    可附慢速旋轉 GIF 當分類標記（Telegram 一般 emoji 無法慢轉）。
+    """
+    payload: List[Dict[str, Any]] = [
+        {
+            "html": (
+                f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n"
+                f"下面<b>每一則訊息一個分類</b>，表頭有慢速旋轉標記。\n"
+                f"請先看「優先看」。"
+            ),
+            "gif": None,
+            "caption": "",
+        }
+    ]
+
+    specs = [
+        ("revenue_cross", "priority", (230, 120, 40), "📈", "優先看", "營收轉強 × 量價突破", 8, False),
+        ("select_01", "sel01", (220, 70, 50), "🔥", "Select 01", "周帶量突破", 8, True),
+        ("select_02", "sel02", (200, 160, 40), "🏆", "Select 02", "突破半年高 Hi120", 8, True),
+        ("select_03", "sel03", (120, 90, 200), "💎", "Select 03", "突破兩年高 Hi480", 8, True),
+        ("select_04", "sel04", (50, 160, 90), "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
+        ("day_trade", "day", (240, 180, 40), "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
+        ("overnight", "night", (40, 90, 170), "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
+    ]
+    for key, gif_key, rgb, emoji, label, subtitle, cap, skip_empty in specs:
+        items = results.get(key) or []
+        if skip_empty and not items:
+            continue
+        bar = html_escape(f"━━━━ {label} ━━━━")
+        head = (
+            f"<code>{bar}</code>\n"
+            f"{emoji} <b>{html_escape(label)}</b>\n"
+            f"{html_escape(subtitle)}\n"
+            f"共 <b>{len(items)}</b> 檔"
+        )
+        caption = f"{emoji} <b>{html_escape(label)}</b>　共 {len(items)} 檔\n{html_escape(subtitle)}"
         if not items:
-            lines.append("  └ <i>今日無符合條件標的</i>\n")
-            return
-        
-        for item in items[:max_display]:
-            s_tag = "👑 <b>[S級投信]</b> " if item.get("is_s_tier") else ""
-            sid = item.get('stock_id') or item.get('code')
-            sname = item.get('stock_name') or item.get('name')
-            c = item['close']
-            pct = item['pct_change']
-            q = item['q60r']
-            vol = item['volume']
-            pct_str = f"+{pct}%" if pct > 0 else f"{pct}%"
+            payload.append({
+                "html": head + "\n<i>今日無符合條件標的</i>",
+                "gif": _banner_gif_path(gif_key, rgb),
+                "caption": caption,
+            })
+            continue
+        detail_n = min(cap, len(items))
+        cards = [_stock_card_html(it, i + 1) for i, it in enumerate(items[:detail_n])]
+        body = head + f"\n下列前 {detail_n} 檔：\n" + "\n".join(cards)
+        rest = items[detail_n:]
+        if rest:
+            compact = "\n".join(_compact_line(it) for it in rest[:40])
+            more = f"\n…另 {len(rest) - 40} 檔" if len(rest) > 40 else ""
+            body += (
+                f"\n其餘 {len(rest)} 檔（點開展開）\n"
+                f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
+            )
+        payload.append({
+            "html": body,
+            "gif": _banner_gif_path(gif_key, rgb),
+            "caption": caption,
+        })
 
-            lines.append(f"• {s_tag}<code>{sid}</code> <b>{sname}</b>")
-            lines.append(f"  價: <code>{c}</code> ({pct_str}) | 量比: <code>{q}x</code> | 量: <code>{vol:,}張</code>")
-            
-            # 若為當沖專區
-            if "target_1" in item:
-                lines.append(f"  🎯 建議進場: <code>{item['entry_price']}</code> | 停利: <code>{item['target_1']}</code> / 衝頂: <code>{item['target_2']}</code> | 停損: <code>{item['stop_loss']}</code>")
-            # 若為隔日沖專區
-            elif "buy_range" in item:
-                lines.append(f"  🚀 買進區間: <code>{item['buy_range']}</code> | 明日開高目標: <code>{item['target_gap']}</code> | 防守: <code>{item['defense_price']}</code>")
-        lines.append("")
+    payload.append({
+        "html": "💡 <i>量化僅供輔助，進場請設移動停損。打代號可看決策卡。</i>",
+        "gif": None,
+        "caption": "",
+    })
+    return payload
 
-    _render_section("營收轉強 × 量價突破（優先看）", "📈", results.get("revenue_cross", []), max_display=8)
-    _render_section("Select 01 周帶量突破", "🔥", results.get("select_01", []))
-    _render_section("Select 02 突破半年新高 (Hi120)", "🏆", results.get("select_02", []))
-    _render_section("Select 03 突破兩年大底 (Hi480)", "💎", results.get("select_03", []))
-    _render_section("Select 04 雙綠脫離底部起漲", "🌱", results.get("select_04", []))
-    _render_section("🚀 當沖動能精算專區", "⚡", results.get("day_trade", []))
-    _render_section("🌙 隔日沖尾盤佈局專區", "🎯", results.get("overnight", []))
 
-    lines.append("─────────────────────")
-    lines.append("💡 <i>風險提示：量化數據僅供決策輔助，進場請務必設定移動停損。</i>")
-    return "\n".join(lines)
+def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[str]:
+    return [p["html"] for p in format_screening_payload(results, target_date)]
+
+
+def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
+    return "\n\n".join(format_screening_sections(results, target_date))
 
 
 # ------------------------------------------------------------------------------
@@ -381,7 +499,8 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         revenue_cross.append(engine._row_for_bot(item))
     results["revenue_cross"] = revenue_cross
 
-    report_text = format_telegram_screening_report(results, target_date)
+    payload = format_screening_payload(results, target_date)
+    report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
     major_alerts = []
@@ -400,6 +519,8 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "total_scanned": len(stock_dfs),
         "results": results,
         "message": report_text,
+        "payload": payload,
+        "sections": [p["html"] for p in payload],
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,

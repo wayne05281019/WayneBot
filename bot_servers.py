@@ -6,6 +6,7 @@ WayneBot Telegram 操作層
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -87,7 +88,59 @@ class WayneTelegramBot:
             ]
         )
 
-    def _send_html(self, chat_id: str, html: str, extra_keyboard=None):
+    def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        from screening_engine import format_screening_payload
+
+        parts = result.get("payload")
+        if parts:
+            return parts
+        return format_screening_payload(
+            result.get("results") or {}, result.get("as_of") or result.get("date") or ""
+        )
+
+    async def _reply_screening_payload(self, message, result: Dict[str, Any]):
+        parts = self._screening_payload(result)
+        if not parts:
+            await message.reply_html(
+                result.get("message") or self._format_screening_html(result),
+                reply_markup=self._keyboard(),
+            )
+            return
+        last = len(parts) - 1
+        for i, part in enumerate(parts):
+            gif = part.get("gif")
+            caption = (part.get("caption") or "")[:1024]
+            if gif and os.path.isfile(gif) and caption:
+                try:
+                    with open(gif, "rb") as f:
+                        await message.reply_animation(animation=f, caption=caption, parse_mode="HTML")
+                except Exception:
+                    logger.exception("分類 GIF 傳送失敗，改走純文字表頭")
+            chunks = chunk_telegram_text(part.get("html") or "", 3500)
+            if not chunks:
+                continue
+            for j, chunk in enumerate(chunks):
+                kb = self._keyboard() if i == last and j == len(chunks) - 1 else None
+                await message.reply_html(chunk, reply_markup=kb)
+            await asyncio.sleep(0.35)
+
+    def _send_animation(self, chat_id: str, gif_path: str, caption: str = ""):
+        try:
+            import requests
+
+            url = f"https://api.telegram.org/bot{self.token}/sendAnimation"
+            with open(gif_path, "rb") as f:
+                files = {"animation": f}
+                data = {
+                    "chat_id": chat_id,
+                    "caption": (caption or "")[:1024],
+                    "parse_mode": "HTML",
+                }
+                requests.post(url, files=files, data=data, timeout=40)
+        except Exception as e:
+            logger.error("send_animation: %s", e)
+
+    def _send_html(self, chat_id: str, html: str, extra_keyboard=None, attach_menu: bool = True):
         try:
             import requests
 
@@ -100,7 +153,7 @@ class WayneTelegramBot:
             }
             if extra_keyboard:
                 payload["reply_markup"] = extra_keyboard.to_dict()
-            else:
+            elif attach_menu:
                 payload["reply_markup"] = self._keyboard().to_dict()
             requests.post(url, json=payload, timeout=20)
         except Exception as e:
@@ -121,21 +174,28 @@ class WayneTelegramBot:
     def send_screening_report(self, result: Dict[str, Any]):
         if not self.token or not self.chat_id:
             return
-        html = self._format_screening_html(result)
-        self._send_html(self.chat_id, html)
+        import time as _t
 
-        for row in (result.get("daytrade") or [])[:5]:
-            self._send_stock_card_by_code(self.chat_id, row.get("code"), row.get("name") or "")
-        for row in (result.get("overnight") or [])[:5]:
-            self._send_stock_card_by_code(self.chat_id, row.get("code"), row.get("name") or "")
-
-        for row in (result.get("major_alerts") or [])[:8]:
-            code = str(row.get("code") or "")
-            if not code:
-                continue
-            extra = fetch_major_player_html(code)
-            if extra:
-                self._send_html(self.chat_id, extra)
+        parts = self._screening_payload(result)
+        if not parts:
+            self._send_html(self.chat_id, result.get("message") or self._format_screening_html(result))
+            return
+        last = len(parts) - 1
+        for i, part in enumerate(parts):
+            gif = part.get("gif")
+            caption = part.get("caption") or ""
+            if gif and os.path.isfile(gif) and caption:
+                self._send_animation(self.chat_id, gif, caption)
+            chunks = chunk_telegram_text(part.get("html") or "", 3500)
+            for j, chunk in enumerate(chunks):
+                is_last = i == last and j == len(chunks) - 1
+                self._send_html(
+                    self.chat_id,
+                    chunk,
+                    extra_keyboard=self._keyboard() if is_last else None,
+                    attach_menu=is_last,
+                )
+            _t.sleep(0.35)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
@@ -195,9 +255,7 @@ class WayneTelegramBot:
         await update.message.reply_text("海選執行中…")
         try:
             result = self.screener.run_full_screening()
-            html = result.get("message") or self._format_screening_html(result)
-            for part in chunk_telegram_text(html, 3500):
-                await update.message.reply_html(part, reply_markup=self._keyboard())
+            await self._reply_screening_payload(update.message, result)
         except Exception as e:
             logger.exception("海選失敗")
             await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
@@ -358,11 +416,10 @@ class WayneTelegramBot:
         data = q.data or ""
         fake = update
         if data == "screen":
+            await q.message.reply_text("海選執行中…")
             try:
                 result = self.screener.run_full_screening()
-                html = result.get("message") or self._format_screening_html(result)
-                for part in chunk_telegram_text(html, 3500):
-                    await q.message.reply_html(part, reply_markup=self._keyboard())
+                await self._reply_screening_payload(q.message, result)
             except Exception as e:
                 logger.exception("海選失敗")
                 await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
