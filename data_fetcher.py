@@ -459,7 +459,7 @@ class DataFetcher:
         roc_date_str = f"{roc_year}/{target_date[4:6]}/{target_date[6:]}"
         two_url = f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc_date_str}&_={int(time.time()*1000)}"
         try:
-            resp = self.session.get(two_url, timeout=15)
+            resp = self.session.get(two_url, timeout=25)
             if resp.status_code == 200:
                 raw_rows = resp.json().get("aaData", [])
                 for r in raw_rows:
@@ -578,7 +578,7 @@ class DataFetcher:
         start = datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)
         end = datetime.strptime(end_date, "%Y%m%d")
         if start > end:
-            thin = self._refill_thin_days(end_date, lookback=10, min_rows=1500)
+            thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
             return {"from": latest, "to": end_date, "filled": thin, "skipped": [], "note": "已是最新", "refilled_thin": thin}
         days = 0
         d = start
@@ -596,13 +596,13 @@ class DataFetcher:
                 skipped.append(ds)
             time.sleep(0.35)
             d += timedelta(days=1)
-        thin = self._refill_thin_days(end_date, lookback=10, min_rows=1500)
+        thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
         for ds in thin:
             if ds not in filled:
                 filled.append(ds)
         return {"from": latest, "to": end_date, "filled": filled, "skipped": skipped, "refilled_thin": thin}
 
-    def _refill_thin_days(self, end_date: str, lookback: int = 10, min_rows: int = 1500) -> list:
+    def _refill_thin_days(self, end_date: str, lookback: int = 25, min_rows: int = 1500) -> list:
         """已有日期但檔數明顯偏少（例如只寫入上市）就重抓。"""
         conn = self.get_db_connection()
         cur = conn.cursor()
@@ -629,6 +629,56 @@ class DataFetcher:
                 filled.append(ds)
             time.sleep(0.35)
         return filled
+
+    def repair_quote_coverage(self, min_rows: int = 1800, sleep_s: float = 0.4) -> dict:
+        """核對開盤日覆蓋：檔數過少的交易日重抓；空白平日試抓（假日會得到 0 並略過）。
+
+        daily_quotes 欄位意義（張＝股/1000）：
+        date 開盤日 YYYYMMDD；stock_id 四碼代號；open/high/low/close 當日價；
+        volume 成交張數；turnover_k 成交金額千元；pct_change 漲跌％；
+        foreign_net/trust_net/dealer_net 外資／投信／自營買賣超（張，正買負賣）。
+        決策卡 10/20/60 日高低＝近 N 根「收盤」最高／最低（不是日曆窗、也不是影線）。
+        獲利＝相對近 60 根收盤最低。量單位與法人一律為張。
+        """
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT date, COUNT(*) FROM daily_quotes GROUP BY date ORDER BY date")
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return {"thin": [], "filled": [], "holiday_or_empty": [], "still_thin": []}
+        thin = [str(d) for d, n in rows if int(n or 0) < int(min_rows)]
+        have = {str(d) for d, _n in rows}
+        start = datetime.strptime(str(rows[0][0]), "%Y%m%d")
+        end = datetime.strptime(str(rows[-1][0]), "%Y%m%d")
+        gaps = []
+        d = start
+        while d <= end:
+            ds = d.strftime("%Y%m%d")
+            if d.weekday() < 5 and ds not in have:
+                gaps.append(ds)
+            d += timedelta(days=1)
+        filled, empty = [], []
+        for ds in thin + gaps:
+            n = int(self.update_daily_market_data(ds) or 0)
+            if n > 50:
+                filled.append(ds)
+            elif ds in gaps:
+                empty.append(ds)
+            time.sleep(sleep_s)
+        conn = self.get_db_connection()
+        still = conn.execute(
+            "SELECT date, COUNT(*) n FROM daily_quotes GROUP BY date HAVING n < ? ORDER BY date",
+            (int(min_rows),),
+        ).fetchall()
+        conn.close()
+        return {
+            "thin_before": thin,
+            "weekday_gaps_tried": gaps,
+            "filled": filled,
+            "holiday_or_empty": empty,
+            "still_thin": [(str(a), int(b)) for a, b in still],
+        }
 
 
 # ==============================================================================

@@ -165,6 +165,11 @@ class MainRunner:
                 gap = self.fetcher.fill_missing_market_days(end_date=self.today_str)
                 logger.info("缺日回補：%s", gap)
                 inserted_count = len(gap.get("filled") or [])
+                if hasattr(self.fetcher, "_refill_thin_days"):
+                    extra = self.fetcher._refill_thin_days(self.today_str, lookback=40, min_rows=1800)
+                    if extra:
+                        logger.info("稀薄日再補：%s", extra)
+                        inserted_count += len(extra)
             except Exception as e:
                 logger.error(f"❌ 缺日回補異常: {e}", exc_info=True)
         elif self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):

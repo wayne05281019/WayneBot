@@ -60,22 +60,22 @@ HELP_TOPICS = {
     "menu": (
         "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
         "海選／當沖／隔日沖／持股　｜　觀察／選股／說明／選單\n"
-        "打股名或代號會開這檔的第一眼＋決策卡。\n"
+        "打股名或代號會開這檔的介紹圖＋高低卡＋導航＋籌碼。\n"
         "左下選單也可按 /menu 把兩排叫回來。"
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
         "盤後依營收轉強×量價等分類列出候選。\n"
-        "➕＝加入觀察（還沒買）。決策卡＝開這檔詳情。\n"
-        "不是立即下單清單，先看決策卡再決定。"
+        "➕＝加入觀察（還沒買）。詳細介紹＝開這檔圖卡。\n"
+        "不是立即下單清單，先看詳細介紹再決定。"
     ),
     "daytrade": (
         "<b>當沖怎麼用</b>\n"
-        "當日沖候選。➕觀察、決策卡開詳情。不是保證獲利。"
+        "當日沖候選。➕觀察、詳細介紹開圖卡。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
-        "偏尾盤佈局、隔日應對。➕觀察、決策卡開詳情。"
+        "偏尾盤佈局、隔日應對。➕觀察、詳細介紹開圖卡。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -93,7 +93,7 @@ HELP_TOPICS = {
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 距20日高、獲利／距60日低、月乖離、溫度、量比\n"
         "3 外資／投信／自營／法人當日張數＋連買連賣；籌碼佔量＝法人買賣超÷成交量\n"
-        "4 月營收／季報毛利率＋決策卡粉紅預警\n"
+        "4 月營收／季報毛利率＋粉紅預警\n"
         "5 完整法人格按籌碼"
     ),
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
@@ -191,7 +191,7 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
@@ -213,7 +213,7 @@ class WayneTelegramBot:
             rows.append(
                 [
                     InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
                 ]
             )
         if include_menu or rows:
@@ -233,7 +233,7 @@ class WayneTelegramBot:
             rows.append(
                 [
                     InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
                     InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
             )
@@ -417,12 +417,12 @@ class WayneTelegramBot:
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
             glance = ""
         if glance:
-            self._send_photo(chat_id, glance, caption=f"{html_escape(code)} 當日K＋籌碼")
-        self._send_html(chat_id, html)
+            cap = f"{html_escape(code)}"
+            self._send_photo(chat_id, glance, caption=cap)
         for path in self._card_photo_paths(card_img):
-            self._send_photo(chat_id, path, caption=f"{html_escape(code)} 買低賣高決策卡")
+            self._send_photo(chat_id, path, caption=f"{html_escape(code)} 高低決策卡")
         if chart_path:
-            self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)} 高低導航")
+            self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} 高低導航")
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         last_kb = self._hub_keyboard(code)
         if chip_img:
@@ -540,14 +540,14 @@ class WayneTelegramBot:
             return
         for r in rows:
             lines.append(f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}")
-        lines.append("\n點下面按鈕可直接開決策卡／籌碼／記買入。")
+        lines.append("\n點下面按鈕可直接開詳細介紹／籌碼／記買入。")
         await message.reply_html("\n".join(lines), reply_markup=self._watch_list_keyboard(rows))
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "決策卡：請先選一檔。打南亞／2330，或點觀察清單。選到就會出卡與圖。",
+            "card": "詳細介紹：請先選一檔。打南亞／2330，或點觀察清單。選到就會出圖卡。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
@@ -722,7 +722,7 @@ class WayneTelegramBot:
             return
         if len(hits) > 1:
             await update.message.reply_html(
-                "找到多檔。按 ➕ 加入觀察，📌 開決策卡，或記買入：",
+                "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
                 reply_markup=self._hits_keyboard(hits),
             )
             return
@@ -822,29 +822,43 @@ class WayneTelegramBot:
         chart = packed[2] if len(packed) > 2 else ""
         glance = packed[3] if len(packed) > 3 else ""
         hub = self._hub_keyboard(code)
+        cap_links = ""
+        try:
+            from stock_links import yahoo_urls
+
+            web, mobile = yahoo_urls(code, self.db_path)
+            cap_links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
+        except Exception:
+            cap_links = ""
 
         async def send_photo(path, caption, markup=None):
             try:
                 with open(path, "rb") as f:
-                    await message.reply_photo(photo=f, caption=caption, reply_markup=markup)
+                    await message.reply_photo(
+                        photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
+                    )
                 return True
             except Exception:
-                return False
+                try:
+                    with open(path, "rb") as f:
+                        await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
+                    return True
+                except Exception:
+                    return False
 
         if glance:
-            await send_photo(glance, "當日K＋連漲跌＋籌碼連買連賣")
-        await message.reply_html(html, disable_web_page_preview=True)
+            await send_photo(glance, cap_links or "當日K＋籌碼價量")
         for path in self._card_photo_paths(card_img):
-            await send_photo(path, "買低賣高決策卡（單張，欄位對齊範本）")
+            await send_photo(path, "高低決策卡")
         if chart:
-            await send_photo(chart, "180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均；▼20日高 ▲20日低")
+            await send_photo(chart, "180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均")
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         if chip_img:
             ok = await send_photo(chip_img, "籌碼（張）", hub)
             if not ok:
-                await message.reply_html("籌碼圖在下方。", reply_markup=hub, disable_web_page_preview=True)
-        elif chart:
-            await send_photo(chart, "高低導航", hub)
+                await message.reply_html("籌碼圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
+        elif glance:
+            await send_photo(glance, cap_links or "介紹", hub)
         else:
             await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
 

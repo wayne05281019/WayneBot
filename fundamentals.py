@@ -324,7 +324,7 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.append(
             (
                 "月營收",
-                f"{label}　{float(m['revenue']):,.0f}千　YoY {float(m['yoy_pct']):+.1f}%　MoM {float(m['mom_pct']):+.1f}%",
+                f"{label}　YoY {float(m['yoy_pct']):+.1f}%　MoM {float(m['mom_pct']):+.1f}%",
             )
         )
         rows.append(("累計YoY", f"{float(m['ytd_yoy_pct']):+.1f}%"))
