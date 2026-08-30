@@ -108,37 +108,13 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
-            gif = part.get("gif")
-            caption = (part.get("caption") or "")[:1024]
-            if gif and os.path.isfile(gif) and caption:
-                try:
-                    with open(gif, "rb") as f:
-                        await message.reply_animation(animation=f, caption=caption, parse_mode="HTML")
-                except Exception:
-                    logger.exception("分類 GIF 傳送失敗，改走純文字表頭")
             chunks = chunk_telegram_text(part.get("html") or "", 3500)
             if not chunks:
                 continue
             for j, chunk in enumerate(chunks):
                 kb = self._keyboard() if i == last and j == len(chunks) - 1 else None
                 await message.reply_html(chunk, reply_markup=kb)
-            await asyncio.sleep(0.35)
-
-    def _send_animation(self, chat_id: str, gif_path: str, caption: str = ""):
-        try:
-            import requests
-
-            url = f"https://api.telegram.org/bot{self.token}/sendAnimation"
-            with open(gif_path, "rb") as f:
-                files = {"animation": f}
-                data = {
-                    "chat_id": chat_id,
-                    "caption": (caption or "")[:1024],
-                    "parse_mode": "HTML",
-                }
-                requests.post(url, files=files, data=data, timeout=40)
-        except Exception as e:
-            logger.error("send_animation: %s", e)
+            await asyncio.sleep(0.25)
 
     def _send_html(self, chat_id: str, html: str, extra_keyboard=None, attach_menu: bool = True):
         try:
@@ -182,10 +158,6 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
-            gif = part.get("gif")
-            caption = part.get("caption") or ""
-            if gif and os.path.isfile(gif) and caption:
-                self._send_animation(self.chat_id, gif, caption)
             chunks = chunk_telegram_text(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last = i == last and j == len(chunks) - 1
@@ -195,7 +167,7 @@ class WayneTelegramBot:
                     extra_keyboard=self._keyboard() if is_last else None,
                     attach_menu=is_last,
                 )
-            _t.sleep(0.35)
+            _t.sleep(0.25)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:

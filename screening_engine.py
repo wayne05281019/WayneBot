@@ -304,45 +304,6 @@ def _pct_str(pct) -> str:
     return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
 
 
-def _banner_gif_path(key: str, rgb: tuple) -> Optional[str]:
-    """慢速旋轉色環 GIF，當分類表頭標記。失敗則回傳 None。"""
-    try:
-        from PIL import Image, ImageDraw
-        import math
-    except Exception:
-        return None
-    try:
-        from config import get_charts_dir
-        folder = os.path.join(get_charts_dir(), "banners")
-    except Exception:
-        folder = os.path.join("charts", "banners")
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, f"{key}.gif")
-    if os.path.isfile(path) and os.path.getsize(path) > 200:
-        return path
-    size, frames = 96, 18
-    images = []
-    bg = (18, 22, 28)
-    for i in range(frames):
-        im = Image.new("RGB", (size, size), bg)
-        d = ImageDraw.Draw(im)
-        d.ellipse((10, 10, size - 10, size - 10), outline=rgb, width=7)
-        ang = (i / frames) * 2 * math.pi
-        r = 28
-        x, y = size / 2 + r * math.cos(ang), size / 2 + r * math.sin(ang)
-        d.ellipse((x - 9, y - 9, x + 9, y + 9), fill=rgb)
-        images.append(im)
-    images[0].save(
-        path,
-        save_all=True,
-        append_images=images[1:],
-        duration=160,
-        loop=0,
-        disposal=2,
-    )
-    return path if os.path.isfile(path) else None
-
-
 def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     sid = html_escape(item.get("stock_id") or item.get("code") or "")
     sname = html_escape(item.get("stock_name") or item.get("name") or "")
@@ -374,72 +335,46 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
-    """
-    每個分類一則訊息：明顯表頭 + 個股卡片。
-    可附慢速旋轉 GIF 當分類標記（Telegram 一般 emoji 無法慢轉）。
-    """
-    payload: List[Dict[str, Any]] = [
-        {
-            "html": (
-                f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n"
-                f"下面<b>每一則訊息一個分類</b>，表頭有慢速旋轉標記。\n"
-                f"請先看「優先看」。"
-            ),
-            "gif": None,
-            "caption": "",
-        }
-    ]
-
+    """每個分類一則訊息；表頭只佔一行，不加大型動畫。"""
+    payload: List[Dict[str, Any]] = []
     specs = [
-        ("revenue_cross", "priority", (230, 120, 40), "📈", "優先看", "營收轉強 × 量價突破", 8, False),
-        ("select_01", "sel01", (220, 70, 50), "🔥", "Select 01", "周帶量突破", 8, True),
-        ("select_02", "sel02", (200, 160, 40), "🏆", "Select 02", "突破半年高 Hi120", 8, True),
-        ("select_03", "sel03", (120, 90, 200), "💎", "Select 03", "突破兩年高 Hi480", 8, True),
-        ("select_04", "sel04", (50, 160, 90), "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
-        ("day_trade", "day", (240, 180, 40), "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
-        ("overnight", "night", (40, 90, 170), "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
+        ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
+        ("select_01", "🔥", "Select 01", "周帶量突破", 8, True),
+        ("select_02", "🏆", "Select 02", "突破半年高 Hi120", 8, True),
+        ("select_03", "💎", "Select 03", "突破兩年高 Hi480", 8, True),
+        ("select_04", "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
+        ("day_trade", "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
+        ("overnight", "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
     ]
-    for key, gif_key, rgb, emoji, label, subtitle, cap, skip_empty in specs:
+    for i, (key, emoji, label, subtitle, cap, skip_empty) in enumerate(specs):
         items = results.get(key) or []
         if skip_empty and not items:
             continue
-        bar = html_escape(f"━━━━ {label} ━━━━")
         head = (
-            f"<code>{bar}</code>\n"
-            f"{emoji} <b>{html_escape(label)}</b>\n"
-            f"{html_escape(subtitle)}\n"
-            f"共 <b>{len(items)}</b> 檔"
+            f"{emoji} <b>{html_escape(label)}</b>　{html_escape(subtitle)}　共 {len(items)} 檔"
         )
-        caption = f"{emoji} <b>{html_escape(label)}</b>　共 {len(items)} 檔\n{html_escape(subtitle)}"
+        if i == 0:
+            head = f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n" + head
         if not items:
-            payload.append({
-                "html": head + "\n<i>今日無符合條件標的</i>",
-                "gif": _banner_gif_path(gif_key, rgb),
-                "caption": caption,
-            })
+            payload.append({"html": head + "\n<i>今日無符合條件標的</i>"})
             continue
         detail_n = min(cap, len(items))
-        cards = [_stock_card_html(it, i + 1) for i, it in enumerate(items[:detail_n])]
-        body = head + f"\n下列前 {detail_n} 檔：\n" + "\n".join(cards)
+        cards = [_stock_card_html(it, n + 1) for n, it in enumerate(items[:detail_n])]
+        body = head + "\n" + "\n".join(cards)
         rest = items[detail_n:]
         if rest:
             compact = "\n".join(_compact_line(it) for it in rest[:40])
             more = f"\n…另 {len(rest) - 40} 檔" if len(rest) > 40 else ""
             body += (
-                f"\n其餘 {len(rest)} 檔（點開展開）\n"
+                f"\n<i>其餘 {len(rest)} 檔</i>\n"
                 f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
             )
-        payload.append({
-            "html": body,
-            "gif": _banner_gif_path(gif_key, rgb),
-            "caption": caption,
-        })
+        payload.append({"html": body})
 
-    payload.append({
-        "html": "💡 <i>量化僅供輔助，進場請設移動停損。打代號可看決策卡。</i>",
-        "gif": None,
-        "caption": "",
-    })
+    if payload:
+        payload[-1]["html"] += "\n💡 <i>量化僅供輔助，進場請設移動停損。</i>"
+    else:
+        payload.append({"html": f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
     return payload
 
 
