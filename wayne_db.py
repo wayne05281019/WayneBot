@@ -291,6 +291,9 @@ def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
     conn.commit()
     conn.close()
     return {"date_fixed": int(date_fixed), "volume_filled": int(volume_filled)}
+
+
+def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
     with get_db_connection(db_path) as conn:
         rows = conn.execute(
