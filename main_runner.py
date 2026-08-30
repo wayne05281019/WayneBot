@@ -218,8 +218,13 @@ class MainRunner:
             from import_health import audit_import, format_audit_plain
             health = audit_import(self.db_path)
             logger.info("盤後匯入檢查：%s", health)
-            if health.get("history_issues") and self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
-                for item in health["history_issues"][:12]:
+            if self.fetcher and hasattr(self.fetcher, "sync_paired_markets"):
+                paired = self.fetcher.sync_paired_markets()
+                if paired:
+                    logger.info("開盤日缺邊已重抓：%s", paired)
+                    health = audit_import(self.db_path)
+            elif health.get("history_issues") and self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
+                for item in health["history_issues"]:
                     ds = item["date"]
                     logger.warning("開盤日缺邊，重抓 %s：%s", ds, item["problems"])
                     self.fetcher.update_daily_market_data(ds)

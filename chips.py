@@ -146,22 +146,33 @@ def fetch_chips_for_date(session: requests.Session, yyyymmdd: str) -> Dict[str, 
     merged: Dict[str, Dict[str, int]] = {}
     tw_url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={yyyymmdd}&selectType=ALLBUT0999&response=json"
     try:
-        resp = session.get(tw_url, timeout=20)
+        resp = session.get(tw_url, timeout=40)
         if resp.status_code == 200:
             merged.update(parse_twse_t86(resp.json()))
     except Exception as e:
         logger.warning("上市 T86 失敗 %s: %s", yyyymmdd, e)
+    n_tw = len(merged)
     roc = roc_date(yyyymmdd)
-    two_url = (
-        "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
-        f"?l=zh-tw&d={roc}&se=EW&t=D&_={int(time.time() * 1000)}"
-    )
-    try:
-        resp = session.get(two_url, timeout=20)
-        if resp.status_code == 200:
-            merged.update(parse_tpex_t86(resp.json()))
-    except Exception as e:
-        logger.warning("上櫃法人失敗 %s: %s", yyyymmdd, e)
+    yyyy, mm, dd = yyyymmdd[:4], yyyymmdd[4:6], yyyymmdd[6:]
+    two_urls = [
+        f"https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?date={yyyy}/{mm}/{dd}&type=Daily&id=&response=json",
+        (
+            "https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
+            f"?l=zh-tw&d={roc}&se=EW&t=D&_={int(time.time() * 1000)}"
+        ),
+    ]
+    for two_url in two_urls:
+        try:
+            resp = session.get(two_url, timeout=40)
+            if resp.status_code != 200:
+                continue
+            parsed = parse_tpex_t86(resp.json())
+            if parsed:
+                merged.update(parsed)
+                break
+        except Exception as e:
+            logger.warning("上櫃法人失敗 %s: %s", yyyymmdd, e)
+    logger.info("法人 %s 上市後 %s 檔，合併後 %s 檔", yyyymmdd, n_tw, len(merged))
     return merged
 
 

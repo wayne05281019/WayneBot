@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 選單按鈕
 - 打股票代號 → 決策卡 + 高低導航圖 + 籌碼表
-- 海選 / 當沖 / 隔日沖 / 持股 / 觀察
+- 海選 / 當沖 / 隔日沖 / 持股 / 觀察 / 資金
 """
 from __future__ import annotations
 
@@ -59,9 +59,9 @@ logger = logging.getLogger(__name__)
 HELP_TOPICS = {
     "menu": (
         "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
-        "海選／當沖／隔日沖／持股　｜　觀察／選股／說明／選單\n"
+        "海選／當沖／隔日沖／持股　｜　觀察／資金／說明／選單\n"
         "打股名或代號會開這檔的介紹圖＋高低卡＋導航＋籌碼。\n"
-        "左下選單也可按 /menu 把兩排叫回來。"
+        "資金＝當日三大法人張數流向（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
@@ -100,6 +100,12 @@ HELP_TOPICS = {
     "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
     "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
+    "flow": (
+        "<b>資金移動怎麼用</b>\n"
+        "看當日外資／投信／自營買賣超（張），對照你的持股、觀察、以及量大波動的短線熱門。\n"
+        "持股當日虧但法人買超＝資金還在進；價跌且法人賣超＝短線等回補較弱。\n"
+        "分點據點還沒匯入，以免把現行日 K 打崩。"
+    ),
 }
 
 
@@ -167,7 +173,7 @@ class WayneTelegramBot:
         """聊天室下方常駐兩排（每排四個，短標減少左右空白）。"""
         rows = [
             [KeyboardButton("海選"), KeyboardButton("當沖"), KeyboardButton("隔日沖"), KeyboardButton("持股")],
-            [KeyboardButton("觀察"), KeyboardButton("選股"), KeyboardButton("說明"), KeyboardButton("選單")],
+            [KeyboardButton("觀察"), KeyboardButton("資金"), KeyboardButton("說明"), KeyboardButton("選單")],
         ]
         try:
             return ReplyKeyboardMarkup(
@@ -513,6 +519,22 @@ class WayneTelegramBot:
             html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
         )
 
+    async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(update.effective_user.id)
+        await update.message.reply_text("讀取當日資金移動…")
+        try:
+            from money_flow import format_flow_html
+
+            html = format_flow_html(self.db_path, user_id=uid)
+        except Exception as e:
+            logger.exception("資金移動失敗")
+            await update.message.reply_text(f"資金移動失敗：{e}", reply_markup=self._keyboard())
+            return
+        parts = chunk_telegram_html(html)
+        for i, part in enumerate(parts):
+            kb = InlineKeyboardMarkup([[self._q("flow")]]) if i == len(parts) - 1 else None
+            await update.message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
         if holdings:
@@ -650,6 +672,10 @@ class WayneTelegramBot:
                 HELP_TOPICS["pick"],
                 reply_markup=InlineKeyboardMarkup([[self._q("stock")]]),
             )
+            return
+        if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
+            self._pending.pop(uid, None)
+            await self.flow_cmd(update, context)
             return
         if text == "當沖":
             self._pending.pop(uid, None)
@@ -1014,6 +1040,7 @@ class WayneTelegramBot:
                         BotCommand("screen", "海選"),
                         BotCommand("portfolio", "持股"),
                         BotCommand("watch", "觀察"),
+                        BotCommand("flow", "資金移動"),
                     ]
                 )
             except Exception:
@@ -1028,6 +1055,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("overnight", self.overnight_cmd))
         app.add_handler(CommandHandler("portfolio", self.portfolio_cmd))
         app.add_handler(CommandHandler("watch", self.watch_cmd))
+        app.add_handler(CommandHandler("flow", self.flow_cmd))
         app.add_handler(CommandHandler("card", self.card_cmd))
         app.add_handler(CommandHandler("chips", self.chips_cmd))
         app.add_handler(CommandHandler("fund", self.fund_cmd))

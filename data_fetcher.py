@@ -557,6 +557,15 @@ class DataFetcher:
 
         two_records = self._fetch_tpex_daily(target_date)
         tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
+        attempt = 0
+        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 400 and attempt < 4:
+            attempt += 1
+            print(f"🔁 上市已有 {len(tw_records)} 檔，上櫃只有 {len(two_records)}，第 {attempt} 次再抓櫃買")
+            time.sleep(1.15 * attempt)
+            extra = self._fetch_tpex_daily(target_date)
+            if len(extra) > len(two_records):
+                two_records = extra
+            tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
 
         if tw_status == "empty" and tpex_status == "empty" and not tw_records and not two_records:
             conn = self.get_db_connection()
@@ -665,7 +674,11 @@ class DataFetcher:
         end = datetime.strptime(end_date, "%Y%m%d")
         if start > end:
             thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
-            return {"from": latest, "to": end_date, "filled": thin, "skipped": [], "note": "已是最新", "refilled_thin": thin}
+            paired = self.sync_paired_markets()
+            return {
+                "from": latest, "to": end_date, "filled": thin, "skipped": [],
+                "note": "已是最新", "refilled_thin": thin, "paired": paired,
+            }
         days = 0
         d = start
         while d <= end and days < max_days:
@@ -686,7 +699,35 @@ class DataFetcher:
         for ds in thin:
             if ds not in filled:
                 filled.append(ds)
-        return {"from": latest, "to": end_date, "filled": filled, "skipped": skipped, "refilled_thin": thin}
+        paired = self.sync_paired_markets()
+        return {
+            "from": latest,
+            "to": end_date,
+            "filled": filled,
+            "skipped": skipped,
+            "refilled_thin": thin,
+            "paired": paired,
+        }
+
+    def sync_paired_markets(self, min_tw: int = 800, min_two: int = 400) -> list:
+        """上市有開盤的日子，上櫃一定要同一天進庫；缺邊就整日重抓。"""
+        try:
+            from import_health import list_coverage_issues
+            issues = list_coverage_issues(self.db_path, min_tw=min_tw, min_two=min_two)
+        except Exception as e:
+            print(f"⚠️ 開盤日配對檢查失敗：{e}")
+            return []
+        filled = []
+        for item in issues:
+            ds = item.get("date")
+            if not ds:
+                continue
+            print(f"🔁 開盤日缺邊 {ds}：{item.get('problems')}")
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(0.4)
+        return filled
 
     def _refill_thin_days(self, end_date: str, lookback: int = 25, min_rows: int = 1500) -> list:
         """已有日期但檔數偏少、或上市／上櫃一邊缺，就整日重抓。開盤日兩邊都要有。"""
