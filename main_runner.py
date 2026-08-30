@@ -145,6 +145,14 @@ class MainRunner:
     def run_daily_increment(self) -> int:
         logger.info(f"📥 開始 {self.today_str} 增量更新...")
         try:
+            from wayne_db import normalize_quote_hygiene
+            hyg = normalize_quote_hygiene(self.db_path)
+            if hyg.get("date_fixed") or hyg.get("volume_filled"):
+                logger.info(f"行情清洗：{hyg}")
+        except Exception as e:
+            logger.warning(f"行情清洗略過：{e}")
+
+        try:
             from universe import sync_universe
             stats = sync_universe(self.db_path)
             logger.info(f"母體同步：{stats}")

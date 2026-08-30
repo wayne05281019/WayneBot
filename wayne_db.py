@@ -252,9 +252,45 @@ def ensure_core_schema(db_path: str = None) -> None:
             ensure_fundamentals_tables(path)
         except Exception:
             pass
+        try:
+            normalize_quote_hygiene(path)
+        except Exception:
+            pass
 
 
-def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
+def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
+    """本機已做過、補進程式：日期改 YYYYMMDD；量=0 時用成交金額／收盤估張數。"""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_quotes'")
+    if not cur.fetchone():
+        conn.close()
+        return {"date_fixed": 0, "volume_filled": 0}
+    cur.execute(
+        """
+        UPDATE daily_quotes
+        SET date = replace(date, '-', '')
+        WHERE length(date) = 10 AND instr(date, '-') > 0
+          AND NOT EXISTS (
+              SELECT 1 FROM daily_quotes AS other
+              WHERE other.stock_id = daily_quotes.stock_id
+                AND other.date = replace(daily_quotes.date, '-', '')
+          );
+        """
+    )
+    date_fixed = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    cur.execute("DELETE FROM daily_quotes WHERE length(date) = 10 AND instr(date, '-') > 0;")
+    cur.execute(
+        """
+        UPDATE daily_quotes
+        SET volume = CAST(turnover_k / close AS INTEGER)
+        WHERE (volume IS NULL OR volume = 0) AND close > 0 AND turnover_k > 0;
+        """
+    )
+    volume_filled = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    conn.commit()
+    conn.close()
+    return {"date_fixed": int(date_fixed), "volume_filled": int(volume_filled)}
     ensure_core_schema(db_path)
     with get_db_connection(db_path) as conn:
         rows = conn.execute(
