@@ -16,6 +16,23 @@ def fmt_lots(n: int) -> str:
     return f"{v:+,}張"
 
 
+def fmt_lots_align(n: int, width: int = 7) -> str:
+    """數字右對齊，讓「張」同一直欄（用全形空白，避免 Telegram 把半形空白吃掉）。"""
+    try:
+        v = int(n)
+    except (TypeError, ValueError):
+        v = 0
+    body = "0" if v == 0 else f"{v:+,}"
+    extra = width - len(body)
+    pad = ""
+    while extra >= 2:
+        pad += "　"
+        extra -= 2
+    if extra == 1:
+        pad += " "
+    return f"{pad}{body}張"
+
+
 def _sign(x: float) -> int:
     if x > 0:
         return 1

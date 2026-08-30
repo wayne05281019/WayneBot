@@ -311,6 +311,42 @@ def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any
     return dict(row) if row else None
 
 
+def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
+    """[(標籤, 值), ...] 給第一眼圖／文字共用。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id).strip()
+    m = get_latest_monthly(path, sid)
+    q = get_latest_income(path, sid)
+    rows = []
+    if m:
+        yyyymm = str(m.get("yyyymm") or "")
+        label = f"{yyyymm[:4]}/{yyyymm[4:]}" if len(yyyymm) >= 6 else yyyymm
+        rows.append(
+            (
+                "月營收",
+                f"{label}　{float(m['revenue']):,.0f}千　YoY {float(m['yoy_pct']):+.1f}%　MoM {float(m['mom_pct']):+.1f}%",
+            )
+        )
+        rows.append(("累計YoY", f"{float(m['ytd_yoy_pct']):+.1f}%"))
+    if q:
+        rows.append(
+            (
+                "季報",
+                f"{q['year']}Q{q['season']}　毛利率 {float(q['gross_margin_pct']):.1f}%　EPS {float(q['eps']):.2f}",
+            )
+        )
+    if not rows:
+        rows.append(("基本面", "尚無月營收／季報"))
+    return rows
+
+
+def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
+    """第一眼用的短基本面：月營收 YoY/MoM、季報毛利率／EPS。"""
+    from tg_layout import kv
+
+    return [kv(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
+
+
 def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     path = db_path or get_db_path()
     sid = str(stock_id).strip()

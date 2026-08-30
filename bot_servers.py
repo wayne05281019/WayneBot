@@ -90,13 +90,13 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
-        "1 當日 K 縮圖＋收盤連漲／連跌（▲紅 ▼綠）＋開高低\n"
+        "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 距20日高、獲利／距60日低、月乖離、溫度、量比\n"
-        "3 外資／投信／自營／法人當日張數＋連買連賣（或連買轉連賣）\n"
-        "4 決策卡 20 日表（連兩日粉紅預警才考慮賣）\n"
-        "5 完整法人格按籌碼，月營收按營收"
+        "3 外資／投信／自營／法人當日張數＋連買連賣；籌碼佔量＝法人買賣超÷成交量\n"
+        "4 月營收／季報毛利率＋決策卡粉紅預警\n"
+        "5 完整法人格按籌碼"
     ),
-    "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。超比＝合計／成交量。",
+    "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
     "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
     "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
@@ -414,7 +414,7 @@ class WayneTelegramBot:
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
             glance = ""
         if glance:
-            self._send_photo(chat_id, glance, caption=f"{html_escape(code)} 第一眼（當日K＋籌碼）")
+            self._send_photo(chat_id, glance, caption=f"{html_escape(code)} 當日K＋籌碼")
         self._send_html(chat_id, html)
         for path in self._card_photo_paths(card_img):
             self._send_photo(chat_id, path, caption=f"{html_escape(code)} 買低賣高決策卡")
@@ -807,7 +807,7 @@ class WayneTelegramBot:
         if glance:
             try:
                 with open(glance, "rb") as f:
-                    await message.reply_photo(photo=f, caption="第一眼：當日K＋連漲跌＋籌碼連買連賣")
+                    await message.reply_photo(photo=f, caption="當日K＋連漲跌＋籌碼連買連賣")
             except Exception:
                 pass
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)

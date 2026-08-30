@@ -47,5 +47,6 @@ def section(*rows: str) -> str:
     return "\n".join(r for r in rows if r)
 
 
-def join_sections(*blocks: str) -> str:
-    return "\n\n".join(b.strip("\n") for b in blocks if b and str(b).strip())
+def join_sections(*blocks: str, sep: str = "\n\n") -> str:
+    parts = [b.strip("\n") for b in blocks if b and str(b).strip()]
+    return sep.join(parts)
