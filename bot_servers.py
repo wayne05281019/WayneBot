@@ -12,7 +12,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import get_charts_dir, get_db_path, get_telegram_config
-from wayne_db import init_database, get_user_portfolio, add_to_watchlist, add_to_portfolio
+from wayne_db import init_database, get_user_portfolio, add_to_watchlist, add_to_portfolio, sell_from_holdings
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
 from cary_navigator import (
@@ -284,14 +284,20 @@ class WayneTelegramBot:
             await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from screening_engine import _stock_card_html
+
         rows = self.screener.screen_daytrade()
-        html = "<b>當沖候選</b>\n" + "\n".join(self._fmt_row(r) for r in rows[:15])
-        await update.message.reply_html(html or "無", reply_markup=self._keyboard())
+        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
+        html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+        await update.message.reply_html(html, reply_markup=self._keyboard())
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from screening_engine import _stock_card_html
+
         rows = self.screener.screen_overnight()
-        html = "<b>隔日沖候選</b>\n" + "\n".join(self._fmt_row(r) for r in rows[:15])
-        await update.message.reply_html(html or "無", reply_markup=self._keyboard())
+        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
+        html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+        await update.message.reply_html(html, reply_markup=self._keyboard())
 
     async def portfolio_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
@@ -308,11 +314,14 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         rows = get_user_watchlist(self.db_path, uid)
         if not rows:
-            await update.message.reply_text("觀察清單為空。", reply_markup=self._keyboard())
+            self._pending[uid] = "watch"
+            await update.message.reply_text("觀察清單為空。請輸入股票代號加入，例如 2330", reply_markup=self._keyboard())
             return
         lines = ["<b>觀察清單</b>"]
         for r in rows:
             lines.append(f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}")
+        lines.append("\n<i>再打代號可加入觀察。</i>")
+        self._pending[uid] = "watch"
         await update.message.reply_html("\n".join(lines), reply_markup=self._keyboard())
 
     async def card_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -361,7 +370,14 @@ class WayneTelegramBot:
         await update.message.reply_text(f"已記錄買入 {code} {shares}張 @ {price}", reply_markup=self._keyboard())
 
     async def sell_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("賣出請用持股頁或直接回報。此版先以買入紀錄為主。", reply_markup=self._keyboard())
+        args = context.args or []
+        uid = str(update.effective_user.id)
+        if len(args) < 3:
+            self._pending[uid] = "sell"
+            await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
+            return
+        msg = sell_from_holdings(self.db_path, uid, args[0], float(args[1]), float(args[2]))
+        await update.message.reply_text(msg, reply_markup=self._keyboard())
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or "").strip()
@@ -402,6 +418,20 @@ class WayneTelegramBot:
                     pass
                 html = format_fundamentals_html(code, self.db_path)
             await update.message.reply_html(html, reply_markup=self._keyboard())
+            return
+        if pending == "watch":
+            code = text.split()[0].strip()
+            add_to_watchlist(self.db_path, uid, code, code)
+            await update.message.reply_text(f"已加入觀察 {code}", reply_markup=self._keyboard())
+            return
+        if pending == "sell":
+            parts = text.split()
+            if len(parts) < 3:
+                self._pending[uid] = "sell"
+                await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
+                return
+            msg = sell_from_holdings(self.db_path, uid, parts[0], float(parts[1]), float(parts[2]))
+            await update.message.reply_text(msg, reply_markup=self._keyboard())
             return
         if pending == "buy":
             parts = text.split()
@@ -458,13 +488,19 @@ class WayneTelegramBot:
                 logger.exception("海選失敗")
                 await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
         elif data == "daytrade":
+            from screening_engine import _stock_card_html
+
             rows = self.screener.screen_daytrade()
-            html = "<b>當沖候選</b>\n" + "\n".join(self._fmt_row(r) for r in rows[:15])
-            await q.message.reply_html(html or "無", reply_markup=self._keyboard())
+            cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
+            html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+            await q.message.reply_html(html, reply_markup=self._keyboard())
         elif data == "overnight":
+            from screening_engine import _stock_card_html
+
             rows = self.screener.screen_overnight()
-            html = "<b>隔日沖候選</b>\n" + "\n".join(self._fmt_row(r) for r in rows[:15])
-            await q.message.reply_html(html or "無", reply_markup=self._keyboard())
+            cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
+            html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+            await q.message.reply_html(html, reply_markup=self._keyboard())
         elif data == "portfolio":
             uid = str(q.from_user.id)
             holdings = get_user_portfolio(self.db_path, uid)
@@ -478,6 +514,10 @@ class WayneTelegramBot:
             lines = ["<b>觀察清單</b>"] + [
                 f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}" for r in rows
             ]
+            if not rows:
+                lines.append("<i>目前沒有標的</i>")
+            lines.append("\n<i>請打代號加入觀察。</i>")
+            self._pending[uid] = "watch"
             await q.message.reply_html("\n".join(lines), reply_markup=self._keyboard())
         elif data in ("card", "chips", "fund"):
             uid = str(q.from_user.id)
@@ -493,7 +533,9 @@ class WayneTelegramBot:
             self._pending[uid] = "buy"
             await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 500", reply_markup=self._keyboard())
         elif data == "sell":
-            await q.message.reply_text("賣出請先看持股。此版先以買入紀錄為主。", reply_markup=self._keyboard())
+            uid = str(q.from_user.id)
+            self._pending[uid] = "sell"
+            await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
 
     def run_polling(self):
         if not TELEGRAM_AVAILABLE:

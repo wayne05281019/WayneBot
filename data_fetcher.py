@@ -396,7 +396,11 @@ class DataFetcher:
         :return: 成功寫入筆數
         """
         if not target_date:
-            target_date = datetime.now().strftime("%Y%m%d")
+            try:
+                from config import taipei_today_str
+                target_date = taipei_today_str()
+            except Exception:
+                target_date = datetime.now().strftime("%Y%m%d")
 
         print(f"🔄 啟動 {target_date} 盤後增量更新流程...")
 
@@ -536,6 +540,45 @@ class DataFetcher:
         else:
             print(f"⚠️ {target_date} 非交易日或尚無行情資料。")
             return 0
+
+    def fill_missing_market_days(self, end_date: str = None, max_days: int = 15) -> dict:
+        """從資料庫最新交易日的隔天補到台灣今日（假日自動略過）。"""
+        try:
+            from config import taipei_today_str
+            end_date = end_date or taipei_today_str()
+        except Exception:
+            end_date = end_date or datetime.now().strftime("%Y%m%d")
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM daily_quotes;")
+        row = cur.fetchone()
+        conn.close()
+        latest = str(row[0]) if row and row[0] else ""
+        filled, skipped = [], []
+        if not latest:
+            n = self.update_daily_market_data(end_date)
+            return {"from": "", "to": end_date, "filled": [end_date] if n else [], "skipped": []}
+        start = datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)
+        end = datetime.strptime(end_date, "%Y%m%d")
+        if start > end:
+            return {"from": latest, "to": end_date, "filled": [], "skipped": [], "note": "已是最新"}
+        days = 0
+        d = start
+        while d <= end and days < max_days:
+            ds = d.strftime("%Y%m%d")
+            days += 1
+            if d.weekday() >= 5:
+                skipped.append(ds)
+                d += timedelta(days=1)
+                continue
+            n = int(self.update_daily_market_data(ds) or 0)
+            if n > 50:
+                filled.append(ds)
+            else:
+                skipped.append(ds)
+            time.sleep(0.35)
+            d += timedelta(days=1)
+        return {"from": latest, "to": end_date, "filled": filled, "skipped": skipped}
 
 
 # ==============================================================================

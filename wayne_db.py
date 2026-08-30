@@ -350,6 +350,39 @@ def add_to_portfolio(
         )
 
 
+def sell_from_holdings(
+    db_path: str, user_id: str, stock_code: str, shares: float, price: float
+) -> str:
+    """從 user_holdings 賣出（與買入紀錄同一張表）。"""
+    ensure_core_schema(db_path)
+    code = str(stock_code).strip()
+    with get_db_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT shares, cost_price, stock_name FROM user_holdings WHERE user_id=? AND stock_code=?;",
+            (str(user_id), code),
+        ).fetchone()
+        if not row:
+            return f"持股裡沒有 {code}"
+        held = float(row["shares"] or 0)
+        cost = float(row["cost_price"] or 0)
+        name = row["stock_name"] or code
+        sell_n = held if shares <= 0 or shares >= held else float(shares)
+        pnl = (float(price) - cost) * sell_n
+        remain = held - sell_n
+        now = datetime.now().isoformat(timespec="seconds")
+        if remain <= 1e-9:
+            conn.execute(
+                "DELETE FROM user_holdings WHERE user_id=? AND stock_code=?;",
+                (str(user_id), code),
+            )
+        else:
+            conn.execute(
+                "UPDATE user_holdings SET shares=?, updated_at=? WHERE user_id=? AND stock_code=?;",
+                (remain, now, str(user_id), code),
+            )
+        return f"已賣出 {code} {name} {sell_n:g}張 @ {price}，估損益 {pnl:+.0f}（成本 {cost}）"
+
+
 # ==============================================================================
 # 靜態股票對照表 (stock_map.json) 快取與注入介面
 # ==============================================================================
