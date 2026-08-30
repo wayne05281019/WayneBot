@@ -588,7 +588,7 @@ class WayneTelegramBot:
             except Exception as e:
                 logger.error("fund sync: %s", e)
             html = format_fundamentals_html(code, self.db_path)
-        await update.message.reply_html(html, reply_markup=self._keyboard())
+        await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -744,7 +744,7 @@ class WayneTelegramBot:
                 except Exception:
                     pass
                 html = format_fundamentals_html(code, self.db_path)
-            await message.reply_html(html, reply_markup=self._hub_keyboard(code))
+            await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return True
         return False
 
@@ -890,7 +890,9 @@ class WayneTelegramBot:
                 except Exception:
                     pass
                 html = format_fundamentals_html(code, self.db_path)
-            await q.message.reply_html(html, reply_markup=self._hub_keyboard(code))
+            await q.message.reply_html(
+                html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
+            )
             return
         if data.startswith("b:"):
             uid = str(q.from_user.id)

@@ -319,26 +319,38 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if not m and not q:
         return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（請先跑盤後流水線或 /fund 會自動同步）。"
     name = (m or q or {}).get("stock_name") or sid
-    lines = [f"📈 <b>【基本面】{sid} {name}</b>"]
+    from tg_layout import title_line, kv, section, join_sections
+
+    blocks = [title_line("基本面", sid, name)]
     if m:
         yyyymm = m["yyyymm"]
         label = f"{yyyymm[:4]}/{yyyymm[4:]}"
-        lines += [
-            f"月營收 {label}：{m['revenue']:,.0f} 千元",
-            f"MoM {m['mom_pct']:+.1f}%　YoY {m['yoy_pct']:+.1f}%　累計YoY {m['ytd_yoy_pct']:+.1f}%",
-        ]
+        blocks.append(
+            section(
+                kv("期間", label),
+                kv("月營收", f"{m['revenue']:,.0f} 千元"),
+                kv("MoM", f"{m['mom_pct']:+.1f}%"),
+                kv("YoY", f"{m['yoy_pct']:+.1f}%"),
+                kv("累計YoY", f"{m['ytd_yoy_pct']:+.1f}%"),
+            )
+        )
     if q:
         prev = prior_income(path, q)
-        qoq = ""
+        gm_note = ""
         if prev and prev.get("gross_margin_pct") is not None:
             diff = q["gross_margin_pct"] - prev["gross_margin_pct"]
-            qoq = f"　較上期 {diff:+.1f}pt（{prev['year']}Q{prev['season']}）"
-        lines += [
-            f"季報 {q['year']}Q{q['season']} 營收 {q['revenue']:,.0f} 千元",
-            f"毛利 {q['gross_profit']:,.0f}　毛利率 {q['gross_margin_pct']:.1f}%{qoq}",
-            f"EPS {q['eps']:.2f}　稅後淨利 {q['net_income']:,.0f} 千元",
-        ]
-    return "\n".join(lines)
+            gm_note = f"（較{prev['year']}Q{prev['season']} {diff:+.1f}pt）"
+        blocks.append(
+            section(
+                kv("季報", f"{q['year']}Q{q['season']}"),
+                kv("營收", f"{q['revenue']:,.0f} 千元"),
+                kv("毛利", f"{q['gross_profit']:,.0f} 千元"),
+                kv("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
+                kv("EPS", f"{q['eps']:.2f}"),
+                kv("稅後淨利", f"{q['net_income']:,.0f} 千元"),
+            )
+        )
+    return join_sections(*blocks)
 
 
 def hot_revenue_names(db_path: str, min_yoy: float = 20.0, min_mom: float = 0.0, limit: int = 12) -> List[Dict[str, Any]]:

@@ -615,32 +615,43 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         return f"⚠️ {html_escape(card['error'])}"
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
     try:
-        from stock_links import html_stock_anchor, yahoo_urls
+        from stock_links import yahoo_urls
 
-        title = html_stock_anchor(sid, name, db_path or get_db_path())
         web, mobile = yahoo_urls(sid, db_path or get_db_path())
     except Exception:
-        title = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
         web = mobile = ""
     pink_note = ""
     alerts = list(card["table"]["預警"].head(3))
     if alerts.count("K20高") >= 2 or list(alerts[:2]) == ["K20高", "K20高"]:
-        pink_note = "🚨 <b>粉紅預警已滿 2 日 → 紀律考慮賣出</b>"
+        pink_note = "🚨 粉紅預警已滿 2 日 → 紀律考慮賣出"
     chg = float(card.get("change_pct") or 0)
+    from tg_layout import title_line, kv, section, join_sections, html_escape as esc
+
+    badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     links = ""
     if web:
-        links = f'<a href="{web}">奇摩網頁走勢</a>　<a href="{mobile}">手機技術線</a>'
-    lines = [
-        f"📌 {title}",
-        "<b>第一眼</b>（先看這 5 行，圖在後面）",
-        f"{html_escape(_fmt_md(card['latest_date']))}　<b>{_fmt_price(card['close'])}</b>　{chg:+.2f}%　{' / '.join(html_escape(x) for x in (card.get('badges') or []))}",
-        f"距20日高 {card['dist_h20']:+.1f}%　獲利 {card.get('dist_l60'):+.1f}%（距60日低）　空間 月{card['space_20']}%／季{card['space_60']}%",
-        f"溫度 {html_escape(card['temp_c'])}　月乖離見決策卡　120日量第 {card.get('vol_rank')} 名",
+        links = f'<a href="{web}">網頁走勢</a>　　<a href="{mobile}">技術線</a>'
+    return join_sections(
+        title_line("第一眼", sid, name, badge),
+        section(
+            kv("日期", _fmt_md(card["latest_date"])),
+            kv("收盤", _fmt_price(card["close"])),
+            kv("漲跌", f"{chg:+.2f}%"),
+        ),
+        section(
+            kv("距20日高", f"{card['dist_h20']:+.1f}%"),
+            kv("距60日低", f"{card.get('dist_l60'):+.1f}%（獲利）"),
+            kv("月空間", f"{card['space_20']}%"),
+            kv("季空間", f"{card['space_60']}%"),
+        ),
+        section(
+            kv("溫度", card.get("temp_c") or "—"),
+            kv("120日量", f"第 {card.get('vol_rank')} 名"),
+        ),
         pink_note,
         links,
-        "下圖：決策卡（20日表）→ 高低導航（粉紅壓力／綠支撐）→ 可再按籌碼／營收。",
-    ]
-    return "\n".join(x for x in lines if x)
+        "下圖依序：決策卡 → 高低導航。籌碼／營收請按下方按鈕。",
+    )
 
 
 def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
