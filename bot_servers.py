@@ -32,7 +32,14 @@ from cary_navigator import (
 from chips import fetch_major_player_html, generate_chips_image
 
 try:
-    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+    from telegram import (
+        Update,
+        InlineKeyboardButton,
+        InlineKeyboardMarkup,
+        ReplyKeyboardMarkup,
+        KeyboardButton,
+        BotCommand,
+    )
     from telegram.ext import (
         Application,
         CommandHandler,
@@ -48,6 +55,52 @@ except ImportError:
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+HELP_TOPICS = {
+    "menu": (
+        "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
+        "海選／當沖／隔日沖／持股　｜　觀察／選股／說明／選單\n"
+        "打股名或代號會開這檔的第一眼＋決策卡。\n"
+        "左下選單也可按 /menu 把兩排叫回來。"
+    ),
+    "screen": (
+        "<b>海選怎麼用</b>\n"
+        "盤後依營收轉強×量價等分類列出候選。\n"
+        "➕＝加入觀察（還沒買）。決策卡＝開這檔詳情。\n"
+        "不是立即下單清單，先看決策卡再決定。"
+    ),
+    "daytrade": (
+        "<b>當沖怎麼用</b>\n"
+        "當日沖候選。➕觀察、決策卡開詳情。不是保證獲利。"
+    ),
+    "overnight": (
+        "<b>隔日沖怎麼用</b>\n"
+        "偏尾盤佈局、隔日應對。➕觀察、決策卡開詳情。"
+    ),
+    "portfolio": (
+        "<b>持股怎麼用</b>\n"
+        "你手記的真實買入，不是觀察、也不是 AI 倉。\n"
+        "記買入：選股→記買入→打 <code>張數 價格</code>。\n"
+        "AI 模擬倉在同頁下方，50 萬、盤後依海選紀律。"
+    ),
+    "watch": (
+        "<b>觀察怎麼用</b>\n"
+        "自選清單，還沒買也可以加。空的很正常。\n"
+        "打股名或海選旁的 ➕。"
+    ),
+    "stock": (
+        "<b>單檔第一眼建議看這些</b>\n"
+        "1 收盤＋漲跌＋多頭／整理\n"
+        "2 距20日高（賣壓遠近）＋獲利／距60日低（買點遠近）\n"
+        "3 溫度計＋120日量排名（熱不熱、量大不大）\n"
+        "4 決策卡 20 日表（連兩日粉紅預警才考慮賣）\n"
+        "5 要法人再按籌碼，要基本面再按營收"
+    ),
+    "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。超比＝合計／成交量。",
+    "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
+    "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
+    "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
+}
 
 
 def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
@@ -85,63 +138,63 @@ class WayneTelegramBot:
                 pass
         return InlineKeyboardButton(text, callback_data=callback_data, **kwargs)
 
-    def _keyboard(self):
-        return InlineKeyboardMarkup(
-            [
-                [
-                    self._icon_btn("海選", "screen", "revenue_cross"),
-                    self._icon_btn("當沖", "daytrade", "day_trade"),
-                    self._icon_btn("隔日沖", "overnight", "overnight"),
-                ],
-                [
-                    InlineKeyboardButton("💼 持股", callback_data="portfolio"),
-                    InlineKeyboardButton("👀 觀察", callback_data="watch"),
-                    InlineKeyboardButton("📌 決策卡", callback_data="card"),
-                ],
-                [
-                    InlineKeyboardButton("📊 籌碼", callback_data="chips"),
-                    InlineKeyboardButton("📈 營收毛利", callback_data="fund"),
-                ],
-                [
-                    InlineKeyboardButton("➕ 買入紀錄", callback_data="buy"),
-                    InlineKeyboardButton("➖ 賣出說明", callback_data="sell"),
-                ],
-            ]
-        )
+    def _reply_menu(self):
+        """聊天室下方常駐兩排（每排四個，短標減少左右空白）。"""
+        rows = [
+            [KeyboardButton("海選"), KeyboardButton("當沖"), KeyboardButton("隔日沖"), KeyboardButton("持股")],
+            [KeyboardButton("觀察"), KeyboardButton("選股"), KeyboardButton("說明"), KeyboardButton("選單")],
+        ]
+        try:
+            return ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=True,
+                is_persistent=True,
+                input_field_placeholder="打股名／代號，或按下方兩排",
+            )
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
-    def _hub_keyboard(self, code: str):
+    def _q(self, topic: str):
+        return InlineKeyboardButton("❓", callback_data=f"?:{topic}")
+
+    def _keyboard(self):
+        """舊 inline 主選單改成極短一列，避免再疊四排。常駐選單在輸入框下方。"""
+        return InlineKeyboardMarkup([[self._q("menu")]])
+
+    def _hub_keyboard(self, code: str, topic: str = "stock"):
         c = str(code).strip()[:6]
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("📌 決策卡", callback_data=f"k:{c}"),
-                    InlineKeyboardButton("➕ 觀察", callback_data=f"w:{c}"),
+                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+                    InlineKeyboardButton("營收", callback_data=f"f:{c}"),
+                    InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
                 ],
                 [
-                    InlineKeyboardButton("📊 籌碼", callback_data=f"h:{c}"),
-                    InlineKeyboardButton("📈 營收毛利", callback_data=f"f:{c}"),
+                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    self._q(topic),
                 ],
-                [InlineKeyboardButton("➕ 記一筆買入", callback_data=f"b:{c}")],
             ]
         )
 
-    def _picks_keyboard(self, picks, include_menu: bool = False):
+    def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen"):
         rows = []
         for code, name in (picks or [])[:8]:
             c = str(code or "").strip()
             if not c:
                 continue
-            label = f"{c} {(name or '')}".strip()[:18]
+            label = f"{c}{(name or '')[:4]}".strip()[:12]
             rows.append(
                 [
-                    InlineKeyboardButton(f"➕ {label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("📌決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
+                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
                 ]
             )
-        if include_menu:
-            rows.extend(self._keyboard().inline_keyboard)
+        if include_menu or rows:
+            rows.append([self._q(topic)])
         if not rows:
-            return self._keyboard() if include_menu else None
+            return self._keyboard()
         return InlineKeyboardMarkup(rows)
 
     def _hits_keyboard(self, hits):
@@ -151,14 +204,15 @@ class WayneTelegramBot:
             n = str(h.get("stock_name") or "")
             if not c:
                 continue
-            label = f"{c} {n}".strip()[:18]
+            label = f"{c}{n[:4]}".strip()[:12]
             rows.append(
                 [
-                    InlineKeyboardButton(f"➕ {label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("📌決策卡", callback_data=f"k:{c}"),
-                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
+                    InlineKeyboardButton("決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
             )
+        rows.append([self._q("stock")])
         return InlineKeyboardMarkup(rows) if rows else self._keyboard()
 
     def _watch_list_keyboard(self, rows):
@@ -169,12 +223,12 @@ class WayneTelegramBot:
                 continue
             kb.append(
                 [
-                    InlineKeyboardButton(f"📌 {c}", callback_data=f"k:{c}"),
-                    InlineKeyboardButton("📊籌碼", callback_data=f"h:{c}"),
-                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    InlineKeyboardButton(f"{c}", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
             )
-        kb.extend(self._keyboard().inline_keyboard)
+        kb.append([self._q("watch")])
         return InlineKeyboardMarkup(kb)
 
     def _portfolio_keyboard(self, holdings):
@@ -185,12 +239,16 @@ class WayneTelegramBot:
                 continue
             kb.append(
                 [
-                    InlineKeyboardButton(f"📌 {c}", callback_data=f"k:{c}"),
-                    InlineKeyboardButton(f"➖賣出 {c}", callback_data=f"x:{c}"),
+                    InlineKeyboardButton(f"{c}", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("賣出", callback_data=f"x:{c}"),
                 ]
             )
-        kb.append([InlineKeyboardButton("🤖 AI 立刻依海選操盤", callback_data="ai_run")])
-        kb.extend(self._keyboard().inline_keyboard)
+        kb.append(
+            [
+                InlineKeyboardButton("AI操盤", callback_data="ai_run"),
+                self._q("portfolio"),
+            ]
+        )
         return InlineKeyboardMarkup(kb)
 
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -250,7 +308,7 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_sticker: %s", e)
 
-    def _send_html(self, chat_id: str, html: str, extra_keyboard=None, attach_menu: bool = True):
+    def _send_html(self, chat_id: str, html: str, extra_keyboard=None, attach_menu: bool = False):
         try:
             import requests
 
@@ -365,16 +423,24 @@ class WayneTelegramBot:
         )
 
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("已改成下方訊息裡的按鈕，舊的四格鍵盤會收起來。", reply_markup=ReplyKeyboardRemove())
         await update.message.reply_html(
-            "<b>WayneBot 怎麼用（請先選一檔股票）</b>\n"
-            "1. 對話框打 <b>南亞</b> 或 <b>2330</b> → 出現 ➕觀察／📌決策卡／記買入\n"
-            "2. 海選／當沖／隔日沖 → 股名旁按 <b>➕</b> 加入觀察，按 <b>📌決策卡</b> 直接出卡與導航圖\n"
-            "3. <b>觀察</b>＝自選（還沒買也可以加）。空的很正常，用上面兩種方式加入\n"
-            "4. <b>持股</b>＝你真實買入的手記，不是觀察。要記買入：選股後按「記一筆買入」，再打 <code>張數 價格</code>\n"
-            "5. 決策卡／籌碼／營收毛利：選好股票後按鈕就會出內容，不必再按第二次\n"
-            "6. <b>AI 模擬倉</b>在持股頁下方，50 萬本金、盤後依海選紀律買賣；也可按「立刻依海選操盤」",
-            reply_markup=self._keyboard(),
+            "<b>WayneBot</b>\n"
+            "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
+            "打 <b>南亞</b> 或 <b>2324</b> 看單檔。左下也可按 /menu。\n"
+            "各頁訊息上的 <b>❓</b> 是該頁用法，再按 <b>✕</b> 就收合。",
+            reply_markup=self._reply_menu(),
+        )
+
+    async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_html(
+            "已叫回主選單（下方兩排）。",
+            reply_markup=self._reply_menu(),
+        )
+
+    async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_html(
+            HELP_TOPICS["menu"],
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✕", callback_data="hx")]]),
         )
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -393,7 +459,7 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True))
+        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"))
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         from screening_engine import _stock_card_html
@@ -402,7 +468,7 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True))
+        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"))
 
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
@@ -451,7 +517,7 @@ class WayneTelegramBot:
             n = str(r.get("stock_name") or "")
             if c:
                 kb.append([InlineKeyboardButton(f"{c} {n}".strip()[:22], callback_data=f"{prefix}:{c}")])
-        kb.extend(self._keyboard().inline_keyboard)
+        kb.append([self._q(purpose if purpose in HELP_TOPICS else "stock")])
         self._pending[uid] = purpose
         await message.reply_html(hints[purpose], reply_markup=InlineKeyboardMarkup(kb))
 
@@ -519,18 +585,41 @@ class WayneTelegramBot:
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or "").strip()
         uid = str(update.effective_user.id)
-        if text.lower().lstrip("/") in ("start", "開始", "help", "幫助"):
+        if text.lower().lstrip("/") in ("start", "開始"):
             self._pending.pop(uid, None)
             await self.start_cmd(update, context)
             return
+        if text in ("選單", "主選單") or text.lower().lstrip("/") == "menu":
+            self._pending.pop(uid, None)
+            await self.menu_cmd(update, context)
+            return
+        if text in ("說明", "幫助") or text.lower().lstrip("/") == "help":
+            self._pending.pop(uid, None)
+            await self.help_cmd(update, context)
+            return
+        if text == "選股":
+            self._pending.pop(uid, None)
+            await update.message.reply_html(
+                HELP_TOPICS["pick"],
+                reply_markup=InlineKeyboardMarkup([[self._q("stock")]]),
+            )
+            return
+        if text == "當沖":
+            self._pending.pop(uid, None)
+            await self.daytrade_cmd(update, context)
+            return
+        if text == "隔日沖":
+            self._pending.pop(uid, None)
+            await self.overnight_cmd(update, context)
+            return
         pending = self._pending.pop(uid, "")
-        if "今日海選" in text or text.endswith("海選"):
+        if text == "海選" or "今日海選" in text or text.endswith("海選"):
             await self.screen_cmd(update, context)
             return
         if "模擬持倉" in text or text == "持股":
             await self.portfolio_cmd(update, context)
             return
-        if "自選" in text:
+        if text == "觀察" or "自選" in text:
             await self.watch_cmd(update, context)
             return
         if "系統狀態" in text:
@@ -718,6 +807,23 @@ class WayneTelegramBot:
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
             return
         await q.answer()
+        if data == "hx":
+            try:
+                await q.message.delete()
+            except Exception:
+                try:
+                    await q.edit_message_text("·")
+                except Exception:
+                    pass
+            return
+        if data.startswith("?:"):
+            topic = data[2:] or "menu"
+            await q.message.reply_html(
+                HELP_TOPICS.get(topic) or HELP_TOPICS["menu"],
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✕", callback_data="hx")]]),
+                disable_web_page_preview=True,
+            )
+            return
         if data.startswith("w:"):
             code = data[2:]
             uid = str(q.from_user.id)
@@ -792,7 +898,7 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True))
+            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"))
         elif data == "overnight":
             from screening_engine import _stock_card_html
 
@@ -800,7 +906,7 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True))
+            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"))
         elif data == "portfolio":
             await self._send_portfolio(q.message, str(q.from_user.id))
         elif data == "watch":
@@ -819,9 +925,25 @@ class WayneTelegramBot:
         if not self.token:
             logger.error("缺少 TELEGRAM_BOT_TOKEN")
             return
-        app = Application.builder().token(self.token).build()
+        async def _on_start(app):
+            try:
+                await app.bot.set_my_commands(
+                    [
+                        BotCommand("menu", "回到主選單（下方兩排）"),
+                        BotCommand("start", "開始"),
+                        BotCommand("help", "使用說明"),
+                        BotCommand("screen", "海選"),
+                        BotCommand("portfolio", "持股"),
+                        BotCommand("watch", "觀察"),
+                    ]
+                )
+            except Exception:
+                logger.exception("set_my_commands 失敗")
+
+        app = Application.builder().token(self.token).post_init(_on_start).build()
         app.add_handler(CommandHandler("start", self.start_cmd))
-        app.add_handler(CommandHandler("help", self.start_cmd))
+        app.add_handler(CommandHandler("menu", self.menu_cmd))
+        app.add_handler(CommandHandler("help", self.help_cmd))
         app.add_handler(CommandHandler("screen", self.screen_cmd))
         app.add_handler(CommandHandler("daytrade", self.daytrade_cmd))
         app.add_handler(CommandHandler("overnight", self.overnight_cmd))

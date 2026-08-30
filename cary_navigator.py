@@ -318,10 +318,10 @@ def _fmt_md(date_val) -> str:
 
 
 def _fp(size, weight="normal"):
-    # 可變字型若寫 normal/bold，matplotlib 常落到 100 細體；改用數值軸。
+    # 可變字型數值軸：內文一律偏粗，避免落到 100 細體。
     if isinstance(weight, str):
-        weight = {"light": 400, "normal": 500, "medium": 600, "bold": 700, "heavy": 800}.get(
-            weight.lower(), 500
+        weight = {"light": 500, "normal": 700, "medium": 750, "bold": 800, "heavy": 900}.get(
+            weight.lower(), 700
         )
     kwargs = {"size": size, "weight": weight}
     if os.path.exists(FONT_PATH):
@@ -351,12 +351,12 @@ def _heat_pair(pct, lo=0.0, hi=45.0):
     except (TypeError, ValueError):
         return "#f4f4f5", "#111111"
     t = max(0.0, min(1.0, (p - lo) / (hi - lo + 0.01)))
-    # 淺粉→深桃紅，字一律深色或白，保證對比
+    # 底色只淡淡標強度，文字固定近黑，反差才夠
     r = 255
-    g = int(236 - 140 * t)
-    b = int(240 - 90 * t)
+    g = int(250 - 55 * t)
+    b = int(250 - 40 * t)
     bg = f"#{r:02x}{g:02x}{b:02x}"
-    fg = "#111111"
+    fg = "#000000"
     return bg, fg
 
 
@@ -473,15 +473,15 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 表頭
     ax.add_patch(patches.FancyBboxPatch((1.2, 93.4), 97.6, 6.0, boxstyle="round,pad=0.15,rounding_size=0.6",
                                         facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.2, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(18, "bold"),
+    ax.text(3.2, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
             color="#ffffff", va="center")
-    ax.text(3.2, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(11, "bold"), color="#ffd54f", va="center")
+    ax.text(3.2, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
     ax.text(96.5, 96.2, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
 
     chg = float(card.get("change_pct") or 0)
     chg_c = "#c62828" if chg > 0 else ("#00695c" if chg < 0 else "#212121")
     ax.text(3.2, 91.35, "股價", fontproperties=_fp(11), color="#607d8b", va="center")
-    ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(28, "bold"), color="#111111", va="center")
+    ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(30, "bold"), color="#000000", va="center")
     ax.text(42.0, 91.35, "漲跌幅", fontproperties=_fp(11), color="#607d8b", va="center")
     ax.text(52.0, 91.2, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c, va="center")
     badge = (card.get("badges") or ["整理格局"])[-1]
@@ -500,9 +500,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.add_patch(patches.FancyBboxPatch((x, 81.2), 30.0, 5.0, boxstyle="round,pad=0.1,rounding_size=0.35",
                                             facecolor="#fff5f7", edgecolor="#f8bbd0", linewidth=0.8))
         ax.text(x + 15, 85.15, lab, fontproperties=_fp(10), color="#ad1457", ha="center", va="center")
-        ax.text(x + 15, 83.35, _fmt_price(px), fontproperties=_fp(16, "bold"), color="#111", ha="center", va="center")
-        ax.text(x + 15, 81.75, f"({dist:+.1f}%)", fontproperties=_fp(11, "bold"),
-                color="#00695c" if dist < 0 else "#c62828", ha="center", va="center")
+        ax.text(x + 15, 83.35, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
+        ax.text(x + 15, 81.75, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"),
+                color="#004d40" if dist < 0 else "#b71c1c", ha="center", va="center")
 
     # 低點
     ax.add_patch(patches.FancyBboxPatch((1.8, 70.8), 96.4, 8.8, boxstyle="round,pad=0.12,rounding_size=0.45",
@@ -517,8 +517,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.add_patch(patches.FancyBboxPatch((x, 71.4), 30.0, 5.4, boxstyle="round,pad=0.1,rounding_size=0.35",
                                             facecolor="#f1f8e9", edgecolor="#a5d6a7", linewidth=0.8))
         ax.text(x + 15, 75.6, lab, fontproperties=_fp(10), color="#2e7d32", ha="center", va="center")
-        ax.text(x + 15, 73.7, _fmt_price(px), fontproperties=_fp(16, "bold"), color="#111", ha="center", va="center")
-        ax.text(x + 15, 72.05, f"({dist:+.1f}%)", fontproperties=_fp(11, "bold"), color="#c62828", ha="center", va="center")
+        ax.text(x + 15, 73.7, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
+        ax.text(x + 15, 72.05, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"), color="#b71c1c", ha="center", va="center")
 
     ax.text(3.2, 69.55, "過去 20 天記錄", fontproperties=_fp(13, "bold"), color="#263238", va="center")
     headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
@@ -527,10 +527,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     hdr_h = 2.55
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], top - hdr_h), xs[i + 1] - xs[i], hdr_h, facecolor="#e3f2fd", edgecolor="#90caf9", lw=0.6))
-        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontproperties=_fp(10, "bold"), ha="center", va="center", color="#0d47a1")
+        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontproperties=_fp(11, "bold"), ha="center", va="center", color="#0d47a1")
     y = top - hdr_h
     body_h = (y - 1.15) / n
-    fs_body = 12
+    fs_body = 13
     for _, r in table.iterrows():
         y1 = y - body_h
         profit = r.get("profit_pct")
@@ -541,10 +541,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         tbg, tfg = _heat_pair(temp_v, 0, 85)
         if rank <= 20:
             vbg, vfg = _heat_pair(21 - rank, 0, 20)
-            if rank <= 8:
-                vfg = "#ffffff"
         else:
-            vbg, vfg = "#ffffff", "#111111"
+            vbg, vfg = "#ffffff", "#000000"
         hl = str(r["高低"])
         al = str(r["預警"])
         fills = ["#ffffff" if _ % 2 == 0 else "#fafafa" for _ in range(2)] + [pbg, "#ffffff", "#ffffff", tbg,
@@ -581,8 +579,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center")
             else:
                 color = pfg if i == 2 else (tfg if i == 5 else (vfg if i == 7 else ("#c62828" if i == 6 and bias > 0 else ("#00695c" if i == 6 else "#111111"))))
-                ax.text(cx, cy, val, fontproperties=_fp(fs_body, "bold" if i in (1, 2, 7) else "medium"),
-                        ha="center", va="center", color=color)
+                ax.text(cx, cy, val, fontproperties=_fp(fs_body, "bold"),
+                        ha="center", va="center", color="#000000" if i not in (2, 5, 6, 7) else color)
         y = y1
 
     plt.savefig(save_path, dpi=175, facecolor=fig.get_facecolor())
@@ -634,25 +632,14 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         links = f'<a href="{web}">奇摩網頁走勢</a>　<a href="{mobile}">手機技術線</a>'
     lines = [
         f"📌 {title}",
-        "下一則圖片是完整決策卡（單張，欄位與範本相同）。",
-        "再下一則是 180 日高低導航：粉紅帶＝壓力（月/季高附近）、綠帶＝支撐（月/季低附近）、黃線＝20日均；▼碰到20日高、▲碰到20日低。",
-        f"日期 {html_escape(_fmt_md(card['latest_date']))}　收 {_fmt_price(card['close'])}　{chg:+.2f}%",
-        f"格局 {' / '.join(html_escape(x) for x in (card.get('badges') or []))}",
-        f"120日量第 {card.get('vol_rank')} 名　溫度計 {html_escape(card['temp_c'])}",
-        f"高點(收) 10 {_fmt_price(card['h10'])}({card['dist_h10']:+.1f}%)　20 {_fmt_price(card['h20'])}({card['dist_h20']:+.1f}%)　60 {_fmt_price(card['h60'])}({card['dist_h60']:+.1f}%)",
-        f"低點(收) 10 {_fmt_price(card['l10'])}({card['dist_l10']:+.1f}%)　20 {_fmt_price(card['l20'])}({card['dist_l20']:+.1f}%)　60 {_fmt_price(card['l60'])}({card['dist_l60']:+.1f}%)",
-        f"操作空間 月 {card['space_20']}%　季 {card['space_60']}%　獲利0%＝尚未脫離60日收盤低",
+        "<b>第一眼</b>（先看這 5 行，圖在後面）",
+        f"{html_escape(_fmt_md(card['latest_date']))}　<b>{_fmt_price(card['close'])}</b>　{chg:+.2f}%　{' / '.join(html_escape(x) for x in (card.get('badges') or []))}",
+        f"距20日高 {card['dist_h20']:+.1f}%　獲利 {card.get('dist_l60'):+.1f}%（距60日低）　空間 月{card['space_20']}%／季{card['space_60']}%",
+        f"溫度 {html_escape(card['temp_c'])}　月乖離見決策卡　120日量第 {card.get('vol_rank')} 名",
         pink_note,
         links,
+        "下圖：決策卡（20日表）→ 高低導航（粉紅壓力／綠支撐）→ 可再按籌碼／營收。",
     ]
-    try:
-        from fundamentals import format_fundamentals_html
-
-        fund = format_fundamentals_html(sid, db_path or get_db_path())
-        if fund and "尚無" not in fund:
-            lines.append(fund)
-    except Exception:
-        pass
     return "\n".join(x for x in lines if x)
 
 

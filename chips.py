@@ -293,67 +293,81 @@ def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = No
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
-    import matplotlib.font_manager as fm
     try:
-        from cary_navigator import FONT_PATH
-        if FONT_PATH and os.path.exists(FONT_PATH):
-            fm.fontManager.addfont(FONT_PATH)
-            plt.rcParams["font.sans-serif"] = ["Noto Sans TC", "DejaVu Sans"]
-            plt.rcParams["axes.unicode_minus"] = False
+        from cary_navigator import FONT_PATH, _fp
     except Exception:
-        pass
+        FONT_PATH = None
+        def _fp(size, weight="bold"):
+            return None
+
+    def ink(size, w="bold"):
+        fp = _fp(size, w)
+        return {"fontproperties": fp} if fp is not None else {"fontsize": size, "fontweight": "bold"}
 
     name = rows[0].get("stock_name") or stock_id
     n = len(rows)
-    fig_h = 2.8 + n * 0.38
-    fig, ax = plt.subplots(figsize=(12.2, fig_h), dpi=190, facecolor="#f7f7f8")
+    fig_h = 3.1 + n * 0.46
+    fig, ax = plt.subplots(figsize=(6.55, fig_h), dpi=175, facecolor="#eef1f6")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.96, bottom=0.03)
-    ax.text(2, 96, f"{stock_id}  {name}  主力買賣超", fontsize=15, fontweight="bold", va="top")
-    ax.text(2, 91.5, "單位：張　超比＝三大法人合計／成交量　10日累計＝近10日合計", fontsize=8, va="top", color="#616161")
+    fig.subplots_adjust(left=0.025, right=0.975, top=0.97, bottom=0.02)
+    ax.add_patch(patches.FancyBboxPatch((1.2, 92.6), 97.6, 6.6, boxstyle="round,pad=0.12,rounding_size=0.5",
+                                        facecolor="#1a237e", edgecolor="none"))
+    ax.text(3.2, 96.8, f"{stock_id}  {name}", **ink(16), color="#ffffff", va="center")
+    ax.text(3.2, 94.0, "主力買賣超　單位：張　超比＝三大法人／成交量", **ink(10), color="#ffe082", va="center")
 
-    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累計"]
-    xs = [1.5, 12.5, 22.5, 34, 45.5, 56.5, 67.5, 78.5, 88.5, 98.5]
-    top = 88.8
-    hdr_h = 4.2
-    body_h = (top - hdr_h - 3) / max(n, 1)
+    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+    xs = [1.6, 13.2, 23.0, 33.2, 43.8, 54.4, 65.0, 76.0, 86.2, 98.2]
+    top = 91.4
+    hdr_h = 3.4
+    body_h = (top - hdr_h - 1.2) / max(n, 1)
 
     def box(x, y, w, h, fc="#fff"):
-        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#9e9e9e",
-                                       linewidth=0.5, linestyle=(0, (1.3, 1.1))))
+        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#cfd8dc", linewidth=0.5))
 
     for i, h in enumerate(headers):
-        box(xs[i], top - hdr_h, xs[i + 1] - xs[i], hdr_h, "#fafafa")
-        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontsize=7.4, ha="center", va="center")
+        box(xs[i], top - hdr_h, xs[i + 1] - xs[i], hdr_h, "#e3f2fd")
+        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, **ink(10), color="#0d47a1", ha="center", va="center")
     y = top - hdr_h
     for r in rows:
         y1 = y - body_h
         three = int(r["three_net"])
-        fill_sum = "#ffcdd2" if three > 0 else ("#c8e6c9" if three < 0 else "#ffffff")
         d = str(r["date"])
         if len(d) == 8:
-            d = f"{d[0:4]}/{d[4:6]}/{d[6:]}"
+            d = f"{int(d[4:6])}/{int(d[6:])}"
+        nums = [
+            int(r["foreign_net"]),
+            int(r["trust_net"]),
+            int(r["dealer_net"]),
+            three,
+        ]
         vals = [
             d,
             f"{float(r['close']):,.2f}",
             f"{int(r['volume']):,}",
-            f"{int(r['foreign_net']):+d}",
-            f"{int(r['trust_net']):+d}",
-            f"{int(r['dealer_net']):+d}",
+            f"{nums[0]:+d}",
+            f"{nums[1]:+d}",
+            f"{nums[2]:+d}",
             f"{three:+d}",
             f"{r['ratio_pct']:+.1f}%",
             f"{int(r['acc_10d']):+d}",
         ]
         for i, val in enumerate(vals):
-            fc = fill_sum if i in (3, 4, 5, 6, 8) and three != 0 else "#ffffff"
-            if i == 6:
-                fc = fill_sum
+            fc = "#ffffff"
+            color = "#000000"
+            if i >= 3:
+                v = int(r["acc_10d"]) if i == 8 else (three if i in (6, 7) else nums[i - 3])
+                if i == 7:
+                    v = float(r["ratio_pct"])
+                if v > 0:
+                    fc, color = "#ffebee", "#b71c1c"
+                elif v < 0:
+                    fc, color = "#e8f5e9", "#1b5e20"
             box(xs[i], y1, xs[i + 1] - xs[i], body_h, fc)
-            ax.text((xs[i] + xs[i + 1]) / 2, (y + y1) / 2, val, fontsize=7.0, ha="center", va="center")
+            ax.text((xs[i] + xs[i + 1]) / 2, (y + y1) / 2, val, **ink(11), color=color, ha="center", va="center")
         y = y1
-    plt.savefig(out, dpi=190, facecolor=fig.get_facecolor())
+    plt.savefig(out, dpi=175, facecolor=fig.get_facecolor())
     plt.close()
     return out
 
