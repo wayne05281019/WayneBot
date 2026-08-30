@@ -335,13 +335,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
-    """每個分類一則訊息；表頭用小型動態表情（跟字一樣大）。"""
-    try:
-        from telegram_cat_marks import tg_mark
-    except Exception:
-        def tg_mark(key: str, fallback: str) -> str:
-            return fallback
-
+    """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
     specs = [
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
@@ -357,10 +351,7 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         items = results.get(key) or []
         if skip_empty and not items:
             continue
-        mark = tg_mark(key, emoji)
-        head = (
-            f"{mark} <b>{html_escape(label)}</b>　{html_escape(subtitle)}　共 {len(items)} 檔"
-        )
+        head = f"{html_escape(subtitle)}　共 {len(items)} 檔"
         if first:
             head = f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n" + head
             first = False

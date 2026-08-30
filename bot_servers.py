@@ -64,13 +64,26 @@ class WayneTelegramBot:
     def send_message(self, text: str, chat_id: str = None):
         self._send_html(chat_id or self.chat_id, text)
 
+    def _icon_btn(self, text: str, callback_data: str, mark_key: str = ""):
+        kwargs = {}
+        if mark_key:
+            try:
+                from telegram_cat_marks import load_mark_ids
+
+                eid = load_mark_ids().get(mark_key) or ""
+                if eid:
+                    kwargs["api_kwargs"] = {"icon_custom_emoji_id": eid}
+            except Exception:
+                pass
+        return InlineKeyboardButton(text, callback_data=callback_data, **kwargs)
+
     def _keyboard(self):
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("🔍 海選", callback_data="screen"),
-                    InlineKeyboardButton("⚡ 當沖", callback_data="daytrade"),
-                    InlineKeyboardButton("🌙 隔日沖", callback_data="overnight"),
+                    self._icon_btn("海選", "screen", "revenue_cross"),
+                    self._icon_btn("當沖", "daytrade", "day_trade"),
+                    self._icon_btn("隔日沖", "overnight", "overnight"),
                 ],
                 [
                     InlineKeyboardButton("💼 持股", callback_data="portfolio"),
@@ -89,32 +102,9 @@ class WayneTelegramBot:
         )
 
     def _section_markup(self, part: Dict[str, Any], include_menu: bool = False):
-        rows = []
-        key = part.get("mark_key") or ""
-        label = part.get("mark_label") or ""
-        eid = ""
-        try:
-            from telegram_cat_marks import load_mark_ids
-
-            eid = load_mark_ids().get(key) or ""
-        except Exception:
-            eid = ""
-        if label and TELEGRAM_AVAILABLE:
-            kwargs = {"api_kwargs": {"icon_custom_emoji_id": eid}} if eid else {}
-            rows.append(
-                [
-                    InlineKeyboardButton(
-                        label,
-                        callback_data=f"cat:{key}"[:64],
-                        **kwargs,
-                    )
-                ]
-            )
         if include_menu:
-            rows.extend(self._keyboard().inline_keyboard)
-        if not rows:
-            return self._keyboard() if include_menu else None
-        return InlineKeyboardMarkup(rows)
+            return self._keyboard()
+        return None
 
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         from screening_engine import format_screening_payload

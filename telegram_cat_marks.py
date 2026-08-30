@@ -8,14 +8,14 @@ from typing import Dict, Tuple
 
 from PIL import Image, ImageDraw
 
-MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str]] = {
-    "revenue_cross": ("📈", (232, 140, 50), "bars"),
-    "select_01": ("🔥", (230, 80, 50), "flame"),
-    "select_02": ("🏆", (220, 180, 50), "cup"),
-    "select_03": ("💎", (140, 100, 210), "diamond"),
-    "select_04": ("🌱", (60, 170, 90), "sprout"),
-    "day_trade": ("⚡", (240, 190, 40), "bolt"),
-    "overnight": ("🌙", (80, 130, 210), "moon"),
+MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
+    "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
+    "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
+    "select_02": ("🏆", (220, 180, 50), "cup", "半年高"),
+    "select_03": ("💎", (140, 100, 210), "diamond", "兩年高"),
+    "select_04": ("🌱", (60, 170, 90), "sprout", "雙綠"),
+    "day_trade": ("⚡", (240, 190, 40), "bolt", "當沖"),
+    "overnight": ("🌙", (80, 130, 210), "moon", "隔日沖"),
 }
 
 SET_NAME = "waynebot_marks_by_WC_ai_trade_bot"
@@ -48,7 +48,11 @@ def load_sticker_ids() -> Dict[str, str]:
     try:
         with open(STICKER_IDS_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return {k: str(v) for k, v in data.items() if v}
+        return {
+            k: str(v)
+            for k, v in data.items()
+            if v and k != "set" and str(v).startswith("CAAC")
+        }
     except Exception:
         return {}
 
@@ -136,22 +140,38 @@ def render_webm(kind: str, rgb: Tuple[int, int, int], path: str, frames: int = 2
     return path
 
 
-def render_thin_sticker(kind: str, rgb: Tuple[int, int, int], path: str, frames: int = 24) -> str:
-    """512x128 細長貼紙：左邊小圖在轉，不會變成大方塊影片。"""
+def render_thin_sticker(
+    kind: str, rgb: Tuple[int, int, int], path: str, frames: int = 24, label: str = ""
+) -> str:
+    """512x128：左邊小動圖 + 右邊分類名，對齊「月亮在隔日沖左邊」。"""
+    from PIL import ImageFont
+
     tmp = path + "_bar"
     os.makedirs(tmp, exist_ok=True)
     icon_path = path + "_icon.webm"
     render_webm(kind, rgb, icon_path, frames=frames)
     icon_dir = icon_path + "_frames"
+    font_path = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
+    try:
+        font = ImageFont.truetype(font_path, 44)
+    except Exception:
+        font = ImageFont.load_default()
     for i in range(frames):
-        icon = Image.open(os.path.join(icon_dir, f"f{i:03d}.png")).convert("RGBA").resize((112, 112))
+        icon = Image.open(os.path.join(icon_dir, f"f{i:03d}.png")).convert("RGBA").resize((96, 96))
         canvas = Image.new("RGBA", (512, 128), (0, 0, 0, 0))
-        canvas.paste(icon, (16, 8), icon)
+        canvas.paste(icon, (12, 16), icon)
+        d = ImageDraw.Draw(canvas)
+        text = label or ""
+        # 描邊讓淺色／深色聊天背景都看得清
+        x, y = 120, 38
+        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2), (-1, -1), (1, 1)):
+            d.text((x + dx, y + dy), text, font=font, fill=(20, 24, 28, 255))
+        d.text((x, y), text, font=font, fill=rgb + (255,))
         canvas.save(os.path.join(tmp, f"f{i:03d}.png"))
     os.system(
         "ffmpeg -y -framerate 8 -i "
         f"{tmp}/f%03d.png -c:v libvpx-vp9 -pix_fmt yuva420p -an "
-        "-vf scale=512:128 -b:v 90k -deadline good -auto-alt-ref 0 "
+        "-vf scale=512:128 -b:v 110k -deadline good -auto-alt-ref 0 "
         f"{path} >/dev/null 2>&1"
     )
     return path
