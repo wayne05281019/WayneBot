@@ -179,8 +179,12 @@ class WayneTelegramBot:
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("海選執行中…")
-        result = self.screener.run_full_screening()
-        await update.message.reply_html(self._format_screening_html(result), reply_markup=self._keyboard())
+        try:
+            result = self.screener.run_full_screening()
+            await update.message.reply_html(self._format_screening_html(result), reply_markup=self._keyboard())
+        except Exception as e:
+            logger.exception("海選失敗")
+            await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows = self.screener.screen_daytrade()
@@ -264,6 +268,9 @@ class WayneTelegramBot:
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or "").strip()
+        if text.lower().lstrip("/") in ("start", "開始", "help", "幫助"):
+            await self.start_cmd(update, context)
+            return
         if text.isdigit() and 3 <= len(text) <= 6:
             await self._reply_card(update, text)
             return

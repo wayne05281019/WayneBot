@@ -284,7 +284,7 @@ class ScreeningEngine:
         return [self._row_for_bot(x) for x in self.execute_all_strategies(dfs).get("overnight") or []]
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
-        return run_full_screening(self.db_path, target_date)
+        return execute_full_screening(self.db_path, target_date)
 
 
 def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
@@ -335,7 +335,7 @@ def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], t
 # ------------------------------------------------------------------------------
 # 機器人與外部呼叫總入口（徹底修復 Telegram 報錯之核心介面）
 # ------------------------------------------------------------------------------
-def run_full_screening(db_path: str = None, target_date: Optional[str] = None) -> Dict[str, Any]:
+def execute_full_screening(db_path: str = None, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     全市場量化選股總入口函式：
     供 bot_servers.py、main_runner.py 及 Telegram 指令直接調用
@@ -382,6 +382,10 @@ def run_full_screening(db_path: str = None, target_date: Optional[str] = None) -
         "overnight": overnight,
         "major_alerts": major_alerts,
     }
+
+
+# 舊程式用 screening_engine.run_full_screening，維持這個模組屬性。
+run_full_screening = execute_full_screening
 
 
 # ------------------------------------------------------------------------------
