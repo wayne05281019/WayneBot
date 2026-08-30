@@ -126,8 +126,10 @@ class CaryNavigatorEngine:
             h5, l5 = float(df["high_5"].iloc[i]), float(df["low_5"].iloc[i])
             l60 = float(df["low_60"].iloc[i])
             bias = float(df["bias_monthly"].iloc[i])
-            t = ((c - l20) / (h20 - l20 + 0.01) * 70.0 + (bias + 25.0) / 65.0 * 30.0)
-            t = round(max(0.0, min(99.9, t)), 1)
+            span = h20 - l20
+            rf = (c - l20) / (span + 0.01) if span > 0 else 0.5
+            # 溫度：20 日收盤位置為主、月乖離微調（對齊範本約 50~76°C，不再拉到 90°C）
+            t = round(max(0.0, min(99.9, 50.0 + 18.0 * rf + 0.55 * bias)), 1)
             temps.append(f"{t:.1f} °C")
             if c >= h20 * 0.998:
                 hl_tags.append("20高")
@@ -145,10 +147,10 @@ class CaryNavigatorEngine:
                 hl_tags.append("No")
             if c <= l60 * 1.005:
                 alert_tags.append("60低")
-            elif c >= h20 * 0.99 or bias >= 8.0:
-                alert_tags.append("K20高")
-            elif c <= l20 * 1.01 or bias < 0.0:
+            elif bias < 0.0:
                 alert_tags.append("K20低")
+            elif c >= h20 * 0.99 or bias >= 4.0:
+                alert_tags.append("K20高")
             else:
                 alert_tags.append("No")
 
@@ -160,6 +162,11 @@ class CaryNavigatorEngine:
         df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
 
         latest = df.iloc[-1]
+        chg = float(latest.get("change_pct") or 0)
+        if len(df) >= 2:
+            prev_c = float(df["close"].iloc[-2] or 0)
+            if prev_c > 0:
+                chg = round((float(latest["close"]) - prev_c) / prev_c * 100.0, 2)
         # 決策卡高／低：N 根「收盤」（對齊 CaryBot 南亞：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
@@ -175,8 +182,8 @@ class CaryNavigatorEngine:
         space_20 = int(round((h20 - l20) / l20 * 100.0)) if l20 else 0
         space_60 = int(round((h60 - l60) / l60 * 100.0)) if l60 else 0
         ma60s = 0.0
-        if len(df) >= 6:
-            ma60s = round(float(latest["ma60"]) - float(df["ma60"].iloc[-6]), 2)
+        if len(df) >= 7:
+            ma60s = round(float(latest["ma60"]) - float(df["ma60"].iloc[-7]), 1)
         qty60 = int(round(float(df["volume"].tail(60).mean() or 0)))
         badges = []
         if int(latest["vol_rank_120"]) <= 3:
@@ -200,7 +207,7 @@ class CaryNavigatorEngine:
             "stock_name": str(latest.get("stock_name") or stock_id),
             "latest_date": latest["date"],
             "close": float(latest["close"]),
-            "change_pct": float(latest["change_pct"] or 0),
+            "change_pct": chg,
             "h10": h10, "dist_h10": _dist_h(h10),
             "h20": h20, "dist_h20": _dist_h(h20),
             "h60": h60, "dist_h60": _dist_h(h60),
@@ -530,18 +537,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 表頭
     ax.add_patch(patches.FancyBboxPatch((1.2, 93.4), 97.6, 6.0, boxstyle="round,pad=0.15,rounding_size=0.6",
                                         facecolor="#1a237e", edgecolor="none"))
-    ax.add_patch(patches.FancyBboxPatch((2.15, 93.55), 8.0, 5.7, boxstyle="round,pad=0.08,rounding_size=0.35",
-                                        facecolor="#eceff1", edgecolor="none"))
-    _draw_mini_candle(
-        ax, 2.4, 93.7, 7.2, 5.4,
-        card.get("open") or card.get("close") or 0,
-        card.get("high") or card.get("close") or 0,
-        card.get("low") or card.get("close") or 0,
-        card.get("close") or 0,
-    )
-    ax.text(11.2, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
+    ax.text(3.4, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
             color="#ffffff", va="center")
-    ax.text(11.2, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
+    ax.text(3.4, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
     ax.text(96.5, 96.2, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
 
     chg = float(card.get("change_pct") or 0)
@@ -550,8 +548,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(30, "bold"), color="#000000", va="center")
     ax.text(42.0, 91.35, "漲跌幅", fontproperties=_fp(11), color="#607d8b", va="center")
     ax.text(52.0, 91.2, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c, va="center")
-    badge = (card.get("badges") or ["整理格局"])[-1]
-    _pill(ax, 86.5, 91.25, badge, "#e53935" if "多頭" in badge else "#546e7a", "#ffffff", w=18, h=3.0, fs=12)
+    badges = [str(x) for x in (card.get("badges") or []) if x][-2:]
+    if not badges:
+        badges = ["整理格局"]
+    bx = 70.5 if len(badges) == 1 else 64.2
+    for i, btxt in enumerate(badges):
+        _pill(ax, bx + i * 16.2, 91.25, btxt, "#e53935", "#ffffff", w=15.4, h=3.0, fs=10)
 
     # 高點
     ax.add_patch(patches.FancyBboxPatch((1.8, 80.6), 96.4, 8.4, boxstyle="round,pad=0.12,rounding_size=0.45",
@@ -597,22 +599,38 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     y = top - hdr_h
     body_h = (y - 1.15) / n
     fs_body = 13
+    row_i = 0
     for _, r in table.iterrows():
         y1 = y - body_h
         profit = r.get("profit_pct")
         bias = float(r.get("bias_monthly") or 0)
         rank = int(r.get("vol_rank_120") or 99)
         temp_v = str(r["溫度計"]).replace(" °C", "").replace("°C", "")
-        pbg, pfg = _heat_pair(profit, 0, 50)
-        tbg, tfg = _heat_pair(temp_v, 0, 85)
-        if rank <= 20:
-            vbg, vfg = _heat_pair(21 - rank, 0, 20)
+        try:
+            temp_n = float(temp_v)
+        except (TypeError, ValueError):
+            temp_n = 0.0
+        pbg, pfg = "#fce4ec", "#c62828"
+        if temp_n >= 70:
+            tbg, tfg = "#ef9a9a", "#b71c1c"
+        elif temp_n >= 55:
+            tbg, tfg = "#f8bbd0", "#ad1457"
         else:
-            vbg, vfg = "#ffffff", "#000000"
+            tbg, tfg = "#eeeeee", "#424242"
+        if rank <= 10:
+            vbg, vfg = "#ec407a", "#ffffff"
+        elif rank <= 20:
+            vbg, vfg = "#f8bbd0", "#880e4f"
+        else:
+            vbg, vfg = "#f5f5f5", "#424242"
         hl = str(r["高低"])
         al = str(r["預警"])
-        fills = ["#ffffff" if _ % 2 == 0 else "#fafafa" for _ in range(2)] + [pbg, "#ffffff", "#ffffff", tbg,
-                                                                               "#ffcdd2" if bias > 0 else "#c8e6c9", vbg]
+        zebra = row_i % 2 == 0
+        price_bg = "#e53935" if hl == "20高" else ("#ffffff" if zebra else "#eef5fb")
+        price_fg = "#ffffff" if hl == "20高" else "#111111"
+        date_bg = "#ffffff" if zebra else "#e3f2fd"
+        fills = [date_bg, price_bg, pbg, "#ffffff", "#ffffff", tbg,
+                 "#ffcdd2" if bias > 0 else ("#c8e6c9" if bias < 0 else "#ffffff"), vbg]
         # even row index from y
         vals = [
             _fmt_md_tpl(r["date"]),
@@ -644,10 +662,22 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 else:
                     ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center")
             else:
-                color = pfg if i == 2 else (tfg if i == 5 else (vfg if i == 7 else ("#c62828" if i == 6 and bias > 0 else ("#00695c" if i == 6 else "#111111"))))
+                if i == 1:
+                    color = price_fg
+                elif i == 2:
+                    color = pfg
+                elif i == 5:
+                    color = tfg
+                elif i == 7:
+                    color = vfg
+                elif i == 6:
+                    color = "#c62828" if bias > 0 else ("#00695c" if bias < 0 else "#111111")
+                else:
+                    color = "#111111"
                 ax.text(cx, cy, val, fontproperties=_fp(fs_body, "bold"),
-                        ha="center", va="center", color="#000000" if i not in (2, 5, 6, 7) else color)
+                        ha="center", va="center", color=color)
         y = y1
+        row_i += 1
 
     plt.savefig(save_path, dpi=175, facecolor=fig.get_facecolor())
     plt.close()
