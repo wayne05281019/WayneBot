@@ -11,6 +11,7 @@ services:
       - "10000:10000"
     environment:
       - TZ=Asia/Taipei
+      - WAYNE_MODE=web
       - PORT=10000
       - WAYNE_DB_PATH=/app/data/wayne_market.db
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}

@@ -21,7 +21,9 @@ from typing import Optional, Dict, Any, List, Union
 # ==============================================================================
 # 全域變數與線程鎖配置
 # ==============================================================================
-DEFAULT_DB_PATH: str = "wayne_trading.db"
+DEFAULT_DB_PATH: str = (
+    os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
+)
 DB_LOCK: threading.Lock = threading.Lock()
 
 # 靜態股票對照表記憶體快取與保護鎖
@@ -162,6 +164,145 @@ def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_trade_stock ON trade_history(stock_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cached_valid ON cached_data(chapter_id, is_valid);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_created ON system_logs(created_at);")
+
+
+def ensure_core_schema(db_path: str = None) -> None:
+    """行情、流水線、母體、使用者持股／觀察清單。"""
+    path = db_path or DEFAULT_DB_PATH
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    init_database(path)
+    with get_db_connection(path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_quotes (
+                date TEXT NOT NULL,
+                stock_id TEXT NOT NULL,
+                stock_name TEXT NOT NULL,
+                market TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume INTEGER NOT NULL,
+                turnover_k REAL NOT NULL,
+                pct_change REAL NOT NULL,
+                avg_price REAL NOT NULL,
+                foreign_net INTEGER DEFAULT 0,
+                trust_net INTEGER DEFAULT 0,
+                dealer_net INTEGER DEFAULT 0,
+                PRIMARY KEY (date, stock_id)
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_date ON daily_quotes(stock_id, date);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_date ON daily_quotes(date);")
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pipeline_runs (
+                run_date TEXT PRIMARY KEY,
+                finished_at TEXT,
+                status TEXT,
+                notes TEXT
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stock_universe (
+                stock_id TEXT PRIMARY KEY,
+                stock_name TEXT NOT NULL,
+                market_type TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                industry TEXT DEFAULT '',
+                is_active INTEGER DEFAULT 1,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_watchlist (
+                user_id TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                stock_name TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, stock_code)
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_holdings (
+                user_id TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                stock_name TEXT DEFAULT '',
+                shares REAL NOT NULL,
+                cost_price REAL NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, stock_code)
+            );
+            """
+        )
+
+
+def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
+    ensure_core_schema(db_path)
+    with get_db_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT stock_code, stock_name FROM user_watchlist WHERE user_id = ? ORDER BY stock_code;",
+            (str(user_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: str = "") -> None:
+    ensure_core_schema(db_path)
+    now = datetime.now().isoformat(timespec="seconds")
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO user_watchlist (user_id, stock_code, stock_name, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, stock_code) DO UPDATE SET stock_name=excluded.stock_name;
+            """,
+            (str(user_id), str(stock_code).strip(), stock_name or stock_code, now),
+        )
+
+
+def get_user_portfolio(db_path: str, user_id: str) -> List[Dict[str, Any]]:
+    ensure_core_schema(db_path)
+    with get_db_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT stock_code, stock_name, shares, cost_price FROM user_holdings WHERE user_id = ?;",
+            (str(user_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_to_portfolio(
+    db_path: str, user_id: str, stock_code: str, stock_name: str, shares: float, cost_price: float
+) -> None:
+    ensure_core_schema(db_path)
+    now = datetime.now().isoformat(timespec="seconds")
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO user_holdings (user_id, stock_code, stock_name, shares, cost_price, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, stock_code) DO UPDATE SET
+                shares=user_holdings.shares + excluded.shares,
+                cost_price=(
+                    (user_holdings.shares * user_holdings.cost_price + excluded.shares * excluded.cost_price)
+                    / NULLIF(user_holdings.shares + excluded.shares, 0)
+                ),
+                stock_name=excluded.stock_name,
+                updated_at=excluded.updated_at;
+            """,
+            (str(user_id), str(stock_code).strip(), stock_name or stock_code, float(shares), float(cost_price), now),
+        )
 
 
 # ==============================================================================

@@ -9,23 +9,43 @@ import sys
 import time
 import json
 import zipfile
+import shutil
 import sqlite3
 from datetime import datetime, timedelta
 import requests
 import pandas as pd
 
+try:
+    from config import get_cache_dir, get_db_path, get_github_release_url
+except Exception:
+    def get_db_path():
+        return os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
+
+    def get_cache_dir():
+        return os.getenv("WAYNE_CACHE_DIR") or "waynebot_cache"
+
+    def get_github_release_url():
+        return os.getenv("GITHUB_RELEASE_URL") or ""
+
 class DataFetcher:
-    def __init__(self, 
-                 db_path: str = "waynebot_history.db", 
-                 github_release_url: str = None):
+    def __init__(
+        self,
+        db_path: str = None,
+        github_release_url: str = None,
+        cache_dir: str = None,
+        **kwargs,
+    ):
         """
         初始化行情核心引擎
         :param db_path: SQLite 資料庫路徑
         :param github_release_url: GitHub Release 歷史庫 zip 下載連結 (0秒開機用)
         """
-        self.db_path = os.path.abspath(db_path)
-        self.github_release_url = github_release_url or (
-            "https://github.com/your-username/WayneBot/releases/download/v1.0-data/waynebot_history.zip"
+        self.db_path = os.path.abspath(db_path or get_db_path())
+        self.cache_dir = os.path.abspath(cache_dir or get_cache_dir())
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.github_release_url = github_release_url or get_github_release_url() or (
+            "https://github.com/wayne05281019/WayneBot/releases/download/v1.0-data/waynebot_production_complete.zip"
         )
         self.session = requests.Session()
         self.session.headers.update({
@@ -54,9 +74,10 @@ class DataFetcher:
                         if chunk:
                             f.write(chunk)
                 
+                extract_dir = os.path.dirname(self.db_path) or "."
                 with zipfile.ZipFile(zip_temp_path, 'r') as zip_ref:
-                    zip_ref.extractall(os.path.dirname(self.db_path) or ".")
-                
+                    zip_ref.extractall(extract_dir)
+                self._adopt_extracted_database(extract_dir)
                 if os.path.exists(zip_temp_path):
                     os.remove(zip_temp_path)
                 print(f"✅ 歷史庫下載並解壓完成：{self.db_path}")
@@ -70,6 +91,25 @@ class DataFetcher:
             self._init_empty_database()
 
         self._optimize_db_settings()
+
+    def _adopt_extracted_database(self, extract_dir: str) -> None:
+        """zip 內檔名可能是 wayne_trading.db，對齊到正式路徑。"""
+        if os.path.exists(self.db_path) and os.path.getsize(self.db_path) > 1024 * 1024:
+            return
+        found = None
+        for root, _dirs, files in os.walk(extract_dir):
+            for name in files:
+                if name.endswith(".db") and not name.endswith(("-wal", "-shm")):
+                    candidate = os.path.join(root, name)
+                    if os.path.getsize(candidate) > 1024 * 1024:
+                        found = candidate
+                        break
+            if found:
+                break
+        if found and os.path.abspath(found) != os.path.abspath(self.db_path):
+            os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+            shutil.copy2(found, self.db_path)
+            print(f"✅ 已採用解壓資料庫 {found} → {self.db_path}")
 
     def _optimize_db_settings(self):
         """啟用 SQLite WAL 模式與效能調優"""
@@ -121,16 +161,16 @@ class DataFetcher:
     # --------------------------------------------------------------------------
     @staticmethod
     def is_valid_target(stock_id: str, stock_name: str) -> bool:
-        sid = str(stock_id).strip()
-        if len(sid) < 4 or len(sid) > 6:
+        try:
+            from universe import is_tradable
+            return is_tradable(stock_id, stock_name)
+        except Exception:
+            sid = str(stock_id).strip()
+            if len(sid) == 4 and sid.isdigit():
+                return True
+            if sid.startswith("00") or "KY" in str(stock_name):
+                return True
             return False
-        if len(sid) == 4 and sid.isalnum():
-            return True
-        if len(sid) == 5 and (sid.startswith("00") or sid.endswith("KY") or sid[:4].isdigit()):
-            return True
-        if len(sid) == 6 and (sid.startswith("00") or sid.startswith("01")):
-            return True
-        return False
 
     @staticmethod
     def clean_num(val, is_float: bool = True):
@@ -450,38 +490,16 @@ class DataFetcher:
         except Exception as e:
             print(f"⚠️ 上櫃增量抓取異常：{e}")
 
-        # 3. 抓取上市櫃三大法人
+        # 3. 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
         tw_t86 = {}
-        try:
-            t86_url = f"https://www.twse.com.tw/rwd/zh/fund/T86?date={target_date}&selectType=ALLBUT0999&response=json"
-            t_resp = self.session.get(t86_url, timeout=15)
-            if t_resp.status_code == 200:
-                for r in t_resp.json().get("data", []):
-                    if len(r) >= 12:
-                        sid = str(r[0]).strip()
-                        tw_t86[sid] = {
-                            "foreign_net": int(self.clean_num(r[4], is_float=False) // 1000),
-                            "trust_net": int(self.clean_num(r[7], is_float=False) // 1000),
-                            "dealer_net": int(self.clean_num(r[11], is_float=False) // 1000)
-                        }
-        except Exception:
-            pass
-
         two_t86 = {}
         try:
-            t86_otc_url = f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&d={roc_date_str}&se=EW&t=D&_={int(time.time()*1000)}"
-            t_resp = self.session.get(t86_otc_url, timeout=15)
-            if t_resp.status_code == 200:
-                for r in t_resp.json().get("aaData", []):
-                    if len(r) >= 15:
-                        sid = str(r[0]).strip()
-                        two_t86[sid] = {
-                            "foreign_net": int(self.clean_num(r[7], is_float=False) // 1000),
-                            "trust_net": int(self.clean_num(r[10], is_float=False) // 1000),
-                            "dealer_net": int(self.clean_num(r[13], is_float=False) // 1000)
-                        }
-        except Exception:
-            pass
+            from chips import fetch_chips_for_date
+            merged = fetch_chips_for_date(self.session, target_date)
+            tw_t86 = merged
+            two_t86 = merged
+        except Exception as e:
+            print(f"⚠️ 法人籌碼抓取異常：{e}")
 
         # 4. 組合並寫入資料庫
         all_records = []
@@ -555,3 +573,6 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("🎉 data_fetcher.py 沙盒測試全部通過！可安心替換至根目錄。")
     print("=" * 70)
+
+
+TaiwanMarketFetcher = DataFetcher

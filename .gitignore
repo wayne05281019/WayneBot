@@ -2,8 +2,14 @@
 *.db
 *.db-wal
 *.db-shm
+.env
 waynebot_data/
+waynebot_cache/
+data/*
+!data/.gitkeep
 raw_cache/
 logs/
 __pycache__/
 *.pyc
+*.png
+.DS_Store

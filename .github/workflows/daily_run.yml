@@ -4,7 +4,7 @@ on:
   schedule:
     # 台灣時間週一至週五 16:30 自動執行 (對應 UTC 08:30)
     - cron: '30 8 * * 1-5'
-  workflow_dispatch: # 支援手動隨時點擊測試
+  workflow_dispatch:
 
 jobs:
   run-screener:
@@ -26,16 +26,26 @@ jobs:
 
       - name: 從 Releases 下載核心資料庫 (Download Database)
         run: |
-          echo "📥 正在從 GitHub Releases 下載核心資料庫..."
+          echo "正在從 GitHub Releases 下載核心資料庫..."
+          mkdir -p data
           curl -L -o waynebot_production_complete.zip "https://github.com/wayne05281019/WayneBot/releases/download/v1.0-data/waynebot_production_complete.zip"
-          unzip -o waynebot_production_complete.zip
+          unzip -o waynebot_production_complete.zip -d data_extract
+          FOUND=$(find data_extract -name '*.db' -size +1M | head -n 1)
+          if [ -n "$FOUND" ]; then
+            cp "$FOUND" data/wayne_market.db
+            echo "已對齊資料庫 -> data/wayne_market.db"
+          else
+            echo "警告：zip 內找不到 .db，流水線將建立空白庫"
+          fi
 
       - name: 執行每日選股流水線 (Run Main Runner)
         env:
+          WAYNE_MODE: once
+          WAYNE_DB_PATH: data/wayne_market.db
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TG_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
           PYTHONUNBUFFERED: "1"
         run: |
-          python main_runner.py
+          python main.py --once

@@ -18,8 +18,13 @@ class PortfolioEngine:
     TAX_RATE_STOCK = 0.003      # 股票證交稅 0.3%
     TAX_RATE_ETF = 0.001        # ETF 證交稅 0.1%
 
-    def __init__(self, db_path: str = "waynebot_history.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        try:
+            from config import get_db_path
+            default_db = get_db_path()
+        except Exception:
+            default_db = os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
+        self.db_path = db_path or default_db
         self._init_portfolio_tables()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -510,6 +515,18 @@ class PortfolioEngine:
             "positions_count": len(positions_detail),
             "positions": positions_detail
         }
+
+    def format_holdings_html(self, holdings: List[Dict[str, Any]]) -> str:
+        if not holdings:
+            return "持股為空。"
+        lines = ["<b>持股</b>"]
+        for h in holdings:
+            code = h.get("stock_code") or h.get("stock_id") or ""
+            name = h.get("stock_name") or ""
+            shares = h.get("shares") or 0
+            cost = h.get("cost_price") or 0
+            lines.append(f"• <code>{code}</code> {name} {shares}張 成本 {cost}")
+        return "\n".join(lines)
 
 
 # ==============================================================================

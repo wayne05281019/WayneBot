@@ -16,10 +16,15 @@ import requests
 import pandas as pd
 import numpy as np
 
-# 設定資料庫路徑
-BASE_DIR = "/content/waynebot_data" if os.path.exists("/content") else os.getenv("WAYNEBOT_DATA_DIR", "waynebot_data")
-os.makedirs(BASE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, "wayne_market_master.db")
+try:
+    from config import get_db_path
+    DB_PATH = get_db_path()
+    BASE_DIR = os.path.dirname(DB_PATH) or "."
+    os.makedirs(BASE_DIR, exist_ok=True)
+except Exception:
+    BASE_DIR = "/content/waynebot_data" if os.path.exists("/content") else os.getenv("WAYNEBOT_DATA_DIR", "waynebot_data")
+    os.makedirs(BASE_DIR, exist_ok=True)
+    DB_PATH = os.path.join(BASE_DIR, "wayne_market.db")
 
 logger = logging.getLogger("WayneBot.MarketDB")
 

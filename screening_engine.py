@@ -17,16 +17,22 @@ import pandas as pd
 import numpy as np
 
 
+try:
+    from config import get_db_path
+except Exception:
+    def get_db_path():
+        return os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
+
+
 class ScreeningEngine:
-    def __init__(self, db_path: str = "waynebot_history.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or get_db_path()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """建立 SQLite 資料庫連線"""
-        if not os.path.exists(self.db_path):
-            raise FileNotFoundError(f"找不到歷史資料庫: {self.db_path}，請先執行歷史建庫作業。")
-        conn = sqlite3.connect(self.db_path)
-        return conn
+        parent = os.path.dirname(self.db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        return sqlite3.connect(self.db_path)
 
     def get_latest_trading_date(self) -> str:
         """取得資料庫中最新交易日 (YYYYMMDD)"""
@@ -257,6 +263,29 @@ class ScreeningEngine:
             "overnight": res_overnight
         }
 
+    @staticmethod
+    def _row_for_bot(item: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(item)
+        out["code"] = str(item.get("stock_id") or "")
+        out["name"] = item.get("stock_name") or ""
+        out["score"] = int(round(float(item.get("q60r") or 0) * 10))
+        return out
+
+    def screen_daytrade(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        dfs = self.load_market_data(target_date=target_date)
+        if not dfs:
+            return []
+        return [self._row_for_bot(x) for x in self.execute_all_strategies(dfs).get("day_trade") or []]
+
+    def screen_overnight(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        dfs = self.load_market_data(target_date=target_date)
+        if not dfs:
+            return []
+        return [self._row_for_bot(x) for x in self.execute_all_strategies(dfs).get("overnight") or []]
+
+    def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
+        return run_full_screening(self.db_path, target_date)
+
 
 def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
     """將選股結果格式化為 Telegram 專用精美排版字串"""
@@ -306,38 +335,52 @@ def format_telegram_screening_report(results: Dict[str, List[Dict[str, Any]]], t
 # ------------------------------------------------------------------------------
 # 機器人與外部呼叫總入口（徹底修復 Telegram 報錯之核心介面）
 # ------------------------------------------------------------------------------
-def run_full_screening(db_path: str = "waynebot_history.db", target_date: Optional[str] = None) -> Dict[str, Any]:
+def run_full_screening(db_path: str = None, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     全市場量化選股總入口函式：
     供 bot_servers.py、main_runner.py 及 Telegram 指令直接調用
     """
-    engine = ScreeningEngine(db_path=db_path)
+    engine = ScreeningEngine(db_path=db_path or get_db_path())
     if not target_date:
         target_date = engine.get_latest_trading_date()
 
-    # 1. 載入通過流動性檢驗之歷史 K 線組
     stock_dfs = engine.load_market_data(target_date=target_date, min_volume=1000, min_turnover_k=30000.0)
-    
+
     if not stock_dfs:
         return {
             "status": "empty",
             "date": target_date,
+            "as_of": target_date,
             "message": f"⚠️ 查無 {target_date} 之有效交易行情或無標的通過流動性檢驗（日量>=1,000張且日額>=3,000萬）。",
-            "results": {}
+            "results": {},
+            "daytrade": [],
+            "overnight": [],
+            "major_alerts": [],
         }
 
-    # 2. 執行所有量化選股策略
     results = engine.execute_all_strategies(stock_dfs)
-
-    # 3. 產生 Telegram 格式化戰報文字
     report_text = format_telegram_screening_report(results, target_date)
+    daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
+    overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
+    major_alerts = []
+    for item in (results.get("select_02") or [])[:8]:
+        if int(item.get("trust_net") or 0) < -200 or int(item.get("foreign_net") or 0) < -800:
+            major_alerts.append({
+                "code": item.get("stock_id"),
+                "name": item.get("stock_name"),
+                "reason": "突破後法人轉賣超",
+            })
 
     return {
         "status": "success",
         "date": target_date,
+        "as_of": target_date,
         "total_scanned": len(stock_dfs),
         "results": results,
-        "message": report_text
+        "message": report_text,
+        "daytrade": daytrade,
+        "overnight": overnight,
+        "major_alerts": major_alerts,
     }
 
 

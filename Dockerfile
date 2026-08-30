@@ -1,6 +1,8 @@
 FROM python:3.11-slim
 
 ENV TZ=Asia/Taipei
+ENV WAYNE_MODE=web
+ENV PORT=10000
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     gcc \
