@@ -58,6 +58,7 @@ class WayneTelegramBot:
         init_database(self.db_path)
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
+        self._pending: Dict[str, str] = {}
 
     def send_message(self, text: str, chat_id: str = None):
         self._send_html(chat_id or self.chat_id, text)
@@ -73,6 +74,15 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton("💼 持股", callback_data="portfolio"),
                     InlineKeyboardButton("👀 觀察", callback_data="watch"),
+                    InlineKeyboardButton("📌 決策卡", callback_data="card"),
+                ],
+                [
+                    InlineKeyboardButton("📊 籌碼", callback_data="chips"),
+                    InlineKeyboardButton("📈 營收毛利", callback_data="fund"),
+                ],
+                [
+                    InlineKeyboardButton("➕ 買入紀錄", callback_data="buy"),
+                    InlineKeyboardButton("➖ 賣出說明", callback_data="sell"),
                 ],
             ]
         )
@@ -172,8 +182,7 @@ class WayneTelegramBot:
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "WayneBot 已上線。\n"
-            "打股票代號看決策卡。\n"
-            "指令：/screen /daytrade /overnight /portfolio /watch /card /chips /fund /buy /sell",
+            "直接打股票代號看決策卡，或按下面按鈕。",
             reply_markup=self._keyboard(),
         )
 
@@ -254,7 +263,7 @@ class WayneTelegramBot:
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
         if len(args) < 3:
-            await update.message.reply_text("用法：/buy 2330 1 500")
+            await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 500", reply_markup=self._keyboard())
             return
         uid = str(update.effective_user.id)
         code = args[0]
@@ -268,13 +277,47 @@ class WayneTelegramBot:
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or "").strip()
+        uid = str(update.effective_user.id)
         if text.lower().lstrip("/") in ("start", "開始", "help", "幫助"):
+            self._pending.pop(uid, None)
             await self.start_cmd(update, context)
+            return
+        pending = self._pending.pop(uid, "")
+        if pending == "card":
+            await self._reply_card(update, text.split()[0])
+            return
+        if pending == "chips":
+            extra = fetch_major_player_html(text.split()[0].strip())
+            await update.message.reply_html(extra or "查無籌碼", reply_markup=self._keyboard())
+            return
+        if pending == "fund":
+            from fundamentals import format_fundamentals_html, sync_fundamentals
+
+            code = text.split()[0].strip()
+            html = format_fundamentals_html(code, self.db_path)
+            if "尚無" in html:
+                try:
+                    sync_fundamentals(self.db_path)
+                except Exception:
+                    pass
+                html = format_fundamentals_html(code, self.db_path)
+            await update.message.reply_html(html, reply_markup=self._keyboard())
+            return
+        if pending == "buy":
+            parts = text.split()
+            if len(parts) < 3:
+                self._pending[uid] = "buy"
+                await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 500", reply_markup=self._keyboard())
+                return
+            add_to_portfolio(self.db_path, uid, parts[0], parts[0], float(parts[1]), float(parts[2]))
+            await update.message.reply_text(
+                f"已記錄買入 {parts[0]} {parts[1]}張 @ {parts[2]}", reply_markup=self._keyboard()
+            )
             return
         if text.isdigit() and 3 <= len(text) <= 6:
             await self._reply_card(update, text)
             return
-        await update.message.reply_text("請打股票代號，或按下方選單。", reply_markup=self._keyboard())
+        await update.message.reply_text("請打股票代號，或按下方按鈕。", reply_markup=self._keyboard())
 
     async def _reply_card(self, update: Update, code: str):
         await update.message.reply_text(f"查詢 {code}…")
@@ -320,6 +363,21 @@ class WayneTelegramBot:
                 f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}" for r in rows
             ]
             await q.message.reply_html("\n".join(lines), reply_markup=self._keyboard())
+        elif data in ("card", "chips", "fund"):
+            uid = str(q.from_user.id)
+            self._pending[uid] = data
+            hints = {
+                "card": "請輸入股票代號，例如 2330",
+                "chips": "請輸入要查籌碼的代號，例如 2383",
+                "fund": "請輸入要查營收／毛利的代號，例如 2330",
+            }
+            await q.message.reply_text(hints[data], reply_markup=self._keyboard())
+        elif data == "buy":
+            uid = str(q.from_user.id)
+            self._pending[uid] = "buy"
+            await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 500", reply_markup=self._keyboard())
+        elif data == "sell":
+            await q.message.reply_text("賣出請先看持股。此版先以買入紀錄為主。", reply_markup=self._keyboard())
 
     def run_polling(self):
         if not TELEGRAM_AVAILABLE:
