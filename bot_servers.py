@@ -94,7 +94,8 @@ HELP_TOPICS = {
         "2 獲利＝近60個日曆日收盤低；距60根低是另外一欄（近60根收盤）\n"
         "3 溫度＝20日收盤位置＋月乖離；120日量＝這檔自己近120根成交量排名\n"
         "4 預警 K20高＝月乖離轉正偏熱（≥4%）或靠近20日收盤高；K20低＝月乖離轉負\n"
-        "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼"
+        "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
+        "6 高低導航是橫式：淺箭頭＝影線碰到、深箭頭＝收盤確認／K20預警"
     ),
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
     "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
@@ -428,7 +429,11 @@ class WayneTelegramBot:
         for path in self._card_photo_paths(card_img):
             self._send_photo(chat_id, path, caption=f"{html_escape(code)} 高低決策卡")
         if chart_path:
-            self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} 高低導航")
+            self._send_photo(
+                chat_id,
+                chart_path,
+                caption=f"{html_escape(code)} 高低導航（橫式）淺粉▼影線高／深紅▼收盤高　淺綠▲影線低／深綠▲收盤低　警告列紅＝K20高",
+            )
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         last_kb = self._hub_keyboard(code)
         if chip_img:
@@ -877,7 +882,10 @@ class WayneTelegramBot:
         for path in self._card_photo_paths(card_img):
             await send_photo(path, "高低決策卡")
         if chart:
-            await send_photo(chart, "180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均")
+            await send_photo(
+                chart,
+                "180日高低導航（橫式）：淺粉▼影線高／深紅▼收盤高；淺綠▲影線低／深綠▲收盤低；紫▼爆量；警告列紅＝K20高、綠＝K20低",
+            )
         chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
         if chip_img:
             ok = await send_photo(chip_img, "籌碼（張）", hub)
