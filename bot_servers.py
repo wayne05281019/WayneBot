@@ -29,7 +29,7 @@ from cary_navigator import (
     generate_decision_card,
     html_escape,
 )
-from chips import fetch_major_player_html, generate_chips_image
+from chips import generate_chips_image
 
 try:
     from telegram import (
@@ -361,14 +361,17 @@ class WayneTelegramBot:
             return [p for p in card_img if p]
         return [card_img]
 
-    def _send_photo(self, chat_id: str, photo_path: str, caption: str = ""):
+    def _send_photo(self, chat_id: str, photo_path: str, caption: str = "", reply_markup=None):
         try:
+            import json
             import requests
 
             url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
             with open(photo_path, "rb") as f:
                 files = {"photo": f}
                 data = {"chat_id": chat_id, "caption": caption[:1024], "parse_mode": "HTML"}
+                if reply_markup is not None:
+                    data["reply_markup"] = json.dumps(reply_markup.to_dict())
                 requests.post(url, files=files, data=data, timeout=40)
         except Exception as e:
             logger.error("send_photo: %s", e)
@@ -420,9 +423,12 @@ class WayneTelegramBot:
             self._send_photo(chat_id, path, caption=f"{html_escape(code)} 買低賣高決策卡")
         if chart_path:
             self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)} 高低導航")
-        extra = fetch_major_player_html(code)
-        if extra:
-            self._send_html(chat_id, extra)
+        chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+        last_kb = self._hub_keyboard(code)
+        if chip_img:
+            self._send_photo(chat_id, chip_img, caption="籌碼（張）", reply_markup=last_kb)
+        else:
+            self._send_html(chat_id, "選單", extra_keyboard=last_kb, attach_menu=False)
 
     def _format_screening_html(self, result: Dict[str, Any]) -> str:
         lines = [
@@ -576,8 +582,12 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/chips 2330")
             return
-        extra = fetch_major_player_html(args[0].strip())
-        await update.message.reply_html(extra or "查無籌碼", reply_markup=self._keyboard())
+        chip_img = generate_chips_image(args[0].strip(), self.db_path, os.path.join(self.charts_dir, f"{args[0].strip()}_chips.png"))
+        if chip_img:
+            with open(chip_img, "rb") as f:
+                await update.message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(args[0].strip()))
+        else:
+            await update.message.reply_html("查無籌碼", reply_markup=self._keyboard())
 
     async def fund_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -738,8 +748,15 @@ class WayneTelegramBot:
             await self._send_card_to(message, code)
             return True
         if pending == "chips":
-            extra = fetch_major_player_html(code)
-            await message.reply_html(extra or "查無籌碼", reply_markup=self._hub_keyboard(code))
+            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+            if chip_img:
+                try:
+                    with open(chip_img, "rb") as f:
+                        await message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code))
+                except Exception:
+                    await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
+            else:
+                await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
             return True
         if pending == "fund":
             from fundamentals import format_fundamentals_html, sync_fundamentals
@@ -804,38 +821,32 @@ class WayneTelegramBot:
         card_img = packed[1] if len(packed) > 1 else ""
         chart = packed[2] if len(packed) > 2 else ""
         glance = packed[3] if len(packed) > 3 else ""
-        if glance:
-            try:
-                with open(glance, "rb") as f:
-                    await message.reply_photo(photo=f, caption="當日K＋連漲跌＋籌碼連買連賣")
-            except Exception:
-                pass
-        await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
-        for path in self._card_photo_paths(card_img):
+        hub = self._hub_keyboard(code)
+
+        async def send_photo(path, caption, markup=None):
             try:
                 with open(path, "rb") as f:
-                    await message.reply_photo(photo=f, caption="買低賣高決策卡（單張，欄位對齊範本）")
+                    await message.reply_photo(photo=f, caption=caption, reply_markup=markup)
+                return True
             except Exception:
-                pass
+                return False
+
+        if glance:
+            await send_photo(glance, "當日K＋連漲跌＋籌碼連買連賣")
+        await message.reply_html(html, disable_web_page_preview=True)
+        for path in self._card_photo_paths(card_img):
+            await send_photo(path, "買低賣高決策卡（單張，欄位對齊範本）")
         if chart:
-            try:
-                with open(chart, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption="180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均；▼20日高 ▲20日低",
-                    )
-            except Exception:
-                pass
-        extra = fetch_major_player_html(code)
-        if extra:
-            await message.reply_html(extra, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
-            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
-            if chip_img:
-                try:
-                    with open(chip_img, "rb") as f:
-                        await message.reply_photo(photo=f, caption="主力買賣超格子（外資／投信／自營）")
-                except Exception:
-                    pass
+            await send_photo(chart, "180日高低導航：粉紅＝壓力、綠＝支撐、黃線＝20日均；▼20日高 ▲20日低")
+        chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+        if chip_img:
+            ok = await send_photo(chip_img, "籌碼（張）", hub)
+            if not ok:
+                await message.reply_html("籌碼圖在下方。", reply_markup=hub, disable_web_page_preview=True)
+        elif chart:
+            await send_photo(chart, "高低導航", hub)
+        else:
+            await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -885,15 +896,17 @@ class WayneTelegramBot:
             return
         if data.startswith("h:"):
             code = data[2:].strip()
-            extra = fetch_major_player_html(code)
-            await q.message.reply_html(extra or "查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
             if chip_img:
                 try:
                     with open(chip_img, "rb") as f:
-                        await q.message.reply_photo(photo=f, caption="主力買賣超格子（外資／投信／自營）")
+                        await q.message.reply_photo(
+                            photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
+                        )
                 except Exception:
-                    pass
+                    await q.message.reply_html("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
+            else:
+                await q.message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return
         if data.startswith("f:"):
             from fundamentals import format_fundamentals_html, sync_fundamentals

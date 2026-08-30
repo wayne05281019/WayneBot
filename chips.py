@@ -242,7 +242,8 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
     return built[:limit]
 
 
-def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15) -> str:
+def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
+    """讀籌碼列；近日全 0 時先回補當日 T86。"""
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     rows = major_player_rows(path, sid, limit=limit)
@@ -258,6 +259,13 @@ def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15)
             except Exception as e:
                 logger.warning("即時回補籌碼失敗: %s", e)
             rows = major_player_rows(path, sid, limit=limit)
+    return rows
+
+
+def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15) -> str:
+    path = db_path or get_db_path()
+    sid = str(stock_id).strip()
+    rows = load_major_player_rows(path, sid, limit=limit)
     return format_major_player_html(rows, sid) if rows else ""
 
 
@@ -281,7 +289,7 @@ def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
 
 def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
-    rows = major_player_rows(path, str(stock_id).strip(), limit=limit)
+    rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit)
     if not rows:
         return ""
     try:
@@ -304,24 +312,19 @@ def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = No
         fp = _fp(size, w)
         return {"fontproperties": fp} if fp is not None else {"fontsize": size, "fontweight": "bold"}
 
-    name = rows[0].get("stock_name") or stock_id
     n = len(rows)
-    fig_h = 3.1 + n * 0.46
+    fig_h = 1.22 + n * 0.46
     fig, ax = plt.subplots(figsize=(6.55, fig_h), dpi=175, facecolor="#eef1f6")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
-    fig.subplots_adjust(left=0.025, right=0.975, top=0.97, bottom=0.02)
-    ax.add_patch(patches.FancyBboxPatch((1.2, 92.6), 97.6, 6.6, boxstyle="round,pad=0.12,rounding_size=0.5",
-                                        facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.2, 96.8, f"{stock_id}  {name}", **ink(16), color="#ffffff", va="center")
-    ax.text(3.2, 94.0, "主力買賣超　單位：張　超比＝三大法人／成交量", **ink(10), color="#ffe082", va="center")
+    fig.subplots_adjust(left=0.025, right=0.975, top=0.99, bottom=0.01)
 
     headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
     xs = [1.6, 13.2, 23.0, 33.2, 43.8, 54.4, 65.0, 76.0, 86.2, 98.2]
-    top = 91.4
-    hdr_h = 3.4
-    body_h = (top - hdr_h - 1.2) / max(n, 1)
+    top = 99.0
+    hdr_h = 4.2
+    body_h = (top - hdr_h - 0.8) / max(n, 1)
 
     def box(x, y, w, h, fc="#fff"):
         ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#cfd8dc", linewidth=0.5))
