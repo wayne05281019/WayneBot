@@ -109,6 +109,31 @@ def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
     return [text[i : i + limit] for i in range(0, len(text), limit)]
 
 
+def chunk_telegram_html(html: str, limit: int = 3500) -> List[str]:
+    """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。"""
+    if not html:
+        return []
+    if len(html) <= limit:
+        return [html]
+    chunks: List[str] = []
+    rest = html
+    close = "</blockquote>"
+    while rest:
+        if len(rest) <= limit:
+            chunks.append(rest)
+            break
+        cut = rest.rfind(close, 0, limit)
+        if cut != -1:
+            cut += len(close)
+        else:
+            cut = rest.rfind("\n", 0, limit)
+            if cut < 1:
+                cut = limit
+        chunks.append(rest[:cut])
+        rest = rest[cut:].lstrip("\n")
+    return [c for c in chunks if c]
+
+
 class WayneTelegramBot:
     def __init__(self, token: str = None, chat_id: str = None, db_path: str = None, **kwargs):
         cfg = get_telegram_config()
@@ -267,6 +292,7 @@ class WayneTelegramBot:
             await message.reply_html(
                 result.get("message") or self._format_screening_html(result),
                 reply_markup=self._keyboard(),
+                disable_web_page_preview=True,
             )
             return
         last = len(parts) - 1
@@ -277,13 +303,13 @@ class WayneTelegramBot:
                     await message.reply_sticker(sticker=fid)
                 except Exception:
                     logger.exception("分類貼紙傳送失敗")
-            chunks = chunk_telegram_text(part.get("html") or "", 3500)
+            chunks = chunk_telegram_html(part.get("html") or "", 3500)
             if not chunks:
                 continue
             for j, chunk in enumerate(chunks):
                 is_last = i == last and j == len(chunks) - 1
-                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last)
-                await message.reply_html(chunk, reply_markup=kb)
+                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
+                await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
 
     def _cat_sticker_id(self, key: str) -> str:
@@ -361,10 +387,10 @@ class WayneTelegramBot:
             fid = self._cat_sticker_id(part.get("mark_key") or "")
             if fid:
                 self._send_sticker(self.chat_id, fid)
-            chunks = chunk_telegram_text(part.get("html") or "", 3500)
+            chunks = chunk_telegram_html(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last = i == last and j == len(chunks) - 1
-                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last)
+                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
                 self._send_html(
                     self.chat_id,
                     chunk,
@@ -459,7 +485,9 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"))
+        await update.message.reply_html(
+            html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
+        )
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         from screening_engine import _stock_card_html
@@ -468,7 +496,9 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"))
+        await update.message.reply_html(
+            html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
+        )
 
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
@@ -898,7 +928,9 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"))
+            await q.message.reply_html(
+                html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
+            )
         elif data == "overnight":
             from screening_engine import _stock_card_html
 
@@ -906,7 +938,9 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"))
+            await q.message.reply_html(
+                html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
+            )
         elif data == "portfolio":
             await self._send_portfolio(q.message, str(q.from_user.id))
         elif data == "watch":

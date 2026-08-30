@@ -53,11 +53,10 @@ def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str
     sid = str(stock_id or "").strip()
     name = str(stock_name or "").strip()
     label = f"{sid} {name}".strip() or sid
-    web, mobile = yahoo_urls(sid, db_path)
+    web, _mobile = yahoo_urls(sid, db_path)
     esc = (
         label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     )
-    return (
-        f'<a href="{web}">{esc}</a> '
-        f'<a href="{web}">網頁</a>／<a href="{mobile}">手機技術線</a>'
-    )
+    href = web.replace("&", "&amp;")
+    # 只留一個連結，避免海選一則裡幾十個 <a> 被切訊息切到半截、或跳出奇摩大圖預覽
+    return f'<a href="{href}">{esc}</a>'

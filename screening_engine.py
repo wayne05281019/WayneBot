@@ -296,6 +296,31 @@ def html_escape(val) -> str:
     )
 
 
+def _regime_label(item: Dict[str, Any]) -> str:
+    """海選旁的格局標籤（依收盤相對月／季線與月低）。"""
+    try:
+        c = float(item.get("close") or 0)
+        ma20 = float(item.get("ma20") or 0)
+        ma60 = float(item.get("ma60") or 0)
+        low20 = float(item.get("low20") or 0)
+        d20 = float(item.get("d20") or 0)
+    except (TypeError, ValueError):
+        return "整理格局"
+    if low20 and c > 0 and c <= low20 * 1.008:
+        return "弱勢破底"
+    if d20 <= 1.2:
+        return "貼近月低"
+    if ma20 and ma60 and c >= ma20 and ma20 >= ma60:
+        return "多頭排列"
+    if ma20 and ma60 and c <= ma20 and ma20 <= ma60:
+        return "空頭排列"
+    if ma20 and c >= ma20:
+        return "站上月線"
+    if ma20 and c < ma20:
+        return "月線下整理"
+    return "整理格局"
+
+
 def _pct_str(pct) -> str:
     try:
         p = float(pct)
@@ -314,11 +339,12 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
     s_tag = " · S級" if item.get("is_s_tier") else ""
+    regime = html_escape(_regime_label(item))
     close = item.get("close")
     vol = int(item.get("volume") or 0)
     q = item.get("q60r")
     body = [
-        f"<b>{idx}. {title}</b>{html_escape(s_tag)}",
+        f"<b>{idx}.</b> {title}　<b>{regime}</b>{html_escape(s_tag)}",
         f"價 {close}　{_pct_str(item.get('pct_change'))}",
         f"量比 {q}×　{vol:,}張",
     ]
@@ -337,13 +363,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
     q = item.get("q60r")
-    try:
-        from stock_links import html_stock_anchor
-
-        title = html_stock_anchor(sid, sname)
-    except Exception:
-        title = f"{html_escape(sid)} {html_escape(sname)}"
-    return f"{title}　{_pct_str(item.get('pct_change'))}　{q}×"
+    return f"{html_escape(sid)} {html_escape(sname)}　{html_escape(_regime_label(item))}　{_pct_str(item.get('pct_change'))}　{q}×"
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
