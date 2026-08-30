@@ -23,7 +23,7 @@ from cary_navigator import (
 from chips import fetch_major_player_html
 
 try:
-    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
     from telegram.ext import (
         Application,
         CommandHandler,
@@ -180,9 +180,10 @@ class WayneTelegramBot:
         )
 
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("已改成下方訊息裡的按鈕，舊的四格鍵盤會收起來。", reply_markup=ReplyKeyboardRemove())
         await update.message.reply_html(
             "WayneBot 已上線。\n"
-            "直接打股票代號看決策卡，或按下面按鈕。",
+            "直接打股票代號看決策卡，或按訊息下面的按鈕。",
             reply_markup=self._keyboard(),
         )
 
@@ -283,6 +284,18 @@ class WayneTelegramBot:
             await self.start_cmd(update, context)
             return
         pending = self._pending.pop(uid, "")
+        if "今日海選" in text or text.endswith("海選"):
+            await self.screen_cmd(update, context)
+            return
+        if "模擬持倉" in text or text == "持股":
+            await self.portfolio_cmd(update, context)
+            return
+        if "自選" in text:
+            await self.watch_cmd(update, context)
+            return
+        if "系統狀態" in text:
+            await update.message.reply_html("WayneBot 雲端新版運作中。請用訊息下方按鈕操作。", reply_markup=self._keyboard())
+            return
         if pending == "card":
             await self._reply_card(update, text.split()[0])
             return
