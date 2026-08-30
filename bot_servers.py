@@ -90,11 +90,11 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
-        "1 收盤＋漲跌＋多頭／整理\n"
-        "2 距20日高（賣壓遠近）＋獲利／距60日低（買點遠近）\n"
-        "3 溫度計＋120日量排名（熱不熱、量大不大）\n"
+        "1 當日 K 縮圖＋收盤連漲／連跌（▲紅 ▼綠）＋開高低\n"
+        "2 距20日高、獲利／距60日低、月乖離、溫度、量比\n"
+        "3 外資／投信／自營／法人當日張數＋連買連賣（或連買轉連賣）\n"
         "4 決策卡 20 日表（連兩日粉紅預警才考慮賣）\n"
-        "5 要法人再按籌碼，要基本面再按營收"
+        "5 完整法人格按籌碼，月營收按營收"
     ),
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。超比＝合計／成交量。",
     "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
@@ -403,11 +403,18 @@ class WayneTelegramBot:
         if not code:
             return
         try:
-            html, card_img, chart_path = generate_card_with_chart(code, self.db_path, self.charts_dir)
+            packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+            html = packed[0]
+            card_img = packed[1] if len(packed) > 1 else ""
+            chart_path = packed[2] if len(packed) > 2 else ""
+            glance = packed[3] if len(packed) > 3 else ""
         except Exception:
             html = generate_decision_card(code, self.db_path)
             card_img = ""
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
+            glance = ""
+        if glance:
+            self._send_photo(chat_id, glance, caption=f"{html_escape(code)} 第一眼（當日K＋籌碼）")
         self._send_html(chat_id, html)
         for path in self._card_photo_paths(card_img):
             self._send_photo(chat_id, path, caption=f"{html_escape(code)} 買低賣高決策卡")
@@ -793,7 +800,16 @@ class WayneTelegramBot:
             return
         await message.reply_text(f"查詢 {code}…")
         packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
-        html, card_img, chart = packed if len(packed) == 3 else (packed[0], "", packed[1] if len(packed) > 1 else "")
+        html = packed[0]
+        card_img = packed[1] if len(packed) > 1 else ""
+        chart = packed[2] if len(packed) > 2 else ""
+        glance = packed[3] if len(packed) > 3 else ""
+        if glance:
+            try:
+                with open(glance, "rb") as f:
+                    await message.reply_photo(photo=f, caption="第一眼：當日K＋連漲跌＋籌碼連買連賣")
+            except Exception:
+                pass
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
         for path in self._card_photo_paths(card_img):
             try:

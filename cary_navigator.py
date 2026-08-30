@@ -198,6 +198,11 @@ class CaryNavigatorEngine:
             "qty60": qty60,
             "vol_rank": int(latest["vol_rank_120"]),
             "badges": badges,
+            "open": float(latest.get("open") or 0),
+            "high": float(latest.get("high") or 0),
+            "low": float(latest.get("low") or 0),
+            "volume": float(latest.get("volume") or 0),
+            "bias_monthly": float(latest.get("bias_monthly") or 0),
             "table": table,
         }
 
@@ -455,6 +460,38 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10):
     ax.text(cx, cy, text, fontproperties=_fp(fs, "bold"), color=fg, ha="center", va="center")
 
 
+def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
+    """在資料座標畫當日 K：紅實心上漲、綠實心下跌，含上下影。"""
+    o, hi, lo, cl = float(open_), float(high), float(low), float(close)
+    rng = hi - lo
+    if rng <= 0:
+        rng = max(abs(cl) * 0.01, 0.01)
+        hi = max(hi, cl, o) + rng / 2
+        lo = min(lo, cl, o) - rng / 2
+        rng = hi - lo
+
+    def py(p):
+        return y + (float(p) - lo) / rng * h
+
+    color = "#e53935" if cl >= o else "#00897b"
+    cx = x + w / 2
+    ax.plot([cx, cx], [py(lo), py(hi)], color=color, linewidth=2.4, solid_capstyle="round", zorder=4)
+    body_lo, body_hi = py(min(o, cl)), py(max(o, cl))
+    bh = max(body_hi - body_lo, h * 0.04)
+    bw = w * 0.62
+    ax.add_patch(
+        patches.Rectangle(
+            (cx - bw / 2, body_lo),
+            bw,
+            bh,
+            facecolor=color,
+            edgecolor=color,
+            linewidth=0.4,
+            zorder=5,
+        )
+    )
+
+
 def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖，版面對齊範本；窄寬度讓 Telegram 縮圖後字仍能看。"""
     if not card or card.get("error"):
@@ -473,9 +510,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 表頭
     ax.add_patch(patches.FancyBboxPatch((1.2, 93.4), 97.6, 6.0, boxstyle="round,pad=0.15,rounding_size=0.6",
                                         facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.2, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
+    ax.add_patch(patches.FancyBboxPatch((2.15, 93.55), 8.0, 5.7, boxstyle="round,pad=0.08,rounding_size=0.35",
+                                        facecolor="#eceff1", edgecolor="none"))
+    _draw_mini_candle(
+        ax, 2.4, 93.7, 7.2, 5.4,
+        card.get("open") or card.get("close") or 0,
+        card.get("high") or card.get("close") or 0,
+        card.get("low") or card.get("close") or 0,
+        card.get("close") or 0,
+    )
+    ax.text(11.2, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
             color="#ffffff", va="center")
-    ax.text(3.2, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
+    ax.text(11.2, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
     ax.text(96.5, 96.2, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
 
     chg = float(card.get("change_pct") or 0)
@@ -625,33 +671,156 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if alerts.count("K20高") >= 2 or list(alerts[:2]) == ["K20高", "K20高"]:
         pink_note = "🚨 粉紅預警已滿 2 日 → 紀律考慮賣出"
     chg = float(card.get("change_pct") or 0)
-    from tg_layout import title_line, kv, section, join_sections, html_escape as esc
+    from tg_layout import title_line, kv, section, join_sections
+    from chip_tape import build_tape, fmt_lots
 
+    tape = build_tape(db_path or get_db_path(), sid) or {}
+    move = (tape.get("move") or {}).get("text") or f"{chg:+.2f}%"
+    shape = tape.get("shape") or ""
+    last = tape.get("last") or {}
+    ohlc = ""
+    if last:
+        ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
+    if shape:
+        badge = f"{badge}　{shape}".strip()
     links = ""
     if web:
         links = f'<a href="{web}">網頁走勢</a>　　<a href="{mobile}">技術線</a>'
+    chip_block = ""
+    if tape:
+        chip_block = section(
+            kv("外資", f"{fmt_lots(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
+            kv("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
+            kv("自營", f"{fmt_lots(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
+            kv("法人", f"{fmt_lots(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
+            kv("佔成交", f"{tape.get('inst_pct', 0):+.1f}%"),
+        )
+    vol_line = (tape.get("volume") or {}).get("line") or "—"
+    extra_flags = tape.get("conflict") or ""
+    bias = card.get("bias_monthly")
+    bias_s = f"{float(bias):+.1f}%" if bias is not None else "—"
     return join_sections(
         title_line("第一眼", sid, name, badge),
         section(
             kv("日期", _fmt_md(card["latest_date"])),
-            kv("收盤", _fmt_price(card["close"])),
-            kv("漲跌", f"{chg:+.2f}%"),
+            kv("開高低", ohlc or "—"),
+            kv("收盤", f"{_fmt_price(card['close'])}　{move}"),
+            kv("當日", f"{chg:+.2f}%"),
         ),
         section(
             kv("距20日高", f"{card['dist_h20']:+.1f}%"),
             kv("距60日低", f"{card.get('dist_l60'):+.1f}%（獲利）"),
             kv("月空間", f"{card['space_20']}%"),
             kv("季空間", f"{card['space_60']}%"),
+            kv("月乖離", bias_s),
         ),
         section(
             kv("溫度", card.get("temp_c") or "—"),
             kv("120日量", f"第 {card.get('vol_rank')} 名"),
+            kv("量比", vol_line),
         ),
+        chip_block,
+        extra_flags,
         pink_note,
         links,
-        "下圖依序：決策卡 → 高低導航。籌碼／營收請按下方按鈕。",
+        "下圖：當日K＋籌碼條 → 決策卡 → 高低導航。完整法人格請按籌碼。",
     )
+
+
+def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str) -> str:
+    """窄圖：股號旁當日 K、收盤連漲跌三角形、籌碼連買連賣。"""
+    if not card or card.get("error"):
+        return ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    from chip_tape import fmt_lots
+
+    last = (tape or {}).get("last") or {}
+    move = (tape or {}).get("move") or {}
+    fig, ax = plt.subplots(figsize=(5.15, 8.35), dpi=175, facecolor="#eef1f6")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.98, bottom=0.02)
+    ax.add_patch(patches.FancyBboxPatch((1.6, 90.4), 96.8, 8.4, boxstyle="round,pad=0.12,rounding_size=0.5",
+                                        facecolor="#1a237e", edgecolor="none"))
+    ax.add_patch(patches.FancyBboxPatch((2.4, 90.7), 12.6, 7.8, boxstyle="round,pad=0.08,rounding_size=0.35",
+                                        facecolor="#eceff1", edgecolor="none"))
+    _draw_mini_candle(
+        ax, 3.0, 91.0, 11.5, 7.2,
+        last.get("open") or card.get("open") or card.get("close") or 0,
+        last.get("high") or card.get("high") or card.get("close") or 0,
+        last.get("low") or card.get("low") or card.get("close") or 0,
+        last.get("close") or card.get("close") or 0,
+    )
+    ax.text(16.5, 96.6, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}",
+            fontproperties=_fp(18, "bold"), color="#ffffff", va="center")
+    badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
+    shape = (tape or {}).get("shape") or ""
+    ax.text(16.5, 93.4, f"{badge}　{shape}".strip(), fontproperties=_fp(11, "bold"), color="#ffe082", va="center")
+    ax.text(97.6, 96.6, "第一眼", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
+
+    chg = float(card.get("change_pct") or 0)
+    tri_c = "#c62828" if int(move.get("sign") or 0) > 0 else ("#00695c" if int(move.get("sign") or 0) < 0 else "#37474f")
+    ax.text(4.0, 86.8, _fmt_price(card.get("close")), fontproperties=_fp(28, "bold"), color="#000000", va="center")
+    ax.text(48.0, 87.6, move.get("text") or f"{chg:+.2f}%", fontproperties=_fp(13, "bold"), color=tri_c, va="center")
+    ax.text(48.0, 84.7, f"當日 {chg:+.2f}%　{_fmt_md(card.get('latest_date'))}",
+            fontproperties=_fp(11, "bold"), color="#455a64", va="center")
+    if last:
+        ax.text(4.0, 82.4, f"開 {_fmt_price(last.get('open'))}　高 {_fmt_price(last.get('high'))}　低 {_fmt_price(last.get('low'))}",
+                fontproperties=_fp(11, "bold"), color="#37474f", va="center")
+
+    rows = [
+        ("距20日高", f"{card['dist_h20']:+.1f}%"),
+        ("距60日低", f"{card.get('dist_l60'):+.1f}% 獲利"),
+        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%"),
+        ("月乖離", f"{float(card.get('bias_monthly') or 0):+.1f}%"),
+        ("溫度", str(card.get("temp_c") or "—")),
+        ("120日量", f"第 {card.get('vol_rank')} 名"),
+        ("量比", (tape or {}).get("volume", {}).get("line") or "—"),
+    ]
+    y = 79.2
+    for lab, val in rows:
+        ax.text(4.2, y, lab, fontproperties=_fp(11, "bold"), color="#607d8b", va="center")
+        ax.text(96.0, y, val, fontproperties=_fp(13, "bold"), color="#111111", ha="right", va="center")
+        y -= 3.35
+
+    ax.add_patch(patches.FancyBboxPatch((2.0, 11.6), 96.0, 43.4, boxstyle="round,pad=0.1,rounding_size=0.4",
+                                        facecolor="#ffffff", edgecolor="#cfd8dc", linewidth=0.9))
+    ax.text(4.6, 52.6, "籌碼（張）", fontproperties=_fp(13, "bold"), color="#1a237e", va="center")
+    ax.text(96.0, 52.6, f"佔成交 {(tape or {}).get('inst_pct', 0):+.1f}%",
+            fontproperties=_fp(11, "bold"), color="#455a64", ha="right", va="center")
+
+    def chip_color(n):
+        if n > 0:
+            return "#b71c1c"
+        if n < 0:
+            return "#1b5e20"
+        return "#455a64"
+
+    chips = [
+        ("外資", (tape or {}).get("foreign") or {}),
+        ("投信", (tape or {}).get("trust") or {}),
+        ("自營", (tape or {}).get("dealer") or {}),
+        ("法人", (tape or {}).get("three") or {}),
+    ]
+    cy = 47.8
+    for lab, item in chips:
+        net = int(item.get("net") or 0)
+        ax.text(5.2, cy + 1.35, lab, fontproperties=_fp(11, "bold"), color="#546e7a", va="center")
+        ax.text(5.2, cy - 1.15, fmt_lots(net), fontproperties=_fp(16, "bold"), color=chip_color(net), va="center")
+        ax.text(96.2, cy, item.get("phrase") or "—", fontproperties=_fp(11, "bold"),
+                color=chip_color(net), ha="right", va="center")
+        cy -= 8.6
+
+    note = (tape or {}).get("conflict") or ""
+    ax.text(4.0, 8.8, note or "價量與籌碼同向較穩；背離先當警示不是立即反手。",
+            fontproperties=_fp(10, "bold"), color="#c62828" if note else "#546e7a", va="center")
+    ax.text(4.0, 5.6, "▲紅＝連漲　▼綠＝連跌　K 縮圖＝當日開高低收",
+            fontproperties=_fp(10), color="#78909c", va="center")
+    plt.savefig(save_path, dpi=175, facecolor=fig.get_facecolor())
+    plt.close()
+    return save_path
 
 
 def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
@@ -924,6 +1093,17 @@ def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str
     html = generate_decision_card(sid, db_path, lookback=20)
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
+    glance = ""
+    try:
+        from chip_tape import build_tape
+
+        engine = CaryNavigatorEngine(db_path or get_db_path())
+        card = engine.get_decision_card(sid, lookback=20)
+        tape = build_tape(db_path or get_db_path(), sid) or {}
+        if not card.get("error"):
+            glance = render_first_glance_png(sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"))
+    except Exception:
+        glance = ""
     cards = generate_card_image(sid, db_path, os.path.join(charts_dir, f"{sid}_card.png"))
     chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"))
-    return html, cards, chart
+    return html, cards, chart, glance
