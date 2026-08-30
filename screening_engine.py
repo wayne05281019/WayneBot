@@ -305,14 +305,20 @@ def _pct_str(pct) -> str:
 
 
 def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
-    sid = html_escape(item.get("stock_id") or item.get("code") or "")
-    sname = html_escape(item.get("stock_name") or item.get("name") or "")
+    sid = str(item.get("stock_id") or item.get("code") or "")
+    sname = str(item.get("stock_name") or item.get("name") or "")
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(sid, sname)
+    except Exception:
+        title = f"{html_escape(sid)} {html_escape(sname)}"
     s_tag = " · S級" if item.get("is_s_tier") else ""
     close = item.get("close")
     vol = int(item.get("volume") or 0)
     q = item.get("q60r")
     body = [
-        f"<b>{idx}. {sid} {sname}</b>{html_escape(s_tag)}",
+        f"<b>{idx}. {title}</b>{html_escape(s_tag)}",
         f"價 {close}　{_pct_str(item.get('pct_change'))}",
         f"量比 {q}×　{vol:,}張",
     ]
@@ -328,10 +334,16 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
 
 
 def _compact_line(item: Dict[str, Any]) -> str:
-    sid = html_escape(item.get("stock_id") or item.get("code") or "")
-    sname = html_escape(item.get("stock_name") or item.get("name") or "")
+    sid = str(item.get("stock_id") or item.get("code") or "")
+    sname = str(item.get("stock_name") or item.get("name") or "")
     q = item.get("q60r")
-    return f"{sid} {sname}　{_pct_str(item.get('pct_change'))}　{q}×"
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(sid, sname)
+    except Exception:
+        title = f"{html_escape(sid)} {html_escape(sname)}"
+    return f"{title}　{_pct_str(item.get('pct_change'))}　{q}×"
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:

@@ -311,13 +311,16 @@ class WayneTelegramBot:
         if not code:
             return
         try:
-            html, chart_path = generate_card_with_chart(code, self.db_path, self.charts_dir)
+            html, card_img, chart_path = generate_card_with_chart(code, self.db_path, self.charts_dir)
         except Exception:
             html = generate_decision_card(code, self.db_path)
+            card_img = ""
             chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
         self._send_html(chat_id, html)
+        if card_img:
+            self._send_photo(chat_id, card_img, caption=f"{html_escape(code)} 決策卡")
         if chart_path:
-            self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)}")
+            self._send_photo(chat_id, chart_path, caption=f"{html_escape(code)} {html_escape(name)} 高低導航")
         extra = fetch_major_player_html(code)
         if extra:
             self._send_html(chat_id, extra)
@@ -645,12 +648,19 @@ class WayneTelegramBot:
     async def _send_card_to(self, message, code: str):
         code = str(code).strip()
         await message.reply_text(f"查詢 {code}…")
-        html, chart = generate_card_with_chart(code, self.db_path, self.charts_dir)
-        await message.reply_html(html, reply_markup=self._hub_keyboard(code))
+        packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+        html, card_img, chart = packed if len(packed) == 3 else (packed[0], "", packed[1] if len(packed) > 1 else "")
+        await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+        if card_img:
+            try:
+                with open(card_img, "rb") as f:
+                    await message.reply_photo(photo=f, caption="決策卡格子（表頭與欄位對齊）")
+            except Exception:
+                pass
         if chart:
             try:
                 with open(chart, "rb") as f:
-                    await message.reply_photo(photo=f)
+                    await message.reply_photo(photo=f, caption="180日高低導航（紅綠底區＝深淺）")
             except Exception:
                 pass
         extra = fetch_major_player_html(code)

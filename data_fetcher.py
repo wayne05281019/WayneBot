@@ -561,7 +561,8 @@ class DataFetcher:
         start = datetime.strptime(latest, "%Y%m%d") + timedelta(days=1)
         end = datetime.strptime(end_date, "%Y%m%d")
         if start > end:
-            return {"from": latest, "to": end_date, "filled": [], "skipped": [], "note": "已是最新"}
+            thin = self._refill_thin_days(end_date, lookback=10, min_rows=1500)
+            return {"from": latest, "to": end_date, "filled": thin, "skipped": [], "note": "已是最新", "refilled_thin": thin}
         days = 0
         d = start
         while d <= end and days < max_days:
@@ -578,7 +579,39 @@ class DataFetcher:
                 skipped.append(ds)
             time.sleep(0.35)
             d += timedelta(days=1)
-        return {"from": latest, "to": end_date, "filled": filled, "skipped": skipped}
+        thin = self._refill_thin_days(end_date, lookback=10, min_rows=1500)
+        for ds in thin:
+            if ds not in filled:
+                filled.append(ds)
+        return {"from": latest, "to": end_date, "filled": filled, "skipped": skipped, "refilled_thin": thin}
+
+    def _refill_thin_days(self, end_date: str, lookback: int = 10, min_rows: int = 1500) -> list:
+        """已有日期但檔數明顯偏少（例如只寫入上市）就重抓。"""
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT date, COUNT(*) AS n FROM daily_quotes
+               WHERE date <= ? GROUP BY date ORDER BY date DESC LIMIT ?;""",
+            (end_date, int(lookback) + 4),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        filled = []
+        for date, n in rows:
+            ds = str(date)
+            try:
+                wd = datetime.strptime(ds, "%Y%m%d").weekday()
+            except Exception:
+                continue
+            if wd >= 5:
+                continue
+            if int(n or 0) >= int(min_rows):
+                continue
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(0.35)
+        return filled
 
 
 # ==============================================================================
