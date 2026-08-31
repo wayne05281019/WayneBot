@@ -704,24 +704,29 @@ class LookupCardTest(unittest.TestCase):
             "20260827",
             "20260828",
         ]
-        paths = []
+        long_dates = [f"202607{d:02d}" for d in range(1, 21)]
+        paths, heights = [], []
         try:
-            for n, tbl in (
-                (1, pd.DataFrame([row("20260828")])),
-                (8, pd.DataFrame([row(d) for d in dates])),
+            for tbl in (
+                pd.DataFrame([row("20260828")]),
+                pd.DataFrame([row(d) for d in dates]),
+                pd.DataFrame([row(d) for d in long_dates]),
             ):
                 fd, path = tempfile.mkstemp(suffix=".png")
                 os.close(fd)
                 paths.append(path)
                 card["table"] = tbl
                 render_decision_card_png(card, path)
-            with Image.open(paths[0]) as im1:
-                h1 = im1.size[1]
-            with Image.open(paths[1]) as im8:
-                h8 = im8.size[1]
-            self.assertLess(h1, 950)
-            self.assertGreater(h8, h1 + 180)
-            self.assertLess(h8 - h1, 500)
+                with Image.open(path) as im:
+                    heights.append(im.size[1])
+            h1, h8, h20 = heights
+            # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。
+            per_row = (h8 - h1) / 7.0
+            self.assertGreater(per_row, 20)
+            self.assertLess(per_row, 120)
+            self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=2.0)
+            overhead = h1 - per_row
+            self.assertGreater(overhead, per_row * 8)
         finally:
             for path in paths:
                 if os.path.exists(path):

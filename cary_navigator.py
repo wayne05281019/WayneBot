@@ -613,9 +613,9 @@ def _fmt_md_tpl(date_val) -> str:
     return d
 
 
-def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10):
+def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
     if not text or text in ("No", "—", "nan"):
-        ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center")
+        ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center", zorder=z + 1)
         return
     ax.add_patch(
         patches.FancyBboxPatch(
@@ -626,9 +626,10 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10):
             facecolor=bg,
             edgecolor=bg,
             linewidth=0,
+            zorder=z,
         )
     )
-    ax.text(cx, cy, text, fontproperties=_fp(fs, "bold"), color=fg, ha="center", va="center")
+    ax.text(cx, cy, text, fontproperties=_fp(fs, "bold"), color=fg, ha="center", va="center", zorder=z + 1)
 
 
 def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
@@ -693,130 +694,241 @@ def _fmt_dist(val) -> str:
         return "—"
 
 
+# 決策卡色票集中一處：要換配色只改這裡，版面計算不動。
+_CARD = {
+    "page": "#EDF1F7",
+    "panel": "#FFFFFF",
+    "line": "#DCE3EC",
+    "shadow": "#CBD4E1",
+    "navy": "#16223F",
+    "navy_soft": "#9FB3D9",
+    "tag": "#C2185B",
+    "ink": "#111827",
+    "ink_soft": "#5B6472",
+    "ink_mute": "#98A2B3",
+    "hi_ink": "#AD1457",
+    "hi_line": "#F2B4CB",
+    "hi_fill": "#FDF2F6",
+    "lo_ink": "#2E7D32",
+    "lo_line": "#A7D8AE",
+    "lo_fill": "#F1F9F2",
+    "lo_hit_fill": "#D7F0DC",
+    "lo_hit_line": "#4CAF50",
+    "up": "#D81B60",
+    "down": "#00695C",
+    "tbl_hdr": "#E7EEF8",
+    "tbl_line": "#BACCE6",
+    "tbl_ink": "#1E3A8A",
+    "zebra": "#F7F9FC",
+}
+
+
+def _card_text_w(text, fs: float, fig_w: float) -> float:
+    """資料座標下的字串寬度：中日韓字一個 em，半角約 0.55 em，用來把藥丸貼齊字長。"""
+    em = fs / (fig_w / 100.0 * 72.0)
+    return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in str(text)) * em
+
+
 def render_decision_card_png(card: dict, save_path: str) -> str:
-    """單張長圖：區塊由上往下排，圖高跟內容走，避免擠在固定 0–100 座標裡重疊。"""
+    """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。"""
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
     extra_lows = horizon_low_cells(card)
+    low_rows = 2 if extra_lows else 1
+    C = _CARD
 
-    # 資料座標：標題在框外自己一列；圖高跟內容走；表列高固定。
-    m_top, m_bot = 0.75, 0.90
-    header_h, price_h = 4.20, 4.55
-    gap_hp, gap_pr = 0.95, 1.55
-    gap_after_title, gap_boxes, gap_before_table = 0.35, 1.55, 1.50
-    title_band, cell_h, cell_gap = 2.70, 3.55, 0.85
-    box_pad_t, box_pad_b = 0.48, 0.55
-    tbl_title_h, hdr_h, body_h = 2.70, 2.40, 2.05
-    red_box_h = box_pad_t + cell_h + box_pad_b
-    green_rows = 2 if extra_lows else 1
-    green_box_h = box_pad_t + green_rows * cell_h + (green_rows - 1) * cell_gap + box_pad_b
+    # 每個區塊先算高度再由上往下堆，圖高跟著內容長，不會有人被壓到。
+    pad_x = 2.6
+    m_top, m_bot = 1.1, 1.5
+    head_h = 10.4
+    title_band, box_h, box_gap, pane_pad = 3.8, 9.0, 1.1, 1.2
+    tbl_title_h, hdr_h, body_h = 3.8, 3.2, 3.2
+    gap = 1.6
+    badge_h, badge_gap = 3.1, 1.0
+
+    fig_w = 7.1
+    badges = []
+    for b in list(card.get("badges") or []) + [f"120日量第 {card.get('vol_rank')} 名"]:
+        b = str(b or "").strip()
+        if b and "None" not in b and b not in badges:
+            badges.append(b)
+    badges = badges[:5] or ["整理格局"]
+    badge_w = [_card_text_w(b, 10.2, fig_w) + 3.2 for b in badges]
+    badge_rows, row, row_w = [], [], 0.0
+    limit = 100 - 2 * pad_x - 6.4
+    for b, bw in zip(badges, badge_w):
+        if row and row_w + 1.7 + bw > limit:
+            badge_rows.append(row)
+            row, row_w = [], 0.0
+        row.append((b, bw))
+        row_w += (1.7 if row_w else 0) + bw
+    if row:
+        badge_rows.append(row)
+    price_h = 7.9 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+    hi_pane_h = title_band + pane_pad + box_h + pane_pad
+    lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
-        m_top + header_h + gap_hp + price_h + gap_pr
-        + title_band + gap_after_title + red_box_h + gap_boxes
-        + title_band + gap_after_title + green_box_h + gap_before_table
-        + tbl_title_h + hdr_h + n * body_h + m_bot
+        m_top + head_h + gap + price_h + gap + hi_pane_h + gap + lo_pane_h
+        + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
-    fig_w = 6.55
-    fig_h = H * 0.110
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=175, facecolor="#eef1f6")
+    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=200, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.982, bottom=0.020)
+    fig.subplots_adjust(left=0.026, right=0.974, top=0.99, bottom=0.012)
 
-    y_top = H - m_top
-    header_y = y_top - header_h
-    ax.add_patch(patches.FancyBboxPatch((1.2, header_y), 97.6, header_h, boxstyle="round,pad=0,rounding_size=0.45",
-                                        facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.4, header_y + header_h / 2, f"{card['stock_id']}  {card.get('stock_name') or ''}",
-            fontproperties=_fp(17, "bold"), color="#ffffff", va="center")
-    ax.text(96.5, header_y + header_h / 2, "WayneBot", fontproperties=_fp(10, "bold"),
-            color="#c5cae9", ha="right", va="center")
+    def tw(text, fs):
+        return _card_text_w(text, fs, fig_w)
 
-    price_top = header_y - gap_hp
-    price_y = price_top - price_h
-    price_cy = price_y + price_h / 2
-    chg = float(card.get("change_pct") or 0)
-    chg_c = "#c62828" if chg > 0 else ("#00695c" if chg < 0 else "#212121")
-    ax.text(3.2, price_cy + 0.12, "股價", fontproperties=_fp(10), color="#607d8b", va="center")
-    ax.text(10.6, price_cy, _fmt_price(card["close"]), fontproperties=_fp(20, "bold"), color="#000000", va="center")
-    ax.text(40.0, price_cy + 0.12, "漲跌幅", fontproperties=_fp(10), color="#607d8b", va="center")
-    ax.text(50.0, price_cy, f"{chg:+.2f}%", fontproperties=_fp(15, "bold"), color=chg_c, va="center")
-    badges = [str(x) for x in (card.get("badges") or []) if x][:3]
-    if not badges:
-        badges = ["整理格局"]
-    bx = 72.0 if len(badges) == 1 else 66.0
-    for i, btxt in enumerate(badges):
-        _pill(ax, bx + i * 15.6, price_cy, btxt[:8], "#e53935", "#ffffff", w=14.6, h=2.20, fs=9)
+    def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
+        ax.add_patch(patches.FancyBboxPatch(
+            (x + 0.32, y - 0.40), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
+            facecolor=C["shadow"], edgecolor="none", zorder=1))
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
+            facecolor=fc, edgecolor=ec, linewidth=1.1, zorder=2))
 
-    def _metric_cell(x, y, lab, px, dist, *, high: bool, near=False):
+    def sec_title(x, cy, text, ink, sub=""):
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, cy - 1.2), 0.9, 2.4, boxstyle="round,pad=0,rounding_size=0.42",
+            facecolor=ink, edgecolor="none", zorder=3))
+        ax.text(x + 2.1, cy, text, fontproperties=_fp(13.5, "bold"), color=ink, va="center", zorder=3)
+        if sub:
+            ax.text(x + 2.1 + tw(text, 13.5) + 1.9, cy, sub, fontproperties=_fp(9.6),
+                    color=C["ink_soft"], va="center", zorder=3)
+
+    inner_x = pad_x + 2.2
+    box_gap_x = 1.7
+    box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
+
+    def metric_box(x, y, lab, px, dist, *, high, hit=False):
         if high:
-            bg, ec, lc = "#fff5f7", "#f8bbd0", "#ad1457"
+            fc, ec, lc = C["hi_fill"], C["hi_line"], C["hi_ink"]
+        elif hit:
+            fc, ec, lc = C["lo_hit_fill"], C["lo_hit_line"], C["lo_ink"]
         else:
-            bg, ec, lc = (("#c8e6c9", "#2e7d32", "#2e7d32") if near else ("#f1f8e9", "#a5d6a7", "#2e7d32"))
-        ax.add_patch(patches.FancyBboxPatch((x, y), 30.0, cell_h, boxstyle="round,pad=0,rounding_size=0.28",
-                                            facecolor=bg, edgecolor=ec, linewidth=0.8))
-        ax.text(x + 1.3, y + cell_h / 2, lab, fontproperties=_fp(10, "bold"), color=lc, ha="left", va="center")
-        ax.text(x + 16.4, y + cell_h / 2, _fmt_price(px), fontproperties=_fp(12, "bold"), color="#000000", ha="center", va="center")
-        dc = "#b71c1c"
+            fc, ec, lc = C["lo_fill"], C["lo_line"], C["lo_ink"]
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
+            facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
+        cx = x + box_w / 2
+        ax.text(cx, y + 7.15, lab, fontproperties=_fp(10.5, "bold"), color=lc,
+                ha="center", va="center", zorder=4)
+        ax.text(cx, y + 4.55, _fmt_price(px), fontproperties=_fp(18, "bold"), color=C["ink"],
+                ha="center", va="center", zorder=4)
+        d = _fmt_dist(dist)
         if high:
-            dc = "#004d40" if dist < 0 else "#b71c1c"
-        ax.text(x + 28.5, y + cell_h / 2, f"{float(dist):+.1f}%", fontproperties=_fp(10, "bold"),
-                color=dc, ha="right", va="center")
+            dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
+        else:
+            dc = C["up"]
+        ax.text(cx, y + 1.75, f"({d})" if d != "—" else d, fontproperties=_fp(12.5, "bold"),
+                color=dc, ha="center", va="center", zorder=4)
 
-    rtitle_top = price_y - gap_pr
-    rtitle_cy = rtitle_top - title_band / 2
-    ax.text(3.4, rtitle_cy, "高點資訊", fontproperties=_fp(11, "bold"), color="#ad1457", va="center")
-    ax.text(38.0, rtitle_cy, f"MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}",
-            fontproperties=_fp(9), color="#6d4c41", va="center")
-    red_top = rtitle_top - title_band - gap_after_title
-    red_y = red_top - red_box_h
-    ax.add_patch(patches.FancyBboxPatch((1.8, red_y), 96.4, red_box_h, boxstyle="round,pad=0,rounding_size=0.35",
-                                        facecolor="#ffffff", edgecolor="#ef9a9a", linewidth=1.1))
-    highs = [("10高", card["h10"], card["dist_h10"]), ("20高", card["h20"], card["dist_h20"]),
-             ("60高", card["h60"], card["dist_h60"])]
+    # 標題帶：代號股名一行，標語自己一條色帶，右邊掛品牌。
+    y = H - m_top - head_h
+    ax.add_patch(patches.FancyBboxPatch(
+        (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=1.05",
+        facecolor=C["navy"], edgecolor="none", zorder=2))
+    ax.text(pad_x + 2.8, y + head_h - 3.4, f"{card['stock_id']}　{card.get('stock_name') or ''}",
+            fontproperties=_fp(21, "bold"), color="#FFFFFF", va="center", zorder=3)
+    tag = "買低賣高決策卡　破解獲利密碼"
+    tag_w = tw(tag, 11.5) + 3.4
+    ax.add_patch(patches.FancyBboxPatch(
+        (pad_x + 2.8, y + 1.6), tag_w, 3.2, boxstyle="round,pad=0,rounding_size=0.55",
+        facecolor=C["tag"], edgecolor="none", zorder=3))
+    ax.text(pad_x + 2.8 + tag_w / 2, y + 3.2, tag, fontproperties=_fp(11.5, "bold"),
+            color="#FFFFFF", ha="center", va="center", zorder=4)
+    brand_x = 100 - pad_x - 2.8
+    ax.text(brand_x, y + head_h / 2, "WayneBot", fontproperties=_fp(12, "bold"),
+            color=C["navy_soft"], ha="right", va="center", zorder=3)
+    mark_w = tw("WayneBot", 12) + 1.6
+    ax.add_patch(patches.FancyBboxPatch(
+        (brand_x - mark_w - 3.4, y + head_h / 2 - 1.55), 3.1, 3.1,
+        boxstyle="round,pad=0,rounding_size=0.6",
+        facecolor="#2C4270", edgecolor=C["navy_soft"], linewidth=0.9, zorder=3))
+    ax.text(brand_x - mark_w - 1.85, y + head_h / 2, "W", fontproperties=_fp(11.5, "bold"),
+            color="#FFFFFF", ha="center", va="center", zorder=4)
+
+    # 股價：大字在上，狀態徽章自己一列，不跟數字擠。
+    y -= gap + price_h
+    pane(pad_x, y, 100 - 2 * pad_x, price_h)
+    chg = float(card.get("change_pct") or 0)
+    chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
+    px_cy = y + price_h - 4.1
+    ax.text(pad_x + 3.2, px_cy + 0.35, "股價", fontproperties=_fp(11), color=C["ink_soft"],
+            va="center", zorder=3)
+    ax.text(pad_x + 11.4, px_cy, _fmt_price(card["close"]), fontproperties=_fp(29, "bold"),
+            color=C["ink"], va="center", zorder=3)
+    ax.text(46.5, px_cy + 0.35, "漲跌幅", fontproperties=_fp(11), color=C["ink_soft"],
+            va="center", zorder=3)
+    ax.text(58.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(19, "bold"), color=chg_c,
+            va="center", zorder=3)
+    by = y + 1.6 + (len(badge_rows) - 1) * (badge_h + badge_gap)
+    for brow in badge_rows:
+        bx = pad_x + 3.2
+        for btxt, bw in brow:
+            # 只有「創新高／貼低點」這種訊號實心，警語留描邊，避免整排都在喊。
+            solid = any(k in btxt for k in ("創", "新高", "新低", "近"))
+            ax.add_patch(patches.FancyBboxPatch(
+                (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
+                facecolor=C["up"] if solid else "#FDECF3",
+                edgecolor=C["up"] if solid else "#E88AAE",
+                linewidth=0 if solid else 0.9, zorder=3))
+            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
+                    color="#FFFFFF" if solid else C["hi_ink"], ha="center", va="center", zorder=4)
+            bx += bw + 1.7
+        by -= badge_h + badge_gap
+
+    # 高點
+    y -= gap + hi_pane_h
+    pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["hi_line"])
+    sec_title(pad_x + 2.6, y + hi_pane_h - title_band / 2, "高點資訊", C["hi_ink"],
+              f"10日／20日／60日　MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}")
+    highs = [("10日高點", card["h10"], card["dist_h10"]),
+             ("20日高點", card["h20"], card["dist_h20"]),
+             ("60日高點", card["h60"], card["dist_h60"])]
     for i, (lab, px, dist) in enumerate(highs):
-        _metric_cell(4.2 + i * 31.6, red_y + box_pad_b, lab, px, dist, high=True)
+        metric_box(inner_x + i * (box_w + box_gap_x), y + pane_pad, lab, px, dist, high=True)
 
-    gtitle_top = red_y - gap_boxes
-    gtitle_cy = gtitle_top - title_band / 2
-    ax.text(3.4, gtitle_cy, "低點資訊", fontproperties=_fp(11, "bold"), color="#2e7d32", va="center")
-    ax.text(38.0, gtitle_cy, f"月空間 {card['space_20']}%　季空間 {card['space_60']}%",
-            fontproperties=_fp(9), color="#33691e", va="center")
-    green_top = gtitle_top - title_band - gap_after_title
-    green_y = green_top - green_box_h
-    ax.add_patch(patches.FancyBboxPatch((1.8, green_y), 96.4, green_box_h, boxstyle="round,pad=0,rounding_size=0.35",
-                                        facecolor="#ffffff", edgecolor="#81c784", linewidth=1.1))
-    lows = [("10低", card["l10"], card["dist_l10"]), ("20低", card["l20"], card["dist_l20"]),
-            ("60低", card["l60"], card["dist_l60"])]
-    low1_y = green_y + box_pad_b + ((cell_h + cell_gap) if extra_lows else 0)
+    # 低點：短中期一排，120／240／480 另一排，貼到 2% 內就實綠。
+    y -= gap + lo_pane_h
+    pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["lo_line"])
+    sec_title(pad_x + 2.6, y + lo_pane_h - title_band / 2, "低點資訊", C["lo_ink"],
+              f"20日（高低操作空間 {card['space_20']}%）／60日（高低操作空間 {card['space_60']}%）")
+    lows = [("10日低點", card["l10"], card["dist_l10"]),
+            ("20日低點", card["l20"], card["dist_l20"]),
+            ("60日低點", card["l60"], card["dist_l60"])]
+    row1_y = y + pane_pad + ((box_h + box_gap) if extra_lows else 0)
     for i, (lab, px, dist) in enumerate(lows):
-        near = dist is not None and float(dist) <= 2.0
-        _metric_cell(4.2 + i * 31.6, low1_y, lab, px, dist, high=False, near=near)
+        hit = dist is not None and float(dist) <= 2.0
+        metric_box(inner_x + i * (box_w + box_gap_x), row1_y, lab, px, dist, high=False, hit=hit)
     if extra_lows:
-        low2_y = green_y + box_pad_b
         for i, (lab, px, dist) in enumerate(extra_lows[:3]):
-            near = dist is not None and float(dist) <= 2.0
-            _metric_cell(4.2 + i * 31.6, low2_y, lab, px, dist, high=False, near=near)
+            hit = dist is not None and float(dist) <= 2.0
+            metric_box(inner_x + i * (box_w + box_gap_x), y + pane_pad,
+                       f"{lab[:-1]}日低點", px, dist, high=False, hit=hit)
 
-    table_title_top = green_y - gap_before_table
-    table_title_y = table_title_top - tbl_title_h / 2
-    top = table_title_top - tbl_title_h
-    ax.text(3.2, table_title_y, "過去 20 天記錄", fontproperties=_fp(11, "bold"), color="#263238", va="center")
+    # 過去 20 天：欄寬按權重分配，高低與預警走藥丸，溫度與量能用深淺表達強弱。
+    y -= gap + tbl_title_h
+    sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F")
     headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
-    xs = [2.0, 16.6, 27.4, 38.2, 49.0, 60.2, 73.0, 85.2, 98.0]
+    weights = [15.4, 11.2, 10.4, 10.2, 10.6, 12.4, 11.8, 13.0]
+    span = 100 - 2 * pad_x
+    xs = [pad_x]
+    for wgt in weights:
+        xs.append(xs[-1] + span * wgt / sum(weights))
+    tbl_top = y
     for i, h in enumerate(headers):
-        ax.add_patch(patches.Rectangle((xs[i], top - hdr_h), xs[i + 1] - xs[i], hdr_h, facecolor="#e3f2fd", edgecolor="#90caf9", lw=0.6))
-        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontproperties=_fp(11, "bold"), ha="center", va="center", color="#0d47a1")
-    y = top - hdr_h
-    fs_body = 11
-    row_i = 0
-    for _, r in table.iterrows():
-        y1 = y - body_h
-        profit = r.get("profit_pct")
+        ax.add_patch(patches.Rectangle((xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
+                                       facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
+        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h, fontproperties=_fp(11.5, "bold"),
+                ha="center", va="center", color=C["tbl_ink"], zorder=3)
+    ry = tbl_top - hdr_h
+    for row_i, (_, r) in enumerate(table.iterrows()):
+        y1 = ry - body_h
         bias = float(r.get("bias_monthly") or 0)
         rank = int(r.get("vol_rank_120") or 99)
         temp_v = str(r["溫度計"]).replace(" °C", "").replace("°C", "")
@@ -824,28 +936,29 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             temp_n = float(temp_v)
         except (TypeError, ValueError):
             temp_n = 0.0
-        pbg, pfg = "#fce4ec", "#c62828"
-        if temp_n >= 70:
-            tbg, tfg = "#ef9a9a", "#b71c1c"
+        if temp_n >= 75:
+            tbg, tfg = "#F9A8C0", "#7A0B2E"
+        elif temp_n >= 65:
+            tbg, tfg = "#FBC7D8", "#9B1145"
         elif temp_n >= 55:
-            tbg, tfg = "#f8bbd0", "#ad1457"
+            tbg, tfg = "#FDE0E9", C["hi_ink"]
         else:
-            tbg, tfg = "#eeeeee", "#424242"
+            tbg, tfg = "#F1F3F6", "#4B5563"
         if rank <= 10:
-            vbg, vfg = "#ec407a", "#ffffff"
+            vbg, vfg = C["up"], "#FFFFFF"
         elif rank <= 20:
-            vbg, vfg = "#f8bbd0", "#880e4f"
+            vbg, vfg = "#F8BBD0", "#880E4F"
+        elif rank <= 50:
+            vbg, vfg = "#FDE0E9", C["hi_ink"]
         else:
-            vbg, vfg = "#f5f5f5", "#424242"
-        hl = str(r["高低"])
-        al = str(r["預警"])
+            vbg, vfg = "#F1F3F6", "#4B5563"
+        hl, al = str(r["高低"]), str(r["預警"])
         zebra = row_i % 2 == 0
-        price_bg = "#e53935" if hl == "20高" else ("#ffffff" if zebra else "#eef5fb")
-        price_fg = "#ffffff" if hl == "20高" else "#111111"
-        date_bg = "#ffffff" if zebra else "#e3f2fd"
-        fills = [date_bg, price_bg, pbg, "#ffffff", "#ffffff", tbg,
-                 "#ffcdd2" if bias > 0 else ("#c8e6c9" if bias < 0 else "#ffffff"), vbg]
-        # even row index from y
+        base = "#FFFFFF" if zebra else C["zebra"]
+        hot = "高" in hl
+        fills = [base, "#FDECF3" if hot else base, "#FDF2F6" if zebra else "#FBEAF1",
+                 base, base, tbg,
+                 "#FDE3E9" if bias > 0 else ("#E4F3E7" if bias < 0 else base), base]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -857,44 +970,40 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             str(r["120日量"]),
         ]
         for i, val in enumerate(vals):
-            ax.add_patch(patches.Rectangle((xs[i], y1), xs[i + 1] - xs[i], body_h, facecolor=fills[i],
-                                           edgecolor="#eceff1", lw=0.4))
-            cy = (y + y1) / 2
-            cx = (xs[i] + xs[i + 1]) / 2
-            if i == 3:
-                if "高" in hl:
-                    _pill(ax, cx, cy, hl, "#ec407a", "#ffffff", w=9.6, h=body_h * 0.62, fs=10)
-                elif "低" in hl:
-                    _pill(ax, cx, cy, hl, "#43a047", "#ffffff", w=9.6, h=body_h * 0.62, fs=10)
+            ax.add_patch(patches.Rectangle((xs[i], y1), xs[i + 1] - xs[i], body_h,
+                                           facecolor=fills[i], edgecolor="#E6EBF2", lw=0.5, zorder=2))
+            cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
+            if i in (3, 4):
+                if "高" in val:
+                    _pill(ax, cx, cy, val, C["up"], "#FFFFFF", w=tw(val, 10.4) + 2.8,
+                          h=body_h * 0.66, fs=10.4)
+                elif "低" in val:
+                    _pill(ax, cx, cy, val, "#43A047", "#FFFFFF", w=tw(val, 10.4) + 2.8,
+                          h=body_h * 0.66, fs=10.4)
                 else:
-                    ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center")
-            elif i == 4:
-                if "高" in al:
-                    _pill(ax, cx, cy, al, "#ec407a", "#ffffff", w=10.4, h=body_h * 0.62, fs=10)
-                elif "低" in al:
-                    _pill(ax, cx, cy, al, "#43a047", "#ffffff", w=10.4, h=body_h * 0.62, fs=10)
-                else:
-                    ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center")
+                    ax.text(cx, cy, "No", fontproperties=_fp(11), color=C["ink_mute"],
+                            ha="center", va="center", zorder=3)
+            elif i == 7:
+                _pill(ax, cx, cy, val, vbg, vfg, w=tw(val, 10.6) + 2.8, h=body_h * 0.66, fs=10.6)
             else:
                 if i == 1:
-                    color = price_fg
+                    color = C["up"] if hot else C["ink"]
                 elif i == 2:
-                    color = pfg
+                    color = C["up"]
                 elif i == 5:
                     color = tfg
-                elif i == 7:
-                    color = vfg
                 elif i == 6:
-                    color = "#c62828" if bias > 0 else ("#00695c" if bias < 0 else "#111111")
+                    color = "#C62828" if bias > 0 else (C["down"] if bias < 0 else C["ink"])
                 else:
-                    color = "#111111"
-                ax.text(cx, cy, val, fontproperties=_fp(fs_body, "bold"),
-                        ha="center", va="center", color=color)
-        y = y1
-        row_i += 1
+                    color = C["ink"]
+                ax.text(cx, cy, val, fontproperties=_fp(12, "bold"), ha="center", va="center",
+                        color=color, zorder=3)
+        ry = y1
+    ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
+                                   edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
-    plt.savefig(save_path, dpi=175, facecolor=fig.get_facecolor())
-    plt.close()
+    fig.savefig(save_path, dpi=200, facecolor=fig.get_facecolor())
+    plt.close(fig)
     return save_path
 
 def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFrame:
