@@ -293,6 +293,12 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
+            from us_overnight import ensure_us_overnight_table
+
+            ensure_us_overnight_table(path)
+        except Exception:
+            pass
+        try:
             from portfolio_engine import PortfolioEngine
 
             PortfolioEngine(path)

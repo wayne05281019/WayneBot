@@ -330,16 +330,22 @@ class ScreeningEngine:
         return out
 
     def screen_daytrade(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        target_date = target_date or self.get_latest_trading_date()
         dfs = self.load_market_data(target_date=target_date)
         if not dfs:
             return []
-        return [self._row_for_bot(x) for x in self.execute_all_strategies(dfs).get("day_trade") or []]
+        results = self.execute_all_strategies(dfs)
+        _postprocess_screen(self.db_path, target_date, results)
+        return [self._row_for_bot(x) for x in results.get("day_trade") or []]
 
     def screen_overnight(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        target_date = target_date or self.get_latest_trading_date()
         dfs = self.load_market_data(target_date=target_date)
         if not dfs:
             return []
-        return [self._row_for_bot(x) for x in self.execute_all_strategies(dfs).get("overnight") or []]
+        results = self.execute_all_strategies(dfs)
+        _postprocess_screen(self.db_path, target_date, results)
+        return [self._row_for_bot(x) for x in results.get("overnight") or []]
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)
@@ -486,6 +492,12 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
     elif item.get("sector_outflow"):
         notices.append(html_escape(str(item.get("sector_flow_label") or "輪動出")))
+    if item.get("us_peer_headwind"):
+        notices.append(_hot("費半逆風"))
+    if item.get("us_risk_off"):
+        notices.append(_hot("隔夜逆風"))
+    elif item.get("us_caution"):
+        notices.append(html_escape("隔夜偏空"))
     to_k = item.get("turnover_k")
     try:
         to_s = f"{float(to_k) / 1000.0:.1f}億" if to_k is not None else ""
@@ -531,6 +543,8 @@ def _compact_line(item: Dict[str, Any]) -> str:
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
             (_hot(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
+            (_hot("費半逆風"), item.get("us_peer_headwind")),
+            (_hot("隔夜逆風"), item.get("us_risk_off")),
         )
         if on
     )
@@ -555,7 +569,11 @@ def _compact_line(item: Dict[str, Any]) -> str:
     )
 
 
-def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
+def format_screening_payload(
+    results: Dict[str, List[Dict[str, Any]]],
+    target_date: str,
+    us_html: str = "",
+) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
     specs = [
@@ -569,17 +587,23 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         ("overnight", "🌙", "隔日沖", "尾盤保險買進區間、明早開高、跌破防守先走", 10, True),
     ]
     first = True
+    us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     for key, emoji, label, subtitle, cap, skip_empty in specs:
         items = results.get(key) or []
         if skip_empty and not items:
-            continue
+            if key in ("day_trade", "overnight") and us_regime == "risk_off":
+                pass
+            else:
+                continue
         head = f"{html_escape(subtitle)}　共 {len(items)} 檔"
         if first:
-            head = (
-                f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}\n"
-                f"<i>給家人轉貼用。價位是保險參考，不是保證獲利。</i>\n"
-                + head
-            )
+            bits = [
+                f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
+                "<i>給家人轉貼用。價位是保險參考，不是保證獲利。</i>",
+            ]
+            if us_html:
+                bits.append(us_html)
+            head = "\n".join(bits) + "\n" + head
             first = False
         part: Dict[str, Any] = {
             "mark_key": key,
@@ -587,7 +611,10 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
             "mark_hint": subtitle,
         }
         if not items:
-            part["html"] = head + "\n<i>今日無符合條件標的</i>"
+            if key in ("day_trade", "overnight") and us_regime == "risk_off":
+                part["html"] = head + "\n<i>隔夜逆風：當沖／隔日沖今日不列（VIX 或美股四大／費半過弱）。</i>"
+            else:
+                part["html"] = head + "\n<i>今日無符合條件標的</i>"
             payload.append(part)
             continue
         detail_n = min(cap, len(items))
@@ -613,7 +640,7 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
     if payload:
         payload[-1]["html"] += (
             "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
-            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
+            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
         )
     else:
@@ -625,7 +652,11 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
     return [p["html"] for p in format_screening_payload(results, target_date)]
 
 
-def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> str:
+def format_line_share_text(
+    results: Dict[str, List[Dict[str, Any]]],
+    target_date: str,
+    us_plain: str = "",
+) -> str:
     """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
     specs = [
         ("revenue_cross", "優先看　營收轉強×量價"),
@@ -662,8 +693,10 @@ def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date
     lines = [
         f"WayneBot 海選 {target_date}（昨收，早上寄出給家人）",
         "量化輔助，不是立即下單。當沖請看保險進場／第一停利／衝頂／均價停損。",
-        "",
     ]
+    if us_plain:
+        lines.append(us_plain)
+    lines.append("")
     for key, title in specs:
         items = results.get(key) or []
         lines.append(f"【{title}】{len(items)}檔")
@@ -685,6 +718,27 @@ def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date
 # ------------------------------------------------------------------------------
 # 機器人與外部呼叫總入口（徹底修復 Telegram 報錯之核心介面）
 # ------------------------------------------------------------------------------
+def _postprocess_screen(db_path: str, target_date: str, results: Dict[str, Any]) -> Dict[str, Any]:
+    """產業輪動標籤＋隔夜美股過濾。美股抓不到就不過濾。"""
+    try:
+        from money_flow import annotate_items_with_sector_flow
+
+        for lst in results.values():
+            if isinstance(lst, list):
+                annotate_items_with_sector_flow(db_path, target_date, lst)
+    except Exception:
+        pass
+    snap: Dict[str, Any] = {}
+    try:
+        from us_overnight import apply_us_overnight, refresh_us_overnight
+
+        snap = refresh_us_overnight(db_path, target_date) or {}
+        apply_us_overnight(results, snap)
+    except Exception:
+        pass
+    return snap
+
+
 def execute_full_screening(db_path: str = None, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     全市場量化選股總入口函式：
@@ -734,16 +788,18 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         if str(item.get("stock_id") or "") in hot_ids:
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
+    us_snap = _postprocess_screen(engine.db_path, target_date, results)
+    us_html = ""
+    us_plain = ""
     try:
-        from money_flow import annotate_items_with_sector_flow
+        from us_overnight import format_us_html, format_us_plain
 
-        for lst in results.values():
-            if isinstance(lst, list):
-                annotate_items_with_sector_flow(engine.db_path, target_date, lst)
+        us_html = format_us_html(us_snap)
+        us_plain = format_us_plain(us_snap)
     except Exception:
         pass
 
-    payload = format_screening_payload(results, target_date)
+    payload = format_screening_payload(results, target_date, us_html=us_html)
     report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
@@ -768,7 +824,7 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
-        "line_share": format_line_share_text(results, target_date),
+        "line_share": format_line_share_text(results, target_date, us_plain=us_plain),
     }
 
 
