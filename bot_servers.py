@@ -192,7 +192,8 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _q(self, topic: str):
-        return InlineKeyboardButton("❓", callback_data=f"?:{topic}")
+        """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
+        return InlineKeyboardButton("說明", callback_data=f"?:{topic}")
 
     def _keyboard(self):
         """舊 inline 主選單改成極短一列，避免再疊四排。常駐選單在輸入框下方。"""
@@ -235,17 +236,48 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows)
 
     def _hits_keyboard(self, hits):
+        """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
         rows = []
-        for i, h in enumerate(hits[:8], start=1):
+        for h in hits[:8]:
             c = str(h.get("stock_id") or "")
             n = str(h.get("stock_name") or "")
             if not c:
                 continue
-            row = self._stock_action_row(c, n, idx=i)
-            row.append(InlineKeyboardButton("買入", callback_data=f"b:{c}"))
-            rows.append(row)
+            label = f"{c} {n}".strip()[:16] or c
+            rows.append(
+                [
+                    InlineKeyboardButton(label, callback_data=f"k:{c}"),
+                    InlineKeyboardButton("➕", callback_data=f"w:{c}"),
+                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
+                ]
+            )
         rows.append([self._q("stock")])
         return InlineKeyboardMarkup(rows) if rows else self._keyboard()
+
+    def _hits_list_html(self, hits, lead: str = "") -> str:
+        """多檔時訊息裡列出藍字股名，按鈕序號才對得上。"""
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
+        lines = [
+            lead
+            or "名稱相近，請選要看哪一檔。藍字＝奇摩；按鈕＝看這檔。"
+        ]
+        for i, h in enumerate((hits or [])[:8], start=1):
+            sid = str(h.get("stock_id") or "")
+            sname = str(h.get("stock_name") or "")
+            if not sid:
+                continue
+            if html_stock_anchor:
+                try:
+                    title = html_stock_anchor(sid, sname, self.db_path)
+                except Exception:
+                    title = f"{html_escape(sid)} {html_escape(sname)}"
+            else:
+                title = f"{html_escape(sid)} {html_escape(sname)}"
+            lines.append(f"{i}. {title}")
+        return "\n".join(lines)
 
     def _watch_list_keyboard(self, rows):
         kb = []
@@ -524,7 +556,7 @@ class WayneTelegramBot:
             "<b>WayneBot</b>\n"
             "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔。左下也可按 /menu。\n"
-            "各頁訊息上的 <b>❓</b> 是該頁用法，再按 <b>✕</b> 就收合。",
+            "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
             reply_markup=self._reply_menu(),
         )
 
@@ -816,7 +848,7 @@ class WayneTelegramBot:
             return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
-            await update.message.reply_text("收到，查詢中…", reply_markup=self._keyboard())
+            await update.message.reply_text("收到，查詢中…", reply_markup=self._reply_menu())
         except Exception:
             logger.exception("ack 失敗")
         try:
@@ -826,8 +858,9 @@ class WayneTelegramBot:
                 return
             if len(hits) > 1:
                 await update.message.reply_html(
-                    "找到多檔。藍字在名單裡連奇摩；按「看這檔」看出價＋圖，➕觀察，或記買入：",
+                    self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
+                    disable_web_page_preview=True,
                 )
                 return
             await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
@@ -846,7 +879,11 @@ class WayneTelegramBot:
             return True
         if len(hits) > 1:
             self._pending[uid] = pending
-            await message.reply_html("找到多檔，請點選：", reply_markup=self._hits_keyboard(hits))
+            await message.reply_html(
+                self._hits_list_html(hits, "找到多檔，請點選："),
+                reply_markup=self._hits_keyboard(hits),
+                disable_web_page_preview=True,
+            )
             return True
         code = hits[0]["stock_id"]
         name = hits[0].get("stock_name") or code
