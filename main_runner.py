@@ -17,8 +17,8 @@
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
 # 海選改早上 07:30 寄出（給家人轉貼），盤後 16:30 不再重複寄名單。
-# 證交所收盤約 13:30 後陸續出表，法人常 15:30～16:30 才齊，所以抓數排 16:30。
-# 15:30 前不把「今天」寫進庫（避免上市已出、上櫃 0 的半套日被海選當成最新日）。
+# 證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤最慢 16:30 齊，所以抓數排 16:30。
+# 16:30 前不把「今天」寫進庫；開機只補已經收完的交易日。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
 # fuse（不推播）把 Release 之後缺的交易日補進這份庫。
 # ==============================================================================
@@ -429,15 +429,15 @@ class MainRunner:
         except Exception:
             wd = 0
         if wd < 5 and not self._increment_ok(health) and self.fetcher:
-            for i in range(1, 6):
+            for i in range(1, 9):
                 logger.warning(
-                    "上市／上櫃未齊（上市 %s 上櫃 %s），第 %s 次再抓 %s",
+                    "%s 繼續補齊（上市 %s 上櫃 %s）第 %s 次",
+                    cap,
                     health.get("tw"),
                     health.get("two"),
                     i,
-                    cap,
                 )
-                time.sleep(min(40 * i, 90))
+                time.sleep(min(25 * i, 60))
                 self.fetcher.update_daily_market_data(cap)
                 if hasattr(self.fetcher, "sync_paired_markets"):
                     self.fetcher.sync_paired_markets()
@@ -448,9 +448,9 @@ class MainRunner:
         if not self._increment_ok(health):
             note = format_audit_plain(health)
             self._mark_pipeline("incomplete", note[:500])
-            logger.error("盤後融合未齊：%s", note)
+            logger.error("盤後仍待補：%s", note)
             try:
-                self.send_telegram_message("⚠️ 盤後融合未齊，早上海選仍用上一完整日。\n" + note)
+                self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再抓）\n" + note)
             except Exception:
                 pass
             return False
@@ -466,17 +466,17 @@ class MainRunner:
 
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
-        if skip_if_done and self.already_completed_today(key):
+        if skip_if_done and as_of and self.already_completed_today(key):
             logger.info("早上海選 %s 已寄過，略過。", key)
             return True
+        logger.info("☀️ 07:30 先補齊已收盤交易日與財報，再寄海選")
+        self.run_daily_increment(notify=False)
+        as_of = latest_complete_quote_date(self.db_path)
+        key = f"screen-{as_of or 'none'}"
         if not as_of:
-            logger.error("庫內沒有上市＋上櫃都齊的交易日，不寄海選")
-            try:
-                self.send_telegram_message("⚠️ 庫內沒有上市＋上櫃都齊的交易日，早上不寄海選。")
-            except Exception:
-                pass
+            logger.error("補齊後仍無完整交易日可寄海選")
             return False
-        logger.info("☀️ 台灣 07:30 海選，基準日 %s（昨收完整日）", as_of)
+        logger.info("☀️ 台灣 07:30 海選，基準日 %s", as_of)
         screening = None
         if run_full_screening:
             try:

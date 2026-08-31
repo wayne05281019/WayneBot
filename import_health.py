@@ -92,11 +92,11 @@ def list_coverage_issues(
         tw_i, two_i, n_i = int(tw or 0), int(two or 0), int(n or 0)
         problems = []
         if n_i < min_total:
-            problems.append(f"全日只有 {n_i} 檔")
+            problems.append(f"待補全日 {n_i}")
         if tw_i >= min_tw and two_i < min_two:
-            problems.append(f"上櫃只有 {two_i}（上市 {tw_i}）")
+            problems.append(f"待補上櫃 {two_i}（上市 {tw_i}）")
         if two_i >= min_two and tw_i < min_tw:
-            problems.append(f"上市只有 {tw_i}（上櫃 {two_i}）")
+            problems.append(f"待補上市 {tw_i}（上櫃 {two_i}）")
         if problems:
             out.append({"date": str(date), "tw": tw_i, "two": two_i, "total": n_i, "problems": problems})
     return out
@@ -138,15 +138,15 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     if total == 0:
         problems.append(f"{yyyymmdd} 沒有日 K（休市或匯入失敗）")
     if tw >= MIN_TW and two < MIN_TWO:
-        problems.append(f"上櫃只有 {two} 檔（上市 {tw}），櫃買收盤可能沒寫進")
+        problems.append(f"待補上櫃 {two}/{MIN_TWO}（上市 {tw}）")
     if two >= MIN_TWO and tw < MIN_TW:
-        problems.append(f"上市只有 {tw} 檔（上櫃 {two}），證交所收盤可能沒寫進")
+        problems.append(f"待補上市 {tw}/{MIN_TW}（上櫃 {two}）")
     if total >= 800 and chip_n < 100:
-        problems.append("法人買賣超幾乎全 0，T86 可能失敗")
+        problems.append(f"待補法人（非0僅 {chip_n}）")
     if int(m_n[0] or 0) < 200:
-        problems.append("月營收列過少，官方月報尚未同步")
+        problems.append("待補月營收")
     if int(x_n[0] or 0) < 50:
-        problems.append("除權息列過少，官方 TWT49U／櫃買尚未同步")
+        problems.append("待補除權息")
     hist = list_coverage_issues(db_path)
     return {
         "date": yyyymmdd,
@@ -167,18 +167,68 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     }
 
 
+def inventory_payload(db_path: str) -> Dict[str, Any]:
+    """給 Render /inventory 對表：哪些日要補、財報／除權息／母體有幾列。"""
+    health = audit_import(db_path)
+    complete = latest_complete_quote_date(db_path)
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY 1")]
+    counts: Dict[str, int] = {}
+    for t in (
+        "daily_quotes",
+        "monthly_revenue",
+        "quarterly_income",
+        "ex_rights",
+        "stock_universe",
+        "technical_indicators",
+    ):
+        if t in tables:
+            counts[t] = int(cur.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] or 0)
+        else:
+            counts[t] = 0
+    span = cur.execute(
+        "SELECT MIN(replace(date,'-','')), MAX(replace(date,'-','')), COUNT(DISTINCT replace(date,'-','')) FROM daily_quotes"
+    ).fetchone() if "daily_quotes" in tables else ("", "", 0)
+    conn.close()
+    gaps = health.get("history_issues") or []
+    return {
+        "ok": bool(health.get("ok")) and int(health.get("history_issue_n") or 0) == 0,
+        "latest_complete": complete or "",
+        "as_of": health.get("date") or "",
+        "quotes": {
+            "rows": counts.get("daily_quotes") or 0,
+            "days": int(span[2] or 0),
+            "from": span[0] or "",
+            "to": span[1] or "",
+            "tw": int(health.get("tw") or 0),
+            "two": int(health.get("two") or 0),
+            "total": int(health.get("total") or 0),
+            "chips_nonzero": int(health.get("chips_nonzero") or 0),
+        },
+        "monthly_revenue": {"rows": counts.get("monthly_revenue") or 0, "latest": health.get("latest_month") or ""},
+        "quarterly_income": {"rows": counts.get("income_n") or 0, "latest": health.get("latest_quarter") or ""},
+        "ex_rights": {"rows": counts.get("ex_rights_n") or counts.get("ex_rights") or 0, "latest": health.get("latest_ex") or ""},
+        "stock_universe": {"rows": counts.get("stock_universe") or 0},
+        "tables": tables,
+        "gap_n": int(health.get("history_issue_n") or 0),
+        "gaps": [{"date": x.get("date"), "tw": x.get("tw"), "two": x.get("two"), "total": x.get("total")} for x in gaps[:50]],
+        "fill": health.get("problems") or [],
+    }
+
+
 def format_audit_plain(health: Dict[str, Any]) -> str:
     lines = [
         f"盤後匯入 {health.get('date')}：上市 {health.get('tw')}　上櫃 {health.get('two')}　合計 {health.get('total')}",
         f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{health.get('latest_month')}）　季報 {health.get('income_n')}（{health.get('latest_quarter')}）　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）",
     ]
     if health.get("problems"):
-        lines.append("當日問題：" + "；".join(health["problems"]))
+        lines.append("待補：" + "；".join(health["problems"]))
     n = int(health.get("history_issue_n") or 0)
     if n:
         sample = health.get("history_issues") or []
         bits = [f"{x['date']} 上市{x['tw']}/上櫃{x['two']}" for x in sample[:6]]
-        lines.append(f"歷史缺邊 {n} 日：" + "、".join(bits))
+        lines.append(f"待補日K {n} 日：" + "、".join(bits))
     else:
         lines.append("歷史開盤日上市／上櫃兩邊都齊。")
     return "\n".join(lines)

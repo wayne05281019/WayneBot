@@ -549,7 +549,7 @@ class DataFetcher:
         return best
 
     # --------------------------------------------------------------------------
-    # 6. 每日 15:30 增量更新閉環（自動排程調用）
+    # 6. 每日 16:30 增量更新閉環（自動排程調用）
     # --------------------------------------------------------------------------
     def update_daily_market_data(self, target_date: str = None) -> int:
         """
@@ -624,9 +624,9 @@ class DataFetcher:
         two_records = self._fetch_tpex_daily(target_date)
         tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
         attempt = 0
-        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 600 and attempt < 8:
+        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 600 and attempt < 12:
             attempt += 1
-            print(f"🔁 上市已有 {len(tw_records)} 檔，上櫃只有 {len(two_records)}，第 {attempt} 次再抓櫃買")
+            print(f"🔁 {target_date} 繼續補齊櫃買：本輪 {len(two_records)} 檔，第 {attempt} 次")
             time.sleep(1.2 * attempt)
             extra = self._fetch_tpex_daily(target_date)
             if len(extra) > len(two_records):
@@ -682,14 +682,13 @@ class DataFetcher:
                 conn.commit()
                 conn.close()
                 print(
-                    f"🛑 {target_date} 收盤表尚未可融合（上市 {new_tw}／上櫃 {new_two}），"
-                    f"已撤回盤中半套 {gone} 列，避免海選停在上櫃 0"
+                    f"⏰ {target_date} 未到台灣 16:30（證交所 13:30／盤後 14:30、櫃買 15:00），"
+                    f"先補已收盤交易日；本輪上市 {new_tw} 上櫃 {new_two}，撤回 {gone} 列"
                 )
             else:
-                keep = f"庫內已有上市 {existing_tw}／上櫃 {existing_two}" if (existing_tw or existing_two) else "庫內此日仍空"
                 print(
-                    f"🛑 {target_date} 不寫入：上市 {new_tw}、上櫃 {new_two} 沒抓齊。"
-                    f"{keep}。海選只用兩邊都齊的交易日。"
+                    f"🔁 {target_date} 繼續補齊：本輪上市 {new_tw} 上櫃 {new_two}"
+                    f"（庫內上市 {existing_tw} 上櫃 {existing_two}）"
                 )
             return 0
 
@@ -795,7 +794,7 @@ class DataFetcher:
             cap = datetime.now().strftime("%Y%m%d")
         end_date = str(end_date or cap).replace("-", "")[:8]
         if end_date > cap:
-            print(f"⏳ 收盤表未齊前，融合截止改為 {cap}（不下寫 {end_date}）")
+            print(f"⏰ 未到台灣 16:30，先補到 {cap}（{end_date} 等櫃買收盤後再抓）")
             end_date = cap
         conn = self.get_db_connection()
         cur = conn.cursor()

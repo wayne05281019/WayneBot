@@ -90,15 +90,15 @@ def taipei_today_str() -> str:
 
 
 def fuse_end_date(now=None) -> str:
-    """最後一個「可以融合收盤表」的日曆日。
+    """最後一個要把收盤寫進庫的日曆日。
 
-    證交所收盤表盤中就可能先出，櫃買不含定價表常要到 14:30 之後才穩。
-    15:30 前若把「今天」寫進 sqlite，海選／單檔查詢會停在只有上市、上櫃 0 的半套日。
+    證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤表
+    最慢台灣 16:30 就齊，開機／盤中不要先寫「今天」。
     """
     from datetime import timedelta
 
     now = now or taipei_now()
-    cutoff = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    cutoff = now.replace(hour=16, minute=30, second=0, microsecond=0)
     if now >= cutoff:
         return now.strftime("%Y%m%d")
     return (now - timedelta(days=1)).strftime("%Y%m%d")
