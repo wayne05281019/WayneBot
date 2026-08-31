@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 def list_coverage_issues(
     db_path: str,
     min_tw: int = 800,
-    min_two: int = 400,
+    min_two: int = 600,
     min_total: int = 1500,
 ) -> List[Dict[str, Any]]:
     conn = sqlite3.connect(db_path)

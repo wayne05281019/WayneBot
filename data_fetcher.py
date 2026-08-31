@@ -49,7 +49,9 @@ class DataFetcher:
         )
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/json,text/javascript,*/*;q=0.8",
+            "Referer": "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430.php",
         })
         
         # 確保資料庫就緒（0 秒開機機制）
@@ -395,35 +397,26 @@ class DataFetcher:
         candidates = df["stock_id"].tolist()
         return candidates
 
-    def _get_json_retry(self, url: str, tries: int = 3):
+    def _get_json_retry(self, url: str, tries: int = 5):
         last = None
         for i in range(max(1, int(tries))):
             try:
-                resp = self.session.get(url, timeout=40)
-                if resp.status_code == 200:
+                resp = self.session.get(url, timeout=60)
+                if resp.status_code != 200:
+                    last = f"HTTP {resp.status_code}"
+                elif not resp.content:
+                    last = "empty body"
+                else:
                     return resp.json()
-                last = f"HTTP {resp.status_code}"
             except Exception as e:
                 last = e
-            time.sleep(1.1 * (i + 1))
+            time.sleep(1.25 * (i + 1))
         print(f"⚠️ JSON 抓取失敗 {url.split('?')[0]}：{last}")
         return None
 
-    def _fetch_tpex_daily(self, target_date: str) -> list:
-        """櫃買收盤。新版 JSON 在 tables[].data（欄名對應），舊版才是 aaData。"""
-        yyyy, mm, dd = target_date[:4], target_date[4:6], target_date[6:]
-        roc = f"{int(yyyy) - 1911}/{mm}/{dd}"
-        urls = [
-            f"https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?date={yyyy}/{mm}/{dd}&id=&response=json",
-            f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc}&o=json",
-        ]
-        payload = None
-        for url in urls:
-            payload = self._get_json_retry(url)
-            if payload:
-                break
+    def _parse_tpex_payload(self, payload, target_date: str) -> list:
+        """把櫃買 JSON 收成現股／KY／ETF 列。欄名去空白（官方常寫『收盤 』）。"""
         if not payload:
-            self._tpex_status = "error"
             return []
         raw_rows, fields = [], []
         if isinstance(payload, dict):
@@ -433,22 +426,26 @@ class DataFetcher:
                 for tb in payload.get("tables") or []:
                     title = str(tb.get("title") or "")
                     rows = tb.get("data") or []
-                    if not rows:
-                        continue
-                    if "管理" in title:
+                    if not rows or "管理" in title:
                         continue
                     score = len(rows)
-                    if "上櫃" in title or "收盤" in title:
-                        score += 10000
+                    if "不含定價" in title or "不含權證" in title:
+                        score += 20000
+                    elif "上櫃股票每日收盤" in title:
+                        score += 15000
+                    elif "上櫃" in title or "收盤" in title:
+                        score += 5000
+                    # 上櫃股票行情常把權證全塞進來（上萬列），不要當成最佳表
+                    if len(rows) > 4000:
+                        score -= 8000
                     if best is None or score > best[0]:
                         best = (score, rows, tb.get("fields") or [])
                 if best:
                     raw_rows, fields = best[1], best[2]
         if not raw_rows:
-            self._tpex_status = "empty"
             return []
-        self._tpex_status = "ok"
-        idx = {str(n): i for i, n in enumerate(fields)}
+        fields = [str(n).replace("\u3000", " ").strip() for n in fields]
+        idx = {n: i for i, n in enumerate(fields)}
 
         def col(row, name, fallback_i):
             i = idx.get(name)
@@ -460,7 +457,7 @@ class DataFetcher:
 
         out = []
         for r in raw_rows:
-            if not r or len(r) < 8:
+            if not r or len(r) < 7:
                 continue
             sid = str(col(r, "代號", 0)).strip()
             sname = str(col(r, "名稱", 1)).strip()
@@ -476,6 +473,8 @@ class DataFetcher:
             turnover_ntd = self.clean_num(col(r, "成交金額(元)", 9), True)
             if turnover_ntd <= 0:
                 turnover_ntd = self.clean_num(col(r, "成交金額", 9), True)
+            if close_p <= 0:
+                continue
             ref_p = close_p - diff if close_p > 0 else 0.0
             pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
             if avg_p <= 0 and volume_shares > 0:
@@ -490,6 +489,64 @@ class DataFetcher:
                 "pct_change": pct, "avg_price": avg_p,
             })
         return out
+
+    def _tpex_date_status(self, payload, target_date: str) -> str:
+        """ok＝日期對得上；empty 尚未判；mismatch＝官方回了別天（假日常誤回最新日）。"""
+        if not isinstance(payload, dict):
+            return "unknown"
+        raw = str(payload.get("date") or "")
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if len(digits) == 8:
+            return "ok" if digits == target_date else "mismatch"
+        if len(digits) >= 16:
+            a, b = digits[:8], digits[8:16]
+            if a <= target_date <= b:
+                return "ok"
+            return "mismatch"
+        return "unknown"
+
+    def _fetch_tpex_daily(self, target_date: str) -> list:
+        """櫃買收盤。優先「不含定價／權證」官方表（wn1430），再退回 dailyQuotes。"""
+        target_date = str(target_date or "").replace("-", "")[:8]
+        yyyy, mm, dd = target_date[:4], target_date[4:6], target_date[6:]
+        roc = f"{int(yyyy) - 1911}/{mm}/{dd}"
+        urls = [
+            # 上櫃股票每日收盤行情(不含定價)，產業=所有證券(不含權證、牛熊證) — 與櫃買官網同一頁
+            f"https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc}&o=json&se=EW",
+            f"https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes?date={yyyy}/{mm}/{dd}&id=&response=json",
+            f"https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&d={roc}&o=json",
+        ]
+        best_map = {}
+        matched_empty = False
+        for i, url in enumerate(urls):
+            payload = self._get_json_retry(url, tries=5)
+            if not payload:
+                continue
+            st = self._tpex_date_status(payload, target_date)
+            if st == "mismatch":
+                print(f"⚠️ 櫃買回了別天（要 {target_date} 得到 {payload.get('date')}），略過 {url.split('?')[0]}")
+                continue
+            parsed = self._parse_tpex_payload(payload, target_date)
+            if st == "ok" and not parsed:
+                if not best_map:
+                    matched_empty = True
+                    break
+                continue
+            for row in parsed:
+                best_map.setdefault(row["stock_id"], row)
+            if i >= 1 and len(best_map) >= 500:
+                break
+        best = list(best_map.values())
+        if matched_empty and len(best) < 400:
+            self._tpex_status = "empty"
+            return []
+        if len(best) >= 400:
+            self._tpex_status = "ok"
+        elif not best:
+            self._tpex_status = "empty"
+        else:
+            self._tpex_status = "thin"
+        return best
 
     # --------------------------------------------------------------------------
     # 6. 每日 15:30 增量更新閉環（自動排程調用）
@@ -567,10 +624,10 @@ class DataFetcher:
         two_records = self._fetch_tpex_daily(target_date)
         tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
         attempt = 0
-        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 400 and attempt < 4:
+        while tw_status == "ok" and len(tw_records) >= 800 and len(two_records) < 600 and attempt < 8:
             attempt += 1
             print(f"🔁 上市已有 {len(tw_records)} 檔，上櫃只有 {len(two_records)}，第 {attempt} 次再抓櫃買")
-            time.sleep(1.15 * attempt)
+            time.sleep(1.2 * attempt)
             extra = self._fetch_tpex_daily(target_date)
             if len(extra) > len(two_records):
                 two_records = extra
@@ -579,7 +636,7 @@ class DataFetcher:
         if tw_status == "empty" and tpex_status == "empty" and not tw_records and not two_records:
             conn = self.get_db_connection()
             cur = conn.cursor()
-            cur.execute("DELETE FROM daily_quotes WHERE date=?", (target_date,))
+            cur.execute("DELETE FROM daily_quotes WHERE replace(date,'-','')=?", (target_date,))
             gone = cur.rowcount
             conn.commit()
             conn.close()
@@ -718,7 +775,7 @@ class DataFetcher:
             "paired": paired,
         }
 
-    def sync_paired_markets(self, min_tw: int = 800, min_two: int = 400) -> list:
+    def sync_paired_markets(self, min_tw: int = 800, min_two: int = 600) -> list:
         """上市有開盤的日子，上櫃一定要同一天進庫；缺邊就整日重抓。"""
         try:
             from import_health import list_coverage_issues
