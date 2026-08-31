@@ -663,6 +663,36 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
     )
 
 
+def horizon_low_cells(card: dict) -> list:
+    """120／240／480 日收盤低；有數字就畫第二排。"""
+    out = []
+    for days, pk, dk in (
+        (120, "l120", "dist_l120"),
+        (240, "l240", "dist_l240"),
+        (480, "l480", "dist_l480"),
+    ):
+        px, dist = card.get(pk), card.get(dk)
+        if px is None or dist is None:
+            continue
+        try:
+            px_f, dist_f = float(px), float(dist)
+        except (TypeError, ValueError):
+            continue
+        if px_f <= 0:
+            continue
+        out.append((f"{days}日低點", px_f, dist_f))
+    return out
+
+
+def _fmt_dist(val) -> str:
+    if val is None:
+        return "—"
+    try:
+        return f"{float(val):+.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖，版面對齊範本；窄寬度讓 Telegram 縮圖後字仍能看。"""
     if not card or card.get("error"):
@@ -716,26 +746,37 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.text(x + 15, 81.75, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"),
                 color="#004d40" if dist < 0 else "#b71c1c", ha="center", va="center")
 
-    # 低點
-    ax.add_patch(patches.FancyBboxPatch((1.8, 70.8), 96.4, 8.8, boxstyle="round,pad=0.12,rounding_size=0.45",
+    extra_lows = horizon_low_cells(card)
+    shift = 6.35 if extra_lows else 0.0
+    ax.add_patch(patches.FancyBboxPatch((1.8, 70.8 - shift), 96.4, 8.8 + shift, boxstyle="round,pad=0.12,rounding_size=0.45",
                                         facecolor="#ffffff", edgecolor="#81c784", linewidth=1.1))
     ax.text(3.4, 78.1, "低點資訊", fontproperties=_fp(13, "bold"), color="#2e7d32", va="center")
-    ax.text(16.5, 78.1, f"20日（高低操作空間: {card['space_20']}%）／60日（高低操作空間: {card['space_60']}%）",
+    extra_note = "　＋120／240／480日" if extra_lows else ""
+    ax.text(16.5, 78.1, f"20日（高低操作空間: {card['space_20']}%）／60日（高低操作空間: {card['space_60']}%）{extra_note}",
             fontproperties=_fp(10), color="#33691e", va="center")
     lows = [("10日低點", card["l10"], card["dist_l10"]), ("20日低點", card["l20"], card["dist_l20"]),
             ("60日低點", card["l60"], card["dist_l60"])]
-    for i, (lab, px, dist) in enumerate(lows):
-        x = 4.2 + i * 31.6
-        ax.add_patch(patches.FancyBboxPatch((x, 71.4), 30.0, 5.4, boxstyle="round,pad=0.1,rounding_size=0.35",
-                                            facecolor="#f1f8e9", edgecolor="#a5d6a7", linewidth=0.8))
-        ax.text(x + 15, 75.6, lab, fontproperties=_fp(10), color="#2e7d32", ha="center", va="center")
-        ax.text(x + 15, 73.7, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
-        ax.text(x + 15, 72.05, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"), color="#b71c1c", ha="center", va="center")
 
-    ax.text(3.2, 69.55, "過去 20 天記錄", fontproperties=_fp(13, "bold"), color="#263238", va="center")
+    def _low_cell(i, lab, px, dist, y0):
+        x = 4.2 + i * 31.6
+        near = dist is not None and float(dist) <= 2.0
+        bg, ec = ("#c8e6c9", "#2e7d32") if near else ("#f1f8e9", "#a5d6a7")
+        ax.add_patch(patches.FancyBboxPatch((x, y0), 30.0, 5.4, boxstyle="round,pad=0.1,rounding_size=0.35",
+                                            facecolor=bg, edgecolor=ec, linewidth=0.8))
+        ax.text(x + 15, y0 + 4.2, lab, fontproperties=_fp(10), color="#2e7d32", ha="center", va="center")
+        ax.text(x + 15, y0 + 2.3, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
+        ax.text(x + 15, y0 + 0.65, f"({float(dist):+.1f}%)", fontproperties=_fp(12, "bold"), color="#b71c1c", ha="center", va="center")
+
+    for i, (lab, px, dist) in enumerate(lows):
+        _low_cell(i, lab, px, dist, 71.4)
+    if extra_lows:
+        for i, (lab, px, dist) in enumerate(extra_lows[:3]):
+            _low_cell(i, lab, px, dist, 71.4 - shift)
+
+    ax.text(3.2, 69.55 - shift, "過去 20 天記錄", fontproperties=_fp(13, "bold"), color="#263238", va="center")
     headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
     xs = [2.0, 16.6, 27.4, 38.2, 49.0, 60.2, 73.0, 85.2, 98.0]
-    top = 68.2
+    top = 68.2 - shift
     hdr_h = 2.55
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], top - hdr_h), xs[i + 1] - xs[i], hdr_h, facecolor="#e3f2fd", edgecolor="#90caf9", lw=0.6))
@@ -919,7 +960,9 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv("距20日高", f"{card['dist_h20']:+.1f}%"),
             kv("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
             kv("距60根低", f"{card.get('dist_l60'):+.1f}%"),
-            kv("距120低", f"{card['dist_l120']:+.1f}%" if card.get("dist_l120") is not None else "—"),
+            kv("距120低", _fmt_dist(card.get("dist_l120"))),
+            kv("距240低", _fmt_dist(card.get("dist_l240"))),
+            kv("距480低", _fmt_dist(card.get("dist_l480"))),
             kv("月空間", f"{card['space_20']}%"),
             kv("季空間", f"{card['space_60']}%"),
             kv("月乖離", bias_s),
@@ -935,7 +978,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     )
 
 
-def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str) -> str:
+def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
     """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
     if not card or card.get("error"):
         return ""
@@ -945,7 +988,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     try:
         from fundamentals import glance_fundamentals_plain
 
-        fund_rows = glance_fundamentals_plain(stock_id, get_db_path())
+        fund_rows = glance_fundamentals_plain(stock_id, db_path or get_db_path())
     except Exception:
         fund_rows = []
 
@@ -1006,7 +1049,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     kv_block(61.55, 15.15, "空間／位置", [
         ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
         ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
-        ("距60根低", f"{card.get('dist_l60'):+.1f}%", "#111111"),
+        ("距60／120／240／480低", "　".join([
+            _fmt_dist(card.get("dist_l60")),
+            _fmt_dist(card.get("dist_l120")),
+            _fmt_dist(card.get("dist_l240")),
+            _fmt_dist(card.get("dist_l480")),
+        ]), "#111111"),
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", "#111111"),
     ])
     kv_block(48.55, 12.15, "熱度／量能", [
@@ -1491,22 +1539,54 @@ def generate_card_image(stock_id: str, db_path: str = None, save_path: str = Non
     return [path] if path else []
 
 
-def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
+def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None) -> dict:
+    """看這檔：決策卡只算一次，介紹圖／高低卡／導航／籌碼一次產出。"""
     sid = str(stock_id).strip()
-    html = generate_decision_card(sid, db_path, lookback=20)
+    db_path = db_path or get_db_path()
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
-    glance = ""
+    engine = CaryNavigatorEngine(db_path)
+    card = engine.get_decision_card(sid, lookback=20)
+    if card.get("error"):
+        return {
+            "error": card.get("error"),
+            "card": card,
+            "glance": "",
+            "cards": [],
+            "chart": "",
+            "chips": "",
+        }
+    tape = {}
     try:
         from chip_tape import build_tape
 
-        engine = CaryNavigatorEngine(db_path or get_db_path())
-        card = engine.get_decision_card(sid, lookback=20)
-        tape = build_tape(db_path or get_db_path(), sid) or {}
-        if not card.get("error"):
-            glance = render_first_glance_png(sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"))
+        tape = build_tape(db_path, sid) or {}
     except Exception:
-        glance = ""
-    cards = generate_card_image(sid, db_path, os.path.join(charts_dir, f"{sid}_card.png"))
-    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"))
-    return html, cards, chart, glance
+        tape = {}
+    glance = render_first_glance_png(
+        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
+    ) or ""
+    card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
+    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png")) or ""
+    chips = ""
+    try:
+        from chips import generate_chips_image
+
+        chips = generate_chips_image(sid, db_path, os.path.join(charts_dir, f"{sid}_chips.png")) or ""
+    except Exception:
+        chips = ""
+    return {
+        "card": card,
+        "tape": tape,
+        "glance": glance,
+        "cards": [card_path] if card_path else [],
+        "chart": chart,
+        "chips": chips,
+    }
+
+
+def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
+    sid = str(stock_id).strip()
+    pack = render_stock_pack(sid, db_path, charts_dir)
+    html = generate_decision_card(sid, db_path, lookback=20)
+    return html, pack.get("cards") or [], pack.get("chart") or "", pack.get("glance") or ""

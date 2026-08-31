@@ -1098,64 +1098,32 @@ class WayneTelegramBot:
                 except Exception:
                     return False
 
-        def _glance():
-            from cary_navigator import CaryNavigatorEngine, render_first_glance_png
-            from chip_tape import build_tape
-
-            engine = CaryNavigatorEngine(self.db_path)
-            card = engine.get_decision_card(code, lookback=20)
-            tape = build_tape(self.db_path, code) or {}
-            if card.get("error"):
-                return ""
-            return render_first_glance_png(
-                code, card, tape, os.path.join(self.charts_dir, f"{code}_glance.png")
-            ) or ""
-
-        def _card():
-            from cary_navigator import generate_card_image
-
-            return generate_card_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_card.png"))
-
-        def _chart():
-            from cary_navigator import generate_chart
-
-            return generate_chart(code, "", self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
-
-        def _chips():
-            return generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
-
-        glance = ""
+        pack = {}
         try:
-            glance = await asyncio.to_thread(_glance)
+            from cary_navigator import render_stock_pack
+
+            pack = await asyncio.to_thread(
+                render_stock_pack, code, self.db_path, self.charts_dir
+            )
         except Exception:
-            logger.exception("介紹圖失敗 code=%s", code)
+            logger.exception("看這檔出圖失敗 code=%s", code)
+            pack = {}
+
+        glance = pack.get("glance") or ""
         if glance:
             await send_photo(glance, cap_links or "當日K＋籌碼價量")
 
-        card_img = ""
-        try:
-            card_img = await asyncio.to_thread(_card)
-        except Exception:
-            logger.exception("決策卡失敗 code=%s", code)
-        for path in self._card_photo_paths(card_img):
+        for path in self._card_photo_paths(pack.get("cards") or []):
             await send_photo(path, "高低決策卡")
 
-        chart = ""
-        try:
-            chart = await asyncio.to_thread(_chart)
-        except Exception:
-            logger.exception("導航圖失敗 code=%s", code)
+        chart = pack.get("chart") or ""
         if chart:
             await send_photo(
                 chart,
                 "180日高低導航：價格列＝粉↓20高、紫↓20高脫離、綠↑20低／脫離、青↑60低；量能列才有紫↑量能異常、紅↑警告",
             )
 
-        chip_img = ""
-        try:
-            chip_img = await asyncio.to_thread(_chips)
-        except Exception:
-            logger.exception("籌碼圖失敗 code=%s", code)
+        chip_img = pack.get("chips") or ""
         if chip_img:
             ok = await send_photo(chip_img, "籌碼（張）", hub)
             if not ok:

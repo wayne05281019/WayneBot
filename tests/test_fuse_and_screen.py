@@ -555,5 +555,136 @@ class DualSessionTest(unittest.TestCase):
                 os.environ["WAYNE_JOB"] = old
 
 
+class LookupCardTest(unittest.TestCase):
+    def test_horizon_low_cells_order(self):
+        from cary_navigator import horizon_low_cells
+
+        cells = horizon_low_cells(
+            {
+                "l120": 70,
+                "dist_l120": 1.0,
+                "l240": 60,
+                "dist_l240": 10.0,
+                "l480": 50,
+                "dist_l480": 20.0,
+            }
+        )
+        self.assertEqual([c[0] for c in cells], ["120日低點", "240日低點", "480日低點"])
+        self.assertEqual(cells[0][1], 70.0)
+
+    def test_decision_card_png_with_long_lows(self):
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+
+        from cary_navigator import render_decision_card_png
+
+        table = pd.DataFrame(
+            [
+                {
+                    "date": "20260828",
+                    "close": 51.0,
+                    "獲利": "2.0%",
+                    "高低": "No",
+                    "預警": "No",
+                    "溫度計": "55.0 °C",
+                    "月乖離": "+1.0%",
+                    "profit_pct": 2.0,
+                    "bias_monthly": 1.0,
+                    "vol_rank_120": 20,
+                    "120日量": "第 20 名",
+                }
+            ]
+        )
+        card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 51.0,
+            "change_pct": 1.2,
+            "h10": 55,
+            "dist_h10": -7.3,
+            "h20": 56,
+            "dist_h20": -8.9,
+            "h60": 60,
+            "dist_h60": -15.0,
+            "l10": 50,
+            "dist_l10": 2.0,
+            "l20": 49,
+            "dist_l20": 4.1,
+            "l60": 48,
+            "dist_l60": 6.3,
+            "l120": 50.5,
+            "dist_l120": 1.0,
+            "l240": 45,
+            "dist_l240": 13.3,
+            "l480": 40,
+            "dist_l480": 27.5,
+            "space_20": 14,
+            "space_60": 25,
+            "ma60s": 0.5,
+            "qty60": 20000,
+            "badges": ["近120日低"],
+            "table": table,
+        }
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            out = render_decision_card_png(card, path)
+            self.assertTrue(out)
+            self.assertGreater(os.path.getsize(out), 8000)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_mis_quote_cache_hits_once(self):
+        import live_quote
+
+        calls = []
+
+        class FakeResp:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "msgArray": [
+                        {
+                            "c": "2330",
+                            "n": "台積電",
+                            "z": "100",
+                            "y": "99",
+                            "o": "99",
+                            "h": "101",
+                            "l": "98",
+                            "v": "1",
+                            "t": "13:00",
+                            "b": "",
+                            "a": "",
+                        }
+                    ]
+                }
+
+        def fake_get(*_a, **_k):
+            calls.append(1)
+            return FakeResp()
+
+        old = live_quote._SESSION.get
+        live_quote._SESSION.get = fake_get
+        with live_quote._QUOTE_LOCK:
+            live_quote._QUOTE_CACHE.clear()
+        try:
+            a = live_quote.fetch_mis_quote("2330", "TW")
+            b = live_quote.fetch_mis_quote("2330", "TW")
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(a["close"], b["close"])
+            self.assertEqual(float(a["close"]), 100.0)
+        finally:
+            live_quote._SESSION.get = old
+            with live_quote._QUOTE_LOCK:
+                live_quote._QUOTE_CACHE.clear()
+
+
 if __name__ == "__main__":
     unittest.main()
