@@ -324,7 +324,7 @@ def industry_of(conn: sqlite3.Connection, stock_id: str) -> str:
 
 
 def _sector_entry(r: Dict[str, Any]) -> str:
-    """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ▸，才跟張數列分開。"""
+    """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
     from tg_layout import html_escape, html_qty_tight, html_pct_tight
 
     three = int(r["three_net"])
@@ -347,7 +347,7 @@ def _sector_entry(r: Dict[str, Any]) -> str:
         tag = "買超最多"
     if sid:
         lines.append(
-            f"▸ {tag}　<code>{html_escape(sid)}</code> {html_escape(sname)}　{html_qty_tight(lots)}"
+            f"★ {tag}　<code>{html_escape(sid)}</code> {html_escape(sname)}　{html_qty_tight(lots)}"
         )
     return "\n".join(lines)
 
@@ -402,10 +402,6 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
         )
     if accel and {r["industry"] for r in accel} != {r["industry"] for r in inflow}:
         blocks.append(section("<b>較前日加碼</b>", *_flow_stock_lines([_sector_entry(r) for r in accel])))
-    blocks.append(
-        "官方法人張數＋價量才進這張表。分點、論壇輪動故事不抓。"
-        "法人也會幌，只當佈局參考因素之一，要對照股價與你的紀律。"
-    )
     return join_dashed(*blocks)
 
 
@@ -593,7 +589,4 @@ def format_flow_html(
         if bits:
             blocks.append(section("<b>觀察清單</b>", *_flow_stock_lines(bits)))
 
-    blocks.append(
-        "分點不抓。輪動與個股資金都用官方法人張數＋價量；這是佈局對照，不是主力 instant 動向。"
-    )
     return join_dashed(*blocks)
