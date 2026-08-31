@@ -31,7 +31,9 @@ logger = logging.getLogger("WayneBot")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = b'{"status":"ok","service":"WayneBot"}'
+        body = (
+            '{"status":"healthy","service":"WayneBot 24H Online","ok":true}'
+        ).encode("utf-8")
         if self.path.split("?")[0] in ("/", "/health"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
