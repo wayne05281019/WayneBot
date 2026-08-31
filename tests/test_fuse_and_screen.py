@@ -303,5 +303,53 @@ class FuseAndScreenTest(unittest.TestCase):
             os.remove(path)
 
 
+class ScreenReviewTest(unittest.TestCase):
+    def test_next_day_score_and_weak_bucket_weight(self):
+        from screen_review import (
+            adapt_bucket_weights,
+            bucket_weight,
+            format_review_html,
+            save_screen_picks,
+            score_screen_picks,
+        )
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260828", "2330", "台積電", "TW", 100, 101, 99, 102, 1000, 1000, 2.0, 100, 0, 0, 0),
+            )
+            conn.commit()
+            conn.close()
+            results = {
+                "day_trade": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+                "select_01": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+            }
+            self.assertEqual(save_screen_picks(path, "20260827", results), 2)
+            n = score_screen_picks(path, "20260828")
+            self.assertEqual(n, 2)
+            html = format_review_html(path)
+            self.assertIn("海選復盤", html)
+            self.assertIn("+2.0%", html)
+            conn = sqlite3.connect(path)
+            for i in range(5):
+                as_of = f"2026082{i}"
+                conn.execute(
+                    "INSERT OR REPLACE INTO screen_picks(as_of,bucket,stock_id,stock_name,pick_close,next_date,next_close,next_pct) VALUES (?,?,?,?,?,?,?,?)",
+                    (as_of, "day_trade", f"1{i:03d}", "弱", 100, "20260828", 97, -3.0),
+                )
+            conn.commit()
+            conn.close()
+            adapt_bucket_weights(path)
+            self.assertEqual(bucket_weight(path, "day_trade"), 0.0)
+            self.assertGreater(bucket_weight(path, "select_01"), 0)
+        finally:
+            os.remove(path)
+
+
 if __name__ == "__main__":
     unittest.main()

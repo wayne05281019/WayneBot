@@ -743,6 +743,13 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
     except Exception:
         pass
 
+    try:
+        from screen_review import save_screen_picks
+
+        save_screen_picks(engine.db_path, target_date, results)
+    except Exception:
+        pass
+
     payload = format_screening_payload(results, target_date)
     report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]

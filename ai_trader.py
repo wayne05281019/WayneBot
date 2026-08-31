@@ -32,7 +32,7 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
     return quotes
 
 
-def _candidates(results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> List[Dict[str, Any]]:
     out, seen = [], set()
     for key, reason in (
         ("revenue_cross", "優先看：營收轉強×突破"),
@@ -40,6 +40,14 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]
         ("overnight", "隔日沖佈局"),
         ("select_01", "周帶量突破"),
     ):
+        if db_path:
+            try:
+                from screen_review import bucket_weight
+
+                if bucket_weight(db_path, key) <= 0:
+                    continue
+            except Exception:
+                pass
         for it in results.get(key) or []:
             sid = str(it.get("stock_id") or it.get("code") or "")
             if not sid or sid in seen:
@@ -120,7 +128,7 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: dict | None = None) -> 
     lines = [
         "<b>AI 模擬操盤（50 萬本金）</b>",
         "本金分最多 5 等份；優先看→當沖→隔日沖→周突破；整張優先否則零股。",
-        "停損 -7%、停利 +8%。進化是調倉位比例（寫入資料庫），不會改程式檔。",
+        "停損 -7%、停利 +8%。進化是調倉位比例與哪類海選最近準（寫入資料庫），不會改程式檔。",
         f"總資產 <code>{s['total_assets']:,.0f}</code>　現金 <code>{s['cash']:,.0f}</code>",
         f"損益 <code>{s['total_pnl']:+,.0f}</code>（{s['total_pnl_pct']:+.2f}%）　持股 {s['positions_count']}/{MAX_SLOTS} 檔",
     ]
@@ -145,6 +153,14 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: dict | None = None) -> 
         lines.append("<b>近況淨值</b>")
         for date, nav, pnl in rows:
             lines.append(f"• {date}　{nav:,.0f}　{pnl:+.2f}%")
+    try:
+        from screen_review import format_review_html
+
+        rev = format_review_html(engine.db_path)
+        if rev:
+            lines.append(rev)
+    except Exception:
+        pass
     return "\n".join(lines)
 
 
@@ -182,7 +198,7 @@ def run_ai_desk(db_path: str, results: Dict[str, List[Dict[str, Any]]], as_of: s
     cash = summary["cash"]
     if slots > 0:
         budget = (cash / slots) * size_mult
-        for it in _candidates(results):
+        for it in _candidates(results, db_path):
             if slots <= 0:
                 break
             sid = str(it.get("stock_id") or it.get("code") or "")

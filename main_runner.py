@@ -18,6 +18,7 @@
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
 # 海選改早上 07:30 寄出（給家人轉貼），盤後 16:30 不再重複寄名單。
+# 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤最慢 16:30 齊，所以抓數排 16:30。
 # 16:30 前不把「今天」寫進庫；開機只補已經收完的交易日。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
@@ -403,6 +404,12 @@ class MainRunner:
             self.send_telegram_message(report_text or self.generate_screening_report())
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
+            from screen_review import score_screen_picks
+
+            score_screen_picks(self.db_path, as_of or "")
+        except Exception as e:
+            logger.warning("海選復盤略過：%s", e)
+        try:
             from money_flow import format_sector_rotation_html
 
             rot = format_sector_rotation_html(self.db_path, as_of or "")
@@ -476,6 +483,13 @@ class MainRunner:
             f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
+        try:
+            from screen_review import score_screen_picks
+
+            n = score_screen_picks(self.db_path, cap)
+            logger.info("海選復盤已對帳 %s 檔（隔日＝%s）", n, cap)
+        except Exception:
+            logger.exception("海選復盤對帳失敗")
         return True
 
     def run_morning_screen(self, skip_if_done: bool = False) -> bool:
