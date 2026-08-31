@@ -1,0 +1,17 @@
+{
+  "name": "WayneBot",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "waynebot-web",
+      "command": "WAYNE_SKIP_POLLING=1 .venv/bin/python main.py",
+      "description": "WayneBot web/health server on :10000 (/health, /inventory). Runs with WAYNE_SKIP_POLLING=1 so it never competes with the production Telegram bot; unset it and provide TELEGRAM_BOT_TOKEN to enable interactive polling."
+    }
+  ],
+  "ports": [
+    {
+      "name": "waynebot-web",
+      "port": 10000
+    }
+  ]
+}
