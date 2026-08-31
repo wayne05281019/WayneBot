@@ -895,10 +895,22 @@ class WayneTelegramBot:
                 title = html_stock_anchor(h["stock_id"], h.get("stock_name") or "", self.db_path)
             except Exception:
                 title = f"{html_escape(h['stock_id'])} {html_escape(h.get('stock_name') or '')}"
-            mkt = html_escape(h.get("market") or "EM")
+            mkt_raw = (h.get("market") or "").strip().upper()
+            mkt = html_escape(h.get("market") or "")
+            is_em = mkt_raw in ("EM", "EMERGING", "興櫃")
+            if is_em:
+                body = (
+                    f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
+                    "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。"
+                )
+            else:
+                body = (
+                    f"{title}\n這是上市櫃股票（市場 {mkt or 'TW'}），"
+                    "但<strong>雲端這台機器還沒有日K資料</strong>，所以暫時不能出決策卡。"
+                    "請等行情庫下載完成後再打一次代號。"
+                )
             await message.reply_html(
-                f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
-                "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。",
+                body,
                 reply_markup=self._hub_keyboard(h["stock_id"]),
                 disable_web_page_preview=True,
             )
