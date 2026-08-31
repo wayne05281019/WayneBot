@@ -231,14 +231,15 @@ def backfill_chips(db_path: str = None, days: int = 30, sleep_s: float = 0.45) -
 
 def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
     sid = str(stock_id).strip()
+    need = max(int(limit), 1) + 10
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
         """SELECT date, stock_name, close, volume, foreign_net, trust_net, dealer_net
-           FROM daily_quotes WHERE stock_id=? ORDER BY date ASC""",
-        (sid,),
+           FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT ?""",
+        (sid, need),
     )
-    raw = cur.fetchall()
+    raw = list(reversed(cur.fetchall()))
     conn.close()
     if not raw:
         return []
@@ -375,7 +376,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
     gap = 1.15
     H = m_top + head_h + gap + sub_h + hdr_h + n * body_h + m_bot
     fig_w = 7.2
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=200, facecolor=C["page"])
+    fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=160, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
@@ -463,7 +464,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
     ax.add_patch(patches.Rectangle(
         (pad_x, ry), span, tbl_top - ry, facecolor="none",
         edgecolor=C["tbl_line"], lw=1.1, zorder=4))
-    fig.savefig(save_path, dpi=200, facecolor=fig.get_facecolor())
+    fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path
 

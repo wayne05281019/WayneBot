@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 try:
     from config import get_db_path
@@ -11,9 +11,17 @@ except Exception:
         return "data/wayne_market.db"
 
 
+_EX_CACHE: Dict[str, str] = {}
+_EX_CACHE_MAX = 4096
+
+
 def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
     sid = str(stock_id or "").strip()
     path = db_path or get_db_path()
+    key = f"{path}|{sid}"
+    cached = _EX_CACHE.get(key)
+    if cached:
+        return cached
     market = ""
     try:
         conn = sqlite3.connect(path)
@@ -36,8 +44,14 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
         market = ""
     m = market.upper()
     if m in ("TWO", "TPEX", "OTC", "ROCO", "EM", "ESB", "EMERGING"):
-        return "TWO"
-    return "TW"
+        ex = "TWO"
+    else:
+        ex = "TW"
+    if sid:
+        if len(_EX_CACHE) >= _EX_CACHE_MAX:
+            _EX_CACHE.clear()
+        _EX_CACHE[key] = ex
+    return ex
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:

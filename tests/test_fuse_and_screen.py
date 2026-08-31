@@ -447,6 +447,153 @@ class USOvernightTest(unittest.TestCase):
         self.assertTrue(by_id["2330"].get("us_peer_headwind"))
         self.assertFalse(by_id["2002"].get("us_peer_headwind"))
 
+    def test_tape_phase_ignores_futures_during_cash(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from us_overnight import classify_us_regime, us_tape_phase
+
+        ny = ZoneInfo("America/New_York")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 11, 30, tzinfo=ny)), "regular")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 17, 15, tzinfo=ny)), "post")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 21, 0, tzinfo=ny)), "overnight")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 30, 18, 30, tzinfo=ny)), "overnight")
+        tw = datetime(2026, 9, 1, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+        self.assertEqual(us_tape_phase(tw), "post")
+        self.assertEqual(
+            classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
+            "ok",
+        )
+        self.assertEqual(
+            classify_us_regime(
+                {
+                    "vix": 15.0,
+                    "ixic_pct": 0.1,
+                    "spx_pct": 0.0,
+                    "dji_pct": 0.1,
+                    "nq_f_pct": -1.4,
+                    "us_phase": "post",
+                }
+            ),
+            "caution",
+        )
+        self.assertEqual(
+            classify_us_regime(
+                {
+                    "vix": 15.0,
+                    "ixic_pct": 0.1,
+                    "spx_pct": 0.0,
+                    "dji_pct": 0.1,
+                    "nq_f_pct": -2.8,
+                    "us_phase": "post",
+                }
+            ),
+            "risk_off",
+        )
+
+    def test_post_tsm_dump_tags_chips(self):
+        from us_overnight import apply_us_overnight
+
+        results = {
+            "day_trade": [
+                {"stock_id": "2330", "industry": "半導體業", "chase_warning": False, "q60r": 3},
+                {"stock_id": "2002", "industry": "鋼鐵工業", "chase_warning": False, "q60r": 2},
+            ]
+        }
+        apply_us_overnight(
+            results,
+            {
+                "regime": "ok",
+                "vix": 14.0,
+                "ixic_pct": 0.2,
+                "tsm_pct": 0.3,
+                "tsm_post_pct": -2.4,
+                "us_phase": "post",
+            },
+        )
+        self.assertEqual([x["stock_id"] for x in results["day_trade"]], ["2002"])
+
+    def test_drop_alert_only_when_weak(self):
+        from us_overnight import format_us_drop_alert, format_us_html, should_alert_us_drop
+
+        flat = {"regime": "ok", "vix": 15.0, "ixic_pct": 0.2, "spx_pct": 0.1, "dji_pct": 0.0}
+        self.assertFalse(should_alert_us_drop(flat))
+        self.assertFalse(
+            should_alert_us_drop({"regime": "caution", "vix": 19.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.2})
+        )
+        dump = {
+            "regime": "risk_off",
+            "vix": 27.0,
+            "ixic_pct": -2.8,
+            "spx_pct": -2.1,
+            "dji_pct": -1.9,
+            "sox_pct": -3.0,
+            "nq_f_pct": -3.1,
+            "tsm_post_pct": -2.4,
+            "us_phase": "post",
+            "us_session": "20260831",
+        }
+        self.assertTrue(should_alert_us_drop(dump))
+        html = format_us_drop_alert(dump)
+        self.assertIn("一早提醒", html)
+        self.assertIn("那斯達克", html)
+        self.assertIn("盤後", html)
+        self.assertIn("盤後", format_us_html(dump))
+        self.assertTrue(
+            should_alert_us_drop(
+                {"regime": "ok", "vix": 14.0, "ixic_pct": 0.1, "tsm_pct": 0.2, "tsm_post_pct": -2.2, "us_phase": "post"}
+            )
+        )
+
+    def test_last_post_bar_skips_cash_session(self):
+        from us_overnight import last_post_from_block
+
+        block = {
+            "meta": {
+                "previousClose": 100.0,
+                "currentTradingPeriod": {
+                    "regular": {"start": 1000, "end": 2000},
+                    "post": {"start": 2000, "end": 3000},
+                },
+            },
+            "timestamp": [1500, 1999, 2000, 2500, 3100],
+            "indicators": {"quote": [{"close": [101.0, 102.0, 99.0, 97.5, 50.0]}]},
+        }
+        got = last_post_from_block(block)
+        self.assertAlmostEqual(got["price"], 97.5)
+        self.assertAlmostEqual(got["pct"], -2.5)
+        cash_only = {
+            "meta": {
+                "previousClose": 100.0,
+                "currentTradingPeriod": {
+                    "regular": {"start": 1000, "end": 2000},
+                    "post": {"start": 2000, "end": 3000},
+                },
+            },
+            "timestamp": [1500, 1800],
+            "indicators": {"quote": [{"close": [101.0, 102.0]}]},
+        }
+        self.assertIsNone(last_post_from_block(cash_only))
+
+
+class LiveQuoteLabelTest(unittest.TestCase):
+    def test_1330_is_close_not_intraday(self):
+        from live_quote import format_mis_clock_line, live_clock_suffix, mis_session_label
+
+        self.assertEqual(mis_session_label("13:30:00"), "收盤")
+        self.assertEqual(mis_session_label("13:30"), "收盤")
+        self.assertEqual(mis_session_label("14:00:00"), "收盤")
+        self.assertEqual(mis_session_label("13:25:18"), "盤中")
+        self.assertEqual(mis_session_label("09:01:00"), "盤中")
+        self.assertEqual(mis_session_label("08:50:00"), "收盤")
+        line = format_mis_clock_line("13:30:00")
+        self.assertTrue(line.startswith("收盤"))
+        self.assertIn("13:30:00", line)
+        self.assertIn("證交所 MIS", line)
+        self.assertNotIn("盤中", line)
+        self.assertIn("收盤 13:30", live_clock_suffix(True, "13:30:00"))
+        self.assertIn("盤中 13:25", live_clock_suffix(True, "13:25:18"))
+        self.assertEqual(live_clock_suffix(False, "13:30:00"), "")
+
 
 class TelegramAlignTest(unittest.TestCase):
     def test_html_qty_same_width_so_zhang_aligns(self):
@@ -471,6 +618,18 @@ class TelegramAlignTest(unittest.TestCase):
         p2 = html_pct(-12.5)
         self.assertTrue(p1.endswith("%"))
         self.assertEqual(len(body(p1)), len(body(p2)))
+
+    def test_html_price_and_money_align(self):
+        import re
+        from tg_layout import html_money, html_price
+
+        def body(s: str) -> str:
+            m = re.search(r"<code>(.*?)</code>", s)
+            self.assertIsNotNone(m)
+            return m.group(1)
+
+        self.assertEqual(len(body(html_price(12.5))), len(body(html_price(1234.5))))
+        self.assertEqual(len(body(html_money(500000, signed=False))), len(body(html_money(12, signed=False))))
 
     def test_chip_html_does_not_escape_code_tags(self):
         from screening_engine import _chip_html, _stock_card_html
@@ -996,6 +1155,248 @@ class LookupCardTest(unittest.TestCase):
         out3 = engine.execute_all_strategies({"2330": bars(leave)})
         self.assertTrue(out3["leave_zero"])
         self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
+
+
+class AIDeskTest(unittest.TestCase):
+    def test_run_ai_desk_actually_buys(self):
+        import os
+        import tempfile
+        from ai_trader import AI_USER, MAX_SLOTS, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "chase_warning": False}
+                ],
+                "overnight": [{"stock_id": "2303", "stock_name": "聯電", "close": 50.0}],
+                "day_trade": [{"stock_id": "2317", "stock_name": "鴻海", "close": 80.0}],
+                "select_01": [
+                    {"stock_id": "2412", "stock_name": "中華電", "close": 120.0, "chase_warning": True}
+                ],
+                "select_04": [
+                    {
+                        "stock_id": "2308",
+                        "stock_name": "台達電",
+                        "close": 400.0,
+                        "us_peer_headwind": True,
+                    }
+                ],
+            }
+            ai = run_ai_desk(path, results, "20260831")
+            blob = " ".join(ai.get("bought") or [])
+            self.assertIn("2330", blob)
+            self.assertIn("2303", blob)
+            self.assertNotIn("2317", blob)
+            self.assertNotIn("2412", blob)
+            self.assertNotIn("2308", blob)
+            eng = PortfolioEngine(path)
+            summary = eng.get_portfolio_summary(AI_USER)
+            self.assertGreaterEqual(summary["positions_count"], 2)
+            self.assertLess(summary["cash"], 500000)
+            by_id = {p["stock_id"]: p for p in summary["positions"]}
+            self.assertIn("2330", by_id)
+            self.assertEqual(by_id["2330"]["shares"], 1000)
+            self.assertEqual(by_id["2303"]["shares"], 3000)
+            self.assertAlmostEqual(ai.get("slot") or 0, 500000.0 / MAX_SLOTS, delta=1)
+            html = ai.get("html") or ""
+            self.assertIn("AI 模擬帳戶", html)
+            self.assertIn("已用槽", html)
+            self.assertIn("每槽上限", html)
+            self.assertIn("停損", html)
+            self.assertIn("停利", html)
+            self.assertIn("成交紀錄", html)
+            conn = sqlite3.connect(path)
+            fills = conn.execute("SELECT stock_id, action, shares, bucket FROM ai_fills ORDER BY id").fetchall()
+            conn.close()
+            self.assertGreaterEqual(len(fills), 2)
+            self.assertEqual(fills[0][0], "2330")
+            self.assertEqual(fills[0][1], "BUY")
+            self.assertEqual(fills[0][2], 1000)
+            self.assertEqual(fills[0][3], "leave_zero")
+        finally:
+            os.remove(path)
+
+    def test_equal_slots_do_not_dump_remaining_cash(self):
+        import os
+        import tempfile
+        from ai_trader import AI_USER, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            eng = PortfolioEngine(path)
+            eng.ensure_user_exists(AI_USER)
+            conn = sqlite3.connect(path)
+            for i, sid in enumerate(("1101", "1102"), 1):
+                conn.execute(
+                    """
+                    INSERT INTO user_positions
+                    (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
+                    VALUES (?,?,?,?,?,?,?,0,'MOMENTUM')
+                    """,
+                    (AI_USER, sid, f"占槽{i}", 1000, 10.0, 10.0, "20260828"),
+                )
+            conn.commit()
+            conn.close()
+            ai = run_ai_desk(
+                path,
+                {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}]},
+                "20260831",
+            )
+            self.assertTrue(ai.get("bought"))
+            summary = eng.get_portfolio_summary(AI_USER)
+            by_id = {p["stock_id"]: p for p in summary["positions"]}
+            self.assertEqual(by_id["2330"]["shares"], 1000)
+            self.assertGreater(summary["cash"], 350000)
+        finally:
+            os.remove(path)
+
+    def test_ai_fill_next_day_scores_and_weakens_bucket(self):
+        import os
+        import tempfile
+        from ai_trader import AI_USER, run_ai_desk
+        from screen_review import bucket_weight, format_ai_review_html, score_ai_fills
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            run_ai_desk(
+                path,
+                {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}]},
+                "20260827",
+            )
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260828", "2330", "台積電", "TW", 100, 101, 99, 102, 1000, 1000, 2.0, 100, 0, 0, 0),
+            )
+            for i in range(3):
+                conn.execute(
+                    """
+                    INSERT INTO ai_fills(as_of,stock_id,stock_name,action,price,shares,amount,reason,bucket,realized_pnl,pnl_pct,next_date,next_close,next_pct,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        f"2026082{i}",
+                        f"1{i:03d}",
+                        "弱",
+                        "BUY",
+                        100,
+                        1000,
+                        100000,
+                        "起漲：獲利離零",
+                        "leave_zero",
+                        0,
+                        0,
+                        "20260828",
+                        96,
+                        -4.0,
+                        "2026-08-28 16:00:00",
+                    ),
+                )
+            conn.commit()
+            conn.close()
+            n = score_ai_fills(path, "20260828")
+            self.assertGreaterEqual(n, 1)
+            html = format_ai_review_html(path)
+            self.assertIn("AI 成交復盤", html)
+            self.assertIn("2330", html)
+            self.assertEqual(bucket_weight(path, "leave_zero"), 0.0)
+        finally:
+            os.remove(path)
+
+    def test_bundled_fonts_shipped_for_fast_lookup(self):
+        from cary_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, bundled_weight_path
+
+        self.assertTrue(os.path.isfile(bundled_weight_path(_WEIGHT_TEXT)))
+        self.assertTrue(os.path.isfile(bundled_weight_path(_WEIGHT_BOLD)))
+
+
+class SpeedOptTest(unittest.TestCase):
+    def test_chips_only_need_recent_window_for_acc(self):
+        from datetime import date, timedelta
+        from chips import major_player_rows
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            q = "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            start = date(2026, 7, 1)
+            for i in range(40):
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                conn.execute(q, (d, "2330", "台積電", "TW", 100, 101, 99, 100, 1000, 1000, 0, 100, 10, 20, 30))
+            conn.commit()
+            conn.close()
+            rows = major_player_rows(path, "2330", limit=15)
+            self.assertEqual(len(rows), 15)
+            self.assertEqual(rows[0]["three_net"], 60)
+            self.assertEqual(rows[0]["acc_10d"], 600)
+        finally:
+            os.remove(path)
+
+    def test_annotate_screen_computes_sector_once(self):
+        import money_flow
+        from money_flow import annotate_screen_results
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        orig = money_flow.compute_sector_rows
+        calls = {"n": 0}
+
+        def wrapped(conn, ymd):
+            calls["n"] += 1
+            return orig(conn, ymd)
+
+        money_flow.compute_sector_rows = wrapped
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,?,?)",
+                ("2330", "台積電", "TW", "股票", "半導體業", 1, "x"),
+            )
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260828", "2330", "台積電", "TW", 100, 101, 99, 100, 10000, 50000, 1.0, 100, 8000, 0, 0),
+            )
+            conn.commit()
+            conn.close()
+            results = {
+                "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                "select_01": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                "day_trade": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+            }
+            annotate_screen_results(path, "20260828", results)
+            self.assertEqual(calls["n"], 1)
+            self.assertEqual(results["leave_zero"][0].get("industry"), "半導體業")
+        finally:
+            money_flow.compute_sector_rows = orig
+            os.remove(path)
+
+    def test_schema_second_call_is_noop(self):
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            n = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='daily_quotes'").fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 1)
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":

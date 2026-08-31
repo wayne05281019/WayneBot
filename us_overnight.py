@@ -1,7 +1,8 @@
-"""隔夜美股：台股開盤對照的是美股現金收盤，不是期貨盤中。
+"""隔夜美股：台股開盤對照現金收盤，收盤後再看盤後。盤中期貨不看。
 
 四大指數＝道瓊／標普／那斯達克／費半；VIX＝收盤恐慌水位。
-半導體／電子再對照費半與台積 ADR。只過濾逆風，不拿來追高。
+06:30 台灣＝美股已收、盤後還在：台積 ADR／輝達盤後＋那指／標普／道瓊期續勢。
+只過濾逆風，不拿來追高。大跌會在早上海選前先單獨通知一則。
 """
 from __future__ import annotations
 
@@ -25,8 +26,6 @@ except Exception:
 
 logger = logging.getLogger("WayneBot.USOvernight")
 
-YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=10d"
-
 # 台股開盤前最常對照的美股四大＋恐慌＋電子鏈。
 SYMBOLS = (
     ("dji", "^DJI", "道瓊"),
@@ -38,7 +37,20 @@ SYMBOLS = (
     ("nvda", "NVDA", "輝達"),
 )
 
+# 現金收盤後才抓：指數盤後續勢用期貨，個股／費半 ETF 用盤後成交。
+FUTURES = (
+    ("es_f", "ES=F", "標普期"),
+    ("nq_f", "NQ=F", "那指期"),
+    ("ym_f", "YM=F", "道瓊期"),
+)
+POST_NAMES = (
+    ("tsm", "TSM"),
+    ("nvda", "NVDA"),
+    ("soxx", "SOXX"),
+)
+
 CHIP_HINTS = ("半導體", "電子零組件", "電子工業", "光電", "電腦及週邊", "通信網路")
+NY = ZoneInfo("America/New_York")
 
 _SESSION = requests.Session()
 _SESSION.headers.update(
@@ -81,6 +93,25 @@ def is_chip_industry(industry: str) -> bool:
     return any(h in s for h in CHIP_HINTS)
 
 
+def us_tape_phase(now: Optional[datetime] = None) -> str:
+    """regular＝美股現金盤中（期貨不看）；post＝16:00–20:00 盤後；overnight＝其餘隔夜。"""
+    dt = datetime.now(NY) if now is None else now.astimezone(NY)
+    if dt.weekday() < 5:
+        hm = (dt.hour, dt.minute)
+        if (9, 30) <= hm < (16, 0):
+            return "regular"
+        if (16, 0) <= hm < (20, 0):
+            return "post"
+    return "overnight"
+
+
+def _chart_url(sym: str, interval: str = "1d", range_: str = "10d", include_prepost: bool = False) -> str:
+    q = f"interval={interval}&range={range_}"
+    if include_prepost:
+        q += "&includePrePost=true"
+    return f"https://query1.finance.yahoo.com/v8/finance/chart/{url_quote(sym, safe='')}?{q}"
+
+
 def _pct_from_closes(closes: List[Any], last_px: Optional[float]) -> Optional[float]:
     nums = [float(x) for x in closes if x is not None]
     if last_px is not None and last_px > 0:
@@ -95,8 +126,56 @@ def _pct_from_closes(closes: List[Any], last_px: Optional[float]) -> Optional[fl
     return None
 
 
+def _as_float(val) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _floats(snap: Dict[str, Any], keys) -> List[float]:
+    out: List[float] = []
+    for k in keys:
+        v = _as_float(snap.get(k))
+        if v is not None:
+            out.append(v)
+    return out
+
+
+def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """1 分 K（含盤後）裡，取現金收盤後最後一筆。盤中還沒有盤後 bar 就回 None。"""
+    meta = block.get("meta") or {}
+    period = meta.get("currentTradingPeriod") or {}
+    post = period.get("post") or {}
+    regular = period.get("regular") or {}
+    start = int(post.get("start") or 0) or int(regular.get("end") or 0)
+    end = int(post.get("end") or 0)
+    if not start:
+        return None
+    stamps = block.get("timestamp") or []
+    closes = ((block.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    last_px = None
+    last_t = None
+    for ts, close in zip(stamps, closes):
+        if close is None:
+            continue
+        t = int(ts)
+        if t < start:
+            continue
+        if end and t > end:
+            continue
+        last_px, last_t = float(close), t
+    if last_px is None:
+        return None
+    prev = _as_float(meta.get("previousClose") or meta.get("chartPreviousClose"))
+    pct = (last_px - prev) / prev * 100.0 if prev else None
+    return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct}
+
+
 def _fetch_symbol(sym: str) -> Dict[str, Any]:
-    url = YAHOO_CHART.format(sym=url_quote(sym, safe=""))
+    url = _chart_url(sym, interval="1d", range_="10d")
     resp = _SESSION.get(url, timeout=20)
     resp.raise_for_status()
     result = (resp.json().get("chart") or {}).get("result") or []
@@ -106,18 +185,10 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
     meta = block.get("meta") or {}
     qblock = ((block.get("indicators") or {}).get("quote") or [{}])[0]
     closes = qblock.get("close") or []
-    px = meta.get("regularMarketPrice")
-    try:
-        px_f = float(px) if px is not None else None
-    except (TypeError, ValueError):
-        px_f = None
-    chg = meta.get("regularMarketChangePercent")
-    try:
-        pct = float(chg) if chg is not None else None
-    except (TypeError, ValueError):
-        pct = None
+    px = _as_float(meta.get("regularMarketPrice"))
+    pct = _as_float(meta.get("regularMarketChangePercent"))
     if pct is None:
-        pct = _pct_from_closes(closes, px_f)
+        pct = _pct_from_closes(closes, px)
     ts = 0
     stamps = block.get("timestamp") or []
     if stamps:
@@ -126,13 +197,28 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
         ts = int(meta["regularMarketTime"])
     session = ""
     if ts:
-        session = datetime.fromtimestamp(ts, tz=ZoneInfo("America/New_York")).strftime("%Y%m%d")
-    return {"symbol": meta.get("symbol") or sym, "price": px_f, "pct": pct, "session": session}
+        session = datetime.fromtimestamp(ts, tz=NY).strftime("%Y%m%d")
+    return {"symbol": meta.get("symbol") or sym, "price": px, "pct": pct, "session": session}
 
 
-def fetch_us_tape() -> Dict[str, Any]:
-    """抓美股現金收盤：四大＋VIX＋台積 ADR／輝達。失敗的欄位留空，不整包丟掉。"""
-    out: Dict[str, Any] = {"ok": False, "fetched_at": datetime.now(timezone.utc).isoformat()}
+def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
+    url = _chart_url(sym, interval="1m", range_="1d", include_prepost=True)
+    resp = _SESSION.get(url, timeout=20)
+    resp.raise_for_status()
+    result = (resp.json().get("chart") or {}).get("result") or []
+    if not result:
+        return None
+    return last_post_from_block(result[0])
+
+
+def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
+    """抓美股現金收盤；收盤後再補盤後。盤中不抓期貨。失敗的欄位留空，不整包丟掉。"""
+    phase = us_tape_phase(now)
+    out: Dict[str, Any] = {
+        "ok": False,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "us_phase": phase,
+    }
     sessions = []
     for key, sym, _label in SYMBOLS:
         try:
@@ -148,34 +234,93 @@ def fetch_us_tape() -> Dict[str, Any]:
         if bar.get("session"):
             sessions.append(bar["session"])
         time.sleep(0.05)
+    if phase != "regular":
+        for key, sym, _label in FUTURES:
+            try:
+                bar = _fetch_symbol(sym)
+            except Exception:
+                logger.exception("美股盤後期貨抓不到 %s", sym)
+                continue
+            out[f"{key}_px"] = bar.get("price")
+            out[f"{key}_pct"] = bar.get("pct")
+            time.sleep(0.05)
+        for key, sym in POST_NAMES:
+            try:
+                ext = _fetch_post_last(sym)
+            except Exception:
+                logger.exception("美股盤後抓不到 %s", sym)
+                continue
+            if not ext:
+                continue
+            out[f"{key}_post_px"] = ext.get("price")
+            out[f"{key}_post_pct"] = ext.get("pct")
+            time.sleep(0.05)
     if sessions:
         out["us_session"] = max(sessions)
-    out["ok"] = any(out.get(k) is not None for k in ("vix", "ixic_pct", "spx_pct", "dji_pct"))
+    out["ok"] = any(out.get(k) is not None for k in ("vix", "ixic_pct", "spx_pct", "dji_pct", "nq_f_pct"))
     out["regime"] = classify_us_regime(out)
     return out
 
 
+def index_worst_pct(snap: Dict[str, Any]) -> Optional[float]:
+    """大盤最弱的那根。盤後才把期貨續勢算進去；盤中期貨不算。"""
+    vals = _floats(snap, ("dji_pct", "spx_pct", "ixic_pct"))
+    phase = snap.get("us_phase") or "regular"
+    if phase in ("post", "overnight"):
+        vals.extend(_floats(snap, ("nq_f_pct", "es_f_pct", "ym_f_pct")))
+    if not vals:
+        return None
+    return min(vals)
+
+
+def effective_sox_pct(snap: Dict[str, Any]) -> Optional[float]:
+    vals = _floats(snap, ("sox_pct",))
+    if (snap.get("us_phase") or "regular") in ("post", "overnight"):
+        vals.extend(_floats(snap, ("soxx_post_pct",)))
+    return min(vals) if vals else None
+
+
+def effective_tsm_pct(snap: Dict[str, Any]) -> Optional[float]:
+    vals = _floats(snap, ("tsm_pct",))
+    if (snap.get("us_phase") or "regular") in ("post", "overnight"):
+        vals.extend(_floats(snap, ("tsm_post_pct",)))
+    return min(vals) if vals else None
+
+
 def classify_us_regime(snap: Dict[str, Any]) -> str:
-    """中性／偏空／逆風。只看美股現金收盤與 VIX 水位；期貨盤中不參與判定。"""
-    if snap.get("vix") is None and snap.get("ixic_pct") is None and snap.get("spx_pct") is None:
+    """中性／偏空／逆風。現金收盤為底；收盤後才看盤後續勢。期貨盤中不參與判定。"""
+    worst = index_worst_pct(snap)
+    vix = _as_float(snap.get("vix"))
+    if vix is None and worst is None:
         return "unknown"
-    try:
-        vix = float(snap["vix"]) if snap.get("vix") is not None else 0.0
-    except (TypeError, ValueError):
-        vix = 0.0
-    cash = []
-    for k in ("dji_pct", "spx_pct", "ixic_pct"):
-        try:
-            if snap.get(k) is not None:
-                cash.append(float(snap[k]))
-        except (TypeError, ValueError):
-            pass
-    worst = min(cash) if cash else 0.0
-    if vix >= 25 or worst <= -2.5:
+    vix_n = vix or 0.0
+    worst_n = worst if worst is not None else 0.0
+    if vix_n >= 25 or worst_n <= -2.5:
         return "risk_off"
-    if vix >= 18 or worst <= -1.2:
+    if vix_n >= 18 or worst_n <= -1.2:
         return "caution"
     return "ok"
+
+
+def should_alert_us_drop(snap: Dict[str, Any]) -> bool:
+    """大跌才通知：逆風，或指數／盤後最弱 ≤ -1.2%，或台積ADR／費半 ≤ -2%。VIX 偏高但指數沒跌不吵。"""
+    if not snap:
+        return False
+    regime = snap.get("regime") or classify_us_regime(snap)
+    if regime == "unknown":
+        return False
+    if regime == "risk_off":
+        return True
+    worst = index_worst_pct(snap)
+    if worst is not None and worst <= -1.2:
+        return True
+    tsm = effective_tsm_pct(snap)
+    sox = effective_sox_pct(snap)
+    if tsm is not None and tsm <= -2.0:
+        return True
+    if sox is not None and sox <= -2.0:
+        return True
+    return False
 
 
 def _row_from_snap(as_of: str, snap: Dict[str, Any]) -> Dict[str, Any]:
@@ -283,8 +428,10 @@ def refresh_us_overnight(db_path: str, as_of: str, max_age_sec: int = 900) -> Di
         return cached
     if snap.get("ok"):
         save_us_overnight(db_path, as_of, snap)
-        return _row_from_snap(as_of, snap)
-    return cached or _row_from_snap(as_of, snap)
+        merged = _row_from_snap(as_of, snap)
+        merged.update(snap)
+        return merged
+    return cached or {**_row_from_snap(as_of, snap), **snap}
 
 
 REGIME_LABEL = {
@@ -292,6 +439,12 @@ REGIME_LABEL = {
     "caution": "隔夜偏空",
     "risk_off": "隔夜逆風",
     "unknown": "美股收盤沒接到",
+}
+
+PHASE_LABEL = {
+    "regular": "現金收盤（盤中不看期貨）",
+    "post": "收盤＋盤後",
+    "overnight": "收盤＋盤後續勢",
 }
 
 
@@ -319,24 +472,36 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     from tg_layout import html_escape
 
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    phase = snap.get("us_phase") or "regular"
+    phase_s = PHASE_LABEL.get(phase, "現金收盤")
     sess = snap.get("us_session") or ""
     sess_s = f"{sess[:4]}/{sess[4:6]}/{sess[6:]}" if len(str(sess)) == 8 else (sess or "—")
     lines = [
-        f"<b>美股收盤</b>　{html_escape(label)}　美股交易日 {html_escape(sess_s)}",
+        f"<b>美股收盤</b>　{html_escape(label)}　{html_escape(phase_s)}　美股交易日 {html_escape(sess_s)}",
         (
             f"道瓊 {_fmt_pct(snap.get('dji_pct'))}　標普 {_fmt_pct(snap.get('spx_pct'))}　"
             f"那斯達克 {_fmt_pct(snap.get('ixic_pct'))}　費半 {_fmt_pct(snap.get('sox_pct'))}"
         ),
-        (
-            f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）　"
-            f"台積ADR {_fmt_pct(snap.get('tsm_pct'))}　輝達 {_fmt_pct(snap.get('nvda_pct'))}"
-        ),
     ]
+    posted = phase in ("post", "overnight") and any(
+        snap.get(k) is not None for k in ("nq_f_pct", "es_f_pct", "ym_f_pct", "tsm_post_pct", "nvda_post_pct")
+    )
+    if posted:
+        lines.append(
+            f"盤後　NQ {_fmt_pct(snap.get('nq_f_pct'))}　ES {_fmt_pct(snap.get('es_f_pct'))}　"
+            f"YM {_fmt_pct(snap.get('ym_f_pct'))}"
+        )
+        lines.append(
+            f"台積ADR 收盤 {_fmt_pct(snap.get('tsm_pct'))} 盤後 {_fmt_pct(snap.get('tsm_post_pct'))}　"
+            f"輝達 收盤 {_fmt_pct(snap.get('nvda_pct'))} 盤後 {_fmt_pct(snap.get('nvda_post_pct'))}"
+        )
+    else:
+        lines.append(
+            f"台積ADR {_fmt_pct(snap.get('tsm_pct'))}　輝達 {_fmt_pct(snap.get('nvda_pct'))}"
+        )
+    lines.append(f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）")
     regime = snap.get("regime")
-    try:
-        sox = float(snap["sox_pct"]) if snap.get("sox_pct") is not None else None
-    except (TypeError, ValueError):
-        sox = None
+    sox = effective_sox_pct(snap)
     if regime == "risk_off":
         lines.append("逆風＝當沖／隔日沖今日不列；突破與貼月高往後排。半導體對照費半／ADR，不是保證開盤一定跟。")
     elif regime == "caution":
@@ -344,7 +509,7 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     elif regime == "ok" and sox is not None and sox <= -1.5:
         lines.append("大盤中性，但費半／ADR 弱：當沖／隔日沖不列電子鏈，佈局名單標費半逆風。")
     elif regime == "ok":
-        lines.append("中性＝大盤不過濾；美股只當開盤風險對照。電子仍對照費半。")
+        lines.append("中性＝大盤不過濾；美股只當開盤風險對照。電子仍對照費半。盤中期貨不看。")
     else:
         lines.append("沒接到美股數字就不過濾，避免假資料把名單打掉。")
     return "\n".join(lines)
@@ -354,11 +519,45 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     if not snap:
         return ""
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    phase = snap.get("us_phase") or "regular"
+    extra = ""
+    if phase in ("post", "overnight") and snap.get("nq_f_pct") is not None:
+        extra = f" 盤後NQ{_fmt_pct(snap.get('nq_f_pct'))}"
     return (
         f"美股收盤 {label} 道瓊{_fmt_pct(snap.get('dji_pct'))} 標普{_fmt_pct(snap.get('spx_pct'))} "
         f"那指{_fmt_pct(snap.get('ixic_pct'))} 費半{_fmt_pct(snap.get('sox_pct'))} "
-        f"VIX {_fmt_vix(snap.get('vix'))}"
+        f"VIX {_fmt_vix(snap.get('vix'))}{extra}"
     )
+
+
+def format_us_drop_alert(snap: Dict[str, Any]) -> str:
+    """06:30 海選前的單獨一則：只在大跌時寄，一早打開就能看到。"""
+    from tg_layout import html_escape
+
+    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "隔夜偏空")
+    sess = snap.get("us_session") or ""
+    sess_s = f"{sess[:4]}/{sess[4:6]}/{sess[6:]}" if len(str(sess)) == 8 else (sess or "—")
+    lines = [
+        f"<b>美股收盤偏弱</b>　一早提醒　{html_escape(label)}　美股交易日 {html_escape(sess_s)}",
+        (
+            f"道瓊 {_fmt_pct(snap.get('dji_pct'))}　標普 {_fmt_pct(snap.get('spx_pct'))}　"
+            f"那斯達克 {_fmt_pct(snap.get('ixic_pct'))}　費半 {_fmt_pct(snap.get('sox_pct'))}"
+        ),
+        f"VIX {_fmt_vix(snap.get('vix'))}",
+    ]
+    phase = snap.get("us_phase") or "regular"
+    if phase in ("post", "overnight") and any(
+        snap.get(k) is not None for k in ("nq_f_pct", "tsm_post_pct")
+    ):
+        lines.append(
+            f"盤後　NQ {_fmt_pct(snap.get('nq_f_pct'))}　"
+            f"台積ADR {_fmt_pct(snap.get('tsm_post_pct'))}　輝達 {_fmt_pct(snap.get('nvda_post_pct'))}"
+        )
+    if snap.get("regime") == "risk_off":
+        lines.append("06:30 海選會把當沖／隔日沖拿掉。佈局先看高低卡，不要因為缺口去追。")
+    else:
+        lines.append("06:30 海選會加嚴：貼月高與電子逆風檔會拿掉。不是叫你現在下單。")
+    return "\n".join(lines)
 
 
 def apply_us_overnight(results: Dict[str, Any], snap: Dict[str, Any]) -> None:
@@ -368,14 +567,8 @@ def apply_us_overnight(results: Dict[str, Any], snap: Dict[str, Any]) -> None:
     snap = snap or {}
     regime = snap.get("regime") or "unknown"
     results["_us_regime"] = regime
-    try:
-        sox = float(snap["sox_pct"]) if snap.get("sox_pct") is not None else None
-    except (TypeError, ValueError):
-        sox = None
-    try:
-        tsm = float(snap["tsm_pct"]) if snap.get("tsm_pct") is not None else None
-    except (TypeError, ValueError):
-        tsm = None
+    sox = effective_sox_pct(snap)
+    tsm = effective_tsm_pct(snap)
 
     def mark(item: Dict[str, Any]) -> None:
         chip = is_chip_industry(str(item.get("industry") or ""))

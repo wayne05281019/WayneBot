@@ -270,21 +270,46 @@ def annotate_items_with_sector_flow(db_path: str, ymd: str, items: List[Dict[str
     """海選／當沖名單標上當日產業輪動進／出，當佈局參考，不改排名公式。"""
     if not items:
         return
+    annotate_screen_results(db_path, ymd, {"_": items})
+
+
+def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> None:
+    """產業輪動只算一次，再批次標到所有名單。"""
+    lists = [lst for lst in (results or {}).values() if isinstance(lst, list) and lst]
+    if not lists:
+        return
     maps = sector_flow_maps(db_path, ymd)
+    ids = []
+    seen = set()
+    for lst in lists:
+        for item in lst:
+            sid = str(item.get("stock_id") or item.get("code") or "").strip()
+            if sid and sid not in seen:
+                seen.add(sid)
+                ids.append(sid)
+    industries: Dict[str, str] = {}
     conn = sqlite3.connect(db_path)
     try:
-        for item in items:
-            sid = str(item.get("stock_id") or item.get("code") or "")
-            if not sid:
-                continue
-            ind = industry_of(conn, sid)
-            item["industry"] = ind
-            if ind in maps["inflow"]:
-                item["sector_inflow"] = True
-                item["sector_flow_label"] = f"輪動進·{ind}"
-            elif ind in maps["outflow"]:
-                item["sector_outflow"] = True
-                item["sector_flow_label"] = f"輪動出·{ind}"
+        if ids:
+            qmarks = ",".join("?" * len(ids))
+            for sid, ind in conn.execute(
+                f"SELECT stock_id, industry FROM stock_universe WHERE stock_id IN ({qmarks})",
+                ids,
+            ):
+                industries[str(sid)] = (str(ind or "").strip() or "未分類")
+        for lst in lists:
+            for item in lst:
+                sid = str(item.get("stock_id") or item.get("code") or "").strip()
+                if not sid:
+                    continue
+                ind = industries.get(sid) or industry_of(conn, sid)
+                item["industry"] = ind
+                if ind in maps["inflow"]:
+                    item["sector_inflow"] = True
+                    item["sector_flow_label"] = f"輪動進·{ind}"
+                elif ind in maps["outflow"]:
+                    item["sector_outflow"] = True
+                    item["sector_flow_label"] = f"輪動出·{ind}"
     finally:
         conn.close()
 
