@@ -253,6 +253,12 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
+            from ex_rights import ensure_ex_rights_table
+
+            ensure_ex_rights_table(path)
+        except Exception:
+            pass
+        try:
             from portfolio_engine import PortfolioEngine
 
             PortfolioEngine(path)

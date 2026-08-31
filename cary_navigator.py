@@ -48,11 +48,11 @@ else:
 plt.rcParams['axes.unicode_minus'] = False
 
 
-def normalize_ohlc(df: pd.DataFrame) -> tuple:
+def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     """除權／錯價還原。回傳 (df, notes)。
 
-    寶雅那種「720 突然變 74」是除權或未還原價；單日 10 倍跳動多半是匯入錯價。
-    還原後高低點才不會出現 -870%。無量且開高低收同一價的假 K 不參與滾動高低。
+    優先用官方除權息表（ex_rights：參考價／前收盤）。沒公告的減資／分割仍用跳空啟發式。
+    單日 10 倍跳動多半是匯入錯價。無量且開高低收同一價的假 K 不參與滾動高低。
     """
     if df is None or df.empty:
         return df, []
@@ -69,6 +69,32 @@ def normalize_ohlc(df: pd.DataFrame) -> tuple:
     if n < 3:
         out["is_halt"] = False
         return out, notes
+
+    official = set()
+    sid = ""
+    if "stock_id" in out.columns and len(out):
+        sid = str(out["stock_id"].iloc[-1] or "")
+    dates = out["date"].astype(str).str.replace("-", "", regex=False)
+    if sid:
+        try:
+            from ex_rights import load_ex_rights
+
+            for ev in load_ex_rights(sid, db_path):
+                ex = str(ev.get("ex_date") or "")
+                factor = float(ev.get("factor") or 0)
+                if len(ex) != 8 or not (0.05 <= factor <= 20):
+                    continue
+                mask = dates < ex
+                if not bool(mask.any()):
+                    continue
+                out.loc[mask, ["open", "high", "low", "close"]] = (
+                    out.loc[mask, ["open", "high", "low", "close"]] * factor
+                )
+                official.add(ex)
+                notes.append(f"官方除權息 {ex} ×{factor:.4f}")
+            dates = out["date"].astype(str).str.replace("-", "", regex=False)
+        except Exception:
+            official = set()
 
     def _scale_row(i, factor):
         for col in ("open", "high", "low", "close"):
@@ -91,6 +117,9 @@ def normalize_ohlc(df: pd.DataFrame) -> tuple:
 
     # 2) 持續跳空＝除權：當天整根都離開前收，之後不再跳回
     for i in range(1, n):
+        day = str(dates.iloc[i] if i < len(dates) else "").replace("-", "")
+        if day in official:
+            continue
         p = float(out["close"].iloc[i - 1] or 0)
         c = float(out["close"].iloc[i] or 0)
         hi = float(out["high"].iloc[i] or 0)
@@ -166,6 +195,7 @@ class CaryNavigatorEngine:
             return {"error": f"標的 {stock_id} 歷史資料不足"}
 
         df = df.iloc[::-1].reset_index(drop=True)
+        df["stock_id"] = str(stock_id)
         try:
             from live_quote import append_live_bar
 
@@ -177,7 +207,7 @@ class CaryNavigatorEngine:
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
             is_live = True
             live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
-        df, xq_notes = normalize_ohlc(df)
+        df, xq_notes = normalize_ohlc(df, self.db_path)
         close_s = df["close"].where(~df["is_halt"])
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
@@ -275,7 +305,7 @@ class CaryNavigatorEngine:
         badges = []
         if is_live:
             badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
-        if any("除權" in x or "錯價" in x for x in xq_notes):
+        if any("除權" in x or "錯價" in x or "官方除權息" in x for x in xq_notes):
             badges.append("已除權還原")
         if int(latest["vol_rank_120"]) <= 10:
             badges.append(f"120日量第 {int(latest['vol_rank_120'])} 名")
@@ -796,6 +826,7 @@ def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFr
     if df.empty:
         return df
     df = df.iloc[::-1].reset_index(drop=True)
+    df["stock_id"] = str(stock_id).strip()
     try:
         from live_quote import append_live_bar
 
@@ -1083,7 +1114,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     if df.empty:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    work, _notes = normalize_ohlc(df.copy())
+    work, _notes = normalize_ohlc(df.copy(), db_path=None)
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")

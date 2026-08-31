@@ -179,13 +179,15 @@ def fetch_chips_for_date(session: requests.Session, yyyymmdd: str) -> Dict[str, 
 def apply_chips_to_quotes(db_path: str, yyyymmdd: str, chips: Dict[str, Dict[str, int]]) -> int:
     if not chips:
         return 0
+    day = str(yyyymmdd or "").replace("-", "")[:8]
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     updated = 0
     for sid, c in chips.items():
         cur.execute(
-            "UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=? WHERE date=? AND stock_id=?",
-            (c.get("foreign_net", 0), c.get("trust_net", 0), c.get("dealer_net", 0), yyyymmdd, sid),
+            """UPDATE daily_quotes SET foreign_net=?, trust_net=?, dealer_net=?
+               WHERE replace(date,'-','')=? AND stock_id=?""",
+            (c.get("foreign_net", 0), c.get("trust_net", 0), c.get("dealer_net", 0), day, sid),
         )
         updated += cur.rowcount
     conn.commit()
@@ -196,16 +198,23 @@ def apply_chips_to_quotes(db_path: str, yyyymmdd: str, chips: Dict[str, Dict[str
 def update_chips_for_date(db_path: str, yyyymmdd: str, session: Optional[requests.Session] = None) -> int:
     sess = session or requests.Session()
     sess.headers.update(HEADERS)
-    chips = fetch_chips_for_date(sess, yyyymmdd)
-    n = apply_chips_to_quotes(db_path, yyyymmdd, chips)
-    logger.info("籌碼寫入 %s：API %s 檔，更新 quotes %s 列", yyyymmdd, len(chips), n)
+    day = str(yyyymmdd or "").replace("-", "")[:8]
+    chips = fetch_chips_for_date(sess, day)
+    n = apply_chips_to_quotes(db_path, day, chips)
+    logger.info("籌碼寫入 %s：API %s 檔，更新 quotes %s 列", day, len(chips), n)
     return n
 
 
 def backfill_chips(db_path: str = None, days: int = 30, sleep_s: float = 0.45) -> Dict[str, Any]:
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
-    dates = [r[0] for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date DESC LIMIT ?", (days,))]
+    dates = [
+        str(r[0]).replace("-", "")[:8]
+        for r in conn.execute(
+            "SELECT DISTINCT replace(date,'-','') FROM daily_quotes ORDER BY 1 DESC LIMIT ?",
+            (days,),
+        )
+    ]
     conn.close()
     sess = requests.Session()
     sess.headers.update(HEADERS)
