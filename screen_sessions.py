@@ -16,8 +16,8 @@ except Exception:
         return "data/wayne_market.db"
 
 BUCKETS = (
-    "revenue_cross",
     "leave_zero",
+    "revenue_cross",
     "select_01",
     "select_02",
     "select_03",

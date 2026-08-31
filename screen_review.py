@@ -15,8 +15,8 @@ except Exception:
         return "data/wayne_market.db"
 
 BUCKETS = (
-    ("revenue_cross", "優先看"),
     ("leave_zero", "起漲"),
+    ("revenue_cross", "優先看"),
     ("select_01", "周突破"),
     ("select_02", "站上季線"),
     ("select_03", "止跌"),
