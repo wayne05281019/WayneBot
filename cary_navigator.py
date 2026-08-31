@@ -622,7 +622,7 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10):
             (cx - w / 2, cy - h / 2),
             w,
             h,
-            boxstyle="round,pad=0.12,rounding_size=0.45",
+            boxstyle="round,pad=0,rounding_size=0.45",
             facecolor=bg,
             edgecolor=bg,
             linewidth=0,
@@ -663,86 +663,156 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
     )
 
 
+def horizon_low_cells(card: dict) -> list:
+    """120／240／480 日收盤低；有數字就畫第二排。"""
+    out = []
+    for days, pk, dk in (
+        (120, "l120", "dist_l120"),
+        (240, "l240", "dist_l240"),
+        (480, "l480", "dist_l480"),
+    ):
+        px, dist = card.get(pk), card.get(dk)
+        if px is None or dist is None:
+            continue
+        try:
+            px_f, dist_f = float(px), float(dist)
+        except (TypeError, ValueError):
+            continue
+        if px_f <= 0:
+            continue
+        out.append((f"{days}低", px_f, dist_f))
+    return out
+
+
+def _fmt_dist(val) -> str:
+    if val is None:
+        return "—"
+    try:
+        return f"{float(val):+.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def render_decision_card_png(card: dict, save_path: str) -> str:
-    """單張長圖，版面對齊範本；窄寬度讓 Telegram 縮圖後字仍能看。"""
+    """單張長圖：區塊由上往下排，圖高跟內容走，避免擠在固定 0–100 座標裡重疊。"""
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
-    fig_w, fig_h = 6.55, 5.35 + n * 0.48
+    extra_lows = horizon_low_cells(card)
+
+    # 資料座標：標題在框外自己一列；圖高跟內容走；表列高固定。
+    m_top, m_bot = 0.75, 0.90
+    header_h, price_h = 4.20, 4.55
+    gap_hp, gap_pr = 0.95, 1.55
+    gap_after_title, gap_boxes, gap_before_table = 0.35, 1.55, 1.50
+    title_band, cell_h, cell_gap = 2.70, 3.55, 0.85
+    box_pad_t, box_pad_b = 0.48, 0.55
+    tbl_title_h, hdr_h, body_h = 2.70, 2.40, 2.05
+    red_box_h = box_pad_t + cell_h + box_pad_b
+    green_rows = 2 if extra_lows else 1
+    green_box_h = box_pad_t + green_rows * cell_h + (green_rows - 1) * cell_gap + box_pad_b
+    H = (
+        m_top + header_h + gap_hp + price_h + gap_pr
+        + title_band + gap_after_title + red_box_h + gap_boxes
+        + title_band + gap_after_title + green_box_h + gap_before_table
+        + tbl_title_h + hdr_h + n * body_h + m_bot
+    )
+    fig_w = 6.55
+    fig_h = H * 0.110
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=175, facecolor="#eef1f6")
-    H = 100.0
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
-    fig.subplots_adjust(left=0.03, right=0.97, top=0.985, bottom=0.012)
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.982, bottom=0.020)
 
-    # 表頭
-    ax.add_patch(patches.FancyBboxPatch((1.2, 93.4), 97.6, 6.0, boxstyle="round,pad=0.15,rounding_size=0.6",
+    y_top = H - m_top
+    header_y = y_top - header_h
+    ax.add_patch(patches.FancyBboxPatch((1.2, header_y), 97.6, header_h, boxstyle="round,pad=0,rounding_size=0.45",
                                         facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.4, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
-            color="#ffffff", va="center")
-    ax.text(3.4, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
-    ax.text(96.5, 96.2, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
+    ax.text(3.4, header_y + header_h / 2, f"{card['stock_id']}  {card.get('stock_name') or ''}",
+            fontproperties=_fp(17, "bold"), color="#ffffff", va="center")
+    ax.text(96.5, header_y + header_h / 2, "WayneBot", fontproperties=_fp(10, "bold"),
+            color="#c5cae9", ha="right", va="center")
 
+    price_top = header_y - gap_hp
+    price_y = price_top - price_h
+    price_cy = price_y + price_h / 2
     chg = float(card.get("change_pct") or 0)
     chg_c = "#c62828" if chg > 0 else ("#00695c" if chg < 0 else "#212121")
-    ax.text(3.2, 91.35, "股價", fontproperties=_fp(11), color="#607d8b", va="center")
-    ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(30, "bold"), color="#000000", va="center")
-    ax.text(42.0, 91.35, "漲跌幅", fontproperties=_fp(11), color="#607d8b", va="center")
-    ax.text(52.0, 91.2, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c, va="center")
-    badges = [str(x) for x in (card.get("badges") or []) if x][:4]
+    ax.text(3.2, price_cy + 0.12, "股價", fontproperties=_fp(10), color="#607d8b", va="center")
+    ax.text(10.6, price_cy, _fmt_price(card["close"]), fontproperties=_fp(20, "bold"), color="#000000", va="center")
+    ax.text(40.0, price_cy + 0.12, "漲跌幅", fontproperties=_fp(10), color="#607d8b", va="center")
+    ax.text(50.0, price_cy, f"{chg:+.2f}%", fontproperties=_fp(15, "bold"), color=chg_c, va="center")
+    badges = [str(x) for x in (card.get("badges") or []) if x][:3]
     if not badges:
         badges = ["整理格局"]
-    bx = 70.5 if len(badges) == 1 else 64.2
+    bx = 72.0 if len(badges) == 1 else 66.0
     for i, btxt in enumerate(badges):
-        _pill(ax, bx + i * 16.2, 91.25, btxt, "#e53935", "#ffffff", w=15.4, h=3.0, fs=10)
+        _pill(ax, bx + i * 15.6, price_cy, btxt[:8], "#e53935", "#ffffff", w=14.6, h=2.20, fs=9)
 
-    # 高點
-    ax.add_patch(patches.FancyBboxPatch((1.8, 80.6), 96.4, 8.4, boxstyle="round,pad=0.12,rounding_size=0.45",
+    def _metric_cell(x, y, lab, px, dist, *, high: bool, near=False):
+        if high:
+            bg, ec, lc = "#fff5f7", "#f8bbd0", "#ad1457"
+        else:
+            bg, ec, lc = (("#c8e6c9", "#2e7d32", "#2e7d32") if near else ("#f1f8e9", "#a5d6a7", "#2e7d32"))
+        ax.add_patch(patches.FancyBboxPatch((x, y), 30.0, cell_h, boxstyle="round,pad=0,rounding_size=0.28",
+                                            facecolor=bg, edgecolor=ec, linewidth=0.8))
+        ax.text(x + 1.3, y + cell_h / 2, lab, fontproperties=_fp(10, "bold"), color=lc, ha="left", va="center")
+        ax.text(x + 16.4, y + cell_h / 2, _fmt_price(px), fontproperties=_fp(12, "bold"), color="#000000", ha="center", va="center")
+        dc = "#b71c1c"
+        if high:
+            dc = "#004d40" if dist < 0 else "#b71c1c"
+        ax.text(x + 28.5, y + cell_h / 2, f"{float(dist):+.1f}%", fontproperties=_fp(10, "bold"),
+                color=dc, ha="right", va="center")
+
+    rtitle_top = price_y - gap_pr
+    rtitle_cy = rtitle_top - title_band / 2
+    ax.text(3.4, rtitle_cy, "高點資訊", fontproperties=_fp(11, "bold"), color="#ad1457", va="center")
+    ax.text(38.0, rtitle_cy, f"MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}",
+            fontproperties=_fp(9), color="#6d4c41", va="center")
+    red_top = rtitle_top - title_band - gap_after_title
+    red_y = red_top - red_box_h
+    ax.add_patch(patches.FancyBboxPatch((1.8, red_y), 96.4, red_box_h, boxstyle="round,pad=0,rounding_size=0.35",
                                         facecolor="#ffffff", edgecolor="#ef9a9a", linewidth=1.1))
-    ax.text(3.4, 87.4, "高點資訊", fontproperties=_fp(13, "bold"), color="#ad1457", va="center")
-    ax.text(16.5, 87.4, f"10日／20日／60日　(MA60S: {card.get('ma60s')} ／ QTY60: {int(card.get('qty60') or 0):,})",
-            fontproperties=_fp(10), color="#6d4c41", va="center")
-    highs = [("10日高點", card["h10"], card["dist_h10"]), ("20日高點", card["h20"], card["dist_h20"]),
-             ("60日高點", card["h60"], card["dist_h60"])]
+    highs = [("10高", card["h10"], card["dist_h10"]), ("20高", card["h20"], card["dist_h20"]),
+             ("60高", card["h60"], card["dist_h60"])]
     for i, (lab, px, dist) in enumerate(highs):
-        x = 4.2 + i * 31.6
-        ax.add_patch(patches.FancyBboxPatch((x, 81.2), 30.0, 5.0, boxstyle="round,pad=0.1,rounding_size=0.35",
-                                            facecolor="#fff5f7", edgecolor="#f8bbd0", linewidth=0.8))
-        ax.text(x + 15, 85.15, lab, fontproperties=_fp(10), color="#ad1457", ha="center", va="center")
-        ax.text(x + 15, 83.35, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
-        ax.text(x + 15, 81.75, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"),
-                color="#004d40" if dist < 0 else "#b71c1c", ha="center", va="center")
+        _metric_cell(4.2 + i * 31.6, red_y + box_pad_b, lab, px, dist, high=True)
 
-    # 低點
-    ax.add_patch(patches.FancyBboxPatch((1.8, 70.8), 96.4, 8.8, boxstyle="round,pad=0.12,rounding_size=0.45",
+    gtitle_top = red_y - gap_boxes
+    gtitle_cy = gtitle_top - title_band / 2
+    ax.text(3.4, gtitle_cy, "低點資訊", fontproperties=_fp(11, "bold"), color="#2e7d32", va="center")
+    ax.text(38.0, gtitle_cy, f"月空間 {card['space_20']}%　季空間 {card['space_60']}%",
+            fontproperties=_fp(9), color="#33691e", va="center")
+    green_top = gtitle_top - title_band - gap_after_title
+    green_y = green_top - green_box_h
+    ax.add_patch(patches.FancyBboxPatch((1.8, green_y), 96.4, green_box_h, boxstyle="round,pad=0,rounding_size=0.35",
                                         facecolor="#ffffff", edgecolor="#81c784", linewidth=1.1))
-    ax.text(3.4, 78.1, "低點資訊", fontproperties=_fp(13, "bold"), color="#2e7d32", va="center")
-    ax.text(16.5, 78.1, f"20日（高低操作空間: {card['space_20']}%）／60日（高低操作空間: {card['space_60']}%）",
-            fontproperties=_fp(10), color="#33691e", va="center")
-    lows = [("10日低點", card["l10"], card["dist_l10"]), ("20日低點", card["l20"], card["dist_l20"]),
-            ("60日低點", card["l60"], card["dist_l60"])]
+    lows = [("10低", card["l10"], card["dist_l10"]), ("20低", card["l20"], card["dist_l20"]),
+            ("60低", card["l60"], card["dist_l60"])]
+    low1_y = green_y + box_pad_b + ((cell_h + cell_gap) if extra_lows else 0)
     for i, (lab, px, dist) in enumerate(lows):
-        x = 4.2 + i * 31.6
-        ax.add_patch(patches.FancyBboxPatch((x, 71.4), 30.0, 5.4, boxstyle="round,pad=0.1,rounding_size=0.35",
-                                            facecolor="#f1f8e9", edgecolor="#a5d6a7", linewidth=0.8))
-        ax.text(x + 15, 75.6, lab, fontproperties=_fp(10), color="#2e7d32", ha="center", va="center")
-        ax.text(x + 15, 73.7, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
-        ax.text(x + 15, 72.05, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"), color="#b71c1c", ha="center", va="center")
+        near = dist is not None and float(dist) <= 2.0
+        _metric_cell(4.2 + i * 31.6, low1_y, lab, px, dist, high=False, near=near)
+    if extra_lows:
+        low2_y = green_y + box_pad_b
+        for i, (lab, px, dist) in enumerate(extra_lows[:3]):
+            near = dist is not None and float(dist) <= 2.0
+            _metric_cell(4.2 + i * 31.6, low2_y, lab, px, dist, high=False, near=near)
 
-    ax.text(3.2, 69.55, "過去 20 天記錄", fontproperties=_fp(13, "bold"), color="#263238", va="center")
+    table_title_top = green_y - gap_before_table
+    table_title_y = table_title_top - tbl_title_h / 2
+    top = table_title_top - tbl_title_h
+    ax.text(3.2, table_title_y, "過去 20 天記錄", fontproperties=_fp(11, "bold"), color="#263238", va="center")
     headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
     xs = [2.0, 16.6, 27.4, 38.2, 49.0, 60.2, 73.0, 85.2, 98.0]
-    top = 68.2
-    hdr_h = 2.55
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], top - hdr_h), xs[i + 1] - xs[i], hdr_h, facecolor="#e3f2fd", edgecolor="#90caf9", lw=0.6))
         ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, fontproperties=_fp(11, "bold"), ha="center", va="center", color="#0d47a1")
     y = top - hdr_h
-    body_h = (y - 1.15) / n
-    fs_body = 13
+    fs_body = 11
     row_i = 0
     for _, r in table.iterrows():
         y1 = y - body_h
@@ -919,7 +989,9 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv("距20日高", f"{card['dist_h20']:+.1f}%"),
             kv("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
             kv("距60根低", f"{card.get('dist_l60'):+.1f}%"),
-            kv("距120低", f"{card['dist_l120']:+.1f}%" if card.get("dist_l120") is not None else "—"),
+            kv("距120低", _fmt_dist(card.get("dist_l120"))),
+            kv("距240低", _fmt_dist(card.get("dist_l240"))),
+            kv("距480低", _fmt_dist(card.get("dist_l480"))),
             kv("月空間", f"{card['space_20']}%"),
             kv("季空間", f"{card['space_60']}%"),
             kv("月乖離", bias_s),
@@ -935,7 +1007,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     )
 
 
-def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str) -> str:
+def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
     """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
     if not card or card.get("error"):
         return ""
@@ -945,7 +1017,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     try:
         from fundamentals import glance_fundamentals_plain
 
-        fund_rows = glance_fundamentals_plain(stock_id, get_db_path())
+        fund_rows = glance_fundamentals_plain(stock_id, db_path or get_db_path())
     except Exception:
         fund_rows = []
 
@@ -1006,7 +1078,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     kv_block(61.55, 15.15, "空間／位置", [
         ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
         ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
-        ("距60根低", f"{card.get('dist_l60'):+.1f}%", "#111111"),
+        ("距60／120／240／480低", "　".join([
+            _fmt_dist(card.get("dist_l60")),
+            _fmt_dist(card.get("dist_l120")),
+            _fmt_dist(card.get("dist_l240")),
+            _fmt_dist(card.get("dist_l480")),
+        ]), "#111111"),
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", "#111111"),
     ])
     kv_block(48.55, 12.15, "熱度／量能", [
@@ -1491,22 +1568,54 @@ def generate_card_image(stock_id: str, db_path: str = None, save_path: str = Non
     return [path] if path else []
 
 
-def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
+def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None) -> dict:
+    """看這檔：決策卡只算一次，介紹圖／高低卡／導航／籌碼一次產出。"""
     sid = str(stock_id).strip()
-    html = generate_decision_card(sid, db_path, lookback=20)
+    db_path = db_path or get_db_path()
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
-    glance = ""
+    engine = CaryNavigatorEngine(db_path)
+    card = engine.get_decision_card(sid, lookback=20)
+    if card.get("error"):
+        return {
+            "error": card.get("error"),
+            "card": card,
+            "glance": "",
+            "cards": [],
+            "chart": "",
+            "chips": "",
+        }
+    tape = {}
     try:
         from chip_tape import build_tape
 
-        engine = CaryNavigatorEngine(db_path or get_db_path())
-        card = engine.get_decision_card(sid, lookback=20)
-        tape = build_tape(db_path or get_db_path(), sid) or {}
-        if not card.get("error"):
-            glance = render_first_glance_png(sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"))
+        tape = build_tape(db_path, sid) or {}
     except Exception:
-        glance = ""
-    cards = generate_card_image(sid, db_path, os.path.join(charts_dir, f"{sid}_card.png"))
-    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"))
-    return html, cards, chart, glance
+        tape = {}
+    glance = render_first_glance_png(
+        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
+    ) or ""
+    card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
+    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png")) or ""
+    chips = ""
+    try:
+        from chips import generate_chips_image
+
+        chips = generate_chips_image(sid, db_path, os.path.join(charts_dir, f"{sid}_chips.png")) or ""
+    except Exception:
+        chips = ""
+    return {
+        "card": card,
+        "tape": tape,
+        "glance": glance,
+        "cards": [card_path] if card_path else [],
+        "chart": chart,
+        "chips": chips,
+    }
+
+
+def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
+    sid = str(stock_id).strip()
+    pack = render_stock_pack(sid, db_path, charts_dir)
+    html = generate_decision_card(sid, db_path, lookback=20)
+    return html, pack.get("cards") or [], pack.get("chart") or "", pack.get("glance") or ""

@@ -555,5 +555,284 @@ class DualSessionTest(unittest.TestCase):
                 os.environ["WAYNE_JOB"] = old
 
 
+class LookupCardTest(unittest.TestCase):
+    def test_horizon_low_cells_order(self):
+        from cary_navigator import horizon_low_cells
+
+        cells = horizon_low_cells(
+            {
+                "l120": 70,
+                "dist_l120": 1.0,
+                "l240": 60,
+                "dist_l240": 10.0,
+                "l480": 50,
+                "dist_l480": 20.0,
+            }
+        )
+        self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
+        self.assertEqual(cells[0][1], 70.0)
+
+    def test_decision_card_png_with_long_lows(self):
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+
+        from cary_navigator import render_decision_card_png
+
+        table = pd.DataFrame(
+            [
+                {
+                    "date": "20260828",
+                    "close": 51.0,
+                    "獲利": "2.0%",
+                    "高低": "No",
+                    "預警": "No",
+                    "溫度計": "55.0 °C",
+                    "月乖離": "+1.0%",
+                    "profit_pct": 2.0,
+                    "bias_monthly": 1.0,
+                    "vol_rank_120": 20,
+                    "120日量": "第 20 名",
+                }
+            ]
+        )
+        card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 51.0,
+            "change_pct": 1.2,
+            "h10": 55,
+            "dist_h10": -7.3,
+            "h20": 56,
+            "dist_h20": -8.9,
+            "h60": 60,
+            "dist_h60": -15.0,
+            "l10": 50,
+            "dist_l10": 2.0,
+            "l20": 49,
+            "dist_l20": 4.1,
+            "l60": 48,
+            "dist_l60": 6.3,
+            "l120": 50.5,
+            "dist_l120": 1.0,
+            "l240": 45,
+            "dist_l240": 13.3,
+            "l480": 40,
+            "dist_l480": 27.5,
+            "space_20": 14,
+            "space_60": 25,
+            "ma60s": 0.5,
+            "qty60": 20000,
+            "badges": ["近120日低"],
+            "table": table,
+        }
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            out = render_decision_card_png(card, path)
+            self.assertTrue(out)
+            self.assertGreater(os.path.getsize(out), 8000)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_decision_card_png_one_row_not_stretched(self):
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+        from PIL import Image
+
+        from cary_navigator import render_decision_card_png
+
+        def row(date):
+            return {
+                "date": date,
+                "close": 51.0,
+                "獲利": "2.0%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "55.0 °C",
+                "月乖離": "+1.0%",
+                "profit_pct": 2.0,
+                "bias_monthly": 1.0,
+                "vol_rank_120": 20,
+                "120日量": "第 20 名",
+            }
+
+        card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 51.0,
+            "change_pct": 1.2,
+            "h10": 55,
+            "dist_h10": -7.3,
+            "h20": 56,
+            "dist_h20": -8.9,
+            "h60": 60,
+            "dist_h60": -15.0,
+            "l10": 50,
+            "dist_l10": 2.0,
+            "l20": 49,
+            "dist_l20": 4.1,
+            "l60": 48,
+            "dist_l60": 6.3,
+            "l120": 50.5,
+            "dist_l120": 1.0,
+            "l240": 45,
+            "dist_l240": 13.3,
+            "l480": 40,
+            "dist_l480": 27.5,
+            "space_20": 14,
+            "space_60": 25,
+            "ma60s": 0.5,
+            "qty60": 20000,
+            "badges": ["近120日低"],
+        }
+        dates = [
+            "20260819",
+            "20260820",
+            "20260821",
+            "20260822",
+            "20260825",
+            "20260826",
+            "20260827",
+            "20260828",
+        ]
+        paths = []
+        try:
+            for n, tbl in (
+                (1, pd.DataFrame([row("20260828")])),
+                (8, pd.DataFrame([row(d) for d in dates])),
+            ):
+                fd, path = tempfile.mkstemp(suffix=".png")
+                os.close(fd)
+                paths.append(path)
+                card["table"] = tbl
+                render_decision_card_png(card, path)
+            with Image.open(paths[0]) as im1:
+                h1 = im1.size[1]
+            with Image.open(paths[1]) as im8:
+                h8 = im8.size[1]
+            self.assertLess(h1, 950)
+            self.assertGreater(h8, h1 + 180)
+            self.assertLess(h8 - h1, 500)
+        finally:
+            for path in paths:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    def test_mis_quote_cache_hits_once(self):
+        import live_quote
+
+        calls = []
+
+        class FakeResp:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "msgArray": [
+                        {
+                            "c": "2330",
+                            "n": "台積電",
+                            "z": "100",
+                            "y": "99",
+                            "o": "99",
+                            "h": "101",
+                            "l": "98",
+                            "v": "1",
+                            "t": "13:00",
+                            "b": "",
+                            "a": "",
+                        }
+                    ]
+                }
+
+        def fake_get(*_a, **_k):
+            calls.append(1)
+            return FakeResp()
+
+        old = live_quote._SESSION.get
+        live_quote._SESSION.get = fake_get
+        with live_quote._QUOTE_LOCK:
+            live_quote._QUOTE_CACHE.clear()
+        try:
+            a = live_quote.fetch_mis_quote("2330", "TW")
+            b = live_quote.fetch_mis_quote("2330", "TW")
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(a["close"], b["close"])
+            self.assertEqual(float(a["close"]), 100.0)
+        finally:
+            live_quote._SESSION.get = old
+            with live_quote._QUOTE_LOCK:
+                live_quote._QUOTE_CACHE.clear()
+
+    def test_stock_btn_shows_code_and_name(self):
+        from tg_layout import stock_btn_label
+
+        self.assertEqual(stock_btn_label("2330", "台積電"), "2330 台積電")
+        self.assertNotIn("看這檔", stock_btn_label("2303", "聯電"))
+
+    def test_screen_ma60_cross_and_bounce(self):
+        import pandas as pd
+        from screening_engine import ScreeningEngine, format_line_share_text
+
+        def bars(closes):
+            from datetime import datetime, timedelta
+
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": 8000,
+                        "turnover_k": 80000,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        engine = ScreeningEngine(db_path=":memory:")
+        # 前段在季線下，最後一根站上
+        cross = [90.0] * 68 + [88.0, 96.0]
+        out = engine.execute_all_strategies({"2330": bars(cross)})
+        self.assertTrue(out["select_02"])
+        line = format_line_share_text(out, "20260828")
+        self.assertIn("站上季線", line)
+        self.assertNotIn("半年高", line)
+        self.assertNotIn("兩年高", line)
+
+        bounce = [100.0] * 50 + [88.0] * 18 + [90.0]
+        out2 = engine.execute_all_strategies({"2330": bars(bounce)})
+        self.assertTrue(out2["select_03"])
+
+        # 高低卡獲利：昨收貼近 60 曆日低，今日剛離開 0
+        leave = [50.0] * 40 + [50.2, 52.0]
+        out3 = engine.execute_all_strategies({"2330": bars(leave)})
+        self.assertTrue(out3["leave_zero"])
+        self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
+
+
 if __name__ == "__main__":
     unittest.main()

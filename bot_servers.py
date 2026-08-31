@@ -73,7 +73,7 @@ HELP_TOPICS = {
         "海選＝昨收量化名單，不是盤中即時掃描。下一則純文字可轉貼哥哥 LINE。\n"
         "下一則純文字可整段轉哥哥 LINE。靠近 20 日收盤高會標<b>少追</b>。\n"
         "當沖會寫保險進場、第一停利(+3%)、衝頂(+6%)、均價停損；隔日沖會寫尾盤買進區間與防守。\n"
-        "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：看這檔＝現價＋四張圖；➕＝觀察。\n"
+        "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：左＝代號＋股名（看圖）；右➕＝觀察。\n"
         "其餘檔也把價位寫在排名裡，不必點開才看得到。靠近 20 日收盤高會標<b>少追</b>並排後面。不是立即下單清單。\n"
         "美股只看現金收盤（四大＋VIX＋費半／ADR），逆風時當沖／隔日沖不列。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買，不另外狂抓資料。"
@@ -82,12 +82,12 @@ HELP_TOPICS = {
         "<b>當沖怎麼用</b>\n"
         "保險進場＝不要追過當日收盤；第一停利＝+3% 先出一部分；衝頂＝+6%；保險停損＝當日均價跌破先走。\n"
         "隔夜美股逆風（VIX 高或四大／費半大跌）時這頁會空，避免開盤缺口硬沖。\n"
-        "藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。不是保證獲利。"
+        "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
         "保險買進＝尾盤昨收附近、不要摸高；明早開高目標 +3.5%～+4.8%；衝頂 +7%；保險防守＝開盤與均價較低者，跌破先走。\n"
-        "藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。"
+        "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -233,9 +233,11 @@ class WayneTelegramBot:
         )
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
-        """股名在文字裡連奇摩；按鈕兩欄對齊：看這檔（可帶序號）／觀察。"""
+        """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
+        from tg_layout import stock_btn_label
+
         c = str(code or "").strip()[:6]
-        label = f"看這檔 {idx}" if idx else "看這檔"
+        label = stock_btn_label(c, name or "")
         return [
             InlineKeyboardButton(label, callback_data=f"k:{c}"),
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
@@ -243,7 +245,7 @@ class WayneTelegramBot:
 
     def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen"):
         rows = []
-        for i, (code, name) in enumerate((picks or [])[:8], start=1):
+        for i, (code, name) in enumerate((picks or [])[:10], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
@@ -299,14 +301,17 @@ class WayneTelegramBot:
         return "\n".join(lines)
 
     def _watch_list_keyboard(self, rows):
+        from tg_layout import stock_btn_label
+
         kb = []
         for i, r in enumerate((rows or [])[:8], start=1):
             c = str(r.get("stock_code") or "")
             if not c:
                 continue
+            n = str(r.get("stock_name") or "")
             kb.append(
                 [
-                    InlineKeyboardButton(f"看這檔 {i}", callback_data=f"k:{c}"),
+                    InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
@@ -685,7 +690,7 @@ class WayneTelegramBot:
                     lines.append(f"• {html_escape(c)} {html_escape(n)}")
             else:
                 lines.append(f"• {html_escape(c)} {html_escape(n)}")
-        lines.append("下面按鈕由上到下對應清單：看這檔　籌碼　記買入。")
+        lines.append("下面按鈕由上到下對應清單：左＝代號＋股名　籌碼　記買入。")
         await message.reply_html("\n".join(lines), reply_markup=self._watch_list_keyboard(rows))
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
@@ -1098,64 +1103,32 @@ class WayneTelegramBot:
                 except Exception:
                     return False
 
-        def _glance():
-            from cary_navigator import CaryNavigatorEngine, render_first_glance_png
-            from chip_tape import build_tape
-
-            engine = CaryNavigatorEngine(self.db_path)
-            card = engine.get_decision_card(code, lookback=20)
-            tape = build_tape(self.db_path, code) or {}
-            if card.get("error"):
-                return ""
-            return render_first_glance_png(
-                code, card, tape, os.path.join(self.charts_dir, f"{code}_glance.png")
-            ) or ""
-
-        def _card():
-            from cary_navigator import generate_card_image
-
-            return generate_card_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_card.png"))
-
-        def _chart():
-            from cary_navigator import generate_chart
-
-            return generate_chart(code, "", self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
-
-        def _chips():
-            return generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
-
-        glance = ""
+        pack = {}
         try:
-            glance = await asyncio.to_thread(_glance)
+            from cary_navigator import render_stock_pack
+
+            pack = await asyncio.to_thread(
+                render_stock_pack, code, self.db_path, self.charts_dir
+            )
         except Exception:
-            logger.exception("介紹圖失敗 code=%s", code)
+            logger.exception("看這檔出圖失敗 code=%s", code)
+            pack = {}
+
+        glance = pack.get("glance") or ""
         if glance:
             await send_photo(glance, cap_links or "當日K＋籌碼價量")
 
-        card_img = ""
-        try:
-            card_img = await asyncio.to_thread(_card)
-        except Exception:
-            logger.exception("決策卡失敗 code=%s", code)
-        for path in self._card_photo_paths(card_img):
+        for path in self._card_photo_paths(pack.get("cards") or []):
             await send_photo(path, "高低決策卡")
 
-        chart = ""
-        try:
-            chart = await asyncio.to_thread(_chart)
-        except Exception:
-            logger.exception("導航圖失敗 code=%s", code)
+        chart = pack.get("chart") or ""
         if chart:
             await send_photo(
                 chart,
                 "180日高低導航：價格列＝粉↓20高、紫↓20高脫離、綠↑20低／脫離、青↑60低；量能列才有紫↑量能異常、紅↑警告",
             )
 
-        chip_img = ""
-        try:
-            chip_img = await asyncio.to_thread(_chips)
-        except Exception:
-            logger.exception("籌碼圖失敗 code=%s", code)
+        chip_img = pack.get("chips") or ""
         if chip_img:
             ok = await send_photo(chip_img, "籌碼（張）", hub)
             if not ok:
@@ -1181,11 +1154,11 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
-                "leave_zero": "起漲：獲利脫離零 × 量能／20低脫離",
-                "select_01": "Select 01：周帶量突破",
-                "select_02": "Select 02：突破半年高",
-                "select_03": "Select 03：突破兩年高",
-                "select_04": "Select 04：雙綠脫離",
+                "leave_zero": "起漲：高低卡獲利剛離零（跟決策卡同一條獲利）",
+                "select_01": "周帶量：短線轉強，貼月高少追",
+                "select_02": "站上季線：昨收在季線下、今日站上",
+                "select_03": "止跌：月低附近有人接、量沒死",
+                "select_04": "雙綠：高低卡20低剛脫離",
                 "day_trade": "當沖：進場 / 停利 / 停損",
                 "overnight": "隔日沖：尾盤佈局",
             }

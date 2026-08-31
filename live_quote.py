@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -13,6 +14,9 @@ from config import taipei_now, taipei_today_str
 logger = logging.getLogger("WayneBot.LiveQuote")
 
 _SESSION = requests.Session()
+_QUOTE_LOCK = threading.Lock()
+_QUOTE_CACHE: Dict[Tuple[str, str], Tuple[float, Optional[Dict[str, Any]]]] = {}
+_QUOTE_TTL_SEC = 20.0
 _SESSION.headers.update(
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -65,7 +69,14 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
     sid = str(stock_id).strip()
     if not sid:
         return None
+    key = (sid, str(market or "").upper())
+    now = time.time()
+    with _QUOTE_LOCK:
+        hit = _QUOTE_CACHE.get(key)
+        if hit and now - hit[0] < _QUOTE_TTL_SEC:
+            return hit[1]
     ts = int(time.time() * 1000)
+    found: Optional[Dict[str, Any]] = None
     for ch in _channels(sid, market):
         url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ch}&json=1&delay=0&_={ts}"
         try:
@@ -82,7 +93,7 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
                 continue
             vol = int(_num(item.get("v"), 0))
             pct = round((px - y) / y * 100.0, 2) if y > 0 else 0.0
-            return {
+            found = {
                 "stock_id": item.get("c") or sid,
                 "stock_name": item.get("n") or "",
                 "open": _num(item.get("o")) or px,
@@ -95,9 +106,12 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
                 "update_time": item.get("t") or "",
                 "is_realtime": True,
             }
+            break
         except Exception:
             logger.exception("MIS 即時報價失敗 %s", ch)
-    return None
+    with _QUOTE_LOCK:
+        _QUOTE_CACHE[key] = (time.time(), found)
+    return found
 
 
 def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "") -> pd.DataFrame:

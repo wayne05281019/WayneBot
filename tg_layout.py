@@ -75,6 +75,18 @@ def section(*rows: str) -> str:
     return "\n".join(r for r in rows if r)
 
 
+def stock_btn_label(code: str, name: str = "", max_bytes: int = 56) -> str:
+    """海選／清單左鍵：代號＋股名。Telegram 按鈕上限 64 bytes。"""
+    c = str(code or "").strip()
+    n = str(name or "").strip()
+    s = f"{c} {n}".strip() if n else c
+    raw = s.encode("utf-8")
+    while len(raw) > max_bytes and s:
+        s = s[:-1].rstrip()
+        raw = s.encode("utf-8")
+    return s or c or "看這檔"
+
+
 def join_sections(*blocks: str, sep: str = "\n\n") -> str:
     parts = [b.strip("\n") for b in blocks if b and str(b).strip()]
     return sep.join(parts)
