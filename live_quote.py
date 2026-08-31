@@ -93,6 +93,7 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
                 continue
             vol = int(_num(item.get("v"), 0))
             pct = round((px - y) / y * 100.0, 2) if y > 0 else 0.0
+            chg = round(px - y, 2) if y > 0 else 0.0
             found = {
                 "stock_id": item.get("c") or sid,
                 "stock_name": item.get("n") or "",
@@ -102,6 +103,7 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
                 "close": px,
                 "volume": vol,
                 "pct_change": pct,
+                "change": chg,
                 "yesterday_close": y,
                 "update_time": item.get("t") or "",
                 "is_realtime": True,

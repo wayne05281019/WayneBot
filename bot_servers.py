@@ -1002,7 +1002,7 @@ class WayneTelegramBot:
             title = html_stock_anchor(code, name, self.db_path)
         except Exception:
             title = f"{html_escape(code)} {html_escape(name)}".strip()
-        from screening_engine import _pct_html
+        from tg_layout import html_move, html_qty, price_change
 
         rt = None
         try:
@@ -1014,12 +1014,13 @@ class WayneTelegramBot:
         if rt:
             vol = int(rt.get("volume") or 0)
             t = str(rt.get("update_time") or "").strip()
-            from tg_layout import html_qty
-
+            chg = rt.get("change")
+            if chg is None:
+                chg = price_change(rt.get("close"), rt.get("pct_change"), rt.get("yesterday_close"))
             lines = [
                 title,
                 f"現價　{html_escape(rt.get('close'))}",
-                f"漲跌　{_pct_html(rt.get('pct_change'))}",
+                f"漲跌　{html_move(chg, rt.get('pct_change'))}",
                 f"成交　{html_qty(vol, signed=False)}",
             ]
             if t:
@@ -1032,7 +1033,7 @@ class WayneTelegramBot:
                 [
                     title,
                     f"昨收　{html_escape(close)}",
-                    f"漲跌　{_pct_html(pct)}",
+                    f"漲跌　{html_move(price_change(close, pct), pct)}",
                     "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>",
                 ]
             )
