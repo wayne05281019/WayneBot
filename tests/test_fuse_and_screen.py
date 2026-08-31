@@ -569,7 +569,7 @@ class LookupCardTest(unittest.TestCase):
                 "dist_l480": 20.0,
             }
         )
-        self.assertEqual([c[0] for c in cells], ["120日低點", "240日低點", "480日低點"])
+        self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
         self.assertEqual(cells[0][1], 70.0)
 
     def test_decision_card_png_with_long_lows(self):
@@ -684,6 +684,60 @@ class LookupCardTest(unittest.TestCase):
             live_quote._SESSION.get = old
             with live_quote._QUOTE_LOCK:
                 live_quote._QUOTE_CACHE.clear()
+
+    def test_stock_btn_shows_code_and_name(self):
+        from tg_layout import stock_btn_label
+
+        self.assertEqual(stock_btn_label("2330", "台積電"), "2330 台積電")
+        self.assertNotIn("看這檔", stock_btn_label("2303", "聯電"))
+
+    def test_screen_ma60_cross_and_bounce(self):
+        import pandas as pd
+        from screening_engine import ScreeningEngine, format_line_share_text
+
+        def bars(closes):
+            from datetime import datetime, timedelta
+
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": 8000,
+                        "turnover_k": 80000,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        engine = ScreeningEngine(db_path=":memory:")
+        # 前段在季線下，最後一根站上
+        cross = [90.0] * 68 + [88.0, 96.0]
+        out = engine.execute_all_strategies({"2330": bars(cross)})
+        self.assertTrue(out["select_02"])
+        line = format_line_share_text(out, "20260828")
+        self.assertIn("站上季線", line)
+        self.assertNotIn("半年高", line)
+        self.assertNotIn("兩年高", line)
+
+        bounce = [100.0] * 50 + [88.0] * 18 + [90.0]
+        out2 = engine.execute_all_strategies({"2330": bars(bounce)})
+        self.assertTrue(out2["select_03"])
 
 
 if __name__ == "__main__":

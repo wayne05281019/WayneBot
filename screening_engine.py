@@ -2,7 +2,7 @@
 # WayneBot 全市場量化決策系統升級：模組二 - 即時選股與價位精算核心
 # 檔案路徑：screening_engine.py
 # 核心功能：
-#   1. CaryBot 四大即時選股（周帶量突破、突破Hi120、突破Hi480、雙綠脫離）
+#   1. 海選：周帶量、站上季線、止跌、雙綠脫離（不再列半年高／兩年高）
 #   2. 當沖動能專區（進場價、+3%第一停利、+6%衝頂、均價停損）
 #   3. 隔日沖精選專區（買進區間、明日+3.5~4.8%開高目標、衝頂價、保本防守價）
 #   4. S 級籌碼濾網（投信連買 + 5MA向上勾角）
@@ -107,7 +107,9 @@ class ScreeningEngine:
         ma5 = close_series.rolling(5).mean().iloc[-1]
         ma5_prev = close_series.rolling(5).mean().iloc[-2] if len(df) >= 6 else ma5
         ma20 = close_series.rolling(20).mean().iloc[-1] if len(df) >= 20 else ma5
-        ma60 = close_series.rolling(60).mean().iloc[-1] if len(df) >= 60 else ma20
+        ma60_s = close_series.rolling(60, min_periods=20).mean()
+        ma60 = ma60_s.iloc[-1] if len(df) >= 20 else ma20
+        ma60_prev = ma60_s.iloc[-2] if len(df) >= 21 else ma60
         
         # 量能指標 Q60R (當日量 / 60日均量)
         vol_ma60 = vol_series.rolling(60).mean().iloc[-1] if len(df) >= 60 else vol_series.mean()
@@ -170,7 +172,8 @@ class ScreeningEngine:
             "q60r": q60r,
             "ma5": round(ma5, 2),
             "ma20": round(ma20, 2),
-            "ma60": round(ma60, 2),
+            "ma60": round(float(ma60), 2) if pd.notna(ma60) else 0.0,
+            "ma60_prev": round(float(ma60_prev), 2) if pd.notna(ma60_prev) else 0.0,
             "hi5": hi5,
             "hi20_close": hi20_close,
             "dist_h20": dist_h20,
@@ -216,6 +219,7 @@ class ScreeningEngine:
             prev_d20 = info["prev_d20"]
             ma5_hook = info["ma5_hook_up"]
             avg_p = info["avg_price"]
+            prev_close = info.get("prev_close") or c
 
             # ------------------------------------------------------------------
             # CaryBot Select 01: 周帶量突破 (5日高 + Q60R > 2.0)
@@ -223,16 +227,32 @@ class ScreeningEngine:
             if hi5 and c >= hi5 and q >= 2.0 and pct > 0.5:
                 res_sel_01.append(info)
 
-            # ------------------------------------------------------------------
-            # CaryBot Select 02: 突破Hi120 (半年新高 + Q60R > 2.5)
-            # ------------------------------------------------------------------
-            if hi120 and c >= hi120 and q >= 2.5 and pct > 1.0:
+            # Select 02: 站上季線（昨收在季線下、今日站上）。不是追半年高。
+            ma60 = info.get("ma60") or 0
+            ma60_prev = info.get("ma60_prev") or ma60
+            on_ma60 = False
+            if (
+                ma60 > 0
+                and prev_close < ma60_prev
+                and c >= ma60
+                and pct > 0
+                and q >= 1.0
+            ):
                 res_sel_02.append(info)
+                on_ma60 = True
 
-            # ------------------------------------------------------------------
-            # CaryBot Select 03: 突破Hi480 (兩年新高大底 + Q60R > 3.0)
-            # ------------------------------------------------------------------
-            if hi480 and c >= hi480 and q >= 3.0 and pct > 1.5:
+            # Select 03: 止跌（貼近 20／60 低、今日翻紅）。不是追兩年高。
+            if (
+                not on_ma60
+                and not info.get("chase_warning")
+                and pct > 0
+                and q >= 0.8
+                and (
+                    (info.get("low20") and c <= float(info["low20"]) * 1.06)
+                    or (info.get("low60") and c <= float(info["low60"]) * 1.08)
+                )
+                and (ma5_hook or c >= o)
+            ):
                 res_sel_03.append(info)
 
             # ------------------------------------------------------------------
@@ -598,8 +618,8 @@ def format_screening_payload(
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
         ("leave_zero", "🌱", "起漲", "獲利脫離零 × 量能／20低脫離", 8, True),
         ("select_01", "🔥", "Select 01", "周帶量突破", 8, True),
-        ("select_02", "🏆", "Select 02", "突破半年高 Hi120", 8, True),
-        ("select_03", "💎", "Select 03", "突破兩年高 Hi480", 8, True),
+        ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上（不是追半年高）", 8, True),
+        ("select_03", "💎", "止跌", "貼近月低／季低翻紅（不是追兩年高）", 8, True),
         ("select_04", "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
         ("day_trade", "⚡", "當沖", "保險進場／第一停利＋3%／衝頂＋6%／均價停損", 10, True),
         ("overnight", "🌙", "隔日沖", "尾盤保險買進區間、明早開高、跌破防守先走", 10, True),
@@ -659,7 +679,7 @@ def format_screening_payload(
 
     if payload:
         payload[-1]["html"] += (
-            "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
+            "\n💡 <i>藍字股名＝奇摩。左鍵＝該檔代號＋股名（點下去看圖）；右鍵➕＝觀察。"
             "保險進場／停利／停損已寫在排名裡；【雙時段】＝晚間＋早上都在。"
             "該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
@@ -684,8 +704,8 @@ def format_line_share_text(
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("leave_zero", "起漲　獲利脫離零×量能"),
         ("select_01", "Select01　周帶量突破"),
-        ("select_02", "Select02　突破半年高"),
-        ("select_03", "Select03　突破兩年高"),
+        ("select_02", "站上季線"),
+        ("select_03", "止跌　貼近月低／季低翻紅"),
         ("select_04", "Select04　雙綠脫離"),
         ("day_trade", "當沖"),
         ("overnight", "隔日沖"),

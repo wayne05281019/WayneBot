@@ -680,7 +680,7 @@ def horizon_low_cells(card: dict) -> list:
             continue
         if px_f <= 0:
             continue
-        out.append((f"{days}日低點", px_f, dist_f))
+        out.append((f"{days}低", px_f, dist_f))
     return out
 
 
@@ -700,7 +700,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
-    fig_w, fig_h = 6.55, 5.35 + n * 0.48
+    extra_lows = horizon_low_cells(card)
+    fig_w, fig_h = 6.55, 5.35 + n * 0.48 + (1.35 if extra_lows else 0)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=175, facecolor="#eef1f6")
     H = 100.0
     ax.set_xlim(0, 100)
@@ -708,75 +709,77 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.axis("off")
     fig.subplots_adjust(left=0.03, right=0.97, top=0.985, bottom=0.012)
 
-    # 表頭
-    ax.add_patch(patches.FancyBboxPatch((1.2, 93.4), 97.6, 6.0, boxstyle="round,pad=0.15,rounding_size=0.6",
+    # 表頭（字級縮小、區塊拉開，避免國字壓住）
+    ax.add_patch(patches.FancyBboxPatch((1.2, 95.2), 97.6, 4.2, boxstyle="round,pad=0.12,rounding_size=0.5",
                                         facecolor="#1a237e", edgecolor="none"))
-    ax.text(3.4, 97.4, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(20, "bold"),
+    ax.text(3.4, 97.3, f"{card['stock_id']}  {card.get('stock_name') or ''}", fontproperties=_fp(18, "bold"),
             color="#ffffff", va="center")
-    ax.text(3.4, 94.8, "買低賣高決策卡　破解獲利密碼", fontproperties=_fp(12, "bold"), color="#ffecb3", va="center")
-    ax.text(96.5, 96.2, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
+    ax.text(96.5, 97.3, "WayneBot", fontproperties=_fp(10, "bold"), color="#c5cae9", ha="right", va="center")
 
     chg = float(card.get("change_pct") or 0)
     chg_c = "#c62828" if chg > 0 else ("#00695c" if chg < 0 else "#212121")
-    ax.text(3.2, 91.35, "股價", fontproperties=_fp(11), color="#607d8b", va="center")
-    ax.text(10.8, 91.2, _fmt_price(card["close"]), fontproperties=_fp(30, "bold"), color="#000000", va="center")
-    ax.text(42.0, 91.35, "漲跌幅", fontproperties=_fp(11), color="#607d8b", va="center")
-    ax.text(52.0, 91.2, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c, va="center")
-    badges = [str(x) for x in (card.get("badges") or []) if x][:4]
+    ax.text(3.2, 92.85, "股價", fontproperties=_fp(10), color="#607d8b", va="center")
+    ax.text(10.6, 92.7, _fmt_price(card["close"]), fontproperties=_fp(22, "bold"), color="#000000", va="center")
+    ax.text(40.0, 92.85, "漲跌幅", fontproperties=_fp(10), color="#607d8b", va="center")
+    ax.text(50.0, 92.7, f"{chg:+.2f}%", fontproperties=_fp(16, "bold"), color=chg_c, va="center")
+    badges = [str(x) for x in (card.get("badges") or []) if x][:3]
     if not badges:
         badges = ["整理格局"]
-    bx = 70.5 if len(badges) == 1 else 64.2
+    bx = 72.0 if len(badges) == 1 else 66.0
     for i, btxt in enumerate(badges):
-        _pill(ax, bx + i * 16.2, 91.25, btxt, "#e53935", "#ffffff", w=15.4, h=3.0, fs=10)
+        _pill(ax, bx + i * 15.6, 92.7, btxt[:8], "#e53935", "#ffffff", w=14.6, h=2.5, fs=9)
 
-    # 高點
-    ax.add_patch(patches.FancyBboxPatch((1.8, 80.6), 96.4, 8.4, boxstyle="round,pad=0.12,rounding_size=0.45",
+    def _metric_cell(x, y, lab, px, dist, *, high: bool, near=False):
+        if high:
+            bg, ec, lc = "#fff5f7", "#f8bbd0", "#ad1457"
+        else:
+            bg, ec, lc = (("#c8e6c9", "#2e7d32", "#2e7d32") if near else ("#f1f8e9", "#a5d6a7", "#2e7d32"))
+        ax.add_patch(patches.FancyBboxPatch((x, y), 30.0, 4.4, boxstyle="round,pad=0.08,rounding_size=0.3",
+                                            facecolor=bg, edgecolor=ec, linewidth=0.8))
+        ax.text(x + 1.4, y + 2.2, lab, fontproperties=_fp(10, "bold"), color=lc, ha="left", va="center")
+        ax.text(x + 16.6, y + 2.2, _fmt_price(px), fontproperties=_fp(13, "bold"), color="#000000", ha="center", va="center")
+        dc = "#b71c1c"
+        if high:
+            dc = "#004d40" if dist < 0 else "#b71c1c"
+        ax.text(x + 28.4, y + 2.2, f"{float(dist):+.1f}%", fontproperties=_fp(10, "bold"),
+                color=dc, ha="right", va="center")
+
+    ax.add_patch(patches.FancyBboxPatch((1.8, 82.2), 96.4, 9.0, boxstyle="round,pad=0.1,rounding_size=0.4",
                                         facecolor="#ffffff", edgecolor="#ef9a9a", linewidth=1.1))
-    ax.text(3.4, 87.4, "高點資訊", fontproperties=_fp(13, "bold"), color="#ad1457", va="center")
-    ax.text(16.5, 87.4, f"10日／20日／60日　(MA60S: {card.get('ma60s')} ／ QTY60: {int(card.get('qty60') or 0):,})",
-            fontproperties=_fp(10), color="#6d4c41", va="center")
-    highs = [("10日高點", card["h10"], card["dist_h10"]), ("20日高點", card["h20"], card["dist_h20"]),
-             ("60日高點", card["h60"], card["dist_h60"])]
+    ax.text(3.4, 89.8, "高點資訊", fontproperties=_fp(12, "bold"), color="#ad1457", va="center")
+    ax.text(38.0, 89.8, f"MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}",
+            fontproperties=_fp(9), color="#6d4c41", va="center")
+    highs = [("10高", card["h10"], card["dist_h10"]), ("20高", card["h20"], card["dist_h20"]),
+             ("60高", card["h60"], card["dist_h60"])]
     for i, (lab, px, dist) in enumerate(highs):
-        x = 4.2 + i * 31.6
-        ax.add_patch(patches.FancyBboxPatch((x, 81.2), 30.0, 5.0, boxstyle="round,pad=0.1,rounding_size=0.35",
-                                            facecolor="#fff5f7", edgecolor="#f8bbd0", linewidth=0.8))
-        ax.text(x + 15, 85.15, lab, fontproperties=_fp(10), color="#ad1457", ha="center", va="center")
-        ax.text(x + 15, 83.35, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
-        ax.text(x + 15, 81.75, f"({dist:+.1f}%)", fontproperties=_fp(12, "bold"),
-                color="#004d40" if dist < 0 else "#b71c1c", ha="center", va="center")
+        _metric_cell(4.2 + i * 31.6, 82.8, lab, px, dist, high=True)
 
     extra_lows = horizon_low_cells(card)
-    shift = 6.35 if extra_lows else 0.0
-    ax.add_patch(patches.FancyBboxPatch((1.8, 70.8 - shift), 96.4, 8.8 + shift, boxstyle="round,pad=0.12,rounding_size=0.45",
+    shift = 9.4 if extra_lows else 0.0
+    ax.add_patch(patches.FancyBboxPatch((1.8, 71.4 - shift), 96.4, 10.0 + shift, boxstyle="round,pad=0.1,rounding_size=0.4",
                                         facecolor="#ffffff", edgecolor="#81c784", linewidth=1.1))
-    ax.text(3.4, 78.1, "低點資訊", fontproperties=_fp(13, "bold"), color="#2e7d32", va="center")
-    extra_note = "　＋120／240／480日" if extra_lows else ""
-    ax.text(16.5, 78.1, f"20日（高低操作空間: {card['space_20']}%）／60日（高低操作空間: {card['space_60']}%）{extra_note}",
-            fontproperties=_fp(10), color="#33691e", va="center")
-    lows = [("10日低點", card["l10"], card["dist_l10"]), ("20日低點", card["l20"], card["dist_l20"]),
-            ("60日低點", card["l60"], card["dist_l60"])]
-
-    def _low_cell(i, lab, px, dist, y0):
-        x = 4.2 + i * 31.6
-        near = dist is not None and float(dist) <= 2.0
-        bg, ec = ("#c8e6c9", "#2e7d32") if near else ("#f1f8e9", "#a5d6a7")
-        ax.add_patch(patches.FancyBboxPatch((x, y0), 30.0, 5.4, boxstyle="round,pad=0.1,rounding_size=0.35",
-                                            facecolor=bg, edgecolor=ec, linewidth=0.8))
-        ax.text(x + 15, y0 + 4.2, lab, fontproperties=_fp(10), color="#2e7d32", ha="center", va="center")
-        ax.text(x + 15, y0 + 2.3, _fmt_price(px), fontproperties=_fp(17, "bold"), color="#000000", ha="center", va="center")
-        ax.text(x + 15, y0 + 0.65, f"({float(dist):+.1f}%)", fontproperties=_fp(12, "bold"), color="#b71c1c", ha="center", va="center")
-
+    ax.text(3.4, 79.9, "低點資訊", fontproperties=_fp(12, "bold"), color="#2e7d32", va="center")
+    ax.text(38.0, 79.9, f"月空間 {card['space_20']}%　季空間 {card['space_60']}%",
+            fontproperties=_fp(9), color="#33691e", va="center")
+    lows = [("10低", card["l10"], card["dist_l10"]), ("20低", card["l20"], card["dist_l20"]),
+            ("60低", card["l60"], card["dist_l60"])]
     for i, (lab, px, dist) in enumerate(lows):
-        _low_cell(i, lab, px, dist, 71.4)
+        near = dist is not None and float(dist) <= 2.0
+        _metric_cell(4.2 + i * 31.6, 72.2, lab, px, dist, high=False, near=near)
     if extra_lows:
         for i, (lab, px, dist) in enumerate(extra_lows[:3]):
-            _low_cell(i, lab, px, dist, 71.4 - shift)
+            near = dist is not None and float(dist) <= 2.0
+            _metric_cell(4.2 + i * 31.6, 72.2 - shift, lab, px, dist, high=False, near=near)
 
-    ax.text(3.2, 69.55 - shift, "過去 20 天記錄", fontproperties=_fp(13, "bold"), color="#263238", va="center")
+    if extra_lows:
+        table_title_y = 72.2 - shift - 2.4
+        top = table_title_y - 2.2
+    else:
+        table_title_y = 70.4
+        top = 68.0
+    ax.text(3.2, table_title_y, "過去 20 天記錄", fontproperties=_fp(12, "bold"), color="#263238", va="center")
     headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
     xs = [2.0, 16.6, 27.4, 38.2, 49.0, 60.2, 73.0, 85.2, 98.0]
-    top = 68.2 - shift
     hdr_h = 2.55
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], top - hdr_h), xs[i + 1] - xs[i], hdr_h, facecolor="#e3f2fd", edgecolor="#90caf9", lw=0.6))
