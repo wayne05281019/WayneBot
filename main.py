@@ -157,7 +157,9 @@ def run_web():
 
     start_health_server(get_port())
     ensure_market_db()
+    logger.info("檢查資料庫索引（大檔可能要一兩分鐘，請等 Telegram polling 啟動再打字）")
     ensure_core_schema(get_db_path())
+    logger.info("資料庫索引完成")
     if daily_scheduler_enabled():
         start_daily_scheduler()
 
@@ -165,6 +167,7 @@ def run_web():
     if token and not skip_telegram_polling():
         from bot_servers import WayneTelegramBot
 
+        logger.info("正在啟動 Telegram 聽筒")
         bot = WayneTelegramBot(token=token, chat_id=get_telegram_chat_id(), db_path=get_db_path())
         bot.run_polling()
     elif token:

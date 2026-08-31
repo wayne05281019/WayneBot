@@ -1168,7 +1168,8 @@ class WayneTelegramBot:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         try:
-            app.run_polling(drop_pending_updates=True)
+            # False：下載行情庫期間使用者打的字不要被丟掉
+            app.run_polling(drop_pending_updates=False)
         except Exception as e:
             # python-telegram-bot 的 InvalidToken 訊息會含完整 token，不可寫進 Render Logs
             if type(e).__name__ == "InvalidToken" or "InvalidToken" in type(e).__name__:
