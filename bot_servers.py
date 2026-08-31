@@ -1124,7 +1124,19 @@ class WayneTelegramBot:
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        app.run_polling(drop_pending_updates=True)
+        try:
+            app.run_polling(drop_pending_updates=True)
+        except Exception as e:
+            # python-telegram-bot 的 InvalidToken 訊息會含完整 token，不可寫進 Render Logs
+            if type(e).__name__ == "InvalidToken" or "InvalidToken" in type(e).__name__:
+                logger.error(
+                    "TELEGRAM_BOT_TOKEN 被 Telegram 拒絕。"
+                    "請到 BotFather 重發，整段貼到 Render → Environment → TELEGRAM_BOT_TOKEN"
+                    "（不要加引號、不要空白或換行），存檔後 Manual Deploy。"
+                    "不要把 token 貼到聊天，也不要截圖 Logs。"
+                )
+                raise SystemExit(1) from None
+            raise
 
 
 if __name__ == "__main__":
