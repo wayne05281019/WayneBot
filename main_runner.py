@@ -12,6 +12,7 @@
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
+#      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
@@ -230,6 +231,14 @@ class MainRunner:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
 
         try:
+            from money_flow import recompute_sector_flow
+
+            n_sec = recompute_sector_flow(self.db_path)
+            logger.info("盤後產業資金輪動寫入 %s 列", n_sec)
+        except Exception as e:
+            logger.error("產業資金輪動失敗: %s", e, exc_info=True)
+
+        try:
             from fundamentals import sync_fundamentals
             fund = sync_fundamentals(self.db_path)
             logger.info(f"月營收／季報同步：{fund}")
@@ -393,6 +402,14 @@ class MainRunner:
             report_text = (screening or {}).get("message") if screening else ""
             self.send_telegram_message(report_text or self.generate_screening_report())
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
+        try:
+            from money_flow import format_sector_rotation_html
+
+            rot = format_sector_rotation_html(self.db_path, as_of or "")
+            if rot:
+                extra_bits.append(rot)
+        except Exception as e:
+            logger.warning("盤後資金輪動區塊略過：%s", e)
         try:
             from fundamentals import format_hot_revenue_html
 

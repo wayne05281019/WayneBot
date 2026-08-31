@@ -182,6 +182,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         "ex_rights",
         "stock_universe",
         "technical_indicators",
+        "daily_sector_flow",
     ):
         if t in tables:
             counts[t] = int(cur.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] or 0)
@@ -210,6 +211,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         "quarterly_income": {"rows": counts.get("income_n") or 0, "latest": health.get("latest_quarter") or ""},
         "ex_rights": {"rows": counts.get("ex_rights_n") or counts.get("ex_rights") or 0, "latest": health.get("latest_ex") or ""},
         "stock_universe": {"rows": counts.get("stock_universe") or 0},
+        "daily_sector_flow": {"rows": counts.get("daily_sector_flow") or 0},
         "tables": tables,
         "gap_n": int(health.get("history_issue_n") or 0),
         "gaps": [{"date": x.get("date"), "tw": x.get("tw"), "two": x.get("two"), "total": x.get("total")} for x in gaps[:50]],
