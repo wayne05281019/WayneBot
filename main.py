@@ -45,6 +45,24 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if route.startswith("/line"):
+            from config import get_db_path
+            from line_hop import hop_response
+
+            parts = [p for p in route.split("/") if p]
+            pack_id = parts[1] if len(parts) > 1 else ""
+            hop = hop_response(get_db_path(), pack_id)
+            if not hop:
+                self.send_response(404)
+                self.end_headers()
+                return
+            body = hop["html"].encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if route in ("/inventory", "/db-status"):
             import json
 
@@ -124,8 +142,26 @@ def start_daily_scheduler():
                     best = (max(5.0, wait), kind, t)
         return best
 
+    def _catch_up_missed():
+        """重啟若已過 06:30 而今早沒寄過，立刻補寄，避免再空窗。"""
+        now = _taipei_now()
+        if now.weekday() >= 5:
+            return
+        mins = now.hour * 60 + now.minute
+        if mins < 6 * 60 + 30:
+            return
+        from main_runner import MainRunner
+
+        logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
+        MainRunner().run_morning_screen(skip_if_done=True)
+
     def _loop():
         from main_runner import MainRunner
+
+        try:
+            _catch_up_missed()
+        except Exception:
+            logger.exception("補跑今早海選失敗")
 
         while True:
             nxt = _next_slot()

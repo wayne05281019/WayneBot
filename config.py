@@ -36,6 +36,23 @@ def get_charts_dir() -> str:
     return path
 
 
+def get_public_base_url() -> str:
+    """Telegram 開 LINE 鈕要走 https。Render 會帶 RENDER_EXTERNAL_URL。"""
+    return (
+        os.getenv("WAYNE_PUBLIC_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or "https://waynebot-service.onrender.com"
+    ).rstrip("/")
+
+
+def scheduled_job_kind(cron_expr: str) -> str:
+    """GHA 兩個 cron：22:30 UTC＝早上海選；其餘＝盤後融合。"""
+    s = str(cron_expr or "").strip().strip("'\"")
+    if s.startswith("30 22") or " 22 " in f" {s} ":
+        return "morning_screen"
+    return "increment"
+
+
 def get_port() -> int:
     try:
         return int(os.getenv("PORT", "10000"))

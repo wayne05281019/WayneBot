@@ -72,7 +72,7 @@ HELP_TOPICS = {
         "<b>海選怎麼用</b>\n"
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
-        "海選＝昨收量化名單，不是盤中即時掃描。按「轉寄」會再寄一則純文字；長按那一則就能分享到 LINE。\n"
+        "海選＝昨收量化名單，不是盤中即時掃描。夜盤／起漲／當沖各一顆「開 LINE」：按下去開 LINE，再自己選要傳給誰。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
         "當沖會寫保險進場、第一停利(+3%)、衝頂(+6%)、均價停損；隔日沖會寫尾盤買進區間與防守。\n"
         "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：左＝代號＋股名（看圖）；右➕＝觀察。\n"
@@ -178,6 +178,7 @@ class WayneTelegramBot:
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
         self._line_share_chunks: List[str] = []
+        self._line_share_packs: List[Dict[str, str]] = []
 
     def send_message(self, text: str, chat_id: str = None):
         self._send_html(chat_id or self.chat_id, text)
@@ -256,10 +257,10 @@ class WayneTelegramBot:
             rows.append(self._stock_action_row(c, name or "", idx=i))
         if include_forward is None:
             include_forward = bool(include_menu and topic == "screen")
-        tail = []
         if include_forward:
-            tail.append(InlineKeyboardButton("轉寄", callback_data="fw:s"))
-        if include_menu or rows or include_forward:
+            rows.extend(self._line_open_rows())
+        tail = []
+        if include_menu or rows:
             tail.append(self._q(topic))
         if tail:
             rows.append(tail)
@@ -388,62 +389,55 @@ class WayneTelegramBot:
         )
 
     def _remember_line_share(self, result: Optional[Dict[str, Any]] = None, body: str = ""):
-        from screening_engine import split_line_share_chunks
-
-        chunks = []
+        packs = []
         if result:
-            chunks = list(result.get("line_share_chunks") or [])
-            if not chunks:
-                body = body or (result.get("line_share") or "")
-        if not chunks and body:
-            chunks = split_line_share_chunks(body)
-        if chunks:
-            self._line_share_chunks = chunks
+            packs = list(result.get("line_share_packs") or [])
+        if packs:
+            self._line_share_packs = packs
+            self._line_share_chunks = [p.get("text") or "" for p in packs if p.get("text")]
 
-    def _load_line_share_chunks(self) -> List[str]:
-        from screening_engine import split_line_share_chunks
-
-        if self._line_share_chunks:
-            return self._line_share_chunks
-        body = ""
+    def _load_line_share_packs(self) -> List[Dict[str, str]]:
+        if getattr(self, "_line_share_packs", None):
+            return self._line_share_packs
         try:
-            from screen_sessions import load_line_share
+            from screen_sessions import load_line_packs
 
-            body = load_line_share(self.db_path) or ""
+            packs = load_line_packs(self.db_path)
         except Exception:
-            body = ""
-        chunks = split_line_share_chunks(body) if body else []
-        if chunks:
-            self._line_share_chunks = chunks
-        return chunks
+            packs = []
+        if packs:
+            self._line_share_packs = packs
+            self._line_share_chunks = [p.get("text") or "" for p in packs]
+        return packs
 
     async def _reply_line_share(self, message, result: Optional[Dict[str, Any]] = None):
         if result is not None:
             self._remember_line_share(result)
-        chunks = self._load_line_share_chunks()
-        if not chunks:
-            await message.reply_text("目前沒有轉寄稿。請先按一次「海選」。")
+        packs = self._load_line_share_packs()
+        if not packs:
+            await message.reply_text("目前沒有可傳 LINE 的三段。請先按一次「海選」。")
             return
-        for chunk in chunks:
-            await message.reply_text(chunk, disable_web_page_preview=True)
+        await message.reply_text("三段各有一顆鈕。按下去會開啟 LINE，再自己選要傳給誰。")
+        for p in packs:
+            await message.reply_text(
+                p.get("text") or "",
+                disable_web_page_preview=True,
+                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+            )
 
     def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
         if result is not None:
             self._remember_line_share(result)
-        chunks = self._load_line_share_chunks()
-        if not chunks:
+        packs = self._load_line_share_packs()
+        if not packs:
             return
-        for chunk in chunks:
-            self._send_plain(chat_id, chunk)
-        try:
-            from config import get_charts_dir
-
-            path = os.path.join(get_charts_dir(), f"海選_{ (result or {}).get('date') or '' }_轉寄LINE.txt")
-            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write("\n\n".join(chunks) + "\n")
-        except Exception as e:
-            logger.error("line share file: %s", e)
+        self._send_plain(chat_id, "三段各有一顆鈕。按下去會開啟 LINE，再自己選要傳給誰。")
+        for p in packs:
+            self._send_plain(
+                chat_id,
+                p.get("text") or "",
+                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+            )
 
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
         parts = self._screening_payload(result)
@@ -470,7 +464,7 @@ class WayneTelegramBot:
                 kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
                 await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
-        if (result.get("line_share") or result.get("line_share_chunks")):
+        if result.get("line_share_packs") or result.get("line_share") or result.get("line_share_chunks"):
             await self._reply_line_share(message, result)
 
     def _cat_sticker_id(self, key: str) -> str:
@@ -514,13 +508,40 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_html: %s", e)
 
-    def _send_plain(self, chat_id: str, text: str):
+    def _line_open_url(self, pack_id: str) -> str:
+        from config import get_public_base_url
+
+        return f"{get_public_base_url()}/line/{pack_id}"
+
+    def _line_open_rows(self):
+        from line_hop import LINE_PACKS
+
+        return [
+            [InlineKeyboardButton(label, url=self._line_open_url(pid))]
+            for pid, label, _title in LINE_PACKS
+        ]
+
+    def _line_open_keyboard(self, pack_id: str = ""):
+        from line_hop import LINE_PACKS
+
+        if pack_id:
+            for pid, label, _title in LINE_PACKS:
+                if pid == pack_id:
+                    return InlineKeyboardMarkup(
+                        [[InlineKeyboardButton(label, url=self._line_open_url(pid))]]
+                    )
+        return InlineKeyboardMarkup(self._line_open_rows())
+
+    def _send_plain(self, chat_id: str, text: str, reply_markup=None):
         try:
             import requests
 
+            payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup.to_dict()
             requests.post(
                 f"https://api.telegram.org/bot{self.token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+                json=payload,
                 timeout=20,
             )
         except Exception as e:
@@ -589,7 +610,7 @@ class WayneTelegramBot:
                     attach_menu=False,
                 )
             _t.sleep(0.25)
-        if (result.get("line_share") or result.get("line_share_chunks")):
+        if result.get("line_share_packs") or result.get("line_share") or result.get("line_share_chunks"):
             self._send_line_share(self.chat_id, result)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
