@@ -29,12 +29,14 @@ DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# 載入中文字型
+# 載入中文字型（雲端下載失敗就用內建字型，不可無限等待）
 FONT_PATH = os.path.join(BASE_DIR, "NotoSansTC-Regular.otf")
 if not os.path.exists(FONT_PATH):
     try:
         FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
-        urllib.request.urlretrieve(FONT_URL, FONT_PATH)
+        with urllib.request.urlopen(FONT_URL, timeout=15) as resp:
+            with open(FONT_PATH, "wb") as out:
+                out.write(resp.read())
         fm.fontManager.addfont(FONT_PATH)
         plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'DejaVu Sans', 'Arial']
     except Exception:

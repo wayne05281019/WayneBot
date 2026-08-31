@@ -157,15 +157,29 @@ def run_web():
 
     start_health_server(get_port())
     ensure_market_db()
+    logger.info("檢查資料庫索引（大檔可能要一兩分鐘，請等 Telegram polling 啟動再打字）")
     ensure_core_schema(get_db_path())
+    logger.info("資料庫索引完成")
     if daily_scheduler_enabled():
         start_daily_scheduler()
 
     token = get_telegram_token()
     if token and not skip_telegram_polling():
+        logger.info("載入 Telegram 模組（尚未出圖，先開聽筒）")
         from bot_servers import WayneTelegramBot
 
+        logger.info("正在啟動 Telegram 聽筒")
         bot = WayneTelegramBot(token=token, chat_id=get_telegram_chat_id(), db_path=get_db_path())
+
+        def _warmup_charts():
+            try:
+                logger.info("背景預熱出圖模組")
+                import cary_navigator  # noqa: F401
+                logger.info("出圖模組已預熱")
+            except Exception:
+                logger.exception("出圖預熱失敗")
+
+        threading.Thread(target=_warmup_charts, daemon=True, name="chart-warmup").start()
         bot.run_polling()
     elif token:
         logger.info("WAYNE_SKIP_POLLING：不搶 Render 的 Telegram 輪詢，僅保留寄訊與 /health")
