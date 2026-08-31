@@ -92,9 +92,9 @@ HELP_TOPICS = {
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
-        "你手記的真實買入，不是觀察、也不是 AI 倉。\n"
-        "記買入：選股→記買入→打 <code>張數 價格</code>。\n"
-        "AI 模擬倉在同頁下方，50 萬、盤後依海選紀律。隔日復盤也在這頁：用已有日 K 對昨天名單，不會改程式檔。"
+        "上半是你手記的真實買入，不是觀察。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
+        "下半是 AI 模擬帳戶（50 萬本金分 5 等份，單檔不超過一槽）。06:30 海選後與盤後融合會自動買賣，也可按「AI操盤」。\n"
+        "成交寫進庫，隔日用已有日 K 復盤；弱的類別下一輪少買。這是模擬倉，不是真實下單。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
@@ -654,16 +654,12 @@ class WayneTelegramBot:
 
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
-        if holdings:
-            mine = self.portfolio_engine.format_holdings_html(holdings)
-        else:
-            mine = (
-                "<b>我的持股（手記）</b>\n"
-                "這頁是「你已經買了」的紀錄，空的代表還沒記過買入。\n"
-                "做法：打南亞或 2330 → 按「記買入」→ 輸入 <code>1 68.5</code>（張數 價格）。"
-            )
+        mine = self.portfolio_engine.format_holdings_html(holdings)
         ai = format_ai_desk_html(self.portfolio_engine)
-        await message.reply_html(mine + "\n\n" + ai, reply_markup=self._portfolio_keyboard(holdings))
+        parts = chunk_telegram_html(mine + "\n\n" + ai)
+        for i, part in enumerate(parts):
+            kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+            await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
 
     async def _send_watch(self, message, uid: str):
         from wayne_db import get_user_watchlist
@@ -771,7 +767,7 @@ class WayneTelegramBot:
 
         code = str(code).strip()
         try:
-            html = format_industry_html(code, self.db_path)
+            html = await asyncio.to_thread(format_industry_html, code, self.db_path)
         except Exception as e:
             logger.exception("產業說明失敗 code=%s", code)
             html = f"產業說明失敗：{html_escape(e)}"
@@ -975,6 +971,10 @@ class WayneTelegramBot:
             as_of = result.get("as_of") or result.get("date") or ""
             ai = run_ai_desk(self.db_path, result.get("results") or {}, as_of)
             bits = [ai.get("html") or ""]
+            if not ai.get("bought") and not ai.get("sold"):
+                bits.append(
+                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。已滿 5 檔或名單被高低卡／美股濾掉。</i>"
+                )
             if ai.get("bought"):
                 bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))
             if ai.get("sold"):
@@ -982,7 +982,10 @@ class WayneTelegramBot:
             if ai.get("lesson"):
                 bits.append("進化：" + html_escape(ai["lesson"]))
             holdings = get_user_portfolio(self.db_path, uid)
-            await message.reply_html("\n\n".join(bits), reply_markup=self._portfolio_keyboard(holdings))
+            parts = chunk_telegram_html("\n\n".join(bits))
+            for i, part in enumerate(parts):
+                kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
         except Exception as e:
             logger.exception("AI 操盤失敗")
             await message.reply_text(f"AI 操盤失敗：{e}", reply_markup=self._keyboard())
@@ -1186,7 +1189,14 @@ class WayneTelegramBot:
             )
             logger.info("看這檔 glance %.1fs code=%s", time.monotonic() - t1, code)
             if glance:
-                queue_photo(glance, cap_links or "當日K＋籌碼價量")
+                last_ok = await send_photo(glance, cap_links or "當日K＋籌碼價量")
+                sent_any = sent_any or last_ok
+                if last_ok and wait_msg is not None:
+                    try:
+                        await wait_msg.delete()
+                    except Exception:
+                        pass
+                    wait_msg = None
             t1 = time.monotonic()
             card_path = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -1197,9 +1207,9 @@ class WayneTelegramBot:
                 timeout=25,
             )
             logger.info("看這檔 card_png %.1fs code=%s", time.monotonic() - t1, code)
-            await flush_send()
             if card_path:
-                queue_photo(card_path, "高低決策卡")
+                last_ok = await send_photo(card_path, "高低決策卡")
+                sent_any = sent_any or last_ok
             t1 = time.monotonic()
             chart = await asyncio.wait_for(
                 asyncio.to_thread(

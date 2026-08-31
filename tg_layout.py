@@ -55,6 +55,30 @@ def html_qty(n, unit: str = "張", width: int = 9, signed: bool = True) -> str:
     return f"<code>{html_escape(body)}</code>{html_escape(unit)}"
 
 
+def html_price(p, width: int = 9) -> str:
+    """現價／成本對齊，不含單位（元接在後面或省略）。"""
+    try:
+        v = float(p)
+    except (TypeError, ValueError):
+        return f"<code>{'—'.rjust(int(width))}</code>"
+    body = f"{v:,.2f}".rjust(int(width))
+    return f"<code>{html_escape(body)}</code>"
+
+
+def html_money(n, width: int = 11, signed: bool = True) -> str:
+    """帳戶金額：總資產／現金／損益。"""
+    try:
+        v = float(n or 0)
+    except (TypeError, ValueError):
+        v = 0.0
+    if signed:
+        body = f"{v:+,.0f}"
+    else:
+        body = f"{v:,.0f}"
+    body = body.rjust(int(width))
+    return f"<code>{html_escape(body)}</code>"
+
+
 def html_pct(pct, width: int = 7) -> str:
     try:
         p = float(pct)

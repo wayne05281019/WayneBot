@@ -487,6 +487,15 @@ class PortfolioEngine:
             total_market_val += market_val
             total_cost_basis += cost_basis
 
+            pct_chg = None
+            if quotes_map and sid in quotes_map:
+                try:
+                    pct_chg = quotes_map[sid].get("pct_change")
+                    if pct_chg is not None:
+                        pct_chg = float(pct_chg)
+                except (TypeError, ValueError):
+                    pct_chg = None
+
             positions_detail.append({
                 "stock_id": sid,
                 "stock_name": p["stock_name"],
@@ -497,7 +506,11 @@ class PortfolioEngine:
                 "unrealized_pnl": round(unrealized_pnl, 2),
                 "pnl_pct": round(pnl_pct, 2),
                 "warning_days": p["warning_days"],
-                "strategy": p["strategy_type"]
+                "strategy": p["strategy_type"],
+                "buy_date": p.get("buy_date") or "",
+                "pct_change": pct_chg,
+                "stop_price": round(cost_p * 0.93, 2) if cost_p else 0.0,
+                "take_price": round(cost_p * 1.08, 2) if cost_p else 0.0,
             })
 
         total_assets = cash + total_market_val
@@ -516,16 +529,102 @@ class PortfolioEngine:
             "positions": positions_detail
         }
 
-    def format_holdings_html(self, holdings: List[Dict[str, Any]]) -> str:
+    def load_quotes_for(self, stock_ids: List[str], overlay: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
+        """只查指定代號的最新收盤，給帳戶市值／漲跌用。"""
+        quotes: Dict[str, Dict[str, Any]] = dict(overlay or {})
+        need = []
+        for raw in stock_ids or []:
+            sid = str(raw or "").strip()
+            if sid:
+                need.append(sid)
+        if not need:
+            return quotes
+        conn = self._get_connection()
+        try:
+            latest = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return quotes
+        latest_d = latest[0] if latest else None
+        found = set()
+        if latest_d:
+            qmarks = ",".join("?" * len(need))
+            rows = conn.execute(
+                f"SELECT stock_id, stock_name, close, pct_change FROM daily_quotes WHERE date=? AND stock_id IN ({qmarks})",
+                (latest_d, *need),
+            ).fetchall()
+            for r in rows:
+                sid = str(r["stock_id"])
+                if float(r["close"] or 0) <= 0:
+                    continue
+                quotes[sid] = {
+                    "stock_name": r["stock_name"] or "",
+                    "close": float(r["close"] or 0),
+                    "pct_change": float(r["pct_change"] or 0),
+                    "is_k20_warning": bool((quotes.get(sid) or {}).get("is_k20_warning")),
+                    "d20": float((quotes.get(sid) or {}).get("d20") or 0),
+                }
+                found.add(sid)
+        for sid in need:
+            if sid in found:
+                continue
+            row = conn.execute(
+                "SELECT stock_name, close, pct_change FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1",
+                (sid,),
+            ).fetchone()
+            if not row or float(row["close"] or 0) <= 0:
+                continue
+            quotes[sid] = {
+                "stock_name": row["stock_name"] or "",
+                "close": float(row["close"] or 0),
+                "pct_change": float(row["pct_change"] or 0),
+                "is_k20_warning": False,
+                "d20": 0.0,
+            }
+        conn.close()
+        return quotes
+
+    def format_holdings_html(self, holdings: List[Dict[str, Any]], quotes_map: Optional[Dict[str, Dict[str, Any]]] = None) -> str:
+        from tg_layout import html_escape, html_move, html_money, html_pct, html_price, html_qty, kv_html, price_change
+
         if not holdings:
-            return "持股為空。"
-        lines = ["<b>持股</b>"]
+            return (
+                "<b>我的持股（手記）</b>\n"
+                "這頁是「你已經買了」的紀錄，空的代表還沒記過買入。\n"
+                "做法：打南亞或 2330 → 按「記買入」→ 輸入 <code>1 68.5</code>（張數 價格）。"
+            )
+        ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
+        quotes_map = self.load_quotes_for(ids, quotes_map)
+        lines = ["<b>我的持股（手記）</b>", "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
         for h in holdings:
-            code = h.get("stock_code") or h.get("stock_id") or ""
-            name = h.get("stock_name") or ""
-            shares = h.get("shares") or 0
-            cost = h.get("cost_price") or 0
-            lines.append(f"• <code>{code}</code> {name} {shares}張 成本 {cost}")
+            code = str(h.get("stock_code") or h.get("stock_id") or "")
+            name = str(h.get("stock_name") or "")
+            lots = float(h.get("shares") or 0)
+            cost = float(h.get("cost_price") or 0)
+            q = (quotes_map or {}).get(code) or {}
+            last = float(q.get("close") or cost or 0)
+            pct = q.get("pct_change")
+            shares_n = lots * 1000.0
+            mkt = last * shares_n
+            cost_amt = cost * shares_n
+            u_pnl = mkt - cost_amt
+            u_pct = (u_pnl / cost_amt * 100.0) if cost_amt else 0.0
+            chg = price_change(last, pct) if pct is not None else None
+            try:
+                from stock_links import html_stock_anchor
+
+                title = html_stock_anchor(code, name, self.db_path)
+            except Exception:
+                title = f"<code>{html_escape(code)}</code> {html_escape(name)}"
+            lines.append(title)
+            lines.append(kv_html("張數", html_qty(lots, signed=False), 8))
+            lines.append(kv_html("成本", html_price(cost), 8))
+            move = html_move(chg, pct) if chg is not None and pct is not None else "—"
+            lines.append(kv_html("現價", f"{html_price(last)}　{move}", 8))
+            lines.append(kv_html("未實現", f"{html_money(u_pnl)}（{html_pct(u_pct).strip()}）", 8))
+            lines.append(kv_html("市值", html_money(mkt, signed=False), 8))
+            if h is not holdings[-1]:
+                lines.append("")
         return "\n".join(lines)
 
 

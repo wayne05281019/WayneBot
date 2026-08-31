@@ -9,7 +9,8 @@
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
 #   - Render 常駐 06:30；GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
-# 20:00 晚間台股收盤海選只寫快照、不推播（美股還沒開）
+# 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄）
+# 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
@@ -354,22 +355,15 @@ class MainRunner:
         return "\n".join(lines)
 
     def _format_portfolio_section(self) -> str:
-        if not self.portfolio_engine or not self.chat_id:
-            return (
-                "───────────────────\n💼 <b>【50萬 AI 操盤手】</b>\n"
-                "• Telegram 點「AI 模擬持倉」或 /portfolio"
-            )
-        quotes = self._load_latest_quotes_map()
-        summary = self.portfolio_engine.get_portfolio_summary(self.chat_id, quotes)
-        lines = [
-            "───────────────────",
-            "💼 <b>【50萬 AI 操盤手部位概況】</b>",
-            f"• 總資產 <code>{summary['total_assets']:,.0f}</code> | 現金 <code>{summary['cash']:,.0f}</code>",
-            f"• 損益 <code>{summary['total_pnl']:+,.0f}</code> ({summary['total_pnl_pct']:+.2f}%) | 持股 {summary['positions_count']} 檔",
-        ]
-        for p in summary["positions"][:5]:
-            lines.append(f"• {p['stock_id']} {p['stock_name']} {p['shares']}股 {p['pnl_pct']:+.2f}%")
-        return "\n".join(lines)
+        if not self.portfolio_engine:
+            return ""
+        try:
+            from ai_trader import format_ai_desk_html
+
+            return format_ai_desk_html(self.portfolio_engine)
+        except Exception as e:
+            logger.warning("AI 帳戶概況略過：%s", e)
+            return ""
 
     def _format_watch_radar_section(self) -> str:
         if not self.portfolio_engine or not self.chat_id:
@@ -408,9 +402,10 @@ class MainRunner:
             self.send_telegram_message(report_text or self.generate_screening_report())
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
-            from screen_review import score_screen_picks
+            from screen_review import score_ai_fills, score_screen_picks
 
             score_screen_picks(self.db_path, as_of or "")
+            score_ai_fills(self.db_path, as_of or "")
         except Exception as e:
             logger.warning("海選復盤略過：%s", e)
         try:
@@ -432,14 +427,53 @@ class MainRunner:
         extra_text = "\n".join(x for x in extra_bits if x)
         if extra_text:
             self.send_telegram_message(extra_text)
+        self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=True)
+
+    def _run_ai_desk(
+        self,
+        as_of: str,
+        results: Optional[Dict[str, Any]] = None,
+        apply_us: bool = False,
+        session: str = "",
+        notify: bool = True,
+    ) -> Dict[str, Any]:
+        """模擬倉真正下單（wayne_ai／50 萬）。有名單才買，最多 5 檔。"""
         try:
             from ai_trader import run_ai_desk
 
-            ai = run_ai_desk(self.db_path, (screening or {}).get("results") or {}, as_of or self.today_str)
-            if ai.get("html"):
-                self.send_telegram_message(ai["html"])
+            if results is None:
+                if not run_full_screening:
+                    return {}
+                screening = run_full_screening(
+                    db_path=self.db_path,
+                    target_date=as_of,
+                    apply_us=apply_us,
+                    session=session or "",
+                )
+                results = (screening or {}).get("results") or {}
+            ai = run_ai_desk(self.db_path, results or {}, as_of)
+            logger.info(
+                "AI 模擬倉 買進 %s 賣出 %s 候選 %s",
+                len(ai.get("bought") or []),
+                len(ai.get("sold") or []),
+                ai.get("candidates") or 0,
+            )
+            if not notify:
+                return ai
+            bits = [ai.get("html") or ""]
+            if ai.get("bought"):
+                bits.append("<b>AI 模擬本次買進</b>\n" + "\n".join(ai["bought"]))
+            if ai.get("sold"):
+                bits.append("<b>AI 模擬本次賣出</b>\n" + "\n".join(ai["sold"]))
+            if ai.get("lesson"):
+                bits.append("進化：" + str(ai["lesson"]))
+            text = "\n\n".join(x for x in bits if x)
+            if text:
+                self.send_telegram_message(text)
+            return ai
         except Exception as e:
-            logger.warning("AI 模擬操盤略過：%s", e)
+            logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)
+            return {}
 
     def run_increment_job(self, skip_if_done: bool = False) -> bool:
         if skip_if_done and self.already_completed_today():
@@ -488,12 +522,15 @@ class MainRunner:
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
         try:
-            from screen_review import score_screen_picks
+            from screen_review import score_ai_fills, score_screen_picks
 
             n = score_screen_picks(self.db_path, cap)
-            logger.info("海選復盤已對帳 %s 檔（隔日＝%s）", n, cap)
+            nf = score_ai_fills(self.db_path, cap)
+            logger.info("海選復盤已對帳 %s 檔、AI 成交 %s 筆（隔日＝%s）", n, nf, cap)
         except Exception:
             logger.exception("海選復盤對帳失敗")
+        # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
+        self.run_evening_screen(skip_if_done=True, notify=False)
         return True
 
     def run_morning_screen(self, skip_if_done: bool = False) -> bool:
@@ -549,18 +586,24 @@ class MainRunner:
         if not as_of:
             logger.error("無完整交易日可寫晚間海選快照")
             return False
-        logger.info("🌙 20:00 晚間海選只寫快照不推播，基準日 %s", as_of)
+        logger.info("🌙 20:00 晚間海選寫快照並讓 AI 模擬倉依收盤名單買，基準日 %s", as_of)
         if not run_full_screening:
             return False
+        screening = None
         try:
-            run_full_screening(
+            screening = run_full_screening(
                 db_path=self.db_path, target_date=as_of, apply_us=False, session="evening"
             )
         except Exception as e:
             logger.error("晚間海選失敗: %s", e, exc_info=True)
             return False
+        self._run_ai_desk(
+            as_of,
+            results=(screening or {}).get("results") or {},
+            notify=True,
+        )
         if notify:
-            logger.info("晚間海選依設定不推播")
+            logger.info("晚間海選名單不另推；AI 模擬倉若有成交會寄。")
         self._mark_pipeline("success", "evening", run_date=key)
         return True
 

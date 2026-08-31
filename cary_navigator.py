@@ -8,6 +8,8 @@ import os
 import sqlite3
 import urllib.request
 from datetime import datetime
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as patches
@@ -22,6 +24,9 @@ import numpy as np
 
 # FT2Font 是共用物件，量字寬要改 size／text，併發產圖時得排隊。
 _FT_LOCK = Lock()
+_FT_FONTS = {}
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_BUNDLE_FONTS = os.path.join(_MODULE_DIR, "fonts")
 
 try:
     from config import get_charts_dir, get_db_path
@@ -37,8 +42,27 @@ DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# 載入中文字型（雲端下載失敗就用內建字型，不可無限等待）
-FONT_PATH = os.path.join(BASE_DIR, "NotoSansTC-Regular.otf")
+# 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
+_WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
+_WEIGHT_FILES = {}
+
+
+def bundled_weight_path(step: int) -> str:
+    return os.path.join(_BUNDLE_FONTS, f"NotoSansTC-w{int(step)}.ttf")
+
+
+def _pick_font_path() -> str:
+    for cand in (
+        bundled_weight_path(_WEIGHT_TEXT),
+        os.path.join(BASE_DIR, "NotoSansTC-Regular.otf"),
+        os.path.join(_MODULE_DIR, "NotoSansTC-Regular.otf"),
+    ):
+        if cand and os.path.exists(cand):
+            return cand
+    return os.path.join(BASE_DIR, "NotoSansTC-Regular.otf")
+
+
+FONT_PATH = _pick_font_path()
 if not os.path.exists(FONT_PATH):
     try:
         FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
@@ -50,15 +74,13 @@ if not os.path.exists(FONT_PATH):
     except Exception:
         plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
 else:
-    fm.fontManager.addfont(FONT_PATH)
+    try:
+        fm.fontManager.addfont(FONT_PATH)
+    except Exception:
+        pass
     plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'DejaVu Sans', 'Arial']
 
 plt.rcParams['axes.unicode_minus'] = False
-
-# 這支中文字型是可變字型，預設實例是 Thin，matplotlib 又不能指定 wght 軸，
-# 所以「粗體」其實都畫成細體。先把需要的字重壓成靜態檔存起來，第一次產圖付一次成本。
-_WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
-_WEIGHT_FILES = {}
 
 
 def _weight_step(weight) -> int:
@@ -70,24 +92,28 @@ def _weight_font_path(weight: int) -> str:
     cached = _WEIGHT_FILES.get(step)
     if cached is not None:
         return cached
-    out = os.path.join(BASE_DIR, f"NotoSansTC-w{step}.ttf")
-    if not os.path.exists(out):
-        try:
-            from fontTools.ttLib import TTFont
-            from fontTools.varLib import instancer
+    bundled = bundled_weight_path(step)
+    if os.path.exists(bundled):
+        out = bundled
+    else:
+        out = os.path.join(BASE_DIR, f"NotoSansTC-w{step}.ttf")
+        if not os.path.exists(out):
+            try:
+                from fontTools.ttLib import TTFont
+                from fontTools.varLib import instancer
 
-            src = TTFont(FONT_PATH)
-            if "fvar" not in src:
-                _WEIGHT_FILES[step] = FONT_PATH
-                return FONT_PATH
-            inst = instancer.instantiateVariableFont(src, {"wght": step}, inplace=False)
-            inst["OS/2"].usWeightClass = step
-            tmp = f"{out}.{os.getpid()}.tmp"
-            inst.save(tmp)
-            os.replace(tmp, out)
-        except Exception:
-            _WEIGHT_FILES[step] = FONT_PATH if os.path.exists(FONT_PATH) else ""
-            return _WEIGHT_FILES[step]
+                src = TTFont(FONT_PATH)
+                if "fvar" not in src:
+                    _WEIGHT_FILES[step] = FONT_PATH
+                    return FONT_PATH
+                inst = instancer.instantiateVariableFont(src, {"wght": step}, inplace=False)
+                inst["OS/2"].usWeightClass = step
+                tmp = f"{out}.{os.getpid()}.tmp"
+                inst.save(tmp)
+                os.replace(tmp, out)
+            except Exception:
+                _WEIGHT_FILES[step] = FONT_PATH if os.path.exists(FONT_PATH) else ""
+                return _WEIGHT_FILES[step]
     try:
         fm.fontManager.addfont(out)
     except Exception:
@@ -96,12 +122,22 @@ def _weight_font_path(weight: int) -> str:
     return out
 
 
+def _ft_font(weight: int):
+    path = _weight_font_path(weight)
+    font = _FT_FONTS.get(path)
+    if font is None:
+        font = fm.get_font(path)
+        _FT_FONTS[path] = font
+    return font
+
+
 def prewarm_card_fonts() -> None:
-    """開機先把兩個字重壓好，避免使用者第一檔卡在產字型。"""
-    if not os.path.exists(FONT_PATH):
-        return
+    """開機載入打包好的兩個靜態字重，避免第一檔查詢才去壓字型。"""
     _weight_font_path(_WEIGHT_TEXT)
     _weight_font_path(_WEIGHT_BOLD)
+    with _FT_LOCK:
+        _ft_font(_WEIGHT_TEXT)
+        _ft_font(_WEIGHT_BOLD)
 
 
 def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
@@ -833,12 +869,9 @@ def _card_text_w(text, fs: float, fig_w: float) -> float:
 def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
     """字串的前進寬度（點）。matplotlib 對齊用的是前進寬度，
     用墨跡寬度算會少 10% 以上，右對齊的數字就會往左吃掉間距。"""
-    path = _weight_font_path(weight)
-    if not path:
-        return 0.0
     try:
         with _FT_LOCK:
-            font = fm.get_font(path)
+            font = _ft_font(weight)
             font.set_size(fs, 72)
             font.set_text(text)
             return float(font.get_width_height()[0]) / 64.0
@@ -851,7 +884,7 @@ def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
     s = str(text)
     if not s.strip():
         return 0.0
-    pt = _glyph_w_pt(s, float(fs), int(weight))
+    pt = _glyph_w_pt(s, round(float(fs), 1), int(weight))
     if pt <= 0:
         return _card_text_w(s, fs, fig_w)
     return pt / 72.0 / (fig_w / 100.0)
@@ -952,7 +985,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         m_top + head_h + gap + price_h + gap + hi_pane_h + gap + lo_pane_h
         + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=200, facecolor=C["page"])
+    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=160, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
@@ -1181,7 +1214,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
-    fig.savefig(save_path, dpi=200, facecolor=fig.get_facecolor())
+    fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path
 
@@ -1317,7 +1350,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
-    fig, ax = plt.subplots(figsize=(4.62, 16.4), dpi=170, facecolor="#EEF2F7")
+    fig, ax = plt.subplots(figsize=(4.62, 16.4), dpi=150, facecolor="#EEF2F7")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
@@ -1457,7 +1490,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     except Exception:
         pass
     ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌）　▲連漲　▼連跌", 10, "#78909C")
-    plt.savefig(save_path, dpi=220, facecolor=fig.get_facecolor())
+    plt.savefig(save_path, dpi=150, facecolor=fig.get_facecolor())
     plt.close()
     return save_path
 
@@ -1806,7 +1839,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    plt.savefig(save_path, dpi=170, facecolor="#ffffff")
+    plt.savefig(save_path, dpi=140, facecolor="#ffffff")
     plt.close()
     return save_path
 

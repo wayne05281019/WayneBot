@@ -1,7 +1,7 @@
 """海選隔日復盤：用庫裡已經有的日 K，對昨天寄出的名單算隔日報酬。
 
-不另抓行情、不改程式檔。進化只寫 ai_params（哪一類最近比較準），
-跟 AI 模擬倉調 size_mult 是同一套做法。
+AI 模擬成交另存 ai_fills，盤後用下一根日 K 對帳。
+不另抓行情、不改程式檔。進化只寫 ai_params（哪一類最近比較準、單筆多大）。
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ BUCKETS = (
 BUCKET_CAP = 8
 WEAK_AVG = -1.0
 WEAK_N = 5
+FILL_WEAK_N = 3
 
 
 def ensure_screen_review_table(db_path: str = None) -> None:
@@ -176,14 +177,28 @@ def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, fl
 
 
 def adapt_bucket_weights(db_path: str) -> Dict[str, float]:
-    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0，AI 模擬倉先不買那類。"""
+    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0，AI 模擬倉先不買那類。
+
+    有足夠 AI 實際成交時，以成交隔日為準；否則退回海選名單統計。
+    """
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);")
+    screen = {key: (n, avg, hit) for key, n, avg, hit in _bucket_stats(db_path)}
+    try:
+        fills = {key: (n, avg, hit) for key, n, avg, hit in _ai_fill_stats(db_path)}
+    except sqlite3.OperationalError:
+        fills = {}
     weights = {}
-    for key, n, avg, _hit in _bucket_stats(db_path):
-        if n >= WEAK_N and avg <= WEAK_AVG:
+    for key, _label in BUCKETS:
+        sn, savg, _shit = screen.get(key, (0, 0.0, 0.0))
+        fn, favg, _fhit = fills.get(key, (0, 0.0, 0.0))
+        if fn >= FILL_WEAK_N:
+            n, avg, need = fn, favg, FILL_WEAK_N
+        else:
+            n, avg, need = sn, savg, WEAK_N
+        if n >= need and avg <= WEAK_AVG:
             w = 0.0
-        elif n >= WEAK_N and avg >= 1.0:
+        elif n >= need and avg >= 1.0:
             w = 1.1
         else:
             w = 1.0
@@ -256,5 +271,250 @@ def format_review_html(db_path: str) -> str:
         for bucket, sid, name, pct in sample:
             lines.append(
                 f"• <code>{html_escape(sid)}</code> {html_escape(name)}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket))}"
+            )
+    return "\n".join(lines)
+
+
+def ensure_ai_fills_table(db_path: str = None) -> None:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_fills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            as_of TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT DEFAULT '',
+            action TEXT NOT NULL,
+            price REAL NOT NULL,
+            shares INTEGER NOT NULL,
+            amount REAL DEFAULT 0,
+            reason TEXT DEFAULT '',
+            bucket TEXT DEFAULT '',
+            realized_pnl REAL DEFAULT 0,
+            pnl_pct REAL DEFAULT 0,
+            next_date TEXT,
+            next_close REAL,
+            next_pct REAL,
+            created_at TEXT
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_fills_next ON ai_fills(action, next_pct);")
+    conn.commit()
+    conn.close()
+
+
+def bucket_from_reason(reason: str) -> str:
+    r = str(reason or "")
+    mapping = (
+        ("起漲", "leave_zero"),
+        ("營收", "revenue_cross"),
+        ("隔日", "overnight"),
+        ("周", "select_01"),
+        ("雙綠", "select_04"),
+        ("當沖", "day_trade"),
+        ("站上季線", "select_02"),
+        ("止跌", "select_03"),
+    )
+    for needle, key in mapping:
+        if needle in r:
+            return key
+    return ""
+
+
+def persist_ai_fill(
+    db_path: str,
+    *,
+    as_of: str,
+    stock_id: str,
+    action: str,
+    price: float,
+    shares: int,
+    stock_name: str = "",
+    amount: float = 0.0,
+    reason: str = "",
+    bucket: str = "",
+    realized_pnl: float = 0.0,
+    pnl_pct: float = 0.0,
+) -> None:
+    """每一筆 AI 模擬成交都留下，隔日用庫內日 K 對帳，用來調勝率。"""
+    as_of = str(as_of or "").replace("-", "")
+    sid = str(stock_id or "").strip()
+    if not as_of or not sid or float(price or 0) <= 0 or int(shares or 0) <= 0:
+        return
+    ensure_ai_fills_table(db_path)
+    bucket = str(bucket or bucket_from_reason(reason) or "").strip()
+    if action == "SELL" and not bucket:
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            "SELECT bucket FROM ai_fills WHERE stock_id=? AND action='BUY' AND bucket!='' ORDER BY id DESC LIMIT 1",
+            (sid,),
+        ).fetchone()
+        conn.close()
+        if row:
+            bucket = str(row[0] or "")
+    from datetime import datetime
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO ai_fills(
+            as_of, stock_id, stock_name, action, price, shares, amount,
+            reason, bucket, realized_pnl, pnl_pct, next_date, next_close, next_pct, created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            as_of,
+            sid,
+            str(stock_name or ""),
+            str(action or "").upper(),
+            float(price),
+            int(shares),
+            float(amount or 0),
+            str(reason or ""),
+            bucket,
+            float(realized_pnl or 0),
+            float(pnl_pct or 0),
+            None,
+            None,
+            None,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def score_ai_fills(db_path: str, next_date: str = None) -> int:
+    """買進成交用下一根日 K 填隔日％。賣出已有已實現，不另算。"""
+    ensure_ai_fills_table(db_path)
+    conn = sqlite3.connect(db_path)
+    pending = conn.execute(
+        "SELECT DISTINCT as_of FROM ai_fills WHERE action='BUY' AND next_pct IS NULL"
+    ).fetchall()
+    filled = 0
+    cap = str(next_date or "").replace("-", "")
+    for (as_of,) in pending:
+        nxt = _next_quote_date(conn, as_of)
+        if not nxt:
+            continue
+        if cap and nxt != cap:
+            continue
+        rows = conn.execute(
+            "SELECT id, stock_id, price FROM ai_fills WHERE as_of=? AND action='BUY' AND next_pct IS NULL",
+            (as_of,),
+        ).fetchall()
+        for fill_id, sid, fill_px in rows:
+            q = conn.execute(
+                "SELECT close FROM daily_quotes WHERE stock_id=? AND replace(date,'-','')=? LIMIT 1",
+                (sid, nxt),
+            ).fetchone()
+            if not q or not fill_px:
+                continue
+            try:
+                nxt_c = float(q[0] or 0)
+                pct = (nxt_c - float(fill_px)) / float(fill_px) * 100.0 if fill_px else 0.0
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            conn.execute(
+                "UPDATE ai_fills SET next_date=?, next_close=?, next_pct=? WHERE id=?",
+                (nxt, nxt_c, pct, fill_id),
+            )
+            filled += 1
+    conn.commit()
+    conn.close()
+    if filled:
+        adapt_bucket_weights(db_path)
+    return filled
+
+
+def _ai_fill_stats(db_path: str, limit_days: int = 20) -> List[Tuple[str, int, float, float]]:
+    ensure_ai_fills_table(db_path)
+    conn = sqlite3.connect(db_path)
+    days = [
+        r[0]
+        for r in conn.execute(
+            """
+            SELECT DISTINCT as_of FROM ai_fills
+            WHERE action='BUY' AND next_pct IS NOT NULL
+            ORDER BY as_of DESC LIMIT ?
+            """,
+            (limit_days,),
+        ).fetchall()
+    ]
+    out = []
+    for key, _label in BUCKETS:
+        if not days:
+            out.append((key, 0, 0.0, 0.0))
+            continue
+        qmarks = ",".join("?" * len(days))
+        rows = conn.execute(
+            f"""
+            SELECT next_pct FROM ai_fills
+            WHERE bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
+            """,
+            (key, *days),
+        ).fetchall()
+        n = len(rows)
+        if not n:
+            out.append((key, 0, 0.0, 0.0))
+            continue
+        avg = sum(float(r[0]) for r in rows) / n
+        hits = sum(1 for r in rows if float(r[0]) > 0)
+        out.append((key, n, avg, hits / n))
+    conn.close()
+    return out
+
+
+def format_ai_review_html(db_path: str) -> str:
+    from tg_layout import html_escape, html_pct
+
+    ensure_ai_fills_table(db_path)
+    conn = sqlite3.connect(db_path)
+    agg = conn.execute(
+        """
+        SELECT COUNT(*), AVG(next_pct),
+               SUM(CASE WHEN next_pct > 0 THEN 1 ELSE 0 END)
+        FROM ai_fills WHERE action='BUY' AND next_pct IS NOT NULL
+        """
+    ).fetchone()
+    sample = conn.execute(
+        """
+        SELECT stock_id, stock_name, next_pct, bucket, as_of
+        FROM ai_fills
+        WHERE action='BUY' AND next_pct IS NOT NULL
+        ORDER BY id DESC LIMIT 6
+        """
+    ).fetchall()
+    conn.close()
+    n = int(agg[0] or 0) if agg else 0
+    if n <= 0:
+        return (
+            "<b>AI 成交復盤</b>\n"
+            "還沒有「模擬買進的隔一日收盤」。盤後日 K 齊了會自動對帳，用來調哪類少買、單筆多大。"
+        )
+    avg = float(agg[1] or 0)
+    hits = int(agg[2] or 0)
+    wr = hits / n if n else 0.0
+    labels = dict(BUCKETS)
+    lines = [
+        "<b>AI 成交復盤</b>",
+        f"模擬買進隔日　勝 {wr:.0%}／{n}　均 {html_pct(avg).strip()}",
+        "用實際成交，不是只看海選名單。弱的類別下一輪少買；不會改程式檔。",
+    ]
+    bits = []
+    for key, fn, favg, fhit in _ai_fill_stats(db_path):
+        if fn <= 0:
+            continue
+        bits.append(f"{labels.get(key, key)} {favg:+.1f}%（勝 {fhit:.0%}／{fn}）")
+    if bits:
+        lines.append("　".join(bits[:4]))
+    if sample:
+        lines.append("<b>最近買進隔日</b>")
+        for sid, name, pct, bucket, as_of in sample:
+            as_s = f"{as_of[4:6]}/{as_of[6:]}" if as_of and len(as_of) == 8 else str(as_of or "")
+            lines.append(
+                f"• <code>{html_escape(sid)}</code> {html_escape(name)}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
             )
     return "\n".join(lines)
