@@ -1090,6 +1090,8 @@ class WayneTelegramBot:
             cap_links = ""
 
         async def send_photo(path, caption, markup=None):
+            if not path or not os.path.exists(path):
+                return False
             try:
                 with open(path, "rb") as f:
                     await message.reply_photo(
@@ -1102,48 +1104,135 @@ class WayneTelegramBot:
                         await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
                     return True
                 except Exception:
+                    logger.exception("送圖失敗 path=%s", path)
                     return False
 
-        pack = {}
+        wait_msg = None
         try:
-            from cary_navigator import render_stock_pack
-
-            pack = await asyncio.to_thread(
-                render_stock_pack, code, self.db_path, self.charts_dir
-            )
+            wait_msg = await message.reply_text("圖產製中，會依序出現介紹圖／決策卡／導航／籌碼…")
         except Exception:
-            logger.exception("看這檔出圖失敗 code=%s", code)
-            pack = {}
+            wait_msg = None
 
-        glance = pack.get("glance") or ""
-        if glance:
-            await send_photo(glance, cap_links or "當日K＋籌碼價量")
-
-        for path in self._card_photo_paths(pack.get("cards") or []):
-            await send_photo(path, "高低決策卡")
-
-        chart = pack.get("chart") or ""
-        if chart:
-            await send_photo(
-                chart,
-                "180日高低導航：價格列＝粉↓20高、紫↓20高脫離、綠↑20低／脫離、青↑60低；量能列才有紫↑量能異常、紅↑警告",
+        sent_any = False
+        last_ok = False
+        try:
+            from cary_navigator import (
+                generate_chart,
+                render_decision_card_png,
+                render_first_glance_png,
             )
+            from cary_navigator import CaryNavigatorEngine
+            from chips import generate_chips_image
+            from chip_tape import build_tape
 
-        chip_img = pack.get("chips") or ""
-        if chip_img:
-            ok = await send_photo(chip_img, "籌碼（張）", hub)
-            if not ok:
-                await message.reply_html("籌碼圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
-        elif glance:
-            await send_photo(glance, cap_links or "介紹", hub)
-        else:
-            try:
+            def _card_and_tape():
+                engine = CaryNavigatorEngine(self.db_path)
+                card = engine.get_decision_card(code, lookback=20)
+                tape = {}
+                try:
+                    tape = build_tape(self.db_path, code) or {}
+                except Exception:
+                    tape = {}
+                return card, tape
+
+            card, tape = await asyncio.wait_for(
+                asyncio.to_thread(_card_and_tape), timeout=25
+            )
+            if card.get("error"):
+                await message.reply_html(
+                    f"⚠️ {html_escape(card.get('error'))}",
+                    reply_markup=hub,
+                    disable_web_page_preview=True,
+                )
+                return
+            os.makedirs(self.charts_dir, exist_ok=True)
+            glance = await asyncio.wait_for(
+                asyncio.to_thread(
+                    render_first_glance_png,
+                    code,
+                    card,
+                    tape,
+                    os.path.join(self.charts_dir, f"{code}_glance.png"),
+                    self.db_path,
+                ),
+                timeout=30,
+            )
+            if glance:
+                last_ok = await send_photo(glance, cap_links or "當日K＋籌碼價量")
+                sent_any = sent_any or last_ok
+            card_path = await asyncio.wait_for(
+                asyncio.to_thread(
+                    render_decision_card_png,
+                    card,
+                    os.path.join(self.charts_dir, f"{code}_card.png"),
+                ),
+                timeout=30,
+            )
+            if card_path:
+                last_ok = await send_photo(card_path, "高低決策卡")
+                sent_any = sent_any or last_ok
+            chart = await asyncio.wait_for(
+                asyncio.to_thread(
+                    generate_chart,
+                    code,
+                    "",
+                    self.db_path,
+                    os.path.join(self.charts_dir, f"{code}.png"),
+                ),
+                timeout=40,
+            )
+            if chart:
+                last_ok = await send_photo(
+                    chart,
+                    "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
+                )
+                sent_any = sent_any or last_ok
+            chip_img = await asyncio.wait_for(
+                asyncio.to_thread(
+                    generate_chips_image,
+                    code,
+                    self.db_path,
+                    os.path.join(self.charts_dir, f"{code}_chips.png"),
+                ),
+                timeout=25,
+            )
+            hub_on = False
+            if chip_img:
+                hub_on = await send_photo(chip_img, "籌碼（張）", hub)
+                sent_any = sent_any or hub_on
+            if sent_any and not hub_on:
+                await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
+            elif not sent_any:
                 from cary_navigator import generate_decision_card
 
                 html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
-            except Exception:
-                html = f"查詢 {html_escape(code)} 失敗。"
-            await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+                await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+        except asyncio.TimeoutError:
+            logger.exception("看這檔出圖逾時 code=%s", code)
+            if not sent_any:
+                await message.reply_html(
+                    "圖產製逾時。請再打一次代號；或先用下面按鈕看籌碼／產業。",
+                    reply_markup=hub,
+                    disable_web_page_preview=True,
+                )
+            else:
+                await message.reply_html("後面的圖逾時。可用下面按鈕繼續。", reply_markup=hub, disable_web_page_preview=True)
+        except Exception:
+            logger.exception("看這檔出圖失敗 code=%s", code)
+            if not sent_any:
+                try:
+                    from cary_navigator import generate_decision_card
+
+                    html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
+                except Exception:
+                    html = f"查詢 {html_escape(code)} 失敗。"
+                await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+        finally:
+            if wait_msg is not None:
+                try:
+                    await wait_msg.delete()
+                except Exception:
+                    pass
         try:
             await self._send_industry(message, code)
         except Exception:
@@ -1304,6 +1393,12 @@ class WayneTelegramBot:
             logger.error("缺少 TELEGRAM_BOT_TOKEN")
             return
         async def _on_start(app):
+            try:
+                from cary_navigator import prewarm_card_fonts
+
+                await asyncio.to_thread(prewarm_card_fonts)
+            except Exception:
+                logger.exception("字型預熱失敗")
             try:
                 await app.bot.set_my_commands(
                     [

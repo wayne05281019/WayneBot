@@ -262,12 +262,12 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
     return built[:limit]
 
 
-def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
-    """讀籌碼列；近日全 0 時先回補當日 T86。"""
+def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15, allow_fetch: bool = True) -> List[Dict[str, Any]]:
+    """讀籌碼列；近日全 0 且允許連網時才回補當日 T86。看這檔出圖不要連網，否則會卡住後面的圖。"""
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     rows = major_player_rows(path, sid, limit=limit)
-    if rows:
+    if allow_fetch and rows:
         recent = rows[:5]
         if all(int(r.get("three_net") or 0) == 0 for r in recent):
             try:
@@ -470,7 +470,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
 
 def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
-    rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit)
+    rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit, allow_fetch=False)
     if not rows:
         return ""
     try:
