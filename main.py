@@ -141,7 +141,7 @@ def ensure_market_db() -> None:
         shutil.copy2(found, path)
         logger.info("已安裝行情庫 %.0f MB", os.path.getsize(path) / 1e6)
     except Exception:
-        logger.exception("下載行情庫失敗（Telegram 仍可回 /start，但單檔圖卡沒有日K）")
+        logger.exception("下載行情庫失敗（Telegram 仍可回 /start，但單檔看這檔沒有日K）")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
