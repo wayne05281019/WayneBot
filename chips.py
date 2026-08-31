@@ -307,6 +307,167 @@ def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     return "\n".join(lines)
 
 
+def _fmt_ymd_short(date_val) -> str:
+    d = str(date_val or "").replace("-", "")
+    if len(d) == 8 and d.isdigit():
+        return f"{int(d[4:6])}/{int(d[6:8])}"
+    return d
+
+
+def _chips_signed_style(v, C):
+    if v > 0:
+        return C["hi_fill"], C["hi_ink"]
+    if v < 0:
+        return C["lo_fill"], C["lo_ink"]
+    return C["panel"], C["ink_mute"]
+
+
+def fit_table_cols(headers, col_vals, fig_w, span, *, fs=11.5, hdr_fs=11.5,
+                   weight=800, pad=2.4, min_fs=9.0):
+    """表列共用字級：每欄寬＝該欄最寬字＋留白；加總超過 span 就整表等比縮，數字才對齊。
+
+    回傳 (xs 左緣列表含右端, 內文字級, 表頭字級)。
+    """
+    from cary_navigator import _text_w
+
+    def widths(body_fs, head_fs):
+        out = []
+        for i, h in enumerate(headers):
+            w = _text_w(h, head_fs, fig_w, weight)
+            for val in col_vals[i]:
+                w = max(w, _text_w(val, body_fs, fig_w, weight))
+            out.append(w + pad)
+        return out
+
+    body_fs, head_fs = fs, hdr_fs
+    cols = widths(body_fs, head_fs)
+    while sum(cols) > span and body_fs > min_fs:
+        body_fs *= 0.95
+        head_fs = min(head_fs, body_fs + 0.2)
+        cols = widths(body_fs, head_fs)
+    total = sum(cols)
+    if total > span and total > 0:
+        cols = [w * span / total for w in cols]
+    elif total < span and total > 0:
+        extra = (span - total) / len(cols)
+        cols = [w + extra for w in cols]
+    xs = [0.0]
+    for w in cols:
+        xs.append(xs[-1] + w)
+    return xs, body_fs, head_fs
+
+
+def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str = "") -> str:
+    """籌碼表：色票與決策卡同一套，欄寬依真實字寬算，同一張表共用字級。"""
+    if not rows:
+        return ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    from cary_navigator import _CARD, _fp, _text_w
+
+    C = _CARD
+    n = max(len(rows), 1)
+    sid = str(stock_id or rows[0].get("stock_id") or "").strip()
+    name = str(rows[0].get("stock_name") or sid)
+    pad_x, m_top, m_bot = 2.4, 1.0, 1.2
+    head_h, sub_h, hdr_h, body_h = 8.6, 3.4, 3.4, 3.25
+    gap = 1.15
+    H = m_top + head_h + gap + sub_h + hdr_h + n * body_h + m_bot
+    fig_w = 7.2
+    fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=200, facecolor=C["page"])
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, H)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.022, right=0.978, top=0.99, bottom=0.012)
+
+    y = H - m_top - head_h
+    ax.add_patch(patches.FancyBboxPatch(
+        (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=0.95",
+        facecolor=C["navy"], edgecolor="none", zorder=2))
+    ax.text(pad_x + 2.6, y + head_h - 2.9, f"{sid}　{name}",
+            fontproperties=_fp(18, "bold"), color="#FFFFFF", va="center", zorder=3)
+    tag = "主力買賣超（張）"
+    tag_w = _text_w(tag, 11.2, fig_w, 900) + 3.2
+    ax.add_patch(patches.FancyBboxPatch(
+        (pad_x + 2.6, y + 1.35), tag_w, 2.85, boxstyle="round,pad=0,rounding_size=0.5",
+        facecolor=C["tag"], edgecolor="none", zorder=3))
+    ax.text(pad_x + 2.6 + tag_w / 2, y + 2.78, tag, fontproperties=_fp(11.2, "heavy"),
+            color="#FFFFFF", ha="center", va="center", zorder=4)
+    ax.text(100 - pad_x - 2.6, y + head_h / 2, "WayneBot", fontproperties=_fp(11.5, "bold"),
+            color=C["navy_soft"], ha="right", va="center", zorder=3)
+
+    y -= gap + sub_h
+    ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",
+            fontproperties=_fp(10), color=C["ink_soft"], va="center", zorder=3)
+
+    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+    numeric = {1, 2, 3, 4, 5, 6, 7, 8}
+    table = []
+    signed = []
+    for r in rows:
+        d = _fmt_ymd_short(r.get("date"))
+        three = int(r.get("three_net") or 0)
+        f_n, t_n, d_n = int(r.get("foreign_net") or 0), int(r.get("trust_net") or 0), int(r.get("dealer_net") or 0)
+        ratio = float(r.get("ratio_pct") or 0)
+        acc = int(r.get("acc_10d") or 0)
+        table.append([
+            d,
+            f"{float(r.get('close') or 0):,.2f}",
+            f"{int(r.get('volume') or 0):,}",
+            f"{f_n:+,d}",
+            f"{t_n:+,d}",
+            f"{d_n:+,d}",
+            f"{three:+,d}",
+            f"{ratio:+.1f}%",
+            f"{acc:+,d}",
+        ])
+        signed.append([None, None, None, f_n, t_n, d_n, three, ratio, acc])
+
+    span = 100 - 2 * pad_x
+    col_vals = list(zip(*table)) if table else [[] for _ in headers]
+    xs_rel, body_fs, head_fs = fit_table_cols(headers, col_vals, fig_w, span)
+    xs = [pad_x + x for x in xs_rel]
+
+    tbl_top = y
+    for i, h in enumerate(headers):
+        ax.add_patch(patches.Rectangle(
+            (xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
+            facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
+        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h,
+                fontproperties=_fp(head_fs, "bold"), ha="center", va="center",
+                color=C["tbl_ink"], zorder=3)
+
+    ry = tbl_top - hdr_h
+    right_pad = 0.85
+    for row_i, vals in enumerate(table):
+        y1 = ry - body_h
+        zebra = row_i % 2 == 0
+        for i, val in enumerate(vals):
+            if i >= 3:
+                fc, color = _chips_signed_style(signed[row_i][i], C)
+            else:
+                fc = C["panel"] if zebra else C["zebra"]
+                color = C["ink"]
+            ax.add_patch(patches.Rectangle(
+                (xs[i], y1), xs[i + 1] - xs[i], body_h,
+                facecolor=fc, edgecolor="#E6EBF2", lw=0.5, zorder=2))
+            cy = (ry + y1) / 2
+            if i in numeric:
+                ax.text(xs[i + 1] - right_pad, cy, val, fontproperties=_fp(body_fs, "heavy"),
+                        ha="right", va="center", color=color, zorder=3)
+            else:
+                ax.text((xs[i] + xs[i + 1]) / 2, cy, val, fontproperties=_fp(body_fs, "bold"),
+                        ha="center", va="center", color=color, zorder=3)
+        ry = y1
+    ax.add_patch(patches.Rectangle(
+        (pad_x, ry), span, tbl_top - ry, facecolor="none",
+        edgecolor=C["tbl_line"], lw=1.1, zorder=4))
+    fig.savefig(save_path, dpi=200, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return save_path
+
+
 def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = None, limit: int = 15) -> str:
     path = db_path or get_db_path()
     rows = load_major_player_rows(path, str(stock_id).strip(), limit=limit)
@@ -318,81 +479,7 @@ def generate_chips_image(stock_id: str, db_path: str = None, save_path: str = No
     except Exception:
         charts = os.path.join("data", "charts")
     out = save_path or os.path.join(charts, f"{stock_id}_chips.png")
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
-    try:
-        from cary_navigator import FONT_PATH, _fp
-    except Exception:
-        FONT_PATH = None
-        def _fp(size, weight="bold"):
-            return None
-
-    def ink(size, w="bold"):
-        fp = _fp(size, w)
-        return {"fontproperties": fp} if fp is not None else {"fontsize": size, "fontweight": "bold"}
-
-    n = len(rows)
-    fig_h = 1.22 + n * 0.46
-    fig, ax = plt.subplots(figsize=(6.55, fig_h), dpi=175, facecolor="#eef1f6")
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
-    ax.axis("off")
-    fig.subplots_adjust(left=0.025, right=0.975, top=0.99, bottom=0.01)
-
-    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
-    xs = [1.6, 13.2, 23.0, 33.2, 43.8, 54.4, 65.0, 76.0, 86.2, 98.2]
-    top = 99.0
-    hdr_h = 4.2
-    body_h = (top - hdr_h - 0.8) / max(n, 1)
-
-    def box(x, y, w, h, fc="#fff"):
-        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=fc, edgecolor="#cfd8dc", linewidth=0.5))
-
-    for i, h in enumerate(headers):
-        box(xs[i], top - hdr_h, xs[i + 1] - xs[i], hdr_h, "#e3f2fd")
-        ax.text((xs[i] + xs[i + 1]) / 2, top - hdr_h / 2, h, **ink(10), color="#0d47a1", ha="center", va="center")
-    y = top - hdr_h
-    for r in rows:
-        y1 = y - body_h
-        three = int(r["three_net"])
-        d = str(r["date"])
-        if len(d) == 8:
-            d = f"{int(d[4:6])}/{int(d[6:])}"
-        nums = [
-            int(r["foreign_net"]),
-            int(r["trust_net"]),
-            int(r["dealer_net"]),
-            three,
-        ]
-        vals = [
-            d,
-            f"{float(r['close']):,.2f}",
-            f"{int(r['volume']):,}",
-            f"{nums[0]:+d}",
-            f"{nums[1]:+d}",
-            f"{nums[2]:+d}",
-            f"{three:+d}",
-            f"{r['ratio_pct']:+.1f}%",
-            f"{int(r['acc_10d']):+d}",
-        ]
-        for i, val in enumerate(vals):
-            fc = "#ffffff"
-            color = "#000000"
-            if i >= 3:
-                v = int(r["acc_10d"]) if i == 8 else (three if i in (6, 7) else nums[i - 3])
-                if i == 7:
-                    v = float(r["ratio_pct"])
-                if v > 0:
-                    fc, color = "#ffebee", "#b71c1c"
-                elif v < 0:
-                    fc, color = "#e8f5e9", "#1b5e20"
-            box(xs[i], y1, xs[i + 1] - xs[i], body_h, fc)
-            ax.text((xs[i] + xs[i + 1]) / 2, (y + y1) / 2, val, **ink(11), color=color, ha="center", va="center")
-        y = y1
-    plt.savefig(out, dpi=175, facecolor=fig.get_facecolor())
-    plt.close()
-    return out
+    return render_chips_png(rows, out, stock_id=str(stock_id).strip())
 
 
 if __name__ == "__main__":
