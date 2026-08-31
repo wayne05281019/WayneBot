@@ -1610,12 +1610,14 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     last = work.iloc[-1]
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
 
+    # Telegram 手機會把圖縮成對話框寬，橫長圖在手機上又扁又小字。
+    # 時間軸仍是橫的；畫布改偏直，貼齊氣泡寬時比較滿、字比較大。
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3,
         1,
-        figsize=(16.8, 8.15),
+        figsize=(8.4, 11.2),
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.03),
+        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
         facecolor="#ffffff",
     )
     # 箭頭一格一格往外疊，先把空間留出來，才不會被畫框切掉或互相壓住。
