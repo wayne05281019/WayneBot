@@ -55,6 +55,35 @@ def html_qty(n, unit: str = "張", width: int = 9, signed: bool = True) -> str:
     return f"<code>{html_escape(body)}</code>{html_escape(unit)}"
 
 
+def html_qty_tight(n, unit: str = "張", signed: bool = True) -> str:
+    """數字跟單位同一格，氣泡窄時「張」不會被甩到下一行。"""
+    try:
+        v = int(round(float(n or 0)))
+    except (TypeError, ValueError):
+        v = 0
+    if signed:
+        body = f"0{unit}" if v == 0 else f"{v:+,}{unit}"
+    else:
+        body = f"{v:,}{unit}"
+    return f"<code>{html_escape(body)}</code>"
+
+
+def html_pct_tight(pct) -> str:
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return "<code>—</code>"
+    return f"<code>{html_escape(f'{p:+.1f}%')}</code>"
+
+
+DASH_LINE = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
+
+
+def join_dashed(*blocks: str) -> str:
+    """區塊之間上虛線，資金移動這種長文才分得開。"""
+    return join_sections(*blocks, sep=f"\n{DASH_LINE}\n")
+
+
 def html_price(p, width: int = 9) -> str:
     """現價／成本對齊，不含單位（元接在後面或省略）。"""
     try:

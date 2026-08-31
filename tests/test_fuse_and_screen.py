@@ -221,9 +221,19 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("鋼鐵工業", html)
             self.assertIn("2330", html)
             self.assertNotIn("元大台灣50", html)
+            self.assertIn("┈┈┈", html)
+            self.assertIn("較前日", html)
+            for line in html.split("\n"):
+                if "半導體業" in line or "鋼鐵工業" in line:
+                    self.assertNotIn("張", line, line)
+            self.assertIn("<code>+9,970張</code>", html)
+            self.assertIn("<code>+8,450張</code>", html)
+            self.assertNotIn("</code>張", html)
             flow = format_flow_html(path, yyyymmdd="20260828")
             self.assertIn("盤後資金輪動", flow)
             self.assertIn("個股資金", flow)
+            self.assertIn("┈┈┈", flow)
+            self.assertGreaterEqual(flow.count("┈┈┈"), 3)
             items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
             annotate_items_with_sector_flow(path, "20260828", items)
             self.assertTrue(items[0].get("sector_inflow"))
@@ -618,6 +628,18 @@ class TelegramAlignTest(unittest.TestCase):
         p2 = html_pct(-12.5)
         self.assertTrue(p1.endswith("%"))
         self.assertEqual(len(body(p1)), len(body(p2)))
+
+    def test_html_qty_tight_keeps_zhang_in_same_tag(self):
+        from tg_layout import html_pct_tight, html_qty_tight, join_dashed
+
+        q = html_qty_tight(89001)
+        self.assertEqual(q, "<code>+89,001張</code>")
+        self.assertNotIn("</code>張", q)
+        self.assertEqual(html_pct_tight(2.2), "<code>+2.2%</code>")
+        dashed = join_dashed("上", "下")
+        self.assertIn("┈┈┈", dashed)
+        self.assertTrue(dashed.startswith("上"))
+        self.assertTrue(dashed.endswith("下"))
 
     def test_html_price_and_money_align(self):
         import re
@@ -1397,6 +1419,61 @@ class SpeedOptTest(unittest.TestCase):
             self.assertEqual(n, 1)
         finally:
             os.remove(path)
+
+
+class WatchListTest(unittest.TestCase):
+    def test_add_and_remove_watchlist(self):
+        from wayne_db import (
+            add_to_watchlist,
+            get_user_watchlist,
+            remove_from_watchlist,
+            ensure_core_schema,
+        )
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            add_to_watchlist(path, "u1", "2330", "台積電")
+            add_to_watchlist(path, "u1", "2317", "鴻海")
+            rows = get_user_watchlist(path, "u1")
+            self.assertEqual({r["stock_code"] for r in rows}, {"2330", "2317"})
+            self.assertTrue(remove_from_watchlist(path, "u1", "2330"))
+            left = get_user_watchlist(path, "u1")
+            self.assertEqual([r["stock_code"] for r in left], ["2317"])
+            self.assertFalse(remove_from_watchlist(path, "u1", "2330"))
+            self.assertFalse(remove_from_watchlist(path, "u1", ""))
+        finally:
+            os.remove(path)
+
+    def test_watch_keyboard_has_delete(self):
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        kb = bot._watch_list_keyboard(
+            [{"stock_code": "2330", "stock_name": "台積電"}, {"stock_code": "2317", "stock_name": "鴻海"}]
+        )
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        self.assertIn("rw:2330", datas)
+        self.assertIn("rw:2317", datas)
+        self.assertIn("刪", texts)
+        self.assertIn("k:2330", datas)
+
+    def test_watch_html_keeps_yahoo_link_and_send_disables_preview(self):
+        import inspect
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        bot.db_path = None
+        html, kb = bot._render_watch([{"stock_code": "2330", "stock_name": "台積電"}])
+        self.assertIn("tw.stock.yahoo.com/quote/2330", html)
+        self.assertIn("刪", html)
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        self.assertIn("rw:2330", datas)
+        send_src = inspect.getsource(WayneTelegramBot._send_watch)
+        self.assertIn("disable_web_page_preview=True", send_src)
+        self.assertGreaterEqual(send_src.count("disable_web_page_preview=True"), 2)
 
 
 if __name__ == "__main__":

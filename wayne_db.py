@@ -520,6 +520,20 @@ def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: st
         )
 
 
+def remove_from_watchlist(db_path: str, user_id: str, stock_code: str) -> bool:
+    """從自選觀察清單刪掉這一檔。回傳是否真的刪到列。"""
+    ensure_core_schema(db_path)
+    code = str(stock_code or "").strip()
+    if not code:
+        return False
+    with get_db_connection(db_path) as conn:
+        cur = conn.execute(
+            "DELETE FROM user_watchlist WHERE user_id = ? AND stock_code = ?;",
+            (str(user_id), code),
+        )
+        return int(cur.rowcount or 0) > 0
+
+
 def get_user_portfolio(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
     with get_db_connection(db_path, write=False) as conn:
