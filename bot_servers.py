@@ -17,6 +17,7 @@ from wayne_db import (
     init_database,
     get_user_portfolio,
     add_to_watchlist,
+    remove_from_watchlist,
     add_to_portfolio,
     sell_from_holdings,
     lookup_stocks,
@@ -99,7 +100,8 @@ HELP_TOPICS = {
     "watch": (
         "<b>觀察怎麼用</b>\n"
         "自選清單，還沒買也可以加。空的很正常。\n"
-        "打股名或海選旁的 ➕。"
+        "加入：打股名或海選旁的 ➕。刪除：觀察頁該檔按「刪」。\n"
+        "藍字股名＝奇摩走勢（只開網頁，不帶預覽大圖）。"
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
@@ -301,11 +303,13 @@ class WayneTelegramBot:
             lines.append(f"{i}. {title}")
         return "\n".join(lines)
 
+    WATCH_LIST_LIMIT = 24
+
     def _watch_list_keyboard(self, rows):
         from tg_layout import stock_btn_label
 
         kb = []
-        for i, r in enumerate((rows or [])[:8], start=1):
+        for r in (rows or [])[: self.WATCH_LIST_LIMIT]:
             c = str(r.get("stock_code") or "")
             if not c:
                 continue
@@ -315,10 +319,40 @@ class WayneTelegramBot:
                     InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("買入", callback_data=f"b:{c}"),
+                    InlineKeyboardButton("刪", callback_data=f"rw:{c}"),
                 ]
             )
         kb.append([self._q("watch")])
         return InlineKeyboardMarkup(kb)
+
+    def _render_watch(self, rows):
+        shown = list(rows or [])[: self.WATCH_LIST_LIMIT]
+        lines = [
+            "<b>觀察清單（自選，還沒買也可以）</b>",
+            "加入：打股名按 ➕，或海選／當沖旁的 ➕。刪除：按該檔「刪」。",
+        ]
+        if not shown:
+            lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
+            return "\n".join(lines), InlineKeyboardMarkup([[self._q("watch")]])
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
+        for r in shown:
+            c = str(r.get("stock_code") or "")
+            n = str(r.get("stock_name") or "")
+            if html_stock_anchor:
+                try:
+                    lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
+                except Exception:
+                    lines.append(f"• {html_escape(c)} {html_escape(n)}")
+            else:
+                lines.append(f"• {html_escape(c)} {html_escape(n)}")
+        extra = len(rows or []) - len(shown)
+        if extra > 0:
+            lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
+        lines.append("下面由上到下對應該檔：左＝看這檔　籌碼　記買入　刪。")
+        return "\n".join(lines), self._watch_list_keyboard(shown)
 
     def _portfolio_keyboard(self, holdings):
         kb = []
@@ -661,34 +695,23 @@ class WayneTelegramBot:
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
             await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
 
-    async def _send_watch(self, message, uid: str):
+    async def _send_watch(self, message, uid: str, edit: bool = False):
         from wayne_db import get_user_watchlist
 
         rows = get_user_watchlist(self.db_path, uid)
-        lines = [
-            "<b>觀察清單（自選，還沒買也可以）</b>",
-            "加入方式：打「南亞」按 ➕　或海選／當沖／隔日沖旁的 ➕",
-        ]
-        if not rows:
-            lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
-            await message.reply_html("\n".join(lines), reply_markup=self._keyboard())
-            return
-        try:
-            from stock_links import html_stock_anchor
-        except Exception:
-            html_stock_anchor = None
-        for r in rows:
-            c = str(r.get("stock_code") or "")
-            n = str(r.get("stock_name") or "")
-            if html_stock_anchor:
-                try:
-                    lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
-                except Exception:
-                    lines.append(f"• {html_escape(c)} {html_escape(n)}")
-            else:
-                lines.append(f"• {html_escape(c)} {html_escape(n)}")
-        lines.append("下面按鈕由上到下對應清單：左＝代號＋股名　籌碼　記買入。")
-        await message.reply_html("\n".join(lines), reply_markup=self._watch_list_keyboard(rows))
+        html, kb = self._render_watch(rows)
+        if edit:
+            try:
+                await message.edit_text(
+                    html,
+                    parse_mode="HTML",
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
+                return
+            except Exception:
+                logger.exception("觀察清單原地更新失敗，改發新訊息")
+        await message.reply_html(html, reply_markup=kb, disable_web_page_preview=True)
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
         from wayne_db import get_user_watchlist
@@ -1324,6 +1347,13 @@ class WayneTelegramBot:
                 "overnight": "隔日沖：尾盤佈局",
             }
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
+            return
+        if data.startswith("rw:"):
+            code = data[3:].strip()
+            uid = str(q.from_user.id)
+            removed = remove_from_watchlist(self.db_path, uid, code)
+            await q.answer((f"已從觀察刪除 {code}" if removed else "這檔不在觀察裡")[:200])
+            await self._send_watch(q.message, uid, edit=True)
             return
         await q.answer()
         if data == "hx":

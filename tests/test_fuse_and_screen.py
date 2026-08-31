@@ -1399,5 +1399,60 @@ class SpeedOptTest(unittest.TestCase):
             os.remove(path)
 
 
+class WatchListTest(unittest.TestCase):
+    def test_add_and_remove_watchlist(self):
+        from wayne_db import (
+            add_to_watchlist,
+            get_user_watchlist,
+            remove_from_watchlist,
+            ensure_core_schema,
+        )
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            add_to_watchlist(path, "u1", "2330", "台積電")
+            add_to_watchlist(path, "u1", "2317", "鴻海")
+            rows = get_user_watchlist(path, "u1")
+            self.assertEqual({r["stock_code"] for r in rows}, {"2330", "2317"})
+            self.assertTrue(remove_from_watchlist(path, "u1", "2330"))
+            left = get_user_watchlist(path, "u1")
+            self.assertEqual([r["stock_code"] for r in left], ["2317"])
+            self.assertFalse(remove_from_watchlist(path, "u1", "2330"))
+            self.assertFalse(remove_from_watchlist(path, "u1", ""))
+        finally:
+            os.remove(path)
+
+    def test_watch_keyboard_has_delete(self):
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        kb = bot._watch_list_keyboard(
+            [{"stock_code": "2330", "stock_name": "台積電"}, {"stock_code": "2317", "stock_name": "鴻海"}]
+        )
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        self.assertIn("rw:2330", datas)
+        self.assertIn("rw:2317", datas)
+        self.assertIn("刪", texts)
+        self.assertIn("k:2330", datas)
+
+    def test_watch_html_keeps_yahoo_link_and_send_disables_preview(self):
+        import inspect
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        bot.db_path = None
+        html, kb = bot._render_watch([{"stock_code": "2330", "stock_name": "台積電"}])
+        self.assertIn("tw.stock.yahoo.com/quote/2330", html)
+        self.assertIn("刪", html)
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        self.assertIn("rw:2330", datas)
+        send_src = inspect.getsource(WayneTelegramBot._send_watch)
+        self.assertIn("disable_web_page_preview=True", send_src)
+        self.assertGreaterEqual(send_src.count("disable_web_page_preview=True"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
