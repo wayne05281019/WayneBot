@@ -136,6 +136,74 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("quarterly_income", inv)
             self.assertIn("gaps", inv)
             self.assertIn("latest_complete", inv)
+            self.assertIn("daily_sector_flow", inv)
+        finally:
+            os.remove(path)
+
+    def test_sector_rotation_uses_official_chips(self):
+        from money_flow import (
+            annotate_items_with_sector_flow,
+            format_flow_html,
+            format_sector_rotation_html,
+            recompute_sector_flow,
+        )
+        from screening_engine import _stock_card_html
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            now = "2026-08-31T00:00:00"
+            univ = [
+                ("2330", "台積電", "TWSE", "STOCK", "半導體業"),
+                ("2454", "聯發科", "TWSE", "STOCK", "半導體業"),
+                ("2002", "中鋼", "TWSE", "STOCK", "鋼鐵工業"),
+                ("2027", "大成鋼", "TWSE", "STOCK", "鋼鐵工業"),
+                ("0050", "元大台灣50", "TWSE", "ETF_PASSIVE", "ETF"),
+            ]
+            for sid, name, mkt, atype, ind in univ:
+                conn.execute(
+                    "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
+                    (sid, name, mkt, atype, ind, now),
+                )
+
+            def q(date, sid, name, market, pct, vol, fn, tn, dn):
+                conn.execute(
+                    "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (date, sid, name, market, 100, 101, 99, 100, vol, 50000, pct, 100, fn, tn, dn),
+                )
+
+            q("20260827", "2330", "台積電", "TW", 0.5, 40000, 500, 100, 0)
+            q("20260827", "2454", "聯發科", "TW", 0.2, 8000, 80, 20, 0)
+            q("20260827", "2002", "中鋼", "TW", -0.3, 20000, 200, 50, 0)
+            q("20260827", "2027", "大成鋼", "TW", -0.1, 5000, 40, 10, 0)
+            q("20260828", "2330", "台積電", "TW", 1.2, 50000, 8000, 400, 50)
+            q("20260828", "2454", "聯發科", "TW", 0.8, 9000, 1200, 300, 20)
+            q("20260828", "2002", "中鋼", "TW", -1.5, 18000, -3000, -400, -50)
+            q("20260828", "2027", "大成鋼", "TW", -0.8, 4000, -500, -80, -10)
+            q("20260828", "0050", "元大台灣50", "TW", 0.4, 20000, 90000, 0, 0)
+            conn.commit()
+            conn.close()
+
+            n = recompute_sector_flow(path, "20260828")
+            self.assertGreaterEqual(n, 2)
+            html = format_sector_rotation_html(path, "20260828")
+            self.assertIn("盤後資金輪動", html)
+            self.assertIn("半導體業", html)
+            self.assertIn("鋼鐵工業", html)
+            self.assertIn("2330", html)
+            self.assertNotIn("元大台灣50", html)
+            flow = format_flow_html(path, yyyymmdd="20260828")
+            self.assertIn("盤後資金輪動", flow)
+            self.assertIn("個股資金", flow)
+            items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
+            annotate_items_with_sector_flow(path, "20260828", items)
+            self.assertTrue(items[0].get("sector_inflow"))
+            self.assertIn("半導體", items[0].get("sector_flow_label") or "")
+            card = _stock_card_html({**items[0], "ma20": 98, "ma60": 95}, 1)
+            self.assertIn("輪動進", card)
         finally:
             os.remove(path)
 

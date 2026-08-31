@@ -224,6 +224,40 @@ def ensure_core_schema(db_path: str = None) -> None:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS daily_sector_flow (
+                date TEXT NOT NULL,
+                industry TEXT NOT NULL,
+                stock_n INTEGER DEFAULT 0,
+                volume INTEGER DEFAULT 0,
+                turnover_k REAL DEFAULT 0,
+                foreign_net INTEGER DEFAULT 0,
+                trust_net INTEGER DEFAULT 0,
+                dealer_net INTEGER DEFAULT 0,
+                three_net INTEGER DEFAULT 0,
+                prev_three_net INTEGER DEFAULT 0,
+                three_delta INTEGER DEFAULT 0,
+                avg_pct REAL DEFAULT 0,
+                top_buy_id TEXT DEFAULT '',
+                top_buy_name TEXT DEFAULT '',
+                top_buy_three INTEGER DEFAULT 0,
+                top_sell_id TEXT DEFAULT '',
+                top_sell_name TEXT DEFAULT '',
+                top_sell_three INTEGER DEFAULT 0,
+                PRIMARY KEY (date, industry)
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_sector_flow_date ON daily_sector_flow(date);")
+        cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_sector_flow)")}
+        for name, spec in (
+            ("top_sell_id", "TEXT DEFAULT ''"),
+            ("top_sell_name", "TEXT DEFAULT ''"),
+            ("top_sell_three", "INTEGER DEFAULT 0"),
+        ):
+            if name not in cols:
+                cur.execute(f"ALTER TABLE daily_sector_flow ADD COLUMN {name} {spec}")
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS user_watchlist (
                 user_id TEXT NOT NULL,
                 stock_code TEXT NOT NULL,

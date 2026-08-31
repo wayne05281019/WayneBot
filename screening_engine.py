@@ -467,6 +467,10 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
+    if item.get("sector_inflow"):
+        notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
+    elif item.get("sector_outflow"):
+        notices.append(html_escape(str(item.get("sector_flow_label") or "輪動出")))
     to_k = item.get("turnover_k")
     try:
         to_s = f"{float(to_k) / 1000.0:.1f}億" if to_k is not None else ""
@@ -510,6 +514,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
             (_hot("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
+            (_hot(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
         )
         if on
     )
@@ -592,7 +597,7 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
     if payload:
         payload[-1]["html"] += (
             "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
-            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、S級、20低脫離、營收轉強用<b>粗體</b>。"
+            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
         )
     else:
@@ -713,6 +718,14 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         if str(item.get("stock_id") or "") in hot_ids:
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
+    try:
+        from money_flow import annotate_items_with_sector_flow
+
+        for lst in results.values():
+            if isinstance(lst, list):
+                annotate_items_with_sector_flow(engine.db_path, target_date, lst)
+    except Exception:
+        pass
 
     payload = format_screening_payload(results, target_date)
     report_text = "\n\n".join(p["html"] for p in payload)
