@@ -653,11 +653,11 @@ def format_screening_payload(
                 pass
             else:
                 continue
-        head = f"{html_escape(subtitle)}　共 {len(items)} 檔"
+        head = f"＝＝{html_escape(label)}　{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
         if first:
             bits = [
                 f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
-                "<i>給家人轉貼：下一則純文字可整段貼哥哥 LINE。</i>",
+                "<i>給家人：按「轉寄」會再寄純文字；長按那一則就能分享到 LINE。</i>",
             ]
             if session_html:
                 bits.append(session_html)
@@ -713,13 +713,79 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
     return [p["html"] for p in format_screening_payload(results, target_date)]
 
 
+SHARE_SEP = "────────"
+
+
+def _date_slash(target_date: str) -> str:
+    d = str(target_date or "").replace("-", "")
+    if len(d) == 8 and d.isdigit():
+        return f"{d[:4]}/{d[4:6]}/{d[6:]}"
+    return str(target_date or "")
+
+
+def _yahoo_web(sid: str, db_path: Optional[str] = None) -> str:
+    sid = str(sid or "").strip()
+    if not sid:
+        return ""
+    try:
+        from stock_links import yahoo_urls
+
+        web, _mobile = yahoo_urls(sid, db_path)
+        return web
+    except Exception:
+        return f"https://tw.stock.yahoo.com/quote/{sid}.TW"
+
+
+def split_line_share_chunks(text: str, limit: int = 3500) -> List[str]:
+    """超過約 3500 字就在區隔線切開，每則標好轉寄稿 1/2。"""
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p for p in text.split("\n" + SHARE_SEP + "\n") if p.strip()]
+    packed: List[str] = []
+    buf: List[str] = []
+    size = 0
+    for p in parts:
+        extra = len(p) + (0 if not buf else len("\n" + SHARE_SEP + "\n"))
+        if buf and size + extra > limit:
+            packed.append(("\n" + SHARE_SEP + "\n").join(buf))
+            buf = [p]
+            size = len(p)
+        else:
+            buf.append(p)
+            size += extra
+    if buf:
+        packed.append(("\n" + SHARE_SEP + "\n").join(buf))
+    hard: List[str] = []
+    for block in packed:
+        if len(block) <= limit:
+            hard.append(block)
+            continue
+        for i in range(0, len(block), limit):
+            hard.append(block[i : i + limit])
+    n = len(hard)
+    out: List[str] = []
+    for i, body in enumerate(hard, 1):
+        if body.startswith("轉寄稿"):
+            out.append(body)
+            continue
+        if n == 1:
+            head = "轉寄稿　長按這一則 → 分享到 LINE"
+        else:
+            head = f"轉寄稿 {i}/{n}　長按這一則 → 分享到 LINE"
+        out.append(head + "\n" + body)
+    return out
+
+
 def format_line_share_text(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
     us_plain: str = "",
     session_plain: str = "",
+    db_path: Optional[str] = None,
+    us_snap: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
+    """純文字轉寄稿：區隔線、＝＝項目＝＝、1.2.3.、每檔奇摩網址、夜盤判斷。"""
     specs = [
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("leave_zero", "起漲　高低卡獲利剛離零"),
@@ -731,7 +797,7 @@ def format_line_share_text(
         ("overnight", "隔日沖"),
     ]
 
-    def one(it: Dict[str, Any]) -> str:
+    def one(it: Dict[str, Any], idx: int) -> str:
         sid = str(it.get("stock_id") or it.get("code") or "")
         sname = str(it.get("stock_name") or it.get("name") or "")
         q = it.get("q60r")
@@ -739,27 +805,52 @@ def format_line_share_text(
             q_s = f"{float(q):.1f}×" if q is not None else ""
         except (TypeError, ValueError):
             q_s = ""
-        s = " S級" if it.get("is_s_tier") else ""
-        tag = "【雙時段】" if it.get("both_sessions") else ""
-        head = (
-            f"{tag}{sid} {sname} {_regime_label(it)} 收{_px_str(it.get('close'))} "
-            f"{_pct_str(it.get('pct_change'))} 量{int(it.get('volume') or 0):,}張 {q_s}{s}"
-        ).strip()
+        bits = []
+        if it.get("both_sessions"):
+            bits.append("雙時段")
+        if it.get("is_s_tier"):
+            bits.append("S級")
+        extra = ("　" + "　".join(bits)) if bits else ""
+        url = _yahoo_web(sid, db_path)
+        lines = [f"{idx}. {sid} {sname}".strip()]
+        if url:
+            lines.append(url)
+        lines.append(
+            (
+                f"收{_px_str(it.get('close'))}　{_pct_str(it.get('pct_change'))}　"
+                f"量{int(it.get('volume') or 0):,}張"
+                + (f"　{q_s}" if q_s else "")
+                + extra
+            ).strip()
+        )
         plan = _safety_plan_plain(it)
         if plan:
-            return head + "\n  " + "\n  ".join(plan)
-        chips = _chip_plain(it)
-        if any(int(it.get(k) or 0) for k in ("foreign_net", "trust_net", "dealer_net")):
-            return f"{head}\n  {chips}"
-        return head
+            lines.extend(f"  {p}" for p in plan)
+        elif any(int(it.get(k) or 0) for k in ("foreign_net", "trust_net", "dealer_net")):
+            lines.append(f"  {_chip_plain(it)}")
+        return "\n".join(lines)
 
-    lines = [
-        f"WayneBot 海選 {target_date}",
-        session_plain or "昨收名單。量化輔助，不是立即下單。",
-        "轉貼哥哥 LINE：整則複製即可。【雙時段】＝晚間台股收盤＋今早對美股都在。",
+    sections: List[str] = [
+        "\n".join(
+            [
+                f"WayneBot 海選　{_date_slash(target_date)}",
+                session_plain or "昨收名單。量化輔助，不是立即下單。",
+            ]
+        )
     ]
-    if us_plain:
-        lines.append(us_plain)
+    night = ""
+    if us_snap is not None:
+        try:
+            from us_overnight import format_night_plain
+
+            night = format_night_plain(us_snap)
+        except Exception:
+            night = ""
+    if not night and us_plain:
+        night = "＝＝夜盤判斷＝＝\n" + us_plain
+    if night:
+        sections.append(night)
+
     both_bits = []
     seen_both = set()
     for key, _title in specs:
@@ -770,28 +861,34 @@ def format_line_share_text(
             if not sid or sid in seen_both:
                 continue
             seen_both.add(sid)
-            both_bits.append(f"{sid} {it.get('stock_name') or it.get('name') or ''}".strip())
+            url = _yahoo_web(sid, db_path)
+            name = str(it.get("stock_name") or it.get("name") or "")
+            block = f"{len(both_bits) + 1}. {sid} {name}".strip()
+            if url:
+                block += f"\n{url}"
+            both_bits.append(block)
     if both_bits:
-        lines.append("")
-        lines.append("【雙時段】")
-        lines.extend(both_bits)
-    lines.append("")
+        sections.append(
+            "＝＝雙時段＝＝　晚間台股＋今早都在\n" + "\n".join(both_bits)
+        )
+
+    us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     for key, title in specs:
         items = results.get(key) or []
-        lines.append(f"【{title}】{len(items)}檔")
         if not items:
+            if key in ("day_trade", "overnight") and us_regime == "risk_off":
+                sections.append(f"＝＝{title}＝＝　0檔\n隔夜逆風：當沖／隔日沖今日不列")
             continue
         cap = 8 if key in ("day_trade", "overnight") else 12
-        for it in items[:cap]:
-            lines.append(one(it))
+        block_lines = [f"＝＝{title}＝＝　{len(items)}檔"]
+        for n, it in enumerate(items[:cap], start=1):
+            block_lines.append(one(it, n))
         if len(items) > cap:
-            lines.append(f"…另 {len(items) - cap} 檔（完整請看 Telegram）")
-        lines.append("")
-    lines.append("（WayneBot）")
-    text = "\n".join(lines).strip()
-    if len(text) > 3900:
-        text = text[:3880].rstrip() + "\n…（已截短，完整名單看 Telegram）"
-    return text
+            block_lines.append(f"…另 {len(items) - cap} 檔（完整請看 Telegram）")
+        sections.append("\n".join(block_lines))
+
+    sections.append("（WayneBot　量化輔助，不是立即下單）")
+    return ("\n" + SHARE_SEP + "\n").join(sections).strip()
 
 
 # ------------------------------------------------------------------------------
@@ -837,12 +934,25 @@ def execute_full_screening(
     stock_dfs = engine.load_market_data(target_date=target_date, min_volume=1000, min_turnover_k=30000.0)
 
     if not stock_dfs:
+        empty_body = format_line_share_text(
+            {},
+            target_date,
+            session_plain="今日無通過流動性的標的。",
+            db_path=engine.db_path,
+        )
+        try:
+            from screen_sessions import save_line_share
+
+            save_line_share(engine.db_path, target_date, empty_body)
+        except Exception:
+            pass
         return {
             "status": "empty",
             "date": target_date,
             "as_of": target_date,
             "message": f"⚠️ 查無 {target_date} 之有效交易行情或無標的通過流動性檢驗（日量>=1,000張且日額>=3,000萬）。",
-            "line_share": f"WayneBot 海選 {target_date}\n今日無通過流動性的標的。",
+            "line_share": empty_body,
+            "line_share_chunks": split_line_share_chunks(empty_body),
             "results": {},
             "daytrade": [],
             "overnight": [],
@@ -932,6 +1042,21 @@ def execute_full_screening(
                 "reason": "突破後法人轉賣超",
             })
 
+    line_body = format_line_share_text(
+        results,
+        target_date,
+        us_plain=us_plain,
+        session_plain=session_plain,
+        db_path=engine.db_path,
+        us_snap=us_snap if apply_us else None,
+    )
+    try:
+        from screen_sessions import save_line_share
+
+        save_line_share(engine.db_path, target_date, line_body)
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "date": target_date,
@@ -944,9 +1069,8 @@ def execute_full_screening(
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
-        "line_share": format_line_share_text(
-            results, target_date, us_plain=us_plain, session_plain=session_plain
-        ),
+        "line_share": line_body,
+        "line_share_chunks": split_line_share_chunks(line_body),
     }
 
 

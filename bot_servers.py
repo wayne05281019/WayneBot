@@ -72,8 +72,8 @@ HELP_TOPICS = {
         "<b>海選怎麼用</b>\n"
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
-        "海選＝昨收量化名單，不是盤中即時掃描。下一則純文字可轉貼哥哥 LINE。\n"
-        "下一則純文字可整段轉哥哥 LINE。靠近 20 日收盤高會標<b>少追</b>。\n"
+        "海選＝昨收量化名單，不是盤中即時掃描。按「轉寄」會再寄一則純文字；長按那一則就能分享到 LINE。\n"
+        "靠近 20 日收盤高會標<b>少追</b>。\n"
         "當沖會寫保險進場、第一停利(+3%)、衝頂(+6%)、均價停損；隔日沖會寫尾盤買進區間與防守。\n"
         "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：左＝代號＋股名（看圖）；右➕＝觀察。\n"
         "其餘檔也把價位寫在排名裡，不必點開才看得到。靠近 20 日收盤高會標<b>少追</b>並排後面。不是立即下單清單。\n"
@@ -177,6 +177,7 @@ class WayneTelegramBot:
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
+        self._line_share_chunks: List[str] = []
 
     def send_message(self, text: str, chat_id: str = None):
         self._send_html(chat_id or self.chat_id, text)
@@ -246,15 +247,22 @@ class WayneTelegramBot:
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
-    def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen"):
+    def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen", include_forward: bool = None):
         rows = []
         for i, (code, name) in enumerate((picks or [])[:10], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
             rows.append(self._stock_action_row(c, name or "", idx=i))
-        if include_menu or rows:
-            rows.append([self._q(topic)])
+        if include_forward is None:
+            include_forward = bool(include_menu and topic == "screen")
+        tail = []
+        if include_forward:
+            tail.append(InlineKeyboardButton("轉寄", callback_data="fw:s"))
+        if include_menu or rows or include_forward:
+            tail.append(self._q(topic))
+        if tail:
+            rows.append(tail)
         if not rows:
             return self._keyboard()
         return InlineKeyboardMarkup(rows)
@@ -379,6 +387,64 @@ class WayneTelegramBot:
             result.get("results") or {}, result.get("as_of") or result.get("date") or ""
         )
 
+    def _remember_line_share(self, result: Optional[Dict[str, Any]] = None, body: str = ""):
+        from screening_engine import split_line_share_chunks
+
+        chunks = []
+        if result:
+            chunks = list(result.get("line_share_chunks") or [])
+            if not chunks:
+                body = body or (result.get("line_share") or "")
+        if not chunks and body:
+            chunks = split_line_share_chunks(body)
+        if chunks:
+            self._line_share_chunks = chunks
+
+    def _load_line_share_chunks(self) -> List[str]:
+        from screening_engine import split_line_share_chunks
+
+        if self._line_share_chunks:
+            return self._line_share_chunks
+        body = ""
+        try:
+            from screen_sessions import load_line_share
+
+            body = load_line_share(self.db_path) or ""
+        except Exception:
+            body = ""
+        chunks = split_line_share_chunks(body) if body else []
+        if chunks:
+            self._line_share_chunks = chunks
+        return chunks
+
+    async def _reply_line_share(self, message, result: Optional[Dict[str, Any]] = None):
+        if result is not None:
+            self._remember_line_share(result)
+        chunks = self._load_line_share_chunks()
+        if not chunks:
+            await message.reply_text("目前沒有轉寄稿。請先按一次「海選」。")
+            return
+        for chunk in chunks:
+            await message.reply_text(chunk, disable_web_page_preview=True)
+
+    def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
+        if result is not None:
+            self._remember_line_share(result)
+        chunks = self._load_line_share_chunks()
+        if not chunks:
+            return
+        for chunk in chunks:
+            self._send_plain(chat_id, chunk)
+        try:
+            from config import get_charts_dir
+
+            path = os.path.join(get_charts_dir(), f"海選_{ (result or {}).get('date') or '' }_轉寄LINE.txt")
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("\n\n".join(chunks) + "\n")
+        except Exception as e:
+            logger.error("line share file: %s", e)
+
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
         parts = self._screening_payload(result)
         if not parts:
@@ -404,10 +470,8 @@ class WayneTelegramBot:
                 kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
                 await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
-        line_txt = (result.get("line_share") or "").strip()
-        if line_txt:
-            await message.reply_text("↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
-            await message.reply_text(line_txt)
+        if (result.get("line_share") or result.get("line_share_chunks")):
+            await self._reply_line_share(message, result)
 
     def _cat_sticker_id(self, key: str) -> str:
         if not key:
@@ -525,20 +589,8 @@ class WayneTelegramBot:
                     attach_menu=False,
                 )
             _t.sleep(0.25)
-        line_txt = (result.get("line_share") or "").strip()
-        if line_txt:
-            self._send_plain(self.chat_id, "↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
-            self._send_plain(self.chat_id, line_txt)
-            try:
-                from config import get_charts_dir
-
-                path = os.path.join(get_charts_dir(), f"海選_{result.get('date') or ''}_轉貼LINE.txt")
-                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(line_txt + "\n")
-                self._send_text_file(self.chat_id, path, caption="同一份檔案：也可把這個 txt 傳到 LINE")
-            except Exception as e:
-                logger.error("line share file: %s", e)
+        if (result.get("line_share") or result.get("line_share_chunks")):
+            self._send_line_share(self.chat_id, result)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
@@ -1392,6 +1444,9 @@ class WayneTelegramBot:
             await self._remove_watch_clicked(q, data[3:].strip())
             return
         await q.answer()
+        if data == "fw:s":
+            await self._reply_line_share(q.message)
+            return
         if data == "hx":
             try:
                 await q.message.delete()

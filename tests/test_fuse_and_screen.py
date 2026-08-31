@@ -124,6 +124,42 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("保險進場", line)
         self.assertIn("第一停利", line)
         self.assertIn("均價", line)
+        self.assertIn("1.", line)
+        self.assertIn("tw.stock.yahoo.com/quote/2330", line)
+        self.assertIn("────────", line)
+        self.assertIn("＝＝當沖＝＝", line)
+        self.assertNotIn("整則複製", line)
+        snap = {
+            "regime": "caution",
+            "us_phase": "post",
+            "dji_pct": -0.8,
+            "spx_pct": -1.0,
+            "ixic_pct": -1.3,
+            "sox_pct": -2.1,
+            "nq_f_pct": -0.4,
+            "es_f_pct": -0.2,
+            "ym_f_pct": -0.1,
+            "tsm_pct": -1.0,
+            "tsm_post_pct": -2.2,
+            "nvda_pct": -0.5,
+            "nvda_post_pct": -1.8,
+            "vix": 19.0,
+            "vix_pct": 4.0,
+        }
+        night_line = format_line_share_text(
+            {"day_trade": [item]},
+            "20260828",
+            session_plain="今早 06:30　昨收名單",
+            us_snap=snap,
+        )
+        self.assertIn("電子夜盤", night_line)
+        self.assertIn("＝＝夜盤判斷＝＝", night_line)
+        from screening_engine import split_line_share_chunks
+
+        chunks = split_line_share_chunks(night_line)
+        self.assertTrue(chunks)
+        self.assertIn("轉寄稿", chunks[0])
+        self.assertIn("長按這一則", chunks[0])
 
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
@@ -389,6 +425,60 @@ class USOvernightTest(unittest.TestCase):
             classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
             "ok",
         )
+
+    def test_electronics_night_side_and_plain(self):
+        from us_overnight import electronics_night_side, format_night_plain
+
+        self.assertEqual(electronics_night_side({}), "")
+        self.assertEqual(
+            electronics_night_side({"sox_pct": -2.0, "tsm_pct": -2.5, "nvda_pct": -1.5}),
+            "跌",
+        )
+        self.assertEqual(
+            electronics_night_side({"sox_pct": 1.5, "tsm_pct": 2.0, "nvda_pct": 1.2}),
+            "漲",
+        )
+        self.assertEqual(
+            electronics_night_side({"sox_pct": 0.2, "tsm_pct": -0.3, "nvda_pct": 0.1}),
+            "平",
+        )
+        snap = {
+            "regime": "caution",
+            "us_phase": "post",
+            "dji_pct": -0.8,
+            "spx_pct": -1.0,
+            "ixic_pct": -1.3,
+            "sox_pct": -2.0,
+            "nq_f_pct": -0.4,
+            "es_f_pct": -0.2,
+            "ym_f_pct": -0.1,
+            "tsm_pct": -1.0,
+            "tsm_post_pct": -2.2,
+            "nvda_pct": -0.5,
+            "nvda_post_pct": -1.8,
+            "vix": 19.0,
+            "vix_pct": 4.0,
+        }
+        night = format_night_plain(snap)
+        self.assertIn("＝＝夜盤判斷＝＝", night)
+        self.assertIn("電子夜盤", night)
+        self.assertIn("跌", night)
+        self.assertIn("盤後續勢", night)
+        self.assertIn("台指期", night)
+
+    def test_line_share_persists_for_forward_button(self):
+        from screen_sessions import load_line_share, save_line_share
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            save_line_share(path, "20260828", "WayneBot 海選　2026/08/28\n1. 2330 台積電")
+            self.assertIn("2330", load_line_share(path, "20260828"))
+            self.assertIn("2330", load_line_share(path))
+        finally:
+            os.remove(path)
 
     def test_risk_off_clears_intraday_and_tags_chips(self):
         from screening_engine import format_screening_payload
@@ -716,8 +806,9 @@ class DualSessionTest(unittest.TestCase):
             self.assertTrue(morn["day_trade"][0].get("both_sessions"))
             self.assertEqual(morn["day_trade"][0]["stock_id"], "2330")
             line = format_line_share_text(morn, "20260828", session_plain="今早 06:30")
-            self.assertIn("【雙時段】", line)
+            self.assertIn("雙時段", line)
             self.assertIn("2330", line)
+            self.assertIn("tw.stock.yahoo.com/quote/2330", line)
         finally:
             os.remove(path)
 
@@ -1471,6 +1562,25 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("rw:2317", datas)
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
+
+    def test_screen_keyboard_has_forward(self):
+        import inspect
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="screen")
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        texts = [btn.text for row in kb.inline_keyboard for btn in row]
+        self.assertIn("fw:s", datas)
+        self.assertIn("轉寄", texts)
+        day_kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="daytrade")
+        day_texts = [btn.text for row in day_kb.inline_keyboard for btn in row]
+        self.assertNotIn("轉寄", day_texts)
+        src = inspect.getsource(WayneTelegramBot.on_callback)
+        self.assertIn("fw:s", src)
+        send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
+        self.assertNotIn("整段複製", send_src)
+        self.assertIn("_send_line_share", send_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect
