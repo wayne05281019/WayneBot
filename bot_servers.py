@@ -921,21 +921,6 @@ class WayneTelegramBot:
             )
             return
         await message.reply_text(f"查詢 {code}…")
-        from cary_navigator import generate_card_with_chart
-
-        try:
-            packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
-        except Exception:
-            logger.exception("出圖失敗 code=%s", code)
-            await message.reply_text(
-                f"找到 {code}，但雲端出圖失敗（多半是還沒有日K）。請稍後再試或改打 /start。",
-                reply_markup=self._keyboard(),
-            )
-            return
-        html = packed[0]
-        card_img = packed[1] if len(packed) > 1 else ""
-        chart = packed[2] if len(packed) > 2 else ""
-        glance = packed[3] if len(packed) > 3 else ""
         hub = self._hub_keyboard(code)
         cap_links = ""
         try:
@@ -961,16 +946,64 @@ class WayneTelegramBot:
                 except Exception:
                     return False
 
+        def _glance():
+            from cary_navigator import CaryNavigatorEngine, render_first_glance_png
+            from chip_tape import build_tape
+
+            engine = CaryNavigatorEngine(self.db_path)
+            card = engine.get_decision_card(code, lookback=20)
+            tape = build_tape(self.db_path, code) or {}
+            if card.get("error"):
+                return ""
+            return render_first_glance_png(
+                code, card, tape, os.path.join(self.charts_dir, f"{code}_glance.png")
+            ) or ""
+
+        def _card():
+            from cary_navigator import generate_card_image
+
+            return generate_card_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_card.png"))
+
+        def _chart():
+            from cary_navigator import generate_chart
+
+            return generate_chart(code, "", self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
+
+        def _chips():
+            return generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+
+        glance = ""
+        try:
+            glance = await asyncio.to_thread(_glance)
+        except Exception:
+            logger.exception("介紹圖失敗 code=%s", code)
         if glance:
             await send_photo(glance, cap_links or "當日K＋籌碼價量")
+
+        card_img = ""
+        try:
+            card_img = await asyncio.to_thread(_card)
+        except Exception:
+            logger.exception("決策卡失敗 code=%s", code)
         for path in self._card_photo_paths(card_img):
             await send_photo(path, "高低決策卡")
+
+        chart = ""
+        try:
+            chart = await asyncio.to_thread(_chart)
+        except Exception:
+            logger.exception("導航圖失敗 code=%s", code)
         if chart:
             await send_photo(
                 chart,
                 "180日高低導航：價格列＝淺粉▼20高、紫▼20高脫離、綠▲20低／脫離、青▲60低；量能列才有紫▲量能異常、紅▲警告（價格列不一定有）",
             )
-        chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+
+        chip_img = ""
+        try:
+            chip_img = await asyncio.to_thread(_chips)
+        except Exception:
+            logger.exception("籌碼圖失敗 code=%s", code)
         if chip_img:
             ok = await send_photo(chip_img, "籌碼（張）", hub)
             if not ok:
@@ -978,6 +1011,12 @@ class WayneTelegramBot:
         elif glance:
             await send_photo(glance, cap_links or "介紹", hub)
         else:
+            try:
+                from cary_navigator import generate_decision_card
+
+                html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
+            except Exception:
+                html = f"查詢 {html_escape(code)} 失敗。"
             await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

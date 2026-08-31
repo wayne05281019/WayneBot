@@ -170,6 +170,16 @@ def run_web():
 
         logger.info("正在啟動 Telegram 聽筒")
         bot = WayneTelegramBot(token=token, chat_id=get_telegram_chat_id(), db_path=get_db_path())
+
+        def _warmup_charts():
+            try:
+                logger.info("背景預熱出圖模組")
+                import cary_navigator  # noqa: F401
+                logger.info("出圖模組已預熱")
+            except Exception:
+                logger.exception("出圖預熱失敗")
+
+        threading.Thread(target=_warmup_charts, daemon=True, name="chart-warmup").start()
         bot.run_polling()
     elif token:
         logger.info("WAYNE_SKIP_POLLING：不搶 Render 的 Telegram 輪詢，僅保留寄訊與 /health")
