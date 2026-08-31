@@ -96,6 +96,14 @@ def _weight_font_path(weight: int) -> str:
     return out
 
 
+def prewarm_card_fonts() -> None:
+    """開機先把兩個字重壓好，避免使用者第一檔卡在產字型。"""
+    if not os.path.exists(FONT_PATH):
+        return
+    _weight_font_path(_WEIGHT_TEXT)
+    _weight_font_path(_WEIGHT_BOLD)
+
+
 def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
     """除權／錯價還原。回傳 (df, notes)。
 
