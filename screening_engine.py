@@ -492,6 +492,8 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     close_s = _px_str(item.get("close"))
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
+    if item.get("both_sessions"):
+        notices.append(_hot("雙時段") + html_escape("＝晚間＋早上都在（已對美股收盤）"))
     if item.get("chase_warning"):
         notices.append(_hot("少追") + html_escape("＝靠近20日收盤高"))
     if item.get("is_s_tier"):
@@ -552,6 +554,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
     hot = "　".join(
         t
         for t, on in (
+            (_hot("雙時段"), item.get("both_sessions")),
             (_hot("少追"), item.get("chase_warning")),
             (_hot("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
@@ -587,6 +590,7 @@ def format_screening_payload(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
     us_html: str = "",
+    session_html: str = "",
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
@@ -613,8 +617,10 @@ def format_screening_payload(
         if first:
             bits = [
                 f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
-                "<i>給家人轉貼用。價位是保險參考，不是保證獲利。</i>",
+                "<i>給家人轉貼：下一則純文字可整段貼哥哥 LINE。</i>",
             ]
+            if session_html:
+                bits.append(session_html)
             if us_html:
                 bits.append(us_html)
             head = "\n".join(bits) + "\n" + head
@@ -654,7 +660,8 @@ def format_screening_payload(
     if payload:
         payload[-1]["html"] += (
             "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
-            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
+            "保險進場／停利／停損已寫在排名裡；【雙時段】＝晚間＋早上都在。"
+            "該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
         )
     else:
@@ -670,6 +677,7 @@ def format_line_share_text(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
     us_plain: str = "",
+    session_plain: str = "",
 ) -> str:
     """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
     specs = [
@@ -692,8 +700,9 @@ def format_line_share_text(
         except (TypeError, ValueError):
             q_s = ""
         s = " S級" if it.get("is_s_tier") else ""
+        tag = "【雙時段】" if it.get("both_sessions") else ""
         head = (
-            f"{sid} {sname} {_regime_label(it)} 收{_px_str(it.get('close'))} "
+            f"{tag}{sid} {sname} {_regime_label(it)} 收{_px_str(it.get('close'))} "
             f"{_pct_str(it.get('pct_change'))} 量{int(it.get('volume') or 0):,}張 {q_s}{s}"
         ).strip()
         plan = _safety_plan_plain(it)
@@ -705,11 +714,27 @@ def format_line_share_text(
         return head
 
     lines = [
-        f"WayneBot 海選 {target_date}（昨收，早上寄出給家人）",
-        "量化輔助，不是立即下單。當沖請看保險進場／第一停利／衝頂／均價停損。",
+        f"WayneBot 海選 {target_date}",
+        session_plain or "昨收名單。量化輔助，不是立即下單。",
+        "轉貼哥哥 LINE：整則複製即可。【雙時段】＝晚間台股收盤＋今早對美股都在。",
     ]
     if us_plain:
         lines.append(us_plain)
+    both_bits = []
+    seen_both = set()
+    for key, _title in specs:
+        for it in results.get(key) or []:
+            if not it.get("both_sessions"):
+                continue
+            sid = str(it.get("stock_id") or it.get("code") or "")
+            if not sid or sid in seen_both:
+                continue
+            seen_both.add(sid)
+            both_bits.append(f"{sid} {it.get('stock_name') or it.get('name') or ''}".strip())
+    if both_bits:
+        lines.append("")
+        lines.append("【雙時段】")
+        lines.extend(both_bits)
     lines.append("")
     for key, title in specs:
         items = results.get(key) or []
@@ -732,8 +757,10 @@ def format_line_share_text(
 # ------------------------------------------------------------------------------
 # 機器人與外部呼叫總入口（徹底修復 Telegram 報錯之核心介面）
 # ------------------------------------------------------------------------------
-def _postprocess_screen(db_path: str, target_date: str, results: Dict[str, Any]) -> Dict[str, Any]:
-    """產業輪動標籤＋隔夜美股過濾。美股抓不到就不過濾。"""
+def _postprocess_screen(
+    db_path: str, target_date: str, results: Dict[str, Any], apply_us: bool = True
+) -> Dict[str, Any]:
+    """產業輪動標籤；早上海選才套美股收盤過濾。"""
     try:
         from money_flow import annotate_items_with_sector_flow
 
@@ -743,6 +770,8 @@ def _postprocess_screen(db_path: str, target_date: str, results: Dict[str, Any])
     except Exception:
         pass
     snap: Dict[str, Any] = {}
+    if not apply_us:
+        return snap
     try:
         from us_overnight import apply_us_overnight, refresh_us_overnight
 
@@ -753,7 +782,12 @@ def _postprocess_screen(db_path: str, target_date: str, results: Dict[str, Any])
     return snap
 
 
-def execute_full_screening(db_path: str = None, target_date: Optional[str] = None) -> Dict[str, Any]:
+def execute_full_screening(
+    db_path: str = None,
+    target_date: Optional[str] = None,
+    apply_us: bool = True,
+    session: str = "",
+) -> Dict[str, Any]:
     """
     全市場量化選股總入口函式：
     供 bot_servers.py、main_runner.py 及 Telegram 指令直接調用
@@ -802,25 +836,52 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         if str(item.get("stock_id") or "") in hot_ids:
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
-    us_snap = _postprocess_screen(engine.db_path, target_date, results)
+    us_snap = _postprocess_screen(engine.db_path, target_date, results, apply_us=apply_us)
     us_html = ""
     us_plain = ""
-    try:
-        from us_overnight import format_us_html, format_us_plain
+    session_html = ""
+    session_plain = ""
+    if session == "evening":
+        session_html = (
+            "<b>晚間台股收盤</b>（不推播）美股還沒開；明早 06:30 會再對美股，兩邊都在標【雙時段】。"
+        )
+        session_plain = "晚間台股收盤（尚未對美股）"
+    elif session == "morning":
+        session_html = (
+            "<b>今早 06:30</b>　已對美股收盤。【雙時段】＝昨晚台股名單也有、過完美股還在。"
+        )
+        session_plain = "今早 06:30（已對美股收盤）。【雙時段】＝晚間台股＋今早都在。"
+    if apply_us:
+        try:
+            from us_overnight import format_us_html, format_us_plain
 
-        us_html = format_us_html(us_snap)
-        us_plain = format_us_plain(us_snap)
-    except Exception:
-        pass
+            us_html = format_us_html(us_snap)
+            us_plain = format_us_plain(us_snap)
+        except Exception:
+            pass
 
-    try:
-        from screen_review import save_screen_picks
+    if session in ("evening", "morning"):
+        try:
+            from screen_sessions import mark_both_sessions, overlap_ids, save_screen_session
 
-        save_screen_picks(engine.db_path, target_date, results)
-    except Exception:
-        pass
+            save_screen_session(engine.db_path, target_date, session, results)
+            if session == "morning":
+                both = overlap_ids(engine.db_path, target_date)
+                mark_both_sessions(results, both)
+        except Exception:
+            pass
 
-    payload = format_screening_payload(results, target_date, us_html=us_html)
+    if session == "morning" or not session:
+        try:
+            from screen_review import save_screen_picks
+
+            save_screen_picks(engine.db_path, target_date, results)
+        except Exception:
+            pass
+
+    payload = format_screening_payload(
+        results, target_date, us_html=us_html, session_html=session_html
+    )
     report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
@@ -845,7 +906,9 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
-        "line_share": format_line_share_text(results, target_date, us_plain=us_plain),
+        "line_share": format_line_share_text(
+            results, target_date, us_plain=us_plain, session_plain=session_plain
+        ),
     }
 
 

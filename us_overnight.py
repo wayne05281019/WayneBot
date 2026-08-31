@@ -265,7 +265,7 @@ def load_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
 
 
 def refresh_us_overnight(db_path: str, as_of: str, max_age_sec: int = 900) -> Dict[str, Any]:
-    """早上 07:30 與手動海選都走這裡。15 分鐘內有庫就沿用，免得每次打海選狂打 Yahoo。"""
+    """早上 06:30 與手動海選都走這裡。15 分鐘內有庫就沿用，免得每次打海選狂打 Yahoo。"""
     as_of = str(as_of or "").replace("-", "")
     cached = load_us_overnight(db_path, as_of)
     if cached.get("fetched_at"):

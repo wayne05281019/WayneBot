@@ -100,34 +100,56 @@ def _seconds_until(hour: int, minute: int) -> float:
 
 
 def start_daily_scheduler():
+    def _next_slot():
+        from datetime import timedelta
+
+        now = _taipei_now()
+        slots = (
+            (6, 30, "morning"),
+            (12, 45, "midday"),
+            (16, 30, "fuse"),
+            (20, 0, "evening"),
+        )
+        best = None
+        for day_off in range(0, 8):
+            day = now + timedelta(days=day_off)
+            if day.weekday() >= 5:
+                continue
+            for hour, minute, kind in slots:
+                t = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if t <= now:
+                    continue
+                wait = (t - now).total_seconds()
+                if best is None or wait < best[0]:
+                    best = (max(5.0, wait), kind, t)
+        return best
+
     def _loop():
         from main_runner import MainRunner
 
         while True:
-            wait_morning = _seconds_until(7, 30)
-            wait_fuse = _seconds_until(16, 30)
-            if wait_morning <= wait_fuse:
-                logger.info("排程：約 %.0f 秒後台灣時間 07:30 寄海選", wait_morning)
-                time.sleep(wait_morning)
-                try:
-                    now = _taipei_now()
-                    if now.weekday() >= 5:
-                        logger.info("週末略過早上海選")
-                        continue
-                    MainRunner().run_morning_screen(skip_if_done=True)
-                except Exception as e:
-                    logger.error("早上海選失敗: %s", e, exc_info=True)
-            else:
-                logger.info("排程：約 %.0f 秒後台灣時間 16:30 融合行情（不寄海選）", wait_fuse)
-                time.sleep(wait_fuse)
-                try:
-                    now = _taipei_now()
-                    if now.weekday() >= 5:
-                        logger.info("週末略過盤後融合")
-                        continue
-                    MainRunner().run_increment_job(skip_if_done=True)
-                except Exception as e:
-                    logger.error("內建盤後融合失敗: %s", e, exc_info=True)
+            nxt = _next_slot()
+            if not nxt:
+                time.sleep(3600)
+                continue
+            wait, kind, when = nxt
+            logger.info("排程：約 %.0f 秒後台灣 %s %s", wait, when.strftime("%m/%d %H:%M"), kind)
+            time.sleep(wait)
+            try:
+                now = _taipei_now()
+                if now.weekday() >= 5:
+                    continue
+                runner = MainRunner()
+                if kind == "morning":
+                    runner.run_morning_screen(skip_if_done=True)
+                elif kind == "midday":
+                    runner.run_midday_review(skip_if_done=True)
+                elif kind == "evening":
+                    runner.run_evening_screen(skip_if_done=True, notify=False)
+                else:
+                    runner.run_increment_job(skip_if_done=True)
+            except Exception as e:
+                logger.error("排程 %s 失敗: %s", kind, e, exc_info=True)
 
     t = threading.Thread(target=_loop, name="daily-scheduler", daemon=True)
     t.start()

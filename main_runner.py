@@ -6,8 +6,10 @@
 # 盤後時間：台灣週一～五 16:30 只融合行情（不寄海選）
 #   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
 #   - Render 常駐執行緒同樣 16:30
-# 早上海選：台灣週一～五 07:30（用庫內「上市＋上櫃都齊」的昨收）
-#   - GitHub Actions cron 30 23 * * 0-4（UTC 日～四 23:30＝台灣一～五 07:30）
+# 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤；【雙時段】對照昨晚台股名單）
+#   - Render 常駐 06:30；GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）
+# 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
+# 20:00 晚間台股收盤海選只寫快照、不推播（美股還沒開）
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
@@ -17,7 +19,7 @@
 #   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
-# 海選改早上 07:30 寄出（給家人轉貼），盤後 16:30 不再重複寄名單。
+# 海選 06:30 與 12:45 寄出給家人轉 LINE；盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR（台股開盤＝美股已收；不抓期貨盤中）。
 # 逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
@@ -444,7 +446,7 @@ class MainRunner:
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
             return True
         start_time = time.time()
-        logger.info("🎬 === 盤後融合開始（不寄海選；海選改 07:30）===")
+        logger.info("🎬 === 盤後融合開始（不寄海選；海選 06:30／尾盤 12:45）===")
         self.run_daily_increment()
         from import_health import audit_import, format_audit_plain
 
@@ -502,22 +504,76 @@ class MainRunner:
         if skip_if_done and as_of and self.already_completed_today(key):
             logger.info("早上海選 %s 已寄過，略過。", key)
             return True
-        logger.info("☀️ 07:30 先補齊已收盤交易日與財報，再寄海選")
+        logger.info("☀️ 06:30 先補齊已收盤交易日與財報，再寄海選")
         self.run_daily_increment(notify=False)
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
         if not as_of:
             logger.error("補齊後仍無完整交易日可寄海選")
             return False
-        logger.info("☀️ 台灣 07:30 海選，基準日 %s", as_of)
+        logger.info("☀️ 台灣 06:30 海選，基準日 %s", as_of)
         screening = None
         if run_full_screening:
             try:
-                screening = run_full_screening(db_path=self.db_path, target_date=as_of)
+                screening = run_full_screening(
+                    db_path=self.db_path, target_date=as_of, apply_us=True, session="morning"
+                )
             except Exception as e:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
         self._push_screening(screening, as_of=as_of)
         self._mark_pipeline("success", "morning", run_date=key)
+        return True
+
+    def run_evening_screen(self, skip_if_done: bool = False, notify: bool = False) -> bool:
+        """台股收盤後的名單只存庫，不寄 Telegram（美股還沒開）。"""
+        from import_health import latest_complete_quote_date
+
+        as_of = latest_complete_quote_date(self.db_path)
+        key = f"evening-{as_of or 'none'}"
+        if skip_if_done and as_of and self.already_completed_today(key):
+            logger.info("晚間海選快照 %s 已寫過，略過。", key)
+            return True
+        if not as_of:
+            logger.error("無完整交易日可寫晚間海選快照")
+            return False
+        logger.info("🌙 20:00 晚間海選只寫快照不推播，基準日 %s", as_of)
+        if not run_full_screening:
+            return False
+        try:
+            run_full_screening(
+                db_path=self.db_path, target_date=as_of, apply_us=False, session="evening"
+            )
+        except Exception as e:
+            logger.error("晚間海選失敗: %s", e, exc_info=True)
+            return False
+        if notify:
+            logger.info("晚間海選依設定不推播")
+        self._mark_pipeline("success", "evening", run_date=key)
+        return True
+
+    def run_midday_review(self, skip_if_done: bool = False) -> bool:
+        from import_health import latest_complete_quote_date
+
+        as_of = latest_complete_quote_date(self.db_path)
+        key = f"midday-{as_of or 'none'}"
+        if skip_if_done and as_of and self.already_completed_today(key):
+            logger.info("尾盤可切 %s 已寄過，略過。", key)
+            return True
+        if not as_of:
+            logger.error("無完整交易日可做尾盤複核")
+            return False
+        logger.info("🌤️ 12:45 尾盤可切，對照今早 06:30 基準日 %s", as_of)
+        from midday_review import run_midday_review
+
+        out = run_midday_review(self.db_path, as_of)
+        html = out.get("html") or ""
+        line = (out.get("line_share") or "").strip()
+        if html:
+            self.send_telegram_message(html)
+        if line:
+            self.send_telegram_message("↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
+            self.send_telegram_message(line)
+        self._mark_pipeline("success", "midday", run_date=key)
         return True
 
     def run_pipeline(self, skip_if_done: bool = False) -> bool:
@@ -533,6 +589,10 @@ def main():
         kind = job_kind()
         if kind == "morning_screen":
             ok = runner.run_morning_screen(skip_if_done=False)
+        elif kind == "evening_screen":
+            ok = runner.run_evening_screen(skip_if_done=False, notify=False)
+        elif kind == "midday_review":
+            ok = runner.run_midday_review(skip_if_done=False)
         else:
             ok = runner.run_increment_job(skip_if_done=False)
         if not ok:

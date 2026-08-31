@@ -4,8 +4,8 @@ on:
   schedule:
     # 台灣時間週一至週五 16:30（UTC 08:30）— 融合後通過完整性才蓋掉 Release zip
     - cron: '30 8 * * 1-5'
-    # 台灣時間週一至週五 07:30（UTC 日～四 23:30）— 用完整昨收寄海選
-    - cron: '30 23 * * 0-4'
+    # 台灣時間週一至週五 06:30（UTC 日～四 22:30）— 昨收＋美股收盤寄海選
+    - cron: '30 22 * * 0-4'
   workflow_dispatch:
     inputs:
       job:
@@ -42,7 +42,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             JOB="${{ github.event.inputs.job }}"
-          elif [ "${{ github.event.schedule }}" = "30 23 * * 0-4" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 22 * * 0-4" ]; then
             JOB="morning_screen"
           else
             JOB="increment"

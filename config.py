@@ -72,7 +72,7 @@ def get_github_release_url() -> str:
 
 def is_once_mode(argv=None) -> bool:
     """GitHub Actions / 本機一次性工作：跑完即結束（不開 Web／輪詢）。"""
-    return job_kind(argv) in ("increment", "morning_screen")
+    return job_kind(argv) in ("increment", "morning_screen", "evening_screen", "midday_review")
 
 
 def taipei_now():
@@ -112,6 +112,10 @@ def job_kind(argv=None) -> str:
     mode = (os.getenv("WAYNE_JOB") or os.getenv("WAYNE_MODE") or os.getenv("RUN_MODE") or "").strip().lower()
     if "--morning" in args or "--morning-screen" in args or mode in ("morning", "morning_screen", "screen"):
         return "morning_screen"
+    if "--evening" in args or "--evening-screen" in args or mode in ("evening", "evening_screen"):
+        return "evening_screen"
+    if "--midday" in args or "--midday-review" in args or mode in ("midday", "midday_review"):
+        return "midday_review"
     if "--increment" in args or "--fuse" in args or mode in ("increment", "fuse"):
         return "increment"
     if "--once" in args or "--daily" in args or mode in ("once", "daily", "pipeline", "runner"):
