@@ -161,6 +161,26 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("轉寄稿", chunks[0])
         self.assertIn("長按這一則", chunks[0])
 
+    def test_leave_zero_is_first_screening_section(self):
+        from screening_engine import format_line_share_text, format_screening_payload
+
+        leave = {"stock_id": "2610", "stock_name": "華航", "close": 20, "pct_change": 1.2, "volume": 8000}
+        hot = {"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 2.0, "volume": 50000}
+        payload = format_screening_payload(
+            {"leave_zero": [leave] * 9, "revenue_cross": [hot]},
+            "20260828",
+        )
+        keys = [p.get("mark_key") for p in payload]
+        self.assertEqual(keys[0], "leave_zero")
+        self.assertIn("revenue_cross", keys)
+        self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
+        self.assertIn("＝＝起漲", payload[0]["html"])
+        line = format_line_share_text(
+            {"leave_zero": [leave], "revenue_cross": [hot]},
+            "20260828",
+        )
+        self.assertLess(line.find("＝＝起漲"), line.find("＝＝優先看"))
+
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
         from wayne_db import ensure_core_schema

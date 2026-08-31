@@ -635,8 +635,8 @@ def format_screening_payload(
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
     specs = [
-        ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
         ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正）", 8, True),
+        ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
         ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
         ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
         ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
@@ -787,8 +787,8 @@ def format_line_share_text(
 ) -> str:
     """純文字轉寄稿：區隔線、＝＝項目＝＝、1.2.3.、每檔奇摩網址、夜盤判斷。"""
     specs = [
-        ("revenue_cross", "優先看　營收轉強×量價"),
         ("leave_zero", "起漲　高低卡獲利剛離零"),
+        ("revenue_cross", "優先看　營收轉強×量價"),
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),
         ("select_03", "止跌　月低有人接"),
