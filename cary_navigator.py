@@ -13,6 +13,8 @@ import matplotlib.dates as mdates
 import matplotlib.patches as patches
 import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
+import matplotlib.patheffects as patheffects
+from matplotlib.lines import Line2D
 from functools import lru_cache
 from threading import Lock
 import pandas as pd
@@ -1433,19 +1435,36 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
 
 
-def _nav_arrow(ax, x, y, *, down: bool, face: str, span: float, z=7, alpha=1.0, scale=1.0):
-    """帶柄箭頭（不是實心正三角）：尖端對準價位，柄較細、頭較長，外加深色描邊。"""
-    hy = max(span * 0.032, abs(y) * 0.009) * float(scale)
-    head_h = hy * 0.58
-    shaft_h = hy * 0.62
-    hw = 0.46 * scale
-    sw = 0.11 * scale
-    if down:
-        tip_y, head_y, tail_y = y, y + head_h, y + head_h + shaft_h
-    else:
-        tip_y, head_y, tail_y = y, y - head_h, y - head_h - shaft_h
+# 導航箭頭配色：(壓在淺底時, 壓在同色系底時)。
+# 淺粉箭頭放在粉紅區、淺綠箭頭放在綠區會看不見，所以同色系底要換深色。
+_NAV_TONE = {
+    "h20": ("#EC407A", "#AD1457"),
+    "h20_near": ("#F48FB1", "#C2185B"),
+    "h20_leave": ("#7B1FA2", "#4A148C"),
+    "l20": ("#43A047", "#1B5E20"),
+    "l20_near": ("#81C784", "#2E7D32"),
+    "l20_leave": ("#00838F", "#00463F"),
+    "l60": ("#00ACC1", "#006064"),
+}
+
+
+def _nav_tone(kind: str, y: float, h20: float, l20: float) -> str:
+    light, dark = _NAV_TONE[kind]
+    same_hue = (kind[0] == "h" and y >= h20) or (kind[0] == "l" and y <= l20)
+    return dark if same_hue else light
+
+
+def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.58,
+               z=7, alpha=1.0, hollow=False):
+    """帶柄箭頭：尖端對準價位；外加白色光暈，壓在 K 棒或色塊上都能跳出來。"""
+    head_h = arrow_h * 0.52
+    shaft_h = arrow_h * 0.48
+    sw = hw * 0.27
+    s = 1.0 if down else -1.0
+    head_y = y_tip + s * head_h
+    tail_y = head_y + s * shaft_h
     verts = [
-        (x, tip_y),
+        (x, y_tip),
         (x + hw, head_y),
         (x + sw, head_y),
         (x + sw, tail_y),
@@ -1453,19 +1472,21 @@ def _nav_arrow(ax, x, y, *, down: bool, face: str, span: float, z=7, alpha=1.0, 
         (x - sw, head_y),
         (x - hw, head_y),
     ]
-    ax.add_patch(
-        patches.Polygon(
-            verts,
-            closed=True,
-            facecolor=face,
-            edgecolor="#212121",
-            linewidth=0.45,
-            joinstyle="round",
-            alpha=alpha,
-            zorder=z,
-            clip_on=False,
-        )
+    poly = patches.Polygon(
+        verts,
+        closed=True,
+        facecolor="none" if hollow else face,
+        edgecolor=face if hollow else _mix(face, "#000000", 0.42),
+        linewidth=1.15 if hollow else 0.85,
+        joinstyle="round",
+        alpha=alpha,
+        zorder=z,
     )
+    poly.set_path_effects([
+        patheffects.withStroke(linewidth=2.4, foreground="#FFFFFF"),
+        patheffects.Normal(),
+    ])
+    ax.add_patch(poly)
 
 
 def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
@@ -1536,15 +1557,20 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.03),
         facecolor="#ffffff",
     )
-    ymin = float(lo_s.min()) - span * 0.08
-    ymax = float(hi_s.max()) + span * 0.10
+    # 箭頭一格一格往外疊，先把空間留出來，才不會被畫框切掉或互相壓住。
+    arrow_h = span * 0.066
+    arrow_gap = span * 0.020
+    arrow_step = arrow_h * 1.18
+    arrow_hw = 1.15
+    ymin = float(lo_s.min()) - arrow_gap - 3 * arrow_step - span * 0.02
+    ymax = float(hi_s.max()) + arrow_gap + 2 * arrow_step + span * 0.03
     ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.38, zorder=0)
     ax1.axhspan(l20, h20, color="#fff9c4", alpha=0.32, zorder=0)
     ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.38, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
 
-    was_20h = was_20l = False
+    was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
@@ -1586,27 +1612,39 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         vol_low = bool(cl > 0 and atr / cl < 0.018)
         warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
 
-        # 價格列：20高／20高脫離／20低／20低脫離／60低（量能異常不畫在這裡）
-        if is_20h:
-            _nav_arrow(ax1, x, hi + span * 0.010, down=True, face="#f48fb1", span=span, z=6)
-        elif hi >= wick_h20 * 0.985:
-            _nav_arrow(ax1, x, hi + span * 0.008, down=True, face="#f8bbd0", span=span, z=5, alpha=0.38, scale=0.82)
+        # 價格列只標「當天才發生」的事件：連續貼著高低的每一天都畫，箭頭就得縮小到看不清。
+        # 期間有沒有連續，看 K 棒貼在哪一條帶就知道；逐日紀錄在決策卡的表裡。
+        near_h = not is_20h and hi >= wick_h20 * 0.985
+        near_l = not is_20l and lo <= wick_l20 * 1.015
+        up_stack, dn_stack = [], []
+        if is_20h and not was_20h:
+            dn_stack.append(("h20", 1.0, False))
+        elif near_h and not was_near_h:
+            dn_stack.append(("h20_near", 0.72, True))
         if leave_h:
-            _nav_arrow(ax1, x, hi + span * 0.046, down=True, face="#6a1b9a", span=span, z=8, scale=1.12)
-        if is_20l:
-            _nav_arrow(ax1, x, lo - span * 0.010, down=False, face="#66bb6a", span=span, z=6)
-        elif lo <= wick_l20 * 1.015:
-            _nav_arrow(ax1, x, lo - span * 0.008, down=False, face="#a5d6a7", span=span, z=5, alpha=0.38, scale=0.82)
+            dn_stack.append(("h20_leave", 1.06, False))
+        if is_20l and not was_20l:
+            up_stack.append(("l20", 1.0, False))
+        elif near_l and not was_near_l:
+            up_stack.append(("l20_near", 0.72, True))
         if leave_l:
-            _nav_arrow(ax1, x, lo - span * 0.046, down=False, face="#1b5e20", span=span, z=8, scale=1.12)
-        if is_60l:
-            _nav_arrow(ax1, x, lo - span * 0.078, down=False, face="#00acc1", span=span, z=7, scale=1.08)
+            up_stack.append(("l20_leave", 1.06, False))
+        if is_60l and not was_60l:
+            up_stack.append(("l60", 1.06, False))
+        for k, (kind, sc, hollow) in enumerate(dn_stack):
+            tip = hi + arrow_gap + k * arrow_step
+            _nav_arrow(ax1, tip, x, down=True, face=_nav_tone(kind, tip, h20, l20),
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
+        for k, (kind, sc, hollow) in enumerate(up_stack):
+            tip = lo - arrow_gap - k * arrow_step
+            _nav_arrow(ax1, tip, x, down=False, face=_nav_tone(kind, tip, h20, l20),
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
 
         # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
-        sq = "#ffe0b2" if (i // 3) % 2 == 0 else "#bbdefb"
+        # 底色只在月波動低時上色，其餘留白；原本三天一換的橘藍相間只是視覺噪音。
         if vol_low:
-            sq = "#90caf9"
-        ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84, facecolor=sq, edgecolor="#ffffff", lw=0.12, zorder=2))
+            ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84,
+                                               facecolor="#90caf9", edgecolor="none", zorder=2))
         if warn:
             _sig_arrow(ax_sig, x, 0.72, "#e53935", "#7f0000", scale=1.05, z=5)
         if vol_a:
@@ -1614,7 +1652,8 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         elif vol_low:
             _sig_arrow(ax_sig, x, 0.38, "#ce93d8", "#6a1b9a", scale=0.78, z=4)
 
-        was_20h, was_20l = is_20h, is_20l
+        was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
+        was_near_h, was_near_l = near_h, near_l
 
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
     ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
@@ -1630,6 +1669,42 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         pad=6,
     )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
+
+    def _nav_key(kind, marker):
+        face = _NAV_TONE[kind][0]
+        return Line2D([], [], linestyle="none", marker=marker, markerfacecolor=face,
+                      markeredgecolor=_mix(face, "#000000", 0.42), markeredgewidth=0.8,
+                      markersize=9)
+
+    legend_keys = [
+        (_nav_key("h20", "v"), "20高"),
+        (_nav_key("h20_leave", "v"), "20高脫離"),
+        (_nav_key("l20", "^"), "20低"),
+        (_nav_key("l20_leave", "^"), "20低脫離"),
+        (_nav_key("l60", "^"), "60低"),
+        (Line2D([], [], color="#f9a825", lw=2.1), "SMA(20)"),
+        (Line2D([], [], color="#f48fb1", lw=1.6), "季高點線"),
+        (Line2D([], [], color="#81c784", lw=1.6), "季低點線"),
+        (Line2D([], [], linestyle="none", marker="v", markerfacecolor="none",
+                markeredgecolor="#C2185B", markersize=9), "接近高低（空心）"),
+    ]
+    leg = ax1.legend(
+        [h for h, _ in legend_keys],
+        [t for _, t in legend_keys],
+        loc="upper left",
+        bbox_to_anchor=(0.148, 1.006),
+        ncol=5,
+        handlelength=1.5,
+        handletextpad=0.45,
+        columnspacing=1.3,
+        borderpad=0.45,
+        labelspacing=0.35,
+        framealpha=0.92,
+        facecolor="#ffffff",
+        edgecolor="#cfd8dc",
+        prop=_fp(9, "bold"),
+    )
+    leg.set_zorder(10)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
     ax1.tick_params(labelsize=9)
@@ -1690,7 +1765,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     fig.text(
         0.50,
         0.015,
-        "價格列：淺粉↓20高　紫↓20高脫離　綠↑20低　深綠↑20低脫離　青↑60低　　"
+        "價格列箭頭見圖上方圖例；箭頭壓在粉紅／綠色區時自動換深色，實心＝當日觸發、縮小＝連續中、空心＝接近　　"
         "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　藍／杏塊＝月波動",
         ha="center",
         va="bottom",

@@ -593,6 +593,20 @@ class LookupCardTest(unittest.TestCase):
                 self.assertLessEqual(used + gap, row_w + 0.01)
                 self.assertGreaterEqual(fb, 9.5)
 
+    def test_nav_arrow_darkens_on_same_hue_band(self):
+        from cary_navigator import _NAV_TONE, _nav_tone, _wcag
+
+        h20, l20 = 100.0, 60.0
+        # 高點箭頭飄到粉紅區、低點箭頭掉到綠區時要換深色，否則融進背景。
+        self.assertEqual(_nav_tone("h20_near", 105.0, h20, l20), _NAV_TONE["h20_near"][1])
+        self.assertEqual(_nav_tone("h20_near", 80.0, h20, l20), _NAV_TONE["h20_near"][0])
+        self.assertEqual(_nav_tone("l20_near", 55.0, h20, l20), _NAV_TONE["l20_near"][1])
+        self.assertEqual(_nav_tone("l20_near", 80.0, h20, l20), _NAV_TONE["l20_near"][0])
+        for kind, band in (("h20_near", "#F8BBD0"), ("l20_near", "#C8E6C9")):
+            with self.subTest(kind=kind):
+                light, dark = _NAV_TONE[kind]
+                self.assertGreater(_wcag(dark, band), _wcag(light, band))
+
     def test_card_white_text_backgrounds_have_enough_contrast(self):
         from cary_navigator import _CARD, _wcag
 
