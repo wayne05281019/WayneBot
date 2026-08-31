@@ -940,6 +940,25 @@ class LookupCardTest(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertGreaterEqual(_wcag("#FFFFFF", _CARD[key]), 4.5)
 
+    def test_profit_cell_uses_low_palette_not_hardcoded_pink(self):
+        import inspect
+
+        from cary_navigator import _CARD, profit_cell_style, render_decision_card_png
+
+        bg0, fg0 = profit_cell_style(0.0, None, "#FFFFFF")
+        self.assertEqual(bg0, _CARD["lo_fill"])
+        self.assertEqual(fg0, _CARD["lo_ink"])
+        bg_leave, fg_leave = profit_cell_style(0.9, 0.0, "#FFFFFF")
+        self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
+        self.assertEqual(fg_leave, _CARD["lo_ink"])
+        bg_run, fg_run = profit_cell_style(1.5, 0.9, "#FFFFFF")
+        self.assertEqual(bg_run, "#FFFFFF")
+        self.assertEqual(fg_run, _CARD["ink"])
+        self.assertNotEqual(bg_run, _CARD["hi_fill"])
+        src = inspect.getsource(render_decision_card_png)
+        self.assertIn("profit_cell_style", src)
+        self.assertNotIn("#FBEAF1", src)
+
     def test_card_bold_and_body_use_different_font_weights(self):
         from cary_navigator import _weight_step
 

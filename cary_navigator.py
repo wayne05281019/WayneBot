@@ -859,6 +859,47 @@ _CARD = {
 }
 
 
+def _row_profit(row):
+    if row is None:
+        return None
+    try:
+        v = row.get("profit_pct") if hasattr(row, "get") else None
+        if v is not None and v != "":
+            return float(v)
+    except (TypeError, ValueError, AttributeError):
+        pass
+    raw = ""
+    try:
+        raw = str(row.get("獲利") or "")
+    except Exception:
+        raw = ""
+    raw = raw.replace("%", "").replace("+", "").strip()
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
+    """獲利底圖跟高低卡同一套色票：貼零＝低、剛離零＝實綠、其餘跟列底。不整列寫死粉紅。"""
+    C = _CARD
+    try:
+        p = float(profit)
+    except (TypeError, ValueError):
+        return base, C["ink"]
+    left_zero = False
+    if prev_profit is not None:
+        try:
+            left_zero = float(prev_profit) <= 0.05 and p > 0.05
+        except (TypeError, ValueError):
+            left_zero = False
+    if left_zero:
+        return C["lo_hit_fill"], C["lo_ink"]
+    if p <= 0.05:
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink"]
+
+
 def _card_text_w(text, fs: float, fig_w: float) -> float:
     """粗估字串寬度（資料座標）：中日韓字一個 em，半角約 0.55 em。量不到真實字寬時的退路。"""
     em = fs / (fig_w / 100.0 * 72.0)
@@ -1168,9 +1209,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         zebra = row_i % 2 == 0
         base = "#FFFFFF" if zebra else C["zebra"]
         hot = "高" in hl
-        fills = [base, "#FDECF3" if hot else base, "#FDF2F6" if zebra else "#FBEAF1",
-                 base, base, tbg,
-                 "#FDE3E9" if bias > 0 else ("#E4F3E7" if bias < 0 else base), base]
+        nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
+        p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
+        fills = [
+            base,
+            C["hi_fill"] if hot else base,
+            p_bg,
+            base,
+            base,
+            tbg,
+            C["hi_fill"] if bias > 0 else (C["lo_fill"] if bias < 0 else base),
+            base,
+        ]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -1201,7 +1251,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 if i == 1:
                     color = C["pill_hi"] if hot else C["ink"]
                 elif i == 2:
-                    color = "#C2185B"
+                    color = p_fg
                 elif i == 5:
                     color = tfg
                 elif i == 6:
