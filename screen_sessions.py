@@ -148,6 +148,60 @@ def mark_both_sessions(results: Dict[str, Any], both: Iterable[str]) -> int:
     return n
 
 
+def ensure_line_share_table(db_path: str = None) -> None:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS screen_line_share (
+            as_of TEXT PRIMARY KEY,
+            body TEXT NOT NULL,
+            updated_at TEXT
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_line_share(db_path: str, as_of: str, body: str) -> None:
+    """06:30 與手動海選都寫一份，轉寄鈕跨行程也能讀到。"""
+    as_of = str(as_of or "").replace("-", "")
+    text = str(body or "").strip()
+    if not as_of or not text:
+        return
+    ensure_line_share_table(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO screen_line_share(as_of, body, updated_at)
+        VALUES (?,?,datetime('now'))
+        ON CONFLICT(as_of) DO UPDATE SET
+            body=excluded.body,
+            updated_at=excluded.updated_at
+        """,
+        (as_of, text),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_line_share(db_path: str, as_of: str = "") -> str:
+    ensure_line_share_table(db_path)
+    conn = sqlite3.connect(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    if as_of:
+        row = conn.execute(
+            "SELECT body FROM screen_line_share WHERE as_of=?", (as_of,)
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT body FROM screen_line_share ORDER BY as_of DESC LIMIT 1"
+        ).fetchone()
+    conn.close()
+    return str(row[0] or "") if row else ""
+
+
 def load_morning_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
     ensure_screen_session_table(db_path)
     conn = sqlite3.connect(db_path)

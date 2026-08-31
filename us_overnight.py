@@ -287,6 +287,32 @@ def effective_tsm_pct(snap: Dict[str, Any]) -> Optional[float]:
     return min(vals) if vals else None
 
 
+def effective_nvda_pct(snap: Dict[str, Any]) -> Optional[float]:
+    vals = _floats(snap, ("nvda_pct",))
+    if (snap.get("us_phase") or "regular") in ("post", "overnight"):
+        vals.extend(_floats(snap, ("nvda_post_pct",)))
+    return min(vals) if vals else None
+
+
+def electronics_night_side(snap: Dict[str, Any]) -> str:
+    """台股電子鏈夜盤：漲／跌／平。沒數字回空字串。"""
+    snap = snap or {}
+    votes = []
+    for v in (effective_sox_pct(snap), effective_tsm_pct(snap), effective_nvda_pct(snap)):
+        if v is not None:
+            votes.append(v)
+    if not votes:
+        return ""
+    down = sum(1 for v in votes if v <= -1.0)
+    up = sum(1 for v in votes if v >= 1.0)
+    avg = sum(votes) / len(votes)
+    if down >= 2 or avg <= -1.0:
+        return "跌"
+    if up >= 2 or avg >= 1.0:
+        return "漲"
+    return "平"
+
+
 def classify_us_regime(snap: Dict[str, Any]) -> str:
     """中性／偏空／逆風。現金收盤為底；收盤後才看盤後續勢。期貨盤中不參與判定。"""
     worst = index_worst_pct(snap)
@@ -515,7 +541,49 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_night_plain(snap: Dict[str, Any]) -> str:
+    """轉寄稿用的夜盤整塊：美股現金／盤後＋電子鏈漲跌。"""
+    if not snap:
+        return "＝＝夜盤判斷＝＝\n這次沒接到美股數字"
+    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    phase = snap.get("us_phase") or "regular"
+    phase_s = PHASE_LABEL.get(phase, "")
+    lines = [
+        "＝＝夜盤判斷＝＝",
+        f"{label}　{phase_s}".strip(),
+        (
+            f"美股現金　道瓊{_fmt_pct(snap.get('dji_pct'))}　標普{_fmt_pct(snap.get('spx_pct'))}　"
+            f"那斯達克{_fmt_pct(snap.get('ixic_pct'))}　費半{_fmt_pct(snap.get('sox_pct'))}"
+        ),
+        f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）",
+    ]
+    if phase in ("post", "overnight"):
+        lines.append(
+            f"盤後續勢　那指期{_fmt_pct(snap.get('nq_f_pct'))}　標普期{_fmt_pct(snap.get('es_f_pct'))}　"
+            f"道瓊期{_fmt_pct(snap.get('ym_f_pct'))}"
+        )
+        lines.append(
+            f"台積ADR　收盤{_fmt_pct(snap.get('tsm_pct'))}　盤後{_fmt_pct(snap.get('tsm_post_pct'))}　"
+            f"輝達　收盤{_fmt_pct(snap.get('nvda_pct'))}　盤後{_fmt_pct(snap.get('nvda_post_pct'))}"
+        )
+    else:
+        lines.append(
+            f"台積ADR{_fmt_pct(snap.get('tsm_pct'))}　輝達{_fmt_pct(snap.get('nvda_pct'))}　（現金收盤，盤中期貨不看）"
+        )
+    side = electronics_night_side(snap)
+    if side:
+        lines.append(
+            f"電子夜盤　{side}　費半{_fmt_pct(effective_sox_pct(snap))}　"
+            f"台積ADR{_fmt_pct(effective_tsm_pct(snap))}　輝達{_fmt_pct(effective_nvda_pct(snap))}"
+        )
+        lines.append("（台指期／電子期夜盤報價這次沒接公開源；電子漲跌改看費半＋台積ADR＋輝達）")
+    else:
+        lines.append("電子夜盤　沒接到費半／ADR，這次不判斷漲跌")
+    return "\n".join(lines)
+
+
 def format_us_plain(snap: Dict[str, Any]) -> str:
+    """短行摘要；轉寄稿請用 format_night_plain。"""
     if not snap:
         return ""
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
@@ -523,10 +591,12 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     extra = ""
     if phase in ("post", "overnight") and snap.get("nq_f_pct") is not None:
         extra = f" 盤後NQ{_fmt_pct(snap.get('nq_f_pct'))}"
+    side = electronics_night_side(snap)
+    elec = f" 電子夜盤{side}" if side else ""
     return (
         f"美股收盤 {label} 道瓊{_fmt_pct(snap.get('dji_pct'))} 標普{_fmt_pct(snap.get('spx_pct'))} "
         f"那指{_fmt_pct(snap.get('ixic_pct'))} 費半{_fmt_pct(snap.get('sox_pct'))} "
-        f"VIX {_fmt_vix(snap.get('vix'))}{extra}"
+        f"VIX {_fmt_vix(snap.get('vix'))}{extra}{elec}"
     )
 
 
