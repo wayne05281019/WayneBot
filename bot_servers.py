@@ -63,22 +63,23 @@ HELP_TOPICS = {
     "menu": (
         "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
         "海選／當沖／隔日沖／持股　｜　觀察／資金／說明／選單\n"
-        "打股名或代號會開這檔的介紹圖＋高低卡＋導航＋籌碼。\n"
+        "打股名或代號＝看這檔：先現價，再介紹圖→決策卡→導航→籌碼。\n"
         "資金＝當日三大法人張數流向（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
         "盤後依營收轉強×量價等分類列出候選。\n"
-        "➕＝加入觀察（還沒買）。股名＝奇摩；旁邊「圖卡」＝決策卡＋導航＋籌碼＋營收。\n"
-        "不是立即下單清單，先看詳細介紹再決定。"
+        "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：看這檔＝現價＋四張圖；➕＝觀察。\n"
+        "Telegram 不能指定紅字，該注意的漲跌／S級／20低脫離／營收轉強用<b>粗體</b>；圖仍是紅漲綠跌。\n"
+        "不是立即下單清單。"
     ),
     "daytrade": (
         "<b>當沖怎麼用</b>\n"
-        "當日沖候選。➕觀察、詳細介紹開圖卡。不是保證獲利。"
+        "當日沖候選。藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
-        "偏尾盤佈局、隔日應對。➕觀察、詳細介紹開圖卡。"
+        "偏尾盤佈局、隔日應對。藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -93,6 +94,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
+        "打股名或按看這檔：先現價／漲跌，再介紹圖 → 高低決策卡 → 導航 → 籌碼。\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 獲利＝近60個日曆日收盤低；距60根低是另外一欄（近60根收盤）\n"
         "3 溫度＝20日收盤位置＋月乖離；120日量＝這檔自己近120根成交量排名\n"
@@ -201,44 +203,31 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-                ],
-                [
                     InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-                    self._q(topic),
                 ],
+                [self._q(topic)],
             ]
         )
 
-    def _stock_action_row(self, code: str, name: str = ""):
-        """左：奇摩（股名）　中：圖卡＝決策卡＋導航＋籌碼＋營收　右：加入觀察。"""
+    def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
+        """股名在文字裡連奇摩；按鈕兩欄對齊：看這檔（可帶序號）／觀察。"""
         c = str(code or "").strip()[:6]
-        n = str(name or "").strip()[:4]
-        label = f"{c} {n}".strip()[:16] or c
-        web = ""
-        try:
-            from stock_links import yahoo_urls
-
-            web, _mobile = yahoo_urls(c, self.db_path)
-        except Exception:
-            web = ""
-        left = InlineKeyboardButton(label, url=web) if web else InlineKeyboardButton(label, callback_data=f"k:{c}")
+        label = f"看這檔 {idx}" if idx else "看這檔"
         return [
-            left,
-            InlineKeyboardButton("圖卡", callback_data=f"k:{c}"),
+            InlineKeyboardButton(label, callback_data=f"k:{c}"),
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
     def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen"):
         rows = []
-        for code, name in (picks or [])[:8]:
+        for i, (code, name) in enumerate((picks or [])[:8], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
-            rows.append(self._stock_action_row(c, name or ""))
+            rows.append(self._stock_action_row(c, name or "", idx=i))
         if include_menu or rows:
             rows.append([self._q(topic)])
         if not rows:
@@ -247,12 +236,12 @@ class WayneTelegramBot:
 
     def _hits_keyboard(self, hits):
         rows = []
-        for h in hits[:8]:
+        for i, h in enumerate(hits[:8], start=1):
             c = str(h.get("stock_id") or "")
             n = str(h.get("stock_name") or "")
             if not c:
                 continue
-            row = self._stock_action_row(c, n)
+            row = self._stock_action_row(c, n, idx=i)
             row.append(InlineKeyboardButton("買入", callback_data=f"b:{c}"))
             rows.append(row)
         rows.append([self._q("stock")])
@@ -260,13 +249,13 @@ class WayneTelegramBot:
 
     def _watch_list_keyboard(self, rows):
         kb = []
-        for r in (rows or [])[:8]:
+        for i, r in enumerate((rows or [])[:8], start=1):
             c = str(r.get("stock_code") or "")
             if not c:
                 continue
             kb.append(
                 [
-                    InlineKeyboardButton(f"{c}", callback_data=f"k:{c}"),
+                    InlineKeyboardButton(f"看這檔 {i}", callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
@@ -565,7 +554,11 @@ class WayneTelegramBot:
 
         rows = self.screener.screen_daytrade()
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-        html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+        html = (
+            "<b>當沖候選</b>\n"
+            "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+            + ("\n".join(cards) if cards else "<i>無</i>")
+        )
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
         await update.message.reply_html(
             html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
@@ -576,7 +569,11 @@ class WayneTelegramBot:
 
         rows = self.screener.screen_overnight()
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-        html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+        html = (
+            "<b>隔日沖候選</b>\n"
+            "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+            + ("\n".join(cards) if cards else "<i>無</i>")
+        )
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
         await update.message.reply_html(
             html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
@@ -617,22 +614,34 @@ class WayneTelegramBot:
         rows = get_user_watchlist(self.db_path, uid)
         lines = [
             "<b>觀察清單（自選，還沒買也可以）</b>",
-            "加入方式：打「南亞」按 ➕　或海選／當沖／隔日沖股名旁的 ➕",
+            "加入方式：打「南亞」按 ➕　或海選／當沖／隔日沖旁的 ➕",
         ]
         if not rows:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
             await message.reply_html("\n".join(lines), reply_markup=self._keyboard())
             return
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
         for r in rows:
-            lines.append(f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}")
-        f"\n點下面每股一列：左＝奇摩股市　中＝圖卡　右＝觀察。"
+            c = str(r.get("stock_code") or "")
+            n = str(r.get("stock_name") or "")
+            if html_stock_anchor:
+                try:
+                    lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
+                except Exception:
+                    lines.append(f"• {html_escape(c)} {html_escape(n)}")
+            else:
+                lines.append(f"• {html_escape(c)} {html_escape(n)}")
+        lines.append("下面按鈕由上到下對應清單：看這檔　籌碼　記買入。")
         await message.reply_html("\n".join(lines), reply_markup=self._watch_list_keyboard(rows))
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "詳細介紹：請先選一檔。打南亞／2330，或點觀察清單。選到就會出圖卡。",
+            "card": "看這檔：請先選一檔。打南亞／2330，或點觀察清單。會先出現現價，再依序出圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
@@ -817,7 +826,7 @@ class WayneTelegramBot:
                 return
             if len(hits) > 1:
                 await update.message.reply_html(
-                    "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
+                    "找到多檔。藍字在名單裡連奇摩；按「看這檔」看出價＋圖，➕觀察，或記買入：",
                     reply_markup=self._hits_keyboard(hits),
                 )
                 return
@@ -894,6 +903,56 @@ class WayneTelegramBot:
             logger.exception("AI 操盤失敗")
             await message.reply_text(f"AI 操盤失敗：{e}", reply_markup=self._keyboard())
 
+    def _quote_header_html(self, code: str) -> str:
+        """看這檔開頭：現價／漲跌／盤中時間。熱訊用粗體（Telegram 不能指定紅字）。"""
+        code = str(code or "").strip()
+        hits = lookup_stocks(self.db_path, code)
+        name = ""
+        mkt = ""
+        if hits:
+            code = str(hits[0].get("stock_id") or code)
+            name = str(hits[0].get("stock_name") or "")
+            mkt = str(hits[0].get("market") or "")
+        try:
+            from stock_links import html_stock_anchor
+
+            title = html_stock_anchor(code, name, self.db_path)
+        except Exception:
+            title = f"{html_escape(code)} {html_escape(name)}".strip()
+        from screening_engine import _pct_html
+
+        rt = None
+        try:
+            from live_quote import fetch_mis_quote
+
+            rt = fetch_mis_quote(code, mkt)
+        except Exception:
+            logger.exception("現價 MIS 失敗 code=%s", code)
+        if rt:
+            vol = int(rt.get("volume") or 0)
+            t = str(rt.get("update_time") or "").strip()
+            lines = [
+                title,
+                f"現價　{html_escape(rt.get('close'))}",
+                f"漲跌　{_pct_html(rt.get('pct_change'))}",
+                f"成交　{vol:,}張",
+            ]
+            if t:
+                lines.append(f"盤中　{html_escape(t)}　證交所 MIS")
+            return "\n".join(lines)
+        close = hits[0].get("close") if hits else None
+        pct = hits[0].get("pct_change") if hits else None
+        if close is not None:
+            return "\n".join(
+                [
+                    title,
+                    f"昨收　{html_escape(close)}",
+                    f"漲跌　{_pct_html(pct)}",
+                    "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>",
+                ]
+            )
+        return title
+
     async def _reply_card(self, update: Update, code: str):
         await self._send_card_to(update.message, code)
 
@@ -928,7 +987,12 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             return
-        await message.reply_text(f"查詢 {code}…")
+        try:
+            header = await asyncio.to_thread(self._quote_header_html, code)
+            await message.reply_html(header, disable_web_page_preview=True)
+        except Exception:
+            logger.exception("現價列失敗 code=%s", code)
+            await message.reply_text(f"查詢 {code}…")
         hub = self._hub_keyboard(code)
         cap_links = ""
         try:
@@ -1033,6 +1097,7 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
+                "leave_zero": "起漲：獲利脫離零 × 量能／20低脫離",
                 "select_01": "Select 01：周帶量突破",
                 "select_02": "Select 02：突破半年高",
                 "select_03": "Select 03：突破兩年高",
@@ -1066,7 +1131,7 @@ class WayneTelegramBot:
             add_to_watchlist(self.db_path, uid, code, code)
             await q.message.reply_html(
                 f"已加入<b>觀察</b> {html_escape(code)}（自選，還不是持股）。\n"
-                "要記真實買入請按「記一筆買入」。",
+                "要記真實買入請按「記買入」。",
                 reply_markup=self._hub_keyboard(code),
             )
             return
@@ -1136,7 +1201,11 @@ class WayneTelegramBot:
 
             rows = self.screener.screen_daytrade()
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-            html = "<b>當沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+            html = (
+                "<b>當沖候選</b>\n"
+                "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+                + ("\n".join(cards) if cards else "<i>無</i>")
+            )
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
             await q.message.reply_html(
                 html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
@@ -1146,7 +1215,11 @@ class WayneTelegramBot:
 
             rows = self.screener.screen_overnight()
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-            html = "<b>隔日沖候選</b>\n" + ("\n".join(cards) if cards else "<i>無</i>")
+            html = (
+                "<b>隔日沖候選</b>\n"
+                "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+                + ("\n".join(cards) if cards else "<i>無</i>")
+            )
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
             await q.message.reply_html(
                 html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True

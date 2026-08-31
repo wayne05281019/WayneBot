@@ -366,6 +366,41 @@ def _pct_str(pct) -> str:
     return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
 
 
+def _px_str(close) -> str:
+    if close is None or close == "":
+        return "—"
+    try:
+        v = float(close)
+    except (TypeError, ValueError):
+        return html_escape(close)
+    if v >= 100:
+        s = f"{v:.1f}".rstrip("0").rstrip(".")
+    else:
+        s = f"{v:.2f}"
+    return html_escape(s)
+
+
+def _hot(text: str) -> str:
+    """Telegram HTML 不能指定紅色；該注意的數字／標籤用粗體當視覺錨點。"""
+    return f"<b>{html_escape(text)}</b>"
+
+
+def _pct_html(pct) -> str:
+    s = _pct_str(pct)
+    return _hot(s) if s else "—"
+
+
+def _q_html(q) -> str:
+    if q is None or q == "":
+        return "—"
+    try:
+        v = float(q)
+        shown = f"{v:.2f}×"
+        return _hot(shown) if v >= 2 else html_escape(shown)
+    except (TypeError, ValueError):
+        return html_escape(str(q))
+
+
 def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
@@ -375,32 +410,47 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         title = html_stock_anchor(sid, sname)
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
-    s_tag = " · S級" if item.get("is_s_tier") else ""
-    extra = ""
-    if item.get("profit") is not None:
-        extra = f"　獲利 {item.get('profit')}%"
-    if item.get("vol_rank_120"):
-        extra += f"　120日量第{int(item['vol_rank_120'])}名"
-    if item.get("leave_l20"):
-        extra += "　20低脫離"
-    if item.get("revenue_hot"):
-        extra += "　營收轉強"
     regime = html_escape(_regime_label(item))
-    close = item.get("close")
+    close_s = _px_str(item.get("close"))
     vol = int(item.get("volume") or 0)
-    q = item.get("q60r")
+    notices: List[str] = []
+    if item.get("is_s_tier"):
+        notices.append(_hot("S級"))
+    if item.get("leave_l20"):
+        notices.append(_hot("20低脫離"))
+    if item.get("revenue_hot"):
+        notices.append(_hot("營收轉強"))
     body = [
-        f"<b>{idx}.</b> {title}　<b>{regime}</b>{html_escape(s_tag)}",
-        f"價 {close}　{_pct_str(item.get('pct_change'))}{html_escape(extra)}",
-        f"量比 {q}×　{vol:,}張",
+        f"<b>{idx}.</b> {title}",
+        f"格局　{regime}",
+        f"價　　{close_s}",
+        f"漲跌　{_pct_html(item.get('pct_change'))}",
+        f"量比　{_q_html(item.get('q60r'))}",
+        f"成交　{vol:,}張",
     ]
+    if notices:
+        body.append("注意　" + "　".join(notices))
+    if item.get("profit") is not None:
+        body.append(f"獲利　{html_escape(item.get('profit'))}%")
+    if item.get("vol_rank_120"):
+        rank = int(item["vol_rank_120"])
+        rank_s = f"第{rank}名"
+        body.append("120量　" + (_hot(rank_s) if rank <= 20 else html_escape(rank_s)))
     if "target_1" in item:
-        body.append(
-            f"進場 {item.get('entry_price')}　停利 {item.get('target_1')} / {item.get('target_2')}　停損 {item.get('stop_loss')}"
+        body.extend(
+            [
+                f"進場　{html_escape(item.get('entry_price'))}",
+                f"停利　{html_escape(item.get('target_1'))} / {html_escape(item.get('target_2'))}",
+                f"停損　{html_escape(item.get('stop_loss'))}",
+            ]
         )
     elif "buy_range" in item:
-        body.append(
-            f"買進 {html_escape(item.get('buy_range'))}　開高 {html_escape(item.get('target_gap'))}　防守 {item.get('defense_price')}"
+        body.extend(
+            [
+                f"買進　{html_escape(item.get('buy_range'))}",
+                f"開高　{html_escape(item.get('target_gap'))}",
+                f"防守　{html_escape(item.get('defense_price'))}",
+            ]
         )
     return f"<blockquote>{chr(10).join(body)}</blockquote>"
 
@@ -409,7 +459,26 @@ def _compact_line(item: Dict[str, Any]) -> str:
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
     q = item.get("q60r")
-    return f"{html_escape(sid)} {html_escape(sname)}　{html_escape(_regime_label(item))}　{_pct_str(item.get('pct_change'))}　{q}×"
+    q_s = ""
+    try:
+        q_s = f"{float(q):.2f}×" if q is not None and q != "" else ""
+    except (TypeError, ValueError):
+        q_s = str(q or "")
+    pct = _pct_html(item.get("pct_change"))
+    hot = "　".join(
+        t
+        for t, on in (
+            (_hot("S級"), item.get("is_s_tier")),
+            (_hot("20低脫離"), item.get("leave_l20")),
+            (_hot("營收轉強"), item.get("revenue_hot")),
+        )
+        if on
+    )
+    extra = f"　{hot}" if hot else ""
+    return (
+        f"{html_escape(sid)} {html_escape(sname)}　"
+        f"{html_escape(_regime_label(item))}　{pct}　{html_escape(q_s)}{extra}"
+    )
 
 
 def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_date: str) -> List[Dict[str, Any]]:
@@ -466,7 +535,11 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         payload.append(part)
 
     if payload:
-        payload[-1]["html"] += "\n💡 <i>量化僅供輔助，進場請設移動停損。</i>"
+        payload[-1]["html"] += (
+            "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應 1～8 檔（看這檔／➕）。"
+            "該注意的漲跌、S級、20低脫離、營收轉強用<b>粗體</b>"
+            "（Telegram 不能指定紅字；走勢圖仍是紅漲綠跌）。量化僅供輔助，進場請設移動停損。</i>"
+        )
     else:
         payload.append({"html": f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
     return payload
