@@ -64,7 +64,10 @@ def get_telegram_config() -> dict:
 
 
 def get_github_release_url() -> str:
-    return (os.getenv("GITHUB_RELEASE_URL") or "").strip()
+    return (
+        os.getenv("GITHUB_RELEASE_URL")
+        or "https://github.com/wayne05281019/WayneBot/releases/download/v1.0-data/waynebot_production_complete.zip"
+    ).strip()
 
 
 def is_once_mode(argv=None) -> bool:

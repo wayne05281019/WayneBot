@@ -26,6 +26,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+# httpx 預設 INFO 會把 Bot token 印在 getUpdates URL 裡
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("WayneBot")
 
 
@@ -97,6 +100,52 @@ def start_daily_scheduler():
     return t
 
 
+def ensure_market_db() -> None:
+    """Render 磁碟沒有 Git 裡的 sqlite；沒有日K時打南亞不會出圖。"""
+    import os
+    import shutil
+    import tempfile
+    import zipfile
+    import urllib.request
+
+    from config import get_db_path, get_github_release_url
+
+    path = get_db_path()
+    try:
+        if os.path.isfile(path) and os.path.getsize(path) > 1_000_000:
+            logger.info("行情庫已存在（%.0f MB）", os.path.getsize(path) / 1e6)
+            return
+    except OSError:
+        pass
+    url = get_github_release_url()
+    logger.info("雲端尚無行情庫，開始下載公開 Release（可能要幾分鐘）")
+    tmpdir = tempfile.mkdtemp(prefix="wayne-db-")
+    zpath = os.path.join(tmpdir, "db.zip")
+    try:
+        urllib.request.urlretrieve(url, zpath)
+        with zipfile.ZipFile(zpath) as zf:
+            zf.extractall(tmpdir)
+        found = None
+        for root, _, files in os.walk(tmpdir):
+            for name in files:
+                if name.endswith(".db"):
+                    cand = os.path.join(root, name)
+                    if found is None or os.path.getsize(cand) > os.path.getsize(found):
+                        found = cand
+        if not found:
+            logger.warning("Release zip 內找不到 .db")
+            return
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        shutil.copy2(found, path)
+        logger.info("已安裝行情庫 %.0f MB", os.path.getsize(path) / 1e6)
+    except Exception:
+        logger.exception("下載行情庫失敗（Telegram 仍可回 /start，但單檔圖卡沒有日K）")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def run_once():
     from main_runner import main as runner_main
     runner_main()
@@ -106,9 +155,9 @@ def run_web():
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
 
+    start_health_server(get_port())
+    ensure_market_db()
     ensure_core_schema(get_db_path())
-    port = get_port()
-    start_health_server(port)
     if daily_scheduler_enabled():
         start_daily_scheduler()
 

@@ -792,17 +792,29 @@ class WayneTelegramBot:
                 f"已記錄買入 {code} {name} {shares}張 @ {price}", reply_markup=self._keyboard()
             )
             return
-        hits = lookup_stocks(self.db_path, text)
-        if len(hits) == 1:
-            await self._reply_card(update, hits[0]["stock_id"])
-            return
-        if len(hits) > 1:
-            await update.message.reply_html(
-                "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
-                reply_markup=self._hits_keyboard(hits),
+        logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
+        try:
+            await update.message.reply_text("收到，查詢中…", reply_markup=self._keyboard())
+        except Exception:
+            logger.exception("ack 失敗")
+        try:
+            hits = lookup_stocks(self.db_path, text)
+            if len(hits) == 1:
+                await self._reply_card(update, hits[0]["stock_id"])
+                return
+            if len(hits) > 1:
+                await update.message.reply_html(
+                    "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
+                    reply_markup=self._hits_keyboard(hits),
+                )
+                return
+            await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
+        except Exception:
+            logger.exception("查詢失敗")
+            await update.message.reply_text(
+                "查詢失敗。雲端可能還沒有日K，或出圖逾時。請先按 /start，稍後再試。",
+                reply_markup=self._keyboard(),
             )
-            return
-        await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
 
     async def _handle_pending_pick(self, message, uid: str, pending: str, text: str) -> bool:
         hits = lookup_stocks(self.db_path, text.split()[0].strip())
@@ -883,16 +895,36 @@ class WayneTelegramBot:
                 title = html_stock_anchor(h["stock_id"], h.get("stock_name") or "", self.db_path)
             except Exception:
                 title = f"{html_escape(h['stock_id'])} {html_escape(h.get('stock_name') or '')}"
-            mkt = html_escape(h.get("market") or "EM")
+            mkt_raw = (h.get("market") or "").strip().upper()
+            mkt = html_escape(h.get("market") or "")
+            is_em = mkt_raw in ("EM", "EMERGING", "興櫃")
+            if is_em:
+                body = (
+                    f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
+                    "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。"
+                )
+            else:
+                body = (
+                    f"{title}\n這是上市櫃股票（市場 {mkt or 'TW'}），"
+                    "但<strong>雲端這台機器還沒有日K資料</strong>，所以暫時不能出決策卡。"
+                    "請等行情庫下載完成後再打一次代號。"
+                )
             await message.reply_html(
-                f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
-                "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。",
+                body,
                 reply_markup=self._hub_keyboard(h["stock_id"]),
                 disable_web_page_preview=True,
             )
             return
         await message.reply_text(f"查詢 {code}…")
-        packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+        try:
+            packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+        except Exception:
+            logger.exception("出圖失敗 code=%s", code)
+            await message.reply_text(
+                f"找到 {code}，但雲端出圖失敗（多半是還沒有日K）。請稍後再試或改打 /start。",
+                reply_markup=self._keyboard(),
+            )
+            return
         html = packed[0]
         card_img = packed[1] if len(packed) > 1 else ""
         chart = packed[2] if len(packed) > 2 else ""
@@ -1116,6 +1148,17 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("sell", self.sell_cmd))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+
+        async def _on_error(update, context):
+            logger.exception("Telegram handler 失敗: %s", context.error)
+            msg = getattr(update, "effective_message", None) if update else None
+            if msg:
+                try:
+                    await msg.reply_text("處理失敗。請先按 /start，再打南亞或 2330。")
+                except Exception:
+                    pass
+
+        app.add_error_handler(_on_error)
         logger.info("Telegram polling 啟動")
         import asyncio
 
@@ -1124,7 +1167,19 @@ class WayneTelegramBot:
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        app.run_polling(drop_pending_updates=True)
+        try:
+            app.run_polling(drop_pending_updates=True)
+        except Exception as e:
+            # python-telegram-bot 的 InvalidToken 訊息會含完整 token，不可寫進 Render Logs
+            if type(e).__name__ == "InvalidToken" or "InvalidToken" in type(e).__name__:
+                logger.error(
+                    "TELEGRAM_BOT_TOKEN 被 Telegram 拒絕。"
+                    "請到 BotFather 重發，整段貼到 Render → Environment → TELEGRAM_BOT_TOKEN"
+                    "（不要加引號、不要空白或換行），存檔後 Manual Deploy。"
+                    "不要把 token 貼到聊天，也不要截圖 Logs。"
+                )
+                raise SystemExit(1) from None
+            raise
 
 
 if __name__ == "__main__":
