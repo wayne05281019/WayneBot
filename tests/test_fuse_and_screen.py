@@ -943,20 +943,36 @@ class LookupCardTest(unittest.TestCase):
     def test_profit_cell_uses_low_palette_not_hardcoded_pink(self):
         import inspect
 
-        from cary_navigator import _CARD, profit_cell_style, render_decision_card_png
+        from cary_navigator import (
+            _CARD,
+            alert_cell_style,
+            bias_cell_style,
+            hl_cell_style,
+            price_cell_style,
+            profit_cell_style,
+            render_decision_card_png,
+            temp_cell_style,
+            vol_rank_cell_style,
+        )
 
-        bg0, fg0 = profit_cell_style(0.0, None, "#FFFFFF")
+        bg0, fg0 = profit_cell_style(0.0, None, _CARD["white"])
         self.assertEqual(bg0, _CARD["lo_fill"])
         self.assertEqual(fg0, _CARD["lo_ink"])
-        bg_leave, fg_leave = profit_cell_style(0.9, 0.0, "#FFFFFF")
+        bg_leave, fg_leave = profit_cell_style(0.9, 0.0, _CARD["white"])
         self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
-        self.assertEqual(fg_leave, _CARD["lo_ink"])
-        bg_run, fg_run = profit_cell_style(1.5, 0.9, "#FFFFFF")
-        self.assertEqual(bg_run, "#FFFFFF")
-        self.assertEqual(fg_run, _CARD["ink"])
+        bg_run, fg_run = profit_cell_style(1.5, 0.9, _CARD["white"])
+        self.assertEqual(bg_run, _CARD["white"])
         self.assertNotEqual(bg_run, _CARD["hi_fill"])
+        self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
+        self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
+        self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
+        self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["hi_fill"])
+        self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["lo_fill"])
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("profit_cell_style", src)
+        self.assertIn("hl_cell_style", src)
         self.assertNotIn("#FBEAF1", src)
 
     def test_card_bold_and_body_use_different_font_weights(self):
