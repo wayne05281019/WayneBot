@@ -226,17 +226,22 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertNotIn("官方法人張數＋價量才進這張表", html)
             self.assertIn("2330", html)
             self.assertNotIn("元大台灣50", html)
+            self.assertIn("tw.stock.yahoo.com/quote/2330", html)
             self.assertIn("┈┈┈", html)
             self.assertIn("較前日", html)
             for line in html.split("\n"):
                 if "半導體業" in line or "鋼鐵工業" in line:
                     self.assertNotIn("張", line, line)
-            self.assertIn("<code>+9,970張</code>", html)
-            self.assertIn("<code>+8,450張</code>", html)
+            self.assertIn("+9,970張", html)
+            self.assertIn("+8,450張", html)
             self.assertNotIn("</code>張", html)
             flow = format_flow_html(path, yyyymmdd="20260828")
             self.assertIn("盤後資金輪動", flow)
             self.assertIn("個股資金", flow)
+            self.assertIn("外資買超", flow)
+            self.assertIn("1. ", flow)
+            self.assertIn("2. ", flow)
+            self.assertIn("tw.stock.yahoo.com/quote/", flow)
             self.assertIn("┈┈┈", flow)
             self.assertNotIn("分點不抓", flow)
             self.assertNotIn("instant", flow)
@@ -1467,15 +1472,16 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
 
-    def test_watch_html_plain_names_and_send_disables_preview(self):
+    def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
         bot = object.__new__(WayneTelegramBot)
+        bot.db_path = None
         html, kb = bot._render_watch([{"stock_code": "2330", "stock_name": "台積電"}])
         self.assertIn("2330 台積電", html)
-        self.assertNotIn("yahoo.com", html)
-        self.assertNotIn("<a ", html)
+        self.assertIn("tw.stock.yahoo.com/quote/2330", html)
+        self.assertIn("<a ", html)
         self.assertIn("刪", html)
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         self.assertIn("rw:2330", datas)

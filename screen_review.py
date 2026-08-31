@@ -268,9 +268,18 @@ def format_review_html(db_path: str) -> str:
             lines.append("　".join(bits[4:]))
     if sample:
         lines.append("<b>那日較強幾檔</b>")
-        for bucket, sid, name, pct in sample:
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
+        for i, (bucket, sid, name, pct) in enumerate(sample, start=1):
+            title = (
+                html_stock_anchor(sid, name, db_path)
+                if html_stock_anchor
+                else f"{html_escape(sid)} {html_escape(name)}"
+            )
             lines.append(
-                f"• <code>{html_escape(sid)}</code> {html_escape(name)}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket))}"
+                f"{i}. {title}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket))}"
             )
     return "\n".join(lines)
 
@@ -512,9 +521,18 @@ def format_ai_review_html(db_path: str) -> str:
         lines.append("　".join(bits[:4]))
     if sample:
         lines.append("<b>最近買進隔日</b>")
-        for sid, name, pct, bucket, as_of in sample:
+        try:
+            from stock_links import html_stock_anchor
+        except Exception:
+            html_stock_anchor = None
+        for i, (sid, name, pct, bucket, as_of) in enumerate(sample, start=1):
             as_s = f"{as_of[4:6]}/{as_of[6:]}" if as_of and len(as_of) == 8 else str(as_of or "")
+            title = (
+                html_stock_anchor(sid, name, db_path)
+                if html_stock_anchor
+                else f"{html_escape(sid)} {html_escape(name)}"
+            )
             lines.append(
-                f"• <code>{html_escape(sid)}</code> {html_escape(name)}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
+                f"{i}. {title}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
             )
     return "\n".join(lines)

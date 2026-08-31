@@ -76,6 +76,29 @@ def html_pct_tight(pct) -> str:
     return f"<code>{html_escape(f'{p:+.1f}%')}</code>"
 
 
+def html_code_join(*parts: str) -> str:
+    """多個數字同一 <code>，長文才不會因為 entity 太多有的橘有的黑。"""
+    body = "　".join(str(p) for p in parts if p not in (None, ""))
+    return f"<code>{html_escape(body)}</code>"
+
+
+def qty_text(n, unit: str = "張", signed: bool = True) -> str:
+    try:
+        v = int(round(float(n or 0)))
+    except (TypeError, ValueError):
+        v = 0
+    if signed:
+        return f"0{unit}" if v == 0 else f"{v:+,}{unit}"
+    return f"{v:,}{unit}"
+
+
+def pct_text(pct) -> str:
+    try:
+        return f"{float(pct):+.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 DASH_LINE = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
 
 

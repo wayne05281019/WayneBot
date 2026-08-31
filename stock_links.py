@@ -80,3 +80,10 @@ def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str
     href = web.replace("&", "&amp;")
     # 只留一個連結，避免海選一則裡幾十個 <a> 被切訊息切到半截、或跳出奇摩大圖預覽
     return f'<a href="{href}">{esc}</a>'
+
+
+def ranked_stock_anchor(
+    rank: int, stock_id: str, stock_name: str = "", db_path: Optional[str] = None
+) -> str:
+    """1. 代號 股名＝奇摩連結。"""
+    return f"{int(rank)}. {html_stock_anchor(stock_id, stock_name, db_path)}"

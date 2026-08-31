@@ -323,18 +323,29 @@ def industry_of(conn: sqlite3.Connection, stock_id: str) -> str:
     return ind or "未分類"
 
 
-def _sector_entry(r: Dict[str, Any]) -> str:
+def _yahoo(sid, name, db_path: str = None) -> str:
+    from tg_layout import html_escape
+
+    try:
+        from stock_links import html_stock_anchor
+
+        return html_stock_anchor(sid, name, db_path)
+    except Exception:
+        return f"{html_escape(sid)} {html_escape(name)}".strip()
+
+
+def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
     """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
-    from tg_layout import html_escape, html_qty_tight, html_pct_tight
+    from tg_layout import html_escape, html_code_join, qty_text, pct_text
 
     three = int(r["three_net"])
     name = html_escape(r["industry"])
     lines = [
         f"＝＝{name}＝＝",
-        f"{html_qty_tight(three)}　{html_pct_tight(r['avg_pct'])}",
+        html_code_join(qty_text(three), pct_text(r["avg_pct"])),
     ]
     d = int(r.get("three_delta") or 0)
-    lines.append("較前日　持平" if d == 0 else f"較前日　{html_qty_tight(d)}")
+    lines.append("較前日　持平" if d == 0 else f"較前日　{html_code_join(qty_text(d))}")
     if three < 0:
         sid = r.get("top_sell_id") or ""
         sname = r.get("top_sell_name") or ""
@@ -346,9 +357,7 @@ def _sector_entry(r: Dict[str, Any]) -> str:
         lots = int(r.get("top_buy_three") or 0)
         tag = "買超最多"
     if sid:
-        lines.append(
-            f"★ {tag}　<code>{html_escape(sid)}</code> {html_escape(sname)}　{html_qty_tight(lots)}"
-        )
+        lines.append(f"★ {tag}　{_yahoo(sid, sname, db_path)}　{html_code_join(qty_text(lots))}")
     return "\n".join(lines)
 
 
@@ -394,14 +403,22 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
         return join_dashed(*blocks)
     if inflow:
         blocks.append(
-            section("<b>資金流入（法人買超最多的 3 族）</b>", *_flow_stock_lines([_sector_entry(r) for r in inflow]))
+            section(
+                "<b>資金流入（法人買超最多的 3 族）</b>",
+                *_flow_stock_lines([_sector_entry(r, path) for r in inflow]),
+            )
         )
     if outflow:
         blocks.append(
-            section("<b>資金流出（法人賣超最多的 3 族）</b>", *_flow_stock_lines([_sector_entry(r) for r in outflow]))
+            section(
+                "<b>資金流出（法人賣超最多的 3 族）</b>",
+                *_flow_stock_lines([_sector_entry(r, path) for r in outflow]),
+            )
         )
     if accel and {r["industry"] for r in accel} != {r["industry"] for r in inflow}:
-        blocks.append(section("<b>較前日加碼</b>", *_flow_stock_lines([_sector_entry(r) for r in accel])))
+        blocks.append(
+            section("<b>較前日加碼</b>", *_flow_stock_lines([_sector_entry(r, path) for r in accel]))
+        )
     return join_dashed(*blocks)
 
 
@@ -465,7 +482,7 @@ def format_flow_html(
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
-    from tg_layout import kv, section, join_dashed, title_line, html_escape, html_qty_tight, html_pct_tight
+    from tg_layout import kv, section, join_dashed, title_line, html_code_join, qty_text, pct_text
 
     health = audit_import(path, ymd)
     cover = f"上市 {health['tw']}　上櫃 {health['two']}"
@@ -474,12 +491,11 @@ def format_flow_html(
     else:
         cover += "　開盤日兩邊都齊"
 
-    def line(r, col: str) -> str:
+    def line(r, col: str, rank: int) -> str:
         n = int(r[col] or 0)
         pct = float(r["pct_change"] or 0)
-        name = html_escape(str(r["stock_name"] or ""))
-        sid = html_escape(str(r["stock_id"]))
-        return f"<code>{sid}</code> {name}\n{html_qty_tight(n)}　{html_pct_tight(pct)}"
+        title = _yahoo(r["stock_id"], r["stock_name"], path)
+        return f"{rank}. {title}\n{html_code_join(qty_text(n), pct_text(pct))}"
 
     buy_f = _top(conn, ymd, "foreign_net", True)
     sell_f = _top(conn, ymd, "foreign_net", False)
@@ -525,50 +541,52 @@ def format_flow_html(
     blocks.append(
         section(
             "<b>外資買超</b>",
-            *_flow_stock_lines([line(r, "foreign_net") for r in buy_f]),
+            *_flow_stock_lines([line(r, "foreign_net", i) for i, r in enumerate(buy_f, start=1)]),
         )
     )
     blocks.append(
         section(
             "<b>外資賣超</b>",
-            *_flow_stock_lines([line(r, "foreign_net") for r in sell_f]),
+            *_flow_stock_lines([line(r, "foreign_net", i) for i, r in enumerate(sell_f, start=1)]),
         )
     )
+    trust_rows = [r for r in buy_t if int(r["trust_net"] or 0) > 0][:6]
     blocks.append(
         section(
             "<b>投信買超</b>",
-            *_flow_stock_lines(
-                [line(r, "trust_net") for r in buy_t if int(r["trust_net"] or 0) > 0][:6]
-            ),
+            *_flow_stock_lines([line(r, "trust_net", i) for i, r in enumerate(trust_rows, start=1)]),
         )
     )
     if hot:
         bits = []
-        for r in hot:
+        for i, r in enumerate(hot, start=1):
             three = int(r["three_net"] or 0)
+            title = _yahoo(r["stock_id"], r["stock_name"], path)
             bits.append(
-                f"<code>{html_escape(r['stock_id'])}</code> {html_escape(r['stock_name'])}\n"
-                f"量 {html_qty_tight(int(r['volume']), signed=False)}　{html_pct_tight(r['pct_change'])}\n"
-                f"法人 {html_qty_tight(three)}"
+                f"{i}. {title}\n"
+                + html_code_join(
+                    f"量 {qty_text(int(r['volume']), signed=False)}",
+                    pct_text(r["pct_change"]),
+                    f"法人 {qty_text(three)}",
+                )
             )
         blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖）</b>", *_flow_stock_lines(bits)))
 
     if holds:
         bits = []
-        for h in holds:
+        for i, h in enumerate(holds, start=1):
             sid = str(h.get("stock_code") or "")
             q = qmap.get(sid)
             if not q:
-                bits.append(f"<code>{html_escape(sid)}</code> 當日無報價")
+                bits.append(f"{i}. {_yahoo(sid, '', path)}　當日無報價")
                 continue
             cost = float(h.get("cost_price") or 0)
             close = float(q["close"] or 0)
             pnl = ((close - cost) / cost * 100.0) if cost else 0.0
             three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
             bits.append(
-                f"<code>{html_escape(sid)}</code> {html_escape(q['stock_name'])}\n"
-                f"成本 {cost:g}　收 {close:g}　{html_pct_tight(pnl)}\n"
-                f"法人 {html_qty_tight(three)}\n"
+                f"{i}. {_yahoo(sid, q['stock_name'], path)}\n"
+                f"成本 {cost:g}　收 {close:g}　{html_code_join(pct_text(pnl), '法人 ' + qty_text(three))}\n"
                 f"{_verdict(float(q['pct_change'] or 0), three, int(q['foreign_net'] or 0))}"
             )
         blocks.append(section("<b>你的持股 vs 當日資金</b>", *_flow_stock_lines(bits)))
@@ -577,14 +595,16 @@ def format_flow_html(
 
     if watch_ids:
         bits = []
+        n = 0
         for sid in watch_ids[:8]:
             q = qmap.get(sid)
             if not q:
                 continue
+            n += 1
             three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
             bits.append(
-                f"<code>{html_escape(sid)}</code> {html_escape(q['stock_name'])}\n"
-                f"{html_pct_tight(q['pct_change'])}　法人 {html_qty_tight(three)}"
+                f"{n}. {_yahoo(sid, q['stock_name'], path)}\n"
+                + html_code_join(pct_text(q["pct_change"]), f"法人 {qty_text(three)}")
             )
         if bits:
             blocks.append(section("<b>觀察清單</b>", *_flow_stock_lines(bits)))

@@ -337,7 +337,12 @@ class WayneTelegramBot:
         for r in shown:
             c = str(r.get("stock_code") or "")
             n = str(r.get("stock_name") or "")
-            lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
+            try:
+                from stock_links import html_stock_anchor
+
+                lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
+            except Exception:
+                lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
