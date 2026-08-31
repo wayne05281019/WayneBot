@@ -64,6 +64,41 @@ def html_pct(pct, width: int = 7) -> str:
     return f"<code>{html_escape(body)}</code>%"
 
 
+def price_change(close, pct, yesterday=None):
+    """現價相對昨收差幾元。有昨收直接減；否則用漲跌％反推。"""
+    try:
+        y = float(yesterday) if yesterday not in (None, "", 0, 0.0) else None
+    except (TypeError, ValueError):
+        y = None
+    if y and y > 0:
+        try:
+            return round(float(close) - y, 2)
+        except (TypeError, ValueError):
+            return None
+    try:
+        c, p = float(close), float(pct)
+    except (TypeError, ValueError):
+        return None
+    if p == -100:
+        return None
+    yest = c / (1.0 + p / 100.0)
+    return round(c - yest, 2)
+
+
+def html_move(change, pct) -> str:
+    """奇摩式漲跌：先金額再％。下跌 ▼ 5.50（-3.05%），上漲 ▲。"""
+    try:
+        d = float(change)
+        p = float(pct)
+    except (TypeError, ValueError):
+        return "—"
+    if abs(d) < 0.005 and abs(p) < 0.005:
+        return html_escape("0.00（0.00%）")
+    arrow = "▲" if d > 0 else "▼"
+    body = f"{arrow} {abs(d):.2f}（{p:+.2f}%）"
+    return f"<b>{html_escape(body)}</b>"
+
+
 def title_line(kind: str, code: str, name: str = "", extra: str = "") -> str:
     head = f"{html_escape(kind)}　<b>{html_escape(code)} {html_escape(name)}</b>".strip()
     if extra:

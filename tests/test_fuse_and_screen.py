@@ -900,6 +900,7 @@ class LookupCardTest(unittest.TestCase):
             self.assertEqual(len(calls), 1)
             self.assertEqual(a["close"], b["close"])
             self.assertEqual(float(a["close"]), 100.0)
+            self.assertEqual(a["change"], 1.0)
         finally:
             live_quote._SESSION.get = old
             with live_quote._QUOTE_LOCK:
@@ -910,6 +911,19 @@ class LookupCardTest(unittest.TestCase):
 
         self.assertEqual(stock_btn_label("2330", "台積電"), "2330 台積電")
         self.assertNotIn("看這檔", stock_btn_label("2303", "聯電"))
+
+    def test_html_move_shows_dollars_like_yahoo(self):
+        from tg_layout import html_move, price_change
+
+        down = html_move(-5.50, -3.05)
+        self.assertIn("▼", down)
+        self.assertIn("5.50", down)
+        self.assertIn("-3.05%", down)
+        up = html_move(5.50, 3.05)
+        self.assertIn("▲", up)
+        self.assertIn("+3.05%", up)
+        self.assertEqual(price_change(175.0, -3.05, yesterday=180.5), -5.5)
+        self.assertAlmostEqual(price_change(175.0, -3.05), -5.5, places=1)
 
     def test_screen_ma60_cross_and_bounce(self):
         import pandas as pd
