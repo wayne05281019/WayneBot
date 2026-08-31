@@ -299,7 +299,7 @@ def industry_of(conn: sqlite3.Connection, stock_id: str) -> str:
 
 
 def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> str:
-    from tg_layout import kv, section, join_sections, title_line, html_escape
+    from tg_layout import kv, section, join_sections, title_line, html_escape, html_qty, html_pct
 
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
@@ -320,11 +320,10 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
 
     def sector_line(r: Dict[str, Any], show_delta: bool = True) -> str:
         three = int(r["three_net"])
-        sign = "+" if three > 0 else ""
-        bit = f"{html_escape(r['industry'])}　{sign}{three:,}張　{float(r['avg_pct']):+.1f}%"
+        bit = f"{html_escape(r['industry'])}　{html_qty(three, width=10)}　{html_pct(r['avg_pct'])}"
         if show_delta:
             d = int(r["three_delta"])
-            ds = f"{d:+,}張" if d else "持平"
+            ds = html_qty(d, width=10) if d else "持平"
             bit += f"　較前日 {ds}"
         if three < 0:
             sid = r.get("top_sell_id") or ""
@@ -337,10 +336,9 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
             lots = int(r.get("top_buy_three") or 0)
             tag = "買超最多"
         if sid:
-            tsign = "+" if lots > 0 else ""
             bit += (
                 f"\n　{tag} <code>{html_escape(sid)}</code> {html_escape(name)}"
-                f"　{tsign}{lots:,}張"
+                f"　{html_qty(lots, width=10)}"
             )
         return bit
 
@@ -427,7 +425,7 @@ def format_flow_html(
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
-    from tg_layout import kv, section, join_sections, title_line
+    from tg_layout import kv, section, join_sections, title_line, html_qty, html_pct
 
     health = audit_import(path, ymd)
     cover = f"上市 {health['tw']}　上櫃 {health['two']}"
@@ -441,8 +439,7 @@ def format_flow_html(
         pct = float(r["pct_change"] or 0)
         name = str(r["stock_name"] or "")
         sid = str(r["stock_id"])
-        sign = "+" if n > 0 else ""
-        return f"<code>{sid}</code> {name}　{sign}{n:,}張　{pct:+.1f}%"
+        return f"<code>{sid}</code> {name}　{html_qty(n)}　{html_pct(pct)}"
 
     buy_f = _top(conn, ymd, "foreign_net", True)
     sell_f = _top(conn, ymd, "foreign_net", False)
@@ -508,8 +505,8 @@ def format_flow_html(
         for r in hot:
             three = int(r["three_net"] or 0)
             bits.append(
-                f"<code>{r['stock_id']}</code> {r['stock_name']}　量 {int(r['volume']):,}張　"
-                f"{float(r['pct_change'] or 0):+.1f}%　法人 {three:+,}張"
+                f"<code>{r['stock_id']}</code> {r['stock_name']}　量 {html_qty(int(r['volume']), signed=False)}　"
+                f"{html_pct(r['pct_change'])}　法人 {html_qty(three)}"
             )
         blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖）</b>", *bits))
 
@@ -526,8 +523,8 @@ def format_flow_html(
             pnl = ((close - cost) / cost * 100.0) if cost else 0.0
             three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
             bits.append(
-                f"<code>{sid}</code> {q['stock_name']}　成本 {cost:g} 收 {close:g}　{pnl:+.1f}%　"
-                f"法人 {three:+,}張\n　{_verdict(float(q['pct_change'] or 0), three, int(q['foreign_net'] or 0))}"
+                f"<code>{sid}</code> {q['stock_name']}　成本 {cost:g} 收 {close:g}　{html_pct(pnl)}　"
+                f"法人 {html_qty(three)}\n　{_verdict(float(q['pct_change'] or 0), three, int(q['foreign_net'] or 0))}"
             )
         blocks.append(section("<b>你的持股 vs 當日資金</b>", *bits))
     elif user_id:
@@ -541,7 +538,7 @@ def format_flow_html(
                 continue
             three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
             bits.append(
-                f"<code>{sid}</code> {q['stock_name']}　{float(q['pct_change'] or 0):+.1f}%　法人 {three:+,}張"
+                f"<code>{sid}</code> {q['stock_name']}　{html_pct(q['pct_change'])}　法人 {html_qty(three)}"
             )
         if bits:
             blocks.append(section("<b>觀察清單</b>", *bits))

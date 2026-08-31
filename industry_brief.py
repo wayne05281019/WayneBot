@@ -281,7 +281,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
 
 
 def format_industry_html(stock_id: str, db_path: str = None) -> str:
-    from tg_layout import html_escape, join_sections, kv, section, title_line
+    from tg_layout import html_escape, html_pct, html_qty, join_sections, kv, kv_html, section, title_line
 
     path = db_path or get_db_path()
     snap = industry_snapshot(path, stock_id)
@@ -311,11 +311,11 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     month = str(snap.get("month") or "")
     mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
     if snap["my_yoy"] is not None:
-        yoy_line = f"這檔 YoY {snap['my_yoy']:+.1f}%"
+        yoy_line = f"這檔 YoY {html_pct(snap['my_yoy'])}"
         if snap["my_mom"] is not None:
-            yoy_line += f"　MoM {snap['my_mom']:+.1f}%"
+            yoy_line += f"　MoM {html_pct(snap['my_mom'])}"
         if snap["yoy_med"] is not None:
-            yoy_line += f"　同業中位 YoY {snap['yoy_med']:+.1f}%（{snap['yoy_n']} 家有月報）"
+            yoy_line += f"　同業中位 YoY {html_pct(snap['yoy_med'])}（{snap['yoy_n']} 家有月報）"
         story = _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")
     else:
         yoy_line = "這檔還沒有月營收列"
@@ -330,7 +330,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     blocks.append(
         section(
             "<b>營收看同業</b>",
-            kv("月營收", f"{mlabel}　{yoy_line}"),
+            kv_html("月營收", f"{html_escape(mlabel)}　{yoy_line}"),
             story,
             kv("季報", gm_line),
             gm_story,
@@ -340,7 +340,6 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     as_of = snap["as_of"]
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
     three = int(snap["three_net"] or 0)
-    sign = "+" if three > 0 else ""
     if three > 0 and snap["industry"] in (snap.get("inflow") or []):
         flow_story = "這族今天在法人買超最多的前 3 族裡。"
     elif three < 0 and snap["industry"] in (snap.get("outflow") or []):
@@ -364,7 +363,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         section(
             "<b>這族資金</b>",
             kv("基準日", as_s),
-            kv("法人合計", f"{sign}{three:,}張"),
+            kv_html("法人合計", html_qty(three)),
             flow_story,
             streak_line,
             "張數是官方法人，不是分點。公開籌碼會落後、也會幌。",
@@ -375,7 +374,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         if not rows:
             return "—"
         return "　".join(
-            f"<code>{html_escape(r['stock_id'])}</code> {html_escape(r['stock_name'])} {r['yoy']:+.1f}%"
+            f"<code>{html_escape(r['stock_id'])}</code> {html_escape(r['stock_name'])} {html_pct(r['yoy'])}"
             for r in rows
         )
 

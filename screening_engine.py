@@ -439,6 +439,16 @@ def _chip_plain(item: Dict[str, Any]) -> str:
     return f"外資{_n('foreign_net')}張　投信{_n('trust_net')}張　自營{_n('dealer_net')}張"
 
 
+def _chip_html(item: Dict[str, Any]) -> str:
+    from tg_layout import html_qty
+
+    return (
+        f"外資{html_qty(item.get('foreign_net'))}"
+        f"　投信{html_qty(item.get('trust_net'))}"
+        f"　自營{html_qty(item.get('dealer_net'))}"
+    )
+
+
 def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
     """當沖／隔日沖：保險進多少、出多少、守哪裡。"""
     lines: List[str] = []
@@ -468,6 +478,8 @@ def _safety_plan_html(item: Dict[str, Any]) -> List[str]:
 
 
 def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
+    from tg_layout import html_qty
+
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
     try:
@@ -507,9 +519,9 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         f"<b>{idx}.</b> {title}",
         f"格局　{regime}",
         f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
-        f"量　　{vol:,}張　量比　{_q_html(item.get('q60r'))}" + (f"　額　{html_escape(to_s)}" if to_s else ""),
+        f"量　　{html_qty(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}" + (f"　額　{html_escape(to_s)}" if to_s else ""),
         f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
-        f"法人　{html_escape(_chip_plain(item))}",
+        f"法人　{_chip_html(item)}",
     ]
     if notices:
         body.append("注意　" + "　".join(notices))
@@ -526,6 +538,8 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
 
 
 def _compact_line(item: Dict[str, Any]) -> str:
+    from tg_layout import html_qty
+
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
     q = item.get("q60r")
@@ -565,7 +579,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
     return (
         f"{html_escape(sid)} {html_escape(sname)}　"
         f"{html_escape(_regime_label(item))}　收{_px_str(item.get('close'))}　{pct}　"
-        f"量{int(item.get('volume') or 0):,}張　{html_escape(q_s)}{extra}{plan}"
+        f"量{html_qty(item.get('volume'), signed=False)}　{html_escape(q_s)}{extra}{plan}"
     )
 
 
