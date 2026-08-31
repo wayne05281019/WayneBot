@@ -1161,7 +1161,7 @@ class AIDeskTest(unittest.TestCase):
     def test_run_ai_desk_actually_buys(self):
         import os
         import tempfile
-        from ai_trader import AI_USER, run_ai_desk
+        from ai_trader import AI_USER, MAX_SLOTS, run_ai_desk
         from portfolio_engine import PortfolioEngine
 
         fd, path = tempfile.mkstemp(suffix=".db")
@@ -1199,8 +1199,8 @@ class AIDeskTest(unittest.TestCase):
             by_id = {p["stock_id"]: p for p in summary["positions"]}
             self.assertIn("2330", by_id)
             self.assertEqual(by_id["2330"]["shares"], 1000)
-            self.assertEqual(by_id["2303"]["shares"], 2000)
-            self.assertAlmostEqual(ai.get("slot") or 0, 100000.0)
+            self.assertEqual(by_id["2303"]["shares"], 3000)
+            self.assertAlmostEqual(ai.get("slot") or 0, 500000.0 / MAX_SLOTS, delta=1)
             html = ai.get("html") or ""
             self.assertIn("AI 模擬帳戶", html)
             self.assertIn("已用槽", html)
@@ -1231,7 +1231,7 @@ class AIDeskTest(unittest.TestCase):
             eng = PortfolioEngine(path)
             eng.ensure_user_exists(AI_USER)
             conn = sqlite3.connect(path)
-            for i, sid in enumerate(("1101", "1102", "1103", "1104"), 1):
+            for i, sid in enumerate(("1101", "1102"), 1):
                 conn.execute(
                     """
                     INSERT INTO user_positions

@@ -437,7 +437,7 @@ class MainRunner:
         session: str = "",
         notify: bool = True,
     ) -> Dict[str, Any]:
-        """模擬倉真正下單（wayne_ai／50 萬）。有名單才買，最多 5 檔。"""
+        """模擬倉真正下單（wayne_ai／50 萬）。有名單才買，最多 3 檔。"""
         try:
             from ai_trader import run_ai_desk
 

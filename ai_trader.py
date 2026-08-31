@@ -1,4 +1,4 @@
-"""WayneBot AI 模擬操盤：50 萬本金、分 5 等份、海選紀律買賣、成交寫庫復盤。
+"""WayneBot AI 模擬操盤：50 萬本金、最多分 3 等份、海選紀律買賣、成交寫庫復盤。
 
 不會改寫自己的程式碼；進化是調整倉位比例與哪類海選最近準（寫入資料庫）。
 這是模擬倉，不是真實下單。
@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from portfolio_engine import PortfolioEngine
 
 AI_USER = "wayne_ai"
-MAX_SLOTS = 5
+MAX_SLOTS = 3
 STOP_PCT = -7.0
 TAKE_PCT = 8.0
 STOP_MULT = 0.93
@@ -166,7 +166,7 @@ def _adapt_from_trades(engine: PortfolioEngine, db_path: str) -> str:
     cur = _load_size_mult(db_path)
     wr = wr_buy if wr_buy is not None else wr_sell
     if wr is None:
-        return "樣本不足，維持原倉位比例（本金仍分 5 等份）"
+        return "樣本不足，維持原倉位比例（本金仍分 3 等份）"
     if wr < 0.35:
         _save_size_mult(db_path, cur * 0.85)
         notes.append("縮小單筆倉位")
@@ -277,7 +277,7 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
 
     lines = [
         "<b>AI 模擬帳戶</b>",
-        "這是模擬倉，不是真實下單。本金分 5 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
+        "這是模擬倉，不是真實下單。本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
         "停損 −7%、停利 ＋8%。06:30 海選後與盤後融合自動買賣；進化寫進資料庫，不改程式檔。",
         kv_html("總資產", html_money(s["total_assets"], signed=False), 8),
         kv_html("現金", html_money(s["cash"], signed=False), 8),
@@ -290,7 +290,7 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
     ]
     if not s["positions"]:
         lines.append(
-            f"<i>尚無持倉。5 個空槽、每槽 {slot:,.0f}。有名單才買；貼月高／美股逆風／當沖名單不隔夜。</i>"
+            f"<i>尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；貼月高／美股逆風／當沖名單不隔夜。</i>"
         )
     else:
         lines.append("<b>持倉</b>")

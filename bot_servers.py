@@ -93,7 +93,7 @@ HELP_TOPICS = {
     "portfolio": (
         "<b>持股怎麼用</b>\n"
         "上半是你手記的真實買入，不是觀察。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
-        "下半是 AI 模擬帳戶（50 萬本金分 5 等份，單檔不超過一槽）。06:30 海選後與盤後融合會自動買賣，也可按「AI操盤」。\n"
+        "下半是 AI 模擬帳戶（50 萬本金最多分 3 等份，單檔不超過一槽）。06:30 海選後與盤後融合會自動買賣，也可按「AI操盤」。\n"
         "成交寫進庫，隔日用已有日 K 復盤；弱的類別下一輪少買。這是模擬倉，不是真實下單。"
     ),
     "watch": (
@@ -980,7 +980,7 @@ class WayneTelegramBot:
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
                 bits.append(
-                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。已滿 5 檔或名單被高低卡／美股濾掉。</i>"
+                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。已滿 3 檔或名單被高低卡／美股濾掉。</i>"
                 )
             if ai.get("bought"):
                 bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))
