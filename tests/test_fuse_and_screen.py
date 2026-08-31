@@ -572,6 +572,57 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
         self.assertEqual(cells[0][1], 70.0)
 
+    def test_label_and_value_never_collide_on_one_row(self):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from cary_navigator import _text_w, fit_label_value
+
+        row_w, fig_w, gap = 91.6, 4.62, 5.5
+        cases = [
+            (["距120／240／480低", "距長期低"], "+237.0%　+563.0%　+836.3%"),
+            (["距120／240／480低", "距長期低"], "+1237.0%　+5563.0%　+8836.3%"),
+            ("距20日高（賣壓）", "+0.0%"),
+            ("月／季空間", "42%　／　157%"),
+        ]
+        for labels, value in cases:
+            with self.subTest(value=value):
+                label, fa, fb = fit_label_value(labels, value, row_w, fig_w, gap=gap)
+                used = (_text_w(label, fa, fig_w, 800)
+                        + _text_w(value, fb, fig_w, 800))
+                self.assertLessEqual(used + gap, row_w + 0.01)
+                self.assertGreaterEqual(fb, 9.5)
+
+    def test_nav_arrow_darkens_on_same_hue_band(self):
+        from cary_navigator import _NAV_TONE, _nav_tone, _wcag
+
+        h20, l20 = 100.0, 60.0
+        # 高點箭頭飄到粉紅區、低點箭頭掉到綠區時要換深色，否則融進背景。
+        self.assertEqual(_nav_tone("h20_near", 105.0, h20, l20), _NAV_TONE["h20_near"][1])
+        self.assertEqual(_nav_tone("h20_near", 80.0, h20, l20), _NAV_TONE["h20_near"][0])
+        self.assertEqual(_nav_tone("l20_near", 55.0, h20, l20), _NAV_TONE["l20_near"][1])
+        self.assertEqual(_nav_tone("l20_near", 80.0, h20, l20), _NAV_TONE["l20_near"][0])
+        for kind, band in (("h20_near", "#F8BBD0"), ("l20_near", "#C8E6C9")):
+            with self.subTest(kind=kind):
+                light, dark = _NAV_TONE[kind]
+                self.assertGreater(_wcag(dark, band), _wcag(light, band))
+
+    def test_card_white_text_backgrounds_have_enough_contrast(self):
+        from cary_navigator import _CARD, _wcag
+
+        for key in ("pill_hi", "pill_lo", "tag", "navy"):
+            with self.subTest(key=key):
+                self.assertGreaterEqual(_wcag("#FFFFFF", _CARD[key]), 4.5)
+
+    def test_card_bold_and_body_use_different_font_weights(self):
+        from cary_navigator import _weight_step
+
+        self.assertGreater(_weight_step("heavy" and 900), _weight_step(500))
+        self.assertEqual(_weight_step(800), _weight_step(900))
+        self.assertEqual(_weight_step(700), _weight_step(500))
+        # 可變字型預設是 Thin，實際畫圖要用壓出來的靜態字重，不能落回 100。
+        self.assertGreaterEqual(_weight_step(500), 400)
+
     def test_decision_card_png_with_long_lows(self):
         import tempfile
 
@@ -704,24 +755,29 @@ class LookupCardTest(unittest.TestCase):
             "20260827",
             "20260828",
         ]
-        paths = []
+        long_dates = [f"202607{d:02d}" for d in range(1, 21)]
+        paths, heights = [], []
         try:
-            for n, tbl in (
-                (1, pd.DataFrame([row("20260828")])),
-                (8, pd.DataFrame([row(d) for d in dates])),
+            for tbl in (
+                pd.DataFrame([row("20260828")]),
+                pd.DataFrame([row(d) for d in dates]),
+                pd.DataFrame([row(d) for d in long_dates]),
             ):
                 fd, path = tempfile.mkstemp(suffix=".png")
                 os.close(fd)
                 paths.append(path)
                 card["table"] = tbl
                 render_decision_card_png(card, path)
-            with Image.open(paths[0]) as im1:
-                h1 = im1.size[1]
-            with Image.open(paths[1]) as im8:
-                h8 = im8.size[1]
-            self.assertLess(h1, 950)
-            self.assertGreater(h8, h1 + 180)
-            self.assertLess(h8 - h1, 500)
+                with Image.open(path) as im:
+                    heights.append(im.size[1])
+            h1, h8, h20 = heights
+            # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。
+            per_row = (h8 - h1) / 7.0
+            self.assertGreater(per_row, 20)
+            self.assertLess(per_row, 120)
+            self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=2.0)
+            overhead = h1 - per_row
+            self.assertGreater(overhead, per_row * 8)
         finally:
             for path in paths:
                 if os.path.exists(path):
