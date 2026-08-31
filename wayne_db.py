@@ -293,6 +293,12 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
+            from screen_review import ensure_screen_review_table
+
+            ensure_screen_review_table(path)
+        except Exception:
+            pass
+        try:
             from portfolio_engine import PortfolioEngine
 
             PortfolioEngine(path)
