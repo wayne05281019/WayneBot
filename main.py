@@ -165,6 +165,7 @@ def run_web():
 
     token = get_telegram_token()
     if token and not skip_telegram_polling():
+        logger.info("載入 Telegram 模組（尚未出圖，先開聽筒）")
         from bot_servers import WayneTelegramBot
 
         logger.info("正在啟動 Telegram 聽筒")

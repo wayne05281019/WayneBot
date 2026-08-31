@@ -23,13 +23,18 @@ from wayne_db import (
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
 from ai_trader import format_ai_desk_html
-from cary_navigator import (
-    generate_card_with_chart,
-    generate_chart,
-    generate_decision_card,
-    html_escape,
-)
 from chips import generate_chips_image
+
+logger = logging.getLogger(__name__)
+
+
+def html_escape(val) -> str:
+    return (
+        str(val if val is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 try:
     from telegram import (
@@ -53,8 +58,6 @@ except ImportError:
     TELEGRAM_AVAILABLE = False
     Update = Any  # type: ignore
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
-
-logger = logging.getLogger(__name__)
 
 HELP_TOPICS = {
     "menu": (
@@ -457,6 +460,8 @@ class WayneTelegramBot:
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
             return
+        from cary_navigator import generate_card_with_chart, generate_chart, generate_decision_card
+
         try:
             packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
             html = packed[0]
@@ -916,6 +921,8 @@ class WayneTelegramBot:
             )
             return
         await message.reply_text(f"查詢 {code}…")
+        from cary_navigator import generate_card_with_chart
+
         try:
             packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
         except Exception:
