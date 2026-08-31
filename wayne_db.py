@@ -305,6 +305,12 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
+            from screen_sessions import ensure_screen_session_table
+
+            ensure_screen_session_table(path)
+        except Exception:
+            pass
+        try:
             from portfolio_engine import PortfolioEngine
 
             PortfolioEngine(path)

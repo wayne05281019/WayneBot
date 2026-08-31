@@ -493,5 +493,67 @@ class TelegramAlignTest(unittest.TestCase):
         self.assertNotIn("&lt;code&gt;", card)
 
 
+class DualSessionTest(unittest.TestCase):
+    def test_overlap_marks_and_line_share(self):
+        from screen_sessions import mark_both_sessions, overlap_ids, save_screen_session
+        from screening_engine import format_line_share_text
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            eve = {
+                "day_trade": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100, "hi20_close": 110},
+                    {"stock_id": "2002", "stock_name": "中鋼", "close": 30, "hi20_close": 32},
+                ]
+            }
+            morn = {
+                "day_trade": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100, "hi20_close": 110, "chase_warning": False},
+                    {"stock_id": "2303", "stock_name": "聯電", "close": 50, "hi20_close": 51, "chase_warning": True},
+                ]
+            }
+            save_screen_session(path, "20260828", "evening", eve)
+            save_screen_session(path, "20260828", "morning", morn)
+            both = overlap_ids(path, "20260828")
+            self.assertEqual(both, {"2330"})
+            mark_both_sessions(morn, both)
+            self.assertTrue(morn["day_trade"][0].get("both_sessions"))
+            self.assertEqual(morn["day_trade"][0]["stock_id"], "2330")
+            line = format_line_share_text(morn, "20260828", session_plain="今早 06:30")
+            self.assertIn("【雙時段】", line)
+            self.assertIn("2330", line)
+        finally:
+            os.remove(path)
+
+    def test_midday_classify_uses_high_low_card(self):
+        from midday_review import classify_row, format_midday_line
+
+        row = {"hi20_close": 120.0, "entry_price": 99.0}
+        self.assertEqual(classify_row(row, {"close": 97}), "ok")
+        self.assertEqual(classify_row(row, {"close": 119}), "chase")
+        self.assertEqual(classify_row(row, {"close": 100}), "above_entry")
+        text = format_midday_line("20260828", {"ok": ["2330 台積電 現97"], "chase": [], "above_entry": [], "no_quote": []})
+        self.assertIn("建議切入", text)
+        self.assertIn("06:30", text)
+
+    def test_job_kind_evening_and_midday(self):
+        from config import job_kind
+
+        old = os.environ.get("WAYNE_JOB")
+        try:
+            os.environ["WAYNE_JOB"] = "midday_review"
+            self.assertEqual(job_kind([]), "midday_review")
+            os.environ["WAYNE_JOB"] = "evening_screen"
+            self.assertEqual(job_kind([]), "evening_screen")
+        finally:
+            if old is None:
+                os.environ.pop("WAYNE_JOB", None)
+            else:
+                os.environ["WAYNE_JOB"] = old
+
+
 if __name__ == "__main__":
     unittest.main()
