@@ -2,9 +2,19 @@ name: WayneBot Daily Screening
 
 on:
   schedule:
-    # 台灣時間週一至週五 16:30（UTC 08:30）
+    # 台灣時間週一至週五 16:30（UTC 08:30）— 只融合行情，不寄海選
     - cron: '30 8 * * 1-5'
+    # 台灣時間週一至週五 07:30（UTC 日～四 23:30）— 用完整昨收寄海選
+    - cron: '30 23 * * 0-4'
   workflow_dispatch:
+    inputs:
+      job:
+        description: increment=盤後抓數；morning_screen=早上只寄海選
+        type: choice
+        options:
+          - increment
+          - morning_screen
+        default: increment
 
 permissions:
   contents: write
@@ -27,6 +37,19 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: 決定工作種類
+        id: job
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            JOB="${{ github.event.inputs.job }}"
+          elif [ "${{ github.event.schedule }}" = "30 23 * * 0-4" ]; then
+            JOB="morning_screen"
+          else
+            JOB="increment"
+          fi
+          echo "job=$JOB" >> "$GITHUB_OUTPUT"
+          echo "本次工作：$JOB"
+
       - name: 從 Releases 下載核心資料庫 (Download Database)
         run: |
           echo "正在從 GitHub Releases 下載核心資料庫..."
@@ -41,9 +64,10 @@ jobs:
             echo "警告：zip 內找不到 .db，流水線將建立空白庫"
           fi
 
-      - name: 執行每日選股流水線 (Run Main Runner)
+      - name: 執行每日工作
         env:
-          WAYNE_MODE: once
+          WAYNE_JOB: ${{ steps.job.outputs.job }}
+          WAYNE_MODE: ${{ steps.job.outputs.job }}
           WAYNE_DB_PATH: data/wayne_market.db
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -54,7 +78,7 @@ jobs:
           python main.py --once
 
       - name: 把今日增量融回 Release 行情庫
-        if: success()
+        if: success() && steps.job.outputs.job == 'increment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -71,13 +71,8 @@ def get_github_release_url() -> str:
 
 
 def is_once_mode(argv=None) -> bool:
-    """GitHub Actions / 本機一次性盤後排程：跑完流水線即結束。"""
-    import sys
-    args = argv if argv is not None else sys.argv[1:]
-    if "--once" in args or "--daily" in args:
-        return True
-    mode = (os.getenv("WAYNE_MODE") or os.getenv("RUN_MODE") or "web").strip().lower()
-    return mode in ("once", "daily", "pipeline", "runner")
+    """GitHub Actions / 本機一次性工作：跑完即結束（不開 Web／輪詢）。"""
+    return job_kind(argv) in ("increment", "morning_screen")
 
 
 def taipei_now():
@@ -92,6 +87,36 @@ def taipei_now():
 
 def taipei_today_str() -> str:
     return taipei_now().strftime("%Y%m%d")
+
+
+def fuse_end_date(now=None) -> str:
+    """最後一個「可以融合收盤表」的日曆日。
+
+    證交所收盤表盤中就可能先出，櫃買不含定價表常要到 14:30 之後才穩。
+    15:30 前若把「今天」寫進 sqlite，海選／單檔查詢會停在只有上市、上櫃 0 的半套日。
+    """
+    from datetime import timedelta
+
+    now = now or taipei_now()
+    cutoff = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now >= cutoff:
+        return now.strftime("%Y%m%d")
+    return (now - timedelta(days=1)).strftime("%Y%m%d")
+
+
+def job_kind(argv=None) -> str:
+    """once／increment＝盤後抓數；morning_screen＝早上只寄海選；web＝常駐。"""
+    import sys
+
+    args = argv if argv is not None else sys.argv[1:]
+    mode = (os.getenv("WAYNE_JOB") or os.getenv("WAYNE_MODE") or os.getenv("RUN_MODE") or "").strip().lower()
+    if "--morning" in args or "--morning-screen" in args or mode in ("morning", "morning_screen", "screen"):
+        return "morning_screen"
+    if "--increment" in args or "--fuse" in args or mode in ("increment", "fuse"):
+        return "increment"
+    if "--once" in args or "--daily" in args or mode in ("once", "daily", "pipeline", "runner"):
+        return "increment"
+    return "web"
 
 
 def daily_scheduler_enabled() -> bool:

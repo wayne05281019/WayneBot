@@ -646,6 +646,53 @@ class DataFetcher:
                 print(f"📭 {target_date} 非交易日（兩邊官方都沒有行情）。")
             return 0
 
+        existing_tw, existing_two, _existing_n = self._market_counts_for_date(target_date)
+        try:
+            from import_health import should_commit_quote_fetch, sides_complete
+        except Exception:
+            should_commit_quote_fetch = None
+            sides_complete = None
+        new_tw, new_two = len(tw_records), len(two_records)
+        commit_ok = True
+        if should_commit_quote_fetch is not None:
+            commit_ok = should_commit_quote_fetch(
+                existing_tw=existing_tw,
+                existing_two=existing_two,
+                new_tw=new_tw,
+                new_two=new_two,
+            )
+        elif new_tw >= 800 and new_two < 600:
+            commit_ok = False
+        if not commit_ok:
+            try:
+                from config import fuse_end_date
+                cap = fuse_end_date()
+            except Exception:
+                cap = target_date
+            complete_existing = False
+            if sides_complete is not None:
+                complete_existing = sides_complete(existing_tw, existing_two)
+            else:
+                complete_existing = existing_tw >= 800 and existing_two >= 600
+            if target_date > cap and (existing_tw or existing_two) and not complete_existing:
+                conn = self.get_db_connection()
+                cur = conn.cursor()
+                cur.execute("DELETE FROM daily_quotes WHERE replace(date,'-','')=?", (target_date,))
+                gone = cur.rowcount
+                conn.commit()
+                conn.close()
+                print(
+                    f"🛑 {target_date} 收盤表尚未可融合（上市 {new_tw}／上櫃 {new_two}），"
+                    f"已撤回盤中半套 {gone} 列，避免海選停在上櫃 0"
+                )
+            else:
+                keep = f"庫內已有上市 {existing_tw}／上櫃 {existing_two}" if (existing_tw or existing_two) else "庫內此日仍空"
+                print(
+                    f"🛑 {target_date} 不寫入：上市 {new_tw}、上櫃 {new_two} 沒抓齊。"
+                    f"{keep}。海選只用兩邊都齊的交易日。"
+                )
+            return 0
+
         # 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
         tw_t86 = {}
         two_t86 = {}
@@ -719,13 +766,37 @@ class DataFetcher:
             print(f"⚠️ {target_date} 非交易日或尚無行情資料。")
             return 0
 
-    def fill_missing_market_days(self, end_date: str = None, max_days: int = 15) -> dict:
-        """從資料庫最新交易日的隔天補到台灣今日（假日自動略過）。"""
+    def _market_counts_for_date(self, target_date: str) -> tuple:
         try:
-            from config import taipei_today_str
-            end_date = end_date or taipei_today_str()
+            from import_health import count_markets
+            return count_markets(self.db_path, target_date)
         except Exception:
-            end_date = end_date or datetime.now().strftime("%Y%m%d")
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            row = cur.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END),
+                    COUNT(*)
+                FROM daily_quotes WHERE replace(date,'-','')=?
+                """,
+                (str(target_date).replace("-", "")[:8],),
+            ).fetchone()
+            conn.close()
+            return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
+
+    def fill_missing_market_days(self, end_date: str = None, max_days: int = 15) -> dict:
+        """從資料庫最新交易日的隔天補到「可融合收盤」當日（假日自動略過）。"""
+        try:
+            from config import fuse_end_date
+            cap = fuse_end_date()
+        except Exception:
+            cap = datetime.now().strftime("%Y%m%d")
+        end_date = str(end_date or cap).replace("-", "")[:8]
+        if end_date > cap:
+            print(f"⏳ 收盤表未齊前，融合截止改為 {cap}（不下寫 {end_date}）")
+            end_date = cap
         conn = self.get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT MAX(date) FROM daily_quotes;")
@@ -826,8 +897,8 @@ class DataFetcher:
             if wd >= 5:
                 continue
             thin = int(n or 0) < int(min_rows)
-            unbalanced = (int(tw or 0) >= 800 and int(two or 0) < 400) or (
-                int(two or 0) >= 400 and int(tw or 0) < 800
+            unbalanced = (int(tw or 0) >= 800 and int(two or 0) < 600) or (
+                int(two or 0) >= 600 and int(tw or 0) < 800
             )
             if not thin and not unbalanced:
                 continue
@@ -864,8 +935,8 @@ class DataFetcher:
             return {"thin": [], "filled": [], "holiday_or_empty": [], "still_thin": []}
         thin = []
         for d, n, tw, two in rows:
-            if int(n or 0) < int(min_rows) or (int(tw or 0) >= 800 and int(two or 0) < 400) or (
-                int(two or 0) >= 400 and int(tw or 0) < 800
+            if int(n or 0) < int(min_rows) or (int(tw or 0) >= 800 and int(two or 0) < 600) or (
+                int(two or 0) >= 600 and int(tw or 0) < 800
             ):
                 thin.append(str(d))
         have = {str(d) for d, *_rest in rows}
@@ -893,7 +964,7 @@ class DataFetcher:
                    SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) tw,
                    SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) two
             FROM daily_quotes GROUP BY date
-            HAVING n < ? OR (tw >= 800 AND two < 400) OR (two >= 400 AND tw < 800)
+            HAVING n < ? OR (tw >= 800 AND two < 600) OR (two >= 600 AND tw < 800)
             ORDER BY date
             """,
             (int(min_rows),),

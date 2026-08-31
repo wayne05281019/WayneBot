@@ -68,18 +68,20 @@ HELP_TOPICS = {
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
-        "盤後依營收轉強×量價等分類列出候選。\n"
+        "週一～五台灣 07:30 用「上市＋上櫃都齊」的昨收寄出，方便轉給家人。\n"
+        "當沖會寫保險進場、第一停利(+3%)、衝頂(+6%)、均價停損；隔日沖會寫尾盤買進區間與防守。\n"
         "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：看這檔＝現價＋四張圖；➕＝觀察。\n"
-        "Telegram 不能指定紅字，該注意的漲跌／S級／20低脫離／營收轉強用<b>粗體</b>；圖仍是紅漲綠跌。\n"
-        "不是立即下單清單。"
+        "其餘檔也把價位寫在排名裡，不必點開才看得到。不是立即下單清單。"
     ),
     "daytrade": (
         "<b>當沖怎麼用</b>\n"
-        "當日沖候選。藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。不是保證獲利。"
+        "保險進場＝不要追過當日收盤；第一停利＝+3% 先出一部分；衝頂＝+6%；保險停損＝當日均價跌破先走。\n"
+        "藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
-        "偏尾盤佈局、隔日應對。藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。"
+        "保險買進＝尾盤昨收附近、不要摸高；明早開高目標 +3.5%～+4.8%；衝頂 +7%；保險防守＝開盤與均價較低者，跌破先走。\n"
+        "藍字＝奇摩；看這檔＝現價＋圖；➕＝觀察。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -588,7 +590,7 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = (
             "<b>當沖候選</b>\n"
-            "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+            "<i>保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。</i>\n"
             + ("\n".join(cards) if cards else "<i>無</i>")
         )
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
@@ -603,7 +605,7 @@ class WayneTelegramBot:
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = (
             "<b>隔日沖候選</b>\n"
-            "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+            "<i>尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。</i>\n"
             + ("\n".join(cards) if cards else "<i>無</i>")
         )
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
@@ -1240,7 +1242,7 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = (
                 "<b>當沖候選</b>\n"
-                "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+                "<i>保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。</i>\n"
                 + ("\n".join(cards) if cards else "<i>無</i>")
             )
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
@@ -1254,7 +1256,7 @@ class WayneTelegramBot:
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = (
                 "<b>隔日沖候選</b>\n"
-                "<i>藍字＝奇摩。按鈕由上到下對應名單。</i>\n"
+                "<i>尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。</i>\n"
                 + ("\n".join(cards) if cards else "<i>無</i>")
             )
             picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
