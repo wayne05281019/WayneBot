@@ -211,6 +211,7 @@ class ScreeningEngine:
             "dealer_net": int(df['dealer_net'].iloc[-1]),
         }
 
+
     def execute_all_strategies(self, stock_dfs: Dict[str, pd.DataFrame]) -> Dict[str, List[Dict[str, Any]]]:
         """對所有通過流動性檢驗的標的執行 CaryBot 四大選股與動能定價"""
         res_sel_01 = []
@@ -224,6 +225,8 @@ class ScreeningEngine:
         for sid, df in stock_dfs.items():
             info = self.calculate_indicators(df)
             if not info:
+                continue
+            if _skip_long_term_high_push(info):
                 continue
 
             c = info["close"]
@@ -389,6 +392,25 @@ class ScreeningEngine:
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)
+
+
+def _skip_long_term_high_push(info: Dict[str, Any]) -> bool:
+    """舊版半年高／兩年高推播條件：整檔不進海選（分類已改，避免同條件從其他桶誤入）。"""
+    try:
+        c = float(info.get("close") or 0)
+        hi120 = float(info.get("hi120") or 0)
+        hi480 = float(info.get("hi480") or 0)
+        q = float(info.get("q60r") or 0)
+        pct = float(info.get("pct_change") or 0)
+    except (TypeError, ValueError):
+        return False
+    break120 = hi120 > 0 and c >= hi120
+    break480 = hi480 > 0 and c >= hi480
+    if break120 and q >= 2.5 and pct >= 3.0:
+        return True
+    if break480 and q >= 3.0 and pct >= 4.0:
+        return True
+    return False
 
 
 def html_escape(val) -> str:
