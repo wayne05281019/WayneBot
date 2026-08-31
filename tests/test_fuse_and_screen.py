@@ -112,6 +112,9 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("第一停利", html)
         self.assertIn("保險停損", html)
         self.assertIn("103", html)
+        chased = dict(item)
+        chased["chase_warning"] = True
+        self.assertIn("少追", _stock_card_html(chased, 1))
         payload = format_screening_payload({"day_trade": [item] * 12}, "20260828")
         blob = "\n".join(p["html"] for p in payload)
         self.assertNotIn("expandable", blob)

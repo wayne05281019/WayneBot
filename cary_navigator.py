@@ -187,7 +187,7 @@ class CaryNavigatorEngine:
             SELECT date, stock_name, open, high, low, close, volume, pct_change as change_pct
             FROM daily_quotes
             WHERE stock_id = ?
-            ORDER BY date DESC LIMIT 375;
+            ORDER BY date DESC LIMIT 520;
         """, conn, params=(stock_id,))
         conn.close()
 
@@ -220,6 +220,9 @@ class CaryNavigatorEngine:
         df["low_20"] = close_s.rolling(20, min_periods=1).min()
         df["high_60"] = close_s.rolling(60, min_periods=1).max()
         df["low_60"] = close_s.rolling(60, min_periods=1).min()
+        df["low_120"] = close_s.rolling(120, min_periods=20).min()
+        df["low_240"] = close_s.rolling(240, min_periods=40).min()
+        df["low_480"] = close_s.rolling(480, min_periods=80).min()
         # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」對齊 CaryBot：相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
         dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
         latest_dt = dts.iloc[-1]
@@ -311,6 +314,16 @@ class CaryNavigatorEngine:
             badges.append(f"120日量第 {int(latest['vol_rank_120'])} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
+        l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
+        l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
+        l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
+        c0 = float(latest["close"])
+        if l480 and c0 <= l480 * 1.02:
+            badges.append("近480日低")
+        elif l240 and c0 <= l240 * 1.02:
+            badges.append("近240日低")
+        elif l120 and c0 <= l120 * 1.02:
+            badges.append("近120日低")
         if qty60 < 900:
             badges.append("60日均量過小")
         if space_60 and space_60 < 16:
@@ -341,6 +354,9 @@ class CaryNavigatorEngine:
             "l10": l10, "dist_l10": _dist_l(l10),
             "l20": l20, "dist_l20": _dist_l(l20),
             "l60": l60, "dist_l60": _dist_l(l60),
+            "l120": l120, "dist_l120": _dist_l(l120) if l120 else None,
+            "l240": l240, "dist_l240": _dist_l(l240) if l240 else None,
+            "l480": l480, "dist_l480": _dist_l(l480) if l480 else None,
             "space_20": space_20,
             "space_60": space_60,
             "temp_c": latest["溫度計"],
@@ -903,6 +919,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv("距20日高", f"{card['dist_h20']:+.1f}%"),
             kv("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
             kv("距60根低", f"{card.get('dist_l60'):+.1f}%"),
+            kv("距120低", f"{card['dist_l120']:+.1f}%" if card.get("dist_l120") is not None else "—"),
             kv("月空間", f"{card['space_20']}%"),
             kv("季空間", f"{card['space_60']}%"),
             kv("月乖離", bias_s),

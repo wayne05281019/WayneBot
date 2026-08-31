@@ -182,8 +182,49 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
         ).fetchall()
         inflow = [str(r["industry"]) for r in ranks if int(r["three_net"] or 0) > 0][:3]
         outflow = [str(r["industry"]) for r in reversed(ranks) if int(r["three_net"] or 0) < 0][:3]
+        buy_streak = 0
+        sell_streak = 0
+        dates = [
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes
+                WHERE replace(date,'-','') <= ? ORDER BY d DESC LIMIT 8
+                """,
+                (as_of,),
+            ).fetchall()
+        ]
+        for i, d in enumerate(dates):
+            net = int(
+                conn.execute(
+                    """
+                    SELECT COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
+                    FROM daily_quotes q
+                    JOIN stock_universe u ON u.stock_id = q.stock_id
+                    WHERE replace(q.date,'-','')=? AND u.industry=? AND length(q.stock_id)=4
+                      AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                    """,
+                    (d, industry),
+                ).fetchone()[0]
+                or 0
+            )
+            if i == 0:
+                if net > 0:
+                    buy_streak = 1
+                elif net < 0:
+                    sell_streak = 1
+                else:
+                    break
+                continue
+            if buy_streak and net > 0:
+                buy_streak += 1
+            elif sell_streak and net < 0:
+                sell_streak += 1
+            else:
+                break
     else:
         inflow, outflow = [], []
+        buy_streak, sell_streak = 0, 0
 
     conn.close()
 
@@ -224,6 +265,8 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
         "my_gm": my_gm,
         "gm_med": gm_med,
         "three_net": three,
+        "buy_streak": buy_streak,
+        "sell_streak": sell_streak,
         "inflow": inflow,
         "outflow": outflow,
         "stronger": [
@@ -308,12 +351,22 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         flow_story = "這族法人合計賣超。"
     else:
         flow_story = "這族法人加總接近 0，或法人還沒寫進這天。"
+    streak_line = "—"
+    if int(snap.get("buy_streak") or 0) >= 2:
+        streak_line = f"這族法人連 {int(snap['buy_streak'])} 個交易日合計買超"
+    elif int(snap.get("sell_streak") or 0) >= 2:
+        streak_line = f"這族法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
+    elif int(snap.get("buy_streak") or 0) == 1:
+        streak_line = "這族今天合計買超（尚未連兩日）"
+    elif int(snap.get("sell_streak") or 0) == 1:
+        streak_line = "這族今天合計賣超（尚未連兩日）"
     blocks.append(
         section(
             "<b>這族資金</b>",
             kv("基準日", as_s),
             kv("法人合計", f"{sign}{three:,}張"),
             flow_story,
+            streak_line,
             "張數是官方法人，不是分點。公開籌碼會落後、也會幌。",
         )
     )

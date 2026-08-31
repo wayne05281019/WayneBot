@@ -122,6 +122,9 @@ class ScreeningEngine:
         # Hi480: 前 480 日最高價（兩年大底）
         hi480 = high_series.iloc[-481:-1].max() if len(df) >= 481 else high_series.iloc[:-1].max()
 
+        close_win20 = close_series.iloc[-20:] if len(close_series) >= 20 else close_series
+        hi20_close = float(close_win20.max()) if len(close_win20) else 0.0
+
         # 20日與60日最低點
         low20 = low_series.iloc[-21:-1].min() if len(df) >= 21 else low_series.iloc[:-1].min()
         low60 = low_series.iloc[-61:-1].min() if len(df) >= 61 else low_series.iloc[:-1].min()
@@ -136,6 +139,8 @@ class ScreeningEngine:
         turnover_k = df['turnover_k'].iloc[-1]
 
         d20 = round((latest_close - low20) / low20 * 100.0, 2) if (low20 and low20 > 0) else 0.0
+        dist_h20 = round((latest_close - hi20_close) / hi20_close * 100.0, 2) if hi20_close else 0.0
+        chase_warning = bool(hi20_close > 0 and latest_close >= hi20_close * 0.985)
         prev_close = close_series.iloc[-2] if len(df) >= 2 else latest_close
         prev_d20 = round((prev_close - low20) / low20 * 100.0, 2) if (low20 and low20 > 0) else 0.0
 
@@ -167,6 +172,9 @@ class ScreeningEngine:
             "ma20": round(ma20, 2),
             "ma60": round(ma60, 2),
             "hi5": hi5,
+            "hi20_close": hi20_close,
+            "dist_h20": dist_h20,
+            "chase_warning": chase_warning,
             "hi120": hi120,
             "hi480": hi480,
             "low20": low20,
@@ -282,8 +290,12 @@ class ScreeningEngine:
                 overnight_item["defense_price"] = round(min(o, avg_p), 2) # 保本防守價
                 res_overnight.append(overnight_item)
 
-        # 排序：S級籌碼優先，其次依量比 Q60R 降序
-        sort_key = lambda x: (1 if x.get("is_s_tier", False) else 0, x.get("q60r", 0.0))
+        # 排序：少追（貼20日收盤高）排後面；S級與量比仍優先
+        sort_key = lambda x: (
+            0 if x.get("chase_warning") else 1,
+            1 if x.get("is_s_tier", False) else 0,
+            x.get("q60r", 0.0),
+        )
         res_sel_01.sort(key=sort_key, reverse=True)
         res_sel_02.sort(key=sort_key, reverse=True)
         res_sel_03.sort(key=sort_key, reverse=True)
@@ -292,6 +304,7 @@ class ScreeningEngine:
         res_overnight.sort(key=sort_key, reverse=True)
         res_leave_zero.sort(
             key=lambda x: (
+                1 if x.get("chase_warning") else 0,
                 0 if x.get("leave_l20") else 1,
                 int(x.get("vol_rank_120") or 99),
                 -(x.get("q60r") or 0),
@@ -461,6 +474,8 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     close_s = _px_str(item.get("close"))
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
+    if item.get("chase_warning"):
+        notices.append(_hot("少追") + html_escape("＝靠近20日收盤高"))
     if item.get("is_s_tier"):
         notices.append(_hot("S級") + html_escape("＝投信連買＋5MA向上"))
     if item.get("leave_l20"):
@@ -511,6 +526,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
     hot = "　".join(
         t
         for t, on in (
+            (_hot("少追"), item.get("chase_warning")),
             (_hot("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
@@ -597,7 +613,7 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
     if payload:
         payload[-1]["html"] += (
             "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
-            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
+            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
         )
     else:
