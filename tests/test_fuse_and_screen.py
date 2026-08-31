@@ -351,5 +351,100 @@ class ScreenReviewTest(unittest.TestCase):
             os.remove(path)
 
 
+class USOvernightTest(unittest.TestCase):
+    def test_classify_vix_and_index_drop(self):
+        from us_overnight import classify_us_regime
+
+        self.assertEqual(classify_us_regime({"vix": 15.0, "ixic_pct": 0.2, "spx_pct": 0.1, "dji_pct": 0.0, "sox_pct": 0.3}), "ok")
+        self.assertEqual(classify_us_regime({"vix": 19.0, "ixic_pct": -0.4, "spx_pct": -0.2, "dji_pct": 0.0, "sox_pct": -0.5}), "caution")
+        self.assertEqual(classify_us_regime({"vix": 14.0, "ixic_pct": -1.3, "spx_pct": -0.8, "dji_pct": -0.5, "sox_pct": -1.0}), "caution")
+        self.assertEqual(classify_us_regime({"vix": 26.0, "ixic_pct": -0.5, "spx_pct": -0.4, "dji_pct": -0.2, "sox_pct": -0.3}), "risk_off")
+        self.assertEqual(classify_us_regime({"vix": 16.0, "ixic_pct": -1.0, "spx_pct": -0.8, "dji_pct": -0.5, "sox_pct": -3.2}), "ok")
+        self.assertEqual(classify_us_regime({}), "unknown")
+        self.assertEqual(
+            classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
+            "ok",
+        )
+
+    def test_risk_off_clears_intraday_and_tags_chips(self):
+        from screening_engine import format_screening_payload
+        from us_overnight import apply_us_overnight, format_us_html
+
+        chip = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "industry": "半導體業",
+            "chase_warning": False,
+            "q60r": 2.0,
+            "close": 100,
+            "volume": 5000,
+        }
+        steel = {
+            "stock_id": "2002",
+            "stock_name": "中鋼",
+            "industry": "鋼鐵工業",
+            "chase_warning": False,
+            "q60r": 2.2,
+            "close": 30,
+            "volume": 8000,
+        }
+        results = {
+            "day_trade": [dict(chip), dict(steel)],
+            "overnight": [dict(chip)],
+            "select_01": [dict(chip), dict(steel)],
+        }
+        snap = {"regime": "risk_off", "vix": 28.0, "sox_pct": -3.5, "ixic_pct": -2.8, "us_session": "20260829"}
+        apply_us_overnight(results, snap)
+        self.assertEqual(results["day_trade"], [])
+        self.assertEqual(results["overnight"], [])
+        by_id = {x["stock_id"]: x for x in results["select_01"]}
+        self.assertTrue(by_id["2330"].get("us_peer_headwind"))
+        self.assertFalse(by_id["2002"].get("us_peer_headwind"))
+        self.assertEqual(results["select_01"][0]["stock_id"], "2002")
+        html = format_us_html(snap)
+        self.assertIn("VIX", html)
+        self.assertIn("隔夜逆風", html)
+        payload = format_screening_payload(results, "20260828", us_html=html)
+        blob = "\n".join(p["html"] for p in payload)
+        self.assertIn("美股收盤", blob)
+        self.assertIn("當沖／隔日沖今日不列", blob)
+
+    def test_caution_drops_chase_and_chip_headwind(self):
+        from us_overnight import apply_us_overnight
+
+        results = {
+            "day_trade": [
+                {"stock_id": "2330", "industry": "半導體業", "chase_warning": False, "q60r": 3},
+                {"stock_id": "2303", "industry": "半導體業", "chase_warning": True, "q60r": 4},
+                {"stock_id": "2002", "industry": "鋼鐵工業", "chase_warning": False, "q60r": 2},
+            ]
+        }
+        apply_us_overnight(results, {"regime": "caution", "sox_pct": -1.8, "vix": 19})
+        ids = [x["stock_id"] for x in results["day_trade"]]
+        self.assertEqual(ids, ["2002"])
+
+    def test_sox_dump_filters_chips_only(self):
+        from us_overnight import apply_us_overnight, classify_us_regime
+
+        snap = {"regime": "ok", "vix": 15.2, "ixic_pct": -0.5, "sox_pct": -3.5, "tsm_pct": -2.3}
+        self.assertEqual(classify_us_regime(snap), "ok")
+        results = {
+            "day_trade": [
+                {"stock_id": "2330", "industry": "半導體業", "chase_warning": False, "q60r": 3},
+                {"stock_id": "2002", "industry": "鋼鐵工業", "chase_warning": False, "q60r": 2},
+            ],
+            "select_01": [
+                {"stock_id": "2330", "industry": "半導體業", "chase_warning": False, "q60r": 3},
+                {"stock_id": "2002", "industry": "鋼鐵工業", "chase_warning": False, "q60r": 2},
+            ],
+        }
+        apply_us_overnight(results, snap)
+        self.assertEqual([x["stock_id"] for x in results["day_trade"]], ["2002"])
+        self.assertTrue(results["select_01"][1].get("us_peer_headwind") or results["select_01"][0].get("us_peer_headwind"))
+        by_id = {x["stock_id"]: x for x in results["select_01"]}
+        self.assertTrue(by_id["2330"].get("us_peer_headwind"))
+        self.assertFalse(by_id["2002"].get("us_peer_headwind"))
+
+
 if __name__ == "__main__":
     unittest.main()
