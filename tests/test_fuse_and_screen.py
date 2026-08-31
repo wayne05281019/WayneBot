@@ -739,6 +739,12 @@ class LookupCardTest(unittest.TestCase):
         out2 = engine.execute_all_strategies({"2330": bars(bounce)})
         self.assertTrue(out2["select_03"])
 
+        # 高低卡獲利：昨收貼近 60 曆日低，今日剛離開 0
+        leave = [50.0] * 40 + [50.2, 52.0]
+        out3 = engine.execute_all_strategies({"2330": bars(leave)})
+        self.assertTrue(out3["leave_zero"])
+        self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
+
 
 if __name__ == "__main__":
     unittest.main()

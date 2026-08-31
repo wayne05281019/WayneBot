@@ -1154,11 +1154,11 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
-                "leave_zero": "起漲：獲利脫離零 × 量能／20低脫離",
-                "select_01": "Select 01：周帶量突破",
+                "leave_zero": "起漲：高低卡獲利剛離零（跟決策卡同一條獲利）",
+                "select_01": "周帶量：短線轉強，貼月高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上",
-                "select_03": "止跌：貼近月低／季低翻紅",
-                "select_04": "Select 04：雙綠脫離",
+                "select_03": "止跌：月低附近有人接、量沒死",
+                "select_04": "雙綠：高低卡20低剛脫離",
                 "day_trade": "當沖：進場 / 停利 / 停損",
                 "overnight": "隔日沖：尾盤佈局",
             }

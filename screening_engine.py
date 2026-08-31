@@ -241,28 +241,26 @@ class ScreeningEngine:
                 res_sel_02.append(info)
                 on_ma60 = True
 
-            # Select 03: 止跌（貼近 20／60 低、今日翻紅）。不是追兩年高。
+            # Select 03: 止跌＝月低附近有人接、量沒死。不用季低，避免跌很久才彈。
             if (
                 not on_ma60
                 and not info.get("chase_warning")
                 and pct > 0
-                and q >= 0.8
-                and (
-                    (info.get("low20") and c <= float(info["low20"]) * 1.06)
-                    or (info.get("low60") and c <= float(info["low60"]) * 1.08)
-                )
+                and q >= 1.0
+                and info.get("low20")
+                and c <= float(info["low20"]) * 1.06
                 and (ma5_hook or c >= o)
             ):
                 res_sel_03.append(info)
 
             # ------------------------------------------------------------------
-            # CaryBot Select 04: 雙綠脫離 (D20由底轉正脫離 + 60日破底消失)
+            # 雙綠＝高低卡「高低」格：昨收還貼 20 低，今日 D20 脫離。
             # ------------------------------------------------------------------
             if prev_d20 <= 1.0 and d20 >= 2.0 and c > info["low60"] * 1.03 and pct > 1.0:
                 res_sel_04.append(info)
 
-            # 獲利脫離零：昨收仍貼近近60曆日低（獲利≈0），今日轉正；
-            # 再要求量能放大或 20 低脫離，對齊「剛起漲＋大量／底圖」較穩的買點。
+            # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
+            # 量熱或昨收高低格還在 20 低，才算有人接。
             dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
             if len(df) >= 5 and dts.notna().sum() >= 5:
                 def _cal60(i: int) -> float:
@@ -279,13 +277,17 @@ class ScreeningEngine:
                 rank = int(int((window > last_v).sum()) + 1)
                 leave_l20 = prev_d20 <= 2.0 and d20 >= 2.0
                 vol_hot = leave_l20 or rank <= 20 or q >= 2.0
+                close_s = df["close"].astype(float)
+                l20c = close_s.rolling(20, min_periods=5).min()
+                yest_l20 = float(l20c.iloc[-2]) if len(l20c) >= 2 else 0.0
+                yest_hl_low = bool(yest_l20 > 0 and float(info["prev_close"]) <= yest_l20 * 1.002)
                 just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
                 sid_s = str(info.get("stock_id") or "")
-                if just_left and vol_hot and len(sid_s) == 4 and sid_s.isdigit():
+                if just_left and (vol_hot or yest_hl_low) and len(sid_s) == 4 and sid_s.isdigit():
                     item = dict(info)
                     item["profit"] = round(pt, 1)
                     item["vol_rank_120"] = rank
-                    item["leave_l20"] = leave_l20
+                    item["leave_l20"] = leave_l20 or yest_hl_low
                     res_leave_zero.append(item)
 
             # ------------------------------------------------------------------
@@ -616,11 +618,11 @@ def format_screening_payload(
     payload: List[Dict[str, Any]] = []
     specs = [
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
-        ("leave_zero", "🌱", "起漲", "獲利脫離零 × 量能／20低脫離", 8, True),
-        ("select_01", "🔥", "Select 01", "周帶量突破", 8, True),
-        ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上（不是追半年高）", 8, True),
-        ("select_03", "💎", "止跌", "貼近月低／季低翻紅（不是追兩年高）", 8, True),
-        ("select_04", "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
+        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正）", 8, True),
+        ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
+        ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
+        ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
+        ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
         ("day_trade", "⚡", "當沖", "保險進場／第一停利＋3%／衝頂＋6%／均價停損", 10, True),
         ("overnight", "🌙", "隔日沖", "尾盤保險買進區間、明早開高、跌破防守先走", 10, True),
     ]
@@ -702,11 +704,11 @@ def format_line_share_text(
     """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
     specs = [
         ("revenue_cross", "優先看　營收轉強×量價"),
-        ("leave_zero", "起漲　獲利脫離零×量能"),
-        ("select_01", "Select01　周帶量突破"),
-        ("select_02", "站上季線"),
-        ("select_03", "止跌　貼近月低／季低翻紅"),
-        ("select_04", "Select04　雙綠脫離"),
+        ("leave_zero", "起漲　高低卡獲利剛離零"),
+        ("select_01", "周帶量　短線轉強"),
+        ("select_02", "站上季線　中線轉強第一天"),
+        ("select_03", "止跌　月低有人接"),
+        ("select_04", "雙綠　高低卡20低剛脫離"),
         ("day_trade", "當沖"),
         ("overnight", "隔日沖"),
     ]

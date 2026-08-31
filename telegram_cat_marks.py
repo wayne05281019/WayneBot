@@ -10,10 +10,11 @@ from PIL import Image, ImageDraw
 
 MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
+    "leave_zero": ("🌱", (60, 170, 90), "sprout", "起漲"),
     "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
     "select_02": ("🏆", (220, 180, 50), "cup", "季線"),
     "select_03": ("💎", (140, 100, 210), "diamond", "止跌"),
-    "select_04": ("🌱", (60, 170, 90), "sprout", "雙綠"),
+    "select_04": ("🌿", (60, 170, 90), "sprout", "雙綠"),
     "day_trade": ("⚡", (240, 190, 40), "bolt", "當沖"),
     "overnight": ("🌙", (80, 130, 210), "moon", "隔日沖"),
 }
