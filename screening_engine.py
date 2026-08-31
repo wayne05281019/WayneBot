@@ -168,6 +168,7 @@ class ScreeningEngine:
             "ma5_hook_up": ma5_hook_up,
             "trust_consecutive_buy": trust_consecutive_buy,
             "is_s_tier": is_s_tier,
+            "prev_close": prev_close,
             "foreign_net": int(df['foreign_net'].iloc[-1]),
             "trust_net": int(df['trust_net'].iloc[-1]),
             "dealer_net": int(df['dealer_net'].iloc[-1]),
@@ -181,6 +182,7 @@ class ScreeningEngine:
         res_sel_04 = []
         res_day_trade = []
         res_overnight = []
+        res_leave_zero = []
 
         for sid, df in stock_dfs.items():
             info = self.calculate_indicators(df)
@@ -223,6 +225,33 @@ class ScreeningEngine:
             if prev_d20 <= 1.0 and d20 >= 2.0 and c > info["low60"] * 1.03 and pct > 1.0:
                 res_sel_04.append(info)
 
+            # 獲利脫離零：昨收仍貼近近60曆日低（獲利≈0），今日轉正；
+            # 再要求量能放大或 20 低脫離，對齊「剛起漲＋大量／底圖」較穩的買點。
+            dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+            if len(df) >= 5 and dts.notna().sum() >= 5:
+                def _cal60(i: int) -> float:
+                    end = dts.iloc[i]
+                    m = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end)
+                    return float(df.loc[m, "close"].min() or 0)
+
+                lo_y, lo_t = _cal60(-2), _cal60(-1)
+                py = ((float(info["prev_close"]) - lo_y) / lo_y * 100.0) if lo_y > 0 else 99.0
+                pt = ((float(c) - lo_t) / lo_t * 100.0) if lo_t > 0 else 0.0
+                vols = df["volume"].to_numpy(dtype=float)
+                last_v = float(vols[-1])
+                window = vols[-120:] if len(vols) >= 120 else vols
+                rank = int(int((window > last_v).sum()) + 1)
+                leave_l20 = prev_d20 <= 2.0 and d20 >= 2.0
+                vol_hot = leave_l20 or rank <= 20 or q >= 2.0
+                just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
+                sid_s = str(info.get("stock_id") or "")
+                if just_left and vol_hot and len(sid_s) == 4 and sid_s.isdigit():
+                    item = dict(info)
+                    item["profit"] = round(pt, 1)
+                    item["vol_rank_120"] = rank
+                    item["leave_l20"] = leave_l20
+                    res_leave_zero.append(item)
+
             # ------------------------------------------------------------------
             # 當沖動能專區：量能放大 (Q60R >= 2.0)、5MA 向上、振幅 2.0%~8.0%
             # ------------------------------------------------------------------
@@ -253,12 +282,20 @@ class ScreeningEngine:
         res_sel_04.sort(key=sort_key, reverse=True)
         res_day_trade.sort(key=sort_key, reverse=True)
         res_overnight.sort(key=sort_key, reverse=True)
+        res_leave_zero.sort(
+            key=lambda x: (
+                0 if x.get("leave_l20") else 1,
+                int(x.get("vol_rank_120") or 99),
+                -(x.get("q60r") or 0),
+            )
+        )
 
         return {
             "select_01": res_sel_01,
             "select_02": res_sel_02,
             "select_03": res_sel_03,
             "select_04": res_sel_04,
+            "leave_zero": res_leave_zero,
             "day_trade": res_day_trade,
             "overnight": res_overnight
         }
@@ -339,13 +376,22 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
     s_tag = " · S級" if item.get("is_s_tier") else ""
+    extra = ""
+    if item.get("profit") is not None:
+        extra = f"　獲利 {item.get('profit')}%"
+    if item.get("vol_rank_120"):
+        extra += f"　120日量第{int(item['vol_rank_120'])}名"
+    if item.get("leave_l20"):
+        extra += "　20低脫離"
+    if item.get("revenue_hot"):
+        extra += "　營收轉強"
     regime = html_escape(_regime_label(item))
     close = item.get("close")
     vol = int(item.get("volume") or 0)
     q = item.get("q60r")
     body = [
         f"<b>{idx}.</b> {title}　<b>{regime}</b>{html_escape(s_tag)}",
-        f"價 {close}　{_pct_str(item.get('pct_change'))}",
+        f"價 {close}　{_pct_str(item.get('pct_change'))}{html_escape(extra)}",
         f"量比 {q}×　{vol:,}張",
     ]
     if "target_1" in item:
@@ -371,6 +417,7 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
     payload: List[Dict[str, Any]] = []
     specs = [
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
+        ("leave_zero", "🌱", "起漲", "獲利脫離零 × 量能／20低脫離", 8, True),
         ("select_01", "🔥", "Select 01", "周帶量突破", 8, True),
         ("select_02", "🏆", "Select 02", "突破半年高 Hi120", 8, True),
         ("select_03", "💎", "Select 03", "突破兩年高 Hi480", 8, True),
@@ -433,6 +480,7 @@ def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date
     """一則純文字，方便複製／轉貼 LINE（不含 HTML）。"""
     specs = [
         ("revenue_cross", "優先看　營收轉強×量價"),
+        ("leave_zero", "起漲　獲利脫離零×量能"),
         ("select_01", "Select01　周帶量突破"),
         ("select_02", "Select02　突破半年高"),
         ("select_03", "Select03　突破兩年高"),
@@ -521,6 +569,10 @@ def execute_full_screening(db_path: str = None, target_date: Optional[str] = Non
         seen.add(sid)
         revenue_cross.append(engine._row_for_bot(item))
     results["revenue_cross"] = revenue_cross
+    for item in results.get("leave_zero") or []:
+        if str(item.get("stock_id") or "") in hot_ids:
+            item["revenue_hot"] = True
+    results["leave_zero"] = results.get("leave_zero") or []
 
     payload = format_screening_payload(results, target_date)
     report_text = "\n\n".join(p["html"] for p in payload)

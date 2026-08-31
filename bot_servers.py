@@ -69,7 +69,7 @@ HELP_TOPICS = {
     "screen": (
         "<b>海選怎麼用</b>\n"
         "盤後依營收轉強×量價等分類列出候選。\n"
-        "➕＝加入觀察（還沒買）。詳細介紹＝開這檔圖卡。\n"
+        "➕＝加入觀察（還沒買）。股名＝奇摩；旁邊「圖卡」＝決策卡＋導航＋籌碼＋營收。\n"
         "不是立即下單清單，先看詳細介紹再決定。"
     ),
     "daytrade": (
@@ -213,19 +213,32 @@ class WayneTelegramBot:
             ]
         )
 
+    def _stock_action_row(self, code: str, name: str = ""):
+        """左：奇摩（股名）　中：圖卡＝決策卡＋導航＋籌碼＋營收　右：加入觀察。"""
+        c = str(code or "").strip()[:6]
+        n = str(name or "").strip()[:4]
+        label = f"{c} {n}".strip()[:16] or c
+        web = ""
+        try:
+            from stock_links import yahoo_urls
+
+            web, _mobile = yahoo_urls(c, self.db_path)
+        except Exception:
+            web = ""
+        left = InlineKeyboardButton(label, url=web) if web else InlineKeyboardButton(label, callback_data=f"k:{c}")
+        return [
+            left,
+            InlineKeyboardButton("圖卡", callback_data=f"k:{c}"),
+            InlineKeyboardButton("➕", callback_data=f"w:{c}"),
+        ]
+
     def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen"):
         rows = []
         for code, name in (picks or [])[:8]:
             c = str(code or "").strip()
             if not c:
                 continue
-            label = f"{c}{(name or '')[:4]}".strip()[:12]
-            rows.append(
-                [
-                    InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
-                ]
-            )
+            rows.append(self._stock_action_row(c, name or ""))
         if include_menu or rows:
             rows.append([self._q(topic)])
         if not rows:
@@ -239,14 +252,9 @@ class WayneTelegramBot:
             n = str(h.get("stock_name") or "")
             if not c:
                 continue
-            label = f"{c}{n[:4]}".strip()[:12]
-            rows.append(
-                [
-                    InlineKeyboardButton(f"➕{label}", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("詳細介紹", callback_data=f"k:{c}"),
-                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
-                ]
-            )
+            row = self._stock_action_row(c, n)
+            row.append(InlineKeyboardButton("買入", callback_data=f"b:{c}"))
+            rows.append(row)
         rows.append([self._q("stock")])
         return InlineKeyboardMarkup(rows) if rows else self._keyboard()
 
@@ -617,7 +625,7 @@ class WayneTelegramBot:
             return
         for r in rows:
             lines.append(f"• {html_escape(r.get('stock_code'))} {html_escape(r.get('stock_name') or '')}")
-        lines.append("\n點下面按鈕可直接開詳細介紹／籌碼／記買入。")
+        f"\n點下面每股一列：左＝奇摩股市　中＝圖卡　右＝觀察。"
         await message.reply_html("\n".join(lines), reply_markup=self._watch_list_keyboard(rows))
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
