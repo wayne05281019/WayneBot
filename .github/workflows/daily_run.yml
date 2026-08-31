@@ -2,7 +2,7 @@ name: WayneBot Daily Screening
 
 on:
   schedule:
-    # 台灣時間週一至週五 16:30（UTC 08:30）— 只融合行情，不寄海選
+    # 台灣時間週一至週五 16:30（UTC 08:30）— 融合後通過完整性才蓋掉 Release zip
     - cron: '30 8 * * 1-5'
     # 台灣時間週一至週五 07:30（UTC 日～四 23:30）— 用完整昨收寄海選
     - cron: '30 23 * * 0-4'
@@ -77,20 +77,26 @@ jobs:
         run: |
           python main.py --once
 
-      - name: 把今日增量融回 Release 行情庫
+      - name: 完整性通過才蓋掉舊 Release zip
         if: success() && steps.job.outputs.job == 'increment'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -f data/wayne_market.db
           python - <<'PY'
-          import sqlite3, sys
-          n = sqlite3.connect("data/wayne_market.db").execute(
-              "SELECT COUNT(*) FROM daily_quotes"
-          ).fetchone()[0]
-          print("daily_quotes 列數", n)
-          if n < 100000:
-              sys.exit("庫太小，不覆蓋 Release")
+          import json, sys
+          from import_health import audit_import, can_publish_release, format_audit_plain
+          from config import get_db_path, fuse_end_date
+
+          path = get_db_path()
+          print(format_audit_plain(audit_import(path)))
+          report = can_publish_release(path)
+          print("fuse_end", fuse_end_date())
+          print(json.dumps({k: report[k] for k in report if k != "quotes"}, ensure_ascii=False, indent=2))
+          print("quotes", report.get("quotes"))
+          if not report.get("ok"):
+              sys.exit("完整性未過，不覆蓋 Release：" + "；".join(report.get("reasons") or []))
+          print("完整性通過，蓋掉舊 zip")
           PY
           rm -f waynebot_production_complete.zip
           zip -1 -j waynebot_production_complete.zip data/wayne_market.db
