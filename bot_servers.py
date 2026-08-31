@@ -600,7 +600,7 @@ class WayneTelegramBot:
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("海選執行中…")
         try:
-            result = self.screener.run_full_screening()
+            result = await asyncio.to_thread(self.screener.run_full_screening)
             await self._reply_screening_payload(update.message, result)
         except Exception as e:
             logger.exception("海選失敗")
@@ -609,7 +609,7 @@ class WayneTelegramBot:
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         from screening_engine import _stock_card_html
 
-        rows = self.screener.screen_daytrade()
+        rows = await asyncio.to_thread(self.screener.screen_daytrade)
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = (
             "<b>當沖候選</b>\n"
@@ -624,7 +624,7 @@ class WayneTelegramBot:
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         from screening_engine import _stock_card_html
 
-        rows = self.screener.screen_overnight()
+        rows = await asyncio.to_thread(self.screener.screen_overnight)
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
         html = (
             "<b>隔日沖候選</b>\n"
@@ -642,7 +642,7 @@ class WayneTelegramBot:
         try:
             from money_flow import format_flow_html
 
-            html = format_flow_html(self.db_path, user_id=uid)
+            html = await asyncio.to_thread(format_flow_html, self.db_path, user_id=uid)
         except Exception as e:
             logger.exception("資金移動失敗")
             await update.message.reply_text(f"資金移動失敗：{e}", reply_markup=self._keyboard())
@@ -730,7 +730,12 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/chips 2330")
             return
-        chip_img = generate_chips_image(args[0].strip(), self.db_path, os.path.join(self.charts_dir, f"{args[0].strip()}_chips.png"))
+        chip_img = await asyncio.to_thread(
+            generate_chips_image,
+            args[0].strip(),
+            self.db_path,
+            os.path.join(self.charts_dir, f"{args[0].strip()}_chips.png"),
+        )
         if chip_img:
             with open(chip_img, "rb") as f:
                 await update.message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(args[0].strip()))
@@ -745,14 +750,14 @@ class WayneTelegramBot:
         from fundamentals import format_fundamentals_html, sync_fundamentals
 
         code = args[0].strip()
-        html = format_fundamentals_html(code, self.db_path)
+        html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         if "尚無" in html:
             await update.message.reply_text("尚無快取，正在同步官方月營收／季報…")
             try:
-                sync_fundamentals(self.db_path)
+                await asyncio.to_thread(sync_fundamentals, self.db_path)
             except Exception as e:
                 logger.error("fund sync: %s", e)
-            html = format_fundamentals_html(code, self.db_path)
+            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -935,7 +940,9 @@ class WayneTelegramBot:
             await self._send_card_to(message, code)
             return True
         if pending == "chips":
-            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+            chip_img = await asyncio.to_thread(
+                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+            )
             if chip_img:
                 try:
                     with open(chip_img, "rb") as f:
@@ -948,13 +955,13 @@ class WayneTelegramBot:
         if pending == "fund":
             from fundamentals import format_fundamentals_html, sync_fundamentals
 
-            html = format_fundamentals_html(code, self.db_path)
+            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             if "尚無" in html:
                 try:
-                    sync_fundamentals(self.db_path)
+                    await asyncio.to_thread(sync_fundamentals, self.db_path)
                 except Exception:
                     pass
-                html = format_fundamentals_html(code, self.db_path)
+                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return True
         if pending == "industry":
@@ -967,9 +974,9 @@ class WayneTelegramBot:
         try:
             from ai_trader import run_ai_desk
 
-            result = self.screener.run_full_screening()
+            result = await asyncio.to_thread(self.screener.run_full_screening)
             as_of = result.get("as_of") or result.get("date") or ""
-            ai = run_ai_desk(self.db_path, result.get("results") or {}, as_of)
+            ai = await asyncio.to_thread(run_ai_desk, self.db_path, result.get("results") or {}, as_of)
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
                 bits.append(
@@ -1351,7 +1358,9 @@ class WayneTelegramBot:
             return
         if data.startswith("h:"):
             code = data[2:].strip()
-            chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
+            chip_img = await asyncio.to_thread(
+                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+            )
             if chip_img:
                 try:
                     with open(chip_img, "rb") as f:
@@ -1367,13 +1376,13 @@ class WayneTelegramBot:
             from fundamentals import format_fundamentals_html, sync_fundamentals
 
             code = data[2:].strip()
-            html = format_fundamentals_html(code, self.db_path)
+            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             if "尚無" in html:
                 try:
-                    sync_fundamentals(self.db_path)
+                    await asyncio.to_thread(sync_fundamentals, self.db_path)
                 except Exception:
                     pass
-                html = format_fundamentals_html(code, self.db_path)
+                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await q.message.reply_html(
                 html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
             )
@@ -1405,7 +1414,7 @@ class WayneTelegramBot:
         if data == "screen":
             await q.message.reply_text("海選執行中…")
             try:
-                result = self.screener.run_full_screening()
+                result = await asyncio.to_thread(self.screener.run_full_screening)
                 await self._reply_screening_payload(q.message, result)
             except Exception as e:
                 logger.exception("海選失敗")
@@ -1413,7 +1422,7 @@ class WayneTelegramBot:
         elif data == "daytrade":
             from screening_engine import _stock_card_html
 
-            rows = self.screener.screen_daytrade()
+            rows = await asyncio.to_thread(self.screener.screen_daytrade)
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = (
                 "<b>當沖候選</b>\n"
@@ -1427,7 +1436,7 @@ class WayneTelegramBot:
         elif data == "overnight":
             from screening_engine import _stock_card_html
 
-            rows = self.screener.screen_overnight()
+            rows = await asyncio.to_thread(self.screener.screen_overnight)
             cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
             html = (
                 "<b>隔日沖候選</b>\n"

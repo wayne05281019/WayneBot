@@ -231,14 +231,15 @@ def backfill_chips(db_path: str = None, days: int = 30, sleep_s: float = 0.45) -
 
 def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
     sid = str(stock_id).strip()
+    need = max(int(limit), 1) + 10
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
         """SELECT date, stock_name, close, volume, foreign_net, trust_net, dealer_net
-           FROM daily_quotes WHERE stock_id=? ORDER BY date ASC""",
-        (sid,),
+           FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT ?""",
+        (sid, need),
     )
-    raw = cur.fetchall()
+    raw = list(reversed(cur.fetchall()))
     conn.close()
     if not raw:
         return []

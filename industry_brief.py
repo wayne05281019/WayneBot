@@ -194,20 +194,24 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
                 (as_of,),
             ).fetchall()
         ]
+        net_by: Dict[str, int] = {}
+        if dates:
+            qmarks = ",".join("?" * len(dates))
+            for d, net in conn.execute(
+                f"""
+                SELECT replace(q.date,'-','') AS d,
+                       COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
+                FROM daily_quotes q
+                JOIN stock_universe u ON u.stock_id = q.stock_id
+                WHERE replace(q.date,'-','') IN ({qmarks}) AND u.industry=? AND length(q.stock_id)=4
+                  AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                GROUP BY 1
+                """,
+                (*dates, industry),
+            ):
+                net_by[str(d)] = int(net or 0)
         for i, d in enumerate(dates):
-            net = int(
-                conn.execute(
-                    """
-                    SELECT COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
-                    FROM daily_quotes q
-                    JOIN stock_universe u ON u.stock_id = q.stock_id
-                    WHERE replace(q.date,'-','')=? AND u.industry=? AND length(q.stock_id)=4
-                      AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
-                    """,
-                    (d, industry),
-                ).fetchone()[0]
-                or 0
-            )
+            net = int(net_by.get(d) or 0)
             if i == 0:
                 if net > 0:
                     buy_streak = 1

@@ -1318,5 +1318,86 @@ class AIDeskTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(bundled_weight_path(_WEIGHT_BOLD)))
 
 
+class SpeedOptTest(unittest.TestCase):
+    def test_chips_only_need_recent_window_for_acc(self):
+        from datetime import date, timedelta
+        from chips import major_player_rows
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            q = "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            start = date(2026, 7, 1)
+            for i in range(40):
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                conn.execute(q, (d, "2330", "台積電", "TW", 100, 101, 99, 100, 1000, 1000, 0, 100, 10, 20, 30))
+            conn.commit()
+            conn.close()
+            rows = major_player_rows(path, "2330", limit=15)
+            self.assertEqual(len(rows), 15)
+            self.assertEqual(rows[0]["three_net"], 60)
+            self.assertEqual(rows[0]["acc_10d"], 600)
+        finally:
+            os.remove(path)
+
+    def test_annotate_screen_computes_sector_once(self):
+        import money_flow
+        from money_flow import annotate_screen_results
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        orig = money_flow.compute_sector_rows
+        calls = {"n": 0}
+
+        def wrapped(conn, ymd):
+            calls["n"] += 1
+            return orig(conn, ymd)
+
+        money_flow.compute_sector_rows = wrapped
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,?,?)",
+                ("2330", "台積電", "TW", "股票", "半導體業", 1, "x"),
+            )
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260828", "2330", "台積電", "TW", 100, 101, 99, 100, 10000, 50000, 1.0, 100, 8000, 0, 0),
+            )
+            conn.commit()
+            conn.close()
+            results = {
+                "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                "select_01": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+                "day_trade": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
+            }
+            annotate_screen_results(path, "20260828", results)
+            self.assertEqual(calls["n"], 1)
+            self.assertEqual(results["leave_zero"][0].get("industry"), "半導體業")
+        finally:
+            money_flow.compute_sector_rows = orig
+            os.remove(path)
+
+    def test_schema_second_call_is_noop(self):
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            n = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='daily_quotes'").fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 1)
+        finally:
+            os.remove(path)
+
+
 if __name__ == "__main__":
     unittest.main()

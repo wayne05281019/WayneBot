@@ -25,6 +25,7 @@ DEFAULT_DB_PATH: str = (
     os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
 )
 DB_LOCK: threading.Lock = threading.Lock()
+_SCHEMA_READY: set = set()
 
 # 靜態股票對照表記憶體快取與保護鎖
 _STOCK_MAP_CACHE: Dict[str, Any] = {}
@@ -35,32 +36,35 @@ _STOCK_MAP_LOCK: threading.Lock = threading.Lock()
 # 連線上下文管理器 (Context Manager)
 # ==============================================================================
 @contextmanager
-def get_db_connection(db_path: str = DEFAULT_DB_PATH):
+def get_db_connection(db_path: str = DEFAULT_DB_PATH, write: bool = True):
     """
     資料庫連線上下文管理器 (Context Manager)
-    - 取得全域線程鎖以確保併發寫入安全
+    - 寫入才拿全域線程鎖；純讀走 WAL 並行，避免查股名卡住海選
     - 開啟 WAL 模式與 NORMAL 同步模式
-    - 正常結束時自動 commit，發生例外時自動 rollback
+    - 寫入正常結束時自動 commit，發生例外時自動 rollback
     """
-    with DB_LOCK:
+    if write:
+        DB_LOCK.acquire()
+    conn = None
+    try:
         conn = sqlite3.connect(
             db_path,
             timeout=30.0,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
         )
         conn.row_factory = sqlite3.Row
-        
         cursor = conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.execute("PRAGMA synchronous=NORMAL;")
         cursor.execute("PRAGMA busy_timeout=5000;")
         cursor.close()
-        
         try:
             yield conn
-            conn.commit()
+            if write:
+                conn.commit()
         except Exception as e:
-            conn.rollback()
+            if write:
+                conn.rollback()
             try:
                 err_cursor = conn.cursor()
                 err_cursor.execute(
@@ -74,8 +78,11 @@ def get_db_connection(db_path: str = DEFAULT_DB_PATH):
             except Exception:
                 pass
             raise e
-        finally:
+    finally:
+        if conn is not None:
             conn.close()
+        if write:
+            DB_LOCK.release()
 
 
 # ==============================================================================
@@ -167,8 +174,10 @@ def init_database(db_path: str = DEFAULT_DB_PATH) -> None:
 
 
 def ensure_core_schema(db_path: str = None) -> None:
-    """行情、流水線、母體、使用者持股／觀察清單。"""
+    """行情、流水線、母體、使用者持股／觀察清單。同一路徑只跑一次，查詢不再重做 hygiene。"""
     path = db_path or DEFAULT_DB_PATH
+    if path in _SCHEMA_READY and os.path.exists(path):
+        return
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -326,6 +335,7 @@ def ensure_core_schema(db_path: str = None) -> None:
             normalize_quote_hygiene(path)
         except Exception:
             pass
+    _SCHEMA_READY.add(path)
 
 
 def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
@@ -365,7 +375,7 @@ def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
 
 def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
-    with get_db_connection(db_path) as conn:
+    with get_db_connection(db_path, write=False) as conn:
         rows = conn.execute(
             "SELECT stock_code, stock_name FROM user_watchlist WHERE user_id = ? ORDER BY stock_code;",
             (str(user_id),),
@@ -379,7 +389,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     q = (query or "").strip()
     if not q:
         return []
-    with get_db_connection(db_path) as conn:
+    with get_db_connection(db_path, write=False) as conn:
         latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
         rows = []
         if latest and q.isdigit() and 3 <= len(q) <= 6:
@@ -399,7 +409,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
         if hits:
             return hits
     ensure_stock_directory(db_path)
-    with get_db_connection(db_path) as conn:
+    with get_db_connection(db_path, write=False) as conn:
         latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
         if q.isdigit() and 3 <= len(q) <= 6:
             drows = conn.execute(
@@ -413,15 +423,28 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
                 (f"%{q}%", int(limit)),
             ).fetchall()
         out = []
-        for r in drows:
-            item = dict(r)
-            quote = None
-            if latest:
-                quote = conn.execute(
+        ids = [str(r["stock_id"]) for r in drows]
+        quotes = {}
+        if latest and ids:
+            qmarks = ",".join("?" * len(ids))
+            for qr in conn.execute(
+                f"""SELECT stock_id, close, pct_change FROM daily_quotes
+                    WHERE date=? AND stock_id IN ({qmarks})""",
+                (latest, *ids),
+            ):
+                quotes[str(qr["stock_id"])] = qr
+            missing = [sid for sid in ids if sid not in quotes]
+            for sid in missing:
+                qr = conn.execute(
                     """SELECT close, pct_change FROM daily_quotes
                        WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
-                    (item["stock_id"],),
+                    (sid,),
                 ).fetchone()
+                if qr:
+                    quotes[sid] = qr
+        for r in drows:
+            item = dict(r)
+            quote = quotes.get(str(item["stock_id"]))
             if quote:
                 item["close"] = quote["close"]
                 item["pct_change"] = quote["pct_change"]
@@ -499,7 +522,7 @@ def add_to_watchlist(db_path: str, user_id: str, stock_code: str, stock_name: st
 
 def get_user_portfolio(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
-    with get_db_connection(db_path) as conn:
+    with get_db_connection(db_path, write=False) as conn:
         rows = conn.execute(
             "SELECT stock_code, stock_name, shares, cost_price FROM user_holdings WHERE user_id = ?;",
             (str(user_id),),

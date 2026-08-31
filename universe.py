@@ -191,8 +191,19 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
     conn = sqlite3.connect(path)
     cur = conn.cursor()
     cur.execute("UPDATE stock_universe SET is_active = 0;")
-    for u in items:
-        cur.execute(
+    rows = [
+        (
+            u["stock_id"],
+            u["stock_name"],
+            u["market_type"],
+            u["asset_type"],
+            default_industry(u.get("asset_type") or "", u.get("industry") or ""),
+            now,
+        )
+        for u in items
+    ]
+    if rows:
+        cur.executemany(
             """
             INSERT INTO stock_universe (stock_id, stock_name, market_type, asset_type, industry, is_active, updated_at)
             VALUES (?, ?, ?, ?, ?, 1, ?)
@@ -204,7 +215,7 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
                 is_active=1,
                 updated_at=excluded.updated_at;
             """,
-            (u["stock_id"], u["stock_name"], u["market_type"], u["asset_type"], default_industry(u.get("asset_type") or "", u.get("industry") or ""), now),
+            rows,
         )
     conn.commit()
     active_n = cur.execute("SELECT COUNT(*) FROM stock_universe WHERE is_active=1").fetchone()[0]

@@ -60,32 +60,49 @@ class ScreeningEngine:
         if not target_date:
             target_date = self.get_latest_trading_date()
 
-        # 1. 篩選當日符合流動性門檻的標的清單
-        query_candidates = f"""
+        query_candidates = """
         SELECT stock_id, stock_name, market, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
-        FROM daily_quotes 
-        WHERE date = '{target_date}'
-          AND volume >= {min_volume}
-          AND turnover_k >= {min_turnover_k}
+        FROM daily_quotes
+        WHERE date = ?
+          AND volume >= ?
+          AND turnover_k >= ?
           AND close > 0;
         """
-        df_candidates = pd.read_sql_query(query_candidates, conn)
+        df_candidates = pd.read_sql_query(
+            query_candidates, conn, params=(target_date, min_volume, min_turnover_k)
+        )
         valid_sids = df_candidates['stock_id'].tolist()
 
         if not valid_sids:
             conn.close()
             return {}
 
-        # 2. 批次載入這些標的的歷史 K 線數據（取最近 500 個交易日）
-        placeholders = ','.join([f"'{s}'" for s in valid_sids])
+        floor_row = conn.execute(
+            """
+            SELECT MIN(d) FROM (
+                SELECT DISTINCT date AS d FROM daily_quotes
+                WHERE date <= ?
+                ORDER BY date DESC
+                LIMIT 500
+            )
+            """,
+            (target_date,),
+        ).fetchone()
+        date_floor = floor_row[0] if floor_row and floor_row[0] else None
+
+        placeholders = ",".join("?" * len(valid_sids))
         query_history = f"""
         SELECT date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
         FROM daily_quotes
         WHERE stock_id IN ({placeholders})
-          AND date <= '{target_date}'
+          AND date <= ?
+          {"AND date >= ?" if date_floor else ""}
         ORDER BY stock_id, date ASC;
         """
-        df_all = pd.read_sql_query(query_history, conn)
+        params = list(valid_sids) + [target_date]
+        if date_floor:
+            params.append(date_floor)
+        df_all = pd.read_sql_query(query_history, conn, params=params)
         conn.close()
 
         # 依 stock_id 分組
@@ -103,9 +120,10 @@ class ScreeningEngine:
         vol_series = df['volume']
         trust_series = df['trust_net']
 
-        # 均線計算
-        ma5 = close_series.rolling(5).mean().iloc[-1]
-        ma5_prev = close_series.rolling(5).mean().iloc[-2] if len(df) >= 6 else ma5
+        # 均線計算（同一條 rolling 只算一次）
+        ma5_s = close_series.rolling(5).mean()
+        ma5 = ma5_s.iloc[-1]
+        ma5_prev = ma5_s.iloc[-2] if len(df) >= 6 else ma5
         ma20 = close_series.rolling(20).mean().iloc[-1] if len(df) >= 20 else ma5
         ma60_s = close_series.rolling(60, min_periods=20).mean()
         ma60 = ma60_s.iloc[-1] if len(df) >= 20 else ma20
@@ -784,11 +802,9 @@ def _postprocess_screen(
 ) -> Dict[str, Any]:
     """產業輪動標籤；早上海選才套美股收盤過濾。"""
     try:
-        from money_flow import annotate_items_with_sector_flow
+        from money_flow import annotate_screen_results
 
-        for lst in results.values():
-            if isinstance(lst, list):
-                annotate_items_with_sector_flow(db_path, target_date, lst)
+        annotate_screen_results(db_path, target_date, results)
     except Exception:
         pass
     snap: Dict[str, Any] = {}

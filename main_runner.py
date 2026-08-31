@@ -541,8 +541,14 @@ class MainRunner:
         if skip_if_done and as_of and self.already_completed_today(key):
             logger.info("早上海選 %s 已寄過，略過。", key)
             return True
-        logger.info("☀️ 06:30 先補齊已收盤交易日與財報，再寄海選")
-        self.run_daily_increment(notify=False)
+        logger.info("☀️ 06:30 先確認庫已齊，再寄海選")
+        from config import fuse_end_date
+
+        cap = fuse_end_date()
+        if as_of and as_of == cap:
+            logger.info("今早庫已是完整日 %s，略過再抓行情，直接海選", as_of)
+        else:
+            self.run_daily_increment(notify=False)
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
         if not as_of:

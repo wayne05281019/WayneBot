@@ -2,12 +2,14 @@
 """盤後匯入健康檢查：上市／上櫃必須同一開盤日都進庫，並核對法人與財報快照。"""
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
 MIN_TW = 800
 MIN_TWO = 600
 MIN_TOTAL = 1500
+_COMPLETE_DATE_CACHE: Dict[str, Any] = {}
 
 
 def sides_complete(tw: int, two: int, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> bool:
@@ -48,6 +50,15 @@ def count_markets(db_path: str, yyyymmdd: str) -> Tuple[int, int, int]:
 
 def latest_complete_quote_date(db_path: str, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> Optional[str]:
     """海選／決策用的基準日：必須上市＋上櫃同一天都進庫，不能停在半套日。"""
+    stamp = None
+    try:
+        st = os.stat(db_path)
+        stamp = (st.st_mtime_ns, st.st_size, min_tw, min_two)
+        hit = _COMPLETE_DATE_CACHE.get(db_path)
+        if hit and hit[0] == stamp:
+            return hit[1]
+    except OSError:
+        stamp = None
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     rows = cur.execute(
@@ -56,15 +67,26 @@ def latest_complete_quote_date(db_path: str, min_tw: int = MIN_TW, min_two: int 
                SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
                SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
         FROM daily_quotes
+        WHERE date IN (
+            SELECT d FROM (
+                SELECT DISTINCT date AS d FROM daily_quotes
+                ORDER BY date DESC
+                LIMIT 40
+            )
+        )
         GROUP BY replace(date,'-','')
         ORDER BY d DESC
         """
     ).fetchall()
     conn.close()
+    found = None
     for date, tw, two in rows:
         if sides_complete(tw, two, min_tw=min_tw, min_two=min_two):
-            return str(date)
-    return None
+            found = str(date)
+            break
+    if stamp is not None:
+        _COMPLETE_DATE_CACHE[db_path] = (stamp, found)
+    return found
 
 
 def list_coverage_issues(
