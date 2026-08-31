@@ -324,29 +324,30 @@ def industry_of(conn: sqlite3.Connection, stock_id: str) -> str:
 
 
 def _sector_entry(r: Dict[str, Any]) -> str:
-    """一族一行產業、一行張數、一行較前日；避免長句被氣泡拆到「張」單獨一行。"""
+    """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ▸，才跟張數列分開。"""
     from tg_layout import html_escape, html_qty_tight, html_pct_tight
 
     three = int(r["three_net"])
+    name = html_escape(r["industry"])
     lines = [
-        f"<b>{html_escape(r['industry'])}</b>",
+        f"＝＝{name}＝＝",
         f"{html_qty_tight(three)}　{html_pct_tight(r['avg_pct'])}",
     ]
     d = int(r.get("three_delta") or 0)
     lines.append("較前日　持平" if d == 0 else f"較前日　{html_qty_tight(d)}")
     if three < 0:
         sid = r.get("top_sell_id") or ""
-        name = r.get("top_sell_name") or ""
+        sname = r.get("top_sell_name") or ""
         lots = int(r.get("top_sell_three") or 0)
         tag = "賣超最多"
     else:
         sid = r.get("top_buy_id") or ""
-        name = r.get("top_buy_name") or ""
+        sname = r.get("top_buy_name") or ""
         lots = int(r.get("top_buy_three") or 0)
         tag = "買超最多"
     if sid:
         lines.append(
-            f"{tag}　<code>{html_escape(sid)}</code> {html_escape(name)}　{html_qty_tight(lots)}"
+            f"▸ {tag}　<code>{html_escape(sid)}</code> {html_escape(sname)}　{html_qty_tight(lots)}"
         )
     return "\n".join(lines)
 
