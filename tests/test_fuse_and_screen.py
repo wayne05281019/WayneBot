@@ -639,6 +639,94 @@ class LookupCardTest(unittest.TestCase):
             if os.path.exists(path):
                 os.remove(path)
 
+    def test_decision_card_png_one_row_not_stretched(self):
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+        from PIL import Image
+
+        from cary_navigator import render_decision_card_png
+
+        def row(date):
+            return {
+                "date": date,
+                "close": 51.0,
+                "獲利": "2.0%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "55.0 °C",
+                "月乖離": "+1.0%",
+                "profit_pct": 2.0,
+                "bias_monthly": 1.0,
+                "vol_rank_120": 20,
+                "120日量": "第 20 名",
+            }
+
+        card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 51.0,
+            "change_pct": 1.2,
+            "h10": 55,
+            "dist_h10": -7.3,
+            "h20": 56,
+            "dist_h20": -8.9,
+            "h60": 60,
+            "dist_h60": -15.0,
+            "l10": 50,
+            "dist_l10": 2.0,
+            "l20": 49,
+            "dist_l20": 4.1,
+            "l60": 48,
+            "dist_l60": 6.3,
+            "l120": 50.5,
+            "dist_l120": 1.0,
+            "l240": 45,
+            "dist_l240": 13.3,
+            "l480": 40,
+            "dist_l480": 27.5,
+            "space_20": 14,
+            "space_60": 25,
+            "ma60s": 0.5,
+            "qty60": 20000,
+            "badges": ["近120日低"],
+        }
+        dates = [
+            "20260819",
+            "20260820",
+            "20260821",
+            "20260822",
+            "20260825",
+            "20260826",
+            "20260827",
+            "20260828",
+        ]
+        paths = []
+        try:
+            for n, tbl in (
+                (1, pd.DataFrame([row("20260828")])),
+                (8, pd.DataFrame([row(d) for d in dates])),
+            ):
+                fd, path = tempfile.mkstemp(suffix=".png")
+                os.close(fd)
+                paths.append(path)
+                card["table"] = tbl
+                render_decision_card_png(card, path)
+            with Image.open(paths[0]) as im1:
+                h1 = im1.size[1]
+            with Image.open(paths[1]) as im8:
+                h8 = im8.size[1]
+            self.assertLess(h1, 950)
+            self.assertGreater(h8, h1 + 180)
+            self.assertLess(h8 - h1, 500)
+        finally:
+            for path in paths:
+                if os.path.exists(path):
+                    os.remove(path)
+
     def test_mis_quote_cache_hits_once(self):
         import live_quote
 
