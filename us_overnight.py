@@ -1,7 +1,7 @@
-"""隔夜美股：台股早上開盤用的是美股已收盤（必要時加夜盤期貨）。
+"""隔夜美股：台股開盤對照的是美股現金收盤，不是期貨盤中。
 
-四大指數＝道瓊／標普／那斯達克／費半；VIX＝恐慌指數水位（不是分點）。
-半導體／電子再對照費半與台積 ADR。這是開盤風險過濾，不是內幕、也不保證開盤一定跟。
+四大指數＝道瓊／標普／那斯達克／費半；VIX＝收盤恐慌水位。
+半導體／電子再對照費半與台積 ADR。只過濾逆風，不拿來追高。
 """
 from __future__ import annotations
 
@@ -34,7 +34,6 @@ SYMBOLS = (
     ("ixic", "^IXIC", "那斯達克"),
     ("sox", "^SOX", "費半"),
     ("vix", "^VIX", "VIX"),
-    ("nq_f", "NQ=F", "那指期"),
     ("tsm", "TSM", "台積ADR"),
     ("nvda", "NVDA", "輝達"),
 )
@@ -132,14 +131,14 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
 
 
 def fetch_us_tape() -> Dict[str, Any]:
-    """抓現金四大＋VIX＋那指期＋台積 ADR／輝達。失敗的欄位留空，不整包丟掉。"""
+    """抓美股現金收盤：四大＋VIX＋台積 ADR／輝達。失敗的欄位留空，不整包丟掉。"""
     out: Dict[str, Any] = {"ok": False, "fetched_at": datetime.now(timezone.utc).isoformat()}
     sessions = []
     for key, sym, _label in SYMBOLS:
         try:
             bar = _fetch_symbol(sym)
         except Exception:
-            logger.exception("美股夜盤抓不到 %s", sym)
+            logger.exception("美股收盤抓不到 %s", sym)
             continue
         out[f"{key}_px"] = bar.get("price")
         out[f"{key}_pct"] = bar.get("pct")
@@ -157,7 +156,7 @@ def fetch_us_tape() -> Dict[str, Any]:
 
 
 def classify_us_regime(snap: Dict[str, Any]) -> str:
-    """中性／偏空／逆風。VIX 看水位；指數看跌幅。沒接到數字＝unknown，不過濾。"""
+    """中性／偏空／逆風。只看美股現金收盤與 VIX 水位；期貨盤中不參與判定。"""
     if snap.get("vix") is None and snap.get("ixic_pct") is None and snap.get("spx_pct") is None:
         return "unknown"
     try:
@@ -172,12 +171,6 @@ def classify_us_regime(snap: Dict[str, Any]) -> str:
         except (TypeError, ValueError):
             pass
     worst = min(cash) if cash else 0.0
-    try:
-        nq_f = float(snap["nq_f_pct"]) if snap.get("nq_f_pct") is not None else None
-    except (TypeError, ValueError):
-        nq_f = None
-    if nq_f is not None:
-        worst = min(worst, nq_f)
     if vix >= 25 or worst <= -2.5:
         return "risk_off"
     if vix >= 18 or worst <= -1.2:
@@ -286,7 +279,7 @@ def refresh_us_overnight(db_path: str, as_of: str, max_age_sec: int = 900) -> Di
     try:
         snap = fetch_us_tape()
     except Exception:
-        logger.exception("美股夜盤整包失敗")
+        logger.exception("美股收盤整包失敗")
         return cached
     if snap.get("ok"):
         save_us_overnight(db_path, as_of, snap)
@@ -298,7 +291,7 @@ REGIME_LABEL = {
     "ok": "隔夜中性",
     "caution": "隔夜偏空",
     "risk_off": "隔夜逆風",
-    "unknown": "美股夜盤沒接到",
+    "unknown": "美股收盤沒接到",
 }
 
 
@@ -325,18 +318,17 @@ def format_us_html(snap: Dict[str, Any]) -> str:
         return ""
     from tg_layout import html_escape
 
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股夜盤")
+    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
     sess = snap.get("us_session") or ""
     sess_s = f"{sess[:4]}/{sess[4:6]}/{sess[6:]}" if len(str(sess)) == 8 else (sess or "—")
     lines = [
-        f"<b>隔夜美股</b>　{html_escape(label)}　美股交易日 {html_escape(sess_s)}",
+        f"<b>美股收盤</b>　{html_escape(label)}　美股交易日 {html_escape(sess_s)}",
         (
             f"道瓊 {_fmt_pct(snap.get('dji_pct'))}　標普 {_fmt_pct(snap.get('spx_pct'))}　"
             f"那斯達克 {_fmt_pct(snap.get('ixic_pct'))}　費半 {_fmt_pct(snap.get('sox_pct'))}"
         ),
         (
             f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）　"
-            f"那指期 {_fmt_pct(snap.get('nq_f_pct'))}　"
             f"台積ADR {_fmt_pct(snap.get('tsm_pct'))}　輝達 {_fmt_pct(snap.get('nvda_pct'))}"
         ),
     ]
@@ -361,9 +353,9 @@ def format_us_html(snap: Dict[str, Any]) -> str:
 def format_us_plain(snap: Dict[str, Any]) -> str:
     if not snap:
         return ""
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股夜盤")
+    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
     return (
-        f"隔夜美股 {label} 道瓊{_fmt_pct(snap.get('dji_pct'))} 標普{_fmt_pct(snap.get('spx_pct'))} "
+        f"美股收盤 {label} 道瓊{_fmt_pct(snap.get('dji_pct'))} 標普{_fmt_pct(snap.get('spx_pct'))} "
         f"那指{_fmt_pct(snap.get('ixic_pct'))} 費半{_fmt_pct(snap.get('sox_pct'))} "
         f"VIX {_fmt_vix(snap.get('vix'))}"
     )

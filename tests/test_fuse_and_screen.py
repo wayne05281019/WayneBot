@@ -313,6 +313,10 @@ class USOvernightTest(unittest.TestCase):
         self.assertEqual(classify_us_regime({"vix": 26.0, "ixic_pct": -0.5, "spx_pct": -0.4, "dji_pct": -0.2, "sox_pct": -0.3}), "risk_off")
         self.assertEqual(classify_us_regime({"vix": 16.0, "ixic_pct": -1.0, "spx_pct": -0.8, "dji_pct": -0.5, "sox_pct": -3.2}), "ok")
         self.assertEqual(classify_us_regime({}), "unknown")
+        self.assertEqual(
+            classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
+            "ok",
+        )
 
     def test_risk_off_clears_intraday_and_tags_chips(self):
         from screening_engine import format_screening_payload
@@ -354,7 +358,7 @@ class USOvernightTest(unittest.TestCase):
         self.assertIn("隔夜逆風", html)
         payload = format_screening_payload(results, "20260828", us_html=html)
         blob = "\n".join(p["html"] for p in payload)
-        self.assertIn("隔夜美股", blob)
+        self.assertIn("美股收盤", blob)
         self.assertIn("當沖／隔日沖今日不列", blob)
 
     def test_caution_drops_chase_and_chip_headwind(self):
