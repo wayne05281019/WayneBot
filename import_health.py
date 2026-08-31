@@ -16,13 +16,13 @@ def list_coverage_issues(
     cur = conn.cursor()
     rows = cur.execute(
         """
-        SELECT date,
+        SELECT replace(date,'-','') AS d,
                COUNT(*) AS n,
                SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
                SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
         FROM daily_quotes
-        GROUP BY date
-        ORDER BY date
+        GROUP BY replace(date,'-','')
+        ORDER BY d
         """
     ).fetchall()
     conn.close()
@@ -45,20 +45,22 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     if not yyyymmdd:
-        row = cur.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
-        yyyymmdd = str(row[0] or "")
+        row = cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes").fetchone()
+        yyyymmdd = str(row[0] or "").replace("-", "")
+    else:
+        yyyymmdd = str(yyyymmdd).replace("-", "")
     tw = cur.execute(
-        "SELECT COUNT(*) FROM daily_quotes WHERE date=? AND market IN ('TW','TSE')",
+        "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=? AND market IN ('TW','TSE')",
         (yyyymmdd,),
     ).fetchone()[0]
     two = cur.execute(
-        "SELECT COUNT(*) FROM daily_quotes WHERE date=? AND market IN ('TWO','OTC','ROCO')",
+        "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=? AND market IN ('TWO','OTC','ROCO')",
         (yyyymmdd,),
     ).fetchone()[0]
-    total = cur.execute("SELECT COUNT(*) FROM daily_quotes WHERE date=?", (yyyymmdd,)).fetchone()[0]
+    total = cur.execute("SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?", (yyyymmdd,)).fetchone()[0]
     chip_n = cur.execute(
         """SELECT COUNT(*) FROM daily_quotes
-           WHERE date=? AND (ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net))>0""",
+           WHERE replace(date,'-','')=? AND (ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net))>0""",
         (yyyymmdd,),
     ).fetchone()[0]
     try:
@@ -66,6 +68,10 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         q_n = cur.execute("SELECT COUNT(*), MAX(year), MAX(season) FROM quarterly_income").fetchone()
     except sqlite3.OperationalError:
         m_n, q_n = (0, ""), (0, 0, 0)
+    try:
+        x_n = cur.execute("SELECT COUNT(*), MAX(ex_date) FROM ex_rights").fetchone()
+    except sqlite3.OperationalError:
+        x_n = (0, "")
     conn.close()
     problems: List[str] = []
     if total == 0:
@@ -78,8 +84,8 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         problems.append("法人買賣超幾乎全 0，T86 可能失敗")
     if int(m_n[0] or 0) < 200:
         problems.append("月營收列過少，官方月報尚未同步")
-    if int(q_n[0] or 0) < 200:
-        problems.append("季報列過少，綜合損益尚未同步")
+    if int(x_n[0] or 0) < 50:
+        problems.append("除權息列過少，官方 TWT49U／櫃買尚未同步")
     hist = list_coverage_issues(db_path)
     return {
         "date": yyyymmdd,
@@ -91,6 +97,8 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         "latest_month": m_n[1] or "",
         "income_n": int(q_n[0] or 0),
         "latest_quarter": f"{q_n[1]}Q{q_n[2]}" if q_n[1] else "",
+        "ex_rights_n": int(x_n[0] or 0),
+        "latest_ex": x_n[1] or "",
         "ok": not problems,
         "problems": problems,
         "history_issues": hist,
@@ -101,7 +109,7 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
 def format_audit_plain(health: Dict[str, Any]) -> str:
     lines = [
         f"盤後匯入 {health.get('date')}：上市 {health.get('tw')}　上櫃 {health.get('two')}　合計 {health.get('total')}",
-        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{health.get('latest_month')}）　季報 {health.get('income_n')}（{health.get('latest_quarter')}）",
+        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{health.get('latest_month')}）　季報 {health.get('income_n')}（{health.get('latest_quarter')}）　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）",
     ]
     if health.get("problems"):
         lines.append("當日問題：" + "；".join(health["problems"]))

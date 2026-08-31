@@ -674,7 +674,7 @@ class DataFetcher:
         cur.execute("SELECT MAX(date) FROM daily_quotes;")
         row = cur.fetchone()
         conn.close()
-        latest = str(row[0]) if row and row[0] else ""
+        latest = str(row[0]).replace("-", "") if row and row[0] else ""
         filled, skipped = [], []
         if not latest:
             n = self.update_daily_market_data(end_date)
@@ -740,18 +740,19 @@ class DataFetcher:
 
     def _refill_thin_days(self, end_date: str, lookback: int = 25, min_rows: int = 1500) -> list:
         """已有日期但檔數偏少、或上市／上櫃一邊缺，就整日重抓。開盤日兩邊都要有。"""
+        end_date = str(end_date or "").replace("-", "")[:8]
         conn = self.get_db_connection()
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT date,
+            SELECT replace(date,'-','') AS d,
                    COUNT(*) AS n,
                    SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
                    SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
             FROM daily_quotes
-            WHERE date <= ?
-            GROUP BY date
-            ORDER BY date DESC
+            WHERE replace(date,'-','') <= ?
+            GROUP BY replace(date,'-','')
+            ORDER BY d DESC
             LIMIT ?;
             """,
             (end_date, int(lookback) + 8),

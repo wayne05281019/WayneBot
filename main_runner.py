@@ -12,7 +12,8 @@
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
-#   6. 匯入健康檢查；通過後海選推播、AI 模擬倉
+#   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
+#   7. 匯入健康檢查；通過後海選推播、AI 模擬倉
 # 證交所收盤約 13:30 後陸續出表，法人常 15:30～16:30 才齊，所以排 16:30。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
 # fuse（不推播）把 Release 之後缺的交易日補進這份庫。
@@ -207,18 +208,18 @@ class MainRunner:
             logger.info(f"當日法人更新 {n} 列")
             conn = sqlite3.connect(self.db_path)
             cur = conn.cursor()
-            cur.execute("SELECT MAX(date) FROM daily_quotes;")
+            cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
             latest = cur.fetchone()[0]
             chip_sum = 0
             if latest:
                 chip_sum = cur.execute(
-                    "SELECT COALESCE(SUM(ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net)),0) FROM daily_quotes WHERE date=?",
-                    (latest,),
+                    "SELECT COALESCE(SUM(ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net)),0) FROM daily_quotes WHERE replace(date,'-','')=?",
+                    (str(latest).replace("-", ""),),
                 ).fetchone()[0]
             conn.close()
             if chip_sum == 0:
-                logger.info("最近交易日籌碼仍為 0，回補近 20 個交易日法人…")
-                bf = backfill_chips(self.db_path, days=20)
+                logger.info("最近交易日籌碼仍為 0，回補近 60 個交易日法人…")
+                bf = backfill_chips(self.db_path, days=60)
                 logger.info(f"法人回補：{bf}")
         except Exception as e:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
@@ -229,6 +230,13 @@ class MainRunner:
             logger.info(f"月營收／季報同步：{fund}")
         except Exception as e:
             logger.error(f"基本面同步失敗: {e}", exc_info=True)
+        try:
+            from ex_rights import sync_ex_rights
+
+            xr = sync_ex_rights(self.db_path)
+            logger.info("官方除權息融合：%s", xr)
+        except Exception as e:
+            logger.error(f"除權息同步失敗: {e}", exc_info=True)
         try:
             from import_health import audit_import, format_audit_plain
             health = audit_import(self.db_path)
