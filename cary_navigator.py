@@ -166,6 +166,17 @@ class CaryNavigatorEngine:
             return {"error": f"標的 {stock_id} 歷史資料不足"}
 
         df = df.iloc[::-1].reset_index(drop=True)
+        try:
+            from live_quote import append_live_bar
+
+            df = append_live_bar(df, str(stock_id))
+        except Exception:
+            pass
+        live_time = ""
+        is_live = False
+        if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
+            is_live = True
+            live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
         df, xq_notes = normalize_ohlc(df)
         close_s = df["close"].where(~df["is_halt"])
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
@@ -262,9 +273,11 @@ class CaryNavigatorEngine:
             ma60s = round(float(latest["ma60"]) - float(df["ma60"].iloc[-7]), 1)
         qty60 = int(round(float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)))
         badges = []
+        if is_live:
+            badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
         if any("除權" in x or "錯價" in x for x in xq_notes):
             badges.append("已除權還原")
-        if int(latest["vol_rank_120"]) <= 3:
+        if int(latest["vol_rank_120"]) <= 10:
             badges.append(f"120日量第 {int(latest['vol_rank_120'])} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
@@ -288,6 +301,8 @@ class CaryNavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "latest_date": latest["date"],
+            "is_live": is_live,
+            "live_time": live_time,
             "close": float(latest["close"]),
             "change_pct": chg,
             "h10": h10, "dist_h10": _dist_h(h10),
@@ -780,7 +795,14 @@ def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFr
     conn.close()
     if df.empty:
         return df
-    return df.iloc[::-1].reset_index(drop=True)
+    df = df.iloc[::-1].reset_index(drop=True)
+    try:
+        from live_quote import append_live_bar
+
+        df = append_live_bar(df, str(stock_id).strip())
+    except Exception:
+        pass
+    return df
 
 
 def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 20) -> str:
@@ -841,7 +863,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     return join_sections(
         title_block,
         section(
-            kv("日期", _fmt_md(card["latest_date"])),
+            kv("日期", _fmt_md(card["latest_date"]) + (" 盤中" + (f" {card.get('live_time')}" if card.get("live_time") else "") if card.get("is_live") else "")),
             kv("開高低", ohlc or "—"),
             kv("收盤", f"{_fmt_price(card['close'])}　{move}"),
             kv("當日", f"{chg:+.2f}%"),
@@ -911,7 +933,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     ink(20.2, 93.45, badge or "—", 12, "#FFE082")
-    ink(96.8, 96.85, _fmt_md(card.get("latest_date")), 11, "#C5CAE9", ha="right")
+    ink(96.8, 96.85, _fmt_md(card.get("latest_date")) + (" 盤中 " + str(card.get("live_time") or "") if card.get("is_live") else ""), 11, "#C5CAE9", ha="right")
 
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
@@ -992,21 +1014,64 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
 
 
-def _nav_triangle(ax, x, y, *, down: bool, face: str, span: float, z=7, alpha=1.0, hx=0.38):
-    """實心三角。down=True 為▼。"""
-    hy = max(span * 0.016, abs(y) * 0.0055)
+def _nav_arrow(ax, x, y, *, down: bool, face: str, span: float, z=7, alpha=1.0, scale=1.0):
+    """帶柄箭頭（不是實心正三角）：尖端對準價位，柄較細、頭較長，外加深色描邊。"""
+    hy = max(span * 0.032, abs(y) * 0.009) * float(scale)
+    head_h = hy * 0.58
+    shaft_h = hy * 0.62
+    hw = 0.46 * scale
+    sw = 0.11 * scale
     if down:
-        pts = [(x, y - hy * 0.12), (x - hx, y + hy), (x + hx, y + hy)]
+        tip_y, head_y, tail_y = y, y + head_h, y + head_h + shaft_h
     else:
-        pts = [(x, y + hy * 0.12), (x - hx, y - hy), (x + hx, y - hy)]
+        tip_y, head_y, tail_y = y, y - head_h, y - head_h - shaft_h
+    verts = [
+        (x, tip_y),
+        (x + hw, head_y),
+        (x + sw, head_y),
+        (x + sw, tail_y),
+        (x - sw, tail_y),
+        (x - sw, head_y),
+        (x - hw, head_y),
+    ]
     ax.add_patch(
         patches.Polygon(
-            pts,
+            verts,
             closed=True,
             facecolor=face,
             edgecolor="#212121",
-            linewidth=0.55,
+            linewidth=0.45,
+            joinstyle="round",
             alpha=alpha,
+            zorder=z,
+            clip_on=False,
+        )
+    )
+
+
+def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
+    """量能列向上箭頭。"""
+    h = 0.22 * scale
+    hw = 0.20 * scale
+    sw = 0.055 * scale
+    tip, head, tail = y + h * 0.55, y, y - h * 0.72
+    verts = [
+        (x, tip),
+        (x + hw, head),
+        (x + sw, head),
+        (x + sw, tail),
+        (x - sw, tail),
+        (x - sw, head),
+        (x - hw, head),
+    ]
+    ax.add_patch(
+        patches.Polygon(
+            verts,
+            closed=True,
+            facecolor=face,
+            edgecolor=edge,
+            linewidth=0.55,
+            joinstyle="round",
             zorder=z,
             clip_on=False,
         )
@@ -1104,19 +1169,19 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
 
         # 價格列：20高／20高脫離／20低／20低脫離／60低（量能異常不畫在這裡）
         if is_20h:
-            _nav_triangle(ax1, x, hi + span * 0.012, down=True, face="#f8bbd0", span=span, z=6, hx=0.36)
+            _nav_arrow(ax1, x, hi + span * 0.010, down=True, face="#f48fb1", span=span, z=6)
         elif hi >= wick_h20 * 0.985:
-            _nav_triangle(ax1, x, hi + span * 0.008, down=True, face="#f8bbd0", span=span, z=5, alpha=0.28, hx=0.28)
+            _nav_arrow(ax1, x, hi + span * 0.008, down=True, face="#f8bbd0", span=span, z=5, alpha=0.38, scale=0.82)
         if leave_h:
-            _nav_triangle(ax1, x, hi + span * 0.042, down=True, face="#6a1b9a", span=span, z=8, hx=0.40)
+            _nav_arrow(ax1, x, hi + span * 0.046, down=True, face="#6a1b9a", span=span, z=8, scale=1.12)
         if is_20l:
-            _nav_triangle(ax1, x, lo - span * 0.012, down=False, face="#a5d6a7", span=span, z=6, hx=0.36)
+            _nav_arrow(ax1, x, lo - span * 0.010, down=False, face="#66bb6a", span=span, z=6)
         elif lo <= wick_l20 * 1.015:
-            _nav_triangle(ax1, x, lo - span * 0.008, down=False, face="#c8e6c9", span=span, z=5, alpha=0.28, hx=0.28)
+            _nav_arrow(ax1, x, lo - span * 0.008, down=False, face="#a5d6a7", span=span, z=5, alpha=0.38, scale=0.82)
         if leave_l:
-            _nav_triangle(ax1, x, lo - span * 0.042, down=False, face="#1b5e20", span=span, z=8, hx=0.40)
+            _nav_arrow(ax1, x, lo - span * 0.046, down=False, face="#1b5e20", span=span, z=8, scale=1.12)
         if is_60l:
-            _nav_triangle(ax1, x, lo - span * 0.068, down=False, face="#26c6da", span=span, z=7, hx=0.40)
+            _nav_arrow(ax1, x, lo - span * 0.078, down=False, face="#00acc1", span=span, z=7, scale=1.08)
 
         # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
         sq = "#ffe0b2" if (i // 3) % 2 == 0 else "#bbdefb"
@@ -1124,11 +1189,11 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
             sq = "#90caf9"
         ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84, facecolor=sq, edgecolor="#ffffff", lw=0.12, zorder=2))
         if warn:
-            ax_sig.scatter([x], [0.72], marker="^", s=26, color="#e53935", edgecolors="#b71c1c", linewidths=0.25, zorder=5)
+            _sig_arrow(ax_sig, x, 0.72, "#e53935", "#7f0000", scale=1.05, z=5)
         if vol_a:
-            ax_sig.scatter([x], [0.38], marker="^", s=34, color="#6a1b9a", edgecolors="#311b92", linewidths=0.3, zorder=6)
+            _sig_arrow(ax_sig, x, 0.38, "#6a1b9a", "#311b92", scale=1.22, z=6)
         elif vol_low:
-            ax_sig.scatter([x], [0.38], marker="^", s=16, color="#ce93d8", edgecolors="#7b1fa2", linewidths=0.2, zorder=4, alpha=0.85)
+            _sig_arrow(ax_sig, x, 0.38, "#ce93d8", "#6a1b9a", scale=0.78, z=4)
 
         was_20h, was_20l = is_20h, is_20l
 
@@ -1137,8 +1202,11 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     ax1.axhline(l60, color="#81c784", linewidth=1.35)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--")
     ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--")
+    live_note = ""
+    if "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1]):
+        live_note = "  ·盤中即時"
     ax1.set_title(
-        f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航   WayneBot ® 2026",
+        f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026",
         fontproperties=_fp(14, "bold"),
         pad=6,
     )
@@ -1203,8 +1271,8 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     fig.text(
         0.50,
         0.015,
-        "價格列：淺粉▼20高　紫▼20高脫離　淺綠▲20低　深綠▲20低脫離　青▲60低　　"
-        "量能列（價格列不一定有）：紫▲量能異常　紅▲警告　淺紫▲月波動低　藍／杏塊＝月波動",
+        "價格列：淺粉↓20高　紫↓20高脫離　綠↑20低　深綠↑20低脫離　青↑60低　　"
+        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　藍／杏塊＝月波動",
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),
