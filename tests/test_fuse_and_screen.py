@@ -572,6 +572,43 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
         self.assertEqual(cells[0][1], 70.0)
 
+    def test_label_and_value_never_collide_on_one_row(self):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from cary_navigator import _text_w, fit_label_value
+
+        row_w, fig_w, gap = 91.6, 4.62, 5.5
+        cases = [
+            (["距120／240／480低", "距長期低"], "+237.0%　+563.0%　+836.3%"),
+            (["距120／240／480低", "距長期低"], "+1237.0%　+5563.0%　+8836.3%"),
+            ("距20日高（賣壓）", "+0.0%"),
+            ("月／季空間", "42%　／　157%"),
+        ]
+        for labels, value in cases:
+            with self.subTest(value=value):
+                label, fa, fb = fit_label_value(labels, value, row_w, fig_w, gap=gap)
+                used = (_text_w(label, fa, fig_w, 800)
+                        + _text_w(value, fb, fig_w, 800))
+                self.assertLessEqual(used + gap, row_w + 0.01)
+                self.assertGreaterEqual(fb, 9.5)
+
+    def test_card_white_text_backgrounds_have_enough_contrast(self):
+        from cary_navigator import _CARD, _wcag
+
+        for key in ("pill_hi", "pill_lo", "tag", "navy"):
+            with self.subTest(key=key):
+                self.assertGreaterEqual(_wcag("#FFFFFF", _CARD[key]), 4.5)
+
+    def test_card_bold_and_body_use_different_font_weights(self):
+        from cary_navigator import _weight_step
+
+        self.assertGreater(_weight_step("heavy" and 900), _weight_step(500))
+        self.assertEqual(_weight_step(800), _weight_step(900))
+        self.assertEqual(_weight_step(700), _weight_step(500))
+        # 可變字型預設是 Thin，實際畫圖要用壓出來的靜態字重，不能落回 100。
+        self.assertGreaterEqual(_weight_step(500), 400)
+
     def test_decision_card_png_with_long_lows(self):
         import tempfile
 

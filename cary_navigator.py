@@ -12,8 +12,14 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as patches
 import matplotlib.font_manager as fm
+import matplotlib.colors as mcolors
+from functools import lru_cache
+from threading import Lock
 import pandas as pd
 import numpy as np
+
+# FT2Font 是共用物件，量字寬要改 size／text，併發產圖時得排隊。
+_FT_LOCK = Lock()
 
 try:
     from config import get_charts_dir, get_db_path
@@ -46,6 +52,46 @@ else:
     plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'DejaVu Sans', 'Arial']
 
 plt.rcParams['axes.unicode_minus'] = False
+
+# 這支中文字型是可變字型，預設實例是 Thin，matplotlib 又不能指定 wght 軸，
+# 所以「粗體」其實都畫成細體。先把需要的字重壓成靜態檔存起來，第一次產圖付一次成本。
+_WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
+_WEIGHT_FILES = {}
+
+
+def _weight_step(weight) -> int:
+    return _WEIGHT_BOLD if int(weight) >= 750 else _WEIGHT_TEXT
+
+
+def _weight_font_path(weight: int) -> str:
+    step = _weight_step(weight)
+    cached = _WEIGHT_FILES.get(step)
+    if cached is not None:
+        return cached
+    out = os.path.join(BASE_DIR, f"NotoSansTC-w{step}.ttf")
+    if not os.path.exists(out):
+        try:
+            from fontTools.ttLib import TTFont
+            from fontTools.varLib import instancer
+
+            src = TTFont(FONT_PATH)
+            if "fvar" not in src:
+                _WEIGHT_FILES[step] = FONT_PATH
+                return FONT_PATH
+            inst = instancer.instantiateVariableFont(src, {"wght": step}, inplace=False)
+            inst["OS/2"].usWeightClass = step
+            tmp = f"{out}.{os.getpid()}.tmp"
+            inst.save(tmp)
+            os.replace(tmp, out)
+        except Exception:
+            _WEIGHT_FILES[step] = FONT_PATH if os.path.exists(FONT_PATH) else ""
+            return _WEIGHT_FILES[step]
+    try:
+        fm.fontManager.addfont(out)
+    except Exception:
+        pass
+    _WEIGHT_FILES[step] = out
+    return out
 
 
 def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
@@ -500,8 +546,9 @@ def _fp(size, weight="normal"):
             weight.lower(), 700
         )
     kwargs = {"size": size, "weight": weight}
-    if os.path.exists(FONT_PATH):
-        kwargs["fname"] = FONT_PATH
+    path = _weight_font_path(weight) if os.path.exists(FONT_PATH) else ""
+    if path:
+        kwargs["fname"] = path
     return fm.FontProperties(**kwargs)
 
 
@@ -613,6 +660,26 @@ def _fmt_md_tpl(date_val) -> str:
     return d
 
 
+def _lum(color) -> float:
+    """相對亮度（WCAG）；用來判斷字色算亮還是暗。"""
+    out = 0.0
+    for c, k in zip(mcolors.to_rgb(color), (0.2126, 0.7152, 0.0722)):
+        out += k * (c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+    return out
+
+
+def _mix(color, other, t: float) -> str:
+    """把 color 往 other 混 t 比例，用來取深一階的底色或描邊色。"""
+    a, b = mcolors.to_rgb(color), mcolors.to_rgb(other)
+    return mcolors.to_hex(tuple(x + (y - x) * t for x, y in zip(a, b)))
+
+
+def _wcag(fg, bg) -> float:
+    """字色與底色的對比倍數；白字壓深底至少要 4.5 才不吃力。"""
+    a, b = sorted((_lum(fg), _lum(bg)), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
 def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
     if not text or text in ("No", "—", "nan"):
         ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center", zorder=z + 1)
@@ -629,7 +696,8 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
             zorder=z,
         )
     )
-    ax.text(cx, cy, text, fontproperties=_fp(fs, "bold"), color=fg, ha="center", va="center", zorder=z + 1)
+    ax.text(cx, cy, text, fontproperties=_fp(fs, "heavy"), color=fg, ha="center", va="center",
+            zorder=z + 1)
 
 
 def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
@@ -716,6 +784,9 @@ _CARD = {
     "lo_hit_line": "#4CAF50",
     "up": "#D81B60",
     "down": "#00695C",
+    # 白字要壓在上面的底色壓深一階，對白色至少 5:1 對比。
+    "pill_hi": "#AD1457",
+    "pill_lo": "#2E7D32",
     "tbl_hdr": "#E7EEF8",
     "tbl_line": "#BACCE6",
     "tbl_ink": "#1E3A8A",
@@ -724,9 +795,59 @@ _CARD = {
 
 
 def _card_text_w(text, fs: float, fig_w: float) -> float:
-    """資料座標下的字串寬度：中日韓字一個 em，半角約 0.55 em，用來把藥丸貼齊字長。"""
+    """粗估字串寬度（資料座標）：中日韓字一個 em，半角約 0.55 em。量不到真實字寬時的退路。"""
     em = fs / (fig_w / 100.0 * 72.0)
     return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in str(text)) * em
+
+
+@lru_cache(maxsize=8192)
+def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
+    """字串的前進寬度（點）。matplotlib 對齊用的是前進寬度，
+    用墨跡寬度算會少 10% 以上，右對齊的數字就會往左吃掉間距。"""
+    path = _weight_font_path(weight)
+    if not path:
+        return 0.0
+    try:
+        with _FT_LOCK:
+            font = fm.get_font(path)
+            font.set_size(fs, 72)
+            font.set_text(text)
+            return float(font.get_width_height()[0]) / 64.0
+    except Exception:
+        return 0.0
+
+
+def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
+    """真實字寬（資料座標）。估算會差幾個百分比，排一列四個數字就會擠在一起。"""
+    s = str(text)
+    if not s.strip():
+        return 0.0
+    pt = _glyph_w_pt(s, float(fs), int(weight))
+    if pt <= 0:
+        return _card_text_w(s, fs, fig_w)
+    return pt / 72.0 / (fig_w / 100.0)
+
+
+def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
+                    weight=800, floor=9.5):
+    """左標題右數值同一列：等比縮字級直到中間留得下 gap；還是撐不下就換較短的標題寫法。
+
+    回傳 (採用的標題, 標題字級, 數值字級)。標題可傳由長到短的備選清單。
+    """
+    labels = [labels] if isinstance(labels, str) else list(labels)
+    best = (labels[-1], fa, fb)
+    for label in labels:
+        la, lb = fa, fb
+        while True:
+            used = (_text_w(label, la, fig_w, weight)
+                    + _text_w(value, lb, fig_w, weight) + gap)
+            if used <= row_w:
+                return label, la, lb
+            if lb <= floor:
+                best = (label, la, lb)
+                break
+            la, lb = la * 0.95, lb * 0.95
+    return best
 
 
 def render_decision_card_png(card: dict, save_path: str) -> str:
@@ -756,7 +877,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         if b and "None" not in b and b not in badges:
             badges.append(b)
     badges = badges[:5] or ["整理格局"]
-    badge_w = [_card_text_w(b, 10.2, fig_w) + 3.2 for b in badges]
+    badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows, row, row_w = [], [], 0.0
     limit = 100 - 2 * pad_x - 6.4
     for b, bw in zip(badges, badge_w):
@@ -781,7 +902,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     fig.subplots_adjust(left=0.026, right=0.974, top=0.99, bottom=0.012)
 
     def tw(text, fs):
-        return _card_text_w(text, fs, fig_w)
+        return _text_w(text, fs, fig_w, 900)
 
     def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
         ax.add_patch(patches.FancyBboxPatch(
@@ -839,7 +960,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.FancyBboxPatch(
         (pad_x + 2.8, y + 1.6), tag_w, 3.2, boxstyle="round,pad=0,rounding_size=0.55",
         facecolor=C["tag"], edgecolor="none", zorder=3))
-    ax.text(pad_x + 2.8 + tag_w / 2, y + 3.2, tag, fontproperties=_fp(11.5, "bold"),
+    ax.text(pad_x + 2.8 + tag_w / 2, y + 3.2, tag, fontproperties=_fp(11.5, "heavy"),
             color="#FFFFFF", ha="center", va="center", zorder=4)
     brand_x = 100 - pad_x - 2.8
     ax.text(brand_x, y + head_h / 2, "WayneBot", fontproperties=_fp(12, "bold"),
@@ -872,13 +993,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         for btxt, bw in brow:
             # 只有「創新高／貼低點」這種訊號實心，警語留描邊，避免整排都在喊。
             solid = any(k in btxt for k in ("創", "新高", "新低", "近"))
+            b_bg = C["pill_hi"] if solid else "#FDECF3"
+            b_fg = "#FFFFFF" if solid else C["hi_ink"]
             ax.add_patch(patches.FancyBboxPatch(
                 (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
-                facecolor=C["up"] if solid else "#FDECF3",
-                edgecolor=C["up"] if solid else "#E88AAE",
+                facecolor=b_bg, edgecolor=b_bg if solid else "#E88AAE",
                 linewidth=0 if solid else 0.9, zorder=3))
-            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
-                    color="#FFFFFF" if solid else C["hi_ink"], ha="center", va="center", zorder=4)
+            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.4, "heavy"),
+                    color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
         by -= badge_h + badge_gap
 
@@ -945,7 +1067,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         else:
             tbg, tfg = "#F1F3F6", "#4B5563"
         if rank <= 10:
-            vbg, vfg = C["up"], "#FFFFFF"
+            vbg, vfg = C["pill_hi"], "#FFFFFF"
         elif rank <= 20:
             vbg, vfg = "#F8BBD0", "#880E4F"
         elif rank <= 50:
@@ -975,21 +1097,21 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i in (3, 4):
                 if "高" in val:
-                    _pill(ax, cx, cy, val, C["up"], "#FFFFFF", w=tw(val, 10.4) + 2.8,
-                          h=body_h * 0.66, fs=10.4)
+                    _pill(ax, cx, cy, val, C["pill_hi"], "#FFFFFF", w=tw(val, 11.2) + 3.0,
+                          h=body_h * 0.74, fs=11.2)
                 elif "低" in val:
-                    _pill(ax, cx, cy, val, "#43A047", "#FFFFFF", w=tw(val, 10.4) + 2.8,
-                          h=body_h * 0.66, fs=10.4)
+                    _pill(ax, cx, cy, val, C["pill_lo"], "#FFFFFF", w=tw(val, 11.2) + 3.0,
+                          h=body_h * 0.74, fs=11.2)
                 else:
                     ax.text(cx, cy, "No", fontproperties=_fp(11), color=C["ink_mute"],
                             ha="center", va="center", zorder=3)
             elif i == 7:
-                _pill(ax, cx, cy, val, vbg, vfg, w=tw(val, 10.6) + 2.8, h=body_h * 0.66, fs=10.6)
+                _pill(ax, cx, cy, val, vbg, vfg, w=tw(val, 11.0) + 3.0, h=body_h * 0.74, fs=11.0)
             else:
                 if i == 1:
-                    color = C["up"] if hot else C["ink"]
+                    color = C["pill_hi"] if hot else C["ink"]
                 elif i == 2:
-                    color = C["up"]
+                    color = "#C2185B"
                 elif i == 5:
                     color = tfg
                 elif i == 6:
@@ -1147,6 +1269,17 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     def ink(x, y, text, size=12, color="#607D8B", ha="left", va="center"):
         ax.text(x, y, text, fontproperties=_fp(size, "bold"), color=color, ha=ha, va=va, zorder=3)
 
+    row_w = 96.4 - 4.8
+
+    def wid(text, fs):
+        return _text_w(text, fs, 4.62, 800)
+
+    def fit_fs(text, fs, avail, floor=8.5):
+        """字太長就縮到放得下，長期低點那種一列四個數字才不會撞到邊。"""
+        while fs > floor and wid(text, fs) > avail:
+            fs -= 0.4
+        return fs
+
     panel(1.4, 90.55, 97.2, 8.7, "#15256B", "#15256B")
     ax.add_patch(patches.FancyBboxPatch(
         (3.0, 91.15), 14.8, 7.5, boxstyle="round,pad=0.1,rounding_size=0.4",
@@ -1161,7 +1294,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     )
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    ink(20.2, 93.45, badge or "—", 12, "#FFE082")
+    ink(20.2, 93.45, badge or "—", fit_fs(badge or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
     ink(96.8, 96.85, _fmt_md(card.get("latest_date")) + (" 盤中 " + str(card.get("live_time") or "") if card.get("is_live") else ""), 11, "#C5CAE9", ha="right")
 
     chg = float(card.get("change_pct") or 0)
@@ -1179,16 +1312,16 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         panel(1.4, y, 97.2, h)
         ink(4.8, y + h - 1.55, title, 13, "#1A237E")
         yy = y + h - 4.15
-        for a, b, c in rows:
-            ink(4.8, yy, a, 12)
-            ink(96.4, yy, b, 15, c, ha="right")
+        for labels, b, c in rows:
+            a, fa, fb = fit_label_value(labels, b, row_w, 4.62)
+            ink(4.8, yy, a, fa)
+            ink(96.4, yy, b, fb, c, ha="right")
             yy -= 3.35
 
     kv_block(61.55, 15.15, "空間／位置", [
         ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
         ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
-        ("距60／120／240／480低", "　".join([
-            _fmt_dist(card.get("dist_l60")),
+        (["距120／240／480低", "距長期低"], "　".join([
             _fmt_dist(card.get("dist_l120")),
             _fmt_dist(card.get("dist_l240")),
             _fmt_dist(card.get("dist_l480")),
@@ -1220,9 +1353,17 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     cy = 41.45
     for name, item in chips:
         net = int(item.get("net") or 0)
-        ink(4.8, cy, name, 12)
-        ink(32.5, cy, fmt_lots_align(net), 16, chip_color(net), ha="right")
-        ink(96.4, cy, item.get("phrase") or "—", 12, chip_color(net), ha="right")
+        lots = fmt_lots_align(net)
+        phrase = item.get("phrase") or "—"
+        # 張數右緣固定，字級隨位數縮，五六位數才不會貼到左邊的法人名稱。
+        lots_right = 38.0
+        _, f_name, f_lots = fit_label_value(
+            name, lots, lots_right - 4.8, 4.62, fa=12.0, fb=16.0, gap=4.0, floor=10.0
+        )
+        ink(4.8, cy, name, f_name)
+        ink(lots_right, cy, lots, f_lots, chip_color(net), ha="right")
+        ink(96.4, cy, phrase, fit_fs(phrase, 12, 96.4 - lots_right - 4.2, floor=8.0),
+            chip_color(net), ha="right")
         cy -= 4.05
 
     panel(1.4, 5.35, 97.2, 20.7)
@@ -1230,15 +1371,16 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     fy = 20.35
     note = (tape or {}).get("conflict") or ""
     if note:
-        ink(4.8, fy, note, 14, "#C62828")
+        ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
         fy -= 3.35
     for a, b in fund_rows:
-        ink(4.8, fy, f"{a}　{b}", 12, "#111111")
+        line = f"{a}　{b}"
+        ink(4.8, fy, line, fit_fs(line, 12, row_w), "#111111")
         fy -= 3.15
     try:
         note2 = pink_warning_note(card)
         if note2:
-            ink(4.8, fy, note2, 13, "#AD1457")
+            ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
     except Exception:
         pass
     ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌）　▲連漲　▼連跌", 10, "#78909C")
