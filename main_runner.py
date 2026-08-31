@@ -6,7 +6,7 @@
 # 盤後時間：台灣週一～五 16:30 只融合行情（不寄海選）
 #   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
 #   - Render 常駐執行緒同樣 16:30
-# 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤；【雙時段】對照昨晚台股名單）
+# 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
 #   - Render 常駐 06:30；GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選只寫快照、不推播（美股還沒開）
@@ -21,8 +21,8 @@
 #   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
 # 海選 06:30 與 12:45 寄出給家人轉 LINE；盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
-# 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR（台股開盤＝美股已收；不抓期貨盤中）。
-# 逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
+# 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
+# 盤中期貨不看。大跌會在 06:30 海選前先單獨通知。逆風時當沖／隔日沖不列；半導體對照費半。美股抓不到就不過濾。
 # 證交所 13:30 收、盤後到 14:30；櫃買 15:00 收。兩邊絕大多數收盤最慢 16:30 齊，所以抓數排 16:30。
 # 16:30 前不把「今天」寫進庫；開機只補已經收完的交易日。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
@@ -512,6 +512,19 @@ class MainRunner:
             logger.error("補齊後仍無完整交易日可寄海選")
             return False
         logger.info("☀️ 台灣 06:30 海選，基準日 %s", as_of)
+        try:
+            from us_overnight import (
+                format_us_drop_alert,
+                refresh_us_overnight,
+                should_alert_us_drop,
+            )
+
+            us_snap = refresh_us_overnight(self.db_path, as_of) or {}
+            if should_alert_us_drop(us_snap):
+                logger.info("美股收盤偏弱，先寄一早通知 regime=%s", us_snap.get("regime"))
+                self.send_telegram_message(format_us_drop_alert(us_snap))
+        except Exception as e:
+            logger.warning("美股大跌通知略過：%s", e)
         screening = None
         if run_full_screening:
             try:

@@ -363,7 +363,14 @@ class CaryNavigatorEngine:
         qty60 = int(round(float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)))
         badges = []
         if is_live:
-            badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
+            try:
+                from live_quote import mis_session_label
+
+                clock = live_time[:5] if live_time else ""
+                tag = mis_session_label(live_time)
+                badges.append(f"{tag} {clock}".strip() if clock else tag)
+            except Exception:
+                badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
         if any("除權" in x or "錯價" in x or "官方除權息" in x for x in xq_notes):
             badges.append("已除權還原")
         if int(latest["vol_rank_120"]) <= 10:
@@ -431,6 +438,7 @@ class CaryNavigatorEngine:
             "volume": float(latest.get("volume") or 0),
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "table": table,
+            "_ohlc": df,
         }
 
     def scan_double_green_breakout(self) -> list:
@@ -1257,10 +1265,16 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     except Exception:
         fund_block = ""
     tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
+    try:
+        from live_quote import live_clock_suffix
+
+        date_note = live_clock_suffix(bool(card.get("is_live")), str(card.get("live_time") or ""))
+    except Exception:
+        date_note = " 盤中" + (f" {card.get('live_time')}" if card.get("live_time") else "") if card.get("is_live") else ""
     return join_sections(
         title_block,
         section(
-            kv("日期", _fmt_md(card["latest_date"]) + (" 盤中" + (f" {card.get('live_time')}" if card.get("live_time") else "") if card.get("is_live") else "")),
+            kv("日期", _fmt_md(card["latest_date"]) + date_note),
             kv("開高低", ohlc or "—"),
             kv("收盤", f"{_fmt_price(card['close'])}　{move}"),
             kv("當日", f"{chg:+.2f}%"),
@@ -1303,7 +1317,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
-    fig, ax = plt.subplots(figsize=(4.62, 16.4), dpi=220, facecolor="#EEF2F7")
+    fig, ax = plt.subplots(figsize=(4.62, 16.4), dpi=170, facecolor="#EEF2F7")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
@@ -1344,7 +1358,13 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     ink(20.2, 93.45, badge or "—", fit_fs(badge or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
-    ink(96.8, 96.85, _fmt_md(card.get("latest_date")) + (" 盤中 " + str(card.get("live_time") or "") if card.get("is_live") else ""), 11, "#C5CAE9", ha="right")
+    try:
+        from live_quote import live_clock_suffix
+
+        date_note = live_clock_suffix(bool(card.get("is_live")), str(card.get("live_time") or ""))
+    except Exception:
+        date_note = " 盤中 " + str(card.get("live_time") or "") if card.get("is_live") else ""
+    ink(96.8, 96.85, _fmt_md(card.get("latest_date")) + date_note, 11, "#C5CAE9", ha="right")
 
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
@@ -1670,7 +1690,13 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--")
     live_note = ""
     if "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1]):
-        live_note = "  ·盤中即時"
+        t = str(work["_live_time"].iloc[-1] or "") if "_live_time" in work.columns else ""
+        try:
+            from live_quote import mis_session_label
+
+            live_note = f"  ·{mis_session_label(t)}" + (f" {t[:5]}" if t else "")
+        except Exception:
+            live_note = "  ·盤中即時"
     ax1.set_title(
         f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026",
         fontproperties=_fp(14, "bold"),
@@ -1785,9 +1811,12 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     return save_path
 
 
-def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, save_path: str = None) -> str:
+def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, save_path: str = None, df=None) -> str:
     sid = str(stock_id).strip()
-    df = _load_ohlc(sid, db_path, 180)
+    if df is None or getattr(df, "empty", True):
+        df = _load_ohlc(sid, db_path, 180)
+    else:
+        df = df.tail(180).copy()
     if df.empty:
         return ""
     name = stock_name or str(df["stock_name"].iloc[-1] or sid)
@@ -1962,6 +1991,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
             "chart": "",
             "chips": "",
         }
+    ohlc = card.pop("_ohlc", None)
     tape = {}
     try:
         from chip_tape import build_tape
@@ -1973,7 +2003,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
     ) or ""
     card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
-    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png")) or ""
+    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc) or ""
     chips = ""
     try:
         from chips import generate_chips_image

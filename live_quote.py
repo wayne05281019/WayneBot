@@ -65,6 +65,41 @@ def _channels(stock_id: str, market: str = "") -> list:
     return [tse, otc]
 
 
+def mis_session_label(update_time: str) -> str:
+    """上市櫃現股 13:30 收。MIS 停在 13:30:00 就是收盤價，不要再寫盤中。"""
+    t = str(update_time or "").strip().replace("：", ":")
+    if not t:
+        return "盤中"
+    parts = t.split(":")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+    except (TypeError, ValueError):
+        return "盤中"
+    if (hour, minute) >= (13, 30) or hour < 9:
+        return "收盤"
+    return "盤中"
+
+
+def format_mis_clock_line(update_time: str) -> str:
+    t = str(update_time or "").strip()
+    if not t:
+        return ""
+    return f"{mis_session_label(t)}　{t}　證交所 MIS"
+
+
+def live_clock_suffix(is_live: bool, update_time: str = "") -> str:
+    """決策卡／介紹圖日期旁：盤中 13:25 或 收盤 13:30。"""
+    if not is_live:
+        return ""
+    t = str(update_time or "").strip()
+    label = mis_session_label(t)
+    clock = t[:5] if len(t) >= 5 else t
+    if clock:
+        return f" {label} {clock}"
+    return f" {label}"
+
+
 def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]:
     sid = str(stock_id).strip()
     if not sid:

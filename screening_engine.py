@@ -515,7 +515,7 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
     if item.get("both_sessions"):
-        notices.append(_hot("雙時段") + html_escape("＝晚間＋早上都在（已對美股收盤）"))
+        notices.append(_hot("雙時段") + html_escape("＝晚間＋早上都在（已對美股收盤／盤後）"))
     if item.get("chase_warning"):
         notices.append(_hot("少追") + html_escape("＝靠近20日收盤高"))
     if item.get("is_s_tier"):
@@ -870,9 +870,9 @@ def execute_full_screening(
         session_plain = "晚間台股收盤（尚未對美股）"
     elif session == "morning":
         session_html = (
-            "<b>今早 06:30</b>　已對美股收盤。【雙時段】＝昨晚台股名單也有、過完美股還在。"
+            "<b>今早 06:30</b>　已對美股收盤／盤後。【雙時段】＝昨晚台股名單也有、過完美股還在。"
         )
-        session_plain = "今早 06:30（已對美股收盤）。【雙時段】＝晚間台股＋今早都在。"
+        session_plain = "今早 06:30（已對美股收盤／盤後）。【雙時段】＝晚間台股＋今早都在。"
     if apply_us:
         try:
             from us_overnight import format_us_html, format_us_plain

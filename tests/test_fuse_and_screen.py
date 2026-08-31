@@ -447,6 +447,153 @@ class USOvernightTest(unittest.TestCase):
         self.assertTrue(by_id["2330"].get("us_peer_headwind"))
         self.assertFalse(by_id["2002"].get("us_peer_headwind"))
 
+    def test_tape_phase_ignores_futures_during_cash(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from us_overnight import classify_us_regime, us_tape_phase
+
+        ny = ZoneInfo("America/New_York")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 11, 30, tzinfo=ny)), "regular")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 17, 15, tzinfo=ny)), "post")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 31, 21, 0, tzinfo=ny)), "overnight")
+        self.assertEqual(us_tape_phase(datetime(2026, 8, 30, 18, 30, tzinfo=ny)), "overnight")
+        tw = datetime(2026, 9, 1, 6, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+        self.assertEqual(us_tape_phase(tw), "post")
+        self.assertEqual(
+            classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
+            "ok",
+        )
+        self.assertEqual(
+            classify_us_regime(
+                {
+                    "vix": 15.0,
+                    "ixic_pct": 0.1,
+                    "spx_pct": 0.0,
+                    "dji_pct": 0.1,
+                    "nq_f_pct": -1.4,
+                    "us_phase": "post",
+                }
+            ),
+            "caution",
+        )
+        self.assertEqual(
+            classify_us_regime(
+                {
+                    "vix": 15.0,
+                    "ixic_pct": 0.1,
+                    "spx_pct": 0.0,
+                    "dji_pct": 0.1,
+                    "nq_f_pct": -2.8,
+                    "us_phase": "post",
+                }
+            ),
+            "risk_off",
+        )
+
+    def test_post_tsm_dump_tags_chips(self):
+        from us_overnight import apply_us_overnight
+
+        results = {
+            "day_trade": [
+                {"stock_id": "2330", "industry": "半導體業", "chase_warning": False, "q60r": 3},
+                {"stock_id": "2002", "industry": "鋼鐵工業", "chase_warning": False, "q60r": 2},
+            ]
+        }
+        apply_us_overnight(
+            results,
+            {
+                "regime": "ok",
+                "vix": 14.0,
+                "ixic_pct": 0.2,
+                "tsm_pct": 0.3,
+                "tsm_post_pct": -2.4,
+                "us_phase": "post",
+            },
+        )
+        self.assertEqual([x["stock_id"] for x in results["day_trade"]], ["2002"])
+
+    def test_drop_alert_only_when_weak(self):
+        from us_overnight import format_us_drop_alert, format_us_html, should_alert_us_drop
+
+        flat = {"regime": "ok", "vix": 15.0, "ixic_pct": 0.2, "spx_pct": 0.1, "dji_pct": 0.0}
+        self.assertFalse(should_alert_us_drop(flat))
+        self.assertFalse(
+            should_alert_us_drop({"regime": "caution", "vix": 19.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.2})
+        )
+        dump = {
+            "regime": "risk_off",
+            "vix": 27.0,
+            "ixic_pct": -2.8,
+            "spx_pct": -2.1,
+            "dji_pct": -1.9,
+            "sox_pct": -3.0,
+            "nq_f_pct": -3.1,
+            "tsm_post_pct": -2.4,
+            "us_phase": "post",
+            "us_session": "20260831",
+        }
+        self.assertTrue(should_alert_us_drop(dump))
+        html = format_us_drop_alert(dump)
+        self.assertIn("一早提醒", html)
+        self.assertIn("那斯達克", html)
+        self.assertIn("盤後", html)
+        self.assertIn("盤後", format_us_html(dump))
+        self.assertTrue(
+            should_alert_us_drop(
+                {"regime": "ok", "vix": 14.0, "ixic_pct": 0.1, "tsm_pct": 0.2, "tsm_post_pct": -2.2, "us_phase": "post"}
+            )
+        )
+
+    def test_last_post_bar_skips_cash_session(self):
+        from us_overnight import last_post_from_block
+
+        block = {
+            "meta": {
+                "previousClose": 100.0,
+                "currentTradingPeriod": {
+                    "regular": {"start": 1000, "end": 2000},
+                    "post": {"start": 2000, "end": 3000},
+                },
+            },
+            "timestamp": [1500, 1999, 2000, 2500, 3100],
+            "indicators": {"quote": [{"close": [101.0, 102.0, 99.0, 97.5, 50.0]}]},
+        }
+        got = last_post_from_block(block)
+        self.assertAlmostEqual(got["price"], 97.5)
+        self.assertAlmostEqual(got["pct"], -2.5)
+        cash_only = {
+            "meta": {
+                "previousClose": 100.0,
+                "currentTradingPeriod": {
+                    "regular": {"start": 1000, "end": 2000},
+                    "post": {"start": 2000, "end": 3000},
+                },
+            },
+            "timestamp": [1500, 1800],
+            "indicators": {"quote": [{"close": [101.0, 102.0]}]},
+        }
+        self.assertIsNone(last_post_from_block(cash_only))
+
+
+class LiveQuoteLabelTest(unittest.TestCase):
+    def test_1330_is_close_not_intraday(self):
+        from live_quote import format_mis_clock_line, live_clock_suffix, mis_session_label
+
+        self.assertEqual(mis_session_label("13:30:00"), "收盤")
+        self.assertEqual(mis_session_label("13:30"), "收盤")
+        self.assertEqual(mis_session_label("14:00:00"), "收盤")
+        self.assertEqual(mis_session_label("13:25:18"), "盤中")
+        self.assertEqual(mis_session_label("09:01:00"), "盤中")
+        self.assertEqual(mis_session_label("08:50:00"), "收盤")
+        line = format_mis_clock_line("13:30:00")
+        self.assertTrue(line.startswith("收盤"))
+        self.assertIn("13:30:00", line)
+        self.assertIn("證交所 MIS", line)
+        self.assertNotIn("盤中", line)
+        self.assertIn("收盤 13:30", live_clock_suffix(True, "13:30:00"))
+        self.assertIn("盤中 13:25", live_clock_suffix(True, "13:25:18"))
+        self.assertEqual(live_clock_suffix(False, "13:30:00"), "")
+
 
 class TelegramAlignTest(unittest.TestCase):
     def test_html_qty_same_width_so_zhang_aligns(self):
