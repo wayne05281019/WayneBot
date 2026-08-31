@@ -230,16 +230,16 @@ def backfill_chips(db_path: str = None, days: int = 30, sleep_s: float = 0.45) -
 
 
 def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict[str, Any]]:
+    """10 日累計用這檔全部日 K 滾出來，不少算前面的棒。畫面只列最近 limit 列方便讀。"""
     sid = str(stock_id).strip()
-    need = max(int(limit), 1) + 10
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
         """SELECT date, stock_name, close, volume, foreign_net, trust_net, dealer_net
-           FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT ?""",
-        (sid, need),
+           FROM daily_quotes WHERE stock_id=? ORDER BY date ASC""",
+        (sid,),
     )
-    raw = list(reversed(cur.fetchall()))
+    raw = cur.fetchall()
     conn.close()
     if not raw:
         return []

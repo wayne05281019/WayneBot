@@ -1319,7 +1319,7 @@ class AIDeskTest(unittest.TestCase):
 
 
 class SpeedOptTest(unittest.TestCase):
-    def test_chips_only_need_recent_window_for_acc(self):
+    def test_chips_acc_uses_full_history(self):
         from datetime import date, timedelta
         from chips import major_player_rows
         from wayne_db import ensure_core_schema
