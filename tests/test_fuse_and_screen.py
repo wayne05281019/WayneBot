@@ -180,6 +180,28 @@ class FuseAndScreenTest(unittest.TestCase):
             "20260828",
         )
         self.assertLess(line.find("＝＝起漲"), line.find("＝＝優先看"))
+        from config import scheduled_job_kind
+        from line_hop import line_share_href, render_line_hop_html
+        from screening_engine import format_line_share_packs
+
+        self.assertEqual(scheduled_job_kind("30 22 * * 0-4"), "morning_screen")
+        self.assertEqual(scheduled_job_kind("30 8 * * 1-5"), "increment")
+        packs = format_line_share_packs(
+            {"leave_zero": [leave], "day_trade": [hot]},
+            "20260828",
+            session_plain="今早 06:30",
+            us_snap={"regime": "ok", "us_phase": "post", "sox_pct": -2.0, "tsm_pct": -2.1, "nvda_pct": -1.5},
+        )
+        ids = [p["id"] for p in packs]
+        self.assertEqual(ids, ["night", "layout", "trade"])
+        self.assertIn("電子夜盤", packs[0]["text"])
+        self.assertIn("＝＝起漲", packs[1]["text"])
+        self.assertIn("＝＝當沖", packs[2]["text"])
+        href = line_share_href("測試")
+        self.assertTrue(href.startswith("https://line.me/R/share?text="))
+        page = render_line_hop_html("開 LINE・起漲", packs[1]["text"])
+        self.assertIn("line.me/R/share", page)
+        self.assertIn("自己選要傳給誰", page)
 
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
@@ -1589,18 +1611,20 @@ class WatchListTest(unittest.TestCase):
 
         bot = object.__new__(WayneTelegramBot)
         kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="screen")
-        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertIn("fw:s", datas)
-        self.assertIn("轉寄", texts)
+        self.assertTrue(any(u and "/line/night" in u for u in urls))
+        self.assertTrue(any(u and "/line/layout" in u for u in urls))
+        self.assertTrue(any(u and "/line/trade" in u for u in urls))
+        self.assertTrue(any("開 LINE" in t for t in texts))
         day_kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="daytrade")
         day_texts = [btn.text for row in day_kb.inline_keyboard for btn in row]
-        self.assertNotIn("轉寄", day_texts)
-        src = inspect.getsource(WayneTelegramBot.on_callback)
-        self.assertIn("fw:s", src)
+        self.assertFalse(any("開 LINE" in t for t in day_texts))
         send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
         self.assertNotIn("整段複製", send_src)
         self.assertIn("_send_line_share", send_src)
+        hop_src = inspect.getsource(WayneTelegramBot._send_line_share)
+        self.assertIn("_line_open_keyboard", hop_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect

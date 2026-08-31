@@ -42,10 +42,13 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             JOB="${{ github.event.inputs.job }}"
-          elif [ "${{ github.event.schedule }}" = "30 22 * * 0-4" ]; then
-            JOB="morning_screen"
           else
-            JOB="increment"
+            SCHED="${{ github.event.schedule }}"
+            echo "schedule=[$SCHED]"
+            case "$SCHED" in
+              *22*) JOB="morning_screen" ;;
+              *) JOB="increment" ;;
+            esac
           fi
           echo "job=$JOB" >> "$GITHUB_OUTPUT"
           echo "本次工作：$JOB"

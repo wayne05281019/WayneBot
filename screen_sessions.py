@@ -186,6 +186,98 @@ def save_line_share(db_path: str, as_of: str, body: str) -> None:
     conn.close()
 
 
+def ensure_line_pack_table(db_path: str = None) -> None:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS screen_line_packs (
+            as_of TEXT NOT NULL,
+            pack TEXT NOT NULL,
+            title TEXT DEFAULT '',
+            label TEXT DEFAULT '',
+            body TEXT NOT NULL,
+            updated_at TEXT,
+            PRIMARY KEY (as_of, pack)
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_line_packs(db_path: str, as_of: str, packs: list) -> None:
+    as_of = str(as_of or "").replace("-", "")
+    if not as_of or not packs:
+        return
+    ensure_line_pack_table(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM screen_line_packs WHERE as_of=?", (as_of,))
+    for p in packs:
+        pid = str((p or {}).get("id") or "").strip()
+        text = str((p or {}).get("text") or "").strip()
+        if not pid or not text:
+            continue
+        conn.execute(
+            """
+            INSERT INTO screen_line_packs(as_of, pack, title, label, body, updated_at)
+            VALUES (?,?,?,?,?,datetime('now'))
+            """,
+            (
+                as_of,
+                pid,
+                str((p or {}).get("title") or ""),
+                str((p or {}).get("label") or ""),
+                text,
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+def load_line_pack(db_path: str, pack_id: str, as_of: str = "") -> dict:
+    ensure_line_pack_table(db_path)
+    conn = sqlite3.connect(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    pid = str(pack_id or "").strip()
+    if as_of:
+        row = conn.execute(
+            "SELECT title, label, body FROM screen_line_packs WHERE as_of=? AND pack=?",
+            (as_of, pid),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT title, label, body FROM screen_line_packs
+            WHERE pack=? ORDER BY as_of DESC LIMIT 1
+            """,
+            (pid,),
+        ).fetchone()
+    conn.close()
+    if not row:
+        return {}
+    return {"title": row[0] or pack_id, "label": row[1] or "", "text": row[2] or ""}
+
+
+def load_line_packs(db_path: str, as_of: str = "") -> list:
+    from line_hop import LINE_PACKS
+
+    out = []
+    for pid, label, title in LINE_PACKS:
+        row = load_line_pack(db_path, pid, as_of)
+        if not row.get("text"):
+            continue
+        out.append(
+            {
+                "id": pid,
+                "label": row.get("label") or label,
+                "title": row.get("title") or title,
+                "text": row["text"],
+            }
+        )
+    return out
+
+
 def load_line_share(db_path: str, as_of: str = "") -> str:
     ensure_line_share_table(db_path)
     conn = sqlite3.connect(db_path)
