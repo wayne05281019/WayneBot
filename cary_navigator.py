@@ -762,6 +762,17 @@ def _fmt_dist(val) -> str:
         return "—"
 
 
+def _fmt_dist_short(val) -> str:
+    """漲跌幅緊湊寫法：破百的小數點是雜訊，去掉才排得進一列三個數字。"""
+    if val is None:
+        return "—"
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{v:+.0f}%" if abs(v) >= 100 else f"{v:+.1f}%"
+
+
 # 決策卡色票集中一處：要換配色只改這裡，版面計算不動。
 _CARD = {
     "page": "#EDF1F7",
@@ -848,6 +859,34 @@ def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
                 break
             la, lb = la * 0.95, lb * 0.95
     return best
+
+
+def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor=9.5):
+    """同一區塊各列共用字級：取各列需求裡最小的那組，字高一致、右對齊的數字才會對齊。
+
+    rows 是 (標題或標題備選, 數值) 的序列。回傳 (每列採用的標題, 標題字級, 數值字級)。
+    """
+    rows = list(rows)
+    if not rows:
+        return [], fa, fb
+    picked = [
+        fit_label_value(labels, value, row_w, fig_w, fa=fa, fb=fb,
+                        gap=gap, weight=weight, floor=floor)
+        for labels, value in rows
+    ]
+    ua = min(p[1] for p in picked)
+    ub = min(p[2] for p in picked)
+    out = []
+    for (labels, value), fallback in zip(rows, picked):
+        alts = [labels] if isinstance(labels, str) else list(labels)
+        label = fallback[0]
+        for alt in alts:
+            if (_text_w(alt, ua, fig_w, weight)
+                    + _text_w(value, ub, fig_w, weight) + gap) <= row_w:
+                label = alt
+                break
+        out.append(label)
+    return out, ua, ub
 
 
 def render_decision_card_png(card: dict, save_path: str) -> str:
@@ -1311,9 +1350,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     def kv_block(y, h, title, rows):
         panel(1.4, y, 97.2, h)
         ink(4.8, y + h - 1.55, title, 13, "#1A237E")
+        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, 4.62)
         yy = y + h - 4.15
-        for labels, b, c in rows:
-            a, fa, fb = fit_label_value(labels, b, row_w, 4.62)
+        for (_, b, c), a in zip(rows, labels):
             ink(4.8, yy, a, fa)
             ink(96.4, yy, b, fb, c, ha="right")
             yy -= 3.35
@@ -1321,10 +1360,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     kv_block(61.55, 15.15, "空間／位置", [
         ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
         ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
-        (["距120／240／480低", "距長期低"], "　".join([
-            _fmt_dist(card.get("dist_l120")),
-            _fmt_dist(card.get("dist_l240")),
-            _fmt_dist(card.get("dist_l480")),
+        (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
+            _fmt_dist_short(card.get("dist_l120")),
+            _fmt_dist_short(card.get("dist_l240")),
+            _fmt_dist_short(card.get("dist_l480")),
         ]), "#111111"),
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", "#111111"),
     ])
@@ -1350,20 +1389,23 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     panel(1.4, 26.85, 97.2, 20.85)
     ink(4.8, 45.5, "籌碼（張）", 13, "#1A237E")
     ink(96.4, 45.5, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, "#546E7A", ha="right")
+    # 張數右緣固定；四列共用字級，位數不同也對得齊。
+    lots_right = 38.0
+    lots_of = {name: fmt_lots_align(int(item.get("net") or 0)) for name, item in chips}
+    phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
+    _, f_name, f_lots = fit_rows(
+        [(name, lots_of[name]) for name, _ in chips], lots_right - 4.8, 4.62,
+        fa=12.0, fb=16.0, gap=4.0, floor=10.0,
+    )
+    f_phrase = min(
+        fit_fs(phrase_of[name], 12, 96.4 - lots_right - 4.2, floor=8.0) for name, _ in chips
+    )
     cy = 41.45
     for name, item in chips:
         net = int(item.get("net") or 0)
-        lots = fmt_lots_align(net)
-        phrase = item.get("phrase") or "—"
-        # 張數右緣固定，字級隨位數縮，五六位數才不會貼到左邊的法人名稱。
-        lots_right = 38.0
-        _, f_name, f_lots = fit_label_value(
-            name, lots, lots_right - 4.8, 4.62, fa=12.0, fb=16.0, gap=4.0, floor=10.0
-        )
         ink(4.8, cy, name, f_name)
-        ink(lots_right, cy, lots, f_lots, chip_color(net), ha="right")
-        ink(96.4, cy, phrase, fit_fs(phrase, 12, 96.4 - lots_right - 4.2, floor=8.0),
-            chip_color(net), ha="right")
+        ink(lots_right, cy, lots_of[name], f_lots, chip_color(net), ha="right")
+        ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
         cy -= 4.05
 
     panel(1.4, 5.35, 97.2, 20.7)
@@ -1373,9 +1415,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if note:
         ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
         fy -= 3.35
-    for a, b in fund_rows:
-        line = f"{a}　{b}"
-        ink(4.8, fy, line, fit_fs(line, 12, row_w), "#111111")
+    fund_lines = [f"{a}　{b}" for a, b in fund_rows]
+    f_fund = min([fit_fs(line, 12, row_w) for line in fund_lines] or [12])
+    for line in fund_lines:
+        ink(4.8, fy, line, f_fund, "#111111")
         fy -= 3.15
     try:
         note2 = pink_warning_note(card)
