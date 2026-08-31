@@ -79,6 +79,24 @@ def _seconds_until_1630() -> float:
     return max(5.0, (target - now).total_seconds())
 
 
+def start_market_backfill():
+    """Deploy 後 Release zip 可能缺最近交易日；背景 UPSERT 進現有 wayne_market.db。"""
+
+    def _run():
+        try:
+            logger.info("啟動後融合官方日K／法人／財報（不推播）")
+            from main_runner import MainRunner
+
+            n = MainRunner().run_daily_increment(notify=False)
+            logger.info("啟動後融合完成（當日檔數／回補 %s）", n)
+        except Exception:
+            logger.exception("啟動後融合失敗")
+
+    t = threading.Thread(target=_run, name="market-fuse", daemon=True)
+    t.start()
+    return t
+
+
 def start_daily_scheduler():
     def _loop():
         from main_runner import MainRunner
@@ -160,6 +178,7 @@ def run_web():
     logger.info("檢查資料庫索引（大檔可能要一兩分鐘，請等 Telegram polling 啟動再打字）")
     ensure_core_schema(get_db_path())
     logger.info("資料庫索引完成")
+    start_market_backfill()
     if daily_scheduler_enabled():
         start_daily_scheduler()
 

@@ -253,6 +253,18 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
+            from portfolio_engine import PortfolioEngine
+
+            PortfolioEngine(path)
+        except Exception:
+            pass
+        try:
+            from ai_trader import _load_size_mult
+
+            _load_size_mult(path)
+        except Exception:
+            pass
+        try:
             normalize_quote_hygiene(path)
         except Exception:
             pass
