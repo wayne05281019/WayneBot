@@ -102,10 +102,16 @@ HELP_TOPICS = {
         "3 溫度＝20日收盤位置＋月乖離；120日量＝這檔自己近120根成交量排名\n"
         "4 預警 K20高＝月乖離轉正偏熱（≥4%）或靠近20日收盤高；K20低＝月乖離轉負\n"
         "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
-        "6 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低"
+        "6 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
+        "7 產業說明＝同業月營收／毛利率中位＋這族法人，講人話；不是內幕"
     ),
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
-    "fund": "<b>營收毛利</b>\n官方月營收與季報。沒資料會先同步。",
+    "fund": "<b>營收毛利</b>\n官方月營收與季報數字。產業對照請按「產業」。",
+    "industry": (
+        "<b>產業說明怎麼用</b>\n"
+        "打股名後會附一則，或按「產業」。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
+        "這是落後的公開數字，幫你看懂這族，不是內幕。少賠仍看高低卡：靠近 20 日收盤高少追。"
+    ),
     "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
     "flow": (
@@ -208,10 +214,13 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
+                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                 ],
-                [self._q(topic)],
+                [
+                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    self._q(topic),
+                ],
             ]
         )
 
@@ -678,10 +687,11 @@ class WayneTelegramBot:
             "card": "看這檔：請先選一檔。打南亞／2330，或點觀察清單。會先出現現價，再依序出圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
+            "industry": "產業說明：請先選一檔。會用官方營收／毛利跟同業比，講人話。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
         }
         rows = get_user_watchlist(self.db_path, uid)
-        prefix = {"card": "k", "chips": "h", "fund": "f", "buy": "b"}.get(purpose, "k")
+        prefix = {"card": "k", "chips": "h", "fund": "f", "industry": "n", "buy": "b"}.get(purpose, "k")
         kb = []
         for r in rows[:8]:
             c = str(r.get("stock_code") or "")
@@ -734,6 +744,24 @@ class WayneTelegramBot:
                 logger.error("fund sync: %s", e)
             html = format_fundamentals_html(code, self.db_path)
         await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
+
+    async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        args = context.args or []
+        if not args:
+            await self._prompt_pick(update.message, str(update.effective_user.id), "industry")
+            return
+        await self._send_industry(update.message, args[0].strip())
+
+    async def _send_industry(self, message, code: str):
+        from industry_brief import format_industry_html
+
+        code = str(code).strip()
+        try:
+            html = format_industry_html(code, self.db_path)
+        except Exception as e:
+            logger.exception("產業說明失敗 code=%s", code)
+            html = f"產業說明失敗：{html_escape(e)}"
+        await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -804,7 +832,7 @@ class WayneTelegramBot:
         if "系統狀態" in text:
             await update.message.reply_html("WayneBot 雲端新版運作中。請用訊息下方按鈕操作。", reply_markup=self._keyboard())
             return
-        if pending in ("card", "chips", "fund", "watch"):
+        if pending in ("card", "chips", "fund", "industry", "watch"):
             handled = await self._handle_pending_pick(update.message, uid, pending, text)
             if handled:
                 return
@@ -918,6 +946,9 @@ class WayneTelegramBot:
                     pass
                 html = format_fundamentals_html(code, self.db_path)
             await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+            return True
+        if pending == "industry":
+            await self._send_industry(message, code)
             return True
         return False
 
@@ -1129,6 +1160,10 @@ class WayneTelegramBot:
             except Exception:
                 html = f"查詢 {html_escape(code)} 失敗。"
             await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+        try:
+            await self._send_industry(message, code)
+        except Exception:
+            logger.exception("附產業說明失敗 code=%s", code)
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -1206,6 +1241,9 @@ class WayneTelegramBot:
                 html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
             )
             return
+        if data.startswith("n:"):
+            await self._send_industry(q.message, data[2:].strip())
+            return
         if data.startswith("b:"):
             uid = str(q.from_user.id)
             code = data[2:].strip()
@@ -1267,7 +1305,7 @@ class WayneTelegramBot:
             await self._send_portfolio(q.message, str(q.from_user.id))
         elif data == "watch":
             await self._send_watch(q.message, str(q.from_user.id))
-        elif data in ("card", "chips", "fund", "buy"):
+        elif data in ("card", "chips", "fund", "industry", "buy"):
             await self._prompt_pick(q.message, str(q.from_user.id), data)
         elif data == "sell":
             uid = str(q.from_user.id)
@@ -1292,6 +1330,7 @@ class WayneTelegramBot:
                         BotCommand("portfolio", "持股"),
                         BotCommand("watch", "觀察"),
                         BotCommand("flow", "資金移動"),
+                        BotCommand("industry", "產業說明"),
                     ]
                 )
             except Exception:
@@ -1310,6 +1349,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("card", self.card_cmd))
         app.add_handler(CommandHandler("chips", self.chips_cmd))
         app.add_handler(CommandHandler("fund", self.fund_cmd))
+        app.add_handler(CommandHandler("industry", self.industry_cmd))
         app.add_handler(CommandHandler("buy", self.buy_cmd))
         app.add_handler(CommandHandler("sell", self.sell_cmd))
         app.add_handler(CallbackQueryHandler(self.on_callback))

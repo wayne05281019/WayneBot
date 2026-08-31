@@ -207,6 +207,75 @@ class FuseAndScreenTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_industry_brief_plain_language(self):
+        from fundamentals import ensure_fundamentals_tables
+        from industry_brief import format_industry_html
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_fundamentals_tables(path)
+            conn = sqlite3.connect(path)
+            now = "2026-08-31T00:00:00"
+            univ = [
+                ("2330", "台積電", "TWSE", "STOCK", "半導體業"),
+                ("2454", "聯發科", "TWSE", "STOCK", "半導體業"),
+                ("2303", "聯電", "TWSE", "STOCK", "半導體業"),
+                ("2002", "中鋼", "TWSE", "STOCK", "鋼鐵工業"),
+                ("2027", "大成鋼", "TWSE", "STOCK", "鋼鐵工業"),
+                ("0050", "元大台灣50", "TWSE", "ETF_PASSIVE", "ETF"),
+            ]
+            for sid, name, mkt, atype, ind in univ:
+                conn.execute(
+                    "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
+                    (sid, name, mkt, atype, ind, now),
+                )
+            month = "202607"
+            for sid, name, yoy, mom in (
+                ("2330", "台積電", 40.0, 5.0),
+                ("2454", "聯發科", 8.0, 1.0),
+                ("2303", "聯電", 5.0, 0.0),
+                ("2002", "中鋼", -10.0, -2.0),
+                ("2027", "大成鋼", -8.0, 0.0),
+            ):
+                conn.execute(
+                    "INSERT INTO monthly_revenue(stock_id,yyyymm,stock_name,market,industry,revenue,mom_pct,yoy_pct,ytd_yoy_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (sid, month, name, "TW", "半導體業" if sid[0] == "2" and sid != "2002" and sid != "2027" else "鋼鐵工業", 1000, mom, yoy, yoy),
+                )
+            conn.execute(
+                "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,gross_profit,gross_margin_pct,operating_income,net_income,eps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("2330", 2026, 2, "台積電", "TW", 10000, 5800, 58.0, 4000, 3500, 10.0),
+            )
+            conn.execute(
+                "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,gross_profit,gross_margin_pct,operating_income,net_income,eps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("2454", 2026, 2, "聯發科", "TW", 5000, 1000, 20.0, 400, 300, 2.0),
+            )
+            conn.execute(
+                "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,gross_profit,gross_margin_pct,operating_income,net_income,eps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("2303", 2026, 2, "聯電", "TW", 4000, 800, 20.0, 200, 150, 1.0),
+            )
+            q = (
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            )
+            for sid, name, fn in (("2330", "台積電", 8000), ("2454", "聯發科", 1200), ("2303", "聯電", 500)):
+                conn.execute(q, ("20260828", sid, name, "TW", 100, 101, 99, 100, 10000, 50000, 1.0, 100, fn, 0, 0))
+            for sid, name, fn in (("2002", "中鋼", -3000), ("2027", "大成鋼", -500)):
+                conn.execute(q, ("20260828", sid, name, "TW", 30, 31, 29, 30, 8000, 20000, -1.0, 30, fn, 0, 0))
+            conn.commit()
+            conn.close()
+            html = format_industry_html("2330", path)
+            self.assertIn("產業說明", html)
+            self.assertIn("半導體業", html)
+            self.assertIn("比同業明顯較強", html)
+            self.assertIn("高低卡", html)
+            self.assertIn("不是內幕", html)
+            etf = format_industry_html("0050", path)
+            self.assertIn("ETF", etf)
+        finally:
+            os.remove(path)
+
 
 if __name__ == "__main__":
     unittest.main()
