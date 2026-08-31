@@ -221,9 +221,19 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("鋼鐵工業", html)
             self.assertIn("2330", html)
             self.assertNotIn("元大台灣50", html)
+            self.assertIn("┈┈┈", html)
+            self.assertIn("較前日", html)
+            for line in html.split("\n"):
+                if "半導體業" in line or "鋼鐵工業" in line:
+                    self.assertNotIn("張", line, line)
+            self.assertIn("<code>+9,970張</code>", html)
+            self.assertIn("<code>+8,450張</code>", html)
+            self.assertNotIn("</code>張", html)
             flow = format_flow_html(path, yyyymmdd="20260828")
             self.assertIn("盤後資金輪動", flow)
             self.assertIn("個股資金", flow)
+            self.assertIn("┈┈┈", flow)
+            self.assertGreaterEqual(flow.count("┈┈┈"), 3)
             items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
             annotate_items_with_sector_flow(path, "20260828", items)
             self.assertTrue(items[0].get("sector_inflow"))
@@ -618,6 +628,18 @@ class TelegramAlignTest(unittest.TestCase):
         p2 = html_pct(-12.5)
         self.assertTrue(p1.endswith("%"))
         self.assertEqual(len(body(p1)), len(body(p2)))
+
+    def test_html_qty_tight_keeps_zhang_in_same_tag(self):
+        from tg_layout import html_pct_tight, html_qty_tight, join_dashed
+
+        q = html_qty_tight(89001)
+        self.assertEqual(q, "<code>+89,001張</code>")
+        self.assertNotIn("</code>張", q)
+        self.assertEqual(html_pct_tight(2.2), "<code>+2.2%</code>")
+        dashed = join_dashed("上", "下")
+        self.assertIn("┈┈┈", dashed)
+        self.assertTrue(dashed.startswith("上"))
+        self.assertTrue(dashed.endswith("下"))
 
     def test_html_price_and_money_align(self):
         import re
