@@ -78,9 +78,17 @@ def classify_target(stock_id: str, stock_name: str = "") -> Tuple[str, bool]:
         return "ETF_PASSIVE", True
     if len(sid) == 4 and sid.isdigit():
         return "STOCK", True
-    if len(sid) == 5 and sid.isdigit() and not sid.startswith("00"):
-        return "CB", False
     return "OTHER", False
+
+
+def default_industry(asset_type: str, industry: str = "") -> str:
+    """ISIN 對 ETF 常沒產業欄；空白就標 ETF，避免輪動／產業頁變成未分類。"""
+    ind = str(industry or "").strip()
+    if ind and ind.lower() not in ("nan", "none"):
+        return ind
+    if str(asset_type or "").upper().startswith("ETF"):
+        return "ETF"
+    return ""
 
 
 def is_tradable(stock_id: str, stock_name: str = "") -> bool:
@@ -196,7 +204,7 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
                 is_active=1,
                 updated_at=excluded.updated_at;
             """,
-            (u["stock_id"], u["stock_name"], u["market_type"], u["asset_type"], u.get("industry") or "", now),
+            (u["stock_id"], u["stock_name"], u["market_type"], u["asset_type"], default_industry(u.get("asset_type") or "", u.get("industry") or ""), now),
         )
     conn.commit()
     active_n = cur.execute("SELECT COUNT(*) FROM stock_universe WHERE is_active=1").fetchone()[0]
@@ -228,8 +236,36 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
             cur.execute("DELETE FROM technical_indicators WHERE stock_id = ?", (sid,))
         except sqlite3.OperationalError:
             pass
+    filled = 0
+    try:
+        cur.execute(
+            """
+            UPDATE stock_universe
+            SET industry = (
+                SELECT m.industry FROM monthly_revenue m
+                WHERE m.stock_id = stock_universe.stock_id
+                  AND TRIM(COALESCE(m.industry,'')) != ''
+                LIMIT 1
+            )
+            WHERE TRIM(COALESCE(industry,'')) = ''
+              AND EXISTS (
+                SELECT 1 FROM monthly_revenue m
+                WHERE m.stock_id = stock_universe.stock_id
+                  AND TRIM(COALESCE(m.industry,'')) != ''
+              );
+            """
+        )
+        filled = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    except sqlite3.OperationalError:
+        filled = 0
     conn.commit()
-    stats = {"universe": len(items), "active": active_n, "quotes_ids": len(all_ids), "deleted_junk_rows": deleted}
+    stats = {
+        "universe": len(items),
+        "active": active_n,
+        "quotes_ids": len(all_ids),
+        "deleted_junk_rows": deleted,
+        "industry_from_monthly": filled,
+    }
     conn.close()
     logger.info("母體同步完成 %s", stats)
     return stats
