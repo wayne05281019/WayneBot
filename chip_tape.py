@@ -199,6 +199,38 @@ def load_tape_rows(db_path: str, stock_id: str, limit: int = 40) -> List[dict]:
             "trust_net": int(t or 0),
             "dealer_net": int(d or 0),
         })
+    try:
+        import pandas as pd
+        from live_quote import append_live_bar
+
+        if rows:
+            df = pd.DataFrame(rows)
+            df = append_live_bar(df, str(stock_id).strip())
+            extra = df.iloc[-1]
+            if str(extra.get("date")) != str(rows[-1]["date"]):
+                last = dict(rows[-1])
+                last.update({
+                    "date": extra["date"],
+                    "open": float(extra["open"]),
+                    "high": float(extra["high"]),
+                    "low": float(extra["low"]),
+                    "close": float(extra["close"]),
+                    "volume": float(extra["volume"]),
+                    "pct_change": float(extra.get("pct_change") or extra.get("change_pct") or 0),
+                    "foreign_net": 0,
+                    "trust_net": 0,
+                    "dealer_net": 0,
+                })
+                rows.append(last)
+            else:
+                rows[-1]["open"] = float(extra["open"])
+                rows[-1]["high"] = float(extra["high"])
+                rows[-1]["low"] = float(extra["low"])
+                rows[-1]["close"] = float(extra["close"])
+                rows[-1]["volume"] = float(extra["volume"])
+                rows[-1]["pct_change"] = float(extra.get("pct_change") or rows[-1]["pct_change"])
+    except Exception:
+        pass
     return rows
 
 

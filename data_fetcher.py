@@ -235,12 +235,19 @@ class DataFetcher:
                     sid = item.get("c")
                     sname = item.get("n")
                     yesterday_close = self.clean_num(item.get("y"))
-                    
-                    # 當前成交價 (z: 成交價, 若無成交撮合則取最後買賣或昨收)
                     current_price = self.clean_num(item.get("z"))
                     if current_price <= 0:
-                        pz = item.get("pz")
-                        current_price = self.clean_num(pz) if pz else yesterday_close
+                        def _book(side):
+                            return self.clean_num(str(side or "").split("_")[0])
+                        bid, ask = _book(item.get("b")), _book(item.get("a"))
+                        if bid > 0 and ask > 0:
+                            current_price = round((bid + ask) / 2.0, 2)
+                        elif ask > 0:
+                            current_price = ask
+                        elif bid > 0:
+                            current_price = bid
+                        else:
+                            current_price = yesterday_close
 
                     open_p = self.clean_num(item.get("o")) or current_price
                     high_p = self.clean_num(item.get("h")) or current_price
@@ -302,7 +309,9 @@ class DataFetcher:
 
         # 判斷是否需要拼接今日盤中數據
         if include_today_realtime:
-            today_str = datetime.now().strftime("%Y%m%d")
+            from config import taipei_today_str
+
+            today_str = taipei_today_str()
             latest_db_date = str(df["date"].iloc[-1])
 
             # 若資料庫最新日期小於今天（代表今天尚未收盤增量入庫）
