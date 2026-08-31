@@ -34,18 +34,38 @@ logger = logging.getLogger("WayneBot")
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = (
-            '{"status":"healthy","service":"WayneBot 24H Online","ok":true}'
-        ).encode("utf-8")
-        if self.path.split("?")[0] in ("/", "/health"):
+        route = self.path.split("?")[0]
+        if route in ("/", "/health"):
+            body = (
+                '{"status":"healthy","service":"WayneBot 24H Online","ok":true}'
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        else:
-            self.send_response(404)
+            return
+        if route in ("/inventory", "/db-status"):
+            import json
+
+            try:
+                from config import get_db_path
+                from import_health import inventory_payload
+
+                payload = inventory_payload(get_db_path())
+                payload["status"] = "inventory"
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+            except Exception as e:
+                body = json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(500)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
 
     def log_message(self, format, *args):
         return
@@ -55,7 +75,7 @@ def start_health_server(port: int) -> threading.Thread:
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
 
     def _run():
-        logger.info("Health server 監聽 0.0.0.0:%s (/health)", port)
+        logger.info("Health server 監聽 0.0.0.0:%s (/health /inventory)", port)
         server.serve_forever()
 
     t = threading.Thread(target=_run, name="health-http", daemon=True)

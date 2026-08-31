@@ -23,11 +23,13 @@ class FuseAndScreenTest(unittest.TestCase):
             should_commit_quote_fetch(existing_tw=1318, existing_two=0, new_tw=1318, new_two=840)
         )
 
-    def test_fuse_end_before_1530_is_yesterday(self):
+    def test_fuse_end_before_1630_is_yesterday(self):
         from config import fuse_end_date
 
-        now = datetime(2026, 8, 31, 14, 35, tzinfo=ZoneInfo("Asia/Taipei"))
-        self.assertEqual(fuse_end_date(now), "20260830")
+        mid = datetime(2026, 8, 31, 14, 35, tzinfo=ZoneInfo("Asia/Taipei"))
+        self.assertEqual(fuse_end_date(mid), "20260830")
+        almost = datetime(2026, 8, 31, 16, 29, tzinfo=ZoneInfo("Asia/Taipei"))
+        self.assertEqual(fuse_end_date(almost), "20260830")
         closed = datetime(2026, 8, 31, 16, 30, tzinfo=ZoneInfo("Asia/Taipei"))
         self.assertEqual(fuse_end_date(closed), "20260831")
 
@@ -119,6 +121,23 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("保險進場", line)
         self.assertIn("第一停利", line)
         self.assertIn("均價", line)
+
+    def test_inventory_payload_shape(self):
+        from import_health import inventory_payload
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            inv = inventory_payload(path)
+            self.assertIn("quotes", inv)
+            self.assertIn("monthly_revenue", inv)
+            self.assertIn("quarterly_income", inv)
+            self.assertIn("gaps", inv)
+            self.assertIn("latest_complete", inv)
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":
