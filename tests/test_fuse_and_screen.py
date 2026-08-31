@@ -1467,20 +1467,22 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
 
-    def test_watch_html_keeps_yahoo_link_and_send_disables_preview(self):
+    def test_watch_html_plain_names_and_send_disables_preview(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
         bot = object.__new__(WayneTelegramBot)
-        bot.db_path = None
         html, kb = bot._render_watch([{"stock_code": "2330", "stock_name": "台積電"}])
-        self.assertIn("tw.stock.yahoo.com/quote/2330", html)
+        self.assertIn("2330 台積電", html)
+        self.assertNotIn("yahoo.com", html)
+        self.assertNotIn("<a ", html)
         self.assertIn("刪", html)
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         self.assertIn("rw:2330", datas)
         send_src = inspect.getsource(WayneTelegramBot._send_watch)
         self.assertIn("disable_web_page_preview=True", send_src)
         self.assertGreaterEqual(send_src.count("disable_web_page_preview=True"), 2)
+        self.assertIn("_remove_watch_clicked", inspect.getsource(WayneTelegramBot.on_callback))
 
 
 if __name__ == "__main__":

@@ -334,20 +334,10 @@ class WayneTelegramBot:
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
             return "\n".join(lines), InlineKeyboardMarkup([[self._q("watch")]])
-        try:
-            from stock_links import html_stock_anchor
-        except Exception:
-            html_stock_anchor = None
         for r in shown:
             c = str(r.get("stock_code") or "")
             n = str(r.get("stock_name") or "")
-            if html_stock_anchor:
-                try:
-                    lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
-                except Exception:
-                    lines.append(f"• {html_escape(c)} {html_escape(n)}")
-            else:
-                lines.append(f"• {html_escape(c)} {html_escape(n)}")
+            lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
@@ -700,7 +690,7 @@ class WayneTelegramBot:
 
         rows = get_user_watchlist(self.db_path, uid)
         html, kb = self._render_watch(rows)
-        if edit:
+        if edit and message is not None and hasattr(message, "edit_text"):
             try:
                 await message.edit_text(
                     html,
@@ -711,7 +701,52 @@ class WayneTelegramBot:
                 return
             except Exception:
                 logger.exception("觀察清單原地更新失敗，改發新訊息")
-        await message.reply_html(html, reply_markup=kb, disable_web_page_preview=True)
+        if message is not None and hasattr(message, "reply_html"):
+            await message.reply_html(html, reply_markup=kb, disable_web_page_preview=True)
+            return
+        raise RuntimeError("觀察清單沒有可回覆的訊息")
+
+    async def _cb_answer(self, q, text: str) -> None:
+        try:
+            await q.answer((text or "")[:200])
+        except Exception:
+            logger.exception("callback answer 失敗")
+
+    async def _remove_watch_clicked(self, q, code: str) -> None:
+        """按「刪」：寫庫後更新清單。失敗不要落到「請打南亞」。"""
+        uid = str(q.from_user.id)
+        try:
+            try:
+                removed = remove_from_watchlist(self.db_path, uid, code)
+            except Exception:
+                logger.exception("觀察刪除寫庫失敗 code=%s uid=%s", code, uid)
+                await self._cb_answer(q, "刪除沒寫進庫，請再按一次")
+                msg = q.message
+                if msg is not None and hasattr(msg, "reply_text"):
+                    await msg.reply_text("刪除沒寫進庫，請再按一次「刪」。")
+                return
+            await self._cb_answer(q, f"已刪除 {code}" if removed else "這檔不在觀察裡")
+            try:
+                await self._send_watch(q.message, uid, edit=True)
+                return
+            except Exception:
+                logger.exception("觀察清單刪除後更新失敗 code=%s", code)
+            msg = q.message
+            notice = f"已從觀察刪除 {code}" if removed else f"{code} 不在觀察裡"
+            if msg is not None and hasattr(msg, "reply_text"):
+                await msg.reply_text(notice)
+                return
+            chat = getattr(msg, "chat", None) if msg is not None else None
+            chat_id = getattr(msg, "chat_id", None) if msg is not None else None
+            if chat_id is None and chat is not None:
+                chat_id = getattr(chat, "id", None)
+            if chat_id is None:
+                chat_id = q.from_user.id
+            bot = q.get_bot()
+            await bot.send_message(chat_id=chat_id, text=notice)
+        except Exception:
+            logger.exception("觀察刪除流程失敗 code=%s", code)
+            await self._cb_answer(q, "刪除沒做成，請再按一次")
 
     async def _prompt_pick(self, message, uid: str, purpose: str):
         from wayne_db import get_user_watchlist
@@ -1349,11 +1384,7 @@ class WayneTelegramBot:
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
             return
         if data.startswith("rw:"):
-            code = data[3:].strip()
-            uid = str(q.from_user.id)
-            removed = remove_from_watchlist(self.db_path, uid, code)
-            await q.answer((f"已從觀察刪除 {code}" if removed else "這檔不在觀察裡")[:200])
-            await self._send_watch(q.message, uid, edit=True)
+            await self._remove_watch_clicked(q, data[3:].strip())
             return
         await q.answer()
         if data == "hx":
@@ -1539,6 +1570,19 @@ class WayneTelegramBot:
 
         async def _on_error(update, context):
             logger.exception("Telegram handler 失敗: %s", context.error)
+            q = getattr(update, "callback_query", None) if update else None
+            if q is not None:
+                try:
+                    await q.answer("這步沒做成，請再按一次", show_alert=False)
+                except Exception:
+                    pass
+                msg = q.message
+                if msg is not None and hasattr(msg, "reply_text"):
+                    try:
+                        await msg.reply_text("這步沒做成。請再按一次該按鈕，不必打股名。")
+                    except Exception:
+                        pass
+                return
             msg = getattr(update, "effective_message", None) if update else None
             if msg:
                 try:
