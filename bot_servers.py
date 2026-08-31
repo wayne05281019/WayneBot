@@ -1002,11 +1002,13 @@ class WayneTelegramBot:
         if rt:
             vol = int(rt.get("volume") or 0)
             t = str(rt.get("update_time") or "").strip()
+            from tg_layout import html_qty
+
             lines = [
                 title,
                 f"現價　{html_escape(rt.get('close'))}",
                 f"漲跌　{_pct_html(rt.get('pct_change'))}",
-                f"成交　{vol:,}張",
+                f"成交　{html_qty(vol, signed=False)}",
             ]
             if t:
                 lines.append(f"盤中　{html_escape(t)}　證交所 MIS")

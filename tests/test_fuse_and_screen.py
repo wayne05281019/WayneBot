@@ -297,10 +297,57 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("比同業明顯較強", html)
             self.assertIn("高低卡", html)
             self.assertIn("不是內幕", html)
+            self.assertIn("<code>", html)
+            self.assertIn("張", html)
             etf = format_industry_html("0050", path)
             self.assertIn("ETF", etf)
         finally:
             os.remove(path)
+
+
+class TelegramAlignTest(unittest.TestCase):
+    def test_html_qty_same_width_so_zhang_aligns(self):
+        import re
+        from tg_layout import html_qty, html_pct
+
+        a = html_qty(12)
+        b = html_qty(-1234)
+        c = html_qty(10000, signed=False)
+        self.assertTrue(a.endswith("張"))
+        self.assertTrue(b.endswith("張"))
+        self.assertTrue(c.endswith("張"))
+
+        def body(s: str) -> str:
+            m = re.search(r"<code>(.*?)</code>", s)
+            self.assertIsNotNone(m)
+            return m.group(1)
+
+        self.assertEqual(len(body(a)), len(body(b)))
+        self.assertEqual(len(body(c)), 9)
+        p1 = html_pct(1.2)
+        p2 = html_pct(-12.5)
+        self.assertTrue(p1.endswith("%"))
+        self.assertEqual(len(body(p1)), len(body(p2)))
+
+    def test_chip_html_does_not_escape_code_tags(self):
+        from screening_engine import _chip_html, _stock_card_html
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 12345,
+            "pct_change": 1.2,
+            "foreign_net": 8000,
+            "trust_net": -200,
+            "dealer_net": 0,
+        }
+        chips = _chip_html(item)
+        self.assertIn("<code>", chips)
+        self.assertIn("張", chips)
+        card = _stock_card_html(item, 1)
+        self.assertIn("<code>", card)
+        self.assertNotIn("&lt;code&gt;", card)
 
 
 if __name__ == "__main__":

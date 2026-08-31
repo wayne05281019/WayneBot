@@ -36,6 +36,34 @@ def kv(label: str, value, width: int = 10) -> str:
     return f"{pad_label(label, width)} {html_escape(value)}"
 
 
+def kv_html(label: str, html_value, width: int = 10) -> str:
+    """value 已是安全 HTML（例如 <code> 對齊數字）。"""
+    return f"{pad_label(label, width)} {html_value}"
+
+
+def html_qty(n, unit: str = "張", width: int = 9, signed: bool = True) -> str:
+    """數字放進等寬 <code>，單位（張／%）接在後面，同一頁同一單位會切齊。"""
+    try:
+        v = int(round(float(n or 0)))
+    except (TypeError, ValueError):
+        v = 0
+    if signed:
+        body = "0" if v == 0 else f"{v:+,}"
+    else:
+        body = f"{v:,}"
+    body = body.rjust(int(width))
+    return f"<code>{html_escape(body)}</code>{html_escape(unit)}"
+
+
+def html_pct(pct, width: int = 7) -> str:
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return f"<code>{'—'.rjust(int(width))}</code>%"
+    body = f"{p:+.1f}".rjust(int(width))
+    return f"<code>{html_escape(body)}</code>%"
+
+
 def title_line(kind: str, code: str, name: str = "", extra: str = "") -> str:
     head = f"{html_escape(kind)}　<b>{html_escape(code)} {html_escape(name)}</b>".strip()
     if extra:
