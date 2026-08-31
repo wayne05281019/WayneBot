@@ -1,6 +1,21 @@
 # ==============================================================================
 # WayneBot 主排程：盤後增量、四大選股、法人回補、Telegram 復盤推播
 # 執行：python main.py --once  或  python main_runner.py
+#
+# 單一正式庫：data/wayne_market.db（UPSERT，不另開第二套行情庫）
+# 盤後時間：台灣週一至週五 16:30
+#   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）
+#   - Render 常駐執行緒同樣 16:30（ENABLE_DAILY_SCHEDULER，預設開）
+# 16:30 寫入項目（皆融合進同一 sqlite）：
+#   1. 母體 stock_universe（ISIN，現股／KY／ETF）
+#   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
+#   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
+#   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
+#   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
+#   6. 匯入健康檢查；通過後海選推播、AI 模擬倉
+# 證交所收盤約 13:30 後陸續出表，法人常 15:30～16:30 才齊，所以排 16:30。
+# Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
+# fuse（不推播）把 Release 之後缺的交易日補進這份庫。
 # ==============================================================================
 
 import os
@@ -142,7 +157,7 @@ class MainRunner:
         else:
             logger.info(f"📋 [本機推播預覽]\n{text}")
 
-    def run_daily_increment(self) -> int:
+    def run_daily_increment(self, notify: bool = True) -> int:
         logger.info(f"📥 開始 {self.today_str} 增量更新...")
         try:
             from wayne_db import normalize_quote_hygiene
@@ -232,10 +247,11 @@ class MainRunner:
                 health = audit_import(self.db_path)
             if health.get("problems") or health.get("history_issue_n"):
                 logger.warning("匯入異常：%s", format_audit_plain(health))
-                try:
-                    self.send_telegram_message("⚠️ " + format_audit_plain(health))
-                except Exception:
-                    pass
+                if notify:
+                    try:
+                        self.send_telegram_message("⚠️ " + format_audit_plain(health))
+                    except Exception:
+                        pass
         except Exception as e:
             logger.warning("匯入檢查略過：%s", e)
         return inserted_count
