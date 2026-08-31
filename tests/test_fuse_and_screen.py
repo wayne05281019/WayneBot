@@ -1605,26 +1605,80 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
 
-    def test_screen_keyboard_has_forward(self):
+    def test_line_stock_share_persists_and_hop(self):
+        import os
+        import tempfile
+        from line_hop import hop_stock_response, render_line_hop_html
+        from screening_engine import build_line_stock_bodies, format_stock_line_share_text
+        from screen_sessions import load_line_stock, save_line_stocks
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100.0,
+            "pct_change": 2.5,
+            "volume": 8000,
+            "q60r": 2.1,
+        }
+        text = format_stock_line_share_text(item, "20260828", bucket_label="起漲")
+        self.assertIn("2330", text)
+        self.assertNotIn("開 LINE", text)
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            bodies = build_line_stock_bodies({"leave_zero": [item]}, "20260828")
+            save_line_stocks(path, "20260828", bodies)
+            self.assertIn("2330", load_line_stock(path, "2330")["text"])
+            hop = hop_stock_response(path, "2330")
+            self.assertIn("2330", hop["html"])
+            page = render_line_hop_html("傳 2330", load_line_stock(path, "2330")["text"])
+            self.assertIn("line.me/R/share", page)
+            self.assertNotIn("location.replace", page)
+        finally:
+            os.remove(path)
+
+    def test_stock_card_has_line_link_under_title(self):
+        from screening_engine import _stock_card_html
+
+        card = _stock_card_html(
+            {
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "close": 100,
+                "volume": 8000,
+                "pct_change": 1.2,
+                "q60r": 2.0,
+                "ma20": 98,
+                "ma60": 95,
+                "foreign_net": 0,
+                "trust_net": 0,
+                "dealer_net": 0,
+            },
+            1,
+        )
+        self.assertIn("開 LINE・傳這檔", card)
+        self.assertIn("/line/stock/2330", card)
+
+    def test_screen_keyboard_has_per_stock_line(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
         bot = object.__new__(WayneTelegramBot)
-        kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="screen")
+        bot.db_path = None
+        kb = bot._picks_keyboard([("2330", "台積電"), ("2317", "鴻海")], include_menu=True, topic="screen")
         urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertTrue(any(u and "/line/night" in u for u in urls))
-        self.assertTrue(any(u and "/line/layout" in u for u in urls))
-        self.assertTrue(any(u and "/line/trade" in u for u in urls))
-        self.assertTrue(any("開 LINE" in t for t in texts))
+        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2330" in u), 1)
+        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2317" in u), 1)
+        self.assertEqual(texts.count("開 LINE・傳這檔"), 2)
+        self.assertFalse(any(u and "/line/night" in u for u in urls))
         day_kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="daytrade")
-        day_texts = [btn.text for row in day_kb.inline_keyboard for btn in row]
-        self.assertFalse(any("開 LINE" in t for t in day_texts))
+        day_urls = [getattr(btn, "url", None) for row in day_kb.inline_keyboard for btn in row]
+        self.assertFalse(any(u and "/line/stock/" in (u or "") for u in day_urls))
         send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
-        self.assertNotIn("整段複製", send_src)
-        self.assertIn("_send_line_share", send_src)
-        hop_src = inspect.getsource(WayneTelegramBot._send_line_share)
-        self.assertIn("_line_open_keyboard", hop_src)
+        self.assertNotIn("_send_line_share(self.chat_id", send_src)
+        payload_src = inspect.getsource(WayneTelegramBot._reply_screening_payload)
+        self.assertIn("_remember_line_share", payload_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect
