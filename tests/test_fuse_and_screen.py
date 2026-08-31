@@ -156,6 +156,13 @@ class FuseAndScreenTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_etf_blank_industry_defaults_to_etf(self):
+        from universe import default_industry
+
+        self.assertEqual(default_industry("ETF_PASSIVE", ""), "ETF")
+        self.assertEqual(default_industry("STOCK", "半導體業"), "半導體業")
+        self.assertEqual(default_industry("STOCK", ""), "")
+
     def test_sector_rotation_uses_official_chips(self):
         from money_flow import (
             annotate_items_with_sector_flow,
