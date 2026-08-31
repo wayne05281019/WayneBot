@@ -140,6 +140,22 @@ class FuseAndScreenTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_release_publish_requires_complete_day(self):
+        from import_health import can_publish_release, release_publish_blockers
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            reasons = release_publish_blockers(path, cap="20260831", min_quote_rows=100)
+            self.assertTrue(reasons)
+            self.assertFalse(can_publish_release(path, cap="20260831")["ok"])
+            blob = " ".join(reasons)
+            self.assertTrue("日K" in blob or "都齊" in blob or "月營收" in blob)
+        finally:
+            os.remove(path)
+
     def test_sector_rotation_uses_official_chips(self):
         from money_flow import (
             annotate_items_with_sector_flow,

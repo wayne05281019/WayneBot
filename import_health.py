@@ -208,7 +208,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
             "chips_nonzero": int(health.get("chips_nonzero") or 0),
         },
         "monthly_revenue": {"rows": counts.get("monthly_revenue") or 0, "latest": health.get("latest_month") or ""},
-        "quarterly_income": {"rows": counts.get("income_n") or 0, "latest": health.get("latest_quarter") or ""},
+        "quarterly_income": {"rows": counts.get("quarterly_income") or 0, "latest": health.get("latest_quarter") or ""},
         "ex_rights": {"rows": counts.get("ex_rights_n") or counts.get("ex_rights") or 0, "latest": health.get("latest_ex") or ""},
         "stock_universe": {"rows": counts.get("stock_universe") or 0},
         "daily_sector_flow": {"rows": counts.get("daily_sector_flow") or 0},
@@ -216,6 +216,54 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         "gap_n": int(health.get("history_issue_n") or 0),
         "gaps": [{"date": x.get("date"), "tw": x.get("tw"), "two": x.get("two"), "total": x.get("total")} for x in gaps[:50]],
         "fill": health.get("problems") or [],
+    }
+
+
+def release_publish_blockers(
+    db_path: str,
+    cap: str = None,
+    min_quote_rows: int = 100000,
+) -> List[str]:
+    """盤後 zip 能不能蓋掉舊 Release：今天兩邊齊、法人、月營收、除權息都要在。"""
+    try:
+        from config import fuse_end_date
+
+        cap = str(cap or fuse_end_date() or "").replace("-", "")[:8]
+    except Exception:
+        cap = str(cap or "").replace("-", "")[:8]
+    inv = inventory_payload(db_path)
+    quotes = inv.get("quotes") or {}
+    reasons: List[str] = []
+    if int(quotes.get("rows") or 0) < int(min_quote_rows):
+        reasons.append(f"日K總列 {quotes.get('rows') or 0} 太少（<{min_quote_rows}）")
+    complete = str(inv.get("latest_complete") or "")
+    if not complete:
+        reasons.append("沒有上市＋上櫃都齊的交易日")
+    elif cap and complete < cap:
+        reasons.append(f"基準日 {complete} 還沒到可融合日 {cap}，舊包不能蓋")
+    if int(quotes.get("chips_nonzero") or 0) < 800:
+        reasons.append(f"法人非0僅 {quotes.get('chips_nonzero') or 0}")
+    monthly_n = int((inv.get("monthly_revenue") or {}).get("rows") or 0)
+    if monthly_n < 200:
+        reasons.append("月營收未進庫")
+    ex_n = int((inv.get("ex_rights") or {}).get("rows") or 0)
+    if ex_n < 100:
+        reasons.append("除權息未進庫")
+    return reasons
+
+
+def can_publish_release(db_path: str, cap: str = None) -> Dict[str, Any]:
+    inv = inventory_payload(db_path)
+    reasons = release_publish_blockers(db_path, cap=cap)
+    return {
+        "ok": not reasons,
+        "reasons": reasons,
+        "latest_complete": inv.get("latest_complete") or "",
+        "gap_n": int(inv.get("gap_n") or 0),
+        "quotes": inv.get("quotes") or {},
+        "monthly_revenue": inv.get("monthly_revenue") or {},
+        "ex_rights": inv.get("ex_rights") or {},
+        "daily_sector_flow": inv.get("daily_sector_flow") or {},
     }
 
 
