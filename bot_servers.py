@@ -792,17 +792,29 @@ class WayneTelegramBot:
                 f"已記錄買入 {code} {name} {shares}張 @ {price}", reply_markup=self._keyboard()
             )
             return
-        hits = lookup_stocks(self.db_path, text)
-        if len(hits) == 1:
-            await self._reply_card(update, hits[0]["stock_id"])
-            return
-        if len(hits) > 1:
-            await update.message.reply_html(
-                "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
-                reply_markup=self._hits_keyboard(hits),
+        logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
+        try:
+            await update.message.reply_text("收到，查詢中…", reply_markup=self._keyboard())
+        except Exception:
+            logger.exception("ack 失敗")
+        try:
+            hits = lookup_stocks(self.db_path, text)
+            if len(hits) == 1:
+                await self._reply_card(update, hits[0]["stock_id"])
+                return
+            if len(hits) > 1:
+                await update.message.reply_html(
+                    "找到多檔。按 ➕ 加入觀察，詳細介紹開圖卡，或記買入：",
+                    reply_markup=self._hits_keyboard(hits),
+                )
+                return
+            await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
+        except Exception:
+            logger.exception("查詢失敗")
+            await update.message.reply_text(
+                "查詢失敗。雲端可能還沒有日K，或出圖逾時。請先按 /start，稍後再試。",
+                reply_markup=self._keyboard(),
             )
-            return
-        await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
 
     async def _handle_pending_pick(self, message, uid: str, pending: str, text: str) -> bool:
         hits = lookup_stocks(self.db_path, text.split()[0].strip())
@@ -892,7 +904,15 @@ class WayneTelegramBot:
             )
             return
         await message.reply_text(f"查詢 {code}…")
-        packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+        try:
+            packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+        except Exception:
+            logger.exception("出圖失敗 code=%s", code)
+            await message.reply_text(
+                f"找到 {code}，但雲端出圖失敗（多半是還沒有日K）。請稍後再試或改打 /start。",
+                reply_markup=self._keyboard(),
+            )
+            return
         html = packed[0]
         card_img = packed[1] if len(packed) > 1 else ""
         chart = packed[2] if len(packed) > 2 else ""
@@ -1116,6 +1136,17 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("sell", self.sell_cmd))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+
+        async def _on_error(update, context):
+            logger.exception("Telegram handler 失敗: %s", context.error)
+            msg = getattr(update, "effective_message", None) if update else None
+            if msg:
+                try:
+                    await msg.reply_text("處理失敗。請先按 /start，再打南亞或 2330。")
+                except Exception:
+                    pass
+
+        app.add_error_handler(_on_error)
         logger.info("Telegram polling 啟動")
         import asyncio
 
