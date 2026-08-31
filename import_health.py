@@ -3,14 +3,75 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
+
+MIN_TW = 800
+MIN_TWO = 600
+MIN_TOTAL = 1500
+
+
+def sides_complete(tw: int, two: int, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> bool:
+    return int(tw or 0) >= int(min_tw) and int(two or 0) >= int(min_two)
+
+
+def should_commit_quote_fetch(
+    *,
+    existing_tw: int,
+    existing_two: int,
+    new_tw: int,
+    new_two: int,
+) -> bool:
+    """半套日（上市齊、上櫃 0）不能寫進庫，也不能覆蓋已經齊的完整日。"""
+    if sides_complete(new_tw, new_two):
+        return True
+    return False
+
+
+def count_markets(db_path: str, yyyymmdd: str) -> Tuple[int, int, int]:
+    yyyymmdd = str(yyyymmdd or "").replace("-", "")[:8]
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    row = cur.execute(
+        """
+        SELECT
+            SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END),
+            SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END),
+            COUNT(*)
+        FROM daily_quotes
+        WHERE replace(date,'-','')=?
+        """,
+        (yyyymmdd,),
+    ).fetchone()
+    conn.close()
+    return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
+
+
+def latest_complete_quote_date(db_path: str, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> Optional[str]:
+    """海選／決策用的基準日：必須上市＋上櫃同一天都進庫，不能停在半套日。"""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    rows = cur.execute(
+        """
+        SELECT replace(date,'-','') AS d,
+               SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
+               SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
+        FROM daily_quotes
+        GROUP BY replace(date,'-','')
+        ORDER BY d DESC
+        """
+    ).fetchall()
+    conn.close()
+    for date, tw, two in rows:
+        if sides_complete(tw, two, min_tw=min_tw, min_two=min_two):
+            return str(date)
+    return None
 
 
 def list_coverage_issues(
     db_path: str,
-    min_tw: int = 800,
-    min_two: int = 600,
-    min_total: int = 1500,
+    min_tw: int = MIN_TW,
+    min_two: int = MIN_TWO,
+    min_total: int = MIN_TOTAL,
 ) -> List[Dict[str, Any]]:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -76,9 +137,9 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     problems: List[str] = []
     if total == 0:
         problems.append(f"{yyyymmdd} 沒有日 K（休市或匯入失敗）")
-    if tw >= 800 and two < 400:
+    if tw >= MIN_TW and two < MIN_TWO:
         problems.append(f"上櫃只有 {two} 檔（上市 {tw}），櫃買收盤可能沒寫進")
-    if two >= 400 and tw < 800:
+    if two >= MIN_TWO and tw < MIN_TW:
         problems.append(f"上市只有 {tw} 檔（上櫃 {two}），證交所收盤可能沒寫進")
     if total >= 800 and chip_n < 100:
         problems.append("法人買賣超幾乎全 0，T86 可能失敗")

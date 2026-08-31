@@ -71,12 +71,47 @@ def _taipei_now() -> datetime:
         return datetime.now()
 
 
-def _seconds_until_1630() -> float:
+def _seconds_until(hour: int, minute: int) -> float:
     now = _taipei_now()
-    target = now.replace(hour=16, minute=30, second=0, microsecond=0)
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if now >= target:
         target = target + timedelta(days=1)
     return max(5.0, (target - now).total_seconds())
+
+
+def start_daily_scheduler():
+    def _loop():
+        from main_runner import MainRunner
+
+        while True:
+            wait_morning = _seconds_until(7, 30)
+            wait_fuse = _seconds_until(16, 30)
+            if wait_morning <= wait_fuse:
+                logger.info("排程：約 %.0f 秒後台灣時間 07:30 寄海選", wait_morning)
+                time.sleep(wait_morning)
+                try:
+                    now = _taipei_now()
+                    if now.weekday() >= 5:
+                        logger.info("週末略過早上海選")
+                        continue
+                    MainRunner().run_morning_screen(skip_if_done=True)
+                except Exception as e:
+                    logger.error("早上海選失敗: %s", e, exc_info=True)
+            else:
+                logger.info("排程：約 %.0f 秒後台灣時間 16:30 融合行情（不寄海選）", wait_fuse)
+                time.sleep(wait_fuse)
+                try:
+                    now = _taipei_now()
+                    if now.weekday() >= 5:
+                        logger.info("週末略過盤後融合")
+                        continue
+                    MainRunner().run_increment_job(skip_if_done=True)
+                except Exception as e:
+                    logger.error("內建盤後融合失敗: %s", e, exc_info=True)
+
+    t = threading.Thread(target=_loop, name="daily-scheduler", daemon=True)
+    t.start()
+    return t
 
 
 def start_market_backfill():
@@ -93,27 +128,6 @@ def start_market_backfill():
             logger.exception("啟動後融合失敗")
 
     t = threading.Thread(target=_run, name="market-fuse", daemon=True)
-    t.start()
-    return t
-
-
-def start_daily_scheduler():
-    def _loop():
-        from main_runner import MainRunner
-        while True:
-            wait_s = _seconds_until_1630()
-            logger.info("盤後排程執行緒：約 %.0f 秒後嘗試台灣時間 16:30 流水線", wait_s)
-            time.sleep(wait_s)
-            try:
-                now = _taipei_now()
-                if now.weekday() >= 5:
-                    logger.info("週末略過盤後流水線")
-                    continue
-                MainRunner().run_pipeline(skip_if_done=True)
-            except Exception as e:
-                logger.error("內建盤後排程失敗: %s", e, exc_info=True)
-
-    t = threading.Thread(target=_loop, name="daily-scheduler", daemon=True)
     t.start()
     return t
 
@@ -213,7 +227,9 @@ def run_web():
 def main():
     try:
         if is_once_mode():
-            logger.info("執行模式：一次性盤後流水線 (--once / WAYNE_MODE=once)")
+            from config import job_kind
+
+            logger.info("執行模式：一次性工作 %s", job_kind())
             run_once()
         else:
             logger.info("執行模式：常駐 Web + Telegram 互動（Render）")

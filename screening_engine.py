@@ -35,10 +35,18 @@ class ScreeningEngine:
         return sqlite3.connect(self.db_path)
 
     def get_latest_trading_date(self) -> str:
-        """取得資料庫中最新交易日 (YYYYMMDD)"""
+        """海選基準日：優先取上市＋上櫃都齊的最近交易日，避免停在上櫃 0 的半套日。"""
+        try:
+            from import_health import latest_complete_quote_date
+
+            complete = latest_complete_quote_date(self.db_path)
+            if complete:
+                return complete
+        except Exception:
+            pass
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT MAX(date) FROM daily_quotes;")
+            cursor.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
             row = cursor.fetchone()
             return row[0] if row and row[0] else datetime.now().strftime("%Y%m%d")
 
@@ -401,6 +409,45 @@ def _q_html(q) -> str:
         return html_escape(str(q))
 
 
+def _chip_plain(item: Dict[str, Any]) -> str:
+    def _n(key: str) -> str:
+        try:
+            v = int(item.get(key) or 0)
+        except (TypeError, ValueError):
+            return "0"
+        return f"{v:+,}"
+
+    return f"外資{_n('foreign_net')}張　投信{_n('trust_net')}張　自營{_n('dealer_net')}張"
+
+
+def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
+    """當沖／隔日沖：保險進多少、出多少、守哪裡。"""
+    lines: List[str] = []
+    if item.get("target_1") is not None or item.get("entry_price") is not None:
+        entry = _px_str(item.get("entry_price") if item.get("entry_price") is not None else item.get("close"))
+        lines.append(f"保險進場　≤ {entry}（量能放大當日收盤；不要追更高）")
+        lines.append(f"第一停利　{_px_str(item.get('target_1'))}（+3%，先出一部分鎖利）")
+        lines.append(f"衝頂停利　{_px_str(item.get('target_2'))}（+6%，剩下再衝；沖不到就不要硬等）")
+        lines.append(f"保險停損　{_px_str(item.get('stop_loss'))}（當日均價；跌破先走，不要硬扛）")
+    elif item.get("buy_range") is not None:
+        lines.append(f"保險買進　尾盤 {item.get('buy_range')}（昨收附近，不要摸高）")
+        lines.append(f"明早開高　{item.get('target_gap')}（+3.5%～+4.8% 目標）")
+        lines.append(f"衝頂　　　{_px_str(item.get('target_max'))}（+7%）")
+        lines.append(f"保險防守　{_px_str(item.get('defense_price'))}（開盤與均價較低者；跌破先走）")
+    return lines
+
+
+def _safety_plan_html(item: Dict[str, Any]) -> List[str]:
+    out = []
+    for line in _safety_plan_plain(item):
+        if "　" in line:
+            label, rest = line.split("　", 1)
+            out.append(f"{html_escape(label)}　{_hot(rest)}")
+        else:
+            out.append(_hot(line))
+    return out
+
+
 def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
@@ -415,43 +462,35 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
     if item.get("is_s_tier"):
-        notices.append(_hot("S級"))
+        notices.append(_hot("S級") + html_escape("＝投信連買＋5MA向上"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
+    to_k = item.get("turnover_k")
+    try:
+        to_s = f"{float(to_k) / 1000.0:.1f}億" if to_k is not None else ""
+    except (TypeError, ValueError):
+        to_s = ""
     body = [
         f"<b>{idx}.</b> {title}",
         f"格局　{regime}",
-        f"價　　{close_s}",
-        f"漲跌　{_pct_html(item.get('pct_change'))}",
-        f"量比　{_q_html(item.get('q60r'))}",
-        f"成交　{vol:,}張",
+        f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
+        f"量　　{vol:,}張　量比　{_q_html(item.get('q60r'))}" + (f"　額　{html_escape(to_s)}" if to_s else ""),
+        f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
+        f"法人　{html_escape(_chip_plain(item))}",
     ]
     if notices:
         body.append("注意　" + "　".join(notices))
     if item.get("profit") is not None:
-        body.append(f"獲利　{html_escape(item.get('profit'))}%")
+        body.append(f"獲利　{html_escape(item.get('profit'))}%（近60曆日低點上來）")
     if item.get("vol_rank_120"):
         rank = int(item["vol_rank_120"])
         rank_s = f"第{rank}名"
         body.append("120量　" + (_hot(rank_s) if rank <= 20 else html_escape(rank_s)))
-    if "target_1" in item:
-        body.extend(
-            [
-                f"進場　{html_escape(item.get('entry_price'))}",
-                f"停利　{html_escape(item.get('target_1'))} / {html_escape(item.get('target_2'))}",
-                f"停損　{html_escape(item.get('stop_loss'))}",
-            ]
-        )
-    elif "buy_range" in item:
-        body.extend(
-            [
-                f"買進　{html_escape(item.get('buy_range'))}",
-                f"開高　{html_escape(item.get('target_gap'))}",
-                f"防守　{html_escape(item.get('defense_price'))}",
-            ]
-        )
+    plan = _safety_plan_html(item)
+    if plan:
+        body.extend(plan)
     return f"<blockquote>{chr(10).join(body)}</blockquote>"
 
 
@@ -475,9 +514,23 @@ def _compact_line(item: Dict[str, Any]) -> str:
         if on
     )
     extra = f"　{hot}" if hot else ""
+    plan = ""
+    if item.get("target_1") is not None or item.get("entry_price") is not None:
+        plan = (
+            f"　保險進≤{_px_str(item.get('entry_price') if item.get('entry_price') is not None else item.get('close'))}"
+            f"　停利{_px_str(item.get('target_1'))}/{_px_str(item.get('target_2'))}"
+            f"　停損均價{_px_str(item.get('stop_loss'))}"
+        )
+    elif item.get("buy_range") is not None:
+        plan = (
+            f"　買{html_escape(item.get('buy_range'))}"
+            f"　開高{html_escape(item.get('target_gap'))}"
+            f"　守{_px_str(item.get('defense_price'))}"
+        )
     return (
         f"{html_escape(sid)} {html_escape(sname)}　"
-        f"{html_escape(_regime_label(item))}　{pct}　{html_escape(q_s)}{extra}"
+        f"{html_escape(_regime_label(item))}　收{_px_str(item.get('close'))}　{pct}　"
+        f"量{int(item.get('volume') or 0):,}張　{html_escape(q_s)}{extra}{plan}"
     )
 
 
@@ -491,8 +544,8 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         ("select_02", "🏆", "Select 02", "突破半年高 Hi120", 8, True),
         ("select_03", "💎", "Select 03", "突破兩年高 Hi480", 8, True),
         ("select_04", "🌱", "Select 04", "雙綠脫離底部起漲", 8, True),
-        ("day_trade", "⚡", "當沖", "進場 / 停利 / 停損", 8, True),
-        ("overnight", "🌙", "隔日沖", "尾盤佈局　買進區間與防守", 8, True),
+        ("day_trade", "⚡", "當沖", "保險進場／第一停利＋3%／衝頂＋6%／均價停損", 10, True),
+        ("overnight", "🌙", "隔日沖", "尾盤保險買進區間、明早開高、跌破防守先走", 10, True),
     ]
     first = True
     for key, emoji, label, subtitle, cap, skip_empty in specs:
@@ -501,7 +554,11 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
             continue
         head = f"{html_escape(subtitle)}　共 {len(items)} 檔"
         if first:
-            head = f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n" + head
+            head = (
+                f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}\n"
+                f"<i>給家人轉貼用。價位是保險參考，不是保證獲利。</i>\n"
+                + head
+            )
             first = False
         part: Dict[str, Any] = {
             "mark_key": key,
@@ -517,12 +574,10 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
         body = head + "\n" + "\n".join(cards)
         rest = items[detail_n:]
         if rest:
-            compact = "\n".join(_compact_line(it) for it in rest[:40])
-            more = f"\n…另 {len(rest) - 40} 檔" if len(rest) > 40 else ""
-            body += (
-                f"\n<i>其餘 {len(rest)} 檔</i>\n"
-                f"<blockquote expandable>{compact}{html_escape(more)}</blockquote>"
-            )
+            shown = rest[:12]
+            compact = "\n".join(_compact_line(it) for it in shown)
+            more = f"\n…另 {len(rest) - len(shown)} 檔（完整請打「海選」看分類）" if len(rest) > len(shown) else ""
+            body += f"\n<b>其餘 {len(rest)} 檔（同樣有價位，不必點開）</b>\n{compact}{html_escape(more)}"
         part["html"] = body
         part["picks"] = [
             (
@@ -536,12 +591,12 @@ def format_screening_payload(results: Dict[str, List[Dict[str, Any]]], target_da
 
     if payload:
         payload[-1]["html"] += (
-            "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應 1～8 檔（看這檔／➕）。"
-            "該注意的漲跌、S級、20低脫離、營收轉強用<b>粗體</b>"
-            "（Telegram 不能指定紅字；走勢圖仍是紅漲綠跌）。量化僅供輔助，進場請設移動停損。</i>"
+            "\n💡 <i>藍字股名＝奇摩。按鈕由上到下對應名單（看這檔／➕）。"
+            "保險進場／停利／停損已寫在排名裡；該注意的漲跌、S級、20低脫離、營收轉強用<b>粗體</b>。"
+            "量化僅供輔助，進場請設移動停損。</i>"
         )
     else:
-        payload.append({"html": f"<b>WayneBot 海選</b>　{html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
+        payload.append({"html": f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
     return payload
 
 
@@ -566,26 +621,38 @@ def format_line_share_text(results: Dict[str, List[Dict[str, Any]]], target_date
         sid = str(it.get("stock_id") or it.get("code") or "")
         sname = str(it.get("stock_name") or it.get("name") or "")
         q = it.get("q60r")
-        q_s = f"{float(q):.1f}×" if q is not None else ""
+        try:
+            q_s = f"{float(q):.1f}×" if q is not None else ""
+        except (TypeError, ValueError):
+            q_s = ""
         s = " S級" if it.get("is_s_tier") else ""
-        return f"{sid} {sname} {_regime_label(it)} {_pct_str(it.get('pct_change'))} {q_s}{s}".strip()
+        head = (
+            f"{sid} {sname} {_regime_label(it)} 收{_px_str(it.get('close'))} "
+            f"{_pct_str(it.get('pct_change'))} 量{int(it.get('volume') or 0):,}張 {q_s}{s}"
+        ).strip()
+        plan = _safety_plan_plain(it)
+        if plan:
+            return head + "\n  " + "\n  ".join(plan)
+        chips = _chip_plain(it)
+        if any(int(it.get(k) or 0) for k in ("foreign_net", "trust_net", "dealer_net")):
+            return f"{head}\n  {chips}"
+        return head
 
     lines = [
-        f"WayneBot 海選 {target_date}（昨收）",
-        "給家人轉貼用：量化輔助，不是立即下單清單。進場請設移動停損。",
+        f"WayneBot 海選 {target_date}（昨收，早上寄出給家人）",
+        "量化輔助，不是立即下單。當沖請看保險進場／第一停利／衝頂／均價停損。",
         "",
     ]
     for key, title in specs:
         items = results.get(key) or []
         lines.append(f"【{title}】{len(items)}檔")
         if not items:
-            lines.append("無")
-            lines.append("")
             continue
-        for it in items[:12]:
+        cap = 8 if key in ("day_trade", "overnight") else 12
+        for it in items[:cap]:
             lines.append(one(it))
-        if len(items) > 12:
-            lines.append(f"…另 {len(items) - 12} 檔（完整請看 Telegram 分類則）")
+        if len(items) > cap:
+            lines.append(f"…另 {len(items) - cap} 檔（完整請看 Telegram）")
         lines.append("")
     lines.append("（WayneBot）")
     text = "\n".join(lines).strip()

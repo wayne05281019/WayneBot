@@ -3,9 +3,11 @@
 # 執行：python main.py --once  或  python main_runner.py
 #
 # 單一正式庫：data/wayne_market.db（UPSERT，不另開第二套行情庫）
-# 盤後時間：台灣週一至週五 16:30
-#   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）
-#   - Render 常駐執行緒同樣 16:30（ENABLE_DAILY_SCHEDULER，預設開）
+# 盤後時間：台灣週一～五 16:30 只融合行情（不寄海選）
+#   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
+#   - Render 常駐執行緒同樣 16:30
+# 早上海選：台灣週一～五 07:30（用庫內「上市＋上櫃都齊」的昨收）
+#   - GitHub Actions cron 30 23 * * 0-4（UTC 日～四 23:30＝台灣一～五 07:30）
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
@@ -13,8 +15,10 @@
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
-#   7. 匯入健康檢查；通過後海選推播、AI 模擬倉
-# 證交所收盤約 13:30 後陸續出表，法人常 15:30～16:30 才齊，所以排 16:30。
+#   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
+# 海選改早上 07:30 寄出（給家人轉貼），盤後 16:30 不再重複寄名單。
+# 證交所收盤約 13:30 後陸續出表，法人常 15:30～16:30 才齊，所以抓數排 16:30。
+# 15:30 前不把「今天」寫進庫（避免上市已出、上櫃 0 的半套日被海選當成最新日）。
 # Render 免費碟會在每次 Deploy 重抓 GitHub Release zip；啟動後會再跑一次
 # fuse（不推播）把 Release 之後缺的交易日補進這份庫。
 # ==============================================================================
@@ -29,7 +33,7 @@ from typing import Dict, List, Any, Optional
 
 import requests
 
-from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str
+from config import get_db_path, get_cache_dir, get_telegram_token, get_telegram_chat_id, taipei_today_str, fuse_end_date
 from wayne_db import ensure_core_schema
 
 logging.basicConfig(
@@ -111,20 +115,20 @@ class MainRunner:
         elif not self.token:
             logger.warning("ℹ️ 未設置 Telegram Token，將輸出日誌而不推播。")
 
-    def already_completed_today(self) -> bool:
+    def already_completed_today(self, run_date: str = None) -> bool:
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
-        cur.execute("SELECT status FROM pipeline_runs WHERE run_date = ?;", (self.today_str,))
+        cur.execute("SELECT status FROM pipeline_runs WHERE run_date = ?;", (run_date or self.today_str,))
         row = cur.fetchone()
         conn.close()
         return bool(row and row[0] == "success")
 
-    def _mark_pipeline(self, status: str, notes: str = ""):
+    def _mark_pipeline(self, status: str, notes: str = "", run_date: str = None):
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute(
             "INSERT OR REPLACE INTO pipeline_runs (run_date, finished_at, status, notes) VALUES (?, ?, ?, ?);",
-            (self.today_str, datetime.now().isoformat(timespec="seconds"), status, notes),
+            (run_date or self.today_str, datetime.now().isoformat(timespec="seconds"), status, notes),
         )
         conn.commit()
         conn.close()
@@ -176,13 +180,14 @@ class MainRunner:
             logger.warning(f"母體同步略過：{e}")
 
         inserted_count = 0
+        fuse_to = fuse_end_date()
         if self.fetcher and hasattr(self.fetcher, "fill_missing_market_days"):
             try:
-                gap = self.fetcher.fill_missing_market_days(end_date=self.today_str)
+                gap = self.fetcher.fill_missing_market_days(end_date=fuse_to)
                 logger.info("缺日回補：%s", gap)
                 inserted_count = len(gap.get("filled") or [])
                 if hasattr(self.fetcher, "_refill_thin_days"):
-                    extra = self.fetcher._refill_thin_days(self.today_str, lookback=40, min_rows=1800)
+                    extra = self.fetcher._refill_thin_days(fuse_to, lookback=40, min_rows=1800)
                     if extra:
                         logger.info("稀薄日再補：%s", extra)
                         inserted_count += len(extra)
@@ -190,13 +195,13 @@ class MainRunner:
                 logger.error(f"❌ 缺日回補異常: {e}", exc_info=True)
         elif self.fetcher and hasattr(self.fetcher, "update_daily_market_data"):
             try:
-                inserted_count = int(self.fetcher.update_daily_market_data(self.today_str) or 0)
+                inserted_count = int(self.fetcher.update_daily_market_data(fuse_to) or 0)
             except Exception as e:
                 logger.error(f"❌ 增量更新異常: {e}", exc_info=True)
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE date = ?;", (self.today_str,))
+        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','') = ?;", (fuse_to,))
         count = cursor.fetchone()[0]
         conn.close()
         if count > inserted_count:
@@ -368,19 +373,16 @@ class MainRunner:
                 lines.append(f"• {w['stock_id']} {w['stock_name']}")
         return "\n".join(lines)
 
-    def run_pipeline(self, skip_if_done: bool = False) -> bool:
-        if skip_if_done and self.already_completed_today():
-            logger.info(f"ℹ️ {self.today_str} 流水線已成功執行過，略過。")
+    def _increment_ok(self, health: Dict[str, Any]) -> bool:
+        from import_health import sides_complete
+
+        if not health:
             return False
-        start_time = time.time()
-        logger.info("🎬 === WayneBot 流水線開始 ===")
-        self.run_daily_increment()
-        screening = None
-        if run_full_screening:
-            try:
-                screening = run_full_screening(db_path=self.db_path)
-            except Exception as e:
-                logger.error("四大選股失敗: %s", e, exc_info=True)
+        if int(health.get("total") or 0) == 0:
+            return True
+        return sides_complete(health.get("tw") or 0, health.get("two") or 0)
+
+    def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = ""):
         if self.bot and screening:
             try:
                 self.bot.send_screening_report(screening)
@@ -393,6 +395,7 @@ class MainRunner:
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
             from fundamentals import format_hot_revenue_html
+
             hot = format_hot_revenue_html(self.db_path)
             if hot:
                 extra_bits.append(hot)
@@ -404,20 +407,103 @@ class MainRunner:
         try:
             from ai_trader import run_ai_desk
 
-            ai = run_ai_desk(self.db_path, (screening or {}).get("results") or {}, self.today_str)
+            ai = run_ai_desk(self.db_path, (screening or {}).get("results") or {}, as_of or self.today_str)
             if ai.get("html"):
                 self.send_telegram_message(ai["html"])
         except Exception as e:
             logger.warning("AI 模擬操盤略過：%s", e)
+
+    def run_increment_job(self, skip_if_done: bool = False) -> bool:
+        if skip_if_done and self.already_completed_today():
+            logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
+            return True
+        start_time = time.time()
+        logger.info("🎬 === 盤後融合開始（不寄海選；海選改 07:30）===")
+        self.run_daily_increment()
+        from import_health import audit_import, format_audit_plain
+
+        cap = fuse_end_date()
+        health = audit_import(self.db_path, cap)
+        try:
+            wd = datetime.strptime(cap, "%Y%m%d").weekday()
+        except Exception:
+            wd = 0
+        if wd < 5 and not self._increment_ok(health) and self.fetcher:
+            for i in range(1, 6):
+                logger.warning(
+                    "上市／上櫃未齊（上市 %s 上櫃 %s），第 %s 次再抓 %s",
+                    health.get("tw"),
+                    health.get("two"),
+                    i,
+                    cap,
+                )
+                time.sleep(min(40 * i, 90))
+                self.fetcher.update_daily_market_data(cap)
+                if hasattr(self.fetcher, "sync_paired_markets"):
+                    self.fetcher.sync_paired_markets()
+                health = audit_import(self.db_path, cap)
+                if self._increment_ok(health):
+                    break
         elapsed = time.time() - start_time
-        self._mark_pipeline("success", f"elapsed={elapsed:.1f}s")
-        logger.info(f"🎉 === 流水線完畢 (耗時: {elapsed:.2f} 秒) ===")
+        if not self._increment_ok(health):
+            note = format_audit_plain(health)
+            self._mark_pipeline("incomplete", note[:500])
+            logger.error("盤後融合未齊：%s", note)
+            try:
+                self.send_telegram_message("⚠️ 盤後融合未齊，早上海選仍用上一完整日。\n" + note)
+            except Exception:
+                pass
+            return False
+        self._mark_pipeline(
+            "success",
+            f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
+        )
+        logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
         return True
+
+    def run_morning_screen(self, skip_if_done: bool = False) -> bool:
+        from import_health import latest_complete_quote_date
+
+        as_of = latest_complete_quote_date(self.db_path)
+        key = f"screen-{as_of or 'none'}"
+        if skip_if_done and self.already_completed_today(key):
+            logger.info("早上海選 %s 已寄過，略過。", key)
+            return True
+        if not as_of:
+            logger.error("庫內沒有上市＋上櫃都齊的交易日，不寄海選")
+            try:
+                self.send_telegram_message("⚠️ 庫內沒有上市＋上櫃都齊的交易日，早上不寄海選。")
+            except Exception:
+                pass
+            return False
+        logger.info("☀️ 台灣 07:30 海選，基準日 %s（昨收完整日）", as_of)
+        screening = None
+        if run_full_screening:
+            try:
+                screening = run_full_screening(db_path=self.db_path, target_date=as_of)
+            except Exception as e:
+                logger.error("四大選股失敗: %s", e, exc_info=True)
+        self._push_screening(screening, as_of=as_of)
+        self._mark_pipeline("success", "morning", run_date=key)
+        return True
+
+    def run_pipeline(self, skip_if_done: bool = False) -> bool:
+        """相容舊呼叫：只做盤後融合，不寄海選。"""
+        return self.run_increment_job(skip_if_done=skip_if_done)
 
 
 def main():
     try:
-        MainRunner().run_pipeline(skip_if_done=False)
+        from config import job_kind
+
+        runner = MainRunner()
+        kind = job_kind()
+        if kind == "morning_screen":
+            ok = runner.run_morning_screen(skip_if_done=False)
+        else:
+            ok = runner.run_increment_job(skip_if_done=False)
+        if not ok:
+            sys.exit(1)
     except Exception as e:
         logger.error(f"❌ 流水線異常: {e}", exc_info=True)
         sys.exit(1)
