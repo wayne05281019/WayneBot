@@ -1117,9 +1117,23 @@ class WayneTelegramBot:
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
         logger.info("Telegram polling 啟動")
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    WayneTelegramBot().run_polling()
+    # Render 若 Start Command 仍是 python bot_servers.py，改走 main.run_web（含 /health）
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    from main import run_web
+
+    run_web()
