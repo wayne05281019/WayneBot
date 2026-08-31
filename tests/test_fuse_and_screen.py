@@ -623,6 +623,82 @@ class LookupCardTest(unittest.TestCase):
         # 可變字型預設是 Thin，實際畫圖要用壓出來的靜態字重，不能落回 100。
         self.assertGreaterEqual(_weight_step(500), 400)
 
+    def test_chips_table_cols_share_font_and_fit_span(self):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from chips import fit_table_cols
+        from cary_navigator import _CARD, _text_w
+
+        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+        col_vals = [
+            ["8/31", "8/28"],
+            ["1,234.00", "12.50"],
+            ["169,523", "12"],
+            ["+10,702", "+4"],
+            ["+1,266", "0"],
+            ["-974,321", "+1"],
+            ["+13,009", "-6"],
+            ["+7.7%", "-0.1%"],
+            ["+63,634", "+12"],
+        ]
+        fig_w, span = 7.2, 95.2
+        xs, body_fs, _hdr_fs = fit_table_cols(headers, col_vals, fig_w, span)
+        self.assertEqual(len(xs), 10)
+        self.assertAlmostEqual(xs[-1], span, delta=0.05)
+        self.assertGreaterEqual(body_fs, 9.0)
+        # 最寬那欄（自營 -974,321）仍放得進自己的格子，不會吃隔壁。
+        i = headers.index("自營")
+        w = xs[i + 1] - xs[i]
+        self.assertLessEqual(_text_w("-974,321", body_fs, fig_w, 800) + 2.4, w + 0.05)
+        for key in ("hi_fill", "lo_fill", "tbl_hdr", "navy"):
+            self.assertIn(key, _CARD)
+
+    def test_chips_png_from_rows(self):
+        import os
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from chips import render_chips_png
+
+        rows = [
+            {
+                "date": "20260831",
+                "stock_name": "南亞",
+                "close": 242.5,
+                "volume": 169523,
+                "foreign_net": 10702,
+                "trust_net": 1266,
+                "dealer_net": 1041,
+                "three_net": 13009,
+                "ratio_pct": 7.7,
+                "acc_10d": 63634,
+            },
+            {
+                "date": "20260828",
+                "stock_name": "南亞",
+                "close": 220.5,
+                "volume": 12,
+                "foreign_net": -10,
+                "trust_net": 0,
+                "dealer_net": 4,
+                "three_net": -6,
+                "ratio_pct": -0.1,
+                "acc_10d": 12,
+            },
+        ]
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            out = render_chips_png(rows, path, stock_id="1303")
+            self.assertTrue(out)
+            self.assertGreater(os.path.getsize(out), 8000)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
     def test_decision_card_png_with_long_lows(self):
         import tempfile
 
