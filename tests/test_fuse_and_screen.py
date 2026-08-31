@@ -925,6 +925,24 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(price_change(175.0, -3.05, yesterday=180.5), -5.5)
         self.assertAlmostEqual(price_change(175.0, -3.05), -5.5, places=1)
 
+    def test_chips_image_does_not_fetch_t86(self):
+        import chips
+
+        seen = {}
+
+        def fake_load(*_a, **k):
+            seen.update(k)
+            return []
+
+        old = chips.load_major_player_rows
+        chips.load_major_player_rows = fake_load
+        try:
+            out = chips.generate_chips_image("2330", "missing.db", "/tmp/no_chips.png")
+            self.assertEqual(out, "")
+            self.assertIs(seen.get("allow_fetch"), False)
+        finally:
+            chips.load_major_player_rows = old
+
     def test_screen_ma60_cross_and_bounce(self):
         import pandas as pd
         from screening_engine import ScreeningEngine, format_line_share_text
