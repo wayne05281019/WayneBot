@@ -13,7 +13,13 @@ import time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from config import daily_scheduler_enabled, get_port, get_telegram_token, is_once_mode
+from config import (
+    daily_scheduler_enabled,
+    get_port,
+    get_telegram_token,
+    is_once_mode,
+    skip_telegram_polling,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,10 +111,15 @@ def run_web():
         start_daily_scheduler()
 
     token = get_telegram_token()
-    if token:
+    if token and not skip_telegram_polling():
         from bot_servers import WayneTelegramBot
+
         bot = WayneTelegramBot(token=token, chat_id=get_telegram_chat_id(), db_path=get_db_path())
         bot.run_polling()
+    elif token:
+        logger.info("WAYNE_SKIP_POLLING：不搶 Render 的 Telegram 輪詢，僅保留寄訊與 /health")
+        while True:
+            time.sleep(3600)
     else:
         logger.warning("未設定 TELEGRAM_BOT_TOKEN，僅維持 /health 以通過 Render 健康檢查。")
         while True:

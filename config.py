@@ -94,3 +94,9 @@ def taipei_today_str() -> str:
 def daily_scheduler_enabled() -> bool:
     raw = (os.getenv("ENABLE_DAILY_SCHEDULER") or "true").strip().lower()
     return raw in ("1", "true", "yes", "on")
+
+
+def skip_telegram_polling() -> bool:
+    """Cursor／本機除錯不要跟 Render 搶同一個 Bot 的 getUpdates。"""
+    raw = (os.getenv("WAYNE_SKIP_POLLING") or "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
