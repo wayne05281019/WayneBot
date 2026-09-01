@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from config import get_db_path
@@ -52,19 +52,45 @@ def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE daily_sector_flow ADD COLUMN {name} {spec}")
 
 
-def _latest_date(conn: sqlite3.Connection, db_path: str = "") -> str:
+def _latest_date(conn: sqlite3.Connection, db_path: str = "", now=None) -> str:
     path = db_path or ""
     if path:
-        try:
-            from import_health import latest_complete_quote_date
-
-            complete = latest_complete_quote_date(path)
-            if complete:
-                return str(complete).replace("-", "")
-        except Exception:
-            pass
+        as_of, _ = resolve_flow_as_of(path, now=now)
+        if as_of:
+            return str(as_of).replace("-", "")
     row = conn.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes").fetchone()
     return str(row[0] or "").replace("-", "")
+
+
+def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
+    """
+    資金輪動基準日：盤後 16:30 起以 fuse 上限為準；庫裡當日收盤齊就顯示當日。
+    回傳 (yyyymmdd, 若落後於今日則附說明 HTML)。
+    """
+    from config import taipei_now
+    from import_health import count_markets, latest_complete_quote_date, sides_complete
+    from trading_calendar import format_trading_date_zh, fuse_end_trading_date, tw_session_phase
+
+    now = now or taipei_now()
+    cap = fuse_end_trading_date(now)
+    complete = latest_complete_quote_date(db_path, now=now) or ""
+    as_of = complete or cap
+    lag: Optional[str] = None
+
+    tw, two, _ = count_markets(db_path, cap)
+    if sides_complete(tw, two):
+        as_of = cap
+    elif cap > (complete or ""):
+        phase = tw_session_phase(now)
+        if phase == "after":
+            lag = (
+                f"<i>今日 {format_trading_date_zh(cap)} 盤後資料尚在更新，"
+                f"目前顯示 {format_trading_date_zh(as_of)} 收盤。</i>"
+            )
+
+    if as_of > cap:
+        as_of = cap
+    return as_of, lag
 
 
 def _prev_quote_date(conn: sqlite3.Connection, ymd: str) -> str:
@@ -381,12 +407,16 @@ def _flow_stock_lines(items: List[str]) -> List[str]:
     return out
 
 
-def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> str:
+def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None, now=None) -> str:
     from tg_layout import kv, section, join_dashed, title_line
 
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
-    ymd = yyyymmdd or _latest_date(conn, path)
+    lag = None
+    if yyyymmdd:
+        ymd = str(yyyymmdd).replace("-", "")
+    else:
+        ymd, lag = resolve_flow_as_of(path, now=now)
     if not ymd:
         conn.close()
         return ""
@@ -395,7 +425,9 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
     if not rows:
         return ""
     chip_abs = sum(abs(int(r["three_net"])) for r in rows)
-    ymd_s = f"{ymd[:4]}/{ymd[4:6]}/{ymd[6:]}"
+    from trading_calendar import format_trading_date_zh
+
+    ymd_s = format_trading_date_zh(ymd)
     inflow = [r for r in rows if int(r["three_net"]) > 0][:3]
     outflow = sorted([r for r in rows if int(r["three_net"]) < 0], key=lambda x: x["three_net"])[:3]
     accel = sorted(rows, key=lambda x: int(x["three_delta"]), reverse=True)
@@ -403,11 +435,15 @@ def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None) -> st
 
     blocks = [
         title_line("盤後資金輪動", ymd_s, ""),
+    ]
+    if lag:
+        blocks.append(lag)
+    blocks.append(
         section(
             kv("單位", "張（產業加總三大法人，不是分點）"),
             kv("用途", "佈局對照：熱族＋族內代表股，不單獨當訊號"),
         ),
-    ]
+    )
     if chip_abs == 0:
         blocks.append("當日法人張數加總為 0，先等盤後法人寫進庫再看輪動。")
         return join_dashed(*blocks)
@@ -483,18 +519,24 @@ def format_flow_html(
     db_path: str = None,
     user_id: str = "",
     yyyymmdd: str = None,
+    now=None,
 ) -> str:
     """盤後資金輪動＋當日三大法人排行；不含持股／觀察（各走自己的選單）。"""
     del user_id
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
-    ymd = yyyymmdd or _latest_date(conn, path)
+    lag = None
+    if yyyymmdd:
+        ymd = str(yyyymmdd).replace("-", "")
+    else:
+        ymd, lag = resolve_flow_as_of(path, now=now)
     if not ymd:
         conn.close()
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
     from tg_layout import kv, section, join_dashed, title_line, html_code_join, qty_text, pct_text
+    from trading_calendar import format_trading_date_zh
 
     health = audit_import(path, ymd)
     cover = f"上市 {health['tw']}　上櫃 {health['two']}"
@@ -524,11 +566,13 @@ def format_flow_html(
     ).fetchall()
     conn.close()
 
-    ymd_s = f"{ymd[:4]}/{ymd[4:6]}/{ymd[6:]}"
-    rotation = format_sector_rotation_html(path, ymd)
+    ymd_s = format_trading_date_zh(ymd)
+    rotation = format_sector_rotation_html(path, ymd, now=now)
     blocks = []
     if rotation:
         blocks.append(rotation)
+    elif lag:
+        blocks.append(lag)
     blocks.extend(
         [
             title_line("個股資金", ymd_s, ""),

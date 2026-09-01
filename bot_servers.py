@@ -154,35 +154,7 @@ MENU_BTN_RESERVED = "　"
 MENU_LAYOUT_VERSION = "2"
 
 
-def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
-    if not text:
-        return []
-    return [text[i : i + limit] for i in range(0, len(text), limit)]
-
-
-def chunk_telegram_html(html: str, limit: int = 3500) -> List[str]:
-    """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。"""
-    if not html:
-        return []
-    if len(html) <= limit:
-        return [html]
-    chunks: List[str] = []
-    rest = html
-    close = "</blockquote>"
-    while rest:
-        if len(rest) <= limit:
-            chunks.append(rest)
-            break
-        cut = rest.rfind(close, 0, limit)
-        if cut != -1:
-            cut += len(close)
-        else:
-            cut = rest.rfind("\n", 0, limit)
-            if cut < 1:
-                cut = limit
-        chunks.append(rest[:cut])
-        rest = rest[cut:].lstrip("\n")
-    return [c for c in chunks if c]
+from tg_layout import chunk_telegram_html, chunk_telegram_text
 
 
 class WayneTelegramBot:
@@ -1064,7 +1036,6 @@ class WayneTelegramBot:
         live_bucket: str | None = None,
     ):
         from screening_engine import _stock_card_html
-        from tg_layout import chunk_telegram_html
         from trade_live import apply_trade_live
 
         pre_live = len(rows)
@@ -1261,8 +1232,11 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await update.message.reply_text("讀取當日資金移動…")
         try:
-            from money_flow import format_flow_html
+            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of
 
+            as_of, _ = resolve_flow_as_of(self.db_path)
+            if as_of:
+                await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
             html = await asyncio.to_thread(format_flow_html, self.db_path, user_id=uid)
         except Exception as e:
             logger.exception("資金移動失敗")

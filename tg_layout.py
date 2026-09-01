@@ -2,6 +2,8 @@
 """Telegram 文字排版：標籤固定寬、區塊之間空一行。"""
 from __future__ import annotations
 
+from typing import List
+
 
 def html_escape(val) -> str:
     return (
@@ -245,3 +247,34 @@ def stock_btn_label(code: str, name: str = "", max_bytes: int = 56) -> str:
 def join_sections(*blocks: str, sep: str = "\n\n") -> str:
     parts = [b.strip("\n") for b in blocks if b and str(b).strip()]
     return sep.join(parts)
+
+
+def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
+    if not text:
+        return []
+    return [text[i : i + limit] for i in range(0, len(text), limit)]
+
+
+def chunk_telegram_html(html: str, limit: int = 3500) -> List[str]:
+    """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。"""
+    if not html:
+        return []
+    if len(html) <= limit:
+        return [html]
+    chunks: List[str] = []
+    rest = html
+    close = "</blockquote>"
+    while rest:
+        if len(rest) <= limit:
+            chunks.append(rest)
+            break
+        cut = rest.rfind(close, 0, limit)
+        if cut != -1:
+            cut += len(close)
+        else:
+            cut = rest.rfind("\n", 0, limit)
+            if cut < 1:
+                cut = limit
+        chunks.append(rest[:cut])
+        rest = rest[cut:].lstrip("\n")
+    return [c for c in chunks if c]
