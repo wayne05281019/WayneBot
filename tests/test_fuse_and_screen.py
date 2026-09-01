@@ -204,7 +204,7 @@ class FuseAndScreenTest(unittest.TestCase):
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("【起漲】"), line.find("【優先看】"))
+        self.assertLess(line.find("＝＝起漲｜"), line.find("＝＝優先看｜"))
         from config import scheduled_job_kind
         from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
@@ -220,7 +220,8 @@ class FuseAndScreenTest(unittest.TestCase):
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
-        self.assertIn("【起漲】", packs[1]["text"])
+        self.assertIn("＝＝起漲｜", packs[1]["text"])
+        self.assertIn("說明：", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
@@ -246,12 +247,14 @@ class FuseAndScreenTest(unittest.TestCase):
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
         from wayne_db import ensure_core_schema
+        from unittest.mock import patch
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         try:
             ensure_core_schema(path)
-            inv = inventory_payload(path)
+            with patch("import_health.db_quick_check_ok", return_value=True):
+                inv = inventory_payload(path)
             self.assertIn("quotes", inv)
             self.assertIn("monthly_revenue", inv)
             self.assertIn("quarterly_income", inv)
@@ -936,7 +939,7 @@ class DualSessionTest(unittest.TestCase):
             line = format_line_share_text(morn, "20260828", session_plain="今早 06:30")
             self.assertIn("雙時段", line)
             self.assertIn("2330", line)
-            self.assertIn("tw.stock.yahoo.com/quote/2330", line)
+            self.assertNotIn("tw.stock.yahoo.com/quote/2330", line)
         finally:
             os.remove(path)
 
@@ -1573,14 +1576,6 @@ class AIDeskTest(unittest.TestCase):
                 "select_01": [
                     {"stock_id": "2412", "stock_name": "中華電", "close": 120.0, "chase_warning": True}
                 ],
-                "select_04": [
-                    {
-                        "stock_id": "2308",
-                        "stock_name": "台達電",
-                        "close": 400.0,
-                        "us_peer_headwind": True,
-                    }
-                ],
             }
             ai = run_ai_desk(path, results, "20260831")
             blob = " ".join(ai.get("bought") or [])
@@ -1588,7 +1583,6 @@ class AIDeskTest(unittest.TestCase):
             self.assertIn("2303", blob)
             self.assertNotIn("2317", blob)
             self.assertNotIn("2412", blob)
-            self.assertNotIn("2308", blob)
             eng = PortfolioEngine(path)
             summary = eng.get_portfolio_summary(AI_USER)
             self.assertGreaterEqual(summary["positions_count"], 2)

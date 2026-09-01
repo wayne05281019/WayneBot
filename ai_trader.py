@@ -51,7 +51,6 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
         "select_01",
         "select_02",
         "select_03",
-        "select_04",
         "day_trade",
         "overnight",
     ):
@@ -78,7 +77,6 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
         ("revenue_cross", "優先看：營收轉強×突破"),
         ("overnight", "隔日沖佈局"),
         ("select_01", "周帶量突破"),
-        ("select_04", "雙綠20低脫離"),
     ):
         if db_path:
             try:
