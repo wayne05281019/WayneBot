@@ -51,6 +51,7 @@ try:
         InlineKeyboardButton,
         InlineKeyboardMarkup,
         ReplyKeyboardMarkup,
+        ReplyKeyboardRemove,
         KeyboardButton,
         BotCommand,
     )
@@ -142,6 +143,8 @@ HELP_TOPICS = {
 
 # 主選單兩排各五格：末格預留（全形空白），日後可換新功能。
 MENU_BTN_RESERVED = "　"
+# 版面改版時遞增，讓舊客戶端（#48 三排）自動強制刷新一次。
+MENU_LAYOUT_VERSION = "2"
 
 
 def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
@@ -278,6 +281,41 @@ class WayneTelegramBot:
             )
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+    def _menu_layout_ok(self, uid: str) -> bool:
+        from wayne_db import get_cached_data
+
+        row = get_cached_data(f"tg_menu_layout:{uid}", self.db_path)
+        return bool(row and str(row.get("content") or "") == MENU_LAYOUT_VERSION)
+
+    def _mark_menu_layout_ok(self, uid: str) -> None:
+        from wayne_db import set_cached_data
+
+        set_cached_data(
+            f"tg_menu_layout:{uid}",
+            "menu",
+            MENU_LAYOUT_VERSION,
+            db_path=self.db_path,
+        )
+
+    async def _refresh_reply_menu(self, message, *, uid: str = ""):
+        """先移除舊鍵盤再掛兩排新選單，避免 Telegram 卡在 #48 以前的三排版面。"""
+        try:
+            await message.reply_text(
+                "正在更新主選單…",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        except Exception:
+            logger.exception("移除舊鍵盤失敗")
+        await message.reply_text("已更新主選單（下方兩排）。", reply_markup=self._reply_menu())
+        if uid:
+            self._mark_menu_layout_ok(uid)
+
+    async def _ensure_reply_menu_if_needed(self, message, uid: str) -> None:
+        """首次按主選單時自動刷新，免手動 /start。"""
+        if self._menu_layout_ok(uid):
+            return
+        await self._refresh_reply_menu(message, uid=uid)
 
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
@@ -789,14 +827,11 @@ class WayneTelegramBot:
             "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
-            reply_markup=self._reply_menu(),
         )
+        await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html(
-            "已叫回主選單（下方兩排）。",
-            reply_markup=self._reply_menu(),
-        )
+        await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
@@ -1133,31 +1168,38 @@ class WayneTelegramBot:
             return
         if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
             self._pending.pop(uid, None)
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.flow_cmd(update, context)
             return
         if text == "當沖":
             self._pending.pop(uid, None)
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             logger.info("主選單：當沖 uid=%s", uid)
             await self.daytrade_cmd(update, context)
             return
         if text == "隔日沖":
             self._pending.pop(uid, None)
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             logger.info("主選單：隔日沖 uid=%s", uid)
             await self.overnight_cmd(update, context)
             return
         if text == MENU_BTN_RESERVED:
             return
         if text == "決策卡":
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.decision_card_btn(update, context)
             return
         pending = self._pending.pop(uid, "")
         if text == "海選" or "今日海選" in text or text.endswith("海選"):
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.screen_cmd(update, context)
             return
         if "模擬持倉" in text or text == "持股":
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.portfolio_cmd(update, context)
             return
         if text == "觀察" or "自選" in text:
+            await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.watch_cmd(update, context)
             return
         if "系統狀態" in text:
