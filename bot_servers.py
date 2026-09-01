@@ -1250,8 +1250,34 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await update.message.reply_text("讀取當日資金移動…")
         try:
-            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of
+            from money_flow import (
+                catch_up_quotes_to_cap,
+                format_flow_html,
+                recompute_sector_flow,
+                resolve_flow_as_of,
+            )
+            from trading_calendar import fuse_end_trading_date
 
+            as_of, _ = resolve_flow_as_of(self.db_path)
+            cap = fuse_end_trading_date()
+            wait_msg = None
+            if cap > (as_of or ""):
+                try:
+                    wait_msg = await update.message.reply_text(
+                        "今日盤後資料補齊中（Release 備份較舊，約 1～2 分鐘）…"
+                    )
+                    await asyncio.wait_for(
+                        asyncio.to_thread(catch_up_quotes_to_cap, self.db_path),
+                        timeout=180.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("資金輪動補齊逾時 cap=%s as_of=%s", cap, as_of)
+                finally:
+                    if wait_msg is not None:
+                        try:
+                            await wait_msg.delete()
+                        except Exception:
+                            pass
             as_of, _ = resolve_flow_as_of(self.db_path)
             if as_of:
                 await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
