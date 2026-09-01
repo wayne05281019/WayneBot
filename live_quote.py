@@ -89,6 +89,57 @@ def calc_vol_rank_120(volumes: Sequence[Union[int, float]], window: int = 120) -
     return int(sum(1 for x in sub if x > last) + 1)
 
 
+def live_vol_rank_120_batch(
+    db_path: str,
+    code_volumes: Dict[str, Union[int, float]],
+    window: int = 120,
+) -> Dict[str, int]:
+    """多檔一次查歷史量，避免當沖複核逐檔開連線。"""
+    if not code_volumes:
+        return {}
+    codes = [str(c).strip() for c in code_volumes if str(c).strip()]
+    if not codes:
+        return {}
+    today = taipei_today_str()
+    limit = window + 2
+    conn = sqlite3.connect(db_path)
+    try:
+        placeholders = ",".join("?" * len(codes))
+        rows = conn.execute(
+            f"""
+            SELECT stock_id, date, volume FROM daily_quotes
+            WHERE stock_id IN ({placeholders})
+            ORDER BY stock_id, date DESC
+            """,
+            codes,
+        ).fetchall()
+    finally:
+        conn.close()
+    by_code: Dict[str, List[float]] = {c: [] for c in codes}
+    counts: Dict[str, int] = {c: 0 for c in codes}
+    for sid, d, v in rows:
+        code = str(sid)
+        if code not in by_code:
+            continue
+        if counts[code] >= limit:
+            continue
+        counts[code] += 1
+        if _norm_date(d) >= today:
+            continue
+        by_code[code].append(float(v or 0))
+    out: Dict[str, int] = {}
+    for code, live_vol in code_volumes.items():
+        sid = str(code).strip()
+        if not sid:
+            continue
+        vols = list(reversed(by_code.get(sid) or []))
+        vols.append(float(live_vol or 0))
+        if len(vols) > window:
+            vols = vols[-window:]
+        out[sid] = calc_vol_rank_120(vols, window)
+    return out
+
+
 def live_vol_rank_120(
     db_path: str,
     stock_id: str,

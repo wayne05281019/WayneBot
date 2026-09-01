@@ -829,13 +829,15 @@ class WayneTelegramBot:
         from trade_live import apply_trade_live
 
         if live_bucket:
-            rows = await asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket)
+            rows = await asyncio.wait_for(
+                asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket),
+                timeout=20.0,
+            )
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>"
         body = head + ("\n" + "\n".join(cards) if cards else "\n<i>今日無符合</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        self._persist_bucket_line_pack(bucket_key, rows)
         chunks = chunk_telegram_html(body, 3500) or [body]
         last = len(chunks) - 1
         for j, chunk in enumerate(chunks):
@@ -847,6 +849,8 @@ class WayneTelegramBot:
                 topic=topic,
             )
             await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
+        if rows:
+            await asyncio.to_thread(self._persist_bucket_line_pack, bucket_key, rows)
 
     async def _run_trade_bucket(
         self,
@@ -863,7 +867,19 @@ class WayneTelegramBot:
     ):
         status = await message.reply_text(status_text, reply_markup=self._keyboard())
         try:
-            rows = await asyncio.to_thread(loader)
+            try:
+                rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=25.0)
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    f"⚠️ {menu_label}查詢逾時（名單讀取較久）。"
+                    "請稍後再按一次；若持續發生請回報。",
+                    reply_markup=self._keyboard(),
+                )
+                return
+            try:
+                await status.delete()
+            except Exception:
+                pass
             await self._reply_trade_list(
                 message,
                 rows,
@@ -872,6 +888,11 @@ class WayneTelegramBot:
                 bucket_key=bucket_key,
                 topic=topic,
                 live_bucket=live_bucket,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                f"⚠️ {menu_label}盤中複核逾時，請稍後再按一次。",
+                reply_markup=self._keyboard(),
             )
         except Exception as e:
             logger.exception("%s 查詢失敗", live_bucket)

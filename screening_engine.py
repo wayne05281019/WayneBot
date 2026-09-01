@@ -400,8 +400,78 @@ class ScreeningEngine:
         out["score"] = int(round(float(item.get("q60r") or 0) * 10))
         return out
 
+    def _enrich_session_trade_rows(
+        self, session_rows: List[Dict[str, Any]], target_date: str
+    ) -> List[Dict[str, Any]]:
+        """把 screen_sessions 桶資料補上昨收行情，供當沖／隔日沖盤中複核。"""
+        if not session_rows:
+            return []
+        codes = [str(r.get("stock_id") or "").strip() for r in session_rows]
+        codes = [c for c in codes if c]
+        if not codes:
+            return []
+        conn = self._get_connection()
+        placeholders = ",".join("?" * len(codes))
+        df = pd.read_sql_query(
+            f"""
+            SELECT stock_id, stock_name, close, volume, turnover_k, pct_change,
+                   foreign_net, trust_net, dealer_net, avg_price
+            FROM daily_quotes
+            WHERE date = ? AND stock_id IN ({placeholders})
+            """,
+            conn,
+            params=[target_date] + codes,
+        )
+        conn.close()
+        by_id = {str(r["stock_id"]): r.to_dict() for _, r in df.iterrows()}
+        out: List[Dict[str, Any]] = []
+        for sr in session_rows:
+            sid = str(sr.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            q = by_id.get(sid) or {}
+            item: Dict[str, Any] = {
+                "stock_id": sid,
+                "stock_name": sr.get("stock_name") or q.get("stock_name") or "",
+                "close": sr.get("pick_close") if sr.get("pick_close") is not None else q.get("close"),
+                "hi20_close": sr.get("hi20_close"),
+                "entry_price": sr.get("entry_price"),
+                "defense_price": sr.get("defense_price"),
+                "chase_warning": bool(sr.get("chase_warning")),
+            }
+            for key in (
+                "volume",
+                "turnover_k",
+                "pct_change",
+                "foreign_net",
+                "trust_net",
+                "dealer_net",
+                "avg_price",
+            ):
+                if q.get(key) is not None:
+                    item[key] = q[key]
+            out.append(item)
+        return out
+
+    def _screen_trade_bucket_from_cache(
+        self, bucket_key: str, target_date: Optional[str] = None
+    ) -> Optional[List[Dict[str, Any]]]:
+        from screen_sessions import load_bucket_rows
+
+        target_date = target_date or self.get_latest_trading_date()
+        rows = load_bucket_rows(self.db_path, bucket_key, target_date)
+        if not rows:
+            rows = load_bucket_rows(self.db_path, bucket_key, "")
+        if not rows:
+            return None
+        enriched = self._enrich_session_trade_rows(rows, target_date)
+        return [self._row_for_bot(x) for x in enriched]
+
     def screen_daytrade(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
         target_date = target_date or self.get_latest_trading_date()
+        cached = self._screen_trade_bucket_from_cache("day_trade", target_date)
+        if cached is not None:
+            return cached
         dfs = self.load_market_data(target_date=target_date)
         if not dfs:
             return []
@@ -411,6 +481,9 @@ class ScreeningEngine:
 
     def screen_overnight(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
         target_date = target_date or self.get_latest_trading_date()
+        cached = self._screen_trade_bucket_from_cache("overnight", target_date)
+        if cached is not None:
+            return cached
         dfs = self.load_market_data(target_date=target_date)
         if not dfs:
             return []

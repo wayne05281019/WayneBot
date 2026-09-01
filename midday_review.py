@@ -53,14 +53,23 @@ def fetch_mis_batch(stock_ids: List[str], db_path: str) -> Dict[str, Dict[str, A
     if not ids:
         return {}
     conn = sqlite3.connect(db_path)
-    market = {}
-    for sid in ids:
-        row = conn.execute(
-            "SELECT market FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1",
-            (sid,),
-        ).fetchone()
-        market[sid] = (row[0] if row else "TW") or "TW"
-    conn.close()
+    try:
+        placeholders = ",".join("?" * len(ids))
+        market_rows = conn.execute(
+            f"""
+            SELECT d1.stock_id, d1.market FROM daily_quotes d1
+            WHERE d1.stock_id IN ({placeholders})
+              AND d1.date = (
+                  SELECT MAX(d2.date) FROM daily_quotes d2 WHERE d2.stock_id = d1.stock_id
+              )
+            """,
+            ids,
+        ).fetchall()
+        market = {str(r[0]): (r[1] if r[1] else "TW") or "TW" for r in market_rows}
+        for sid in ids:
+            market.setdefault(sid, "TW")
+    finally:
+        conn.close()
     out: Dict[str, Dict[str, Any]] = {}
     for i in range(0, len(ids), 40):
         chunk = ids[i : i + 40]

@@ -93,6 +93,7 @@ def apply_trade_live(
 
     checker = passes_daytrade_live if bucket == "daytrade" else passes_overnight_live
     out: List[Dict[str, Any]] = []
+    pending_ranks: Dict[str, int] = {}
     for r in rows:
         code = str(r.get("code", "")).strip()
         q = quotes.get(code)
@@ -114,14 +115,20 @@ def apply_trade_live(
         item = dict(r)
         vol = int(q.get("volume") or 0)
         if vol > 0:
-            try:
-                from live_quote import live_vol_rank_120
-
-                rank = live_vol_rank_120(db_path, code, vol)
-                live["vol_rank_120"] = rank
-                item["vol_rank_120"] = rank
-            except Exception:
-                logger.debug("live vol rank failed code=%s", code, exc_info=True)
+            pending_ranks[code] = vol
         item["live"] = live
         out.append(item)
+    if pending_ranks:
+        try:
+            from live_quote import live_vol_rank_120_batch
+
+            ranks = live_vol_rank_120_batch(db_path, pending_ranks)
+            for item in out:
+                code = str(item.get("code", "")).strip()
+                rank = ranks.get(code)
+                if rank is not None:
+                    item["live"]["vol_rank_120"] = rank
+                    item["vol_rank_120"] = rank
+        except Exception:
+            logger.debug("live vol rank batch failed", exc_info=True)
     return out
