@@ -1442,14 +1442,20 @@ class LookupCardTest(unittest.TestCase):
         out2 = engine.execute_all_strategies({"2330": bars(bounce)})
         self.assertTrue(out2["select_03"])
 
-        # 高低卡獲利：昨收貼近 60 曆日低，今日剛離開 0
-        leave = [50.0] * 40 + [50.2, 52.0]
+        # 高低卡獲利：昨收貼近 60 曆日低（≈0.0%），今日剛轉正且 ≤2.5%
+        leave = [50.0] * 40 + [50.0, 50.4]
         out3 = engine.execute_all_strategies({"2330": bars(leave)})
         self.assertTrue(out3["leave_zero"])
-        self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
+        self.assertLessEqual(out3["leave_zero"][0].get("profit") or 99, 2.5)
+        self.assertGreater(out3["leave_zero"][0].get("profit") or 0, 0.05)
+
+        # 已漲 5%+ 不應進起漲（舊版 pt<=12% 會誤收）
+        chased = [50.0] * 40 + [50.0, 52.6]
+        out4 = engine.execute_all_strategies({"2330": bars(chased)})
+        self.assertEqual(out4["leave_zero"], [])
 
     def test_leave_zero_excludes_obvious_downtrend(self):
-        from screening_engine import ScreeningEngine, _leave_zero_trend_ok
+        from screening_engine import ScreeningEngine, _leave_zero_profit_ok, _leave_zero_trend_ok
 
         self.assertTrue(
             _leave_zero_trend_ok(

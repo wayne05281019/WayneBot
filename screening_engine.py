@@ -316,16 +316,7 @@ class ScreeningEngine:
 
             # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
             # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
-            dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
-            if len(df) >= 5 and dts.notna().sum() >= 5:
-                def _cal60(i: int) -> float:
-                    end = dts.iloc[i]
-                    m = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end)
-                    return float(df.loc[m, "close"].min() or 0)
-
-                lo_y, lo_t = _cal60(-2), _cal60(-1)
-                py = ((float(info["prev_close"]) - lo_y) / lo_y * 100.0) if lo_y > 0 else 99.0
-                pt = ((float(c) - lo_t) / lo_t * 100.0) if lo_t > 0 else 0.0
+            if len(df) >= 5:
                 vols = df["volume"].to_numpy(dtype=float)
                 last_v = float(vols[-1])
                 window = vols[-120:] if len(vols) >= 120 else vols
@@ -336,18 +327,17 @@ class ScreeningEngine:
                 l20c = close_s.rolling(20, min_periods=5).min()
                 yest_l20 = float(l20c.iloc[-2]) if len(l20c) >= 2 else 0.0
                 yest_hl_low = bool(yest_l20 > 0 and float(info["prev_close"]) <= yest_l20 * 1.002)
-                just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
                 sid_s = str(info.get("stock_id") or "")
                 if (
                     layout_ok
-                    and just_left
+                    and _leave_zero_profit_ok(df, info)
                     and (vol_hot or yest_hl_low)
                     and _leave_zero_trend_ok(info)
                     and len(sid_s) == 4
                     and sid_s.isdigit()
                 ):
                     item = dict(info)
-                    item["profit"] = round(pt, 1)
+                    item["profit"] = float(info.get("profit_pct") or 0)
                     item["vol_rank_120"] = rank
                     item["leave_l20"] = leave_l20 or yest_hl_low
                     res_leave_zero.append(item)
@@ -642,6 +632,30 @@ def _golden_buy_ok(info: Dict[str, Any]) -> bool:
     return len(sid) == 4 and sid.isdigit()
 
 
+def _yesterday_profit_pct(df: pd.DataFrame) -> float:
+    """昨收相對「昨」往前 60 曆日收盤低之獲利%，對齊決策卡前一列。"""
+    if len(df) < 2:
+        return 99.0
+    prev_close = float(df["close"].iloc[-2])
+    lo_y = _cal60_low_close(df, -2)
+    return ((prev_close - lo_y) / lo_y * 100.0) if lo_y > 0 else 99.0
+
+
+def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
+    """起漲：決策卡獲利格「剛離零」—昨貼零（≈0.0%）、今轉正且仍小（≤2.5%）。"""
+    try:
+        pt = float(info.get("profit_pct") if info.get("profit_pct") is not None else 99)
+        py = _yesterday_profit_pct(df)
+    except (TypeError, ValueError):
+        return False
+    # 決策卡貼零 ≈ 四捨五入後 0.0%（profit_cell_style 用 ≤0.05%）
+    if py > 0.05:
+        return False
+    if pt <= 0.05 or pt > 2.5:
+        return False
+    return pt > py + 0.05
+
+
 def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
     """起漲桶：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
     if _is_downtrend_no_touch(info):
@@ -904,7 +918,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
 SCREEN_PUSH_SPECS = (
-    ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
+    ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨≈0.0%，今≤2.5%；排除明顯空頭）", 8, True),
     ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
