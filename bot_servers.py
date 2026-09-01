@@ -176,6 +176,9 @@ class WayneTelegramBot:
         self._line_share_packs: List[Dict[str, str]] = []
         self._menu_fade_msgs: Dict[int, list] = {}
         self._lookup_fade_msgs: Dict[int, list] = {}
+        # chat_id → pack_id → 海選分類訊息（一鍵傳 LINE 後整段收起）
+        self._screening_msgs: Dict[int, Dict[str, list]] = {}
+        self._line_pack_fade_msgs: Dict[int, list] = {}
 
     async def _dismiss_menu_transients(self, chat_id: int) -> None:
         """選單刷新提示：主功能開始時立刻刪除，像轉場消失。"""
@@ -190,6 +193,43 @@ class WayneTelegramBot:
         if msg is None:
             return
         self._lookup_fade_msgs.setdefault(int(chat_id), []).append((msg, role))
+
+    def _track_screening_msg(self, chat_id: int, pack_id: str, msg) -> None:
+        if msg is None or not pack_id:
+            return
+        self._screening_msgs.setdefault(int(chat_id), {}).setdefault(str(pack_id), []).append(msg)
+
+    def _track_line_pack_fade(self, chat_id: int, msg) -> None:
+        if msg is None:
+            return
+        self._line_pack_fade_msgs.setdefault(int(chat_id), []).append(msg)
+
+    async def _dismiss_screening_section(self, chat_id: int, pack_id: str) -> None:
+        """海選該分類的貼紙＋文字塊：傳 LINE 備好後整段消失。"""
+        bucket = (self._screening_msgs.get(int(chat_id)) or {}).pop(str(pack_id), [])
+        for msg in bucket:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+
+    async def _dismiss_line_pack_fades(self, chat_id: int, *, keep_last: bool = False) -> None:
+        """生成過程的進度／預覽：像轉場一樣刪掉，只留最後一則（含 LINE 鈕）。"""
+        msgs = self._line_pack_fade_msgs.pop(int(chat_id), [])
+        if keep_last and msgs:
+            *drop, keep = msgs
+            for msg in drop:
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
+            self._line_pack_fade_msgs[int(chat_id)] = [keep]
+            return
+        for msg in msgs:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
     async def _dismiss_lookup_fades(self, chat_id: int, roles: set | None = None) -> None:
         """查股暫存訊息：圖出來後整批刪除（或只刪 ack／wait）。"""
@@ -649,6 +689,7 @@ class WayneTelegramBot:
 
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
         parts = self._screening_payload(result)
+        chat_id = int(message.chat_id)
         if not parts:
             await message.reply_html(
                 result.get("message") or self._format_screening_html(result),
@@ -658,10 +699,12 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
+            pack_id = str(part.get("line_pack_id") or "")
             fid = self._cat_sticker_id(part.get("mark_key") or "")
             if fid:
                 try:
-                    await message.reply_sticker(sticker=fid)
+                    sticker_msg = await message.reply_sticker(sticker=fid)
+                    self._track_screening_msg(chat_id, pack_id, sticker_msg)
                 except Exception:
                     logger.exception("分類貼紙傳送失敗")
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
@@ -674,11 +717,13 @@ class WayneTelegramBot:
                     line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
                     include_menu=is_last_part and is_last_chunk,
                 )
-                await message.reply_html(
+                sent = await message.reply_html(
                     chunk,
                     reply_markup=kb,
                     disable_web_page_preview=True,
                 )
+                if pack_id:
+                    self._track_screening_msg(chat_id, pack_id, sent)
             await asyncio.sleep(0.25)
         if result.get("line_share_packs") or result.get("line_share"):
             self._remember_line_share(result)
@@ -1029,7 +1074,7 @@ class WayneTelegramBot:
             await self._pin_reply_menu(message)
 
     async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """起漲等海選分類：背景生成整區圖文包，一鍵開 LINE（不在 Telegram 逐張刷屏）。"""
+        """起漲等：背景生成圖文包；完成後收起海選區塊與進度訊息，只留 LINE 鈕。"""
         from import_health import latest_complete_quote_date
         from line_rich_pack import (
             bucket_stock_rows,
@@ -1042,6 +1087,7 @@ class WayneTelegramBot:
         bucket_key = str(bucket_key or "").strip()
         title = bucket_title(bucket_key)
         hub = self._reply_menu()
+        chat_id = int(message.chat_id)
         as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
         rows = await asyncio.to_thread(bucket_stock_rows, self.db_path, bucket_key, as_of)
         if not rows:
@@ -1054,9 +1100,11 @@ class WayneTelegramBot:
         n = len(rows)
         status = await message.reply_text(
             f"正在背景生成【{title}】{n} 檔圖文…\n"
-            "完成後一鍵開 LINE（文字自動帶入＋全區長圖）。",
+            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。",
             reply_markup=hub,
         )
+        self._track_line_pack_fade(chat_id, status)
+
         manifest = await asyncio.to_thread(
             build_bucket_rich_pack,
             self.db_path,
@@ -1093,21 +1141,20 @@ class WayneTelegramBot:
         errs = manifest.get("errors") or []
         if errs:
             warn = f"\n（{len(errs)} 檔略過：{html_escape(errs[0][:80])}）"
-        try:
-            await status.edit_text(
-                f"✅ 【{title}】{done_n} 檔已備好。",
-                reply_markup=hub,
-            )
-        except Exception:
-            pass
-        await message.reply_html(
-            f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔圖文已生成。{warn}\n"
+
+        # 收起海選該區塊＋生成進度（魔法消失）
+        await self._dismiss_screening_section(chat_id, bucket_key)
+        await self._dismiss_line_pack_fades(chat_id)
+
+        final = await message.reply_html(
+            f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備好。{warn}\n"
             "按下方按鈕：\n"
             "① 開 LINE → <b>選聯絡人</b> → 送出文字總彙整\n"
             "② 同一頁下載全區長圖貼上（每檔文字後接圖表）",
             reply_markup=line_btn,
             disable_web_page_preview=True,
         )
+        self._track_line_pack_fade(chat_id, final)
         await self._pin_reply_menu(message)
 
     @staticmethod
@@ -2286,6 +2333,7 @@ class WayneTelegramBot:
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
             return
         if data.startswith("lp:"):
+            await q.answer("正在準備 LINE…")
             await self._send_line_rich_bucket(q.message, data[3:].strip())
             return
         if data.startswith("rw:"):
