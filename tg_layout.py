@@ -82,6 +82,50 @@ def html_code_join(*parts: str) -> str:
     return f"<code>{html_escape(body)}</code>"
 
 
+def section_eq(title: str) -> str:
+    """區塊標題前後 ==，跟海選分類同一種認法。"""
+    return f"<b>== {html_escape(title)} ==</b>"
+
+
+def _plain_num(n, decimals: int = 0, signed: bool = True) -> str:
+    try:
+        v = float(n or 0)
+    except (TypeError, ValueError):
+        return "—"
+    if decimals <= 0:
+        return f"{v:+,.0f}" if signed else f"{v:,.0f}"
+    return f"{v:+,.{decimals}f}" if signed else f"{v:,.{decimals}f}"
+
+
+def html_num_paren(main: str, pct, main_w: int = 8) -> str:
+    """主數字與（％）同一 <code>：不拆行，各列的（對齊。"""
+    try:
+        right = f"{float(pct):+.1f}%"
+    except (TypeError, ValueError):
+        right = "—"
+    left = str(main)
+    pad = max(0, int(main_w) - len(left))
+    return f"<code>{html_escape((' ' * pad) + left + '（' + right + '）')}</code>"
+
+
+def html_last_move(last, change, pct, price_w: int = 8) -> str:
+    """現價＋漲跌同一 <code>，▲ 與（％）不拆到下一行。"""
+    try:
+        px = f"{float(last):,.2f}".rjust(int(price_w))
+    except (TypeError, ValueError):
+        px = "—".rjust(int(price_w))
+    try:
+        d, p = float(change), float(pct)
+    except (TypeError, ValueError):
+        return f"<code>{html_escape(px)}</code>"
+    if abs(d) < 0.005 and abs(p) < 0.005:
+        move = "0.00（0.00%）"
+    else:
+        arrow = "▲" if d > 0 else "▼"
+        move = f"{arrow}{abs(d):.2f}（{p:+.2f}%）"
+    return f"<code>{html_escape(px + ' ' + move)}</code>"
+
+
 def qty_text(n, unit: str = "張", signed: bool = True) -> str:
     try:
         v = int(round(float(n or 0)))

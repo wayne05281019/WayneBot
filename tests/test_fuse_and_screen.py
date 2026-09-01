@@ -797,6 +797,49 @@ class TelegramAlignTest(unittest.TestCase):
         self.assertEqual(len(body(html_price(12.5))), len(body(html_price(1234.5))))
         self.assertEqual(len(body(html_money(500000, signed=False))), len(body(html_money(12, signed=False))))
 
+    def test_num_paren_aligns_and_stays_one_code(self):
+        import re
+        from tg_layout import html_last_move, html_num_paren, section_eq
+
+        a = html_num_paren("+0", 0.0)
+        b = html_num_paren("18.18", -7.0)
+        c = html_num_paren("21.11", 8.0)
+        self.assertEqual(a.count("<code>"), 1)
+        self.assertNotIn("</code>（", a)
+        self.assertIn("（+0.0%）", a)
+        self.assertIn("（-7.0%）", b)
+        ia, ib, ic = a.index("（"), b.index("（"), c.index("（")
+        self.assertEqual(ia, ib)
+        self.assertEqual(ib, ic)
+        move = html_last_move(19.55, 0.15, 0.77)
+        self.assertEqual(move.count("<code>"), 1)
+        self.assertIn("▲0.15（+0.77%）", move)
+        self.assertEqual(section_eq("AI 模擬帳戶"), "<b>== AI 模擬帳戶 ==</b>")
+        self.assertEqual(section_eq("我的持股（手記）"), "<b>== 我的持股（手記） ==</b>")
+
+    def test_holdings_and_ai_titles_use_eq(self):
+        from ai_trader import format_ai_desk_html
+        from portfolio_engine import PortfolioEngine
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            eng = PortfolioEngine(path)
+            mine = eng.format_holdings_html([])
+            self.assertIn("== 我的持股（手記） ==", mine)
+            ai = format_ai_desk_html(eng)
+            self.assertIn("== AI 模擬帳戶 ==", ai)
+            filled = eng.format_holdings_html(
+                [{"stock_code": "3703", "stock_name": "欣陸", "shares": 8, "cost_price": 19.55}]
+            )
+            self.assertIn("== 我的持股（手記） ==", filled)
+            self.assertIn("<code>", filled)
+            self.assertNotIn("</code>（", filled)
+        finally:
+            os.remove(path)
+
     def test_chip_html_does_not_escape_code_tags(self):
         from screening_engine import _chip_html, _stock_card_html
 
