@@ -1401,6 +1401,112 @@ class LookupCardTest(unittest.TestCase):
         self.assertTrue(out3["leave_zero"])
         self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
 
+    def test_leave_zero_excludes_obvious_downtrend(self):
+        from screening_engine import ScreeningEngine, _leave_zero_trend_ok
+
+        self.assertTrue(
+            _leave_zero_trend_ok(
+                {"close": 100, "ma20": 95, "ma60": 90, "low20": 88, "d20": 5, "pct_change": 2.0}
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {"close": 80, "ma20": 95, "ma60": 100, "low20": 79, "d20": 3, "pct_change": 1.0}
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {"close": 50, "ma20": 55, "ma60": 60, "low20": 50.2, "d20": 0.5, "pct_change": 0.8}
+            )
+        )
+
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        def bars(closes):
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": 12000,
+                        "turnover_k": 120000,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        # 長跌後小反彈：可能剛離零但仍在月線、季線下 → 不進起漲
+        slide = [100.0 - i * 0.8 for i in range(70)]
+        bounce = slide + [slide[-1] * 1.004, slide[-1] * 1.012]
+        out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": bars(bounce)})
+        self.assertEqual(out["leave_zero"], [])
+
+    def test_half_and_two_year_highs_excluded_from_all_push_buckets(self):
+        import pandas as pd
+        from screening_engine import ScreeningEngine, _skip_long_term_high_push
+
+        def bars(closes, *, last_vol=8000):
+            from datetime import datetime, timedelta
+
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                vol = last_vol if i == len(closes) - 1 else 3000
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": vol,
+                        "turnover_k": vol * c,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        engine = ScreeningEngine(db_path=":memory:")
+        # 舊版半年高推播條件：創高 + 量比 + 漲幅，整檔應被排除
+        half_year = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 110.0]
+        out_hi120 = engine.execute_all_strategies({"2330": bars(half_year, last_vol=20000)})
+        self.assertEqual(out_hi120["select_01"], [])
+        self.assertEqual(out_hi120["day_trade"], [])
+        info = engine.calculate_indicators(bars(half_year, last_vol=20000))
+        self.assertTrue(_skip_long_term_high_push(info))
+
+        # 創高但量不夠／漲幅小：不算舊版半年高，周帶量仍可推
+        mild = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 102.0]
+        out_mild = engine.execute_all_strategies({"2330": bars(mild, last_vol=8000)})
+        self.assertFalse(_skip_long_term_high_push(engine.calculate_indicators(bars(mild, last_vol=8000))))
+        self.assertTrue(out_mild["select_01"])
+
 
 class AIDeskTest(unittest.TestCase):
     def test_run_ai_desk_actually_buys(self):
@@ -1683,26 +1789,80 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
 
-    def test_screen_keyboard_has_forward(self):
+    def test_line_stock_share_persists_and_hop(self):
+        import os
+        import tempfile
+        from line_hop import hop_stock_response, render_line_hop_html
+        from screening_engine import build_line_stock_bodies, format_stock_line_share_text
+        from screen_sessions import load_line_stock, save_line_stocks
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100.0,
+            "pct_change": 2.5,
+            "volume": 8000,
+            "q60r": 2.1,
+        }
+        text = format_stock_line_share_text(item, "20260828", bucket_label="起漲")
+        self.assertIn("2330", text)
+        self.assertNotIn("開 LINE", text)
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            bodies = build_line_stock_bodies({"leave_zero": [item]}, "20260828")
+            save_line_stocks(path, "20260828", bodies)
+            self.assertIn("2330", load_line_stock(path, "2330")["text"])
+            hop = hop_stock_response(path, "2330")
+            self.assertIn("2330", hop["html"])
+            page = render_line_hop_html("傳 2330", load_line_stock(path, "2330")["text"])
+            self.assertIn("line.me/R/share", page)
+            self.assertNotIn("location.replace", page)
+        finally:
+            os.remove(path)
+
+    def test_stock_card_has_line_link_under_title(self):
+        from screening_engine import _stock_card_html
+
+        card = _stock_card_html(
+            {
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "close": 100,
+                "volume": 8000,
+                "pct_change": 1.2,
+                "q60r": 2.0,
+                "ma20": 98,
+                "ma60": 95,
+                "foreign_net": 0,
+                "trust_net": 0,
+                "dealer_net": 0,
+            },
+            1,
+        )
+        self.assertIn("開 LINE・傳這檔", card)
+        self.assertIn("/line/stock/2330", card)
+
+    def test_screen_keyboard_has_per_stock_line(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
         bot = object.__new__(WayneTelegramBot)
-        kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="screen")
+        bot.db_path = None
+        kb = bot._picks_keyboard([("2330", "台積電"), ("2317", "鴻海")], include_menu=True, topic="screen")
         urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertTrue(any(u and "/line/night" in u for u in urls))
-        self.assertTrue(any(u and "/line/layout" in u for u in urls))
-        self.assertTrue(any(u and "/line/trade" in u for u in urls))
-        self.assertTrue(any("開 LINE" in t for t in texts))
+        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2330" in u), 1)
+        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2317" in u), 1)
+        self.assertEqual(texts.count("開 LINE・傳這檔"), 2)
+        self.assertFalse(any(u and "/line/night" in u for u in urls))
         day_kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="daytrade")
-        day_texts = [btn.text for row in day_kb.inline_keyboard for btn in row]
-        self.assertFalse(any("開 LINE" in t for t in day_texts))
+        day_urls = [getattr(btn, "url", None) for row in day_kb.inline_keyboard for btn in row]
+        self.assertFalse(any(u and "/line/stock/" in (u or "") for u in day_urls))
         send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
-        self.assertNotIn("整段複製", send_src)
-        self.assertIn("_send_line_share", send_src)
-        hop_src = inspect.getsource(WayneTelegramBot._send_line_share)
-        self.assertIn("_line_open_keyboard", hop_src)
+        self.assertNotIn("_send_line_share(self.chat_id", send_src)
+        payload_src = inspect.getsource(WayneTelegramBot._reply_screening_payload)
+        self.assertIn("_remember_line_share", payload_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect

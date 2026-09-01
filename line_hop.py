@@ -52,7 +52,6 @@ const url = "https://line.me/R/share?text=" + encodeURIComponent(TEXT);
 const btn = document.getElementById("go");
 if (btn) btn.href = url;
 document.getElementById("body").textContent = TEXT;
-try {{ location.replace(url); }} catch (e) {{}}
 </script>
 </body>
 </html>
@@ -63,6 +62,29 @@ def load_pack_text(db_path: str, pack_id: str, as_of: str = "") -> Dict[str, str
     from screen_sessions import load_line_pack
 
     return load_line_pack(db_path, pack_id, as_of)
+
+
+def hop_stock_response(db_path: str, stock_id: str) -> Dict[str, str]:
+    from screen_sessions import load_line_stock
+
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return {
+            "title": "缺少代號",
+            "html": render_line_hop_html("缺少代號", "請從海選訊息按「開 LINE・傳這檔」。"),
+        }
+    row = load_line_stock(db_path, sid)
+    text = str((row or {}).get("text") or "").strip()
+    title = f"傳 {sid} 到 LINE"
+    if not text:
+        return {
+            "title": title,
+            "html": render_line_hop_html(
+                title,
+                f"查無 {sid} 的轉寄稿。請先在 Telegram 按一次「海選」再試。",
+            ),
+        }
+    return {"title": title, "html": render_line_hop_html(title, text)}
 
 
 def hop_response(db_path: str, pack_id: str) -> Optional[Dict[str, str]]:

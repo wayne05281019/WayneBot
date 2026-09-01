@@ -278,6 +278,72 @@ def load_line_packs(db_path: str, as_of: str = "") -> list:
     return out
 
 
+def ensure_line_stock_table(db_path: str = None) -> None:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS screen_line_stocks (
+            as_of TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            updated_at TEXT,
+            PRIMARY KEY (as_of, stock_id)
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_line_stocks(db_path: str, as_of: str, stocks: dict) -> None:
+    """海選每檔轉 LINE 稿；按鈕 /line/stock/代號 跨重啟也能讀。"""
+    as_of = str(as_of or "").replace("-", "")
+    if not as_of or not stocks:
+        return
+    ensure_line_stock_table(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM screen_line_stocks WHERE as_of=?", (as_of,))
+    for sid, body in stocks.items():
+        text = str(body or "").strip()
+        code = str(sid or "").strip()
+        if not code or not text:
+            continue
+        conn.execute(
+            """
+            INSERT INTO screen_line_stocks(as_of, stock_id, body, updated_at)
+            VALUES (?,?,?,datetime('now'))
+            """,
+            (as_of, code, text),
+        )
+    conn.commit()
+    conn.close()
+
+
+def load_line_stock(db_path: str, stock_id: str, as_of: str = "") -> dict:
+    ensure_line_stock_table(db_path)
+    conn = sqlite3.connect(db_path)
+    sid = str(stock_id or "").strip()
+    as_of = str(as_of or "").replace("-", "")
+    if as_of:
+        row = conn.execute(
+            "SELECT body FROM screen_line_stocks WHERE as_of=? AND stock_id=?",
+            (as_of, sid),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT body FROM screen_line_stocks
+            WHERE stock_id=? ORDER BY as_of DESC LIMIT 1
+            """,
+            (sid,),
+        ).fetchone()
+    conn.close()
+    if not row:
+        return {}
+    return {"text": str(row[0] or "")}
+
+
 def load_line_share(db_path: str, as_of: str = "") -> str:
     ensure_line_share_table(db_path)
     conn = sqlite3.connect(db_path)
