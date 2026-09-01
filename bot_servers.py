@@ -1621,7 +1621,7 @@ class WayneTelegramBot:
 
         sent_any = False
         last_ok = False
-        pending_send = None
+        card_task = chart_task = chip_task = None
         try:
             from wayne_navigator import (
                 generate_chart,
@@ -1643,25 +1643,6 @@ class WayneTelegramBot:
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, tape, ohlc
 
-            async def flush_send():
-                nonlocal pending_send, sent_any, last_ok, wait_msg
-                if pending_send is None:
-                    return
-                ok = await pending_send
-                pending_send = None
-                last_ok = bool(ok)
-                sent_any = sent_any or last_ok
-                if last_ok and wait_msg is not None:
-                    try:
-                        await wait_msg.delete()
-                    except Exception:
-                        pass
-                    wait_msg = None
-
-            def queue_photo(path, caption, markup=None):
-                nonlocal pending_send
-                pending_send = asyncio.create_task(send_photo(path, caption, markup))
-
             t0 = time.monotonic()
             card, tape, ohlc = await asyncio.wait_for(
                 asyncio.to_thread(_card_and_tape), timeout=20
@@ -1675,17 +1656,52 @@ class WayneTelegramBot:
                 )
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
+            glance_path = os.path.join(self.charts_dir, f"{code}_glance.png")
+            card_path_f = os.path.join(self.charts_dir, f"{code}_card.png")
+            chart_path_f = os.path.join(self.charts_dir, f"{code}.png")
+            chip_path_f = os.path.join(self.charts_dir, f"{code}_chips.png")
+
             t1 = time.monotonic()
+            card_task = asyncio.create_task(
+                asyncio.wait_for(
+                    asyncio.to_thread(render_decision_card_png, card, card_path_f),
+                    timeout=35,
+                )
+            )
+            chart_task = asyncio.create_task(
+                asyncio.wait_for(
+                    asyncio.to_thread(
+                        generate_chart,
+                        code,
+                        "",
+                        self.db_path,
+                        chart_path_f,
+                        ohlc,
+                    ),
+                    timeout=45,
+                )
+            )
+            chip_task = asyncio.create_task(
+                asyncio.wait_for(
+                    asyncio.to_thread(
+                        generate_chips_image,
+                        code,
+                        self.db_path,
+                        chip_path_f,
+                    ),
+                    timeout=25,
+                )
+            )
             glance = await asyncio.wait_for(
                 asyncio.to_thread(
                     render_first_glance_png,
                     code,
                     card,
                     tape,
-                    os.path.join(self.charts_dir, f"{code}_glance.png"),
+                    glance_path,
                     self.db_path,
                 ),
-                timeout=25,
+                timeout=30,
             )
             logger.info("看這檔 glance %.1fs code=%s", time.monotonic() - t1, code)
             if glance:
@@ -1698,49 +1714,23 @@ class WayneTelegramBot:
                         pass
                     wait_msg = None
             t1 = time.monotonic()
-            card_path = await asyncio.wait_for(
-                asyncio.to_thread(
-                    render_decision_card_png,
-                    card,
-                    os.path.join(self.charts_dir, f"{code}_card.png"),
-                ),
-                timeout=25,
-            )
+            card_path = await card_task
             logger.info("看這檔 card_png %.1fs code=%s", time.monotonic() - t1, code)
             if card_path:
                 last_ok = await send_photo(card_path, "高低決策卡")
                 sent_any = sent_any or last_ok
             t1 = time.monotonic()
-            chart = await asyncio.wait_for(
-                asyncio.to_thread(
-                    generate_chart,
-                    code,
-                    "",
-                    self.db_path,
-                    os.path.join(self.charts_dir, f"{code}.png"),
-                    ohlc,
-                ),
-                timeout=35,
-            )
+            chart = await chart_task
             logger.info("看這檔 chart %.1fs code=%s", time.monotonic() - t1, code)
-            await flush_send()
             if chart:
-                queue_photo(
+                last_ok = await send_photo(
                     chart,
                     "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
                 )
+                sent_any = sent_any or last_ok
             t1 = time.monotonic()
-            chip_img = await asyncio.wait_for(
-                asyncio.to_thread(
-                    generate_chips_image,
-                    code,
-                    self.db_path,
-                    os.path.join(self.charts_dir, f"{code}_chips.png"),
-                ),
-                timeout=20,
-            )
+            chip_img = await chip_task
             logger.info("看這檔 chips %.1fs code=%s", time.monotonic() - t1, code)
-            await flush_send()
             hub_on = False
             if chip_img:
                 hub_on = await send_photo(chip_img, "籌碼（張）", hub)
@@ -1761,12 +1751,9 @@ class WayneTelegramBot:
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
         except asyncio.TimeoutError:
             logger.exception("看這檔出圖逾時 code=%s", code)
-            if pending_send is not None:
-                try:
-                    sent_any = bool(await pending_send) or sent_any
-                except Exception:
-                    pass
-                pending_send = None
+            for t in (card_task, chart_task, chip_task):
+                if t is not None and not t.done():
+                    t.cancel()
             if not sent_any:
                 await message.reply_html(
                     "圖產製逾時。請再打一次代號；或先用下面按鈕看籌碼／產業。",
@@ -1777,12 +1764,9 @@ class WayneTelegramBot:
                 await message.reply_html("後面的圖逾時。可用下面按鈕繼續。", reply_markup=hub, disable_web_page_preview=True)
         except Exception:
             logger.exception("看這檔出圖失敗 code=%s", code)
-            if pending_send is not None:
-                try:
-                    await pending_send
-                except Exception:
-                    pass
-                pending_send = None
+            for t in (card_task, chart_task, chip_task):
+                if t is not None and not t.done():
+                    t.cancel()
             if not sent_any:
                 try:
                     from wayne_navigator import generate_decision_card

@@ -1184,6 +1184,8 @@ def build_line_stock_bodies(
     out: Dict[str, str] = {}
     for key, label in LINE_STOCK_BUCKETS:
         for it in results.get(key) or []:
+            if not isinstance(it, dict):
+                continue
             sid = str(it.get("stock_id") or it.get("code") or "").strip()
             if not sid:
                 continue
@@ -1262,8 +1264,11 @@ def _share_bucket_block(
         if key in ("day_trade", "overnight") and us_regime == "risk_off":
             return f"＝＝{title}＝＝　0檔\n隔夜逆風：當沖／隔日沖今日不列"
         return ""
-    lines = [f"＝＝{title}＝＝　{len(items)}檔"]
-    for n, it in enumerate(items, start=1):
+    dict_items = [it for it in items if isinstance(it, dict)]
+    if not dict_items:
+        return ""
+    lines = [f"＝＝{title}＝＝　{len(dict_items)}檔"]
+    for n, it in enumerate(dict_items, start=1):
         if n > 1:
             lines.append(SHARE_SEP)
         lines.append(_share_stock_block(it, n, db_path))
@@ -1311,8 +1316,17 @@ def format_line_share_packs(
 
     both_bits = []
     seen_both = set()
-    for key in results:
+    try:
+        from screen_sessions import BUCKETS as _SCREEN_BUCKETS
+    except Exception:
+        _SCREEN_BUCKETS = (
+            "leave_zero", "golden_buy", "revenue_cross", "select_01", "select_02",
+            "select_03", "select_04", "day_trade", "overnight",
+        )
+    for key in _SCREEN_BUCKETS:
         for it in results.get(key) or []:
+            if not isinstance(it, dict):
+                continue
             if not it.get("both_sessions"):
                 continue
             sid = str(it.get("stock_id") or it.get("code") or "")

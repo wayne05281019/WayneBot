@@ -230,6 +230,19 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertNotIn("哥哥", page)
         self.assertNotIn("自己選要傳給誰", page)
 
+    def test_format_line_share_packs_ignores_us_regime_metadata(self):
+        from screening_engine import format_line_share_packs
+
+        item = {"stock_id": "2330", "stock_name": "台積電", "both_sessions": True}
+        packs = format_line_share_packs(
+            {"leave_zero": [item], "_us_regime": "risk_off"},
+            "20260831",
+            session_plain="今早 06:30",
+        )
+        self.assertEqual([p["id"] for p in packs], ["night", "layout", "trade"])
+        self.assertIn("雙時段", packs[1]["text"])
+        self.assertIn("2330", packs[1]["text"])
+
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
         from wayne_db import ensure_core_schema
