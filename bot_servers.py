@@ -72,7 +72,7 @@ HELP_TOPICS = {
         "<b>海選怎麼用</b>\n"
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
-        "海選＝昨收量化名單，不是盤中即時掃描。夜盤／起漲／當沖各一顆「開 LINE」：按下去開 LINE，再自己選要傳給誰。\n"
+        "海選＝昨收量化名單，不是盤中即時掃描。每檔藍字下方或按鈕「開 LINE・傳這檔」→ 開 LINE，再自己選要傳給誰。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
         "當沖會寫保險進場、第一停利(+3%)、衝頂(+6%)、均價停損；隔日沖會寫尾盤買進區間與防守。\n"
         "藍字股名＝奇摩走勢。下面按鈕由上到下對應名單：左＝代號＋股名（看圖）；右➕＝觀察。\n"
@@ -248,17 +248,24 @@ class WayneTelegramBot:
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
+    def _line_stock_url(self, stock_id: str) -> str:
+        from config import get_public_base_url
+
+        sid = str(stock_id or "").strip()
+        if not sid:
+            return ""
+        return f"{get_public_base_url()}/line/stock/{sid}"
+
     def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen", include_forward: bool = None):
         rows = []
-        for i, (code, name) in enumerate((picks or [])[:10], start=1):
+        for i, (code, name) in enumerate((picks or [])[:12], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
             rows.append(self._stock_action_row(c, name or "", idx=i))
-        if include_forward is None:
-            include_forward = bool(include_menu and topic == "screen")
-        if include_forward:
-            rows.extend(self._line_open_rows())
+            line_url = self._line_stock_url(c)
+            if line_url and topic == "screen":
+                rows.append([InlineKeyboardButton("開 LINE・傳這檔", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -426,12 +433,13 @@ class WayneTelegramBot:
             )
 
     def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
+        """保留三段整包稿（手動 fw:s）；日常海選改走每檔按鈕。"""
         if result is not None:
             self._remember_line_share(result)
         packs = self._load_line_share_packs()
         if not packs:
             return
-        self._send_plain(chat_id, "三段各有一顆鈕。按下去會開啟 LINE，再自己選要傳給誰。")
+        self._send_plain(chat_id, "整段夜盤／起漲／當沖稿（可選）：")
         for p in packs:
             self._send_plain(
                 chat_id,
@@ -464,8 +472,8 @@ class WayneTelegramBot:
                 kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
                 await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
-        if result.get("line_share_packs") or result.get("line_share") or result.get("line_share_chunks"):
-            await self._reply_line_share(message, result)
+        if result.get("line_share_packs") or result.get("line_share"):
+            self._remember_line_share(result)
 
     def _cat_sticker_id(self, key: str) -> str:
         if not key:
@@ -610,8 +618,8 @@ class WayneTelegramBot:
                     attach_menu=False,
                 )
             _t.sleep(0.25)
-        if result.get("line_share_packs") or result.get("line_share") or result.get("line_share_chunks"):
-            self._send_line_share(self.chat_id, result)
+        if result.get("line_share_packs") or result.get("line_share"):
+            self._remember_line_share(result)
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:

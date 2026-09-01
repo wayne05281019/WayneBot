@@ -47,18 +47,22 @@ class HealthHandler(BaseHTTPRequestHandler):
             return
         if route.startswith("/line"):
             from config import get_db_path
-            from line_hop import hop_response
+            from line_hop import hop_response, hop_stock_response
 
             parts = [p for p in route.split("/") if p]
-            pack_id = parts[1] if len(parts) > 1 else ""
-            hop = hop_response(get_db_path(), pack_id)
-            if not hop:
-                self.send_response(404)
-                self.end_headers()
-                return
+            if len(parts) >= 3 and parts[0] == "line" and parts[1] == "stock":
+                hop = hop_stock_response(get_db_path(), parts[2])
+            else:
+                pack_id = parts[1] if len(parts) > 1 else ""
+                hop = hop_response(get_db_path(), pack_id)
+                if not hop:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
             body = hop["html"].encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

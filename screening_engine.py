@@ -281,7 +281,7 @@ class ScreeningEngine:
                 res_sel_04.append(info)
 
             # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
-            # 量熱或昨收高低格還在 20 低，才算有人接。
+            # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
             dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
             if len(df) >= 5 and dts.notna().sum() >= 5:
                 def _cal60(i: int) -> float:
@@ -304,7 +304,13 @@ class ScreeningEngine:
                 yest_hl_low = bool(yest_l20 > 0 and float(info["prev_close"]) <= yest_l20 * 1.002)
                 just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
                 sid_s = str(info.get("stock_id") or "")
-                if just_left and (vol_hot or yest_hl_low) and len(sid_s) == 4 and sid_s.isdigit():
+                if (
+                    just_left
+                    and (vol_hot or yest_hl_low)
+                    and _leave_zero_trend_ok(info)
+                    and len(sid_s) == 4
+                    and sid_s.isdigit()
+                ):
                     item = dict(info)
                     item["profit"] = round(pt, 1)
                     item["vol_rank_120"] = rank
@@ -447,6 +453,26 @@ def _regime_label(item: Dict[str, Any]) -> str:
     return "整理格局"
 
 
+def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
+    """起漲桶：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
+    regime = _regime_label(info)
+    if regime in ("空頭排列", "弱勢破底", "月線下整理"):
+        return False
+    try:
+        c = float(info.get("close") or 0)
+        ma20 = float(info.get("ma20") or 0)
+        ma60 = float(info.get("ma60") or 0)
+    except (TypeError, ValueError):
+        return False
+    if regime in ("多頭排列", "站上月線"):
+        return True
+    if ma20 > 0 and c >= ma20:
+        return True
+    if ma60 > 0 and ma20 >= ma60 and c >= ma60:
+        return True
+    return False
+
+
 def _pct_str(pct) -> str:
     try:
         p = float(pct)
@@ -581,12 +607,17 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         to_s = ""
     body = [
         f"<b>{idx}.</b> {title}",
+    ]
+    line_link = _line_stock_html_link(sid)
+    if line_link:
+        body.append(line_link)
+    body.extend([
         f"格局　{regime}",
         f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
         f"量　　{html_qty(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}" + (f"　額　{html_escape(to_s)}" if to_s else ""),
         f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
         f"法人　{_chip_html(item)}",
-    ]
+    ])
     if notices:
         body.append("注意　" + "　".join(notices))
     if item.get("profit") is not None:
@@ -641,8 +672,16 @@ def _compact_line(item: Dict[str, Any]) -> str:
             f"　開高{html_escape(item.get('target_gap'))}"
             f"　守{_px_str(item.get('defense_price'))}"
         )
+    try:
+        from stock_links import html_stock_anchor
+
+        title = html_stock_anchor(sid, sname)
+    except Exception:
+        title = f"{html_escape(sid)} {html_escape(sname)}"
+    line_link = _line_stock_html_link(sid)
+    head = title + (f"\n{line_link}" if line_link else "")
     return (
-        f"{html_escape(sid)} {html_escape(sname)}　"
+        f"{head}\n"
         f"{html_escape(_regime_label(item))}　收{_px_str(item.get('close'))}　{pct}　"
         f"量{html_qty(item.get('volume'), signed=False)}　{html_escape(q_s)}{extra}{plan}"
     )
@@ -657,7 +696,7 @@ def format_screening_payload(
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
     specs = [
-        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正）", 8, True),
+        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
         ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
         ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
@@ -679,7 +718,7 @@ def format_screening_payload(
         if first:
             bits = [
                 f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
-                "<i>給家人：夜盤／起漲／當沖各按「開 LINE」，手機會打開 LINE，再自己選要傳給誰。</i>",
+                "<i>每檔藍字下方有「開 LINE・傳這檔」；按鈕區也有。按下去開 LINE，再自己選要傳給誰。</i>",
             ]
             if session_html:
                 bits.append(session_html)
@@ -714,14 +753,14 @@ def format_screening_payload(
                 str(it.get("stock_id") or it.get("code") or ""),
                 str(it.get("stock_name") or it.get("name") or ""),
             )
-            for it in items[:detail_n]
+            for it in items
             if it.get("stock_id") or it.get("code")
         ]
         payload.append(part)
 
     if payload:
         payload[-1]["html"] += (
-            "\n💡 <i>藍字股名＝奇摩。左鍵＝該檔代號＋股名（點下去看圖）；右鍵➕＝觀察。"
+            "\n💡 <i>藍字股名＝奇摩，下面可「開 LINE・傳這檔」。左鍵＝看圖；右鍵➕＝觀察。"
             "保險進場／停利／停損已寫在排名裡；【雙時段】＝晚間＋早上都在。"
             "該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
             "量化僅供輔助，進場請設移動停損。</i>"
@@ -743,6 +782,22 @@ def _date_slash(target_date: str) -> str:
     if len(d) == 8 and d.isdigit():
         return f"{d[:4]}/{d[4:6]}/{d[6:]}"
     return str(target_date or "")
+
+
+def _line_stock_hop_url(stock_id: str) -> str:
+    from config import get_public_base_url
+
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    return f"{get_public_base_url()}/line/stock/{sid}"
+
+
+def _line_stock_html_link(stock_id: str) -> str:
+    url = _line_stock_hop_url(stock_id)
+    if not url:
+        return ""
+    return f'<a href="{html_escape(url)}">開 LINE・傳這檔</a>'
 
 
 def _yahoo_web(sid: str, db_path: Optional[str] = None) -> str:
@@ -831,6 +886,53 @@ def _share_stock_block(it: Dict[str, Any], idx: int, db_path: Optional[str] = No
     elif any(int(it.get(k) or 0) for k in ("foreign_net", "trust_net", "dealer_net")):
         lines.append(f"  {_chip_plain(it)}")
     return "\n".join(lines)
+
+
+LINE_STOCK_BUCKETS = (
+    ("leave_zero", "起漲"),
+    ("revenue_cross", "優先看"),
+    ("select_01", "周帶量"),
+    ("select_02", "站上季線"),
+    ("select_03", "止跌"),
+    ("select_04", "雙綠"),
+    ("day_trade", "當沖"),
+    ("overnight", "隔日沖"),
+)
+
+
+def format_stock_line_share_text(
+    item: Dict[str, Any],
+    target_date: str,
+    db_path: Optional[str] = None,
+    bucket_label: str = "",
+) -> str:
+    sid = str(item.get("stock_id") or item.get("code") or "").strip()
+    sname = str(item.get("stock_name") or item.get("name") or "").strip()
+    tag = f"【{bucket_label}】" if bucket_label else ""
+    return "\n".join(
+        [
+            f"WayneBot 海選　{_date_slash(target_date)}",
+            f"{tag}{sid} {sname}".strip(),
+            SHARE_SEP,
+            _share_stock_block(item, 1, db_path),
+            "（量化輔助，不是立即下單）",
+        ]
+    )
+
+
+def build_line_stock_bodies(
+    results: Dict[str, List[Dict[str, Any]]],
+    target_date: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for key, label in LINE_STOCK_BUCKETS:
+        for it in results.get(key) or []:
+            sid = str(it.get("stock_id") or it.get("code") or "").strip()
+            if not sid:
+                continue
+            out[sid] = format_stock_line_share_text(it, target_date, db_path, bucket_label=label)
+    return out
 
 
 def _share_bucket_block(
@@ -1134,10 +1236,15 @@ def execute_full_screening(
     )
     line_body = ("\n────────\n").join(p["text"] for p in line_packs)
     try:
-        from screen_sessions import save_line_packs, save_line_share
+        from screen_sessions import save_line_packs, save_line_share, save_line_stocks
 
         save_line_share(engine.db_path, target_date, line_body)
         save_line_packs(engine.db_path, target_date, line_packs)
+        save_line_stocks(
+            engine.db_path,
+            target_date,
+            build_line_stock_bodies(results, target_date, engine.db_path),
+        )
     except Exception:
         pass
 
