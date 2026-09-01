@@ -840,14 +840,96 @@ class WayneTelegramBot:
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✕", callback_data="hx")]]),
         )
 
-    async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("海選執行中…")
+    @staticmethod
+    def _screening_progress_text(elapsed_sec: int, *, done: bool = False) -> str:
+        if done:
+            return "海選完成，正在推送分類名單…"
+        if elapsed_sec <= 0:
+            return (
+                "海選開始：載入資料、掃描全市場…\n"
+                "約需 2～5 分鐘，完成後會依序推送起漲／黃金買點等分類。\n"
+                "請勿重複按，以免排隊。"
+            )
+        return (
+            f"海選進行中… 已 {elapsed_sec} 秒\n"
+            "仍在掃描全市場，完成後會自動推送。\n"
+            "Render 免費主機較慢時可能需 3～5 分鐘。"
+        )
+
+    async def _run_manual_screening(self, message):
+        """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
+        hub = self._keyboard()
+        status = await message.reply_text(
+            self._screening_progress_text(0),
+            reply_markup=hub,
+        )
+        stop = asyncio.Event()
+        t0 = time.monotonic()
+
+        async def _tick():
+            while not stop.is_set():
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=30.0)
+                    break
+                except asyncio.TimeoutError:
+                    elapsed = int(time.monotonic() - t0)
+                    try:
+                        await status.edit_text(
+                            self._screening_progress_text(elapsed),
+                            reply_markup=hub,
+                        )
+                    except Exception:
+                        pass
+
+        ticker = asyncio.create_task(_tick())
+        result = None
         try:
-            result = await asyncio.to_thread(self.screener.run_full_screening)
-            await self._reply_screening_payload(update.message, result)
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.screener.run_full_screening),
+                timeout=480.0,
+            )
+            stop.set()
+            try:
+                await status.edit_text(self._screening_progress_text(0, done=True), reply_markup=hub)
+            except Exception:
+                pass
+            await self._reply_screening_payload(message, result)
+            as_of = str(result.get("as_of") or result.get("date") or "")
+            try:
+                from screen_sessions import screen_session_has_data
+
+                if screen_session_has_data(self.db_path, as_of):
+                    await message.reply_text(
+                        "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。",
+                        reply_markup=hub,
+                    )
+            except Exception:
+                pass
+        except asyncio.TimeoutError:
+            logger.exception("手動海選逾時")
+            await message.reply_text(
+                "海選逾時（超過 8 分鐘）。\n"
+                "Render 免費主機較慢時會這樣。請 5 分鐘後再按一次「海選」，"
+                "或等明早 06:30 自動海選。",
+                reply_markup=hub,
+            )
         except Exception as e:
             logger.exception("海選失敗")
-            await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
+            await message.reply_text(
+                f"海選失敗：{e}\n"
+                "請到 Render Logs 搜「四大選股失敗」；或稍後再按「海選」。",
+                reply_markup=hub,
+            )
+        finally:
+            stop.set()
+            ticker.cancel()
+            try:
+                await status.delete()
+            except Exception:
+                pass
+
+    async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await self._run_manual_screening(update.message)
 
     async def _reply_trade_list(
         self,
@@ -1911,13 +1993,7 @@ class WayneTelegramBot:
             await self._run_ai_now(q.message, str(q.from_user.id))
             return
         if data == "screen":
-            await q.message.reply_text("海選執行中…")
-            try:
-                result = await asyncio.to_thread(self.screener.run_full_screening)
-                await self._reply_screening_payload(q.message, result)
-            except Exception as e:
-                logger.exception("海選失敗")
-                await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
+            await self._run_manual_screening(q.message)
         elif data == "daytrade":
             await self._run_trade_bucket(
                 q.message,
