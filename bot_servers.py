@@ -547,14 +547,17 @@ class WayneTelegramBot:
         return "\n".join(lines), self._watch_list_keyboard(shown)
 
     def _portfolio_keyboard(self, holdings):
+        from tg_layout import stock_btn_label
+
         kb = []
         for h in (holdings or [])[:8]:
             c = str(h.get("stock_code") or h.get("stock_id") or "")
             if not c:
                 continue
+            n = str(h.get("stock_name") or "")
             kb.append(
                 [
-                    InlineKeyboardButton(f"{c}", callback_data=f"k:{c}"),
+                    InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}"),
                     InlineKeyboardButton("賣出", callback_data=f"x:{c}"),
                 ]
             )
