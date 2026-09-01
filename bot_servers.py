@@ -92,12 +92,14 @@ HELP_TOPICS = {
     "daytrade": (
         "<b>當沖怎麼用</b>\n"
         "保險進場＝不要追過當日收盤；第一停利＝+3% 先出一部分；衝頂＝+6%；保險停損＝當日均價跌破先走。\n"
+        "只在平日 <b>09:00–13:30 盤中</b> 按才有意義（MIS 即時複核漲幅 2%～8.5%）；收盤後按不會出名單。\n"
         "隔夜美股逆風（收盤或盤後大跌、VIX 高）時這頁會空，避免開盤缺口硬沖。\n"
         "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
         "保險買進＝尾盤昨收附近、不要摸高；明早開高目標 +3.5%～+4.8%；衝頂 +7%；保險防守＝開盤與均價較低者，跌破先走。\n"
+        "進場參考時段＝平日 <b>09:00–13:30</b>（尾盤前）；收盤後按只顯示強勢收盤候選，供明早開盤參考，不是叫你再買。\n"
         "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。"
     ),
     "portfolio": (
@@ -1086,7 +1088,41 @@ class WayneTelegramBot:
         menu_label: str,
         loader,
     ):
+        from trading_calendar import (
+            daytrade_closed_message,
+            is_tw_equity_session,
+            tw_session_phase,
+        )
+
         await self._dismiss_menu_transients(message.chat_id)
+        phase = tw_session_phase()
+        effective_live_bucket = live_bucket
+        effective_subtitle = subtitle
+        if live_bucket == "daytrade" and not is_tw_equity_session():
+            status = await message.reply_text(status_text, reply_markup=self._keyboard())
+            try:
+                await message.reply_html(
+                    f"<b>{title}</b>\n<i>{daytrade_closed_message(phase)}</i>",
+                    reply_markup=self._keyboard(),
+                )
+            finally:
+                try:
+                    await status.delete()
+                except Exception:
+                    pass
+            return
+        if live_bucket == "overnight" and not is_tw_equity_session():
+            effective_live_bucket = None
+            if phase == "pre":
+                effective_subtitle = (
+                    "開盤前預覽：昨收強勢候選，供今日尾盤佈局參考（09:00 後再依盤中價複核）。"
+                    "尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。"
+                )
+            else:
+                effective_subtitle = (
+                    "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
+                    "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。"
+                )
         status = await message.reply_text(status_text, reply_markup=self._keyboard())
         try:
             try:
@@ -1127,10 +1163,10 @@ class WayneTelegramBot:
                 message,
                 rows,
                 title=title,
-                subtitle=subtitle,
+                subtitle=effective_subtitle,
                 bucket_key=bucket_key,
                 topic=topic,
-                live_bucket=live_bucket,
+                live_bucket=effective_live_bucket,
             )
         except asyncio.TimeoutError:
             await message.reply_text(
