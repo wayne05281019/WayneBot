@@ -283,14 +283,17 @@ class NavigatorEngine:
         self.db_path = db_path
 
     @staticmethod
-    def _calc_rolling_rank(series: pd.Series, window: int = 120) -> list:
-        vals = series.values
+    def _calc_rolling_rank(series: pd.Series, window: int = 120, closes: pd.Series | None = None) -> list:
+        from decision_card_signals import calc_volume_rank
+
+        vals = series.tolist()
+        cls = closes.tolist() if closes is not None else None
         ranks = []
         for i in range(len(vals)):
             start = max(0, i - window + 1)
-            sub = vals[start : i + 1]
-            rank = int(np.sum(sub > vals[i]) + 1)
-            ranks.append(rank)
+            sub_v = vals[start : i + 1]
+            sub_c = cls[start : i + 1] if cls else None
+            ranks.append(calc_volume_rank(sub_v, window, closes=sub_c))
         return ranks
 
     def get_decision_card(self, stock_id: str, lookback: int = 20) -> dict:
@@ -337,6 +340,9 @@ class NavigatorEngine:
         df["low_120"] = close_s.rolling(120, min_periods=20).min()
         df["low_240"] = close_s.rolling(240, min_periods=40).min()
         df["low_480"] = close_s.rolling(480, min_periods=80).min()
+        df["high_120"] = close_s.rolling(120, min_periods=20).max()
+        df["high_240"] = close_s.rolling(240, min_periods=40).max()
+        df["high_480"] = close_s.rolling(480, min_periods=80).max()
         from decision_card_signals import (
             cal60_low_close_at,
             card_regime_label,
@@ -352,8 +358,8 @@ class NavigatorEngine:
         cal60_low = cal60_low_close_at(profit_src, -1)
         profit_floor = profit_floor_at(profit_src, -1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
-        df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
-        df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480)
+        df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120, closes=close_s)
+        df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480, closes=close_s)
 
         hl_tags, alert_tags, temp_nums = [], [], []
         for i in range(len(df)):
@@ -468,11 +474,26 @@ class NavigatorEngine:
             badges.append(f"120日量第 {vr120} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
+        h120 = float(latest["high_120"]) if pd.notna(latest.get("high_120")) else 0.0
+        h240 = float(latest["high_240"]) if pd.notna(latest.get("high_240")) else 0.0
+        h480 = float(latest["high_480"]) if pd.notna(latest.get("high_480")) else 0.0
         l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
         l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
         l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
         c0 = float(latest["close"])
-        if l480 and c0 <= l480 * 1.02:
+        if h480 and c0 >= h480 * 0.998:
+            badges.append("創480日新高")
+        elif h240 and c0 >= h240 * 0.998:
+            badges.append("創240日新高")
+        elif h120 and c0 >= h120 * 0.998:
+            badges.append("創120日新高")
+        if l480 and c0 <= l480 * 1.002:
+            badges.append("創480日新低")
+        elif l240 and c0 <= l240 * 1.002:
+            badges.append("創240日新低")
+        elif l120 and c0 <= l120 * 1.002:
+            badges.append("創120日新低")
+        elif l480 and c0 <= l480 * 1.02:
             badges.append("近480日低")
         elif l240 and c0 <= l240 * 1.02:
             badges.append("近240日低")
@@ -1294,7 +1315,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
-    extra_lows = []  # CaryBot 範本：低點區只秀 10/20/60 三格
+    extra_lows = []
+    for _lab, _px, dist in horizon_low_cells(card):
+        try:
+            if float(dist) <= 5.0:
+                extra_lows.append((_lab, _px, dist))
+        except (TypeError, ValueError):
+            pass
     low_rows = 2 if extra_lows else 1
     C = _CARD
 
@@ -2036,11 +2063,13 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         for k, (kind, sc, hollow) in enumerate(dn_stack):
             tip = hi + arrow_gap + k * arrow_step
             _nav_arrow(ax1, tip, x, down=True, face=_nav_tone(kind, tip, h20, l20),
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow,
+                       alpha=0.58 if hollow else 1.0)
         for k, (kind, sc, hollow) in enumerate(up_stack):
             tip = lo - arrow_gap - k * arrow_step
             _nav_arrow(ax1, tip, x, down=False, face=_nav_tone(kind, tip, h20, l20),
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow,
+                       alpha=0.58 if hollow else 1.0)
 
         # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
         # 底色只在月波動低時上色，其餘留白；原本三天一換的橘藍相間只是視覺噪音。
@@ -2048,6 +2077,8 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
             ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84,
                                                facecolor="#90caf9", edgecolor="none", zorder=2))
         if warn:
+            ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.52), 0.9, 0.42,
+                                               facecolor="#ffcdd2", edgecolor="none", alpha=0.62, zorder=1))
             _sig_arrow(ax_sig, x, 0.72, "#e53935", "#7f0000", scale=1.05, z=5)
         if vol_a:
             _sig_arrow(ax_sig, x, 0.38, "#6a1b9a", "#311b92", scale=1.22, z=6)
@@ -2169,7 +2200,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     for i, dt in enumerate(work["dt"]):
         key = (dt.year, dt.month)
         if key != prev_m:
-            months.append(dt.strftime("%b"))
+            months.append(dt.strftime("%b '%y"))
             mpos.append(i)
             prev_m = key
     ax2.set_xticks(mpos)

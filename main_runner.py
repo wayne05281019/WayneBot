@@ -430,6 +430,14 @@ class MainRunner:
             return
         extra_bits = [self._format_watch_radar_section()]
         try:
+            from taiwan_market import format_taiwan_market_brief_html
+
+            mkt = format_taiwan_market_brief_html(self.db_path, as_of or "")
+            if mkt and (screening or {}).get("message") and mkt not in (screening or {}).get("message", ""):
+                extra_bits.insert(0, mkt)
+        except Exception:
+            pass
+        try:
             from screen_review import score_ai_fills, score_screen_picks
 
             score_screen_picks(self.db_path, as_of or "")

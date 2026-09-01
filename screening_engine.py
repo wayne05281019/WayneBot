@@ -317,10 +317,16 @@ class ScreeningEngine:
             # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
             # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
             if len(df) >= 5:
+                from decision_card_signals import calc_volume_rank
+
                 vols = df["volume"].to_numpy(dtype=float)
-                last_v = float(vols[-1])
-                window = vols[-120:] if len(vols) >= 120 else vols
-                rank = int(int((window > last_v).sum()) + 1)
+                closes = df["close"].to_numpy(dtype=float)
+                window_n = min(120, len(vols))
+                rank = calc_volume_rank(
+                    vols[-window_n:],
+                    120,
+                    closes=closes[-window_n:],
+                )
                 leave_l20 = prev_d20 <= 2.0 and d20 >= 2.0
                 vol_hot = leave_l20 or rank <= 20 or q >= 2.0
                 close_s = df["close"].astype(float)
@@ -1430,6 +1436,16 @@ def execute_full_screening(
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
     us_snap = _postprocess_screen(engine.db_path, target_date, results, apply_us=apply_us)
+    mkt_html = ""
+    if session == "morning":
+        try:
+            from taiwan_market import analyze_taiwan_market, apply_market_filter, format_taiwan_market_brief_html
+
+            mkt_snap = analyze_taiwan_market(engine.db_path, target_date)
+            results = apply_market_filter(results, mkt_snap)
+            mkt_html = format_taiwan_market_brief_html(engine.db_path, target_date)
+        except Exception:
+            mkt_html = ""
     us_plain = ""
     session_plain = ""
     if session == "evening":
@@ -1464,7 +1480,11 @@ def execute_full_screening(
             pass
 
     payload = format_screening_payload(results, target_date)
-    report_text = "\n\n".join(p["html"] for p in payload)
+    report_parts = []
+    if mkt_html:
+        report_parts.append(mkt_html)
+    report_parts.extend(p["html"] for p in payload)
+    report_text = "\n\n".join(report_parts)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
     major_alerts = []

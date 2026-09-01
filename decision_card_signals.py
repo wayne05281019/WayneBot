@@ -53,6 +53,26 @@ def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
     return pd.Series(out, index=df.index)
 
 
+def calc_volume_rank(
+    volumes,
+    window: int = 120,
+    *,
+    closes=None,
+) -> int:
+    """近 window 根量排名：1＝區間內最大。有收盤時用成交金額（量×價）對齊 CaryBot。"""
+    if volumes is None:
+        return 99
+    vals = [float(v or 0) for v in volumes]
+    if closes is not None and len(closes) == len(vals):
+        vals = [float(c or 0) * float(v or 0) for c, v in zip(closes, vals)]
+    if not vals:
+        return 99
+    last = vals[-1]
+    start = max(0, len(vals) - window)
+    sub = vals[start:]
+    return int(sum(1 for x in sub if x > last) + 1)
+
+
 def compute_card_temperature(
     close: float,
     high20: float,
@@ -71,14 +91,15 @@ def compute_card_temperature(
         return 0.0
     span = max(h20 - l20, c * 0.002 if c > 0 else 0.01)
     rf = max(0.0, min(1.0, (c - l20) / span))
+    rf = rf ** 0.94
     space60 = (h60 - l60) / l60 * 100.0 if l60 > 0 else (span / c * 100.0 if c > 0 else 10.0)
     if space60 < 8:
-        t_min, t_span = 6.0, 4.5
+        t_min, t_span, bias_k = 6.0, 4.5, 0.22
     elif space60 < 16:
-        t_min, t_span = 8.0, 22.0
+        t_min, t_span, bias_k = 8.0, 22.0, 0.28
     else:
-        t_min, t_span = 12.0, 68.0
-    t = t_min + t_span * rf + 0.35 * bias
+        t_min, t_span, bias_k = 10.0, 70.0, 0.30
+    t = t_min + t_span * rf + bias_k * bias
     return round(max(0.0, min(99.9, t)), 1)
 
 

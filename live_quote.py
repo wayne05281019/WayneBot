@@ -78,15 +78,16 @@ def is_live_merge_window(now=None) -> bool:
     return dt_time(8, 50) <= t < dt_time(16, 0)
 
 
-def calc_vol_rank_120(volumes: Sequence[Union[int, float]], window: int = 120) -> int:
+def calc_vol_rank_120(
+    volumes: Sequence[Union[int, float]],
+    window: int = 120,
+    *,
+    closes: Sequence[Union[int, float]] | None = None,
+) -> int:
     """這檔自己近 window 根成交量排名：1＝區間內最大量。"""
-    if not volumes:
-        return 99
-    vals = [float(v or 0) for v in volumes]
-    last = vals[-1]
-    start = max(0, len(vals) - window)
-    sub = vals[start:]
-    return int(sum(1 for x in sub if x > last) + 1)
+    from decision_card_signals import calc_volume_rank
+
+    return calc_volume_rank(volumes, window, closes=closes)
 
 
 def live_vol_rank_120_batch(
