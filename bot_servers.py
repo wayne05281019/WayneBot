@@ -63,8 +63,8 @@ except ImportError:
 
 HELP_TOPICS = {
     "menu": (
-        "<b>主選單（輸入框下方三排，永遠在）</b>\n"
-        "海選／當沖／隔日沖／持股　｜　觀察／資金／說明／選單\n"
+        "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
+        "海選／當沖／隔日沖／持股／<b>決策卡</b>　｜　觀察／資金／說明／選單／（預留格）\n"
         "<b>決策卡</b>＝盤中快捷：上一檔一鍵刷新 MIS 價量與 120日量排名；沒看過就打代號。\n"
         "打股名或代號＝完整看這檔：現價→介紹圖→決策卡→導航→籌碼。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
@@ -132,6 +132,9 @@ HELP_TOPICS = {
         "只看官方法人＋價量，不抓分點、不抓論壇。法人也會幌，輪動不單獨當訊號。"
     ),
 }
+
+# 主選單兩排各五格：最後一格預留（全形空白），日後可換成新功能。
+MENU_BTN_RESERVED = "　"
 
 
 def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
@@ -242,18 +245,29 @@ class WayneTelegramBot:
             await self._prompt_decision_card(update.message, uid)
 
     def _reply_menu(self):
-        """聊天室下方常駐三排：上兩排功能、第三排盤中決策卡快捷。"""
+        """聊天室下方常駐兩排、每排五格（末格預留，決策卡在首排末格）。"""
         rows = [
-            [KeyboardButton("海選"), KeyboardButton("當沖"), KeyboardButton("隔日沖"), KeyboardButton("持股")],
-            [KeyboardButton("觀察"), KeyboardButton("資金"), KeyboardButton("說明"), KeyboardButton("選單")],
-            [KeyboardButton("決策卡")],
+            [
+                KeyboardButton("海選"),
+                KeyboardButton("當沖"),
+                KeyboardButton("隔日沖"),
+                KeyboardButton("持股"),
+                KeyboardButton("決策卡"),
+            ],
+            [
+                KeyboardButton("觀察"),
+                KeyboardButton("資金"),
+                KeyboardButton("說明"),
+                KeyboardButton("選單"),
+                KeyboardButton(MENU_BTN_RESERVED),
+            ],
         ]
         try:
             return ReplyKeyboardMarkup(
                 rows,
                 resize_keyboard=True,
                 is_persistent=True,
-                input_field_placeholder="打股名／代號，或按下方「決策卡」",
+                input_field_placeholder="打股名／代號，或按「決策卡」",
             )
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -764,8 +778,8 @@ class WayneTelegramBot:
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "<b>WayneBot</b>\n"
-            "主選單在<b>輸入框正下方三排</b>（不會跟著訊息捲走）。\n"
-            "盤中常看決策卡請按第三排 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
+            "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
+            "盤中常看決策卡請按首排最右 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
             reply_markup=self._reply_menu(),
@@ -773,7 +787,7 @@ class WayneTelegramBot:
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
-            "已叫回主選單（下方三排）。",
+            "已叫回主選單（下方兩排）。",
             reply_markup=self._reply_menu(),
         )
 
@@ -1081,6 +1095,8 @@ class WayneTelegramBot:
         if text == "隔日沖":
             self._pending.pop(uid, None)
             await self.overnight_cmd(update, context)
+            return
+        if text == MENU_BTN_RESERVED:
             return
         if text == "決策卡":
             await self.decision_card_btn(update, context)
