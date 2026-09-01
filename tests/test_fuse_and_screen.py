@@ -1358,6 +1358,55 @@ class LookupCardTest(unittest.TestCase):
         self.assertTrue(out3["leave_zero"])
         self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
 
+    def test_half_and_two_year_highs_excluded_from_all_push_buckets(self):
+        import pandas as pd
+        from screening_engine import ScreeningEngine, _skip_long_term_high_push
+
+        def bars(closes, *, last_vol=8000):
+            from datetime import datetime, timedelta
+
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                vol = last_vol if i == len(closes) - 1 else 3000
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": vol,
+                        "turnover_k": vol * c,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        engine = ScreeningEngine(db_path=":memory:")
+        # 舊版半年高推播條件：創高 + 量比 + 漲幅，整檔應被排除
+        half_year = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 110.0]
+        out_hi120 = engine.execute_all_strategies({"2330": bars(half_year, last_vol=20000)})
+        self.assertEqual(out_hi120["select_01"], [])
+        self.assertEqual(out_hi120["day_trade"], [])
+        info = engine.calculate_indicators(bars(half_year, last_vol=20000))
+        self.assertTrue(_skip_long_term_high_push(info))
+
+        # 創高但量不夠／漲幅小：不算舊版半年高，周帶量仍可推
+        mild = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 102.0]
+        out_mild = engine.execute_all_strategies({"2330": bars(mild, last_vol=8000)})
+        self.assertFalse(_skip_long_term_high_push(engine.calculate_indicators(bars(mild, last_vol=8000))))
+        self.assertTrue(out_mild["select_01"])
 
 class AIDeskTest(unittest.TestCase):
     def test_run_ai_desk_actually_buys(self):

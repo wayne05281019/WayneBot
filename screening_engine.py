@@ -2,7 +2,7 @@
 # WayneBot 全市場量化決策系統升級：模組二 - 即時選股與價位精算核心
 # 檔案路徑：screening_engine.py
 # 核心功能：
-#   1. 海選：周帶量、站上季線、止跌、雙綠脫離（不再列半年高／兩年高）
+#   1. 海選：周帶量、站上季線、止跌、雙綠脫離（不再列半年高／兩年高；同條件整檔不推）
 #   2. 當沖動能專區（進場價、+3%第一停利、+6%衝頂、均價停損）
 #   3. 隔日沖精選專區（買進區間、明日+3.5~4.8%開高目標、衝頂價、保本防守價）
 #   4. S 級籌碼濾網（投信連買 + 5MA向上勾角）
@@ -211,6 +211,7 @@ class ScreeningEngine:
             "dealer_net": int(df['dealer_net'].iloc[-1]),
         }
 
+
     def execute_all_strategies(self, stock_dfs: Dict[str, pd.DataFrame]) -> Dict[str, List[Dict[str, Any]]]:
         """對所有通過流動性檢驗的標的執行 CaryBot 四大選股與動能定價"""
         res_sel_01 = []
@@ -224,6 +225,8 @@ class ScreeningEngine:
         for sid, df in stock_dfs.items():
             info = self.calculate_indicators(df)
             if not info:
+                continue
+            if _skip_long_term_high_push(info):
                 continue
 
             c = info["close"]
@@ -389,6 +392,25 @@ class ScreeningEngine:
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)
+
+
+def _skip_long_term_high_push(info: Dict[str, Any]) -> bool:
+    """舊版半年高／兩年高推播條件：整檔不進海選（分類已改，避免同條件從其他桶誤入）。"""
+    try:
+        c = float(info.get("close") or 0)
+        hi120 = float(info.get("hi120") or 0)
+        hi480 = float(info.get("hi480") or 0)
+        q = float(info.get("q60r") or 0)
+        pct = float(info.get("pct_change") or 0)
+    except (TypeError, ValueError):
+        return False
+    break120 = hi120 > 0 and c >= hi120
+    break480 = hi480 > 0 and c >= hi480
+    if break120 and q >= 2.5 and pct >= 3.0:
+        return True
+    if break480 and q >= 3.0 and pct >= 4.0:
+        return True
+    return False
 
 
 def html_escape(val) -> str:
