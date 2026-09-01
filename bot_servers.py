@@ -300,17 +300,34 @@ class WayneTelegramBot:
         )
 
     async def _refresh_reply_menu(self, message, *, uid: str = ""):
-        """先移除舊鍵盤再掛兩排新選單，避免 Telegram 卡在 #48 以前的三排版面。"""
+        """先移除舊鍵盤再掛兩排新選單；提示訊息短暫顯示後自動刪除。"""
+        transient = None
         try:
-            await message.reply_text(
+            transient = await message.reply_text(
                 "正在更新主選單…",
                 reply_markup=ReplyKeyboardRemove(),
             )
         except Exception:
             logger.exception("移除舊鍵盤失敗")
-        await message.reply_text("已更新主選單（下方兩排）。", reply_markup=self._reply_menu())
+        done = None
+        try:
+            done = await message.reply_text("已更新主選單（下方兩排）。", reply_markup=self._reply_menu())
+        except Exception:
+            logger.exception("掛上新選單失敗")
         if uid:
             self._mark_menu_layout_ok(uid)
+
+        async def _fade_out():
+            await asyncio.sleep(1.8)
+            for msg in (transient, done):
+                if msg is None:
+                    continue
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
+
+        asyncio.create_task(_fade_out())
 
     async def _ensure_reply_menu_if_needed(self, message, uid: str) -> None:
         """首次按主選單時自動刷新，免手動 /start。"""
@@ -841,19 +858,39 @@ class WayneTelegramBot:
         )
 
     @staticmethod
-    def _screening_progress_text(elapsed_sec: int, *, done: bool = False) -> str:
+    def _format_elapsed(sec: int) -> str:
+        sec = max(0, int(sec))
+        m, s = divmod(sec, 60)
+        return f"{m}:{s:02d}" if m else f"{s} 秒"
+
+    @staticmethod
+    def _screening_spinner(sec: int) -> str:
+        icons = ("⏳", "🔄", "📊", "🔍")
+        return icons[(max(0, sec) // 3) % len(icons)]
+
+    @staticmethod
+    def _screening_progress_bar(sec: int, *, width: int = 10) -> str:
+        # 約 5 分鐘跑滿，讓使用者感受在推進（非真實百分比）
+        pct = min(1.0, max(0, sec) / 300.0)
+        filled = int(round(pct * width))
+        return "▓" * filled + "░" * (width - filled)
+
+    @classmethod
+    def _screening_progress_text(cls, elapsed_sec: int, *, done: bool = False) -> str:
         if done:
-            return "海選完成，正在推送分類名單…"
+            return "✅ 海選完成，正在推送分類名單…"
         if elapsed_sec <= 0:
             return (
-                "海選開始：載入資料、掃描全市場…\n"
+                "⏳ 海選開始：載入資料、掃描全市場…\n"
                 "約需 2～5 分鐘，完成後會依序推送起漲／黃金買點等分類。\n"
                 "請勿重複按，以免排隊。"
             )
+        spin = cls._screening_spinner(elapsed_sec)
+        bar = cls._screening_progress_bar(elapsed_sec)
         return (
-            f"海選進行中… 已 {elapsed_sec} 秒\n"
-            "仍在掃描全市場，完成後會自動推送。\n"
-            "Render 免費主機較慢時可能需 3～5 分鐘。"
+            f"{spin} 海選進行中　已 {cls._format_elapsed(elapsed_sec)}\n"
+            f"{bar}\n"
+            "仍在掃描全市場，完成後會自動推送。"
         )
 
     async def _run_manual_screening(self, message):
@@ -868,18 +905,19 @@ class WayneTelegramBot:
 
         async def _tick():
             while not stop.is_set():
+                elapsed = int(time.monotonic() - t0)
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=30.0)
+                    await status.edit_text(
+                        self._screening_progress_text(elapsed),
+                        reply_markup=hub,
+                    )
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=5.0)
                     break
                 except asyncio.TimeoutError:
-                    elapsed = int(time.monotonic() - t0)
-                    try:
-                        await status.edit_text(
-                            self._screening_progress_text(elapsed),
-                            reply_markup=hub,
-                        )
-                    except Exception:
-                        pass
+                    continue
 
         ticker = asyncio.create_task(_tick())
         result = None
@@ -1330,7 +1368,7 @@ class WayneTelegramBot:
             return
         pending = self._pending.pop(uid, "")
         if text == "海選" or "今日海選" in text or text.endswith("海選"):
-            await self._ensure_reply_menu_if_needed(update.message, uid)
+            self._pending.pop(uid, None)
             await self.screen_cmd(update, context)
             return
         if "模擬持倉" in text or text == "持股":
