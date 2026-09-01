@@ -28,6 +28,47 @@ def is_profit_display_zero(profit_pct: float) -> bool:
     return format_profit_pct(profit_pct) == "0.0%"
 
 
+def parse_profit_display(cell: str) -> Optional[float]:
+    """從卡片「獲利」欄字串反推數值（OCR／人工校準用）。"""
+    s = str(cell or "").strip().replace("％", "%")
+    if not s or s in ("—", "-", "No"):
+        return None
+    s = s.rstrip("%").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def profit_display_stepped_up(prev_profit_pct: float, today_profit_pct: float) -> bool:
+    """肉眼讀表：今獲利顯示數字比昨高（一位小數）。"""
+    try:
+        return format_profit_pct(today_profit_pct) != format_profit_pct(prev_profit_pct) and float(
+            today_profit_pct
+        ) > float(prev_profit_pct)
+    except (TypeError, ValueError):
+        return False
+
+
+def card_row_leave_zero(
+    yest_profit_pct: float,
+    today_profit_pct: float,
+    *,
+    yest_alert: str = "",
+    today_alert: str = "",
+) -> Tuple[bool, str]:
+    """依你傳的範本卡「讀兩列」：實綠底 → 雙綠脫離 → 昨 0.0% 今跳升。"""
+    if profit_left_zero_highlight(yest_profit_pct, today_profit_pct):
+        return True, "獲利格實綠（剛離零）"
+    if double_green_breakout(yest_profit_pct, yest_alert, today_profit_pct, today_alert):
+        return True, "雙綠脫離"
+    if is_profit_display_zero(yest_profit_pct) and profit_display_stepped_up(
+        yest_profit_pct, today_profit_pct
+    ):
+        return True, "昨獲利 0.0%、今數字跳升"
+    return False, "卡片兩列未達起漲獲利型態"
+
+
 def profit_left_zero_highlight(prev_profit_pct: float, today_profit_pct: float) -> bool:
     """獲利格「剛離零」實綠底 — 與 profit_cell_style 同一條。
 
@@ -92,10 +133,9 @@ def leave_zero_screen_ok(
         return False, "獲利無法計算"
     if pt > LEAVE_ZERO_SCREEN_MAX_PCT:
         return False, f"今日獲利 {format_profit_pct(pt)} 已超過海選上限 {LEAVE_ZERO_SCREEN_MAX_PCT:.0f}%"
-    if profit_left_zero_highlight(py, pt):
-        return True, "獲利格剛離零（實綠底）"
-    if double_green_breakout(py, yest_alert, pt, today_alert):
-        return True, "雙綠脫離（昨貼零/低預警、今脫離）"
+    hit, reason = card_row_leave_zero(py, pt, yest_alert=yest_alert, today_alert=today_alert)
+    if hit:
+        return True, reason
     return False, "未達起漲獲利條件"
 
 
