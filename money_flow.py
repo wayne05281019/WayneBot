@@ -68,12 +68,22 @@ def _latest_date(conn: sqlite3.Connection, db_path: str = "") -> str:
 
 
 def _prev_quote_date(conn: sqlite3.Connection, ymd: str) -> str:
-    ymd = str(ymd or "").replace("-", "")
-    row = conn.execute(
-        "SELECT MAX(replace(date,'-','')) FROM daily_quotes WHERE replace(date,'-','') < ?",
-        (ymd,),
-    ).fetchone()
-    return str(row[0] or "").replace("-", "")
+    from trading_calendar import is_trading_weekday, normalize_ymd
+
+    ymd = normalize_ymd(ymd)
+    cur = ymd
+    for _ in range(12):
+        row = conn.execute(
+            "SELECT MAX(replace(date,'-','')) FROM daily_quotes WHERE replace(date,'-','') < ?",
+            (cur,),
+        ).fetchone()
+        prev = normalize_ymd(row[0] if row else "")
+        if not prev:
+            return ""
+        if is_trading_weekday(prev):
+            return prev
+        cur = prev
+    return ""
 
 
 def _industry_expr() -> str:

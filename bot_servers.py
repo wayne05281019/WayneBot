@@ -926,9 +926,12 @@ class WayneTelegramBot:
 
                 as_of = self.screener.get_latest_trading_date()
                 if not screen_session_has_data(self.db_path, as_of):
+                    from trading_calendar import format_trading_date_zh
+
+                    as_of_label = format_trading_date_zh(as_of)
                     await message.reply_html(
                         f"<b>{title}</b>\n"
-                        f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of)}）。"
+                        f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
                         "請按主選單「海選」執行後再查；會用盤中 MIS 現價複核。</i>",
                         reply_markup=self._keyboard(),
                     )

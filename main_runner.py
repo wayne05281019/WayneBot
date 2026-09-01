@@ -304,12 +304,13 @@ class MainRunner:
         return quotes
 
     def _screening_fail_message(self) -> str:
-        from import_health import latest_complete_quote_date
+        from trading_calendar import format_trading_date_zh, resolve_screen_as_of
 
-        as_of = latest_complete_quote_date(self.db_path) or self.today_str
+        as_of = resolve_screen_as_of(self.db_path) or ""
+        as_of_label = format_trading_date_zh(as_of) if as_of else "—"
         return (
             "⚠️ <b>今早海選未完成</b>\n"
-            f"基準日 <code>{as_of}</code>\n"
+            f"基準日（上一個完整收盤） <code>{as_of_label}</code>\n"
             "請按主選單「海選」重試。\n"
             "<b>當沖／隔日沖</b>請按主選單「當沖」「隔日沖」— 會用盤中現價複核，不是盤後漲停備援名單。"
         )
