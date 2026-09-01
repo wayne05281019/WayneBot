@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html
 import json
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 
@@ -101,6 +101,79 @@ def render_line_redirect_html(text: str) -> str:
         "function goApp(){try{location.href=app;}catch(e){}"
         "setTimeout(goShare,900);}"
         "if(mobile){goApp();}else{goShare();}"
+        "})();"
+        "</script>"
+        "</body></html>"
+    )
+
+
+def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
+    """整區圖文：自動開 LINE 帶文字，同一頁顯示全區長圖（一次儲存貼上）。"""
+    text = str(manifest.get("line_text") or "").strip()
+    title = html.escape(str(manifest.get("title") or "海選"))
+    count = int(manifest.get("count") or 0)
+    album_url = str(manifest.get("album_url") or "").strip()
+    safe_album = html.escape(album_url, quote=True) if album_url else ""
+    stocks = manifest.get("stocks") or []
+    share_url = line_share_href(text)
+    app_url = line_app_href(text)
+    share_json = json.dumps(share_url, ensure_ascii=False)
+    app_json = json.dumps(app_url, ensure_ascii=False)
+    album_json = json.dumps(album_url, ensure_ascii=False)
+
+    stock_blocks = []
+    for st in stocks:
+        label = html.escape(f"{st.get('rank', '')}. {st.get('stock_name', '')} ({st.get('stock_id', '')})")
+        strip = html.escape(str(st.get("strip_url") or ""), quote=True)
+        ind = html.escape(str(st.get("industry_plain") or ""))
+        img = f'<img src="{strip}" alt="{label}" style="width:100%;max-width:720px;display:block;margin:0 auto 8px">' if strip else ""
+        ind_block = f'<pre style="white-space:pre-wrap;font-size:0.9em;background:#f4f4f4;padding:8px;border-radius:8px">{ind}</pre>' if ind else ""
+        stock_blocks.append(
+            f'<section style="margin:1.2em 0"><h3 style="font-size:1.05em">{label}</h3>{img}{ind_block}</section>'
+        )
+    stocks_html = "\n".join(stock_blocks)
+    album_block = (
+        f'<img id="album" src="{safe_album}" alt="全區長圖" '
+        'style="width:100%;max-width:720px;display:block;margin:1em auto;border-radius:8px">'
+        if safe_album
+        else ""
+    )
+
+    return (
+        "<!DOCTYPE html><html><head>"
+        '<meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{title}｜WayneBot LINE</title>"
+        "<style>body{font-family:sans-serif;margin:0;padding:16px;background:#fafafa;color:#111}"
+        ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;text-decoration:none;font-weight:600}"
+        ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}</style>"
+        "</head><body>"
+        f"<h2 style=\"text-align:center;margin-top:0\">{title}　{count} 檔</h2>"
+        '<p style="text-align:center">① 文字會自動帶入 LINE<br>② 長按下方長圖儲存，回 LINE 貼上即可</p>'
+        '<p style="text-align:center">'
+        f'<a class="btn green" href="{html.escape(app_url, quote=True)}">開啟 LINE（文字）</a>'
+        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">下載全區長圖</a>'
+        "</p>"
+        f"{album_block}"
+        f'<div style="max-width:720px;margin:0 auto">{stocks_html}</div>'
+        "<script>"
+        "(function(){"
+        f"var share={share_json},app={app_json},album={album_json};"
+        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
+        "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
+        "function goApp(){try{location.href=app;}catch(e){}"
+        "setTimeout(goShare,900);}"
+        "if(mobile){setTimeout(goApp,300);}"
+        "var btn=document.getElementById('saveAlbum');"
+        "if(btn&&navigator.share&&album){"
+        "btn.addEventListener('click',function(ev){"
+        "if(!navigator.canShare)return;"
+        "ev.preventDefault();"
+        "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
+        "var file=new File([blob],'waynebot.png',{type:'image/png'});"
+        "if(navigator.canShare({files:[file]}))return navigator.share({files:[file],title:'WayneBot'});"
+        "}).catch(function(){});"
+        "});}"
         "})();"
         "</script>"
         "</body></html>"

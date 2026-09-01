@@ -46,10 +46,48 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if route.startswith("/line"):
-            from config import get_db_path
-            from line_hop import hop_response, hop_stock_response
+            from config import get_charts_dir, get_db_path
+            from line_hop import hop_response, hop_stock_response, render_line_rich_share_html
+            from line_rich_pack import load_latest_bucket_rich_manifest, resolve_rich_asset_path
 
             parts = [p for p in route.split("/") if p]
+            if len(parts) >= 3 and parts[0] == "line" and parts[1] == "rich":
+                bucket_key = parts[2]
+                if len(parts) >= 5:
+                    as_of = parts[3]
+                    rel = "/".join(parts[4:])
+                    asset = resolve_rich_asset_path(get_charts_dir(), bucket_key, as_of, rel)
+                    if not asset:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    with open(asset, "rb") as f:
+                        data = f.read()
+                    ctype = "image/png" if asset.lower().endswith(".png") else "application/octet-stream"
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                manifest = load_latest_bucket_rich_manifest(get_db_path(), bucket_key, get_charts_dir())
+                if not manifest.get("line_text"):
+                    body = "尚無圖文包，請回 Telegram 按「一鍵傳 LINE」生成。".encode("utf-8")
+                    self.send_response(404)
+                    self.send_header("Content-Type", "text/plain; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                page = render_line_rich_share_html(manifest).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.send_header("Content-Length", str(len(page)))
+                self.end_headers()
+                self.wfile.write(page)
+                return
             if len(parts) >= 3 and parts[0] == "line" and parts[1] == "stock":
                 hop = hop_stock_response(get_db_path(), parts[2])
             else:

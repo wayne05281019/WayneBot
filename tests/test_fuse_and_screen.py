@@ -1916,7 +1916,7 @@ class WatchListTest(unittest.TestCase):
         kb = bot._screening_section_keyboard(line_pack_id="leave_zero", include_menu=True)
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertEqual(texts.count("生成完整圖文・傳LINE"), 1)
+        self.assertEqual(texts.count("一鍵傳 LINE"), 1)
         self.assertTrue(any(d and d == "lp:leave_zero" for d in datas))
         self.assertFalse(any("2330" in (t or "") for t in texts))
         day_kb = bot._picks_keyboard(

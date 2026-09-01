@@ -86,7 +86,7 @@ HELP_TOPICS = {
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "海選＝昨收<b>佈局</b>名單（起漲、優先看、周帶量等），不是盤中即時掃描。"
-        "每區底部按<b>生成完整圖文・傳LINE</b>：會依序產出該區每檔的介紹圖、高低決策卡、籌碼、產業說明，再轉發給對方。\n"
+        "每區底部按<b>一鍵傳 LINE</b>：背景生成整區文字＋一張長圖，按鈕會開啟 LINE 並帶入文字摘要；長圖在同一頁長按儲存後貼到 LINE 即可。\n"
         "（主選單<b>決策卡</b>＝單檔盤中刷新，不是整區起漲名單。）\n"
         "股名右「開 LINE・傳這檔」直跳 LINE；區底「傳本區」轉整段。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
@@ -419,7 +419,7 @@ class WayneTelegramBot:
         rows = []
         if line_pack_id:
             rows.append(
-                [InlineKeyboardButton("生成完整圖文・傳LINE", callback_data=f"lp:{line_pack_id}")]
+                [InlineKeyboardButton("一鍵傳 LINE", callback_data=f"lp:{line_pack_id}")]
             )
         if include_menu:
             rows.append([self._q("screen")])
@@ -1029,13 +1029,13 @@ class WayneTelegramBot:
             await self._pin_reply_menu(message)
 
     async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """起漲等海選分類：整區每檔產介紹圖、高低決策卡、籌碼、產業說明。"""
+        """起漲等海選分類：背景生成整區圖文包，一鍵開 LINE（不在 Telegram 逐張刷屏）。"""
         from import_health import latest_complete_quote_date
         from line_rich_pack import (
             bucket_stock_rows,
             bucket_title,
-            build_bucket_line_text,
-            render_line_share_pack,
+            build_bucket_rich_pack,
+            line_rich_hop_url,
         )
         from screen_sessions import upsert_line_pack
 
@@ -1053,69 +1053,26 @@ class WayneTelegramBot:
 
         n = len(rows)
         status = await message.reply_text(
-            f"正在生成【{title}】{n} 檔完整圖文（介紹圖→高低決策卡→籌碼→產業說明）…\n"
-            "全部完成後請轉發到 LINE。",
+            f"正在背景生成【{title}】{n} 檔圖文…\n"
+            "完成後一鍵開 LINE（文字自動帶入＋全區長圖）。",
             reply_markup=hub,
         )
-        share_root = os.path.join(self.charts_dir, "line_pack", bucket_key, str(as_of))
-        os.makedirs(share_root, exist_ok=True)
-        enriched: list = []
+        manifest = await asyncio.to_thread(
+            build_bucket_rich_pack,
+            self.db_path,
+            bucket_key,
+            as_of,
+            self.charts_dir,
+        )
+        if manifest.get("error") and not manifest.get("line_text"):
+            err = str(manifest.get("error") or "生成失敗")
+            errs = manifest.get("errors") or []
+            if errs:
+                err += "\n" + "\n".join(errs[:3])
+            await status.edit_text(f"⚠️ 【{title}】{err}", reply_markup=hub)
+            return
 
-        async def _send_photo(path: str, caption: str) -> bool:
-            if not path or not os.path.isfile(path):
-                return False
-            if not self._chart_png_looks_ok(path):
-                return False
-            try:
-                with open(path, "rb") as f:
-                    await message.reply_photo(photo=f, caption=caption[:1024])
-                return True
-            except Exception:
-                logger.exception("LINE 圖文包傳圖失敗 %s", path)
-                return False
-
-        for i, row in enumerate(rows, start=1):
-            code = str(row.get("stock_id") or "").strip()
-            name = str(row.get("stock_name") or "").strip()
-            try:
-                await status.edit_text(
-                    f"生成中 {i}/{n}　{code} {name}\n"
-                    "介紹圖／高低決策卡／籌碼／產業說明…",
-                    reply_markup=hub,
-                )
-            except Exception:
-                pass
-            pack = await asyncio.to_thread(
-                render_line_share_pack,
-                code,
-                self.db_path,
-                os.path.join(share_root, code),
-            )
-            if pack.get("error"):
-                await message.reply_text(
-                    f"⚠️ {code} {name}：{pack.get('error')}",
-                    reply_markup=hub,
-                )
-                continue
-            label = f"{code} {name}".strip()
-            await message.reply_html(
-                f"<b>▎{i}. {html_escape(label)}</b>",
-                disable_web_page_preview=True,
-            )
-            await _send_photo(pack.get("glance") or "", "介紹圖")
-            await _send_photo(pack.get("card") or "", "高低決策卡")
-            await _send_photo(pack.get("chips") or "", "籌碼（張）")
-            ind = str(pack.get("industry_html") or "").strip()
-            if ind:
-                await message.reply_html(ind, disable_web_page_preview=True)
-            item = dict(pack.get("card_data") or {})
-            item.setdefault("stock_id", code)
-            item.setdefault("stock_name", name or item.get("stock_name") or "")
-            enriched.append(item)
-            await asyncio.sleep(0.15)
-
-        line_body = build_bucket_line_text(self.db_path, bucket_key, enriched, as_of)
-        line_btn = None
+        line_body = str(manifest.get("line_text") or "").strip()
         if line_body:
             upsert_line_pack(
                 self.db_path,
@@ -1127,18 +1084,28 @@ class WayneTelegramBot:
                     "text": line_body,
                 },
             )
-            line_btn = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("開 LINE・分享文字摘要", url=self._line_open_url(bucket_key))]]
-            )
+        hop_url = line_rich_hop_url(bucket_key)
+        line_btn = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("一鍵開啟 LINE・整區分享", url=hop_url)]]
+        )
+        done_n = int(manifest.get("count") or 0)
+        warn = ""
+        errs = manifest.get("errors") or []
+        if errs:
+            warn = f"\n（{len(errs)} 檔略過：{html_escape(errs[0][:80])}）"
         try:
-            await status.delete()
+            await status.edit_text(
+                f"✅ 【{title}】{done_n} 檔已備好。",
+                reply_markup=hub,
+            )
         except Exception:
             pass
         await message.reply_html(
-            f"✅ <b>【{html_escape(title)}】</b>　{n} 檔圖文已生成。\n"
-            "請將上面每一檔（圖＋產業說明）轉發到 LINE；"
-            "或按下方綠色按鈕開啟 LINE 分享文字摘要。",
-            reply_markup=line_btn or hub,
+            f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔圖文已生成。{warn}\n"
+            "按下方按鈕：\n"
+            "① 自動開 LINE 帶入文字摘要\n"
+            "② 同一頁長按「全區長圖」儲存後貼到 LINE",
+            reply_markup=line_btn,
             disable_web_page_preview=True,
         )
         await self._pin_reply_menu(message)
