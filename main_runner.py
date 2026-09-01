@@ -169,7 +169,28 @@ class MainRunner:
         else:
             logger.info(f"📋 [本機推播預覽]\n{text}")
 
-    def run_daily_increment(self, notify: bool = True) -> int:
+    def notify_increment_result(self, *, source: str, health: Optional[Dict[str, Any]] = None, cap: str = "") -> None:
+        """自動任務完成後推播到話筒，讓你知道庫已更新到哪一天。"""
+        from import_health import audit_import, format_audit_plain, latest_complete_quote_date
+        from tg_layout import html_escape
+        from trading_calendar import format_trading_date_zh
+
+        cap = str(cap or fuse_end_date() or "").replace("-", "")[:8]
+        health = health or audit_import(self.db_path, cap)
+        complete = latest_complete_quote_date(self.db_path) or cap
+        label = format_trading_date_zh(complete) if complete else "—"
+        src = html_escape(source or "盤後更新")
+        if self._increment_ok(health):
+            self.send_telegram_message(
+                f"✅ <b>盤後行情已更新</b>（{src}）\n"
+                f"基準日 <b>{html_escape(label)}</b>\n"
+                f"上市 {health.get('tw')}　上櫃 {health.get('two')}\n"
+                f"可按「資金」看產業輪動。"
+            )
+        else:
+            self.send_telegram_message(
+                f"⚠️ <b>{src}未完成</b>\n{html_escape(format_audit_plain(health))}"
+            )
         logger.info(f"📥 開始 {self.today_str} 增量更新...")
         try:
             from wayne_db import normalize_quote_hygiene
@@ -549,6 +570,10 @@ class MainRunner:
             f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
+        try:
+            self.notify_increment_result(source="16:30 盤後融合", health=health, cap=cap)
+        except Exception:
+            logger.exception("盤後融合完成推播失敗")
         try:
             from screen_review import score_ai_fills, score_screen_picks
 

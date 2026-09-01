@@ -211,13 +211,30 @@ def start_market_backfill():
 
     def _run():
         try:
-            logger.info("啟動後融合官方日K／法人／財報（不推播）")
+            logger.info("啟動後融合官方日K／法人／財報")
+            from import_health import audit_import
             from main_runner import MainRunner
 
-            n = MainRunner().run_daily_increment(notify=False)
-            logger.info("啟動後融合完成（當日檔數／回補 %s）", n)
+            runner = MainRunner()
+            runner.run_daily_increment(notify=False)
+            cap = runner.today_str
+            try:
+                from config import fuse_end_date
+
+                cap = fuse_end_date()
+            except Exception:
+                pass
+            health = audit_import(runner.db_path, cap)
+            runner.notify_increment_result(source="開機／Deploy 補齊", health=health, cap=cap)
+            logger.info("啟動後融合完成 cap=%s", cap)
         except Exception:
             logger.exception("啟動後融合失敗")
+            try:
+                from main_runner import MainRunner
+
+                MainRunner().send_telegram_message("⚠️ <b>開機盤後補齊失敗</b>，請看 Render Logs。")
+            except Exception:
+                pass
 
     t = threading.Thread(target=_run, name="market-fuse", daemon=True)
     t.start()
