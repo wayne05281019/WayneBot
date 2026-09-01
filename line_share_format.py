@@ -1,6 +1,7 @@
 """LINE 轉傳純文字排版：直向排列、不含網址（避免奇摩預覽卡）。"""
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 # 海選／當沖轉 LINE 共用區隔線（全形，手機上清楚）
@@ -131,7 +132,31 @@ def format_line_stock_block(
     for plan_line in plan_fn(item):
         lines.append(plan_line.replace("　", " ").strip())
 
+    industry = str(item.get("industry_plain") or "").strip()
+    if industry:
+        lines.append("產業說明")
+        for chunk in _wrap_plain_lines(industry, width=28):
+            lines.append(f"　{chunk}")
+
     return "\n".join(lines)
+
+
+def _wrap_plain_lines(text: str, width: int = 28) -> List[str]:
+    """產業說明等長文：切成適合 LINE 手機寬度的行。"""
+    raw = re.sub(r"\s+", " ", str(text or "").strip())
+    if not raw:
+        return []
+    out: List[str] = []
+    while raw:
+        if len(raw) <= width:
+            out.append(raw)
+            break
+        cut = raw.rfind(" ", 0, width + 1)
+        if cut < width // 2:
+            cut = width
+        out.append(raw[:cut].strip())
+        raw = raw[cut:].strip()
+    return out
 
 
 def format_line_bucket_body(

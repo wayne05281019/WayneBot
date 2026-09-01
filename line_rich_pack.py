@@ -7,7 +7,14 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
-from line_share_format import LINE_BUCKET_META, format_line_bucket_body
+from line_share_format import LINE_BUCKET_META, LINE_SHARE_SEP, format_line_bucket_body, format_line_stock_block
+
+_TEXT_FONT = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
+_IMAGE_LABELS = (
+    ("glance", "介紹圖"),
+    ("card", "高低決策卡"),
+    ("chips", "籌碼"),
+)
 
 
 def html_to_plain(fragment: str) -> str:
@@ -113,6 +120,77 @@ def compose_vertical_images(
     return out_path
 
 
+def render_text_panel_png(
+    text: str,
+    out_path: str,
+    *,
+    width: int = 720,
+    font_size: int = 26,
+    pad: int = 18,
+    bg: tuple = (248, 250, 252),
+) -> str:
+    """把一檔文字摘要渲成圖，貼在該檔圖表前面。"""
+    from PIL import Image, ImageDraw, ImageFont
+
+    lines = [ln for ln in str(text or "").split("\n") if ln is not None]
+    if not lines:
+        return ""
+    try:
+        font = ImageFont.truetype(_TEXT_FONT, font_size)
+    except Exception:
+        font = ImageFont.load_default()
+    line_h = font_size + 10
+    height = pad * 2 + line_h * len(lines)
+    img = Image.new("RGB", (width, max(height, 80)), bg)
+    draw = ImageDraw.Draw(img)
+    y = pad
+    for ln in lines:
+        draw.text((pad, y), ln, fill=(24, 24, 24), font=font)
+        y += line_h
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    img.save(out_path, "PNG", optimize=True)
+    return out_path
+
+
+def render_separator_panel_png(out_path: str, width: int = 720) -> str:
+    from PIL import Image, ImageDraw, ImageFont
+
+    height = 56
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype(_TEXT_FONT, 22)
+    except Exception:
+        font = ImageFont.load_default()
+    tw = draw.textlength(LINE_SHARE_SEP, font=font)
+    draw.text(((width - tw) / 2, 16), LINE_SHARE_SEP, fill=(160, 160, 160), font=font)
+    img.save(out_path, "PNG", optimize=True)
+    return out_path
+
+
+def compose_stock_section(
+    text_block: str,
+    pack: Dict[str, Any],
+    out_path: str,
+    work_dir: str,
+) -> str:
+    """單檔：文字摘要 → 介紹圖 → 決策卡 → 籌碼（順序固定）。"""
+    os.makedirs(work_dir, exist_ok=True)
+    parts: List[str] = []
+    text_png = os.path.join(work_dir, "text.png")
+    if render_text_panel_png(text_block, text_png):
+        parts.append(text_png)
+    for key, label in _IMAGE_LABELS:
+        img_path = str(pack.get(key) or "").strip()
+        if not img_path or not os.path.isfile(img_path):
+            continue
+        cap_png = os.path.join(work_dir, f"{key}_cap.png")
+        if render_text_panel_png(label, cap_png, font_size=22, pad=10, bg=(255, 255, 255)):
+            parts.append(cap_png)
+        parts.append(img_path)
+    return compose_vertical_images(parts, out_path) if parts else ""
+
+
 def compose_stock_strip(
     pack: Dict[str, Any],
     out_path: str,
@@ -197,19 +275,23 @@ def build_bucket_rich_pack(
         if pack.get("error"):
             errors.append(f"{code} {name}：{pack.get('error')}")
             continue
-        strip_path = os.path.join(stock_dir, "strip.png")
-        composed = compose_stock_strip(pack, strip_path)
-        if composed:
-            strip_paths.append(composed)
         item = dict(pack.get("card_data") or {})
         item.setdefault("stock_id", code)
         item.setdefault("stock_name", name or item.get("stock_name") or "")
+        if pack.get("industry_plain"):
+            item["industry_plain"] = pack.get("industry_plain")
+        text_block = format_line_stock_block(item, i, db_path)
+        strip_path = os.path.join(stock_dir, "strip.png")
+        composed = compose_stock_section(text_block, pack, strip_path, stock_dir)
+        if composed:
+            strip_paths.append(composed)
         enriched.append(item)
         stocks_out.append(
             {
                 "rank": i,
                 "stock_id": code,
                 "stock_name": name,
+                "text_block": text_block,
                 "strip_url": line_rich_asset_url(bucket_key, ymd, f"{code}/strip.png"),
                 "industry_plain": pack.get("industry_plain") or "",
             }
@@ -223,7 +305,15 @@ def build_bucket_rich_pack(
         }
 
     album_path = os.path.join(share_root, "album.png")
-    album_file = compose_vertical_images(strip_paths, album_path) if strip_paths else ""
+    album_parts: List[str] = []
+    sep_path = os.path.join(share_root, "_sep.png")
+    if strip_paths:
+        render_separator_panel_png(sep_path)
+    for idx, sp in enumerate(strip_paths):
+        if idx > 0 and os.path.isfile(sep_path):
+            album_parts.append(sep_path)
+        album_parts.append(sp)
+    album_file = compose_vertical_images(album_parts, album_path) if album_parts else ""
     line_text = build_bucket_line_text(db_path, bucket_key, enriched, ymd)
     manifest = {
         "bucket_key": bucket_key,
@@ -266,16 +356,14 @@ def build_bucket_line_text(
     items: List[Dict[str, Any]],
     as_of: str,
 ) -> str:
-    title, hint = LINE_BUCKET_META.get(bucket_key, (bucket_key, ""))
     body = format_line_bucket_body(items, bucket_key, db_path)
     if not body:
         return ""
     from line_hop import _date_slash
 
-    head = f"WayneBot 海選【{title}】{hint}"
-    if as_of:
-        head += f"　{_date_slash(as_of)}"
-    return f"{head}\n{body}"
+    as_of_label = _date_slash(as_of) if as_of else ""
+    prefix = f"WayneBot 海選　{as_of_label}" if as_of_label else "WayneBot 海選"
+    return f"{prefix}\n{body}"
 
 
 def bucket_title(bucket_key: str) -> str:
