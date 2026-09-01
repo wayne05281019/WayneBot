@@ -553,15 +553,10 @@ def _regime_label(item: Dict[str, Any]) -> str:
 
 
 def _cal60_low_close(df: pd.DataFrame, idx: int = -1) -> float:
-    """與決策卡同一條：近 60 個日曆日收盤最低。"""
-    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
-    if len(dts) == 0 or not dts.notna().any():
-        return float(df["close"].iloc[idx] or 0)
-    end = dts.iloc[idx]
-    mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
-    if not mask.any():
-        return float(df["close"].iloc[idx] or 0)
-    return float(df.loc[mask, "close"].astype(float).min() or df["close"].iloc[idx] or 0)
+    """與決策卡同一條：該日往前 60 曆日收盤最低。"""
+    from decision_card_signals import cal60_low_close_at
+
+    return cal60_low_close_at(df, idx)
 
 
 def _enrich_decision_fields(df: pd.DataFrame, info: Dict[str, Any]) -> Dict[str, Any]:

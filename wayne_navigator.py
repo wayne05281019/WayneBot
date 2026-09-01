@@ -315,6 +315,7 @@ class NavigatorEngine:
             df = append_live_bar(df, str(stock_id))
         except Exception:
             pass
+        close_raw = df["close"].astype(float).copy()
         live_time = ""
         is_live = False
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
@@ -336,14 +337,18 @@ class NavigatorEngine:
         df["low_120"] = close_s.rolling(120, min_periods=20).min()
         df["low_240"] = close_s.rolling(240, min_periods=40).min()
         df["low_480"] = close_s.rolling(480, min_periods=80).min()
-        # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」＝相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
-        dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
-        latest_dt = dts.iloc[-1]
-        cal_mask = (dts >= (latest_dt - pd.Timedelta(days=60))) & dts.notna()
-        cal60_low = float(df.loc[cal_mask, "close"].min()) if cal_mask.any() else float(df["low_60"].iloc[-1])
-        if cal60_low <= 0:
-            cal60_low = float(df["low_60"].iloc[-1] or 0) or 1.0
-        df["profit_pct"] = ((df["close"] - cal60_low) / cal60_low * 100.0).round(1)
+        from decision_card_signals import (
+            cal60_low_close_at,
+            card_regime_label,
+            compute_card_temperature,
+            profit_pct_series,
+        )
+
+        # 獲利：逐日 60 曆日低；用除權還原「前」收盤（CaryBot 範本 9925 長串 0.0% 靠這條）。
+        profit_src = df.copy()
+        profit_src["close"] = close_raw.reindex(df.index).astype(float)
+        df["profit_pct"] = profit_pct_series(profit_src)
+        cal60_low = cal60_low_close_at(profit_src, -1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
         df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480)
@@ -360,11 +365,9 @@ class NavigatorEngine:
             h10, l10 = float(df["high_10"].iloc[i]), float(df["low_10"].iloc[i])
             h5, l5 = float(df["high_5"].iloc[i]), float(df["low_5"].iloc[i])
             l60 = float(df["low_60"].iloc[i])
+            h60_i = float(df["high_60"].iloc[i])
             bias = float(df["bias_monthly"].iloc[i])
-            span = h20 - l20
-            rf = (c - l20) / (span + 0.01) if span > 0 else 0.5
-            # 溫度：20 日收盤位置為主、月乖離微調（對齊範本約 50~76°C，不再拉到 90°C）
-            t = round(max(0.0, min(99.9, 50.0 + 18.0 * rf + 0.55 * bias)), 1)
+            t = compute_card_temperature(c, h20, l20, bias, high60=h60_i, low60=l60)
             temp_nums.append(t)
             if c >= h20 * 0.998:
                 hl_tags.append("20高")
@@ -460,7 +463,14 @@ class NavigatorEngine:
             badges.append("60日均量過小")
         if space_60 and space_60 < 16:
             badges.append("60日區間過小")
-        badges.append("多頭格局" if float(latest["close"]) >= float(latest["ma20"] or latest["close"]) else "整理格局")
+        badges.append(
+            card_regime_label(
+                float(latest["close"]),
+                float(latest["ma20"] or latest["close"]),
+                float(latest["ma60"] or latest["ma20"] or latest["close"]),
+                space_60=float(space_60 or 0),
+            )
+        )
         real = df.loc[~df["is_halt"]] if "is_halt" in df.columns else df
         table_src = real if len(real) >= lookback else df
         table = table_src.tail(lookback)[
@@ -1100,11 +1110,11 @@ def temp_cell_style(temp_n, base: str):
         t = float(temp_n)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
-    if t >= 75:
+    if t >= 32:
         return C["temp_hot_bg"], C["temp_hot_fg"]
-    if t >= 65:
+    if t >= 24:
         return C["temp_warm_bg"], C["temp_warm_fg"]
-    if t >= 55:
+    if t >= 16:
         return C["hi_fill"], C["hi_ink"]
     return C["neutral_bg"], C["neutral_fg"]
 
@@ -1240,7 +1250,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
-    extra_lows = horizon_low_cells(card)
+    extra_lows = []  # CaryBot 範本：低點區只秀 10/20/60 三格
     low_rows = 2 if extra_lows else 1
     C = _CARD
 
@@ -1418,9 +1428,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 過去 20 天：欄寬按權重分配，高低與預警走藥丸，溫度與量能用深淺表達強弱。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F")
-    headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "升降", "月乖離", "120日量"]
-    weights = [13.8, 10.0, 9.2, 9.0, 9.4, 11.0, 10.2, 10.6, 11.8]
-    pill_cols = {3, 4, 6, 8}
+    headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降", "月乖離", "120日量"]
+    weights = [14.5, 10.8, 9.8, 10.2, 12.0, 11.0, 11.0, 12.7]
+    pill_cols = {3, 5, 7}
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -1451,13 +1461,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = vol_rank_cell_style(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        fills = [base, px_bg, p_bg, hl_bg, al_bg, tbg, tr_bg, b_bg, base]
-        fgs = [C["ink"], px_fg, p_fg, hl_fg, al_fg, tfg, tr_fg, b_fg, C["ink"]]
+        fills = [base, px_bg, p_bg, al_bg, tbg, tr_bg, b_bg, base]
+        fgs = [C["ink"], px_fg, p_fg, al_fg, tfg, tr_fg, b_fg, C["ink"]]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
             str(r["獲利"]).replace("+", ""),
-            hl,
             al,
             str(r["溫度計"]),
             trend,
@@ -1465,21 +1474,26 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             str(r["120日量"]),
         ]
         for i, val in enumerate(vals):
-            ax.add_patch(patches.Rectangle((xs[i], y1), xs[i + 1] - xs[i], body_h,
+            col_w = xs[i + 1] - xs[i]
+            ax.add_patch(patches.Rectangle((xs[i], y1), col_w, body_h,
                                            facecolor=fills[i], edgecolor=C["line"], lw=0.5, zorder=2))
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i in pill_cols:
                 if val in ("No", "—") or not str(val).strip():
                     ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
                             fontproperties=_fp(11), color=fgs[i], ha="center", va="center", zorder=3)
-                elif i == 6 and trend_note:
+                elif i == 5 and trend_note:
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
-                    _pill(ax, cx, cy + body_h * 0.14, trend, tr_bg, tr_fg, w=tw(trend, 10.5) + 2.8,
-                          h=body_h * 0.38, fs=10.5)
-                    _pill(ax, cx, cy - body_h * 0.16, trend_note, nbg, nfg, w=tw(trend_note, 10.0) + 2.6,
-                          h=body_h * 0.34, fs=10.0)
+                    max_w = col_w * 0.90
+                    main_w = min(tw(trend, 10.5) + 2.8, max_w)
+                    note_w = min(tw(trend_note, 9.5) + 2.4, max_w)
+                    _pill(ax, cx, cy + body_h * 0.12, trend, tr_bg, tr_fg, w=main_w,
+                          h=body_h * 0.36, fs=10.2)
+                    _pill(ax, cx, cy - body_h * 0.14, trend_note, nbg, nfg, w=note_w,
+                          h=body_h * 0.32, fs=9.5)
                 else:
-                    _pill(ax, cx, cy, val, fills[i], fgs[i], w=tw(val, 11.0) + 3.0,
+                    pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
+                    _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w,
                           h=body_h * 0.74, fs=11.0)
             else:
                 ax.text(cx, cy, val, fontproperties=_fp(12, "bold"), ha="center", va="center",
@@ -2032,9 +2046,17 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         (_nav_key("l20", "^"), "20低"),
         (_nav_key("l20_leave", "^"), "20低脫離"),
         (_nav_key("l60", "^"), "60低"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
+                markeredgecolor="#311b92", markeredgewidth=0.7, markersize=8), "量能異常"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
+                markeredgecolor="#7f0000", markeredgewidth=0.7, markersize=8), "警告"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
+                markeredgecolor="#6a1b9a", markeredgewidth=0.6, markersize=7), "月波動低"),
         (Line2D([], [], color="#f9a825", lw=2.1), "SMA(20)"),
         (Line2D([], [], color="#f48fb1", lw=1.6), "季高點線"),
         (Line2D([], [], color="#81c784", lw=1.6), "季低點線"),
+        (Line2D([], [], color="#f8bbd0", lw=1.05, linestyle="--"), "月高點線"),
+        (Line2D([], [], color="#80deea", lw=1.05, linestyle="--"), "月低點線"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor="none",
                 markeredgecolor="#C2185B", markersize=9), "接近高低（空心）"),
     ]
@@ -2042,8 +2064,8 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         [h for h, _ in legend_keys],
         [t for _, t in legend_keys],
         loc="upper left",
-        bbox_to_anchor=(0.148, 1.006),
-        ncol=5,
+        bbox_to_anchor=(0.02, 1.008),
+        ncol=4,
         handlelength=1.5,
         handletextpad=0.45,
         columnspacing=1.3,
@@ -2077,7 +2099,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     ax_sig.set_yticks([])
     ax_sig.set_ylim(0, 1)
     ax_sig.set_xlim(-0.8, n - 0.2)
-    ax_sig.set_ylabel("訊號", fontproperties=_fp(8))
+    ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
     vol_colors = ["#ef5350" if work["close"].iloc[i] >= work["open"].iloc[i] else "#26a69a" for i in range(n)]
@@ -2218,8 +2240,8 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
             color="#111827", ha="left", va="center")
 
     if part == 1:
-        headers = ["日期", "股價", "獲利", "高低", "預警"]
-        col_x = [0.08, 0.28, 0.48, 0.66, 0.86]
+        headers = ["日期", "股價", "獲利", "預警"]
+        col_x = [0.10, 0.34, 0.58, 0.82]
     else:
         headers = ["日期", "溫度", "月乖離", "量排名"]
         col_x = [0.10, 0.36, 0.60, 0.84]
@@ -2258,14 +2280,12 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
         volr = row.get("vol_rank_120")
         if part == 1:
             base = _CARD["white"]
-            _, hl_fg = hl_cell_style(hl, base)
             _, warn_fg = alert_cell_style(warn, base)
             _, prof_fg = profit_cell_style(profit, None, base)
             vals = [
                 (date_s, _CARD["ink"]),
                 (_fmt_num(row.get("close"), 2), _CARD["ink"]),
                 (_fmt_pct(profit), prof_fg),
-                (hl, hl_fg),
                 (warn, warn_fg),
             ]
         else:

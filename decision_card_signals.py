@@ -11,8 +11,92 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+import pandas as pd
+
 # 起漲桶：卡片綠底雖在 >5% 時仍可能成立，但海選不收已噴段（使用者回饋 5%+ 不像剛起步）
 LEAVE_ZERO_SCREEN_MAX_PCT = 5.0
+
+
+def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:
+    """該日往前 60 個日曆日收盤最低（決策卡獲利欄、海選同一條）。"""
+    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    if len(dts) == 0 or not dts.notna().any():
+        return float(df[close_col].iloc[idx] or 0)
+    end = dts.iloc[idx]
+    mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
+    if not mask.any():
+        return float(df[close_col].iloc[idx] or 0)
+    lo = float(df.loc[mask, close_col].astype(float).min())
+    return lo if lo > 0 else float(df[close_col].iloc[idx] or 0)
+
+
+def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
+    """逐日獲利 %：每列相對「該日」往前 60 曆日收盤低，不是用今天基準套歷史列。"""
+    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    closes = df[close_col].astype(float)
+    out = []
+    for i in range(len(df)):
+        if pd.isna(dts.iloc[i]):
+            out.append(float("nan"))
+            continue
+        end = dts.iloc[i]
+        mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
+        c = float(closes.iloc[i])
+        if not mask.any():
+            lo = c
+        else:
+            lo = float(closes.loc[mask].min())
+        if lo <= 0:
+            lo = c or 1.0
+        out.append(round((c - lo) / lo * 100.0, 1))
+    return pd.Series(out, index=df.index)
+
+
+def compute_card_temperature(
+    close: float,
+    high20: float,
+    low20: float,
+    bias_monthly: float,
+    *,
+    high60: float = 0.0,
+    low60: float = 0.0,
+) -> float:
+    """溫度計：冷股可到個位數；大波動股仍可上 70°C+（對齊 CaryBot 範本尺度）。"""
+    try:
+        c, h20, l20 = float(close), float(high20), float(low20)
+        bias = float(bias_monthly or 0)
+        h60, l60 = float(high60 or h20), float(low60 or l20)
+    except (TypeError, ValueError):
+        return 0.0
+    span = max(h20 - l20, c * 0.002 if c > 0 else 0.01)
+    rf = max(0.0, min(1.0, (c - l20) / span))
+    space60 = (h60 - l60) / l60 * 100.0 if l60 > 0 else (span / c * 100.0 if c > 0 else 10.0)
+    if space60 < 8:
+        t_min, t_span = 6.0, 4.5
+    elif space60 < 16:
+        t_min, t_span = 8.0, 22.0
+    else:
+        t_min, t_span = 12.0, 68.0
+    t = t_min + t_span * rf + 0.35 * bias
+    return round(max(0.0, min(99.9, t)), 1)
+
+
+def card_regime_label(
+    close: float,
+    ma20: float,
+    ma60: float,
+    *,
+    space_60: float = 0.0,
+) -> str:
+    """格局徽章：窄波動時多標整理格局，勿一站上月線就喊多頭。"""
+    try:
+        c, m20, m60 = float(close), float(ma20 or 0), float(ma60 or 0)
+        sp = float(space_60 or 0)
+    except (TypeError, ValueError):
+        return "整理格局"
+    if m20 > 0 and m60 > 0 and c >= m20 and m20 >= m60 and sp >= 16:
+        return "多頭格局"
+    return "整理格局"
 
 
 def format_profit_pct(profit_pct: float) -> str:

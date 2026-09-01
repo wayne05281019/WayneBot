@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """依使用者傳過的高低卡範本列（OCR 校準）— 海選驗收用。"""
+import os
+
+import pytest
+
 from decision_card_signals import (
+    card_regime_label,
     card_row_leave_zero,
+    compute_card_temperature,
     leave_zero_screen_ok,
     parse_profit_display,
     profit_left_zero_highlight,
+    profit_pct_series,
 )
 
 
@@ -34,3 +41,43 @@ def test_template_not_green_after_step():
     assert not profit_left_zero_highlight(0.9, 1.5)
     hit, _ = card_row_leave_zero(0.9, 1.5)
     assert not hit
+
+
+def test_profit_pct_series_per_day_not_global():
+    """9925 範本：盤整期應出現多個 0.0% 列（逐日 cal60 + 未回推收盤）。"""
+    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
+    if not os.path.isfile(db):
+        pytest.skip("no market db")
+    from wayne_navigator import NavigatorEngine
+
+    tbl = NavigatorEngine(db).get_decision_card("9925")["table"]
+    zeros = sum(1 for _, r in tbl.iterrows() if float(r["profit_pct"]) <= 0.05)
+    assert zeros >= 6, f"expected many 0.0% rows, got {zeros}"
+
+
+def test_template_2530_leave_zero_row():
+    """華建範本：8/31 獲利 0.0% → 起漲故事起點。"""
+    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
+    if not os.path.isfile(db):
+        pytest.skip("no market db")
+    from wayne_navigator import NavigatorEngine
+
+    card = NavigatorEngine(db).get_decision_card("2530")
+    tbl = card["table"]
+    row = tbl[tbl["date"].astype(str) == "20260831"]
+    assert not row.empty
+    assert float(row.iloc[0]["profit_pct"]) <= 0.05
+
+
+def test_template_regime_narrow_range_is_consolidation():
+    """2633/2530 範本：60日區間過小時標整理格局，不是多頭。"""
+    assert card_regime_label(26.25, 26.0, 25.8, space_60=7) == "整理格局"
+    assert card_regime_label(19.75, 19.4, 19.0, space_60=14) == "整理格局"
+
+
+def test_template_temperature_cold_stock_scale():
+    """9925 範本：冷股溫度應在個位數～十幾度，不是 50°C+。"""
+    t = compute_card_temperature(39.3, 40.15, 39.3, -0.2, high60=41.5, low60=39.3)
+    assert t < 15.0
+    t_hot = compute_card_temperature(40.05, 40.15, 39.3, 0.5, high60=41.5, low60=39.3)
+    assert t_hot < 20.0
