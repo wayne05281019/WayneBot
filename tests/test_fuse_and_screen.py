@@ -247,12 +247,14 @@ class FuseAndScreenTest(unittest.TestCase):
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
         from wayne_db import ensure_core_schema
+        from unittest.mock import patch
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         try:
             ensure_core_schema(path)
-            inv = inventory_payload(path)
+            with patch("import_health.db_quick_check_ok", return_value=True):
+                inv = inventory_payload(path)
             self.assertIn("quotes", inv)
             self.assertIn("monthly_revenue", inv)
             self.assertIn("quarterly_income", inv)

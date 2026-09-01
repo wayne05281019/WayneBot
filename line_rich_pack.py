@@ -21,7 +21,10 @@ def render_line_share_pack(
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
     engine = NavigatorEngine(db_path)
-    card = engine.get_decision_card(sid, lookback=20)
+    try:
+        card = engine.get_decision_card(sid, lookback=20)
+    except Exception as exc:
+        return {"error": str(exc), "stock_id": sid}
     if card.get("error"):
         return {"error": card.get("error"), "stock_id": sid}
     tape = {}
