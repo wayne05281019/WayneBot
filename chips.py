@@ -363,109 +363,111 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
     if not rows:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
-    from wayne_navigator import _CARD, _fp, _text_w
+    from wayne_navigator import _CARD, _fp, _text_w, mpl_render
 
-    C = _CARD
-    n = max(len(rows), 1)
-    sid = str(stock_id or rows[0].get("stock_id") or "").strip()
-    name = str(rows[0].get("stock_name") or sid)
-    pad_x, m_top, m_bot = 2.4, 1.0, 1.2
-    head_h, sub_h, hdr_h, body_h = 8.6, 3.4, 3.4, 3.25
-    gap = 1.15
-    H = m_top + head_h + gap + sub_h + hdr_h + n * body_h + m_bot
-    fig_w = 7.2
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=160, facecolor=C["page"])
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, H)
-    ax.axis("off")
-    fig.subplots_adjust(left=0.022, right=0.978, top=0.99, bottom=0.012)
+    with mpl_render():
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
 
-    y = H - m_top - head_h
-    ax.add_patch(patches.FancyBboxPatch(
-        (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=0.95",
-        facecolor=C["navy"], edgecolor="none", zorder=2))
-    ax.text(pad_x + 2.6, y + head_h - 2.9, f"{sid}　{name}",
-            fontproperties=_fp(18, "bold"), color="#FFFFFF", va="center", zorder=3)
-    tag = "主力買賣超（張）"
-    tag_w = _text_w(tag, 11.2, fig_w, 900) + 3.2
-    ax.add_patch(patches.FancyBboxPatch(
-        (pad_x + 2.6, y + 1.35), tag_w, 2.85, boxstyle="round,pad=0,rounding_size=0.5",
-        facecolor=C["tag"], edgecolor="none", zorder=3))
-    ax.text(pad_x + 2.6 + tag_w / 2, y + 2.78, tag, fontproperties=_fp(11.2, "heavy"),
-            color="#FFFFFF", ha="center", va="center", zorder=4)
-    ax.text(100 - pad_x - 2.6, y + head_h / 2, "WayneBot", fontproperties=_fp(11.5, "bold"),
-            color=C["navy_soft"], ha="right", va="center", zorder=3)
+        C = _CARD
+        n = max(len(rows), 1)
+        sid = str(stock_id or rows[0].get("stock_id") or "").strip()
+        name = str(rows[0].get("stock_name") or sid)
+        pad_x, m_top, m_bot = 2.4, 1.0, 1.2
+        head_h, sub_h, hdr_h, body_h = 8.6, 3.4, 3.4, 3.25
+        gap = 1.15
+        H = m_top + head_h + gap + sub_h + hdr_h + n * body_h + m_bot
+        fig_w = 7.2
+        fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=160, facecolor=C["page"])
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, H)
+        ax.axis("off")
+        fig.subplots_adjust(left=0.022, right=0.978, top=0.99, bottom=0.012)
 
-    y -= gap + sub_h
-    ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",
-            fontproperties=_fp(10), color=C["ink_soft"], va="center", zorder=3)
+        y = H - m_top - head_h
+        ax.add_patch(patches.FancyBboxPatch(
+            (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=0.95",
+            facecolor=C["navy"], edgecolor="none", zorder=2))
+        ax.text(pad_x + 2.6, y + head_h - 2.9, f"{sid}　{name}",
+                fontproperties=_fp(18, "bold"), color="#FFFFFF", va="center", zorder=3)
+        tag = "主力買賣超（張）"
+        tag_w = _text_w(tag, 11.2, fig_w, 900) + 3.2
+        ax.add_patch(patches.FancyBboxPatch(
+            (pad_x + 2.6, y + 1.35), tag_w, 2.85, boxstyle="round,pad=0,rounding_size=0.5",
+            facecolor=C["tag"], edgecolor="none", zorder=3))
+        ax.text(pad_x + 2.6 + tag_w / 2, y + 2.78, tag, fontproperties=_fp(11.2, "heavy"),
+                color="#FFFFFF", ha="center", va="center", zorder=4)
+        ax.text(100 - pad_x - 2.6, y + head_h / 2, "WayneBot", fontproperties=_fp(11.5, "bold"),
+                color=C["navy_soft"], ha="right", va="center", zorder=3)
 
-    headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
-    numeric = {1, 2, 3, 4, 5, 6, 7, 8}
-    table = []
-    signed = []
-    for r in rows:
-        d = _fmt_ymd_short(r.get("date"))
-        three = int(r.get("three_net") or 0)
-        f_n, t_n, d_n = int(r.get("foreign_net") or 0), int(r.get("trust_net") or 0), int(r.get("dealer_net") or 0)
-        ratio = float(r.get("ratio_pct") or 0)
-        acc = int(r.get("acc_10d") or 0)
-        table.append([
-            d,
-            f"{float(r.get('close') or 0):,.2f}",
-            f"{int(r.get('volume') or 0):,}",
-            f"{f_n:+,d}",
-            f"{t_n:+,d}",
-            f"{d_n:+,d}",
-            f"{three:+,d}",
-            f"{ratio:+.1f}%",
-            f"{acc:+,d}",
-        ])
-        signed.append([None, None, None, f_n, t_n, d_n, three, ratio, acc])
+        y -= gap + sub_h
+        ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",
+                fontproperties=_fp(10), color=C["ink_soft"], va="center", zorder=3)
 
-    span = 100 - 2 * pad_x
-    col_vals = list(zip(*table)) if table else [[] for _ in headers]
-    xs_rel, body_fs, head_fs = fit_table_cols(headers, col_vals, fig_w, span)
-    xs = [pad_x + x for x in xs_rel]
+        headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
+        numeric = {1, 2, 3, 4, 5, 6, 7, 8}
+        table = []
+        signed = []
+        for r in rows:
+            d = _fmt_ymd_short(r.get("date"))
+            three = int(r.get("three_net") or 0)
+            f_n, t_n, d_n = int(r.get("foreign_net") or 0), int(r.get("trust_net") or 0), int(r.get("dealer_net") or 0)
+            ratio = float(r.get("ratio_pct") or 0)
+            acc = int(r.get("acc_10d") or 0)
+            table.append([
+                d,
+                f"{float(r.get('close') or 0):,.2f}",
+                f"{int(r.get('volume') or 0):,}",
+                f"{f_n:+,d}",
+                f"{t_n:+,d}",
+                f"{d_n:+,d}",
+                f"{three:+,d}",
+                f"{ratio:+.1f}%",
+                f"{acc:+,d}",
+            ])
+            signed.append([None, None, None, f_n, t_n, d_n, three, ratio, acc])
 
-    tbl_top = y
-    for i, h in enumerate(headers):
-        ax.add_patch(patches.Rectangle(
-            (xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
-            facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
-        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h,
-                fontproperties=_fp(head_fs, "bold"), ha="center", va="center",
-                color=C["tbl_ink"], zorder=3)
+        span = 100 - 2 * pad_x
+        col_vals = list(zip(*table)) if table else [[] for _ in headers]
+        xs_rel, body_fs, head_fs = fit_table_cols(headers, col_vals, fig_w, span)
+        xs = [pad_x + x for x in xs_rel]
 
-    ry = tbl_top - hdr_h
-    right_pad = 0.85
-    for row_i, vals in enumerate(table):
-        y1 = ry - body_h
-        zebra = row_i % 2 == 0
-        for i, val in enumerate(vals):
-            if i >= 3:
-                fc, color = _chips_signed_style(signed[row_i][i], C)
-            else:
-                fc = C["panel"] if zebra else C["zebra"]
-                color = C["ink"]
+        tbl_top = y
+        for i, h in enumerate(headers):
             ax.add_patch(patches.Rectangle(
-                (xs[i], y1), xs[i + 1] - xs[i], body_h,
-                facecolor=fc, edgecolor="#E6EBF2", lw=0.5, zorder=2))
-            cy = (ry + y1) / 2
-            if i in numeric:
-                ax.text(xs[i + 1] - right_pad, cy, val, fontproperties=_fp(body_fs, "heavy"),
-                        ha="right", va="center", color=color, zorder=3)
-            else:
-                ax.text((xs[i] + xs[i + 1]) / 2, cy, val, fontproperties=_fp(body_fs, "bold"),
-                        ha="center", va="center", color=color, zorder=3)
-        ry = y1
-    ax.add_patch(patches.Rectangle(
-        (pad_x, ry), span, tbl_top - ry, facecolor="none",
-        edgecolor=C["tbl_line"], lw=1.1, zorder=4))
-    fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
-    plt.close(fig)
+                (xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
+                facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
+            ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h,
+                    fontproperties=_fp(head_fs, "bold"), ha="center", va="center",
+                    color=C["tbl_ink"], zorder=3)
+
+        ry = tbl_top - hdr_h
+        right_pad = 0.85
+        for row_i, vals in enumerate(table):
+            y1 = ry - body_h
+            zebra = row_i % 2 == 0
+            for i, val in enumerate(vals):
+                if i >= 3:
+                    fc, color = _chips_signed_style(signed[row_i][i], C)
+                else:
+                    fc = C["panel"] if zebra else C["zebra"]
+                    color = C["ink"]
+                ax.add_patch(patches.Rectangle(
+                    (xs[i], y1), xs[i + 1] - xs[i], body_h,
+                    facecolor=fc, edgecolor="#E6EBF2", lw=0.5, zorder=2))
+                cy = (ry + y1) / 2
+                if i in numeric:
+                    ax.text(xs[i + 1] - right_pad, cy, val, fontproperties=_fp(body_fs, "heavy"),
+                            ha="right", va="center", color=color, zorder=3)
+                else:
+                    ax.text((xs[i] + xs[i + 1]) / 2, cy, val, fontproperties=_fp(body_fs, "bold"),
+                            ha="center", va="center", color=color, zorder=3)
+            ry = y1
+        ax.add_patch(patches.Rectangle(
+            (pad_x, ry), span, tbl_top - ry, facecolor="none",
+            edgecolor=C["tbl_line"], lw=1.1, zorder=4))
+        fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
+        plt.close(fig)
     return save_path
 
 

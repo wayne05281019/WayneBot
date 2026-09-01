@@ -17,13 +17,34 @@ import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as patheffects
 from matplotlib.lines import Line2D
-from functools import lru_cache
+from contextlib import contextmanager
+from functools import lru_cache, wraps
 from threading import Lock
 import pandas as pd
 import numpy as np
 
 # FT2Font 是共用物件，量字寬要改 size／text，併發產圖時得排隊。
 _FT_LOCK = Lock()
+# pyplot 全域狀態非 thread-safe；四圖並行會畫出空白／殘缺檔（標題在、K 線不見）。
+_MPL_RENDER_LOCK = Lock()
+
+
+@contextmanager
+def mpl_render():
+    _MPL_RENDER_LOCK.acquire()
+    try:
+        yield
+    finally:
+        _MPL_RENDER_LOCK.release()
+
+
+def _mpl_serial(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with mpl_render():
+            return fn(*args, **kwargs)
+
+    return wrapped
 _FT_FONTS = {}
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _BUNDLE_FONTS = os.path.join(_MODULE_DIR, "fonts")
@@ -1205,6 +1226,7 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
     return out, ua, ub
 
 
+@_mpl_serial
 def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。"""
     if not card or card.get("error"):
@@ -1580,6 +1602,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     )
 
 
+@_mpl_serial
 def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
     """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
     if not card or card.get("error"):
@@ -1830,6 +1853,7 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
     )
 
 
+@_mpl_serial
 def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
     """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     if df.empty:
@@ -2110,6 +2134,7 @@ def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, sav
     return draw_from_ohlc(df, sid, name, out)
 
 
+@_mpl_serial
 def render_decision_summary_png(card: dict, save_path: str) -> str:
     """窄圖 + 超大字：Telegram 會把圖縮成對話框寬，只有窄圖大 pt 才看得清。"""
     from matplotlib.patches import FancyBboxPatch
@@ -2154,6 +2179,7 @@ def render_decision_summary_png(card: dict, save_path: str) -> str:
     return save_path
 
 
+@_mpl_serial
 def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
     """窄圖大字 20 日表。拆成兩張（各 4～5 欄），手機上才不會被壓成螞蟻字。"""
     from matplotlib.patches import FancyBboxPatch
