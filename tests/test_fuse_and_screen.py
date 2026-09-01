@@ -117,17 +117,13 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("少追", _stock_card_html(chased, 1))
         payload = format_screening_payload({"day_trade": [item] * 12}, "20260828")
         blob = "\n".join(p["html"] for p in payload)
-        self.assertNotIn("expandable", blob)
-        self.assertIn("其餘", blob)
-        self.assertIn("保險進", blob)
+        self.assertNotIn("＝＝當沖", blob)
+        self.assertIn("今日無符合條件標的", blob)
         line = format_line_share_text({"day_trade": [item]}, "20260828")
-        self.assertIn("保險進場", line)
-        self.assertIn("第一停利", line)
-        self.assertIn("均價", line)
-        self.assertIn("1.", line)
-        self.assertIn("tw.stock.yahoo.com/quote/2330", line)
-        self.assertIn("────────", line)
-        self.assertIn("＝＝當沖＝＝", line)
+        self.assertIn("主選單", line)
+        self.assertIn("當沖", line)
+        self.assertNotIn("保險進場", line)
+        self.assertNotIn("＝＝當沖＝＝", line)
         self.assertNotIn("整則複製", line)
         snap = {
             "regime": "caution",
@@ -160,6 +156,35 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertTrue(chunks)
         self.assertIn("轉寄稿", chunks[0])
         self.assertIn("長按這一則", chunks[0])
+
+    def test_screen_push_omits_daytrade_and_overnight(self):
+        from screening_engine import SCREEN_PUSH_SPECS, format_screening_payload
+
+        keys = {s[0] for s in SCREEN_PUSH_SPECS}
+        self.assertNotIn("day_trade", keys)
+        self.assertNotIn("overnight", keys)
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 8000,
+            "pct_change": 2,
+            "q60r": 2.1,
+            "ma20": 98,
+            "ma60": 95,
+            "foreign_net": 0,
+            "trust_net": 0,
+            "dealer_net": 0,
+        }
+        payload = format_screening_payload(
+            {"leave_zero": [item], "day_trade": [item], "overnight": [item]},
+            "20260828",
+        )
+        blob = "\n".join(p["html"] for p in payload)
+        self.assertIn("起漲", blob)
+        self.assertNotIn("＝＝當沖", blob)
+        self.assertNotIn("＝＝隔日沖", blob)
+        self.assertIn("主選單", blob)
 
     def test_leave_zero_is_first_screening_section(self):
         from screening_engine import format_line_share_text, format_screening_payload
@@ -196,7 +221,8 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
         self.assertIn("＝＝起漲", packs[1]["text"])
-        self.assertIn("＝＝當沖", packs[2]["text"])
+        self.assertIn("主選單", packs[2]["text"])
+        self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
         self.assertTrue(href.startswith("https://line.me/R/share?text="))
         page = render_line_hop_html("開 LINE・起漲", packs[1]["text"])
@@ -563,6 +589,7 @@ class USOvernightTest(unittest.TestCase):
         payload = format_screening_payload(results, "20260828", us_html=html)
         blob = "\n".join(p["html"] for p in payload)
         self.assertIn("美股收盤", blob)
+        self.assertNotIn("＝＝當沖", blob)
         self.assertIn("當沖／隔日沖今日不列", blob)
 
     def test_caution_drops_chase_and_chip_headwind(self):
