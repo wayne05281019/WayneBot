@@ -184,7 +184,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("起漲", blob)
         self.assertNotIn("＝＝當沖", blob)
         self.assertNotIn("＝＝隔日沖", blob)
-        self.assertIn("主選單", blob)
+        self.assertNotIn("主選單", blob)
 
     def test_leave_zero_is_first_screening_section(self):
         from screening_engine import format_line_share_text, format_screening_payload
@@ -601,12 +601,12 @@ class USOvernightTest(unittest.TestCase):
         self.assertEqual(results["select_01"][0]["stock_id"], "2002")
         html = format_us_html(snap)
         self.assertIn("VIX", html)
-        self.assertIn("隔夜逆風", html)
-        payload = format_screening_payload(results, "20260828", us_html=html)
+        self.assertNotIn("當沖／隔日沖今日不列", html)
+        payload = format_screening_payload(results, "20260828")
         blob = "\n".join(p["html"] for p in payload)
-        self.assertIn("美股收盤", blob)
+        self.assertNotIn("美股收盤", blob)
         self.assertNotIn("＝＝當沖", blob)
-        self.assertIn("當沖／隔日沖今日不列", blob)
+        self.assertIn("隔夜逆風", blob)
 
     def test_caution_drops_chase_and_chip_headwind(self):
         from us_overnight import apply_us_overnight

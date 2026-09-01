@@ -526,18 +526,6 @@ def format_us_html(snap: Dict[str, Any]) -> str:
             f"台積ADR {_fmt_pct(snap.get('tsm_pct'))}　輝達 {_fmt_pct(snap.get('nvda_pct'))}"
         )
     lines.append(f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）")
-    regime = snap.get("regime")
-    sox = effective_sox_pct(snap)
-    if regime == "risk_off":
-        lines.append("逆風＝當沖／隔日沖今日不列；突破與貼月高往後排。半導體對照費半／ADR，不是保證開盤一定跟。")
-    elif regime == "caution":
-        lines.append("偏空＝當沖／隔日沖拿掉貼月高與電子逆風檔。佈局仍先看高低卡，不要因為美股敘事追高。")
-    elif regime == "ok" and sox is not None and sox <= -1.5:
-        lines.append("大盤中性，但費半／ADR 弱：當沖／隔日沖不列電子鏈，佈局名單標費半逆風。")
-    elif regime == "ok":
-        lines.append("中性＝大盤不過濾；美股只當開盤風險對照。電子仍對照費半。盤中期貨不看。")
-    else:
-        lines.append("沒接到美股數字就不過濾，避免假資料把名單打掉。")
     return "\n".join(lines)
 
 

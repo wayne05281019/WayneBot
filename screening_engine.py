@@ -766,11 +766,11 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
     if item.get("both_sessions"):
-        notices.append(_hot("雙時段") + html_escape("＝晚間＋早上都在（已對美股收盤／盤後）"))
+        notices.append(_hot("雙時段"))
     if item.get("chase_warning"):
-        notices.append(_hot("少追") + html_escape("＝靠近20日收盤高"))
+        notices.append(_hot("少追"))
     if item.get("is_s_tier"):
-        notices.append(_hot("S級") + html_escape("＝投信連買＋5MA向上"))
+        notices.append(_hot("S級"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
@@ -907,12 +907,6 @@ SCREEN_PUSH_SPECS = (
     ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
 )
 
-SCREEN_PUSH_FOOTER = (
-    "\n💡 <i>藍字股名＝奇摩；股名右「開 LINE・傳這檔」直跳 LINE；區底「傳本區」轉整段。"
-    "【雙時段】＝晚間＋早上都在；少追、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
-    "短線當沖／隔日沖不在晨間海選推播，請按主選單「當沖」「隔日沖」。量化僅供輔助。</i>"
-)
-
 LINE_TRADE_POINTER = (
     "＝＝短線（不在晨間海選）＝＝\n"
     "當沖、隔日沖名單改在 Telegram 主選單按「當沖」或「隔日沖」查看（同樣是昨收掃描，含保險進／停利／停損）。"
@@ -922,8 +916,6 @@ LINE_TRADE_POINTER = (
 def format_screening_payload(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
-    us_html: str = "",
-    session_html: str = "",
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
@@ -938,16 +930,7 @@ def format_screening_payload(
             from trading_calendar import format_trading_date_zh
 
             as_of_label = format_trading_date_zh(target_date)
-            bits = [
-                f"<b>WayneBot 海選</b>　昨收 {html_escape(as_of_label)}",
-                "<i>佈局名單。股名右可「開 LINE・傳這檔」；區底可「開 LINE・傳本區」轉整段。"
-                "短線當沖／隔日沖請按主選單，不在這串推播。</i>",
-            ]
-            if session_html:
-                bits.append(session_html)
-            if us_html:
-                bits.append(us_html)
-            head = "\n".join(bits) + "\n" + head
+            head = f"<b>WayneBot 海選</b>　昨收 {html_escape(as_of_label)}\n" + head
             first = False
         part: Dict[str, Any] = {
             "mark_key": key,
@@ -971,9 +954,7 @@ def format_screening_payload(
         ]
         payload.append(part)
 
-    if payload:
-        payload[-1]["html"] += SCREEN_PUSH_FOOTER
-    else:
+    if not payload:
         from trading_calendar import format_trading_date_zh
 
         payload.append(
@@ -1491,25 +1472,16 @@ def execute_full_screening(
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
     us_snap = _postprocess_screen(engine.db_path, target_date, results, apply_us=apply_us)
-    us_html = ""
     us_plain = ""
-    session_html = ""
     session_plain = ""
     if session == "evening":
-        session_html = (
-            "<b>晚間台股收盤</b>（不推播）美股還沒開；明早 06:30 會再對美股，兩邊都在標【雙時段】。"
-        )
         session_plain = "晚間台股收盤（尚未對美股）"
     elif session == "morning":
-        session_html = (
-            "<b>今早 06:30</b>　已對美股收盤／盤後。【雙時段】＝昨晚台股名單也有、過完美股還在。"
-        )
-        session_plain = "今早 06:30（已對美股收盤／盤後）。【雙時段】＝晚間台股＋今早都在。"
+        session_plain = "今早 06:30（已對美股收盤／盤後）"
     if apply_us:
         try:
-            from us_overnight import format_us_html, format_us_plain
+            from us_overnight import format_us_plain
 
-            us_html = format_us_html(us_snap)
             us_plain = format_us_plain(us_snap)
         except Exception:
             pass
@@ -1533,9 +1505,7 @@ def execute_full_screening(
         except Exception:
             pass
 
-    payload = format_screening_payload(
-        results, target_date, us_html=us_html, session_html=session_html
-    )
+    payload = format_screening_payload(results, target_date)
     report_text = "\n\n".join(p["html"] for p in payload)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
