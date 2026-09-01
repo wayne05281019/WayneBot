@@ -195,6 +195,7 @@ class WayneTelegramBot:
         self._line_share_chunks: List[str] = []
         self._line_share_packs: List[Dict[str, str]] = []
         self._menu_fade_msgs: Dict[int, list] = {}
+        self._lookup_fade_msgs: Dict[int, list] = {}
 
     async def _dismiss_menu_transients(self, chat_id: int) -> None:
         """選單刷新提示：主功能開始時立刻刪除，像轉場消失。"""
@@ -204,6 +205,26 @@ class WayneTelegramBot:
                 await msg.delete()
             except Exception:
                 pass
+
+    def _track_lookup_fade(self, chat_id: int, msg, role: str) -> None:
+        if msg is None:
+            return
+        self._lookup_fade_msgs.setdefault(int(chat_id), []).append((msg, role))
+
+    async def _dismiss_lookup_fades(self, chat_id: int, roles: set | None = None) -> None:
+        """查股暫存訊息：圖出來後整批刪除（或只刪 ack／wait）。"""
+        items = self._lookup_fade_msgs.pop(int(chat_id), [])
+        keep: list = []
+        for msg, role in items:
+            if roles is not None and role not in roles:
+                keep.append((msg, role))
+                continue
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+        if keep:
+            self._lookup_fade_msgs[int(chat_id)] = keep
 
     def send_message(self, text: str, chat_id: str = None):
         self._send_html(chat_id or self.chat_id, text)
@@ -1456,8 +1477,11 @@ class WayneTelegramBot:
             )
             return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
+        chat_id = int(update.message.chat_id)
+        ack = None
         try:
-            await update.message.reply_text("收到，查詢中…", reply_markup=self._reply_menu())
+            ack = await update.message.reply_text("收到，查詢中…", reply_markup=self._reply_menu())
+            self._track_lookup_fade(chat_id, ack, "ack")
         except Exception:
             logger.exception("ack 失敗")
         try:
@@ -1466,15 +1490,18 @@ class WayneTelegramBot:
                 await self._reply_card(update, hits[0]["stock_id"])
                 return
             if len(hits) > 1:
+                await self._dismiss_lookup_fades(chat_id, roles={"ack"})
                 await update.message.reply_html(
                     self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return
+            await self._dismiss_lookup_fades(chat_id, roles={"ack"})
             await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
         except Exception:
             logger.exception("查詢失敗")
+            await self._dismiss_lookup_fades(chat_id, roles={"ack"})
             await update.message.reply_text(
                 "查詢失敗。雲端可能還沒有日K，或出圖逾時。請先按 /start，稍後再試。",
                 reply_markup=self._keyboard(),
@@ -1632,14 +1659,19 @@ class WayneTelegramBot:
             await self._send_card_to(message, code, uid)
             return
         hub = self._hub_keyboard(code)
+        chat_id = int(message.chat_id)
+        header_msg = None
         try:
             header = await asyncio.to_thread(self._quote_header_html, code)
-            await message.reply_html(header, disable_web_page_preview=True)
+            header_msg = await message.reply_html(header, disable_web_page_preview=True)
+            self._track_lookup_fade(chat_id, header_msg, "header")
         except Exception:
             logger.exception("決策卡現價列失敗 code=%s", code)
         wait_msg = None
+        lookup_faded = False
         try:
             wait_msg = await message.reply_text("決策卡產製中（盤中 MIS 價量）…")
+            self._track_lookup_fade(chat_id, wait_msg, "wait")
         except Exception:
             pass
         try:
@@ -1682,11 +1714,15 @@ class WayneTelegramBot:
                         reply_markup=hub,
                     )
                 sent = True
+                await self._dismiss_lookup_fades(chat_id)
+                lookup_faded = True
             if not sent:
                 from wayne_navigator import generate_decision_card
 
                 html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+                await self._dismiss_lookup_fades(chat_id)
+                lookup_faded = True
             self._remember_card(uid, code)
         except asyncio.TimeoutError:
             logger.exception("決策卡快捷逾時 code=%s", code)
@@ -1699,11 +1735,8 @@ class WayneTelegramBot:
             logger.exception("決策卡快捷失敗 code=%s", code)
             await message.reply_text("決策卡失敗，請稍後再試。", reply_markup=hub)
         finally:
-            if wait_msg is not None:
-                try:
-                    await wait_msg.delete()
-                except Exception:
-                    pass
+            if not lookup_faded:
+                await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
 
     async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
@@ -1736,12 +1769,17 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             return
+        chat_id = int(message.chat_id)
+        lookup_faded = False
+        header_msg = None
         try:
             header = await asyncio.to_thread(self._quote_header_html, code)
-            await message.reply_html(header, disable_web_page_preview=True)
+            header_msg = await message.reply_html(header, disable_web_page_preview=True)
+            self._track_lookup_fade(chat_id, header_msg, "header")
         except Exception:
             logger.exception("現價列失敗 code=%s", code)
-            await message.reply_text(f"查詢 {code}…")
+            fallback = await message.reply_text(f"查詢 {code}…")
+            self._track_lookup_fade(chat_id, fallback, "header")
         hub = self._hub_keyboard(code)
         cap_links = ""
         try:
@@ -1753,6 +1791,7 @@ class WayneTelegramBot:
             cap_links = ""
 
         async def send_photo(path, caption, markup=None):
+            nonlocal sent_any, last_ok, lookup_faded
             if not path or not os.path.exists(path):
                 return False
             try:
@@ -1760,19 +1799,24 @@ class WayneTelegramBot:
                     await message.reply_photo(
                         photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
                     )
-                return True
+                ok = True
             except Exception:
                 try:
                     with open(path, "rb") as f:
                         await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
-                    return True
+                    ok = True
                 except Exception:
                     logger.exception("送圖失敗 path=%s", path)
-                    return False
+                    ok = False
+            if ok and not lookup_faded:
+                lookup_faded = True
+                await self._dismiss_lookup_fades(chat_id)
+            return ok
 
         wait_msg = None
         try:
             wait_msg = await message.reply_text("圖產製中，會依序出現介紹圖／決策卡／導航／籌碼…")
+            self._track_lookup_fade(chat_id, wait_msg, "wait")
         except Exception:
             wait_msg = None
 
@@ -1864,12 +1908,6 @@ class WayneTelegramBot:
             if glance:
                 last_ok = await send_photo(glance, cap_links or "當日K＋籌碼價量")
                 sent_any = sent_any or last_ok
-                if last_ok and wait_msg is not None:
-                    try:
-                        await wait_msg.delete()
-                    except Exception:
-                        pass
-                    wait_msg = None
             t1 = time.monotonic()
             card_path = await card_task
             logger.info("看這檔 card_png %.1fs code=%s", time.monotonic() - t1, code)
@@ -1893,12 +1931,6 @@ class WayneTelegramBot:
                 hub_on = await send_photo(chip_img, "籌碼（張）", hub)
                 sent_any = sent_any or hub_on
                 last_ok = hub_on
-                if hub_on and wait_msg is not None:
-                    try:
-                        await wait_msg.delete()
-                    except Exception:
-                        pass
-                    wait_msg = None
             if sent_any and not hub_on:
                 await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
             elif not sent_any:
@@ -1906,6 +1938,9 @@ class WayneTelegramBot:
 
                 html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+                if not lookup_faded:
+                    lookup_faded = True
+                    await self._dismiss_lookup_fades(chat_id)
         except asyncio.TimeoutError:
             logger.exception("看這檔出圖逾時 code=%s", code)
             for t in (card_task, chart_task, chip_task):
@@ -1933,11 +1968,8 @@ class WayneTelegramBot:
                     html = f"查詢 {html_escape(code)} 失敗。"
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
         finally:
-            if wait_msg is not None:
-                try:
-                    await wait_msg.delete()
-                except Exception:
-                    pass
+            if not lookup_faded:
+                await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
         try:
             await self._send_industry(message, code)
         except Exception:
