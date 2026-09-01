@@ -221,6 +221,7 @@ class ScreeningEngine:
         res_day_trade = []
         res_overnight = []
         res_leave_zero = []
+        res_golden_buy = []
 
         for sid, df in stock_dfs.items():
             info = self.calculate_indicators(df)
@@ -228,6 +229,9 @@ class ScreeningEngine:
                 continue
             if _skip_long_term_high_push(info):
                 continue
+            info = _enrich_decision_fields(df, info)
+            info["pattern"] = _pattern_tag(info)
+            layout_ok = not _is_downtrend_no_touch(info)
 
             c = info["close"]
             o = info["open"]
@@ -245,7 +249,7 @@ class ScreeningEngine:
             # ------------------------------------------------------------------
             # CaryBot Select 01: 周帶量突破 (5日高 + Q60R > 2.0)
             # ------------------------------------------------------------------
-            if hi5 and c >= hi5 and q >= 2.0 and pct > 0.5:
+            if layout_ok and hi5 and c >= hi5 and q >= 2.0 and pct > 0.5:
                 res_sel_01.append(info)
 
             # Select 02: 站上季線（昨收在季線下、今日站上）。不是追半年高。
@@ -253,7 +257,8 @@ class ScreeningEngine:
             ma60_prev = info.get("ma60_prev") or ma60
             on_ma60 = False
             if (
-                ma60 > 0
+                layout_ok
+                and ma60 > 0
                 and prev_close < ma60_prev
                 and c >= ma60
                 and pct > 0
@@ -264,7 +269,8 @@ class ScreeningEngine:
 
             # Select 03: 止跌＝月低附近有人接、量沒死。不用季低，避免跌很久才彈。
             if (
-                not on_ma60
+                layout_ok
+                and not on_ma60
                 and not info.get("chase_warning")
                 and pct > 0
                 and q >= 1.0
@@ -277,8 +283,14 @@ class ScreeningEngine:
             # ------------------------------------------------------------------
             # 雙綠＝高低卡「高低」格：昨收還貼 20 低，今日 D20 脫離。
             # ------------------------------------------------------------------
-            if prev_d20 <= 1.0 and d20 >= 2.0 and c > info["low60"] * 1.03 and pct > 1.0:
+            if layout_ok and prev_d20 <= 1.0 and d20 >= 2.0 and c > info["low60"] * 1.03 and pct > 1.0:
                 res_sel_04.append(info)
+
+            # 黃金買點：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位；可收下坡末端）。
+            if _golden_buy_ok(info):
+                golden = dict(info)
+                golden["golden_buy"] = True
+                res_golden_buy.append(golden)
 
             # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
             # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
@@ -305,7 +317,8 @@ class ScreeningEngine:
                 just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
                 sid_s = str(info.get("stock_id") or "")
                 if (
-                    just_left
+                    layout_ok
+                    and just_left
                     and (vol_hot or yest_hl_low)
                     and _leave_zero_trend_ok(info)
                     and len(sid_s) == 4
@@ -360,12 +373,21 @@ class ScreeningEngine:
             )
         )
 
+        res_golden_buy.sort(
+            key=lambda x: (
+                1 if x.get("chase_warning") else 0,
+                float(x.get("bias_monthly") or 0),
+                abs(float(x.get("profit_pct") or 0)),
+            )
+        )
+
         return {
             "select_01": res_sel_01,
             "select_02": res_sel_02,
             "select_03": res_sel_03,
             "select_04": res_sel_04,
             "leave_zero": res_leave_zero,
+            "golden_buy": res_golden_buy,
             "day_trade": res_day_trade,
             "overnight": res_overnight
         }
@@ -453,8 +475,90 @@ def _regime_label(item: Dict[str, Any]) -> str:
     return "整理格局"
 
 
+def _cal60_low_close(df: pd.DataFrame, idx: int = -1) -> float:
+    """與決策卡同一條：近 60 個日曆日收盤最低。"""
+    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    if len(dts) == 0 or not dts.notna().any():
+        return float(df["close"].iloc[idx] or 0)
+    end = dts.iloc[idx]
+    mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
+    if not mask.any():
+        return float(df["close"].iloc[idx] or 0)
+    return float(df.loc[mask, "close"].astype(float).min() or df["close"].iloc[idx] or 0)
+
+
+def _enrich_decision_fields(df: pd.DataFrame, info: Dict[str, Any]) -> Dict[str, Any]:
+    """對齊高低決策卡：獲利、月乖離、60低（邏輯層，不動出圖色票）。"""
+    out = dict(info)
+    close_s = df["close"].astype(float)
+    c = float(out.get("close") or 0)
+    l60 = float(close_s.rolling(60, min_periods=20).min().iloc[-1] or 0)
+    cal60 = _cal60_low_close(df)
+    ma20 = float(out.get("ma20") or 0)
+    out["low_60_close"] = round(l60, 4) if l60 else 0.0
+    out["cal60_low"] = round(cal60, 4) if cal60 else 0.0
+    out["profit_pct"] = round((c - cal60) / cal60 * 100.0, 1) if cal60 > 0 else 0.0
+    out["bias_monthly"] = round((c - ma20) / ma20 * 100.0, 1) if ma20 > 0 else 0.0
+    out["at_60_low"] = bool(l60 > 0 and c <= l60 * 1.005)
+    return out
+
+
+def _pattern_tag(info: Dict[str, Any]) -> str:
+    """型態三分：上坡／箱型／下坡（下坡不碰）。"""
+    regime = _regime_label(info)
+    try:
+        c = float(info.get("close") or 0)
+        ma20 = float(info.get("ma20") or 0)
+        ma60 = float(info.get("ma60") or 0)
+        ma60_prev = float(info.get("ma60_prev") or ma60)
+        d20 = float(info.get("d20") or 0)
+        ma5_hook = bool(info.get("ma5_hook_up"))
+    except (TypeError, ValueError):
+        return "箱型"
+    if regime in ("空頭排列", "弱勢破底", "月線下整理"):
+        return "下坡"
+    if ma60 > 0 and ma20 > 0 and c < ma20 and ma20 < ma60 and ma60 <= ma60_prev * 1.001:
+        return "下坡"
+    if ma20 > 0 and c < ma20 * 0.985 and d20 <= 2.5:
+        return "下坡"
+    if (
+        ma20 > 0
+        and ma60 > 0
+        and c >= ma20
+        and ma20 >= ma60
+        and (ma5_hook or c >= ma20 * 1.008)
+    ):
+        return "上坡"
+    if regime in ("多頭排列", "站上月線") and ma5_hook:
+        return "上坡"
+    return "箱型"
+
+
+def _is_downtrend_no_touch(info: Dict[str, Any]) -> bool:
+    return _pattern_tag(info) == "下坡"
+
+
+def _golden_buy_ok(info: Dict[str, Any]) -> bool:
+    """黃金買點：60低 + 獲利≈0 + 月乖離 < -10%（可在下坡末端，專桶收）。"""
+    if not info.get("at_60_low"):
+        return False
+    try:
+        profit = float(info.get("profit_pct") if info.get("profit_pct") is not None else 99)
+        bias = float(info.get("bias_monthly") if info.get("bias_monthly") is not None else 0)
+    except (TypeError, ValueError):
+        return False
+    if not (-1.5 <= profit <= 2.5):
+        return False
+    if bias >= -10.0:
+        return False
+    sid = str(info.get("stock_id") or "")
+    return len(sid) == 4 and sid.isdigit()
+
+
 def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
     """起漲桶：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
+    if _is_downtrend_no_touch(info):
+        return False
     regime = _regime_label(info)
     if regime in ("空頭排列", "弱勢破底", "月線下整理"):
         return False
@@ -590,6 +694,10 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
+    if item.get("golden_buy"):
+        notices.append(_hot("黃金買點"))
+    if item.get("at_60_low") and not item.get("golden_buy"):
+        notices.append(_hot("60低"))
     if item.get("sector_inflow"):
         notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
     elif item.get("sector_outflow"):
@@ -626,14 +734,28 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
         f"法人　{_chip_html(item)}",
     ])
+    pat = str(item.get("pattern") or "")
+    if pat:
+        body.append(f"型態　{html_escape(pat)}")
+    if item.get("golden_buy"):
+        body.append(
+            f"獲利　{html_escape(item.get('profit_pct'))}%　"
+            f"月乖離　{html_escape(item.get('bias_monthly'))}%"
+        )
     if notices:
         body.append("注意　" + "　".join(notices))
     if item.get("profit") is not None:
         body.append(f"獲利　{html_escape(item.get('profit'))}%（近60曆日低點上來）")
-    if item.get("vol_rank_120"):
-        rank = int(item["vol_rank_120"])
-        rank_s = f"第{rank}名"
-        body.append("120量　" + (_hot(rank_s) if rank <= 20 else html_escape(rank_s)))
+    rank_val = None
+    if live and live.get("vol_rank_120") is not None:
+        rank_val = int(live["vol_rank_120"])
+    elif item.get("vol_rank_120"):
+        rank_val = int(item["vol_rank_120"])
+    if rank_val is not None:
+        rank_s = f"第{rank_val}名"
+        if live and live.get("vol_rank_120") is not None:
+            rank_s = f"第{rank_val}名（盤中即時）"
+        body.append("120量　" + (_hot(rank_s) if rank_val <= 20 else html_escape(rank_s)))
     plan = _safety_plan_html(item)
     if plan:
         body.extend(plan)
@@ -696,6 +818,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
+    ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
     ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
@@ -861,6 +984,10 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
         bits.append("20低脫離")
     if item.get("revenue_hot"):
         bits.append("營收轉強")
+    if item.get("golden_buy"):
+        bits.append("黃金買點")
+    if item.get("at_60_low"):
+        bits.append("60低")
     if item.get("sector_inflow"):
         bits.append(str(item.get("sector_flow_label") or "輪動進"))
     elif item.get("sector_outflow"):
@@ -908,6 +1035,13 @@ def _share_stock_block(it: Dict[str, Any], idx: int, db_path: Optional[str] = No
         lines.append("注意　" + "　".join(notices))
     if it.get("profit") is not None:
         lines.append(f"獲利　{it.get('profit')}%（近60曆日低點上來）")
+    elif it.get("golden_buy"):
+        lines.append(
+            f"獲利　{it.get('profit_pct')}%　月乖離　{it.get('bias_monthly')}%（60低超跌）"
+        )
+    pat = str(it.get("pattern") or "")
+    if pat:
+        lines.append(f"型態　{pat}")
     if it.get("vol_rank_120"):
         lines.append(f"120量　第{int(it['vol_rank_120'])}名")
     plan = _safety_plan_plain(it)
@@ -918,6 +1052,7 @@ def _share_stock_block(it: Dict[str, Any], idx: int, db_path: Optional[str] = No
 
 LINE_STOCK_BUCKETS = (
     ("leave_zero", "起漲"),
+    ("golden_buy", "黃金買點"),
     ("revenue_cross", "優先看"),
     ("select_01", "周帶量"),
     ("select_02", "站上季線"),
@@ -965,6 +1100,7 @@ def build_line_stock_bodies(
 
 LINE_BUCKET_TITLES = {
     "leave_zero": "起漲",
+    "golden_buy": "黃金買點",
     "revenue_cross": "優先看",
     "select_01": "周帶量",
     "select_02": "站上季線",
@@ -1054,6 +1190,7 @@ def format_line_share_packs(
 
     specs_layout = [
         ("leave_zero", "起漲　高低卡獲利剛離零"),
+        ("golden_buy", "黃金買點　60低超跌"),
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),
@@ -1234,6 +1371,8 @@ def execute_full_screening(
     for item in breakout:
         sid = str(item.get("stock_id") or "")
         if sid in seen or sid not in hot_ids:
+            continue
+        if _is_downtrend_no_touch(item):
             continue
         if int(item.get("trust_net") or 0) < 0 and int(item.get("foreign_net") or 0) < 0:
             continue

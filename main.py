@@ -299,7 +299,7 @@ def run_web():
         def _warmup_charts():
             try:
                 logger.info("背景預熱出圖模組")
-                import cary_navigator  # noqa: F401
+                import wayne_navigator  # noqa: F401
                 logger.info("出圖模組已預熱")
             except Exception:
                 logger.exception("出圖預熱失敗")

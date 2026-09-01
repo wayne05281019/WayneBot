@@ -1,10 +1,12 @@
-"""盤中即時：證交所 MIS。CaryBot 同類做法，不寫回 sqlite。"""
+"""盤中即時：證交所 MIS。不寫回 sqlite，只合併進記憶體內的日 K。"""
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from datetime import time as dt_time
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 import requests
@@ -63,6 +65,63 @@ def _channels(stock_id: str, market: str = "") -> list:
     if m in ("TWO", "OTC", "ROCC", "上櫃"):
         return [otc, tse]
     return [tse, otc]
+
+
+def _norm_date(val) -> str:
+    return str(val or "").replace("-", "").strip()
+
+
+def is_live_merge_window(now=None) -> bool:
+    """08:50～16:00 台灣時間：允許用 MIS 覆寫／追加今日 K（不寫回 sqlite）。"""
+    now = now or taipei_now()
+    t = now.time()
+    return dt_time(8, 50) <= t < dt_time(16, 0)
+
+
+def calc_vol_rank_120(volumes: Sequence[Union[int, float]], window: int = 120) -> int:
+    """這檔自己近 window 根成交量排名：1＝區間內最大量。"""
+    if not volumes:
+        return 99
+    vals = [float(v or 0) for v in volumes]
+    last = vals[-1]
+    start = max(0, len(vals) - window)
+    sub = vals[start:]
+    return int(sum(1 for x in sub if x > last) + 1)
+
+
+def live_vol_rank_120(
+    db_path: str,
+    stock_id: str,
+    live_volume: Union[int, float],
+    window: int = 120,
+) -> int:
+    """用庫裡歷史量 + MIS 此刻累積張數，算盤中 120 日量排名。"""
+    sid = str(stock_id).strip()
+    if not sid:
+        return 99
+    today = taipei_today_str()
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT date, volume FROM daily_quotes
+            WHERE stock_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sid, window + 2),
+        ).fetchall()
+    finally:
+        conn.close()
+    vols: List[float] = []
+    for d, v in reversed(rows):
+        if _norm_date(d) >= today:
+            continue
+        vols.append(float(v or 0))
+    vols.append(float(live_volume or 0))
+    if len(vols) > window:
+        vols = vols[-window:]
+    return calc_vol_rank_120(vols, window)
 
 
 def mis_session_label(update_time: str) -> str:
@@ -151,39 +210,51 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
     return found
 
 
+def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
+    out = dict(row)
+    out["date"] = taipei_today_str()
+    out["stock_id"] = str(stock_id)
+    if "stock_name" in out and rt.get("stock_name"):
+        out["stock_name"] = rt["stock_name"]
+    for k in ("open", "high", "low", "close", "volume"):
+        if k in out:
+            out[k] = rt[k]
+    if "pct_change" in out:
+        out["pct_change"] = rt["pct_change"]
+    if "change_pct" in out:
+        out["change_pct"] = rt["pct_change"]
+    if "turnover_k" in out:
+        out["turnover_k"] = round(rt["volume"] * rt["close"], 2)
+    if "avg_price" in out:
+        out["avg_price"] = rt["close"]
+    out["is_live"] = True
+    out["_live_time"] = rt.get("update_time") or ""
+    return out
+
+
 def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "") -> pd.DataFrame:
-    """若庫裡還沒有台灣今天這根 K，把 MIS 盤中／盤後未入庫價量接在最後。"""
+    """盤中用 MIS 價量合併今日 K：庫裡沒有就追加；已有就覆寫最後一根。"""
     if df is None or df.empty:
         return df
+    if not is_live_merge_window():
+        return df
     today = taipei_today_str()
-    latest = str(df["date"].iloc[-1])
-    if latest >= today:
-        return df
-    now = taipei_now().time()
-    # 08:50～16:00 嘗試；週末也試（假日 API 會回昨收或空）
-    if now.hour < 8:
-        return df
+    latest = _norm_date(df["date"].iloc[-1])
     mkt = market or (str(df["market"].iloc[-1]) if "market" in df.columns else "")
     rt = fetch_mis_quote(stock_id, mkt)
     if not rt or rt["close"] <= 0:
         return df
+    if latest > today:
+        return df
+    if latest == today:
+        out = df.copy()
+        idx = len(out) - 1
+        row = _apply_rt_to_row(out.iloc[idx].to_dict(), rt, stock_id)
+        for col, val in row.items():
+            if col not in out.columns:
+                out[col] = None
+            out.at[idx, col] = val
+        return out
     row = {col: df.iloc[-1][col] if col in df.columns else None for col in df.columns}
-    row["date"] = today
-    row["stock_id"] = str(stock_id)
-    if "stock_name" in row and rt.get("stock_name"):
-        row["stock_name"] = rt["stock_name"]
-    for k in ("open", "high", "low", "close", "volume"):
-        if k in row:
-            row[k] = rt[k]
-    if "pct_change" in row:
-        row["pct_change"] = rt["pct_change"]
-    if "change_pct" in row:
-        row["change_pct"] = rt["pct_change"]
-    if "turnover_k" in row:
-        row["turnover_k"] = round(rt["volume"] * rt["close"], 2)
-    if "avg_price" in row:
-        row["avg_price"] = rt["close"]
-    row["is_live"] = True
-    row["_live_time"] = rt.get("update_time") or ""
-    out = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    return out
+    row = _apply_rt_to_row(row, rt, stock_id)
+    return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
