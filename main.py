@@ -60,6 +60,18 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     return
             target = (hop or {}).get("redirect")
+            text = str((hop or {}).get("text") or "").strip()
+            if text:
+                from line_hop import render_line_redirect_html
+
+                page = render_line_redirect_html(text).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.send_header("Content-Length", str(len(page)))
+                self.end_headers()
+                self.wfile.write(page)
+                return
             if target:
                 from line_hop import render_line_redirect_html_for_url
 

@@ -228,6 +228,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertTrue(href.startswith("https://line.me/R/share?text="))
         page = render_line_hop_html("開 LINE・起漲", packs[1]["text"])
         self.assertIn("line.me/R/share", page)
+        self.assertIn("line://msg/text/", page)
         self.assertNotIn("哥哥", page)
         self.assertNotIn("自己選要傳給誰", page)
 
