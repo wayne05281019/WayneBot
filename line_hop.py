@@ -14,6 +14,17 @@ LINE_PACKS = (
 )
 PACK_IDS = {p[0] for p in LINE_PACKS}
 
+# 手機內建瀏覽器對超長 line.me 網址常失敗；超過則改手動按鈕
+LINE_SHARE_URL_SAFE_LEN = 2000
+
+
+def _line_share_urls_safe(text: str) -> tuple:
+    body = (text or "").strip()
+    share_url = line_share_href(body)
+    app_url = line_app_href(body)
+    auto = len(share_url) <= LINE_SHARE_URL_SAFE_LEN
+    return share_url, app_url, auto
+
 
 def _date_slash(ymd: str) -> str:
     d = str(ymd or "").replace("-", "")
@@ -74,20 +85,32 @@ def render_line_redirect_html(text: str) -> str:
     body = (text or "").strip()
     if not body:
         return "<!DOCTYPE html><html><body>無內容</body></html>"
-    share_url = line_share_href(body)
-    app_url = line_app_href(body)
+    share_url, app_url, auto_open = _line_share_urls_safe(body)
     safe_share = html.escape(share_url, quote=True)
     safe_app = html.escape(app_url, quote=True)
     share_json = json.dumps(share_url, ensure_ascii=False)
     app_json = json.dumps(app_url, ensure_ascii=False)
+    long_hint = ""
+    if not auto_open:
+        long_hint = (
+            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
+            "文字較長，請手動按下方綠色按鈕開 LINE（勿依賴自動跳轉）</p>"
+        )
+    refresh = f'<meta http-equiv="refresh" content="1;url={safe_share}">' if auto_open else ""
+    auto_script = (
+        "if(mobile){goApp();}else{goShare();}"
+        if auto_open
+        else "/* manual open only */"
+    )
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f'<meta http-equiv="refresh" content="1;url={safe_share}">'
+        f"{refresh}"
         "</head><body>"
         '<p style="font-family:sans-serif;text-align:center;margin-top:2em">'
         "正在開啟 LINE…</p>"
+        f"{long_hint}"
         '<p style="text-align:center;font-size:1.05em">'
         f'<a href="{safe_app}" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
         'background:#06c755;color:#fff;text-decoration:none;border-radius:8px">'
@@ -100,7 +123,7 @@ def render_line_redirect_html(text: str) -> str:
         "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
         "function goApp(){try{location.href=app;}catch(e){}"
         "setTimeout(goShare,900);}"
-        "if(mobile){goApp();}else{goShare();}"
+        f"{auto_script}"
         "})();"
         "</script>"
         "</body></html>"
@@ -113,10 +136,10 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     title = html.escape(str(manifest.get("title") or "海選"))
     count = int(manifest.get("count") or 0)
     album_url = str(manifest.get("album_url") or "").strip()
+    text_only = bool(manifest.get("text_only"))
     safe_album = html.escape(album_url, quote=True) if album_url else ""
     stocks = manifest.get("stocks") or []
-    share_url = line_share_href(text)
-    app_url = line_app_href(text)
+    share_url, app_url, auto_open = _line_share_urls_safe(text)
     share_json = json.dumps(share_url, ensure_ascii=False)
     app_json = json.dumps(app_url, ensure_ascii=False)
     album_json = json.dumps(album_url, ensure_ascii=False)
@@ -147,6 +170,19 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         if safe_album
         else ""
     )
+    text_only_note = ""
+    if text_only:
+        text_only_note = (
+            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
+            "長圖已過期，請回 Telegram 再按一次「一鍵傳 LINE」重新生成；文字仍可傳。</p>"
+        )
+    long_hint = ""
+    if not auto_open:
+        long_hint = (
+            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
+            "文字較長，請手動按綠色按鈕開 LINE</p>"
+        )
+    auto_script = "if(mobile){setTimeout(goApp,400);}" if auto_open else "/* manual */"
 
     return (
         "<!DOCTYPE html><html><head>"
@@ -170,6 +206,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         "<p style=\"text-align:center;line-height:1.6\">"
         "① 會開啟 LINE，請<b>選聯絡人</b>送出文字總彙整<br>"
         "② 再貼下方「全區長圖」（每檔文字後面接圖表）</p>"
+        f"{text_only_note}{long_hint}"
         '<p style="text-align:center">'
         f'<a class="btn green" id="openLine" href="{html.escape(app_url, quote=True)}">'
         "傳文字到 LINE・選聯絡人</a>"
@@ -188,7 +225,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
         "function goApp(){try{location.href=app;}catch(e){}"
         "setTimeout(goShare,900);}"
-        "if(mobile){setTimeout(goApp,400);}"
+        f"{auto_script}"
         "var btn=document.getElementById('saveAlbum');"
         "if(btn&&navigator.share&&album){"
         "btn.addEventListener('click',function(ev){"

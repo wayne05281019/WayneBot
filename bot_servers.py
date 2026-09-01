@@ -178,7 +178,7 @@ class WayneTelegramBot:
         self._lookup_fade_msgs: Dict[int, list] = {}
         # chat_id → pack_id → 海選分類訊息（一鍵傳 LINE 後整段收起）
         self._screening_msgs: Dict[int, Dict[str, list]] = {}
-        self._line_pack_fade_msgs: Dict[int, list] = {}
+        self._line_pack_status_msgs: Dict[int, list] = {}
 
     async def _dismiss_menu_transients(self, chat_id: int) -> None:
         """選單刷新提示：主功能開始時立刻刪除，像轉場消失。"""
@@ -199,33 +199,24 @@ class WayneTelegramBot:
             return
         self._screening_msgs.setdefault(int(chat_id), {}).setdefault(str(pack_id), []).append(msg)
 
-    def _track_line_pack_fade(self, chat_id: int, msg) -> None:
+    def _track_line_pack_status(self, chat_id: int, msg) -> None:
+        """一鍵傳 LINE 的「生成中」進度；完成後刪除，不動含 LINE 鈕的完成訊息。"""
         if msg is None:
             return
-        self._line_pack_fade_msgs.setdefault(int(chat_id), []).append(msg)
+        self._line_pack_status_msgs.setdefault(int(chat_id), []).append(msg)
 
-    async def _dismiss_screening_section(self, chat_id: int, pack_id: str) -> None:
-        """海選該分類的貼紙＋文字塊：傳 LINE 備好後整段消失。"""
-        bucket = (self._screening_msgs.get(int(chat_id)) or {}).pop(str(pack_id), [])
-        for msg in bucket:
+    async def _dismiss_line_pack_status(self, chat_id: int) -> None:
+        msgs = self._line_pack_status_msgs.pop(int(chat_id), [])
+        for msg in msgs:
             try:
                 await msg.delete()
             except Exception:
                 pass
 
-    async def _dismiss_line_pack_fades(self, chat_id: int, *, keep_last: bool = False) -> None:
-        """生成過程的進度／預覽：像轉場一樣刪掉，只留最後一則（含 LINE 鈕）。"""
-        msgs = self._line_pack_fade_msgs.pop(int(chat_id), [])
-        if keep_last and msgs:
-            *drop, keep = msgs
-            for msg in drop:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-            self._line_pack_fade_msgs[int(chat_id)] = [keep]
-            return
-        for msg in msgs:
+    async def _dismiss_screening_section(self, chat_id: int, pack_id: str) -> None:
+        """海選該分類的貼紙＋文字塊：傳 LINE 備好後整段消失。"""
+        bucket = (self._screening_msgs.get(int(chat_id)) or {}).pop(str(pack_id), [])
+        for msg in bucket:
             try:
                 await msg.delete()
             except Exception:
@@ -1103,15 +1094,23 @@ class WayneTelegramBot:
             "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。",
             reply_markup=hub,
         )
-        self._track_line_pack_fade(chat_id, status)
+        self._track_line_pack_status(chat_id, status)
 
-        manifest = await asyncio.to_thread(
-            build_bucket_rich_pack,
-            self.db_path,
-            bucket_key,
-            as_of,
-            self.charts_dir,
-        )
+        try:
+            manifest = await asyncio.to_thread(
+                build_bucket_rich_pack,
+                self.db_path,
+                bucket_key,
+                as_of,
+                self.charts_dir,
+            )
+        except Exception as exc:
+            logger.exception("LINE 圖文包生成失敗 bucket=%s", bucket_key)
+            await status.edit_text(
+                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。",
+                reply_markup=hub,
+            )
+            return
         if manifest.get("error") and not manifest.get("line_text"):
             err = str(manifest.get("error") or "生成失敗")
             errs = manifest.get("errors") or []
@@ -1144,7 +1143,7 @@ class WayneTelegramBot:
 
         # 收起海選該區塊＋生成進度（魔法消失）
         await self._dismiss_screening_section(chat_id, bucket_key)
-        await self._dismiss_line_pack_fades(chat_id)
+        await self._dismiss_line_pack_status(chat_id)
 
         final = await message.reply_html(
             f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備好。{warn}\n"
@@ -1154,7 +1153,6 @@ class WayneTelegramBot:
             reply_markup=line_btn,
             disable_web_page_preview=True,
         )
-        self._track_line_pack_fade(chat_id, final)
         await self._pin_reply_menu(message)
 
     @staticmethod

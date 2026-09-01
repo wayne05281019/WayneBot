@@ -203,6 +203,17 @@ def ensure_line_pack_table(db_path: str = None) -> None:
         );
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS screen_line_rich_manifests (
+            as_of TEXT NOT NULL,
+            bucket TEXT NOT NULL,
+            manifest TEXT NOT NULL,
+            updated_at TEXT,
+            PRIMARY KEY (as_of, bucket)
+        );
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -289,6 +300,63 @@ def load_line_pack(db_path: str, pack_id: str, as_of: str = "") -> dict:
     if not row:
         return {}
     return {"title": row[0] or pack_id, "label": row[1] or "", "text": row[2] or ""}
+
+
+def save_bucket_rich_manifest(db_path: str, manifest: dict) -> None:
+    """整區 LINE 圖文包 manifest 寫 DB（Render 重啟後磁碟會空）。"""
+    import json
+
+    data = manifest or {}
+    as_of = str(data.get("as_of") or "").replace("-", "")
+    bucket = str(data.get("bucket_key") or "").strip()
+    text = str(data.get("line_text") or "").strip()
+    if not as_of or not bucket or not text:
+        return
+    ensure_line_pack_table(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO screen_line_rich_manifests(as_of, bucket, manifest, updated_at)
+        VALUES (?,?,?,datetime('now'))
+        ON CONFLICT(as_of, bucket) DO UPDATE SET
+            manifest=excluded.manifest,
+            updated_at=excluded.updated_at
+        """,
+        (as_of, bucket, json.dumps(data, ensure_ascii=False)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_bucket_rich_manifest(db_path: str, bucket_key: str, as_of: str = "") -> dict:
+    """讀整區圖文包 manifest；未指定 as_of 時取最新一筆。"""
+    import json
+
+    ensure_line_pack_table(db_path)
+    bucket_key = str(bucket_key or "").strip()
+    as_of = str(as_of or "").replace("-", "")
+    conn = sqlite3.connect(db_path)
+    if as_of:
+        row = conn.execute(
+            "SELECT manifest FROM screen_line_rich_manifests WHERE as_of=? AND bucket=?",
+            (as_of, bucket_key),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT manifest FROM screen_line_rich_manifests
+            WHERE bucket=? ORDER BY as_of DESC LIMIT 1
+            """,
+            (bucket_key,),
+        ).fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return {}
+    try:
+        data = json.loads(row[0])
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def load_line_packs(db_path: str, as_of: str = "") -> list:

@@ -63,3 +63,45 @@ def test_line_rich_hop_url():
     from line_rich_pack import line_rich_hop_url
 
     assert line_rich_hop_url("leave_zero", "https://example.com") == "https://example.com/line/rich/leave_zero"
+
+
+def test_rich_manifest_db_roundtrip(tmp_path):
+    from screen_sessions import load_bucket_rich_manifest, save_bucket_rich_manifest
+
+    db = str(tmp_path / "t.db")
+    manifest = {
+        "bucket_key": "leave_zero",
+        "as_of": "20260901",
+        "title": "起漲",
+        "count": 1,
+        "line_text": "WayneBot 測試\n1. 台積電",
+        "album_url": "",
+        "stocks": [],
+    }
+    save_bucket_rich_manifest(db, manifest)
+    hit = load_bucket_rich_manifest(db, "leave_zero")
+    assert hit.get("line_text") == manifest["line_text"]
+
+
+def test_rebuild_manifest_from_line_pack(tmp_path):
+    from line_rich_pack import rebuild_manifest_from_line_pack
+    from screen_sessions import upsert_line_pack
+
+    db = str(tmp_path / "t.db")
+    upsert_line_pack(
+        db,
+        "20260901",
+        {"id": "leave_zero", "title": "傳 起漲", "label": "開 LINE", "text": "WayneBot 測試\n1. 華航"},
+    )
+    hit = rebuild_manifest_from_line_pack(db, "leave_zero")
+    assert hit.get("text_only") is True
+    assert "華航" in hit.get("line_text", "")
+
+
+def test_long_line_text_skips_auto_redirect():
+    from line_hop import render_line_redirect_html
+
+    long_text = "測" * 3000
+    page = render_line_redirect_html(long_text)
+    assert "手動" in page
+    assert "http-equiv=\"refresh\"" not in page
