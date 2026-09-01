@@ -585,17 +585,28 @@ class PortfolioEngine:
         return quotes
 
     def format_holdings_html(self, holdings: List[Dict[str, Any]], quotes_map: Optional[Dict[str, Dict[str, Any]]] = None) -> str:
-        from tg_layout import html_escape, html_move, html_money, html_pct, html_price, html_qty, kv_html, price_change
+        from tg_layout import (
+            html_escape,
+            html_last_move,
+            html_money,
+            html_num_paren,
+            html_price,
+            html_qty_tight,
+            kv_html,
+            price_change,
+            section_eq,
+            _plain_num,
+        )
 
         if not holdings:
             return (
-                "<b>我的持股（手記）</b>\n"
+                f"{section_eq('我的持股（手記）')}\n"
                 "這頁是「你已經買了」的紀錄，空的代表還沒記過買入。\n"
                 "做法：打南亞或 2330 → 按「記買入」→ 輸入 <code>1 68.5</code>（張數 價格）。"
             )
         ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
         quotes_map = self.load_quotes_for(ids, quotes_map)
-        lines = ["<b>我的持股（手記）</b>", "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
+        lines = [section_eq("我的持股（手記）"), "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
         for h in holdings:
             code = str(h.get("stock_code") or h.get("stock_id") or "")
             name = str(h.get("stock_name") or "")
@@ -617,11 +628,13 @@ class PortfolioEngine:
             except Exception:
                 title = f"<code>{html_escape(code)}</code> {html_escape(name)}"
             lines.append(title)
-            lines.append(kv_html("張數", html_qty(lots, signed=False), 8))
+            lines.append(kv_html("張數", html_qty_tight(lots, signed=False), 8))
             lines.append(kv_html("成本", html_price(cost), 8))
-            move = html_move(chg, pct) if chg is not None and pct is not None else "—"
-            lines.append(kv_html("現價", f"{html_price(last)}　{move}", 8))
-            lines.append(kv_html("未實現", f"{html_money(u_pnl)}（{html_pct(u_pct).strip()}）", 8))
+            if chg is not None and pct is not None:
+                lines.append(kv_html("現價", html_last_move(last, chg, pct), 8))
+            else:
+                lines.append(kv_html("現價", html_price(last), 8))
+            lines.append(kv_html("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct), 8))
             lines.append(kv_html("市值", html_money(mkt, signed=False), 8))
             if h is not holdings[-1]:
                 lines.append("")
