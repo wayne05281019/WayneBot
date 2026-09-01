@@ -227,7 +227,8 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertTrue(href.startswith("https://line.me/R/share?text="))
         page = render_line_hop_html("開 LINE・起漲", packs[1]["text"])
         self.assertIn("line.me/R/share", page)
-        self.assertIn("自己選要傳給誰", page)
+        self.assertNotIn("哥哥", page)
+        self.assertNotIn("自己選要傳給誰", page)
 
     def test_inventory_payload_shape(self):
         from import_health import inventory_payload
@@ -1841,14 +1842,15 @@ class WatchListTest(unittest.TestCase):
             save_line_stocks(path, "20260828", bodies)
             self.assertIn("2330", load_line_stock(path, "2330")["text"])
             hop = hop_stock_response(path, "2330")
-            self.assertIn("2330", hop["html"])
+            self.assertTrue((hop.get("redirect") or "").startswith("https://line.me/R/share?text="))
             page = render_line_hop_html("傳 2330", load_line_stock(path, "2330")["text"])
             self.assertIn("line.me/R/share", page)
-            self.assertNotIn("location.replace", page)
+            self.assertIn("location.replace", page)
+            self.assertNotIn("哥哥", page)
         finally:
             os.remove(path)
 
-    def test_stock_card_uses_blockquote_without_per_stock_line(self):
+    def test_stock_card_inline_line_link_on_title_row(self):
         from screening_engine import _stock_card_html
 
         card = _stock_card_html(
@@ -1868,10 +1870,11 @@ class WatchListTest(unittest.TestCase):
             1,
         )
         self.assertIn("<blockquote>", card)
-        self.assertIn("格局", card)
-        self.assertIn("收盤", card)
-        self.assertNotIn("開 LINE・傳這檔", card)
-        self.assertNotIn("/line/stock/", card)
+        self.assertIn("開 LINE・傳這檔", card)
+        self.assertIn("/line/stock/2330", card)
+        first = card.split("\n", 1)[0]
+        self.assertIn("台積電", first)
+        self.assertIn("開 LINE・傳這檔", first)
 
     def test_screen_keyboard_has_section_line_button(self):
         import inspect
