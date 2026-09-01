@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import struct
 import time
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
@@ -1029,6 +1030,25 @@ class WayneTelegramBot:
             "介紹圖／決策卡／導航／籌碼並行產生，完成一張送一張…"
         )
 
+    @staticmethod
+    def _chart_png_looks_ok(path: str) -> bool:
+        """併發產圖偶發殘缺檔（只有標題、中間全白）；送出前擋掉。"""
+        if not path or not os.path.exists(path):
+            return False
+        try:
+            if os.path.getsize(path) < 48_000:
+                return False
+            with open(path, "rb") as f:
+                if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                    return False
+                f.read(4)
+                if f.read(4) != b"IHDR":
+                    return False
+                w, h = struct.unpack(">II", f.read(8))
+                return w >= 500 and h >= 900
+        except Exception:
+            return False
+
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_manual_screening(update.message)
 
@@ -1983,10 +2003,11 @@ class WayneTelegramBot:
                 )
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
-            glance_path = os.path.join(self.charts_dir, f"{code}_glance.png")
-            card_path_f = os.path.join(self.charts_dir, f"{code}_card.png")
-            chart_path_f = os.path.join(self.charts_dir, f"{code}.png")
-            chip_path_f = os.path.join(self.charts_dir, f"{code}_chips.png")
+            req_tag = f"{int(time.time() * 1000)}"
+            glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
+            card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
+            chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
+            chip_path_f = os.path.join(self.charts_dir, f"{code}_chips_{req_tag}.png")
 
             async def _job_glance():
                 path = await asyncio.wait_for(
@@ -2010,17 +2031,30 @@ class WayneTelegramBot:
                 return ("card", path)
 
             async def _job_chart():
-                path = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        generate_chart,
+                def _render_chart():
+                    return generate_chart(
                         code,
                         "",
                         self.db_path,
                         chart_path_f,
                         ohlc,
-                    ),
-                    timeout=90.0,
-                )
+                    )
+
+                path = ""
+                for attempt in range(2):
+                    path = await asyncio.wait_for(
+                        asyncio.to_thread(_render_chart),
+                        timeout=90.0,
+                    )
+                    if self._chart_png_looks_ok(path):
+                        break
+                    logger.warning(
+                        "導航圖殘缺 code=%s attempt=%s size=%s",
+                        code,
+                        attempt + 1,
+                        os.path.getsize(path) if path and os.path.exists(path) else 0,
+                    )
+                    path = ""
                 return ("chart", path)
 
             async def _job_chips():
@@ -2051,10 +2085,14 @@ class WayneTelegramBot:
                 elif kind == "card":
                     ok = await send_photo(path, "高低決策卡")
                 elif kind == "chart":
-                    ok = await send_photo(
-                        path,
-                        "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
-                    )
+                    if not self._chart_png_looks_ok(path):
+                        logger.warning("略過殘缺導航圖 code=%s path=%s", code, path)
+                        ok = False
+                    else:
+                        ok = await send_photo(
+                            path,
+                            "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
+                        )
                 elif kind == "chips":
                     ok = await send_photo(path, "籌碼（張）", hub)
                     hub_on = ok
