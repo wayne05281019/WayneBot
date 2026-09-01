@@ -1031,13 +1031,13 @@ class WayneTelegramBot:
     async def _send_line_rich_bucket(self, message, bucket_key: str):
         """起漲等海選分類：整區每檔產介紹圖、高低決策卡、籌碼、產業說明。"""
         from import_health import latest_complete_quote_date
-        from line_hop import line_share_href
         from line_rich_pack import (
             bucket_stock_rows,
             bucket_title,
             build_bucket_line_text,
             render_line_share_pack,
         )
+        from screen_sessions import upsert_line_pack
 
         bucket_key = str(bucket_key or "").strip()
         title = bucket_title(bucket_key)
@@ -1117,8 +1117,18 @@ class WayneTelegramBot:
         line_body = build_bucket_line_text(self.db_path, bucket_key, enriched, as_of)
         line_btn = None
         if line_body:
+            upsert_line_pack(
+                self.db_path,
+                as_of,
+                {
+                    "id": bucket_key,
+                    "title": f"傳 {title} 到 LINE",
+                    "label": f"開 LINE・{title}",
+                    "text": line_body,
+                },
+            )
             line_btn = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("開 LINE・分享文字摘要", url=line_share_href(line_body))]]
+                [[InlineKeyboardButton("開 LINE・分享文字摘要", url=self._line_open_url(bucket_key))]]
             )
         try:
             await status.delete()
@@ -1127,7 +1137,7 @@ class WayneTelegramBot:
         await message.reply_html(
             f"✅ <b>【{html_escape(title)}】</b>　{n} 檔圖文已生成。\n"
             "請將上面每一檔（圖＋產業說明）轉發到 LINE；"
-            "或按下方按鈕分享文字摘要（內含奇摩連結）。",
+            "或按下方綠色按鈕開啟 LINE 分享文字摘要。",
             reply_markup=line_btn or hub,
             disable_web_page_preview=True,
         )
