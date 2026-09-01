@@ -89,7 +89,11 @@ def apply_trade_live(
         quotes = fetch_mis_batch(codes, db_path)
     except Exception as e:
         logger.warning("apply_trade_live MIS failed: %s", e)
-        return []
+        quotes = {}
+
+    if not quotes:
+        logger.warning("apply_trade_live: MIS 無報價，改顯示昨收候選（未盤中複核）")
+        return [dict(r, _live_skipped=True) for r in rows]
 
     checker = passes_daytrade_live if bucket == "daytrade" else passes_overnight_live
     out: List[Dict[str, Any]] = []
