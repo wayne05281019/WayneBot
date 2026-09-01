@@ -865,15 +865,23 @@ class WayneTelegramBot:
         from trade_live import apply_trade_live
 
         pre_live = len(rows)
+        live_skipped = False
         if live_bucket:
             rows = await asyncio.wait_for(
                 asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket),
-                timeout=20.0,
+                timeout=30.0,
             )
+            live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>"
-        if cards:
+        if cards and live_skipped:
+            body = (
+                head
+                + "\n<i>⚠️ 盤中 MIS 暫時無法複核，以下為昨收候選（請自行確認現價與漲幅）。</i>\n"
+                + "\n".join(cards)
+            )
+        elif cards:
             body = head + "\n" + "\n".join(cards)
         elif pre_live > 0:
             body = head + "\n<i>盤中複核後無符合（當沖漲幅須 2%～8.5%，隔日沖須 ≥2.5%）。</i>"
@@ -1222,14 +1230,14 @@ class WayneTelegramBot:
             return
         if text == "當沖":
             self._pending.pop(uid, None)
-            await self._ensure_reply_menu_if_needed(update.message, uid)
             logger.info("主選單：當沖 uid=%s", uid)
+            asyncio.create_task(self._ensure_reply_menu_if_needed(update.message, uid))
             await self.daytrade_cmd(update, context)
             return
         if text == "隔日沖":
             self._pending.pop(uid, None)
-            await self._ensure_reply_menu_if_needed(update.message, uid)
             logger.info("主選單：隔日沖 uid=%s", uid)
+            asyncio.create_task(self._ensure_reply_menu_if_needed(update.message, uid))
             await self.overnight_cmd(update, context)
             return
         if text == MENU_BTN_RESERVED:
@@ -1975,7 +1983,13 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("set_my_commands 失敗")
 
-        app = Application.builder().token(self.token).post_init(_on_start).build()
+        app = (
+            Application.builder()
+            .token(self.token)
+            .concurrent_updates(True)
+            .post_init(_on_start)
+            .build()
+        )
         app.add_handler(CommandHandler("start", self.start_cmd))
         app.add_handler(CommandHandler("menu", self.menu_cmd))
         app.add_handler(CommandHandler("help", self.help_cmd))

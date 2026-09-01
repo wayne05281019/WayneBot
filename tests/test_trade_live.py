@@ -70,3 +70,17 @@ def test_apply_trade_live_filters(monkeypatch):
     assert out[0]["live"]["update_time"] == "10:30:00"
     assert out[0]["live"]["vol_rank_120"] == 3
     assert out[0]["vol_rank_120"] == 3
+
+
+def test_apply_trade_live_mis_fail_shows_cached(monkeypatch):
+    rows = [{"code": "2330", "name": "台積電"}]
+
+    def fake_batch(codes, db_path):
+        return {}
+
+    monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
+    out = apply_trade_live(rows, ":memory:", "daytrade")
+    assert len(out) == 1
+    assert out[0]["code"] == "2330"
+    assert out[0].get("_live_skipped") is True
+
