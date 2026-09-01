@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import time
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import get_charts_dir, get_db_path, get_telegram_config
@@ -28,6 +29,12 @@ from ai_trader import format_ai_desk_html
 from chips import generate_chips_image
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_menu_text(text: str) -> str:
+    """主選單按鈕文字正規化（全形、空白）。"""
+    t = unicodedata.normalize("NFKC", (text or "").strip())
+    return t.replace("\u3000", "").strip()
 
 
 def html_escape(val) -> str:
@@ -841,28 +848,67 @@ class WayneTelegramBot:
             )
             await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
 
+    async def _run_trade_bucket(
+        self,
+        message,
+        *,
+        bucket_key: str,
+        live_bucket: str,
+        title: str,
+        subtitle: str,
+        topic: str,
+        status_text: str,
+        menu_label: str,
+        loader,
+    ):
+        status = await message.reply_text(status_text, reply_markup=self._keyboard())
+        try:
+            rows = await asyncio.to_thread(loader)
+            await self._reply_trade_list(
+                message,
+                rows,
+                title=title,
+                subtitle=subtitle,
+                bucket_key=bucket_key,
+                topic=topic,
+                live_bucket=live_bucket,
+            )
+        except Exception as e:
+            logger.exception("%s 查詢失敗", live_bucket)
+            await message.reply_text(
+                f"{menu_label}查詢失敗：{e}\n請稍後再按一次主選單「{menu_label}」。",
+                reply_markup=self._keyboard(),
+            )
+        finally:
+            try:
+                await status.delete()
+            except Exception:
+                pass
+
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        rows = await asyncio.to_thread(self.screener.screen_daytrade)
-        await self._reply_trade_list(
+        await self._run_trade_bucket(
             update.message,
-            rows,
-            title="當沖候選",
-            subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
             bucket_key="day_trade",
-            topic="daytrade",
             live_bucket="daytrade",
+            title="⚡ 當沖候選（盤中即時）",
+            subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
+            topic="daytrade",
+            status_text="⚡ 當沖查詢中（盤中現價複核）…",
+            menu_label="當沖",
+            loader=self.screener.screen_daytrade,
         )
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        rows = await asyncio.to_thread(self.screener.screen_overnight)
-        await self._reply_trade_list(
+        await self._run_trade_bucket(
             update.message,
-            rows,
-            title="隔日沖候選",
-            subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
             bucket_key="overnight",
-            topic="overnight",
             live_bucket="overnight",
+            title="⚡ 隔日沖候選（盤中即時）",
+            subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
+            topic="overnight",
+            status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
+            menu_label="隔日沖",
+            loader=self.screener.screen_overnight,
         )
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1063,7 +1109,8 @@ class WayneTelegramBot:
         await update.message.reply_text(msg, reply_markup=self._keyboard())
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = (update.message.text or "").strip()
+        raw = (update.message.text or "").strip()
+        text = _normalize_menu_text(raw)
         uid = str(update.effective_user.id)
         if text.lower().lstrip("/") in ("start", "開始"):
             self._pending.pop(uid, None)
@@ -1090,10 +1137,12 @@ class WayneTelegramBot:
             return
         if text == "當沖":
             self._pending.pop(uid, None)
+            logger.info("主選單：當沖 uid=%s", uid)
             await self.daytrade_cmd(update, context)
             return
         if text == "隔日沖":
             self._pending.pop(uid, None)
+            logger.info("主選單：隔日沖 uid=%s", uid)
             await self.overnight_cmd(update, context)
             return
         if text == MENU_BTN_RESERVED:
@@ -1671,7 +1720,7 @@ class WayneTelegramBot:
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
                 "leave_zero": "起漲：高低卡獲利剛離零（跟決策卡同一條獲利）",
-                "golden_buy": "黃金買點：60低＋獲利≈0＋月乖離<-10%（下坡不進）",
+                "golden_buy": "黃金買點：60低＋獲利≈0＋月乖離<-10%（專收超跌，與起漲分開）",
                 "select_01": "周帶量：短線轉強，貼月高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上",
                 "select_03": "止跌：月低附近有人接、量沒死",
@@ -1787,26 +1836,28 @@ class WayneTelegramBot:
                 logger.exception("海選失敗")
                 await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
         elif data == "daytrade":
-            rows = await asyncio.to_thread(self.screener.screen_daytrade)
-            await self._reply_trade_list(
+            await self._run_trade_bucket(
                 q.message,
-                rows,
-                title="當沖候選",
-                subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
                 bucket_key="day_trade",
-                topic="daytrade",
                 live_bucket="daytrade",
+                title="⚡ 當沖候選（盤中即時）",
+                subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
+                topic="daytrade",
+                status_text="⚡ 當沖查詢中（盤中現價複核）…",
+                menu_label="當沖",
+                loader=self.screener.screen_daytrade,
             )
         elif data == "overnight":
-            rows = await asyncio.to_thread(self.screener.screen_overnight)
-            await self._reply_trade_list(
+            await self._run_trade_bucket(
                 q.message,
-                rows,
-                title="隔日沖候選",
-                subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
                 bucket_key="overnight",
-                topic="overnight",
                 live_bucket="overnight",
+                title="⚡ 隔日沖候選（盤中即時）",
+                subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
+                topic="overnight",
+                status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
+                menu_label="隔日沖",
+                loader=self.screener.screen_overnight,
             )
         elif data == "portfolio":
             await self._send_portfolio(q.message, str(q.from_user.id))

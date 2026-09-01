@@ -303,6 +303,17 @@ class MainRunner:
         conn.close()
         return quotes
 
+    def _screening_fail_message(self) -> str:
+        from import_health import latest_complete_quote_date
+
+        as_of = latest_complete_quote_date(self.db_path) or self.today_str
+        return (
+            "⚠️ <b>今早海選未完成</b>\n"
+            f"基準日 <code>{as_of}</code>\n"
+            "請按主選單「海選」重試。\n"
+            "<b>當沖／隔日沖</b>請按主選單「當沖」「隔日沖」— 會用盤中現價複核，不是盤後漲停備援名單。"
+        )
+
     def generate_screening_report(self) -> str:
         logger.info("🔍 正在執行四大選股...")
         report_text = ""
@@ -312,9 +323,9 @@ class MainRunner:
                 report_text = output.get("message") or ""
                 logger.info(f"四大選股 status={output.get('status')} scanned={output.get('total_scanned')}")
             except Exception as e:
-                logger.error(f"四大選股失敗，改用簡易 SQL：{e}", exc_info=True)
+                logger.error(f"四大選股失敗：{e}", exc_info=True)
         if not report_text:
-            report_text = self._fallback_sql_report()
+            report_text = self._screening_fail_message()
         extra = [report_text, self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
             from fundamentals import format_hot_revenue_html
@@ -396,10 +407,12 @@ class MainRunner:
                 self.bot.send_screening_report(screening)
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
-                self.send_telegram_message(screening.get("message") or self.generate_screening_report())
+                self.send_telegram_message(
+                    screening.get("message") or self._screening_fail_message()
+                )
         else:
             report_text = (screening or {}).get("message") if screening else ""
-            self.send_telegram_message(report_text or self.generate_screening_report())
+            self.send_telegram_message(report_text or self._screening_fail_message())
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
             from screen_review import score_ai_fills, score_screen_picks
