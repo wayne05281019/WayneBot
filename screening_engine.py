@@ -455,7 +455,7 @@ class ScreeningEngine:
 
     def _screen_trade_bucket_from_cache(
         self, bucket_key: str, target_date: Optional[str] = None
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         from screen_sessions import load_bucket_rows
 
         target_date = target_date or self.get_latest_trading_date()
@@ -463,33 +463,19 @@ class ScreeningEngine:
         if not rows:
             rows = load_bucket_rows(self.db_path, bucket_key, "")
         if not rows:
-            return None
+            return []
         enriched = self._enrich_session_trade_rows(rows, target_date)
         return [self._row_for_bot(x) for x in enriched]
 
     def screen_daytrade(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """主選單當沖：只讀海選快取 + 盤中 MIS 複核，不跑全市場掃描。"""
         target_date = target_date or self.get_latest_trading_date()
-        cached = self._screen_trade_bucket_from_cache("day_trade", target_date)
-        if cached is not None:
-            return cached
-        dfs = self.load_market_data(target_date=target_date)
-        if not dfs:
-            return []
-        results = self.execute_all_strategies(dfs)
-        _postprocess_screen(self.db_path, target_date, results)
-        return [self._row_for_bot(x) for x in results.get("day_trade") or []]
+        return self._screen_trade_bucket_from_cache("day_trade", target_date)
 
     def screen_overnight(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """主選單隔日沖：只讀海選快取 + 盤中 MIS 複核，不跑全市場掃描。"""
         target_date = target_date or self.get_latest_trading_date()
-        cached = self._screen_trade_bucket_from_cache("overnight", target_date)
-        if cached is not None:
-            return cached
-        dfs = self.load_market_data(target_date=target_date)
-        if not dfs:
-            return []
-        results = self.execute_all_strategies(dfs)
-        _postprocess_screen(self.db_path, target_date, results)
-        return [self._row_for_bot(x) for x in results.get("overnight") or []]
+        return self._screen_trade_bucket_from_cache("overnight", target_date)
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)

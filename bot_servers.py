@@ -828,6 +828,7 @@ class WayneTelegramBot:
         from tg_layout import chunk_telegram_html
         from trade_live import apply_trade_live
 
+        pre_live = len(rows)
         if live_bucket:
             rows = await asyncio.wait_for(
                 asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket),
@@ -836,7 +837,12 @@ class WayneTelegramBot:
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>"
-        body = head + ("\n" + "\n".join(cards) if cards else "\n<i>今日無符合</i>")
+        if cards:
+            body = head + "\n" + "\n".join(cards)
+        elif pre_live > 0:
+            body = head + "\n<i>盤中複核後無符合（當沖漲幅須 2%～8.5%，隔日沖須 ≥2.5%）。</i>"
+        else:
+            body = head + "\n<i>今日無符合</i>"
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
         chunks = chunk_telegram_html(body, 3500) or [body]
         last = len(chunks) - 1
@@ -880,6 +886,24 @@ class WayneTelegramBot:
                 await status.delete()
             except Exception:
                 pass
+            if not rows:
+                from screen_sessions import screen_session_has_data
+
+                as_of = self.screener.get_latest_trading_date()
+                if not screen_session_has_data(self.db_path, as_of):
+                    await message.reply_html(
+                        f"<b>{title}</b>\n"
+                        f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of)}）。"
+                        "請按主選單「海選」執行後再查；會用盤中 MIS 現價複核。</i>",
+                        reply_markup=self._keyboard(),
+                    )
+                else:
+                    await message.reply_html(
+                        f"<b>{title}</b>\n"
+                        f"<i>昨收掃描後此桶無候選，或盤中複核後無符合標的。</i>",
+                        reply_markup=self._keyboard(),
+                    )
+                return
             await self._reply_trade_list(
                 message,
                 rows,

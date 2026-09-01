@@ -463,6 +463,24 @@ def load_bucket_rows(
         conn.close()
 
 
+def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
+    """該基準日是否已跑過海選（任一桶有存檔）。"""
+    ensure_screen_session_table(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    conn = sqlite3.connect(db_path)
+    try:
+        if as_of:
+            row = conn.execute(
+                "SELECT 1 FROM screen_sessions WHERE as_of=? LIMIT 1",
+                (as_of,),
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT 1 FROM screen_sessions LIMIT 1").fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
 def load_morning_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
     ensure_screen_session_table(db_path)
     conn = sqlite3.connect(db_path)

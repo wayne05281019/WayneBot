@@ -50,6 +50,21 @@ def test_load_bucket_rows_reads_morning_bucket(tmp_path):
     assert rows[0]["stock_id"] == "3105"
 
 
+def test_screen_session_has_data(tmp_path):
+    from screen_sessions import ensure_screen_session_table, save_screen_session, screen_session_has_data
+
+    db = str(tmp_path / "t.db")
+    assert not screen_session_has_data(db, "20260831")
+    ensure_screen_session_table(db)
+    save_screen_session(
+        db,
+        "20260831",
+        "morning",
+        {"day_trade": [{"stock_id": "3105", "stock_name": "穩懋", "close": 500}]},
+    )
+    assert screen_session_has_data(db, "20260831")
+
+
 def test_screen_daytrade_uses_cache_not_full_scan(tmp_path, monkeypatch):
     from screening_engine import ScreeningEngine
 
@@ -74,6 +89,21 @@ def test_screen_daytrade_uses_cache_not_full_scan(tmp_path, monkeypatch):
     rows = eng.screen_daytrade("20260828")
     assert len(rows) == 1
     assert rows[0]["code"] == "3105"
+
+
+def test_screen_daytrade_empty_without_full_scan(tmp_path, monkeypatch):
+    from screening_engine import ScreeningEngine
+
+    db = str(tmp_path / "t.db")
+    _mk_db(db)
+
+    def boom(*_a, **_k):
+        raise AssertionError("不應跑全市場掃描")
+
+    monkeypatch.setattr(ScreeningEngine, "load_market_data", boom)
+    eng = ScreeningEngine(db_path=db)
+    monkeypatch.setattr(eng, "get_latest_trading_date", lambda: "20260828")
+    assert eng.screen_daytrade("20260828") == []
 
 
 def test_live_vol_rank_120_batch():
