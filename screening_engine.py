@@ -1273,12 +1273,10 @@ def format_line_share_packs(
             if not sid or sid in seen_both:
                 continue
             seen_both.add(sid)
-            url = _yahoo_web(sid, db_path)
             name = str(it.get("stock_name") or it.get("name") or "")
-            block = f"{len(both_bits) + 1}. {sid} {name}".strip()
-            if url:
-                block += f"\n{url}"
-            both_bits.append(block)
+            from line_share_format import line_stock_headline
+
+            both_bits.append(line_stock_headline(len(both_bits) + 1, sid, name, db_path))
     both = ""
     if both_bits:
         both = "＝＝雙時段＝＝　晚間台股＋今早都在\n" + "\n".join(both_bits)
