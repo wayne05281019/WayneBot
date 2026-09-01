@@ -47,6 +47,7 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
     for key in (
         "revenue_cross",
         "leave_zero",
+        "golden_buy",
         "select_01",
         "select_02",
         "select_03",
@@ -73,6 +74,7 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
     out, seen = [], set()
     for key, reason in (
         ("leave_zero", "起漲：獲利離零"),
+        ("golden_buy", "黃金買點：60低超跌"),
         ("revenue_cross", "優先看：營收轉強×突破"),
         ("overnight", "隔日沖佈局"),
         ("select_01", "周帶量突破"),

@@ -16,6 +16,7 @@ except Exception:
 
 BUCKETS = (
     ("leave_zero", "起漲"),
+    ("golden_buy", "黃金買點"),
     ("revenue_cross", "優先看"),
     ("select_01", "周突破"),
     ("select_02", "站上季線"),
@@ -318,6 +319,7 @@ def bucket_from_reason(reason: str) -> str:
     r = str(reason or "")
     mapping = (
         ("起漲", "leave_zero"),
+        ("黃金", "golden_buy"),
         ("營收", "revenue_cross"),
         ("隔日", "overnight"),
         ("周", "select_01"),
