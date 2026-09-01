@@ -351,6 +351,8 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertNotIn("分點不抓", flow)
             self.assertNotIn("instant", flow)
             self.assertGreaterEqual(flow.count("┈┈┈"), 3)
+            self.assertNotIn("你的持股 vs", flow)
+            self.assertNotIn("觀察清單", flow)
             items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
             annotate_items_with_sector_flow(path, "20260828", items)
             self.assertTrue(items[0].get("sector_inflow"))

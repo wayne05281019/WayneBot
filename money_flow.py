@@ -474,6 +474,8 @@ def format_flow_html(
     user_id: str = "",
     yyyymmdd: str = None,
 ) -> str:
+    """盤後資金輪動＋當日三大法人排行；不含持股／觀察（各走自己的選單）。"""
+    del user_id
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
     ymd = yyyymmdd or _latest_date(conn, path)
@@ -510,21 +512,6 @@ def format_flow_html(
         """,
         (ymd,),
     ).fetchall()
-
-    hold_ids: List[str] = []
-    watch_ids: List[str] = []
-    holds: List[Dict[str, Any]] = []
-    if user_id:
-        try:
-            from wayne_db import get_user_portfolio, get_user_watchlist
-
-            holds = get_user_portfolio(path, user_id)
-            hold_ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holds]
-            watch_ids = [str(w.get("stock_code") or "") for w in get_user_watchlist(path, user_id)]
-        except Exception:
-            hold_ids, watch_ids, holds = [], [], []
-
-    qmap = _quotes_for(conn, ymd, [s for s in hold_ids + watch_ids if s])
     conn.close()
 
     ymd_s = f"{ymd[:4]}/{ymd[4:6]}/{ymd[6:]}"
@@ -572,41 +559,5 @@ def format_flow_html(
             )
         blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖）</b>", *_flow_stock_lines(bits)))
 
-    if holds:
-        bits = []
-        for i, h in enumerate(holds, start=1):
-            sid = str(h.get("stock_code") or "")
-            q = qmap.get(sid)
-            if not q:
-                bits.append(f"{i}. {_yahoo(sid, '', path)}　當日無報價")
-                continue
-            cost = float(h.get("cost_price") or 0)
-            close = float(q["close"] or 0)
-            pnl = ((close - cost) / cost * 100.0) if cost else 0.0
-            three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
-            bits.append(
-                f"{i}. {_yahoo(sid, q['stock_name'], path)}\n"
-                f"成本 {cost:g}　收 {close:g}　{html_code_join(pct_text(pnl), '法人 ' + qty_text(three))}\n"
-                f"{_verdict(float(q['pct_change'] or 0), three, int(q['foreign_net'] or 0))}"
-            )
-        blocks.append(section("<b>你的持股 vs 當日資金</b>", *_flow_stock_lines(bits)))
-    elif user_id:
-        blocks.append(section("<b>持股</b>", "尚未記買入。有持股後這裡會對照法人是否還在買。"))
-
-    if watch_ids:
-        bits = []
-        n = 0
-        for sid in watch_ids[:8]:
-            q = qmap.get(sid)
-            if not q:
-                continue
-            n += 1
-            three = int(q["foreign_net"] or 0) + int(q["trust_net"] or 0) + int(q["dealer_net"] or 0)
-            bits.append(
-                f"{n}. {_yahoo(sid, q['stock_name'], path)}\n"
-                + html_code_join(pct_text(q["pct_change"]), f"法人 {qty_text(three)}")
-            )
-        if bits:
-            blocks.append(section("<b>觀察清單</b>", *_flow_stock_lines(bits)))
-
     return join_dashed(*blocks)
+
