@@ -59,11 +59,11 @@ def test_apply_trade_live_filters(monkeypatch):
             },
         }
 
-    def fake_rank(db_path, code, vol):
-        return 3 if code == "2330" else 99
+    def fake_rank(db_path, vols):
+        return {"2330": 3}
 
     monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
-    monkeypatch.setattr("live_quote.live_vol_rank_120", fake_rank)
+    monkeypatch.setattr("live_quote.live_vol_rank_120_batch", fake_rank)
     out = apply_trade_live(rows, ":memory:", "daytrade")
     assert len(out) == 1
     assert out[0]["code"] == "2330"

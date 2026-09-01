@@ -418,6 +418,69 @@ def load_line_share(db_path: str, as_of: str = "") -> str:
     return str(row[0] or "") if row else ""
 
 
+def load_bucket_rows(
+    db_path: str,
+    bucket: str,
+    as_of: str = "",
+    *,
+    session: str = "",
+) -> List[Dict[str, Any]]:
+    """讀 screen_sessions 某桶名單；優先 morning，其次 evening。"""
+    ensure_screen_session_table(db_path)
+    bucket = str(bucket or "").strip()
+    as_of = str(as_of or "").replace("-", "")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        if not as_of:
+            row = conn.execute(
+                """
+                SELECT as_of FROM screen_sessions
+                WHERE bucket=?
+                ORDER BY as_of DESC LIMIT 1
+                """,
+                (bucket,),
+            ).fetchone()
+            as_of = str(row[0]) if row else ""
+        if not as_of:
+            return []
+        sessions = [session] if session in ("morning", "evening") else ("morning", "evening")
+        for sess in sessions:
+            rows = conn.execute(
+                """
+                SELECT stock_id, stock_name, pick_close, hi20_close, entry_price,
+                       defense_price, chase_warning
+                FROM screen_sessions
+                WHERE as_of=? AND session=? AND bucket=?
+                ORDER BY stock_id
+                """,
+                (as_of, sess, bucket),
+            ).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+        return []
+    finally:
+        conn.close()
+
+
+def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
+    """該基準日是否已跑過海選（任一桶有存檔）。"""
+    ensure_screen_session_table(db_path)
+    as_of = str(as_of or "").replace("-", "")
+    conn = sqlite3.connect(db_path)
+    try:
+        if as_of:
+            row = conn.execute(
+                "SELECT 1 FROM screen_sessions WHERE as_of=? LIMIT 1",
+                (as_of,),
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT 1 FROM screen_sessions LIMIT 1").fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
 def load_morning_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
     ensure_screen_session_table(db_path)
     conn = sqlite3.connect(db_path)
