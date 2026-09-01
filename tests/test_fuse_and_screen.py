@@ -204,7 +204,7 @@ class FuseAndScreenTest(unittest.TestCase):
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("【起漲】"), line.find("【優先看】"))
+        self.assertLess(line.find("＝＝起漲｜"), line.find("＝＝優先看｜"))
         from config import scheduled_job_kind
         from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
@@ -220,7 +220,8 @@ class FuseAndScreenTest(unittest.TestCase):
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
-        self.assertIn("【起漲】", packs[1]["text"])
+        self.assertIn("＝＝起漲｜", packs[1]["text"])
+        self.assertIn("說明：", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
@@ -936,7 +937,7 @@ class DualSessionTest(unittest.TestCase):
             line = format_line_share_text(morn, "20260828", session_plain="今早 06:30")
             self.assertIn("雙時段", line)
             self.assertIn("2330", line)
-            self.assertIn("tw.stock.yahoo.com/quote/2330", line)
+            self.assertNotIn("tw.stock.yahoo.com/quote/2330", line)
         finally:
             os.remove(path)
 

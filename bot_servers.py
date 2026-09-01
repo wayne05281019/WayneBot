@@ -2298,12 +2298,12 @@ class WayneTelegramBot:
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
-                "leave_zero": "起漲：高低卡獲利剛離零（跟決策卡同一條獲利）",
-                "golden_buy": "黃金買點：60低＋獲利≈0＋月乖離<-10%（專收超跌，與起漲分開）",
+                "leave_zero": "起漲：決策卡獲利格剛離零（趨勢向上才列，不是空頭反彈）",
+                "golden_buy": "黃金買點：60低超跌觀察（候選名單，不是今天必買）",
                 "select_01": "周帶量：短線轉強，貼月高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上",
                 "select_03": "止跌：月低附近有人接、量沒死",
-                "select_04": "雙綠：高低卡20低剛脫離",
+                "select_04": "雙綠：決策卡高低格20低脫離（跟起漲獲利零不同）",
                 "day_trade": "當沖：進場 / 停利 / 停損",
                 "overnight": "隔日沖：尾盤佈局",
             }
