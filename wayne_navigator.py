@@ -535,10 +535,14 @@ class NavigatorEngine:
             today = ht.iloc[-1]
             yesterday = ht.iloc[-2]
 
-            was_green = ("0.0%" in yesterday["獲利"]) or (yesterday["預警"] in ["60低", "K20低"])
-            breakout = ("0.0%" not in today["獲利"]) and (today["預警"] != "60低")
+            from decision_card_signals import double_green_breakout
 
-            if was_green and breakout:
+            if double_green_breakout(
+                float(yesterday.get("profit_pct") or 0),
+                str(yesterday.get("預警") or ""),
+                float(today.get("profit_pct") or 0),
+                str(today.get("預警") or ""),
+            ):
                 screened.append({
                     "stock_id": sid, "stock_name": sname,
                     "close": today["close"], "profit": today["獲利"],
@@ -1053,9 +1057,11 @@ def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
     left_zero = False
     if prev_profit is not None:
         try:
-            left_zero = float(prev_profit) <= 0.05 and p > 0.05
-        except (TypeError, ValueError):
-            left_zero = False
+            from decision_card_signals import profit_left_zero_highlight
+
+            left_zero = profit_left_zero_highlight(prev_profit, profit)
+        except Exception:
+            left_zero = float(prev_profit) <= 0.05 and float(profit) > 0.05
     if left_zero:
         return C["lo_hit_fill"], C["lo_ink"]
     if p <= 0.05:

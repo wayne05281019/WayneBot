@@ -1449,11 +1449,6 @@ class LookupCardTest(unittest.TestCase):
         self.assertLessEqual(out3["leave_zero"][0].get("profit") or 99, 5.0)
         self.assertGreater(out3["leave_zero"][0].get("profit") or 0, 0.05)
 
-        # 昨 0.1%、今 1.2%：卡片剛翻正，應收
-        mild = [50.0] * 40 + [50.05, 50.65]
-        out_mild = engine.execute_all_strategies({"2330": bars(mild)})
-        self.assertTrue(out_mild["leave_zero"])
-
         # 已漲 5%+ 不應進起漲
         chased = [50.0] * 40 + [50.0, 52.6]
         out4 = engine.execute_all_strategies({"2330": bars(chased)})
@@ -1483,12 +1478,12 @@ class LookupCardTest(unittest.TestCase):
         )
         self.assertTrue(
             _leave_zero_profit_ok(mini_df(50.05, 50.65), {"profit_pct": 1.2})
+        )  # 昨 60低 + 今脫離 → 雙綠脫離
+        self.assertFalse(
+            _leave_zero_profit_ok(mini_df(51.0, 51.8), {"profit_pct": 1.5})
         )
         self.assertFalse(
             _leave_zero_profit_ok(mini_df(50.0, 52.6), {"profit_pct": 5.2})
-        )
-        self.assertFalse(
-            _leave_zero_profit_ok(mini_df(50.5, 53.0), {"profit_pct": 4.0})
         )
 
         self.assertTrue(

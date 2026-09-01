@@ -641,27 +641,18 @@ def _yesterday_profit_pct(df: pd.DataFrame) -> float:
     return ((prev_close - lo_y) / lo_y * 100.0) if lo_y > 0 else 99.0
 
 
-def _profit_card_round(p: float) -> float:
-    """與決策卡獲利欄相同：四捨五入到小數一位。"""
-    return round(float(p), 1)
-
-
 def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
-    """起漲：決策卡獲利從 0.0%/0.1% 往上翻，今日仍屬剛起步（≤5%，排除已噴一段）。"""
+    """起漲獲利條件：decision_card_signals.leave_zero_screen_ok（卡片實綠／雙綠脫離）。"""
+    from decision_card_signals import card_alerts_for_df, leave_zero_screen_ok
+
     try:
         pt = float(info.get("profit_pct") if info.get("profit_pct") is not None else 99)
         py = _yesterday_profit_pct(df)
     except (TypeError, ValueError):
         return False
-    # 昨：卡片顯示 0.0% 或 0.1%（再上去就不算貼零）
-    if _profit_card_round(py) > 0.1:
-        return False
-    # 今：必須高於昨（卡片數字有往上），且 >0.05%；上限 5% 擋掉 5%+ 已跑段
-    if pt <= 0.05 or pt > 5.0:
-        return False
-    if _profit_card_round(pt) <= _profit_card_round(py):
-        return False
-    return pt > py + 0.05
+    ya, ta = card_alerts_for_df(df)
+    ok, _reason = leave_zero_screen_ok(py, pt, yest_alert=ya, today_alert=ta)
+    return ok
 
 
 def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
@@ -926,7 +917,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
 SCREEN_PUSH_SPECS = (
-    ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨0.0～0.1%，今≤5%；排除明顯空頭）", 8, True),
+    ("leave_zero", "🌱", "起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
     ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
