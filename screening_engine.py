@@ -561,15 +561,20 @@ def _cal60_low_close(df: pd.DataFrame, idx: int = -1) -> float:
 
 def _enrich_decision_fields(df: pd.DataFrame, info: Dict[str, Any]) -> Dict[str, Any]:
     """對齊高低決策卡：獲利、月乖離、60低（邏輯層，不動出圖色票）。"""
+    from decision_card_signals import cal60_low_close_at, profit_floor_at, profit_pct_series
+
     out = dict(info)
     close_s = df["close"].astype(float)
     c = float(out.get("close") or 0)
     l60 = float(close_s.rolling(60, min_periods=20).min().iloc[-1] or 0)
-    cal60 = _cal60_low_close(df)
+    profits = profit_pct_series(df)
+    cal60 = cal60_low_close_at(df)
+    floor = profit_floor_at(df)
     ma20 = float(out.get("ma20") or 0)
     out["low_60_close"] = round(l60, 4) if l60 else 0.0
     out["cal60_low"] = round(cal60, 4) if cal60 else 0.0
-    out["profit_pct"] = round((c - cal60) / cal60 * 100.0, 1) if cal60 > 0 else 0.0
+    out["profit_floor"] = round(floor, 4) if floor else 0.0
+    out["profit_pct"] = round(float(profits.iloc[-1]), 1) if len(profits) else 0.0
     out["bias_monthly"] = round((c - ma20) / ma20 * 100.0, 1) if ma20 > 0 else 0.0
     out["at_60_low"] = bool(l60 > 0 and c <= l60 * 1.005)
     return out
@@ -628,12 +633,13 @@ def _golden_buy_ok(info: Dict[str, Any]) -> bool:
 
 
 def _yesterday_profit_pct(df: pd.DataFrame) -> float:
-    """昨收相對「昨」往前 60 曆日收盤低之獲利%，對齊決策卡前一列。"""
+    """昨收獲利%，對齊決策卡前一列（profit_floor_at）。"""
+    from decision_card_signals import profit_pct_series
+
     if len(df) < 2:
         return 99.0
-    prev_close = float(df["close"].iloc[-2])
-    lo_y = _cal60_low_close(df, -2)
-    return ((prev_close - lo_y) / lo_y * 100.0) if lo_y > 0 else 99.0
+    profits = profit_pct_series(df)
+    return float(profits.iloc[-2])
 
 
 def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:

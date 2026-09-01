@@ -341,6 +341,7 @@ class NavigatorEngine:
             cal60_low_close_at,
             card_regime_label,
             compute_card_temperature,
+            profit_floor_at,
             profit_pct_series,
         )
 
@@ -349,6 +350,7 @@ class NavigatorEngine:
         profit_src["close"] = close_raw.reindex(df.index).astype(float)
         df["profit_pct"] = profit_pct_series(profit_src)
         cal60_low = cal60_low_close_at(profit_src, -1)
+        profit_floor = profit_floor_at(profit_src, -1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
         df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480)
@@ -510,7 +512,8 @@ class NavigatorEngine:
             "qty60": (int(round(qty60 / 100.0) * 100) if qty60 >= 10000 else int(qty60)),
             "xq_notes": xq_notes,
             "cal60_low": round(cal60_low, 2),
-            "gain_pct": round((float(latest["close"]) - cal60_low) / cal60_low * 100.0, 1) if cal60_low else 0.0,
+            "profit_floor": round(profit_floor, 2),
+            "gain_pct": round(float(latest["profit_pct"]), 1) if pd.notna(latest.get("profit_pct")) else 0.0,
             "k20_high_streak": streak,
             "vol_rank": vr120,
             "vol_rank_480": vr480,

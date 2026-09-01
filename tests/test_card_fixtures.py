@@ -69,6 +69,38 @@ def test_template_2530_leave_zero_row():
     assert float(row.iloc[0]["profit_pct"]) <= 0.05
 
 
+def test_template_2633_8_11_profit_zero():
+    """高鐵範本：8/11 貼 20 日低仍顯示 0.0%（地板取 max(60曆日低,20日低)）。"""
+    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
+    if not os.path.isfile(db):
+        pytest.skip("no market db")
+    from wayne_navigator import NavigatorEngine
+
+    tbl = NavigatorEngine(db).get_decision_card("2633")["table"]
+    row = tbl[tbl["date"].astype(str) == "20260811"]
+    assert not row.empty
+    assert float(row.iloc[0]["profit_pct"]) <= 0.05
+
+
+def test_profit_floor_max_cal60_and_l20():
+    import sqlite3
+
+    import pandas as pd
+    from decision_card_signals import profit_floor_at
+
+    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
+    if not os.path.isfile(db):
+        pytest.skip("no market db")
+    conn = sqlite3.connect(db)
+    df = pd.read_sql_query(
+        "SELECT date, close FROM daily_quotes WHERE stock_id='2633' ORDER BY date", conn
+    )
+    conn.close()
+    idx = df.index[df["date"].astype(str) == "20260811"][0]
+    floor = profit_floor_at(df, idx)
+    assert floor == 25.7
+
+
 def test_template_regime_narrow_range_is_consolidation():
     """2633/2530 範本：60日區間過小時標整理格局，不是多頭。"""
     assert card_regime_label(26.25, 26.0, 25.8, space_60=7) == "整理格局"

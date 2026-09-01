@@ -30,25 +30,26 @@ def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:
     return lo if lo > 0 else float(df[close_col].iloc[idx] or 0)
 
 
+def profit_floor_at(df, idx: int = -1, *, close_col: str = "close") -> float:
+    """獲利地板：max(60曆日收盤低, 20日收盤低)。整理期貼月低仍顯示 0.0%（2633 範本）。"""
+    cal = cal60_low_close_at(df, idx, close_col=close_col)
+    closes = df[close_col].astype(float)
+    l20 = float(closes.rolling(20, min_periods=1).min().iloc[idx] or 0)
+    if l20 <= 0:
+        return cal
+    return max(cal, l20)
+
+
 def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
-    """逐日獲利 %：每列相對「該日」往前 60 曆日收盤低，不是用今天基準套歷史列。"""
-    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。"""
     closes = df[close_col].astype(float)
     out = []
     for i in range(len(df)):
-        if pd.isna(dts.iloc[i]):
-            out.append(float("nan"))
-            continue
-        end = dts.iloc[i]
-        mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
         c = float(closes.iloc[i])
-        if not mask.any():
-            lo = c
-        else:
-            lo = float(closes.loc[mask].min())
-        if lo <= 0:
-            lo = c or 1.0
-        out.append(round((c - lo) / lo * 100.0, 1))
+        floor = profit_floor_at(df, i, close_col=close_col)
+        if floor <= 0:
+            floor = c or 1.0
+        out.append(round((c - floor) / floor * 100.0, 1))
     return pd.Series(out, index=df.index)
 
 
@@ -233,7 +234,9 @@ def card_alerts_for_df(df) -> Tuple[str, str]:
     low60 = close_s.rolling(60, min_periods=20).min()
     high20 = close_s.rolling(20, min_periods=5).max()
     ma20 = close_s.rolling(20, min_periods=1).mean()
-    bias = ((close_s - ma20) / ma20.replace(0, pd.NA) * 100.0).round(1)
+    bias = pd.Series(0.0, index=close_s.index)
+    ok = ma20 > 0
+    bias.loc[ok] = ((close_s.loc[ok] - ma20.loc[ok]) / ma20.loc[ok] * 100.0).round(1)
 
     def tag_at(i: int) -> str:
         return alert_tag(
