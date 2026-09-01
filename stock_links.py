@@ -69,6 +69,15 @@ def yahoo_income_url(stock_id: str, db_path: Optional[str] = None) -> str:
     return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/income-statement"
 
 
+def line_yahoo_quote_url(stock_id: str, db_path: Optional[str] = None) -> str:
+    """LINE 轉傳：手機點連結開奇摩股市個股頁。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    ex = yahoo_exchange(sid, db_path)
+    return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}"
+
+
 def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str] = None) -> str:
     sid = str(stock_id or "").strip()
     name = str(stock_name or "").strip()

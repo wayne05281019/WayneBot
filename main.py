@@ -61,13 +61,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                     return
             target = (hop or {}).get("redirect")
             if target:
-                body = target.encode("utf-8")
-                self.send_response(302)
-                self.send_header("Location", target)
+                from line_hop import render_line_redirect_html_for_url
+
+                page = render_line_redirect_html_for_url(target).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
-                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Length", str(len(page)))
                 self.end_headers()
-                self.wfile.write(body)
+                self.wfile.write(page)
                 return
             err = str((hop or {}).get("error") or "無法開啟 LINE")
             body = err.encode("utf-8")
