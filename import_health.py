@@ -12,6 +12,25 @@ MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
 
 
+def db_quick_check_ok(db_path: str, min_bytes: int = 1_000_000) -> bool:
+    """PRAGMA quick_check；損壞庫會讓基準日／資金輪動全亂。"""
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        if os.path.getsize(path) < int(min_bytes):
+            return False
+    except OSError:
+        return False
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute("PRAGMA quick_check").fetchone()
+        conn.close()
+        return bool(row) and str(row[0]).lower() == "ok"
+    except sqlite3.DatabaseError:
+        return False
+
+
 def sides_complete(tw: int, two: int, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> bool:
     return int(tw or 0) >= int(min_tw) and int(two or 0) >= int(min_two)
 
@@ -204,6 +223,13 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
 
 def inventory_payload(db_path: str) -> Dict[str, Any]:
     """給 Render /inventory 對表：哪些日要補、財報／除權息／母體有幾列。"""
+    if not db_quick_check_ok(db_path):
+        return {
+            "ok": False,
+            "error": "database disk image is malformed",
+            "latest_complete": "",
+            "as_of": "",
+        }
     health = audit_import(db_path)
     complete = latest_complete_quote_date(db_path)
     conn = sqlite3.connect(db_path)
