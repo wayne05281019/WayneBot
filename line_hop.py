@@ -71,7 +71,7 @@ def hop_stock_response(db_path: str, stock_id: str) -> Dict[str, str]:
     if not sid:
         return {
             "title": "缺少代號",
-            "html": render_line_hop_html("缺少代號", "請從海選訊息按「開 LINE・傳這檔」。"),
+            "html": render_line_hop_html("缺少代號", "請從海選訊息按「開 LINE・傳本區」。"),
         }
     row = load_line_stock(db_path, sid)
     text = str((row or {}).get("text") or "").strip()
@@ -89,13 +89,13 @@ def hop_stock_response(db_path: str, stock_id: str) -> Dict[str, str]:
 
 def hop_response(db_path: str, pack_id: str) -> Optional[Dict[str, str]]:
     pid = str(pack_id or "").strip()
-    if pid not in PACK_IDS:
+    if not pid:
         return None
     row = load_pack_text(db_path, pid)
     if not row or not row.get("text"):
         return {
             "title": "目前沒有這段",
-            "html": render_line_hop_html("目前沒有這段", "請先在 Telegram 按一次「海選」。"),
+            "html": render_line_hop_html("目前沒有這段", "請先在 Telegram 按一次「海選」或該分類查詢。"),
         }
     title = row.get("title") or pid
     return {"title": title, "html": render_line_hop_html(title, row["text"])}

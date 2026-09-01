@@ -235,6 +235,37 @@ def save_line_packs(db_path: str, as_of: str, packs: list) -> None:
     conn.close()
 
 
+def upsert_line_pack(db_path: str, as_of: str, pack: dict) -> None:
+    """單一分類 LINE 稿；手動查當沖／隔日沖時用，不刪其他 pack。"""
+    as_of = str(as_of or "").replace("-", "")
+    pid = str((pack or {}).get("id") or "").strip()
+    text = str((pack or {}).get("text") or "").strip()
+    if not as_of or not pid or not text:
+        return
+    ensure_line_pack_table(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO screen_line_packs(as_of, pack, title, label, body, updated_at)
+        VALUES (?,?,?,?,?,datetime('now'))
+        ON CONFLICT(as_of, pack) DO UPDATE SET
+            title=excluded.title,
+            label=excluded.label,
+            body=excluded.body,
+            updated_at=excluded.updated_at
+        """,
+        (
+            as_of,
+            pid,
+            str((pack or {}).get("title") or ""),
+            str((pack or {}).get("label") or ""),
+            text,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
 def load_line_pack(db_path: str, pack_id: str, as_of: str = "") -> dict:
     ensure_line_pack_table(db_path)
     conn = sqlite3.connect(db_path)
