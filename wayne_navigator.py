@@ -387,12 +387,21 @@ class NavigatorEngine:
                 hl_tags.append("No")
             if c <= l60 * 1.005:
                 alert_tags.append("60低")
-            elif bias < 0.0:
-                alert_tags.append("K20低")
-            elif c >= h20 * 0.99 or bias >= 4.0:
-                alert_tags.append("K20高")
             else:
-                alert_tags.append("No")
+                from decision_card_signals import alert_tag
+
+                hh, ll = h20, l20
+                rsv_i = ((c - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+                alert_tags.append(
+                    alert_tag(
+                        c,
+                        low60=l60,
+                        high20=h20,
+                        low20=l20,
+                        bias_monthly=bias,
+                        rsv=rsv_i,
+                    )
+                )
 
         temps = [f"{x:.1f} °C" if x > 0 else "—" for x in temp_nums]
         trend_labels, trend_notes = compute_temp_trend_labels(
@@ -429,8 +438,16 @@ class NavigatorEngine:
         space_60 = int(round((h60 - l60) / l60 * 100.0)) if l60 else 0
         ma60s = 0.0
         if len(df) >= 7:
-            ma60s = round(float(latest["ma60"]) - float(df["ma60"].iloc[-7]), 1)
-        qty60 = int(round(float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)))
+            m0 = float(latest["ma60"] or 0)
+            m7 = float(df["ma60"].iloc[-7] or 0)
+            if m0 >= 200 or float(latest["close"] or 0) >= 500:
+                ma60s = round((m0 - m7) / m7 * 100.0, 1) if m7 > 0 else 0.0
+            else:
+                ma60s = round(m0 - m7, 1)
+        raw_qty60 = float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)
+        qty60 = int(round(raw_qty60))
+        if qty60 >= 10000:
+            qty60 = int(round(qty60 / 100.0) * 100)
         badges = []
         if is_live:
             try:
@@ -465,14 +482,38 @@ class NavigatorEngine:
             badges.append("60日均量過小")
         if space_60 and space_60 < 16:
             badges.append("60日區間過小")
-        badges.append(
-            card_regime_label(
-                float(latest["close"]),
-                float(latest["ma20"] or latest["close"]),
-                float(latest["ma60"] or latest["ma20"] or latest["close"]),
-                space_60=float(space_60 or 0),
-            )
+        if len(df) >= 40:
+            sp_prev = int(round(
+                (float(df["high_60"].iloc[-21]) - float(df["low_60"].iloc[-21]))
+                / float(df["low_60"].iloc[-21] or 1)
+                * 100.0
+            ))
+            if space_60 and sp_prev and space_60 >= sp_prev + 6:
+                badges.append("波動放大")
+        regime = card_regime_label(
+            float(latest["close"]),
+            float(latest["ma20"] or latest["close"]),
+            float(latest["ma60"] or latest["ma20"] or latest["close"]),
+            space_60=float(space_60 or 0),
         )
+        if regime == "整理格局":
+            try:
+                from screening_engine import _regime_label as _screen_regime
+
+                sr = _screen_regime(
+                    {
+                        "close": float(latest["close"]),
+                        "ma20": float(latest["ma20"] or 0),
+                        "ma60": float(latest["ma60"] or 0),
+                        "low20": float(l20),
+                        "d20": float(_dist_l(l20)) if l20 else 0,
+                    }
+                )
+                if sr in ("空頭排列", "弱勢破底", "月線下整理"):
+                    regime = "空頭整理" if sr == "月線下整理" else sr
+            except Exception:
+                pass
+        badges.append(regime)
         real = df.loc[~df["is_halt"]] if "is_halt" in df.columns else df
         table_src = real if len(real) >= lookback else df
         table = table_src.tail(lookback)[

@@ -5,6 +5,7 @@ import os
 import pytest
 
 from decision_card_signals import (
+    alert_tag,
     card_regime_label,
     card_row_leave_zero,
     compute_card_temperature,
@@ -99,6 +100,12 @@ def test_profit_floor_max_cal60_and_l20():
     idx = df.index[df["date"].astype(str) == "20260811"][0]
     floor = profit_floor_at(df, idx)
     assert floor == 25.7
+
+
+def test_alert_tag_rsv_no_false_k20_high_on_bias_only():
+    """南亞型：月乖離高但 RSV 未過熱 → 不標 K20高。"""
+    assert alert_tag(100.0, low60=90, high20=102, low20=95, bias_monthly=4.5, rsv=55.0) == "No"
+    assert alert_tag(101.5, low60=90, high20=102, low20=95, bias_monthly=2.0, rsv=72.0) == "K20高"
 
 
 def test_template_regime_narrow_range_is_consolidation():

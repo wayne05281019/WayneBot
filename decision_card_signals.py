@@ -172,21 +172,33 @@ def alert_tag(
     *,
     low60: float,
     high20: float,
+    low20: float = 0.0,
     bias_monthly: float,
+    rsv: float | None = None,
 ) -> str:
-    """預警欄：對齊 get_decision_card（60低 / K20低 / K20高 / No）。"""
+    """預警欄：60低 / K20低 / K20高 / No（K20 用 RSV，不用單獨月乖離≥4%）。"""
     try:
         c = float(close)
         l60 = float(low60 or 0)
         h20 = float(high20 or 0)
+        l20 = float(low20 or 0)
         bias = float(bias_monthly or 0)
+        k = float(rsv) if rsv is not None else None
     except (TypeError, ValueError):
         return "No"
     if l60 > 0 and c <= l60 * 1.005:
         return "60低"
+    if k is not None:
+        if k <= 35.0 and (l20 > 0 and c <= l20 * 1.005 or bias < -0.5):
+            return "K20低"
+        if k >= 70.0 and h20 > 0 and c >= h20 * 0.99:
+            return "K20高"
+        return "No"
+    if l20 > 0 and c <= l20 * 1.005:
+        return "K20低"
     if bias < 0.0:
         return "K20低"
-    if h20 > 0 and (c >= h20 * 0.99 or bias >= 4.0):
+    if h20 > 0 and c >= h20 * 0.99:
         return "K20高"
     return "No"
 
@@ -233,17 +245,22 @@ def card_alerts_for_df(df) -> Tuple[str, str]:
         return "No", "No"
     low60 = close_s.rolling(60, min_periods=20).min()
     high20 = close_s.rolling(20, min_periods=5).max()
+    low20 = close_s.rolling(20, min_periods=5).min()
     ma20 = close_s.rolling(20, min_periods=1).mean()
     bias = pd.Series(0.0, index=close_s.index)
     ok = ma20 > 0
     bias.loc[ok] = ((close_s.loc[ok] - ma20.loc[ok]) / ma20.loc[ok] * 100.0).round(1)
+    span = (high20 - low20).clip(lower=close_s * 0.002)
+    rsv = ((close_s - low20) / span * 100.0).clip(0, 100).round(1)
 
     def tag_at(i: int) -> str:
         return alert_tag(
             float(close_s.iloc[i]),
             low60=float(low60.iloc[i] or 0),
             high20=float(high20.iloc[i] or 0),
+            low20=float(low20.iloc[i] or 0),
             bias_monthly=float(bias.iloc[i] if pd.notna(bias.iloc[i]) else 0),
+            rsv=float(rsv.iloc[i]) if pd.notna(rsv.iloc[i]) else None,
         )
 
     return tag_at(-2), tag_at(-1)
