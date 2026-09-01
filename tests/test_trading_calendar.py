@@ -76,3 +76,34 @@ def test_tw_equity_session_open_hours():
     assert tw_session_phase(datetime(2026, 9, 1, 8, 30, tzinfo=tz)) == "pre"
     assert not is_tw_equity_session(datetime(2026, 8, 30, 10, 0, tzinfo=tz))
     assert tw_session_phase(datetime(2026, 8, 30, 10, 0, tzinfo=tz)) == "weekend"
+
+
+def test_resolve_flow_as_of_prefers_today_after_close(tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from money_flow import resolve_flow_as_of
+
+    db = tmp_path / "flow.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, market TEXT, date TEXT, close REAL, "
+        "volume INTEGER, pct_change REAL, foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER)"
+    )
+    for i in range(900):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?, 'TW', '20260901', 100, 1000, 1, 10, 0, 0)",
+            (f"T{i:04d}",),
+        )
+    for i in range(700):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?, 'OTC', '20260901', 50, 500, -1, -5, 0, 0)",
+            (f"O{i:04d}",),
+        )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 9, 1, 16, 55, tzinfo=ZoneInfo("Asia/Taipei"))
+    as_of, lag = resolve_flow_as_of(str(db), now=now)
+    assert as_of == "20260901"
+    assert lag is None
