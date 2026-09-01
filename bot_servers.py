@@ -64,8 +64,8 @@ except ImportError:
 HELP_TOPICS = {
     "menu": (
         "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
-        "海選／當沖／隔日沖／持股／<b>決策卡</b>　｜　觀察／資金／說明／選單／（預留格）\n"
-        "<b>決策卡</b>＝盤中快捷：上一檔一鍵刷新 MIS 價量與 120日量排名；沒看過就打代號。\n"
+        "<b>決策卡</b>／當沖／持股／觀察／海選　｜　隔日沖／資金／說明／選單／（預留格）\n"
+        "左→右依你常用順序排：盤中先看<b>決策卡</b>，再當沖、持股、觀察；海選是昨收佈局。\n"
         "打股名或代號＝完整看這檔：現價→介紹圖→決策卡→導航→籌碼。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
     ),
@@ -245,17 +245,17 @@ class WayneTelegramBot:
             await self._prompt_decision_card(update.message, uid)
 
     def _reply_menu(self):
-        """聊天室下方常駐兩排、每排五格（末格預留，決策卡在首排末格）。"""
+        """兩排各五格：左→右依常用順序；次排末格預留。"""
         rows = [
             [
-                KeyboardButton("海選"),
-                KeyboardButton("當沖"),
-                KeyboardButton("隔日沖"),
-                KeyboardButton("持股"),
                 KeyboardButton("決策卡"),
+                KeyboardButton("當沖"),
+                KeyboardButton("持股"),
+                KeyboardButton("觀察"),
+                KeyboardButton("海選"),
             ],
             [
-                KeyboardButton("觀察"),
+                KeyboardButton("隔日沖"),
                 KeyboardButton("資金"),
                 KeyboardButton("說明"),
                 KeyboardButton("選單"),
@@ -779,7 +779,7 @@ class WayneTelegramBot:
         await update.message.reply_html(
             "<b>WayneBot</b>\n"
             "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
-            "盤中常看決策卡請按首排最右 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
+            "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
             reply_markup=self._reply_menu(),
