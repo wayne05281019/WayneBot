@@ -135,4 +135,7 @@ def apply_trade_live(
                     item["vol_rank_120"] = rank
         except Exception:
             logger.debug("live vol rank batch failed", exc_info=True)
+    if not out and rows and quotes:
+        logger.info("apply_trade_live: 盤中條件全過濾，改顯示昨收候選")
+        return [dict(r, _live_filtered=True) for r in rows]
     return out
