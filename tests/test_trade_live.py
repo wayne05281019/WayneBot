@@ -72,6 +72,39 @@ def test_apply_trade_live_filters(monkeypatch):
     assert out[0]["vol_rank_120"] == 3
 
 
+def test_apply_trade_live_all_filtered_fallback(monkeypatch):
+    rows = [
+        {"code": "2330", "name": "台積電"},
+        {"code": "2454", "name": "聯發科"},
+    ]
+
+    def fake_batch(codes, db_path):
+        return {
+            "2330": {
+                "price": 109.5,
+                "yesterday_close": 100.0,
+                "change": 9.5,
+                "pct": 9.5,
+                "volume": 50000,
+                "update_time": "10:30:00",
+            },
+            "2454": {
+                "price": 101.0,
+                "yesterday_close": 100.0,
+                "change": 1.0,
+                "pct": 1.0,
+                "volume": 1000,
+                "update_time": "10:30:01",
+            },
+        }
+
+    monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
+    out = apply_trade_live(rows, ":memory:", "daytrade")
+    assert len(out) == 2
+    assert out[0]["_live_filtered"] is True
+    assert out[0]["code"] == "2330"
+
+
 def test_apply_trade_live_mis_fail_shows_cached(monkeypatch):
     rows = [{"code": "2330", "name": "台積電"}]
 
