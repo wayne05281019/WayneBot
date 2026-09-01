@@ -62,3 +62,17 @@ def test_format_trading_date_zh():
 
     assert format_trading_date_zh("20260828") == "2026/08/28（五）"
     assert format_trading_date_zh("20260830") == "2026/08/30（日）"
+
+
+def test_tw_equity_session_open_hours():
+    from trading_calendar import is_tw_equity_session, tw_session_phase
+
+    tz = ZoneInfo("Asia/Taipei")
+    assert is_tw_equity_session(datetime(2026, 9, 1, 10, 30, tzinfo=tz))
+    assert tw_session_phase(datetime(2026, 9, 1, 10, 30, tzinfo=tz)) == "open"
+    assert not is_tw_equity_session(datetime(2026, 9, 1, 14, 0, tzinfo=tz))
+    assert tw_session_phase(datetime(2026, 9, 1, 14, 0, tzinfo=tz)) == "after"
+    assert not is_tw_equity_session(datetime(2026, 9, 1, 8, 30, tzinfo=tz))
+    assert tw_session_phase(datetime(2026, 9, 1, 8, 30, tzinfo=tz)) == "pre"
+    assert not is_tw_equity_session(datetime(2026, 8, 30, 10, 0, tzinfo=tz))
+    assert tw_session_phase(datetime(2026, 8, 30, 10, 0, tzinfo=tz)) == "weekend"

@@ -1,7 +1,7 @@
 """台股收盤基準日：跳過週末；國定假日／颱風停市靠庫裡無完整行情自然排除。"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
 from typing import Optional
 
 
@@ -76,3 +76,37 @@ def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
     except Exception:
         pass
     return fuse_end_trading_date(now)
+
+
+def is_tw_equity_session(now=None) -> bool:
+    """台股現股連續撮合：平日 09:00–13:30（當沖／隔日沖尾盤進場時段）。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return dt_time(9, 0) <= t <= dt_time(13, 30)
+
+
+def tw_session_phase(now=None) -> str:
+    """pre＝開盤前；open＝盤中；after＝收盤後；weekend＝週末。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    if now.weekday() >= 5:
+        return "weekend"
+    t = now.time()
+    if t < dt_time(9, 0):
+        return "pre"
+    if t <= dt_time(13, 30):
+        return "open"
+    return "after"
+
+
+def daytrade_closed_message(phase: str) -> str:
+    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
+    return (
+        f"{label}。當沖只在平日 <b>09:00–13:30</b> 盤中即時複核；此刻不應再進當沖。"
+        "尾盤想佈局明早，請看「隔日沖」；長線佈局請看「海選」。"
+    )
