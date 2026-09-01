@@ -652,7 +652,7 @@ class WayneTelegramBot:
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
             return
-        from cary_navigator import generate_card_with_chart, generate_chart, generate_decision_card
+        from wayne_navigator import generate_card_with_chart, generate_chart, generate_decision_card
 
         try:
             packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
@@ -1330,17 +1330,17 @@ class WayneTelegramBot:
         last_ok = False
         pending_send = None
         try:
-            from cary_navigator import (
+            from wayne_navigator import (
                 generate_chart,
                 render_decision_card_png,
                 render_first_glance_png,
             )
-            from cary_navigator import CaryNavigatorEngine
+            from wayne_navigator import NavigatorEngine
             from chips import generate_chips_image
             from chip_tape import build_tape
 
             def _card_and_tape():
-                engine = CaryNavigatorEngine(self.db_path)
+                engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(code, lookback=20)
                 tape = {}
                 try:
@@ -1462,7 +1462,7 @@ class WayneTelegramBot:
             if sent_any and not hub_on:
                 await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
             elif not sent_any:
-                from cary_navigator import generate_decision_card
+                from wayne_navigator import generate_decision_card
 
                 html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
@@ -1492,7 +1492,7 @@ class WayneTelegramBot:
                 pending_send = None
             if not sent_any:
                 try:
-                    from cary_navigator import generate_decision_card
+                    from wayne_navigator import generate_decision_card
 
                     html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 except Exception:
@@ -1667,7 +1667,7 @@ class WayneTelegramBot:
             return
         async def _on_start(app):
             try:
-                from cary_navigator import prewarm_card_fonts
+                from wayne_navigator import prewarm_card_fonts
 
                 await asyncio.to_thread(prewarm_card_fonts)
             except Exception:

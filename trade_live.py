@@ -107,10 +107,21 @@ def apply_trade_live(
             "pct": pct,
             "update_time": q.get("update_time", ""),
             "yesterday_close": close,
+            "volume": q.get("volume"),
         }
         if not checker(live):
             continue
         item = dict(r)
+        vol = int(q.get("volume") or 0)
+        if vol > 0:
+            try:
+                from live_quote import live_vol_rank_120
+
+                rank = live_vol_rank_120(db_path, code, vol)
+                live["vol_rank_120"] = rank
+                item["vol_rank_120"] = rank
+            except Exception:
+                logger.debug("live vol rank failed code=%s", code, exc_info=True)
         item["live"] = live
         out.append(item)
     return out

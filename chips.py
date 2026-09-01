@@ -329,7 +329,7 @@ def fit_table_cols(headers, col_vals, fig_w, span, *, fs=11.5, hdr_fs=11.5,
 
     回傳 (xs 左緣列表含右端, 內文字級, 表頭字級)。
     """
-    from cary_navigator import _text_w
+    from wayne_navigator import _text_w
 
     def widths(body_fs, head_fs):
         out = []
@@ -365,7 +365,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
-    from cary_navigator import _CARD, _fp, _text_w
+    from wayne_navigator import _CARD, _fp, _text_w
 
     C = _CARD
     n = max(len(rows), 1)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-WayneBot 核心模組：CaryBot 買低賣高決策卡與 180 日 K 線趨勢圖引擎
-檔案名稱：cary_navigator.py
+WayneBot 核心模組：買低賣高決策卡與 180 日 K 線趨勢圖引擎
+檔案名稱：wayne_navigator.py
 """
 
 import os
@@ -255,8 +255,8 @@ def pink_warning_note(card: dict) -> str:
     return ""
 
 
-class CaryNavigatorEngine:
-    """CaryBot 買低賣高決策卡、多空溫度計與雙綠脫離海選引擎"""
+class NavigatorEngine:
+    """WayneBot 買低賣高決策卡、多空溫度計與雙綠脫離海選引擎"""
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
@@ -315,7 +315,7 @@ class CaryNavigatorEngine:
         df["low_120"] = close_s.rolling(120, min_periods=20).min()
         df["low_240"] = close_s.rolling(240, min_periods=40).min()
         df["low_480"] = close_s.rolling(480, min_periods=80).min()
-        # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」對齊 CaryBot：相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
+        # 表頭 60 日低＝近 60 根收盤最低。格子「獲利」＝相對「最新日往前 60 個日曆日」的收盤最低（南亞 141.5 → 55.8%，不是 94.8 → 132.6%）。
         dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
         latest_dt = dts.iloc[-1]
         cal_mask = (dts >= (latest_dt - pd.Timedelta(days=60))) & dts.notna()
@@ -326,12 +326,12 @@ class CaryNavigatorEngine:
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
 
-        hl_tags, alert_tags, temps = [], [], []
+        hl_tags, alert_tags, temp_nums = [], [], []
         for i in range(len(df)):
             if bool(df["is_halt"].iloc[i]):
                 hl_tags.append("No")
                 alert_tags.append("No")
-                temps.append("—")
+                temp_nums.append(0.0)
                 continue
             c = float(df["close"].iloc[i])
             h20, l20 = float(df["high_20"].iloc[i]), float(df["low_20"].iloc[i])
@@ -343,7 +343,7 @@ class CaryNavigatorEngine:
             rf = (c - l20) / (span + 0.01) if span > 0 else 0.5
             # 溫度：20 日收盤位置為主、月乖離微調（對齊範本約 50~76°C，不再拉到 90°C）
             t = round(max(0.0, min(99.9, 50.0 + 18.0 * rf + 0.55 * bias)), 1)
-            temps.append(f"{t:.1f} °C")
+            temp_nums.append(t)
             if c >= h20 * 0.998:
                 hl_tags.append("20高")
             elif c >= h10 * 0.998:
@@ -367,10 +367,14 @@ class CaryNavigatorEngine:
             else:
                 alert_tags.append("No")
 
+        temps = [f"{x:.1f} °C" if x > 0 else "—" for x in temp_nums]
+        trend_labels = compute_temp_trend_labels(temp_nums)
         df["獲利"] = [f"{p:.1f}%" if pd.notna(p) else "—" for p in df["profit_pct"]]
         df["高低"] = hl_tags
         df["預警"] = alert_tags
         df["溫度計"] = temps
+        df["升降"] = trend_labels
+        df["temp_num"] = temp_nums
         df["月乖離"] = [f"{b:+.1f}%" for b in df["bias_monthly"]]
         df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
 
@@ -379,7 +383,7 @@ class CaryNavigatorEngine:
         real_c = df.loc[~df["is_halt"], "close"] if "is_halt" in df.columns else df["close"]
         if len(real_c) >= 2 and float(real_c.iloc[-2] or 0) > 0:
             chg = round((float(real_c.iloc[-1]) - float(real_c.iloc[-2])) / float(real_c.iloc[-2]) * 100.0, 2)
-        # 決策卡高／低：N 根「收盤」（對齊 CaryBot 南亞：20 日低是 165 不是日曆窗的 180）
+        # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
 
@@ -431,7 +435,10 @@ class CaryNavigatorEngine:
         real = df.loc[~df["is_halt"]] if "is_halt" in df.columns else df
         table_src = real if len(real) >= lookback else df
         table = table_src.tail(lookback)[
-            ["date", "close", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量", "profit_pct", "bias_monthly", "vol_rank_120"]
+            [
+                "date", "close", "獲利", "高低", "預警", "溫度計", "升降", "月乖離", "120日量",
+                "profit_pct", "bias_monthly", "vol_rank_120", "temp_num",
+            ]
         ].iloc[::-1]
         streak = 0
         for a in reversed(alert_tags):
@@ -511,7 +518,7 @@ class CaryNavigatorEngine:
         return screened
 
 
-class CaryBotChartGenerator:
+class ChartGenerator:
     """產出 180 日 K 線高低導航圖"""
 
     @staticmethod
@@ -552,7 +559,7 @@ class CaryBotChartGenerator:
         ax1.scatter([df["date"].iloc[-1]], [df["high"].iloc[-1] * 1.02], marker='v', color='#ab47bc', s=80, label='20高脫離')
         ax1.scatter([df["date"].iloc[-25]], [df["low"].iloc[-25] * 0.98], marker='^', color='#2e7d32', s=80, label='20低脫離 (雙綠)')
 
-        ax1.set_title(f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航   CaryBot ® 2026", fontsize=13, fontweight='bold', pad=10)
+        ax1.set_title(f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航   WayneBot ® 2026", fontsize=13, fontweight='bold', pad=10)
         ax1.legend(loc='upper left', ncol=6, frameon=True, facecolor='#f5f5f5', edgecolor='none', fontsize=8)
         ax1.grid(True, linestyle=':', alpha=0.5)
 
@@ -889,6 +896,80 @@ def _row_profit(row):
         return None
 
 
+def _parse_temp_n(val) -> float:
+    s = str(val or "").replace(" °C", "").replace("°C", "").strip()
+    if s in ("", "—", "-"):
+        return 0.0
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def compute_temp_trend_labels(temp_nums: list, window: int = 20) -> list:
+    """溫度升降溫標籤：依當日溫度與近窗高低比較，每檔每天各自計算。"""
+    out: list = []
+    for i, t in enumerate(temp_nums):
+        if t <= 0:
+            out.append("—")
+            continue
+        prev = temp_nums[i - 1] if i > 0 and temp_nums[i - 1] > 0 else t
+        w0 = max(0, i - window + 1)
+        seg = [x for x in temp_nums[w0 : i + 1] if x > 0]
+        if len(seg) < 2:
+            out.append("—")
+            continue
+        wmin, wmax = min(seg), max(seg)
+        tol = 0.2
+        at_max = t >= wmax - tol
+        at_min = t <= wmin + tol
+        if at_max and not at_min:
+            out.append("最高溫")
+        elif at_min and not at_max:
+            out.append("最低溫")
+        elif t > prev + 0.25:
+            out.append("升溫")
+        elif t < prev - 0.25:
+            out.append("降溫")
+        else:
+            out.append("—")
+    return out
+
+
+def temp_trend_cell_style(label: str, base: str):
+    """升降欄：熱＝高色票、冷＝低色票，無訊號跟列底。"""
+    C = _CARD
+    base = base or C["white"]
+    lab = str(label or "—")
+    if lab == "最高溫":
+        return C["temp_hot_bg"], C["temp_hot_fg"]
+    if lab == "升溫":
+        return C["temp_warm_bg"], C["temp_warm_fg"]
+    if lab == "最低溫":
+        return C["lo_hit_fill"], C["lo_ink"]
+    if lab == "降溫":
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink_mute"]
+
+
+def _badge_style(text: str):
+    """徽章底色依語意（高／低／中性），不整排寫死粉紅。"""
+    C = _CARD
+    t = str(text or "")
+    hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破")
+    cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
+    solid_hi = any(k in t for k in ("創", "新高", "新低", "近"))
+    if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
+        if solid_hi:
+            return C["pill_hi"], C["white"]
+        return C["hi_fill"], C["hi_ink"]
+    if any(k in t for k in cold_keys):
+        if "近" in t and "低" in t:
+            return C["pill_lo"], C["white"]
+        return C["lo_fill"], C["lo_ink"]
+    return C["neutral_bg"], C["neutral_fg"]
+
+
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
     """獲利底圖跟高低卡同一套色票：貼零＝低、剛離零＝實綠、其餘跟列底。不整列寫死粉紅。"""
     C = _CARD
@@ -1214,13 +1295,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     for brow in badge_rows:
         bx = pad_x + 3.2
         for btxt, bw in brow:
-            # 只有「創新高／貼低點」這種訊號實心，警語留描邊，避免整排都在喊。
-            solid = any(k in btxt for k in ("創", "新高", "新低", "近"))
-            b_bg = C["pill_hi"] if solid else C["hi_fill"]
-            b_fg = C["white"] if solid else C["hi_ink"]
+            b_bg, b_fg = _badge_style(btxt)
+            solid = b_bg in (C["pill_hi"], C["pill_lo"])
+            edge = b_bg if solid else C["line"]
             ax.add_patch(patches.FancyBboxPatch(
                 (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
-                facecolor=b_bg, edgecolor=b_bg if solid else C["hi_line"],
+                facecolor=b_bg, edgecolor=edge,
                 linewidth=0 if solid else 0.9, zorder=3))
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.4, "heavy"),
                     color=b_fg, ha="center", va="center", zorder=4)
@@ -1259,8 +1339,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 過去 20 天：欄寬按權重分配，高低與預警走藥丸，溫度與量能用深淺表達強弱。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F")
-    headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "月乖離", "120日量"]
-    weights = [15.4, 11.2, 10.4, 10.2, 10.6, 12.4, 11.8, 13.0]
+    headers = ["日期", "股價", "獲利", "高低", "預警", "溫度計", "升降", "月乖離", "120日量"]
+    weights = [13.8, 10.0, 9.2, 9.0, 9.4, 11.0, 10.2, 10.6, 11.8]
+    pill_cols = {3, 4, 6, 8}
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -1276,24 +1357,22 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         y1 = ry - body_h
         bias = float(r.get("bias_monthly") or 0)
         rank = int(r.get("vol_rank_120") or 99)
-        temp_v = str(r["溫度計"]).replace(" °C", "").replace("°C", "")
-        try:
-            temp_n = float(temp_v)
-        except (TypeError, ValueError):
-            temp_n = 0.0
+        temp_n = float(r.get("temp_num") or 0) or _parse_temp_n(r.get("溫度計"))
+        trend = str(r.get("升降") or "—")
         hl, al = str(r["高低"]), str(r["預警"])
         zebra = row_i % 2 == 0
         base = C["white"] if zebra else C["zebra"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
         p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
         px_bg, px_fg = price_cell_style(hl, base)
-        hl_bg, _hl_fg = hl_cell_style(hl, base)
-        al_bg, _al_fg = alert_cell_style(al, base)
+        hl_bg, hl_fg = hl_cell_style(hl, base)
+        al_bg, al_fg = alert_cell_style(al, base)
         tbg, tfg = temp_cell_style(temp_n, base)
+        tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = vol_rank_cell_style(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        fills = [base, px_bg, p_bg, hl_bg, al_bg, tbg, b_bg, base]
-        fgs = [C["ink"], px_fg, p_fg, _hl_fg, _al_fg, tfg, b_fg, C["ink"]]
+        fills = [base, px_bg, p_bg, hl_bg, al_bg, tbg, tr_bg, b_bg, base]
+        fgs = [C["ink"], px_fg, p_fg, hl_fg, al_fg, tfg, tr_fg, b_fg, C["ink"]]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -1301,6 +1380,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             hl,
             al,
             str(r["溫度計"]),
+            trend,
             str(r["月乖離"]).replace("+", ""),
             str(r["120日量"]),
         ]
@@ -1308,18 +1388,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             ax.add_patch(patches.Rectangle((xs[i], y1), xs[i + 1] - xs[i], body_h,
                                            facecolor=fills[i], edgecolor=C["line"], lw=0.5, zorder=2))
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
-            if i in (3, 4):
-                if "高" in val:
-                    _pill(ax, cx, cy, val, C["pill_hi"], C["white"], w=tw(val, 11.2) + 3.0,
-                          h=body_h * 0.74, fs=11.2)
-                elif "低" in val:
-                    _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=tw(val, 11.2) + 3.0,
-                          h=body_h * 0.74, fs=11.2)
+            if i in pill_cols:
+                if val in ("No", "—") or not str(val).strip():
+                    ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
+                            fontproperties=_fp(11), color=fgs[i], ha="center", va="center", zorder=3)
                 else:
-                    ax.text(cx, cy, "No", fontproperties=_fp(11), color=fgs[i],
-                            ha="center", va="center", zorder=3)
-            elif i == 7:
-                _pill(ax, cx, cy, val, vbg, vfg, w=tw(val, 11.0) + 3.0, h=body_h * 0.74, fs=11.0)
+                    _pill(ax, cx, cy, val, fills[i], fgs[i], w=tw(val, 11.0) + 3.0,
+                          h=body_h * 0.74, fs=11.0)
             else:
                 ax.text(cx, cy, val, fontproperties=_fp(12, "bold"), ha="center", va="center",
                         color=fgs[i], zorder=3)
@@ -1361,7 +1436,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     df = _load_ohlc(sid, db_path, 375)
     if df.empty or len(df) < 5:
         return f"⚠️ 找不到 <code>{html_escape(sid)}</code> 的日 K（請先完成歷史庫／盤後增量）。"
-    engine = CaryNavigatorEngine(db_path or get_db_path())
+    engine = NavigatorEngine(db_path or get_db_path())
     card = engine.get_decision_card(sid, lookback=lookback)
     if "error" in card:
         return f"⚠️ {html_escape(card['error'])}"
@@ -1534,19 +1609,24 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             yy -= 3.35
 
     kv_block(61.55, 15.15, "空間／位置", [
-        ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%", "#C62828" if float(card["dist_h20"]) >= -1 else "#111111"),
-        ("獲利（近60曆日低）", f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%", "#111111"),
+        ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%",
+         price_cell_style("20高" if float(card["dist_h20"]) >= -1 else "No", _CARD["white"])[1]),
+        ("獲利（近60曆日低）",
+         f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%",
+         profit_cell_style(float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0), None, _CARD["white"])[1]),
         (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
             _fmt_dist_short(card.get("dist_l120")),
             _fmt_dist_short(card.get("dist_l240")),
             _fmt_dist_short(card.get("dist_l480")),
-        ]), "#111111"),
-        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", "#111111"),
+        ]), _CARD["ink"]),
+        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", _CARD["ink"]),
     ])
+    _temp_n = _temp_num(card.get("temp_c"))
     kv_block(48.55, 12.15, "熱度／量能", [
-        ("溫度", str(card.get("temp_c") or "—"), "#111111"),
-        ("120日量排名", f"第 {card.get('vol_rank')} 名", "#111111"),
-        ("量比", (tape or {}).get("volume", {}).get("line") or "—", "#111111"),
+        ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, _CARD["white"])[1]),
+        ("120日量排名", f"第 {card.get('vol_rank')} 名",
+         vol_rank_cell_style(int(card.get('vol_rank') or 99), _CARD["white"])[1]),
+        ("量比", (tape or {}).get("volume", {}).get("line") or "—", _CARD["ink"]),
     ])
 
     def chip_color(n):
@@ -1693,7 +1773,7 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
 
 
 def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
-    """橫式高低導航，對齊 CaryBot：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
+    """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     if df.empty:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -2087,20 +2167,26 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
         bias = row.get("bias_monthly")
         volr = row.get("vol_rank_120")
         if part == 1:
-            hl_c = "#C62828" if "高" in hl else ("#2E7D32" if "低" in hl else "#111827")
+            base = _CARD["white"]
+            _, hl_fg = hl_cell_style(hl, base)
+            _, warn_fg = alert_cell_style(warn, base)
+            _, prof_fg = profit_cell_style(profit, None, base)
             vals = [
-                (date_s, "#111827"),
-                (_fmt_num(row.get("close"), 2), "#111827"),
-                (_fmt_pct(profit), _chg_color(profit)),
-                (hl, hl_c),
-                (warn, _WARN_COLORS.get(warn, "#6B7280")),
+                (date_s, _CARD["ink"]),
+                (_fmt_num(row.get("close"), 2), _CARD["ink"]),
+                (_fmt_pct(profit), prof_fg),
+                (hl, hl_fg),
+                (warn, warn_fg),
             ]
         else:
+            base = _CARD["white"]
+            _, bias_fg = bias_cell_style(bias, base)
+            _, vol_fg = vol_rank_cell_style(volr, base)
             vals = [
-                (date_s, "#111827"),
-                (_fmt_num(temp, 0) if temp is not None else "—", _temp_color(temp)),
-                (_fmt_pct(bias), _chg_color(bias)),
-                (_fmt_num(volr, 0) if volr is not None else "—", "#111827"),
+                (date_s, _CARD["ink"]),
+                (_fmt_num(temp, 0) if temp is not None else "—", temp_cell_style(temp, base)[1]),
+                (_fmt_pct(bias), bias_fg),
+                (_fmt_num(volr, 0) if volr is not None else "—", vol_fg),
             ]
         for i, (txt, color) in enumerate(vals):
             ax.text(col_x[i], y, txt, transform=ax.transAxes, fontproperties=_fp(20, "bold"),
@@ -2113,7 +2199,7 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
 
 def generate_card_image(stock_id: str, db_path: str = None, save_path: str = None) -> list:
     sid = str(stock_id).strip()
-    engine = CaryNavigatorEngine(db_path or get_db_path())
+    engine = NavigatorEngine(db_path or get_db_path())
     card = engine.get_decision_card(sid, lookback=20)
     if card.get("error"):
         return []
@@ -2128,7 +2214,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     db_path = db_path or get_db_path()
     charts_dir = charts_dir or get_charts_dir()
     os.makedirs(charts_dir, exist_ok=True)
-    engine = CaryNavigatorEngine(db_path)
+    engine = NavigatorEngine(db_path)
     card = engine.get_decision_card(sid, lookback=20)
     if card.get("error"):
         return {
