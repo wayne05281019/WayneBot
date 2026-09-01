@@ -753,13 +753,18 @@ class WayneTelegramBot:
         subtitle: str,
         bucket_key: str,
         topic: str,
+        live_bucket: str | None = None,
     ):
         from screening_engine import _stock_card_html
         from tg_layout import chunk_telegram_html
+        from trade_live import apply_trade_live
+
+        if live_bucket:
+            rows = await asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket)
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>"
-        body = head + ("\n" + "\n".join(cards) if cards else "\n<i>無</i>")
+        body = head + ("\n" + "\n".join(cards) if cards else "\n<i>今日無符合</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
         self._persist_bucket_line_pack(bucket_key, rows)
         chunks = chunk_telegram_html(body, 3500) or [body]
@@ -780,9 +785,10 @@ class WayneTelegramBot:
             update.message,
             rows,
             title="當沖候選",
-            subtitle="保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。",
+            subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
             bucket_key="day_trade",
             topic="daytrade",
+            live_bucket="daytrade",
         )
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -791,9 +797,10 @@ class WayneTelegramBot:
             update.message,
             rows,
             title="隔日沖候選",
-            subtitle="尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。",
+            subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
             bucket_key="overnight",
             topic="overnight",
+            live_bucket="overnight",
         )
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1624,9 +1631,10 @@ class WayneTelegramBot:
                 q.message,
                 rows,
                 title="當沖候選",
-                subtitle="保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。",
+                subtitle="盤中 MIS 複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
                 bucket_key="day_trade",
                 topic="daytrade",
+                live_bucket="daytrade",
             )
         elif data == "overnight":
             rows = await asyncio.to_thread(self.screener.screen_overnight)
@@ -1634,9 +1642,10 @@ class WayneTelegramBot:
                 q.message,
                 rows,
                 title="隔日沖候選",
-                subtitle="尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。",
+                subtitle="盤中 MIS 複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
                 bucket_key="overnight",
                 topic="overnight",
+                live_bucket="overnight",
             )
         elif data == "portfolio":
             await self._send_portfolio(q.message, str(q.from_user.id))
