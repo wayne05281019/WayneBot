@@ -73,10 +73,10 @@ HELP_TOPICS = {
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "海選＝昨收<b>佈局</b>名單（起漲、優先看、周帶量等），不是盤中即時掃描。"
-        "每檔可「開 LINE・傳這檔」。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
+        "每區最下面可「開 LINE・傳本區」一次轉 LINE。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
         "藍字股名＝奇摩。下面按鈕：左＝代號＋股名（看圖）；右➕＝觀察。\n"
-        "其餘檔也把價位寫在排名裡。不是立即下單清單。\n"
+        "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
     ),
@@ -248,24 +248,23 @@ class WayneTelegramBot:
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
-    def _line_stock_url(self, stock_id: str) -> str:
-        from config import get_public_base_url
-
-        sid = str(stock_id or "").strip()
-        if not sid:
-            return ""
-        return f"{get_public_base_url()}/line/stock/{sid}"
-
-    def _picks_keyboard(self, picks, include_menu: bool = False, topic: str = "screen", include_forward: bool = None):
+    def _picks_keyboard(
+        self,
+        picks,
+        include_menu: bool = False,
+        topic: str = "screen",
+        line_pack_id: str = None,
+    ):
         rows = []
         for i, (code, name) in enumerate((picks or [])[:12], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
             rows.append(self._stock_action_row(c, name or "", idx=i))
-            line_url = self._line_stock_url(c)
-            if line_url and topic == "screen":
-                rows.append([InlineKeyboardButton("開 LINE・傳這檔", url=line_url)])
+        if line_pack_id:
+            line_url = self._line_open_url(line_pack_id)
+            if line_url:
+                rows.append([InlineKeyboardButton("開 LINE・傳本區", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -274,6 +273,21 @@ class WayneTelegramBot:
         if not rows:
             return self._keyboard()
         return InlineKeyboardMarkup(rows)
+
+    def _persist_bucket_line_pack(self, bucket_key: str, rows: list) -> None:
+        if not rows:
+            return
+        try:
+            from import_health import latest_complete_quote_date
+            from screening_engine import build_line_bucket_packs
+            from screen_sessions import upsert_line_pack
+
+            as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
+            packs = build_line_bucket_packs({bucket_key: rows}, as_of, self.db_path)
+            if packs:
+                upsert_line_pack(self.db_path, as_of, packs[0])
+        except Exception:
+            logger.exception("寫入 %s LINE 稿失敗", bucket_key)
 
     def _hits_keyboard(self, hits):
         """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
@@ -468,8 +482,14 @@ class WayneTelegramBot:
             if not chunks:
                 continue
             for j, chunk in enumerate(chunks):
-                is_last = i == last and j == len(chunks) - 1
-                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
+                is_last_chunk = j == len(chunks) - 1
+                is_last_part = i == last
+                kb = self._picks_keyboard(
+                    part.get("picks") or [],
+                    include_menu=is_last_part and is_last_chunk,
+                    line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
+                    topic="screen",
+                )
                 await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
             await asyncio.sleep(0.25)
         if result.get("line_share_packs") or result.get("line_share"):
@@ -609,8 +629,14 @@ class WayneTelegramBot:
                 self._send_sticker(self.chat_id, fid)
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
-                is_last = i == last and j == len(chunks) - 1
-                kb = self._picks_keyboard(part.get("picks") or [], include_menu=is_last, topic="screen")
+                is_last_chunk = j == len(chunks) - 1
+                is_last_part = i == last
+                kb = self._picks_keyboard(
+                    part.get("picks") or [],
+                    include_menu=is_last_part and is_last_chunk,
+                    line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
+                    topic="screen",
+                )
                 self._send_html(
                     self.chat_id,
                     chunk,
@@ -716,34 +742,56 @@ class WayneTelegramBot:
             logger.exception("海選失敗")
             await update.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
 
-    async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _reply_trade_list(
+        self,
+        message,
+        rows: list,
+        *,
+        title: str,
+        subtitle: str,
+        bucket_key: str,
+        topic: str,
+    ):
         from screening_engine import _stock_card_html
+        from tg_layout import chunk_telegram_html
 
-        rows = await asyncio.to_thread(self.screener.screen_daytrade)
-        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-        html = (
-            "<b>當沖候選</b>\n"
-            "<i>保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。</i>\n"
-            + ("\n".join(cards) if cards else "<i>無</i>")
-        )
+        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
+        head = f"<b>{title}</b>\n<i>{subtitle}</i>"
+        body = head + ("\n" + "\n".join(cards) if cards else "\n<i>無</i>")
         picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(
-            html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
+        self._persist_bucket_line_pack(bucket_key, rows)
+        chunks = chunk_telegram_html(body, 3500) or [body]
+        last = len(chunks) - 1
+        for j, chunk in enumerate(chunks):
+            is_last = j == last
+            kb = self._picks_keyboard(
+                picks,
+                include_menu=is_last,
+                line_pack_id=bucket_key if is_last else None,
+                topic=topic,
+            )
+            await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
+
+    async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        rows = await asyncio.to_thread(self.screener.screen_daytrade)
+        await self._reply_trade_list(
+            update.message,
+            rows,
+            title="當沖候選",
+            subtitle="保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。",
+            bucket_key="day_trade",
+            topic="daytrade",
         )
 
     async def overnight_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from screening_engine import _stock_card_html
-
         rows = await asyncio.to_thread(self.screener.screen_overnight)
-        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-        html = (
-            "<b>隔日沖候選</b>\n"
-            "<i>尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。</i>\n"
-            + ("\n".join(cards) if cards else "<i>無</i>")
-        )
-        picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-        await update.message.reply_html(
-            html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
+        await self._reply_trade_list(
+            update.message,
+            rows,
+            title="隔日沖候選",
+            subtitle="尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。",
+            bucket_key="overnight",
+            topic="overnight",
         )
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1570,32 +1618,24 @@ class WayneTelegramBot:
                 logger.exception("海選失敗")
                 await q.message.reply_text(f"海選失敗：{e}", reply_markup=self._keyboard())
         elif data == "daytrade":
-            from screening_engine import _stock_card_html
-
             rows = await asyncio.to_thread(self.screener.screen_daytrade)
-            cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-            html = (
-                "<b>當沖候選</b>\n"
-                "<i>保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。</i>\n"
-                + ("\n".join(cards) if cards else "<i>無</i>")
-            )
-            picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(
-                html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="daytrade"), disable_web_page_preview=True
+            await self._reply_trade_list(
+                q.message,
+                rows,
+                title="當沖候選",
+                subtitle="保險進場≤收盤；第一停利+3%先出一部分；衝頂+6%；均價跌破先走。藍字＝奇摩。",
+                bucket_key="day_trade",
+                topic="daytrade",
             )
         elif data == "overnight":
-            from screening_engine import _stock_card_html
-
             rows = await asyncio.to_thread(self.screener.screen_overnight)
-            cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows[:12])]
-            html = (
-                "<b>隔日沖候選</b>\n"
-                "<i>尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。</i>\n"
-                + ("\n".join(cards) if cards else "<i>無</i>")
-            )
-            picks = [(r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name")) for r in rows[:12]]
-            await q.message.reply_html(
-                html, reply_markup=self._picks_keyboard(picks, include_menu=True, topic="overnight"), disable_web_page_preview=True
+            await self._reply_trade_list(
+                q.message,
+                rows,
+                title="隔日沖候選",
+                subtitle="尾盤保險買進區間；明早開高+3.5～4.8%；防守跌破先走。藍字＝奇摩。",
+                bucket_key="overnight",
+                topic="overnight",
             )
         elif data == "portfolio":
             await self._send_portfolio(q.message, str(q.from_user.id))

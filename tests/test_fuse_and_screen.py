@@ -1848,7 +1848,7 @@ class WatchListTest(unittest.TestCase):
         finally:
             os.remove(path)
 
-    def test_stock_card_has_line_link_under_title(self):
+    def test_stock_card_uses_blockquote_without_per_stock_line(self):
         from screening_engine import _stock_card_html
 
         card = _stock_card_html(
@@ -1867,29 +1867,42 @@ class WatchListTest(unittest.TestCase):
             },
             1,
         )
-        self.assertIn("開 LINE・傳這檔", card)
-        self.assertIn("/line/stock/2330", card)
+        self.assertIn("<blockquote>", card)
+        self.assertIn("格局", card)
+        self.assertIn("收盤", card)
+        self.assertNotIn("開 LINE・傳這檔", card)
+        self.assertNotIn("/line/stock/", card)
 
-    def test_screen_keyboard_has_per_stock_line(self):
+    def test_screen_keyboard_has_section_line_button(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
         bot = object.__new__(WayneTelegramBot)
         bot.db_path = None
-        kb = bot._picks_keyboard([("2330", "台積電"), ("2317", "鴻海")], include_menu=True, topic="screen")
+        kb = bot._picks_keyboard(
+            [("2330", "台積電"), ("2317", "鴻海")],
+            include_menu=True,
+            topic="screen",
+            line_pack_id="leave_zero",
+        )
         urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2330" in u), 1)
-        self.assertEqual(sum(1 for u in urls if u and "/line/stock/2317" in u), 1)
-        self.assertEqual(texts.count("開 LINE・傳這檔"), 2)
-        self.assertFalse(any(u and "/line/night" in u for u in urls))
-        day_kb = bot._picks_keyboard([("2330", "台積電")], include_menu=True, topic="daytrade")
+        self.assertEqual(texts.count("開 LINE・傳本區"), 1)
+        self.assertTrue(any(u and "/line/leave_zero" in u for u in urls))
+        self.assertFalse(any(u and "/line/stock/" in (u or "") for u in urls))
+        day_kb = bot._picks_keyboard(
+            [("2330", "台積電")],
+            include_menu=True,
+            topic="daytrade",
+            line_pack_id="day_trade",
+        )
         day_urls = [getattr(btn, "url", None) for row in day_kb.inline_keyboard for btn in row]
-        self.assertFalse(any(u and "/line/stock/" in (u or "") for u in day_urls))
+        self.assertTrue(any(u and "/line/day_trade" in (u or "") for u in day_urls))
         send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
         self.assertNotIn("_send_line_share(self.chat_id", send_src)
         payload_src = inspect.getsource(WayneTelegramBot._reply_screening_payload)
         self.assertIn("_remember_line_share", payload_src)
+        self.assertIn("line_pack_id", payload_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect
