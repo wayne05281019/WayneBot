@@ -14,6 +14,9 @@ def test_screening_progress_text():
     from bot_servers import WayneTelegramBot
 
     assert "海選開始" in WayneTelegramBot._screening_progress_text(0)
-    assert "45 秒" in WayneTelegramBot._screening_progress_text(45)
+    body = WayneTelegramBot._screening_progress_text(45)
+    assert "45 秒" in body
+    assert "▓" in body
+    assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
 
