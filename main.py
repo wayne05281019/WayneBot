@@ -225,22 +225,31 @@ def start_market_backfill():
 
 
 def ensure_market_db() -> None:
-    """Render 磁碟沒有 Git 裡的 sqlite；沒有日K時打南亞不會出圖。"""
+    """Render 磁碟沒有 Git 裡的 sqlite；沒有日K時打南亞不會出圖。損壞則從 Release 重建。"""
     import os
     import shutil
+    import sqlite3
     import tempfile
     import zipfile
     import urllib.request
 
     from config import get_db_path, get_github_release_url
+    from import_health import db_quick_check_ok
 
     path = get_db_path()
     try:
-        if os.path.isfile(path) and os.path.getsize(path) > 1_000_000:
-            logger.info("行情庫已存在（%.0f MB）", os.path.getsize(path) / 1e6)
+        if db_quick_check_ok(path):
+            logger.info("行情庫已存在且通過 integrity（%.0f MB）", os.path.getsize(path) / 1e6)
             return
     except OSError:
         pass
+    if os.path.isfile(path):
+        corrupt = f"{path}.corrupt-{int(time.time())}"
+        try:
+            shutil.move(path, corrupt)
+            logger.error("行情庫 quick_check 失敗，已搬至 %s，改從 Release 重建", corrupt)
+        except OSError:
+            logger.exception("搬移損壞行情庫失敗")
     url = get_github_release_url()
     logger.info("雲端尚無行情庫，開始下載公開 Release（可能要幾分鐘）")
     tmpdir = tempfile.mkdtemp(prefix="wayne-db-")
