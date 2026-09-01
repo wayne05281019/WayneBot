@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
     "leave_zero": ("🌱", (60, 170, 90), "sprout", "起漲"),
+    "golden_buy": ("✨", (220, 160, 40), "star", "黃金買點"),
     "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
     "select_02": ("🏆", (220, 180, 50), "cup", "季線"),
     "select_03": ("💎", (140, 100, 210), "diamond", "止跌"),

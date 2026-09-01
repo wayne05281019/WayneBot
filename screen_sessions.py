@@ -17,6 +17,7 @@ except Exception:
 
 BUCKETS = (
     "leave_zero",
+    "golden_buy",
     "revenue_cross",
     "select_01",
     "select_02",
