@@ -199,12 +199,12 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertEqual(keys[0], "leave_zero")
         self.assertIn("revenue_cross", keys)
         self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
-        self.assertIn("＝＝起漲", payload[0]["html"])
+        self.assertIn("起漲｜", payload[0]["html"])
         line = format_line_share_text(
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("＝＝起漲"), line.find("＝＝優先看"))
+        self.assertLess(line.find("【起漲】"), line.find("【優先看】"))
         from config import scheduled_job_kind
         from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
@@ -220,7 +220,7 @@ class FuseAndScreenTest(unittest.TestCase):
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
-        self.assertIn("＝＝起漲", packs[1]["text"])
+        self.assertIn("【起漲】", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
@@ -1536,13 +1536,16 @@ class LookupCardTest(unittest.TestCase):
             return pd.DataFrame(rows)
 
         engine = ScreeningEngine(db_path=":memory:")
-        # 舊版半年高推播條件：創高 + 量比 + 漲幅，整檔應被排除
+        # 半年高改獨立分類；兩年高仍整檔排除
         half_year = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 110.0]
         out_hi120 = engine.execute_all_strategies({"2330": bars(half_year, last_vol=20000)})
         self.assertEqual(out_hi120["select_01"], [])
         self.assertEqual(out_hi120["day_trade"], [])
+        self.assertTrue(out_hi120["half_year_high"])
         info = engine.calculate_indicators(bars(half_year, last_vol=20000))
-        self.assertTrue(_skip_long_term_high_push(info))
+        from screening_engine import _is_half_year_high_break
+
+        self.assertTrue(_is_half_year_high_break(info))
 
         # 創高但量不夠／漲幅小：不算舊版半年高，周帶量仍可推
         mild = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 102.0]
@@ -1887,6 +1890,24 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("<blockquote>", card)
         self.assertIn("開 LINE・傳這檔", card)
         self.assertIn("/line/stock/2330", card)
+        slim = _stock_card_html(
+            {
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "close": 100,
+                "volume": 8000,
+                "pct_change": 1.2,
+                "q60r": 2.0,
+                "ma20": 98,
+                "ma60": 95,
+                "foreign_net": 0,
+                "trust_net": 0,
+                "dealer_net": 0,
+            },
+            1,
+            show_line_link=False,
+        )
+        self.assertNotIn("開 LINE・傳這檔", slim)
         first = card.split("\n", 1)[0]
         self.assertIn("台積電", first)
         self.assertIn("開 LINE・傳這檔", first)
@@ -1897,17 +1918,12 @@ class WatchListTest(unittest.TestCase):
 
         bot = object.__new__(WayneTelegramBot)
         bot.db_path = None
-        kb = bot._picks_keyboard(
-            [("2330", "台積電"), ("2317", "鴻海")],
-            include_menu=True,
-            topic="screen",
-            line_pack_id="leave_zero",
-        )
+        kb = bot._screening_section_keyboard(line_pack_id="leave_zero", include_menu=True)
         urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
         self.assertEqual(texts.count("開 LINE・傳本區"), 1)
         self.assertTrue(any(u and "/line/leave_zero" in u for u in urls))
-        self.assertFalse(any(u and "/line/stock/" in (u or "") for u in urls))
+        self.assertFalse(any("2330" in (t or "") for t in texts))
         day_kb = bot._picks_keyboard(
             [("2330", "台積電")],
             include_menu=True,

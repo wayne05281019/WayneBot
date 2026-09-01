@@ -20,6 +20,7 @@ BUCKETS = (
     "golden_buy",
     "revenue_cross",
     "select_01",
+    "half_year_high",
     "select_02",
     "select_03",
     "select_04",

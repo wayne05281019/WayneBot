@@ -412,6 +412,19 @@ class WayneTelegramBot:
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
+    def _screening_section_keyboard(self, line_pack_id: str = None, include_menu: bool = False):
+        """海選整區轉 LINE：只留傳本區，不列逐檔加入按鈕。"""
+        rows = []
+        if line_pack_id:
+            line_url = self._line_open_url(line_pack_id)
+            if line_url:
+                rows.append([InlineKeyboardButton("開 LINE・傳本區", url=line_url)])
+        if include_menu:
+            rows.append([self._q("screen")])
+        if not rows:
+            return None
+        return InlineKeyboardMarkup(rows)
+
     def _picks_keyboard(
         self,
         picks,
@@ -655,13 +668,15 @@ class WayneTelegramBot:
             for j, chunk in enumerate(chunks):
                 is_last_chunk = j == len(chunks) - 1
                 is_last_part = i == last
-                kb = self._picks_keyboard(
-                    part.get("picks") or [],
-                    include_menu=is_last_part and is_last_chunk,
+                kb = self._screening_section_keyboard(
                     line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
-                    topic="screen",
+                    include_menu=is_last_part and is_last_chunk,
                 )
-                await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
+                await message.reply_html(
+                    chunk,
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
             await asyncio.sleep(0.25)
         if result.get("line_share_packs") or result.get("line_share"):
             self._remember_line_share(result)
@@ -802,11 +817,9 @@ class WayneTelegramBot:
             for j, chunk in enumerate(chunks):
                 is_last_chunk = j == len(chunks) - 1
                 is_last_part = i == last
-                kb = self._picks_keyboard(
-                    part.get("picks") or [],
-                    include_menu=is_last_part and is_last_chunk,
+                kb = self._screening_section_keyboard(
                     line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
-                    topic="screen",
+                    include_menu=is_last_part and is_last_chunk,
                 )
                 self._send_html(
                     self.chat_id,

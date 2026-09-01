@@ -244,10 +244,17 @@ class ScreeningEngine:
         res_overnight = []
         res_leave_zero = []
         res_golden_buy = []
+        res_half_year_high = []
 
         for sid, df in stock_dfs.items():
             info = self.calculate_indicators(df)
             if not info:
+                continue
+            if _is_half_year_high_break(info):
+                enriched = _enrich_decision_fields(df, info)
+                enriched["pattern"] = _pattern_tag(enriched)
+                if not _is_downtrend_no_touch(enriched):
+                    res_half_year_high.append(enriched)
                 continue
             if _skip_long_term_high_push(info):
                 continue
@@ -402,12 +409,14 @@ class ScreeningEngine:
                 abs(float(x.get("profit_pct") or 0)),
             )
         )
+        res_half_year_high.sort(key=sort_key, reverse=True)
 
         return {
             "select_01": res_sel_01,
             "select_02": res_sel_02,
             "select_03": res_sel_03,
             "select_04": res_sel_04,
+            "half_year_high": res_half_year_high,
             "leave_zero": res_leave_zero,
             "golden_buy": res_golden_buy,
             "day_trade": res_day_trade,
@@ -503,23 +512,29 @@ class ScreeningEngine:
         return execute_full_screening(self.db_path, target_date)
 
 
-def _skip_long_term_high_push(info: Dict[str, Any]) -> bool:
-    """舊版半年高／兩年高推播條件：整檔不進海選（分類已改，避免同條件從其他桶誤入）。"""
+def _is_half_year_high_break(info: Dict[str, Any]) -> bool:
+    """收盤創約 120 交易日新高（半年高）且帶量。"""
     try:
         c = float(info.get("close") or 0)
         hi120 = float(info.get("hi120") or 0)
+        q = float(info.get("q60r") or 0)
+        pct = float(info.get("pct_change") or 0)
+    except (TypeError, ValueError):
+        return False
+    return hi120 > 0 and c >= hi120 and q >= 2.5 and pct >= 3.0
+
+
+def _skip_long_term_high_push(info: Dict[str, Any]) -> bool:
+    """兩年高整檔不進其他海選桶（半年高改獨立分類）。"""
+    try:
+        c = float(info.get("close") or 0)
         hi480 = float(info.get("hi480") or 0)
         q = float(info.get("q60r") or 0)
         pct = float(info.get("pct_change") or 0)
     except (TypeError, ValueError):
         return False
-    break120 = hi120 > 0 and c >= hi120
     break480 = hi480 > 0 and c >= hi480
-    if break120 and q >= 2.5 and pct >= 3.0:
-        return True
-    if break480 and q >= 3.0 and pct >= 4.0:
-        return True
-    return False
+    return bool(break480 and q >= 3.0 and pct >= 4.0)
 
 
 def html_escape(val) -> str:
@@ -750,7 +765,7 @@ def _safety_plan_html(item: Dict[str, Any]) -> List[str]:
     return out
 
 
-def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
+def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = True) -> str:
     from tg_layout import html_qty
 
     sid = str(item.get("stock_id") or item.get("code") or "")
@@ -796,7 +811,7 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         to_s = ""
     body = [
         f"<b>{idx}.</b> {title}"
-        + (f"　{_line_stock_html_link(sid)}" if sid else ""),
+        + (f"　{_line_stock_html_link(sid)}" if sid and show_line_link else ""),
     ]
     live = item.get("live")
     if live:
@@ -901,8 +916,9 @@ SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
     ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
-    ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
-    ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
+    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
+    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線", 8, True),
     ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
     ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
 )
@@ -925,7 +941,7 @@ def format_screening_payload(
         items = results.get(key) or []
         if skip_empty and not items:
             continue
-        head = f"＝＝{html_escape(label)}　{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
+        head = f"＝＝{html_escape(label)}｜{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
         if first:
             from trading_calendar import format_trading_date_zh
 
@@ -942,16 +958,8 @@ def format_screening_payload(
             part["html"] = head + "\n<i>今日無符合條件標的</i>"
             payload.append(part)
             continue
-        cards = [_stock_card_html(it, n + 1) for n, it in enumerate(items)]
+        cards = [_stock_card_html(it, n + 1, show_line_link=False) for n, it in enumerate(items)]
         part["html"] = head + "\n" + "\n".join(cards)
-        part["picks"] = [
-            (
-                str(it.get("stock_id") or it.get("code") or ""),
-                str(it.get("stock_name") or it.get("name") or ""),
-            )
-            for it in items
-            if it.get("stock_id") or it.get("code")
-        ]
         payload.append(part)
 
     if not payload:
@@ -972,7 +980,7 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
     return [p["html"] for p in format_screening_payload(results, target_date)]
 
 
-SHARE_SEP = "────────"
+SHARE_SEP = "────────────────"
 
 
 def _line_stock_html_link(stock_id: str) -> str:
@@ -1076,52 +1084,9 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
 
 
 def _share_stock_block(it: Dict[str, Any], idx: int, db_path: Optional[str] = None) -> str:
-    sid = str(it.get("stock_id") or it.get("code") or "")
-    sname = str(it.get("stock_name") or it.get("name") or "")
-    q = it.get("q60r")
-    try:
-        q_s = f"{float(q):.2f}×" if q is not None else ""
-    except (TypeError, ValueError):
-        q_s = ""
-    to_k = it.get("turnover_k")
-    try:
-        to_s = f"{float(to_k) / 1000.0:.1f}億" if to_k is not None else ""
-    except (TypeError, ValueError):
-        to_s = ""
-    url = _yahoo_web(sid, db_path)
-    lines = [f"{idx}. {sid} {sname}".strip()]
-    if url:
-        lines.append(url)
-    lines.extend(
-        [
-            f"格局　{_regime_label(it)}",
-            f"收盤　{_px_str(it.get('close'))}　漲跌　{_pct_str(it.get('pct_change'))}",
-            (
-                f"量　　{int(it.get('volume') or 0):,}張　量比　{q_s}"
-                + (f"　額　{to_s}" if to_s else "")
-            ).strip(),
-            f"均線　月{_px_str(it.get('ma20'))}　季{_px_str(it.get('ma60'))}",
-            f"法人　{_chip_plain(it)}",
-        ]
-    )
-    notices = _share_notices_plain(it)
-    if notices:
-        lines.append("注意　" + "　".join(notices))
-    if it.get("profit") is not None:
-        lines.append(f"獲利　{it.get('profit')}%（近60曆日低點上來）")
-    elif it.get("golden_buy"):
-        lines.append(
-            f"獲利　{it.get('profit_pct')}%　月乖離　{it.get('bias_monthly')}%（60低超跌）"
-        )
-    pat = str(it.get("pattern") or "")
-    if pat:
-        lines.append(f"型態　{pat}")
-    if it.get("vol_rank_120"):
-        lines.append(f"120量　第{int(it['vol_rank_120'])}名")
-    plan = _safety_plan_plain(it)
-    if plan:
-        lines.extend(plan)
-    return "\n".join(lines)
+    from line_share_format import format_line_stock_block
+
+    return format_line_stock_block(it, idx, db_path)
 
 
 LINE_STOCK_BUCKETS = (
@@ -1129,6 +1094,7 @@ LINE_STOCK_BUCKETS = (
     ("golden_buy", "黃金買點"),
     ("revenue_cross", "優先看"),
     ("select_01", "周帶量"),
+    ("half_year_high", "半年高"),
     ("select_02", "站上季線"),
     ("select_03", "止跌"),
     ("select_04", "雙綠"),
@@ -1152,7 +1118,6 @@ def format_stock_line_share_text(
             f"{tag}{sid} {sname}".strip(),
             SHARE_SEP,
             _share_stock_block(item, 1, db_path),
-            "（量化輔助，不是立即下單）",
         ]
     )
 
@@ -1179,6 +1144,7 @@ LINE_BUCKET_TITLES = {
     "golden_buy": "黃金買點",
     "revenue_cross": "優先看",
     "select_01": "周帶量",
+    "half_year_high": "半年高",
     "select_02": "站上季線",
     "select_03": "止跌",
     "select_04": "雙綠",
@@ -1193,17 +1159,13 @@ def format_bucket_line_share_text(
     target_date: str,
     db_path: Optional[str] = None,
 ) -> str:
-    title = LINE_BUCKET_TITLES.get(bucket_key) or bucket_key
-    block = _share_bucket_block(results, bucket_key, title, db_path)
+    from line_share_format import format_line_bucket_body
+
+    items = results.get(bucket_key) or []
+    block = format_line_bucket_body(items, bucket_key, db_path)
     if not block:
         return ""
-    return "\n".join(
-        [
-            f"WayneBot 海選　{_date_slash(target_date)}",
-            block,
-            "（量化輔助，不是立即下單）",
-        ]
-    )
+    return f"WayneBot 海選　{_date_slash(target_date)}\n{block}"
 
 
 def build_line_bucket_packs(
@@ -1239,21 +1201,18 @@ def _share_bucket_block(
     title: str,
     db_path: Optional[str] = None,
 ) -> str:
+    from line_share_format import format_line_bucket_body, line_bucket_header
+
     items = results.get(key) or []
     us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     if not items:
         if key in ("day_trade", "overnight") and us_regime == "risk_off":
-            return f"＝＝{title}＝＝　0檔\n隔夜逆風：當沖／隔日沖今日不列"
+            return f"{line_bucket_header(key, 0)}\n隔夜逆風：當沖／隔日沖今日不列"
         return ""
     dict_items = [it for it in items if isinstance(it, dict)]
     if not dict_items:
         return ""
-    lines = [f"＝＝{title}＝＝　{len(dict_items)}檔"]
-    for n, it in enumerate(dict_items, start=1):
-        if n > 1:
-            lines.append(SHARE_SEP)
-        lines.append(_share_stock_block(it, n, db_path))
-    return "\n".join(lines)
+    return format_line_bucket_body(dict_items, key, db_path)
 
 
 def format_line_share_packs(
@@ -1314,12 +1273,10 @@ def format_line_share_packs(
             if not sid or sid in seen_both:
                 continue
             seen_both.add(sid)
-            url = _yahoo_web(sid, db_path)
             name = str(it.get("stock_name") or it.get("name") or "")
-            block = f"{len(both_bits) + 1}. {sid} {name}".strip()
-            if url:
-                block += f"\n{url}"
-            both_bits.append(block)
+            from line_share_format import line_stock_headline
+
+            both_bits.append(line_stock_headline(len(both_bits) + 1, sid, name, db_path))
     both = ""
     if both_bits:
         both = "＝＝雙時段＝＝　晚間台股＋今早都在\n" + "\n".join(both_bits)
