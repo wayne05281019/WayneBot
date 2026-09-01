@@ -609,6 +609,16 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         f"<b>{idx}.</b> {title}"
         + (f"　{_line_stock_html_link(sid)}" if sid else ""),
     ]
+    live = item.get("live")
+    if live:
+        try:
+            from trade_live import format_trade_live_line
+
+            live_line = format_trade_live_line(live)
+            if live_line:
+                body.append(live_line)
+        except Exception:
+            pass
     body.extend([
         f"格局　{regime}",
         f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
