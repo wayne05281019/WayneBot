@@ -687,6 +687,28 @@ def _compact_line(item: Dict[str, Any]) -> str:
     )
 
 
+# 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
+SCREEN_PUSH_SPECS = (
+    ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
+    ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
+    ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
+    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
+    ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
+)
+
+SCREEN_PUSH_FOOTER = (
+    "\n💡 <i>藍字股名＝奇摩，下面可「開 LINE・傳這檔」。左鍵＝看圖；右鍵➕＝觀察。"
+    "【雙時段】＝晚間＋早上都在；少追、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
+    "短線當沖／隔日沖不在晨間海選推播，請按主選單「當沖」「隔日沖」。量化僅供輔助。</i>"
+)
+
+LINE_TRADE_POINTER = (
+    "＝＝短線（不在晨間海選）＝＝\n"
+    "當沖、隔日沖名單改在 Telegram 主選單按「當沖」或「隔日沖」查看（同樣是昨收掃描，含保險進／停利／停損）。"
+)
+
+
 def format_screening_payload(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
@@ -695,30 +717,18 @@ def format_screening_payload(
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
-    specs = [
-        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
-        ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
-        ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
-        ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
-        ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
-        ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
-        ("day_trade", "⚡", "當沖", "保險進場／第一停利＋3%／衝頂＋6%／均價停損", 10, True),
-        ("overnight", "🌙", "隔日沖", "尾盤保險買進區間、明早開高、跌破防守先走", 10, True),
-    ]
+    specs = list(SCREEN_PUSH_SPECS)
     first = True
-    us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     for key, emoji, label, subtitle, cap, skip_empty in specs:
         items = results.get(key) or []
         if skip_empty and not items:
-            if key in ("day_trade", "overnight") and us_regime == "risk_off":
-                pass
-            else:
-                continue
+            continue
         head = f"＝＝{html_escape(label)}　{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
         if first:
             bits = [
                 f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
-                "<i>每檔藍字下方有「開 LINE・傳這檔」；按鈕區也有。按下去開 LINE，再自己選要傳給誰。</i>",
+                "<i>佈局名單（起漲／優先看／周帶量等）。每檔可「開 LINE・傳這檔」。"
+                "短線當沖／隔日沖請按主選單，不在這串推播。</i>",
             ]
             if session_html:
                 bits.append(session_html)
@@ -732,10 +742,7 @@ def format_screening_payload(
             "mark_hint": subtitle,
         }
         if not items:
-            if key in ("day_trade", "overnight") and us_regime == "risk_off":
-                part["html"] = head + "\n<i>隔夜逆風：當沖／隔日沖今日不列（VIX 或美股四大／費半過弱）。</i>"
-            else:
-                part["html"] = head + "\n<i>今日無符合條件標的</i>"
+            part["html"] = head + "\n<i>今日無符合條件標的</i>"
             payload.append(part)
             continue
         detail_n = min(cap, len(items))
@@ -759,12 +766,7 @@ def format_screening_payload(
         payload.append(part)
 
     if payload:
-        payload[-1]["html"] += (
-            "\n💡 <i>藍字股名＝奇摩，下面可「開 LINE・傳這檔」。左鍵＝看圖；右鍵➕＝觀察。"
-            "保險進場／停利／停損已寫在排名裡；【雙時段】＝晚間＋早上都在。"
-            "該注意的漲跌、少追、S級、20低脫離、營收轉強、輪動進、隔夜逆風用<b>粗體</b>。"
-            "量化僅供輔助，進場請設移動停損。</i>"
-        )
+        payload[-1]["html"] += SCREEN_PUSH_FOOTER
     else:
         payload.append({"html": f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
     return payload
@@ -964,7 +966,7 @@ def format_line_share_packs(
     db_path: Optional[str] = None,
     us_snap: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, str]]:
-    """三段各自可開 LINE：夜盤、起漲／佈局、當沖／隔日沖。"""
+    """三段 LINE：夜盤、起漲／佈局、短線說明（當沖改主選單查）。"""
     from line_hop import LINE_PACKS
 
     specs_layout = [
@@ -974,10 +976,6 @@ def format_line_share_packs(
         ("select_02", "站上季線　中線轉強第一天"),
         ("select_03", "止跌　月低有人接"),
         ("select_04", "雙綠　高低卡20低剛脫離"),
-    ]
-    specs_trade = [
-        ("day_trade", "當沖"),
-        ("overnight", "隔日沖"),
     ]
     head = "\n".join(
         [
@@ -1000,7 +998,7 @@ def format_line_share_packs(
 
     both_bits = []
     seen_both = set()
-    for key, _title in specs_layout + specs_trade:
+    for key in results:
         for it in results.get(key) or []:
             if not it.get("both_sessions"):
                 continue
@@ -1025,16 +1023,11 @@ def format_line_share_packs(
     if not layout_parts:
         layout_parts = ["今日沒有起漲／佈局名單"]
 
-    trade_parts = [_share_bucket_block(results, k, t, db_path) for k, t in specs_trade]
-    trade_parts = [p for p in trade_parts if p]
-    if not trade_parts:
-        trade_parts = ["今日沒有當沖／隔日沖名單"]
-
     foot = "（WayneBot　量化輔助，不是立即下單）"
     bodies = {
         "night": ("\n" + SHARE_SEP + "\n").join([head, "＝＝夜盤判斷＝＝", night, foot]),
         "layout": ("\n" + SHARE_SEP + "\n").join([head, "＝＝起漲與佈局＝＝", *layout_parts, foot]),
-        "trade": ("\n" + SHARE_SEP + "\n").join([head, "＝＝當沖／隔日沖＝＝", *trade_parts, foot]),
+        "trade": ("\n" + SHARE_SEP + "\n").join([head, LINE_TRADE_POINTER, foot]),
     }
     # night 已含 ＝＝夜盤判斷＝＝ 時不要重疊標題
     if night.startswith("＝＝夜盤判斷"):
