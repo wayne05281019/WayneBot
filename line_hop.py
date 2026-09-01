@@ -108,7 +108,7 @@ def render_line_redirect_html(text: str) -> str:
 
 
 def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
-    """整區圖文：自動開 LINE 帶文字，同一頁顯示全區長圖（一次儲存貼上）。"""
+    """整區：開 LINE 選聯絡人帶文字；預覽與長圖皆為「文字→圖」逐檔排列。"""
     text = str(manifest.get("line_text") or "").strip()
     title = html.escape(str(manifest.get("title") or "海選"))
     count = int(manifest.get("count") or 0)
@@ -120,21 +120,30 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     share_json = json.dumps(share_url, ensure_ascii=False)
     app_json = json.dumps(app_url, ensure_ascii=False)
     album_json = json.dumps(album_url, ensure_ascii=False)
+    safe_text = html.escape(text)
 
     stock_blocks = []
     for st in stocks:
-        label = html.escape(f"{st.get('rank', '')}. {st.get('stock_name', '')} ({st.get('stock_id', '')})")
+        block = html.escape(str(st.get("text_block") or ""))
         strip = html.escape(str(st.get("strip_url") or ""), quote=True)
-        ind = html.escape(str(st.get("industry_plain") or ""))
-        img = f'<img src="{strip}" alt="{label}" style="width:100%;max-width:720px;display:block;margin:0 auto 8px">' if strip else ""
-        ind_block = f'<pre style="white-space:pre-wrap;font-size:0.9em;background:#f4f4f4;padding:8px;border-radius:8px">{ind}</pre>' if ind else ""
+        if not block and not strip:
+            continue
+        text_pre = (
+            f'<pre class="stock-text">{block}</pre>'
+            if block
+            else ""
+        )
+        img = (
+            f'<img src="{strip}" alt="圖表" class="stock-img" loading="lazy">'
+            if strip
+            else ""
+        )
         stock_blocks.append(
-            f'<section style="margin:1.2em 0"><h3 style="font-size:1.05em">{label}</h3>{img}{ind_block}</section>'
+            f'<article class="stock-card">{text_pre}{img}</article>'
         )
     stocks_html = "\n".join(stock_blocks)
     album_block = (
-        f'<img id="album" src="{safe_album}" alt="全區長圖" '
-        'style="width:100%;max-width:720px;display:block;margin:1em auto;border-radius:8px">'
+        f'<img id="album" src="{safe_album}" alt="全區長圖" class="album">'
         if safe_album
         else ""
     )
@@ -144,18 +153,34 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{title}｜WayneBot LINE</title>"
-        "<style>body{font-family:sans-serif;margin:0;padding:16px;background:#fafafa;color:#111}"
+        "<style>"
+        "body{font-family:sans-serif;margin:0;padding:16px;background:#fafafa;color:#111}"
         ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;text-decoration:none;font-weight:600}"
-        ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}</style>"
+        ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}"
+        ".stock-card{margin:0 0 1.25em;padding:0 0 1em;border-bottom:1px solid #ddd}"
+        ".stock-text{white-space:pre-wrap;font-size:15px;line-height:1.55;background:#f8fafc;"
+        "padding:12px;border-radius:10px;margin:0 0 10px;border:1px solid #e8ecf0}"
+        ".stock-img{width:100%;max-width:720px;display:block;margin:0 auto;border-radius:8px}"
+        ".album{width:100%;max-width:720px;display:block;margin:1em auto;border-radius:8px}"
+        ".summary{white-space:pre-wrap;font-size:14px;line-height:1.5;background:#fff;padding:12px;"
+        "border-radius:10px;border:1px solid #e0e0e0;margin-bottom:1em}"
+        "</style>"
         "</head><body>"
         f"<h2 style=\"text-align:center;margin-top:0\">{title}　{count} 檔</h2>"
-        '<p style="text-align:center">① 文字會自動帶入 LINE<br>② 長按下方長圖儲存，回 LINE 貼上即可</p>'
+        "<p style=\"text-align:center;line-height:1.6\">"
+        "① 會開啟 LINE，請<b>選聯絡人</b>送出文字總彙整<br>"
+        "② 再貼下方「全區長圖」（每檔文字後面接圖表）</p>"
         '<p style="text-align:center">'
-        f'<a class="btn green" href="{html.escape(app_url, quote=True)}">開啟 LINE（文字）</a>'
+        f'<a class="btn green" id="openLine" href="{html.escape(app_url, quote=True)}">'
+        "傳文字到 LINE・選聯絡人</a>"
         f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">下載全區長圖</a>'
         "</p>"
-        f"{album_block}"
+        f'<details open><summary style="font-weight:600;margin-bottom:8px">文字總彙整預覽</summary>'
+        f'<div class="summary">{safe_text}</div></details>'
+        f"<h3 style=\"font-size:1em;margin:1.2em 0 0.6em\">圖文預覽（文字→圖，逐檔）</h3>"
         f'<div style="max-width:720px;margin:0 auto">{stocks_html}</div>'
+        "<h3 style=\"font-size:1em;margin:1.2em 0 0.6em\">全區長圖（貼到 LINE 同一則）</h3>"
+        f"{album_block}"
         "<script>"
         "(function(){"
         f"var share={share_json},app={app_json},album={album_json};"
@@ -163,15 +188,14 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
         "function goApp(){try{location.href=app;}catch(e){}"
         "setTimeout(goShare,900);}"
-        "if(mobile){setTimeout(goApp,300);}"
+        "if(mobile){setTimeout(goApp,400);}"
         "var btn=document.getElementById('saveAlbum');"
         "if(btn&&navigator.share&&album){"
         "btn.addEventListener('click',function(ev){"
-        "if(!navigator.canShare)return;"
-        "ev.preventDefault();"
         "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
         "var file=new File([blob],'waynebot.png',{type:'image/png'});"
-        "if(navigator.canShare({files:[file]}))return navigator.share({files:[file],title:'WayneBot'});"
+        "if(navigator.canShare&&navigator.canShare({files:[file]})){"
+        "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
         "}).catch(function(){});"
         "});}"
         "})();"

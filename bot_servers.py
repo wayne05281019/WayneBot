@@ -1086,7 +1086,7 @@ class WayneTelegramBot:
             )
         hop_url = line_rich_hop_url(bucket_key)
         line_btn = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("一鍵開啟 LINE・整區分享", url=hop_url)]]
+            [[InlineKeyboardButton("一鍵傳 LINE・選聯絡人", url=hop_url)]]
         )
         done_n = int(manifest.get("count") or 0)
         warn = ""
@@ -1103,8 +1103,8 @@ class WayneTelegramBot:
         await message.reply_html(
             f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔圖文已生成。{warn}\n"
             "按下方按鈕：\n"
-            "① 自動開 LINE 帶入文字摘要\n"
-            "② 同一頁長按「全區長圖」儲存後貼到 LINE",
+            "① 開 LINE → <b>選聯絡人</b> → 送出文字總彙整\n"
+            "② 同一頁下載全區長圖貼上（每檔文字後接圖表）",
             reply_markup=line_btn,
             disable_web_page_preview=True,
         )
