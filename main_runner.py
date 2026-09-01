@@ -311,7 +311,7 @@ class MainRunner:
         return (
             "⚠️ <b>今早海選未完成</b>\n"
             f"基準日（上一個完整收盤） <code>{as_of_label}</code>\n"
-            "請按主選單「海選」重試。\n"
+            "這是<b>排程通知</b>，不是海選名單。請按主選單「海選」重試（只按一次，等幾分鐘）。\n"
             "<b>當沖／隔日沖</b>請按主選單「當沖」「隔日沖」— 會用盤中現價複核，不是盤後漲停備援名單。"
         )
 
@@ -402,8 +402,18 @@ class MainRunner:
             return True
         return sides_complete(health.get("tw") or 0, health.get("two") or 0)
 
+    @staticmethod
+    def _screening_delivered(screening: Optional[Dict[str, Any]]) -> bool:
+        """海選有產出可推播的 payload（成功或空桶），不是例外中斷。"""
+        if not screening:
+            return False
+        if screening.get("payload"):
+            return True
+        return str(screening.get("status") or "") in ("success", "empty")
+
     def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = ""):
-        if self.bot and screening:
+        delivered = self._screening_delivered(screening)
+        if self.bot and delivered:
             try:
                 self.bot.send_screening_report(screening)
             except Exception as e:
@@ -411,9 +421,13 @@ class MainRunner:
                 self.send_telegram_message(
                     screening.get("message") or self._screening_fail_message()
                 )
+                delivered = False
         else:
             report_text = (screening or {}).get("message") if screening else ""
             self.send_telegram_message(report_text or self._screening_fail_message())
+        if not delivered:
+            logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
+            return
         extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
         try:
             from screen_review import score_ai_fills, score_screen_picks
@@ -591,8 +605,11 @@ class MainRunner:
             except Exception as e:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
         self._push_screening(screening, as_of=as_of)
-        self._mark_pipeline("success", "morning", run_date=key)
-        return True
+        if self._screening_delivered(screening):
+            self._mark_pipeline("success", "morning", run_date=key)
+        else:
+            logger.error("早上海選未產出名單，基準日 %s", as_of)
+        return self._screening_delivered(screening)
 
     def run_evening_screen(self, skip_if_done: bool = False, notify: bool = False) -> bool:
         """台股收盤後的名單只存庫，不寄 Telegram（美股還沒開）。"""
