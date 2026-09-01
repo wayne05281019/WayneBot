@@ -54,6 +54,7 @@ try:
         ReplyKeyboardRemove,
         KeyboardButton,
         BotCommand,
+        MenuButtonCommands,
     )
     from telegram.ext import (
         Application,
@@ -71,8 +72,10 @@ except ImportError:
 
 HELP_TOPICS = {
     "menu": (
-        "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
+        "<b>主選單在哪？</b>　不在訊息最下面，在<b>輸入框右側 ⌨️</b>展開的兩排按鈕。\n"
         "<b>決策卡</b>／當沖／持股／觀察／海選　｜　隔日沖／資金／說明／選單／（預留格）\n"
+        "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
+        "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "左→右依常用順序；決策卡＝盤中快捷刷新上一檔 MIS 價量與 120日量排名。\n"
         "打股名或代號＝完整看這檔：現價→介紹圖→決策卡→導航→籌碼。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
@@ -316,6 +319,16 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
+    async def _pin_reply_menu(self, message) -> None:
+        """靜默把兩排主選單釘在輸入框區（右側 ⌨️ 展開）；不另發一則提示訊息。"""
+        try:
+            await message.reply_text("\u200b", reply_markup=self._reply_menu())
+        except Exception:
+            try:
+                await message.reply_text("⌨️", reply_markup=self._reply_menu())
+            except Exception:
+                logger.exception("pin reply menu 失敗")
+
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
 
@@ -346,7 +359,10 @@ class WayneTelegramBot:
             logger.exception("移除舊鍵盤失敗")
         done = None
         try:
-            done = await message.reply_text("已更新主選單（下方兩排）。", reply_markup=self._reply_menu())
+            done = await message.reply_text(
+                "已更新主選單（點輸入框右側 ⌨️ 可展開兩排）。",
+                reply_markup=self._reply_menu(),
+            )
         except Exception:
             logger.exception("掛上新選單失敗")
         if uid:
@@ -879,7 +895,7 @@ class WayneTelegramBot:
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "<b>WayneBot</b>\n"
-            "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
+            "主選單在<b>輸入框右側 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
             "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
@@ -934,7 +950,7 @@ class WayneTelegramBot:
     async def _run_manual_screening(self, message):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
         await self._dismiss_menu_transients(message.chat_id)
-        hub = self._keyboard()
+        hub = self._reply_menu()
         status = await message.reply_text(
             self._screening_progress_text(0),
             reply_markup=hub,
@@ -1004,6 +1020,7 @@ class WayneTelegramBot:
                 await status.delete()
             except Exception:
                 pass
+            await self._pin_reply_menu(message)
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_manual_screening(update.message)
@@ -1100,11 +1117,11 @@ class WayneTelegramBot:
         effective_live_bucket = live_bucket
         effective_subtitle = subtitle
         if live_bucket == "daytrade" and not is_tw_equity_session():
-            status = await message.reply_text(status_text, reply_markup=self._keyboard())
+            status = await message.reply_text(status_text, reply_markup=self._reply_menu())
             try:
                 await message.reply_html(
                     f"<b>{title}</b>\n<i>{daytrade_closed_message(phase)}</i>",
-                    reply_markup=self._keyboard(),
+                    reply_markup=self._reply_menu(),
                 )
             finally:
                 try:
@@ -1124,7 +1141,7 @@ class WayneTelegramBot:
                     "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
                     "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。"
                 )
-        status = await message.reply_text(status_text, reply_markup=self._keyboard())
+        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
         try:
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
@@ -1132,7 +1149,7 @@ class WayneTelegramBot:
                 await message.reply_text(
                     f"⚠️ {menu_label}查詢逾時（名單讀取較久）。"
                     "請稍後再按一次；若持續發生請回報。",
-                    reply_markup=self._keyboard(),
+                    reply_markup=self._reply_menu(),
                 )
                 return
             try:
@@ -1172,19 +1189,20 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             await message.reply_text(
                 f"⚠️ {menu_label}盤中複核逾時，請稍後再按一次。",
-                reply_markup=self._keyboard(),
+                reply_markup=self._reply_menu(),
             )
         except Exception as e:
             logger.exception("%s 查詢失敗", live_bucket)
             await message.reply_text(
                 f"{menu_label}查詢失敗：{e}\n請稍後再按一次主選單「{menu_label}」。",
-                reply_markup=self._keyboard(),
+                reply_markup=self._reply_menu(),
             )
         finally:
             try:
                 await status.delete()
             except Exception:
                 pass
+            await self._pin_reply_menu(message)
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_trade_bucket(
@@ -1227,6 +1245,7 @@ class WayneTelegramBot:
         for i, part in enumerate(parts):
             kb = InlineKeyboardMarkup([[self._q("flow")]]) if i == len(parts) - 1 else None
             await update.message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        await self._pin_reply_menu(update.message)
 
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
@@ -1235,6 +1254,7 @@ class WayneTelegramBot:
         for i, part in enumerate(parts):
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
             await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        await self._pin_reply_menu(message)
 
     async def _send_watch(self, message, uid: str, edit: bool = False):
         from wayne_db import get_user_watchlist
@@ -1254,6 +1274,7 @@ class WayneTelegramBot:
                 logger.exception("觀察清單原地更新失敗，改發新訊息")
         if message is not None and hasattr(message, "reply_html"):
             await message.reply_html(html, reply_markup=kb, disable_web_page_preview=True)
+            await self._pin_reply_menu(message)
             return
         raise RuntimeError("觀察清單沒有可回覆的訊息")
 
@@ -1783,8 +1804,14 @@ class WayneTelegramBot:
             logger.exception("決策卡快捷失敗 code=%s", code)
             await message.reply_text("決策卡失敗，請稍後再試。", reply_markup=hub)
         finally:
+            if wait_msg is not None:
+                try:
+                    await wait_msg.delete()
+                except Exception:
+                    pass
             if not lookup_faded:
                 await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
+            await self._pin_reply_menu(message)
 
     async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
@@ -2024,6 +2051,7 @@ class WayneTelegramBot:
             logger.exception("附產業說明失敗 code=%s", code)
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
+        await self._pin_reply_menu(message)
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -2206,6 +2234,7 @@ class WayneTelegramBot:
                         BotCommand("industry", "產業說明"),
                     ]
                 )
+                await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
             except Exception:
                 logger.exception("set_my_commands 失敗")
 
