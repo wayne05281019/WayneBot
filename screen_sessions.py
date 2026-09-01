@@ -327,6 +327,32 @@ def ensure_line_stock_table(db_path: str = None) -> None:
     conn.close()
 
 
+def upsert_line_stocks(db_path: str, as_of: str, stocks: dict) -> None:
+    """單檔或多檔 LINE 稿；不刪同日其他代號。"""
+    as_of = str(as_of or "").replace("-", "")
+    if not as_of or not stocks:
+        return
+    ensure_line_stock_table(db_path)
+    conn = sqlite3.connect(db_path)
+    for sid, body in stocks.items():
+        text = str(body or "").strip()
+        code = str(sid or "").strip()
+        if not code or not text:
+            continue
+        conn.execute(
+            """
+            INSERT INTO screen_line_stocks(as_of, stock_id, body, updated_at)
+            VALUES (?,?,?,datetime('now'))
+            ON CONFLICT(as_of, stock_id) DO UPDATE SET
+                body=excluded.body,
+                updated_at=excluded.updated_at
+            """,
+            (as_of, code, text),
+        )
+    conn.commit()
+    conn.close()
+
+
 def save_line_stocks(db_path: str, as_of: str, stocks: dict) -> None:
     """海選每檔轉 LINE 稿；按鈕 /line/stock/代號 跨重啟也能讀。"""
     as_of = str(as_of or "").replace("-", "")

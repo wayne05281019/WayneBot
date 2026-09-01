@@ -606,7 +606,8 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
     except (TypeError, ValueError):
         to_s = ""
     body = [
-        f"<b>{idx}.</b> {title}",
+        f"<b>{idx}.</b> {title}"
+        + (f"　{_line_stock_html_link(sid)}" if sid else ""),
     ]
     body.extend([
         f"格局　{regime}",
@@ -693,7 +694,7 @@ SCREEN_PUSH_SPECS = (
 )
 
 SCREEN_PUSH_FOOTER = (
-    "\n💡 <i>藍字股名＝奇摩；最下面「開 LINE・傳本區」一次轉整段。左鍵＝看圖；右鍵➕＝觀察。"
+    "\n💡 <i>藍字股名＝奇摩；股名右「開 LINE・傳這檔」直跳 LINE；區底「傳本區」轉整段。"
     "【雙時段】＝晚間＋早上都在；少追、S級、20低脫離、營收轉強、輪動進用<b>粗體</b>。"
     "短線當沖／隔日沖不在晨間海選推播，請按主選單「當沖」「隔日沖」。量化僅供輔助。</i>"
 )
@@ -722,7 +723,7 @@ def format_screening_payload(
         if first:
             bits = [
                 f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
-                "<i>佈局名單（起漲／優先看／周帶量等）。每區最下面可「開 LINE・傳本區」一次轉 LINE。"
+                "<i>佈局名單。股名右可「開 LINE・傳這檔」；區底可「開 LINE・傳本區」轉整段。"
                 "短線當沖／隔日沖請按主選單，不在這串推播。</i>",
             ]
             if session_html:
@@ -765,6 +766,16 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
 
 
 SHARE_SEP = "────────"
+
+
+def _line_stock_html_link(stock_id: str) -> str:
+    from config import get_public_base_url
+
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    url = f"{get_public_base_url()}/line/stock/{sid}"
+    return f'<a href="{html_escape(url)}">開 LINE・傳這檔</a>'
 
 
 def _date_slash(target_date: str) -> str:
@@ -1291,11 +1302,16 @@ def execute_full_screening(
     )
     line_body = ("\n────────\n").join(p["text"] for p in line_packs)
     try:
-        from screen_sessions import save_line_packs, save_line_share
+        from screen_sessions import save_line_packs, save_line_share, save_line_stocks
 
         save_line_share(engine.db_path, target_date, line_body)
         bucket_packs = build_line_bucket_packs(results, target_date, engine.db_path)
         save_line_packs(engine.db_path, target_date, line_packs + bucket_packs)
+        save_line_stocks(
+            engine.db_path,
+            target_date,
+            build_line_stock_bodies(results, target_date, engine.db_path),
+        )
     except Exception:
         pass
 

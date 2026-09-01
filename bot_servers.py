@@ -73,7 +73,7 @@ HELP_TOPICS = {
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "海選＝昨收<b>佈局</b>名單（起漲、優先看、周帶量等），不是盤中即時掃描。"
-        "每區最下面可「開 LINE・傳本區」一次轉 LINE。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
+        "股名右「開 LINE・傳這檔」直跳 LINE；區底「傳本區」轉整段。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
         "藍字股名＝奇摩。下面按鈕：左＝代號＋股名（看圖）；右➕＝觀察。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
@@ -279,13 +279,16 @@ class WayneTelegramBot:
             return
         try:
             from import_health import latest_complete_quote_date
-            from screening_engine import build_line_bucket_packs
-            from screen_sessions import upsert_line_pack
+            from screening_engine import build_line_bucket_packs, build_line_stock_bodies
+            from screen_sessions import upsert_line_pack, upsert_line_stocks
 
             as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
             packs = build_line_bucket_packs({bucket_key: rows}, as_of, self.db_path)
             if packs:
                 upsert_line_pack(self.db_path, as_of, packs[0])
+            bodies = build_line_stock_bodies({bucket_key: rows}, as_of, self.db_path)
+            if bodies:
+                upsert_line_stocks(self.db_path, as_of, bodies)
         except Exception:
             logger.exception("寫入 %s LINE 稿失敗", bucket_key)
 
