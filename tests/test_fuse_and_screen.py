@@ -1323,6 +1323,62 @@ class LookupCardTest(unittest.TestCase):
         self.assertTrue(out3["leave_zero"])
         self.assertGreaterEqual(out3["leave_zero"][0].get("profit") or 0, 0.4)
 
+    def test_leave_zero_excludes_obvious_downtrend(self):
+        from screening_engine import ScreeningEngine, _leave_zero_trend_ok
+
+        self.assertTrue(
+            _leave_zero_trend_ok(
+                {"close": 100, "ma20": 95, "ma60": 90, "low20": 88, "d20": 5, "pct_change": 2.0}
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {"close": 80, "ma20": 95, "ma60": 100, "low20": 79, "d20": 3, "pct_change": 1.0}
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {"close": 50, "ma20": 55, "ma60": 60, "low20": 50.2, "d20": 0.5, "pct_change": 0.8}
+            )
+        )
+
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        def bars(closes):
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": 12000,
+                        "turnover_k": 120000,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        # 長跌後小反彈：可能剛離零但仍在月線、季線下 → 不進起漲
+        slide = [100.0 - i * 0.8 for i in range(70)]
+        bounce = slide + [slide[-1] * 1.004, slide[-1] * 1.012]
+        out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": bars(bounce)})
+        self.assertEqual(out["leave_zero"], [])
+
 
 class AIDeskTest(unittest.TestCase):
     def test_run_ai_desk_actually_buys(self):

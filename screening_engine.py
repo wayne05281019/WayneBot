@@ -278,7 +278,7 @@ class ScreeningEngine:
                 res_sel_04.append(info)
 
             # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
-            # 量熱或昨收高低格還在 20 低，才算有人接。
+            # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
             dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
             if len(df) >= 5 and dts.notna().sum() >= 5:
                 def _cal60(i: int) -> float:
@@ -301,7 +301,13 @@ class ScreeningEngine:
                 yest_hl_low = bool(yest_l20 > 0 and float(info["prev_close"]) <= yest_l20 * 1.002)
                 just_left = py <= 2.0 and pt >= 0.4 and pt <= 12.0 and pt > py + 0.25
                 sid_s = str(info.get("stock_id") or "")
-                if just_left and (vol_hot or yest_hl_low) and len(sid_s) == 4 and sid_s.isdigit():
+                if (
+                    just_left
+                    and (vol_hot or yest_hl_low)
+                    and _leave_zero_trend_ok(info)
+                    and len(sid_s) == 4
+                    and sid_s.isdigit()
+                ):
                     item = dict(info)
                     item["profit"] = round(pt, 1)
                     item["vol_rank_120"] = rank
@@ -423,6 +429,26 @@ def _regime_label(item: Dict[str, Any]) -> str:
     if ma20 and c < ma20:
         return "月線下整理"
     return "整理格局"
+
+
+def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
+    """起漲桶：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
+    regime = _regime_label(info)
+    if regime in ("空頭排列", "弱勢破底", "月線下整理"):
+        return False
+    try:
+        c = float(info.get("close") or 0)
+        ma20 = float(info.get("ma20") or 0)
+        ma60 = float(info.get("ma60") or 0)
+    except (TypeError, ValueError):
+        return False
+    if regime in ("多頭排列", "站上月線"):
+        return True
+    if ma20 > 0 and c >= ma20:
+        return True
+    if ma60 > 0 and ma20 >= ma60 and c >= ma60:
+        return True
+    return False
 
 
 def _pct_str(pct) -> str:
@@ -648,7 +674,7 @@ def format_screening_payload(
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
     payload: List[Dict[str, Any]] = []
     specs = [
-        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正）", 8, True),
+        ("leave_zero", "🌱", "起漲", "高低卡獲利剛離零（昨收≈0，今日轉正；排除明顯空頭）", 8, True),
         ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
         ("select_01", "🔥", "周帶量", "短線轉強；貼月高會標少追", 8, True),
         ("select_02", "🏆", "站上季線", "中線轉強第一天（昨收在季線下）", 8, True),
