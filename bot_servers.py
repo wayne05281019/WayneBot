@@ -86,6 +86,8 @@ HELP_TOPICS = {
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "海選＝昨收<b>佈局</b>名單（起漲、優先看、周帶量等），不是盤中即時掃描。"
+        "每區底部按<b>生成完整圖文・傳LINE</b>：會依序產出該區每檔的介紹圖、高低決策卡、籌碼、產業說明，再轉發給對方。\n"
+        "（主選單<b>決策卡</b>＝單檔盤中刷新，不是整區起漲名單。）\n"
         "股名右「開 LINE・傳這檔」直跳 LINE；區底「傳本區」轉整段。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。\n"
         "藍字股名＝奇摩。下面按鈕：左＝代號＋股名（看圖）；右➕＝觀察。\n"
@@ -413,12 +415,12 @@ class WayneTelegramBot:
         ]
 
     def _screening_section_keyboard(self, line_pack_id: str = None, include_menu: bool = False):
-        """海選整區轉 LINE：只留傳本區，不列逐檔加入按鈕。"""
+        """海選整區：一鍵生成每檔介紹圖／決策卡／籌碼／產業說明，再傳 LINE。"""
         rows = []
         if line_pack_id:
-            line_url = self._line_open_url(line_pack_id)
-            if line_url:
-                rows.append([InlineKeyboardButton("開 LINE・傳本區", url=line_url)])
+            rows.append(
+                [InlineKeyboardButton("生成完整圖文・傳LINE", callback_data=f"lp:{line_pack_id}")]
+            )
         if include_menu:
             rows.append([self._q("screen")])
         if not rows:
@@ -1025,6 +1027,111 @@ class WayneTelegramBot:
             except Exception:
                 pass
             await self._pin_reply_menu(message)
+
+    async def _send_line_rich_bucket(self, message, bucket_key: str):
+        """起漲等海選分類：整區每檔產介紹圖、高低決策卡、籌碼、產業說明。"""
+        from import_health import latest_complete_quote_date
+        from line_hop import line_share_href
+        from line_rich_pack import (
+            bucket_stock_rows,
+            bucket_title,
+            build_bucket_line_text,
+            render_line_share_pack,
+        )
+
+        bucket_key = str(bucket_key or "").strip()
+        title = bucket_title(bucket_key)
+        hub = self._reply_menu()
+        as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
+        rows = await asyncio.to_thread(bucket_stock_rows, self.db_path, bucket_key, as_of)
+        if not rows:
+            await message.reply_text(
+                f"【{title}】尚無名單。請先按主選單「海選」，或等明早 06:30 自動推送。",
+                reply_markup=hub,
+            )
+            return
+
+        n = len(rows)
+        status = await message.reply_text(
+            f"正在生成【{title}】{n} 檔完整圖文（介紹圖→高低決策卡→籌碼→產業說明）…\n"
+            "全部完成後請轉發到 LINE。",
+            reply_markup=hub,
+        )
+        share_root = os.path.join(self.charts_dir, "line_pack", bucket_key, str(as_of))
+        os.makedirs(share_root, exist_ok=True)
+        enriched: list = []
+
+        async def _send_photo(path: str, caption: str) -> bool:
+            if not path or not os.path.isfile(path):
+                return False
+            if not self._chart_png_looks_ok(path):
+                return False
+            try:
+                with open(path, "rb") as f:
+                    await message.reply_photo(photo=f, caption=caption[:1024])
+                return True
+            except Exception:
+                logger.exception("LINE 圖文包傳圖失敗 %s", path)
+                return False
+
+        for i, row in enumerate(rows, start=1):
+            code = str(row.get("stock_id") or "").strip()
+            name = str(row.get("stock_name") or "").strip()
+            try:
+                await status.edit_text(
+                    f"生成中 {i}/{n}　{code} {name}\n"
+                    "介紹圖／高低決策卡／籌碼／產業說明…",
+                    reply_markup=hub,
+                )
+            except Exception:
+                pass
+            pack = await asyncio.to_thread(
+                render_line_share_pack,
+                code,
+                self.db_path,
+                os.path.join(share_root, code),
+            )
+            if pack.get("error"):
+                await message.reply_text(
+                    f"⚠️ {code} {name}：{pack.get('error')}",
+                    reply_markup=hub,
+                )
+                continue
+            label = f"{code} {name}".strip()
+            await message.reply_html(
+                f"<b>▎{i}. {html_escape(label)}</b>",
+                disable_web_page_preview=True,
+            )
+            await _send_photo(pack.get("glance") or "", "介紹圖")
+            await _send_photo(pack.get("card") or "", "高低決策卡")
+            await _send_photo(pack.get("chips") or "", "籌碼（張）")
+            ind = str(pack.get("industry_html") or "").strip()
+            if ind:
+                await message.reply_html(ind, disable_web_page_preview=True)
+            item = dict(pack.get("card_data") or {})
+            item.setdefault("stock_id", code)
+            item.setdefault("stock_name", name or item.get("stock_name") or "")
+            enriched.append(item)
+            await asyncio.sleep(0.15)
+
+        line_body = build_bucket_line_text(self.db_path, bucket_key, enriched, as_of)
+        line_btn = None
+        if line_body:
+            line_btn = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("開 LINE・分享文字摘要", url=line_share_href(line_body))]]
+            )
+        try:
+            await status.delete()
+        except Exception:
+            pass
+        await message.reply_html(
+            f"✅ <b>【{html_escape(title)}】</b>　{n} 檔圖文已生成。\n"
+            "請將上面每一檔（圖＋產業說明）轉發到 LINE；"
+            "或按下方按鈕分享文字摘要（內含奇摩連結）。",
+            reply_markup=line_btn or hub,
+            disable_web_page_preview=True,
+        )
+        await self._pin_reply_menu(message)
 
     @staticmethod
     def _chart_progress_text(elapsed_sec: int) -> str:
@@ -2201,6 +2308,9 @@ class WayneTelegramBot:
                 "overnight": "隔日沖：尾盤佈局",
             }
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
+            return
+        if data.startswith("lp:"):
+            await self._send_line_rich_bucket(q.message, data[3:].strip())
             return
         if data.startswith("rw:"):
             await self._remove_watch_clicked(q, data[3:].strip())

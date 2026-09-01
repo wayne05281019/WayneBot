@@ -1919,10 +1919,10 @@ class WatchListTest(unittest.TestCase):
         bot = object.__new__(WayneTelegramBot)
         bot.db_path = None
         kb = bot._screening_section_keyboard(line_pack_id="leave_zero", include_menu=True)
-        urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertEqual(texts.count("開 LINE・傳本區"), 1)
-        self.assertTrue(any(u and "/line/leave_zero" in u for u in urls))
+        self.assertEqual(texts.count("生成完整圖文・傳LINE"), 1)
+        self.assertTrue(any(d and d == "lp:leave_zero" for d in datas))
         self.assertFalse(any("2330" in (t or "") for t in texts))
         day_kb = bot._picks_keyboard(
             [("2330", "台積電")],
