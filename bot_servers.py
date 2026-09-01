@@ -194,7 +194,17 @@ class WayneTelegramBot:
         self._last_card: Dict[str, str] = {}
         self._line_share_chunks: List[str] = []
         self._line_share_packs: List[Dict[str, str]] = []
+        self._menu_fade_msgs: Dict[int, list] = {}
         self._lookup_fade_msgs: Dict[int, list] = {}
+
+    async def _dismiss_menu_transients(self, chat_id: int) -> None:
+        """選單刷新提示：主功能開始時立刻刪除，像轉場消失。"""
+        msgs = self._menu_fade_msgs.pop(int(chat_id), [])
+        for msg in msgs:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
     def _track_lookup_fade(self, chat_id: int, msg, role: str) -> None:
         if msg is None:
@@ -322,6 +332,8 @@ class WayneTelegramBot:
 
     async def _refresh_reply_menu(self, message, *, uid: str = ""):
         """先移除舊鍵盤再掛兩排新選單；提示訊息短暫顯示後自動刪除。"""
+        chat_id = int(message.chat_id)
+        await self._dismiss_menu_transients(chat_id)
         transient = None
         try:
             transient = await message.reply_text(
@@ -338,11 +350,13 @@ class WayneTelegramBot:
         if uid:
             self._mark_menu_layout_ok(uid)
 
+        pending = [m for m in (transient, done) if m is not None]
+        self._menu_fade_msgs[chat_id] = pending
+
         async def _fade_out():
             await asyncio.sleep(1.8)
-            for msg in (transient, done):
-                if msg is None:
-                    continue
+            still = self._menu_fade_msgs.pop(chat_id, [])
+            for msg in still:
                 try:
                     await msg.delete()
                 except Exception:
@@ -916,6 +930,7 @@ class WayneTelegramBot:
 
     async def _run_manual_screening(self, message):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
+        await self._dismiss_menu_transients(message.chat_id)
         hub = self._keyboard()
         status = await message.reply_text(
             self._screening_progress_text(0),
@@ -1006,13 +1021,22 @@ class WayneTelegramBot:
         from trade_live import apply_trade_live
 
         pre_live = len(rows)
+        raw_rows = list(rows)
         live_skipped = False
+        live_filtered = False
         if live_bucket:
-            rows = await asyncio.wait_for(
-                asyncio.to_thread(apply_trade_live, rows, self.db_path, live_bucket),
-                timeout=30.0,
-            )
-            live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
+            try:
+                rows = await asyncio.wait_for(
+                    asyncio.to_thread(apply_trade_live, raw_rows, self.db_path, live_bucket),
+                    timeout=45.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("%s 盤中複核逾時，改顯示昨收候選", live_bucket)
+                rows = [dict(r, _live_skipped=True) for r in raw_rows]
+                live_skipped = True
+            else:
+                live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
+                live_filtered = bool(rows) and bool(rows[0].get("_live_filtered"))
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>"
@@ -1020,6 +1044,12 @@ class WayneTelegramBot:
             body = (
                 head
                 + "\n<i>⚠️ 盤中 MIS 暫時無法複核，以下為昨收候選（請自行確認現價與漲幅）。</i>\n"
+                + "\n".join(cards)
+            )
+        elif cards and live_filtered:
+            body = (
+                head
+                + "\n<i>此刻無標的落在盤中漲幅條件內，以下為昨收候選供參考。</i>\n"
                 + "\n".join(cards)
             )
         elif cards:
@@ -1056,10 +1086,11 @@ class WayneTelegramBot:
         menu_label: str,
         loader,
     ):
+        await self._dismiss_menu_transients(message.chat_id)
         status = await message.reply_text(status_text, reply_markup=self._keyboard())
         try:
             try:
-                rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=25.0)
+                rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
             except asyncio.TimeoutError:
                 await message.reply_text(
                     f"⚠️ {menu_label}查詢逾時（名單讀取較久）。"
@@ -1372,13 +1403,11 @@ class WayneTelegramBot:
         if text == "當沖":
             self._pending.pop(uid, None)
             logger.info("主選單：當沖 uid=%s", uid)
-            asyncio.create_task(self._ensure_reply_menu_if_needed(update.message, uid))
             await self.daytrade_cmd(update, context)
             return
         if text == "隔日沖":
             self._pending.pop(uid, None)
             logger.info("主選單：隔日沖 uid=%s", uid)
-            asyncio.create_task(self._ensure_reply_menu_if_needed(update.message, uid))
             await self.overnight_cmd(update, context)
             return
         if text == MENU_BTN_RESERVED:
