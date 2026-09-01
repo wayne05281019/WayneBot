@@ -93,9 +93,8 @@ HELP_TOPICS = {
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
-        "上半是你手記的真實買入，不是觀察。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
-        "下半是 AI 模擬帳戶（50 萬本金最多分 3 等份，單檔不超過一槽）。06:30 海選後與盤後融合會自動買賣，也可按「AI操盤」。\n"
-        "成交寫進庫，隔日用已有日 K 復盤；弱的類別下一輪少買。這是模擬倉，不是真實下單。"
+        "這裡只顯示你手記的真實買入，不是觀察、也不是 AI 模擬倉。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
+        "AI 模擬帳戶請按持股頁「AI操盤」或等 06:30／盤後自動成交通知。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
@@ -127,8 +126,8 @@ HELP_TOPICS = {
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
     "flow": (
         "<b>資金移動怎麼用</b>\n"
-        "最上面是盤後資金輪動：同一交易日依產業把三大法人張數加總，對照前一日。熱 3 族＋族內代表股當佈局參考。\n"
-        "下面才是外資／投信個股買賣超，對照持股、觀察、量大波動。\n"
+        "盤後資金輪動：同一交易日依產業把三大法人張數加總，對照前一日。熱 3 族＋族內代表股當佈局參考。\n"
+        "個股區塊是外資／投信買賣超與短線熱股，不含你的持股或觀察（各走自己的選單）。\n"
         "只看官方法人＋價量，不抓分點、不抓論壇。法人也會幌，輪動不單獨當訊號。"
     ),
 }
@@ -816,8 +815,7 @@ class WayneTelegramBot:
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
         mine = self.portfolio_engine.format_holdings_html(holdings)
-        ai = format_ai_desk_html(self.portfolio_engine)
-        parts = chunk_telegram_html(mine + "\n\n" + ai)
+        parts = chunk_telegram_html(mine)
         for i, part in enumerate(parts):
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
             await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
