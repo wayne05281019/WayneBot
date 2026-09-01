@@ -368,12 +368,15 @@ class NavigatorEngine:
                 alert_tags.append("No")
 
         temps = [f"{x:.1f} °C" if x > 0 else "—" for x in temp_nums]
-        trend_labels = compute_temp_trend_labels(temp_nums)
+        trend_labels, trend_notes = compute_temp_trend_labels(
+            temp_nums, closes=[float(x) for x in df["close"].tolist()]
+        )
         df["獲利"] = [f"{p:.1f}%" if pd.notna(p) else "—" for p in df["profit_pct"]]
         df["高低"] = hl_tags
         df["預警"] = alert_tags
         df["溫度計"] = temps
         df["升降"] = trend_labels
+        df["升降註"] = trend_notes
         df["temp_num"] = temp_nums
         df["月乖離"] = [f"{b:+.1f}%" for b in df["bias_monthly"]]
         df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
@@ -436,7 +439,7 @@ class NavigatorEngine:
         table_src = real if len(real) >= lookback else df
         table = table_src.tail(lookback)[
             [
-                "date", "close", "獲利", "高低", "預警", "溫度計", "升降", "月乖離", "120日量",
+                "date", "close", "獲利", "高低", "預警", "溫度計", "升降", "升降註", "月乖離", "120日量",
                 "profit_pct", "bias_monthly", "vol_rank_120", "temp_num",
             ]
         ].iloc[::-1]
@@ -869,6 +872,10 @@ _CARD = {
     "temp_hot_fg": "#7A0B2E",
     "temp_warm_bg": "#FBC7D8",
     "temp_warm_fg": "#9B1145",
+    "temp_compress_bg": "#0D47A1",
+    "temp_compress_fg": "#FFFFFF",
+    "price_not_low_bg": "#E65100",
+    "price_not_low_fg": "#FFFFFF",
     "vol_hi_bg": "#F8BBD0",
     "vol_hi_fg": "#880E4F",
     "white": "#FFFFFF",
@@ -906,34 +913,62 @@ def _parse_temp_n(val) -> float:
         return 0.0
 
 
-def compute_temp_trend_labels(temp_nums: list, window: int = 20) -> list:
-    """溫度升降溫標籤：依當日溫度與近窗高低比較，每檔每天各自計算。"""
-    out: list = []
+def _price_at_window_low(i: int, closes: list, w0: int, tol: float = 0.002) -> bool:
+    """近窗內收盤是否貼齊波段低（容許千分之二）。"""
+    try:
+        seg = [float(closes[j]) for j in range(w0, i + 1) if float(closes[j]) > 0]
+        if not seg:
+            return False
+        return float(closes[i]) <= min(seg) * (1.0 + tol)
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
+def compute_temp_trend_labels(
+    temp_nums: list,
+    closes: list | None = None,
+    window: int = 20,
+) -> tuple[list, list]:
+    """溫度升降溫標籤；溫度創窗內低但股價未創低 → 溫度壓縮＋價未新低。"""
+    labels: list = []
+    notes: list = []
+    closes = closes or []
     for i, t in enumerate(temp_nums):
         if t <= 0:
-            out.append("—")
+            labels.append("—")
+            notes.append("")
             continue
         prev = temp_nums[i - 1] if i > 0 and temp_nums[i - 1] > 0 else t
         w0 = max(0, i - window + 1)
         seg = [x for x in temp_nums[w0 : i + 1] if x > 0]
         if len(seg) < 2:
-            out.append("—")
+            labels.append("—")
+            notes.append("")
             continue
         wmin, wmax = min(seg), max(seg)
         tol = 0.2
         at_max = t >= wmax - tol
         at_min = t <= wmin + tol
         if at_max and not at_min:
-            out.append("最高溫")
+            labels.append("最高溫")
+            notes.append("")
         elif at_min and not at_max:
-            out.append("最低溫")
+            if closes and not _price_at_window_low(i, closes, w0):
+                labels.append("溫度壓縮")
+                notes.append("價未新低")
+            else:
+                labels.append("最低溫")
+                notes.append("")
         elif t > prev + 0.25:
-            out.append("升溫")
+            labels.append("升溫")
+            notes.append("")
         elif t < prev - 0.25:
-            out.append("降溫")
+            labels.append("降溫")
+            notes.append("")
         else:
-            out.append("—")
-    return out
+            labels.append("—")
+            notes.append("")
+    return labels, notes
 
 
 def temp_trend_cell_style(label: str, base: str):
@@ -945,11 +980,21 @@ def temp_trend_cell_style(label: str, base: str):
         return C["temp_hot_bg"], C["temp_hot_fg"]
     if lab == "升溫":
         return C["temp_warm_bg"], C["temp_warm_fg"]
+    if lab == "溫度壓縮":
+        return C["temp_compress_bg"], C["temp_compress_fg"]
     if lab == "最低溫":
         return C["lo_hit_fill"], C["lo_ink"]
     if lab == "降溫":
         return C["lo_fill"], C["lo_ink"]
     return base, C["ink_mute"]
+
+
+def temp_trend_note_cell_style(note: str, base: str):
+    """升降註：價未新低等高對比小字。"""
+    C = _CARD
+    if str(note or "") == "價未新低":
+        return C["price_not_low_bg"], C["price_not_low_fg"]
+    return base or C["white"], C["ink_mute"]
 
 
 def _badge_style(text: str):
@@ -1359,6 +1404,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         rank = int(r.get("vol_rank_120") or 99)
         temp_n = float(r.get("temp_num") or 0) or _parse_temp_n(r.get("溫度計"))
         trend = str(r.get("升降") or "—")
+        trend_note = str(r.get("升降註") or "")
         hl, al = str(r["高低"]), str(r["預警"])
         zebra = row_i % 2 == 0
         base = C["white"] if zebra else C["zebra"]
@@ -1392,6 +1438,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 if val in ("No", "—") or not str(val).strip():
                     ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
                             fontproperties=_fp(11), color=fgs[i], ha="center", va="center", zorder=3)
+                elif i == 6 and trend_note:
+                    nbg, nfg = temp_trend_note_cell_style(trend_note, base)
+                    _pill(ax, cx, cy + body_h * 0.14, trend, tr_bg, tr_fg, w=tw(trend, 10.5) + 2.8,
+                          h=body_h * 0.38, fs=10.5)
+                    _pill(ax, cx, cy - body_h * 0.16, trend_note, nbg, nfg, w=tw(trend_note, 10.0) + 2.6,
+                          h=body_h * 0.34, fs=10.0)
                 else:
                     _pill(ax, cx, cy, val, fills[i], fgs[i], w=tw(val, 11.0) + 3.0,
                           h=body_h * 0.74, fs=11.0)
