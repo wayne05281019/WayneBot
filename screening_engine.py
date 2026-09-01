@@ -35,7 +35,15 @@ class ScreeningEngine:
         return sqlite3.connect(self.db_path)
 
     def get_latest_trading_date(self) -> str:
-        """海選基準日：優先取上市＋上櫃都齊的最近交易日，避免停在上櫃 0 的半套日。"""
+        """海選基準日：庫裡最後完整收盤日（跳週末；假日／颱風停市無齊庫則往前）。"""
+        try:
+            from trading_calendar import resolve_screen_as_of
+
+            resolved = resolve_screen_as_of(self.db_path)
+            if resolved:
+                return resolved
+        except Exception:
+            pass
         try:
             from import_health import latest_complete_quote_date
 
@@ -46,6 +54,20 @@ class ScreeningEngine:
             pass
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT replace(date,'-','') FROM daily_quotes
+                GROUP BY replace(date,'-','')
+                ORDER BY replace(date,'-','') DESC
+                LIMIT 15
+                """
+            )
+            from trading_calendar import is_trading_weekday
+
+            for (raw,) in cursor.fetchall():
+                d = str(raw or "").replace("-", "")[:8]
+                if d and is_trading_weekday(d):
+                    return d
             cursor.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
             row = cursor.fetchone()
             return row[0] if row and row[0] else datetime.now().strftime("%Y%m%d")
@@ -913,8 +935,11 @@ def format_screening_payload(
             continue
         head = f"＝＝{html_escape(label)}　{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
         if first:
+            from trading_calendar import format_trading_date_zh
+
+            as_of_label = format_trading_date_zh(target_date)
             bits = [
-                f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}",
+                f"<b>WayneBot 海選</b>　昨收 {html_escape(as_of_label)}",
                 "<i>佈局名單。股名右可「開 LINE・傳這檔」；區底可「開 LINE・傳本區」轉整段。"
                 "短線當沖／隔日沖請按主選單，不在這串推播。</i>",
             ]
@@ -949,7 +974,16 @@ def format_screening_payload(
     if payload:
         payload[-1]["html"] += SCREEN_PUSH_FOOTER
     else:
-        payload.append({"html": f"<b>WayneBot 海選</b>　昨收 {html_escape(target_date)}\n<i>今日無符合條件標的</i>"})
+        from trading_calendar import format_trading_date_zh
+
+        payload.append(
+            {
+                "html": (
+                    f"<b>WayneBot 海選</b>　昨收 {html_escape(format_trading_date_zh(target_date))}\n"
+                    "<i>今日無符合條件標的</i>"
+                )
+            }
+        )
     return payload
 
 

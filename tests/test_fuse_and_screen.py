@@ -27,9 +27,9 @@ class FuseAndScreenTest(unittest.TestCase):
         from config import fuse_end_date
 
         mid = datetime(2026, 8, 31, 14, 35, tzinfo=ZoneInfo("Asia/Taipei"))
-        self.assertEqual(fuse_end_date(mid), "20260830")
+        self.assertEqual(fuse_end_date(mid), "20260828")
         almost = datetime(2026, 8, 31, 16, 29, tzinfo=ZoneInfo("Asia/Taipei"))
-        self.assertEqual(fuse_end_date(almost), "20260830")
+        self.assertEqual(fuse_end_date(almost), "20260828")
         closed = datetime(2026, 8, 31, 16, 30, tzinfo=ZoneInfo("Asia/Taipei"))
         self.assertEqual(fuse_end_date(closed), "20260831")
 

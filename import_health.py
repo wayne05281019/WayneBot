@@ -48,12 +48,20 @@ def count_markets(db_path: str, yyyymmdd: str) -> Tuple[int, int, int]:
     return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
 
-def latest_complete_quote_date(db_path: str, min_tw: int = MIN_TW, min_two: int = MIN_TWO) -> Optional[str]:
-    """海選／決策用的基準日：必須上市＋上櫃同一天都進庫，不能停在半套日。"""
+def latest_complete_quote_date(
+    db_path: str,
+    min_tw: int = MIN_TW,
+    min_two: int = MIN_TWO,
+    now=None,
+) -> Optional[str]:
+    """海選／決策用的基準日：上市＋上櫃同一天都進庫、週一～五、且不晚於 fuse 上限。"""
+    from trading_calendar import fuse_end_trading_date, is_trading_weekday, normalize_ymd
+
+    cap = fuse_end_trading_date(now)
     stamp = None
     try:
         st = os.stat(db_path)
-        stamp = (st.st_mtime_ns, st.st_size, min_tw, min_two)
+        stamp = (st.st_mtime_ns, st.st_size, min_tw, min_two, cap)
         hit = _COMPLETE_DATE_CACHE.get(db_path)
         if hit and hit[0] == stamp:
             return hit[1]
@@ -81,8 +89,13 @@ def latest_complete_quote_date(db_path: str, min_tw: int = MIN_TW, min_two: int 
     conn.close()
     found = None
     for date, tw, two in rows:
+        d = normalize_ymd(date)
+        if not d or d > cap:
+            continue
+        if not is_trading_weekday(d):
+            continue
         if sides_complete(tw, two, min_tw=min_tw, min_two=min_two):
-            found = str(date)
+            found = d
             break
     if stamp is not None:
         _COMPLETE_DATE_CACHE[db_path] = (stamp, found)
