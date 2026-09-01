@@ -2,7 +2,7 @@
 # WayneBot 全市場量化決策系統升級：模組二 - 即時選股與價位精算核心
 # 檔案路徑：screening_engine.py
 # 核心功能：
-#   1. 海選：周帶量、站上季線、止跌、雙綠脫離（不再列半年高／兩年高；同條件整檔不推）
+#   1. 海選：周帶量、站上季線、止跌（不再列雙綠／半年高／兩年高；同條件整檔不推）
 #   2. 當沖動能專區（進場價、+3%第一停利、+6%衝頂、均價停損）
 #   3. 隔日沖精選專區（買進區間、明日+3.5~4.8%開高目標、衝頂價、保本防守價）
 #   4. S 級籌碼濾網（投信連買 + 5MA向上勾角）
@@ -239,7 +239,6 @@ class ScreeningEngine:
         res_sel_01 = []
         res_sel_02 = []
         res_sel_03 = []
-        res_sel_04 = []
         res_day_trade = []
         res_overnight = []
         res_leave_zero = []
@@ -308,12 +307,6 @@ class ScreeningEngine:
                 and (ma5_hook or c >= o)
             ):
                 res_sel_03.append(info)
-
-            # ------------------------------------------------------------------
-            # 雙綠＝高低卡「高低」格：昨收還貼 20 低，今日 D20 脫離。
-            # ------------------------------------------------------------------
-            if layout_ok and prev_d20 <= 1.0 and d20 >= 2.0 and c > info["low60"] * 1.03 and pct > 1.0:
-                res_sel_04.append(info)
 
             # 黃金買點：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位；可收下坡末端）。
             if _golden_buy_ok(info):
@@ -390,7 +383,6 @@ class ScreeningEngine:
         res_sel_01.sort(key=sort_key, reverse=True)
         res_sel_02.sort(key=sort_key, reverse=True)
         res_sel_03.sort(key=sort_key, reverse=True)
-        res_sel_04.sort(key=sort_key, reverse=True)
         res_day_trade.sort(key=sort_key, reverse=True)
         res_overnight.sort(key=sort_key, reverse=True)
         res_leave_zero.sort(
@@ -415,7 +407,6 @@ class ScreeningEngine:
             "select_01": res_sel_01,
             "select_02": res_sel_02,
             "select_03": res_sel_03,
-            "select_04": res_sel_04,
             "half_year_high": res_half_year_high,
             "leave_zero": res_leave_zero,
             "golden_buy": res_golden_buy,
@@ -920,7 +911,6 @@ SCREEN_PUSH_SPECS = (
     ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
     ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線", 8, True),
     ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
-    ("select_04", "🌱", "雙綠", "高低卡20低剛脫離（不是獲利零）", 8, True),
 )
 
 LINE_TRADE_POINTER = (
@@ -1097,7 +1087,6 @@ LINE_STOCK_BUCKETS = (
     ("half_year_high", "半年高"),
     ("select_02", "站上季線"),
     ("select_03", "止跌"),
-    ("select_04", "雙綠"),
     ("day_trade", "當沖"),
     ("overnight", "隔日沖"),
 )
@@ -1147,7 +1136,6 @@ LINE_BUCKET_TITLES = {
     "half_year_high": "半年高",
     "select_02": "站上季線",
     "select_03": "止跌",
-    "select_04": "雙綠",
     "day_trade": "當沖",
     "overnight": "隔日沖",
 }
@@ -1233,7 +1221,6 @@ def format_line_share_packs(
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),
         ("select_03", "止跌　月低有人接"),
-        ("select_04", "雙綠　高低卡20低剛脫離"),
     ]
     head = "\n".join(
         [
@@ -1261,7 +1248,7 @@ def format_line_share_packs(
     except Exception:
         _SCREEN_BUCKETS = (
             "leave_zero", "golden_buy", "revenue_cross", "select_01", "select_02",
-            "select_03", "select_04", "day_trade", "overnight",
+            "select_03", "day_trade", "overnight",
         )
     for key in _SCREEN_BUCKETS:
         for it in results.get(key) or []:

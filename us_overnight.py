@@ -653,7 +653,7 @@ def apply_us_overnight(results: Dict[str, Any], snap: Dict[str, Any]) -> None:
             x.get("q60r") or 0,
         )
 
-    layout_keys = ("leave_zero", "golden_buy", "revenue_cross", "select_01", "select_02", "select_03", "select_04")
+    layout_keys = ("leave_zero", "golden_buy", "revenue_cross", "select_01", "select_02", "select_03")
     if regime == "unknown" and sox is None and tsm is None:
         return
 

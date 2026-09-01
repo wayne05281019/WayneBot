@@ -15,7 +15,6 @@ MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "select_01": ("🔥", (230, 80, 50), "flame", "周帶量"),
     "select_02": ("🏆", (220, 180, 50), "cup", "季線"),
     "select_03": ("💎", (140, 100, 210), "diamond", "止跌"),
-    "select_04": ("🌿", (60, 170, 90), "sprout", "雙綠"),
     "day_trade": ("⚡", (240, 190, 40), "bolt", "當沖"),
     "overnight": ("🌙", (80, 130, 210), "moon", "隔日沖"),
 }

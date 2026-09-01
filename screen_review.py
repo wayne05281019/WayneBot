@@ -21,7 +21,6 @@ BUCKETS = (
     ("select_01", "周突破"),
     ("select_02", "站上季線"),
     ("select_03", "止跌"),
-    ("select_04", "雙綠"),
     ("day_trade", "當沖"),
     ("overnight", "隔日沖"),
 )
@@ -323,7 +322,6 @@ def bucket_from_reason(reason: str) -> str:
         ("營收", "revenue_cross"),
         ("隔日", "overnight"),
         ("周", "select_01"),
-        ("雙綠", "select_04"),
         ("當沖", "day_trade"),
         ("站上季線", "select_02"),
         ("止跌", "select_03"),

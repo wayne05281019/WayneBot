@@ -1574,14 +1574,6 @@ class AIDeskTest(unittest.TestCase):
                 "select_01": [
                     {"stock_id": "2412", "stock_name": "中華電", "close": 120.0, "chase_warning": True}
                 ],
-                "select_04": [
-                    {
-                        "stock_id": "2308",
-                        "stock_name": "台達電",
-                        "close": 400.0,
-                        "us_peer_headwind": True,
-                    }
-                ],
             }
             ai = run_ai_desk(path, results, "20260831")
             blob = " ".join(ai.get("bought") or [])
@@ -1589,7 +1581,6 @@ class AIDeskTest(unittest.TestCase):
             self.assertIn("2303", blob)
             self.assertNotIn("2317", blob)
             self.assertNotIn("2412", blob)
-            self.assertNotIn("2308", blob)
             eng = PortfolioEngine(path)
             summary = eng.get_portfolio_summary(AI_USER)
             self.assertGreaterEqual(summary["positions_count"], 2)

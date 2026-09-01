@@ -23,7 +23,6 @@ BUCKETS = (
     "half_year_high",
     "select_02",
     "select_03",
-    "select_04",
     "day_trade",
     "overnight",
 )
