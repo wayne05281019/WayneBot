@@ -1446,16 +1446,50 @@ class LookupCardTest(unittest.TestCase):
         leave = [50.0] * 40 + [50.0, 50.4]
         out3 = engine.execute_all_strategies({"2330": bars(leave)})
         self.assertTrue(out3["leave_zero"])
-        self.assertLessEqual(out3["leave_zero"][0].get("profit") or 99, 2.5)
+        self.assertLessEqual(out3["leave_zero"][0].get("profit") or 99, 5.0)
         self.assertGreater(out3["leave_zero"][0].get("profit") or 0, 0.05)
 
-        # 已漲 5%+ 不應進起漲（舊版 pt<=12% 會誤收）
+        # 昨 0.1%、今 1.2%：卡片剛翻正，應收
+        mild = [50.0] * 40 + [50.05, 50.65]
+        out_mild = engine.execute_all_strategies({"2330": bars(mild)})
+        self.assertTrue(out_mild["leave_zero"])
+
+        # 已漲 5%+ 不應進起漲
         chased = [50.0] * 40 + [50.0, 52.6]
         out4 = engine.execute_all_strategies({"2330": bars(chased)})
         self.assertEqual(out4["leave_zero"], [])
 
     def test_leave_zero_excludes_obvious_downtrend(self):
+        import pandas as pd
         from screening_engine import ScreeningEngine, _leave_zero_profit_ok, _leave_zero_trend_ok
+
+        def mini_df(prev_close: float, close: float, *, flat: float = 50.0) -> pd.DataFrame:
+            from datetime import datetime, timedelta
+
+            closes = [flat] * 40 + [prev_close, close]
+            start = datetime(2026, 1, 5)
+            rows = []
+            for i, c in enumerate(closes):
+                rows.append(
+                    {
+                        "date": (start + timedelta(days=i)).strftime("%Y%m%d"),
+                        "close": c,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        self.assertTrue(
+            _leave_zero_profit_ok(mini_df(50.0, 50.8), {"profit_pct": 1.6})
+        )
+        self.assertTrue(
+            _leave_zero_profit_ok(mini_df(50.05, 50.65), {"profit_pct": 1.2})
+        )
+        self.assertFalse(
+            _leave_zero_profit_ok(mini_df(50.0, 52.6), {"profit_pct": 5.2})
+        )
+        self.assertFalse(
+            _leave_zero_profit_ok(mini_df(50.5, 53.0), {"profit_pct": 4.0})
+        )
 
         self.assertTrue(
             _leave_zero_trend_ok(
