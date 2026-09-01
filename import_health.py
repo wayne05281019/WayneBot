@@ -12,6 +12,13 @@ MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
 
 
+def clear_complete_date_cache(db_path: str = "") -> None:
+    if db_path:
+        _COMPLETE_DATE_CACHE.pop(str(db_path), None)
+    else:
+        _COMPLETE_DATE_CACHE.clear()
+
+
 def db_quick_check_ok(db_path: str, min_bytes: int = 1_000_000) -> bool:
     """PRAGMA quick_check；損壞庫會讓基準日／資金輪動全亂。"""
     path = str(db_path or "").strip()

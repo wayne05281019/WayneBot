@@ -93,6 +93,33 @@ def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
     return as_of, lag
 
 
+def catch_up_quotes_to_cap(db_path: str, now=None) -> str:
+    """Release／重 deploy 後庫可能只到昨天；盤後按資金時主動補到 fuse 上限。"""
+    from config import taipei_now
+    from import_health import clear_complete_date_cache, latest_complete_quote_date
+    from trading_calendar import fuse_end_trading_date
+
+    now = now or taipei_now()
+    cap = fuse_end_trading_date(now)
+    complete = latest_complete_quote_date(db_path, now=now) or ""
+    if complete >= cap:
+        return complete
+    try:
+        from main_runner import MainRunner
+
+        clear_complete_date_cache(db_path)
+        MainRunner(db_path=db_path).run_daily_increment(notify=False)
+        from money_flow import recompute_sector_flow
+
+        recompute_sector_flow(db_path, cap)
+        clear_complete_date_cache(db_path)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("盤後補齊失敗 cap=%s", cap)
+    return latest_complete_quote_date(db_path, now=now) or complete
+
+
 def _prev_quote_date(conn: sqlite3.Connection, ymd: str) -> str:
     from trading_calendar import is_trading_weekday, normalize_ymd
 
@@ -407,14 +434,20 @@ def _flow_stock_lines(items: List[str]) -> List[str]:
     return out
 
 
-def format_sector_rotation_html(db_path: str = None, yyyymmdd: str = None, now=None) -> str:
+def format_sector_rotation_html(
+    db_path: str = None,
+    yyyymmdd: str = None,
+    now=None,
+    lag: Optional[str] = None,
+) -> str:
     from tg_layout import kv, section, join_dashed, title_line
 
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
-    lag = None
     if yyyymmdd:
         ymd = str(yyyymmdd).replace("-", "")
+        if lag is None:
+            _, lag = resolve_flow_as_of(path, now=now)
     else:
         ymd, lag = resolve_flow_as_of(path, now=now)
     if not ymd:
@@ -567,7 +600,7 @@ def format_flow_html(
     conn.close()
 
     ymd_s = format_trading_date_zh(ymd)
-    rotation = format_sector_rotation_html(path, ymd, now=now)
+    rotation = format_sector_rotation_html(path, ymd, now=now, lag=lag)
     blocks = []
     if rotation:
         blocks.append(rotation)
