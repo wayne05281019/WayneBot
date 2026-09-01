@@ -46,6 +46,7 @@ def test_apply_trade_live_filters(monkeypatch):
                 "yesterday_close": 100.0,
                 "change": 5.0,
                 "pct": 5.0,
+                "volume": 50000,
                 "update_time": "10:30:00",
             },
             "2317": {
@@ -53,12 +54,19 @@ def test_apply_trade_live_filters(monkeypatch):
                 "yesterday_close": 100.0,
                 "change": 0.5,
                 "pct": 0.5,
+                "volume": 1000,
                 "update_time": "10:30:01",
             },
         }
 
+    def fake_rank(db_path, code, vol):
+        return 3 if code == "2330" else 99
+
     monkeypatch.setattr("trade_live.fetch_mis_batch", fake_batch)
+    monkeypatch.setattr("live_quote.live_vol_rank_120", fake_rank)
     out = apply_trade_live(rows, ":memory:", "daytrade")
     assert len(out) == 1
     assert out[0]["code"] == "2330"
     assert out[0]["live"]["update_time"] == "10:30:00"
+    assert out[0]["live"]["vol_rank_120"] == 3
+    assert out[0]["vol_rank_120"] == 3

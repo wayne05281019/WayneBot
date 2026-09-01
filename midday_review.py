@@ -89,11 +89,13 @@ def fetch_mis_batch(stock_ids: List[str], db_path: str) -> Dict[str, Dict[str, A
             px = _live_px(item)
             pct = round((px - y) / y * 100.0, 2) if y > 0 and px > 0 else _num(item.get("zf") or item.get("ch"))
             chg = round(px - y, 2) if y > 0 and px > 0 else None
+            vol = int(_num(item.get("v"), 0))
             out[sid] = {
                 "close": px,
                 "price": px,
                 "pct": pct,
                 "change": chg,
+                "volume": vol,
                 "yesterday_close": y if y > 0 else None,
                 "update_time": item.get("t") or "",
                 "name": item.get("n") or "",

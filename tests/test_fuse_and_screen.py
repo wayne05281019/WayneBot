@@ -956,7 +956,7 @@ class DualSessionTest(unittest.TestCase):
 
 class LookupCardTest(unittest.TestCase):
     def test_horizon_low_cells_order(self):
-        from cary_navigator import horizon_low_cells
+        from wayne_navigator import horizon_low_cells
 
         cells = horizon_low_cells(
             {
@@ -975,7 +975,7 @@ class LookupCardTest(unittest.TestCase):
         import matplotlib
 
         matplotlib.use("Agg")
-        from cary_navigator import _text_w, fit_label_value
+        from wayne_navigator import _text_w, fit_label_value
 
         row_w, fig_w, gap = 91.6, 4.62, 5.5
         cases = [
@@ -993,7 +993,7 @@ class LookupCardTest(unittest.TestCase):
                 self.assertGreaterEqual(fb, 9.5)
 
     def test_nav_arrow_darkens_on_same_hue_band(self):
-        from cary_navigator import _NAV_TONE, _nav_tone, _wcag
+        from wayne_navigator import _NAV_TONE, _nav_tone, _wcag
 
         h20, l20 = 100.0, 60.0
         # 高點箭頭飄到粉紅區、低點箭頭掉到綠區時要換深色，否則融進背景。
@@ -1007,7 +1007,7 @@ class LookupCardTest(unittest.TestCase):
                 self.assertGreater(_wcag(dark, band), _wcag(light, band))
 
     def test_card_white_text_backgrounds_have_enough_contrast(self):
-        from cary_navigator import _CARD, _wcag
+        from wayne_navigator import _CARD, _wcag
 
         for key in ("pill_hi", "pill_lo", "tag", "navy"):
             with self.subTest(key=key):
@@ -1016,7 +1016,7 @@ class LookupCardTest(unittest.TestCase):
     def test_profit_cell_uses_low_palette_not_hardcoded_pink(self):
         import inspect
 
-        from cary_navigator import (
+        from wayne_navigator import (
             _CARD,
             alert_cell_style,
             bias_cell_style,
@@ -1049,7 +1049,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertNotIn("#FBEAF1", src)
 
     def test_card_bold_and_body_use_different_font_weights(self):
-        from cary_navigator import _weight_step
+        from wayne_navigator import _weight_step
 
         self.assertGreater(_weight_step("heavy" and 900), _weight_step(500))
         self.assertEqual(_weight_step(800), _weight_step(900))
@@ -1062,7 +1062,7 @@ class LookupCardTest(unittest.TestCase):
 
         matplotlib.use("Agg")
         from chips import fit_table_cols
-        from cary_navigator import _CARD, _text_w
+        from wayne_navigator import _CARD, _text_w
 
         headers = ["日期", "收盤", "量", "外資", "投信", "自營", "合計", "超比", "10日累"]
         col_vals = [
@@ -1141,7 +1141,7 @@ class LookupCardTest(unittest.TestCase):
         matplotlib.use("Agg")
         import pandas as pd
 
-        from cary_navigator import render_decision_card_png
+        from wayne_navigator import render_decision_card_png
 
         table = pd.DataFrame(
             [
@@ -1209,7 +1209,7 @@ class LookupCardTest(unittest.TestCase):
         import pandas as pd
         from PIL import Image
 
-        from cary_navigator import render_decision_card_png
+        from wayne_navigator import render_decision_card_png
 
         def row(date):
             return {
@@ -1693,7 +1693,7 @@ class AIDeskTest(unittest.TestCase):
             os.remove(path)
 
     def test_bundled_fonts_shipped_for_fast_lookup(self):
-        from cary_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, bundled_weight_path
+        from wayne_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, bundled_weight_path
 
         self.assertTrue(os.path.isfile(bundled_weight_path(_WEIGHT_TEXT)))
         self.assertTrue(os.path.isfile(bundled_weight_path(_WEIGHT_BOLD)))

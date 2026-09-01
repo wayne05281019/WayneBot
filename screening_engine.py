@@ -630,10 +630,16 @@ def _stock_card_html(item: Dict[str, Any], idx: int) -> str:
         body.append("注意　" + "　".join(notices))
     if item.get("profit") is not None:
         body.append(f"獲利　{html_escape(item.get('profit'))}%（近60曆日低點上來）")
-    if item.get("vol_rank_120"):
-        rank = int(item["vol_rank_120"])
-        rank_s = f"第{rank}名"
-        body.append("120量　" + (_hot(rank_s) if rank <= 20 else html_escape(rank_s)))
+    rank_val = None
+    if live and live.get("vol_rank_120") is not None:
+        rank_val = int(live["vol_rank_120"])
+    elif item.get("vol_rank_120"):
+        rank_val = int(item["vol_rank_120"])
+    if rank_val is not None:
+        rank_s = f"第{rank_val}名"
+        if live and live.get("vol_rank_120") is not None:
+            rank_s = f"第{rank_val}名（盤中即時）"
+        body.append("120量　" + (_hot(rank_s) if rank_val <= 20 else html_escape(rank_s)))
     plan = _safety_plan_html(item)
     if plan:
         body.extend(plan)

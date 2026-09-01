@@ -63,9 +63,10 @@ except ImportError:
 
 HELP_TOPICS = {
     "menu": (
-        "<b>主選單（輸入框下方兩排，永遠在）</b>\n"
+        "<b>主選單（輸入框下方三排，永遠在）</b>\n"
         "海選／當沖／隔日沖／持股　｜　觀察／資金／說明／選單\n"
-        "打股名或代號＝看這檔：先現價，再介紹圖→決策卡→導航→籌碼。\n"
+        "<b>決策卡</b>＝盤中快捷：上一檔一鍵刷新 MIS 價量與 120日量排名；沒看過就打代號。\n"
+        "打股名或代號＝完整看這檔：現價→介紹圖→決策卡→導航→籌碼。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
@@ -176,6 +177,7 @@ class WayneTelegramBot:
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
+        self._last_card: Dict[str, str] = {}
         self._line_share_chunks: List[str] = []
         self._line_share_packs: List[Dict[str, str]] = []
 
@@ -195,18 +197,63 @@ class WayneTelegramBot:
                 pass
         return InlineKeyboardButton(text, callback_data=callback_data, **kwargs)
 
+    @staticmethod
+    def _uid_from_message(message) -> str:
+        user = getattr(message, "from_user", None)
+        return str(getattr(user, "id", "") or "")
+
+    def _remember_card(self, uid: str, code: str) -> None:
+        c = str(code or "").strip()
+        if uid and c:
+            self._last_card[uid] = c
+
+    async def _prompt_decision_card(self, message, uid: str):
+        from wayne_db import get_user_watchlist
+
+        rows = get_user_watchlist(self.db_path, uid)
+        kb = []
+        for r in rows[:8]:
+            c = str(r.get("stock_code") or "")
+            n = str(r.get("stock_name") or "")
+            if c:
+                kb.append([InlineKeyboardButton(f"{c} {n}".strip()[:22], callback_data=f"d:{c}")])
+        kb.append([self._q("stock")])
+        self._pending[uid] = "dcard"
+        await message.reply_html(
+            "盤中<b>決策卡</b>：打代號或股名。"
+            "會用證交所 MIS 即時價量重算格子（含 120日量排名）。"
+            "也可點下面觀察清單。",
+            reply_markup=InlineKeyboardMarkup(kb),
+        )
+
+    async def decision_card_btn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(update.effective_user.id)
+        self._pending.pop(uid, None)
+        last = self._last_card.get(uid)
+        if last:
+            hits = lookup_stocks(self.db_path, last)
+            name = (hits[0].get("stock_name") if hits else "") or last
+            await update.message.reply_text(
+                f"盤中刷新 {last} {name}…",
+                reply_markup=self._reply_menu(),
+            )
+            await self._send_decision_card_quick(update.message, last, uid)
+        else:
+            await self._prompt_decision_card(update.message, uid)
+
     def _reply_menu(self):
-        """聊天室下方常駐兩排（每排四個，短標減少左右空白）。"""
+        """聊天室下方常駐三排：上兩排功能、第三排盤中決策卡快捷。"""
         rows = [
             [KeyboardButton("海選"), KeyboardButton("當沖"), KeyboardButton("隔日沖"), KeyboardButton("持股")],
             [KeyboardButton("觀察"), KeyboardButton("資金"), KeyboardButton("說明"), KeyboardButton("選單")],
+            [KeyboardButton("決策卡")],
         ]
         try:
             return ReplyKeyboardMarkup(
                 rows,
                 resize_keyboard=True,
                 is_persistent=True,
-                input_field_placeholder="打股名／代號，或按下方兩排",
+                input_field_placeholder="打股名／代號，或按下方「決策卡」",
             )
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -652,7 +699,7 @@ class WayneTelegramBot:
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
             return
-        from cary_navigator import generate_card_with_chart, generate_chart, generate_decision_card
+        from wayne_navigator import generate_card_with_chart, generate_chart, generate_decision_card
 
         try:
             packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
@@ -717,15 +764,16 @@ class WayneTelegramBot:
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
             "<b>WayneBot</b>\n"
-            "主選單在<b>輸入框正下方兩排</b>（不會跟著訊息捲走）。\n"
-            "打 <b>南亞</b> 或 <b>2324</b> 看單檔。左下也可按 /menu。\n"
+            "主選單在<b>輸入框正下方三排</b>（不會跟著訊息捲走）。\n"
+            "盤中常看決策卡請按第三排 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
+            "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
             reply_markup=self._reply_menu(),
         )
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_html(
-            "已叫回主選單（下方兩排）。",
+            "已叫回主選單（下方三排）。",
             reply_markup=self._reply_menu(),
         )
 
@@ -1034,6 +1082,9 @@ class WayneTelegramBot:
             self._pending.pop(uid, None)
             await self.overnight_cmd(update, context)
             return
+        if text == "決策卡":
+            await self.decision_card_btn(update, context)
+            return
         pending = self._pending.pop(uid, "")
         if text == "海選" or "今日海選" in text or text.endswith("海選"):
             await self.screen_cmd(update, context)
@@ -1047,7 +1098,7 @@ class WayneTelegramBot:
         if "系統狀態" in text:
             await update.message.reply_html("WayneBot 雲端新版運作中。請用訊息下方按鈕操作。", reply_markup=self._keyboard())
             return
-        if pending in ("card", "chips", "fund", "industry", "watch"):
+        if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
             handled = await self._handle_pending_pick(update.message, uid, pending, text)
             if handled:
                 return
@@ -1137,7 +1188,10 @@ class WayneTelegramBot:
             await message.reply_text(f"已加入觀察 {code} {name}", reply_markup=self._keyboard())
             return True
         if pending == "card":
-            await self._send_card_to(message, code)
+            await self._send_card_to(message, code, uid)
+            return True
+        if pending == "dcard":
+            await self._send_decision_card_quick(message, code, uid)
             return True
         if pending == "chips":
             chip_img = await asyncio.to_thread(
@@ -1253,9 +1307,92 @@ class WayneTelegramBot:
         return title
 
     async def _reply_card(self, update: Update, code: str):
-        await self._send_card_to(update.message, code)
+        uid = str(update.effective_user.id)
+        await self._send_card_to(update.message, code, uid)
 
-    async def _send_card_to(self, message, code: str):
+    async def _send_decision_card_quick(self, message, code: str, uid: str = ""):
+        """盤中快捷：MIS 現價 + 高低決策卡（不重跑導航／籌碼，較快）。"""
+        code = str(code).strip()
+        uid = uid or self._uid_from_message(message)
+        hits = lookup_stocks(self.db_path, code)
+        if hits and hits[0].get("close") is None:
+            await self._send_card_to(message, code, uid)
+            return
+        hub = self._hub_keyboard(code)
+        try:
+            header = await asyncio.to_thread(self._quote_header_html, code)
+            await message.reply_html(header, disable_web_page_preview=True)
+        except Exception:
+            logger.exception("決策卡現價列失敗 code=%s", code)
+        wait_msg = None
+        try:
+            wait_msg = await message.reply_text("決策卡產製中（盤中 MIS 價量）…")
+        except Exception:
+            pass
+        try:
+            from wayne_navigator import NavigatorEngine, render_decision_card_png
+
+            def _build_card():
+                engine = NavigatorEngine(self.db_path)
+                card = engine.get_decision_card(code, lookback=20)
+                if isinstance(card, dict):
+                    card.pop("_ohlc", None)
+                return card
+
+            card = await asyncio.wait_for(asyncio.to_thread(_build_card), timeout=20)
+            if card.get("error"):
+                await message.reply_html(
+                    f"⚠️ {html_escape(card.get('error'))}",
+                    reply_markup=hub,
+                    disable_web_page_preview=True,
+                )
+                return
+            os.makedirs(self.charts_dir, exist_ok=True)
+            card_path = await asyncio.wait_for(
+                asyncio.to_thread(
+                    render_decision_card_png,
+                    card,
+                    os.path.join(self.charts_dir, f"{code}_card.png"),
+                ),
+                timeout=25,
+            )
+            sent = False
+            if card_path and os.path.exists(card_path):
+                live_note = ""
+                if card.get("is_live"):
+                    t = str(card.get("live_time") or "")[:5]
+                    live_note = f"（盤中{t}）" if t else "（盤中即時）"
+                with open(card_path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=f"高低決策卡{live_note}",
+                        reply_markup=hub,
+                    )
+                sent = True
+            if not sent:
+                from wayne_navigator import generate_decision_card
+
+                html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
+                await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
+            self._remember_card(uid, code)
+        except asyncio.TimeoutError:
+            logger.exception("決策卡快捷逾時 code=%s", code)
+            await message.reply_html(
+                "決策卡產製逾時，請再按一次「決策卡」或打代號重試。",
+                reply_markup=hub,
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.exception("決策卡快捷失敗 code=%s", code)
+            await message.reply_text("決策卡失敗，請稍後再試。", reply_markup=hub)
+        finally:
+            if wait_msg is not None:
+                try:
+                    await wait_msg.delete()
+                except Exception:
+                    pass
+
+    async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
         if hits and hits[0].get("close") is None:
@@ -1330,17 +1467,17 @@ class WayneTelegramBot:
         last_ok = False
         pending_send = None
         try:
-            from cary_navigator import (
+            from wayne_navigator import (
                 generate_chart,
                 render_decision_card_png,
                 render_first_glance_png,
             )
-            from cary_navigator import CaryNavigatorEngine
+            from wayne_navigator import NavigatorEngine
             from chips import generate_chips_image
             from chip_tape import build_tape
 
             def _card_and_tape():
-                engine = CaryNavigatorEngine(self.db_path)
+                engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(code, lookback=20)
                 tape = {}
                 try:
@@ -1462,7 +1599,7 @@ class WayneTelegramBot:
             if sent_any and not hub_on:
                 await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
             elif not sent_any:
-                from cary_navigator import generate_decision_card
+                from wayne_navigator import generate_decision_card
 
                 html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
@@ -1492,7 +1629,7 @@ class WayneTelegramBot:
                 pending_send = None
             if not sent_any:
                 try:
-                    from cary_navigator import generate_decision_card
+                    from wayne_navigator import generate_decision_card
 
                     html = await asyncio.to_thread(generate_decision_card, code, self.db_path)
                 except Exception:
@@ -1508,6 +1645,8 @@ class WayneTelegramBot:
             await self._send_industry(message, code)
         except Exception:
             logger.exception("附產業說明失敗 code=%s", code)
+        uid = uid or self._uid_from_message(message)
+        self._remember_card(uid, code)
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
@@ -1559,8 +1698,13 @@ class WayneTelegramBot:
                 reply_markup=self._hub_keyboard(code),
             )
             return
+        if data.startswith("d:") or data.startswith("r:"):
+            uid = str(q.from_user.id)
+            await self._send_decision_card_quick(q.message, data[2:].strip(), uid)
+            return
         if data.startswith("k:"):
-            await self._send_card_to(q.message, data[2:])
+            uid = str(q.from_user.id)
+            await self._send_card_to(q.message, data[2:], uid)
             return
         if data.startswith("h:"):
             code = data[2:].strip()
@@ -1667,7 +1811,7 @@ class WayneTelegramBot:
             return
         async def _on_start(app):
             try:
-                from cary_navigator import prewarm_card_fonts
+                from wayne_navigator import prewarm_card_fonts
 
                 await asyncio.to_thread(prewarm_card_fonts)
             except Exception:
