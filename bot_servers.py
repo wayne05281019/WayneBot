@@ -25,7 +25,7 @@ from wayne_db import (
 )
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
-from ai_trader import format_ai_desk_html
+from ai_trader import format_ai_desk_html, run_ai_desk
 from chips import generate_chips_image
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ HELP_TOPICS = {
     "portfolio": (
         "<b>持股怎麼用</b>\n"
         "這裡只顯示你手記的真實買入，不是觀察、也不是 AI 模擬倉。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
-        "AI 模擬帳戶請按持股頁「AI操盤」或等 06:30／盤後自動成交通知。"
+        "AI 模擬帳戶不會自動推播。要看現況按持股頁「AI模擬倉」；要依海選執行一輪模擬買賣按「AI操盤」。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
@@ -556,6 +556,7 @@ class WayneTelegramBot:
             )
         kb.append(
             [
+                InlineKeyboardButton("AI模擬倉", callback_data="ai_view"),
                 InlineKeyboardButton("AI操盤", callback_data="ai_run"),
                 self._q("portfolio"),
             ]
@@ -1599,11 +1600,22 @@ class WayneTelegramBot:
             return True
         return False
 
+    async def _send_ai_desk_view(self, message, uid: str):
+        """只顯示模擬倉現況，不執行買賣。"""
+        try:
+            html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine)
+            holdings = get_user_portfolio(self.db_path, uid)
+            parts = chunk_telegram_html(html)
+            for i, part in enumerate(parts):
+                kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        except Exception as e:
+            logger.exception("AI 模擬倉顯示失敗")
+            await message.reply_text(f"AI 模擬倉顯示失敗：{e}", reply_markup=self._keyboard())
+
     async def _run_ai_now(self, message, uid: str):
         await message.reply_text("AI 模擬操盤執行中（依今日海選紀律）…")
         try:
-            from ai_trader import run_ai_desk
-
             result = await asyncio.to_thread(self.screener.run_full_screening)
             as_of = result.get("as_of") or result.get("date") or ""
             ai = await asyncio.to_thread(run_ai_desk, self.db_path, result.get("results") or {}, as_of)
@@ -2123,6 +2135,9 @@ class WayneTelegramBot:
                 f"賣出 {code}。請輸入：張數 價格\n例如：1 72",
                 reply_markup=self._keyboard(),
             )
+            return
+        if data == "ai_view":
+            await self._send_ai_desk_view(q.message, str(q.from_user.id))
             return
         if data == "ai_run":
             await self._run_ai_now(q.message, str(q.from_user.id))

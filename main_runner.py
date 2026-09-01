@@ -9,7 +9,7 @@
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
 #   - Render 常駐 06:30；GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
-# 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄）
+# 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
@@ -327,7 +327,7 @@ class MainRunner:
                 logger.error(f"四大選股失敗：{e}", exc_info=True)
         if not report_text:
             report_text = self._screening_fail_message()
-        extra = [report_text, self._format_portfolio_section(), self._format_watch_radar_section()]
+        extra = [report_text, self._format_watch_radar_section()]
         try:
             from fundamentals import format_hot_revenue_html
             hot = format_hot_revenue_html(self.db_path)
@@ -428,7 +428,7 @@ class MainRunner:
         if not delivered:
             logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
             return
-        extra_bits = [self._format_portfolio_section(), self._format_watch_radar_section()]
+        extra_bits = [self._format_watch_radar_section()]
         try:
             from screen_review import score_ai_fills, score_screen_picks
 
@@ -455,7 +455,7 @@ class MainRunner:
         extra_text = "\n".join(x for x in extra_bits if x)
         if extra_text:
             self.send_telegram_message(extra_text)
-        self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=True)
+        self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
 
     def _run_ai_desk(
         self,
@@ -637,10 +637,10 @@ class MainRunner:
         self._run_ai_desk(
             as_of,
             results=(screening or {}).get("results") or {},
-            notify=True,
+            notify=False,
         )
         if notify:
-            logger.info("晚間海選名單不另推；AI 模擬倉若有成交會寄。")
+            logger.info("晚間海選名單不另推；AI 模擬倉在背景更新，不主動推播。")
         self._mark_pipeline("success", "evening", run_date=key)
         return True
 

@@ -43,3 +43,27 @@ def test_push_screening_failure_skips_extras(monkeypatch):
     assert sent[0][0] == "msg"
     assert "今早海選未完成" in sent[0][1]
     assert "排程通知" in sent[0][1]
+
+
+def test_push_screening_success_skips_ai_push(monkeypatch):
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = ":memory:"
+    runner.today_str = "20260901"
+    runner.bot = type("B", (), {"send_screening_report": lambda _s, _x: None})()
+    sent = []
+    ai_calls = []
+
+    runner.send_telegram_message = lambda text: sent.append(text)
+    runner._format_watch_radar_section = lambda: ""
+    runner._run_ai_desk = lambda *a, **k: ai_calls.append(k) or {}
+
+    runner._push_screening(
+        {"status": "success", "payload": [{"html": "海選"}]},
+        as_of="20260831",
+    )
+
+    assert len(ai_calls) == 1
+    assert ai_calls[0].get("notify") is False
+    assert all("AI 模擬帳戶" not in (m or "") for m in sent)
