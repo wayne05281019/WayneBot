@@ -1022,6 +1022,13 @@ class WayneTelegramBot:
                 pass
             await self._pin_reply_menu(message)
 
+    @staticmethod
+    def _chart_progress_text(elapsed_sec: int) -> str:
+        return (
+            f"圖產製中　已 {elapsed_sec}s\n"
+            "介紹圖／決策卡／導航／籌碼並行產生，完成一張送一張…"
+        )
+
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_manual_screening(update.message)
 
@@ -1848,9 +1855,16 @@ class WayneTelegramBot:
         lookup_faded = False
         header_msg = None
         try:
-            header = await asyncio.to_thread(self._quote_header_html, code)
+            header = await asyncio.wait_for(
+                asyncio.to_thread(self._quote_header_html, code),
+                timeout=8.0,
+            )
             header_msg = await message.reply_html(header, disable_web_page_preview=True)
             self._track_lookup_fade(chat_id, header_msg, "header")
+        except asyncio.TimeoutError:
+            logger.warning("現價列逾時 code=%s", code)
+            fallback = await message.reply_text(f"查詢 {code}…（盤中報價較慢，繼續出圖）")
+            self._track_lookup_fade(chat_id, fallback, "header")
         except Exception:
             logger.exception("現價列失敗 code=%s", code)
             fallback = await message.reply_text(f"查詢 {code}…")
@@ -1866,7 +1880,7 @@ class WayneTelegramBot:
             cap_links = ""
 
         async def send_photo(path, caption, markup=None):
-            nonlocal sent_any, last_ok, lookup_faded
+            nonlocal sent_any, lookup_faded
             if not path or not os.path.exists(path):
                 return False
             try:
@@ -1889,24 +1903,61 @@ class WayneTelegramBot:
             return ok
 
         wait_msg = None
+        progress_stop = asyncio.Event()
+        progress_task = None
         try:
-            wait_msg = await message.reply_text("圖產製中，會依序出現介紹圖／決策卡／導航／籌碼…")
+            wait_msg = await message.reply_text(self._chart_progress_text(0))
             self._track_lookup_fade(chat_id, wait_msg, "wait")
         except Exception:
             wait_msg = None
 
+        async def _progress_tick():
+            t0 = time.monotonic()
+            while not progress_stop.is_set():
+                if wait_msg is None:
+                    break
+                elapsed = int(time.monotonic() - t0)
+                try:
+                    await wait_msg.edit_text(self._chart_progress_text(elapsed))
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(progress_stop.wait(), timeout=3.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        if wait_msg is not None:
+            progress_task = asyncio.create_task(_progress_tick())
+
         sent_any = False
-        last_ok = False
-        card_task = chart_task = chip_task = None
+        hub_on = False
+        render_tasks: list = []
+
+        async def _clear_wait() -> None:
+            nonlocal wait_msg
+            if wait_msg is not None:
+                try:
+                    await wait_msg.delete()
+                except Exception:
+                    pass
+                wait_msg = None
+
         try:
             from wayne_navigator import (
                 generate_chart,
+                prewarm_card_fonts,
                 render_decision_card_png,
                 render_first_glance_png,
             )
             from wayne_navigator import NavigatorEngine
             from chips import generate_chips_image
             from chip_tape import build_tape
+
+            try:
+                await asyncio.wait_for(asyncio.to_thread(prewarm_card_fonts), timeout=15.0)
+            except Exception:
+                logger.debug("字型預熱略過", exc_info=True)
 
             def _card_and_tape():
                 engine = NavigatorEngine(self.db_path)
@@ -1921,7 +1972,7 @@ class WayneTelegramBot:
 
             t0 = time.monotonic()
             card, tape, ohlc = await asyncio.wait_for(
-                asyncio.to_thread(_card_and_tape), timeout=20
+                asyncio.to_thread(_card_and_tape), timeout=45.0
             )
             logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
             if card.get("error"):
@@ -1937,15 +1988,29 @@ class WayneTelegramBot:
             chart_path_f = os.path.join(self.charts_dir, f"{code}.png")
             chip_path_f = os.path.join(self.charts_dir, f"{code}_chips.png")
 
-            t1 = time.monotonic()
-            card_task = asyncio.create_task(
-                asyncio.wait_for(
-                    asyncio.to_thread(render_decision_card_png, card, card_path_f),
-                    timeout=35,
+            async def _job_glance():
+                path = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        render_first_glance_png,
+                        code,
+                        card,
+                        tape,
+                        glance_path,
+                        self.db_path,
+                    ),
+                    timeout=60.0,
                 )
-            )
-            chart_task = asyncio.create_task(
-                asyncio.wait_for(
+                return ("glance", path)
+
+            async def _job_card():
+                path = await asyncio.wait_for(
+                    asyncio.to_thread(render_decision_card_png, card, card_path_f),
+                    timeout=60.0,
+                )
+                return ("card", path)
+
+            async def _job_chart():
+                path = await asyncio.wait_for(
                     asyncio.to_thread(
                         generate_chart,
                         code,
@@ -1954,58 +2019,51 @@ class WayneTelegramBot:
                         chart_path_f,
                         ohlc,
                     ),
-                    timeout=45,
+                    timeout=90.0,
                 )
-            )
-            chip_task = asyncio.create_task(
-                asyncio.wait_for(
+                return ("chart", path)
+
+            async def _job_chips():
+                path = await asyncio.wait_for(
                     asyncio.to_thread(
                         generate_chips_image,
                         code,
                         self.db_path,
                         chip_path_f,
                     ),
-                    timeout=25,
+                    timeout=45.0,
                 )
-            )
-            glance = await asyncio.wait_for(
-                asyncio.to_thread(
-                    render_first_glance_png,
-                    code,
-                    card,
-                    tape,
-                    glance_path,
-                    self.db_path,
-                ),
-                timeout=30,
-            )
-            logger.info("看這檔 glance %.1fs code=%s", time.monotonic() - t1, code)
-            if glance:
-                last_ok = await send_photo(glance, cap_links or "當日K＋籌碼價量")
-                sent_any = sent_any or last_ok
-            t1 = time.monotonic()
-            card_path = await card_task
-            logger.info("看這檔 card_png %.1fs code=%s", time.monotonic() - t1, code)
-            if card_path:
-                last_ok = await send_photo(card_path, "高低決策卡")
-                sent_any = sent_any or last_ok
-            t1 = time.monotonic()
-            chart = await chart_task
-            logger.info("看這檔 chart %.1fs code=%s", time.monotonic() - t1, code)
-            if chart:
-                last_ok = await send_photo(
-                    chart,
-                    "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
-                )
-                sent_any = sent_any or last_ok
-            t1 = time.monotonic()
-            chip_img = await chip_task
-            logger.info("看這檔 chips %.1fs code=%s", time.monotonic() - t1, code)
-            hub_on = False
-            if chip_img:
-                hub_on = await send_photo(chip_img, "籌碼（張）", hub)
-                sent_any = sent_any or hub_on
-                last_ok = hub_on
+                return ("chips", path)
+
+            render_tasks = [
+                asyncio.create_task(_job_glance()),
+                asyncio.create_task(_job_card()),
+                asyncio.create_task(_job_chart()),
+                asyncio.create_task(_job_chips()),
+            ]
+            for fut in asyncio.as_completed(render_tasks):
+                kind, path = await fut
+                logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
+                if not path:
+                    continue
+                if kind == "glance":
+                    ok = await send_photo(path, cap_links or "當日K＋籌碼價量")
+                elif kind == "card":
+                    ok = await send_photo(path, "高低決策卡")
+                elif kind == "chart":
+                    ok = await send_photo(
+                        path,
+                        "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
+                    )
+                elif kind == "chips":
+                    ok = await send_photo(path, "籌碼（張）", hub)
+                    hub_on = ok
+                else:
+                    ok = False
+                if ok:
+                    sent_any = True
+                    await _clear_wait()
+
             if sent_any and not hub_on:
                 await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
             elif not sent_any:
@@ -2018,12 +2076,13 @@ class WayneTelegramBot:
                     await self._dismiss_lookup_fades(chat_id)
         except asyncio.TimeoutError:
             logger.exception("看這檔出圖逾時 code=%s", code)
-            for t in (card_task, chart_task, chip_task):
-                if t is not None and not t.done():
+            for t in render_tasks:
+                if not t.done():
                     t.cancel()
             if not sent_any:
                 await message.reply_html(
-                    "圖產製逾時。請再打一次代號；或先用下面按鈕看籌碼／產業。",
+                    "圖產製逾時（雲端較慢或剛醒機）。請再打一次 2454；"
+                    "若仍卡住請回報。",
                     reply_markup=hub,
                     disable_web_page_preview=True,
                 )
@@ -2031,8 +2090,8 @@ class WayneTelegramBot:
                 await message.reply_html("後面的圖逾時。可用下面按鈕繼續。", reply_markup=hub, disable_web_page_preview=True)
         except Exception:
             logger.exception("看這檔出圖失敗 code=%s", code)
-            for t in (card_task, chart_task, chip_task):
-                if t is not None and not t.done():
+            for t in render_tasks:
+                if not t.done():
                     t.cancel()
             if not sent_any:
                 try:
@@ -2043,6 +2102,10 @@ class WayneTelegramBot:
                     html = f"查詢 {html_escape(code)} 失敗。"
                 await message.reply_html(html, reply_markup=hub, disable_web_page_preview=True)
         finally:
+            progress_stop.set()
+            if progress_task is not None:
+                progress_task.cancel()
+            await _clear_wait()
             if not lookup_faded:
                 await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
         try:
