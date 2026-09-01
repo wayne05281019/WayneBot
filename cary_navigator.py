@@ -856,7 +856,140 @@ _CARD = {
     "tbl_line": "#BACCE6",
     "tbl_ink": "#1E3A8A",
     "zebra": "#F7F9FC",
+    "neutral_bg": "#F1F3F6",
+    "neutral_fg": "#4B5563",
+    "temp_hot_bg": "#F9A8C0",
+    "temp_hot_fg": "#7A0B2E",
+    "temp_warm_bg": "#FBC7D8",
+    "temp_warm_fg": "#9B1145",
+    "vol_hi_bg": "#F8BBD0",
+    "vol_hi_fg": "#880E4F",
+    "white": "#FFFFFF",
 }
+
+
+def _row_profit(row):
+    if row is None:
+        return None
+    try:
+        v = row.get("profit_pct") if hasattr(row, "get") else None
+        if v is not None and v != "":
+            return float(v)
+    except (TypeError, ValueError, AttributeError):
+        pass
+    raw = ""
+    try:
+        raw = str(row.get("獲利") or "")
+    except Exception:
+        raw = ""
+    raw = raw.replace("%", "").replace("+", "").strip()
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
+    """獲利底圖跟高低卡同一套色票：貼零＝低、剛離零＝實綠、其餘跟列底。不整列寫死粉紅。"""
+    C = _CARD
+    base = base or C["white"]
+    try:
+        p = float(profit)
+    except (TypeError, ValueError):
+        return base, C["ink"]
+    left_zero = False
+    if prev_profit is not None:
+        try:
+            left_zero = float(prev_profit) <= 0.05 and p > 0.05
+        except (TypeError, ValueError):
+            left_zero = False
+    if left_zero:
+        return C["lo_hit_fill"], C["lo_ink"]
+    if p <= 0.05:
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink"]
+
+
+def hl_cell_style(hl: str, base: str):
+    """高低欄底色：高＝高色、低＝低色、No＝列底。"""
+    C = _CARD
+    base = base or C["white"]
+    hl = str(hl or "")
+    if "高" in hl:
+        return C["hi_fill"], C["pill_hi"]
+    if "低" in hl:
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink_mute"]
+
+
+def alert_cell_style(alert: str, base: str):
+    """預警欄底色：K20高／60低／K20低走色票，No＝列底。"""
+    C = _CARD
+    base = base or C["white"]
+    a = str(alert or "")
+    if a == "K20高":
+        return C["hi_fill"], C["pill_hi"]
+    if a in ("60低", "K20低"):
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink_mute"]
+
+
+def temp_cell_style(temp_n, base: str):
+    C = _CARD
+    base = base or C["white"]
+    try:
+        t = float(temp_n)
+    except (TypeError, ValueError):
+        return base, C["neutral_fg"]
+    if t >= 75:
+        return C["temp_hot_bg"], C["temp_hot_fg"]
+    if t >= 65:
+        return C["temp_warm_bg"], C["temp_warm_fg"]
+    if t >= 55:
+        return C["hi_fill"], C["hi_ink"]
+    return C["neutral_bg"], C["neutral_fg"]
+
+
+def vol_rank_cell_style(rank, base: str):
+    C = _CARD
+    base = base or C["white"]
+    try:
+        r = int(rank)
+    except (TypeError, ValueError):
+        return base, C["neutral_fg"]
+    if r <= 10:
+        return C["pill_hi"], C["white"]
+    if r <= 20:
+        return C["vol_hi_bg"], C["vol_hi_fg"]
+    if r <= 50:
+        return C["hi_fill"], C["hi_ink"]
+    return C["neutral_bg"], C["neutral_fg"]
+
+
+def bias_cell_style(bias, base: str):
+    C = _CARD
+    base = base or C["white"]
+    try:
+        b = float(bias)
+    except (TypeError, ValueError):
+        return base, C["ink"]
+    if b > 0:
+        return C["hi_fill"], C["up"]
+    if b < 0:
+        return C["lo_fill"], C["down"]
+    return base, C["ink"]
+
+
+def price_cell_style(hl: str, base: str):
+    """股價欄：靠近高／低時底色跟高低卡，不是無條件粉紅。"""
+    C = _CARD
+    base = base or C["white"]
+    hl = str(hl or "")
+    if "高" in hl:
+        return C["hi_fill"], C["pill_hi"]
+    if "低" in hl:
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink"]
 
 
 def _card_text_w(text, fs: float, fig_w: float) -> float:
@@ -1083,11 +1216,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         for btxt, bw in brow:
             # 只有「創新高／貼低點」這種訊號實心，警語留描邊，避免整排都在喊。
             solid = any(k in btxt for k in ("創", "新高", "新低", "近"))
-            b_bg = C["pill_hi"] if solid else "#FDECF3"
-            b_fg = "#FFFFFF" if solid else C["hi_ink"]
+            b_bg = C["pill_hi"] if solid else C["hi_fill"]
+            b_fg = C["white"] if solid else C["hi_ink"]
             ax.add_patch(patches.FancyBboxPatch(
                 (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
-                facecolor=b_bg, edgecolor=b_bg if solid else "#E88AAE",
+                facecolor=b_bg, edgecolor=b_bg if solid else C["hi_line"],
                 linewidth=0 if solid else 0.9, zorder=3))
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.4, "heavy"),
                     color=b_fg, ha="center", va="center", zorder=4)
@@ -1148,29 +1281,19 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             temp_n = float(temp_v)
         except (TypeError, ValueError):
             temp_n = 0.0
-        if temp_n >= 75:
-            tbg, tfg = "#F9A8C0", "#7A0B2E"
-        elif temp_n >= 65:
-            tbg, tfg = "#FBC7D8", "#9B1145"
-        elif temp_n >= 55:
-            tbg, tfg = "#FDE0E9", C["hi_ink"]
-        else:
-            tbg, tfg = "#F1F3F6", "#4B5563"
-        if rank <= 10:
-            vbg, vfg = C["pill_hi"], "#FFFFFF"
-        elif rank <= 20:
-            vbg, vfg = "#F8BBD0", "#880E4F"
-        elif rank <= 50:
-            vbg, vfg = "#FDE0E9", C["hi_ink"]
-        else:
-            vbg, vfg = "#F1F3F6", "#4B5563"
         hl, al = str(r["高低"]), str(r["預警"])
         zebra = row_i % 2 == 0
-        base = "#FFFFFF" if zebra else C["zebra"]
-        hot = "高" in hl
-        fills = [base, "#FDECF3" if hot else base, "#FDF2F6" if zebra else "#FBEAF1",
-                 base, base, tbg,
-                 "#FDE3E9" if bias > 0 else ("#E4F3E7" if bias < 0 else base), base]
+        base = C["white"] if zebra else C["zebra"]
+        nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
+        p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
+        px_bg, px_fg = price_cell_style(hl, base)
+        hl_bg, _hl_fg = hl_cell_style(hl, base)
+        al_bg, _al_fg = alert_cell_style(al, base)
+        tbg, tfg = temp_cell_style(temp_n, base)
+        vbg, vfg = vol_rank_cell_style(rank, base)
+        b_bg, b_fg = bias_cell_style(bias, base)
+        fills = [base, px_bg, p_bg, hl_bg, al_bg, tbg, b_bg, base]
+        fgs = [C["ink"], px_fg, p_fg, _hl_fg, _al_fg, tfg, b_fg, C["ink"]]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -1183,33 +1306,23 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ]
         for i, val in enumerate(vals):
             ax.add_patch(patches.Rectangle((xs[i], y1), xs[i + 1] - xs[i], body_h,
-                                           facecolor=fills[i], edgecolor="#E6EBF2", lw=0.5, zorder=2))
+                                           facecolor=fills[i], edgecolor=C["line"], lw=0.5, zorder=2))
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i in (3, 4):
                 if "高" in val:
-                    _pill(ax, cx, cy, val, C["pill_hi"], "#FFFFFF", w=tw(val, 11.2) + 3.0,
+                    _pill(ax, cx, cy, val, C["pill_hi"], C["white"], w=tw(val, 11.2) + 3.0,
                           h=body_h * 0.74, fs=11.2)
                 elif "低" in val:
-                    _pill(ax, cx, cy, val, C["pill_lo"], "#FFFFFF", w=tw(val, 11.2) + 3.0,
+                    _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=tw(val, 11.2) + 3.0,
                           h=body_h * 0.74, fs=11.2)
                 else:
-                    ax.text(cx, cy, "No", fontproperties=_fp(11), color=C["ink_mute"],
+                    ax.text(cx, cy, "No", fontproperties=_fp(11), color=fgs[i],
                             ha="center", va="center", zorder=3)
             elif i == 7:
                 _pill(ax, cx, cy, val, vbg, vfg, w=tw(val, 11.0) + 3.0, h=body_h * 0.74, fs=11.0)
             else:
-                if i == 1:
-                    color = C["pill_hi"] if hot else C["ink"]
-                elif i == 2:
-                    color = "#C2185B"
-                elif i == 5:
-                    color = tfg
-                elif i == 6:
-                    color = "#C62828" if bias > 0 else (C["down"] if bias < 0 else C["ink"])
-                else:
-                    color = C["ink"]
                 ax.text(cx, cy, val, fontproperties=_fp(12, "bold"), ha="center", va="center",
-                        color=color, zorder=3)
+                        color=fgs[i], zorder=3)
         ry = y1
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))

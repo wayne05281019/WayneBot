@@ -940,6 +940,41 @@ class LookupCardTest(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertGreaterEqual(_wcag("#FFFFFF", _CARD[key]), 4.5)
 
+    def test_profit_cell_uses_low_palette_not_hardcoded_pink(self):
+        import inspect
+
+        from cary_navigator import (
+            _CARD,
+            alert_cell_style,
+            bias_cell_style,
+            hl_cell_style,
+            price_cell_style,
+            profit_cell_style,
+            render_decision_card_png,
+            temp_cell_style,
+            vol_rank_cell_style,
+        )
+
+        bg0, fg0 = profit_cell_style(0.0, None, _CARD["white"])
+        self.assertEqual(bg0, _CARD["lo_fill"])
+        self.assertEqual(fg0, _CARD["lo_ink"])
+        bg_leave, fg_leave = profit_cell_style(0.9, 0.0, _CARD["white"])
+        self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
+        bg_run, fg_run = profit_cell_style(1.5, 0.9, _CARD["white"])
+        self.assertEqual(bg_run, _CARD["white"])
+        self.assertNotEqual(bg_run, _CARD["hi_fill"])
+        self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
+        self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
+        self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
+        self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["hi_fill"])
+        self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["lo_fill"])
+        src = inspect.getsource(render_decision_card_png)
+        self.assertIn("profit_cell_style", src)
+        self.assertIn("hl_cell_style", src)
+        self.assertNotIn("#FBEAF1", src)
+
     def test_card_bold_and_body_use_different_font_weights(self):
         from cary_navigator import _weight_step
 
@@ -1378,6 +1413,56 @@ class LookupCardTest(unittest.TestCase):
         bounce = slide + [slide[-1] * 1.004, slide[-1] * 1.012]
         out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": bars(bounce)})
         self.assertEqual(out["leave_zero"], [])
+
+    def test_half_and_two_year_highs_excluded_from_all_push_buckets(self):
+        import pandas as pd
+        from screening_engine import ScreeningEngine, _skip_long_term_high_push
+
+        def bars(closes, *, last_vol=8000):
+            from datetime import datetime, timedelta
+
+            rows = []
+            start = datetime(2026, 1, 5)
+            for i, c in enumerate(closes):
+                prev = closes[i - 1] if i else c
+                pct = round((c - prev) / prev * 100.0, 2) if prev else 0
+                d = (start + timedelta(days=i)).strftime("%Y%m%d")
+                vol = last_vol if i == len(closes) - 1 else 3000
+                rows.append(
+                    {
+                        "date": d,
+                        "stock_id": "2330",
+                        "stock_name": "台積電",
+                        "market": "TW",
+                        "open": c - 0.2,
+                        "high": c + 1,
+                        "low": c - 1,
+                        "close": c,
+                        "volume": vol,
+                        "turnover_k": vol * c,
+                        "pct_change": pct,
+                        "avg_price": c,
+                        "foreign_net": 0,
+                        "trust_net": 0,
+                        "dealer_net": 0,
+                    }
+                )
+            return pd.DataFrame(rows)
+
+        engine = ScreeningEngine(db_path=":memory:")
+        # 舊版半年高推播條件：創高 + 量比 + 漲幅，整檔應被排除
+        half_year = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 110.0]
+        out_hi120 = engine.execute_all_strategies({"2330": bars(half_year, last_vol=20000)})
+        self.assertEqual(out_hi120["select_01"], [])
+        self.assertEqual(out_hi120["day_trade"], [])
+        info = engine.calculate_indicators(bars(half_year, last_vol=20000))
+        self.assertTrue(_skip_long_term_high_push(info))
+
+        # 創高但量不夠／漲幅小：不算舊版半年高，周帶量仍可推
+        mild = [100.0] * 130 + [100.0, 100.0, 100.0, 101.0, 102.0]
+        out_mild = engine.execute_all_strategies({"2330": bars(mild, last_vol=8000)})
+        self.assertFalse(_skip_long_term_high_push(engine.calculate_indicators(bars(mild, last_vol=8000))))
+        self.assertTrue(out_mild["select_01"])
 
 
 class AIDeskTest(unittest.TestCase):
