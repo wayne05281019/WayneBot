@@ -325,6 +325,7 @@ class NavigatorEngine:
         df["profit_pct"] = ((df["close"] - cal60_low) / cal60_low * 100.0).round(1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120)
+        df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480)
 
         hl_tags, alert_tags, temp_nums = [], [], []
         for i in range(len(df)):
@@ -416,8 +417,12 @@ class NavigatorEngine:
                 badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
         if any("除權" in x or "錯價" in x or "官方除權息" in x for x in xq_notes):
             badges.append("已除權還原")
-        if int(latest["vol_rank_120"]) <= 10:
-            badges.append(f"120日量第 {int(latest['vol_rank_120'])} 名")
+        vr480 = int(latest["vol_rank_480"])
+        vr120 = int(latest["vol_rank_120"])
+        if vr480 <= 10:
+            badges.append(f"480日量第 {vr480} 名")
+        elif vr120 <= 10:
+            badges.append(f"120日量第 {vr120} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
         l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
@@ -476,7 +481,8 @@ class NavigatorEngine:
             "cal60_low": round(cal60_low, 2),
             "gain_pct": round((float(latest["close"]) - cal60_low) / cal60_low * 100.0, 1) if cal60_low else 0.0,
             "k20_high_streak": streak,
-            "vol_rank": int(latest["vol_rank_120"]),
+            "vol_rank": vr120,
+            "vol_rank_480": vr480,
             "badges": badges,
             "open": float(latest.get("open") or 0),
             "high": float(latest.get("high") or 0),
@@ -1221,7 +1227,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     fig_w = 7.1
     badges = []
-    for b in list(card.get("badges") or []) + [f"120日量第 {card.get('vol_rank')} 名"]:
+    for b in list(card.get("badges") or []):
         b = str(b or "").strip()
         if b and "None" not in b and b not in badges:
             badges.append(b)
