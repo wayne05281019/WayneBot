@@ -293,14 +293,29 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     async def _pin_reply_menu(self, message) -> None:
-        """靜默把兩排主選單釘在輸入框區（右側 ⌨️ 展開）；不另發一則提示訊息。"""
-        try:
-            await message.reply_text("\u200b", reply_markup=self._reply_menu())
-        except Exception:
+        """靜默把兩排主選單釘在輸入框區；發完即刪，不留 ⌨️ 大圖泡泡。"""
+        pin = None
+        for text in ("\u200b", "·"):
             try:
-                await message.reply_text("⌨️", reply_markup=self._reply_menu())
+                pin = await message.reply_text(text, reply_markup=self._reply_menu())
+                break
+            except Exception:
+                continue
+        if pin is None:
+            try:
+                pin = await message.reply_text("選單", reply_markup=self._reply_menu())
             except Exception:
                 logger.exception("pin reply menu 失敗")
+                return
+
+        async def _drop_pin():
+            await asyncio.sleep(0.35)
+            try:
+                await pin.delete()
+            except Exception:
+                pass
+
+        asyncio.create_task(_drop_pin())
 
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
