@@ -1,4 +1,4 @@
-def test_reply_menu_two_rows_five_cols_with_reserved_slot():
+def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_RESERVED, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
