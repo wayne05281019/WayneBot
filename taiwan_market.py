@@ -124,6 +124,9 @@ REGIME_PLUS_BUCKET_CAP: Dict[str, Dict[str, int]] = {
 
 _REGIME_PLUS_CONFIRM_DAYS = 2
 
+_BETA_LOOKBACK = 60
+_BETA_DOWNWEIGHT_STATES = frozenset({"trend_down", "trend_up_late"})
+
 def ensure_index_daily_table(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     try:
@@ -1629,6 +1632,7 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
     basis_pct = compute_basis_pct(spot_close, fut_close) if futures else None
     lead = compute_futures_lead_stats(db_path, ref_date) if futures else {}
     bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
+    bt_plus = backtest_bucket_win_rate_by_regime_plus(db_path, limit_days=60)
     rp = compute_regime_plus(db_path, ref_date)
     return {
         "ok": True,
@@ -1657,6 +1661,7 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         "basis_pct": basis_pct,
         "futures_lead": lead,
         "backtest": bt,
+        "backtest_regime_plus": bt_plus,
         **rp,
     }
 
@@ -1710,6 +1715,173 @@ def backtest_bucket_win_rate_by_regime(db_path: str, limit_days: int = 60) -> Li
     return out
 
 
+def _variance(vals: List[float]) -> float:
+    if not vals:
+        return 0.0
+    n = len(vals)
+    mean = sum(vals) / n
+    return sum((v - mean) ** 2 for v in vals) / n
+
+
+def _covariance(xs: List[float], ys: List[float]) -> float:
+    if not xs or len(xs) != len(ys):
+        return 0.0
+    n = len(xs)
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / n
+
+
+def _index_pct_series(db_path: str, as_of: str, lookback: int = _BETA_LOOKBACK + 1) -> List[Tuple[str, float]]:
+    """加權指數日漲跌幅序列（舊→新）。"""
+    d = _norm_ymd(as_of)
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT date, pct_change FROM index_daily
+            WHERE symbol=? AND date <= ? ORDER BY date DESC LIMIT ?
+            """,
+            (_INDEX_SYMBOL, d, lookback),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: List[Tuple[str, float]] = []
+    for dt, pct in reversed(rows):
+        try:
+            out.append((str(dt), float(pct or 0)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def compute_stock_betas(
+    db_path: str,
+    as_of: str,
+    stock_ids: List[str],
+    *,
+    lookback: int = _BETA_LOOKBACK,
+) -> Dict[str, float]:
+    """個股對加權 60 日 β（cov/ var）；資料不足回傳 1.0 或不列入。"""
+    ids = sorted({str(s).strip() for s in stock_ids if s})
+    if not ids:
+        return {}
+    idx_series = _index_pct_series(db_path, as_of, lookback + 1)
+    if len(idx_series) < 20:
+        return {}
+    dates = [d for d, _ in idx_series]
+    idx_pcts = [p for _, p in idx_series]
+    var_i = _variance(idx_pcts)
+    if var_i <= 1e-12:
+        return {}
+    conn = sqlite3.connect(db_path)
+    try:
+        sid_ph = ",".join("?" * len(ids))
+        date_ph = ",".join("?" * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT stock_id, date, pct_change FROM daily_quotes
+            WHERE stock_id IN ({sid_ph}) AND date IN ({date_ph})
+            """,
+            ids + dates,
+        ).fetchall()
+    finally:
+        conn.close()
+    by_sid: Dict[str, Dict[str, float]] = {}
+    for sid, dt, pct in rows:
+        try:
+            by_sid.setdefault(str(sid), {})[str(dt)] = float(pct or 0)
+        except (TypeError, ValueError):
+            continue
+    out: Dict[str, float] = {}
+    for sid in ids:
+        mp = by_sid.get(sid, {})
+        paired_idx: List[float] = []
+        paired_stk: List[float] = []
+        for d, ip in idx_series:
+            sp = mp.get(d)
+            if sp is not None:
+                paired_idx.append(ip)
+                paired_stk.append(sp)
+        if len(paired_idx) < 20:
+            continue
+        beta = _covariance(paired_stk, paired_idx) / var_i
+        out[sid] = round(max(-2.0, min(3.0, beta)), 2)
+    return out
+
+
+def beta_sort_multiplier(beta: float, regime_plus: str) -> float:
+    """高 β 股在空頭延伸／多頭末端自動降權（藍圖 §七）。"""
+    if str(regime_plus or "") not in _BETA_DOWNWEIGHT_STATES:
+        return 1.0
+    b = float(beta or 1.0)
+    if b <= 1.0:
+        return 1.0
+    return max(0.55, 1.0 - (b - 1.0) * 0.4)
+
+
+def backtest_bucket_win_rate_by_regime_plus(
+    db_path: str,
+    limit_days: int = 60,
+    *,
+    max_compute_dates: int = 25,
+) -> List[Dict[str, Any]]:
+    """海選隔日勝率 × 當日 Regime+（需 screen_picks + index_daily）。"""
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        has_picks = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='screen_picks'"
+        ).fetchone()
+        if not has_picks:
+            return []
+        rows = conn.execute(
+            """
+            SELECT p.bucket, p.as_of, p.next_pct
+            FROM screen_picks p
+            WHERE p.next_pct IS NOT NULL
+            ORDER BY p.as_of DESC
+            LIMIT ?
+            """,
+            (limit_days * 40,),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        return []
+    unique_dates = sorted({str(r[1]) for r in rows}, reverse=True)[:max_compute_dates]
+    rp_cache: Dict[str, str] = {}
+    for d in unique_dates:
+        try:
+            rp_cache[d] = str(compute_regime_plus(db_path, d).get("regime_plus") or "range")
+        except Exception:
+            rp_cache[d] = "range"
+    agg: Dict[Tuple[str, str], List[float]] = {}
+    for bucket, as_of, pct in rows:
+        rp = rp_cache.get(str(as_of))
+        if not rp:
+            continue
+        agg.setdefault((str(bucket), rp), []).append(float(pct))
+    out: List[Dict[str, Any]] = []
+    for (bucket, rp), pcts in sorted(agg.items()):
+        n = len(pcts)
+        if n < 3:
+            continue
+        avg = sum(pcts) / n
+        hit = sum(1 for p in pcts if p > 0) / n
+        out.append(
+            {
+                "bucket": bucket,
+                "regime_plus": rp,
+                "regime_plus_label": REGIME_PLUS_LABELS.get(rp, rp),
+                "n": n,
+                "avg_next_pct": round(avg, 2),
+                "hit_rate": round(hit, 2),
+            }
+        )
+    return out
+
+
 def _item_sort_score(key: str, item: Dict[str, Any]) -> float:
     if key == "leave_zero":
         return float(item.get("q60r") or 0) * 2 + (20 - min(int(item.get("vol_rank_120") or 99), 20))
@@ -1743,8 +1915,13 @@ def sync_regime_ai_weights(db_path: str, as_of: Optional[str] = None) -> Dict[st
     return adapt_bucket_weights(db_path, regime=regime, regime_plus=regime_plus)
 
 
-def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[str, Any]:
-    """依 Regime+（優先）或大盤 regime 調整桶內排序與上限；falling_risk／期貨領跌再疊加。"""
+def apply_market_weights(
+    results: Dict[str, Any],
+    snap: Dict[str, Any],
+    *,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """依 Regime+（優先）或大盤 regime 調整桶內排序與上限；falling_risk／期貨領跌／高 β 再疊加。"""
     if not snap.get("ok"):
         return results
     regime_plus = str(snap.get("regime_plus") or "")
@@ -1766,6 +1943,16 @@ def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[
     lead = snap.get("futures_lead") or {}
     if str(lead.get("label") or "") == "期貨領跌" and fr >= 35:
         falling_mult = min(falling_mult, 0.75)
+    as_of = str(snap.get("as_of") or "")
+    betas: Dict[str, float] = {}
+    if db_path and as_of and regime_plus in _BETA_DOWNWEIGHT_STATES:
+        stock_ids: List[str] = []
+        for key, items in results.items():
+            if isinstance(items, list) and not key.startswith("_"):
+                stock_ids.extend(str(it.get("stock_id")) for it in items if it.get("stock_id"))
+        betas = compute_stock_betas(db_path, as_of, stock_ids)
+        if betas:
+            out["_stock_betas"] = betas
     for key, items in list(out.items()):
         if not isinstance(items, list) or key.startswith("_"):
             continue
@@ -1775,7 +1962,15 @@ def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[
         if key in ("day_trade", "overnight") and falling_mult < 1.0:
             m *= falling_mult
         scored = sorted(
-            ((float(_item_sort_score(key, it)) * m, it) for it in items),
+            (
+                (
+                    float(_item_sort_score(key, it))
+                    * m
+                    * beta_sort_multiplier(betas.get(str(it.get("stock_id")), 1.0), regime_plus),
+                    it,
+                )
+                for it in items
+            ),
             key=lambda x: x[0],
             reverse=True,
         )
@@ -1880,6 +2075,15 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     if hits:
         bits = [f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）" for b in hits[:3]]
         lines.append("同 regime 海選復盤：" + "　".join(bits))
+    bt_rp = snap.get("backtest_regime_plus") or []
+    cur_rp = snap.get("regime_plus")
+    hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 3]
+    if hits_rp:
+        bits_rp = [
+            f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
+            for b in hits_rp[:3]
+        ]
+        lines.append("同 Regime+ 海選復盤：" + "　".join(bits_rp))
     return "\n".join(lines)
 
 
@@ -1969,6 +2173,16 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
         lines.append("")
         lines.append("<b>同 regime 海選復盤</b>")
         for b in hits[:4]:
+            lines.append(
+                f"• {b['bucket']} 隔日 {b['avg_next_pct']:+.1f}%（勝 {b['hit_rate']:.0%}，n={b['n']}）"
+            )
+    bt_rp = snap.get("backtest_regime_plus") or []
+    cur_rp = snap.get("regime_plus")
+    hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 5]
+    if hits_rp:
+        lines.append("")
+        lines.append("<b>同 Regime+ 海選復盤</b>")
+        for b in hits_rp[:4]:
             lines.append(
                 f"• {b['bucket']} 隔日 {b['avg_next_pct']:+.1f}%（勝 {b['hit_rate']:.0%}，n={b['n']}）"
             )

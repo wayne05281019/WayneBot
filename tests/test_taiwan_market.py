@@ -118,6 +118,83 @@ def test_regime_plus_screening_note_repair():
     assert "修復" in note
 
 
+def test_beta_sort_multiplier_high_beta_down():
+    from taiwan_market import beta_sort_multiplier
+
+    assert beta_sort_multiplier(1.0, "trend_down") == 1.0
+    assert beta_sort_multiplier(1.5, "trend_down") < 1.0
+    assert beta_sort_multiplier(2.0, "range") == 1.0
+
+
+def test_compute_stock_betas(tmp_path):
+    import sqlite3
+
+    from taiwan_market import compute_stock_betas, ensure_index_daily_table
+
+    db = str(tmp_path / "beta.db")
+    ensure_index_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, pct_change REAL, close REAL)")
+    for i in range(30):
+        d = f"202608{i+1:02d}"
+        ip = 0.5 if i % 2 == 0 else -0.3
+        sp = ip * 1.5
+        conn.execute(
+            "INSERT INTO index_daily(date,symbol,close,volume,pct_change,ma20,ma60,regime,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (d, "TWII", 20000 + i, 1e9, ip, 20000, 19900, "neutral", "t"),
+        )
+        conn.execute("INSERT INTO daily_quotes VALUES ('2330', ?, ?, 100)", (d, sp))
+    conn.commit()
+    conn.close()
+    betas = compute_stock_betas(db, "20260830", ["2330"])
+    assert "2330" in betas
+    assert betas["2330"] > 1.2
+
+
+def test_apply_market_weights_beta_reorders(tmp_path):
+    import sqlite3
+
+    from taiwan_market import apply_market_weights, ensure_index_daily_table
+
+    db = str(tmp_path / "bw.db")
+    ensure_index_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, pct_change REAL, close REAL)")
+    for i in range(30):
+        d = f"202608{i+1:02d}"
+        ip = 0.5 if i % 2 == 0 else -0.3
+        conn.execute(
+            "INSERT INTO index_daily(date,symbol,close,volume,pct_change,ma20,ma60,regime,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (d, "TWII", 20000 + i, 1e9, ip, 20000, 19900, "bear", "t"),
+        )
+        conn.execute("INSERT INTO daily_quotes VALUES ('2330', ?, ?, 100)", (d, ip * 1.5))
+        conn.execute("INSERT INTO daily_quotes VALUES ('2317', ?, ?, 100)", (d, ip * 0.2))
+    conn.commit()
+    conn.close()
+    base = {
+        "day_trade": [
+            {"stock_id": "2330", "q60r": 10, "pct_change": 1},
+            {"stock_id": "2317", "q60r": 10, "pct_change": 1},
+        ]
+    }
+    snap = {
+        "ok": True,
+        "regime": "bear",
+        "regime_plus": "trend_down",
+        "as_of": "20260830",
+        "confidence": 50,
+        "falling_risk": 40,
+    }
+    out = apply_market_weights(base, snap, db_path=db)
+    assert out["day_trade"][0]["stock_id"] == "2317"
+
+
+def test_backtest_regime_plus_empty(tmp_path):
+    from taiwan_market import backtest_bucket_win_rate_by_regime_plus
+
+    assert backtest_bucket_win_rate_by_regime_plus(str(tmp_path / "empty.db")) == []
+
+
 @patch("taiwan_market._fetch_index_daily")
 def test_analyze_taiwan_market_regime(mock_fetch, tmp_path):
     import sqlite3
