@@ -126,18 +126,14 @@ def test_power_user_decision_card_reuses_last_code():
     bot = _bot()
     bot._last_card["9001"] = "3105"
     bot._send_decision_card_quick = AsyncMock()
-    bot._transient_status = AsyncMock(return_value=MagicMock())
-    bot._delete_message = AsyncMock()
     msg = _msg(1, 9001)
 
     async def run():
-        with patch("wayne_db.lookup_stocks", return_value=[{"stock_id": "3105", "stock_name": "穩懋"}]):
-            await bot.decision_card_btn(_update(msg), MagicMock())
+        await bot.decision_card_btn(_update(msg), MagicMock())
 
     asyncio.run(run())
     bot._send_decision_card_quick.assert_awaited_once()
     assert bot._send_decision_card_quick.await_args[0][1] == "3105"
-    bot._delete_message.assert_awaited()
 
 
 # --- 不懂股：純空白、全形空白不觸發查股 ---
@@ -190,6 +186,29 @@ def test_lookup_no_ack_spam():
     for call in msg.reply_text.await_args_list:
         text = call[0][0] if call[0] else ""
         assert "查詢中" not in str(text)
+
+
+def test_decision_card_no_outer_status_bubble():
+    bot = _bot()
+    bot._last_card["9001"] = "3105"
+    bot._send_decision_card_quick = AsyncMock()
+    bot._transient_status = AsyncMock()
+    msg = _msg(1, 9001)
+
+    async def run():
+        await bot.decision_card_btn(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot._transient_status.assert_not_awaited()
+    bot._send_decision_card_quick.assert_awaited_once()
+
+
+def test_ai_desk_keyboard_has_no_sell_buttons():
+    bot = _bot()
+    kb = bot._ai_desk_keyboard()
+    datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "ai_run" in datas
+    assert not any(str(d).startswith("x:") for d in datas)
 
 
 def test_pending_state_per_user_not_per_chat():

@@ -524,15 +524,7 @@ class WayneTelegramBot:
         self._pending.pop(uid, None)
         last = self._last_card.get(uid)
         if last:
-            hits = lookup_stocks(self.db_path, last)
-            name = (hits[0].get("stock_name") if hits else "") or last
-            status = await self._transient_status(
-                update.message, f"盤中刷新 {last} {name}…", reply_markup=self._reply_menu()
-            )
-            try:
-                await self._send_decision_card_quick(update.message, last, uid)
-            finally:
-                await self._delete_message(status)
+            await self._send_decision_card_quick(update.message, last, uid)
         else:
             await self._prompt_decision_card(update.message, uid)
 
@@ -905,6 +897,18 @@ class WayneTelegramBot:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
         lines.append("下面由上到下對應該檔：左＝看這檔　籌碼　記買入　刪。")
         return "\n".join(lines), self._watch_list_keyboard(shown)
+
+    def _ai_desk_keyboard(self):
+        """AI 模擬倉專用鍵盤：不含真實持股賣出列，避免與手記持股混淆。"""
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("AI操盤", callback_data="ai_run"),
+                    self._q("ai"),
+                ],
+                [self._q("portfolio")],
+            ]
+        )
 
     def _portfolio_keyboard(self, holdings):
         from tg_layout import stock_btn_label
@@ -2165,10 +2169,9 @@ class WayneTelegramBot:
         """只顯示模擬倉現況，不執行買賣。"""
         try:
             html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine)
-            holdings = get_user_portfolio(self.db_path, uid)
             parts = chunk_telegram_html(html)
             for i, part in enumerate(parts):
-                kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+                kb = self._ai_desk_keyboard() if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
         except Exception as e:
             logger.exception("AI 模擬倉顯示失敗")
@@ -2191,10 +2194,9 @@ class WayneTelegramBot:
                 bits.append("<b>本次賣出</b>\n" + "\n".join(html_escape(x) for x in ai["sold"]))
             if ai.get("lesson"):
                 bits.append("進化：" + html_escape(ai["lesson"]))
-            holdings = get_user_portfolio(self.db_path, uid)
             parts = chunk_telegram_html("\n\n".join(bits))
             for i, part in enumerate(parts):
-                kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+                kb = self._ai_desk_keyboard() if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
         except Exception as e:
             logger.exception("AI 操盤失敗")

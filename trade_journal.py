@@ -168,7 +168,7 @@ def format_user_trades_html(db_path: str, user_id: str, limit: int = 12) -> str:
         lines.append(
             f"• {d} {act} <code>{html_escape(t.get('stock_code'))}</code> "
             f"{html_escape(t.get('stock_name') or '')} "
-            f"{float(t.get('lots') or 0):g}張 @{html_price(t.get('price'))}{extra}"
+            f"{float(t.get('lots') or 0):g}張 @{html_price(t.get('price'), compact=True)}{extra}"
         )
         if t.get("note"):
             lines.append(f"　{html_escape(t['note'])}")
