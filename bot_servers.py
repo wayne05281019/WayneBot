@@ -76,14 +76,63 @@ except ImportError:
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
 
 HELP_TOPICS = {
+    "guide": (
+        "<b>WayneBot 使用說明</b>\n"
+        "下面依<b>分類</b>說明每個按鈕怎麼用；點訊息下方分類鈕可看該頁細節，按 <b>✕</b> 收合。\n"
+        "\n"
+        "<b>一、主選單在哪？</b>\n"
+        "不在訊息最下面。點輸入框<b>右邊 ⌨️</b> 展開<b>兩排</b>按鈕；打完字若只剩英文鍵盤，再點一次 ⌨️。\n"
+        "也可打 /menu 重新釘選單；打 /help 或按「說明」看本頁。\n"
+        "\n"
+        "<b>二、第一排（左→右）</b>\n"
+        "• <b>決策卡</b>：盤中快捷鍵。會記住上一檔，再按就刷新 MIS 即時價量與 120 日量排名；沒記錄會請你打代號。\n"
+        "• <b>當沖</b>：平日 09:00–13:30 列出當沖候選（漲幅 2%～8.5%）；收盤後按不出名單。美股逆風時會空。\n"
+        "• <b>持股</b>：你手記的真實買入（不是觀察、不是 AI 模擬）。\n"
+        "• <b>觀察</b>：自選清單，還沒買也能加。\n"
+        "• <b>海選</b>：手動跑全市場掃描（約 2～5 分鐘），完成後分類推送；晨間也會自動寄一版。\n"
+        "\n"
+        "<b>三、第二排（左→右）</b>\n"
+        "• <b>隔日沖</b>：平日 09:00–13:30 尾盤佈局候選；收盤後按只顯示強勢收盤，供明早參考。\n"
+        "• <b>資金</b>：盤後產業輪動＋三大法人張數（官方法人，不是分點）。\n"
+        "• <b>說明</b>：就是本頁。\n"
+        "• <b>選單</b>：重新釘住兩排主選單。\n"
+        "• 最右格預留，暫無功能。\n"
+        "\n"
+        "<b>四、打股名或代號（例：南亞、2324）</b>\n"
+        "會依序出：現價漲跌 → 決策卡圖 → 介紹圖。圖下方還有：\n"
+        "• <b>籌碼</b>：三大法人買賣超圖\n"
+        "• <b>營收</b>：月營收、季報毛利\n"
+        "• <b>產業</b>：同業中位數＋這族法人，講人話\n"
+        "• <b>觀察</b>：加入自選\n"
+        "• <b>導航圖</b>：180 日高低導航（較慢，要再看才按）\n"
+        "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>\n"
+        "名稱撞名時，藍字股名＝奇摩；按鈕左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
+        "\n"
+        "<b>五、海選名單裡的按鈕</b>\n"
+        "• 左鍵（代號＋股名）＝看這檔完整圖\n"
+        "• <b>➕</b>＝加入觀察\n"
+        "• <b>開 LINE・傳這檔</b>／區底 <b>一鍵傳 LINE</b>：開 LINE 帶文字；長圖長按儲存再貼\n"
+        "• 靠近 20 日收盤高會標<b>少追</b>，不是叫立刻買\n"
+        "\n"
+        "<b>六、持股頁按鈕</b>\n"
+        "• 股名鍵＝看這檔　• <b>賣出</b>＝打張數與價格　• <b>AI模擬倉</b>＝看模擬現況　• <b>AI操盤</b>＝依海選跑一輪模擬買賣（不推播）\n"
+        "\n"
+        "<b>七、觀察頁按鈕</b>\n"
+        "• 股名鍵＝看這檔　• <b>籌碼</b>　• <b>買入</b>（同記買入）　• <b>刪</b>＝移出觀察\n"
+        "\n"
+        "<b>八、每日時間（台灣）</b>\n"
+        "06:30 早上海選寄出（對美股）｜12:45 尾盤可切版｜16:30 收盤寫庫｜20:00 晚間海選只存不寄\n"
+        "盤中查股用 MIS（不寫庫）；收盤後到 16:30 前仍以昨收為基準。\n"
+        "\n"
+        "<b>九、提醒</b>\n"
+        "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。"
+    ),
     "menu": (
         "<b>主選單在哪？</b>　不在訊息最下面，在<b>輸入框右側 ⌨️</b>展開的兩排按鈕。\n"
         "<b>決策卡</b>／當沖／持股／觀察／海選　｜　隔日沖／資金／說明／選單／（預留格）\n"
         "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
-        "左→右依常用順序；決策卡＝盤中快捷刷新上一檔 MIS 價量與 120日量排名。\n"
-        "打股名或代號＝看這檔：現價→決策卡→介紹圖；180日導航按「導航圖」；籌碼／產業請按下方按鈕。\n"
-        "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
+        "完整分類說明請按主選單「說明」，或看本頁導覽下方各分類鈕。"
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
@@ -437,6 +486,45 @@ class WayneTelegramBot:
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
         return InlineKeyboardButton("說明", callback_data=f"?:{topic}")
+
+    def _help_nav_keyboard(self, active: str = "guide"):
+        """說明頁分類導覽；active 僅供日後標示，目前各鈕皆可點。"""
+        _ = active
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("總覽", callback_data="?:guide"),
+                    InlineKeyboardButton("主選單", callback_data="?:menu"),
+                    InlineKeyboardButton("查股", callback_data="?:stock"),
+                ],
+                [
+                    InlineKeyboardButton("海選", callback_data="?:screen"),
+                    InlineKeyboardButton("當沖", callback_data="?:daytrade"),
+                    InlineKeyboardButton("隔日沖", callback_data="?:overnight"),
+                ],
+                [
+                    InlineKeyboardButton("持股", callback_data="?:portfolio"),
+                    InlineKeyboardButton("觀察", callback_data="?:watch"),
+                    InlineKeyboardButton("資金", callback_data="?:flow"),
+                ],
+                [
+                    InlineKeyboardButton("籌碼", callback_data="?:chips"),
+                    InlineKeyboardButton("營收", callback_data="?:fund"),
+                    InlineKeyboardButton("記買入", callback_data="?:buy"),
+                ],
+                [InlineKeyboardButton("✕", callback_data="hx")],
+            ]
+        )
+
+    async def _reply_help_topic(self, message, topic: str = "guide") -> None:
+        body = HELP_TOPICS.get(topic) or HELP_TOPICS["guide"]
+        kb = self._help_nav_keyboard(topic)
+        for chunk in chunk_telegram_html(body):
+            await message.reply_html(
+                chunk,
+                reply_markup=kb,
+                disable_web_page_preview=True,
+            )
 
     def _keyboard(self):
         """舊 inline 主選單改成極短一列，避免再疊四排。常駐選單在輸入框下方。"""
@@ -966,7 +1054,7 @@ class WayneTelegramBot:
             "主選單在<b>輸入框右側 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
             "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
-            "各頁訊息上的「說明」是該頁用法，再按 <b>✕</b> 就收合。",
+            "不熟按鈕請按第二排 <b>說明</b>，有完整分類操作指南。",
         )
         await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
 
@@ -974,10 +1062,7 @@ class WayneTelegramBot:
         await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html(
-            HELP_TOPICS["menu"],
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✕", callback_data="hx")]]),
-        )
+        await self._reply_help_topic(update.message, "guide")
 
     @staticmethod
     def _format_elapsed(sec: int) -> str:
@@ -2462,12 +2547,8 @@ class WayneTelegramBot:
                     pass
             return
         if data.startswith("?:"):
-            topic = data[2:] or "menu"
-            await q.message.reply_html(
-                HELP_TOPICS.get(topic) or HELP_TOPICS["menu"],
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✕", callback_data="hx")]]),
-                disable_web_page_preview=True,
-            )
+            topic = data[2:] or "guide"
+            await self._reply_help_topic(q.message, topic)
             return
         if data.startswith("w:"):
             code = data[2:]
