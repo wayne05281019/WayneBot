@@ -440,7 +440,7 @@ def format_sector_rotation_html(
     now=None,
     lag: Optional[str] = None,
 ) -> str:
-    from tg_layout import kv, section, join_dashed, title_line
+    from tg_layout import kv_compact, section, join_dashed, title_line
 
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
@@ -473,8 +473,8 @@ def format_sector_rotation_html(
         blocks.append(lag)
     blocks.append(
         section(
-            kv("單位", "張（產業加總三大法人，不是分點）"),
-            kv("用途", "佈局對照：熱族＋族內代表股，不單獨當訊號"),
+            kv_compact("單位", "張（產業加總三大法人，非分點）"),
+            kv_compact("用途", "佈局對照：熱族＋族內代表股，不作單獨訊號"),
         ),
     )
     if chip_abs == 0:
@@ -568,7 +568,7 @@ def format_flow_html(
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
-    from tg_layout import kv, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
+    from tg_layout import kv_compact, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
     from trading_calendar import format_trading_date_zh
 
     health = audit_import(path, ymd)
@@ -609,7 +609,7 @@ def format_flow_html(
     blocks.extend(
         [
             title_line("個股資金", ymd_s, ""),
-            section(kv("覆蓋", cover), kv("單位", "張（三大法人，不是分點）")),
+            section(kv_compact("覆蓋", cover), kv_compact("單位", "張（三大法人，非分點）")),
         ]
     )
     blocks.append(
