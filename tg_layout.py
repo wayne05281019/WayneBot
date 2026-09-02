@@ -249,6 +249,83 @@ def join_sections(*blocks: str, sep: str = "\n\n") -> str:
     return sep.join(parts)
 
 
+def html_quote_move(
+    pct,
+    chg=None,
+    *,
+    pts_decimals: int = 2,
+    width: int = 26,
+) -> str:
+    """指數／期貨漲跌：整段放進等寬 <code>，手機不會從中間斷行。"""
+    if pct is None and chg is None:
+        body = "—"
+    else:
+        try:
+            p = float(pct) if pct is not None else None
+        except (TypeError, ValueError):
+            p = None
+        if p is None:
+            body = "—"
+        else:
+            pct_s = f"{p:+.2f}%"
+            if chg is not None:
+                try:
+                    c = float(chg)
+                    body = f"{pct_s}（{c:+.{pts_decimals}f}點）"
+                except (TypeError, ValueError):
+                    body = pct_s
+            else:
+                body = pct_s
+    if body == "—":
+        return "<code>—</code>"
+    return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"
+
+
+def html_level_pct(level, pct, *, level_decimals: int = 2, width: int = 22) -> str:
+    """VIX 等：水位＋（漲跌幅）同一等寬欄。"""
+    if level is None:
+        return "<code>—</code>"
+    try:
+        lv = float(level)
+    except (TypeError, ValueError):
+        return "<code>—</code>"
+    base = f"{lv:.{level_decimals}f}"
+    if pct is None:
+        body = base
+    else:
+        try:
+            body = f"{base}（{float(pct):+.2f}%）"
+        except (TypeError, ValueError):
+            body = base
+    return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"
+
+
+def aligned_rows(rows, label_width: int = 8) -> str:
+    """多列標籤＋數值，每列獨立一行、標籤對齊。"""
+    lines = []
+    for label, value in rows:
+        if not label:
+            continue
+        val = value if isinstance(value, str) and ("<" in value or "&" in value) else html_escape(value)
+        lines.append(kv_html(str(label), val, width=int(label_width)))
+    return "\n".join(lines)
+
+
+def aligned_block(title: str, rows, label_width: int = 8) -> str:
+    """區塊標題（==）＋對齊表；標題與內文之間空一行。"""
+    body = aligned_rows(rows, label_width=label_width)
+    if not title:
+        return body
+    if not body:
+        return section_eq(title)
+    return f"{section_eq(title)}\n{body}"
+
+
+def headline_lines(*parts: str) -> str:
+    """標題資訊分行，避免擠成一段難讀的長句。"""
+    return "\n".join(str(p) for p in parts if p is not None and str(p).strip())
+
+
 def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
     if not text:
         return []

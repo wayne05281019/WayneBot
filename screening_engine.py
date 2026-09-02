@@ -745,12 +745,15 @@ def _chip_plain(item: Dict[str, Any]) -> str:
 
 
 def _chip_html(item: Dict[str, Any]) -> str:
-    from tg_layout import html_qty
+    from tg_layout import aligned_rows, html_qty
 
-    return (
-        f"外資{html_qty(item.get('foreign_net'))}"
-        f"　投信{html_qty(item.get('trust_net'))}"
-        f"　自營{html_qty(item.get('dealer_net'))}"
+    return aligned_rows(
+        [
+            ("外資", html_qty(item.get("foreign_net"))),
+            ("投信", html_qty(item.get("trust_net"))),
+            ("自營", html_qty(item.get("dealer_net"))),
+        ],
+        label_width=4,
     )
 
 
@@ -921,11 +924,21 @@ def _compact_line(item: Dict[str, Any]) -> str:
         title = html_stock_anchor(sid, sname)
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
-    return (
-        f"{title}\n"
-        f"{html_escape(_regime_label(item))}　收{_px_str(item.get('close'))}　{pct}　"
-        f"量{html_qty(item.get('volume'), signed=False)}　{html_escape(q_s)}{extra}{plan}"
-    )
+    from tg_layout import html_price, join_sections, kv_html, section
+
+    rows = [
+        kv_html("型態", html_escape(_regime_label(item))),
+        kv_html("收盤", f"{html_price(item.get('close'))}　{pct}"),
+        kv_html("成交量", html_qty(item.get("volume"), signed=False)),
+    ]
+    if q_s:
+        rows.append(kv_html("60量比", html_escape(q_s)))
+    if extra:
+        rows.append(kv_html("標記", extra.strip()))
+    body = section(*rows)
+    if plan:
+        body = join_sections(body, plan.strip())
+    return f"{title}\n{body}"
 
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
@@ -957,13 +970,21 @@ def format_screening_payload(
         items = results.get(key) or []
         if skip_empty and not items:
             continue
-        head = f"＝＝{html_escape(label)}｜{html_escape(subtitle)}＝＝　共 {len(items)} 檔"
+        head = f"＝＝{html_escape(label)}｜{html_escape(subtitle)}＝＝"
         if first:
             from trading_calendar import format_trading_date_zh
+            from tg_layout import headline_lines
 
             as_of_label = format_trading_date_zh(target_date)
-            head = f"<b>WayneBot 海選</b>　昨收 {html_escape(as_of_label)}\n" + head
+            head = headline_lines(
+                "<b>WayneBot 海選</b>",
+                f"昨收　{html_escape(as_of_label)}",
+                head,
+                f"共 {len(items)} 檔",
+            )
             first = False
+        else:
+            head = f"{head}　共 {len(items)} 檔"
         part: Dict[str, Any] = {
             "mark_key": key,
             "line_pack_id": key,
