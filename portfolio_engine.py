@@ -592,7 +592,7 @@ class PortfolioEngine:
             html_num_paren,
             html_price,
             html_qty_tight,
-            kv_html,
+            kv_html_compact,
             price_change,
             section_eq,
             _plain_num,
@@ -628,14 +628,14 @@ class PortfolioEngine:
             except Exception:
                 title = f"<code>{html_escape(code)}</code> {html_escape(name)}"
             lines.append(title)
-            lines.append(kv_html("張數", html_qty_tight(lots, signed=False), 8))
-            lines.append(kv_html("成本", html_price(cost, compact=True), 8))
+            lines.append(kv_html_compact("張數", html_qty_tight(lots, signed=False)))
+            lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
             if chg is not None and pct is not None:
-                lines.append(kv_html("現價", html_last_move(last, chg, pct, compact=True), 8))
+                lines.append(kv_html_compact("現價", html_last_move(last, chg, pct, compact=True)))
             else:
-                lines.append(kv_html("現價", html_price(last, compact=True), 8))
-            lines.append(kv_html("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True), 8))
-            lines.append(kv_html("市值", html_money(mkt, signed=False, compact=True), 8))
+                lines.append(kv_html_compact("現價", html_price(last, compact=True)))
+            lines.append(kv_html_compact("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True)))
+            lines.append(kv_html_compact("市值", html_money(mkt, signed=False, compact=True)))
             if h is not holdings[-1]:
                 lines.append("")
         return "\n".join(lines)
