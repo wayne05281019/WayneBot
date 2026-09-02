@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import time as dt_time
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -19,6 +21,8 @@ _SESSION = requests.Session()
 _QUOTE_LOCK = threading.Lock()
 _QUOTE_CACHE: Dict[Tuple[str, str], Tuple[float, Optional[Dict[str, Any]]]] = {}
 _QUOTE_TTL_SEC = 20.0
+_MIS_TIMEOUT = float(os.getenv("WAYNE_MIS_TIMEOUT", "2.5"))
+_MIS_CONNECT_TIMEOUT = float(os.getenv("WAYNE_MIS_CONNECT_TIMEOUT", "1.5"))
 _SESSION.headers.update(
     {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -222,25 +226,26 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
         if hit and now - hit[0] < _QUOTE_TTL_SEC:
             return hit[1]
     ts = int(time.time() * 1000)
-    found: Optional[Dict[str, Any]] = None
-    for ch in _channels(sid, market):
+    channels = _channels(sid, market)
+
+    def _fetch_channel(ch: str) -> Optional[Dict[str, Any]]:
         url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ch}&json=1&delay=0&_={ts}"
         try:
-            resp = _SESSION.get(url, timeout=6)
+            resp = _SESSION.get(url, timeout=(_MIS_CONNECT_TIMEOUT, _MIS_TIMEOUT))
             if resp.status_code != 200:
-                continue
+                return None
             arr = (resp.json() or {}).get("msgArray") or []
             if not arr:
-                continue
+                return None
             item = arr[0]
             y = _num(item.get("y"))
             px = _last_price(item, y)
             if px <= 0:
-                continue
+                return None
             vol = int(_num(item.get("v"), 0))
             pct = round((px - y) / y * 100.0, 2) if y > 0 else 0.0
             chg = round(px - y, 2) if y > 0 else 0.0
-            found = {
+            return {
                 "stock_id": item.get("c") or sid,
                 "stock_name": item.get("n") or "",
                 "open": _num(item.get("o")) or px,
@@ -254,9 +259,24 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
                 "update_time": item.get("t") or "",
                 "is_realtime": True,
             }
-            break
+        except requests.Timeout:
+            logger.debug("MIS 逾時 %s", ch)
+            return None
         except Exception:
-            logger.exception("MIS 即時報價失敗 %s", ch)
+            logger.debug("MIS 失敗 %s", ch, exc_info=True)
+            return None
+
+    found: Optional[Dict[str, Any]] = None
+    if len(channels) == 1:
+        found = _fetch_channel(channels[0])
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {pool.submit(_fetch_channel, ch): ch for ch in channels}
+            for fut in as_completed(futures):
+                hit = fut.result()
+                if hit:
+                    found = hit
+                    break
     with _QUOTE_LOCK:
         _QUOTE_CACHE[key] = (time.time(), found)
     return found
@@ -284,9 +304,9 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
     return out
 
 
-def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "") -> pd.DataFrame:
+def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "", merge_live: bool = True) -> pd.DataFrame:
     """盤中用 MIS 價量合併今日 K：庫裡沒有就追加；已有就覆寫最後一根。"""
-    if df is None or df.empty:
+    if not merge_live or df is None or df.empty:
         return df
     if not is_live_merge_window():
         return df

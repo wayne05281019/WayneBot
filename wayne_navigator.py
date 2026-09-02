@@ -152,13 +152,20 @@ def _ft_font(weight: int):
     return font
 
 
+_FONTS_WARMED = False
+
+
 def prewarm_card_fonts() -> None:
     """開機載入打包好的兩個靜態字重，避免第一檔查詢才去壓字型。"""
+    global _FONTS_WARMED
+    if _FONTS_WARMED:
+        return
     _weight_font_path(_WEIGHT_TEXT)
     _weight_font_path(_WEIGHT_BOLD)
     with _FT_LOCK:
         _ft_font(_WEIGHT_TEXT)
         _ft_font(_WEIGHT_BOLD)
+    _FONTS_WARMED = True
 
 
 def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
@@ -325,7 +332,7 @@ class NavigatorEngine:
             ranks.append(calc_volume_rank(sub_v, window, closes=sub_c, turnovers=sub_t))
         return ranks
 
-    def get_decision_card(self, stock_id: str, lookback: int = 20) -> dict:
+    def get_decision_card(self, stock_id: str, lookback: int = 20, merge_live: bool = True) -> dict:
         """產出單一標的的買低賣高決策卡（高低點用收盤，對齊範本）。"""
         conn = sqlite3.connect(self.db_path)
         df = pd.read_sql_query("""
@@ -344,7 +351,7 @@ class NavigatorEngine:
         try:
             from live_quote import append_live_bar
 
-            df = append_live_bar(df, str(stock_id))
+            df = append_live_bar(df, str(stock_id), merge_live=merge_live)
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
