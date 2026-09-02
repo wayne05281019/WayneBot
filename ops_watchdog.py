@@ -194,6 +194,44 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
     return out
 
 
+def release_asset_age_days(*, now: Optional[datetime] = None, timeout: float = 10.0) -> Optional[float]:
+    """Release zip 距今幾天更新。這是從常駐端唯一看得到「GHA 還活著」的訊號。
+
+    None＝問不到（離線／私有庫），呼叫端要當成「不知道」而非「壞了」。
+    """
+    try:
+        import email.utils
+
+        import requests
+
+        from config import get_github_release_url
+    except Exception:
+        return None
+    try:
+        resp = requests.head(get_github_release_url(), timeout=timeout, allow_redirects=True)
+        stamp = resp.headers.get("Last-Modified") or ""
+        if not stamp:
+            return None
+        modified = email.utils.parsedate_to_datetime(stamp)
+    except Exception:
+        return None
+    ref = now or datetime.now(modified.tzinfo)
+    if ref.tzinfo is None and modified.tzinfo is not None:
+        modified = modified.replace(tzinfo=None)
+    try:
+        return max(0.0, (ref - modified).total_seconds() / 86400.0)
+    except TypeError:
+        return None
+
+
+def gha_pipeline_stale(*, max_age_days: float = 4.0, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Release 太久沒更新＝GHA 資料管線（或額度）掛了。"""
+    age = release_asset_age_days(now=now)
+    if age is None:
+        return {"known": False, "stale": False, "age_days": None}
+    return {"known": True, "stale": age > float(max_age_days), "age_days": round(age, 2)}
+
+
 def claim_alert(db_path: str, kind: str, run_date: str) -> bool:
     """同一排程同一天只告警一次；搶到才回 True。"""
     path = str(db_path or "").strip()
@@ -230,16 +268,42 @@ def format_watchdog_alert(missed: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def release_check_enabled() -> bool:
+    raw = (os.getenv("WAYNE_WATCHDOG_RELEASE") or "true").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _release_missed(now: Optional[datetime]) -> List[Dict[str, Any]]:
+    if not release_check_enabled():
+        return []
+    stale = gha_pipeline_stale(now=now)
+    if not stale.get("known") or not stale.get("stale"):
+        return []
+    day = (now or datetime.now()).strftime("%Y%m%d")
+    return [
+        {
+            "kind": "release_publish",
+            "label": "GHA 資料管線（Release zip）",
+            "scheduled": "16:30",
+            "run_date": f"release-{day}",
+            "status": f"已 {stale.get('age_days')} 天未更新",
+        }
+    ]
+
+
 def watchdog_scan(
     db_path: str,
     *,
     now: Optional[datetime] = None,
     claim: bool = True,
+    check_release: bool = True,
 ) -> Dict[str, Any]:
     """回傳需要告警的排程；claim=True 時同時完成當日去重。"""
     if not watchdog_enabled():
         return {"enabled": False, "missed": [], "alerts": []}
     missed = missed_jobs(db_path, now=now)
+    if check_release:
+        missed = missed + _release_missed(now)
     alerts = []
     for m in missed:
         if not claim or claim_alert(db_path, str(m["kind"]), str(m["run_date"])):
@@ -248,7 +312,7 @@ def watchdog_scan(
 
 
 def watchdog_payload(db_path: str, *, now: Optional[datetime] = None) -> Dict[str, Any]:
-    """給 /ready 與巡檢用的唯讀快照（不寫告警去重）。"""
+    """給 /ready 與巡檢用的唯讀快照（不寫告警去重、不打外部網路）。"""
     missed = missed_jobs(db_path, now=now) if watchdog_enabled() else []
     alive = polling_alive(db_path, now=None)
     return {

@@ -4,4 +4,12 @@ services:
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    # /health 只反映「行程能不能服務」；資料過期不會讓它變紅，
+    # 因為重啟修不了資料管線，只會把互動 bot 一起弄掉。
     healthCheckPath: /health
+    envVars:
+      # 每個排程只能有一個擁有者。GHA 是可靠的計時器（本服務會休眠），
+      # 所以 06:30 海選推播歸 GHA；這裡只保持本機庫新鮮供互動查詢，
+      # 並負責唯一沒有 GHA 對應的 12:45 尾盤複核。
+      - key: WAYNE_SCHEDULER_ROLE
+        value: data

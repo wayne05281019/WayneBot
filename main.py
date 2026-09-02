@@ -319,7 +319,47 @@ def _seconds_until(hour: int, minute: int) -> float:
     return max(5.0, (target - now).total_seconds())
 
 
+def run_scheduled_job(kind: str) -> None:
+    """依排程擁有者分派：不屬於本行程的排程直接跳過，不是屬於的也不亂推播。
+
+    同一個工作被 GHA 與 Render 各跑一次時，兩邊的 pipeline_runs 互相看不到，
+    skip_if_done 失效，使用者就會收到兩份一樣的推播。
+    """
+    from config import scheduler_may_push, scheduler_owns
+    from main_runner import MainRunner
+
+    if not scheduler_owns(kind):
+        logger.info("排程 %s 非本行程擁有（role=%s），略過", kind, _scheduler_role())
+        return
+
+    push = scheduler_may_push(kind)
+    runner = MainRunner()
+    if kind == "morning":
+        runner.run_morning_screen(skip_if_done=True)
+    elif kind == "midday":
+        runner.run_midday_review(skip_if_done=True)
+    elif kind == "evening":
+        runner.run_evening_screen(skip_if_done=True, notify=False)
+    else:
+        runner.run_increment_job(skip_if_done=True, notify=push)
+
+
+def _scheduler_role() -> str:
+    from config import scheduler_role
+
+    return scheduler_role()
+
+
 def start_daily_scheduler():
+    role = _scheduler_role()
+    if role == "off":
+        logger.info("WAYNE_SCHEDULER_ROLE=off：本行程不跑任何排程")
+        return None
+    logger.info(
+        "排程角色 %s（data＝只保持本機庫新鮮，準時推播歸 GitHub Actions）",
+        role,
+    )
+
     def _next_slot():
         from datetime import timedelta
 
@@ -346,6 +386,10 @@ def start_daily_scheduler():
 
     def _catch_up_missed():
         """重啟若已過 06:30 而今早沒寄過，立刻補寄，避免再空窗。"""
+        from config import scheduler_owns
+
+        if not scheduler_owns("morning"):
+            return
         now = _taipei_now()
         if now.weekday() >= 5:
             return
@@ -358,8 +402,6 @@ def start_daily_scheduler():
         MainRunner().run_morning_screen(skip_if_done=True)
 
     def _loop():
-        from main_runner import MainRunner
-
         try:
             _catch_up_missed()
         except Exception:
@@ -377,15 +419,7 @@ def start_daily_scheduler():
                 now = _taipei_now()
                 if now.weekday() >= 5:
                     continue
-                runner = MainRunner()
-                if kind == "morning":
-                    runner.run_morning_screen(skip_if_done=True)
-                elif kind == "midday":
-                    runner.run_midday_review(skip_if_done=True)
-                elif kind == "evening":
-                    runner.run_evening_screen(skip_if_done=True, notify=False)
-                else:
-                    runner.run_increment_job(skip_if_done=True)
+                run_scheduled_job(kind)
             except Exception as e:
                 logger.error("排程 %s 失敗: %s", kind, e, exc_info=True)
 
