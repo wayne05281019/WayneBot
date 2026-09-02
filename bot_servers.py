@@ -82,7 +82,7 @@ HELP_TOPICS = {
         "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "左→右依常用順序；決策卡＝盤中快捷刷新上一檔 MIS 價量與 120日量排名。\n"
-        "打股名或代號＝完整看這檔：現價→介紹圖→決策卡→導航→籌碼。\n"
+        "打股名或代號＝看這檔：現價→決策卡→導航→介紹圖；籌碼請按下方「籌碼」或 /chips。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
@@ -125,7 +125,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
-        "打股名或按看這檔：先現價／漲跌，再介紹圖 → 高低決策卡 → 導航 → 籌碼。\n"
+        "打股名或按看這檔：先現價／漲跌，再決策卡 → 導航 → 介紹圖；籌碼另按「籌碼」。\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 獲利＝近60個日曆日收盤低；距60根低是另外一欄（近60根收盤）\n"
         "3 溫度＝20日收盤位置＋月乖離；升降「溫度壓縮＋價未新低」＝溫度創低但股價未創波段低（背離警示）\n"
@@ -894,16 +894,16 @@ class WayneTelegramBot:
             self._send_photo(chat_id, glance, caption=cap)
         for path in self._card_photo_paths(card_img):
             self._send_photo(chat_id, path, caption=f"{html_escape(code)} 高低決策卡")
+        last_kb = self._hub_keyboard(code)
         if chart_path:
             self._send_photo(
                 chat_id,
                 chart_path,
                 caption=f"{html_escape(code)} 高低導航：價格列20高／脫離／20低／60低；紫▲量能異常與紅▲警告只在量能列",
+                reply_markup=last_kb,
             )
-        chip_img = generate_chips_image(code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png"))
-        last_kb = self._hub_keyboard(code)
-        if chip_img:
-            self._send_photo(chat_id, chip_img, caption="籌碼（張）", reply_markup=last_kb)
+        elif glance:
+            self._send_photo(chat_id, glance, caption=f"{html_escape(code)}", reply_markup=last_kb)
         else:
             self._send_html(chat_id, "選單", extra_keyboard=last_kb, attach_menu=False)
 
@@ -1163,7 +1163,7 @@ class WayneTelegramBot:
     def _chart_progress_text(elapsed_sec: int) -> str:
         return (
             f"圖產製中　已 {elapsed_sec}s\n"
-            "介紹圖／決策卡／導航／籌碼並行產生，完成一張送一張…"
+            "介紹圖／決策卡／導航依序產生，完成一張送一張…"
         )
 
     @staticmethod
@@ -2145,7 +2145,6 @@ class WayneTelegramBot:
                 render_first_glance_png,
             )
             from wayne_navigator import NavigatorEngine
-            from chips import generate_chips_image
             from chip_tape import build_tape
 
             def _build_card():
@@ -2178,7 +2177,6 @@ class WayneTelegramBot:
             glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
-            chip_path_f = os.path.join(self.charts_dir, f"{code}_chips_{req_tag}.png")
 
             def _render_chart():
                 return generate_chart(code, "", self.db_path, chart_path_f, ohlc)
@@ -2193,18 +2191,11 @@ class WayneTelegramBot:
                 ),
                 ("chart", _render_chart, _CHART_RENDER_TIMEOUT, "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深", None),
                 (
-                    "chips",
-                    lambda: generate_chips_image(code, self.db_path, chip_path_f),
-                    45.0,
-                    "籌碼（張）",
-                    hub,
-                ),
-                (
                     "glance",
                     lambda: render_first_glance_png(code, card, tape, glance_path, self.db_path),
                     60.0,
                     cap_links or "當日K＋籌碼價量",
-                    None,
+                    hub,
                 ),
             ]
 
@@ -2237,7 +2228,7 @@ class WayneTelegramBot:
                 if kind == "chart" and not self._chart_png_looks_ok(path):
                     continue
                 ok = await send_photo(path, caption, markup)
-                if ok and kind == "chips":
+                if ok and markup is hub:
                     hub_on = True
                 if ok:
                     sent_any = True
