@@ -46,6 +46,30 @@ def test_filter_trusted_drops_stub_tuple():
     assert dropped == 1
 
 
+def test_filter_trusted_keeps_valid_tuple():
+    row = (
+        "20260902",
+        "2330",
+        "台積電",
+        "TW",
+        2400.0,
+        2450.0,
+        2390.0,
+        2440.0,
+        45000,
+        100000.0,
+        1.46,
+        2420.0,
+        100,
+        50,
+        20,
+    )
+    kept, dropped = filter_trusted_quote_tuples([row])
+    assert len(kept) == 1
+    assert dropped == 0
+    assert quote_tuple_trusted(row[4], row[5], row[6], row[7], row[8], row[10])
+
+
 def test_scrub_removes_stub_from_db(tmp_path, monkeypatch):
     monkeypatch.setattr("import_health.sides_complete", lambda tw, two, **kw: True)
     db = tmp_path / "t.db"
