@@ -346,3 +346,91 @@ def test_production_db_market_page_has_real_data():
     assert "暫不可用" not in html
     assert "台股大盤" in html
     assert "加權指數" in html
+
+
+def test_compute_basis_pct():
+    from taiwan_market import compute_basis_pct
+
+    assert compute_basis_pct(46000, 47200) == round((47200 - 46000) / 46000 * 100, 2)
+    assert compute_basis_pct(0, 100) is None
+
+
+def test_parse_taifex_history_csv_picks_front_month():
+    from taiwan_market import _parse_taifex_history_csv
+
+    sample = (
+        "交易日期,契約,到期月份(週別),開盤價,最高價,最低價,收盤價,漲跌價,漲跌%,成交量,結算價,未沖銷契約數,最後最佳買價,最後最佳賣價,歷史最高價,歷史最低價,是否因訊息面暫停交易,交易時段,價差對單式委託成交量\n"
+        "2026/08/03,TX,202608  ,43186,43836,42989,43230,-497,-1.14%,69550,43219,109589,43231,43247,49470,39442,,一般,,\n"
+        "2026/08/03,TX,202609  ,43368,43966,43260,43388,-500,-1.14%,485,43363,6108,43373,43391,49651,24962,,一般,,\n"
+    ).encode("big5")
+    out = _parse_taifex_history_csv(sample)
+    assert "20260803" in out
+    assert out["20260803"]["close"] == 43230.0
+    assert out["20260803"]["volume"] == 69550
+
+
+@patch("taiwan_market._fetch_taifex_tx_day")
+def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
+    from taiwan_market import ensure_futures_daily_table, load_futures_daily, sync_futures_daily
+
+    db = str(tmp_path / "fut.db")
+    mock_fetch.return_value = {
+        "date": "20260901",
+        "contract_month": "202609",
+        "open": 46000.0,
+        "high": 47220.0,
+        "low": 45987.0,
+        "close": 47209.0,
+        "settlement": 47201.0,
+        "volume": 57627,
+        "open_interest": 104368,
+        "pct_change": 2.68,
+        "source": "taifex",
+    }
+    r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
+    assert r["ok"]
+    row = load_futures_daily(db, "20260901")
+    assert row and row["close"] == 47209.0
+
+
+def test_market_page_includes_futures_section(tmp_path):
+    import sqlite3
+
+    from taiwan_market import (
+        ensure_futures_daily_table,
+        ensure_index_daily_table,
+        format_taiwan_market_page_html,
+    )
+
+    db = str(tmp_path / "mf.db")
+    ensure_index_daily_table(db)
+    ensure_futures_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE stock_universe (stock_id TEXT, is_active INT)")
+    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL)")
+    conn.execute("INSERT INTO stock_universe VALUES ('2330', 1)")
+    for i in range(1, 25):
+        d = f"202608{i:02d}"
+        close = 22000.0 + i * 50
+        conn.execute(
+            """
+            INSERT INTO index_daily(date, symbol, close, volume, pct_change, ma20, ma60, regime, updated_at)
+            VALUES (?, 'TWII', ?, 1e9, 0.1, ?, ?, 'bull', 'test')
+            """,
+            (d, close, close - 100, close - 200),
+        )
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TX', 'regular', '202608', ?, ?, ?, ?, ?, 1000, 50000, 0.2, 'taifex', 'test')
+            """,
+            (d, close + 50, close + 100, close + 30, close + 80, close + 75),
+        )
+        conn.execute("INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)", (d, float(100 + i)))
+    conn.commit()
+    conn.close()
+    html = format_taiwan_market_page_html(db, "20260824")
+    assert "期現" in html
+    assert "基差" in html
