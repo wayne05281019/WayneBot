@@ -176,8 +176,10 @@ def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, fl
     return out
 
 
-def adapt_bucket_weights(db_path: str, regime: Optional[str] = None) -> Dict[str, float]:
-    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0；再乘上大盤 regime 倍率寫入 bucket_w_*。
+def adapt_bucket_weights(
+    db_path: str, regime: Optional[str] = None, regime_plus: Optional[str] = None
+) -> Dict[str, float]:
+    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0；再乘上 Regime+（優先）或大盤 regime 倍率。
 
     有足夠 AI 實際成交時，以成交隔日為準；否則退回海選名單統計。
     """
@@ -189,9 +191,10 @@ def adapt_bucket_weights(db_path: str, regime: Optional[str] = None) -> Dict[str
         except Exception:
             regime = None
     try:
-        from taiwan_market import REGIME_BUCKET_MULT
+        from taiwan_market import REGIME_BUCKET_MULT, regime_plus_bucket_mult
     except Exception:
         REGIME_BUCKET_MULT = {}
+        regime_plus_bucket_mult = None  # type: ignore
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);")
     screen = {key: (n, avg, hit) for key, n, avg, hit in _bucket_stats(db_path)}
@@ -200,6 +203,7 @@ def adapt_bucket_weights(db_path: str, regime: Optional[str] = None) -> Dict[str
     except sqlite3.OperationalError:
         fills = {}
     weights = {}
+    plus_mults = regime_plus_bucket_mult(regime_plus) if regime_plus and regime_plus_bucket_mult else None
     for key, _label in BUCKETS:
         sn, savg, _shit = screen.get(key, (0, 0.0, 0.0))
         fn, favg, _fhit = fills.get(key, (0, 0.0, 0.0))
@@ -217,13 +221,29 @@ def adapt_bucket_weights(db_path: str, regime: Optional[str] = None) -> Dict[str
             "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
             (f"bucket_w_base_{key}", base_w),
         )
-        mult = float((REGIME_BUCKET_MULT.get(regime or "neutral") or {}).get(key, 1.0))
+        if plus_mults is not None:
+            mult = float(plus_mults.get(key, 1.0))
+        else:
+            mult = float((REGIME_BUCKET_MULT.get(regime or "neutral") or {}).get(key, 1.0))
         eff = max(0.0, min(1.2, base_w * mult))
         conn.execute(
             "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
             (f"bucket_w_{key}", eff),
         )
         weights[key] = eff
+    if regime_plus:
+        plus_code = {
+            "trend_up": 1.0,
+            "trend_up_late": 2.0,
+            "range": 3.0,
+            "trend_down": 4.0,
+            "down_exhaust": 5.0,
+            "repair": 6.0,
+        }.get(str(regime_plus), 0.0)
+        conn.execute(
+            "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
+            ("mkt_regime_plus_code", plus_code),
+        )
     if regime:
         code = {"bull": 1.0, "neutral": 0.0, "bear": -1.0}.get(regime, 0.0)
         conn.execute(

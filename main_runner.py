@@ -506,6 +506,7 @@ class MainRunner:
             adapt_bucket_weights(
                 self.db_path,
                 regime=snap.get("regime") if snap.get("ok") else None,
+                regime_plus=snap.get("regime_plus") if snap.get("ok") else None,
             )
         except Exception as e:
             logger.warning("海選復盤略過：%s", e)
