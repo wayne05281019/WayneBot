@@ -281,8 +281,6 @@ def html_quote_move(
         return "<code>—</code>"
     if compact or width <= 0:
         return f"<code>{html_escape(body)}</code>"
-    if compact or width <= 0:
-        return f"<code>{html_escape(body)}</code>"
     return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"
 
 

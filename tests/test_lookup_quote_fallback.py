@@ -57,3 +57,5 @@ def test_us_alert_no_wide_rjust_padding():
     }
     html = format_us_drop_alert(snap)
     assert "    -0.79%" not in html
+    assert "<code>" not in html
+    assert max(len(line) for line in html.splitlines()) <= 36
