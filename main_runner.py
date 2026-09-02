@@ -279,6 +279,13 @@ class MainRunner:
             ix = sync_index_daily(self.db_path)
             logger.info("加權指數寫入 index_daily：%s", ix)
             try:
+                from taiwan_market import sync_index_breadth_daily
+
+                br = sync_index_breadth_daily(self.db_path)
+                logger.info("漲跌家數寫入 index_breadth_daily：%s", br)
+            except Exception as e_br:
+                logger.warning("漲跌家數同步略過：%s", e_br)
+            try:
                 from taiwan_market import sync_regime_ai_weights
 
                 sync_regime_ai_weights(self.db_path)

@@ -148,6 +148,211 @@ def _fetch_twse_index_close(date: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def ensure_index_breadth_daily_table(db_path: str) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS index_breadth_daily (
+                date TEXT NOT NULL PRIMARY KEY,
+                up_count INTEGER NOT NULL DEFAULT 0,
+                down_count INTEGER NOT NULL DEFAULT 0,
+                limit_up INTEGER NOT NULL DEFAULT 0,
+                limit_down INTEGER NOT NULL DEFAULT 0,
+                flat_count INTEGER NOT NULL DEFAULT 0,
+                up_tw INTEGER NOT NULL DEFAULT 0,
+                down_tw INTEGER NOT NULL DEFAULT 0,
+                up_two INTEGER NOT NULL DEFAULT 0,
+                down_two INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'twse',
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _parse_breadth_row_cells(row: List[Any]) -> Tuple[int, int, int]:
+    """解析 MI_INDEX 漲跌列：回傳 (上市, 上櫃, 合計或第三欄)。"""
+    if not row or len(row) < 2:
+        return 0, 0, 0
+    tw = int(_clean_index_num(row[1], is_float=False))
+    two = int(_clean_index_num(row[2], is_float=False)) if len(row) > 2 else 0
+    total = int(_clean_index_num(row[-1], is_float=False)) if len(row) > 3 else tw + two
+    if total <= 0 and (tw > 0 or two > 0):
+        total = tw + two
+    return tw, two, total
+
+
+def _fetch_twse_index_breadth(date: str) -> Optional[Dict[str, Any]]:
+    """證交所 MI_INDEX 漲跌證券數合計（單日 YYYYMMDD）。"""
+    d = str(date or "").replace("-", "")[:8]
+    if len(d) != 8:
+        return None
+    url = (
+        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+        f"?date={d}&type=ALL&response=json"
+    )
+    try:
+        resp = _SESSION.get(url, timeout=40)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.debug("TWSE MI_INDEX breadth %s failed: %s", d, exc)
+        return None
+    stat = str(data.get("stat") or "")
+    if stat.upper() != "OK" or "沒有符合" in stat or "很抱歉" in stat:
+        return None
+    for table in data.get("tables", []):
+        title = str(table.get("title") or "")
+        if "漲跌證券數合計" not in title:
+            continue
+        out: Dict[str, int] = {
+            "up_tw": 0,
+            "down_tw": 0,
+            "up_two": 0,
+            "down_two": 0,
+            "limit_up": 0,
+            "limit_down": 0,
+            "flat_count": 0,
+        }
+        for row in table.get("data", []):
+            label = str(row[0] if row else "").replace(" ", "")
+            tw, two, total = _parse_breadth_row_cells(row)
+            if "漲停" in label:
+                out["limit_up"] = total or tw + two
+            elif "跌停" in label:
+                out["limit_down"] = total or tw + two
+            elif "平盤" in label:
+                out["flat_count"] = total or tw + two
+            elif "上漲" in label or label.startswith("上漲"):
+                out["up_tw"], out["up_two"] = tw, two
+            elif "下跌" in label or label.startswith("下跌"):
+                out["down_tw"], out["down_two"] = tw, two
+        up = out["up_tw"] + out["up_two"]
+        down = out["down_tw"] + out["down_two"]
+        if up + down <= 0:
+            return None
+        return {
+            "date": d,
+            "up_count": up,
+            "down_count": down,
+            "limit_up": out["limit_up"],
+            "limit_down": out["limit_down"],
+            "flat_count": out["flat_count"],
+            "up_tw": out["up_tw"],
+            "down_tw": out["down_tw"],
+            "up_two": out["up_two"],
+            "down_two": out["down_two"],
+            "source": "twse",
+        }
+    return None
+
+
+def load_index_breadth_daily(db_path: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """讀 index_breadth_daily；無該日列則 None。"""
+    ensure_index_breadth_daily_table(db_path)
+    ref = str(as_of or "").replace("-", "")[:8]
+    conn = sqlite3.connect(db_path)
+    try:
+        if ref:
+            row = conn.execute(
+                """
+                SELECT date, up_count, down_count, limit_up, limit_down, flat_count,
+                       up_tw, down_tw, up_two, down_two, source
+                FROM index_breadth_daily WHERE date = ?
+                """,
+                (ref,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT date, up_count, down_count, limit_up, limit_down, flat_count,
+                       up_tw, down_tw, up_two, down_two, source
+                FROM index_breadth_daily ORDER BY date DESC LIMIT 1
+                """
+            ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    up, down = int(row[1] or 0), int(row[2] or 0)
+    if up + down <= 0:
+        return None
+    return {
+        "date": str(row[0]),
+        "up_count": up,
+        "down_count": down,
+        "limit_up": int(row[3] or 0),
+        "limit_down": int(row[4] or 0),
+        "flat_count": int(row[5] or 0),
+        "up_tw": int(row[6] or 0),
+        "down_tw": int(row[7] or 0),
+        "up_two": int(row[8] or 0),
+        "down_two": int(row[9] or 0),
+        "up_ratio": round(up / (up + down), 4),
+        "source": str(row[10] or "twse"),
+    }
+
+
+def sync_index_breadth_daily(db_path: str, dates: Optional[List[str]] = None) -> Dict[str, Any]:
+    """盤後寫入 TWSE 漲跌家數；抓取失敗不寫、不覆蓋舊列。"""
+    ensure_index_breadth_daily_table(db_path)
+    if not dates:
+        from trading_calendar import fuse_end_trading_date
+
+        dates = [fuse_end_trading_date()]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    written = 0
+    latest = ""
+    conn = sqlite3.connect(db_path)
+    try:
+        for raw in dates:
+            d = str(raw or "").replace("-", "")[:8]
+            if len(d) != 8:
+                continue
+            row = _fetch_twse_index_breadth(d)
+            if not row:
+                continue
+            conn.execute(
+                """
+                INSERT INTO index_breadth_daily(
+                    date, up_count, down_count, limit_up, limit_down, flat_count,
+                    up_tw, down_tw, up_two, down_two, source, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    up_count=excluded.up_count, down_count=excluded.down_count,
+                    limit_up=excluded.limit_up, limit_down=excluded.limit_down,
+                    flat_count=excluded.flat_count,
+                    up_tw=excluded.up_tw, down_tw=excluded.down_tw,
+                    up_two=excluded.up_two, down_two=excluded.down_two,
+                    source=excluded.source, updated_at=excluded.updated_at
+                """,
+                (
+                    row["date"],
+                    row["up_count"],
+                    row["down_count"],
+                    row["limit_up"],
+                    row["limit_down"],
+                    row["flat_count"],
+                    row["up_tw"],
+                    row["down_tw"],
+                    row["up_two"],
+                    row["down_two"],
+                    row["source"],
+                    now,
+                ),
+            )
+            written += 1
+            latest = row["date"]
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": written > 0, "rows": written, "latest": latest}
+
+
 def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     """近 N 日優先官方收盤；與 Yahoo 差異 >0.1% 時告警。"""
     if df.empty:
@@ -317,6 +522,7 @@ def _regime_from_closes(
     *,
     breadth_pct: float = 50.0,
     sector_flow: float = 0.0,
+    official_up_ratio: Optional[float] = None,
 ) -> Dict[str, Any]:
     if closes is None or len(closes) < 5:
         return {"regime": "unknown", "regime_label": "未知", "score": 0, "confidence": 50.0}
@@ -343,6 +549,11 @@ def _regime_from_closes(
         score += 1
     if breadth_pct >= 45:
         score += 1
+    if official_up_ratio is not None:
+        if official_up_ratio >= 0.55:
+            score += 1
+        elif official_up_ratio <= 0.35:
+            score = max(0, score - 1)
     if sector_flow > 0:
         score += 1
     if score >= 5:
@@ -449,11 +660,13 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         return {"ok": False, "regime": "unknown", "brief": "加權指數資料暫不可用"}
     ref_date = as_of or str(idx["date"].iloc[-1])
     breadth = _breadth_from_db(db_path, ref_date)
+    official = load_index_breadth_daily(db_path, ref_date)
     flow = _sector_flow_sum(db_path, ref_date)
     core = _regime_from_closes(
         idx["close"].astype(float),
         breadth_pct=breadth.get("above_ma20_pct", 0),
         sector_flow=flow,
+        official_up_ratio=(official.get("up_ratio") if official else None),
     )
     bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
     return {
@@ -466,6 +679,7 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         "slope20_pct": core.get("slope20_pct", 0),
         "breadth_above_ma20": breadth.get("above_ma20_pct", 0),
         "sample_n": breadth.get("sample_n", 0),
+        "official_breadth": official,
         "sector_flow_net": round(flow, 0),
         "regime": core.get("regime", "neutral"),
         "regime_label": core.get("regime_label", "區間震盪"),
@@ -666,6 +880,14 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
         )
     else:
         lines.append("<b>廣度</b>　當日官股日 K 尚未齊，暫不顯示")
+    ob = snap.get("official_breadth")
+    if ob and int(ob.get("up_count") or 0) + int(ob.get("down_count") or 0) > 0:
+        lines.append(
+            f"<b>漲跌家數</b>　漲 {ob['up_count']}／跌 {ob['down_count']}"
+            f"（漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}）"
+            f"　上市 {ob.get('up_tw', 0)}/{ob.get('down_tw', 0)}"
+            f"　上櫃 {ob.get('up_two', 0)}/{ob.get('down_two', 0)}"
+        )
     flow_net = _sector_flow_net(db_path, ref)
     if flow_net is not None:
         lines.append(f"<b>法人</b>　產業合計 {flow_net:+,.0f} 張")

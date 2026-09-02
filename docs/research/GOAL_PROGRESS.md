@@ -6,7 +6,7 @@
 ## 總進度
 
 ```
-█████████████░░░░░░░  50%
+██████████████░░░░░░  60%
 ```
 
 | 階段 | 狀態 | 說明 |
@@ -14,7 +14,7 @@
 | 藍圖 | ✅ 完成 | `taiwan_index_depth.md` |
 | v0 骨架 | ✅ 完成 | `taiwan_market.py` regime／桶權重／晨間一句 |
 | **P0** 官方加權指數寫庫 | ✅ 完成 | MI_INDEX + Yahoo 差異告警（PR #115） |
-| P1 漲跌家數廣度 | ⬜ 待做 | `index_breadth_daily` |
+| **P1** 漲跌家數廣度 | 🟡 進行中 | `index_breadth_daily` + regime |
 | P2 falling_risk／高低檔 | ⬜ 待做 | `risk_zone` / `support_zone` |
 | P3 台指期＋基差 | ⬜ 待做 | TAIFEX |
 | P4 Regime+ 狀態機 | ⬜ 待做 | 海選權重 v2 |
@@ -29,15 +29,17 @@
 | 資金輪動日期對齊 | #111 | ✅ |
 | P0 官方加權寫庫 | #115 | ✅ |
 | 主選單大盤專頁 | #117 | ✅ |
+| 查股整合測試 | #119 | ✅ |
 
 ## 進行中分支
 
 | 分支 | 內容 | 狀態 |
 |------|------|------|
-| — | P1 TWSE 漲跌家數廣度（下一期） | ⬜ 待開工 |
+| `cursor/index-breadth-p1-046f` | P1 TWSE 漲跌家數寫庫 + 大盤頁顯示 | 🟡 測試中 |
 
 ## 下一個里程碑（P1 完成 → 60%）
 
-- [ ] TWSE 每日統計寫入 `index_breadth_daily`
-- [ ] 廣度指標接入 regime
-- [ ] 單元測試 + 合併 main
+- [x] `index_breadth_daily` 表 + `sync_index_breadth_daily`
+- [x] 盤後 hook（`sync_index_daily` 之後，失敗略過）
+- [x] 官方漲跌家數接入 regime + 大盤頁
+- [ ] CI 綠燈 + 合併 main

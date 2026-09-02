@@ -5,6 +5,7 @@ import pandas as pd
 
 from decision_card_signals import calc_volume_rank
 from taiwan_market import (
+    _fetch_twse_index_breadth,
     _fetch_twse_index_close,
     _merge_index_closes,
     analyze_taiwan_market,
@@ -178,6 +179,75 @@ def test_sync_index_daily_prefers_official(mock_twse, mock_yahoo, tmp_path):
     ).fetchone()[0]
     conn.close()
     assert close == 24233.10
+
+
+def test_fetch_twse_index_breadth_parses_table():
+    payload = {
+        "stat": "OK",
+        "tables": [
+            {
+                "title": "114年08月29日 漲跌證券數合計",
+                "data": [
+                    ["上漲", "792", "412", "1,204"],
+                    ["下跌", "428", "201", "629"],
+                    ["漲停(股)", "45", "12", "57"],
+                    ["跌停(股)", "8", "3", "11"],
+                    ["平盤", "156", "88", "244"],
+                ],
+            }
+        ],
+    }
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = payload
+    with patch("taiwan_market._SESSION.get", return_value=mock_resp):
+        row = _fetch_twse_index_breadth("20250829")
+    assert row is not None
+    assert row["up_count"] == 1204
+    assert row["down_count"] == 629
+    assert row["up_tw"] == 792
+    assert row["limit_up"] == 57
+
+
+@patch("taiwan_market._fetch_twse_index_breadth")
+def test_sync_index_breadth_daily_writes_table(mock_fetch, tmp_path):
+    import sqlite3
+
+    from taiwan_market import sync_index_breadth_daily
+
+    db = str(tmp_path / "br.db")
+    mock_fetch.return_value = {
+        "date": "20250829",
+        "up_count": 1204,
+        "down_count": 629,
+        "limit_up": 57,
+        "limit_down": 11,
+        "flat_count": 244,
+        "up_tw": 792,
+        "down_tw": 428,
+        "up_two": 412,
+        "down_two": 201,
+        "source": "twse",
+    }
+    r = sync_index_breadth_daily(db, dates=["20250829"])
+    assert r["ok"] and r["rows"] == 1
+    conn = sqlite3.connect(db)
+    up = conn.execute(
+        "SELECT up_count, down_count FROM index_breadth_daily WHERE date=?",
+        ("20250829",),
+    ).fetchone()
+    conn.close()
+    assert up == (1204, 629)
+
+
+@patch("taiwan_market._fetch_twse_index_breadth")
+def test_sync_index_breadth_daily_skips_on_fetch_fail(mock_fetch, tmp_path):
+    from taiwan_market import sync_index_breadth_daily
+
+    db = str(tmp_path / "empty_br.db")
+    mock_fetch.return_value = None
+    r = sync_index_breadth_daily(db, dates=["20250829"])
+    assert not r["ok"] and r["rows"] == 0
 
 
 @patch("taiwan_market._fetch_index_daily")
