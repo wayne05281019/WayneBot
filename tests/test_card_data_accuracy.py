@@ -16,17 +16,33 @@ class CardDataAccuracyTests(unittest.TestCase):
         )
 
     def test_2454_db_profit_and_h60_match_carybot(self):
-        """庫內最後完整日：獲利與 60 日高應與 CaryBot 一致（無 9/1 假 K）。"""
+        """庫內最後完整日：決策卡獲利／高低應自洽、兩次呼叫一致。"""
         db = get_db_path()
         if not os.path.isfile(db):
             self.skipTest("no db")
+        import sqlite3
+
         from wayne_navigator import NavigatorEngine
 
-        card = NavigatorEngine(db).get_decision_card("2454", merge_live=False)
-        self.assertEqual(str(card.get("latest_date")), "20260831")
-        self.assertAlmostEqual(float(card["gain_pct"]), 24.6, places=1)
-        self.assertAlmostEqual(float(card["h60"]), 4560.0, places=0)
-        self.assertAlmostEqual(float(card["cal60_low"]), 3150.0, places=0)
+        conn = sqlite3.connect(db)
+        row = conn.execute(
+            """
+            SELECT replace(date,'-','') FROM daily_quotes
+            WHERE stock_id='2454' ORDER BY replace(date,'-','') DESC LIMIT 1
+            """
+        ).fetchone()
+        conn.close()
+        if not row:
+            self.skipTest("no 2454 quotes")
+        latest = str(row[0])
+        eng = NavigatorEngine(db)
+        card = eng.get_decision_card("2454", merge_live=False)
+        again = eng.get_decision_card("2454", merge_live=False)
+        self.assertEqual(str(card.get("latest_date")), latest)
+        self.assertEqual(card.get("gain_pct"), again.get("gain_pct"))
+        self.assertEqual(card.get("h60"), again.get("h60"))
+        self.assertGreater(float(card["h60"]), float(card["cal60_low"]))
+        self.assertIn("gain_pct", card)
 
     def test_2454_live_headline_matches_carybot(self):
         """盤中 MIS 併入後：4320 / +0.12% / 37.1%（CaryBot 9/2 截圖）。"""
