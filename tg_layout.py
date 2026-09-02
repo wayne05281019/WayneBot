@@ -78,6 +78,12 @@ def html_pct_tight(pct) -> str:
     return f"<code>{html_escape(f'{p:+.1f}%')}</code>"
 
 
+def html_metrics_tight(*parts: str) -> str:
+    """多個數字緊湊同一格，資金移動等長文不撐寬氣泡。"""
+    body = " ".join(str(p) for p in parts if p not in (None, ""))
+    return f"<code>{html_escape(body)}</code>"
+
+
 def html_code_join(*parts: str) -> str:
     """多個數字同一 <code>，長文才不會因為 entity 太多有的橘有的黑。"""
     body = "　".join(str(p) for p in parts if p not in (None, ""))

@@ -339,6 +339,7 @@ class WayneTelegramBot:
         # actor_key → pack_id → 海選分類訊息（一鍵傳 LINE 後整段收起）
         self._screening_msgs: Dict[str, Dict[str, list]] = {}
         self._line_pack_status_msgs: Dict[str, list] = {}
+        self._help_msgs: Dict[str, list] = {}
 
     @staticmethod
     def _actor_key(
@@ -359,6 +360,15 @@ class WayneTelegramBot:
         if uid:
             return str(uid)
         return str(chat_id or "0")
+
+    async def _dismiss_help_msgs(self, actor_key: str) -> None:
+        """重開說明頁時刪掉上一則，避免鍵盤連按堆滿聊天室。"""
+        msgs = self._help_msgs.pop(str(actor_key), [])
+        for msg in msgs:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
     async def _dismiss_menu_transients(self, actor_key: str) -> None:
         """選單刷新提示：主功能開始時立刻刪除，像轉場消失。"""
@@ -681,12 +691,18 @@ class WayneTelegramBot:
                 return
             except Exception:
                 logger.debug("說明頁原地更新失敗，改發新訊息", exc_info=True)
+        actor = self._actor_key(message)
+        await self._dismiss_help_msgs(actor)
+        sent_msgs = []
         for i, chunk in enumerate(chunks):
-            await message.reply_html(
+            msg = await message.reply_html(
                 chunk,
                 reply_markup=kb if i == len(chunks) - 1 else None,
                 disable_web_page_preview=True,
             )
+            sent_msgs.append(msg)
+        if sent_msgs:
+            self._help_msgs[actor] = sent_msgs
 
     def _keyboard(self):
         """舊 inline 主選單改成極短一列，避免再疊四排。常駐選單在輸入框下方。"""
@@ -1886,6 +1902,8 @@ class WayneTelegramBot:
         if _is_reserved_menu_press(raw_msg):
             return
         raw = raw_msg.strip()
+        if not raw:
+            return
         text = _normalize_menu_text(raw)
         uid = str(update.effective_user.id)
         if text.lower().lstrip("/") in ("start", "開始"):

@@ -40,6 +40,7 @@ def _bot(db_path: str = "data/wayne_market.db"):
     bot._lookup_fade_msgs = {}
     bot._screening_msgs = {}
     bot._line_pack_status_msgs = {}
+    bot._help_msgs = {}
     bot.screener = MagicMock()
     bot.portfolio_engine = MagicMock()
     bot.portfolio_engine.format_holdings_html = MagicMock(return_value="<b>持股</b> 空")
@@ -196,12 +197,40 @@ def test_reserved_menu_button_is_silent():
     msg.reply_html.assert_not_awaited()
 
 
+def test_help_keyboard_replaces_previous_message():
+    bot = _bot()
+    old = MagicMock()
+    old.delete = AsyncMock()
+    bot._help_msgs["1:9"] = [old]
+    message = _msg(1, 9)
+
+    async def run():
+        await bot._reply_help_topic(message, "guide")
+
+    asyncio.run(run())
+    old.delete.assert_awaited_once()
+    message.reply_html.assert_awaited()
+    assert "1:9" in bot._help_msgs
+
+
+def test_empty_input_is_silent():
+    bot = _bot()
+    msg = _msg(2, 2, "")
+
+    async def run():
+        await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    msg.reply_text.assert_not_awaited()
+    msg.reply_html.assert_not_awaited()
+
+
 def test_chaos_inputs_get_friendly_not_found():
     bot = _bot()
 
     async def run():
         with patch("wayne_db.lookup_stocks", return_value=[]):
-            for text in ("", "asdfgh", "股票", "123", "🙂"):
+            for text in ("asdfgh", "股票", "123", "🙂"):
                 msg = _msg(2, 2, text)
                 await bot.on_text(_update(msg), MagicMock())
         return msg

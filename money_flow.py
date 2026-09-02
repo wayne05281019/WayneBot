@@ -399,16 +399,16 @@ def _yahoo(sid, name, db_path: str = None) -> str:
 
 def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
     """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
-    from tg_layout import html_escape, html_code_join, qty_text, pct_text
+    from tg_layout import html_escape, html_metrics_tight, qty_text, pct_text
 
     three = int(r["three_net"])
     name = html_escape(r["industry"])
     lines = [
         f"＝＝{name}＝＝",
-        html_code_join(qty_text(three), pct_text(r["avg_pct"])),
+        html_metrics_tight(qty_text(three), pct_text(r["avg_pct"])),
     ]
     d = int(r.get("three_delta") or 0)
-    lines.append("較前日　持平" if d == 0 else f"較前日　{html_code_join(qty_text(d))}")
+    lines.append("較前日　持平" if d == 0 else f"較前日　{html_metrics_tight(qty_text(d))}")
     if three < 0:
         sid = r.get("top_sell_id") or ""
         sname = r.get("top_sell_name") or ""
@@ -420,7 +420,7 @@ def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
         lots = int(r.get("top_buy_three") or 0)
         tag = "買超最多"
     if sid:
-        lines.append(f"★ {tag}　{_yahoo(sid, sname, db_path)}　{html_code_join(qty_text(lots))}")
+        lines.append(f"★ {tag}　{_yahoo(sid, sname, db_path)}　{html_metrics_tight(qty_text(lots))}")
     return "\n".join(lines)
 
 
@@ -568,7 +568,7 @@ def format_flow_html(
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
-    from tg_layout import kv, section, join_dashed, title_line, html_code_join, qty_text, pct_text
+    from tg_layout import kv, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
     from trading_calendar import format_trading_date_zh
 
     health = audit_import(path, ymd)
@@ -582,7 +582,7 @@ def format_flow_html(
         n = int(r[col] or 0)
         pct = float(r["pct_change"] or 0)
         title = _yahoo(r["stock_id"], r["stock_name"], path)
-        return f"{rank}. {title}\n{html_code_join(qty_text(n), pct_text(pct))}"
+        return f"{rank}. {title}\n{html_metrics_tight(qty_text(n), pct_text(pct))}"
 
     buy_f = _top(conn, ymd, "foreign_net", True)
     sell_f = _top(conn, ymd, "foreign_net", False)
@@ -638,7 +638,7 @@ def format_flow_html(
             title = _yahoo(r["stock_id"], r["stock_name"], path)
             bits.append(
                 f"{i}. {title}\n"
-                + html_code_join(
+                + html_metrics_tight(
                     f"量 {qty_text(int(r['volume']), signed=False)}",
                     pct_text(r["pct_change"]),
                     f"法人 {qty_text(three)}",

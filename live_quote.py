@@ -478,16 +478,11 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
             return None
 
     found: Optional[Dict[str, Any]] = None
-    if len(channels) == 1:
-        found = _fetch_channel(channels[0])
-    else:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {pool.submit(_fetch_channel, ch): ch for ch in channels}
-            for fut in as_completed(futures):
-                hit = fut.result()
-                if hit:
-                    found = hit
-                    break
+    for ch in channels:
+        hit = _fetch_channel(ch)
+        if hit:
+            found = hit
+            break
     with _QUOTE_LOCK:
         _QUOTE_CACHE[key] = (time.time(), found)
     return found
