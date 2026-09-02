@@ -1853,10 +1853,16 @@ class WayneTelegramBot:
             logger.exception("AI 操盤失敗")
             await message.reply_text(f"AI 操盤失敗：{e}", reply_markup=self._keyboard())
 
-    def _quote_header_html(self, code: str) -> str:
+    def _quote_header_html(
+        self,
+        code: str,
+        live_quote=None,
+        hits: list | None = None,
+    ) -> str:
         """看這檔開頭：現價／漲跌／盤中或收盤時間。熱訊用粗體（Telegram 不能指定紅字）。"""
         code = str(code or "").strip()
-        hits = lookup_stocks(self.db_path, code)
+        if hits is None:
+            hits = lookup_stocks(self.db_path, code)
         name = ""
         mkt = ""
         if hits:
@@ -1871,13 +1877,14 @@ class WayneTelegramBot:
             title = f"{html_escape(code)} {html_escape(name)}".strip()
         from tg_layout import html_move, html_qty, price_change
 
-        rt = None
-        try:
-            from live_quote import fetch_mis_quote
+        rt = live_quote
+        if rt is None:
+            try:
+                from live_quote import fetch_mis_quote
 
-            rt = fetch_mis_quote(code, mkt)
-        except Exception:
-            logger.exception("現價 MIS 失敗 code=%s", code)
+                rt = fetch_mis_quote(code, mkt)
+            except Exception:
+                logger.exception("現價 MIS 失敗 code=%s", code)
         if rt:
             vol = int(rt.get("volume") or 0)
             t = str(rt.get("update_time") or "").strip()
@@ -1908,6 +1915,19 @@ class WayneTelegramBot:
             )
         return title
 
+    def _prefetch_mis_quote(self, code: str, hits: list | None = None):
+        from live_quote import fetch_mis_quote, is_live_merge_window
+
+        if not is_live_merge_window():
+            return None
+        mkt = ""
+        if hits:
+            mkt = str(hits[0].get("market") or "")
+        elif code:
+            h = lookup_stocks(self.db_path, code)
+            mkt = str(h[0].get("market") or "") if h else ""
+        return fetch_mis_quote(code, mkt)
+
     async def _reply_card(self, update: Update, code: str):
         uid = str(update.effective_user.id)
         await self._send_card_to(update.message, code, uid)
@@ -1922,15 +1942,18 @@ class WayneTelegramBot:
             return
         hub = self._hub_keyboard(code)
         chat_id = int(message.chat_id)
+        live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, hits)
         header_msg = None
+        lookup_faded = False
         try:
-            header = await asyncio.to_thread(self._quote_header_html, code)
+            header = await asyncio.to_thread(
+                self._quote_header_html, code, live_rt, hits
+            )
             header_msg = await message.reply_html(header, disable_web_page_preview=True)
             self._track_lookup_fade(chat_id, header_msg, "header")
         except Exception:
             logger.exception("決策卡現價列失敗 code=%s", code)
         wait_msg = None
-        lookup_faded = False
         try:
             wait_msg = await message.reply_text("決策卡產製中（盤中 MIS 價量）…")
             self._track_lookup_fade(chat_id, wait_msg, "wait")
@@ -1941,7 +1964,9 @@ class WayneTelegramBot:
 
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
-                card = engine.get_decision_card(code, lookback=20)
+                card = engine.get_decision_card(
+                    code, lookback=20, merge_live=True, live_quote=live_rt
+                )
                 if isinstance(card, dict):
                     card.pop("_ohlc", None)
                 return card
@@ -2049,10 +2074,12 @@ class WayneTelegramBot:
         except Exception:
             cap_links = ""
 
+        live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, hits)
+
         async def _header_bg() -> None:
             try:
                 header = await asyncio.wait_for(
-                    asyncio.to_thread(self._quote_header_html, code),
+                    asyncio.to_thread(self._quote_header_html, code, live_rt, hits),
                     timeout=4.0,
                 )
                 header_msg = await message.reply_html(header, disable_web_page_preview=True)
@@ -2149,22 +2176,26 @@ class WayneTelegramBot:
 
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
-                card = engine.get_decision_card(code, lookback=20, merge_live=False)
+                card = engine.get_decision_card(
+                    code, lookback=20, merge_live=True, live_quote=live_rt
+                )
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 
             def _build_tape():
                 try:
-                    return build_tape(self.db_path, code, merge_live=False) or {}
+                    return build_tape(
+                        self.db_path, code, merge_live=True, live_quote=live_rt
+                    ) or {}
                 except Exception:
                     return {}
 
             t0 = time.monotonic()
-            card, ohlc = await asyncio.wait_for(
-                asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
+            (card, ohlc), tape = await asyncio.gather(
+                asyncio.wait_for(asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT),
+                asyncio.to_thread(_build_tape),
             )
-            tape = await asyncio.to_thread(_build_tape)
-            logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
+            logger.info("看這檔 card+tape %.1fs code=%s", time.monotonic() - t0, code)
             if card.get("error"):
                 await message.reply_html(
                     f"⚠️ {html_escape(card.get('error'))}",
@@ -2179,7 +2210,14 @@ class WayneTelegramBot:
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
 
             def _render_chart():
-                return generate_chart(code, "", self.db_path, chart_path_f, ohlc)
+                return generate_chart(
+                    code,
+                    "",
+                    self.db_path,
+                    chart_path_f,
+                    ohlc,
+                    already_normalized=True,
+                )
 
             render_plan = [
                 (

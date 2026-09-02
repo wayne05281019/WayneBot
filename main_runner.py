@@ -92,6 +92,15 @@ class MainRunner:
         logger.info(f"🚀 初始化 WayneBot 主排程 (DB: {self.db_path}, 日期: {self.today_str})")
         ensure_core_schema(self.db_path)
 
+        try:
+            from quote_integrity import ensure_quote_integrity
+
+            stats = ensure_quote_integrity(self.db_path)
+            if any(int(v or 0) for v in stats.values()):
+                logger.info("行情庫清假資料：%s", stats)
+        except Exception:
+            logger.debug("行情庫清假略過", exc_info=True)
+
         FetcherCls = DataFetcher or TaiwanMarketFetcher
         if FetcherCls:
             self.fetcher = FetcherCls(db_path=self.db_path, cache_dir=self.cache_dir)
@@ -220,8 +229,13 @@ class MainRunner:
             logger.info(f"當日法人更新 {n} 列")
             conn = sqlite3.connect(self.db_path)
             cur = conn.cursor()
-            cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
-            latest = cur.fetchone()[0]
+            try:
+                from quote_integrity import db_as_of_trading_date
+
+                latest = db_as_of_trading_date(self.db_path) or ""
+            except Exception:
+                cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
+                latest = cur.fetchone()[0]
             chip_sum = 0
             if latest:
                 chip_sum = cur.execute(
@@ -295,13 +309,28 @@ class MainRunner:
                         pass
         except Exception as e:
             logger.warning("匯入檢查略過：%s", e)
+
+        try:
+            from quote_integrity import ensure_quote_integrity
+
+            scrub = ensure_quote_integrity(self.db_path)
+            if any(int(v or 0) for v in scrub.values()):
+                logger.info("融合後清假資料：%s", scrub)
+        except Exception:
+            logger.debug("融合後清假略過", exc_info=True)
+
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
-        cur.execute("SELECT MAX(date) FROM daily_quotes;")
-        latest = cur.fetchone()[0]
+        try:
+            from quote_integrity import db_as_of_trading_date
+
+            latest = db_as_of_trading_date(self.db_path) or ""
+        except Exception:
+            cur.execute("SELECT MAX(date) FROM daily_quotes;")
+            latest = cur.fetchone()[0]
         quotes: Dict[str, Dict[str, Any]] = {}
         if latest:
             cur.execute(
@@ -356,8 +385,13 @@ class MainRunner:
     def _fallback_sql_report(self) -> str:
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
-        cur.execute("SELECT MAX(date) FROM daily_quotes;")
-        latest_date = cur.fetchone()[0] or self.today_str
+        try:
+            from quote_integrity import db_as_of_trading_date
+
+            latest_date = db_as_of_trading_date(self.db_path) or self.today_str
+        except Exception:
+            cur.execute("SELECT MAX(date) FROM daily_quotes;")
+            latest_date = cur.fetchone()[0] or self.today_str
         cur.execute(
             """SELECT stock_id, stock_name, close, pct_change, volume, trust_net, foreign_net
                FROM daily_quotes WHERE date=? AND volume>=1000 AND pct_change>=2.5

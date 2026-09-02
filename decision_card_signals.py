@@ -41,7 +41,7 @@ def profit_floor_at(df, idx: int = -1, *, close_col: str = "close") -> float:
 
 
 def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
-    """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。"""
+    """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。海選／起漲用。"""
     closes = df[close_col].astype(float)
     out = []
     for i in range(len(df)):
@@ -51,6 +51,37 @@ def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
             floor = c or 1.0
         out.append(round((c - floor) / floor * 100.0, 1))
     return pd.Series(out, index=df.index)
+
+
+def profit_pct_cal60_series(df, *, close_col: str = "close") -> pd.Series:
+    """決策卡獲利欄：只用 60 曆日低（對齊 CaryBot 範本卡）。"""
+    closes = df[close_col].astype(float)
+    out = []
+    for i in range(len(df)):
+        c = float(closes.iloc[i])
+        floor = cal60_low_close_at(df, i, close_col=close_col)
+        if floor <= 0:
+            floor = c or 1.0
+        out.append(round((c - floor) / floor * 100.0, 1))
+    return pd.Series(out, index=df.index)
+
+
+def resolve_daily_change_pct(
+    close: float,
+    *,
+    stored_pct: float = 0.0,
+    yesterday_close: float = 0.0,
+    prev_close: float = 0.0,
+) -> float:
+    """日漲跌幅：盤中優先昨收→現價；庫內用連續交易日收盤差，與 CaryBot 欄位一致。"""
+    c = float(close or 0)
+    y = float(yesterday_close or 0)
+    if y > 0 and c > 0:
+        return round((c - y) / y * 100.0, 2)
+    p = float(prev_close or 0)
+    if p > 0 and c > 0:
+        return round((c - p) / p * 100.0, 2)
+    return round(float(stored_pct or 0), 2)
 
 
 def calc_volume_rank(

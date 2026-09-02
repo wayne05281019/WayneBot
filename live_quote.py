@@ -76,8 +76,15 @@ def _norm_date(val) -> str:
 
 
 def is_live_merge_window(now=None) -> bool:
-    """08:50～16:00 台灣時間：允許用 MIS 覆寫／追加今日 K（不寫回 sqlite）。"""
+    """08:50～16:00 台灣時間、且為週一～五：才用 MIS 合併今日 K（不寫回 sqlite）。"""
     now = now or taipei_now()
+    if now.weekday() >= 5:
+        return False
+    from trading_calendar import is_trading_weekday
+
+    today = now.strftime("%Y%m%d")
+    if not is_trading_weekday(today):
+        return False
     t = now.time()
     return dt_time(8, 50) <= t < dt_time(16, 0)
 
@@ -215,6 +222,31 @@ def live_clock_suffix(is_live: bool, update_time: str = "") -> str:
     return f" {label}"
 
 
+def mis_volume_sheets(raw_v) -> int:
+    """MIS 累積成交量：證交所欄位為張（與 daily_quotes.volume 一致）。"""
+    return int(_num(raw_v, 0))
+
+
+def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """自開盤至 MIS 回報時刻的當日 K（開高低收量），僅供記憶體合併、不寫庫。"""
+    if not rt or float(rt.get("close") or 0) <= 0:
+        return None
+    o = float(rt.get("open") or rt["close"])
+    h = float(rt.get("high") or rt["close"])
+    l = float(rt.get("low") or rt["close"])
+    c = float(rt["close"])
+    return {
+        "open": o,
+        "high": max(o, h, c),
+        "low": min(o, l, c) if min(o, l, c) > 0 else l,
+        "close": c,
+        "volume": mis_volume_sheets(rt.get("volume")),
+        "pct_change": float(rt.get("pct_change") or 0),
+        "yesterday_close": float(rt.get("yesterday_close") or 0),
+        "update_time": str(rt.get("update_time") or ""),
+    }
+
+
 def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]:
     sid = str(stock_id).strip()
     if not sid:
@@ -242,7 +274,7 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
             px = _last_price(item, y)
             if px <= 0:
                 return None
-            vol = int(_num(item.get("v"), 0))
+            vol = mis_volume_sheets(item.get("v"))
             pct = round((px - y) / y * 100.0, 2) if y > 0 else 0.0
             chg = round(px - y, 2) if y > 0 else 0.0
             return {
@@ -288,24 +320,35 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
     out["stock_id"] = str(stock_id)
     if "stock_name" in out and rt.get("stock_name"):
         out["stock_name"] = rt["stock_name"]
+    sess = session_bar_from_mis(rt) or {}
     for k in ("open", "high", "low", "close", "volume"):
-        if k in out:
+        if k in out and sess.get(k) is not None:
+            out[k] = sess[k]
+        elif k in rt:
             out[k] = rt[k]
     if "pct_change" in out:
-        out["pct_change"] = rt["pct_change"]
+        out["pct_change"] = sess.get("pct_change", rt.get("pct_change"))
     if "change_pct" in out:
-        out["change_pct"] = rt["pct_change"]
+        out["change_pct"] = sess.get("pct_change", rt.get("pct_change"))
+    if sess.get("yesterday_close") or rt.get("yesterday_close"):
+        out["yesterday_close"] = sess.get("yesterday_close") or rt.get("yesterday_close")
     if "turnover_k" in out:
-        out["turnover_k"] = round(rt["volume"] * rt["close"], 2)
+        out["turnover_k"] = round(float(out.get("volume") or 0) * float(out.get("close") or 0), 2)
     if "avg_price" in out:
-        out["avg_price"] = rt["close"]
+        out["avg_price"] = out["close"]
     out["is_live"] = True
-    out["_live_time"] = rt.get("update_time") or ""
+    out["_live_time"] = sess.get("update_time") or rt.get("update_time") or ""
     return out
 
 
-def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "", merge_live: bool = True) -> pd.DataFrame:
-    """盤中用 MIS 價量合併今日 K：庫裡沒有就追加；已有就覆寫最後一根。"""
+def append_live_bar(
+    df: pd.DataFrame,
+    stock_id: str,
+    market: str = "",
+    merge_live: bool = True,
+    live_quote: Optional[Dict[str, Any]] = None,
+) -> pd.DataFrame:
+    """盤中用 MIS 合併今日 K：開盤→查詢當下的開高低收量（不寫回 sqlite）。"""
     if not merge_live or df is None or df.empty:
         return df
     if not is_live_merge_window():
@@ -313,8 +356,8 @@ def append_live_bar(df: pd.DataFrame, stock_id: str, market: str = "", merge_liv
     today = taipei_today_str()
     latest = _norm_date(df["date"].iloc[-1])
     mkt = market or (str(df["market"].iloc[-1]) if "market" in df.columns else "")
-    rt = fetch_mis_quote(stock_id, mkt)
-    if not rt or rt["close"] <= 0:
+    rt = live_quote if live_quote is not None else fetch_mis_quote(stock_id, mkt)
+    if not rt or rt.get("close", 0) <= 0:
         return df
     if latest > today:
         return df

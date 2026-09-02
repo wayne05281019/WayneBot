@@ -112,3 +112,9 @@ def test_is_live_merge_window_hours(monkeypatch):
 
     monkeypatch.setattr(live_quote, "taipei_now", early)
     assert is_live_merge_window() is False
+
+    def saturday():
+        return datetime(2026, 8, 29, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    monkeypatch.setattr(live_quote, "taipei_now", saturday)
+    assert is_live_merge_window() is False

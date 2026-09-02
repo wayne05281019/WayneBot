@@ -263,6 +263,10 @@ class QuantDataPipeline:
 
     def seed_historical_baseline(self, universe: List[Dict[str, Any]], lookback_days: int = 375) -> None:
         """建立 1.5 年 (375 交易日) 歷史基準數據"""
+        raise RuntimeError(
+            "seed_historical_baseline 會寫入 np.random 假行情，正式環境禁止呼叫；"
+            "請用 data_fetcher.DataFetcher 融合證交所官方收盤。"
+        )
         logger.info(f"為 {len(universe)} 檔標的建置 1.5 年歷史資料庫基底...")
 
         base_date = datetime.date.today()

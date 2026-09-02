@@ -8,6 +8,7 @@ import os
 import sqlite3
 import urllib.request
 from datetime import datetime
+from typing import Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -332,8 +333,17 @@ class NavigatorEngine:
             ranks.append(calc_volume_rank(sub_v, window, closes=sub_c, turnovers=sub_t))
         return ranks
 
-    def get_decision_card(self, stock_id: str, lookback: int = 20, merge_live: bool = True) -> dict:
-        """產出單一標的的買低賣高決策卡（高低點用收盤，對齊範本）。"""
+    def get_decision_card(
+        self,
+        stock_id: str,
+        lookback: int = 20,
+        merge_live: bool = True,
+        live_quote: Optional[dict] = None,
+    ) -> dict:
+        """產出單一標的的買低賣高決策卡。庫內只用到最後完整收盤日；盤中今日 K 僅 MIS 合併、不寫庫。"""
+        from quote_integrity import db_as_of_trading_date
+
+        db_as_of = db_as_of_trading_date(self.db_path)
         conn = sqlite3.connect(self.db_path)
         df = pd.read_sql_query("""
             SELECT date, stock_name, open, high, low, close, volume, turnover_k, pct_change as change_pct
@@ -347,11 +357,19 @@ class NavigatorEngine:
             return {"error": f"標的 {stock_id} 歷史資料不足"}
 
         df = df.iloc[::-1].reset_index(drop=True)
+        if db_as_of:
+            dnorm = df["date"].astype(str).str.replace("-", "", regex=False)
+            df = df[dnorm <= str(db_as_of)].reset_index(drop=True)
+        if len(df) < 5:
+            return {"error": f"標的 {stock_id} 歷史資料不足"}
+
         df["stock_id"] = str(stock_id)
         try:
             from live_quote import append_live_bar
 
-            df = append_live_bar(df, str(stock_id), merge_live=merge_live)
+            df = append_live_bar(
+                df, str(stock_id), merge_live=merge_live, live_quote=live_quote
+            )
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
@@ -364,35 +382,39 @@ class NavigatorEngine:
         close_s = df["close"].where(~df["is_halt"])
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
-        # 決策卡格子：用收盤高低（與範本 8234 完全對得上）；無量假K不進窗口
-        df["high_5"] = close_s.rolling(5, min_periods=1).max()
-        df["low_5"] = close_s.rolling(5, min_periods=1).min()
-        df["high_10"] = close_s.rolling(10, min_periods=1).max()
-        df["low_10"] = close_s.rolling(10, min_periods=1).min()
-        df["high_20"] = close_s.rolling(20, min_periods=1).max()
-        df["low_20"] = close_s.rolling(20, min_periods=1).min()
-        df["high_60"] = close_s.rolling(60, min_periods=1).max()
-        df["low_60"] = close_s.rolling(60, min_periods=1).min()
-        df["low_120"] = close_s.rolling(120, min_periods=20).min()
-        df["low_240"] = close_s.rolling(240, min_periods=40).min()
-        df["low_480"] = close_s.rolling(480, min_periods=80).min()
-        df["high_120"] = close_s.rolling(120, min_periods=20).max()
-        df["high_240"] = close_s.rolling(240, min_periods=40).max()
-        df["high_480"] = close_s.rolling(480, min_periods=80).max()
         from decision_card_signals import (
             cal60_low_close_at,
             card_regime_label,
             compute_card_temperature,
             profit_floor_at,
+            profit_pct_cal60_series,
             profit_pct_series,
+            resolve_daily_change_pct,
         )
 
-        # 獲利：逐日 60 曆日低；用除權還原「前」收盤（CaryBot 範本 9925 長串 0.0% 靠這條）。
+        # 獲利：決策卡顯示用 60 曆日低（CaryBot）；海選起漲仍用 profit_floor_at。
         profit_src = df.copy()
         profit_src["close"] = close_raw.reindex(df.index).astype(float)
-        df["profit_pct"] = profit_pct_series(profit_src)
+        df["profit_pct"] = profit_pct_cal60_series(profit_src)
+        df["profit_pct_screen"] = profit_pct_series(profit_src)
         cal60_low = cal60_low_close_at(profit_src, -1)
         profit_floor = profit_floor_at(profit_src, -1)
+        # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
+        hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
+        df["high_5"] = hl_src.rolling(5, min_periods=1).max()
+        df["low_5"] = hl_src.rolling(5, min_periods=1).min()
+        df["high_10"] = hl_src.rolling(10, min_periods=1).max()
+        df["low_10"] = hl_src.rolling(10, min_periods=1).min()
+        df["high_20"] = hl_src.rolling(20, min_periods=1).max()
+        df["low_20"] = hl_src.rolling(20, min_periods=1).min()
+        df["high_60"] = hl_src.rolling(60, min_periods=1).max()
+        df["low_60"] = hl_src.rolling(60, min_periods=1).min()
+        df["low_120"] = hl_src.rolling(120, min_periods=20).min()
+        df["low_240"] = hl_src.rolling(240, min_periods=40).min()
+        df["low_480"] = hl_src.rolling(480, min_periods=80).min()
+        df["high_120"] = hl_src.rolling(120, min_periods=20).max()
+        df["high_240"] = hl_src.rolling(240, min_periods=40).max()
+        df["high_480"] = hl_src.rolling(480, min_periods=80).max()
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(
             df["volume"], window=120, closes=close_s,
@@ -410,7 +432,7 @@ class NavigatorEngine:
                 alert_tags.append("No")
                 temp_nums.append(0.0)
                 continue
-            c = float(df["close"].iloc[i])
+            c = float(close_raw.iloc[i])
             h20, l20 = float(df["high_20"].iloc[i]), float(df["low_20"].iloc[i])
             h10, l10 = float(df["high_10"].iloc[i]), float(df["low_10"].iloc[i])
             h5, l5 = float(df["high_5"].iloc[i]), float(df["low_5"].iloc[i])
@@ -466,10 +488,17 @@ class NavigatorEngine:
         df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
 
         latest = df.iloc[-1]
-        chg = float(latest.get("change_pct") or 0)
+        prev_close = 0.0
         real_c = df.loc[~df["is_halt"], "close"] if "is_halt" in df.columns else df["close"]
-        if len(real_c) >= 2 and float(real_c.iloc[-2] or 0) > 0:
-            chg = round((float(real_c.iloc[-1]) - float(real_c.iloc[-2])) / float(real_c.iloc[-2]) * 100.0, 2)
+        if len(real_c) >= 2:
+            prev_close = float(real_c.iloc[-2] or 0)
+        y_close = float(latest.get("yesterday_close") or 0) if is_live else 0.0
+        chg = resolve_daily_change_pct(
+            float(latest["close"]),
+            stored_pct=float(latest.get("change_pct") or 0),
+            yesterday_close=y_close,
+            prev_close=prev_close,
+        )
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
@@ -594,6 +623,7 @@ class NavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "latest_date": latest["date"],
+            "db_as_of": db_as_of,
             "is_live": is_live,
             "live_time": live_time,
             "close": float(latest["close"]),
@@ -2049,12 +2079,22 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
 
 
 @_mpl_serial
-def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
+def draw_from_ohlc(
+    df: pd.DataFrame,
+    stock_id: str,
+    stock_name: str,
+    save_path: str,
+    *,
+    already_normalized: bool = False,
+) -> str:
     """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     if df.empty:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    work, _notes = normalize_ohlc(df.copy(), db_path=None)
+    if already_normalized or "is_halt" in df.columns:
+        work = df.copy()
+    else:
+        work, _notes = normalize_ohlc(df.copy(), db_path=None)
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")
@@ -2285,17 +2325,28 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     return save_path
 
 
-def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, save_path: str = None, df=None) -> str:
+def generate_chart(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    save_path: str = None,
+    df=None,
+    *,
+    already_normalized: bool = False,
+) -> str:
     sid = str(stock_id).strip()
     if df is None or getattr(df, "empty", True):
         df = _load_ohlc(sid, db_path, 180)
+        already_normalized = False
     else:
         df = df.tail(180).copy()
     if df.empty:
         return ""
     name = stock_name or str(df["stock_name"].iloc[-1] or sid)
     out = save_path or os.path.join(get_charts_dir(), f"{sid}.png")
-    return draw_from_ohlc(df, sid, name, out)
+    return draw_from_ohlc(
+        df, sid, name, out, already_normalized=already_normalized
+    )
 
 
 @_mpl_serial
@@ -2483,7 +2534,9 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
     ) or ""
     card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
-    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc) or ""
+    chart = generate_chart(
+        sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc, already_normalized=True
+    ) or ""
     chips = ""
     try:
         from chips import generate_chips_image

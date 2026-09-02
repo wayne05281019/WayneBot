@@ -272,9 +272,9 @@ def load_major_player_rows(db_path: str, stock_id: str, limit: int = 15, allow_f
         recent = rows[:5]
         if all(int(r.get("three_net") or 0) == 0 for r in recent):
             try:
-                conn = sqlite3.connect(path)
-                latest = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()[0]
-                conn.close()
+                from quote_integrity import db_as_of_trading_date
+
+                latest = db_as_of_trading_date(path)
                 if latest:
                     update_chips_for_date(path, str(latest))
             except Exception as e:

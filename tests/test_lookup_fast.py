@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股快速路徑：出圖不等 MIS 重複打三次。"""
+"""查股快速路徑：出圖不等 MIS 重複打、圖表不重算 normalize。"""
 import time
 import unittest
 
@@ -20,6 +20,35 @@ class LookupFastTests(unittest.TestCase):
         elapsed = time.perf_counter() - t0
         self.assertNotIn("error", card)
         self.assertLess(elapsed, 5.0, f"card build too slow: {elapsed:.1f}s")
+
+    def test_chart_reuses_normalized_ohlc(self):
+        import os
+        import tempfile
+
+        db = get_db_path()
+        if not os.path.isfile(db):
+            self.skipTest("no db")
+        from unittest.mock import patch
+
+        from wayne_navigator import NavigatorEngine, generate_chart
+
+        engine = NavigatorEngine(db)
+        card = engine.get_decision_card("2330", merge_live=False)
+        ohlc = card.get("_ohlc")
+        self.assertIsNotNone(ohlc)
+        self.assertIn("is_halt", ohlc.columns)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "2330.png")
+            with patch("wayne_navigator.normalize_ohlc") as mock_norm:
+                path = generate_chart(
+                    "2330",
+                    db_path=db,
+                    save_path=out,
+                    df=ohlc,
+                    already_normalized=True,
+                )
+                mock_norm.assert_not_called()
+            self.assertTrue(path and os.path.isfile(path))
 
 
 if __name__ == "__main__":
