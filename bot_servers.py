@@ -141,10 +141,14 @@ HELP_TOPICS = {
         "庫內日 K 只寫官方融合後的收盤；盤中 MIS 與 Yahoo 僅供查股顯示，不寫進 sqlite。\n"
         "假 K、週末殘列、漲跌幅與前日收盤不符，啟動與 16:30 融合後會自動清掉或重算。\n"
         "\n"
-        "<b>十一、提醒</b>\n"
+        "<b>十一、多人使用（家人各用各的）</b>\n"
+        "每人用自己的 Telegram 帳號跟 Bot <b>私聊</b>：持股、觀察、成交紀錄、AI 模擬倉都<b>各看各的</b>，按鈕不會互相洗版。\n"
+        "海選名單與資金輪動是全市場同一份（像大家看同一份報紙頭條）。\n"
+        "\n"
+        "<b>十二、提醒</b>\n"
         "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。\n"
         "\n"
-        "<b>十二、完全新手小詞典</b>\n"
+        "<b>十三、完全新手小詞典</b>\n"
         "• <b>張</b>：台股一張＝1000 股；記買入時打「1 68.5」＝買 1 張、每股 68.5 元\n"
         "• <b>觀察</b>：只是自選清單，還沒真的買\n"
         "• <b>持股</b>：你有手記買入的才會出現\n"
@@ -216,18 +220,18 @@ HELP_TOPICS = {
         "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣\n"
         "\n"
         "<b>自動買進（你問的這個）</b>\n"
-        "• 平日 <b>20:00</b> 雲端會：① 寫晚間海選快照 ② 讓 AI 依海選紀律模擬買進／賣出\n"
+        "• 平日 <b>20:00</b> 雲端會：① 寫晚間海選快照 ② 讓<b>你的</b> AI 依海選紀律模擬買進／賣出\n"
         "• <b>不會推播</b>到 Telegram，所以你不會收到通知——這是正常的。\n"
         "• 隔天自己按 <b>持股 → AI模擬倉</b> 看有沒有成交、持了哪些檔。\n"
-        "• 16:30 盤後融合成功時，伺服器也會順便跑一輪（同樣不推播）。\n"
+        "• 16:30 盤後融合成功時，伺服器也會順便為每位使用者各跑一輪（同樣不推播）。\n"
         "\n"
         "<b>模擬規則（簡要）</b>\n"
-        "• 本金 50 萬虛擬、最多同時 3 檔，從海選佈局桶挑（起漲、黃金買點、隔日沖等）\n"
+        "• 每人本金 50 萬虛擬、最多同時 3 檔，從海選佈局桶挑（起漲、黃金買點、隔日沖等）\n"
         "• 貼月高（少追）、美股電子逆風的不買；停損約 -7%、停利約 +8%\n"
         "• 這是<b>模擬</b>，不會動你的真實持股，也不會真的下單。\n"
         "\n"
         "<b>跟真實持股的差別</b>\n"
-        "• <b>持股</b>＝你手動記的買入　• <b>AI模擬倉</b>＝你專屬的虛擬帳戶（每人一套，與手記持股分開）。"
+        "• <b>持股</b>＝你手動記的買入　• <b>AI模擬倉</b>＝你專屬的虛擬帳戶（每人一套，家人也各看各的）。"
     ),
     "decision": (
         "<b>決策卡按鈕</b>\n"
@@ -481,6 +485,20 @@ class WayneTelegramBot:
             touch_tg_user(self.db_path, uid, display_name)
         except Exception:
             logger.debug("touch_tg_user failed uid=%s", uid, exc_info=True)
+
+    def _touch_from_update(self, update: Update) -> str:
+        user = update.effective_user
+        uid = str(getattr(user, "id", "") or "")
+        if uid:
+            self._touch_user(uid, getattr(user, "first_name", "") or "")
+        return uid
+
+    def _wrap_cmd(self, handler):
+        async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            self._touch_from_update(update)
+            return await handler(update, context)
+
+        return wrapped
 
     def _remember_card(self, uid: str, code: str) -> None:
         c = str(code or "").strip()
@@ -3009,21 +3027,21 @@ class WayneTelegramBot:
             .post_init(_on_start)
             .build()
         )
-        app.add_handler(CommandHandler("start", self.start_cmd))
-        app.add_handler(CommandHandler("menu", self.menu_cmd))
-        app.add_handler(CommandHandler("help", self.help_cmd))
-        app.add_handler(CommandHandler("screen", self.screen_cmd))
-        app.add_handler(CommandHandler("daytrade", self.daytrade_cmd))
-        app.add_handler(CommandHandler("overnight", self.overnight_cmd))
-        app.add_handler(CommandHandler("portfolio", self.portfolio_cmd))
-        app.add_handler(CommandHandler("watch", self.watch_cmd))
-        app.add_handler(CommandHandler("flow", self.flow_cmd))
-        app.add_handler(CommandHandler("card", self.card_cmd))
-        app.add_handler(CommandHandler("chips", self.chips_cmd))
-        app.add_handler(CommandHandler("fund", self.fund_cmd))
-        app.add_handler(CommandHandler("industry", self.industry_cmd))
-        app.add_handler(CommandHandler("buy", self.buy_cmd))
-        app.add_handler(CommandHandler("sell", self.sell_cmd))
+        app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
+        app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
+        app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))
+        app.add_handler(CommandHandler("screen", self._wrap_cmd(self.screen_cmd)))
+        app.add_handler(CommandHandler("daytrade", self._wrap_cmd(self.daytrade_cmd)))
+        app.add_handler(CommandHandler("overnight", self._wrap_cmd(self.overnight_cmd)))
+        app.add_handler(CommandHandler("portfolio", self._wrap_cmd(self.portfolio_cmd)))
+        app.add_handler(CommandHandler("watch", self._wrap_cmd(self.watch_cmd)))
+        app.add_handler(CommandHandler("flow", self._wrap_cmd(self.flow_cmd)))
+        app.add_handler(CommandHandler("card", self._wrap_cmd(self.card_cmd)))
+        app.add_handler(CommandHandler("chips", self._wrap_cmd(self.chips_cmd)))
+        app.add_handler(CommandHandler("fund", self._wrap_cmd(self.fund_cmd)))
+        app.add_handler(CommandHandler("industry", self._wrap_cmd(self.industry_cmd)))
+        app.add_handler(CommandHandler("buy", self._wrap_cmd(self.buy_cmd)))
+        app.add_handler(CommandHandler("sell", self._wrap_cmd(self.sell_cmd)))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
 

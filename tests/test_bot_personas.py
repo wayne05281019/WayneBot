@@ -253,3 +253,43 @@ def test_ai_desk_isolated_per_telegram_user():
         assert n1 >= 1 and n2 >= 1
     finally:
         os.remove(path)
+
+
+def test_touch_tg_user_registers_for_scheduled_ai():
+    import os
+    import tempfile
+
+    from wayne_db import list_tg_user_ids, touch_tg_user
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        touch_tg_user(path, "9001", "偉權")
+        touch_tg_user(path, "9002", "哥哥")
+        ids = list_tg_user_ids(path)
+        assert "9001" in ids
+        assert "9002" in ids
+    finally:
+        os.remove(path)
+
+
+def test_wrap_cmd_touches_user_on_slash_command():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = _bot()
+    bot._touch_user = MagicMock()
+    bot.portfolio_cmd = AsyncMock()
+
+    async def run():
+        user = SimpleNamespace(id=4242, first_name="哥")
+        msg = MagicMock()
+        msg.from_user = user
+        update = SimpleNamespace(effective_user=user, message=msg)
+        wrapped = bot._wrap_cmd(bot.portfolio_cmd)
+        await wrapped(update, MagicMock())
+
+    asyncio.run(run())
+    bot._touch_user.assert_called_once_with("4242", "哥")
+    bot.portfolio_cmd.assert_awaited_once()
