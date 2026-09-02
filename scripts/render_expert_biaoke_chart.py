@@ -19,6 +19,13 @@ BIAOKE_LEVELS: Dict[str, Tuple[float, str]] = {
     "44210": (44210.0, "更深前低（9段走完才清楚）"),
 }
 
+# 2026-07-23 60 分圖標註（加權現貨口徑；圖為 60m，日線近似）
+BIAOKE_LEVELS_20260723: Dict[str, Tuple[float, str]] = {
+    "48218": (48218.0, "60m 波段高（6/22 一帶）"),
+    "41967": (41967.0, "60m 波段低（7/17 一帶）"),
+    "44850": (44850.0, "7/23 發文日收盤"),
+}
+
 
 def _load_series(db_path: str, table: str, symbol: str) -> List[Tuple[str, float, float, float]]:
     conn = sqlite3.connect(db_path)
@@ -104,6 +111,10 @@ def render_chart(
     *,
     days: int = 60,
     title_suffix: str = "",
+    as_of: Optional[str] = None,
+    levels: Optional[Dict[str, Tuple[float, str]]] = None,
+    symbol_label: str = "台指近月收盤 (TX)",
+    use_twii_primary: bool = False,
 ) -> Dict[str, Any]:
     import matplotlib
 
@@ -112,12 +123,19 @@ def render_chart(
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
 
-    fut = _load_series(db_path, "futures_daily", "TX")[-days:]
-    idx = _load_series(db_path, "index_daily", "TWII")[-days:]
-    if not fut:
-        raise RuntimeError("futures_daily 無資料，請先 sync_futures_daily")
+    fut = _load_series(db_path, "futures_daily", "TX")
+    idx = _load_series(db_path, "index_daily", "TWII")
+    if as_of:
+        fut = [r for r in fut if r[0] <= as_of]
+        idx = [r for r in idx if r[0] <= as_of]
+    fut = fut[-days:]
+    idx = idx[-days:]
+    if not fut and not idx:
+        raise RuntimeError("指數無資料")
 
-    pivots = _zigzag_swings(fut)
+    level_map = levels or BIAOKE_LEVELS
+    primary = idx if use_twii_primary and idx else fut
+    pivots = _zigzag_swings(primary if primary else fut)
     down_legs = _count_down_legs(pivots)
 
     # 中文字型
@@ -128,14 +146,24 @@ def render_chart(
     plt.rcParams["axes.unicode_minus"] = False
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=120)
-    x_f = [datetime.strptime(d, "%Y%m%d") for d, *_ in fut]
-    y_f = [c for _, c, _, _ in fut]
-    ax.plot(x_f, y_f, color="#1f77b4", linewidth=1.8, label="台指近月收盤 (TX)")
-
-    if idx:
-        x_i = [datetime.strptime(d, "%Y%m%d") for d, *_ in idx]
-        y_i = [c for _, c, _, _ in idx]
-        ax.plot(x_i, y_i, color="#ff7f0e", linewidth=1.2, alpha=0.85, label="加權現貨 (TWII)")
+    if use_twii_primary and idx:
+        x_p = [datetime.strptime(d, "%Y%m%d") for d, *_ in idx]
+        y_p = [c for _, c, _, _ in idx]
+        ax.plot(x_p, y_p, color="#ff7f0e", linewidth=1.8, label="加權現貨 (TWII)")
+        if fut:
+            x_f = [datetime.strptime(d, "%Y%m%d") for d, *_ in fut]
+            y_f = [c for _, c, _, _ in fut]
+            ax.plot(x_f, y_f, color="#1f77b4", linewidth=1.0, alpha=0.6, label=symbol_label)
+        x_ref = x_p
+    else:
+        x_f = [datetime.strptime(d, "%Y%m%d") for d, *_ in fut]
+        y_f = [c for _, c, _, _ in fut]
+        ax.plot(x_f, y_f, color="#1f77b4", linewidth=1.8, label=symbol_label)
+        if idx:
+            x_i = [datetime.strptime(d, "%Y%m%d") for d, *_ in idx]
+            y_i = [c for _, c, _, _ in idx]
+            ax.plot(x_i, y_i, color="#ff7f0e", linewidth=1.2, alpha=0.85, label="加權現貨 (TWII)")
+        x_ref = x_f
 
     colors = {
         "46746": "#d62728",
@@ -144,11 +172,14 @@ def render_chart(
         "45415": "#2ca02c",
         "45450": "#98df8a",
         "44210": "#9467bd",
+        "48218": "#d62728",
+        "41967": "#2ca02c",
+        "44850": "#9467bd",
     }
-    for key, (price, note) in BIAOKE_LEVELS.items():
+    for key, (price, note) in level_map.items():
         ax.axhline(price, color=colors.get(key, "#888"), linestyle="--", linewidth=0.9, alpha=0.75)
         ax.text(
-            x_f[0],
+            x_ref[0],
             price,
             f" {key} {note}",
             fontsize=7,
@@ -172,10 +203,10 @@ def render_chart(
     fig.savefig(out_path)
     plt.close(fig)
 
-    last_f = fut[-1]
+    last_row = (idx if use_twii_primary and idx else fut)[-1]
     meta = {
-        "as_of_futures": last_f[0],
-        "futures_close": last_f[1],
+        "as_of": as_of or last_row[0],
+        "close": last_row[1],
         "zigzag_down_legs_recent": down_legs,
         "pivot_count": len(pivots),
         "biaoke_claimed_down_legs": 7,
@@ -194,11 +225,24 @@ def main() -> None:
     parser.add_argument("--db", default=None)
     parser.add_argument("--out", default="docs/expert_notes/飆客/charts/index_levels_latest.png")
     parser.add_argument("--days", type=int, default=60)
+    parser.add_argument("--as-of", default=None, help="YYYYMMDD，截圖復盤截止日")
+    parser.add_argument("--twii-primary", action="store_true", help="以加權現貨為主圖（60m 圖對照用）")
     args = parser.parse_args()
     from config import get_db_path
 
     db = args.db or get_db_path()
-    meta = render_chart(db, args.out, days=args.days)
+    levels = BIAOKE_LEVELS_20260723 if args.as_of == "20260723" else None
+    twii = args.twii_primary or args.as_of == "20260723"
+    suffix = f"（as-of {args.as_of}）" if args.as_of else ""
+    meta = render_chart(
+        db,
+        args.out,
+        days=args.days,
+        title_suffix=suffix,
+        as_of=args.as_of,
+        levels=levels,
+        use_twii_primary=twii,
+    )
     print(args.out)
     for k, v in meta.items():
         print(f"{k}: {v}")
