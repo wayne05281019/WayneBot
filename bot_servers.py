@@ -2149,7 +2149,7 @@ class WayneTelegramBot:
 
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
-                card = engine.get_decision_card(code, lookback=20, merge_live=False)
+                card = engine.get_decision_card(code, lookback=20, merge_live=True)
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 

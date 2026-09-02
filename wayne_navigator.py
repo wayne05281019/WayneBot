@@ -364,35 +364,39 @@ class NavigatorEngine:
         close_s = df["close"].where(~df["is_halt"])
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
-        # 決策卡格子：用收盤高低（與範本 8234 完全對得上）；無量假K不進窗口
-        df["high_5"] = close_s.rolling(5, min_periods=1).max()
-        df["low_5"] = close_s.rolling(5, min_periods=1).min()
-        df["high_10"] = close_s.rolling(10, min_periods=1).max()
-        df["low_10"] = close_s.rolling(10, min_periods=1).min()
-        df["high_20"] = close_s.rolling(20, min_periods=1).max()
-        df["low_20"] = close_s.rolling(20, min_periods=1).min()
-        df["high_60"] = close_s.rolling(60, min_periods=1).max()
-        df["low_60"] = close_s.rolling(60, min_periods=1).min()
-        df["low_120"] = close_s.rolling(120, min_periods=20).min()
-        df["low_240"] = close_s.rolling(240, min_periods=40).min()
-        df["low_480"] = close_s.rolling(480, min_periods=80).min()
-        df["high_120"] = close_s.rolling(120, min_periods=20).max()
-        df["high_240"] = close_s.rolling(240, min_periods=40).max()
-        df["high_480"] = close_s.rolling(480, min_periods=80).max()
         from decision_card_signals import (
             cal60_low_close_at,
             card_regime_label,
             compute_card_temperature,
             profit_floor_at,
+            profit_pct_cal60_series,
             profit_pct_series,
+            resolve_daily_change_pct,
         )
 
-        # 獲利：逐日 60 曆日低；用除權還原「前」收盤（CaryBot 範本 9925 長串 0.0% 靠這條）。
+        # 獲利：決策卡顯示用 60 曆日低（CaryBot）；海選起漲仍用 profit_floor_at。
         profit_src = df.copy()
         profit_src["close"] = close_raw.reindex(df.index).astype(float)
-        df["profit_pct"] = profit_pct_series(profit_src)
+        df["profit_pct"] = profit_pct_cal60_series(profit_src)
+        df["profit_pct_screen"] = profit_pct_series(profit_src)
         cal60_low = cal60_low_close_at(profit_src, -1)
         profit_floor = profit_floor_at(profit_src, -1)
+        # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
+        hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
+        df["high_5"] = hl_src.rolling(5, min_periods=1).max()
+        df["low_5"] = hl_src.rolling(5, min_periods=1).min()
+        df["high_10"] = hl_src.rolling(10, min_periods=1).max()
+        df["low_10"] = hl_src.rolling(10, min_periods=1).min()
+        df["high_20"] = hl_src.rolling(20, min_periods=1).max()
+        df["low_20"] = hl_src.rolling(20, min_periods=1).min()
+        df["high_60"] = hl_src.rolling(60, min_periods=1).max()
+        df["low_60"] = hl_src.rolling(60, min_periods=1).min()
+        df["low_120"] = hl_src.rolling(120, min_periods=20).min()
+        df["low_240"] = hl_src.rolling(240, min_periods=40).min()
+        df["low_480"] = hl_src.rolling(480, min_periods=80).min()
+        df["high_120"] = hl_src.rolling(120, min_periods=20).max()
+        df["high_240"] = hl_src.rolling(240, min_periods=40).max()
+        df["high_480"] = hl_src.rolling(480, min_periods=80).max()
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(
             df["volume"], window=120, closes=close_s,
@@ -410,7 +414,7 @@ class NavigatorEngine:
                 alert_tags.append("No")
                 temp_nums.append(0.0)
                 continue
-            c = float(df["close"].iloc[i])
+            c = float(close_raw.iloc[i])
             h20, l20 = float(df["high_20"].iloc[i]), float(df["low_20"].iloc[i])
             h10, l10 = float(df["high_10"].iloc[i]), float(df["low_10"].iloc[i])
             h5, l5 = float(df["high_5"].iloc[i]), float(df["low_5"].iloc[i])
@@ -466,10 +470,17 @@ class NavigatorEngine:
         df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
 
         latest = df.iloc[-1]
-        chg = float(latest.get("change_pct") or 0)
+        prev_close = 0.0
         real_c = df.loc[~df["is_halt"], "close"] if "is_halt" in df.columns else df["close"]
-        if len(real_c) >= 2 and float(real_c.iloc[-2] or 0) > 0:
-            chg = round((float(real_c.iloc[-1]) - float(real_c.iloc[-2])) / float(real_c.iloc[-2]) * 100.0, 2)
+        if len(real_c) >= 2:
+            prev_close = float(real_c.iloc[-2] or 0)
+        y_close = float(latest.get("yesterday_close") or 0) if is_live else 0.0
+        chg = resolve_daily_change_pct(
+            float(latest["close"]),
+            stored_pct=float(latest.get("change_pct") or 0),
+            yesterday_close=y_close,
+            prev_close=prev_close,
+        )
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])

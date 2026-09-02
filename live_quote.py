@@ -295,6 +295,8 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
         out["pct_change"] = rt["pct_change"]
     if "change_pct" in out:
         out["change_pct"] = rt["pct_change"]
+    if rt.get("yesterday_close"):
+        out["yesterday_close"] = rt["yesterday_close"]
     if "turnover_k" in out:
         out["turnover_k"] = round(rt["volume"] * rt["close"], 2)
     if "avg_price" in out:

@@ -38,14 +38,12 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["bias_monthly"]), 19.8, places=1)
         self.assertIn("第 2", str(row["120日量"]))
 
-    def test_2421_profit_floor_uses_max_cal20_not_cal_only(self):
-        """CaryBot 9/2 列獲利 39.8%＝只用 60曆日低 120.5；WayneBot 用 max(60曆日,20日)。"""
+    def test_2421_profit_matches_carybot_cal60_floor(self):
+        """CaryBot 9/1 列獲利 46.9%＝只用 60曆日低 120.5。"""
         card = self._card("2421")
         self.assertAlmostEqual(float(card["cal60_low"]), 120.5, places=1)
         row = self._row(card, "20260901")
-        # floor ≈ 20日低 140.5 → (177-140.5)/140.5 ≈ 26%
-        self.assertEqual(row["獲利"], "26.0%")
-        # CaryBot 同價若只用 120.5 → 46.9%；截圖 9/1 CaryBot 寫 46.9% 與此一致
+        self.assertEqual(row["獲利"], "46.9%")
         pure_cal = (177.0 - 120.5) / 120.5 * 100.0
         self.assertAlmostEqual(pure_cal, 46.9, places=1)
 
