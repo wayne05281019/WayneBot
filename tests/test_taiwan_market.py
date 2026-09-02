@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from decision_card_signals import calc_volume_rank
 from taiwan_market import (
@@ -460,17 +461,13 @@ def test_format_taiwan_market_page_no_yahoo_fallback(mock_fetch, tmp_path):
     mock_fetch.assert_not_called()
 
 
+@pytest.mark.production_db
 def test_production_db_market_page_has_real_data():
     """Release 庫存在時，大盤頁必須有完整官方融合輸出（非庫空）。"""
-    import os
-
     from config import get_db_path
     from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
 
     db = get_db_path()
-    if not os.path.isfile(db) or os.path.getsize(db) < 1024 * 1024:
-        pytest.skip("no production-scale db")
-
     snap = analyze_taiwan_market(db, db_only=True)
     assert snap.get("ok") is True
     assert float(snap.get("close") or 0) > 1000

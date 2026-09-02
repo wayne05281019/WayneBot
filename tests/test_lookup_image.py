@@ -4,6 +4,8 @@ import os
 import tempfile
 import unittest
 
+import pytest
+
 from bot_servers import WayneTelegramBot
 
 
@@ -17,12 +19,11 @@ class LookupImageTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    @pytest.mark.production_db
     def test_png_looks_ok_accepts_real_card(self):
         from config import get_db_path
 
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         from wayne_navigator import NavigatorEngine, render_decision_card_png
 
         card = NavigatorEngine(db).get_decision_card("2454", merge_live=False)

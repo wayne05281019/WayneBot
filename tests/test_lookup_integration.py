@@ -10,6 +10,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from config import get_db_path
 
 
@@ -42,11 +44,12 @@ def _bare_bot(db_path: str, charts_dir: str):
     return bot
 
 
+pytestmark = pytest.mark.production_db
+
+
 class LookupIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.db = get_db_path()
-        if not os.path.isfile(self.db):
-            self.skipTest("no db")
 
     def test_2454_three_pngs_render_and_validate(self):
         """實際產圖：介紹圖→決策卡→導航，每張通過 PNG 驗證。"""

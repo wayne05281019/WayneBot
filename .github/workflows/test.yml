@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  tier-a-smoke:
+  # 快速訊號：完全不需要資料庫，幾十秒內告訴你有沒有明顯壞掉。
+  smoke-no-db:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,13 +24,66 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
 
-      - name: Tier A 煙霧測試（不需 DB）
+      - name: 不需資料庫的全部測試
+        run: python -m pytest -q --strict-markers -m "not production_db"
+
+  # 完整訊號：抓 Release 庫，跑包含選單、決策卡、出圖、大盤頁的全套。
+  # 只跑煙霧測試的話，回歸會安靜地合併進 main 再部署上去。
+  full-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 安裝依賴
         run: |
-          python -m pytest -q \
-            tests/test_automation_health.py \
-            tests/test_increment_gate.py \
-            tests/test_quote_integrity.py \
-            tests/test_quote_filter_integration.py \
-            tests/test_trading_calendar.py \
-            tests/test_db_integrity.py \
-            tests/test_main_runner_screen.py
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: 從 Releases 下載核心資料庫
+        run: |
+          mkdir -p data
+          curl -fL -o waynebot_production_complete.zip \
+            "https://github.com/wayne05281019/WayneBot/releases/download/v1.0-data/waynebot_production_complete.zip"
+          unzip -o waynebot_production_complete.zip -d data_extract
+          FOUND=$(find data_extract -name '*.db' -size +1M | head -n 1)
+          test -n "$FOUND" || { echo "zip 內找不到 .db"; exit 1; }
+          cp "$FOUND" data/wayne_market.db
+          ls -l data/wayne_market.db
+
+      - name: 確認庫是生產規模（否則 production_db 測試會安靜跳過）
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          sys.path.insert(0, "tests")
+          from conftest import MIN_PRODUCTION_BYTES
+
+          size = os.path.getsize("data/wayne_market.db")
+          print(f"db size={size} threshold={MIN_PRODUCTION_BYTES}")
+          if size < MIN_PRODUCTION_BYTES:
+              sys.exit("庫太小，需要真實資料的測試會被跳過，等於沒測到")
+          PY
+
+      - name: 全套測試
+        env:
+          WAYNE_DB_PATH: data/wayne_market.db
+          MPLBACKEND: Agg
+        run: python -m pytest -q --strict-markers -rs
+
+      - name: 確認需要真實資料的測試真的跑了
+        env:
+          WAYNE_DB_PATH: data/wayne_market.db
+          MPLBACKEND: Agg
+        run: |
+          python -m pytest -q --strict-markers -m production_db 2>&1 | tee /tmp/marked.txt
+          grep -qE "[0-9]+ passed" /tmp/marked.txt || exit 1
+          if grep -qE "^[0-9]+ skipped" /tmp/marked.txt; then
+            echo "production_db 測試全被跳過"
+            exit 1
+          fi

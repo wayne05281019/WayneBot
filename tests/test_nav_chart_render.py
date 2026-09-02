@@ -4,7 +4,11 @@ import os
 import tempfile
 import unittest
 
+import pytest
+
 from config import get_db_path
+
+pytestmark = pytest.mark.production_db
 
 
 class NavChartRenderTests(unittest.TestCase):
@@ -12,8 +16,6 @@ class NavChartRenderTests(unittest.TestCase):
         from wayne_navigator import generate_chart
 
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "2421.png")
             path = generate_chart("2421", "", db, out)

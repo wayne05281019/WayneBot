@@ -3,16 +3,16 @@
 import time
 import unittest
 
+import pytest
+
 from config import get_db_path
+
+pytestmark = pytest.mark.production_db
 
 
 class LookupFastTests(unittest.TestCase):
     def test_decision_card_without_live_merge_is_fast(self):
-        import os
-
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         from wayne_navigator import NavigatorEngine
 
         t0 = time.perf_counter()
@@ -26,8 +26,6 @@ class LookupFastTests(unittest.TestCase):
         import tempfile
 
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         from unittest.mock import patch
 
         from wayne_navigator import NavigatorEngine, generate_chart

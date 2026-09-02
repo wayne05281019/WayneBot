@@ -3,14 +3,16 @@ import os
 import tempfile
 import unittest
 
+import pytest
+
 from config import get_db_path
+
+pytestmark = pytest.mark.production_db
 
 
 class LookupRenderTests(unittest.TestCase):
     def test_parallel_card_glance_produces_files(self):
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         from wayne_navigator import NavigatorEngine
         from lookup_render import render_card_and_glance_parallel
 

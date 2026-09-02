@@ -5,11 +5,13 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
+pytestmark = pytest.mark.production_db
+
 
 class ExportCompareCardTests(unittest.TestCase):
     def test_export_jianzhun(self):
-        if not os.path.isfile("data/wayne_market.db"):
-            self.skipTest("no db")
         with tempfile.TemporaryDirectory() as tmp:
             proc = subprocess.run(
                 [sys.executable, "scripts/export_compare_card.py", "建準", "--out", tmp],
