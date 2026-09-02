@@ -18,7 +18,7 @@
 | P2 falling_risk／高低檔 | ⬜ 待做 | `risk_zone` / `support_zone` |
 | P3 台指期＋基差 | ⬜ 待做 | TAIFEX |
 | P4 Regime+ 狀態機 | ⬜ 待做 | 海選權重 v2 |
-| P5 回測＋大盤頁 | 🟡 進行中 | Telegram「大盤」按鈕（只讀專頁） |
+| P5 回測＋大盤頁 | 🟡 進行中 | Telegram「大盤」按鈕（只讀專頁，庫空不 fallback Yahoo） |
 
 ## 已併入 main（資料正確性，非本 Goal 本體）
 
