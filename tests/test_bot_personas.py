@@ -49,7 +49,8 @@ def _bot():
 # --- 新手：第一次按持股，只靜默掛鍵盤，不洗版 ---
 
 
-def test_newbie_first_portfolio_silent_menu_pin():
+def test_newbie_first_portfolio_refreshes_menu_when_stale():
+    """新手第一次按持股：版面過期時可見刷新選單（v4 確保大盤鈕出現）。"""
     bot = _bot()
     bot._menu_layout_ok = MagicMock(return_value=False)
     bot._refresh_reply_menu = AsyncMock()
@@ -63,7 +64,7 @@ def test_newbie_first_portfolio_silent_menu_pin():
     bot._refresh_reply_menu.assert_awaited_once_with(
         bot._refresh_reply_menu.await_args[0][0],
         uid="1001",
-        silent=True,
+        silent=False,
     )
     bot._send_portfolio.assert_awaited_once()
 
@@ -253,6 +254,48 @@ def test_ai_desk_isolated_per_telegram_user():
         assert n1 >= 1 and n2 >= 1
     finally:
         os.remove(path)
+
+
+def test_brother_and_wayne_market_menu_fade_isolated():
+    """哥哥 vs 偉權：大盤回覆的暫態訊息各自刪除，互不影響。"""
+    bot = _bot()
+    m_wayne = MagicMock()
+    m_wayne.delete = AsyncMock()
+    m_bro = MagicMock()
+    m_bro.delete = AsyncMock()
+    bot._menu_fade_msgs["99:9001"] = [m_wayne]
+    bot._menu_fade_msgs["99:9002"] = [m_bro]
+
+    async def run():
+        await bot._dismiss_menu_transients("99:9001")
+
+    asyncio.run(run())
+    m_wayne.delete.assert_awaited_once()
+    m_bro.delete.assert_not_awaited()
+    assert "99:9002" in bot._menu_fade_msgs
+
+
+def test_brother_market_pending_not_shared():
+    """偉權 pending 買入流程，哥哥按大盤不應清掉偉權狀態。"""
+    from bot_servers import MENU_BTN_MARKET
+
+    bot = _bot()
+    bot._pending["9001"] = "buy:2330"
+    msg_bro = _msg(99, 9002, MENU_BTN_MARKET)
+    bot.market_cmd = AsyncMock()
+
+    async def run():
+        with patch.object(bot, "_dismiss_menu_transients", new_callable=AsyncMock), patch.object(
+            bot, "_ensure_reply_menu_if_needed", new_callable=AsyncMock
+        ), patch.object(bot, "_transient_status", new_callable=AsyncMock) as st, patch.object(
+            bot, "_delete_message", new_callable=AsyncMock
+        ):
+            st.return_value = MagicMock()
+            await bot.on_text(_update(msg_bro), MagicMock())
+
+    asyncio.run(run())
+    assert bot._pending.get("9001") == "buy:2330"
+    bot.market_cmd.assert_awaited_once()
 
 
 def test_touch_tg_user_registers_for_scheduled_ai():
