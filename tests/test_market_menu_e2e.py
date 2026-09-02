@@ -1,0 +1,201 @@
+# -*- coding: utf-8 -*-
+"""大盤按鈕 + 專頁：自動模擬測試（不需真人操作 Telegram）。"""
+from __future__ import annotations
+
+import asyncio
+import os
+import sqlite3
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from bot_servers import (
+    HELP_TOPICS,
+    MENU_BTN_MARKET,
+    MENU_LAYOUT_VERSION,
+    WayneTelegramBot,
+)
+from taiwan_market import (
+    analyze_taiwan_market,
+    ensure_index_breadth_daily_table,
+    ensure_index_daily_table,
+    format_taiwan_market_page_html,
+    load_index_breadth_daily,
+)
+
+_TG_SECTION = "────────────────"
+
+
+def _message(uid: int = 1):
+    user = SimpleNamespace(id=uid, first_name="tester")
+    msg = MagicMock()
+    msg.chat_id = 100
+    msg.from_user = user
+    msg.reply_text = AsyncMock(return_value=MagicMock())
+    msg.reply_html = AsyncMock(return_value=MagicMock())
+    return msg
+
+
+def _update(msg):
+    upd = MagicMock()
+    upd.message = msg
+    upd.effective_user = msg.from_user
+    return upd
+
+
+def _seed_market_db(path: str) -> str:
+    """寫入最小可驗證官方融合資料（非 Yahoo fallback）。"""
+    ensure_index_daily_table(path)
+    ensure_index_breadth_daily_table(path)
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE stock_universe (stock_id TEXT, is_active INT)")
+    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL)")
+    conn.execute("INSERT INTO stock_universe VALUES ('2330', 1)")
+    for i, c in enumerate(range(100, 121)):
+        d = f"202608{i+1:02d}"
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)",
+            (d, float(c)),
+        )
+        close = 22000.0 + i * 50
+        conn.execute(
+            """
+            INSERT INTO index_daily(date, symbol, close, volume, pct_change, ma20, ma60, regime, updated_at)
+            VALUES (?, 'TWII', ?, 1e9, 0.2, ?, ?, 'neutral', 'test')
+            """,
+            (d, close, close - 100, close - 200),
+        )
+    conn.execute(
+        """
+        INSERT INTO index_breadth_daily(
+            date, up_count, down_count, limit_up, limit_down, flat_count,
+            up_tw, down_tw, up_two, down_two, source, updated_at
+        ) VALUES ('20260820', 800, 600, 10, 5, 100, 500, 400, 300, 200, 'twse', 'test')
+        """
+    )
+    conn.commit()
+    conn.close()
+    return "20260820"
+
+
+class TestMarketMenuE2E:
+    def test_layout_version_and_button_label(self):
+        assert MENU_BTN_MARKET == "大盤"
+        assert MENU_LAYOUT_VERSION == "4"
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        row2 = [b.text for b in bot._reply_menu().keyboard[1]]
+        assert row2[-1] == "大盤"
+
+    def test_help_no_reserved_slot_text(self):
+        assert "預留" not in HELP_TOPICS["menu"]
+        assert "大盤" in HELP_TOPICS["menu"]
+
+    def test_market_page_db_only_no_yahoo(self, tmp_path):
+        db = str(tmp_path / "m.db")
+        as_of = _seed_market_db(db)
+        with patch("taiwan_market._fetch_index_daily") as mock_yahoo:
+            html = format_taiwan_market_page_html(db, as_of)
+            snap = analyze_taiwan_market(db, as_of, db_only=True)
+            mock_yahoo.assert_not_called()
+        assert "台股大盤" in html
+        assert "只讀庫內資料" in html
+        assert "市場廣度" in html
+        assert snap.get("ok")
+        assert snap.get("falling_risk") is not None
+        br = load_index_breadth_daily(db, as_of)
+        assert br and br["up_count"] == 800
+
+    def test_empty_db_shows_unavailable_not_fake(self, tmp_path):
+        db = str(tmp_path / "empty.db")
+        with patch("taiwan_market._fetch_index_daily") as mock_yahoo:
+            html = format_taiwan_market_page_html(db)
+            mock_yahoo.assert_not_called()
+        assert "暫不可用" in html
+
+    def test_menu_cmd_forces_visible_refresh(self):
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = ":memory:"
+        msg = _message()
+
+        async def run():
+            with patch.object(bot, "_touch_user"), patch.object(
+                bot, "_force_reply_menu", new_callable=AsyncMock
+            ) as force:
+                await bot.menu_cmd(_update(msg), MagicMock())
+                force.assert_awaited_once()
+
+        asyncio.run(run())
+
+    def test_market_cmd_reads_db_only(self, tmp_path):
+        db = str(tmp_path / "bot.db")
+        charts = str(tmp_path / "charts")
+        os.makedirs(charts, exist_ok=True)
+        _seed_market_db(db)
+
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = db
+        bot.charts_dir = charts
+        bot._menu_fade_msgs = {}
+        msg = _message()
+
+        with patch.object(bot, "_dismiss_menu_transients", new_callable=AsyncMock), patch.object(
+            bot, "_ensure_reply_menu_if_needed", new_callable=AsyncMock
+        ), patch.object(bot, "_transient_status", new_callable=AsyncMock) as status, patch.object(
+            bot, "_delete_message", new_callable=AsyncMock
+        ), patch(
+            "taiwan_market._fetch_index_daily"
+        ) as mock_yahoo:
+
+            async def run():
+                status.return_value = MagicMock()
+                await bot.market_cmd(_update(msg), MagicMock())
+
+            asyncio.run(run())
+            mock_yahoo.assert_not_called()
+
+        msg.reply_html.assert_awaited()
+        body = msg.reply_html.await_args.args[0]
+        assert "台股大盤" in body
+        assert "下跌風險" in body or "Regime" in body
+
+    def test_two_users_market_isolated(self, tmp_path):
+        """不同 uid 各自按大盤，互不影響 pending 狀態。"""
+        db = str(tmp_path / "iso.db")
+        charts = str(tmp_path / "c2")
+        os.makedirs(charts, exist_ok=True)
+        _seed_market_db(db)
+
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = db
+        bot.charts_dir = charts
+        bot._menu_fade_msgs = {}
+        bot._pending = {"111": "buy"}
+
+        async def _run(uid):
+            msg = _message(uid)
+            with patch.object(bot, "_dismiss_menu_transients", new_callable=AsyncMock), patch.object(
+                bot, "_ensure_reply_menu_if_needed", new_callable=AsyncMock
+            ), patch.object(bot, "_transient_status", new_callable=AsyncMock) as st, patch.object(
+                bot, "_delete_message", new_callable=AsyncMock
+            ):
+                st.return_value = MagicMock()
+                await bot.market_cmd(_update(msg), MagicMock())
+            return msg
+
+        async def run_both():
+            await asyncio.gather(_run(111), _run(222))
+
+        asyncio.run(run_both())
+        assert bot._pending.get("111") == "buy"
+
+    def test_market_page_mobile_friendly_layout(self, tmp_path):
+        db = str(tmp_path / "layout.db")
+        as_of = _seed_market_db(db)
+        html = format_taiwan_market_page_html(db, as_of)
+        assert _TG_SECTION in html
+        assert "市場廣度" in html
+        assert "結構與風險" in html
+        for line in html.splitlines():
+            if "上市" in line and "上櫃" in line:
+                pytest.fail(f"overlong breadth line: {line!r}")
