@@ -1011,6 +1011,9 @@ def _regime_traffic_light(regime: str) -> str:
     return {"bull": "🟢", "neutral": "🟡", "bear": "🔴"}.get(str(regime or ""), "⚪")
 
 
+_TG_SECTION = "────────────────"
+
+
 def _index_day_change(db_path: str, as_of: str) -> Optional[float]:
     """讀 index_daily 當日漲跌幅；僅 SELECT，不寫庫。"""
     ensure_index_daily_table(db_path)
@@ -1034,15 +1037,18 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):
         return ""
+    fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     lines = [
         "<b>📊 台灣加權指數研究</b>",
-        f"收盤 <b>{snap['close']}</b>　MA20 {snap['ma20']}　MA60 {snap['ma60']}",
+        f"收盤 <b>{snap['close']}</b>",
+        f"MA20 {snap['ma20']}　MA60 {snap['ma60']}",
         f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
-        f"站上月線廣度 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
-        f"產業法人合計 {snap['sector_flow_net']:+,.0f} 張",
-        f"Regime：<b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
-        f"下跌風險 {_falling_risk_light(int(snap.get('falling_risk') or 0))} <b>{snap.get('falling_risk', 0)}</b>"
-        f"　高檔 {_risk_zone_label(snap.get('risk_zone'))}",
+        f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
+        f"產業法人 {snap['sector_flow_net']:+,.0f} 張",
+        _TG_SECTION,
+        f"Regime <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
+        f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
+        f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
         market_screening_note(snap),
     ]
     bt = snap.get("backtest") or []
@@ -1063,47 +1069,63 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
     day_pct = _index_day_change(db_path, ref)
     pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
     light = _regime_traffic_light(snap.get("regime"))
+    fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     lines = [
         "<b>📊 台股大盤</b>",
-        f"截至 <b>{ref}</b>（庫內官方融合）",
+        f"截至 <b>{ref}</b>",
+        "<i>庫內官方融合收盤</i>",
         "",
-        f"加權 <b>{snap['close']:,.1f}</b>{pct_bit}",
-        f"MA20 {snap['ma20']:,.1f}　MA60 {snap['ma60']:,.1f}",
-        f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
+        "<b>加權指數</b>",
+        f"收盤 <b>{snap['close']:,.1f}</b>{pct_bit}",
+        f"MA20 {snap['ma20']:,.1f}",
+        f"MA60 {snap['ma60']:,.1f}",
+        f"5日 {snap['chg5_pct']:+.2f}%",
+        f"20日斜率 {snap['slope20_pct']:+.2f}%",
         "",
+        _TG_SECTION,
+        "<b>市場廣度</b>",
     ]
     if int(snap.get("sample_n") or 0) > 0:
-        lines.append(
-            f"<b>廣度</b>　站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）"
-        )
+        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）")
     else:
-        lines.append("<b>廣度</b>　當日官股日 K 尚未齊，暫不顯示")
+        lines.append("站上月線：當日官股日 K 尚未齊")
     ob = snap.get("official_breadth")
     if ob and int(ob.get("up_count") or 0) + int(ob.get("down_count") or 0) > 0:
-        lines.append(
-            f"<b>漲跌家數</b>　漲 {ob['up_count']}／跌 {ob['down_count']}"
-            f"（漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}）"
-            f"　上市 {ob.get('up_tw', 0)}/{ob.get('down_tw', 0)}"
-            f"　上櫃 {ob.get('up_two', 0)}/{ob.get('down_two', 0)}"
+        lines.extend(
+            [
+                f"漲 {ob['up_count']}　跌 {ob['down_count']}",
+                f"漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}",
+                f"上市 漲{ob.get('up_tw', 0)}/跌{ob.get('down_tw', 0)}",
+                f"上櫃 漲{ob.get('up_two', 0)}/跌{ob.get('down_two', 0)}",
+            ]
         )
     flow_net = _sector_flow_net(db_path, ref)
+    lines.append(_TG_SECTION)
+    lines.append("<b>法人</b>")
     if flow_net is not None:
-        lines.append(f"<b>法人</b>　產業合計 {flow_net:+,.0f} 張")
+        lines.append(f"產業合計 {flow_net:+,.0f} 張")
     else:
-        lines.append("<b>法人</b>　盤後輪動尚未寫入，暫不顯示")
+        lines.append("盤後輪動尚未寫入")
     lines.extend(
         [
             "",
-            f"<b>Regime</b> {light} <b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
-            f"<b>下跌風險</b> {_falling_risk_light(int(snap.get('falling_risk') or 0))} <b>{snap.get('falling_risk', 0)}</b>"
-            f"　<b>高檔區</b> {_risk_zone_label(snap.get('risk_zone'))}"
-            f"　<b>低檔區</b> {_support_zone_label(snap.get('support_zone'))}",
-            market_screening_note(snap),
+            _TG_SECTION,
+            "<b>結構與風險</b>",
+            f"Regime {light} <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
+            f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
+            f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
+            f"低檔區 {_support_zone_label(snap.get('support_zone'))}",
         ]
     )
+    note = market_screening_note(snap)
+    if note:
+        lines.extend(["", note])
     hits_fr = snap.get("falling_risk_hits") or []
     if hits_fr:
-        lines.append("觸發：" + "、".join(str(h) for h in hits_fr[:4]))
+        lines.append("")
+        lines.append("<b>風險觸發</b>")
+        for h in hits_fr[:4]:
+            lines.append(f"• {h}")
     bt = snap.get("backtest") or []
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
@@ -1119,13 +1141,13 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
 
         us = load_us_overnight(db_path, ref)
         if us.get("ok") or us.get("vix") is not None:
-            lines.append("")
-            lines.append("<b>🌙 美股隔夜（庫內快取）</b>")
+            lines.extend(["", _TG_SECTION, "<b>🌙 美股隔夜</b>", "<i>庫內快取</i>"])
             us_label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股")
             vix = us.get("vix")
-            vix_bit = f"　VIX {float(vix):.1f}" if vix is not None else ""
-            lines.append(f"{us_label}{vix_bit}")
-            bits = []
+            if vix is not None:
+                lines.append(f"{us_label}　VIX {float(vix):.1f}")
+            else:
+                lines.append(us_label)
             for key, _, name in (
                 ("dji_pct", None, "道瓊"),
                 ("spx_pct", None, "標普"),
@@ -1135,11 +1157,9 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
                 val = us.get(key)
                 if val is not None:
                     try:
-                        bits.append(f"{name} {float(val):+.2f}%")
+                        lines.append(f"{name} {float(val):+.2f}%")
                     except (TypeError, ValueError):
                         pass
-            if bits:
-                lines.append("　".join(bits[:4]))
     except Exception:
         pass
     lines.append("")
