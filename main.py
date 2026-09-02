@@ -31,6 +31,69 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("WayneBot")
 
+_PROCESS_STARTED_AT = time.time()
+
+
+def _boot_grace_seconds() -> int:
+    """冷啟動抓 Release DB 期間不算故障（Render 會重啟，重啟只會更慢）。"""
+    import os
+
+    try:
+        return max(0, int(os.getenv("WAYNE_BOOT_GRACE_SECONDS", "600")))
+    except ValueError:
+        return 600
+
+
+def _uptime_seconds() -> float:
+    return max(0.0, time.time() - _PROCESS_STARTED_AT)
+
+
+def _in_boot_grace() -> bool:
+    return _uptime_seconds() < _boot_grace_seconds()
+
+
+def _liveness_snapshot() -> dict:
+    """行程能不能服務：庫可讀、輪詢心跳沒過舊。資料新鮮度不列入。"""
+    from config import get_db_path
+
+    db_path = get_db_path()
+    detail = {"uptime_s": round(_uptime_seconds(), 1), "booting": _in_boot_grace()}
+
+    db_ok = False
+    try:
+        from import_health import db_quick_check_ok
+
+        db_ok = bool(db_quick_check_ok(db_path, min_bytes=1))
+    except Exception as exc:
+        detail["db_error"] = str(exc)
+    detail["db_ok"] = db_ok
+
+    polling = None
+    try:
+        from ops_watchdog import heartbeat_age_seconds, polling_alive
+
+        polling = polling_alive(db_path)
+        detail["polling_age_s"] = heartbeat_age_seconds(db_path, "telegram_polling")
+    except Exception:
+        pass
+    detail["polling_alive"] = polling
+
+    # 只有「確定壞了」才算不能服務：庫讀不到，或輪詢曾經活著但心跳已停。
+    serving = True
+    reasons = []
+    if not db_ok:
+        serving = False
+        reasons.append("資料庫無法讀取")
+    if polling is False:
+        serving = False
+        reasons.append("Telegram 輪詢心跳過舊")
+    if not serving and _in_boot_grace():
+        serving = True
+        reasons = [f"啟動中（{int(_uptime_seconds())}s）：{'／'.join(reasons)}"]
+    detail["serving"] = serving
+    detail["serving_reasons"] = reasons
+    return detail
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -38,18 +101,62 @@ class HealthHandler(BaseHTTPRequestHandler):
         if route in ("/", "/health"):
             import json
 
+            live = _liveness_snapshot()
+            payload = {
+                "service": "WayneBot",
+                "serving": live.get("serving", False),
+                "booting": live.get("booting", False),
+                "uptime_s": live.get("uptime_s"),
+                "db_ok": live.get("db_ok"),
+                "polling_alive": live.get("polling_alive"),
+                "polling_age_s": live.get("polling_age_s"),
+                "serving_reasons": live.get("serving_reasons") or [],
+            }
             try:
                 from automation_health import health_payload
 
-                payload = health_payload()
-                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                self.send_response(200)
+                data = health_payload()
+                payload["data_ok"] = bool(data.get("data_ok"))
+                payload["cap"] = data.get("cap") or ""
+                payload["latest_complete"] = data.get("latest_complete") or ""
+                payload["reasons"] = list(data.get("reasons") or [])
             except Exception as e:
-                body = json.dumps(
-                    {"status": "healthy", "service": "WayneBot 24H Online", "ok": True, "data_ok": False, "error": str(e)},
-                    ensure_ascii=False,
-                ).encode("utf-8")
-                self.send_response(200)
+                # 資料狀態算不出來不代表行程壞了；但也不假裝健康。
+                payload["data_ok"] = False
+                payload["data_error"] = str(e)
+            payload["ok"] = bool(payload["serving"])
+            payload["status"] = "healthy" if payload["serving"] else "unhealthy"
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(200 if payload["serving"] else 503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if route == "/ready":
+            import json
+
+            try:
+                from automation_health import health_payload
+                from config import get_db_path
+                from ops_watchdog import watchdog_payload
+
+                data = health_payload()
+                watch = watchdog_payload(get_db_path())
+                ready = bool(data.get("data_ok")) and not watch.get("missed")
+                payload = {
+                    "ready": ready,
+                    "data_ok": bool(data.get("data_ok")),
+                    "cap": data.get("cap") or "",
+                    "latest_complete": data.get("latest_complete") or "",
+                    "reasons": list(data.get("reasons") or []),
+                    "watchdog": watch,
+                }
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if ready else 503)
+            except Exception as e:
+                body = json.dumps({"ready": False, "error": str(e)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(503)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -287,6 +394,44 @@ def start_daily_scheduler():
     return t
 
 
+def start_watchdog():
+    """死人開關：排程過了死線還沒 success 就推 Telegram（同一天同一排程只推一次）。"""
+    from ops_watchdog import watchdog_enabled
+
+    if not watchdog_enabled():
+        logger.info("WAYNE_WATCHDOG_ENABLED=false：不啟動排程死人開關")
+        return None
+
+    interval = 900
+
+    def _loop():
+        # 開機先讓冷啟動抓庫跑完，否則會把「還在下載」誤報成排程沒跑。
+        time.sleep(max(_boot_grace_seconds(), 120))
+        from config import get_db_path
+        from ops_watchdog import format_watchdog_alert, watchdog_scan
+
+        while True:
+            try:
+                scan = watchdog_scan(get_db_path())
+                alerts = scan.get("alerts") or []
+                if alerts:
+                    text = format_watchdog_alert(alerts)
+                    logger.warning("死人開關觸發：%s", [a.get("run_date") for a in alerts])
+                    try:
+                        from main_runner import MainRunner
+
+                        MainRunner().send_telegram_message(text)
+                    except Exception:
+                        logger.exception("死人開關推播失敗")
+            except Exception:
+                logger.exception("死人開關掃描失敗")
+            time.sleep(interval)
+
+    t = threading.Thread(target=_loop, name="ops-watchdog", daemon=True)
+    t.start()
+    return t
+
+
 def start_market_backfill():
     """Deploy 後 Release zip 可能缺最近交易日；背景 UPSERT 進現有 wayne_market.db。"""
 
@@ -385,6 +530,7 @@ def run_web():
     start_market_backfill()
     if daily_scheduler_enabled():
         start_daily_scheduler()
+    start_watchdog()
 
     token = get_telegram_token()
     if token and not skip_telegram_polling():

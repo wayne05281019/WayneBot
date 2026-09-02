@@ -3160,7 +3160,22 @@ class WayneTelegramBot:
         if not self.token:
             logger.error("缺少 TELEGRAM_BOT_TOKEN")
             return
+        async def _heartbeat_loop():
+            """在事件迴圈裡跳，迴圈卡死心跳就變舊，/health 才抓得到。"""
+            from ops_watchdog import HEARTBEAT_POLLING, record_heartbeat
+
+            while True:
+                try:
+                    await asyncio.to_thread(record_heartbeat, self.db_path, HEARTBEAT_POLLING, "run_polling")
+                except Exception:
+                    logger.debug("輪詢心跳失敗", exc_info=True)
+                await asyncio.sleep(120)
+
         async def _on_start(app):
+            try:
+                asyncio.create_task(_heartbeat_loop())
+            except Exception:
+                logger.exception("輪詢心跳啟動失敗")
             try:
                 from wayne_navigator import prewarm_card_fonts
 
