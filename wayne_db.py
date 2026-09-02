@@ -389,6 +389,16 @@ def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
+def _resolve_lookup_quote_date(db_path: str) -> Optional[str]:
+    """搜尋結果用的行情基準日：最後完整收盤日，不用 MAX(date) 以免假 K 殘列。"""
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        return db_as_of_trading_date(db_path)
+    except Exception:
+        return None
+
+
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
     """用代號或中文名（如南亞、山太士）查標的；興櫃也查名稱目錄。"""
     ensure_core_schema(db_path)
@@ -396,7 +406,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     if not q:
         return []
     with get_db_connection(db_path, write=False) as conn:
-        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        latest = _resolve_lookup_quote_date(db_path)
         rows = []
         if latest and q.isdigit() and 3 <= len(q) <= 6:
             rows = conn.execute(
@@ -416,7 +426,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
             return hits
     ensure_stock_directory(db_path)
     with get_db_connection(db_path, write=False) as conn:
-        latest = conn.execute("SELECT MAX(date) FROM daily_quotes;").fetchone()[0]
+        latest = _resolve_lookup_quote_date(db_path)
         if q.isdigit() and 3 <= len(q) <= 6:
             drows = conn.execute(
                 "SELECT stock_id, stock_name, market FROM stock_directory WHERE stock_id=? LIMIT 1;",

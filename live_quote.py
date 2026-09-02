@@ -76,8 +76,15 @@ def _norm_date(val) -> str:
 
 
 def is_live_merge_window(now=None) -> bool:
-    """08:50～16:00 台灣時間：允許用 MIS 覆寫／追加今日 K（不寫回 sqlite）。"""
+    """08:50～16:00 台灣時間、且為週一～五：才用 MIS 合併今日 K（不寫回 sqlite）。"""
     now = now or taipei_now()
+    if now.weekday() >= 5:
+        return False
+    from trading_calendar import is_trading_weekday
+
+    today = now.strftime("%Y%m%d")
+    if not is_trading_weekday(today):
+        return False
     t = now.time()
     return dt_time(8, 50) <= t < dt_time(16, 0)
 
