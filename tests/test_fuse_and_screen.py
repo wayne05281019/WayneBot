@@ -901,8 +901,9 @@ class TelegramAlignTest(unittest.TestCase):
             "dealer_net": 0,
         }
         chips = _chip_html(item)
-        self.assertIn("<code>", chips)
+        self.assertNotIn("<code>", chips)
         self.assertIn("張", chips)
+        self.assertIn("+8,000", chips)
         card = _stock_card_html(item, 1)
         self.assertIn("<code>", card)
         self.assertNotIn("&lt;code&gt;", card)

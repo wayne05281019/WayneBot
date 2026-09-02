@@ -560,14 +560,11 @@ def _fmt_vix(snap: Dict[str, Any]) -> str:
 
 
 def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
-    """美股指數列：不用 <code> 等寬欄，避免 Telegram 氣泡右側大片空白。"""
-    from tg_layout import html_escape, pad_label
+    """保留給測試／舊呼叫；實際排版請用 _quote_row_lines。"""
+    from tg_layout import html_escape
 
-    rows = []
-    for pct_k, chg_k, label in items:
-        move = _fmt_move(snap.get(pct_k), snap.get(chg_k), pts_decimals=pts_decimals)
-        rows.append((label, html_escape(move)))
-    return rows
+    _ = pts_decimals
+    return [(label, html_escape(_fmt_move(snap.get(pct_k), snap.get(chg_k)))) for pct_k, chg_k, label in items]
 
 
 def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W) -> str:

@@ -282,12 +282,12 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
         section_eq("AI 模擬帳戶"),
         "這是模擬倉，不是真實下單。本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
         "停損 −7%、停利 ＋8%。06:30 海選後與盤後融合自動買賣；進化寫進資料庫，不改程式檔。",
-        kv_html("總資產", html_money(s["total_assets"], signed=False), 8),
-        kv_html("現金", html_money(s["cash"], signed=False), 8),
-        kv_html("市值", html_money(s["stock_market_value"], signed=False), 8),
-        kv_html("未實現", html_money(unreal), 8),
-        kv_html("已實現", html_money(realized), 8),
-        kv_html("總損益", html_num_paren(_plain_num(s["total_pnl"], signed=True), s["total_pnl_pct"]), 8),
+        kv_html("總資產", html_money(s["total_assets"], signed=False, compact=True), 8),
+        kv_html("現金", html_money(s["cash"], signed=False, compact=True), 8),
+        kv_html("市值", html_money(s["stock_market_value"], signed=False, compact=True), 8),
+        kv_html("未實現", html_money(unreal, compact=True), 8),
+        kv_html("已實現", html_money(realized, compact=True), 8),
+        kv_html("總損益", html_num_paren(_plain_num(s["total_pnl"], signed=True), s["total_pnl_pct"], compact=True), 8),
         kv("已用槽", f"{used}/{MAX_SLOTS} 每槽上限 {slot:,.0f}", 8),
         kv("本金", f"{initial:,.0f} 倍數 {size_mult:.2f}", 8),
     ]
@@ -317,23 +317,23 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
                 title = f"<code>{html_escape(sid)}</code> {html_escape(name)}"
             lines.append(title)
             lines.append(kv_html("張數", _fmt_lots_html(int(p["shares"])), 8))
-            lines.append(kv_html("成本", html_price(cost), 8))
+            lines.append(kv_html("成本", html_price(cost, compact=True), 8))
             if chg is not None:
-                lines.append(kv_html("現價", html_last_move(last, chg, move_pct), 8))
+                lines.append(kv_html("現價", html_last_move(last, chg, move_pct, compact=True), 8))
             else:
-                lines.append(kv_html("現價", html_price(last), 8))
+                lines.append(kv_html("現價", html_price(last, compact=True), 8))
             lines.append(
                 kv_html(
                     "未實現",
-                    html_num_paren(_plain_num(p["unrealized_pnl"], signed=True), p["pnl_pct"]),
+                    html_num_paren(_plain_num(p["unrealized_pnl"], signed=True), p["pnl_pct"], compact=True),
                     8,
                 )
             )
             lines.append(
-                kv_html("停損", html_num_paren(f"{stop_px:,.2f}", STOP_PCT), 8)
+                kv_html("停損", html_num_paren(f"{stop_px:,.2f}", STOP_PCT, compact=True), 8)
             )
             lines.append(
-                kv_html("停利", html_num_paren(f"{take_px:,.2f}", TAKE_PCT), 8)
+                kv_html("停利", html_num_paren(f"{take_px:,.2f}", TAKE_PCT, compact=True), 8)
             )
             reason = reasons.get(sid) or "海選紀律"
             bought = _fmt_ymd(p.get("buy_date") or "")
@@ -350,10 +350,12 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
             lot = _fmt_lots_html(int(t.get("shares") or 0))
             extra = ""
             if str(t.get("action") or "").upper() == "SELL":
-                extra = " " + html_num_paren(_plain_num(t.get("realized_pnl"), signed=True), t.get("pnl_pct"))
+                extra = " " + html_num_paren(
+                    _plain_num(t.get("realized_pnl"), signed=True), t.get("pnl_pct"), compact=True
+                )
             lines.append(
                 f"• {_fmt_ymd(t.get('date'))} {act} <code>{html_escape(t.get('stock_id'))}</code> "
-                f"{html_escape(t.get('stock_name') or '')} {lot} @{html_price(t.get('price'))}"
+                f"{html_escape(t.get('stock_name') or '')} {lot} @{html_price(t.get('price'), compact=True)}"
                 f"{extra}"
             )
             if t.get("reason"):

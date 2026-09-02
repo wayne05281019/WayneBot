@@ -250,3 +250,17 @@ def test_help_guide_has_newbie_glossary_and_ai_path():
     assert "AI" in guide
     assert "持股" in HELP_TOPICS["ai"]
     assert "20:00" in HELP_TOPICS["ai"]
+
+
+def test_compact_holdings_no_wide_padding():
+    import re
+
+    from portfolio_engine import PortfolioEngine
+
+    engine = PortfolioEngine.__new__(PortfolioEngine)
+    engine.db_path = "data/wayne_market.db"
+    html = engine.format_holdings_html(
+        [{"stock_code": "2330", "stock_name": "台積電", "shares": 1, "cost_price": 500}],
+        quotes_map={"2330": {"close": 520, "pct_change": 1.2}},
+    )
+    assert not re.search(r"<code>\s{3,}", html)
