@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,85 @@ def quote_filter_regression_ok() -> Dict[str, Any]:
         "kept": len(kept),
         "dropped": dropped,
         "reason": "" if ok else "過濾器回歸失敗：正常 K 未通過或假 K 未擋下",
+    }
+
+
+def pipeline_recent_status(db_path: str, limit: int = 12) -> Dict[str, Any]:
+    """最近排程執行紀錄（pipeline_runs）。"""
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return {"ok": False, "runs": [], "reason": "資料庫不存在"}
+    try:
+        conn = sqlite3.connect(path)
+        rows = conn.execute(
+            """
+            SELECT run_date, finished_at, status, notes
+            FROM pipeline_runs
+            ORDER BY finished_at DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error as exc:
+        return {"ok": False, "runs": [], "reason": str(exc)}
+    runs = [
+        {"run_date": r[0], "finished_at": r[1], "status": r[2], "notes": r[3] or ""}
+        for r in rows
+    ]
+    return {"ok": True, "runs": runs}
+
+
+def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
+    """交易日應完成的排程是否 success（increment / screen）。"""
+    try:
+        from config import taipei_today_str
+        from trading_calendar import fuse_end_trading_date, is_trading_weekday
+    except Exception:
+        return {"ok": True, "skipped": True, "reasons": []}
+
+    cap = str(cap or fuse_end_trading_date() or "").replace("-", "")[:8]
+    today = taipei_today_str().replace("-", "")[:8]
+    reasons: List[str] = []
+    recent = pipeline_recent_status(db_path).get("runs") or []
+    if not recent:
+        return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
+    by_key = {str(r.get("run_date") or ""): r for r in recent}
+
+    if cap and is_trading_weekday(cap):
+        inc = by_key.get(today) or by_key.get(cap)
+        if not inc or str(inc.get("status") or "") != "success":
+            reasons.append(f"盤後融合 {today} 未成功")
+        screen_key = f"screen-{cap}"
+        screen = by_key.get(screen_key)
+        if not screen or str(screen.get("status") or "") != "success":
+            reasons.append(f"早上海選 {screen_key} 未成功")
+
+    return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
+
+
+def health_payload(db_path: str = None, cap: str = None) -> Dict[str, Any]:
+    """給 /health 的輕量資料狀態（程序仍回 200，data_ok 反映資料管線）。"""
+    try:
+        from config import fuse_end_date, get_db_path
+
+        path = db_path or get_db_path()
+        cap = cap or fuse_end_date()
+    except Exception:
+        path = os.getenv("WAYNE_DB_PATH") or "data/wayne_market.db"
+        cap = ""
+
+    audit = run_automation_audit(path, cap=cap, strict_release=False, max_gap_days=999)
+    pipeline = pipeline_expectations_met(path, cap=cap) if audit.get("checks", {}).get("database", {}).get("ok") else {}
+    data_ok = bool(audit.get("ok")) and bool(pipeline.get("ok", True))
+    return {
+        "status": "healthy",
+        "service": "WayneBot 24H Online",
+        "ok": True,
+        "data_ok": data_ok,
+        "cap": audit.get("cap") or "",
+        "latest_complete": audit.get("latest_complete") or "",
+        "reasons": list(audit.get("reasons") or []) + list(pipeline.get("reasons") or []),
     }
 
 
@@ -126,6 +206,12 @@ def run_automation_audit(
         checks["release"] = {"ok": bool(release.get("ok")), "reasons": release.get("reasons") or []}
         if strict_release and not release.get("ok"):
             for r in release.get("reasons") or []:
+                if r not in reasons:
+                    reasons.append(str(r))
+        pipeline = pipeline_expectations_met(path, cap=cap)
+        checks["pipeline"] = pipeline
+        if not pipeline.get("ok") and not pipeline.get("skipped"):
+            for r in pipeline.get("reasons") or []:
                 if r not in reasons:
                     reasons.append(str(r))
 
