@@ -445,10 +445,11 @@ def format_sector_rotation_html(
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
     resolved, resolved_lag = resolve_flow_as_of(path, now=now)
+    ymd_in = None
     if yyyymmdd:
         ymd_in = str(yyyymmdd).replace("-", "")
-        # 勿讓早上海選的舊 as_of 把盤後標題釘在昨日
-        ymd = resolved if resolved and resolved >= ymd_in else ymd_in
+        # 早上海選可能帶昨日 as_of；庫裡已有更新完整日時標題跟 fuse 上限
+        ymd = resolved if resolved and resolved > ymd_in else ymd_in
         lag = lag if lag is not None else resolved_lag
     else:
         ymd, lag = resolved, (lag if lag is not None else resolved_lag)
@@ -456,6 +457,9 @@ def format_sector_rotation_html(
         conn.close()
         return ""
     rows = compute_sector_rows(conn, ymd)
+    if not rows and ymd_in and ymd != ymd_in:
+        ymd = ymd_in
+        rows = compute_sector_rows(conn, ymd)
     conn.close()
     if not rows:
         return ""
