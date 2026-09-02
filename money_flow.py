@@ -64,8 +64,8 @@ def _latest_date(conn: sqlite3.Connection, db_path: str = "", now=None) -> str:
 
 def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
     """
-    資金輪動基準日：盤後 16:30 起以 fuse 上限為準；庫裡當日收盤齊就顯示當日。
-    回傳 (yyyymmdd, 若落後於今日則附說明 HTML)。
+    資金輪動基準日：盤後以 fuse 可融合日為準；庫裡當日上市＋上櫃齊才顯示當日。
+    回傳 (yyyymmdd, 若落後於應顯示日則附說明 HTML)。
     """
     from config import taipei_now
     from import_health import count_markets, latest_complete_quote_date, sides_complete
@@ -74,22 +74,24 @@ def resolve_flow_as_of(db_path: str, now=None) -> Tuple[str, Optional[str]]:
     now = now or taipei_now()
     cap = fuse_end_trading_date(now)
     complete = latest_complete_quote_date(db_path, now=now) or ""
-    as_of = complete or cap
     lag: Optional[str] = None
 
-    tw, two, _ = count_markets(db_path, cap)
-    if sides_complete(tw, two):
+    tw_cap, two_cap, total_cap = count_markets(db_path, cap)
+    if sides_complete(tw_cap, two_cap) and int(total_cap or 0) > 0:
         as_of = cap
-    elif cap > (complete or ""):
-        phase = tw_session_phase(now)
-        if phase == "after":
-            lag = (
-                f"<i>今日 {format_trading_date_zh(cap)} 盤後資料尚在更新，"
-                f"目前顯示 {format_trading_date_zh(as_of)} 收盤。</i>"
-            )
+    else:
+        as_of = complete or cap
 
     if as_of > cap:
         as_of = cap
+
+    phase = tw_session_phase(now)
+    if cap > as_of and phase in ("after", "open"):
+        lag = (
+            f"<i>應顯示 {format_trading_date_zh(cap)} 收盤，"
+            f"目前僅有 {format_trading_date_zh(as_of)} 資料（盤後更新中或尚未寫入）。</i>"
+        )
+
     return as_of, lag
 
 
@@ -264,12 +266,8 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
         if prev:
             dates.append(prev)
     else:
-        try:
-            from import_health import latest_complete_quote_date
-
-            cap = latest_complete_quote_date(path)
-        except Exception:
-            cap = None
+        as_of, _ = resolve_flow_as_of(path)
+        cap = as_of
         if cap:
             rows = conn.execute(
                 """
@@ -280,6 +278,8 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
                 (str(cap).replace("-", ""), int(lookback)),
             ).fetchall()
         else:
+            rows = []
+        if not rows:
             rows = conn.execute(
                 "SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes ORDER BY d DESC LIMIT ?",
                 (int(lookback),),
@@ -444,12 +444,14 @@ def format_sector_rotation_html(
 
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
+    resolved, resolved_lag = resolve_flow_as_of(path, now=now)
     if yyyymmdd:
-        ymd = str(yyyymmdd).replace("-", "")
-        if lag is None:
-            _, lag = resolve_flow_as_of(path, now=now)
+        ymd_in = str(yyyymmdd).replace("-", "")
+        # 勿讓早上海選的舊 as_of 把盤後標題釘在昨日
+        ymd = resolved if resolved and resolved >= ymd_in else ymd_in
+        lag = lag if lag is not None else resolved_lag
     else:
-        ymd, lag = resolve_flow_as_of(path, now=now)
+        ymd, lag = resolved, (lag if lag is not None else resolved_lag)
     if not ymd:
         conn.close()
         return ""
