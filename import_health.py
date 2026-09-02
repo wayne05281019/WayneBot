@@ -313,6 +313,15 @@ def quote_lineage(db_path: str, days: int = 5) -> Dict[str, Any]:
     return {"ok": True, "days": [by_day[k] for k in sorted(by_day, reverse=True)]}
 
 
+def _schema_health_safe(db_path: str) -> Dict[str, Any]:
+    try:
+        from db_migrations import schema_health
+
+        return schema_health(db_path)
+    except Exception as exc:
+        return {"ok": False, "reason": str(exc)}
+
+
 def inventory_payload(db_path: str) -> Dict[str, Any]:
     """給 Render /inventory 對表：哪些日要補、財報／除權息／母體有幾列。"""
     if not db_quick_check_ok(db_path):
@@ -366,6 +375,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         "stock_universe": {"rows": counts.get("stock_universe") or 0},
         "daily_sector_flow": {"rows": counts.get("daily_sector_flow") or 0},
         "tables": tables,
+        "schema": _schema_health_safe(db_path),
         "lineage": quote_lineage(db_path),
         "gap_n": int(health.get("history_issue_n") or 0),
         "gaps": [{"date": x.get("date"), "tw": x.get("tw"), "two": x.get("two"), "total": x.get("total")} for x in gaps[:50]],

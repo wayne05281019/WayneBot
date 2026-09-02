@@ -241,24 +241,55 @@ def run_automation_audit(
     if not filt.get("ok"):
         reasons.append(str(filt.get("reason") or "行情過濾器回歸失敗"))
 
+    if db_ok:
+        try:
+            from db_migrations import schema_health
+
+            schema = schema_health(path)
+        except Exception as exc:
+            schema = {"ok": False, "reasons": [str(exc)]}
+        checks["schema"] = schema
+        if not schema.get("ok"):
+            for r in schema.get("reasons") or []:
+                if r not in reasons:
+                    reasons.append(f"schema：{r}")
+
     health: Dict[str, Any] = {}
     increment: Dict[str, Any] = {}
     if db_ok and cap:
-        increment = verify_increment_import(path, cap=cap)
+        # 巡檢工具在庫壞掉時直接拋例外的話，正好在最需要它的時候沒有輸出。
+        try:
+            increment = verify_increment_import(path, cap=cap)
+        except Exception as exc:
+            increment = {"ok": False, "reasons": [f"增量檢查無法執行：{exc}"]}
         checks["increment"] = increment
         if not increment.get("ok"):
             for r in increment.get("reasons") or []:
                 if r not in reasons:
                     reasons.append(str(r))
-        health = increment.get("health") or audit_import(path, cap)
+        health = increment.get("health") or {}
+        if not health:
+            try:
+                health = audit_import(path, cap)
+            except Exception as exc:
+                health = {"error": str(exc)}
 
-    complete = latest_complete_quote_date(path) if db_ok else None
+    def _guard(label, fn, fallback):
+        try:
+            return fn()
+        except Exception as exc:
+            note = f"{label}無法執行：{exc}"
+            if note not in reasons:
+                reasons.append(note)
+            return fallback
+
+    complete = _guard("基準日查詢", lambda: latest_complete_quote_date(path), None) if db_ok else None
     checks["latest_complete"] = complete
     checks["cap"] = cap
     if db_ok and cap and complete != cap:
         reasons.append(f"基準日 {complete or '無'} 未對齊可融合日 {cap}")
 
-    gaps = list_coverage_issues(path) if db_ok else []
+    gaps = _guard("缺口查詢", lambda: list_coverage_issues(path), []) if db_ok else []
     checks["gap_n"] = len(gaps)
     if db_ok and int(max_gap_days or 0) >= 0 and gaps:
         if max_gap_days == 0 and gaps:
@@ -268,13 +299,19 @@ def run_automation_audit(
 
     release: Dict[str, Any] = {}
     if db_ok:
-        release = can_publish_release(path, cap=cap) if cap else can_publish_release(path)
+        release = _guard(
+            "Release 檢查",
+            lambda: can_publish_release(path, cap=cap) if cap else can_publish_release(path),
+            {},
+        )
         checks["release"] = {"ok": bool(release.get("ok")), "reasons": release.get("reasons") or []}
         if strict_release and not release.get("ok"):
             for r in release.get("reasons") or []:
                 if r not in reasons:
                     reasons.append(str(r))
-        pipeline = pipeline_expectations_met(path, cap=cap)
+        pipeline = _guard(
+            "排程期望檢查", lambda: pipeline_expectations_met(path, cap=cap), {"ok": True, "skipped": True}
+        )
         checks["pipeline"] = pipeline
         if not pipeline.get("ok") and not pipeline.get("skipped"):
             for r in pipeline.get("reasons") or []:

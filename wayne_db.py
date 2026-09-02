@@ -320,59 +320,84 @@ def ensure_core_schema(db_path: str = None) -> None:
             );
             """
         )
-        try:
-            from taiwan_market import ensure_index_daily_table
-
-            ensure_index_daily_table(path)
-        except Exception:
-            pass
-        try:
-            from fundamentals import ensure_fundamentals_tables
-
-            ensure_fundamentals_tables(path)
-        except Exception:
-            pass
-        try:
-            from ex_rights import ensure_ex_rights_table
-
-            ensure_ex_rights_table(path)
-        except Exception:
-            pass
-        try:
-            from screen_review import ensure_screen_review_table
-
-            ensure_screen_review_table(path)
-        except Exception:
-            pass
-        try:
-            from us_overnight import ensure_us_overnight_table
-
-            ensure_us_overnight_table(path)
-        except Exception:
-            pass
-        try:
-            from screen_sessions import ensure_screen_session_table
-
-            ensure_screen_session_table(path)
-        except Exception:
-            pass
-        try:
-            from portfolio_engine import PortfolioEngine
-
-            PortfolioEngine(path)
-        except Exception:
-            pass
-        try:
-            from ai_trader import ensure_ai_tables
-
-            ensure_ai_tables(path)
-        except Exception:
-            pass
-        try:
-            normalize_quote_hygiene(path)
-        except Exception:
-            pass
+        _run_schema_steps(path)
     _SCHEMA_READY.add(path)
+
+
+def _schema_steps():
+    """各模組自己的建表。原本每一項都包在 except Exception: pass 裡，
+    失敗完全無聲，之後才以奇怪的查詢錯誤浮現。"""
+
+    def _index_daily(path):
+        from taiwan_market import ensure_index_daily_table
+
+        ensure_index_daily_table(path)
+
+    def _fundamentals(path):
+        from fundamentals import ensure_fundamentals_tables
+
+        ensure_fundamentals_tables(path)
+
+    def _ex_rights(path):
+        from ex_rights import ensure_ex_rights_table
+
+        ensure_ex_rights_table(path)
+
+    def _screen_review(path):
+        from screen_review import ensure_screen_review_table
+
+        ensure_screen_review_table(path)
+
+    def _us_overnight(path):
+        from us_overnight import ensure_us_overnight_table
+
+        ensure_us_overnight_table(path)
+
+    def _screen_sessions(path):
+        from screen_sessions import ensure_screen_session_table
+
+        ensure_screen_session_table(path)
+
+    def _portfolio(path):
+        from portfolio_engine import PortfolioEngine
+
+        PortfolioEngine(path)
+
+    def _ai_tables(path):
+        from ai_trader import ensure_ai_tables
+
+        ensure_ai_tables(path)
+
+    return (
+        ("index_daily", _index_daily),
+        ("fundamentals", _fundamentals),
+        ("ex_rights", _ex_rights),
+        ("screen_review", _screen_review),
+        ("us_overnight", _us_overnight),
+        ("screen_sessions", _screen_sessions),
+        ("portfolio", _portfolio),
+        ("ai_tables", _ai_tables),
+        ("quote_hygiene", normalize_quote_hygiene),
+    )
+
+
+def _run_schema_steps(path: str) -> None:
+    from db_migrations import clear_schema_error, record_schema_error, run_migrations
+
+    for step, fn in _schema_steps():
+        try:
+            fn(path)
+            clear_schema_error(path, step)
+        except Exception as exc:
+            # 開機不能因為單一模組建表失敗就整個掛掉，但也不能無聲：
+            # 記下來讓 /inventory 與巡檢看得到。
+            record_schema_error(path, step, str(exc))
+
+    try:
+        run_migrations(path)
+        clear_schema_error(path, "migrations")
+    except Exception as exc:
+        record_schema_error(path, "migrations", str(exc))
 
 
 def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
