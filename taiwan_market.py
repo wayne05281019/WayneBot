@@ -284,7 +284,7 @@ def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
     return out
 
 
-def load_index_daily(db_path: str, as_of: Optional[str] = None) -> pd.DataFrame:
+def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> pd.DataFrame:
     ensure_index_daily_table(db_path)
     conn = sqlite3.connect(db_path)
     try:
@@ -307,6 +307,8 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None) -> pd.DataFrame:
             if not sub.empty:
                 return sub.reset_index(drop=True)
         return df
+    if db_only:
+        return pd.DataFrame()
     return _fetch_index_daily("1y")
 
 
@@ -409,13 +411,25 @@ def _breadth_from_db(db_path: str, as_of: str) -> Dict[str, float]:
 
 
 def _sector_flow_sum(db_path: str, as_of: str) -> float:
+    val = _sector_flow_net(db_path, as_of)
+    return float(val) if val is not None else 0.0
+
+
+def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
+    """當日產業法人合計；無表或無該日列則 None（避免把缺資料當 0）。"""
     conn = sqlite3.connect(db_path)
     try:
         has = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_sector_flow'"
         ).fetchone()
         if not has:
-            return 0.0
+            return None
+        cnt = conn.execute(
+            "SELECT COUNT(*) FROM daily_sector_flow WHERE date = ?",
+            (as_of,),
+        ).fetchone()
+        if not cnt or int(cnt[0] or 0) == 0:
+            return None
         row = conn.execute(
             "SELECT SUM(foreign_net + trust_net + dealer_net) FROM daily_sector_flow WHERE date = ?",
             (as_of,),
@@ -425,12 +439,12 @@ def _sector_flow_sum(db_path: str, as_of: str) -> float:
     try:
         return float(row[0] or 0)
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
-def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None) -> Dict[str, Any]:
+def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> Dict[str, Any]:
     as_of = str(as_of or "").strip()
-    idx = load_index_daily(db_path, as_of or None)
+    idx = load_index_daily(db_path, as_of or None, db_only=db_only)
     if idx.empty:
         return {"ok": False, "regime": "unknown", "brief": "加權指數資料暫不可用"}
     ref_date = as_of or str(idx["date"].iloc[-1])
@@ -583,6 +597,29 @@ def market_screening_note(snap: Dict[str, Any]) -> str:
     return f"大盤區間震盪（信心 {conf}%）：中性權重，選股看個股結構。"
 
 
+def _regime_traffic_light(regime: str) -> str:
+    return {"bull": "🟢", "neutral": "🟡", "bear": "🔴"}.get(str(regime or ""), "⚪")
+
+
+def _index_day_change(db_path: str, as_of: str) -> Optional[float]:
+    """讀 index_daily 當日漲跌幅；僅 SELECT，不寫庫。"""
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT pct_change FROM index_daily WHERE symbol=? AND date=?",
+            (_INDEX_SYMBOL, str(as_of)),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):
@@ -602,6 +639,85 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     if hits:
         bits = [f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）" for b in hits[:3]]
         lines.append("同 regime 海選復盤：" + "　".join(bits))
+    return "\n".join(lines)
+
+
+def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) -> str:
+    """Telegram「大盤」專頁：只讀既有庫，不觸發同步或寫入；庫空則不 fallback Yahoo。"""
+    snap = analyze_taiwan_market(db_path, as_of, db_only=True)
+    if not snap.get("ok"):
+        return "<b>📊 台股大盤</b>\n加權指數資料暫不可用，請等盤後 16:30 官方融合完成後再試。"
+    ref = str(snap.get("as_of") or "")
+    day_pct = _index_day_change(db_path, ref)
+    pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
+    light = _regime_traffic_light(snap.get("regime"))
+    lines = [
+        "<b>📊 台股大盤</b>",
+        f"截至 <b>{ref}</b>（庫內官方融合）",
+        "",
+        f"加權 <b>{snap['close']:,.1f}</b>{pct_bit}",
+        f"MA20 {snap['ma20']:,.1f}　MA60 {snap['ma60']:,.1f}",
+        f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
+        "",
+    ]
+    if int(snap.get("sample_n") or 0) > 0:
+        lines.append(
+            f"<b>廣度</b>　站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）"
+        )
+    else:
+        lines.append("<b>廣度</b>　當日官股日 K 尚未齊，暫不顯示")
+    flow_net = _sector_flow_net(db_path, ref)
+    if flow_net is not None:
+        lines.append(f"<b>法人</b>　產業合計 {flow_net:+,.0f} 張")
+    else:
+        lines.append("<b>法人</b>　盤後輪動尚未寫入，暫不顯示")
+    lines.extend(
+        [
+            "",
+            f"<b>Regime</b> {light} <b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
+            market_screening_note(snap),
+        ]
+    )
+    bt = snap.get("backtest") or []
+    cur = snap.get("regime")
+    hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
+    if hits:
+        lines.append("")
+        lines.append("<b>同 regime 海選復盤</b>")
+        for b in hits[:4]:
+            lines.append(
+                f"• {b['bucket']} 隔日 {b['avg_next_pct']:+.1f}%（勝 {b['hit_rate']:.0%}，n={b['n']}）"
+            )
+    try:
+        from us_overnight import REGIME_LABEL, load_us_overnight
+
+        us = load_us_overnight(db_path, ref)
+        if us.get("ok") or us.get("vix") is not None:
+            lines.append("")
+            lines.append("<b>🌙 美股隔夜（庫內快取）</b>")
+            us_label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股")
+            vix = us.get("vix")
+            vix_bit = f"　VIX {float(vix):.1f}" if vix is not None else ""
+            lines.append(f"{us_label}{vix_bit}")
+            bits = []
+            for key, _, name in (
+                ("dji_pct", None, "道瓊"),
+                ("spx_pct", None, "標普"),
+                ("ixic_pct", None, "那斯達克"),
+                ("sox_pct", None, "費半"),
+            ):
+                val = us.get(key)
+                if val is not None:
+                    try:
+                        bits.append(f"{name} {float(val):+.2f}%")
+                    except (TypeError, ValueError):
+                        pass
+            if bits:
+                lines.append("　".join(bits[:4]))
+    except Exception:
+        pass
+    lines.append("")
+    lines.append("<i>本頁只讀庫內資料，不觸發匯入；海選權重已依 regime 自動調整。</i>")
     return "\n".join(lines)
 
 

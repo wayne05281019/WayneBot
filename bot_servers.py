@@ -50,14 +50,6 @@ def _normalize_menu_text(text: str) -> str:
     return t.replace("\u3000", "").strip()
 
 
-def _is_reserved_menu_press(text: str) -> bool:
-    """次排最右預留格（全形空白）；strip 後會變空字串，需特判。"""
-    raw = text or ""
-    return raw == MENU_BTN_RESERVED or (
-        "\u3000" in raw and not _normalize_menu_text(raw)
-    )
-
-
 def html_escape(val) -> str:
     return (
         str(val if val is not None else "")
@@ -105,7 +97,7 @@ HELP_TOPICS = {
         "點下方 <b>第一排</b> 可看每一顆的意義與操作步驟。\n"
         "\n"
         "<b>三、第二排按鈕</b>\n"
-        "左→右：<b>隔日沖</b>、<b>資金</b>、<b>說明</b>、<b>選單</b>、（預留）。\n"
+        "左→右：<b>隔日沖</b>、<b>資金</b>、<b>說明</b>、<b>選單</b>、<b>大盤</b>。\n"
         "點下方 <b>第二排</b> 可看每一顆的意義與操作步驟。\n"
         "\n"
         "<b>四、AI 模擬自動買進</b>\n"
@@ -209,8 +201,16 @@ HELP_TOPICS = {
         "• 主選單被收掉或找不到時，按這顆重新釘住輸入框右側 ⌨️ 兩排按鈕。\n"
         "• 也可打 /menu。\n"
         "\n"
-        "<b>⑤ 最右格（預留）</b>\n"
-        "• 目前沒有功能，日後可能放新功能。"
+        "<b>⑤ 大盤</b>\n"
+        "• <b>是什麼</b>：加權指數、月線廣度、法人合計、Regime 燈號，外加美股隔夜快取。\n"
+        "• <b>怎麼用</b>：隨時按；只讀庫內資料，不會觸發匯入或改寫行情。\n"
+        "• <b>跟海選</b>：海選桶權重已依 regime 自動調整；這頁讓你看「為什麼今天偏積極或保守」。"
+    ),
+    "market": (
+        "<b>大盤按鈕</b>\n"
+        "次排最右。顯示加權收盤、MA20/60、站上月線廣度、產業法人合計、Regime 燈號（🟢🟡🔴）。\n"
+        "若有庫內美股隔夜快取，會附道瓊／標普／費半與 VIX。\n"
+        "<b>只讀</b>：不觸發 Yahoo/TWSE 抓取、不寫 sqlite、不影響 16:30 自動融合或 06:30 早報。"
     ),
     "ai": (
         "<b>AI 模擬倉與自動買進</b>\n"
@@ -326,10 +326,10 @@ HELP_TOPICS = {
     ),
 }
 
-# 主選單兩排各五格：末格預留（全形空白），日後可換新功能。
-MENU_BTN_RESERVED = "　"
-# 版面改版時遞增，讓舊客戶端（#48 三排）自動強制刷新一次。
-MENU_LAYOUT_VERSION = "2"
+# 主選單兩排各五格：次排最右＝大盤專頁（只讀）。
+MENU_BTN_MARKET = "大盤"
+# 版面改版時遞增，讓舊客戶端自動強制刷新一次。
+MENU_LAYOUT_VERSION = "3"
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -556,7 +556,7 @@ class WayneTelegramBot:
             await self._prompt_decision_card(update.message, uid)
 
     def _reply_menu(self):
-        """兩排各五格：左→右依常用順序；次排末格預留。"""
+        """兩排各五格：左→右依常用順序；次排最右＝大盤。"""
         rows = [
             [
                 KeyboardButton("決策卡"),
@@ -570,7 +570,7 @@ class WayneTelegramBot:
                 KeyboardButton("資金"),
                 KeyboardButton("說明"),
                 KeyboardButton("選單"),
-                KeyboardButton(MENU_BTN_RESERVED),
+                KeyboardButton(MENU_BTN_MARKET),
             ],
         ]
         try:
@@ -706,6 +706,9 @@ class WayneTelegramBot:
                     InlineKeyboardButton("持股", callback_data="?:portfolio"),
                     InlineKeyboardButton("觀察", callback_data="?:watch"),
                     InlineKeyboardButton("資金", callback_data="?:flow"),
+                ],
+                [
+                    InlineKeyboardButton("大盤", callback_data="?:market"),
                 ],
                 [
                     InlineKeyboardButton("查股", callback_data="?:stock"),
@@ -1324,6 +1327,7 @@ class WayneTelegramBot:
             "主選單在<b>輸入框右側 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
             "<b>第一次用？</b>先按第二排「說明」→ 總覽，或打 /help。\n"
             "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
+            "看加權與 Regime 請按次排最右 <b>大盤</b>。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "不熟按鈕請按第二排 <b>說明</b>，有完整分類操作指南。",
         )
@@ -1773,6 +1777,27 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
+    async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
+        uid = str(update.effective_user.id)
+        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._ensure_reply_menu_if_needed(update.message, uid)
+        status = await self._transient_status(update.message, "讀取大盤…")
+        try:
+            from taiwan_market import format_taiwan_market_page_html
+
+            html = await asyncio.to_thread(format_taiwan_market_page_html, self.db_path)
+        except Exception as e:
+            logger.exception("大盤專頁失敗")
+            await self._delete_message(status)
+            await update.message.reply_text(f"大盤讀取失敗：{e}", reply_markup=self._keyboard())
+            return
+        await self._delete_message(status)
+        parts = chunk_telegram_html(html)
+        for i, part in enumerate(parts):
+            kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
+            await update.message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
@@ -2025,8 +2050,6 @@ class WayneTelegramBot:
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_msg = update.message.text or ""
-        if _is_reserved_menu_press(raw_msg):
-            return
         raw = raw_msg.strip()
         if not raw:
             return
@@ -2056,6 +2079,11 @@ class WayneTelegramBot:
             self._pending.pop(uid, None)
             await self._ensure_reply_menu_if_needed(update.message, uid)
             await self.flow_cmd(update, context)
+            return
+        if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
+            self._pending.pop(uid, None)
+            logger.info("主選單：大盤 uid=%s", uid)
+            await self.market_cmd(update, context)
             return
         if text == "當沖":
             self._pending.pop(uid, None)
