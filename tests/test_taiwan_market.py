@@ -184,9 +184,10 @@ def test_sync_index_daily_prefers_official(mock_twse, mock_yahoo, tmp_path):
 def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     import sqlite3
 
-    from taiwan_market import format_taiwan_market_page_html
+    from taiwan_market import ensure_index_daily_table, format_taiwan_market_page_html
 
     db = tmp_path / "page.db"
+    ensure_index_daily_table(str(db))
     conn = sqlite3.connect(db)
     conn.execute("CREATE TABLE stock_universe (stock_id TEXT, is_active INT)")
     conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL)")
@@ -196,17 +197,31 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
             "INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)",
             (f"202608{i+1:02d}", float(c)),
         )
+    for i in range(1, 25):
+        d = f"202608{i:02d}"
+        close = 22000.0 + i * 50
+        conn.execute(
+            """
+            INSERT INTO index_daily(date, symbol, close, volume, pct_change, ma20, ma60, regime, updated_at)
+            VALUES (?, 'TWII', ?, 1e9, 0.1, ?, ?, 'bull', 'test')
+            """,
+            (d, close, close - 100, close - 200),
+        )
     conn.commit()
     conn.close()
-    mock_fetch.return_value = pd.DataFrame(
-        {
-            "date": [f"202608{i:02d}" for i in range(1, 25)],
-            "close": [float(22000 + i * 50) for i in range(24)],
-            "volume": [1e9] * 24,
-            "pct_change": [0.1] * 24,
-        }
-    )
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
     assert "只讀庫內資料" in html
     assert "Regime" in html
+    assert "官方融合" in html
+    mock_fetch.assert_not_called()
+
+
+@patch("taiwan_market._fetch_index_daily")
+def test_format_taiwan_market_page_no_yahoo_fallback(mock_fetch, tmp_path):
+    from taiwan_market import format_taiwan_market_page_html
+
+    db = tmp_path / "empty.db"
+    html = format_taiwan_market_page_html(str(db))
+    assert "暫不可用" in html
+    mock_fetch.assert_not_called()

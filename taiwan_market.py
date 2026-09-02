@@ -284,7 +284,7 @@ def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
     return out
 
 
-def load_index_daily(db_path: str, as_of: Optional[str] = None) -> pd.DataFrame:
+def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> pd.DataFrame:
     ensure_index_daily_table(db_path)
     conn = sqlite3.connect(db_path)
     try:
@@ -307,6 +307,8 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None) -> pd.DataFrame:
             if not sub.empty:
                 return sub.reset_index(drop=True)
         return df
+    if db_only:
+        return pd.DataFrame()
     return _fetch_index_daily("1y")
 
 
@@ -409,13 +411,25 @@ def _breadth_from_db(db_path: str, as_of: str) -> Dict[str, float]:
 
 
 def _sector_flow_sum(db_path: str, as_of: str) -> float:
+    val = _sector_flow_net(db_path, as_of)
+    return float(val) if val is not None else 0.0
+
+
+def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
+    """當日產業法人合計；無表或無該日列則 None（避免把缺資料當 0）。"""
     conn = sqlite3.connect(db_path)
     try:
         has = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_sector_flow'"
         ).fetchone()
         if not has:
-            return 0.0
+            return None
+        cnt = conn.execute(
+            "SELECT COUNT(*) FROM daily_sector_flow WHERE date = ?",
+            (as_of,),
+        ).fetchone()
+        if not cnt or int(cnt[0] or 0) == 0:
+            return None
         row = conn.execute(
             "SELECT SUM(foreign_net + trust_net + dealer_net) FROM daily_sector_flow WHERE date = ?",
             (as_of,),
@@ -425,12 +439,12 @@ def _sector_flow_sum(db_path: str, as_of: str) -> float:
     try:
         return float(row[0] or 0)
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
 
-def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None) -> Dict[str, Any]:
+def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> Dict[str, Any]:
     as_of = str(as_of or "").strip()
-    idx = load_index_daily(db_path, as_of or None)
+    idx = load_index_daily(db_path, as_of or None, db_only=db_only)
     if idx.empty:
         return {"ok": False, "regime": "unknown", "brief": "加權指數資料暫不可用"}
     ref_date = as_of or str(idx["date"].iloc[-1])
@@ -629,8 +643,8 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
 
 
 def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) -> str:
-    """Telegram「大盤」專頁：只讀既有庫，不觸發同步或寫入。"""
-    snap = analyze_taiwan_market(db_path, as_of)
+    """Telegram「大盤」專頁：只讀既有庫，不觸發同步或寫入；庫空則不 fallback Yahoo。"""
+    snap = analyze_taiwan_market(db_path, as_of, db_only=True)
     if not snap.get("ok"):
         return "<b>📊 台股大盤</b>\n加權指數資料暫不可用，請等盤後 16:30 官方融合完成後再試。"
     ref = str(snap.get("as_of") or "")
@@ -639,18 +653,31 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
     light = _regime_traffic_light(snap.get("regime"))
     lines = [
         "<b>📊 台股大盤</b>",
-        f"截至 <b>{ref}</b>",
+        f"截至 <b>{ref}</b>（庫內官方融合）",
         "",
         f"加權 <b>{snap['close']:,.1f}</b>{pct_bit}",
         f"MA20 {snap['ma20']:,.1f}　MA60 {snap['ma60']:,.1f}",
         f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
         "",
-        f"<b>廣度</b>　站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
-        f"<b>法人</b>　產業合計 {snap['sector_flow_net']:+,.0f} 張",
-        "",
-        f"<b>Regime</b> {light} <b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
-        market_screening_note(snap),
     ]
+    if int(snap.get("sample_n") or 0) > 0:
+        lines.append(
+            f"<b>廣度</b>　站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）"
+        )
+    else:
+        lines.append("<b>廣度</b>　當日官股日 K 尚未齊，暫不顯示")
+    flow_net = _sector_flow_net(db_path, ref)
+    if flow_net is not None:
+        lines.append(f"<b>法人</b>　產業合計 {flow_net:+,.0f} 張")
+    else:
+        lines.append("<b>法人</b>　盤後輪動尚未寫入，暫不顯示")
+    lines.extend(
+        [
+            "",
+            f"<b>Regime</b> {light} <b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
+            market_screening_note(snap),
+        ]
+    )
     bt = snap.get("backtest") or []
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
