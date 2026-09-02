@@ -11,6 +11,33 @@ _EPS = 1e-6
 # 平盤假 K（開高低收同價卻有大漲跌幅）＝2454 9/1 那類殘資料
 _STUB_PCT_MIN = 3.0
 
+# data_fetcher INSERT tuple 欄位順序（與 daily_quotes 一致，勿手算 magic number）
+_QI_DATE = 0
+_QI_STOCK_ID = 1
+_QI_STOCK_NAME = 2
+_QI_MARKET = 3
+_QI_OPEN = 4
+_QI_HIGH = 5
+_QI_LOW = 6
+_QI_CLOSE = 7
+_QI_VOLUME = 8
+_QI_TURNOVER_K = 9
+_QI_PCT_CHANGE = 10
+_QI_AVG_PRICE = 11
+_QI_MIN_FIELDS = 13  # 含法人三欄前的最少欄位數
+
+
+def _fields_from_quote_tuple(row: Tuple) -> Tuple[float, float, float, float, float, float]:
+    """從 executemany tuple 取出 OHLCV＋漲跌幅；索引錯誤會在測試階段被攔下。"""
+    return (
+        float(row[_QI_OPEN] or 0),
+        float(row[_QI_HIGH] or 0),
+        float(row[_QI_LOW] or 0),
+        float(row[_QI_CLOSE] or 0),
+        float(row[_QI_VOLUME] or 0),
+        float(row[_QI_PCT_CHANGE] or 0),
+    )
+
 
 def ohlc_consistent(open_p: float, high: float, low: float, close: float) -> bool:
     o, h, l, c = float(open_p or 0), float(high or 0), float(low or 0), float(close or 0)
@@ -67,12 +94,10 @@ def filter_trusted_quote_tuples(records: Sequence[Tuple]) -> Tuple[List[Tuple], 
     kept: List[Tuple] = []
     dropped = 0
     for row in records:
-        if len(row) < 12:
+        if len(row) < _QI_MIN_FIELDS:
             dropped += 1
             continue
-        # date, stock_id, ..., open idx7 high8 low9 close10 volume11 pct_change12
-        o, h, l, c = row[7], row[8], row[9], row[10]
-        vol, pct = row[11], row[12]
+        o, h, l, c, vol, pct = _fields_from_quote_tuple(row)
         if quote_tuple_trusted(o, h, l, c, vol, pct):
             kept.append(row)
         else:

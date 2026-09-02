@@ -724,12 +724,18 @@ class DataFetcher:
             ))
 
         if all_records:
+            raw_n = len(all_records)
             try:
                 from quote_integrity import filter_trusted_quote_tuples
 
                 all_records, dropped = filter_trusted_quote_tuples(all_records)
                 if dropped:
                     print(f"⚠️ {target_date} 略過 {dropped} 筆不可信 OHLC（平盤假K／欄位異常）")
+                if raw_n >= 500 and not all_records:
+                    print(
+                        f"❌ {target_date} 過濾後 0/{raw_n} 筆可寫庫——疑似欄位索引或過濾邏輯異常，本輪不寫入"
+                    )
+                    return 0
             except Exception as e:
                 print(f"⚠️ {target_date} 行情完整性過濾失敗，本輪不寫庫：{e}")
                 return 0

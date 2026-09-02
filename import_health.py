@@ -8,6 +8,45 @@ from typing import Any, Dict, List, Optional, Tuple
 
 MIN_TW = 800
 MIN_TWO = 600
+MIN_CHIPS_NONZERO = 100  # total 夠多時法人非0不能是 0
+
+
+def increment_health_ok(health: Dict[str, Any]) -> bool:
+    """盤後融合是否達標：該有的數字絕不能是 0，且上市／上櫃都要過門檻。"""
+    if not health:
+        return False
+    total = int(health.get("total") or 0)
+    tw = int(health.get("tw") or 0)
+    two = int(health.get("two") or 0)
+    chips = int(health.get("chips_nonzero") or 0)
+    if total == 0 or tw == 0 or two == 0:
+        return False
+    if total >= 800 and chips < MIN_CHIPS_NONZERO:
+        return False
+    return sides_complete(tw, two)
+
+
+def increment_health_failures(health: Dict[str, Any], cap: str = "") -> List[str]:
+    """回傳盤後未達標原因（給 CI／日誌）；零就是錯。"""
+    label = str(cap or health.get("date") or "").strip()
+    reasons: List[str] = []
+    if not health:
+        return ["無匯入健康資料"]
+    total = int(health.get("total") or 0)
+    tw = int(health.get("tw") or 0)
+    two = int(health.get("two") or 0)
+    chips = int(health.get("chips_nonzero") or 0)
+    if total == 0:
+        reasons.append(f"{label} 日 K 合計為 0")
+    if tw == 0:
+        reasons.append(f"{label} 上市為 0")
+    if two == 0:
+        reasons.append(f"{label} 上櫃為 0")
+    if total >= 800 and chips < MIN_CHIPS_NONZERO:
+        reasons.append(f"{label} 法人非0僅 {chips}（<{MIN_CHIPS_NONZERO}）")
+    if total > 0 and tw > 0 and two > 0 and not sides_complete(tw, two):
+        reasons.append(f"{label} 上市 {tw}/{MIN_TW} 上櫃 {two}/{MIN_TWO} 未齊")
+    return reasons
 MIN_TOTAL = 1500
 _COMPLETE_DATE_CACHE: Dict[str, Any] = {}
 
@@ -350,3 +389,25 @@ def format_audit_plain(health: Dict[str, Any]) -> str:
     else:
         lines.append("歷史開盤日上市／上櫃兩邊都齊。")
     return "\n".join(lines)
+
+
+def verify_increment_import(db_path: str, cap: str = None) -> Dict[str, Any]:
+    """盤後 increment 跑完後的硬性關卡（CI／排程）。該有的數字為 0 一律不通過。
+
+    只檢查當日上市／上櫃／合計／法人等非零門檻；Release zip 完整性另由 can_publish_release 關卡負責。
+    """
+    try:
+        from config import fuse_end_date
+    except Exception:
+        fuse_end_date = lambda: ""  # type: ignore
+
+    cap = str(cap or fuse_end_date() or "").replace("-", "")[:8]
+    health = audit_import(db_path, cap) if cap else audit_import(db_path)
+    reasons: List[str] = list(increment_health_failures(health, cap=cap))
+
+    return {
+        "ok": not reasons,
+        "cap": cap,
+        "reasons": reasons,
+        "health": health,
+    }
