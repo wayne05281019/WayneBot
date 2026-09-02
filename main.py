@@ -369,8 +369,8 @@ def run_web():
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
 
-    start_health_server(get_port())
     ensure_market_db()
+    start_health_server(get_port())
     logger.info("檢查資料庫索引（大檔可能要一兩分鐘，請等 Telegram polling 啟動再打字）")
     ensure_core_schema(get_db_path())
     try:
