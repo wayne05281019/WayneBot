@@ -33,11 +33,18 @@ def is_suspect_stub_bar(
     pct_change: float = 0.0,
 ) -> bool:
     """有量卻開高低收同價，且漲跌幅偏大 → 不可寫庫／應刪除。"""
-    if float(volume or 0) <= 0:
+    vol = float(volume or 0)
+    if vol <= 0:
         return False
     if not is_flat_ohlc(open_p, high, low, close):
         return False
-    return abs(float(pct_change or 0)) >= _STUB_PCT_MIN
+    pct = abs(float(pct_change or 0))
+    if pct >= _STUB_PCT_MIN:
+        return True
+    # 極小量平盤假 K（常見 1 張、±2.99%）
+    if vol <= 5 and pct >= 1.0:
+        return True
+    return False
 
 
 def quote_tuple_trusted(
@@ -137,7 +144,10 @@ def scrub_untrusted_quotes(db_path: str, now=None) -> Dict[str, int]:
         WHERE volume > 0
           AND abs(high - low) < 0.01
           AND abs(open - close) < 0.01
-          AND abs(pct_change) >= ?
+          AND (
+            abs(pct_change) >= ?
+            OR (volume <= 5 AND abs(pct_change) >= 1.0)
+          )
         """,
         (_STUB_PCT_MIN,),
     )
@@ -152,6 +162,86 @@ def scrub_untrusted_quotes(db_path: str, now=None) -> Dict[str, int]:
     except Exception:
         pass
     return stats
+
+
+def audit_untrusted_quotes(db_path: str, now=None) -> Dict[str, Any]:
+    """唯讀掃描：回報庫內可疑列數（不修改資料）。"""
+    if not db_path:
+        return {}
+    cap = fuse_end_trading_date(now)
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    after_cap = cur.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','') > ?",
+        (cap,),
+    ).fetchone()[0]
+    weekend = 0
+    for (d,) in cur.execute(
+        "SELECT DISTINCT replace(date,'-','') FROM daily_quotes"
+    ).fetchall():
+        if d and not is_trading_weekday(d):
+            weekend += cur.execute(
+                "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?",
+                (d,),
+            ).fetchone()[0]
+    stub_bar = cur.execute(
+        """
+        SELECT COUNT(*) FROM daily_quotes
+        WHERE volume > 0
+          AND abs(high - low) < 0.01
+          AND abs(open - close) < 0.01
+          AND (
+            abs(pct_change) >= ?
+            OR (volume <= 5 AND abs(pct_change) >= 1.0)
+          )
+        """,
+        (_STUB_PCT_MIN,),
+    ).fetchone()[0]
+    bad_ohlc = cur.execute(
+        """
+        SELECT COUNT(*) FROM daily_quotes
+        WHERE open > 0
+          AND (high < max(open, close) - 0.01
+               OR low > min(open, close) + 0.01
+               OR high < low)
+        """
+    ).fetchone()[0]
+    incomplete_day = 0
+    try:
+        from import_health import MIN_TW, MIN_TWO, sides_complete
+
+        for d, tw, two in cur.execute(
+            """
+            SELECT replace(date,'-',''),
+                   SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END)
+            FROM daily_quotes
+            GROUP BY replace(date,'-','')
+            """
+        ).fetchall():
+            if not d or d > cap or not is_trading_weekday(d):
+                continue
+            if not sides_complete(int(tw or 0), int(two or 0), MIN_TW, MIN_TWO):
+                incomplete_day += cur.execute(
+                    "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?",
+                    (d,),
+                ).fetchone()[0]
+    except Exception:
+        pass
+    conn.close()
+    return {
+        "fuse_cap": cap,
+        "after_cap": int(after_cap or 0),
+        "weekend": int(weekend or 0),
+        "incomplete_day": int(incomplete_day or 0),
+        "stub_bar": int(stub_bar or 0),
+        "bad_ohlc": int(bad_ohlc or 0),
+    }
+
+
+def ensure_quote_integrity(db_path: str, now=None) -> Dict[str, int]:
+    """啟動／融合後強制清庫；有刪除才回傳非零統計。"""
+    return scrub_untrusted_quotes(db_path, now=now)
 
 
 def db_as_of_trading_date(db_path: str, now=None) -> Optional[str]:

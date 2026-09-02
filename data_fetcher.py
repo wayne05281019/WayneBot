@@ -730,8 +730,9 @@ class DataFetcher:
                 all_records, dropped = filter_trusted_quote_tuples(all_records)
                 if dropped:
                     print(f"⚠️ {target_date} 略過 {dropped} 筆不可信 OHLC（平盤假K／欄位異常）")
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ {target_date} 行情完整性過濾失敗，本輪不寫庫：{e}")
+                return 0
         if all_records:
             conn = self.get_db_connection()
             cursor = conn.cursor()
@@ -760,6 +761,14 @@ class DataFetcher:
             conn.commit()
             conn.close()
             print(f"✅ {target_date} 增量更新成功：寫入 {len(all_records)} 筆 (上市: {len(tw_records)}, 上櫃: {len(two_records)})")
+            try:
+                from quote_integrity import ensure_quote_integrity
+
+                scrub = ensure_quote_integrity(self.db_path)
+                if any(int(v or 0) for v in scrub.values()):
+                    print(f"🧹 {target_date} 寫庫後清假：{scrub}")
+            except Exception:
+                pass
             try:
                 from import_health import audit_import
                 health = audit_import(self.db_path, target_date)

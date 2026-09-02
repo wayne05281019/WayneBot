@@ -16,14 +16,15 @@ class CardDataAccuracyTests(unittest.TestCase):
         )
 
     def test_2454_db_profit_and_h60_match_carybot(self):
-        """庫內 9/1：獲利 37.0%（60曆日低 3150）、60日高 4560。"""
+        """庫內最後完整日：獲利與 60 日高應與 CaryBot 一致（無 9/1 假 K）。"""
         db = get_db_path()
         if not os.path.isfile(db):
             self.skipTest("no db")
         from wayne_navigator import NavigatorEngine
 
         card = NavigatorEngine(db).get_decision_card("2454", merge_live=False)
-        self.assertAlmostEqual(float(card["gain_pct"]), 37.0, places=1)
+        self.assertEqual(str(card.get("latest_date")), "20260831")
+        self.assertAlmostEqual(float(card["gain_pct"]), 24.6, places=1)
         self.assertAlmostEqual(float(card["h60"]), 4560.0, places=0)
         self.assertAlmostEqual(float(card["cal60_low"]), 3150.0, places=0)
 

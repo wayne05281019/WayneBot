@@ -481,11 +481,14 @@ def ensure_stock_directory(db_path: str) -> None:
                 market TEXT DEFAULT ''
             );"""
         )
-        conn.execute(
-            """INSERT OR REPLACE INTO stock_directory (stock_id, stock_name, market)
-               SELECT stock_id, stock_name, market FROM daily_quotes
-               WHERE date = (SELECT MAX(date) FROM daily_quotes);"""
-        )
+        as_of = _resolve_lookup_quote_date(db_path)
+        if as_of:
+            conn.execute(
+                """INSERT OR REPLACE INTO stock_directory (stock_id, stock_name, market)
+                   SELECT stock_id, stock_name, market FROM daily_quotes
+                   WHERE date = ?;""",
+                (as_of,),
+            )
         n_em = conn.execute(
             "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
         ).fetchone()[0]
