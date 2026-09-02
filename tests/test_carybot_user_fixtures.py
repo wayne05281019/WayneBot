@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""使用者 2026-09-02 傳的 CaryBot 截圖驗收（2421 建準、8234 新漢）。"""
+"""使用者傳的 CaryBot 截圖驗收（2421 建準、8234 新漢、2324 仁寶）。"""
 import os
 import unittest
 
@@ -46,6 +46,38 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(row["獲利"], "46.9%")
         pure_cal = (177.0 - 120.5) / 120.5 * 100.0
         self.assertAlmostEqual(pure_cal, 46.9, places=1)
+
+    def test_2324_20260814_matches_carybot_peak(self):
+        """CaryBot 截圖：8/14 高點列價格、獲利、預警、月乖離一致。"""
+        card = self._card("2324")
+        row = self._row(card, "20260814")
+        self.assertAlmostEqual(float(row["close"]), 43.2, places=1)
+        self.assertEqual(row["獲利"], "28.0%")
+        self.assertEqual(row["預警"], "K20高")
+        self.assertAlmostEqual(float(row["bias_monthly"]), 17.4, places=1)
+        self.assertIn("第 3", str(row["120日量"]))
+        self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
+
+    def test_2324_high_low_summary_matches_carybot(self):
+        """CaryBot／WayneBot 高低摘要區：10/20/60 高低與距現價 % 一致。"""
+        card = self._card("2324")
+        self.assertAlmostEqual(float(card["close"]), 39.9, places=1)
+        self.assertAlmostEqual(float(card["h10"]), 41.6, places=1)
+        self.assertAlmostEqual(float(card["h20"]), 43.2, places=1)
+        self.assertAlmostEqual(float(card["h60"]), 43.2, places=1)
+        self.assertAlmostEqual(float(card["l10"]), 38.5, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 36.3, places=1)
+        self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
+
+    def test_2324_profit_floor_carybot_uses_cal60_only(self):
+        """CaryBot 9/2 列獲利 18.2%＝只用 60曆日低 33.75；WayneBot 用 max(60曆日,20日)。"""
+        card = self._card("2324")
+        row = self._row(card, "20260901")
+        self.assertAlmostEqual(float(row["close"]), 39.9, places=1)
+        # floor ≈ 20日低 36.3 → (39.9-36.3)/36.3 ≈ 9.9%
+        self.assertEqual(row["獲利"], "9.9%")
+        pure_cal = (39.9 - 33.75) / 33.75 * 100.0
+        self.assertAlmostEqual(pure_cal, 18.2, places=1)
 
 
 if __name__ == "__main__":
