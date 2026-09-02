@@ -724,6 +724,15 @@ class DataFetcher:
             ))
 
         if all_records:
+            try:
+                from quote_integrity import filter_trusted_quote_tuples
+
+                all_records, dropped = filter_trusted_quote_tuples(all_records)
+                if dropped:
+                    print(f"⚠️ {target_date} 略過 {dropped} 筆不可信 OHLC（平盤假K／欄位異常）")
+            except Exception:
+                pass
+        if all_records:
             conn = self.get_db_connection()
             cursor = conn.cursor()
             cursor.executemany("""

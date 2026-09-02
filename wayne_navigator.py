@@ -8,6 +8,7 @@ import os
 import sqlite3
 import urllib.request
 from datetime import datetime
+from typing import Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -332,8 +333,17 @@ class NavigatorEngine:
             ranks.append(calc_volume_rank(sub_v, window, closes=sub_c, turnovers=sub_t))
         return ranks
 
-    def get_decision_card(self, stock_id: str, lookback: int = 20, merge_live: bool = True) -> dict:
-        """產出單一標的的買低賣高決策卡（高低點用收盤，對齊範本）。"""
+    def get_decision_card(
+        self,
+        stock_id: str,
+        lookback: int = 20,
+        merge_live: bool = True,
+        live_quote: Optional[dict] = None,
+    ) -> dict:
+        """產出單一標的的買低賣高決策卡。庫內只用到最後完整收盤日；盤中今日 K 僅 MIS 合併、不寫庫。"""
+        from quote_integrity import db_as_of_trading_date
+
+        db_as_of = db_as_of_trading_date(self.db_path)
         conn = sqlite3.connect(self.db_path)
         df = pd.read_sql_query("""
             SELECT date, stock_name, open, high, low, close, volume, turnover_k, pct_change as change_pct
@@ -347,11 +357,19 @@ class NavigatorEngine:
             return {"error": f"標的 {stock_id} 歷史資料不足"}
 
         df = df.iloc[::-1].reset_index(drop=True)
+        if db_as_of:
+            dnorm = df["date"].astype(str).str.replace("-", "", regex=False)
+            df = df[dnorm <= str(db_as_of)].reset_index(drop=True)
+        if len(df) < 5:
+            return {"error": f"標的 {stock_id} 歷史資料不足"}
+
         df["stock_id"] = str(stock_id)
         try:
             from live_quote import append_live_bar
 
-            df = append_live_bar(df, str(stock_id), merge_live=merge_live)
+            df = append_live_bar(
+                df, str(stock_id), merge_live=merge_live, live_quote=live_quote
+            )
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
@@ -605,6 +623,7 @@ class NavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "latest_date": latest["date"],
+            "db_as_of": db_as_of,
             "is_live": is_live,
             "live_time": live_time,
             "close": float(latest["close"]),

@@ -2147,15 +2147,30 @@ class WayneTelegramBot:
             from wayne_navigator import NavigatorEngine
             from chip_tape import build_tape
 
+            def _prefetch_live():
+                from live_quote import fetch_mis_quote, is_live_merge_window
+
+                if not is_live_merge_window():
+                    return None
+                hits = lookup_stocks(self.db_path, code)
+                mkt = str(hits[0].get("market") or "") if hits else ""
+                return fetch_mis_quote(code, mkt)
+
+            live_rt = await asyncio.to_thread(_prefetch_live)
+
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
-                card = engine.get_decision_card(code, lookback=20, merge_live=True)
+                card = engine.get_decision_card(
+                    code, lookback=20, merge_live=True, live_quote=live_rt
+                )
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 
             def _build_tape():
                 try:
-                    return build_tape(self.db_path, code, merge_live=False) or {}
+                    return build_tape(
+                        self.db_path, code, merge_live=True, live_quote=live_rt
+                    ) or {}
                 except Exception:
                     return {}
 

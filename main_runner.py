@@ -92,6 +92,15 @@ class MainRunner:
         logger.info(f"🚀 初始化 WayneBot 主排程 (DB: {self.db_path}, 日期: {self.today_str})")
         ensure_core_schema(self.db_path)
 
+        try:
+            from quote_integrity import scrub_untrusted_quotes
+
+            stats = scrub_untrusted_quotes(self.db_path)
+            if any(int(v or 0) for v in stats.values()):
+                logger.info("行情庫清假資料：%s", stats)
+        except Exception:
+            logger.debug("行情庫清假略過", exc_info=True)
+
         FetcherCls = DataFetcher or TaiwanMarketFetcher
         if FetcherCls:
             self.fetcher = FetcherCls(db_path=self.db_path, cache_dir=self.cache_dir)
