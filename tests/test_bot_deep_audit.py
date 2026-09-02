@@ -68,6 +68,8 @@ def _bot():
         ("ai_run", "_run_ai_now"),
         ("portfolio", "_send_portfolio"),
         ("watch", "_send_watch"),
+        ("screen", "_run_manual_screening"),
+        ("daytrade", "_run_trade_bucket"),
     ],
 )
 def test_callback_routes_to_expected_handler(prefix, handler_attr):
@@ -112,6 +114,25 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
         bot._send_portfolio.assert_awaited_once()
     elif prefix == "watch":
         bot._send_watch.assert_awaited_once()
+    elif prefix == "screen":
+        bot._run_manual_screening.assert_awaited_once()
+    elif prefix == "daytrade":
+        bot._run_trade_bucket.assert_awaited_once()
+
+
+def test_trade_journal_callbacks():
+    bot = _bot()
+    bot._send_trade_journal = AsyncMock()
+    for data, review in (("tj:trades", False), ("tj:review", True)):
+        upd, _ = _cb(data)
+        bot._send_trade_journal.reset_mock()
+
+        async def run():
+            await bot.on_callback(upd, MagicMock())
+
+        asyncio.run(run())
+        bot._send_trade_journal.assert_awaited_once()
+        assert bot._send_trade_journal.await_args.kwargs.get("review") is review
 
 
 def test_help_callback_edits_in_place_not_new_message():

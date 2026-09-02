@@ -16,7 +16,19 @@ import threading
 import traceback
 from datetime import datetime
 from contextlib import contextmanager
-from typing import Optional, Dict, Any, List, Union
+from typing import NamedTuple, Optional, Dict, Any, List, Union
+
+
+class SellResult(NamedTuple):
+    message: str
+    ok: bool = False
+    stock_code: str = ""
+    stock_name: str = ""
+    lots: float = 0.0
+    price: float = 0.0
+    cost_price: float = 0.0
+    realized_pnl: float = 0.0
+    pnl_pct: float = 0.0
 
 # ==============================================================================
 # 全域變數與線程鎖配置
@@ -591,7 +603,7 @@ def add_to_portfolio(
 
 def sell_from_holdings(
     db_path: str, user_id: str, stock_code: str, shares: float, price: float
-) -> str:
+) -> SellResult:
     """從 user_holdings 賣出（與買入紀錄同一張表）。"""
     ensure_core_schema(db_path)
     code = str(stock_code).strip()
@@ -601,12 +613,14 @@ def sell_from_holdings(
             (str(user_id), code),
         ).fetchone()
         if not row:
-            return f"持股裡沒有 {code}"
+            return SellResult(message=f"持股裡沒有 {code}")
         held = float(row["shares"] or 0)
         cost = float(row["cost_price"] or 0)
         name = row["stock_name"] or code
         sell_n = held if shares <= 0 or shares >= held else float(shares)
-        pnl = (float(price) - cost) * sell_n
+        px = float(price)
+        pnl = (px - cost) * sell_n * 1000.0
+        pnl_pct = ((px - cost) / cost * 100.0) if cost > 0 else 0.0
         remain = held - sell_n
         now = datetime.now().isoformat(timespec="seconds")
         if remain <= 1e-9:
@@ -619,7 +633,18 @@ def sell_from_holdings(
                 "UPDATE user_holdings SET shares=?, updated_at=? WHERE user_id=? AND stock_code=?;",
                 (remain, now, str(user_id), code),
             )
-        return f"已賣出 {code} {name} {sell_n:g}張 @ {price}，估損益 {pnl:+.0f}（成本 {cost}）"
+        msg = f"已賣出 {code} {name} {sell_n:g}張 @ {px}，估損益 {pnl:+.0f}（成本 {cost}）"
+        return SellResult(
+            message=msg,
+            ok=True,
+            stock_code=code,
+            stock_name=name,
+            lots=sell_n,
+            price=px,
+            cost_price=cost,
+            realized_pnl=round(pnl, 2),
+            pnl_pct=round(pnl_pct, 2),
+        )
 
 
 # ==============================================================================

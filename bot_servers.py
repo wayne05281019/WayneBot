@@ -24,9 +24,15 @@ from wayne_db import (
     get_user_portfolio,
     add_to_watchlist,
     remove_from_watchlist,
-    add_to_portfolio,
-    sell_from_holdings,
     lookup_stocks,
+)
+from trade_journal import (
+    ensure_user_trade_logs,
+    format_user_review_html,
+    format_user_trades_html,
+    parse_lots_price,
+    record_buy,
+    record_sell,
 )
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
@@ -300,7 +306,11 @@ HELP_TOPICS = {
         "看這檔後按下方「產業」，或打 /industry 代號。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
         "這是落後的公開數字，幫你看懂這族，不是內幕。少賠仍看高低卡：靠近 20 日收盤高少追。"
     ),
-    "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
+    "buy": (
+        "<b>記買入</b>\n"
+        "選好股票後打價格即可（預設 1 張）：<code>68.5</code>\n"
+        "多張：<code>2 68.5</code>；也可 <code>2330 1 500</code>（代號 張數 價格）。"
+    ),
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
     "flow": (
         "<b>資金移動怎麼用</b>\n"
@@ -328,6 +338,7 @@ class WayneTelegramBot:
         self.charts_dir = get_charts_dir()
         os.makedirs(self.charts_dir, exist_ok=True)
         init_database(self.db_path)
+        ensure_user_trade_logs(self.db_path)
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
@@ -912,12 +923,59 @@ class WayneTelegramBot:
             )
         kb.append(
             [
+                InlineKeyboardButton("成交紀錄", callback_data="tj:trades"),
+                InlineKeyboardButton("復盤", callback_data="tj:review"),
+            ]
+        )
+        kb.append(
+            [
                 InlineKeyboardButton("AI模擬倉", callback_data="ai_view"),
                 InlineKeyboardButton("AI操盤", callback_data="ai_run"),
                 self._q("portfolio"),
             ]
         )
         return InlineKeyboardMarkup(kb)
+
+    async def _send_trade_journal(self, message, uid: str, *, review: bool = False) -> None:
+        fn = format_user_review_html if review else format_user_trades_html
+        html = await asyncio.to_thread(fn, self.db_path, uid)
+        parts = chunk_telegram_html(html)
+        holdings = get_user_portfolio(self.db_path, uid)
+        for i, part in enumerate(parts):
+            kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
+            await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+
+    def _parse_buy_text(self, text: str, code: str = "") -> tuple:
+        """回傳 (code, lots, price) 或 (None, None, None)。"""
+        parts = text.split()
+        if not code and len(parts) >= 3:
+            raw, lots_s, price_s = parts[0], parts[1], parts[2]
+            hits = lookup_stocks(self.db_path, raw)
+            code = hits[0]["stock_id"] if hits else raw
+            try:
+                return code, float(lots_s), float(price_s)
+            except ValueError:
+                return None, None, None
+        lots, price = parse_lots_price(text, default_lots=1.0)
+        if lots is None or price is None or not code:
+            return None, None, None
+        return code, lots, price
+
+    def _parse_sell_text(self, text: str, code: str = "") -> tuple:
+        """回傳 (code, lots, price)；lots=0 表示全賣。"""
+        parts = text.split()
+        if not code and len(parts) >= 3:
+            raw, lots_s, price_s = parts[0], parts[1], parts[2]
+            hits = lookup_stocks(self.db_path, raw)
+            code = hits[0]["stock_id"] if hits else raw
+            try:
+                return code, float(lots_s), float(price_s)
+            except ValueError:
+                return None, None, None
+        lots, price = parse_lots_price(text, price_only_sell_all=True)
+        if price is None or not code:
+            return None, None, None
+        return code, float(lots or 0), price
 
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         from screening_engine import format_screening_payload
@@ -1446,10 +1504,7 @@ class WayneTelegramBot:
 
     @staticmethod
     def _chart_progress_text(elapsed_sec: int) -> str:
-        return (
-            f"圖產製中　已 {elapsed_sec}s\n"
-            "決策卡／介紹圖並行產生；180日導航請點下方「導航圖」…"
-        )
+        return f"查股出圖中… {elapsed_sec}s"
 
     @staticmethod
     def _chart_png_looks_ok(path: str) -> bool:
@@ -1893,24 +1948,37 @@ class WayneTelegramBot:
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
-        if len(args) < 3:
-            await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 500", reply_markup=self._keyboard())
-            return
         uid = str(update.effective_user.id)
-        code = args[0]
-        shares = float(args[1])
-        price = float(args[2])
-        add_to_portfolio(self.db_path, uid, code, code, shares, price)
-        await update.message.reply_text(f"已記錄買入 {code} {shares}張 @ {price}", reply_markup=self._keyboard())
+        if len(args) < 3:
+            await update.message.reply_text(
+                "請輸入：代號 張數 價格\n例如：2330 1 500\n"
+                "或先按「記買入」再打價格：68.5",
+                reply_markup=self._keyboard(),
+            )
+            return
+        code, lots, price = self._parse_buy_text(" ".join(args))
+        if not code:
+            code, lots, price = args[0], float(args[1]), float(args[2])
+        hits = lookup_stocks(self.db_path, code)
+        name = hits[0]["stock_name"] if hits else code
+        msg = await asyncio.to_thread(record_buy, self.db_path, uid, code, name, lots, price)
+        await update.message.reply_text(msg, reply_markup=self._keyboard())
 
     async def sell_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
         uid = str(update.effective_user.id)
         if len(args) < 3:
             self._pending[uid] = "sell"
-            await update.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
+            await update.message.reply_text(
+                "請輸入：代號 張數 價格\n例如：2330 1 520\n"
+                "或持股按「賣出」再打價格：72（全賣）",
+                reply_markup=self._keyboard(),
+            )
             return
-        msg = sell_from_holdings(self.db_path, uid, args[0], float(args[1]), float(args[2]))
+        code, lots, price = self._parse_sell_text(" ".join(args))
+        if not code:
+            code, lots, price = args[0], float(args[1]), float(args[2])
+        msg = await asyncio.to_thread(record_sell, self.db_path, uid, code, lots, price)
         await update.message.reply_text(msg, reply_markup=self._keyboard())
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1981,53 +2049,40 @@ class WayneTelegramBot:
             if handled:
                 return
         if pending == "sell" or pending.startswith("sell:"):
-            parts = text.split()
             code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
-            if code and len(parts) >= 2 and not (len(parts) >= 3):
-                shares, price = parts[0], parts[1]
-            elif len(parts) >= 3:
-                code, shares, price = parts[0], parts[1], parts[2]
-            else:
+            parsed_code, lots, price = self._parse_sell_text(text, code)
+            if parsed_code is None:
                 self._pending[uid] = pending or "sell"
                 await update.message.reply_text(
-                    "請輸入：張數 價格　例如：1 72\n或：代號 張數 價格　例如：2330 1 520",
+                    "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                    "也可：代號 張數 價格　例如：2330 1 520",
                     reply_markup=self._keyboard(),
                 )
                 return
-            msg = sell_from_holdings(self.db_path, uid, code, float(shares), float(price))
+            msg = await asyncio.to_thread(
+                record_sell, self.db_path, uid, parsed_code, lots, price
+            )
             await update.message.reply_text(msg, reply_markup=self._keyboard())
             return
         if pending == "buy" or pending.startswith("buy:"):
-            parts = text.split()
             code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
-            if code and len(parts) >= 2 and not (len(parts) >= 3):
-                shares, price = parts[0], parts[1]
-            elif len(parts) >= 3:
-                raw, shares, price = parts[0], parts[1], parts[2]
-                hits = lookup_stocks(self.db_path, raw)
-                code = hits[0]["stock_id"] if hits else raw
-            else:
+            parsed_code, lots, price = self._parse_buy_text(text, code)
+            if parsed_code is None:
                 self._pending[uid] = pending or "buy"
                 await update.message.reply_text(
-                    "請輸入：張數 價格　例如：1 68.5\n或：代號 張數 價格　例如：2330 1 500",
+                    "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                    "也可：代號 張數 價格　例如：2330 1 500",
                     reply_markup=self._keyboard(),
                 )
                 return
-            hits = lookup_stocks(self.db_path, code)
-            name = hits[0]["stock_name"] if hits else code
-            add_to_portfolio(self.db_path, uid, code, name, float(shares), float(price))
-            await update.message.reply_text(
-                f"已記錄買入 {code} {name} {shares}張 @ {price}", reply_markup=self._keyboard()
+            hits = lookup_stocks(self.db_path, parsed_code)
+            name = hits[0]["stock_name"] if hits else parsed_code
+            msg = await asyncio.to_thread(
+                record_buy, self.db_path, uid, parsed_code, name, lots, price
             )
+            await update.message.reply_text(msg, reply_markup=self._keyboard())
             return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
-        actor = self._actor_key(update.message, uid=uid)
-        ack = None
-        try:
-            ack = await update.message.reply_text("收到，查詢中…", reply_markup=self._reply_menu())
-            self._track_lookup_fade(actor, ack, "ack")
-        except Exception:
-            logger.exception("ack 失敗")
         try:
             hits = lookup_stocks(self.db_path, text)
             if len(hits) == 1:
@@ -2036,18 +2091,15 @@ class WayneTelegramBot:
                 await self._reply_card(update, code)
                 return
             if len(hits) > 1:
-                await self._dismiss_lookup_fades(actor, roles={"ack"})
                 await update.message.reply_html(
                     self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return
-            await self._dismiss_lookup_fades(actor, roles={"ack"})
             await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
         except Exception:
             logger.exception("查詢失敗")
-            await self._dismiss_lookup_fades(actor, roles={"ack"})
             await update.message.reply_text(
                 "查詢失敗。雲端可能還沒有日K，或出圖逾時。請先按 /start，稍後再試。",
                 reply_markup=self._keyboard(),
@@ -2286,7 +2338,7 @@ class WayneTelegramBot:
             logger.exception("決策卡現價列失敗 code=%s", code)
         wait_msg = None
         try:
-            wait_msg = await message.reply_text("決策卡產製中（盤中 MIS 價量）…")
+            wait_msg = await message.reply_text("決策卡產製中…")
             self._track_lookup_fade(actor, wait_msg, "wait")
         except Exception:
             pass
@@ -2831,7 +2883,7 @@ class WayneTelegramBot:
             code = data[2:].strip()
             self._pending[uid] = f"buy:{code}"
             await q.message.reply_text(
-                f"記買入 {code}。請輸入：張數 價格\n例如：1 68.5",
+                f"記買入 {code}。請輸入：價格（1張）\n例如：68.5 或 2 68.5",
                 reply_markup=self._keyboard(),
             )
             return
@@ -2840,9 +2892,15 @@ class WayneTelegramBot:
             code = data[2:].strip()
             self._pending[uid] = f"sell:{code}"
             await q.message.reply_text(
-                f"賣出 {code}。請輸入：張數 價格\n例如：1 72",
+                f"賣出 {code}。請輸入：價格（全賣）\n例如：72 或 1 72",
                 reply_markup=self._keyboard(),
             )
+            return
+        if data == "tj:trades":
+            await self._send_trade_journal(q.message, str(q.from_user.id), review=False)
+            return
+        if data == "tj:review":
+            await self._send_trade_journal(q.message, str(q.from_user.id), review=True)
             return
         if data == "ai_view":
             await self._send_ai_desk_view(q.message, str(q.from_user.id))
