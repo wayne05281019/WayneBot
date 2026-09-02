@@ -58,13 +58,17 @@ def calc_volume_rank(
     window: int = 120,
     *,
     closes=None,
+    turnovers=None,
 ) -> int:
-    """近 window 根量排名：1＝區間內最大。有收盤時用成交金額（量×價）對齊 CaryBot。"""
+    """近 window 根量排名：1＝區間內最大。優先 turnover_k，其次收盤×量。"""
     if volumes is None:
         return 99
-    vals = [float(v or 0) for v in volumes]
-    if closes is not None and len(closes) == len(vals):
-        vals = [float(c or 0) * float(v or 0) for c, v in zip(closes, vals)]
+    if turnovers is not None and len(turnovers) == len(volumes):
+        vals = [float(t or 0) for t in turnovers]
+    else:
+        vals = [float(v or 0) for v in volumes]
+        if closes is not None and len(closes) == len(vals):
+            vals = [float(c or 0) * float(v or 0) for c, v in zip(closes, vals)]
     if not vals:
         return 99
     last = vals[-1]
@@ -96,9 +100,11 @@ def compute_card_temperature(
     if space60 < 8:
         t_min, t_span, bias_k = 6.0, 4.5, 0.22
     elif space60 < 16:
-        t_min, t_span, bias_k = 8.0, 22.0, 0.28
+        t_min, t_span, bias_k = 8.0, 22.0, 0.27
+    elif space60 >= 24:
+        t_min, t_span, bias_k = 10.0, 63.0, 0.26
     else:
-        t_min, t_span, bias_k = 10.0, 70.0, 0.30
+        t_min, t_span, bias_k = 10.0, 68.0, 0.28
     t = t_min + t_span * rf + bias_k * bias
     return round(max(0.0, min(99.9, t)), 1)
 

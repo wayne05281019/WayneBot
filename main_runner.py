@@ -258,6 +258,13 @@ class MainRunner:
         except Exception as e:
             logger.error(f"除權息同步失敗: {e}", exc_info=True)
         try:
+            from taiwan_market import sync_index_daily
+
+            ix = sync_index_daily(self.db_path)
+            logger.info("加權指數寫入 index_daily：%s", ix)
+        except Exception as e:
+            logger.warning("加權指數同步略過：%s", e)
+        try:
             from import_health import audit_import, format_audit_plain
             health = audit_import(self.db_path)
             logger.info("盤後匯入檢查：%s", health)

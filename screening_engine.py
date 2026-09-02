@@ -321,11 +321,17 @@ class ScreeningEngine:
 
                 vols = df["volume"].to_numpy(dtype=float)
                 closes = df["close"].to_numpy(dtype=float)
+                turns = (
+                    df["turnover_k"].to_numpy(dtype=float)
+                    if "turnover_k" in df.columns
+                    else None
+                )
                 window_n = min(120, len(vols))
                 rank = calc_volume_rank(
                     vols[-window_n:],
                     120,
                     closes=closes[-window_n:],
+                    turnovers=turns[-window_n:] if turns is not None else None,
                 )
                 leave_l20 = prev_d20 <= 2.0 and d20 >= 2.0
                 vol_hot = leave_l20 or rank <= 20 or q >= 2.0
@@ -1439,10 +1445,10 @@ def execute_full_screening(
     mkt_html = ""
     if session == "morning":
         try:
-            from taiwan_market import analyze_taiwan_market, apply_market_filter, format_taiwan_market_brief_html
+            from taiwan_market import analyze_taiwan_market, apply_market_weights, format_taiwan_market_brief_html
 
             mkt_snap = analyze_taiwan_market(engine.db_path, target_date)
-            results = apply_market_filter(results, mkt_snap)
+            results = apply_market_weights(results, mkt_snap)
             mkt_html = format_taiwan_market_brief_html(engine.db_path, target_date)
         except Exception:
             mkt_html = ""

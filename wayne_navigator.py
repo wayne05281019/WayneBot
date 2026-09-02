@@ -283,24 +283,31 @@ class NavigatorEngine:
         self.db_path = db_path
 
     @staticmethod
-    def _calc_rolling_rank(series: pd.Series, window: int = 120, closes: pd.Series | None = None) -> list:
+    def _calc_rolling_rank(
+        series: pd.Series,
+        window: int = 120,
+        closes: pd.Series | None = None,
+        turnovers: pd.Series | None = None,
+    ) -> list:
         from decision_card_signals import calc_volume_rank
 
         vals = series.tolist()
         cls = closes.tolist() if closes is not None else None
+        tns = turnovers.tolist() if turnovers is not None else None
         ranks = []
         for i in range(len(vals)):
             start = max(0, i - window + 1)
             sub_v = vals[start : i + 1]
             sub_c = cls[start : i + 1] if cls else None
-            ranks.append(calc_volume_rank(sub_v, window, closes=sub_c))
+            sub_t = tns[start : i + 1] if tns else None
+            ranks.append(calc_volume_rank(sub_v, window, closes=sub_c, turnovers=sub_t))
         return ranks
 
     def get_decision_card(self, stock_id: str, lookback: int = 20) -> dict:
         """產出單一標的的買低賣高決策卡（高低點用收盤，對齊範本）。"""
         conn = sqlite3.connect(self.db_path)
         df = pd.read_sql_query("""
-            SELECT date, stock_name, open, high, low, close, volume, pct_change as change_pct
+            SELECT date, stock_name, open, high, low, close, volume, turnover_k, pct_change as change_pct
             FROM daily_quotes
             WHERE stock_id = ?
             ORDER BY date DESC LIMIT 520;
@@ -358,8 +365,14 @@ class NavigatorEngine:
         cal60_low = cal60_low_close_at(profit_src, -1)
         profit_floor = profit_floor_at(profit_src, -1)
         df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
-        df["vol_rank_120"] = self._calc_rolling_rank(df["volume"], window=120, closes=close_s)
-        df["vol_rank_480"] = self._calc_rolling_rank(df["volume"], window=480, closes=close_s)
+        df["vol_rank_120"] = self._calc_rolling_rank(
+            df["volume"], window=120, closes=close_s,
+            turnovers=df["turnover_k"] if "turnover_k" in df.columns else None,
+        )
+        df["vol_rank_480"] = self._calc_rolling_rank(
+            df["volume"], window=480, closes=close_s,
+            turnovers=df["turnover_k"] if "turnover_k" in df.columns else None,
+        )
 
         hl_tags, alert_tags, temp_nums = [], [], []
         for i in range(len(df)):
@@ -2122,34 +2135,34 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         (_nav_key("l20_leave", "^"), "20低脫離"),
         (_nav_key("l60", "^"), "60低"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
-                markeredgecolor="#311b92", markeredgewidth=0.7, markersize=8), "量能異常"),
+                markeredgecolor="#311b92", markeredgewidth=0.85, markersize=9), "量能異常"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
-                markeredgecolor="#7f0000", markeredgewidth=0.7, markersize=8), "警告"),
+                markeredgecolor="#7f0000", markeredgewidth=0.85, markersize=9), "警告"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
-                markeredgecolor="#6a1b9a", markeredgewidth=0.6, markersize=7), "月波動低"),
-        (Line2D([], [], color="#f9a825", lw=2.1), "SMA(20)"),
-        (Line2D([], [], color="#f48fb1", lw=1.6), "季高點線"),
-        (Line2D([], [], color="#81c784", lw=1.6), "季低點線"),
-        (Line2D([], [], color="#f8bbd0", lw=1.05, linestyle="--"), "月高點線"),
-        (Line2D([], [], color="#80deea", lw=1.05, linestyle="--"), "月低點線"),
+                markeredgecolor="#6a1b9a", markeredgewidth=0.75, markersize=8), "月波動低"),
+        (Line2D([], [], color="#f9a825", lw=2.2), "SMA(20)"),
+        (Line2D([], [], color="#f48fb1", lw=1.7), "季高點線"),
+        (Line2D([], [], color="#81c784", lw=1.7), "季低點線"),
+        (Line2D([], [], color="#f8bbd0", lw=1.1, linestyle="--"), "月高點線"),
+        (Line2D([], [], color="#80deea", lw=1.1, linestyle="--"), "月低點線"),
         (Line2D([], [], linestyle="none", marker="v", markerfacecolor="none",
-                markeredgecolor="#C2185B", markersize=9), "接近高低（空心）"),
+                markeredgecolor="#C2185B", markeredgewidth=1.0, markersize=10), "接近高低（空心）"),
     ]
     leg = ax1.legend(
         [h for h, _ in legend_keys],
         [t for _, t in legend_keys],
         loc="upper left",
-        bbox_to_anchor=(0.02, 1.008),
-        ncol=4,
-        handlelength=1.5,
-        handletextpad=0.45,
-        columnspacing=1.3,
-        borderpad=0.45,
-        labelspacing=0.35,
-        framealpha=0.92,
-        facecolor="#ffffff",
-        edgecolor="#cfd8dc",
-        prop=_fp(9, "bold"),
+        bbox_to_anchor=(0.01, 1.01),
+        ncol=5,
+        handlelength=1.35,
+        handletextpad=0.4,
+        columnspacing=1.1,
+        borderpad=0.5,
+        labelspacing=0.32,
+        framealpha=0.96,
+        facecolor="#fafafa",
+        edgecolor="#b0bec5",
+        prop=_fp(8.5, "bold"),
     )
     leg.set_zorder(10)
     ax1.yaxis.tick_right()

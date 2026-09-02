@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from decision_card_signals import calc_volume_rank
-from taiwan_market import analyze_taiwan_market, apply_market_filter, market_screening_note
+from taiwan_market import analyze_taiwan_market, apply_market_weights, market_screening_note
 
 
 def test_calc_volume_rank_turnover_changes_order():
@@ -16,8 +16,8 @@ def test_calc_volume_rank_turnover_changes_order():
 
 def test_apply_market_filter_trims_bear_lists():
     base = {"day_trade": [{"stock_id": f"{i:04d}"} for i in range(10)], "overnight": [{"stock_id": "x"}]}
-    out = apply_market_filter(base, {"ok": True, "regime": "bear"})
-    assert len(out["day_trade"]) == 6
+    out = apply_market_weights(base, {"ok": True, "regime": "bear", "confidence": 40})
+    assert len(out["day_trade"]) == 4
     assert len(out["overnight"]) == 1
 
 

@@ -290,6 +290,12 @@ def ensure_core_schema(db_path: str = None) -> None:
             """
         )
         try:
+            from taiwan_market import ensure_index_daily_table
+
+            ensure_index_daily_table(path)
+        except Exception:
+            pass
+        try:
             from fundamentals import ensure_fundamentals_tables
 
             ensure_fundamentals_tables(path)
