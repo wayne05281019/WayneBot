@@ -745,12 +745,7 @@ def _chip_plain(item: Dict[str, Any]) -> str:
 
 
 def _chip_html(item: Dict[str, Any]) -> str:
-    from tg_layout import pad_label, qty_text
-
-    lines = []
-    for label, key in (("外資", "foreign_net"), ("投信", "trust_net"), ("自營", "dealer_net")):
-        lines.append(f"{pad_label(label, 4)}{qty_text(item.get(key))}")
-    return "\n".join(lines)
+    return html_escape(_chip_plain(item))
 
 
 def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
@@ -842,7 +837,11 @@ def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = T
     body.extend([
         f"格局　{regime}",
         f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
-        f"量　　{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}" + (f"　額　{html_escape(to_s)}" if to_s else ""),
+        f"量　{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
+    ])
+    if to_s:
+        body.append(f"額　<code>{html_escape(to_s)}</code>")
+    body.extend([
         f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
         f"法人　{_chip_html(item)}",
     ])
