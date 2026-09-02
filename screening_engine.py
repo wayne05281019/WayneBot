@@ -1464,7 +1464,7 @@ def execute_full_screening(
             from taiwan_market import analyze_taiwan_market, apply_market_weights, format_taiwan_market_brief_html
 
             mkt_snap = analyze_taiwan_market(engine.db_path, target_date)
-            results = apply_market_weights(results, mkt_snap)
+            results = apply_market_weights(results, mkt_snap, db_path=engine.db_path)
             mkt_html = format_taiwan_market_brief_html(engine.db_path, target_date)
         except Exception:
             mkt_html = ""
