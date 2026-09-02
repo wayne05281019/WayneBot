@@ -87,21 +87,49 @@ jobs:
           python - <<'PY'
           import json, sys
           from config import get_db_path, fuse_end_date
-          from import_health import format_audit_plain, verify_increment_import
+          from automation_health import format_automation_audit_plain, run_automation_audit
 
           path = get_db_path()
           cap = fuse_end_date()
-          report = verify_increment_import(path, cap=cap)
+          report = run_automation_audit(path, cap=cap, strict_release=False)
           print("fuse_end", cap)
-          print(format_audit_plain(report.get("health") or {}))
+          print(format_automation_audit_plain(report))
           print(json.dumps(
-              {k: report[k] for k in ("ok", "cap", "reasons") if k in report},
+              {k: report[k] for k in ("ok", "cap", "latest_complete", "reasons") if k in report},
               ensure_ascii=False,
               indent=2,
           ))
-          if not report.get("ok"):
-              sys.exit("盤後匯入未過關：" + "；".join(report.get("reasons") or []))
+          inc = (report.get("checks") or {}).get("increment") or {}
+          filt = (report.get("checks") or {}).get("quote_filter") or {}
+          if not filt.get("ok"):
+              sys.exit("過濾器回歸失敗")
+          if not inc.get("ok"):
+              sys.exit("盤後匯入未過關：" + "；".join(inc.get("reasons") or []))
+          if report.get("latest_complete") and cap and report["latest_complete"] < cap:
+              sys.exit(f"基準日 {report['latest_complete']} 落後可融合日 {cap}")
           print("盤後匯入關卡通過")
+          PY
+
+      - name: 早上海選硬性關卡（基準日必須齊）
+        if: always() && steps.job.outputs.job == 'morning_screen'
+        run: |
+          python - <<'PY'
+          import json, sys
+          from config import get_db_path, fuse_end_date
+          from automation_health import format_automation_audit_plain, run_automation_audit
+
+          path = get_db_path()
+          cap = fuse_end_date()
+          report = run_automation_audit(path, cap=cap, strict_release=False, max_gap_days=999)
+          print(format_automation_audit_plain(report))
+          filt = (report.get("checks") or {}).get("quote_filter") or {}
+          if not filt.get("ok"):
+              sys.exit("過濾器回歸失敗")
+          complete = report.get("latest_complete") or ""
+          if not complete:
+              sys.exit("沒有上市＋上櫃都齊的基準日，無法寄海選")
+          print(json.dumps({"ok": True, "cap": cap, "latest_complete": complete}, ensure_ascii=False))
+          print("早上海選關卡通過")
           PY
 
       - name: 完整性通過才蓋掉舊 Release zip

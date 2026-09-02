@@ -148,6 +148,25 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if route in ("/automation-health", "/automation-audit"):
+            import json
+
+            try:
+                from automation_health import run_automation_audit
+                from config import fuse_end_date, get_db_path
+
+                report = run_automation_audit(get_db_path(), cap=fuse_end_date())
+                body = json.dumps(report, ensure_ascii=False).encode("utf-8")
+                code = 200 if report.get("ok") else 503
+                self.send_response(code)
+            except Exception as e:
+                body = json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(500)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self.send_response(404)
         self.end_headers()
 
