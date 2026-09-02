@@ -158,6 +158,40 @@ def test_whitespace_only_is_silent(text):
 # --- 亂按：同聊天室兩人 pending 不共用 ---
 
 
+def test_simplified_buy_pending_single_price():
+    bot = _bot()
+    bot._pending["42"] = "buy:2330"
+    msg = _msg(1, 42, "68.5")
+
+    async def run():
+        with patch("bot_servers.record_buy", return_value="已記錄買入 2330 台積電 1張 @ 68.5") as rb, patch(
+            "wayne_db.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]
+        ):
+            await bot.on_text(_update(msg), MagicMock())
+        return rb
+
+    rb = asyncio.run(run())
+    rb.assert_called_once()
+    assert rb.call_args[0][2] == "2330"
+    assert rb.call_args[0][4] == 1.0
+    assert rb.call_args[0][5] == 68.5
+
+
+def test_lookup_no_ack_spam():
+    bot = _bot()
+    bot._reply_card = AsyncMock()
+    msg = _msg(3, 3, "台積電")
+
+    async def run():
+        with patch("wayne_db.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]):
+            await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    for call in msg.reply_text.await_args_list:
+        text = call[0][0] if call[0] else ""
+        assert "查詢中" not in str(text)
+
+
 def test_pending_state_per_user_not_per_chat():
     bot = _bot()
     bot._pending["111"] = "buy:2330"
