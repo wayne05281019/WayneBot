@@ -301,6 +301,16 @@ def ensure_core_schema(db_path: str = None) -> None:
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tg_users (
+                user_id TEXT PRIMARY KEY,
+                display_name TEXT DEFAULT '',
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL
+            );
+            """
+        )
         try:
             from taiwan_market import ensure_index_daily_table
 
@@ -344,9 +354,9 @@ def ensure_core_schema(db_path: str = None) -> None:
         except Exception:
             pass
         try:
-            from ai_trader import _load_size_mult
+            from ai_trader import ensure_ai_tables
 
-            _load_size_mult(path)
+            ensure_ai_tables(path)
         except Exception:
             pass
         try:
@@ -566,6 +576,48 @@ def remove_from_watchlist(db_path: str, user_id: str, stock_code: str) -> bool:
             (str(user_id), code),
         )
         return int(cur.rowcount or 0) > 0
+
+
+def touch_tg_user(db_path: str, user_id: str, display_name: str = "") -> None:
+    """記錄曾與 Bot 互動的 Telegram 使用者，供排程為每人更新 AI 模擬倉。"""
+    uid = str(user_id or "").strip()
+    if not uid:
+        return
+    ensure_core_schema(db_path)
+    now = datetime.now().isoformat(timespec="seconds")
+    name = str(display_name or "").strip()
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO tg_users (user_id, display_name, first_seen, last_seen)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                display_name=CASE WHEN excluded.display_name!='' THEN excluded.display_name ELSE tg_users.display_name END,
+                last_seen=excluded.last_seen;
+            """,
+            (uid, name, now, now),
+        )
+
+
+def list_tg_user_ids(db_path: str) -> List[str]:
+    """所有曾用 Bot 的 Telegram uid（持股／觀察／成交紀錄也算）。"""
+    ensure_core_schema(db_path)
+    ids: set[str] = set()
+    with get_db_connection(db_path, write=False) as conn:
+        for sql in (
+            "SELECT user_id FROM tg_users;",
+            "SELECT user_id FROM user_holdings;",
+            "SELECT user_id FROM user_watchlist;",
+            "SELECT user_id FROM user_trade_logs;",
+        ):
+            try:
+                for row in conn.execute(sql):
+                    uid = str(row[0] or "").strip()
+                    if uid and not uid.startswith("ai_") and uid != "wayne_ai":
+                        ids.add(uid)
+            except sqlite3.OperationalError:
+                pass
+    return sorted(ids)
 
 
 def get_user_portfolio(db_path: str, user_id: str) -> List[Dict[str, Any]]:

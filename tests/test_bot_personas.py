@@ -217,3 +217,79 @@ def test_pending_state_per_user_not_per_chat():
     bot._pending["222"] = "sell:2454"
     assert bot._pending["111"] == "buy:2330"
     assert bot._pending["222"] == "sell:2454"
+
+
+def test_ai_desk_isolated_per_telegram_user():
+    import os
+    import sqlite3
+    import tempfile
+
+    from ai_trader import ai_user_id, run_ai_desk
+    from portfolio_engine import PortfolioEngine
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        results = {
+            "leave_zero": [
+                {"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "chase_warning": False}
+            ],
+        }
+        run_ai_desk(path, "111", results, "20260831")
+        run_ai_desk(path, "222", results, "20260831")
+        eng = PortfolioEngine(path)
+        w = eng.get_portfolio_summary(ai_user_id("111"))
+        b = eng.get_portfolio_summary(ai_user_id("222"))
+        assert w["positions_count"] >= 1
+        assert b["positions_count"] >= 1
+        conn = sqlite3.connect(path)
+        n1 = conn.execute(
+            "SELECT COUNT(*) FROM user_positions WHERE user_id=?", (ai_user_id("111"),)
+        ).fetchone()[0]
+        n2 = conn.execute(
+            "SELECT COUNT(*) FROM user_positions WHERE user_id=?", (ai_user_id("222"),)
+        ).fetchone()[0]
+        conn.close()
+        assert n1 >= 1 and n2 >= 1
+    finally:
+        os.remove(path)
+
+
+def test_touch_tg_user_registers_for_scheduled_ai():
+    import os
+    import tempfile
+
+    from wayne_db import list_tg_user_ids, touch_tg_user
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        touch_tg_user(path, "9001", "偉權")
+        touch_tg_user(path, "9002", "哥哥")
+        ids = list_tg_user_ids(path)
+        assert "9001" in ids
+        assert "9002" in ids
+    finally:
+        os.remove(path)
+
+
+def test_wrap_cmd_touches_user_on_slash_command():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = _bot()
+    bot._touch_user = MagicMock()
+    bot.portfolio_cmd = AsyncMock()
+
+    async def run():
+        user = SimpleNamespace(id=4242, first_name="哥")
+        msg = MagicMock()
+        msg.from_user = user
+        update = SimpleNamespace(effective_user=user, message=msg)
+        wrapped = bot._wrap_cmd(bot.portfolio_cmd)
+        await wrapped(update, MagicMock())
+
+    asyncio.run(run())
+    bot._touch_user.assert_called_once_with("4242", "哥")
+    bot.portfolio_cmd.assert_awaited_once()

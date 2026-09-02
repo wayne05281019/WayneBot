@@ -333,7 +333,11 @@ def ensure_ai_fills_table(db_path: str = None) -> None:
         );
         """
     )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_fills)")}
+    if "user_id" not in cols:
+        conn.execute("ALTER TABLE ai_fills ADD COLUMN user_id TEXT DEFAULT 'wayne_ai'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_fills_next ON ai_fills(action, next_pct);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_fills_user ON ai_fills(user_id, action, next_pct);")
     conn.commit()
     conn.close()
 
@@ -370,6 +374,7 @@ def persist_ai_fill(
     bucket: str = "",
     realized_pnl: float = 0.0,
     pnl_pct: float = 0.0,
+    user_id: str = "wayne_ai",
 ) -> None:
     """每一筆 AI 模擬成交都留下，隔日用庫內日 K 對帳，用來調勝率。"""
     as_of = str(as_of or "").replace("-", "")
@@ -381,8 +386,12 @@ def persist_ai_fill(
     if action == "SELL" and not bucket:
         conn = sqlite3.connect(db_path)
         row = conn.execute(
-            "SELECT bucket FROM ai_fills WHERE stock_id=? AND action='BUY' AND bucket!='' ORDER BY id DESC LIMIT 1",
-            (sid,),
+            """
+            SELECT bucket FROM ai_fills
+            WHERE user_id=? AND stock_id=? AND action='BUY' AND bucket!=''
+            ORDER BY id DESC LIMIT 1
+            """,
+            (str(user_id or "wayne_ai"), sid),
         ).fetchone()
         conn.close()
         if row:
@@ -393,11 +402,12 @@ def persist_ai_fill(
     conn.execute(
         """
         INSERT INTO ai_fills(
-            as_of, stock_id, stock_name, action, price, shares, amount,
+            user_id, as_of, stock_id, stock_name, action, price, shares, amount,
             reason, bucket, realized_pnl, pnl_pct, next_date, next_close, next_pct, created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
+            str(user_id or "wayne_ai"),
             as_of,
             sid,
             str(stock_name or ""),
@@ -462,33 +472,55 @@ def score_ai_fills(db_path: str, next_date: str = None) -> int:
     return filled
 
 
-def _ai_fill_stats(db_path: str, limit_days: int = 20) -> List[Tuple[str, int, float, float]]:
+def _ai_fill_stats(db_path: str, limit_days: int = 20, user_id: Optional[str] = None) -> List[Tuple[str, int, float, float]]:
     ensure_ai_fills_table(db_path)
     conn = sqlite3.connect(db_path)
-    days = [
-        r[0]
-        for r in conn.execute(
-            """
-            SELECT DISTINCT as_of FROM ai_fills
-            WHERE action='BUY' AND next_pct IS NOT NULL
-            ORDER BY as_of DESC LIMIT ?
-            """,
-            (limit_days,),
-        ).fetchall()
-    ]
+    if user_id:
+        days = [
+            r[0]
+            for r in conn.execute(
+                """
+                SELECT DISTINCT as_of FROM ai_fills
+                WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
+                ORDER BY as_of DESC LIMIT ?
+                """,
+                (str(user_id), limit_days),
+            ).fetchall()
+        ]
+    else:
+        days = [
+            r[0]
+            for r in conn.execute(
+                """
+                SELECT DISTINCT as_of FROM ai_fills
+                WHERE action='BUY' AND next_pct IS NOT NULL
+                ORDER BY as_of DESC LIMIT ?
+                """,
+                (limit_days,),
+            ).fetchall()
+        ]
     out = []
     for key, _label in BUCKETS:
         if not days:
             out.append((key, 0, 0.0, 0.0))
             continue
         qmarks = ",".join("?" * len(days))
-        rows = conn.execute(
-            f"""
-            SELECT next_pct FROM ai_fills
-            WHERE bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
-            """,
-            (key, *days),
-        ).fetchall()
+        if user_id:
+            rows = conn.execute(
+                f"""
+                SELECT next_pct FROM ai_fills
+                WHERE user_id=? AND bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
+                """,
+                (str(user_id), key, *days),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""
+                SELECT next_pct FROM ai_fills
+                WHERE bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
+                """,
+                (key, *days),
+            ).fetchall()
         n = len(rows)
         if not n:
             out.append((key, 0, 0.0, 0.0))
@@ -500,25 +532,28 @@ def _ai_fill_stats(db_path: str, limit_days: int = 20) -> List[Tuple[str, int, f
     return out
 
 
-def format_ai_review_html(db_path: str) -> str:
+def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
     from tg_layout import html_escape, html_pct
 
+    uid = str(user_id or "wayne_ai")
     ensure_ai_fills_table(db_path)
     conn = sqlite3.connect(db_path)
     agg = conn.execute(
         """
         SELECT COUNT(*), AVG(next_pct),
                SUM(CASE WHEN next_pct > 0 THEN 1 ELSE 0 END)
-        FROM ai_fills WHERE action='BUY' AND next_pct IS NOT NULL
-        """
+        FROM ai_fills WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
+        """,
+        (uid,),
     ).fetchone()
     sample = conn.execute(
         """
         SELECT stock_id, stock_name, next_pct, bucket, as_of
         FROM ai_fills
-        WHERE action='BUY' AND next_pct IS NOT NULL
+        WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
         ORDER BY id DESC LIMIT 6
-        """
+        """,
+        (uid,),
     ).fetchall()
     conn.close()
     n = int(agg[0] or 0) if agg else 0
@@ -537,7 +572,7 @@ def format_ai_review_html(db_path: str) -> str:
         "用實際成交，不是只看海選名單。弱的類別下一輪少買；不會改程式檔。",
     ]
     bits = []
-    for key, fn, favg, fhit in _ai_fill_stats(db_path):
+    for key, fn, favg, fhit in _ai_fill_stats(db_path, user_id=uid):
         if fn <= 0:
             continue
         bits.append(f"{labels.get(key, key)} {favg:+.1f}%（勝 {fhit:.0%}／{fn}）")
