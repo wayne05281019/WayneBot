@@ -703,7 +703,8 @@ class DataFetcher:
         except Exception as e:
             print(f"⚠️ 法人籌碼抓取異常：{e}")
 
-        # 4. 組合並寫入資料庫
+        # 4. 組合並寫入資料庫（末兩欄是溯源，出現可疑數字時要查得出哪來的）
+        fetched_at = datetime.now().isoformat(timespec="seconds")
         all_records = []
         for q in tw_records:
             inst = tw_t86.get(q["stock_id"], {"foreign_net": 0, "trust_net": 0, "dealer_net": 0})
@@ -711,7 +712,8 @@ class DataFetcher:
                 q["date"], q["stock_id"], q["stock_name"], q["market"],
                 q["open"], q["high"], q["low"], q["close"],
                 q["volume"], q["turnover_k"], q["pct_change"], q["avg_price"],
-                inst["foreign_net"], inst["trust_net"], inst["dealer_net"]
+                inst["foreign_net"], inst["trust_net"], inst["dealer_net"],
+                "twse", fetched_at,
             ))
 
         for q in two_records:
@@ -720,7 +722,8 @@ class DataFetcher:
                 q["date"], q["stock_id"], q["stock_name"], q["market"],
                 q["open"], q["high"], q["low"], q["close"],
                 q["volume"], q["turnover_k"], q["pct_change"], q["avg_price"],
-                inst["foreign_net"], inst["trust_net"], inst["dealer_net"]
+                inst["foreign_net"], inst["trust_net"], inst["dealer_net"],
+                "tpex", fetched_at,
             ))
 
         if all_records:
@@ -744,8 +747,8 @@ class DataFetcher:
             cursor = conn.cursor()
             cursor.executemany("""
             INSERT INTO daily_quotes
-            (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net, source, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date, stock_id) DO UPDATE SET
                 stock_name=excluded.stock_name,
                 market=excluded.market,
@@ -762,7 +765,9 @@ class DataFetcher:
                 trust_net=CASE WHEN excluded.trust_net=0 AND daily_quotes.trust_net!=0
                     THEN daily_quotes.trust_net ELSE excluded.trust_net END,
                 dealer_net=CASE WHEN excluded.dealer_net=0 AND daily_quotes.dealer_net!=0
-                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END;
+                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END,
+                source=excluded.source,
+                fetched_at=excluded.fetched_at;
             """, all_records)
             conn.commit()
             conn.close()

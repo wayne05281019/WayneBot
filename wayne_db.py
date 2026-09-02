@@ -220,6 +220,15 @@ def ensure_core_schema(db_path: str = None) -> None:
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_stock_date ON daily_quotes(stock_id, date);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_date ON daily_quotes(date);")
+        # 溯源：index_daily 與 ex_rights 早就有 source，日K 這張核心表反而沒有，
+        # 出現可疑數字時查不出是哪個來源、哪一輪寫進來的。
+        cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_quotes)")}
+        for name, spec in (
+            ("source", "TEXT DEFAULT ''"),
+            ("fetched_at", "TEXT DEFAULT ''"),
+        ):
+            if name not in cols:
+                cur.execute(f"ALTER TABLE daily_quotes ADD COLUMN {name} {spec}")
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS pipeline_runs (
