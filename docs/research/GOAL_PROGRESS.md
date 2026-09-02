@@ -6,7 +6,7 @@
 ## 總進度
 
 ```
-██████████████░░░░░░  60%
+████████████████░░░░  70%
 ```
 
 | 階段 | 狀態 | 說明 |
@@ -15,7 +15,7 @@
 | v0 骨架 | ✅ 完成 | `taiwan_market.py` regime／桶權重／晨間一句 |
 | **P0** 官方加權指數寫庫 | ✅ 完成 | MI_INDEX + Yahoo 差異告警（PR #115） |
 | **P1** 漲跌家數廣度 | ✅ 完成 | `index_breadth_daily` + regime（PR #120） |
-| P2 falling_risk／高低檔 | ⬜ 待做 | `risk_zone` / `support_zone` |
+| **P2** falling_risk／高低檔 | 🟡 進行中 | `risk_zone` / `support_zone` + 海選降權 |
 | P3 台指期＋基差 | ⬜ 待做 | TAIFEX |
 | P4 Regime+ 狀態機 | ⬜ 待做 | 海選權重 v2 |
 | P5 回測＋大盤頁 | ✅ 完成 | PR #117 主選單「大盤」（只讀庫內） |

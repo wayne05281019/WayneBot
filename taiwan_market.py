@@ -621,6 +621,164 @@ def _breadth_from_db(db_path: str, as_of: str) -> Dict[str, float]:
     return {"above_ma20_pct": round((above / total * 100.0) if total else 0.0, 1), "sample_n": total}
 
 
+def _falling_risk_light(score: int) -> str:
+    if score >= 60:
+        return "🔴"
+    if score >= 35:
+        return "🟡"
+    return "🟢"
+
+
+def _risk_zone_label(zone: str) -> str:
+    return {
+        "elevated": "相對高檔",
+        "compressed": "壓縮待變",
+        "normal": "中性",
+    }.get(str(zone or ""), "中性")
+
+
+def _support_zone_label(zone: str) -> str:
+    return {
+        "building": "低檔築底觀察",
+        "watch": "低檔留意",
+        "none": "無",
+    }.get(str(zone or ""), "無")
+
+
+def compute_falling_risk(
+    idx: pd.DataFrame,
+    *,
+    breadth_pct: float,
+    official_breadth: Optional[Dict[str, Any]] = None,
+    us_risk_off: bool = False,
+) -> Dict[str, Any]:
+    """下跌風險 0–100；僅用 index_daily 廣度與庫內美股快取，不抓新資料。"""
+    score = 0
+    hits: List[str] = []
+    if idx is None or idx.empty:
+        return {"falling_risk": 0, "falling_risk_hits": hits}
+    closes = idx["close"].astype(float)
+    vols = idx["volume"].astype(float) if "volume" in idx.columns else pd.Series([0.0] * len(idx))
+    pcts = idx["pct_change"].astype(float) if "pct_change" in idx.columns else pd.Series([0.0] * len(idx))
+    c = float(closes.iloc[-1])
+    ma20 = float(closes.tail(20).mean()) if len(closes) >= 20 else c
+    if len(closes) >= 4 and c < ma20:
+        recent = closes.tail(4)
+        if all(float(x) < ma20 for x in recent):
+            score += 25
+            hits.append("跌破月線且3日未站回")
+    if len(idx) >= 10:
+        tail = idx.tail(10)
+        up_vol = sum(float(r.get("volume") or 0) for _, r in tail.iterrows() if float(r.get("pct_change") or 0) > 0)
+        dn_vol = sum(float(r.get("volume") or 0) for _, r in tail.iterrows() if float(r.get("pct_change") or 0) < 0)
+        if dn_vol > up_vol > 0:
+            score += 20
+            hits.append("10日跌日量>漲日量")
+    if breadth_pct > 0 and breadth_pct < 35:
+        score += 15
+        hits.append("站上月線廣度<35%")
+    elif official_breadth:
+        up_ratio = official_breadth.get("up_ratio")
+        if up_ratio is not None and float(up_ratio) < 0.35:
+            score += 15
+            hits.append("官方漲跌比偏多跌")
+    if len(pcts) >= 5:
+        tail5 = pcts.tail(5)
+        vol5 = vols.tail(5)
+        avg_vol = float(vols.tail(20).mean()) if len(vols) >= 20 else max(float(vol5.mean()), 1.0)
+        for p, v in zip(tail5, vol5):
+            if float(p) <= -1.5 and float(v) > avg_vol * 1.1:
+                score += 15
+                hits.append("近5日長黑放量")
+                break
+    if us_risk_off:
+        score += 10
+        hits.append("美股隔夜逆風")
+    score = min(100, score)
+    return {"falling_risk": score, "falling_risk_hits": hits}
+
+
+def compute_risk_support_zones(
+    idx: pd.DataFrame,
+    *,
+    breadth_pct: float,
+    official_breadth: Optional[Dict[str, Any]] = None,
+    prev_official: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    """相對高/低檔區（純現貨 index_daily + 廣度）。"""
+    if idx is None or idx.empty:
+        return {"risk_zone": "normal", "support_zone": "none"}
+    closes = idx["close"].astype(float)
+    vols = idx["volume"].astype(float)
+    c = float(closes.iloc[-1])
+    win60 = closes.tail(60) if len(closes) >= 60 else closes
+    lo60, hi60 = float(win60.min()), float(win60.max())
+    span = hi60 - lo60
+    pctile = (c - lo60) / span if span > 0 else 0.5
+    high20 = float(closes.tail(20).max()) if len(closes) >= 20 else c
+    dist_high20 = (high20 - c) / high20 * 100.0 if high20 > 0 else 99.0
+    dist_low60 = (c - lo60) / lo60 * 100.0 if lo60 > 0 else 99.0
+    elev_score = 0
+    if pctile >= 0.85:
+        elev_score += 1
+    if dist_high20 < 1.5:
+        elev_score += 1
+    if len(vols) >= 120:
+        if float(vols.tail(5).mean()) > float(vols.tail(120).mean()) * 1.3:
+            if len(closes) >= 4:
+                chg3 = [
+                    float(closes.iloc[-i] - closes.iloc[-i - 1])
+                    for i in range(1, min(4, len(closes)))
+                ]
+                if len(chg3) >= 2 and chg3[0] <= chg3[1]:
+                    elev_score += 1
+    if pctile >= 0.75 and breadth_pct > 0 and breadth_pct < 40:
+        elev_score += 1
+    if elev_score >= 3:
+        risk_zone = "elevated"
+    elif elev_score >= 2:
+        risk_zone = "compressed"
+    else:
+        risk_zone = "normal"
+    sup_score = 0
+    if pctile <= 0.20:
+        sup_score += 1
+    if dist_low60 < 2.0:
+        sup_score += 1
+    if len(vols) >= 6 and float(vols.iloc[-1]) < float(vols.tail(5).mean()):
+        sup_score += 1
+    if official_breadth and prev_official:
+        u0 = official_breadth.get("up_ratio")
+        u1 = prev_official.get("up_ratio")
+        if u0 is not None and u1 is not None and float(u1) < 0.35 and float(u0) > float(u1):
+            sup_score += 1
+    if sup_score >= 3:
+        support_zone = "building"
+    elif sup_score >= 2:
+        support_zone = "watch"
+    else:
+        support_zone = "none"
+    return {"risk_zone": risk_zone, "support_zone": support_zone}
+
+
+def _load_prev_official_breadth(db_path: str, as_of: str) -> Optional[Dict[str, Any]]:
+    ensure_index_breadth_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT date FROM index_breadth_daily
+            WHERE date < ? ORDER BY date DESC LIMIT 1
+            """,
+            (str(as_of),),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return load_index_breadth_daily(db_path, str(row[0]))
+
+
 def _sector_flow_sum(db_path: str, as_of: str) -> float:
     val = _sector_flow_net(db_path, as_of)
     return float(val) if val is not None else 0.0
@@ -668,6 +826,27 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         sector_flow=flow,
         official_up_ratio=(official.get("up_ratio") if official else None),
     )
+    us_risk_off = False
+    try:
+        from us_overnight import load_us_overnight
+
+        us = load_us_overnight(db_path, ref_date)
+        us_risk_off = str(us.get("regime") or "") == "risk_off"
+    except Exception:
+        pass
+    prev_official = _load_prev_official_breadth(db_path, ref_date)
+    fr = compute_falling_risk(
+        idx,
+        breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+        official_breadth=official,
+        us_risk_off=us_risk_off,
+    )
+    zones = compute_risk_support_zones(
+        idx,
+        breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+        official_breadth=official,
+        prev_official=prev_official,
+    )
     bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
     return {
         "ok": True,
@@ -685,6 +864,10 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         "regime_label": core.get("regime_label", "區間震盪"),
         "confidence": core.get("confidence", 50),
         "score": core.get("score", 0),
+        "falling_risk": fr.get("falling_risk", 0),
+        "falling_risk_hits": fr.get("falling_risk_hits", []),
+        "risk_zone": zones.get("risk_zone", "normal"),
+        "support_zone": zones.get("support_zone", "none"),
         "backtest": bt,
     }
 
@@ -780,12 +963,18 @@ def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[
     out = dict(results)
     out["_mkt_regime"] = regime
     out["_mkt_confidence"] = snap.get("confidence")
+    out["_falling_risk"] = snap.get("falling_risk", 0)
+    fr = int(snap.get("falling_risk") or 0)
+    falling_mult = 0.55 if fr >= 60 else (0.8 if fr >= 35 else 1.0)
+    falling_caps = {"day_trade": 3, "overnight": 3} if fr >= 60 else {}
     for key, items in list(out.items()):
         if not isinstance(items, list) or key.startswith("_"):
             continue
         if not items:
             continue
         m = float(mults.get(key, 1.0))
+        if key in ("day_trade", "overnight") and falling_mult < 1.0:
+            m *= falling_mult
         scored = sorted(
             ((float(_item_sort_score(key, it)) * m, it) for it in items),
             key=lambda x: x[0],
@@ -793,6 +982,8 @@ def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[
         )
         trimmed = [it for _, it in scored]
         cap = caps.get(key)
+        if key in falling_caps:
+            cap = min(cap, falling_caps[key]) if cap else falling_caps[key]
         if cap and len(trimmed) > cap:
             trimmed = trimmed[:cap]
         out[key] = trimmed
@@ -808,6 +999,11 @@ def market_screening_note(snap: Dict[str, Any]) -> str:
         return f"大盤多頭帶動（信心 {conf}%）：佈局桶加權偏多，起漲仍看獲利格。"
     if reg == "bear":
         return f"大盤空方壓力（信心 {conf}%）：突破桶縮水，起漲需量熱＋站上月線。"
+    fr = int(snap.get("falling_risk") or 0)
+    if fr >= 60:
+        return f"下跌風險 {fr}（紅燈）：當沖/隔日沖桶再降權，佈局看獲利格＋站上月線。"
+    if fr >= 35:
+        return f"下跌風險 {fr}（黃燈）：短線桶保守，選股看結構。"
     return f"大盤區間震盪（信心 {conf}%）：中性權重，選股看個股結構。"
 
 
@@ -845,6 +1041,8 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
         f"站上月線廣度 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
         f"產業法人合計 {snap['sector_flow_net']:+,.0f} 張",
         f"Regime：<b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
+        f"下跌風險 {_falling_risk_light(int(snap.get('falling_risk') or 0))} <b>{snap.get('falling_risk', 0)}</b>"
+        f"　高檔 {_risk_zone_label(snap.get('risk_zone'))}",
         market_screening_note(snap),
     ]
     bt = snap.get("backtest") or []
@@ -897,9 +1095,15 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
         [
             "",
             f"<b>Regime</b> {light} <b>{snap['regime_label']}</b>（信心 {snap['confidence']}%）",
+            f"<b>下跌風險</b> {_falling_risk_light(int(snap.get('falling_risk') or 0))} <b>{snap.get('falling_risk', 0)}</b>"
+            f"　<b>高檔區</b> {_risk_zone_label(snap.get('risk_zone'))}"
+            f"　<b>低檔區</b> {_support_zone_label(snap.get('support_zone'))}",
             market_screening_note(snap),
         ]
     )
+    hits_fr = snap.get("falling_risk_hits") or []
+    if hits_fr:
+        lines.append("觸發：" + "、".join(str(h) for h in hits_fr[:4]))
     bt = snap.get("backtest") or []
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]

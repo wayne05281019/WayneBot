@@ -29,6 +29,32 @@ def test_apply_market_filter_trims_bear_lists():
     assert len(out["overnight"]) == 1
 
 
+def test_apply_market_weights_trims_on_high_falling_risk():
+    base = {"day_trade": [{"stock_id": f"{i:04d}"} for i in range(8)], "overnight": [{"stock_id": f"{i}"} for i in range(6)]}
+    out = apply_market_weights(
+        base,
+        {"ok": True, "regime": "neutral", "confidence": 50, "falling_risk": 65},
+    )
+    assert len(out["day_trade"]) == 3
+    assert len(out["overnight"]) == 3
+
+
+def test_compute_falling_risk_below_ma20():
+    import pandas as pd
+
+    from taiwan_market import compute_falling_risk
+
+    idx = pd.DataFrame(
+        {
+            "close": [110 - i * 0.5 for i in range(25)],
+            "volume": [1e9] * 25,
+            "pct_change": [-0.5] * 25,
+        }
+    )
+    fr = compute_falling_risk(idx, breadth_pct=30.0)
+    assert fr["falling_risk"] >= 40
+
+
 def test_market_screening_note_bull():
     note = market_screening_note({"ok": True, "regime": "bull", "confidence": 72})
     assert "多頭" in note
