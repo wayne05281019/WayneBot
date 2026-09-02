@@ -2037,22 +2037,6 @@ class WayneTelegramBot:
             return
         chat_id = int(message.chat_id)
         lookup_faded = False
-        header_msg = None
-        try:
-            header = await asyncio.wait_for(
-                asyncio.to_thread(self._quote_header_html, code),
-                timeout=8.0,
-            )
-            header_msg = await message.reply_html(header, disable_web_page_preview=True)
-            self._track_lookup_fade(chat_id, header_msg, "header")
-        except asyncio.TimeoutError:
-            logger.warning("現價列逾時 code=%s", code)
-            fallback = await message.reply_text(f"查詢 {code}…（盤中報價較慢，繼續出圖）")
-            self._track_lookup_fade(chat_id, fallback, "header")
-        except Exception:
-            logger.exception("現價列失敗 code=%s", code)
-            fallback = await message.reply_text(f"查詢 {code}…")
-            self._track_lookup_fade(chat_id, fallback, "header")
         hub = self._hub_keyboard(code)
         cap_links = ""
         try:
@@ -2062,6 +2046,25 @@ class WayneTelegramBot:
             cap_links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
         except Exception:
             cap_links = ""
+
+        async def _header_bg() -> None:
+            try:
+                header = await asyncio.wait_for(
+                    asyncio.to_thread(self._quote_header_html, code),
+                    timeout=4.0,
+                )
+                header_msg = await message.reply_html(header, disable_web_page_preview=True)
+                self._track_lookup_fade(chat_id, header_msg, "header")
+            except asyncio.TimeoutError:
+                logger.warning("現價列逾時 code=%s", code)
+                fallback = await message.reply_text(f"查詢 {code}…（盤中報價較慢，繼續出圖）")
+                self._track_lookup_fade(chat_id, fallback, "header")
+            except Exception:
+                logger.exception("現價列失敗 code=%s", code)
+                fallback = await message.reply_text(f"查詢 {code}…")
+                self._track_lookup_fade(chat_id, fallback, "header")
+
+        header_task = asyncio.create_task(_header_bg())
 
         async def send_photo(path, caption, markup=None):
             nonlocal sent_any, lookup_faded
@@ -2131,7 +2134,6 @@ class WayneTelegramBot:
         try:
             from wayne_navigator import (
                 generate_chart,
-                prewarm_card_fonts,
                 render_decision_card_png,
                 render_first_glance_png,
             )
@@ -2139,20 +2141,15 @@ class WayneTelegramBot:
             from chips import generate_chips_image
             from chip_tape import build_tape
 
-            try:
-                await asyncio.wait_for(asyncio.to_thread(prewarm_card_fonts), timeout=15.0)
-            except Exception:
-                logger.debug("字型預熱略過", exc_info=True)
-
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
-                card = engine.get_decision_card(code, lookback=20)
+                card = engine.get_decision_card(code, lookback=20, merge_live=False)
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 
             def _build_tape():
                 try:
-                    return build_tape(self.db_path, code) or {}
+                    return build_tape(self.db_path, code, merge_live=False) or {}
                 except Exception:
                     return {}
 
@@ -2244,10 +2241,10 @@ class WayneTelegramBot:
                 return ("chips", path)
 
             render_tasks = [
-                asyncio.create_task(_job_glance()),
                 asyncio.create_task(_job_card()),
                 asyncio.create_task(_job_chart()),
                 asyncio.create_task(_job_chips()),
+                asyncio.create_task(_job_glance()),
             ]
             for fut in asyncio.as_completed(render_tasks):
                 kind, path = await fut

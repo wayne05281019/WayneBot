@@ -169,7 +169,7 @@ def volume_tape(volumes: Sequence[float], last_chg: float) -> Dict[str, str]:
     }
 
 
-def load_tape_rows(db_path: str, stock_id: str, limit: int = 40) -> List[dict]:
+def load_tape_rows(db_path: str, stock_id: str, limit: int = 40, merge_live: bool = True) -> List[dict]:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute(
@@ -203,9 +203,9 @@ def load_tape_rows(db_path: str, stock_id: str, limit: int = 40) -> List[dict]:
         import pandas as pd
         from live_quote import append_live_bar
 
-        if rows:
+        if rows and merge_live:
             df = pd.DataFrame(rows)
-            df = append_live_bar(df, str(stock_id).strip())
+            df = append_live_bar(df, str(stock_id).strip(), merge_live=True)
             extra = df.iloc[-1]
             if str(extra.get("date")) != str(rows[-1]["date"]):
                 last = dict(rows[-1])
@@ -234,8 +234,8 @@ def load_tape_rows(db_path: str, stock_id: str, limit: int = 40) -> List[dict]:
     return rows
 
 
-def build_tape(db_path: str, stock_id: str) -> Optional[Dict[str, Any]]:
-    rows = load_tape_rows(db_path, stock_id, 40)
+def build_tape(db_path: str, stock_id: str, merge_live: bool = True) -> Optional[Dict[str, Any]]:
+    rows = load_tape_rows(db_path, stock_id, 40, merge_live=merge_live)
     if not rows:
         return None
     last = rows[-1]
