@@ -2,6 +2,7 @@
 """台灣加權指數深度研究：持久化、regime、桶權重、勝率回測。"""
 from __future__ import annotations
 
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,10 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import requests
 
+logger = logging.getLogger(__name__)
+
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "WayneBot/1.0"})
 _INDEX_YAHOO = "%5ETWII"
 _INDEX_SYMBOL = "TWII"
+_INDEX_TWSE_NAME = "發行量加權股價指數"
+_INDEX_CLOSE_DIFF_ALERT_PCT = 0.1
+_OFFICIAL_LOOKBACK_DAYS = 5
 
 # 大盤 regime → 海選桶加減分（>1 較積極、<1 較保守）
 REGIME_BUCKET_MULT: Dict[str, Dict[str, float]] = {
@@ -86,6 +92,113 @@ def ensure_index_daily_table(db_path: str) -> None:
         conn.close()
 
 
+def _clean_index_num(val: Any, *, is_float: bool = True) -> float:
+    if val is None:
+        return 0.0
+    s = str(val).replace(",", "").replace("+", "").strip()
+    if s in ("--", "-", "", "N/A", "null", "None"):
+        return 0.0
+    try:
+        return float(s) if is_float else float(int(float(s)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _fetch_twse_index_close(date: str) -> Optional[Dict[str, Any]]:
+    """證交所 MI_INDEX 加權指數收盤（單日 YYYYMMDD）。"""
+    d = str(date or "").replace("-", "")[:8]
+    if len(d) != 8:
+        return None
+    url = (
+        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+        f"?date={d}&type=ALLBUT0999&response=json"
+    )
+    try:
+        resp = _SESSION.get(url, timeout=40)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.debug("TWSE MI_INDEX %s failed: %s", d, exc)
+        return None
+    stat = str(data.get("stat") or "")
+    if stat.upper() != "OK" or "沒有符合" in stat or "很抱歉" in stat:
+        return None
+    for table in data.get("tables", []):
+        title = str(table.get("title") or "")
+        if "價格指數" not in title or "臺灣證券交易所" not in title:
+            continue
+        for row in table.get("data", []):
+            if len(row) < 5 or str(row[0]).strip() != _INDEX_TWSE_NAME:
+                continue
+            close = _clean_index_num(row[1])
+            if close <= 0:
+                return None
+            pct = _clean_index_num(row[4])
+            sign_raw = str(row[2] or "") + str(row[3] or "")
+            if "-" in sign_raw or "green" in sign_raw or "跌" in sign_raw:
+                pct = -abs(pct)
+            elif "+" in sign_raw or "red" in sign_raw or "漲" in sign_raw:
+                pct = abs(pct)
+            return {
+                "date": d,
+                "close": close,
+                "pct_change": round(pct, 2),
+                "source": "twse",
+            }
+    return None
+
+
+def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """近 N 日優先官方收盤；與 Yahoo 差異 >0.1% 時告警。"""
+    if df.empty:
+        return df, []
+    yahoo_by_date = {str(r["date"]): r for _, r in df.iterrows()}
+    recent_dates = sorted(yahoo_by_date)[-_OFFICIAL_LOOKBACK_DAYS:]
+    official_by_date: Dict[str, Dict[str, Any]] = {}
+    alerts: List[str] = []
+    for d in recent_dates:
+        off = _fetch_twse_index_close(d)
+        if not off:
+            continue
+        official_by_date[d] = off
+        y_close = float(yahoo_by_date[d]["close"])
+        o_close = float(off["close"])
+        if o_close > 0:
+            diff_pct = abs(y_close - o_close) / o_close * 100.0
+            if diff_pct > _INDEX_CLOSE_DIFF_ALERT_PCT:
+                msg = (
+                    f"TWII {d}: Yahoo {y_close:.2f} vs TWSE {o_close:.2f} "
+                    f"({diff_pct:.3f}%)"
+                )
+                alerts.append(msg)
+                logger.warning("index_daily close mismatch: %s", msg)
+    rows: List[Dict[str, Any]] = []
+    for d in sorted(yahoo_by_date):
+        base = yahoo_by_date[d]
+        off = official_by_date.get(d)
+        if off:
+            rows.append(
+                {
+                    "date": d,
+                    "close": float(off["close"]),
+                    "volume": float(base["volume"]),
+                    "pct_change": float(off.get("pct_change", base["pct_change"])),
+                    "source": "twse",
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "date": d,
+                    "close": float(base["close"]),
+                    "volume": float(base["volume"]),
+                    "pct_change": float(base["pct_change"]),
+                    "source": "yahoo",
+                }
+            )
+    return pd.DataFrame(rows), alerts
+
+
 def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{_INDEX_YAHOO}"
@@ -121,11 +234,14 @@ def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
 
 
 def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
-    """盤後融合：Yahoo → index_daily UPSERT。"""
+    """盤後融合：官方 MI_INDEX 優先、Yahoo 補洞 → index_daily UPSERT。"""
     ensure_index_daily_table(db_path)
-    df = _fetch_index_daily(range_)
-    if df.empty:
+    yahoo_df = _fetch_index_daily(range_)
+    if yahoo_df.empty:
         return {"ok": False, "rows": 0}
+    df, alerts = _merge_index_closes(yahoo_df)
+    if df.empty:
+        return {"ok": False, "rows": 0, "alerts": alerts}
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = sqlite3.connect(db_path)
     n = 0
@@ -159,7 +275,13 @@ def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
         conn.commit()
     finally:
         conn.close()
-    return {"ok": True, "rows": n, "latest": str(df["date"].iloc[-1])}
+    latest = str(df["date"].iloc[-1])
+    out: Dict[str, Any] = {"ok": True, "rows": n, "latest": latest}
+    if alerts:
+        out["alerts"] = alerts
+    last_src = str(df["source"].iloc[-1]) if "source" in df.columns else "yahoo"
+    out["latest_source"] = last_src
+    return out
 
 
 def load_index_daily(db_path: str, as_of: Optional[str] = None) -> pd.DataFrame:

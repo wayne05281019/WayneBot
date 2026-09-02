@@ -41,7 +41,8 @@ def test_apply_market_weights_bear_caps_select():
 
 
 @patch("taiwan_market._fetch_index_daily")
-def test_sync_index_daily_writes_table(mock_fetch, tmp_path):
+@patch("taiwan_market._fetch_twse_index_close", return_value=None)
+def test_sync_index_daily_writes_table(mock_twse, mock_fetch, tmp_path):
     import sqlite3
 
     db = str(tmp_path / "t.db")

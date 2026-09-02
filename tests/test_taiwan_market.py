@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
 from decision_card_signals import calc_volume_rank
-from taiwan_market import analyze_taiwan_market, apply_market_weights, market_screening_note
+from taiwan_market import (
+    _fetch_twse_index_close,
+    _merge_index_closes,
+    analyze_taiwan_market,
+    apply_market_weights,
+    market_screening_note,
+    sync_index_daily,
+)
 
 
 def test_calc_volume_rank_turnover_changes_order():
@@ -57,3 +64,117 @@ def test_analyze_taiwan_market_regime(mock_fetch, tmp_path):
     assert snap.get("ok")
     assert snap.get("regime") in ("bull", "neutral", "bear")
     assert snap.get("confidence", 0) > 0
+
+
+def test_fetch_twse_index_close_parses_weighted_index():
+    payload = {
+        "stat": "OK",
+        "tables": [
+            {
+                "title": "114年08月29日 價格指數(臺灣證券交易所)",
+                "data": [
+                    ["寶島股價指數", "27,261.26", "<p style ='color:red'>+</p>", "5.08", "0.02", ""],
+                    ["發行量加權股價指數", "24,233.10", "<p style ='color:green'>-</p>", "3.35", "0.01", ""],
+                ],
+            }
+        ],
+    }
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = payload
+    with patch("taiwan_market._SESSION.get", return_value=mock_resp):
+        row = _fetch_twse_index_close("20250829")
+    assert row is not None
+    assert row["close"] == 24233.10
+    assert row["pct_change"] == -0.01
+    assert row["source"] == "twse"
+
+
+def test_fetch_twse_index_close_returns_none_on_holiday():
+    payload = {"stat": "很抱歉，沒有符合條件的資料!", "tables": []}
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = payload
+    with patch("taiwan_market._SESSION.get", return_value=mock_resp):
+        assert _fetch_twse_index_close("20250830") is None
+
+
+@patch("taiwan_market._fetch_twse_index_close")
+def test_merge_index_closes_prefers_official(mock_twse):
+    def _official(date):
+        if date == "20250829":
+            return {
+                "date": "20250829",
+                "close": 24233.10,
+                "pct_change": -0.01,
+                "source": "twse",
+            }
+        return None
+
+    mock_twse.side_effect = _official
+    yahoo = pd.DataFrame(
+        {
+            "date": ["20250828", "20250829"],
+            "close": [24100.0, 24230.0],
+            "volume": [1e9, 1.1e9],
+            "pct_change": [0.2, 0.41],
+        }
+    )
+    merged, alerts = _merge_index_closes(yahoo)
+    last = merged.iloc[-1]
+    assert last["close"] == 24233.10
+    assert last["source"] == "twse"
+    assert alerts == []
+
+
+@patch("taiwan_market._fetch_twse_index_close")
+def test_merge_index_closes_alerts_on_large_diff(mock_twse):
+    mock_twse.return_value = {
+        "date": "20250829",
+        "close": 24233.10,
+        "pct_change": -0.01,
+        "source": "twse",
+    }
+    yahoo = pd.DataFrame(
+        {
+            "date": ["20250829"],
+            "close": [24500.0],
+            "volume": [1e9],
+            "pct_change": [1.0],
+        }
+    )
+    _, alerts = _merge_index_closes(yahoo)
+    assert len(alerts) == 1
+    assert "Yahoo" in alerts[0] and "TWSE" in alerts[0]
+
+
+@patch("taiwan_market._fetch_index_daily")
+@patch("taiwan_market._fetch_twse_index_close")
+def test_sync_index_daily_prefers_official(mock_twse, mock_yahoo, tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "idx.db")
+    mock_yahoo.return_value = pd.DataFrame(
+        {
+            "date": ["20250828", "20250829"],
+            "close": [24100.0, 24200.0],
+            "volume": [1e9, 1.1e9],
+            "pct_change": [0.2, 0.41],
+        }
+    )
+    mock_twse.return_value = {
+        "date": "20250829",
+        "close": 24233.10,
+        "pct_change": -0.01,
+        "source": "twse",
+    }
+    r = sync_index_daily(db)
+    assert r["ok"] and r["rows"] == 2
+    assert r.get("latest_source") == "twse"
+    conn = sqlite3.connect(db)
+    close = conn.execute(
+        "SELECT close FROM index_daily WHERE date=?",
+        ("20250829",),
+    ).fetchone()[0]
+    conn.close()
+    assert close == 24233.10
