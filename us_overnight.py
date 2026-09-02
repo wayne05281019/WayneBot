@@ -171,7 +171,8 @@ def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     prev = _as_float(meta.get("previousClose") or meta.get("chartPreviousClose"))
     pct = (last_px - prev) / prev * 100.0 if prev else None
-    return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct}
+    chg = (last_px - prev) if prev is not None else None
+    return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct, "chg": chg}
 
 
 def _fetch_symbol(sym: str) -> Dict[str, Any]:
@@ -187,8 +188,13 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
     closes = qblock.get("close") or []
     px = _as_float(meta.get("regularMarketPrice"))
     pct = _as_float(meta.get("regularMarketChangePercent"))
+    chg = _as_float(meta.get("regularMarketChange"))
     if pct is None:
         pct = _pct_from_closes(closes, px)
+    if chg is None and px is not None and pct is not None:
+        prev = px / (1.0 + pct / 100.0) if pct != -100.0 else None
+        if prev:
+            chg = px - prev
     ts = 0
     stamps = block.get("timestamp") or []
     if stamps:
@@ -198,7 +204,7 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
     session = ""
     if ts:
         session = datetime.fromtimestamp(ts, tz=NY).strftime("%Y%m%d")
-    return {"symbol": meta.get("symbol") or sym, "price": px, "pct": pct, "session": session}
+    return {"symbol": meta.get("symbol") or sym, "price": px, "pct": pct, "chg": chg, "session": session}
 
 
 def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
@@ -228,9 +234,11 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
             continue
         out[f"{key}_px"] = bar.get("price")
         out[f"{key}_pct"] = bar.get("pct")
+        out[f"{key}_chg"] = bar.get("chg")
         if key == "vix":
             out["vix"] = bar.get("price")
             out["vix_pct"] = bar.get("pct")
+            out["vix_chg"] = bar.get("chg")
         if bar.get("session"):
             sessions.append(bar["session"])
         time.sleep(0.05)
@@ -243,6 +251,7 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
                 continue
             out[f"{key}_px"] = bar.get("price")
             out[f"{key}_pct"] = bar.get("pct")
+            out[f"{key}_chg"] = bar.get("chg")
             time.sleep(0.05)
         for key, sym in POST_NAMES:
             try:
@@ -254,6 +263,7 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
                 continue
             out[f"{key}_post_px"] = ext.get("price")
             out[f"{key}_post_pct"] = ext.get("pct")
+            out[f"{key}_post_chg"] = ext.get("chg")
             time.sleep(0.05)
     if sessions:
         out["us_session"] = max(sessions)
@@ -474,22 +484,110 @@ PHASE_LABEL = {
 }
 
 
+_ITEM_SEP = "｜"
+
+
 def _fmt_pct(val) -> str:
     if val is None:
         return "—"
     try:
-        return f"{float(val):+.1f}%"
+        return f"{float(val):+.2f}%"
     except (TypeError, ValueError):
         return "—"
 
 
-def _fmt_vix(val) -> str:
-    if val is None:
+def _fmt_pts(chg, decimals: int = 2) -> str:
+    if chg is None:
+        return ""
+    try:
+        return f"{float(chg):+.{decimals}f}點"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _fmt_move(pct, chg=None, *, pts_decimals: int = 2) -> str:
+    if pct is None:
+        return "—"
+    pct_s = _fmt_pct(pct)
+    pts_s = _fmt_pts(chg, pts_decimals)
+    return f"{pct_s}（{pts_s}）" if pts_s else pct_s
+
+
+def _fmt_vix(snap: Dict[str, Any]) -> str:
+    level = snap.get("vix")
+    if level is None:
         return "—"
     try:
-        return f"{float(val):.1f}"
+        base = f"{float(level):.2f}"
     except (TypeError, ValueError):
         return "—"
+    pct = snap.get("vix_pct")
+    if pct is None:
+        return base
+    return f"{base}（{_fmt_pct(pct)}）"
+
+
+def _fmt_quote(snap: Dict[str, Any], pct_key: str, chg_key: str, label: str, *, pts_decimals: int = 2) -> str:
+    return f"{label} {_fmt_move(snap.get(pct_key), snap.get(chg_key), pts_decimals=pts_decimals)}"
+
+
+def _join_quotes(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> str:
+    parts = [_fmt_quote(snap, pct_k, chg_k, label, pts_decimals=pts_decimals) for pct_k, chg_k, label in items]
+    return _ITEM_SEP.join(parts)
+
+
+def _cash_indices_line(snap: Dict[str, Any]) -> str:
+    return _join_quotes(
+        snap,
+        (
+            ("dji_pct", "dji_chg", "道瓊"),
+            ("spx_pct", "spx_chg", "標普"),
+            ("ixic_pct", "ixic_chg", "那斯達克"),
+            ("sox_pct", "sox_chg", "費半"),
+        ),
+    )
+
+
+def _post_futures_line(snap: Dict[str, Any]) -> str:
+    return _join_quotes(
+        snap,
+        (
+            ("nq_f_pct", "nq_f_chg", "NQ"),
+            ("es_f_pct", "es_f_chg", "ES"),
+            ("ym_f_pct", "ym_f_chg", "YM"),
+        ),
+    )
+
+
+def _post_adr_line(snap: Dict[str, Any], *, with_cash: bool = False) -> str:
+    if with_cash:
+        return _ITEM_SEP.join(
+            [
+                _fmt_quote(snap, "tsm_pct", "tsm_chg", "台積ADR收盤"),
+                _fmt_quote(snap, "tsm_post_pct", "tsm_post_chg", "盤後"),
+                _fmt_quote(snap, "nvda_pct", "nvda_chg", "輝達收盤"),
+                _fmt_quote(snap, "nvda_post_pct", "nvda_post_chg", "盤後"),
+            ]
+        )
+    return _join_quotes(
+        snap,
+        (
+            ("tsm_pct", "tsm_chg", "台積ADR"),
+            ("nvda_pct", "nvda_chg", "輝達"),
+        ),
+    )
+
+
+def _drop_post_line(snap: Dict[str, Any]) -> str:
+    return _join_quotes(
+        snap,
+        (
+            ("nq_f_pct", "nq_f_chg", "NQ"),
+            ("tsm_post_pct", "tsm_post_chg", "台積ADR"),
+            ("nvda_post_pct", "nvda_post_chg", "輝達"),
+        ),
+        pts_decimals=2,
+    )
 
 
 def format_us_html(snap: Dict[str, Any]) -> str:
@@ -504,28 +602,17 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     sess_s = f"{sess[:4]}/{sess[4:6]}/{sess[6:]}" if len(str(sess)) == 8 else (sess or "—")
     lines = [
         f"<b>美股收盤</b>　{html_escape(label)}　{html_escape(phase_s)}　美股交易日 {html_escape(sess_s)}",
-        (
-            f"道瓊 {_fmt_pct(snap.get('dji_pct'))}　標普 {_fmt_pct(snap.get('spx_pct'))}　"
-            f"那斯達克 {_fmt_pct(snap.get('ixic_pct'))}　費半 {_fmt_pct(snap.get('sox_pct'))}"
-        ),
+        _cash_indices_line(snap),
     ]
     posted = phase in ("post", "overnight") and any(
         snap.get(k) is not None for k in ("nq_f_pct", "es_f_pct", "ym_f_pct", "tsm_post_pct", "nvda_post_pct")
     )
     if posted:
-        lines.append(
-            f"盤後　NQ {_fmt_pct(snap.get('nq_f_pct'))}　ES {_fmt_pct(snap.get('es_f_pct'))}　"
-            f"YM {_fmt_pct(snap.get('ym_f_pct'))}"
-        )
-        lines.append(
-            f"台積ADR 收盤 {_fmt_pct(snap.get('tsm_pct'))} 盤後 {_fmt_pct(snap.get('tsm_post_pct'))}　"
-            f"輝達 收盤 {_fmt_pct(snap.get('nvda_pct'))} 盤後 {_fmt_pct(snap.get('nvda_post_pct'))}"
-        )
+        lines.append(f"盤後　{_post_futures_line(snap)}")
+        lines.append(_post_adr_line(snap, with_cash=True))
     else:
-        lines.append(
-            f"台積ADR {_fmt_pct(snap.get('tsm_pct'))}　輝達 {_fmt_pct(snap.get('nvda_pct'))}"
-        )
-    lines.append(f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）")
+        lines.append(_post_adr_line(snap))
+    lines.append(f"VIX {_fmt_vix(snap)}")
     return "\n".join(lines)
 
 
@@ -539,30 +626,19 @@ def format_night_plain(snap: Dict[str, Any]) -> str:
     lines = [
         "＝＝夜盤判斷＝＝",
         f"{label}　{phase_s}".strip(),
-        (
-            f"美股現金　道瓊{_fmt_pct(snap.get('dji_pct'))}　標普{_fmt_pct(snap.get('spx_pct'))}　"
-            f"那斯達克{_fmt_pct(snap.get('ixic_pct'))}　費半{_fmt_pct(snap.get('sox_pct'))}"
-        ),
-        f"VIX {_fmt_vix(snap.get('vix'))}（{_fmt_pct(snap.get('vix_pct'))}）",
+        f"美股現金　{_cash_indices_line(snap)}",
+        f"VIX {_fmt_vix(snap)}",
     ]
     if phase in ("post", "overnight"):
-        lines.append(
-            f"盤後續勢　那指期{_fmt_pct(snap.get('nq_f_pct'))}　標普期{_fmt_pct(snap.get('es_f_pct'))}　"
-            f"道瓊期{_fmt_pct(snap.get('ym_f_pct'))}"
-        )
-        lines.append(
-            f"台積ADR　收盤{_fmt_pct(snap.get('tsm_pct'))}　盤後{_fmt_pct(snap.get('tsm_post_pct'))}　"
-            f"輝達　收盤{_fmt_pct(snap.get('nvda_pct'))}　盤後{_fmt_pct(snap.get('nvda_post_pct'))}"
-        )
+        lines.append(f"盤後續勢　{_post_futures_line(snap)}")
+        lines.append(_post_adr_line(snap, with_cash=True))
     else:
-        lines.append(
-            f"台積ADR{_fmt_pct(snap.get('tsm_pct'))}　輝達{_fmt_pct(snap.get('nvda_pct'))}　（現金收盤，盤中期貨不看）"
-        )
+        lines.append(f"{_post_adr_line(snap)}　（現金收盤，盤中期貨不看）")
     side = electronics_night_side(snap)
     if side:
         lines.append(
-            f"電子夜盤　{side}　費半{_fmt_pct(effective_sox_pct(snap))}　"
-            f"台積ADR{_fmt_pct(effective_tsm_pct(snap))}　輝達{_fmt_pct(effective_nvda_pct(snap))}"
+            f"電子夜盤　{side}　"
+            f"{_join_quotes(snap, (('sox_pct', 'sox_chg', '費半'), ('tsm_pct', 'tsm_chg', '台積ADR'), ('nvda_pct', 'nvda_chg', '輝達')))}"
         )
         lines.append("（台指期／電子期夜盤報價這次沒接公開源；電子漲跌改看費半＋台積ADR＋輝達）")
     else:
@@ -578,13 +654,12 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     phase = snap.get("us_phase") or "regular"
     extra = ""
     if phase in ("post", "overnight") and snap.get("nq_f_pct") is not None:
-        extra = f" 盤後NQ{_fmt_pct(snap.get('nq_f_pct'))}"
+        extra = f" 盤後NQ{_fmt_move(snap.get('nq_f_pct'), snap.get('nq_f_chg'))}"
     side = electronics_night_side(snap)
     elec = f" 電子夜盤{side}" if side else ""
     return (
-        f"美股收盤 {label} 道瓊{_fmt_pct(snap.get('dji_pct'))} 標普{_fmt_pct(snap.get('spx_pct'))} "
-        f"那指{_fmt_pct(snap.get('ixic_pct'))} 費半{_fmt_pct(snap.get('sox_pct'))} "
-        f"VIX {_fmt_vix(snap.get('vix'))}{extra}{elec}"
+        f"美股收盤 {label} {_cash_indices_line(snap)} "
+        f"VIX {_fmt_vix(snap)}{extra}{elec}"
     )
 
 
@@ -597,20 +672,14 @@ def format_us_drop_alert(snap: Dict[str, Any]) -> str:
     sess_s = f"{sess[:4]}/{sess[4:6]}/{sess[6:]}" if len(str(sess)) == 8 else (sess or "—")
     lines = [
         f"<b>美股收盤偏弱</b>　一早提醒　{html_escape(label)}　美股交易日 {html_escape(sess_s)}",
-        (
-            f"道瓊 {_fmt_pct(snap.get('dji_pct'))}　標普 {_fmt_pct(snap.get('spx_pct'))}　"
-            f"那斯達克 {_fmt_pct(snap.get('ixic_pct'))}　費半 {_fmt_pct(snap.get('sox_pct'))}"
-        ),
-        f"VIX {_fmt_vix(snap.get('vix'))}",
+        _cash_indices_line(snap),
+        f"VIX {_fmt_vix(snap)}",
     ]
     phase = snap.get("us_phase") or "regular"
     if phase in ("post", "overnight") and any(
         snap.get(k) is not None for k in ("nq_f_pct", "tsm_post_pct")
     ):
-        lines.append(
-            f"盤後　NQ {_fmt_pct(snap.get('nq_f_pct'))}　"
-            f"台積ADR {_fmt_pct(snap.get('tsm_post_pct'))}　輝達 {_fmt_pct(snap.get('nvda_post_pct'))}"
-        )
+        lines.append(f"盤後　{_drop_post_line(snap)}")
     if snap.get("regime") == "risk_off":
         lines.append("06:30 海選會把當沖／隔日沖拿掉。佈局先看高低卡，不要因為缺口去追。")
     else:
