@@ -13,5 +13,8 @@ __pycache__/
 *.pyc
 .venv/
 *.png
-!docs/expert_notes/**/charts/*.png
+!/docs/expert_notes/
+!/docs/expert_notes/飆客/
+!/docs/expert_notes/飆客/charts/
+!/docs/expert_notes/飆客/charts/*.png
 .DS_Store
