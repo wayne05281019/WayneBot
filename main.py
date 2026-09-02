@@ -36,10 +36,20 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         route = self.path.split("?")[0]
         if route in ("/", "/health"):
-            body = (
-                '{"status":"healthy","service":"WayneBot 24H Online","ok":true}'
-            ).encode("utf-8")
-            self.send_response(200)
+            import json
+
+            try:
+                from automation_health import health_payload
+
+                payload = health_payload()
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+            except Exception as e:
+                body = json.dumps(
+                    {"status": "healthy", "service": "WayneBot 24H Online", "ok": True, "data_ok": False, "error": str(e)},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

@@ -8,6 +8,7 @@ import tempfile
 
 from automation_health import (
     format_automation_audit_plain,
+    pipeline_expectations_met,
     quote_filter_regression_ok,
     run_automation_audit,
 )
@@ -44,6 +45,18 @@ def _seed_day(conn: sqlite3.Connection, ymd: str) -> None:
             VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,50,0,0)""",
             (ymd, f"{6000+i:04d}", "上櫃", "TWO"),
         )
+
+
+def test_pipeline_expectations_skips_empty_db():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        r = pipeline_expectations_met(path, cap="20260902")
+        assert r.get("skipped") is True
+        assert r.get("ok") is True
+    finally:
+        os.remove(path)
 
 
 def test_run_automation_audit_passes_complete_day():
