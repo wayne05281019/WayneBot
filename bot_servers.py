@@ -242,8 +242,9 @@ HELP_TOPICS = {
     ),
     "menu": (
         "<b>主選單在哪？</b>　不在訊息最下面，在<b>輸入框右側 ⌨️</b>展開的兩排按鈕。\n"
-        "<b>決策卡</b>／當沖／持股／觀察／海選　｜　隔日沖／資金／說明／選單／（預留格）\n"
-        "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
+        "<b>第一排</b>：決策卡／當沖／持股／觀察／海選\n"
+        "<b>第二排</b>：隔日沖／資金／說明／選單／<b>大盤</b>（次排最右）\n"
+        "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "完整分類說明請按主選單「說明」，或看本頁導覽下方各分類鈕。"
     ),
@@ -329,7 +330,7 @@ HELP_TOPICS = {
 # 主選單兩排各五格：次排最右＝大盤專頁（只讀）。
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
-MENU_LAYOUT_VERSION = "3"
+MENU_LAYOUT_VERSION = "4"
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -624,6 +625,11 @@ class WayneTelegramBot:
             db_path=self.db_path,
         )
 
+    def _invalidate_menu_layout(self, uid: str) -> None:
+        from wayne_db import set_cached_data
+
+        set_cached_data(f"tg_menu_layout:{uid}", "menu", "0", db_path=self.db_path)
+
     async def _refresh_reply_menu(self, message, *, uid: str = "", silent: bool = False):
         """先移除舊鍵盤再掛兩排新選單。silent=True 時靜默釘選單，不發「正在更新」類提示。"""
         actor = self._actor_key(message, uid=uid)
@@ -650,7 +656,7 @@ class WayneTelegramBot:
         done = None
         try:
             done = await message.reply_text(
-                "已更新主選單（點輸入框右側 ⌨️ 可展開兩排）。",
+                "已更新主選單（點輸入框右側 ⌨️ 展開兩排；次排最右為「大盤」）。",
                 reply_markup=self._reply_menu(),
             )
         except Exception:
@@ -673,10 +679,15 @@ class WayneTelegramBot:
         asyncio.create_task(_fade_out())
 
     async def _ensure_reply_menu_if_needed(self, message, uid: str) -> None:
-        """首次按主選單時自動刷新，免手動 /start；靜默完成不佔聊天室。"""
+        """版面版本不符時強制刷新（可見提示，確保「大盤」等新版按鈕出現）。"""
         if self._menu_layout_ok(uid):
             return
-        await self._refresh_reply_menu(message, uid=uid, silent=True)
+        await self._refresh_reply_menu(message, uid=uid, silent=False)
+
+    async def _force_reply_menu(self, message, uid: str) -> None:
+        """/menu、選單：一律重掛鍵盤（解決舊版快取或靜默釘選失敗）。"""
+        self._invalidate_menu_layout(uid)
+        await self._refresh_reply_menu(message, uid=uid, silent=False)
 
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
@@ -1331,12 +1342,12 @@ class WayneTelegramBot:
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "不熟按鈕請按第二排 <b>說明</b>，有完整分類操作指南。",
         )
-        await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
+        await self._force_reply_menu(update.message, str(update.effective_user.id))
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
-        await self._refresh_reply_menu(update.message, uid=uid)
+        await self._force_reply_menu(update.message, uid)
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._reply_help_topic(update.message, "guide")
@@ -2937,6 +2948,11 @@ class WayneTelegramBot:
             return
         if data.startswith("?:"):
             topic = data[2:] or "guide"
+            if topic == "menu":
+                uid = str(q.from_user.id)
+                await self._force_reply_menu(q.message, uid)
+                await self._reply_help_topic(q.message, "menu", edit_target=None)
+                return
             await self._reply_help_topic(q.message, topic, edit_target=q.message)
             return
         if data.startswith("w:"):
@@ -3080,6 +3096,7 @@ class WayneTelegramBot:
                 await app.bot.set_my_commands(
                     [
                         BotCommand("menu", "回到主選單（下方兩排）"),
+                        BotCommand("market", "大盤指數與風險"),
                         BotCommand("start", "開始"),
                         BotCommand("help", "使用說明"),
                         BotCommand("screen", "海選"),
@@ -3110,6 +3127,7 @@ class WayneTelegramBot:
         )
         app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
         app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
+        app.add_handler(CommandHandler("market", self._wrap_cmd(self.market_cmd)))
         app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))
         app.add_handler(CommandHandler("screen", self._wrap_cmd(self.screen_cmd)))
         app.add_handler(CommandHandler("daytrade", self._wrap_cmd(self.daytrade_cmd)))
