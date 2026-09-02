@@ -99,19 +99,47 @@ class TestMarketMenuE2E:
             snap = analyze_taiwan_market(db, as_of, db_only=True)
             mock_yahoo.assert_not_called()
         assert "台股大盤" in html
-        assert "只讀庫內資料" in html
+        assert "庫內官方融合" in html
         assert "市場廣度" in html
         assert snap.get("ok")
         assert snap.get("falling_risk") is not None
         br = load_index_breadth_daily(db, as_of)
         assert br and br["up_count"] == 800
 
-    def test_empty_db_shows_unavailable_not_fake(self, tmp_path):
+    def test_no_empty_library_message_on_missing_index(self, tmp_path):
+        """無 index_daily 時不回覆「庫空／暫不可用」，僅記錄讀取異常。"""
         db = str(tmp_path / "empty.db")
         with patch("taiwan_market._fetch_index_daily") as mock_yahoo:
             html = format_taiwan_market_page_html(db)
             mock_yahoo.assert_not_called()
-        assert "暫不可用" in html
+        assert "庫空" not in html
+        assert "暫不可用" not in html
+        assert "指數資料讀取異常" in html
+
+    def test_sector_flow_zero_is_valid_not_missing(self, tmp_path):
+        """法人合計為 0 仍應顯示，不可當成缺資料往前找別日。"""
+        db = str(tmp_path / "flow0.db")
+        as_of = _seed_market_db(db)
+        conn = sqlite3.connect(db)
+        conn.execute(
+            """
+            CREATE TABLE daily_sector_flow (
+                date TEXT, sector TEXT,
+                foreign_net REAL, trust_net REAL, dealer_net REAL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO daily_sector_flow VALUES (?, '半導體', 0, 0, 0)",
+            (as_of,),
+        )
+        conn.commit()
+        conn.close()
+        snap = analyze_taiwan_market(db, as_of, db_only=True)
+        assert snap.get("sector_flow_net") == 0
+        assert snap.get("sector_flow_as_of") == as_of
+        html = format_taiwan_market_page_html(db, as_of)
+        assert "產業合計 +0 張" in html or "產業合計 0 張" in html
 
     def test_menu_cmd_forces_visible_refresh(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)

@@ -307,7 +307,7 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     conn.close()
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
-    assert "只讀庫內資料" in html
+    assert "庫內官方融合" in html
     assert "Regime" in html
     assert "官方融合" in html
     mock_fetch.assert_not_called()
@@ -319,5 +319,7 @@ def test_format_taiwan_market_page_no_yahoo_fallback(mock_fetch, tmp_path):
 
     db = tmp_path / "empty.db"
     html = format_taiwan_market_page_html(str(db))
-    assert "暫不可用" in html
+    assert "庫空" not in html
+    assert "暫不可用" not in html
+    assert "指數資料讀取異常" in html
     mock_fetch.assert_not_called()

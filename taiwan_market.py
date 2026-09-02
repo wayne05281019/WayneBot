@@ -517,6 +517,129 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool
     return _fetch_index_daily("1y")
 
 
+def _norm_ymd(val: Optional[str]) -> str:
+    return str(val or "").replace("-", "").strip()[:8]
+
+
+def _max_index_daily_date(db_path: str) -> Optional[str]:
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT MAX(date) FROM index_daily WHERE symbol=?",
+            (_INDEX_SYMBOL,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row and row[0]:
+        return _norm_ymd(row[0])
+    return None
+
+
+def resolve_market_as_of(db_path: str, hint: Optional[str] = None) -> str:
+    """大盤／海選共用基準日：index_daily 最新完整日優先，再對齊 screen/import 基準日。"""
+    hint_d = _norm_ymd(hint)
+    max_idx = _max_index_daily_date(db_path)
+    if max_idx:
+        if hint_d and hint_d <= max_idx:
+            return hint_d
+        return max_idx
+    for resolver in (
+        lambda: __import__("trading_calendar", fromlist=["resolve_screen_as_of"]).resolve_screen_as_of(db_path),
+        lambda: __import__("import_health", fromlist=["latest_complete_quote_date"]).latest_complete_quote_date(db_path),
+    ):
+        try:
+            d = resolver()
+            if d:
+                return _norm_ymd(d)
+        except Exception:
+            pass
+    from trading_calendar import fuse_end_trading_date
+
+    return fuse_end_trading_date()
+
+
+def _prior_quote_dates(db_path: str, as_of: str, limit: int = 12) -> List[str]:
+    d = _norm_ymd(as_of)
+    conn = sqlite3.connect(db_path)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+        ).fetchone()
+        if not has:
+            return []
+        rows = conn.execute(
+            """
+            SELECT DISTINCT replace(date, '-', '') AS d
+            FROM daily_quotes
+            WHERE replace(date, '-', '') <= ?
+            ORDER BY d DESC
+            LIMIT ?
+            """,
+            (d, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [_norm_ymd(r[0]) for r in rows if r and r[0]]
+
+
+def _nearest_official_breadth(db_path: str, as_of: str) -> Optional[Dict[str, Any]]:
+    ensure_index_breadth_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT date FROM index_breadth_daily
+            WHERE date <= ? ORDER BY date DESC LIMIT 1
+            """,
+            (_norm_ymd(as_of),),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return load_index_breadth_daily(db_path, str(row[0]))
+
+
+def _nearest_sector_flow(db_path: str, as_of: str) -> Optional[Tuple[str, float]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_sector_flow'"
+        ).fetchone()
+        if not has:
+            return None
+        row = conn.execute(
+            """
+            SELECT date, SUM(foreign_net + trust_net + dealer_net)
+            FROM daily_sector_flow
+            WHERE date <= ?
+            GROUP BY date
+            HAVING COUNT(*) > 0
+            ORDER BY date DESC
+            LIMIT 1
+            """,
+            (_norm_ymd(as_of),),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row[0] is None:
+        return None
+    try:
+        return _norm_ymd(row[0]), float(row[1] or 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_breadth_for_date(db_path: str, as_of: str) -> Tuple[Dict[str, float], str]:
+    """站上月線廣度：當日無列則往前找最近有官股日 K 的交易日。"""
+    for d in _prior_quote_dates(db_path, as_of, 12):
+        b = _breadth_from_db(db_path, d)
+        if int(b.get("sample_n") or 0) > 0:
+            return b, d
+    return {"above_ma20_pct": 0.0, "sample_n": 0}, _norm_ymd(as_of)
+
+
 def _regime_from_closes(
     closes: pd.Series,
     *,
@@ -812,14 +935,31 @@ def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
 
 
 def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> Dict[str, Any]:
-    as_of = str(as_of or "").strip()
-    idx = load_index_daily(db_path, as_of or None, db_only=db_only)
+    ref_date = resolve_market_as_of(db_path, as_of)
+    idx = load_index_daily(db_path, ref_date or None, db_only=db_only)
+    if idx.empty and db_only:
+        idx = load_index_daily(db_path, None, db_only=True)
+        ref_date = _max_index_daily_date(db_path) or ref_date
+    if idx.empty and ref_date:
+        for d in _prior_quote_dates(db_path, ref_date, 8):
+            trial = load_index_daily(db_path, d, db_only=db_only)
+            if not trial.empty:
+                idx = trial
+                ref_date = d
+                break
     if idx.empty:
-        return {"ok": False, "regime": "unknown", "brief": "加權指數資料暫不可用"}
-    ref_date = as_of or str(idx["date"].iloc[-1])
-    breadth = _breadth_from_db(db_path, ref_date)
-    official = load_index_breadth_daily(db_path, ref_date)
-    flow = _sector_flow_sum(db_path, ref_date)
+        return {"ok": False, "regime": "unknown", "brief": "加權指數讀取異常"}
+    if not ref_date:
+        ref_date = str(idx["date"].iloc[-1])
+    breadth, breadth_date = _resolve_breadth_for_date(db_path, ref_date)
+    official = load_index_breadth_daily(db_path, ref_date) or _nearest_official_breadth(db_path, ref_date)
+    flow_net = _sector_flow_net(db_path, ref_date)
+    flow_date = ref_date
+    if flow_net is None:
+        near = _nearest_sector_flow(db_path, ref_date)
+        if near:
+            flow_date, flow_net = near
+    flow = float(flow_net) if flow_net is not None else 0.0
     core = _regime_from_closes(
         idx["close"].astype(float),
         breadth_pct=breadth.get("above_ma20_pct", 0),
@@ -858,8 +998,10 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         "slope20_pct": core.get("slope20_pct", 0),
         "breadth_above_ma20": breadth.get("above_ma20_pct", 0),
         "sample_n": breadth.get("sample_n", 0),
+        "breadth_as_of": breadth_date,
         "official_breadth": official,
-        "sector_flow_net": round(flow, 0),
+        "sector_flow_net": round(flow_net, 0) if flow_net is not None else None,
+        "sector_flow_as_of": flow_date,
         "regime": core.get("regime", "neutral"),
         "regime_label": core.get("regime_label", "區間震盪"),
         "confidence": core.get("confidence", 50),
@@ -1044,7 +1186,11 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
         f"MA20 {snap['ma20']}　MA60 {snap['ma60']}",
         f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
         f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
-        f"產業法人 {snap['sector_flow_net']:+,.0f} 張",
+        *(
+            [f"產業法人 {snap['sector_flow_net']:+,.0f} 張"]
+            if snap.get("sector_flow_net") is not None
+            else []
+        ),
         _TG_SECTION,
         f"Regime <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
         f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
@@ -1061,11 +1207,16 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
 
 
 def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) -> str:
-    """Telegram「大盤」專頁：只讀既有庫，不觸發同步或寫入；庫空則不 fallback Yahoo。"""
-    snap = analyze_taiwan_market(db_path, as_of, db_only=True)
+    """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
+    ref_hint = resolve_market_as_of(db_path, as_of)
+    snap = analyze_taiwan_market(db_path, ref_hint, db_only=True)
     if not snap.get("ok"):
-        return "<b>📊 台股大盤</b>\n加權指數資料暫不可用，請等盤後 16:30 官方融合完成後再試。"
-    ref = str(snap.get("as_of") or "")
+        logger.error("大盤頁：index_daily 無法解析基準日 db=%s hint=%s", db_path, ref_hint)
+        return (
+            "<b>📊 台股大盤</b>\n"
+            "指數資料讀取異常，已記錄；系統會在下一輪盤後融合自動修復。"
+        )
+    ref = str(snap.get("as_of") or ref_hint)
     day_pct = _index_day_change(db_path, ref)
     pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
     light = _regime_traffic_light(snap.get("regime"))
@@ -1086,9 +1237,9 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
         "<b>市場廣度</b>",
     ]
     if int(snap.get("sample_n") or 0) > 0:
-        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）")
-    else:
-        lines.append("站上月線：當日官股日 K 尚未齊")
+        b_date = str(snap.get("breadth_as_of") or ref)
+        date_note = f"（{b_date}）" if b_date != ref else ""
+        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）{date_note}")
     ob = snap.get("official_breadth")
     if ob and int(ob.get("up_count") or 0) + int(ob.get("down_count") or 0) > 0:
         lines.extend(
@@ -1099,13 +1250,13 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
                 f"上櫃 漲{ob.get('up_two', 0)}/跌{ob.get('down_two', 0)}",
             ]
         )
-    flow_net = _sector_flow_net(db_path, ref)
+    flow_date = str(snap.get("sector_flow_as_of") or ref)
+    flow_net = snap.get("sector_flow_net")
     lines.append(_TG_SECTION)
     lines.append("<b>法人</b>")
-    if flow_net is not None:
-        lines.append(f"產業合計 {flow_net:+,.0f} 張")
-    else:
-        lines.append("盤後輪動尚未寫入")
+    if flow_net is not None and _sector_flow_net(db_path, flow_date) is not None:
+        f_note = f"（{flow_date}）" if flow_date != ref else ""
+        lines.append(f"產業合計 {float(flow_net):+,.0f} 張{f_note}")
     lines.extend(
         [
             "",
@@ -1163,7 +1314,7 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
     except Exception:
         pass
     lines.append("")
-    lines.append("<i>本頁只讀庫內資料，不觸發匯入；海選權重已依 regime 自動調整。</i>")
+    lines.append("<i>資料來源：庫內官方融合；基準日自動對齊最近完整交易日。</i>")
     return "\n".join(lines)
 
 
