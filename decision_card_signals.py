@@ -77,6 +77,27 @@ def calc_volume_rank(
     return int(sum(1 for x in sub if x > last) + 1)
 
 
+def compute_ma60s(ma0: float, ma7: float, close: float) -> float:
+    """MA60S：7 個交易日前後均線差。高價股用 %，中價股用元（達發型），超高價用 %。"""
+    try:
+        m0, m7, c = float(ma0 or 0), float(ma7 or 0), float(close or ma0 or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if m7 <= 0:
+        return 0.0
+    delta = m0 - m7
+    pct = delta / m7 * 100.0
+    if c >= 500 or m0 >= 200:
+        return round(pct, 1)
+    if c >= 80:
+        if abs(pct) >= 6.0:
+            return round(pct, 1)
+        return round(delta, 1)
+    if abs(pct) >= 5.0:
+        return round(pct, 1)
+    return round(delta, 1)
+
+
 def compute_card_temperature(
     close: float,
     high20: float,

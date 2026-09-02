@@ -396,6 +396,30 @@ def _item_sort_score(key: str, item: Dict[str, Any]) -> float:
     return float(item.get("q60r") or 0) + float(item.get("pct_change") or item.get("pct") or 0) * 0.1
 
 
+def latest_regime(db_path: str) -> str:
+    ensure_index_daily_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT regime FROM index_daily WHERE symbol=? ORDER BY date DESC LIMIT 1",
+            (_INDEX_SYMBOL,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row and row[0]:
+        return str(row[0])
+    return "neutral"
+
+
+def sync_regime_ai_weights(db_path: str, as_of: Optional[str] = None) -> Dict[str, float]:
+    """盤後／海選後：復盤 base 權重 × 大盤 regime → bucket_w_*。"""
+    from screen_review import adapt_bucket_weights
+
+    snap = analyze_taiwan_market(db_path, as_of)
+    regime = snap.get("regime") if snap.get("ok") else latest_regime(db_path)
+    return adapt_bucket_weights(db_path, regime=regime)
+
+
 def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[str, Any]:
     """依大盤 regime 調整桶內排序與上限。"""
     if not snap.get("ok"):

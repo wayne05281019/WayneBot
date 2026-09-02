@@ -276,6 +276,37 @@ def sync_ex_rights(db_path: str = None, start: str = None, end: str = None) -> D
     return {"start": start, "end": end, "tw_upsert": tw_n, "two_upsert": two_n, "total": total}
 
 
+def upsert_heuristic_event(
+    db_path: str,
+    stock_id: str,
+    ex_date: str,
+    factor: float,
+    *,
+    kind: str = "啟發式",
+) -> None:
+    """跳空偵測到的減資／分割寫回 ex_rights，下次還原走官方路徑。"""
+    if not stock_id or len(str(ex_date)) != 8:
+        return
+    try:
+        f = float(factor)
+    except (TypeError, ValueError):
+        return
+    if not (0.05 <= f <= 20):
+        return
+    upsert_events(
+        db_path,
+        [
+            {
+                "stock_id": str(stock_id),
+                "ex_date": str(ex_date),
+                "kind": kind,
+                "factor": f,
+                "source": "heuristic_gap",
+            }
+        ],
+    )
+
+
 def load_ex_rights(stock_id: str, db_path: str = None) -> List[Dict[str, Any]]:
     path = db_path or get_db_path()
     sid = str(stock_id or "").strip()

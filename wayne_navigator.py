@@ -228,7 +228,7 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
             _scale_row(i, factor)
             notes.append(f"修正 {out['date'].iloc[i]} 錯價")
 
-    # 2) 持續跳空＝除權：當天整根都離開前收，之後不再跳回
+    # 2) 持續跳空＝除權／減資／分割：當天整根離開前收，之後不再跳回
     for i in range(1, n):
         day = str(dates.iloc[i] if i < len(dates) else "").replace("-", "")
         if day in official:
@@ -237,19 +237,41 @@ def normalize_ohlc(df: pd.DataFrame, db_path: str = None) -> tuple:
         c = float(out["close"].iloc[i] or 0)
         hi = float(out["high"].iloc[i] or 0)
         lo = float(out["low"].iloc[i] or 0)
+        vol_p = float(out["volume"].iloc[i - 1] or 0)
+        vol_c = float(out["volume"].iloc[i] or 0)
         if p <= 0 or c <= 0:
             continue
         r = c / p
-        down = r < 0.72 and hi < p * 0.78 and hi > 0
-        up = r > 1.45 and lo > p * 1.28
-        if not (down or up):
+        down = r < 0.82 and hi < p * 0.86 and hi > 0
+        up = r > 1.38 and lo > p * 1.22
+        mild_down = 0.72 <= r < 0.88 and hi < p * 0.92
+        mild_up = 1.15 <= r <= 1.65 and lo > p * 1.08
+        if not (down or up or mild_down or mild_up):
             continue
         factor = c / p
         if not (0.05 <= factor <= 20):
             continue
+        # 量縮／量增與價格跳動同向時，較像分割或減資
+        if vol_p > 0 and vol_c > 0:
+            vr = vol_c / vol_p
+            if factor > 1.1 and vr < 0.75:
+                factor = round(factor)
+            elif factor < 0.95 and vr > 1.25:
+                inv = 1.0 / factor if factor > 0 else 1.0
+                if abs(vr - inv) / max(inv, 1.0) < 0.45:
+                    factor = round(factor, 2)
         idx = out.index[:i]
         out.loc[idx, ["open", "high", "low", "close"]] = out.loc[idx, ["open", "high", "low", "close"]] * factor
-        notes.append(f"除權還原 {out['date'].iloc[i]} ×{factor:.4f}")
+        tag = "分割" if factor > 1.05 else "減資" if factor < 0.95 else "除權"
+        notes.append(f"{tag}還原 {out['date'].iloc[i]} ×{factor:.4f}")
+        if sid and db_path:
+            try:
+                from ex_rights import upsert_heuristic_event
+
+                upsert_heuristic_event(db_path, sid, day, factor, kind=tag)
+                official.add(day)
+            except Exception:
+                pass
 
     flat = (out["volume"] <= 0) & ((out["high"] - out["low"]).abs() <= 1e-8)
     out["is_halt"] = flat.fillna(False)
@@ -456,13 +478,12 @@ class NavigatorEngine:
         space_20 = int(round((h20 - l20) / l20 * 100.0)) if l20 else 0
         space_60 = int(round((h60 - l60) / l60 * 100.0)) if l60 else 0
         ma60s = 0.0
-        if len(df) >= 7:
+        if len(df) >= 8:
+            from decision_card_signals import compute_ma60s
+
             m0 = float(latest["ma60"] or 0)
-            m7 = float(df["ma60"].iloc[-7] or 0)
-            if m0 >= 200 or float(latest["close"] or 0) >= 500:
-                ma60s = round((m0 - m7) / m7 * 100.0, 1) if m7 > 0 else 0.0
-            else:
-                ma60s = round(m0 - m7, 1)
+            m7 = float(df["ma60"].iloc[-8] or 0)
+            ma60s = compute_ma60s(m0, m7, float(latest["close"] or 0))
         raw_qty60 = float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)
         qty60 = int(round(raw_qty60))
         if qty60 >= 10000:
@@ -1887,6 +1908,68 @@ _NAV_TONE = {
 }
 
 
+def _nav_legend_key(kind: str, marker: str, *, ms: float = 9.0, hollow: bool = False):
+    face = _NAV_TONE[kind][0] if kind in _NAV_TONE else "#546e7a"
+    if hollow:
+        return Line2D(
+            [], [], linestyle="none", marker=marker, markerfacecolor="none",
+            markeredgecolor=face, markeredgewidth=1.05, markersize=ms,
+        )
+    return Line2D(
+        [], [], linestyle="none", marker=marker, markerfacecolor=face,
+        markeredgecolor=_mix(face, "#000000", 0.42), markeredgewidth=0.85,
+        markersize=ms,
+    )
+
+
+def _draw_nav_legend(ax1) -> None:
+    """雙列圖例：上列價格箭頭、下列量能＋均線（對齊 CaryBot 密度）。"""
+    row1 = [
+        (_nav_legend_key("h20", "v"), "20高"),
+        (_nav_legend_key("h20_leave", "v"), "20高脫離"),
+        (_nav_legend_key("l20", "^"), "20低"),
+        (_nav_legend_key("l20_leave", "^"), "20低脫離"),
+        (_nav_legend_key("l60", "^"), "60低"),
+    ]
+    row2 = [
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
+                markeredgecolor="#311b92", markeredgewidth=0.9, markersize=9), "量能異常"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
+                markeredgecolor="#7f0000", markeredgewidth=0.9, markersize=9), "警告"),
+        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
+                markeredgecolor="#6a1b9a", markeredgewidth=0.8, markersize=8), "月波動低"),
+        (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
+        (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
+    ]
+    row3 = [
+        (Line2D([], [], color="#81c784", lw=1.75), "季低點線"),
+        (Line2D([], [], color="#f8bbd0", lw=1.15, linestyle="--"), "月高點線"),
+        (Line2D([], [], color="#80deea", lw=1.15, linestyle="--"), "月低點線"),
+        (_nav_legend_key("h20_near", "v", ms=10, hollow=True), "接近高低（空心）"),
+    ]
+    kw = dict(
+        loc="upper left",
+        ncol=5,
+        handlelength=1.25,
+        handletextpad=0.38,
+        columnspacing=0.95,
+        borderpad=0.45,
+        labelspacing=0.28,
+        framealpha=0.97,
+        facecolor="#f3f6f9",
+        edgecolor="#90a4ae",
+        prop=_fp(8.2, "bold"),
+    )
+    leg1 = ax1.legend([h for h, _ in row1], [t for _, t in row1], bbox_to_anchor=(0.004, 1.018), **kw)
+    leg1.set_zorder(10)
+    ax1.add_artist(leg1)
+    leg2 = ax1.legend([h for h, _ in row2], [t for _, t in row2], bbox_to_anchor=(0.004, 0.972), **kw)
+    leg2.set_zorder(10)
+    ax1.add_artist(leg2)
+    leg3 = ax1.legend([h for h, _ in row3], [t for _, t in row3], bbox_to_anchor=(0.004, 0.926), ncol=4, **kw)
+    leg3.set_zorder(10)
+
+
 def _nav_tone(kind: str, y: float, h20: float, l20: float) -> str:
     light, dark = _NAV_TONE[kind]
     same_hue = (kind[0] == "h" and y >= h20) or (kind[0] == "l" and y <= l20)
@@ -2121,50 +2204,7 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
         pad=6,
     )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
-
-    def _nav_key(kind, marker):
-        face = _NAV_TONE[kind][0]
-        return Line2D([], [], linestyle="none", marker=marker, markerfacecolor=face,
-                      markeredgecolor=_mix(face, "#000000", 0.42), markeredgewidth=0.8,
-                      markersize=9)
-
-    legend_keys = [
-        (_nav_key("h20", "v"), "20高"),
-        (_nav_key("h20_leave", "v"), "20高脫離"),
-        (_nav_key("l20", "^"), "20低"),
-        (_nav_key("l20_leave", "^"), "20低脫離"),
-        (_nav_key("l60", "^"), "60低"),
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
-                markeredgecolor="#311b92", markeredgewidth=0.85, markersize=9), "量能異常"),
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
-                markeredgecolor="#7f0000", markeredgewidth=0.85, markersize=9), "警告"),
-        (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
-                markeredgecolor="#6a1b9a", markeredgewidth=0.75, markersize=8), "月波動低"),
-        (Line2D([], [], color="#f9a825", lw=2.2), "SMA(20)"),
-        (Line2D([], [], color="#f48fb1", lw=1.7), "季高點線"),
-        (Line2D([], [], color="#81c784", lw=1.7), "季低點線"),
-        (Line2D([], [], color="#f8bbd0", lw=1.1, linestyle="--"), "月高點線"),
-        (Line2D([], [], color="#80deea", lw=1.1, linestyle="--"), "月低點線"),
-        (Line2D([], [], linestyle="none", marker="v", markerfacecolor="none",
-                markeredgecolor="#C2185B", markeredgewidth=1.0, markersize=10), "接近高低（空心）"),
-    ]
-    leg = ax1.legend(
-        [h for h, _ in legend_keys],
-        [t for _, t in legend_keys],
-        loc="upper left",
-        bbox_to_anchor=(0.01, 1.01),
-        ncol=5,
-        handlelength=1.35,
-        handletextpad=0.4,
-        columnspacing=1.1,
-        borderpad=0.5,
-        labelspacing=0.32,
-        framealpha=0.96,
-        facecolor="#fafafa",
-        edgecolor="#b0bec5",
-        prop=_fp(8.5, "bold"),
-    )
-    leg.set_zorder(10)
+    _draw_nav_legend(ax1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
     ax1.tick_params(labelsize=9)

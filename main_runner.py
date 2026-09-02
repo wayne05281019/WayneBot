@@ -262,6 +262,12 @@ class MainRunner:
 
             ix = sync_index_daily(self.db_path)
             logger.info("加權指數寫入 index_daily：%s", ix)
+            try:
+                from taiwan_market import sync_regime_ai_weights
+
+                sync_regime_ai_weights(self.db_path)
+            except Exception as e2:
+                logger.warning("大盤 regime AI 權重略過：%s", e2)
         except Exception as e:
             logger.warning("加權指數同步略過：%s", e)
         try:
@@ -445,10 +451,16 @@ class MainRunner:
         except Exception:
             pass
         try:
-            from screen_review import score_ai_fills, score_screen_picks
+            from screen_review import adapt_bucket_weights, score_ai_fills, score_screen_picks
+            from taiwan_market import analyze_taiwan_market
 
             score_screen_picks(self.db_path, as_of or "")
             score_ai_fills(self.db_path, as_of or "")
+            snap = analyze_taiwan_market(self.db_path, as_of or "")
+            adapt_bucket_weights(
+                self.db_path,
+                regime=snap.get("regime") if snap.get("ok") else None,
+            )
         except Exception as e:
             logger.warning("海選復盤略過：%s", e)
         try:

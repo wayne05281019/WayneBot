@@ -6,7 +6,7 @@ AI 模擬成交另存 ai_fills，盤後用下一根日 K 對帳。
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from config import get_db_path
@@ -176,11 +176,22 @@ def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, fl
     return out
 
 
-def adapt_bucket_weights(db_path: str) -> Dict[str, float]:
-    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0，AI 模擬倉先不買那類。
+def adapt_bucket_weights(db_path: str, regime: Optional[str] = None) -> Dict[str, float]:
+    """近幾日某類隔日平均 < -1% 且樣本夠 → 權重降到 0；再乘上大盤 regime 倍率寫入 bucket_w_*。
 
     有足夠 AI 實際成交時，以成交隔日為準；否則退回海選名單統計。
     """
+    if regime is None:
+        try:
+            from taiwan_market import latest_regime
+
+            regime = latest_regime(db_path)
+        except Exception:
+            regime = None
+    try:
+        from taiwan_market import REGIME_BUCKET_MULT
+    except Exception:
+        REGIME_BUCKET_MULT = {}
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);")
     screen = {key: (n, avg, hit) for key, n, avg, hit in _bucket_stats(db_path)}
@@ -197,22 +208,35 @@ def adapt_bucket_weights(db_path: str) -> Dict[str, float]:
         else:
             n, avg, need = sn, savg, WEAK_N
         if n >= need and avg <= WEAK_AVG:
-            w = 0.0
+            base_w = 0.0
         elif n >= need and avg >= 1.0:
-            w = 1.1
+            base_w = 1.1
         else:
-            w = 1.0
+            base_w = 1.0
         conn.execute(
             "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
-            (f"bucket_w_{key}", w),
+            (f"bucket_w_base_{key}", base_w),
         )
-        weights[key] = w
+        mult = float((REGIME_BUCKET_MULT.get(regime or "neutral") or {}).get(key, 1.0))
+        eff = max(0.0, min(1.2, base_w * mult))
+        conn.execute(
+            "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
+            (f"bucket_w_{key}", eff),
+        )
+        weights[key] = eff
+    if regime:
+        code = {"bull": 1.0, "neutral": 0.0, "bear": -1.0}.get(regime, 0.0)
+        conn.execute(
+            "INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)",
+            ("mkt_regime_code", code),
+        )
     conn.commit()
     conn.close()
     return weights
 
 
 def bucket_weight(db_path: str, key: str) -> float:
+    """有效桶權重（已含大盤 regime × 復盤 base）。"""
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute("SELECT v FROM ai_params WHERE k=?", (f"bucket_w_{key}",)).fetchone()
