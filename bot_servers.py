@@ -82,7 +82,7 @@ HELP_TOPICS = {
         "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "左→右依常用順序；決策卡＝盤中快捷刷新上一檔 MIS 價量與 120日量排名。\n"
-        "打股名或代號＝看這檔：現價→決策卡→導航→介紹圖；籌碼請按下方「籌碼」或 /chips。\n"
+        "打股名或代號＝看這檔：現價→決策卡→導航→介紹圖；籌碼／產業請按下方按鈕。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
@@ -125,7 +125,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
-        "打股名或按看這檔：先現價／漲跌，再決策卡 → 導航 → 介紹圖；籌碼另按「籌碼」。\n"
+        "打股名或按看這檔：先現價／漲跌，再決策卡 → 導航 → 介紹圖；籌碼／產業另按下方按鈕。\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 獲利＝近60個日曆日收盤低；距60根低是另外一欄（近60根收盤）\n"
         "3 溫度＝20日收盤位置＋月乖離；升降「溫度壓縮＋價未新低」＝溫度創低但股價未創波段低（背離警示）\n"
@@ -141,7 +141,7 @@ HELP_TOPICS = {
     "fund": "<b>營收毛利</b>\n官方月營收與季報數字。產業對照請按「產業」。",
     "industry": (
         "<b>產業說明怎麼用</b>\n"
-        "打股名後會附一則，或按「產業」。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
+        "看這檔後按下方「產業」，或打 /industry 代號。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
         "這是落後的公開數字，幫你看懂這族，不是內幕。少賠仍看高低卡：靠近 20 日收盤高少追。"
     ),
     "buy": "<b>記買入</b>\n選好股票後打 <code>張數 價格</code>，例如 <code>1 68.5</code>。",
@@ -2276,10 +2276,6 @@ class WayneTelegramBot:
             await _clear_wait()
             if not lookup_faded:
                 await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
-        try:
-            await self._send_industry(message, code)
-        except Exception:
-            logger.exception("附產業說明失敗 code=%s", code)
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
         await self._pin_reply_menu(message)
