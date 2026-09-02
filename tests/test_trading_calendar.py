@@ -107,3 +107,102 @@ def test_resolve_flow_as_of_prefers_today_after_close(tmp_path):
     as_of, lag = resolve_flow_as_of(str(db), now=now)
     assert as_of == "20260901"
     assert lag is None
+
+
+def test_resolve_flow_as_of_uses_today_after_close_when_db_has_cap(tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from money_flow import resolve_flow_as_of
+
+    db = tmp_path / "flow2.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, market TEXT, date TEXT, close REAL, "
+        "volume INTEGER, pct_change REAL, foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER)"
+    )
+    for day in ("20260901", "20260902"):
+        for i in range(900):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?, 'TW', ?, 100, 1000, 1, 10, 0, 0)",
+                (f"T{i:04d}", day),
+            )
+        for i in range(700):
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?, 'OTC', ?, 50, 500, -1, -5, 0, 0)",
+                (f"O{i:04d}", day),
+            )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 9, 2, 17, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    as_of, lag = resolve_flow_as_of(str(db), now=now)
+    assert as_of == "20260902"
+    assert lag is None
+
+
+def test_resolve_flow_as_of_warns_when_cap_missing_after_close(tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from money_flow import resolve_flow_as_of
+
+    db = tmp_path / "flow3.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (stock_id TEXT, market TEXT, date TEXT, close REAL, "
+        "volume INTEGER, pct_change REAL, foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER)"
+    )
+    for i in range(900):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?, 'TW', '20260901', 100, 1000, 1, 10, 0, 0)",
+            (f"T{i:04d}",),
+        )
+    for i in range(700):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?, 'OTC', '20260901', 50, 500, -1, -5, 0, 0)",
+            (f"O{i:04d}",),
+        )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 9, 2, 17, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    as_of, lag = resolve_flow_as_of(str(db), now=now)
+    assert as_of == "20260901"
+    assert lag is not None
+    assert "2026/09/02" in lag
+    assert "2026/09/01" in lag
+
+
+def test_sector_rotation_title_uses_resolved_not_stale_as_of(tmp_path):
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from import_health import MIN_TWO, MIN_TW
+    from money_flow import format_sector_rotation_html
+    from wayne_db import ensure_core_schema
+
+    db = tmp_path / "rot.db"
+    ensure_core_schema(str(db))
+    conn = sqlite3.connect(db)
+    for day in ("20260901", "20260902"):
+        for i in range(MIN_TW):
+            conn.execute(
+                """INSERT INTO daily_quotes
+                (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net)
+                VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,10,0,0)""",
+                (day, f"{1000+i:04d}", "TW", "TW"),
+            )
+        for i in range(MIN_TWO):
+            conn.execute(
+                """INSERT INTO daily_quotes
+                (date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net)
+                VALUES (?,?,?,?,10,11,9,10,1000,10,0.5,10,50,0,0)""",
+                (day, f"{6000+i:04d}", "上櫃", "TWO"),
+            )
+    conn.commit()
+    conn.close()
+    now = datetime(2026, 9, 2, 17, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    html = format_sector_rotation_html(str(db), "20260901", now=now)
+    assert "2026/09/02（三）" in html

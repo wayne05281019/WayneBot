@@ -251,9 +251,11 @@ class MainRunner:
             logger.error(f"法人籌碼更新失敗: {e}", exc_info=True)
 
         try:
+            from import_health import clear_complete_date_cache
             from money_flow import recompute_sector_flow
 
-            n_sec = recompute_sector_flow(self.db_path)
+            clear_complete_date_cache(self.db_path)
+            n_sec = recompute_sector_flow(self.db_path, fuse_to)
             logger.info("盤後產業資金輪動寫入 %s 列", n_sec)
         except Exception as e:
             logger.error("產業資金輪動失敗: %s", e, exc_info=True)
@@ -496,7 +498,7 @@ class MainRunner:
         try:
             from money_flow import format_sector_rotation_html
 
-            rot = format_sector_rotation_html(self.db_path, as_of or "")
+            rot = format_sector_rotation_html(self.db_path)
             if rot:
                 extra_bits.append(rot)
         except Exception as e:
