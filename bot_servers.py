@@ -359,6 +359,9 @@ class WayneTelegramBot:
         self._line_pack_status_msgs: Dict[str, list] = {}
         self._help_msgs: Dict[str, list] = {}
         self._lookup_locks: Dict[str, asyncio.Lock] = {}
+        self._pending_locks: Dict[str, asyncio.Lock] = {}
+        self._screening_running: set[str] = set()
+        self._menu_fade_gen: Dict[str, int] = {}
 
     @staticmethod
     def _actor_key(
@@ -379,6 +382,33 @@ class WayneTelegramBot:
         if uid:
             return str(uid)
         return str(chat_id or "0")
+
+    def _pending_actor(self, message=None, *, uid: str = "") -> str:
+        return self._actor_key(message, uid=uid)
+
+    def _pending_lock(self, actor: str) -> asyncio.Lock:
+        lock = self._pending_locks.get(actor)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._pending_locks[actor] = lock
+        return lock
+
+    async def _enter_main_menu(
+        self,
+        message,
+        uid: str,
+        *,
+        silent_keyboard: bool = True,
+        clear_pending: bool = True,
+    ) -> str:
+        """主選單功能入口：清 pending、刪暫態泡泡，必要時靜默刷新鍵盤（不洗版）。"""
+        actor = self._actor_key(message, uid=uid)
+        if clear_pending:
+            self._pending.pop(actor, None)
+        await self._dismiss_menu_transients(actor)
+        if not self._menu_layout_ok(uid):
+            await self._refresh_reply_menu(message, uid=uid, silent=silent_keyboard)
+        return actor
 
     async def _dismiss_help_msgs(self, actor_key: str) -> None:
         """重開說明頁時刪掉上一則，避免鍵盤連按堆滿聊天室。"""
@@ -539,7 +569,7 @@ class WayneTelegramBot:
             if c:
                 kb.append([InlineKeyboardButton(f"{c} {n}".strip()[:22], callback_data=f"d:{c}")])
         kb.append([self._q("stock")])
-        self._pending[uid] = "dcard"
+        self._pending[self._pending_actor(message, uid=uid)] = "dcard"
         await message.reply_html(
             "盤中<b>決策卡</b>：打代號或股名。"
             "會用證交所 MIS 即時價量重算格子（含 120日量排名）。"
@@ -549,7 +579,7 @@ class WayneTelegramBot:
 
     async def decision_card_btn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        self._pending.pop(uid, None)
+        await self._enter_main_menu(update.message, uid)
         last = self._last_card.get(uid)
         if last:
             await self._send_decision_card_quick(update.message, last, uid)
@@ -665,10 +695,14 @@ class WayneTelegramBot:
             self._mark_menu_layout_ok(uid)
 
         pending = [m for m in (transient, done) if m is not None]
+        self._menu_fade_gen[actor] = self._menu_fade_gen.get(actor, 0) + 1
+        fade_gen = self._menu_fade_gen[actor]
         self._menu_fade_msgs[actor] = pending
 
         async def _fade_out():
             await asyncio.sleep(1.8)
+            if self._menu_fade_gen.get(actor) != fade_gen:
+                return
             still = self._menu_fade_msgs.pop(actor, [])
             for msg in still:
                 try:
@@ -678,11 +712,13 @@ class WayneTelegramBot:
 
         asyncio.create_task(_fade_out())
 
-    async def _ensure_reply_menu_if_needed(self, message, uid: str) -> None:
-        """版面版本不符時強制刷新（可見提示，確保「大盤」等新版按鈕出現）。"""
+    async def _ensure_reply_menu_if_needed(
+        self, message, uid: str, *, silent: bool = True
+    ) -> None:
+        """版面過期時刷新鍵盤；功能按鈕預設靜默，避免與專頁內容同時出現。"""
         if self._menu_layout_ok(uid):
             return
-        await self._refresh_reply_menu(message, uid=uid, silent=False)
+        await self._refresh_reply_menu(message, uid=uid, silent=silent)
 
     async def _force_reply_menu(self, message, uid: str) -> None:
         """/menu、選單：一律重掛鍵盤（解決舊版快取或靜默釘選失敗）。"""
@@ -1350,6 +1386,8 @@ class WayneTelegramBot:
         await self._force_reply_menu(update.message, uid)
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(update.effective_user.id)
+        await self._enter_main_menu(update.message, uid)
         await self._reply_help_topic(update.message, "guide")
 
     @staticmethod
@@ -1390,7 +1428,15 @@ class WayneTelegramBot:
 
     async def _run_manual_screening(self, message):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
-        await self._dismiss_menu_transients(self._actor_key(message))
+        actor = self._actor_key(message)
+        if actor in self._screening_running:
+            await message.reply_text(
+                "海選進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(),
+            )
+            return
+        self._screening_running.add(actor)
+        await self._dismiss_menu_transients(actor)
         hub = self._reply_menu()
         status = await message.reply_text(
             self._screening_progress_text(0),
@@ -1457,6 +1503,7 @@ class WayneTelegramBot:
         finally:
             stop.set()
             ticker.cancel()
+            self._screening_running.discard(actor)
             try:
                 await status.delete()
             except Exception:
@@ -1618,7 +1665,7 @@ class WayneTelegramBot:
                 live_filtered = bool(rows) and bool(rows[0].get("_live_filtered"))
 
         cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
-        head = f"<b>{title}</b>\n<i>{subtitle}</i>"
+        head = f"<b>{title}</b>\n<i>{subtitle}</i>\n────────────────"
         if cards and live_skipped:
             body = (
                 head
@@ -1671,7 +1718,8 @@ class WayneTelegramBot:
             tw_session_phase,
         )
 
-        await self._dismiss_menu_transients(self._actor_key(message))
+        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
         effective_live_bucket = live_bucket
         effective_subtitle = subtitle
@@ -1791,8 +1839,7 @@ class WayneTelegramBot:
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
         uid = str(update.effective_user.id)
-        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
-        await self._ensure_reply_menu_if_needed(update.message, uid)
+        await self._enter_main_menu(update.message, uid)
         status = await self._transient_status(update.message, "讀取大盤…")
         try:
             from taiwan_market import format_taiwan_market_page_html
@@ -1811,7 +1858,7 @@ class WayneTelegramBot:
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._enter_main_menu(update.message, uid)
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             from money_flow import (
@@ -1947,17 +1994,17 @@ class WayneTelegramBot:
             if c:
                 kb.append([InlineKeyboardButton(f"{c} {n}".strip()[:22], callback_data=f"{prefix}:{c}")])
         kb.append([self._q(purpose if purpose in HELP_TOPICS else "stock")])
-        self._pending[uid] = purpose
+        self._pending[self._pending_actor(message, uid=uid)] = purpose
         await message.reply_html(hints[purpose], reply_markup=InlineKeyboardMarkup(kb))
 
     async def portfolio_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._enter_main_menu(update.message, uid)
         await self._send_portfolio(update.message, uid)
 
     async def watch_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._enter_main_menu(update.message, uid)
         await self._send_watch(update.message, uid)
 
     async def card_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2045,8 +2092,9 @@ class WayneTelegramBot:
     async def sell_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
         uid = str(update.effective_user.id)
+        actor = self._actor_key(update.message, uid=uid)
         if len(args) < 3:
-            self._pending[uid] = "sell"
+            self._pending[actor] = "sell"
             await update.message.reply_text(
                 "請輸入：代號 張數 價格\n例如：2330 1 520\n"
                 "或持股按「賣出」再打價格：72（全賣）",
@@ -2066,104 +2114,108 @@ class WayneTelegramBot:
             return
         text = _normalize_menu_text(raw)
         uid = str(update.effective_user.id)
+        actor = self._actor_key(update.message, uid=uid)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
-            self._pending.pop(uid, None)
+            self._pending.pop(actor, None)
             await self.start_cmd(update, context)
             return
         if text in ("選單", "主選單") or text.lower().lstrip("/") == "menu":
-            self._pending.pop(uid, None)
+            self._pending.pop(actor, None)
             await self.menu_cmd(update, context)
             return
         if text in ("說明", "幫助") or text.lower().lstrip("/") == "help":
-            self._pending.pop(uid, None)
+            self._pending.pop(actor, None)
             await self.help_cmd(update, context)
             return
         if text == "選股":
-            self._pending.pop(uid, None)
+            self._pending.pop(actor, None)
             await update.message.reply_html(
                 HELP_TOPICS["pick"],
                 reply_markup=InlineKeyboardMarkup([[self._q("stock")]]),
             )
             return
         if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
-            self._pending.pop(uid, None)
-            await self._ensure_reply_menu_if_needed(update.message, uid)
+            logger.info("主選單：資金 uid=%s", uid)
             await self.flow_cmd(update, context)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
-            self._pending.pop(uid, None)
             logger.info("主選單：大盤 uid=%s", uid)
             await self.market_cmd(update, context)
             return
         if text == "當沖":
-            self._pending.pop(uid, None)
             logger.info("主選單：當沖 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.daytrade_cmd(update, context)
             return
         if text == "隔日沖":
-            self._pending.pop(uid, None)
             logger.info("主選單：隔日沖 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.overnight_cmd(update, context)
             return
         if text == "決策卡":
-            await self._ensure_reply_menu_if_needed(update.message, uid)
+            logger.info("主選單：決策卡 uid=%s", uid)
             await self.decision_card_btn(update, context)
             return
-        pending = self._pending.pop(uid, "")
-        if text == "海選" or "今日海選" in text or text.endswith("海選"):
-            self._pending.pop(uid, None)
+        if text == "海選":
+            logger.info("主選單：海選 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.screen_cmd(update, context)
             return
-        if "模擬持倉" in text or text == "持股":
-            await self._ensure_reply_menu_if_needed(update.message, uid)
+        if text == "持股":
+            logger.info("主選單：持股 uid=%s", uid)
             await self.portfolio_cmd(update, context)
             return
-        if text == "觀察" or "自選" in text:
-            await self._ensure_reply_menu_if_needed(update.message, uid)
+        if text == "觀察":
+            logger.info("主選單：觀察 uid=%s", uid)
             await self.watch_cmd(update, context)
             return
-        if "系統狀態" in text:
-            await update.message.reply_html("WayneBot 雲端新版運作中。請用訊息下方按鈕操作。", reply_markup=self._keyboard())
-            return
-        if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
-            handled = await self._handle_pending_pick(update.message, uid, pending, text)
-            if handled:
-                return
-        if pending == "sell" or pending.startswith("sell:"):
-            code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
-            parsed_code, lots, price = self._parse_sell_text(text, code)
-            if parsed_code is None:
-                self._pending[uid] = pending or "sell"
-                await update.message.reply_text(
-                    "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
-                    "也可：代號 張數 價格　例如：2330 1 520",
-                    reply_markup=self._keyboard(),
-                )
-                return
-            msg = await asyncio.to_thread(
-                record_sell, self.db_path, uid, parsed_code, lots, price
+        if text == "系統狀態":
+            await update.message.reply_html(
+                "WayneBot 雲端新版運作中。請用訊息下方按鈕操作。",
+                reply_markup=self._keyboard(),
             )
-            await update.message.reply_text(msg, reply_markup=self._keyboard())
             return
-        if pending == "buy" or pending.startswith("buy:"):
-            code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
-            parsed_code, lots, price = self._parse_buy_text(text, code)
-            if parsed_code is None:
-                self._pending[uid] = pending or "buy"
-                await update.message.reply_text(
-                    "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
-                    "也可：代號 張數 價格　例如：2330 1 500",
-                    reply_markup=self._keyboard(),
+        async with self._pending_lock(actor):
+            pending = self._pending.pop(actor, "")
+            if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
+                handled = await self._handle_pending_pick(update.message, uid, pending, text, actor=actor)
+                if handled:
+                    return
+            if pending == "sell" or pending.startswith("sell:"):
+                code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
+                parsed_code, lots, price = self._parse_sell_text(text, code)
+                if parsed_code is None:
+                    self._pending[actor] = pending or "sell"
+                    await update.message.reply_text(
+                        "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                        "也可：代號 張數 價格　例如：2330 1 520",
+                        reply_markup=self._keyboard(),
+                    )
+                    return
+                msg = await asyncio.to_thread(
+                    record_sell, self.db_path, uid, parsed_code, lots, price
                 )
+                await update.message.reply_text(msg, reply_markup=self._keyboard())
                 return
-            hits = lookup_stocks(self.db_path, parsed_code)
-            name = hits[0]["stock_name"] if hits else parsed_code
-            msg = await asyncio.to_thread(
-                record_buy, self.db_path, uid, parsed_code, name, lots, price
-            )
-            await update.message.reply_text(msg, reply_markup=self._keyboard())
-            return
+            if pending == "buy" or pending.startswith("buy:"):
+                code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
+                parsed_code, lots, price = self._parse_buy_text(text, code)
+                if parsed_code is None:
+                    self._pending[actor] = pending or "buy"
+                    await update.message.reply_text(
+                        "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                        "也可：代號 張數 價格　例如：2330 1 500",
+                        reply_markup=self._keyboard(),
+                    )
+                    return
+                hits = lookup_stocks(self.db_path, parsed_code)
+                name = hits[0]["stock_name"] if hits else parsed_code
+                msg = await asyncio.to_thread(
+                    record_buy, self.db_path, uid, parsed_code, name, lots, price
+                )
+                await update.message.reply_text(msg, reply_markup=self._keyboard())
+                return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
             hits = lookup_stocks(self.db_path, text)
@@ -2179,7 +2231,10 @@ class WayneTelegramBot:
                     disable_web_page_preview=True,
                 )
                 return
-            await update.message.reply_text("找不到這檔。請打代號或名稱（如 南亞、2330）。", reply_markup=self._keyboard())
+            await update.message.reply_text(
+                "找不到這檔。請打代號或名稱（如 南亞、2330）。",
+                reply_markup=self._keyboard(),
+            )
         except Exception:
             logger.exception("查詢失敗")
             await update.message.reply_text(
@@ -2187,14 +2242,17 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
 
-    async def _handle_pending_pick(self, message, uid: str, pending: str, text: str) -> bool:
+    async def _handle_pending_pick(
+        self, message, uid: str, pending: str, text: str, *, actor: str = ""
+    ) -> bool:
+        actor = actor or self._pending_actor(message, uid=uid)
         hits = lookup_stocks(self.db_path, text.split()[0].strip())
         if not hits:
-            self._pending[uid] = pending
+            self._pending[actor] = pending
             await message.reply_text("找不到這檔。請打南亞或 2330。", reply_markup=self._keyboard())
             return True
         if len(hits) > 1:
-            self._pending[uid] = pending
+            self._pending[actor] = pending
             await message.reply_html(
                 self._hits_list_html(hits, "找到多檔，請點選："),
                 reply_markup=self._hits_keyboard(hits),
@@ -2410,8 +2468,17 @@ class WayneTelegramBot:
         live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, hits)
         header_msg = None
         lookup_faded = False
+        mkt_note = ""
         try:
-            header = await asyncio.to_thread(
+            from taiwan_market import analyze_taiwan_market
+
+            snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True)
+            if snap.get("ok") and int(snap.get("falling_risk") or 0) >= 60:
+                mkt_note = "<i>⚠️ 大盤結構偏弱，少追。</i>\n"
+        except Exception:
+            pass
+        try:
+            header = mkt_note + await asyncio.to_thread(
                 self._quote_header_html, code, live_rt, hits
             )
             header_msg = await message.reply_html(header, disable_web_page_preview=True)
@@ -2950,8 +3017,9 @@ class WayneTelegramBot:
             topic = data[2:] or "guide"
             if topic == "menu":
                 uid = str(q.from_user.id)
-                await self._force_reply_menu(q.message, uid)
-                await self._reply_help_topic(q.message, "menu", edit_target=None)
+                self._invalidate_menu_layout(uid)
+                await self._refresh_reply_menu(q.message, uid=uid, silent=True)
+                await self._reply_help_topic(q.message, "menu", edit_target=q.message)
                 return
             await self._reply_help_topic(q.message, topic, edit_target=q.message)
             return
@@ -3014,7 +3082,8 @@ class WayneTelegramBot:
         if data.startswith("b:"):
             uid = str(q.from_user.id)
             code = data[2:].strip()
-            self._pending[uid] = f"buy:{code}"
+            actor = self._actor_key(q.message, uid=uid)
+            self._pending[actor] = f"buy:{code}"
             await q.message.reply_text(
                 f"記買入 {code}。請輸入：價格（1張）\n例如：68.5 或 2 68.5",
                 reply_markup=self._keyboard(),
@@ -3023,7 +3092,8 @@ class WayneTelegramBot:
         if data.startswith("x:"):
             uid = str(q.from_user.id)
             code = data[2:].strip()
-            self._pending[uid] = f"sell:{code}"
+            actor = self._actor_key(q.message, uid=uid)
+            self._pending[actor] = f"sell:{code}"
             await q.message.reply_text(
                 f"賣出 {code}。請輸入：價格（全賣）\n例如：72 或 1 72",
                 reply_markup=self._keyboard(),
@@ -3075,7 +3145,8 @@ class WayneTelegramBot:
             await self._prompt_pick(q.message, str(q.from_user.id), data)
         elif data == "sell":
             uid = str(q.from_user.id)
-            self._pending[uid] = "sell"
+            actor = self._actor_key(q.message, uid=uid)
+            self._pending[actor] = "sell"
             await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
 
     def run_polling(self):

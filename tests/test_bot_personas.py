@@ -40,6 +40,12 @@ def _bot():
     bot._screening_msgs = {}
     bot._line_pack_status_msgs = {}
     bot._help_msgs = {}
+    bot._lookup_locks = {}
+    bot._pending_locks = {}
+    bot._screening_running = set()
+    bot._menu_fade_gen = {}
+    bot._menu_layout_ok = MagicMock(return_value=True)
+    bot._enter_main_menu = AsyncMock(side_effect=lambda m, u, **kw: f"{getattr(m,'chat_id',0)}:{u}")
     bot.screener = MagicMock()
     bot.portfolio_engine = MagicMock()
     bot.portfolio_engine.format_holdings_html = MagicMock(return_value="<b>持股</b>")
@@ -50,10 +56,9 @@ def _bot():
 
 
 def test_newbie_first_portfolio_refreshes_menu_when_stale():
-    """新手第一次按持股：版面過期時可見刷新選單（v4 確保大盤鈕出現）。"""
+    """新手第一次按持股：走 _enter_main_menu，不與持股內容混在同一則。"""
     bot = _bot()
     bot._menu_layout_ok = MagicMock(return_value=False)
-    bot._refresh_reply_menu = AsyncMock()
     bot._send_portfolio = AsyncMock()
 
     async def run():
@@ -61,11 +66,7 @@ def test_newbie_first_portfolio_refreshes_menu_when_stale():
         await bot.on_text(_update(msg), MagicMock())
 
     asyncio.run(run())
-    bot._refresh_reply_menu.assert_awaited_once_with(
-        bot._refresh_reply_menu.await_args[0][0],
-        uid="1001",
-        silent=False,
-    )
+    bot._enter_main_menu.assert_awaited_once()
     bot._send_portfolio.assert_awaited_once()
 
 
@@ -157,7 +158,7 @@ def test_whitespace_only_is_silent(text):
 
 def test_simplified_buy_pending_single_price():
     bot = _bot()
-    bot._pending["42"] = "buy:2330"
+    bot._pending["1:42"] = "buy:2330"
     msg = _msg(1, 42, "68.5")
 
     async def run():
@@ -214,10 +215,10 @@ def test_ai_desk_keyboard_has_no_sell_buttons():
 
 def test_pending_state_per_user_not_per_chat():
     bot = _bot()
-    bot._pending["111"] = "buy:2330"
-    bot._pending["222"] = "sell:2454"
-    assert bot._pending["111"] == "buy:2330"
-    assert bot._pending["222"] == "sell:2454"
+    bot._pending["1:111"] = "buy:2330"
+    bot._pending["1:222"] = "sell:2454"
+    assert bot._pending["1:111"] == "buy:2330"
+    assert bot._pending["1:222"] == "sell:2454"
 
 
 def test_ai_desk_isolated_per_telegram_user():
@@ -280,7 +281,7 @@ def test_brother_market_pending_not_shared():
     from bot_servers import MENU_BTN_MARKET
 
     bot = _bot()
-    bot._pending["9001"] = "buy:2330"
+    bot._pending["99:9001"] = "buy:2330"
     msg_bro = _msg(99, 9002, MENU_BTN_MARKET)
     bot.market_cmd = AsyncMock()
 
@@ -294,7 +295,7 @@ def test_brother_market_pending_not_shared():
             await bot.on_text(_update(msg_bro), MagicMock())
 
     asyncio.run(run())
-    assert bot._pending.get("9001") == "buy:2330"
+    assert bot._pending.get("99:9001") == "buy:2330"
     bot.market_cmd.assert_awaited_once()
 
 

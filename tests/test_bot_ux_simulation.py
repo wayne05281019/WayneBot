@@ -41,6 +41,12 @@ def _bot(db_path: str = "data/wayne_market.db"):
     bot._screening_msgs = {}
     bot._line_pack_status_msgs = {}
     bot._help_msgs = {}
+    bot._lookup_locks = {}
+    bot._pending_locks = {}
+    bot._screening_running = set()
+    bot._menu_fade_gen = {}
+    bot._menu_layout_ok = MagicMock(return_value=True)
+    bot._enter_main_menu = AsyncMock()
     bot.screener = MagicMock()
     bot.portfolio_engine = MagicMock()
     bot.portfolio_engine.format_holdings_html = MagicMock(return_value="<b>持股</b> 空")
