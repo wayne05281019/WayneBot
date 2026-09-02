@@ -286,6 +286,13 @@ class MainRunner:
             except Exception as e_br:
                 logger.warning("漲跌家數同步略過：%s", e_br)
             try:
+                from taiwan_market import sync_futures_daily
+
+                fut = sync_futures_daily(self.db_path)
+                logger.info("台指期寫入 futures_daily：%s", fut)
+            except Exception as e_fut:
+                logger.warning("台指期同步略過：%s", e_fut)
+            try:
                 from taiwan_market import sync_regime_ai_weights
 
                 sync_regime_ai_weights(self.db_path)
