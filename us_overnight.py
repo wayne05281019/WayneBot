@@ -471,17 +471,21 @@ def refresh_us_overnight(db_path: str, as_of: str, max_age_sec: int = 900) -> Di
 
 
 REGIME_LABEL = {
-    "ok": "隔夜中性",
-    "caution": "隔夜偏空",
-    "risk_off": "隔夜逆風",
+    "ok": "大盤中性",
+    "caution": "大盤偏空",
+    "risk_off": "大盤逆風",
     "unknown": "美股收盤沒接到",
 }
 
 _PHASE_LABEL = {
-    "regular": "現金收盤（盤中不看期貨）",
-    "post": "收盤＋盤後",
-    "overnight": "收盤＋盤後續勢",
+    "regular": "美股現金盤中（期指不看）",
+    "post": "美股已收＋盤後交易中",
+    "overnight": "美股已收＋盤後／隔夜",
 }
+
+_SECTION_INDEX_CLOSE = "指數收盤"
+_SECTION_US_FUTURES = "美股盤後期貨"
+_SECTION_TW_OPEN = "台股開盤前參考"
 
 _CASH_ITEMS = (
     ("dji_pct", "dji_chg", "道瓊"),
@@ -508,10 +512,21 @@ _ADR_CASH_ITEMS = (
     ("nvda_post_pct", "nvda_post_chg", "輝達盤後"),
 )
 
-_DROP_POST_ITEMS = (
-    ("nq_f_pct", "nq_f_chg", "NQ"),
-    ("tsm_post_pct", "tsm_post_chg", "台積ADR"),
-    ("nvda_post_pct", "nvda_post_chg", "輝達"),
+# 台股 06:30 開盤前可對照的公開源（期指夜盤待官方源；加權昨收作輔助）。
+TW_REF_SYMBOLS = (
+    ("twii", "^TWII", "加權昨收"),
+)
+
+_DROP_FUTURES_ITEMS = (
+    ("nq_f_pct", "nq_f_chg", "那指期"),
+    ("es_f_pct", "es_f_chg", "標普期"),
+    ("ym_f_pct", "ym_f_chg", "道瓊期"),
+)
+
+_DROP_TW_ITEMS = (
+    ("twii_pct", "twii_chg", "加權昨收"),
+    ("tsm_post_pct", "tsm_post_chg", "台積ADR盤後"),
+    ("nvda_post_pct", "nvda_post_chg", "輝達盤後"),
 )
 
 _LABEL_W = 8
@@ -545,6 +560,21 @@ def _fmt_move(pct, chg=None, *, pts_decimals: int = 2) -> str:
     return f"{pct_s}（{pts_s}）" if pts_s else pct_s
 
 
+def _vix_mood(level) -> str:
+    v = _as_float(level)
+    if v is None:
+        return ""
+    if v < 14:
+        return "極低"
+    if v < 18:
+        return "正常"
+    if v < 22:
+        return "偏緊"
+    if v < 28:
+        return "偏高"
+    return "恐慌"
+
+
 def _fmt_vix(snap: Dict[str, Any]) -> str:
     level = snap.get("vix")
     if level is None:
@@ -557,6 +587,28 @@ def _fmt_vix(snap: Dict[str, Any]) -> str:
     if pct is None:
         return base
     return f"{base}（{_fmt_pct(pct)}）"
+
+
+def _enrich_tw_open_ref(snap: Dict[str, Any], db_path: str = None) -> Dict[str, Any]:
+    """台股開盤前參考：加權昨收從 index_daily；缺的欄位不硬填。"""
+    if snap.get("twii_pct") is not None:
+        return snap
+    path = db_path or get_db_path()
+    try:
+        from taiwan_market import load_index_daily
+
+        df = load_index_daily(path)
+        if df.empty or len(df) < 2:
+            return snap
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
+        out = dict(snap)
+        out["twii_pct"] = float(last["pct_change"])
+        out["twii_chg"] = float(last["close"]) - float(prev["close"])
+        return out
+    except Exception:
+        logger.debug("加權昨收補不上", exc_info=True)
+        return snap
 
 
 def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
@@ -581,7 +633,8 @@ def _cash_indices_block(snap: Dict[str, Any]) -> str:
     from tg_layout import section_eq
 
     body = _quote_row_lines(snap, _CASH_ITEMS)
-    return f"{section_eq('現金收盤')}\n{body}" if body else section_eq("現金收盤")
+    title = _SECTION_INDEX_CLOSE
+    return f"{section_eq(title)}\n{body}" if body else section_eq(title)
 
 
 def _post_futures_block(snap: Dict[str, Any]) -> str:
@@ -599,17 +652,30 @@ def _post_adr_block(snap: Dict[str, Any], *, with_cash: bool = False) -> str:
     return f"{section_eq('ADR')}\n{body}" if body else section_eq("ADR")
 
 
-def _drop_post_block(snap: Dict[str, Any]) -> str:
+def _us_futures_drop_block(snap: Dict[str, Any]) -> str:
     from tg_layout import section_eq
 
-    body = _quote_row_lines(snap, _DROP_POST_ITEMS)
-    return f"{section_eq('盤後續勢')}\n{body}" if body else section_eq("盤後續勢")
+    body = _quote_row_lines(snap, _DROP_FUTURES_ITEMS)
+    title = _SECTION_US_FUTURES
+    return f"{section_eq(title)}\n{body}" if body else section_eq(title)
+
+
+def _tw_open_ref_block(snap: Dict[str, Any]) -> str:
+    from tg_layout import section_eq
+
+    body = _quote_row_lines(snap, _DROP_TW_ITEMS)
+    title = _SECTION_TW_OPEN
+    return f"{section_eq(title)}\n{body}" if body else section_eq(title)
 
 
 def _vix_row(snap: Dict[str, Any]) -> str:
     from tg_layout import html_escape, pad_label
 
-    return f"{pad_label('VIX', _LABEL_W)}{html_escape(_fmt_vix(snap))}"
+    mood = _vix_mood(snap.get("vix"))
+    vix_s = _fmt_vix(snap)
+    if mood:
+        vix_s = f"{vix_s}　{mood}"
+    return f"{pad_label('VIX', _LABEL_W)}{html_escape(vix_s)}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:
@@ -641,8 +707,12 @@ def _post_adr_line(snap: Dict[str, Any], *, with_cash: bool = False) -> str:
     return _plain_quote_rows(snap, items)
 
 
-def _drop_post_line(snap: Dict[str, Any]) -> str:
-    return _plain_quote_rows(snap, _DROP_POST_ITEMS)
+def _drop_futures_line(snap: Dict[str, Any]) -> str:
+    return _plain_quote_rows(snap, _DROP_FUTURES_ITEMS)
+
+
+def _tw_open_ref_line(snap: Dict[str, Any]) -> str:
+    return _plain_quote_rows(snap, _DROP_TW_ITEMS)
 
 
 def format_us_html(snap: Dict[str, Any]) -> str:
@@ -652,7 +722,7 @@ def format_us_html(snap: Dict[str, Any]) -> str:
 
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
     phase = snap.get("us_phase") or "regular"
-    phase_s = _PHASE_LABEL.get(phase, "現金收盤")
+    phase_s = _PHASE_LABEL.get(phase, _SECTION_INDEX_CLOSE)
     blocks = [
         headline_lines(
             "<b>美股收盤</b>",
@@ -684,14 +754,14 @@ def format_night_plain(snap: Dict[str, Any]) -> str:
         "＝＝夜盤判斷＝＝",
         label,
         phase_s,
-        "【現金收盤】",
+        f"【{_SECTION_INDEX_CLOSE}】",
         _plain_quote_rows(snap, _CASH_ITEMS),
         f"VIX　{_fmt_vix(snap)}",
     ]
     if phase in ("post", "overnight"):
         lines.extend(["【盤後期貨】", _post_futures_line(snap), "【ADR】", _post_adr_line(snap, with_cash=True)])
     else:
-        lines.extend(["【ADR】", _post_adr_line(snap), "（現金收盤，盤中期貨不看）"])
+        lines.extend(["【ADR】", _post_adr_line(snap), "（美股現金收盤，盤中期貨不看）"])
     side = electronics_night_side(snap)
     if side:
         lines.extend(
@@ -730,15 +800,16 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     )
 
 
-def format_us_drop_alert(snap: Dict[str, Any]) -> str:
+def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None) -> str:
     """06:30 海選前的單獨一則：只在大跌時寄，一早打開就能看到。"""
     from tg_layout import headline_lines, html_escape, join_sections
 
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "隔夜偏空")
+    snap = _enrich_tw_open_ref(snap or {}, db_path)
+    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "大盤偏空")
     blocks = [
         headline_lines(
-            "<b>美股收盤偏弱</b>",
             "一早提醒",
+            "<b>美股收盤偏弱</b>",
             f"判斷　{html_escape(label)}",
             f"美股交易日　{html_escape(_session_label(snap))}",
         ),
@@ -747,9 +818,13 @@ def format_us_drop_alert(snap: Dict[str, Any]) -> str:
     ]
     phase = snap.get("us_phase") or "regular"
     if phase in ("post", "overnight") and any(
-        snap.get(k) is not None for k in ("nq_f_pct", "tsm_post_pct")
+        snap.get(k) is not None for k in ("nq_f_pct", "es_f_pct", "ym_f_pct")
     ):
-        blocks.append(_drop_post_block(snap))
+        blocks.append(_us_futures_drop_block(snap))
+    if phase in ("post", "overnight") and any(
+        snap.get(k) is not None for k in ("twii_pct", "tsm_post_pct", "nvda_post_pct")
+    ):
+        blocks.append(_tw_open_ref_block(snap))
     if snap.get("regime") == "risk_off":
         blocks.append("06:30 海選會把當沖／隔日沖拿掉。佈局先看高低卡，不要因為缺口去追。")
     else:
