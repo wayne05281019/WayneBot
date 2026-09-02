@@ -1691,7 +1691,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         web = mobile = ""
     pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
-    from tg_layout import kv, section, join_sections
+    from tg_layout import kv_compact, section, join_sections
     from chip_tape import build_tape, fmt_lots_align
 
     tape = build_tape(db_path or get_db_path(), sid) or {}
@@ -1711,11 +1711,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     chip_block = ""
     if tape:
         chip_block = section(
-            kv("外資", f"{fmt_lots_align(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
-            kv("投信", f"{fmt_lots_align(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
-            kv("自營", f"{fmt_lots_align(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
-            kv("法人", f"{fmt_lots_align(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
-            kv("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
+            kv_compact("外資", f"{fmt_lots_align(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
+            kv_compact("投信", f"{fmt_lots_align(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
+            kv_compact("自營", f"{fmt_lots_align(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
+            kv_compact("法人", f"{fmt_lots_align(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
+            kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
         )
     vol_line = (tape.get("volume") or {}).get("line") or "—"
     extra_flags = tape.get("conflict") or ""
@@ -1737,26 +1737,26 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     return join_sections(
         title_block,
         section(
-            kv("日期", _fmt_md(card["latest_date"]) + date_note),
-            kv("開高低", ohlc or "—"),
-            kv("收盤", f"{_fmt_price(card['close'])}　{move}"),
-            kv("當日", f"{chg:+.2f}%"),
+            kv_compact("日期", _fmt_md(card["latest_date"]) + date_note),
+            kv_compact("開高低", ohlc or "—"),
+            kv_compact("收盤", f"{_fmt_price(card['close'])}　{move}"),
+            kv_compact("當日", f"{chg:+.2f}%"),
         ),
         section(
-            kv("距20日高", f"{card['dist_h20']:+.1f}%"),
-            kv("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
-            kv("距60根低", f"{card.get('dist_l60'):+.1f}%"),
-            kv("距120低", _fmt_dist(card.get("dist_l120"))),
-            kv("距240低", _fmt_dist(card.get("dist_l240"))),
-            kv("距480低", _fmt_dist(card.get("dist_l480"))),
-            kv("月空間", f"{card['space_20']}%"),
-            kv("季空間", f"{card['space_60']}%"),
-            kv("月乖離", bias_s),
+            kv_compact("距20日高", f"{card['dist_h20']:+.1f}%"),
+            kv_compact("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
+            kv_compact("距60根低", f"{card.get('dist_l60'):+.1f}%"),
+            kv_compact("距120低", _fmt_dist(card.get("dist_l120"))),
+            kv_compact("距240低", _fmt_dist(card.get("dist_l240"))),
+            kv_compact("距480低", _fmt_dist(card.get("dist_l480"))),
+            kv_compact("月空間", f"{card['space_20']}%"),
+            kv_compact("季空間", f"{card['space_60']}%"),
+            kv_compact("月乖離", bias_s),
         ),
         section(
-            kv("溫度", card.get("temp_c") or "—"),
-            kv("120日量", f"第 {card.get('vol_rank')} 名"),
-            kv("量比", vol_line),
+            kv_compact("溫度", card.get("temp_c") or "—"),
+            kv_compact("120日量", f"第 {card.get('vol_rank')} 名"),
+            kv_compact("量比", vol_line),
         ),
         chip_block,
         tail,

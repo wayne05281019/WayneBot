@@ -285,7 +285,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
 
 
 def format_industry_html(stock_id: str, db_path: str = None) -> str:
-    from tg_layout import html_escape, html_pct, html_qty, join_sections, kv, kv_html, section, title_line
+    from tg_layout import html_escape, html_pct, html_qty, join_sections, kv_compact, kv_html_compact, section, title_line
 
     path = db_path or get_db_path()
     snap = industry_snapshot(path, stock_id)
@@ -306,8 +306,8 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     blocks.append(
         section(
             "<b>這檔是什麼</b>",
-            kv("產業", ind),
-            kv("同業", f"{snap['peer_n']} 家現股（不含 ETF）" if snap["peer_n"] else "同業名單不足"),
+            kv_compact("產業", ind),
+            kv_compact("同業", f"{snap['peer_n']} 家現股（不含 ETF）" if snap["peer_n"] else "同業名單不足"),
             "產業名來自證交所 ISIN，不是論壇分類。",
         )
     )
@@ -334,9 +334,9 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     blocks.append(
         section(
             "<b>營收看同業</b>",
-            kv_html("月營收", f"{html_escape(mlabel)}　{yoy_line}"),
+            kv_html_compact("月營收", f"{html_escape(mlabel)}　{yoy_line}"),
             story,
-            kv("季報", gm_line),
+            kv_compact("季報", gm_line),
             gm_story,
         )
     )
@@ -366,8 +366,8 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     blocks.append(
         section(
             "<b>這族資金</b>",
-            kv("基準日", as_s),
-            kv_html("法人合計", html_qty(three)),
+            kv_compact("基準日", as_s),
+            kv_html_compact("法人合計", html_qty(three)),
             flow_story,
             streak_line,
             "張數是官方法人，不是分點。公開籌碼會落後、也會幌。",

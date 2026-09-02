@@ -2241,16 +2241,16 @@ class WayneTelegramBot:
             chg = rt.get("change")
             if chg is None:
                 chg = price_change(rt.get("close"), rt.get("pct_change"), rt.get("yesterday_close"))
-            from tg_layout import headline_lines, html_price, kv_html
+            from tg_layout import headline_lines, html_price, kv_html_compact
 
             price_label = "現價" if rt.get("source") != "yahoo" else "收盤"
             rows = [
                 title,
-                kv_html(price_label, html_price(rt.get("close"))),
-                kv_html("漲跌", html_move(chg, rt.get("pct_change"))),
+                kv_html_compact(price_label, html_price(rt.get("close"))),
+                kv_html_compact("漲跌", html_move(chg, rt.get("pct_change"))),
             ]
             if vol > 0:
-                rows.append(kv_html("成交", html_qty(vol, signed=False)))
+                rows.append(kv_html_compact("成交", html_qty(vol, signed=False)))
             if t:
                 if rt.get("source") == "yahoo":
                     rows.append(
@@ -2267,7 +2267,7 @@ class WayneTelegramBot:
         from config import taipei_now
         from live_quote import is_lookup_trading_day
         from trading_calendar import format_trading_date_zh
-        from tg_layout import headline_lines, html_price, kv_html
+        from tg_layout import headline_lines, html_price, kv_html_compact
 
         today = taipei_now().strftime("%Y%m%d")
         if is_lookup_trading_day() and quote_date and quote_date < today:
@@ -2289,8 +2289,8 @@ class WayneTelegramBot:
                 note = "<i>即時報價暫時沒接到，以下圖用庫內日K。</i>"
             return headline_lines(
                 title,
-                kv_html(label, html_price(close)),
-                kv_html("漲跌", html_move(price_change(close, pct), pct)),
+                kv_html_compact(label, html_price(close)),
+                kv_html_compact("漲跌", html_move(price_change(close, pct), pct)),
                 note,
             )
         return title

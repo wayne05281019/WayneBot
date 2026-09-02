@@ -43,6 +43,11 @@ def kv_compact(label: str, value) -> str:
     return f"{html_escape(label)}：{html_escape(value)}"
 
 
+def kv_html_compact(label: str, html_value) -> str:
+    """標籤：HTML 內容，緊湊不補寬欄。"""
+    return f"{html_escape(label)}：{html_value}"
+
+
 def kv_html(label: str, html_value, width: int = 10) -> str:
     """value 已是安全 HTML（例如 <code> 對齊數字）。"""
     return f"{pad_label(label, width)} {html_value}"

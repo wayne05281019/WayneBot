@@ -361,9 +361,9 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
 
 def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
     """第一眼用的短基本面：月營收 YoY/MoM、季報毛利率／EPS。"""
-    from tg_layout import kv
+    from tg_layout import kv_compact
 
-    return [kv(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
+    return [kv_compact(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
 
 
 def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
@@ -374,7 +374,7 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if not m and not q:
         return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（請先跑盤後流水線或 /fund 會自動同步）。"
     name = (m or q or {}).get("stock_name") or sid
-    from tg_layout import title_line, kv, section, join_sections
+    from tg_layout import title_line, kv_compact, section, join_sections
 
     blocks = [title_line("基本面", sid, name)]
     if m:
@@ -382,11 +382,11 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         label = f"{yyyymm[:4]}/{yyyymm[4:]}"
         blocks.append(
             section(
-                kv("期間", label),
-                kv("月營收", f"{m['revenue']:,.0f} 千元"),
-                kv("MoM", f"{m['mom_pct']:+.1f}%"),
-                kv("YoY", f"{m['yoy_pct']:+.1f}%"),
-                kv("累計YoY", f"{m['ytd_yoy_pct']:+.1f}%"),
+                kv_compact("期間", label),
+                kv_compact("月營收", f"{m['revenue']:,.0f} 千元"),
+                kv_compact("MoM", f"{m['mom_pct']:+.1f}%"),
+                kv_compact("YoY", f"{m['yoy_pct']:+.1f}%"),
+                kv_compact("累計YoY", f"{m['ytd_yoy_pct']:+.1f}%"),
             )
         )
     if q:
@@ -397,13 +397,13 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
             gm_note = f"（較{prev['year']}Q{prev['season']} {diff:+.1f}pt）"
         blocks.append(
             section(
-                kv("季報", f"{q['year']}Q{q['season']}"),
-                kv("營收", f"{q['revenue']:,.0f} 千元"),
-                kv("毛利", f"{q['gross_profit']:,.0f} 千元"),
-                kv("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
-                kv("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
-                kv("EPS", f"{q['eps']:.2f}"),
-                kv("稅後淨利", f"{q['net_income']:,.0f} 千元"),
+                kv_compact("季報", f"{q['year']}Q{q['season']}"),
+                kv_compact("營收", f"{q['revenue']:,.0f} 千元"),
+                kv_compact("毛利", f"{q['gross_profit']:,.0f} 千元"),
+                kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
+                kv_compact("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
+                kv_compact("EPS", f"{q['eps']:.2f}"),
+                kv_compact("稅後淨利", f"{q['net_income']:,.0f} 千元"),
             )
         )
     try:
