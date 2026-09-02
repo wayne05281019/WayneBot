@@ -1,0 +1,39 @@
+# 完整相依鎖（含傳遞相依）。Docker／CI／Render 都裝這份，才是可重現的建置。
+# 產生方式：乾淨 venv 裝 requirements.txt 後 pip freeze。
+# 改動 requirements.txt 後請重新產生，tests/test_dependency_pins.py 會擋住漂移。
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+anyio==4.14.2
+attrs==26.1.0
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.64.0
+frozenlist==1.8.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.19
+kiwisolver==1.5.1
+lxml==6.1.2
+matplotlib==3.11.1
+multidict==6.7.1
+nest-asyncio==1.6.0
+numpy==2.4.4
+packaging==26.3
+pandas==3.0.5
+pillow==12.3.0
+propcache==0.5.2
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.3
+python-telegram-bot==21.11.1
+requests==2.33.1
+six==1.17.0
+soupsieve==2.9.2
+typing_extensions==4.16.0
+urllib3==2.7.0
+yarl==1.24.5

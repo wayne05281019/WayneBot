@@ -22,7 +22,7 @@ jobs:
       - name: 安裝依賴
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.lock pytest
 
       - name: 不需資料庫的全部測試
         run: python -m pytest -q --strict-markers -m "not production_db"
@@ -42,7 +42,7 @@ jobs:
       - name: 安裝依賴
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          pip install -r requirements.lock pytest
 
       - name: 從 Releases 下載核心資料庫
         run: |
