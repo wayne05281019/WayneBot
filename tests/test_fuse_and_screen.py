@@ -551,7 +551,7 @@ class USOvernightTest(unittest.TestCase):
         self.assertIn("＝＝夜盤判斷＝＝", night)
         self.assertIn("電子夜盤", night)
         self.assertIn("跌", night)
-        self.assertIn("盤後續勢", night)
+        self.assertIn("【盤後期貨】", night)
         self.assertIn("台指期", night)
 
     def test_line_share_persists_for_forward_button(self):

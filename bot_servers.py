@@ -1913,27 +1913,29 @@ class WayneTelegramBot:
             chg = rt.get("change")
             if chg is None:
                 chg = price_change(rt.get("close"), rt.get("pct_change"), rt.get("yesterday_close"))
-            lines = [
+            from tg_layout import headline_lines, html_price, kv_html
+
+            rows = [
                 title,
-                f"現價　{html_escape(rt.get('close'))}",
-                f"漲跌　{html_move(chg, rt.get('pct_change'))}",
-                f"成交　{html_qty(vol, signed=False)}",
+                kv_html("現價", html_price(rt.get("close"))),
+                kv_html("漲跌", html_move(chg, rt.get("pct_change"))),
+                kv_html("成交", html_qty(vol, signed=False)),
             ]
             if t:
                 from live_quote import format_mis_clock_line
 
-                lines.append(html_escape(format_mis_clock_line(t)))
-            return "\n".join(lines)
+                rows.append(html_escape(format_mis_clock_line(t)))
+            return headline_lines(*rows)
         close = hits[0].get("close") if hits else None
         pct = hits[0].get("pct_change") if hits else None
         if close is not None:
-            return "\n".join(
-                [
-                    title,
-                    f"昨收　{html_escape(close)}",
-                    f"漲跌　{html_move(price_change(close, pct), pct)}",
-                    "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>",
-                ]
+            from tg_layout import headline_lines, html_price, kv_html
+
+            return headline_lines(
+                title,
+                kv_html("昨收", html_price(close)),
+                kv_html("漲跌", html_move(price_change(close, pct), pct)),
+                "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>",
             )
         return title
 
