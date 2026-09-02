@@ -2079,12 +2079,22 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
 
 
 @_mpl_serial
-def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: str) -> str:
+def draw_from_ohlc(
+    df: pd.DataFrame,
+    stock_id: str,
+    stock_name: str,
+    save_path: str,
+    *,
+    already_normalized: bool = False,
+) -> str:
     """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
     if df.empty:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    work, _notes = normalize_ohlc(df.copy(), db_path=None)
+    if already_normalized or "is_halt" in df.columns:
+        work = df.copy()
+    else:
+        work, _notes = normalize_ohlc(df.copy(), db_path=None)
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")
@@ -2315,17 +2325,28 @@ def draw_from_ohlc(df: pd.DataFrame, stock_id: str, stock_name: str, save_path: 
     return save_path
 
 
-def generate_chart(stock_id: str, stock_name: str = "", db_path: str = None, save_path: str = None, df=None) -> str:
+def generate_chart(
+    stock_id: str,
+    stock_name: str = "",
+    db_path: str = None,
+    save_path: str = None,
+    df=None,
+    *,
+    already_normalized: bool = False,
+) -> str:
     sid = str(stock_id).strip()
     if df is None or getattr(df, "empty", True):
         df = _load_ohlc(sid, db_path, 180)
+        already_normalized = False
     else:
         df = df.tail(180).copy()
     if df.empty:
         return ""
     name = stock_name or str(df["stock_name"].iloc[-1] or sid)
     out = save_path or os.path.join(get_charts_dir(), f"{sid}.png")
-    return draw_from_ohlc(df, sid, name, out)
+    return draw_from_ohlc(
+        df, sid, name, out, already_normalized=already_normalized
+    )
 
 
 @_mpl_serial
@@ -2513,7 +2534,9 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
     ) or ""
     card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
-    chart = generate_chart(sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc) or ""
+    chart = generate_chart(
+        sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc, already_normalized=True
+    ) or ""
     chips = ""
     try:
         from chips import generate_chips_image
