@@ -14,6 +14,10 @@ import time
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
+# Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
+_CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
+_CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
+
 from config import get_charts_dir, get_db_path, get_telegram_config
 from wayne_db import (
     init_database,
@@ -2113,6 +2117,7 @@ class WayneTelegramBot:
         sent_any = False
         hub_on = False
         render_tasks: list = []
+        tape_task = None
 
         async def _clear_wait() -> None:
             nonlocal wait_msg
@@ -2139,23 +2144,27 @@ class WayneTelegramBot:
             except Exception:
                 logger.debug("字型預熱略過", exc_info=True)
 
-            def _card_and_tape():
+            def _build_card():
                 engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(code, lookback=20)
-                tape = {}
-                try:
-                    tape = build_tape(self.db_path, code) or {}
-                except Exception:
-                    tape = {}
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
-                return card, tape, ohlc
+                return card, ohlc
+
+            def _build_tape():
+                try:
+                    return build_tape(self.db_path, code) or {}
+                except Exception:
+                    return {}
 
             t0 = time.monotonic()
-            card, tape, ohlc = await asyncio.wait_for(
-                asyncio.to_thread(_card_and_tape), timeout=45.0
+            card, ohlc = await asyncio.wait_for(
+                asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
             )
+            tape_task = asyncio.create_task(asyncio.to_thread(_build_tape))
             logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
             if card.get("error"):
+                if not tape_task.done():
+                    tape_task.cancel()
                 await message.reply_html(
                     f"⚠️ {html_escape(card.get('error'))}",
                     reply_markup=hub,
@@ -2170,6 +2179,11 @@ class WayneTelegramBot:
             chip_path_f = os.path.join(self.charts_dir, f"{code}_chips_{req_tag}.png")
 
             async def _job_glance():
+                tape = {}
+                try:
+                    tape = await asyncio.wait_for(tape_task, timeout=30.0)
+                except Exception:
+                    logger.debug("tape 略過 code=%s", code, exc_info=True)
                 path = await asyncio.wait_for(
                     asyncio.to_thread(
                         render_first_glance_png,
@@ -2204,7 +2218,7 @@ class WayneTelegramBot:
                 for attempt in range(2):
                     path = await asyncio.wait_for(
                         asyncio.to_thread(_render_chart),
-                        timeout=90.0,
+                        timeout=_CHART_RENDER_TIMEOUT,
                     )
                     if self._chart_png_looks_ok(path):
                         break
@@ -2277,6 +2291,8 @@ class WayneTelegramBot:
             for t in render_tasks:
                 if not t.done():
                     t.cancel()
+            if tape_task is not None and not tape_task.done():
+                tape_task.cancel()
             if not sent_any:
                 await message.reply_html(
                     "圖產製逾時（雲端較慢或剛醒機）。請再打一次 2454；"
@@ -2291,6 +2307,8 @@ class WayneTelegramBot:
             for t in render_tasks:
                 if not t.done():
                     t.cancel()
+            if tape_task is not None and not tape_task.done():
+                tape_task.cancel()
             if not sent_any:
                 try:
                     from wayne_navigator import generate_decision_card
@@ -2506,6 +2524,14 @@ class WayneTelegramBot:
             Application.builder()
             .token(self.token)
             .concurrent_updates(True)
+            .connect_timeout(30.0)
+            .read_timeout(30.0)
+            .write_timeout(60.0)
+            .pool_timeout(30.0)
+            .get_updates_connect_timeout(30.0)
+            .get_updates_read_timeout(60.0)
+            .get_updates_write_timeout(30.0)
+            .get_updates_pool_timeout(30.0)
             .post_init(_on_start)
             .build()
         )
