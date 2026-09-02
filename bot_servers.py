@@ -594,10 +594,21 @@ class WayneTelegramBot:
             db_path=self.db_path,
         )
 
-    async def _refresh_reply_menu(self, message, *, uid: str = ""):
-        """先移除舊鍵盤再掛兩排新選單；提示訊息短暫顯示後自動刪除。"""
+    async def _refresh_reply_menu(self, message, *, uid: str = "", silent: bool = False):
+        """先移除舊鍵盤再掛兩排新選單。silent=True 時靜默釘選單，不發「正在更新」類提示。"""
         actor = self._actor_key(message, uid=uid)
         await self._dismiss_menu_transients(actor)
+        if silent:
+            try:
+                rm = await message.reply_text("\u200b", reply_markup=ReplyKeyboardRemove())
+                await asyncio.sleep(0.12)
+                await self._delete_message(rm)
+            except Exception:
+                logger.debug("靜默移除舊鍵盤失敗", exc_info=True)
+            await self._pin_reply_menu(message)
+            if uid:
+                self._mark_menu_layout_ok(uid)
+            return
         transient = None
         try:
             transient = await message.reply_text(
@@ -632,10 +643,10 @@ class WayneTelegramBot:
         asyncio.create_task(_fade_out())
 
     async def _ensure_reply_menu_if_needed(self, message, uid: str) -> None:
-        """首次按主選單時自動刷新，免手動 /start。"""
+        """首次按主選單時自動刷新，免手動 /start；靜默完成不佔聊天室。"""
         if self._menu_layout_ok(uid):
             return
-        await self._refresh_reply_menu(message, uid=uid)
+        await self._refresh_reply_menu(message, uid=uid, silent=True)
 
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
@@ -1667,6 +1678,7 @@ class WayneTelegramBot:
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
+        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             from money_flow import (
@@ -1806,10 +1818,14 @@ class WayneTelegramBot:
         await message.reply_html(hints[purpose], reply_markup=InlineKeyboardMarkup(kb))
 
     async def portfolio_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await self._send_portfolio(update.message, str(update.effective_user.id))
+        uid = str(update.effective_user.id)
+        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._send_portfolio(update.message, uid)
 
     async def watch_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await self._send_watch(update.message, str(update.effective_user.id))
+        uid = str(update.effective_user.id)
+        await self._dismiss_menu_transients(self._actor_key(update.message, uid=uid))
+        await self._send_watch(update.message, uid)
 
     async def card_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
