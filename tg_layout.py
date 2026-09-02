@@ -78,6 +78,12 @@ def html_pct_tight(pct) -> str:
     return f"<code>{html_escape(f'{p:+.1f}%')}</code>"
 
 
+def html_metrics_tight(*parts: str) -> str:
+    """多個數字緊湊同一格，資金移動等長文不撐寬氣泡。"""
+    body = " ".join(str(p) for p in parts if p not in (None, ""))
+    return f"<code>{html_escape(body)}</code>"
+
+
 def html_code_join(*parts: str) -> str:
     """多個數字同一 <code>，長文才不會因為 entity 太多有的橘有的黑。"""
     body = "　".join(str(p) for p in parts if p not in (None, ""))
@@ -99,32 +105,37 @@ def _plain_num(n, decimals: int = 0, signed: bool = True) -> str:
     return f"{v:+,.{decimals}f}" if signed else f"{v:,.{decimals}f}"
 
 
-def html_num_paren(main: str, pct, main_w: int = 8) -> str:
+def html_num_paren(main: str, pct, main_w: int = 8, *, compact: bool = False) -> str:
     """主數字與（％）同一 <code>：不拆行，各列的（對齊。"""
     try:
         right = f"{float(pct):+.1f}%"
     except (TypeError, ValueError):
         right = "—"
     left = str(main)
+    if compact:
+        return f"<code>{html_escape(left + '（' + right + '）')}</code>"
     pad = max(0, int(main_w) - len(left))
     return f"<code>{html_escape((' ' * pad) + left + '（' + right + '）')}</code>"
 
 
-def html_last_move(last, change, pct, price_w: int = 8) -> str:
+def html_last_move(last, change, pct, price_w: int = 8, *, compact: bool = False) -> str:
     """現價＋漲跌同一 <code>，▲ 與（％）不拆到下一行。"""
     try:
-        px = f"{float(last):,.2f}".rjust(int(price_w))
+        px = f"{float(last):,.2f}"
     except (TypeError, ValueError):
-        px = "—".rjust(int(price_w))
+        px = "—"
     try:
         d, p = float(change), float(pct)
     except (TypeError, ValueError):
-        return f"<code>{html_escape(px)}</code>"
+        return f"<code>{html_escape(px.rjust(int(price_w)) if not compact else px)}</code>"
     if abs(d) < 0.005 and abs(p) < 0.005:
         move = "0.00（0.00%）"
     else:
         arrow = "▲" if d > 0 else "▼"
         move = f"{arrow}{abs(d):.2f}（{p:+.2f}%）"
+    if compact:
+        return f"<code>{html_escape(px + ' ' + move)}</code>"
+    px = px.rjust(int(price_w))
     return f"<code>{html_escape(px + ' ' + move)}</code>"
 
 
@@ -153,17 +164,19 @@ def join_dashed(*blocks: str) -> str:
     return join_sections(*blocks, sep=f"\n{DASH_LINE}\n")
 
 
-def html_price(p, width: int = 9) -> str:
+def html_price(p, width: int = 9, *, compact: bool = False) -> str:
     """現價／成本對齊，不含單位（元接在後面或省略）。"""
     try:
         v = float(p)
     except (TypeError, ValueError):
-        return f"<code>{'—'.rjust(int(width))}</code>"
-    body = f"{v:,.2f}".rjust(int(width))
-    return f"<code>{html_escape(body)}</code>"
+        return "<code>—</code>" if compact else f"<code>{'—'.rjust(int(width))}</code>"
+    body = f"{v:,.2f}"
+    if compact:
+        return f"<code>{html_escape(body)}</code>"
+    return f"<code>{html_escape(body.rjust(int(width)))}</code>"
 
 
-def html_money(n, width: int = 11, signed: bool = True) -> str:
+def html_money(n, width: int = 11, signed: bool = True, *, compact: bool = False) -> str:
     """帳戶金額：總資產／現金／損益。"""
     try:
         v = float(n or 0)
@@ -173,8 +186,9 @@ def html_money(n, width: int = 11, signed: bool = True) -> str:
         body = f"{v:+,.0f}"
     else:
         body = f"{v:,.0f}"
-    body = body.rjust(int(width))
-    return f"<code>{html_escape(body)}</code>"
+    if compact:
+        return f"<code>{html_escape(body)}</code>"
+    return f"<code>{html_escape(body.rjust(int(width)))}</code>"
 
 
 def html_pct(pct, width: int = 7) -> str:
@@ -279,8 +293,6 @@ def html_quote_move(
                 body = pct_s
     if body == "—":
         return "<code>—</code>"
-    if compact or width <= 0:
-        return f"<code>{html_escape(body)}</code>"
     if compact or width <= 0:
         return f"<code>{html_escape(body)}</code>"
     return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"

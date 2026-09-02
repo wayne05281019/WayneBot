@@ -560,53 +560,56 @@ def _fmt_vix(snap: Dict[str, Any]) -> str:
 
 
 def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
-    from tg_layout import html_quote_move
+    """保留給測試／舊呼叫；實際排版請用 _quote_row_lines。"""
+    from tg_layout import html_escape
 
-    rows = []
+    _ = pts_decimals
+    return [(label, html_escape(_fmt_move(snap.get(pct_k), snap.get(chg_k)))) for pct_k, chg_k, label in items]
+
+
+def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W) -> str:
+    from tg_layout import html_escape, pad_label
+
+    lines = []
     for pct_k, chg_k, label in items:
-        rows.append(
-            (
-                label,
-                html_quote_move(
-                    snap.get(pct_k),
-                    snap.get(chg_k),
-                    pts_decimals=pts_decimals,
-                    compact=True,
-                ),
-            )
-        )
-    return rows
+        move = _fmt_move(snap.get(pct_k), snap.get(chg_k))
+        lines.append(f"{pad_label(label, label_width)}{html_escape(move)}")
+    return "\n".join(lines)
 
 
 def _cash_indices_block(snap: Dict[str, Any]) -> str:
-    from tg_layout import aligned_block
+    from tg_layout import section_eq
 
-    return aligned_block("現金收盤", _quote_rows(snap, _CASH_ITEMS), label_width=_LABEL_W)
+    body = _quote_row_lines(snap, _CASH_ITEMS)
+    return f"{section_eq('現金收盤')}\n{body}" if body else section_eq("現金收盤")
 
 
 def _post_futures_block(snap: Dict[str, Any]) -> str:
-    from tg_layout import aligned_block
+    from tg_layout import section_eq
 
-    return aligned_block("盤後期貨", _quote_rows(snap, _FUTURES_ITEMS), label_width=_LABEL_W)
+    body = _quote_row_lines(snap, _FUTURES_ITEMS)
+    return f"{section_eq('盤後期貨')}\n{body}" if body else section_eq("盤後期貨")
 
 
 def _post_adr_block(snap: Dict[str, Any], *, with_cash: bool = False) -> str:
-    from tg_layout import aligned_block
+    from tg_layout import section_eq
 
     items = _ADR_CASH_ITEMS if with_cash else _ADR_ITEMS
-    return aligned_block("ADR", _quote_rows(snap, items), label_width=_LABEL_W)
+    body = _quote_row_lines(snap, items)
+    return f"{section_eq('ADR')}\n{body}" if body else section_eq("ADR")
 
 
 def _drop_post_block(snap: Dict[str, Any]) -> str:
-    from tg_layout import aligned_block
+    from tg_layout import section_eq
 
-    return aligned_block("盤後續勢", _quote_rows(snap, _DROP_POST_ITEMS), label_width=_LABEL_W)
+    body = _quote_row_lines(snap, _DROP_POST_ITEMS)
+    return f"{section_eq('盤後續勢')}\n{body}" if body else section_eq("盤後續勢")
 
 
 def _vix_row(snap: Dict[str, Any]) -> str:
-    from tg_layout import html_level_pct, kv_html
+    from tg_layout import html_escape, pad_label
 
-    return kv_html("VIX", html_level_pct(snap.get("vix"), snap.get("vix_pct"), compact=True), width=_LABEL_W)
+    return f"{pad_label('VIX', _LABEL_W)}{html_escape(_fmt_vix(snap))}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:

@@ -66,6 +66,23 @@ def profit_pct_cal60_series(df, *, close_col: str = "close") -> pd.Series:
     return pd.Series(out, index=df.index)
 
 
+def profit_pct_card_series(df, *, close_col: str = "close") -> pd.Series:
+    """決策卡顯示：預設 60 曆日低（CaryBot）；貼 20 日低時改 max(60曆日低,20日低) 顯示 0.0%（2633 範本）。"""
+    cal = profit_pct_cal60_series(df, close_col=close_col)
+    floor = profit_pct_series(df, close_col=close_col)
+    closes = df[close_col].astype(float)
+    l20 = closes.rolling(20, min_periods=1).min()
+    out = []
+    for i in range(len(df)):
+        c = float(closes.iloc[i])
+        lo = float(l20.iloc[i] or 0)
+        if lo > 0 and c <= lo * 1.002:
+            out.append(float(floor.iloc[i]))
+        else:
+            out.append(float(cal.iloc[i]))
+    return pd.Series(out, index=df.index)
+
+
 def resolve_daily_change_pct(
     close: float,
     *,
