@@ -8,9 +8,12 @@ from taiwan_market import (
     _fetch_twse_index_breadth,
     _fetch_twse_index_close,
     _merge_index_closes,
+    _classify_regime_plus_raw,
+    _confirm_regime_plus,
     analyze_taiwan_market,
     apply_market_weights,
     market_screening_note,
+    regime_plus_screening_note,
     sync_index_daily,
 )
 
@@ -56,8 +59,63 @@ def test_compute_falling_risk_below_ma20():
 
 
 def test_market_screening_note_bull():
-    note = market_screening_note({"ok": True, "regime": "bull", "confidence": 72})
+    note = market_screening_note(
+        {
+            "ok": True,
+            "regime": "bull",
+            "confidence": 72,
+            "regime_plus": "trend_up",
+            "regime_plus_label": "多頭延伸",
+        }
+    )
     assert "多頭" in note
+
+
+def test_classify_regime_plus_trend_down():
+    closes = pd.Series([100.0] * 15 + [90.0] * 5)
+    raw = _classify_regime_plus_raw(
+        regime="bear",
+        falling_risk=65,
+        risk_zone="normal",
+        support_zone="none",
+        closes=closes,
+        futures_lead_label="期貨領跌",
+    )
+    assert raw == "trend_down"
+
+
+def test_confirm_regime_plus_hysteresis():
+    confirmed, streak, pending = _confirm_regime_plus(
+        ["range", "range", "trend_down", "trend_down"], confirm_days=2
+    )
+    assert confirmed == "trend_down"
+    assert streak == 2
+    assert pending is None
+    confirmed2, _, pending2 = _confirm_regime_plus(["range", "trend_down"], confirm_days=2)
+    assert confirmed2 == "trend_down"
+    assert pending2 is None
+
+
+def test_apply_market_weights_regime_plus_late():
+    base = {"day_trade": [{"stock_id": f"{i:04d}"} for i in range(10)]}
+    out = apply_market_weights(
+        base,
+        {
+            "ok": True,
+            "regime": "bull",
+            "regime_plus": "trend_up_late",
+            "confidence": 60,
+            "falling_risk": 40,
+        },
+    )
+    assert len(out["day_trade"]) == 5
+
+
+def test_regime_plus_screening_note_repair():
+    note = regime_plus_screening_note(
+        {"ok": True, "regime_plus": "repair", "regime_plus_label": "跌後修復"}
+    )
+    assert "修復" in note
 
 
 @patch("taiwan_market._fetch_index_daily")
@@ -434,3 +492,4 @@ def test_market_page_includes_futures_section(tmp_path):
     html = format_taiwan_market_page_html(db, "20260824")
     assert "期現" in html
     assert "基差" in html
+    assert "Regime+" in html

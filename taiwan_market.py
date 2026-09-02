@@ -64,6 +64,65 @@ REGIME_BUCKET_CAP: Dict[str, Dict[str, int]] = {
     },
 }
 
+# L3 Regime+（P4）：趨勢／末端／衰竭／修復；海選權重 v2
+REGIME_PLUS_LABELS: Dict[str, str] = {
+    "trend_up": "多頭延伸",
+    "trend_up_late": "多頭末端",
+    "range": "箱型震盪",
+    "trend_down": "空頭延伸",
+    "down_exhaust": "空頭衰竭",
+    "repair": "跌後修復",
+}
+
+REGIME_PLUS_BUCKET_MULT: Dict[str, Dict[str, float]] = {
+    "trend_up": {
+        **REGIME_BUCKET_MULT["bull"],
+        "day_trade": 1.12,
+        "overnight": 1.08,
+    },
+    "trend_up_late": {
+        "leave_zero": 1.05,
+        "golden_buy": 1.05,
+        "revenue_cross": 0.95,
+        "select_01": 0.92,
+        "select_02": 0.9,
+        "select_03": 0.92,
+        "half_year_high": 0.85,
+        "day_trade": 0.75,
+        "overnight": 0.75,
+    },
+    "range": dict(REGIME_BUCKET_MULT["neutral"]),
+    "trend_down": dict(REGIME_BUCKET_MULT["bear"]),
+    "down_exhaust": {
+        **REGIME_BUCKET_MULT["bear"],
+        "golden_buy": 1.08,
+        "leave_zero": 0.95,
+        "day_trade": 0.5,
+        "overnight": 0.5,
+    },
+    "repair": {
+        "leave_zero": 1.08,
+        "golden_buy": 1.12,
+        "revenue_cross": 1.0,
+        "select_01": 1.05,
+        "select_02": 1.0,
+        "select_03": 1.0,
+        "half_year_high": 1.0,
+        "day_trade": 0.85,
+        "overnight": 0.85,
+    },
+}
+
+REGIME_PLUS_BUCKET_CAP: Dict[str, Dict[str, int]] = {
+    "trend_up": {"leave_zero": 9, "select_01": 9, "half_year_high": 9},
+    "trend_up_late": {"select_01": 6, "half_year_high": 6, "day_trade": 5, "overnight": 5},
+    "trend_down": dict(REGIME_BUCKET_CAP["bear"]),
+    "down_exhaust": {"day_trade": 3, "overnight": 3, "select_01": 5},
+    "repair": {},
+    "range": {},
+}
+
+_REGIME_PLUS_CONFIRM_DAYS = 2
 
 def ensure_index_daily_table(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
@@ -1290,6 +1349,176 @@ def compute_risk_support_zones(
     return {"risk_zone": risk_zone, "support_zone": support_zone}
 
 
+def _classify_regime_plus_raw(
+    *,
+    regime: str,
+    falling_risk: int,
+    risk_zone: str,
+    support_zone: str,
+    closes: pd.Series,
+    futures_lead_label: str = "同步",
+) -> str:
+    """單日 Regime+ 原始分類（未滯後）。"""
+    reg = str(regime or "neutral")
+    fr = int(falling_risk or 0)
+    rz = str(risk_zone or "normal")
+    sz = str(support_zone or "none")
+    fl = str(futures_lead_label or "同步")
+    c = float(closes.iloc[-1]) if closes is not None and len(closes) else 0.0
+    ma20 = float(closes.tail(20).mean()) if closes is not None and len(closes) >= 20 else c
+    was_below = False
+    if closes is not None and len(closes) >= 4 and ma20 > 0:
+        for i in range(2, min(6, len(closes))):
+            if float(closes.iloc[-i]) < ma20:
+                was_below = True
+                break
+    if c >= ma20 and was_below and fr < 60 and reg != "bear":
+        return "repair"
+    if sz in ("building", "watch") and (reg == "bear" or fr >= 35):
+        return "down_exhaust"
+    if reg == "bear" or fr >= 60 or (fl == "期貨領跌" and fr >= 35):
+        return "trend_down"
+    if reg == "bull" and rz == "elevated":
+        return "trend_up_late"
+    if reg == "bull" and fr < 35:
+        return "trend_up"
+    if reg == "bull" or (reg == "neutral" and fr >= 35):
+        return "trend_up_late"
+    if reg == "neutral":
+        return "range"
+    return "trend_down" if fr >= 35 else "range"
+
+
+def _confirm_regime_plus(raw_hist: List[str], *, confirm_days: int = _REGIME_PLUS_CONFIRM_DAYS) -> Tuple[str, int, Optional[str]]:
+    """滯後確認：連續 confirm_days 日同態才切換；否則維持前一穩定態。"""
+    if not raw_hist:
+        return "range", 0, None
+    cur = raw_hist[-1]
+    streak = 1
+    for s in reversed(raw_hist[:-1]):
+        if s == cur:
+            streak += 1
+        else:
+            break
+    if streak >= confirm_days:
+        return cur, streak, None
+    for i in range(len(raw_hist) - 2, -1, -1):
+        state = raw_hist[i]
+        sub = 1
+        for j in range(i - 1, -1, -1):
+            if raw_hist[j] == state:
+                sub += 1
+            else:
+                break
+        if sub >= confirm_days:
+            return state, streak, cur if cur != state else None
+    return cur, streak, None
+
+
+def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> List[str]:
+    """近 lookback 個交易日逐日 raw Regime+（供滯後確認）。"""
+    d = _norm_ymd(as_of)
+    conn = sqlite3.connect(db_path)
+    try:
+        dates = [
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT date FROM index_daily
+                WHERE symbol=? AND date <= ? ORDER BY date DESC LIMIT ?
+                """,
+                (_INDEX_SYMBOL, d, lookback),
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+    dates = list(reversed(dates))
+    raw_hist: List[str] = []
+    us_risk_off = False
+    for day in dates:
+        idx = load_index_daily(db_path, day, db_only=True)
+        if idx.empty:
+            continue
+        breadth, _ = _resolve_breadth_for_date(db_path, day)
+        official = load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
+        prev_official = _load_prev_official_breadth(db_path, day)
+        flow_net = _sector_flow_net(db_path, day)
+        if flow_net is None:
+            near = _nearest_sector_flow(db_path, day)
+            flow_net = near[1] if near else 0.0
+        core = _regime_from_closes(
+            idx["close"].astype(float),
+            breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+            sector_flow=float(flow_net or 0),
+            official_up_ratio=(official.get("up_ratio") if official else None),
+        )
+        try:
+            from us_overnight import load_us_overnight
+
+            us = load_us_overnight(db_path, day)
+            us_risk_off = str(us.get("regime") or "") == "risk_off"
+        except Exception:
+            us_risk_off = False
+        fr = compute_falling_risk(
+            idx,
+            breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+            official_breadth=official,
+            us_risk_off=us_risk_off,
+        )
+        zones = compute_risk_support_zones(
+            idx,
+            breadth_pct=float(breadth.get("above_ma20_pct") or 0),
+            official_breadth=official,
+            prev_official=prev_official,
+        )
+        lead = compute_futures_lead_stats(db_path, day)
+        raw_hist.append(
+            _classify_regime_plus_raw(
+                regime=str(core.get("regime") or "neutral"),
+                falling_risk=int(fr.get("falling_risk") or 0),
+                risk_zone=str(zones.get("risk_zone") or "normal"),
+                support_zone=str(zones.get("support_zone") or "none"),
+                closes=idx["close"].astype(float),
+                futures_lead_label=str(lead.get("label") or "同步"),
+            )
+        )
+    return raw_hist
+
+
+def compute_regime_plus(db_path: str, as_of: str, *, confirm_days: int = _REGIME_PLUS_CONFIRM_DAYS) -> Dict[str, Any]:
+    raw_hist = _regime_plus_raw_history(db_path, as_of)
+    confirmed, streak, pending = _confirm_regime_plus(raw_hist, confirm_days=confirm_days)
+    return {
+        "regime_plus": confirmed,
+        "regime_plus_label": REGIME_PLUS_LABELS.get(confirmed, confirmed),
+        "regime_plus_raw": raw_hist[-1] if raw_hist else confirmed,
+        "regime_plus_streak": streak,
+        "regime_plus_pending": pending,
+    }
+
+
+def regime_plus_bucket_mult(regime_plus: str) -> Dict[str, float]:
+    return REGIME_PLUS_BUCKET_MULT.get(str(regime_plus or "range"), REGIME_PLUS_BUCKET_MULT["range"])
+
+
+def regime_plus_screening_note(snap: Dict[str, Any]) -> str:
+    if not snap.get("ok"):
+        return ""
+    rp = str(snap.get("regime_plus") or "range")
+    label = snap.get("regime_plus_label") or REGIME_PLUS_LABELS.get(rp, rp)
+    pending = snap.get("regime_plus_pending")
+    tail = f"（觀察切換→{REGIME_PLUS_LABELS.get(str(pending), pending)}）" if pending else ""
+    notes = {
+        "trend_up": "多頭延伸：起漲與周帶量桶正常權重。",
+        "trend_up_late": "多頭末端：少追、降 cap、多看獲利格。",
+        "range": "箱型震盪：偏選股，不賭方向。",
+        "trend_down": "空頭延伸：縮短線桶，佈局需極嚴。",
+        "down_exhaust": "空頭衰竭：低檔觀察，黃金買點可略放但仍不賭刀。",
+        "repair": "跌後修復：觀察 3 日站穩，不急追。",
+    }
+    return f"Regime+ <b>{label}</b>{tail}　{notes.get(rp, '')}"
+
+
 def _load_prev_official_breadth(db_path: str, as_of: str) -> Optional[Dict[str, Any]]:
     ensure_index_breadth_daily_table(db_path)
     conn = sqlite3.connect(db_path)
@@ -1400,6 +1629,7 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
     basis_pct = compute_basis_pct(spot_close, fut_close) if futures else None
     lead = compute_futures_lead_stats(db_path, ref_date) if futures else {}
     bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
+    rp = compute_regime_plus(db_path, ref_date)
     return {
         "ok": True,
         "as_of": ref_date,
@@ -1427,6 +1657,7 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
         "basis_pct": basis_pct,
         "futures_lead": lead,
         "backtest": bt,
+        **rp,
     }
 
 
@@ -1503,28 +1734,38 @@ def latest_regime(db_path: str) -> str:
 
 
 def sync_regime_ai_weights(db_path: str, as_of: Optional[str] = None) -> Dict[str, float]:
-    """盤後／海選後：復盤 base 權重 × 大盤 regime → bucket_w_*。"""
+    """盤後／海選後：復盤 base 權重 × Regime+（優先）或大盤 regime → bucket_w_*。"""
     from screen_review import adapt_bucket_weights
 
     snap = analyze_taiwan_market(db_path, as_of)
     regime = snap.get("regime") if snap.get("ok") else latest_regime(db_path)
-    return adapt_bucket_weights(db_path, regime=regime)
+    regime_plus = snap.get("regime_plus") if snap.get("ok") else None
+    return adapt_bucket_weights(db_path, regime=regime, regime_plus=regime_plus)
 
 
 def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[str, Any]:
-    """依大盤 regime 調整桶內排序與上限。"""
+    """依 Regime+（優先）或大盤 regime 調整桶內排序與上限；falling_risk／期貨領跌再疊加。"""
     if not snap.get("ok"):
         return results
+    regime_plus = str(snap.get("regime_plus") or "")
     regime = str(snap.get("regime") or "neutral")
-    mults = REGIME_BUCKET_MULT.get(regime, REGIME_BUCKET_MULT["neutral"])
-    caps = REGIME_BUCKET_CAP.get(regime, {})
+    if regime_plus:
+        mults = regime_plus_bucket_mult(regime_plus)
+        caps = dict(REGIME_PLUS_BUCKET_CAP.get(regime_plus, {}))
+    else:
+        mults = REGIME_BUCKET_MULT.get(regime, REGIME_BUCKET_MULT["neutral"])
+        caps = dict(REGIME_BUCKET_CAP.get(regime, {}))
     out = dict(results)
     out["_mkt_regime"] = regime
+    out["_mkt_regime_plus"] = regime_plus or None
     out["_mkt_confidence"] = snap.get("confidence")
     out["_falling_risk"] = snap.get("falling_risk", 0)
     fr = int(snap.get("falling_risk") or 0)
     falling_mult = 0.55 if fr >= 60 else (0.8 if fr >= 35 else 1.0)
     falling_caps = {"day_trade": 3, "overnight": 3} if fr >= 60 else {}
+    lead = snap.get("futures_lead") or {}
+    if str(lead.get("label") or "") == "期貨領跌" and fr >= 35:
+        falling_mult = min(falling_mult, 0.75)
     for key, items in list(out.items()):
         if not isinstance(items, list) or key.startswith("_"):
             continue
@@ -1551,6 +1792,9 @@ def apply_market_weights(results: Dict[str, Any], snap: Dict[str, Any]) -> Dict[
 def market_screening_note(snap: Dict[str, Any]) -> str:
     if not snap.get("ok"):
         return ""
+    rp_note = regime_plus_screening_note(snap)
+    if rp_note:
+        return rp_note
     reg = snap.get("regime")
     conf = snap.get("confidence")
     if reg == "bull":
@@ -1567,6 +1811,17 @@ def market_screening_note(snap: Dict[str, Any]) -> str:
 
 def _regime_traffic_light(regime: str) -> str:
     return {"bull": "🟢", "neutral": "🟡", "bear": "🔴"}.get(str(regime or ""), "⚪")
+
+
+def _regime_plus_traffic_light(regime_plus: str) -> str:
+    return {
+        "trend_up": "🟢",
+        "repair": "🟢",
+        "range": "🟡",
+        "trend_up_late": "🟡",
+        "down_exhaust": "🟡",
+        "trend_down": "🔴",
+    }.get(str(regime_plus or ""), "⚪")
 
 
 _TG_SECTION = "────────────────"
@@ -1614,6 +1869,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
         ),
         _TG_SECTION,
         f"Regime <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
+        f"Regime+ {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
         f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
         f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
         market_screening_note(snap),
@@ -1691,6 +1947,7 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
             _TG_SECTION,
             "<b>結構與風險</b>",
             f"Regime {light} <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
+            f"Regime+ {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
             f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
             f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
             f"低檔區 {_support_zone_label(snap.get('support_zone'))}",

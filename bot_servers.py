@@ -204,11 +204,11 @@ HELP_TOPICS = {
         "<b>⑤ 大盤</b>\n"
         "• <b>是什麼</b>：加權指數、月線廣度、法人合計、Regime 燈號，外加美股隔夜快取。\n"
         "• <b>怎麼用</b>：隨時按；只讀庫內資料，不會觸發匯入或改寫行情。\n"
-        "• <b>跟海選</b>：海選桶權重已依 regime 自動調整；這頁讓你看「為什麼今天偏積極或保守」。"
+        "• <b>跟海選</b>：海選桶權重已依 Regime+／regime 自動調整；這頁讓你看「為什麼今天偏積極或保守」。"
     ),
     "market": (
         "<b>大盤按鈕</b>\n"
-        "次排最右。顯示加權收盤、MA20/60、站上月線廣度、產業法人合計、Regime 燈號（🟢🟡🔴）。\n"
+        "次排最右。顯示加權收盤、MA20/60、站上月線廣度、產業法人合計、Regime／Regime+ 燈號（🟢🟡🔴）。\n"
         "若有庫內美股隔夜快取，會附道瓊／標普／費半與 VIX。\n"
         "<b>只讀</b>：不觸發 Yahoo/TWSE 抓取、不寫 sqlite、不影響 16:30 自動融合或 06:30 早報。"
     ),
@@ -2473,8 +2473,12 @@ class WayneTelegramBot:
             from taiwan_market import analyze_taiwan_market
 
             snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True)
-            if snap.get("ok") and int(snap.get("falling_risk") or 0) >= 60:
-                mkt_note = "<i>⚠️ 大盤結構偏弱，少追。</i>\n"
+            if snap.get("ok"):
+                fr = int(snap.get("falling_risk") or 0)
+                rp = str(snap.get("regime_plus") or "")
+                if fr >= 60 or rp in ("trend_down", "trend_up_late"):
+                    hint = "大盤結構偏弱，少追。" if fr >= 60 else "多頭末端，少追。"
+                    mkt_note = f"<i>⚠️ {hint}</i>\n"
         except Exception:
             pass
         try:
