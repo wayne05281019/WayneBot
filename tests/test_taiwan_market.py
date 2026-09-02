@@ -178,3 +178,35 @@ def test_sync_index_daily_prefers_official(mock_twse, mock_yahoo, tmp_path):
     ).fetchone()[0]
     conn.close()
     assert close == 24233.10
+
+
+@patch("taiwan_market._fetch_index_daily")
+def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
+    import sqlite3
+
+    from taiwan_market import format_taiwan_market_page_html
+
+    db = tmp_path / "page.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE stock_universe (stock_id TEXT, is_active INT)")
+    conn.execute("CREATE TABLE daily_quotes (stock_id TEXT, date TEXT, close REAL, volume REAL)")
+    conn.execute("INSERT INTO stock_universe VALUES ('2330', 1)")
+    for i, c in enumerate(range(100, 121)):
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)",
+            (f"202608{i+1:02d}", float(c)),
+        )
+    conn.commit()
+    conn.close()
+    mock_fetch.return_value = pd.DataFrame(
+        {
+            "date": [f"202608{i:02d}" for i in range(1, 25)],
+            "close": [float(22000 + i * 50) for i in range(24)],
+            "volume": [1e9] * 24,
+            "pct_change": [0.1] * 24,
+        }
+    )
+    html = format_taiwan_market_page_html(str(db), "20260824")
+    assert "台股大盤" in html
+    assert "只讀庫內資料" in html
+    assert "Regime" in html

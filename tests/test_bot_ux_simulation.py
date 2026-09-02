@@ -183,18 +183,21 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
 # --- 不懂股票：亂打、空字、預留格不當查股 ---
 
 
-def test_reserved_menu_button_is_silent():
-    from bot_servers import MENU_BTN_RESERVED
+def test_market_menu_button_shows_page():
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import MENU_BTN_MARKET
 
     bot = _bot()
-    msg = _msg(1, 1, MENU_BTN_RESERVED)
+    msg = _msg(1, 1, MENU_BTN_MARKET)
+    msg.reply_html = AsyncMock()
 
     async def run():
-        await bot.on_text(_update(msg), MagicMock())
+        with patch.object(bot, "market_cmd", new_callable=AsyncMock) as market:
+            await bot.on_text(_update(msg), MagicMock())
+            market.assert_awaited_once()
 
     asyncio.run(run())
-    msg.reply_text.assert_not_awaited()
-    msg.reply_html.assert_not_awaited()
 
 
 def test_help_keyboard_replaces_previous_message():
