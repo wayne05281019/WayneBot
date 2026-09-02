@@ -82,7 +82,7 @@ HELP_TOPICS = {
         "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；bot 回完也會自動釘回。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "左→右依常用順序；決策卡＝盤中快捷刷新上一檔 MIS 價量與 120日量排名。\n"
-        "打股名或代號＝看這檔：現價→決策卡→導航→介紹圖；籌碼／產業請按下方按鈕。\n"
+        "打股名或代號＝看這檔：現價→決策卡→介紹圖；180日導航按「導航圖」；籌碼／產業請按下方按鈕。\n"
         "資金＝盤後產業輪動＋當日三大法人張數（不是分點）。左下也可按 /menu。"
     ),
     "screen": (
@@ -125,7 +125,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>單檔第一眼建議看這些</b>\n"
-        "打股名或按看這檔：先現價／漲跌，再決策卡 → 導航 → 介紹圖；籌碼／產業另按下方按鈕。\n"
+        "打股名或按看這檔：先現價／漲跌，再決策卡 → 介紹圖；要 180 日導航按「導航圖」；籌碼／產業另按下方按鈕。\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
         "2 獲利＝近60個日曆日收盤低；距60根低是另外一欄（近60根收盤）\n"
         "3 溫度＝20日收盤位置＋月乖離；升降「溫度壓縮＋價未新低」＝溫度創低但股價未創波段低（背離警示）\n"
@@ -176,6 +176,7 @@ class WayneTelegramBot:
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
         self._last_card: Dict[str, str] = {}
+        self._lookup_ctx: Dict[str, dict] = {}
         self._line_share_chunks: List[str] = []
         self._line_share_packs: List[Dict[str, str]] = []
         self._menu_fade_msgs: Dict[int, list] = {}
@@ -266,6 +267,26 @@ class WayneTelegramBot:
         c = str(code or "").strip()
         if uid and c:
             self._last_card[uid] = c
+
+    def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
+        if not uid or not code or ohlc is None:
+            return
+        key = f"{uid}:{str(code).strip()}"
+        self._lookup_ctx[key] = {"ohlc": ohlc, "ts": time.time()}
+        if len(self._lookup_ctx) > 40:
+            oldest = sorted(self._lookup_ctx.items(), key=lambda kv: kv[1].get("ts", 0))[:10]
+            for k, _ in oldest:
+                self._lookup_ctx.pop(k, None)
+
+    def _get_lookup_ohlc(self, uid: str, code: str):
+        key = f"{uid}:{str(code).strip()}"
+        hit = self._lookup_ctx.get(key)
+        if not hit:
+            return None
+        if time.time() - float(hit.get("ts") or 0) > 900:
+            self._lookup_ctx.pop(key, None)
+            return None
+        return hit.get("ohlc")
 
     async def _prompt_decision_card(self, message, uid: str):
         from wayne_db import get_user_watchlist
@@ -432,6 +453,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
                 ],
                 [
+                    InlineKeyboardButton("導航圖", callback_data=f"g:{c}"),
                     InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                     self._q(topic),
                 ],
@@ -1163,7 +1185,7 @@ class WayneTelegramBot:
     def _chart_progress_text(elapsed_sec: int) -> str:
         return (
             f"圖產製中　已 {elapsed_sec}s\n"
-            "介紹圖／決策卡／導航依序產生，完成一張送一張…"
+            "決策卡／介紹圖並行產生；180日導航請點下方「導航圖」…"
         )
 
     @staticmethod
@@ -2031,6 +2053,89 @@ class WayneTelegramBot:
                 await self._dismiss_lookup_fades(chat_id, roles={"ack", "wait"})
             await self._pin_reply_menu(message)
 
+    async def _send_navigation_chart(self, message, code: str, uid: str = ""):
+        """按需產 180 日高低導航（重用剛查過的 _ohlc，免重跑決策卡）。"""
+        code = str(code or "").strip()
+        uid = uid or self._uid_from_message(message)
+        hub = self._hub_keyboard(code)
+        ohlc = self._get_lookup_ohlc(uid, code)
+        if ohlc is None or getattr(ohlc, "empty", True):
+            from wayne_navigator import NavigatorEngine
+
+            live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, None)
+
+            def _reload():
+                engine = NavigatorEngine(self.db_path)
+                card = engine.get_decision_card(
+                    code, lookback=20, merge_live=True, live_quote=live_rt
+                )
+                ctx = card.pop("_ohlc", None) if isinstance(card, dict) else None
+                return ctx
+
+            ohlc = await asyncio.wait_for(asyncio.to_thread(_reload), timeout=_CARD_BUILD_TIMEOUT)
+            self._cache_lookup_ctx(uid, code, ohlc)
+        if ohlc is None or getattr(ohlc, "empty", True):
+            await message.reply_html(
+                f"⚠️ {html_escape(code)} 尚無足夠日K，無法出導航圖。",
+                reply_markup=hub,
+                disable_web_page_preview=True,
+            )
+            return
+        wait = None
+        try:
+            wait = await message.reply_text("導航圖產製中（180日）…")
+        except Exception:
+            pass
+        os.makedirs(self.charts_dir, exist_ok=True)
+        chart_path = os.path.join(self.charts_dir, f"{code}_nav_{int(time.time() * 1000)}.png")
+        try:
+            from wayne_navigator import generate_chart
+
+            path = await asyncio.wait_for(
+                asyncio.to_thread(
+                    generate_chart,
+                    code,
+                    "",
+                    self.db_path,
+                    chart_path,
+                    ohlc,
+                    already_normalized=True,
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            path = ""
+            logger.warning("導航圖逾時 code=%s", code)
+        except Exception:
+            path = ""
+            logger.exception("導航圖失敗 code=%s", code)
+        if wait is not None:
+            try:
+                await wait.delete()
+            except Exception:
+                pass
+        if not path or not self._chart_png_looks_ok(path):
+            await message.reply_html(
+                "導航圖產出失敗，請稍後再按一次「導航圖」。",
+                reply_markup=hub,
+                disable_web_page_preview=True,
+            )
+            return
+        cap = "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深"
+        for attempt in range(3):
+            try:
+                with open(path, "rb") as f:
+                    await message.reply_photo(
+                        photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
+                    )
+                return
+            except Exception as exc:
+                if attempt < 2 and type(exc).__name__ in ("TimedOut", "NetworkError", "RetryAfter"):
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                logger.exception("導航圖送出失敗 code=%s", code)
+        await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
+
     async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
@@ -2166,11 +2271,6 @@ class WayneTelegramBot:
                 wait_msg = None
 
         try:
-            from wayne_navigator import (
-                generate_chart,
-                render_decision_card_png,
-                render_first_glance_png,
-            )
             from wayne_navigator import NavigatorEngine
             from chip_tape import build_tape
 
@@ -2209,71 +2309,76 @@ class WayneTelegramBot:
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
 
-            def _render_chart():
-                return generate_chart(
+            uid_key = uid or self._uid_from_message(message)
+            self._cache_lookup_ctx(uid_key, code, ohlc)
+
+            from lookup_render import render_card_and_glance_parallel
+
+            t1 = time.monotonic()
+            card_path_f, glance_path = await asyncio.wait_for(
+                asyncio.to_thread(
+                    render_card_and_glance_parallel,
+                    card,
+                    card_path_f,
                     code,
-                    "",
+                    tape,
+                    glance_path,
                     self.db_path,
-                    chart_path_f,
-                    ohlc,
-                    already_normalized=True,
-                )
-
-            render_plan = [
-                (
-                    "card",
-                    lambda: render_decision_card_png(card, card_path_f),
-                    60.0,
-                    "高低決策卡",
-                    None,
                 ),
-                ("chart", _render_chart, _CHART_RENDER_TIMEOUT, "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深", None),
-                (
-                    "glance",
-                    lambda: render_first_glance_png(code, card, tape, glance_path, self.db_path),
-                    60.0,
-                    cap_links or "當日K＋籌碼價量",
-                    hub,
-                ),
-            ]
+                timeout=max(_CARD_BUILD_TIMEOUT, 90.0),
+            )
+            logger.info("看這檔 png parallel %.1fs code=%s", time.monotonic() - t1, code)
 
-            for kind, fn, timeout_s, caption, markup in render_plan:
-                path = ""
-                attempts = 2 if kind == "chart" else 1
-                for attempt in range(attempts):
-                    try:
-                        path = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout_s)
-                    except asyncio.TimeoutError:
-                        logger.warning("看這檔 %s 逾時 code=%s attempt=%s", kind, code, attempt + 1)
-                        path = ""
-                        break
-                    except Exception:
-                        logger.exception("看這檔 %s 產圖失敗 code=%s", kind, code)
-                        path = ""
-                        break
-                    if kind != "chart" or self._chart_png_looks_ok(path):
-                        break
-                    logger.warning(
-                        "導航圖殘缺 code=%s attempt=%s size=%s",
-                        code,
-                        attempt + 1,
-                        os.path.getsize(path) if path and os.path.exists(path) else 0,
-                    )
-                    path = ""
-                logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
-                if not path:
-                    continue
-                if kind == "chart" and not self._chart_png_looks_ok(path):
+            hub_nav = self._hub_keyboard(code)
+            for path, caption, markup in (
+                (card_path_f, "高低決策卡", None),
+                (glance_path, cap_links or "當日K＋籌碼價量", hub_nav),
+            ):
+                if not path or not os.path.exists(path):
                     continue
                 ok = await send_photo(path, caption, markup)
-                if ok and markup is hub:
+                if ok and markup is hub_nav:
                     hub_on = True
                 if ok:
                     sent_any = True
                     await _clear_wait()
 
+            auto_chart = os.getenv("WAYNE_LOOKUP_AUTO_CHART", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if auto_chart and ohlc is not None and not getattr(ohlc, "empty", True):
+                from wayne_navigator import generate_chart
+
+                try:
+                    chart_path = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_chart,
+                            code,
+                            "",
+                            self.db_path,
+                            chart_path_f,
+                            ohlc,
+                            already_normalized=True,
+                        ),
+                        timeout=_CHART_RENDER_TIMEOUT,
+                    )
+                except Exception:
+                    chart_path = ""
+                    logger.exception("看這檔 chart auto code=%s", code)
+                if chart_path and self._chart_png_looks_ok(chart_path):
+                    cap = (
+                        "180日高低導航：實心＝當日觸發；空心＝接近；"
+                        "粉紅／綠底上的箭頭會自動加深"
+                    )
+                    ok = await send_photo(chart_path, cap, None)
+                    if ok:
+                        sent_any = True
+                        await _clear_wait()
+
             if sent_any and not hub_on:
-                await message.reply_html("圖已出完。", reply_markup=hub, disable_web_page_preview=True)
+                await message.reply_html("圖已出完。要 180 日導航請按「導航圖」。", reply_markup=hub_nav, disable_web_page_preview=True)
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
 
@@ -2371,6 +2476,10 @@ class WayneTelegramBot:
                 "要記真實買入請按「記買入」。",
                 reply_markup=self._hub_keyboard(code),
             )
+            return
+        if data.startswith("g:"):
+            uid = str(q.from_user.id)
+            await self._send_navigation_chart(q.message, data[2:].strip(), uid)
             return
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)
