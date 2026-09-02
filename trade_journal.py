@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""真實持股成交紀錄與復盤（與 AI 模擬倉 wayne_ai 完全分開）。"""
+"""真實持股成交紀錄與復盤（與每人專屬 AI 模擬倉完全分開）。"""
 from __future__ import annotations
 
 import re

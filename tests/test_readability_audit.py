@@ -118,7 +118,7 @@ def test_ai_desk_readable():
     from portfolio_engine import PortfolioEngine
 
     eng = PortfolioEngine(_db())
-    html = format_ai_desk_html(eng)
+    html = format_ai_desk_html(eng, "1001")
     _assert_readable(html, name="ai_desk")
     assert "總資產：" in html
 

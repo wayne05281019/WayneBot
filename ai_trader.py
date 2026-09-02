@@ -1,5 +1,6 @@
 """WayneBot AI 模擬操盤：50 萬本金、最多分 3 等份、海選紀律買賣、成交寫庫復盤。
 
+每位 Telegram 使用者各有一套模擬帳戶（ai_{uid}），與手記持股完全分開。
 不會改寫自己的程式碼；進化是調整倉位比例與哪類海選最近準（寫入資料庫）。
 這是模擬倉，不是真實下單。
 """
@@ -10,12 +11,45 @@ from typing import Any, Dict, List, Optional
 
 from portfolio_engine import PortfolioEngine
 
-AI_USER = "wayne_ai"
+AI_USER_LEGACY = "wayne_ai"
 MAX_SLOTS = 3
 STOP_PCT = -7.0
 TAKE_PCT = 8.0
 STOP_MULT = 0.93
 TAKE_MULT = 1.08
+
+
+def ai_user_id(telegram_uid: str) -> str:
+    """portfolio_engine 內的 AI 模擬帳戶 id（與 Telegram uid 及手記持股分開）。"""
+    uid = str(telegram_uid or "").strip()
+    if not uid:
+        return AI_USER_LEGACY
+    if uid.startswith("ai_"):
+        return uid
+    return f"ai_{uid}"
+
+
+def ensure_ai_tables(db_path: str) -> None:
+    """啟動時確保 AI 相關表與欄位存在。"""
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_nav_log (
+            date TEXT NOT NULL,
+            nav REAL, cash REAL, market_value REAL, pnl_pct REAL, note TEXT
+        );"""
+    )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_nav_log)")}
+    if "user_id" not in cols:
+        conn.execute(f"ALTER TABLE ai_nav_log ADD COLUMN user_id TEXT DEFAULT '{AI_USER_LEGACY}'")
+    try:
+        from screen_review import ensure_ai_fills_table
+
+        ensure_ai_fills_table(db_path)
+    except Exception:
+        pass
+    conn.commit()
+    conn.close()
 
 
 def slot_notional(initial_capital: float, size_mult: float = 1.0) -> float:
@@ -102,30 +136,112 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
     return out
 
 
-def _load_size_mult(db_path: str) -> float:
+def _size_mult_key(user_id: str) -> str:
+    return f"size_mult:{user_id}"
+
+
+def _load_size_mult(db_path: str, user_id: str = AI_USER_LEGACY) -> float:
+    ensure_ai_tables(db_path)
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);"
-    )
-    row = conn.execute("SELECT v FROM ai_params WHERE k='size_mult'").fetchone()
+    row = conn.execute(
+        "SELECT v FROM ai_params WHERE k=?",
+        (_size_mult_key(user_id),),
+    ).fetchone()
+    if row is None and user_id != AI_USER_LEGACY:
+        row = conn.execute("SELECT v FROM ai_params WHERE k='size_mult'").fetchone()
     conn.close()
     return float(row[0]) if row else 1.0
 
 
-def _save_size_mult(db_path: str, mult: float) -> None:
+def _save_size_mult(db_path: str, mult: float, user_id: str) -> None:
+    ensure_ai_tables(db_path)
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS ai_params (k TEXT PRIMARY KEY, v REAL NOT NULL);"
-    )
-    conn.execute(
-        "INSERT OR REPLACE INTO ai_params (k, v) VALUES ('size_mult', ?);",
-        (max(0.4, min(1.2, mult)),),
+        "INSERT OR REPLACE INTO ai_params (k, v) VALUES (?, ?);",
+        (_size_mult_key(user_id), max(0.4, min(1.2, mult))),
     )
     conn.commit()
     conn.close()
 
 
-def _adapt_from_trades(engine: PortfolioEngine, db_path: str) -> str:
+def _copy_ai_user(engine: PortfolioEngine, src: str, dst: str) -> None:
+    """把舊共用 wayne_ai 帳戶複製到個人 ai_{uid}（僅在目標尚無持倉時）。"""
+    conn = engine._get_connection()
+    dst_row = conn.execute("SELECT user_id FROM user_funds WHERE user_id=?", (dst,)).fetchone()
+    if dst_row:
+        pos = conn.execute(
+            "SELECT COUNT(*) FROM user_positions WHERE user_id=?", (dst,)
+        ).fetchone()
+        if pos and int(pos[0] or 0) > 0:
+            conn.close()
+            return
+    src_funds = conn.execute("SELECT * FROM user_funds WHERE user_id=?", (src,)).fetchone()
+    if not src_funds:
+        conn.close()
+        return
+    engine.ensure_user_exists(dst)
+    conn = engine._get_connection()
+    conn.execute(
+        "UPDATE user_funds SET cash=?, initial_capital=?, updated_at=? WHERE user_id=?",
+        (src_funds["cash"], src_funds["initial_capital"], src_funds["updated_at"], dst),
+    )
+    for row in conn.execute("SELECT * FROM user_positions WHERE user_id=?", (src,)):
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO user_positions
+            (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                dst,
+                row["stock_id"],
+                row["stock_name"],
+                row["shares"],
+                row["cost_price"],
+                row["highest_price"],
+                row["buy_date"],
+                row["warning_days"],
+                row["strategy_type"],
+            ),
+        )
+    for row in conn.execute("SELECT * FROM trade_logs WHERE user_id=?", (src,)):
+        conn.execute(
+            """
+            INSERT INTO trade_logs
+            (user_id, date, stock_id, stock_name, action, shares, price, amount, fee, tax,
+             realized_pnl, pnl_pct, reason, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                dst,
+                row["date"],
+                row["stock_id"],
+                row["stock_name"],
+                row["action"],
+                row["shares"],
+                row["price"],
+                row["amount"],
+                row["fee"],
+                row["tax"],
+                row["realized_pnl"],
+                row["pnl_pct"],
+                row["reason"],
+                row["created_at"],
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+def ensure_ai_user(engine: PortfolioEngine, telegram_uid: str) -> str:
+    """確保此 Telegram 使用者有獨立 AI 模擬帳戶；必要時從舊 wayne_ai 遷移一次。"""
+    user_id = ai_user_id(telegram_uid)
+    engine.ensure_user_exists(user_id)
+    _copy_ai_user(engine, AI_USER_LEGACY, user_id)
+    return user_id
+
+
+def _adapt_from_trades(engine: PortfolioEngine, db_path: str, user_id: str) -> str:
     """用實際賣出損益＋買進隔日復盤調倉位倍數。"""
     notes = []
     conn = engine._get_connection()
@@ -133,7 +249,7 @@ def _adapt_from_trades(engine: PortfolioEngine, db_path: str) -> str:
         """SELECT pnl_pct FROM trade_logs
            WHERE user_id=? AND action='SELL' AND pnl_pct IS NOT NULL
            ORDER BY id DESC LIMIT 10;""",
-        (AI_USER,),
+        (user_id,),
     ).fetchall()
     conn.close()
     wr_sell = None
@@ -151,9 +267,10 @@ def _adapt_from_trades(engine: PortfolioEngine, db_path: str) -> str:
         fills = conn.execute(
             """
             SELECT next_pct FROM ai_fills
-            WHERE action='BUY' AND next_pct IS NOT NULL
+            WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
             ORDER BY id DESC LIMIT 10
-            """
+            """,
+            (user_id,),
         ).fetchall()
         conn.close()
         if len(fills) >= 5:
@@ -163,40 +280,37 @@ def _adapt_from_trades(engine: PortfolioEngine, db_path: str) -> str:
     except sqlite3.OperationalError:
         wr_buy = None
 
-    cur = _load_size_mult(db_path)
+    cur = _load_size_mult(db_path, user_id)
     wr = wr_buy if wr_buy is not None else wr_sell
     if wr is None:
         return "樣本不足，維持原倉位比例（本金仍分 3 等份）"
     if wr < 0.35:
-        _save_size_mult(db_path, cur * 0.85)
+        _save_size_mult(db_path, cur * 0.85, user_id)
         notes.append("縮小單筆倉位")
     elif wr > 0.6:
-        _save_size_mult(db_path, cur * 1.05)
+        _save_size_mult(db_path, cur * 1.05, user_id)
         notes.append("略增單筆倉位")
     else:
         notes.append("倉位倍數維持")
     return "，".join(notes)
 
 
-def _snapshot(engine: PortfolioEngine, db_path: str, as_of: str, quotes: dict, note: str) -> None:
-    s = engine.get_portfolio_summary(AI_USER, quotes)
+def _snapshot(
+    engine: PortfolioEngine, db_path: str, user_id: str, as_of: str, quotes: dict, note: str
+) -> None:
+    s = engine.get_portfolio_summary(user_id, quotes)
+    ensure_ai_tables(db_path)
     conn = sqlite3.connect(db_path)
     conn.execute(
-        """CREATE TABLE IF NOT EXISTS ai_nav_log (
-            date TEXT PRIMARY KEY,
-            nav REAL, cash REAL, market_value REAL, pnl_pct REAL, note TEXT
-        );"""
-    )
-    conn.execute(
-        """INSERT OR REPLACE INTO ai_nav_log (date, nav, cash, market_value, pnl_pct, note)
-           VALUES (?, ?, ?, ?, ?, ?);""",
-        (as_of, s["total_assets"], s["cash"], s["stock_market_value"], s["total_pnl_pct"], note),
+        """INSERT OR REPLACE INTO ai_nav_log (user_id, date, nav, cash, market_value, pnl_pct, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?);""",
+        (user_id, as_of, s["total_assets"], s["cash"], s["stock_market_value"], s["total_pnl_pct"], note),
     )
     conn.commit()
     conn.close()
 
 
-def _last_buy_reasons(engine: PortfolioEngine) -> Dict[str, str]:
+def _last_buy_reasons(engine: PortfolioEngine, user_id: str) -> Dict[str, str]:
     conn = engine._get_connection()
     rows = conn.execute(
         """
@@ -205,30 +319,30 @@ def _last_buy_reasons(engine: PortfolioEngine) -> Dict[str, str]:
             SELECT MAX(id) FROM trade_logs WHERE user_id=? AND action='BUY' GROUP BY stock_id
         )
         """,
-        (AI_USER, AI_USER),
+        (user_id, user_id),
     ).fetchall()
     conn.close()
     return {str(r["stock_id"]): str(r["reason"] or "") for r in rows}
 
 
-def _realized_pnl(engine: PortfolioEngine) -> float:
+def _realized_pnl(engine: PortfolioEngine, user_id: str) -> float:
     conn = engine._get_connection()
     row = conn.execute(
         "SELECT COALESCE(SUM(realized_pnl),0) FROM trade_logs WHERE user_id=? AND action='SELL'",
-        (AI_USER,),
+        (user_id,),
     ).fetchone()
     conn.close()
     return float(row[0] or 0) if row else 0.0
 
 
-def _recent_fills(engine: PortfolioEngine, limit: int = 8) -> List[Dict[str, Any]]:
+def _recent_fills(engine: PortfolioEngine, user_id: str, limit: int = 8) -> List[Dict[str, Any]]:
     conn = engine._get_connection()
     rows = conn.execute(
         """
         SELECT date, action, stock_id, stock_name, shares, price, realized_pnl, pnl_pct, reason
         FROM trade_logs WHERE user_id=? ORDER BY id DESC LIMIT ?
         """,
-        (AI_USER, int(limit)),
+        (user_id, int(limit)),
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -250,7 +364,9 @@ def _fmt_lots_html(shares: int) -> str:
     return html_qty_tight(sh, "股", signed=False)
 
 
-def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) -> str:
+def format_ai_desk_html(
+    engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
+) -> str:
     """券商帳戶式：總資產／現金／市值／損益、等份槽、持倉停損停利、成交與復盤。"""
     from tg_layout import (
         html_escape,
@@ -266,21 +382,23 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
         _plain_num,
     )
 
+    user_id = ensure_ai_user(engine, telegram_uid)
     quotes = dict(quotes or {})
-    held0 = engine.get_portfolio_summary(AI_USER, {})
+    held0 = engine.get_portfolio_summary(user_id, {})
     quotes = engine.load_quotes_for([p["stock_id"] for p in held0["positions"]], quotes)
-    s = engine.get_portfolio_summary(AI_USER, quotes)
-    size_mult = _load_size_mult(engine.db_path)
+    s = engine.get_portfolio_summary(user_id, quotes)
+    size_mult = _load_size_mult(engine.db_path, user_id)
     initial = float(s.get("initial_capital") or 500000)
     slot = slot_notional(initial, size_mult)
     used = int(s["positions_count"])
-    reasons = _last_buy_reasons(engine)
-    realized = _realized_pnl(engine)
+    reasons = _last_buy_reasons(engine, user_id)
+    realized = _realized_pnl(engine, user_id)
     unreal = sum(float(p.get("unrealized_pnl") or 0) for p in s["positions"])
 
     lines = [
         section_eq("AI 模擬帳戶"),
-        "這是模擬倉，不是真實下單。本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
+        "這是你的專屬模擬倉，與手記持股、其他人的模擬倉完全分開。",
+        "本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
         "停損 −7%、停利 ＋8%。06:30 海選後與盤後融合自動買賣；進化寫進資料庫，不改程式檔。",
         kv_html_compact("總資產", html_money(s["total_assets"], signed=False, compact=True)),
         kv_html_compact("現金", html_money(s["cash"], signed=False, compact=True)),
@@ -341,7 +459,7 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
         if empty > 0:
             lines.append(f"<b>空槽</b>　{empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}（不把剩錢重切）")
 
-    fills = _recent_fills(engine, 8)
+    fills = _recent_fills(engine, user_id, 8)
     if fills:
         lines.append("<b>成交紀錄</b>")
         for t in fills:
@@ -360,10 +478,12 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
             if t.get("reason"):
                 lines.append(f"　{html_escape(t['reason'])}")
 
+    ensure_ai_tables(engine.db_path)
     conn = sqlite3.connect(engine.db_path)
     try:
         rows = conn.execute(
-            "SELECT date, nav, pnl_pct FROM ai_nav_log ORDER BY date DESC LIMIT 5;"
+            "SELECT date, nav, pnl_pct FROM ai_nav_log WHERE user_id=? ORDER BY date DESC LIMIT 5;",
+            (user_id,),
         ).fetchall()
     except sqlite3.OperationalError:
         rows = []
@@ -377,7 +497,7 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
     try:
         from screen_review import format_ai_review_html, format_review_html
 
-        ai_rev = format_ai_review_html(engine.db_path)
+        ai_rev = format_ai_review_html(engine.db_path, user_id=user_id)
         if ai_rev:
             lines.append(ai_rev)
         rev = format_review_html(engine.db_path)
@@ -388,12 +508,15 @@ def format_ai_desk_html(engine: PortfolioEngine, quotes: Optional[dict] = None) 
     return "\n".join(lines)
 
 
-def _record_fill(db_path: str, as_of: str, action: str, result: Dict[str, Any], reason: str = "", bucket: str = "") -> None:
+def _record_fill(
+    db_path: str, user_id: str, as_of: str, action: str, result: Dict[str, Any], reason: str = "", bucket: str = ""
+) -> None:
     try:
         from screen_review import persist_ai_fill
 
         persist_ai_fill(
             db_path,
+            user_id=user_id,
             as_of=as_of,
             stock_id=result.get("stock_id") or "",
             stock_name=result.get("stock_name") or "",
@@ -410,19 +533,24 @@ def _record_fill(db_path: str, as_of: str, action: str, result: Dict[str, Any], 
         pass
 
 
-def run_ai_desk(db_path: str, results: Dict[str, List[Dict[str, Any]]], as_of: str) -> Dict[str, Any]:
+def run_ai_desk(
+    db_path: str,
+    telegram_uid: str,
+    results: Dict[str, List[Dict[str, Any]]],
+    as_of: str,
+) -> Dict[str, Any]:
     engine = PortfolioEngine(db_path)
-    engine.ensure_user_exists(AI_USER)
+    user_id = ensure_ai_user(engine, telegram_uid)
     try:
         from screen_review import score_ai_fills
 
         score_ai_fills(db_path)
     except Exception:
         pass
-    lesson = _adapt_from_trades(engine, db_path)
-    size_mult = _load_size_mult(db_path)
+    lesson = _adapt_from_trades(engine, db_path, user_id)
+    size_mult = _load_size_mult(db_path, user_id)
 
-    seed = engine.get_portfolio_summary(AI_USER, {})
+    seed = engine.get_portfolio_summary(user_id, {})
     result_quotes = _quotes_from_results(results)
     quotes = engine.load_quotes_for(
         [p["stock_id"] for p in seed["positions"]],
@@ -430,35 +558,33 @@ def run_ai_desk(db_path: str, results: Dict[str, List[Dict[str, Any]]], as_of: s
     )
 
     sold = []
-    for sig in engine.evaluate_exit_signals(AI_USER, quotes):
+    for sig in engine.evaluate_exit_signals(user_id, quotes):
         r = engine.sell(
-            AI_USER, as_of, sig["stock_id"], float(sig["current_price"]),
+            user_id, as_of, sig["stock_id"], float(sig["current_price"]),
             shares=int(sig["shares"]), reason=sig["reason"],
         )
         if r.get("success"):
             sold.append(r["msg"])
-            _record_fill(db_path, as_of, "SELL", r, reason=sig.get("reason") or "")
+            _record_fill(db_path, user_id, as_of, "SELL", r, reason=sig.get("reason") or "")
 
-    summary = engine.get_portfolio_summary(AI_USER, quotes)
+    summary = engine.get_portfolio_summary(user_id, quotes)
     for p in list(summary["positions"]):
         if p["pnl_pct"] <= STOP_PCT:
-            r = engine.sell(AI_USER, as_of, p["stock_id"], p["current_price"], reason="紀律停損 -7%")
+            r = engine.sell(user_id, as_of, p["stock_id"], p["current_price"], reason="紀律停損 -7%")
             if r.get("success"):
                 sold.append(r["msg"])
-                _record_fill(db_path, as_of, "SELL", r, reason="紀律停損 -7%")
+                _record_fill(db_path, user_id, as_of, "SELL", r, reason="紀律停損 -7%")
         elif p["pnl_pct"] >= TAKE_PCT:
-            r = engine.sell(AI_USER, as_of, p["stock_id"], p["current_price"], reason="紀律停利 +8%")
+            r = engine.sell(user_id, as_of, p["stock_id"], p["current_price"], reason="紀律停利 +8%")
             if r.get("success"):
                 sold.append(r["msg"])
-                _record_fill(db_path, as_of, "SELL", r, reason="紀律停利 +8%")
+                _record_fill(db_path, user_id, as_of, "SELL", r, reason="紀律停利 +8%")
 
-    summary = engine.get_portfolio_summary(AI_USER, quotes)
+    summary = engine.get_portfolio_summary(user_id, quotes)
     held = {p["stock_id"] for p in summary["positions"]}
     slots = MAX_SLOTS - len(held)
     bought = []
-    cash = summary["cash"]
     initial = float(summary.get("initial_capital") or 500000)
-    budget = min(slot_notional(initial, size_mult), cash)
     cands = _candidates(results, db_path)
     for it in cands:
         if slots <= 0:
@@ -470,14 +596,14 @@ def run_ai_desk(db_path: str, results: Dict[str, List[Dict[str, Any]]], as_of: s
         name = it.get("stock_name") or it.get("name") or sid
         if price <= 0:
             continue
-        cash = engine.get_cash(AI_USER)
+        cash = engine.get_cash(user_id)
         budget = min(slot_notional(initial, size_mult), cash)
         shares = _shares_for_budget(price, budget)
         if shares <= 0:
             continue
         reason = it.get("ai_reason") or "海選紀律"
         r = engine.buy(
-            AI_USER, as_of, sid, name, price, shares,
+            user_id, as_of, sid, name, price, shares,
             reason=reason,
             strategy_type="MOMENTUM",
         )
@@ -486,16 +612,21 @@ def run_ai_desk(db_path: str, results: Dict[str, List[Dict[str, Any]]], as_of: s
             held.add(sid)
             slots -= 1
             _record_fill(
-                db_path, as_of, "BUY", r,
+                db_path, user_id, as_of, "BUY", r,
                 reason=reason, bucket=str(it.get("ai_bucket") or ""),
             )
 
-    _snapshot(engine, db_path, as_of, quotes, lesson)
+    _snapshot(engine, db_path, user_id, as_of, quotes, lesson)
     return {
         "sold": sold,
         "bought": bought,
         "lesson": lesson,
         "candidates": len(cands),
         "slot": slot_notional(initial, size_mult),
-        "html": format_ai_desk_html(engine, quotes),
+        "html": format_ai_desk_html(engine, telegram_uid, quotes),
+        "user_id": user_id,
     }
+
+
+# 相容舊測試／腳本
+AI_USER = AI_USER_LEGACY

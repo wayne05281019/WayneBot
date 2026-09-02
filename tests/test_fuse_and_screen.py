@@ -876,7 +876,7 @@ class TelegramAlignTest(unittest.TestCase):
             eng = PortfolioEngine(path)
             mine = eng.format_holdings_html([])
             self.assertIn("== 我的持股（手記） ==", mine)
-            ai = format_ai_desk_html(eng)
+            ai = format_ai_desk_html(eng, "1001")
             self.assertIn("== AI 模擬帳戶 ==", ai)
             filled = eng.format_holdings_html(
                 [{"stock_code": "3703", "stock_name": "欣陸", "shares": 8, "cost_price": 19.55}]
@@ -1598,7 +1598,7 @@ class AIDeskTest(unittest.TestCase):
     def test_run_ai_desk_actually_buys(self):
         import os
         import tempfile
-        from ai_trader import AI_USER, MAX_SLOTS, run_ai_desk
+        from ai_trader import ai_user_id, MAX_SLOTS, run_ai_desk
         from portfolio_engine import PortfolioEngine
 
         fd, path = tempfile.mkstemp(suffix=".db")
@@ -1614,14 +1614,14 @@ class AIDeskTest(unittest.TestCase):
                     {"stock_id": "2412", "stock_name": "中華電", "close": 120.0, "chase_warning": True}
                 ],
             }
-            ai = run_ai_desk(path, results, "20260831")
+            ai = run_ai_desk(path, "1001", results, "20260831")
             blob = " ".join(ai.get("bought") or [])
             self.assertIn("2330", blob)
             self.assertIn("2303", blob)
             self.assertNotIn("2317", blob)
             self.assertNotIn("2412", blob)
             eng = PortfolioEngine(path)
-            summary = eng.get_portfolio_summary(AI_USER)
+            summary = eng.get_portfolio_summary(ai_user_id("1001"))
             self.assertGreaterEqual(summary["positions_count"], 2)
             self.assertLess(summary["cash"], 500000)
             by_id = {p["stock_id"]: p for p in summary["positions"]}
@@ -1650,14 +1650,14 @@ class AIDeskTest(unittest.TestCase):
     def test_equal_slots_do_not_dump_remaining_cash(self):
         import os
         import tempfile
-        from ai_trader import AI_USER, run_ai_desk
+        from ai_trader import ai_user_id, run_ai_desk
         from portfolio_engine import PortfolioEngine
 
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         try:
             eng = PortfolioEngine(path)
-            eng.ensure_user_exists(AI_USER)
+            eng.ensure_user_exists(ai_user_id("1001"))
             conn = sqlite3.connect(path)
             for i, sid in enumerate(("1101", "1102"), 1):
                 conn.execute(
@@ -1666,17 +1666,18 @@ class AIDeskTest(unittest.TestCase):
                     (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
                     VALUES (?,?,?,?,?,?,?,0,'MOMENTUM')
                     """,
-                    (AI_USER, sid, f"占槽{i}", 1000, 10.0, 10.0, "20260828"),
+                    (ai_user_id("1001"), sid, f"占槽{i}", 1000, 10.0, 10.0, "20260828"),
                 )
             conn.commit()
             conn.close()
             ai = run_ai_desk(
                 path,
+                "1001",
                 {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}]},
                 "20260831",
             )
             self.assertTrue(ai.get("bought"))
-            summary = eng.get_portfolio_summary(AI_USER)
+            summary = eng.get_portfolio_summary(ai_user_id("1001"))
             by_id = {p["stock_id"]: p for p in summary["positions"]}
             self.assertEqual(by_id["2330"]["shares"], 1000)
             self.assertGreater(summary["cash"], 350000)
@@ -1686,7 +1687,7 @@ class AIDeskTest(unittest.TestCase):
     def test_ai_fill_next_day_scores_and_weakens_bucket(self):
         import os
         import tempfile
-        from ai_trader import AI_USER, run_ai_desk
+        from ai_trader import ai_user_id, run_ai_desk
         from screen_review import bucket_weight, format_ai_review_html, score_ai_fills
         from wayne_db import ensure_core_schema
 
@@ -1696,6 +1697,7 @@ class AIDeskTest(unittest.TestCase):
             ensure_core_schema(path)
             run_ai_desk(
                 path,
+                "1001",
                 {"leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}]},
                 "20260827",
             )
@@ -1707,10 +1709,11 @@ class AIDeskTest(unittest.TestCase):
             for i in range(3):
                 conn.execute(
                     """
-                    INSERT INTO ai_fills(as_of,stock_id,stock_name,action,price,shares,amount,reason,bucket,realized_pnl,pnl_pct,next_date,next_close,next_pct,created_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    INSERT INTO ai_fills(user_id, as_of,stock_id,stock_name,action,price,shares,amount,reason,bucket,realized_pnl,pnl_pct,next_date,next_close,next_pct,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
+                        ai_user_id("1001"),
                         f"2026082{i}",
                         f"1{i:03d}",
                         "弱",
@@ -1732,7 +1735,7 @@ class AIDeskTest(unittest.TestCase):
             conn.close()
             n = score_ai_fills(path, "20260828")
             self.assertGreaterEqual(n, 1)
-            html = format_ai_review_html(path)
+            html = format_ai_review_html(path, user_id=ai_user_id("1001"))
             self.assertIn("AI 成交復盤", html)
             self.assertIn("2330", html)
             self.assertEqual(bucket_weight(path, "leave_zero"), 0.0)

@@ -413,13 +413,13 @@ class MainRunner:
             lines.append("• <i>今日無符合高動能突破標準之標的。</i>")
         return "\n".join(lines)
 
-    def _format_portfolio_section(self) -> str:
-        if not self.portfolio_engine:
+    def _format_portfolio_section(self, telegram_uid: str = "") -> str:
+        if not self.portfolio_engine or not telegram_uid:
             return ""
         try:
             from ai_trader import format_ai_desk_html
 
-            return format_ai_desk_html(self.portfolio_engine)
+            return format_ai_desk_html(self.portfolio_engine, telegram_uid)
         except Exception as e:
             logger.warning("AI 帳戶概況略過：%s", e)
             return ""
@@ -525,10 +525,12 @@ class MainRunner:
         apply_us: bool = False,
         session: str = "",
         notify: bool = True,
+        telegram_uid: str = "",
     ) -> Dict[str, Any]:
-        """模擬倉真正下單（wayne_ai／50 萬）。有名單才買，最多 3 檔。"""
+        """模擬倉真正下單（每人 ai_{uid}／50 萬）。有名單才買，最多 3 檔。"""
         try:
             from ai_trader import run_ai_desk
+            from wayne_db import list_tg_user_ids
 
             if results is None:
                 if not run_full_screening:
@@ -540,26 +542,37 @@ class MainRunner:
                     session=session or "",
                 )
                 results = (screening or {}).get("results") or {}
-            ai = run_ai_desk(self.db_path, results or {}, as_of)
-            logger.info(
-                "AI 模擬倉 買進 %s 賣出 %s 候選 %s",
-                len(ai.get("bought") or []),
-                len(ai.get("sold") or []),
-                ai.get("candidates") or 0,
-            )
-            if not notify:
-                return ai
-            bits = [ai.get("html") or ""]
-            if ai.get("bought"):
-                bits.append("<b>AI 模擬本次買進</b>\n" + "\n".join(ai["bought"]))
-            if ai.get("sold"):
-                bits.append("<b>AI 模擬本次賣出</b>\n" + "\n".join(ai["sold"]))
-            if ai.get("lesson"):
-                bits.append("進化：" + str(ai["lesson"]))
-            text = "\n\n".join(x for x in bits if x)
-            if text:
-                self.send_telegram_message(text)
-            return ai
+
+            uids = [str(telegram_uid)] if telegram_uid else list_tg_user_ids(self.db_path)
+            if not uids and self.chat_id:
+                uids = [str(self.chat_id)]
+            if not uids:
+                logger.info("尚無已註冊 Telegram 使用者，略過 AI 模擬倉")
+                return {}
+
+            last: Dict[str, Any] = {}
+            for uid in uids:
+                ai = run_ai_desk(self.db_path, uid, results or {}, as_of)
+                last = ai
+                logger.info(
+                    "AI 模擬倉 uid=%s 買進 %s 賣出 %s 候選 %s",
+                    uid,
+                    len(ai.get("bought") or []),
+                    len(ai.get("sold") or []),
+                    ai.get("candidates") or 0,
+                )
+                if notify:
+                    bits = [ai.get("html") or ""]
+                    if ai.get("bought"):
+                        bits.append("<b>AI 模擬本次買進</b>\n" + "\n".join(ai["bought"]))
+                    if ai.get("sold"):
+                        bits.append("<b>AI 模擬本次賣出</b>\n" + "\n".join(ai["sold"]))
+                    if ai.get("lesson"):
+                        bits.append("進化：" + str(ai["lesson"]))
+                    text = "\n\n".join(x for x in bits if x)
+                    if text:
+                        self.send_telegram_message(text, chat_id=uid)
+            return last
         except Exception as e:
             logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)
             return {}

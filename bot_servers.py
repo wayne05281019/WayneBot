@@ -25,6 +25,7 @@ from wayne_db import (
     add_to_watchlist,
     remove_from_watchlist,
     lookup_stocks,
+    touch_tg_user,
 )
 from trade_journal import (
     ensure_user_trade_logs,
@@ -226,7 +227,7 @@ HELP_TOPICS = {
         "• 這是<b>模擬</b>，不會動你的真實持股，也不會真的下單。\n"
         "\n"
         "<b>跟真實持股的差別</b>\n"
-        "• <b>持股</b>＝你手動記的買入　• <b>AI模擬倉</b>＝機器人自己的虛擬帳戶，兩邊完全分開。"
+        "• <b>持股</b>＝你手動記的買入　• <b>AI模擬倉</b>＝你專屬的虛擬帳戶（每人一套，與手記持股分開）。"
     ),
     "decision": (
         "<b>決策卡按鈕</b>\n"
@@ -474,6 +475,12 @@ class WayneTelegramBot:
     def _uid_from_message(message) -> str:
         user = getattr(message, "from_user", None)
         return str(getattr(user, "id", "") or "")
+
+    def _touch_user(self, uid: str, display_name: str = "") -> None:
+        try:
+            touch_tg_user(self.db_path, uid, display_name)
+        except Exception:
+            logger.debug("touch_tg_user failed uid=%s", uid, exc_info=True)
 
     def _remember_card(self, uid: str, code: str) -> None:
         c = str(code or "").strip()
@@ -1290,6 +1297,8 @@ class WayneTelegramBot:
         )
 
     async def start_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(update.effective_user.id)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         await update.message.reply_html(
             "<b>WayneBot</b>\n"
             "主選單在<b>輸入框右側 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
@@ -1301,7 +1310,9 @@ class WayneTelegramBot:
         await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await self._refresh_reply_menu(update.message, uid=str(update.effective_user.id))
+        uid = str(update.effective_user.id)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        await self._refresh_reply_menu(update.message, uid=uid)
 
     async def help_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._reply_help_topic(update.message, "guide")
@@ -1994,6 +2005,7 @@ class WayneTelegramBot:
             return
         text = _normalize_menu_text(raw)
         uid = str(update.effective_user.id)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
             self._pending.pop(uid, None)
             await self.start_cmd(update, context)
@@ -2167,8 +2179,9 @@ class WayneTelegramBot:
 
     async def _send_ai_desk_view(self, message, uid: str):
         """只顯示模擬倉現況，不執行買賣。"""
+        self._touch_user(uid)
         try:
-            html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine)
+            html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine, uid)
             parts = chunk_telegram_html(html)
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard() if i == len(parts) - 1 else None
@@ -2178,11 +2191,12 @@ class WayneTelegramBot:
             await message.reply_text(f"AI 模擬倉顯示失敗：{e}", reply_markup=self._keyboard())
 
     async def _run_ai_now(self, message, uid: str):
+        self._touch_user(uid)
         status = await self._transient_status(message, "AI 模擬操盤執行中（依今日海選紀律）…")
         try:
             result = await asyncio.to_thread(self.screener.run_full_screening)
             as_of = result.get("as_of") or result.get("date") or ""
-            ai = await asyncio.to_thread(run_ai_desk, self.db_path, result.get("results") or {}, as_of)
+            ai = await asyncio.to_thread(run_ai_desk, self.db_path, uid, result.get("results") or {}, as_of)
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
                 bits.append(
@@ -2786,6 +2800,8 @@ class WayneTelegramBot:
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
+        uid = str(q.from_user.id)
+        self._touch_user(uid, getattr(q.from_user, "first_name", "") or "")
         data = q.data or ""
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {
