@@ -323,3 +323,26 @@ def test_format_taiwan_market_page_no_yahoo_fallback(mock_fetch, tmp_path):
     assert "暫不可用" not in html
     assert "指數資料讀取異常" in html
     mock_fetch.assert_not_called()
+
+
+def test_production_db_market_page_has_real_data():
+    """Release 庫存在時，大盤頁必須有完整官方融合輸出（非庫空）。"""
+    import os
+
+    from config import get_db_path
+    from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
+
+    db = get_db_path()
+    if not os.path.isfile(db) or os.path.getsize(db) < 1024 * 1024:
+        pytest.skip("no production-scale db")
+
+    snap = analyze_taiwan_market(db, db_only=True)
+    assert snap.get("ok") is True
+    assert float(snap.get("close") or 0) > 1000
+    assert int(snap.get("sample_n") or 0) > 100
+
+    html = format_taiwan_market_page_html(db)
+    assert "庫空" not in html
+    assert "暫不可用" not in html
+    assert "台股大盤" in html
+    assert "加權指數" in html
