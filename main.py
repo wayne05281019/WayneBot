@@ -359,9 +359,18 @@ def run_web():
 
         def _warmup_charts():
             try:
-                logger.info("背景預熱出圖模組")
-                import wayne_navigator  # noqa: F401
-                logger.info("出圖模組已預熱")
+                logger.info("背景預熱出圖（字型＋南亞試畫，避免第一檔查詢空等）")
+                from wayne_navigator import prewarm_card_fonts, render_stock_pack
+
+                prewarm_card_fonts()
+                pack = render_stock_pack("1303", get_db_path())
+                logger.info(
+                    "出圖預熱完成 glance=%s card=%s chart=%s chips=%s",
+                    bool(pack.get("glance")),
+                    bool(pack.get("card")),
+                    bool(pack.get("chart")),
+                    bool(pack.get("chips")),
+                )
             except Exception:
                 logger.exception("出圖預熱失敗")
 

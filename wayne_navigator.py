@@ -1966,7 +1966,8 @@ def _draw_nav_legend(ax1) -> None:
     leg2 = ax1.legend([h for h, _ in row2], [t for _, t in row2], bbox_to_anchor=(0.004, 0.972), **kw)
     leg2.set_zorder(10)
     ax1.add_artist(leg2)
-    leg3 = ax1.legend([h for h, _ in row3], [t for _, t in row3], bbox_to_anchor=(0.004, 0.926), ncol=4, **kw)
+    kw3 = {**kw, "ncol": 4}
+    leg3 = ax1.legend([h for h, _ in row3], [t for _, t in row3], bbox_to_anchor=(0.004, 0.926), **kw3)
     leg3.set_zorder(10)
 
 
