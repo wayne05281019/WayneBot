@@ -423,6 +423,8 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
             ).fetchall()
         hits = [dict(r) for r in rows]
         if hits:
+            for h in hits:
+                h["quote_date"] = latest
             return hits
     ensure_stock_directory(db_path)
     with get_db_connection(db_path, write=False) as conn:
@@ -464,6 +466,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
             if quote:
                 item["close"] = quote["close"]
                 item["pct_change"] = quote["pct_change"]
+                item["quote_date"] = latest
             else:
                 item["close"] = None
                 item["pct_change"] = None

@@ -255,6 +255,7 @@ def html_quote_move(
     *,
     pts_decimals: int = 2,
     width: int = 26,
+    compact: bool = False,
 ) -> str:
     """指數／期貨漲跌：整段放進等寬 <code>，手機不會從中間斷行。"""
     if pct is None and chg is None:
@@ -278,10 +279,14 @@ def html_quote_move(
                 body = pct_s
     if body == "—":
         return "<code>—</code>"
+    if compact or width <= 0:
+        return f"<code>{html_escape(body)}</code>"
+    if compact or width <= 0:
+        return f"<code>{html_escape(body)}</code>"
     return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"
 
 
-def html_level_pct(level, pct, *, level_decimals: int = 2, width: int = 22) -> str:
+def html_level_pct(level, pct, *, level_decimals: int = 2, width: int = 22, compact: bool = False) -> str:
     """VIX 等：水位＋（漲跌幅）同一等寬欄。"""
     if level is None:
         return "<code>—</code>"
@@ -297,6 +302,8 @@ def html_level_pct(level, pct, *, level_decimals: int = 2, width: int = 22) -> s
             body = f"{base}（{float(pct):+.2f}%）"
         except (TypeError, ValueError):
             body = base
+    if compact or width <= 0:
+        return f"<code>{html_escape(body)}</code>"
     return f"<code>{html_escape(str(body).rjust(int(width)))}</code>"
 
 

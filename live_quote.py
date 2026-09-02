@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import time as dt_time
+from datetime import datetime, time as dt_time
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
@@ -245,6 +245,103 @@ def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
         "yesterday_close": float(rt.get("yesterday_close") or 0),
         "update_time": str(rt.get("update_time") or ""),
     }
+
+
+def is_tw_quote_gap_window(now=None) -> bool:
+    """13:30～16:30 融合前：庫內常還沒今天，MIS 收盤後也常空白，需外源補價。"""
+    now = now or taipei_now()
+    if now.weekday() >= 5:
+        return False
+    from trading_calendar import is_trading_weekday
+
+    today = now.strftime("%Y%m%d")
+    if not is_trading_weekday(today):
+        return False
+    t = now.time()
+    return dt_time(13, 30) <= t < dt_time(16, 30)
+
+
+def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
+    """MIS 收盤後空白時的備援（Yahoo 台股代號 .TW / .TWO）。不寫庫。"""
+    from urllib.parse import quote as url_quote
+
+    from stock_links import yahoo_exchange
+
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return None
+    sym = f"{sid}.{yahoo_exchange(sid, db_path)}"
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{url_quote(sym, safe='')}"
+        "?interval=1d&range=5d"
+    )
+    try:
+        resp = _SESSION.get(url, timeout=(_MIS_CONNECT_TIMEOUT, 4.0))
+        resp.raise_for_status()
+        result = (resp.json().get("chart") or {}).get("result") or []
+        if not result:
+            return None
+        meta = result[0].get("meta") or {}
+        px = _num(meta.get("regularMarketPrice"))
+        if px <= 0:
+            return None
+        y = _num(meta.get("chartPreviousClose") or meta.get("previousClose"))
+        pct = meta.get("regularMarketChangePercent")
+        chg = meta.get("regularMarketChange")
+        try:
+            pct_f = round(float(pct), 2) if pct is not None else None
+        except (TypeError, ValueError):
+            pct_f = None
+        try:
+            chg_f = round(float(chg), 2) if chg is not None else None
+        except (TypeError, ValueError):
+            chg_f = None
+        if pct_f is None and y > 0:
+            pct_f = round((px - y) / y * 100.0, 2)
+        if chg_f is None and y > 0:
+            chg_f = round(px - y, 2)
+        update_time = ""
+        ts = meta.get("regularMarketTime")
+        if ts:
+            from zoneinfo import ZoneInfo
+
+            update_time = datetime.fromtimestamp(int(ts), tz=ZoneInfo("Asia/Taipei")).strftime(
+                "%H:%M:%S"
+            )
+        return {
+            "stock_id": sid,
+            "stock_name": str(meta.get("longName") or meta.get("shortName") or ""),
+            "open": px,
+            "high": px,
+            "low": px,
+            "close": px,
+            "volume": 0,
+            "pct_change": pct_f or 0.0,
+            "change": chg_f if chg_f is not None else 0.0,
+            "yesterday_close": y,
+            "update_time": update_time,
+            "is_realtime": True,
+            "source": "yahoo",
+        }
+    except Exception:
+        logger.debug("Yahoo 台股報價失敗 %s", sym, exc_info=True)
+        return None
+
+
+def fetch_lookup_quote(
+    stock_id: str,
+    market: str = "",
+    db_path: str = None,
+    *,
+    now=None,
+) -> Optional[Dict[str, Any]]:
+    """查股用：MIS 優先；收盤後 MIS 空白則 Yahoo（僅盤中窗／融合前空窗）。"""
+    rt = fetch_mis_quote(stock_id, market)
+    if rt:
+        return rt
+    if is_live_merge_window(now) or is_tw_quote_gap_window(now):
+        return fetch_yahoo_tw_quote(stock_id, db_path)
+    return None
 
 
 def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]:

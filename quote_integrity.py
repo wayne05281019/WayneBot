@@ -239,9 +239,62 @@ def audit_untrusted_quotes(db_path: str, now=None) -> Dict[str, Any]:
     }
 
 
+def repair_pct_change_from_prior(db_path: str, tolerance: float = 0.2) -> int:
+    """漲跌幅必須與前一根官方收盤價一致；偏差過大就依收盤重算。"""
+    if not db_path:
+        return 0
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    fixed = 0
+    for (sid,) in cur.execute("SELECT DISTINCT stock_id FROM daily_quotes"):
+        rows = cur.execute(
+            """
+            SELECT rowid, replace(date,'-','') AS d, close, pct_change
+            FROM daily_quotes
+            WHERE stock_id=?
+            ORDER BY d
+            """,
+            (str(sid),),
+        ).fetchall()
+        prev_close: Optional[float] = None
+        for rowid, _d, close, pct in rows:
+            try:
+                c = float(close or 0)
+            except (TypeError, ValueError):
+                c = 0.0
+            if prev_close and prev_close > 0 and c > 0:
+                expected = round((c - prev_close) / prev_close * 100.0, 2)
+                try:
+                    cur_pct = float(pct) if pct is not None else None
+                except (TypeError, ValueError):
+                    cur_pct = None
+                if cur_pct is None or abs(cur_pct - expected) > tolerance:
+                    cur.execute(
+                        "UPDATE daily_quotes SET pct_change=? WHERE rowid=?",
+                        (expected, rowid),
+                    )
+                    fixed += 1
+            if c > 0:
+                prev_close = c
+    conn.commit()
+    conn.close()
+    if fixed:
+        try:
+            from import_health import clear_complete_date_cache
+
+            clear_complete_date_cache(db_path)
+        except Exception:
+            pass
+    return fixed
+
+
 def ensure_quote_integrity(db_path: str, now=None) -> Dict[str, int]:
     """啟動／融合後強制清庫；有刪除才回傳非零統計。"""
-    return scrub_untrusted_quotes(db_path, now=now)
+    stats = scrub_untrusted_quotes(db_path, now=now)
+    repaired = repair_pct_change_from_prior(db_path)
+    if repaired:
+        stats["pct_repaired"] = repaired
+    return stats
 
 
 def db_as_of_trading_date(db_path: str, now=None) -> Optional[str]:

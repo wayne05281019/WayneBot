@@ -84,21 +84,19 @@ HELP_TOPICS = {
         "不在訊息最下面。點輸入框<b>右邊 ⌨️</b> 展開<b>兩排</b>按鈕；打完字若只剩英文鍵盤，再點一次 ⌨️。\n"
         "也可打 /menu 重新釘選單；打 /help 或按「說明」看本頁。\n"
         "\n"
-        "<b>二、第一排（左→右）</b>\n"
-        "• <b>決策卡</b>：盤中快捷鍵。會記住上一檔，再按就刷新 MIS 即時價量與 120 日量排名；沒記錄會請你打代號。\n"
-        "• <b>當沖</b>：平日 09:00–13:30 列出當沖候選（漲幅 2%～8.5%）；收盤後按不出名單。美股逆風時會空。\n"
-        "• <b>持股</b>：你手記的真實買入（不是觀察、不是 AI 模擬）。\n"
-        "• <b>觀察</b>：自選清單，還沒買也能加。\n"
-        "• <b>海選</b>：手動跑全市場掃描（約 2～5 分鐘），完成後分類推送；晨間也會自動寄一版。\n"
+        "<b>二、第一排按鈕</b>\n"
+        "左→右：<b>決策卡</b>、<b>當沖</b>、<b>持股</b>、<b>觀察</b>、<b>海選</b>。\n"
+        "點下方 <b>第一排</b> 可看每一顆的意義與操作步驟。\n"
         "\n"
-        "<b>三、第二排（左→右）</b>\n"
-        "• <b>隔日沖</b>：平日 09:00–13:30 尾盤佈局候選；收盤後按只顯示強勢收盤，供明早參考。\n"
-        "• <b>資金</b>：盤後產業輪動＋三大法人張數（官方法人，不是分點）。\n"
-        "• <b>說明</b>：就是本頁。\n"
-        "• <b>選單</b>：重新釘住兩排主選單。\n"
-        "• 最右格預留，暫無功能。\n"
+        "<b>三、第二排按鈕</b>\n"
+        "左→右：<b>隔日沖</b>、<b>資金</b>、<b>說明</b>、<b>選單</b>、（預留）。\n"
+        "點下方 <b>第二排</b> 可看每一顆的意義與操作步驟。\n"
         "\n"
-        "<b>四、打股名或代號（例：南亞、2324）</b>\n"
+        "<b>四、AI 模擬自動買進</b>\n"
+        "不在主選單上。路徑：<b>持股</b> → 訊息下方 <b>AI模擬倉</b>／<b>AI操盤</b>。\n"
+        "每晚 20:00 雲端會依海選自動模擬買賣（不推播）；要看結果請按 AI模擬倉。點下方 <b>AI</b> 看完整說明。\n"
+        "\n"
+        "<b>五、打股名或代號（例：南亞、2324）</b>\n"
         "會依序出：現價漲跌 → 決策卡圖 → 介紹圖。圖下方還有：\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
@@ -108,24 +106,112 @@ HELP_TOPICS = {
         "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>\n"
         "名稱撞名時，藍字股名＝奇摩；按鈕左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
         "\n"
-        "<b>五、海選名單裡的按鈕</b>\n"
+        "<b>六、海選名單裡的按鈕</b>\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• <b>➕</b>＝加入觀察\n"
         "• <b>開 LINE・傳這檔</b>／區底 <b>一鍵傳 LINE</b>：開 LINE 帶文字；長圖長按儲存再貼\n"
         "• 靠近 20 日收盤高會標<b>少追</b>，不是叫立刻買\n"
         "\n"
-        "<b>六、持股頁按鈕</b>\n"
+        "<b>七、持股頁按鈕</b>\n"
         "• 股名鍵＝看這檔　• <b>賣出</b>＝打張數與價格　• <b>AI模擬倉</b>＝看模擬現況　• <b>AI操盤</b>＝依海選跑一輪模擬買賣（不推播）\n"
         "\n"
-        "<b>七、觀察頁按鈕</b>\n"
+        "<b>八、觀察頁按鈕</b>\n"
         "• 股名鍵＝看這檔　• <b>籌碼</b>　• <b>買入</b>（同記買入）　• <b>刪</b>＝移出觀察\n"
         "\n"
-        "<b>八、每日時間（台灣）</b>\n"
-        "06:30 早上海選寄出（對美股）｜12:45 尾盤可切版｜16:30 收盤寫庫｜20:00 晚間海選只存不寄\n"
-        "盤中查股用 MIS（不寫庫）；收盤後到 16:30 前仍以昨收為基準。\n"
+        "<b>九、每日時間（台灣）</b>\n"
+        "06:30 早上海選寄出（對美股）｜12:45 尾盤可切版｜16:30 官方收盤寫庫｜20:00 晚間海選＋AI 模擬買（不推播）\n"
+        "盤中查股用 MIS（不寫庫）；13:30～16:30 融合前若 MIS 空白，查股會用 Yahoo 參考價，16:30 後以庫內官方收盤為準。\n"
         "\n"
-        "<b>九、提醒</b>\n"
+        "<b>十、資料正確性（最重要）</b>\n"
+        "庫內日 K 只寫官方融合後的收盤；盤中 MIS 與 Yahoo 僅供查股顯示，不寫進 sqlite。\n"
+        "假 K、週末殘列、漲跌幅與前日收盤不符，啟動與 16:30 融合後會自動清掉或重算。\n"
+        "\n"
+        "<b>十一、提醒</b>\n"
         "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。"
+    ),
+    "row1": (
+        "<b>第一排按鈕（左→右）</b>\n"
+        "\n"
+        "<b>① 決策卡</b>\n"
+        "• <b>是什麼</b>：盤中刷新「上一檔」的高低決策卡，不用重打代號。\n"
+        "• <b>怎麼用</b>：先打一次股名或代號看圖，之後盤中常按這顆刷新 MIS 現價、量排名。\n"
+        "• <b>沒反應</b>：若還沒查過任何股，會請你先打代號或從觀察清單點一檔。\n"
+        "• <b>注意</b>：這是單檔快捷鍵，不是海選起漲名單。\n"
+        "\n"
+        "<b>② 當沖</b>\n"
+        "• <b>是什麼</b>：盤中即時複核的當沖候選（漲幅約 2%～8.5%）。\n"
+        "• <b>怎麼用</b>：平日 <b>09:00–13:30</b> 按；列出保險進場、停利、停損參考價。\n"
+        "• <b>收盤後</b>：按了不會出名單（沒有 MIS 盤中價）。\n"
+        "• <b>會是空的</b>：美股隔夜大跌、VIX 高時故意不列，避免硬沖。\n"
+        "\n"
+        "<b>③ 持股</b>\n"
+        "• <b>是什麼</b>：你自己手記的<b>真實買入</b>，不是觀察、也不是 AI 模擬倉。\n"
+        "• <b>怎麼用</b>：按進去看清單；每檔可「賣出」、點股名看決策卡。\n"
+        "• <b>記買入</b>：查股後按「記買入」，再打 <code>張數 價格</code>，例 <code>1 68.5</code>。\n"
+        "• <b>AI 在這裡</b>：訊息最下方有 <b>AI模擬倉</b>、<b>AI操盤</b>（見「AI」說明）。\n"
+        "\n"
+        "<b>④ 觀察</b>\n"
+        "• <b>是什麼</b>：自選清單，還沒買也可以先放。\n"
+        "• <b>怎麼加</b>：海選或查股旁的 <b>➕</b>，或直接打股名查詢後按「觀察」。\n"
+        "• <b>怎麼刪</b>：進觀察頁，該檔按「刪」。\n"
+        "• <b>藍字股名</b>：連到奇摩走勢（開網頁，不帶大圖預覽）。\n"
+        "\n"
+        "<b>⑤ 海選</b>\n"
+        "• <b>是什麼</b>：依<b>昨收</b>掃全市場的佈局名單（起漲、優先看、周帶量等）。\n"
+        "• <b>怎麼用</b>：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
+        "• <b>自動版</b>：平日 06:30 會自動寄一版給家人；12:45 有尾盤可切版。\n"
+        "• <b>注意</b>：不是盤中即時掃描；當沖／隔日沖要另按第二排按鈕。"
+    ),
+    "row2": (
+        "<b>第二排按鈕（左→右）</b>\n"
+        "\n"
+        "<b>① 隔日沖</b>\n"
+        "• <b>是什麼</b>：尾盤佈局、隔日沖候選名單。\n"
+        "• <b>怎麼用</b>：平日 <b>09:00–13:30</b> 按，看保險買進價與明早目標價。\n"
+        "• <b>收盤後按</b>：只顯示強勢收盤候選，供明天開盤參考，不是叫你收盤再買。\n"
+        "\n"
+        "<b>② 資金</b>\n"
+        "• <b>是什麼</b>：盤後「產業輪動」＋三大法人買賣超張數。\n"
+        "• <b>怎麼用</b>：看哪幾族法人加碼、族內代表股；當佈局參考，不是下單訊號。\n"
+        "• <b>不是什麼</b>：不含你的持股／觀察；也不是分點、也不是論壇消息。\n"
+        "\n"
+        "<b>③ 說明</b>\n"
+        "• 就是本說明頁；可分類點下方按鈕看細節。\n"
+        "\n"
+        "<b>④ 選單</b>\n"
+        "• 主選單被收掉或找不到時，按這顆重新釘住輸入框右側 ⌨️ 兩排按鈕。\n"
+        "• 也可打 /menu。\n"
+        "\n"
+        "<b>⑤ 最右格（預留）</b>\n"
+        "• 目前沒有功能，日後可能放新功能。"
+    ),
+    "ai": (
+        "<b>AI 模擬倉與自動買進</b>\n"
+        "\n"
+        "<b>在哪裡？</b>\n"
+        "主選單<b>沒有</b> AI 按鈕。請按 <b>持股</b>，訊息最下方會看到：\n"
+        "• <b>AI模擬倉</b>：只看模擬帳戶現況（不買賣）\n"
+        "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣\n"
+        "\n"
+        "<b>自動買進（你問的這個）</b>\n"
+        "• 平日 <b>20:00</b> 雲端會：① 寫晚間海選快照 ② 讓 AI 依海選紀律模擬買進／賣出\n"
+        "• <b>不會推播</b>到 Telegram，所以你不會收到通知——這是正常的。\n"
+        "• 隔天自己按 <b>持股 → AI模擬倉</b> 看有沒有成交、持了哪些檔。\n"
+        "• 16:30 盤後融合成功時，伺服器也會順便跑一輪（同樣不推播）。\n"
+        "\n"
+        "<b>模擬規則（簡要）</b>\n"
+        "• 本金 50 萬虛擬、最多同時 3 檔，從海選佈局桶挑（起漲、黃金買點、隔日沖等）\n"
+        "• 貼月高（少追）、美股電子逆風的不買；停損約 -7%、停利約 +8%\n"
+        "• 這是<b>模擬</b>，不會動你的真實持股，也不會真的下單。\n"
+        "\n"
+        "<b>跟真實持股的差別</b>\n"
+        "• <b>持股</b>＝你手動記的買入　• <b>AI模擬倉</b>＝機器人自己的虛擬帳戶，兩邊完全分開。"
+    ),
+    "decision": (
+        "<b>決策卡按鈕</b>\n"
+        "主選單第一顆。盤中刷新上一檔的高低決策卡與 MIS 價量。\n"
+        "用法：先查過一檔股，之後盤中重複按此鈕即可更新，不必重打代號。\n"
+        "與「海選」不同：海選是全市場昨收掃描，決策卡是單檔盤中工具。"
     ),
     "menu": (
         "<b>主選單在哪？</b>　不在訊息最下面，在<b>輸入框右側 ⌨️</b>展開的兩排按鈕。\n"
@@ -164,7 +250,13 @@ HELP_TOPICS = {
     "portfolio": (
         "<b>持股怎麼用</b>\n"
         "這裡只顯示你手記的真實買入，不是觀察、也不是 AI 模擬倉。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
-        "AI 模擬帳戶不會自動推播。要看現況按持股頁「AI模擬倉」；要依海選執行一輪模擬買賣按「AI操盤」。"
+        "\n"
+        "<b>訊息下方按鈕</b>\n"
+        "• 股名＝看這檔決策卡　• <b>賣出</b>＝記賣出張數與價格\n"
+        "• <b>AI模擬倉</b>＝看 50 萬虛擬帳戶現況（不買賣）\n"
+        "• <b>AI操盤</b>＝立刻依海選跑一輪模擬買賣\n"
+        "\n"
+        "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按 AI模擬倉查看。詳見說明頁「AI」。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
@@ -498,6 +590,11 @@ class WayneTelegramBot:
                     InlineKeyboardButton("查股", callback_data="?:stock"),
                 ],
                 [
+                    InlineKeyboardButton("第一排", callback_data="?:row1"),
+                    InlineKeyboardButton("第二排", callback_data="?:row2"),
+                    InlineKeyboardButton("AI", callback_data="?:ai"),
+                ],
+                [
                     InlineKeyboardButton("海選", callback_data="?:screen"),
                     InlineKeyboardButton("當沖", callback_data="?:daytrade"),
                     InlineKeyboardButton("隔日沖", callback_data="?:overnight"),
@@ -508,8 +605,8 @@ class WayneTelegramBot:
                     InlineKeyboardButton("資金", callback_data="?:flow"),
                 ],
                 [
-                    InlineKeyboardButton("籌碼", callback_data="?:chips"),
-                    InlineKeyboardButton("營收", callback_data="?:fund"),
+                    InlineKeyboardButton("查股", callback_data="?:stock"),
+                    InlineKeyboardButton("決策卡", callback_data="?:decision"),
                     InlineKeyboardButton("記買入", callback_data="?:buy"),
                 ],
                 [InlineKeyboardButton("✕", callback_data="hx")],
@@ -1987,11 +2084,11 @@ class WayneTelegramBot:
         rt = live_quote
         if rt is None:
             try:
-                from live_quote import fetch_mis_quote
+                from live_quote import fetch_lookup_quote
 
-                rt = fetch_mis_quote(code, mkt)
+                rt = fetch_lookup_quote(code, mkt, self.db_path)
             except Exception:
-                logger.exception("現價 MIS 失敗 code=%s", code)
+                logger.exception("現價查詢失敗 code=%s", code)
         if rt:
             vol = int(rt.get("volume") or 0)
             t = str(rt.get("update_time") or "").strip()
@@ -2000,34 +2097,56 @@ class WayneTelegramBot:
                 chg = price_change(rt.get("close"), rt.get("pct_change"), rt.get("yesterday_close"))
             from tg_layout import headline_lines, html_price, kv_html
 
+            price_label = "現價" if rt.get("source") != "yahoo" else "收盤"
             rows = [
                 title,
-                kv_html("現價", html_price(rt.get("close"))),
+                kv_html(price_label, html_price(rt.get("close"))),
                 kv_html("漲跌", html_move(chg, rt.get("pct_change"))),
-                kv_html("成交", html_qty(vol, signed=False)),
             ]
+            if vol > 0:
+                rows.append(kv_html("成交", html_qty(vol, signed=False)))
             if t:
-                from live_quote import format_mis_clock_line
+                if rt.get("source") == "yahoo":
+                    rows.append(
+                        html_escape(f"收盤　{t}　Yahoo（16:30 融合後以官方庫為準）")
+                    )
+                else:
+                    from live_quote import format_mis_clock_line
 
-                rows.append(html_escape(format_mis_clock_line(t)))
+                    rows.append(html_escape(format_mis_clock_line(t)))
             return headline_lines(*rows)
         close = hits[0].get("close") if hits else None
         pct = hits[0].get("pct_change") if hits else None
+        quote_date = str(hits[0].get("quote_date") or "") if hits else ""
         if close is not None:
+            from config import taipei_now
+            from trading_calendar import format_trading_date_zh
             from tg_layout import headline_lines, html_price, kv_html
 
+            today = taipei_now().strftime("%Y%m%d")
+            if quote_date:
+                label = f"庫內收盤（{format_trading_date_zh(quote_date)}）"
+            else:
+                label = "庫內收盤"
+            if quote_date and quote_date < today:
+                note = (
+                    f"<i>今日收盤尚未寫入庫（16:30 融合後才寫入）；"
+                    f"以下為 {format_trading_date_zh(quote_date)} 官方收盤，不是現在價。</i>"
+                )
+            else:
+                note = "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>"
             return headline_lines(
                 title,
-                kv_html("昨收", html_price(close)),
+                kv_html(label, html_price(close)),
                 kv_html("漲跌", html_move(price_change(close, pct), pct)),
-                "<i>盤中報價暫時沒接到，以下圖用庫內日K。</i>",
+                note,
             )
         return title
 
     def _prefetch_mis_quote(self, code: str, hits: list | None = None):
-        from live_quote import fetch_mis_quote, is_live_merge_window
+        from live_quote import fetch_lookup_quote, is_live_merge_window, is_tw_quote_gap_window
 
-        if not is_live_merge_window():
+        if not is_live_merge_window() and not is_tw_quote_gap_window():
             return None
         mkt = ""
         if hits:
@@ -2035,7 +2154,7 @@ class WayneTelegramBot:
         elif code:
             h = lookup_stocks(self.db_path, code)
             mkt = str(h[0].get("market") or "") if h else ""
-        return fetch_mis_quote(code, mkt)
+        return fetch_lookup_quote(code, mkt, self.db_path)
 
     async def _reply_card(self, update: Update, code: str):
         uid = str(update.effective_user.id)

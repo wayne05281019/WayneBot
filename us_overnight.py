@@ -514,7 +514,7 @@ _DROP_POST_ITEMS = (
     ("nvda_post_pct", "nvda_post_chg", "輝達"),
 )
 
-_LABEL_W = 10
+_LABEL_W = 8
 
 PHASE_LABEL = _PHASE_LABEL
 
@@ -564,7 +564,17 @@ def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
 
     rows = []
     for pct_k, chg_k, label in items:
-        rows.append((label, html_quote_move(snap.get(pct_k), snap.get(chg_k), pts_decimals=pts_decimals)))
+        rows.append(
+            (
+                label,
+                html_quote_move(
+                    snap.get(pct_k),
+                    snap.get(chg_k),
+                    pts_decimals=pts_decimals,
+                    compact=True,
+                ),
+            )
+        )
     return rows
 
 
@@ -596,7 +606,7 @@ def _drop_post_block(snap: Dict[str, Any]) -> str:
 def _vix_row(snap: Dict[str, Any]) -> str:
     from tg_layout import html_level_pct, kv_html
 
-    return kv_html("VIX", html_level_pct(snap.get("vix"), snap.get("vix_pct")), width=_LABEL_W)
+    return kv_html("VIX", html_level_pct(snap.get("vix"), snap.get("vix_pct"), compact=True), width=_LABEL_W)
 
 
 def _session_label(snap: Dict[str, Any]) -> str:

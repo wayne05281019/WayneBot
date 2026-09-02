@@ -81,6 +81,37 @@ def test_scrub_removes_stub_from_db(tmp_path, monkeypatch):
     assert float(good[0]) == 3985.0
 
 
+def test_repair_pct_change_from_prior(tmp_path):
+    db = tmp_path / "pct.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO daily_quotes VALUES
+        ('20260831','3105','穩懋','TWO',440,450,430,447.5,1000,0,1.94,447.5,0,0,0),
+        ('20260901','3105','穩懋','TWO',450,500,440,492,1000,0,99.0,492,0,0,0)"""
+    )
+    conn.commit()
+    conn.close()
+
+    from quote_integrity import repair_pct_change_from_prior
+
+    fixed = repair_pct_change_from_prior(str(db))
+    assert fixed >= 1
+    conn = sqlite3.connect(db)
+    pct = conn.execute(
+        "SELECT pct_change FROM daily_quotes WHERE stock_id='3105' AND date='20260901'"
+    ).fetchone()[0]
+    conn.close()
+    assert abs(float(pct) - 9.94) < 0.05
+
+
 def test_audit_reports_stub_without_mutating(tmp_path):
     db = tmp_path / "t.db"
     conn = sqlite3.connect(db)
