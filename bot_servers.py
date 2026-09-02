@@ -7,6 +7,7 @@ WayneBot Telegram 操作層
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import os
 import struct
@@ -356,6 +357,7 @@ class WayneTelegramBot:
         self._screening_msgs: Dict[str, Dict[str, list]] = {}
         self._line_pack_status_msgs: Dict[str, list] = {}
         self._help_msgs: Dict[str, list] = {}
+        self._lookup_locks: Dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _actor_key(
@@ -1537,15 +1539,17 @@ class WayneTelegramBot:
 
     @staticmethod
     def _chart_progress_text(elapsed_sec: int) -> str:
-        return f"查股出圖中… {elapsed_sec}s"
+        return (
+            f"查股出圖中… {elapsed_sec}s\n"
+            "順序：介紹圖 → 決策卡 → 導航圖（先送最快的）"
+        )
 
     @staticmethod
-    def _chart_png_looks_ok(path: str) -> bool:
-        """併發產圖偶發殘缺檔（只有標題、中間全白）；送出前擋掉。"""
+    def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
         if not path or not os.path.exists(path):
             return False
         try:
-            if os.path.getsize(path) < 48_000:
+            if os.path.getsize(path) < min_bytes:
                 return False
             with open(path, "rb") as f:
                 if f.read(8) != b"\x89PNG\r\n\x1a\n":
@@ -1554,9 +1558,14 @@ class WayneTelegramBot:
                 if f.read(4) != b"IHDR":
                     return False
                 w, h = struct.unpack(">II", f.read(8))
-                return w >= 500 and h >= 900
+                return w >= min_w and h >= min_h
         except Exception:
             return False
+
+    @staticmethod
+    def _chart_png_looks_ok(path: str) -> bool:
+        """併發產圖偶發殘缺檔（只有標題、中間全白）；送出前擋掉。"""
+        return WayneTelegramBot._png_looks_ok(path, min_bytes=48_000, min_w=500, min_h=900)
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_manual_screening(update.message)
@@ -2562,6 +2571,21 @@ class WayneTelegramBot:
             )
             return
         actor = self._actor_key(message, uid=uid or self._uid_from_message(message))
+        lock = self._lookup_locks.setdefault(actor, asyncio.Lock())
+        if lock.locked():
+            await message.reply_text("上一檔還在出圖，請稍候再查。")
+            return
+        async with lock:
+            await self._send_card_to_locked(message, code, uid, actor, hits)
+
+    async def _send_card_to_locked(
+        self,
+        message,
+        code: str,
+        uid: str,
+        actor: str,
+        hits: list,
+    ):
         lookup_faded = False
         hub = self._hub_keyboard(code)
         cap_links = ""
@@ -2594,9 +2618,16 @@ class WayneTelegramBot:
 
         header_task = asyncio.create_task(_header_bg())
 
-        async def send_photo(path, caption, markup=None):
+        async def send_photo(path, caption, markup=None, *, kind: str = ""):
             nonlocal sent_any, lookup_faded
-            if not path or not os.path.exists(path):
+            min_h = 900 if kind == "chart" else 500
+            if not self._png_looks_ok(path, min_h=min_h):
+                logger.warning(
+                    "略過殘缺圖 kind=%s code=%s size=%s",
+                    kind,
+                    code,
+                    os.path.getsize(path) if path and os.path.exists(path) else 0,
+                )
                 return False
             for attempt in range(3):
                 try:
@@ -2604,9 +2635,16 @@ class WayneTelegramBot:
                         await message.reply_photo(
                             photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
                         )
+                    logger.info(
+                        "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
+                        kind,
+                        code,
+                        os.path.getsize(path),
+                        attempt + 1,
+                    )
                     if not lookup_faded:
                         lookup_faded = True
-                        await self._dismiss_lookup_fades(actor)
+                        await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
                     return True
                 except Exception as exc:
                     err_name = type(exc).__name__
@@ -2616,12 +2654,13 @@ class WayneTelegramBot:
                     try:
                         with open(path, "rb") as f:
                             await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
+                        logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
                         if not lookup_faded:
                             lookup_faded = True
-                            await self._dismiss_lookup_fades(actor)
+                            await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
                         return True
                     except Exception:
-                        logger.exception("送圖失敗 path=%s attempt=%s", path, attempt + 1)
+                        logger.exception("送圖失敗 kind=%s path=%s attempt=%s", kind, path, attempt + 1)
             return False
 
         wait_msg = None
@@ -2665,8 +2704,13 @@ class WayneTelegramBot:
                 wait_msg = None
 
         try:
-            from wayne_navigator import NavigatorEngine
             from chip_tape import build_tape
+            from wayne_navigator import (
+                NavigatorEngine,
+                generate_chart,
+                render_decision_card_png,
+                render_first_glance_png,
+            )
 
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
@@ -2690,6 +2734,10 @@ class WayneTelegramBot:
                 asyncio.to_thread(_build_tape),
             )
             logger.info("看這檔 card+tape %.1fs code=%s", time.monotonic() - t0, code)
+            try:
+                await asyncio.wait_for(header_task, timeout=6.0)
+            except Exception:
+                logger.debug("現價列背景任務未完成 code=%s", code, exc_info=True)
             if card.get("error"):
                 await message.reply_html(
                     f"⚠️ {html_escape(card.get('error'))}",
@@ -2706,73 +2754,79 @@ class WayneTelegramBot:
             uid_key = uid or self._uid_from_message(message)
             self._cache_lookup_ctx(uid_key, code, ohlc)
 
-            from lookup_render import render_card_and_glance_parallel
+            def _render_chart():
+                return generate_chart(
+                    code, "", self.db_path, chart_path_f, ohlc, already_normalized=True
+                )
 
-            t1 = time.monotonic()
-            card_path_f, glance_path = await asyncio.wait_for(
-                asyncio.to_thread(
-                    render_card_and_glance_parallel,
-                    card,
-                    card_path_f,
-                    code,
-                    tape,
-                    glance_path,
-                    self.db_path,
+            def _render_glance():
+                return render_first_glance_png(code, card, tape, glance_path, self.db_path)
+
+            render_plan = [
+                ("glance", _render_glance, 60.0, cap_links or "當日K＋籌碼價量", None),
+                ("card", lambda: render_decision_card_png(card, card_path_f), 60.0, "高低決策卡", None),
+                (
+                    "chart",
+                    _render_chart,
+                    _CHART_RENDER_TIMEOUT,
+                    "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
+                    hub,
                 ),
-                timeout=max(_CARD_BUILD_TIMEOUT, 90.0),
-            )
-            logger.info("看這檔 png parallel %.1fs code=%s", time.monotonic() - t1, code)
+            ]
+            kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
+            sent_kinds: list[str] = []
 
-            hub_nav = self._hub_keyboard(code)
-            for path, caption, markup in (
-                (card_path_f, "高低決策卡", None),
-                (glance_path, cap_links or "當日K＋籌碼價量", hub_nav),
-            ):
-                if not path or not os.path.exists(path):
+            for kind, fn, timeout_s, caption, markup in render_plan:
+                path = ""
+                attempts = 2 if kind == "chart" else 1
+                for attempt in range(attempts):
+                    try:
+                        path = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout_s)
+                    except asyncio.TimeoutError:
+                        logger.warning("看這檔 %s 逾時 code=%s attempt=%s", kind, code, attempt + 1)
+                        path = ""
+                        break
+                    except Exception:
+                        logger.exception("看這檔 %s 產圖失敗 code=%s", kind, code)
+                        path = ""
+                        break
+                    if kind == "chart" and not self._chart_png_looks_ok(path):
+                        logger.warning(
+                            "導航圖殘缺 code=%s attempt=%s size=%s",
+                            code,
+                            attempt + 1,
+                            os.path.getsize(path) if path and os.path.exists(path) else 0,
+                        )
+                        path = ""
+                        continue
+                    if kind != "chart" and not self._png_looks_ok(path):
+                        logger.warning("略過殘缺圖 kind=%s code=%s", kind, code)
+                        path = ""
+                        break
+                    break
+                logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
+                if not path:
+                    gc.collect()
                     continue
-                ok = await send_photo(path, caption, markup)
-                if ok and markup is hub_nav:
+                ok = await send_photo(path, caption, markup, kind=kind)
+                if ok and markup is hub:
                     hub_on = True
                 if ok:
                     sent_any = True
+                    sent_kinds.append(kind)
                     await _clear_wait()
-
-            auto_chart = os.getenv("WAYNE_LOOKUP_AUTO_CHART", "").lower() in (
-                "1",
-                "true",
-                "yes",
-            )
-            if auto_chart and ohlc is not None and not getattr(ohlc, "empty", True):
-                from wayne_navigator import generate_chart
-
-                try:
-                    chart_path = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            generate_chart,
-                            code,
-                            "",
-                            self.db_path,
-                            chart_path_f,
-                            ohlc,
-                            already_normalized=True,
-                        ),
-                        timeout=_CHART_RENDER_TIMEOUT,
-                    )
-                except Exception:
-                    chart_path = ""
-                    logger.exception("看這檔 chart auto code=%s", code)
-                if chart_path and self._chart_png_looks_ok(chart_path):
-                    cap = (
-                        "180日高低導航：實心＝當日觸發；空心＝接近；"
-                        "粉紅／綠底上的箭頭會自動加深"
-                    )
-                    ok = await send_photo(chart_path, cap, None)
-                    if ok:
-                        sent_any = True
-                        await _clear_wait()
+                gc.collect()
 
             if sent_any and not hub_on:
-                await message.reply_html("圖已出完。要 180 日導航請按「導航圖」。", reply_markup=hub_nav, disable_web_page_preview=True)
+                if len(sent_kinds) >= len(render_plan):
+                    done_txt = "圖已出完。"
+                else:
+                    miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
+                    done_txt = (
+                        f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
+                        f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
+                    )
+                await message.reply_html(done_txt, reply_markup=hub, disable_web_page_preview=True)
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
 
@@ -2811,8 +2865,7 @@ class WayneTelegramBot:
             if progress_task is not None:
                 progress_task.cancel()
             await _clear_wait()
-            if not lookup_faded:
-                await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
+            await self._dismiss_lookup_fades(actor, roles={"ack", "wait", "header"})
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
 
@@ -3018,7 +3071,7 @@ class WayneTelegramBot:
             .concurrent_updates(True)
             .connect_timeout(30.0)
             .read_timeout(30.0)
-            .write_timeout(60.0)
+            .write_timeout(120.0)
             .pool_timeout(30.0)
             .get_updates_connect_timeout(30.0)
             .get_updates_read_timeout(60.0)
