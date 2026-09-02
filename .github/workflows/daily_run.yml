@@ -68,6 +68,7 @@ jobs:
           fi
 
       - name: 執行每日工作
+        id: run_job
         env:
           WAYNE_JOB: ${{ steps.job.outputs.job }}
           WAYNE_MODE: ${{ steps.job.outputs.job }}
@@ -79,6 +80,29 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           python main.py --once
+
+      - name: 盤後匯入硬性關卡（increment 日 K 不可為 0）
+        if: always() && steps.job.outputs.job == 'increment'
+        run: |
+          python - <<'PY'
+          import json, sys
+          from config import get_db_path, fuse_end_date
+          from import_health import format_audit_plain, verify_increment_import
+
+          path = get_db_path()
+          cap = fuse_end_date()
+          report = verify_increment_import(path, cap=cap)
+          print("fuse_end", cap)
+          print(format_audit_plain(report.get("health") or {}))
+          print(json.dumps(
+              {k: report[k] for k in ("ok", "cap", "reasons") if k in report},
+              ensure_ascii=False,
+              indent=2,
+          ))
+          if not report.get("ok"):
+              sys.exit("盤後匯入未過關：" + "；".join(report.get("reasons") or []))
+          print("盤後匯入關卡通過")
+          PY
 
       - name: 完整性通過才蓋掉舊 Release zip
         if: success() && steps.job.outputs.job == 'increment'

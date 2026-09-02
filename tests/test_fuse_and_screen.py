@@ -266,7 +266,7 @@ class FuseAndScreenTest(unittest.TestCase):
             os.remove(path)
 
     def test_release_publish_requires_complete_day(self):
-        from import_health import can_publish_release, release_publish_blockers
+        from import_health import can_publish_release, release_publish_blockers, verify_increment_import
         from wayne_db import ensure_core_schema
 
         fd, path = tempfile.mkstemp(suffix=".db")
@@ -278,6 +278,9 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertFalse(can_publish_release(path, cap="20260831")["ok"])
             blob = " ".join(reasons)
             self.assertTrue("日K" in blob or "都齊" in blob or "月營收" in blob)
+            gate = verify_increment_import(path, cap="20260831")
+            self.assertFalse(gate["ok"])
+            self.assertTrue(gate["reasons"])
         finally:
             os.remove(path)
 

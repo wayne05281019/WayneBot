@@ -441,13 +441,9 @@ class MainRunner:
         return "\n".join(lines)
 
     def _increment_ok(self, health: Dict[str, Any]) -> bool:
-        from import_health import sides_complete
+        from import_health import increment_health_ok
 
-        if not health:
-            return False
-        if int(health.get("total") or 0) == 0:
-            return True
-        return sides_complete(health.get("tw") or 0, health.get("two") or 0)
+        return increment_health_ok(health)
 
     @staticmethod
     def _screening_delivered(screening: Optional[Dict[str, Any]]) -> bool:
