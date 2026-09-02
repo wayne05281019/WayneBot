@@ -119,6 +119,72 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
 
 
+def verify_release_snapshot(db_path: str) -> Dict[str, Any]:
+    """CI push：Release zip 基本可用（過濾器、庫完整、最近基準日有日K），不要求當日已融合。"""
+    path = str(db_path or "").strip()
+    reasons: List[str] = []
+
+    filt = quote_filter_regression_ok()
+    if not filt.get("ok"):
+        reasons.append(str(filt.get("reason") or "過濾器回歸失敗"))
+
+    if not path or not os.path.isfile(path) or not db_quick_check_ok(path, min_bytes=1):
+        reasons.append("Release 資料庫損壞或不存在")
+    else:
+        complete = latest_complete_quote_date(path)
+        if not complete:
+            reasons.append("沒有上市＋上櫃都齊的基準日")
+        else:
+            health = audit_import(path, complete)
+            if int(health.get("total") or 0) == 0:
+                reasons.append(f"基準日 {complete} 日 K 為 0")
+            if int(health.get("tw") or 0) == 0 or int(health.get("two") or 0) == 0:
+                reasons.append(f"基準日 {complete} 上市或上櫃為 0")
+        if not db_quick_check_ok(path) and not complete:
+            reasons.append("Release 資料庫過小且無基準日")
+
+    return {
+        "ok": not reasons,
+        "reasons": reasons,
+        "quote_filter": filt,
+        "latest_complete": latest_complete_quote_date(path) if path and os.path.isfile(path) else "",
+    }
+
+
+def verify_scheduled_audit(db_path: str, cap: str = None) -> Dict[str, Any]:
+    """定時巡檢：當日融合門檻、基準日對齊 cap、排程紀錄。"""
+    try:
+        from config import fuse_end_date
+
+        cap = str(cap or fuse_end_date() or "").replace("-", "")[:8]
+    except Exception:
+        cap = str(cap or "").replace("-", "")[:8]
+
+    report = run_automation_audit(db_path, cap=cap, strict_release=False, max_gap_days=999)
+    reasons: List[str] = list(report.get("reasons") or [])
+
+    inc = (report.get("checks") or {}).get("increment") or {}
+    filt = (report.get("checks") or {}).get("quote_filter") or {}
+    if not filt.get("ok"):
+        reasons.append("過濾器回歸失敗")
+    if not inc.get("ok"):
+        for r in inc.get("reasons") or []:
+            if r not in reasons:
+                reasons.append(str(r))
+    if report.get("latest_complete") and cap and report["latest_complete"] < cap:
+        msg = f"基準日 {report['latest_complete']} 落後可融合日 {cap}"
+        if msg not in reasons:
+            reasons.append(msg)
+
+    return {
+        "ok": not reasons,
+        "cap": cap,
+        "latest_complete": report.get("latest_complete") or "",
+        "reasons": reasons,
+        "report": report,
+    }
+
+
 def health_payload(db_path: str = None, cap: str = None) -> Dict[str, Any]:
     """給 /health 的輕量資料狀態（程序仍回 200，data_ok 反映資料管線）。"""
     try:

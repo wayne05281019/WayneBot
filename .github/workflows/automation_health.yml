@@ -37,7 +37,7 @@ jobs:
       - name: 安裝依賴
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt pytest
 
       - name: 下載核心資料庫
         run: |
@@ -61,29 +61,40 @@ jobs:
             tests/test_quote_filter_integration.py \
             tests/test_increment_gate.py
 
-      - name: 生產庫自動化巡檢（該有的數字不可為 0）
+      - name: Release 快照基本檢查（push）
+        if: github.event_name == 'push'
         env:
           WAYNE_DB_PATH: data/wayne_market.db
         run: |
-          python automation_health.py --json || true
+          python - <<'PY'
+          import json, sys
+          from config import get_db_path
+          from automation_health import verify_release_snapshot
+
+          report = verify_release_snapshot(get_db_path())
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          if not report.get("ok"):
+              sys.exit("Release 快照未過：" + "；".join(report.get("reasons") or []))
+          print("Release 快照檢查通過")
+          PY
+
+      - name: 定時全面巡檢（schedule / 手動）
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          WAYNE_DB_PATH: data/wayne_market.db
+        run: |
           python - <<'PY'
           import json, sys
           from config import fuse_end_date, get_db_path
-          from automation_health import run_automation_audit, format_automation_audit_plain
+          from automation_health import format_automation_audit_plain, verify_scheduled_audit
 
           path = get_db_path()
           cap = fuse_end_date()
-          report = run_automation_audit(path, cap=cap, strict_release=False)
-          print(format_automation_audit_plain(report))
+          report = verify_scheduled_audit(path, cap=cap)
+          inner = report.get("report") or {}
+          print(format_automation_audit_plain(inner))
           print(json.dumps({k: report[k] for k in ("ok", "cap", "latest_complete", "reasons")}, ensure_ascii=False, indent=2))
-          # 生產庫允許歷史缺口與 Release 未齊，但當日融合門檻必須過
-          inc = (report.get("checks") or {}).get("increment") or {}
-          filt = (report.get("checks") or {}).get("quote_filter") or {}
-          if not filt.get("ok"):
-              sys.exit("過濾器回歸失敗")
-          if not inc.get("ok"):
-              sys.exit("盤後融合未過關：" + "；".join(inc.get("reasons") or report.get("reasons") or []))
-          if report.get("latest_complete") and cap and report["latest_complete"] < cap:
-              sys.exit(f"基準日 {report['latest_complete']} 落後可融合日 {cap}")
-          print("自動化巡檢通過")
+          if not report.get("ok"):
+              sys.exit("定時巡檢未過：" + "；".join(report.get("reasons") or []))
+          print("定時巡檢通過")
           PY

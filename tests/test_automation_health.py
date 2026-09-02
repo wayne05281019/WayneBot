@@ -11,6 +11,7 @@ from automation_health import (
     pipeline_expectations_met,
     quote_filter_regression_ok,
     run_automation_audit,
+    verify_release_snapshot,
 )
 from import_health import MIN_TWO, MIN_TW
 from wayne_db import ensure_core_schema
@@ -55,6 +56,22 @@ def test_pipeline_expectations_skips_empty_db():
         r = pipeline_expectations_met(path, cap="20260902")
         assert r.get("skipped") is True
         assert r.get("ok") is True
+    finally:
+        os.remove(path)
+
+
+def test_verify_release_snapshot_passes_complete_day():
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        conn = sqlite3.connect(path)
+        _seed_day(conn, "20260902")
+        conn.commit()
+        conn.close()
+        report = verify_release_snapshot(path)
+        assert report["ok"] is True, report["reasons"]
+        assert report["latest_complete"] == "20260902"
     finally:
         os.remove(path)
 
