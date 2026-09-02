@@ -15,7 +15,7 @@
 | v0 骨架 | ✅ 完成 | `taiwan_market.py` regime／桶權重／晨間一句 |
 | **P0** 官方加權指數寫庫 | ✅ 完成 | MI_INDEX + Yahoo 差異告警（PR #115） |
 | **P1** 漲跌家數廣度 | ✅ 完成 | `index_breadth_daily` + regime（PR #120） |
-| **P2** falling_risk／高低檔 | 🟡 進行中 | `risk_zone` / `support_zone` + 海選降權 |
+| **P2** falling_risk／高低檔 | ✅ 完成 | PR #122 risk_zone + 海選降權 |
 | P3 台指期＋基差 | ⬜ 待做 | TAIFEX |
 | P4 Regime+ 狀態機 | ⬜ 待做 | 海選權重 v2 |
 | P5 回測＋大盤頁 | ✅ 完成 | PR #117 主選單「大盤」（只讀庫內） |
@@ -31,14 +31,16 @@
 | 主選單大盤專頁 | #117 | ✅ |
 | P1 漲跌家數廣度 | #120 | ✅ |
 
+| P2 falling_risk | #122 | ✅ |
+
 ## 進行中分支
 
 | 分支 | 內容 | 狀態 |
 |------|------|------|
-| — | P2 falling_risk／高低檔（下一期） | ⬜ 待開工 |
+| — | P3 台指期＋基差（下一期） | ⬜ 待開工 |
 
-## 下一個里程碑（P2 完成 → 70%）
+## 下一個里程碑（P3 完成 → 80%）
 
-- [ ] `falling_risk` 0–100 分數
-- [ ] `risk_zone` / `support_zone` 標記
-- [ ] 大盤頁 + 海選權重聯動
+- [ ] `futures_daily` TAIFEX 官方日 K
+- [ ] 基差 / `futures_lead` 特徵
+- [ ] 大盤頁期現一行
