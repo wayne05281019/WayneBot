@@ -165,11 +165,16 @@ class TestMarketMenuE2E:
         bot.db_path = db
         bot.charts_dir = charts
         bot._menu_fade_msgs = {}
+        bot._pending = {}
+        bot._pending_locks = {}
+        bot._screening_running = set()
+        bot._menu_fade_gen = {}
+        bot._lookup_locks = {}
         msg = _message()
 
-        with patch.object(bot, "_dismiss_menu_transients", new_callable=AsyncMock), patch.object(
-            bot, "_ensure_reply_menu_if_needed", new_callable=AsyncMock
-        ), patch.object(bot, "_transient_status", new_callable=AsyncMock) as status, patch.object(
+        with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
+            bot, "_transient_status", new_callable=AsyncMock
+        ) as status, patch.object(
             bot, "_delete_message", new_callable=AsyncMock
         ), patch(
             "taiwan_market._fetch_index_daily"
@@ -198,13 +203,17 @@ class TestMarketMenuE2E:
         bot.db_path = db
         bot.charts_dir = charts
         bot._menu_fade_msgs = {}
-        bot._pending = {"111": "buy"}
+        bot._pending = {"99:111": "buy"}
+        bot._pending_locks = {}
+        bot._screening_running = set()
+        bot._menu_fade_gen = {}
+        bot._lookup_locks = {}
 
         async def _run(uid):
             msg = _message(uid)
-            with patch.object(bot, "_dismiss_menu_transients", new_callable=AsyncMock), patch.object(
-                bot, "_ensure_reply_menu_if_needed", new_callable=AsyncMock
-            ), patch.object(bot, "_transient_status", new_callable=AsyncMock) as st, patch.object(
+            with patch.object(bot, "_enter_main_menu", new_callable=AsyncMock), patch.object(
+                bot, "_transient_status", new_callable=AsyncMock
+            ) as st, patch.object(
                 bot, "_delete_message", new_callable=AsyncMock
             ):
                 st.return_value = MagicMock()
@@ -215,7 +224,7 @@ class TestMarketMenuE2E:
             await asyncio.gather(_run(111), _run(222))
 
         asyncio.run(run_both())
-        assert bot._pending.get("111") == "buy"
+        assert bot._pending.get("99:111") == "buy"
 
     def test_market_page_mobile_friendly_layout(self, tmp_path):
         db = str(tmp_path / "layout.db")
