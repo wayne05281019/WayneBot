@@ -16,7 +16,7 @@ def test_fetch_lookup_quote_yahoo_when_mis_empty():
         "source": "yahoo",
     }
     with patch("live_quote.fetch_mis_quote", return_value=None), patch(
-        "live_quote.is_live_merge_window", return_value=True
+        "live_quote.is_lookup_trading_day", return_value=True
     ), patch("live_quote.fetch_yahoo_tw_quote", return_value=yahoo_rt):
         rt = fetch_lookup_quote("3105", "OTC", "data/wayne_market.db")
     assert rt is not None

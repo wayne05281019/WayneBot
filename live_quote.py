@@ -247,6 +247,16 @@ def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
     }
 
 
+def is_lookup_trading_day(now=None) -> bool:
+    """週一～五台股日曆日（假日靠庫判斷）；查股即時源用。"""
+    now = now or taipei_now()
+    if now.weekday() >= 5:
+        return False
+    from trading_calendar import is_trading_weekday
+
+    return is_trading_weekday(now.strftime("%Y%m%d"))
+
+
 def is_tw_quote_gap_window(now=None) -> bool:
     """13:30～16:30 融合前：庫內常還沒今天，MIS 收盤後也常空白，需外源補價。"""
     now = now or taipei_now()
@@ -259,6 +269,59 @@ def is_tw_quote_gap_window(now=None) -> bool:
         return False
     t = now.time()
     return dt_time(13, 30) <= t < dt_time(16, 30)
+
+
+def _db_latest_close(db_path: str, stock_id: str) -> Optional[float]:
+    if not db_path or not stock_id:
+        return None
+    try:
+        from quote_integrity import db_as_of_trading_date
+
+        as_of = db_as_of_trading_date(db_path)
+        if not as_of:
+            return None
+        import sqlite3
+
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            "SELECT close FROM daily_quotes WHERE stock_id=? AND replace(date,'-','')=? LIMIT 1;",
+            (str(stock_id).strip(), str(as_of).replace("-", "")[:8]),
+        ).fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            c = float(row[0])
+            return c if c > 0 else None
+    except Exception:
+        logger.debug("庫內昨收查詢失敗 %s", stock_id, exc_info=True)
+    return None
+
+
+def reconcile_lookup_quote(
+    rt: Dict[str, Any],
+    db_path: str = None,
+    stock_id: str = "",
+    db_hit: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """用庫內最後官方收盤當基準重算漲跌（Yahoo previousClose 常與台股昨收不一致）。"""
+    out = dict(rt)
+    sid = str(stock_id or out.get("stock_id") or "").strip()
+    prev = None
+    if db_hit:
+        try:
+            prev = float(db_hit.get("close") or 0)
+        except (TypeError, ValueError):
+            prev = None
+    if not prev and db_path and sid:
+        prev = _db_latest_close(db_path, sid)
+    try:
+        px = float(out.get("close") or 0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if prev and prev > 0 and px > 0:
+        out["yesterday_close"] = prev
+        out["pct_change"] = round((px - prev) / prev * 100.0, 2)
+        out["change"] = round(px - prev, 2)
+    return out
 
 
 def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[str, Any]]:
@@ -282,9 +345,23 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
         if not result:
             return None
         meta = result[0].get("meta") or {}
+        qblock = ((result[0].get("indicators") or {}).get("quote") or [{}])[0]
+        closes = qblock.get("close") or []
+        vols = qblock.get("volume") or []
         px = _num(meta.get("regularMarketPrice"))
+        if px <= 0 and closes:
+            for c in reversed(closes):
+                if c is not None and float(c) > 0:
+                    px = float(c)
+                    break
         if px <= 0:
             return None
+        vol = 0
+        if vols:
+            for v in reversed(vols):
+                if v is not None and float(v) > 0:
+                    vol = int(float(v))
+                    break
         y = _num(meta.get("chartPreviousClose") or meta.get("previousClose"))
         pct = meta.get("regularMarketChangePercent")
         chg = meta.get("regularMarketChange")
@@ -315,7 +392,7 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
             "high": px,
             "low": px,
             "close": px,
-            "volume": 0,
+            "volume": vol,
             "pct_change": pct_f or 0.0,
             "change": chg_f if chg_f is not None else 0.0,
             "yesterday_close": y,
@@ -334,13 +411,18 @@ def fetch_lookup_quote(
     db_path: str = None,
     *,
     now=None,
+    db_hit: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """查股用：MIS 優先；收盤後 MIS 空白則 Yahoo（僅盤中窗／融合前空窗）。"""
-    rt = fetch_mis_quote(stock_id, market)
-    if rt:
+    """查股用：MIS → Yahoo；交易日 MIS 空白必走外源，不拿過期庫當現價。"""
+    now = now or taipei_now()
+    sid = str(stock_id or "").strip()
+    rt = fetch_mis_quote(sid, market)
+    if rt and float(rt.get("close") or 0) > 0:
         return rt
-    if is_live_merge_window(now) or is_tw_quote_gap_window(now):
-        return fetch_yahoo_tw_quote(stock_id, db_path)
+    if is_lookup_trading_day(now):
+        y = fetch_yahoo_tw_quote(sid, db_path)
+        if y and float(y.get("close") or 0) > 0:
+            return reconcile_lookup_quote(y, db_path, sid, db_hit=db_hit)
     return None
 
 
@@ -453,7 +535,15 @@ def append_live_bar(
     today = taipei_today_str()
     latest = _norm_date(df["date"].iloc[-1])
     mkt = market or (str(df["market"].iloc[-1]) if "market" in df.columns else "")
-    rt = live_quote if live_quote is not None else fetch_mis_quote(stock_id, mkt)
+    if live_quote is not None:
+        rt = live_quote
+    else:
+        try:
+            from config import get_db_path
+
+            rt = fetch_lookup_quote(stock_id, mkt, get_db_path())
+        except Exception:
+            rt = fetch_mis_quote(stock_id, mkt)
     if not rt or rt.get("close", 0) <= 0:
         return df
     if latest > today:
