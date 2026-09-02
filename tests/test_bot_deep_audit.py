@@ -70,6 +70,10 @@ def _bot():
         ("watch", "_send_watch"),
         ("screen", "_run_manual_screening"),
         ("daytrade", "_run_trade_bucket"),
+        ("overnight", "_run_trade_bucket"),
+        ("k:", "_send_card_to"),
+        ("f:", "reply_html"),
+        ("n:", "_send_industry"),
     ],
 )
 def test_callback_routes_to_expected_handler(prefix, handler_attr):
@@ -118,6 +122,14 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
         bot._run_manual_screening.assert_awaited_once()
     elif prefix == "daytrade":
         bot._run_trade_bucket.assert_awaited_once()
+    elif prefix == "overnight":
+        bot._run_trade_bucket.assert_awaited_once()
+    elif prefix == "k:":
+        bot._send_card_to.assert_awaited_once()
+    elif prefix == "f:":
+        msg.reply_html.assert_awaited()
+    elif prefix == "n:":
+        bot._send_industry.assert_awaited_once()
 
 
 def test_trade_journal_callbacks():
