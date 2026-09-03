@@ -715,61 +715,13 @@ class NavigatorEngine:
 
 
 class ChartGenerator:
-    """產出 180 日 K 線高低導航圖"""
+    """假隨機 K 線已停用。導航圖請用 generate_chart（真實 OHLC）。"""
 
     @staticmethod
-    def draw_180d_chart(stock_id: str, stock_name: str, current_price: float, h60: float, l60: float, h20: float, l20: float, save_path: str):
-        np.random.seed(42)
-        dates = pd.date_range(end=datetime.date.today().strftime("%Y-%m-%d"), periods=120, freq="B")
-        trend = np.linspace(current_price * 0.75, current_price, len(dates)) + np.random.normal(0, current_price * 0.015, len(dates))
-        closes = trend
-        opens = closes * (1 + np.random.uniform(-0.015, 0.015, len(dates)))
-        highs = np.maximum(opens, closes) * (1 + np.random.uniform(0.005, 0.02, len(dates)))
-        lows = np.minimum(opens, closes) * (1 - np.random.uniform(0.005, 0.02, len(dates)))
-        vols = np.random.randint(2000, 30000, len(dates))
-        closes[-1] = current_price
-
-        df = pd.DataFrame({"date": dates, "open": opens, "high": highs, "low": lows, "close": closes, "volume": vols})
-        df["ma20"] = df["close"].rolling(20).mean()
-
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, figsize=(12, 6.5), gridspec_kw=dict(height_ratios=(3, 1)), facecolor='#ffffff'
+    def draw_180d_chart(*args, **kwargs):
+        raise RuntimeError(
+            "ChartGenerator.draw_180d_chart 已停用（會畫假資料）。請用 generate_chart。"
         )
-
-        for i in range(len(df)):
-            dt = df["date"].iloc[i]
-            op, cl = df["open"].iloc[i], df["close"].iloc[i]
-            hi, lo = df["high"].iloc[i], df["low"].iloc[i]
-            color = '#e53935' if cl >= op else '#00897b'
-
-            ax1.plot([dt, dt], [lo, hi], color=color, linewidth=1.0)
-            height = max(abs(cl - op), current_price * 0.003)
-            ax1.add_patch(patches.Rectangle((mdates.date2num(dt) - 0.35, min(op, cl)), 0.7, height, color=color))
-
-        ax1.plot(df["date"], df["ma20"], color='#fbc02d', linewidth=1.5, label=f"SMA(20): {df['ma20'].iloc[-1]:.2f}")
-        ax1.axhline(h60, color='#f48fb1', linewidth=1.5, linestyle='-', label=f"季高點線 ({h60:.2f})")
-        ax1.axhline(l60, color='#81c784', linewidth=1.5, linestyle='-', label=f"季低點線 ({l60:.2f})")
-        ax1.axhline(h20, color='#ce93d8', linewidth=1.0, linestyle='--', label=f"月高點線 ({h20:.2f})")
-        ax1.axhline(l20, color='#80deea', linewidth=1.0, linestyle='--', label=f"月低點線 ({l20:.2f})")
-
-        ax1.scatter([df["date"].iloc[-1]], [df["high"].iloc[-1] * 1.02], marker='v', color='#ab47bc', s=80, label='20高脫離')
-        ax1.scatter([df["date"].iloc[-25]], [df["low"].iloc[-25] * 0.98], marker='^', color='#2e7d32', s=80, label='20低脫離 (雙綠)')
-
-        ax1.set_title(f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航   WayneBot ® 2026", fontsize=13, fontweight='bold', pad=10)
-        ax1.legend(loc='upper left', ncol=6, frameon=True, facecolor='#f5f5f5', edgecolor='none', fontsize=8)
-        ax1.grid(True, linestyle=':', alpha=0.5)
-
-        vol_colors = ['#ef5350' if df["close"].iloc[i] >= df["open"].iloc[i] else '#26a69a' for i in range(len(df))]
-        ax2.bar(df["date"], df["volume"] / 1000.0, color=vol_colors, width=0.7)
-        ax2.set_ylabel("Vol (千張)", fontsize=8)
-        ax2.grid(True, linestyle=':', alpha=0.5)
-
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %y'))
-        fig.autofmt_xdate()
-        plt.tight_layout()
-
-        plt.savefig(save_path, dpi=180, bbox_inches='tight')
-        plt.close()
 
 
 def html_escape(val) -> str:

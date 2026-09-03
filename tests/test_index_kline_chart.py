@@ -37,6 +37,13 @@ class IndexKlineChartTests(unittest.TestCase):
             self.assertGreater(g, 200)
             self.assertGreater(b, 200)
 
+    def test_render_uses_taiwan_prev_close_color(self):
+        import inspect
+
+        src = inspect.getsource(render_index_kline_png)
+        self.assertIn("candle_up_taiwan", src)
+        self.assertNotIn("cl >= op", src)
+
     @patch("index_kline_chart._SESSION.get")
     def test_fetch_parses_yahoo(self, mock_get):
         mock_get.return_value.json.return_value = {
@@ -63,6 +70,15 @@ class IndexKlineChartTests(unittest.TestCase):
         df = fetch_twii_ohlc(days=60)
         self.assertEqual(len(df), 2)
         self.assertIn("open", df.columns)
+
+
+class FakeChartDisabledTests(unittest.TestCase):
+    def test_random_ohlc_chart_generator_raises(self):
+        from wayne_navigator import ChartGenerator
+
+        with self.assertRaises(RuntimeError) as ctx:
+            ChartGenerator.draw_180d_chart()
+        self.assertIn("假資料", str(ctx.exception))
 
 
 if __name__ == "__main__":
