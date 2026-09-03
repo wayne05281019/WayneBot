@@ -23,6 +23,7 @@ def _message(chat_id: int, uid: int):
     message.reply_html = AsyncMock(return_value=MagicMock())
     message.reply_text = AsyncMock(return_value=MagicMock())
     message.reply_photo = AsyncMock(return_value=MagicMock())
+    message.reply_media_group = AsyncMock(return_value=[MagicMock(), MagicMock(), MagicMock()])
     return message
 
 
@@ -102,13 +103,9 @@ class LookupIntegrationTests(unittest.TestCase):
             self.assertLess(timings["glance"], timings["chart"])
 
     def test_send_card_to_locked_posts_three_photos_in_order(self):
-        """模擬 Telegram：_send_card_to_locked 依序送出三張圖。"""
+        """模擬 Telegram：三張一次送相簿（大圖＋縮圖）。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
-        sent: list[str] = []
         message = _message(999001, 111)
-        message.reply_photo = AsyncMock(
-            side_effect=lambda **kw: sent.append(kw.get("caption", "")[:40]) or MagicMock()
-        )
 
         async def _run():
             with patch.object(bot, "_prefetch_mis_quote", return_value=None), patch.object(
@@ -132,15 +129,22 @@ class LookupIntegrationTests(unittest.TestCase):
 
         asyncio.run(_run())
 
-        self.assertGreaterEqual(len(sent), 2, f"photos sent: {sent}")
-        first = sent[0]
-        self.assertTrue(
-            "走勢" in first or "當日K" in first or "技術線" in first or "yahoo.com" in first,
-            f"unexpected first caption: {first!r}",
-        )
-        captions = " ".join(sent)
-        self.assertIn("決策卡", captions)
-        self.assertIn("導航", captions)
+        if message.reply_media_group.await_count:
+            media = message.reply_media_group.await_args.kwargs.get("media")
+            if media is None:
+                media = message.reply_media_group.await_args.args[0]
+            self.assertGreaterEqual(len(media), 2, f"album size: {media}")
+            cap = getattr(media[0], "caption", "") or ""
+            self.assertTrue("縮圖" in cap or "走勢" in cap or "技術線" in cap or "yahoo.com" in cap, cap)
+        else:
+            sent = [
+                (c.kwargs.get("caption") or "")[:40]
+                for c in message.reply_photo.await_args_list
+            ]
+            self.assertGreaterEqual(len(sent), 2, f"photos sent: {sent}")
+            captions = " ".join(sent)
+            self.assertIn("決策卡", captions)
+            self.assertIn("導航", captions)
 
     def test_lookup_lock_blocks_same_user_not_other(self):
         """同 chat 兩個 uid：A 出圖中 B 不受阻；同一人連打才提示稍候。"""

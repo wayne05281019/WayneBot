@@ -22,5 +22,13 @@ def test_volume_badge_falls_back_to_60():
     assert _badge(25, 25, 7) == ["60日量第 7 名"]
 
 
+def test_volume_rank_pair_shows_both_windows():
+    from decision_card_signals import volume_rank_pair_text
+
+    assert volume_rank_pair_text(25, 25, 7) == "60日第7 · 120日第25"
+    assert volume_rank_pair_text(6, 15, 20) == "480日第6 · 120日第15"
+    assert volume_rank_pair_text(88, 5, 3) == "120日第 5 名"
+
+
 def test_volume_badge_omitted_when_not_top():
     assert _badge(88, 120, 40) == []

@@ -301,7 +301,7 @@ HELP_TOPICS = {
         "3 溫度＝20日收盤位置＋月乖離；溫度計是領先指標。"
         "創歷史新高且溫度≥80要注意（少追）。"
         "升降溫「溫度壓縮＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追\n"
-        "   表頭量能：近480日量前10優先，否則近120日量前10，再否則近60日量前10；表格仍為120日量排名\n"
+        "   表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名。\n"
         "4 預警欄：K20高＝RSV≥70且收盤靠近20日高（≥95%）；K20低＝貼20低或月乖離轉負。"
         "預警為 No 時仍會露出高低（20高／10低），不藏表\n"
         "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
@@ -2995,6 +2995,7 @@ class WayneTelegramBot:
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
+            album_items: list[tuple[str, str, str, object]] = []
 
             for kind, fn, timeout_s, caption, markup in render_plan:
                 path = ""
@@ -3028,18 +3029,32 @@ class WayneTelegramBot:
                 if not path:
                     gc.collect()
                     continue
-                ok = await send_photo(path, caption, markup, kind=kind)
-                if ok and markup is hub:
-                    hub_on = True
-                if ok:
-                    sent_any = True
-                    sent_kinds.append(kind)
-                    await _clear_wait()
+                album_items.append((kind, path, caption, markup))
                 gc.collect()
+
+            album_ok = False
+            if len(album_items) >= 2:
+                album_ok = await self._send_lookup_album(message, album_items)
+                if album_ok:
+                    sent_any = True
+                    sent_kinds = [k for k, *_ in album_items]
+                    await _clear_wait()
+                    if not lookup_faded:
+                        lookup_faded = True
+                        await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
+            if not album_ok:
+                for kind, path, caption, markup in album_items:
+                    ok = await send_photo(path, caption, markup, kind=kind)
+                    if ok and markup is hub:
+                        hub_on = True
+                    if ok:
+                        sent_any = True
+                        sent_kinds.append(kind)
+                        await _clear_wait()
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
-                    done_txt = "圖已出完。"
+                    done_txt = "點縮圖可放大。籌碼／產業／觀察按這排。"
                 else:
                     miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
                     done_txt = (
@@ -3088,6 +3103,46 @@ class WayneTelegramBot:
             await self._dismiss_lookup_fades(actor, roles={"ack", "wait", "header"})
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
+
+    async def _send_lookup_album(self, message, items: list) -> bool:
+        """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""
+        from telegram import InputMediaPhoto
+
+        if len(items) < 2:
+            return False
+        handles = []
+        try:
+            media = []
+            first_cap = str(items[0][2] or "").strip()
+            album_cap = "介紹／決策／導航　點縮圖可放大"
+            if first_cap:
+                album_cap = f"{first_cap}\n{album_cap}"
+            for kind, path, _caption, _markup in items:
+                min_h = 900 if kind == "chart" else 500
+                if not self._png_looks_ok(path, min_h=min_h):
+                    continue
+                fh = open(path, "rb")
+                handles.append(fh)
+                if not media:
+                    media.append(
+                        InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
+                    )
+                else:
+                    media.append(InputMediaPhoto(media=fh))
+            if len(media) < 2:
+                return False
+            await message.reply_media_group(media=media)
+            logger.info("送相簿成功 n=%s", len(media))
+            return True
+        except Exception:
+            logger.exception("送相簿失敗，改逐張")
+            return False
+        finally:
+            for fh in handles:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query

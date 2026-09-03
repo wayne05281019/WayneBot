@@ -546,6 +546,8 @@ class NavigatorEngine:
         vol_lab, vol_n = volume_headline_rank(vr480, vr120, vr60)
         if vol_n <= 10:
             badges.append(f"{vol_lab}第 {vol_n} 名")
+        if vol_lab != "120日量" and vr120 != vol_n:
+            badges.append(f"120日第 {vr120} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
         h120 = float(latest["high_120"]) if pd.notna(latest.get("high_120")) else 0.0
@@ -1595,7 +1597,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 過去 20 天：預警欄露出高低；升降溫＝溫度趨勢（不是股價漲跌）；量能上色。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
-              "預警會露出 20高／10低；升降溫＝溫度計")
+              "預警會露出 20高／10低；升降溫＝溫度計；最右欄＝120日量排名")
     headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
     weights = [13.6, 10.4, 9.6, 11.0, 11.6, 13.0, 10.2, 12.6]
     pill_cols = {3, 5, 7}
@@ -1749,9 +1751,14 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
     bias_s = f"{float(bias):+.1f}%" if bias is not None else "—"
-    from decision_card_signals import volume_headline_rank
+    from decision_card_signals import volume_headline_rank, volume_rank_pair_text
 
     vol_lab, vol_n = volume_headline_rank(
+        card.get("vol_rank_480") or 99,
+        card.get("vol_rank") or 99,
+        card.get("vol_rank_60") or 99,
+    )
+    vol_pair = volume_rank_pair_text(
         card.get("vol_rank_480") or 99,
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
@@ -1790,7 +1797,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ),
         section(
             kv_compact("溫度", card.get("temp_c") or "—"),
-            kv_compact(vol_lab, f"第 {vol_n} 名"),
+            kv_compact("量排名", vol_pair),
             kv_compact("量比", vol_line),
         ),
         chip_block,
@@ -1901,16 +1908,21 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", _CARD["ink"]),
     ])
     _temp_n = _temp_num(card.get("temp_c"))
-    from decision_card_signals import volume_headline_rank
+    from decision_card_signals import volume_headline_rank, volume_rank_pair_text
 
     vol_lab, vol_n = volume_headline_rank(
         card.get("vol_rank_480") or 99,
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
+    vol_pair = volume_rank_pair_text(
+        card.get("vol_rank_480") or 99,
+        card.get("vol_rank") or 99,
+        card.get("vol_rank_60") or 99,
+    )
     kv_block(48.55, 12.15, "熱度／量能", [
         ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, _CARD["white"])[1]),
-        (f"{vol_lab}排名", f"第 {vol_n} 名",
+        ("量排名", vol_pair,
          vol_rank_cell_style(int(vol_n or 99), _CARD["white"])[1]),
         ("量比", (tape or {}).get("volume", {}).get("line") or "—", _CARD["ink"]),
     ])

@@ -131,6 +131,7 @@ class CardDataAccuracyTests(unittest.TestCase):
             self.assertEqual(lab, "60日量")
             self.assertLessEqual(int(n), 10)
             self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
+            self.assertTrue(any("120日第" in str(b) for b in (card.get("badges") or [])))
 
         r824 = tbl[tbl["date"].astype(str) == "20260824"]
         if not r824.empty:
