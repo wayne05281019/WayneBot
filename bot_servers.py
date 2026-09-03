@@ -579,12 +579,16 @@ class WayneTelegramBot:
 
     async def decision_card_btn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        last = self._last_card.get(uid)
-        if last:
-            await self._send_decision_card_quick(update.message, last, uid)
-        else:
-            await self._prompt_decision_card(update.message, uid)
+        status = await self._transient_status(update.message, "決策卡產製中…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_decision_card_quick(update.message, last, uid, skip_wait_msg=True)
+            else:
+                await self._prompt_decision_card(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     def _reply_menu(self):
         """兩排各五格：左→右依常用順序；次排最右＝大盤。"""
@@ -1719,12 +1723,12 @@ class WayneTelegramBot:
         )
 
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
         await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
         effective_live_bucket = live_bucket
         effective_subtitle = subtitle
         if live_bucket == "daytrade" and not is_tw_equity_session():
-            status = await message.reply_text(status_text, reply_markup=self._reply_menu())
             try:
                 await message.reply_html(
                     f"<b>{title}</b>\n<i>{daytrade_closed_message(phase)}</i>",
@@ -1748,7 +1752,6 @@ class WayneTelegramBot:
                     "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
                     "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。"
                 )
-        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
         try:
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
@@ -1910,38 +1913,16 @@ class WayneTelegramBot:
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             await self._enter_main_menu(update.message, uid)
-            from money_flow import (
-                catch_up_quotes_to_cap,
-                format_flow_html,
-                recompute_sector_flow,
-                resolve_flow_as_of,
-            )
-            from trading_calendar import fuse_end_trading_date
+            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of, sector_flow_ready
 
-            as_of, _ = resolve_flow_as_of(self.db_path)
-            cap = fuse_end_trading_date()
-            wait_msg = None
-            if cap > (as_of or ""):
-                try:
-                    wait_msg = await update.message.reply_text(
-                        "今日盤後資料補齊中（Release 備份較舊，約 1～2 分鐘）…"
-                    )
-                    await asyncio.wait_for(
-                        asyncio.to_thread(catch_up_quotes_to_cap, self.db_path),
-                        timeout=180.0,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("資金輪動補齊逾時 cap=%s as_of=%s", cap, as_of)
-                finally:
-                    if wait_msg is not None:
-                        try:
-                            await wait_msg.delete()
-                        except Exception:
-                            pass
-            as_of, _ = resolve_flow_as_of(self.db_path)
+            as_of, lag = resolve_flow_as_of(self.db_path)
             if as_of:
-                await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
+                ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
+                if not ready:
+                    await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
             html = await asyncio.to_thread(format_flow_html, self.db_path, user_id=uid)
+            if lag and lag not in html:
+                html = lag + "\n" + html
         except Exception as e:
             logger.exception("資金移動失敗")
             await self._delete_message(status)
@@ -2048,13 +2029,21 @@ class WayneTelegramBot:
 
     async def portfolio_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        await self._send_portfolio(update.message, uid)
+        status = await self._transient_status(update.message, "讀取持股…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            await self._send_portfolio(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     async def watch_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        await self._send_watch(update.message, uid)
+        status = await self._transient_status(update.message, "讀取觀察清單…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            await self._send_watch(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     async def card_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -2504,7 +2493,7 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await self._send_card_to(update.message, code, uid)
 
-    async def _send_decision_card_quick(self, message, code: str, uid: str = ""):
+    async def _send_decision_card_quick(self, message, code: str, uid: str = "", *, skip_wait_msg: bool = False):
         """盤中快捷：MIS 現價 + 高低決策卡（不重跑導航／籌碼，較快）。"""
         code = str(code).strip()
         uid = uid or self._uid_from_message(message)
@@ -2539,11 +2528,12 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("決策卡現價列失敗 code=%s", code)
         wait_msg = None
-        try:
-            wait_msg = await message.reply_text("決策卡產製中…")
-            self._track_lookup_fade(actor, wait_msg, "wait")
-        except Exception:
-            pass
+        if not skip_wait_msg:
+            try:
+                wait_msg = await message.reply_text("決策卡產製中…")
+                self._track_lookup_fade(actor, wait_msg, "wait")
+            except Exception:
+                pass
         try:
             from wayne_navigator import NavigatorEngine, render_decision_card_png
 

@@ -14,6 +14,9 @@ except Exception:
     def get_db_path():
         return "data/wayne_market.db"
 
+_LIVE_SECTOR_CACHE: Dict[str, Any] = {}
+_LIVE_SECTOR_TTL = 45.0
+
 
 def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -254,6 +257,22 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
     return rows
 
 
+def sector_flow_ready(db_path: str, ymd: str) -> bool:
+    """daily_sector_flow 已有當日資料時略過重算。"""
+    ymd = str(ymd or "").replace("-", "")
+    if not ymd:
+        return False
+    conn = sqlite3.connect(db_path or get_db_path())
+    try:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM daily_sector_flow WHERE date=?",
+            (ymd,),
+        ).fetchone()[0]
+        return int(n or 0) >= 3
+    finally:
+        conn.close()
+
+
 def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 8) -> int:
     """把最近幾個交易日的產業輪動寫進 daily_sector_flow，供佈局對照。"""
     path = db_path or get_db_path()
@@ -475,10 +494,16 @@ def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 360) -> Dict[st
 
 def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
     """盤中最強族：MIS 即時均漲 × 量權重聚合（不寫庫、不用盤後法人）。"""
+    import time as _time
+
     from live_quote import is_live_merge_window
 
     if not is_live_merge_window(now):
         return []
+    cache_key = str(db_path or get_db_path())
+    cached = _LIVE_SECTOR_CACHE.get(cache_key)
+    if cached and (_time.time() - float(cached.get("ts") or 0)) < _LIVE_SECTOR_TTL:
+        return list(cached.get("rows") or [])
     from midday_review import fetch_mis_batch
 
     conn = sqlite3.connect(db_path)
@@ -541,6 +566,7 @@ def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
             }
         )
     rows.sort(key=lambda x: (float(x["avg_pct"]), int(x["sample_n"])), reverse=True)
+    _LIVE_SECTOR_CACHE[cache_key] = {"ts": _time.time(), "rows": rows}
     return rows
 
 
