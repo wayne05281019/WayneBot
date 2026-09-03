@@ -186,3 +186,13 @@ def skip_chart_warmup() -> bool:
     if raw in ("1", "true", "yes", "on"):
         return True
     return bool((os.getenv("RENDER") or "").strip())
+
+
+def render_lite_boot() -> bool:
+    """Render 512Mi：背景下載庫、延後索引與盤後融合，避免冷啟 OOM／健檢逾時。"""
+    raw = (os.getenv("WAYNE_RENDER_LITE") or "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    return bool((os.getenv("RENDER") or "").strip())
