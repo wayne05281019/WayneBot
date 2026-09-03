@@ -706,7 +706,8 @@ def format_sector_theme_brief(
     three = int(top_row["three_net"])
     lines = [
         f"<b>盤後最強族｜{headline}</b>",
-        f"<i>{top_row['industry']}　法人 {qty_text(three)}</i>",
+        f"<i>{top_row['industry']}</i>",
+        html_metrics_tight("法人", qty_text(three)),
     ]
     for i, r in enumerate(reps, start=1):
         title = _yahoo(r["stock_id"], r["stock_name"], db_path)
