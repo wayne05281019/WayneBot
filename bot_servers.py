@@ -331,6 +331,7 @@ HELP_TOPICS = {
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
 MENU_LAYOUT_VERSION = "4"
+MAX_PICK_INLINE_ROWS = 8
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -804,17 +805,16 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup([[self._q("menu")]])
 
     def _hub_keyboard(self, code: str, topic: str = "stock"):
+        """手機閱讀：每列最多三顆，常用放第一排。"""
         c = str(code).strip()[:6]
         return InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
-                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
                 ],
                 [
-                    InlineKeyboardButton("導航圖", callback_data=f"g:{c}"),
                     InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                     self._q(topic),
                 ],
@@ -853,7 +853,7 @@ class WayneTelegramBot:
         line_pack_id: str = None,
     ):
         rows = []
-        for i, (code, name) in enumerate((picks or [])[:12], start=1):
+        for i, (code, name) in enumerate((picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
@@ -861,7 +861,7 @@ class WayneTelegramBot:
         if line_pack_id:
             line_url = self._line_open_url(line_pack_id)
             if line_url:
-                rows.append([InlineKeyboardButton("開 LINE・傳本區", url=line_url)])
+                rows.append([InlineKeyboardButton("傳 LINE", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -902,7 +902,6 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton(label, callback_data=f"k:{c}"),
                     InlineKeyboardButton("➕", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
             )
         rows.append([self._q("stock")])
@@ -1008,17 +1007,12 @@ class WayneTelegramBot:
             )
         kb.append(
             [
-                InlineKeyboardButton("成交紀錄", callback_data="tj:trades"),
+                InlineKeyboardButton("成交", callback_data="tj:trades"),
                 InlineKeyboardButton("復盤", callback_data="tj:review"),
+                InlineKeyboardButton("AI倉", callback_data="ai_view"),
             ]
         )
-        kb.append(
-            [
-                InlineKeyboardButton("AI模擬倉", callback_data="ai_view"),
-                InlineKeyboardButton("AI操盤", callback_data="ai_run"),
-                self._q("portfolio"),
-            ]
-        )
+        kb.append([self._q("portfolio")])
         return InlineKeyboardMarkup(kb)
 
     async def _send_trade_journal(self, message, uid: str, *, review: bool = False) -> None:
