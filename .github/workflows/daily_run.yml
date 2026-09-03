@@ -15,6 +15,11 @@ on:
           - increment
           - morning_screen
         default: increment
+  # 機器人無法 workflow_dispatch（403）時，改推這個檔觸發盤後融合
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/increment'
 
 permissions:
   contents: write
