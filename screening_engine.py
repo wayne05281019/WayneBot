@@ -183,6 +183,25 @@ class ScreeningEngine:
         d20 = round((latest_close - low20) / low20 * 100.0, 2) if (low20 and low20 > 0) else 0.0
         dist_h20 = round((latest_close - hi20_close) / hi20_close * 100.0, 2) if hi20_close else 0.0
         chase_warning = bool(hi20_close > 0 and latest_close >= hi20_close * 0.985)
+        try:
+            from decision_card_signals import TEMP_ATH_WATCH, compute_card_temperature
+
+            h20_w = float(high_series.tail(20).max()) if len(high_series) else 0.0
+            l20_w = float(low_series.tail(20).min()) if len(low_series) else 0.0
+            h60_w = float(high_series.tail(60).max()) if len(high_series) else 0.0
+            l60_w = float(low_series.tail(60).min()) if len(low_series) else 0.0
+            bias_m = ((float(latest_close) - float(ma20)) / float(ma20) * 100.0) if ma20 else 0.0
+            temp_n = compute_card_temperature(
+                float(latest_close), h20_w, l20_w, bias_m, high60=h60_w, low60=l60_w
+            )
+            near_ath = bool(
+                (hi120 and float(latest_close) >= float(hi120) * 0.998)
+                or (hi480 and float(latest_close) >= float(hi480) * 0.998)
+            )
+            if near_ath and temp_n >= TEMP_ATH_WATCH:
+                chase_warning = True
+        except Exception:
+            pass
         prev_close = close_series.iloc[-2] if len(df) >= 2 else latest_close
         prev_d20 = round((prev_close - low20) / low20 * 100.0, 2) if (low20 and low20 > 0) else 0.0
 

@@ -15,6 +15,10 @@ import pandas as pd
 
 # 起漲桶：卡片綠底雖在 >5% 時仍可能成立，但海選不收已噴段（使用者回饋 5%+ 不像剛起步）
 LEAVE_ZERO_SCREEN_MAX_PCT = 5.0
+# 創中長線新高時，溫度計 ≥80 要少追（CaryBot：溫度是領先指標）。
+TEMP_ATH_WATCH = 80.0
+# K20高：收盤須貼近 20 日收盤高（CaryBot 9/2 穩懋 469.5 / 492 ≈ 95.4%）。
+K20_HIGH_NEAR = 0.95
 
 
 def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:
@@ -287,16 +291,64 @@ def alert_tag(
     if k is not None:
         if k <= 35.0 and (l20 > 0 and c <= l20 * 1.005 or bias < -0.5):
             return "K20低"
-        if k >= 70.0 and h20 > 0 and c >= h20 * 0.99:
+        if k >= 70.0 and h20 > 0 and c >= h20 * K20_HIGH_NEAR:
             return "K20高"
         return "No"
     if l20 > 0 and c <= l20 * 1.005:
         return "K20低"
     if bias < 0.0:
         return "K20低"
-    if h20 > 0 and c >= h20 * 0.99:
+    if h20 > 0 and c >= h20 * K20_HIGH_NEAR:
         return "K20高"
     return "No"
+
+
+def display_alert_cell(alert: str, hi_lo: str) -> str:
+    """預警欄呈現：No 時仍露出高低；K20 與 20高／10低重疊時優先顯示高低（CaryBot 同欄）。"""
+    a = str(alert or "").strip()
+    h = str(hi_lo or "").strip()
+    if a == "60低":
+        return a
+    if h in ("20高", "10高", "5高", "20低", "10低", "5低"):
+        if a in ("", "No", "—") or a.startswith("K20"):
+            return h
+    if a and a not in ("No", "—"):
+        return a
+    return a or "—"
+
+
+def candle_up_taiwan(close, prev_close=None, open_=None) -> bool:
+    """台股紅漲綠跌：相對昨收。無昨收時退回收盤≥開盤。平盤視為紅。"""
+    try:
+        c = float(close)
+    except (TypeError, ValueError):
+        return True
+    try:
+        p = float(prev_close) if prev_close is not None else 0.0
+    except (TypeError, ValueError):
+        p = 0.0
+    if p == p and p > 0:
+        return c >= p
+    try:
+        o = float(open_) if open_ is not None else c
+    except (TypeError, ValueError):
+        o = c
+    return c >= o
+
+
+def volume_headline_rank(vol_rank_480=99, vol_rank_120=99, vol_rank_60=99) -> tuple[str, int]:
+    """表頭量能：480 → 120 → 60，前 10 名才亮；否則退回 120 日量。"""
+    try:
+        r480, r120, r60 = int(vol_rank_480 or 99), int(vol_rank_120 or 99), int(vol_rank_60 or 99)
+    except (TypeError, ValueError):
+        return "120日量", 99
+    if r480 <= 10:
+        return "480日量", r480
+    if r120 <= 10:
+        return "120日量", r120
+    if r60 <= 10:
+        return "60日量", r60
+    return "120日量", r120
 
 
 def double_green_breakout(

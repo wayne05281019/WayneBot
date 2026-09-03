@@ -1036,6 +1036,12 @@ class LookupCardTest(unittest.TestCase):
         for key in ("pill_hi", "pill_lo", "tag", "navy"):
             with self.subTest(key=key):
                 self.assertGreaterEqual(_wcag("#FFFFFF", _CARD[key]), 4.5)
+        from wayne_navigator import _fg_on_panel, profit_cell_style
+
+        bg, fg = profit_cell_style(66.6, None, _CARD["white"])
+        self.assertEqual(fg, _CARD["white"])
+        shown = _fg_on_panel(fg, bg)
+        self.assertGreaterEqual(_wcag(shown, "#FFFFFF"), 4.5)
 
     def test_profit_cell_uses_low_palette_not_hardcoded_pink(self):
         import inspect
@@ -1063,13 +1069,16 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(alert_cell_style("10低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(alert_cell_style("20高", _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
         self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
         self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["lo_fill"])
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("profit_cell_style", src)
-        self.assertIn("hl_cell_style", src)
+        self.assertIn("display_alert_cell", src)
+        self.assertIn("vol_rank_cell_style", src)
         self.assertNotIn("#FBEAF1", src)
 
     def test_card_bold_and_body_use_different_font_weights(self):
