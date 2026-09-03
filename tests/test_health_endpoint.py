@@ -189,13 +189,21 @@ def test_health_never_claims_healthy_while_not_serving(serve, monkeypatch):
 def test_health_survives_data_layer_exception(serve, monkeypatch):
     """資料狀態算不出來時不能 500，也不能假裝資料是好的。"""
     get, db, main = serve
-    import automation_health
 
     def _boom(*a, **k):
         raise RuntimeError("audit exploded")
 
-    monkeypatch.setattr(automation_health, "health_payload", _boom)
+    monkeypatch.setattr(main, "_cheap_health_data", _boom)
     code, body = get("/health")
     assert code == 200
     assert body["data_ok"] is False
     assert "audit exploded" in body.get("data_error", "")
+
+
+def test_live_always_200_even_if_db_missing(serve, monkeypatch):
+    """Render 健檢走 /live：行程活著就 200，不碰資料庫。"""
+    get, db, main = serve
+    monkeypatch.setenv("WAYNE_DB_PATH", str(db) + ".gone")
+    code, body = get("/live")
+    assert code == 200
+    assert body.get("live") is True
