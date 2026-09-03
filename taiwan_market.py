@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -240,13 +241,28 @@ def ensure_index_breadth_daily_table(db_path: str) -> None:
         conn.close()
 
 
+def _parse_count_cell(val: Any) -> Tuple[int, int]:
+    """MI_INDEX 儲存格：'4,107(47)' → (4107, 47)；'845' → (845, 0)。"""
+    s = str(val or "").replace(",", "").replace("+", "").strip()
+    if not s or s in ("--", "-", "N/A"):
+        return 0, 0
+    m = re.match(r"(-?\d+(?:\.\d+)?)(?:\((\d+)\))?$", s)
+    if not m:
+        n = int(_clean_index_num(val, is_float=False))
+        return n, 0
+    return int(float(m.group(1))), int(m.group(2) or 0)
+
+
 def _parse_breadth_row_cells(row: List[Any]) -> Tuple[int, int, int]:
     """解析 MI_INDEX 漲跌列：回傳 (上市, 上櫃, 合計或第三欄)。"""
     if not row or len(row) < 2:
         return 0, 0, 0
-    tw = int(_clean_index_num(row[1], is_float=False))
-    two = int(_clean_index_num(row[2], is_float=False)) if len(row) > 2 else 0
-    total = int(_clean_index_num(row[-1], is_float=False)) if len(row) > 3 else tw + two
+    tw, _ = _parse_count_cell(row[1])
+    two, _ = _parse_count_cell(row[2]) if len(row) > 2 else (0, 0)
+    if len(row) > 3:
+        total, _ = _parse_count_cell(row[-1])
+    else:
+        total = tw + two
     if total <= 0 and (tw > 0 or two > 0):
         total = tw + two
     return tw, two, total
@@ -287,16 +303,23 @@ def _fetch_twse_index_breadth(date: str) -> Optional[Dict[str, Any]]:
         for row in table.get("data", []):
             label = str(row[0] if row else "").replace(" ", "")
             tw, two, total = _parse_breadth_row_cells(row)
-            if "漲停" in label:
+            tw_lim = _parse_count_cell(row[1])[1] if len(row) > 1 else 0
+            two_lim = _parse_count_cell(row[2])[1] if len(row) > 2 else 0
+            # 新表：「上漲(漲停)」同一列，括號才是漲停家數。先認上漲／下跌。
+            if "上漲" in label:
+                out["up_tw"], out["up_two"] = tw, two
+                if "漲停" in label:
+                    out["limit_up"] = tw_lim + two_lim
+            elif "下跌" in label:
+                out["down_tw"], out["down_two"] = tw, two
+                if "跌停" in label:
+                    out["limit_down"] = tw_lim + two_lim
+            elif "漲停" in label:
                 out["limit_up"] = total or tw + two
             elif "跌停" in label:
                 out["limit_down"] = total or tw + two
-            elif "平盤" in label:
+            elif "平盤" in label or "持平" in label:
                 out["flat_count"] = total or tw + two
-            elif "上漲" in label or label.startswith("上漲"):
-                out["up_tw"], out["up_two"] = tw, two
-            elif "下跌" in label or label.startswith("下跌"):
-                out["down_tw"], out["down_two"] = tw, two
         up = out["up_tw"] + out["up_two"]
         down = out["down_tw"] + out["down_two"]
         if up + down <= 0:
@@ -954,8 +977,12 @@ def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date, symbol) DO UPDATE SET
-                    open=excluded.open, high=excluded.high, low=excluded.low,
-                    close=excluded.close, volume=excluded.volume, pct_change=excluded.pct_change,
+                    open=COALESCE(NULLIF(excluded.open, 0), index_daily.open),
+                    high=COALESCE(NULLIF(excluded.high, 0), index_daily.high),
+                    low=COALESCE(NULLIF(excluded.low, 0), index_daily.low),
+                    close=excluded.close,
+                    volume=CASE WHEN excluded.volume > 0 THEN excluded.volume ELSE index_daily.volume END,
+                    pct_change=excluded.pct_change,
                     ma20=excluded.ma20, ma60=excluded.ma60, regime=excluded.regime, updated_at=excluded.updated_at
                 """,
                 (
@@ -1240,7 +1267,60 @@ def _breadth_from_db(db_path: str, as_of: str) -> Dict[str, float]:
         total += 1
         if float(cl) >= ma20:
             above += 1
-    return {"above_ma20_pct": round((above / total * 100.0) if total else 0.0, 1), "sample_n": total}
+    return {
+        "above_ma20_pct": round((above / total * 100.0) if total else 0.0, 1),
+        "sample_n": total,
+    }
+
+
+def _quote_up_down_counts(db_path: str, as_of: str) -> Dict[str, int]:
+    """當日個股漲跌家數（STOCK/KY，不含 ETF）。官方「證券數」含權證會灌水。"""
+    d = str(as_of or "").replace("-", "")[:8]
+    if len(d) != 8:
+        return {"up": 0, "down": 0, "flat": 0, "n": 0}
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT
+              SUM(CASE WHEN q.pct_change > 0 THEN 1 ELSE 0 END),
+              SUM(CASE WHEN q.pct_change < 0 THEN 1 ELSE 0 END),
+              SUM(CASE WHEN q.pct_change = 0 OR q.pct_change IS NULL THEN 1 ELSE 0 END),
+              COUNT(*)
+            FROM daily_quotes q
+            JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE q.date = ?
+              AND LENGTH(q.stock_id) = 4
+              AND COALESCE(u.is_active, 1) = 1
+              AND UPPER(COALESCE(u.asset_type, 'STOCK')) IN ('STOCK', 'KY')
+            """,
+            (d,),
+        ).fetchone()
+    except sqlite3.Error:
+        return {"up": 0, "down": 0, "flat": 0, "n": 0}
+    finally:
+        conn.close()
+    if not row:
+        return {"up": 0, "down": 0, "flat": 0, "n": 0}
+    return {
+        "up": int(row[0] or 0),
+        "down": int(row[1] or 0),
+        "flat": int(row[2] or 0),
+        "n": int(row[3] or 0),
+    }
+
+
+def _usable_official_breadth(official: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """證交所新表含權證，上漲+下跌可逾萬；那種漲跌比不當 regime／下跌風險。"""
+    if not official:
+        return official
+    up = int(official.get("up_count") or 0)
+    down = int(official.get("down_count") or 0)
+    if up + down <= 2500:
+        return official
+    out = dict(official)
+    out["up_ratio"] = None
+    return out
 
 
 def _falling_risk_light(score: int) -> str:
@@ -1466,7 +1546,9 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
         idx = full_idx[full_idx["date"].astype(str) <= day].reset_index(drop=True)
         if idx.empty:
             continue
-        official = load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
+        official = _usable_official_breadth(
+            load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
+        )
         if day == last_day:
             breadth, _ = _resolve_breadth_for_date(db_path, day)
         elif official:
@@ -1630,7 +1712,9 @@ def analyze_taiwan_market(
     if not ref_date:
         ref_date = str(idx["date"].iloc[-1])
     breadth, breadth_date = _resolve_breadth_for_date(db_path, ref_date)
-    official = load_index_breadth_daily(db_path, ref_date) or _nearest_official_breadth(db_path, ref_date)
+    official = _usable_official_breadth(
+        load_index_breadth_daily(db_path, ref_date) or _nearest_official_breadth(db_path, ref_date)
+    )
     flow_net = _sector_flow_net(db_path, ref_date)
     flow_date = ref_date
     if flow_net is None:
@@ -2126,11 +2210,15 @@ def _index_performance(idx: pd.DataFrame) -> Dict[str, Any]:
     if "volume" in idx.columns and len(idx) >= 1:
         vols = idx["volume"].astype(float)
         last_vol = float(vols.iloc[-1] or 0)
-        avg20 = float(vols.tail(20).mean()) if len(vols) >= 5 else 0.0
-        if avg20 > 0:
-            vol_ratio = round(last_vol / avg20, 2)
-        if len(vols) >= 2:
-            prev_vol = float(vols.iloc[-2] or 0)
+        if last_vol <= 0:
+            # Yahoo ^TWII 最新一根量常是 0；拿 0 去除以昨量會變成「量縮 100%、量比 0.00」。
+            last_vol = None
+        else:
+            avg20 = float(vols.tail(20).mean()) if len(vols) >= 5 else 0.0
+            if avg20 > 0:
+                vol_ratio = round(last_vol / avg20, 2)
+            if len(vols) >= 2:
+                prev_vol = float(vols.iloc[-2] or 0)
     open_px = high_px = low_px = None
     if "open" in idx.columns:
         try:
@@ -2497,10 +2585,24 @@ def format_taiwan_market_page_html(
         _TG_SECTION,
         "<b>漲跌家數</b>",
     ]
+    qb = _quote_up_down_counts(db_path, ref)
+    if int(qb.get("n") or 0) > 0 and int(qb.get("up") or 0) + int(qb.get("down") or 0) > 0:
+        line = f"漲 {qb['up']}　跌 {qb['down']}"
+        if int(qb.get("flat") or 0) > 0:
+            line += f"　平 {qb['flat']}"
+        lines.append(line)
     ob = snap.get("official_breadth")
-    if ob and int(ob.get("up_count") or 0) + int(ob.get("down_count") or 0) > 0:
-        lines.append(f"漲 {ob['up_count']}　跌 {ob['down_count']}")
-        lines.append(f"漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}")
+    ob_same_day = bool(ob) and str(ob.get("date") or "") == ref
+    if (not qb or int(qb.get("n") or 0) <= 0) and ob_same_day:
+        up_n = int(ob.get("up_count") or 0)
+        down_n = int(ob.get("down_count") or 0)
+        # 證交所新表含權證，家數會到數千；那種數字不當「漲跌家數」。
+        if 0 < up_n + down_n <= 2500:
+            lines.append(f"漲 {up_n}　跌 {down_n}")
+    if ob_same_day:
+        lu, ld = int(ob.get("limit_up") or 0), int(ob.get("limit_down") or 0)
+        if lu + ld > 0:
+            lines.append(f"漲停 {lu}　跌停 {ld}")
     if int(snap.get("sample_n") or 0) > 0:
         lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%")
     flow_date = str(snap.get("sector_flow_as_of") or ref)

@@ -371,6 +371,99 @@ def test_fetch_twse_index_breadth_parses_table():
     assert row["limit_up"] == 57
 
 
+def test_fetch_twse_index_breadth_parses_combined_up_limit_row():
+    """2026/09 起 MI_INDEX 把上漲與漲停併成『上漲(漲停)』＋『4,107(47)』。"""
+    payload = {
+        "stat": "OK",
+        "tables": [
+            {
+                "title": "漲跌證券數合計",
+                "data": [
+                    ["上漲(漲停)", "4,107(47)", "209(5)"],
+                    ["下跌(跌停)", "9,440(168)", "776(7)"],
+                    ["持平", "845", "86"],
+                ],
+            }
+        ],
+    }
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = payload
+    with patch("taiwan_market._SESSION.get", return_value=mock_resp):
+        row = _fetch_twse_index_breadth("20260903")
+    assert row is not None
+    assert row["up_count"] == 4107 + 209
+    assert row["down_count"] == 9440 + 776
+    assert row["limit_up"] == 47 + 5
+    assert row["limit_down"] == 168 + 7
+    assert row["flat_count"] == 845 + 86
+
+
+def test_index_performance_hides_zero_yahoo_volume():
+    from taiwan_market import _format_performance_lines, _index_performance, _market_read_note
+
+    idx = pd.DataFrame(
+        {
+            "date": ["20260901", "20260902", "20260903"],
+            "close": [46948.0, 46164.0, 45857.0],
+            "volume": [5_018_300, 4_100_600, 0.0],
+            "pct_change": [1.78, -1.67, -0.67],
+        }
+    )
+    perf = _index_performance(idx)
+    assert perf["volume"] is None
+    assert perf["vol_ratio"] is None
+    assert perf["vol_chg_pct"] is None
+    lines = _format_performance_lines({**perf, "vs_ma20_pct": 0.9, "vs_high52_pct": -4.0})
+    joined = "\n".join(lines)
+    assert "量比 0.00" not in joined
+    assert "量縮 100" not in joined
+    note = _market_read_note({**perf, "vs_ma20_pct": 0.9, "vs_high52_pct": -4.0, "chg5_pct": 0.1})
+    assert "量比 0.00" not in note
+
+
+@patch("taiwan_market._fetch_index_daily")
+@patch("taiwan_market._fetch_twse_index_close")
+def test_sync_index_daily_keeps_volume_when_yahoo_zero(mock_twse, mock_yahoo, tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "idx.db")
+    mock_twse.return_value = None
+    mock_yahoo.return_value = pd.DataFrame(
+        {
+            "date": ["20260902", "20260903"],
+            "open": [46900.0, 46325.0],
+            "high": [46946.0, 46517.0],
+            "low": [46164.0, 45839.0],
+            "close": [46164.0, 45857.0],
+            "volume": [4_100_600.0, 3_800_000.0],
+            "pct_change": [-1.67, -0.67],
+        }
+    )
+    r = sync_index_daily(db)
+    assert r["ok"]
+    mock_yahoo.return_value = pd.DataFrame(
+        {
+            "date": ["20260902", "20260903"],
+            "open": [46900.0, 46325.0],
+            "high": [46946.0, 46517.0],
+            "low": [46164.0, 45839.0],
+            "close": [46164.0, 45857.0],
+            "volume": [4_100_600.0, 0.0],
+            "pct_change": [-1.67, -0.67],
+        }
+    )
+    sync_index_daily(db)
+    conn = sqlite3.connect(db)
+    vol, op = conn.execute(
+        "SELECT volume, open FROM index_daily WHERE date=?",
+        ("20260903",),
+    ).fetchone()
+    conn.close()
+    assert vol == 3_800_000.0
+    assert op == 46325.0
+
+
 @patch("taiwan_market._fetch_twse_index_breadth")
 def test_sync_index_breadth_daily_writes_table(mock_fetch, tmp_path):
     import sqlite3
@@ -514,6 +607,9 @@ def test_production_db_market_page_has_real_data():
     assert "台股大盤" in html
     assert "加權指數" in html
     assert "距月線" in html
+    assert "量比 0.00" not in html
+    assert "量縮 100" not in html
+    assert "漲 " in html and "跌 " in html
 
 
 def test_compute_basis_pct():
