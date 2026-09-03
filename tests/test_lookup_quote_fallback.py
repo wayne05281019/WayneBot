@@ -33,6 +33,12 @@ def test_help_has_row1_row2_and_ai():
     assert "20:00" in HELP_TOPICS["ai"]
     assert "決策卡" in HELP_TOPICS["row1"]
     assert "隔日沖" in HELP_TOPICS["row2"]
+    assert "按表操課" in HELP_TOPICS["guide"]
+    assert "紅箭頭" in HELP_TOPICS["screen"]
+    assert "溫度≥80" in HELP_TOPICS["stock"]
+    assert "價溫背離" in HELP_TOPICS["stock"]
+    assert "60日量" in HELP_TOPICS["stock"]
+    assert "露出高低" in HELP_TOPICS["stock"]
 
 
 def test_us_alert_no_wide_rjust_padding():

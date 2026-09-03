@@ -17,4 +17,6 @@ __pycache__/
 !/docs/expert_notes/飆客/
 !/docs/expert_notes/飆客/charts/
 !/docs/expert_notes/飆客/charts/*.png
+!/形態學/carybot_low_buy_20260903/
+!/形態學/carybot_low_buy_20260903/*.png
 .DS_Store

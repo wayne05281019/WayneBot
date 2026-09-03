@@ -74,5 +74,73 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(float(card["gain_pct"]), 37.1, places=1)
 
 
+    @pytest.mark.production_db
+    def test_3105_official_20260903_matches_db_and_carybot_levels(self):
+        """穩懋 20260903 官方：漲跌對昨收、高低摘要、60日量前十、預警露出 10低。"""
+        db = get_db_path()
+        import sqlite3
+
+        from decision_card_signals import candle_up_taiwan, display_alert_cell, volume_headline_rank
+        from wayne_navigator import NavigatorEngine
+
+        conn = sqlite3.connect(db)
+        row = conn.execute(
+            """
+            SELECT replace(date,'-',''), open, high, low, close, volume, pct_change
+            FROM daily_quotes WHERE stock_id='3105' AND replace(date,'-','')='20260903'
+            """
+        ).fetchone()
+        prev = conn.execute(
+            """
+            SELECT close FROM daily_quotes
+            WHERE stock_id='3105' AND replace(date,'-','') < '20260903'
+            ORDER BY replace(date,'-','') DESC LIMIT 1
+            """
+        ).fetchone()
+        conn.close()
+        if not row:
+            self.skipTest("no 3105 20260903")
+        o, h, l, c = float(row[1]), float(row[2]), float(row[3]), float(row[4])
+        self.assertAlmostEqual(o, 478.0, places=1)
+        self.assertAlmostEqual(h, 490.0, places=1)
+        self.assertAlmostEqual(l, 440.0, places=1)
+        self.assertAlmostEqual(c, 446.5, places=1)
+        prev_c = float(prev[0]) if prev else 0.0
+        self.assertAlmostEqual(prev_c, 469.5, places=1)
+        self.assertFalse(candle_up_taiwan(c, prev_c, o))
+
+        card = NavigatorEngine(db).get_decision_card("3105", merge_live=False)
+        tbl = card["table"]
+        r903 = tbl[tbl["date"].astype(str) == "20260903"]
+        self.assertFalse(r903.empty, "20 日表應含 20260903")
+        self.assertAlmostEqual(float(r903.iloc[0]["close"]), 446.5, places=1)
+        latest = str(card.get("latest_date")).replace("-", "")[:8]
+        if latest == "20260903":
+            self.assertAlmostEqual(float(card["close"]), 446.5, places=1)
+            self.assertAlmostEqual(float(card["change_pct"]), -4.90, places=2)
+            self.assertAlmostEqual(float(card["h10"]), 492.0, places=1)
+            self.assertAlmostEqual(float(card["h20"]), 492.0, places=1)
+            self.assertAlmostEqual(float(card["l10"]), 355.0, places=0)
+            self.assertAlmostEqual(float(card["l60"]), 268.0, places=0)
+            self.assertAlmostEqual(float(card["gain_pct"]), 66.6, places=1)
+            lab, n = volume_headline_rank(
+                card.get("vol_rank_480") or 99,
+                card.get("vol_rank") or 99,
+                card.get("vol_rank_60") or 99,
+            )
+            self.assertEqual(lab, "60日量")
+            self.assertLessEqual(int(n), 10)
+            self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
+
+        r824 = tbl[tbl["date"].astype(str) == "20260824"]
+        if not r824.empty:
+            shown = display_alert_cell(str(r824.iloc[0]["預警"]), str(r824.iloc[0]["高低"]))
+            self.assertEqual(shown, "10低")
+        r901 = tbl[tbl["date"].astype(str) == "20260901"]
+        if not r901.empty:
+            shown = display_alert_cell(str(r901.iloc[0]["預警"]), str(r901.iloc[0]["高低"]))
+            self.assertEqual(shown, "20高")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -383,6 +383,7 @@ class NavigatorEngine:
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
         from decision_card_signals import (
+            TEMP_ATH_WATCH,
             cal60_low_close_at,
             card_regime_label,
             compute_card_temperature,
@@ -390,6 +391,7 @@ class NavigatorEngine:
             profit_pct_card_series,
             profit_pct_series,
             resolve_daily_change_pct,
+            volume_headline_rank,
         )
 
         # 獲利：決策卡用 profit_pct_card_series（CaryBot cal60；貼 20 日低時 0.0%）；海選用 profit_floor_at。
@@ -422,6 +424,10 @@ class NavigatorEngine:
         )
         df["vol_rank_480"] = self._calc_rolling_rank(
             df["volume"], window=480, closes=close_s,
+            turnovers=df["turnover_k"] if "turnover_k" in df.columns else None,
+        )
+        df["vol_rank_60"] = self._calc_rolling_rank(
+            df["volume"], window=60, closes=close_s,
             turnovers=df["turnover_k"] if "turnover_k" in df.columns else None,
         )
 
@@ -522,8 +528,6 @@ class NavigatorEngine:
             ma60s = compute_ma60s(m0, m7, float(latest["close"] or 0))
         raw_qty60 = float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)
         qty60 = int(round(raw_qty60))
-        if qty60 >= 10000:
-            qty60 = int(round(qty60 / 100.0) * 100)
         badges = []
         if is_live:
             try:
@@ -538,10 +542,10 @@ class NavigatorEngine:
             badges.append("已除權還原")
         vr480 = int(latest["vol_rank_480"])
         vr120 = int(latest["vol_rank_120"])
-        if vr480 <= 10:
-            badges.append(f"480日量第 {vr480} 名")
-        elif vr120 <= 10:
-            badges.append(f"120日量第 {vr120} 名")
+        vr60 = int(latest["vol_rank_60"])
+        vol_lab, vol_n = volume_headline_rank(vr480, vr120, vr60)
+        if vol_n <= 10:
+            badges.append(f"{vol_lab}第 {vol_n} 名")
         if float(latest["close"]) >= float(h20) * 0.998:
             badges.append("創20日新高")
         h120 = float(latest["high_120"]) if pd.notna(latest.get("high_120")) else 0.0
@@ -557,6 +561,16 @@ class NavigatorEngine:
             badges.append("創240日新高")
         elif h120 and c0 >= h120 * 0.998:
             badges.append("創120日新高")
+        last_temp = float(temp_nums[-1] or 0) if temp_nums else 0.0
+        ath_now = bool(
+            (h480 and c0 >= h480 * 0.998)
+            or (h240 and c0 >= h240 * 0.998)
+            or (h120 and c0 >= h120 * 0.998)
+        )
+        if ath_now and last_temp >= TEMP_ATH_WATCH:
+            badges.append("溫度≥80注意")
+        if trend_notes and str(trend_notes[-1] or "") == "價溫背離":
+            badges.append("價溫背離少追")
         if l480 and c0 <= l480 * 1.002:
             badges.append("創480日新低")
         elif l240 and c0 <= l240 * 1.002:
@@ -642,7 +656,7 @@ class NavigatorEngine:
             "temp_c": latest["溫度計"],
             "ma20": float(latest["ma20"]),
             "ma60s": ma60s,
-            "qty60": (int(round(qty60 / 100.0) * 100) if qty60 >= 10000 else int(qty60)),
+            "qty60": int(qty60),
             "xq_notes": xq_notes,
             "cal60_low": round(cal60_low, 2),
             "profit_floor": round(profit_floor, 2),
@@ -650,6 +664,8 @@ class NavigatorEngine:
             "k20_high_streak": streak,
             "vol_rank": vr120,
             "vol_rank_480": vr480,
+            "vol_rank_60": vr60,
+            "prev_close": float(prev_close or 0),
             "badges": badges,
             "open": float(latest.get("open") or 0),
             "high": float(latest.get("high") or 0),
@@ -915,6 +931,24 @@ def _mix(color, other, t: float) -> str:
     return mcolors.to_hex(tuple(x + (y - x) * t for x, y in zip(a, b)))
 
 
+def _fg_on_panel(fg, bg=None, panel="#FFFFFF") -> str:
+    """介紹圖只有字沒有格底：白字會消失，改用夠對比的深色。"""
+    try:
+        if fg and _wcag(fg, panel) >= 4.5:
+            return fg
+    except Exception:
+        pass
+    for cand in (bg, _CARD.get("hi_ink"), _CARD.get("ink"), "#111827"):
+        if not cand:
+            continue
+        try:
+            if _wcag(cand, panel) >= 4.5:
+                return cand
+        except Exception:
+            continue
+    return "#111827"
+
+
 def _wcag(fg, bg) -> float:
     """字色與底色的對比倍數；白字壓深底至少要 4.5 才不吃力。"""
     a, b = sorted((_lum(fg), _lum(bg)), reverse=True)
@@ -941,8 +975,10 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
             zorder=z + 1)
 
 
-def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
-    """在資料座標畫當日 K：紅實心上漲、綠實心下跌，含上下影。"""
+def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
+    """在資料座標畫當日 K：台股紅漲綠跌（相對昨收），含上下影。"""
+    from decision_card_signals import candle_up_taiwan
+
     o, hi, lo, cl = float(open_), float(high), float(low), float(close)
     rng = hi - lo
     if rng <= 0:
@@ -954,7 +990,7 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close):
     def py(p):
         return y + (float(p) - lo) / rng * h
 
-    color = "#e53935" if cl >= o else "#00897b"
+    color = "#e53935" if candle_up_taiwan(cl, prev_close, o) else "#00897b"
     cx = x + w / 2
     ax.plot([cx, cx], [py(lo), py(hi)], color=color, linewidth=2.4, solid_capstyle="round", zorder=4)
     body_lo, body_hi = py(min(o, cl)), py(max(o, cl))
@@ -1101,12 +1137,27 @@ def _price_at_window_low(i: int, closes: list, w0: int, tol: float = 0.002) -> b
         return False
 
 
+def _price_at_window_high(i: int, closes: list, w0: int, tol: float = 0.002) -> bool:
+    """近窗內收盤是否貼齊波段高（容許千分之二）。"""
+    try:
+        seg = [float(closes[j]) for j in range(w0, i + 1) if float(closes[j]) > 0]
+        if not seg:
+            return False
+        return float(closes[i]) >= max(seg) * (1.0 - tol)
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
 def compute_temp_trend_labels(
     temp_nums: list,
     closes: list | None = None,
     window: int = 20,
 ) -> tuple[list, list]:
-    """溫度升降溫標籤；溫度創窗內低但股價未創低 → 溫度壓縮＋價未新低。"""
+    """溫度升降溫標籤。
+
+    低檔：溫度創窗內低但股價未創低 → 溫度壓縮＋價未新低。
+    高檔：股價創窗內高但溫度已降、未創新高 → 降溫＋價溫背離（領先指標，少追）。
+    """
     labels: list = []
     notes: list = []
     closes = closes or []
@@ -1141,7 +1192,10 @@ def compute_temp_trend_labels(
             notes.append("")
         elif t < prev - 0.25:
             labels.append("降溫")
-            notes.append("")
+            note = ""
+            if closes and _price_at_window_high(i, closes, w0):
+                note = "價溫背離"
+            notes.append(note)
         else:
             labels.append("—")
             notes.append("")
@@ -1167,10 +1221,13 @@ def temp_trend_cell_style(label: str, base: str):
 
 
 def temp_trend_note_cell_style(note: str, base: str):
-    """升降註：價未新低等高對比小字。"""
+    """升降註：價未新低／價溫背離等高對比小字。"""
     C = _CARD
-    if str(note or "") == "價未新低":
+    n = str(note or "")
+    if n == "價未新低":
         return C["price_not_low_bg"], C["price_not_low_fg"]
+    if n == "價溫背離":
+        return C["temp_hot_bg"], C["temp_hot_fg"]
     return base or C["white"], C["ink_mute"]
 
 
@@ -1178,7 +1235,7 @@ def _badge_style(text: str):
     """徽章底色依語意（高／低／中性），不整排寫死粉紅。"""
     C = _CARD
     t = str(text or "")
-    hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破")
+    hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
     cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
     solid_hi = any(k in t for k in ("創", "新高", "新低", "近"))
     if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
@@ -1212,6 +1269,12 @@ def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
         return C["lo_hit_fill"], C["lo_ink"]
     if p <= 0.05:
         return C["lo_fill"], C["lo_ink"]
+    if p >= 40:
+        return C["pill_hi"], C["white"]
+    if p >= 20:
+        return C["hi_fill"], C["hi_ink"]
+    if p >= 8:
+        return C["temp_warm_bg"], C["temp_warm_fg"]
     return base, C["ink"]
 
 
@@ -1228,13 +1291,13 @@ def hl_cell_style(hl: str, base: str):
 
 
 def alert_cell_style(alert: str, base: str):
-    """預警欄底色：K20高／60低／K20低走色票，No＝列底。"""
+    """預警欄底色：K20高／20高／60低／10低走色票，No＝列底。"""
     C = _CARD
     base = base or C["white"]
     a = str(alert or "")
-    if a == "K20高":
+    if a == "K20高" or ("高" in a and "低" not in a):
         return C["hi_fill"], C["pill_hi"]
-    if a in ("60低", "K20低"):
+    if a in ("60低", "K20低") or "低" in a:
         return C["lo_fill"], C["lo_ink"]
     return base, C["ink_mute"]
 
@@ -1246,6 +1309,8 @@ def temp_cell_style(temp_n, base: str):
         t = float(temp_n)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
+    if t >= 80:
+        return C["pill_hi"], C["white"]
     if t >= 32:
         return C["temp_hot_bg"], C["temp_hot_fg"]
     if t >= 24:
@@ -1398,12 +1463,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     # 每個區塊先算高度再由上往下堆，圖高跟著內容長，不會有人被壓到。
     pad_x = 2.6
-    m_top, m_bot = 1.1, 1.5
-    head_h = 10.4
-    title_band, box_h, box_gap, pane_pad = 3.8, 9.0, 1.1, 1.2
-    tbl_title_h, hdr_h, body_h = 3.8, 3.2, 3.2
-    gap = 1.6
-    badge_h, badge_gap = 3.1, 1.0
+    m_top, m_bot = 1.0, 1.35
+    head_h = 8.6
+    title_band, box_h, box_gap, pane_pad = 3.6, 8.8, 1.0, 1.1
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
+    gap = 1.35
+    badge_h, badge_gap = 3.05, 0.85
 
     fig_w = 7.1
     badges = []
@@ -1423,7 +1488,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         row_w += (1.7 if row_w else 0) + bw
     if row:
         badge_rows.append(row)
-    price_h = 7.9 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+    price_h = 8.35 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -1483,46 +1548,54 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.text(cx, y + 1.75, f"({d})" if d != "—" else d, fontproperties=_fp(12.5, "bold"),
                 color=dc, ha="center", va="center", zorder=4)
 
-    # 標題帶：代號股名一行，標語自己一條色帶，右邊掛品牌。
+    # 標題帶：左代號股名、右品牌＋日期；標語色帶貼底，不留空。
     y = H - m_top - head_h
     ax.add_patch(patches.FancyBboxPatch(
-        (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=1.05",
+        (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=1.0",
         facecolor=C["navy"], edgecolor="none", zorder=2))
-    ax.text(pad_x + 2.8, y + head_h - 3.4, f"{card['stock_id']}　{card.get('stock_name') or ''}",
-            fontproperties=_fp(21, "bold"), color="#FFFFFF", va="center", zorder=3)
+    ax.text(pad_x + 2.8, y + head_h - 2.45, f"{card['stock_id']}　{card.get('stock_name') or ''}",
+            fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
     tag = "買低賣高決策卡　破解獲利密碼"
-    tag_w = tw(tag, 11.5) + 3.4
+    tag_w = tw(tag, 10.8) + 3.2
     ax.add_patch(patches.FancyBboxPatch(
-        (pad_x + 2.8, y + 1.6), tag_w, 3.2, boxstyle="round,pad=0,rounding_size=0.55",
+        (pad_x + 2.8, y + 1.2), tag_w, 2.85, boxstyle="round,pad=0,rounding_size=0.5",
         facecolor=C["tag"], edgecolor="none", zorder=3))
-    ax.text(pad_x + 2.8 + tag_w / 2, y + 3.2, tag, fontproperties=_fp(11.5, "heavy"),
+    ax.text(pad_x + 2.8 + tag_w / 2, y + 2.62, tag, fontproperties=_fp(10.8, "heavy"),
             color="#FFFFFF", ha="center", va="center", zorder=4)
-    brand_x = 100 - pad_x - 2.8
-    ax.text(brand_x, y + head_h / 2, "WayneBot", fontproperties=_fp(12, "bold"),
+    brand_x = 100 - pad_x - 2.6
+    ax.text(brand_x, y + head_h - 2.45, "WayneBot", fontproperties=_fp(11.5, "bold"),
             color=C["navy_soft"], ha="right", va="center", zorder=3)
-    mark_w = tw("WayneBot", 12) + 1.6
-    ax.add_patch(patches.FancyBboxPatch(
-        (brand_x - mark_w - 3.4, y + head_h / 2 - 1.55), 3.1, 3.1,
-        boxstyle="round,pad=0,rounding_size=0.6",
-        facecolor="#2C4270", edgecolor=C["navy_soft"], linewidth=0.9, zorder=3))
-    ax.text(brand_x - mark_w - 1.85, y + head_h / 2, "W", fontproperties=_fp(11.5, "bold"),
-            color="#FFFFFF", ha="center", va="center", zorder=4)
+    ax.text(brand_x, y + 2.62, _fmt_md(card.get("latest_date")), fontproperties=_fp(11, "bold"),
+            color="#C5D0E8", ha="right", va="center", zorder=3)
 
-    # 股價：大字在上，狀態徽章自己一列，不跟數字擠。
+    # 收盤＋漲跌＋開高低昨收；徽章自己一列。
     y -= gap + price_h
     pane(pad_x, y, 100 - 2 * pad_x, price_h)
     chg = float(card.get("change_pct") or 0)
     chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
-    px_cy = y + price_h - 4.1
-    ax.text(pad_x + 3.2, px_cy + 0.35, "股價", fontproperties=_fp(11), color=C["ink_soft"],
+    prev_c = float(card.get("prev_close") or 0)
+    chg_amt = (float(card["close"]) - prev_c) if prev_c else None
+    px_cy = y + price_h - 2.55
+    ax.text(pad_x + 3.2, px_cy + 0.28, "收盤", fontproperties=_fp(10.5), color=C["ink_soft"],
             va="center", zorder=3)
-    ax.text(pad_x + 11.4, px_cy, _fmt_price(card["close"]), fontproperties=_fp(29, "bold"),
+    ax.text(pad_x + 11.2, px_cy, _fmt_price(card["close"]), fontproperties=_fp(26, "bold"),
             color=C["ink"], va="center", zorder=3)
-    ax.text(46.5, px_cy + 0.35, "漲跌幅", fontproperties=_fp(11), color=C["ink_soft"],
+    ax.text(48.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c,
             va="center", zorder=3)
-    ax.text(58.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(19, "bold"), color=chg_c,
-            va="center", zorder=3)
-    by = y + 1.6 + (len(badge_rows) - 1) * (badge_h + badge_gap)
+    if chg_amt is not None:
+        ax.text(66.5, px_cy, f"{chg_amt:+.2f}", fontproperties=_fp(15, "bold"), color=chg_c,
+                va="center", zorder=3)
+    ohlc_cy = y + price_h - 5.35
+    ohlc_bits = [
+        f"開 {_fmt_price(card.get('open'))}",
+        f"高 {_fmt_price(card.get('high'))}",
+        f"低 {_fmt_price(card.get('low'))}",
+    ]
+    if prev_c:
+        ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
+    ax.text(pad_x + 3.2, ohlc_cy, "　".join(ohlc_bits), fontproperties=_fp(11.2, "bold"),
+            color=C["ink_soft"], va="center", zorder=3)
+    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
     for brow in badge_rows:
         bx = pad_x + 3.2
         for btxt, bw in brow:
@@ -1533,7 +1606,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
                 facecolor=b_bg, edgecolor=edge,
                 linewidth=0 if solid else 0.9, zorder=3))
-            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.4, "heavy"),
+            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "heavy"),
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
         by -= badge_h + badge_gap
@@ -1567,11 +1640,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             metric_box(inner_x + i * (box_w + box_gap_x), y + pane_pad,
                        f"{lab[:-1]}日低點", px, dist, high=False, hit=hit)
 
-    # 過去 20 天：欄寬按權重分配，高低與預警走藥丸，溫度與量能用深淺表達強弱。
+    # 過去 20 天：預警欄露出高低；升降溫＝溫度趨勢（不是股價漲跌）；量能上色。
     y -= gap + tbl_title_h
-    sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F")
-    headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降", "月乖離", "120日量"]
-    weights = [14.5, 10.8, 9.8, 10.2, 12.0, 11.0, 11.0, 12.7]
+    sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
+              "預警會露出 20高／10低；升降溫＝溫度計")
+    headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
+    weights = [13.6, 10.4, 9.6, 11.0, 11.6, 13.0, 10.2, 12.6]
     pill_cols = {3, 5, 7}
     span = 100 - 2 * pad_x
     xs = [pad_x]
@@ -1581,9 +1655,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
                                        facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
-        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h, fontproperties=_fp(11.5, "bold"),
+        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h, fontproperties=_fp(11.2, "bold"),
                 ha="center", va="center", color=C["tbl_ink"], zorder=3)
     ry = tbl_top - hdr_h
+    from decision_card_signals import display_alert_cell
+
     for row_i, (_, r) in enumerate(table.iterrows()):
         y1 = ry - body_h
         bias = float(r.get("bias_monthly") or 0)
@@ -1591,20 +1667,20 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         temp_n = float(r.get("temp_num") or 0) or _parse_temp_n(r.get("溫度計"))
         trend = str(r.get("升降") or "—")
         trend_note = str(r.get("升降註") or "")
-        hl, al = str(r["高低"]), str(r["預警"])
+        hl = str(r["高低"])
+        al = display_alert_cell(str(r["預警"]), hl)
         zebra = row_i % 2 == 0
         base = C["white"] if zebra else C["zebra"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
         p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
         px_bg, px_fg = price_cell_style(hl, base)
-        hl_bg, hl_fg = hl_cell_style(hl, base)
         al_bg, al_fg = alert_cell_style(al, base)
         tbg, tfg = temp_cell_style(temp_n, base)
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = vol_rank_cell_style(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        fills = [base, px_bg, p_bg, al_bg, tbg, tr_bg, b_bg, base]
-        fgs = [C["ink"], px_fg, p_fg, al_fg, tfg, tr_fg, b_fg, C["ink"]]
+        fills = [base, px_bg, p_bg, al_bg, tbg, tr_bg, b_bg, vbg]
+        fgs = [C["ink"], px_fg, p_fg, al_fg, tfg, tr_fg, b_fg, vfg]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -1721,6 +1797,13 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
     bias_s = f"{float(bias):+.1f}%" if bias is not None else "—"
+    from decision_card_signals import volume_headline_rank
+
+    vol_lab, vol_n = volume_headline_rank(
+        card.get("vol_rank_480") or 99,
+        card.get("vol_rank") or 99,
+        card.get("vol_rank_60") or 99,
+    )
     try:
         from fundamentals import glance_fundamentals_rows
 
@@ -1755,7 +1838,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ),
         section(
             kv_compact("溫度", card.get("temp_c") or "—"),
-            kv_compact("120日量", f"第 {card.get('vol_rank')} 名"),
+            kv_compact(vol_lab, f"第 {vol_n} 名"),
             kv_compact("量比", vol_line),
         ),
         chip_block,
@@ -1818,6 +1901,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         last.get("high") or card.get("high") or card.get("close") or 0,
         last.get("low") or card.get("low") or card.get("close") or 0,
         last.get("close") or card.get("close") or 0,
+        last.get("yesterday_close") or card.get("prev_close") or None,
     )
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
@@ -1848,7 +1932,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         yy = y + h - 4.15
         for (_, b, c), a in zip(rows, labels):
             ink(4.8, yy, a, fa)
-            ink(96.4, yy, b, fb, c, ha="right")
+            ink(96.4, yy, b, fb, _fg_on_panel(c), ha="right")
             yy -= 3.35
 
     kv_block(61.55, 15.15, "空間／位置", [
@@ -1865,10 +1949,17 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", _CARD["ink"]),
     ])
     _temp_n = _temp_num(card.get("temp_c"))
+    from decision_card_signals import volume_headline_rank
+
+    vol_lab, vol_n = volume_headline_rank(
+        card.get("vol_rank_480") or 99,
+        card.get("vol_rank") or 99,
+        card.get("vol_rank_60") or 99,
+    )
     kv_block(48.55, 12.15, "熱度／量能", [
         ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, _CARD["white"])[1]),
-        ("120日量排名", f"第 {card.get('vol_rank')} 名",
-         vol_rank_cell_style(int(card.get('vol_rank') or 99), _CARD["white"])[1]),
+        (f"{vol_lab}排名", f"第 {vol_n} 名",
+         vol_rank_cell_style(int(vol_n or 99), _CARD["white"])[1]),
         ("量比", (tape or {}).get("volume", {}).get("line") or "—", _CARD["ink"]),
     ])
 
@@ -1925,7 +2016,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
     except Exception:
         pass
-    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌）　▲連漲　▼連跌", 10, "#78909C")
+    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）　▲連漲　▼連跌", 10, "#78909C")
     plt.savefig(save_path, dpi=150, facecolor=fig.get_facecolor())
     plt.close()
     return save_path
@@ -2144,12 +2235,20 @@ def draw_from_ohlc(
     ax1.set_xlim(-0.8, n - 0.2)
 
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
+    from decision_card_signals import candle_up_taiwan
+
+    candle_up = []
+    for i in range(n):
+        prev_c = float(work["close"].iloc[i - 1]) if i else None
+        candle_up.append(
+            candle_up_taiwan(float(work["close"].iloc[i]), prev_c, float(work["open"].iloc[i]))
+        )
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
         x = xs[i]
         is_halt = bool(halt.iloc[i])
-        color = "#e53935" if cl >= op else "#00897b"
+        color = "#e53935" if candle_up[i] else "#00897b"
         ax1.plot([x, x], [lo, hi], color="#bdbdbd" if is_halt else color, linewidth=1.05, zorder=3, solid_capstyle="round")
         body = max(abs(cl - op), span * 0.0018)
         ax1.add_patch(
@@ -2278,7 +2377,7 @@ def draw_from_ohlc(
     ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
-    vol_colors = ["#ef5350" if work["close"].iloc[i] >= work["open"].iloc[i] else "#26a69a" for i in range(n)]
+    vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"] / 1000.0, color=vol_colors, width=0.72, zorder=3)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
@@ -2313,7 +2412,7 @@ def draw_from_ohlc(
     fig.text(
         0.50,
         0.015,
-        "價格列箭頭見圖上方圖例；箭頭壓在粉紅／綠色區時自動換深色，實心＝當日觸發、縮小＝連續中、空心＝接近　　"
+        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；箭頭壓在粉紅／綠色區時自動換深色，實心＝當日觸發、縮小＝連續中、空心＝接近　　"
         "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　藍／杏塊＝月波動",
         ha="center",
         va="bottom",
@@ -2461,7 +2560,9 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
             date_s = date_s[-5:]
         profit = row.get("profit_pct")
         hl = str(row.get("高低") or "—")
-        warn = str(row.get("預警") or "—")
+        from decision_card_signals import display_alert_cell
+
+        warn = display_alert_cell(str(row.get("預警") or "—"), hl)
         temp = _temp_num(row.get("溫度計"))
         bias = row.get("bias_monthly")
         volr = row.get("vol_rank_120")

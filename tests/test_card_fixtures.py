@@ -103,6 +103,32 @@ def test_alert_tag_rsv_no_false_k20_high_on_bias_only():
     assert alert_tag(101.5, low60=90, high20=102, low20=95, bias_monthly=2.0, rsv=72.0) == "K20高"
 
 
+def test_alert_tag_k20_high_near_95pct_winbond_like():
+    """3105 9/2 型：收在 20 日高 95% 以上、RSV≥70 → K20高。"""
+    assert alert_tag(469.5, low60=268, high20=492, low20=355, bias_monthly=16.6, rsv=83.6) == "K20高"
+    assert alert_tag(440.0, low60=268, high20=492, low20=355, bias_monthly=9.0, rsv=62.0) == "No"
+
+
+def test_display_alert_shows_hi_lo_when_blank():
+    from decision_card_signals import display_alert_cell
+
+    assert display_alert_cell("No", "10低") == "10低"
+    assert display_alert_cell("K20高", "20高") == "20高"
+    assert display_alert_cell("K20高", "No") == "K20高"
+    assert display_alert_cell("60低", "10低") == "60低"
+
+
+def test_candle_up_taiwan_vs_prev_close():
+    from decision_card_signals import candle_up_taiwan
+
+    # 8/19 型：收>開但跌破昨收 → 綠
+    assert not candle_up_taiwan(363.5, prev_close=374.5, open_=353.5)
+    # 9/3 穩懋：開收皆跌 → 綠
+    assert not candle_up_taiwan(446.5, prev_close=469.5, open_=478.0)
+    # 平盤紅
+    assert candle_up_taiwan(100.0, prev_close=100.0, open_=99.0)
+
+
 def test_template_regime_narrow_range_is_consolidation():
     """2633/2530 範本：60日區間過小時標整理格局，不是多頭。"""
     assert card_regime_label(26.25, 26.0, 25.8, space_60=7) == "整理格局"

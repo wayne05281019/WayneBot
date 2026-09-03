@@ -141,6 +141,25 @@ def test_boot_grace_keeps_health_green(serve, monkeypatch):
     assert code == 200
     assert body["serving"] is True
     assert body["booting"] is True
+    assert body.get("data_ok") is None
+    assert body.get("latest_complete") == ""
+    assert body.get("boot_grace_s") == 3600
+
+
+def test_boot_grace_fills_data_fields_when_db_ready(serve, monkeypatch):
+    """庫已可讀時，boot grace 仍要回 data_ok／latest_complete，不能整段空白。"""
+    get, db, main = serve
+    monkeypatch.setenv("WAYNE_BOOT_GRACE_SECONDS", "3600")
+    import time as _time
+
+    main._PROCESS_STARTED_AT = _time.time()
+    code, body = get("/health")
+    assert code == 200
+    assert body["booting"] is True
+    assert body["db_ok"] is True
+    assert body.get("data_ok") is not None
+    assert "latest_complete" in body
+    assert body.get("boot_grace_s") == 3600
 
 
 def test_ready_503_when_data_not_ready(serve):

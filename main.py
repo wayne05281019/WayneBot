@@ -110,13 +110,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "serving": live.get("serving", False),
                 "booting": live.get("booting", False),
                 "uptime_s": live.get("uptime_s"),
+                "boot_grace_s": _boot_grace_seconds(),
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
             }
-            # 冷啟動期間跳過重型 DB 稽核，避免 Render 5s 健檢逾時導致 deploy 失敗
-            if live.get("booting"):
+            # 庫還沒可讀才跳過重型稽核（避免 Render 5s 健檢逾時）。
+            # 庫已就緒時即使仍在 boot grace 也填 data_ok／latest_complete。
+            if live.get("booting") and not live.get("db_ok"):
                 payload["data_ok"] = None
                 payload["cap"] = ""
                 payload["latest_complete"] = ""

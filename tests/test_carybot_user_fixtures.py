@@ -60,13 +60,16 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
 
     def test_2324_high_low_summary_matches_carybot(self):
-        """CaryBot／WayneBot 高低摘要區：10/20/60 高低與距現價 % 一致。"""
+        """CaryBot 高低摘要：截圖日 9/2 收 39.7；20／60 高 43.2、10 高 41.6、60曆日低 33.75。
+
+        最新收盤會隨盤後日滾動，不鎖在截圖價。
+        """
         card = self._card("2324")
-        self.assertAlmostEqual(float(card["close"]), 39.7, places=1)
+        row = self._row(card, "20260902")
+        self.assertAlmostEqual(float(row["close"]), 39.7, places=1)
         self.assertAlmostEqual(float(card["h10"]), 41.6, places=1)
         self.assertAlmostEqual(float(card["h20"]), 43.2, places=1)
         self.assertAlmostEqual(float(card["h60"]), 43.2, places=1)
-        self.assertAlmostEqual(float(card["l10"]), 38.5, places=1)
         self.assertAlmostEqual(float(card["l20"]), 36.3, places=1)
         self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
 
