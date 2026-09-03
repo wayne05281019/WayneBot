@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import pandas as pd
+from PIL import Image
 
 from index_kline_chart import fetch_twii_ohlc, render_index_kline_png
 
@@ -27,6 +28,15 @@ class IndexKlineChartTests(unittest.TestCase):
             path = render_index_kline_png(df, out)
             self.assertTrue(path and os.path.isfile(path))
             self.assertGreater(os.path.getsize(path), 5000)
+            with Image.open(path) as img:
+                w, h = img.size
+                self.assertGreaterEqual(w, 1100)
+                self.assertGreaterEqual(h, 1500)
+                # TradingView dark bg #131722 → dark corner pixel
+                r, g, b = img.convert("RGB").getpixel((5, 5))
+                self.assertLess(r, 40)
+                self.assertLess(g, 40)
+                self.assertLess(b, 50)
 
     @patch("index_kline_chart._SESSION.get")
     def test_fetch_parses_yahoo(self, mock_get):
