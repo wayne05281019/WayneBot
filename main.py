@@ -548,8 +548,9 @@ def run_web():
     from wayne_db import ensure_core_schema
     from config import get_db_path, get_telegram_chat_id
 
-    ensure_market_db()
+    # 先開 /health，避免 Render 冷啟動下載 DB 時健檢逾時被反覆重啟
     start_health_server(get_port())
+    ensure_market_db()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
     def _db_index_background():
