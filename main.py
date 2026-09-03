@@ -7,6 +7,7 @@ main.py - WayneBot 統一啟動入口
 """
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -114,18 +115,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
             }
-            try:
-                from automation_health import health_payload
+            # 冷啟動期間跳過重型 DB 稽核，避免 Render 5s 健檢逾時導致 deploy 失敗
+            if live.get("booting"):
+                payload["data_ok"] = None
+                payload["cap"] = ""
+                payload["latest_complete"] = ""
+                payload["reasons"] = []
+            else:
+                try:
+                    from automation_health import health_payload
 
-                data = health_payload()
-                payload["data_ok"] = bool(data.get("data_ok"))
-                payload["cap"] = data.get("cap") or ""
-                payload["latest_complete"] = data.get("latest_complete") or ""
-                payload["reasons"] = list(data.get("reasons") or [])
-            except Exception as e:
-                # 資料狀態算不出來不代表行程壞了；但也不假裝健康。
-                payload["data_ok"] = False
-                payload["data_error"] = str(e)
+                    data = health_payload()
+                    payload["data_ok"] = bool(data.get("data_ok"))
+                    payload["cap"] = data.get("cap") or ""
+                    payload["latest_complete"] = data.get("latest_complete") or ""
+                    payload["reasons"] = list(data.get("reasons") or [])
+                except Exception as e:
+                    payload["data_ok"] = False
+                    payload["data_error"] = str(e)
             payload["ok"] = bool(payload["serving"])
             payload["status"] = "healthy" if payload["serving"] else "unhealthy"
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -570,6 +577,10 @@ def run_web():
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
     index_delay_s = 600 if render_lite_boot() else 0
+    backfill_delay_s = 900 if render_lite_boot() else 0
+    if not render_lite_boot() and os.getenv("RENDER"):
+        index_delay_s = 60
+        backfill_delay_s = 180
 
     def _db_index_background():
         try:
@@ -588,7 +599,6 @@ def run_web():
             logger.exception("背景資料庫索引失敗")
 
     threading.Thread(target=_db_index_background, daemon=True, name="db-index").start()
-    backfill_delay_s = 900 if render_lite_boot() else 0
     start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()
