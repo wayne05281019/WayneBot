@@ -444,8 +444,9 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
     assert "庫內官方融合" in html
-    assert "Regime" in html
+    assert "結構" in html
     assert "官方融合" in html
+    assert "距月線" in html
     mock_fetch.assert_not_called()
 
 
@@ -459,6 +460,40 @@ def test_format_taiwan_market_page_no_yahoo_fallback(mock_fetch, tmp_path):
     assert "暫不可用" not in html
     assert "指數資料讀取異常" in html
     mock_fetch.assert_not_called()
+
+
+def test_index_performance_periods():
+    import pandas as pd
+
+    from taiwan_market import _index_performance, _market_read_note
+
+    dates = [f"2026{m:02d}01" for m in range(1, 8)] + ["20260820"]
+    closes = [20000, 21000, 22000, 23000, 24000, 25000, 26000, 25500]
+    idx = pd.DataFrame(
+        {
+            "date": dates,
+            "close": closes,
+            "volume": [1e9] * 8,
+            "pct_change": [0.2] * 7 + [-1.9],
+        }
+    )
+    perf = _index_performance(idx)
+    assert perf["chg1_pct"] == -1.9
+    assert perf["vs_high52_pct"] is not None
+    assert perf["vs_high52_pct"] < 0
+    assert perf["vol_ratio"] == 1.0
+    snap = {
+        "vs_ma20_pct": -1.2,
+        "vs_ma60_pct": 2.0,
+        "chg5_pct": -2.1,
+        "vs_high52_pct": -4.0,
+        "vol_ratio": 0.7,
+        "breadth_above_ma20": 42,
+        "falling_risk": 10,
+    }
+    note = _market_read_note(snap)
+    assert "月線下" in note
+    assert "量比" in note
 
 
 @pytest.mark.production_db
@@ -478,6 +513,7 @@ def test_production_db_market_page_has_real_data():
     assert "暫不可用" not in html
     assert "台股大盤" in html
     assert "加權指數" in html
+    assert "距月線" in html
 
 
 def test_compute_basis_pct():
@@ -564,6 +600,5 @@ def test_market_page_includes_futures_section(tmp_path):
     conn.commit()
     conn.close()
     html = format_taiwan_market_page_html(db, "20260824")
-    assert "期現" in html
     assert "基差" in html
-    assert "Regime+" in html
+    assert "結構" in html
