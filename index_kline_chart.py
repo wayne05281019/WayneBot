@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""加權指數日 K 線圖（UDN 風格：K 棒 + MA + 量 + KD），供大盤專頁推送。"""
+"""加權指數日 K 線圖（TradingView 風格：暗色 K 棒 + MA + 量 + KD），供大盤專頁推送。"""
 from __future__ import annotations
 
 import logging
@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 _INDEX_YAHOO = "%5ETWII"
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "WayneBot/1.0"})
+
+# TradingView-like palette
+_TV_BG = "#131722"
+_TV_GRID = "#2a2e39"
+_TV_TEXT = "#b2b5be"
+_TV_TEXT_DIM = "#787b86"
+_TV_MA5 = "#f0b90b"
+_TV_MA20 = "#2962ff"
+_TV_MA60 = "#ab47bc"
+_TV_K = "#2962ff"
+_TV_D = "#ff9800"
 
 
 def fetch_twii_ohlc(days: int = 120) -> pd.DataFrame:
@@ -81,7 +92,27 @@ def _kd_series(df: pd.DataFrame, n: int = 9) -> tuple[pd.Series, pd.Series]:
 
 
 def _tw_color(up: bool) -> str:
-    return "#e53935" if up else "#00897b"
+    return "#ef5350" if up else "#26a69a"
+
+
+def _style_tv_axis(ax, *, show_xlabels: bool = False) -> None:
+    ax.set_facecolor(_TV_BG)
+    ax.grid(True, color=_TV_GRID, linestyle="-", linewidth=0.6, alpha=1.0)
+    ax.tick_params(
+        colors=_TV_TEXT_DIM,
+        labelsize=7,
+        bottom=show_xlabels,
+        labelbottom=show_xlabels,
+        left=False,
+        right=True,
+    )
+    ax.yaxis.tick_right()
+    ax.yaxis.set_label_position("right")
+    for side in ("top", "left"):
+        ax.spines[side].set_visible(False)
+    for side in ("bottom", "right"):
+        ax.spines[side].set_color(_TV_GRID)
+        ax.spines[side].set_linewidth(0.6)
 
 
 @_mpl_serial
@@ -89,10 +120,10 @@ def render_index_kline_png(
     df: pd.DataFrame,
     save_path: str,
     *,
-    title: str = "加權指數 日K",
+    title: str = "加權指數",
     live: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """UDN 風格：上 K+MA、中量能、下 KD；直式適合 Telegram 手機。"""
+    """TradingView 風格：暗色主題、右側價軸、K+MA / 量 / KD；直式適合 Telegram 手機。"""
     if df is None or df.empty:
         return ""
     work = df.copy().tail(120)
@@ -109,68 +140,134 @@ def render_index_kline_png(
     chg = close - ref_close
     chg_pct = (chg / ref_close * 100.0) if ref_close else 0.0
     up = chg >= 0
-    color = _tw_color(up)
+    price_color = _tw_color(up)
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    fig = plt.figure(figsize=(4.6, 7.8), dpi=160, facecolor="#ffffff")
-    gs = fig.add_gridspec(3, 1, height_ratios=[4.2, 1.1, 0.9], hspace=0.05)
+    # ~1300px wide @ 175 dpi for crisp mobile Telegram
+    fig = plt.figure(figsize=(7.43, 10.8), dpi=175, facecolor=_TV_BG)
+    gs = fig.add_gridspec(
+        3,
+        1,
+        height_ratios=[4.5, 1.0, 0.85],
+        hspace=0.04,
+        top=0.90,
+        bottom=0.06,
+        left=0.06,
+        right=0.94,
+    )
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1], sharex=ax1)
     ax3 = fig.add_subplot(gs[2], sharex=ax1)
 
     xs = mdates.date2num(work["dt"].tolist())
     n = len(work)
+    bar_w = 0.55 if n < 2 else min(0.65, max(0.35, (xs[-1] - xs[0]) / max(n - 1, 1) * 0.72))
+    body_min = max((work["high"] - work["low"]).median() * 0.04, close * 0.00015)
+
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
         c = _tw_color(cl >= op)
         x = xs[i]
-        ax1.plot([x, x], [lo, hi], color=c, linewidth=0.9, solid_capstyle="round")
-        body = max(abs(cl - op), (hi - lo) * 0.02)
+        ax1.plot([x, x], [lo, hi], color=c, linewidth=1.1, solid_capstyle="round", zorder=2)
+        body = max(abs(cl - op), body_min)
         ax1.add_patch(
             plt.Rectangle(
-                (x - 0.25, min(op, cl)),
-                0.5,
+                (x - bar_w / 2, min(op, cl)),
+                bar_w,
                 body,
                 facecolor=c,
                 edgecolor=c,
+                linewidth=0,
+                zorder=3,
             )
         )
-    ax1.plot(xs, work["ma5"], color="#1e88e5", linewidth=1.0, label="MA5")
-    ax1.plot(xs, work["ma20"], color="#e53935", linewidth=1.0, label="MA20")
-    ax1.plot(xs, work["ma60"], color="#f9a825", linewidth=1.0, label="MA60")
-    ax1.set_ylabel("")
-    ax1.grid(True, linestyle=":", alpha=0.35)
-    ax1.tick_params(labelbottom=False)
+
+    ma5_v, ma20_v, ma60_v = float(last["ma5"]), float(last["ma20"]), float(last["ma60"])
+    ax1.plot(xs, work["ma5"], color=_TV_MA5, linewidth=1.1, label=f"MA5 {ma5_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma20"], color=_TV_MA20, linewidth=1.1, label=f"MA20 {ma20_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma60"], color=_TV_MA60, linewidth=1.1, label=f"MA60 {ma60_v:,.0f}", zorder=4)
+    ax1.legend(
+        loc="upper left",
+        ncol=3,
+        frameon=True,
+        facecolor=_TV_BG,
+        edgecolor=_TV_GRID,
+        labelcolor=_TV_TEXT,
+        fontsize=7,
+        handlelength=1.4,
+        columnspacing=0.8,
+        borderpad=0.4,
+    )
+    _style_tv_axis(ax1)
 
     vol_colors = [
         _tw_color(float(work["close"].iloc[i]) >= float(work["open"].iloc[i])) for i in range(n)
     ]
-    ax2.bar(xs, work["volume"], width=0.55, color=vol_colors, alpha=0.85)
-    ax2.set_ylabel("量", fontproperties=_fp(8))
-    ax2.grid(True, linestyle=":", alpha=0.25)
-    ax2.tick_params(labelbottom=False)
+    ax2.bar(xs, work["volume"], width=bar_w, color=vol_colors, alpha=0.75, linewidth=0)
+    ax2.set_ylabel("量", fontproperties=_fp(7), color=_TV_TEXT_DIM)
+    _style_tv_axis(ax2)
 
-    ax3.plot(xs, work["k9"], color="#1e88e5", linewidth=1.0, label="K9")
-    ax3.plot(xs, work["d9"], color="#e53935", linewidth=1.0, label="D9")
+    k9_v, d9_v = float(last["k9"]), float(last["d9"])
+    ax3.plot(xs, work["k9"], color=_TV_K, linewidth=1.1, label=f"K {k9_v:.1f}", zorder=3)
+    ax3.plot(xs, work["d9"], color=_TV_D, linewidth=1.1, label=f"D {d9_v:.1f}", zorder=3)
+    ax3.axhline(80, color=_TV_GRID, linewidth=0.5, linestyle="--", alpha=0.7)
+    ax3.axhline(20, color=_TV_GRID, linewidth=0.5, linestyle="--", alpha=0.7)
     ax3.set_ylim(0, 100)
-    ax3.grid(True, linestyle=":", alpha=0.25)
-    ax3.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-
-    header = (
-        f"{title}\n"
-        f"{close:,.1f}  {chg:+.1f} ({chg_pct:+.2f}%)  量 {int(last['volume']):,}\n"
-        f"開 {float(last['open']):.1f}  高 {float(last['high']):.1f}  "
-        f"低 {float(last['low']):.1f}  收 {float(last['close']):.1f}\n"
-        f"MA5 {float(last['ma5']):,.1f}  MA20 {float(last['ma20']):,.1f}  "
-        f"MA60 {float(last['ma60']):,.1f}  "
-        f"K9 {float(last['k9']):.2f}  D9 {float(last['d9']):.2f}"
+    ax3.legend(
+        loc="upper left",
+        ncol=2,
+        frameon=True,
+        facecolor=_TV_BG,
+        edgecolor=_TV_GRID,
+        labelcolor=_TV_TEXT,
+        fontsize=7,
+        handlelength=1.4,
+        borderpad=0.4,
     )
-    fig.suptitle(header, fontproperties=_fp(9, "bold"), ha="left", x=0.04, y=0.98)
-    for ax in (ax1, ax2, ax3):
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-    fig.savefig(save_path, bbox_inches="tight", pad_inches=0.12, facecolor="#ffffff")
+    ax3.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
+    _style_tv_axis(ax3, show_xlabels=True)
+
+    # TradingView-style header: title + price + change
+    fig.text(
+        0.06,
+        0.955,
+        title,
+        fontproperties=_fp(11, "bold"),
+        color=_TV_TEXT,
+        ha="left",
+        va="top",
+    )
+    fig.text(
+        0.06,
+        0.925,
+        f"{close:,.2f}",
+        fontproperties=_fp(16, "bold"),
+        color=price_color,
+        ha="left",
+        va="top",
+    )
+    fig.text(
+        0.34,
+        0.928,
+        f"{chg:+.2f}  ({chg_pct:+.2f}%)",
+        fontproperties=_fp(10, "bold"),
+        color=price_color,
+        ha="left",
+        va="top",
+    )
+    fig.text(
+        0.06,
+        0.905,
+        f"開 {float(last['open']):,.2f}   高 {float(last['high']):,.2f}   "
+        f"低 {float(last['low']):,.2f}   收 {float(last['close']):,.2f}",
+        fontproperties=_fp(7),
+        color=_TV_TEXT_DIM,
+        ha="left",
+        va="top",
+    )
+
+    fig.savefig(save_path, bbox_inches="tight", pad_inches=0.08, facecolor=_TV_BG)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
