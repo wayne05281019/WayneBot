@@ -7,6 +7,7 @@ main.py - WayneBot 統一啟動入口
 """
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -570,6 +571,10 @@ def run_web():
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
     index_delay_s = 600 if render_lite_boot() else 0
+    backfill_delay_s = 900 if render_lite_boot() else 0
+    if not render_lite_boot() and os.getenv("RENDER"):
+        index_delay_s = 60
+        backfill_delay_s = 180
 
     def _db_index_background():
         try:
@@ -588,7 +593,6 @@ def run_web():
             logger.exception("背景資料庫索引失敗")
 
     threading.Thread(target=_db_index_background, daemon=True, name="db-index").start()
-    backfill_delay_s = 900 if render_lite_boot() else 0
     start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()

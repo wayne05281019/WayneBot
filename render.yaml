@@ -2,6 +2,11 @@ services:
   - type: web
     name: waynebot-service
     runtime: python
+    plan: 1c-2g
+    disk:
+      name: wayne-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5
     # 裝完整鎖檔，否則傳遞相依會浮動，部署到的版本跟測過的不是同一份。
     buildCommand: pip install -r requirements.lock
     startCommand: python main.py
@@ -9,6 +14,10 @@ services:
     # 因為重啟修不了資料管線，只會把互動 bot 一起弄掉。
     healthCheckPath: /health
     envVars:
+      - key: WAYNE_RENDER_PLAN
+        value: 1c-2g
+      - key: WAYNE_RENDER_LITE
+        value: "0"
       # 每個排程只能有一個擁有者。GHA 是可靠的計時器（本服務會休眠），
       # 所以 06:30 海選推播歸 GHA；這裡只保持本機庫新鮮供互動查詢，
       # 並負責唯一沒有 GHA 對應的 12:45 尾盤複核。

@@ -180,19 +180,41 @@ def skip_telegram_polling() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-def skip_chart_warmup() -> bool:
-    """Render 免費方案記憶體不足，啟動時預熱出圖會 OOM crash（exit 134）。"""
-    raw = (os.getenv("WAYNE_SKIP_CHART_WARMUP") or "").strip().lower()
-    if raw in ("1", "true", "yes", "on"):
-        return True
+def _on_render() -> bool:
     return bool((os.getenv("RENDER") or "").strip())
 
 
-def render_lite_boot() -> bool:
-    """Render 512Mi：背景下載庫、延後索引與盤後融合，避免冷啟 OOM／健檢逾時。"""
+def render_plan() -> str:
+    return (os.getenv("WAYNE_RENDER_PLAN") or os.getenv("RENDER_PLAN") or "").strip().lower()
+
+
+def render_free_tier() -> bool:
+    """Render 免費 512Mi 才啟用精簡冷啟；付費 1c-2g 走正常啟動。"""
+    if not _on_render():
+        return False
     raw = (os.getenv("WAYNE_RENDER_LITE") or "").strip().lower()
     if raw in ("0", "false", "no", "off"):
         return False
     if raw in ("1", "true", "yes", "on"):
         return True
-    return bool((os.getenv("RENDER") or "").strip())
+    plan = render_plan()
+    if plan in ("1c-2g", "standard", "2c-4g", "pro", "pro_plus", "pro_max", "pro_ultra"):
+        return False
+    if plan in ("free", "0.5c-512mb", "starter", "starter_legacy"):
+        return True
+    return not plan
+
+
+def skip_chart_warmup() -> bool:
+    """免費 Render 512Mi 預熱會 OOM；付費 2GB 可預熱。"""
+    raw = (os.getenv("WAYNE_SKIP_CHART_WARMUP") or "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return render_free_tier()
+
+
+def render_lite_boot() -> bool:
+    """相容舊名稱：是否用免費方案精簡冷啟。"""
+    return render_free_tier()
