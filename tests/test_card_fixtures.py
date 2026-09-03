@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """依使用者傳過的高低卡範本列（OCR 校準）— 海選驗收用。"""
-import os
-
 import pytest
 
 from decision_card_signals import (
@@ -44,54 +42,51 @@ def test_template_not_green_after_step():
     assert not hit
 
 
+@pytest.mark.production_db
 def test_profit_pct_series_per_day_not_global():
     """9925 範本：盤整期應出現多個 0.0% 列（逐日 cal60 + 未回推收盤）。"""
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    tbl = NavigatorEngine(db).get_decision_card("9925")["table"]
+    tbl = NavigatorEngine(get_db_path()).get_decision_card("9925")["table"]
     zeros = sum(1 for _, r in tbl.iterrows() if float(r["profit_pct"]) <= 0.05)
     assert zeros >= 6, f"expected many 0.0% rows, got {zeros}"
 
 
+@pytest.mark.production_db
 def test_template_2530_leave_zero_row():
     """華建範本：8/31 獲利 0.0% → 起漲故事起點。"""
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    card = NavigatorEngine(db).get_decision_card("2530")
+    card = NavigatorEngine(get_db_path()).get_decision_card("2530")
     tbl = card["table"]
     row = tbl[tbl["date"].astype(str) == "20260831"]
     assert not row.empty
     assert float(row.iloc[0]["profit_pct"]) <= 0.05
 
 
+@pytest.mark.production_db
 def test_template_2633_8_11_profit_zero():
     """高鐵範本：8/11 貼 20 日低仍顯示 0.0%（地板取 max(60曆日低,20日低)）。"""
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    tbl = NavigatorEngine(db).get_decision_card("2633")["table"]
+    tbl = NavigatorEngine(get_db_path()).get_decision_card("2633")["table"]
     row = tbl[tbl["date"].astype(str) == "20260811"]
     assert not row.empty
     assert float(row.iloc[0]["profit_pct"]) <= 0.05
 
 
+@pytest.mark.production_db
 def test_profit_floor_max_cal60_and_l20():
     import sqlite3
 
     import pandas as pd
+    from config import get_db_path
     from decision_card_signals import profit_floor_at
 
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    db = get_db_path()
     conn = sqlite3.connect(db)
     df = pd.read_sql_query(
         "SELECT date, close FROM daily_quotes WHERE stock_id='2633' ORDER BY date", conn

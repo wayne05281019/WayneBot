@@ -271,7 +271,7 @@ class ScreeningEngine:
             d20 = info["d20"]
             prev_d20 = info["prev_d20"]
             ma5_hook = info["ma5_hook_up"]
-            avg_p = info["avg_price"]
+            avg_p = _avg_price_for_safety(info)
             prev_close = info.get("prev_close") or c
 
             # ------------------------------------------------------------------
@@ -696,6 +696,42 @@ def _pct_str(pct) -> str:
     except (TypeError, ValueError):
         return ""
     return f"+{p:.2f}%" if p > 0 else f"{p:.2f}%"
+
+
+def _avg_price_for_safety(item: Dict[str, Any]) -> float:
+    """停損／防守價用均價；庫裡若誤存成交股數則改算 turnover÷volume。"""
+    try:
+        avg_p = float(item.get("avg_price") or 0)
+    except (TypeError, ValueError):
+        avg_p = 0.0
+    try:
+        close = float(item.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    try:
+        vol_lots = int(item.get("volume") or 0)
+    except (TypeError, ValueError):
+        vol_lots = 0
+    try:
+        turnover_k = float(item.get("turnover_k") or 0)
+    except (TypeError, ValueError):
+        turnover_k = 0.0
+    computed = round(turnover_k / vol_lots, 2) if vol_lots > 0 and turnover_k > 0 else close
+    if avg_p <= 0:
+        return computed
+    shares = vol_lots * 1000
+    if shares > 0 and abs(avg_p - shares) <= max(1.0, shares * 0.001):
+        return computed
+    try:
+        low = float(item.get("low") or close or 0)
+        high = float(item.get("high") or close or 0)
+    except (TypeError, ValueError):
+        low, high = close, close
+    band_lo = min(low, close) * 0.5 if min(low, close) > 0 else 0.0
+    band_hi = max(high, close) * 2.0 if max(high, close) > 0 else avg_p
+    if band_lo > 0 and (avg_p < band_lo or avg_p > band_hi):
+        return computed
+    return avg_p
 
 
 def _px_str(close) -> str:

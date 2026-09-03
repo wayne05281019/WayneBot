@@ -8,6 +8,8 @@ from typing import Callable, List, Tuple
 
 import pytest
 
+from tests.conftest import require_production_db
+
 # 寬欄 pad 後常見：標籤後接 3+ 半形或 2+ 全形空白（非冒號格式）
 _BAD_PAD = re.compile(r"^(產業|同業|單位|用途|覆蓋|期間|月營收|季報|基準日|已用槽|本金|日期|收盤|外資|投信)\s{3,}")
 _BAD_PAD_FW = re.compile(r"^(產業|同業|單位|用途|日期|收盤|現價|漲跌)\u3000\u3000")
@@ -26,10 +28,7 @@ def _assert_readable(html: str, *, name: str) -> None:
 
 
 def _db():
-    p = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(p):
-        pytest.skip("no market db")
-    return p
+    return require_production_db()
 
 
 def test_newbie_flow_sector_rotation_readable():

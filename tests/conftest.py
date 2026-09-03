@@ -46,6 +46,15 @@ def has_production_db() -> bool:
     return production_db_size() >= MIN_PRODUCTION_BYTES
 
 
+def require_production_db() -> str:
+    """給仍用 os.path.isfile 判斷的舊測試：沒有生產庫就 skip，有就回傳路徑。"""
+    if not has_production_db():
+        pytest.skip(
+            f"需要生產規模的庫（{_PROD_DB} 目前 {production_db_size()} bytes）"
+        )
+    return _PROD_DB
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",

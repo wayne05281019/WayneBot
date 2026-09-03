@@ -14,16 +14,63 @@ LINE_PACKS = (
 )
 PACK_IDS = {p[0] for p in LINE_PACKS}
 
-# 手機內建瀏覽器對超長 line.me 網址常失敗；超過則改手動按鈕
+# 手機內建瀏覽器對超長 line.me 網址常失敗；超過則改 Web Share / 剪貼簿
 LINE_SHARE_URL_SAFE_LEN = 2000
+# 中文 URL 編碼後約 5～6 倍；保守估計純文字上限
+LINE_SHARE_TEXT_SAFE_LEN = 380
 
 
 def _line_share_urls_safe(text: str) -> tuple:
     body = (text or "").strip()
     share_url = line_share_href(body)
     app_url = line_app_href(body)
-    auto = len(share_url) <= LINE_SHARE_URL_SAFE_LEN
+    auto = len(body) <= LINE_SHARE_TEXT_SAFE_LEN and len(share_url) <= LINE_SHARE_URL_SAFE_LEN
     return share_url, app_url, auto
+
+
+def _line_share_page_script(text_json: str, *, auto_open: bool) -> str:
+    """長文：Web Share → 剪貼簿 → 短網址；短句：維持 line:// 喚起。"""
+    auto_script = "if(mobile){goApp();}else{goShare();}" if auto_open else ""
+    return (
+        "<script>"
+        "(function(){"
+        f"var body={text_json};"
+        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
+        "function goShare(){"
+        "var u='https://line.me/R/share?text='+encodeURIComponent(body);"
+        "try{location.replace(u);}catch(e){location.href=u;}"
+        "}"
+        "function goApp(){"
+        "var u='line://msg/text/'+encodeURIComponent(body);"
+        "try{location.href=u;}catch(e){}"
+        "setTimeout(goShare,900);"
+        "}"
+        "async function copyText(){"
+        "try{if(navigator.clipboard&&navigator.clipboard.writeText){"
+        "await navigator.clipboard.writeText(body);return true;}}"
+        "catch(e){}"
+        "var ta=document.createElement('textarea');"
+        "ta.value=body;ta.style.position='fixed';ta.style.left='-9999px';"
+        "document.body.appendChild(ta);ta.select();"
+        "var ok=false;try{ok=document.execCommand('copy');}catch(e){}"
+        "document.body.removeChild(ta);return ok;"
+        "}"
+        "async function shareLong(ev){"
+        "if(ev&&ev.preventDefault)ev.preventDefault();"
+        "if(navigator.share){"
+        "try{await navigator.share({text:body,title:'WayneBot'});return;}catch(e){}"
+        "}"
+        "var ok=await copyText();"
+        "var msg=ok?'已複製全文。請開 LINE → 選聯絡人 → 長按貼上。':'請手動全選下方文字複製';"
+        "alert(msg);"
+        "if(mobile){try{location.href='line://';}catch(e){}}"
+        "}"
+        "var btn=document.getElementById('shareLine');"
+        "if(btn){btn.addEventListener('click',shareLong);}"
+        f"{auto_script}"
+        "})();"
+        "</script>"
+    )
 
 
 def _date_slash(ymd: str) -> str:
@@ -81,27 +128,49 @@ def render_line_redirect_html_for_url(line_share_url: str) -> str:
 
 
 def render_line_redirect_html(text: str) -> str:
-    """中轉頁：手機先試 line://，失敗再改 line.me/R/share。"""
+    """中轉頁：短句 line://；長文 Web Share / 剪貼簿。"""
     body = (text or "").strip()
     if not body:
         return "<!DOCTYPE html><html><body>無內容</body></html>"
     share_url, app_url, auto_open = _line_share_urls_safe(body)
-    safe_share = html.escape(share_url, quote=True)
-    safe_app = html.escape(app_url, quote=True)
-    share_json = json.dumps(share_url, ensure_ascii=False)
-    app_json = json.dumps(app_url, ensure_ascii=False)
-    long_hint = ""
-    if not auto_open:
-        long_hint = (
-            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
-            "文字較長，請手動按下方綠色按鈕開 LINE（勿依賴自動跳轉）</p>"
+    body_json = json.dumps(body, ensure_ascii=False)
+    if auto_open:
+        safe_share = html.escape(share_url, quote=True)
+        safe_app = html.escape(app_url, quote=True)
+        share_json = json.dumps(share_url, ensure_ascii=False)
+        app_json = json.dumps(app_url, ensure_ascii=False)
+        refresh = f'<meta http-equiv="refresh" content="1;url={safe_share}">'
+        btn = (
+            f'<a id="shareLine" href="{safe_app}" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
+            'background:#06c755;color:#fff;text-decoration:none;border-radius:8px">'
+            "開啟 LINE App</a>"
         )
-    refresh = f'<meta http-equiv="refresh" content="1;url={safe_share}">' if auto_open else ""
-    auto_script = (
-        "if(mobile){goApp();}else{goShare();}"
-        if auto_open
-        else "/* manual open only */"
-    )
+        script = (
+            "<script>"
+            "(function(){"
+            f"var share={share_json},app={app_json};"
+            "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
+            "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
+            "function goApp(){try{location.href=app;}catch(e){}"
+            "setTimeout(goShare,900);}"
+            "if(mobile){goApp();}else{goShare();}"
+            "})();"
+            "</script>"
+        )
+        hint = ""
+    else:
+        refresh = ""
+        btn = (
+            '<button id="shareLine" type="button" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
+            'background:#06c755;color:#fff;border:none;border-radius:8px;font-size:1.05em">'
+            "複製文字並開 LINE</button>"
+        )
+        script = _line_share_page_script(body_json, auto_open=False)
+        hint = (
+            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
+            "文字較長，按綠色鈕：先分享或複製全文，再開 LINE 選聯絡人貼上</p>"
+        )
+    safe_share = html.escape(share_url, quote=True)
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
@@ -110,22 +179,10 @@ def render_line_redirect_html(text: str) -> str:
         "</head><body>"
         '<p style="font-family:sans-serif;text-align:center;margin-top:2em">'
         "正在開啟 LINE…</p>"
-        f"{long_hint}"
-        '<p style="text-align:center;font-size:1.05em">'
-        f'<a href="{safe_app}" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
-        'background:#06c755;color:#fff;text-decoration:none;border-radius:8px">'
-        "開啟 LINE App</a></p>"
-        f'<p style="text-align:center"><a href="{safe_share}">改用瀏覽器分享</a></p>'
-        "<script>"
-        "(function(){"
-        f"var share={share_json},app={app_json};"
-        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
-        "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
-        "function goApp(){try{location.href=app;}catch(e){}"
-        "setTimeout(goShare,900);}"
-        f"{auto_script}"
-        "})();"
-        "</script>"
+        f"{hint}"
+        f'<p style="text-align:center;font-size:1.05em">{btn}</p>'
+        f'<p style="text-align:center"><a href="{safe_share}">改用瀏覽器分享（短句才有效）</a></p>'
+        f"{script}"
         "</body></html>"
     )
 
@@ -180,9 +237,58 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     if not auto_open:
         long_hint = (
             '<p style="text-align:center;color:#b45309;font-size:0.95em">'
-            "文字較長，請手動按綠色按鈕開 LINE</p>"
+            "文字較長，按綠色鈕：先分享或複製全文，再開 LINE 選聯絡人貼上</p>"
         )
-    auto_script = "if(mobile){setTimeout(goApp,400);}" if auto_open else "/* manual */"
+    if auto_open:
+        line_btn = (
+            f'<a class="btn green" id="shareLine" href="{html.escape(app_url, quote=True)}">'
+            "傳文字到 LINE・選聯絡人</a>"
+        )
+        auto_script = "if(mobile){setTimeout(goApp,400);}"
+        extra_script = (
+            "<script>"
+            "(function(){"
+            f"var share={share_json},app={app_json},album={album_json};"
+            "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
+            "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
+            "function goApp(){try{location.href=app;}catch(e){}"
+            "setTimeout(goShare,900);}"
+            f"{auto_script}"
+            "var btn=document.getElementById('saveAlbum');"
+            "if(btn&&navigator.share&&album){"
+            "btn.addEventListener('click',function(ev){"
+            "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
+            "var file=new File([blob],'waynebot.png',{type:'image/png'});"
+            "if(navigator.canShare&&navigator.canShare({files:[file]})){"
+            "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
+            "}).catch(function(){});"
+            "});}"
+            "})();"
+            "</script>"
+        )
+    else:
+        line_btn = (
+            '<button class="btn green" id="shareLine" type="button">'
+            "複製文字並開 LINE</button>"
+        )
+        body_json = json.dumps(text, ensure_ascii=False)
+        extra_script = _line_share_page_script(body_json, auto_open=False) + (
+            "<script>"
+            "(function(){"
+            f"var album={album_json};"
+            "var btn=document.getElementById('saveAlbum');"
+            "if(btn&&navigator.share&&album){"
+            "btn.addEventListener('click',function(ev){"
+            "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
+            "var file=new File([blob],'waynebot.png',{type:'image/png'});"
+            "if(navigator.canShare&&navigator.canShare({files:[file]})){"
+            "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
+            "}).catch(function(){});"
+            "});}"
+            "})();"
+            "</script>"
+        )
+    auto_script = ""  # moved into extra_script branches
 
     return (
         "<!DOCTYPE html><html><head>"
@@ -208,8 +314,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         "② 再貼下方「全區長圖」（每檔文字後面接圖表）</p>"
         f"{text_only_note}{long_hint}"
         '<p style="text-align:center">'
-        f'<a class="btn green" id="openLine" href="{html.escape(app_url, quote=True)}">'
-        "傳文字到 LINE・選聯絡人</a>"
+        f"{line_btn}"
         f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">下載全區長圖</a>'
         "</p>"
         f'<details open><summary style="font-weight:600;margin-bottom:8px">文字總彙整預覽</summary>'
@@ -218,25 +323,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         f'<div style="max-width:720px;margin:0 auto">{stocks_html}</div>'
         "<h3 style=\"font-size:1em;margin:1.2em 0 0.6em\">全區長圖（貼到 LINE 同一則）</h3>"
         f"{album_block}"
-        "<script>"
-        "(function(){"
-        f"var share={share_json},app={app_json},album={album_json};"
-        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
-        "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
-        "function goApp(){try{location.href=app;}catch(e){}"
-        "setTimeout(goShare,900);}"
-        f"{auto_script}"
-        "var btn=document.getElementById('saveAlbum');"
-        "if(btn&&navigator.share&&album){"
-        "btn.addEventListener('click',function(ev){"
-        "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
-        "var file=new File([blob],'waynebot.png',{type:'image/png'});"
-        "if(navigator.canShare&&navigator.canShare({files:[file]})){"
-        "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
-        "}).catch(function(){});"
-        "});}"
-        "})();"
-        "</script>"
+        f"{extra_script}"
         "</body></html>"
     )
 

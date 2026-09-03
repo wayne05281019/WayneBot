@@ -27,11 +27,12 @@ def _update(message):
     return SimpleNamespace(message=message, effective_user=message.from_user)
 
 
-def _bot(db_path: str = "data/wayne_market.db"):
+def _bot(db_path: str = None):
     from bot_servers import WayneTelegramBot
+    from config import get_db_path
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = db_path
+    bot.db_path = db_path or get_db_path()
     bot.charts_dir = "data/charts"
     bot._pending = {}
     bot._last_card = {}
@@ -150,7 +151,7 @@ def test_fetch_lookup_quote_uses_yahoo_on_trading_day():
     ), patch("live_quote.fetch_yahoo_tw_quote", return_value=yahoo_rt), patch(
         "live_quote.reconcile_lookup_quote", side_effect=lambda x, *a, **k: x
     ):
-        rt = fetch_lookup_quote("3105", "OTC", "data/wayne_market.db")
+        rt = fetch_lookup_quote("3105", "OTC", __import__("config").get_db_path())
     assert rt is not None
     assert rt["close"] == 469.5
 
@@ -293,10 +294,11 @@ def test_help_guide_has_newbie_glossary_and_ai_path():
 def test_compact_holdings_no_wide_padding():
     import re
 
+    from config import get_db_path
     from portfolio_engine import PortfolioEngine
 
     engine = PortfolioEngine.__new__(PortfolioEngine)
-    engine.db_path = "data/wayne_market.db"
+    engine.db_path = get_db_path()
     html = engine.format_holdings_html(
         [{"stock_code": "2330", "stock_name": "台積電", "shares": 1, "cost_price": 500}],
         quotes_map={"2330": {"close": 520, "pct_change": 1.2}},

@@ -41,9 +41,10 @@ def _cb(data: str, uid: int = 1, chat_id: int = 1):
 
 def _bot():
     from bot_servers import WayneTelegramBot
+    from config import get_db_path
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = "data/wayne_market.db"
+    bot.db_path = get_db_path()
     bot.charts_dir = "data/charts"
     bot._pending = {}
     bot._last_card = {}
@@ -172,12 +173,10 @@ def test_hx_deletes_help_message():
 
 
 def test_money_flow_html_no_wide_code_padding():
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
     from money_flow import format_flow_html
+    from tests.conftest import require_production_db
 
-    html = format_flow_html(db, yyyymmdd="20260828")
+    html = format_flow_html(require_production_db(), yyyymmdd="20260828")
     assert html
     assert not re.search(r"<code>\s{3,}", html)
 
@@ -206,7 +205,9 @@ def test_us_overnight_blocks_no_code_columns():
 
 
 def test_lookup_quote_reconcile_pct_from_db_prior():
+    from config import get_db_path
     from live_quote import reconcile_lookup_quote
+    from tests.conftest import require_production_db
 
     rt = {
         "stock_id": "3105",
@@ -216,9 +217,7 @@ def test_lookup_quote_reconcile_pct_from_db_prior():
         "yesterday_close": 0,
         "is_realtime": True,
     }
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    db = require_production_db()
     out = reconcile_lookup_quote(rt, db, "3105", db_hit={"close": 492.0, "quote_date": "20260901"})
     assert out is not None
     assert abs(float(out["pct_change"]) - (-4.57)) < 0.2

@@ -132,6 +132,29 @@ jobs:
           print("早上海選關卡通過")
           PY
 
+      - name: 早上海選完成後更新 Release（保留 pipeline_runs 與海選資料）
+        if: success() && steps.job.outputs.job == 'morning_screen'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f data/wayne_market.db
+          python - <<'PY'
+          import json, sys
+          from import_health import can_publish_release
+          from config import get_db_path, fuse_end_date
+
+          path = get_db_path()
+          report = can_publish_release(path)
+          print(json.dumps({k: report[k] for k in ("ok", "reasons") if k in report}, ensure_ascii=False, indent=2))
+          if not report.get("ok"):
+              sys.exit("早上海選後庫不完整，不上傳 Release：" + "；".join(report.get("reasons") or []))
+          print("fuse_end", fuse_end_date())
+          print("早上海選 Release 快照 OK")
+          PY
+          rm -f waynebot_production_complete.zip
+          zip -1 -j waynebot_production_complete.zip data/wayne_market.db
+          gh release upload v1.0-data waynebot_production_complete.zip --clobber --repo "${GITHUB_REPOSITORY}"
+
       - name: 完整性通過才蓋掉舊 Release zip
         if: success() && steps.job.outputs.job == 'increment'
         env:

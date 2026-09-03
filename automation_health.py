@@ -91,10 +91,30 @@ def pipeline_recent_status(db_path: str, limit: int = 12) -> Dict[str, Any]:
     return {"ok": True, "runs": runs}
 
 
+def pipeline_run_status(db_path: str, run_date: str) -> Optional[Dict[str, Any]]:
+    """讀取單一 pipeline_runs 紀錄（不受 recent limit 影響）。"""
+    path = str(db_path or "").strip()
+    key = str(run_date or "").strip()
+    if not path or not key or not os.path.isfile(path):
+        return None
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            "SELECT run_date, finished_at, status, notes FROM pipeline_runs WHERE run_date = ?",
+            (key,),
+        ).fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    return {"run_date": row[0], "finished_at": row[1], "status": row[2], "notes": row[3] or ""}
+
+
 def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     """交易日應完成的排程是否 success（increment / screen）。"""
     try:
-        from config import taipei_today_str
+        from config import taipei_now, taipei_today_str
         from trading_calendar import fuse_end_trading_date, is_trading_weekday
     except Exception:
         return {"ok": True, "skipped": True, "reasons": []}
@@ -102,19 +122,34 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     cap = str(cap or fuse_end_trading_date() or "").replace("-", "")[:8]
     today = taipei_today_str().replace("-", "")[:8]
     reasons: List[str] = []
-    recent = pipeline_recent_status(db_path).get("runs") or []
-    if not recent:
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
         return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
-    by_key = {str(r.get("run_date") or ""): r for r in recent}
+    try:
+        conn = sqlite3.connect(path)
+        run_count = int(conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0] or 0)
+        conn.close()
+    except sqlite3.Error:
+        run_count = 0
+    if run_count == 0:
+        return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
+    recent = pipeline_recent_status(db_path).get("runs") or []
+
+    now = taipei_now()
+    hour = now.hour if now else 0
 
     if cap and is_trading_weekday(cap):
-        inc = by_key.get(today) or by_key.get(cap)
-        if not inc or str(inc.get("status") or "") != "success":
-            reasons.append(f"盤後融合 {today} 未成功")
-        screen_key = f"screen-{cap}"
-        screen = by_key.get(screen_key)
-        if not screen or str(screen.get("status") or "") != "success":
-            reasons.append(f"早上海選 {screen_key} 未成功")
+        # 盤後融合：16:30 後才要求當日 success
+        if hour >= 17:
+            inc = pipeline_run_status(db_path, today) or pipeline_run_status(db_path, cap)
+            if not inc or str(inc.get("status") or "") != "success":
+                reasons.append(f"盤後融合 {today} 未成功")
+        # 早上海選：06:45 後才要求 screen-{cap} success
+        if hour >= 7:
+            screen_key = f"screen-{cap}"
+            screen = pipeline_run_status(db_path, screen_key)
+            if not screen or str(screen.get("status") or "") != "success":
+                reasons.append(f"早上海選 {screen_key} 未成功")
 
     return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
 
