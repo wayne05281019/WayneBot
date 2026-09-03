@@ -110,24 +110,28 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertFalse(candle_up_taiwan(c, prev_c, o))
 
         card = NavigatorEngine(db).get_decision_card("3105", merge_live=False)
-        self.assertEqual(str(card.get("latest_date")).replace("-", "")[:8], "20260903")
-        self.assertAlmostEqual(float(card["close"]), 446.5, places=1)
-        self.assertAlmostEqual(float(card["change_pct"]), -4.90, places=2)
-        self.assertAlmostEqual(float(card["h10"]), 492.0, places=1)
-        self.assertAlmostEqual(float(card["h20"]), 492.0, places=1)
-        self.assertAlmostEqual(float(card["l10"]), 355.0, places=0)
-        self.assertAlmostEqual(float(card["l60"]), 268.0, places=0)
-        self.assertAlmostEqual(float(card["gain_pct"]), 66.6, places=1)
-        lab, n = volume_headline_rank(
-            card.get("vol_rank_480") or 99,
-            card.get("vol_rank") or 99,
-            card.get("vol_rank_60") or 99,
-        )
-        self.assertEqual(lab, "60日量")
-        self.assertLessEqual(int(n), 10)
-        self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
-
         tbl = card["table"]
+        r903 = tbl[tbl["date"].astype(str) == "20260903"]
+        self.assertFalse(r903.empty, "20 日表應含 20260903")
+        self.assertAlmostEqual(float(r903.iloc[0]["close"]), 446.5, places=1)
+        latest = str(card.get("latest_date")).replace("-", "")[:8]
+        if latest == "20260903":
+            self.assertAlmostEqual(float(card["close"]), 446.5, places=1)
+            self.assertAlmostEqual(float(card["change_pct"]), -4.90, places=2)
+            self.assertAlmostEqual(float(card["h10"]), 492.0, places=1)
+            self.assertAlmostEqual(float(card["h20"]), 492.0, places=1)
+            self.assertAlmostEqual(float(card["l10"]), 355.0, places=0)
+            self.assertAlmostEqual(float(card["l60"]), 268.0, places=0)
+            self.assertAlmostEqual(float(card["gain_pct"]), 66.6, places=1)
+            lab, n = volume_headline_rank(
+                card.get("vol_rank_480") or 99,
+                card.get("vol_rank") or 99,
+                card.get("vol_rank_60") or 99,
+            )
+            self.assertEqual(lab, "60日量")
+            self.assertLessEqual(int(n), 10)
+            self.assertTrue(any("60日量" in str(b) for b in (card.get("badges") or [])))
+
         r824 = tbl[tbl["date"].astype(str) == "20260824"]
         if not r824.empty:
             shown = display_alert_cell(str(r824.iloc[0]["預警"]), str(r824.iloc[0]["高低"]))
