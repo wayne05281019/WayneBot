@@ -115,18 +115,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
             }
-            try:
-                from automation_health import health_payload
+            # 冷啟動期間跳過重型 DB 稽核，避免 Render 5s 健檢逾時導致 deploy 失敗
+            if live.get("booting"):
+                payload["data_ok"] = None
+                payload["cap"] = ""
+                payload["latest_complete"] = ""
+                payload["reasons"] = []
+            else:
+                try:
+                    from automation_health import health_payload
 
-                data = health_payload()
-                payload["data_ok"] = bool(data.get("data_ok"))
-                payload["cap"] = data.get("cap") or ""
-                payload["latest_complete"] = data.get("latest_complete") or ""
-                payload["reasons"] = list(data.get("reasons") or [])
-            except Exception as e:
-                # 資料狀態算不出來不代表行程壞了；但也不假裝健康。
-                payload["data_ok"] = False
-                payload["data_error"] = str(e)
+                    data = health_payload()
+                    payload["data_ok"] = bool(data.get("data_ok"))
+                    payload["cap"] = data.get("cap") or ""
+                    payload["latest_complete"] = data.get("latest_complete") or ""
+                    payload["reasons"] = list(data.get("reasons") or [])
+                except Exception as e:
+                    payload["data_ok"] = False
+                    payload["data_error"] = str(e)
             payload["ok"] = bool(payload["serving"])
             payload["status"] = "healthy" if payload["serving"] else "unhealthy"
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
