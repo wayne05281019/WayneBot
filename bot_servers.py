@@ -1838,9 +1838,10 @@ class WayneTelegramBot:
         if status is None:
             status = await self._transient_status(message, "讀取大盤…")
         html = ""
+        live_quote = None
         try:
 
-            def _build() -> str:
+            def _build():
                 from concurrent.futures import ThreadPoolExecutor
 
                 from live_quote import fetch_mis_index_quote
@@ -1853,9 +1854,9 @@ class WayneTelegramBot:
                     )
                     live = live_f.result()
                     snap = snap_f.result()
-                return format_taiwan_market_page_html(self.db_path, live=live, snap=snap)
+                return format_taiwan_market_page_html(self.db_path, live=live, snap=snap), live
 
-            html = await asyncio.wait_for(asyncio.to_thread(_build), timeout=25.0)
+            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=25.0)
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await self._delete_message(status)
@@ -1881,6 +1882,7 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+            await self._send_market_kline(message, live=live_quote)
         except Exception as e:
             logger.exception("大盤 HTML 送出失敗")
             plain = html.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
@@ -1890,6 +1892,51 @@ class WayneTelegramBot:
             )
         finally:
             await self._delete_message(status)
+
+    async def _send_market_kline(self, message, *, live=None) -> None:
+        """大盤專頁附圖：加權日 K（UDN 風格）。"""
+        from config import skip_chart_warmup
+
+        if skip_chart_warmup():
+            return
+        wait = None
+        try:
+            wait = await message.reply_text("日K圖產製中…")
+        except Exception:
+            pass
+        os.makedirs(self.charts_dir, exist_ok=True)
+        chart_path = os.path.join(self.charts_dir, f"twii_kline_{int(time.time() * 1000)}.png")
+        try:
+            from index_kline_chart import build_market_kline_chart
+
+            path = await asyncio.wait_for(
+                asyncio.to_thread(build_market_kline_chart, chart_path, live=live),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            path = ""
+            logger.warning("大盤日K圖逾時")
+        except Exception:
+            path = ""
+            logger.exception("大盤日K圖失敗")
+        if wait is not None:
+            try:
+                await wait.delete()
+            except Exception:
+                pass
+        if not path or not self._chart_png_looks_ok(path):
+            return
+        cap = "加權指數日K（K棒・MA5/20/60・量・KD）"
+        try:
+            with open(path, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([[self._q("market")]]),
+                )
+        except Exception:
+            logger.exception("大盤日K圖送出失敗")
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
