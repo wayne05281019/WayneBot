@@ -140,7 +140,10 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                pass
             return
         if route == "/ready":
             import json
@@ -568,8 +571,8 @@ def run_web():
     if db_quick_check_ok(db_path):
         logger.info("行情庫已就緒，背景確認 Release 更新後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
-    elif render_lite_boot():
-        logger.info("Render 冷啟：背景下載行情庫，先開聽筒（避免阻塞健檢）")
+    elif os.getenv("RENDER") or render_lite_boot():
+        logger.info("Render 冷啟：背景下載行情庫，先開聽筒（避免阻塞健檢與 deploy）")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
     else:
         logger.info("行情庫尚未就緒，先下載再啟動聽筒")
