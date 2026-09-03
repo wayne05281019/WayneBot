@@ -555,3 +555,54 @@ def append_live_bar(
     row = {col: df.iloc[-1][col] if col in df.columns else None for col in df.columns}
     row = _apply_rt_to_row(row, rt, stock_id)
     return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+
+_INDEX_MIS_CHANNELS = ("tse_t00.tw", "tse_t01.tw")
+_INDEX_CACHE: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+_MIS_INDEX_TIMEOUT = float(os.getenv("WAYNE_MIS_INDEX_TIMEOUT", "1.2"))
+
+
+def fetch_mis_index_quote() -> Optional[Dict[str, Any]]:
+    """盤中加權指數 MIS 即時（不寫庫）。非盤中時回 None。"""
+    if not is_live_merge_window():
+        return None
+    now = time.time()
+    global _INDEX_CACHE
+    cached_at, cached = _INDEX_CACHE
+    if cached and now - cached_at < _QUOTE_TTL_SEC:
+        return cached
+    ts = int(now * 1000)
+    found: Optional[Dict[str, Any]] = None
+    for ch in _INDEX_MIS_CHANNELS:
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ch}&json=1&delay=0&_={ts}"
+        try:
+            resp = _SESSION.get(
+                url,
+                timeout=(_MIS_CONNECT_TIMEOUT, min(_MIS_TIMEOUT, _MIS_INDEX_TIMEOUT)),
+            )
+            if resp.status_code != 200:
+                continue
+            arr = (resp.json() or {}).get("msgArray") or []
+            if not arr:
+                continue
+            item = arr[0]
+            y = _num(item.get("y"))
+            px = _last_price(item, y)
+            if px <= 0:
+                continue
+            pct = round((px - y) / y * 100.0, 2) if y > 0 else _num(item.get("zf") or item.get("ch"))
+            found = {
+                "close": px,
+                "pct_change": pct,
+                "yesterday_close": y if y > 0 else None,
+                "update_time": item.get("t") or "",
+                "name": item.get("n") or "加權指數",
+                "is_realtime": True,
+            }
+            break
+        except requests.Timeout:
+            logger.debug("MIS 指數逾時 %s", ch)
+        except Exception:
+            logger.debug("MIS 指數失敗 %s", ch, exc_info=True)
+    _INDEX_CACHE = (now, found)
+    return found
