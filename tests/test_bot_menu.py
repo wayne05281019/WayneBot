@@ -36,6 +36,8 @@ def test_help_guide_covers_all_main_buttons():
         "AI操盤",
     ):
         assert label in guide
+    assert "按表操課" in guide
+    assert "低買高賣" in guide
 
 
 def test_help_nav_keyboard_has_topic_buttons():

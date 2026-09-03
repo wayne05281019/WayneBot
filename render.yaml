@@ -23,3 +23,6 @@ services:
       # 並負責唯一沒有 GHA 對應的 12:45 尾盤複核。
       - key: WAYNE_SCHEDULER_ROLE
         value: data
+      # 付費機磁碟上已有庫；寬限只擋「庫還沒可讀」的 503，不必拉到 15～30 分鐘。
+      - key: WAYNE_BOOT_GRACE_SECONDS
+        value: "600"
