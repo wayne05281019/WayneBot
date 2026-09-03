@@ -397,6 +397,144 @@ def _yahoo(sid, name, db_path: str = None) -> str:
         return f"{html_escape(sid)} {html_escape(name)}".strip()
 
 
+_SECTOR_SHORT = {
+    "金融保險業": "金融",
+    "半導體業": "半導體",
+    "電子零組件業": "電子零組件",
+    "電腦及週邊設備業": "電腦",
+    "通信網路業": "通信",
+    "光電業": "光電",
+    "鋼鐵工業": "鋼鐵",
+    "建材營造業": "營建",
+    "生技醫療業": "生技",
+    "航運業": "航運",
+}
+
+
+def _sector_short_name(industry: str) -> str:
+    ind = str(industry or "").strip()
+    if ind in _SECTOR_SHORT:
+        return _SECTOR_SHORT[ind]
+    if ind.endswith("業") and len(ind) > 2:
+        return ind[:-1]
+    return ind or "產業"
+
+
+def sector_theme_headline(row: Dict[str, Any]) -> str:
+    """今日最強族標題（對齊 CaryBot「金融扮演撐盤要角」語意）。"""
+    short = _sector_short_name(str(row.get("industry") or ""))
+    three = int(row.get("three_net") or 0)
+    avg = float(row.get("avg_pct") or 0)
+    if three > 0 and avg >= 0.2:
+        return f"{short}扮演撐盤要角"
+    if three > 0:
+        return f"{short}法人買超居首"
+    if three < 0 and avg <= -0.3:
+        return f"{short}賣壓偏重"
+    return f"{short}資金動向"
+
+
+def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
+    rows = conn.execute(
+        """
+        SELECT date, close FROM daily_quotes
+        WHERE stock_id=? AND replace(date,'-','') <= ?
+        ORDER BY date
+        """,
+        (str(stock_id), str(ymd).replace("-", "")),
+    ).fetchall()
+    if len(rows) < 2:
+        return 0.0
+    import pandas as pd
+
+    from decision_card_signals import profit_pct_cal60_series
+
+    df = pd.DataFrame(rows, columns=["date", "close"])
+    try:
+        return float(profit_pct_cal60_series(df).iloc[-1])
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+
+
+def sector_representative_stocks(
+    conn: sqlite3.Connection,
+    ymd: str,
+    industry: str,
+    *,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    """族內代表股：法人買超 + 獲利% + 成交額加權（非 Cary 熱力圖）。"""
+    ymd = str(ymd or "").replace("-", "")
+    ind_expr = _industry_expr()
+    etf = _not_etf_clause()
+    conn.row_factory = sqlite3.Row
+    raw = conn.execute(
+        f"""
+        SELECT q.stock_id, q.stock_name, q.close, q.pct_change, q.volume, q.turnover_k,
+               q.foreign_net, q.trust_net, q.dealer_net,
+               (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE replace(q.date,'-','')=? AND {ind_expr}=? {etf}
+        """,
+        (ymd, str(industry)),
+    ).fetchall()
+    picks: List[Dict[str, Any]] = []
+    for r in raw:
+        sid = str(r["stock_id"])
+        three = int(r["three_net"] or 0)
+        turn = float(r["turnover_k"] or 0)
+        gain = _gain_pct_cal60(conn, sid, ymd)
+        score = three + turn / 50000.0 + max(0.0, gain) * 50.0
+        picks.append(
+            {
+                "stock_id": sid,
+                "stock_name": str(r["stock_name"] or sid),
+                "three_net": three,
+                "gain_pct": round(gain, 1),
+                "pct_change": float(r["pct_change"] or 0),
+                "score": score,
+            }
+        )
+    picks.sort(key=lambda x: (x["score"], x["three_net"], x["gain_pct"]), reverse=True)
+    return picks[: int(limit)]
+
+
+def format_sector_theme_brief(
+    db_path: str,
+    ymd: str,
+    top_row: Dict[str, Any],
+) -> str:
+    """今日最強族 + 族內代表股清單（Telegram HTML）。"""
+    from tg_layout import html_metrics_tight, qty_text, section
+
+    if int(top_row.get("three_net") or 0) <= 0:
+        return ""
+    conn = sqlite3.connect(db_path)
+    try:
+        reps = sector_representative_stocks(conn, ymd, str(top_row["industry"]))
+    finally:
+        conn.close()
+    if not reps:
+        return ""
+    headline = sector_theme_headline(top_row)
+    three = int(top_row["three_net"])
+    lines = [
+        f"<b>{headline}</b>",
+        f"<i>{top_row['industry']}　法人 {qty_text(three)}</i>",
+    ]
+    for i, r in enumerate(reps, start=1):
+        title = _yahoo(r["stock_id"], r["stock_name"], db_path)
+        lines.append(
+            f"{i}. {title}\n"
+            + html_metrics_tight(
+                f"獲利 {r['gain_pct']:.1f}%",
+                qty_text(int(r["three_net"])),
+            )
+        )
+    return section(*lines)
+
+
 def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
     """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
     from tg_layout import html_escape, html_metrics_tight, qty_text, pct_text
@@ -463,6 +601,7 @@ def format_sector_rotation_html(
     conn.close()
     if not rows:
         return ""
+    top_row = rows[0]
     chip_abs = sum(abs(int(r["three_net"])) for r in rows)
     from trading_calendar import format_trading_date_zh
 
@@ -486,6 +625,9 @@ def format_sector_rotation_html(
     if chip_abs == 0:
         blocks.append("當日法人張數加總為 0，先等盤後法人寫進庫再看輪動。")
         return join_dashed(*blocks)
+    theme = format_sector_theme_brief(path, ymd, top_row)
+    if theme:
+        blocks.append(theme)
     if inflow:
         blocks.append(
             section(
