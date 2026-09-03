@@ -351,6 +351,19 @@ def volume_headline_rank(vol_rank_480=99, vol_rank_120=99, vol_rank_60=99) -> tu
     return "120日量", r120
 
 
+def volume_rank_pair_text(vol_rank_480=99, vol_rank_120=99, vol_rank_60=99) -> str:
+    """表頭短窗與 120 日並列，避免一張第 7、一張第 25 以為算錯。"""
+    lab, n = volume_headline_rank(vol_rank_480, vol_rank_120, vol_rank_60)
+    try:
+        r120 = int(vol_rank_120 or 99)
+    except (TypeError, ValueError):
+        r120 = 99
+    if lab == "120日量":
+        return f"120日第 {n} 名"
+    short = str(lab).replace("量", "")
+    return f"{short}第{n} · 120日第{r120}"
+
+
 def double_green_breakout(
     yest_profit_pct: float,
     yest_alert: str,
