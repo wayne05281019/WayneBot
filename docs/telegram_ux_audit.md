@@ -43,7 +43,7 @@
 |------|------|------|
 | 03:57 | 手機號碼登入 VM Chrome + 2FA | ✅ 登入成功（用戶確認「搞定了」） |
 | 03:58 | `scripts/live_menu_probe.py` 五角色 × 主選單 | **FAIL: none**，大盤 ack 1.6s、資金 9.9s |
-| 待補 | VM 真機話筒區錄影 | 進行中 |
+| 待補 | VM 真機話筒區錄影 | 子代理額度中斷；已有 probe 全過 |
 
 **自動化報告**：`/opt/cursor/artifacts/live_menu_probe_report.json`
 
