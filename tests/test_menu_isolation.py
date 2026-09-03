@@ -103,7 +103,10 @@ def test_market_cmd_dismisses_before_content():
     upd = _update(msg)
 
     async def run():
-        with patch("taiwan_market.format_taiwan_market_page_html", return_value="<b>台股大盤</b>"):
+        snap = {"ok": True, "close": 22000.0, "as_of": "20260902"}
+        with patch("taiwan_market.format_taiwan_market_page_html", return_value="<b>台股大盤</b>"), patch(
+            "taiwan_market.analyze_taiwan_market", return_value=snap
+        ), patch("live_quote.fetch_mis_index_quote", return_value=None):
             await bot.market_cmd(upd, MagicMock())
 
     asyncio.run(run())

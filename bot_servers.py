@@ -1836,25 +1836,68 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
+    async def _send_market_page(self, message) -> None:
+        """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
+        status = await self._transient_status(message, "讀取大盤…")
+        html = ""
+        try:
+
+            def _build() -> str:
+                from concurrent.futures import ThreadPoolExecutor
+
+                from live_quote import fetch_mis_index_quote
+                from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
+
+                with ThreadPoolExecutor(max_workers=2) as ex:
+                    live_f = ex.submit(fetch_mis_index_quote)
+                    snap_f = ex.submit(
+                        analyze_taiwan_market, self.db_path, None, db_only=True, page_light=True
+                    )
+                    live = live_f.result()
+                    snap = snap_f.result()
+                return format_taiwan_market_page_html(self.db_path, live=live, snap=snap)
+
+            html = await asyncio.wait_for(asyncio.to_thread(_build), timeout=25.0)
+        except asyncio.TimeoutError:
+            logger.warning("大盤專頁逾時 db=%s", self.db_path)
+            await self._delete_message(status)
+            await message.reply_text(
+                "大盤讀取逾時，請稍後再按一次。",
+                reply_markup=self._keyboard(),
+            )
+            return
+        except Exception as e:
+            logger.exception("大盤專頁失敗")
+            await self._delete_message(status)
+            await message.reply_text(f"大盤讀取失敗：{e}", reply_markup=self._keyboard())
+            return
+        parts = chunk_telegram_html(html)
+        if not parts:
+            await self._delete_message(status)
+            await message.reply_text(
+                "大盤資料暫時讀不到，請稍後再試。",
+                reply_markup=self._keyboard(),
+            )
+            return
+        try:
+            for i, part in enumerate(parts):
+                kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
+                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        except Exception as e:
+            logger.exception("大盤 HTML 送出失敗")
+            plain = html.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
+            await message.reply_text(
+                f"大盤顯示失敗，改純文字：\n{plain[:3500]}",
+                reply_markup=self._keyboard(),
+            )
+        finally:
+            await self._delete_message(status)
+
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
         uid = str(update.effective_user.id)
         await self._enter_main_menu(update.message, uid)
-        status = await self._transient_status(update.message, "讀取大盤…")
-        try:
-            from taiwan_market import format_taiwan_market_page_html
-
-            html = await asyncio.to_thread(format_taiwan_market_page_html, self.db_path)
-        except Exception as e:
-            logger.exception("大盤專頁失敗")
-            await self._delete_message(status)
-            await update.message.reply_text(f"大盤讀取失敗：{e}", reply_markup=self._keyboard())
-            return
-        await self._delete_message(status)
-        parts = chunk_telegram_html(html)
-        for i, part in enumerate(parts):
-            kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
-            await update.message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        await self._send_market_page(update.message)
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
@@ -3024,6 +3067,11 @@ class WayneTelegramBot:
                 self._invalidate_menu_layout(uid)
                 await self._refresh_reply_menu(q.message, uid=uid, silent=True)
                 await self._reply_help_topic(q.message, "menu", edit_target=q.message)
+                return
+            if topic == "market":
+                uid = str(q.from_user.id)
+                await self._enter_main_menu(q.message, uid)
+                await self._send_market_page(q.message)
                 return
             await self._reply_help_topic(q.message, topic, edit_target=q.message)
             return

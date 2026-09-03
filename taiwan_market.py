@@ -1421,29 +1421,31 @@ def _confirm_regime_plus(raw_hist: List[str], *, confirm_days: int = _REGIME_PLU
 def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> List[str]:
     """近 lookback 個交易日逐日 raw Regime+（供滯後確認）。"""
     d = _norm_ymd(as_of)
-    conn = sqlite3.connect(db_path)
-    try:
-        dates = [
-            str(r[0])
-            for r in conn.execute(
-                """
-                SELECT date FROM index_daily
-                WHERE symbol=? AND date <= ? ORDER BY date DESC LIMIT ?
-                """,
-                (_INDEX_SYMBOL, d, lookback),
-            ).fetchall()
-        ]
-    finally:
-        conn.close()
-    dates = list(reversed(dates))
+    full_idx = load_index_daily(db_path, db_only=True)
+    if full_idx.empty:
+        return []
+    dates = (
+        full_idx.loc[full_idx["date"].astype(str) <= d, "date"]
+        .astype(str)
+        .tolist()[-lookback:]
+    )
     raw_hist: List[str] = []
-    us_risk_off = False
+    last_day = dates[-1] if dates else ""
     for day in dates:
-        idx = load_index_daily(db_path, day, db_only=True)
+        idx = full_idx[full_idx["date"].astype(str) <= day].reset_index(drop=True)
         if idx.empty:
             continue
-        breadth, _ = _resolve_breadth_for_date(db_path, day)
         official = load_index_breadth_daily(db_path, day) or _nearest_official_breadth(db_path, day)
+        if day == last_day:
+            breadth, _ = _resolve_breadth_for_date(db_path, day)
+        elif official:
+            up = int(official.get("up_count") or 0)
+            down = int(official.get("down_count") or 0)
+            total = up + down
+            up_ratio = float(official.get("up_ratio") or (up / total if total else 0.5))
+            breadth = {"above_ma20_pct": round(up_ratio * 100.0, 1), "sample_n": 0}
+        else:
+            breadth = {"above_ma20_pct": 50.0, "sample_n": 0}
         prev_official = _load_prev_official_breadth(db_path, day)
         flow_net = _sector_flow_net(db_path, day)
         if flow_net is None:
@@ -1455,6 +1457,7 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
             sector_flow=float(flow_net or 0),
             official_up_ratio=(official.get("up_ratio") if official else None),
         )
+        us_risk_off = False
         try:
             from us_overnight import load_us_overnight
 
@@ -1474,7 +1477,7 @@ def _regime_plus_raw_history(db_path: str, as_of: str, *, lookback: int = 8) -> 
             official_breadth=official,
             prev_official=prev_official,
         )
-        lead = compute_futures_lead_stats(db_path, day)
+        lead = compute_futures_lead_stats(db_path, day) if day == last_day else {"label": "同步"}
         raw_hist.append(
             _classify_regime_plus_raw(
                 regime=str(core.get("regime") or "neutral"),
@@ -1572,7 +1575,13 @@ def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
         return None
 
 
-def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only: bool = False) -> Dict[str, Any]:
+def analyze_taiwan_market(
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    db_only: bool = False,
+    page_light: bool = False,
+) -> Dict[str, Any]:
     ref_date = resolve_market_as_of(db_path, as_of)
     idx = load_index_daily(db_path, ref_date or None, db_only=db_only)
     if idx.empty and db_only:
@@ -1631,8 +1640,12 @@ def analyze_taiwan_market(db_path: str, as_of: Optional[str] = None, *, db_only:
     fut_close = float(futures.get("close") or 0) if futures else 0.0
     basis_pct = compute_basis_pct(spot_close, fut_close) if futures else None
     lead = compute_futures_lead_stats(db_path, ref_date) if futures else {}
-    bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
-    bt_plus = backtest_bucket_win_rate_by_regime_plus(db_path, limit_days=60)
+    if page_light:
+        bt = []
+        bt_plus = []
+    else:
+        bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
+        bt_plus = backtest_bucket_win_rate_by_regime_plus(db_path, limit_days=60)
     rp = compute_regime_plus(db_path, ref_date)
     return {
         "ok": True,
@@ -2087,10 +2100,17 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     return "\n".join(lines)
 
 
-def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) -> str:
+def format_taiwan_market_page_html(
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    live: Optional[Dict[str, Any]] = None,
+    snap: Optional[Dict[str, Any]] = None,
+) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
     ref_hint = resolve_market_as_of(db_path, as_of)
-    snap = analyze_taiwan_market(db_path, ref_hint, db_only=True)
+    if snap is None:
+        snap = analyze_taiwan_market(db_path, ref_hint, db_only=True, page_light=True)
     if not snap.get("ok"):
         logger.error("大盤頁：index_daily 無法解析基準日 db=%s hint=%s", db_path, ref_hint)
         return (
@@ -2102,13 +2122,26 @@ def format_taiwan_market_page_html(db_path: str, as_of: Optional[str] = None) ->
     pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
     light = _regime_traffic_light(snap.get("regime"))
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
+    index_block: List[str] = ["<b>加權指數</b>"]
+    live_px = float((live or {}).get("close") or 0)
+    if live_px > 0:
+        live_pct = float((live or {}).get("pct_change") or 0)
+        clock = str((live or {}).get("update_time") or "")[:5]
+        index_block.append(
+            f"現價 <b>{live_px:,.1f}</b>（{live_pct:+.2f}%）"
+            + (f"　{clock}" if clock else "")
+        )
+        index_block.append(f"昨收 <b>{snap['close']:,.1f}</b>{pct_bit}（庫 {ref}）")
+        as_of_note = "<i>盤中 MIS 即時；結構／廣度仍依庫內最近完整日</i>"
+    else:
+        index_block.append(f"收盤 <b>{snap['close']:,.1f}</b>{pct_bit}")
+        as_of_note = "<i>庫內官方融合收盤</i>"
     lines = [
         "<b>📊 台股大盤</b>",
         f"截至 <b>{ref}</b>",
-        "<i>庫內官方融合收盤</i>",
+        as_of_note,
         "",
-        "<b>加權指數</b>",
-        f"收盤 <b>{snap['close']:,.1f}</b>{pct_bit}",
+        *index_block,
         f"MA20 {snap['ma20']:,.1f}",
         f"MA60 {snap['ma60']:,.1f}",
         f"5日 {snap['chg5_pct']:+.2f}%",

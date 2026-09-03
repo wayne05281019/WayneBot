@@ -226,6 +226,19 @@ class TestMarketMenuE2E:
         asyncio.run(run_both())
         assert bot._pending.get("99:111") == "buy"
 
+    def test_market_page_builds_under_two_seconds(self):
+        import time
+        from config import get_db_path
+
+        db = get_db_path()
+        if not db or not __import__("os").path.isfile(db):
+            pytest.skip("production db required")
+        t0 = time.time()
+        html = format_taiwan_market_page_html(db)
+        elapsed = time.time() - t0
+        assert "台股大盤" in html
+        assert elapsed < 2.5, f"market page too slow: {elapsed:.2f}s"
+
     def test_market_page_mobile_friendly_layout(self, tmp_path):
         db = str(tmp_path / "layout.db")
         as_of = _seed_market_db(db)
