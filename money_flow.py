@@ -397,6 +397,330 @@ def _yahoo(sid, name, db_path: str = None) -> str:
         return f"{html_escape(sid)} {html_escape(name)}".strip()
 
 
+_SECTOR_SHORT = {
+    "金融保險業": "金融",
+    "半導體業": "半導體",
+    "電子零組件業": "電子零組件",
+    "電腦及週邊設備業": "電腦",
+    "通信網路業": "通信",
+    "光電業": "光電",
+    "鋼鐵工業": "鋼鐵",
+    "建材營造業": "營建",
+    "生技醫療業": "生技",
+    "航運業": "航運",
+}
+
+
+def _sector_short_name(industry: str) -> str:
+    ind = str(industry or "").strip()
+    if ind in _SECTOR_SHORT:
+        return _SECTOR_SHORT[ind]
+    if ind.endswith("業") and len(ind) > 2:
+        return ind[:-1]
+    return ind or "產業"
+
+
+def sector_theme_headline(row: Dict[str, Any]) -> str:
+    """盤中／盤後最強族標題（對齊 CaryBot「金融扮演撐盤要角」）。"""
+    short = _sector_short_name(str(row.get("industry") or ""))
+    if str(row.get("mode") or "") == "live":
+        avg = float(row.get("avg_pct") or 0)
+        if avg >= 0.3:
+            return f"{short}扮演撐盤要角"
+        if avg >= 0.05:
+            return f"{short}盤中走強"
+        return f"{short}盤中偏弱"
+    three = int(row.get("three_net") or 0)
+    avg = float(row.get("avg_pct") or 0)
+    if three > 0 and avg >= 0.2:
+        return f"{short}扮演撐盤要角"
+    if three > 0:
+        return f"{short}法人買超居首"
+    if three < 0 and avg <= -0.3:
+        return f"{short}賣壓偏重"
+    return f"{short}資金動向"
+
+
+def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 360) -> Dict[str, Dict[str, Any]]:
+    """近一日高成交現股母體（供盤中 MIS 掃描，不寫庫）。"""
+    ind_expr = _industry_expr()
+    etf = _not_etf_clause()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        f"""
+        SELECT q.stock_id, q.stock_name, {ind_expr} AS industry, q.turnover_k
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE replace(q.date,'-','') = (
+            SELECT MAX(replace(date,'-','')) FROM daily_quotes
+        )
+        {etf}
+          AND COALESCE(q.turnover_k, 0) >= 30000
+        ORDER BY q.turnover_k DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    ).fetchall()
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        sid = str(r["stock_id"])
+        out[sid] = {
+            "stock_id": sid,
+            "stock_name": str(r["stock_name"] or sid),
+            "industry": str(r["industry"] or "未分類"),
+            "turnover_k": float(r["turnover_k"] or 0),
+        }
+    return out
+
+
+def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
+    """盤中最強族：MIS 即時均漲 × 量權重聚合（不寫庫、不用盤後法人）。"""
+    from live_quote import is_live_merge_window
+
+    if not is_live_merge_window(now):
+        return []
+    from midday_review import fetch_mis_batch
+
+    conn = sqlite3.connect(db_path)
+    try:
+        meta = _liquid_stock_meta(conn)
+    finally:
+        conn.close()
+    if not meta:
+        return []
+    live = fetch_mis_batch(list(meta.keys()), db_path)
+    if not live:
+        return []
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for sid, q in live.items():
+        info = meta.get(sid)
+        if not info:
+            continue
+        px = float(q.get("close") or q.get("price") or 0)
+        if px <= 0:
+            continue
+        pct = float(q.get("pct") or 0)
+        vol = float(q.get("volume") or 0)
+        if vol <= 0:
+            vol = 1.0
+        turn = px * vol
+        ind = str(info["industry"])
+        b = buckets.setdefault(
+            ind,
+            {
+                "industry": ind,
+                "mode": "live",
+                "three_net": 0,
+                "sample_n": 0,
+                "turn_sum": 0.0,
+                "pct_sum": 0.0,
+                "up_n": 0,
+            },
+        )
+        b["sample_n"] += 1
+        b["turn_sum"] += turn
+        b["pct_sum"] += pct * turn
+        if pct > 0:
+            b["up_n"] += 1
+    rows: List[Dict[str, Any]] = []
+    for b in buckets.values():
+        if int(b["sample_n"]) < 3:
+            continue
+        turn_sum = float(b["turn_sum"] or 0)
+        avg_pct = round(float(b["pct_sum"]) / turn_sum, 2) if turn_sum > 0 else 0.0
+        rows.append(
+            {
+                "industry": b["industry"],
+                "mode": "live",
+                "three_net": 0,
+                "avg_pct": avg_pct,
+                "sample_n": int(b["sample_n"]),
+                "up_ratio": round(int(b["up_n"]) / int(b["sample_n"]), 2),
+                "_live_meta": meta,
+                "_live_quotes": live,
+            }
+        )
+    rows.sort(key=lambda x: (float(x["avg_pct"]), int(x["sample_n"])), reverse=True)
+    return rows
+
+
+def sector_representative_stocks_live(
+    db_path: str,
+    industry: str,
+    *,
+    meta: Dict[str, Dict[str, Any]],
+    live_quotes: Dict[str, Dict[str, Any]],
+    ymd: str,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    """盤中族內代表股：今日漲幅 + 獲利% + 量能。"""
+    conn = sqlite3.connect(db_path)
+    picks: List[Dict[str, Any]] = []
+    try:
+        for sid, q in live_quotes.items():
+            info = meta.get(sid)
+            if not info or str(info.get("industry")) != str(industry):
+                continue
+            px = float(q.get("close") or q.get("price") or 0)
+            if px <= 0:
+                continue
+            pct = float(q.get("pct") or 0)
+            vol = float(q.get("volume") or 0)
+            gain = _gain_pct_cal60(conn, sid, ymd)
+            score = pct * 25.0 + max(0.0, gain) + px * max(vol, 1.0) / 500000.0
+            picks.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": str(q.get("name") or info.get("stock_name") or sid),
+                    "pct_change": round(pct, 2),
+                    "gain_pct": round(gain, 1),
+                    "volume": vol,
+                    "score": score,
+                }
+            )
+    finally:
+        conn.close()
+    picks.sort(key=lambda x: (x["score"], x["pct_change"], x["gain_pct"]), reverse=True)
+    return picks[: int(limit)]
+
+
+def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
+    rows = conn.execute(
+        """
+        SELECT date, close FROM daily_quotes
+        WHERE stock_id=? AND replace(date,'-','') <= ?
+        ORDER BY date
+        """,
+        (str(stock_id), str(ymd).replace("-", "")),
+    ).fetchall()
+    if len(rows) < 2:
+        return 0.0
+    import pandas as pd
+
+    from decision_card_signals import profit_pct_cal60_series
+
+    df = pd.DataFrame(rows, columns=["date", "close"])
+    try:
+        return float(profit_pct_cal60_series(df).iloc[-1])
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+
+
+def sector_representative_stocks(
+    conn: sqlite3.Connection,
+    ymd: str,
+    industry: str,
+    *,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    """族內代表股：法人買超 + 獲利% + 成交額加權（非 Cary 熱力圖）。"""
+    ymd = str(ymd or "").replace("-", "")
+    ind_expr = _industry_expr()
+    etf = _not_etf_clause()
+    conn.row_factory = sqlite3.Row
+    raw = conn.execute(
+        f"""
+        SELECT q.stock_id, q.stock_name, q.close, q.pct_change, q.volume, q.turnover_k,
+               q.foreign_net, q.trust_net, q.dealer_net,
+               (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE replace(q.date,'-','')=? AND {ind_expr}=? {etf}
+        """,
+        (ymd, str(industry)),
+    ).fetchall()
+    picks: List[Dict[str, Any]] = []
+    for r in raw:
+        sid = str(r["stock_id"])
+        three = int(r["three_net"] or 0)
+        turn = float(r["turnover_k"] or 0)
+        gain = _gain_pct_cal60(conn, sid, ymd)
+        score = three + turn / 50000.0 + max(0.0, gain) * 50.0
+        picks.append(
+            {
+                "stock_id": sid,
+                "stock_name": str(r["stock_name"] or sid),
+                "three_net": three,
+                "gain_pct": round(gain, 1),
+                "pct_change": float(r["pct_change"] or 0),
+                "score": score,
+            }
+        )
+    picks.sort(key=lambda x: (x["score"], x["three_net"], x["gain_pct"]), reverse=True)
+    return picks[: int(limit)]
+
+
+def format_sector_theme_brief(
+    db_path: str,
+    ymd: str,
+    top_row: Dict[str, Any],
+    *,
+    mode: str = "",
+) -> str:
+    """盤中／盤後最強族 + 族內代表股（Telegram HTML）。"""
+    from tg_layout import html_metrics_tight, pct_text, qty_text, section
+
+    live_mode = mode == "live" or str(top_row.get("mode") or "") == "live"
+    if live_mode:
+        if float(top_row.get("avg_pct") or 0) <= 0:
+            return ""
+        meta = top_row.get("_live_meta") or {}
+        quotes = top_row.get("_live_quotes") or {}
+        reps = sector_representative_stocks_live(
+            db_path,
+            str(top_row["industry"]),
+            meta=meta,
+            live_quotes=quotes,
+            ymd=ymd,
+        )
+        if not reps:
+            return ""
+        headline = sector_theme_headline(top_row)
+        n = int(top_row.get("sample_n") or 0)
+        avg = float(top_row.get("avg_pct") or 0)
+        lines = [
+            f"<b>盤中最強族｜{headline}</b>",
+            f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（MIS {n} 檔）</i>",
+        ]
+        for i, r in enumerate(reps, start=1):
+            title = _yahoo(r["stock_id"], r["stock_name"], db_path)
+            lines.append(
+                f"{i}. {title}\n"
+                + html_metrics_tight(
+                    f"獲利 {r['gain_pct']:.1f}%",
+                    pct_text(r["pct_change"]),
+                )
+            )
+        return section(*lines)
+
+    if int(top_row.get("three_net") or 0) <= 0:
+        return ""
+    conn = sqlite3.connect(db_path)
+    try:
+        reps = sector_representative_stocks(conn, ymd, str(top_row["industry"]))
+    finally:
+        conn.close()
+    if not reps:
+        return ""
+    headline = sector_theme_headline(top_row)
+    three = int(top_row["three_net"])
+    lines = [
+        f"<b>盤後最強族｜{headline}</b>",
+        f"<i>{top_row['industry']}</i>",
+        html_metrics_tight("法人", qty_text(three)),
+    ]
+    for i, r in enumerate(reps, start=1):
+        title = _yahoo(r["stock_id"], r["stock_name"], db_path)
+        lines.append(
+            f"{i}. {title}\n"
+            + html_metrics_tight(
+                f"獲利 {r['gain_pct']:.1f}%",
+                qty_text(int(r["three_net"])),
+            )
+        )
+    return section(*lines)
+
+
 def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
     """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
     from tg_layout import html_escape, html_metrics_tight, qty_text, pct_text
@@ -463,6 +787,7 @@ def format_sector_rotation_html(
     conn.close()
     if not rows:
         return ""
+    top_row = rows[0]
     chip_abs = sum(abs(int(r["three_net"])) for r in rows)
     from trading_calendar import format_trading_date_zh
 
@@ -486,6 +811,22 @@ def format_sector_rotation_html(
     if chip_abs == 0:
         blocks.append("當日法人張數加總為 0，先等盤後法人寫進庫再看輪動。")
         return join_dashed(*blocks)
+    theme = ""
+    try:
+        from live_quote import is_live_merge_window
+
+        if is_live_merge_window(now):
+            live_rows = compute_live_sector_rows(path, now=now)
+            if live_rows:
+                theme = format_sector_theme_brief(path, ymd, live_rows[0], mode="live")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).debug("盤中最強族略過", exc_info=True)
+    if not theme and int(top_row.get("three_net") or 0) > 0:
+        theme = format_sector_theme_brief(path, ymd, top_row, mode="post")
+    if theme:
+        blocks.append(theme)
     if inflow:
         blocks.append(
             section(

@@ -292,6 +292,8 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertEqual(default_industry("STOCK", ""), "")
 
     def test_sector_rotation_uses_official_chips(self):
+        from unittest.mock import patch
+
         from money_flow import (
             annotate_items_with_sector_flow,
             format_flow_html,
@@ -340,7 +342,8 @@ class FuseAndScreenTest(unittest.TestCase):
 
             n = recompute_sector_flow(path, "20260828")
             self.assertGreaterEqual(n, 2)
-            html = format_sector_rotation_html(path, "20260828")
+            with patch("live_quote.is_live_merge_window", return_value=False):
+                html = format_sector_rotation_html(path, "20260828")
             self.assertIn("盤後資金輪動", html)
             self.assertIn("＝＝半導體業＝＝", html)
             self.assertIn("＝＝鋼鐵工業＝＝", html)
