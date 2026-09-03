@@ -12,7 +12,9 @@ services:
     startCommand: python main.py
     # /health 只反映「行程能不能服務」；資料過期不會讓它變紅，
     # 因為重啟修不了資料管線，只會把互動 bot 一起弄掉。
-    healthCheckPath: /health
+    # /live 只回答「行程還在」；資料狀態走 /health 欄位與 /ready。
+    # 健檢路徑必須 <1s，否則部署會被 Render 判 update_failed（#148 踩過）。
+    healthCheckPath: /live
     envVars:
       - key: WAYNE_RENDER_PLAN
         value: 1c-2g

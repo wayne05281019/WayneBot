@@ -182,3 +182,4 @@ def test_render_yaml_declares_the_owner():
         text = fh.read()
     assert "WAYNE_SCHEDULER_ROLE" in text
     assert "data" in text
+    assert "healthCheckPath: /live" in text

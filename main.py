@@ -35,6 +35,8 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("WayneBot")
 
 _PROCESS_STARTED_AT = time.time()
+_HEALTH_DATA_CACHE: dict = {"at": 0.0, "payload": None}
+_HEALTH_DATA_TTL_S = 45.0
 
 
 def _boot_grace_seconds() -> int:
@@ -98,9 +100,53 @@ def _liveness_snapshot() -> dict:
     return detail
 
 
+def _cheap_health_data() -> dict:
+    """給 /health 的資料欄：只查最新完整日，禁止跑整份 automation audit。
+
+    Render 健檢只有幾秒；#148 在 boot 中呼叫 health_payload() 會掃全庫，
+    SQLite 又跟啟動融合搶鎖，部署就被判 update_failed，話筒整段 502。
+    """
+    now = time.time()
+    cached = _HEALTH_DATA_CACHE.get("payload")
+    if cached is not None and (now - float(_HEALTH_DATA_CACHE.get("at") or 0)) < _HEALTH_DATA_TTL_S:
+        return cached
+    from config import fuse_end_date, get_db_path
+    from import_health import latest_complete_quote_date
+
+    path = get_db_path()
+    latest = str(latest_complete_quote_date(path) or "").replace("-", "")[:8]
+    cap = str(fuse_end_date() or "").replace("-", "")[:8]
+    data_ok = bool(latest and cap and latest >= cap)
+    reasons = []
+    if not latest:
+        reasons.append("尚無完整日K")
+    elif cap and latest < cap:
+        reasons.append(f"最新完整日 {latest} 落後基準 {cap}")
+    out = {
+        "data_ok": data_ok,
+        "cap": cap,
+        "latest_complete": latest,
+        "reasons": reasons,
+    }
+    _HEALTH_DATA_CACHE["at"] = now
+    _HEALTH_DATA_CACHE["payload"] = out
+    return out
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         route = self.path.split("?")[0]
+        if route == "/live":
+            body = b'{"live":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                pass
+            return
         if route in ("/", "/health"):
             import json
 
@@ -116,8 +162,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
             }
-            # 庫還沒可讀才跳過重型稽核（避免 Render 5s 健檢逾時）。
-            # 庫已就緒時即使仍在 boot grace 也填 data_ok／latest_complete。
+            # 庫還沒可讀才略過資料欄。可讀時用便宜查詢填 latest_complete，
+            # 絕不在健檢路徑跑 run_automation_audit（會超過 Render 5s）。
             if live.get("booting") and not live.get("db_ok"):
                 payload["data_ok"] = None
                 payload["cap"] = ""
@@ -125,10 +171,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 payload["reasons"] = []
             else:
                 try:
-                    from automation_health import health_payload
-
-                    data = health_payload()
-                    payload["data_ok"] = bool(data.get("data_ok"))
+                    data = _cheap_health_data()
+                    payload["data_ok"] = data.get("data_ok")
                     payload["cap"] = data.get("cap") or ""
                     payload["latest_complete"] = data.get("latest_complete") or ""
                     payload["reasons"] = list(data.get("reasons") or [])
