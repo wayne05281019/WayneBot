@@ -82,13 +82,12 @@ def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str
     sid = str(stock_id or "").strip()
     name = str(stock_name or "").strip()
     label = f"{sid} {name}".strip() or sid
-    web, mobile = yahoo_urls(sid, db_path)
+    web, _mobile = yahoo_urls(sid, db_path)
     esc = (
         label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     )
-    # 手機奇摩：技術分析頁在 Telegram 內建瀏覽器較穩；RWD 報價頁備在 yahoo_urls()[0]
-    href = mobile.replace("&", "&amp;")
-    # 只留一個連結，避免海選一則裡幾十個 <a> 被切訊息切到半截、或跳出奇摩大圖預覽
+    # 個股報價頁較易喚起奇摩股市 App；技術分析留給明確要圖時再用
+    href = web.replace("&", "&amp;")
     return f'<a href="{href}">{esc}</a>'
 
 

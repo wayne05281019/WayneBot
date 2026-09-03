@@ -331,6 +331,7 @@ HELP_TOPICS = {
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
 MENU_LAYOUT_VERSION = "4"
+MAX_PICK_INLINE_ROWS = 8
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -579,12 +580,16 @@ class WayneTelegramBot:
 
     async def decision_card_btn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        last = self._last_card.get(uid)
-        if last:
-            await self._send_decision_card_quick(update.message, last, uid)
-        else:
-            await self._prompt_decision_card(update.message, uid)
+        status = await self._transient_status(update.message, "決策卡產製中…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_decision_card_quick(update.message, last, uid, skip_wait_msg=True)
+            else:
+                await self._prompt_decision_card(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     def _reply_menu(self):
         """兩排各五格：左→右依常用順序；次排最右＝大盤。"""
@@ -800,17 +805,16 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup([[self._q("menu")]])
 
     def _hub_keyboard(self, code: str, topic: str = "stock"):
+        """手機閱讀：每列最多三顆，常用放第一排。"""
         c = str(code).strip()[:6]
         return InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
-                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                     InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
                 ],
                 [
-                    InlineKeyboardButton("導航圖", callback_data=f"g:{c}"),
                     InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                     self._q(topic),
                 ],
@@ -849,7 +853,7 @@ class WayneTelegramBot:
         line_pack_id: str = None,
     ):
         rows = []
-        for i, (code, name) in enumerate((picks or [])[:12], start=1):
+        for i, (code, name) in enumerate((picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
@@ -857,7 +861,7 @@ class WayneTelegramBot:
         if line_pack_id:
             line_url = self._line_open_url(line_pack_id)
             if line_url:
-                rows.append([InlineKeyboardButton("開 LINE・傳本區", url=line_url)])
+                rows.append([InlineKeyboardButton("傳 LINE", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -898,7 +902,6 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton(label, callback_data=f"k:{c}"),
                     InlineKeyboardButton("➕", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                 ]
             )
         rows.append([self._q("stock")])
@@ -1004,17 +1007,12 @@ class WayneTelegramBot:
             )
         kb.append(
             [
-                InlineKeyboardButton("成交紀錄", callback_data="tj:trades"),
+                InlineKeyboardButton("成交", callback_data="tj:trades"),
                 InlineKeyboardButton("復盤", callback_data="tj:review"),
+                InlineKeyboardButton("AI倉", callback_data="ai_view"),
             ]
         )
-        kb.append(
-            [
-                InlineKeyboardButton("AI模擬倉", callback_data="ai_view"),
-                InlineKeyboardButton("AI操盤", callback_data="ai_run"),
-                self._q("portfolio"),
-            ]
-        )
+        kb.append([self._q("portfolio")])
         return InlineKeyboardMarkup(kb)
 
     async def _send_trade_journal(self, message, uid: str, *, review: bool = False) -> None:
@@ -1124,7 +1122,7 @@ class WayneTelegramBot:
         for i, part in enumerate(parts):
             pack_id = str(part.get("line_pack_id") or "")
             fid = self._cat_sticker_id(part.get("mark_key") or "")
-            if fid:
+            if fid and callable(getattr(message, "reply_sticker", None)):
                 try:
                     sticker_msg = await message.reply_sticker(sticker=fid)
                     self._track_screening_msg(actor, pack_id, sticker_msg)
@@ -1719,12 +1717,12 @@ class WayneTelegramBot:
         )
 
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
         await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
         effective_live_bucket = live_bucket
         effective_subtitle = subtitle
         if live_bucket == "daytrade" and not is_tw_equity_session():
-            status = await message.reply_text(status_text, reply_markup=self._reply_menu())
             try:
                 await message.reply_html(
                     f"<b>{title}</b>\n<i>{daytrade_closed_message(phase)}</i>",
@@ -1748,7 +1746,6 @@ class WayneTelegramBot:
                     "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
                     "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。"
                 )
-        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
         try:
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
@@ -1910,38 +1907,27 @@ class WayneTelegramBot:
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             await self._enter_main_menu(update.message, uid)
-            from money_flow import (
-                catch_up_quotes_to_cap,
-                format_flow_html,
-                recompute_sector_flow,
-                resolve_flow_as_of,
-            )
-            from trading_calendar import fuse_end_trading_date
+            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of, sector_flow_ready
 
-            as_of, _ = resolve_flow_as_of(self.db_path)
-            cap = fuse_end_trading_date()
-            wait_msg = None
-            if cap > (as_of or ""):
-                try:
-                    wait_msg = await update.message.reply_text(
-                        "今日盤後資料補齊中（Release 備份較舊，約 1～2 分鐘）…"
-                    )
-                    await asyncio.wait_for(
-                        asyncio.to_thread(catch_up_quotes_to_cap, self.db_path),
-                        timeout=180.0,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("資金輪動補齊逾時 cap=%s as_of=%s", cap, as_of)
-                finally:
-                    if wait_msg is not None:
-                        try:
-                            await wait_msg.delete()
-                        except Exception:
-                            pass
-            as_of, _ = resolve_flow_as_of(self.db_path)
+            as_of, lag = resolve_flow_as_of(self.db_path)
             if as_of:
-                await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
-            html = await asyncio.to_thread(format_flow_html, self.db_path, user_id=uid)
+                ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
+                if not ready:
+                    await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
+            html = await asyncio.wait_for(
+                asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
+                timeout=18.0,
+            )
+            if lag and lag not in html:
+                html = lag + "\n" + html
+        except asyncio.TimeoutError:
+            logger.warning("資金移動逾時，改送精簡版")
+            await self._delete_message(status)
+            await update.message.reply_text(
+                "資金頁載入逾時（盤中 MIS 較慢），請 30 秒後再按一次「資金」。",
+                reply_markup=self._keyboard(),
+            )
+            return
         except Exception as e:
             logger.exception("資金移動失敗")
             await self._delete_message(status)
@@ -2048,13 +2034,21 @@ class WayneTelegramBot:
 
     async def portfolio_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        await self._send_portfolio(update.message, uid)
+        status = await self._transient_status(update.message, "讀取持股…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            await self._send_portfolio(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     async def watch_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        await self._send_watch(update.message, uid)
+        status = await self._transient_status(update.message, "讀取觀察清單…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            await self._send_watch(update.message, uid)
+        finally:
+            await self._delete_message(status)
 
     async def card_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -2504,7 +2498,7 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await self._send_card_to(update.message, code, uid)
 
-    async def _send_decision_card_quick(self, message, code: str, uid: str = ""):
+    async def _send_decision_card_quick(self, message, code: str, uid: str = "", *, skip_wait_msg: bool = False):
         """盤中快捷：MIS 現價 + 高低決策卡（不重跑導航／籌碼，較快）。"""
         code = str(code).strip()
         uid = uid or self._uid_from_message(message)
@@ -2518,18 +2512,33 @@ class WayneTelegramBot:
         header_msg = None
         lookup_faded = False
         mkt_note = ""
-        try:
-            from taiwan_market import analyze_taiwan_market
+        # 大盤結構提示改背景，不擋第一行現價
+        async def _mkt_hint():
+            nonlocal mkt_note
+            try:
+                from taiwan_market import analyze_taiwan_market
 
-            snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True)
-            if snap.get("ok"):
-                fr = int(snap.get("falling_risk") or 0)
-                rp = str(snap.get("regime_plus") or "")
-                if fr >= 60 or rp in ("trend_down", "trend_up_late"):
-                    hint = "大盤結構偏弱，少追。" if fr >= 60 else "多頭末端，少追。"
-                    mkt_note = f"<i>⚠️ {hint}</i>\n"
-        except Exception:
-            pass
+                snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True, page_light=True)
+                if snap.get("ok"):
+                    fr = int(snap.get("falling_risk") or 0)
+                    rp = str(snap.get("regime_plus") or "")
+                    if fr >= 60 or rp in ("trend_down", "trend_up_late"):
+                        hint = "大盤結構偏弱，少追。" if fr >= 60 else "多頭末端，少追。"
+                        mkt_note = f"<i>⚠️ {hint}</i>\n"
+                        if header_msg is not None and hasattr(header_msg, "edit_text"):
+                            try:
+                                header = mkt_note + await asyncio.to_thread(
+                                    self._quote_header_html, code, live_rt, hits
+                                )
+                                await header_msg.edit_text(
+                                    header, parse_mode="HTML", disable_web_page_preview=True
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+        hint_task = asyncio.create_task(_mkt_hint())
         try:
             header = mkt_note + await asyncio.to_thread(
                 self._quote_header_html, code, live_rt, hits
@@ -2539,11 +2548,12 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("決策卡現價列失敗 code=%s", code)
         wait_msg = None
-        try:
-            wait_msg = await message.reply_text("決策卡產製中…")
-            self._track_lookup_fade(actor, wait_msg, "wait")
-        except Exception:
-            pass
+        if not skip_wait_msg:
+            try:
+                wait_msg = await message.reply_text("決策卡產製中…")
+                self._track_lookup_fade(actor, wait_msg, "wait")
+            except Exception:
+                pass
         try:
             from wayne_navigator import NavigatorEngine, render_decision_card_png
 
