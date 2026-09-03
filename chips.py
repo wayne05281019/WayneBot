@@ -397,8 +397,10 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
             facecolor=C["tag"], edgecolor="none", zorder=3))
         ax.text(pad_x + 2.6 + tag_w / 2, y + 2.78, tag, fontproperties=_fp(11.2, "heavy"),
                 color="#FFFFFF", ha="center", va="center", zorder=4)
-        ax.text(100 - pad_x - 2.6, y + head_h / 2, "WayneBot", fontproperties=_fp(11.5, "bold"),
+        ax.text(100 - pad_x - 2.6, y + head_h - 2.9, "WayneBot", fontproperties=_fp(11.5, "bold"),
                 color=C["navy_soft"], ha="right", va="center", zorder=3)
+        ax.text(100 - pad_x - 2.6, y + 2.78, _fmt_ymd_short(rows[0].get("date")),
+                fontproperties=_fp(11, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
         y -= gap + sub_h
         ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",

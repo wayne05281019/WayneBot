@@ -17,6 +17,7 @@ import pandas as pd
 import requests
 
 from wayne_navigator import _fp, _mpl_serial
+from decision_card_signals import candle_up_taiwan
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,8 @@ def render_index_kline_png(
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
-        c = _tw_color(cl >= op)
+        prev_c = float(work["close"].iloc[i - 1]) if i else None
+        c = _tw_color(candle_up_taiwan(cl, prev_c, op))
         x = xs[i]
         ax1.plot([x, x], [lo, hi], color=c, linewidth=1.35, solid_capstyle="butt", zorder=2)
         body = max(abs(cl - op), body_min)
@@ -222,7 +224,14 @@ def render_index_kline_png(
     _style_axis(ax1)
 
     vol_colors = [
-        _tw_color(float(work["close"].iloc[i]) >= float(work["open"].iloc[i])) for i in range(n)
+        _tw_color(
+            candle_up_taiwan(
+                float(work["close"].iloc[i]),
+                float(work["close"].iloc[i - 1]) if i else None,
+                float(work["open"].iloc[i]),
+            )
+        )
+        for i in range(n)
     ]
     ax2.bar(xs, work["volume"], width=bar_w, color=vol_colors, alpha=0.82, linewidth=0, zorder=3)
     ax2.set_ylabel("成交量", fontproperties=_fp(8), color=_DIM)
