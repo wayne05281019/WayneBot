@@ -267,6 +267,61 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     }
 
 
+def quote_lineage(db_path: str, days: int = 5) -> Dict[str, Any]:
+    """最近幾個交易日的日K是哪個來源、哪一輪寫進來的。
+
+    出現可疑數字時，沒有這個就只能猜是官方資料錯、還是我們某條補齊路徑寫壞。
+    舊列（加欄位之前寫的）source 為空，這裡照實回報而不假裝知道。
+    """
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return {"ok": False, "reason": "資料庫不存在", "days": []}
+    try:
+        conn = sqlite3.connect(path)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_quotes)")}
+        if "source" not in cols or "fetched_at" not in cols:
+            conn.close()
+            return {"ok": False, "reason": "尚未升級溯源欄位", "days": []}
+        rows = conn.execute(
+            """
+            SELECT replace(date,'-','') AS d,
+                   COALESCE(NULLIF(source,''),'(未記錄)') AS src,
+                   COUNT(*) AS n,
+                   MAX(fetched_at) AS last_fetch
+            FROM daily_quotes
+            WHERE replace(date,'-','') IN (
+                SELECT replace(date,'-','') FROM daily_quotes
+                GROUP BY replace(date,'-','')
+                ORDER BY replace(date,'-','') DESC
+                LIMIT ?
+            )
+            GROUP BY d, src
+            ORDER BY d DESC, src
+            """,
+            (max(1, int(days)),),
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error as exc:
+        return {"ok": False, "reason": str(exc), "days": []}
+
+    by_day: Dict[str, Dict[str, Any]] = {}
+    for d, src, n, last_fetch in rows:
+        entry = by_day.setdefault(str(d), {"date": str(d), "sources": {}, "last_fetch": ""})
+        entry["sources"][str(src)] = int(n or 0)
+        if str(last_fetch or "") > entry["last_fetch"]:
+            entry["last_fetch"] = str(last_fetch or "")
+    return {"ok": True, "days": [by_day[k] for k in sorted(by_day, reverse=True)]}
+
+
+def _schema_health_safe(db_path: str) -> Dict[str, Any]:
+    try:
+        from db_migrations import schema_health
+
+        return schema_health(db_path)
+    except Exception as exc:
+        return {"ok": False, "reason": str(exc)}
+
+
 def inventory_payload(db_path: str) -> Dict[str, Any]:
     """給 Render /inventory 對表：哪些日要補、財報／除權息／母體有幾列。"""
     if not db_quick_check_ok(db_path):
@@ -320,6 +375,8 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         "stock_universe": {"rows": counts.get("stock_universe") or 0},
         "daily_sector_flow": {"rows": counts.get("daily_sector_flow") or 0},
         "tables": tables,
+        "schema": _schema_health_safe(db_path),
+        "lineage": quote_lineage(db_path),
         "gap_n": int(health.get("history_issue_n") or 0),
         "gaps": [{"date": x.get("date"), "tw": x.get("tw"), "two": x.get("two"), "total": x.get("total")} for x in gaps[:50]],
         "fill": health.get("problems") or [],

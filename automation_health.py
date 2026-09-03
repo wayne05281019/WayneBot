@@ -91,10 +91,30 @@ def pipeline_recent_status(db_path: str, limit: int = 12) -> Dict[str, Any]:
     return {"ok": True, "runs": runs}
 
 
+def pipeline_run_status(db_path: str, run_date: str) -> Optional[Dict[str, Any]]:
+    """讀取單一 pipeline_runs 紀錄（不受 recent limit 影響）。"""
+    path = str(db_path or "").strip()
+    key = str(run_date or "").strip()
+    if not path or not key or not os.path.isfile(path):
+        return None
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            "SELECT run_date, finished_at, status, notes FROM pipeline_runs WHERE run_date = ?",
+            (key,),
+        ).fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    return {"run_date": row[0], "finished_at": row[1], "status": row[2], "notes": row[3] or ""}
+
+
 def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     """交易日應完成的排程是否 success（increment / screen）。"""
     try:
-        from config import taipei_today_str
+        from config import taipei_now, taipei_today_str
         from trading_calendar import fuse_end_trading_date, is_trading_weekday
     except Exception:
         return {"ok": True, "skipped": True, "reasons": []}
@@ -102,19 +122,34 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     cap = str(cap or fuse_end_trading_date() or "").replace("-", "")[:8]
     today = taipei_today_str().replace("-", "")[:8]
     reasons: List[str] = []
-    recent = pipeline_recent_status(db_path).get("runs") or []
-    if not recent:
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
         return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
-    by_key = {str(r.get("run_date") or ""): r for r in recent}
+    try:
+        conn = sqlite3.connect(path)
+        run_count = int(conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0] or 0)
+        conn.close()
+    except sqlite3.Error:
+        run_count = 0
+    if run_count == 0:
+        return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
+    recent = pipeline_recent_status(db_path).get("runs") or []
+
+    now = taipei_now()
+    hour = now.hour if now else 0
 
     if cap and is_trading_weekday(cap):
-        inc = by_key.get(today) or by_key.get(cap)
-        if not inc or str(inc.get("status") or "") != "success":
-            reasons.append(f"盤後融合 {today} 未成功")
-        screen_key = f"screen-{cap}"
-        screen = by_key.get(screen_key)
-        if not screen or str(screen.get("status") or "") != "success":
-            reasons.append(f"早上海選 {screen_key} 未成功")
+        # 盤後融合：16:30 後才要求當日 success
+        if hour >= 17:
+            inc = pipeline_run_status(db_path, today) or pipeline_run_status(db_path, cap)
+            if not inc or str(inc.get("status") or "") != "success":
+                reasons.append(f"盤後融合 {today} 未成功")
+        # 早上海選：06:45 後才要求 screen-{cap} success
+        if hour >= 7:
+            screen_key = f"screen-{cap}"
+            screen = pipeline_run_status(db_path, screen_key)
+            if not screen or str(screen.get("status") or "") != "success":
+                reasons.append(f"早上海選 {screen_key} 未成功")
 
     return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
 
@@ -241,24 +276,55 @@ def run_automation_audit(
     if not filt.get("ok"):
         reasons.append(str(filt.get("reason") or "行情過濾器回歸失敗"))
 
+    if db_ok:
+        try:
+            from db_migrations import schema_health
+
+            schema = schema_health(path)
+        except Exception as exc:
+            schema = {"ok": False, "reasons": [str(exc)]}
+        checks["schema"] = schema
+        if not schema.get("ok"):
+            for r in schema.get("reasons") or []:
+                if r not in reasons:
+                    reasons.append(f"schema：{r}")
+
     health: Dict[str, Any] = {}
     increment: Dict[str, Any] = {}
     if db_ok and cap:
-        increment = verify_increment_import(path, cap=cap)
+        # 巡檢工具在庫壞掉時直接拋例外的話，正好在最需要它的時候沒有輸出。
+        try:
+            increment = verify_increment_import(path, cap=cap)
+        except Exception as exc:
+            increment = {"ok": False, "reasons": [f"增量檢查無法執行：{exc}"]}
         checks["increment"] = increment
         if not increment.get("ok"):
             for r in increment.get("reasons") or []:
                 if r not in reasons:
                     reasons.append(str(r))
-        health = increment.get("health") or audit_import(path, cap)
+        health = increment.get("health") or {}
+        if not health:
+            try:
+                health = audit_import(path, cap)
+            except Exception as exc:
+                health = {"error": str(exc)}
 
-    complete = latest_complete_quote_date(path) if db_ok else None
+    def _guard(label, fn, fallback):
+        try:
+            return fn()
+        except Exception as exc:
+            note = f"{label}無法執行：{exc}"
+            if note not in reasons:
+                reasons.append(note)
+            return fallback
+
+    complete = _guard("基準日查詢", lambda: latest_complete_quote_date(path), None) if db_ok else None
     checks["latest_complete"] = complete
     checks["cap"] = cap
     if db_ok and cap and complete != cap:
         reasons.append(f"基準日 {complete or '無'} 未對齊可融合日 {cap}")
 
-    gaps = list_coverage_issues(path) if db_ok else []
+    gaps = _guard("缺口查詢", lambda: list_coverage_issues(path), []) if db_ok else []
     checks["gap_n"] = len(gaps)
     if db_ok and int(max_gap_days or 0) >= 0 and gaps:
         if max_gap_days == 0 and gaps:
@@ -268,13 +334,19 @@ def run_automation_audit(
 
     release: Dict[str, Any] = {}
     if db_ok:
-        release = can_publish_release(path, cap=cap) if cap else can_publish_release(path)
+        release = _guard(
+            "Release 檢查",
+            lambda: can_publish_release(path, cap=cap) if cap else can_publish_release(path),
+            {},
+        )
         checks["release"] = {"ok": bool(release.get("ok")), "reasons": release.get("reasons") or []}
         if strict_release and not release.get("ok"):
             for r in release.get("reasons") or []:
                 if r not in reasons:
                     reasons.append(str(r))
-        pipeline = pipeline_expectations_met(path, cap=cap)
+        pipeline = _guard(
+            "排程期望檢查", lambda: pipeline_expectations_met(path, cap=cap), {"ok": True, "skipped": True}
+        )
         checks["pipeline"] = pipeline
         if not pipeline.get("ok") and not pipeline.get("skipped"):
             for r in pipeline.get("reasons") or []:

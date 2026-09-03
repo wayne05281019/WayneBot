@@ -19,3 +19,14 @@ def test_render_line_hop_html_compat():
 
     page = render_line_hop_html("開 LINE・起漲", "測試內容")
     assert "line://msg/text/" in page
+
+
+def test_long_line_share_uses_clipboard_not_url():
+    from line_hop import render_line_redirect_html
+
+    long_body = "WayneBot 海選\n" + ("1. 測試 (2330)\n" * 80)
+    page = render_line_redirect_html(long_body)
+    assert "複製文字並開 LINE" in page
+    assert "navigator.share" in page
+    assert "shareLong" in page
+    assert 'href="line://' not in page

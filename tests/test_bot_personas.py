@@ -28,9 +28,10 @@ def _update(message):
 
 def _bot():
     from bot_servers import WayneTelegramBot
+    from config import get_db_path
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = "data/wayne_market.db"
+    bot.db_path = get_db_path()
     bot.charts_dir = "data/charts"
     bot._pending = {}
     bot._last_card = {}

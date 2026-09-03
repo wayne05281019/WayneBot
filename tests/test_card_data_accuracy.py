@@ -3,6 +3,8 @@
 import os
 import unittest
 
+import pytest
+
 from config import get_db_path
 from decision_card_signals import resolve_daily_change_pct
 
@@ -15,11 +17,10 @@ class CardDataAccuracyTests(unittest.TestCase):
             places=2,
         )
 
+    @pytest.mark.production_db
     def test_2454_db_profit_and_h60_match_carybot(self):
         """庫內最後完整日：決策卡獲利／高低應自洽、兩次呼叫一致。"""
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         import sqlite3
 
         from wayne_navigator import NavigatorEngine
@@ -44,11 +45,10 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertGreater(float(card["h60"]), float(card["cal60_low"]))
         self.assertIn("gain_pct", card)
 
+    @pytest.mark.production_db
     def test_2454_live_headline_matches_carybot(self):
         """盤中 MIS 併入後：4320 / +0.12% / 37.1%（CaryBot 9/2 截圖）。"""
         db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
         from unittest.mock import patch
 
         from wayne_navigator import NavigatorEngine

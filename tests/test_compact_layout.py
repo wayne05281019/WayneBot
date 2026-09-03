@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
+from tests.conftest import require_production_db
+
 
 def test_stock_card_volume_and_turnover_separate_lines():
     from screening_engine import _stock_card_html
@@ -45,17 +49,11 @@ def test_stock_card_chip_single_line():
     assert "外資" in chips and "投信" in chips and "自營" in chips
 
 
+@pytest.mark.production_db
 def test_sector_rotation_uses_compact_kv():
-    import os
-    import tempfile
-
-    import pytest
-
     from money_flow import format_sector_rotation_html
 
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    db = require_production_db()
     html = format_sector_rotation_html(db, "20260828")
     assert "單位：" in html
     assert "用途：" in html
@@ -68,16 +66,11 @@ def test_sector_rotation_uses_compact_kv():
             assert not re.search(r"用途\s{3,}", line)
 
 
+@pytest.mark.production_db
 def test_flow_html_cover_uses_compact_kv():
-    import os
-
-    import pytest
-
     from money_flow import format_flow_html
 
-    db = os.path.join(os.path.dirname(__file__), "..", "data", "wayne_market.db")
-    if not os.path.isfile(db):
-        pytest.skip("no market db")
+    db = require_production_db()
     html = format_flow_html(db, yyyymmdd="20260828")
     assert "覆蓋：" in html or "單位：" in html
     assert "覆蓋　　" not in html

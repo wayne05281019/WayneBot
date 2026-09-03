@@ -590,13 +590,13 @@ class MainRunner:
             logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)
             return {}
 
-    def run_increment_job(self, skip_if_done: bool = False) -> bool:
+    def run_increment_job(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
             return True
         start_time = time.time()
         logger.info("🎬 === 盤後融合開始（不寄海選；海選 06:30／尾盤 12:45）===")
-        self.run_daily_increment()
+        self.run_daily_increment(notify=notify)
         from import_health import audit_import, format_audit_plain
 
         cap = fuse_end_date()
@@ -626,10 +626,11 @@ class MainRunner:
             note = format_audit_plain(health)
             self._mark_pipeline("incomplete", note[:500])
             logger.error("盤後仍待補：%s", note)
-            try:
-                self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再抓）\n" + note)
-            except Exception:
-                pass
+            if notify:
+                try:
+                    self.send_telegram_message("🔁 盤後繼續補齊（下一輪開機／16:30 會再抓）\n" + note)
+                except Exception:
+                    pass
             return False
         self._mark_pipeline(
             "success",

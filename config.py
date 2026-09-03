@@ -137,6 +137,43 @@ def daily_scheduler_enabled() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+# 每個排程只能有一個擁有者，否則兩邊各自的 pipeline_runs 讓 skip_if_done 失效，
+# 使用者會收到兩份同樣的推播。GHA 是可靠的計時器（Render 免費方案會休眠），
+# 所以準時推播歸 GHA；Render 只負責讓自己磁碟上的庫保持新鮮供互動查詢。
+SCHEDULER_ROLES = ("data", "full", "off")
+
+
+def scheduler_role() -> str:
+    """data＝只更新本機庫（預設）；full＝連推播一起跑；off＝完全不排程。"""
+    raw = (os.getenv("WAYNE_SCHEDULER_ROLE") or "").strip().lower()
+    if raw in SCHEDULER_ROLES:
+        return raw
+    if not daily_scheduler_enabled():
+        return "off"
+    return "data"
+
+
+def scheduler_owns(job: str) -> bool:
+    """這個行程是否該執行該排程。midday 只有常駐端有，所以 data 角色也要跑。"""
+    role = scheduler_role()
+    if role == "off":
+        return False
+    if role == "full":
+        return True
+    # data 角色：morning 推播歸 GHA，其餘（含唯一擁有者 midday）留在本地。
+    return str(job or "").strip().lower() != "morning"
+
+
+def scheduler_may_push(job: str) -> bool:
+    """data 角色只在自己是唯一擁有者的排程上推播（midday）。"""
+    role = scheduler_role()
+    if role == "off":
+        return False
+    if role == "full":
+        return True
+    return str(job or "").strip().lower() == "midday"
+
+
 def skip_telegram_polling() -> bool:
     """Cursor／本機除錯不要跟 Render 搶同一個 Bot 的 getUpdates。"""
     raw = (os.getenv("WAYNE_SKIP_POLLING") or "").strip().lower()

@@ -186,6 +186,52 @@ class DataFetcher:
         except Exception:
             return 0.0 if is_float else 0
 
+    @staticmethod
+    def coerce_avg_price(
+        avg_p,
+        close_p,
+        low_p,
+        high_p,
+        volume_shares,
+        turnover_ntd,
+    ) -> float:
+        """均價：有欄位用欄位；缺欄或誤吃到成交股數時改算 成交金額÷股數。"""
+        try:
+            close = float(close_p or 0)
+        except (TypeError, ValueError):
+            close = 0.0
+        try:
+            low = float(low_p or close or 0)
+        except (TypeError, ValueError):
+            low = close
+        try:
+            high = float(high_p or close or 0)
+        except (TypeError, ValueError):
+            high = close
+        try:
+            shares = float(volume_shares or 0)
+        except (TypeError, ValueError):
+            shares = 0.0
+        try:
+            turnover = float(turnover_ntd or 0)
+        except (TypeError, ValueError):
+            turnover = 0.0
+        computed = round(turnover / shares, 2) if shares > 0 and turnover > 0 else close
+        try:
+            avg = float(avg_p or 0)
+        except (TypeError, ValueError):
+            avg = 0.0
+        if avg <= 0:
+            return computed
+        # 櫃買 wn1430 已無「均價」欄，舊 fallback 索引 7 其實是成交股數
+        if shares > 0 and abs(avg - shares) <= max(1.0, shares * 0.001):
+            return computed
+        band_lo = min(low, close) * 0.5 if min(low, close) > 0 else 0.0
+        band_hi = max(high, close) * 2.0 if max(high, close) > 0 else avg
+        if band_lo > 0 and (avg < band_lo or avg > band_hi):
+            return computed
+        return round(avg, 2)
+
     # --------------------------------------------------------------------------
     # 3. 盤中 MIS 毫秒級即時報價（支援單檔與批次 20~50 檔）
     # --------------------------------------------------------------------------
@@ -468,19 +514,19 @@ class DataFetcher:
             open_p = self.clean_num(col(r, "開盤", 4), True)
             high_p = self.clean_num(col(r, "最高", 5), True)
             low_p = self.clean_num(col(r, "最低", 6), True)
-            avg_p = self.clean_num(col(r, "均價", 7), True)
-            volume_shares = self.clean_num(col(r, "成交股數", 8), False)
-            turnover_ntd = self.clean_num(col(r, "成交金額(元)", 9), True)
+            has_avg_col = "均價" in idx
+            avg_p = self.clean_num(col(r, "均價", None), True) if has_avg_col else 0.0
+            volume_shares = self.clean_num(col(r, "成交股數", 7), False)
+            turnover_ntd = self.clean_num(col(r, "成交金額(元)", 8), True)
             if turnover_ntd <= 0:
-                turnover_ntd = self.clean_num(col(r, "成交金額", 9), True)
+                turnover_ntd = self.clean_num(col(r, "成交金額", 8), True)
             if close_p <= 0:
                 continue
             ref_p = close_p - diff if close_p > 0 else 0.0
             pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
-            if avg_p <= 0 and volume_shares > 0:
-                avg_p = round(turnover_ntd / volume_shares, 2)
-            elif avg_p <= 0:
-                avg_p = close_p
+            avg_p = self.coerce_avg_price(
+                avg_p, close_p, low_p, high_p, volume_shares, turnover_ntd
+            )
             out.append({
                 "date": target_date, "stock_id": sid, "stock_name": sname,
                 "market": "TWO", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
@@ -703,7 +749,8 @@ class DataFetcher:
         except Exception as e:
             print(f"⚠️ 法人籌碼抓取異常：{e}")
 
-        # 4. 組合並寫入資料庫
+        # 4. 組合並寫入資料庫（末兩欄是溯源，出現可疑數字時要查得出哪來的）
+        fetched_at = datetime.now().isoformat(timespec="seconds")
         all_records = []
         for q in tw_records:
             inst = tw_t86.get(q["stock_id"], {"foreign_net": 0, "trust_net": 0, "dealer_net": 0})
@@ -711,7 +758,8 @@ class DataFetcher:
                 q["date"], q["stock_id"], q["stock_name"], q["market"],
                 q["open"], q["high"], q["low"], q["close"],
                 q["volume"], q["turnover_k"], q["pct_change"], q["avg_price"],
-                inst["foreign_net"], inst["trust_net"], inst["dealer_net"]
+                inst["foreign_net"], inst["trust_net"], inst["dealer_net"],
+                "twse", fetched_at,
             ))
 
         for q in two_records:
@@ -720,7 +768,8 @@ class DataFetcher:
                 q["date"], q["stock_id"], q["stock_name"], q["market"],
                 q["open"], q["high"], q["low"], q["close"],
                 q["volume"], q["turnover_k"], q["pct_change"], q["avg_price"],
-                inst["foreign_net"], inst["trust_net"], inst["dealer_net"]
+                inst["foreign_net"], inst["trust_net"], inst["dealer_net"],
+                "tpex", fetched_at,
             ))
 
         if all_records:
@@ -744,8 +793,8 @@ class DataFetcher:
             cursor = conn.cursor()
             cursor.executemany("""
             INSERT INTO daily_quotes
-            (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net, source, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date, stock_id) DO UPDATE SET
                 stock_name=excluded.stock_name,
                 market=excluded.market,
@@ -762,7 +811,9 @@ class DataFetcher:
                 trust_net=CASE WHEN excluded.trust_net=0 AND daily_quotes.trust_net!=0
                     THEN daily_quotes.trust_net ELSE excluded.trust_net END,
                 dealer_net=CASE WHEN excluded.dealer_net=0 AND daily_quotes.dealer_net!=0
-                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END;
+                    THEN daily_quotes.dealer_net ELSE excluded.dealer_net END,
+                source=excluded.source,
+                fetched_at=excluded.fetched_at;
             """, all_records)
             conn.commit()
             conn.close()

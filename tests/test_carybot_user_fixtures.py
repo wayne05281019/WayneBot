@@ -3,17 +3,18 @@
 import os
 import unittest
 
+import pytest
+
 from config import get_db_path
+
+pytestmark = pytest.mark.production_db
 
 
 class CaryBotUserFixtureTests(unittest.TestCase):
     def _card(self, code: str):
         from wayne_navigator import NavigatorEngine
 
-        db = get_db_path()
-        if not os.path.isfile(db):
-            self.skipTest("no db")
-        return NavigatorEngine(db).get_decision_card(code, merge_live=False)
+        return NavigatorEngine(get_db_path()).get_decision_card(code, merge_live=False)
 
     def _row(self, card, date_yyyymmdd: str):
         tbl = card["table"]
