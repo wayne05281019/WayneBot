@@ -32,11 +32,10 @@ class IndexKlineChartTests(unittest.TestCase):
                 w, h = img.size
                 self.assertGreaterEqual(w, 1100)
                 self.assertGreaterEqual(h, 1500)
-                # TradingView dark bg #131722 → dark corner pixel
                 r, g, b = img.convert("RGB").getpixel((5, 5))
-                self.assertLess(r, 40)
-                self.assertLess(g, 40)
-                self.assertLess(b, 50)
+            self.assertGreater(r, 200)
+            self.assertGreater(g, 200)
+            self.assertGreater(b, 200)
 
     @patch("index_kline_chart._SESSION.get")
     def test_fetch_parses_yahoo(self, mock_get):

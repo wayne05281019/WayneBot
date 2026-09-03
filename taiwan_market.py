@@ -149,6 +149,10 @@ def ensure_index_daily_table(db_path: str) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_index_daily_sym ON index_daily(symbol, date);"
         )
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(index_daily)")}
+        for name in ("open", "high", "low"):
+            if name not in cols:
+                conn.execute(f"ALTER TABLE index_daily ADD COLUMN {name} REAL")
         conn.commit()
     finally:
         conn.close()
@@ -853,6 +857,9 @@ def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
             rows.append(
                 {
                     "date": d,
+                    "open": float(base["open"] if "open" in base and pd.notna(base["open"]) else base["close"]),
+                    "high": float(base["high"] if "high" in base and pd.notna(base["high"]) else max(float(off["close"]), float(base["close"]))),
+                    "low": float(base["low"] if "low" in base and pd.notna(base["low"]) else min(float(off["close"]), float(base["close"]))),
                     "close": float(off["close"]),
                     "volume": float(base["volume"]),
                     "pct_change": float(off.get("pct_change", base["pct_change"])),
@@ -863,6 +870,9 @@ def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
             rows.append(
                 {
                     "date": d,
+                    "open": float(base["open"] if "open" in base and pd.notna(base.get("open")) else base["close"]),
+                    "high": float(base["high"] if "high" in base and pd.notna(base.get("high")) else base["close"]),
+                    "low": float(base["low"] if "low" in base and pd.notna(base.get("low")) else base["close"]),
                     "close": float(base["close"]),
                     "volume": float(base["volume"]),
                     "pct_change": float(base["pct_change"]),
@@ -887,16 +897,29 @@ def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
     q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
     rows = []
     prev = None
-    for ts, cl, vol in zip(stamps, q.get("close") or [], q.get("volume") or []):
+    opens = q.get("open") or []
+    highs = q.get("high") or []
+    lows = q.get("low") or []
+    closes = q.get("close") or []
+    vols = q.get("volume") or []
+    for i, ts in enumerate(stamps):
+        cl = closes[i] if i < len(closes) else None
         if cl is None:
             continue
         c = float(cl)
         pct = 0.0
         if prev and prev > 0:
             pct = (c - prev) / prev * 100.0
+        op = opens[i] if i < len(opens) else None
+        hi = highs[i] if i < len(highs) else None
+        lo = lows[i] if i < len(lows) else None
+        vol = vols[i] if i < len(vols) else 0
         rows.append(
             {
                 "date": pd.Timestamp(ts, unit="s", tz="UTC").tz_convert("Asia/Taipei").strftime("%Y%m%d"),
+                "open": float(op if op is not None else c),
+                "high": float(hi if hi is not None else c),
+                "low": float(lo if lo is not None else c),
                 "close": c,
                 "volume": float(vol or 0),
                 "pct_change": round(pct, 2),
@@ -926,15 +949,21 @@ def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
             snap = _regime_from_closes(closes)
             conn.execute(
                 """
-                INSERT INTO index_daily(date, symbol, close, volume, pct_change, ma20, ma60, regime, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO index_daily(
+                    date, symbol, open, high, low, close, volume, pct_change, ma20, ma60, regime, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date, symbol) DO UPDATE SET
+                    open=excluded.open, high=excluded.high, low=excluded.low,
                     close=excluded.close, volume=excluded.volume, pct_change=excluded.pct_change,
                     ma20=excluded.ma20, ma60=excluded.ma60, regime=excluded.regime, updated_at=excluded.updated_at
                 """,
                 (
                     str(row["date"]),
                     _INDEX_SYMBOL,
+                    float(row["open"] if pd.notna(row.get("open")) else row["close"]),
+                    float(row["high"] if pd.notna(row.get("high")) else row["close"]),
+                    float(row["low"] if pd.notna(row.get("low")) else row["close"]),
                     float(row["close"]),
                     float(row["volume"]),
                     float(row["pct_change"]),
@@ -961,9 +990,11 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool
     ensure_index_daily_table(db_path)
     conn = sqlite3.connect(db_path)
     try:
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(index_daily)")}
+        ohlc = ", open, high, low" if {"open", "high", "low"} <= cols else ""
         rows = conn.execute(
-            """
-            SELECT date, close, volume, pct_change, ma20, ma60, regime
+            f"""
+            SELECT date, close, volume, pct_change, ma20, ma60, regime{ohlc}
             FROM index_daily WHERE symbol=? ORDER BY date
             """,
             (_INDEX_SYMBOL,),
@@ -971,10 +1002,10 @@ def load_index_daily(db_path: str, as_of: Optional[str] = None, *, db_only: bool
     finally:
         conn.close()
     if rows:
-        df = pd.DataFrame(
-            rows,
-            columns=["date", "close", "volume", "pct_change", "ma20", "ma60", "regime"],
-        )
+        names = ["date", "close", "volume", "pct_change", "ma20", "ma60", "regime"]
+        if ohlc:
+            names.extend(["open", "high", "low"])
+        df = pd.DataFrame(rows, columns=names)
         if as_of:
             sub = df[df["date"] <= str(as_of)]
             if not sub.empty:
@@ -1647,14 +1678,23 @@ def analyze_taiwan_market(
         bt = backtest_bucket_win_rate_by_regime(db_path, limit_days=60)
         bt_plus = backtest_bucket_win_rate_by_regime_plus(db_path, limit_days=60)
     rp = compute_regime_plus(db_path, ref_date)
+    perf = _index_performance(idx)
+    flow_parts = _sector_flow_breakdown(db_path, flow_date)
     return {
         "ok": True,
         "as_of": ref_date,
         "close": core.get("close", 0),
         "ma20": core.get("ma20", 0),
         "ma60": core.get("ma60", 0),
+        "ma5": perf.get("ma5"),
         "chg5_pct": core.get("chg5_pct", 0),
         "slope20_pct": core.get("slope20_pct", 0),
+        **{k: v for k, v in perf.items() if k != "ma5"},
+        "sector_inflow": flow_parts.get("inflow") or [],
+        "sector_outflow": flow_parts.get("outflow") or [],
+        "chips_foreign": flow_parts.get("foreign_net"),
+        "chips_trust": flow_parts.get("trust_net"),
+        "chips_dealer": flow_parts.get("dealer_net"),
         "breadth_above_ma20": breadth.get("above_ma20_pct", 0),
         "sample_n": breadth.get("sample_n", 0),
         "breadth_as_of": breadth_date,
@@ -2054,6 +2094,308 @@ def _index_day_change(db_path: str, as_of: str) -> Optional[float]:
         return None
 
 
+def _ret_n(closes: pd.Series, n: int) -> Optional[float]:
+    if closes is None or len(closes) <= n:
+        return None
+    base = float(closes.iloc[-1 - n])
+    last = float(closes.iloc[-1])
+    if base <= 0:
+        return None
+    return round((last / base - 1.0) * 100.0, 2)
+
+
+def _index_performance(idx: pd.DataFrame) -> Dict[str, Any]:
+    """從 index_daily 算多週期漲跌、均線距離、量比、年高低——不打外部。"""
+    if idx is None or idx.empty or "close" not in idx.columns:
+        return {}
+    closes = idx["close"].astype(float)
+    c = float(closes.iloc[-1])
+    ma5 = float(closes.tail(5).mean()) if len(closes) >= 5 else None
+    ma20 = float(closes.tail(20).mean()) if len(closes) >= 20 else None
+    ma60 = float(closes.tail(60).mean()) if len(closes) >= 60 else None
+    look = closes.tail(min(len(closes), 252))
+    hi52 = float(look.max()) if len(look) else None
+    lo52 = float(look.min()) if len(look) else None
+    vs20 = round((c / ma20 - 1.0) * 100.0, 2) if ma20 and ma20 > 0 else None
+    vs60 = round((c / ma60 - 1.0) * 100.0, 2) if ma60 and ma60 > 0 else None
+    vs_hi = round((c / hi52 - 1.0) * 100.0, 2) if hi52 and hi52 > 0 else None
+    vs_lo = round((c / lo52 - 1.0) * 100.0, 2) if lo52 and lo52 > 0 else None
+    vol_ratio = None
+    last_vol = None
+    prev_vol = None
+    if "volume" in idx.columns and len(idx) >= 1:
+        vols = idx["volume"].astype(float)
+        last_vol = float(vols.iloc[-1] or 0)
+        avg20 = float(vols.tail(20).mean()) if len(vols) >= 5 else 0.0
+        if avg20 > 0:
+            vol_ratio = round(last_vol / avg20, 2)
+        if len(vols) >= 2:
+            prev_vol = float(vols.iloc[-2] or 0)
+    open_px = high_px = low_px = None
+    if "open" in idx.columns:
+        try:
+            open_px = float(idx["open"].iloc[-1] or 0) or None
+            high_px = float(idx["high"].iloc[-1] or 0) or None
+            low_px = float(idx["low"].iloc[-1] or 0) or None
+        except (TypeError, ValueError, KeyError):
+            open_px = high_px = low_px = None
+    prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else None
+    amplitude = None
+    spread = None
+    if high_px and low_px and prev_close and prev_close > 0:
+        spread = round(high_px - low_px, 2)
+        amplitude = round((high_px - low_px) / prev_close * 100.0, 2)
+    vol_chg_pct = None
+    if last_vol is not None and prev_vol and prev_vol > 0:
+        vol_chg_pct = round((last_vol / prev_vol - 1.0) * 100.0, 1)
+    ytd = None
+    if "date" in idx.columns:
+        year = str(idx["date"].iloc[-1])[:4]
+        yrows = idx[idx["date"].astype(str).str.startswith(year)]
+        if not yrows.empty and float(yrows["close"].iloc[0] or 0) > 0:
+            ytd = round((c / float(yrows["close"].iloc[0]) - 1.0) * 100.0, 2)
+    chg1 = None
+    if "pct_change" in idx.columns:
+        try:
+            chg1 = round(float(idx["pct_change"].iloc[-1]), 2)
+        except (TypeError, ValueError):
+            chg1 = None
+    if chg1 is None:
+        chg1 = _ret_n(closes, 1)
+    return {
+        "ma5": round(ma5, 1) if ma5 is not None else None,
+        "chg1_pct": chg1,
+        "chg10_pct": _ret_n(closes, 10),
+        "chg20_pct": _ret_n(closes, 20),
+        "chg60_pct": _ret_n(closes, 60),
+        "ytd_pct": ytd,
+        "vs_ma20_pct": vs20,
+        "vs_ma60_pct": vs60,
+        "high52": round(hi52, 1) if hi52 is not None else None,
+        "low52": round(lo52, 1) if lo52 is not None else None,
+        "vs_high52_pct": vs_hi,
+        "vs_low52_pct": vs_lo,
+        "volume": last_vol,
+        "prev_volume": prev_vol,
+        "vol_ratio": vol_ratio,
+        "vol_chg_pct": vol_chg_pct,
+        "open": round(open_px, 2) if open_px else None,
+        "high": round(high_px, 2) if high_px else None,
+        "low": round(low_px, 2) if low_px else None,
+        "prev_close": round(prev_close, 2) if prev_close else None,
+        "amplitude_pct": amplitude,
+        "hl_spread": spread,
+    }
+
+
+def _sector_flow_breakdown(db_path: str, as_of: str) -> Dict[str, Any]:
+    """當日產業買超／賣超前三 + 三大法人合計。表不存在或無列則空。"""
+    empty: Dict[str, Any] = {
+        "inflow": [],
+        "outflow": [],
+        "foreign_net": None,
+        "trust_net": None,
+        "dealer_net": None,
+    }
+    conn = sqlite3.connect(db_path)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_sector_flow'"
+        ).fetchone()
+        if not has:
+            return empty
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(daily_sector_flow)")}
+        name_col = "industry" if "industry" in cols else ("sector" if "sector" in cols else None)
+        if not name_col:
+            return empty
+        three = "COALESCE(foreign_net,0)+COALESCE(trust_net,0)+COALESCE(dealer_net,0)"
+        rows = conn.execute(
+            f"SELECT {name_col}, {three} FROM daily_sector_flow WHERE date=? ORDER BY 2 DESC",
+            (as_of,),
+        ).fetchall()
+        ftd = conn.execute(
+            "SELECT SUM(foreign_net), SUM(trust_net), SUM(dealer_net) FROM daily_sector_flow WHERE date=?",
+            (as_of,),
+        ).fetchone()
+    except sqlite3.Error:
+        return empty
+    finally:
+        conn.close()
+    named = []
+    for name, val in rows or []:
+        try:
+            named.append((str(name or "").strip() or "產業", float(val or 0)))
+        except (TypeError, ValueError):
+            continue
+    inflow = [(n, v) for n, v in named if v > 0][:3]
+    outflow = sorted([(n, v) for n, v in named if v < 0], key=lambda x: x[1])[:3]
+
+    def _ftd(i: int) -> Optional[float]:
+        if not ftd or ftd[i] is None:
+            return None
+        try:
+            return float(ftd[i])
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "inflow": inflow,
+        "outflow": outflow,
+        "foreign_net": _ftd(0),
+        "trust_net": _ftd(1),
+        "dealer_net": _ftd(2),
+    }
+
+
+def _fmt_signed_pct(val: Optional[float]) -> str:
+    if val is None:
+        return "—"
+    return f"{float(val):+.2f}%"
+
+
+def _fmt_lots(val: Optional[float]) -> str:
+    if val is None:
+        return "—"
+    return f"{float(val):+,.0f} 張"
+
+
+def _format_chips_line(snap: Dict[str, Any]) -> str:
+    bits = []
+    for key, name in (("chips_foreign", "外資"), ("chips_trust", "投信"), ("chips_dealer", "自營")):
+        val = snap.get(key)
+        if val is None:
+            continue
+        bits.append(f"{name} {_fmt_lots(val).replace(' 張', '')}")
+    return "　".join(bits) + " 張" if bits else ""
+
+
+def _ohlc_from_live_or_snap(snap: Dict[str, Any], live: Optional[Dict[str, Any]]) -> Dict[str, Optional[float]]:
+    src = live or {}
+
+    def _pick(*keys):
+        for k in keys:
+            try:
+                v = float(src.get(k) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            if v > 0:
+                return v
+        for k in keys:
+            try:
+                v = float(snap.get(k) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            if v > 0:
+                return v
+        return None
+
+    out = {
+        "open": _pick("open"),
+        "high": _pick("high"),
+        "low": _pick("low"),
+        "prev_close": _pick("yesterday_close", "prev_close"),
+    }
+    hi, lo, prev = out["high"], out["low"], out["prev_close"]
+    out["hl_spread"] = round(hi - lo, 2) if hi and lo else snap.get("hl_spread")
+    out["amplitude_pct"] = (
+        round((hi - lo) / prev * 100.0, 2) if hi and lo and prev else snap.get("amplitude_pct")
+    )
+    return out
+
+
+def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any]] = None) -> List[str]:
+    """只放會改判斷的欄：開高低、振幅、量對昨、距月線／年高。"""
+    ohlc = _ohlc_from_live_or_snap(snap, live)
+    lines: List[str] = []
+    if ohlc.get("open") and ohlc.get("high") and ohlc.get("low"):
+        prev = ohlc.get("prev_close")
+        prev_s = f"{prev:,.2f}" if prev else "—"
+        lines.append(
+            f"開 {ohlc['open']:,.2f}　高 {ohlc['high']:,.2f}　"
+            f"低 {ohlc['low']:,.2f}　昨收 {prev_s}"
+        )
+    amp = ohlc.get("amplitude_pct")
+    spread = ohlc.get("hl_spread")
+    if amp is not None and spread is not None:
+        lines.append(f"振幅 {amp:.2f}%　高低差 {spread:,.2f}")
+    vol_chg = snap.get("vol_chg_pct")
+    vol_r = snap.get("vol_ratio")
+    vol_bits = []
+    if vol_chg is not None:
+        tag = "量增" if vol_chg > 0 else ("量縮" if vol_chg < 0 else "量平")
+        vol_bits.append(f"{tag} {abs(vol_chg):.1f}%")
+    if vol_r is not None:
+        vol_bits.append(f"量比 {float(vol_r):.2f}")
+    if vol_bits:
+        lines.append("　".join(vol_bits))
+    lines.append(
+        f"距月線 {_fmt_signed_pct(snap.get('vs_ma20_pct'))}　"
+        f"距年高 {_fmt_signed_pct(snap.get('vs_high52_pct'))}"
+    )
+    return lines or ["—"]
+
+
+def _sector_short(name: str) -> str:
+    try:
+        from money_flow import _sector_short_name
+
+        return _sector_short_name(name)
+    except Exception:
+        s = str(name or "").strip()
+        return s[:-1] if s.endswith("業") and len(s) > 2 else (s or "產業")
+
+
+def _market_read_note(snap: Dict[str, Any]) -> str:
+    """用數字寫解讀，避免只剩 Regime 標籤。"""
+    bits: List[str] = []
+    vs20 = snap.get("vs_ma20_pct")
+    vs60 = snap.get("vs_ma60_pct")
+    chg5 = snap.get("chg5_pct")
+    vs_hi = snap.get("vs_high52_pct")
+    vol_r = snap.get("vol_ratio")
+    breadth = snap.get("breadth_above_ma20")
+    fr = int(snap.get("falling_risk") or 0)
+    if vs20 is not None:
+        if vs20 >= 1.0:
+            bits.append(f"收在月線上 {vs20:.1f}%")
+        elif vs20 <= -1.0:
+            bits.append(f"收在月線下 {abs(vs20):.1f}%")
+        else:
+            bits.append("貼著月線")
+    if vs60 is not None:
+        bits.append("季線上方" if vs60 >= 0 else "季線下方")
+    if chg5 is not None:
+        if chg5 >= 1.5:
+            bits.append(f"5日偏強 {chg5:+.1f}%")
+        elif chg5 <= -1.5:
+            bits.append(f"5日轉弱 {chg5:+.1f}%")
+        else:
+            bits.append(f"5日 {chg5:+.1f}%")
+    if vs_hi is not None:
+        if vs_hi >= -3:
+            bits.append(f"距年高僅 {abs(vs_hi):.1f}%")
+        elif vs_hi <= -12:
+            bits.append(f"距年高已遠 {abs(vs_hi):.1f}%")
+        else:
+            bits.append(f"距年高 {abs(vs_hi):.1f}%")
+    if vol_r is not None:
+        if vol_r >= 1.2:
+            bits.append(f"量比 {vol_r:.2f} 放大")
+        elif vol_r <= 0.8:
+            bits.append(f"量比 {vol_r:.2f} 縮量")
+        else:
+            bits.append(f"量比 {vol_r:.2f}")
+    if breadth is not None and float(breadth) > 0:
+        bits.append(f"站上月線 {float(breadth):.0f}%")
+    if fr >= 60:
+        bits.append("下跌風險紅燈，少追")
+    elif fr >= 35:
+        bits.append("下跌風險黃燈")
+    if not bits:
+        return ""
+    return "；".join(bits) + "。"
+
+
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):
@@ -2062,8 +2404,9 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     lines = [
         "<b>📊 台灣加權指數研究</b>",
         f"收盤 <b>{snap['close']}</b>",
-        f"MA20 {snap['ma20']}　MA60 {snap['ma60']}",
-        f"5日 {snap['chg5_pct']:+.2f}%　20日斜率 {snap['slope20_pct']:+.2f}%",
+        f"MA5 {snap.get('ma5') or snap['ma20']}　MA20 {snap['ma20']}　MA60 {snap['ma60']}",
+        f"日 {_fmt_signed_pct(snap.get('chg1_pct'))}　5日 {snap['chg5_pct']:+.2f}%　20日 {_fmt_signed_pct(snap.get('chg20_pct'))}",
+        f"距月線 {_fmt_signed_pct(snap.get('vs_ma20_pct'))}　距年高 {_fmt_signed_pct(snap.get('vs_high52_pct'))}",
         *(
             [line]
             if (line := _format_futures_line(snap))
@@ -2119,134 +2462,88 @@ def format_taiwan_market_page_html(
         )
     ref = str(snap.get("as_of") or ref_hint)
     day_pct = _index_day_change(db_path, ref)
-    pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
     light = _regime_traffic_light(snap.get("regime"))
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
-    index_block: List[str] = ["<b>加權指數</b>"]
     live_px = float((live or {}).get("close") or 0)
+    yest = float((live or {}).get("yesterday_close") or snap.get("prev_close") or 0)
+    show_px = live_px if live_px > 0 else float(snap.get("close") or 0)
+    show_pct = float((live or {}).get("pct_change") or day_pct or snap.get("chg1_pct") or 0)
+    chg_pts = (show_px - yest) if show_px and yest else None
+    clock = str((live or {}).get("update_time") or "")[:5]
     if live_px > 0:
-        live_pct = float((live or {}).get("pct_change") or 0)
-        clock = str((live or {}).get("update_time") or "")[:5]
-        index_block.append(
-            f"現價 <b>{live_px:,.1f}</b>（{live_pct:+.2f}%）"
-            + (f"　{clock}" if clock else "")
-        )
-        index_block.append(f"昨收 <b>{snap['close']:,.1f}</b>{pct_bit}（庫 {ref}）")
-        as_of_note = "<i>盤中 MIS 即時；結構／廣度仍依庫內最近完整日</i>"
+        as_of_note = "<i>盤中 MIS 即時；廣度／法人仍依庫內最近完整日</i>"
+        px_line = f"<b>{show_px:,.2f}</b>"
+        if chg_pts is not None:
+            px_line += f"　{chg_pts:+,.2f}（{show_pct:+.2f}%）"
+        else:
+            px_line += f"（{show_pct:+.2f}%）"
+        if clock:
+            px_line += f"　{clock}"
     else:
-        index_block.append(f"收盤 <b>{snap['close']:,.1f}</b>{pct_bit}")
         as_of_note = "<i>庫內官方融合收盤</i>"
+        pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
+        px_line = f"收盤 <b>{float(snap['close']):,.2f}</b>{pct_bit}"
+        if chg_pts is not None:
+            px_line += f"　{chg_pts:+,.2f}"
     lines = [
         "<b>📊 台股大盤</b>",
         f"截至 <b>{ref}</b>",
         as_of_note,
         "",
-        *index_block,
-        f"MA20 {snap['ma20']:,.1f}",
-        f"MA60 {snap['ma60']:,.1f}",
-        f"5日 {snap['chg5_pct']:+.2f}%",
-        f"20日斜率 {snap['slope20_pct']:+.2f}%",
+        "<b>加權指數</b>",
+        px_line,
+        *_format_performance_lines(snap, live),
         "",
-    ]
-    fut_line = _format_futures_line(snap)
-    if fut_line:
-        lines.extend(["<b>期現</b>", fut_line, ""])
-    lines.extend(
-        [
         _TG_SECTION,
-        "<b>市場廣度</b>",
+        "<b>漲跌家數</b>",
     ]
-    )
-    if int(snap.get("sample_n") or 0) > 0:
-        b_date = str(snap.get("breadth_as_of") or ref)
-        date_note = f"（{b_date}）" if b_date != ref else ""
-        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）{date_note}")
     ob = snap.get("official_breadth")
     if ob and int(ob.get("up_count") or 0) + int(ob.get("down_count") or 0) > 0:
-        lines.extend(
-            [
-                f"漲 {ob['up_count']}　跌 {ob['down_count']}",
-                f"漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}",
-                f"上市 漲{ob.get('up_tw', 0)}/跌{ob.get('down_tw', 0)}",
-                f"上櫃 漲{ob.get('up_two', 0)}/跌{ob.get('down_two', 0)}",
-            ]
-        )
+        lines.append(f"漲 {ob['up_count']}　跌 {ob['down_count']}")
+        lines.append(f"漲停 {ob.get('limit_up', 0)}　跌停 {ob.get('limit_down', 0)}")
+    if int(snap.get("sample_n") or 0) > 0:
+        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%")
     flow_date = str(snap.get("sector_flow_as_of") or ref)
     flow_net = snap.get("sector_flow_net")
-    lines.append(_TG_SECTION)
-    lines.append("<b>法人</b>")
+    lines.extend(["", _TG_SECTION, "<b>三大法人</b>"])
+    chips_line = _format_chips_line(snap)
+    if chips_line:
+        lines.append(chips_line)
     if flow_net is not None and _sector_flow_net(db_path, flow_date) is not None:
         f_note = f"（{flow_date}）" if flow_date != ref else ""
-        lines.append(f"產業合計 {float(flow_net):+,.0f} 張{f_note}")
+        lines.append(f"合計 {float(flow_net):+,.0f} 張{f_note}")
+    fut_line = _format_futures_line(snap)
+    if fut_line:
+        lines.extend(["", fut_line.split("\n")[0]])
     lines.extend(
         [
             "",
             _TG_SECTION,
-            "<b>結構與風險</b>",
-            f"Regime {light} <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
-            f"Regime+ {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
-            f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
-            f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
-            f"低檔區 {_support_zone_label(snap.get('support_zone'))}",
+            "<b>結構</b>",
+            f"{light} {snap['regime_label']}　"
+            f"{_regime_plus_traffic_light(snap.get('regime_plus'))} {snap.get('regime_plus_label', '—')}　"
+            f"風險 {fr_light}{snap.get('falling_risk', 0)}",
         ]
     )
-    note = market_screening_note(snap)
-    if note:
-        lines.extend(["", note])
-    hits_fr = snap.get("falling_risk_hits") or []
-    if hits_fr:
-        lines.append("")
-        lines.append("<b>風險觸發</b>")
-        for h in hits_fr[:4]:
-            lines.append(f"• {h}")
-    bt = snap.get("backtest") or []
-    cur = snap.get("regime")
-    hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
-    if hits:
-        lines.append("")
-        lines.append("<b>同 regime 海選復盤</b>")
-        for b in hits[:4]:
-            lines.append(
-                f"• {b['bucket']} 隔日 {b['avg_next_pct']:+.1f}%（勝 {b['hit_rate']:.0%}，n={b['n']}）"
-            )
-    bt_rp = snap.get("backtest_regime_plus") or []
-    cur_rp = snap.get("regime_plus")
-    hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 5]
-    if hits_rp:
-        lines.append("")
-        lines.append("<b>同 Regime+ 海選復盤</b>")
-        for b in hits_rp[:4]:
-            lines.append(
-                f"• {b['bucket']} 隔日 {b['avg_next_pct']:+.1f}%（勝 {b['hit_rate']:.0%}，n={b['n']}）"
-            )
+    read = _market_read_note(snap)
+    if read:
+        lines.extend(["", read])
     try:
         from us_overnight import REGIME_LABEL, load_us_overnight
 
         us = load_us_overnight(db_path, ref)
         if us.get("ok") or us.get("vix") is not None:
-            lines.extend(["", _TG_SECTION, "<b>🌙 美股隔夜</b>", "<i>庫內快取</i>"])
             us_label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股")
             vix = us.get("vix")
+            ixic = us.get("ixic_pct")
+            bits = [us_label]
+            if ixic is not None:
+                bits.append(f"那斯達克 {float(ixic):+.2f}%")
             if vix is not None:
-                lines.append(f"{us_label}　VIX {float(vix):.1f}")
-            else:
-                lines.append(us_label)
-            for key, _, name in (
-                ("dji_pct", None, "道瓊"),
-                ("spx_pct", None, "標普"),
-                ("ixic_pct", None, "那斯達克"),
-                ("sox_pct", None, "費半"),
-            ):
-                val = us.get(key)
-                if val is not None:
-                    try:
-                        lines.append(f"{name} {float(val):+.2f}%")
-                    except (TypeError, ValueError):
-                        pass
+                bits.append(f"VIX {float(vix):.1f}")
+            lines.extend(["", "　".join(bits)])
     except Exception:
         pass
-    lines.append("")
-    lines.append("<i>資料來源：庫內官方融合；基準日自動對齊最近完整交易日。</i>")
     return "\n".join(lines)
 
 

@@ -208,7 +208,7 @@ HELP_TOPICS = {
     ),
     "market": (
         "<b>大盤按鈕</b>\n"
-        "次排最右。顯示加權收盤、MA20/60、站上月線廣度、產業法人合計、Regime／Regime+ 燈號（🟢🟡🔴）。\n"
+        "次排最右。顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，並附淺底日K圖。\n"
         "若有庫內美股隔夜快取，會附道瓊／標普／費半與 VIX。\n"
         "<b>只讀</b>：不觸發 Yahoo/TWSE 抓取、不寫 sqlite、不影響 16:30 自動融合或 06:30 早報。"
     ),
@@ -1894,7 +1894,7 @@ class WayneTelegramBot:
             await self._delete_message(status)
 
     async def _send_market_kline(self, message, *, live=None) -> None:
-        """大盤專頁附圖：加權日 K（UDN 風格）。"""
+        """大盤專頁附圖：加權日 K（淺底）。"""
         from config import skip_chart_warmup
 
         if skip_chart_warmup():

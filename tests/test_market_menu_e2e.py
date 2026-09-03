@@ -100,7 +100,9 @@ class TestMarketMenuE2E:
             mock_yahoo.assert_not_called()
         assert "台股大盤" in html
         assert "庫內官方融合" in html
-        assert "市場廣度" in html
+        assert "漲跌家數" in html
+        assert "距月線" in html
+        assert "三大法人" in html
         assert snap.get("ok")
         assert snap.get("falling_risk") is not None
         br = load_index_breadth_daily(db, as_of)
@@ -139,7 +141,28 @@ class TestMarketMenuE2E:
         assert snap.get("sector_flow_net") == 0
         assert snap.get("sector_flow_as_of") == as_of
         html = format_taiwan_market_page_html(db, as_of)
-        assert "產業合計 +0 張" in html or "產業合計 0 張" in html
+        assert "合計 +0 張" in html or "合計 0 張" in html
+
+
+    def test_market_page_shows_sector_leaders(self, tmp_path):
+        db = str(tmp_path / "flow_lead.db")
+        as_of = _seed_market_db(db)
+        conn = sqlite3.connect(db)
+        conn.execute(
+            """
+            CREATE TABLE daily_sector_flow (
+                date TEXT, industry TEXT,
+                foreign_net REAL, trust_net REAL, dealer_net REAL
+            )
+            """
+        )
+        conn.execute("INSERT INTO daily_sector_flow VALUES (?, '半導體業', 8000, 200, 0)", (as_of,))
+        conn.execute("INSERT INTO daily_sector_flow VALUES (?, '金融業', -5000, -100, 0)", (as_of,))
+        conn.commit()
+        conn.close()
+        html = format_taiwan_market_page_html(db, as_of)
+        assert "外資" in html
+        assert "合計" in html
 
     def test_menu_cmd_forces_visible_refresh(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -191,7 +214,7 @@ class TestMarketMenuE2E:
         msg.reply_html.assert_awaited()
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
-        assert "下跌風險" in body or "Regime" in body
+        assert "三大法人" in body or "結構" in body or "加權指數" in body
 
     def test_on_text_routes_market_and_flow(self, tmp_path):
         db = str(tmp_path / "route.db")
@@ -280,8 +303,8 @@ class TestMarketMenuE2E:
         as_of = _seed_market_db(db)
         html = format_taiwan_market_page_html(db, as_of)
         assert _TG_SECTION in html
-        assert "市場廣度" in html
-        assert "結構與風險" in html
+        assert "漲跌家數" in html
+        assert "結構" in html
         for line in html.splitlines():
             if "上市" in line and "上櫃" in line:
                 pytest.fail(f"overlong breadth line: {line!r}")
