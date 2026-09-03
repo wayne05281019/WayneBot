@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 
-from config import get_charts_dir, get_db_path, get_telegram_config
+from config import get_charts_dir, get_db_path, get_telegram_config, skip_chart_warmup
 from wayne_db import (
     init_database,
     get_user_portfolio,
@@ -3241,9 +3241,10 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("輪詢心跳啟動失敗")
             try:
-                from wayne_navigator import prewarm_card_fonts
+                if not skip_chart_warmup():
+                    from wayne_navigator import prewarm_card_fonts
 
-                await asyncio.to_thread(prewarm_card_fonts)
+                    await asyncio.to_thread(prewarm_card_fonts)
             except Exception:
                 logger.exception("字型預熱失敗")
             try:

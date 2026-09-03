@@ -178,3 +178,11 @@ def skip_telegram_polling() -> bool:
     """Cursor／本機除錯不要跟 Render 搶同一個 Bot 的 getUpdates。"""
     raw = (os.getenv("WAYNE_SKIP_POLLING") or "").strip().lower()
     return raw in ("1", "true", "yes", "on")
+
+
+def skip_chart_warmup() -> bool:
+    """Render 免費方案記憶體不足，啟動時預熱出圖會 OOM crash（exit 134）。"""
+    raw = (os.getenv("WAYNE_SKIP_CHART_WARMUP") or "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    return bool((os.getenv("RENDER") or "").strip())
