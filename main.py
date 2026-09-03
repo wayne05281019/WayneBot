@@ -18,6 +18,7 @@ from config import (
     get_port,
     get_telegram_token,
     is_once_mode,
+    skip_chart_warmup,
     skip_telegram_polling,
 )
 
@@ -588,24 +589,28 @@ def run_web():
         logger.info("正在啟動 Telegram 聽筒")
         bot = WayneTelegramBot(token=token, chat_id=get_telegram_chat_id(), db_path=get_db_path())
 
-        def _warmup_charts():
-            try:
-                logger.info("背景預熱出圖（字型＋南亞試畫，避免第一檔查詢空等）")
-                from wayne_navigator import prewarm_card_fonts, render_stock_pack
+        if skip_chart_warmup():
+            logger.info("略過啟動出圖預熱（Render／WAYNE_SKIP_CHART_WARMUP）")
+        else:
 
-                prewarm_card_fonts()
-                pack = render_stock_pack("1303", get_db_path())
-                logger.info(
-                    "出圖預熱完成 glance=%s card=%s chart=%s chips=%s",
-                    bool(pack.get("glance")),
-                    bool(pack.get("card")),
-                    bool(pack.get("chart")),
-                    bool(pack.get("chips")),
-                )
-            except Exception:
-                logger.exception("出圖預熱失敗")
+            def _warmup_charts():
+                try:
+                    logger.info("背景預熱出圖（字型＋南亞試畫，避免第一檔查詢空等）")
+                    from wayne_navigator import prewarm_card_fonts, render_stock_pack
 
-        threading.Thread(target=_warmup_charts, daemon=True, name="chart-warmup").start()
+                    prewarm_card_fonts()
+                    pack = render_stock_pack("1303", get_db_path())
+                    logger.info(
+                        "出圖預熱完成 glance=%s card=%s chart=%s chips=%s",
+                        bool(pack.get("glance")),
+                        bool(pack.get("card")),
+                        bool(pack.get("chart")),
+                        bool(pack.get("chips")),
+                    )
+                except Exception:
+                    logger.exception("出圖預熱失敗")
+
+            threading.Thread(target=_warmup_charts, daemon=True, name="chart-warmup").start()
         bot.run_polling()
     elif token:
         logger.info("WAYNE_SKIP_POLLING：不搶 Render 的 Telegram 輪詢，僅保留寄訊與 /health")
