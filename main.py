@@ -18,6 +18,7 @@ from config import (
     get_port,
     get_telegram_token,
     is_once_mode,
+    render_lite_boot,
     skip_chart_warmup,
     skip_telegram_polling,
 )
@@ -467,11 +468,14 @@ def start_watchdog():
     return t
 
 
-def start_market_backfill():
+def start_market_backfill(delay_s: float = 0):
     """Deploy 後 Release zip 可能缺最近交易日；背景 UPSERT 進現有 wayne_market.db。"""
 
     def _run():
         try:
+            if delay_s > 0:
+                logger.info("延後 %.0f 秒再啟動盤後融合（Render 省記憶體）", delay_s)
+                time.sleep(delay_s)
             logger.info("啟動後融合官方日K／法人／財報（不推播）")
             from main_runner import MainRunner
 
@@ -557,13 +561,21 @@ def run_web():
     if db_quick_check_ok(db_path):
         logger.info("行情庫已就緒，背景確認 Release 更新後啟動聽筒")
         threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
+    elif render_lite_boot():
+        logger.info("Render 冷啟：背景下載行情庫，先開聽筒（避免阻塞健檢）")
+        threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
     else:
         logger.info("行情庫尚未就緒，先下載再啟動聽筒")
         ensure_market_db()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
+    index_delay_s = 600 if render_lite_boot() else 0
+
     def _db_index_background():
         try:
+            if index_delay_s > 0:
+                logger.info("Render：延後 %.0f 秒再建資料庫索引", index_delay_s)
+                time.sleep(index_delay_s)
             logger.info("背景：檢查資料庫索引（大檔可能要一兩分鐘）")
             ensure_core_schema(get_db_path())
             from quote_integrity import ensure_quote_integrity
@@ -576,7 +588,8 @@ def run_web():
             logger.exception("背景資料庫索引失敗")
 
     threading.Thread(target=_db_index_background, daemon=True, name="db-index").start()
-    start_market_backfill()
+    backfill_delay_s = 900 if render_lite_boot() else 0
+    start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()
     start_watchdog()
