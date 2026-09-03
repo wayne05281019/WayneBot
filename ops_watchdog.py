@@ -149,14 +149,12 @@ def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     """每個排程今天該留下的 pipeline_runs 鍵值。"""
     today = now.strftime("%Y%m%d")
     keys = {"increment": today}
-    screen_as_of = ""
     try:
-        from trading_calendar import resolve_screen_as_of
+        from trading_calendar import morning_screen_pipeline_key
 
-        screen_as_of = str(resolve_screen_as_of(db_path, now) or "")
+        keys["morning_screen"] = morning_screen_pipeline_key(db_path, now=now)
     except Exception:
-        screen_as_of = ""
-    keys["morning_screen"] = f"screen-{screen_as_of or 'none'}"
+        keys["morning_screen"] = "screen-none"
     return keys
 
 

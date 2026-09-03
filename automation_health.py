@@ -144,12 +144,15 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
             inc = pipeline_run_status(db_path, today) or pipeline_run_status(db_path, cap)
             if not inc or str(inc.get("status") or "") != "success":
                 reasons.append(f"盤後融合 {today} 未成功")
-        # 早上海選：06:45 後才要求 screen-{cap} success
+        # 早上海選：06:45 後才要求 screen-{基準日} success（基準日＝06:30 當下庫內完整日）
         if hour >= 7:
-            screen_key = f"screen-{cap}"
-            screen = pipeline_run_status(db_path, screen_key)
-            if not screen or str(screen.get("status") or "") != "success":
-                reasons.append(f"早上海選 {screen_key} 未成功")
+            from trading_calendar import morning_screen_pipeline_key
+
+            screen_key = morning_screen_pipeline_key(db_path, now=now)
+            if not screen_key.endswith("-none"):
+                screen = pipeline_run_status(db_path, screen_key)
+                if not screen or str(screen.get("status") or "") != "success":
+                    reasons.append(f"早上海選 {screen_key} 未成功")
 
     return {"ok": not reasons, "cap": cap, "today": today, "reasons": reasons, "recent": recent[:6]}
 

@@ -78,6 +78,16 @@ def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
     return fuse_end_trading_date(now)
 
 
+def morning_screen_pipeline_key(db_path: str, now=None) -> str:
+    """早上海選 pipeline_runs 鍵：用 06:35 當下的基準日，避免盤後 fuse 後誤查 screen-{今日}。"""
+    from config import taipei_now
+
+    ref = now or taipei_now()
+    morning = ref.replace(hour=6, minute=35, second=0, microsecond=0)
+    as_of = resolve_screen_as_of(db_path, now=morning)
+    return f"screen-{as_of or 'none'}"
+
+
 def is_tw_equity_session(now=None) -> bool:
     """台股現股連續撮合：平日 09:00–13:30（當沖／隔日沖尾盤進場時段）。"""
     from config import taipei_now
