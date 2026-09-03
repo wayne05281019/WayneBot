@@ -1,6 +1,9 @@
 # Telegram 話筒區 UX 實測紀錄
 
-> **測試全權 Agent**：`scripts/persona_ux_probe.py`（5→10 人格）、`scripts/full_ux_probe.py`、`scripts/vm_tg_full_menu.sh`
+> **測試全權 Agent**：`scripts/persona_ux_probe.py`（5→10 人格）、`scripts/full_ux_probe.py`、`scripts/vm_tg_full_menu.sh`  
+> **自動化輔助**：`tests/test_bot_personas.py`、`tests/test_persona_mobile_ux.py`、`tests/test_telegram_menu_matrix.py`
+
+---
 
 ## 十人格矩陣（2026-09-03）
 
@@ -30,7 +33,35 @@
 | 持股 footer | 5 顆→**4 顆**（成交/復盤/AI倉/說明） |
 | 雅虎股名連結 | 改 **個股報價頁**（較易喚起奇摩 App） |
 
-## 待觀察
+---
 
-- Render 生產恢復後 VM walkthrough 確認 bot 真機回應
-- 產業/導航圖仍可從說明或打指令進入
+## 主選單全功能矩陣
+
+| 按鈕 | 預期第一反應 | 實測 | 問題 |
+|------|--------------|------|------|
+| 大盤 | **讀取大盤…** → 大盤頁 | ✅ probe 1.6s | |
+| 資金 | **讀取當日資金移動…** → 輪動頁 | ✅ probe ~11s | 已移除 180s catch-up |
+| 決策卡 | 決策卡產製中… | ✅ 十人格 | hub 按鈕精簡 |
+| 其餘 | 見 full_ux_probe | ✅ 全過 | |
+
+---
+
+## 實測 log
+
+### VM + Render
+- VM 登入成功；`vm_tg_menu_walkthrough.mp4` 已錄
+- Render `/health` 曾 30s 無回應 → PR #136 修先開 health、聽筒提早啟動
+- **目前 Render 回 503**（有回應但未 healthy），待 #136 合併 deploy
+
+---
+
+## 已知問題
+
+| ID | 現象 | 狀態 |
+|----|------|------|
+| UX-1/2 | 按鈕無反應 | ✅ #134 |
+| UX-3 | 資金 catch-up 180s | ✅ #136 移除按鈕路徑 catch-up |
+| UX-4 | Render 冷啟動被殺 | 🔄 #136 修 health 順序 |
+| UX-5 | 手機按鈕太擠 | ✅ #136 hub/清單精簡 |
+
+*最後更新：2026-09-03*
