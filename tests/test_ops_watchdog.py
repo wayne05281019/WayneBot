@@ -77,6 +77,7 @@ def test_missed_jobs_before_deadline_is_empty(tmp_path, monkeypatch):
 
 def test_missed_jobs_flags_morning_screen(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 9, 0)  # 過了 08:00 死線
     missed = missed_jobs(path, now=now)
@@ -85,8 +86,18 @@ def test_missed_jobs_flags_morning_screen(tmp_path, monkeypatch):
     assert missed[0]["status"] == "無紀錄"
 
 
+def test_missed_jobs_skips_gha_owned_morning_in_data_role(tmp_path, monkeypatch):
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 3, 18, 0)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert "morning_screen" not in kinds
+
+
 def test_missed_jobs_success_clears(tmp_path, monkeypatch):
     path = _make_db(tmp_path, runs={"screen-20260902": "success"})
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 9, 0)
     assert missed_jobs(path, now=now) == []
@@ -94,6 +105,7 @@ def test_missed_jobs_success_clears(tmp_path, monkeypatch):
 
 def test_missed_jobs_incomplete_still_alerts(tmp_path, monkeypatch):
     path = _make_db(tmp_path, runs={"screen-20260902": "incomplete"})
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 9, 0)
     missed = missed_jobs(path, now=now)
@@ -102,6 +114,7 @@ def test_missed_jobs_incomplete_still_alerts(tmp_path, monkeypatch):
 
 def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)  # 過了 18:30
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
@@ -126,6 +139,7 @@ def test_claim_alert_dedupes(tmp_path):
 
 def test_watchdog_scan_alerts_once(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)
 
@@ -149,6 +163,7 @@ def test_watchdog_scan_disabled(tmp_path, monkeypatch):
 
 def test_watchdog_scan_no_claim_is_readonly(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)
     a = watchdog_scan(path, now=now, claim=False, check_release=False)
