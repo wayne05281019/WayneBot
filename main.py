@@ -550,17 +550,22 @@ def run_web():
 
     ensure_market_db()
     start_health_server(get_port())
-    logger.info("檢查資料庫索引（大檔可能要一兩分鐘，請等 Telegram polling 啟動再打字）")
-    ensure_core_schema(get_db_path())
-    try:
-        from quote_integrity import ensure_quote_integrity
+    logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
-        stats = ensure_quote_integrity(get_db_path())
-        if any(int(v or 0) for v in stats.values()):
-            logger.info("啟動清假資料：%s", stats)
-    except Exception:
-        logger.debug("啟動清假略過", exc_info=True)
-    logger.info("資料庫索引完成")
+    def _db_index_background():
+        try:
+            logger.info("背景：檢查資料庫索引（大檔可能要一兩分鐘）")
+            ensure_core_schema(get_db_path())
+            from quote_integrity import ensure_quote_integrity
+
+            stats = ensure_quote_integrity(get_db_path())
+            if any(int(v or 0) for v in stats.values()):
+                logger.info("啟動清假資料：%s", stats)
+            logger.info("背景：資料庫索引完成")
+        except Exception:
+            logger.exception("背景資料庫索引失敗")
+
+    threading.Thread(target=_db_index_background, daemon=True, name="db-index").start()
     start_market_backfill()
     if daily_scheduler_enabled():
         start_daily_scheduler()

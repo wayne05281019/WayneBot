@@ -187,10 +187,46 @@ class TestMarketMenuE2E:
             asyncio.run(run())
             mock_yahoo.assert_not_called()
 
+        status.assert_awaited()
         msg.reply_html.assert_awaited()
         body = msg.reply_html.await_args.args[0]
         assert "台股大盤" in body
         assert "下跌風險" in body or "Regime" in body
+
+    def test_on_text_routes_market_and_flow(self, tmp_path):
+        db = str(tmp_path / "route.db")
+        charts = str(tmp_path / "charts2")
+        os.makedirs(charts, exist_ok=True)
+        _seed_market_db(db)
+
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = db
+        bot.charts_dir = charts
+        bot._menu_fade_msgs = {}
+        bot._pending = {}
+        bot._pending_locks = {}
+        bot._screening_running = set()
+        bot._menu_fade_gen = {}
+        bot._lookup_locks = {}
+        bot._pending_lock = MagicMock()
+        bot._pending_lock.return_value.__aenter__ = AsyncMock(return_value=None)
+        bot._pending_lock.return_value.__aexit__ = AsyncMock(return_value=None)
+        bot._touch_user = MagicMock()
+        bot.market_cmd = AsyncMock()
+        bot.flow_cmd = AsyncMock()
+
+        async def run(label):
+            msg = _message()
+            msg.text = label
+            await bot.on_text(_update(msg), MagicMock())
+
+        asyncio.run(run("大盤"))
+        bot.market_cmd.assert_awaited_once()
+        bot.flow_cmd.assert_not_awaited()
+
+        bot.market_cmd.reset_mock()
+        asyncio.run(run("資金"))
+        bot.flow_cmd.assert_awaited_once()
 
     def test_two_users_market_isolated(self, tmp_path):
         """不同 uid 各自按大盤，互不影響 pending 狀態。"""
