@@ -232,6 +232,47 @@ class DataFetcher:
             return computed
         return round(avg, 2)
 
+    def repair_bad_avg_prices(self, since: str = "20260801") -> dict:
+        """修正櫃買歷史列：wn1430 無均價欄時誤把成交股數寫進 avg_price。"""
+        since = str(since or "").replace("-", "")[:8]
+        conn = self.get_db_connection()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT date, stock_id, open, high, low, close, volume, turnover_k, avg_price
+            FROM daily_quotes
+            WHERE market='TWO' AND replace(date,'-','') >= ?
+              AND volume > 0 AND turnover_k > 0 AND close > 0
+            """,
+            (since,),
+        ).fetchall()
+        fixed = 0
+        for r in rows:
+            vol_lots = int(r["volume"] or 0)
+            shares = vol_lots * 1000
+            turnover_ntd = float(r["turnover_k"] or 0) * 1000.0
+            new_avg = self.coerce_avg_price(
+                r["avg_price"],
+                r["close"],
+                r["low"],
+                r["high"],
+                shares,
+                turnover_ntd,
+            )
+            old_avg = float(r["avg_price"] or 0)
+            if abs(new_avg - old_avg) < 0.005:
+                continue
+            conn.execute(
+                "UPDATE daily_quotes SET avg_price=? WHERE date=? AND stock_id=?",
+                (new_avg, r["date"], r["stock_id"]),
+            )
+            fixed += 1
+        conn.commit()
+        conn.close()
+        if fixed:
+            print(f"🔧 均價修復：{fixed} 筆（自 {since} 起櫃買）")
+        return {"fixed": fixed, "since": since}
+
     # --------------------------------------------------------------------------
     # 3. 盤中 MIS 毫秒級即時報價（支援單檔與批次 20~50 檔）
     # --------------------------------------------------------------------------
@@ -835,6 +876,12 @@ class DataFetcher:
                     print(f"匯入檢查 OK {target_date} 上市{health['tw']} 上櫃{health['two']} 法人非0 {health['chips_nonzero']}")
             except Exception:
                 pass
+            try:
+                rep = self.repair_bad_avg_prices(since=target_date)
+                if int(rep.get("fixed") or 0):
+                    print(f"🔧 均價修復 {rep['fixed']} 筆")
+            except Exception as e:
+                print(f"⚠️ 均價修復略過：{e}")
             return len(all_records)
         else:
             print(f"⚠️ {target_date} 非交易日或尚無行情資料。")
