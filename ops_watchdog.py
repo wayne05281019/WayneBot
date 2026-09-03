@@ -37,6 +37,25 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
 HEARTBEAT_POLLING = "telegram_polling"
 _POLLING_STALE_SECONDS = 900
 
+# watchdog kind → main.py 排程名（與 config.scheduler_owns 對齊）
+_WATCHDOG_SCHEDULER_JOB = {
+    "increment": "fuse",
+    "morning_screen": "morning",
+}
+
+
+def _watchdog_job_owned(kind: str) -> bool:
+    """本行程不擁有的排程（如 Render data 角色的早上海選）不在本地 pipeline_runs 查。"""
+    job = _WATCHDOG_SCHEDULER_JOB.get(str(kind or "").strip())
+    if not job:
+        return True
+    try:
+        from config import scheduler_owns
+
+        return bool(scheduler_owns(job))
+    except Exception:
+        return True
+
 
 def watchdog_enabled() -> bool:
     raw = (os.getenv("WAYNE_WATCHDOG_ENABLED") or "true").strip().lower()
@@ -172,6 +191,8 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
     keys = _expected_run_keys(db_path, ref)
     out: List[Dict[str, Any]] = []
     for kind, spec in JOB_SPECS.items():
+        if not _watchdog_job_owned(kind):
+            continue
         if minutes < int(spec["due_minutes"]):
             continue
         run_key = keys.get(kind) or ""
