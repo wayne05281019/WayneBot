@@ -191,18 +191,20 @@ def test_lookup_no_ack_spam():
         assert "查詢中" not in str(text)
 
 
-def test_decision_card_no_outer_status_bubble():
+def test_decision_card_shows_status_bubble():
     bot = _bot()
     bot._last_card["9001"] = "3105"
     bot._send_decision_card_quick = AsyncMock()
-    bot._transient_status = AsyncMock()
+    bot._transient_status = AsyncMock(return_value=MagicMock())
+    bot._delete_message = AsyncMock()
     msg = _msg(1, 9001)
 
     async def run():
         await bot.decision_card_btn(_update(msg), MagicMock())
 
     asyncio.run(run())
-    bot._transient_status.assert_not_awaited()
+    bot._transient_status.assert_awaited_once()
+    assert "決策卡產製中" in str(bot._transient_status.await_args[0][1])
     bot._send_decision_card_quick.assert_awaited_once()
 
 

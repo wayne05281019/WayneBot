@@ -182,7 +182,11 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ctx = MagicMock()
             await bot.on_text(upd, ctx)
             checker.assert_awaited_once()
-            msg.reply_text.assert_not_awaited()
+            if label in ("持股", "觀察"):
+                texts = [str(c[0][0]) for c in msg.reply_text.await_args_list if c[0]]
+                assert texts and any("讀取" in t for t in texts)
+            else:
+                msg.reply_text.assert_not_awaited()
 
     asyncio.run(run())
 
