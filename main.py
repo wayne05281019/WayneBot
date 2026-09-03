@@ -550,7 +550,15 @@ def run_web():
 
     # 先開 /health，避免 Render 冷啟動下載 DB 時健檢逾時被反覆重啟
     start_health_server(get_port())
-    ensure_market_db()
+    from import_health import db_quick_check_ok
+
+    db_path = get_db_path()
+    if db_quick_check_ok(db_path):
+        logger.info("行情庫已就緒，背景確認 Release 更新後啟動聽筒")
+        threading.Thread(target=ensure_market_db, daemon=True, name="db-ensure").start()
+    else:
+        logger.info("行情庫尚未就緒，先下載再啟動聽筒")
+        ensure_market_db()
     logger.info("啟動 Telegram 聽筒（資料庫索引改背景執行，避免重啟後按鈕無回應）")
 
     def _db_index_background():

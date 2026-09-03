@@ -460,7 +460,7 @@ def sector_theme_headline(row: Dict[str, Any]) -> str:
     return f"{short}資金動向"
 
 
-def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 360) -> Dict[str, Dict[str, Any]]:
+def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 120) -> Dict[str, Dict[str, Any]]:
     """近一日高成交現股母體（供盤中 MIS 掃描，不寫庫）。"""
     ind_expr = _industry_expr()
     etf = _not_etf_clause()

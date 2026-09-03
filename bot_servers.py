@@ -1128,7 +1128,7 @@ class WayneTelegramBot:
         for i, part in enumerate(parts):
             pack_id = str(part.get("line_pack_id") or "")
             fid = self._cat_sticker_id(part.get("mark_key") or "")
-            if fid:
+            if fid and callable(getattr(message, "reply_sticker", None)):
                 try:
                     sticker_msg = await message.reply_sticker(sticker=fid)
                     self._track_screening_msg(actor, pack_id, sticker_msg)
@@ -1920,9 +1920,20 @@ class WayneTelegramBot:
                 ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
                 if not ready:
                     await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
-            html = await asyncio.to_thread(format_flow_html, self.db_path, user_id=uid)
+            html = await asyncio.wait_for(
+                asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
+                timeout=18.0,
+            )
             if lag and lag not in html:
                 html = lag + "\n" + html
+        except asyncio.TimeoutError:
+            logger.warning("資金移動逾時，改送精簡版")
+            await self._delete_message(status)
+            await update.message.reply_text(
+                "資金頁載入逾時（盤中 MIS 較慢），請 30 秒後再按一次「資金」。",
+                reply_markup=self._keyboard(),
+            )
+            return
         except Exception as e:
             logger.exception("資金移動失敗")
             await self._delete_message(status)
@@ -2507,18 +2518,33 @@ class WayneTelegramBot:
         header_msg = None
         lookup_faded = False
         mkt_note = ""
-        try:
-            from taiwan_market import analyze_taiwan_market
+        # 大盤結構提示改背景，不擋第一行現價
+        async def _mkt_hint():
+            nonlocal mkt_note
+            try:
+                from taiwan_market import analyze_taiwan_market
 
-            snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True)
-            if snap.get("ok"):
-                fr = int(snap.get("falling_risk") or 0)
-                rp = str(snap.get("regime_plus") or "")
-                if fr >= 60 or rp in ("trend_down", "trend_up_late"):
-                    hint = "大盤結構偏弱，少追。" if fr >= 60 else "多頭末端，少追。"
-                    mkt_note = f"<i>⚠️ {hint}</i>\n"
-        except Exception:
-            pass
+                snap = await asyncio.to_thread(analyze_taiwan_market, self.db_path, db_only=True, page_light=True)
+                if snap.get("ok"):
+                    fr = int(snap.get("falling_risk") or 0)
+                    rp = str(snap.get("regime_plus") or "")
+                    if fr >= 60 or rp in ("trend_down", "trend_up_late"):
+                        hint = "大盤結構偏弱，少追。" if fr >= 60 else "多頭末端，少追。"
+                        mkt_note = f"<i>⚠️ {hint}</i>\n"
+                        if header_msg is not None and hasattr(header_msg, "edit_text"):
+                            try:
+                                header = mkt_note + await asyncio.to_thread(
+                                    self._quote_header_html, code, live_rt, hits
+                                )
+                                await header_msg.edit_text(
+                                    header, parse_mode="HTML", disable_web_page_preview=True
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+        hint_task = asyncio.create_task(_mkt_hint())
         try:
             header = mkt_note + await asyncio.to_thread(
                 self._quote_header_html, code, live_rt, hits
