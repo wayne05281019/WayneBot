@@ -33,6 +33,8 @@ def _msg(uid: int, text: str):
     message.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     message.reply_html = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     message.reply_photo = AsyncMock()
+    # bot_servers._send_lookup_album 會 await reply_media_group
+    message.reply_media_group = AsyncMock(return_value=MagicMock())
     return message
 
 
@@ -97,6 +99,9 @@ async def main():
     bot._lookup_locks = {}
     bot._pending_locks = {}
     bot._screening_running = set()
+    # 全域掃描鎖：避免多人/重度測試互相拖慢
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
     bot._menu_fade_gen = {}
     bot._touch_user = MagicMock()
     bot.screener = MagicMock()
