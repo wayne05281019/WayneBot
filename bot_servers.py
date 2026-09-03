@@ -1836,9 +1836,10 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
-    async def _send_market_page(self, message) -> None:
+    async def _send_market_page(self, message, *, status=None) -> None:
         """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
-        status = await self._transient_status(message, "讀取大盤…")
+        if status is None:
+            status = await self._transient_status(message, "讀取大盤…")
         html = ""
         try:
 
@@ -1896,14 +1897,19 @@ class WayneTelegramBot:
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
-        await self._send_market_page(update.message)
+        status = await self._transient_status(update.message, "讀取大盤…")
+        try:
+            await self._enter_main_menu(update.message, uid)
+            await self._send_market_page(update.message, status=status)
+        except Exception:
+            await self._delete_message(status)
+            raise
 
     async def flow_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._enter_main_menu(update.message, uid)
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
+            await self._enter_main_menu(update.message, uid)
             from money_flow import (
                 catch_up_quotes_to_cap,
                 format_flow_html,
