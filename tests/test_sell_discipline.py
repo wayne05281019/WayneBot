@@ -117,8 +117,8 @@ def test_sell_note_short_drops_disclaimer():
     assert "買訊" not in sell_note_short(flags)
     assert "作者" not in sell_note_short(flags)
     full = sell_note_lines(flags)[0]
-    assert "作者如何賣" in full
-    assert "不是買訊" in full
+    assert full == "直接減碼（最高價但非最高溫；作者如何賣，不是買訊）"
+    assert "不同步（" not in full
 
 
 def test_html_and_glance_wire_sell_notes():
@@ -148,4 +148,5 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     line = sell_note_lines(again)[0]
     assert "直接減碼" in line
     assert "不是買訊" in line
+    assert "不同步（" not in line
     assert sell_note_short(again) == "直接減碼（最高價但非最高溫）"
