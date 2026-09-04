@@ -42,6 +42,7 @@ def _bare_bot(db_path: str, charts_dir: str):
     bot._last_card = {}
     bot._pending = {}
     bot._lookup_locks = {}
+    bot._lookup_op_state = {}
     return bot
 
 
