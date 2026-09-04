@@ -1,5 +1,6 @@
 # ==============================================================================
-# 三大法人籌碼：盤後寫入、歷史回補、主力買賣超表（含買賣超比／10日累計）
+# 三大法人籌碼：盤後寫入、歷史回補、三大法人買賣超表（含買賣超比／10日累計）
+# 「主力」＝券商分點買超成本，不是這張表。這張只有外資／投信／自營，禁止叫主力。
 # ==============================================================================
 from __future__ import annotations
 
@@ -292,7 +293,7 @@ def fetch_major_player_html(stock_id: str, db_path: str = None, limit: int = 15)
 
 def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     if not rows:
-        return f"⚠️ 找不到 {stock_id} 的主力買賣超（請先完成盤後法人回補）。"
+        return f"⚠️ 找不到 {stock_id} 的三大法人買賣超（請先完成盤後法人回補）。"
     name = rows[0].get("stock_name") or stock_id
     try:
         from stock_links import html_stock_anchor
@@ -301,7 +302,7 @@ def format_major_player_html(rows: List[Dict[str, Any]], stock_id: str) -> str:
     except Exception:
         title = f"{stock_id} {name}"
     lines = [
-        f"📊 <b>【主力買賣超】{title}</b>",
+        f"📊 <b>【三大法人買賣超】{title}</b>",
         "完整虛線格子見下一則圖（外資／投信／自營分欄，避免對不齊）。",
         "買賣超＝三大法人合計（張）；超比＝合計／成交量。",
     ]
@@ -390,7 +391,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
             facecolor=C["navy"], edgecolor="none", zorder=2))
         ax.text(pad_x + 2.6, y + head_h - 2.9, f"{sid}　{name}",
                 fontproperties=_fp(18, "bold"), color="#FFFFFF", va="center", zorder=3)
-        tag = "主力買賣超（張）"
+        tag = "三大法人買賣超（張）"
         tag_w = _text_w(tag, 11.2, fig_w, 900) + 3.2
         ax.add_patch(patches.FancyBboxPatch(
             (pad_x + 2.6, y + 1.35), tag_w, 2.85, boxstyle="round,pad=0,rounding_size=0.5",
@@ -447,12 +448,11 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
         right_pad = 0.85
         for row_i, vals in enumerate(table):
             y1 = ry - body_h
-            zebra = row_i % 2 == 0
             for i, val in enumerate(vals):
                 if i >= 3:
                     fc, color = _chips_signed_style(signed[row_i][i], C)
                 else:
-                    fc = C["panel"] if zebra else C["zebra"]
+                    fc = C["white"]
                     color = C["ink"]
                 ax.add_patch(patches.Rectangle(
                     (xs[i], y1), xs[i + 1] - xs[i], body_h,
