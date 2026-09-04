@@ -1011,11 +1011,47 @@ LINE_TRADE_POINTER = (
 )
 
 
+def drop_non_equity_picks(
+    results: Dict[str, Any],
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """推播／落庫前再擋一次 ETF。計算端漏網或舊快取重送都不進名單。"""
+    from universe import is_screen_equity
+
+    types: Dict[str, str] = {}
+    if db_path:
+        try:
+            conn = sqlite3.connect(db_path)
+            types = {
+                str(sid): str(atype or "")
+                for sid, atype in conn.execute("SELECT stock_id, asset_type FROM stock_universe")
+            }
+            conn.close()
+        except Exception:
+            types = {}
+    out = dict(results)
+    for key, items in list(out.items()):
+        if not isinstance(items, list):
+            continue
+        kept: List[Any] = []
+        for it in items:
+            if not isinstance(it, dict):
+                kept.append(it)
+                continue
+            sid = str(it.get("stock_id") or it.get("code") or "").strip()
+            name = str(it.get("stock_name") or it.get("name") or "")
+            if is_screen_equity(sid, name, types.get(sid)):
+                kept.append(it)
+        out[key] = kept
+    return out
+
+
 def format_screening_payload(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
+    results = drop_non_equity_picks(results)
     payload: List[Dict[str, Any]] = []
     specs = list(SCREEN_PUSH_SPECS)
     first = True
@@ -1539,6 +1575,8 @@ def execute_full_screening(
             us_plain = format_us_plain(us_snap)
         except Exception:
             pass
+
+    results = drop_non_equity_picks(results, engine.db_path)
 
     if session in ("evening", "morning"):
         try:
