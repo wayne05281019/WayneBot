@@ -23,13 +23,13 @@ def test_price_at_window_high():
 
 
 def test_temp_compress_mediatek_like_pattern():
-    """溫度連創窗內低、股價橫盤略彈 → 溫度壓縮＋價未新低（2454 8/20~8/25 型）。"""
+    """溫度連創窗內低、股價橫盤略彈 → 最低溫＋價未新低（對齊 Cary 主標）。"""
     temps = [25.2, 24.5, 23.0, 23.0, 22.9, 23.5]
     closes = [3700, 3790, 3765, 3765, 3735, 3925]
     labels, notes = compute_temp_trend_labels(temps, closes=closes, window=6)
-    assert labels[4] == "溫度壓縮"
+    assert labels[4] == "最低溫"
     assert notes[4] == "價未新低"
-    assert labels[1] in ("最低溫", "降溫", "溫度壓縮")
+    assert labels[1] in ("最低溫", "降溫")
 
 
 def test_price_temp_divergence_largan_like():
