@@ -160,7 +160,11 @@ def test_foreign_tw_exact_days_and_lots(db):
     snap = load_snapshot(db, KIND_FOREIGN, MARKET_TW, as_of="20260908", use_cache=False)
     assert snap.as_of == "20260908"
     assert snap.max_days == 6
-    assert snap.days_menu() == [6, 5, 4, 3, 2]
+    # 只有剛好 6 天（2330）、3 天（2317）有檔；5/4/2 空檔不進選單
+    assert snap.days_menu() == [6, 3]
+    assert snap.stocks(5) == []
+    assert snap.stocks(4) == []
+    assert snap.stocks(2) == []
     six = snap.stocks(6)
     assert [r.stock_id for r in six] == ["2330"]
     row = six[0]
