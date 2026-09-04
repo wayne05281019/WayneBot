@@ -96,6 +96,21 @@ def is_tradable(stock_id: str, stock_name: str = "") -> bool:
     return keep
 
 
+SCREEN_EQUITY_TYPES = frozenset({"STOCK", "KY"})
+
+
+def is_screen_equity(stock_id: str, stock_name: str = "", asset_type: Optional[str] = None) -> bool:
+    """海選／當沖快取只收現股與 KY。ETF（含槓桿、反向、主動）一律排除。
+
+    有 universe.asset_type 就認官方分類；沒有就用代號規則（00／01 開頭＝ETF）。
+    """
+    at = str(asset_type or "").strip().upper()
+    if at:
+        return at in SCREEN_EQUITY_TYPES
+    kind, ok = classify_target(stock_id, stock_name)
+    return bool(ok and kind in SCREEN_EQUITY_TYPES)
+
+
 def name_or_sid(name: str, sid: str) -> str:
     n = clean_stock_name(name)
     return n if n else sid

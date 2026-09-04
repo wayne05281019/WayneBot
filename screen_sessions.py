@@ -83,6 +83,13 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
             sid = str(it.get("stock_id") or it.get("code") or "").strip()
             if not sid:
                 continue
+            try:
+                from universe import is_screen_equity
+
+                if not is_screen_equity(sid, str(it.get("stock_name") or it.get("name") or "")):
+                    continue
+            except Exception:
+                pass
             def f(name):
                 try:
                     v = it.get(name)
@@ -524,8 +531,17 @@ def load_bucket_rows(
                 """,
                 (as_of, sess, bucket),
             ).fetchall()
-            if rows:
-                return [dict(r) for r in rows]
+            if not rows:
+                continue
+            from universe import is_screen_equity
+
+            kept = [
+                dict(r)
+                for r in rows
+                if is_screen_equity(str(r["stock_id"] or ""), str(r["stock_name"] or ""))
+            ]
+            if kept:
+                return kept
         return []
     finally:
         conn.close()

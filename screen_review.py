@@ -70,6 +70,13 @@ def save_screen_picks(db_path: str, as_of: str, results: Dict[str, Any]) -> int:
             if not sid:
                 continue
             try:
+                from universe import is_screen_equity
+
+                if not is_screen_equity(sid, str(it.get("stock_name") or it.get("name") or "")):
+                    continue
+            except Exception:
+                pass
+            try:
                 close = float(it.get("close") or 0)
             except (TypeError, ValueError):
                 close = 0.0
