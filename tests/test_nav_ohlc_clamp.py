@@ -38,3 +38,14 @@ class NavOhlcClampTests(unittest.TestCase):
             out = draw_from_ohlc(df, "2383", "台光電", path)
             self.assertTrue(out and os.path.isfile(out))
             self.assertGreater(os.path.getsize(out), 8000)
+
+    def test_default_font_lookup_does_not_warn_missing_weight(self):
+        import warnings
+
+        import matplotlib.font_manager as fm
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            fm.findfont(fm.FontProperties(), fallback_to_default=True)
+        msgs = [str(w.message) for w in caught]
+        self.assertFalse(any("Failed to find font weight" in m for m in msgs), msgs)

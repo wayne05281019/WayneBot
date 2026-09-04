@@ -92,15 +92,16 @@ if not os.path.exists(FONT_PATH):
             with open(FONT_PATH, "wb") as out:
                 out.write(resp.read())
         fm.fontManager.addfont(FONT_PATH)
-        plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'DejaVu Sans', 'Arial']
     except Exception:
-        plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
+        pass
 else:
     try:
         fm.fontManager.addfont(FONT_PATH)
     except Exception:
         pass
-    plt.rcParams['font.sans-serif'] = ['Noto Sans TC', 'DejaVu Sans', 'Arial']
+# 靜態字重檔只有 560／860，rc 預設 weight=normal 會 findfont 警告。
+# 中文一律走 _fp(fname=…)，預設軸字用 DejaVu。
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
 
 plt.rcParams['axes.unicode_minus'] = False
 
