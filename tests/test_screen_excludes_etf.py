@@ -148,6 +148,43 @@ class ScreenExcludesEtfTests(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_review_stats_ignore_etf_next_pct(self):
+        from screen_review import _bucket_stats, format_review_html
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                """
+                INSERT INTO screen_picks(
+                    as_of, bucket, stock_id, stock_name, pick_close, next_date, next_close, next_pct
+                ) VALUES (?,?,?,?,?,?,?,?)
+                """,
+                ("20260903", "select_01", "3591", "艾笛森", 24.0, "20260904", 24.9, 3.75),
+            )
+            conn.execute(
+                """
+                INSERT INTO screen_picks(
+                    as_of, bucket, stock_id, stock_name, pick_close, next_date, next_close, next_pct
+                ) VALUES (?,?,?,?,?,?,?,?)
+                """,
+                ("20260903", "select_01", "00706L", "期元大S&P日圓正2", 19.0, "20260904", 28.5, 50.0),
+            )
+            conn.commit()
+            conn.close()
+            stats = {k: (n, avg) for k, n, avg, _h in _bucket_stats(path)}
+            n, avg = stats["select_01"]
+            self.assertEqual(n, 1)
+            self.assertAlmostEqual(avg, 3.75, places=2)
+            html = format_review_html(path)
+            self.assertIn("3591", html)
+            self.assertNotIn("00706L", html)
+            self.assertNotIn("日圓正2", html)
+        finally:
+            os.remove(path)
+
 
 if __name__ == "__main__":
     unittest.main()
