@@ -11,6 +11,7 @@
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
+# 20:00／重啟若快照已寫過，不再重掃全市場，仍用快照再跑 AI 模擬倉（清 ETF 槽、依收盤停利停損）。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
 #   1. 母體 stock_universe（ISIN，現股／KY／ETF）
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
@@ -717,7 +718,15 @@ class MainRunner:
         as_of = latest_complete_quote_date(self.db_path)
         key = f"evening-{as_of or 'none'}"
         if skip_if_done and as_of and self.already_completed_today(key):
-            logger.info("晚間海選快照 %s 已寫過，略過。", key)
+            # 16:30 融合常已寫過快照；20:00／重啟補跑仍要讓 AI 模擬倉用官方收盤再成交一次
+            # （例如清掉舊 ETF 持倉）。不再略過整段。
+            logger.info("晚間海選快照 %s 已寫過，改用快照再跑 AI 模擬倉。", key)
+            from screen_sessions import load_session_results
+
+            results = load_session_results(self.db_path, as_of, "evening")
+            if not any(results.values()):
+                results = load_session_results(self.db_path, as_of, "morning")
+            self._run_ai_desk(as_of, results=results, notify=False)
             return True
         if not as_of:
             logger.error("無完整交易日可寫晚間海選快照")

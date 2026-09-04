@@ -493,6 +493,44 @@ def load_line_share(db_path: str, as_of: str = "") -> str:
     return str(row[0] or "") if row else ""
 
 
+def load_session_results(
+    db_path: str,
+    as_of: str,
+    session: str = "evening",
+) -> Dict[str, List[Dict[str, Any]]]:
+    """把已寫入的海選快照還原成 execute_full_screening 的 results 形狀，給 AI 模擬倉重跑。"""
+    as_of = str(as_of or "").replace("-", "")
+    session = str(session or "").strip()
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    if not as_of or session not in ("evening", "morning"):
+        return out
+    for bucket in BUCKETS:
+        rows = load_bucket_rows(db_path, bucket, as_of, session=session)
+        items: List[Dict[str, Any]] = []
+        for r in rows:
+            sid = str(r.get("stock_id") or "").strip()
+            if not sid:
+                continue
+            try:
+                close = float(r.get("pick_close") or 0)
+            except (TypeError, ValueError):
+                close = 0.0
+            items.append(
+                {
+                    "stock_id": sid,
+                    "stock_name": str(r.get("stock_name") or ""),
+                    "close": close,
+                    "hi20_close": r.get("hi20_close"),
+                    "entry_price": r.get("entry_price"),
+                    "defense_price": r.get("defense_price"),
+                    "chase_warning": bool(r.get("chase_warning")),
+                }
+            )
+        if items:
+            out[bucket] = items
+    return out
+
+
 def load_bucket_rows(
     db_path: str,
     bucket: str,

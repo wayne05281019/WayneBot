@@ -372,6 +372,28 @@ def _taipei_now() -> datetime:
         return datetime.now()
 
 
+def catch_up_missed_jobs(now=None) -> None:
+    """重啟補跑：已過 06:30 補早上海選；已過 20:00 補晚間 AI 模擬倉（快照若已寫仍會再跑成交）。"""
+    from config import scheduler_owns
+    from main_runner import MainRunner
+
+    now = now or _taipei_now()
+    if now.weekday() >= 5:
+        return
+    mins = now.hour * 60 + now.minute
+    need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
+    need_evening = scheduler_owns("evening") and mins >= 20 * 60
+    if not need_morning and not need_evening:
+        return
+    runner = MainRunner()
+    if need_morning:
+        logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
+        runner.run_morning_screen(skip_if_done=True)
+    if need_evening:
+        logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
+        runner.run_evening_screen(skip_if_done=True, notify=False)
+
+
 def _seconds_until(hour: int, minute: int) -> float:
     now = _taipei_now()
     target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -445,28 +467,11 @@ def start_daily_scheduler():
                     best = (max(5.0, wait), kind, t)
         return best
 
-    def _catch_up_missed():
-        """重啟若已過 06:30 而今早沒寄過，立刻補寄，避免再空窗。"""
-        from config import scheduler_owns
-
-        if not scheduler_owns("morning"):
-            return
-        now = _taipei_now()
-        if now.weekday() >= 5:
-            return
-        mins = now.hour * 60 + now.minute
-        if mins < 6 * 60 + 30:
-            return
-        from main_runner import MainRunner
-
-        logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
-        MainRunner().run_morning_screen(skip_if_done=True)
-
     def _loop():
         try:
-            _catch_up_missed()
+            catch_up_missed_jobs()
         except Exception:
-            logger.exception("補跑今早海選失敗")
+            logger.exception("補跑錯過的排程失敗")
 
         while True:
             nxt = _next_slot()
