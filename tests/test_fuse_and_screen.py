@@ -842,6 +842,15 @@ class TelegramAlignTest(unittest.TestCase):
         self.assertTrue(dashed.startswith("上"))
         self.assertTrue(dashed.endswith("下"))
 
+    def test_html_holdings_qty_keeps_odd_lots(self):
+        from tg_layout import html_holdings_qty
+
+        self.assertEqual(html_holdings_qty(4), "<code>4張</code>")
+        self.assertEqual(html_holdings_qty(11), "<code>11張</code>")
+        self.assertEqual(html_holdings_qty(0.439), "<code>439股</code>")
+        self.assertEqual(html_holdings_qty(0), "<code>0張</code>")
+        self.assertNotIn("</code>股", html_holdings_qty(0.439))
+
     def test_html_price_and_money_align(self):
         import re
         from tg_layout import html_money, html_price
@@ -894,6 +903,31 @@ class TelegramAlignTest(unittest.TestCase):
             self.assertIn("== 我的持股（手記） ==", filled)
             self.assertIn("<code>", filled)
             self.assertNotIn("</code>（", filled)
+        finally:
+            os.remove(path)
+
+    def test_holdings_html_shows_odd_lots_as_shares(self):
+        from portfolio_engine import PortfolioEngine
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            eng = PortfolioEngine(path)
+            html = eng.format_holdings_html(
+                [
+                    {"stock_code": "3035", "stock_name": "智原", "shares": 4, "cost_price": 196.8},
+                    {"stock_code": "6526", "stock_name": "達發", "shares": 0.439, "cost_price": 631.6},
+                ],
+                quotes_map={
+                    "3035": {"close": 179.5, "pct_change": -0.28},
+                    "6526": {"close": 635.0, "pct_change": 0.79},
+                },
+            )
+            self.assertIn("<code>4張</code>", html)
+            self.assertIn("<code>439股</code>", html)
+            self.assertNotIn("<code>0張</code>", html)
         finally:
             os.remove(path)
 

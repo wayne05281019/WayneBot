@@ -591,7 +591,7 @@ class PortfolioEngine:
             html_money,
             html_num_paren,
             html_price,
-            html_qty_tight,
+            html_holdings_qty,
             kv_compact,
             kv_html_compact,
             price_change,
@@ -636,7 +636,7 @@ class PortfolioEngine:
             except Exception:
                 title = f"<code>{html_escape(code)}</code> {html_escape(name)}"
             lines.append(title)
-            lines.append(kv_html_compact("張數", html_qty_tight(lots, signed=False)))
+            lines.append(kv_html_compact("張數", html_holdings_qty(lots)))
             lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
             if chg is not None and pct is not None:
                 lines.append(kv_html_compact("現價", html_last_move(last, chg, pct, compact=True)))
