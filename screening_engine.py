@@ -76,6 +76,7 @@ class ScreeningEngine:
         """
         載入全市場數據並執行「流動性第一層過濾」：
         - 門檻：當日成交量 >= 1,000 張 且 成交金額 >= 3,000 萬元 (turnover_k >= 30,000)
+        - 只收股票／KY（與連買、資金表同一母體）；ETF／槓桿／反向不進海選
         - 僅對通過流動性之標的載入回溯 120~480 日歷史 K 線，確保毫秒級運算效能
         """
         conn = self._get_connection()
@@ -83,12 +84,14 @@ class ScreeningEngine:
             target_date = self.get_latest_trading_date()
 
         query_candidates = """
-        SELECT stock_id, stock_name, market, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
-        FROM daily_quotes
-        WHERE date = ?
-          AND volume >= ?
-          AND turnover_k >= ?
-          AND close > 0;
+        SELECT q.stock_id, q.stock_name, q.market, q.close, q.volume, q.turnover_k, q.pct_change, q.avg_price, q.foreign_net, q.trust_net, q.dealer_net
+        FROM daily_quotes q
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE q.date = ?
+          AND q.volume >= ?
+          AND q.turnover_k >= ?
+          AND q.close > 0
+          AND UPPER(COALESCE(u.asset_type, 'STOCK')) IN ('STOCK', 'KY');
         """
         df_candidates = pd.read_sql_query(
             query_candidates, conn, params=(target_date, min_volume, min_turnover_k)
