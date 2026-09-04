@@ -1684,6 +1684,35 @@ class AIDeskTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_run_ai_desk_skips_etf_candidates(self):
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [
+                    {"stock_id": "00706L", "stock_name": "期元大S&P日圓正2", "close": 19.59},
+                    {"stock_id": "4915", "stock_name": "致伸", "close": 60.8},
+                ],
+                "select_01": [
+                    {"stock_id": "00962", "stock_name": "台新AI優息動能", "close": 15.66},
+                ],
+            }
+            ai = run_ai_desk(path, "1001", results, "20260904")
+            blob = " ".join(ai.get("bought") or [])
+            self.assertIn("4915", blob)
+            self.assertNotIn("00706L", blob)
+            self.assertNotIn("00962", blob)
+            eng = PortfolioEngine(path)
+            ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
+            self.assertEqual(ids, {"4915"})
+        finally:
+            os.remove(path)
+
     def test_equal_slots_do_not_dump_remaining_cash(self):
         import os
         import tempfile
