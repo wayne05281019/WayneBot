@@ -227,18 +227,29 @@ def mis_volume_sheets(raw_v) -> int:
     return int(_num(raw_v, 0))
 
 
+def sanitize_ohlc(open_, high, low, close) -> Tuple[float, float, float, float]:
+    """保證 open／close 落在 [low, high]。MIS 偶發 Op>Hi（如 5590／5515）。"""
+    c = float(close or 0)
+    o = float(open_ or 0) or c
+    h = float(high or 0) or c
+    l = float(low or 0) or c
+    if c > 0:
+        h = max(o, h, c)
+        lows = [x for x in (o, l, c) if x > 0]
+        if lows:
+            l = min(lows)
+    return o, h, l, c
+
+
 def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """自開盤至 MIS 回報時刻的當日 K（開高低收量），僅供記憶體合併、不寫庫。"""
     if not rt or float(rt.get("close") or 0) <= 0:
         return None
-    o = float(rt.get("open") or rt["close"])
-    h = float(rt.get("high") or rt["close"])
-    l = float(rt.get("low") or rt["close"])
-    c = float(rt["close"])
+    o, h, l, c = sanitize_ohlc(rt.get("open"), rt.get("high"), rt.get("low"), rt["close"])
     return {
         "open": o,
-        "high": max(o, h, c),
-        "low": min(o, l, c) if min(o, l, c) > 0 else l,
+        "high": h,
+        "low": l,
         "close": c,
         "volume": mis_volume_sheets(rt.get("volume")),
         "pct_change": float(rt.get("pct_change") or 0),
@@ -456,12 +467,18 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
             vol = mis_volume_sheets(item.get("v"))
             pct = round((px - y) / y * 100.0, 2) if y > 0 else 0.0
             chg = round(px - y, 2) if y > 0 else 0.0
+            o, h, l, _c = sanitize_ohlc(
+                _num(item.get("o")) or px,
+                _num(item.get("h")) or px,
+                _num(item.get("l")) or px,
+                px,
+            )
             return {
                 "stock_id": item.get("c") or sid,
                 "stock_name": item.get("n") or "",
-                "open": _num(item.get("o")) or px,
-                "high": _num(item.get("h")) or px,
-                "low": _num(item.get("l")) or px,
+                "open": o,
+                "high": h,
+                "low": l,
                 "close": px,
                 "volume": vol,
                 "pct_change": pct,

@@ -221,7 +221,7 @@ async def main():
     if phase in ("10", "all"):
         reports.append(await run_personas(PERSONAS_10, "personas_10"))
 
-    out = "/opt/cursor/artifacts/persona_ux_probe_report.json"
+    out = os.path.join(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts"), "persona_ux_probe_report.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(reports, f, ensure_ascii=False, indent=2)

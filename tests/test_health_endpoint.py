@@ -162,6 +162,21 @@ def test_boot_grace_fills_data_fields_when_db_ready(serve, monkeypatch):
     assert body.get("boot_grace_s") == 3600
 
 
+def test_ready_does_not_run_full_audit(serve, monkeypatch):
+    """/ready 必須跟 /health 一樣便宜；掃全庫會讓正式站超過 45s。"""
+    get, db, main = serve
+    import automation_health
+
+    def _boom(*a, **k):
+        raise AssertionError("/ready 不該跑 health_payload／run_automation_audit")
+
+    monkeypatch.setattr(automation_health, "health_payload", _boom)
+    monkeypatch.setattr(automation_health, "run_automation_audit", _boom)
+    code, body = get("/ready")
+    assert "watchdog" in body
+    assert "error" not in body or "health_payload" not in str(body.get("error") or "")
+
+
 def test_ready_503_when_data_not_ready(serve):
     get, db, main = serve
     code, body = get("/ready")

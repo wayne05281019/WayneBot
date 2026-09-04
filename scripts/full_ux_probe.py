@@ -163,7 +163,7 @@ async def main():
         },
     }
 
-    out = "/opt/cursor/artifacts/full_ux_probe_report.json"
+    out = os.path.join(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts"), "full_ux_probe_report.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
