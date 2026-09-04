@@ -54,35 +54,44 @@ def ensure_screen_review_table(db_path: str = None) -> None:
 
 
 def save_screen_picks(db_path: str, as_of: str, results: Dict[str, Any]) -> int:
-    """只存當天實際寄出／展示的前幾檔，列數很小。"""
+    """只存當天實際寄出／展示的前幾檔，列數很小。
+
+    同一基準日重跑會整日覆蓋，避免舊 ETF／已淘汰檔留在復盤表。
+    """
     as_of = str(as_of or "").replace("-", "")
     if not as_of or not results:
         return 0
     ensure_screen_review_table(db_path)
+    try:
+        from universe import is_screen_equity
+    except Exception:
+        def is_screen_equity(stock_id, stock_name="", asset_type=None):
+            return True
+
     n = 0
     conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM screen_picks WHERE as_of=?", (as_of,))
     for key, _label in BUCKETS:
         items = results.get(key) or []
         if not isinstance(items, list):
             continue
-        for it in items[:BUCKET_CAP]:
+        kept = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
             sid = str(it.get("stock_id") or it.get("code") or "").strip()
             if not sid:
                 continue
-            try:
-                from universe import is_screen_equity
-
-                if not is_screen_equity(sid, str(it.get("stock_name") or it.get("name") or "")):
-                    continue
-            except Exception:
-                pass
+            if not is_screen_equity(sid, str(it.get("stock_name") or it.get("name") or "")):
+                continue
             try:
                 close = float(it.get("close") or 0)
             except (TypeError, ValueError):
                 close = 0.0
             if close <= 0:
                 continue
-            name = str(it.get("stock_name") or it.get("name") or "")
+            kept.append((sid, str(it.get("stock_name") or it.get("name") or ""), close))
+        for sid, name, close in kept[:BUCKET_CAP]:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO screen_picks(
