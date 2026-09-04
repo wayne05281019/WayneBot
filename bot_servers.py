@@ -3546,7 +3546,7 @@ class WayneTelegramBot:
                 st["current"] = kind
                 logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
                 path = ""
-                attempts = 2 if kind == "chart" else 1
+                attempts = 2
                 for attempt in range(attempts):
                     try:
                         path = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout_s)
@@ -3558,19 +3558,21 @@ class WayneTelegramBot:
                         logger.exception("看這檔 %s 產圖失敗 code=%s", kind, code)
                         path = ""
                         break
-                    if kind == "chart" and not self._chart_png_looks_ok(path):
+                    looks_ok = (
+                        self._chart_png_looks_ok(path)
+                        if kind == "chart"
+                        else self._png_looks_ok(path)
+                    )
+                    if not looks_ok:
                         logger.warning(
-                            "導航圖殘缺 code=%s attempt=%s size=%s",
+                            "殘缺圖重試 kind=%s code=%s attempt=%s size=%s",
+                            kind,
                             code,
                             attempt + 1,
                             os.path.getsize(path) if path and os.path.exists(path) else 0,
                         )
                         path = ""
                         continue
-                    if kind != "chart" and not self._png_looks_ok(path):
-                        logger.warning("略過殘缺圖 kind=%s code=%s", kind, code)
-                        path = ""
-                        break
                     break
                 logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
                 if not path:

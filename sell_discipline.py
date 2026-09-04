@@ -128,7 +128,7 @@ def sell_note_lines(card: Dict[str, Any]) -> List[str]:
     act = str(card.get("sell_action") or "").strip()
     if not act:
         return []
-    why = str(card.get("sell_why") or "").strip()
+    why = _why_short(card.get("sell_why") or "")
     if why:
         return [f"{act}（{why}；作者如何賣，不是買訊）"]
     return [f"{act}（作者如何賣，不是買訊）"]
