@@ -33,6 +33,12 @@ class LookupImageTests(unittest.TestCase):
             out = render_decision_card_png(card, path)
             self.assertTrue(WayneTelegramBot._png_looks_ok(out))
 
+    def test_lookup_retries_truncated_png_for_all_kinds(self):
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("attempts = 2", src)
+        self.assertNotIn('attempts = 2 if kind == "chart" else 1', src)
+        self.assertIn("殘缺圖重試", src)
+
     def test_lookup_png_timeout_matches_chart(self):
         """介紹圖／決策卡不得比導航圖更短，否則醒機會只送到 1/3 張。"""
         import bot_servers
