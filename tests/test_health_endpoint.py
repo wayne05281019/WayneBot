@@ -13,7 +13,7 @@ import threading
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
-from http.server import HTTPServer
+from http.server import HTTPServer, ThreadingHTTPServer
 
 import pytest
 
@@ -48,7 +48,7 @@ def serve(tmp_path, monkeypatch):
     importlib.reload(main)
     main._PROCESS_STARTED_AT = 0.0  # 直接跳過啟動寬限
 
-    httpd = HTTPServer(("127.0.0.1", 0), main.HealthHandler)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), main.HealthHandler)
     port = httpd.server_address[1]
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()

@@ -2,7 +2,7 @@ def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "4"
+    assert MENU_LAYOUT_VERSION == "6"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -106,6 +106,8 @@ def test_portfolio_keyboard_shows_stock_name():
     assert left[0] == "1303 南亞"
     assert left[1] == "6526 達發"
 
+
+def test_screening_progress_text():
     from bot_servers import WayneTelegramBot
 
     assert "海選開始" in WayneTelegramBot._screening_progress_text(0)
@@ -114,3 +116,133 @@ def test_portfolio_keyboard_shows_stock_name():
     assert "▓" in body
     assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
+
+
+def test_refresh_reply_menu_keeps_keyboard_message():
+    """熱修：重掛選單不得 Remove、不得刪掉帶鍵盤的訊息。"""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ":memory:"
+    bot._menu_pin_msgs = {}
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._mark_menu_layout_ok = MagicMock()
+    msg = MagicMock()
+    sent = MagicMock()
+    sent.delete = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=sent)
+
+    async def run():
+        with patch("wayne_db.set_cached_data"):
+            await bot._refresh_reply_menu(msg, uid="1", silent=False)
+            await bot._refresh_reply_menu(msg, uid="1", silent=True)
+
+    asyncio.run(run())
+    assert msg.reply_text.await_count >= 2
+    for call in msg.reply_text.await_args_list:
+        kw = call.kwargs
+        markup = kw.get("reply_markup")
+        assert markup is not None
+        assert type(markup).__name__ != "ReplyKeyboardRemove"
+        assert getattr(markup, "keyboard", None) is not None
+    sent.delete.assert_not_awaited()
+
+
+def test_screening_status_bubble_has_no_reply_keyboard():
+    """海選進度泡泡不得掛 ReplyKeyboard，否則 delete 後兩排會消失。"""
+    import asyncio
+    import inspect
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._run_manual_screening)
+    assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
+    assert "await status.delete()" in src
+    assert "await self._pin_reply_menu(message)" in src
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(return_value={"as_of": "20260903"})
+    bot.db_path = "data/wayne_market.db"
+    msg = MagicMock()
+    msg.chat_id = 1
+    msg.from_user = MagicMock(id=1)
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    status.delete = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    async def run():
+        await bot._run_manual_screening(msg)
+
+    asyncio.run(run())
+    # 第一則是進度泡泡：不可帶 reply_markup
+    first = msg.reply_text.await_args_list[0]
+    assert first.kwargs.get("reply_markup") is None
+    status.delete.assert_awaited()
+    bot._pin_reply_menu.assert_awaited()
+
+
+
+def test_scratch_chart_paths_differ_per_user():
+    from bot_servers import WayneTelegramBot
+
+    p1 = WayneTelegramBot._scratch_chart_path("data/charts", "2330", "chips", "9001")
+    p2 = WayneTelegramBot._scratch_chart_path("data/charts", "2330", "chips", "9002")
+    assert p1 != p2
+    assert "9001" in p1 and "9002" in p2
+
+
+def test_screening_global_gate_blocks_second_user():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = "1:1"
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock()
+    msg = MagicMock()
+    msg.chat_id = 2
+    msg.from_user = MagicMock(id=2)
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+
+    async def run():
+        await bot._run_manual_screening(msg)
+
+    asyncio.run(run())
+    bot.screener.run_full_screening.assert_not_called()
+    blob = " ".join(
+        str(c.args[0])
+        for c in msg.reply_html.await_args_list + msg.reply_text.await_args_list
+        if c.args
+    )
+    assert "海選正在掃描" in blob
+
+
+def test_health_server_is_threaded():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.start_health_server)
+    assert "ThreadingHTTPServer" in src

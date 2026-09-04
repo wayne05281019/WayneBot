@@ -64,7 +64,6 @@ try:
         InlineKeyboardButton,
         InlineKeyboardMarkup,
         ReplyKeyboardMarkup,
-        ReplyKeyboardRemove,
         KeyboardButton,
         BotCommand,
         MenuButtonCommands,
@@ -334,7 +333,8 @@ HELP_TOPICS = {
 # 主選單兩排各五格：次排最右＝大盤專頁（只讀）。
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
-MENU_LAYOUT_VERSION = "4"
+# v6：進度／暫態泡泡也不掛 ReplyKeyboard（刪進度時鍵盤會一起沒）。
+MENU_LAYOUT_VERSION = "6"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -366,7 +366,10 @@ class WayneTelegramBot:
         self._lookup_locks: Dict[str, asyncio.Lock] = {}
         self._pending_locks: Dict[str, asyncio.Lock] = {}
         self._screening_running: set[str] = set()
+        self._screening_gate = asyncio.Lock()
+        self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
+        self._menu_pin_msgs: Dict[str, object] = {}
 
     @staticmethod
     def _actor_key(
@@ -548,8 +551,8 @@ class WayneTelegramBot:
             return
         key = f"{uid}:{str(code).strip()}"
         self._lookup_ctx[key] = {"ohlc": ohlc, "ts": time.time()}
-        if len(self._lookup_ctx) > 40:
-            oldest = sorted(self._lookup_ctx.items(), key=lambda kv: kv[1].get("ts", 0))[:10]
+        if len(self._lookup_ctx) > 128:
+            oldest = sorted(self._lookup_ctx.items(), key=lambda kv: kv[1].get("ts", 0))[:20]
             for k, _ in oldest:
                 self._lookup_ctx.pop(k, None)
 
@@ -624,29 +627,42 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     async def _pin_reply_menu(self, message) -> None:
-        """靜默把兩排主選單釘在輸入框區；發完即刪，不留 ⌨️ 大圖泡泡。"""
-        pin = None
-        for text in ("\u200b", "·"):
+        """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。
+
+        同一 actor 只留一則釘選訊息（能 edit 就 edit），避免海選後一直堆「·」。
+        """
+        actor = self._actor_key(message)
+        prev = getattr(self, "_menu_pin_msgs", None)
+        if prev is None:
+            self._menu_pin_msgs = {}
+            prev = self._menu_pin_msgs
+        pinned = prev.get(actor)
+        if pinned is not None:
+            try:
+                await pinned.edit_text("兩排主選單在輸入框右側 ⌨️。")
+                return
+            except Exception:
+                self._menu_pin_msgs.pop(actor, None)
+        for text in ("兩排主選單在輸入框右側 ⌨️。", "·"):
             try:
                 pin = await message.reply_text(text, reply_markup=self._reply_menu())
-                break
+                self._menu_pin_msgs[actor] = pin
+                return
             except Exception:
                 continue
-        if pin is None:
-            try:
-                pin = await message.reply_text("選單", reply_markup=self._reply_menu())
-            except Exception:
-                logger.exception("pin reply menu 失敗")
-                return
+        try:
+            pin = await message.reply_text("主選單", reply_markup=self._reply_menu())
+            self._menu_pin_msgs[actor] = pin
+        except Exception:
+            logger.exception("pin reply menu 失敗")
 
-        async def _drop_pin():
-            await asyncio.sleep(0.35)
-            try:
-                await pin.delete()
-            except Exception:
-                pass
-
-        asyncio.create_task(_drop_pin())
+    @staticmethod
+    def _scratch_chart_path(charts_dir: str, code: str, kind: str, uid: str = "") -> str:
+        """每人每次出圖用獨立檔名，避免哥哥／偉權同時查同一檔互相覆蓋。"""
+        safe = str(code or "").strip()[:6] or "x"
+        who = str(uid or "0").strip()[:16]
+        tag = f"{who}_{int(time.time() * 1000)}"
+        return os.path.join(charts_dir, f"{safe}_{kind}_{tag}.png")
 
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
@@ -670,56 +686,23 @@ class WayneTelegramBot:
         set_cached_data(f"tg_menu_layout:{uid}", "menu", "0", db_path=self.db_path)
 
     async def _refresh_reply_menu(self, message, *, uid: str = "", silent: bool = False):
-        """先移除舊鍵盤再掛兩排新選單。silent=True 時靜默釘選單，不發「正在更新」類提示。"""
-        actor = self._actor_key(message, uid=uid)
-        await self._dismiss_menu_transients(actor)
+        """重掛兩排主選單。絕不送 Remove、也不刪帶鍵盤的訊息（刪了鍵盤會跟著消失）。"""
+        await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         if silent:
-            try:
-                rm = await message.reply_text("\u200b", reply_markup=ReplyKeyboardRemove())
-                await asyncio.sleep(0.12)
-                await self._delete_message(rm)
-            except Exception:
-                logger.debug("靜默移除舊鍵盤失敗", exc_info=True)
             await self._pin_reply_menu(message)
             if uid:
                 self._mark_menu_layout_ok(uid)
             return
-        transient = None
         try:
-            transient = await message.reply_text(
-                "正在更新主選單…",
-                reply_markup=ReplyKeyboardRemove(),
-            )
-        except Exception:
-            logger.exception("移除舊鍵盤失敗")
-        done = None
-        try:
-            done = await message.reply_text(
-                "已更新主選單（點輸入框右側 ⌨️ 展開兩排；次排最右為「大盤」）。",
+            await message.reply_text(
+                "主選單已掛上（點輸入框右側 ⌨️ 展開兩排；次排最右為「大盤」）。",
                 reply_markup=self._reply_menu(),
             )
         except Exception:
             logger.exception("掛上新選單失敗")
+            await self._pin_reply_menu(message)
         if uid:
             self._mark_menu_layout_ok(uid)
-
-        pending = [m for m in (transient, done) if m is not None]
-        self._menu_fade_gen[actor] = self._menu_fade_gen.get(actor, 0) + 1
-        fade_gen = self._menu_fade_gen[actor]
-        self._menu_fade_msgs[actor] = pending
-
-        async def _fade_out():
-            await asyncio.sleep(1.8)
-            if self._menu_fade_gen.get(actor) != fade_gen:
-                return
-            still = self._menu_fade_msgs.pop(actor, [])
-            for msg in still:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-
-        asyncio.create_task(_fade_out())
 
     async def _ensure_reply_menu_if_needed(
         self, message, uid: str, *, silent: bool = True
@@ -730,7 +713,7 @@ class WayneTelegramBot:
         await self._refresh_reply_menu(message, uid=uid, silent=silent)
 
     async def _force_reply_menu(self, message, uid: str) -> None:
-        """/menu、選單：一律重掛鍵盤（解決舊版快取或靜默釘選失敗）。"""
+        """/menu、選單：一律重掛兩排鍵盤（不刪訊息，避免鍵盤被客戶端收掉）。"""
         self._invalidate_menu_layout(uid)
         await self._refresh_reply_menu(message, uid=uid, silent=False)
 
@@ -1317,7 +1300,12 @@ class WayneTelegramBot:
         except Exception:
             html = generate_decision_card(code, self.db_path)
             card_img = ""
-            chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
+            chart_path = generate_chart(
+                code,
+                name,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "nav", str(chat_id)),
+            )
             glance = ""
         if glance:
             cap = f"{html_escape(code)}"
@@ -1437,13 +1425,21 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(),
             )
             return
+        async with self._screening_gate:
+            if self._screening_global_owner and self._screening_global_owner != actor:
+                await message.reply_html(
+                    "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
+                    "完成後你再按一次「海選」讀快取即可；名單是同一份，"
+                    "不會和對方的持股／觀察混在一起。",
+                    reply_markup=self._reply_menu(),
+                )
+                return
+            self._screening_global_owner = actor
         self._screening_running.add(actor)
         await self._dismiss_menu_transients(actor)
         hub = self._reply_menu()
-        status = await message.reply_text(
-            self._screening_progress_text(0),
-            reply_markup=hub,
-        )
+        # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
+        status = await message.reply_text(self._screening_progress_text(0))
         stop = asyncio.Event()
         t0 = time.monotonic()
 
@@ -1451,10 +1447,7 @@ class WayneTelegramBot:
             while not stop.is_set():
                 elapsed = int(time.monotonic() - t0)
                 try:
-                    await status.edit_text(
-                        self._screening_progress_text(elapsed),
-                        reply_markup=hub,
-                    )
+                    await status.edit_text(self._screening_progress_text(elapsed))
                 except Exception:
                     pass
                 try:
@@ -1472,7 +1465,7 @@ class WayneTelegramBot:
             )
             stop.set()
             try:
-                await status.edit_text(self._screening_progress_text(0, done=True), reply_markup=hub)
+                await status.edit_text(self._screening_progress_text(0, done=True))
             except Exception:
                 pass
             await self._reply_screening_payload(message, result)
@@ -1506,8 +1499,16 @@ class WayneTelegramBot:
             stop.set()
             ticker.cancel()
             self._screening_running.discard(actor)
+            async with self._screening_gate:
+                if self._screening_global_owner == actor:
+                    self._screening_global_owner = ""
             try:
                 await status.delete()
+            except Exception:
+                pass
+            # 刪進度泡泡後再釘一次，避免中途狀態讓客戶端收掉兩排。
+            try:
+                await self._pin_reply_menu(message)
             except Exception:
                 pass
 
@@ -1536,10 +1537,10 @@ class WayneTelegramBot:
             return
 
         n = len(rows)
+        # 進度泡泡不掛 ReplyKeyboard：完成後會刪，刪了兩排會跟著沒。
         status = await message.reply_text(
             f"正在背景生成【{title}】{n} 檔圖文…\n"
-            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。",
-            reply_markup=hub,
+            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。"
         )
         self._track_line_pack_status(actor, status)
 
@@ -1554,16 +1555,17 @@ class WayneTelegramBot:
         except Exception as exc:
             logger.exception("LINE 圖文包生成失敗 bucket=%s", bucket_key)
             await status.edit_text(
-                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。",
-                reply_markup=hub,
+                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。"
             )
+            await self._pin_reply_menu(message)
             return
         if manifest.get("error") and not manifest.get("line_text"):
             err = str(manifest.get("error") or "生成失敗")
             errs = manifest.get("errors") or []
             if errs:
                 err += "\n" + "\n".join(errs[:3])
-            await status.edit_text(f"⚠️ 【{title}】{err}", reply_markup=hub)
+            await status.edit_text(f"⚠️ 【{title}】{err}")
+            await self._pin_reply_menu(message)
             return
 
         line_body = str(manifest.get("line_text") or "").strip()
@@ -1592,7 +1594,7 @@ class WayneTelegramBot:
         await self._dismiss_screening_section(actor, bucket_key)
         await self._dismiss_line_pack_status(actor)
 
-        final = await message.reply_html(
+        await message.reply_html(
             f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備好。{warn}\n"
             "按下方按鈕：\n"
             "① 開 LINE → <b>選聯絡人</b> → 送出文字總彙整\n"
@@ -1600,6 +1602,8 @@ class WayneTelegramBot:
             reply_markup=line_btn,
             disable_web_page_preview=True,
         )
+        # Inline 鈕訊息無法同時掛 ReplyKeyboard；刪進度後再釘兩排。
+        await self._pin_reply_menu(message)
 
     @staticmethod
     def _chart_progress_text(elapsed_sec: int) -> str:
@@ -1721,7 +1725,8 @@ class WayneTelegramBot:
         )
 
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
-        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
+        # 進度泡泡不掛 ReplyKeyboard，否則 delete 時兩排主選單會被客戶端收掉。
+        status = await message.reply_text(status_text)
         await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
         effective_live_bucket = live_bucket
@@ -1764,6 +1769,7 @@ class WayneTelegramBot:
                 await status.delete()
             except Exception:
                 pass
+            status = None
             if not rows:
                 from screen_sessions import screen_session_has_data
 
@@ -1776,13 +1782,13 @@ class WayneTelegramBot:
                         f"<b>{title}</b>\n"
                         f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
                         "請按主選單「海選」執行後再查；會用盤中 MIS 現價複核。</i>",
-                        reply_markup=self._keyboard(),
+                        reply_markup=self._reply_menu(),
                     )
                 else:
                     await message.reply_html(
                         f"<b>{title}</b>\n"
                         f"<i>昨收掃描後此桶無候選，或盤中複核後無符合標的。</i>",
-                        reply_markup=self._keyboard(),
+                        reply_markup=self._reply_menu(),
                     )
                 return
             await self._reply_trade_list(
@@ -1806,10 +1812,11 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(),
             )
         finally:
-            try:
-                await status.delete()
-            except Exception:
-                pass
+            if status is not None:
+                try:
+                    await status.delete()
+                except Exception:
+                    pass
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_trade_bucket(
@@ -1958,16 +1965,19 @@ class WayneTelegramBot:
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             await self._enter_main_menu(update.message, uid)
-            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of, sector_flow_ready
+            from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
 
             as_of, lag = resolve_flow_as_of(self.db_path)
+            # 按鈕路徑不重算產業輪動（會拖 10s+）；缺資料就直接讀庫／提示稍後。
             if as_of:
                 ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
                 if not ready:
-                    await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
+                    lag = (lag or "") + (
+                        "\n<i>今日產業輪動表尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
+                    )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
-                timeout=18.0,
+                timeout=12.0,
             )
             if lag and lag not in html:
                 html = lag + "\n" + html
@@ -2113,11 +2123,12 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/chips 2330")
             return
+        uid = str(update.effective_user.id)
         chip_img = await asyncio.to_thread(
             generate_chips_image,
             args[0].strip(),
             self.db_path,
-            os.path.join(self.charts_dir, f"{args[0].strip()}_chips.png"),
+            self._scratch_chart_path(self.charts_dir, args[0].strip(), "chips", uid),
         )
         if chip_img:
             with open(chip_img, "rb") as f:
@@ -2130,21 +2141,11 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/fund 2330")
             return
-        from fundamentals import format_fundamentals_html, sync_fundamentals
+        from fundamentals import format_fundamentals_html
 
+        # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
         code = args[0].strip()
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-        if "尚無" in html:
-            sync_msg = await self._transient_status(
-                update.message, "尚無快取，正在同步官方月營收／季報…"
-            )
-            try:
-                await asyncio.to_thread(sync_fundamentals, self.db_path)
-            except Exception as e:
-                logger.error("fund sync: %s", e)
-            finally:
-                await self._delete_message(sync_msg)
-            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2367,7 +2368,10 @@ class WayneTelegramBot:
             return True
         if pending == "chips":
             chip_img = await asyncio.to_thread(
-                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+                generate_chips_image,
+                code,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
             )
             if chip_img:
                 try:
@@ -2379,15 +2383,9 @@ class WayneTelegramBot:
                 await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
             return True
         if pending == "fund":
-            from fundamentals import format_fundamentals_html, sync_fundamentals
+            from fundamentals import format_fundamentals_html
 
             html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-            if "尚無" in html:
-                try:
-                    await asyncio.to_thread(sync_fundamentals, self.db_path)
-                except Exception:
-                    pass
-                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return True
         if pending == "industry":
@@ -2630,7 +2628,7 @@ class WayneTelegramBot:
                 asyncio.to_thread(
                     render_decision_card_png,
                     card,
-                    os.path.join(self.charts_dir, f"{code}_card.png"),
+                    self._scratch_chart_path(self.charts_dir, code, "dcard", uid),
                 ),
                 timeout=25,
             )
@@ -2966,12 +2964,13 @@ class WayneTelegramBot:
                 )
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
-            req_tag = f"{int(time.time() * 1000)}"
+            uid_key = uid or self._uid_from_message(message)
+            req_tag = f"{uid_key or '0'}_{int(time.time() * 1000)}"
             glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
-
-            uid_key = uid or self._uid_from_message(message)
+            ohlc = card.get("_ohlc")
+            card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
 
             def _render_chart():
@@ -2995,8 +2994,8 @@ class WayneTelegramBot:
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
-            album_items: list[tuple[str, str, str, object]] = []
 
+            # 畫完一張就先送，不要等三張齊了才出第一張（相簿會讓人以為查股卡住）。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 path = ""
                 attempts = 2 if kind == "chart" else 1
@@ -3029,28 +3028,14 @@ class WayneTelegramBot:
                 if not path:
                     gc.collect()
                     continue
-                album_items.append((kind, path, caption, markup))
-                gc.collect()
-
-            album_ok = False
-            if len(album_items) >= 2:
-                album_ok = await self._send_lookup_album(message, album_items)
-                if album_ok:
+                ok = await send_photo(path, caption, markup, kind=kind)
+                if ok and markup is hub:
+                    hub_on = True
+                if ok:
                     sent_any = True
-                    sent_kinds = [k for k, *_ in album_items]
+                    sent_kinds.append(kind)
                     await _clear_wait()
-                    if not lookup_faded:
-                        lookup_faded = True
-                        await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
-            if not album_ok:
-                for kind, path, caption, markup in album_items:
-                    ok = await send_photo(path, caption, markup, kind=kind)
-                    if ok and markup is hub:
-                        hub_on = True
-                    if ok:
-                        sent_any = True
-                        sent_kinds.append(kind)
-                        await _clear_wait()
+                gc.collect()
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
@@ -3221,8 +3206,12 @@ class WayneTelegramBot:
             return
         if data.startswith("h:"):
             code = data[2:].strip()
+            uid = str(q.from_user.id)
             chip_img = await asyncio.to_thread(
-                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+                generate_chips_image,
+                code,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
             )
             if chip_img:
                 try:
@@ -3236,16 +3225,10 @@ class WayneTelegramBot:
                 await q.message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return
         if data.startswith("f:"):
-            from fundamentals import format_fundamentals_html, sync_fundamentals
+            from fundamentals import format_fundamentals_html
 
             code = data[2:].strip()
             html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-            if "尚無" in html:
-                try:
-                    await asyncio.to_thread(sync_fundamentals, self.db_path)
-                except Exception:
-                    pass
-                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await q.message.reply_html(
                 html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
             )

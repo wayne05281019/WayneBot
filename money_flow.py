@@ -493,7 +493,10 @@ def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 120) -> Dict[st
 
 
 def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
-    """盤中最強族：MIS 即時均漲 × 量權重聚合（不寫庫、不用盤後法人）。"""
+    """盤中最強族：MIS 即時均漲 × 量權重聚合（不寫庫、不用盤後法人）。
+
+    按鈕路徑要快：只抓流動性前 40 檔（單批 MIS）、短逾時；失敗就略過盤中主題。
+    """
     import time as _time
 
     from live_quote import is_live_merge_window
@@ -508,12 +511,13 @@ def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
 
     conn = sqlite3.connect(db_path)
     try:
-        meta = _liquid_stock_meta(conn)
+        # 單批 40 檔即可估族內均漲；120 檔會連打 3 次 MIS 把資金頁拖到逾時。
+        meta = _liquid_stock_meta(conn, limit=40)
     finally:
         conn.close()
     if not meta:
         return []
-    live = fetch_mis_batch(list(meta.keys()), db_path)
+    live = fetch_mis_batch(list(meta.keys()), db_path, timeout=4.0)
     if not live:
         return []
     buckets: Dict[str, Dict[str, Any]] = {}
