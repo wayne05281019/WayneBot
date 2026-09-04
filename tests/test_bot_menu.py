@@ -2,7 +2,7 @@ def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "7"
+    assert MENU_LAYOUT_VERSION == "8"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -101,25 +101,31 @@ def test_pin_reply_menu_keeps_keyboard_message():
     assert [b.text for b in markup.keyboard[1]][3] == "連買區"
 
 
-def test_refresh_silent_does_not_remove_keyboard():
+def test_refresh_silent_sends_reply_keyboard_with_streak():
+    """silent 刷新也必須新發 ReplyKeyboard（edit 換不了連買區）。"""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
-    from bot_servers import WayneTelegramBot
+    from bot_servers import MENU_BTN_STREAK, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._dismiss_menu_transients = AsyncMock()
     bot._actor_key = MagicMock(return_value="1:1")
     bot._mark_menu_layout_ok = MagicMock()
+    bot._menu_pin_msgs = {}
     msg = MagicMock()
     pin = MagicMock()
     pin.delete = AsyncMock()
     msg.reply_text = AsyncMock(return_value=pin)
 
     asyncio.run(bot._refresh_reply_menu(msg, uid="1", silent=True))
-    for call in msg.reply_text.await_args_list:
-        name = type(call.kwargs.get("reply_markup")).__name__
-        assert "Remove" not in name
+    assert msg.reply_text.await_count >= 1
+    markup = msg.reply_text.await_args.kwargs.get("reply_markup")
+    assert markup is not None
+    assert "Remove" not in type(markup).__name__
+    row2 = [b.text for b in markup.keyboard[1]]
+    assert row2[3] == MENU_BTN_STREAK
+    bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 
 def test_force_reply_menu_invalidates_layout_cache():
