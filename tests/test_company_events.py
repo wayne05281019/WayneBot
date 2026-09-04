@@ -133,3 +133,27 @@ def test_empty_table_autosync_then_label(tmp_path, monkeypatch):
     # 第二次不重抓
     monkeypatch.setattr("company_events.sync_company_events", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("不該再同步")))
     assert ensure_events_loaded(db) == 1
+
+
+def test_weekend_keeps_friday_ir_and_monday_drops_it(tmp_path):
+    db = str(tmp_path / "wk.db")
+    ensure_core_schema(db)
+    ingest_ir_from_material(
+        [{"公司代號": "2383", "主旨及說明": "召開法人說明會之日期：115/09/04"}],
+        db,
+    )
+    ingest_shareholder_meetings(
+        [
+            {
+                "公司代號": "1101",
+                "股東常(臨時)會": "臨時會",
+                "開會日期": "1151013",
+                "開會地點": "台北",
+            }
+        ],
+        db,
+    )
+    assert nearest_event_label("2383", db, today="20260905") == "今日法說"
+    assert nearest_event_label("2383", db, today="20260906") == "今日法說"
+    assert nearest_event_label("2383", db, today="20260907") == ""
+    assert nearest_event_label("1101", db, today="20260905") == "39天後臨時會"
