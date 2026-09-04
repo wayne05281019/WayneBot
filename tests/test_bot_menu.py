@@ -127,6 +127,7 @@ def test_refresh_reply_menu_keeps_keyboard_message():
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ":memory:"
+    bot._menu_pin_msgs = {}
     bot._dismiss_menu_transients = AsyncMock()
     bot._actor_key = MagicMock(return_value="1:1")
     bot._mark_menu_layout_ok = MagicMock()
@@ -193,3 +194,55 @@ def test_screening_status_bubble_has_no_reply_keyboard():
     status.delete.assert_awaited()
     bot._pin_reply_menu.assert_awaited()
 
+
+
+def test_scratch_chart_paths_differ_per_user():
+    from bot_servers import WayneTelegramBot
+
+    p1 = WayneTelegramBot._scratch_chart_path("data/charts", "2330", "chips", "9001")
+    p2 = WayneTelegramBot._scratch_chart_path("data/charts", "2330", "chips", "9002")
+    assert p1 != p2
+    assert "9001" in p1 and "9002" in p2
+
+
+def test_screening_global_gate_blocks_second_user():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = "1:1"
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock()
+    msg = MagicMock()
+    msg.chat_id = 2
+    msg.from_user = MagicMock(id=2)
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+
+    async def run():
+        await bot._run_manual_screening(msg)
+
+    asyncio.run(run())
+    bot.screener.run_full_screening.assert_not_called()
+    blob = " ".join(
+        str(c.args[0])
+        for c in msg.reply_html.await_args_list + msg.reply_text.await_args_list
+        if c.args
+    )
+    assert "海選正在掃描" in blob
+
+
+def test_health_server_is_threaded():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.start_health_server)
+    assert "ThreadingHTTPServer" in src

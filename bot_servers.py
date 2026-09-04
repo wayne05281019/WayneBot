@@ -366,7 +366,10 @@ class WayneTelegramBot:
         self._lookup_locks: Dict[str, asyncio.Lock] = {}
         self._pending_locks: Dict[str, asyncio.Lock] = {}
         self._screening_running: set[str] = set()
+        self._screening_gate = asyncio.Lock()
+        self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
+        self._menu_pin_msgs: Dict[str, object] = {}
 
     @staticmethod
     def _actor_key(
@@ -548,8 +551,8 @@ class WayneTelegramBot:
             return
         key = f"{uid}:{str(code).strip()}"
         self._lookup_ctx[key] = {"ohlc": ohlc, "ts": time.time()}
-        if len(self._lookup_ctx) > 40:
-            oldest = sorted(self._lookup_ctx.items(), key=lambda kv: kv[1].get("ts", 0))[:10]
+        if len(self._lookup_ctx) > 128:
+            oldest = sorted(self._lookup_ctx.items(), key=lambda kv: kv[1].get("ts", 0))[:20]
             for k, _ in oldest:
                 self._lookup_ctx.pop(k, None)
 
@@ -624,17 +627,42 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     async def _pin_reply_menu(self, message) -> None:
-        """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。"""
+        """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。
+
+        同一 actor 只留一則釘選訊息（能 edit 就 edit），避免海選後一直堆「·」。
+        """
+        actor = self._actor_key(message)
+        prev = getattr(self, "_menu_pin_msgs", None)
+        if prev is None:
+            self._menu_pin_msgs = {}
+            prev = self._menu_pin_msgs
+        pinned = prev.get(actor)
+        if pinned is not None:
+            try:
+                await pinned.edit_text("兩排主選單在輸入框右側 ⌨️。")
+                return
+            except Exception:
+                self._menu_pin_msgs.pop(actor, None)
         for text in ("兩排主選單在輸入框右側 ⌨️。", "·"):
             try:
-                await message.reply_text(text, reply_markup=self._reply_menu())
+                pin = await message.reply_text(text, reply_markup=self._reply_menu())
+                self._menu_pin_msgs[actor] = pin
                 return
             except Exception:
                 continue
         try:
-            await message.reply_text("主選單", reply_markup=self._reply_menu())
+            pin = await message.reply_text("主選單", reply_markup=self._reply_menu())
+            self._menu_pin_msgs[actor] = pin
         except Exception:
             logger.exception("pin reply menu 失敗")
+
+    @staticmethod
+    def _scratch_chart_path(charts_dir: str, code: str, kind: str, uid: str = "") -> str:
+        """每人每次出圖用獨立檔名，避免哥哥／偉權同時查同一檔互相覆蓋。"""
+        safe = str(code or "").strip()[:6] or "x"
+        who = str(uid or "0").strip()[:16]
+        tag = f"{who}_{int(time.time() * 1000)}"
+        return os.path.join(charts_dir, f"{safe}_{kind}_{tag}.png")
 
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
@@ -1272,7 +1300,12 @@ class WayneTelegramBot:
         except Exception:
             html = generate_decision_card(code, self.db_path)
             card_img = ""
-            chart_path = generate_chart(code, name, self.db_path, os.path.join(self.charts_dir, f"{code}.png"))
+            chart_path = generate_chart(
+                code,
+                name,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "nav", str(chat_id)),
+            )
             glance = ""
         if glance:
             cap = f"{html_escape(code)}"
@@ -1392,6 +1425,16 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(),
             )
             return
+        async with self._screening_gate:
+            if self._screening_global_owner and self._screening_global_owner != actor:
+                await message.reply_html(
+                    "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
+                    "完成後你再按一次「海選」讀快取即可；名單是同一份，"
+                    "不會和對方的持股／觀察混在一起。",
+                    reply_markup=self._reply_menu(),
+                )
+                return
+            self._screening_global_owner = actor
         self._screening_running.add(actor)
         await self._dismiss_menu_transients(actor)
         hub = self._reply_menu()
@@ -1456,6 +1499,9 @@ class WayneTelegramBot:
             stop.set()
             ticker.cancel()
             self._screening_running.discard(actor)
+            async with self._screening_gate:
+                if self._screening_global_owner == actor:
+                    self._screening_global_owner = ""
             try:
                 await status.delete()
             except Exception:
@@ -1919,13 +1965,16 @@ class WayneTelegramBot:
         status = await self._transient_status(update.message, "讀取當日資金移動…")
         try:
             await self._enter_main_menu(update.message, uid)
-            from money_flow import format_flow_html, recompute_sector_flow, resolve_flow_as_of, sector_flow_ready
+            from money_flow import format_flow_html, resolve_flow_as_of, sector_flow_ready
 
             as_of, lag = resolve_flow_as_of(self.db_path)
+            # 按鈕路徑不重算產業輪動（會拖 10s+）；缺資料就直接讀庫／提示稍後。
             if as_of:
                 ready = await asyncio.to_thread(sector_flow_ready, self.db_path, as_of)
                 if not ready:
-                    await asyncio.to_thread(recompute_sector_flow, self.db_path, as_of)
+                    lag = (lag or "") + (
+                        "\n<i>今日產業輪動表尚未寫入（盤後融合後會有）；以下可能是前一交易日快取。</i>"
+                    )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
                 timeout=18.0,
@@ -2074,11 +2123,12 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/chips 2330")
             return
+        uid = str(update.effective_user.id)
         chip_img = await asyncio.to_thread(
             generate_chips_image,
             args[0].strip(),
             self.db_path,
-            os.path.join(self.charts_dir, f"{args[0].strip()}_chips.png"),
+            self._scratch_chart_path(self.charts_dir, args[0].strip(), "chips", uid),
         )
         if chip_img:
             with open(chip_img, "rb") as f:
@@ -2328,7 +2378,10 @@ class WayneTelegramBot:
             return True
         if pending == "chips":
             chip_img = await asyncio.to_thread(
-                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+                generate_chips_image,
+                code,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
             )
             if chip_img:
                 try:
@@ -2591,7 +2644,7 @@ class WayneTelegramBot:
                 asyncio.to_thread(
                     render_decision_card_png,
                     card,
-                    os.path.join(self.charts_dir, f"{code}_card.png"),
+                    self._scratch_chart_path(self.charts_dir, code, "dcard", uid),
                 ),
                 timeout=25,
             )
@@ -2927,12 +2980,12 @@ class WayneTelegramBot:
                 )
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
-            req_tag = f"{int(time.time() * 1000)}"
+            uid_key = uid or self._uid_from_message(message)
+            req_tag = f"{uid_key or '0'}_{int(time.time() * 1000)}"
             glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
 
-            uid_key = uid or self._uid_from_message(message)
             self._cache_lookup_ctx(uid_key, code, ohlc)
 
             def _render_chart():
@@ -3182,8 +3235,12 @@ class WayneTelegramBot:
             return
         if data.startswith("h:"):
             code = data[2:].strip()
+            uid = str(q.from_user.id)
             chip_img = await asyncio.to_thread(
-                generate_chips_image, code, self.db_path, os.path.join(self.charts_dir, f"{code}_chips.png")
+                generate_chips_image,
+                code,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
             )
             if chip_img:
                 try:
