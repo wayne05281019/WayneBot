@@ -143,6 +143,26 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
     return out
 
 
+def _held_is_equity(stock_id: str, stock_name: str = "") -> bool:
+    """持倉是否現股／KY。匯入失敗時不當 ETF 清掉。"""
+    try:
+        from universe import is_screen_equity
+
+        return is_screen_equity(stock_id, stock_name)
+    except Exception:
+        return True
+
+
+def _official_close(quotes: Dict[str, Dict[str, Any]], stock_id: str) -> float:
+    """只認 quotes 裡的官方收盤；沒有就不賣，禁止用成本價充當成交價。"""
+    q = quotes.get(stock_id) or {}
+    try:
+        px = float(q.get("close") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return px if px > 0 else 0.0
+
+
 def _size_mult_key(user_id: str) -> str:
     return f"size_mult:{user_id}"
 
@@ -565,6 +585,27 @@ def run_ai_desk(
     )
 
     sold = []
+    # 舊模擬倉若抱著 ETF，先用官方收盤清掉，避免佔滿 3 槽買不進現股。
+    for p in list(seed["positions"]):
+        sid = str(p.get("stock_id") or "")
+        name = str(p.get("stock_name") or "")
+        if not sid or _held_is_equity(sid, name):
+            continue
+        price = _official_close(quotes, sid)
+        if price <= 0:
+            continue
+        r = engine.sell(
+            user_id,
+            as_of,
+            sid,
+            price,
+            shares=int(p.get("shares") or 0),
+            reason="非現股／KY，清出模擬槽",
+        )
+        if r.get("success"):
+            sold.append(r["msg"])
+            _record_fill(db_path, user_id, as_of, "SELL", r, reason="非現股／KY，清出模擬槽")
+
     for sig in engine.evaluate_exit_signals(user_id, quotes):
         r = engine.sell(
             user_id, as_of, sig["stock_id"], float(sig["current_price"]),
