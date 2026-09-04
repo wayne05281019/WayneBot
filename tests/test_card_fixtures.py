@@ -67,19 +67,54 @@ def test_template_2530_leave_zero_row():
 
 
 @pytest.mark.production_db
-def test_template_2633_8_11_profit_zero():
-    """高鐵範本：8/11 貼 20 日低仍顯示 0.0%（地板取 max(60曆日低,20日低)）。"""
+def test_template_2633_8_11_profit_is_cal60_not_l20_floor():
+    """高鐵 8/11：貼 20 日低仍用 60 曆日低算獲利（≈1.0%），不再強制 0.0%。"""
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
     tbl = NavigatorEngine(get_db_path()).get_decision_card("2633")["table"]
     row = tbl[tbl["date"].astype(str) == "20260811"]
     assert not row.empty
-    assert float(row.iloc[0]["profit_pct"]) <= 0.05
+    assert abs(float(row.iloc[0]["profit_pct"]) - 1.0) < 0.15
+
+
+@pytest.mark.production_db
+def test_2383_near_l20_profit_matches_cal60_carybot():
+    """台光電：盤中貼近 20 日低時獲利仍 ≈ 相對 60 曆日低 4100（CaryBot ~29%），不可 0%。"""
+    from unittest.mock import patch
+
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    rt = {
+        "stock_id": "2383",
+        "stock_name": "台光電",
+        "open": 5390.0,
+        "high": 5515.0,
+        "low": 5255.0,
+        "close": 5295.0,
+        "volume": 1129,
+        "pct_change": 0.09,
+        "yesterday_close": 5290.0,
+        "update_time": "11:46:00",
+    }
+    with patch("live_quote.fetch_mis_quote", return_value=rt), patch(
+        "live_quote.is_live_merge_window", return_value=True
+    ):
+        card = NavigatorEngine(get_db_path()).get_decision_card("2383", merge_live=True)
+    assert float(card["cal60_low"]) == 4100.0
+    # (5295-4100)/4100 ≈ 29.1%
+    assert abs(float(card["gain_pct"]) - 29.1) < 0.2
+    tbl = card["table"]
+    row = tbl[tbl["date"].astype(str) == "20260904"]
+    assert not row.empty
+    assert row.iloc[0]["獲利"] == "29.1%"
+    assert float(row.iloc[0]["profit_pct"]) > 20.0
 
 
 @pytest.mark.production_db
 def test_profit_floor_max_cal60_and_l20():
+    """profit_floor_at 仍取 max(cal60, l20)；僅內部用，不再驅動決策卡獲利欄。"""
     import sqlite3
 
     import pandas as pd

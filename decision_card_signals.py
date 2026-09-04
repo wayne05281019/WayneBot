@@ -45,7 +45,11 @@ def profit_floor_at(df, idx: int = -1, *, close_col: str = "close") -> float:
 
 
 def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
-    """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。海選／起漲用。"""
+    """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。
+
+    僅供需要「貼月低顯示 0%」的內部分析；決策卡／海選顯示與起漲條件用
+    ``profit_pct_cal60_series``（對齊 CaryBot）。
+    """
     closes = df[close_col].astype(float)
     out = []
     for i in range(len(df)):
@@ -58,7 +62,7 @@ def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
 
 
 def profit_pct_cal60_series(df, *, close_col: str = "close") -> pd.Series:
-    """決策卡獲利欄：只用 60 曆日低（對齊 CaryBot 範本卡）。"""
+    """決策卡／海選獲利欄：只用 60 曆日收盤低（對齊 CaryBot；貼 20 日低不歸零）。"""
     closes = df[close_col].astype(float)
     out = []
     for i in range(len(df)):
@@ -71,20 +75,8 @@ def profit_pct_cal60_series(df, *, close_col: str = "close") -> pd.Series:
 
 
 def profit_pct_card_series(df, *, close_col: str = "close") -> pd.Series:
-    """決策卡顯示：預設 60 曆日低（CaryBot）；貼 20 日低時改 max(60曆日低,20日低) 顯示 0.0%（2633 範本）。"""
-    cal = profit_pct_cal60_series(df, close_col=close_col)
-    floor = profit_pct_series(df, close_col=close_col)
-    closes = df[close_col].astype(float)
-    l20 = closes.rolling(20, min_periods=1).min()
-    out = []
-    for i in range(len(df)):
-        c = float(closes.iloc[i])
-        lo = float(l20.iloc[i] or 0)
-        if lo > 0 and c <= lo * 1.002:
-            out.append(float(floor.iloc[i]))
-        else:
-            out.append(float(cal.iloc[i]))
-    return pd.Series(out, index=df.index)
+    """決策卡顯示別名：一律 60 曆日低（舊版貼 20 日低歸零已廢止，避免 2383 型誤顯 0%）。"""
+    return profit_pct_cal60_series(df, close_col=close_col)
 
 
 def resolve_daily_change_pct(
