@@ -124,6 +124,13 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
             sid = str(it.get("stock_id") or it.get("code") or "")
             if not sid or sid in seen:
                 continue
+            try:
+                from universe import is_screen_equity
+
+                if not is_screen_equity(sid, str(it.get("stock_name") or it.get("name") or "")):
+                    continue
+            except Exception:
+                pass
             if it.get("chase_warning") or it.get("us_peer_headwind") or it.get("us_risk_off"):
                 continue
             if float(it.get("close") or 0) <= 0:
