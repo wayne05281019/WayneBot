@@ -239,3 +239,79 @@ def test_decision_card_png_renders_next_event():
     finally:
         if os.path.exists(path):
             os.remove(path)
+
+
+def _mini_card(stock_id: str, name: str, event: str = ""):
+    import pandas as pd
+
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260903",
+                "close": 100.0,
+                "獲利": "2.0%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "36.0 °C",
+                "月乖離": "+1.0%",
+                "profit_pct": 2.0,
+                "bias_monthly": 1.0,
+                "vol_rank_120": 20,
+                "120日量": "第 20 名",
+            }
+        ]
+    )
+    return {
+        "stock_id": stock_id,
+        "stock_name": name,
+        "next_event": event,
+        "close": 100.0,
+        "change_pct": 1.2,
+        "h10": 110,
+        "dist_h10": -9.0,
+        "h20": 112,
+        "dist_h20": -10.7,
+        "h60": 120,
+        "dist_h60": -16.7,
+        "l10": 95,
+        "dist_l10": 5.3,
+        "l20": 90,
+        "dist_l20": 11.1,
+        "l60": 80,
+        "dist_l60": 25.0,
+        "space_20": 14,
+        "space_60": 25,
+        "ma60s": 0.5,
+        "qty60": 20000,
+        "badges": ["整理格局"],
+        "table": table,
+    }
+
+
+def test_two_threads_render_cards_without_clobbering(tmp_path):
+    """偉權／哥哥同時出圖：pyplot 全域鎖要讓兩張都畫完，不能空白互蓋。"""
+    import threading
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    errors = []
+
+    def go(sid, name):
+        try:
+            path = str(tmp_path / f"{sid}.png")
+            out = render_decision_card_png(_mini_card(sid, name), path)
+            if not out or os.path.getsize(path) < 8000:
+                errors.append(f"{sid} too small")
+        except Exception as exc:
+            errors.append(repr(exc))
+
+    t1 = threading.Thread(target=go, args=("2330", "台積電"))
+    t2 = threading.Thread(target=go, args=("2454", "聯發科"))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    assert errors == []
+    assert os.path.getsize(tmp_path / "2330.png") > 8000
+    assert os.path.getsize(tmp_path / "2454.png") > 8000
