@@ -158,5 +158,39 @@ class CardDataAccuracyTests(unittest.TestCase):
             self.assertEqual(shown, "20高")
 
 
+    @pytest.mark.production_db
+    def test_4915_official_20260904_matches_leave_zero(self):
+        """致伸 20260904 官方：收 60.8、獲利 2.4%（60曆日低 59.4）、態度等待。"""
+        db = get_db_path()
+        import sqlite3
+
+        from wayne_navigator import NavigatorEngine
+
+        conn = sqlite3.connect(db)
+        row = conn.execute(
+            """
+            SELECT replace(date,'-',''), open, high, low, close, pct_change
+            FROM daily_quotes WHERE stock_id='4915' AND replace(date,'-','')='20260904'
+            """
+        ).fetchone()
+        conn.close()
+        if not row:
+            self.skipTest("no 4915 20260904")
+        self.assertAlmostEqual(float(row[1]), 60.1, places=1)
+        self.assertAlmostEqual(float(row[2]), 61.0, places=1)
+        self.assertAlmostEqual(float(row[3]), 59.9, places=1)
+        self.assertAlmostEqual(float(row[4]), 60.8, places=1)
+        self.assertAlmostEqual(float(row[5]), 2.01, places=2)
+
+        card = NavigatorEngine(db).get_decision_card("4915", merge_live=False)
+        self.assertEqual(str(card.get("latest_date")).replace("-", "")[:8], "20260904")
+        self.assertAlmostEqual(float(card["close"]), 60.8, places=1)
+        self.assertAlmostEqual(float(card["change_pct"]), 2.01, places=2)
+        self.assertAlmostEqual(float(card["cal60_low"]), 59.4, places=1)
+        self.assertAlmostEqual(float(card["gain_pct"]), 2.4, places=1)
+        self.assertEqual(card.get("stance_kind"), "wait")
+        self.assertIn("等待", str(card.get("stance") or ""))
+
+
 if __name__ == "__main__":
     unittest.main()
