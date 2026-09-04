@@ -212,6 +212,10 @@ def test_decision_card_source_forbids_zebra_and_paints_event():
     assert "row_i % 2" not in src
     assert "next_event" in src
     assert "白底" in src
+    from wayne_navigator import render_first_glance_png
+
+    glance_src = inspect.getsource(render_first_glance_png)
+    assert "next_event" in glance_src
 
 
 def test_decision_card_png_renders_next_event():

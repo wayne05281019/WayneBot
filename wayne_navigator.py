@@ -2025,7 +2025,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         last.get("yesterday_close") or card.get("prev_close") or None,
     )
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
+    event = str(card.get("next_event") or "").strip()
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
+    if event:
+        badge = f"{event}　{badge}".strip() if badge else event
     ink(20.2, 93.45, badge or "—", fit_fs(badge or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
     try:
         from live_quote import live_clock_suffix

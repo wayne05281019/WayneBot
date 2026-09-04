@@ -450,6 +450,12 @@ def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> 
     if not sid:
         return ""
     day = ymd(today) or taipei_today_str()
+    try:
+        from company_events import ensure_events_loaded
+
+        ensure_events_loaded(path)
+    except Exception:
+        pass
     cands: List[Tuple[str, str]] = []
     try:
         conn = sqlite3.connect(path)
