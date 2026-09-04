@@ -124,13 +124,20 @@ def test_sell_note_short_drops_disclaimer():
 def test_html_and_glance_wire_sell_notes():
     import inspect
 
-    from wayne_navigator import generate_decision_card, render_first_glance_png
+    from wayne_navigator import (
+        generate_decision_card,
+        render_decision_card_png,
+        render_first_glance_png,
+    )
 
     html_src = inspect.getsource(generate_decision_card)
     assert "sell_note_lines" in html_src
     assert "協助判斷" in html_src
     png_src = inspect.getsource(render_first_glance_png)
     assert "sell_note_short" in png_src
+    card_src = inspect.getsource(render_decision_card_png)
+    assert "sell_note_short" in card_src
+    assert "紀律" in card_src
 
 
 @pytest.mark.production_db
@@ -150,3 +157,148 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     assert "不是買訊" in line
     assert "不同步（" not in line
     assert sell_note_short(again) == "直接減碼（最高價但非最高溫）"
+
+
+def _mini_card_for_png(**extra):
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260904",
+                "close": 143.0,
+                "獲利": "124.5%",
+                "高低": "20高",
+                "預警": "K20高",
+                "溫度計": "81.1 °C",
+                "升降": "升溫",
+                "升降註": "",
+                "月乖離": "+31.1%",
+                "120日量": "第 8 名",
+                "profit_pct": 124.5,
+                "bias_monthly": 31.1,
+                "vol_rank_120": 8,
+                "temp_num": 81.1,
+            }
+        ]
+    )
+    card = {
+        "stock_id": "3441",
+        "stock_name": "聯一光",
+        "latest_date": "20260904",
+        "query_date": "2026/09/04",
+        "query_clock": "",
+        "close": 143.0,
+        "change_pct": 10.0,
+        "h10": 143.0,
+        "dist_h10": 0.0,
+        "h20": 143.0,
+        "dist_h20": 0.0,
+        "h60": 143.0,
+        "dist_h60": 0.0,
+        "l10": 90.0,
+        "dist_l10": 58.9,
+        "l20": 80.0,
+        "dist_l20": 78.8,
+        "l60": 63.7,
+        "dist_l60": 124.5,
+        "space_20": 79,
+        "space_60": 124,
+        "ma60s": 1.2,
+        "qty60": 1000,
+        "badges": ["多頭排列"],
+        "stance": "今天不要追",
+        "stance_kind": "avoid",
+        "table": table,
+    }
+    card.update(extra)
+    return card
+
+
+def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
+    """決策卡第二行要畫如何賣，不能只出現在介紹圖。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+
+    from wayne_navigator import render_decision_card_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    card = _mini_card_for_png(
+        sell_action="直接減碼",
+        sell_why="不同步（最高價但非最高溫）",
+    )
+    out = tmp_path / "3441_sell.png"
+    path = render_decision_card_png(card, str(out))
+    assert path and out.is_file()
+    joined = "\n".join(seen)
+    assert "紀律　直接減碼（最高價但非最高溫）　不是買訊" in joined
+    assert "紅箭頭只是觀察" not in joined
+
+
+def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, monkeypatch):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+
+    from wayne_navigator import render_decision_card_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    out = tmp_path / "no_sell.png"
+    path = render_decision_card_png(_mini_card_for_png(), str(out))
+    assert path and out.is_file()
+    joined = "\n".join(seen)
+    assert "紅箭頭只是觀察" in joined
+    assert "紀律　" not in joined
+
+
+@pytest.mark.production_db
+def test_cary_2383_2408_3008_20260904_rows():
+    """Cary 對卡殘差：台光電獲利不歸零、南亞科 9/3 最低溫、大立光 9/4 如何賣脫離。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    eng = NavigatorEngine(get_db_path())
+
+    c2383 = eng.get_decision_card("2383", merge_live=False)
+    assert str(c2383.get("latest_date")) == "20260904"
+    assert float(c2383["cal60_low"]) == 4100.0
+    assert abs(float(c2383["gain_pct"]) - 32.1) < 0.2
+    t2383 = c2383["table"]
+    r04 = t2383[t2383["date"].astype(str) == "20260904"].iloc[0]
+    assert r04["獲利"] == "32.1%"
+    r03 = t2383[t2383["date"].astype(str) == "20260903"].iloc[0]
+    assert str(r03["升降"]) == "最低溫"
+
+    c2408 = eng.get_decision_card("2408", merge_live=False)
+    t2408 = c2408["table"]
+    n03 = t2408[t2408["date"].astype(str) == "20260903"].iloc[0]
+    assert str(n03["升降"]) == "最低溫"
+    assert "價未新低" in str(n03.get("升降註") or "")
+    assert float(c2408["gain_pct"]) > 40.0
+
+    c3008 = eng.get_decision_card("3008", merge_live=False)
+    assert str(c3008.get("latest_date")) == "20260904"
+    assert c3008.get("sell_action") == "直接減碼"
+    assert "不同步再脫離" in str(c3008.get("sell_why") or "")
+    assert sell_note_short(c3008) == "直接減碼（不同步再脫離）"
