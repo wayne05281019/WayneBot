@@ -38,7 +38,7 @@ def _load(db: str) -> pd.DataFrame:
     )
     q = pd.read_sql_query(
         """
-        SELECT replace(date,'-','') AS date, stock_id, close, volume, turnover_k, ma20
+        SELECT replace(date,'-','') AS date, stock_id, close, volume, turnover_k
         FROM daily_quotes
         WHERE length(stock_id)=4 AND close > 0
         ORDER BY stock_id, date
@@ -78,17 +78,15 @@ def _fmt(row: dict) -> str:
     )
 
 
-def _stock_flags(g: pd.DataFrame) -> pd.DataFrame:
+def _stock_flags(g: pd.DataFrame, sample_dates: set) -> pd.DataFrame:
     close = g["close"].astype(float)
     high20 = close.rolling(20, min_periods=1).max()
     low20 = close.rolling(20, min_periods=1).min()
     high60 = close.rolling(60, min_periods=1).max()
     low60 = close.rolling(60, min_periods=1).min()
-    ma20 = pd.to_numeric(g["ma20"], errors="coerce")
-    if ma20.isna().all():
-        ma20 = close.rolling(20, min_periods=1).mean()
+    ma20 = close.rolling(20, min_periods=1).mean()
     bias = ((close - ma20) / ma20.replace(0, np.nan) * 100.0).fillna(0.0)
-    hl = np.where(close >= high20 * 0.998, "20高", "No")
+    hl = np.where(close >= high20 * 0.998, "20高", "No").tolist()
     temps = [
         compute_card_temperature(
             float(c), float(h20), float(l20), float(b), high60=float(h60), low60=float(l60)
@@ -96,10 +94,13 @@ def _stock_flags(g: pd.DataFrame) -> pd.DataFrame:
         for c, h20, l20, b, h60, l60 in zip(close, high20, low20, bias, high60, low60)
     ]
     labels, _notes = compute_temp_trend_labels(temps, closes=list(close))
-    acts = []
-    for i in range(len(g)):
+    dates = g["date"].tolist()
+    acts = [""] * len(g)
+    for i, d in enumerate(dates):
+        if d not in sample_dates:
+            continue
         flags = classify_how_to_sell(hl[: i + 1], labels[: i + 1])
-        acts.append(flags["sell_action"] or "")
+        acts[i] = flags["sell_action"] or ""
     out = g.copy()
     out["hl"] = hl
     out["sell_action"] = acts
@@ -117,13 +118,21 @@ def main() -> int:
     q["fwd5"] = g["close"].shift(-5) / q["close"] - 1.0
     q["fwd10"] = g["close"].shift(-10) / q["close"] - 1.0
     dates = sorted(q["date"].unique())
-    sample_days = dates[40:-12:5]
+    sample_days = dates[max(0, len(dates) - 260) : -12 : 5]
+    sample_set = set(sample_days)
+    last_liq = dates[-13] if len(dates) > 13 else dates[-1]
+    liq_ids = set(
+        q.loc[
+            (q["date"] == last_liq) & (q["volume"] >= LIQ_VOL) & (q["turnover_k"] >= LIQ_TO_K),
+            "stock_id",
+        ]
+    )
     chunks = []
     for sid, sg in q.groupby("stock_id", sort=False):
-        if len(sg) < 80:
+        if sid not in liq_ids or len(sg) < 80:
             continue
-        flagged = _stock_flags(sg)
-        flagged = flagged[flagged["date"].isin(sample_days)]
+        flagged = _stock_flags(sg, sample_set)
+        flagged = flagged[flagged["date"].isin(sample_set)]
         if flagged.empty:
             continue
         chunks.append(flagged[["stock_id", "date", "volume", "turnover_k", "hl", "sell_action", "fwd5", "fwd10"]])

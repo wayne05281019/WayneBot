@@ -35,7 +35,7 @@ def classify_how_to_sell(
     linger: int = LINGER,
 ) -> Dict[str, Any]:
     """看最新一根，回傳減碼動作。空字串＝這檔今天不標。"""
-    n = min(len(hl_tags or []), len(temp_labels or []))
+    n = min(len(hl_tags) if hl_tags is not None else 0, len(temp_labels) if temp_labels is not None else 0)
     empty = {
         "sell_action": "",
         "sell_why": "",
