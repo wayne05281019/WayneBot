@@ -736,11 +736,43 @@ def html_escape(val) -> str:
 
 
 def _fmt_price(p) -> str:
+    """股價顯示：千元以上不要小數，避免萬元股把獲利欄擠爆。"""
     try:
         v = float(p)
     except (TypeError, ValueError):
         return "—"
-    return f"{v:,.2f}"
+    av = abs(v)
+    if av >= 1000:
+        return f"{v:,.0f}"
+    if av >= 100:
+        s = f"{v:,.1f}"
+        return s[:-2] if s.endswith(".0") else s
+    s = f"{v:,.2f}"
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _fmt_price_signed(p) -> str:
+    try:
+        v = float(p)
+    except (TypeError, ValueError):
+        return "—"
+    body = _fmt_price(abs(v))
+    if v > 0:
+        return f"+{body}"
+    if v < 0:
+        return f"-{body}"
+    return body
+
+
+def _trend_note_short(note: str) -> str:
+    """升降註縮短，避免與主標雙 pill 擠成一團。"""
+    n = str(note or "").strip()
+    return {
+        "價未新低": "未新低",
+        "價溫背離": "背離",
+    }.get(n, n)
 
 
 def _fmt_md(date_val) -> str:
@@ -1537,7 +1569,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(48.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c,
             va="center", zorder=3)
     if chg_amt is not None:
-        ax.text(66.5, px_cy, f"{chg_amt:+.2f}", fontproperties=_fp(15, "bold"), color=chg_c,
+        ax.text(66.5, px_cy, _fmt_price_signed(chg_amt), fontproperties=_fp(15, "bold"), color=chg_c,
                 va="center", zorder=3)
     ohlc_cy = y + price_h - 5.35
     ohlc_bits = [
@@ -1599,7 +1631,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
               "預警會露出 20高／10低；升降溫＝溫度計；最右欄＝120日量排名")
     headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
-    weights = [13.6, 10.4, 9.6, 11.0, 11.6, 13.0, 10.2, 12.6]
+    # 股價欄加寬（萬元股）、升降溫略加寬給雙標；日期／獲利略收。
+    weights = [12.2, 12.2, 8.8, 10.6, 11.0, 14.2, 9.6, 12.4]
     pill_cols = {3, 5, 7}
     span = 100 - 2 * pad_x
     xs = [pad_x]
@@ -1655,20 +1688,46 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
                             fontproperties=_fp(11), color=fgs[i], ha="center", va="center", zorder=3)
                 elif i == 5 and trend_note:
+                    note = _trend_note_short(trend_note)
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
-                    max_w = col_w * 0.90
-                    main_w = min(tw(trend, 10.5) + 2.8, max_w)
-                    note_w = min(tw(trend_note, 9.5) + 2.4, max_w)
-                    _pill(ax, cx, cy + body_h * 0.12, trend, tr_bg, tr_fg, w=main_w,
-                          h=body_h * 0.36, fs=10.2)
-                    _pill(ax, cx, cy - body_h * 0.14, trend_note, nbg, nfg, w=note_w,
-                          h=body_h * 0.32, fs=9.5)
+                    max_w = col_w * 0.92
+                    # 主標過長時縮字（如「溫度壓縮」）
+                    main_lab = "壓縮" if trend == "溫度壓縮" else trend
+                    main_fs = 9.6 if len(main_lab) >= 3 else 10.2
+                    note_fs = 8.8
+                    main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
+                    note_w = min(tw(note, note_fs) + 2.0, max_w)
+                    # 上下拉開，避免兩顆 pill 垂直重疊糊成一團（8/27、8/28 常見）
+                    _pill(
+                        ax,
+                        cx,
+                        cy + body_h * 0.20,
+                        main_lab,
+                        tr_bg,
+                        tr_fg,
+                        w=main_w,
+                        h=body_h * 0.32,
+                        fs=main_fs,
+                    )
+                    _pill(
+                        ax,
+                        cx,
+                        cy - body_h * 0.22,
+                        note,
+                        nbg,
+                        nfg,
+                        w=note_w,
+                        h=body_h * 0.28,
+                        fs=note_fs,
+                    )
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
                     _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w,
                           h=body_h * 0.74, fs=11.0)
             else:
-                ax.text(cx, cy, val, fontproperties=_fp(12, "bold"), ha="center", va="center",
+                # 萬元股價字串較長：略縮字級，避免溢進獲利欄
+                px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
+                ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold"), ha="center", va="center",
                         color=fgs[i], zorder=3)
         ry = y1
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
@@ -2324,8 +2383,9 @@ def draw_from_ohlc(
     ax1.text(
         0.004,
         0.985,
-        f"Op:{float(last['open']):g}  Hi:{float(last['high']):g}  Lo:{float(last['low']):g}  Cl:{float(last['close']):g}"
-        f"    SMA(20): {float(last['ma20']):.1f}",
+        f"Op:{_fmt_price(last['open'])}  Hi:{_fmt_price(last['high'])}  "
+        f"Lo:{_fmt_price(last['low'])}  Cl:{_fmt_price(last['close'])}"
+        f"    SMA(20): {_fmt_price(last['ma20'])}",
         transform=ax1.transAxes,
         ha="left",
         va="top",
