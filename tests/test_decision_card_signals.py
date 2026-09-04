@@ -124,6 +124,19 @@ def test_card_daily_stance_is_table_not_arrow():
     assert "觀察" not in txt
 
 
+def test_4915_sep4_leave_zero_is_wait_not_buy():
+    """9/4 致伸：雙綠脫離可進起漲；貼 20 高、溫度未滿 80＝等待，不是買訊。"""
+    ok, reason = leave_zero_screen_ok(0.3, 2.4, yest_alert="60低", today_alert="K20高")
+    assert ok
+    assert "雙綠" in reason
+    txt, kind = card_daily_stance(
+        profit_pct=2.4, alert="K20高", hl="20高", temp=69.3, badges=[]
+    )
+    assert kind == "wait"
+    assert "等待" in txt
+    assert "不要追" not in txt
+
+
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
     import os
 
