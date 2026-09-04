@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from live_quote import append_live_bar, sanitize_ohlc, session_bar_from_mis
+from live_quote import append_live_bar, sanitize_ohlc, sanitize_ohlc_frame, session_bar_from_mis
 
 
 class LiveSessionTests(unittest.TestCase):
@@ -46,6 +46,19 @@ class LiveSessionTests(unittest.TestCase):
     def test_sanitize_ohlc_raises_high_to_cover_open(self):
         o, h, l, c = sanitize_ohlc(5590.0, 5515.0, 5255.0, 5350.0)
         self.assertEqual((o, h, l, c), (5590.0, 5590.0, 5255.0, 5350.0))
+
+    def test_sanitize_ohlc_frame_clamps_op_gt_hi_rows(self):
+        df = pd.DataFrame(
+            [
+                {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5},
+                {"open": 5590.0, "high": 5515.0, "low": 5255.0, "close": 5350.0},
+            ]
+        )
+        out = sanitize_ohlc_frame(df)
+        self.assertAlmostEqual(float(out.iloc[0]["high"]), 101.0)
+        self.assertAlmostEqual(float(out.iloc[1]["high"]), 5590.0)
+        self.assertGreaterEqual(float(out.iloc[1]["high"]), float(out.iloc[1]["open"]))
+        self.assertLessEqual(float(out.iloc[1]["low"]), float(out.iloc[1]["close"]))
 
     def test_append_live_bar_appends_today_with_session_ohlc(self):
         df = pd.DataFrame(
