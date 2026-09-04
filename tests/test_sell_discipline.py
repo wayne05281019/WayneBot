@@ -138,6 +138,7 @@ def test_html_and_glance_wire_sell_notes():
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
     assert "紀律" in card_src
+    assert "_fp(11.0 if sell_sub else 9.4)" in card_src
 
 
 @pytest.mark.production_db

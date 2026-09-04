@@ -61,9 +61,9 @@ def html_escape(val) -> str:
     )
 
 
-def _glance_photo_caption(base: str, card: dict | None) -> str:
-    """介紹圖說明：有如何賣就寫在第一張圖底下，縮圖也能看到。"""
-    cap = str(base or "").strip() or "當日K＋籌碼價量"
+def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
+    """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
+    cap = str(base or "").strip() or fallback
     if not card:
         return cap
     try:
@@ -77,6 +77,11 @@ def _glance_photo_caption(base: str, card: dict | None) -> str:
     if not short:
         return cap
     return f"{cap}\n紀律　{html_escape(short)}"
+
+
+def _glance_photo_caption(base: str, card: dict | None) -> str:
+    """介紹圖說明：有如何賣就寫在第一張圖底下。"""
+    return _photo_sell_caption(base, card)
 
 
 try:
@@ -3188,7 +3193,8 @@ class WayneTelegramBot:
                 with open(card_path, "rb") as f:
                     await message.reply_photo(
                         photo=f,
-                        caption=f"高低決策卡{live_note}",
+                        caption=_photo_sell_caption(f"高低決策卡{live_note}", card, fallback="高低決策卡"),
+                        parse_mode="HTML",
                         reply_markup=hub,
                     )
                 sent = True
@@ -3546,9 +3552,10 @@ class WayneTelegramBot:
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
             glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
+            card_cap = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
-                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, "高低決策卡", None),
+                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),
                 (
                     "chart",
                     _render_chart,
