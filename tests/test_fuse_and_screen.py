@@ -1713,6 +1713,93 @@ class AIDeskTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def _seed_full_slots_with_etf(self, path, uid="1001"):
+        from ai_trader import ai_user_id
+        from portfolio_engine import PortfolioEngine
+
+        uid = ai_user_id(uid)
+        eng = PortfolioEngine(path)
+        eng.ensure_user_exists(uid)
+        conn = sqlite3.connect(path)
+        rows = (
+            ("00892", "富邦台灣半導體", 4000, 41.37),
+            ("9958", "世紀鋼", 1000, 90.6),
+            ("3703", "欣陸", 8000, 19.95),
+        )
+        for sid, name, shares, cost in rows:
+            conn.execute(
+                """
+                INSERT INTO user_positions
+                (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
+                VALUES (?,?,?,?,?,?,?,0,'MOMENTUM')
+                """,
+                (uid, sid, name, shares, cost, cost, "20260901"),
+            )
+        conn.commit()
+        conn.close()
+        return eng
+
+    def test_run_ai_desk_exits_etf_holdings_to_free_slot(self):
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            eng = self._seed_full_slots_with_etf(path)
+            conn = sqlite3.connect(path)
+            for sid, name, close in (
+                ("00892", "富邦台灣半導體", 40.75),
+                ("9958", "世紀鋼", 88.1),
+                ("3703", "欣陸", 20.0),
+            ):
+                conn.execute(
+                    "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    ("20260904", sid, name, "TW", close, close, close, close, 1000, 1000, 0, close, 0, 0, 0),
+                )
+            conn.commit()
+            conn.close()
+            ai = run_ai_desk(
+                path,
+                "1001",
+                {"leave_zero": [{"stock_id": "4915", "stock_name": "致伸", "close": 60.8}]},
+                "20260904",
+            )
+            sold = " ".join(ai.get("sold") or [])
+            bought = " ".join(ai.get("bought") or [])
+            self.assertIn("00892", sold)
+            self.assertIn("4915", bought)
+            ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
+            self.assertEqual(ids, {"9958", "3703", "4915"})
+        finally:
+            os.remove(path)
+
+    def test_run_ai_desk_keeps_etf_without_official_close(self):
+        """沒有官方收盤就不拿成本價假成交；槽仍滿，現股也買不進。"""
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            eng = self._seed_full_slots_with_etf(path)
+            ai = run_ai_desk(
+                path,
+                "1001",
+                {"leave_zero": [{"stock_id": "4915", "stock_name": "致伸", "close": 60.8}]},
+                "20260904",
+            )
+            self.assertFalse(ai.get("sold"))
+            self.assertFalse(ai.get("bought"))
+            ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
+            self.assertEqual(ids, {"00892", "9958", "3703"})
+        finally:
+            os.remove(path)
+
     def test_equal_slots_do_not_dump_remaining_cash(self):
         import os
         import tempfile
