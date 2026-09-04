@@ -271,6 +271,13 @@ class MainRunner:
 
             xr = sync_ex_rights(self.db_path)
             logger.info("官方除權息融合：%s", xr)
+            try:
+                from ex_rights import sync_ex_preview
+
+                preview = sync_ex_preview(self.db_path)
+                logger.info("除權息預告 TWT48U：%s", preview)
+            except Exception as e_prev:
+                logger.warning("除權息預告略過：%s", e_prev)
         except Exception as e:
             logger.error(f"除權息同步失敗: {e}", exc_info=True)
         try:
@@ -316,13 +323,17 @@ class MainRunner:
                     self.fetcher.update_daily_market_data(ds)
                     time.sleep(0.4)
                 health = audit_import(self.db_path)
-            if health.get("problems") or health.get("history_issue_n"):
-                logger.warning("匯入異常：%s", format_audit_plain(health))
+            if health.get("problems"):
+                logger.warning("匯入今天異常：%s", format_audit_plain(health))
                 if notify:
                     try:
                         self.send_telegram_message("⚠️ " + format_audit_plain(health))
                     except Exception:
                         pass
+            elif health.get("history_issue_n"):
+                logger.info("今天日K正常，舊日缺邊：%s", format_audit_plain(health))
+            else:
+                logger.info("盤後匯入今天正常：%s", format_audit_plain(health))
         except Exception as e:
             logger.warning("匯入檢查略過：%s", e)
 

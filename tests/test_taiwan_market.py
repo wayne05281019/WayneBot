@@ -657,6 +657,46 @@ def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
     assert row and row["close"] == 47209.0
 
 
+@patch("taiwan_market._fetch_taifex_tx_day")
+def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_path):
+    """庫已有足夠列且 backfill_days=0 時，不可再 UnboundLocalError(datetime)。"""
+    import sqlite3
+
+    from taiwan_market import ensure_futures_daily_table, sync_futures_daily
+
+    db = str(tmp_path / "fut2.db")
+    ensure_futures_daily_table(db)
+    conn = sqlite3.connect(db)
+    for i in range(12):
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TX', 'regular', '202609', 1, 2, 1, 2, 2, 10, 10, 0, 'taifex', 't')
+            """,
+            (f"202608{i + 10:02d}",),
+        )
+    conn.commit()
+    conn.close()
+    mock_fetch.return_value = {
+        "date": "20260901",
+        "contract_month": "202609",
+        "open": 1.0,
+        "high": 2.0,
+        "low": 1.0,
+        "close": 2.0,
+        "settlement": 2.0,
+        "volume": 1,
+        "open_interest": 1,
+        "pct_change": 0.0,
+        "source": "taifex",
+    }
+    r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
+    assert r["ok"]
+    assert "error" not in r
+
+
 def test_market_page_includes_futures_section(tmp_path):
     import sqlite3
 

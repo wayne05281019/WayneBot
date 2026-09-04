@@ -48,6 +48,7 @@ def _bot():
     bot._help_msgs = {}
     bot._lookup_locks = {}
     bot._pending_locks = {}
+    bot._lookup_op_state = {}
     bot._screening_running = set()
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""

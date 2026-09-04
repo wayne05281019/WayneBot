@@ -50,6 +50,7 @@ def _bot():
     bot._help_msgs = {}
     bot._lookup_locks = {}
     bot._pending_locks = {}
+    bot._lookup_op_state = {}
     bot._screening_running = set()
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
@@ -232,3 +233,13 @@ def test_interleaved_main_menu_buttons(round_i):
         await bot.on_text(_update(_msg(BRO_UID, b_label)), MagicMock())
 
     asyncio.run(run())
+
+
+def test_op_state_map_isolated_for_two_users():
+    bot = _bot()
+    w = f"{WAYNE_UID}:{WAYNE_UID}"
+    b = f"{BRO_UID}:{BRO_UID}"
+    bot._op_state_map()[w] = {"sent": [], "current": "card"}
+    bot._op_state_map()[b] = {"sent": [], "current": "nav"}
+    assert bot._lookup_op_state[w]["current"] == "card"
+    assert bot._lookup_op_state[b]["current"] == "nav"

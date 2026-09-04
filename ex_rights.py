@@ -214,14 +214,30 @@ def upsert_events(db_path: str, events: List[Dict[str, Any]]) -> int:
                 close_before, ref_price, right_plus_div, factor, source, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(stock_id, ex_date) DO UPDATE SET
-                stock_name=excluded.stock_name,
-                market=excluded.market,
-                kind=excluded.kind,
-                close_before=excluded.close_before,
-                ref_price=excluded.ref_price,
-                right_plus_div=excluded.right_plus_div,
-                factor=excluded.factor,
-                source=excluded.source,
+                stock_name=CASE
+                    WHEN excluded.stock_name != '' THEN excluded.stock_name
+                    ELSE ex_rights.stock_name END,
+                market=CASE
+                    WHEN excluded.market != '' THEN excluded.market
+                    ELSE ex_rights.market END,
+                kind=CASE
+                    WHEN excluded.kind != '' THEN excluded.kind
+                    ELSE ex_rights.kind END,
+                close_before=CASE
+                    WHEN excluded.close_before > 0 THEN excluded.close_before
+                    ELSE ex_rights.close_before END,
+                ref_price=CASE
+                    WHEN excluded.ref_price > 0 THEN excluded.ref_price
+                    ELSE ex_rights.ref_price END,
+                right_plus_div=CASE
+                    WHEN excluded.right_plus_div > 0 THEN excluded.right_plus_div
+                    ELSE ex_rights.right_plus_div END,
+                factor=CASE
+                    WHEN excluded.factor > 0 THEN excluded.factor
+                    ELSE ex_rights.factor END,
+                source=CASE
+                    WHEN excluded.factor > 0 THEN excluded.source
+                    ELSE COALESCE(NULLIF(ex_rights.source, ''), excluded.source) END,
                 updated_at=excluded.updated_at;
             """,
             (
@@ -324,3 +340,113 @@ def load_ex_rights(stock_id: str, db_path: str = None) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
     except sqlite3.OperationalError:
         return []
+
+
+def _event_verb(kind: str) -> str:
+    s = str(kind or "")
+    mapped = {"息": "除息", "權": "除權", "權息": "除權息"}
+    if s in mapped:
+        return mapped[s]
+    if "權" in s and "息" in s:
+        return "除權息"
+    if "息" in s:
+        return "除息"
+    if "權" in s:
+        return "除權"
+    return "除權息"
+
+
+def format_next_event_label(kind: str, ex_date: str, today: str) -> str:
+    """每檔只寫一件，例如「3天後除息」。已過的不寫。"""
+    d0 = ymd(today)
+    d1 = ymd(ex_date)
+    if len(d0) != 8 or len(d1) != 8:
+        return ""
+    try:
+        a = datetime.strptime(d0, "%Y%m%d")
+        b = datetime.strptime(d1, "%Y%m%d")
+    except ValueError:
+        return ""
+    delta = (b - a).days
+    if delta < 0:
+        return ""
+    verb = _event_verb(kind)
+    if delta == 0:
+        return f"今日{verb}"
+    return f"{delta}天後{verb}"
+
+
+def parse_twt48u_row(fields: Sequence[str], row: Sequence[Any]) -> Optional[Dict[str, Any]]:
+    """證交所 TWT48U 除權除息預告。沒有還原因子，只當「最近一件」事件。"""
+    m = {str(fields[i]): row[i] if i < len(row) else "" for i in range(len(fields))}
+    sid = str(m.get("股票代號") or m.get("代號") or "").strip()
+    ex = roc_day_to_ymd(str(m.get("除權除息日期") or m.get("除權息日期") or ""))
+    if not sid or len(ex) != 8:
+        return None
+    kind_raw = str(m.get("除權息") or m.get("權/息") or m.get("權息") or "")
+    return {
+        "stock_id": sid,
+        "ex_date": ex,
+        "stock_name": str(m.get("名稱") or m.get("股票名稱") or "").strip(),
+        "market": "TW",
+        "kind": _kind(kind_raw),
+        "close_before": 0.0,
+        "ref_price": 0.0,
+        "right_plus_div": _num(m.get("權值+息值") or m.get("現金股利")),
+        "factor": 0.0,
+        "source": "TWT48U",
+    }
+
+
+def fetch_twt48u(session: Optional[requests.Session] = None) -> List[Dict[str, Any]]:
+    sess = session or requests.Session()
+    sess.headers.update(HEADERS)
+    url = "https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json"
+    resp = sess.get(url, timeout=40)
+    resp.raise_for_status()
+    payload = resp.json() or {}
+    fields = payload.get("fields") or []
+    out = []
+    for row in payload.get("data") or []:
+        item = parse_twt48u_row(fields, row)
+        if item:
+            out.append(item)
+    return out
+
+
+def sync_ex_preview(db_path: str = None) -> Dict[str, Any]:
+    """盤後寫入即將除權息預告。因子為 0 的列不會覆蓋已有官方還原因子。"""
+    path = db_path or get_db_path()
+    ensure_ex_rights_table(path)
+    try:
+        events = fetch_twt48u()
+    except Exception:
+        logger.exception("TWT48U 除權息預告抓取失敗")
+        return {"ok": False, "upsert": 0, "rows": 0}
+    n = upsert_events(path, events)
+    return {"ok": True, "upsert": n, "rows": len(events)}
+
+
+def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> str:
+    """股名旁空白處：每檔只寫最近一件官方事件。沒有官方列就空白，禁止造假。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    day = ymd(today) or taipei_today_str()
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            """
+            SELECT kind, ex_date FROM ex_rights
+            WHERE stock_id=? AND replace(ex_date,'-','') >= ?
+            ORDER BY replace(ex_date,'-','') ASC LIMIT 1
+            """,
+            (sid, day),
+        ).fetchone()
+        conn.close()
+    except sqlite3.OperationalError:
+        return ""
+    if not row:
+        return ""
+    return format_next_event_label(str(row[0] or ""), str(row[1] or ""), day)

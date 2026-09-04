@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -612,7 +612,6 @@ def _fetch_taifex_tx_day(date: str) -> Optional[Dict[str, Any]]:
     snap = _fetch_taifex_openapi_by_date(d)
     if snap:
         return snap
-    from datetime import datetime, timedelta
 
     dt = datetime.strptime(d, "%Y%m%d")
     start = (dt - timedelta(days=5)).strftime("%Y/%m/%d")
@@ -710,8 +709,6 @@ def sync_futures_daily(
         if int(cnt[0] or 0) < 10:
             backfill_days = 35
     if backfill_days > 0:
-        from datetime import datetime, timedelta
-
         end_d = max(want) if want else _norm_ymd(dates[0])
         try:
             end_dt = datetime.strptime(end_d, "%Y%m%d")

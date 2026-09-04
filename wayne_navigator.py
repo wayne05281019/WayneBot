@@ -655,9 +655,17 @@ class NavigatorEngine:
                 streak += 1
             else:
                 break
+        next_event = ""
+        try:
+            from ex_rights import nearest_event_label
+
+            next_event = nearest_event_label(str(stock_id), self.db_path) or ""
+        except Exception:
+            next_event = ""
         return {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
+            "next_event": next_event,
             "latest_date": latest["date"],
             "db_as_of": db_as_of,
             "is_live": is_live,
@@ -1067,7 +1075,7 @@ _CARD = {
     "panel": "#FFFFFF",
     "line": "#DCE3EC",
     "shadow": "#CBD4E1",
-    "navy": "#16223F",
+    "navy": "#1E293B",
     "navy_soft": "#9FB3D9",
     "tag": "#C2185B",
     "ink": "#111827",
@@ -1075,11 +1083,11 @@ _CARD = {
     "ink_mute": "#98A2B3",
     "hi_ink": "#AD1457",
     "hi_line": "#F2B4CB",
-    "hi_fill": "#FDF2F6",
-    "lo_ink": "#2E7D32",
-    "lo_line": "#A7D8AE",
-    "lo_fill": "#F1F9F2",
-    "lo_hit_fill": "#D7F0DC",
+    "hi_fill": "#FFF0FF",
+    "lo_ink": "#166534",
+    "lo_line": "#86EFAC",
+    "lo_fill": "#DCFCE7",
+    "lo_hit_fill": "#BBF7D0",
     "lo_hit_line": "#4CAF50",
     "up": "#D81B60",
     "down": "#00695C",
@@ -1089,11 +1097,11 @@ _CARD = {
     "tbl_hdr": "#E7EEF8",
     "tbl_line": "#BACCE6",
     "tbl_ink": "#1E3A8A",
-    "zebra": "#F7F9FC",
-    "neutral_bg": "#F1F3F6",
+    "zebra": "#FFFFFF",
+    "neutral_bg": "#FFFFFF",
     "neutral_fg": "#4B5563",
-    "temp_hot_bg": "#F9A8C0",
-    "temp_hot_fg": "#7A0B2E",
+    "temp_hot_bg": "#FFE4FF",
+    "temp_hot_fg": "#9D174D",
     "temp_warm_bg": "#FBC7D8",
     "temp_warm_fg": "#9B1145",
     "temp_compress_bg": "#0D47A1",
@@ -1311,6 +1319,7 @@ def alert_cell_style(alert: str, base: str):
 
 
 def temp_cell_style(temp_n, base: str):
+    """溫度熱圖跟原作走：~36°C 薄荷綠，~73°C 才洋紅。禁止 32°C 就整格粉。"""
     C = _CARD
     base = base or C["white"]
     try:
@@ -1319,13 +1328,13 @@ def temp_cell_style(temp_n, base: str):
         return base, C["neutral_fg"]
     if t >= 80:
         return C["pill_hi"], C["white"]
-    if t >= 32:
+    if t >= 70:
         return C["temp_hot_bg"], C["temp_hot_fg"]
-    if t >= 24:
+    if t >= 55:
         return C["temp_warm_bg"], C["temp_warm_fg"]
-    if t >= 16:
-        return C["hi_fill"], C["hi_ink"]
-    return C["neutral_bg"], C["neutral_fg"]
+    if t >= 28:
+        return C["lo_fill"], C["lo_ink"]
+    return base, C["ink"]
 
 
 def vol_rank_cell_style(rank, base: str):
@@ -1545,12 +1554,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
+        # 原作高低小盒子白底，% 用紅綠字；不要整盒粉／綠。
+        fc, ec = C["white"], C["line"]
         if high:
-            fc, ec, lc = C["hi_fill"], C["hi_line"], C["hi_ink"]
+            lc = C["hi_ink"]
         elif hit:
-            fc, ec, lc = C["lo_hit_fill"], C["lo_hit_line"], C["lo_ink"]
+            lc = C["lo_ink"]
         else:
-            fc, ec, lc = C["lo_fill"], C["lo_line"], C["lo_ink"]
+            lc = C["lo_ink"]
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
             facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
@@ -1572,8 +1583,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.FancyBboxPatch(
         (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=1.0",
         facecolor=C["navy"], edgecolor="none", zorder=2))
-    ax.text(pad_x + 2.8, y + head_h - 2.45, f"{card['stock_id']}　{card.get('stock_name') or ''}",
+    title = f"{card['stock_id']}　{card.get('stock_name') or ''}"
+    ax.text(pad_x + 2.8, y + head_h - 2.45, title,
             fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
+    event = str(card.get("next_event") or "").strip()
+    brand_x = 100 - pad_x - 2.6
+    if event:
+        left = pad_x + 2.8 + tw(title, 20) + 1.8
+        right_limit = brand_x - tw("WayneBot", 11.5) - 3.0
+        ev_fs = 12.0
+        if left + tw(event, ev_fs) < right_limit:
+            ax.text(left, y + head_h - 2.45, event, fontproperties=_fp(ev_fs, "bold"),
+                    color="#FDE68A", va="center", zorder=3)
     tag = "買低賣高決策卡　破解獲利密碼"
     tag_w = tw(tag, 10.8) + 3.2
     ax.add_patch(patches.FancyBboxPatch(
@@ -1581,7 +1602,6 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         facecolor=C["tag"], edgecolor="none", zorder=3))
     ax.text(pad_x + 2.8 + tag_w / 2, y + 2.62, tag, fontproperties=_fp(10.8, "heavy"),
             color="#FFFFFF", ha="center", va="center", zorder=4)
-    brand_x = 100 - pad_x - 2.6
     ax.text(brand_x, y + head_h - 2.45, "WayneBot", fontproperties=_fp(11.5, "bold"),
             color=C["navy_soft"], ha="right", va="center", zorder=3)
     if clock_line:
@@ -1711,8 +1731,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         trend_note = str(r.get("升降註") or "")
         hl = str(r["高低"])
         al = display_alert_cell(str(r["預警"]), hl)
-        zebra = row_i % 2 == 0
-        base = C["white"] if zebra else C["zebra"]
+        # 底色跟儲存格數值走（獲利／溫度熱圖），禁止 zebra 寫死單雙行灰白。
+        base = C["white"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
         p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
         px_bg, px_fg = price_cell_style(hl, base)

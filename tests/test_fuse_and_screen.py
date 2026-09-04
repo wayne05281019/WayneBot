@@ -262,6 +262,8 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("gaps", inv)
             self.assertIn("latest_complete", inv)
             self.assertIn("daily_sector_flow", inv)
+            self.assertIn("disk", inv)
+            self.assertIn("today_ok", inv)
         finally:
             os.remove(path)
 
@@ -1072,6 +1074,8 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(alert_cell_style("10低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(alert_cell_style("20高", _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
+        self.assertEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertNotEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["temp_hot_bg"])
         self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
         self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["lo_fill"])
@@ -1080,6 +1084,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
         self.assertNotIn("#FBEAF1", src)
+        self.assertNotIn("row_i % 2", src)
 
     def test_card_bold_and_body_use_different_font_weights(self):
         from wayne_navigator import _weight_step
