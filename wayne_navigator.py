@@ -821,10 +821,13 @@ def _fp(size, weight="normal"):
         weight = {"light": 500, "normal": 700, "medium": 750, "bold": 800, "heavy": 900}.get(
             weight.lower(), 700
         )
-    kwargs = {"size": size, "weight": weight}
     path = _weight_font_path(weight) if os.path.exists(FONT_PATH) else ""
+    kwargs = {"size": size}
     if path:
+        # 靜態字重檔已壓好，再傳 numeric weight 會讓 findfont 找不到 normal／bold 而警告。
         kwargs["fname"] = path
+    else:
+        kwargs["weight"] = weight
     return fm.FontProperties(**kwargs)
 
 
