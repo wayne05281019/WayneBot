@@ -200,6 +200,8 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("revenue_cross", keys)
         self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
         self.assertIn("起漲｜", payload[0]["html"])
+        self.assertIn("共 8 檔", payload[0]["html"])
+        self.assertEqual(payload[0]["html"].count("<blockquote>"), 8)
         line = format_line_share_text(
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",

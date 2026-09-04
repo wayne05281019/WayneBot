@@ -1011,6 +1011,15 @@ LINE_TRADE_POINTER = (
 )
 
 
+def _screen_push_cap(key: str) -> Optional[int]:
+    """晨間推播／LINE 佈局桶上限；規格寫 8，先前沒套到 payload。"""
+    for spec in SCREEN_PUSH_SPECS:
+        if spec[0] == key:
+            cap = spec[4]
+            return int(cap) if cap else None
+    return None
+
+
 def drop_non_equity_picks(
     results: Dict[str, Any],
     db_path: Optional[str] = None,
@@ -1057,6 +1066,8 @@ def format_screening_payload(
     first = True
     for key, emoji, label, subtitle, cap, skip_empty in specs:
         items = results.get(key) or []
+        if cap:
+            items = items[: int(cap)]
         if skip_empty and not items:
             continue
         head = f"＝＝{html_escape(label)}｜{html_escape(subtitle)}＝＝"
@@ -1328,6 +1339,9 @@ def _share_bucket_block(
     from line_share_format import format_line_bucket_body, line_bucket_header
 
     items = results.get(key) or []
+    cap = _screen_push_cap(key)
+    if cap:
+        items = items[:cap]
     us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     if not items:
         if key in ("day_trade", "overnight") and us_regime == "risk_off":
