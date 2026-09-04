@@ -601,6 +601,13 @@ def append_live_bar(
                 out[col] = None
             out.at[idx, col] = val
         return out
+    try:
+        from trading_calendar import is_trading_weekday
+
+        if not is_trading_weekday(today):
+            return df
+    except Exception:
+        return df
     row = {col: df.iloc[-1][col] if col in df.columns else None for col in df.columns}
     row = _apply_rt_to_row(row, rt, stock_id)
     return pd.concat([df, pd.DataFrame([row])], ignore_index=True)

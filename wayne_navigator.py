@@ -663,7 +663,7 @@ class NavigatorEngine:
             next_event = nearest_event_label(str(stock_id), self.db_path) or ""
         except Exception:
             next_event = ""
-        return {
+        payload = {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "next_event": next_event,
@@ -711,6 +711,13 @@ class NavigatorEngine:
             "table": table,
             "_ohlc": df,
         }
+        try:
+            from sell_discipline import attach_sell
+
+            attach_sell(payload, hl_tags, trend_labels)
+        except Exception:
+            pass
+        return payload
 
     def scan_double_green_breakout(self) -> list:
         """全市場海選：【雙綠脫離】波段黃金起漲轉折股"""
@@ -1928,6 +1935,14 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         fund_block = section(*glance_fundamentals_rows(sid, db_path or get_db_path()))
     except Exception:
         fund_block = ""
+    try:
+        from sell_discipline import attach_sell, sell_note_lines
+
+        attach_sell(card)
+        sell_lines = sell_note_lines(card)
+    except Exception:
+        sell_lines = []
+    setup_block = section("<b>協助判斷</b>", *sell_lines) if sell_lines else ""
     tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
     try:
         from live_quote import live_clock_suffix
@@ -1960,6 +1975,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("量比", vol_line),
         ),
         chip_block,
+        setup_block,
         tail,
         sep="\n＝＝＝＝＝＝＝＝＝＝＝＝\n",
     )
@@ -1982,6 +1998,15 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     mc = card.get("main_cost")
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
+    try:
+        from sell_discipline import attach_sell, sell_note_short
+
+        attach_sell(card)
+        short = sell_note_short(card)
+        if short:
+            fund_rows.append(("紀律", short))
+    except Exception:
+        pass
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}

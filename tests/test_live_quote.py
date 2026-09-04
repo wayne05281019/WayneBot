@@ -107,6 +107,32 @@ def test_append_live_bar_appends_when_missing_today(monkeypatch):
     assert int(out.iloc[-1]["volume"]) == 12000
 
 
+def test_append_live_bar_skips_weekend_new_day(monkeypatch):
+    """週六即使硬開盤中窗，也不要生出一根假 K 蓋掉上個交易日官方收。"""
+    import live_quote
+
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(
+        live_quote,
+        "fetch_mis_quote",
+        lambda sid, mkt="": {
+            "stock_name": "台積電",
+            "open": 99.0,
+            "high": 102.0,
+            "low": 98.0,
+            "close": 101.0,
+            "volume": 12000,
+            "pct_change": 2.0,
+            "update_time": "11:05:00",
+        },
+    )
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260905")
+    df = pd.DataFrame([{"date": "20260904", "close": 95.0, "volume": 10000}])
+    out = append_live_bar(df, "2330")
+    assert len(out) == 1
+    assert float(out.iloc[-1]["close"]) == 95.0
+
+
 def test_live_vol_rank_120_uses_live_volume(tmp_path):
     import sqlite3
 
