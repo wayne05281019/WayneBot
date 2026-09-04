@@ -2752,10 +2752,15 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.daytrade_cmd(update, context)
             return
-        if text == "隔日沖":
+        if text in ("隔日沖", "隔沖", "隔日"):
             logger.info("主選單：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.overnight_cmd(update, context)
+            return
+        if text in ("AI模擬倉", "模擬倉", "AI倉"):
+            logger.info("主選單：AI模擬倉 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._send_ai_desk_view(update.message, uid)
             return
         if text == "決策卡":
             logger.info("主選單：決策卡 uid=%s", uid)

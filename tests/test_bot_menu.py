@@ -1,3 +1,14 @@
+def test_typed_shortcuts_open_overnight_and_ai_desk():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot.on_text)
+    assert '"隔沖"' in src and '"隔日"' in src
+    assert '"AI模擬倉"' in src and '"模擬倉"' in src
+    assert "_send_ai_desk_view" in src
+
+
 def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, MENU_LAYOUT_VERSION, WayneTelegramBot
 
