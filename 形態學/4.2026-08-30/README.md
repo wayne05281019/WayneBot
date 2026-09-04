@@ -15,7 +15,7 @@
 | 單一行情庫 `data/wayne_market.db` | `config.py` |
 | 常駐 `/health` + Telegram；`--once` 盤後 | `main.py` |
 | 現股 / KY / ETF 母體，排除權證牛熊特別股債券 | `universe.py` |
-| 三大法人正確欄位、主力超比與 10 日累計 | `chips.py` |
+| 三大法人正確欄位、超比與 10 日累計 | `chips.py` |
 | 真實日 K 決策卡、高低導航圖、粉紅預警滿 2 日 | `cary_navigator.py` |
 | 四大選股 + 當沖 / 隔日沖 | `screening_engine.py` |
 | 月營收 YoY/MoM、季報毛利率（官方 OpenAPI） | `fundamentals.py`（本階段新增） |
