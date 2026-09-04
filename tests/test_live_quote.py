@@ -42,13 +42,43 @@ def test_append_live_bar_updates_existing_today_row(monkeypatch):
     df = pd.DataFrame(
         [
             {"date": "20260829", "close": 95.0, "volume": 10000},
-            {"date": "20260901", "close": 96.0, "volume": 8000},
+            {"date": "20260901", "close": 96.0, "volume": 8000, "is_live": True},
         ]
     )
     out = append_live_bar(df, "2330")
     assert int(out.iloc[-1]["volume"]) == 55000
     assert float(out.iloc[-1]["close"]) == 101.0
     assert bool(out.iloc[-1]["is_live"]) is True
+
+
+def test_append_live_bar_does_not_overwrite_official_today(monkeypatch):
+    import live_quote
+
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(
+        live_quote,
+        "fetch_mis_quote",
+        lambda sid, mkt="": {
+            "stock_name": "台積電",
+            "open": 99.0,
+            "high": 102.0,
+            "low": 98.0,
+            "close": 101.0,
+            "volume": 55000,
+            "pct_change": 2.0,
+            "update_time": "13:40:00",
+        },
+    )
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260901")
+    df = pd.DataFrame(
+        [
+            {"date": "20260829", "close": 95.0, "volume": 10000},
+            {"date": "20260901", "close": 100.0, "volume": 20000},
+        ]
+    )
+    out = append_live_bar(df, "2330")
+    assert float(out.iloc[-1]["close"]) == 100.0
+    assert int(out.iloc[-1]["volume"]) == 20000
 
 
 def test_append_live_bar_appends_when_missing_today(monkeypatch):
@@ -117,4 +147,16 @@ def test_is_live_merge_window_hours(monkeypatch):
         return datetime(2026, 8, 29, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
 
     monkeypatch.setattr(live_quote, "taipei_now", saturday)
+    assert is_live_merge_window() is False
+
+    def after_close_before_fuse():
+        return datetime(2026, 9, 4, 16, 10, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    monkeypatch.setattr(live_quote, "taipei_now", after_close_before_fuse)
+    assert is_live_merge_window() is True
+
+    def fuse_done():
+        return datetime(2026, 9, 4, 16, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    monkeypatch.setattr(live_quote, "taipei_now", fuse_done)
     assert is_live_merge_window() is False

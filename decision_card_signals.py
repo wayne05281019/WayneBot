@@ -9,9 +9,13 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import pandas as pd
+
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 # 起漲桶：卡片綠底雖在 >5% 時仍可能成立，但海選不收已噴段（使用者回饋 5%+ 不像剛起步）
 LEAVE_ZERO_SCREEN_MAX_PCT = 5.0
@@ -19,6 +23,64 @@ LEAVE_ZERO_SCREEN_MAX_PCT = 5.0
 TEMP_ATH_WATCH = 80.0
 # K20高：收盤須貼近 20 日收盤高（CaryBot 9/2 穩懋 469.5 / 492 ≈ 95.4%）。
 K20_HIGH_NEAR = 0.95
+
+
+def taipei_now(now: datetime | None = None) -> datetime:
+    """決策卡產出時鐘：台北時間。"""
+    if now is None:
+        now = datetime.now(_TAIPEI)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=_TAIPEI)
+    return now.astimezone(_TAIPEI)
+
+
+def format_ymd_slash(date_val) -> str:
+    d = str(date_val or "").strip()
+    if len(d) == 8 and d.isdigit():
+        return f"{d[0:4]}/{d[4:6]}/{d[6:8]}"
+    if len(d) >= 10 and d[4] in "-/" and d[7] in "-/":
+        return f"{d[0:4]}/{d[5:7]}/{d[8:10]}"
+    return d
+
+
+def format_card_query_stamp(
+    *,
+    is_live: bool,
+    latest_date="",
+    generated_at: datetime | str | None = None,
+) -> Tuple[str, str]:
+    """高低卡右上角：庫已是官方收盤只寫資料日；當天即時列（盤中或 16:30 融合前）寫日期＋產出時分秒。
+
+    作者公開貼文常是盤中截圖，價格會跟收盤不同。對圖時必須對產出時間，
+    不能拿舊文或盤中價當收盤對答案。
+    """
+    date_s = format_ymd_slash(latest_date)
+    if not is_live:
+        return date_s, ""
+    clock = ""
+    if isinstance(generated_at, datetime):
+        dt = taipei_now(generated_at)
+        clock = dt.strftime("%H:%M:%S")
+        if not date_s:
+            date_s = dt.strftime("%Y/%m/%d")
+    else:
+        raw = str(generated_at or "").strip()
+        if len(raw) >= 8 and ":" in raw:
+            clock = raw[-8:] if raw[-8] != " " else raw[-8:].strip()
+            if len(clock) == 8 and clock[2] == ":" and clock[5] == ":":
+                pass
+            else:
+                parts = raw.replace("T", " ").split()
+                clock = parts[-1][:8] if parts else ""
+        if not date_s and len(raw) >= 10:
+            date_s = format_ymd_slash(raw[:10].replace("-", ""))
+    if clock and len(clock) == 5 and clock[2] == ":":
+        clock = clock + ":00"
+    if not clock:
+        clock = taipei_now().strftime("%H:%M:%S")
+        if not date_s:
+            date_s = taipei_now().strftime("%Y/%m/%d")
+    return date_s, f"產出 {clock}"
 
 
 def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:

@@ -76,7 +76,10 @@ def _norm_date(val) -> str:
 
 
 def is_live_merge_window(now=None) -> bool:
-    """08:50～16:00 台灣時間、且為週一～五：才用 MIS 合併今日 K（不寫回 sqlite）。"""
+    """08:50～16:30 台灣時間、週一～五：庫還沒今天官方收盤時，用 MIS／Yahoo 合併今日 K（不寫回 sqlite）。
+
+    結束點對齊 16:30 融合，避免 16:00～16:30 既沒即時列、庫也還沒今天。
+    """
     now = now or taipei_now()
     if now.weekday() >= 5:
         return False
@@ -86,7 +89,7 @@ def is_live_merge_window(now=None) -> bool:
     if not is_trading_weekday(today):
         return False
     t = now.time()
-    return dt_time(8, 50) <= t < dt_time(16, 0)
+    return dt_time(8, 50) <= t < dt_time(16, 30)
 
 
 def calc_vol_rank_120(
@@ -561,6 +564,10 @@ def append_live_bar(
     if latest > today:
         return df
     if latest == today:
+        official = "is_live" not in df.columns or not bool(df["is_live"].iloc[-1])
+        if official:
+            # 16:30 融合後列上已是官方收盤，不要用 MIS／Yahoo 蓋掉。
+            return df
         out = df.copy()
         idx = len(out) - 1
         row = _apply_rt_to_row(out.iloc[idx].to_dict(), rt, stock_id)

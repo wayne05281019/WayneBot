@@ -33,10 +33,18 @@ class LookupImageTests(unittest.TestCase):
             self.assertTrue(WayneTelegramBot._png_looks_ok(out))
 
     def test_chart_progress_mentions_glance_first(self):
-        txt = WayneTelegramBot._chart_progress_text(3)
+        txt = WayneTelegramBot._chart_progress_text(3, current="glance")
         self.assertIn("介紹圖", txt)
         self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
         self.assertLess(txt.index("決策卡"), txt.index("導航"))
+
+    def test_chart_progress_records_sent_stage(self):
+        txt = WayneTelegramBot._chart_progress_text(
+            8, sent=["glance"], current="card"
+        )
+        self.assertIn("已送：介紹圖", txt)
+        self.assertIn("現在：決策卡", txt)
+        self.assertIn("接著：導航圖", txt)
 
 
 if __name__ == "__main__":

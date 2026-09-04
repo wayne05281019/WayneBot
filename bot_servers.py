@@ -381,6 +381,8 @@ class WayneTelegramBot:
         self._line_pack_status_msgs: Dict[str, list] = {}
         self._help_msgs: Dict[str, list] = {}
         self._lookup_locks: Dict[str, asyncio.Lock] = {}
+        # actor → 查股進行到哪（介紹圖／決策卡／導航），進度泡泡跟這裡同步
+        self._lookup_op_state: Dict[str, dict] = {}
         self._pending_locks: Dict[str, asyncio.Lock] = {}
         self._screening_running: set[str] = set()
         self._screening_gate = asyncio.Lock()
@@ -2068,11 +2070,29 @@ class WayneTelegramBot:
         return os.path.join(charts_dir, f"{safe}_{kind}_{tag}.png")
 
     @staticmethod
-    def _chart_progress_text(elapsed_sec: int) -> str:
-        return (
-            f"查股出圖中… {elapsed_sec}s\n"
-            "順序：介紹圖 → 決策卡 → 導航圖（先送最快的）"
-        )
+    def _chart_progress_text(
+        elapsed_sec: int,
+        *,
+        sent: list | None = None,
+        current: str = "",
+    ) -> str:
+        """查股進度：跟實際階段同步，不要只停在 0 秒。"""
+        labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡"}
+        order = ("glance", "card", "chart")
+        sent_ks = [str(k) for k in (sent or [])]
+        elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
+        now = labels.get(str(current or ""), "")
+        if not now:
+            now = next((labels[k] for k in order if k not in sent_ks), "出圖")
+        done = [labels[k] for k in order if k in sent_ks]
+        rest = [labels[k] for k in order if k not in sent_ks and labels[k] != now]
+        lines = [f"查股進行中　已 {elapsed}", f"現在：{now}"]
+        if done:
+            lines.append("已送：" + "、".join(done))
+        if rest:
+            lines.append("接著：" + "、".join(rest))
+        lines.append("順序：介紹圖 → 決策卡 → 導航圖")
+        return "\n".join(lines)
 
     @staticmethod
     def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
@@ -3113,8 +3133,16 @@ class WayneTelegramBot:
             if card_path and os.path.exists(card_path):
                 live_note = ""
                 if card.get("is_live"):
-                    t = str(card.get("live_time") or "")[:5]
-                    live_note = f"（盤中{t}）" if t else "（盤中即時）"
+                    clock_line = str(card.get("query_clock") or "")
+                    if not clock_line:
+                        from decision_card_signals import format_card_query_stamp
+
+                        _, clock_line = format_card_query_stamp(
+                            is_live=True,
+                            latest_date=card.get("latest_date"),
+                            generated_at=card.get("generated_at") or card.get("live_time"),
+                        )
+                    live_note = f"（{clock_line}）" if clock_line else "（盤中即時）"
                 with open(card_path, "rb") as f:
                     await message.reply_photo(
                         photo=f,
@@ -3339,7 +3367,7 @@ class WayneTelegramBot:
                     )
                     if not lookup_faded:
                         lookup_faded = True
-                        await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
+                        await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
                     return True
                 except Exception as exc:
                     err_name = type(exc).__name__
@@ -3352,7 +3380,7 @@ class WayneTelegramBot:
                         logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
                         if not lookup_faded:
                             lookup_faded = True
-                            await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
+                            await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
                         return True
                     except Exception:
                         logger.exception("送圖失敗 kind=%s path=%s attempt=%s", kind, path, attempt + 1)
@@ -3361,24 +3389,34 @@ class WayneTelegramBot:
         wait_msg = None
         progress_stop = asyncio.Event()
         progress_task = None
+        op_t0 = time.monotonic()
+        self._lookup_op_state[actor] = {"sent": [], "current": "table", "t0": op_t0}
         try:
-            wait_msg = await message.reply_text(self._chart_progress_text(0))
+            wait_msg = await message.reply_text(
+                self._chart_progress_text(0, current="table")
+            )
             self._track_lookup_fade(actor, wait_msg, "wait")
         except Exception:
             wait_msg = None
 
         async def _progress_tick():
-            t0 = time.monotonic()
             while not progress_stop.is_set():
                 if wait_msg is None:
                     break
-                elapsed = int(time.monotonic() - t0)
+                st = self._lookup_op_state.get(actor) or {}
+                elapsed = int(time.monotonic() - op_t0)
                 try:
-                    await wait_msg.edit_text(self._chart_progress_text(elapsed))
+                    await wait_msg.edit_text(
+                        self._chart_progress_text(
+                            elapsed,
+                            sent=st.get("sent") or [],
+                            current=str(st.get("current") or ""),
+                        )
+                    )
                 except Exception:
                     pass
                 try:
-                    await asyncio.wait_for(progress_stop.wait(), timeout=3.0)
+                    await asyncio.wait_for(progress_stop.wait(), timeout=2.0)
                     break
                 except asyncio.TimeoutError:
                     continue
@@ -3472,8 +3510,11 @@ class WayneTelegramBot:
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
 
-            # 畫完一張就先送，不要等三張齊了才出第一張（相簿會讓人以為查股卡住）。
+            # 畫完一張就先送；進度泡泡跟階段走，第一張送出也不刪，等人看到三張齊。
             for kind, fn, timeout_s, caption, markup in render_plan:
+                st = self._lookup_op_state.setdefault(actor, {"sent": [], "current": kind})
+                st["current"] = kind
+                logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
                 path = ""
                 attempts = 2 if kind == "chart" else 1
                 for attempt in range(attempts):
@@ -3511,7 +3552,23 @@ class WayneTelegramBot:
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
-                    await _clear_wait()
+                    st = self._lookup_op_state.setdefault(actor, {"sent": [], "current": ""})
+                    st["sent"] = list(sent_kinds)
+                    st["current"] = ""
+                    logger.info("查股階段已送 %s code=%s", sent_kinds, code)
+                    if wait_msg is not None:
+                        nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "")
+                        st["current"] = nxt
+                        try:
+                            await wait_msg.edit_text(
+                                self._chart_progress_text(
+                                    int(time.monotonic() - op_t0),
+                                    sent=sent_kinds,
+                                    current=nxt,
+                                )
+                            )
+                        except Exception:
+                            pass
                 gc.collect()
 
             if sent_any and not hub_on:
@@ -3563,6 +3620,7 @@ class WayneTelegramBot:
                 progress_task.cancel()
             await _clear_wait()
             await self._dismiss_lookup_fades(actor, roles={"ack", "wait", "header"})
+            self._lookup_op_state.pop(actor, None)
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
         try:

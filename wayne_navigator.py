@@ -391,8 +391,11 @@ class NavigatorEngine:
             profit_floor_at,
             profit_pct_cal60_series,
             resolve_daily_change_pct,
+            taipei_now,
+            format_card_query_stamp,
             volume_headline_rank,
         )
+        generated_at = taipei_now().strftime("%Y-%m-%d %H:%M:%S")
 
         # 獲利：決策卡／顯示一律 60 曆日低（對齊 CaryBot）；貼 20 日低不歸零。
         profit_src = df.copy()
@@ -641,6 +644,11 @@ class NavigatorEngine:
             )
         else:
             stance, stance_kind = "等待・按表操課", "wait"
+        query_date, query_clock = format_card_query_stamp(
+            is_live=is_live,
+            latest_date=latest["date"],
+            generated_at=generated_at,
+        )
         streak = 0
         for a in reversed(alert_tags):
             if a == "K20高":
@@ -654,6 +662,9 @@ class NavigatorEngine:
             "db_as_of": db_as_of,
             "is_live": is_live,
             "live_time": live_time,
+            "generated_at": generated_at,
+            "query_date": query_date,
+            "query_clock": query_clock,
             "close": float(latest["close"]),
             "change_pct": chg,
             "h10": h10, "dist_h10": _dist_h(h10),
@@ -1461,7 +1472,17 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 每個區塊先算高度再由上往下堆，圖高跟著內容長，不會有人被壓到。
     pad_x = 2.6
     m_top, m_bot = 1.0, 1.35
-    head_h = 8.6
+    from decision_card_signals import format_card_query_stamp
+
+    date_line = str(card.get("query_date") or "")
+    clock_line = str(card.get("query_clock") or "")
+    if not date_line:
+        date_line, clock_line = format_card_query_stamp(
+            is_live=bool(card.get("is_live")),
+            latest_date=card.get("latest_date"),
+            generated_at=card.get("generated_at"),
+        )
+    head_h = 9.6 if clock_line else 8.6
     title_band, box_h, box_gap, pane_pad = 3.6, 8.8, 1.0, 1.1
     tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
     gap = 1.35
@@ -1563,8 +1584,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     brand_x = 100 - pad_x - 2.6
     ax.text(brand_x, y + head_h - 2.45, "WayneBot", fontproperties=_fp(11.5, "bold"),
             color=C["navy_soft"], ha="right", va="center", zorder=3)
-    ax.text(brand_x, y + 2.62, _fmt_md(card.get("latest_date")), fontproperties=_fp(11, "bold"),
-            color="#C5D0E8", ha="right", va="center", zorder=3)
+    if clock_line:
+        ax.text(brand_x, y + 4.35, date_line, fontproperties=_fp(10.4, "bold"),
+                color="#C5D0E8", ha="right", va="center", zorder=3)
+        ax.text(brand_x, y + 1.95, clock_line, fontproperties=_fp(10.4, "bold"),
+                color="#FFE082", ha="right", va="center", zorder=3)
+    else:
+        ax.text(brand_x, y + 2.62, date_line or _fmt_md(card.get("latest_date")),
+                fontproperties=_fp(11, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
     # 收盤＋漲跌＋開高低昨收；徽章自己一列。
     y -= gap + price_h
