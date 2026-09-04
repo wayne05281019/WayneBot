@@ -35,7 +35,7 @@ def test_monthly_july_on_sep4_is_unpublished_not_missing():
     assert st["ok"] is True
     assert st["missing"] is False
     assert st["unpublished"] is True
-    assert "尚未公布" in st["label"]
+    assert "尚未公布 202608" in st["label"]
     assert not st["problem"]
 
 
@@ -67,7 +67,7 @@ def test_format_audit_plain_says_today_ok_when_quotes_complete():
         }
     )
     assert "今天正常" in text
-    assert "官方尚未公布" in text
+    assert "官方尚未公布 202608" in text
     assert "舊日缺邊" in text
     assert "待補：" not in text
 

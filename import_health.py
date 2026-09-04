@@ -282,16 +282,31 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
 
 
 def expected_latest_revenue_month(today_ymd: str = "") -> str:
-    """上市櫃月營收依法在次月 10 日前公布。10 號前官方通常還停在再上一個月。"""
-    raw = str(today_ymd or "").replace("-", "")[:8]
-    if len(raw) != 8 or not raw.isdigit():
-        raw = datetime.now().strftime("%Y%m%d")
+    """依法次月 10 日前應公布的最新月。10 號前通常還停在再上一個月。"""
+    raw = _audit_today(today_ymd)
     y, m, d = int(raw[:4]), int(raw[4:6]), int(raw[6:8])
     m -= 2 if d < 11 else 1
     while m <= 0:
         m += 12
         y -= 1
     return f"{y:04d}{m:02d}"
+
+
+def previous_calendar_month(today_ymd: str = "") -> str:
+    raw = _audit_today(today_ymd)
+    y, m = int(raw[:4]), int(raw[4:6])
+    m -= 1
+    if m <= 0:
+        m = 12
+        y -= 1
+    return f"{y:04d}{m:02d}"
+
+
+def _audit_today(today_ymd: str = "") -> str:
+    raw = str(today_ymd or "").replace("-", "")[:8]
+    if len(raw) != 8 or not raw.isdigit():
+        return datetime.now().strftime("%Y%m%d")
+    return raw
 
 
 def monthly_revenue_status(
@@ -302,6 +317,7 @@ def monthly_revenue_status(
 ) -> Dict[str, Any]:
     """月營收要分「庫真的沒抓」跟「官方還沒公布」，不能天天喊待補。"""
     expected = expected_latest_revenue_month(today_ymd)
+    prev = previous_calendar_month(today_ymd)
     latest = str(latest_month or "").replace("-", "")[:6]
     if int(monthly_n or 0) < 200:
         return {
@@ -313,24 +329,24 @@ def monthly_revenue_status(
             "problem": "待補月營收（庫內列數不足）",
             "label": "待補月營收（庫內列數不足）",
         }
-    if latest and latest >= expected:
+    if latest and latest < prev:
         return {
             "ok": True,
             "missing": False,
-            "unpublished": False,
+            "unpublished": True,
             "expected": expected,
             "latest": latest,
             "problem": "",
-            "label": f"{latest}（已跟上官方）",
+            "label": f"{latest}（官方尚未公布 {prev}）",
         }
     return {
         "ok": True,
         "missing": False,
-        "unpublished": True,
+        "unpublished": False,
         "expected": expected,
         "latest": latest,
         "problem": "",
-        "label": f"{latest or '—'}（官方尚未公布 {expected}）",
+        "label": f"{latest or '—'}（已跟上官方）",
     }
 
 
