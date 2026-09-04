@@ -52,6 +52,10 @@ def test_temp_cell_style_marks_80_watch():
     assert fg == _CARD["white"]
     cool_bg, _ = temp_cell_style(49.2, _CARD["white"])
     assert cool_bg != _CARD["pill_hi"]
+    mint_bg, mint_fg = temp_cell_style(36.0, _CARD["white"])
+    assert mint_bg == _CARD["lo_fill"]
+    assert mint_fg == _CARD["lo_ink"]
+    assert mint_bg != _CARD["temp_hot_bg"]
 
 
 def test_temp_compress_styles_high_contrast():
