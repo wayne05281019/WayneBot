@@ -37,25 +37,62 @@ def ensure_user_trade_logs(db_path: str) -> None:
     conn.close()
 
 
+_QTY_TOKEN = re.compile(r"^([+-]?\d+(?:\.\d+)?)(張|股)?$")
+
+
+def normalize_trade_tokens(text: str) -> List[str]:
+    """把「200 股 72」「2張@68.5」收成可拆的 token。"""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    t = raw.replace("，", " ").replace("@", " ").replace("＠", " ")
+    t = re.sub(r"(\d+(?:\.\d+)?)\s*(張|股)", r"\1\2", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t.split() if t else []
+
+
+def parse_qty_to_lots(token: str, *, default_unit: str = "張") -> Optional[float]:
+    """「2」「2張」→ 2.0 張；「439股」→ 0.439 張。無法解析回 None。"""
+    raw = (token or "").strip().replace(",", "")
+    m = _QTY_TOKEN.fullmatch(raw)
+    if not m:
+        return None
+    n = float(m.group(1))
+    unit = m.group(2) or default_unit
+    if unit == "股":
+        return n / 1000.0
+    return n
+
+
+def held_is_odd_lot_only(lots) -> bool:
+    """手上不到 1 張（例如 0.439 張＝439股）時，未標單位的數量當股。"""
+    try:
+        z = float(lots or 0)
+    except (TypeError, ValueError):
+        return False
+    return z > 0 and z < 1.0 - 1e-9 and abs(z - round(z)) >= 1e-6
+
+
 def parse_lots_price(
     text: str,
     *,
     default_lots: float = 1.0,
     price_only_sell_all: bool = False,
+    bare_qty_is_shares: bool = False,
 ) -> Tuple[Optional[float], Optional[float]]:
     """
     簡化輸入：
-    - 買：「68.5」→ 1張 @ 68.5；「2 68.5」「2@68.5」→ 2張
-    - 賣（已選股）：「72」→ 全賣 @ 72；「1 72」→ 賣1張
+    - 買：「68.5」→ 1張 @ 68.5；「2 68.5」「2@68.5」→ 2張；「439股 631.6」→ 0.439張
+    - 賣（已選股）：「72」→ 全賣 @ 72；「1 72」→ 賣1張；「200股 72」→ 賣 0.2張
+    - 零股（bare_qty_is_shares）：「200 72」當 200股，不是 200張
     """
     raw = (text or "").strip()
     if not raw:
         return None, None
     if raw in ("全賣", "賣光", "全出", "all"):
         return 0.0, None
-    t = raw.replace("，", " ").replace("@", " ").replace("＠", " ")
-    t = re.sub(r"\s+", " ", t).strip()
-    parts = t.split()
+    parts = normalize_trade_tokens(raw)
+    default_unit = "股" if bare_qty_is_shares else "張"
     if len(parts) == 1:
         try:
             v = float(parts[0])
@@ -65,10 +102,14 @@ def parse_lots_price(
             return 0.0, v
         return float(default_lots), v
     if len(parts) >= 2:
+        lots = parse_qty_to_lots(parts[0], default_unit=default_unit)
         try:
-            return float(parts[0]), float(parts[1])
+            price = float(parts[1])
         except ValueError:
             return None, None
+        if lots is None:
+            return None, None
+        return lots, price
     return None, None
 
 

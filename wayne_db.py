@@ -719,7 +719,12 @@ def sell_from_holdings(
                 "UPDATE user_holdings SET shares=?, updated_at=? WHERE user_id=? AND stock_code=?;",
                 (remain, now, str(user_id), code),
             )
-        msg = f"已賣出 {code} {name} {sell_n:g}張 @ {px}，估損益 {pnl:+.0f}（成本 {cost}）"
+        from tg_layout import holdings_qty_text
+
+        msg = (
+            f"已賣出 {code} {name} {holdings_qty_text(sell_n)} @ {px}，"
+            f"估損益 {pnl:+.0f}（成本 {cost}）"
+        )
         return SellResult(
             message=msg,
             ok=True,

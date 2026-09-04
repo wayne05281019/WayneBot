@@ -350,8 +350,11 @@ def test_sell_holdings_prompt_shows_odd_lots():
     odd = _sell_holdings_prompt("6526", 0.439)
     assert odd.startswith("賣出 6526。現有 439股。")
     assert "全賣" in odd
+    assert "200股" in odd
+    assert "1 72" not in odd
     whole = _sell_holdings_prompt("3035", 4)
     assert "現有 4張" in whole
+    assert "1 72" in whole
     src = inspect.getsource(WayneTelegramBot.on_callback)
     assert "_sell_holdings_prompt" in src
-    assert "get_user_portfolio" in src
+    assert "_held_lots_for" in src

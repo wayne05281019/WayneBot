@@ -34,7 +34,10 @@ from trade_journal import (
     ensure_user_trade_logs,
     format_user_review_html,
     format_user_trades_html,
+    held_is_odd_lot_only,
+    normalize_trade_tokens,
     parse_lots_price,
+    parse_qty_to_lots,
     record_buy,
     record_sell,
 )
@@ -94,6 +97,8 @@ def _sell_holdings_prompt(code: str, lots=None) -> str:
             head += f"現有 {holdings_qty_text(lots)}。"
         except Exception:
             pass
+    if held_is_odd_lot_only(lots):
+        return head + "請輸入：價格（全賣）\n例如：72 或 200股 72"
     return head + "請輸入：價格（全賣）\n例如：72 或 1 72"
 
 
@@ -1514,34 +1519,64 @@ class WayneTelegramBot:
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
             await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
 
+    def _held_lots_for(self, uid: str, code: str):
+        """手記持股張數；查不到回 None。"""
+        if not uid or not code:
+            return None
+        try:
+            for h in get_user_portfolio(self.db_path, uid) or []:
+                if str(h.get("stock_code") or h.get("stock_id") or "") == str(code).strip():
+                    return float(h.get("shares") or 0)
+        except Exception:
+            return None
+        return None
+
     def _parse_buy_text(self, text: str, code: str = "") -> tuple:
         """回傳 (code, lots, price) 或 (None, None, None)。"""
-        parts = text.split()
+        parts = normalize_trade_tokens(text)
+        if code and len(parts) >= 3 and parts[0] == str(code).strip():
+            parts = parts[1:]
+            text = " ".join(parts)
         if not code and len(parts) >= 3:
             raw, lots_s, price_s = parts[0], parts[1], parts[2]
             hits = lookup_stocks(self.db_path, raw)
             code = hits[0]["stock_id"] if hits else raw
+            lots = parse_qty_to_lots(lots_s)
             try:
-                return code, float(lots_s), float(price_s)
+                price = float(price_s)
             except ValueError:
                 return None, None, None
+            if lots is None or not code:
+                return None, None, None
+            return code, lots, price
         lots, price = parse_lots_price(text, default_lots=1.0)
         if lots is None or price is None or not code:
             return None, None, None
         return code, lots, price
 
-    def _parse_sell_text(self, text: str, code: str = "") -> tuple:
+    def _parse_sell_text(self, text: str, code: str = "", held_lots=None) -> tuple:
         """回傳 (code, lots, price)；lots=0 表示全賣。"""
-        parts = text.split()
+        parts = normalize_trade_tokens(text)
+        if code and len(parts) >= 3 and parts[0] == str(code).strip():
+            parts = parts[1:]
+            text = " ".join(parts)
+        bare_shares = held_is_odd_lot_only(held_lots)
+        default_unit = "股" if bare_shares else "張"
         if not code and len(parts) >= 3:
             raw, lots_s, price_s = parts[0], parts[1], parts[2]
             hits = lookup_stocks(self.db_path, raw)
             code = hits[0]["stock_id"] if hits else raw
+            lots = parse_qty_to_lots(lots_s, default_unit=default_unit)
             try:
-                return code, float(lots_s), float(price_s)
+                price = float(price_s)
             except ValueError:
                 return None, None, None
-        lots, price = parse_lots_price(text, price_only_sell_all=True)
+            if lots is None or not code:
+                return None, None, None
+            return code, lots, price
+        lots, price = parse_lots_price(
+            text, price_only_sell_all=True, bare_qty_is_shares=bare_shares
+        )
         if price is None or not code:
             return None, None, None
         return code, float(lots or 0), price
@@ -2830,12 +2865,21 @@ class WayneTelegramBot:
                     return
             if pending == "sell" or pending.startswith("sell:"):
                 code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
-                parsed_code, lots, price = self._parse_sell_text(text, code)
+                held_lots = self._held_lots_for(uid, code) if code else None
+                parsed_code, lots, price = self._parse_sell_text(
+                    text, code, held_lots=held_lots
+                )
                 if parsed_code is None:
                     self._pending[actor] = pending or "sell"
+                    if held_is_odd_lot_only(held_lots):
+                        hint = _sell_holdings_prompt(code or "代號", held_lots)
+                    else:
+                        hint = (
+                            "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                            "也可：代號 張數 價格　例如：2330 1 520"
+                        )
                     await update.message.reply_text(
-                        "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
-                        "也可：代號 張數 價格　例如：2330 1 520",
+                        hint,
                         reply_markup=self._keyboard(),
                     )
                     return
@@ -3860,16 +3904,7 @@ class WayneTelegramBot:
             code = data[2:].strip()
             actor = self._actor_key(q.message, uid=uid)
             self._pending[actor] = f"sell:{code}"
-            lots = None
-            try:
-                from wayne_db import get_user_portfolio
-
-                for h in get_user_portfolio(self.db_path, uid) or []:
-                    if str(h.get("stock_code") or h.get("stock_id") or "") == code:
-                        lots = float(h.get("shares") or 0)
-                        break
-            except Exception:
-                lots = None
+            lots = self._held_lots_for(uid, code)
             await q.message.reply_text(
                 _sell_holdings_prompt(code, lots),
                 reply_markup=self._keyboard(),

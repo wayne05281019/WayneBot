@@ -472,7 +472,9 @@ def format_ai_desk_html(
             except Exception:
                 title = f"<code>{html_escape(sid)}</code> {html_escape(name)}"
             lines.append(title)
-            lines.append(kv_html_compact("張數", _fmt_lots_html(int(p["shares"]))))
+            sh = int(p["shares"] or 0)
+            qty_label = "張數" if sh >= 1000 and sh % 1000 == 0 else "股數"
+            lines.append(kv_html_compact(qty_label, _fmt_lots_html(sh)))
             lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
             if chg is not None:
                 lines.append(kv_html_compact("現價", html_last_move(last, chg, move_pct, compact=True)))
