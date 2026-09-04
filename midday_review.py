@@ -44,7 +44,9 @@ def _live_px(item: dict) -> float:
     return ask or bid or 0.0
 
 
-def fetch_mis_batch(stock_ids: List[str], db_path: str) -> Dict[str, Dict[str, Any]]:
+def fetch_mis_batch(
+    stock_ids: List[str], db_path: str, *, timeout: float = 12.0
+) -> Dict[str, Dict[str, Any]]:
     """每批最多 40 檔，跟現有盤中報價同一支 MIS。"""
     import sqlite3
     import time
@@ -71,6 +73,7 @@ def fetch_mis_batch(stock_ids: List[str], db_path: str) -> Dict[str, Dict[str, A
     finally:
         conn.close()
     out: Dict[str, Dict[str, Any]] = {}
+    req_timeout = max(1.0, float(timeout))
     for i in range(0, len(ids), 40):
         chunk = ids[i : i + 40]
         chs = []
@@ -85,7 +88,7 @@ def fetch_mis_batch(stock_ids: List[str], db_path: str) -> Dict[str, Dict[str, A
             f"?ex_ch={'|'.join(chs)}&json=1&delay=0&_={int(time.time() * 1000)}"
         )
         try:
-            resp = _SESSION.get(url, timeout=12)
+            resp = _SESSION.get(url, timeout=req_timeout)
             arr = (resp.json() or {}).get("msgArray") or []
         except Exception:
             logger.exception("尾盤 MIS 失敗")

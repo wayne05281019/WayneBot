@@ -1977,7 +1977,7 @@ class WayneTelegramBot:
                     )
             html = await asyncio.wait_for(
                 asyncio.to_thread(format_flow_html, self.db_path, user_id=uid),
-                timeout=18.0,
+                timeout=12.0,
             )
             if lag and lag not in html:
                 html = lag + "\n" + html
