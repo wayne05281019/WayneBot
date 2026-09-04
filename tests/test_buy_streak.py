@@ -263,9 +263,14 @@ def _raw_streak(conn, sid, kind, as_of, lookback=80):
 
 @pytest.mark.production_db
 def test_production_as_of_matches_official_fuse_end():
-    """連買最後一天必須是官方融合收盤日（目前應為 20260903）。"""
+    """連買最後一天必須是庫的完整收盤日，且不得晚於 fuse 上限。
+
+    16:30 後 fuse_end 會變成今天，但 CI 用的 Release zip 可能還停在昨天，
+    直到盤後 increment 蓋掉 zip。連買應對齊 latest_complete，不是硬鎖 cap。
+    """
     from pathlib import Path
 
+    from import_health import latest_complete_quote_date
     from trading_calendar import fuse_end_trading_date, resolve_screen_as_of
 
     db_path = "data/wayne_market.db"
@@ -274,7 +279,9 @@ def test_production_as_of_matches_official_fuse_end():
     clear_cache()
     cap = fuse_end_trading_date()
     official = resolve_screen_as_of(db_path)
-    assert official == cap, f"official={official} cap={cap}"
+    complete = latest_complete_quote_date(db_path)
+    assert official == complete, f"official={official} complete={complete}"
+    assert official <= cap, f"official={official} cap={cap}"
     snap = load_snapshot(db_path, KIND_FOREIGN, MARKET_TW, use_cache=False)
     assert snap.as_of == official
 
