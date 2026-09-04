@@ -333,8 +333,8 @@ HELP_TOPICS = {
 # 主選單兩排各五格：次排最右＝大盤專頁（只讀）。
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
-# v5：不再刪掉帶鍵盤的訊息／不再送 ReplyKeyboardRemove（刪了許多客戶端鍵盤會一起消失）。
-MENU_LAYOUT_VERSION = "5"
+# v6：進度／暫態泡泡也不掛 ReplyKeyboard（刪進度時鍵盤會一起沒）。
+MENU_LAYOUT_VERSION = "6"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -1395,10 +1395,8 @@ class WayneTelegramBot:
         self._screening_running.add(actor)
         await self._dismiss_menu_transients(actor)
         hub = self._reply_menu()
-        status = await message.reply_text(
-            self._screening_progress_text(0),
-            reply_markup=hub,
-        )
+        # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
+        status = await message.reply_text(self._screening_progress_text(0))
         stop = asyncio.Event()
         t0 = time.monotonic()
 
@@ -1406,10 +1404,7 @@ class WayneTelegramBot:
             while not stop.is_set():
                 elapsed = int(time.monotonic() - t0)
                 try:
-                    await status.edit_text(
-                        self._screening_progress_text(elapsed),
-                        reply_markup=hub,
-                    )
+                    await status.edit_text(self._screening_progress_text(elapsed))
                 except Exception:
                     pass
                 try:
@@ -1427,7 +1422,7 @@ class WayneTelegramBot:
             )
             stop.set()
             try:
-                await status.edit_text(self._screening_progress_text(0, done=True), reply_markup=hub)
+                await status.edit_text(self._screening_progress_text(0, done=True))
             except Exception:
                 pass
             await self._reply_screening_payload(message, result)
@@ -1465,6 +1460,11 @@ class WayneTelegramBot:
                 await status.delete()
             except Exception:
                 pass
+            # 刪進度泡泡後再釘一次，避免中途狀態讓客戶端收掉兩排。
+            try:
+                await self._pin_reply_menu(message)
+            except Exception:
+                pass
 
     async def _send_line_rich_bucket(self, message, bucket_key: str):
         """起漲等：背景生成圖文包；完成後收起海選區塊與進度訊息，只留 LINE 鈕。"""
@@ -1491,10 +1491,10 @@ class WayneTelegramBot:
             return
 
         n = len(rows)
+        # 進度泡泡不掛 ReplyKeyboard：完成後會刪，刪了兩排會跟著沒。
         status = await message.reply_text(
             f"正在背景生成【{title}】{n} 檔圖文…\n"
-            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。",
-            reply_markup=hub,
+            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。"
         )
         self._track_line_pack_status(actor, status)
 
@@ -1509,16 +1509,17 @@ class WayneTelegramBot:
         except Exception as exc:
             logger.exception("LINE 圖文包生成失敗 bucket=%s", bucket_key)
             await status.edit_text(
-                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。",
-                reply_markup=hub,
+                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。"
             )
+            await self._pin_reply_menu(message)
             return
         if manifest.get("error") and not manifest.get("line_text"):
             err = str(manifest.get("error") or "生成失敗")
             errs = manifest.get("errors") or []
             if errs:
                 err += "\n" + "\n".join(errs[:3])
-            await status.edit_text(f"⚠️ 【{title}】{err}", reply_markup=hub)
+            await status.edit_text(f"⚠️ 【{title}】{err}")
+            await self._pin_reply_menu(message)
             return
 
         line_body = str(manifest.get("line_text") or "").strip()
@@ -1547,7 +1548,7 @@ class WayneTelegramBot:
         await self._dismiss_screening_section(actor, bucket_key)
         await self._dismiss_line_pack_status(actor)
 
-        final = await message.reply_html(
+        await message.reply_html(
             f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備好。{warn}\n"
             "按下方按鈕：\n"
             "① 開 LINE → <b>選聯絡人</b> → 送出文字總彙整\n"
@@ -1555,6 +1556,8 @@ class WayneTelegramBot:
             reply_markup=line_btn,
             disable_web_page_preview=True,
         )
+        # Inline 鈕訊息無法同時掛 ReplyKeyboard；刪進度後再釘兩排。
+        await self._pin_reply_menu(message)
 
     @staticmethod
     def _chart_progress_text(elapsed_sec: int) -> str:
@@ -1676,7 +1679,8 @@ class WayneTelegramBot:
         )
 
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
-        status = await message.reply_text(status_text, reply_markup=self._reply_menu())
+        # 進度泡泡不掛 ReplyKeyboard，否則 delete 時兩排主選單會被客戶端收掉。
+        status = await message.reply_text(status_text)
         await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
         effective_live_bucket = live_bucket
@@ -1719,6 +1723,7 @@ class WayneTelegramBot:
                 await status.delete()
             except Exception:
                 pass
+            status = None
             if not rows:
                 from screen_sessions import screen_session_has_data
 
@@ -1731,13 +1736,13 @@ class WayneTelegramBot:
                         f"<b>{title}</b>\n"
                         f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
                         "請按主選單「海選」執行後再查；會用盤中 MIS 現價複核。</i>",
-                        reply_markup=self._keyboard(),
+                        reply_markup=self._reply_menu(),
                     )
                 else:
                     await message.reply_html(
                         f"<b>{title}</b>\n"
                         f"<i>昨收掃描後此桶無候選，或盤中複核後無符合標的。</i>",
-                        reply_markup=self._keyboard(),
+                        reply_markup=self._reply_menu(),
                     )
                 return
             await self._reply_trade_list(
@@ -1761,10 +1766,11 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(),
             )
         finally:
-            try:
-                await status.delete()
-            except Exception:
-                pass
+            if status is not None:
+                try:
+                    await status.delete()
+                except Exception:
+                    pass
 
     async def daytrade_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_trade_bucket(

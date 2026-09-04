@@ -2,7 +2,7 @@ def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "5"
+    assert MENU_LAYOUT_VERSION == "6"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -151,11 +151,45 @@ def test_refresh_reply_menu_keeps_keyboard_message():
     sent.delete.assert_not_awaited()
 
 
-def test_health_server_is_threaded():
+def test_screening_status_bubble_has_no_reply_keyboard():
+    """海選進度泡泡不得掛 ReplyKeyboard，否則 delete 後兩排會消失。"""
+    import asyncio
     import inspect
+    from unittest.mock import AsyncMock, MagicMock
 
-    import main
+    from bot_servers import WayneTelegramBot
 
-    src = inspect.getsource(main.start_health_server)
-    assert "ThreadingHTTPServer" in src
+    src = inspect.getsource(WayneTelegramBot._run_manual_screening)
+    assert "reply_markup=hub" not in src.split("status = await")[1].split("ticker =")[0]
+    assert "await status.delete()" in src
+    assert "await self._pin_reply_menu(message)" in src
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._screening_running = set()
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._pin_reply_menu = AsyncMock()
+    bot._reply_screening_payload = AsyncMock()
+    bot.screener = MagicMock()
+    bot.screener.run_full_screening = MagicMock(return_value={"as_of": "20260903"})
+    bot.db_path = "data/wayne_market.db"
+    msg = MagicMock()
+    msg.chat_id = 1
+    msg.from_user = MagicMock(id=1)
+    status = MagicMock()
+    status.edit_text = AsyncMock()
+    status.delete = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=status)
+
+    async def run():
+        await bot._run_manual_screening(msg)
+
+    asyncio.run(run())
+    # 第一則是進度泡泡：不可帶 reply_markup
+    first = msg.reply_text.await_args_list[0]
+    assert first.kwargs.get("reply_markup") is None
+    status.delete.assert_awaited()
+    bot._pin_reply_menu.assert_awaited()
 
