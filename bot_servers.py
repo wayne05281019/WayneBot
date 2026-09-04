@@ -333,14 +333,9 @@ HELP_TOPICS = {
     "streak": (
         "<b>連買區怎麼用</b>\n"
         "主選單次排「連買區」。先選要看哪一種：<b>外資</b>、 <b>投信</b>、或<b>外資+投信</b>（同一天兩家都買超才算）。\n"
-<<<<<<< HEAD
         "點訊息下方按鈕選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>。\n"
         "再選<b>上市</b>或<b>上櫃</b>，再點連買天數。\n"
-        "天數從目前最長往下排（有 25 天就會有 25）；點 6 就只看剛好連買 6 天的股票。\n"
-=======
-        "選了其中一個，另外兩顆會從鍵盤消失。再選<b>上市</b>或<b>上櫃</b>，另一個同樣消失。\n"
         "天數只列出「剛好有股票」的連買天數（最長會標在訊息裡）；點 6 就只看剛好連買 6 天的股票。\n"
->>>>>>> 0fe36db (fix: 連買天數步驟文案標明只列有股票的天數)
         "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。點股名＝一般查股；按<b>籌碼</b>核對官方法人表。"
     ),
 }
@@ -1146,19 +1141,12 @@ class WayneTelegramBot:
             message,
             f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-<<<<<<< HEAD
             "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
-            f"<b>可選天數</b>：{' '.join(str(n) for n in days)}",
+            f"<b>可選天數</b>（有股票才列出）：{' '.join(str(n) for n in days)}",
             inline=self._streak_days_inline(kind, market, days),
             reply_kb=self._streak_days_keyboard(days),
             tray_hint=f"可選天數：{' '.join(str(n) for n in days[:12])}"
             + (" …" if len(days) > 12 else ""),
-=======
-            f"可選天數（有股票才列出）：{' '.join(str(n) for n in days)}\n"
-            "請點天數；名單是「剛好連買這麼多天」（不是以上）。",
-            reply_markup=self._streak_days_keyboard(days),
-            disable_web_page_preview=True,
->>>>>>> 0fe36db (fix: 連買天數步驟文案標明只列有股票的天數)
         )
 
     async def _streak_show_stocks(
