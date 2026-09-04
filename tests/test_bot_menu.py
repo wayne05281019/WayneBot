@@ -2,7 +2,7 @@ def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "4"
+    assert MENU_LAYOUT_VERSION == "5"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -106,6 +106,8 @@ def test_portfolio_keyboard_shows_stock_name():
     assert left[0] == "1303 南亞"
     assert left[1] == "6526 達發"
 
+
+def test_screening_progress_text():
     from bot_servers import WayneTelegramBot
 
     assert "海選開始" in WayneTelegramBot._screening_progress_text(0)
@@ -114,3 +116,46 @@ def test_portfolio_keyboard_shows_stock_name():
     assert "▓" in body
     assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
+
+
+def test_refresh_reply_menu_keeps_keyboard_message():
+    """熱修：重掛選單不得 Remove、不得刪掉帶鍵盤的訊息。"""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ":memory:"
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._mark_menu_layout_ok = MagicMock()
+    msg = MagicMock()
+    sent = MagicMock()
+    sent.delete = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=sent)
+
+    async def run():
+        with patch("wayne_db.set_cached_data"):
+            await bot._refresh_reply_menu(msg, uid="1", silent=False)
+            await bot._refresh_reply_menu(msg, uid="1", silent=True)
+
+    asyncio.run(run())
+    assert msg.reply_text.await_count >= 2
+    for call in msg.reply_text.await_args_list:
+        kw = call.kwargs
+        markup = kw.get("reply_markup")
+        assert markup is not None
+        assert type(markup).__name__ != "ReplyKeyboardRemove"
+        assert getattr(markup, "keyboard", None) is not None
+    sent.delete.assert_not_awaited()
+
+
+def test_health_server_is_threaded():
+    import inspect
+
+    import main
+
+    src = inspect.getsource(main.start_health_server)
+    assert "ThreadingHTTPServer" in src
+

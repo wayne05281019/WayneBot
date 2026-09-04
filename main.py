@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from config import (
     daily_scheduler_enabled,
@@ -350,10 +350,12 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def start_health_server(port: int) -> threading.Thread:
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    # 必須用 ThreadingHTTPServer：/automation-health、/inventory 會跑重查詢，
+    # 單執行緒 HTTPServer 會把 Render 的 /live 健檢一起卡住 → 誤殺重啟 → 話筒全死。
+    server = ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
 
     def _run():
-        logger.info("Health server 監聽 0.0.0.0:%s (/health /inventory)", port)
+        logger.info("Health server 監聽 0.0.0.0:%s (/live /health /inventory)", port)
         server.serve_forever()
 
     t = threading.Thread(target=_run, name="health-http", daemon=True)

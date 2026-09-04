@@ -64,7 +64,6 @@ try:
         InlineKeyboardButton,
         InlineKeyboardMarkup,
         ReplyKeyboardMarkup,
-        ReplyKeyboardRemove,
         KeyboardButton,
         BotCommand,
         MenuButtonCommands,
@@ -334,7 +333,8 @@ HELP_TOPICS = {
 # 主選單兩排各五格：次排最右＝大盤專頁（只讀）。
 MENU_BTN_MARKET = "大盤"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
-MENU_LAYOUT_VERSION = "4"
+# v5：不再刪掉帶鍵盤的訊息／不再送 ReplyKeyboardRemove（刪了許多客戶端鍵盤會一起消失）。
+MENU_LAYOUT_VERSION = "5"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -624,29 +624,17 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     async def _pin_reply_menu(self, message) -> None:
-        """靜默把兩排主選單釘在輸入框區；發完即刪，不留 ⌨️ 大圖泡泡。"""
-        pin = None
-        for text in ("\u200b", "·"):
+        """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。"""
+        for text in ("兩排主選單在輸入框右側 ⌨️。", "·"):
             try:
-                pin = await message.reply_text(text, reply_markup=self._reply_menu())
-                break
+                await message.reply_text(text, reply_markup=self._reply_menu())
+                return
             except Exception:
                 continue
-        if pin is None:
-            try:
-                pin = await message.reply_text("選單", reply_markup=self._reply_menu())
-            except Exception:
-                logger.exception("pin reply menu 失敗")
-                return
-
-        async def _drop_pin():
-            await asyncio.sleep(0.35)
-            try:
-                await pin.delete()
-            except Exception:
-                pass
-
-        asyncio.create_task(_drop_pin())
+        try:
+            await message.reply_text("主選單", reply_markup=self._reply_menu())
+        except Exception:
+            logger.exception("pin reply menu 失敗")
 
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
@@ -670,56 +658,23 @@ class WayneTelegramBot:
         set_cached_data(f"tg_menu_layout:{uid}", "menu", "0", db_path=self.db_path)
 
     async def _refresh_reply_menu(self, message, *, uid: str = "", silent: bool = False):
-        """先移除舊鍵盤再掛兩排新選單。silent=True 時靜默釘選單，不發「正在更新」類提示。"""
-        actor = self._actor_key(message, uid=uid)
-        await self._dismiss_menu_transients(actor)
+        """重掛兩排主選單。絕不送 Remove、也不刪帶鍵盤的訊息（刪了鍵盤會跟著消失）。"""
+        await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         if silent:
-            try:
-                rm = await message.reply_text("\u200b", reply_markup=ReplyKeyboardRemove())
-                await asyncio.sleep(0.12)
-                await self._delete_message(rm)
-            except Exception:
-                logger.debug("靜默移除舊鍵盤失敗", exc_info=True)
             await self._pin_reply_menu(message)
             if uid:
                 self._mark_menu_layout_ok(uid)
             return
-        transient = None
         try:
-            transient = await message.reply_text(
-                "正在更新主選單…",
-                reply_markup=ReplyKeyboardRemove(),
-            )
-        except Exception:
-            logger.exception("移除舊鍵盤失敗")
-        done = None
-        try:
-            done = await message.reply_text(
-                "已更新主選單（點輸入框右側 ⌨️ 展開兩排；次排最右為「大盤」）。",
+            await message.reply_text(
+                "主選單已掛上（點輸入框右側 ⌨️ 展開兩排；次排最右為「大盤」）。",
                 reply_markup=self._reply_menu(),
             )
         except Exception:
             logger.exception("掛上新選單失敗")
+            await self._pin_reply_menu(message)
         if uid:
             self._mark_menu_layout_ok(uid)
-
-        pending = [m for m in (transient, done) if m is not None]
-        self._menu_fade_gen[actor] = self._menu_fade_gen.get(actor, 0) + 1
-        fade_gen = self._menu_fade_gen[actor]
-        self._menu_fade_msgs[actor] = pending
-
-        async def _fade_out():
-            await asyncio.sleep(1.8)
-            if self._menu_fade_gen.get(actor) != fade_gen:
-                return
-            still = self._menu_fade_msgs.pop(actor, [])
-            for msg in still:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-
-        asyncio.create_task(_fade_out())
 
     async def _ensure_reply_menu_if_needed(
         self, message, uid: str, *, silent: bool = True
@@ -730,7 +685,7 @@ class WayneTelegramBot:
         await self._refresh_reply_menu(message, uid=uid, silent=silent)
 
     async def _force_reply_menu(self, message, uid: str) -> None:
-        """/menu、選單：一律重掛鍵盤（解決舊版快取或靜默釘選失敗）。"""
+        """/menu、選單：一律重掛兩排鍵盤（不刪訊息，避免鍵盤被客戶端收掉）。"""
         self._invalidate_menu_layout(uid)
         await self._refresh_reply_menu(message, uid=uid, silent=False)
 
