@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 MIN_TW = 800
@@ -243,11 +244,22 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         problems.append(f"待補上市 {tw}/{MIN_TW}（上櫃 {two}）")
     if total >= 800 and chip_n < 100:
         problems.append(f"待補法人（非0僅 {chip_n}）")
-    if int(m_n[0] or 0) < 200:
-        problems.append("待補月營收")
+    latest_month = str(m_n[1] or "")
+    monthly_note = monthly_revenue_status(int(m_n[0] or 0), latest_month, today_ymd=yyyymmdd)
+    if monthly_note.get("missing"):
+        problems.append(monthly_note["problem"])
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
     hist = list_coverage_issues(db_path)
+    today_ok = increment_health_ok(
+        {
+            "date": yyyymmdd,
+            "tw": int(tw or 0),
+            "two": int(two or 0),
+            "total": int(total or 0),
+            "chips_nonzero": int(chip_n or 0),
+        }
+    ) and not problems
     return {
         "date": yyyymmdd,
         "tw": int(tw or 0),
@@ -255,15 +267,70 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         "total": int(total or 0),
         "chips_nonzero": int(chip_n or 0),
         "monthly_n": int(m_n[0] or 0),
-        "latest_month": m_n[1] or "",
+        "latest_month": latest_month,
+        "monthly_note": monthly_note,
         "income_n": int(q_n[0] or 0),
         "latest_quarter": f"{q_n[1]}Q{q_n[2]}" if q_n[1] else "",
         "ex_rights_n": int(x_n[0] or 0),
         "latest_ex": x_n[1] or "",
-        "ok": not problems,
+        "ok": today_ok,
+        "today_ok": today_ok,
         "problems": problems,
         "history_issues": hist,
         "history_issue_n": len(hist),
+    }
+
+
+def expected_latest_revenue_month(today_ymd: str = "") -> str:
+    """上市櫃月營收依法在次月 10 日前公布。10 號前官方通常還停在再上一個月。"""
+    raw = str(today_ymd or "").replace("-", "")[:8]
+    if len(raw) != 8 or not raw.isdigit():
+        raw = datetime.now().strftime("%Y%m%d")
+    y, m, d = int(raw[:4]), int(raw[4:6]), int(raw[6:8])
+    m -= 2 if d < 11 else 1
+    while m <= 0:
+        m += 12
+        y -= 1
+    return f"{y:04d}{m:02d}"
+
+
+def monthly_revenue_status(
+    monthly_n: int,
+    latest_month: str,
+    *,
+    today_ymd: str = "",
+) -> Dict[str, Any]:
+    """月營收要分「庫真的沒抓」跟「官方還沒公布」，不能天天喊待補。"""
+    expected = expected_latest_revenue_month(today_ymd)
+    latest = str(latest_month or "").replace("-", "")[:6]
+    if int(monthly_n or 0) < 200:
+        return {
+            "ok": False,
+            "missing": True,
+            "unpublished": False,
+            "expected": expected,
+            "latest": latest,
+            "problem": "待補月營收（庫內列數不足）",
+            "label": "待補月營收（庫內列數不足）",
+        }
+    if latest and latest >= expected:
+        return {
+            "ok": True,
+            "missing": False,
+            "unpublished": False,
+            "expected": expected,
+            "latest": latest,
+            "problem": "",
+            "label": f"{latest}（已跟上官方）",
+        }
+    return {
+        "ok": True,
+        "missing": False,
+        "unpublished": True,
+        "expected": expected,
+        "latest": latest,
+        "problem": "",
+        "label": f"{latest or '—'}（官方尚未公布 {expected}）",
     }
 
 
@@ -355,8 +422,22 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
     ).fetchone() if "daily_quotes" in tables else ("", "", 0)
     conn.close()
     gaps = health.get("history_issues") or []
+    disk: Dict[str, Any] = {"path": str(db_path or ""), "bytes": 0, "mb": 0.0}
+    try:
+        nbytes = int(os.path.getsize(db_path))
+        disk = {
+            "path": str(db_path or ""),
+            "bytes": nbytes,
+            "mb": round(nbytes / (1024 * 1024), 1),
+        }
+    except OSError:
+        pass
+    today_ok = bool(health.get("today_ok") if "today_ok" in health else health.get("ok"))
     return {
-        "ok": bool(health.get("ok")) and int(health.get("history_issue_n") or 0) == 0,
+        "ok": today_ok,
+        "today_ok": today_ok,
+        "history_ok": int(health.get("history_issue_n") or 0) == 0,
+        "disk": disk,
         "latest_complete": complete or "",
         "as_of": health.get("date") or "",
         "quotes": {
@@ -432,17 +513,30 @@ def can_publish_release(db_path: str, cap: str = None) -> Dict[str, Any]:
 
 
 def format_audit_plain(health: Dict[str, Any]) -> str:
+    """人話報告：先講今天正不正常，再講真的缺什麼。官方還沒公布的不要當成故障。"""
+    date = health.get("date") or ""
+    today_ok = bool(health.get("today_ok") if "today_ok" in health else increment_health_ok(health))
+    head = "今天正常" if today_ok and not health.get("problems") else "今天異常"
     lines = [
-        f"盤後匯入 {health.get('date')}：上市 {health.get('tw')}　上櫃 {health.get('two')}　合計 {health.get('total')}",
-        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{health.get('latest_month')}）　季報 {health.get('income_n')}（{health.get('latest_quarter')}）　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）",
+        f"盤後匯入 {date}：{head}。上市 {health.get('tw')}　上櫃 {health.get('two')}　合計 {health.get('total')}",
     ]
+    month_note = health.get("monthly_note") or monthly_revenue_status(
+        int(health.get("monthly_n") or 0),
+        str(health.get("latest_month") or ""),
+        today_ymd=str(date),
+    )
+    lines.append(
+        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{month_note.get('label')}）"
+        f"　季報 {health.get('income_n')}（{health.get('latest_quarter')}）"
+        f"　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）"
+    )
     if health.get("problems"):
-        lines.append("待補：" + "；".join(health["problems"]))
+        lines.append("今天真的缺：" + "；".join(health["problems"]))
     n = int(health.get("history_issue_n") or 0)
     if n:
         sample = health.get("history_issues") or []
         bits = [f"{x['date']} 上市{x['tw']}/上櫃{x['two']}" for x in sample[:6]]
-        lines.append(f"待補日K {n} 日：" + "、".join(bits))
+        lines.append(f"舊日缺邊 {n} 日（不影響今天是否齊）：" + "、".join(bits))
     else:
         lines.append("歷史開盤日上市／上櫃兩邊都齊。")
     return "\n".join(lines)
