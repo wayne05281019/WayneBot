@@ -139,7 +139,7 @@ def recent_user_trades(db_path: str, user_id: str, limit: int = 12) -> List[Dict
 
 
 def format_user_trades_html(db_path: str, user_id: str, limit: int = 12) -> str:
-    from tg_layout import html_escape, html_price, section_eq
+    from tg_layout import holdings_qty_text, html_escape, html_price, section_eq
 
     rows = recent_user_trades(db_path, user_id, limit)
     if not rows:
@@ -168,7 +168,7 @@ def format_user_trades_html(db_path: str, user_id: str, limit: int = 12) -> str:
         lines.append(
             f"• {d} {act} <code>{html_escape(t.get('stock_code'))}</code> "
             f"{html_escape(t.get('stock_name') or '')} "
-            f"{float(t.get('lots') or 0):g}張 @{html_price(t.get('price'), compact=True)}{extra}"
+            f"{html_escape(holdings_qty_text(t.get('lots')))} @{html_price(t.get('price'), compact=True)}{extra}"
         )
         if t.get("note"):
             lines.append(f"　{html_escape(t['note'])}")
@@ -228,6 +228,7 @@ def record_buy(
     price: float,
 ) -> str:
     """記入持股並寫成交日誌（與 AI 模擬倉分開）。"""
+    from tg_layout import holdings_qty_text
     from wayne_db import add_to_portfolio
 
     code = str(stock_code).strip()
@@ -245,7 +246,7 @@ def record_buy(
         price=price,
         cost_price=price,
     )
-    return f"已記錄買入 {code} {name} {lots:g}張 @ {price}"
+    return f"已記錄買入 {code} {name} {holdings_qty_text(lots)} @ {price}"
 
 
 def record_sell(db_path: str, user_id: str, stock_code: str, lots: float, price: float) -> str:
@@ -267,4 +268,9 @@ def record_sell(db_path: str, user_id: str, stock_code: str, lots: float, price:
         realized_pnl=result.realized_pnl,
         pnl_pct=result.pnl_pct,
     )
-    return result.message
+    from tg_layout import holdings_qty_text
+
+    return (
+        f"已賣出 {result.stock_code} {result.stock_name} {holdings_qty_text(result.lots)} "
+        f"@ {result.price}，估損益 {result.realized_pnl:+.0f}（成本 {result.cost_price}）"
+    )
