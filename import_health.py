@@ -231,7 +231,9 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
     except sqlite3.OperationalError:
         m_n, q_n = (0, ""), (0, 0, 0)
     try:
-        x_n = cur.execute("SELECT COUNT(*), MAX(ex_date) FROM ex_rights").fetchone()
+        x_n = cur.execute(
+            "SELECT COUNT(*), MAX(CASE WHEN factor>0 THEN ex_date END) FROM ex_rights"
+        ).fetchone()
     except sqlite3.OperationalError:
         x_n = (0, "")
     conn.close()

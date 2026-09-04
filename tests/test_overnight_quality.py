@@ -130,6 +130,36 @@ def test_twt48u_parse_and_nearest_event(tmp_path):
     assert format_next_event_label("息", "20260903", "20260904") == ""
 
 
+def test_audit_latest_ex_ignores_preview_rows(tmp_path):
+    from import_health import audit_import
+    from wayne_db import ensure_core_schema
+
+    db = str(tmp_path / "ex3.db")
+    ensure_core_schema(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "2330",
+                "ex_date": "20260903",
+                "kind": "息",
+                "factor": 0.99,
+                "source": "TWT49U",
+            },
+            {
+                "stock_id": "2330",
+                "ex_date": "20261028",
+                "kind": "息",
+                "factor": 0.0,
+                "source": "TWT48U",
+            },
+        ],
+    )
+    health = audit_import(db, "20260903")
+    assert health["latest_ex"] == "20260903"
+    assert health["ex_rights_n"] == 2
+
+
 def test_upsert_preview_does_not_clobber_factor(tmp_path):
     db = str(tmp_path / "ex2.db")
     ensure_core_schema(db)
