@@ -9,7 +9,7 @@
 - 不同步（含脫離前）→ 直接減碼
 - 先前同步再脫離 → 準備減碼
 
-只顯示在查股協助判斷／介紹圖紀律列／決策卡態度第二行。不刪當沖、不改起漲桶。
+只顯示在查股協助判斷／介紹圖紀律列／決策卡態度第二行／持股與 AI 模擬倉。不刪當沖、不改起漲桶、不自動賣。
 """
 from __future__ import annotations
 
@@ -143,3 +143,45 @@ def sell_note_short(card: Dict[str, Any]) -> str:
     if why:
         return f"{act}（{why}）"
     return act
+
+
+def sell_notes_for_stocks(
+    stock_ids: Sequence[str],
+    db_path: str,
+    *,
+    full: bool = False,
+) -> Dict[str, str]:
+    """多檔一次查如何賣。值是短句或 HTML 長句；失敗的檔不出現。不自動賣。"""
+    out: Dict[str, str] = {}
+    ids: List[str] = []
+    seen = set()
+    for raw in stock_ids or []:
+        sid = str(raw or "").strip()
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        ids.append(sid)
+    if not ids or not db_path:
+        return out
+    try:
+        from wayne_navigator import NavigatorEngine
+
+        engine = NavigatorEngine(db_path)
+    except Exception:
+        return out
+    for sid in ids:
+        try:
+            card = engine.get_decision_card(sid, merge_live=False)
+            if not card or card.get("error"):
+                continue
+            attach_sell(card)
+            if full:
+                lines = sell_note_lines(card)
+                note = lines[0] if lines else ""
+            else:
+                note = sell_note_short(card)
+            if note:
+                out[sid] = note
+        except Exception:
+            continue
+    return out

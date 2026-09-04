@@ -10,6 +10,7 @@ from sell_discipline import (
     classify_how_to_sell,
     sell_note_lines,
     sell_note_short,
+    sell_notes_for_stocks,
 )
 
 
@@ -141,6 +142,11 @@ def test_html_and_glance_wire_sell_notes():
     assert "sell_note_short" in card_src
     assert "紀律" in card_src
     assert "_fp(11.0 if sell_sub else 9.4)" in card_src
+    from ai_trader import format_ai_desk_html
+    from portfolio_engine import PortfolioEngine
+
+    assert "sell_notes_for_stocks" in inspect.getsource(format_ai_desk_html)
+    assert "sell_notes_for_stocks" in inspect.getsource(PortfolioEngine.format_holdings_html)
 
 
 @pytest.mark.production_db
@@ -385,3 +391,97 @@ def test_4915_20260904_sync_has_no_sell_caption():
     assert card.get("sell_action") == ""
     assert sell_note_short(card) == ""
     assert _photo_sell_caption("高低決策卡", card, fallback="高低決策卡") == "高低決策卡"
+
+
+def test_sell_notes_for_stocks_empty_inputs():
+    assert sell_notes_for_stocks([], "/no/such.db") == {}
+    assert sell_notes_for_stocks(["3703"], "") == {}
+
+
+def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
+    from wayne_db import ensure_core_schema
+    from portfolio_engine import PortfolioEngine
+    from ai_trader import ensure_ai_user, format_ai_desk_html
+
+    path = str(tmp_path / "ai_sell.db")
+    ensure_core_schema(path)
+    eng = PortfolioEngine(path)
+    uid = "1001"
+    user = ensure_ai_user(eng, uid)
+    bought = eng.buy(user, "20260904", "3703", "欣陸", 19.95, 8000, reason="起漲：獲利離零")
+    assert bought.get("success") is True
+
+    def fake_notes(ids, db_path, *, full=False):
+        assert "3703" in [str(x) for x in ids]
+        assert full is True
+        return {"3703": "直接減碼（最高溫但非最高價；作者如何賣，不是買訊）"}
+
+    monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
+    html = format_ai_desk_html(eng, uid)
+    assert "紀律：" in html
+    assert "直接減碼（最高溫但非最高價；作者如何賣，不是買訊）" in html
+    assert "不是買訊" in html
+
+
+def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
+    from wayne_db import ensure_core_schema
+    from portfolio_engine import PortfolioEngine
+
+    path = str(tmp_path / "hold_sell.db")
+    ensure_core_schema(path)
+    eng = PortfolioEngine(path)
+
+    def fake_notes(ids, db_path, *, full=False):
+        assert "3035" in [str(x) for x in ids]
+        assert "4915" in [str(x) for x in ids]
+        assert full is True
+        return {"3035": "準備減碼（先前同步再脫離；作者如何賣，不是買訊）"}
+
+    monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
+    html = eng.format_holdings_html(
+        [
+            {"stock_code": "3035", "stock_name": "智原", "shares": 1, "cost_price": 100},
+            {"stock_code": "4915", "stock_name": "致伸", "shares": 1, "cost_price": 60},
+        ],
+        quotes_map={
+            "3035": {"close": 110, "pct_change": 1.0},
+            "4915": {"close": 60.8, "pct_change": 0.5},
+        },
+    )
+    assert "準備減碼（先前同步再脫離；作者如何賣，不是買訊）" in html
+    assert html.split("致伸")[-1].count("紀律") == 0
+
+
+@pytest.mark.production_db
+def test_holdings_and_notes_match_20260904_flags():
+    """手記 3035／6526 準備減碼、AI 3703 直接減碼；致伸同步不標。"""
+    from config import get_db_path
+    from portfolio_engine import PortfolioEngine
+
+    db = get_db_path()
+    notes = sell_notes_for_stocks(
+        ["3703", "3035", "6526", "4915", "1303", "8234"],
+        db,
+        full=True,
+    )
+    assert notes["3703"].startswith("直接減碼（最高溫但非最高價")
+    assert "不是買訊" in notes["3703"]
+    assert notes["3035"].startswith("準備減碼（先前同步再脫離")
+    assert notes["6526"].startswith("準備減碼（先前同步再脫離")
+    assert "4915" not in notes
+    assert "1303" not in notes
+    assert "8234" not in notes
+
+    eng = PortfolioEngine(db)
+    html_cut = eng.format_holdings_html(
+        [{"stock_code": "3703", "stock_name": "欣陸", "shares": 8, "cost_price": 19.95}],
+        quotes_map={"3703": {"close": 20.0, "pct_change": 0.5}},
+    )
+    assert "紀律：" in html_cut
+    assert "直接減碼（最高溫但非最高價" in html_cut
+    html_sync = eng.format_holdings_html(
+        [{"stock_code": "4915", "stock_name": "致伸", "shares": 1, "cost_price": 60.8}],
+        quotes_map={"4915": {"close": 60.8, "pct_change": 0.3}},
+    )
+    assert "紀律" not in html_sync
+    assert "減碼" not in html_sync

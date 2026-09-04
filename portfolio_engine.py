@@ -592,6 +592,7 @@ class PortfolioEngine:
             html_num_paren,
             html_price,
             html_qty_tight,
+            kv_compact,
             kv_html_compact,
             price_change,
             section_eq,
@@ -606,6 +607,13 @@ class PortfolioEngine:
             )
         ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
         quotes_map = self.load_quotes_for(ids, quotes_map)
+        sell_notes = {}
+        try:
+            from sell_discipline import sell_notes_for_stocks
+
+            sell_notes = sell_notes_for_stocks(ids, self.db_path, full=True)
+        except Exception:
+            sell_notes = {}
         lines = [section_eq("我的持股（手記）"), "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
         for h in holdings:
             code = str(h.get("stock_code") or h.get("stock_id") or "")
@@ -636,6 +644,9 @@ class PortfolioEngine:
                 lines.append(kv_html_compact("現價", html_price(last, compact=True)))
             lines.append(kv_html_compact("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True)))
             lines.append(kv_html_compact("市值", html_money(mkt, signed=False, compact=True)))
+            note = sell_notes.get(code) or ""
+            if note:
+                lines.append(kv_compact("紀律", note))
             if h is not holdings[-1]:
                 lines.append("")
         return "\n".join(lines)
