@@ -1002,6 +1002,12 @@ def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
     from decision_card_signals import candle_up_taiwan
 
     o, hi, lo, cl = float(open_), float(high), float(low), float(close)
+    try:
+        from live_quote import sanitize_ohlc
+
+        o, hi, lo, cl = sanitize_ohlc(o, hi, lo, cl)
+    except Exception:
+        pass
     rng = hi - lo
     if rng <= 0:
         rng = max(abs(cl) * 0.01, 0.01)
@@ -2287,6 +2293,12 @@ def draw_from_ohlc(
         work = df.copy()
     else:
         work, _notes = normalize_ohlc(df.copy(), db_path=None)
+    try:
+        from live_quote import sanitize_ohlc_frame
+
+        work = sanitize_ohlc_frame(work)
+    except Exception:
+        pass
     work["dt"] = pd.to_datetime(work["date"].astype(str), format="%Y%m%d", errors="coerce")
     if work["dt"].isna().all():
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")

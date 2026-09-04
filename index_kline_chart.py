@@ -143,7 +143,9 @@ def render_index_kline_png(
     """淺底日K：右側價軸、K+MA / 量 / KD；直式適合 Telegram 手機。"""
     if df is None or df.empty:
         return ""
-    full = df.copy()
+    from live_quote import sanitize_ohlc_frame
+
+    full = sanitize_ohlc_frame(df.copy())
     full["ma5"] = full["close"].rolling(5, min_periods=1).mean()
     full["ma20"] = full["close"].rolling(20, min_periods=1).mean()
     full["ma60"] = full["close"].rolling(60, min_periods=1).mean()

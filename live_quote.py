@@ -244,6 +244,31 @@ def sanitize_ohlc(open_, high, low, close) -> Tuple[float, float, float, float]:
     return o, h, l, c
 
 
+def sanitize_ohlc_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """畫 K 前把每一根 high／low 夾到能包住 open／close（導航圖／指數圖防 Op>Hi）。"""
+    if df is None or getattr(df, "empty", True):
+        return df
+    out = df.copy()
+    for col in ("open", "high", "low", "close"):
+        if col not in out.columns:
+            return df
+    o = pd.to_numeric(out["open"], errors="coerce").fillna(0.0)
+    h = pd.to_numeric(out["high"], errors="coerce").fillna(0.0)
+    l = pd.to_numeric(out["low"], errors="coerce").fillna(0.0)
+    c = pd.to_numeric(out["close"], errors="coerce").fillna(0.0)
+    o = o.where(o > 0, c)
+    h = h.where(h > 0, c)
+    l = l.where(l > 0, c)
+    hi = pd.concat([o, h, c], axis=1).max(axis=1)
+    lo_parts = pd.concat([o, l, c], axis=1)
+    lo = lo_parts.mask(lo_parts <= 0).min(axis=1).fillna(c)
+    valid = c > 0
+    out.loc[valid, "open"] = o[valid]
+    out.loc[valid, "high"] = hi[valid]
+    out.loc[valid, "low"] = lo[valid]
+    return out
+
+
 def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """自開盤至 MIS 回報時刻的當日 K（開高低收量），僅供記憶體合併、不寫庫。"""
     if not rt or float(rt.get("close") or 0) <= 0:
