@@ -148,6 +148,29 @@ class ScreenExcludesEtfTests(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_load_session_results_maps_close_for_ai_desk(self):
+        from screen_sessions import load_session_results, save_screen_session
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            save_screen_session(
+                path,
+                "20260904",
+                "evening",
+                {
+                    "leave_zero": [{"stock_id": "4915", "stock_name": "致伸", "close": 60.8}],
+                    "overnight": [{"stock_id": "2324", "stock_name": "仁寶", "close": 41.6}],
+                },
+            )
+            results = load_session_results(path, "20260904", "evening")
+            self.assertEqual(results["leave_zero"][0]["stock_id"], "4915")
+            self.assertEqual(results["leave_zero"][0]["close"], 60.8)
+            self.assertEqual(results["overnight"][0]["stock_id"], "2324")
+        finally:
+            os.remove(path)
+
     def test_review_stats_ignore_etf_next_pct(self):
         from screen_review import _bucket_stats, format_review_html
 

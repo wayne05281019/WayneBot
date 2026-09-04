@@ -159,6 +159,41 @@ def test_evening_stays_silent_in_every_role(monkeypatch, recorder):
         assert recorder.calls[0][1]["notify"] is False
 
 
+def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 4, 20, 16, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in recorder.calls]
+    assert "evening" in kinds
+    assert "morning" not in kinds
+    eve = [c for c in recorder.calls if c[0] == "evening"][0]
+    assert eve[1]["skip_if_done"] is True
+    assert eve[1]["notify"] is False
+
+
+def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    assert recorder.calls == []
+
+
+def test_catch_up_weekend_runs_nothing(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 5, 21, 0, tzinfo=ZoneInfo("Asia/Taipei"))  # Saturday
+    main.catch_up_missed_jobs(now)
+    assert recorder.calls == []
+
+
 def test_scheduler_thread_not_started_when_off(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "off")
     assert main.start_daily_scheduler() is None

@@ -67,3 +67,42 @@ def test_push_screening_success_skips_ai_push(monkeypatch):
     assert len(ai_calls) == 1
     assert ai_calls[0].get("notify") is False
     assert all("AI 模擬帳戶" not in (m or "") for m in sent)
+
+
+def test_evening_skip_reruns_ai_from_snapshot(monkeypatch, tmp_path):
+    """16:30 已寫 evening 快照時，20:00 不能整段略過，要用快照再跑模擬倉。"""
+    from screen_sessions import save_screen_session
+    from wayne_db import ensure_core_schema
+    from main_runner import MainRunner
+
+    db = str(tmp_path / "eve.db")
+    ensure_core_schema(db)
+    save_screen_session(
+        db,
+        "20260904",
+        "evening",
+        {"leave_zero": [{"stock_id": "4915", "stock_name": "致伸", "close": 60.8}]},
+    )
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = db
+    runner.today_str = "20260904"
+    ai = []
+    screened = []
+
+    def boom(*_a, **_k):
+        screened.append(True)
+        raise AssertionError("skip_if_done 不該重跑全市場海選")
+
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda _db: "20260904")
+    runner.already_completed_today = lambda _key=None: True
+    runner._run_ai_desk = lambda as_of, results=None, **k: ai.append(
+        {"as_of": as_of, "results": results, **k}
+    ) or {}
+    monkeypatch.setattr("main_runner.run_full_screening", boom)
+
+    assert runner.run_evening_screen(skip_if_done=True, notify=False) is True
+    assert screened == []
+    assert ai[0]["as_of"] == "20260904"
+    assert ai[0]["results"]["leave_zero"][0]["stock_id"] == "4915"
+    assert ai[0]["results"]["leave_zero"][0]["close"] == 60.8
+    assert ai[0].get("notify") is False
