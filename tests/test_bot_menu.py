@@ -339,3 +339,19 @@ def test_health_server_is_threaded():
 
     src = inspect.getsource(main.start_health_server)
     assert "ThreadingHTTPServer" in src
+
+
+def test_sell_holdings_prompt_shows_odd_lots():
+    import inspect
+
+    from bot_servers import WayneTelegramBot, _sell_holdings_prompt
+
+    assert _sell_holdings_prompt("2330") == "賣出 2330。請輸入：價格（全賣）\n例如：72 或 1 72"
+    odd = _sell_holdings_prompt("6526", 0.439)
+    assert odd.startswith("賣出 6526。現有 439股。")
+    assert "全賣" in odd
+    whole = _sell_holdings_prompt("3035", 4)
+    assert "現有 4張" in whole
+    src = inspect.getsource(WayneTelegramBot.on_callback)
+    assert "_sell_holdings_prompt" in src
+    assert "get_user_portfolio" in src
