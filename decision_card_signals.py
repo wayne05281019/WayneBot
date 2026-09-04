@@ -259,6 +259,57 @@ def profit_left_zero_highlight(prev_profit_pct: float, today_profit_pct: float) 
     return prev <= 0.05 and today > 0.05
 
 
+def card_daily_stance(
+    *,
+    profit_pct: float,
+    alert: str = "",
+    hl: str = "",
+    temp: float = 0.0,
+    trend_note: str = "",
+    bias: float = 0.0,
+    badges: list | None = None,
+) -> Tuple[str, str]:
+    """今日態度：只認高低卡表，不複製 Cary 紅箭頭當買訊、也不是下單指令。
+
+    回傳 (文案, kind)，kind ∈ avoid / watch / wait。
+    """
+    badges = [str(x) for x in (badges or [])]
+    alert = str(alert or "")
+    hl = str(hl or "")
+    note = str(trend_note or "")
+    try:
+        p = float(profit_pct or 0)
+    except (TypeError, ValueError):
+        p = 0.0
+    try:
+        t = float(temp or 0)
+    except (TypeError, ValueError):
+        t = 0.0
+    try:
+        b = float(bias or 0)
+    except (TypeError, ValueError):
+        b = 0.0
+    at_high = hl in ("20高", "10高") or alert == "K20高"
+    at_60_low = alert == "60低" or hl == "60低"
+    if (
+        any("溫度≥80" in x or "價溫背離" in x for x in badges)
+        or (t >= TEMP_ATH_WATCH and at_high)
+        or note == "價溫背離"
+    ):
+        return "今天不要追", "avoid"
+    if at_high and p >= 15:
+        return "高檔不宜追", "avoid"
+    if p >= 40:
+        return "高檔不宜追", "avoid"
+    if at_60_low and -1.5 <= p <= 2.5 and b < -10:
+        return "黃金買點觀察・按表", "watch"
+    if at_60_low:
+        return "低點觀察・按表", "watch"
+    if p > 20:
+        return "等待・獲利已離低點", "wait"
+    return "等待・按表操課", "wait"
+
+
 def alert_tag(
     close: float,
     *,

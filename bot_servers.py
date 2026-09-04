@@ -301,7 +301,7 @@ HELP_TOPICS = {
         "2 獲利＝近60個日曆日收盤低（與 CaryBot 同；貼20日低不歸零）；距60根低是另外一欄\n"
         "3 溫度＝20日收盤位置＋月乖離；溫度計是領先指標。"
         "創歷史新高且溫度≥80要注意（少追）。"
-        "升降溫「溫度壓縮＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追\n"
+        "升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追。表頭「今日態度」只認表、不是下單。\n"
         "   表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名。\n"
         "4 預警欄：K20高＝RSV≥70且收盤靠近20日高（≥95%）；K20低＝貼20低或月乖離轉負。"
         "預警為 No 時仍會露出高低（20高／10低），不藏表\n"
@@ -3565,6 +3565,10 @@ class WayneTelegramBot:
             await self._dismiss_lookup_fades(actor, roles={"ack", "wait", "header"})
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
+        try:
+            await self._pin_reply_menu(message)
+        except Exception:
+            logger.debug("查股後重釘主選單失敗", exc_info=True)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
         """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""

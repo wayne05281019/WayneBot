@@ -385,6 +385,7 @@ class NavigatorEngine:
         from decision_card_signals import (
             TEMP_ATH_WATCH,
             cal60_low_close_at,
+            card_daily_stance,
             card_regime_label,
             compute_card_temperature,
             profit_floor_at,
@@ -627,6 +628,19 @@ class NavigatorEngine:
                 "profit_pct", "bias_monthly", "vol_rank_120", "temp_num",
             ]
         ].iloc[::-1]
+        last_tbl = table.iloc[0] if len(table) else None
+        if last_tbl is not None:
+            stance, stance_kind = card_daily_stance(
+                profit_pct=float(last_tbl.get("profit_pct") or 0),
+                alert=str(last_tbl.get("預警") or ""),
+                hl=str(last_tbl.get("高低") or ""),
+                temp=float(last_tbl.get("temp_num") or 0),
+                trend_note=str(last_tbl.get("升降註") or ""),
+                bias=float(last_tbl.get("bias_monthly") or 0),
+                badges=badges,
+            )
+        else:
+            stance, stance_kind = "等待・按表操課", "wait"
         streak = 0
         for a in reversed(alert_tags):
             if a == "K20高":
@@ -672,6 +686,8 @@ class NavigatorEngine:
             "low": float(latest.get("low") or 0),
             "volume": float(latest.get("volume") or 0),
             "bias_monthly": float(latest.get("bias_monthly") or 0),
+            "stance": stance,
+            "stance_kind": stance_kind,
             "table": table,
             "_ohlc": df,
         }
@@ -1165,12 +1181,9 @@ def compute_temp_trend_labels(
             labels.append("最高溫")
             notes.append("")
         elif at_min and not at_max:
-            if closes and not _price_at_window_low(i, closes, w0):
-                labels.append("溫度壓縮")
-                notes.append("價未新低")
-            else:
-                labels.append("最低溫")
-                notes.append("")
+            # CaryBot 這格寫「最低溫」；價未新低只當註記，不另造「溫度壓縮」主標。
+            labels.append("最低溫")
+            notes.append("價未新低" if closes and not _price_at_window_low(i, closes, w0) else "")
         elif t > prev + 0.25:
             labels.append("升溫")
             notes.append("")
@@ -1453,6 +1466,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
     gap = 1.35
     badge_h, badge_gap = 3.05, 0.85
+    stance_h = 4.6
 
     fig_w = 7.1
     badges = []
@@ -1476,7 +1490,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
-        m_top + head_h + gap + price_h + gap + hi_pane_h + gap + lo_pane_h
+        m_top + head_h + gap + price_h + gap + stance_h + gap + hi_pane_h + gap + lo_pane_h
         + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
     fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=160, facecolor=C["page"])
@@ -1594,6 +1608,22 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
         by -= badge_h + badge_gap
+
+    # 今日態度：按表，不是下單、不抄紅箭頭。
+    y -= gap + stance_h
+    kind = str(card.get("stance_kind") or "wait")
+    stance_txt = str(card.get("stance") or "等待・按表操課")
+    if kind == "avoid":
+        s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
+    elif kind == "watch":
+        s_fc, s_ec, s_ink = C["lo_hit_fill"], C["lo_hit_line"], C["lo_ink"]
+    else:
+        s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
+    pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=s_fc)
+    ax.text(pad_x + 3.2, y + stance_h / 2 + 0.55, f"今日態度　{stance_txt}",
+            fontproperties=_fp(14.5, "heavy"), color=s_ink, va="center", zorder=4)
+    ax.text(pad_x + 3.2, y + stance_h / 2 - 1.15, "按表操課・不是下單指令　紅箭頭只是觀察",
+            fontproperties=_fp(9.4), color=C["ink_soft"], va="center", zorder=4)
 
     # 高點
     y -= gap + hi_pane_h
@@ -2232,12 +2262,11 @@ def draw_from_ohlc(
     last = work.iloc[-1]
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
 
-    # Telegram 手機會把圖縮成對話框寬，橫長圖在手機上又扁又小字。
-    # 時間軸仍是橫的；畫布改偏直，貼齊氣泡寬時比較滿、字比較大。
+    # 時間軸橫向；畫布改橫幅，手機縮圖後日期軸才讀得下去。
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3,
         1,
-        figsize=(8.4, 11.2),
+        figsize=(12.8, 7.2),
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
         facecolor="#ffffff",
