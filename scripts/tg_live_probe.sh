@@ -56,5 +56,5 @@ WAIT_S=16
 send_btn "大盤" "01_market"
 send_btn "資金" "02_flow"
 send_btn "持股" "03_portfolio"
-send_btn "選單" "04_menu"
+send_btn "連買區" "04_streak"
 echo "[tg_probe] done"

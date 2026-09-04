@@ -8,7 +8,7 @@ SHOT="$ART/screenshots"
 VID="$ART/vm_tg_full_menu_walkthrough.mp4"
 mkdir -p "$SHOT"
 
-BUTTONS=(決策卡 當沖 持股 觀察 海選 隔日沖 資金 說明 選單 大盤)
+BUTTONS=(決策卡 當沖 持股 觀察 海選 隔日沖 資金 說明 連買區 大盤)
 WAIT="${TG_BTN_WAIT:-14}"
 
 snap() {

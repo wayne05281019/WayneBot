@@ -1,15 +1,15 @@
 def test_reply_menu_is_two_rows_not_three():
-    from bot_servers import MENU_BTN_MARKET, MENU_LAYOUT_VERSION, WayneTelegramBot
+    from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "6"
+    assert MENU_LAYOUT_VERSION == "7"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選"]
-    assert row2 == ["隔日沖", "資金", "說明", "選單", MENU_BTN_MARKET]
+    assert row2 == ["隔日沖", "資金", "說明", MENU_BTN_STREAK, MENU_BTN_MARKET]
 
 
 def test_help_guide_covers_all_main_buttons():
@@ -25,7 +25,7 @@ def test_help_guide_covers_all_main_buttons():
         "隔日沖",
         "資金",
         "說明",
-        "選單",
+        "連買區",
         "大盤",
         "籌碼",
         "營收",
@@ -47,13 +47,19 @@ def test_help_nav_keyboard_has_topic_buttons():
     kb = bot._help_nav_keyboard()
     labels = [btn.text for row in kb.inline_keyboard for btn in row]
     assert "總覽" in labels
-    assert "海選" in labels
-    assert "大盤" in labels
+    assert "查股" in labels
+    assert "第一排" in labels
+    assert "第二排" in labels
     assert "✕" in labels
+    assert "海選" not in labels
+    assert "大盤" not in labels
+    assert "當沖" not in labels
+    assert "持股" not in labels
     cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "?:guide" in cbs
-    assert "?:screen" in cbs
-    assert "?:market" in cbs
+    assert "?:stock" in cbs
+    assert "?:screen" not in cbs
+    assert "?:market" not in cbs
 
 
 def test_help_menu_topic_mentions_market_not_reserved():
@@ -61,7 +67,59 @@ def test_help_menu_topic_mentions_market_not_reserved():
 
     menu = HELP_TOPICS["menu"]
     assert "大盤" in menu
+    assert "連買區" in menu
     assert "預留" not in menu
+
+
+def test_help_nav_does_not_duplicate_reply_menu_labels():
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
+    inline = {btn.text for row in bot._help_nav_keyboard().inline_keyboard for btn in row}
+    overlap = reply & inline
+    assert overlap == set(), f"直立式與兩排重複：{overlap}"
+
+
+def test_pin_reply_menu_keeps_keyboard_message():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    pin = MagicMock()
+    pin.delete = AsyncMock()
+    msg = MagicMock()
+    msg.reply_text = AsyncMock(return_value=pin)
+
+    asyncio.run(bot._pin_reply_menu(msg))
+    asyncio.run(asyncio.sleep(0.45))
+    pin.delete.assert_not_called()
+    markup = msg.reply_text.await_args.kwargs.get("reply_markup")
+    assert markup is not None
+    assert [b.text for b in markup.keyboard[1]][3] == "連買區"
+
+
+def test_refresh_silent_does_not_remove_keyboard():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._mark_menu_layout_ok = MagicMock()
+    msg = MagicMock()
+    pin = MagicMock()
+    pin.delete = AsyncMock()
+    msg.reply_text = AsyncMock(return_value=pin)
+
+    asyncio.run(bot._refresh_reply_menu(msg, uid="1", silent=True))
+    for call in msg.reply_text.await_args_list:
+        name = type(call.kwargs.get("reply_markup")).__name__
+        assert "Remove" not in name
 
 
 def test_force_reply_menu_invalidates_layout_cache():
@@ -93,6 +151,24 @@ def test_force_reply_menu_invalidates_layout_cache():
             assert cached.get("tg_menu_layout:9") == "0" or refresh.called
 
     asyncio.run(run())
+
+
+def test_inline_fallback_keyboard_is_gone():
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    assert bot._keyboard() is None
+
+
+def test_streak_kind_keyboard_magic_three_choices():
+    from bot_servers import MENU_BTN_BACK_MAIN, WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._streak_kind_keyboard()
+    labels = [b.text for row in kb.keyboard for b in row]
+    assert labels[:3] == ["外資", "投信", "外資+投信"]
+    assert MENU_BTN_BACK_MAIN in labels
+    assert "上市" not in labels
 
 
 def test_portfolio_keyboard_shows_stock_name():

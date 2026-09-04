@@ -167,6 +167,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     bot.screen_cmd = AsyncMock()
     bot.help_cmd = AsyncMock()
     bot.menu_cmd = AsyncMock()
+    bot.streak_cmd = AsyncMock()
 
     async def run():
         for label, checker in (
@@ -174,7 +175,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ("觀察", bot._send_watch),
             ("海選", bot.screen_cmd),
             ("說明", bot.help_cmd),
-            ("選單", bot.menu_cmd),
+            ("連買區", bot.streak_cmd),
         ):
             checker.reset_mock()
             msg = _msg(5, 50, label)

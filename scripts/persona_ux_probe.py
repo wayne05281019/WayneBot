@@ -26,7 +26,7 @@ MAX_TOTAL_INLINE_ROWS = 14
 PERSONAS_5 = [
     ("偉權", 9001, ["決策卡", "大盤", "資金", "海選", "持股"]),
     ("哥哥", 9002, ["觀察", "大盤", "當沖", "2330"]),
-    ("新手", 9003, ["選單", "說明", "大盤", "南亞"]),
+    ("新手", 9003, ["連買區", "說明", "大盤", "南亞"]),
     ("不懂股", 9004, ["asdf", "持股", "股票"]),
     ("亂按", 9005, ["大盤", "資金", "海選", "大盤"]),
 ]
@@ -51,6 +51,8 @@ def _msg(uid: int, text: str):
     message.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     message.reply_html = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     message.reply_photo = AsyncMock()
+    # bot_servers._send_lookup_album 會 await reply_media_group
+    message.reply_media_group = AsyncMock(return_value=MagicMock())
     message.reply_sticker = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     return message
 
@@ -170,6 +172,9 @@ def _make_bot():
     bot._lookup_locks = {}
     bot._pending_locks = {}
     bot._screening_running = set()
+    # 全域掃描鎖：避免多人/重度測試互相拖慢
+    bot._screening_gate = asyncio.Lock()
+    bot._screening_global_owner = ""
     bot._menu_fade_gen = {}
     bot._touch_user = MagicMock()
     bot.screener = MagicMock()
