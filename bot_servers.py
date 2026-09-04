@@ -198,8 +198,8 @@ HELP_TOPICS = {
         "• 就是本說明頁；可分類點下方按鈕看細節。\n"
         "\n"
         "<b>④ 連買區</b>\n"
-        "• 先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>，選了另外兩顆會從鍵盤消失。\n"
-        "• 再選上市或上櫃（另一個同樣消失），再點連買天數（有 25 天就會出現 25）。\n"
+        "• 先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>（點訊息下方按鈕）。\n"
+        "• 再選上市或上櫃，再點連買天數（有 25 天就會出現 25）。\n"
         "• 名單顯示代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。\n"
         "\n"
@@ -333,7 +333,8 @@ HELP_TOPICS = {
     "streak": (
         "<b>連買區怎麼用</b>\n"
         "主選單次排「連買區」。先選要看哪一種：<b>外資</b>、 <b>投信</b>、或<b>外資+投信</b>（同一天兩家都買超才算）。\n"
-        "選了其中一個，另外兩顆會從鍵盤消失。再選<b>上市</b>或<b>上櫃</b>，另一個同樣消失。\n"
+        "點訊息下方按鈕選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>。\n"
+        "再選<b>上市</b>或<b>上櫃</b>，再點連買天數。\n"
         "天數從目前最長往下排（有 25 天就會有 25）；點 6 就只看剛好連買 6 天的股票。\n"
         "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。點股名＝一般查股；按<b>籌碼</b>核對官方法人表。"
     ),
@@ -746,14 +747,20 @@ class WayneTelegramBot:
             [KeyboardButton(KIND_BTN["both"])],
             self._streak_nav_row(back_step=False),
         ]
-        return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        try:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _streak_market_keyboard(self):
         rows = [
             [KeyboardButton("上市"), KeyboardButton("上櫃")],
             self._streak_nav_row(back_step=True),
         ]
-        return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        try:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _streak_days_keyboard(self, days: list[int]):
         rows = []
@@ -766,7 +773,10 @@ class WayneTelegramBot:
         if row:
             rows.append(row)
         rows.append(self._streak_nav_row(back_step=True))
-        return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        try:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _streak_stocks_keyboard(self, rows_data, *, has_prev: bool, has_next: bool):
         rows = []
@@ -786,7 +796,59 @@ class WayneTelegramBot:
         if nav:
             rows.append(nav)
         rows.append(self._streak_nav_row(back_step=True))
-        return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        try:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+    def _streak_kind_inline(self):
+        from buy_streak import KIND_BTN
+
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(KIND_BTN["foreign"], callback_data="fb:k:foreign"),
+                    InlineKeyboardButton(KIND_BTN["trust"], callback_data="fb:k:trust"),
+                ],
+                [InlineKeyboardButton(KIND_BTN["both"], callback_data="fb:k:both")],
+                [InlineKeyboardButton("回主選單", callback_data="fb:home")],
+            ]
+        )
+
+    def _streak_market_inline(self, kind: str):
+        k = str(kind or "").strip() or "foreign"
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("上市", callback_data=f"fb:m:{k}:TW"),
+                    InlineKeyboardButton("上櫃", callback_data=f"fb:m:{k}:TWO"),
+                ],
+                [
+                    InlineKeyboardButton("上一步", callback_data="fb:back:kind"),
+                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
+                ],
+            ]
+        )
+
+    def _streak_days_inline(self, kind: str, market: str, days: list[int]):
+        k = str(kind or "").strip()
+        m = str(market or "").strip()
+        rows = []
+        row = []
+        for n in days:
+            row.append(InlineKeyboardButton(str(n), callback_data=f"fb:d:{k}:{m}:{int(n)}"))
+            if len(row) == 5:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        rows.append(
+            [
+                InlineKeyboardButton("上一步", callback_data=f"fb:back:mkt:{k}"),
+                InlineKeyboardButton("回主選單", callback_data="fb:home"),
+            ]
+        )
+        return InlineKeyboardMarkup(rows)
 
     def _streak_pick_inline(self, rows_data):
         kb = []
@@ -800,6 +862,20 @@ class WayneTelegramBot:
             )
         return InlineKeyboardMarkup(kb) if kb else None
 
+    async def _streak_send_step(
+        self, message, html: str, *, inline, reply_kb, tray_hint: str
+    ) -> None:
+        """精靈步驟：訊息下方 Inline（一定看得到）＋再掛 ReplyKeyboard（輸入區鍵盤）。
+
+        Telegram 一則訊息只能帶一種 markup，所以拆兩則；桌面版常把 Reply 鍵盤收起，
+        只靠 Reply 會以為「沒按鈕」。
+        """
+        await message.reply_html(html, reply_markup=inline, disable_web_page_preview=True)
+        try:
+            await message.reply_text(tray_hint, reply_markup=reply_kb)
+        except Exception:
+            logger.exception("連買精靈 ReplyKeyboard 補掛失敗")
+
     async def streak_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         actor = self._actor_key(update.message, uid=uid)
@@ -810,20 +886,34 @@ class WayneTelegramBot:
     async def _start_buy_streak(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
         self._pending[actor] = "fbuy:kind"
-        await message.reply_html(
+        await self._streak_send_step(
+            message,
             "<b>連買區域</b>\n"
-            "先選要看哪一種連買；選了之後另外兩顆會從鍵盤消失。\n"
+            "先選要看哪一種連買（點訊息下方按鈕）。\n"
             "• <b>外資</b>＝外資連續買超\n"
             "• <b>投信</b>＝投信連續買超\n"
             "• <b>外資+投信</b>＝同一天兩家都買超，再連起來算天數",
-            reply_markup=self._streak_kind_keyboard(),
-            disable_web_page_preview=True,
+            inline=self._streak_kind_inline(),
+            reply_kb=self._streak_kind_keyboard(),
+            tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
         )
 
     async def _restore_main_menu(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
         self._pending.pop(actor, None)
         await message.reply_html("已回到兩排主選單。", reply_markup=self._reply_menu())
+
+    async def _ask_streak_market(self, message, uid: str, actor: str, kind: str) -> None:
+        from buy_streak import KIND_LABEL
+
+        self._pending[actor] = f"fbuy:mkt:{kind}"
+        await self._streak_send_step(
+            message,
+            f"<b>{KIND_LABEL.get(kind, kind)}</b>\n請點下面按鈕選 <b>上市</b> 或 <b>上櫃</b>。",
+            inline=self._streak_market_inline(kind),
+            reply_kb=self._streak_market_keyboard(),
+            tray_hint="也可點輸入區鍵盤：上市／上櫃",
+        )
 
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
@@ -858,12 +948,7 @@ class WayneTelegramBot:
                 await self._start_buy_streak(message, uid)
             elif step == "days":
                 kind = parts[2] if len(parts) > 2 else ""
-                self._pending[actor] = f"fbuy:mkt:{kind}"
-                await message.reply_html(
-                    f"<b>{KIND_LABEL.get(kind, kind)}</b>\n選上市或上櫃；另一個會從鍵盤消失。",
-                    reply_markup=self._streak_market_keyboard(),
-                    disable_web_page_preview=True,
-                )
+                await self._ask_streak_market(message, uid, actor, kind)
             elif step == "pick":
                 kind = parts[2] if len(parts) > 2 else ""
                 market = parts[3] if len(parts) > 3 else ""
@@ -877,31 +962,22 @@ class WayneTelegramBot:
             kind = parse_kind(text)
             if not kind:
                 self._pending[actor] = "fbuy:kind"
-                await message.reply_html(
-                    "請按鍵盤選 <b>外資</b>、<b>投信</b> 或 <b>外資+投信</b>。",
-                    reply_markup=self._streak_kind_keyboard(),
-                    disable_web_page_preview=True,
+                await self._streak_send_step(
+                    message,
+                    "請選 <b>外資</b>、<b>投信</b> 或 <b>外資+投信</b>。",
+                    inline=self._streak_kind_inline(),
+                    reply_kb=self._streak_kind_keyboard(),
+                    tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
                 )
                 return True
-            self._pending[actor] = f"fbuy:mkt:{kind}"
-            await message.reply_html(
-                f"<b>{KIND_LABEL[kind]}</b>\n"
-                "選<b>上市</b>或<b>上櫃</b>；另一個會從鍵盤消失。",
-                reply_markup=self._streak_market_keyboard(),
-                disable_web_page_preview=True,
-            )
+            await self._ask_streak_market(message, uid, actor, kind)
             return True
 
         if step == "mkt":
             kind = parts[2] if len(parts) > 2 else ""
             market = parse_market(text)
             if not market:
-                self._pending[actor] = f"fbuy:mkt:{kind}"
-                await message.reply_html(
-                    "請按鍵盤選 <b>上市</b> 或 <b>上櫃</b>。",
-                    reply_markup=self._streak_market_keyboard(),
-                    disable_web_page_preview=True,
-                )
+                await self._ask_streak_market(message, uid, actor, kind)
                 return True
             await self._streak_show_days(message, uid, actor, kind, market)
             return True
@@ -912,10 +988,12 @@ class WayneTelegramBot:
             days = parse_days(text)
             if days is None:
                 self._pending[actor] = f"fbuy:days:{kind}:{market}"
-                await message.reply_html(
-                    "請點鍵盤上的天數。",
-                    reply_markup=self._streak_days_keyboard([]),
-                    disable_web_page_preview=True,
+                await self._streak_send_step(
+                    message,
+                    "請點天數（訊息下方或輸入區鍵盤）。",
+                    inline=self._streak_days_inline(kind, market, []),
+                    reply_kb=self._streak_days_keyboard([]),
+                    tray_hint="也可點輸入區鍵盤上的天數",
                 )
                 return True
             await self._streak_show_stocks(message, uid, actor, kind, market, days, offset=0)
@@ -968,6 +1046,57 @@ class WayneTelegramBot:
 
         return False
 
+    async def _handle_buy_streak_callback(self, q, uid: str, data: str) -> None:
+        """連買精靈 Inline 按鈕：訊息下方一定看得到，不依賴桌面版 Reply 鍵盤托盤。"""
+        actor = self._actor_key(q.message, uid=uid)
+        parts = (data or "").split(":")
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        if len(parts) < 2:
+            return
+        op = parts[1]
+        if op == "home":
+            await self._restore_main_menu(q.message, uid)
+            return
+        if op == "kind" or (op == "back" and len(parts) > 2 and parts[2] == "kind"):
+            await self._start_buy_streak(q.message, uid)
+            return
+        if op == "back" and len(parts) > 2 and parts[2] == "mkt":
+            kind = parts[3] if len(parts) > 3 else ""
+            await self._ask_streak_market(q.message, uid, actor, kind)
+            return
+        if op == "k" and len(parts) > 2:
+            kind = parts[2]
+            if kind not in ("foreign", "trust", "both"):
+                await self._start_buy_streak(q.message, uid)
+                return
+            await self._ask_streak_market(q.message, uid, actor, kind)
+            return
+        if op == "m" and len(parts) > 3:
+            kind = parts[2]
+            market = parts[3]
+            if market not in ("TW", "TWO"):
+                await self._ask_streak_market(q.message, uid, actor, kind)
+                return
+            await self._streak_show_days(q.message, uid, actor, kind, market)
+            return
+        if op == "d" and len(parts) > 4:
+            kind = parts[2]
+            market = parts[3]
+            try:
+                days = int(parts[4])
+            except ValueError:
+                days = 0
+            if days < 2:
+                await self._streak_show_days(q.message, uid, actor, kind, market)
+                return
+            await self._streak_show_stocks(
+                q.message, uid, actor, kind, market, days, offset=0
+            )
+            return
+
     async def _streak_show_days(self, message, uid: str, actor: str, kind: str, market: str) -> None:
         from buy_streak import KIND_LABEL, MARKET_LABEL, load_snapshot
 
@@ -982,7 +1111,7 @@ class WayneTelegramBot:
             await self._delete_message(status)
             await message.reply_html(
                 f"連買名單讀取失敗：{html_escape(e)}",
-                reply_markup=self._streak_market_keyboard(),
+                reply_markup=self._streak_market_inline(kind),
                 disable_web_page_preview=True,
             )
             self._pending[actor] = f"fbuy:mkt:{kind}"
@@ -998,20 +1127,24 @@ class WayneTelegramBot:
         except Exception:
             as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else (as_of or "—")
         if not days:
-            await message.reply_html(
+            await self._streak_send_step(
+                message,
                 f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
                 f"截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
-                reply_markup=self._streak_market_keyboard(),
-                disable_web_page_preview=True,
+                inline=self._streak_market_inline(kind),
+                reply_kb=self._streak_market_keyboard(),
+                tray_hint="請改選上市／上櫃，或回主選單",
             )
             self._pending[actor] = f"fbuy:mkt:{kind}"
             return
-        await message.reply_html(
+        await self._streak_send_step(
+            message,
             f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-            "請點天數；名單是「剛好連買這麼多天」（不是以上）。點了其他數字會從鍵盤消失。",
-            reply_markup=self._streak_days_keyboard(days),
-            disable_web_page_preview=True,
+            "請點天數；名單是「剛好連買這麼多天」（不是以上）。",
+            inline=self._streak_days_inline(kind, market, days),
+            reply_kb=self._streak_days_keyboard(days),
+            tray_hint="也可點輸入區鍵盤上的天數",
         )
 
     async def _streak_show_stocks(
@@ -3495,6 +3628,9 @@ class WayneTelegramBot:
             return
         if data.startswith("rw:"):
             await self._remove_watch_clicked(q, data[3:].strip())
+            return
+        if data.startswith("fb:"):
+            await self._handle_buy_streak_callback(q, uid, data)
             return
         await q.answer()
         if data == "fw:s":
