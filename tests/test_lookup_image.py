@@ -33,6 +33,30 @@ class LookupImageTests(unittest.TestCase):
             out = render_decision_card_png(card, path)
             self.assertTrue(WayneTelegramBot._png_looks_ok(out))
 
+    def test_glance_caption_appends_sell_note(self):
+        from bot_servers import _glance_photo_caption
+
+        card = {
+            "sell_action": "直接減碼",
+            "sell_why": "不同步（最高價但非最高溫）",
+        }
+        out = _glance_photo_caption("網頁走勢", card)
+        self.assertIn("網頁走勢", out)
+        self.assertIn("紀律", out)
+        self.assertIn("直接減碼", out)
+        self.assertIn("最高價但非最高溫", out)
+        self.assertNotIn("買訊", out)
+
+    def test_glance_caption_silent_when_no_sell(self):
+        from bot_servers import _glance_photo_caption
+
+        self.assertEqual(_glance_photo_caption("當日K＋籌碼價量", {"sell_action": ""}), "當日K＋籌碼價量")
+        self.assertEqual(_glance_photo_caption("", None), "當日K＋籌碼價量")
+
+    def test_send_card_wires_glance_sell_caption(self):
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("_glance_photo_caption", src)
+
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("attempts = 2", src)
