@@ -114,6 +114,27 @@ def tw_session_phase(now=None) -> str:
     return "after"
 
 
+def overnight_list_heading(phase: str) -> tuple[str, str]:
+    """非盤中隔日沖標題／副標。盤中維持「盤中即時」。"""
+    if phase == "pre":
+        return (
+            "⚡ 隔日沖候選（開盤前預覽）",
+            "開盤前預覽：昨收強勢候選，供今日尾盤佈局參考（09:00 後再依盤中價複核）。"
+            "尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
+        )
+    if phase == "weekend":
+        return (
+            "⚡ 隔日沖候選（假日參考）",
+            "假日參考：上個交易日強勢收盤候選，不是叫你現在買。"
+            "明早開高觀察；未持倉僅供參考。",
+        )
+    return (
+        "⚡ 隔日沖候選（收盤後參考）",
+        "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
+        "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。",
+    )
+
+
 def daytrade_closed_message(phase: str) -> str:
     label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
     return (

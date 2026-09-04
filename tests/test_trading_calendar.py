@@ -206,3 +206,17 @@ def test_sector_rotation_title_uses_resolved_not_stale_as_of(tmp_path):
     now = datetime(2026, 9, 2, 17, 30, tzinfo=ZoneInfo("Asia/Taipei"))
     html = format_sector_rotation_html(str(db), "20260901", now=now)
     assert "2026/09/02（三）" in html
+
+
+def test_overnight_list_heading_not_intraday_after_hours():
+    from trading_calendar import overnight_list_heading
+
+    pre_t, pre_s = overnight_list_heading("pre")
+    assert "開盤前預覽" in pre_t
+    assert "盤中即時" not in pre_t
+    after_t, after_s = overnight_list_heading("after")
+    assert "收盤後參考" in after_t
+    assert "不是叫你再買" in after_s
+    week_t, week_s = overnight_list_heading("weekend")
+    assert "假日參考" in week_t
+    assert "不是叫你現在買" in week_s

@@ -2222,6 +2222,7 @@ class WayneTelegramBot:
         from trading_calendar import (
             daytrade_closed_message,
             is_tw_equity_session,
+            overnight_list_heading,
             tw_session_phase,
         )
 
@@ -2230,6 +2231,7 @@ class WayneTelegramBot:
         status = await message.reply_text(status_text)
         await self._enter_main_menu(message, uid)
         phase = tw_session_phase()
+        display_title = title
         effective_live_bucket = live_bucket
         effective_subtitle = subtitle
         if live_bucket == "daytrade" and not is_tw_equity_session():
@@ -2246,16 +2248,7 @@ class WayneTelegramBot:
             return
         if live_bucket == "overnight" and not is_tw_equity_session():
             effective_live_bucket = None
-            if phase == "pre":
-                effective_subtitle = (
-                    "開盤前預覽：昨收強勢候選，供今日尾盤佈局參考（09:00 後再依盤中價複核）。"
-                    "尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。"
-                )
-            else:
-                effective_subtitle = (
-                    "收盤後參考：今日強勢收盤候選，供明早開盤價差觀察。"
-                    "尾盤買進時段已過；若未持倉僅供觀察，不是叫你再買。"
-                )
+            display_title, effective_subtitle = overnight_list_heading(phase)
         try:
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
@@ -2280,14 +2273,14 @@ class WayneTelegramBot:
 
                     as_of_label = format_trading_date_zh(as_of)
                     await message.reply_html(
-                        f"<b>{title}</b>\n"
+                        f"<b>{display_title}</b>\n"
                         f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
                         "請按主選單「海選」執行後再查；會用盤中 MIS 現價複核。</i>",
                         reply_markup=self._reply_menu(),
                     )
                 else:
                     await message.reply_html(
-                        f"<b>{title}</b>\n"
+                        f"<b>{display_title}</b>\n"
                         f"<i>昨收掃描後此桶無候選，或盤中複核後無符合標的。</i>",
                         reply_markup=self._reply_menu(),
                     )
@@ -2295,7 +2288,7 @@ class WayneTelegramBot:
             await self._reply_trade_list(
                 message,
                 rows,
-                title=title,
+                title=display_title,
                 subtitle=effective_subtitle,
                 bucket_key=bucket_key,
                 topic=topic,
