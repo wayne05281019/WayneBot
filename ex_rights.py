@@ -443,13 +443,32 @@ def sync_ex_preview(db_path: str = None) -> Dict[str, Any]:
     return {"ok": True, "upsert": n, "rows": len(events)}
 
 
+def event_as_of_day(today: str = "") -> str:
+    """週末用上一個工作日當「最近一件」基準，否則週六查 2383 法說會空白。"""
+    day = ymd(today) or taipei_today_str()
+    try:
+        from trading_calendar import is_trading_weekday, last_weekday_on_or_before
+
+        if len(day) == 8 and not is_trading_weekday(day):
+            return last_weekday_on_or_before(day)
+    except Exception:
+        pass
+    return day
+
+
 def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> str:
     """股名旁空白處：每檔只寫最近一件官方事件（除權息／法說／股東會）。沒有官方列就空白。"""
     path = db_path or get_db_path()
     sid = str(stock_id or "").strip()
     if not sid:
         return ""
-    day = ymd(today) or taipei_today_str()
+    day = event_as_of_day(today)
+    try:
+        from company_events import ensure_events_loaded
+
+        ensure_events_loaded(path)
+    except Exception:
+        pass
     cands: List[Tuple[str, str]] = []
     try:
         conn = sqlite3.connect(path)

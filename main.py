@@ -652,10 +652,30 @@ def run_web():
             if any(int(v or 0) for v in stats.values()):
                 logger.info("啟動清假資料：%s", stats)
             logger.info("背景：資料庫索引完成")
+            try:
+                from company_events import ensure_events_loaded
+
+                n_ev = ensure_events_loaded(get_db_path())
+                logger.info("公司行事建檔 %s 列", n_ev)
+            except Exception:
+                logger.exception("公司行事建檔失敗")
         except Exception:
             logger.exception("背景資料庫索引失敗")
 
     threading.Thread(target=_db_index_background, daemon=True, name="db-index").start()
+
+    def _warm_company_events():
+        """不要等索引延遲：#183 合進去後表是空的，查 2383 會沒有「今日法說」。"""
+        try:
+            time.sleep(8)
+            from company_events import ensure_events_loaded
+
+            n_ev = ensure_events_loaded(get_db_path())
+            logger.info("公司行事建檔 %s 列", n_ev)
+        except Exception:
+            logger.exception("公司行事建檔失敗")
+
+    threading.Thread(target=_warm_company_events, daemon=True, name="company-events").start()
     start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()

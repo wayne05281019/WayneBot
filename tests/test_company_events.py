@@ -92,3 +92,68 @@ def test_keyword_only_material_does_not_create_ir(tmp_path):
     )
     assert n == 0
     assert nearest_event_label("2303", db, today="20260904") == ""
+
+
+def test_pytest_does_not_autosync_empty_table(tmp_path, monkeypatch):
+    from company_events import ensure_events_loaded, reset_load_state_for_tests
+
+    db = str(tmp_path / "empty.db")
+    ensure_core_schema(db)
+    reset_load_state_for_tests()
+    called = {"n": 0}
+
+    def boom(_db=None):
+        called["n"] += 1
+        raise AssertionError("pytest 不該打 OpenAPI")
+
+    monkeypatch.setattr("company_events.sync_company_events", boom)
+    assert nearest_event_label("2383", db, today="20260904") == ""
+    assert called["n"] == 0
+    assert ensure_events_loaded(db) == 0
+
+
+def test_empty_table_autosync_then_label(tmp_path, monkeypatch):
+    from company_events import ensure_events_loaded, ingest_ir_from_material, reset_load_state_for_tests
+
+    db = str(tmp_path / "auto.db")
+    ensure_core_schema(db)
+    reset_load_state_for_tests()
+    monkeypatch.setenv("WAYNE_EVENTS_AUTOSYNC", "1")
+
+    def fake_sync(path=None):
+        ingest_ir_from_material(
+            [{"公司代號": "2383", "主旨及說明": "召開法人說明會之日期：115/09/04"}],
+            path or db,
+        )
+        return {"meetings": 0, "ir": 1}
+
+    monkeypatch.setattr("company_events.sync_company_events", fake_sync)
+    assert ensure_events_loaded(db) == 1
+    assert nearest_event_label("2383", db, today="20260904") == "今日法說"
+    # 第二次不重抓
+    monkeypatch.setattr("company_events.sync_company_events", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("不該再同步")))
+    assert ensure_events_loaded(db) == 1
+
+
+def test_weekend_keeps_friday_ir_and_monday_drops_it(tmp_path):
+    db = str(tmp_path / "wk.db")
+    ensure_core_schema(db)
+    ingest_ir_from_material(
+        [{"公司代號": "2383", "主旨及說明": "召開法人說明會之日期：115/09/04"}],
+        db,
+    )
+    ingest_shareholder_meetings(
+        [
+            {
+                "公司代號": "1101",
+                "股東常(臨時)會": "臨時會",
+                "開會日期": "1151013",
+                "開會地點": "台北",
+            }
+        ],
+        db,
+    )
+    assert nearest_event_label("2383", db, today="20260905") == "今日法說"
+    assert nearest_event_label("2383", db, today="20260906") == "今日法說"
+    assert nearest_event_label("2383", db, today="20260907") == ""
+    assert nearest_event_label("1101", db, today="20260905") == "39天後臨時會"

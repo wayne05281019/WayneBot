@@ -10,6 +10,8 @@ import logging
 import os
 import re
 import sqlite3
+import threading
+import time
 from datetime import date, datetime
 from typing import Any
 from urllib.request import Request, urlopen
@@ -22,6 +24,10 @@ except Exception:
         return os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
 
 log = logging.getLogger("wayne.events")
+
+_load_lock = threading.Lock()
+_loaded = False
+_next_try = 0.0
 
 TWSE_MEETING = "https://openapi.twse.com.tw/v1/opendata/t187ap41_L"
 TWSE_MATERIAL = "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
@@ -187,6 +193,67 @@ def sync_company_events(db_path: str | None = None) -> dict[str, int]:
         "meetings": sync_shareholder_meetings(db_path),
         "ir": sync_ir_dates_from_material(db_path),
     }
+
+
+def reset_load_state_for_tests() -> None:
+    global _loaded, _next_try
+    _loaded = False
+    _next_try = 0.0
+
+
+def event_row_count(db_path: str | None = None) -> int:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM company_events").fetchone()[0]
+        return int(n or 0)
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()
+
+
+def _autosync_enabled() -> bool:
+    flag = str(os.getenv("WAYNE_EVENTS_AUTOSYNC") or "").strip().lower()
+    if flag in ("0", "false", "no"):
+        return False
+    if flag in ("1", "true", "yes"):
+        return True
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    return True
+
+
+def ensure_events_loaded(db_path: str | None = None) -> int:
+    """部署後表是空的才抓 OpenAPI。已有列或 pytest 預設不抓，避免每檔查股打爆。"""
+    global _loaded, _next_try
+    path = db_path or get_db_path()
+    if _loaded:
+        return event_row_count(path)
+    if not _autosync_enabled():
+        return event_row_count(path)
+    now = time.time()
+    if now < _next_try:
+        return event_row_count(path)
+    with _load_lock:
+        if _loaded:
+            return event_row_count(path)
+        ensure_schema(path)
+        n = event_row_count(path)
+        if n > 0:
+            _loaded = True
+            return n
+        log.info("company_events 空表，同步股東會／法說")
+        try:
+            sync_company_events(path)
+        except Exception:
+            log.warning("company_events 同步失敗", exc_info=True)
+        n = event_row_count(path)
+        if n > 0:
+            _loaded = True
+        else:
+            _next_try = time.time() + 300
+        return n
 
 
 def nearest_company_event(

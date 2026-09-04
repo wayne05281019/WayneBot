@@ -2143,7 +2143,16 @@ class WayneTelegramBot:
     ):
         from screening_engine import _stock_card_html
         from trade_live import apply_trade_live
+        from universe import is_screen_equity
 
+        rows = [
+            r
+            for r in list(rows)
+            if is_screen_equity(
+                str(r.get("code") or r.get("stock_id") or ""),
+                str(r.get("name") or r.get("stock_name") or ""),
+            )
+        ]
         pre_live = len(rows)
         raw_rows = list(rows)
         live_skipped = False
