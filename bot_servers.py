@@ -348,8 +348,9 @@ MENU_BTN_NEXT_PAGE = "下一批"
 MENU_BTN_PREV_PAGE = "上一批"
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
 # v6：進度／暫態泡泡也不掛 ReplyKeyboard（刪進度時鍵盤會一起沒）。
-# v7：次排「連買區」取代「選單」（疊在鍵盤熱修之上）。
-MENU_LAYOUT_VERSION = "7"
+# v7：次排「連買區」取代「選單」。
+# v8：版面過期必「新發」帶 ReplyKeyboard 的訊息（edit 無法換兩排按鈕）。
+MENU_LAYOUT_VERSION = "8"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -644,20 +645,14 @@ class WayneTelegramBot:
     async def _pin_reply_menu(self, message) -> None:
         """把兩排主選單釘在輸入框區；訊息必須留下，刪掉會讓許多客戶端把鍵盤一起收掉。
 
-        同一 actor 只留一則釘選訊息（能 edit 就 edit），避免海選後一直堆「·」。
+        注意：Telegram editMessageText 只能改文字／Inline，不能更新 ReplyKeyboard。
+        要換兩排按鈕內容，一定要新發一則帶 reply_markup 的訊息。
         """
         actor = self._actor_key(message)
         prev = getattr(self, "_menu_pin_msgs", None)
         if prev is None:
             self._menu_pin_msgs = {}
             prev = self._menu_pin_msgs
-        pinned = prev.get(actor)
-        if pinned is not None:
-            try:
-                await pinned.edit_text("兩排主選單在輸入框右側 ⌨️。")
-                return
-            except Exception:
-                self._menu_pin_msgs.pop(actor, None)
         for text in ("兩排主選單在輸入框右側 ⌨️。", "·"):
             try:
                 pin = await message.reply_text(text, reply_markup=self._reply_menu())
@@ -701,18 +696,22 @@ class WayneTelegramBot:
         set_cached_data(f"tg_menu_layout:{uid}", "menu", "0", db_path=self.db_path)
 
     async def _refresh_reply_menu(self, message, *, uid: str = "", silent: bool = False):
-        """重掛兩排主選單。絕不送 Remove、也不刪帶鍵盤的訊息（刪了鍵盤會跟著消失）。"""
+        """重掛兩排主選單。絕不送 Remove、也不刪帶鍵盤的訊息（刪了鍵盤會跟著消失）。
+
+        silent 也必須新發帶 ReplyKeyboard 的訊息——edit 換不了按鈕（舊「選單」不會變「連買區」）。
+        """
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
-        if silent:
-            await self._pin_reply_menu(message)
-            if uid:
-                self._mark_menu_layout_ok(uid)
-            return
+        text = (
+            "兩排已更新：次排「連買區」＋「大盤」。點輸入框右側 ⌨️。"
+            if silent
+            else "主選單已掛上（輸入框右側 ⌨️ 兩排；次排「連買區」＋最右「大盤」）。"
+        )
         try:
-            await message.reply_text(
-                "主選單已掛上（輸入框右側 ⌨️ 兩排；次排「連買區」＋最右「大盤」）。",
-                reply_markup=self._reply_menu(),
-            )
+            pin = await message.reply_text(text, reply_markup=self._reply_menu())
+            actor = self._actor_key(message, uid=uid)
+            if getattr(self, "_menu_pin_msgs", None) is None:
+                self._menu_pin_msgs = {}
+            self._menu_pin_msgs[actor] = pin
         except Exception:
             logger.exception("掛上新選單失敗")
             await self._pin_reply_menu(message)
