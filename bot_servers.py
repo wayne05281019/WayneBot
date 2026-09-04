@@ -3119,6 +3119,12 @@ class WayneTelegramBot:
                     code, lookback=20, merge_live=True, live_quote=live_rt
                 )
                 if isinstance(card, dict):
+                    try:
+                        from broker_points import attach_main_cost
+
+                        attach_main_cost(card, self.db_path, fetch=True)
+                    except Exception:
+                        pass
                     card.pop("_ohlc", None)
                 return card
 
@@ -3460,6 +3466,13 @@ class WayneTelegramBot:
                 card = engine.get_decision_card(
                     code, lookback=20, merge_live=True, live_quote=live_rt
                 )
+                if isinstance(card, dict):
+                    try:
+                        from broker_points import attach_main_cost
+
+                        attach_main_cost(card, self.db_path, fetch=True)
+                    except Exception:
+                        pass
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 

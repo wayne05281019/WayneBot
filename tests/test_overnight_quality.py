@@ -128,6 +128,7 @@ def test_twt48u_parse_and_nearest_event(tmp_path):
     assert nearest_event_label("9999", db, today="20260904") == ""
     assert format_next_event_label("權息", "20260904", "20260904") == "今日除權息"
     assert format_next_event_label("息", "20260903", "20260904") == ""
+    assert format_next_event_label("法說", "20260911", "20260904") == "7天後法說"
 
 
 def test_audit_latest_ex_ignores_preview_rows(tmp_path):

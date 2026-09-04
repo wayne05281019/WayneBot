@@ -279,6 +279,13 @@ class MainRunner:
                 logger.info("除權息預告 TWT48U：%s", preview)
             except Exception as e_prev:
                 logger.warning("除權息預告略過：%s", e_prev)
+            try:
+                from company_events import sync_company_events
+
+                ev = sync_company_events(self.db_path)
+                logger.info("股東會／法說日期建檔：%s", ev)
+            except Exception as e_ev:
+                logger.warning("公司行事建檔略過：%s", e_ev)
         except Exception as e:
             logger.error(f"除權息同步失敗: {e}", exc_info=True)
         try:
