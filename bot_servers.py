@@ -1141,10 +1141,12 @@ class WayneTelegramBot:
             message,
             f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-            "請點天數；名單是「剛好連買這麼多天」（不是以上）。",
+            "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
+            f"<b>可選天數</b>：{' '.join(str(n) for n in days)}",
             inline=self._streak_days_inline(kind, market, days),
             reply_kb=self._streak_days_keyboard(days),
-            tray_hint="也可點輸入區鍵盤上的天數",
+            tray_hint=f"可選天數：{' '.join(str(n) for n in days[:12])}"
+            + (" …" if len(days) > 12 else ""),
         )
 
     async def _streak_show_stocks(
