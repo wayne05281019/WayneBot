@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """查股出圖：PNG 驗證與產圖順序。"""
+import inspect
 import os
 import tempfile
 import unittest
@@ -31,6 +32,17 @@ class LookupImageTests(unittest.TestCase):
             path = os.path.join(td, "card.png")
             out = render_decision_card_png(card, path)
             self.assertTrue(WayneTelegramBot._png_looks_ok(out))
+
+    def test_lookup_png_timeout_matches_chart(self):
+        """介紹圖／決策卡不得比導航圖更短，否則醒機會只送到 1/3 張。"""
+        import bot_servers
+
+        self.assertGreaterEqual(bot_servers._LOOKUP_PNG_TIMEOUT, 120.0)
+        self.assertGreaterEqual(bot_servers._LOOKUP_PNG_TIMEOUT, bot_servers._CHART_RENDER_TIMEOUT)
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("_LOOKUP_PNG_TIMEOUT", src)
+        self.assertNotIn("60.0, cap_links", src)
+        self.assertNotIn('60.0, "高低決策卡"', src)
 
     def test_chart_progress_mentions_glance_first(self):
         txt = WayneTelegramBot._chart_progress_text(3, current="glance")
