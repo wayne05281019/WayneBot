@@ -2167,11 +2167,25 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if note:
         ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
         fy -= 3.35
-    fund_lines = [f"{a}　{b}" for a, b in fund_rows]
-    f_fund = min([fit_fs(line, 12, row_w) for line in fund_lines] or [12])
-    for line in fund_lines:
+    sell_line = ""
+    other_rows = []
+    for a, b in fund_rows:
+        if str(a) == "紀律" and str(b or "").strip():
+            sell_line = f"{a}　{b}"
+        else:
+            other_rows.append(f"{a}　{b}")
+    f_fund = min([fit_fs(line, 12, row_w) for line in other_rows] or [12])
+    for line in other_rows:
         ink(4.8, fy, line, f_fund, "#111111")
         fy -= 3.15
+    if sell_line:
+        # 季報那列很長會把共用字級壓到 8pt；紀律單獨用熱色大字，縮圖才讀得到。
+        ink(
+            4.8, fy, sell_line,
+            max(11.5, fit_fs(sell_line, 13, row_w, floor=11.0)),
+            "#AD1457",
+        )
+        fy -= 3.25
     try:
         note2 = pink_warning_note(card)
         if note2:

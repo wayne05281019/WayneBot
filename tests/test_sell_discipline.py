@@ -135,6 +135,8 @@ def test_html_and_glance_wire_sell_notes():
     assert "協助判斷" in html_src
     png_src = inspect.getsource(render_first_glance_png)
     assert "sell_note_short" in png_src
+    assert 'str(a) == "紀律"' in png_src
+    assert '"#AD1457"' in png_src
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
     assert "紀律" in card_src
@@ -271,6 +273,68 @@ def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, mon
     joined = "\n".join(seen)
     assert "紅箭頭只是觀察" in joined
     assert "紀律　" not in joined
+
+
+def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
+    """季報長句不可把介紹圖紀律列壓成 8pt。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+
+    from wayne_navigator import render_first_glance_png
+
+    monkeypatch.setattr(
+        "fundamentals.glance_fundamentals_plain",
+        lambda *_a, **_k: [
+            (
+                "季報",
+                "2026Q2　營收 999.9億　毛利 111.1億　毛利率 12.3%　營益率 8.7%　EPS 12.34",
+            )
+        ],
+    )
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    card = _mini_card_for_png(
+        sell_action="直接減碼",
+        sell_why="不同步（最高價但非最高溫）",
+        dist_l120=80.0,
+        dist_l240=90.0,
+        dist_l480=100.0,
+        vol_rank=30,
+        vol_rank_60=20,
+        vol_rank_480=10,
+        temp_c="81.1 °C",
+        prev_close=130.0,
+        open=134.0,
+        high=143.0,
+        low=129.5,
+        k20_high_streak=0,
+    )
+    tape = {
+        "last": {},
+        "move": {},
+        "volume": {},
+        "foreign": {},
+        "trust": {},
+        "dealer": {},
+        "three": {},
+        "inst_pct": 0,
+    }
+    out = tmp_path / "glance_sell.png"
+    path = render_first_glance_png("3441", card, tape, str(out))
+    assert path and out.is_file()
+    joined = "\n".join(seen)
+    assert "紀律　直接減碼（最高價但非最高溫）" in joined
 
 
 @pytest.mark.production_db
