@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional, Tuple
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
+# 介紹圖／決策卡與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
+_LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
 
 from config import get_charts_dir, get_db_path, get_telegram_config, skip_chart_warmup
 from wayne_db import (
@@ -3505,8 +3507,8 @@ class WayneTelegramBot:
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
             render_plan = [
-                ("glance", _render_glance, 60.0, cap_links or "當日K＋籌碼價量", None),
-                ("card", lambda: render_decision_card_png(card, card_path_f), 60.0, "高低決策卡", None),
+                ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, cap_links or "當日K＋籌碼價量", None),
+                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, "高低決策卡", None),
                 (
                     "chart",
                     _render_chart,
