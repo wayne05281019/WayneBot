@@ -60,6 +60,25 @@ def html_escape(val) -> str:
         .replace(">", "&gt;")
     )
 
+
+def _glance_photo_caption(base: str, card: dict | None) -> str:
+    """介紹圖說明：有如何賣就寫在第一張圖底下，縮圖也能看到。"""
+    cap = str(base or "").strip() or "當日K＋籌碼價量"
+    if not card:
+        return cap
+    try:
+        from sell_discipline import attach_sell, sell_note_short
+
+        if not str(card.get("sell_action") or "").strip():
+            attach_sell(card)
+        short = sell_note_short(card)
+    except Exception:
+        return cap
+    if not short:
+        return cap
+    return f"{cap}\n紀律　{html_escape(short)}"
+
+
 try:
     from telegram import (
         Update,
@@ -3526,8 +3545,9 @@ class WayneTelegramBot:
             def _render_glance():
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
+            glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
             render_plan = [
-                ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, cap_links or "當日K＋籌碼價量", None),
+                ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, "高低決策卡", None),
                 (
                     "chart",
