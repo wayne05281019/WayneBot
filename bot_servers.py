@@ -2985,7 +2985,8 @@ class WayneTelegramBot:
             glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
             chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
-
+            ohlc = card.get("_ohlc")
+            card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
 
             def _render_chart():
