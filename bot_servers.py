@@ -2141,21 +2141,11 @@ class WayneTelegramBot:
         if not args:
             await update.message.reply_text("用法：/fund 2330")
             return
-        from fundamentals import format_fundamentals_html, sync_fundamentals
+        from fundamentals import format_fundamentals_html
 
+        # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
         code = args[0].strip()
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-        if "尚無" in html:
-            sync_msg = await self._transient_status(
-                update.message, "尚無快取，正在同步官方月營收／季報…"
-            )
-            try:
-                await asyncio.to_thread(sync_fundamentals, self.db_path)
-            except Exception as e:
-                logger.error("fund sync: %s", e)
-            finally:
-                await self._delete_message(sync_msg)
-            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2393,15 +2383,9 @@ class WayneTelegramBot:
                 await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
             return True
         if pending == "fund":
-            from fundamentals import format_fundamentals_html, sync_fundamentals
+            from fundamentals import format_fundamentals_html
 
             html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-            if "尚無" in html:
-                try:
-                    await asyncio.to_thread(sync_fundamentals, self.db_path)
-                except Exception:
-                    pass
-                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return True
         if pending == "industry":
@@ -3010,8 +2994,8 @@ class WayneTelegramBot:
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
-            album_items: list[tuple[str, str, str, object]] = []
 
+            # 畫完一張就先送，不要等三張齊了才出第一張（相簿會讓人以為查股卡住）。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 path = ""
                 attempts = 2 if kind == "chart" else 1
@@ -3044,28 +3028,14 @@ class WayneTelegramBot:
                 if not path:
                     gc.collect()
                     continue
-                album_items.append((kind, path, caption, markup))
-                gc.collect()
-
-            album_ok = False
-            if len(album_items) >= 2:
-                album_ok = await self._send_lookup_album(message, album_items)
-                if album_ok:
+                ok = await send_photo(path, caption, markup, kind=kind)
+                if ok and markup is hub:
+                    hub_on = True
+                if ok:
                     sent_any = True
-                    sent_kinds = [k for k, *_ in album_items]
+                    sent_kinds.append(kind)
                     await _clear_wait()
-                    if not lookup_faded:
-                        lookup_faded = True
-                        await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
-            if not album_ok:
-                for kind, path, caption, markup in album_items:
-                    ok = await send_photo(path, caption, markup, kind=kind)
-                    if ok and markup is hub:
-                        hub_on = True
-                    if ok:
-                        sent_any = True
-                        sent_kinds.append(kind)
-                        await _clear_wait()
+                gc.collect()
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
@@ -3255,16 +3225,10 @@ class WayneTelegramBot:
                 await q.message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return
         if data.startswith("f:"):
-            from fundamentals import format_fundamentals_html, sync_fundamentals
+            from fundamentals import format_fundamentals_html
 
             code = data[2:].strip()
             html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-            if "尚無" in html:
-                try:
-                    await asyncio.to_thread(sync_fundamentals, self.db_path)
-                except Exception:
-                    pass
-                html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
             await q.message.reply_html(
                 html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
             )

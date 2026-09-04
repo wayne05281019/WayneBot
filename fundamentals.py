@@ -372,7 +372,7 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     m = get_latest_monthly(path, sid)
     q = get_latest_income(path, sid)
     if not m and not q:
-        return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（請先跑盤後流水線或 /fund 會自動同步）。"
+        return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（等盤後流水線寫入；按鈕路徑不再現場全市場同步）。"
     name = (m or q or {}).get("stock_name") or sid
     from tg_layout import title_line, kv_compact, section, join_sections
 
