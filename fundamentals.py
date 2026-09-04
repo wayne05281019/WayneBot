@@ -328,8 +328,61 @@ def prior_income(db_path: str, latest: Dict[str, Any]) -> Optional[Dict[str, Any
     return dict(row) if row else None
 
 
+def _yi_from_thousand(amount_k: float) -> float:
+    """官方金額單位是千元 → 億元。1 億元 = 100_000 千元。"""
+    return float(amount_k or 0) / 100_000.0
+
+
+def format_yi(amount_k: float, *, signed: bool = False, unit: bool = True) -> str:
+    """千元金額改顯示為億元（例：1,146,434 千元 → 11.46億元）。"""
+    v = _yi_from_thousand(amount_k)
+    suffix = "億元" if unit else "億"
+    if signed:
+        return f"{v:+.2f}{suffix}"
+    return f"{v:.2f}{suffix}"
+
+
+def _mom_delta_k(m: Dict[str, Any]) -> float:
+    rev = float(m.get("revenue") or 0)
+    prev = float(m.get("revenue_prev_month") or 0)
+    if prev > 0:
+        return rev - prev
+    pct = float(m.get("mom_pct") or 0)
+    if abs(pct + 100.0) < 1e-9:
+        return 0.0
+    if pct:
+        return rev - rev / (1.0 + pct / 100.0)
+    return 0.0
+
+
+def _yoy_delta_k(m: Dict[str, Any]) -> float:
+    rev = float(m.get("revenue") or 0)
+    prev = float(m.get("revenue_prev_year") or 0)
+    if prev > 0:
+        return rev - prev
+    pct = float(m.get("yoy_pct") or 0)
+    if abs(pct + 100.0) < 1e-9:
+        return 0.0
+    if pct:
+        return rev - rev / (1.0 + pct / 100.0)
+    return 0.0
+
+
+def _ytd_yoy_delta_k(m: Dict[str, Any]) -> float:
+    ytd = float(m.get("ytd_revenue") or 0)
+    prev = float(m.get("ytd_prev_year") or 0)
+    if prev > 0:
+        return ytd - prev
+    pct = float(m.get("ytd_yoy_pct") or 0)
+    if abs(pct + 100.0) < 1e-9:
+        return 0.0
+    if pct:
+        return ytd - ytd / (1.0 + pct / 100.0)
+    return 0.0
+
+
 def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
-    """[(標籤, 值), ...] 給第一眼圖／文字共用。"""
+    """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元，不再顯示 MoM/YoY％。"""
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
     m = get_latest_monthly(path, sid)
@@ -341,17 +394,26 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.append(
             (
                 "月營收",
-                f"{label}　YoY {float(m['yoy_pct']):+.1f}%　MoM {float(m['mom_pct']):+.1f}%",
+                f"{label}　{format_yi(m.get('revenue') or 0)}　"
+                f"較上月 {format_yi(_mom_delta_k(m), signed=True, unit=False)}　"
+                f"較去年 {format_yi(_yoy_delta_k(m), signed=True, unit=False)}",
             )
         )
-        rows.append(("累計YoY", f"{float(m['ytd_yoy_pct']):+.1f}%"))
+        rows.append(
+            (
+                "較去年累計",
+                format_yi(_ytd_yoy_delta_k(m), signed=True),
+            )
+        )
     if q:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
         rows.append(
             (
                 "季報",
-                f"{q['year']}Q{q['season']}　毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
+                f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}　"
+                f"毛利 {format_yi(q.get('gross_profit') or 0)}　"
+                f"毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
             )
         )
     if not rows:
@@ -360,7 +422,7 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
 
 
 def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
-    """第一眼用的短基本面：月營收 YoY/MoM、季報毛利率／EPS。"""
+    """第一眼用的短基本面：月營收／增減（億元）、季報營收毛利。"""
     from tg_layout import kv_compact
 
     return [kv_compact(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
@@ -383,10 +445,10 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         blocks.append(
             section(
                 kv_compact("期間", label),
-                kv_compact("月營收", f"{m['revenue']:,.0f} 千元"),
-                kv_compact("MoM", f"{m['mom_pct']:+.1f}%"),
-                kv_compact("YoY", f"{m['yoy_pct']:+.1f}%"),
-                kv_compact("累計YoY", f"{m['ytd_yoy_pct']:+.1f}%"),
+                kv_compact("月營收", format_yi(m.get("revenue") or 0)),
+                kv_compact("較上月", format_yi(_mom_delta_k(m), signed=True)),
+                kv_compact("較去年同月", format_yi(_yoy_delta_k(m), signed=True)),
+                kv_compact("較去年累計", format_yi(_ytd_yoy_delta_k(m), signed=True)),
             )
         )
     if q:
@@ -398,12 +460,12 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
         blocks.append(
             section(
                 kv_compact("季報", f"{q['year']}Q{q['season']}"),
-                kv_compact("營收", f"{q['revenue']:,.0f} 千元"),
-                kv_compact("毛利", f"{q['gross_profit']:,.0f} 千元"),
+                kv_compact("營收", format_yi(q.get("revenue") or 0)),
+                kv_compact("毛利", format_yi(q.get("gross_profit") or 0)),
                 kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
                 kv_compact("營益率", f"{(q['operating_income'] / q['revenue'] * 100.0) if q.get('revenue') else 0:.1f}%"),
                 kv_compact("EPS", f"{q['eps']:.2f}"),
-                kv_compact("稅後淨利", f"{q['net_income']:,.0f} 千元"),
+                kv_compact("稅後淨利", format_yi(q.get("net_income") or 0)),
             )
         )
     try:
