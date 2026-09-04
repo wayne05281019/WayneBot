@@ -433,6 +433,8 @@ def persist_ai_fill(
     sid = str(stock_id or "").strip()
     if not as_of or not sid or float(price or 0) <= 0 or int(shares or 0) <= 0:
         return
+    if action == "BUY" and not _pick_is_equity(sid, stock_name):
+        return
     ensure_ai_fills_table(db_path)
     bucket = str(bucket or bucket_from_reason(reason) or "").strip()
     if action == "SELL" and not bucket:
@@ -560,7 +562,7 @@ def _ai_fill_stats(db_path: str, limit_days: int = 20, user_id: Optional[str] = 
         if user_id:
             rows = conn.execute(
                 f"""
-                SELECT next_pct FROM ai_fills
+                SELECT stock_id, stock_name, next_pct FROM ai_fills
                 WHERE user_id=? AND bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
                 """,
                 (str(user_id), key, *days),
@@ -568,17 +570,18 @@ def _ai_fill_stats(db_path: str, limit_days: int = 20, user_id: Optional[str] = 
         else:
             rows = conn.execute(
                 f"""
-                SELECT next_pct FROM ai_fills
+                SELECT stock_id, stock_name, next_pct FROM ai_fills
                 WHERE bucket=? AND action='BUY' AND next_pct IS NOT NULL AND as_of IN ({qmarks})
                 """,
                 (key, *days),
             ).fetchall()
+        rows = [r for r in rows if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
         n = len(rows)
         if not n:
             out.append((key, 0, 0.0, 0.0))
             continue
-        avg = sum(float(r[0]) for r in rows) / n
-        hits = sum(1 for r in rows if float(r[0]) > 0)
+        avg = sum(float(r[2]) for r in rows) / n
+        hits = sum(1 for r in rows if float(r[2]) > 0)
         out.append((key, n, avg, hits / n))
     conn.close()
     return out
@@ -590,33 +593,27 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
     uid = str(user_id or "wayne_ai")
     ensure_ai_fills_table(db_path)
     conn = sqlite3.connect(db_path)
-    agg = conn.execute(
-        """
-        SELECT COUNT(*), AVG(next_pct),
-               SUM(CASE WHEN next_pct > 0 THEN 1 ELSE 0 END)
-        FROM ai_fills WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
-        """,
-        (uid,),
-    ).fetchone()
-    sample = conn.execute(
+    fills = conn.execute(
         """
         SELECT stock_id, stock_name, next_pct, bucket, as_of
         FROM ai_fills
         WHERE user_id=? AND action='BUY' AND next_pct IS NOT NULL
-        ORDER BY id DESC LIMIT 6
+        ORDER BY id DESC
         """,
         (uid,),
     ).fetchall()
     conn.close()
-    n = int(agg[0] or 0) if agg else 0
+    fills = [r for r in fills if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
+    n = len(fills)
     if n <= 0:
         return (
             "<b>AI 成交復盤</b>\n"
             "還沒有「模擬買進的隔一日收盤」。盤後日 K 齊了會自動對帳，用來調哪類少買、單筆多大。"
         )
-    avg = float(agg[1] or 0)
-    hits = int(agg[2] or 0)
+    avg = sum(float(r[2]) for r in fills) / n
+    hits = sum(1 for r in fills if float(r[2]) > 0)
     wr = hits / n if n else 0.0
+    sample = fills[:6]
     labels = dict(BUCKETS)
     lines = [
         "<b>AI 成交復盤</b>",

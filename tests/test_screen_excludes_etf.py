@@ -185,6 +185,80 @@ class ScreenExcludesEtfTests(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_ai_fill_stats_and_persist_skip_etf(self):
+        from screen_review import (
+            _ai_fill_stats,
+            format_ai_review_html,
+            persist_ai_fill,
+        )
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            persist_ai_fill(
+                path,
+                as_of="20260901",
+                stock_id="00892",
+                action="BUY",
+                price=20.0,
+                shares=1000,
+                stock_name="富邦台灣半導體",
+                bucket="overnight",
+            )
+            persist_ai_fill(
+                path,
+                as_of="20260901",
+                stock_id="2330",
+                action="BUY",
+                price=100.0,
+                shares=1000,
+                stock_name="台積電",
+                bucket="leave_zero",
+            )
+            conn = sqlite3.connect(path)
+            ids = [r[0] for r in conn.execute("SELECT stock_id FROM ai_fills")]
+            self.assertEqual(ids, ["2330"])
+            conn.execute(
+                """
+                INSERT INTO ai_fills(
+                    user_id, as_of, stock_id, stock_name, action, price, shares, amount,
+                    reason, bucket, next_date, next_close, next_pct, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    "wayne_ai",
+                    "20260901",
+                    "00892",
+                    "富邦台灣半導體",
+                    "BUY",
+                    20,
+                    1000,
+                    20000,
+                    "",
+                    "overnight",
+                    "20260902",
+                    24,
+                    20.0,
+                    "t",
+                ),
+            )
+            conn.execute(
+                "UPDATE ai_fills SET next_date='20260902', next_close=102, next_pct=2.0 WHERE stock_id='2330'"
+            )
+            conn.commit()
+            conn.close()
+            stats = {k: (n, avg) for k, n, avg, _h in _ai_fill_stats(path, user_id="wayne_ai")}
+            self.assertEqual(stats["overnight"][0], 0)
+            self.assertEqual(stats["leave_zero"][0], 1)
+            self.assertAlmostEqual(stats["leave_zero"][1], 2.0, places=1)
+            html = format_ai_review_html(path)
+            self.assertIn("2330", html)
+            self.assertNotIn("00892", html)
+            self.assertNotIn("富邦台灣半導體", html)
+        finally:
+            os.remove(path)
+
 
 if __name__ == "__main__":
     unittest.main()
