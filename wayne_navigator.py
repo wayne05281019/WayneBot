@@ -1513,7 +1513,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
     gap = 1.35
     badge_h, badge_gap = 3.05, 0.85
-    stance_h = 4.6
+    sell_sub = ""
+    try:
+        from sell_discipline import sell_note_short
+
+        sell_sub = sell_note_short(card)
+    except Exception:
+        sell_sub = ""
+    stance_h = 5.2 if sell_sub else 4.6
 
     fig_w = 7.1
     badges = []
@@ -1673,17 +1680,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             bx += bw + 1.7
         by -= badge_h + badge_gap
 
-    # 今日態度：按表，不是下單、不抄紅箭頭。有如何賣就改第二行，決策卡縮圖也能看到。
+    # 今日態度：按表，不是下單、不抄紅箭頭。有如何賣就改第二行並加大字，縮圖也能讀。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
     stance_txt = str(card.get("stance") or "等待・按表操課")
-    sell_sub = ""
-    try:
-        from sell_discipline import sell_note_short
-
-        sell_sub = sell_note_short(card)
-    except Exception:
-        sell_sub = ""
     if kind == "avoid" or str(card.get("sell_action") or "") == "直接減碼":
         s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
     elif kind == "watch":
@@ -1695,7 +1695,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             fontproperties=_fp(14.5, "heavy"), color=s_ink, va="center", zorder=4)
     sub = f"紀律　{sell_sub}　不是買訊" if sell_sub else "按表操課・不是下單指令　紅箭頭只是觀察"
     ax.text(pad_x + 3.2, y + stance_h / 2 - 1.15, sub,
-            fontproperties=_fp(9.4), color=C["ink_soft"], va="center", zorder=4)
+            fontproperties=_fp(11.0 if sell_sub else 9.4), color=C["ink_soft"], va="center", zorder=4)
 
     # 高點
     y -= gap + hi_pane_h
