@@ -47,8 +47,12 @@ class CardDataAccuracyTests(unittest.TestCase):
 
     @pytest.mark.production_db
     def test_2454_live_headline_matches_carybot(self):
-        """盤中 MIS 併入後：4320 / +0.12% / 37.1%（CaryBot 9/2 截圖）。"""
+        """16:30 後官方列不可被 MIS 蓋掉；獲利跟 60 曆日低自洽。
+
+        Cary 9/2 盤中 4320／37.1% 不當收盤驗收。盤中覆寫見 ``append_live_bar`` 單測。
+        """
         db = get_db_path()
+        import sqlite3
         from unittest.mock import patch
 
         from wayne_navigator import NavigatorEngine
@@ -65,13 +69,24 @@ class CardDataAccuracyTests(unittest.TestCase):
             "yesterday_close": 4314.82,
             "update_time": "12:00:00",
         }
-        with patch("live_quote.fetch_mis_quote", return_value=rt), patch(
-            "live_quote.is_live_merge_window", return_value=True
-        ):
+        with patch("live_quote.fetch_lookup_quote", return_value=rt), patch(
+            "live_quote.fetch_mis_quote", return_value=rt
+        ), patch("live_quote.is_live_merge_window", return_value=True):
             card = NavigatorEngine(db).get_decision_card("2454", merge_live=True)
-        self.assertAlmostEqual(float(card["close"]), 4320.0, places=0)
-        self.assertAlmostEqual(float(card["change_pct"]), 0.12, places=2)
-        self.assertAlmostEqual(float(card["gain_pct"]), 37.1, places=1)
+        conn = sqlite3.connect(db)
+        official = conn.execute(
+            """
+            SELECT close FROM daily_quotes
+            WHERE stock_id='2454' ORDER BY replace(date,'-','') DESC LIMIT 1
+            """
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(official)
+        self.assertAlmostEqual(float(card["close"]), float(official[0]), places=0)
+        low = float(card["cal60_low"] or 0)
+        self.assertGreater(low, 0)
+        expected = round((float(card["close"]) / low - 1) * 100.0, 1)
+        self.assertAlmostEqual(float(card["gain_pct"]), expected, places=1)
 
 
     @pytest.mark.production_db
