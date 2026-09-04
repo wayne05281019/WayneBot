@@ -195,11 +195,12 @@ class HealthHandler(BaseHTTPRequestHandler):
             import json
 
             try:
-                from automation_health import health_payload
                 from config import get_db_path
                 from ops_watchdog import watchdog_payload
 
-                data = health_payload()
+                # 跟 /health 同一套便宜查詢。禁止 health_payload／run_automation_audit：
+                # 正式站掃全庫會超過 45s，Threading 雖不擋 /live，但仍會拖死操作者。
+                data = _cheap_health_data()
                 watch = watchdog_payload(get_db_path())
                 ready = bool(data.get("data_ok")) and not watch.get("missed")
                 payload = {

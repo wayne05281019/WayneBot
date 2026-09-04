@@ -51,7 +51,7 @@
 ### VM + Render
 - VM 登入成功；`vm_tg_menu_walkthrough.mp4` 已錄
 - Render `/health` 曾 30s 無回應 → PR #136 修先開 health、聽筒提早啟動
-- **目前 Render 回 503**（有回應但未 healthy），待 #136 合併 deploy
+- **2026-09-04 實測**：`/live` 200（0.5s）、`/health` 200 serving；`/ready` 曾因全庫 audit 逾時 45s（非 Render 健檢路徑，已改便宜查詢）
 
 ---
 
@@ -61,7 +61,7 @@
 |----|------|------|
 | UX-1/2 | 按鈕無反應 | ✅ #134 |
 | UX-3 | 資金 catch-up 180s | ✅ #136 移除按鈕路徑 catch-up |
-| UX-4 | Render 冷啟動被殺 | 🔄 #136 修 health 順序 |
+| UX-4 | Render 冷啟動被殺 | ✅ #150 `/live` 輕量健檢 |
 | UX-5 | 手機按鈕太擠 | ✅ #136 hub/清單精簡 |
 
-*最後更新：2026-09-03*
+*最後更新：2026-09-04*

@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from live_quote import append_live_bar, session_bar_from_mis
+from live_quote import append_live_bar, sanitize_ohlc, session_bar_from_mis
 
 
 class LiveSessionTests(unittest.TestCase):
@@ -25,6 +25,27 @@ class LiveSessionTests(unittest.TestCase):
         self.assertAlmostEqual(bar["low"], 4285.0)
         self.assertAlmostEqual(bar["close"], 4320.0)
         self.assertEqual(bar["volume"], 18265)
+
+    def test_session_bar_clamps_open_above_high(self):
+        """MIS 偶發 Op>Hi（台光電曾見 5590／5515）必須夾成合法 K。"""
+        bar = session_bar_from_mis(
+            {
+                "open": 5590.0,
+                "high": 5515.0,
+                "low": 5255.0,
+                "close": 5350.0,
+                "volume": 1334,
+            }
+        )
+        self.assertAlmostEqual(bar["open"], 5590.0)
+        self.assertAlmostEqual(bar["high"], 5590.0)
+        self.assertAlmostEqual(bar["low"], 5255.0)
+        self.assertGreaterEqual(bar["high"], bar["open"])
+        self.assertLessEqual(bar["low"], bar["close"])
+
+    def test_sanitize_ohlc_raises_high_to_cover_open(self):
+        o, h, l, c = sanitize_ohlc(5590.0, 5515.0, 5255.0, 5350.0)
+        self.assertEqual((o, h, l, c), (5590.0, 5590.0, 5255.0, 5350.0))
 
     def test_append_live_bar_appends_today_with_session_ohlc(self):
         df = pd.DataFrame(

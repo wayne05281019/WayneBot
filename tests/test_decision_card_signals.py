@@ -34,3 +34,11 @@ def test_leave_zero_screen_caps_runners():
     ok, reason = leave_zero_screen_ok(0.0, 5.2)
     assert not ok
     assert "5" in reason
+
+
+def test_2383_carybot_profit_at_5295_vs_4100():
+    """2026-09-04 Cary：收 5295、60曆日低 4100 → 獲利 29.1%，不得因貼20低歸零。"""
+    pct = (5295.0 - 4100.0) / 4100.0 * 100.0
+    assert abs(pct - 29.1) < 0.05
+    assert format_profit_pct(pct) == "29.1%"
+    assert not is_profit_display_zero(pct)

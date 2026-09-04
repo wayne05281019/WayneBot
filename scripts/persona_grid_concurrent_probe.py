@@ -125,7 +125,7 @@ async def main():
     lines.append(f"連買步驟 ok={streak_ok}/{len(PERSONAS_10)*10}")
 
     report = {"rounds": rounds, "streak_ok": streak_ok, "grid_size": len(grid)}
-    out = "/opt/cursor/artifacts/persona_grid_concurrent_report.json"
+    out = os.path.join(os.environ.get("WAYNE_ARTIFACT_DIR", "/opt/cursor/artifacts"), "persona_grid_concurrent_report.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
