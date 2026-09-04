@@ -442,6 +442,17 @@ def format_ai_desk_html(
         )
     else:
         lines.append("<b>持倉</b>")
+        sell_notes: Dict[str, str] = {}
+        try:
+            from sell_discipline import sell_notes_for_stocks
+
+            sell_notes = sell_notes_for_stocks(
+                [p.get("stock_id") for p in s["positions"]],
+                engine.db_path,
+                full=True,
+            )
+        except Exception:
+            sell_notes = {}
         for i, p in enumerate(s["positions"]):
             if i:
                 lines.append("")
@@ -482,6 +493,9 @@ def format_ai_desk_html(
             reason = reasons.get(sid) or "海選紀律"
             bought = _fmt_ymd(p.get("buy_date") or "")
             lines.append(kv_compact("進場", f"{reason} {bought}".strip()))
+            note = sell_notes.get(sid) or ""
+            if note:
+                lines.append(kv_compact("紀律", note))
         empty = MAX_SLOTS - used
         if empty > 0:
             lines.append(f"<b>空槽</b>　{empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}（不把剩錢重切）")
