@@ -11,6 +11,7 @@ import io
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime
 from typing import Any, Iterable
 from urllib.request import Request, urlopen
@@ -25,6 +26,10 @@ except Exception:
         return datetime.now().strftime("%Y%m%d")
 
 log = logging.getLogger("wayne.broker")
+
+_FETCH_COOLDOWN: dict[str, float] = {}
+_FETCH_COOLDOWN_S = 6 * 3600
+_FETCH_TIMEOUT_S = 3.0
 
 HEADERS = {
     "User-Agent": (
@@ -380,11 +385,15 @@ def _roc_slash(ymd: str) -> str:
     return f"{y}/{m}/{d}"
 
 
-def try_fetch_remote_csv(stock_id: str, trade_date: str, timeout: float = 8.0) -> list[dict[str, Any]]:
-    """盡力抓一檔。驗證碼／405 就回空，不准造假。"""
+def try_fetch_remote_csv(stock_id: str, trade_date: str, timeout: float = _FETCH_TIMEOUT_S) -> list[dict[str, Any]]:
+    """盡力抓一檔。驗證碼／405 就回空，不准造假。失敗冷卻，避免每檔查股空等兩次逾時。"""
     sid = str(stock_id).strip()
     day = str(trade_date).replace("-", "")[:8]
     if not sid or len(day) != 8:
+        return []
+    key = f"{sid}:{day}"
+    until = float(_FETCH_COOLDOWN.get(key) or 0)
+    if time.time() < until:
         return []
     roc = _roc_slash(day)
     urls = [
@@ -403,7 +412,9 @@ def try_fetch_remote_csv(stock_id: str, trade_date: str, timeout: float = 8.0) -
             continue
         rows = parse_broker_csv(text)
         if rows:
+            _FETCH_COOLDOWN.pop(key, None)
             return rows
+    _FETCH_COOLDOWN[key] = time.time() + _FETCH_COOLDOWN_S
     return []
 
 

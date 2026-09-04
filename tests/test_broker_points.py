@@ -61,6 +61,25 @@ def test_persist_and_attach_without_fetch(tmp_path):
     assert "main_cost" not in empty
 
 
+def test_failed_http_fetch_cools_down(monkeypatch):
+    import broker_points
+
+    broker_points._FETCH_COOLDOWN.clear()
+    hits = {"n": 0}
+
+    def fake_http(_url, _timeout):
+        hits["n"] += 1
+        return "<html>請輸入驗證碼</html>".encode("utf-8")
+
+    monkeypatch.setattr("broker_points._http_bytes", fake_http)
+    assert broker_points.try_fetch_remote_csv("2330", "20260904") == []
+    assert hits["n"] >= 1
+    first = hits["n"]
+    assert broker_points.try_fetch_remote_csv("2330", "20260904") == []
+    assert hits["n"] == first
+    broker_points._FETCH_COOLDOWN.clear()
+
+
 def test_etf_never_fetches(tmp_path):
     db = str(tmp_path / "etf.db")
     ensure_core_schema(db)
