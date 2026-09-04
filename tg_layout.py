@@ -102,6 +102,12 @@ def holdings_qty_text(lots) -> str:
     return f"{n:,}{unit}"
 
 
+def holdings_qty_label(lots) -> str:
+    """整張欄名張數，零股欄名股數，避免「張數 439股」。"""
+    _, unit = _holdings_qty_n_unit(lots)
+    return "股數" if unit == "股" else "張數"
+
+
 def html_pct_tight(pct) -> str:
     try:
         p = float(pct)
