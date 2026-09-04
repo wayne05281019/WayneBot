@@ -271,6 +271,12 @@ class ScreeningEngine:
             info = self.calculate_indicators(df)
             if not info:
                 continue
+            try:
+                from peer_setup import flags_from_ohlc_df
+
+                info.update(flags_from_ohlc_df(df, q60r=info.get("q60r")))
+            except Exception:
+                pass
             if _is_half_year_high_break(info):
                 enriched = _enrich_decision_fields(df, info)
                 enriched["pattern"] = _pattern_tag(enriched)
@@ -398,9 +404,9 @@ class ScreeningEngine:
                 overnight_item["defense_price"] = round(min(o, avg_p), 2) # 保本防守價
                 res_overnight.append(overnight_item)
 
-        # 排序：少追（貼20日收盤高）排後面；S級與量比仍優先
+        # 排序：少追（貼20日收盤高／爆量貼月高）排後面；S級與量比仍優先
         sort_key = lambda x: (
-            0 if x.get("chase_warning") else 1,
+            0 if (x.get("chase_warning") or x.get("spike_watch")) else 1,
             1 if x.get("is_s_tier", False) else 0,
             x.get("q60r", 0.0),
         )
@@ -411,7 +417,7 @@ class ScreeningEngine:
         res_overnight.sort(key=sort_key, reverse=True)
         res_leave_zero.sort(
             key=lambda x: (
-                1 if x.get("chase_warning") else 0,
+                1 if (x.get("chase_warning") or x.get("spike_watch")) else 0,
                 0 if x.get("leave_l20") else 1,
                 int(x.get("vol_rank_120") or 99),
                 -(x.get("q60r") or 0),
@@ -420,7 +426,7 @@ class ScreeningEngine:
 
         res_golden_buy.sort(
             key=lambda x: (
-                1 if x.get("chase_warning") else 0,
+                1 if (x.get("chase_warning") or x.get("spike_watch")) else 0,
                 float(x.get("bias_monthly") or 0),
                 abs(float(x.get("profit_pct") or 0)),
             )
@@ -853,6 +859,13 @@ def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = T
         notices.append(_hot("雙時段"))
     if item.get("chase_warning"):
         notices.append(_hot("少追"))
+    try:
+        from peer_setup import layout_spike_notice
+
+        if layout_spike_notice(item):
+            notices.append(_hot("爆量貼月高"))
+    except Exception:
+        pass
     if item.get("is_s_tier"):
         notices.append(_hot("S級"))
     if item.get("leave_l20"):
@@ -948,6 +961,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
         for t, on in (
             (_hot("雙時段"), item.get("both_sessions")),
             (_hot("少追"), item.get("chase_warning")),
+            (_hot("爆量貼月高"), item.get("spike_watch") and item.get("entry_price") is None and item.get("buy_range") is None),
             (_hot("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
@@ -1197,6 +1211,13 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
         bits.append("雙時段")
     if item.get("chase_warning"):
         bits.append("少追")
+    try:
+        from peer_setup import layout_spike_notice
+
+        if layout_spike_notice(item):
+            bits.append("爆量貼月高")
+    except Exception:
+        pass
     if item.get("is_s_tier"):
         bits.append("S級")
     if item.get("leave_l20"):
