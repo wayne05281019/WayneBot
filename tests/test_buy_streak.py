@@ -257,6 +257,7 @@ def _raw_streak(conn, sid, kind, as_of, lookback=80):
     return n, f_acc, t_acc, v_acc
 
 
+@pytest.mark.production_db
 def test_production_as_of_matches_official_fuse_end():
     """連買最後一天必須是官方融合收盤日（目前應為 20260903）。"""
     from pathlib import Path
@@ -287,6 +288,7 @@ def test_streak_last_bar_is_as_of(db):
     assert int(last[0]) > 0
 
 
+@pytest.mark.production_db
 @pytest.mark.parametrize("round_i", range(10))
 def test_production_db_ten_rounds_match_raw_sql(round_i):
     """十輪：抽樣上市／上櫃 × 三種連買，張數與％必須等於原始日K加總。"""
