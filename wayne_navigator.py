@@ -1999,11 +1999,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
     try:
-        from sell_discipline import attach_sell, sell_note_lines
+        from sell_discipline import attach_sell, sell_note_short
 
         attach_sell(card)
-        for line in sell_note_lines(card):
-            fund_rows.append(("紀律", line))
+        short = sell_note_short(card)
+        if short:
+            fund_rows.append(("紀律", short))
     except Exception:
         pass
 

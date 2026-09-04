@@ -82,20 +82,46 @@ def classify_how_to_sell(
     return out
 
 
+def _chrono_table(tbl: Any):
+    """決策卡 table 是新→舊；分類要依日期正序，否則會把最舊列當成今天。"""
+    if tbl is None or not hasattr(tbl, "columns") or len(tbl) == 0:
+        return tbl
+    if "date" not in tbl.columns:
+        return tbl
+    try:
+        return tbl.sort_values("date", kind="mergesort")
+    except Exception:
+        first = str(tbl.iloc[0].get("date") or "")
+        last = str(tbl.iloc[-1].get("date") or "")
+        if first > last:
+            return tbl.iloc[::-1]
+        return tbl
+
+
 def attach_sell(card: Dict[str, Any], hl_tags=None, temp_labels=None) -> Dict[str, Any]:
     """寫入決策卡。hl／升降可從 table 補。"""
     if not card or card.get("error"):
         return card
     if hl_tags is None or temp_labels is None:
-        tbl = card.get("table")
-        if tbl is not None and hasattr(tbl, "columns"):
-            if hl_tags is None and "高低" in tbl.columns:
-                hl_tags = list(tbl["高低"])
-            if temp_labels is None and "升降" in tbl.columns:
-                temp_labels = list(tbl["升降"])
-    flags = classify_how_to_sell(hl_tags or [], temp_labels or [])
+        src = _chrono_table(card.get("table"))
+        if src is not None and hasattr(src, "columns"):
+            if hl_tags is None and "高低" in src.columns:
+                hl_tags = list(src["高低"])
+            if temp_labels is None and "升降" in src.columns:
+                temp_labels = list(src["升降"])
+    flags = classify_how_to_sell(
+        hl_tags if hl_tags is not None else [],
+        temp_labels if temp_labels is not None else [],
+    )
     card.update(flags)
     return card
+
+
+def _why_short(why: str) -> str:
+    why = str(why or "").strip()
+    if why.startswith("不同步（") and why.endswith("）"):
+        return why[len("不同步（") : -1]
+    return why
 
 
 def sell_note_lines(card: Dict[str, Any]) -> List[str]:
@@ -106,3 +132,14 @@ def sell_note_lines(card: Dict[str, Any]) -> List[str]:
     if why:
         return [f"{act}（{why}；作者如何賣，不是買訊）"]
     return [f"{act}（作者如何賣，不是買訊）"]
+
+
+def sell_note_short(card: Dict[str, Any]) -> str:
+    """介紹圖窄欄用：不要把「作者如何賣，不是買訊」整句塞進去。"""
+    act = str(card.get("sell_action") or "").strip()
+    if not act:
+        return ""
+    why = _why_short(card.get("sell_why") or "")
+    if why:
+        return f"{act}（{why}）"
+    return act
