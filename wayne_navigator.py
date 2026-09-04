@@ -663,7 +663,7 @@ class NavigatorEngine:
             next_event = nearest_event_label(str(stock_id), self.db_path) or ""
         except Exception:
             next_event = ""
-        return {
+        payload = {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "next_event": next_event,
@@ -711,6 +711,13 @@ class NavigatorEngine:
             "table": table,
             "_ohlc": df,
         }
+        try:
+            from peer_setup import attach_setup
+
+            attach_setup(payload, df)
+        except Exception:
+            pass
+        return payload
 
     def scan_double_green_breakout(self) -> list:
         """全市場海選：【雙綠脫離】波段黃金起漲轉折股"""
@@ -1928,6 +1935,14 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         fund_block = section(*glance_fundamentals_rows(sid, db_path or get_db_path()))
     except Exception:
         fund_block = ""
+    try:
+        from peer_setup import attach_setup, setup_note_lines
+
+        attach_setup(card, card.get("_ohlc"), db_path or get_db_path())
+        setup_lines = setup_note_lines(card)
+    except Exception:
+        setup_lines = []
+    setup_block = section("<b>協助判斷</b>", *setup_lines) if setup_lines else ""
     tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
     try:
         from live_quote import live_clock_suffix
@@ -1960,6 +1975,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("量比", vol_line),
         ),
         chip_block,
+        setup_block,
         tail,
         sep="\n＝＝＝＝＝＝＝＝＝＝＝＝\n",
     )
@@ -1982,6 +1998,20 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     mc = card.get("main_cost")
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
+    try:
+        from peer_setup import attach_setup, setup_note_lines
+
+        if not (card.get("peer_tape") or {}).get("ok"):
+            attach_setup(card, card.get("_ohlc"), db_path or get_db_path())
+        for line in setup_note_lines(card, include_peer=False):
+            if line.startswith("爆量"):
+                fund_rows.append(("觀望", line))
+            elif line.startswith("倍數"):
+                fund_rows.append(("回撤", line))
+            else:
+                fund_rows.append(("協助", line))
+    except Exception:
+        pass
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
@@ -2754,6 +2784,12 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
             from broker_points import attach_main_cost
 
             attach_main_cost(card, db_path, fetch=True)
+        except Exception:
+            pass
+        try:
+            from peer_setup import attach_setup
+
+            attach_setup(card, card.get("_ohlc"), db_path)
         except Exception:
             pass
     if card.get("error"):

@@ -392,6 +392,48 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
             )
         )
 
+    try:
+        from peer_setup import liquid_peer_snapshot
+
+        tape = liquid_peer_snapshot(path, sid, as_of=snap.get("as_of"))
+    except Exception:
+        tape = {}
+    if tape.get("ok"):
+        r20 = tape.get("ret20")
+        med = tape.get("peer_med_ret20")
+        rank = tape.get("rank")
+        n = tape.get("rank_of")
+        if r20 is not None and med is not None:
+            diff = float(r20) - float(med)
+            if abs(diff) < 3:
+                story = f"跟同業流動前段差不多（差 {diff:+.1f}%）"
+            elif diff > 0:
+                story = f"20 日比同業流動前段強（高 {diff:.1f}%）"
+            else:
+                story = f"20 日比同業流動前段弱（低 {abs(diff):.1f}%）"
+        else:
+            story = "同業價只對照現況，不拿來追。"
+
+        def _px_peer(rows: List[Dict[str, Any]]) -> str:
+            if not rows:
+                return "—"
+            return "　".join(
+                f"<code>{html_escape(r['stock_id'])}</code> {html_escape(r['stock_name'])} {html_pct(r.get('ret20'))}"
+                for r in rows
+            )
+
+        blocks.append(
+            section(
+                "<b>同業價現況</b>",
+                kv_html_compact("20日報酬", f"{html_pct(r20)}　同業中位 {html_pct(med)}" if r20 is not None else "—"),
+                kv_compact("流動前段", f"第 {int(rank)}/{int(n)}" if rank and n else "同業流動不足"),
+                story,
+                f"較強　{_px_peer(tape.get('stronger') or [])}",
+                f"較弱　{_px_peer(tape.get('weaker') or [])}",
+                "官方產業＋當日成交較活的前段（最多 24 檔）。只對照現況，不拿來追、也不改海選。",
+            )
+        )
+
     blocks.append(
         section(
             "<b>怎麼用</b>",
