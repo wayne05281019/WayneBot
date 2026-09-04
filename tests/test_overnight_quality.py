@@ -68,6 +68,7 @@ def test_format_audit_plain_says_today_ok_when_quotes_complete():
     )
     assert "今天正常" in text
     assert "官方尚未公布 202608" in text
+    assert "月營收 8000　202607" in text or "月營收 8000 202607" in text or "8000　202607" in text
     assert "舊日缺邊" in text
     assert "待補：" not in text
 

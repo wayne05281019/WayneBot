@@ -542,7 +542,7 @@ def format_audit_plain(health: Dict[str, Any]) -> str:
         today_ymd=str(date),
     )
     lines.append(
-        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}（{month_note.get('label')}）"
+        f"法人非0 {health.get('chips_nonzero')}　月營收 {health.get('monthly_n')}　{month_note.get('label')}"
         f"　季報 {health.get('income_n')}（{health.get('latest_quarter')}）"
         f"　除權息 {health.get('ex_rights_n')}（{health.get('latest_ex')}）"
     )
