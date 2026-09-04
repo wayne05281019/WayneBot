@@ -850,6 +850,10 @@ class TelegramAlignTest(unittest.TestCase):
         self.assertEqual(html_holdings_qty(0.439), "<code>439股</code>")
         self.assertEqual(html_holdings_qty(0), "<code>0張</code>")
         self.assertNotIn("</code>股", html_holdings_qty(0.439))
+        from tg_layout import holdings_qty_text
+
+        self.assertEqual(holdings_qty_text(0.439), "439股")
+        self.assertEqual(holdings_qty_text(4), "4張")
 
     def test_html_price_and_money_align(self):
         import re

@@ -84,6 +84,19 @@ def _glance_photo_caption(base: str, card: dict | None) -> str:
     return _photo_sell_caption(base, card)
 
 
+def _sell_holdings_prompt(code: str, lots=None) -> str:
+    """賣出手記持股：帶現有張數／股數，零股不要讓人以為是 0張。"""
+    head = f"賣出 {code}。"
+    if lots is not None:
+        try:
+            from tg_layout import holdings_qty_text
+
+            head += f"現有 {holdings_qty_text(lots)}。"
+        except Exception:
+            pass
+    return head + "請輸入：價格（全賣）\n例如：72 或 1 72"
+
+
 try:
     from telegram import (
         Update,
@@ -3847,8 +3860,18 @@ class WayneTelegramBot:
             code = data[2:].strip()
             actor = self._actor_key(q.message, uid=uid)
             self._pending[actor] = f"sell:{code}"
+            lots = None
+            try:
+                from wayne_db import get_user_portfolio
+
+                for h in get_user_portfolio(self.db_path, uid) or []:
+                    if str(h.get("stock_code") or h.get("stock_id") or "") == code:
+                        lots = float(h.get("shares") or 0)
+                        break
+            except Exception:
+                lots = None
             await q.message.reply_text(
-                f"賣出 {code}。請輸入：價格（全賣）\n例如：72 或 1 72",
+                _sell_holdings_prompt(code, lots),
                 reply_markup=self._keyboard(),
             )
             return
