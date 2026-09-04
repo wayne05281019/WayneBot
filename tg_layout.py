@@ -80,6 +80,17 @@ def html_qty_tight(n, unit: str = "張", signed: bool = True) -> str:
     return f"<code>{html_escape(body)}</code>"
 
 
+def html_holdings_qty(lots) -> str:
+    """手記持股：整張用張，零股用股。0.439 張不能四捨五入成 0張。"""
+    try:
+        z = float(lots or 0)
+    except (TypeError, ValueError):
+        z = 0.0
+    if abs(z - round(z)) < 1e-6:
+        return html_qty_tight(int(round(z)), "張", signed=False)
+    return html_qty_tight(int(round(z * 1000.0)), "股", signed=False)
+
+
 def html_pct_tight(pct) -> str:
     try:
         p = float(pct)
