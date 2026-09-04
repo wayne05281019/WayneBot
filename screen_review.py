@@ -161,6 +161,15 @@ def score_screen_picks(db_path: str, next_date: str = None) -> int:
     return filled
 
 
+def _pick_is_equity(stock_id: str, stock_name: str = "") -> bool:
+    try:
+        from universe import is_screen_equity
+
+        return is_screen_equity(stock_id, stock_name)
+    except Exception:
+        return True
+
+
 def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, float, float]]:
     ensure_screen_review_table(db_path)
     conn = sqlite3.connect(db_path)
@@ -178,15 +187,19 @@ def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, fl
             continue
         qmarks = ",".join("?" * len(days))
         rows = conn.execute(
-            f"SELECT next_pct FROM screen_picks WHERE bucket=? AND next_pct IS NOT NULL AND as_of IN ({qmarks})",
+            f"""
+            SELECT stock_id, stock_name, next_pct FROM screen_picks
+            WHERE bucket=? AND next_pct IS NOT NULL AND as_of IN ({qmarks})
+            """,
             (key, *days),
         ).fetchall()
+        rows = [r for r in rows if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
         n = len(rows)
         if not n:
             out.append((key, 0, 0.0, 0.0))
             continue
-        avg = sum(float(r[0]) for r in rows) / n
-        hits = sum(1 for r in rows if float(r[0]) > 0)
+        avg = sum(float(r[2]) for r in rows) / n
+        hits = sum(1 for r in rows if float(r[2]) > 0)
         out.append((key, n, avg, hits / n))
     conn.close()
     return out
@@ -301,10 +314,13 @@ def format_review_html(db_path: str) -> str:
             FROM screen_picks
             WHERE as_of=? AND next_pct IS NOT NULL
             ORDER BY next_pct DESC
-            LIMIT 6
+            LIMIT 24
             """,
             (as_of,),
         ).fetchall()
+        sample = [
+            r for r in sample if _pick_is_equity(str(r[1] or ""), str(r[2] or ""))
+        ][:6]
     conn.close()
     if not as_of:
         return (
