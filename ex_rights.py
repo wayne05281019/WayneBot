@@ -344,6 +344,12 @@ def load_ex_rights(stock_id: str, db_path: str = None) -> List[Dict[str, Any]]:
 
 def _event_verb(kind: str) -> str:
     s = str(kind or "")
+    if "法說" in s or "法人說明" in s:
+        return "法說"
+    if "臨時" in s:
+        return "臨時會"
+    if "股東" in s or "常會" in s:
+        return "股東會"
     mapped = {"息": "除息", "權": "除權", "權息": "除權息"}
     if s in mapped:
         return mapped[s]
@@ -354,6 +360,16 @@ def _event_verb(kind: str) -> str:
     if "權" in s:
         return "除權"
     return "除權息"
+
+
+def _event_kind_rank(kind: str) -> int:
+    """同一天：除權息先於法說，法說先於股東會。"""
+    s = str(kind or "")
+    if "法說" in s or "法人說明" in s:
+        return 1
+    if "股東" in s or "常會" in s or "臨時" in s:
+        return 2
+    return 0
 
 
 def format_next_event_label(kind: str, ex_date: str, today: str) -> str:
@@ -428,25 +444,42 @@ def sync_ex_preview(db_path: str = None) -> Dict[str, Any]:
 
 
 def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> str:
-    """股名旁空白處：每檔只寫最近一件官方事件。沒有官方列就空白，禁止造假。"""
+    """股名旁空白處：每檔只寫最近一件官方事件（除權息／法說／股東會）。沒有官方列就空白。"""
     path = db_path or get_db_path()
     sid = str(stock_id or "").strip()
     if not sid:
         return ""
     day = ymd(today) or taipei_today_str()
+    cands: List[Tuple[str, str]] = []
     try:
         conn = sqlite3.connect(path)
-        row = conn.execute(
-            """
-            SELECT kind, ex_date FROM ex_rights
-            WHERE stock_id=? AND replace(ex_date,'-','') >= ?
-            ORDER BY replace(ex_date,'-','') ASC LIMIT 1
-            """,
-            (sid, day),
-        ).fetchone()
+        try:
+            for kind, ex in conn.execute(
+                """
+                SELECT kind, replace(ex_date,'-','') FROM ex_rights
+                WHERE stock_id=? AND replace(ex_date,'-','') >= ?
+                """,
+                (sid, day),
+            ):
+                cands.append((str(ex or ""), str(kind or "")))
+        except sqlite3.OperationalError:
+            pass
+        try:
+            for ev, kind in conn.execute(
+                """
+                SELECT event_date, kind FROM company_events
+                WHERE stock_id=? AND event_date >= ?
+                """,
+                (sid, day),
+            ):
+                cands.append((str(ev or ""), str(kind or "")))
+        except sqlite3.OperationalError:
+            pass
         conn.close()
     except sqlite3.OperationalError:
         return ""
-    if not row:
+    cands = [(ymd(d), k) for d, k in cands if len(ymd(d)) == 8]
+    if not cands:
         return ""
-    return format_next_event_label(str(row[0] or ""), str(row[1] or ""), day)
+    cands.sort(key=lambda item: (item[0], _event_kind_rank(item[1])))
+    return format_next_event_label(cands[0][1], cands[0][0], day)

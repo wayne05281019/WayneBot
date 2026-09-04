@@ -1856,6 +1856,12 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     card = engine.get_decision_card(sid, lookback=lookback)
     if "error" in card:
         return f"⚠️ {html_escape(card['error'])}"
+    try:
+        from broker_points import attach_main_cost
+
+        attach_main_cost(card, db_path or get_db_path(), fetch=True)
+    except Exception:
+        pass
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
     try:
         from stock_links import yahoo_urls
@@ -1879,18 +1885,27 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if web:
         links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
+    event = str(card.get("next_event") or "").strip()
+    if event:
+        head = f"{head}　{html_escape(event)}"
     if links:
         head = f"{head}　　{links}"
     title_block = f"{head}\n{html_escape(badge)}" if badge else head
     chip_block = ""
+    chip_lines = []
     if tape:
-        chip_block = section(
+        chip_lines = [
             kv_compact("外資", f"{fmt_lots_align(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
             kv_compact("投信", f"{fmt_lots_align(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
             kv_compact("自營", f"{fmt_lots_align(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
             kv_compact("法人", f"{fmt_lots_align(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
             kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
-        )
+        ]
+    mc = card.get("main_cost")
+    if mc is not None:
+        chip_lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
+    if chip_lines:
+        chip_block = section(*chip_lines)
     vol_line = (tape.get("volume") or {}).get("line") or "—"
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
@@ -1964,6 +1979,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         fund_rows = glance_fundamentals_plain(stock_id, db_path or get_db_path())
     except Exception:
         fund_rows = []
+    mc = card.get("main_cost")
+    if mc is not None:
+        fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
@@ -2728,6 +2746,13 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     os.makedirs(charts_dir, exist_ok=True)
     engine = NavigatorEngine(db_path)
     card = engine.get_decision_card(sid, lookback=20)
+    if not card.get("error"):
+        try:
+            from broker_points import attach_main_cost
+
+            attach_main_cost(card, db_path, fetch=True)
+        except Exception:
+            pass
     if card.get("error"):
         return {
             "error": card.get("error"),
