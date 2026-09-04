@@ -38,6 +38,8 @@ from trade_journal import (
     normalize_trade_tokens,
     parse_lots_price,
     parse_qty_to_lots,
+    coerce_bare_qty_if_share_count,
+    qty_token_has_unit,
     record_buy,
     record_sell,
 )
@@ -1562,6 +1564,7 @@ class WayneTelegramBot:
             text = " ".join(parts)
         bare_shares = held_is_odd_lot_only(held_lots)
         default_unit = "股" if bare_shares else "張"
+        qty_tok = ""
         if not code and len(parts) >= 3:
             raw, lots_s, price_s = parts[0], parts[1], parts[2]
             hits = lookup_stocks(self.db_path, raw)
@@ -1573,12 +1576,17 @@ class WayneTelegramBot:
                 return None, None, None
             if lots is None or not code:
                 return None, None, None
-            return code, lots, price
-        lots, price = parse_lots_price(
-            text, price_only_sell_all=True, bare_qty_is_shares=bare_shares
-        )
-        if price is None or not code:
-            return None, None, None
+            qty_tok = lots_s
+        else:
+            lots, price = parse_lots_price(
+                text, price_only_sell_all=True, bare_qty_is_shares=bare_shares
+            )
+            if price is None or not code:
+                return None, None, None
+            if len(parts) >= 2:
+                qty_tok = parts[0]
+        if lots and held_lots is not None and not qty_token_has_unit(qty_tok):
+            lots = coerce_bare_qty_if_share_count(lots, held_lots)
         return code, float(lots or 0), price
 
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:

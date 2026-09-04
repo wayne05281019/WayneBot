@@ -160,3 +160,20 @@ def test_parse_sell_text_odd_lot_bare_qty(tmp_db):
     code, lots, price = bot._parse_buy_text("439股 631.6", "6526")
     assert lots == pytest.approx(0.439)
     assert price == 631.6
+
+
+def test_parse_sell_bare_large_qty_is_shares_when_held_whole_lots(tmp_db):
+    from bot_servers import WayneTelegramBot
+    from trade_journal import coerce_bare_qty_if_share_count
+
+    assert coerce_bare_qty_if_share_count(200, 4.0) == pytest.approx(0.2)
+    assert coerce_bare_qty_if_share_count(1, 4.0) == 1
+    assert coerce_bare_qty_if_share_count(200, 0.15) == 200  # 0.2 張已超過持有，不硬轉
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = tmp_db
+    code, lots, price = bot._parse_sell_text("200 72", "3035", held_lots=4.0)
+    assert lots == pytest.approx(0.2)
+    code, lots, price = bot._parse_sell_text("200張 72", "3035", held_lots=4.0)
+    assert lots == 200.0
+    code, lots, price = bot._parse_sell_text("1 72", "3035", held_lots=4.0)
+    assert lots == 1.0
