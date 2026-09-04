@@ -68,3 +68,20 @@ def test_sell_partial_keeps_remainder(tmp_db):
     held = get_user_portfolio(tmp_db, "u2")
     assert len(held) == 1
     assert float(held[0]["shares"]) == 1.0
+
+
+def test_odd_lot_messages_use_shares_not_zhang(tmp_db):
+    from trade_journal import format_user_trades_html
+
+    uid = "u3"
+    buy = record_buy(tmp_db, uid, "6526", "達發", 0.439, 631.6)
+    assert "439股" in buy
+    assert "0.439張" not in buy
+    html = format_user_trades_html(tmp_db, uid)
+    assert "439股" in html
+    assert "0.439張" not in html
+    sell = record_sell(tmp_db, uid, "6526", 0, 635.0)
+    assert "439股" in sell
+    assert "0.439張" not in sell
+    html2 = format_user_trades_html(tmp_db, uid)
+    assert "439股" in html2
