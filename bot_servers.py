@@ -78,6 +78,7 @@ def _glance_photo_caption(base: str, card: dict | None) -> str:
         return cap
     return f"{cap}\n紀律　{html_escape(short)}"
 
+
 try:
     from telegram import (
         Update,
