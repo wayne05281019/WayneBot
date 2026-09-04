@@ -46,6 +46,15 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("現在：決策卡", txt)
         self.assertIn("接著：導航圖", txt)
 
+    def test_op_state_map_works_without_init(self):
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        state = bot._op_state_map()
+        self.assertEqual(state, {})
+        state["a"] = {"sent": ["glance"], "current": "card"}
+        self.assertEqual(bot._lookup_op_state["a"]["current"], "card")
+        bot._op_state_map().pop("a", None)
+        self.assertEqual(bot._lookup_op_state, {})
+
 
 if __name__ == "__main__":
     unittest.main()

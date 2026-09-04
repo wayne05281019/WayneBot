@@ -410,6 +410,14 @@ class WayneTelegramBot:
             return str(uid)
         return str(chat_id or "0")
 
+    def _op_state_map(self) -> Dict[str, dict]:
+        """查股進度表。測試用 __new__ 沒跑 __init__ 時也要能寫。"""
+        state = getattr(self, "_lookup_op_state", None)
+        if not isinstance(state, dict):
+            self._lookup_op_state = {}
+            return self._lookup_op_state
+        return state
+
     def _pending_actor(self, message=None, *, uid: str = "") -> str:
         return self._actor_key(message, uid=uid)
 
@@ -3390,7 +3398,7 @@ class WayneTelegramBot:
         progress_stop = asyncio.Event()
         progress_task = None
         op_t0 = time.monotonic()
-        self._lookup_op_state[actor] = {"sent": [], "current": "table", "t0": op_t0}
+        self._op_state_map()[actor] = {"sent": [], "current": "table", "t0": op_t0}
         try:
             wait_msg = await message.reply_text(
                 self._chart_progress_text(0, current="table")
@@ -3403,7 +3411,7 @@ class WayneTelegramBot:
             while not progress_stop.is_set():
                 if wait_msg is None:
                     break
-                st = self._lookup_op_state.get(actor) or {}
+                st = self._op_state_map().get(actor) or {}
                 elapsed = int(time.monotonic() - op_t0)
                 try:
                     await wait_msg.edit_text(
@@ -3512,7 +3520,7 @@ class WayneTelegramBot:
 
             # 畫完一張就先送；進度泡泡跟階段走，第一張送出也不刪，等人看到三張齊。
             for kind, fn, timeout_s, caption, markup in render_plan:
-                st = self._lookup_op_state.setdefault(actor, {"sent": [], "current": kind})
+                st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
                 logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
                 path = ""
@@ -3552,7 +3560,7 @@ class WayneTelegramBot:
                 if ok:
                     sent_any = True
                     sent_kinds.append(kind)
-                    st = self._lookup_op_state.setdefault(actor, {"sent": [], "current": ""})
+                    st = self._op_state_map().setdefault(actor, {"sent": [], "current": ""})
                     st["sent"] = list(sent_kinds)
                     st["current"] = ""
                     logger.info("查股階段已送 %s code=%s", sent_kinds, code)
@@ -3620,7 +3628,7 @@ class WayneTelegramBot:
                 progress_task.cancel()
             await _clear_wait()
             await self._dismiss_lookup_fades(actor, roles={"ack", "wait", "header"})
-            self._lookup_op_state.pop(actor, None)
+            self._op_state_map().pop(actor, None)
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
         try:
