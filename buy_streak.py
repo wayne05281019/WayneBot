@@ -104,10 +104,14 @@ class StreakSnapshot:
         return f"{KIND_LABEL.get(self.kind, self.kind)} · {MARKET_LABEL.get(self.market, self.market)}"
 
     def days_menu(self, *, min_days: int = MIN_STREAK) -> List[int]:
-        """最長天數往下排到 min_days（中間空檔也列出，點進去會說沒有）。"""
-        if self.max_days < min_days:
-            return []
-        return list(range(self.max_days, min_days - 1, -1))
+        """只列出「剛好有股票」的天數（最長→最短）。空檔不給按，避免點進去 0 檔。"""
+        days = [
+            int(d)
+            for d, rows in self.by_days.items()
+            if int(d) >= int(min_days) and rows
+        ]
+        days.sort(reverse=True)
+        return days
 
     def stocks(self, days: int) -> List[StreakRow]:
         return list(self.by_days.get(int(days), []))
