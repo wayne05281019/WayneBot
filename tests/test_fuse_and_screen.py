@@ -1095,6 +1095,21 @@ class LookupCardTest(unittest.TestCase):
         # 可變字型預設是 Thin，實際畫圖要用壓出來的靜態字重，不能落回 100。
         self.assertGreaterEqual(_weight_step(500), 400)
 
+    def test_fp_static_files_do_not_warn_missing_weight(self):
+        import warnings
+
+        from wayne_navigator import _fp
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            body = _fp(12, "normal")
+            bold = _fp(18, "bold")
+        msgs = [str(w.message) for w in caught]
+        self.assertFalse(any("Failed to find font weight" in m for m in msgs), msgs)
+        self.assertTrue(body.get_file())
+        self.assertTrue(bold.get_file())
+        self.assertNotEqual(body.get_file(), bold.get_file())
+
     def test_chips_table_cols_share_font_and_fit_span(self):
         import matplotlib
 
