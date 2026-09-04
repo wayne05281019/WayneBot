@@ -93,6 +93,28 @@ class ScreenExcludesEtfTests(unittest.TestCase):
             save_screen_session(path, "20260904", "morning", mixed)
             rows = load_bucket_rows(path, "day_trade", "20260904")
             self.assertEqual([r["stock_id"] for r in rows], ["1597"])
+            conn = sqlite3.connect(path)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO screen_picks(
+                    as_of, bucket, stock_id, stock_name, pick_close
+                ) VALUES (?,?,?,?,?)
+                """,
+                ("20260904", "select_01", "00706L", "期元大S&P日圓正2", 19.59),
+            )
+            conn.commit()
+            conn.close()
+            save_screen_picks(
+                path,
+                "20260904",
+                {"select_01": [{"stock_id": "3591", "stock_name": "艾笛森", "close": 24.9}]},
+            )
+            conn = sqlite3.connect(path)
+            left = [r[0] for r in conn.execute("SELECT stock_id FROM screen_picks WHERE as_of='20260904'")]
+            conn.close()
+            self.assertEqual(left, ["3591"])
+            self.assertNotIn("00706L", left)
+            self.assertNotIn("1597", left)
         finally:
             os.remove(path)
 
