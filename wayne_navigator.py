@@ -388,17 +388,15 @@ class NavigatorEngine:
             card_regime_label,
             compute_card_temperature,
             profit_floor_at,
-            profit_pct_card_series,
-            profit_pct_series,
+            profit_pct_cal60_series,
             resolve_daily_change_pct,
             volume_headline_rank,
         )
 
-        # 獲利：決策卡用 profit_pct_card_series（CaryBot cal60；貼 20 日低時 0.0%）；海選用 profit_floor_at。
+        # 獲利：決策卡／顯示一律 60 曆日低（對齊 CaryBot）；貼 20 日低不歸零。
         profit_src = df.copy()
         profit_src["close"] = close_raw.reindex(df.index).astype(float)
-        df["profit_pct"] = profit_pct_card_series(profit_src)
-        df["profit_pct_screen"] = profit_pct_series(profit_src)
+        df["profit_pct"] = profit_pct_cal60_series(profit_src)
         cal60_low = cal60_low_close_at(profit_src, -1)
         profit_floor = profit_floor_at(profit_src, -1)
         # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
