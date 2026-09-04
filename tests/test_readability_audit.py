@@ -110,6 +110,10 @@ def test_fundamentals_readable():
         pytest.skip("no fundamentals")
     _assert_readable(html, name="fundamentals")
     assert "期間：" in html or "月營收：" in html
+    assert "億" in html
+    assert "千元" not in html
+    assert "MoM" not in html
+    assert "YoY" not in html
 
 
 def test_ai_desk_readable():
