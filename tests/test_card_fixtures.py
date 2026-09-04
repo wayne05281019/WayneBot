@@ -80,7 +80,11 @@ def test_template_2633_8_11_profit_is_cal60_not_l20_floor():
 
 @pytest.mark.production_db
 def test_2383_near_l20_profit_matches_cal60_carybot():
-    """台光電：盤中貼近 20 日低時獲利仍 ≈ 相對 60 曆日低 4100（CaryBot ~29%），不可 0%。"""
+    """台光電獲利＝相對 60 曆日低 4100，貼 20 日低不歸零。
+
+    盤中 5295 → 29.1% 是公式驗收（``format_profit_pct``）；16:30 後列上是官方收盤，
+    不得再要求 MIS 5295 蓋掉今天。
+    """
     from unittest.mock import patch
 
     from config import get_db_path
@@ -98,18 +102,17 @@ def test_2383_near_l20_profit_matches_cal60_carybot():
         "yesterday_close": 5290.0,
         "update_time": "11:46:00",
     }
-    with patch("live_quote.fetch_mis_quote", return_value=rt), patch(
-        "live_quote.is_live_merge_window", return_value=True
-    ):
+    with patch("live_quote.fetch_lookup_quote", return_value=rt), patch(
+        "live_quote.fetch_mis_quote", return_value=rt
+    ), patch("live_quote.is_live_merge_window", return_value=True):
         card = NavigatorEngine(get_db_path()).get_decision_card("2383", merge_live=True)
     assert float(card["cal60_low"]) == 4100.0
-    # (5295-4100)/4100 ≈ 29.1%
-    assert abs(float(card["gain_pct"]) - 29.1) < 0.2
+    close = float(card["close"])
+    expected = round((close / 4100.0 - 1) * 100.0, 1)
+    assert abs(float(card["gain_pct"]) - expected) < 0.2
+    assert float(card["gain_pct"]) > 20.0
     tbl = card["table"]
-    row = tbl[tbl["date"].astype(str) == "20260904"]
-    assert not row.empty
-    assert row.iloc[0]["獲利"] == "29.1%"
-    assert float(row.iloc[0]["profit_pct"]) > 20.0
+    assert float(tbl.iloc[0]["profit_pct"]) > 20.0
 
 
 @pytest.mark.production_db

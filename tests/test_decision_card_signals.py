@@ -101,6 +101,27 @@ def test_card_daily_stance_is_table_not_arrow():
     )
     assert kind == "avoid"
     assert "不要追" in txt
+    # 玉晶光型：創中長線新高且溫度≥80 → 今天不要追
+    txt, kind = card_daily_stance(
+        profit_pct=135.8,
+        alert="K20高",
+        hl="20高",
+        temp=83.1,
+        badges=["創480日新高", "溫度≥80注意"],
+    )
+    assert kind == "avoid"
+    assert "不要追" in txt
+    # 華票型：紅箭頭／20高＋最高溫不是買訊，也不當低點觀察
+    txt, kind = card_daily_stance(
+        profit_pct=5.6,
+        alert="K20高",
+        hl="20高",
+        temp=31.0,
+        badges=["創20日新高"],
+    )
+    assert kind == "wait"
+    assert "買" not in txt
+    assert "觀察" not in txt
 
 
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
