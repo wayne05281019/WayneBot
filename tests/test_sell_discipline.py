@@ -303,3 +303,21 @@ def test_cary_2383_2408_3008_20260904_rows():
     assert c3008.get("sell_action") == "直接減碼"
     assert "不同步再脫離" in str(c3008.get("sell_why") or "")
     assert sell_note_short(c3008) == "直接減碼（不同步再脫離）"
+
+
+@pytest.mark.production_db
+def test_4915_20260904_sync_has_no_sell_caption():
+    """致伸 9/4 最高價與最高溫同步：不是減碼標，決策卡圖說不可多寫紀律。"""
+    from bot_servers import _photo_sell_caption
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    card = NavigatorEngine(get_db_path()).get_decision_card("4915", merge_live=False)
+    assert str(card.get("latest_date")) == "20260904"
+    row = card["table"].iloc[0]
+    assert str(row["高低"]) == "20高"
+    assert str(row["升降"]) == "最高溫"
+    assert card.get("sell_sync") is True
+    assert card.get("sell_action") == ""
+    assert sell_note_short(card) == ""
+    assert _photo_sell_caption("高低決策卡", card, fallback="高低決策卡") == "高低決策卡"
