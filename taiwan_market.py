@@ -1759,6 +1759,51 @@ def _quotes_have_chips(db_path: str, as_of: str) -> bool:
         conn.close()
 
 
+def _quote_chip_totals(db_path: str, as_of: str) -> Optional[Dict[str, float]]:
+    """當日日 K 三大法人張數合計（T86／櫃買寫進 daily_quotes 的值）。沒有欄或沒有列則 None。"""
+    ymd = _norm_ymd(as_of)
+    if not ymd:
+        return None
+    conn = sqlite3.connect(db_path)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+        ).fetchone()
+        if not has:
+            return None
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(daily_quotes)")}
+        if not {"foreign_net", "trust_net", "dealer_net"} <= cols:
+            return None
+        n = conn.execute(
+            "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?",
+            (ymd,),
+        ).fetchone()[0]
+        if int(n or 0) <= 0:
+            return None
+        row = conn.execute(
+            """
+            SELECT SUM(COALESCE(foreign_net,0)), SUM(COALESCE(trust_net,0)), SUM(COALESCE(dealer_net,0))
+            FROM daily_quotes WHERE replace(date,'-','')=?
+            """,
+            (ymd,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    foreign = float(row[0] or 0)
+    trust = float(row[1] or 0)
+    dealer = float(row[2] or 0)
+    return {
+        "foreign_net": foreign,
+        "trust_net": trust,
+        "dealer_net": dealer,
+        "net": foreign + trust + dealer,
+    }
+
+
 def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
     """當日產業法人合計；無表或無該日列則 None（避免把缺資料當 0）。"""
     conn = sqlite3.connect(db_path)
@@ -1870,6 +1915,19 @@ def analyze_taiwan_market(
     rp = compute_regime_plus(db_path, ref_date)
     perf = _index_performance(idx)
     flow_parts = _sector_flow_breakdown(db_path, flow_date)
+    quote_chips = _quote_chip_totals(db_path, ref_date)
+    if quote_chips:
+        chips_foreign = quote_chips["foreign_net"]
+        chips_trust = quote_chips["trust_net"]
+        chips_dealer = quote_chips["dealer_net"]
+        chips_net = quote_chips["net"]
+        chips_as_of = ref_date
+    else:
+        chips_foreign = flow_parts.get("foreign_net")
+        chips_trust = flow_parts.get("trust_net")
+        chips_dealer = flow_parts.get("dealer_net")
+        chips_net = round(flow_net, 0) if flow_net is not None else None
+        chips_as_of = flow_date
     return {
         "ok": True,
         "as_of": ref_date,
@@ -1882,9 +1940,11 @@ def analyze_taiwan_market(
         **{k: v for k, v in perf.items() if k != "ma5"},
         "sector_inflow": flow_parts.get("inflow") or [],
         "sector_outflow": flow_parts.get("outflow") or [],
-        "chips_foreign": flow_parts.get("foreign_net"),
-        "chips_trust": flow_parts.get("trust_net"),
-        "chips_dealer": flow_parts.get("dealer_net"),
+        "chips_foreign": chips_foreign,
+        "chips_trust": chips_trust,
+        "chips_dealer": chips_dealer,
+        "chips_net": chips_net,
+        "chips_as_of": chips_as_of,
         "breadth_above_ma20": breadth.get("above_ma20_pct", 0),
         "sample_n": breadth.get("sample_n", 0),
         "breadth_as_of": breadth_date,
@@ -2736,9 +2796,12 @@ def format_taiwan_market_page_html(
     chips_line = _format_chips_line(snap)
     if chips_line:
         lines.append(chips_line)
-    if flow_net is not None and _sector_flow_net(db_path, flow_date) is not None:
-        f_note = f"（{flow_date}）" if flow_date != ref else ""
-        lines.append(f"合計 {float(flow_net):+,.0f} 張{f_note}")
+    chips_net = snap.get("chips_net")
+    chips_date = str(snap.get("chips_as_of") or flow_date or ref)
+    total = chips_net if chips_net is not None else flow_net
+    if total is not None:
+        f_note = f"（{chips_date}）" if chips_date and chips_date != ref else ""
+        lines.append(f"合計 {float(total):+,.0f} 張{f_note}")
     fut_line = _format_futures_line(snap)
     if fut_line:
         lines.extend(["", fut_line.split("\n")[0]])

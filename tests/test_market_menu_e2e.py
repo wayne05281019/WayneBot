@@ -164,6 +164,42 @@ class TestMarketMenuE2E:
         assert "外資" in html
         assert "合計" in html
 
+    def test_market_page_uses_quote_chips_not_sector_subset(self, tmp_path):
+        """大盤三大法人用當日日 K 張數合計，不用產業加總子集。"""
+        db = str(tmp_path / "t86.db")
+        as_of = _seed_market_db(db)
+        conn = sqlite3.connect(db, timeout=30)
+        for col, spec in (
+            ("foreign_net", "INTEGER"),
+            ("trust_net", "INTEGER"),
+            ("dealer_net", "INTEGER"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} {spec}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=1000, trust_net=200, dealer_net=-50 WHERE date=?",
+            (as_of,),
+        )
+        conn.execute(
+            """
+            CREATE TABLE daily_sector_flow (
+                date TEXT, industry TEXT,
+                foreign_net REAL, trust_net REAL, dealer_net REAL
+            )
+            """
+        )
+        conn.execute("INSERT INTO daily_sector_flow VALUES (?, '半導體業', 1, 1, 1)", (as_of,))
+        conn.commit()
+        conn.close()
+        html = format_taiwan_market_page_html(db, as_of)
+        assert "外資 +1,000" in html
+        assert "投信 +200" in html
+        assert "自營 -50" in html
+        assert "合計 +1,150 張" in html
+        assert "合計 +3 張" not in html
+
     def test_market_page_rebuilds_sector_flow_when_chips_exist(self, tmp_path):
         """日 K 已有法人張、產業表卻停在前一日時，大盤頁要補寫當日，不要默默用舊日。"""
         db = str(tmp_path / "heal.db")
