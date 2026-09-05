@@ -78,18 +78,23 @@ def qty_token_has_unit(token: str) -> bool:
     return t.endswith("張") or t.endswith("股")
 
 
-def coerce_bare_qty_if_share_count(lots, held_lots):
+def coerce_bare_qty_if_share_count(lots, held_lots, *, allow_unheld: bool = False):
     """未標單位、數字 >=100 且大於持有張數時，改當股。
 
     持有 4 張卻打 200 72：舊邏輯當成 200 張會全賣；這裡改成 200 股＝0.2 張。
     已標 張／股、或零股路徑已換算過的小數，不要再除一次。
+    買入尚無持股時（allow_unheld）：439 631.6 當 439股，不要當 439張。
     """
     try:
         q = float(lots or 0)
         held = float(held_lots or 0)
     except (TypeError, ValueError):
         return lots
-    if q <= 0 or held <= 0:
+    if q <= 0:
+        return lots
+    if held <= 0:
+        if allow_unheld and q >= 100:
+            return q / 1000.0
         return lots
     if q >= 100 and q > held + 1e-9:
         as_lots = q / 1000.0

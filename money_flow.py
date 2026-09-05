@@ -615,11 +615,13 @@ def sector_representative_stocks_live(
 
 
 def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
+    """獲利％＝近 60 曆日收盤低。只抓最近 90 根，不要整份日 K（一族上百檔會把資金頁卡死）。"""
     rows = conn.execute(
         """
         SELECT date, close FROM daily_quotes
         WHERE stock_id=? AND replace(date,'-','') <= ?
-        ORDER BY date
+        ORDER BY date DESC
+        LIMIT 90
         """,
         (str(stock_id), str(ymd).replace("-", "")),
     ).fetchall()
@@ -629,7 +631,7 @@ def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
 
     from decision_card_signals import profit_pct_cal60_series
 
-    df = pd.DataFrame(rows, columns=["date", "close"])
+    df = pd.DataFrame(list(reversed(rows)), columns=["date", "close"])
     try:
         return float(profit_pct_cal60_series(df).iloc[-1])
     except (TypeError, ValueError, IndexError):
@@ -659,8 +661,14 @@ def sector_representative_stocks(
         """,
         (ymd, str(industry)),
     ).fetchall()
-    picks: List[Dict[str, Any]] = []
+    cheap = []
     for r in raw:
+        three = int(r["three_net"] or 0)
+        turn = float(r["turnover_k"] or 0)
+        cheap.append((three + turn / 50000.0, r))
+    cheap.sort(key=lambda x: x[0], reverse=True)
+    picks: List[Dict[str, Any]] = []
+    for _, r in cheap[: max(int(limit) * 3, 15)]:
         sid = str(r["stock_id"])
         three = int(r["three_net"] or 0)
         turn = float(r["turnover_k"] or 0)
