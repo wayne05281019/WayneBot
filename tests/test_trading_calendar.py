@@ -78,6 +78,26 @@ def test_tw_equity_session_open_hours():
     assert tw_session_phase(datetime(2026, 8, 30, 10, 0, tzinfo=tz)) == "weekend"
 
 
+def test_tw_equity_session_skips_national_holiday():
+    from trading_calendar import (
+        is_tw_equity_session,
+        is_tw_market_holiday,
+        is_tw_open_calendar_day,
+        tw_session_phase,
+    )
+
+    tz = ZoneInfo("Asia/Taipei")
+    # 2026/09/25 五 中秋：平日 10:30 也不是盤中
+    assert is_tw_market_holiday("20260925")
+    assert not is_tw_open_calendar_day("20260925")
+    assert not is_tw_equity_session(datetime(2026, 9, 25, 10, 30, tzinfo=tz))
+    assert tw_session_phase(datetime(2026, 9, 25, 10, 30, tzinfo=tz)) == "weekend"
+    # 春節後開始交易日不是休市
+    assert not is_tw_market_holiday("20260223")
+    assert is_tw_open_calendar_day("20260223")
+    assert is_tw_equity_session(datetime(2026, 2, 23, 10, 0, tzinfo=tz))
+
+
 def test_resolve_flow_as_of_prefers_today_after_close(tmp_path):
     import sqlite3
     from datetime import datetime

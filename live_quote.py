@@ -83,10 +83,10 @@ def is_live_merge_window(now=None) -> bool:
     now = now or taipei_now()
     if now.weekday() >= 5:
         return False
-    from trading_calendar import is_trading_weekday
+    from trading_calendar import is_tw_open_calendar_day
 
     today = now.strftime("%Y%m%d")
-    if not is_trading_weekday(today):
+    if not is_tw_open_calendar_day(today):
         return False
     t = now.time()
     return dt_time(8, 50) <= t < dt_time(16, 30)
@@ -287,13 +287,13 @@ def session_bar_from_mis(rt: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
 
 
 def is_lookup_trading_day(now=None) -> bool:
-    """週一～五台股日曆日（假日靠庫判斷）；查股即時源用。"""
+    """週一～五且非國定休市；查股即時源用。"""
     now = now or taipei_now()
     if now.weekday() >= 5:
         return False
-    from trading_calendar import is_trading_weekday
+    from trading_calendar import is_tw_open_calendar_day
 
-    return is_trading_weekday(now.strftime("%Y%m%d"))
+    return is_tw_open_calendar_day(now.strftime("%Y%m%d"))
 
 
 def is_tw_quote_gap_window(now=None) -> bool:
@@ -301,10 +301,10 @@ def is_tw_quote_gap_window(now=None) -> bool:
     now = now or taipei_now()
     if now.weekday() >= 5:
         return False
-    from trading_calendar import is_trading_weekday
+    from trading_calendar import is_tw_open_calendar_day
 
     today = now.strftime("%Y%m%d")
-    if not is_trading_weekday(today):
+    if not is_tw_open_calendar_day(today):
         return False
     t = now.time()
     return dt_time(13, 30) <= t < dt_time(16, 30)
@@ -602,9 +602,9 @@ def append_live_bar(
             out.at[idx, col] = val
         return out
     try:
-        from trading_calendar import is_trading_weekday
+        from trading_calendar import is_tw_open_calendar_day
 
-        if not is_trading_weekday(today):
+        if not is_tw_open_calendar_day(today):
             return df
     except Exception:
         return df
