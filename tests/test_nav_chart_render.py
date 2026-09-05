@@ -22,7 +22,7 @@ class NavChartRenderTests(unittest.TestCase):
             self.assertTrue(path and os.path.isfile(path))
             self.assertGreater(os.path.getsize(path), 8000)
 
-    def test_nav_chart_hi_dpi_and_narrow_arrows(self):
+    def test_nav_chart_hi_dpi_and_marker_arrows(self):
         import inspect
 
         from PIL import Image
@@ -31,8 +31,11 @@ class NavChartRenderTests(unittest.TestCase):
 
         self.assertGreaterEqual(NAV_CHART_DPI, 180)
         src = inspect.getsource(draw_from_ohlc)
-        self.assertIn("arrow_hw = 0.48", src)
+        self.assertIn("arrow_hw = 0.72", src)
         self.assertNotIn("arrow_hw = 1.15", src)
+        self.assertNotIn("arrow_hw = 0.48", src)
+        self.assertIn("dn_pick", src)
+        self.assertNotIn("dn_stack.append", src)
         db = get_db_path()
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "nav.png")
@@ -41,19 +44,20 @@ class NavChartRenderTests(unittest.TestCase):
             with Image.open(path) as im:
                 self.assertGreaterEqual(im.size[0], 2400)
 
-    def test_nav_arrows_have_no_black_outline(self):
+    def test_nav_arrows_are_short_markers_without_outline(self):
         import inspect
 
-        from wayne_navigator import _fill_triangle_gradient, _nav_arrow, _nav_legend_key, _sig_arrow
+        from wayne_navigator import _nav_arrow, _nav_legend_key, _sig_arrow
 
         for fn in (_nav_arrow, _sig_arrow, _nav_legend_key):
             src = inspect.getsource(fn)
             self.assertNotIn("withStroke", src, fn.__name__)
             self.assertNotIn("#000000", src, fn.__name__)
             self.assertNotIn("000000", src, fn.__name__)
-        self.assertIn("_fill_triangle_gradient", inspect.getsource(_nav_arrow))
-        self.assertIn("LinearSegmentedColormap", inspect.getsource(_fill_triangle_gradient))
-        self.assertIn("set_clip_path", inspect.getsource(_fill_triangle_gradient))
+        src = inspect.getsource(_nav_arrow)
+        self.assertIn("head_h", src)
+        self.assertIn("shaft_h", src)
+        self.assertNotIn("_fill_triangle_gradient", src)
 
 
 if __name__ == "__main__":

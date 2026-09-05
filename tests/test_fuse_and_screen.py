@@ -1138,6 +1138,11 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("profit_cell_style", src)
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
+        self.assertIn("_status_badge_colors", src)
+        self.assertIn("pill_cols = {3, 5}", src)
+        self.assertIn("_temp_heat_draw", src)
+        self.assertIn("_cell_wash", src)
+        self.assertNotIn("買低賣高決策卡", src)
         self.assertNotIn("#FBEAF1", src)
         self.assertNotIn("row_i % 2", src)
 
@@ -1378,7 +1383,7 @@ class LookupCardTest(unittest.TestCase):
         import inspect
 
         src = inspect.getsource(render_decision_card_png)
-        self.assertIn("content_r", src)
+        self.assertIn("pad_x + 3.2", src)
         self.assertIn('ha="right"', src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
