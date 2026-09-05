@@ -423,6 +423,15 @@ def test_index_performance_hides_zero_yahoo_volume():
     assert "量比 0.00" not in note
 
 
+def test_regime_close_keeps_official_two_decimals():
+    from taiwan_market import _regime_from_closes
+
+    closes = pd.Series([45857.66] * 20 + [46551.13])
+    out = _regime_from_closes(closes)
+    assert out["close"] == 46551.13
+    assert out["close"] != 46551.1
+
+
 def test_format_performance_shows_fmtqik_volume():
     from taiwan_market import _format_performance_lines
 

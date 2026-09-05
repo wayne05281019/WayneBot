@@ -47,6 +47,16 @@ def ensure_sector_flow_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sector_flow_date ON daily_sector_flow(date);")
     cols = {r[1] for r in conn.execute("PRAGMA table_info(daily_sector_flow)")}
     for name, spec in (
+        ("stock_n", "INTEGER DEFAULT 0"),
+        ("volume", "INTEGER DEFAULT 0"),
+        ("turnover_k", "REAL DEFAULT 0"),
+        ("three_net", "INTEGER DEFAULT 0"),
+        ("prev_three_net", "INTEGER DEFAULT 0"),
+        ("three_delta", "INTEGER DEFAULT 0"),
+        ("avg_pct", "REAL DEFAULT 0"),
+        ("top_buy_id", "TEXT DEFAULT ''"),
+        ("top_buy_name", "TEXT DEFAULT ''"),
+        ("top_buy_three", "INTEGER DEFAULT 0"),
         ("top_sell_id", "TEXT DEFAULT ''"),
         ("top_sell_name", "TEXT DEFAULT ''"),
         ("top_sell_three", "INTEGER DEFAULT 0"),
@@ -274,62 +284,62 @@ def sector_flow_ready(db_path: str, ymd: str) -> bool:
 
 
 def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 8) -> int:
-    """把最近幾個交易日的產業輪動寫進 daily_sector_flow，供佈局對照。"""
+    """把最近幾個交易日的產業輪動寫進 daily_sector_flow，供佈局對照。
+
+    ymd 當上限，不是只寫那一天。日 K 已有法人張但產業表漏寫時，一次回補最近 lookback 日。
+    """
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
     ensure_sector_flow_table(conn)
-    dates: List[str] = []
-    if ymd:
-        dates = [str(ymd).replace("-", "")]
-        prev = _prev_quote_date(conn, dates[0])
-        if prev:
-            dates.append(prev)
-    else:
+    cap = str(ymd).replace("-", "") if ymd else ""
+    if not cap:
         as_of, _ = resolve_flow_as_of(path)
-        cap = as_of
-        if cap:
-            rows = conn.execute(
-                """
-                SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes
-                WHERE replace(date,'-','') <= ?
-                ORDER BY d DESC LIMIT ?
-                """,
-                (str(cap).replace("-", ""), int(lookback)),
-            ).fetchall()
-        else:
-            rows = []
-        if not rows:
-            rows = conn.execute(
-                "SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes ORDER BY d DESC LIMIT ?",
-                (int(lookback),),
-            ).fetchall()
-        dates = [str(r[0]) for r in rows]
+        cap = str(as_of or "").replace("-", "")
+    if cap:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes
+            WHERE replace(date,'-','') <= ?
+            ORDER BY d DESC LIMIT ?
+            """,
+            (cap, int(lookback)),
+        ).fetchall()
+    else:
+        rows = []
+    if not rows:
+        rows = conn.execute(
+            "SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes ORDER BY d DESC LIMIT ?",
+            (int(lookback),),
+        ).fetchall()
+    dates = [str(r[0]) for r in rows]
     written = 0
-    for d in dates:
-        rows = compute_sector_rows(conn, d)
-        conn.execute("DELETE FROM daily_sector_flow WHERE date=?", (d,))
-        for r in rows:
-            conn.execute(
-                """
-                INSERT INTO daily_sector_flow (
-                    date, industry, stock_n, volume, turnover_k,
-                    foreign_net, trust_net, dealer_net, three_net,
-                    prev_three_net, three_delta, avg_pct,
-                    top_buy_id, top_buy_name, top_buy_three,
-                    top_sell_id, top_sell_name, top_sell_three
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    r["date"], r["industry"], r["stock_n"], r["volume"], r["turnover_k"],
-                    r["foreign_net"], r["trust_net"], r["dealer_net"], r["three_net"],
-                    r["prev_three_net"], r["three_delta"], r["avg_pct"],
-                    r["top_buy_id"], r["top_buy_name"], r["top_buy_three"],
-                    r["top_sell_id"], r["top_sell_name"], r["top_sell_three"],
-                ),
-            )
-            written += 1
-    conn.commit()
-    conn.close()
+    try:
+        for d in dates:
+            sector_rows = compute_sector_rows(conn, d)
+            conn.execute("DELETE FROM daily_sector_flow WHERE date=?", (d,))
+            for r in sector_rows:
+                conn.execute(
+                    """
+                    INSERT INTO daily_sector_flow (
+                        date, industry, stock_n, volume, turnover_k,
+                        foreign_net, trust_net, dealer_net, three_net,
+                        prev_three_net, three_delta, avg_pct,
+                        top_buy_id, top_buy_name, top_buy_three,
+                        top_sell_id, top_sell_name, top_sell_three
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        r["date"], r["industry"], r["stock_n"], r["volume"], r["turnover_k"],
+                        r["foreign_net"], r["trust_net"], r["dealer_net"], r["three_net"],
+                        r["prev_three_net"], r["three_delta"], r["avg_pct"],
+                        r["top_buy_id"], r["top_buy_name"], r["top_buy_three"],
+                        r["top_sell_id"], r["top_sell_name"], r["top_sell_three"],
+                    ),
+                )
+                written += 1
+        conn.commit()
+    finally:
+        conn.close()
     return written
 
 

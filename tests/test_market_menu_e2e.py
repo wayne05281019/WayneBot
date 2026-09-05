@@ -164,6 +164,81 @@ class TestMarketMenuE2E:
         assert "外資" in html
         assert "合計" in html
 
+    def test_market_page_rebuilds_sector_flow_when_chips_exist(self, tmp_path):
+        """日 K 已有法人張、產業表卻停在前一日時，大盤頁要補寫當日，不要默默用舊日。"""
+        db = str(tmp_path / "heal.db")
+        as_of = _seed_market_db(db)
+        prev = "20260819"
+        conn = sqlite3.connect(db, timeout=30)
+        for col, spec in (
+            ("stock_name", "TEXT"),
+            ("market_type", "TEXT"),
+            ("asset_type", "TEXT"),
+            ("industry", "TEXT"),
+            ("updated_at", "TEXT"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE stock_universe ADD COLUMN {col} {spec}")
+            except sqlite3.OperationalError:
+                pass
+        for col, spec in (
+            ("stock_name", "TEXT"),
+            ("market", "TEXT"),
+            ("open", "REAL"),
+            ("high", "REAL"),
+            ("low", "REAL"),
+            ("turnover_k", "REAL"),
+            ("pct_change", "REAL"),
+            ("avg_price", "REAL"),
+            ("foreign_net", "INTEGER"),
+            ("trust_net", "INTEGER"),
+            ("dealer_net", "INTEGER"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} {spec}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute("DELETE FROM stock_universe")
+        for sid, name, ind in (
+            ("2330", "台積電", "半導體業"),
+            ("2454", "聯發科", "半導體業"),
+            ("2002", "中鋼", "鋼鐵工業"),
+            ("2027", "大成鋼", "鋼鐵工業"),
+        ):
+            conn.execute(
+                "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
+                (sid, name, "TWSE", "STOCK", ind, "t"),
+            )
+        conn.execute("DELETE FROM daily_quotes")
+        for d, fn in ((prev, -1000), (as_of, 2500)):
+            for sid, name, extra in (
+                ("2330", "台積電", 0),
+                ("2454", "聯發科", 50),
+                ("2002", "中鋼", -80),
+                ("2027", "大成鋼", -20),
+            ):
+                conn.execute(
+                    "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (d, sid, name, "TW", 100, 101, 99, 100, 1000, 1000, 0.2, 100, fn + extra, 10, 5),
+                )
+        conn.execute(
+            """
+            CREATE TABLE daily_sector_flow (
+                date TEXT, industry TEXT,
+                foreign_net REAL, trust_net REAL, dealer_net REAL
+            )
+            """
+        )
+        conn.execute("INSERT INTO daily_sector_flow VALUES (?, '半導體業', -800, 10, 5)", (prev,))
+        conn.execute("INSERT INTO daily_sector_flow VALUES (?, '鋼鐵工業', -200, 10, 5)", (prev,))
+        conn.commit()
+        conn.close()
+        html = format_taiwan_market_page_html(db, as_of)
+        assert f"（{prev}）" not in html
+        assert "合計" in html
+        snap = analyze_taiwan_market(db, as_of, db_only=True, page_light=True)
+        assert snap.get("sector_flow_as_of") == as_of
+
     def test_menu_cmd_forces_visible_refresh(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         bot.db_path = ":memory:"
