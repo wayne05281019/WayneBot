@@ -1716,7 +1716,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 左標、右價；％貼在價下面。不要三行置中把左右空白浪費掉。
+        # 高低小盒子白底；左標、右價，％在價下面。不要三行置中把左右空白浪費掉。
         fc, ec = C["white"], C["line"]
         if high:
             lc = C["hi_ink"]
