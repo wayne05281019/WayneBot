@@ -177,3 +177,25 @@ def test_parse_sell_bare_large_qty_is_shares_when_held_whole_lots(tmp_db):
     assert lots == 200.0
     code, lots, price = bot._parse_sell_text("1 72", "3035", held_lots=4.0)
     assert lots == 1.0
+
+
+def test_parse_sell_three_token_looks_up_held_lots(tmp_db):
+    """pending 只有 sell、或一次打「代號 數量 價格」時，也要用持股把 200 當股。"""
+    from bot_servers import WayneTelegramBot
+    from wayne_db import add_to_portfolio
+
+    add_to_portfolio(tmp_db, "u6", "3035", "智原", 4.0, 196.8)
+    add_to_portfolio(tmp_db, "u6", "6526", "達發", 0.439, 631.6)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = tmp_db
+    code, lots, price = bot._parse_sell_text("3035 200 72", uid="u6")
+    assert code == "3035"
+    assert lots == pytest.approx(0.2)
+    assert price == 72.0
+    code, lots, price = bot._parse_sell_text("3035 200張 72", uid="u6")
+    assert lots == 200.0
+    code, lots, price = bot._parse_sell_text("6526 200 72", uid="u6")
+    assert code == "6526"
+    assert lots == pytest.approx(0.2)
+    code, lots, price = bot._parse_sell_text("3035 1 72", uid="u6")
+    assert lots == 1.0

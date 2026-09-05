@@ -1556,28 +1556,34 @@ class WayneTelegramBot:
             return None, None, None
         return code, lots, price
 
-    def _parse_sell_text(self, text: str, code: str = "", held_lots=None) -> tuple:
+    def _parse_sell_text(self, text: str, code: str = "", held_lots=None, uid: str = "") -> tuple:
         """回傳 (code, lots, price)；lots=0 表示全賣。"""
         parts = normalize_trade_tokens(text)
         if code and len(parts) >= 3 and parts[0] == str(code).strip():
             parts = parts[1:]
             text = " ".join(parts)
-        bare_shares = held_is_odd_lot_only(held_lots)
-        default_unit = "股" if bare_shares else "張"
         qty_tok = ""
         if not code and len(parts) >= 3:
             raw, lots_s, price_s = parts[0], parts[1], parts[2]
             hits = lookup_stocks(self.db_path, raw)
             code = hits[0]["stock_id"] if hits else raw
-            lots = parse_qty_to_lots(lots_s, default_unit=default_unit)
             try:
                 price = float(price_s)
             except ValueError:
                 return None, None, None
-            if lots is None or not code:
+            if not code:
+                return None, None, None
+            if held_lots is None and uid:
+                held_lots = self._held_lots_for(uid, code)
+            default_unit = "股" if held_is_odd_lot_only(held_lots) else "張"
+            lots = parse_qty_to_lots(lots_s, default_unit=default_unit)
+            if lots is None:
                 return None, None, None
             qty_tok = lots_s
         else:
+            if held_lots is None and uid and code:
+                held_lots = self._held_lots_for(uid, code)
+            bare_shares = held_is_odd_lot_only(held_lots)
             lots, price = parse_lots_price(
                 text, price_only_sell_all=True, bare_qty_is_shares=bare_shares
             )
@@ -2772,7 +2778,7 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
-        code, lots, price = self._parse_sell_text(" ".join(args))
+        code, lots, price = self._parse_sell_text(" ".join(args), uid=uid)
         if not code:
             code, lots, price = args[0], float(args[1]), float(args[2])
         msg = await asyncio.to_thread(record_sell, self.db_path, uid, code, lots, price)
@@ -2876,7 +2882,7 @@ class WayneTelegramBot:
                 code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
                 held_lots = self._held_lots_for(uid, code) if code else None
                 parsed_code, lots, price = self._parse_sell_text(
-                    text, code, held_lots=held_lots
+                    text, code, held_lots=held_lots, uid=uid
                 )
                 if parsed_code is None:
                     self._pending[actor] = pending or "sell"
