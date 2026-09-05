@@ -68,7 +68,7 @@ CARD_PNG_DPI = 240
 GLANCE_PNG_DPI = 240
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 16.4
+GLANCE_FIG_H = 17.2
 NAV_CHART_DPI = 200
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
@@ -2169,6 +2169,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         mc = None
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
+    official = [p for p in (fund_rows or []) if str(p[0]) in ("估值", "資券餘額")]
+    rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額")]
+    fund_rows = official + rest
     try:
         from sell_discipline import attach_sell, sell_note_short
 
@@ -2331,7 +2334,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
         cy -= 4.05
 
-    panel(1.4, 5.35, 97.2, 20.7)
+    panel(1.4, 1.15, 97.2, 24.9)
     ink(4.8, 23.85, "基本面／紀律", 13, "#1A237E")
     fy = 20.35
     note = (tape or {}).get("conflict") or ""
@@ -2373,8 +2376,8 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
     except Exception:
         pass
-    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
-    ink(96.4, 6.85, "▲連漲　▼連跌", 10, "#78909C", ha="right")
+    ink(4.8, 2.35, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
+    ink(96.4, 2.35, "▲連漲　▼連跌", 10, "#78909C", ha="right")
     plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close()
     return save_path

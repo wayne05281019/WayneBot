@@ -431,6 +431,12 @@ def test_format_performance_shows_fmtqik_volume():
     )
     joined = "　".join(lines)
     assert "全日量 926.7萬張" in joined
+    nan_lines = _format_performance_lines(
+        {"volume": 9_267_047, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0,
+         "open": float("nan"), "high": float("nan"), "low": float("nan"),
+         "amplitude_pct": float("nan"), "hl_spread": float("nan")}
+    )
+    assert "nan" not in " ".join(nan_lines)
 
 
 @patch("taiwan_market._fetch_index_daily")

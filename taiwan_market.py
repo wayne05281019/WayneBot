@@ -2471,7 +2471,15 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
         )
     amp = ohlc.get("amplitude_pct")
     spread = ohlc.get("hl_spread")
-    if amp is not None and spread is not None:
+
+    def _finite(v) -> bool:
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return False
+        return x == x
+
+    if _finite(amp) and _finite(spread):
         lines.append(f"振幅 {amp:.2f}%　高低差 {spread:,.2f}")
     vol_chg = snap.get("vol_chg_pct")
     vol_r = snap.get("vol_ratio")

@@ -85,17 +85,18 @@ def test_twse_margin_util_from_limit_not_cost():
         [
             {
                 "股票代號": "2330",
-                "Date": "1150904",
-                "融資今日餘額": "18185",
-                "融資限額": "5516875",
-                "融券今日餘額": "585",
-                "融券限額": "5516875",
+                "融資今日餘額": "28381",
+                "融資限額": "6483092",
+                "融券今日餘額": "25",
+                "融券限額": "6483092",
             }
-        ]
+        ],
+        fallback_date="20260904",
     )
     r = rows[0]
-    assert r["margin_bal"] == 18185
-    assert abs(r["margin_util"] - 18185 / 5516875 * 100) < 0.05
+    assert r["date"] == "20260904"
+    assert r["margin_bal"] == 28381
+    assert abs(r["margin_util"] - 28381 / 6483092 * 100) < 0.05
     src = __import__("inspect").getsource(parse_twse_margin)
     assert "成本" not in src
 

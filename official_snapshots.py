@@ -211,13 +211,14 @@ def parse_tpex_pe(rows: Sequence[dict]) -> List[dict]:
     return out
 
 
-def parse_twse_margin(rows: Sequence[dict]) -> List[dict]:
+def parse_twse_margin(rows: Sequence[dict], fallback_date: str = "") -> List[dict]:
     out = []
+    fb = str(fallback_date or "").replace("-", "")[:8]
     for row in rows:
         sid = str(row.get("股票代號") or row.get("Code") or "").strip()
         if not sid:
             continue
-        date = roc_to_ymd(row.get("Date") or row.get("資料日期") or "")
+        date = roc_to_ymd(row.get("Date") or row.get("資料日期") or "") or fb
         m_bal = _int(row.get("融資今日餘額"))
         m_lim = _int(row.get("融資限額"))
         s_bal = _int(row.get("融券今日餘額"))
@@ -501,19 +502,27 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
                 log.warning("官方快照 %s 失敗：%s", name, exc)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fmt_rows = parse_fmtqik(fetched.get("fmtqik") or [])
+    fallback = max((r["date"] for r in fmt_rows), default="")
+    if len(fallback) != 8:
+        try:
+            from trading_calendar import fuse_end_trading_date
+
+            fallback = fuse_end_trading_date()
+        except Exception:
+            fallback = ""
     val_n = mar_n = dt_n = 0
     conn = sqlite3.connect(path)
     try:
         val_n += _upsert_valuation(conn, parse_bwibbu(fetched.get("bwibbu") or []), now)
         val_n += _upsert_valuation(conn, parse_tpex_pe(fetched.get("tpex_pe") or []), now)
-        mar_n += _upsert_margin(conn, parse_twse_margin(fetched.get("margn") or []), now)
+        mar_n += _upsert_margin(conn, parse_twse_margin(fetched.get("margn") or [], fallback_date=fallback), now)
         mar_n += _upsert_margin(conn, parse_tpex_margin(fetched.get("tpex_margin") or []), now)
         dt_n += _upsert_daytrade(conn, parse_twtb4u(fetched.get("twtb4u") or []), now)
         conn.commit()
     finally:
         conn.close()
 
-    fmt_rows = parse_fmtqik(fetched.get("fmtqik") or [])
     fmt_n = overlay_fmtqik(path, fmt_rows) if fmt_rows else 0
     industry_pairs = parse_company_industry(fetched.get("twse_co") or [], source="twse")
     industry_pairs += parse_company_industry(fetched.get("tpex_co") or [], source="tpex")
