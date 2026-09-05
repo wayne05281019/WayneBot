@@ -289,11 +289,36 @@ class FuseAndScreenTest(unittest.TestCase):
             os.remove(path)
 
     def test_etf_blank_industry_defaults_to_etf(self):
-        from universe import default_industry
+        from universe import card_industry_label, default_industry
 
         self.assertEqual(default_industry("ETF_PASSIVE", ""), "ETF")
         self.assertEqual(default_industry("STOCK", "半導體業"), "半導體業")
         self.assertEqual(default_industry("STOCK", ""), "")
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "CREATE TABLE stock_universe(stock_id TEXT, stock_name TEXT, market_type TEXT, asset_type TEXT, industry TEXT, is_active INT, updated_at TEXT)"
+            )
+            conn.executemany(
+                "INSERT INTO stock_universe VALUES (?,?,?,?,?,1,'')",
+                [
+                    ("2330", "台積電", "上市", "STOCK", "半導體業"),
+                    ("5276", "達輝-KY", "上櫃", "KY", "其他業"),
+                    ("0050", "元大台灣50", "上市", "ETF_PASSIVE", ""),
+                    ("9103", "美德醫療-DR", "上市", "STOCK", ""),
+                ],
+            )
+            conn.commit()
+            conn.close()
+            self.assertEqual(card_industry_label("2330", path), "半導體業")
+            self.assertEqual(card_industry_label("5276", path), "其他業")
+            self.assertEqual(card_industry_label("0050", path), "ETF")
+            self.assertEqual(card_industry_label("9103", path), "")
+            self.assertEqual(card_industry_label("9999", path), "")
+        finally:
+            os.remove(path)
 
     def test_sector_rotation_uses_official_chips(self):
         from unittest.mock import patch

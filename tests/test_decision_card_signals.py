@@ -56,18 +56,51 @@ def test_card_query_stamp_live_includes_seconds():
         is_live=True, latest_date="20260904", generated_at=dt
     )
     assert date_s == "2026/09/04"
-    assert clock_s == "產出 10:15:07"
+    assert clock_s == "盤中 10:15"
     date_s, clock_s = format_card_query_stamp(
         is_live=True,
         latest_date="20260904",
         generated_at="2026-09-04 13:25:18",
     )
-    assert clock_s == "產出 13:25:18"
+    assert clock_s == "盤中 13:25"
     date_s, clock_s = format_card_query_stamp(
         is_live=False, latest_date="20260904", generated_at=dt
     )
     assert date_s == "2026/09/04"
-    assert clock_s == ""
+    assert clock_s == "13:30收盤"
+
+
+def test_card_query_stamp_after_close_is_fixed():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from decision_card_signals import format_card_query_stamp
+
+    after = datetime(2026, 9, 4, 23, 22, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    date_s, clock_s = format_card_query_stamp(
+        is_live=False, latest_date="20260904", generated_at=after
+    )
+    assert date_s == "2026/09/04"
+    assert clock_s == "13:30收盤"
+    date_s, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at="2026-09-04 13:30:00"
+    )
+    assert clock_s == "13:30收盤"
+    weekend = datetime(2026, 9, 5, 16, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=False, latest_date="20260904", generated_at=weekend
+    )
+    assert clock_s == "13:30收盤"
+    open_bell = datetime(2026, 9, 4, 9, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at=open_bell
+    )
+    assert clock_s == "盤中 09:00"
+    preopen = datetime(2026, 9, 4, 8, 50, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260904", generated_at=preopen
+    )
+    assert clock_s == "13:30收盤"
 
 
 def test_card_daily_stance_is_table_not_arrow():
@@ -180,11 +213,12 @@ def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
     card = {
         "stock_id": "2330",
         "stock_name": "台積電",
+        "industry": "半導體業",
         "latest_date": "20260904",
         "is_live": True,
         "generated_at": "2026-09-04 10:15:07",
         "query_date": "2026/09/04",
-        "query_clock": "產出 10:15:07",
+        "query_clock": "盤中 10:15",
         "close": 100.0,
         "change_pct": 1.0,
         "prev_close": 99.0,
@@ -215,5 +249,100 @@ def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
     out = tmp_path / "live_stamp.png"
     path = render_decision_card_png(card, str(out))
     assert path and out.is_file()
-    assert any("產出 10:15:07" in t for t in seen)
+    assert any("盤中 10:15" in t for t in seen)
     assert any("2026/09/04" in t for t in seen)
+    assert any("半導體業" in t for t in seen)
+
+
+def test_closed_cards_draw_industry_and_fixed_close_clock(tmp_path, monkeypatch):
+    import os
+
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    import matplotlib.axes
+    import pandas as pd
+
+    from wayne_navigator import render_decision_card_png, render_first_glance_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260904",
+                "close": 18.3,
+                "獲利": "1.1%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "20.0 °C",
+                "升降": "升溫",
+                "升降註": "",
+                "月乖離": "+0.5%",
+                "120日量": "第 80 名",
+                "profit_pct": 1.1,
+                "bias_monthly": 0.5,
+                "vol_rank_120": 80,
+                "temp_num": 20.0,
+            }
+        ]
+    )
+    card = {
+        "stock_id": "5276",
+        "stock_name": "達輝-KY",
+        "industry": "其他業",
+        "latest_date": "20260904",
+        "is_live": False,
+        "generated_at": "2026-09-05 23:22:00",
+        "query_date": "2026/09/04",
+        "query_clock": "13:30收盤",
+        "next_event": "",
+        "close": 18.3,
+        "change_pct": 1.1,
+        "prev_close": 18.1,
+        "open": 18.2,
+        "high": 18.4,
+        "low": 18.1,
+        "h10": 19.0,
+        "dist_h10": -3.7,
+        "h20": 19.2,
+        "dist_h20": -4.7,
+        "h60": 20.0,
+        "dist_h60": -8.5,
+        "l10": 17.0,
+        "dist_l10": 7.6,
+        "l20": 16.5,
+        "dist_l20": 10.9,
+        "l60": 15.0,
+        "dist_l60": 22.0,
+        "space_20": 10,
+        "space_60": 20,
+        "ma60s": 0.1,
+        "qty60": 100,
+        "badges": ["已除權還原", "60日量第 5 名", "120日第 14 名", "整理格局"],
+        "stance": "等待・按表操課",
+        "stance_kind": "wait",
+        "table": table,
+    }
+    card_path = tmp_path / "closed_stamp_card.png"
+    glance_path = tmp_path / "closed_stamp_glance.png"
+    assert render_decision_card_png(card, str(card_path))
+    assert any("13:30收盤" in t for t in seen)
+    assert any("其他業" in t for t in seen)
+    assert not any("23:22" in t for t in seen)
+    seen.clear()
+    tape = {"last": {}, "move": {}, "volume": {}, "foreign": {}, "trust": {}, "dealer": {}, "three": {}, "inst_pct": 0}
+    assert render_first_glance_png("5276", card, tape, str(glance_path))
+    assert any("13:30收盤" in t for t in seen)
+    assert any("其他業" in t for t in seen)
+    assert any(t == "整理格局" or t.startswith("整理格局") for t in seen)
+    assert any("已除權還原" in t for t in seen)
+    assert any("60日量第 5 名" in t for t in seen)
+    assert not any("23:22" in t for t in seen)

@@ -43,44 +43,66 @@ def format_ymd_slash(date_val) -> str:
     return d
 
 
+def _parse_stamp_dt(generated_at: datetime | str | None) -> datetime:
+    if isinstance(generated_at, datetime):
+        return taipei_now(generated_at)
+    raw = str(generated_at or "").strip()
+    if raw:
+        blob = raw.replace("T", " ").replace("／", "/").replace("－", "-")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M"):
+            try:
+                return taipei_now(datetime.strptime(blob[:19], fmt))
+            except ValueError:
+                continue
+        parts = blob.split()
+        if parts and ":" in parts[-1]:
+            clock = parts[-1][:8]
+            try:
+                today = taipei_now().strftime("%Y-%m-%d")
+                return taipei_now(datetime.strptime(f"{today} {clock}", "%Y-%m-%d %H:%M:%S"))
+            except ValueError:
+                try:
+                    today = taipei_now().strftime("%Y-%m-%d")
+                    return taipei_now(datetime.strptime(f"{today} {clock[:5]}", "%Y-%m-%d %H:%M"))
+                except ValueError:
+                    pass
+    return taipei_now()
+
+
+def _in_cash_session(dt: datetime) -> bool:
+    """上市櫃現股 09:00～13:30；13:30 當下已收盤。"""
+    dt = taipei_now(dt)
+    ymd = dt.strftime("%Y%m%d")
+    try:
+        from trading_calendar import is_trading_weekday
+
+        if not is_trading_weekday(ymd):
+            return False
+    except Exception:
+        if dt.weekday() >= 5:
+            return False
+    hm = dt.hour * 60 + dt.minute
+    return 9 * 60 <= hm < 13 * 60 + 30
+
+
 def format_card_query_stamp(
     *,
     is_live: bool,
     latest_date="",
     generated_at: datetime | str | None = None,
 ) -> Tuple[str, str]:
-    """高低卡右上角：庫已是官方收盤只寫資料日；當天即時列（盤中或 16:30 融合前）寫日期＋產出時分秒。
+    """高低卡／介紹圖右上角：日期永遠配時間。
 
-    作者公開貼文常是盤中截圖，價格會跟收盤不同。對圖時必須對產出時間，
-    不能拿舊文或盤中價當收盤對答案。
+    盤中查詢（有即時列、台北 09:00～未滿 13:30）寫當下 HH:MM。
+    已過收盤、週末、或卡上是官方收盤列：一律「13:30收盤」，不要寫晚上查詢的時鐘。
     """
     date_s = format_ymd_slash(latest_date)
-    if not is_live:
-        return date_s, ""
-    clock = ""
-    if isinstance(generated_at, datetime):
-        dt = taipei_now(generated_at)
-        clock = dt.strftime("%H:%M:%S")
-        if not date_s:
-            date_s = dt.strftime("%Y/%m/%d")
-    else:
-        raw = str(generated_at or "").strip()
-        if len(raw) >= 8 and ":" in raw:
-            clock = raw[-8:] if raw[-8] != " " else raw[-8:].strip()
-            if len(clock) == 8 and clock[2] == ":" and clock[5] == ":":
-                pass
-            else:
-                parts = raw.replace("T", " ").split()
-                clock = parts[-1][:8] if parts else ""
-        if not date_s and len(raw) >= 10:
-            date_s = format_ymd_slash(raw[:10].replace("-", ""))
-    if clock and len(clock) == 5 and clock[2] == ":":
-        clock = clock + ":00"
-    if not clock:
-        clock = taipei_now().strftime("%H:%M:%S")
-        if not date_s:
-            date_s = taipei_now().strftime("%Y/%m/%d")
-    return date_s, f"產出 {clock}"
+    dt = _parse_stamp_dt(generated_at)
+    if not date_s:
+        date_s = dt.strftime("%Y/%m/%d")
+    if is_live and _in_cash_session(dt):
+        return date_s, f"盤中 {dt.strftime('%H:%M')}"
+    return date_s, "13:30收盤"
 
 
 def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:

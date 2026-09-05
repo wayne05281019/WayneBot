@@ -91,6 +91,26 @@ def default_industry(asset_type: str, industry: str = "") -> str:
     return ""
 
 
+def card_industry_label(stock_id: str, db_path: str = None) -> str:
+    """查股圖卡用的官方細部產業（公開資訊觀測站產業別）。沒有真值就空字串。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            "SELECT industry, asset_type FROM stock_universe WHERE stock_id=?",
+            (sid,),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return ""
+    if not row:
+        return ""
+    return default_industry(row[1] or "", row[0] or "")
+
+
 def is_tradable(stock_id: str, stock_name: str = "") -> bool:
     _atype, keep = classify_target(stock_id, stock_name)
     return keep
