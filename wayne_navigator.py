@@ -688,9 +688,17 @@ class NavigatorEngine:
             next_event = nearest_event_label(str(stock_id), self.db_path) or ""
         except Exception:
             next_event = ""
+        industry = ""
+        try:
+            from universe import card_industry_label
+
+            industry = card_industry_label(str(stock_id), self.db_path)
+        except Exception:
+            industry = ""
         payload = {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
+            "industry": industry,
             "next_event": next_event,
             "latest_date": latest["date"],
             "db_as_of": db_as_of,
@@ -1652,7 +1660,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     date_line = str(card.get("query_date") or "")
     clock_line = str(card.get("query_clock") or "")
-    if not date_line:
+    if not date_line or not clock_line:
         date_line, clock_line = format_card_query_stamp(
             is_live=bool(card.get("is_live")),
             latest_date=card.get("latest_date"),
@@ -1775,14 +1783,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(name_x, title_cy, name,
             fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
     brand_x = 100 - pad_x - 2.6
-    event = str(card.get("next_event") or "").strip()
-    if event:
-        ev_left = name_x + tw(name, 20) + 1.8
-        stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
-        if ev_left + tw(event, 11) < brand_x - tw(stamp, 11) - 4:
-            ax.text(ev_left, title_cy, event, fontproperties=_fp(11),
-                    color="#FDE68A", va="center", zorder=3)
     stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
+    cursor = name_x + tw(name, 20) + 1.8
+    right_limit = brand_x - tw(stamp, 11.2) - 3.4
+    industry = str(card.get("industry") or "").strip()
+    if industry and cursor + tw(industry, 12.0) <= right_limit:
+        ax.text(cursor, title_cy, industry, fontproperties=_fp(12.0),
+                color="#FFE082", va="center", zorder=3)
+        cursor += tw(industry, 12.0) + 1.8
+    event = str(card.get("next_event") or "").strip()
+    if event and cursor + tw(event, 11) < right_limit:
+        ax.text(cursor, title_cy, event, fontproperties=_fp(11),
+                color="#FDE68A", va="center", zorder=3)
     ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
             color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
 
@@ -2071,6 +2083,9 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if web:
         links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
+    industry = str(card.get("industry") or "").strip()
+    if industry:
+        head = f"{head}　{html_escape(industry)}"
     event = str(card.get("next_event") or "").strip()
     if event:
         head = f"{head}　{html_escape(event)}"
@@ -2247,17 +2262,26 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     )
     ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
     event = str(card.get("next_event") or "").strip()
+    industry = str(card.get("industry") or "").strip()
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    if event:
-        badge = f"{event}　{badge}".strip() if badge else event
-    ink(20.2, 93.45, badge or "—", fit_fs(badge or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
+    sub_bits = [x for x in (industry, event, badge) if x]
+    sub = "　".join(sub_bits)
+    ink(20.2, 93.45, sub or "—", fit_fs(sub or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
     try:
-        from live_quote import live_clock_suffix
+        from decision_card_signals import format_card_query_stamp
 
-        date_note = live_clock_suffix(bool(card.get("is_live")), str(card.get("live_time") or ""))
+        date_line = str(card.get("query_date") or "")
+        clock_line = str(card.get("query_clock") or "")
+        if not date_line or not clock_line:
+            date_line, clock_line = format_card_query_stamp(
+                is_live=bool(card.get("is_live")),
+                latest_date=card.get("latest_date"),
+                generated_at=card.get("generated_at") or card.get("live_time"),
+            )
+        stamp = f"{date_line}  {clock_line}".strip()
     except Exception:
-        date_note = " 盤中 " + str(card.get("live_time") or "") if card.get("is_live") else ""
-    ink(96.8, 96.85, _fmt_md(card.get("latest_date")) + date_note, 11, "#C5CAE9", ha="right")
+        stamp = _fmt_md(card.get("latest_date"))
+    ink(96.8, 96.85, stamp, 11, "#FFE082" if "收盤" in stamp or "盤中" in stamp else "#C5CAE9", ha="right")
 
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
