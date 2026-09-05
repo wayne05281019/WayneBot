@@ -60,6 +60,12 @@ def test_parse_qty_accepts_share_and_lot_units():
     assert held_is_odd_lot_only(0.439)
     assert not held_is_odd_lot_only(4)
     assert not held_is_odd_lot_only(1.0)
+    from trade_journal import held_has_odd_shares
+
+    assert held_has_odd_shares(0.439)
+    assert held_has_odd_shares(1.439)
+    assert not held_has_odd_shares(4)
+    assert not held_has_odd_shares(1.0)
 
 
 def test_parse_lots_price_share_units():
@@ -232,3 +238,22 @@ def test_parse_buy_bare_qty_looks_like_shares(tmp_db):
     code, lots, price = bot._parse_buy_text("2330 439 500", uid="u8")
     assert code == "2330"
     assert lots == pytest.approx(0.439)
+
+
+def test_parse_buy_mixed_lots_bare_qty_under_100(tmp_db):
+    """混合張 1.439：50 未標單位當 50股；2 仍是 2張。"""
+    from bot_servers import WayneTelegramBot
+    from trade_journal import coerce_bare_qty_if_share_count
+    from wayne_db import add_to_portfolio
+
+    assert coerce_bare_qty_if_share_count(50, 1.439) == pytest.approx(0.05)
+    assert coerce_bare_qty_if_share_count(2, 1.439) == 2
+    add_to_portfolio(tmp_db, "u9", "6526", "達發", 1.439, 631.6)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = tmp_db
+    code, lots, price = bot._parse_buy_text("50 631.6", "6526", uid="u9")
+    assert lots == pytest.approx(0.05)
+    code, lots, price = bot._parse_buy_text("2 631.6", "6526", uid="u9")
+    assert lots == 2.0
+    code, lots, price = bot._parse_sell_text("50 635", "6526", uid="u9")
+    assert lots == pytest.approx(0.05)
