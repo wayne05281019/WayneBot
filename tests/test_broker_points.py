@@ -103,15 +103,105 @@ def test_local_csv_drop_builds_archive(tmp_path, monkeypatch):
 def test_lookup_attaches_cost_screen_does_not_fetch():
     import inspect
 
-    from wayne_navigator import NavigatorEngine, generate_decision_card, render_stock_pack
+    from wayne_navigator import (
+        NavigatorEngine,
+        generate_decision_card,
+        render_decision_card_png,
+        render_first_glance_png,
+        render_stock_pack,
+    )
 
     card_src = inspect.getsource(NavigatorEngine.get_decision_card)
     assert "attach_main_cost" not in card_src
     assert "ensure_broker_for_stock" not in card_src
     pack_src = inspect.getsource(render_stock_pack)
     html_src = inspect.getsource(generate_decision_card)
+    png_src = inspect.getsource(render_decision_card_png)
+    glance_src = inspect.getsource(render_first_glance_png)
     assert "attach_main_cost" in pack_src
     assert "主力成本" in html_src
+    assert "主力成本" in png_src
+    assert "分點平均買超" in png_src
+    assert "主力成本" in glance_src
+
+
+def test_decision_card_png_draws_main_cost_only_when_present(tmp_path, monkeypatch):
+    """決策卡 PNG：有分點平均買超才寫主力成本；沒有真數就空白。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+    import pandas as pd
+
+    from wayne_navigator import render_decision_card_png
+
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260904",
+                "close": 100.0,
+                "獲利": "2.0%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "36.0 °C",
+                "月乖離": "+1.0%",
+                "profit_pct": 2.0,
+                "bias_monthly": 1.0,
+                "vol_rank_120": 20,
+                "120日量": "第 20 名",
+            }
+        ]
+    )
+    card = {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "close": 100.0,
+        "change_pct": 1.2,
+        "h10": 110,
+        "dist_h10": -9.0,
+        "h20": 112,
+        "dist_h20": -10.7,
+        "h60": 120,
+        "dist_h60": -16.7,
+        "l10": 95,
+        "dist_l10": 5.3,
+        "l20": 90,
+        "dist_l20": 11.1,
+        "l60": 80,
+        "dist_l60": 25.0,
+        "space_20": 14,
+        "space_60": 25,
+        "ma60s": 0.5,
+        "qty60": 20000,
+        "badges": ["整理格局"],
+        "table": table,
+    }
+
+    def capture():
+        seen = []
+        orig = matplotlib.axes.Axes.text
+
+        def wrap(self, *args, **kwargs):
+            if len(args) >= 3:
+                seen.append(str(args[2]))
+            if "s" in kwargs:
+                seen.append(str(kwargs["s"]))
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+        return seen
+
+    seen = capture()
+    blank = tmp_path / "no_cost.png"
+    assert render_decision_card_png(card, str(blank))
+    joined = "\n".join(seen)
+    assert "主力成本" not in joined
+
+    card["main_cost"] = 100.33
+    seen.clear()
+    with_cost = tmp_path / "with_cost.png"
+    assert render_decision_card_png(card, str(with_cost))
+    assert "主力成本 100.33（分點平均買超）" in seen
 
 
 def test_increment_syncs_events_not_all_market_broker():
