@@ -386,60 +386,130 @@ def load_index_breadth_daily(db_path: str, as_of: Optional[str] = None) -> Optio
     }
 
 
-def sync_index_breadth_daily(db_path: str, dates: Optional[List[str]] = None) -> Dict[str, Any]:
-    """盤後寫入 TWSE 漲跌家數；抓取失敗不寫、不覆蓋舊列。"""
+def backfill_breadth_from_quotes(db_path: str) -> Dict[str, Any]:
+    """用已入庫的官方日 K 現股／KY 漲跌家數填表。不另抓網、不含 ETF／權證。"""
     ensure_index_breadth_daily_table(db_path)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(db_path)
+    try:
+        has_q = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+        ).fetchone()
+        has_u = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_universe'"
+        ).fetchone()
+        if not has_q or not has_u:
+            return {"ok": False, "rows": 0, "source": "quotes"}
+        cur = conn.execute(
+            """
+            INSERT INTO index_breadth_daily(
+                date, up_count, down_count, limit_up, limit_down, flat_count,
+                up_tw, down_tw, up_two, down_two, source, updated_at
+            )
+            SELECT
+                q.date,
+                SUM(CASE WHEN q.pct_change > 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN q.pct_change < 0 THEN 1 ELSE 0 END),
+                0,
+                0,
+                SUM(CASE WHEN IFNULL(q.pct_change, 0) = 0 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN q.pct_change > 0 AND u.market_type = 'TW' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN q.pct_change < 0 AND u.market_type = 'TW' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN q.pct_change > 0 AND u.market_type = 'TWO' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN q.pct_change < 0 AND u.market_type = 'TWO' THEN 1 ELSE 0 END),
+                'quotes',
+                ?
+            FROM daily_quotes q
+            INNER JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE u.asset_type IN ('STOCK', 'KY')
+            GROUP BY q.date
+            HAVING SUM(CASE WHEN q.pct_change > 0 THEN 1 ELSE 0 END)
+                 + SUM(CASE WHEN q.pct_change < 0 THEN 1 ELSE 0 END) > 0
+            ON CONFLICT(date) DO UPDATE SET
+                up_count=excluded.up_count,
+                down_count=excluded.down_count,
+                flat_count=excluded.flat_count,
+                up_tw=excluded.up_tw,
+                down_tw=excluded.down_tw,
+                up_two=excluded.up_two,
+                down_two=excluded.down_two,
+                source='quotes',
+                updated_at=excluded.updated_at,
+                limit_up=index_breadth_daily.limit_up,
+                limit_down=index_breadth_daily.limit_down
+            """,
+            (now,),
+        )
+        conn.commit()
+        n = int(cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0)
+        if n <= 0:
+            n = int(conn.execute("SELECT COUNT(*) FROM index_breadth_daily").fetchone()[0] or 0)
+    except sqlite3.OperationalError:
+        logger.debug("breadth from quotes skipped", exc_info=True)
+        return {"ok": False, "rows": 0, "source": "quotes"}
+    finally:
+        conn.close()
+    return {"ok": n > 0, "rows": n, "source": "quotes"}
+
+
+def _overlay_breadth_limits(db_path: str, date: str) -> bool:
+    """MI_INDEX 只補漲停／跌停家數，不覆蓋現股漲跌家數。"""
+    row = _fetch_twse_index_breadth(date)
+    if not row:
+        return False
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            UPDATE index_breadth_daily
+            SET limit_up=?, limit_down=?, updated_at=?
+            WHERE date=?
+            """,
+            (
+                int(row.get("limit_up") or 0),
+                int(row.get("limit_down") or 0),
+                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                str(date).replace("-", "")[:8],
+            ),
+        )
+        conn.commit()
+        return conn.total_changes > 0
+    finally:
+        conn.close()
+
+
+def sync_index_breadth_daily(db_path: str, dates: Optional[List[str]] = None) -> Dict[str, Any]:
+    """盤後：先用日 K 現股／KY 填漲跌家數（可回補空表），再對當日補漲停跌停。"""
+    filled = backfill_breadth_from_quotes(db_path)
     if not dates:
         from trading_calendar import fuse_end_trading_date
 
         dates = [fuse_end_trading_date()]
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    written = 0
+    limits = 0
+    for raw in dates:
+        d = str(raw or "").replace("-", "")[:8]
+        if len(d) != 8:
+            continue
+        if _overlay_breadth_limits(db_path, d):
+            limits += 1
     latest = ""
     conn = sqlite3.connect(db_path)
     try:
-        for raw in dates:
-            d = str(raw or "").replace("-", "")[:8]
-            if len(d) != 8:
-                continue
-            row = _fetch_twse_index_breadth(d)
-            if not row:
-                continue
-            conn.execute(
-                """
-                INSERT INTO index_breadth_daily(
-                    date, up_count, down_count, limit_up, limit_down, flat_count,
-                    up_tw, down_tw, up_two, down_two, source, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(date) DO UPDATE SET
-                    up_count=excluded.up_count, down_count=excluded.down_count,
-                    limit_up=excluded.limit_up, limit_down=excluded.limit_down,
-                    flat_count=excluded.flat_count,
-                    up_tw=excluded.up_tw, down_tw=excluded.down_tw,
-                    up_two=excluded.up_two, down_two=excluded.down_two,
-                    source=excluded.source, updated_at=excluded.updated_at
-                """,
-                (
-                    row["date"],
-                    row["up_count"],
-                    row["down_count"],
-                    row["limit_up"],
-                    row["limit_down"],
-                    row["flat_count"],
-                    row["up_tw"],
-                    row["down_tw"],
-                    row["up_two"],
-                    row["down_two"],
-                    row["source"],
-                    now,
-                ),
-            )
-            written += 1
-            latest = row["date"]
-        conn.commit()
+        row = conn.execute(
+            "SELECT date FROM index_breadth_daily ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        latest = str(row[0]) if row else ""
+    except sqlite3.OperationalError:
+        latest = ""
     finally:
         conn.close()
-    return {"ok": written > 0, "rows": written, "latest": latest}
+    return {
+        "ok": bool(filled.get("ok")),
+        "rows": int(filled.get("rows") or 0),
+        "limits": limits,
+        "latest": latest,
+        "source": "quotes",
+    }
 
 
 _FUTURES_SYMBOL = "TX"
