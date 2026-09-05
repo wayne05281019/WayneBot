@@ -347,12 +347,16 @@ def main_cost_for_stock(
     return main_cost_from_net_buy(load_branch_rows(stock_id, trade_date, db_path))
 
 
-def _csv_drop_path(stock_id: str, trade_date: str, db_path: str | None) -> str:
+def csv_drop_dir(db_path: str | None = None) -> str:
     root = os.getenv("WAYNE_BROKER_CSV_DIR") or ""
     if not root:
         base = os.path.dirname(db_path or get_db_path()) or "data"
         root = os.path.join(base, "broker_csv")
-    return os.path.join(root, f"{stock_id}_{trade_date}.csv")
+    return root
+
+
+def _csv_drop_path(stock_id: str, trade_date: str, db_path: str | None) -> str:
+    return os.path.join(csv_drop_dir(db_path), f"{stock_id}_{trade_date}.csv")
 
 
 def load_local_csv(stock_id: str, trade_date: str, db_path: str | None = None) -> list[dict[str, Any]]:
@@ -474,3 +478,128 @@ def attach_main_cost(card: dict[str, Any], db_path: str | None = None, *, fetch:
     if cost is not None:
         card["main_cost"] = cost
     return card
+
+
+_HOLDINGS_FETCH_CAP = 30
+
+
+def _is_equity(sid: str) -> bool:
+    try:
+        from universe import is_screen_equity
+
+        return bool(is_screen_equity(sid))
+    except Exception:
+        return not (str(sid).startswith("00") or str(sid).startswith("01"))
+
+
+def _parse_drop_filename(name: str) -> tuple[str, str | None] | None:
+    raw = os.path.basename(name)
+    if not raw.lower().endswith(".csv"):
+        return None
+    stem = raw[:-4]
+    if "_" in stem:
+        sid, day = stem.rsplit("_", 1)
+        sid, day = sid.strip(), day.strip()
+        if sid and len(day) == 8 and day.isdigit():
+            return sid, day
+        return None
+    sid = stem.strip()
+    return (sid, None) if sid else None
+
+
+def ingest_csv_drop(db_path: str | None = None, trade_date: str | None = None) -> dict[str, Any]:
+    """掃描 data/broker_csv/。這是官方檔丟進來的建檔，不是全市場抓。"""
+    path = db_path or get_db_path()
+    ensure_schema(path)
+    root = csv_drop_dir(path)
+    day_fallback = str(trade_date or "").replace("-", "")[:8] or taipei_today_str()
+    files = 0
+    rows_n = 0
+    stocks: list[str] = []
+    if not os.path.isdir(root):
+        return {"files": 0, "rows": 0, "stocks": []}
+    for name in sorted(os.listdir(root)):
+        parsed = _parse_drop_filename(name)
+        if not parsed:
+            continue
+        sid, day = parsed
+        if not _is_equity(sid):
+            continue
+        use_day = day or day_fallback
+        if len(use_day) != 8:
+            continue
+        full = os.path.join(root, name)
+        try:
+            with open(full, "rb") as fh:
+                text = decode_csv_bytes(fh.read())
+        except OSError:
+            continue
+        items = parse_broker_csv(text)
+        if not items:
+            continue
+        n = upsert_branch_rows(sid, use_day, items, db_path=path, source="local_csv")
+        if n:
+            files += 1
+            rows_n += n
+            stocks.append(sid)
+    return {"files": files, "rows": rows_n, "stocks": stocks}
+
+
+def holding_equity_ids(db_path: str | None = None) -> list[str]:
+    path = db_path or get_db_path()
+    conn = sqlite3.connect(path)
+    try:
+        cur = conn.execute(
+            "SELECT DISTINCT stock_code FROM user_holdings WHERE TRIM(COALESCE(stock_code,'')) != ''"
+        )
+        ids = [str(r[0]).strip() for r in cur.fetchall() if str(r[0] or "").strip()]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+    out: list[str] = []
+    seen: set[str] = set()
+    for sid in ids:
+        if sid in seen or not _is_equity(sid):
+            continue
+        seen.add(sid)
+        out.append(sid)
+    return out
+
+
+def sync_holdings_broker(
+    db_path: str | None = None,
+    trade_date: str | None = None,
+    *,
+    fetch: bool = True,
+) -> dict[str, Any]:
+    """只對手記持股逐檔建檔。海選母體禁止。"""
+    path = db_path or get_db_path()
+    day = str(trade_date or "").replace("-", "")[:8] or taipei_today_str()
+    ok = 0
+    blank = 0
+    costs: dict[str, float] = {}
+    for sid in holding_equity_ids(path)[:_HOLDINGS_FETCH_CAP]:
+        try:
+            cost = ensure_broker_for_stock(sid, path, day, fetch=fetch)
+        except Exception:
+            log.debug("holdings broker skip %s", sid, exc_info=True)
+            cost = None
+        if cost is None:
+            blank += 1
+        else:
+            ok += 1
+            costs[sid] = float(cost)
+    return {"ok": ok, "blank": blank, "costs": costs}
+
+
+def sync_broker_archive(
+    db_path: str | None = None,
+    trade_date: str | None = None,
+    *,
+    fetch_holdings: bool = True,
+) -> dict[str, Any]:
+    """盤後定時：先匯入 CSV 丟檔，再對持股逐檔試抓。驗證碼擋就空白。"""
+    dropped = ingest_csv_drop(db_path, trade_date)
+    held = sync_holdings_broker(db_path, trade_date, fetch=fetch_holdings)
+    return {"csv": dropped, "holdings": held}
