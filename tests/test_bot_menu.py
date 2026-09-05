@@ -49,6 +49,14 @@ def test_help_guide_covers_all_main_buttons():
         assert label in guide
     assert "按表操課" in guide
     assert "低買高賣" in guide
+    assert "介紹圖" in guide and "一次出三張圖" in guide
+    assert "現價漲跌 → 決策卡圖 → 介紹圖" not in guide
+    assert "要再看才按" not in guide
+    assert "按錯了" in guide
+    assert "直接打四碼" in guide
+    stock = HELP_TOPICS["stock"]
+    assert "圖下方" in stock
+    assert "決策卡 → 介紹圖" not in stock
 
 
 def test_help_nav_keyboard_has_topic_buttons():
