@@ -87,6 +87,46 @@ def fetch_twii_ohlc(days: int = 120) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+def load_index_daily_ohlc(db_path: str | None = None, days: int = 120) -> pd.DataFrame:
+    """庫內官方加權日 K（MI_INDEX／FMTQIK 融合）。有開高低收才畫，不拿 Yahoo 當答案。"""
+    import sqlite3
+
+    try:
+        from config import get_db_path
+    except Exception:
+        get_db_path = lambda: os.getenv("WAYNE_DB_PATH") or "data/wayne_market.db"
+
+    path = db_path or get_db_path()
+    if not path or not os.path.isfile(path):
+        return pd.DataFrame()
+    need = max(30, int(days or 120))
+    try:
+        con = sqlite3.connect(path)
+        try:
+            rows = con.execute(
+                """
+                SELECT date, open, high, low, close, volume
+                FROM index_daily
+                WHERE symbol = 'TWII'
+                  AND close > 0 AND open > 0 AND high > 0 AND low > 0
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (need,),
+            ).fetchall()
+        finally:
+            con.close()
+    except Exception as exc:
+        logger.warning("index_daily OHLC 讀取失敗: %s", exc)
+        return pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows[::-1], columns=["date", "open", "high", "low", "close", "volume"])
+    df["dt"] = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+    df = df.dropna(subset=["dt"]).reset_index(drop=True)
+    return df
+
+
 def _kd_series(df: pd.DataFrame, n: int = 9) -> tuple[pd.Series, pd.Series]:
     lo = df["low"].rolling(n, min_periods=1).min()
     hi = df["high"].rolling(n, min_periods=1).max()
@@ -314,8 +354,10 @@ def build_market_kline_chart(
     *,
     days: int = 120,
     live: Optional[Dict[str, Any]] = None,
+    db_path: str | None = None,
 ) -> str:
-    df = fetch_twii_ohlc(days=days)
+    df = load_index_daily_ohlc(db_path, days=days)
     if df.empty:
+        logger.warning("大盤日K：庫內無官方開高低收，略過 Yahoo 圖（漲跌會跟官方差）")
         return ""
     return render_index_kline_png(df, save_path, live=live)
