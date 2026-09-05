@@ -64,12 +64,13 @@ OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-CARD_PNG_DPI = 240
-GLANCE_PNG_DPI = 240
+# 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
+CARD_PNG_DPI = 320
+GLANCE_PNG_DPI = 320
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = 4.62
 GLANCE_FIG_H = 17.2
-NAV_CHART_DPI = 200
+NAV_CHART_DPI = 280
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -396,6 +397,7 @@ class NavigatorEngine:
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
+            prev_close_from_change_pct,
             profit_floor_at,
             profit_pct_cal60_series,
             resolve_daily_change_pct,
@@ -509,12 +511,26 @@ class NavigatorEngine:
         if len(real_c) >= 2:
             prev_close = float(real_c.iloc[-2] or 0)
         y_close = float(latest.get("yesterday_close") or 0) if is_live else 0.0
+        raw_pct = latest.get("change_pct")
+        stored_pct = None
+        if raw_pct is not None and not pd.isna(raw_pct):
+            try:
+                stored_pct = float(raw_pct)
+                if stored_pct != stored_pct:
+                    stored_pct = None
+            except (TypeError, ValueError):
+                stored_pct = None
         chg = resolve_daily_change_pct(
             float(latest["close"]),
-            stored_pct=float(latest.get("change_pct") or 0),
+            stored_pct=stored_pct,
             yesterday_close=y_close,
             prev_close=prev_close,
+            prefer_stored=not is_live,
         )
+        if not is_live:
+            official_prev = prev_close_from_change_pct(float(latest["close"]), stored_pct)
+            if official_prev > 0:
+                prev_close = official_prev
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])

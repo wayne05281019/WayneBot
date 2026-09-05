@@ -1334,8 +1334,8 @@ class LookupCardTest(unittest.TestCase):
             render_first_glance_png,
         )
 
-        self.assertGreaterEqual(CARD_PNG_DPI, 200)
-        self.assertGreaterEqual(GLANCE_PNG_DPI, 200)
+        self.assertGreaterEqual(CARD_PNG_DPI, 320)
+        self.assertGreaterEqual(GLANCE_PNG_DPI, 320)
         table = pd.DataFrame(
             [
                 {

@@ -141,22 +141,54 @@ def profit_pct_card_series(df, *, close_col: str = "close") -> pd.Series:
     return profit_pct_cal60_series(df, close_col=close_col)
 
 
+def finite_pct(value) -> Optional[float]:
+    """官方漲跌幅：0 是平盤，不能當成缺值。"""
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v:
+        return None
+    return v
+
+
+def prev_close_from_change_pct(close: float, change_pct: Optional[float]) -> float:
+    """用官方漲跌幅反推參考價（昨收）。缺日／還原列不能拿上一根庫內收盤替代。"""
+    c = float(close or 0)
+    pct = finite_pct(change_pct)
+    if c <= 0 or pct is None:
+        return 0.0
+    denom = 1.0 + pct / 100.0
+    if denom <= 1e-12:
+        return 0.0
+    return round(c / denom, 4)
+
+
 def resolve_daily_change_pct(
     close: float,
     *,
-    stored_pct: float = 0.0,
+    stored_pct: Optional[float] = None,
     yesterday_close: float = 0.0,
     prev_close: float = 0.0,
+    prefer_stored: bool = False,
 ) -> float:
-    """日漲跌幅：盤中優先昨收→現價；庫內用連續交易日收盤差，與 CaryBot 欄位一致。"""
+    """日漲跌幅：盤中優先昨收→現價；收盤列優先官方 pct_change（含平盤 0）。
+
+    冷門／KY／分割股日 K 常缺無量日或被還原，用上一根庫內收盤會跟證交所／櫃買對不上。
+    """
     c = float(close or 0)
     y = float(yesterday_close or 0)
     if y > 0 and c > 0:
         return round((c - y) / y * 100.0, 2)
+    stored = finite_pct(stored_pct)
+    if prefer_stored and stored is not None:
+        return round(stored, 2)
     p = float(prev_close or 0)
     if p > 0 and c > 0:
         return round((c - p) / p * 100.0, 2)
-    return round(float(stored_pct or 0), 2)
+    return round(stored or 0.0, 2)
 
 
 def calc_volume_rank(
