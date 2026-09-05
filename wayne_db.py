@@ -368,6 +368,11 @@ def _schema_steps():
 
         ensure_ai_tables(path)
 
+    def _broker_points(path):
+        from broker_points import ensure_schema
+
+        ensure_schema(path)
+
     return (
         ("index_daily", _index_daily),
         ("fundamentals", _fundamentals),
@@ -377,6 +382,7 @@ def _schema_steps():
         ("screen_sessions", _screen_sessions),
         ("portfolio", _portfolio),
         ("ai_tables", _ai_tables),
+        ("broker_points", _broker_points),
         ("quote_hygiene", normalize_quote_hygiene),
     )
 

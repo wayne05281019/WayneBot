@@ -639,6 +639,18 @@ class PortfolioEngine:
             lines.append(title)
             lines.append(kv_html_compact(holdings_qty_label(lots), html_holdings_qty(lots)))
             lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
+            mc = None
+            try:
+                from broker_points import main_cost_for_stock
+
+                mc = main_cost_for_stock(code, self.db_path)
+            except Exception:
+                mc = None
+            if mc is not None:
+                lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
+                if cost > 0:
+                    rel = (cost - float(mc)) / float(mc) * 100.0
+                    lines.append(kv_compact("成本對主力", f"{rel:+.1f}%"))
             if chg is not None and pct is not None:
                 lines.append(kv_html_compact("現價", html_last_move(last, chg, pct, compact=True)))
             else:

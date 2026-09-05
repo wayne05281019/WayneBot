@@ -211,8 +211,71 @@ def test_increment_syncs_events_not_all_market_broker():
 
     src = inspect.getsource(MainRunner.run_daily_increment)
     assert "sync_company_events" in src
+    assert "sync_broker_archive" in src
     assert "ensure_broker_for_stock" not in src
     assert "try_fetch_remote_csv" not in src
+    from broker_points import sync_broker_archive
+
+    arch = inspect.getsource(sync_broker_archive)
+    assert "ingest_csv_drop" in arch
+    assert "sync_holdings_broker" in arch
+    assert "stock_universe" not in arch
+    from broker_points import sync_holdings_broker
+
+    assert "daily_quotes" not in inspect.getsource(sync_holdings_broker)
+    assert "stock_universe" not in inspect.getsource(sync_holdings_broker)
+
+
+def test_csv_drop_and_holdings_archive_roundtrip(tmp_path, monkeypatch):
+    """定時匯入：CSV 丟檔建檔；持股逐檔；ETF／驗證碼不上成本。"""
+    from broker_points import ingest_csv_drop, sync_broker_archive
+    from portfolio_engine import PortfolioEngine
+    from wayne_db import add_to_portfolio, ensure_core_schema
+
+    db = str(tmp_path / "arch.db")
+    ensure_core_schema(db)
+    csv_dir = tmp_path / "broker_csv"
+    csv_dir.mkdir()
+    (csv_dir / "6526_20260904.csv").write_text(NAMED_SAMPLE, encoding="utf-8")
+    (csv_dir / "00892_20260904.csv").write_text(NAMED_SAMPLE, encoding="utf-8")
+    (csv_dir / "readme.txt").write_text("not csv", encoding="utf-8")
+    monkeypatch.setenv("WAYNE_BROKER_CSV_DIR", str(csv_dir))
+    add_to_portfolio(db, "u1", "6526", "達發", 0.439, 631.6)
+    add_to_portfolio(db, "u1", "3035", "智原", 4.0, 196.8)
+
+    dropped = ingest_csv_drop(db, "20260904")
+    assert dropped["files"] == 1
+    assert "6526" in dropped["stocks"]
+    assert "00892" not in dropped["stocks"]
+
+    hits = {"n": 0}
+
+    def fake_http(_url, _timeout):
+        hits["n"] += 1
+        return "<html>請輸入驗證碼</html>".encode("utf-8")
+
+    monkeypatch.setattr("broker_points._http_bytes", fake_http)
+    out = sync_broker_archive(db, "20260904", fetch_holdings=True)
+    assert out["csv"]["files"] == 1
+    assert out["holdings"]["costs"]["6526"] == 100.0
+    assert "3035" not in out["holdings"]["costs"]
+    assert out["holdings"]["blank"] >= 1
+    assert hits["n"] >= 1
+
+    html = PortfolioEngine(db).format_holdings_html(
+        [
+            {"stock_code": "6526", "stock_name": "達發", "shares": 0.439, "cost_price": 631.6},
+            {"stock_code": "3035", "stock_name": "智原", "shares": 4.0, "cost_price": 196.8},
+        ],
+        quotes_map={
+            "6526": {"close": 635.0, "pct_change": 0.79},
+            "3035": {"close": 179.5, "pct_change": -0.28},
+        },
+    )
+    assert "主力成本" in html.split("達發")[1].split("智原")[0]
+    assert "100.00（分點平均買超）" in html
+    assert "成本對主力" in html.split("達發")[1].split("智原")[0]
+    assert "主力成本" not in html.split("智原")[-1]
 
 
 def test_main_cost_not_from_three_institutional():

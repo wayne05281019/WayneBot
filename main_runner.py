@@ -289,6 +289,13 @@ class MainRunner:
         except Exception as e:
             logger.error(f"除權息同步失敗: {e}", exc_info=True)
         try:
+            from broker_points import sync_broker_archive
+
+            br = sync_broker_archive(self.db_path, fuse_to)
+            logger.info("分點建檔：%s", br)
+        except Exception as e_br:
+            logger.warning("分點建檔略過：%s", e_br)
+        try:
             from taiwan_market import sync_index_daily
 
             ix = sync_index_daily(self.db_path)
