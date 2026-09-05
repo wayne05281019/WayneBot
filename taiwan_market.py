@@ -1284,9 +1284,9 @@ def _regime_from_closes(
         "regime_label": label,
         "score": score,
         "confidence": confidence,
-        "close": round(c, 1),
-        "ma20": round(ma20, 1),
-        "ma60": round(ma60, 1),
+        "close": round(c, 2),
+        "ma20": round(ma20, 2),
+        "ma60": round(ma60, 2),
         "chg5_pct": round(chg5, 2),
         "slope20_pct": round(slope20, 2),
     }
@@ -1728,6 +1728,37 @@ def _sector_flow_sum(db_path: str, as_of: str) -> float:
     return float(val) if val is not None else 0.0
 
 
+def _quotes_have_chips(db_path: str, as_of: str) -> bool:
+    """當日日 K 已有法人張（不是產業加總表）。表或欄位沒有則 False。"""
+    ymd = _norm_ymd(as_of)
+    if not ymd:
+        return False
+    conn = sqlite3.connect(db_path)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+        ).fetchone()
+        if not has:
+            return False
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(daily_quotes)")}
+        if not {"foreign_net", "trust_net", "dealer_net"} <= cols:
+            return False
+        n = conn.execute(
+            """
+            SELECT COALESCE(SUM(
+                ABS(COALESCE(foreign_net,0))+ABS(COALESCE(trust_net,0))+ABS(COALESCE(dealer_net,0))
+            ), 0)
+            FROM daily_quotes WHERE replace(date,'-','')=?
+            """,
+            (ymd,),
+        ).fetchone()[0]
+        return float(n or 0) > 0
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
 def _sector_flow_net(db_path: str, as_of: str) -> Optional[float]:
     """當日產業法人合計；無表或無該日列則 None（避免把缺資料當 0）。"""
     conn = sqlite3.connect(db_path)
@@ -1784,6 +1815,14 @@ def analyze_taiwan_market(
     )
     flow_net = _sector_flow_net(db_path, ref_date)
     flow_date = ref_date
+    if flow_net is None and _quotes_have_chips(db_path, ref_date):
+        try:
+            from money_flow import recompute_sector_flow
+
+            recompute_sector_flow(db_path, ref_date)
+            flow_net = _sector_flow_net(db_path, ref_date)
+        except Exception:
+            logger.warning("產業法人表補寫失敗 as_of=%s", ref_date, exc_info=True)
     if flow_net is None:
         near = _nearest_sector_flow(db_path, ref_date)
         if near:

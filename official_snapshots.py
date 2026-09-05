@@ -27,6 +27,7 @@ TWSE_BWIBBU = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
 TWSE_MARGN = "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"
 TWSE_TWTB4U = "https://openapi.twse.com.tw/v1/exchangeReport/TWTB4U"
 TWSE_FMTQIK = "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"
+TWSE_MI5MINS = "https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST"
 TWSE_COMPANY = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_PE = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
 TPEX_MARGN = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"
@@ -319,6 +320,30 @@ def parse_fmtqik(rows: Sequence[dict]) -> List[dict]:
     return out
 
 
+def parse_mi5mins_hist(rows: Sequence[dict]) -> List[dict]:
+    """發行量加權股價指數歷史資料：開高低收。缺一欄就不上。"""
+    out = []
+    for row in rows:
+        date = roc_to_ymd(row.get("Date") or "")
+        o = _num(row.get("OpeningIndex"))
+        h = _num(row.get("HighestIndex"))
+        lo = _num(row.get("LowestIndex"))
+        c = _num(row.get("ClosingIndex"))
+        if not date or o is None or h is None or lo is None or c is None:
+            continue
+        if min(o, h, lo, c) <= 0:
+            continue
+        out.append({
+            "date": date,
+            "open": o,
+            "high": h,
+            "low": lo,
+            "close": c,
+            "source": "twse_mi5mins",
+        })
+    return out
+
+
 def parse_company_industry(rows: Sequence[dict], *, source: str) -> List[Tuple[str, str]]:
     out: List[Tuple[str, str]] = []
     for row in rows:
@@ -438,6 +463,40 @@ def overlay_fmtqik(db_path: str, rows: Sequence[dict]) -> int:
     return n
 
 
+def overlay_index_ohlc(db_path: str, rows: Sequence[dict]) -> int:
+    """把 MI_5MINS_HIST 開高低收寫進 index_daily。沒有真數不上。"""
+    from taiwan_market import _INDEX_SYMBOL, ensure_index_daily_table
+
+    ensure_index_daily_table(db_path)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(db_path)
+    n = 0
+    try:
+        for r in rows:
+            date = str(r.get("date") or "")
+            o, h, lo, c = r.get("open"), r.get("high"), r.get("low"), r.get("close")
+            if len(date) != 8 or o is None or h is None or lo is None or c is None:
+                continue
+            conn.execute(
+                """
+                INSERT INTO index_daily(date, symbol, open, high, low, close, volume, pct_change, ma20, ma60, regime, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0, 0, 'unknown', ?)
+                ON CONFLICT(date, symbol) DO UPDATE SET
+                    open=excluded.open,
+                    high=excluded.high,
+                    low=excluded.low,
+                    close=CASE WHEN excluded.close > 0 THEN excluded.close ELSE index_daily.close END,
+                    updated_at=excluded.updated_at
+                """,
+                (date, _INDEX_SYMBOL, float(o), float(h), float(lo), float(c), now),
+            )
+            n += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return n
+
+
 def overlay_industry(db_path: str, pairs: Sequence[Tuple[str, str]]) -> int:
     if not pairs:
         return 0
@@ -476,7 +535,7 @@ def overlay_industry(db_path: str, pairs: Sequence[Tuple[str, str]]) -> int:
 
 
 def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
-    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／加權量／產業名。"""
+    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／加權量與開高低／產業名。"""
     path = ensure_schema(db_path)
     jobs = {
         "bwibbu": TWSE_BWIBBU,
@@ -485,12 +544,13 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         "tpex_margin": TPEX_MARGN,
         "twtb4u": TWSE_TWTB4U,
         "fmtqik": TWSE_FMTQIK,
+        "mi5mins": TWSE_MI5MINS,
         "twse_co": TWSE_COMPANY,
         "tpex_co": TPEX_COMPANY,
     }
     fetched: Dict[str, List[dict]] = {}
     errors: Dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=9) as pool:
         futs = {pool.submit(fetch_json, url): name for name, url in jobs.items()}
         for fut in as_completed(futs):
             name = futs[fut]
@@ -524,16 +584,18 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         conn.close()
 
     fmt_n = overlay_fmtqik(path, fmt_rows) if fmt_rows else 0
+    ohlc_n = overlay_index_ohlc(path, parse_mi5mins_hist(fetched.get("mi5mins") or []))
     industry_pairs = parse_company_industry(fetched.get("twse_co") or [], source="twse")
     industry_pairs += parse_company_industry(fetched.get("tpex_co") or [], source="tpex")
     ind_n = overlay_industry(path, industry_pairs)
 
     return {
-        "ok": not errors or val_n + mar_n + dt_n + fmt_n > 0,
+        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n > 0,
         "valuation": val_n,
         "margin": mar_n,
         "daytrade": dt_n,
         "fmtqik": fmt_n,
+        "index_ohlc": ohlc_n,
         "industry": ind_n,
         "errors": errors,
     }
@@ -631,10 +693,10 @@ def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tupl
     if mar:
         mbits = []
         if mar.get("margin_bal") is not None:
-            util = f"　使用率 {mar['margin_util']:.1f}%" if mar.get("margin_util") is not None else ""
+            util = f"（{mar['margin_util']:.1f}%）" if mar.get("margin_util") is not None else ""
             mbits.append(f"融資 {int(mar['margin_bal']):,}張{util}")
         if mar.get("short_bal") is not None:
-            util = f"　使用率 {mar['short_util']:.1f}%" if mar.get("short_util") is not None else ""
+            util = f"（{mar['short_util']:.1f}%）" if mar.get("short_util") is not None else ""
             mbits.append(f"融券 {int(mar['short_bal']):,}張{util}")
         if mbits:
             rows.append(("資券餘額", "　".join(mbits)))
