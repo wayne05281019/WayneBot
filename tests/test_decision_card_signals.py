@@ -326,7 +326,7 @@ def test_closed_cards_draw_industry_and_fixed_close_clock(tmp_path, monkeypatch)
         "space_60": 20,
         "ma60s": 0.1,
         "qty60": 100,
-        "badges": ["整理格局"],
+        "badges": ["已除權還原", "60日量第 5 名", "120日第 14 名", "整理格局"],
         "stance": "等待・按表操課",
         "stance_kind": "wait",
         "table": table,
@@ -342,5 +342,7 @@ def test_closed_cards_draw_industry_and_fixed_close_clock(tmp_path, monkeypatch)
     assert render_first_glance_png("5276", card, tape, str(glance_path))
     assert any("13:30收盤" in t for t in seen)
     assert any("其他業" in t for t in seen)
-    assert any("整理格局" in t for t in seen)
+    assert any(t == "整理格局" or t.startswith("整理格局") for t in seen)
+    assert any("已除權還原" in t for t in seen)
+    assert any("60日量第 5 名" in t for t in seen)
     assert not any("23:22" in t for t in seen)

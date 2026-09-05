@@ -2275,19 +2275,54 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         date_line = _fmt_md(card.get("latest_date"))
         clock_line = "13:30收盤"
     stamp_c = "#FFE082" if "收盤" in clock_line or "盤中" in clock_line else "#C5CAE9"
-    # 介紹圖窄：日期在右上、時間疊在日期下，第二列整條留給產業／徽章。
-    ink(96.8, 97.35, date_line, 11, stamp_c, ha="right")
+    stamp_fs = 11
+    # 右上日期／時間；產業對齊時間的字級與高度，放在中文股名正下方。
+    ink(96.8, 97.35, date_line, stamp_fs, stamp_c, ha="right")
     if clock_line:
-        ink(96.8, 95.05, clock_line, 11, stamp_c, ha="right")
-    title = f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}"
-    title_avail = 96.8 - 20.2 - (wid(date_line, 11) if date_line else 0) - 2.4
-    ink(20.2, 96.85, title, fit_fs(title, 20, title_avail, floor=13.0), "#FFFFFF")
-    event = str(card.get("next_event") or "").strip()
+        ink(96.8, 95.05, clock_line, stamp_fs, stamp_c, ha="right")
+    code = str(card.get("stock_id") or stock_id)
+    name = str(card.get("stock_name") or "")
+    title = f"{code}  {name}".strip()
+    title_avail = 96.8 - 20.2 - (wid(date_line, stamp_fs) if date_line else 0) - 2.4
+    title_fs = fit_fs(title, 20, title_avail, floor=13.0)
+    ink(20.2, 97.35, code, title_fs, "#FFFFFF")
+    name_x = 20.2 + wid(code, title_fs) + 1.8
+    if name:
+        ink(name_x, 97.35, name, title_fs, "#FFFFFF")
     industry = str(card.get("industry") or "").strip()
-    badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    sub_bits = [x for x in (industry, event, badge) if x]
-    sub = "　".join(sub_bits)
-    ink(20.2, 93.15, sub or "—", fit_fs(sub or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
+    if industry:
+        ink(name_x if name else 20.2, 95.05, industry, stamp_fs, stamp_c)
+    event = str(card.get("next_event") or "").strip()
+    regime = ""
+    rest = []
+    _regime_keys = ("格局", "空頭排列", "弱勢破底", "月線下整理", "空頭整理", "多頭排列")
+    for raw in card.get("badges") or []:
+        bit = str(raw or "").strip()
+        if not bit:
+            continue
+        if bit.startswith("盤中") or bit.startswith("收盤"):
+            continue
+        if any(k in bit for k in _regime_keys):
+            if not regime:
+                regime = bit
+            continue
+        rest.append(bit)
+    # 格局白字、與時間同字級；產業上移後除權／量排名往左。
+    meta_x = 20.2
+    if regime:
+        ink(20.2, 92.65, regime, stamp_fs, "#FFFFFF")
+        meta_x = 20.2 + wid(regime, stamp_fs) + 2.2
+    meta = "　".join(x for x in [event, *rest] if x)
+    if meta:
+        ink(
+            meta_x,
+            92.65,
+            meta,
+            fit_fs(meta, stamp_fs, 96.8 - meta_x - 1.2, floor=8.5),
+            "#FFE082",
+        )
+    elif not regime:
+        ink(20.2, 92.65, "—", stamp_fs, "#C5CAE9")
 
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
