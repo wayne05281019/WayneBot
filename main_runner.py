@@ -323,6 +323,13 @@ class MainRunner:
         except Exception as e:
             logger.warning("加權指數同步略過：%s", e)
         try:
+            from official_snapshots import sync_official_snapshots
+
+            extra = sync_official_snapshots(self.db_path)
+            logger.info("官方估值／資券／當沖／加權量：%s", extra)
+        except Exception as e_off:
+            logger.warning("官方快照略過：%s", e_off)
+        try:
             from import_health import audit_import, format_audit_plain
             health = audit_import(self.db_path)
             logger.info("盤後匯入檢查：%s", health)

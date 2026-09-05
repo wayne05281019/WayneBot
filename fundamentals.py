@@ -422,6 +422,12 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             )
         )
         rows.append(("EPS", f"{float(q['eps']):.2f}"))
+    try:
+        from official_snapshots import valuation_plain_rows
+
+        rows.extend(valuation_plain_rows(sid, path))
+    except Exception:
+        pass
     if not rows:
         rows.append(("基本面", "尚無月營收／季報"))
     return rows

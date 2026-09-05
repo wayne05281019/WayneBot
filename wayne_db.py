@@ -373,6 +373,11 @@ def _schema_steps():
 
         ensure_schema(path)
 
+    def _official_snapshots(path):
+        from official_snapshots import ensure_schema
+
+        ensure_schema(path)
+
     return (
         ("index_daily", _index_daily),
         ("fundamentals", _fundamentals),
@@ -383,6 +388,7 @@ def _schema_steps():
         ("portfolio", _portfolio),
         ("ai_tables", _ai_tables),
         ("broker_points", _broker_points),
+        ("official_snapshots", _official_snapshots),
         ("quote_hygiene", normalize_quote_hygiene),
     )
 
