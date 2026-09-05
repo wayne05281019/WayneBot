@@ -2311,7 +2311,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("自營", (tape or {}).get("dealer") or {}),
         ("法人", (tape or {}).get("three") or {}),
     ]
-    panel(1.4, 26.85, 97.2, 20.85)
+    panel(1.4, 30.20, 97.2, 17.50)
     ink(4.8, 45.5, "籌碼（張）", 13, "#1A237E")
     ink(96.4, 45.5, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, "#546E7A", ha="right")
     # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
@@ -2332,11 +2332,11 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ink(4.8, cy, name, f_name)
         ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
         ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
-        cy -= 4.05
+        cy -= 3.45
 
-    panel(1.4, 1.15, 97.2, 24.9)
-    ink(4.8, 23.85, "基本面／紀律", 13, "#1A237E")
-    fy = 20.35
+    panel(1.4, 1.15, 97.2, 28.25)
+    ink(4.8, 27.20, "基本面／紀律", 13, "#1A237E")
+    fy = 23.70
     note = (tape or {}).get("conflict") or ""
     if note:
         ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
@@ -2348,6 +2348,8 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             sell_pair = (str(a), str(b))
         else:
             other_pairs.append((str(a), str(b)))
+    if official:
+        other_pairs = [(a, b) for a, b in other_pairs if a != "較去年累計"]
     if other_pairs:
         # 跟空間／熱度同一檔：標題 12、數字 13，不要被季報長句壓到 8pt。
         labels, fa, fb = fit_rows(
@@ -2358,10 +2360,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
             ink(4.8, fy, shown, fa)
             ink(96.4, fy, vlines[0] if vlines else val, fb, "#111111", ha="right")
-            fy -= 3.15
+            fy -= 2.65
             for extra in vlines[1:]:
                 ink(96.4, fy, extra, fb, "#111111", ha="right")
-                fy -= 2.55
+                fy -= 2.20
     if sell_pair:
         ink(4.8, fy, "紀律", 12, "#AD1457")
         ink(

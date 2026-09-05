@@ -631,10 +631,10 @@ def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tupl
     if mar:
         mbits = []
         if mar.get("margin_bal") is not None:
-            util = f"　使用率 {mar['margin_util']:.1f}%" if mar.get("margin_util") is not None else ""
+            util = f"（{mar['margin_util']:.1f}%）" if mar.get("margin_util") is not None else ""
             mbits.append(f"融資 {int(mar['margin_bal']):,}張{util}")
         if mar.get("short_bal") is not None:
-            util = f"　使用率 {mar['short_util']:.1f}%" if mar.get("short_util") is not None else ""
+            util = f"（{mar['short_util']:.1f}%）" if mar.get("short_util") is not None else ""
             mbits.append(f"融券 {int(mar['short_bal']):,}張{util}")
         if mbits:
             rows.append(("資券餘額", "　".join(mbits)))

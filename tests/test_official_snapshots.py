@@ -158,7 +158,9 @@ def test_roundtrip_and_plain_rows_omit_empty(tmp_path):
     assert "本益 27.94" in tsmc
     assert "淨值 9.72" in tsmc
     assert "殖利率 0.91%" in tsmc
-    assert "融資 18,185張" in tsmc
+    assert "融資 18,185張（0.3%）" in tsmc
+    assert "融券 585張（0.0%）" in tsmc
+    assert "使用率" not in tsmc
     assert "成本" not in tsmc
     cement = " ".join(f"{a} {b}" for a, b in valuation_plain_rows("1101", db))
     assert "本益" not in cement
