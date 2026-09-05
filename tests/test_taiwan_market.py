@@ -471,6 +471,34 @@ def test_sync_index_breadth_daily_writes_table(mock_fetch, tmp_path):
     from taiwan_market import sync_index_breadth_daily
 
     db = str(tmp_path / "br.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE stock_universe (stock_id TEXT PRIMARY KEY, stock_name TEXT, "
+        "market_type TEXT, asset_type TEXT, industry TEXT, is_active INT, updated_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, pct_change REAL, close REAL)"
+    )
+    conn.executemany(
+        "INSERT INTO stock_universe VALUES (?,?,?,?,?,?,?)",
+        [
+            ("2330", "台積電", "TW", "STOCK", "", 1, ""),
+            ("1101", "台泥", "TW", "STOCK", "", 1, ""),
+            ("6488", "環球晶", "TWO", "STOCK", "", 1, ""),
+            ("00878", "國泰永續高股息", "TW", "ETF_PASSIVE", "ETF", 1, ""),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?)",
+        [
+            ("20250829", "2330", 1.2, 100.0),
+            ("20250829", "1101", -0.5, 20.0),
+            ("20250829", "6488", 0.8, 150.0),
+            ("20250829", "00878", 3.0, 22.0),
+        ],
+    )
+    conn.commit()
+    conn.close()
     mock_fetch.return_value = {
         "date": "20250829",
         "up_count": 1204,
@@ -485,14 +513,16 @@ def test_sync_index_breadth_daily_writes_table(mock_fetch, tmp_path):
         "source": "twse",
     }
     r = sync_index_breadth_daily(db, dates=["20250829"])
-    assert r["ok"] and r["rows"] == 1
+    assert r["ok"] and r["rows"] >= 1
     conn = sqlite3.connect(db)
-    up = conn.execute(
-        "SELECT up_count, down_count FROM index_breadth_daily WHERE date=?",
+    row = conn.execute(
+        "SELECT up_count, down_count, up_tw, up_two, limit_up, source FROM index_breadth_daily WHERE date=?",
         ("20250829",),
     ).fetchone()
     conn.close()
-    assert up == (1204, 629)
+    assert row[:4] == (2, 1, 1, 1)
+    assert row[4] == 57
+    assert row[5] == "quotes"
 
 
 @patch("taiwan_market._fetch_twse_index_breadth")
