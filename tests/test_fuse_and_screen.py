@@ -1378,7 +1378,7 @@ class LookupCardTest(unittest.TestCase):
         import inspect
 
         src = inspect.getsource(render_decision_card_png)
-        self.assertIn("content_r", src)
+        self.assertIn("pad_x + 3.2", src)
         self.assertIn('ha="right"', src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
