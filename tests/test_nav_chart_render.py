@@ -34,6 +34,8 @@ class NavChartRenderTests(unittest.TestCase):
         self.assertIn("arrow_hw = 0.72", src)
         self.assertNotIn("arrow_hw = 1.15", src)
         self.assertNotIn("arrow_hw = 0.48", src)
+        self.assertIn("dn_pick", src)
+        self.assertNotIn("dn_stack.append", src)
         db = get_db_path()
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "nav.png")
