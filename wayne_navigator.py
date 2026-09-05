@@ -2260,13 +2260,6 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         last.get("close") or card.get("close") or 0,
         last.get("yesterday_close") or card.get("prev_close") or None,
     )
-    ink(20.2, 96.85, f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}", 20, "#FFFFFF")
-    event = str(card.get("next_event") or "").strip()
-    industry = str(card.get("industry") or "").strip()
-    badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    sub_bits = [x for x in (industry, event, badge) if x]
-    sub = "　".join(sub_bits)
-    ink(20.2, 93.45, sub or "—", fit_fs(sub or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
     try:
         from decision_card_signals import format_card_query_stamp
 
@@ -2278,10 +2271,23 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
                 latest_date=card.get("latest_date"),
                 generated_at=card.get("generated_at") or card.get("live_time"),
             )
-        stamp = f"{date_line}  {clock_line}".strip()
     except Exception:
-        stamp = _fmt_md(card.get("latest_date"))
-    ink(96.8, 96.85, stamp, 11, "#FFE082" if "收盤" in stamp or "盤中" in stamp else "#C5CAE9", ha="right")
+        date_line = _fmt_md(card.get("latest_date"))
+        clock_line = "13:30收盤"
+    stamp_c = "#FFE082" if "收盤" in clock_line or "盤中" in clock_line else "#C5CAE9"
+    # 介紹圖窄：日期在右上、時間疊在日期下，第二列整條留給產業／徽章。
+    ink(96.8, 97.35, date_line, 11, stamp_c, ha="right")
+    if clock_line:
+        ink(96.8, 95.05, clock_line, 11, stamp_c, ha="right")
+    title = f"{card.get('stock_id') or stock_id}  {card.get('stock_name') or ''}"
+    title_avail = 96.8 - 20.2 - (wid(date_line, 11) if date_line else 0) - 2.4
+    ink(20.2, 96.85, title, fit_fs(title, 20, title_avail, floor=13.0), "#FFFFFF")
+    event = str(card.get("next_event") or "").strip()
+    industry = str(card.get("industry") or "").strip()
+    badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
+    sub_bits = [x for x in (industry, event, badge) if x]
+    sub = "　".join(sub_bits)
+    ink(20.2, 93.15, sub or "—", fit_fs(sub or "—", 12, 94.0 - 20.2, floor=7.0), "#FFE082")
 
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
