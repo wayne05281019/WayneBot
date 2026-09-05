@@ -2547,7 +2547,12 @@ class WayneTelegramBot:
             from index_kline_chart import build_market_kline_chart
 
             path = await asyncio.wait_for(
-                asyncio.to_thread(build_market_kline_chart, chart_path, live=live),
+                asyncio.to_thread(
+                    build_market_kline_chart,
+                    chart_path,
+                    live=live,
+                    db_path=self.db_path,
+                ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )
         except asyncio.TimeoutError:
