@@ -3273,7 +3273,7 @@ class WayneTelegramBot:
                     try:
                         from broker_points import attach_main_cost
 
-                        attach_main_cost(card, self.db_path, fetch=True)
+                        attach_main_cost(card, self.db_path, fetch=False)
                     except Exception:
                         pass
                     card.pop("_ohlc", None)
@@ -3622,7 +3622,7 @@ class WayneTelegramBot:
                     try:
                         from broker_points import attach_main_cost
 
-                        attach_main_cost(card, self.db_path, fetch=True)
+                        attach_main_cost(card, self.db_path, fetch=False)
                     except Exception:
                         pass
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None

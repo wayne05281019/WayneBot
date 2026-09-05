@@ -641,9 +641,9 @@ class PortfolioEngine:
             lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
             mc = None
             try:
-                from broker_points import main_cost_for_stock
+                from broker_points import main_cost_for_stock, visible_main_cost
 
-                mc = main_cost_for_stock(code, self.db_path)
+                mc = visible_main_cost(main_cost_for_stock(code, self.db_path))
             except Exception:
                 mc = None
             if mc is not None:
