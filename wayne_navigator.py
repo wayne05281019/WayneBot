@@ -968,6 +968,100 @@ def _mix(color, other, t: float) -> str:
     return mcolors.to_hex(tuple(x + (y - x) * t for x, y in zip(a, b)))
 
 
+def _heat_pair(value, stops):
+    """依數值在色票停點之間內插，表格底色才有深淺，不是同一桶死色。"""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return stops[0][1], stops[0][2]
+    if v <= stops[0][0]:
+        return stops[0][1], stops[0][2]
+    for i in range(1, len(stops)):
+        x0, bg0, fg0 = stops[i - 1]
+        x1, bg1, fg1 = stops[i]
+        if v <= x1:
+            t = 0.0 if x1 == x0 else (v - x0) / (x1 - x0)
+            return _mix(bg0, bg1, t), _mix(fg0, fg1, t)
+    return stops[-1][1], stops[-1][2]
+
+
+def _temp_heat_draw(temp_n, base: str):
+    """繪製用連續溫度熱圖。temp_cell_style 仍給測試分桶，這裡不改那個回傳。"""
+    C = _CARD
+    base = base or C["white"]
+    try:
+        t = float(temp_n)
+    except (TypeError, ValueError):
+        return base, C["neutral_fg"]
+    return _heat_pair(
+        t,
+        (
+            (18.0, base, C["ink"]),
+            (34.0, C["lo_fill"], C["lo_ink"]),
+            (52.0, "#E8F5E9", C["lo_ink"]),
+            (64.0, C["temp_warm_bg"], C["temp_warm_fg"]),
+            (76.0, C["temp_hot_bg"], C["temp_hot_fg"]),
+            (90.0, "#F8BBD0", C["pill_hi"]),
+        ),
+    )
+
+
+def _profit_heat_draw(profit, prev_profit, base: str):
+    C = _CARD
+    bg, fg = profit_cell_style(profit, prev_profit, base)
+    try:
+        p = float(profit)
+    except (TypeError, ValueError):
+        return bg, fg
+    if bg == C["lo_hit_fill"] or p <= 0.05:
+        return bg, fg
+    return _heat_pair(
+        p,
+        (
+            (0.06, base, C["ink"]),
+            (8.0, C["temp_warm_bg"], C["temp_warm_fg"]),
+            (20.0, C["hi_fill"], C["hi_ink"]),
+            (40.0, "#F8BBD0", C["pill_hi"]),
+            (70.0, C["temp_hot_bg"], C["temp_hot_fg"]),
+        ),
+    )
+
+
+def _vol_heat_draw(rank, base: str):
+    C = _CARD
+    base = base or C["white"]
+    try:
+        r = int(rank)
+    except (TypeError, ValueError):
+        return base, C["neutral_fg"]
+    return _heat_pair(
+        max(1, min(r, 120)),
+        (
+            (1.0, "#F8BBD0", C["pill_hi"]),
+            (10.0, C["vol_hi_bg"], C["vol_hi_fg"]),
+            (28.0, C["hi_fill"], C["hi_ink"]),
+            (55.0, C["neutral_bg"], C["neutral_fg"]),
+            (120.0, base, C["neutral_fg"]),
+        ),
+    )
+
+
+def _cell_wash(ax, x, y, w, h, color, edge):
+    """格子上淺下深，同一欄不同列才看得出程度。"""
+    C = _CARD
+    c = color or C["white"]
+    if c in (C["white"], C["panel"], C["neutral_bg"]):
+        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=C["white"],
+                                       edgecolor=edge, lw=0.5, zorder=2))
+        return
+    light = _mix(c, "#FFFFFF", 0.58)
+    deep = _mix(c, "#1E293B", 0.16)
+    ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=light,
+                                   edgecolor=edge, lw=0.5, zorder=2))
+    ax.add_patch(patches.Rectangle((x, y), w, h * 0.55, facecolor=deep,
+                                   edgecolor="none", lw=0, zorder=2.1))
+
+
 def _fg_on_panel(fg, bg=None, panel="#FFFFFF") -> str:
     """介紹圖只有字沒有格底：白字會消失，改用夠對比的深色。"""
     try:
@@ -1552,8 +1646,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             latest_date=card.get("latest_date"),
             generated_at=card.get("generated_at"),
         )
-    head_h = 7.2 if clock_line else 6.2
-    title_band, box_h, box_gap, pane_pad = 3.2, 6.4, 0.7, 0.9
+    head_h = 5.5
+    title_band, box_h, box_gap, pane_pad = 3.2, 5.8, 0.7, 0.9
     tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
     gap = 1.35
     badge_h, badge_gap = 3.05, 0.85
@@ -1564,7 +1658,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         sell_sub = sell_note_short(card)
     except Exception:
         sell_sub = ""
-    stance_h = 5.2 if sell_sub else 4.6
+    stance_h = 4.6 if sell_sub else 4.2
 
     fig_w = CARD_FIG_W
     badges = []
@@ -1575,7 +1669,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows, row, row_w = [], [], 0.0
-    limit = 100 - 2 * pad_x - 6.4
+    limit = 58.0
     for b, bw in zip(badges, badge_w):
         if row and row_w + 1.7 + bw > limit:
             badge_rows.append(row)
@@ -1584,7 +1678,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         row_w += (1.7 if row_w else 0) + bw
     if row:
         badge_rows.append(row)
-    price_h = 8.35 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+    price_h = 7.4 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -1622,7 +1716,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 原作高低小盒子白底，% 用紅綠字；不要整盒粉／綠。
+        # 左標、右價；％貼在價下面。不要三行置中把左右空白浪費掉。
         fc, ec = C["white"], C["line"]
         if high:
             lc = C["hi_ink"]
@@ -1633,20 +1727,20 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
             facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
-        cx = x + box_w / 2
-        ax.text(cx, y + box_h - 1.55, lab, fontproperties=_fp(9.8), color=lc,
-                ha="center", va="center", zorder=4)
-        ax.text(cx, y + 3.35, _fmt_price(px), fontproperties=_fp(16, "bold"), color=C["ink"],
-                ha="center", va="center", zorder=4)
+        lx, rx = x + 1.15, x + box_w - 1.2
+        ax.text(lx, y + box_h / 2, lab, fontproperties=_fp(11.0, "bold"), color=lc,
+                ha="left", va="center", zorder=4)
+        ax.text(rx, y + box_h * 0.64, _fmt_price(px), fontproperties=_fp(16, "bold"),
+                color=C["ink"], ha="right", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(cx, y + 1.35, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
-                color=dc, ha="center", va="center", zorder=4)
+        ax.text(rx, y + box_h * 0.28, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
+                color=dc, ha="right", va="center", zorder=4)
 
-    # 標題帶一列：代號＋股名＋黃字標語，右品牌日期。不要再疊一顆洋紅長標。
+    # 標題：左代號股名，右只放當下日期時間。標語不要。
     y = H - m_top - head_h
     ax.add_patch(patches.FancyBboxPatch(
         (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=0.85",
@@ -1661,45 +1755,36 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     name_x = pad_x + 2.6 + tw(code, 22) + 1.6
     ax.text(name_x, title_cy, name,
             fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
-    tag = "買低賣高決策卡　破解獲利密碼"
-    tag_x = name_x + tw(name, 20) + 2.0
     brand_x = 100 - pad_x - 2.6
     event = str(card.get("next_event") or "").strip()
-    if tag_x + tw(tag, 10.2) < brand_x - tw("WayneBot", 11) - 8:
-        ax.text(tag_x, title_cy, tag,
-                fontproperties=_fp(10.2), color="#FDE68A", va="center", zorder=3)
     if event:
-        ev_left = tag_x + tw(tag, 10.2) + 1.6
-        if ev_left + tw(event, 10.2) < brand_x - tw("WayneBot", 11) - 8:
-            ax.text(ev_left, title_cy, event,
-                    fontproperties=_fp(10.2), color="#FDE68A", va="center", zorder=3)
-    ax.text(brand_x, y + head_h - 1.7, "WayneBot", fontproperties=_fp(11.5),
-            color=C["navy_soft"], ha="right", va="center", zorder=3)
-    if clock_line:
-        ax.text(brand_x, y + 1.55, f"{date_line}  {clock_line}", fontproperties=_fp(10.2),
-                color="#FFE082", ha="right", va="center", zorder=3)
-    else:
-        ax.text(brand_x, y + 1.55, date_line or _fmt_md(card.get("latest_date")),
-                fontproperties=_fp(10.4), color="#C5D0E8", ha="right", va="center", zorder=3)
+        ev_left = name_x + tw(name, 20) + 1.8
+        stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
+        if ev_left + tw(event, 11) < brand_x - tw(stamp, 11) - 4:
+            ax.text(ev_left, title_cy, event, fontproperties=_fp(11),
+                    color="#FDE68A", va="center", zorder=3)
+    stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
+    ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
+            color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
 
-    # 收盤＋漲跌＋開高低昨收；徽章靠左一列，不要拉滿整行。
+    # 左：開高低昨＋徽章；右：收盤價與漲跌，不要跟左邊搶。
     y -= gap + price_h
     pane(pad_x, y, 100 - 2 * pad_x, price_h)
     chg = float(card.get("change_pct") or 0)
     chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
     prev_c = float(card.get("prev_close") or 0)
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
-    px_cy = y + price_h - 2.55
-    ax.text(pad_x + 3.2, px_cy + 0.28, "收盤", fontproperties=_fp(10.5), color=C["ink_soft"],
-            va="center", zorder=3)
-    ax.text(pad_x + 11.2, px_cy, _fmt_price(card["close"]), fontproperties=_fp(26, "bold"),
-            color=C["ink"], va="center", zorder=3)
-    ax.text(48.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c,
-            va="center", zorder=3)
+    px_right = 100 - pad_x - 3.2
+    close_s = _fmt_price(card["close"])
+    ax.text(px_right, y + price_h * 0.64, close_s, fontproperties=_fp(28, "bold"),
+            color=C["ink"], ha="right", va="center", zorder=3)
+    ax.text(px_right - tw(close_s, 28) - 1.6, y + price_h * 0.64, "收盤",
+            fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
+    chg_bits = [f"{chg:+.2f}%"]
     if chg_amt is not None:
-        ax.text(66.5, px_cy, _fmt_price_signed(chg_amt), fontproperties=_fp(15, "bold"), color=chg_c,
-                va="center", zorder=3)
-    ohlc_cy = y + price_h - 5.35
+        chg_bits.append(_fmt_price_signed(chg_amt))
+    ax.text(px_right, y + price_h * 0.28, "　".join(chg_bits),
+            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     ohlc_bits = [
         f"開 {_fmt_price(card.get('open'))}",
         f"高 {_fmt_price(card.get('high'))}",
@@ -1707,7 +1792,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ]
     if prev_c:
         ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
-    ax.text(pad_x + 3.2, ohlc_cy, "　".join(ohlc_bits), fontproperties=_fp(11.2),
+    ax.text(pad_x + 3.2, y + price_h - 2.05, "　".join(ohlc_bits), fontproperties=_fp(13.0),
             color=C["ink_soft"], va="center", zorder=3)
     by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
     for brow in badge_rows:
@@ -1725,7 +1810,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             bx += bw + 1.7
         by -= badge_h + badge_gap
 
-    # 今日態度：同一塊左流，不要左右對拉把字拆到兩邊。
+    # 左：今日態度＋句子；右：紀律／不是買訊，用右邊空位。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
     stance_txt = str(card.get("stance") or "等待・按表操課")
@@ -1737,27 +1822,30 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
     pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=C["panel"])
     chip_w = tw("今日態度", 11.0) + 3.2
-    chip_h = 2.05
-    chip_y = y + stance_h - chip_h - 0.42
+    chip_h = 2.15
+    chip_y = y + (stance_h - chip_h) / 2
     ax.add_patch(patches.FancyBboxPatch(
         (pad_x + 3.0, chip_y), chip_w, chip_h,
         boxstyle="round,pad=0,rounding_size=0.45",
         facecolor=s_fc, edgecolor=s_ec, linewidth=0.8, zorder=4))
     ax.text(pad_x + 3.0 + chip_w / 2, chip_y + chip_h / 2, "今日態度",
-            fontproperties=_fp(10.6, "bold"), color=s_ink, ha="center", va="center", zorder=5)
-    ax.text(pad_x + 3.0 + chip_w + 1.6, chip_y + chip_h / 2, stance_txt,
-            fontproperties=_fp(14.0, "bold"), color=s_ink, va="center", zorder=4)
-    sub_y = y + 0.95
+            fontproperties=_fp(11.0, "bold"), color=s_ink, ha="center", va="center", zorder=5)
+    ax.text(pad_x + 3.0 + chip_w + 1.6, y + stance_h / 2, stance_txt,
+            fontproperties=_fp(16.0, "bold"), color=s_ink, va="center", zorder=4)
+    rx = 100 - pad_x - 3.2
     if sell_sub:
-        ax.text(pad_x + 3.2, sub_y, "紀律",
-                fontproperties=_fp(11.0), color=C["ink_soft"], va="center", zorder=4)
-        ax.text(pad_x + 3.2 + tw("紀律", 11.0) + 1.8, sub_y,
-                f"{sell_sub}　不是買訊",
-                fontproperties=_fp(11.0), color=C["ink_soft"], va="center", zorder=4)
+        note = f"{sell_sub}　不是買訊"
+        note_fs = 11.0
+        while tw(note, note_fs) > 34.0 and note_fs > 8.6:
+            note_fs -= 0.3
+        ax.text(rx, y + stance_h / 2 + 0.82, "紀律",
+                fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=4)
+        ax.text(rx, y + stance_h / 2 - 0.72, note,
+                fontproperties=_fp(note_fs), color=C["ink_soft"], ha="right", va="center", zorder=4)
     else:
-        ax.text(pad_x + 3.2, sub_y,
+        ax.text(rx, y + stance_h / 2,
                 "按表操課・不是下單指令　紅箭頭只是觀察",
-                fontproperties=_fp(9.4), color=C["ink_soft"], va="center", zorder=4)
+                fontproperties=_fp(9.4), color=C["ink_soft"], ha="right", va="center", zorder=4)
 
     # 高點
     y -= gap + hi_pane_h
@@ -1795,7 +1883,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
     # 股價欄加寬（萬元股）、升降溫略加寬給雙標；日期／獲利略收。
     weights = [12.2, 12.2, 8.8, 10.6, 11.0, 14.2, 9.6, 12.4]
-    pill_cols = {3, 4, 5, 7}
+    pill_cols = {3, 5}
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -1808,6 +1896,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 ha="center", va="center", color=C["tbl_ink"], zorder=3)
     ry = tbl_top - hdr_h
     from decision_card_signals import display_alert_cell
+    _ = profit_cell_style, vol_rank_cell_style, temp_cell_style
 
     def _status_pill(cx, cy, text, bg, fg, *, w, h, fs):
         sbg, sfg = _status_badge_colors(bg, fg)
@@ -1826,15 +1915,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         trend_note = str(r.get("升降註") or "")
         hl = str(r["高低"])
         al = display_alert_cell(str(r["預警"]), hl)
-        # 列底一律白；狀態走實心徽章，獲利／股價／乖離只改字色。
         base = C["white"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
-        p_bg, p_fg = profit_cell_style(_row_profit(r), _row_profit(nxt), base)
+        p_bg, p_fg = _profit_heat_draw(_row_profit(r), _row_profit(nxt), base)
         px_bg, px_fg = price_cell_style(hl, base)
         al_bg, al_fg = alert_cell_style(al, base)
-        tbg, tfg = temp_cell_style(temp_n, base)
+        tbg, tfg = _temp_heat_draw(temp_n, base)
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
-        vbg, vfg = vol_rank_cell_style(rank, base)
+        vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
         fills = [base, px_bg, p_bg, al_bg, tbg, tr_bg, b_bg, vbg]
         fgs = [C["ink"], px_fg, p_fg, al_fg, tfg, tr_fg, b_fg, vfg]
@@ -1850,8 +1938,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ]
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
-            ax.add_patch(patches.Rectangle((xs[i], y1), col_w, body_h,
-                                           facecolor=C["white"], edgecolor=C["line"], lw=0.5, zorder=2))
+            _cell_wash(ax, xs[i], y1, col_w, body_h, fills[i], C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i in pill_cols:
                 if val in ("No", "—") or not str(val).strip():
@@ -1880,7 +1967,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                                  h=body_h * 0.74, fs=11.0)
             else:
                 px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
-                ink = _fg_on_panel(fgs[i], fills[i], C["white"])
+                ink = _fg_on_panel(fgs[i], fills[i], fills[i] or C["white"])
                 ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
                         ha="center", va="center", color=ink, zorder=3)
         ry = y1

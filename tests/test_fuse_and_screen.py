@@ -1139,7 +1139,10 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
         self.assertIn("_status_badge_colors", src)
-        self.assertIn("pill_cols = {3, 4, 5, 7}", src)
+        self.assertIn("pill_cols = {3, 5}", src)
+        self.assertIn("_temp_heat_draw", src)
+        self.assertIn("_cell_wash", src)
+        self.assertNotIn("買低賣高決策卡", src)
         self.assertNotIn("#FBEAF1", src)
         self.assertNotIn("row_i % 2", src)
 
