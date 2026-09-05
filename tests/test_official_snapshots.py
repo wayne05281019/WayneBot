@@ -9,9 +9,11 @@ from official_snapshots import (
     ensure_schema,
     industry_name,
     overlay_fmtqik,
+    overlay_index_ohlc,
     overlay_industry,
     parse_bwibbu,
     parse_fmtqik,
+    parse_mi5mins_hist,
     parse_tpex_margin,
     parse_tpex_pe,
     parse_twse_margin,
@@ -130,6 +132,33 @@ def test_fmtqik_shares_to_lots():
     assert rows[0]["close"] == 46551.13
 
 
+def test_mi5mins_hist_skips_incomplete_ohlc():
+    rows = parse_mi5mins_hist(
+        [
+            {
+                "Date": "1150904",
+                "OpeningIndex": "45991.28",
+                "HighestIndex": "46620.96",
+                "LowestIndex": "45966.86",
+                "ClosingIndex": "46551.13",
+            },
+            {
+                "Date": "1150903",
+                "OpeningIndex": "",
+                "HighestIndex": "46517.45",
+                "LowestIndex": "45839.36",
+                "ClosingIndex": "45857.66",
+            },
+        ]
+    )
+    assert len(rows) == 1
+    assert rows[0]["date"] == "20260904"
+    assert rows[0]["open"] == 45991.28
+    assert rows[0]["high"] == 46620.96
+    assert rows[0]["low"] == 45966.86
+    assert rows[0]["close"] == 46551.13
+
+
 def test_roundtrip_and_plain_rows_omit_empty(tmp_path):
     db = str(tmp_path / "off.db")
     ensure_core_schema(db)
@@ -200,6 +229,30 @@ def test_overlay_fmtqik_and_industry(tmp_path):
     conn.close()
     assert int(vol) == 9267047
     assert close == 46551.13
+    overlay_index_ohlc(
+        db,
+        parse_mi5mins_hist(
+            [
+                {
+                    "Date": "1150904",
+                    "OpeningIndex": "45991.28",
+                    "HighestIndex": "46620.96",
+                    "LowestIndex": "45966.86",
+                    "ClosingIndex": "46551.13",
+                }
+            ]
+        ),
+    )
+    conn = sqlite3.connect(db)
+    o, h, lo, close2, vol2 = conn.execute(
+        "SELECT open, high, low, close, volume FROM index_daily WHERE date='20260904'"
+    ).fetchone()
+    conn.close()
+    assert o == 45991.28
+    assert h == 46620.96
+    assert lo == 45966.86
+    assert close2 == 46551.13
+    assert int(vol2) == 9267047
     overlay_industry(db, [("2330", "半導體業")])
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT industry FROM stock_universe WHERE stock_id='2330'").fetchone()[0] == "半導體業"
@@ -215,6 +268,11 @@ def test_increment_and_glance_wire_official():
 
     src = inspect.getsource(MainRunner.run_daily_increment)
     assert "sync_official_snapshots" in src
+    from official_snapshots import sync_official_snapshots as sync_fn
+
+    sync_src = inspect.getsource(sync_fn)
+    assert "overlay_index_ohlc" in sync_src
+    assert "TWSE_MI5MINS" in sync_src
     glance = inspect.getsource(render_first_glance_png)
     assert "fmt_lots_align" not in glance
     assert "lots_right" not in glance
