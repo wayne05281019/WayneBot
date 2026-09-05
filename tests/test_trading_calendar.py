@@ -220,3 +220,17 @@ def test_overnight_list_heading_not_intraday_after_hours():
     week_t, week_s = overnight_list_heading("weekend")
     assert "假日參考" in week_t
     assert "不是叫你現在買" in week_s
+
+
+def test_daytrade_closed_title_not_intraday():
+    from trading_calendar import daytrade_closed_title, daytrade_closed_message
+
+    weekend = daytrade_closed_title("weekend")
+    assert "假日" in weekend
+    assert "盤中即時" not in weekend
+    assert "盤中即時" not in daytrade_closed_title("pre")
+    assert "尚未開盤" in daytrade_closed_title("pre")
+    assert "已收盤" in daytrade_closed_title("after")
+    msg = daytrade_closed_message("weekend")
+    assert msg.startswith("假日。")
+    assert "09:00" in msg

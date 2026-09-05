@@ -2301,6 +2301,7 @@ class WayneTelegramBot:
     ):
         from trading_calendar import (
             daytrade_closed_message,
+            daytrade_closed_title,
             is_tw_equity_session,
             overnight_list_heading,
             tw_session_phase,
@@ -2317,7 +2318,7 @@ class WayneTelegramBot:
         if live_bucket == "daytrade" and not is_tw_equity_session():
             try:
                 await message.reply_html(
-                    f"<b>{title}</b>\n<i>{daytrade_closed_message(phase)}</i>",
+                    f"<b>{daytrade_closed_title(phase)}</b>\n<i>{daytrade_closed_message(phase)}</i>",
                     reply_markup=self._reply_menu(),
                 )
             finally:
