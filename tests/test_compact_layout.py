@@ -32,13 +32,34 @@ def test_stock_card_volume_and_turnover_separate_lines():
         1,
         show_line_link=False,
     )
-    assert "額　<code>41.8億</code>" in card
+    # turnover_k 單位是千元：41,800 千元＝0.418 億，不是 41.8 億
+    assert "額　<code>0.42億</code>" in card
     assert "量　" in card
     assert "量比　" in card
     # 額與億同一行，不應裸寫 41.8 讓 億 掉到下一行
     assert re.search(r"額　<code>[\d.]+億</code>", card)
     assert "法人　外資" in card
     assert card.count("\n外資") == 0
+
+
+def test_stock_card_turnover_yi_uses_hundred_thousand_k():
+    """turnover_k 是千元。仁寶 9/4 官方約 57.81 億，舊公式會寫成 5781 億。"""
+    from screening_engine import _stock_card_html
+
+    card = _stock_card_html(
+        {
+            "stock_id": "2324",
+            "stock_name": "仁寶",
+            "close": 41.6,
+            "volume": 141506,
+            "pct_change": 7.35,
+            "turnover_k": 5_781_097.8,
+        },
+        1,
+        show_line_link=False,
+    )
+    assert "額　<code>57.81億</code>" in card
+    assert "5781" not in card
 
 
 def test_stock_card_chip_single_line():
