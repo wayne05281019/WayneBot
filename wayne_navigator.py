@@ -1678,16 +1678,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         row_w += (1.7 if row_w else 0) + bw
     if row:
         badge_rows.append(row)
-    mc_val = None
-    raw_mc = card.get("main_cost")
-    if raw_mc is not None and raw_mc != "":
-        try:
-            parsed = float(raw_mc)
-            if parsed > 0:
-                mc_val = parsed
-        except (TypeError, ValueError):
-            mc_val = None
-    # 有分點平均買超才加一行；沒有真數就維持現在的價區高度。
+    try:
+        from broker_points import visible_main_cost
+
+        mc_val = visible_main_cost(card.get("main_cost"))
+    except Exception:
+        mc_val = None
+    # 有分點平均買超才加一行；沒有真數就不畫、不加高度。
     mc_line_h = 2.45 if mc_val is not None else 0.0
     price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap + mc_line_h
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
@@ -2036,7 +2033,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     try:
         from broker_points import attach_main_cost
 
-        attach_main_cost(card, db_path or get_db_path(), fetch=True)
+        attach_main_cost(card, db_path or get_db_path(), fetch=False)
     except Exception:
         pass
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
@@ -2078,7 +2075,12 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("法人", f"{fmt_lots_align(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
             kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
         ]
-    mc = card.get("main_cost")
+    try:
+        from broker_points import visible_main_cost
+
+        mc = visible_main_cost(card.get("main_cost"))
+    except Exception:
+        mc = None
     if mc is not None:
         chip_lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
     if chip_lines:
@@ -2165,7 +2167,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         fund_rows = glance_fundamentals_plain(stock_id, db_path or get_db_path())
     except Exception:
         fund_rows = []
-    mc = card.get("main_cost")
+    try:
+        from broker_points import visible_main_cost
+
+        mc = visible_main_cost(card.get("main_cost"))
+    except Exception:
+        mc = None
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
     try:
@@ -2992,7 +2999,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         try:
             from broker_points import attach_main_cost
 
-            attach_main_cost(card, db_path, fetch=True)
+            attach_main_cost(card, db_path, fetch=False)
         except Exception:
             pass
     if card.get("error"):

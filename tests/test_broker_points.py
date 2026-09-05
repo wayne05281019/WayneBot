@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分點建檔與平均買超成本：有列才上主力成本，禁止 T86 推估。"""
+"""分點建檔與平均買超成本：有列才上主力成本，沒有就不上卡。禁止 T86 推估。"""
 from __future__ import annotations
 
 from broker_points import (
@@ -8,6 +8,7 @@ from broker_points import (
     main_cost_from_net_buy,
     parse_broker_csv,
     upsert_branch_rows,
+    visible_main_cost,
 )
 from wayne_db import ensure_core_schema
 
@@ -100,6 +101,14 @@ def test_local_csv_drop_builds_archive(tmp_path, monkeypatch):
     assert card["main_cost"] == 100.0
 
 
+def test_visible_main_cost_omits_blank():
+    assert visible_main_cost(None) is None
+    assert visible_main_cost("") is None
+    assert visible_main_cost(0) is None
+    assert visible_main_cost(-1) is None
+    assert visible_main_cost("100.33") == 100.33
+
+
 def test_lookup_attaches_cost_screen_does_not_fetch():
     import inspect
 
@@ -118,15 +127,28 @@ def test_lookup_attaches_cost_screen_does_not_fetch():
     html_src = inspect.getsource(generate_decision_card)
     png_src = inspect.getsource(render_decision_card_png)
     glance_src = inspect.getsource(render_first_glance_png)
+    import bot_servers
+
+    bot_src = inspect.getsource(bot_servers)
     assert "attach_main_cost" in pack_src
+    assert "fetch=False" in pack_src
+    assert "fetch=False" in html_src
+    assert "fetch=True" not in pack_src
+    assert "fetch=True" not in html_src
+    assert "attach_main_cost(card, self.db_path, fetch=False)" in bot_src
+    assert "attach_main_cost(card, self.db_path, fetch=True)" not in bot_src
     assert "主力成本" in html_src
     assert "主力成本" in png_src
     assert "分點平均買超" in png_src
     assert "主力成本" in glance_src
+    for src in (html_src, png_src, glance_src):
+        assert "外資成本" not in src
+        assert "投信成本" not in src
+        assert "融資成本" not in src
 
 
 def test_decision_card_png_draws_main_cost_only_when_present(tmp_path, monkeypatch):
-    """決策卡 PNG：有分點平均買超才寫主力成本；沒有真數就空白。"""
+    """決策卡 PNG：有分點平均買超才寫主力成本；沒有真數就不畫那一行。"""
     import matplotlib
 
     matplotlib.use("Agg")

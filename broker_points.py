@@ -1,7 +1,7 @@
 """查股時一次抓一檔券商分點，建檔後算「平均買超成本」。
 
-全市場日抓禁止。沒有真分點列就不上主力成本，禁止用 T86×均價推。
-證交所／櫃買分點頁常有驗證碼：抓不到就空白；可把官方 CSV 放進 data/broker_csv/。
+全市場日抓禁止。沒有真分點列就不上卡，不要留空白欄。禁止用 T86×均價推。
+證交所／櫃買分點頁有驗證碼：查股不抓那頁（空等也不上欄）。可把官方 CSV 放進 data/broker_csv/。
 """
 
 from __future__ import annotations
@@ -462,8 +462,19 @@ def ensure_broker_for_stock(
     return main_cost_from_net_buy(rows)
 
 
+def visible_main_cost(val: Any) -> float | None:
+    """只有正的分點平均買超才上卡；沒有就當沒這欄，不要留空白。"""
+    if val is None or val == "":
+        return None
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def attach_main_cost(card: dict[str, Any], db_path: str | None = None, *, fetch: bool = False) -> dict[str, Any]:
-    """只在查股路徑呼叫 fetch=True。海選禁止。"""
+    """查股只讀已建檔的分點列。海選禁止。遠端驗證碼頁預設不抓。"""
     if not isinstance(card, dict) or card.get("error"):
         return card
     sid = str(card.get("stock_id") or "").strip()
@@ -475,8 +486,11 @@ def attach_main_cost(card: dict[str, Any], db_path: str | None = None, *, fetch:
     except Exception:
         log.debug("attach_main_cost fail %s", sid, exc_info=True)
         cost = None
-    if cost is not None:
-        card["main_cost"] = cost
+    shown = visible_main_cost(cost)
+    if shown is not None:
+        card["main_cost"] = shown
+    else:
+        card.pop("main_cost", None)
     return card
 
 
@@ -597,9 +611,9 @@ def sync_broker_archive(
     db_path: str | None = None,
     trade_date: str | None = None,
     *,
-    fetch_holdings: bool = True,
+    fetch_holdings: bool = False,
 ) -> dict[str, Any]:
-    """盤後定時：先匯入 CSV 丟檔，再對持股逐檔試抓。驗證碼擋就空白。"""
+    """盤後定時：先匯入 CSV 丟檔，再對持股算已建檔成本。預設不抓驗證碼頁。"""
     dropped = ingest_csv_drop(db_path, trade_date)
     held = sync_holdings_broker(db_path, trade_date, fetch=fetch_holdings)
     return {"csv": dropped, "holdings": held}
