@@ -73,6 +73,17 @@ def held_is_odd_lot_only(lots) -> bool:
     return z > 0 and z < 1.0 - 1e-9 and abs(z - round(z)) >= 1e-6
 
 
+def held_has_odd_shares(lots) -> bool:
+    """有零股（0.439 或 1.439）。整張不含。"""
+    try:
+        z = float(lots or 0)
+    except (TypeError, ValueError):
+        return False
+    if z <= 0:
+        return False
+    return abs(z - round(z)) >= 1e-6
+
+
 def qty_token_has_unit(token: str) -> bool:
     t = (token or "").strip()
     return t.endswith("張") or t.endswith("股")
@@ -97,6 +108,12 @@ def coerce_bare_qty_if_share_count(lots, held_lots, *, allow_unheld: bool = Fals
             return q / 1000.0
         return lots
     if q >= 100 and q > held + 1e-9:
+        as_lots = q / 1000.0
+        if as_lots <= held + 1e-9:
+            return as_lots
+        return lots
+    # 混合張 1.439：50 631 當 50股；2 68.5 仍是 2張（1–9 當張）。
+    if held_has_odd_shares(held) and 10 <= q < 100 and q > held + 1e-9:
         as_lots = q / 1000.0
         if as_lots <= held + 1e-9:
             return as_lots

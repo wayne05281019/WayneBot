@@ -355,6 +355,10 @@ def test_sell_holdings_prompt_shows_odd_lots():
     whole = _sell_holdings_prompt("3035", 4)
     assert "現有 4張" in whole
     assert "1 72" in whole
+    mixed = _sell_holdings_prompt("6526", 1.439)
+    assert "現有 1張439股" in mixed
+    assert "200股" in mixed
+    assert "1 72" not in mixed
     src = inspect.getsource(WayneTelegramBot.on_callback)
     assert "_sell_holdings_prompt" in src
     assert "_held_lots_for" in src
@@ -374,6 +378,10 @@ def test_buy_holdings_prompt_shows_odd_lots():
     held = _buy_holdings_prompt("3035", 4)
     assert "現有 4張" in held
     assert "2 68.5" in held
+    mixed = _buy_holdings_prompt("6526", 1.439)
+    assert "現有 1張439股" in mixed
+    assert "200股" in mixed
+    assert "2 68.5" not in mixed
     src = inspect.getsource(WayneTelegramBot.on_callback)
     assert "_buy_holdings_prompt" in src
 

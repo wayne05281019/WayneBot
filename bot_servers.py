@@ -35,6 +35,7 @@ from trade_journal import (
     format_user_review_html,
     format_user_trades_html,
     held_is_odd_lot_only,
+    held_has_odd_shares,
     normalize_trade_tokens,
     parse_lots_price,
     parse_qty_to_lots,
@@ -99,7 +100,7 @@ def _buy_holdings_prompt(code: str, lots=None) -> str:
             head += f"現有 {holdings_qty_text(lots)}。"
         except Exception:
             pass
-    if held_is_odd_lot_only(lots):
+    if held_is_odd_lot_only(lots) or held_has_odd_shares(lots):
         return head + "請輸入：價格（1張）\n例如：631.6 或 200股 631.6"
     return head + "請輸入：價格（1張）\n例如：68.5 或 2 68.5"
 
@@ -114,7 +115,7 @@ def _sell_holdings_prompt(code: str, lots=None) -> str:
             head += f"現有 {holdings_qty_text(lots)}。"
         except Exception:
             pass
-    if held_is_odd_lot_only(lots):
+    if held_is_odd_lot_only(lots) or held_has_odd_shares(lots):
         return head + "請輸入：價格（全賣）\n例如：72 或 200股 72"
     return head + "請輸入：價格（全賣）\n例如：72 或 1 72"
 
