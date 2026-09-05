@@ -94,7 +94,9 @@ def format_line_stock_block(
         q_s = "—"
     to_k = item.get("turnover_k")
     try:
-        to_s = f"{float(to_k) / 1000.0:.1f}億" if to_k is not None else ""
+        from fundamentals import format_yi
+
+        to_s = format_yi(float(to_k), unit=False) if to_k is not None else ""
     except (TypeError, ValueError):
         to_s = ""
 

@@ -13,6 +13,9 @@ def test_format_yi_converts_thousand_to_yi():
     assert format_yi(331_139) == "3.31億元"
     assert format_yi(50_000, signed=True) == "+0.50億元"
     assert format_yi(-12_500, signed=True, unit=False) == "-0.12億"
+    # 海選／隔日沖「額」：仁寶 5,781,097.8 千元＝57.81 億，不是 5781 億
+    assert format_yi(5_781_097.8, unit=False) == "57.81億"
+    assert format_yi(100_000, unit=False) == "1.00億"
 
 
 def test_format_fundamentals_html_uses_yi_not_mom_yoy_pct(tmp_path):

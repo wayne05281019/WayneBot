@@ -29,6 +29,7 @@ def test_line_stock_headline_no_yahoo_url():
     assert lines[2].startswith("收　")
     assert lines[3].startswith("量　")
     assert lines[4].startswith("額　")
+    assert "0.80億" in lines[4]  # 80,000 千元＝0.80 億
     assert lines[5].startswith("均線　")
     assert lines[6].startswith("法人　")
     assert "＝＝周帶量｜突破5日高" in line_bucket_header("select_01", 3)
