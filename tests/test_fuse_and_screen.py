@@ -1335,7 +1335,7 @@ class LookupCardTest(unittest.TestCase):
         )
 
         self.assertGreaterEqual(CARD_PNG_DPI, 320)
-        self.assertGreaterEqual(GLANCE_PNG_DPI, 320)
+        self.assertGreaterEqual(GLANCE_PNG_DPI, 440)
         table = pd.DataFrame(
             [
                 {
@@ -1394,16 +1394,26 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn('ha="right"', glance_src)
         self.assertIn("floor=12.0", glance_src)
         self.assertNotIn("floor=8.0", glance_src)
+        self.assertIn("linewidth=1.1", glance_src)
         fd, path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
+        gfd, gpath = tempfile.mkstemp(suffix=".png")
+        os.close(gfd)
         try:
             out = render_decision_card_png(card, path)
             self.assertTrue(out)
             with Image.open(out) as im:
                 self.assertGreaterEqual(im.size[0], 1500)
+            gout = render_first_glance_png("2330", card, {}, gpath)
+            self.assertTrue(gout)
+            with Image.open(gout) as gim:
+                self.assertGreaterEqual(gim.size[0], 2000)
+                self.assertLess(sum(gim.size), 10000)
         finally:
             if os.path.exists(path):
                 os.remove(path)
+            if os.path.exists(gpath):
+                os.remove(gpath)
 
     def test_decision_card_png_one_row_not_stretched(self):
         import tempfile

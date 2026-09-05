@@ -65,12 +65,14 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
+# 介紹圖畫布比決策卡窄，同樣 320DPI 橫向像素比較少，對話框裡會比較軟。
+# 加到 440：橫向約 2033px，接近決策卡 2272px；寬+高仍低於 Telegram sendPhoto 10000。
 CARD_PNG_DPI = 320
-GLANCE_PNG_DPI = 320
+GLANCE_PNG_DPI = 440
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = 4.62
 GLANCE_FIG_H = 17.2
-NAV_CHART_DPI = 280
+NAV_CHART_DPI = 320
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -2208,8 +2210,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     def panel(x, y, w, h, fc="#FFFFFF", ec="#D5DDE8"):
         ax.add_patch(patches.FancyBboxPatch(
+            (x + 0.32, y - 0.40), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
+            facecolor="#D8DEE8", edgecolor="none", zorder=1,
+        ))
+        ax.add_patch(patches.FancyBboxPatch(
             (x, y), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
-            facecolor=fc, edgecolor=ec, linewidth=0.9, zorder=1,
+            facecolor=fc, edgecolor=ec, linewidth=1.1, zorder=2,
         ))
 
     def ink(x, y, text, size=12, color="#607D8B", ha="left", va="center"):
