@@ -68,7 +68,7 @@ CARD_PNG_DPI = 240
 GLANCE_PNG_DPI = 240
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 16.4
+GLANCE_FIG_H = 17.2
 NAV_CHART_DPI = 200
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
@@ -2040,7 +2040,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
     from tg_layout import kv_compact, section, join_sections
-    from chip_tape import build_tape, fmt_lots_align
+    from chip_tape import build_tape, fmt_lots
 
     tape = build_tape(db_path or get_db_path(), sid) or {}
     move = (tape.get("move") or {}).get("text") or f"{chg:+.2f}%"
@@ -2063,10 +2063,10 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     chip_lines = []
     if tape:
         chip_lines = [
-            kv_compact("外資", f"{fmt_lots_align(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
-            kv_compact("投信", f"{fmt_lots_align(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
-            kv_compact("自營", f"{fmt_lots_align(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
-            kv_compact("法人", f"{fmt_lots_align(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
+            kv_compact("外資", f"{fmt_lots(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
+            kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
+            kv_compact("自營", f"{fmt_lots(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
+            kv_compact("法人", f"{fmt_lots(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
             kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
         ]
     try:
@@ -2153,7 +2153,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    from chip_tape import fmt_lots_align
+    from chip_tape import fmt_lots
 
     try:
         from fundamentals import glance_fundamentals_plain
@@ -2169,6 +2169,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         mc = None
     if mc is not None:
         fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
+    official = [p for p in (fund_rows or []) if str(p[0]) in ("估值", "資券餘額")]
+    rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額")]
+    fund_rows = official + rest
     try:
         from sell_discipline import attach_sell, sell_note_short
 
@@ -2311,26 +2314,27 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     panel(1.4, 26.85, 97.2, 20.85)
     ink(4.8, 45.5, "籌碼（張）", 13, "#1A237E")
     ink(96.4, 45.5, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, "#546E7A", ha="right")
-    # 張數右緣固定；四列共用字級，位數不同也對得齊。
-    lots_right = 52.0
-    lots_of = {name: fmt_lots_align(int(item.get("net") or 0)) for name, item in chips}
+    # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
+    lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
     phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
-    _, f_name, f_lots = fit_rows(
-        [(name, lots_of[name]) for name, _ in chips], lots_right - 4.8, GLANCE_FIG_W,
-        fa=12.0, fb=16.0, gap=4.0, floor=10.0,
-    )
+    f_name, f_lots = 12.0, 16.0
+    name_w = max(wid(n, f_name) for n, _ in chips)
+    lots_x = 4.8 + name_w + 2.2
+    lots_w = max(wid(lots_of[n], f_lots) for n, _ in chips)
+    phrase_left = lots_x + lots_w + 3.2
+    phrase_avail = max(16.0, 96.4 - phrase_left)
     f_phrase = min(
-        fit_fs(phrase_of[name], 12, 96.4 - lots_right - 4.2, floor=11.0) for name, _ in chips
+        fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
     )
     cy = 41.45
     for name, item in chips:
         net = int(item.get("net") or 0)
         ink(4.8, cy, name, f_name)
-        ink(lots_right, cy, lots_of[name], f_lots, chip_color(net), ha="right")
+        ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
         ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
         cy -= 4.05
 
-    panel(1.4, 5.35, 97.2, 20.7)
+    panel(1.4, 1.15, 97.2, 24.9)
     ink(4.8, 23.85, "基本面／紀律", 13, "#1A237E")
     fy = 20.35
     note = (tape or {}).get("conflict") or ""
@@ -2372,8 +2376,8 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
     except Exception:
         pass
-    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
-    ink(96.4, 6.85, "▲連漲　▼連跌", 10, "#78909C", ha="right")
+    ink(4.8, 2.35, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
+    ink(96.4, 2.35, "▲連漲　▼連跌", 10, "#78909C", ha="right")
     plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close()
     return save_path

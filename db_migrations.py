@@ -106,6 +106,48 @@ def _m006_clear_journal_holdings(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM user_holdings")
 
 
+def _m007_official_snapshots(conn: sqlite3.Connection) -> None:
+    """本益淨值殖利率、融資融券餘額、暫停當沖。CREATE IF NOT EXISTS，可重跑。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS daily_valuation (
+            stock_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            pe REAL,
+            pb REAL,
+            dividend_yield REAL,
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (stock_id, date)
+        );
+        CREATE TABLE IF NOT EXISTS daily_margin (
+            stock_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            margin_bal INTEGER,
+            margin_limit INTEGER,
+            margin_util REAL,
+            short_bal INTEGER,
+            short_limit INTEGER,
+            short_util REAL,
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (stock_id, date)
+        );
+        CREATE TABLE IF NOT EXISTS daytrade_status (
+            stock_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            suspended INTEGER NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (stock_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_valuation_date ON daily_valuation(date);
+        CREATE INDEX IF NOT EXISTS idx_margin_date ON daily_margin(date);
+        CREATE INDEX IF NOT EXISTS idx_daytrade_date ON daytrade_status(date, suspended);
+        """
+    )
+
+
 # 只能往後加，不能改號、不能重排。
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
@@ -114,6 +156,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (4, "ai_nav_log 加 user_id", _m004_ai_nav_log_user_id),
     (5, "排程心跳與告警去重表", _m005_ops_watchdog_tables),
     (6, "清空手記持股", _m006_clear_journal_holdings),
+    (7, "官方估值／資券餘額／暫停當沖表", _m007_official_snapshots),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)

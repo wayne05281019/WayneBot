@@ -418,8 +418,25 @@ def test_index_performance_hides_zero_yahoo_volume():
     joined = "\n".join(lines)
     assert "量比 0.00" not in joined
     assert "量縮 100" not in joined
+    assert "全日量" not in joined
     note = _market_read_note({**perf, "vs_ma20_pct": 0.9, "vs_high52_pct": -4.0, "chg5_pct": 0.1})
     assert "量比 0.00" not in note
+
+
+def test_format_performance_shows_fmtqik_volume():
+    from taiwan_market import _format_performance_lines
+
+    lines = _format_performance_lines(
+        {"volume": 9_267_047, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0}
+    )
+    joined = "　".join(lines)
+    assert "全日量 926.7萬張" in joined
+    nan_lines = _format_performance_lines(
+        {"volume": 9_267_047, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0,
+         "open": float("nan"), "high": float("nan"), "low": float("nan"),
+         "amplitude_pct": float("nan"), "hl_spread": float("nan")}
+    )
+    assert "nan" not in " ".join(nan_lines)
 
 
 @patch("taiwan_market._fetch_index_daily")

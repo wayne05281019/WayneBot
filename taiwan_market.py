@@ -2471,7 +2471,15 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
         )
     amp = ohlc.get("amplitude_pct")
     spread = ohlc.get("hl_spread")
-    if amp is not None and spread is not None:
+
+    def _finite(v) -> bool:
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return False
+        return x == x
+
+    if _finite(amp) and _finite(spread):
         lines.append(f"振幅 {amp:.2f}%　高低差 {spread:,.2f}")
     vol_chg = snap.get("vol_chg_pct")
     vol_r = snap.get("vol_ratio")
@@ -2481,6 +2489,17 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
         vol_bits.append(f"{tag} {abs(vol_chg):.1f}%")
     if vol_r is not None:
         vol_bits.append(f"量比 {float(vol_r):.2f}")
+    last_vol = snap.get("volume")
+    if last_vol is not None:
+        try:
+            lots = float(last_vol)
+        except (TypeError, ValueError):
+            lots = 0.0
+        if lots > 0:
+            if lots >= 10000:
+                vol_bits.append(f"全日量 {lots / 10000.0:.1f}萬張")
+            else:
+                vol_bits.append(f"全日量 {lots:,.0f}張")
     if vol_bits:
         lines.append("　".join(vol_bits))
     lines.append(

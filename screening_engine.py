@@ -1591,6 +1591,12 @@ def execute_full_screening(
             pass
 
     results = drop_non_equity_picks(results, engine.db_path)
+    try:
+        from official_snapshots import drop_paused_daytrade
+
+        results = drop_paused_daytrade(results, engine.db_path)
+    except Exception:
+        pass
 
     if session in ("evening", "morning"):
         try:
