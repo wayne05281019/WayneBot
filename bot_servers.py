@@ -89,6 +89,21 @@ def _glance_photo_caption(base: str, card: dict | None) -> str:
     return _photo_sell_caption(base, card)
 
 
+def _buy_holdings_prompt(code: str, lots=None) -> str:
+    """記買入：零股持股要舉 200股，不要只舉 2 68.5 讓人打成張。"""
+    head = f"記買入 {code}。"
+    if lots is not None:
+        try:
+            from tg_layout import holdings_qty_text
+
+            head += f"現有 {holdings_qty_text(lots)}。"
+        except Exception:
+            pass
+    if held_is_odd_lot_only(lots):
+        return head + "請輸入：價格（1張）\n例如：631.6 或 200股 631.6"
+    return head + "請輸入：價格（1張）\n例如：68.5 或 2 68.5"
+
+
 def _sell_holdings_prompt(code: str, lots=None) -> str:
     """賣出手記持股：帶現有張數／股數，零股不要讓人以為是 0張。"""
     head = f"賣出 {code}。"
@@ -1533,27 +1548,46 @@ class WayneTelegramBot:
             return None
         return None
 
-    def _parse_buy_text(self, text: str, code: str = "") -> tuple:
+    def _parse_buy_text(self, text: str, code: str = "", uid: str = "") -> tuple:
         """回傳 (code, lots, price) 或 (None, None, None)。"""
         parts = normalize_trade_tokens(text)
         if code and len(parts) >= 3 and parts[0] == str(code).strip():
             parts = parts[1:]
             text = " ".join(parts)
+        qty_tok = ""
+        held_lots = None
         if not code and len(parts) >= 3:
             raw, lots_s, price_s = parts[0], parts[1], parts[2]
             hits = lookup_stocks(self.db_path, raw)
             code = hits[0]["stock_id"] if hits else raw
-            lots = parse_qty_to_lots(lots_s)
             try:
                 price = float(price_s)
             except ValueError:
                 return None, None, None
-            if lots is None or not code:
+            if not code:
                 return None, None, None
-            return code, lots, price
-        lots, price = parse_lots_price(text, default_lots=1.0)
-        if lots is None or price is None or not code:
-            return None, None, None
+            if uid:
+                held_lots = self._held_lots_for(uid, code)
+            default_unit = "股" if held_is_odd_lot_only(held_lots) else "張"
+            lots = parse_qty_to_lots(lots_s, default_unit=default_unit)
+            if lots is None:
+                return None, None, None
+            qty_tok = lots_s
+        else:
+            if uid and code:
+                held_lots = self._held_lots_for(uid, code)
+            bare_shares = held_is_odd_lot_only(held_lots)
+            lots, price = parse_lots_price(
+                text, default_lots=1.0, bare_qty_is_shares=bare_shares
+            )
+            if lots is None or price is None or not code:
+                return None, None, None
+            if len(parts) >= 2:
+                qty_tok = parts[0]
+        if lots and not qty_token_has_unit(qty_tok):
+            lots = coerce_bare_qty_if_share_count(
+                lots, held_lots, allow_unheld=True
+            )
         return code, lots, price
 
     def _parse_sell_text(self, text: str, code: str = "", held_lots=None, uid: str = "") -> tuple:
@@ -2565,8 +2599,14 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             logger.warning("資金移動逾時，改送精簡版")
             await self._delete_message(status)
+            from trading_calendar import is_tw_equity_session
+
+            if is_tw_equity_session():
+                hint = "資金頁載入逾時（盤中 MIS 較慢），請 30 秒後再按一次「資金」。"
+            else:
+                hint = "資金頁載入逾時，請稍後再按一次「資金」。"
             await update.message.reply_text(
-                "資金頁載入逾時（盤中 MIS 較慢），請 30 秒後再按一次「資金」。",
+                hint,
                 reply_markup=self._keyboard(),
             )
             return
@@ -2758,7 +2798,7 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
-        code, lots, price = self._parse_buy_text(" ".join(args))
+        code, lots, price = self._parse_buy_text(" ".join(args), uid=uid)
         if not code:
             code, lots, price = args[0], float(args[1]), float(args[2])
         hits = lookup_stocks(self.db_path, code)
@@ -2905,12 +2945,19 @@ class WayneTelegramBot:
                 return
             if pending == "buy" or pending.startswith("buy:"):
                 code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
-                parsed_code, lots, price = self._parse_buy_text(text, code)
+                parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
                 if parsed_code is None:
                     self._pending[actor] = pending or "buy"
+                    held_lots = self._held_lots_for(uid, code) if code else None
+                    if code:
+                        hint = _buy_holdings_prompt(code, held_lots)
+                    else:
+                        hint = (
+                            "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                            "也可：代號 張數 價格　例如：2330 1 500"
+                        )
                     await update.message.reply_text(
-                        "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
-                        "也可：代號 張數 價格　例如：2330 1 500",
+                        hint,
                         reply_markup=self._keyboard(),
                     )
                     return
@@ -3909,8 +3956,9 @@ class WayneTelegramBot:
             code = data[2:].strip()
             actor = self._actor_key(q.message, uid=uid)
             self._pending[actor] = f"buy:{code}"
+            lots = self._held_lots_for(uid, code)
             await q.message.reply_text(
-                f"記買入 {code}。請輸入：價格（1張）\n例如：68.5 或 2 68.5",
+                _buy_holdings_prompt(code, lots),
                 reply_markup=self._keyboard(),
             )
             return

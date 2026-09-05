@@ -360,6 +360,24 @@ def test_sell_holdings_prompt_shows_odd_lots():
     assert "_held_lots_for" in src
 
 
+def test_buy_holdings_prompt_shows_odd_lots():
+    import inspect
+
+    from bot_servers import WayneTelegramBot, _buy_holdings_prompt
+
+    whole = _buy_holdings_prompt("2330")
+    assert whole == "記買入 2330。請輸入：價格（1張）\n例如：68.5 或 2 68.5"
+    odd = _buy_holdings_prompt("6526", 0.439)
+    assert odd.startswith("記買入 6526。現有 439股。")
+    assert "200股" in odd
+    assert "2 68.5" not in odd
+    held = _buy_holdings_prompt("3035", 4)
+    assert "現有 4張" in held
+    assert "2 68.5" in held
+    src = inspect.getsource(WayneTelegramBot.on_callback)
+    assert "_buy_holdings_prompt" in src
+
+
 def test_daytrade_closed_uses_holiday_title_not_intraday():
     import inspect
 
@@ -368,3 +386,13 @@ def test_daytrade_closed_uses_holiday_title_not_intraday():
     src = inspect.getsource(WayneTelegramBot._run_trade_bucket)
     assert "daytrade_closed_title" in src
     assert "daytrade_closed_message" in src
+
+
+def test_flow_timeout_hint_not_always_intraday_mis():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot.flow_cmd)
+    assert "is_tw_equity_session" in src
+    assert "請稍後再按一次「資金」" in src

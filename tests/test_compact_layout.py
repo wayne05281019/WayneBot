@@ -74,3 +74,20 @@ def test_flow_html_cover_uses_compact_kv():
     html = format_flow_html(db, yyyymmdd="20260828")
     assert "覆蓋：" in html or "單位：" in html
     assert "覆蓋　　" not in html
+
+
+@pytest.mark.production_db
+def test_flow_html_finishes_before_telegram_timeout():
+    """代表股獲利不可掃整份日 K，否則 12 秒資金頁一定逾時。"""
+    import inspect
+    import time
+
+    from money_flow import _gain_pct_cal60, format_flow_html
+
+    assert "LIMIT 90" in inspect.getsource(_gain_pct_cal60)
+    db = require_production_db()
+    t0 = time.time()
+    html = format_flow_html(db)
+    elapsed = time.time() - t0
+    assert html
+    assert elapsed < 8.0, f"資金頁 {elapsed:.1f}s，Telegram 12s 會逾時"

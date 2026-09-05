@@ -199,3 +199,36 @@ def test_parse_sell_three_token_looks_up_held_lots(tmp_db):
     assert lots == pytest.approx(0.2)
     code, lots, price = bot._parse_sell_text("3035 1 72", uid="u6")
     assert lots == 1.0
+
+
+def test_parse_buy_bare_qty_looks_like_shares(tmp_db):
+    """記買入打 439 631.6 當 439股；2 68.5 仍是 2張；已寫 439張 維持張。"""
+    from bot_servers import WayneTelegramBot
+    from trade_journal import coerce_bare_qty_if_share_count
+    from wayne_db import add_to_portfolio
+
+    assert coerce_bare_qty_if_share_count(439, 0, allow_unheld=True) == pytest.approx(0.439)
+    assert coerce_bare_qty_if_share_count(2, 0, allow_unheld=True) == 2
+    assert coerce_bare_qty_if_share_count(439, 0) == 439  # 賣出無持股不硬轉
+    add_to_portfolio(tmp_db, "u7", "6526", "達發", 0.439, 631.6)
+    add_to_portfolio(tmp_db, "u7", "3035", "智原", 4.0, 196.8)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = tmp_db
+    code, lots, price = bot._parse_buy_text("439 631.6", "6526", uid="u7")
+    assert code == "6526"
+    assert lots == pytest.approx(0.439)
+    assert price == 631.6
+    code, lots, price = bot._parse_buy_text("6526 439 631.6", uid="u7")
+    assert lots == pytest.approx(0.439)
+    code, lots, price = bot._parse_buy_text("439張 631.6", "6526", uid="u7")
+    assert lots == 439.0
+    code, lots, price = bot._parse_buy_text("2 68.5", "2330", uid="u7")
+    assert lots == 2.0
+    code, lots, price = bot._parse_buy_text("68.5", "2330", uid="u7")
+    assert lots == 1.0
+    assert price == 68.5
+    code, lots, price = bot._parse_buy_text("200 196.8", "3035", uid="u7")
+    assert lots == pytest.approx(0.2)
+    code, lots, price = bot._parse_buy_text("2330 439 500", uid="u8")
+    assert code == "2330"
+    assert lots == pytest.approx(0.439)
