@@ -80,32 +80,53 @@ def html_qty_tight(n, unit: str = "張", signed: bool = True) -> str:
     return f"<code>{html_escape(body)}</code>"
 
 
-def _holdings_qty_n_unit(lots) -> tuple:
+def _holdings_qty_parts(lots) -> list:
+    """整張→張；不到1張→股；1.439張→1張＋439股。"""
     try:
         z = float(lots or 0)
     except (TypeError, ValueError):
         z = 0.0
+    if z < 0:
+        z = 0.0
     if abs(z - round(z)) < 1e-6:
-        return int(round(z)), "張"
-    return int(round(z * 1000.0)), "股"
+        return [(int(round(z)), "張")]
+    whole = int(z)
+    shares = int(round((z - whole) * 1000.0))
+    if shares >= 1000:
+        whole += shares // 1000
+        shares = shares % 1000
+    if shares <= 0:
+        return [(whole, "張")]
+    if whole <= 0:
+        return [(shares, "股")]
+    return [(whole, "張"), (shares, "股")]
+
+
+def _holdings_qty_n_unit(lots) -> tuple:
+    parts = _holdings_qty_parts(lots)
+    if len(parts) == 1:
+        return parts[0]
+    n_shares = int(round(float(lots or 0) * 1000.0))
+    return n_shares, "股"
 
 
 def html_holdings_qty(lots) -> str:
-    """手記持股：整張用張，零股用股。0.439 張不能四捨五入成 0張。"""
-    n, unit = _holdings_qty_n_unit(lots)
-    return html_qty_tight(n, unit, signed=False)
+    """手記持股：整張用張，零股用股，混合用1張439股。0.439 張不能四捨五入成 0張。"""
+    body = "".join(f"{n:,}{unit}" for n, unit in _holdings_qty_parts(lots))
+    return f"<code>{html_escape(body)}</code>"
 
 
 def holdings_qty_text(lots) -> str:
-    """賣出提示用純文字，例如 4張／439股。"""
-    n, unit = _holdings_qty_n_unit(lots)
-    return f"{n:,}{unit}"
+    """賣出提示用純文字，例如 4張／439股／1張439股。"""
+    return "".join(f"{n:,}{unit}" for n, unit in _holdings_qty_parts(lots))
 
 
 def holdings_qty_label(lots) -> str:
-    """整張欄名張數，零股欄名股數，避免「張數 439股」。"""
-    _, unit = _holdings_qty_n_unit(lots)
-    return "股數" if unit == "股" else "張數"
+    """整張欄名張數，零股欄名股數，混合欄名數量。"""
+    parts = _holdings_qty_parts(lots)
+    if len(parts) > 1:
+        return "數量"
+    return "股數" if parts[0][1] == "股" else "張數"
 
 
 def html_pct_tight(pct) -> str:
