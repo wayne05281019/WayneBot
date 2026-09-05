@@ -364,7 +364,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
     if not rows:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    from wayne_navigator import _CARD, _fp, _text_w, mpl_render
+    from wayne_navigator import CARD_PNG_DPI, _CARD, _fp, _text_w, mpl_render
 
     with mpl_render():
         import matplotlib.pyplot as plt
@@ -379,7 +379,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
         gap = 1.15
         H = m_top + head_h + gap + sub_h + hdr_h + n * body_h + m_bot
         fig_w = 7.2
-        fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=160, facecolor=C["page"])
+        fig, ax = plt.subplots(figsize=(fig_w, H * 0.078), dpi=CARD_PNG_DPI, facecolor=C["page"])
         ax.set_xlim(0, 100)
         ax.set_ylim(0, H)
         ax.axis("off")
@@ -468,7 +468,7 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
         ax.add_patch(patches.Rectangle(
             (pad_x, ry), span, tbl_top - ry, facecolor="none",
             edgecolor=C["tbl_line"], lw=1.1, zorder=4))
-        fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
+        fig.savefig(save_path, dpi=CARD_PNG_DPI, facecolor=fig.get_facecolor())
         plt.close(fig)
     return save_path
 

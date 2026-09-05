@@ -16,7 +16,6 @@ import matplotlib.dates as mdates
 import matplotlib.patches as patches
 import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
-import matplotlib.patheffects as patheffects
 from matplotlib.lines import Line2D
 from contextlib import contextmanager
 from functools import lru_cache, wraps
@@ -63,6 +62,14 @@ BASE_DIR = os.path.dirname(get_db_path()) or "."
 DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
+CARD_PNG_DPI = 240
+GLANCE_PNG_DPI = 240
+CARD_FIG_W = 7.1
+GLANCE_FIG_W = 4.62
+GLANCE_FIG_H = 16.4
+NAV_CHART_DPI = 200
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -1427,6 +1434,32 @@ def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
     return pt / 72.0 / (fig_w / 100.0)
 
 
+def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
+    """依資料座標寬度折行；最後一行只剩一個字就從上一行借一個下來。"""
+    s = str(text or "").replace("\n", " ").strip()
+    if not s:
+        return []
+    if _text_w(s, fs, fig_w, weight) <= max_w:
+        return [s]
+    lines = []
+    buf = ""
+    for ch in s:
+        trial = buf + ch
+        if buf and _text_w(trial, fs, fig_w, weight) > max_w:
+            lines.append(buf)
+            buf = ch
+        else:
+            buf = trial
+    if buf:
+        lines.append(buf)
+    if len(lines) >= 2 and len(lines[-1]) == 1 and len(lines[-2]) >= 2:
+        lines[-1] = lines[-2][-1] + lines[-1]
+        lines[-2] = lines[-2][:-1]
+        if not lines[-2]:
+            lines.pop(-2)
+    return [ln for ln in lines if ln]
+
+
 def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
                     weight=800, floor=9.5):
     """左標題右數值同一列：等比縮字級直到中間留得下 gap；還是撐不下就換較短的標題寫法。
@@ -1522,7 +1555,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         sell_sub = ""
     stance_h = 5.2 if sell_sub else 4.6
 
-    fig_w = 7.1
+    fig_w = CARD_FIG_W
     badges = []
     for b in list(card.get("badges") or []):
         b = str(b or "").strip()
@@ -1547,7 +1580,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         m_top + head_h + gap + price_h + gap + stance_h + gap + hi_pane_h + gap + lo_pane_h
         + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=160, facecolor=C["page"])
+    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=CARD_PNG_DPI, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
@@ -1570,12 +1603,19 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             facecolor=ink, edgecolor="none", zorder=3))
         ax.text(x + 2.1, cy, text, fontproperties=_fp(13.5, "bold"), color=ink, va="center", zorder=3)
         if sub:
-            ax.text(x + 2.1 + tw(text, 13.5) + 1.9, cy, sub, fontproperties=_fp(9.6),
-                    color=C["ink_soft"], va="center", zorder=3)
+            sub_fs = 9.6
+            left_end = x + 2.1 + tw(text, 13.5) + 2.2
+            avail = content_r - left_end
+            while sub_fs > 7.6 and tw(sub, sub_fs) > max(avail, 8):
+                sub_fs -= 0.3
+            ax.text(content_r, cy, sub, fontproperties=_fp(sub_fs),
+                    color=C["ink_soft"], ha="right", va="center", zorder=3)
 
-    inner_x = pad_x + 2.2
-    box_gap_x = 1.7
+    inner_x = pad_x + 1.5
+    box_gap_x = 1.35
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
+    content_l = pad_x + 3.0
+    content_r = 100 - pad_x - 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
         # 原作高低小盒子白底，% 用紅綠字；不要整盒粉／綠。
@@ -1612,13 +1652,6 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
     event = str(card.get("next_event") or "").strip()
     brand_x = 100 - pad_x - 2.6
-    if event:
-        left = pad_x + 2.8 + tw(title, 20) + 1.8
-        right_limit = brand_x - tw("WayneBot", 11.5) - 3.0
-        ev_fs = 12.0
-        if left + tw(event, ev_fs) < right_limit:
-            ax.text(left, y + head_h - 2.45, event, fontproperties=_fp(ev_fs, "bold"),
-                    color="#FDE68A", va="center", zorder=3)
     tag = "買低賣高決策卡　破解獲利密碼"
     tag_w = tw(tag, 10.8) + 3.2
     ax.add_patch(patches.FancyBboxPatch(
@@ -1626,6 +1659,20 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         facecolor=C["tag"], edgecolor="none", zorder=3))
     ax.text(pad_x + 2.8 + tag_w / 2, y + 2.62, tag, fontproperties=_fp(10.8, "heavy"),
             color="#FFFFFF", ha="center", va="center", zorder=4)
+    if event:
+        ev_fs = 11.2
+        ev_left = pad_x + 2.8 + tag_w + 1.6
+        ev_right = brand_x - 0.4
+        while ev_fs > 8.0 and ev_left + tw(event, ev_fs) > ev_right:
+            ev_fs -= 0.3
+        if ev_left + tw(event, ev_fs) <= ev_right:
+            ax.text(ev_right, y + 2.62, event, fontproperties=_fp(ev_fs, "bold"),
+                    color="#FDE68A", ha="right", va="center", zorder=4)
+        else:
+            ev_lines = _wrap_fit(event, 9.4, max(ev_right - ev_left, 12), fig_w, 800)
+            ax.text(ev_right, y + 2.62, ev_lines[0] if ev_lines else event,
+                    fontproperties=_fp(9.4, "bold"), color="#FDE68A",
+                    ha="right", va="center", zorder=4)
     ax.text(brand_x, y + head_h - 2.45, "WayneBot", fontproperties=_fp(11.5, "bold"),
             color=C["navy_soft"], ha="right", va="center", zorder=3)
     if clock_line:
@@ -1645,28 +1692,40 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     prev_c = float(card.get("prev_close") or 0)
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
     px_cy = y + price_h - 2.55
-    ax.text(pad_x + 3.2, px_cy + 0.28, "收盤", fontproperties=_fp(10.5), color=C["ink_soft"],
+    ax.text(content_l, px_cy + 0.28, "收盤", fontproperties=_fp(10.5), color=C["ink_soft"],
             va="center", zorder=3)
-    ax.text(pad_x + 11.2, px_cy, _fmt_price(card["close"]), fontproperties=_fp(26, "bold"),
+    ax.text(content_l + 8.6, px_cy, _fmt_price(card["close"]), fontproperties=_fp(26, "bold"),
             color=C["ink"], va="center", zorder=3)
-    ax.text(48.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"), color=chg_c,
-            va="center", zorder=3)
+    ax.text((content_l + content_r) / 2 + 6.0, px_cy, f"{chg:+.2f}%", fontproperties=_fp(18, "bold"),
+            color=chg_c, ha="center", va="center", zorder=3)
     if chg_amt is not None:
-        ax.text(66.5, px_cy, _fmt_price_signed(chg_amt), fontproperties=_fp(15, "bold"), color=chg_c,
-                va="center", zorder=3)
+        ax.text(content_r, px_cy, _fmt_price_signed(chg_amt), fontproperties=_fp(15, "bold"),
+                color=chg_c, ha="right", va="center", zorder=3)
     ohlc_cy = y + price_h - 5.35
-    ohlc_bits = [
-        f"開 {_fmt_price(card.get('open'))}",
-        f"高 {_fmt_price(card.get('high'))}",
-        f"低 {_fmt_price(card.get('low'))}",
+    ohlc_items = [
+        ("開", _fmt_price(card.get("open"))),
+        ("高", _fmt_price(card.get("high"))),
+        ("低", _fmt_price(card.get("low"))),
     ]
     if prev_c:
-        ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
-    ax.text(pad_x + 3.2, ohlc_cy, "　".join(ohlc_bits), fontproperties=_fp(11.2, "bold"),
-            color=C["ink_soft"], va="center", zorder=3)
+        ohlc_items.append(("昨", _fmt_price(prev_c)))
+    n_ohlc = max(len(ohlc_items), 1)
+    slot = (content_r - content_l) / n_ohlc
+    for i, (lab, val) in enumerate(ohlc_items):
+        ax.text(content_l + (i + 0.5) * slot, ohlc_cy, f"{lab} {val}",
+                fontproperties=_fp(11.2, "bold"), color=C["ink_soft"],
+                ha="center", va="center", zorder=3)
     by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
     for brow in badge_rows:
-        bx = pad_x + 3.2
+        widths = [bw for _, bw in brow]
+        used = sum(widths)
+        n = len(brow)
+        avail = content_r - content_l
+        gap_b = 1.7
+        if n > 1:
+            gap_b = (avail - used) / (n - 1)
+            gap_b = max(1.4, min(gap_b, 7.5))
+        bx = content_l
         for btxt, bw in brow:
             b_bg, b_fg = _badge_style(btxt)
             solid = b_bg in (C["pill_hi"], C["pill_lo"])
@@ -1677,7 +1736,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 linewidth=0 if solid else 0.9, zorder=3))
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "heavy"),
                     color=b_fg, ha="center", va="center", zorder=4)
-            bx += bw + 1.7
+            bx += bw + gap_b
         by -= badge_h + badge_gap
 
     # 今日態度：按表，不是下單、不抄紅箭頭。有如何賣就改第二行並加大字，縮圖也能讀。
@@ -1691,17 +1750,38 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     else:
         s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
     pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=s_fc)
-    ax.text(pad_x + 3.2, y + stance_h / 2 + 0.55, f"今日態度　{stance_txt}",
+    ax.text(content_l, y + stance_h / 2 + 0.55, "今日態度",
             fontproperties=_fp(14.5, "heavy"), color=s_ink, va="center", zorder=4)
-    sub = f"紀律　{sell_sub}　不是買訊" if sell_sub else "按表操課・不是下單指令　紅箭頭只是觀察"
-    ax.text(pad_x + 3.2, y + stance_h / 2 - 1.15, sub,
-            fontproperties=_fp(11.0 if sell_sub else 9.4), color=C["ink_soft"], va="center", zorder=4)
+    st_fs = 14.5
+    st_avail = content_r - content_l - tw("今日態度", 14.5) - 3.0
+    while st_fs > 10.0 and tw(stance_txt, st_fs) > st_avail:
+        st_fs -= 0.35
+    ax.text(content_r, y + stance_h / 2 + 0.55, stance_txt,
+            fontproperties=_fp(st_fs, "heavy"), color=s_ink, ha="right", va="center", zorder=4)
+    if sell_sub:
+        ax.text(content_l, y + stance_h / 2 - 1.15, "紀律",
+                fontproperties=_fp(11.0), color=C["ink_soft"], va="center", zorder=4)
+        note = f"{sell_sub}　不是買訊"
+        note_fs = 11.0
+        note_avail = content_r - content_l - tw("紀律", 11.0) - 3.0
+        while note_fs > 8.4 and tw(note, note_fs) > note_avail:
+            note_fs -= 0.3
+        if tw(note, note_fs) > note_avail:
+            note_lines = _wrap_fit(note, note_fs, max(note_avail, 20), fig_w, 800)
+            note = note_lines[0] if note_lines else note
+        ax.text(content_r, y + stance_h / 2 - 1.15, note,
+                fontproperties=_fp(note_fs), color=C["ink_soft"], ha="right", va="center", zorder=4)
+    else:
+        ax.text(content_l, y + stance_h / 2 - 1.15, "按表操課・不是下單指令",
+                fontproperties=_fp(9.4), color=C["ink_soft"], va="center", zorder=4)
+        ax.text(content_r, y + stance_h / 2 - 1.15, "紅箭頭只是觀察",
+                fontproperties=_fp(9.4), color=C["ink_soft"], ha="right", va="center", zorder=4)
 
     # 高點
     y -= gap + hi_pane_h
     pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["hi_line"])
     sec_title(pad_x + 2.6, y + hi_pane_h - title_band / 2, "高點資訊", C["hi_ink"],
-              f"10日／20日／60日　MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}")
+              f"MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}")
     highs = [("10日高點", card["h10"], card["dist_h10"]),
              ("20日高點", card["h20"], card["dist_h20"]),
              ("60日高點", card["h60"], card["dist_h60"])]
@@ -1712,7 +1792,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     y -= gap + lo_pane_h
     pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["lo_line"])
     sec_title(pad_x + 2.6, y + lo_pane_h - title_band / 2, "低點資訊", C["lo_ink"],
-              f"20日（高低操作空間 {card['space_20']}%）／60日（高低操作空間 {card['space_60']}%）")
+              f"月空間 {card['space_20']}%　季空間 {card['space_60']}%")
     lows = [("10日低點", card["l10"], card["dist_l10"]),
             ("20日低點", card["l20"], card["dist_l20"]),
             ("60日低點", card["l60"], card["dist_l60"])]
@@ -1729,7 +1809,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     # 過去 20 天：預警欄露出高低；升降溫＝溫度趨勢（不是股價漲跌）；量能上色。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
-              "預警會露出 20高／10低；升降溫＝溫度計；最右欄＝120日量排名")
+              "預警＝20高／10低　升降溫＝溫度　最右＝120日量")
     headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
     # 股價欄加寬（萬元股）、升降溫略加寬給雙標；日期／獲利略收。
     weights = [12.2, 12.2, 8.8, 10.6, 11.0, 14.2, 9.6, 12.4]
@@ -1833,7 +1913,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
-    fig.savefig(save_path, dpi=160, facecolor=fig.get_facecolor())
+    fig.savefig(save_path, dpi=CARD_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path
 
@@ -2018,7 +2098,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
-    fig, ax = plt.subplots(figsize=(4.62, 16.4), dpi=150, facecolor="#EEF2F7")
+    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor="#EEF2F7")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
@@ -2036,7 +2116,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     row_w = 96.4 - 4.8
 
     def wid(text, fs):
-        return _text_w(text, fs, 4.62, 800)
+        return _text_w(text, fs, GLANCE_FIG_W, 800)
 
     def fit_fs(text, fs, avail, floor=8.5):
         """字太長就縮到放得下，長期低點那種一列四個數字才不會撞到邊。"""
@@ -2077,15 +2157,22 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     panel(1.4, 77.55, 97.2, 12.2)
     ink(4.8, 87.15, "收盤", 11)
     ink(4.8, 83.35, _fmt_price(card.get("close")), 34, "#0D1117")
-    ohlc = f"開 {_fmt_price(last.get('open'))}　高 {_fmt_price(last.get('high'))}　低 {_fmt_price(last.get('low'))}" if last else ""
-    ink(4.8, 79.35, ohlc, 12, "#455A64")
+    ohlc_src = last or {}
+    ohlc_items = [
+        ("開", _fmt_price(ohlc_src.get("open") or card.get("open"))),
+        ("高", _fmt_price(ohlc_src.get("high") or card.get("high"))),
+        ("低", _fmt_price(ohlc_src.get("low") or card.get("low"))),
+    ]
+    slot = (96.4 - 4.8) / max(len(ohlc_items), 1)
+    for i, (lab, val) in enumerate(ohlc_items):
+        ink(4.8 + (i + 0.5) * slot, 79.35, f"{lab} {val}", 12, "#455A64", ha="center")
     ink(96.4, 86.55, move.get("text") or f"{chg:+.2f}%", 16, tri_c, ha="right")
     ink(96.4, 82.85, f"當日 {chg:+.2f}%", 14, tri_c, ha="right")
 
     def kv_block(y, h, title, rows):
         panel(1.4, y, 97.2, h)
         ink(4.8, y + h - 1.55, title, 13, "#1A237E")
-        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, 4.62)
+        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W)
         yy = y + h - 4.15
         for (_, b, c), a in zip(rows, labels):
             ink(4.8, yy, a, fa)
@@ -2142,11 +2229,11 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     ink(4.8, 45.5, "籌碼（張）", 13, "#1A237E")
     ink(96.4, 45.5, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, "#546E7A", ha="right")
     # 張數右緣固定；四列共用字級，位數不同也對得齊。
-    lots_right = 38.0
+    lots_right = 52.0
     lots_of = {name: fmt_lots_align(int(item.get("net") or 0)) for name, item in chips}
     phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
     _, f_name, f_lots = fit_rows(
-        [(name, lots_of[name]) for name, _ in chips], lots_right - 4.8, 4.62,
+        [(name, lots_of[name]) for name, _ in chips], lots_right - 4.8, GLANCE_FIG_W,
         fa=12.0, fb=16.0, gap=4.0, floor=10.0,
     )
     f_phrase = min(
@@ -2167,23 +2254,31 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if note:
         ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
         fy -= 3.35
-    sell_line = ""
-    other_rows = []
+    sell_pair = None
+    other_pairs = []
     for a, b in fund_rows:
         if str(a) == "紀律" and str(b or "").strip():
-            sell_line = f"{a}　{b}"
+            sell_pair = (str(a), str(b))
         else:
-            other_rows.append(f"{a}　{b}")
-    f_fund = min([fit_fs(line, 12, row_w) for line in other_rows] or [12])
-    for line in other_rows:
-        ink(4.8, fy, line, f_fund, "#111111")
-        fy -= 3.15
-    if sell_line:
+            other_pairs.append((str(a), str(b)))
+    if other_pairs:
+        labels, fa, fb = fit_rows(other_pairs, row_w, GLANCE_FIG_W)
+        for (_lab, val), shown in zip(other_pairs, labels):
+            val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
+            vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
+            ink(4.8, fy, shown, fa)
+            ink(96.4, fy, vlines[0] if vlines else val, fb, "#111111", ha="right")
+            fy -= 3.15
+            for extra in vlines[1:]:
+                ink(96.4, fy, extra, fb, "#111111", ha="right")
+                fy -= 2.55
+    if sell_pair:
         # 季報那列很長會把共用字級壓到 8pt；紀律單獨用熱色大字，縮圖才讀得到。
+        ink(4.8, fy, "紀律", 12, "#AD1457")
         ink(
-            4.8, fy, sell_line,
-            max(11.5, fit_fs(sell_line, 13, row_w, floor=11.0)),
-            "#AD1457",
+            96.4, fy, sell_pair[1],
+            max(11.5, fit_fs(sell_pair[1], 13, 96.4 - 4.8 - wid("紀律", 12) - 4.0, floor=11.0)),
+            "#AD1457", ha="right",
         )
         fy -= 3.25
     try:
@@ -2192,37 +2287,37 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
     except Exception:
         pass
-    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）　▲連漲　▼連跌", 10, "#78909C")
-    plt.savefig(save_path, dpi=150, facecolor=fig.get_facecolor())
+    ink(4.8, 6.85, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
+    ink(96.4, 6.85, "▲連漲　▼連跌", 10, "#78909C", ha="right")
+    plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close()
     return save_path
 
 
 
-# 導航箭頭配色：(壓在淺底時, 壓在同色系底時)。
-# 淺粉箭頭放在粉紅區、淺綠箭頭放在綠區會看不見，所以同色系底要換深色。
+# 導航箭頭配色：(淡底, 尖端墨水)——決策卡溫度計那套：淡色底＋同色系深字。
+# 高點用洋紅／紫（不要跟 20 高粉紅底帶同一碼），低點用綠、60 低用青。
 _NAV_TONE = {
-    "h20": ("#EC407A", "#AD1457"),
-    "h20_near": ("#F48FB1", "#C2185B"),
-    "h20_leave": ("#7B1FA2", "#4A148C"),
-    "l20": ("#43A047", "#1B5E20"),
-    "l20_near": ("#81C784", "#2E7D32"),
-    "l20_leave": ("#00838F", "#00463F"),
-    "l60": ("#00ACC1", "#006064"),
+    "h20": ("#F3E5F5", "#6A1B9A"),
+    "h20_near": ("#F8EAF9", "#7B1FA2"),
+    "h20_leave": ("#EDE7F6", "#4527A0"),
+    "l20": ("#E8F5E9", "#1B5E20"),
+    "l20_near": ("#F1F8E9", "#2E7D32"),
+    "l20_leave": ("#E0F2F1", "#004D40"),
+    "l60": ("#E0F7FA", "#006064"),
 }
 
 
-def _nav_legend_key(kind: str, marker: str, *, ms: float = 9.0, hollow: bool = False):
-    face = _NAV_TONE[kind][0] if kind in _NAV_TONE else "#546e7a"
+def _nav_legend_key(kind: str, marker: str, *, ms: float = 12.0, hollow: bool = False):
+    face = _NAV_TONE[kind][1] if kind in _NAV_TONE else "#546e7a"
     if hollow:
         return Line2D(
             [], [], linestyle="none", marker=marker, markerfacecolor="none",
-            markeredgecolor=face, markeredgewidth=1.05, markersize=ms,
+            markeredgecolor=face, markeredgewidth=1.2, markersize=ms,
         )
     return Line2D(
         [], [], linestyle="none", marker=marker, markerfacecolor=face,
-        markeredgecolor=_mix(face, "#000000", 0.42), markeredgewidth=0.85,
-        markersize=ms,
+        markeredgecolor=face, markeredgewidth=0.0, markersize=ms,
     )
 
 
@@ -2237,11 +2332,11 @@ def _draw_nav_legend(ax1) -> None:
     ]
     row2 = [
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#6a1b9a",
-                markeredgecolor="#311b92", markeredgewidth=0.9, markersize=9), "量能異常"),
+                markeredgecolor="#6a1b9a", markeredgewidth=0.0, markersize=12), "量能異常"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#e53935",
-                markeredgecolor="#7f0000", markeredgewidth=0.9, markersize=9), "警告"),
+                markeredgecolor="#e53935", markeredgewidth=0.0, markersize=12), "警告"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
-                markeredgecolor="#6a1b9a", markeredgewidth=0.8, markersize=8), "月波動低"),
+                markeredgecolor="#ce93d8", markeredgewidth=0.0, markersize=11), "月波動低"),
         (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
         (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
     ]
@@ -2262,7 +2357,7 @@ def _draw_nav_legend(ax1) -> None:
         framealpha=0.97,
         facecolor="#f3f6f9",
         edgecolor="#90a4ae",
-        prop=_fp(8.2, "bold"),
+        prop=_fp(9.2, "bold"),
     )
     leg1 = ax1.legend([h for h, _ in row1], [t for _, t in row1], bbox_to_anchor=(0.004, 1.018), **kw)
     leg1.set_zorder(10)
@@ -2281,68 +2376,82 @@ def _nav_tone(kind: str, y: float, h20: float, l20: float) -> str:
     return dark if same_hue else light
 
 
-def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.58,
-               z=7, alpha=1.0, hollow=False):
-    """帶柄箭頭：尖端對準價位；外加白色光暈，壓在 K 棒或色塊上都能跳出來。"""
-    head_h = arrow_h * 0.52
-    shaft_h = arrow_h * 0.48
-    sw = hw * 0.27
+def _lerp_hex(a, b, t: float):
+    ar, ag, ab = mcolors.to_rgb(a)
+    br, bg, bb = mcolors.to_rgb(b)
+    t = 0.0 if t < 0 else 1.0 if t > 1 else t
+    return (ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t)
+
+
+def _fill_triangle_gradient(ax, verts, y_tip, y_base, face, ink, z, alpha=1.0):
+    """單一三角剪出淡底→尖端墨水，不要疊好幾個幽靈三角。"""
+    xs = [v[0] for v in verts]
+    ymin, ymax = min(y_tip, y_base), max(y_tip, y_base)
+    pad = 0.02 * (ymax - ymin or 1.0)
+    # origin=lower：最底列對應 ymin。尖端在較高 y 時，墨水在上（向上箭）。
+    if y_tip >= y_base:
+        colors = [face, ink]
+    else:
+        colors = [ink, face]
+    cmap = mcolors.LinearSegmentedColormap.from_list("nav_temp", colors)
+    img = np.linspace(0.0, 1.0, 40).reshape(-1, 1)
+    im = ax.imshow(
+        img,
+        extent=(min(xs), max(xs), ymin - pad, ymax + pad),
+        origin="lower",
+        cmap=cmap,
+        aspect="auto",
+        interpolation="bilinear",
+        zorder=z,
+        alpha=alpha,
+        clip_on=True,
+    )
+    from matplotlib.path import Path as MplPath
+    im.set_clip_path(MplPath(verts + [verts[0]]), transform=ax.transData)
+
+
+def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.42,
+               z=7, alpha=1.0, hollow=False, ink=None):
+    """淡底→尖端墨水的溫度計漸層三角；無黑框。"""
     s = 1.0 if down else -1.0
-    head_y = y_tip + s * head_h
-    tail_y = head_y + s * shaft_h
+    tip_ink = ink or face
+    y_base = y_tip + s * arrow_h
     verts = [
         (x, y_tip),
-        (x + hw, head_y),
-        (x + sw, head_y),
-        (x + sw, tail_y),
-        (x - sw, tail_y),
-        (x - sw, head_y),
-        (x - hw, head_y),
+        (x + hw, y_base),
+        (x - hw, y_base),
     ]
-    poly = patches.Polygon(
-        verts,
-        closed=True,
-        facecolor="none" if hollow else face,
-        edgecolor=face if hollow else _mix(face, "#000000", 0.42),
-        linewidth=1.15 if hollow else 0.85,
-        joinstyle="round",
-        alpha=alpha,
-        zorder=z,
-    )
-    poly.set_path_effects([
-        patheffects.withStroke(linewidth=2.4, foreground="#FFFFFF"),
-        patheffects.Normal(),
-    ])
-    ax.add_patch(poly)
+    if hollow:
+        ax.add_patch(
+            patches.Polygon(
+                verts,
+                closed=True,
+                facecolor="none",
+                edgecolor=tip_ink,
+                linewidth=1.35,
+                joinstyle="miter",
+                alpha=alpha,
+                zorder=z,
+                clip_on=False,
+            )
+        )
+        return
+    _fill_triangle_gradient(ax, verts, y_tip, y_base, face, tip_ink, z, alpha)
 
 
 def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
-    """量能列向上箭頭。"""
-    h = 0.22 * scale
-    hw = 0.20 * scale
-    sw = 0.055 * scale
-    tip, head, tail = y + h * 0.55, y, y - h * 0.72
+    """量能列溫度計漸層三角，不描黑框。"""
+    ink = edge or face
+    h = 0.30 * scale
+    hw = 0.24 * scale
+    y_tip = y + h * 0.62
+    y_base = y - h * 0.55
     verts = [
-        (x, tip),
-        (x + hw, head),
-        (x + sw, head),
-        (x + sw, tail),
-        (x - sw, tail),
-        (x - sw, head),
-        (x - hw, head),
+        (x, y_tip),
+        (x + hw, y_base),
+        (x - hw, y_base),
     ]
-    ax.add_patch(
-        patches.Polygon(
-            verts,
-            closed=True,
-            facecolor=face,
-            edgecolor=edge,
-            linewidth=0.55,
-            joinstyle="round",
-            zorder=z,
-            clip_on=False,
-        )
-    )
+    _fill_triangle_gradient(ax, verts, y_tip, y_base, face, ink, z, 1.0)
 
 
 @_mpl_serial
@@ -2398,20 +2507,21 @@ def draw_from_ohlc(
         3,
         1,
         figsize=(12.8, 7.2),
+        dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
         facecolor="#ffffff",
     )
-    # 箭頭一格一格往外疊，先把空間留出來，才不會被畫框切掉或互相壓住。
-    arrow_h = span * 0.066
-    arrow_gap = span * 0.020
+    # 箭頭只佔一根 K，往外留空，不跟隔壁糊成一排色塊。
+    arrow_h = span * 0.072
+    arrow_gap = span * 0.028
     arrow_step = arrow_h * 1.18
-    arrow_hw = 1.15
+    arrow_hw = 0.48
     ymin = float(lo_s.min()) - arrow_gap - 3 * arrow_step - span * 0.02
     ymax = float(hi_s.max()) + arrow_gap + 2 * arrow_step + span * 0.03
-    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.38, zorder=0)
-    ax1.axhspan(l20, h20, color="#fff9c4", alpha=0.32, zorder=0)
-    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.38, zorder=0)
+    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.16, zorder=0)
+    ax1.axhspan(l20, h20, color="#fffde7", alpha=0.28, zorder=0)
+    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
 
@@ -2486,14 +2596,18 @@ def draw_from_ohlc(
             up_stack.append(("l60", 1.06, False))
         for k, (kind, sc, hollow) in enumerate(dn_stack):
             tip = hi + arrow_gap + k * arrow_step
-            _nav_arrow(ax1, tip, x, down=True, face=_nav_tone(kind, tip, h20, l20),
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow,
-                       alpha=0.58 if hollow else 1.0)
+            pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "h" and tip >= h20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
+            _nav_arrow(ax1, tip, x, down=True, face=pastel, ink=ink,
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
         for k, (kind, sc, hollow) in enumerate(up_stack):
             tip = lo - arrow_gap - k * arrow_step
-            _nav_arrow(ax1, tip, x, down=False, face=_nav_tone(kind, tip, h20, l20),
-                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow,
-                       alpha=0.58 if hollow else 1.0)
+            pastel, ink = _NAV_TONE[kind]
+            if kind[0] == "l" and tip <= l20:
+                pastel = _lerp_hex(pastel, ink, 0.28)
+            _nav_arrow(ax1, tip, x, down=False, face=pastel, ink=ink,
+                       arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6 + k, hollow=hollow)
 
         # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
         # 底色只在月波動低時上色，其餘留白；原本三天一換的橘藍相間只是視覺噪音。
@@ -2594,14 +2708,14 @@ def draw_from_ohlc(
     fig.text(
         0.50,
         0.015,
-        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；箭頭壓在粉紅／綠色區時自動換深色，實心＝當日觸發、縮小＝連續中、空心＝接近　　"
-        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　藍／杏塊＝月波動",
+        "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；實心＝當日觸發、空心＝接近；高點紫／低點青綠，不跟底帶同色　　"
+        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低",
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    plt.savefig(save_path, dpi=140, facecolor="#ffffff")
+    plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
     plt.close()
     return save_path
 

@@ -394,9 +394,14 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.append(
             (
                 "月營收",
-                f"{label}　{format_yi(m.get('revenue') or 0)}　"
-                f"較上月 {format_yi(_mom_delta_k(m), signed=True, unit=False)}　"
-                f"較去年 {format_yi(_yoy_delta_k(m), signed=True, unit=False)}",
+                f"{label}　{format_yi(m.get('revenue') or 0)}",
+            )
+        )
+        rows.append(
+            (
+                "較上月／去年",
+                f"{format_yi(_mom_delta_k(m), signed=True, unit=False)}　"
+                f"{format_yi(_yoy_delta_k(m), signed=True, unit=False)}",
             )
         )
         rows.append(
@@ -408,12 +413,13 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     if q:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
+        rows.append(("季報", f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}"))
         rows.append(
             (
-                "季報",
-                f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}　"
-                f"毛利 {format_yi(q.get('gross_profit') or 0)}　"
-                f"毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
+                "毛利／EPS",
+                f"{format_yi(q.get('gross_profit') or 0)}　"
+                f"毛利率 {float(q['gross_margin_pct']):.1f}%　"
+                f"營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
             )
         )
     if not rows:
