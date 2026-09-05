@@ -88,8 +88,11 @@ def chip_phrase(nets: Sequence[float]) -> str:
     return cur
 
 
-def price_move(closes: Sequence[float]) -> Dict[str, Any]:
-    """連漲／連跌天數、區間點數與％（相對轉折前收）。"""
+def price_move(closes: Sequence[float], last_pct: Optional[float] = None) -> Dict[str, Any]:
+    """連漲／連跌天數、區間點數與％（相對轉折前收）。
+
+    最後一根日漲跌用官方 pct_change，不要用缺日／還原後的上一根收盤去算。
+    """
     c = [float(x) for x in closes if x is not None]
     empty = {
         "days": 0,
@@ -102,6 +105,16 @@ def price_move(closes: Sequence[float]) -> Dict[str, Any]:
     if len(c) < 2:
         return empty
     diffs = [c[i] - c[i - 1] for i in range(1, len(c))]
+    if last_pct is not None and c[-1] > 0:
+        try:
+            pct = float(last_pct)
+        except (TypeError, ValueError):
+            pct = None
+        else:
+            if pct == pct:
+                denom = 1.0 + pct / 100.0
+                if denom > 1e-12:
+                    diffs[-1] = c[-1] - (c[-1] / denom)
     n, _acc, s = _take_streak(diffs)
     if s == 0 or n <= 0:
         return {**empty, "text": "平盤", "tri": "◆"}
@@ -258,7 +271,7 @@ def build_tape(
     t_net = [r["trust_net"] for r in rows]
     d_net = [r["dealer_net"] for r in rows]
     three = [a + b + c for a, b, c in zip(f_net, t_net, d_net)]
-    move = price_move(closes)
+    move = price_move(closes, last_pct=last.get("pct_change"))
     vol = volume_tape(vols, last["pct_change"])
     shape = candle_shape(last["open"], last["high"], last["low"], last["close"])
     three_today = int(three[-1])

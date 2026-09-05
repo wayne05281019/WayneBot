@@ -17,6 +17,45 @@ class CardDataAccuracyTests(unittest.TestCase):
             places=2,
         )
 
+    def test_eod_prefers_official_flat_over_gapped_prev(self):
+        """冷門缺日：官方平盤 0%，不能拿上一根 35.5 算出 -0.14%。"""
+        from decision_card_signals import prev_close_from_change_pct
+
+        self.assertAlmostEqual(
+            resolve_daily_change_pct(
+                35.45,
+                stored_pct=0.0,
+                prev_close=35.5,
+                prefer_stored=True,
+            ),
+            0.0,
+            places=2,
+        )
+        self.assertAlmostEqual(prev_close_from_change_pct(35.45, 0.0), 35.45, places=2)
+
+    def test_eod_prefers_official_pct_over_gapped_prev_tpex(self):
+        """上櫃缺日：官方 -0.66%，不能拿更早一根 15.15 算出 -0.99%。"""
+        from decision_card_signals import prev_close_from_change_pct
+
+        self.assertAlmostEqual(
+            resolve_daily_change_pct(
+                15.0,
+                stored_pct=-0.66,
+                prev_close=15.15,
+                prefer_stored=True,
+            ),
+            -0.66,
+            places=2,
+        )
+        self.assertAlmostEqual(prev_close_from_change_pct(15.0, -0.66), 15.10, places=2)
+
+    def test_price_move_official_flat_not_gapped_drop(self):
+        from chip_tape import price_move
+
+        move = price_move([35.5, 35.45], last_pct=0.0)
+        self.assertEqual(move["text"], "平盤")
+        self.assertEqual(move["sign"], 0)
+
     @pytest.mark.production_db
     def test_2454_db_profit_and_h60_match_carybot(self):
         """庫內最後完整日：決策卡獲利／高低應自洽、兩次呼叫一致。"""

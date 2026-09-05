@@ -29,7 +29,7 @@ class NavChartRenderTests(unittest.TestCase):
 
         from wayne_navigator import NAV_CHART_DPI, draw_from_ohlc, generate_chart
 
-        self.assertGreaterEqual(NAV_CHART_DPI, 180)
+        self.assertGreaterEqual(NAV_CHART_DPI, 280)
         src = inspect.getsource(draw_from_ohlc)
         self.assertIn("arrow_hw = 0.72", src)
         self.assertNotIn("arrow_hw = 1.15", src)
