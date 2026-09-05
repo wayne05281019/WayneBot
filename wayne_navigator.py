@@ -1047,19 +1047,13 @@ def _vol_heat_draw(rank, base: str):
 
 
 def _cell_wash(ax, x, y, w, h, color, edge):
-    """格子上淺下深，同一欄不同列才看得出程度。"""
+    """整格同一底色。不要上淺下深兩截，溫度計／獲利／量看起來會像破圖。"""
     C = _CARD
     c = color or C["white"]
     if c in (C["white"], C["panel"], C["neutral_bg"]):
-        ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=C["white"],
-                                       edgecolor=edge, lw=0.5, zorder=2))
-        return
-    light = _mix(c, "#FFFFFF", 0.58)
-    deep = _mix(c, "#1E293B", 0.16)
-    ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=light,
+        c = C["white"]
+    ax.add_patch(patches.Rectangle((x, y), w, h, facecolor=c,
                                    edgecolor=edge, lw=0.5, zorder=2))
-    ax.add_patch(patches.Rectangle((x, y), w, h * 0.55, facecolor=deep,
-                                   edgecolor="none", lw=0, zorder=2.1))
 
 
 def _fg_on_panel(fg, bg=None, panel="#FFFFFF") -> str:
@@ -2326,7 +2320,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         fa=12.0, fb=16.0, gap=4.0, floor=10.0,
     )
     f_phrase = min(
-        fit_fs(phrase_of[name], 12, 96.4 - lots_right - 4.2, floor=8.0) for name, _ in chips
+        fit_fs(phrase_of[name], 12, 96.4 - lots_right - 4.2, floor=11.0) for name, _ in chips
     )
     cy = 41.45
     for name, item in chips:
@@ -2351,7 +2345,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         else:
             other_pairs.append((str(a), str(b)))
     if other_pairs:
-        labels, fa, fb = fit_rows(other_pairs, row_w, GLANCE_FIG_W)
+        # 跟空間／熱度同一檔：標題 12、數字 13，不要被季報長句壓到 8pt。
+        labels, fa, fb = fit_rows(
+            other_pairs, row_w, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=12.0
+        )
         for (_lab, val), shown in zip(other_pairs, labels):
             val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
             vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
@@ -2362,11 +2359,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
                 ink(96.4, fy, extra, fb, "#111111", ha="right")
                 fy -= 2.55
     if sell_pair:
-        # 季報那列很長會把共用字級壓到 8pt；紀律單獨用熱色大字，縮圖才讀得到。
         ink(4.8, fy, "紀律", 12, "#AD1457")
         ink(
             96.4, fy, sell_pair[1],
-            max(11.5, fit_fs(sell_pair[1], 13, 96.4 - 4.8 - wid("紀律", 12) - 4.0, floor=11.0)),
+            fit_fs(sell_pair[1], 13, 96.4 - 4.8 - wid("紀律", 12) - 4.0, floor=12.0),
             "#AD1457", ha="right",
         )
         fy -= 3.25

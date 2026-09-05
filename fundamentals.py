@@ -416,12 +416,12 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.append(("季報", f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}"))
         rows.append(
             (
-                "毛利／EPS",
+                "毛利",
                 f"{format_yi(q.get('gross_profit') or 0)}　"
-                f"毛利率 {float(q['gross_margin_pct']):.1f}%　"
-                f"營益率 {opm:.1f}%　EPS {float(q['eps']):.2f}",
+                f"毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%",
             )
         )
+        rows.append(("EPS", f"{float(q['eps']):.2f}"))
     if not rows:
         rows.append(("基本面", "尚無月營收／季報"))
     return rows
