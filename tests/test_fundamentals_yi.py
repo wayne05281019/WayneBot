@@ -62,5 +62,7 @@ def test_format_fundamentals_html_uses_yi_not_mom_yoy_pct(tmp_path):
     blob = " ".join(f"{a} {b}" for a, b in plain)
     assert "11.46億元" in blob
     assert "較上月" in blob
+    assert "EPS" in blob
+    assert "毛利／EPS" not in blob
     assert "MoM" not in blob
     assert "YoY" not in blob

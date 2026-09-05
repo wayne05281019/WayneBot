@@ -1145,6 +1145,11 @@ class LookupCardTest(unittest.TestCase):
         self.assertNotIn("買低賣高決策卡", src)
         self.assertNotIn("#FBEAF1", src)
         self.assertNotIn("row_i % 2", src)
+        from wayne_navigator import _cell_wash
+
+        wash = inspect.getsource(_cell_wash)
+        self.assertNotIn("0.55", wash)
+        self.assertIn("facecolor=c", wash)
 
     def test_card_bold_and_body_use_different_font_weights(self):
         from wayne_navigator import _weight_step
@@ -1387,6 +1392,8 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn('ha="right"', src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
+        self.assertIn("floor=12.0", glance_src)
+        self.assertNotIn("floor=8.0", glance_src)
         fd, path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         try:
