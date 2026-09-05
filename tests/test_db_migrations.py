@@ -321,3 +321,56 @@ def test_automation_audit_still_reports_on_broken_schema(tmp_path):
     report = run_automation_audit(path, cap="20260902", max_gap_days=999)
     assert report.get("ok") is False
     assert report.get("reasons")
+
+
+def test_m006_clears_journal_holdings_once(tmp_path):
+    """手記持股一次清空；再記買入不會被第二次遷移刪掉。觀察清單不動。"""
+    path = str(tmp_path / "hold.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE user_holdings (
+            user_id TEXT NOT NULL,
+            stock_code TEXT NOT NULL,
+            stock_name TEXT DEFAULT '',
+            shares REAL NOT NULL,
+            cost_price REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, stock_code)
+        );
+        CREATE TABLE user_watchlist (
+            user_id TEXT NOT NULL,
+            stock_code TEXT NOT NULL,
+            stock_name TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, stock_code)
+        );
+        INSERT INTO user_holdings VALUES
+            ('8528875978','1303','南亞',1.0,210.6,'2026-08-30'),
+            ('8528875978','6526','達發',0.439,631.6,'2026-08-30');
+        INSERT INTO user_watchlist VALUES ('8528875978','3354','律勝','2026-08-30');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    run_migrations(path)
+    conn = sqlite3.connect(path)
+    n_hold = conn.execute("SELECT COUNT(*) FROM user_holdings").fetchone()[0]
+    n_watch = conn.execute("SELECT COUNT(*) FROM user_watchlist").fetchone()[0]
+    conn.close()
+    assert n_hold == 0
+    assert n_watch == 1
+
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT INTO user_holdings VALUES ('8528875978','2330','台積電',1.0,1000,'2026-09-05')"
+    )
+    conn.commit()
+    conn.close()
+    second = run_migrations(path)
+    assert second["applied"] == []
+    conn = sqlite3.connect(path)
+    left = conn.execute("SELECT stock_code FROM user_holdings").fetchall()
+    conn.close()
+    assert left == [("2330",)]

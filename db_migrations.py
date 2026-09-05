@@ -99,6 +99,13 @@ def _m005_ops_watchdog_tables(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m006_clear_journal_holdings(conn: sqlite3.Connection) -> None:
+    """手記持股一次清空。觀察清單／AI 模擬倉不動。只跑一次。"""
+    if not _table_exists(conn, "user_holdings"):
+        return
+    conn.execute("DELETE FROM user_holdings")
+
+
 # 只能往後加，不能改號、不能重排。
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
@@ -106,6 +113,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (3, "ai_fills 加 user_id", _m003_ai_fills_user_id),
     (4, "ai_nav_log 加 user_id", _m004_ai_nav_log_user_id),
     (5, "排程心跳與告警去重表", _m005_ops_watchdog_tables),
+    (6, "清空手記持股", _m006_clear_journal_holdings),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)
