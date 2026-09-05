@@ -16,7 +16,10 @@ def test_hub_keyboard_mobile_compact():
     assert all(len(r) <= 3 for r in rows)
     texts = [b.text for r in rows for b in r]
     assert "籌碼" in texts and "記買入" in texts
+    assert "產業" in texts
     assert "導航圖" not in texts
+    cbs = [b.callback_data for r in rows for b in r]
+    assert any((c or "").startswith("n:") for c in cbs)
 
 
 def test_picks_keyboard_caps_rows():
