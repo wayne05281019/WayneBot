@@ -20,7 +20,7 @@ from quote_integrity import filter_trusted_quote_tuples
 
 
 def quote_filter_regression_ok() -> Dict[str, Any]:
-    """過濾器煙霧：正常 K 必須通過，假 K 必須擋下。"""
+    """過濾器煙霧：正常 K 必須通過，高低錯亂必須擋下。漲停鎖死不是假 K。"""
     good = (
         "20260902",
         "2330",
@@ -38,30 +38,48 @@ def quote_filter_regression_ok() -> Dict[str, Any]:
         0,
         0,
     )
-    bad = (
+    limit_lock = (
         "20260902",
-        "2454",
-        "聯發科",
-        "TW",
-        4315.0,
-        4315.0,
-        4315.0,
-        4315.0,
-        4931,
-        42.0,
-        9.94,
-        4315.0,
+        "3664",
+        "安瑞-KY",
+        "TWO",
+        8.34,
+        8.34,
+        8.34,
+        8.34,
+        132,
+        1100.88,
+        9.88,
+        8.34,
         0,
         0,
         0,
     )
-    kept, dropped = filter_trusted_quote_tuples([good, bad])
-    ok = len(kept) == 1 and kept[0][1] == "2330" and dropped >= 1
+    bad = (
+        "20260902",
+        "9999",
+        "錯價",
+        "TW",
+        100.0,
+        90.0,
+        110.0,
+        100.0,
+        1000,
+        100.0,
+        0.0,
+        100.0,
+        0,
+        0,
+        0,
+    )
+    kept, dropped = filter_trusted_quote_tuples([good, limit_lock, bad])
+    kept_ids = {r[1] for r in kept}
+    ok = kept_ids == {"2330", "3664"} and dropped >= 1
     return {
         "ok": ok,
         "kept": len(kept),
         "dropped": dropped,
-        "reason": "" if ok else "過濾器回歸失敗：正常 K 未通過或假 K 未擋下",
+        "reason": "" if ok else "過濾器回歸失敗：正常 K 未通過或高低錯亂未擋下",
     }
 
 

@@ -562,7 +562,17 @@ class DataFetcher:
             if turnover_ntd <= 0:
                 turnover_ntd = self.clean_num(col(r, "成交金額", 8), True)
             if close_p <= 0:
-                continue
+                # 無量日官方收盤是 ----，用最後買價當參考價寫停市列，20 日表才不會跳日期
+                bid = self.clean_num(col(r, "最後買價", 10), True)
+                if bid <= 0:
+                    bid = self.clean_num(col(r, "最後賣價", 12), True)
+                if bid <= 0:
+                    continue
+                close_p = open_p = high_p = low_p = bid
+                volume_shares = 0
+                turnover_ntd = 0.0
+                diff = 0.0
+                avg_p = bid
             ref_p = close_p - diff if close_p > 0 else 0.0
             pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
             avg_p = self.coerce_avg_price(
@@ -655,6 +665,7 @@ class DataFetcher:
 
         # 1. 抓取上市行情 (TWSE MI_INDEX)
         tw_records = []
+        tw_halts = []
         tw_status = "error"
         tw_url = f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={target_date}&type=ALLBUT0999&response=json"
         try:
@@ -695,6 +706,17 @@ class DataFetcher:
                     elif "+" in str(sign_raw) or "漲" in str(sign_raw):
                         diff = abs(diff)
 
+                    if close_p <= 0:
+                        # 無量／僅零股：OHLC 是 --，先記下來，用上一交易日收盤補停市列
+                        tw_halts.append(
+                            (
+                                str(sid).strip(),
+                                str(sname).strip(),
+                                int(volume_shares // 1000),
+                            )
+                        )
+                        continue
+
                     ref_p = close_p - diff if close_p > 0 else 0.0
                     pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
                     avg_p = round(turnover_ntd / volume_shares, 2) if volume_shares > 0 else close_p
@@ -707,6 +729,21 @@ class DataFetcher:
                     })
         except Exception as e:
             print(f"⚠️ 上市增量抓取異常：{e}")
+
+        if tw_halts:
+            prev_map = self._prev_closes_for_date(target_date)
+            have = {q["stock_id"] for q in tw_records}
+            for sid, sname, vol_lots in tw_halts:
+                if sid in have:
+                    continue
+                prev = float(prev_map.get(sid) or 0)
+                if prev <= 0:
+                    continue
+                tw_records.append({
+                    "date": target_date, "stock_id": sid, "stock_name": sname,
+                    "market": "TW", "open": prev, "high": prev, "low": prev, "close": prev,
+                    "volume": int(vol_lots or 0), "turnover_k": 0.0, "pct_change": 0.0, "avg_price": prev,
+                })
 
         two_records = self._fetch_tpex_daily(target_date)
         tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
@@ -907,6 +944,36 @@ class DataFetcher:
             conn.close()
             return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
+    def _prev_closes_for_date(self, target_date: str) -> dict:
+        """上一交易日收盤，供無量日補列。沒有官方昨收就不補。"""
+        ymd = str(target_date or "").replace("-", "")[:8]
+        if len(ymd) != 8:
+            return {}
+        conn = self.get_db_connection()
+        try:
+            prev = conn.execute(
+                """
+                SELECT MAX(replace(date,'-','')) FROM daily_quotes
+                WHERE replace(date,'-','') < ?
+                """,
+                (ymd,),
+            ).fetchone()
+            prev_d = str(prev[0] or "") if prev else ""
+            if len(prev_d) != 8:
+                return {}
+            return {
+                str(sid): float(close or 0)
+                for sid, close in conn.execute(
+                    """
+                    SELECT stock_id, close FROM daily_quotes
+                    WHERE replace(date,'-','')=? AND close > 0
+                    """,
+                    (prev_d,),
+                )
+            }
+        finally:
+            conn.close()
+
     def fill_missing_market_days(self, end_date: str = None, max_days: int = 15) -> dict:
         """從資料庫最新交易日的隔天補到「可融合收盤」當日（假日自動略過）。"""
         try:
@@ -932,10 +999,16 @@ class DataFetcher:
         end = datetime.strptime(end_date, "%Y%m%d")
         if start > end:
             thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
+            holes = self.refill_coverage_holes(lookback=25)
             paired = self.sync_paired_markets()
+            filled = list(thin)
+            for ds in holes:
+                if ds not in filled:
+                    filled.append(ds)
             return {
-                "from": latest, "to": end_date, "filled": thin, "skipped": [],
-                "note": "已是最新", "refilled_thin": thin, "paired": paired,
+                "from": latest, "to": end_date, "filled": filled, "skipped": [],
+                "note": "已是最新", "refilled_thin": thin, "coverage_holes": holes,
+                "paired": paired,
             }
         days = 0
         d = start
@@ -957,6 +1030,10 @@ class DataFetcher:
         for ds in thin:
             if ds not in filled:
                 filled.append(ds)
+        holes = self.refill_coverage_holes(lookback=25)
+        for ds in holes:
+            if ds not in filled:
+                filled.append(ds)
         paired = self.sync_paired_markets()
         return {
             "from": latest,
@@ -964,6 +1041,7 @@ class DataFetcher:
             "filled": filled,
             "skipped": skipped,
             "refilled_thin": thin,
+            "coverage_holes": holes,
             "paired": paired,
         }
 
@@ -1027,6 +1105,95 @@ class DataFetcher:
             if got > 50:
                 filled.append(ds)
             time.sleep(0.35)
+        return filled
+
+    def _list_coverage_hole_dates(self, lookback: int = 25) -> list:
+        """最新日有現股／KY、更早也出現過，中間某日卻缺列。
+
+        達輝-KY 9/2、9/3 這種薄量／無量日曾被濾掉，整日檔數仍過門檻，
+        _refill_thin_days 不會重抓。
+        """
+        lookback = max(3, int(lookback or 25))
+        conn = self.get_db_connection()
+        try:
+            dates = [
+                str(r[0])
+                for r in conn.execute(
+                    """
+                    SELECT replace(date,'-','') AS d
+                    FROM daily_quotes
+                    GROUP BY d
+                    ORDER BY d DESC
+                    LIMIT ?
+                    """,
+                    (lookback,),
+                )
+            ]
+            dates = sorted(d for d in dates if len(d) == 8)
+            if len(dates) < 3:
+                return []
+            oldest = dates[0]
+            latest = dates[-1]
+            by_date = {d: set() for d in dates}
+            has_uni = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_universe'"
+            ).fetchone()
+            if has_uni:
+                rows = conn.execute(
+                    """
+                    SELECT replace(q.date,'-','') AS d, q.stock_id
+                    FROM daily_quotes q
+                    JOIN stock_universe u ON u.stock_id = q.stock_id
+                    WHERE replace(q.date,'-','') >= ?
+                      AND u.asset_type IN ('STOCK', 'KY')
+                    """,
+                    (oldest,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT replace(date,'-','') AS d, stock_id
+                    FROM daily_quotes
+                    WHERE replace(date,'-','') >= ?
+                      AND length(stock_id) = 4
+                      AND stock_id GLOB '[0-9][0-9][0-9][0-9]'
+                    """,
+                    (oldest,),
+                ).fetchall()
+            for d, sid in rows:
+                ds = str(d)
+                if ds in by_date:
+                    by_date[ds].add(str(sid))
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            conn.close()
+
+        latest_ids = by_date.get(latest) or set()
+        if not latest_ids:
+            return []
+        holes = []
+        seen_before = set()
+        for ds in dates:
+            today_ids = by_date.get(ds) or set()
+            if ds != latest:
+                missing = (latest_ids & seen_before) - today_ids
+                if missing:
+                    holes.append(ds)
+            seen_before |= today_ids
+        return holes
+
+    def refill_coverage_holes(self, lookback: int = 25, sleep_s: float = 0.4) -> list:
+        """缺列交易日整日重抓，讓冷門／KY 薄量與無量日補回 20 日表。"""
+        holes = self._list_coverage_hole_dates(lookback=lookback)
+        holes = sorted(holes)[-8:]
+        filled = []
+        for ds in holes:
+            print(f"🔁 個股缺列 {ds}，整日重抓（冷門／KY 薄量或無量日）")
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(max(0.0, float(sleep_s)))
         return filled
 
     def repair_quote_coverage(self, min_rows: int = 1800, sleep_s: float = 0.4) -> dict:

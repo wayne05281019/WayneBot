@@ -647,8 +647,8 @@ class NavigatorEngine:
             except Exception:
                 pass
         badges.append(regime)
-        real = df.loc[~df["is_halt"]] if "is_halt" in df.columns else df
-        table_src = real if len(real) >= lookback else df
+        # 高低／均線略過無量日；20 日表要含官方無量交易日，否則冷門／KY 會跳 9/2、9/3。
+        table_src = df
         table = table_src.tail(lookback)[
             [
                 "date", "close", "獲利", "高低", "預警", "溫度計", "升降", "升降註", "月乖離", "120日量",
