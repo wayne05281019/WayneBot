@@ -1678,7 +1678,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         row_w += (1.7 if row_w else 0) + bw
     if row:
         badge_rows.append(row)
-    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+    mc_val = None
+    raw_mc = card.get("main_cost")
+    if raw_mc is not None and raw_mc != "":
+        try:
+            parsed = float(raw_mc)
+            if parsed > 0:
+                mc_val = parsed
+        except (TypeError, ValueError):
+            mc_val = None
+    # 有分點平均買超才加一行；沒有真數就維持現在的價區高度。
+    mc_line_h = 2.45 if mc_val is not None else 0.0
+    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap + mc_line_h
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -1791,8 +1802,19 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ]
     if prev_c:
         ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
-    ax.text(pad_x + 3.2, y + price_h - 2.25, "　".join(ohlc_bits), fontproperties=_fp(13.0),
+    ohlc_y = y + price_h - 2.25
+    ax.text(pad_x + 3.2, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
             color=C["ink_soft"], va="center", zorder=3)
+    if mc_val is not None:
+        ax.text(
+            pad_x + 3.2,
+            ohlc_y - 2.2,
+            f"主力成本 {mc_val:.2f}（分點平均買超）",
+            fontproperties=_fp(12.5, "bold"),
+            color=C["ink"],
+            va="center",
+            zorder=3,
+        )
     by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
     for brow in badge_rows:
         bx = pad_x + 3.2
