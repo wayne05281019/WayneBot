@@ -2383,17 +2383,45 @@ def _lerp_hex(a, b, t: float):
     return (ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t)
 
 
+def _fill_triangle_gradient(ax, verts, y_tip, y_base, face, ink, z, alpha=1.0):
+    """單一三角剪出淡底→尖端墨水，不要疊好幾個幽靈三角。"""
+    xs = [v[0] for v in verts]
+    ymin, ymax = min(y_tip, y_base), max(y_tip, y_base)
+    pad = 0.02 * (ymax - ymin or 1.0)
+    # origin=lower：最底列對應 ymin。尖端在較高 y 時，墨水在上（向上箭）。
+    if y_tip >= y_base:
+        colors = [face, ink]
+    else:
+        colors = [ink, face]
+    cmap = mcolors.LinearSegmentedColormap.from_list("nav_temp", colors)
+    img = np.linspace(0.0, 1.0, 40).reshape(-1, 1)
+    im = ax.imshow(
+        img,
+        extent=(min(xs), max(xs), ymin - pad, ymax + pad),
+        origin="lower",
+        cmap=cmap,
+        aspect="auto",
+        interpolation="bilinear",
+        zorder=z,
+        alpha=alpha,
+        clip_on=True,
+    )
+    from matplotlib.path import Path as MplPath
+    im.set_clip_path(MplPath(verts + [verts[0]]), transform=ax.transData)
+
+
 def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.42,
                z=7, alpha=1.0, hollow=False, ink=None):
     """淡底→尖端墨水的溫度計漸層三角；無黑框。"""
     s = 1.0 if down else -1.0
     tip_ink = ink or face
+    y_base = y_tip + s * arrow_h
+    verts = [
+        (x, y_tip),
+        (x + hw, y_base),
+        (x - hw, y_base),
+    ]
     if hollow:
-        verts = [
-            (x, y_tip),
-            (x + hw, y_tip + s * arrow_h),
-            (x - hw, y_tip + s * arrow_h),
-        ]
         ax.add_patch(
             patches.Polygon(
                 verts,
@@ -2408,29 +2436,7 @@ def _nav_arrow(ax, y_tip, x, *, down: bool, face: str, arrow_h: float, hw=0.42,
             )
         )
         return
-    layers = 8
-    for i in range(layers, 0, -1):
-        t = i / layers
-        h = arrow_h * t
-        w = hw * t
-        col = _lerp_hex(tip_ink, face, t)
-        ax.add_patch(
-            patches.Polygon(
-                [
-                    (x, y_tip),
-                    (x + w, y_tip + s * h),
-                    (x - w, y_tip + s * h),
-                ],
-                closed=True,
-                facecolor=col,
-                edgecolor="none",
-                linewidth=0.0,
-                joinstyle="miter",
-                alpha=alpha,
-                zorder=z,
-                clip_on=False,
-            )
-        )
+    _fill_triangle_gradient(ax, verts, y_tip, y_base, face, tip_ink, z, alpha)
 
 
 def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
@@ -2440,28 +2446,12 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
     hw = 0.24 * scale
     y_tip = y + h * 0.62
     y_base = y - h * 0.55
-    layers = 6
-    for i in range(layers, 0, -1):
-        t = i / layers
-        hh = (y_tip - y_base) * t
-        w = hw * t
-        col = _lerp_hex(ink, face, t)
-        ax.add_patch(
-            patches.Polygon(
-                [
-                    (x, y_tip),
-                    (x + w, y_tip - hh),
-                    (x - w, y_tip - hh),
-                ],
-                closed=True,
-                facecolor=col,
-                edgecolor="none",
-                linewidth=0.0,
-                joinstyle="miter",
-                zorder=z,
-                clip_on=False,
-            )
-        )
+    verts = [
+        (x, y_tip),
+        (x + hw, y_base),
+        (x - hw, y_base),
+    ]
+    _fill_triangle_gradient(ax, verts, y_tip, y_base, face, ink, z, 1.0)
 
 
 @_mpl_serial

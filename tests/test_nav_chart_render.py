@@ -44,15 +44,16 @@ class NavChartRenderTests(unittest.TestCase):
     def test_nav_arrows_have_no_black_outline(self):
         import inspect
 
-        from wayne_navigator import _nav_arrow, _nav_legend_key, _sig_arrow
+        from wayne_navigator import _fill_triangle_gradient, _nav_arrow, _nav_legend_key, _sig_arrow
 
         for fn in (_nav_arrow, _sig_arrow, _nav_legend_key):
             src = inspect.getsource(fn)
             self.assertNotIn("withStroke", src, fn.__name__)
             self.assertNotIn("#000000", src, fn.__name__)
             self.assertNotIn("000000", src, fn.__name__)
-        self.assertIn("_lerp_hex", inspect.getsource(_nav_arrow))
-        self.assertIn("layers", inspect.getsource(_nav_arrow))
+        self.assertIn("_fill_triangle_gradient", inspect.getsource(_nav_arrow))
+        self.assertIn("LinearSegmentedColormap", inspect.getsource(_fill_triangle_gradient))
+        self.assertIn("set_clip_path", inspect.getsource(_fill_triangle_gradient))
 
 
 if __name__ == "__main__":
