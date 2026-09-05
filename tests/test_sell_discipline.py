@@ -141,7 +141,8 @@ def test_html_and_glance_wire_sell_notes():
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
     assert "紀律" in card_src
-    assert "_fp(11.0 if sell_sub else 9.4)" in card_src
+    assert "今日態度" in card_src
+    assert 'ha="right"' in card_src
     from ai_trader import format_ai_desk_html
     from portfolio_engine import PortfolioEngine
 
@@ -250,7 +251,8 @@ def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
     path = render_decision_card_png(card, str(out))
     assert path and out.is_file()
     joined = "\n".join(seen)
-    assert "紀律　直接減碼（最高價但非最高溫）　不是買訊" in joined
+    assert "紀律" in seen
+    assert "直接減碼（最高價但非最高溫）　不是買訊" in seen
     assert "紅箭頭只是觀察" not in joined
 
 
@@ -339,8 +341,9 @@ def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
     out = tmp_path / "glance_sell.png"
     path = render_first_glance_png("3441", card, tape, str(out))
     assert path and out.is_file()
-    joined = "\n".join(seen)
-    assert "紀律　直接減碼（最高價但非最高溫）" in joined
+    assert "紀律" in seen
+    assert "直接減碼（最高價但非最高溫）" in seen
+    assert not any(s.startswith("紀律　") for s in seen)
 
 
 @pytest.mark.production_db

@@ -27,6 +27,22 @@ class TgLayoutAlignTests(unittest.TestCase):
         h = headline_lines("<b>標題</b>", "第二行", "第三行")
         self.assertEqual(h.count("\n"), 2)
 
+    def test_wrap_cjk_does_not_leave_orphan_char(self):
+        from tg_layout import wrap_cjk_lines
+
+        lines = wrap_cjk_lines("準備減碼不是買訊", 14)
+        self.assertGreaterEqual(len(lines), 2)
+        self.assertTrue(all(len(ln.strip()) >= 2 for ln in lines), lines)
+        self.assertNotEqual(lines[-1], "訊")
+        joined = "".join(lines)
+        self.assertEqual(joined, "準備減碼不是買訊")
+
+    def test_wrap_cjk_keeps_short_text(self):
+        from tg_layout import wrap_cjk_lines
+
+        self.assertEqual(wrap_cjk_lines("439股", 20), ["439股"])
+        self.assertEqual(wrap_cjk_lines("", 20), [])
+
 
 if __name__ == "__main__":
     unittest.main()

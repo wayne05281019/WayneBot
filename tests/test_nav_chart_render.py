@@ -22,6 +22,38 @@ class NavChartRenderTests(unittest.TestCase):
             self.assertTrue(path and os.path.isfile(path))
             self.assertGreater(os.path.getsize(path), 8000)
 
+    def test_nav_chart_hi_dpi_and_narrow_arrows(self):
+        import inspect
+
+        from PIL import Image
+
+        from wayne_navigator import NAV_CHART_DPI, draw_from_ohlc, generate_chart
+
+        self.assertGreaterEqual(NAV_CHART_DPI, 180)
+        src = inspect.getsource(draw_from_ohlc)
+        self.assertIn("arrow_hw = 0.48", src)
+        self.assertNotIn("arrow_hw = 1.15", src)
+        db = get_db_path()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "nav.png")
+            path = generate_chart("2330", "", db, out)
+            self.assertTrue(path)
+            with Image.open(path) as im:
+                self.assertGreaterEqual(im.size[0], 2400)
+
+    def test_nav_arrows_have_no_black_outline(self):
+        import inspect
+
+        from wayne_navigator import _nav_arrow, _nav_legend_key, _sig_arrow
+
+        for fn in (_nav_arrow, _sig_arrow, _nav_legend_key):
+            src = inspect.getsource(fn)
+            self.assertNotIn("withStroke", src, fn.__name__)
+            self.assertNotIn("#000000", src, fn.__name__)
+            self.assertNotIn("000000", src, fn.__name__)
+        self.assertIn("_lerp_hex", inspect.getsource(_nav_arrow))
+        self.assertIn("layers", inspect.getsource(_nav_arrow))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -103,8 +103,8 @@ class LookupIntegrationTests(unittest.TestCase):
             # 介紹圖應明顯快於導航圖（使用者等 50s 才看到第一張的根因）
             self.assertLess(timings["glance"], timings["chart"])
 
-    def test_send_card_to_locked_posts_three_photos_in_order(self):
-        """模擬 Telegram：畫完一張就送一張（不整包等相簿）。"""
+    def test_send_card_to_locked_posts_album_not_three_bubbles(self):
+        """三張畫完走 reply_media_group：話筒上一則三個縮圖。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 
@@ -130,18 +130,8 @@ class LookupIntegrationTests(unittest.TestCase):
 
         asyncio.run(_run())
 
-        # 邊畫邊送：應走 reply_photo，不整包 reply_media_group。
-        self.assertEqual(message.reply_media_group.await_count, 0)
-        sent = [
-            (c.kwargs.get("caption") or "")[:80]
-            for c in message.reply_photo.await_args_list
-        ]
-        self.assertGreaterEqual(len(sent), 2, f"photos sent: {sent}")
-        captions = " ".join(sent)
-        self.assertTrue(
-            "決策卡" in captions or "介紹" in captions or "導航" in captions or "縮圖" in captions,
-            captions,
-        )
+        self.assertGreaterEqual(message.reply_media_group.await_count, 1)
+        self.assertEqual(message.reply_photo.await_count, 0)
 
     def test_lookup_lock_blocks_same_user_not_other(self):
         """同 chat 兩個 uid：A 出圖中 B 不受阻；同一人連打才提示稍候。"""

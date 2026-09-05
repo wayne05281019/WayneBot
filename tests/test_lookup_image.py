@@ -67,8 +67,10 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("買訊", out)
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
 
-    def test_send_card_wires_glance_sell_caption(self):
+    def test_send_card_uses_lookup_album(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("_send_lookup_album", src)
+        self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_photo_sell_caption", src)
         self.assertIn("card_cap", src)
@@ -100,7 +102,7 @@ class LookupImageTests(unittest.TestCase):
         txt = WayneTelegramBot._chart_progress_text(
             8, sent=["glance"], current="card"
         )
-        self.assertIn("已送：介紹圖", txt)
+        self.assertIn("已畫：介紹圖", txt)
         self.assertIn("現在：決策卡", txt)
         self.assertIn("接著：導航圖", txt)
 

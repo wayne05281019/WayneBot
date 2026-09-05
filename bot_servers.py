@@ -2208,7 +2208,7 @@ class WayneTelegramBot:
         current: str = "",
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
-        labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡"}
+        labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
         order = ("glance", "card", "chart")
         sent_ks = [str(k) for k in (sent or [])]
         elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
@@ -2219,10 +2219,10 @@ class WayneTelegramBot:
         rest = [labels[k] for k in order if k not in sent_ks and labels[k] != now]
         lines = [f"查股進行中　已 {elapsed}", f"現在：{now}"]
         if done:
-            lines.append("已送：" + "、".join(done))
+            lines.append("已畫：" + "、".join(done))
         if rest:
             lines.append("接著：" + "、".join(rest))
-        lines.append("順序：介紹圖 → 決策卡 → 導航圖")
+        lines.append("三張齊了一次送出，點縮圖放大")
         return "\n".join(lines)
 
     @staticmethod
@@ -3415,7 +3415,7 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             return
-        cap = "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深"
+        cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠，點開可放大。"
         for attempt in range(3):
             try:
                 with open(path, "rb") as f:
@@ -3680,14 +3680,15 @@ class WayneTelegramBot:
                     "chart",
                     _render_chart,
                     _CHART_RENDER_TIMEOUT,
-                    "180日高低導航：實心＝當日觸發；空心＝接近；粉紅／綠底上的箭頭會自動加深",
+                    "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠。",
                     hub,
                 ),
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
+            ready_items: list = []
 
-            # 畫完一張就先送；進度泡泡跟階段走，第一張送出也不刪，等人看到三張齊。
+            # 三張都畫完再一次送相簿：話筒上一則裡三個縮圖，點開才放大。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -3722,33 +3723,42 @@ class WayneTelegramBot:
                         continue
                     break
                 logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
-                if not path:
-                    gc.collect()
-                    continue
-                ok = await send_photo(path, caption, markup, kind=kind)
-                if ok and markup is hub:
-                    hub_on = True
-                if ok:
-                    sent_any = True
+                if path:
+                    ready_items.append((kind, path, caption, markup))
                     sent_kinds.append(kind)
                     st = self._op_state_map().setdefault(actor, {"sent": [], "current": ""})
                     st["sent"] = list(sent_kinds)
-                    st["current"] = ""
-                    logger.info("查股階段已送 %s code=%s", sent_kinds, code)
+                    nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "")
+                    st["current"] = nxt
+                    logger.info("查股階段已畫 %s code=%s", sent_kinds, code)
                     if wait_msg is not None:
-                        nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "")
-                        st["current"] = nxt
                         try:
                             await wait_msg.edit_text(
                                 self._chart_progress_text(
                                     int(time.monotonic() - op_t0),
                                     sent=sent_kinds,
-                                    current=nxt,
+                                    current=nxt or "album",
                                 )
                             )
                         except Exception:
                             pass
                 gc.collect()
+
+            album_ok = False
+            if len(ready_items) >= 2:
+                album_ok = await self._send_lookup_album(message, ready_items)
+            if album_ok:
+                sent_any = True
+                if not lookup_faded:
+                    lookup_faded = True
+                    await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
+            else:
+                for kind, path, caption, markup in ready_items:
+                    ok = await send_photo(path, caption, markup, kind=kind)
+                    if ok and markup is hub:
+                        hub_on = True
+                    if ok:
+                        sent_any = True
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
@@ -3817,12 +3827,14 @@ class WayneTelegramBot:
         try:
             media = []
             first_cap = str(items[0][2] or "").strip()
-            album_cap = "介紹／決策／導航　點縮圖可放大"
+            album_cap = "介紹／決策／導航　點任一張縮圖放大"
             if first_cap:
                 album_cap = f"{first_cap}\n{album_cap}"
             for kind, path, _caption, _markup in items:
-                min_h = 900 if kind == "chart" else 500
-                if not self._png_looks_ok(path, min_h=min_h):
+                if kind == "chart":
+                    if not self._chart_png_looks_ok(path):
+                        continue
+                elif not self._png_looks_ok(path):
                     continue
                 fh = open(path, "rb")
                 handles.append(fh)

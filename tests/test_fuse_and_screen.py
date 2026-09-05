@@ -1067,19 +1067,25 @@ class LookupCardTest(unittest.TestCase):
                 self.assertLessEqual(used + gap, row_w + 0.01)
                 self.assertGreaterEqual(fb, 9.5)
 
-    def test_nav_arrow_darkens_on_same_hue_band(self):
+    def test_nav_arrow_contrasts_pastel_bands(self):
         from wayne_navigator import _NAV_TONE, _nav_tone, _wcag
 
         h20, l20 = 100.0, 60.0
-        # 高點箭頭飄到粉紅區、低點箭頭掉到綠區時要換深色，否則融進背景。
+        # 淡底深尖像溫度計；壓在帶上改用尖端墨水。淡底不能跟 20 高粉紅帶同一碼。
         self.assertEqual(_nav_tone("h20_near", 105.0, h20, l20), _NAV_TONE["h20_near"][1])
         self.assertEqual(_nav_tone("h20_near", 80.0, h20, l20), _NAV_TONE["h20_near"][0])
         self.assertEqual(_nav_tone("l20_near", 55.0, h20, l20), _NAV_TONE["l20_near"][1])
         self.assertEqual(_nav_tone("l20_near", 80.0, h20, l20), _NAV_TONE["l20_near"][0])
-        for kind, band in (("h20_near", "#F8BBD0"), ("l20_near", "#C8E6C9")):
+        for kind, band in (("h20_near", "#F8BBD0"), ("l20_near", "#C8E6C9"), ("h20", "#F8BBD0")):
             with self.subTest(kind=kind):
                 light, dark = _NAV_TONE[kind]
                 self.assertGreater(_wcag(dark, band), _wcag(light, band))
+                self.assertGreaterEqual(_wcag(dark, band), 3.0)
+        hi_face = _NAV_TONE["h20"][0].upper()
+        self.assertNotEqual(hi_face[:3], "#F8")
+        self.assertNotEqual(hi_face[:3], "#EC")
+        hi_ink = _NAV_TONE["h20"][1].upper()
+        self.assertTrue(hi_ink.startswith("#6A") or hi_ink.startswith("#4A") or hi_ink.startswith("#7B"))
 
     def test_card_white_text_backgrounds_have_enough_contrast(self):
         from wayne_navigator import _CARD, _wcag
@@ -1298,6 +1304,91 @@ class LookupCardTest(unittest.TestCase):
             out = render_decision_card_png(card, path)
             self.assertTrue(out)
             self.assertGreater(os.path.getsize(out), 8000)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_decision_card_png_hi_dpi_and_right_edge(self):
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+        from PIL import Image
+
+        from wayne_navigator import (
+            CARD_PNG_DPI,
+            GLANCE_PNG_DPI,
+            render_decision_card_png,
+            render_first_glance_png,
+        )
+
+        self.assertGreaterEqual(CARD_PNG_DPI, 200)
+        self.assertGreaterEqual(GLANCE_PNG_DPI, 200)
+        table = pd.DataFrame(
+            [
+                {
+                    "date": "20260828",
+                    "close": 51.0,
+                    "獲利": "2.0%",
+                    "高低": "No",
+                    "預警": "No",
+                    "溫度計": "55.0 °C",
+                    "月乖離": "+1.0%",
+                    "profit_pct": 2.0,
+                    "bias_monthly": 1.0,
+                    "vol_rank_120": 20,
+                    "120日量": "第 20 名",
+                    "升降": "升溫",
+                    "升降註": "",
+                }
+            ]
+        )
+        card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "next_event": "3天後除息",
+            "close": 51.0,
+            "change_pct": 1.2,
+            "prev_close": 50.4,
+            "open": 50.5,
+            "high": 51.2,
+            "low": 50.1,
+            "h10": 55,
+            "dist_h10": -7.3,
+            "h20": 56,
+            "dist_h20": -8.9,
+            "h60": 60,
+            "dist_h60": -15.0,
+            "l10": 50,
+            "dist_l10": 2.0,
+            "l20": 49,
+            "dist_l20": 4.1,
+            "l60": 48,
+            "dist_l60": 6.3,
+            "space_20": 14,
+            "space_60": 25,
+            "ma60s": 0.5,
+            "qty60": 20000,
+            "stance": "等待・按表操課",
+            "badges": ["整理格局"],
+            "table": table,
+        }
+        import inspect
+
+        src = inspect.getsource(render_decision_card_png)
+        self.assertIn("content_r", src)
+        self.assertIn('ha="right"', src)
+        glance_src = inspect.getsource(render_first_glance_png)
+        self.assertIn('ha="right"', glance_src)
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            out = render_decision_card_png(card, path)
+            self.assertTrue(out)
+            with Image.open(out) as im:
+                self.assertGreaterEqual(im.size[0], 1500)
         finally:
             if os.path.exists(path):
                 os.remove(path)

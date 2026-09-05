@@ -21,6 +21,83 @@ def _disp_w(s: str) -> int:
     return w
 
 
+def wrap_cjk_lines(text: str, width: int, *, unit: str = "disp") -> List[str]:
+    """長文折行：不要行末只留一個字、也不要下一行只剩一個字。
+
+    unit=disp：全形 2、半形 1（Telegram 氣泡接近這個比例）。
+    unit=chars：依字元數（LINE 產業說明沿用）。
+    """
+    raw = str(text or "").replace("\n", " ").strip()
+    if not raw:
+        return []
+    width = max(4, int(width or 0))
+
+    def cw(ch: str) -> int:
+        if unit == "chars":
+            return 1
+        return 2 if ord(ch) > 127 else 1
+
+    def tw(s: str) -> int:
+        return sum(cw(ch) for ch in s)
+
+    lines: List[str] = []
+    i, n = 0, len(raw)
+    punct = set("，。、；：）」』】!！?？ ")
+    while i < n:
+        used = 0
+        j = i
+        brk = i
+        while j < n:
+            step = cw(raw[j])
+            if used + step > width and j > i:
+                break
+            used += step
+            j += 1
+            if raw[j - 1] in punct:
+                brk = j
+        if j < n and brk > i + 1:
+            j = brk
+        lines.append(raw[i:j])
+        i = j
+        while i < n and raw[i] == " ":
+            i += 1
+
+    def _is_orphan(s: str) -> bool:
+        s = s.strip()
+        return bool(s) and (len(s) == 1 or tw(s) <= 2)
+
+    k = 0
+    while k < len(lines):
+        cur = lines[k]
+        if not _is_orphan(cur) or len(lines) == 1:
+            k += 1
+            continue
+        if k > 0:
+            prev = lines[k - 1]
+            if tw(prev + cur) <= width:
+                lines[k - 1] = prev + cur
+                lines.pop(k)
+                k = max(0, k - 1)
+                continue
+            if len(prev) >= 2:
+                lines[k] = prev[-1] + cur
+                lines[k - 1] = prev[:-1]
+                if _is_orphan(lines[k - 1]) and k - 1 > 0:
+                    k -= 1
+                    continue
+        elif k + 1 < len(lines):
+            lines[k + 1] = cur + lines[k + 1]
+            lines.pop(k)
+            continue
+        k += 1
+    # 最後一行只剩一個字：從上一行借一個字下來。
+    if len(lines) >= 2 and _is_orphan(lines[-1]) and len(lines[-2]) >= 2:
+        if tw(lines[-2][:-1]) >= 4:
+            lines[-1] = lines[-2][-1] + lines[-1]
+            lines[-2] = lines[-2][:-1]
+    return [ln for ln in lines if ln]
+
+
 def pad_label(label: str, width: int = 8) -> str:
     """寬度以半形為 1、全形為 2；不足用全形空白補齊。"""
     raw = str(label)

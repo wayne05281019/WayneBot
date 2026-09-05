@@ -142,21 +142,11 @@ def format_line_stock_block(
 
 
 def _wrap_plain_lines(text: str, width: int = 28) -> List[str]:
-    """產業說明等長文：切成適合 LINE 手機寬度的行。"""
+    """產業說明等長文：切成適合 LINE 手機寬度的行；不留行末孤字。"""
+    from tg_layout import wrap_cjk_lines
+
     raw = re.sub(r"\s+", " ", str(text or "").strip())
-    if not raw:
-        return []
-    out: List[str] = []
-    while raw:
-        if len(raw) <= width:
-            out.append(raw)
-            break
-        cut = raw.rfind(" ", 0, width + 1)
-        if cut < width // 2:
-            cut = width
-        out.append(raw[:cut].strip())
-        raw = raw[cut:].strip()
-    return out
+    return wrap_cjk_lines(raw, width, unit="chars")
 
 
 def format_line_bucket_body(
