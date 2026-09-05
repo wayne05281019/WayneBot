@@ -308,7 +308,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
             "<b>這檔是什麼</b>",
             kv_compact("產業", ind),
             kv_compact("同業", f"{snap['peer_n']} 家現股（不含 ETF）" if snap["peer_n"] else "同業名單不足"),
-            "產業名來自證交所 ISIN，不是論壇分類。",
+            "產業名來自證交所／櫃買公司基本資料產業別，不是論壇分類。",
         )
     )
 
