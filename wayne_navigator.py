@@ -1646,11 +1646,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             latest_date=card.get("latest_date"),
             generated_at=card.get("generated_at"),
         )
-    head_h = 5.5
-    title_band, box_h, box_gap, pane_pad = 3.2, 5.8, 0.7, 0.9
-    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.48
-    gap = 1.35
-    badge_h, badge_gap = 3.05, 0.85
+    head_h = 5.7
+    title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.62
+    gap = 1.5
+    badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
     try:
         from sell_discipline import sell_note_short
@@ -1658,7 +1658,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         sell_sub = sell_note_short(card)
     except Exception:
         sell_sub = ""
-    stance_h = 4.6 if sell_sub else 4.2
+    stance_h = 5.5 if sell_sub else 4.6
 
     fig_w = CARD_FIG_W
     badges = []
@@ -1678,7 +1678,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         row_w += (1.7 if row_w else 0) + bw
     if row:
         badge_rows.append(row)
-    price_h = 7.4 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -1730,14 +1730,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         lx, rx = x + 1.15, x + box_w - 1.2
         ax.text(lx, y + box_h / 2, lab, fontproperties=_fp(11.0, "bold"), color=lc,
                 ha="left", va="center", zorder=4)
-        ax.text(rx, y + box_h * 0.64, _fmt_price(px), fontproperties=_fp(16, "bold"),
+        ax.text(rx, y + box_h * 0.70, _fmt_price(px), fontproperties=_fp(16, "bold"),
                 color=C["ink"], ha="right", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(rx, y + box_h * 0.28, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
+        ax.text(rx, y + box_h * 0.24, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
                 color=dc, ha="right", va="center", zorder=4)
 
     # 標題：左代號股名，右只放當下日期時間。標語不要。
@@ -1747,12 +1747,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         facecolor=C["navy"], edgecolor="none", zorder=2))
     code = str(card["stock_id"])
     name = str(card.get("stock_name") or "")
-    chg0 = float(card.get("change_pct") or 0)
-    code_c = C["up"] if chg0 > 0 else (C["down"] if chg0 < 0 else "#FFFFFF")
+    # 代號／股名固定白字；漲跌色只畫在收盤價，不要把股名染紅。
     title_cy = y + head_h / 2
     ax.text(pad_x + 2.6, title_cy, code,
-            fontproperties=_fp(22, "bold"), color=code_c, va="center", zorder=3)
-    name_x = pad_x + 2.6 + tw(code, 22) + 1.6
+            fontproperties=_fp(22, "bold"), color="#FFFFFF", va="center", zorder=3)
+    name_x = pad_x + 2.6 + tw(code, 22) + 1.8
     ax.text(name_x, title_cy, name,
             fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
     brand_x = 100 - pad_x - 2.6
@@ -1776,14 +1775,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
     px_right = 100 - pad_x - 3.2
     close_s = _fmt_price(card["close"])
-    ax.text(px_right, y + price_h * 0.64, close_s, fontproperties=_fp(28, "bold"),
-            color=C["ink"], ha="right", va="center", zorder=3)
-    ax.text(px_right - tw(close_s, 28) - 1.6, y + price_h * 0.64, "收盤",
+    ax.text(px_right, y + price_h * 0.70, close_s, fontproperties=_fp(28, "bold"),
+            color=chg_c, ha="right", va="center", zorder=3)
+    ax.text(px_right - tw(close_s, 28) - 2.0, y + price_h * 0.70, "收盤",
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     chg_bits = [f"{chg:+.2f}%"]
     if chg_amt is not None:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(px_right, y + price_h * 0.28, "　".join(chg_bits),
+    ax.text(px_right, y + price_h * 0.24, "　".join(chg_bits),
             fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     ohlc_bits = [
         f"開 {_fmt_price(card.get('open'))}",
@@ -1792,7 +1791,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ]
     if prev_c:
         ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
-    ax.text(pad_x + 3.2, y + price_h - 2.05, "　".join(ohlc_bits), fontproperties=_fp(13.0),
+    ax.text(pad_x + 3.2, y + price_h - 2.25, "　".join(ohlc_bits), fontproperties=_fp(13.0),
             color=C["ink_soft"], va="center", zorder=3)
     by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
     for brow in badge_rows:
@@ -1836,11 +1835,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     if sell_sub:
         note = f"{sell_sub}　不是買訊"
         note_fs = 11.0
-        while tw(note, note_fs) > 34.0 and note_fs > 8.6:
+        while tw(note, note_fs) > 32.0 and note_fs > 8.6:
             note_fs -= 0.3
-        ax.text(rx, y + stance_h / 2 + 0.82, "紀律",
+        ax.text(rx, y + stance_h / 2 + 1.15, "紀律",
                 fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=4)
-        ax.text(rx, y + stance_h / 2 - 0.72, note,
+        ax.text(rx, y + stance_h / 2 - 1.05, note,
                 fontproperties=_fp(note_fs), color=C["ink_soft"], ha="right", va="center", zorder=4)
     else:
         ax.text(rx, y + stance_h / 2,
@@ -1954,11 +1953,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
                     note_w = min(tw(note, note_fs) + 2.0, max_w)
                     _status_pill(
-                        cx, cy + body_h * 0.20, main_lab, tr_bg, tr_fg,
+                        cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
                         w=main_w, h=body_h * 0.32, fs=main_fs,
                     )
                     _status_pill(
-                        cx, cy - body_h * 0.22, note, nbg, nfg,
+                        cx, cy - body_h * 0.24, note, nbg, nfg,
                         w=note_w, h=body_h * 0.28, fs=note_fs,
                     )
                 else:
