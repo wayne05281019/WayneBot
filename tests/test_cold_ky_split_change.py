@@ -125,3 +125,34 @@ def test_card_change_matches_official_expand_on_fail():
         + "; ".join(fails[:12])
     )
     assert len(seen) >= BASE_TW + BASE_TWO
+
+
+def _table_ymd(card: dict) -> list[str]:
+    table = card.get("table")
+    if table is None or getattr(table, "empty", True):
+        return []
+    return [str(d).replace("-", "")[:8] for d in table["date"].tolist()]
+
+
+def test_5276_card_table_keeps_sep2_and_sep3_when_in_db():
+    """達輝-KY：庫內有 9/2、9/3 時，20 日表不能再跳過這兩天。"""
+    conn = _conn()
+    try:
+        have = {
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT replace(date,'-','') FROM daily_quotes
+                WHERE stock_id='5276' AND replace(date,'-','') IN ('20260902','20260903')
+                """
+            )
+        }
+    finally:
+        conn.close()
+    if not have:
+        pytest.skip("庫內尚無達輝-KY 20260902／20260903")
+    card = NavigatorEngine(get_db_path()).get_decision_card("5276", merge_live=False)
+    assert not card.get("error"), card.get("error")
+    dates = _table_ymd(card)
+    for d in sorted(have):
+        assert d in dates, f"決策卡 20 日表缺 {d}，現有 {dates[:8]}"

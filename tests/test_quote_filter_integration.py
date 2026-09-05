@@ -57,12 +57,19 @@ def test_realistic_batch_mostly_kept():
         0.5 if i % 3 else -0.3,
       )
     )
-  # 混入一筆假 K
-  rows.append(_quote_tuple("20260902", "2454", "聯發科", "TW", 4315, 4315, 4315, 4315, 4931, 9.94))
+  # 混入一筆漲停鎖死（官方形狀），不能被濾掉
+  rows.append(_quote_tuple("20260902", "3664", "安瑞-KY", "TWO", 8.34, 8.34, 8.34, 8.34, 132, 9.88))
   kept, dropped = filter_trusted_quote_tuples(rows)
-  assert len(kept) >= 115
-  assert dropped >= 1
-  assert all(r[1] != "2454" for r in kept)
+  assert len(kept) >= 120
+  assert any(r[1] == "3664" for r in kept)
+
+
+def test_ky_thin_single_print_kept():
+    """達輝-KY 09/02 官方 2 張、開高低收 18.10、跌 1.1% 要留下。"""
+    row = _quote_tuple("20260902", "5276", "達輝-KY", "TWO", 18.1, 18.1, 18.1, 18.1, 2, -1.1)
+    kept, dropped = filter_trusted_quote_tuples([row])
+    assert dropped == 0
+    assert len(kept) == 1
 
 
 def test_data_fetcher_guard_would_block_total_wipe():

@@ -69,3 +69,104 @@ def test_avg_price_for_safety_from_bad_db_row():
         "avg_price": 2060000.0,
     }
     assert 640 <= _avg_price_for_safety(item) <= 645
+
+
+def test_tpex_thin_print_5276_0902_kept():
+    """達輝-KY 20260902 官方 2,000 股、開高低收 18.10、跌 0.20，要寫 2 張不是略過。"""
+    from data_fetcher import DataFetcher
+
+    payload = {
+        "date": "20260902",
+        "tables": [
+            {
+                "title": "上櫃股票每日收盤行情(不含定價)",
+                "fields": [
+                    "代號",
+                    "名稱",
+                    "收盤",
+                    "漲跌",
+                    "開盤",
+                    "最高",
+                    "最低",
+                    "成交股數",
+                    "成交金額",
+                    "成交筆數",
+                ],
+                "data": [
+                    [
+                        "5276",
+                        "達輝-KY",
+                        "18.10",
+                        "-0.20",
+                        "18.10",
+                        "18.10",
+                        "18.10",
+                        "2,000",
+                        "36,200",
+                        "2",
+                    ]
+                ],
+            }
+        ],
+    }
+    rows = DataFetcher()._parse_tpex_payload(payload, "20260902")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["stock_id"] == "5276"
+    assert row["close"] == 18.1
+    assert row["volume"] == 2
+    assert row["pct_change"] == -1.09
+
+
+def test_tpex_halt_day_uses_bid_not_skipped():
+    """達輝-KY 20260903 官方收盤 ----、最後買價 18.10，要寫無量列。"""
+    from data_fetcher import DataFetcher
+
+    payload = {
+        "date": "20260903",
+        "tables": [
+            {
+                "title": "上櫃股票每日收盤行情(不含定價)",
+                "fields": [
+                    "代號",
+                    "名稱",
+                    "收盤",
+                    "漲跌",
+                    "開盤",
+                    "最高",
+                    "最低",
+                    "成交股數",
+                    "成交金額",
+                    "成交筆數",
+                    "最後買價",
+                    "買盤",
+                    "最後賣價",
+                ],
+                "data": [
+                    [
+                        "5276",
+                        "達輝-KY",
+                        "----",
+                        "---",
+                        "----",
+                        "----",
+                        "----",
+                        "0",
+                        "0",
+                        "0",
+                        "18.10",
+                        "1",
+                        "18.40",
+                    ]
+                ],
+            }
+        ],
+    }
+    rows = DataFetcher()._parse_tpex_payload(payload, "20260903")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["stock_id"] == "5276"
+    assert row["close"] == 18.1
+    assert row["open"] == 18.1
+    assert row["volume"] == 0
+    assert row["pct_change"] == 0.0

@@ -20,7 +20,7 @@ from wayne_db import ensure_core_schema
 def test_quote_filter_regression_ok():
     r = quote_filter_regression_ok()
     assert r["ok"] is True
-    assert r["kept"] == 1
+    assert r["kept"] == 2
     assert r["dropped"] >= 1
 
 
