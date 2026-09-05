@@ -135,6 +135,12 @@ def overnight_list_heading(phase: str) -> tuple[str, str]:
     )
 
 
+def daytrade_closed_title(phase: str) -> str:
+    """非盤中當沖標題：不要再寫盤中即時。"""
+    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
+    return f"⚡ 當沖候選（{label}）"
+
+
 def daytrade_closed_message(phase: str) -> str:
     label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
     return (

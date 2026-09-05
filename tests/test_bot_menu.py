@@ -358,3 +358,13 @@ def test_sell_holdings_prompt_shows_odd_lots():
     src = inspect.getsource(WayneTelegramBot.on_callback)
     assert "_sell_holdings_prompt" in src
     assert "_held_lots_for" in src
+
+
+def test_daytrade_closed_uses_holiday_title_not_intraday():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._run_trade_bucket)
+    assert "daytrade_closed_title" in src
+    assert "daytrade_closed_message" in src
