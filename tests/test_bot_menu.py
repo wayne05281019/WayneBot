@@ -184,6 +184,33 @@ def test_help_streak_does_not_split_listed_otc():
     assert "外資+投信" in HELP_TOPICS["streak"]
     assert "上市櫃一起列" in HELP_TOPICS["streak"]
     assert "連買區" in HELP_TOPICS["row2"]
+    assert "曆日" not in blob
+    assert "日曆天" in HELP_TOPICS["guide"]
+    assert "日曆天" in HELP_TOPICS["stock"]
+    assert "成交" in HELP_TOPICS["portfolio"]
+    assert "復盤" in HELP_TOPICS["portfolio"]
+    assert "籌碼" in HELP_TOPICS["watch"]
+    assert "買入" in HELP_TOPICS["watch"]
+    assert "圖下方這一排" in HELP_TOPICS["stock"]
+    assert "這頁按鈕" in HELP_TOPICS["screen"]
+    assert "這頁按鈕" in HELP_TOPICS["daytrade"]
+    assert "這頁按鈕" in HELP_TOPICS["overnight"]
+    assert "這頁按鈕" in HELP_TOPICS["ai"]
+    assert "圖下方這一排" in HELP_TOPICS["stock"]
+    assert "不是盤中即時掃描。\n" in HELP_TOPICS["screen"]
+    assert HELP_TOPICS["industry"].count("\n") >= 4
+    assert "怎麼用" not in HELP_TOPICS["industry"] or "產業按鈕" in HELP_TOPICS["industry"]
+
+
+def test_streak_wizard_has_no_listed_otc_step():
+    from bot_servers import WayneTelegramBot
+
+    assert not hasattr(WayneTelegramBot, "_streak_market_keyboard")
+    assert not hasattr(WayneTelegramBot, "_streak_market_inline")
+    assert not hasattr(WayneTelegramBot, "_ask_streak_market")
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert 'KeyboardButton("上市")' not in src
+    assert 'InlineKeyboardButton("上市"' not in src
 
 
 def test_help_nav_does_not_duplicate_reply_menu_labels():
