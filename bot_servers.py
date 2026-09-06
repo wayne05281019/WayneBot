@@ -176,9 +176,9 @@ HELP_TOPICS = {
         "名稱撞名時，藍字股名＝奇摩；按鈕左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
         "\n"
         "<b>六、海選名單裡的按鈕</b>\n"
-        "• 左鍵（代號＋股名）＝看這檔完整圖\n"
+        "• 左鍵（代號＋股名）＝看這檔完整圖（介紹／決策／導航）\n"
         "• <b>➕</b>＝加入觀察\n"
-        "• <b>開 LINE・傳這檔</b>／區底 <b>一鍵傳 LINE</b>：開 LINE 帶文字；長圖長按儲存再貼\n"
+        "• 區底 <b>一鍵傳 LINE</b>：生成介紹圖／決策卡；長按圖 → 分享 → LINE → 選聯絡人\n"
         "• 靠近 20 日收盤高會標<b>少追</b>，不是叫立刻買\n"
         "\n"
         "<b>七、持股頁按鈕</b>\n"
@@ -1354,9 +1354,23 @@ class WayneTelegramBot:
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
 
-    def _screening_section_keyboard(self, line_pack_id: str = None, include_menu: bool = False):
-        """海選整區：一鍵生成每檔介紹圖／決策卡／籌碼／產業說明，再傳 LINE。"""
+    def _screening_section_keyboard(
+        self,
+        line_pack_id: str = None,
+        include_menu: bool = False,
+        picks=None,
+    ):
+        """海選整區：左鍵看這檔；區底生成介紹圖／決策卡，長按轉 LINE。"""
         rows = []
+        for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
+            if isinstance(pair, (list, tuple)):
+                code = str((pair[0] if pair else "") or "").strip()
+                name = str((pair[1] if len(pair) > 1 else "") or "")
+            else:
+                code = str(pair or "").strip()
+                name = ""
+            if code:
+                rows.append(self._stock_action_row(code, name, idx=i))
         if line_pack_id:
             rows.append(
                 [InlineKeyboardButton("一鍵傳 LINE", callback_data=f"lp:{line_pack_id}")]
@@ -1720,6 +1734,7 @@ class WayneTelegramBot:
                 kb = self._screening_section_keyboard(
                     line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
                     include_menu=is_last_part and is_last_chunk,
+                    picks=part.get("picks") if is_last_chunk else None,
                 )
                 sent = await message.reply_html(
                     chunk,
@@ -1871,6 +1886,7 @@ class WayneTelegramBot:
                 kb = self._screening_section_keyboard(
                     line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
                     include_menu=is_last_part and is_last_chunk,
+                    picks=part.get("picks") if is_last_chunk else None,
                 )
                 self._send_html(
                     self.chat_id,
@@ -2108,14 +2124,61 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
+    async def _send_card_share_groups(self, message, items: list) -> bool:
+        """把介紹圖／決策卡送到話筒，方便長按轉 LINE。一組最多 10 張。"""
+        from telegram import InputMediaPhoto
+
+        if not items:
+            return False
+        lead = "長按圖 → 分享 → LINE → 選聯絡人"
+        sent_any = False
+        for i in range(0, len(items), 10):
+            chunk = items[i : i + 10]
+            handles = []
+            try:
+                media = []
+                for rec in chunk:
+                    path = str((rec or {}).get("path") or "")
+                    cap = str((rec or {}).get("caption") or "")
+                    if not self._png_looks_ok(path, min_bytes=8_000, min_w=200, min_h=200):
+                        continue
+                    fh = open(path, "rb")
+                    handles.append(fh)
+                    caption = None
+                    if not media:
+                        caption = lead if i == 0 else cap
+                        if i == 0 and cap:
+                            caption = f"{lead}\n{cap}"
+                    media.append(
+                        InputMediaPhoto(
+                            media=fh,
+                            caption=(caption[:1024] if caption else None),
+                        )
+                    )
+                if len(media) >= 2:
+                    await message.reply_media_group(media=media)
+                    sent_any = True
+                elif len(media) == 1:
+                    await message.reply_photo(photo=media[0].media, caption=media[0].caption)
+                    sent_any = True
+            except Exception:
+                logger.exception("傳 LINE 卡片相簿失敗")
+            finally:
+                for fh in handles:
+                    try:
+                        fh.close()
+                    except Exception:
+                        pass
+        return sent_any
+
     async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """起漲等：背景生成圖文包；完成後收起海選區塊與進度訊息，只留 LINE 鈕。"""
+        """生成介紹圖／決策卡；海選名單留下。長按圖轉 LINE。"""
         from import_health import latest_complete_quote_date
         from line_rich_pack import (
             bucket_stock_rows,
             bucket_title,
             build_bucket_rich_pack,
-            line_rich_hop_url,
+            share_card_files,
         )
         from screen_sessions import upsert_line_pack
 
@@ -2127,16 +2190,14 @@ class WayneTelegramBot:
         rows = await asyncio.to_thread(bucket_stock_rows, self.db_path, bucket_key, as_of)
         if not rows:
             await message.reply_text(
-                f"【{title}】尚無名單。請先按主選單「海選」，或等明早 06:30 自動推送。",
+                f"【{title}】尚無名單。請先按主選單「海選」。",
                 reply_markup=hub,
             )
             return
 
         n = len(rows)
-        # 進度泡泡不掛 ReplyKeyboard：完成後會刪，刪了兩排會跟著沒。
         status = await message.reply_text(
-            f"正在背景生成【{title}】{n} 檔圖文…\n"
-            "完成後會開 LINE 讓你選聯絡人；這裡的進度訊息會自動收起。"
+            f"正在生成【{title}】{n} 檔介紹圖／決策卡…"
         )
         self._track_line_pack_status(actor, status)
 
@@ -2176,29 +2237,30 @@ class WayneTelegramBot:
                     "text": line_body,
                 },
             )
-        hop_url = line_rich_hop_url(bucket_key)
-        line_btn = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("一鍵傳 LINE・選聯絡人", url=hop_url)]]
-        )
+
         done_n = int(manifest.get("count") or 0)
         warn = ""
         errs = manifest.get("errors") or []
         if errs:
             warn = f"\n（{len(errs)} 檔略過：{html_escape(errs[0][:80])}）"
 
-        # 收起海選該區塊＋生成進度（魔法消失）
-        await self._dismiss_screening_section(actor, bucket_key)
         await self._dismiss_line_pack_status(actor)
 
-        await message.reply_html(
-            f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備好。{warn}\n"
-            "按下方按鈕：\n"
-            "① 開 LINE → <b>選聯絡人</b> → 送出文字總彙整\n"
-            "② 同一頁下載全區長圖貼上（每檔文字後接圖表）",
-            reply_markup=line_btn,
-            disable_web_page_preview=True,
-        )
-        # Inline 鈕訊息無法同時掛 ReplyKeyboard；刪進度後再釘兩排。
+        cards = share_card_files(self.charts_dir, manifest)
+        album_ok = await self._send_card_share_groups(message, cards)
+        if album_ok:
+            await message.reply_html(
+                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔介紹圖／決策卡。{warn}\n"
+                "長按圖 → 分享 → LINE → 選聯絡人。要哪張轉哪張。",
+                disable_web_page_preview=True,
+            )
+        else:
+            await message.reply_html(
+                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔文字名單已備。{warn}\n"
+                "圖沒送出；名單如下，可複製後傳到 LINE。\n"
+                f"<pre>{html_escape(line_body[:3500])}</pre>",
+                disable_web_page_preview=True,
+            )
         await self._pin_reply_menu(message)
 
     @staticmethod

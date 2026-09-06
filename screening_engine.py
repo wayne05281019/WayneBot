@@ -1095,10 +1095,16 @@ def format_screening_payload(
         }
         if not items:
             part["html"] = head + "\n<i>今日無符合條件標的</i>"
+            part["picks"] = []
             payload.append(part)
             continue
         cards = [_stock_card_html(it, n + 1, show_line_link=False) for n, it in enumerate(items)]
         part["html"] = head + "\n" + "\n".join(cards)
+        part["picks"] = [
+            (str(it.get("stock_id") or "").strip(), str(it.get("stock_name") or "").strip())
+            for it in items
+            if str(it.get("stock_id") or "").strip()
+        ]
         payload.append(part)
 
     if not payload:
@@ -1182,14 +1188,10 @@ def split_line_share_chunks(text: str, limit: int = 3500) -> List[str]:
     n = len(hard)
     out: List[str] = []
     for i, body in enumerate(hard, 1):
-        if body.startswith("轉寄稿"):
-            out.append(body)
-            continue
         if n == 1:
-            head = "轉寄稿　長按這一則 → 分享到 LINE"
+            out.append(body)
         else:
-            head = f"轉寄稿 {i}/{n}　長按這一則 → 分享到 LINE"
-        out.append(head + "\n" + body)
+            out.append(f"{i}/{n}\n{body}")
     return out
 
 

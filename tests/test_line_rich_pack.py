@@ -22,25 +22,58 @@ def test_render_line_rich_share_html_has_album_and_line():
         {
             "title": "起漲",
             "count": 2,
-            "line_text": "WayneBot 測試\n1. 台積電 (2330)",
+            "line_text": "WayneBot 測試\n1. 台積電 (2330)\n產業\n半導體業景氣…",
             "album_url": "https://example.com/line/rich/leave_zero/20260901/album.png",
             "stocks": [
                 {
                     "rank": 1,
                     "stock_id": "2330",
                     "stock_name": "台積電",
-                    "text_block": "1. 台積電 (2330)\n格局：站上月線\n收　100　+2.5%",
+                    "text_block": "1. 台積電 (2330)\n格局：站上月線\n收　100　+2.5%\n產業\n半導體業景氣…",
+                    "glance_url": "https://example.com/g.png",
+                    "card_url": "https://example.com/c.png",
                     "strip_url": "https://example.com/x.png",
                     "industry_plain": "半導體業景氣…",
                 }
             ],
         }
     )
-    assert "line://msg/text/" in page
-    assert "album.png" in page
     assert "選聯絡人" in page
+    assert "只轉 Keep" not in page
+    assert "album.png" in page
     assert "格局：站上月線" in page
-    assert page.index("格局：站上月線") < page.index("x.png")
+    assert "半導體業景氣" in page
+    assert "g.png" in page
+    assert page.index("g.png") < page.index("格局：站上月線")
+
+
+def test_text_font_uses_bundled_noto():
+    from line_rich_pack import text_font_path
+
+    path = text_font_path().replace("\\", "/")
+    assert "NotoSansTC" in path
+
+
+def test_compose_stock_section_starts_with_glance(tmp_path):
+    from PIL import Image
+
+    from line_rich_pack import compose_stock_section
+
+    glance = tmp_path / "g.png"
+    card = tmp_path / "c.png"
+    Image.new("RGB", (100, 80), (255, 0, 0)).save(glance)
+    Image.new("RGB", (100, 90), (0, 255, 0)).save(card)
+    out = tmp_path / "strip.png"
+    path = compose_stock_section(
+        "1. 台積電 (2330)\n格局：多頭",
+        {"glance": str(glance), "card": str(card)},
+        str(out),
+        str(tmp_path / "w"),
+    )
+    assert path == str(out)
+    with Image.open(out) as im:
+        px = im.getpixel((50, 12))
+        assert px[0] > 200 and px[1] < 40
 
 
 def test_wrap_plain_lines():
