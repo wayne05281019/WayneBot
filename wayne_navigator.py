@@ -71,7 +71,7 @@ CARD_PNG_DPI = 320
 GLANCE_PNG_DPI = 440
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 17.2
+GLANCE_FIG_H = 17.7
 NAV_CHART_DPI = 320
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
@@ -1633,29 +1633,78 @@ def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
 
 
 def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
-    """依資料座標寬度折行；最後一行只剩一個字就從上一行借一個下來。"""
+    """依資料座標寬度折行；優先在全形空白切開，避免「（0.9%）」被拆成兩行。"""
     s = str(text or "").replace("\n", " ").strip()
     if not s:
         return []
-    if _text_w(s, fs, fig_w, weight) <= max_w:
+
+    def tw(x):
+        return _text_w(x, fs, fig_w, weight)
+
+    if tw(s) <= max_w:
         return [s]
-    lines = []
-    buf = ""
-    for ch in s:
-        trial = buf + ch
-        if buf and _text_w(trial, fs, fig_w, weight) > max_w:
+
+    def pack(parts, sep):
+        lines, buf = [], ""
+        for part in parts:
+            if not str(part):
+                continue
+            trial = part if not buf else buf + sep + part
+            if buf and tw(trial) > max_w:
+                lines.append(buf)
+                buf = part
+            else:
+                buf = trial
+        if buf:
             lines.append(buf)
-            buf = ch
-        else:
-            buf = trial
-    if buf:
-        lines.append(buf)
-    if len(lines) >= 2 and len(lines[-1]) == 1 and len(lines[-2]) >= 2:
-        lines[-1] = lines[-2][-1] + lines[-1]
-        lines[-2] = lines[-2][:-1]
-        if not lines[-2]:
-            lines.pop(-2)
-    return [ln for ln in lines if ln]
+        return lines
+
+    chunks = s.split("　") if "　" in s else [s]
+    lines = pack(chunks, "　")
+    out = []
+    for ln in lines:
+        if tw(ln) <= max_w:
+            out.append(ln)
+            continue
+        bits = []
+        buf = ""
+        i, n = 0, len(ln)
+        while i < n:
+            ch = ln[i]
+            if ch in "（(" :
+                j = i + 1
+                while j < n and ln[j] not in "）)":
+                    j += 1
+                if j < n:
+                    j += 1
+                token = ln[i:j]
+                trial = buf + token
+                if buf and tw(trial) > max_w:
+                    bits.append(buf)
+                    buf = token
+                else:
+                    buf = trial
+                i = j
+                continue
+            trial = buf + ch
+            if buf and tw(trial) > max_w:
+                bits.append(buf)
+                buf = ch
+            else:
+                buf = trial
+            i += 1
+        if buf:
+            bits.append(buf)
+        out.extend(bits)
+    if len(out) >= 2:
+        last, prev = out[-1], out[-2]
+        if 0 < len(last) <= 3 and len(prev) >= 8:
+            take = 2 if len(prev) >= 10 else 1
+            out[-1] = prev[-take:] + last
+            out[-2] = prev[:-take]
+            if not out[-2]:
+                out.pop(-2)
+    return [ln for ln in out if ln]
 
 
 def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
@@ -2251,7 +2300,8 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ),
         section(
             kv_compact("距20日高", f"{card['dist_h20']:+.1f}%"),
-            kv_compact("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%（近60曆日低 {card.get('cal60_low', '—')}）"),
+            kv_compact("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%"),
+            kv_compact("起算", f"近60個日曆天收盤低 {card.get('cal60_low', '—')}"),
             kv_compact("距60根低", f"{card.get('dist_l60'):+.1f}%"),
             kv_compact("距120低", _fmt_dist(card.get("dist_l120"))),
             kv_compact("距240低", _fmt_dist(card.get("dist_l240"))),
@@ -2297,28 +2347,35 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     official = [p for p in (fund_rows or []) if str(p[0]) in ("估值", "資券餘額")]
     rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額")]
     fund_rows = official + rest
+    sell_note = ""
     try:
         from sell_discipline import attach_sell, sell_note_short
 
         attach_sell(card)
-        short = sell_note_short(card)
-        if short:
-            fund_rows.append(("紀律", short))
+        sell_note = str(sell_note_short(card) or "").strip()
     except Exception:
-        pass
+        sell_note = ""
+    pink_note = ""
+    try:
+        pink_note = str(pink_warning_note(card) or "").strip()
+    except Exception:
+        pink_note = ""
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
-    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor="#EEF2F7")
+    C = _CARD
+    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
-    fig.subplots_adjust(left=0.028, right=0.972, top=0.988, bottom=0.012)
+    fig.subplots_adjust(left=0.028, right=0.972, top=0.988, bottom=0.016)
 
-    def panel(x, y, w, h, fc="#FFFFFF", ec="#D5DDE8"):
+    def pane(x, y, w, h, fc=None, ec=None):
+        fc = fc or C["panel"]
+        ec = ec or C["line"]
         ax.add_patch(patches.FancyBboxPatch(
             (x + 0.32, y - 0.40), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
-            facecolor="#D8DEE8", edgecolor="none", zorder=1,
+            facecolor=C["shadow"], edgecolor="none", zorder=1,
         ))
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
@@ -2329,6 +2386,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ax.text(x, y, text, fontproperties=_fp(size, "bold"), color=color, ha=ha, va=va, zorder=3)
 
     row_w = 96.4 - 4.8
+    pad_x, pane_w = 1.4, 97.2
 
     def wid(text, fs):
         return _text_w(text, fs, GLANCE_FIG_W, 800)
@@ -2339,13 +2397,58 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             fs -= 0.4
         return fs
 
-    panel(1.4, 90.55, 97.2, 8.7, "#15256B", "#15256B")
+    def sec_title(x, cy, text, ink_c, sub=""):
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, cy - 1.05), 0.85, 2.1, boxstyle="round,pad=0,rounding_size=0.38",
+            facecolor=ink_c, edgecolor="none", zorder=3))
+        ax.text(x + 1.9, cy, text, fontproperties=_fp(13, "bold"), color=ink_c, va="center", zorder=3)
+        if sub:
+            ax.text(
+                x + 1.9 + wid(text, 13) + 1.4, cy, sub,
+                fontproperties=_fp(9.2, "bold"), color=C["ink_soft"], va="center", zorder=3,
+            )
+
+    def right_pill(cy, text, bg, fg, fs=13.0):
+        label = str(text or "—")
+        tw = max(wid(label, fs) + 3.6, 11.2)
+        h = 2.48
+        x = 96.4 - tw
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, cy - h / 2), tw, h,
+            boxstyle="round,pad=0,rounding_size=0.55",
+            facecolor=bg, edgecolor=bg, linewidth=0, zorder=3,
+        ))
+        ax.text(
+            x + tw / 2, cy, label, fontproperties=_fp(fs, "bold"),
+            color=fg, ha="center", va="center", zorder=4,
+        )
+
+    note_fs = 12.5
+    footer_notes = [n for n in (sell_note, pink_note) if n]
+    wrapped_notes = []
+    for n in footer_notes:
+        wrapped_notes.extend(_wrap_fit(n, note_fs, row_w, GLANCE_FIG_W) or [n])
+    m_bot = 1.05
+    legend_h = 2.55
+    note_box_h = (3.15 + 2.55 * len(wrapped_notes)) if wrapped_notes else 0.0
+    footer_top = m_bot + legend_h + (0.7 + note_box_h if wrapped_notes else 0.0)
+
+    gap = 0.85
+    y_top = 99.15
+    head_h = 8.55
+    price_h = 11.7
+    space_h = 16.35
+    heat_h = 12.55
+    chips_h = 16.7
+    y = y_top - head_h
+
+    pane(pad_x, y, pane_w, head_h, fc=C["navy"], ec=C["navy"])
     ax.add_patch(patches.FancyBboxPatch(
-        (3.0, 91.15), 14.8, 7.5, boxstyle="round,pad=0.1,rounding_size=0.4",
+        (3.0, y + 0.55), 14.8, 7.45, boxstyle="round,pad=0.1,rounding_size=0.4",
         facecolor="#F4F6FB", edgecolor="none", zorder=2,
     ))
     _draw_mini_candle(
-        ax, 4.1, 91.45, 12.6, 6.9,
+        ax, 4.1, y + 0.85, 12.6, 6.85,
         last.get("open") or card.get("open") or card.get("close") or 0,
         last.get("high") or card.get("high") or card.get("close") or 0,
         last.get("low") or card.get("low") or card.get("close") or 0,
@@ -2369,21 +2472,21 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     stamp_c = "#FFE082" if "收盤" in clock_line or "盤中" in clock_line else "#C5CAE9"
     stamp_fs = 11
     # 右上日期／時間；產業對齊時間的字級與高度，放在中文股名正下方。
-    ink(96.8, 97.35, date_line, stamp_fs, stamp_c, ha="right")
+    ink(96.8, y + head_h - 1.85, date_line, stamp_fs, stamp_c, ha="right")
     if clock_line:
-        ink(96.8, 95.05, clock_line, stamp_fs, stamp_c, ha="right")
+        ink(96.8, y + head_h - 4.15, clock_line, stamp_fs, stamp_c, ha="right")
     code = str(card.get("stock_id") or stock_id)
     name = str(card.get("stock_name") or "")
     title = f"{code}  {name}".strip()
     title_avail = 96.8 - 20.2 - (wid(date_line, stamp_fs) if date_line else 0) - 2.4
     title_fs = fit_fs(title, 20, title_avail, floor=13.0)
-    ink(20.2, 97.35, code, title_fs, "#FFFFFF")
+    ink(20.2, y + head_h - 1.85, code, title_fs, "#FFFFFF")
     name_x = 20.2 + wid(code, title_fs) + 1.8
     if name:
-        ink(name_x, 97.35, name, title_fs, "#FFFFFF")
+        ink(name_x, y + head_h - 1.85, name, title_fs, "#FFFFFF")
     industry = str(card.get("industry") or "").strip()
     if industry:
-        ink(name_x if name else 20.2, 95.05, industry, stamp_fs, stamp_c)
+        ink(name_x if name else 20.2, y + head_h - 4.15, industry, stamp_fs, stamp_c)
     event = str(card.get("next_event") or "").strip()
     regime = ""
     rest = []
@@ -2402,26 +2505,27 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     # 格局白字、與時間同字級；產業上移後除權／量排名往左。
     meta_x = 20.2
     if regime:
-        ink(20.2, 92.65, regime, stamp_fs, "#FFFFFF")
+        ink(20.2, y + 1.55, regime, stamp_fs, "#FFFFFF")
         meta_x = 20.2 + wid(regime, stamp_fs) + 2.2
     meta = "　".join(x for x in [event, *rest] if x)
     if meta:
         ink(
             meta_x,
-            92.65,
+            y + 1.55,
             meta,
             fit_fs(meta, stamp_fs, 96.8 - meta_x - 1.2, floor=8.5),
             "#FFE082",
         )
     elif not regime:
-        ink(20.2, 92.65, "—", stamp_fs, "#C5CAE9")
+        ink(20.2, y + 1.55, "—", stamp_fs, "#C5CAE9")
 
+    y -= gap + price_h
     chg = float(card.get("change_pct") or 0)
     up = int(move.get("sign") or 0)
-    tri_c = "#C62828" if up > 0 else ("#00695C" if up < 0 else "#37474F")
-    panel(1.4, 77.55, 97.2, 12.2)
-    ink(4.8, 87.15, "收盤", 11)
-    ink(4.8, 83.35, _fmt_price(card.get("close")), 34, "#0D1117")
+    tri_c = C["up"] if up > 0 else (C["down"] if up < 0 else C["ink"])
+    pane(pad_x, y, pane_w, price_h)
+    ink(4.8, y + price_h - 1.85, "收盤", 11, C["ink_soft"])
+    ink(4.8, y + price_h - 5.55, _fmt_price(card.get("close")), 32, C["ink"])
     ohlc_src = last or {}
     ohlc_items = [
         ("開", _fmt_price(ohlc_src.get("open") or card.get("open"))),
@@ -2430,33 +2534,42 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     ]
     slot = (96.4 - 4.8) / max(len(ohlc_items), 1)
     for i, (lab, val) in enumerate(ohlc_items):
-        ink(4.8 + (i + 0.5) * slot, 79.35, f"{lab} {val}", 12, "#455A64", ha="center")
-    ink(96.4, 86.55, move.get("text") or f"{chg:+.2f}%", 16, tri_c, ha="right")
-    ink(96.4, 82.85, f"當日 {chg:+.2f}%", 14, tri_c, ha="right")
+        ink(4.8 + (i + 0.5) * slot, y + 1.85, f"{lab} {val}", 12, C["ink_soft"], ha="center")
+    ink(96.4, y + price_h - 2.35, move.get("text") or f"{chg:+.2f}%", 16, tri_c, ha="right")
+    ink(96.4, y + price_h - 5.85, f"當日 {chg:+.2f}%", 14, tri_c, ha="right")
 
-    def kv_block(y, h, title, rows):
-        panel(1.4, y, 97.2, h)
-        ink(4.8, y + h - 1.55, title, 13, "#1A237E")
+    def kv_block(y0, h, title, rows, *, sub="", pills=None):
+        pane(pad_x, y0, pane_w, h)
+        sec_title(4.8, y0 + h - 1.7, title, C["navy"], sub=sub)
         labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W)
-        yy = y + h - 4.15
-        for (_, b, c), a in zip(rows, labels):
-            ink(4.8, yy, a, fa)
-            ink(96.4, yy, b, fb, _fg_on_panel(c), ha="right")
+        yy = y0 + h - 4.55
+        pills = pills or {}
+        for i, ((_, b, c), a) in enumerate(zip(rows, labels)):
+            ink(4.8, yy, a, fa, C["ink_soft"])
+            style = pills.get(i)
+            if style:
+                right_pill(yy, b, style[0], style[1], fs=max(fb, 12.5))
+            else:
+                ink(96.4, yy, b, fb, _fg_on_panel(c), ha="right")
             yy -= 3.35
 
-    kv_block(61.55, 15.15, "空間／位置", [
-        ("距20日高（賣壓）", f"{card['dist_h20']:+.1f}%",
-         price_cell_style("20高" if float(card["dist_h20"]) >= -1 else "No", _CARD["white"])[1]),
-        ("獲利（近60曆日低）",
-         f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%",
-         signed_pct_ink(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0)),
+    gain = float(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60") or 0)
+    gain_s = f"{gain:+.1f}%"
+    dist_h20 = float(card["dist_h20"])
+    y -= gap + space_h
+    kv_block(y, space_h, "空間／位置", [
+        ("距20日高（賣壓）", f"{dist_h20:+.1f}%",
+         price_cell_style("20高" if dist_h20 >= -1 else "No", C["white"])[1]),
+        ("獲利", gain_s, signed_pct_ink(gain)),
         (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
             _fmt_dist_short(card.get("dist_l120")),
             _fmt_dist_short(card.get("dist_l240")),
             _fmt_dist_short(card.get("dist_l480")),
-        ]), _CARD["ink"]),
-        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", _CARD["ink"]),
-    ])
+        ]), C["ink"]),
+        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", C["ink"]),
+    ], sub="獲利＝從近60個日曆天收盤低算上來", pills={
+        1: _profit_heat_draw(gain, None, C["white"]),
+    })
     _temp_n = _temp_num(card.get("temp_c"))
     from decision_card_signals import volume_headline_rank, volume_rank_pair_text
 
@@ -2470,19 +2583,23 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
-    kv_block(48.55, 12.15, "熱度／量能", [
-        ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, _CARD["white"])[1]),
+    y -= gap + heat_h
+    kv_block(y, heat_h, "熱度／量能", [
+        ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, C["white"])[1]),
         ("量排名", vol_pair,
-         vol_rank_cell_style(int(vol_n or 99), _CARD["white"])[1]),
-        ("量比", (tape or {}).get("volume", {}).get("line") or "—", _CARD["ink"]),
-    ])
+         vol_rank_cell_style(int(vol_n or 99), C["white"])[1]),
+        ("量比", (tape or {}).get("volume", {}).get("line") or "—", C["ink"]),
+    ], pills={
+        0: _temp_heat_draw(_temp_n, C["white"]),
+        1: _vol_heat_draw(int(vol_n or 99), C["white"]),
+    })
 
     def chip_color(n):
         if n > 0:
-            return "#B71C1C"
+            return C["up"]
         if n < 0:
-            return "#1B5E20"
-        return "#546E7A"
+            return C["down"]
+        return C["ink_soft"]
 
     chips = [
         ("外資", (tape or {}).get("foreign") or {}),
@@ -2490,9 +2607,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("自營", (tape or {}).get("dealer") or {}),
         ("法人", (tape or {}).get("three") or {}),
     ]
-    panel(1.4, 30.20, 97.2, 17.50)
-    ink(4.8, 45.5, "籌碼（張）", 13, "#1A237E")
-    ink(96.4, 45.5, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, "#546E7A", ha="right")
+    y -= gap + chips_h
+    pane(pad_x, y, pane_w, chips_h)
+    sec_title(4.8, y + chips_h - 1.7, "籌碼（張）", C["navy"])
+    ink(96.4, y + chips_h - 1.7, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, C["ink_soft"], ha="right")
     # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
     lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
     phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
@@ -2505,28 +2623,29 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     f_phrase = min(
         fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
     )
-    cy = 41.45
+    cy = y + chips_h - 5.05
     for name, item in chips:
         net = int(item.get("net") or 0)
-        ink(4.8, cy, name, f_name)
+        ink(4.8, cy, name, f_name, C["ink"])
         ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
         ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
-        cy -= 3.45
+        cy -= 3.35
 
-    panel(1.4, 1.15, 97.2, 28.25)
-    ink(4.8, 27.20, "基本面／紀律", 13, "#1A237E")
-    fy = 23.70
+    fund_h = max(10.5, y - gap - footer_top)
+    y = footer_top
+    pane(pad_x, y, pane_w, fund_h)
+    sec_title(4.8, y + fund_h - 1.7, "基本面", C["navy"])
+    fy = y + fund_h - 4.45
+    fund_floor = y + 1.15
     note = (tape or {}).get("conflict") or ""
     if note:
-        ink(4.8, fy, note, fit_fs(note, 14, row_w), "#C62828")
-        fy -= 3.35
-    sell_pair = None
-    other_pairs = []
-    for a, b in fund_rows:
-        if str(a) == "紀律" and str(b or "").strip():
-            sell_pair = (str(a), str(b))
-        else:
-            other_pairs.append((str(a), str(b)))
+        nlines = _wrap_fit(note, 13, row_w, GLANCE_FIG_W) or [note]
+        for ln in nlines:
+            if fy - 2.2 < fund_floor:
+                break
+            ink(4.8, fy, ln, 13, C["hi_ink"])
+            fy -= 2.45
+    other_pairs = [(str(a), str(b)) for a, b in fund_rows]
     if official:
         other_pairs = [(a, b) for a, b in other_pairs if a != "較去年累計"]
     if other_pairs:
@@ -2537,28 +2656,29 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         for (_lab, val), shown in zip(other_pairs, labels):
             val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
             vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
-            ink(4.8, fy, shown, fa)
-            ink(96.4, fy, vlines[0] if vlines else val, fb, "#111111", ha="right")
-            fy -= 2.65
+            need = 2.55 + 2.15 * max(0, len(vlines) - 1)
+            if fy - need < fund_floor:
+                break
+            ink(4.8, fy, shown, fa, C["ink_soft"])
+            ink(96.4, fy, vlines[0] if vlines else val, fb, C["ink"], ha="right")
+            fy -= 2.55
             for extra in vlines[1:]:
-                ink(96.4, fy, extra, fb, "#111111", ha="right")
-                fy -= 2.20
-    if sell_pair:
-        ink(4.8, fy, "紀律", 12, "#AD1457")
-        ink(
-            96.4, fy, sell_pair[1],
-            fit_fs(sell_pair[1], 13, 96.4 - 4.8 - wid("紀律", 12) - 4.0, floor=12.0),
-            "#AD1457", ha="right",
-        )
-        fy -= 3.25
-    try:
-        note2 = pink_warning_note(card)
-        if note2:
-            ink(4.8, fy, note2, fit_fs(note2, 13, row_w), "#AD1457")
-    except Exception:
-        pass
-    ink(4.8, 2.35, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, "#78909C")
-    ink(96.4, 2.35, "▲連漲　▼連跌", 10, "#78909C", ha="right")
+                if fy - 2.0 < fund_floor:
+                    break
+                ink(96.4, fy, extra, fb, C["ink"], ha="right")
+                fy -= 2.15
+
+    legend_y = m_bot + 1.15
+    if wrapped_notes:
+        box_y = legend_y + 1.55
+        pane(pad_x, box_y, pane_w, note_box_h, fc=C["hi_fill"], ec=C["hi_line"])
+        ink(4.8, box_y + note_box_h - 1.45, "紀律", 12, "#AD1457")
+        ny = box_y + note_box_h - 3.85
+        for ln in wrapped_notes:
+            ink(4.8, ny, ln, note_fs, "#AD1457")
+            ny -= 2.55
+    ink(4.8, legend_y, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, C["ink_mute"])
+    ink(96.4, legend_y, "▲連漲　▼連跌", 10, C["ink_mute"], ha="right")
     plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close()
     return save_path

@@ -285,7 +285,16 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
 
 
 def format_industry_html(stock_id: str, db_path: str = None) -> str:
-    from tg_layout import html_escape, html_pct, html_qty, join_sections, kv_compact, kv_html_compact, section, title_line
+    from tg_layout import (
+        html_escape,
+        html_pct_tight,
+        html_qty_tight,
+        join_sections,
+        kv_compact,
+        kv_html_compact,
+        section,
+        title_line,
+    )
 
     path = db_path or get_db_path()
     snap = industry_snapshot(path, stock_id)
@@ -307,39 +316,38 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         section(
             "<b>這檔是什麼</b>",
             kv_compact("產業", ind),
-            kv_compact("同業", f"{snap['peer_n']} 家現股（不含 ETF）" if snap["peer_n"] else "同業名單不足"),
+            kv_compact("同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足"),
             "產業名來自證交所／櫃買公司基本資料產業別，不是論壇分類。",
         )
     )
 
     month = str(snap.get("month") or "")
     mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
+    rev_rows = ["<b>營收看同業</b>", kv_compact("月營收", mlabel)]
     if snap["my_yoy"] is not None:
-        yoy_line = f"這檔年增 {html_pct(snap['my_yoy'])}"
+        rev_rows.append(kv_html_compact("這檔年增", html_pct_tight(snap["my_yoy"])))
         if snap["my_mom"] is not None:
-            yoy_line += f"　月增 {html_pct(snap['my_mom'])}"
+            rev_rows.append(kv_html_compact("這檔月增", html_pct_tight(snap["my_mom"])))
         if snap["yoy_med"] is not None:
-            yoy_line += f"　同業中位年增 {html_pct(snap['yoy_med'])}（{snap['yoy_n']} 家有月報）"
-        story = _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")
+            rev_rows.append(
+                kv_html_compact(
+                    "同業中位年增",
+                    f"{html_pct_tight(snap['yoy_med'])}（{snap['yoy_n']}家有月報）",
+                )
+            )
+        rev_rows.append(_vs_peer(snap["my_yoy"], snap["yoy_med"], "%"))
     else:
-        yoy_line = "這檔還沒有月營收列"
-        story = "等公司公布、盤後寫進庫再比。"
-    gm_line = "這檔還沒有季報列"
-    gm_story = ""
+        rev_rows.append("這檔還沒有月營收列")
+        rev_rows.append("等公司公布、盤後寫進庫再比。")
     if snap["my_gm"] is not None:
-        gm_line = f"{snap['year']}Q{snap['season']} 毛利率 {snap['my_gm']:.1f}%"
+        rev_rows.append(kv_compact("季報", f"{snap['year']}Q{snap['season']}"))
+        rev_rows.append(kv_compact("這檔毛利率", f"{snap['my_gm']:.1f}%"))
         if snap["gm_med"] is not None:
-            gm_line += f"　同業中位 {snap['gm_med']:.1f}%"
-        gm_story = _vs_peer(snap["my_gm"], snap["gm_med"], "pt")
-    blocks.append(
-        section(
-            "<b>營收看同業</b>",
-            kv_html_compact("月營收", f"{html_escape(mlabel)}　{yoy_line}"),
-            story,
-            kv_compact("季報", gm_line),
-            gm_story,
-        )
-    )
+            rev_rows.append(kv_compact("同業中位毛利率", f"{snap['gm_med']:.1f}%"))
+        rev_rows.append(_vs_peer(snap["my_gm"], snap["gm_med"], "pt"))
+    else:
+        rev_rows.append("這檔還沒有季報列")
+    blocks.append(section(*rev_rows))
 
     as_of = snap["as_of"]
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
@@ -367,37 +375,31 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         section(
             "<b>這族資金</b>",
             kv_compact("基準日", as_s),
-            kv_html_compact("法人合計", html_qty(three)),
+            kv_html_compact("法人合計", html_qty_tight(three)),
             flow_story,
             streak_line,
             "張數是官方法人，不是分點。公開籌碼會落後、也會幌。",
         )
     )
 
-    def _peer_line(rows: List[Dict[str, Any]]) -> str:
+    def _peer_rows(title: str, rows: List[Dict[str, Any]]) -> List[str]:
         if not rows:
-            return "—"
-        return "　".join(
-            f"<code>{html_escape(r['stock_id'])}</code> {html_escape(r['stock_name'])} {html_pct(r['yoy'])}"
-            for r in rows
-        )
+            return [f"{title}　—"]
+        out = [title]
+        for r in rows:
+            out.append(
+                f"<code>{html_escape(r['stock_id'])}</code> "
+                f"{html_escape(r['stock_name'])} {html_pct_tight(r['yoy'])}"
+            )
+        return out
 
     if snap["stronger"] or snap["weaker"]:
         blocks.append(
             section(
                 "<b>同業月營收對照</b>",
-                f"較強　{_peer_line(snap['stronger'])}",
-                f"較弱　{_peer_line(snap['weaker'])}",
+                *_peer_rows("較強", snap["stronger"]),
+                *_peer_rows("較弱", snap["weaker"]),
                 "年增特別大常常是去年基期低，只當對照，不當成一定噴。",
             )
         )
-
-    blocks.append(
-        section(
-            "<b>怎麼用</b>",
-            "這頁幫你用官方數字看懂這族，不是內幕、也不能替代高低卡。",
-            "少賠：靠近 20 日收盤高少追；佈局才對照這頁＋資金輪動。",
-            "線型看起來要噴，也先看決策卡有沒有靠近20日高。產業再好，追高一樣會大賠。",
-        )
-    )
     return join_sections(*blocks)
