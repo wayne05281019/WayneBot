@@ -37,7 +37,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertAlmostEqual(float(row["close"]), 179.5, places=1)
         self.assertEqual(row["預警"], "K20高")
         self.assertAlmostEqual(float(row["bias_monthly"]), 19.8, places=1)
-        self.assertIn("第 2", str(row["120日量"]))
+        self.assertIn("第2名", str(row["120日量"]))
 
     def test_2421_profit_matches_carybot_cal60_floor(self):
         """CaryBot 9/1 列獲利 46.9%＝只用 60曆日低 120.5。"""
@@ -56,7 +56,7 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(row["獲利"], "28.0%")
         self.assertEqual(row["預警"], "K20高")
         self.assertAlmostEqual(float(row["bias_monthly"]), 17.4, places=1)
-        self.assertIn("第 3", str(row["120日量"]))
+        self.assertIn("第3名", str(row["120日量"]))
         self.assertAlmostEqual(float(card["cal60_low"]), 33.75, places=2)
 
     def test_2324_high_low_summary_matches_carybot(self):
