@@ -1276,11 +1276,13 @@ class LookupCardTest(unittest.TestCase):
 
         bg0, fg0 = profit_cell_style(0.0, None, _CARD["white"])
         self.assertEqual(bg0, _CARD["lo_fill"])
-        self.assertEqual(fg0, _CARD["lo_ink"])
+        self.assertEqual(fg0, _CARD["white"])
         bg_leave, fg_leave = profit_cell_style(0.9, 0.0, _CARD["white"])
         self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
-        bg_point, _ = profit_cell_style(0.3, 1.5, _CARD["white"])
+        self.assertEqual(fg_leave, _CARD["up"])
+        bg_point, fg_point = profit_cell_style(0.3, 1.5, _CARD["white"])
         self.assertEqual(bg_point, _CARD["lo_hit_fill"])
+        self.assertEqual(fg_point, _CARD["up"])
         from wayne_navigator import _profit_heat_draw
 
         heat03, _ = _profit_heat_draw(0.3, 1.5, _CARD["white"])
@@ -1289,6 +1291,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(heat00, _CARD["lo_fill"])
         bg_run, fg_run = profit_cell_style(1.5, 0.9, _CARD["white"])
         self.assertEqual(bg_run, _CARD["white"])
+        self.assertEqual(fg_run, _CARD["up"])
         self.assertNotEqual(bg_run, _CARD["hi_fill"])
         heat15, _ = _profit_heat_draw(1.5, 0.9, _CARD["white"])
         self.assertEqual(heat15, _CARD["white"])
@@ -1318,7 +1321,17 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(temp_cell_style(2.5, _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
         self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["white"])
+        self.assertEqual(bias_cell_style(1.2, _CARD["white"])[1], _CARD["up"])
         self.assertEqual(bias_cell_style(-2.0, _CARD["white"])[1], _CARD["down"])
+        self.assertEqual(bias_cell_style(0.0, _CARD["white"])[1], _CARD["down"])
+        from wayne_navigator import ink_on_fill, signed_pct_ink
+
+        self.assertEqual(signed_pct_ink(3.9), _CARD["up"])
+        self.assertEqual(signed_pct_ink(-1.2), _CARD["down"])
+        self.assertEqual(signed_pct_ink(0.0), _CARD["down"])
+        self.assertEqual(ink_on_fill(_CARD["up"], "#FCE4EC"), _CARD["up"])
+        self.assertEqual(ink_on_fill(_CARD["up"], "#EC407A"), _CARD["white"])
+        self.assertEqual(ink_on_fill(_CARD["up"], _CARD["pill_hi"]), _CARD["white"])
         self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["white"])
         self.assertEqual(price_cell_style("20高", _CARD["white"], "最高價")[0], _CARD["hi_fill"])
         from wayne_navigator import temp_trend_cell_style
