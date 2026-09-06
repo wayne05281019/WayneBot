@@ -934,7 +934,21 @@ def test_format_screen_market_outlook_html_plain_language():
             "regime": "neutral",
             "falling_risk": 20,
             "futures": {"close": 26500, "date": "20260904"},
-            "futures_night": {"close": 26580, "date": "20260904"},
+            "futures_night": {
+                "close": 26580,
+                "date": "20260904",
+                "contract_month": "202609",
+                "open": 26400,
+                "high": 26600,
+                "low": 26300,
+                "volume": 38370,
+            },
+            "tx_foreign_oi": {
+                "date": "20260904",
+                "oi_long": 8153,
+                "oi_short": 90542,
+                "oi_net": -82389,
+            },
         },
         us_snap={
             "ok": True,
@@ -943,15 +957,121 @@ def test_format_screen_market_outlook_html_plain_language():
             "sox_pct": 0.10,
             "vix": 15.2,
         },
-        rotated_names=["半導體"],
+        rotated_names=["電腦"],
+        flow_maps={
+            "just_rotated": {"電腦及週邊設備業": 1},
+            "just_rotated_rows": [{"industry": "電腦及週邊設備業", "three_net": 192637}],
+            "inflow_rows": [
+                {
+                    "industry": "電腦及週邊設備業",
+                    "three_net": 192637,
+                    "top_buy_name": "仁寶",
+                    "top_buy_three": 71016,
+                    "avg_pct": 2.46,
+                },
+                {
+                    "industry": "金融業",
+                    "three_net": 76809,
+                    "top_buy_name": "兆豐金",
+                    "top_buy_three": 15877,
+                    "avg_pct": 0.79,
+                },
+            ],
+            "outflow_rows": [
+                {
+                    "industry": "半導體業",
+                    "three_net": -22197,
+                    "top_sell_name": "力積電",
+                    "top_sell_three": -16943,
+                }
+            ],
+        },
     )
     assert "大盤狀況" in html
     assert "可以照表看起漲" in html
     assert "加權昨收" in html
     assert "那斯達克" in html
     assert "恐慌指數" in html
-    assert "剛輪到半導體" in html
+    assert "剛到" in html
+    assert "電腦" in html
+    assert "輪出" in html
+    assert "半導體" in html
+    assert "剛輪到" in html
+    assert "────────────────" in html
+    assert "外資台指期" in html
+    assert "買多 8,153口" in html
+    assert "買空 90,542口" in html
+    assert "比日盤" in html
+    assert "到期" not in html
+    assert "領買" not in html
+    assert "領賣" not in html
+    assert "仁寶" not in html
+    assert "力積電" not in html
+    assert "+192,637張" not in html
     assert "Regime" not in html
     assert "VIX" not in html
     assert "基差" not in html
     assert "近月" not in html
+    from tg_layout import _disp_w
+    import re
+
+    for ln in html.split("\n"):
+        plain = re.sub(r"<[^>]+>", "", ln)
+        assert _disp_w(plain) <= 40, plain
+
+
+def test_parse_taifex_tx_inst_oi_rows_picks_foreign():
+    from taiwan_market import _parse_taifex_tx_inst_oi_rows
+
+    rows = [
+        {
+            "Date": "20260904",
+            "ContractCode": "臺股期貨",
+            "Item": "外資及陸資",
+            "OpenInterest(Long)": "8153",
+            "OpenInterest(Short)": "90542",
+            "OpenInterest(Net)": "-82389",
+        },
+        {
+            "Date": "20260904",
+            "ContractCode": "小型臺指期貨",
+            "Item": "外資及陸資",
+            "OpenInterest(Long)": "99",
+            "OpenInterest(Short)": "1",
+            "OpenInterest(Net)": "98",
+        },
+    ]
+    parsed = _parse_taifex_tx_inst_oi_rows(rows)
+    assert len(parsed) == 1
+    assert parsed[0]["oi_long"] == 8153
+    assert parsed[0]["oi_short"] == 90542
+
+
+@patch("taiwan_market._fetch_taifex_inst_fut_rows")
+def test_sync_futures_inst_oi_writes_foreign(mock_fetch, tmp_path):
+    from taiwan_market import load_futures_tx_foreign_oi, sync_futures_inst_oi
+
+    mock_fetch.return_value = [
+        {
+            "Date": "20260904",
+            "ContractCode": "臺股期貨",
+            "Item": "外資及陸資",
+            "OpenInterest(Long)": "8153",
+            "OpenInterest(Short)": "90542",
+            "OpenInterest(Net)": "-82389",
+        },
+        {
+            "Date": "20260904",
+            "ContractCode": "臺股期貨",
+            "Item": "投信",
+            "OpenInterest(Long)": "79274",
+            "OpenInterest(Short)": "3100",
+            "OpenInterest(Net)": "76174",
+        },
+    ]
+    db = str(tmp_path / "foi.db")
+    r = sync_futures_inst_oi(db)
+    assert r["ok"]
+    assert r["rows"] == 2
+    row = load_futures_tx_foreign_oi(db, "20260904")
+    assert row and row["oi_long"] == 8153 and row["oi_short"] == 90542

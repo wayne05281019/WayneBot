@@ -1559,6 +1559,28 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
         return 0.0
 
 
+def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8):
+    """股名右側：最近一件（法說／股東會／除權息）優先，產業有空再放。"""
+    out = []
+    remaining = float(avail or 0)
+    event = str(event or "").strip()
+    industry = str(industry or "").strip()
+    if event:
+        fs = 11.0
+        while fs >= 8.5 and tw(event, fs) + 0.2 > remaining:
+            fs -= 0.5
+        if tw(event, fs) + 0.2 <= remaining:
+            out.append((event, fs, "#FDE68A"))
+            remaining -= tw(event, fs) + gap
+    if industry:
+        fs = 12.0
+        while fs >= 9.0 and tw(industry, fs) + 0.2 > remaining:
+            fs -= 0.5
+        if tw(industry, fs) + 0.2 <= remaining:
+            out.append((industry, fs, "#FFE082"))
+    return out
+
+
 def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
     """真實字寬（資料座標）。估算會差幾個百分比，排一列四個數字就會擠在一起。"""
     s = str(text)
@@ -1804,14 +1826,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     industry = str(card.get("industry") or "").strip()
-    if industry and cursor + tw(industry, 12.0) <= right_limit:
-        ax.text(cursor, title_cy, industry, fontproperties=_fp(12.0),
-                color="#FFE082", va="center", zorder=3)
-        cursor += tw(industry, 12.0) + 1.8
     event = str(card.get("next_event") or "").strip()
-    if event and cursor + tw(event, 11) < right_limit:
-        ax.text(cursor, title_cy, event, fontproperties=_fp(11),
-                color="#FDE68A", va="center", zorder=3)
+    for text, fs, color in fit_title_bar_extras(industry, event, right_limit - cursor, tw):
+        ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
+                color=color, va="center", zorder=3)
+        cursor += tw(text, fs) + 1.8
     ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
             color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
 

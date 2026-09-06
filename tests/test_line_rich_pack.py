@@ -15,6 +15,36 @@ def test_compose_vertical_images(tmp_path):
         assert im.height > 100
 
 
+def test_selected_line_text_keeps_only_checked_stocks():
+    from line_hop import selected_line_text
+
+    manifest = {
+        "title": "起漲",
+        "bucket_key": "leave_zero",
+        "as_of": "20260904",
+        "line_text": "WayneBot 海選　2026/09/04\n＝＝起漲＝＝\n共 2 檔\n1. 台積電 (2330)\n────────────\n2. 聯發科 (2454)",
+        "stocks": [
+            {
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "text_block": "1. 台積電 (2330)\n格局：起漲",
+            },
+            {
+                "stock_id": "2454",
+                "stock_name": "聯發科",
+                "text_block": "2. 聯發科 (2454)\n格局：起漲",
+            },
+        ],
+    }
+    all_text = selected_line_text(manifest, None)
+    assert all_text == manifest["line_text"]
+    one = selected_line_text(manifest, ["2454"])
+    assert "聯發科" in one
+    assert "台積電" not in one
+    assert "共 1 檔" in one
+    assert selected_line_text(manifest, ["9999"]) == ""
+
+
 def test_render_line_rich_share_html_has_album_and_line():
     from line_hop import render_line_rich_share_html
 
@@ -45,11 +75,21 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert "半導體業景氣" in page
     assert "color:#c41e3a" in page
     assert "g.png" in page
-    assert page.index("g.png") < page.index("格局：站上月線")
-    assert "奇摩手機版" in page
+    assert "奇摩" in page
     assert "/y/2330" in page
     assert "tw.stock.yahoo.com" not in page
     assert "max-width:390px" in page
+    assert "max-height:168px" in page
+    assert 'class="stock-pick"' in page
+    assert 'value="2330"' in page
+    assert "勾要傳的檔" in page
+    assert "複製勾選名單到 LINE" in page
+    assert "傳勾選的圖到 LINE" in page
+    assert "分享全區長圖" in page
+    assert 'id="pickAll"' in page
+    assert 'id="pickNone"' in page
+    assert 'id="pickPayload"' in page
+    assert "<details open>" not in page
 
 
 def test_text_font_uses_bundled_noto():
