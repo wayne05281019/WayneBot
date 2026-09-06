@@ -154,8 +154,9 @@ class FuseAndScreenTest(unittest.TestCase):
 
         chunks = split_line_share_chunks(night_line)
         self.assertTrue(chunks)
-        self.assertIn("轉寄稿", chunks[0])
-        self.assertIn("長按這一則", chunks[0])
+        self.assertNotIn("轉寄稿", chunks[0])
+        self.assertNotIn("長按這一則", chunks[0])
+        self.assertIn("電子夜盤", chunks[0])
 
     def test_screen_push_omits_daytrade_and_overnight(self):
         from screening_engine import SCREEN_PUSH_SPECS, format_screening_payload
@@ -202,11 +203,13 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("起漲｜", payload[0]["html"])
         self.assertIn("共 8 檔", payload[0]["html"])
         self.assertEqual(payload[0]["html"].count("<blockquote>"), 8)
+        self.assertEqual(payload[0]["picks"][0][0], "2610")
+        self.assertEqual(len(payload[0]["picks"]), 8)
         line = format_line_share_text(
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("＝＝起漲｜"), line.find("＝＝優先看｜"))
+        self.assertLess(line.find("＝＝起漲＝＝"), line.find("＝＝優先看＝＝"))
         from config import scheduled_job_kind
         from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
@@ -222,8 +225,8 @@ class FuseAndScreenTest(unittest.TestCase):
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
-        self.assertIn("＝＝起漲｜", packs[1]["text"])
-        self.assertIn("說明：", packs[1]["text"])
+        self.assertIn("＝＝起漲＝＝", packs[1]["text"])
+        self.assertNotIn("說明：", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
@@ -2290,12 +2293,21 @@ class WatchListTest(unittest.TestCase):
 
         bot = object.__new__(WayneTelegramBot)
         bot.db_path = None
-        kb = bot._screening_section_keyboard(line_pack_id="leave_zero", include_menu=True)
+        kb = bot._screening_section_keyboard(
+            line_pack_id="leave_zero",
+            include_menu=True,
+            picks=[("2330", "台積電"), ("4915", "致伸")],
+        )
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
         self.assertEqual(texts.count("一鍵傳 LINE"), 1)
         self.assertTrue(any(d and d == "lp:leave_zero" for d in datas))
-        self.assertFalse(any("2330" in (t or "") for t in texts))
+        self.assertIn("k:2330", datas)
+        self.assertIn("k:4915", datas)
+        self.assertIn("w:2330", datas)
+        send_src = inspect.getsource(WayneTelegramBot._send_line_rich_bucket)
+        self.assertNotIn("_dismiss_screening_section", send_src)
+        self.assertIn("_send_card_share_groups", send_src)
         day_kb = bot._picks_keyboard(
             [("2330", "台積電")],
             include_menu=True,

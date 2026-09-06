@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Optional
 
 from line_share_format import LINE_BUCKET_META, LINE_SHARE_SEP, format_line_bucket_body, format_line_stock_block
 
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 跟決策卡同一套 NotoSansTC；系統 CJK／wqy 當備援。先前只找系統字，
+# Render 沒裝時 PIL 預設點陣字會把中文畫成方塊，轉傳到 KEEP 第一頁就是亂碼。
 _TEXT_FONTS = (
+    os.path.join(_MODULE_DIR, "fonts", "NotoSansTC-w560.ttf"),
+    os.path.join(_MODULE_DIR, "fonts", "NotoSansTC-w860.ttf"),
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
@@ -17,7 +22,10 @@ _TEXT_FONTS = (
 _IMAGE_LABELS = (
     ("glance", "介紹圖"),
     ("card", "高低決策卡"),
-    ("chips", "籌碼"),
+)
+_SHARE_CARD_KEYS = (
+    ("glance", "介紹圖"),
+    ("card", "決策卡"),
 )
 
 
@@ -25,12 +33,26 @@ def _text_font(size: int):
     from PIL import ImageFont
 
     for path in _TEXT_FONTS:
-        if os.path.isfile(path):
-            try:
+        if not os.path.isfile(path):
+            continue
+        try:
+            if path.lower().endswith(".ttc"):
+                for idx in (0, 1, 2):
+                    try:
+                        return ImageFont.truetype(path, size, index=idx)
+                    except Exception:
+                        continue
+            else:
                 return ImageFont.truetype(path, size)
-            except Exception:
-                continue
+        except Exception:
+            continue
     return ImageFont.load_default()
+
+
+def text_font_path() -> str:
+    """測試用：實際吃到的字型檔。"""
+    font = _text_font(24)
+    return str(getattr(font, "path", "") or "")
 
 
 def html_to_plain(fragment: str) -> str:
@@ -140,12 +162,12 @@ def render_text_panel_png(
     text: str,
     out_path: str,
     *,
-    width: int = 720,
-    font_size: int = 26,
-    pad: int = 18,
+    width: int = 390,
+    font_size: int = 22,
+    pad: int = 14,
     bg: tuple = (248, 250, 252),
 ) -> str:
-    """把一檔文字摘要渲成圖，貼在該檔圖表前面。"""
+    """手機氣泡寬（約 iPhone 直向）把文字摘要渲成圖，用來對 LINE 排版。"""
     from PIL import Image, ImageDraw, ImageFont
 
     lines = [ln for ln in str(text or "").split("\n") if ln is not None]
@@ -156,9 +178,20 @@ def render_text_panel_png(
     height = pad * 2 + line_h * len(lines)
     img = Image.new("RGB", (width, max(height, 80)), bg)
     draw = ImageDraw.Draw(img)
+    from line_share_format import STANCE_RED_RGB, colored_line_segments
+
     y = pad
+    in_stance = False
     for ln in lines:
-        draw.text((pad, y), ln, fill=(24, 24, 24), font=font)
+        segs, in_stance = colored_line_segments(ln, in_stance_cont=in_stance)
+        x = pad
+        for chunk, red in segs:
+            fill = STANCE_RED_RGB if red else (24, 24, 24)
+            draw.text((x, y), chunk, fill=fill, font=font)
+            try:
+                x += int(draw.textlength(chunk, font=font))
+            except Exception:
+                x += font_size * max(len(chunk), 1)
         y += line_h
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
@@ -184,20 +217,13 @@ def compose_stock_section(
     out_path: str,
     work_dir: str,
 ) -> str:
-    """單檔：文字摘要 → 介紹圖 → 決策卡 → 籌碼（順序固定）。"""
-    os.makedirs(work_dir, exist_ok=True)
+    """單檔長圖：介紹圖 → 決策卡。不要把文字頁當第一頁（轉 KEEP 會變亂碼）。"""
+    del text_block, work_dir
     parts: List[str] = []
-    text_png = os.path.join(work_dir, "text.png")
-    if render_text_panel_png(text_block, text_png):
-        parts.append(text_png)
-    for key, label in _IMAGE_LABELS:
+    for key, _label in _IMAGE_LABELS:
         img_path = str(pack.get(key) or "").strip()
-        if not img_path or not os.path.isfile(img_path):
-            continue
-        cap_png = os.path.join(work_dir, f"{key}_cap.png")
-        if render_text_panel_png(label, cap_png, font_size=22, pad=10, bg=(255, 255, 255)):
-            parts.append(cap_png)
-        parts.append(img_path)
+        if img_path and os.path.isfile(img_path):
+            parts.append(img_path)
     return compose_vertical_images(parts, out_path) if parts else ""
 
 
@@ -290,19 +316,23 @@ def build_bucket_rich_pack(
         item.setdefault("stock_name", name or item.get("stock_name") or "")
         if pack.get("industry_plain"):
             item["industry_plain"] = pack.get("industry_plain")
-        text_block = format_line_stock_block(item, i, db_path)
+        text_block = format_line_stock_block(item, i, db_path, bucket_key=bucket_key)
         strip_path = os.path.join(stock_dir, "strip.png")
         composed = compose_stock_section(text_block, pack, strip_path, stock_dir)
         if composed:
             strip_paths.append(composed)
         enriched.append(item)
+        glance_rel = f"{code}/glance.png" if pack.get("glance") else ""
+        card_rel = f"{code}/card.png" if pack.get("card") else ""
         stocks_out.append(
             {
                 "rank": i,
                 "stock_id": code,
                 "stock_name": name,
                 "text_block": text_block,
-                "strip_url": line_rich_asset_url(bucket_key, ymd, f"{code}/strip.png"),
+                "strip_url": line_rich_asset_url(bucket_key, ymd, f"{code}/strip.png") if composed else "",
+                "glance_url": line_rich_asset_url(bucket_key, ymd, glance_rel) if glance_rel else "",
+                "card_url": line_rich_asset_url(bucket_key, ymd, card_rel) if card_rel else "",
                 "industry_plain": pack.get("industry_plain") or "",
             }
         )
@@ -448,6 +478,38 @@ def rebuild_manifest_from_line_pack(db_path: str, bucket_key: str) -> Dict[str, 
         "stocks": [],
         "text_only": True,
     }
+
+
+def share_card_files(charts_dir: str, manifest: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Telegram 轉傳用：每檔介紹圖、決策卡本機路徑。"""
+    charts_dir = charts_dir or ""
+    bucket = str(manifest.get("bucket_key") or "").strip()
+    as_of = str(manifest.get("as_of") or "").strip()
+    out: List[Dict[str, str]] = []
+    for st in manifest.get("stocks") or []:
+        code = str(st.get("stock_id") or "").strip()
+        name = str(st.get("stock_name") or "").strip()
+        if not code:
+            continue
+        for key, label in _SHARE_CARD_KEYS:
+            rel = f"{code}/{key}.png"
+            path = resolve_rich_asset_path(charts_dir, bucket, as_of, rel)
+            if path:
+                from stock_links import yahoo_hop_url
+
+                hop = yahoo_hop_url(code)
+                cap = f"{code} {name}　{label}".strip()
+                if hop:
+                    cap = f"{cap}\n奇摩　{hop}"
+                out.append(
+                    {
+                        "path": path,
+                        "caption": cap,
+                        "stock_id": code,
+                        "kind": key,
+                    }
+                )
+    return out
 
 
 def resolve_rich_asset_path(charts_dir: str, bucket_key: str, as_of: str, rel_path: str) -> str:

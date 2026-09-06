@@ -188,7 +188,7 @@ def render_line_redirect_html(text: str) -> str:
 
 
 def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
-    """整區：開 LINE 選聯絡人帶文字；預覽與長圖皆為「文字→圖」逐檔排列。"""
+    """備援頁：介紹圖／決策卡在前；文字含產業，轉 LINE 選聯絡人。"""
     text = str(manifest.get("line_text") or "").strip()
     title = html.escape(str(manifest.get("title") or "海選"))
     count = int(manifest.get("count") or 0)
@@ -196,30 +196,41 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     text_only = bool(manifest.get("text_only"))
     safe_album = html.escape(album_url, quote=True) if album_url else ""
     stocks = manifest.get("stocks") or []
-    share_url, app_url, auto_open = _line_share_urls_safe(text)
-    share_json = json.dumps(share_url, ensure_ascii=False)
-    app_json = json.dumps(app_url, ensure_ascii=False)
+    from line_share_format import line_plain_to_html
+
+    safe_text = line_plain_to_html(text)
+    body_json = json.dumps(text, ensure_ascii=False)
     album_json = json.dumps(album_url, ensure_ascii=False)
-    safe_text = html.escape(text)
 
     stock_blocks = []
     for st in stocks:
-        block = html.escape(str(st.get("text_block") or ""))
+        name = html.escape(
+            f"{st.get('stock_id') or ''} {st.get('stock_name') or ''}".strip()
+        )
+        block = str(st.get("text_block") or "")
+        glance = html.escape(str(st.get("glance_url") or ""), quote=True)
+        card = html.escape(str(st.get("card_url") or ""), quote=True)
         strip = html.escape(str(st.get("strip_url") or ""), quote=True)
-        if not block and not strip:
+        imgs = []
+        if glance:
+            imgs.append(f'<img src="{glance}" alt="介紹圖" class="stock-img" loading="lazy">')
+        if card:
+            imgs.append(f'<img src="{card}" alt="決策卡" class="stock-img" loading="lazy">')
+        if not imgs and strip:
+            imgs.append(f'<img src="{strip}" alt="圖表" class="stock-img" loading="lazy">')
+        text_pre = f'<div class="stock-text">{line_plain_to_html(block)}</div>' if block else ""
+        from stock_links import yahoo_hop_url
+
+        hop = yahoo_hop_url(str(st.get("stock_id") or ""))
+        hop_a = (
+            f'<p style="text-align:center"><a href="{html.escape(hop, quote=True)}">奇摩手機版</a></p>'
+            if hop
+            else ""
+        )
+        if not text_pre and not imgs:
             continue
-        text_pre = (
-            f'<pre class="stock-text">{block}</pre>'
-            if block
-            else ""
-        )
-        img = (
-            f'<img src="{strip}" alt="圖表" class="stock-img" loading="lazy">'
-            if strip
-            else ""
-        )
         stock_blocks.append(
-            f'<article class="stock-card">{text_pre}{img}</article>'
+            f'<article class="stock-card"><h3>{name}</h3>{hop_a}{"".join(imgs)}{text_pre}</article>'
         )
     stocks_html = "\n".join(stock_blocks)
     album_block = (
@@ -231,97 +242,57 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     if text_only:
         text_only_note = (
             '<p style="text-align:center;color:#b45309;font-size:0.95em">'
-            "長圖已過期，請回 Telegram 再按一次「一鍵傳 LINE」重新生成；文字仍可傳。</p>"
+            "圖已過期，請回 Telegram 再按一次「一鍵傳 LINE」。</p>"
         )
-    long_hint = ""
-    if not auto_open:
-        long_hint = (
-            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
-            "文字較長，按綠色鈕：先分享或複製全文，再開 LINE 選聯絡人貼上</p>"
-        )
-    if auto_open:
-        line_btn = (
-            f'<a class="btn green" id="shareLine" href="{html.escape(app_url, quote=True)}">'
-            "傳文字到 LINE・選聯絡人</a>"
-        )
-        auto_script = "if(mobile){setTimeout(goApp,400);}"
-        extra_script = (
-            "<script>"
-            "(function(){"
-            f"var share={share_json},app={app_json},album={album_json};"
-            "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
-            "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
-            "function goApp(){try{location.href=app;}catch(e){}"
-            "setTimeout(goShare,900);}"
-            f"{auto_script}"
-            "var btn=document.getElementById('saveAlbum');"
-            "if(btn&&navigator.share&&album){"
-            "btn.addEventListener('click',function(ev){"
-            "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
-            "var file=new File([blob],'waynebot.png',{type:'image/png'});"
-            "if(navigator.canShare&&navigator.canShare({files:[file]})){"
-            "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
-            "}).catch(function(){});"
-            "});}"
-            "})();"
-            "</script>"
-        )
-    else:
-        line_btn = (
-            '<button class="btn green" id="shareLine" type="button">'
-            "複製文字並開 LINE</button>"
-        )
-        body_json = json.dumps(text, ensure_ascii=False)
-        extra_script = _line_share_page_script(body_json, auto_open=False) + (
-            "<script>"
-            "(function(){"
-            f"var album={album_json};"
-            "var btn=document.getElementById('saveAlbum');"
-            "if(btn&&navigator.share&&album){"
-            "btn.addEventListener('click',function(ev){"
-            "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
-            "var file=new File([blob],'waynebot.png',{type:'image/png'});"
-            "if(navigator.canShare&&navigator.canShare({files:[file]})){"
-            "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
-            "}).catch(function(){});"
-            "});}"
-            "})();"
-            "</script>"
-        )
-    auto_script = ""  # moved into extra_script branches
-
+    extra_script = (
+        _line_share_page_script(body_json, auto_open=False)
+        + "<script>(function(){"
+        f"var album={album_json};"
+        "var btn=document.getElementById('saveAlbum');"
+        "if(btn&&navigator.share&&album){"
+        "btn.addEventListener('click',function(ev){"
+        "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
+        "var file=new File([blob],'waynebot.png',{type:'image/png'});"
+        "if(navigator.canShare&&navigator.canShare({files:[file]})){"
+        "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
+        "}).catch(function(){});"
+        "});}"
+        "})();</script>"
+    )
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{title}｜WayneBot LINE</title>"
         "<style>"
-        "body{font-family:sans-serif;margin:0;padding:16px;background:#fafafa;color:#111}"
-        ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;text-decoration:none;font-weight:600}"
+        "body{font-family:-apple-system,sans-serif;margin:0 auto;padding:12px;"
+        "max-width:390px;background:#fafafa;color:#111;font-size:16px}"
+        ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;"
+        "text-decoration:none;font-weight:600;border:none}"
         ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}"
         ".stock-card{margin:0 0 1.25em;padding:0 0 1em;border-bottom:1px solid #ddd}"
-        ".stock-text{white-space:pre-wrap;font-size:15px;line-height:1.55;background:#f8fafc;"
-        "padding:12px;border-radius:10px;margin:0 0 10px;border:1px solid #e8ecf0}"
-        ".stock-img{width:100%;max-width:720px;display:block;margin:0 auto;border-radius:8px}"
-        ".album{width:100%;max-width:720px;display:block;margin:1em auto;border-radius:8px}"
-        ".summary{white-space:pre-wrap;font-size:14px;line-height:1.5;background:#fff;padding:12px;"
+        ".stock-text{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#f8fafc;"
+        "padding:12px;border-radius:10px;margin:10px 0 0;border:1px solid #e8ecf0}"
+        ".stance{color:#c41e3a;font-weight:700}"
+        ".summary .stance,.stock-text .stance{color:#c41e3a;font-weight:700}"
+        ".stock-img{width:100%;max-width:100%;display:block;margin:0 auto 8px;border-radius:8px}"
+        ".album{width:100%;max-width:100%;display:block;margin:1em auto;border-radius:8px}"
+        ".summary{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#fff;padding:12px;"
         "border-radius:10px;border:1px solid #e0e0e0;margin-bottom:1em}"
         "</style>"
         "</head><body>"
         f"<h2 style=\"text-align:center;margin-top:0\">{title}　{count} 檔</h2>"
         "<p style=\"text-align:center;line-height:1.6\">"
-        "① 會開啟 LINE，請<b>選聯絡人</b>送出文字總彙整<br>"
-        "② 再貼下方「全區長圖」（每檔文字後面接圖表）</p>"
-        f"{text_only_note}{long_hint}"
+        "長按介紹圖／決策卡 → 分享 → LINE → 選聯絡人<br>"
+        "文字含產業，排版給手機直讀</p>"
+        f"{text_only_note}"
         '<p style="text-align:center">'
-        f"{line_btn}"
-        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">下載全區長圖</a>'
+        '<button class="btn green" id="shareLine" type="button">複製名單到 LINE</button>'
+        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">分享長圖</a>'
         "</p>"
-        f'<details open><summary style="font-weight:600;margin-bottom:8px">文字總彙整預覽</summary>'
+        f'<details open><summary style="font-weight:600;margin-bottom:8px">名單（含產業）</summary>'
         f'<div class="summary">{safe_text}</div></details>'
-        f"<h3 style=\"font-size:1em;margin:1.2em 0 0.6em\">圖文預覽（文字→圖，逐檔）</h3>"
-        f'<div style="max-width:720px;margin:0 auto">{stocks_html}</div>'
-        "<h3 style=\"font-size:1em;margin:1.2em 0 0.6em\">全區長圖（貼到 LINE 同一則）</h3>"
+        f'<div style="max-width:390px;margin:0 auto">{stocks_html}</div>'
         f"{album_block}"
         f"{extra_script}"
         "</body></html>"
@@ -411,7 +382,7 @@ def _rebuild_stock_line_text(db_path: str, stock_id: str) -> str:
                     [
                         f"WayneBot 海選　{_date_slash(as_of)}",
                         f"【{title}】",
-                        format_line_stock_block(item, 1, db_path),
+                        format_line_stock_block(item, 1, db_path, bucket_key=bucket),
                     ]
                 )
         return ""
@@ -423,3 +394,30 @@ def _rebuild_stock_line_text(db_path: str, stock_id: str) -> str:
 def render_line_hop_html(title: str, text: str) -> str:
     del title
     return render_line_redirect_html(text)
+
+
+def render_yahoo_hop_html(stock_id: str, stock_name: str = "", db_path: str = "") -> str:
+    """點開立刻進該檔奇摩報價（股名＋現價）。不放 og:image；不用 HTTP 302，避免 LINE 預覽跟著抓奇摩大圖。"""
+    from stock_links import line_yahoo_quote_url
+
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or "").strip()
+    target = line_yahoo_quote_url(sid, db_path)
+    if not sid or not target:
+        return "<!DOCTYPE html><html><body>查無代號</body></html>"
+    label = html.escape(f"{sid} {name}".strip())
+    safe = html.escape(target, quote=True)
+    js_url = json.dumps(target, ensure_ascii=False)
+    return (
+        "<!DOCTYPE html><html><head>"
+        '<meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{label}</title>"
+        f"<script>location.replace({js_url});</script>"
+        "</head><body>"
+        f'<p style="font-family:sans-serif;text-align:center;margin-top:2em">'
+        f"正在開啟 {label} 奇摩報價…</p>"
+        '<p style="text-align:center">'
+        f'<a href="{safe}">若沒跳轉，點這裡開 {label}</a></p>'
+        "</body></html>"
+    )
