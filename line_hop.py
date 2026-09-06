@@ -365,7 +365,6 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
     for st in stocks:
         sid = str(st.get("stock_id") or "").strip()
         name = html.escape(f"{sid} {st.get('stock_name') or ''}".strip())
-        block = str(st.get("text_block") or "")
         glance = html.escape(str(st.get("glance_url") or ""), quote=True)
         card = html.escape(str(st.get("card_url") or ""), quote=True)
         strip = html.escape(str(st.get("strip_url") or ""), quote=True)
@@ -376,24 +375,23 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
             imgs.append(f'<img src="{card}" alt="決策卡" class="stock-img" loading="lazy">')
         if not imgs and strip:
             imgs.append(f'<img src="{strip}" alt="圖表" class="stock-img" loading="lazy">')
-        text_pre = f'<div class="stock-text">{line_plain_to_html(block)}</div>' if block else ""
         from stock_links import yahoo_hop_url
 
         hop = yahoo_hop_url(sid)
-        hop_a = (
-            f'<p style="text-align:center"><a href="{html.escape(hop, quote=True)}">奇摩手機版</a></p>'
+        if not imgs:
+            continue
+        safe_sid = html.escape(sid, quote=True)
+        hop_bit = (
+            f'<a class="y" href="{html.escape(hop, quote=True)}">奇摩</a>'
             if hop
             else ""
         )
-        if not text_pre and not imgs:
-            continue
-        safe_sid = html.escape(sid, quote=True)
         pick = (
             f'<label class="pick"><input class="stock-pick" type="checkbox" value="{safe_sid}" checked>'
-            f"<span>{name}</span></label>"
+            f"<span>{name}</span></label>{hop_bit}"
         )
         stock_blocks.append(
-            f'<article class="stock-card" data-sid="{safe_sid}">{pick}{hop_a}{"".join(imgs)}{text_pre}</article>'
+            f'<article class="stock-card" data-sid="{safe_sid}">{pick}{"".join(imgs)}</article>'
         )
     stocks_html = "\n".join(stock_blocks)
     album_block = (
@@ -411,48 +409,55 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         f'<script type="application/json" id="pickPayload">{payload_json}</script>'
         + _line_picker_script()
     )
+    album_btn = (
+        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">分享全區長圖</a>'
+        if safe_album
+        else ""
+    )
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{title}｜WayneBot LINE</title>"
         "<style>"
-        "body{font-family:-apple-system,sans-serif;margin:0 auto;padding:12px;"
+        "body{font-family:-apple-system,sans-serif;margin:0 auto;padding:8px;"
         "max-width:390px;background:#fafafa;color:#111;font-size:16px}"
-        ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;"
-        "text-decoration:none;font-weight:600;border:none}"
+        ".btn{display:inline-block;margin:4px;padding:10px 12px;border-radius:10px;"
+        "text-decoration:none;font-weight:600;border:none;font-size:15px}"
         ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}"
         ".ghost{background:#eef2f7;color:#111}"
-        ".stock-card{margin:0 0 1.25em;padding:0 0 1em;border-bottom:1px solid #ddd}"
-        ".pick{display:flex;align-items:center;gap:10px;font-weight:700;margin:0 0 8px}"
+        ".stock-card{margin:0 0 0.55em;padding:0 0 0.45em;border-bottom:1px solid #e5e7eb}"
+        ".pick{display:flex;align-items:center;gap:8px;font-weight:700;margin:0 0 4px}"
         ".pick input{width:22px;height:22px;flex:none}"
-        ".stock-text{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#f8fafc;"
-        "padding:12px;border-radius:10px;margin:10px 0 0;border:1px solid #e8ecf0}"
+        "a.y{font-size:13px;color:#1e6fff;margin-left:6px}"
         ".stance{color:#c41e3a;font-weight:700}"
-        ".summary .stance,.stock-text .stance{color:#c41e3a;font-weight:700}"
-        ".stock-img{width:100%;max-width:100%;display:block;margin:0 auto 8px;border-radius:8px}"
-        ".album{width:100%;max-width:100%;display:block;margin:1em auto;border-radius:8px}"
-        ".summary{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#fff;padding:12px;"
-        "border-radius:10px;border:1px solid #e0e0e0;margin-bottom:1em}"
-        ".toolbar{text-align:center;margin:8px 0}"
+        ".summary .stance{color:#c41e3a;font-weight:700}"
+        ".stock-img{width:100%;max-width:100%;max-height:168px;object-fit:contain;"
+        "object-position:top;display:block;margin:0 auto 4px;border-radius:6px;"
+        "background:#fff;border:1px solid #e8ecf0}"
+        ".album{width:100%;max-width:100%;max-height:168px;object-fit:contain;"
+        "display:block;margin:0.5em auto;border-radius:6px}"
+        ".summary{white-space:pre-wrap;font-size:15px;line-height:1.45;background:#fff;padding:8px;"
+        "border-radius:8px;border:1px solid #e0e0e0;margin:6px 0}"
+        ".toolbar{text-align:center;margin:4px 0}"
+        "h2{font-size:1.15em;margin:0 0 4px}"
+        "p.hint{text-align:center;line-height:1.4;margin:0 0 6px;font-size:14px;color:#334155}"
         "</style>"
         "</head><body>"
-        f"<h2 style=\"text-align:center;margin-top:0\">{title}　{count} 檔</h2>"
-        "<p style=\"text-align:center;line-height:1.6\">"
-        "勾要傳的檔（介紹圖＋決策卡一組）。預設全勾。<br>"
-        "長按單張圖也可分享 → LINE → 選聯絡人</p>"
+        f"<h2 style=\"text-align:center\">{title}　{count} 檔</h2>"
+        "<p class=\"hint\">勾要傳的檔（介紹圖＋決策卡）。圖是縮圖，傳出仍是完整卡 → LINE → 選聯絡人。</p>"
         f"{text_only_note}"
         '<p class="toolbar">'
         '<button class="btn ghost" id="pickAll" type="button">全選</button>'
         '<button class="btn ghost" id="pickNone" type="button">全不選</button>'
         '<span id="pickCount" style="display:inline-block;margin:8px 4px;color:#334155">已勾 0 檔</span>'
         "</p>"
-        '<p style="text-align:center">'
+        '<p class="toolbar">'
         '<button class="btn green" id="shareLine" type="button">複製勾選名單到 LINE</button>'
         '<button class="btn green" id="sharePicked" type="button">傳勾選的圖到 LINE</button>'
-        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">分享全區長圖</a>'
+        f"{album_btn}"
         "</p>"
-        f'<details open><summary style="font-weight:600;margin-bottom:8px">名單（含產業）</summary>'
+        '<details><summary style="font-weight:600">名單文字</summary>'
         f'<div class="summary">{safe_text}</div></details>'
         f'<div style="max-width:390px;margin:0 auto">{stocks_html}</div>'
         f"{album_block}"

@@ -3029,6 +3029,144 @@ def _outlook_action_plain(
     return "可以照表看起漲和黃金買點，周帶量仍少追。"
 
 
+def _outlook_phone_kv(label: str, value: str) -> str:
+    """海選第一則給手機看：標籤＋全形空白＋內容，跟個股卡片同一套。"""
+    from tg_layout import html_escape
+
+    return f"{html_escape(label)}　{value}"
+
+
+def _outlook_night_phone_lines(
+    night: Dict[str, Any],
+    day: Optional[Dict[str, Any]] = None,
+    *,
+    spot_close: float = 0.0,
+) -> List[str]:
+    """夜盤拆成短行，避免一行塞開高低成交。"""
+    from tg_layout import html_escape
+
+    if not night or not night.get("close"):
+        return []
+    close = float(night["close"])
+    lines = [_outlook_phone_kv("夜盤", f"<b>{close:,.0f}</b>")]
+    expiry = _fmt_tx_expiry(night.get("contract_month"))
+    if expiry:
+        lines.append(_outlook_phone_kv("到期", html_escape(expiry.replace("到期 ", ""))))
+    day_close = float((day or {}).get("close") or 0)
+    if day_close > 0:
+        diff = (close - day_close) / day_close * 100.0
+        mag = abs(diff)
+        lines.append(
+            _outlook_phone_kv("比日盤", f"{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+        )
+    if spot_close > 0:
+        diff = (close - spot_close) / spot_close * 100.0
+        mag = abs(diff)
+        lines.append(
+            _outlook_phone_kv("比現貨", f"{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+        )
+    op = float(night.get("open") or 0)
+    hi = float(night.get("high") or 0)
+    lo = float(night.get("low") or 0)
+    if op > 0:
+        lines.append(_outlook_phone_kv("開", f"{op:,.0f}"))
+    if hi > 0:
+        lines.append(_outlook_phone_kv("高", f"{hi:,.0f}"))
+    if lo > 0:
+        lines.append(_outlook_phone_kv("低", f"{lo:,.0f}"))
+    vol = int(night.get("volume") or 0)
+    if vol > 0:
+        lines.append(_outlook_phone_kv("成交", f"{vol:,}口"))
+    oi = int(night.get("open_interest") or 0)
+    if oi > 0:
+        lines.append(_outlook_phone_kv("未平倉", f"{oi:,}口"))
+    n_date = str(night.get("date") or "")
+    d_date = str((day or {}).get("date") or "")
+    if n_date and n_date != d_date:
+        lines.append(_outlook_phone_kv("夜盤日", n_date))
+    return lines
+
+
+def _outlook_lots(n) -> str:
+    try:
+        v = int(n)
+    except (TypeError, ValueError):
+        return ""
+    if v == 0:
+        return "0張"
+    return f"{v:+,}張"
+
+
+def _outlook_flow_phone_lines(
+    db_path: str,
+    as_of: str,
+    *,
+    flow_maps: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """盤後三大法人產業加總：剛輪入／續進／輪出。沒官方列就整段省略。"""
+    from tg_layout import html_escape
+
+    maps = flow_maps
+    if maps is None:
+        try:
+            from money_flow import sector_flow_maps
+
+            if db_path and db_path != ":memory:" and as_of:
+                maps = sector_flow_maps(db_path, str(as_of).replace("-", ""))
+        except Exception:
+            maps = None
+    maps = maps or {}
+    just = maps.get("just_rotated") or {}
+    inflow = list(maps.get("inflow_rows") or [])[:3]
+    outflow = list(maps.get("outflow_rows") or [])[:3]
+    if not inflow and not outflow:
+        return []
+    try:
+        from money_flow import _sector_short_name
+    except Exception:
+        def _sector_short_name(industry: str) -> str:
+            s = str(industry or "").strip()
+            return s[:-1] if s.endswith("業") and len(s) > 2 else (s or "產業")
+
+    lines = [_outlook_phone_kv("資金", "盤後法人張數")]
+    for r in inflow:
+        ind = str(r.get("industry") or "")
+        tag = "剛到" if ind in just else "續進"
+        short = html_escape(_sector_short_name(ind))
+        lots = html_escape(_outlook_lots(r.get("three_net")))
+        lines.append(_outlook_phone_kv(tag, f"{short} {lots}".strip()))
+        buy = str(r.get("top_buy_name") or "").strip()
+        buy_n = int(r.get("top_buy_three") or 0)
+        if tag == "剛到" and buy and buy_n > 0:
+            lines.append(
+                _outlook_phone_kv(
+                    "領買",
+                    f"{html_escape(buy)} {html_escape(_outlook_lots(buy_n))}".strip(),
+                )
+            )
+        try:
+            avg = float(r.get("avg_pct"))
+        except (TypeError, ValueError):
+            avg = 0.0
+        if tag == "剛到" and abs(avg) >= 0.5:
+            lines.append(_outlook_phone_kv("族均", html_escape(_fmt_signed_pct(avg))))
+    for i, r in enumerate(outflow):
+        ind = str(r.get("industry") or "")
+        short = html_escape(_sector_short_name(ind))
+        lots = html_escape(_outlook_lots(r.get("three_net")))
+        lines.append(_outlook_phone_kv("輪出", f"{short} {lots}".strip()))
+        sell = str(r.get("top_sell_name") or "").strip()
+        sell_n = int(r.get("top_sell_three") or 0)
+        if i == 0 and sell and sell_n < 0:
+            lines.append(
+                _outlook_phone_kv(
+                    "領賣",
+                    f"{html_escape(sell)} {html_escape(_outlook_lots(sell_n))}".strip(),
+                )
+            )
+    return lines
+
+
 def format_screen_market_outlook_html(
     db_path: str,
     as_of: Optional[str] = None,
@@ -3036,9 +3174,10 @@ def format_screen_market_outlook_html(
     snap: Optional[Dict[str, Any]] = None,
     us_snap: Optional[Dict[str, Any]] = None,
     rotated_names: Optional[List[str]] = None,
+    flow_maps: Optional[Dict[str, Any]] = None,
 ) -> str:
     """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
-    from tg_layout import headline_lines, html_escape
+    from tg_layout import headline_lines, html_escape, wrap_cjk_lines
     from trading_calendar import format_trading_date_zh
 
     if snap is None:
@@ -3073,51 +3212,63 @@ def format_screen_market_outlook_html(
         f"昨收　{html_escape(format_trading_date_zh(ref))}" if ref else "昨收",
         "＝＝大盤狀況＝＝",
     )
-    body: List[str] = [action]
+    body: List[str] = list(wrap_cjk_lines(action, 18, unit="chars"))
     if snap.get("ok"):
         close = snap.get("close")
-        chg1 = snap.get("chg1_pct")
-        tw_bits = []
         if close:
-            tw_bits.append(f"加權昨收 <b>{float(close):,.2f}</b>")
+            body.append(_outlook_phone_kv("加權", f"<b>{float(close):,.2f}</b>"))
+        chg1 = snap.get("chg1_pct")
         if chg1 is not None:
-            tw_bits.append(html_escape(_fmt_signed_pct(chg1)))
-        if vs20 is not None:
+            ma_bit = ""
+            if vs20 is not None:
+                if float(vs20) >= 1.0:
+                    ma_bit = "　月線上"
+                elif float(vs20) <= -1.0:
+                    ma_bit = "　月線下"
+                else:
+                    ma_bit = "　貼月線"
+            body.append(_outlook_phone_kv("漲跌", html_escape(_fmt_signed_pct(chg1)) + ma_bit))
+        elif vs20 is not None:
             if float(vs20) >= 1.0:
-                tw_bits.append("月線上")
+                body.append(_outlook_phone_kv("月線", "上"))
             elif float(vs20) <= -1.0:
-                tw_bits.append("月線下")
+                body.append(_outlook_phone_kv("月線", "下"))
             else:
-                tw_bits.append("貼著月線")
-        if tw_bits:
-            body.append("　".join(tw_bits))
+                body.append(_outlook_phone_kv("月線", "貼著"))
     if us_ok:
-        us_bits = [html_escape(us_label)]
+        body.append(_outlook_phone_kv("美股", html_escape(us_label)))
         if ixic is not None:
-            us_bits.append(f"那斯達克 {float(ixic):+.2f}%")
+            body.append(_outlook_phone_kv("那斯達克", f"{float(ixic):+.2f}%"))
         sox = us.get("sox_pct")
         if sox is not None:
-            us_bits.append(f"費半 {float(sox):+.2f}%")
+            body.append(_outlook_phone_kv("費半", f"{float(sox):+.2f}%"))
         if us.get("vix") is not None:
-            us_bits.append(f"恐慌指數 {_fmt_vix(us)}")
+            body.append(_outlook_phone_kv("恐慌", _fmt_vix(us)))
         side = electronics_night_side(us)
         if side:
-            us_bits.append(f"電子鏈夜盤{html_escape(side)}")
-        body.append("　".join(us_bits))
-    night_line = _format_futures_night_line(
-        snap.get("futures_night") or {},
-        snap.get("futures"),
-        spot_close=float(snap.get("close") or 0),
-    )
-    if night_line:
-        body.append(night_line)
-    names = [n for n in (rotated_names or []) if str(n).strip()]
-    if names:
-        body.append(
-            "資金剛輪到"
-            + "、".join(html_escape(n) for n in names[:3])
-            + "；早報裡對應個股已標上。"
+            body.append(_outlook_phone_kv("電子鏈", f"夜盤{html_escape(side)}"))
+    body.extend(
+        _outlook_night_phone_lines(
+            snap.get("futures_night") or {},
+            snap.get("futures"),
+            spot_close=float(snap.get("close") or 0),
         )
+    )
+    flow_lines = _outlook_flow_phone_lines(db_path, ref, flow_maps=flow_maps)
+    if flow_lines:
+        body.extend(flow_lines)
+    else:
+        names = [n for n in (rotated_names or []) if str(n).strip()]
+        if names:
+            body.extend(
+                wrap_cjk_lines(
+                    "資金剛輪到"
+                    + "、".join(html_escape(n) for n in names[:3])
+                    + "；早報個股已標。",
+                    18,
+                    unit="chars",
+                )
+            )
     return head + "\n" + "\n".join(body)
 
 

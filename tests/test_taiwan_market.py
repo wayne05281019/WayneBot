@@ -944,14 +944,58 @@ def test_format_screen_market_outlook_html_plain_language():
             "vix": 15.2,
         },
         rotated_names=["半導體"],
+        flow_maps={
+            "just_rotated": {"電腦及週邊設備業": 1},
+            "inflow_rows": [
+                {
+                    "industry": "電腦及週邊設備業",
+                    "three_net": 192637,
+                    "top_buy_name": "仁寶",
+                    "top_buy_three": 71016,
+                    "avg_pct": 2.46,
+                },
+                {
+                    "industry": "金融業",
+                    "three_net": 76809,
+                    "top_buy_name": "兆豐金",
+                    "top_buy_three": 15877,
+                    "avg_pct": 0.79,
+                },
+            ],
+            "outflow_rows": [
+                {
+                    "industry": "半導體業",
+                    "three_net": -22197,
+                    "top_sell_name": "力積電",
+                    "top_sell_three": -16943,
+                }
+            ],
+        },
     )
     assert "大盤狀況" in html
     assert "可以照表看起漲" in html
-    assert "加權昨收" in html
+    assert "加權" in html
     assert "那斯達克" in html
-    assert "恐慌指數" in html
-    assert "剛輪到半導體" in html
+    assert "恐慌" in html
+    assert "剛到" in html
+    assert "電腦" in html
+    assert "+192,637張" in html
+    assert "領買" in html
+    assert "仁寶" in html
+    assert "續進" in html
+    assert "金融" in html
+    assert "輪出" in html
+    assert "半導體" in html
+    assert "領賣" in html
+    assert "力積電" in html
+    assert "比日盤" in html
     assert "Regime" not in html
     assert "VIX" not in html
     assert "基差" not in html
     assert "近月" not in html
+    from tg_layout import _disp_w
+    import re
+
+    for ln in html.split("\n"):
+        plain = re.sub(r"<[^>]+>", "", ln)
+        assert _disp_w(plain) <= 40, plain

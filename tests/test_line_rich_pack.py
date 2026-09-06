@@ -75,11 +75,11 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert "半導體業景氣" in page
     assert "color:#c41e3a" in page
     assert "g.png" in page
-    assert page.index("g.png") < page.index("格局：站上月線")
-    assert "奇摩手機版" in page
+    assert "奇摩" in page
     assert "/y/2330" in page
     assert "tw.stock.yahoo.com" not in page
     assert "max-width:390px" in page
+    assert "max-height:168px" in page
     assert 'class="stock-pick"' in page
     assert 'value="2330"' in page
     assert "勾要傳的檔" in page
@@ -89,6 +89,7 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert 'id="pickAll"' in page
     assert 'id="pickNone"' in page
     assert 'id="pickPayload"' in page
+    assert "<details open>" not in page
 
 
 def test_text_font_uses_bundled_noto():
