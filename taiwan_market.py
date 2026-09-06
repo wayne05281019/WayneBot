@@ -2986,6 +2986,141 @@ def _market_read_note(snap: Dict[str, Any]) -> str:
     return "；".join(bits) + "。"
 
 
+def _night_vs_day_pct(snap: Dict[str, Any]) -> Optional[float]:
+    night = snap.get("futures_night") or {}
+    day = snap.get("futures") or {}
+    nc = float(night.get("close") or 0)
+    dc = float(day.get("close") or 0)
+    if nc <= 0 or dc <= 0:
+        return None
+    return (nc - dc) / dc * 100.0
+
+
+def _outlook_action_plain(
+    *,
+    us_regime: str,
+    night_vs_day: Optional[float],
+    tw_regime: str,
+    falling_risk: int,
+    vs_ma20: Optional[float],
+    ixic_pct: Optional[float],
+) -> str:
+    """一句話：今天該不該積極。沒數字的條件就跳過，不編故事。"""
+    us = str(us_regime or "unknown")
+    tw = str(tw_regime or "neutral")
+    fr = int(falling_risk or 0)
+    night_weak = night_vs_day is not None and night_vs_day <= -0.25
+    night_firm = night_vs_day is not None and night_vs_day >= 0.15
+    us_down = ixic_pct is not None and float(ixic_pct) <= -0.6
+    us_up = ixic_pct is not None and float(ixic_pct) >= 0.6
+
+    if us == "risk_off" or tw == "bear" or fr >= 60:
+        return "逆風，佈局先等、當沖不要硬沖。"
+    if us_down and night_firm:
+        return "美股弱、夜盤沒跟崩；今天別追高，起漲仍按表。"
+    if us == "caution" or fr >= 35:
+        return "偏空，可以看起漲和黃金買點，周帶量少追。"
+    if us_up and night_firm:
+        return "隔夜偏多，台股容易開高；起漲仍按表，不要追已經噴的。"
+    if vs_ma20 is not None and float(vs_ma20) < -1.0:
+        return "加權還在月線下，可以照表看起漲和黃金買點，少追周帶量。"
+    if night_weak:
+        return "可以照表看起漲和黃金買點；夜盤比日盤便宜，周帶量少追。"
+    return "可以照表看起漲和黃金買點，周帶量仍少追。"
+
+
+def format_screen_market_outlook_html(
+    db_path: str,
+    as_of: Optional[str] = None,
+    *,
+    snap: Optional[Dict[str, Any]] = None,
+    us_snap: Optional[Dict[str, Any]] = None,
+    rotated_names: Optional[List[str]] = None,
+) -> str:
+    """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
+    from tg_layout import headline_lines, html_escape
+    from trading_calendar import format_trading_date_zh
+
+    if snap is None:
+        try:
+            snap = analyze_taiwan_market(db_path, as_of, db_only=True, page_light=True)
+        except Exception:
+            snap = {"ok": False}
+    snap = snap or {}
+    ref = str(snap.get("as_of") or as_of or "")
+    us = us_snap if isinstance(us_snap, dict) and us_snap else _latest_us_overnight(db_path, ref)
+    us_ok = bool(us.get("ok") or us.get("vix") is not None)
+    if not snap.get("ok") and not us_ok:
+        return ""
+
+    from us_overnight import REGIME_LABEL, _fmt_vix, electronics_night_side
+
+    us_regime = str(us.get("regime") or "unknown")
+    us_label = REGIME_LABEL.get(us_regime, "美股收盤")
+    ixic = us.get("ixic_pct")
+    night_vs = _night_vs_day_pct(snap) if snap.get("ok") else None
+    vs20 = snap.get("vs_ma20_pct") if snap.get("ok") else None
+    action = _outlook_action_plain(
+        us_regime=us_regime,
+        night_vs_day=night_vs,
+        tw_regime=str(snap.get("regime") or "neutral"),
+        falling_risk=int(snap.get("falling_risk") or 0),
+        vs_ma20=float(vs20) if vs20 is not None else None,
+        ixic_pct=float(ixic) if ixic is not None else None,
+    )
+    head = headline_lines(
+        "<b>WayneBot 海選</b>",
+        f"昨收　{html_escape(format_trading_date_zh(ref))}" if ref else "昨收",
+        "＝＝大盤狀況＝＝",
+    )
+    body: List[str] = [action]
+    if snap.get("ok"):
+        close = snap.get("close")
+        chg1 = snap.get("chg1_pct")
+        tw_bits = []
+        if close:
+            tw_bits.append(f"加權昨收 <b>{float(close):,.2f}</b>")
+        if chg1 is not None:
+            tw_bits.append(html_escape(_fmt_signed_pct(chg1)))
+        if vs20 is not None:
+            if float(vs20) >= 1.0:
+                tw_bits.append("月線上")
+            elif float(vs20) <= -1.0:
+                tw_bits.append("月線下")
+            else:
+                tw_bits.append("貼著月線")
+        if tw_bits:
+            body.append("　".join(tw_bits))
+    if us_ok:
+        us_bits = [html_escape(us_label)]
+        if ixic is not None:
+            us_bits.append(f"那斯達克 {float(ixic):+.2f}%")
+        sox = us.get("sox_pct")
+        if sox is not None:
+            us_bits.append(f"費半 {float(sox):+.2f}%")
+        if us.get("vix") is not None:
+            us_bits.append(f"恐慌指數 {_fmt_vix(us)}")
+        side = electronics_night_side(us)
+        if side:
+            us_bits.append(f"電子鏈夜盤{html_escape(side)}")
+        body.append("　".join(us_bits))
+    night_line = _format_futures_night_line(
+        snap.get("futures_night") or {},
+        snap.get("futures"),
+        spot_close=float(snap.get("close") or 0),
+    )
+    if night_line:
+        body.append(night_line)
+    names = [n for n in (rotated_names or []) if str(n).strip()]
+    if names:
+        body.append(
+            "資金剛輪到"
+            + "、".join(html_escape(n) for n in names[:3])
+            + "；早報裡對應個股已標上。"
+        )
+    return head + "\n" + "\n".join(body)
+
+
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):

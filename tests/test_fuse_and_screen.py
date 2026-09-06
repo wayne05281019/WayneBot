@@ -187,6 +187,86 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertNotIn("＝＝隔日沖", blob)
         self.assertNotIn("主選單", blob)
 
+    def test_morning_payload_keeps_four_layout_buckets_only(self):
+        from screening_engine import MORNING_PUSH_SPECS, format_line_share_packs, format_screening_payload
+
+        self.assertEqual(
+            [k for k, *_ in MORNING_PUSH_SPECS],
+            ["leave_zero", "golden_buy", "revenue_cross", "select_01"],
+        )
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 8000,
+            "pct_change": 2,
+            "q60r": 2.1,
+            "ma20": 98,
+            "ma60": 95,
+            "foreign_net": 0,
+            "trust_net": 0,
+            "dealer_net": 0,
+        }
+        results = {
+            "leave_zero": [item],
+            "golden_buy": [item],
+            "revenue_cross": [],
+            "select_01": [item],
+            "half_year_high": [item],
+            "select_02": [item],
+            "select_03": [item],
+        }
+        morning = format_screening_payload(results, "20260904", morning=True)
+        keys = [p.get("mark_key") for p in morning]
+        self.assertEqual(keys, ["leave_zero", "golden_buy", "select_01"])
+        blob = "\n".join(p["html"] for p in morning)
+        self.assertNotIn("＝＝半年高", blob)
+        self.assertNotIn("＝＝站上季線", blob)
+        self.assertNotIn("＝＝止跌", blob)
+        full = format_screening_payload(results, "20260904", morning=False)
+        full_keys = [p.get("mark_key") for p in full]
+        self.assertIn("half_year_high", full_keys)
+        self.assertIn("select_02", full_keys)
+        self.assertIn("select_03", full_keys)
+        packs = format_line_share_packs(results, "20260904", morning=True)
+        layout = next(p["text"] for p in packs if p["id"] == "layout")
+        self.assertIn("＝＝起漲＝＝", layout)
+        self.assertIn("＝＝周帶量＝＝", layout)
+        self.assertNotIn("＝＝站上季線＝＝", layout)
+        self.assertNotIn("＝＝止跌＝＝", layout)
+
+    def test_screening_payload_leads_with_market_outlook(self):
+        from screening_engine import format_screening_payload
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 8000,
+            "pct_change": 2,
+            "q60r": 2.1,
+            "ma20": 98,
+            "ma60": 95,
+        }
+        outlook = "<b>WayneBot 海選</b>\n＝＝大盤狀況＝＝\n可以照表看起漲和黃金買點，周帶量仍少追。"
+        morning = format_screening_payload(
+            {
+                "leave_zero": [item],
+                "golden_buy": [item],
+                "revenue_cross": [],
+                "select_01": [item],
+                "half_year_high": [item],
+            },
+            "20260904",
+            morning=True,
+            market_html=outlook,
+        )
+        keys = [p.get("mark_key") for p in morning]
+        self.assertEqual(keys[0], "market")
+        self.assertEqual(keys[1:], ["leave_zero", "golden_buy", "select_01"])
+        self.assertIn("大盤狀況", morning[0]["html"])
+        self.assertNotIn("＝＝半年高", "\n".join(p["html"] for p in morning))
+
     def test_leave_zero_is_first_screening_section(self):
         from screening_engine import format_line_share_text, format_screening_payload
 
@@ -414,6 +494,57 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("半導體", items[0].get("sector_flow_label") or "")
             card = _stock_card_html({**items[0], "ma20": 98, "ma60": 95}, 1)
             self.assertIn("輪動進", card)
+        finally:
+            os.remove(path)
+
+    def test_just_rotated_marks_new_inflow_on_screen_card(self):
+        from money_flow import annotate_items_with_sector_flow, just_rotated_names_in_results
+        from screening_engine import _stock_card_html
+        from wayne_db import ensure_core_schema
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            now = "2026-08-31T00:00:00"
+            for sid, name, ind in (
+                ("2330", "台積電", "半導體業"),
+                ("2454", "聯發科", "半導體業"),
+                ("2002", "中鋼", "鋼鐵工業"),
+                ("2027", "大成鋼", "鋼鐵工業"),
+            ):
+                conn.execute(
+                    "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
+                    (sid, name, "TWSE", "STOCK", ind, now),
+                )
+
+            def q(date, sid, name, fn, tn, dn):
+                conn.execute(
+                    "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (date, sid, name, "TW", 100, 101, 99, 100, 10000, 50000, 1.0, 100, fn, tn, dn),
+                )
+
+            q("20260827", "2330", "台積電", -800, -100, 0)
+            q("20260827", "2454", "聯發科", -200, -50, 0)
+            q("20260827", "2002", "中鋼", 800, 200, 50)
+            q("20260827", "2027", "大成鋼", 400, 80, 10)
+            q("20260828", "2330", "台積電", 8000, 400, 50)
+            q("20260828", "2454", "聯發科", 1200, 300, 20)
+            q("20260828", "2002", "中鋼", -3000, -400, -50)
+            q("20260828", "2027", "大成鋼", -500, -80, -10)
+            conn.commit()
+            conn.close()
+            items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
+            annotate_items_with_sector_flow(path, "20260828", items)
+            self.assertTrue(items[0].get("sector_just_rotated"))
+            self.assertTrue(items[0].get("sector_inflow"))
+            self.assertIn("剛輪到", items[0].get("sector_flow_label") or "")
+            self.assertIn("半導體", items[0].get("sector_flow_label") or "")
+            card = _stock_card_html({**items[0], "ma20": 98, "ma60": 95}, 1)
+            self.assertIn("剛輪到", card)
+            names = just_rotated_names_in_results({"leave_zero": items}, ["leave_zero"])
+            self.assertEqual(names, ["半導體"])
         finally:
             os.remove(path)
 
