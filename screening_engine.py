@@ -579,7 +579,7 @@ def _regime_label(item: Dict[str, Any]) -> str:
     if low20 and c > 0 and c <= low20 * 1.008:
         return "弱勢破底"
     if d20 <= 1.2:
-        return "貼近月低"
+        return "貼近20日低"
     if ma20 and ma60 and c >= ma20 and ma20 >= ma60:
         return "多頭排列"
     if ma20 and ma60 and c <= ma20 and ma20 <= ma60:

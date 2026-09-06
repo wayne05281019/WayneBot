@@ -32,16 +32,16 @@ SYMBOLS = (
     ("spx", "^GSPC", "標普"),
     ("ixic", "^IXIC", "那斯達克"),
     ("sox", "^SOX", "費半"),
-    ("vix", "^VIX", "VIX"),
-    ("tsm", "TSM", "台積ADR"),
+    ("vix", "^VIX", "恐慌指數"),
+    ("tsm", "TSM", "台積美股"),
     ("nvda", "NVDA", "輝達"),
 )
 
 # 現金收盤後才抓：指數盤後續勢用期貨，個股／費半 ETF 用盤後成交。
 FUTURES = (
-    ("es_f", "ES=F", "標普期"),
-    ("nq_f", "NQ=F", "那指期"),
-    ("ym_f", "YM=F", "道瓊期"),
+    ("es_f", "ES=F", "標普期貨"),
+    ("nq_f", "NQ=F", "那斯達克期貨"),
+    ("ym_f", "YM=F", "道瓊期貨"),
 )
 POST_NAMES = (
     ("tsm", "TSM"),
@@ -495,19 +495,19 @@ _CASH_ITEMS = (
 )
 
 _FUTURES_ITEMS = (
-    ("nq_f_pct", "nq_f_chg", "NQ"),
-    ("es_f_pct", "es_f_chg", "ES"),
-    ("ym_f_pct", "ym_f_chg", "YM"),
+    ("nq_f_pct", "nq_f_chg", "那斯達克期貨"),
+    ("es_f_pct", "es_f_chg", "標普期貨"),
+    ("ym_f_pct", "ym_f_chg", "道瓊期貨"),
 )
 
 _ADR_ITEMS = (
-    ("tsm_pct", "tsm_chg", "台積ADR"),
+    ("tsm_pct", "tsm_chg", "台積美股"),
     ("nvda_pct", "nvda_chg", "輝達"),
 )
 
 _ADR_CASH_ITEMS = (
-    ("tsm_pct", "tsm_chg", "台積ADR收盤"),
-    ("tsm_post_pct", "tsm_post_chg", "台積盤後"),
+    ("tsm_pct", "tsm_chg", "台積美股收盤"),
+    ("tsm_post_pct", "tsm_post_chg", "台積美股盤後"),
     ("nvda_pct", "nvda_chg", "輝達收盤"),
     ("nvda_post_pct", "nvda_post_chg", "輝達盤後"),
 )
@@ -518,14 +518,14 @@ TW_REF_SYMBOLS = (
 )
 
 _DROP_FUTURES_ITEMS = (
-    ("nq_f_pct", "nq_f_chg", "那指期"),
-    ("es_f_pct", "es_f_chg", "標普期"),
-    ("ym_f_pct", "ym_f_chg", "道瓊期"),
+    ("nq_f_pct", "nq_f_chg", "那斯達克期貨"),
+    ("es_f_pct", "es_f_chg", "標普期貨"),
+    ("ym_f_pct", "ym_f_chg", "道瓊期貨"),
 )
 
 _DROP_TW_ITEMS = (
     ("twii_pct", "twii_chg", "加權昨收"),
-    ("tsm_post_pct", "tsm_post_chg", "台積ADR盤後"),
+    ("tsm_post_pct", "tsm_post_chg", "台積美股盤後"),
     ("nvda_post_pct", "nvda_post_chg", "輝達盤後"),
 )
 
@@ -649,7 +649,7 @@ def _post_adr_block(snap: Dict[str, Any], *, with_cash: bool = False) -> str:
 
     items = _ADR_CASH_ITEMS if with_cash else _ADR_ITEMS
     body = _quote_row_lines(snap, items)
-    return f"{section_eq('ADR')}\n{body}" if body else section_eq("ADR")
+    return f"{section_eq('台積美股')}\n{body}" if body else section_eq("台積美股")
 
 
 def _us_futures_drop_block(snap: Dict[str, Any]) -> str:
@@ -675,7 +675,7 @@ def _vix_row(snap: Dict[str, Any]) -> str:
     vix_s = _fmt_vix(snap)
     if mood:
         vix_s = f"{vix_s}　{mood}"
-    return f"{pad_label('VIX', _LABEL_W)}{html_escape(vix_s)}"
+    return f"{pad_label('恐慌指數', _LABEL_W)}{html_escape(vix_s)}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:
@@ -756,12 +756,12 @@ def format_night_plain(snap: Dict[str, Any]) -> str:
         phase_s,
         f"【{_SECTION_INDEX_CLOSE}】",
         _plain_quote_rows(snap, _CASH_ITEMS),
-        f"VIX　{_fmt_vix(snap)}",
+        f"恐慌指數　{_fmt_vix(snap)}",
     ]
     if phase in ("post", "overnight"):
-        lines.extend(["【盤後期貨】", _post_futures_line(snap), "【ADR】", _post_adr_line(snap, with_cash=True)])
+        lines.extend(["【盤後期貨】", _post_futures_line(snap), "【台積美股】", _post_adr_line(snap, with_cash=True)])
     else:
-        lines.extend(["【ADR】", _post_adr_line(snap), "（美股現金收盤，盤中期貨不看）"])
+        lines.extend(["【台積美股】", _post_adr_line(snap), "（美股現金收盤，盤中期貨不看）"])
     side = electronics_night_side(snap)
     if side:
         lines.extend(
@@ -771,15 +771,15 @@ def format_night_plain(snap: Dict[str, Any]) -> str:
                     snap,
                     (
                         ("sox_pct", "sox_chg", "費半"),
-                        ("tsm_pct", "tsm_chg", "台積ADR"),
+                        ("tsm_pct", "tsm_chg", "台積美股"),
                         ("nvda_pct", "nvda_chg", "輝達"),
                     ),
                 ),
-                "（台指期／電子期夜盤報價這次沒接公開源；電子漲跌改看費半＋台積ADR＋輝達）",
+                "（台指期／電子期夜盤報價這次沒接公開源；電子漲跌改看費半＋台積美股＋輝達）",
             ]
         )
     else:
-        lines.append("電子夜盤　沒接到費半／ADR，這次不判斷漲跌")
+        lines.append("電子夜盤　沒接到費半／台積美股，這次不判斷漲跌")
     return "\n".join(lines)
 
 
@@ -791,12 +791,12 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     phase = snap.get("us_phase") or "regular"
     extra = ""
     if phase in ("post", "overnight") and snap.get("nq_f_pct") is not None:
-        extra = f" 盤後NQ{_fmt_move(snap.get('nq_f_pct'), snap.get('nq_f_chg'))}"
+        extra = f" 盤後那斯達克期貨{_fmt_move(snap.get('nq_f_pct'), snap.get('nq_f_chg'))}"
     side = electronics_night_side(snap)
     elec = f" 電子夜盤{side}" if side else ""
     return (
         f"美股收盤 {label} {_cash_indices_line(snap)} "
-        f"VIX {_fmt_vix(snap)}{extra}{elec}"
+        f"恐慌指數 {_fmt_vix(snap)}{extra}{elec}"
     )
 
 
@@ -828,7 +828,7 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None) -> str:
     if snap.get("regime") == "risk_off":
         blocks.append("06:30 海選會把當沖／隔日沖拿掉。佈局先看高低卡，不要因為缺口去追。")
     else:
-        blocks.append("06:30 海選會加嚴：貼月高與電子逆風檔會拿掉。不是叫你現在下單。")
+        blocks.append("06:30 海選會加嚴：靠近20日高與電子逆風檔會拿掉。不是叫你現在下單。")
     return join_sections(*blocks)
 
 

@@ -181,7 +181,7 @@ class SectorThemeTests(unittest.TestCase):
             brief = format_sector_theme_brief(path, "20260902", top, mode="live")
             self.assertIn("盤中最強族", brief)
             self.assertIn("金融", brief)
-            self.assertIn("MIS", brief)
+            self.assertIn("盤中", brief)
             self.assertIn("2884", brief)
             self.assertIn("獲利", brief)
 

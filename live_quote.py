@@ -210,7 +210,7 @@ def format_mis_clock_line(update_time: str) -> str:
     t = str(update_time or "").strip()
     if not t:
         return ""
-    return f"{mis_session_label(t)}　{t}　證交所 MIS"
+    return f"{mis_session_label(t)}　{t}　證交所即時"
 
 
 def live_clock_suffix(is_live: bool, update_time: str = "") -> str:

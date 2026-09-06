@@ -438,7 +438,7 @@ def format_ai_desk_html(
     ]
     if not s["positions"]:
         lines.append(
-            f"<i>尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；貼月高／美股逆風／當沖名單不隔夜。</i>"
+            f"<i>尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；靠近20日高／美股逆風／當沖名單不隔夜。</i>"
         )
     else:
         lines.append("<b>持倉</b>")

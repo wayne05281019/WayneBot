@@ -518,10 +518,10 @@ def format_hot_revenue_html(db_path: str) -> str:
         return ""
     yyyymm = rows[0]["yyyymm"]
     label = f"{yyyymm[:4]}/{yyyymm[4:]}"
-    lines = [f"🔥 <b>【月營收轉強】{label} YoY≥20% 且 MoM≥0</b>"]
+    lines = [f"🔥 <b>【月營收轉強】{label} 年增≥20% 且月增≥0</b>"]
     for r in rows:
         lines.append(
-            f"• <code>{r['stock_id']}</code> {r['stock_name']} YoY {r['yoy_pct']:+.1f}% MoM {r['mom_pct']:+.1f}%"
+            f"• <code>{r['stock_id']}</code> {r['stock_name']} 年增 {r['yoy_pct']:+.1f}% 月增 {r['mom_pct']:+.1f}%"
         )
     return "\n".join(lines)
 

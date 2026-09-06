@@ -792,5 +792,10 @@ def test_market_page_includes_futures_section(tmp_path):
     conn.commit()
     conn.close()
     html = format_taiwan_market_page_html(db, "20260824")
-    assert "基差" in html
+    assert "台指期" in html
+    assert "比現貨" in html
+    assert "未平倉" in html
+    assert "OI " not in html
+    assert "基差" not in html
+    assert "近月" not in html
     assert "結構" in html

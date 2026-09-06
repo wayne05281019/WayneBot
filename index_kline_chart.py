@@ -247,9 +247,9 @@ def render_index_kline_png(
         )
 
     ma5_v, ma20_v, ma60_v = float(last["ma5"]), float(last["ma20"]), float(last["ma60"])
-    ax1.plot(xs, work["ma5"], color=_MA5, linewidth=1.35, label=f"MA5 {ma5_v:,.0f}", zorder=4)
-    ax1.plot(xs, work["ma20"], color=_MA20, linewidth=1.35, label=f"MA20 {ma20_v:,.0f}", zorder=4)
-    ax1.plot(xs, work["ma60"], color=_MA60, linewidth=1.35, label=f"MA60 {ma60_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma5"], color=_MA5, linewidth=1.35, label=f"5日均 {ma5_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma20"], color=_MA20, linewidth=1.35, label=f"月線 {ma20_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma60"], color=_MA60, linewidth=1.35, label=f"季線 {ma60_v:,.0f}", zorder=4)
     ax1.legend(
         loc="upper left",
         ncol=3,
@@ -257,7 +257,7 @@ def render_index_kline_png(
         facecolor=_PANEL,
         edgecolor=_GRID,
         labelcolor=_TEXT,
-        fontsize=8,
+        prop=_fp(8),
         handlelength=1.5,
         columnspacing=0.9,
         borderpad=0.45,

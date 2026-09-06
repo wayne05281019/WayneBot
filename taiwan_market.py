@@ -900,18 +900,26 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
         return None
     basis = snap.get("basis_pct")
     lead = snap.get("futures_lead") or {}
-    parts = [f"近月 <b>{fut['close']:,.0f}</b>"]
+    parts = [f"台指期 <b>{fut['close']:,.0f}</b>"]
     if basis is not None:
-        parts.append(f"基差 {basis:+.2f}%")
-    if int(fut.get("open_interest") or 0) > 0:
-        parts.append(f"OI {int(fut['open_interest']):,}")
+        mag = abs(float(basis))
+        if float(basis) >= 0:
+            parts.append(f"比現貨貴 {mag:.2f}%")
+        else:
+            parts.append(f"比現貨便宜 {mag:.2f}%")
+    oi = int(fut.get("open_interest") or 0)
+    if oi > 0:
+        parts.append(f"未平倉 {oi:,}口")
     line = "　".join(parts)
     f_date = str(snap.get("futures_as_of") or fut.get("date") or "")
     ref = str(snap.get("as_of") or "")
     if f_date and f_date != ref:
         line += f"（{f_date}）"
     if lead.get("sample_n", 0) >= 5:
-        line += f"\n20日跌日 {lead.get('label', '同步')}（期{lead.get('futures_lead_down', 0)}/現{lead.get('spot_lead_down', 0)}）"
+        line += (
+            f"\n近20個下跌日　{lead.get('label', '同步')}"
+            f"（期貨{lead.get('futures_lead_down', 0)}／現貨{lead.get('spot_lead_down', 0)}）"
+        )
     return line
 
 
@@ -1702,7 +1710,7 @@ def regime_plus_screening_note(snap: Dict[str, Any]) -> str:
         "down_exhaust": "空頭衰竭：低檔觀察，黃金買點可略放但仍不賭刀。",
         "repair": "跌後修復：觀察 3 日站穩，不急追。",
     }
-    return f"Regime+ <b>{label}</b>{tail}　{notes.get(rp, '')}"
+    return f"盤勢　<b>{label}</b>{tail}　{notes.get(rp, '')}"
 
 
 def _load_prev_official_breadth(db_path: str, as_of: str) -> Optional[Dict[str, Any]]:
@@ -2677,7 +2685,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     lines = [
         "<b>📊 台灣加權指數研究</b>",
         f"收盤 <b>{snap['close']}</b>",
-        f"MA5 {snap.get('ma5') or snap['ma20']}　MA20 {snap['ma20']}　MA60 {snap['ma60']}",
+        f"5日均 {snap.get('ma5') or snap['ma20']}　月線 {snap['ma20']}　季線 {snap['ma60']}",
         f"日 {_fmt_signed_pct(snap.get('chg1_pct'))}　5日 {snap['chg5_pct']:+.2f}%　20日 {_fmt_signed_pct(snap.get('chg20_pct'))}",
         f"距月線 {_fmt_signed_pct(snap.get('vs_ma20_pct'))}　距年高 {_fmt_signed_pct(snap.get('vs_high52_pct'))}",
         *(
@@ -2692,8 +2700,8 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             else []
         ),
         _TG_SECTION,
-        f"Regime <b>{snap['regime_label']}</b>（{snap['confidence']}%）",
-        f"Regime+ {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
+        f"盤勢 <b>{snap['regime_label']}</b>（把握 {snap['confidence']}%）",
+        f"細分盤勢 {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
         f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
         f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
         market_screening_note(snap),
@@ -2703,7 +2711,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
     if hits:
         bits = [f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）" for b in hits[:3]]
-        lines.append("同 regime 海選復盤：" + "　".join(bits))
+        lines.append("同一盤勢、海選隔日表現：" + "　".join(bits))
     bt_rp = snap.get("backtest_regime_plus") or []
     cur_rp = snap.get("regime_plus")
     hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 3]
@@ -2712,7 +2720,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
             for b in hits_rp[:3]
         ]
-        lines.append("同 Regime+ 海選復盤：" + "　".join(bits_rp))
+        lines.append("同一細分盤勢、海選隔日表現：" + "　".join(bits_rp))
     return "\n".join(lines)
 
 
@@ -2744,7 +2752,7 @@ def format_taiwan_market_page_html(
     chg_pts = (show_px - yest) if show_px and yest else None
     clock = str((live or {}).get("update_time") or "")[:5]
     if live_px > 0:
-        as_of_note = "<i>盤中 MIS 即時；廣度／法人仍依庫內最近完整日</i>"
+        as_of_note = "<i>盤中即時；漲跌家數／法人仍依庫內最近完整日</i>"
         px_line = f"<b>{show_px:,.2f}</b>"
         if chg_pts is not None:
             px_line += f"　{chg_pts:+,.2f}（{show_pct:+.2f}%）"
@@ -2830,7 +2838,7 @@ def format_taiwan_market_page_html(
             if ixic is not None:
                 bits.append(f"那斯達克 {float(ixic):+.2f}%")
             if vix is not None:
-                bits.append(f"VIX {float(vix):.1f}")
+                bits.append(f"恐慌指數 {float(vix):.1f}")
             lines.extend(["", "　".join(bits)])
     except Exception:
         pass
