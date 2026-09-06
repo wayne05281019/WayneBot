@@ -355,7 +355,8 @@ class NavigatorEngine:
         from quote_integrity import db_as_of_trading_date
 
         db_as_of = db_as_of_trading_date(self.db_path)
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA busy_timeout=10000;")
         df = pd.read_sql_query("""
             SELECT date, stock_name, open, high, low, close, volume, turnover_k, pct_change as change_pct
             FROM daily_quotes
@@ -2097,7 +2098,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
 def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFrame:
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
     df = pd.read_sql_query(
         """
         SELECT date, stock_name, open, high, low, close, volume, pct_change

@@ -71,7 +71,7 @@ def _latest_date(conn: sqlite3.Connection, db_path: str = "", now=None) -> str:
         as_of, _ = resolve_flow_as_of(path, now=now)
         if as_of:
             return str(as_of).replace("-", "")
-    row = conn.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes").fetchone()
+    row = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
     return str(row[0] or "").replace("-", "")
 
 
@@ -142,7 +142,7 @@ def _prev_quote_date(conn: sqlite3.Connection, ymd: str) -> str:
     cur = ymd
     for _ in range(12):
         row = conn.execute(
-            "SELECT MAX(replace(date,'-','')) FROM daily_quotes WHERE replace(date,'-','') < ?",
+            "SELECT MAX(date) FROM daily_quotes WHERE date < ?",
             (cur,),
         ).fetchone()
         prev = normalize_ymd(row[0] if row else "")
@@ -193,7 +193,7 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
                AVG(q.pct_change) AS avg_pct
         FROM daily_quotes q
         LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
-        WHERE replace(q.date,'-','')=? {etf}
+        WHERE q.date=? {etf}
         GROUP BY 1
         HAVING COUNT(*) >= 2
         """,
@@ -207,7 +207,7 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
                    SUM(q.foreign_net+q.trust_net+q.dealer_net) AS three_net
             FROM daily_quotes q
             LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
-            WHERE replace(q.date,'-','')=? {etf}
+            WHERE q.date=? {etf}
             GROUP BY 1
             """,
             (prev,),
@@ -219,7 +219,7 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
                (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
         FROM daily_quotes q
         LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
-        WHERE replace(q.date,'-','')=? {etf}
+        WHERE q.date=? {etf}
         """,
         (ymd,),
     ).fetchall()
@@ -289,7 +289,8 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
     ymd 當上限，不是只寫那一天。日 K 已有法人張但產業表漏寫時，一次回補最近 lookback 日。
     """
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
     ensure_sector_flow_table(conn)
     cap = str(ymd).replace("-", "") if ymd else ""
     if not cap:
@@ -298,8 +299,8 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
     if cap:
         rows = conn.execute(
             """
-            SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes
-            WHERE replace(date,'-','') <= ?
+            SELECT DISTINCT date AS d FROM daily_quotes
+            WHERE date <= ?
             ORDER BY d DESC LIMIT ?
             """,
             (cap, int(lookback)),
@@ -308,7 +309,7 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
         rows = []
     if not rows:
         rows = conn.execute(
-            "SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes ORDER BY d DESC LIMIT ?",
+            "SELECT DISTINCT date AS d FROM daily_quotes ORDER BY d DESC LIMIT ?",
             (int(lookback),),
         ).fetchall()
     dates = [str(r[0]) for r in rows]
@@ -528,8 +529,8 @@ def _liquid_stock_meta(conn: sqlite3.Connection, *, limit: int = 120) -> Dict[st
         SELECT q.stock_id, q.stock_name, {ind_expr} AS industry, q.turnover_k
         FROM daily_quotes q
         LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
-        WHERE replace(q.date,'-','') = (
-            SELECT MAX(replace(date,'-','')) FROM daily_quotes
+        WHERE q.date = (
+            SELECT MAX(date) FROM daily_quotes
         )
         {etf}
           AND COALESCE(q.turnover_k, 0) >= 30000
@@ -677,7 +678,7 @@ def _gain_pct_cal60(conn: sqlite3.Connection, stock_id: str, ymd: str) -> float:
     rows = conn.execute(
         """
         SELECT date, close FROM daily_quotes
-        WHERE stock_id=? AND replace(date,'-','') <= ?
+        WHERE stock_id=? AND date <= ?
         ORDER BY date DESC
         LIMIT 90
         """,
@@ -715,7 +716,7 @@ def sector_representative_stocks(
                (q.foreign_net+q.trust_net+q.dealer_net) AS three_net
         FROM daily_quotes q
         LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
-        WHERE replace(q.date,'-','')=? AND {ind_expr}=? {etf}
+        WHERE q.date=? AND {ind_expr}=? {etf}
         """,
         (ymd, str(industry)),
     ).fetchall()
@@ -863,7 +864,8 @@ def format_sector_rotation_html(
     from tg_layout import kv_compact, section, join_dashed, title_line
 
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
     resolved, resolved_lag = resolve_flow_as_of(path, now=now)
     ymd_in = None
     if yyyymmdd:
@@ -1000,7 +1002,8 @@ def format_flow_html(
     """盤後資金輪動＋當日三大法人排行；不含持股／觀察（各走自己的選單）。"""
     del user_id
     path = db_path or get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
     lag = None
     if yyyymmdd:
         ymd = str(yyyymmdd).replace("-", "")
@@ -1014,7 +1017,7 @@ def format_flow_html(
     from tg_layout import kv_compact, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
     from trading_calendar import format_trading_date_zh
 
-    health = audit_import(path, ymd)
+    health = audit_import(path, ymd, history=False)
     cover = f"上市 {health['tw']}　上櫃 {health['two']}"
     if health.get("problems"):
         cover += "　⚠️ " + "；".join(health["problems"])

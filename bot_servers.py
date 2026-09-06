@@ -3547,7 +3547,7 @@ class WayneTelegramBot:
                     card.pop("_ohlc", None)
                 return card
 
-            card = await asyncio.wait_for(asyncio.to_thread(_build_card), timeout=20)
+            card = await asyncio.wait_for(asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT)
             if card.get("error"):
                 await message.reply_html(
                     f"⚠️ {html_escape(card.get('error'))}",
@@ -3562,7 +3562,7 @@ class WayneTelegramBot:
                     card,
                     self._scratch_chart_path(self.charts_dir, code, "dcard", uid),
                 ),
-                timeout=25,
+                timeout=_LOOKUP_PNG_TIMEOUT,
             )
             sent = False
             if card_path and os.path.exists(card_path):
@@ -4010,7 +4010,11 @@ class WayneTelegramBot:
                             )
                         except Exception:
                             pass
+
+            try:
                 gc.collect()
+            except Exception:
+                pass
 
             album_ok = False
             if len(ready_items) >= 2:

@@ -178,12 +178,12 @@ def list_coverage_issues(
     cur = conn.cursor()
     rows = cur.execute(
         """
-        SELECT replace(date,'-','') AS d,
+        SELECT date AS d,
                COUNT(*) AS n,
                SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
                SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
         FROM daily_quotes
-        GROUP BY replace(date,'-','')
+        GROUP BY date
         ORDER BY d
         """
     ).fetchall()
@@ -203,26 +203,28 @@ def list_coverage_issues(
     return out
 
 
-def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
-    conn = sqlite3.connect(db_path)
+def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) -> Dict[str, Any]:
+    """盤後匯入健康。history=False 略過全日覆蓋掃描，給資金頁封面用。"""
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout=10000;")
     cur = conn.cursor()
     if not yyyymmdd:
-        row = cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes").fetchone()
+        row = cur.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
         yyyymmdd = str(row[0] or "").replace("-", "")
     else:
         yyyymmdd = str(yyyymmdd).replace("-", "")
     tw = cur.execute(
-        "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=? AND market IN ('TW','TSE')",
+        "SELECT COUNT(*) FROM daily_quotes WHERE date=? AND market IN ('TW','TSE')",
         (yyyymmdd,),
     ).fetchone()[0]
     two = cur.execute(
-        "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=? AND market IN ('TWO','OTC','ROCO')",
+        "SELECT COUNT(*) FROM daily_quotes WHERE date=? AND market IN ('TWO','OTC','ROCO')",
         (yyyymmdd,),
     ).fetchone()[0]
-    total = cur.execute("SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?", (yyyymmdd,)).fetchone()[0]
+    total = cur.execute("SELECT COUNT(*) FROM daily_quotes WHERE date=?", (yyyymmdd,)).fetchone()[0]
     chip_n = cur.execute(
         """SELECT COUNT(*) FROM daily_quotes
-           WHERE replace(date,'-','')=? AND (ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net))>0""",
+           WHERE date=? AND (ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net))>0""",
         (yyyymmdd,),
     ).fetchone()[0]
     try:
@@ -252,7 +254,6 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
         problems.append(monthly_note["problem"])
     if int(x_n[0] or 0) < 50:
         problems.append("待補除權息")
-    hist = list_coverage_issues(db_path)
     today_ok = increment_health_ok(
         {
             "date": yyyymmdd,
@@ -262,6 +263,7 @@ def audit_import(db_path: str, yyyymmdd: str = None) -> Dict[str, Any]:
             "chips_nonzero": int(chip_n or 0),
         }
     ) and not problems
+    hist = list_coverage_issues(db_path) if history else []
     return {
         "date": yyyymmdd,
         "tw": int(tw or 0),
