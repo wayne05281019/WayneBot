@@ -315,11 +315,11 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     month = str(snap.get("month") or "")
     mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
     if snap["my_yoy"] is not None:
-        yoy_line = f"這檔 YoY {html_pct(snap['my_yoy'])}"
+        yoy_line = f"這檔年增 {html_pct(snap['my_yoy'])}"
         if snap["my_mom"] is not None:
-            yoy_line += f"　MoM {html_pct(snap['my_mom'])}"
+            yoy_line += f"　月增 {html_pct(snap['my_mom'])}"
         if snap["yoy_med"] is not None:
-            yoy_line += f"　同業中位 YoY {html_pct(snap['yoy_med'])}（{snap['yoy_n']} 家有月報）"
+            yoy_line += f"　同業中位年增 {html_pct(snap['yoy_med'])}（{snap['yoy_n']} 家有月報）"
         story = _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")
     else:
         yoy_line = "這檔還沒有月營收列"
@@ -388,7 +388,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
                 "<b>同業月營收對照</b>",
                 f"較強　{_peer_line(snap['stronger'])}",
                 f"較弱　{_peer_line(snap['weaker'])}",
-                "YoY 特別大常常是去年基期低，只當對照，不當成一定噴。",
+                "年增特別大常常是去年基期低，只當對照，不當成一定噴。",
             )
         )
 
@@ -397,7 +397,7 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
             "<b>怎麼用</b>",
             "這頁幫你用官方數字看懂這族，不是內幕、也不能替代高低卡。",
             "少賠：靠近 20 日收盤高少追；佈局才對照這頁＋資金輪動。",
-            "線型看起來要噴，也先看決策卡有沒有貼月高。產業再好，追高一樣會大賠。",
+            "線型看起來要噴，也先看決策卡有沒有靠近20日高。產業再好，追高一樣會大賠。",
         )
     )
     return join_sections(*blocks)

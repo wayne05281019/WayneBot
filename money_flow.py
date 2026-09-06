@@ -728,7 +728,7 @@ def format_sector_theme_brief(
         avg = float(top_row.get("avg_pct") or 0)
         lines = [
             f"<b>盤中最強族｜{headline}</b>",
-            f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（MIS {n} 檔）</i>",
+            f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（盤中 {n} 檔）</i>",
         ]
         for i, r in enumerate(reps, start=1):
             title = _yahoo(r["stock_id"], r["stock_name"], db_path)

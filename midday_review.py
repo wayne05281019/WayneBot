@@ -132,7 +132,7 @@ def classify_row(row: Dict[str, Any], live: Dict[str, Any]) -> str:
 def format_midday_line(as_of: str, groups: Dict[str, List[str]]) -> str:
     lines = [
         f"WayneBot 尾盤可切 12:45（對照今早 06:30 海選 {as_of}）",
-        "轉貼哥哥 LINE：整則複製。【建議切入】＝今早有、現價還沒貼月高。不是新的突破海選。",
+        "轉貼哥哥 LINE：整則複製。【建議切入】＝今早有、現價還沒靠近20日高。不是新的突破海選。",
         "",
         "【建議切入】" + ("" if groups["ok"] else " 無"),
     ]

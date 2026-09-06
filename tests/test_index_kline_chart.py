@@ -35,8 +35,9 @@ class IndexKlineChartTests(unittest.TestCase):
             self.assertGreater(os.path.getsize(path), 5000)
             with Image.open(path) as img:
                 w, h = img.size
-                self.assertGreaterEqual(w, 1100)
-                self.assertGreaterEqual(h, 1500)
+                self.assertGreater(w, h)
+                self.assertGreaterEqual(w, 2400)
+                self.assertGreaterEqual(h, 1400)
                 r, g, b = img.convert("RGB").getpixel((5, 5))
             self.assertGreater(r, 200)
             self.assertGreater(g, 200)
@@ -48,6 +49,15 @@ class IndexKlineChartTests(unittest.TestCase):
         src = inspect.getsource(render_index_kline_png)
         self.assertIn("candle_up_taiwan", src)
         self.assertNotIn("cl >= op", src)
+        self.assertIn("12.8", src)
+        self.assertIn("NAV_CHART_DPI", src)
+        self.assertIn("7.55", src)
+        self.assertIn("vol_ma", src)
+        import index_kline_chart as ik
+
+        mod = inspect.getsource(ik)
+        self.assertNotIn("def _kd_series", mod)
+        self.assertNotIn("matplotlib.dates", mod)
 
     @patch("index_kline_chart._SESSION.get")
     def test_fetch_parses_yahoo(self, mock_get):

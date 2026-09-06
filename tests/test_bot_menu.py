@@ -90,6 +90,35 @@ def test_help_menu_topic_mentions_market_not_reserved():
     assert "預留" not in menu
 
 
+def test_help_and_menu_copy_uses_plain_chinese():
+    """用戶看得到的說明／選單文案不要留 MIS、VIX、OI、基差、近月、YoY 等行話。"""
+    from bot_servers import HELP_TOPICS
+
+    blob = "\n".join(HELP_TOPICS.values())
+    for junk in (
+        "MIS",
+        "VIX",
+        "Regime+",
+        "Regime ",
+        "YoY",
+        "MoM",
+        "那指期",
+        "台積ADR",
+        "基差",
+        "近月",
+        "OI ",
+        "sqlite",
+        "TWSE",
+        "貼月高",
+        "貼近月低",
+    ):
+        assert junk not in blob, junk
+    bot_src = open("bot_servers.py", encoding="utf-8").read()
+    assert 'subtitle="盤中 MIS' not in bot_src
+    assert "恐慌指數" in blob
+    assert "即時現價" in blob or "證交所即時價" in blob
+
+
 def test_help_nav_does_not_duplicate_reply_menu_labels():
     from bot_servers import WayneTelegramBot
 

@@ -43,7 +43,11 @@ class UsAlertFormatTests(unittest.TestCase):
         self.assertIn("-0.80%（-142.15點）", html)
         self.assertIn("16.30（+4.50%）", html)
         self.assertIn("== 美股盤後期貨 ==", html)
-        self.assertIn("那指期", html)
+        self.assertIn("那斯達克期貨", html)
+        self.assertIn("恐慌指數", html)
+        self.assertNotIn("VIX", html)
+        self.assertNotIn("那指期", html)
+        self.assertNotIn("台積ADR", html)
         self.assertNotIn("｜", html)
         # 每個指數獨立一行，那斯達克不應被拆成兩行（標籤與數值同列）
         self.assertIn("那斯達克", html)

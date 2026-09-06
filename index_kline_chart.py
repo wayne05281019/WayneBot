@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""加權指數日 K 線圖（淺底、紅漲綠跌、MA + 量 + KD），供大盤專頁推送。"""
+"""加權指數橫式日 K（淺底、紅漲綠跌、月線／季線 + 量），質感對齊個股導航圖。"""
 from __future__ import annotations
 
 import logging
@@ -9,14 +9,13 @@ from typing import Any, Dict, Optional
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import requests
 
-from wayne_navigator import _fp, _mpl_serial
+from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
 from decision_card_signals import candle_up_taiwan
 
 logger = logging.getLogger(__name__)
@@ -25,20 +24,19 @@ _INDEX_YAHOO = "%5ETWII"
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "WayneBot/1.0"})
 
-# 淺底看盤：白面板、淡灰網格、台股紅漲綠跌
-_BG = "#f4f5f7"
+# 對齊個股導航圖：白底、右軸、台股紅漲綠跌
+_BG = "#ffffff"
 _PANEL = "#ffffff"
-_GRID = "#d9dde3"
+_GRID = "#bdbdbd"
 _TEXT = "#1f2933"
-_DIM = "#6b7280"
-_UP = "#d32f2f"
+_UP = "#e53935"
 _DN = "#00897b"
+_VOL_UP = "#ef5350"
+_VOL_DN = "#26a69a"
 _MA5 = "#ef6c00"
-_MA20 = "#1565c0"
+_MA20 = "#f9a825"
 _MA60 = "#7b1fa2"
-_K = "#1565c0"
-_D = "#ef6c00"
-_BARS = 72  # 約 3.5 個月，手機上 K 棒才看得清
+_BARS = 180  # 與個股導航圖同一視窗，橫向才讀得清
 
 
 def fetch_twii_ohlc(days: int = 120) -> pd.DataFrame:
@@ -127,18 +125,12 @@ def load_index_daily_ohlc(db_path: str | None = None, days: int = 120) -> pd.Dat
     return df
 
 
-def _kd_series(df: pd.DataFrame, n: int = 9) -> tuple[pd.Series, pd.Series]:
-    lo = df["low"].rolling(n, min_periods=1).min()
-    hi = df["high"].rolling(n, min_periods=1).max()
-    span = (hi - lo).replace(0, np.nan)
-    rsv = ((df["close"] - lo) / span * 100.0).fillna(50.0)
-    k = rsv.ewm(alpha=1 / 3, adjust=False).mean()
-    d = k.ewm(alpha=1 / 3, adjust=False).mean()
-    return k, d
-
-
 def _tw_color(up: bool) -> str:
     return _UP if up else _DN
+
+
+def _vol_color(up: bool) -> str:
+    return _VOL_UP if up else _VOL_DN
 
 
 def _fmt_vol(v: float, _pos=None) -> str:
@@ -151,28 +143,6 @@ def _fmt_vol(v: float, _pos=None) -> str:
     return f"{v:,.0f}張"
 
 
-def _style_axis(ax, *, show_xlabels: bool = False) -> None:
-    ax.set_facecolor(_PANEL)
-    ax.grid(True, color=_GRID, linestyle="-", linewidth=0.7, alpha=1.0)
-    ax.set_axisbelow(True)
-    ax.tick_params(
-        colors=_DIM,
-        labelsize=8,
-        bottom=show_xlabels,
-        labelbottom=show_xlabels,
-        left=False,
-        right=True,
-        pad=3,
-    )
-    ax.yaxis.tick_right()
-    ax.yaxis.set_label_position("right")
-    for side in ("top", "left"):
-        ax.spines[side].set_visible(False)
-    for side in ("bottom", "right"):
-        ax.spines[side].set_color("#c5cad3")
-        ax.spines[side].set_linewidth(0.8)
-
-
 @_mpl_serial
 def render_index_kline_png(
     df: pd.DataFrame,
@@ -181,173 +151,182 @@ def render_index_kline_png(
     title: str = "加權指數",
     live: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """淺底日K：右側價軸、K+MA / 量 / KD；直式適合 Telegram 手機。"""
+    """橫式日K：對齊個股導航圖（白底、右軸、20日高低帶、月線、量能）。"""
     if df is None or df.empty:
         return ""
     from live_quote import sanitize_ohlc_frame
+    from matplotlib import patches
 
     full = sanitize_ohlc_frame(df.copy())
     full["ma5"] = full["close"].rolling(5, min_periods=1).mean()
     full["ma20"] = full["close"].rolling(20, min_periods=1).mean()
     full["ma60"] = full["close"].rolling(60, min_periods=1).mean()
-    full["k9"], full["d9"] = _kd_series(full)
     work = full.tail(_BARS).reset_index(drop=True)
+    work["vol_ma"] = work["volume"].rolling(20, min_periods=1).mean()
+    n = len(work)
+    if n < 2:
+        return ""
 
     last = work.iloc[-1]
-    prev = work.iloc[-2] if len(work) > 1 else last
+    prev = work.iloc[-2]
     live_px = float((live or {}).get("close") or 0)
     close = live_px if live_px > 0 else float(last["close"])
     ref_close = float(prev["close"])
     chg = close - ref_close
     chg_pct = (chg / ref_close * 100.0) if ref_close else 0.0
     up = chg >= 0
-    price_color = _tw_color(up)
+    xs = np.arange(n, dtype=float)
+    hi_s = work["high"].astype(float)
+    lo_s = work["low"].astype(float)
+    h20 = float(hi_s.tail(20).max())
+    l20 = float(lo_s.tail(20).min())
+    h60 = float(hi_s.tail(60).max())
+    l60 = float(lo_s.tail(60).min())
+    span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
+    ymin = float(lo_s.min()) - span * 0.04
+    ymax = float(hi_s.max()) + span * 0.10
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    fig = plt.figure(figsize=(7.6, 10.4), dpi=200, facecolor=_BG)
-    gs = fig.add_gridspec(
-        3,
+    fig, (ax1, ax2) = plt.subplots(
+        2,
         1,
-        height_ratios=[4.6, 1.05, 0.95],
-        hspace=0.06,
-        top=0.88,
-        bottom=0.055,
-        left=0.06,
-        right=0.92,
+        figsize=(12.8, 7.55),
+        dpi=NAV_CHART_DPI,
+        sharex=True,
+        gridspec_kw=dict(height_ratios=(5.15, 1.45), hspace=0.04),
+        facecolor=_BG,
     )
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1], sharex=ax1)
-    ax3 = fig.add_subplot(gs[2], sharex=ax1)
+    ax1.set_facecolor(_PANEL)
+    ax2.set_facecolor(_PANEL)
+    ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.16, zorder=0)
+    ax1.axhspan(l20, h20, color="#fffde7", alpha=0.28, zorder=0)
+    ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
+    ax1.set_ylim(ymin, ymax)
+    ax1.set_xlim(-0.8, n - 0.2)
 
-    xs = mdates.date2num(work["dt"].tolist())
-    n = len(work)
-    gap = (xs[-1] - xs[0]) / max(n - 1, 1) if n > 1 else 1.0
-    bar_w = min(0.72, max(0.42, gap * 0.68))
-    body_min = max((work["high"] - work["low"]).median() * 0.035, close * 0.00012)
-
+    candle_up = []
+    for i in range(n):
+        prev_c = float(work["close"].iloc[i - 1]) if i else None
+        candle_up.append(
+            candle_up_taiwan(float(work["close"].iloc[i]), prev_c, float(work["open"].iloc[i]))
+        )
     for i in range(n):
         op, cl = float(work["open"].iloc[i]), float(work["close"].iloc[i])
         hi, lo = float(work["high"].iloc[i]), float(work["low"].iloc[i])
-        prev_c = float(work["close"].iloc[i - 1]) if i else None
-        c = _tw_color(candle_up_taiwan(cl, prev_c, op))
         x = xs[i]
-        ax1.plot([x, x], [lo, hi], color=c, linewidth=1.35, solid_capstyle="butt", zorder=2)
-        body = max(abs(cl - op), body_min)
+        c = _tw_color(candle_up[i])
+        ax1.plot([x, x], [lo, hi], color=c, linewidth=1.05, zorder=3, solid_capstyle="round")
+        body = max(abs(cl - op), span * 0.0018)
         ax1.add_patch(
-            plt.Rectangle(
-                (x - bar_w / 2, min(op, cl)),
-                bar_w,
+            patches.Rectangle(
+                (x - 0.32, min(op, cl)),
+                0.64,
                 body,
                 facecolor=c,
                 edgecolor=c,
-                linewidth=0.4,
                 zorder=3,
-                antialiased=True,
             )
         )
 
-    ma5_v, ma20_v, ma60_v = float(last["ma5"]), float(last["ma20"]), float(last["ma60"])
-    ax1.plot(xs, work["ma5"], color=_MA5, linewidth=1.35, label=f"MA5 {ma5_v:,.0f}", zorder=4)
-    ax1.plot(xs, work["ma20"], color=_MA20, linewidth=1.35, label=f"MA20 {ma20_v:,.0f}", zorder=4)
-    ax1.plot(xs, work["ma60"], color=_MA60, linewidth=1.35, label=f"MA60 {ma60_v:,.0f}", zorder=4)
+    ax1.plot(xs, work["ma5"], color=_MA5, linewidth=1.15, zorder=4, label=f"5日均 {float(last['ma5']):,.0f}")
+    ax1.plot(xs, work["ma20"], color=_MA20, linewidth=1.85, zorder=4, label=f"月線 {float(last['ma20']):,.0f}")
+    ax1.plot(xs, work["ma60"], color=_MA60, linewidth=1.35, zorder=4, label=f"季線 {float(last['ma60']):,.0f}")
+    ax1.axhline(h60, color="#f48fb1", linewidth=1.35, zorder=2)
+    ax1.axhline(l60, color="#81c784", linewidth=1.35, zorder=2)
+    ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--", zorder=2)
+    ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--", zorder=2)
+    live_note = ""
+    if live_px > 0:
+        t = str((live or {}).get("update_time") or "")
+        live_note = f"  ·盤中 {t[:5]}" if t else "  ·盤中即時"
+    ax1.set_title(
+        f"{title} (日K線) {n}日區間  高低帶＝近20日高／低{live_note}   WayneBot ® 2026",
+        fontproperties=_fp(14, "bold"),
+        pad=38,
+        color=_TEXT,
+    )
+    ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.legend(
         loc="upper left",
         ncol=3,
         frameon=True,
-        facecolor=_PANEL,
-        edgecolor=_GRID,
-        labelcolor=_TEXT,
-        fontsize=8,
-        handlelength=1.5,
+        facecolor="#ffffff",
+        edgecolor="#e0e0e0",
+        prop=_fp(8),
+        handlelength=1.6,
         columnspacing=0.9,
-        borderpad=0.45,
-        framealpha=0.95,
-    )
-    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
-    _style_axis(ax1)
-
-    vol_colors = [
-        _tw_color(
-            candle_up_taiwan(
-                float(work["close"].iloc[i]),
-                float(work["close"].iloc[i - 1]) if i else None,
-                float(work["open"].iloc[i]),
-            )
-        )
-        for i in range(n)
-    ]
-    ax2.bar(xs, work["volume"], width=bar_w, color=vol_colors, alpha=0.82, linewidth=0, zorder=3)
-    ax2.set_ylabel("成交量", fontproperties=_fp(8), color=_DIM)
-    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol))
-    _style_axis(ax2)
-    for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(8))
-
-    k9_v, d9_v = float(last["k9"]), float(last["d9"])
-    ax3.axhspan(80, 100, color=_UP, alpha=0.05, zorder=0)
-    ax3.axhspan(0, 20, color=_DN, alpha=0.05, zorder=0)
-    ax3.plot(xs, work["k9"], color=_K, linewidth=1.35, label=f"K {k9_v:.1f}", zorder=3)
-    ax3.plot(xs, work["d9"], color=_D, linewidth=1.35, label=f"D {d9_v:.1f}", zorder=3)
-    ax3.axhline(80, color=_UP, linewidth=0.6, linestyle="--", alpha=0.45)
-    ax3.axhline(50, color=_GRID, linewidth=0.6, linestyle="-")
-    ax3.axhline(20, color=_DN, linewidth=0.6, linestyle="--", alpha=0.45)
-    ax3.set_ylim(0, 100)
-    ax3.legend(
-        loc="upper left",
-        ncol=2,
-        frameon=True,
-        facecolor=_PANEL,
-        edgecolor=_GRID,
-        labelcolor=_TEXT,
-        fontsize=8,
-        handlelength=1.5,
         borderpad=0.4,
         framealpha=0.95,
     )
-    ax3.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
-    ax3.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=8))
-    _style_axis(ax3, show_xlabels=True)
-
-    fig.text(0.06, 0.965, title, fontproperties=_fp(13, "bold"), color=_TEXT, ha="left", va="top")
-    fig.text(
-        0.06,
-        0.932,
-        f"{close:,.2f}",
-        fontproperties=_fp(20, "bold"),
-        color=price_color,
-        ha="left",
-        va="top",
-    )
+    ax1.yaxis.tick_right()
+    ax1.yaxis.set_label_position("right")
+    ax1.tick_params(labelsize=9, left=False, right=True, bottom=False, labelbottom=False)
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
+    for lab in ax1.get_yticklabels():
+        lab.set_fontproperties(_fp(9))
     sign = "▲" if up else "▼"
-    fig.text(
-        0.42,
-        0.936,
-        f"{sign} {chg:+,.2f}  ({chg_pct:+.2f}%)",
-        fontproperties=_fp(11, "bold"),
-        color=price_color,
+    ax1.text(
+        0.004,
+        0.985,
+        f"Op:{float(last['open']):,.2f}  Hi:{float(last['high']):,.2f}  "
+        f"Lo:{float(last['low']):,.2f}  Cl:{close:,.2f}  {sign}{chg:+,.2f}（{chg_pct:+.2f}%）"
+        f"    月線: {float(last['ma20']):,.2f}",
+        transform=ax1.transAxes,
         ha="left",
         va="top",
+        fontproperties=_fp(10, "bold"),
+        color="#1b5e20",
+        zorder=9,
+        bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
     )
+
+    vol_colors = [_vol_color(candle_up[i]) for i in range(n)]
+    ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
+    ax2.plot(xs, work["vol_ma"], color="#90a4ae", linewidth=1.05, zorder=4)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol))
+    ax2.tick_params(labelsize=9, left=False, right=True)
+    ax2.set_xlim(-0.8, n - 0.2)
+    ax2.text(
+        0.006,
+        0.92,
+        f"量 {_fmt_vol(float(last['volume']))}　20日均 {_fmt_vol(float(last['vol_ma']))}",
+        transform=ax2.transAxes,
+        fontproperties=_fp(10, "bold"),
+        va="top",
+        zorder=4,
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="#eceff1", edgecolor="none"),
+    )
+    ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
+    months, mpos = [], []
+    prev_m = None
+    for i, dt in enumerate(work["dt"]):
+        key = (int(dt.year), int(dt.month))
+        if key != prev_m:
+            months.append(f"{dt.month}月'{dt.year % 100:02d}")
+            mpos.append(i)
+            prev_m = key
+    ax2.set_xticks(mpos)
+    ax2.set_xticklabels(months, fontproperties=_fp(9))
+    for lab in ax2.get_yticklabels():
+        lab.set_fontproperties(_fp(9))
+    for side in ("top", "left"):
+        ax1.spines[side].set_visible(False)
+        ax2.spines[side].set_visible(False)
+
+    fig.subplots_adjust(left=0.03, right=0.96, top=0.80, bottom=0.11)
     as_of = work["dt"].iloc[-1].strftime("%Y/%m/%d")
     fig.text(
-        0.06,
-        0.900,
-        f"{as_of}　開 {float(last['open']):,.2f}　高 {float(last['high']):,.2f}　"
-        f"低 {float(last['low']):,.2f}　收 {float(last['close']):,.2f}",
-        fontproperties=_fp(8),
-        color=_DIM,
-        ha="left",
-        va="top",
+        0.50,
+        0.015,
+        f"{as_of}　K 線紅漲綠跌＝相對昨收（台股慣例）；粉帶＝近20日高區、綠帶＝近20日低區；黃線＝月線、紫線＝季線；灰線＝20日均量",
+        ha="center",
+        va="bottom",
+        fontproperties=_fp(9, "bold"),
+        color="#263238",
     )
-
-    fig.savefig(
-        save_path,
-        dpi=200,
-        facecolor=_BG,
-        edgecolor="none",
-        bbox_inches="tight",
-        pad_inches=0.12,
-    )
+    fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=_BG)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
@@ -355,7 +334,7 @@ def render_index_kline_png(
 def build_market_kline_chart(
     save_path: str,
     *,
-    days: int = 120,
+    days: int = 180,
     live: Optional[Dict[str, Any]] = None,
     db_path: str | None = None,
 ) -> str:

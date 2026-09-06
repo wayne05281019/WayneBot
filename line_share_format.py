@@ -273,7 +273,8 @@ def format_line_stock_block(
     if title:
         geju_val = f"{geju_left}　{title}" if geju_left else title
     if geju_val:
-        lines.extend(_kv_lines("格局", geju_val, keep_units=True))
+        # 格局＋態度要同一行：貼近20日低　漲多了，今天別追 約 16 字
+        lines.extend(_kv_lines("格局", geju_val, wrap=18, keep_units=True))
     note = str(explain or "").strip()
     if note and title and note.startswith(title):
         note = note[len(title) :].lstrip("。").strip()
