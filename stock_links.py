@@ -58,7 +58,7 @@ def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:
     sid = str(stock_id or "").strip()
     ex = yahoo_exchange(sid, db_path)
     web = f"https://tw.stock.yahoo.com/quote/{sid}.{ex}"
-    # 奇摩股市為 RWD；手機另給技術分析頁，避免桌機/手機點同一則卻對不到線圖
+    # 技術線另開技術分析頁；LINE／股名點進去要用報價頁（第一屏股名＋現價），見 line_yahoo_quote_url。
     mobile = f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/technical-analysis"
     return web, mobile
 
@@ -70,7 +70,8 @@ def yahoo_income_url(stock_id: str, db_path: Optional[str] = None) -> str:
 
 
 def line_yahoo_quote_url(stock_id: str, db_path: Optional[str] = None) -> str:
-    """奇摩個股報價（RWD，手機就是手機版）。不要直接塞進 LINE 正文，會出大圖預覽。"""
+    """奇摩個股報價（RWD）。手機第一屏是這檔股名＋現價。不要改成 /technical-analysis。
+    不要把這個網址直接塞進 LINE 正文，會出大圖預覽；LINE 走 yahoo_hop_url。"""
     sid = str(stock_id or "").strip()
     if not sid:
         return ""

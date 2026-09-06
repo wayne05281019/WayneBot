@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_line_stock_headline_no_yahoo_url():
     from line_share_format import (
         STANCE_LABEL,
@@ -177,6 +180,27 @@ def test_yahoo_hop_html_has_no_preview_card():
 
     page = render_yahoo_hop_html("2330", "台積電")
     assert "og:image" not in page
-    assert "location.replace" not in page
-    assert "tw.stock.yahoo.com/quote/2330" in page
-    assert "開奇摩股市" in page
+    assert "location.replace" in page
+    assert "tw.stock.yahoo.com/quote/2330.TW" in page
+    assert "technical-analysis" not in page
+    assert "http-equiv" not in page
+    assert "正在開啟" in page
+
+
+def test_yahoo_hop_4915_quote_not_chart_tab():
+    from line_hop import render_yahoo_hop_html
+
+    page = render_yahoo_hop_html("4915", "致伸")
+    assert "4915.TW" in page
+    assert "technical-analysis" not in page
+
+
+@pytest.mark.production_db
+def test_yahoo_hop_otc_uses_two_suffix():
+    from line_hop import render_yahoo_hop_html
+    from tests.conftest import require_production_db
+
+    page = render_yahoo_hop_html("6488", db_path=require_production_db())
+    assert "6488.TWO" in page
+    assert "technical-analysis" not in page
+    assert "location.replace" in page

@@ -397,7 +397,7 @@ def render_line_hop_html(title: str, text: str) -> str:
 
 
 def render_yahoo_hop_html(stock_id: str, stock_name: str = "", db_path: str = "") -> str:
-    """點了才開奇摩。不自動轉址、不放 og:image，LINE 才不會出現奇摩大圖。"""
+    """點開立刻進該檔奇摩報價（股名＋現價）。不放 og:image；不用 HTTP 302，避免 LINE 預覽跟著抓奇摩大圖。"""
     from stock_links import line_yahoo_quote_url
 
     sid = str(stock_id or "").strip()
@@ -407,16 +407,17 @@ def render_yahoo_hop_html(stock_id: str, stock_name: str = "", db_path: str = ""
         return "<!DOCTYPE html><html><body>查無代號</body></html>"
     label = html.escape(f"{sid} {name}".strip())
     safe = html.escape(target, quote=True)
+    js_url = json.dumps(target, ensure_ascii=False)
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{label}</title>"
+        f"<script>location.replace({js_url});</script>"
         "</head><body>"
-        f'<p style="font-family:sans-serif;text-align:center;margin-top:2em">{label}</p>'
+        f'<p style="font-family:sans-serif;text-align:center;margin-top:2em">'
+        f"正在開啟 {label} 奇摩報價…</p>"
         '<p style="text-align:center">'
-        f'<a href="{safe}" style="display:inline-block;padding:12px 18px;'
-        'background:#6001d2;color:#fff;text-decoration:none;border-radius:10px">'
-        "開奇摩股市（手機）</a></p>"
+        f'<a href="{safe}">若沒跳轉，點這裡開 {label}</a></p>'
         "</body></html>"
     )
