@@ -4,9 +4,6 @@ from wayne_navigator import _fmt_price, _fmt_price_signed, _trend_note_short, fo
 
 
 def test_fmt_price_no_decimals_for_thousand_plus():
-
-
-def test_fmt_price_no_decimals_for_thousand_plus():
     assert _fmt_price(17460) == "17,460"
     assert _fmt_price(17460.00) == "17,460"
     assert _fmt_price(15115.00) == "15,115"

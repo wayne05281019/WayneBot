@@ -280,6 +280,8 @@ def render_index_kline_png(
     ax2.set_ylabel("成交量", fontproperties=_fp(8), color=_DIM)
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_vol))
     _style_axis(ax2)
+    for lab in ax2.get_yticklabels():
+        lab.set_fontproperties(_fp(8))
 
     k9_v, d9_v = float(last["k9"]), float(last["d9"])
     ax3.axhspan(80, 100, color=_UP, alpha=0.05, zorder=0)
