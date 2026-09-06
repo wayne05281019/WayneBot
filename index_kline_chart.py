@@ -142,12 +142,13 @@ def _tw_color(up: bool) -> str:
 
 
 def _fmt_vol(v: float, _pos=None) -> str:
+    """index_daily.volume 是張。軸標要寫張，避免 927萬被看成元、1.0億被看成金額。"""
     av = abs(float(v or 0))
     if av >= 1e8:
-        return f"{v / 1e8:.1f}億"
+        return f"{v / 1e8:.1f}億張"
     if av >= 1e4:
-        return f"{v / 1e4:.0f}萬"
-    return f"{v:,.0f}"
+        return f"{v / 1e4:.1f}萬張"
+    return f"{v:,.0f}張"
 
 
 def _style_axis(ax, *, show_xlabels: bool = False) -> None:

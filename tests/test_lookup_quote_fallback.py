@@ -2,6 +2,55 @@
 from unittest.mock import patch
 
 
+def test_yahoo_volume_shares_to_lots():
+    """Yahoo 台股量是股。2330 約 1,409 萬股＝14,090 張，不是 1,409 萬張。"""
+    from live_quote import yahoo_volume_to_lots
+
+    assert yahoo_volume_to_lots(14_090_000) == 14_090
+    assert yahoo_volume_to_lots(2_000) == 2
+    assert yahoo_volume_to_lots(600) == 0
+    assert yahoo_volume_to_lots(0) == 0
+
+
+def test_fetch_yahoo_tw_quote_converts_share_volume(monkeypatch):
+    from live_quote import fetch_yahoo_tw_quote
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 2410.0,
+                                "chartPreviousClose": 2390.0,
+                                "regularMarketChangePercent": 0.84,
+                                "regularMarketChange": 20.0,
+                            },
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [2410.0],
+                                        "volume": [14_090_000],
+                                    }
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr("live_quote._SESSION.get", lambda *a, **k: _Resp())
+    monkeypatch.setattr("stock_links.yahoo_exchange", lambda *a, **k: "TW")
+    rt = fetch_yahoo_tw_quote("2330")
+    assert rt is not None
+    assert rt["source"] == "yahoo"
+    assert rt["volume"] == 14_090
+
+
 def test_fetch_lookup_quote_yahoo_when_mis_empty():
     from live_quote import fetch_lookup_quote
 

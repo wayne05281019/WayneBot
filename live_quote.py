@@ -230,6 +230,14 @@ def mis_volume_sheets(raw_v) -> int:
     return int(_num(raw_v, 0))
 
 
+def yahoo_volume_to_lots(raw_v) -> int:
+    """Yahoo 台股成交量是股；畫面／庫內一律張。不到 1 張當 0，不要把 600 股寫成 600 張。"""
+    n = int(_num(raw_v, 0))
+    if n < 0:
+        return 0
+    return n // 1000
+
+
 def sanitize_ohlc(open_, high, low, close) -> Tuple[float, float, float, float]:
     """保證 open／close 落在 [low, high]。MIS 偶發 Op>Hi（如 5590／5515）。"""
     c = float(close or 0)
@@ -399,7 +407,7 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
         if vols:
             for v in reversed(vols):
                 if v is not None and float(v) > 0:
-                    vol = int(float(v))
+                    vol = yahoo_volume_to_lots(v)
                     break
         y = _num(meta.get("chartPreviousClose") or meta.get("previousClose"))
         pct = meta.get("regularMarketChangePercent")

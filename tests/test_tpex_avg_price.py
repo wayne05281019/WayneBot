@@ -170,3 +170,47 @@ def test_tpex_halt_day_uses_bid_not_skipped():
     assert row["open"] == 18.1
     assert row["volume"] == 0
     assert row["pct_change"] == 0.0
+
+
+def test_tpex_odd_lot_only_is_zero_lots_not_shares():
+    """櫃買成交股數 600 股＝0 張，不能把 600 股寫成 600 張。"""
+    from data_fetcher import DataFetcher
+
+    payload = {
+        "date": "20260904",
+        "tables": [
+            {
+                "title": "上櫃股票每日收盤行情(不含定價)",
+                "fields": [
+                    "代號",
+                    "名稱",
+                    "收盤",
+                    "漲跌",
+                    "開盤",
+                    "最高",
+                    "最低",
+                    "成交股數",
+                    "成交金額",
+                    "成交筆數",
+                ],
+                "data": [
+                    [
+                        "5276",
+                        "達輝-KY",
+                        "18.30",
+                        "+0.20",
+                        "18.30",
+                        "18.30",
+                        "18.30",
+                        "600",
+                        "10,980",
+                        "3",
+                    ]
+                ],
+            }
+        ],
+    }
+    rows = DataFetcher()._parse_tpex_payload(payload, "20260904")
+    assert len(rows) == 1
+    assert rows[0]["stock_id"] == "5276"
+    assert rows[0]["volume"] == 0

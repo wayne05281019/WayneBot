@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """決策卡股價顯示：千元以上不帶小數，避免版面擠爆。"""
-from wayne_navigator import _fmt_price, _fmt_price_signed, _trend_note_short
+from wayne_navigator import _fmt_price, _fmt_price_signed, _trend_note_short, format_nav_volume_label
+
+
+def test_fmt_price_no_decimals_for_thousand_plus():
 
 
 def test_fmt_price_no_decimals_for_thousand_plus():
@@ -20,3 +23,11 @@ def test_trend_note_short():
     assert _trend_note_short("價未新低") == "未新低"
     assert _trend_note_short("價溫背離") == "背離"
     assert _trend_note_short("") == ""
+
+
+def test_nav_volume_label_is_lots_not_k():
+    """導航圖量是張。冷門 2 張不能寫成 0.00K。"""
+    assert format_nav_volume_label(2) == "量 2張"
+    assert format_nav_volume_label(14090) == "量 14,090張"
+    assert format_nav_volume_label(0) == "量 0張"
+    assert format_nav_volume_label(None) == "量 0張"

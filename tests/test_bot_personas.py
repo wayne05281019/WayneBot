@@ -139,6 +139,48 @@ def test_power_user_decision_card_reuses_last_code():
     assert bot._send_decision_card_quick.await_args[0][1] == "3105"
 
 
+def test_brother_empty_last_card_prompts_instead_of_making():
+    """哥哥空帳按決策卡：不要產製中、不要拿偉權上一檔，請他打四碼。"""
+    bot = _bot()
+    bot._last_card["9001"] = "5276"
+    bot._send_decision_card_quick = AsyncMock()
+    bot._transient_status = AsyncMock(return_value=MagicMock())
+    bot._delete_message = AsyncMock()
+    msg = _msg(2, 9002)
+
+    async def run():
+        with patch("wayne_db.get_user_watchlist", return_value=[]):
+            await bot.decision_card_btn(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot._send_decision_card_quick.assert_not_awaited()
+    bot._transient_status.assert_not_awaited()
+    html = "".join(str(c[0][0]) for c in msg.reply_html.await_args_list if c[0])
+    assert "沒有上一檔" in html
+    assert "2330" in html
+    assert "產製中" not in html
+    assert bot._pending.get("2:9002") == "dcard"
+    assert bot._last_card["9001"] == "5276"
+
+
+def test_empty_dcard_pending_then_code_sends_that_stock():
+    bot = _bot()
+    bot._send_decision_card_quick = AsyncMock()
+    msg = _msg(2, 9002, "2330")
+    bot._pending["2:9002"] = "dcard"
+
+    async def run():
+        with patch(
+            "bot_servers.lookup_stocks",
+            return_value=[{"stock_id": "2330", "stock_name": "台積電", "close": 2410}],
+        ):
+            await bot._handle_pending_pick(msg, "9002", "dcard", "2330", actor="2:9002")
+
+    asyncio.run(run())
+    bot._send_decision_card_quick.assert_awaited_once()
+    assert bot._send_decision_card_quick.await_args[0][1] == "2330"
+
+
 # --- 不懂股：純空白、全形空白不觸發查股 ---
 
 

@@ -581,7 +581,7 @@ class DataFetcher:
             out.append({
                 "date": target_date, "stock_id": sid, "stock_name": sname,
                 "market": "TWO", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
-                "volume": int(volume_shares // 1000) if volume_shares >= 1000 else int(volume_shares),
+                "volume": int(volume_shares // 1000),
                 "turnover_k": round(turnover_ntd / 1000.0, 2),
                 "pct_change": pct, "avg_price": avg_p,
             })
