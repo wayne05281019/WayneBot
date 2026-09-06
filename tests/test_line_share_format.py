@@ -37,7 +37,7 @@ def test_line_stock_headline_no_yahoo_url():
     assert lines[0] == "1. 台積電 (2330)"
     assert "tw.stock.yahoo.com" not in block
     assert "/y/2330" in block
-    two = ("格局", STANCE_LABEL, "收盤", "量能", "金額", "均線", "法人", "獲利", "產業")
+    two = ("格局", "收盤", "量能", "金額", "均線", "法人", "獲利", "產業")
     for lab in two:
         assert any(ln.startswith(_pad_label(lab)) for ln in lines)
         assert _disp_w(lab) == 4
@@ -54,6 +54,11 @@ def test_line_stock_headline_no_yahoo_url():
     assert "今天先看表，先等" in block
     assert "不是下單指令" in block or "看下面這張" in block
     assert "半導體業近期營收轉強" in block
+    assert not any(ln.startswith(_pad_label(STANCE_LABEL)) for ln in lines)
+    geju = next(ln for ln in lines if ln.startswith(_pad_label("格局")))
+    assert "今天先看表，先等" in geju or any(
+        ln.startswith("　　　") and "今天先看表" in ln for ln in lines
+    )
     val_col = _disp_w(_pad_label("收盤") + "　")
     for ln in lines[1:]:
         if ln.startswith("http"):
@@ -70,7 +75,8 @@ def test_line_stock_headline_no_yahoo_url():
     html = line_plain_to_html(block)
     assert 'class="stance"' in html
     assert "#c41e3a" not in html
-    assert STANCE_LABEL in html
+    assert "今天先看表，先等" in html
+    assert STANCE_LABEL not in html
     assert "＝＝周帶量＝＝" in line_bucket_header("select_01", 3)
     assert "突破5日高" not in line_bucket_header("select_01", 3)
     assert "說明：" not in line_bucket_header("leave_zero", 2)
@@ -91,11 +97,20 @@ def test_line_profit_and_stance_leave_zero_style():
             "quote_date": "20260904",
         },
         1,
+        bucket_key="leave_zero",
     )
     assert "收盤" in block and "量能" in block
     assert "2.4%" in block and "60日低上來" in block
     assert "近一日" in block
+    assert "格局" in block and "起漲" in block
     assert "今天先看表，先等" in block
+    geju = next(ln for ln in block.split("\n") if ln.startswith("格局"))
+    assert "起漲" in geju
+    assert "今天先看表，先等" in geju
+    from line_share_format import line_plain_to_html
+
+    html = line_plain_to_html(block)
+    assert '起漲　<span class="stance">今天先看表，先等</span>' in html
 
 
 def test_line_chip_wrap_keeps_lot_units():
@@ -147,7 +162,7 @@ def test_line_phone_bubble_width():
         if "http" in ln:
             continue
         assert len(ln) <= LINE_PHONE_LINE_MAX, ln
-    assert "態度" in block and "今天先看表，先等" in block
+    assert "今天先看表，先等" in block
     assert "近一日　09-04" in block
     assert "外資+32張" in block
     assert "投信+73張" in block

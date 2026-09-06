@@ -178,18 +178,20 @@ def render_text_panel_png(
     height = pad * 2 + line_h * len(lines)
     img = Image.new("RGB", (width, max(height, 80)), bg)
     draw = ImageDraw.Draw(img)
-    from line_share_format import STANCE_RED_RGB, is_stance_line
+    from line_share_format import STANCE_RED_RGB, colored_line_segments
 
     y = pad
     in_stance = False
     for ln in lines:
-        if is_stance_line(ln) or (in_stance and str(ln).startswith("　　　")):
-            in_stance = True
-            fill = STANCE_RED_RGB
-        else:
-            in_stance = False
-            fill = (24, 24, 24)
-        draw.text((pad, y), ln, fill=fill, font=font)
+        segs, in_stance = colored_line_segments(ln, in_stance_cont=in_stance)
+        x = pad
+        for chunk, red in segs:
+            fill = STANCE_RED_RGB if red else (24, 24, 24)
+            draw.text((x, y), chunk, fill=fill, font=font)
+            try:
+                x += int(draw.textlength(chunk, font=font))
+            except Exception:
+                x += font_size * max(len(chunk), 1)
         y += line_h
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)
@@ -314,7 +316,7 @@ def build_bucket_rich_pack(
         item.setdefault("stock_name", name or item.get("stock_name") or "")
         if pack.get("industry_plain"):
             item["industry_plain"] = pack.get("industry_plain")
-        text_block = format_line_stock_block(item, i, db_path)
+        text_block = format_line_stock_block(item, i, db_path, bucket_key=bucket_key)
         strip_path = os.path.join(stock_dir, "strip.png")
         composed = compose_stock_section(text_block, pack, strip_path, stock_dir)
         if composed:

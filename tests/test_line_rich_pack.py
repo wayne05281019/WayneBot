@@ -92,7 +92,7 @@ def test_render_text_panel_png(tmp_path):
     from PIL import Image
 
     from line_rich_pack import render_text_panel_png
-    from line_share_format import STANCE_LABEL, STANCE_RED_RGB, _pad_label, format_line_stock_block
+    from line_share_format import STANCE_RED_RGB, format_line_stock_block
 
     out = tmp_path / "t.png"
     block = format_line_stock_block(
@@ -110,16 +110,17 @@ def test_render_text_panel_png(tmp_path):
     path = render_text_panel_png(block, str(out))
     assert path == str(out)
     assert out.is_file()
-    assert _pad_label(STANCE_LABEL) in block
     assert "漲多了，今天別追" in block
+    geju = next(ln for ln in block.split("\n") if ln.startswith("格局"))
+    assert "漲多了，今天別追" in geju
     with Image.open(out) as im:
         reds = [
             px
             for y in range(im.height)
-            for x in range(0, min(im.width, 80))
+            for x in range(0, im.width, 2)
             if (px := im.getpixel((x, y)))[0] > 150 and px[1] < 90 and px[2] < 110
         ]
-        assert reds, "態度列應畫成紅字"
+        assert reds, "起漲旁邊的態度應畫成紅字"
         hit = reds[len(reds) // 2]
         assert abs(hit[0] - STANCE_RED_RGB[0]) < 40
 

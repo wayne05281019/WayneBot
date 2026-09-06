@@ -382,7 +382,7 @@ def _rebuild_stock_line_text(db_path: str, stock_id: str) -> str:
                     [
                         f"WayneBot 海選　{_date_slash(as_of)}",
                         f"【{title}】",
-                        format_line_stock_block(item, 1, db_path),
+                        format_line_stock_block(item, 1, db_path, bucket_key=bucket),
                     ]
                 )
         return ""

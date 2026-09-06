@@ -2346,7 +2346,7 @@ class WayneTelegramBot:
         topic: str,
         live_bucket: str | None = None,
     ):
-        from screening_engine import _stock_card_html
+        from screening_engine import LINE_BUCKET_TITLES, _stock_card_html
         from trade_live import apply_trade_live
         from universe import is_screen_equity
 
@@ -2376,7 +2376,8 @@ class WayneTelegramBot:
                 live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
                 live_filtered = bool(rows) and bool(rows[0].get("_live_filtered"))
 
-        cards = [_stock_card_html(r, i + 1) for i, r in enumerate(rows)]
+        label = LINE_BUCKET_TITLES.get(bucket_key, "")
+        cards = [_stock_card_html(r, i + 1, bucket_label=label) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>\n────────────────"
         if cards and live_skipped:
             body = (

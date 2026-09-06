@@ -839,18 +839,27 @@ def _safety_plan_html(item: Dict[str, Any]) -> List[str]:
     return out
 
 
-def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = True) -> str:
+def _stock_card_html(
+    item: Dict[str, Any],
+    idx: int,
+    *,
+    show_line_link: bool = True,
+    bucket_label: str = "",
+) -> str:
     from tg_layout import html_qty_tight
+    from line_share_format import _line_profit_value, _line_stance_pair, _quote_md
 
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
     try:
         from stock_links import html_stock_anchor
 
-        title = html_stock_anchor(sid, sname)
+        stock_title = html_stock_anchor(sid, sname)
     except Exception:
-        title = f"{html_escape(sid)} {html_escape(sname)}"
+        stock_title = f"{html_escape(sid)} {html_escape(sname)}"
     regime = html_escape(_regime_label(item))
+    stance_title, explain = _line_stance_pair(item)
+    geju_left = html_escape(str(bucket_label or "").strip()) or regime
     close_s = _px_str(item.get("close"))
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
@@ -886,7 +895,7 @@ def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = T
     except (TypeError, ValueError):
         to_s = ""
     body = [
-        f"<b>{idx}.</b> {title}"
+        f"<b>{idx}.</b> {stock_title}"
         + (f"　{_line_stock_html_link(sid)}" if sid and show_line_link else ""),
     ]
     live = item.get("live")
@@ -900,28 +909,35 @@ def _stock_card_html(item: Dict[str, Any], idx: int, *, show_line_link: bool = T
         except Exception:
             pass
     body.extend([
-        f"格局　{regime}",
+        f"格局　{geju_left}" + (f"　{_hot(stance_title)}" if stance_title else ""),
+    ])
+    note = str(explain or "").strip()
+    if note and stance_title and note.startswith(stance_title):
+        note = note[len(stance_title) :].lstrip("。").strip()
+    if note:
+        body.append(html_escape(note))
+    body.extend([
         f"收盤　{close_s}　漲跌　{_pct_html(item.get('pct_change'))}",
-        f"量　{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
+        f"量能　{html_qty_tight(vol, signed=False)}　量比　{_q_html(item.get('q60r'))}",
     ])
     if to_s:
-        body.append(f"額　<code>{html_escape(to_s)}</code>")
+        body.append(f"金額　<code>{html_escape(to_s)}</code>")
+    chip_day = "近一日"
+    md = _quote_md(item)
+    if md:
+        chip_day = f"近一日　{md}"
     body.extend([
         f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
-        f"法人　{_chip_html(item)}",
+        f"法人　{html_escape(chip_day)}　{_chip_html(item)}",
     ])
     pat = str(item.get("pattern") or "")
     if pat:
         body.append(f"型態　{html_escape(pat)}")
-    if item.get("golden_buy"):
-        body.append(
-            f"獲利　{html_escape(item.get('profit_pct'))}%　"
-            f"月乖離　{html_escape(item.get('bias_monthly'))}%"
-        )
     if notices:
         body.append("注意　" + "　".join(notices))
-    if item.get("profit") is not None:
-        body.append(f"獲利　{html_escape(item.get('profit'))}%（近60曆日低點上來）")
+    profit_val = _line_profit_value(item)
+    if profit_val:
+        body.append(f"獲利　{html_escape(profit_val)}")
     rank_val = None
     if live and live.get("vol_rank_120") is not None:
         rank_val = int(live["vol_rank_120"])
@@ -1103,7 +1119,10 @@ def format_screening_payload(
             part["picks"] = []
             payload.append(part)
             continue
-        cards = [_stock_card_html(it, n + 1, show_line_link=False) for n, it in enumerate(items)]
+        cards = [
+            _stock_card_html(it, n + 1, show_line_link=False, bucket_label=label)
+            for n, it in enumerate(items)
+        ]
         part["html"] = head + "\n" + "\n".join(cards)
         part["picks"] = [
             (str(it.get("stock_id") or "").strip(), str(it.get("stock_name") or "").strip())
@@ -1229,10 +1248,12 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
     return bits
 
 
-def _share_stock_block(it: Dict[str, Any], idx: int, db_path: Optional[str] = None) -> str:
+def _share_stock_block(
+    it: Dict[str, Any], idx: int, db_path: Optional[str] = None, *, bucket_key: str = ""
+) -> str:
     from line_share_format import format_line_stock_block
 
-    return format_line_stock_block(it, idx, db_path)
+    return format_line_stock_block(it, idx, db_path, bucket_key=bucket_key)
 
 
 LINE_STOCK_BUCKETS = (
@@ -1253,6 +1274,7 @@ def format_stock_line_share_text(
     target_date: str,
     db_path: Optional[str] = None,
     bucket_label: str = "",
+    bucket_key: str = "",
 ) -> str:
     sid = str(item.get("stock_id") or item.get("code") or "").strip()
     sname = str(item.get("stock_name") or item.get("name") or "").strip()
@@ -1262,7 +1284,7 @@ def format_stock_line_share_text(
             f"WayneBot 海選　{_date_slash(target_date)}",
             f"{tag}{sid} {sname}".strip(),
             SHARE_SEP,
-            _share_stock_block(item, 1, db_path),
+            _share_stock_block(item, 1, db_path, bucket_key=bucket_key),
         ]
     )
 
@@ -1280,7 +1302,9 @@ def build_line_stock_bodies(
             sid = str(it.get("stock_id") or it.get("code") or "").strip()
             if not sid:
                 continue
-            out[sid] = format_stock_line_share_text(it, target_date, db_path, bucket_label=label)
+            out[sid] = format_stock_line_share_text(
+                it, target_date, db_path, bucket_label=label, bucket_key=key
+            )
     return out
 
 

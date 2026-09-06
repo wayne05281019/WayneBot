@@ -33,12 +33,16 @@ def test_stock_card_volume_and_turnover_separate_lines():
         show_line_link=False,
     )
     # turnover_k 單位是千元：41,800 千元＝0.418 億，不是 41.8 億
-    assert "額　<code>0.42億</code>" in card
-    assert "量　" in card
+    assert "金額　<code>0.42億</code>" in card
+    assert "量能　" in card
     assert "量比　" in card
+    assert not re.search(r"(^|\n)量　", card)
+    assert not re.search(r"(^|\n)額　", card)
     # 額與億同一行，不應裸寫 41.8 讓 億 掉到下一行
-    assert re.search(r"額　<code>[\d.]+億</code>", card)
-    assert "法人　外資" in card
+    assert re.search(r"金額　<code>[\d.]+億</code>", card)
+    assert "法人　近一日" in card
+    assert "今天先看表，先等" in card or "先看表" in card
+    assert "60日低上來" in card
     assert card.count("\n外資") == 0
 
 
@@ -58,7 +62,7 @@ def test_stock_card_turnover_yi_uses_hundred_thousand_k():
         1,
         show_line_link=False,
     )
-    assert "額　<code>57.81億</code>" in card
+    assert "金額　<code>57.81億</code>" in card
     assert "5781" not in card
 
 
@@ -68,6 +72,44 @@ def test_stock_card_chip_single_line():
     chips = _chip_html({"foreign_net": 8000, "trust_net": -200, "dealer_net": 0})
     assert "\n" not in chips
     assert "外資" in chips and "投信" in chips and "自營" in chips
+
+
+def test_screen_payload_leave_zero_has_two_char_labels_and_stance():
+    from screening_engine import format_screening_payload
+
+    payload = format_screening_payload(
+        {
+            "leave_zero": [
+                {
+                    "stock_id": "4915",
+                    "stock_name": "致伸",
+                    "close": 60.8,
+                    "pct_change": 2.01,
+                    "volume": 2126,
+                    "q60r": 1.35,
+                    "turnover_k": 128746.25,
+                    "ma20": 58.2,
+                    "ma60": 55.1,
+                    "foreign_net": 32,
+                    "trust_net": 73,
+                    "dealer_net": -119,
+                    "profit": 2.4,
+                    "quote_date": "20260904",
+                }
+            ]
+        },
+        "20260904",
+    )
+    blob = "\n".join(p["html"] for p in payload)
+    assert "＝＝起漲" in blob
+    assert "格局　起漲" in blob
+    assert "今天先看表，先等" in blob
+    assert "量能　" in blob
+    assert "金額　" in blob
+    assert not re.search(r"(^|\n)量　", blob)
+    assert not re.search(r"(^|\n)額　", blob)
+    assert "近一日　09-04" in blob
+    assert "2.4%" in blob and "60日低上來" in blob
 
 
 @pytest.mark.production_db

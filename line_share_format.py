@@ -68,9 +68,38 @@ def _pad_label(label: str, width: int = 4) -> str:
 
 
 def is_stance_line(ln: str) -> bool:
-    """這一列是不是「態度」（含折行延續）。"""
+    """舊稿「態度」列；新稿態度貼在格局／起漲旁邊。"""
     s = str(ln or "")
     return s.startswith(_pad_label(STANCE_LABEL))
+
+
+def _geju_stance_split(ln: str) -> Optional[Tuple[str, str]]:
+    """格局　起漲　今天先看表，先等 → (左黑, 右紅)。沒有態度就 None。"""
+    pad = _pad_label("格局") + "　"
+    s = str(ln or "")
+    if not s.startswith(pad):
+        return None
+    val = s[len(pad) :]
+    if "　" not in val:
+        return None
+    left, right = val.split("　", 1)
+    if not str(right or "").strip():
+        return None
+    return pad + left + "　", right
+
+
+def colored_line_segments(ln: str, *, in_stance_cont: bool) -> Tuple[List[Tuple[str, bool]], bool]:
+    """(文字, 是否紅字) 片段；格局列起漲後的態度＋其折行延續畫紅。"""
+    s = str(ln or "")
+    split = _geju_stance_split(s)
+    if split:
+        left, right = split
+        return [(left, False), (right, True)], True
+    if s.startswith(_pad_label("格局")):
+        return [(s, False)], True
+    if is_stance_line(s) or (in_stance_cont and s.startswith("　　　")):
+        return [(s, True)], True
+    return [(s, False)], False
 
 
 def _quote_md(item: Dict[str, Any]) -> str:
@@ -149,17 +178,16 @@ def _line_stance_value(item: Dict[str, Any]) -> str:
 
 
 def line_plain_to_html(text: str) -> str:
-    """轉 LINE 中轉頁：態度列紅字；其餘原樣跳脫。"""
+    """轉 LINE 中轉頁：起漲旁邊的態度紅字；其餘原樣跳脫。"""
     out: List[str] = []
     in_stance = False
     for ln in str(text or "").split("\n"):
-        esc = html_lib.escape(ln)
-        if is_stance_line(ln) or (in_stance and ln.startswith("　　　")):
-            in_stance = True
-            out.append(f'<span class="stance">{esc}</span>')
-        else:
-            in_stance = False
-            out.append(esc)
+        segs, in_stance = colored_line_segments(ln, in_stance_cont=in_stance)
+        parts: List[str] = []
+        for chunk, red in segs:
+            esc = html_lib.escape(chunk)
+            parts.append(f'<span class="stance">{esc}</span>' if red else esc)
+        out.append("".join(parts))
     return "<br>\n".join(out)
 
 
@@ -183,6 +211,7 @@ def format_line_stock_block(
     rank: int,
     db_path: Optional[str] = None,
     *,
+    bucket_key: str = "",
     regime_fn=None,
     pct_fn=None,
     px_fn=None,
@@ -190,7 +219,7 @@ def format_line_stock_block(
     notice_fn=None,
     plan_fn=None,
 ) -> str:
-    """一檔直向：股名、格局、態度、收盤／量能／金額、均線、法人、獲利、產業。"""
+    """一檔直向：股名、格局（起漲旁接今日態度）、收盤／量能／金額、均線、法人、獲利、產業。"""
     from screening_engine import (
         _chip_plain,
         _pct_str,
@@ -233,10 +262,18 @@ def format_line_stock_block(
         pct = item.get("change_pct")
 
     lines = [line_stock_headline(rank, sid, sname, db_path)]
-    lines.extend(_kv_lines("格局", regime_fn(item)))
+    bucket_title = ""
+    key = str(bucket_key or item.get("bucket_key") or "").strip()
+    if key:
+        bucket_title = str(LINE_BUCKET_META.get(key, (key, ""))[0] or "").strip()
+    regime = str(regime_fn(item) or "").strip()
+    geju_left = bucket_title or regime
     title, explain = _line_stance_pair(item)
+    geju_val = geju_left
     if title:
-        lines.extend(_kv_lines(STANCE_LABEL, title))
+        geju_val = f"{geju_left}　{title}" if geju_left else title
+    if geju_val:
+        lines.extend(_kv_lines("格局", geju_val, keep_units=True))
     note = str(explain or "").strip()
     if note and title and note.startswith(title):
         note = note[len(title) :].lstrip("。").strip()
@@ -344,5 +381,5 @@ def format_line_bucket_body(
     for n, it in enumerate(dict_items, start=1):
         if n > 1:
             parts.append(LINE_SHARE_SEP)
-        parts.append(format_line_stock_block(it, n, db_path))
+        parts.append(format_line_stock_block(it, n, db_path, bucket_key=bucket_key))
     return "\n".join(parts)
