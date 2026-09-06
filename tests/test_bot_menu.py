@@ -5,22 +5,34 @@ def test_typed_shortcuts_open_overnight_and_ai_desk():
 
     src = inspect.getsource(WayneTelegramBot.on_text)
     assert '"隔沖"' in src and '"隔日"' in src
-    assert '"AI模擬倉"' in src and '"模擬倉"' in src
+    assert '"AI模擬倉"' in src and '"模擬倉"' in src and '"AI倉"' in src
     assert "_send_ai_desk_view" in src
 
 
 def test_reply_menu_is_two_rows_not_three():
-    from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, MENU_LAYOUT_VERSION, WayneTelegramBot
+    from bot_servers import (
+        MENU_BTN_AI,
+        MENU_BTN_MARKET,
+        MENU_BTN_REPORT,
+        MENU_BTN_STREAK,
+        MENU_LAYOUT_VERSION,
+        WayneTelegramBot,
+    )
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "9"
+    assert MENU_BTN_AI == "AI倉"
+    assert MENU_BTN_REPORT == "回報"
+    assert MENU_LAYOUT_VERSION == "10"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
-    assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選"]
-    assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", "說明", MENU_BTN_STREAK]
+    assert len(row1) == 6 and len(row2) == 6
+    assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
+    assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", "說明", MENU_BTN_STREAK, MENU_BTN_REPORT]
+    assert row2[-1] == MENU_BTN_REPORT
+    assert row2[-2] == MENU_BTN_STREAK
 
 
 def test_help_guide_covers_all_main_buttons():
@@ -37,17 +49,22 @@ def test_help_guide_covers_all_main_buttons():
         "資金",
         "說明",
         "連買區",
+        "回報",
         "大盤",
         "籌碼",
         "營收",
         "產業",
         "導航圖",
         "記買入",
+        "AI倉",
         "AI模擬倉",
         "AI操盤",
     ):
         assert label in guide
+    assert "預留" not in guide
     assert "按表操課" in guide
+    assert "回報" in guide
+    assert "不用給程式密鑰" in guide
     assert "低買高賣" in guide
     assert "介紹圖" in guide and "一次出三張圖" in guide
     assert "現價漲跌 → 決策卡圖 → 介紹圖" not in guide
@@ -81,12 +98,14 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "?:market" not in cbs
 
 
-def test_help_menu_topic_mentions_market_not_reserved():
+def test_help_menu_topic_mentions_report_not_reserved():
     from bot_servers import HELP_TOPICS
 
     menu = HELP_TOPICS["menu"]
     assert "大盤" in menu
     assert "連買區" in menu
+    assert "回報" in menu
+    assert "AI倉" in menu
     assert "預留" not in menu
 
 
@@ -146,7 +165,11 @@ def test_pin_reply_menu_keeps_keyboard_message():
     pin.delete.assert_not_called()
     markup = msg.reply_text.await_args.kwargs.get("reply_markup")
     assert markup is not None
-    assert [b.text for b in markup.keyboard[1]][-1] == "連買區"
+    from bot_servers import MENU_BTN_REPORT, MENU_BTN_STREAK
+
+    row2 = [b.text for b in markup.keyboard[1]]
+    assert row2[-1] == MENU_BTN_REPORT
+    assert row2[-2] == MENU_BTN_STREAK
 
 
 def test_refresh_silent_sends_reply_keyboard_with_streak():
@@ -154,7 +177,7 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
-    from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, WayneTelegramBot
+    from bot_servers import MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._dismiss_menu_transients = AsyncMock()
@@ -172,7 +195,8 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert markup is not None
     assert "Remove" not in type(markup).__name__
     row2 = [b.text for b in markup.keyboard[1]]
-    assert row2[-1] == MENU_BTN_STREAK
+    assert row2[-1] == MENU_BTN_REPORT
+    assert row2[-2] == MENU_BTN_STREAK
     assert row2[1] == MENU_BTN_MARKET
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 

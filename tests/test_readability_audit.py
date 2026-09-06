@@ -124,6 +124,12 @@ def test_ai_desk_readable():
     html = format_ai_desk_html(eng, "1001")
     _assert_readable(html, name="ai_desk")
     assert "總資產：" in html
+    assert "已用槽：" in html
+    assert "每槽上限：" in html
+    for line in html.split("\n"):
+        plain = re.sub(r"<[^>]+>", "", line)
+        if any(k in plain for k in ("這是你的專屬", "本金最多分", "停損 −7%")):
+            assert len(plain) <= 22, plain
 
 
 def test_us_alert_still_good_baseline():

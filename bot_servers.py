@@ -154,16 +154,17 @@ HELP_TOPICS = {
         "也可打 /menu 重新釘選單；打 /help 或按「說明」看本頁。\n"
         "\n"
         "<b>二、第一排按鈕</b>\n"
-        "左→右：<b>決策卡</b>、<b>當沖</b>、<b>持股</b>、<b>觀察</b>、<b>海選</b>。\n"
+        "左→右：<b>決策卡</b>、<b>當沖</b>、<b>持股</b>、<b>觀察</b>、<b>海選</b>、<b>AI倉</b>。\n"
         "點下方 <b>第一排</b> 可看每一顆的意義與操作步驟。\n"
         "\n"
         "<b>三、第二排按鈕</b>\n"
-        "左→右：<b>隔日沖</b>、<b>大盤</b>、<b>資金</b>、<b>說明</b>、<b>連買區</b>。\n"
-        "點下方 <b>第二排</b> 可看每一顆的意義與操作步驟。\n"
+        "左→右：<b>隔日沖</b>、<b>大盤</b>、<b>資金</b>、<b>說明</b>、<b>連買區</b>、<b>回報</b>。\n"
+        "點下方 <b>第二排</b> 可看每一顆的意義與操作步驟。畫面怪或按鈕有問題就按最右「回報」。\n"
         "\n"
         "<b>四、AI 模擬自動買進</b>\n"
-        "不在主選單上。路徑：<b>持股</b> → 訊息下方 <b>AI模擬倉</b>／<b>AI操盤</b>。\n"
-        "每晚 20:00 雲端會依海選自動模擬買賣（不推播）；要看結果請按 AI模擬倉。點下方 <b>AI</b> 看完整說明。\n"
+        "主選單第一排最右 <b>AI倉</b>（也可打 AI模擬倉）：只看你的模擬帳戶，點股名可查這檔圖。\n"
+        "訊息下方 <b>AI操盤</b> 可立刻依海選跑一輪模擬買賣（不推播）。\n"
+        "每晚 20:00 雲端會依海選自動模擬買賣（不推播）；要看結果請按 AI倉。點下方 <b>AI</b> 看完整說明。\n"
         "\n"
         "<b>五、打股名或代號（例：南亞、2324）</b>\n"
         "會一次出三張圖（相簿）：<b>介紹圖</b> → <b>決策卡</b> → <b>導航圖</b>。點縮圖可放大。\n"
@@ -182,7 +183,8 @@ HELP_TOPICS = {
         "• 靠近 20 日收盤高會標<b>少追</b>，不是叫立刻買\n"
         "\n"
         "<b>七、持股頁按鈕</b>\n"
-        "• 股名鍵＝看這檔　• <b>賣出</b>＝打張數與價格　• <b>AI模擬倉</b>＝看模擬現況　• <b>AI操盤</b>＝依海選跑一輪模擬買賣（不推播）\n"
+        "• 股名鍵＝看這檔　• <b>賣出</b>＝打張數與價格\n"
+        "• 模擬倉請按主選單 <b>AI倉</b>（持股頁下方仍有 AI倉 捷徑）\n"
         "\n"
         "<b>八、觀察頁按鈕</b>\n"
         "• 股名鍵＝看這檔　• <b>籌碼</b>　• <b>買入</b>（同記買入）　• <b>刪</b>＝移出觀察\n"
@@ -208,7 +210,7 @@ HELP_TOPICS = {
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
         "• <b>海選</b>：電腦掃全市場的候選名單；低買高賣、按表操課，不是每個低點都買\n"
-        "• <b>按表</b>：起漲＝獲利剛離零且趨勢向上；黃金買點＝60低超跌觀察。CaryBot 紅箭頭不是下單訊號\n"
+        "• <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖給偉權\n"
         "\n"
         "<b>十四、按錯了怎麼辦（家人第一次用）</b>\n"
         "• 一打開先按了「決策卡」：這顆是刷新上一檔。還沒查過就<b>直接打四碼</b>，例如 <code>2330</code>。\n"
@@ -216,7 +218,8 @@ HELP_TOPICS = {
         "• 按了「海選」在等很久：那是掃全市場，不是查某一檔；不要連按。查某一檔請打代號。\n"
         "• 「觀察」跟「持股」搞混：觀察＝自選還沒買；持股＝你按過記買入的才會在。\n"
         "• 找不到「產業」：查完一檔，按鈕在<b>圖下面那一排</b>，不在右側 ⌨️ 主選單。\n"
-        "• 主選單不見：點輸入框右邊 ⌨️，或打 /menu。"
+        "• 主選單不見：點輸入框右邊 ⌨️，或打 /menu。\n"
+        "• 畫面怪、數字怪、按鈕錯了：按第二排最右 <b>回報</b>，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。"
     ),
     "row1": (
         "<b>第一排按鈕（左→右）</b>\n"
@@ -237,7 +240,7 @@ HELP_TOPICS = {
         "• <b>是什麼</b>：你自己手記的<b>真實買入</b>，不是觀察、也不是 AI 模擬倉。\n"
         "• <b>怎麼用</b>：按進去看清單；每檔可「賣出」、點股名看決策卡。\n"
         "• <b>記買入</b>：查股後按「記買入」，再打 <code>張數 價格</code>，例 <code>1 68.5</code>。\n"
-        "• <b>AI 在這裡</b>：訊息最下方有 <b>AI模擬倉</b>、<b>AI操盤</b>（見「AI」說明）。\n"
+        "• <b>AI倉</b>：模擬帳戶在主選單第一排最右，不要跟手記持股搞混。\n"
         "\n"
         "<b>④ 觀察</b>\n"
         "• <b>是什麼</b>：自選清單，還沒買也可以先放。\n"
@@ -249,7 +252,13 @@ HELP_TOPICS = {
         "• <b>是什麼</b>：依<b>昨收</b>掃全市場的佈局名單（起漲、優先看、周帶量等）。\n"
         "• <b>怎麼用</b>：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• <b>自動版</b>：平日 06:30 只寄起漲／黃金買點／優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• <b>注意</b>：不是盤中即時掃描；當沖／隔日沖要另按第二排按鈕。"
+        "• <b>注意</b>：不是盤中即時掃描；當沖／隔日沖要另按第二排按鈕。\n"
+        "\n"
+        "<b>⑥ AI倉</b>\n"
+        "• <b>是什麼</b>：你的專屬模擬帳戶（50 萬虛擬、最多 3 檔），不是手記持股。\n"
+        "• <b>怎麼用</b>：按進去看現金／持倉／停損停利；點股名看這檔介紹圖與決策卡。\n"
+        "• <b>AI操盤</b>：在 AI倉 頁訊息下方，立刻依海選跑一輪模擬買賣（不推播）。\n"
+        "• <b>跟持股</b>：持股＝你手記的真實買入；AI倉＝系統依海選模擬，各看各的。"
     ),
     "row2": (
         "<b>第二排按鈕（左→右）</b>\n"
@@ -277,7 +286,12 @@ HELP_TOPICS = {
         "• 再選上市或上櫃，再點連買天數（有 25 天就會出現 25）。\n"
         "• 名單顯示代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。\n"
-        "• 兩排最後一顆，給偶爾核對連買用。"
+        "\n"
+        "<b>⑥ 回報</b>\n"
+        "• <b>是什麼</b>：把畫面怪、按鈕錯、數字不對告訴偉權（文字或截圖）。\n"
+        "• <b>怎麼用</b>：按下去，接著打字或傳手機截圖。記下來後會轉給偉權。\n"
+        "• <b>不用給</b>：不用程式密鑰、不用機器人密碼、也不用另外傳話筒編號（按過開始就自動認得你）。\n"
+        "• <b>要取消</b>：改按其他按鈕即可。"
     ),
     "market": (
         "<b>大盤按鈕</b>\n"
@@ -289,14 +303,14 @@ HELP_TOPICS = {
         "<b>AI 模擬倉與自動買進</b>\n"
         "\n"
         "<b>在哪裡？</b>\n"
-        "主選單<b>沒有</b> AI 按鈕。請按 <b>持股</b>，訊息最下方會看到：\n"
-        "• <b>AI模擬倉</b>：只看模擬帳戶現況（不買賣）\n"
-        "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣\n"
+        "主選單第一排最右 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。\n"
+        "• <b>AI倉</b>：只看模擬帳戶現況（不買賣）；點股名可查這檔圖\n"
+        "• <b>AI操盤</b>：在 AI倉 頁訊息下方，立刻依海選跑一輪模擬買賣\n"
         "\n"
         "<b>自動買進（你問的這個）</b>\n"
         "• 平日 <b>20:00</b> 雲端會：① 寫晚間海選快照 ② 讓<b>你的</b> AI 依海選紀律模擬買進／賣出\n"
         "• <b>不會推播</b>到 Telegram，所以你不會收到通知——這是正常的。\n"
-        "• 隔天自己按 <b>持股 → AI模擬倉</b> 看有沒有成交、持了哪些檔。\n"
+        "• 隔天自己按主選單 <b>AI倉</b> 看有沒有成交、持了哪些檔。\n"
         "• 16:30 盤後融合成功時，伺服器也會順便為每位使用者各跑一輪（同樣不推播）。\n"
         "\n"
         "<b>模擬規則（簡要）</b>\n"
@@ -315,8 +329,8 @@ HELP_TOPICS = {
     ),
     "menu": (
         "<b>主選單在哪？</b>　不在訊息最下面，在<b>輸入框右側 ⌨️</b>展開的兩排按鈕。\n"
-        "<b>第一排</b>：決策卡／當沖／持股／觀察／海選\n"
-        "<b>第二排</b>：隔日沖／大盤／資金／說明／<b>連買區</b>（兩排最後）\n"
+        "<b>第一排</b>：決策卡／當沖／持股／觀察／海選／<b>AI倉</b>\n"
+        "<b>第二排</b>：隔日沖／大盤／資金／說明／連買區／<b>回報</b>\n"
         "手機打完字若只看到英文鍵盤：點輸入框<b>右邊 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "完整分類說明請按主選單「說明」，或看本頁導覽下方各分類鈕。"
@@ -355,10 +369,11 @@ HELP_TOPICS = {
         "\n"
         "<b>訊息下方按鈕</b>\n"
         "• 股名＝看這檔決策卡　• <b>賣出</b>＝記賣出張數與價格\n"
-        "• <b>AI模擬倉</b>＝看 50 萬虛擬帳戶現況（不買賣）\n"
+        "• <b>AI倉</b>＝主選單第一排最右，看 50 萬虛擬帳戶現況（不買賣）\n"
+        "• 持股頁下方仍可按 AI倉 捷徑\n"
         "• <b>AI操盤</b>＝立刻依海選跑一輪模擬買賣\n"
         "\n"
-        "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按 AI模擬倉查看。詳見說明頁「AI」。"
+        "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。詳見說明頁「AI」。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
@@ -414,9 +429,11 @@ HELP_TOPICS = {
     ),
 }
 
-# 主選單兩排各五格：少用的放後面；次排最右＝連買區。
+# 主選單兩排各六格：第一排最右 AI倉；第二排最右回報。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
+MENU_BTN_AI = "AI倉"
+MENU_BTN_REPORT = "回報"
 MENU_BTN_BACK_MAIN = "回主選單"
 MENU_BTN_BACK_STEP = "上一步"
 MENU_BTN_NEXT_PAGE = "下一批"
@@ -426,7 +443,8 @@ MENU_BTN_PREV_PAGE = "上一批"
 # v7：次排「連買區」取代「選單」。
 # v8：版面過期必「新發」帶 ReplyKeyboard 的訊息（edit 無法換兩排按鈕）。
 # v9：次排改為隔日沖／大盤／資金／說明／連買區（少用放最後）。
-MENU_LAYOUT_VERSION = "9"
+# v10：兩排各加一格＝6+6；第一排最右 AI倉；第二排最右回報（文字／截圖）。
+MENU_LAYOUT_VERSION = "10"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -700,7 +718,7 @@ class WayneTelegramBot:
             await self._delete_message(status)
 
     def _reply_menu(self):
-        """兩排各五格：左→右常用在前；次排最右＝連買區。"""
+        """兩排各六格：第一排最右 AI倉；第二排最右回報。"""
         rows = [
             [
                 KeyboardButton("決策卡"),
@@ -708,6 +726,7 @@ class WayneTelegramBot:
                 KeyboardButton("持股"),
                 KeyboardButton("觀察"),
                 KeyboardButton("海選"),
+                KeyboardButton(MENU_BTN_AI),
             ],
             [
                 KeyboardButton("隔日沖"),
@@ -715,6 +734,7 @@ class WayneTelegramBot:
                 KeyboardButton("資金"),
                 KeyboardButton("說明"),
                 KeyboardButton(MENU_BTN_STREAK),
+                KeyboardButton(MENU_BTN_REPORT),
             ],
         ]
         try:
@@ -787,9 +807,9 @@ class WayneTelegramBot:
         """
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         text = (
-            "兩排已更新：大盤改在隔日沖右邊，連買區在最後。點輸入框右側 ⌨️。"
+            "兩排已更新：第一排最右 AI倉，第二排最右回報。點輸入框右側 ⌨️。"
             if silent
-            else "主選單已掛上（輸入框右側 ⌨️ 兩排；大盤在隔日沖旁，最後是連買區）。"
+            else "主選單已掛上（輸入框右側 ⌨️ 兩排；第一排最右 AI倉，第二排最右回報）。"
         )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu())
@@ -1518,17 +1538,26 @@ class WayneTelegramBot:
         lines.append("下面由上到下對應該檔：左＝看這檔　籌碼　記買入　刪。")
         return "\n".join(lines), self._watch_list_keyboard(shown)
 
-    def _ai_desk_keyboard(self):
-        """AI 模擬倉專用鍵盤：不含真實持股賣出列，避免與手記持股混淆。"""
-        return InlineKeyboardMarkup(
+    def _ai_desk_keyboard(self, positions=None):
+        """AI 倉專用鍵盤：持倉可點進去查圖；不含真實持股賣出。"""
+        from tg_layout import stock_btn_label
+
+        kb = []
+        for p in (positions or [])[:3]:
+            c = str(p.get("stock_id") or p.get("stock_code") or "").strip()
+            if not c:
+                continue
+            n = str(p.get("stock_name") or "")
+            kb.append(
+                [InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}")]
+            )
+        kb.append(
             [
-                [
-                    InlineKeyboardButton("AI操盤", callback_data="ai_run"),
-                    self._q("ai"),
-                ],
-                [self._q("portfolio")],
+                InlineKeyboardButton("AI操盤", callback_data="ai_run"),
+                self._q("ai"),
             ]
         )
+        return InlineKeyboardMarkup(kb)
 
     def _portfolio_keyboard(self, holdings):
         from tg_layout import stock_btn_label
@@ -1981,6 +2010,8 @@ class WayneTelegramBot:
             "<b>第一次用？</b>先按第二排「說明」→ 總覽，或打 /help。\n"
             "盤中常看決策卡請按首排最左 <b>決策卡</b>（會記上一檔，再按就刷新）。\n"
             "看加權請按第二排 <b>大盤</b>（隔日沖右邊）。\n"
+            "第一排最右 <b>AI倉</b> 是模擬帳戶，不是你手記的持股。\n"
+            "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
             "次排 <b>連買區</b> 查外資／投信／兩家皆買。不熟按鈕請按 <b>說明</b>。",
         )
@@ -2918,6 +2949,122 @@ class WayneTelegramBot:
         msg = await asyncio.to_thread(record_sell, self.db_path, uid, code, lots, price)
         await update.message.reply_text(msg, reply_markup=self._keyboard())
 
+    async def report_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        uid = str(update.effective_user.id)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        await self._begin_issue_report(update.message, uid)
+
+    async def _begin_issue_report(self, message, uid: str) -> None:
+        actor = await self._enter_main_menu(message, uid)
+        self._pending[actor] = "report"
+        await message.reply_html(
+            "<b>回報問題</b>\n"
+            "請用<b>文字</b>或<b>截圖</b>說：哪裡怪、哪顆按鈕、哪一檔。\n"
+            "會記下來並轉給偉權。不用給程式密鑰、不用給機器人密碼。\n"
+            "要取消請按其他按鈕。",
+            disable_web_page_preview=True,
+        )
+
+    def _notify_owner_issue(self, rec: dict) -> None:
+        from issue_reports import format_owner_notice_html
+
+        if not self.token or not self.chat_id:
+            return
+        if str(rec.get("user_id") or "") == str(self.chat_id):
+            return
+        try:
+            import requests
+
+            self._send_html(self.chat_id, format_owner_notice_html(rec))
+            fid = str(rec.get("photo_file_id") or "").strip()
+            if fid:
+                requests.post(
+                    f"https://api.telegram.org/bot{self.token}/sendPhoto",
+                    json={
+                        "chat_id": self.chat_id,
+                        "photo": fid,
+                        "caption": f"回報 #{rec.get('id')}",
+                    },
+                    timeout=20,
+                )
+        except Exception:
+            logger.exception("回報轉偉權失敗")
+
+    async def _commit_issue_report(
+        self, message, uid: str, *, body: str = "", photo_file_id: str = ""
+    ) -> None:
+        from issue_reports import save_issue_report
+
+        name = ""
+        user = getattr(message, "from_user", None)
+        if user is not None:
+            name = getattr(user, "first_name", "") or ""
+        try:
+            rec = await asyncio.to_thread(
+                save_issue_report,
+                self.db_path,
+                uid,
+                display_name=name,
+                body=body,
+                photo_file_id=photo_file_id,
+            )
+        except ValueError:
+            actor = self._actor_key(message, uid=uid)
+            self._pending[actor] = "report"
+            await message.reply_html("請打幾個字或傳一張截圖。要取消請按其他按鈕。")
+            return
+        except Exception:
+            logger.exception("回報寫入失敗")
+            await message.reply_text("這則沒記下，請再傳一次，或按其他按鈕取消。")
+            return
+        await message.reply_html(
+            f"已記下（#{html_escape(rec.get('id'))}）。偉權會看到，之後對照修正。"
+        )
+        await asyncio.to_thread(self._notify_owner_issue, rec)
+
+    async def on_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.message
+        if msg is None:
+            return
+        uid = str(getattr(update.effective_user, "id", "") or "")
+        if not uid:
+            return
+        actor = self._actor_key(msg, uid=uid)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        photos = getattr(msg, "photo", None) or []
+        fid = str(getattr(photos[-1], "file_id", "") or "") if photos else ""
+        cap = str(getattr(msg, "caption", "") or "")
+        async with self._pending_lock(actor):
+            if self._pending.get(actor) != "report":
+                return
+            self._pending.pop(actor, None)
+        await self._commit_issue_report(
+            msg, uid, body=cap or "（截圖）", photo_file_id=fid
+        )
+
+    async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        msg = update.message
+        if msg is None:
+            return
+        doc = getattr(msg, "document", None)
+        mime = str(getattr(doc, "mime_type", "") or "")
+        if not mime.startswith("image/"):
+            return
+        uid = str(getattr(update.effective_user, "id", "") or "")
+        if not uid:
+            return
+        actor = self._actor_key(msg, uid=uid)
+        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+        fid = str(getattr(doc, "file_id", "") or "")
+        cap = str(getattr(msg, "caption", "") or "")
+        async with self._pending_lock(actor):
+            if self._pending.get(actor) != "report":
+                return
+            self._pending.pop(actor, None)
+        await self._commit_issue_report(
+            msg, uid, body=cap or "（截圖）", photo_file_id=fid
+        )
+
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_msg = update.message.text or ""
         raw = raw_msg.strip()
@@ -2993,6 +3140,10 @@ class WayneTelegramBot:
             logger.info("主選單：觀察 uid=%s", uid)
             await self.watch_cmd(update, context)
             return
+        if text in (MENU_BTN_REPORT, "回報問題", "狀況回覆", "狀況"):
+            logger.info("主選單：回報 uid=%s", uid)
+            await self.report_cmd(update, context)
+            return
         if text == "系統狀態":
             await update.message.reply_html(
                 "WayneBot 雲端新版運作中。請用訊息下方按鈕操作。",
@@ -3007,6 +3158,12 @@ class WayneTelegramBot:
                 )
                 if handled:
                     return
+            if pending == "report":
+                self._pending.pop(actor, None)
+                await self._commit_issue_report(
+                    update.message, uid, body=raw, photo_file_id=""
+                )
+                return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
                 handled = await self._handle_pending_pick(update.message, uid, pending, text, actor=actor)
@@ -3146,12 +3303,15 @@ class WayneTelegramBot:
 
     async def _send_ai_desk_view(self, message, uid: str):
         """只顯示模擬倉現況，不執行買賣。"""
+        from ai_trader import ai_desk_positions
+
         self._touch_user(uid)
         try:
             html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine, uid)
+            positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
             parts = chunk_telegram_html(html)
             for i, part in enumerate(parts):
-                kb = self._ai_desk_keyboard() if i == len(parts) - 1 else None
+                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
         except Exception as e:
             logger.exception("AI 模擬倉顯示失敗")
@@ -3176,8 +3336,13 @@ class WayneTelegramBot:
             if ai.get("lesson"):
                 bits.append("進化：" + html_escape(ai["lesson"]))
             parts = chunk_telegram_html("\n\n".join(bits))
+            from ai_trader import ai_desk_positions
+
+            positions = await asyncio.to_thread(
+                ai_desk_positions, self.portfolio_engine, uid
+            )
             for i, part in enumerate(parts):
-                kb = self._ai_desk_keyboard() if i == len(parts) - 1 else None
+                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
         except Exception as e:
             logger.exception("AI 操盤失敗")
@@ -4210,6 +4375,8 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("sell", self._wrap_cmd(self.sell_cmd)))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+        app.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
+        app.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
 
         async def _on_error(update, context):
             logger.exception("Telegram handler 失敗: %s", context.error)

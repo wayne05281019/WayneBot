@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""全主選單 UX 探測：十顆按鈕 × 耗時／即時回饋／內容完整性。"""
+"""全主選單 UX 探測：功能鈕 × 耗時／即時回饋／內容完整性。"""
 from __future__ import annotations
 
 import asyncio
@@ -19,10 +19,12 @@ ALL_MENU_BUTTONS = [
     "持股",
     "觀察",
     "海選",
+    "AI倉",
     "隔日沖",
     "資金",
     "說明",
     "連買區",
+    "回報",
     "大盤",
 ]
 

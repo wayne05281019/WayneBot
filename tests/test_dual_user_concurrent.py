@@ -243,3 +243,20 @@ def test_op_state_map_isolated_for_two_users():
     bot._op_state_map()[b] = {"sent": [], "current": "nav"}
     assert bot._lookup_op_state[w]["current"] == "card"
     assert bot._lookup_op_state[b]["current"] == "nav"
+
+
+def test_ai_desk_button_isolated_for_brother_and_wayne():
+    """偉權與哥哥同時按 AI倉：各自開模擬倉，不共用 pending。"""
+    bot = _bot()
+    bot._send_ai_desk_view = AsyncMock()
+    bot._pending[f"{WAYNE_UID}:{WAYNE_UID}"] = "buy:2330"
+
+    async def run():
+        await bot.on_text(_update(_msg(BRO_UID, "AI倉")), MagicMock())
+        await bot.on_text(_update(_msg(WAYNE_UID, "AI倉")), MagicMock())
+
+    asyncio.run(run())
+    assert bot._send_ai_desk_view.await_count == 2
+    uids = [c.args[1] for c in bot._send_ai_desk_view.await_args_list]
+    assert uids == [str(BRO_UID), str(WAYNE_UID)]
+    assert bot._pending.get(f"{WAYNE_UID}:{WAYNE_UID}") is None

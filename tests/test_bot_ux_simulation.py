@@ -168,6 +168,8 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     bot.help_cmd = AsyncMock()
     bot.menu_cmd = AsyncMock()
     bot.streak_cmd = AsyncMock()
+    bot._send_ai_desk_view = AsyncMock()
+    bot.report_cmd = AsyncMock()
 
     async def run():
         for label, checker in (
@@ -176,6 +178,8 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ("海選", bot.screen_cmd),
             ("說明", bot.help_cmd),
             ("連買區", bot.streak_cmd),
+            ("AI倉", bot._send_ai_desk_view),
+            ("回報", bot.report_cmd),
         ):
             checker.reset_mock()
             msg = _msg(5, 50, label)
@@ -192,7 +196,7 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
     asyncio.run(run())
 
 
-# --- 不懂股票：亂打、空字、預留格不當查股 ---
+# --- 不懂股票：亂打、空字、回報不當查股 ---
 
 
 def test_market_menu_button_shows_page():
@@ -238,6 +242,20 @@ def test_empty_input_is_silent():
     asyncio.run(run())
     msg.reply_text.assert_not_awaited()
     msg.reply_html.assert_not_awaited()
+
+
+def test_report_button_opens_prompt_not_lookup():
+    bot = _bot()
+    bot.report_cmd = AsyncMock()
+    bot._send_card_to = AsyncMock()
+    msg = _msg(2, 2, "回報")
+
+    async def run():
+        await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot.report_cmd.assert_awaited_once()
+    bot._send_card_to.assert_not_awaited()
 
 
 def test_chaos_inputs_get_friendly_not_found():

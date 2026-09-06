@@ -258,6 +258,18 @@ def test_ai_desk_keyboard_has_no_sell_buttons():
     assert not any(str(d).startswith("x:") for d in datas)
 
 
+def test_ai_desk_keyboard_lists_held_names():
+    bot = _bot()
+    kb = bot._ai_desk_keyboard(
+        [{"stock_id": "2330", "stock_name": "台積電"}, {"stock_id": "2454", "stock_name": "聯發科"}]
+    )
+    datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+    assert "k:2330" in datas
+    assert "k:2454" in datas
+    assert "ai_run" in datas
+    assert not any(str(d).startswith("x:") for d in datas)
+
+
 def test_pending_state_per_user_not_per_chat():
     bot = _bot()
     bot._pending["1:111"] = "buy:2330"
