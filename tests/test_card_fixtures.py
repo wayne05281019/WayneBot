@@ -51,7 +51,7 @@ def test_profit_pct_series_per_day_not_global():
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    tbl = NavigatorEngine(get_db_path()).get_decision_card("9925")["table"]
+    tbl = NavigatorEngine(get_db_path()).get_decision_card("9925", lookback=40)["table"]
     zeros = sum(1 for _, r in tbl.iterrows() if float(r["profit_pct"]) <= 0.05)
     assert zeros >= 6, f"expected many 0.0% rows, got {zeros}"
 
@@ -62,7 +62,7 @@ def test_template_2530_leave_zero_row():
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    card = NavigatorEngine(get_db_path()).get_decision_card("2530")
+    card = NavigatorEngine(get_db_path()).get_decision_card("2530", lookback=40)
     tbl = card["table"]
     row = tbl[tbl["date"].astype(str) == "20260831"]
     assert not row.empty
@@ -75,7 +75,7 @@ def test_template_2633_8_11_profit_is_cal60_not_l20_floor():
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    tbl = NavigatorEngine(get_db_path()).get_decision_card("2633")["table"]
+    tbl = NavigatorEngine(get_db_path()).get_decision_card("2633", lookback=40)["table"]
     row = tbl[tbl["date"].astype(str) == "20260811"]
     assert not row.empty
     assert abs(float(row.iloc[0]["profit_pct"]) - 1.0) < 0.15
