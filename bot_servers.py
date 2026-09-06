@@ -677,22 +677,21 @@ class WayneTelegramBot:
         kb.append([self._q("stock")])
         self._pending[self._pending_actor(message, uid=uid)] = "dcard"
         await message.reply_html(
-            "「決策卡」這顆是刷新<b>上一檔</b>，不用重打代號。\n"
-            "還沒查過任何股：直接打四碼，例如 <code>2330</code>；"
-            "或點下面觀察清單。",
+            "這顆會刷新<b>上一檔</b>。你這邊還沒查過股票，所以沒有上一檔。\n"
+            "請直接打四碼，例如 <code>2330</code>；或點下面觀察清單。",
             reply_markup=InlineKeyboardMarkup(kb),
         )
 
     async def decision_card_btn(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
+        await self._enter_main_menu(update.message, uid)
+        last = self._last_card.get(uid)
+        if not last:
+            await self._prompt_decision_card(update.message, uid)
+            return
         status = await self._transient_status(update.message, "決策卡產製中…")
         try:
-            await self._enter_main_menu(update.message, uid)
-            last = self._last_card.get(uid)
-            if last:
-                await self._send_decision_card_quick(update.message, last, uid, skip_wait_msg=True)
-            else:
-                await self._prompt_decision_card(update.message, uid)
+            await self._send_decision_card_quick(update.message, last, uid, skip_wait_msg=True)
         finally:
             await self._delete_message(status)
 

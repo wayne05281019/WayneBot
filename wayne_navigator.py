@@ -809,6 +809,17 @@ def html_escape(val) -> str:
     )
 
 
+def format_nav_volume_label(volume_lots) -> str:
+    """導航圖量標：庫內是張。不要 /1000 寫 0.00K（冷門 2 張會變成沒量）。"""
+    try:
+        n = int(round(float(volume_lots or 0)))
+    except (TypeError, ValueError):
+        n = 0
+    if n < 0:
+        n = 0
+    return f"量 {n:,}張"
+
+
 def _fmt_price(p) -> str:
     """股價顯示：千元以上不要小數，避免萬元股把獲利欄擠爆。"""
     try:
@@ -2848,7 +2859,7 @@ def draw_from_ohlc(
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
 
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
-    ax2.bar(xs, work["volume"] / 1000.0, color=vol_colors, width=0.72, zorder=3)
+    ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=9)
@@ -2856,7 +2867,7 @@ def draw_from_ohlc(
     ax2.text(
         0.006,
         0.92,
-        f"Vol: {float(last['volume']) / 1000:.2f}K",
+        format_nav_volume_label(last["volume"]),
         transform=ax2.transAxes,
         fontproperties=_fp(10, "bold"),
         va="top",

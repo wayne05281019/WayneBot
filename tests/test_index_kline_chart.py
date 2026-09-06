@@ -147,6 +147,14 @@ class IndexDailyOfficialChartTests(unittest.TestCase):
         finally:
             os.unlink(db)
 
+    def test_fmt_vol_says_lots_not_money(self):
+        from index_kline_chart import _fmt_vol
+
+        self.assertEqual(_fmt_vol(9_267_047), "926.7萬張")
+        self.assertEqual(_fmt_vol(9_999), "9,999張")
+        self.assertEqual(_fmt_vol(1e8), "1.0億張")
+        self.assertNotIn("億", _fmt_vol(9_267_047).replace("萬張", ""))
+
     def test_build_skips_yahoo_when_db_empty(self):
         import inspect
 
