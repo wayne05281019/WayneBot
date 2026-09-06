@@ -86,6 +86,8 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "查股" in labels
     assert "第一排" in labels
     assert "第二排" in labels
+    assert "連買" in labels
+    assert "記買入" in labels
     assert "✕" in labels
     assert "海選" not in labels
     assert "大盤" not in labels
@@ -94,6 +96,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "?:guide" in cbs
     assert "?:stock" in cbs
+    assert "?:streak" in cbs
     assert "?:screen" not in cbs
     assert "?:market" not in cbs
 
@@ -169,6 +172,18 @@ def test_help_and_menu_copy_uses_plain_chinese():
     assert 'subtitle="盤中 MIS' not in bot_src
     assert "恐慌指數" in blob
     assert "即時現價" in blob or "證交所即時價" in blob
+
+
+def test_help_streak_does_not_split_listed_otc():
+    from bot_servers import HELP_TOPICS
+
+    blob = "\n".join(HELP_TOPICS.values())
+    assert "再選上市" not in blob
+    assert "再選<b>上市</b>" not in blob
+    assert "上市或上櫃" not in blob
+    assert "外資+投信" in HELP_TOPICS["streak"]
+    assert "上市櫃一起列" in HELP_TOPICS["streak"]
+    assert "連買區" in HELP_TOPICS["row2"]
 
 
 def test_help_nav_does_not_duplicate_reply_menu_labels():

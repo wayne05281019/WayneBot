@@ -293,7 +293,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑤ 連買區</b>\n"
         "• 先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>（點訊息下方按鈕）。\n"
-        "• 再選上市或上櫃，再點連買天數（有 25 天就會出現 25）。\n"
+        "• 再點連買天數（有 25 天就會出現 25）。上市櫃一起列，不再分市場。\n"
         "• 名單顯示代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。\n"
         "\n"
@@ -395,7 +395,7 @@ HELP_TOPICS = {
         "<b>單檔第一眼建議看這些</b>\n"
         "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）；籌碼／營收／產業按<b>圖下方</b>按鈕，不是主選單。\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
-        "2 獲利＝近60個日曆日收盤低（與 CaryBot 同；貼20日低不歸零）；距60根低是另外一欄\n"
+        "2 獲利＝從近60個日曆天收盤低算上來（與 CaryBot 同；貼20日低不歸零）；距60根低是另外一欄\n"
         "3 溫度＝20日收盤位置＋月乖離；溫度計是領先指標。"
         "創歷史新高且溫度≥80要注意（少追）。"
         "升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追。"
@@ -413,9 +413,11 @@ HELP_TOPICS = {
     "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
     "fund": "<b>營收毛利</b>\n官方月營收與季報。本益／淨值／殖利率、融資融券餘額（張、使用率）有官方數才一併顯示；沒有就不畫。產業對照請按「產業」。",
     "industry": (
-        "<b>產業說明怎麼用</b>\n"
-        "看這檔後按下方「產業」，或打 /industry 代號。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
-        "這是落後的公開數字，幫你看懂這族，不是內幕。少賠仍看高低卡：靠近 20 日收盤高少追。"
+        "<b>產業按鈕</b>\n"
+        "查完一檔後，按圖下方「產業」（不在右側鍵盤）。\n"
+        "也可打 /industry 代號。\n"
+        "會列出官方產業別、這檔月營收／毛利率、同業中位數、這族法人張數。\n"
+        "進場仍看高低卡，不要因為同業敘事追高。"
     ),
     "buy": (
         "<b>記買入</b>\n"
@@ -431,11 +433,14 @@ HELP_TOPICS = {
     ),
     "streak": (
         "<b>連買區怎麼用</b>\n"
-        "主選單次排「連買區」。先選要看哪一種：<b>外資</b>、 <b>投信</b>、或<b>外資+投信</b>（同一天兩家都買超才算）。\n"
-        "點訊息下方按鈕選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>。\n"
-        "再選<b>上市</b>或<b>上櫃</b>，再點連買天數。\n"
-        "天數只列出「剛好有股票」的連買天數（最長會標在訊息裡）；點 6 就只看剛好連買 6 天的股票。\n"
-        "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。點股名＝一般查股；按<b>籌碼</b>核對官方法人表。"
+        "主選單第二排「連買區」。\n"
+        "先選哪一種：<b>外資</b>、 <b>投信</b>、或<b>外資+投信</b>\n"
+        "（外資+投信＝同一天兩家都買超才算一天）。\n"
+        "再點連買天數。上市櫃一起列，不用再選市場。\n"
+        "天數只列出「剛好有股票」的連買天數（最長會標在訊息裡）。\n"
+        "點 6 就只看剛好連買 6 天的股票。\n"
+        "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。\n"
+        "點股名＝一般查股；按<b>籌碼</b>核對官方法人表。"
     ),
 }
 
@@ -958,7 +963,7 @@ class WayneTelegramBot:
             rows.append(row)
         rows.append(
             [
-                InlineKeyboardButton("上一步", callback_data=f"fb:back:mkt:{k}"),
+                InlineKeyboardButton("上一步", callback_data="fb:back:kind"),
                 InlineKeyboardButton("回主選單", callback_data="fb:home"),
             ]
         )
@@ -1018,23 +1023,13 @@ class WayneTelegramBot:
         await message.reply_html("已回到兩排主選單。", reply_markup=self._reply_menu())
 
     async def _ask_streak_market(self, message, uid: str, actor: str, kind: str) -> None:
-        from buy_streak import KIND_LABEL
-
-        self._pending[actor] = f"fbuy:mkt:{kind}"
-        await self._streak_send_step(
-            message,
-            f"<b>{KIND_LABEL.get(kind, kind)}</b>\n請點下面按鈕選 <b>上市</b> 或 <b>上櫃</b>。",
-            inline=self._streak_market_inline(kind),
-            reply_kb=self._streak_market_keyboard(),
-            tray_hint="也可點輸入區鍵盤：上市／上櫃",
-        )
+        await self._streak_show_days(message, uid, actor, kind, "ALL")
 
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
     ) -> bool:
         from buy_streak import (
             KIND_LABEL,
-            MARKET_LABEL,
             PAGE_SIZE,
             find_row,
             format_list_html,
@@ -1043,7 +1038,6 @@ class WayneTelegramBot:
             page_bounds,
             parse_days,
             parse_kind,
-            parse_market,
             parse_stock_code,
         )
 
@@ -1061,12 +1055,10 @@ class WayneTelegramBot:
             elif step == "mkt":
                 await self._start_buy_streak(message, uid)
             elif step == "days":
-                kind = parts[2] if len(parts) > 2 else ""
-                await self._ask_streak_market(message, uid, actor, kind)
+                await self._start_buy_streak(message, uid)
             elif step == "pick":
                 kind = parts[2] if len(parts) > 2 else ""
-                market = parts[3] if len(parts) > 3 else ""
-                await self._streak_show_days(message, uid, actor, kind, market)
+                await self._streak_show_days(message, uid, actor, kind, "ALL")
             else:
                 await self._start_buy_streak(message, uid)
             return True
@@ -1084,16 +1076,12 @@ class WayneTelegramBot:
                     tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
                 )
                 return True
-            await self._ask_streak_market(message, uid, actor, kind)
+            await self._streak_show_days(message, uid, actor, kind, "ALL")
             return True
 
         if step == "mkt":
             kind = parts[2] if len(parts) > 2 else ""
-            market = parse_market(text)
-            if not market:
-                await self._ask_streak_market(message, uid, actor, kind)
-                return True
-            await self._streak_show_days(message, uid, actor, kind, market)
+            await self._streak_show_days(message, uid, actor, kind, "ALL")
             return True
 
         if step == "days":
@@ -1144,8 +1132,7 @@ class WayneTelegramBot:
             row = find_row(snap, days, code)
             if row:
                 recap = (
-                    f"<b>{KIND_LABEL.get(kind, kind)} {days} 天 · "
-                    f"{MARKET_LABEL.get(market, market)}</b>\n"
+                    f"<b>{KIND_LABEL.get(kind, kind)} {days} 天</b>\n"
                     f"{format_stock_html(row, kind, self.db_path)}\n"
                     "下面是一般查股內容；按籌碼可核對官方法人表。"
                 )
@@ -1178,23 +1165,18 @@ class WayneTelegramBot:
             await self._start_buy_streak(q.message, uid)
             return
         if op == "back" and len(parts) > 2 and parts[2] == "mkt":
-            kind = parts[3] if len(parts) > 3 else ""
-            await self._ask_streak_market(q.message, uid, actor, kind)
+            await self._start_buy_streak(q.message, uid)
             return
         if op == "k" and len(parts) > 2:
             kind = parts[2]
             if kind not in ("foreign", "trust", "both"):
                 await self._start_buy_streak(q.message, uid)
                 return
-            await self._ask_streak_market(q.message, uid, actor, kind)
+            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
             return
         if op == "m" and len(parts) > 3:
             kind = parts[2]
-            market = parts[3]
-            if market not in ("TW", "TWO"):
-                await self._ask_streak_market(q.message, uid, actor, kind)
-                return
-            await self._streak_show_days(q.message, uid, actor, kind, market)
+            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
             return
         if op == "d" and len(parts) > 4:
             kind = parts[2]
@@ -1212,8 +1194,9 @@ class WayneTelegramBot:
             return
 
     async def _streak_show_days(self, message, uid: str, actor: str, kind: str, market: str) -> None:
-        from buy_streak import KIND_LABEL, MARKET_LABEL, load_snapshot
+        from buy_streak import KIND_LABEL, MARKET_ALL, load_snapshot
 
+        market = MARKET_ALL
         status = await self._transient_status(message, "整理連買名單…")
         try:
             snap = await asyncio.wait_for(
@@ -1225,10 +1208,10 @@ class WayneTelegramBot:
             await self._delete_message(status)
             await message.reply_html(
                 f"連買名單讀取失敗：{html_escape(e)}",
-                reply_markup=self._streak_market_inline(kind),
+                reply_markup=self._streak_kind_inline(),
                 disable_web_page_preview=True,
             )
-            self._pending[actor] = f"fbuy:mkt:{kind}"
+            self._pending[actor] = "fbuy:kind"
             return
         await self._delete_message(status)
         self._pending[actor] = f"fbuy:days:{kind}:{market}"
@@ -1240,22 +1223,23 @@ class WayneTelegramBot:
             as_of_s = format_trading_date_zh(as_of)
         except Exception:
             as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else (as_of or "—")
+        title = f"<b>{KIND_LABEL.get(kind, kind)}</b>"
         if not days:
             await self._streak_send_step(
                 message,
-                f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
-                f"截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
-                inline=self._streak_market_inline(kind),
-                reply_kb=self._streak_market_keyboard(),
-                tray_hint="請改選上市／上櫃，或回主選單",
+                f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
+                inline=self._streak_kind_inline(),
+                reply_kb=self._streak_kind_keyboard(),
+                tray_hint="請改選外資／投信／外資+投信，或回主選單",
             )
-            self._pending[actor] = f"fbuy:mkt:{kind}"
+            self._pending[actor] = "fbuy:kind"
             return
         await self._streak_send_step(
             message,
-            f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
+            f"{title}\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
             "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
+            "上市櫃一起列。\n"
             f"<b>可選天數</b>（有股票才列出）：{' '.join(str(n) for n in days)}",
             inline=self._streak_days_inline(kind, market, days),
             reply_kb=self._streak_days_keyboard(days),
@@ -1274,7 +1258,9 @@ class WayneTelegramBot:
         *,
         offset: int = 0,
     ) -> None:
-        from buy_streak import PAGE_SIZE, format_list_html, load_snapshot, page_bounds
+        from buy_streak import PAGE_SIZE, MARKET_ALL, format_list_html, load_snapshot, page_bounds
+
+        market = MARKET_ALL
 
         status = await self._transient_status(message, "列出連買股票…")
         try:
@@ -1320,9 +1306,12 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton("第一排", callback_data="?:row1"),
                     InlineKeyboardButton("第二排", callback_data="?:row2"),
-                    InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("連買", callback_data="?:streak"),
                 ],
-                [InlineKeyboardButton("✕", callback_data="hx")],
+                [
+                    InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("✕", callback_data="hx"),
+                ],
             ]
         )
 
@@ -2023,7 +2012,7 @@ class WayneTelegramBot:
             "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
             "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
-            "次排 <b>連買區</b> 查外資／投信／兩家皆買。不熟按鈕請按 <b>說明</b>。",
+            "次排 <b>連買區</b> 查外資／投信／兩家皆買（上市櫃一起）。不熟按鈕請按 <b>說明</b>。",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 

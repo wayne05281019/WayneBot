@@ -132,9 +132,7 @@ def test_persona_groups_parallel_streak_wizards(round_i):
     """十輪：十人格各派一子人格同時走連買區，pending 依父系路徑隔離。"""
     bot = _bot()
     kinds = ["外資", "投信", "外資+投信"]
-    markets = ["上市", "上櫃"]
     kind_map = {"外資": "foreign", "投信": "trust", "外資+投信": "both"}
-    mkt_map = {"上市": "TW", "上櫃": "TWO"}
 
     async def fake_days(message, uid, actor, kind, market):
         bot._pending[actor] = f"fbuy:days:{kind}:{market}"
@@ -143,14 +141,10 @@ def test_persona_groups_parallel_streak_wizards(round_i):
         uid = sub_uid(parent_uid, (sub_i + round_i) % SUBS_PER_PERSONA + 1)
         actor = f"{uid}:{uid}"
         kind = kinds[(parent_uid + round_i) % 3]
-        market = markets[(parent_uid + round_i) % 2]
         bot._pending[actor] = "fbuy:kind"
         with patch.object(bot, "_streak_show_days", side_effect=fake_days):
             await bot._handle_buy_streak(_msg(uid, kind), str(uid), "fbuy:kind", kind, actor=actor)
-            await bot._handle_buy_streak(
-                _msg(uid, market), str(uid), bot._pending[actor], market, actor=actor
-            )
-        return actor, kind_map[kind], mkt_map[market]
+        return actor, kind_map[kind]
 
     async def run():
         reps = [(name, parent_uid) for name, parent_uid, _ in PERSONAS_10]
@@ -158,8 +152,8 @@ def test_persona_groups_parallel_streak_wizards(round_i):
         return await asyncio.gather(*tasks)
 
     results = asyncio.run(run())
-    for actor, kind, market in results:
-        assert bot._pending[actor] == f"fbuy:days:{kind}:{market}"
+    for actor, kind in results:
+        assert bot._pending[actor] == f"fbuy:days:{kind}:ALL"
 
 
 def test_last_card_100_users_isolated():
