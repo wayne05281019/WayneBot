@@ -454,18 +454,33 @@ def card_daily_stance(
         or (t >= TEMP_ATH_WATCH and at_high)
         or note == "價溫背離"
     ):
-        return "今天不要追", "avoid"
+        return "今天別追高", "avoid"
     if at_high and p >= 15:
-        return "高檔不宜追", "avoid"
+        return "漲多了，今天別追", "avoid"
     if p >= 40:
-        return "高檔不宜追", "avoid"
+        return "漲多了，今天別追", "avoid"
     if at_60_low and -1.5 <= p <= 2.5 and b < -10:
-        return "黃金買點觀察・按表", "watch"
+        return "靠近低點，先看表", "watch"
     if at_60_low:
-        return "低點觀察・按表", "watch"
+        return "在低點附近，先看表", "watch"
     if p > 20:
-        return "等待・獲利已離低點", "wait"
-    return "等待・按表操課", "wait"
+        return "離低點有一段了，先等", "wait"
+    return "今天先看表，先等", "wait"
+
+
+def stance_explain(kind: str, *, sell_note: str = "") -> str:
+    """今日態度後面那句人話：告訴你現在先別急，不是下單指令。"""
+    note = str(sell_note or "").strip()
+    if note:
+        if "不是叫你買" not in note:
+            note = note.rstrip("。") + "。不是叫你買。"
+        return note
+    k = str(kind or "wait")
+    if k == "avoid":
+        return "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
+    if k == "watch":
+        return "靠近低點可以放進觀察，先別急著買。進場只看下面這張表。"
+    return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
 
 
 def alert_tag(

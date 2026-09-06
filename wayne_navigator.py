@@ -669,7 +669,7 @@ class NavigatorEngine:
                 badges=badges,
             )
         else:
-            stance, stance_kind = "等待・按表操課", "wait"
+            stance, stance_kind = "今天先看表，先等", "wait"
         query_date, query_clock = format_card_query_stamp(
             is_live=is_live,
             latest_date=latest["date"],
@@ -1689,7 +1689,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         sell_sub = sell_note_short(card)
     except Exception:
         sell_sub = ""
-    stance_h = 5.5 if sell_sub else 4.6
+    try:
+        from decision_card_signals import stance_explain
+
+        stance_note = stance_explain(str(card.get("stance_kind") or "wait"), sell_note=sell_sub)
+    except Exception:
+        stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
+    stance_h = 6.2
 
     fig_w = CARD_FIG_W
     badges = []
@@ -1863,10 +1869,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             bx += bw + 1.7
         by -= badge_h + badge_gap
 
-    # 左：今日態度＋句子；右：紀律／不是買訊，用右邊空位。
+    # 左：今日態度＋白話標題；下一行完整說明（不要術語）。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
-    stance_txt = str(card.get("stance") or "等待・按表操課")
+    stance_txt = str(card.get("stance") or "今天先看表，先等")
     if kind == "avoid" or str(card.get("sell_action") or "") == "直接減碼":
         s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
     elif kind == "watch":
@@ -1876,29 +1882,26 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=C["panel"])
     chip_w = tw("今日態度", 11.0) + 3.2
     chip_h = 2.15
-    chip_y = y + (stance_h - chip_h) / 2
+    chip_y = y + stance_h - chip_h - 0.55
     ax.add_patch(patches.FancyBboxPatch(
         (pad_x + 3.0, chip_y), chip_w, chip_h,
         boxstyle="round,pad=0,rounding_size=0.45",
         facecolor=s_fc, edgecolor=s_ec, linewidth=0.8, zorder=4))
     ax.text(pad_x + 3.0 + chip_w / 2, chip_y + chip_h / 2, "今日態度",
             fontproperties=_fp(11.0, "bold"), color=s_ink, ha="center", va="center", zorder=5)
-    ax.text(pad_x + 3.0 + chip_w + 1.6, y + stance_h / 2, stance_txt,
-            fontproperties=_fp(16.0, "bold"), color=s_ink, va="center", zorder=4)
-    rx = 100 - pad_x - 3.2
-    if sell_sub:
-        note = f"{sell_sub}　不是買訊"
-        note_fs = 11.0
-        while tw(note, note_fs) > 32.0 and note_fs > 8.6:
-            note_fs -= 0.3
-        ax.text(rx, y + stance_h / 2 + 1.15, "紀律",
-                fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=4)
-        ax.text(rx, y + stance_h / 2 - 1.05, note,
-                fontproperties=_fp(note_fs), color=C["ink_soft"], ha="right", va="center", zorder=4)
-    else:
-        ax.text(rx, y + stance_h / 2,
-                "按表操課・不是下單指令　紅箭頭只是觀察",
-                fontproperties=_fp(9.4), color=C["ink_soft"], ha="right", va="center", zorder=4)
+    title_x = pad_x + 3.0 + chip_w + 1.6
+    title_fs = 15.0
+    while tw(stance_txt, title_fs) > (100 - pad_x - 3.2 - title_x) and title_fs > 11.5:
+        title_fs -= 0.3
+    ax.text(title_x, chip_y + chip_h / 2, stance_txt,
+            fontproperties=_fp(title_fs, "bold"), color=s_ink, va="center", zorder=4)
+    note = str(stance_note or "").strip()
+    note_fs = 11.2
+    note_max = 100 - 2 * pad_x - 6.4
+    while tw(note, note_fs) > note_max and note_fs > 8.8:
+        note_fs -= 0.25
+    ax.text(pad_x + 3.2, y + 1.35, note,
+            fontproperties=_fp(note_fs), color=C["ink_soft"], va="center", zorder=4)
 
     # 高點
     y -= gap + hi_pane_h
