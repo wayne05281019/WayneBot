@@ -378,6 +378,11 @@ def _schema_steps():
 
         ensure_schema(path)
 
+    def _issue_reports(path):
+        from issue_reports import ensure_issue_reports_table
+
+        ensure_issue_reports_table(path)
+
     return (
         ("index_daily", _index_daily),
         ("fundamentals", _fundamentals),
@@ -389,6 +394,7 @@ def _schema_steps():
         ("ai_tables", _ai_tables),
         ("broker_points", _broker_points),
         ("official_snapshots", _official_snapshots),
+        ("issue_reports", _issue_reports),
         ("quote_hygiene", normalize_quote_hygiene),
     )
 

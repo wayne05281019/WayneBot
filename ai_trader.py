@@ -391,6 +391,28 @@ def _fmt_lots_html(shares: int) -> str:
     return html_qty_tight(sh, "股", signed=False)
 
 
+def ai_desk_positions(
+    engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
+) -> List[Dict[str, Any]]:
+    """AI 倉持倉列，給主選單點股名查圖用。"""
+    user_id = ensure_ai_user(engine, telegram_uid)
+    quotes = dict(quotes or {})
+    held0 = engine.get_portfolio_summary(user_id, {})
+    quotes = engine.load_quotes_for([p["stock_id"] for p in held0["positions"]], quotes)
+    s = engine.get_portfolio_summary(user_id, quotes)
+    return list(s.get("positions") or [])
+
+
+def _ai_phone_lines(text: str) -> List[str]:
+    """AI 倉白話折行：手機不要一長條。"""
+    from tg_layout import wrap_cjk_lines
+
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    return wrap_cjk_lines(raw, 18, unit="chars") or [raw]
+
+
 def format_ai_desk_html(
     engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
 ) -> str:
@@ -424,21 +446,25 @@ def format_ai_desk_html(
 
     lines = [
         section_eq("AI 模擬帳戶"),
-        "這是你的專屬模擬倉，與手記持股、其他人的模擬倉完全分開。",
-        "本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。",
-        "停損 −7%、停利 ＋8%。06:30 海選後與盤後融合自動買賣；進化寫進資料庫，不改程式檔。",
+        *_ai_phone_lines("這是你的專屬模擬倉，與手記持股、其他人的模擬倉完全分開。"),
+        *_ai_phone_lines("本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。"),
+        *_ai_phone_lines("停損 −7%、停利 ＋8%。海選後與盤後融合自動買賣。"),
         kv_html_compact("總資產", html_money(s["total_assets"], signed=False, compact=True)),
         kv_html_compact("現金", html_money(s["cash"], signed=False, compact=True)),
         kv_html_compact("市值", html_money(s["stock_market_value"], signed=False, compact=True)),
         kv_html_compact("未實現", html_money(unreal, compact=True)),
         kv_html_compact("已實現", html_money(realized, compact=True)),
         kv_html_compact("總損益", html_num_paren(_plain_num(s["total_pnl"], signed=True), s["total_pnl_pct"], compact=True)),
-        kv_compact("已用槽", f"{used}/{MAX_SLOTS} 每槽上限 {slot:,.0f}"),
-        kv_compact("本金", f"{initial:,.0f} 倍數 {size_mult:.2f}"),
+        kv_compact("已用槽", f"{used}/{MAX_SLOTS}"),
+        kv_compact("每槽上限", f"{slot:,.0f}"),
+        kv_compact("本金", f"{initial:,.0f}"),
+        kv_compact("倍數", f"{size_mult:.2f}"),
     ]
     if not s["positions"]:
-        lines.append(
-            f"<i>尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；靠近20日高／美股逆風／當沖名單不隔夜。</i>"
+        lines.extend(
+            _ai_phone_lines(
+                f"尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；靠近20日高／美股逆風／當沖名單不隔夜。"
+            )
         )
     else:
         lines.append("<b>持倉</b>")
@@ -494,13 +520,13 @@ def format_ai_desk_html(
             )
             reason = reasons.get(sid) or "海選紀律"
             bought = _fmt_ymd(p.get("buy_date") or "")
-            lines.append(kv_compact("進場", f"{reason} {bought}".strip()))
+            lines.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
             note = sell_notes.get(sid) or ""
             if note:
-                lines.append(kv_compact("紀律", note))
+                lines.extend(_ai_phone_lines(f"紀律：{note}"))
         empty = MAX_SLOTS - used
         if empty > 0:
-            lines.append(f"<b>空槽</b>　{empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}（不把剩錢重切）")
+            lines.extend(_ai_phone_lines(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"))
 
     fills = _recent_fills(engine, user_id, 8)
     if fills:
@@ -513,11 +539,12 @@ def format_ai_desk_html(
                 extra = " " + html_num_paren(
                     _plain_num(t.get("realized_pnl"), signed=True), t.get("pnl_pct"), compact=True
                 )
-            lines.append(
-                f"• {_fmt_ymd(t.get('date'))} {act} <code>{html_escape(t.get('stock_id'))}</code> "
-                f"{html_escape(t.get('stock_name') or '')} {lot} @{html_price(t.get('price'), compact=True)}"
-                f"{extra}"
-            )
+            lines.append(f"• {_fmt_ymd(t.get('date'))} {act}")
+            sid = html_escape(t.get("stock_id"))
+            nm = html_escape(t.get("stock_name") or "")
+            lines.append(f"<code>{sid}</code> {nm}".strip())
+            px = f"{lot} @{html_price(t.get('price'), compact=True)}{extra}"
+            lines.append(px)
             if t.get("reason"):
                 lines.append(f"　{html_escape(t['reason'])}")
 

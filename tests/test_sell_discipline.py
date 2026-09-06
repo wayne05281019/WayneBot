@@ -425,7 +425,7 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = format_ai_desk_html(eng, uid)
     assert "紀律：" in html
-    assert "可以先減一點：盤面很熱，價格沒創新高。不是叫你買。" in html
+    assert "可以先減一點" in html
     assert "不是叫你買" in html
 
 

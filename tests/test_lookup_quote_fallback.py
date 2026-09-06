@@ -79,9 +79,13 @@ def test_help_has_row1_row2_and_ai():
     for key in ("row1", "row2", "ai"):
         assert key in HELP_TOPICS
     assert "AI模擬倉" in HELP_TOPICS["ai"]
+    assert "AI倉" in HELP_TOPICS["ai"]
     assert "20:00" in HELP_TOPICS["ai"]
     assert "決策卡" in HELP_TOPICS["row1"]
+    assert "AI倉" in HELP_TOPICS["row1"]
     assert "隔日沖" in HELP_TOPICS["row2"]
+    assert "回報" in HELP_TOPICS["row2"]
+    assert "空白預留" not in HELP_TOPICS["row2"]
     assert "按表操課" in HELP_TOPICS["guide"]
     assert "紅箭頭" in HELP_TOPICS["screen"]
     assert "溫度≥80" in HELP_TOPICS["stock"]

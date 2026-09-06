@@ -339,9 +339,9 @@ def format_review_html(db_path: str) -> str:
             continue
         bits.append(f"{labels.get(key, key)} {avg:+.1f}%（勝 {hit:.0%}／{n}）")
     if bits:
-        lines.append("　".join(bits[:4]))
+        lines.extend(bits[:4])
         if len(bits) > 4:
-            lines.append("　".join(bits[4:]))
+            lines.extend(bits[4:])
     if sample:
         lines.append("<b>那日較強幾檔</b>")
         try:
@@ -618,7 +618,7 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
     lines = [
         "<b>AI 成交復盤</b>",
         f"模擬買進隔日　勝 {wr:.0%}／{n}　均 {html_pct(avg).strip()}",
-        "用實際成交，不是只看海選名單。弱的類別下一輪少買；不會改程式檔。",
+        "用實際成交，不是只看海選名單。弱的類別下一輪少買。"
     ]
     bits = []
     for key, fn, favg, fhit in _ai_fill_stats(db_path, user_id=uid):
@@ -626,7 +626,7 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
             continue
         bits.append(f"{labels.get(key, key)} {favg:+.1f}%（勝 {fhit:.0%}／{fn}）")
     if bits:
-        lines.append("　".join(bits[:4]))
+        lines.extend(bits[:4])
     if sample:
         lines.append("<b>最近買進隔日</b>")
         try:
@@ -640,7 +640,8 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
                 if html_stock_anchor
                 else f"{html_escape(sid)} {html_escape(name)}"
             )
+            lines.append(f"{i}. {title}")
             lines.append(
-                f"{i}. {title}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
+                f"{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
             )
     return "\n".join(lines)

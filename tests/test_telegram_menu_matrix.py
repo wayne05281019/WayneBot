@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, WayneTelegramBot
+from bot_servers import MENU_BTN_AI, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
 
 MENU_BUTTONS = [
     ("決策卡", "decision_card_btn"),
@@ -16,11 +16,13 @@ MENU_BUTTONS = [
     ("持股", "_send_portfolio"),
     ("觀察", "_send_watch"),
     ("海選", "screen_cmd"),
+    (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
     ("資金", "flow_cmd"),
     ("說明", "help_cmd"),
     (MENU_BTN_STREAK, "streak_cmd"),
     (MENU_BTN_MARKET, "market_cmd"),
+    (MENU_BTN_REPORT, "report_cmd"),
 ]
 
 INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取大盤", "資金": "讀取當日資金移動"}
