@@ -6,6 +6,7 @@ from decision_card_signals import (
     is_profit_display_zero,
     leave_zero_screen_ok,
     profit_left_zero_highlight,
+    stance_explain,
 )
 
 
@@ -109,7 +110,7 @@ def test_card_daily_stance_is_table_not_arrow():
         profit_pct=99.2, alert="No", hl="No", temp=72.4, badges=[]
     )
     assert kind == "avoid"
-    assert "不宜追" in txt
+    assert "別追" in txt
     txt, kind = card_daily_stance(
         profit_pct=1.0,
         alert="60低",
@@ -119,7 +120,7 @@ def test_card_daily_stance_is_table_not_arrow():
         badges=[],
     )
     assert kind == "watch"
-    assert "觀察" in txt
+    assert "看表" in txt
     txt, kind = card_daily_stance(
         profit_pct=32.1, alert="K20低", hl="No", temp=17.3, badges=["空頭整理"]
     )
@@ -133,8 +134,8 @@ def test_card_daily_stance_is_table_not_arrow():
         badges=["價溫背離少追"],
     )
     assert kind == "avoid"
-    assert "不要追" in txt
-    # 玉晶光型：創中長線新高且溫度≥80 → 今天不要追
+    assert "別追" in txt
+    # 玉晶光型：創中長線新高且溫度≥80 → 今天別追高
     txt, kind = card_daily_stance(
         profit_pct=135.8,
         alert="K20高",
@@ -143,7 +144,7 @@ def test_card_daily_stance_is_table_not_arrow():
         badges=["創480日新高", "溫度≥80注意"],
     )
     assert kind == "avoid"
-    assert "不要追" in txt
+    assert "別追" in txt
     # 華票型：紅箭頭／20高＋最高溫不是買訊，也不當低點觀察
     txt, kind = card_daily_stance(
         profit_pct=5.6,
@@ -166,8 +167,22 @@ def test_4915_sep4_leave_zero_is_wait_not_buy():
         profit_pct=2.4, alert="K20高", hl="20高", temp=69.3, badges=[]
     )
     assert kind == "wait"
-    assert "等待" in txt
-    assert "不要追" not in txt
+    assert "先等" in txt
+    assert "別追" not in txt
+
+
+def test_stance_explain_is_plain_speech():
+    wait = stance_explain("wait")
+    assert "20日表" in wait
+    assert "紅箭頭不是買進訊號" in wait
+    assert "按表操課" not in wait
+    avoid = stance_explain("avoid")
+    assert "追進去容易挨打" in avoid
+    watch = stance_explain("watch")
+    assert "先別急著買" in watch
+    sell = stance_explain("avoid", sell_note="可以先減一點：價格創高，熱度沒跟上")
+    assert "不是叫你買" in sell
+    assert "買訊" not in sell
 
 
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):
