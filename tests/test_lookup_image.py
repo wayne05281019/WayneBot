@@ -43,8 +43,8 @@ class LookupImageTests(unittest.TestCase):
         out = _glance_photo_caption("網頁走勢", card)
         self.assertIn("網頁走勢", out)
         self.assertIn("紀律", out)
-        self.assertIn("可以先減一點", out)
-        self.assertIn("價格創高，熱度沒跟上", out)
+        self.assertIn("先出一點", out)
+        self.assertIn("熱度沒跟上", out)
         self.assertNotIn("買訊", out)
 
     def test_glance_caption_silent_when_no_sell(self):
@@ -63,7 +63,7 @@ class LookupImageTests(unittest.TestCase):
         out = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
         self.assertIn("高低決策卡", out)
         self.assertIn("紀律", out)
-        self.assertIn("可以先減一點：價格創高，熱度沒跟上", out)
+        self.assertIn("先出一點、不要追", out)
         self.assertNotIn("買訊", out)
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
 

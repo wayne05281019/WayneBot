@@ -6,6 +6,10 @@ import pandas as pd
 import pytest
 
 from sell_discipline import (
+    NOTE_DESYNC_LEFT,
+    NOTE_HI_PRICE,
+    NOTE_HI_TEMP,
+    NOTE_SYNC_LEFT,
     attach_sell,
     classify_how_to_sell,
     sell_note_lines,
@@ -24,7 +28,7 @@ def test_lianyi_desync_hi_price_not_hi_temp():
     assert flags["hi_temp"] is False
     assert "不同步" in flags["sell_why"]
     lines = sell_note_lines(flags)
-    assert lines and lines[0].startswith("可以先減一點")
+    assert lines and lines[0].startswith(NOTE_HI_PRICE)
     assert "不是叫你買" in lines[0]
 
 
@@ -46,6 +50,102 @@ def test_sync_then_leave_is_prepare():
     assert flags["sell_action"] == "準備減碼"
     assert "同步再脫離" in flags["sell_why"]
     assert flags["hi_price"] is False
+    note = sell_note_short(flags)
+    assert note == NOTE_SYNC_LEFT
+    assert "先別追" in note
+    assert "先出一點" in note
+    assert "到過" not in note
+    assert "都過了" not in note
+    assert "可以先想" not in note
+
+
+def test_all_sell_notes_say_what_to_do_now():
+    cases = [
+        ("準備減碼", "先前同步再脫離", NOTE_SYNC_LEFT, "都退了"),
+        ("直接減碼", "不同步（最高價但非最高溫）", NOTE_HI_PRICE, "熱度沒跟上"),
+        ("直接減碼", "不同步（最高溫但非最高價）", NOTE_HI_TEMP, "價沒過前高"),
+        ("直接減碼", "不同步再脫離", NOTE_DESYNC_LEFT, "都沒了"),
+    ]
+    for act, why, expect, mark in cases:
+        note = sell_note_short({"sell_action": act, "sell_why": why})
+        assert note == expect, why
+        assert "先出一點" in note or "先別追" in note
+        assert mark in note
+        assert note.startswith("現在")
+        assert "可以先" not in note
+        assert "到過" not in note
+        assert "減碼" not in note
+
+
+def test_discipline_box_drops_conflicting_pink():
+    from sell_discipline import discipline_box_notes
+
+    left = {"sell_action": "準備減碼", "sell_why": "先前同步再脫離"}
+    assert discipline_box_notes(left, "已經連 3 天貼在高檔，先不要追。有持股考慮先出") == [NOTE_SYNC_LEFT]
+    hi = {"sell_action": "直接減碼", "sell_why": "不同步（最高價但非最高溫）"}
+    assert discipline_box_notes(hi, "剛貼到高檔，先看、先別追") == [NOTE_HI_PRICE]
+    quiet = {"sell_action": "", "sell_why": ""}
+    assert discipline_box_notes(quiet, "已經連 3 天貼在高檔，先不要追。有持股考慮先出") == [
+        "已經連 3 天貼在高檔，先不要追。有持股考慮先出"
+    ]
+
+
+def test_pink_warning_note_tells_what_to_do():
+    from wayne_navigator import pink_warning_note
+
+    assert pink_warning_note({"k20_high_streak": 3}) == "已經連 3 天貼在高檔，先不要追。有持股考慮先出"
+    assert pink_warning_note({"k20_high_streak": 1}) == "剛貼到高檔，先看、先別追"
+    assert pink_warning_note({"k20_high_streak": 0}) == ""
+    assert "粉紅預警" not in pink_warning_note({"k20_high_streak": 4})
+
+
+def test_glance_png_sync_leave_uses_plain_peak_heat(tmp_path, monkeypatch):
+    """介紹圖紀律列：現況＋怎麼做，不要「到過…都過了」。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+
+    from wayne_navigator import render_first_glance_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        text = str(args[2]) if len(args) >= 3 else str(kwargs.get("s") or "")
+        seen.append(text)
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    table = pd.DataFrame(
+        [
+            {"date": "20260903", "高低": "20高", "升降": "最高溫"},
+            {"date": "20260904", "高低": "No", "升降": "降溫"},
+        ]
+    )
+    card = _mini_card_for_png(table=table, sell_action="", sell_why="")
+    tape = {
+        "last": {},
+        "move": {},
+        "volume": {},
+        "foreign": {},
+        "trust": {},
+        "dealer": {},
+        "three": {},
+        "inst_pct": 0,
+        "conflict": "",
+    }
+    out = tmp_path / "sync_leave_glance.png"
+    path = render_first_glance_png("3035", card, tape, str(out))
+    assert path and out.is_file()
+    joined = "\n".join(seen)
+    assert "高點跟熱度都退了" in joined
+    assert "先別追" in joined
+    assert "先出一點" in joined
+    assert "到過" not in joined
+    assert "都過了" not in joined
+    assert "可以先想" not in joined
+    assert not any(t.startswith("在") and "退了" in t for t in seen)
 
 
 def test_desync_then_leave_is_cut():
@@ -114,11 +214,11 @@ def test_sell_note_short_drops_disclaimer():
         "sell_action": "直接減碼",
         "sell_why": "不同步（最高價但非最高溫）",
     }
-    assert sell_note_short(flags) == "可以先減一點：價格創高，熱度沒跟上"
+    assert sell_note_short(flags) == NOTE_HI_PRICE
     assert "買訊" not in sell_note_short(flags)
     assert "作者" not in sell_note_short(flags)
     full = sell_note_lines(flags)[0]
-    assert full == "可以先減一點：價格創高，熱度沒跟上。不是叫你買。"
+    assert full == f"{NOTE_HI_PRICE}。不是叫你買。"
     assert "不同步（" not in full
 
 
@@ -162,10 +262,11 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     attach_sell(again)
     assert again["sell_action"] == "直接減碼"
     line = sell_note_lines(again)[0]
-    assert "可以先減一點" in line
+    assert "先出一點" in line
+    assert "不要追" in line
     assert "不是叫你買" in line
     assert "不同步（" not in line
-    assert sell_note_short(again) == "可以先減一點：價格創高，熱度沒跟上"
+    assert sell_note_short(again) == NOTE_HI_PRICE
 
 
 def _mini_card_for_png(**extra):
@@ -251,7 +352,7 @@ def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
     assert path and out.is_file()
     joined = "\n".join(seen)
     joined = "\n".join(seen)
-    assert "可以先減一點：價格創高，熱度沒跟上。不是叫你買。" in seen
+    assert f"{NOTE_HI_PRICE}。不是叫你買。" in seen
     assert "紅箭頭不是買進訊號" not in joined
     assert "按表操課" not in joined
 
@@ -345,7 +446,7 @@ def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
     path = render_first_glance_png("3441", card, tape, str(out))
     assert path and out.is_file()
     assert "紀律" in seen
-    assert "可以先減一點：價格創高，熱度沒跟上" in seen
+    assert NOTE_HI_PRICE in seen
     assert not any(s.startswith("紀律　") for s in seen)
 
 
@@ -378,7 +479,7 @@ def test_cary_2383_2408_3008_20260904_rows():
     assert str(c3008.get("latest_date")) == "20260904"
     assert c3008.get("sell_action") == "直接減碼"
     assert "不同步再脫離" in str(c3008.get("sell_why") or "")
-    assert sell_note_short(c3008) == "可以先減一點：高點或熱度剛過，現在都沒了"
+    assert sell_note_short(c3008) == NOTE_DESYNC_LEFT
 
 
 @pytest.mark.production_db
@@ -420,12 +521,12 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     def fake_notes(ids, db_path, *, full=False):
         assert "3703" in [str(x) for x in ids]
         assert full is True
-        return {"3703": "可以先減一點：盤面很熱，價格沒創新高。不是叫你買。"}
+        return {"3703": f"{NOTE_HI_TEMP}。不是叫你買。"}
 
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = format_ai_desk_html(eng, uid)
     assert "紀律：" in html
-    assert "可以先減一點" in html
+    assert "先出一點" in html
     assert "不是叫你買" in html
 
 
@@ -441,7 +542,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
         assert "3035" in [str(x) for x in ids]
         assert "4915" in [str(x) for x in ids]
         assert full is True
-        return {"3035": "可以先想減一點：前幾天高點跟熱度一起到過，現在都過了。不是叫你買。"}
+        return {"3035": f"{NOTE_SYNC_LEFT}。不是叫你買。"}
 
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = eng.format_holdings_html(
@@ -454,7 +555,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
             "4915": {"close": 60.8, "pct_change": 0.5},
         },
     )
-    assert "可以先想減一點：前幾天高點跟熱度一起到過，現在都過了。不是叫你買。" in html
+    assert f"{NOTE_SYNC_LEFT}。不是叫你買。" in html
     assert html.split("致伸")[-1].count("紀律") == 0
 
 
@@ -470,10 +571,10 @@ def test_holdings_and_notes_match_20260904_flags():
         db,
         full=True,
     )
-    assert notes["3703"].startswith("可以先減一點：盤面很熱")
+    assert notes["3703"].startswith(NOTE_HI_TEMP)
     assert "不是叫你買" in notes["3703"]
-    assert notes["3035"].startswith("可以先想減一點：前幾天高點跟熱度一起到過")
-    assert notes["6526"].startswith("可以先想減一點：前幾天高點跟熱度一起到過")
+    assert notes["3035"].startswith(NOTE_SYNC_LEFT)
+    assert notes["6526"].startswith(NOTE_SYNC_LEFT)
     assert "4915" not in notes
     assert "1303" not in notes
     assert "8234" not in notes
@@ -484,7 +585,7 @@ def test_holdings_and_notes_match_20260904_flags():
         quotes_map={"3703": {"close": 20.0, "pct_change": 0.5}},
     )
     assert "紀律：" in html_cut
-    assert "可以先減一點：盤面很熱" in html_cut
+    assert NOTE_HI_TEMP in html_cut
     html_sync = eng.format_holdings_html(
         [{"stock_code": "4915", "stock_name": "致伸", "shares": 1, "cost_price": 60.8}],
         quotes_map={"4915": {"close": 60.8, "pct_change": 0.3}},

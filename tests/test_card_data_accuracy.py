@@ -108,19 +108,22 @@ class CardDataAccuracyTests(unittest.TestCase):
             "yesterday_close": 4314.82,
             "update_time": "12:00:00",
         }
-        with patch("live_quote.fetch_lookup_quote", return_value=rt), patch(
-            "live_quote.fetch_mis_quote", return_value=rt
-        ), patch("live_quote.is_live_merge_window", return_value=True):
-            card = NavigatorEngine(db).get_decision_card("2454", merge_live=True)
         conn = sqlite3.connect(db)
         official = conn.execute(
             """
-            SELECT close FROM daily_quotes
+            SELECT close, replace(date,'-','') FROM daily_quotes
             WHERE stock_id='2454' ORDER BY replace(date,'-','') DESC LIMIT 1
             """
         ).fetchone()
         conn.close()
         self.assertIsNotNone(official)
+        as_of = str(official[1] or "")
+        with patch("live_quote.fetch_lookup_quote", return_value=rt), patch(
+            "live_quote.fetch_mis_quote", return_value=rt
+        ), patch("live_quote.is_live_merge_window", return_value=True), patch(
+            "live_quote.taipei_today_str", return_value=as_of
+        ):
+            card = NavigatorEngine(db).get_decision_card("2454", merge_live=True)
         self.assertAlmostEqual(float(card["close"]), float(official[0]), places=0)
         low = float(card["cal60_low"] or 0)
         self.assertGreater(low, 0)

@@ -187,7 +187,7 @@ def test_stance_explain_is_plain_speech():
     assert "追進去容易挨打" in avoid
     watch = stance_explain("watch")
     assert "先別急著買" in watch
-    sell = stance_explain("avoid", sell_note="可以先減一點：價格創高，熱度沒跟上")
+    sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
     assert "不是叫你買" in sell
     assert "買訊" not in sell
 
