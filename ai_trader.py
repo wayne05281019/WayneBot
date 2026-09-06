@@ -106,8 +106,8 @@ def _candidates(results: Dict[str, List[Dict[str, Any]]], db_path: str = "") -> 
     """隔夜模擬倉：佈局／隔日沖，不拿當沖名單去隔夜。貼月高、美股電子逆風不買。"""
     out, seen = [], set()
     for key, reason in (
-        ("leave_zero", "起漲：獲利離零"),
-        ("golden_buy", "黃金買點：60低超跌"),
+        ("leave_zero", "黃金買點：獲利離零"),
+        ("golden_buy", "重點觀察：60低超跌"),
         ("revenue_cross", "優先看：營收轉強×突破"),
         ("overnight", "隔日沖佈局"),
         ("select_01", "周帶量突破"),
@@ -446,9 +446,10 @@ def format_ai_desk_html(
 
     lines = [
         section_eq("AI 模擬帳戶"),
-        *_ai_phone_lines("這是你的專屬模擬倉，與手記持股、其他人的模擬倉完全分開。"),
+        *_ai_phone_lines("這是長期照紀律買的對照組（假錢）。"),
+        *_ai_phone_lines("對照你手記持股，不是真下單。"),
         *_ai_phone_lines("本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。"),
-        *_ai_phone_lines("停損 −7%、停利 ＋8%。海選後與盤後融合自動買賣。"),
+        *_ai_phone_lines("停損 −7%、停利 ＋8%。優先買黃金買點欄。"),
         kv_html_compact("總資產", html_money(s["total_assets"], signed=False, compact=True)),
         kv_html_compact("現金", html_money(s["cash"], signed=False, compact=True)),
         kv_html_compact("市值", html_money(s["stock_market_value"], signed=False, compact=True)),

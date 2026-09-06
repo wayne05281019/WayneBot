@@ -19,20 +19,20 @@ def test_selected_line_text_keeps_only_checked_stocks():
     from line_hop import selected_line_text
 
     manifest = {
-        "title": "起漲",
+        "title": "黃金買點",
         "bucket_key": "leave_zero",
         "as_of": "20260904",
-        "line_text": "WayneBot 海選　2026/09/04\n＝＝起漲＝＝\n共 2 檔\n1. 台積電 (2330)\n────────────\n2. 聯發科 (2454)",
+        "line_text": "WayneBot 海選　2026/09/04\n＝＝黃金買點＝＝\n共 2 檔\n1. 台積電 (2330)\n────────────\n2. 聯發科 (2454)",
         "stocks": [
             {
                 "stock_id": "2330",
                 "stock_name": "台積電",
-                "text_block": "1. 台積電 (2330)\n格局：起漲",
+                "text_block": "1. 台積電 (2330)\n格局：黃金買點",
             },
             {
                 "stock_id": "2454",
                 "stock_name": "聯發科",
-                "text_block": "2. 聯發科 (2454)\n格局：起漲",
+                "text_block": "2. 聯發科 (2454)\n格局：黃金買點",
             },
         ],
     }
@@ -50,7 +50,7 @@ def test_render_line_rich_share_html_has_album_and_line():
 
     page = render_line_rich_share_html(
         {
-            "title": "起漲",
+            "title": "黃金買點",
             "count": 2,
             "line_text": "WayneBot 測試\n1. 台積電 (2330)\n產業\n半導體業景氣…",
             "album_url": "https://example.com/line/rich/leave_zero/20260901/album.png",
@@ -160,7 +160,7 @@ def test_render_text_panel_png(tmp_path):
             for x in range(0, im.width, 2)
             if (px := im.getpixel((x, y)))[0] > 150 and px[1] < 90 and px[2] < 110
         ]
-        assert reds, "起漲旁邊的態度應畫成紅字"
+        assert reds, "黃金買點旁邊的態度應畫成紅字"
         hit = reds[len(reds) // 2]
         assert abs(hit[0] - STANCE_RED_RGB[0]) < 40
 
@@ -178,7 +178,7 @@ def test_rich_manifest_db_roundtrip(tmp_path):
     manifest = {
         "bucket_key": "leave_zero",
         "as_of": "20260901",
-        "title": "起漲",
+        "title": "黃金買點",
         "count": 1,
         "line_text": "WayneBot 測試\n1. 台積電",
         "album_url": "",
@@ -197,7 +197,7 @@ def test_rebuild_manifest_from_line_pack(tmp_path):
     upsert_line_pack(
         db,
         "20260901",
-        {"id": "leave_zero", "title": "傳 起漲", "label": "開 LINE", "text": "WayneBot 測試\n1. 華航"},
+        {"id": "leave_zero", "title": "傳 黃金買點", "label": "開 LINE", "text": "WayneBot 測試\n1. 華航"},
     )
     hit = rebuild_manifest_from_line_pack(db, "leave_zero")
     assert hit.get("text_only") is True

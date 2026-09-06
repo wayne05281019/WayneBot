@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 LINE_PACKS = (
     ("night", "開 LINE・夜盤", "夜盤判斷"),
-    ("layout", "開 LINE・起漲", "起漲與佈局"),
+    ("layout", "開 LINE・黃金買點", "黃金買點與佈局"),
     ("trade", "開 LINE・短線", "短線說明"),
 )
 PACK_IDS = {p[0] for p in LINE_PACKS}

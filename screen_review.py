@@ -15,8 +15,8 @@ except Exception:
         return "data/wayne_market.db"
 
 BUCKETS = (
-    ("leave_zero", "起漲"),
-    ("golden_buy", "黃金買點"),
+    ("leave_zero", "黃金買點"),
+    ("golden_buy", "重點觀察"),
     ("revenue_cross", "優先看"),
     ("select_01", "周突破"),
     ("select_02", "站上季線"),
@@ -397,8 +397,10 @@ def ensure_ai_fills_table(db_path: str = None) -> None:
 def bucket_from_reason(reason: str) -> str:
     r = str(reason or "")
     mapping = (
+        ("重點觀察", "golden_buy"),
+        ("60低超跌", "golden_buy"),
+        ("獲利離零", "leave_zero"),
         ("起漲", "leave_zero"),
-        ("黃金", "golden_buy"),
         ("營收", "revenue_cross"),
         ("隔日", "overnight"),
         ("周", "select_01"),

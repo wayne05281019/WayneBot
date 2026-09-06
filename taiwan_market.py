@@ -2156,11 +2156,11 @@ def regime_plus_screening_note(snap: Dict[str, Any]) -> str:
     pending = snap.get("regime_plus_pending")
     tail = f"（觀察切換→{REGIME_PLUS_LABELS.get(str(pending), pending)}）" if pending else ""
     notes = {
-        "trend_up": "多頭延伸：起漲與周帶量桶正常權重。",
+        "trend_up": "多頭延伸：黃金買點與周帶量桶正常權重。",
         "trend_up_late": "多頭末端：少追、降 cap、多看獲利格。",
         "range": "箱型震盪：偏選股，不賭方向。",
         "trend_down": "空頭延伸：縮短線桶，佈局需極嚴。",
-        "down_exhaust": "空頭衰竭：低檔觀察，黃金買點可略放但仍不賭刀。",
+        "down_exhaust": "空頭衰竭：低檔觀察，重點觀察欄可略放但仍不賭刀。",
         "repair": "跌後修復：觀察 3 日站穩，不急追。",
     }
     return f"盤勢　<b>{label}</b>{tail}　{notes.get(rp, '')}"
@@ -2759,9 +2759,9 @@ def market_screening_note(snap: Dict[str, Any]) -> str:
     reg = snap.get("regime")
     conf = snap.get("confidence")
     if reg == "bull":
-        return f"大盤多頭帶動（信心 {conf}%）：佈局桶加權偏多，起漲仍看獲利格。"
+        return f"大盤多頭帶動（信心 {conf}%）：佈局桶加權偏多，黃金買點仍看獲利格。"
     if reg == "bear":
-        return f"大盤空方壓力（信心 {conf}%）：突破桶縮水，起漲需量熱＋站上月線。"
+        return f"大盤空方壓力（信心 {conf}%）：突破桶縮水，黃金買點需量熱＋站上月線。"
     fr = int(snap.get("falling_risk") or 0)
     if fr >= 60:
         return f"下跌風險 {fr}（紅燈）：當沖/隔日沖桶再降權，佈局看獲利格＋站上月線。"
@@ -3163,16 +3163,16 @@ def _outlook_action_plain(
     if us == "risk_off" or tw == "bear" or fr >= 60:
         return "逆風，佈局先等、當沖不要硬沖。"
     if us_down and night_firm:
-        return "美股弱、夜盤沒跟崩；今天別追高，起漲仍按表。"
+        return "美股弱、夜盤沒跟崩；今天別追高，黃金買點仍按表。"
     if us == "caution" or fr >= 35:
-        return "偏空，可以看起漲和黃金買點，周帶量少追。"
+        return "偏空，可以看黃金買點和重點觀察，周帶量少追。"
     if us_up and night_firm:
-        return "隔夜偏多，台股容易開高；起漲仍按表，不要追已經噴的。"
+        return "隔夜偏多，台股容易開高；黃金買點仍按表，不要追已經噴的。"
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
-        return "加權還在月線下，可以照表看起漲和黃金買點，少追周帶量。"
+        return "加權還在月線下，可以照表看黃金買點和重點觀察，少追周帶量。"
     if night_weak:
-        return "可以照表看起漲和黃金買點；夜盤比日盤便宜，周帶量少追。"
-    return "可以照表看起漲和黃金買點，周帶量仍少追。"
+        return "可以照表看黃金買點和重點觀察；夜盤比日盤便宜，周帶量少追。"
+    return "可以照表看黃金買點和重點觀察，周帶量仍少追。"
 
 
 def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:

@@ -20,8 +20,8 @@ LINE_SHARE_SEP = "────────────"
 
 # bucket_key → (標題, 副標；與 Telegram 海選 SCREEN_PUSH_SPECS 一致)
 LINE_BUCKET_META: Dict[str, tuple] = {
-    "leave_zero": ("起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）"),
-    "golden_buy": ("黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）"),
+    "leave_zero": ("黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）"),
+    "golden_buy": ("重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）"),
     "revenue_cross": ("優先看", "營收轉強 × 量價突破"),
     "select_01": ("周帶量", "突破5日高＋60日量比≥2"),
     "half_year_high": ("半年高", "收盤創120日新高且量比≥2.5"),
@@ -68,13 +68,13 @@ def _pad_label(label: str, width: int = 4) -> str:
 
 
 def is_stance_line(ln: str) -> bool:
-    """舊稿「態度」列；新稿態度貼在格局／起漲旁邊。"""
+    """舊稿「態度」列；新稿態度貼在格局／黃金買點旁邊。"""
     s = str(ln or "")
     return s.startswith(_pad_label(STANCE_LABEL))
 
 
 def _geju_stance_split(ln: str) -> Optional[Tuple[str, str]]:
-    """格局　起漲　今天先看表，先等 → (左黑, 右紅)。沒有態度就 None。"""
+    """格局　黃金買點　今天先看表，先等 → (左黑, 右紅)。沒有態度就 None。"""
     pad = _pad_label("格局") + "　"
     s = str(ln or "")
     if not s.startswith(pad):
@@ -89,7 +89,7 @@ def _geju_stance_split(ln: str) -> Optional[Tuple[str, str]]:
 
 
 def colored_line_segments(ln: str, *, in_stance_cont: bool) -> Tuple[List[Tuple[str, bool]], bool]:
-    """(文字, 是否紅字) 片段；格局列起漲後的態度＋其折行延續畫紅。"""
+    """(文字, 是否紅字) 片段；格局列黃金買點後的態度＋其折行延續畫紅。"""
     s = str(ln or "")
     split = _geju_stance_split(s)
     if split:
@@ -178,7 +178,7 @@ def _line_stance_value(item: Dict[str, Any]) -> str:
 
 
 def line_plain_to_html(text: str) -> str:
-    """轉 LINE 中轉頁：起漲旁邊的態度紅字；其餘原樣跳脫。"""
+    """轉 LINE 中轉頁：黃金買點旁邊的態度紅字；其餘原樣跳脫。"""
     out: List[str] = []
     in_stance = False
     for ln in str(text or "").split("\n"):
@@ -219,7 +219,7 @@ def format_line_stock_block(
     notice_fn=None,
     plan_fn=None,
 ) -> str:
-    """一檔直向：股名、格局（起漲旁接今日態度）、收盤／量能／金額、均線、法人、獲利、產業。"""
+    """一檔直向：股名、格局（黃金買點旁接今日態度）、收盤／量能／金額、均線、法人、獲利、產業。"""
     from screening_engine import (
         _chip_plain,
         _pct_str,

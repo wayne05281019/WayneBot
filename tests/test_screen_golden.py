@@ -1,4 +1,4 @@
-"""海選：黃金買點桶與型態／下坡過濾。"""
+"""海選：重點觀察桶（golden_buy）與型態／下坡過濾。"""
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -43,7 +43,7 @@ def _bars(closes, *, stock_id="2330", vol=12000):
 def test_golden_buy_bucket_matches_decision_card_fields():
     closes = [70.0] * 45 + [62.0] * 8 + [55.0] * 7 + [48.0] * 5 + [42.0] * 10
     out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": _bars(closes)})
-    assert out["golden_buy"], "應進黃金買點桶"
+    assert out["golden_buy"], "應進重點觀察桶（golden_buy）"
     item = out["golden_buy"][0]
     assert item.get("at_60_low") is True
     assert -1.5 <= float(item["profit_pct"]) <= 2.5

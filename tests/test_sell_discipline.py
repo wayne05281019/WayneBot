@@ -414,7 +414,7 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     eng = PortfolioEngine(path)
     uid = "1001"
     user = ensure_ai_user(eng, uid)
-    bought = eng.buy(user, "20260904", "3703", "欣陸", 19.95, 8000, reason="起漲：獲利離零")
+    bought = eng.buy(user, "20260904", "3703", "欣陸", 19.95, 8000, reason="黃金買點：獲利離零")
     assert bought.get("success") is True
 
     def fake_notes(ids, db_path, *, full=False):

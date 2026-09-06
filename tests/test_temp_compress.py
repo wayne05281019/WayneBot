@@ -56,6 +56,18 @@ def test_temp_cell_style_marks_80_watch():
     assert mint_bg == _CARD["lo_fill"]
     assert mint_fg == _CARD["lo_ink"]
     assert mint_bg != _CARD["temp_hot_bg"]
+    zero_bg, _ = temp_cell_style(0.0, _CARD["white"])
+    assert zero_bg == _CARD["lo_fill"]
+
+
+def test_flat_temp_writes_no_without_fill():
+    """作者卡溫度幾乎沒動就寫 No，白底灰字、不畫升降 pill。"""
+    labels, notes = compute_temp_trend_labels([10.0, 10.0, 10.1], window=3)
+    assert labels == ["No", "No", "No"]
+    assert notes == ["", "", ""]
+    bg, fg = temp_trend_cell_style("No", _CARD["white"])
+    assert bg == _CARD["white"]
+    assert fg == _CARD["ink_mute"]
 
 
 def test_temp_compress_styles_high_contrast():

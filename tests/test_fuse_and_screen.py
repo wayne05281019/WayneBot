@@ -182,7 +182,7 @@ class FuseAndScreenTest(unittest.TestCase):
             "20260828",
         )
         blob = "\n".join(p["html"] for p in payload)
-        self.assertIn("起漲", blob)
+        self.assertIn("黃金買點", blob)
         self.assertNotIn("＝＝當沖", blob)
         self.assertNotIn("＝＝隔日沖", blob)
         self.assertNotIn("主選單", blob)
@@ -230,7 +230,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("select_03", full_keys)
         packs = format_line_share_packs(results, "20260904", morning=True)
         layout = next(p["text"] for p in packs if p["id"] == "layout")
-        self.assertIn("＝＝起漲＝＝", layout)
+        self.assertIn("＝＝黃金買點＝＝", layout)
         self.assertIn("＝＝周帶量＝＝", layout)
         self.assertNotIn("＝＝站上季線＝＝", layout)
         self.assertNotIn("＝＝止跌＝＝", layout)
@@ -248,7 +248,7 @@ class FuseAndScreenTest(unittest.TestCase):
             "ma20": 98,
             "ma60": 95,
         }
-        outlook = "<b>WayneBot 海選</b>\n＝＝大盤狀況＝＝\n可以照表看起漲和黃金買點，周帶量仍少追。"
+        outlook = "<b>WayneBot 海選</b>\n＝＝大盤狀況＝＝\n可以照表看黃金買點和重點觀察，周帶量仍少追。"
         morning = format_screening_payload(
             {
                 "leave_zero": [item],
@@ -280,7 +280,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertEqual(keys[0], "leave_zero")
         self.assertIn("revenue_cross", keys)
         self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
-        self.assertIn("起漲｜", payload[0]["html"])
+        self.assertIn("黃金買點｜", payload[0]["html"])
         self.assertIn("共 8 檔", payload[0]["html"])
         self.assertEqual(payload[0]["html"].count("<blockquote>"), 8)
         self.assertEqual(payload[0]["picks"][0][0], "2610")
@@ -289,7 +289,7 @@ class FuseAndScreenTest(unittest.TestCase):
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("＝＝起漲＝＝"), line.find("＝＝優先看＝＝"))
+        self.assertLess(line.find("＝＝黃金買點＝＝"), line.find("＝＝優先看＝＝"))
         from config import scheduled_job_kind
         from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
@@ -305,13 +305,13 @@ class FuseAndScreenTest(unittest.TestCase):
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])
         self.assertIn("電子夜盤", packs[0]["text"])
-        self.assertIn("＝＝起漲＝＝", packs[1]["text"])
+        self.assertIn("＝＝黃金買點＝＝", packs[1]["text"])
         self.assertNotIn("說明：", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
         href = line_share_href("測試")
         self.assertTrue(href.startswith("https://line.me/R/share?text="))
-        page = render_line_hop_html("開 LINE・起漲", packs[1]["text"])
+        page = render_line_hop_html("開 LINE・黃金買點", packs[1]["text"])
         self.assertIn("line.me/R/share", page)
         self.assertIn("line://msg/text/", page)
         self.assertNotIn("哥哥", page)
@@ -1279,28 +1279,63 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(fg0, _CARD["lo_ink"])
         bg_leave, fg_leave = profit_cell_style(0.9, 0.0, _CARD["white"])
         self.assertEqual(bg_leave, _CARD["lo_hit_fill"])
+        bg_point, _ = profit_cell_style(0.3, 1.5, _CARD["white"])
+        self.assertEqual(bg_point, _CARD["lo_hit_fill"])
+        from wayne_navigator import _profit_heat_draw
+
+        heat03, _ = _profit_heat_draw(0.3, 1.5, _CARD["white"])
+        self.assertEqual(heat03, _CARD["lo_hit_fill"])
+        heat00, _ = _profit_heat_draw(0.0, 0.3, _CARD["white"])
+        self.assertEqual(heat00, _CARD["lo_fill"])
         bg_run, fg_run = profit_cell_style(1.5, 0.9, _CARD["white"])
         self.assertEqual(bg_run, _CARD["white"])
         self.assertNotEqual(bg_run, _CARD["hi_fill"])
+        heat15, _ = _profit_heat_draw(1.5, 0.9, _CARD["white"])
+        self.assertEqual(heat15, _CARD["white"])
+        heat24, _ = _profit_heat_draw(2.4, 0.3, _CARD["white"])
+        self.assertEqual(heat24, _CARD["white"])
+        heat22, _ = _profit_heat_draw(22.1, None, _CARD["white"])
+        self.assertNotEqual(heat22.lower(), _CARD["white"].lower())
+        self.assertNotEqual(heat22.lower(), "#fff0ff")
+        heat08, _ = _profit_heat_draw(8.0, None, _CARD["white"])
+        # 22% 要比剛滿 8% 更深，不能熱圖往白洗。
+        self.assertNotEqual(heat22.lower(), heat08.lower())
+        from wayne_navigator import _vol_heat_draw
+
+        vol94, _ = _vol_heat_draw(94, _CARD["white"])
+        self.assertEqual(vol94, _CARD["white"])
+        vol2, _ = _vol_heat_draw(2, _CARD["white"])
+        self.assertNotEqual(vol2, _CARD["white"])
         self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(alert_cell_style("10低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(alert_cell_style("20高", _CARD["white"])[0], _CARD["hi_fill"])
+        self.assertEqual(alert_cell_style("No", _CARD["white"])[0], _CARD["white"])
         self.assertEqual(temp_cell_style(76, _CARD["white"])[0], _CARD["temp_hot_bg"])
         self.assertEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["lo_fill"])
         self.assertNotEqual(temp_cell_style(36, _CARD["white"])[0], _CARD["temp_hot_bg"])
+        self.assertEqual(temp_cell_style(2.5, _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(vol_rank_cell_style(5, _CARD["white"])[0], _CARD["pill_hi"])
-        self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["hi_fill"])
-        self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["lo_fill"])
+        self.assertEqual(bias_cell_style(1.2, _CARD["white"])[0], _CARD["white"])
+        self.assertEqual(bias_cell_style(-2.0, _CARD["white"])[1], _CARD["down"])
+        self.assertEqual(price_cell_style("5低", _CARD["white"])[0], _CARD["white"])
+        self.assertEqual(price_cell_style("20高", _CARD["white"], "最高價")[0], _CARD["hi_fill"])
+        from wayne_navigator import temp_trend_cell_style
+
+        self.assertEqual(temp_trend_cell_style("No", _CARD["white"])[0], _CARD["white"])
+        self.assertEqual(temp_trend_cell_style("—", _CARD["white"])[0], _CARD["white"])
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("profit_cell_style", src)
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
         self.assertIn("_status_badge_colors", src)
-        self.assertIn("pill_cols = {3, 5}", src)
+        self.assertIn("pill_cols = {3, 4}", src)
         self.assertIn("_temp_heat_draw", src)
         self.assertIn("_cell_wash", src)
+        src_heat = inspect.getsource(_profit_heat_draw)
+        self.assertIn("lo_fill", src_heat)
+        self.assertIn("lo_hit_fill", src_heat)
         self.assertNotIn("買低賣高決策卡", src)
         self.assertNotIn("#FBEAF1", src)
         self.assertNotIn("row_i % 2", src)
@@ -1309,6 +1344,91 @@ class LookupCardTest(unittest.TestCase):
         wash = inspect.getsource(_cell_wash)
         self.assertNotIn("0.55", wash)
         self.assertIn("facecolor=c", wash)
+
+    def test_profit_zero_band_green_is_painted_on_card_png(self):
+        """0.0%／0.3% 必須畫上綠底（作者卡同一套），不能只改字色。"""
+        import tempfile
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import pandas as pd
+        from PIL import Image
+
+        from wayne_navigator import _CARD, render_decision_card_png
+
+        def rgb(hex_s):
+            h = hex_s.lstrip("#")
+            return tuple(int(h[i : i + 2], 16) for i in range(0, 6, 2))
+
+        def count_near(im, target, tol=22):
+            px = list(im.getdata())
+            n = 0
+            for p in px[::3]:
+                if all(abs(int(a) - int(b)) <= tol for a, b in zip(p[:3], target)):
+                    n += 1
+            return n
+
+        def row(date, profit, alert="No"):
+            return {
+                "date": date,
+                "close": 59.6,
+                "獲利": f"{profit:.1f}%",
+                "高低": "No",
+                "預警": alert,
+                "溫度計": "2.5 °C",
+                "月乖離": "-1.0%",
+                "profit_pct": profit,
+                "bias_monthly": -1.0,
+                "vol_rank_120": 40,
+                "120日量": "第 40 名",
+                "升降": "No",
+                "升降註": "",
+            }
+
+        card = {
+            "stock_id": "4915",
+            "stock_name": "致伸",
+            "close": 60.8,
+            "change_pct": 2.01,
+            "h10": 60.8,
+            "dist_h10": 0.0,
+            "h20": 60.9,
+            "dist_h20": -0.2,
+            "h60": 77.5,
+            "dist_h60": -27.5,
+            "l10": 59.4,
+            "dist_l10": 2.4,
+            "l20": 59.4,
+            "dist_l20": 2.4,
+            "l60": 59.4,
+            "dist_l60": 2.4,
+            "space_20": 2.5,
+            "space_60": 30.5,
+            "ma60s": 0.0,
+            "qty60": 2000,
+            "badges": [],
+            "stance": "今天先看表，先等",
+            "stance_kind": "wait",
+            "table": pd.DataFrame(
+                [
+                    row("20260904", 2.4, "10高"),
+                    row("20260903", 0.3, "K20高"),
+                    row("20260831", 0.0, "60低"),
+                ]
+            ),
+        }
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            out = render_decision_card_png(card, path)
+            with Image.open(out) as im:
+                im = im.convert("RGB")
+                self.assertGreater(count_near(im, rgb(_CARD["lo_hit_fill"])), 80)
+                self.assertGreater(count_near(im, rgb(_CARD["lo_fill"])), 40)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_card_bold_and_body_use_different_font_weights(self):
         from wayne_navigator import _weight_step
@@ -2193,7 +2313,7 @@ class AIDeskTest(unittest.TestCase):
                         100,
                         1000,
                         100000,
-                        "起漲：獲利離零",
+                        "黃金買點：獲利離零",
                         "leave_zero",
                         0,
                         0,
@@ -2356,7 +2476,7 @@ class WatchListTest(unittest.TestCase):
             "volume": 8000,
             "q60r": 2.1,
         }
-        text = format_stock_line_share_text(item, "20260828", bucket_label="起漲")
+        text = format_stock_line_share_text(item, "20260828", bucket_label="黃金買點")
         self.assertIn("2330", text)
         self.assertNotIn("開 LINE", text)
         fd, path = tempfile.mkstemp(suffix=".db")

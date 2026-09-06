@@ -101,8 +101,8 @@ def test_screen_payload_leave_zero_has_two_char_labels_and_stance():
         "20260904",
     )
     blob = "\n".join(p["html"] for p in payload)
-    assert "＝＝起漲" in blob
-    assert "格局　起漲" in blob
+    assert "＝＝黃金買點" in blob
+    assert "格局　黃金買點" in blob
     assert "今天先看表，先等" in blob
     assert "量能　" in blob
     assert "金額　" in blob
