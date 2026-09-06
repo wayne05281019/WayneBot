@@ -31,6 +31,9 @@ jobs:
     steps:
       - name: 檢出專案代碼 (Checkout)
         uses: actions/checkout@v4
+        with:
+          # push 觸發要比 before…sha；預設 depth=1 會讓 changed 變空、誤判成 increment
+          fetch-depth: 50
 
       - name: 設定 Python 環境 (Setup Python 3.12)
         uses: actions/setup-python@v5
@@ -49,12 +52,34 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             JOB="${{ github.event.inputs.job }}"
           elif [ "${{ github.event_name }}" = "push" ]; then
-            CHANGED=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || true)
+            BEFORE="${{ github.event.before }}"
+            SHA="${{ github.sha }}"
+            CHANGED=""
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              CHANGED=$(git diff --name-only "$BEFORE" "$SHA" 2>/dev/null || true)
+            fi
+            if [ -z "$CHANGED" ]; then
+              CHANGED=$(git show --pretty="" --name-only -m --first-parent "$SHA" 2>/dev/null || true)
+            fi
+            if [ -z "$CHANGED" ]; then
+              CHANGED=$(git diff-tree --no-commit-id --name-only -r "$SHA" 2>/dev/null || true)
+            fi
+            MSG="${{ github.event.head_commit.message }}"
             echo "changed=[$CHANGED]"
-            if echo "$CHANGED" | grep -q 'triggers/morning_screen'; then
+            echo "msg_head=$(echo "$MSG" | head -1)"
+            if echo "$CHANGED" | grep -q 'triggers/morning_screen' || echo "$MSG" | grep -qi 'morning_screen'; then
               JOB="morning_screen"
-            else
+            elif echo "$CHANGED" | grep -q 'triggers/increment' || echo "$MSG" | grep -qi 'increment'; then
               JOB="increment"
+            else
+              # 路徑過濾保證至少一個 trigger；認不出時早上時段偏海選、其餘偏盤後
+              HH=$(date -u +%H)
+              if [ "$HH" -ge 21 ] || [ "$HH" -lt 6 ]; then
+                JOB="morning_screen"
+              else
+                JOB="increment"
+              fi
+              echo "WARN: trigger 檔辨識失敗，依 UTC 時段 fallback → $JOB"
             fi
           else
             SCHED="${{ github.event.schedule }}"
