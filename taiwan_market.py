@@ -1624,9 +1624,9 @@ def _prior_quote_dates(db_path: str, as_of: str, limit: int = 12) -> List[str]:
             return []
         rows = conn.execute(
             """
-            SELECT DISTINCT replace(date, '-', '') AS d
+            SELECT DISTINCT date AS d
             FROM daily_quotes
-            WHERE replace(date, '-', '') <= ?
+            WHERE date <= ?
             ORDER BY d DESC
             LIMIT ?
             """,
@@ -2209,7 +2209,7 @@ def _quotes_have_chips(db_path: str, as_of: str) -> bool:
             SELECT COALESCE(SUM(
                 ABS(COALESCE(foreign_net,0))+ABS(COALESCE(trust_net,0))+ABS(COALESCE(dealer_net,0))
             ), 0)
-            FROM daily_quotes WHERE replace(date,'-','')=?
+            FROM daily_quotes WHERE date=?
             """,
             (ymd,),
         ).fetchone()[0]
@@ -2236,7 +2236,7 @@ def _quote_chip_totals(db_path: str, as_of: str) -> Optional[Dict[str, float]]:
         if not {"foreign_net", "trust_net", "dealer_net"} <= cols:
             return None
         n = conn.execute(
-            "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?",
+            "SELECT COUNT(*) FROM daily_quotes WHERE date=?",
             (ymd,),
         ).fetchone()[0]
         if int(n or 0) <= 0:
@@ -2244,7 +2244,7 @@ def _quote_chip_totals(db_path: str, as_of: str) -> Optional[Dict[str, float]]:
         row = conn.execute(
             """
             SELECT SUM(COALESCE(foreign_net,0)), SUM(COALESCE(trust_net,0)), SUM(COALESCE(dealer_net,0))
-            FROM daily_quotes WHERE replace(date,'-','')=?
+            FROM daily_quotes WHERE date=?
             """,
             (ymd,),
         ).fetchone()
