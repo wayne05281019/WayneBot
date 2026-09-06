@@ -882,3 +882,76 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "基差" not in html
     assert "近月" not in html
     assert "結構" in html
+
+
+def test_outlook_action_plain_risk_off_and_neutral():
+    from taiwan_market import _outlook_action_plain
+
+    off = _outlook_action_plain(
+        us_regime="risk_off",
+        night_vs_day=0.2,
+        tw_regime="bull",
+        falling_risk=10,
+        vs_ma20=1.2,
+        ixic_pct=-2.0,
+    )
+    assert "逆風" in off
+    hold = _outlook_action_plain(
+        us_regime="ok",
+        night_vs_day=-0.05,
+        tw_regime="neutral",
+        falling_risk=20,
+        vs_ma20=0.8,
+        ixic_pct=0.21,
+    )
+    assert "照表看起漲" in hold
+    assert "周帶量" in hold
+    cheap_night = _outlook_action_plain(
+        us_regime="ok",
+        night_vs_day=-0.46,
+        tw_regime="bull",
+        falling_risk=15,
+        vs_ma20=1.2,
+        ixic_pct=1.4,
+    )
+    assert "照表看起漲" in cheap_night
+    assert "夜盤比日盤便宜" in cheap_night
+    assert "逆風" not in cheap_night
+
+
+def test_format_screen_market_outlook_html_plain_language():
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260904",
+        snap={
+            "ok": True,
+            "as_of": "20260904",
+            "close": 46551.12,
+            "chg1_pct": 0.32,
+            "vs_ma20_pct": 1.2,
+            "regime": "neutral",
+            "falling_risk": 20,
+            "futures": {"close": 26500, "date": "20260904"},
+            "futures_night": {"close": 26580, "date": "20260904"},
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "ixic_pct": 0.21,
+            "sox_pct": 0.10,
+            "vix": 15.2,
+        },
+        rotated_names=["半導體"],
+    )
+    assert "大盤狀況" in html
+    assert "可以照表看起漲" in html
+    assert "加權昨收" in html
+    assert "那斯達克" in html
+    assert "恐慌指數" in html
+    assert "剛輪到半導體" in html
+    assert "Regime" not in html
+    assert "VIX" not in html
+    assert "基差" not in html
+    assert "近月" not in html

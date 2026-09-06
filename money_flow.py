@@ -344,17 +344,36 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
 
 
 def sector_flow_maps(db_path: str, ymd: str) -> Dict[str, Any]:
-    """海選標籤用：流入前三產業、流出前三產業。"""
+    """海選標籤用：流入前三產業、流出前三產業；剛輪到＝今天才進流入前三。"""
     conn = sqlite3.connect(db_path)
     rows = compute_sector_rows(conn, ymd)
+    prev = _prev_quote_date(conn, ymd)
+    prev_inflow: Dict[str, int] = {}
+    if prev:
+        prev_rows = compute_sector_rows(conn, prev)
+        prev_pos = [r for r in prev_rows if int(r["three_net"]) > 0][:3]
+        prev_inflow = {r["industry"]: i + 1 for i, r in enumerate(prev_pos)}
     conn.close()
     inflow = [r for r in rows if int(r["three_net"]) > 0][:3]
     outflow = sorted([r for r in rows if int(r["three_net"]) < 0], key=lambda x: x["three_net"])[:3]
+    just_rows: List[Dict[str, Any]] = []
+    just: Dict[str, int] = {}
+    if prev:
+        for i, r in enumerate(inflow):
+            ind = r["industry"]
+            was_in = ind in prev_inflow
+            was_out = int(r.get("prev_three_net") or 0) <= 0
+            if (not was_in) or was_out:
+                just[ind] = i + 1
+                just_rows.append(r)
     return {
         "inflow": {r["industry"]: i + 1 for i, r in enumerate(inflow)},
         "outflow": {r["industry"]: i + 1 for i, r in enumerate(outflow)},
         "inflow_rows": inflow,
         "outflow_rows": outflow,
+        "just_rotated": just,
+        "just_rotated_rows": just_rows,
+        "prev_date": prev or "",
     }
 
 
@@ -396,7 +415,12 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
                     continue
                 ind = industries.get(sid) or industry_of(conn, sid)
                 item["industry"] = ind
-                if ind in maps["inflow"]:
+                just = maps.get("just_rotated") or {}
+                if ind in just:
+                    item["sector_inflow"] = True
+                    item["sector_just_rotated"] = True
+                    item["sector_flow_label"] = f"剛輪到·{_sector_short_name(ind)}"
+                elif ind in maps["inflow"]:
                     item["sector_inflow"] = True
                     item["sector_flow_label"] = f"輪動進·{ind}"
                 elif ind in maps["outflow"]:
@@ -404,6 +428,29 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
                     item["sector_flow_label"] = f"輪動出·{ind}"
     finally:
         conn.close()
+
+
+def just_rotated_names_in_results(
+    results: Optional[Dict[str, Any]],
+    keys: Optional[List[str]] = None,
+) -> List[str]:
+    """早報／海選名單裡、資金剛輪到的族群短名（去重、有真標才回）。"""
+    names: List[str] = []
+    seen = set()
+    for key, lst in (results or {}).items():
+        if keys is not None and key not in keys:
+            continue
+        if not isinstance(lst, list):
+            continue
+        for item in lst:
+            if not isinstance(item, dict) or not item.get("sector_just_rotated"):
+                continue
+            raw = str(item.get("sector_flow_label") or "")
+            name = raw.split("·", 1)[-1].strip() if "·" in raw else _sector_short_name(item.get("industry") or "")
+            if name and name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
 
 
 def industry_of(conn: sqlite3.Connection, stock_id: str) -> str:

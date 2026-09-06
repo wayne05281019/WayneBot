@@ -1018,6 +1018,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
+# 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
     ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
@@ -1027,6 +1028,13 @@ SCREEN_PUSH_SPECS = (
     ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線", 8, True),
     ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
 )
+MORNING_PUSH_SPECS = (
+    ("leave_zero", "🌱", "起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
+    ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, True),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
+)
+MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
 
 LINE_TRADE_POINTER = (
     "＝＝短線（不在晨間海選）＝＝\n"
@@ -1081,12 +1089,32 @@ def drop_non_equity_picks(
 def format_screening_payload(
     results: Dict[str, List[Dict[str, Any]]],
     target_date: str,
+    *,
+    morning: bool = False,
+    market_html: str = "",
 ) -> List[Dict[str, Any]]:
-    """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。"""
+    """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
+
+    morning=True：06:30 早報只出起漲／黃金買點／優先看／周帶量（沒名單就整區省略）。
+    market_html：有內容時插在第一則當大盤狀況。
+    """
     results = drop_non_equity_picks(results)
     payload: List[Dict[str, Any]] = []
-    specs = list(SCREEN_PUSH_SPECS)
+    specs = list(MORNING_PUSH_SPECS if morning else SCREEN_PUSH_SPECS)
     first = True
+    outlook = str(market_html or "").strip()
+    if outlook:
+        payload.append(
+            {
+                "mark_key": "market",
+                "line_pack_id": "",
+                "mark_label": "大盤狀況",
+                "mark_hint": "美股＋台指期夜盤＋連動",
+                "html": outlook,
+                "picks": [],
+            }
+        )
+        first = False
     for key, emoji, label, subtitle, cap, skip_empty in specs:
         items = results.get(key) or []
         if cap:
@@ -1393,6 +1421,8 @@ def format_line_share_packs(
     session_plain: str = "",
     db_path: Optional[str] = None,
     us_snap: Optional[Dict[str, Any]] = None,
+    *,
+    morning: bool = False,
 ) -> List[Dict[str, str]]:
     """三段 LINE：夜盤、起漲／佈局、短線說明（當沖改主選單查）。"""
     from line_hop import LINE_PACKS
@@ -1405,6 +1435,8 @@ def format_line_share_packs(
         ("select_02", "站上季線　中線轉強第一天"),
         ("select_03", "止跌　月低有人接"),
     ]
+    if morning:
+        specs_layout = [pair for pair in specs_layout if pair[0] in MORNING_LAYOUT_KEYS]
     head = "\n".join(
         [
             f"WayneBot 海選　{_date_slash(target_date)}",
@@ -1487,6 +1519,8 @@ def format_line_share_text(
     session_plain: str = "",
     db_path: Optional[str] = None,
     us_snap: Optional[Dict[str, Any]] = None,
+    *,
+    morning: bool = False,
 ) -> str:
     """三段稿接成一則，給測試與存檔。"""
     packs = format_line_share_packs(
@@ -1496,6 +1530,7 @@ def format_line_share_text(
         session_plain=session_plain,
         db_path=db_path,
         us_snap=us_snap,
+        morning=morning,
     )
     return ("\n" + SHARE_SEP + "\n").join(p["text"] for p in packs).strip()
 
@@ -1599,16 +1634,15 @@ def execute_full_screening(
             item["revenue_hot"] = True
     results["leave_zero"] = results.get("leave_zero") or []
     us_snap = _postprocess_screen(engine.db_path, target_date, results, apply_us=apply_us)
-    mkt_html = ""
+    mkt_snap: Dict[str, Any] = {}
     if session == "morning":
         try:
-            from taiwan_market import analyze_taiwan_market, apply_market_weights, format_taiwan_market_brief_html
+            from taiwan_market import analyze_taiwan_market, apply_market_weights
 
             mkt_snap = analyze_taiwan_market(engine.db_path, target_date)
             results = apply_market_weights(results, mkt_snap, db_path=engine.db_path)
-            mkt_html = format_taiwan_market_brief_html(engine.db_path, target_date)
         except Exception:
-            mkt_html = ""
+            mkt_snap = {}
     us_plain = ""
     session_plain = ""
     if session == "evening":
@@ -1650,11 +1684,29 @@ def execute_full_screening(
         except Exception:
             pass
 
-    payload = format_screening_payload(results, target_date)
+    is_morning = session == "morning"
+    outlook = ""
+    try:
+        from money_flow import just_rotated_names_in_results
+        from taiwan_market import format_screen_market_outlook_html
+
+        rot_keys = list(MORNING_LAYOUT_KEYS) if is_morning else None
+        outlook = format_screen_market_outlook_html(
+            engine.db_path,
+            target_date,
+            snap=mkt_snap or None,
+            us_snap=us_snap if apply_us else None,
+            rotated_names=just_rotated_names_in_results(results, rot_keys),
+        )
+    except Exception:
+        outlook = ""
+    payload = format_screening_payload(
+        results, target_date, morning=is_morning, market_html=outlook
+    )
     report_parts = []
-    if mkt_html:
-        report_parts.append(mkt_html)
-    report_parts.extend(p["html"] for p in payload)
+    if outlook:
+        report_parts.append(outlook)
+    report_parts.extend(p["html"] for p in payload if p.get("mark_key") != "market")
     report_text = "\n\n".join(report_parts)
     daytrade = [engine._row_for_bot(x) for x in results.get("day_trade") or []]
     overnight = [engine._row_for_bot(x) for x in results.get("overnight") or []]
@@ -1674,6 +1726,7 @@ def execute_full_screening(
         session_plain=session_plain,
         db_path=engine.db_path,
         us_snap=us_snap if apply_us else None,
+        morning=is_morning,
     )
     line_body = ("\n────────\n").join(p["text"] for p in line_packs)
     try:

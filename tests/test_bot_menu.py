@@ -13,14 +13,14 @@ def test_reply_menu_is_two_rows_not_three():
     from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, MENU_LAYOUT_VERSION, WayneTelegramBot
 
     assert MENU_BTN_MARKET == "大盤"
-    assert MENU_LAYOUT_VERSION == "8"
+    assert MENU_LAYOUT_VERSION == "9"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選"]
-    assert row2 == ["隔日沖", "資金", "說明", MENU_BTN_STREAK, MENU_BTN_MARKET]
+    assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", "說明", MENU_BTN_STREAK]
 
 
 def test_help_guide_covers_all_main_buttons():
@@ -146,7 +146,7 @@ def test_pin_reply_menu_keeps_keyboard_message():
     pin.delete.assert_not_called()
     markup = msg.reply_text.await_args.kwargs.get("reply_markup")
     assert markup is not None
-    assert [b.text for b in markup.keyboard[1]][3] == "連買區"
+    assert [b.text for b in markup.keyboard[1]][-1] == "連買區"
 
 
 def test_refresh_silent_sends_reply_keyboard_with_streak():
@@ -154,7 +154,7 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
-    from bot_servers import MENU_BTN_STREAK, WayneTelegramBot
+    from bot_servers import MENU_BTN_MARKET, MENU_BTN_STREAK, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._dismiss_menu_transients = AsyncMock()
@@ -172,7 +172,8 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert markup is not None
     assert "Remove" not in type(markup).__name__
     row2 = [b.text for b in markup.keyboard[1]]
-    assert row2[3] == MENU_BTN_STREAK
+    assert row2[-1] == MENU_BTN_STREAK
+    assert row2[1] == MENU_BTN_MARKET
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 

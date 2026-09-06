@@ -82,10 +82,11 @@ def _seed_market_db(path: str) -> str:
 class TestMarketMenuE2E:
     def test_layout_version_and_button_label(self):
         assert MENU_BTN_MARKET == "大盤"
-        assert MENU_LAYOUT_VERSION == "8"
+        assert MENU_LAYOUT_VERSION == "9"
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         row2 = [b.text for b in bot._reply_menu().keyboard[1]]
-        assert row2[-1] == "大盤"
+        assert row2 == ["隔日沖", "大盤", "資金", "說明", "連買區"]
+        assert row2[-1] == "連買區"
 
     def test_help_no_reserved_slot_text(self):
         assert "預留" not in HELP_TOPICS["menu"]
