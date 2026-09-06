@@ -124,25 +124,44 @@ def _why_short(why: str) -> str:
     return why
 
 
+_WHY_PLAIN = {
+    "先前同步再脫離": "前幾天高點跟熱度一起到過，現在都過了",
+    "最高價但非最高溫": "價格創高，熱度沒跟上",
+    "最高溫但非最高價": "盤面很熱，價格沒創新高",
+    "不同步再脫離": "高點或熱度剛過，現在都沒了",
+    "最高價與最高溫同步": "今天高點跟熱度同時到",
+}
+
+
+def _why_plain(why: str) -> str:
+    raw = _why_short(why)
+    return _WHY_PLAIN.get(raw, raw)
+
+
 def sell_note_lines(card: Dict[str, Any]) -> List[str]:
-    act = str(card.get("sell_action") or "").strip()
-    if not act:
+    short = sell_note_short(card)
+    if not short:
         return []
-    why = _why_short(card.get("sell_why") or "")
-    if why:
-        return [f"{act}（{why}；作者如何賣，不是買訊）"]
-    return [f"{act}（作者如何賣，不是買訊）"]
+    if "不是叫你買" in short:
+        return [short]
+    return [f"{short}。不是叫你買。"]
 
 
 def sell_note_short(card: Dict[str, Any]) -> str:
-    """介紹圖窄欄用：不要把「作者如何賣，不是買訊」整句塞進去。"""
+    """介紹圖／決策卡第二行：白話說明，不是術語。"""
     act = str(card.get("sell_action") or "").strip()
     if not act:
         return ""
-    why = _why_short(card.get("sell_why") or "")
+    why = _why_plain(card.get("sell_why") or "")
+    if act == "準備減碼":
+        head = "可以先想減一點"
+    elif act == "直接減碼":
+        head = "可以先減一點"
+    else:
+        head = act
     if why:
-        return f"{act}（{why}）"
-    return act
+        return f"{head}：{why}"
+    return head
 
 
 def sell_notes_for_stocks(

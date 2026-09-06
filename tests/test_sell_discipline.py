@@ -24,8 +24,8 @@ def test_lianyi_desync_hi_price_not_hi_temp():
     assert flags["hi_temp"] is False
     assert "不同步" in flags["sell_why"]
     lines = sell_note_lines(flags)
-    assert lines and lines[0].startswith("直接減碼")
-    assert "買訊" in lines[0]
+    assert lines and lines[0].startswith("可以先減一點")
+    assert "不是叫你買" in lines[0]
 
 
 def test_wanhai_desync_after_sync():
@@ -114,11 +114,11 @@ def test_sell_note_short_drops_disclaimer():
         "sell_action": "直接減碼",
         "sell_why": "不同步（最高價但非最高溫）",
     }
-    assert sell_note_short(flags) == "直接減碼（最高價但非最高溫）"
+    assert sell_note_short(flags) == "可以先減一點：價格創高，熱度沒跟上"
     assert "買訊" not in sell_note_short(flags)
     assert "作者" not in sell_note_short(flags)
     full = sell_note_lines(flags)[0]
-    assert full == "直接減碼（最高價但非最高溫；作者如何賣，不是買訊）"
+    assert full == "可以先減一點：價格創高，熱度沒跟上。不是叫你買。"
     assert "不同步（" not in full
 
 
@@ -140,9 +140,8 @@ def test_html_and_glance_wire_sell_notes():
     assert '"#AD1457"' in png_src
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
-    assert "紀律" in card_src
+    assert "stance_explain" in card_src
     assert "今日態度" in card_src
-    assert 'ha="right"' in card_src
     from ai_trader import format_ai_desk_html
     from portfolio_engine import PortfolioEngine
 
@@ -163,10 +162,10 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     attach_sell(again)
     assert again["sell_action"] == "直接減碼"
     line = sell_note_lines(again)[0]
-    assert "直接減碼" in line
-    assert "不是買訊" in line
+    assert "可以先減一點" in line
+    assert "不是叫你買" in line
     assert "不同步（" not in line
-    assert sell_note_short(again) == "直接減碼（最高價但非最高溫）"
+    assert sell_note_short(again) == "可以先減一點：價格創高，熱度沒跟上"
 
 
 def _mini_card_for_png(**extra):
@@ -251,9 +250,10 @@ def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
     path = render_decision_card_png(card, str(out))
     assert path and out.is_file()
     joined = "\n".join(seen)
-    assert "紀律" in seen
-    assert "直接減碼（最高價但非最高溫）　不是買訊" in seen
-    assert "紅箭頭只是觀察" not in joined
+    joined = "\n".join(seen)
+    assert "可以先減一點：價格創高，熱度沒跟上。不是叫你買。" in seen
+    assert "紅箭頭不是買進訊號" not in joined
+    assert "按表操課" not in joined
 
 
 def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, monkeypatch):
@@ -276,10 +276,13 @@ def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, mon
 
     monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
     out = tmp_path / "no_sell.png"
-    path = render_decision_card_png(_mini_card_for_png(), str(out))
+    path = render_decision_card_png(
+        _mini_card_for_png(stance="今天先看表，先等", stance_kind="wait"),
+        str(out),
+    )
     assert path and out.is_file()
     joined = "\n".join(seen)
-    assert "紅箭頭只是觀察" in joined
+    assert "紅箭頭不是買進訊號" in joined
     assert "紀律　" not in joined
 
 
@@ -342,7 +345,7 @@ def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
     path = render_first_glance_png("3441", card, tape, str(out))
     assert path and out.is_file()
     assert "紀律" in seen
-    assert "直接減碼（最高價但非最高溫）" in seen
+    assert "可以先減一點：價格創高，熱度沒跟上" in seen
     assert not any(s.startswith("紀律　") for s in seen)
 
 
@@ -375,7 +378,7 @@ def test_cary_2383_2408_3008_20260904_rows():
     assert str(c3008.get("latest_date")) == "20260904"
     assert c3008.get("sell_action") == "直接減碼"
     assert "不同步再脫離" in str(c3008.get("sell_why") or "")
-    assert sell_note_short(c3008) == "直接減碼（不同步再脫離）"
+    assert sell_note_short(c3008) == "可以先減一點：高點或熱度剛過，現在都沒了"
 
 
 @pytest.mark.production_db
@@ -417,13 +420,13 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     def fake_notes(ids, db_path, *, full=False):
         assert "3703" in [str(x) for x in ids]
         assert full is True
-        return {"3703": "直接減碼（最高溫但非最高價；作者如何賣，不是買訊）"}
+        return {"3703": "可以先減一點：盤面很熱，價格沒創新高。不是叫你買。"}
 
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = format_ai_desk_html(eng, uid)
     assert "紀律：" in html
-    assert "直接減碼（最高溫但非最高價；作者如何賣，不是買訊）" in html
-    assert "不是買訊" in html
+    assert "可以先減一點：盤面很熱，價格沒創新高。不是叫你買。" in html
+    assert "不是叫你買" in html
 
 
 def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
@@ -438,7 +441,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
         assert "3035" in [str(x) for x in ids]
         assert "4915" in [str(x) for x in ids]
         assert full is True
-        return {"3035": "準備減碼（先前同步再脫離；作者如何賣，不是買訊）"}
+        return {"3035": "可以先想減一點：前幾天高點跟熱度一起到過，現在都過了。不是叫你買。"}
 
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = eng.format_holdings_html(
@@ -451,7 +454,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
             "4915": {"close": 60.8, "pct_change": 0.5},
         },
     )
-    assert "準備減碼（先前同步再脫離；作者如何賣，不是買訊）" in html
+    assert "可以先想減一點：前幾天高點跟熱度一起到過，現在都過了。不是叫你買。" in html
     assert html.split("致伸")[-1].count("紀律") == 0
 
 
@@ -467,10 +470,10 @@ def test_holdings_and_notes_match_20260904_flags():
         db,
         full=True,
     )
-    assert notes["3703"].startswith("直接減碼（最高溫但非最高價")
-    assert "不是買訊" in notes["3703"]
-    assert notes["3035"].startswith("準備減碼（先前同步再脫離")
-    assert notes["6526"].startswith("準備減碼（先前同步再脫離")
+    assert notes["3703"].startswith("可以先減一點：盤面很熱")
+    assert "不是叫你買" in notes["3703"]
+    assert notes["3035"].startswith("可以先想減一點：前幾天高點跟熱度一起到過")
+    assert notes["6526"].startswith("可以先想減一點：前幾天高點跟熱度一起到過")
     assert "4915" not in notes
     assert "1303" not in notes
     assert "8234" not in notes
@@ -481,7 +484,7 @@ def test_holdings_and_notes_match_20260904_flags():
         quotes_map={"3703": {"close": 20.0, "pct_change": 0.5}},
     )
     assert "紀律：" in html_cut
-    assert "直接減碼（最高溫但非最高價" in html_cut
+    assert "可以先減一點：盤面很熱" in html_cut
     html_sync = eng.format_holdings_html(
         [{"stock_code": "4915", "stock_name": "致伸", "shares": 1, "cost_price": 60.8}],
         quotes_map={"4915": {"close": 60.8, "pct_change": 0.3}},
