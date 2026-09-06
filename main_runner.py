@@ -315,6 +315,13 @@ class MainRunner:
             except Exception as e_fut:
                 logger.warning("台指期同步略過：%s", e_fut)
             try:
+                from taiwan_market import sync_futures_inst_oi
+
+                foi = sync_futures_inst_oi(self.db_path)
+                logger.info("台指期外資未平倉寫入：%s", foi)
+            except Exception as e_foi:
+                logger.warning("台指期外資未平倉略過：%s", e_foi)
+            try:
                 from taiwan_market import sync_regime_ai_weights
 
                 sync_regime_ai_weights(self.db_path)
@@ -711,6 +718,13 @@ class MainRunner:
             logger.info("今早補台指期日盤／夜盤：%s", fut)
         except Exception as e:
             logger.warning("今早台指期略過：%s", e)
+        try:
+            from taiwan_market import sync_futures_inst_oi
+
+            foi = sync_futures_inst_oi(self.db_path)
+            logger.info("今早補台指期外資未平倉：%s", foi)
+        except Exception as e:
+            logger.warning("今早台指期外資未平倉略過：%s", e)
         try:
             from us_overnight import (
                 format_us_drop_alert,

@@ -517,6 +517,12 @@ def sync_index_breadth_daily(db_path: str, dates: Optional[List[str]] = None) ->
 _FUTURES_SYMBOL = "TX"
 _TAIFEX_OPENAPI = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
 _TAIFEX_HIST_URL = "https://www.taifex.com.tw/cht/3/futDataDown"
+_TAIFEX_INST_FUT_URL = (
+    "https://openapi.taifex.com.tw/v1/"
+    "MarketDataOfMajorInstitutionalTradersDetailsOfFuturesContractsBytheDate"
+)
+_TX_CONTRACT_NAME = "臺股期貨"
+_TX_FOREIGN_ITEM = "外資及陸資"
 
 
 def ensure_futures_daily_table(db_path: str) -> None:
@@ -546,9 +552,161 @@ def ensure_futures_daily_table(db_path: str) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_futures_daily_sym ON futures_daily(symbol, date);"
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS futures_inst_oi (
+                date TEXT NOT NULL,
+                contract TEXT NOT NULL,
+                item TEXT NOT NULL,
+                oi_long INTEGER NOT NULL,
+                oi_short INTEGER NOT NULL,
+                oi_net INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT 'taifex',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (date, contract, item)
+            );
+            """
+        )
         conn.commit()
     finally:
         conn.close()
+
+
+def ensure_futures_inst_oi_table(db_path: str) -> None:
+    ensure_futures_daily_table(db_path)
+
+
+def _fetch_taifex_inst_fut_rows() -> List[Dict[str, Any]]:
+    """期交所三大法人期貨契約明細（最新交易日）。失敗回空，不編。"""
+    try:
+        resp = _SESSION.get(_TAIFEX_INST_FUT_URL, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    except Exception:
+        logger.debug("期交所三大法人期貨明細讀不到", exc_info=True)
+        return []
+
+
+def _parse_taifex_tx_inst_oi_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for raw in rows or []:
+        contract = str(raw.get("ContractCode") or raw.get("contract") or "").strip()
+        if contract != _TX_CONTRACT_NAME:
+            continue
+        item = str(raw.get("Item") or raw.get("item") or "").strip()
+        if not item:
+            continue
+        date = _norm_ymd(raw.get("Date") or raw.get("date") or "")
+        if len(date) != 8:
+            continue
+        oi_long = _taifex_num(raw.get("OpenInterest(Long)"), allow_dash=True)
+        oi_short = _taifex_num(raw.get("OpenInterest(Short)"), allow_dash=True)
+        if oi_long is None or oi_short is None:
+            continue
+        oi_net = _taifex_num(raw.get("OpenInterest(Net)"), allow_dash=True)
+        if oi_net is None:
+            oi_net = float(oi_long) - float(oi_short)
+        out.append(
+            {
+                "date": date,
+                "contract": contract,
+                "item": item,
+                "oi_long": int(oi_long),
+                "oi_short": int(oi_short),
+                "oi_net": int(oi_net),
+                "source": "taifex",
+            }
+        )
+    return out
+
+
+def sync_futures_inst_oi(db_path: str) -> Dict[str, Any]:
+    """寫入臺股期貨三大法人未平倉多空口；沒官方列就不寫。"""
+    ensure_futures_inst_oi_table(db_path)
+    parsed = _parse_taifex_tx_inst_oi_rows(_fetch_taifex_inst_fut_rows())
+    if not parsed:
+        return {"ok": False, "rows": 0, "latest": ""}
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    written = 0
+    latest = ""
+    conn = sqlite3.connect(db_path)
+    try:
+        for row in parsed:
+            conn.execute(
+                """
+                INSERT INTO futures_inst_oi(
+                    date, contract, item, oi_long, oi_short, oi_net, source, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, contract, item) DO UPDATE SET
+                    oi_long=excluded.oi_long,
+                    oi_short=excluded.oi_short,
+                    oi_net=excluded.oi_net,
+                    source=excluded.source,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    row["date"],
+                    row["contract"],
+                    row["item"],
+                    row["oi_long"],
+                    row["oi_short"],
+                    row["oi_net"],
+                    row["source"],
+                    now,
+                ),
+            )
+            written += 1
+            latest = row["date"]
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": written > 0, "rows": written, "latest": latest}
+
+
+def load_futures_tx_foreign_oi(
+    db_path: str, as_of: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """外資及陸資、臺股期貨未平倉多／空口。沒列就回 None。"""
+    if not db_path or db_path == ":memory:":
+        return None
+    ensure_futures_inst_oi_table(db_path)
+    d = _norm_ymd(as_of or "")
+    conn = sqlite3.connect(db_path)
+    try:
+        row = None
+        if d:
+            row = conn.execute(
+                """
+                SELECT date, oi_long, oi_short, oi_net
+                FROM futures_inst_oi
+                WHERE contract=? AND item=? AND date<=?
+                ORDER BY date DESC LIMIT 1
+                """,
+                (_TX_CONTRACT_NAME, _TX_FOREIGN_ITEM, d),
+            ).fetchone()
+        if not row:
+            row = conn.execute(
+                """
+                SELECT date, oi_long, oi_short, oi_net
+                FROM futures_inst_oi
+                WHERE contract=? AND item=?
+                ORDER BY date DESC LIMIT 1
+                """,
+                (_TX_CONTRACT_NAME, _TX_FOREIGN_ITEM),
+            ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {
+        "date": str(row[0]),
+        "oi_long": int(row[1] or 0),
+        "oi_short": int(row[2] or 0),
+        "oi_net": int(row[3] or 0),
+        "item": _TX_FOREIGN_ITEM,
+        "contract": _TX_CONTRACT_NAME,
+    }
 
 
 def _taifex_num(val: Any, *, allow_dash: bool = True) -> Optional[float]:
@@ -1072,15 +1230,6 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
     return line
 
 
-def _fmt_tx_expiry(raw: Any) -> str:
-    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
-    if len(digits) >= 6:
-        month = int(digits[4:6])
-        if 1 <= month <= 12:
-            return f"到期 {month}月"
-    return ""
-
-
 def _format_futures_night_line(
     night: Dict[str, Any],
     day: Optional[Dict[str, Any]] = None,
@@ -1091,9 +1240,6 @@ def _format_futures_night_line(
         return None
     close = float(night["close"])
     parts = [f"夜盤 <b>{close:,.0f}</b>"]
-    expiry = _fmt_tx_expiry(night.get("contract_month"))
-    if expiry:
-        parts.append(expiry)
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
@@ -3029,81 +3175,83 @@ def _outlook_action_plain(
     return "可以照表看起漲和黃金買點，周帶量仍少追。"
 
 
-def _outlook_phone_kv(label: str, value: str) -> str:
-    """海選第一則給手機看：標籤＋全形空白＋內容，跟個股卡片同一套。"""
-    from tg_layout import html_escape
+def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
+    """第一則白話折行：手機寬，不要拆成一欄一行。"""
+    from tg_layout import wrap_cjk_lines
 
-    return f"{html_escape(label)}　{value}"
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    return wrap_cjk_lines(raw, width, unit="disp") or [raw]
 
 
-def _outlook_night_phone_lines(
+def _outlook_night_plain_lines(
     night: Dict[str, Any],
     day: Optional[Dict[str, Any]] = None,
     *,
     spot_close: float = 0.0,
 ) -> List[str]:
-    """夜盤拆成短行，避免一行塞開高低成交。"""
-    from tg_layout import html_escape
-
+    """夜盤只寫收盤與相對日盤／現貨；到期月、開高低留給大盤專頁。"""
     if not night or not night.get("close"):
         return []
     close = float(night["close"])
-    lines = [_outlook_phone_kv("夜盤", f"<b>{close:,.0f}</b>")]
-    expiry = _fmt_tx_expiry(night.get("contract_month"))
-    if expiry:
-        lines.append(_outlook_phone_kv("到期", html_escape(expiry.replace("到期 ", ""))))
+    bits = [f"夜盤 <b>{close:,.0f}</b>"]
+    extra: List[str] = []
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
         mag = abs(diff)
-        lines.append(
-            _outlook_phone_kv("比日盤", f"{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
-        )
+        extra.append(f"比日盤收{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
     if spot_close > 0:
         diff = (close - spot_close) / spot_close * 100.0
         mag = abs(diff)
-        lines.append(
-            _outlook_phone_kv("比現貨", f"{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
-        )
-    op = float(night.get("open") or 0)
-    hi = float(night.get("high") or 0)
-    lo = float(night.get("low") or 0)
-    if op > 0:
-        lines.append(_outlook_phone_kv("開", f"{op:,.0f}"))
-    if hi > 0:
-        lines.append(_outlook_phone_kv("高", f"{hi:,.0f}"))
-    if lo > 0:
-        lines.append(_outlook_phone_kv("低", f"{lo:,.0f}"))
-    vol = int(night.get("volume") or 0)
-    if vol > 0:
-        lines.append(_outlook_phone_kv("成交", f"{vol:,}口"))
-    oi = int(night.get("open_interest") or 0)
-    if oi > 0:
-        lines.append(_outlook_phone_kv("未平倉", f"{oi:,}口"))
-    n_date = str(night.get("date") or "")
-    d_date = str((day or {}).get("date") or "")
-    if n_date and n_date != d_date:
-        lines.append(_outlook_phone_kv("夜盤日", n_date))
+        extra.append(f"比現貨{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+    lines = list(bits)
+    if extra:
+        lines.extend(_outlook_wrap("　".join(extra)))
     return lines
 
 
-def _outlook_lots(n) -> str:
+def _outlook_tx_foreign_lines(
+    db_path: str,
+    as_of: str,
+    snap: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """外資台指期未平倉買多／買空口。沒官方列就整段省略。"""
+    info = None
+    if isinstance(snap, dict):
+        raw = snap.get("tx_foreign_oi")
+        if isinstance(raw, dict) and raw.get("oi_long") is not None and raw.get("oi_short") is not None:
+            info = raw
+    if info is None:
+        try:
+            info = load_futures_tx_foreign_oi(db_path, as_of)
+        except Exception:
+            info = None
+    if not info:
+        return []
     try:
-        v = int(n)
+        oi_long = int(info.get("oi_long"))
+        oi_short = int(info.get("oi_short"))
     except (TypeError, ValueError):
-        return ""
-    if v == 0:
-        return "0張"
-    return f"{v:+,}張"
+        return []
+    line = f"外資台指期　買多 {oi_long:,}口　買空 {oi_short:,}口"
+    lines = _outlook_wrap(line)
+    d = _norm_ymd(info.get("date") or "")
+    ref = _norm_ymd(as_of or "")
+    if d and ref and d != ref:
+        lines.append(f"（{d}）")
+    return lines
 
 
-def _outlook_flow_phone_lines(
+def _outlook_flow_plain_lines(
     db_path: str,
     as_of: str,
     *,
     flow_maps: Optional[Dict[str, Any]] = None,
+    rotated_names: Optional[List[str]] = None,
 ) -> List[str]:
-    """盤後三大法人產業加總：剛輪入／續進／輪出。沒官方列就整段省略。"""
+    """資金只寫剛到／輪出產業名；領買張數留給個股「剛輪到」標記。"""
     from tg_layout import html_escape
 
     maps = flow_maps
@@ -3116,11 +3264,6 @@ def _outlook_flow_phone_lines(
         except Exception:
             maps = None
     maps = maps or {}
-    just = maps.get("just_rotated") or {}
-    inflow = list(maps.get("inflow_rows") or [])[:3]
-    outflow = list(maps.get("outflow_rows") or [])[:3]
-    if not inflow and not outflow:
-        return []
     try:
         from money_flow import _sector_short_name
     except Exception:
@@ -3128,42 +3271,32 @@ def _outlook_flow_phone_lines(
             s = str(industry or "").strip()
             return s[:-1] if s.endswith("業") and len(s) > 2 else (s or "產業")
 
-    lines = [_outlook_phone_kv("資金", "盤後法人張數")]
-    for r in inflow:
-        ind = str(r.get("industry") or "")
-        tag = "剛到" if ind in just else "續進"
-        short = html_escape(_sector_short_name(ind))
-        lots = html_escape(_outlook_lots(r.get("three_net")))
-        lines.append(_outlook_phone_kv(tag, f"{short} {lots}".strip()))
-        buy = str(r.get("top_buy_name") or "").strip()
-        buy_n = int(r.get("top_buy_three") or 0)
-        if tag == "剛到" and buy and buy_n > 0:
-            lines.append(
-                _outlook_phone_kv(
-                    "領買",
-                    f"{html_escape(buy)} {html_escape(_outlook_lots(buy_n))}".strip(),
-                )
-            )
-        try:
-            avg = float(r.get("avg_pct"))
-        except (TypeError, ValueError):
-            avg = 0.0
-        if tag == "剛到" and abs(avg) >= 0.5:
-            lines.append(_outlook_phone_kv("族均", html_escape(_fmt_signed_pct(avg))))
-    for i, r in enumerate(outflow):
-        ind = str(r.get("industry") or "")
-        short = html_escape(_sector_short_name(ind))
-        lots = html_escape(_outlook_lots(r.get("three_net")))
-        lines.append(_outlook_phone_kv("輪出", f"{short} {lots}".strip()))
-        sell = str(r.get("top_sell_name") or "").strip()
-        sell_n = int(r.get("top_sell_three") or 0)
-        if i == 0 and sell and sell_n < 0:
-            lines.append(
-                _outlook_phone_kv(
-                    "領賣",
-                    f"{html_escape(sell)} {html_escape(_outlook_lots(sell_n))}".strip(),
-                )
-            )
+    just = maps.get("just_rotated") or {}
+    just_rows = list(maps.get("just_rotated_rows") or [])
+    if not just_rows and just:
+        by_ind = {str(r.get("industry") or ""): r for r in (maps.get("inflow_rows") or [])}
+        just_rows = [by_ind[k] for k in just if k in by_ind]
+    just_names = [
+        html_escape(_sector_short_name(str(r.get("industry") or "")))
+        for r in just_rows
+        if str(r.get("industry") or "").strip()
+    ]
+    if not just_names:
+        just_names = [html_escape(n) for n in (rotated_names or []) if str(n).strip()][:3]
+    outflow_names = [
+        html_escape(_sector_short_name(str(r.get("industry") or "")))
+        for r in list(maps.get("outflow_rows") or [])[:3]
+        if str(r.get("industry") or "").strip()
+    ]
+    if not just_names and not outflow_names:
+        return []
+    lines = [_TG_SECTION]
+    if just_names:
+        lines.extend(_outlook_wrap("剛到　" + "、".join(just_names[:3])))
+    if outflow_names:
+        lines.extend(_outlook_wrap("輪出　" + "、".join(outflow_names[:3])))
+    if just_names:
+        lines.extend(_outlook_wrap("對應個股已標剛輪到。"))
     return lines
 
 
@@ -3215,60 +3348,50 @@ def format_screen_market_outlook_html(
     body: List[str] = list(wrap_cjk_lines(action, 18, unit="chars"))
     if snap.get("ok"):
         close = snap.get("close")
-        if close:
-            body.append(_outlook_phone_kv("加權", f"<b>{float(close):,.2f}</b>"))
         chg1 = snap.get("chg1_pct")
+        if close:
+            body.append(f"加權昨收 <b>{float(close):,.2f}</b>")
+        pct_bits: List[str] = []
         if chg1 is not None:
-            ma_bit = ""
-            if vs20 is not None:
-                if float(vs20) >= 1.0:
-                    ma_bit = "　月線上"
-                elif float(vs20) <= -1.0:
-                    ma_bit = "　月線下"
-                else:
-                    ma_bit = "　貼月線"
-            body.append(_outlook_phone_kv("漲跌", html_escape(_fmt_signed_pct(chg1)) + ma_bit))
-        elif vs20 is not None:
+            pct_bits.append(html_escape(_fmt_signed_pct(chg1)))
+        if vs20 is not None:
             if float(vs20) >= 1.0:
-                body.append(_outlook_phone_kv("月線", "上"))
+                pct_bits.append("月線上")
             elif float(vs20) <= -1.0:
-                body.append(_outlook_phone_kv("月線", "下"))
+                pct_bits.append("月線下")
             else:
-                body.append(_outlook_phone_kv("月線", "貼著"))
+                pct_bits.append("貼著月線")
+        if pct_bits:
+            body.append("　".join(pct_bits))
     if us_ok:
-        body.append(_outlook_phone_kv("美股", html_escape(us_label)))
+        head_bits = [html_escape(us_label)]
         if ixic is not None:
-            body.append(_outlook_phone_kv("那斯達克", f"{float(ixic):+.2f}%"))
+            head_bits.append(f"那斯達克 {float(ixic):+.2f}%")
+        body.append("　".join(head_bits))
+        tail_bits: List[str] = []
         sox = us.get("sox_pct")
         if sox is not None:
-            body.append(_outlook_phone_kv("費半", f"{float(sox):+.2f}%"))
+            tail_bits.append(f"費半 {float(sox):+.2f}%")
         if us.get("vix") is not None:
-            body.append(_outlook_phone_kv("恐慌", _fmt_vix(us)))
+            tail_bits.append(f"恐慌指數 {_fmt_vix(us)}")
+        if tail_bits:
+            body.append("　".join(tail_bits))
         side = electronics_night_side(us)
         if side:
-            body.append(_outlook_phone_kv("電子鏈", f"夜盤{html_escape(side)}"))
+            body.append(f"電子鏈夜盤{html_escape(side)}")
     body.extend(
-        _outlook_night_phone_lines(
+        _outlook_night_plain_lines(
             snap.get("futures_night") or {},
             snap.get("futures"),
             spot_close=float(snap.get("close") or 0),
         )
     )
-    flow_lines = _outlook_flow_phone_lines(db_path, ref, flow_maps=flow_maps)
-    if flow_lines:
-        body.extend(flow_lines)
-    else:
-        names = [n for n in (rotated_names or []) if str(n).strip()]
-        if names:
-            body.extend(
-                wrap_cjk_lines(
-                    "資金剛輪到"
-                    + "、".join(html_escape(n) for n in names[:3])
-                    + "；早報個股已標。",
-                    18,
-                    unit="chars",
-                )
-            )
+    body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
+    body.extend(
+        _outlook_flow_plain_lines(
+            db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
+        )
+    )
     return head + "\n" + "\n".join(body)
 
 
