@@ -157,6 +157,8 @@ def test_display_alert_shows_hi_lo_when_blank():
     assert display_alert_cell("K20高", "20高") == "20高"
     assert display_alert_cell("K20高", "No") == "K20高"
     assert display_alert_cell("60低", "10低") == "60低"
+    assert display_alert_cell("No", "No") == "No"
+    assert display_alert_cell("", "No") == "No"
 
 
 def test_candle_up_taiwan_vs_prev_close():

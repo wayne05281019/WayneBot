@@ -536,7 +536,7 @@ def display_alert_cell(alert: str, hi_lo: str) -> str:
             return h
     if a and a not in ("No", "—"):
         return a
-    return a or "—"
+    return "No"
 
 
 def candle_up_taiwan(close, prev_close=None, open_=None) -> bool:

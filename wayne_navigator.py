@@ -1022,20 +1022,30 @@ def _heat_pair(value, stops):
     return stops[-1][1], stops[-1][2]
 
 
+def is_blank_card_signal(text) -> bool:
+    """作者卡 No／空格：灰字、不畫 pill、不洗底。"""
+    return str(text or "").strip() in {"", "—", "-", "No", "no"}
+
+
 def _temp_heat_draw(temp_n, base: str):
-    """繪製用連續溫度熱圖。temp_cell_style 仍給測試分桶，這裡不改那個回傳。"""
+    """繪製用連續溫度熱圖。temp_cell_style 仍給測試分桶，這裡不改那個回傳。
+
+    作者卡溫度計幾乎格格有綠底（0.0°C 也綠）；不要低於 18°C 就留白。
+    """
     C = _CARD
     base = base or C["white"]
     try:
         t = float(temp_n)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
+    if t < 0:
+        return base, C["neutral_fg"]
     return _heat_pair(
         t,
         (
-            (18.0, base, C["ink"]),
-            (34.0, C["lo_fill"], C["lo_ink"]),
-            (52.0, "#E8F5E9", C["lo_ink"]),
+            (0.0, C["lo_fill"], C["lo_ink"]),
+            (34.0, "#E8F5E9", C["lo_ink"]),
+            (52.0, C["lo_hit_fill"], C["lo_ink"]),
             (64.0, C["temp_warm_bg"], C["temp_warm_fg"]),
             (76.0, C["temp_hot_bg"], C["temp_hot_fg"]),
             (90.0, "#F8BBD0", C["pill_hi"]),
@@ -1053,10 +1063,12 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     # 0.0% 貼零、0.x% 脫離零：整格綠底畫上去，不要再熱圖洗成接近白。
     if bg in (C["lo_fill"], C["lo_hit_fill"]) or p <= 0.05:
         return bg, fg
+    # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%），不要淡粉熱圖。
+    if p < 8:
+        return bg, fg
     return _heat_pair(
         p,
         (
-            (0.06, base, C["ink"]),
             (8.0, C["temp_warm_bg"], C["temp_warm_fg"]),
             (20.0, C["hi_fill"], C["hi_ink"]),
             (40.0, "#F8BBD0", C["pill_hi"]),
@@ -1322,7 +1334,7 @@ def compute_temp_trend_labels(
     closes: list | None = None,
     window: int = 20,
 ) -> tuple[list, list]:
-    """溫度升降溫標籤。
+    """溫度升降溫標籤。空訊號寫 No（作者卡同字），不要畫 pill。
 
     低檔：溫度創窗內低 → 主標「最低溫」；股價未創低則註記「價未新低」。
     高檔：股價創窗內高但溫度已降、未創新高 → 降溫＋價溫背離（領先指標，少追）。
@@ -1331,15 +1343,15 @@ def compute_temp_trend_labels(
     notes: list = []
     closes = closes or []
     for i, t in enumerate(temp_nums):
-        if t <= 0:
-            labels.append("—")
+        if t < 0:
+            labels.append("No")
             notes.append("")
             continue
-        prev = temp_nums[i - 1] if i > 0 and temp_nums[i - 1] > 0 else t
+        prev = temp_nums[i - 1] if i > 0 and temp_nums[i - 1] >= 0 else t
         w0 = max(0, i - window + 1)
-        seg = [x for x in temp_nums[w0 : i + 1] if x > 0]
+        seg = [x for x in temp_nums[w0 : i + 1] if x >= 0]
         if len(seg) < 2:
-            labels.append("—")
+            labels.append("No")
             notes.append("")
             continue
         wmin, wmax = min(seg), max(seg)
@@ -1363,16 +1375,18 @@ def compute_temp_trend_labels(
                 note = "價溫背離"
             notes.append(note)
         else:
-            labels.append("—")
+            labels.append("No")
             notes.append("")
     return labels, notes
 
 
 def temp_trend_cell_style(label: str, base: str):
-    """升降欄：熱＝高色票、冷＝低色票，無訊號跟列底。"""
+    """升降欄：熱＝高色票、冷＝低色票，No／空＝白底灰字、不畫 pill。"""
     C = _CARD
     base = base or C["white"]
-    lab = str(label or "—")
+    lab = str(label or "No")
+    if is_blank_card_signal(lab):
+        return base, C["ink_mute"]
     if lab == "最高溫":
         return C["temp_hot_bg"], C["temp_hot_fg"]
     if lab == "升溫":
@@ -1472,10 +1486,12 @@ def hl_cell_style(hl: str, base: str):
 
 
 def alert_cell_style(alert: str, base: str):
-    """預警欄底色：K20高／20高／60低／10低走色票，No＝列底。"""
+    """預警欄底色：K20高／20高／60低／10低走色票，No＝列底灰字。"""
     C = _CARD
     base = base or C["white"]
     a = str(alert or "")
+    if is_blank_card_signal(a):
+        return base, C["ink_mute"]
     if a == "K20高" or ("高" in a and "低" not in a):
         return C["hi_fill"], C["pill_hi"]
     if a in ("60低", "K20低") or "低" in a:
@@ -1484,12 +1500,14 @@ def alert_cell_style(alert: str, base: str):
 
 
 def temp_cell_style(temp_n, base: str):
-    """溫度熱圖跟原作走：~36°C 薄荷綠，~73°C 才洋紅。禁止 32°C 就整格粉。"""
+    """溫度熱圖跟原作走：~36°C 薄荷綠，~73°C 才洋紅。0°C 也綠底，不要留白。"""
     C = _CARD
     base = base or C["white"]
     try:
         t = float(temp_n)
     except (TypeError, ValueError):
+        return base, C["neutral_fg"]
+    if t < 0:
         return base, C["neutral_fg"]
     if t >= 80:
         return C["pill_hi"], C["white"]
@@ -1499,7 +1517,7 @@ def temp_cell_style(temp_n, base: str):
         return C["temp_warm_bg"], C["temp_warm_fg"]
     if t >= 28:
         return C["lo_fill"], C["lo_ink"]
-    return base, C["ink"]
+    return C["lo_fill"], C["lo_ink"]
 
 
 def vol_rank_cell_style(rank, base: str):
@@ -1519,6 +1537,7 @@ def vol_rank_cell_style(rank, base: str):
 
 
 def bias_cell_style(bias, base: str):
+    """月乖離：作者卡只有正紅負綠字，不洗格底。"""
     C = _CARD
     base = base or C["white"]
     try:
@@ -1526,21 +1545,19 @@ def bias_cell_style(bias, base: str):
     except (TypeError, ValueError):
         return base, C["ink"]
     if b > 0:
-        return C["hi_fill"], C["up"]
+        return base, C["up"]
     if b < 0:
-        return C["lo_fill"], C["down"]
+        return base, C["down"]
     return base, C["ink"]
 
 
-def price_cell_style(hl: str, base: str):
-    """股價欄：靠近高／低時底色跟高低卡，不是無條件粉紅。"""
+def price_cell_style(hl: str, base: str, alert: str = ""):
+    """股價欄：作者多數白底；只有預警「最高價」那天洗高色。"""
     C = _CARD
     base = base or C["white"]
-    hl = str(hl or "")
-    if "高" in hl:
+    if "最高價" in str(alert or ""):
         return C["hi_fill"], C["pill_hi"]
-    if "低" in hl:
-        return C["lo_fill"], C["lo_ink"]
+    del hl
     return base, C["ink"]
 
 
@@ -1991,14 +2008,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         bias = float(r.get("bias_monthly") or 0)
         rank = int(r.get("vol_rank_120") or 99)
         temp_n = float(r.get("temp_num") or 0) or _parse_temp_n(r.get("溫度計"))
-        trend = str(r.get("升降") or "—")
+        trend = str(r.get("升降") or "No")
+        if is_blank_card_signal(trend):
+            trend = "No"
         trend_note = str(r.get("升降註") or "")
         hl = str(r["高低"])
         al = display_alert_cell(str(r["預警"]), hl)
+        if is_blank_card_signal(al):
+            al = "No"
         base = C["white"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
         p_bg, p_fg = _profit_heat_draw(_row_profit(r), _row_profit(nxt), base)
-        px_bg, px_fg = price_cell_style(hl, base)
+        px_bg, px_fg = price_cell_style(hl, base, al)
         al_bg, al_fg = alert_cell_style(al, base)
         tbg, tfg = _temp_heat_draw(temp_n, base)
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
@@ -2027,8 +2048,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     w=pill_w, h=body_h * 0.70, fs=11.5,
                 )
             elif i in pill_cols:
-                if val in ("No", "—") or not str(val).strip():
-                    ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
+                if is_blank_card_signal(val):
+                    ax.text(cx, cy, "No",
                             fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
                 elif i == 5 and trend_note:
                     note = _trend_note_short(trend_note)
