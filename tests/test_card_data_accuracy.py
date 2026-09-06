@@ -199,7 +199,7 @@ class CardDataAccuracyTests(unittest.TestCase):
 
     @pytest.mark.production_db
     def test_4915_official_20260904_matches_leave_zero(self):
-        """致伸 20260904 官方：收 60.8、獲利 2.4%（60曆日低 59.4）、態度等待。"""
+        """致伸 20260904 官方：收 60.8、獲利 2.4%（60曆日低 59.4）、態度先等。"""
         db = get_db_path()
         import sqlite3
 
@@ -228,7 +228,7 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(float(card["cal60_low"]), 59.4, places=1)
         self.assertAlmostEqual(float(card["gain_pct"]), 2.4, places=1)
         self.assertEqual(card.get("stance_kind"), "wait")
-        self.assertIn("等待", str(card.get("stance") or ""))
+        self.assertIn("先等", str(card.get("stance") or ""))
 
 
 if __name__ == "__main__":
