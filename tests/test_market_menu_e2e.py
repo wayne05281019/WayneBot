@@ -90,6 +90,9 @@ class TestMarketMenuE2E:
     def test_help_no_reserved_slot_text(self):
         assert "預留" not in HELP_TOPICS["menu"]
         assert "大盤" in HELP_TOPICS["menu"]
+        assert "夜盤" in HELP_TOPICS["market"]
+        assert "橫式" in HELP_TOPICS["market"]
+        assert "夜盤" in HELP_TOPICS["row2"]
 
     def test_market_page_db_only_no_yahoo(self, tmp_path):
         db = str(tmp_path / "m.db")

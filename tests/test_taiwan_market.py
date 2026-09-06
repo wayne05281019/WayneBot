@@ -682,38 +682,60 @@ def test_parse_taifex_history_csv_picks_front_month():
         "交易日期,契約,到期月份(週別),開盤價,最高價,最低價,收盤價,漲跌價,漲跌%,成交量,結算價,未沖銷契約數,最後最佳買價,最後最佳賣價,歷史最高價,歷史最低價,是否因訊息面暫停交易,交易時段,價差對單式委託成交量\n"
         "2026/08/03,TX,202608  ,43186,43836,42989,43230,-497,-1.14%,69550,43219,109589,43231,43247,49470,39442,,一般,,\n"
         "2026/08/03,TX,202609  ,43368,43966,43260,43388,-500,-1.14%,485,43363,6108,43373,43391,49651,24962,,一般,,\n"
+        "2026/08/03,TX,202608  ,43200,43400,43000,43100,-130,-0.30%,38000,43100,0,43110,43120,49470,39442,,盤後,,\n"
     ).encode("big5")
     out = _parse_taifex_history_csv(sample)
     assert "20260803" in out
-    assert out["20260803"]["close"] == 43230.0
-    assert out["20260803"]["volume"] == 69550
+    assert out["20260803"]["regular"]["close"] == 43230.0
+    assert out["20260803"]["regular"]["volume"] == 69550
+    assert out["20260803"]["night"]["close"] == 43100.0
+    assert out["20260803"]["night"]["session"] == "night"
 
 
-@patch("taiwan_market._fetch_taifex_tx_day")
+@patch("taiwan_market._fetch_taifex_tx_sessions")
 def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
-    from taiwan_market import ensure_futures_daily_table, load_futures_daily, sync_futures_daily
+    from taiwan_market import ensure_futures_daily_table, load_futures_daily, load_futures_night, sync_futures_daily
 
     db = str(tmp_path / "fut.db")
     mock_fetch.return_value = {
-        "date": "20260901",
-        "contract_month": "202609",
-        "open": 46000.0,
-        "high": 47220.0,
-        "low": 45987.0,
-        "close": 47209.0,
-        "settlement": 47201.0,
-        "volume": 57627,
-        "open_interest": 104368,
-        "pct_change": 2.68,
-        "source": "taifex",
+        "regular": {
+            "date": "20260901",
+            "contract_month": "202609",
+            "open": 46000.0,
+            "high": 47220.0,
+            "low": 45987.0,
+            "close": 47209.0,
+            "settlement": 47201.0,
+            "volume": 57627,
+            "open_interest": 104368,
+            "pct_change": 2.68,
+            "source": "taifex",
+            "session": "regular",
+        },
+        "night": {
+            "date": "20260901",
+            "contract_month": "202609",
+            "open": 47000.0,
+            "high": 47300.0,
+            "low": 46800.0,
+            "close": 46900.0,
+            "settlement": 46900.0,
+            "volume": 30000,
+            "open_interest": 0,
+            "pct_change": -0.65,
+            "source": "taifex",
+            "session": "night",
+        },
     }
     r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
     assert r["ok"]
     row = load_futures_daily(db, "20260901")
     assert row and row["close"] == 47209.0
+    night = load_futures_night(db, "20260901")
+    assert night and night["close"] == 46900.0
 
 
-@patch("taiwan_market._fetch_taifex_tx_day")
+@patch("taiwan_market._fetch_taifex_tx_sessions")
 def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_path):
     """庫已有足夠列且 backfill_days=0 時，不可再 UnboundLocalError(datetime)。"""
     import sqlite3
@@ -736,17 +758,20 @@ def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_pat
     conn.commit()
     conn.close()
     mock_fetch.return_value = {
-        "date": "20260901",
-        "contract_month": "202609",
-        "open": 1.0,
-        "high": 2.0,
-        "low": 1.0,
-        "close": 2.0,
-        "settlement": 2.0,
-        "volume": 1,
-        "open_interest": 1,
-        "pct_change": 0.0,
-        "source": "taifex",
+        "regular": {
+            "date": "20260901",
+            "contract_month": "202609",
+            "open": 1.0,
+            "high": 2.0,
+            "low": 1.0,
+            "close": 2.0,
+            "settlement": 2.0,
+            "volume": 1,
+            "open_interest": 1,
+            "pct_change": 0.0,
+            "source": "taifex",
+            "session": "regular",
+        }
     }
     r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
     assert r["ok"]
@@ -788,13 +813,71 @@ def test_market_page_includes_futures_section(tmp_path):
             """,
             (d, close + 50, close + 100, close + 30, close + 80, close + 75),
         )
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TX', 'night', '202608', ?, ?, ?, ?, ?, 800, 0, -0.2, 'taifex', 'test')
+            """,
+            (d, close + 40, close + 90, close + 20, close + 60, close + 55),
+        )
         conn.execute("INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)", (d, float(100 + i)))
     conn.commit()
     conn.close()
-    html = format_taiwan_market_page_html(db, "20260824")
+    from us_overnight import save_us_overnight
+
+    save_us_overnight(
+        db,
+        "20260824",
+        {
+            "ok": True,
+            "regime": "ok",
+            "us_session": "20260823",
+            "us_phase": "overnight",
+            "vix": 14.19,
+            "vix_pct": -2.1,
+            "dji_pct": 1.18,
+            "dji_chg": 480.0,
+            "spx_pct": 1.02,
+            "spx_chg": 55.0,
+            "ixic_pct": 1.40,
+            "ixic_chg": 220.0,
+            "sox_pct": 1.10,
+            "sox_chg": 40.0,
+            "nq_f_pct": 0.52,
+            "nq_f_chg": 110.0,
+            "es_f_pct": 0.31,
+            "es_f_chg": 16.0,
+            "ym_f_pct": 0.44,
+            "ym_f_chg": 160.0,
+            "tsm_pct": 0.36,
+            "tsm_chg": 0.80,
+            "tsm_post_pct": 0.12,
+            "tsm_post_chg": 0.25,
+            "nvda_pct": 1.80,
+            "nvda_chg": 3.10,
+            "nvda_post_pct": 0.22,
+            "nvda_post_chg": 0.40,
+        },
+    )
+    import taiwan_market as tm
+
+    tm._TX_SESS_CACHE = (0.0, {})
+    with patch("taiwan_market._taifex_openapi_all_rows", return_value=[]):
+        html = format_taiwan_market_page_html(db, "20260824")
     assert "台指期" in html
     assert "比現貨" in html
     assert "未平倉" in html
+    assert "夜盤" in html
+    assert "台指期夜盤" in html
+    assert "前一晚該看" in html
+    assert "盤後期貨" in html
+    assert "那斯達克期貨" in html
+    assert "那斯達克期貨+" not in html
+    assert "台積美股盤後" in html
+    assert "輝達盤後" in html
+    assert "指數收盤" in html
     assert "OI " not in html
     assert "基差" not in html
     assert "近月" not in html

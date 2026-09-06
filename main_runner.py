@@ -705,6 +705,13 @@ class MainRunner:
             return False
         logger.info("☀️ 台灣 06:30 海選，基準日 %s", as_of)
         try:
+            from taiwan_market import sync_futures_daily
+
+            fut = sync_futures_daily(self.db_path)
+            logger.info("今早補台指期日盤／夜盤：%s", fut)
+        except Exception as e:
+            logger.warning("今早台指期略過：%s", e)
+        try:
             from us_overnight import (
                 format_us_drop_alert,
                 refresh_us_overnight,
