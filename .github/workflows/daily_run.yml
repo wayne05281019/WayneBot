@@ -15,11 +15,12 @@ on:
           - increment
           - morning_screen
         default: increment
-  # 機器人無法 workflow_dispatch（403）時，改推這個檔觸發盤後融合
+  # 機器人無法 workflow_dispatch（403）時，改推 trigger 檔補跑
   push:
     branches: [main]
     paths:
       - '.github/triggers/increment'
+      - '.github/triggers/morning_screen'
 
 permissions:
   contents: write
@@ -47,6 +48,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             JOB="${{ github.event.inputs.job }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            CHANGED=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || true)
+            echo "changed=[$CHANGED]"
+            if echo "$CHANGED" | grep -q 'triggers/morning_screen'; then
+              JOB="morning_screen"
+            else
+              JOB="increment"
+            fi
           else
             SCHED="${{ github.event.schedule }}"
             echo "schedule=[$SCHED]"
