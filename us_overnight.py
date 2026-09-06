@@ -625,7 +625,7 @@ def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W
     lines = []
     for pct_k, chg_k, label in items:
         move = _fmt_move(snap.get(pct_k), snap.get(chg_k))
-        lines.append(f"{pad_label(label, label_width)}{html_escape(move)}")
+        lines.append(f"{pad_label(label, label_width)}　{html_escape(move)}")
     return "\n".join(lines)
 
 
@@ -675,7 +675,7 @@ def _vix_row(snap: Dict[str, Any]) -> str:
     vix_s = _fmt_vix(snap)
     if mood:
         vix_s = f"{vix_s}　{mood}"
-    return f"{pad_label('恐慌指數', _LABEL_W)}{html_escape(vix_s)}"
+    return f"{pad_label('恐慌指數', _LABEL_W)}　{html_escape(vix_s)}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:
@@ -826,9 +826,15 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None) -> str:
     ):
         blocks.append(_tw_open_ref_block(snap))
     if snap.get("regime") == "risk_off":
-        blocks.append("06:30 海選會把當沖／隔日沖拿掉。佈局先看高低卡，不要因為缺口去追。")
+        blocks.append(
+            "06:30 海選會把當沖／隔日沖拿掉。\n"
+            "佈局先看高低卡，不要因為缺口去追。"
+        )
     else:
-        blocks.append("06:30 海選會加嚴：靠近20日高與電子逆風檔會拿掉。不是叫你現在下單。")
+        blocks.append(
+            "06:30 海選會加嚴：靠近20日高與電子逆風檔會拿掉。\n"
+            "不是叫你現在下單。"
+        )
     return join_sections(*blocks)
 
 
