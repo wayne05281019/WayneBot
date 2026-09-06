@@ -936,16 +936,34 @@ def _fmt_pct(v) -> str:
     return f"{f:+.1f}%"
 
 
-def _chg_color(v) -> str:
+def signed_pct_ink(val) -> str:
+    """台股漲紅跌綠。正數紅、負數綠。不是買訊，也不是最高價／最高溫。"""
+    C = _CARD
     try:
-        f = float(v)
+        v = float(val)
     except (TypeError, ValueError):
-        return "#111827"
-    if f > 0:
-        return "#C62828"
-    if f < 0:
-        return "#00695C"
-    return "#111827"
+        return C["ink"]
+    if v > 0:
+        return C["up"]
+    if v < 0:
+        return C["down"]
+    return C["down"]
+
+
+def ink_on_fill(fg, bg) -> str:
+    """紅底夠深才改白字，只為對比。淡粉／白／綠底仍用紅字。"""
+    C = _CARD
+    bg = bg or C["white"]
+    try:
+        if _lum(bg) < 0.40:
+            return C["white"]
+    except Exception:
+        pass
+    return fg
+
+
+def _chg_color(v) -> str:
+    return signed_pct_ink(v)
 
 
 def _temp_num(v):
@@ -1062,21 +1080,22 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     except (TypeError, ValueError):
         return bg, fg
     # 0.0% 貼零、0.x% 脫離零：整格綠底畫上去，不要再熱圖洗成接近白。
-    if bg in (C["lo_fill"], C["lo_hit_fill"]) or p <= 0.05:
+    if bg in (C["lo_fill"], C["lo_hit_fill"], C["pill_lo"]) or p <= 0.05:
         return bg, fg
-    # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%），不要淡粉熱圖。
+    # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%、越峰 3.9%），不要淡粉熱圖。
     if p < 8:
         return bg, fg
-    # 色階只能愈高愈深，不能 20% 又洗回接近白（台達電 22% 作者是實粉）。
-    return _heat_pair(
+    # 色階只能愈高愈深；淡粉紅字、實粉／洋紅底改白字（金像電 44%／69%）。
+    heat_bg, _heat_fg = _heat_pair(
         p,
         (
-            (8.0, "#FCE4EC", C["hi_ink"]),
-            (20.0, "#F8BBD0", C["pill_hi"]),
+            (8.0, "#FCE4EC", C["up"]),
+            (20.0, "#F8BBD0", C["up"]),
             (32.0, "#EC407A", C["white"]),
             (50.0, C["pill_hi"], C["white"]),
         ),
     )
+    return heat_bg, ink_on_fill(C["up"] if p > 0 else C["down"], heat_bg)
 
 
 def _vol_heat_draw(rank, base: str):
@@ -1444,9 +1463,9 @@ def _status_badge_colors(bg, fg):
 
 
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
-    """獲利格跟作者同一套：0.0% 貼零淺綠、0.x% 脫離零實綠、1% 以上才跟列底。
+    """獲利格：0.0% 綠底白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高紅底白字。
 
-    零點幾就算脫離零，不要求前一天剛好是 0.0%。prev_profit 保留給呼叫端，底色不靠它。
+    字色＝台股漲紅跌綠，跟當天是不是最高價／最高溫無關。prev_profit 保留給呼叫端。
     """
     del prev_profit
     C = _CARD
@@ -1459,21 +1478,21 @@ def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
         from decision_card_signals import is_profit_display_zero, profit_display_leave_zero_band
 
         if is_profit_display_zero(p):
-            return C["lo_fill"], C["lo_ink"]
+            return C["lo_fill"], C["white"]
         if profit_display_leave_zero_band(p):
-            return C["lo_hit_fill"], C["lo_ink"]
+            return C["lo_hit_fill"], C["up"]
     except Exception:
         if p <= 0.05:
-            return C["lo_fill"], C["lo_ink"]
+            return C["lo_fill"], C["white"]
         if 0.05 < p < 0.95:
-            return C["lo_hit_fill"], C["lo_ink"]
+            return C["lo_hit_fill"], C["up"]
     if p >= 40:
         return C["pill_hi"], C["white"]
     if p >= 20:
-        return C["hi_fill"], C["hi_ink"]
+        return C["hi_fill"], ink_on_fill(C["up"], C["hi_fill"])
     if p >= 8:
-        return C["temp_warm_bg"], C["temp_warm_fg"]
-    return base, C["ink"]
+        return C["temp_warm_bg"], ink_on_fill(C["up"], C["temp_warm_bg"])
+    return base, signed_pct_ink(p)
 
 
 def hl_cell_style(hl: str, base: str):
@@ -1540,18 +1559,14 @@ def vol_rank_cell_style(rank, base: str):
 
 
 def bias_cell_style(bias, base: str):
-    """月乖離：作者卡只有正紅負綠字，不洗格底。"""
+    """月乖離：正紅負綠字、不洗格底。0.0% 也綠（作者 −0.0% 同色）。"""
     C = _CARD
     base = base or C["white"]
     try:
         b = float(bias)
     except (TypeError, ValueError):
         return base, C["ink"]
-    if b > 0:
-        return base, C["up"]
-    if b < 0:
-        return base, C["down"]
-    return base, C["ink"]
+    return base, signed_pct_ink(b)
 
 
 def price_cell_style(hl: str, base: str, alert: str = ""):
@@ -2052,12 +2067,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             col_w = xs[i + 1] - xs[i]
             _cell_wash(ax, xs[i], y1, col_w, body_h, fills[i], C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
-            if i == 2 and fills[i] in (C["lo_fill"], C["lo_hit_fill"]):
+            if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(
-                    ax, cx, cy, val, fills[i], fgs[i],
-                    w=pill_w, h=body_h * 0.70, fs=11.5,
-                )
+                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.70, fs=11.5)
+            elif i == 2 and fills[i] == C["lo_hit_fill"]:
+                pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
+                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.70, fs=11.5)
             elif i in pill_cols:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
@@ -2434,7 +2449,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
          price_cell_style("20高" if float(card["dist_h20"]) >= -1 else "No", _CARD["white"])[1]),
         ("獲利（近60曆日低）",
          f"{float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0):+.1f}%",
-         profit_cell_style(float(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0), None, _CARD["white"])[1]),
+         signed_pct_ink(card.get('gain_pct') if card.get('gain_pct') is not None else card.get('dist_l60') or 0)),
         (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
             _fmt_dist_short(card.get("dist_l120")),
             _fmt_dist_short(card.get("dist_l240")),
@@ -3116,11 +3131,10 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
         if part == 1:
             base = _CARD["white"]
             _, warn_fg = alert_cell_style(warn, base)
-            _, prof_fg = profit_cell_style(profit, None, base)
             vals = [
                 (date_s, _CARD["ink"]),
                 (_fmt_num(row.get("close"), 2), _CARD["ink"]),
-                (_fmt_pct(profit), prof_fg),
+                (_fmt_pct(profit), signed_pct_ink(profit)),
                 (warn, warn_fg),
             ]
         else:
