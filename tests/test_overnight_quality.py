@@ -21,7 +21,7 @@ from import_health import (
     monthly_revenue_status,
 )
 from wayne_db import ensure_core_schema
-from wayne_navigator import render_decision_card_png
+from wayne_navigator import fit_title_bar_extras, render_decision_card_png
 
 
 def test_expected_revenue_month_before_tenth():
@@ -216,6 +216,21 @@ def test_decision_card_source_forbids_zebra_and_paints_event():
 
     glance_src = inspect.getsource(render_first_glance_png)
     assert "next_event" in glance_src
+
+
+def test_title_bar_prefers_event_over_long_industry():
+    def tw(text, fs):
+        del fs
+        return float(len(str(text)))
+
+    items = fit_title_bar_extras("電腦及週邊設備業", "今日法說", 10.0, tw)
+    labels = [t[0] for t in items]
+    assert labels[0] == "今日法說"
+    assert "電腦及週邊設備業" not in labels
+    wide = fit_title_bar_extras("電子", "今日法說", 20.0, tw)
+    assert [t[0] for t in wide] == ["今日法說", "電子"]
+    empty = fit_title_bar_extras("電子", "", 20.0, tw)
+    assert [t[0] for t in empty] == ["電子"]
 
 
 def test_decision_card_png_renders_next_event():

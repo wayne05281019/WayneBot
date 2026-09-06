@@ -187,26 +187,184 @@ def render_line_redirect_html(text: str) -> str:
     )
 
 
+def selected_line_text(manifest: Dict[str, Any], stock_ids: Optional[list] = None) -> str:
+    """重建 LINE 文字：只含勾選檔。stock_ids 空／None＝全部。"""
+    from line_share_format import LINE_SHARE_SEP, line_bucket_header
+
+    stocks = list(manifest.get("stocks") or [])
+    want = None
+    if stock_ids is not None:
+        want = {str(x).strip() for x in stock_ids if str(x).strip()}
+    picked = []
+    for st in stocks:
+        sid = str(st.get("stock_id") or "").strip()
+        if want is not None and sid not in want:
+            continue
+        block = str(st.get("text_block") or "").strip()
+        if block:
+            picked.append(block)
+    full = str(manifest.get("line_text") or "").strip()
+    if not picked:
+        return full if want is None else ""
+    if want is None and len(picked) == len(
+        [st for st in stocks if str(st.get("text_block") or "").strip()]
+    ):
+        return full
+    first = full.split("\n", 1)[0] if full else ""
+    as_of = str(manifest.get("as_of") or "").strip()
+    prefix = (
+        first
+        if first.startswith("WayneBot")
+        else (f"WayneBot 海選　{_date_slash(as_of)}" if as_of else "WayneBot 海選")
+    )
+    title = str(manifest.get("title") or "海選").strip()
+    bucket_key = str(manifest.get("bucket_key") or "").strip()
+    header = (
+        line_bucket_header(bucket_key, len(picked))
+        if bucket_key
+        else f"＝＝{title}＝＝\n共 {len(picked)} 檔"
+    )
+    return prefix + "\n" + header + "\n" + ("\n" + LINE_SHARE_SEP + "\n").join(picked)
+
+
+def _line_picker_script() -> str:
+    """勾選檔後：複製對應名單、傳勾選的介紹圖／決策卡。"""
+    return """<script>(function(){
+var data=JSON.parse(document.getElementById('pickPayload').textContent||'{}');
+function boxes(){return Array.prototype.slice.call(document.querySelectorAll('.stock-pick'));}
+function checkedIds(){return boxes().filter(function(el){return el.checked;}).map(function(el){return String(el.value);});}
+function setAll(on){boxes().forEach(function(el){el.checked=!!on;}); syncCount();}
+function syncCount(){
+  var n=checkedIds().length, el=document.getElementById('pickCount');
+  if(el) el.textContent='已勾 '+n+' 檔';
+}
+function selectedStocks(){
+  var ids=checkedIds(), map={};
+  (data.stocks||[]).forEach(function(st){map[String(st.stock_id)]=st;});
+  return ids.map(function(id){return map[id];}).filter(Boolean);
+}
+function selectedText(){
+  var blocks=selectedStocks().map(function(st){return String(st.text_block||'').trim();}).filter(Boolean);
+  if(!blocks.length) return '';
+  var header=(data.header||('＝＝'+(data.title||'海選')+'＝＝'))+'\\n共 '+blocks.length+' 檔';
+  return String(data.prefix||'WayneBot 海選')+'\\n'+header+'\\n'+blocks.join('\\n'+(data.sep||'────────────')+'\\n');
+}
+async function copyText(body){
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(body);return true;}}catch(e){}
+  var ta=document.createElement('textarea');ta.value=body;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.select();
+  var ok=false;try{ok=document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);return ok;
+}
+async function shareText(ev){
+  if(ev&&ev.preventDefault)ev.preventDefault();
+  var body=selectedText();
+  if(!body){alert('請先勾要傳的檔');return;}
+  if(navigator.share){try{await navigator.share({text:body,title:'WayneBot'});return;}catch(e){}}
+  var ok=await copyText(body);
+  alert(ok?'已複製勾選名單。請開 LINE → 選聯絡人 → 長按貼上。':'請手動全選下方文字複製');
+  var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');
+  if(mobile){try{location.href='line://';}catch(e){}}
+}
+async function shareImages(ev){
+  if(ev&&ev.preventDefault)ev.preventDefault();
+  var picked=selectedStocks();
+  if(!picked.length){alert('請先勾要傳的檔');return;}
+  var files=[], names=[];
+  for(var i=0;i<picked.length;i++){
+    var st=picked[i], sid=String(st.stock_id||'stock');
+    var urls=[st.glance_url,st.card_url,(!st.glance_url&&!st.card_url)?st.strip_url:''];
+    for(var u=0;u<urls.length;u++){
+      var url=String(urls[u]||'');
+      if(!url) continue;
+      try{
+        var r=await fetch(url);var blob=await r.blob();
+        var kind=u===0&&st.glance_url?'glance':(u===1&&st.card_url?'card':'strip');
+        var fn=sid+'-'+kind+'.png';
+        files.push(new File([blob],fn,{type:'image/png'}));
+        names.push(fn);
+      }catch(e){}
+    }
+  }
+  if(navigator.share&&files.length){
+    try{
+      if(navigator.canShare&&navigator.canShare({files:files})){
+        await navigator.share({files:files,title:'WayneBot'});return;
+      }
+    }catch(e){}
+  }
+  alert('這支手機一次傳多張圖不穩。請改長按勾選檔的介紹圖／決策卡 → 分享 → LINE。');
+}
+var shareBtn=document.getElementById('shareLine');
+if(shareBtn) shareBtn.addEventListener('click',shareText);
+var imgBtn=document.getElementById('sharePicked');
+if(imgBtn) imgBtn.addEventListener('click',shareImages);
+var allBtn=document.getElementById('pickAll');
+if(allBtn) allBtn.addEventListener('click',function(){setAll(true);});
+var noneBtn=document.getElementById('pickNone');
+if(noneBtn) noneBtn.addEventListener('click',function(){setAll(false);});
+boxes().forEach(function(el){el.addEventListener('change',syncCount);});
+syncCount();
+var album=String(data.album_url||'');
+var albumBtn=document.getElementById('saveAlbum');
+if(albumBtn&&navigator.share&&album){
+  albumBtn.addEventListener('click',function(ev){
+    fetch(album).then(function(r){return r.blob();}).then(function(blob){
+      var file=new File([blob],'waynebot.png',{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});
+      }
+    }).catch(function(){});
+  });
+}
+})();</script>"""
+
+
 def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
-    """備援頁：介紹圖／決策卡在前；文字含產業，轉 LINE 選聯絡人。"""
+    """備援頁：介紹圖／決策卡在前；可勾選哪幾檔再轉 LINE。"""
     text = str(manifest.get("line_text") or "").strip()
-    title = html.escape(str(manifest.get("title") or "海選"))
+    raw_title = str(manifest.get("title") or "海選")
+    title = html.escape(raw_title)
     count = int(manifest.get("count") or 0)
     album_url = str(manifest.get("album_url") or "").strip()
     text_only = bool(manifest.get("text_only"))
     safe_album = html.escape(album_url, quote=True) if album_url else ""
     stocks = manifest.get("stocks") or []
-    from line_share_format import line_plain_to_html
+    from line_share_format import LINE_SHARE_SEP, line_bucket_header, line_plain_to_html
 
     safe_text = line_plain_to_html(text)
-    body_json = json.dumps(text, ensure_ascii=False)
-    album_json = json.dumps(album_url, ensure_ascii=False)
+    first = text.split("\n", 1)[0] if text else ""
+    prefix = first if first.startswith("WayneBot") else "WayneBot 海選"
+    bucket_key = str(manifest.get("bucket_key") or "").strip()
+    header_label = (
+        line_bucket_header(bucket_key, 0).split("\n", 1)[0]
+        if bucket_key
+        else f"＝＝{raw_title}＝＝"
+    )
+    pick_payload = {
+        "prefix": prefix,
+        "title": raw_title,
+        "header": header_label,
+        "sep": LINE_SHARE_SEP,
+        "album_url": album_url,
+        "stocks": [
+            {
+                "stock_id": str(st.get("stock_id") or "").strip(),
+                "stock_name": str(st.get("stock_name") or "").strip(),
+                "text_block": str(st.get("text_block") or ""),
+                "glance_url": str(st.get("glance_url") or ""),
+                "card_url": str(st.get("card_url") or ""),
+                "strip_url": str(st.get("strip_url") or ""),
+            }
+            for st in stocks
+        ],
+    }
+    payload_json = json.dumps(pick_payload, ensure_ascii=False).replace("<", "\\u003c")
 
     stock_blocks = []
     for st in stocks:
-        name = html.escape(
-            f"{st.get('stock_id') or ''} {st.get('stock_name') or ''}".strip()
-        )
+        sid = str(st.get("stock_id") or "").strip()
+        name = html.escape(f"{sid} {st.get('stock_name') or ''}".strip())
         block = str(st.get("text_block") or "")
         glance = html.escape(str(st.get("glance_url") or ""), quote=True)
         card = html.escape(str(st.get("card_url") or ""), quote=True)
@@ -221,7 +379,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         text_pre = f'<div class="stock-text">{line_plain_to_html(block)}</div>' if block else ""
         from stock_links import yahoo_hop_url
 
-        hop = yahoo_hop_url(str(st.get("stock_id") or ""))
+        hop = yahoo_hop_url(sid)
         hop_a = (
             f'<p style="text-align:center"><a href="{html.escape(hop, quote=True)}">奇摩手機版</a></p>'
             if hop
@@ -229,8 +387,13 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         )
         if not text_pre and not imgs:
             continue
+        safe_sid = html.escape(sid, quote=True)
+        pick = (
+            f'<label class="pick"><input class="stock-pick" type="checkbox" value="{safe_sid}" checked>'
+            f"<span>{name}</span></label>"
+        )
         stock_blocks.append(
-            f'<article class="stock-card"><h3>{name}</h3>{hop_a}{"".join(imgs)}{text_pre}</article>'
+            f'<article class="stock-card" data-sid="{safe_sid}">{pick}{hop_a}{"".join(imgs)}{text_pre}</article>'
         )
     stocks_html = "\n".join(stock_blocks)
     album_block = (
@@ -245,19 +408,8 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
             "圖已過期，請回 Telegram 再按一次「一鍵傳 LINE」。</p>"
         )
     extra_script = (
-        _line_share_page_script(body_json, auto_open=False)
-        + "<script>(function(){"
-        f"var album={album_json};"
-        "var btn=document.getElementById('saveAlbum');"
-        "if(btn&&navigator.share&&album){"
-        "btn.addEventListener('click',function(ev){"
-        "fetch(album).then(function(r){return r.blob();}).then(function(blob){"
-        "var file=new File([blob],'waynebot.png',{type:'image/png'});"
-        "if(navigator.canShare&&navigator.canShare({files:[file]})){"
-        "ev.preventDefault();return navigator.share({files:[file],title:'WayneBot'});}"
-        "}).catch(function(){});"
-        "});}"
-        "})();</script>"
+        f'<script type="application/json" id="pickPayload">{payload_json}</script>'
+        + _line_picker_script()
     )
     return (
         "<!DOCTYPE html><html><head>"
@@ -270,7 +422,10 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         ".btn{display:inline-block;margin:8px 4px;padding:12px 16px;border-radius:10px;"
         "text-decoration:none;font-weight:600;border:none}"
         ".green{background:#06c755;color:#fff}.blue{background:#1e6fff;color:#fff}"
+        ".ghost{background:#eef2f7;color:#111}"
         ".stock-card{margin:0 0 1.25em;padding:0 0 1em;border-bottom:1px solid #ddd}"
+        ".pick{display:flex;align-items:center;gap:10px;font-weight:700;margin:0 0 8px}"
+        ".pick input{width:22px;height:22px;flex:none}"
         ".stock-text{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#f8fafc;"
         "padding:12px;border-radius:10px;margin:10px 0 0;border:1px solid #e8ecf0}"
         ".stance{color:#c41e3a;font-weight:700}"
@@ -279,16 +434,23 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         ".album{width:100%;max-width:100%;display:block;margin:1em auto;border-radius:8px}"
         ".summary{white-space:pre-wrap;font-size:16px;line-height:1.65;background:#fff;padding:12px;"
         "border-radius:10px;border:1px solid #e0e0e0;margin-bottom:1em}"
+        ".toolbar{text-align:center;margin:8px 0}"
         "</style>"
         "</head><body>"
         f"<h2 style=\"text-align:center;margin-top:0\">{title}　{count} 檔</h2>"
         "<p style=\"text-align:center;line-height:1.6\">"
-        "長按介紹圖／決策卡 → 分享 → LINE → 選聯絡人<br>"
-        "文字含產業，排版給手機直讀</p>"
+        "勾要傳的檔（介紹圖＋決策卡一組）。預設全勾。<br>"
+        "長按單張圖也可分享 → LINE → 選聯絡人</p>"
         f"{text_only_note}"
+        '<p class="toolbar">'
+        '<button class="btn ghost" id="pickAll" type="button">全選</button>'
+        '<button class="btn ghost" id="pickNone" type="button">全不選</button>'
+        '<span id="pickCount" style="display:inline-block;margin:8px 4px;color:#334155">已勾 0 檔</span>'
+        "</p>"
         '<p style="text-align:center">'
-        '<button class="btn green" id="shareLine" type="button">複製名單到 LINE</button>'
-        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">分享長圖</a>'
+        '<button class="btn green" id="shareLine" type="button">複製勾選名單到 LINE</button>'
+        '<button class="btn green" id="sharePicked" type="button">傳勾選的圖到 LINE</button>'
+        f'<a class="btn blue" id="saveAlbum" href="{safe_album}" download="waynebot.png">分享全區長圖</a>'
         "</p>"
         f'<details open><summary style="font-weight:600;margin-bottom:8px">名單（含產業）</summary>'
         f'<div class="summary">{safe_text}</div></details>'
