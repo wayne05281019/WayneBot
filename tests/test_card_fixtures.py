@@ -27,12 +27,15 @@ def test_template_2420_8_28_not_leave_zero():
 
 
 def test_template_profit_green_cell():
-    """色票範本：昨 0.0% → 今 0.9% 實綠。"""
+    """色票範本：0.9% 實綠；0.3% 即使前一天不是 0 也綠（作者致伸 9/3）。"""
     assert profit_left_zero_highlight(0.0, 0.9)
     hit, tag = card_row_leave_zero(0.0, 0.9)
     assert hit and "實綠" in tag
     ok, _ = leave_zero_screen_ok(0.0, 0.9)
     assert ok
+    from wayne_navigator import _CARD, profit_cell_style
+
+    assert profit_cell_style(0.3, 1.5, _CARD["white"])[0] == _CARD["lo_hit_fill"]
 
 
 def test_template_not_green_after_step():

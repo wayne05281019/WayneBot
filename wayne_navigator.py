@@ -753,7 +753,7 @@ class NavigatorEngine:
         return payload
 
     def scan_double_green_breakout(self) -> list:
-        """全市場海選：【雙綠脫離】波段黃金起漲轉折股"""
+        """全市場海選：【雙綠脫離】波段黃金買點（leave_zero）轉折股"""
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute("SELECT stock_id, stock_name FROM stock_universe WHERE is_active=1;")
@@ -1050,7 +1050,8 @@ def _profit_heat_draw(profit, prev_profit, base: str):
         p = float(profit)
     except (TypeError, ValueError):
         return bg, fg
-    if bg == C["lo_hit_fill"] or p <= 0.05:
+    # 0.0% 貼零、0.x% 脫離零：整格綠底畫上去，不要再熱圖洗成接近白。
+    if bg in (C["lo_fill"], C["lo_hit_fill"]) or p <= 0.05:
         return bg, fg
     return _heat_pair(
         p,
@@ -1426,25 +1427,29 @@ def _status_badge_colors(bg, fg):
 
 
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
-    """獲利底圖跟高低卡同一套色票：貼零＝低、剛離零＝實綠、其餘跟列底。不整列寫死粉紅。"""
+    """獲利格跟作者同一套：0.0% 貼零淺綠、0.x% 脫離零實綠、1% 以上才跟列底。
+
+    零點幾就算脫離零，不要求前一天剛好是 0.0%。prev_profit 保留給呼叫端，底色不靠它。
+    """
+    del prev_profit
     C = _CARD
     base = base or C["white"]
     try:
         p = float(profit)
     except (TypeError, ValueError):
         return base, C["ink"]
-    left_zero = False
-    if prev_profit is not None:
-        try:
-            from decision_card_signals import profit_left_zero_highlight
+    try:
+        from decision_card_signals import is_profit_display_zero, profit_display_leave_zero_band
 
-            left_zero = profit_left_zero_highlight(prev_profit, profit)
-        except Exception:
-            left_zero = float(prev_profit) <= 0.05 and float(profit) > 0.05
-    if left_zero:
-        return C["lo_hit_fill"], C["lo_ink"]
-    if p <= 0.05:
-        return C["lo_fill"], C["lo_ink"]
+        if is_profit_display_zero(p):
+            return C["lo_fill"], C["lo_ink"]
+        if profit_display_leave_zero_band(p):
+            return C["lo_hit_fill"], C["lo_ink"]
+    except Exception:
+        if p <= 0.05:
+            return C["lo_fill"], C["lo_ink"]
+        if 0.05 < p < 0.95:
+            return C["lo_hit_fill"], C["lo_ink"]
     if p >= 40:
         return C["pill_hi"], C["white"]
     if p >= 20:
@@ -2015,7 +2020,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             col_w = xs[i + 1] - xs[i]
             _cell_wash(ax, xs[i], y1, col_w, body_h, fills[i], C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
-            if i in pill_cols:
+            if i == 2 and fills[i] in (C["lo_fill"], C["lo_hit_fill"]):
+                pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
+                _pill(
+                    ax, cx, cy, val, fills[i], fgs[i],
+                    w=pill_w, h=body_h * 0.70, fs=11.5,
+                )
+            elif i in pill_cols:
                 if val in ("No", "—") or not str(val).strip():
                     ax.text(cx, cy, "No" if val in ("No", "—", "") else val,
                             fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)

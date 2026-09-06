@@ -17,7 +17,7 @@ def test_render_line_redirect_html_opens_line_app_on_mobile():
 def test_render_line_hop_html_compat():
     from line_hop import render_line_hop_html
 
-    page = render_line_hop_html("開 LINE・起漲", "測試內容")
+    page = render_line_hop_html("開 LINE・黃金買點", "測試內容")
     assert "line://msg/text/" in page
 
 

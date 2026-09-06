@@ -335,13 +335,13 @@ class ScreeningEngine:
             ):
                 res_sel_03.append(info)
 
-            # 黃金買點：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位；可收下坡末端）。
+            # 重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位；可收下坡末端）。
             if _golden_buy_ok(info):
                 golden = dict(info)
                 golden["golden_buy"] = True
                 res_golden_buy.append(golden)
 
-            # 起漲＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
+            # 黃金買點（leave_zero）＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
             # 量熱或昨收高低格還在 20 低，才算有人接；明顯空頭／月線下整理不進桶。
             if len(df) >= 5:
                 from decision_card_signals import calc_volume_rank
@@ -655,7 +655,7 @@ def _is_downtrend_no_touch(info: Dict[str, Any]) -> bool:
 
 
 def _golden_buy_ok(info: Dict[str, Any]) -> bool:
-    """黃金買點：60低 + 獲利≈0 + 月乖離 < -10%（可在下坡末端，專桶收）。"""
+    """重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離 < -10%（可在下坡末端，專桶收）。"""
     if not info.get("at_60_low"):
         return False
     try:
@@ -682,7 +682,7 @@ def _yesterday_profit_pct(df: pd.DataFrame) -> float:
 
 
 def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
-    """起漲獲利條件：decision_card_signals.leave_zero_screen_ok（卡片實綠／雙綠脫離）。"""
+    """黃金買點獲利條件：decision_card_signals.leave_zero_screen_ok（卡片實綠／雙綠脫離）。"""
     from decision_card_signals import card_alerts_for_df, leave_zero_screen_ok
 
     try:
@@ -696,7 +696,7 @@ def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
 
 
 def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
-    """起漲桶：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
+    """黃金買點桶（leave_zero）：獲利剛離零之外，排除明顯趨勢向下；保留多頭或站上月／季線向上。"""
     if _is_downtrend_no_touch(info):
         return False
     regime = _regime_label(info)
@@ -874,7 +874,7 @@ def _stock_card_html(
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
     if item.get("golden_buy"):
-        notices.append(_hot("黃金買點"))
+        notices.append(_hot("重點觀察"))
     if item.get("at_60_low") and not item.get("golden_buy"):
         notices.append(_hot("60低"))
     if item.get("sector_inflow"):
@@ -1020,8 +1020,8 @@ def _compact_line(item: Dict[str, Any]) -> str:
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
 # 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
 SCREEN_PUSH_SPECS = (
-    ("leave_zero", "🌱", "起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
     ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
@@ -1029,8 +1029,8 @@ SCREEN_PUSH_SPECS = (
     ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
 )
 MORNING_PUSH_SPECS = (
-    ("leave_zero", "🌱", "起漲", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "黃金買點", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, True),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
 )
@@ -1095,7 +1095,7 @@ def format_screening_payload(
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
-    morning=True：06:30 早報只出起漲／黃金買點／優先看／周帶量（沒名單就整區省略）。
+    morning=True：06:30 早報只出黃金買點／重點觀察／優先看／周帶量（沒名單就整區省略）。
     market_html：有內容時插在第一則當大盤狀況。
     """
     results = drop_non_equity_picks(results)
@@ -1260,7 +1260,7 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
     if item.get("revenue_hot"):
         bits.append("營收轉強")
     if item.get("golden_buy"):
-        bits.append("黃金買點")
+        bits.append("重點觀察")
     if item.get("at_60_low"):
         bits.append("60低")
     if item.get("sector_inflow"):
@@ -1285,8 +1285,8 @@ def _share_stock_block(
 
 
 LINE_STOCK_BUCKETS = (
-    ("leave_zero", "起漲"),
-    ("golden_buy", "黃金買點"),
+    ("leave_zero", "黃金買點"),
+    ("golden_buy", "重點觀察"),
     ("revenue_cross", "優先看"),
     ("select_01", "周帶量"),
     ("half_year_high", "半年高"),
@@ -1337,8 +1337,8 @@ def build_line_stock_bodies(
 
 
 LINE_BUCKET_TITLES = {
-    "leave_zero": "起漲",
-    "golden_buy": "黃金買點",
+    "leave_zero": "黃金買點",
+    "golden_buy": "重點觀察",
     "revenue_cross": "優先看",
     "select_01": "周帶量",
     "half_year_high": "半年高",
@@ -1424,12 +1424,12 @@ def format_line_share_packs(
     *,
     morning: bool = False,
 ) -> List[Dict[str, str]]:
-    """三段 LINE：夜盤、起漲／佈局、短線說明（當沖改主選單查）。"""
+    """三段 LINE：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
     from line_hop import LINE_PACKS
 
     specs_layout = [
-        ("leave_zero", "起漲　高低卡獲利剛離零"),
-        ("golden_buy", "黃金買點　60低超跌"),
+        ("leave_zero", "黃金買點　高低卡獲利剛離零"),
+        ("golden_buy", "重點觀察　60低超跌"),
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),
@@ -1488,12 +1488,12 @@ def format_line_share_packs(
     if both:
         layout_parts.insert(0, both)
     if not layout_parts:
-        layout_parts = ["今日沒有起漲／佈局名單"]
+        layout_parts = ["今日沒有黃金買點／佈局名單"]
 
     foot = "（WayneBot　量化輔助，不是立即下單）"
     bodies = {
         "night": ("\n" + SHARE_SEP + "\n").join([head, "＝＝夜盤判斷＝＝", night, foot]),
-        "layout": ("\n" + SHARE_SEP + "\n").join([head, "＝＝起漲與佈局＝＝", *layout_parts, foot]),
+        "layout": ("\n" + SHARE_SEP + "\n").join([head, "＝＝黃金買點與佈局＝＝", *layout_parts, foot]),
         "trade": ("\n" + SHARE_SEP + "\n").join([head, LINE_TRADE_POINTER, foot]),
     }
     # night 已含 ＝＝夜盤判斷＝＝ 時不要重疊標題

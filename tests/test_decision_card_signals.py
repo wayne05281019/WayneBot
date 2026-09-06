@@ -5,6 +5,7 @@ from decision_card_signals import (
     format_profit_pct,
     is_profit_display_zero,
     leave_zero_screen_ok,
+    profit_display_leave_zero_band,
     profit_left_zero_highlight,
     stance_explain,
 )
@@ -21,6 +22,12 @@ def test_profit_left_zero_matches_card_tests():
     # 對齊 test_profit_cell_uses_low_palette
     assert profit_left_zero_highlight(0.0, 0.9)
     assert not profit_left_zero_highlight(0.9, 1.5)
+    assert profit_display_leave_zero_band(0.3)
+    assert profit_display_leave_zero_band(0.7)
+    assert profit_display_leave_zero_band(0.8)
+    assert not profit_display_leave_zero_band(0.0)
+    assert not profit_display_leave_zero_band(1.2)
+    assert not profit_display_leave_zero_band(2.4)
 
 
 def test_double_green_breakout():

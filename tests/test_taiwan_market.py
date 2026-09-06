@@ -904,7 +904,7 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=0.8,
         ixic_pct=0.21,
     )
-    assert "照表看起漲" in hold
+    assert "照表看黃金買點" in hold
     assert "周帶量" in hold
     cheap_night = _outlook_action_plain(
         us_regime="ok",
@@ -914,7 +914,7 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=1.2,
         ixic_pct=1.4,
     )
-    assert "照表看起漲" in cheap_night
+    assert "照表看黃金買點" in cheap_night
     assert "夜盤比日盤便宜" in cheap_night
     assert "逆風" not in cheap_night
 
@@ -988,7 +988,7 @@ def test_format_screen_market_outlook_html_plain_language():
         },
     )
     assert "大盤狀況" in html
-    assert "可以照表看起漲" in html
+    assert "可以照表看黃金買點" in html
     assert "加權昨收" in html
     assert "那斯達克" in html
     assert "恐慌指數" in html

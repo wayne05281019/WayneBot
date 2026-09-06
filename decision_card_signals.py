@@ -4,7 +4,7 @@
 對照來源：
 - wayne_navigator.get_decision_card（獲利／預警／高低）
 - profit_cell_style（獲利格：貼零、剛離零實綠底）
-- scan_double_green_breakout（雙綠脫離掃描，已併入起漲概念）
+- scan_double_green_breakout（雙綠脫離掃描，已併入黃金買點／leave_zero）
 
 使用者傳過的範本卡（南亞 8234 等）是驗收標準；細節殘差見 形態學/未完成對齊.md
 """
@@ -19,7 +19,7 @@ import pandas as pd
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 
-# 起漲桶：卡片綠底雖在 >5% 時仍可能成立，但海選不收已噴段（使用者回饋 5%+ 不像剛起步）
+# 黃金買點桶（leave_zero）：卡片綠底雖在 >5% 時仍可能成立，但海選不收已噴段（使用者回饋 5%+ 不像剛起步）
 LEAVE_ZERO_SCREEN_MAX_PCT = 5.0
 # 創中長線新高時，溫度計 ≥80 要少追（CaryBot：溫度是領先指標）。
 TEMP_ATH_WATCH = 80.0
@@ -175,7 +175,7 @@ def profit_floor_at(
 def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
     """逐日獲利 %：相對 profit_floor_at（60曆日低與20日收盤低取高）。
 
-    僅供需要「貼月低顯示 0%」的內部分析；決策卡／海選顯示與起漲條件用
+    僅供需要「貼月低顯示 0%」的內部分析；決策卡／海選顯示與黃金買點（leave_zero）條件用
     ``profit_pct_cal60_series``（對齊 CaryBot）。
     """
     closes = pd.to_numeric(df[close_col], errors="coerce").to_numpy(dtype=float)
@@ -363,6 +363,12 @@ def is_profit_display_zero(profit_pct: float) -> bool:
     return format_profit_pct(profit_pct) == "0.0%"
 
 
+def profit_display_leave_zero_band(profit_pct: float) -> bool:
+    """作者獲利格淺綠：顯示 0.1%～0.9%（零點幾也算脫離零，不看昨天是不是剛好 0.0%）。"""
+    shown = format_profit_pct(profit_pct)
+    return shown.startswith("0.") and shown != "0.0%"
+
+
 def parse_profit_display(cell: str) -> Optional[float]:
     """從卡片「獲利」欄字串反推數值（OCR／人工校準用）。"""
     s = str(cell or "").strip().replace("％", "%")
@@ -401,7 +407,7 @@ def card_row_leave_zero(
         yest_profit_pct, today_profit_pct
     ):
         return True, "昨獲利 0.0%、今數字跳升"
-    return False, "卡片兩列未達起漲獲利型態"
+    return False, "卡片兩列未達黃金買點獲利型態"
 
 
 def profit_left_zero_highlight(prev_profit_pct: float, today_profit_pct: float) -> bool:
@@ -599,7 +605,7 @@ def leave_zero_screen_ok(
     yest_alert: str = "",
     today_alert: str = "",
 ) -> Tuple[bool, str]:
-    """起漲海選：以獲利格實綠為主，雙綠脫離為輔；今日獲利 ≤5%。"""
+    """黃金買點海選（leave_zero）：以獲利格實綠為主，雙綠脫離為輔；今日獲利 ≤5%。"""
     try:
         pt = float(today_profit_pct)
         py = float(yest_profit_pct)
@@ -610,7 +616,7 @@ def leave_zero_screen_ok(
     hit, reason = card_row_leave_zero(py, pt, yest_alert=yest_alert, today_alert=today_alert)
     if hit:
         return True, reason
-    return False, "未達起漲獲利條件"
+    return False, "未達黃金買點獲利條件"
 
 
 def card_alerts_for_df(df) -> Tuple[str, str]:

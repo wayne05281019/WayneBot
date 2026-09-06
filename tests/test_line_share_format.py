@@ -83,7 +83,7 @@ def test_line_stock_headline_no_yahoo_url():
     assert "＝＝周帶量＝＝" in line_bucket_header("select_01", 3)
     assert "突破5日高" not in line_bucket_header("select_01", 3)
     assert "說明：" not in line_bucket_header("leave_zero", 2)
-    assert line_bucket_header("leave_zero", 2) == "＝＝起漲＝＝\n共 2 檔"
+    assert line_bucket_header("leave_zero", 2) == "＝＝黃金買點＝＝\n共 2 檔"
 
 
 def test_line_profit_and_stance_leave_zero_style():
@@ -105,15 +105,15 @@ def test_line_profit_and_stance_leave_zero_style():
     assert "收盤" in block and "量能" in block
     assert "2.4%" in block and "60日低上來" in block
     assert "近一日" in block
-    assert "格局" in block and "起漲" in block
+    assert "格局" in block and "黃金買點" in block
     assert "今天先看表，先等" in block
     geju = next(ln for ln in block.split("\n") if ln.startswith("格局"))
-    assert "起漲" in geju
+    assert "黃金買點" in geju
     assert "今天先看表，先等" in geju
     from line_share_format import line_plain_to_html
 
     html = line_plain_to_html(block)
-    assert '起漲　<span class="stance">今天先看表，先等</span>' in html
+    assert '黃金買點　<span class="stance">今天先看表，先等</span>' in html
 
 
 def test_line_chip_wrap_keeps_lot_units():

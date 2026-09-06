@@ -109,6 +109,39 @@ def test_help_menu_topic_mentions_report_not_reserved():
     assert "預留" not in menu
 
 
+def test_help_bucket_display_names_leave_zero_is_golden_buy():
+    """對外：leave_zero＝黃金買點；golden_buy＝重點觀察。公式與 key 不變。"""
+    from bot_servers import HELP_TOPICS
+    from line_share_format import LINE_BUCKET_META
+    from screening_engine import LINE_BUCKET_TITLES, MORNING_PUSH_SPECS, SCREEN_PUSH_SPECS
+
+    guide = HELP_TOPICS["guide"]
+    assert "優先認<b>黃金買點</b>" in guide
+    assert "這一欄以前叫「起漲」" in guide
+    assert "<b>重點觀察</b>" in guide
+    assert "這一欄以前叫「黃金買點」" in guide
+    assert "對照組" in guide
+    specs = {k: label for k, _, label, *_ in SCREEN_PUSH_SPECS}
+    assert specs["leave_zero"] == "黃金買點"
+    assert specs["golden_buy"] == "重點觀察"
+    morning = {k: label for k, _, label, *_ in MORNING_PUSH_SPECS}
+    assert morning["leave_zero"] == "黃金買點"
+    assert morning["golden_buy"] == "重點觀察"
+    assert LINE_BUCKET_TITLES["leave_zero"] == "黃金買點"
+    assert LINE_BUCKET_TITLES["golden_buy"] == "重點觀察"
+    assert LINE_BUCKET_META["leave_zero"][0] == "黃金買點"
+    assert LINE_BUCKET_META["golden_buy"][0] == "重點觀察"
+
+
+def test_bucket_from_reason_accepts_old_and_new_labels():
+    from screen_review import bucket_from_reason
+
+    assert bucket_from_reason("黃金買點：獲利離零") == "leave_zero"
+    assert bucket_from_reason("重點觀察：60低超跌") == "golden_buy"
+    assert bucket_from_reason("起漲：獲利離零") == "leave_zero"
+    assert bucket_from_reason("黃金買點：60低超跌") == "golden_buy"
+
+
 def test_help_and_menu_copy_uses_plain_chinese():
     """用戶看得到的說明／選單文案不要留 MIS、VIX、OI、基差、近月、YoY 等行話。"""
     from bot_servers import HELP_TOPICS
