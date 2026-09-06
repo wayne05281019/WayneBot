@@ -294,7 +294,7 @@ def format_line_stock_block(
     lines.extend(_line_chip_kv_lines(item, chip_fn))
     notices = notice_fn(item)
     if notices:
-        lines.extend(_kv_lines("標記", "　".join(notices)))
+        lines.extend(_kv_lines("標記", "　".join(notices), keep_units=True))
     profit_val = _line_profit_value(item)
     if profit_val:
         lines.extend(_kv_lines("獲利", profit_val, keep_units=True))

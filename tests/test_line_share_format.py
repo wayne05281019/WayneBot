@@ -138,6 +138,28 @@ def test_line_chip_wrap_keeps_lot_units():
     assert "投信+\n" not in block
 
 
+def test_line_notice_wrap_keeps_industry_tag():
+    """標記用全形空白切開，不要把「電子零組件」折成電／子。"""
+    from line_share_format import format_line_stock_block
+
+    block = format_line_stock_block(
+        {
+            "stock_id": "4915",
+            "stock_name": "致伸",
+            "close": 60.8,
+            "pct_change": 2.01,
+            "volume": 2126,
+            "quote_date": "20260904",
+            "profit": 2.4,
+        },
+        1,
+        notice_fn=lambda _item: ["少追", "20低脫離", "剛輪到·電子零組件"],
+    )
+    assert "電子零組件" in block
+    assert "剛輪到·電\n" not in block
+    assert "　　　子零組件" not in block
+
+
 def test_line_phone_bubble_width():
     from line_share_format import LINE_PHONE_LINE_MAX, format_line_stock_block
 
