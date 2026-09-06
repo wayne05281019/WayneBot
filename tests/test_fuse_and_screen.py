@@ -1294,6 +1294,18 @@ class LookupCardTest(unittest.TestCase):
         self.assertEqual(heat15, _CARD["white"])
         heat24, _ = _profit_heat_draw(2.4, 0.3, _CARD["white"])
         self.assertEqual(heat24, _CARD["white"])
+        heat22, _ = _profit_heat_draw(22.1, None, _CARD["white"])
+        self.assertNotEqual(heat22.lower(), _CARD["white"].lower())
+        self.assertNotEqual(heat22.lower(), "#fff0ff")
+        heat08, _ = _profit_heat_draw(8.0, None, _CARD["white"])
+        # 22% 要比剛滿 8% 更深，不能熱圖往白洗。
+        self.assertNotEqual(heat22.lower(), heat08.lower())
+        from wayne_navigator import _vol_heat_draw
+
+        vol94, _ = _vol_heat_draw(94, _CARD["white"])
+        self.assertEqual(vol94, _CARD["white"])
+        vol2, _ = _vol_heat_draw(2, _CARD["white"])
+        self.assertNotEqual(vol2, _CARD["white"])
         self.assertEqual(hl_cell_style("20低", _CARD["white"])[0], _CARD["lo_fill"])
         self.assertEqual(hl_cell_style("10高", _CARD["white"])[0], _CARD["hi_fill"])
         self.assertEqual(alert_cell_style("K20低", _CARD["white"])[0], _CARD["lo_fill"])
@@ -1318,7 +1330,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
         self.assertIn("_status_badge_colors", src)
-        self.assertIn("pill_cols = {3, 5}", src)
+        self.assertIn("pill_cols = {3, 4}", src)
         self.assertIn("_temp_heat_draw", src)
         self.assertIn("_cell_wash", src)
         src_heat = inspect.getsource(_profit_heat_draw)

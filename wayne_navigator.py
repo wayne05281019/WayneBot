@@ -505,7 +505,7 @@ class NavigatorEngine:
         df["升降註"] = trend_notes
         df["temp_num"] = temp_nums
         df["月乖離"] = [f"{b:+.1f}%" for b in df["bias_monthly"]]
-        df["120日量"] = [f"第 {int(r)} 名" for r in df["vol_rank_120"]]
+        df["120日量"] = [f"第{int(r)}名" for r in df["vol_rank_120"]]
 
         latest = df.iloc[-1]
         prev_close = 0.0
@@ -1066,13 +1066,14 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%），不要淡粉熱圖。
     if p < 8:
         return bg, fg
+    # 色階只能愈高愈深，不能 20% 又洗回接近白（台達電 22% 作者是實粉）。
     return _heat_pair(
         p,
         (
-            (8.0, C["temp_warm_bg"], C["temp_warm_fg"]),
-            (20.0, C["hi_fill"], C["hi_ink"]),
-            (40.0, "#F8BBD0", C["pill_hi"]),
-            (70.0, C["temp_hot_bg"], C["temp_hot_fg"]),
+            (8.0, "#FCE4EC", C["hi_ink"]),
+            (20.0, "#F8BBD0", C["pill_hi"]),
+            (32.0, "#EC407A", C["white"]),
+            (50.0, C["pill_hi"], C["white"]),
         ),
     )
 
@@ -1084,14 +1085,15 @@ def _vol_heat_draw(rank, base: str):
         r = int(rank)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
+    if r > 40:
+        return base, C["neutral_fg"]
     return _heat_pair(
-        max(1, min(r, 120)),
+        max(1, min(r, 40)),
         (
-            (1.0, "#F8BBD0", C["pill_hi"]),
-            (10.0, C["vol_hi_bg"], C["vol_hi_fg"]),
-            (28.0, C["hi_fill"], C["hi_ink"]),
-            (55.0, C["neutral_bg"], C["neutral_fg"]),
-            (120.0, base, C["neutral_fg"]),
+            (1.0, C["pill_hi"], C["white"]),
+            (10.0, "#F8BBD0", C["vol_hi_fg"]),
+            (25.0, "#FCE4EC", C["hi_ink"]),
+            (40.0, base, C["neutral_fg"]),
         ),
     )
 
@@ -1805,12 +1807,20 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 高低小盒子白底；左標、右價，％在價下面。不要三行置中把左右空白浪費掉。
+        # 高低小盒子：貼近高點淡粉、貼近低點淡綠，其餘白底（作者卡同一套）；％在價下面。
         fc, ec = C["white"], C["line"]
+        try:
+            dlt = float(dist) if dist is not None else None
+        except (TypeError, ValueError):
+            dlt = None
         if high:
             lc = C["hi_ink"]
-        elif hit:
+            if dlt is not None and dlt >= -1.5:
+                fc, ec = C["hi_fill"], C["hi_line"]
+        elif hit or (dlt is not None and dlt <= 0.35):
             lc = C["lo_ink"]
+            if dlt is not None and dlt <= 0.35:
+                fc, ec = C["lo_fill"], C["lo_line"]
         else:
             lc = C["lo_ink"]
         ax.add_patch(patches.FancyBboxPatch(
@@ -1973,14 +1983,14 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             metric_box(inner_x + i * (box_w + box_gap_x), y + pane_pad,
                        f"{lab[:-1]}日低點", px, dist, high=False, hit=hit)
 
-    # 過去 20 天：預警欄露出高低；升降溫＝溫度趨勢（不是股價漲跌）；量能上色。
+    # 過去 20 天：欄序跟作者卡同一套（預警→升降→溫度計）。升降＝溫度趨勢，不是股價漲跌。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
-              "預警會露出 20高／10低；升降溫＝溫度計；最右欄＝120日量排名")
-    headers = ["日期", "股價", "獲利", "預警", "溫度計", "升降溫", "月乖離", "120日量"]
-    # 股價欄加寬（萬元股）、升降溫略加寬給雙標；日期／獲利略收。
-    weights = [12.2, 12.2, 8.8, 10.6, 11.0, 14.2, 9.6, 12.4]
-    pill_cols = {3, 5}
+              "預警會露出 20高／10低；升降＝溫度升降（不是股價）；最右欄＝120日量")
+    headers = ["日期", "股價", "獲利", "預警", "升降", "溫度計", "月乖離", "120日量"]
+    # 股價欄加寬（萬元股）、升降略加寬給雙標；日期／獲利略收。手機直向對齊作者卡。
+    weights = [12.2, 12.2, 8.8, 10.6, 14.2, 11.0, 9.6, 12.4]
+    pill_cols = {3, 4}
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -2025,15 +2035,15 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         tr_bg, tr_fg = temp_trend_cell_style(trend, base)
         vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
-        fills = [base, px_bg, p_bg, al_bg, tbg, tr_bg, b_bg, vbg]
-        fgs = [C["ink"], px_fg, p_fg, al_fg, tfg, tr_fg, b_fg, vfg]
+        fills = [base, px_bg, p_bg, al_bg, tr_bg, tbg, b_bg, vbg]
+        fgs = [C["ink"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
             str(r["獲利"]).replace("+", ""),
             al,
-            str(r["溫度計"]),
             trend,
+            str(r["溫度計"]),
             str(r["月乖離"]).replace("+", ""),
             str(r["120日量"]),
         ]
@@ -2051,7 +2061,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
                             fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
-                elif i == 5 and trend_note:
+                elif i == 4 and trend_note:
                     note = _trend_note_short(trend_note)
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92

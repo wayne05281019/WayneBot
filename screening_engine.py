@@ -1021,7 +1021,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 # 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
     ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
@@ -1030,7 +1030,7 @@ SCREEN_PUSH_SPECS = (
 )
 MORNING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（排除下坡）", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, True),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, True),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
 )
