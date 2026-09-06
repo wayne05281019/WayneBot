@@ -43,11 +43,13 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert "album.png" in page
     assert "格局：站上月線" in page
     assert "半導體業景氣" in page
+    assert "color:#c41e3a" in page
     assert "g.png" in page
     assert page.index("g.png") < page.index("格局：站上月線")
     assert "奇摩手機版" in page
     assert "/y/2330" in page
     assert "tw.stock.yahoo.com" not in page
+    assert "max-width:390px" in page
 
 
 def test_text_font_uses_bundled_noto():
@@ -87,12 +89,39 @@ def test_wrap_plain_lines():
 
 
 def test_render_text_panel_png(tmp_path):
+    from PIL import Image
+
     from line_rich_pack import render_text_panel_png
+    from line_share_format import STANCE_LABEL, STANCE_RED_RGB, _pad_label, format_line_stock_block
 
     out = tmp_path / "t.png"
-    path = render_text_panel_png("1. 台積電 (2330)\n格局：多頭", str(out))
+    block = format_line_stock_block(
+        {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100.0,
+            "pct_change": 2.5,
+            "volume": 8000,
+            "profit": 45.0,
+            "hl": "20高",
+        },
+        1,
+    )
+    path = render_text_panel_png(block, str(out))
     assert path == str(out)
     assert out.is_file()
+    assert _pad_label(STANCE_LABEL) in block
+    assert "漲多了，今天別追" in block
+    with Image.open(out) as im:
+        reds = [
+            px
+            for y in range(im.height)
+            for x in range(0, min(im.width, 80))
+            if (px := im.getpixel((x, y)))[0] > 150 and px[1] < 90 and px[2] < 110
+        ]
+        assert reds, "態度列應畫成紅字"
+        hit = reds[len(reds) // 2]
+        assert abs(hit[0] - STANCE_RED_RGB[0]) < 40
 
 
 def test_line_rich_hop_url():

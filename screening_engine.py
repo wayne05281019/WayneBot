@@ -253,6 +253,11 @@ class ScreeningEngine:
             "foreign_net": int(df['foreign_net'].iloc[-1]),
             "trust_net": int(df['trust_net'].iloc[-1]),
             "dealer_net": int(df['dealer_net'].iloc[-1]),
+            "quote_date": (
+                str(df["date"].iloc[-1] or "").replace("-", "")[:8]
+                if "date" in df.columns
+                else ""
+            ),
         }
 
 

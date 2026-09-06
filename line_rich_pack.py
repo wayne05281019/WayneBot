@@ -162,12 +162,12 @@ def render_text_panel_png(
     text: str,
     out_path: str,
     *,
-    width: int = 720,
-    font_size: int = 26,
-    pad: int = 18,
+    width: int = 390,
+    font_size: int = 22,
+    pad: int = 14,
     bg: tuple = (248, 250, 252),
 ) -> str:
-    """把一檔文字摘要渲成圖，貼在該檔圖表前面。"""
+    """手機氣泡寬（約 iPhone 直向）把文字摘要渲成圖，用來對 LINE 排版。"""
     from PIL import Image, ImageDraw, ImageFont
 
     lines = [ln for ln in str(text or "").split("\n") if ln is not None]
@@ -178,9 +178,18 @@ def render_text_panel_png(
     height = pad * 2 + line_h * len(lines)
     img = Image.new("RGB", (width, max(height, 80)), bg)
     draw = ImageDraw.Draw(img)
+    from line_share_format import STANCE_RED_RGB, is_stance_line
+
     y = pad
+    in_stance = False
     for ln in lines:
-        draw.text((pad, y), ln, fill=(24, 24, 24), font=font)
+        if is_stance_line(ln) or (in_stance and str(ln).startswith("　　　")):
+            in_stance = True
+            fill = STANCE_RED_RGB
+        else:
+            in_stance = False
+            fill = (24, 24, 24)
+        draw.text((pad, y), ln, fill=fill, font=font)
         y += line_h
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     img.save(out_path, "PNG", optimize=True)

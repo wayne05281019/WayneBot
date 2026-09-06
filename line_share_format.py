@@ -1,11 +1,22 @@
 """LINE 轉傳純文字排版：直向對齊、產業可跨行；奇摩走自家 /y/ 避免大圖預覽。"""
 from __future__ import annotations
 
+import html as html_lib
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-# 海選／當沖轉 LINE 共用區隔線（全形，手機上清楚）
-LINE_SHARE_SEP = "────────────────"
+# 態度／做法列：LINE 純文字上不了色；中轉頁 HTML 與 PNG 用這組紅。
+STANCE_RED = "#c41e3a"
+STANCE_RED_RGB = (196, 30, 58)
+STANCE_LABEL = "態度"
+
+# 手機 LINE 氣泡約 17～19 個中文字。標籤 2 字＋全形空白後，數值最多 14 字。
+# 用電腦寬螢幕對齊會看起來整齊，貼到手機就被 LINE 再折一次，直向會歪。
+LINE_PHONE_WRAP = 14
+LINE_PHONE_LINE_MAX = 18
+
+# 海選／當沖轉 LINE 共用區隔線（全形，配合手機氣泡寬）
+LINE_SHARE_SEP = "────────────"
 
 # bucket_key → (標題, 副標；與 Telegram 海選 SCREEN_PUSH_SPECS 一致)
 LINE_BUCKET_META: Dict[str, tuple] = {
@@ -56,14 +67,110 @@ def _pad_label(label: str, width: int = 4) -> str:
     return raw
 
 
-def _kv_lines(label: str, value: str, *, wrap: int = 24) -> List[str]:
-    """一列一個單位；值太長就在單位內折行，延續行對齊數值欄。"""
+def is_stance_line(ln: str) -> bool:
+    """這一列是不是「態度」（含折行延續）。"""
+    s = str(ln or "")
+    return s.startswith(_pad_label(STANCE_LABEL))
+
+
+def _quote_md(item: Dict[str, Any]) -> str:
+    """近一日行情日：MM-DD；沒日期就空。"""
+    raw = str(
+        item.get("quote_date")
+        or item.get("latest_date")
+        or item.get("db_as_of")
+        or ""
+    ).replace("-", "")
+    if len(raw) >= 8 and raw[:8].isdigit():
+        return f"{raw[4:6]}-{raw[6:8]}"
+    return ""
+
+
+def _line_chip_value(item: Dict[str, Any], chip_fn) -> str:
+    """T86 最近一筆完整交易日買賣超張數（與該列 OHLC 同一天）。"""
+    body = str(chip_fn(item) or "").strip()
+    tag = "近一日"
+    md = _quote_md(item)
+    if md:
+        tag = f"近一日　{md}"
+    return f"{tag}　{body}" if body else tag
+
+
+def _line_profit_value(item: Dict[str, Any]) -> str:
+    """獲利＝相對近 60 個日曆日收盤最低上來的幅度。"""
+    pct = item.get("profit")
+    if pct is None:
+        pct = item.get("profit_pct")
+    if pct is None:
+        return ""
+    bits = [f"{pct}%", "60日低上來"]
+    if item.get("golden_buy") and item.get("bias_monthly") is not None:
+        bits.append(f"月乖離　{item.get('bias_monthly')}%")
+    return "　".join(bits)
+
+
+def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
+    """這一檔今天的態度＋該怎麼做（人話，不是下單指令）。"""
+    from decision_card_signals import card_daily_stance, stance_explain
+
+    title = str(item.get("stance") or "").strip()
+    kind = str(item.get("stance_kind") or "").strip()
+    if not title:
+        profit = item.get("profit")
+        if profit is None:
+            profit = item.get("profit_pct") or 0
+        alert = str(item.get("alert") or item.get("預警") or "")
+        if not alert and item.get("at_60_low"):
+            alert = "60低"
+        hl = str(item.get("hl") or item.get("hi_lo") or item.get("高低") or "")
+        title, kind = card_daily_stance(
+            profit_pct=profit,
+            alert=alert,
+            hl=hl,
+            temp=item.get("temp") or item.get("temp_num") or item.get("temperature") or 0,
+            trend_note=str(item.get("trend_note") or item.get("升降註") or ""),
+            bias=item.get("bias") or item.get("bias_monthly") or 0,
+            badges=item.get("badges") or [],
+        )
+    sell = str(item.get("sell_note") or "").strip()
+    explain = stance_explain(kind or "wait", sell_note=sell)
+    return title, explain
+
+
+def _line_stance_value(item: Dict[str, Any]) -> str:
+    title, explain = _line_stance_pair(item)
+    title = str(title or "").strip()
+    explain = str(explain or "").strip()
+    if title and explain:
+        if explain.startswith(title):
+            return explain
+        return f"{title}。{explain}"
+    return title or explain
+
+
+def line_plain_to_html(text: str) -> str:
+    """轉 LINE 中轉頁：態度列紅字；其餘原樣跳脫。"""
+    out: List[str] = []
+    in_stance = False
+    for ln in str(text or "").split("\n"):
+        esc = html_lib.escape(ln)
+        if is_stance_line(ln) or (in_stance and ln.startswith("　　　")):
+            in_stance = True
+            out.append(f'<span class="stance">{esc}</span>')
+        else:
+            in_stance = False
+            out.append(esc)
+    return "<br>\n".join(out)
+
+
+def _kv_lines(label: str, value: str, *, wrap: int = LINE_PHONE_WRAP, keep_units: bool = False) -> List[str]:
+    """一列一個單位；值太長就在單位內折行，延續行對齊數值欄。預設依手機氣泡寬。"""
     val = str(value or "").strip()
     if not val:
         return []
     prefix = _pad_label(label) + "　"
     indent = "　　　"
-    chunks = _wrap_plain_lines(val, width=wrap)
+    chunks = _wrap_unit_lines(val, width=wrap) if keep_units else _wrap_plain_lines(val, width=wrap)
     if not chunks:
         return []
     out = [prefix + chunks[0]]
@@ -83,7 +190,7 @@ def format_line_stock_block(
     notice_fn=None,
     plan_fn=None,
 ) -> str:
-    """一檔直向：股名、格局、收量額、均線、法人、獲利、產業。不要說明廢話。"""
+    """一檔直向：股名、格局、態度、收盤／量能／金額、均線、法人、獲利、產業。"""
     from screening_engine import (
         _chip_plain,
         _pct_str,
@@ -118,23 +225,41 @@ def format_line_stock_block(
 
     vol = int(item.get("volume") or 0)
 
+    close = item.get("close")
+    if close is None:
+        close = item.get("last_close")
+    pct = item.get("pct_change")
+    if pct is None:
+        pct = item.get("change_pct")
+
     lines = [line_stock_headline(rank, sid, sname, db_path)]
     lines.extend(_kv_lines("格局", regime_fn(item)))
-    lines.extend(_kv_lines("收", f"{px_fn(item.get('close'))}　{pct_fn(item.get('pct_change'))}"))
-    lines.extend(_kv_lines("量", f"{vol:,}張　量比　{q_s}"))
+    title, explain = _line_stance_pair(item)
+    if title:
+        lines.extend(_kv_lines(STANCE_LABEL, title))
+    note = str(explain or "").strip()
+    if note and title and note.startswith(title):
+        note = note[len(title) :].lstrip("。").strip()
+    if note:
+        for chunk in _wrap_plain_lines(note, LINE_PHONE_WRAP):
+            lines.append("　　　" + chunk)
+    lines.extend(_kv_lines("收盤", f"{px_fn(close)}　{pct_fn(pct)}"))
+    lines.extend(
+        _kv_lines("量能", f"{vol:,}張　量比{q_s}", wrap=LINE_PHONE_WRAP, keep_units=True)
+    )
     if to_s:
-        lines.extend(_kv_lines("額", to_s))
-    lines.extend(_kv_lines("均線", f"月　{px_fn(item.get('ma20'))}　季　{px_fn(item.get('ma60'))}"))
-    lines.extend(_kv_lines("法人", chip_fn(item)))
+        lines.extend(_kv_lines("金額", to_s))
+    ma20_s = px_fn(item.get("ma20"))
+    ma60_s = px_fn(item.get("ma60"))
+    lines.extend(_kv_lines("均線", f"月　{ma20_s}"))
+    lines.append("　　　" + f"季　{ma60_s}")
+    lines.extend(_line_chip_kv_lines(item, chip_fn))
     notices = notice_fn(item)
     if notices:
         lines.extend(_kv_lines("標記", "　".join(notices)))
-    if item.get("profit") is not None:
-        lines.extend(_kv_lines("獲利", f"{item.get('profit')}%"))
-    elif item.get("golden_buy"):
-        lines.extend(
-            _kv_lines("獲利", f"{item.get('profit_pct')}%　月乖離　{item.get('bias_monthly')}%")
-        )
+    profit_val = _line_profit_value(item)
+    if profit_val:
+        lines.extend(_kv_lines("獲利", profit_val, keep_units=True))
     pat = str(item.get("pattern") or "")
     if pat:
         lines.extend(_kv_lines("型態", pat))
@@ -144,13 +269,13 @@ def format_line_stock_block(
         raw = str(plan_line or "").strip()
         if "　" in raw:
             lab, rest = raw.split("　", 1)
-            lines.extend(_kv_lines(lab, rest, wrap=22))
+            lines.extend(_kv_lines(lab, rest))
         else:
-            for chunk in _wrap_plain_lines(raw, width=28):
+            for chunk in _wrap_plain_lines(raw, width=LINE_PHONE_WRAP):
                 lines.append(chunk)
     industry = str(item.get("industry_plain") or "").strip()
     if industry:
-        lines.extend(_kv_lines("產業", industry, wrap=24))
+        lines.extend(_kv_lines("產業", industry))
     try:
         from stock_links import yahoo_hop_url
 
@@ -158,18 +283,53 @@ def format_line_stock_block(
     except Exception:
         hop = ""
     if hop:
-        # 網址不折行；走自家 /y/ 代號，LINE 才不會抓奇摩大圖
-        lines.append(_pad_label("奇摩") + "　" + hop)
+        # 網址單獨一列，避免手機把「奇摩　https://…」折爛；走 /y/ 才不會抓奇摩大圖
+        lines.append(_pad_label("奇摩"))
+        lines.append(hop)
     return "\n".join(lines)
 
 
-def _wrap_plain_lines(text: str, width: int = 28) -> List[str]:
+def _line_chip_kv_lines(item: Dict[str, Any], chip_fn) -> List[str]:
+    """法人：近一日日期一列，外資／投信／自營各一列，手機才不會從數字中間折。"""
+    tag = "近一日"
+    md = _quote_md(item)
+    if md:
+        tag = f"近一日　{md}"
+    out = _kv_lines("法人", tag)
+    body = str(chip_fn(item) or "").strip()
+    for part in body.split("　"):
+        bit = part.strip()
+        if bit:
+            out.append("　　　" + bit)
+    return out
+
+
+def _wrap_plain_lines(text: str, width: int = LINE_PHONE_WRAP) -> List[str]:
     """產業等長文折行；保留全形空白當欄位間距，不把單位擠成半形空格。"""
     from tg_layout import wrap_cjk_lines
 
     raw = str(text or "").replace("\n", "").strip()
     raw = re.sub(r"[ \t]+", " ", raw)
     return wrap_cjk_lines(raw, width, unit="chars")
+
+
+def _wrap_unit_lines(text: str, width: int = 22) -> List[str]:
+    """只在全形空白切開，避免法人「投信+3,200張」被從中間折斷。"""
+    bits = [b for b in str(text or "").replace("\n", "").split("　") if b]
+    if not bits:
+        return []
+    lines: List[str] = []
+    cur = ""
+    for bit in bits:
+        cand = bit if not cur else f"{cur}　{bit}"
+        if cur and len(cand) > width:
+            lines.append(cur)
+            cur = bit
+        else:
+            cur = cand
+    if cur:
+        lines.append(cur)
+    return lines
 
 
 def format_line_bucket_body(
