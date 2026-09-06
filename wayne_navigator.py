@@ -395,13 +395,12 @@ class NavigatorEngine:
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
         from decision_card_signals import (
             TEMP_ATH_WATCH,
-            cal60_low_close_at,
+            cal60_profit_bundle,
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
             prev_close_from_change_pct,
             profit_floor_at,
-            profit_pct_cal60_series,
             resolve_daily_change_pct,
             taipei_now,
             format_card_query_stamp,
@@ -412,9 +411,10 @@ class NavigatorEngine:
         # 獲利：決策卡／顯示一律 60 曆日低（對齊 CaryBot）；貼 20 日低不歸零。
         profit_src = df.copy()
         profit_src["close"] = close_raw.reindex(df.index).astype(float)
-        df["profit_pct"] = profit_pct_cal60_series(profit_src)
-        cal60_low = cal60_low_close_at(profit_src, -1)
-        profit_floor = profit_floor_at(profit_src, -1)
+        cal60_floors, profit_pct = cal60_profit_bundle(profit_src)
+        df["profit_pct"] = profit_pct
+        cal60_low = float(cal60_floors[-1]) if len(cal60_floors) else 0.0
+        profit_floor = profit_floor_at(profit_src, -1, cal60_lows=cal60_floors)
         # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
         hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
         df["high_5"] = hl_src.rolling(5, min_periods=1).max()
