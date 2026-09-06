@@ -39,6 +39,16 @@ def test_wrap_fit_keeps_margin_pct_together():
     assert "日曆天" in html_src
 
 
+def test_wrap_fit_breaks_at_comma_not_mid_word():
+    from wayne_navigator import GLANCE_FIG_W, _wrap_fit
+
+    s = "現在高點跟熱度都退了，先別追、也先別加碼。有持股就先出一點"
+    lines = _wrap_fit(s, 13.0, 48.0, GLANCE_FIG_W)
+    assert any("現在都退了" in ln or "先出一點" in ln for ln in lines)
+    assert not any(ln.startswith("在") for ln in lines)
+    assert "到過" not in "".join(lines)
+
+
 def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     seen = []
     orig = matplotlib.axes.Axes.text
@@ -86,9 +96,9 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     assert any("日曆天" in t for t in texts)
     assert not any("曆日低" in t or "曆日底" in t for t in texts)
     assert "紀律" in texts
-    assert any("可以先減一點" in t for t in texts)
+    assert any("先出一點" in t for t in texts)
     legend_y = [y for y, t in seen if "左上 K" in t][0]
-    note_y = min(y for y, t in seen if "可以先減一點" in t)
+    note_y = min(y for y, t in seen if "先出一點" in t)
     assert note_y - legend_y >= 2.4
     with __import__("PIL").Image.open(out) as im:
         assert im.size[0] >= 2000

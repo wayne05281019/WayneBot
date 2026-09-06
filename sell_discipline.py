@@ -124,18 +124,23 @@ def _why_short(why: str) -> str:
     return why
 
 
-_WHY_PLAIN = {
-    "先前同步再脫離": "前幾天高點跟熱度一起到過，現在都過了",
-    "最高價但非最高溫": "價格創高，熱度沒跟上",
-    "最高溫但非最高價": "盤面很熱，價格沒創新高",
-    "不同步再脫離": "高點或熱度剛過，現在都沒了",
-    "最高價與最高溫同步": "今天高點跟熱度同時到",
+# 查股看得到的句子：先講現況，再講現在怎麼做。不是術語、不是買訊。
+NOTE_SYNC_LEFT = "現在高點跟熱度都退了，先別追、也先別加碼。有持股就先出一點"
+NOTE_HI_PRICE = "現在價到高了、熱度沒跟上，先出一點、不要追"
+NOTE_HI_TEMP = "現在很熱但價沒過前高，先出一點、不要追高"
+NOTE_DESYNC_LEFT = "現在高點跟熱度都沒了，這波先當結束。有持股就先出一點"
+
+_NOTE_BY_WHY = {
+    "先前同步再脫離": NOTE_SYNC_LEFT,
+    "最高價但非最高溫": NOTE_HI_PRICE,
+    "最高溫但非最高價": NOTE_HI_TEMP,
+    "不同步再脫離": NOTE_DESYNC_LEFT,
 }
 
 
 def _why_plain(why: str) -> str:
     raw = _why_short(why)
-    return _WHY_PLAIN.get(raw, raw)
+    return _NOTE_BY_WHY.get(raw, raw)
 
 
 def sell_note_lines(card: Dict[str, Any]) -> List[str]:
@@ -148,20 +153,31 @@ def sell_note_lines(card: Dict[str, Any]) -> List[str]:
 
 
 def sell_note_short(card: Dict[str, Any]) -> str:
-    """介紹圖／決策卡第二行：白話說明，不是術語。"""
+    """介紹圖／決策卡第二行：現況＋現在怎麼做。"""
     act = str(card.get("sell_action") or "").strip()
     if not act:
         return ""
-    why = _why_plain(card.get("sell_why") or "")
+    why = _why_short(card.get("sell_why") or "")
+    note = _NOTE_BY_WHY.get(why)
+    if note:
+        return note
     if act == "準備減碼":
-        head = "可以先想減一點"
-    elif act == "直接減碼":
-        head = "可以先減一點"
-    else:
-        head = act
-    if why:
-        return f"{head}：{why}"
-    return head
+        return NOTE_SYNC_LEFT
+    if act == "直接減碼":
+        return NOTE_HI_PRICE
+    return ""
+
+
+def discipline_box_notes(card: Dict[str, Any], pink_note: str = "") -> List[str]:
+    """介紹圖紀律盒：只留不打架的現況建議。已脫離高檔就不要再說貼在高檔。"""
+    sell = sell_note_short(card)
+    pink = str(pink_note or "").strip()
+    why = str(card.get("sell_why") or "")
+    if "再脫離" in why:
+        pink = ""
+    elif sell and pink.startswith("剛貼到高檔"):
+        pink = ""
+    return [n for n in (sell, pink) if n]
 
 
 def sell_notes_for_stocks(

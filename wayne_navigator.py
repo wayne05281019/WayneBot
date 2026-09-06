@@ -311,9 +311,9 @@ def pink_warning_note(card: dict) -> str:
                 else:
                     break
     if n >= 2:
-        return f"粉紅預警已連 {n} 日 → 紀律考慮賣出"
+        return f"已經連 {n} 天貼在高檔，先不要追。有持股考慮先出"
     if n == 1:
-        return "粉紅預警第 1 日"
+        return "剛貼到高檔，先看、先別追"
     return ""
 
 
@@ -1688,8 +1688,13 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
                 continue
             trial = buf + ch
             if buf and tw(trial) > max_w:
-                bits.append(buf)
-                buf = ch
+                cut = max((k for k, c in enumerate(buf) if c in "，。；、"), default=-1)
+                if cut >= 2 and cut < len(buf) - 1:
+                    bits.append(buf[: cut + 1])
+                    buf = buf[cut + 1 :] + ch
+                else:
+                    bits.append(buf)
+                    buf = ch
             else:
                 buf = trial
             i += 1
@@ -2360,6 +2365,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         pink_note = str(pink_warning_note(card) or "").strip()
     except Exception:
         pink_note = ""
+    try:
+        from sell_discipline import discipline_box_notes
+
+        footer_src = discipline_box_notes(card, pink_note)
+    except Exception:
+        footer_src = [n for n in (sell_note, pink_note) if n]
 
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
@@ -2424,7 +2435,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         )
 
     note_fs = 12.5
-    footer_notes = [n for n in (sell_note, pink_note) if n]
+    footer_notes = list(footer_src)
     wrapped_notes = []
     for n in footer_notes:
         wrapped_notes.extend(_wrap_fit(n, note_fs, row_w, GLANCE_FIG_W) or [n])
