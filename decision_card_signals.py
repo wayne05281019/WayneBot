@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """高低決策卡欄位語意 — 海選／LINE 須跟這套一致，勿另寫平行公式。
 
 對照來源：
@@ -13,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -105,22 +107,64 @@ def format_card_query_stamp(
     return date_s, "13:30收盤"
 
 
+def _quote_datetimes(df) -> pd.Series:
+    return pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
+
+
+def _cal60_lows_array(df, *, close_col: str = "close") -> np.ndarray:
+    """逐日 60 曆日收盤低。只 parse 一次日期，結果須與逐列 cal60_low_close_at 相同。"""
+    dts = _quote_datetimes(df)
+    closes = pd.to_numeric(df[close_col], errors="coerce").to_numpy(dtype=float)
+    n = len(closes)
+    if n == 0:
+        return np.zeros(0, dtype=float)
+    d = dts.to_numpy(dtype="datetime64[ns]")
+    window_lo = d - np.timedelta64(60, "D")
+    dj = d[None, :]
+    mask = (dj >= window_lo[:, None]) & (dj <= d[:, None])
+    cj = np.where(np.isfinite(closes), closes, np.nan)[None, :]
+    with np.errstate(all="ignore"):
+        floors = np.nanmin(np.where(mask, cj, np.nan), axis=1)
+    row_close = np.where(np.isfinite(closes), closes, 0.0)
+    bad = ~np.isfinite(floors) | (floors <= 0)
+    floors = np.where(bad, row_close, floors)
+    return floors.astype(float)
+
+
+def cal60_profit_bundle(df, *, close_col: str = "close"):
+    """一次算出逐日 60 曆日低與獲利％，決策卡／海選共用，避免重算 n×n。"""
+    floors = _cal60_lows_array(df, close_col=close_col)
+    closes = pd.to_numeric(df[close_col], errors="coerce").to_numpy(dtype=float)
+    c = np.where(np.isfinite(closes), closes, 0.0)
+    floor = np.where(floors > 0, floors, np.where(c > 0, c, 1.0))
+    floor = np.where(floor > 0, floor, 1.0)
+    pct = np.round((c - floor) / floor * 100.0, 1)
+    return floors, pd.Series(pct, index=df.index)
+
+
 def cal60_low_close_at(df, idx: int = -1, *, close_col: str = "close") -> float:
     """該日往前 60 個日曆日收盤最低（決策卡獲利欄、海選同一條）。"""
-    dts = pd.to_datetime(df["date"].astype(str), format="%Y%m%d", errors="coerce")
-    if len(dts) == 0 or not dts.notna().any():
-        return float(df[close_col].iloc[idx] or 0)
-    end = dts.iloc[idx]
-    mask = (dts >= (end - pd.Timedelta(days=60))) & (dts <= end) & dts.notna()
-    if not mask.any():
-        return float(df[close_col].iloc[idx] or 0)
-    lo = float(df.loc[mask, close_col].astype(float).min())
-    return lo if lo > 0 else float(df[close_col].iloc[idx] or 0)
+    floors = _cal60_lows_array(df, close_col=close_col)
+    if len(floors) == 0:
+        return 0.0
+    return float(floors[idx])
 
 
-def profit_floor_at(df, idx: int = -1, *, close_col: str = "close") -> float:
+def profit_floor_at(
+    df,
+    idx: int = -1,
+    *,
+    close_col: str = "close",
+    cal60_lows: np.ndarray | None = None,
+) -> float:
     """獲利地板：max(60曆日收盤低, 20日收盤低)。整理期貼月低仍顯示 0.0%（2633 範本）。"""
-    cal = cal60_low_close_at(df, idx, close_col=close_col)
+    if cal60_lows is None:
+        cal = cal60_low_close_at(df, idx, close_col=close_col)
+    else:
+        if len(cal60_lows) == 0:
+            cal = 0.0
+        else:
+            cal = float(cal60_lows[idx])
     closes = df[close_col].astype(float)
     l20 = float(closes.rolling(20, min_periods=1).min().iloc[idx] or 0)
     if l20 <= 0:
@@ -134,28 +178,26 @@ def profit_pct_series(df, *, close_col: str = "close") -> pd.Series:
     僅供需要「貼月低顯示 0%」的內部分析；決策卡／海選顯示與起漲條件用
     ``profit_pct_cal60_series``（對齊 CaryBot）。
     """
-    closes = df[close_col].astype(float)
-    out = []
-    for i in range(len(df)):
-        c = float(closes.iloc[i])
-        floor = profit_floor_at(df, i, close_col=close_col)
-        if floor <= 0:
-            floor = c or 1.0
-        out.append(round((c - floor) / floor * 100.0, 1))
-    return pd.Series(out, index=df.index)
+    closes = pd.to_numeric(df[close_col], errors="coerce").to_numpy(dtype=float)
+    cal = _cal60_lows_array(df, close_col=close_col)
+    l20 = (
+        pd.to_numeric(df[close_col], errors="coerce")
+        .rolling(20, min_periods=1)
+        .min()
+        .to_numpy(dtype=float)
+    )
+    c = np.where(np.isfinite(closes), closes, 0.0)
+    floor = np.where(l20 > 0, np.maximum(cal, l20), cal)
+    floor = np.where(floor > 0, floor, np.where(c > 0, c, 1.0))
+    floor = np.where(floor > 0, floor, 1.0)
+    pct = np.round((c - floor) / floor * 100.0, 1)
+    return pd.Series(pct, index=df.index)
 
 
 def profit_pct_cal60_series(df, *, close_col: str = "close") -> pd.Series:
     """決策卡／海選獲利欄：只用 60 曆日收盤低（對齊 CaryBot；貼 20 日低不歸零）。"""
-    closes = df[close_col].astype(float)
-    out = []
-    for i in range(len(df)):
-        c = float(closes.iloc[i])
-        floor = cal60_low_close_at(df, i, close_col=close_col)
-        if floor <= 0:
-            floor = c or 1.0
-        out.append(round((c - floor) / floor * 100.0, 1))
-    return pd.Series(out, index=df.index)
+    _floors, pct = cal60_profit_bundle(df, close_col=close_col)
+    return pct
 
 
 def profit_pct_card_series(df, *, close_col: str = "close") -> pd.Series:

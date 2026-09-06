@@ -595,15 +595,15 @@ def _cal60_low_close(df: pd.DataFrame, idx: int = -1) -> float:
 
 def _enrich_decision_fields(df: pd.DataFrame, info: Dict[str, Any]) -> Dict[str, Any]:
     """對齊高低決策卡：獲利、月乖離、60低（邏輯層，不動出圖色票）。"""
-    from decision_card_signals import cal60_low_close_at, profit_floor_at, profit_pct_cal60_series
+    from decision_card_signals import cal60_profit_bundle, profit_floor_at
 
     out = dict(info)
     close_s = df["close"].astype(float)
     c = float(out.get("close") or 0)
     l60 = float(close_s.rolling(60, min_periods=20).min().iloc[-1] or 0)
-    profits = profit_pct_cal60_series(df)
-    cal60 = cal60_low_close_at(df)
-    floor = profit_floor_at(df)
+    floors, profits = cal60_profit_bundle(df)
+    cal60 = float(floors[-1]) if len(floors) else 0.0
+    floor = profit_floor_at(df, cal60_lows=floors)
     ma20 = float(out.get("ma20") or 0)
     out["low_60_close"] = round(l60, 4) if l60 else 0.0
     out["cal60_low"] = round(cal60, 4) if cal60 else 0.0
