@@ -217,10 +217,18 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         if not imgs and strip:
             imgs.append(f'<img src="{strip}" alt="圖表" class="stock-img" loading="lazy">')
         text_pre = f'<pre class="stock-text">{block}</pre>' if block else ""
+        from stock_links import yahoo_hop_url
+
+        hop = yahoo_hop_url(str(st.get("stock_id") or ""))
+        hop_a = (
+            f'<p style="text-align:center"><a href="{html.escape(hop, quote=True)}">奇摩手機版</a></p>'
+            if hop
+            else ""
+        )
         if not text_pre and not imgs:
             continue
         stock_blocks.append(
-            f'<article class="stock-card"><h3>{name}</h3>{"".join(imgs)}{text_pre}</article>'
+            f'<article class="stock-card"><h3>{name}</h3>{hop_a}{"".join(imgs)}{text_pre}</article>'
         )
     stocks_html = "\n".join(stock_blocks)
     album_block = (
@@ -381,3 +389,29 @@ def _rebuild_stock_line_text(db_path: str, stock_id: str) -> str:
 def render_line_hop_html(title: str, text: str) -> str:
     del title
     return render_line_redirect_html(text)
+
+
+def render_yahoo_hop_html(stock_id: str, stock_name: str = "", db_path: str = "") -> str:
+    """點了才開奇摩。不自動轉址、不放 og:image，LINE 才不會出現奇摩大圖。"""
+    from stock_links import line_yahoo_quote_url
+
+    sid = str(stock_id or "").strip()
+    name = str(stock_name or "").strip()
+    target = line_yahoo_quote_url(sid, db_path)
+    if not sid or not target:
+        return "<!DOCTYPE html><html><body>查無代號</body></html>"
+    label = html.escape(f"{sid} {name}".strip())
+    safe = html.escape(target, quote=True)
+    return (
+        "<!DOCTYPE html><html><head>"
+        '<meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{label}</title>"
+        "</head><body>"
+        f'<p style="font-family:sans-serif;text-align:center;margin-top:2em">{label}</p>'
+        '<p style="text-align:center">'
+        f'<a href="{safe}" style="display:inline-block;padding:12px 18px;'
+        'background:#6001d2;color:#fff;text-decoration:none;border-radius:10px">'
+        "開奇摩股市（手機）</a></p>"
+        "</body></html>"
+    )

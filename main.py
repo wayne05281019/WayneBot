@@ -221,6 +221,21 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if route.startswith("/y/"):
+            import re as _re
+
+            from config import get_db_path
+            from line_hop import render_yahoo_hop_html
+
+            sid = _re.sub(r"[^0-9A-Za-z]", "", route[3:].split("/", 1)[0])[:8]
+            page = render_yahoo_hop_html(sid, db_path=get_db_path()).encode("utf-8")
+            self.send_response(200 if sid else 404)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Content-Length", str(len(page)))
+            self.end_headers()
+            self.wfile.write(page)
+            return
         if route.startswith("/line"):
             from config import get_charts_dir, get_db_path
             from line_hop import hop_response, hop_stock_response, render_line_rich_share_html

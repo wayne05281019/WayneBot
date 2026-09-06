@@ -70,12 +70,23 @@ def yahoo_income_url(stock_id: str, db_path: Optional[str] = None) -> str:
 
 
 def line_yahoo_quote_url(stock_id: str, db_path: Optional[str] = None) -> str:
-    """LINE 轉傳：手機點連結開奇摩股市個股頁。"""
+    """奇摩個股報價（RWD，手機就是手機版）。不要直接塞進 LINE 正文，會出大圖預覽。"""
     sid = str(stock_id or "").strip()
     if not sid:
         return ""
     ex = yahoo_exchange(sid, db_path)
     return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}"
+
+
+def yahoo_hop_url(stock_id: str, base_url: str = "") -> str:
+    """LINE 可點的自家中轉；正文不出現 yahoo.com，才不會出奇摩縮圖。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    from config import get_public_base_url
+
+    base = (base_url or get_public_base_url()).rstrip("/")
+    return f"{base}/y/{sid}"
 
 
 def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str] = None) -> str:

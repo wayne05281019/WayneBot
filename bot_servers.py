@@ -2132,8 +2132,19 @@ class WayneTelegramBot:
             return False
         lead = "長按圖 → 分享 → LINE → 選聯絡人"
         sent_any = False
-        for i in range(0, len(items), 10):
-            chunk = items[i : i + 10]
+        i = 0
+        first_group = True
+        while i < len(items):
+            sid = str((items[i] or {}).get("stock_id") or "")
+            chunk = [items[i]]
+            i += 1
+            while (
+                i < len(items)
+                and str((items[i] or {}).get("stock_id") or "") == sid
+                and len(chunk) < 10
+            ):
+                chunk.append(items[i])
+                i += 1
             handles = []
             try:
                 media = []
@@ -2146,15 +2157,16 @@ class WayneTelegramBot:
                     handles.append(fh)
                     caption = None
                     if not media:
-                        caption = lead if i == 0 else cap
-                        if i == 0 and cap:
-                            caption = f"{lead}\n{cap}"
+                        caption = cap
+                        if first_group:
+                            caption = f"{lead}\n{cap}" if cap else lead
                     media.append(
                         InputMediaPhoto(
                             media=fh,
                             caption=(caption[:1024] if caption else None),
                         )
                     )
+                first_group = False
                 if len(media) >= 2:
                     await message.reply_media_group(media=media)
                     sent_any = True

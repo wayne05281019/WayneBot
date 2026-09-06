@@ -45,6 +45,9 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert "半導體業景氣" in page
     assert "g.png" in page
     assert page.index("g.png") < page.index("格局：站上月線")
+    assert "奇摩手機版" in page
+    assert "/y/2330" in page
+    assert "tw.stock.yahoo.com" not in page
 
 
 def test_text_font_uses_bundled_noto():

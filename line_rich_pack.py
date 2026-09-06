@@ -484,10 +484,16 @@ def share_card_files(charts_dir: str, manifest: Dict[str, Any]) -> List[Dict[str
             rel = f"{code}/{key}.png"
             path = resolve_rich_asset_path(charts_dir, bucket, as_of, rel)
             if path:
+                from stock_links import yahoo_hop_url
+
+                hop = yahoo_hop_url(code)
+                cap = f"{code} {name}　{label}".strip()
+                if hop:
+                    cap = f"{cap}\n奇摩　{hop}"
                 out.append(
                     {
                         "path": path,
-                        "caption": f"{code} {name}　{label}".strip(),
+                        "caption": cap,
                         "stock_id": code,
                         "kind": key,
                     }

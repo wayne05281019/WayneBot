@@ -1,4 +1,4 @@
-"""LINE 轉傳純文字排版：直向排列、不含網址（避免奇摩預覽卡）。"""
+"""LINE 轉傳純文字排版：直向對齊、產業可跨行；奇摩走自家 /y/ 避免大圖預覽。"""
 from __future__ import annotations
 
 import re
@@ -32,12 +32,43 @@ def line_stock_headline(
     stock_name: str = "",
     db_path: Optional[str] = None,
 ) -> str:
-    """單行標題：股名＋代號（不含網址，避免 LINE 底部預覽卡）。"""
-    del db_path  # 保留參數以相容既有呼叫
+    """單行標題：股名＋代號（不含奇摩網址）。"""
+    del db_path
     sid = str(stock_id or "").strip()
     name = str(stock_name or "").strip()
     label = f"{name} ({sid})" if name else sid
     return f"{rank}. {label}"
+
+
+def _disp_w(text: str) -> int:
+    return sum(2 if ord(ch) > 127 else 1 for ch in str(text or ""))
+
+
+def _pad_label(label: str, width: int = 4) -> str:
+    """標籤欄固定 2 個中文寬，後面數值才上下對齊。"""
+    raw = str(label or "")
+    extra = width - _disp_w(raw)
+    while extra >= 2:
+        raw += "　"
+        extra -= 2
+    if extra == 1:
+        raw += " "
+    return raw
+
+
+def _kv_lines(label: str, value: str, *, wrap: int = 24) -> List[str]:
+    """一列一個單位；值太長就在單位內折行，延續行對齊數值欄。"""
+    val = str(value or "").strip()
+    if not val:
+        return []
+    prefix = _pad_label(label) + "　"
+    indent = "　　　"
+    chunks = _wrap_plain_lines(val, width=wrap)
+    if not chunks:
+        return []
+    out = [prefix + chunks[0]]
+    out.extend(indent + c for c in chunks[1:])
+    return out
 
 
 def format_line_stock_block(
@@ -87,45 +118,57 @@ def format_line_stock_block(
 
     vol = int(item.get("volume") or 0)
 
-    lines = [
-        line_stock_headline(rank, sid, sname, db_path),
-        f"格局：{regime_fn(item)}",
-        f"收　{px_fn(item.get('close'))}　{pct_fn(item.get('pct_change'))}",
-        f"量　{vol:,}張　量比　{q_s}",
-    ]
+    lines = [line_stock_headline(rank, sid, sname, db_path)]
+    lines.extend(_kv_lines("格局", regime_fn(item)))
+    lines.extend(_kv_lines("收", f"{px_fn(item.get('close'))}　{pct_fn(item.get('pct_change'))}"))
+    lines.extend(_kv_lines("量", f"{vol:,}張　量比　{q_s}"))
     if to_s:
-        lines.append(f"額　{to_s}")
-    lines.append(f"均線　月　{px_fn(item.get('ma20'))}　季　{px_fn(item.get('ma60'))}")
-    lines.append(f"法人　{chip_fn(item)}")
+        lines.extend(_kv_lines("額", to_s))
+    lines.extend(_kv_lines("均線", f"月　{px_fn(item.get('ma20'))}　季　{px_fn(item.get('ma60'))}"))
+    lines.extend(_kv_lines("法人", chip_fn(item)))
     notices = notice_fn(item)
     if notices:
-        lines.append("標記　" + "　".join(notices))
+        lines.extend(_kv_lines("標記", "　".join(notices)))
     if item.get("profit") is not None:
-        lines.append(f"獲利　{item.get('profit')}%")
+        lines.extend(_kv_lines("獲利", f"{item.get('profit')}%"))
     elif item.get("golden_buy"):
-        lines.append(
-            f"獲利　{item.get('profit_pct')}%　月乖離　{item.get('bias_monthly')}%"
+        lines.extend(
+            _kv_lines("獲利", f"{item.get('profit_pct')}%　月乖離　{item.get('bias_monthly')}%")
         )
     pat = str(item.get("pattern") or "")
     if pat:
-        lines.append(f"型態　{pat}")
+        lines.extend(_kv_lines("型態", pat))
     if item.get("vol_rank_120"):
-        lines.append(f"120量　第{int(item['vol_rank_120'])}名")
+        lines.extend(_kv_lines("量排", f"120日第{int(item['vol_rank_120'])}名"))
     for plan_line in plan_fn(item):
-        lines.append(plan_line.replace("　", " ").strip())
+        raw = str(plan_line or "").strip()
+        if "　" in raw:
+            lab, rest = raw.split("　", 1)
+            lines.extend(_kv_lines(lab, rest, wrap=22))
+        else:
+            for chunk in _wrap_plain_lines(raw, width=28):
+                lines.append(chunk)
     industry = str(item.get("industry_plain") or "").strip()
     if industry:
-        lines.append("產業")
-        for chunk in _wrap_plain_lines(industry, width=28):
-            lines.append(chunk)
+        lines.extend(_kv_lines("產業", industry, wrap=24))
+    try:
+        from stock_links import yahoo_hop_url
+
+        hop = yahoo_hop_url(sid)
+    except Exception:
+        hop = ""
+    if hop:
+        # 網址不折行；走自家 /y/ 代號，LINE 才不會抓奇摩大圖
+        lines.append(_pad_label("奇摩") + "　" + hop)
     return "\n".join(lines)
 
 
 def _wrap_plain_lines(text: str, width: int = 28) -> List[str]:
-    """產業說明等長文：切成適合 LINE 手機寬度的行；不留行末孤字。"""
+    """產業等長文折行；保留全形空白當欄位間距，不把單位擠成半形空格。"""
     from tg_layout import wrap_cjk_lines
 
-    raw = re.sub(r"\s+", " ", str(text or "").strip())
+    raw = str(text or "").replace("\n", "").strip()
+    raw = re.sub(r"[ \t]+", " ", raw)
     return wrap_cjk_lines(raw, width, unit="chars")
 
 
