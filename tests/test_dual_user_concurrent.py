@@ -79,13 +79,9 @@ def test_concurrent_buy_streak_wizards_isolated(round_i):
     """十輪：兩人同時走連買區不同路徑，pending 互不干擾。"""
     bot = _bot()
     kinds = ["外資", "投信", "外資+投信"]
-    markets = ["上市", "上櫃"]
     w_kind = kinds[round_i % 3]
     b_kind = kinds[(round_i + 1) % 3]
-    w_mkt = markets[round_i % 2]
-    b_mkt = markets[(round_i + 1) % 2]
     kind_map = {"外資": "foreign", "投信": "trust", "外資+投信": "both"}
-    mkt_map = {"上市": "TW", "上櫃": "TWO"}
 
     async def fake_days(message, uid, actor, kind, market):
         bot._pending[actor] = f"fbuy:days:{kind}:{market}"
@@ -98,12 +94,8 @@ def test_concurrent_buy_streak_wizards_isolated(round_i):
         with patch.object(bot, "_streak_show_days", side_effect=fake_days):
             await bot._handle_buy_streak(_msg(WAYNE_UID, w_kind), str(WAYNE_UID), "fbuy:kind", w_kind, actor=w_actor)
             await bot._handle_buy_streak(_msg(BRO_UID, b_kind), str(BRO_UID), "fbuy:kind", b_kind, actor=b_actor)
-            assert bot._pending[w_actor] == f"fbuy:mkt:{kind_map[w_kind]}"
-            assert bot._pending[b_actor] == f"fbuy:mkt:{kind_map[b_kind]}"
-            await bot._handle_buy_streak(_msg(WAYNE_UID, w_mkt), str(WAYNE_UID), bot._pending[w_actor], w_mkt, actor=w_actor)
-            await bot._handle_buy_streak(_msg(BRO_UID, b_mkt), str(BRO_UID), bot._pending[b_actor], b_mkt, actor=b_actor)
-        assert bot._pending[w_actor] == f"fbuy:days:{kind_map[w_kind]}:{mkt_map[w_mkt]}"
-        assert bot._pending[b_actor] == f"fbuy:days:{kind_map[b_kind]}:{mkt_map[b_mkt]}"
+        assert bot._pending[w_actor] == f"fbuy:days:{kind_map[w_kind]}:ALL"
+        assert bot._pending[b_actor] == f"fbuy:days:{kind_map[b_kind]}:ALL"
 
     asyncio.run(run())
 

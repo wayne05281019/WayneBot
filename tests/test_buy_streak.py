@@ -207,6 +207,20 @@ def test_two_market_isolated(db):
     assert two.stocks(4)[0].foreign_lots == 40 + 50 + 60 + 70
 
 
+def test_all_market_merges_listed_and_otc(db):
+    from buy_streak import MARKET_ALL
+
+    snap = load_snapshot(db, KIND_FOREIGN, MARKET_ALL, as_of="20260908", use_cache=False)
+    ids = {r.stock_id for xs in snap.by_days.values() for r in xs}
+    assert "2330" in ids
+    assert "3105" in ids
+    assert snap.label == "外資連買"
+    html = format_list_html(snap, 6, db)
+    assert "2330" in html
+    assert " · 上市" not in html
+    assert " · 上櫃" not in html
+
+
 def test_etf_excluded(db):
     conn = sqlite3.connect(db)
     dates = ["20260907", "20260908"]

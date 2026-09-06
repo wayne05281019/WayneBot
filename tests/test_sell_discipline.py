@@ -136,7 +136,7 @@ def test_html_and_glance_wire_sell_notes():
     assert "協助判斷" in html_src
     png_src = inspect.getsource(render_first_glance_png)
     assert "sell_note_short" in png_src
-    assert 'str(a) == "紀律"' in png_src
+    assert '"紀律"' in png_src
     assert '"#AD1457"' in png_src
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src

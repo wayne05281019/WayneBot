@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""連買區域：外資／投信／外資+投信 連續買超（上市／上櫃）。"""
+"""連買區域：外資／投信／外資+投信 連續買超（上市櫃一起算）。"""
 from __future__ import annotations
 
 import sqlite3
@@ -26,7 +26,8 @@ KIND_BTN = {
 
 MARKET_TW = "TW"
 MARKET_TWO = "TWO"
-MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃"}
+MARKET_ALL = "ALL"
+MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃", MARKET_ALL: ""}
 MARKET_ALIASES = {
     "上市": MARKET_TW,
     "上市股票": MARKET_TW,
@@ -101,7 +102,9 @@ class StreakSnapshot:
 
     @property
     def label(self) -> str:
-        return f"{KIND_LABEL.get(self.kind, self.kind)} · {MARKET_LABEL.get(self.market, self.market)}"
+        kind = KIND_LABEL.get(self.kind, self.kind)
+        mkt = MARKET_LABEL.get(self.market, self.market)
+        return f"{kind} · {mkt}" if mkt else kind
 
     def days_menu(self, *, min_days: int = MIN_STREAK) -> List[int]:
         """只列出「剛好有股票」的天數（最長→最短）。空檔不給按，避免點進去 0 檔。"""
@@ -220,10 +223,11 @@ def format_list_html(
         as_of_s = format_trading_date_zh(as_of)
     except Exception:
         as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else as_of
+    mkt = MARKET_LABEL.get(snap.market, snap.market)
     head = (
-        f"<b>{KIND_LABEL.get(snap.kind, snap.kind)} {days} 天 · "
-        f"{MARKET_LABEL.get(snap.market, snap.market)}</b>"
-        f"　{total} 檔\n"
+        f"<b>{KIND_LABEL.get(snap.kind, snap.kind)} {days} 天"
+        + (f" · {mkt}" if mkt else "")
+        + f"</b>　{total} 檔\n"
         f"截至 {as_of_s} 官方籌碼（剛好連買 {days} 天，不是以上）。\n"
         "股名＝奇摩走勢；點鍵盤股名看出完整圖；旁「籌碼」核對法人買賣超。"
     )
@@ -348,6 +352,23 @@ def _compute_streak(
     return n, f_acc, t_acc, v_acc
 
 
+def _merge_market_snaps(tw: StreakSnapshot, two: StreakSnapshot) -> StreakSnapshot:
+    """上市＋上櫃合成一份；天數桶合併後仍依連買張數排序。"""
+    by_days: Dict[int, List[StreakRow]] = {}
+    for snap in (tw, two):
+        for d, rows in (snap.by_days or {}).items():
+            by_days.setdefault(int(d), []).extend(list(rows or []))
+    for bucket in by_days.values():
+        bucket.sort(key=lambda r: (-r.lead_lots, r.stock_id))
+    return StreakSnapshot(
+        as_of=tw.as_of or two.as_of,
+        kind=tw.kind or two.kind,
+        market=MARKET_ALL,
+        max_days=max(int(tw.max_days or 0), int(two.max_days or 0)),
+        by_days=by_days,
+    )
+
+
 def load_snapshot(
     db_path: str,
     kind: str,
@@ -361,6 +382,14 @@ def load_snapshot(
     market = str(market or "").strip().upper()
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind}")
+    if market == MARKET_ALL:
+        tw = load_snapshot(
+            db_path, kind, MARKET_TW, as_of=as_of, lookback=lookback, use_cache=use_cache
+        )
+        two = load_snapshot(
+            db_path, kind, MARKET_TWO, as_of=as_of, lookback=lookback, use_cache=use_cache
+        )
+        return _merge_market_snaps(tw, two)
     if market not in (MARKET_TW, MARKET_TWO):
         raise ValueError(f"unknown market {market}")
 

@@ -610,10 +610,15 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("產業說明", html)
             self.assertIn("半導體業", html)
             self.assertIn("比同業明顯較強", html)
-            self.assertIn("高低卡", html)
-            self.assertIn("不是內幕", html)
+            self.assertNotIn("怎麼用", html)
+            self.assertNotIn("不能替代高低卡", html)
             self.assertIn("<code>", html)
             self.assertIn("張", html)
+            for line in html.split("\n"):
+                if "這檔月增" in line:
+                    self.assertNotIn("同業中位", line)
+                if "同業中位年增" in line:
+                    self.assertIn("%", line)
             etf = format_industry_html("0050", path)
             self.assertIn("ETF", etf)
         finally:
@@ -1687,6 +1692,8 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("floor=12.0", glance_src)
         self.assertNotIn("floor=8.0", glance_src)
         self.assertIn("linewidth=1.1", glance_src)
+        self.assertNotIn("獲利（近60曆日低）", glance_src)
+        self.assertIn("日曆天", glance_src)
         fd, path = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         gfd, gpath = tempfile.mkstemp(suffix=".png")

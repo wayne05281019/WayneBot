@@ -163,7 +163,7 @@ HELP_TOPICS = {
         "\n"
         "<b>四、挑股先看哪一欄（最重要）</b>\n"
         "早報／海選的股票欄，優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底（零點幾也算脫離零，跟作者卡同一套）。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
-        "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 曆日收盤低、獲利還在 0 附近、相對月線跌很深。是叫你<b>注意、觀察</b>，不是已經起漲，也不是叫立刻買。\n"
+        "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 個日曆天收盤低、獲利還在 0 附近、相對月線跌很深。是叫你<b>注意、觀察</b>，不是已經起漲，也不是叫立刻買。\n"
         "盤中請打開該檔 <b>決策卡</b> 對獲利格。名單是昨收掃的，不是盤中即時。\n"
         "\n"
         "<b>五、AI倉是對照組（不是真持股）</b>\n"
@@ -189,6 +189,7 @@ HELP_TOPICS = {
         "\n"
         "<b>八、持股頁按鈕</b>\n"
         "• 股名鍵＝看這檔　• <b>賣出</b>＝打張數與價格\n"
+        "• <b>成交</b>＝你手記的買賣紀錄　• <b>復盤</b>＝對照昨收怎麼走\n"
         "• 模擬倉請按主選單 <b>AI倉</b>（持股頁下方仍有 AI倉 捷徑）\n"
         "\n"
         "<b>九、觀察頁按鈕</b>\n"
@@ -217,7 +218,7 @@ HELP_TOPICS = {
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
         "• <b>海選</b>：電腦掃全市場的候選名單；低買高賣、按表操課，不是每個低點都買\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（零點幾也算；以前叫起漲）\n"
-        "• <b>重點觀察</b>：還在 60 日低、獲利約在 0 附近、跌很深。注意觀察，不是立刻買（以前叫黃金買點）\n"
+        "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低、獲利約在 0 附近、跌很深。注意觀察，不是立刻買（以前叫黃金買點）\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票\n"
         "• <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖給偉權\n"
         "\n"
@@ -248,14 +249,15 @@ HELP_TOPICS = {
         "\n"
         "<b>③ 持股</b>\n"
         "• <b>是什麼</b>：你自己手記的<b>真實買入</b>，不是觀察、也不是 AI 模擬倉。\n"
-        "• <b>怎麼用</b>：按進去看清單；每檔可「賣出」、點股名看決策卡。\n"
+        "• <b>怎麼用</b>：按進去看清單；每檔可「賣出」、點股名看圖。\n"
+        "• <b>成交／復盤</b>：持股頁下方；成交＝手記買賣紀錄，復盤＝對照昨收怎麼走。\n"
         "• <b>記買入</b>：查股後按「記買入」，再打 <code>張數 價格</code>，例 <code>1 68.5</code>。\n"
         "• <b>AI倉</b>：模擬帳戶在主選單第一排最右，不要跟手記持股搞混。\n"
         "\n"
         "<b>④ 觀察</b>\n"
         "• <b>是什麼</b>：自選清單，還沒買也可以先放。\n"
         "• <b>怎麼加</b>：海選或查股旁的 <b>➕</b>，或直接打股名查詢後按「觀察」。\n"
-        "• <b>怎麼刪</b>：進觀察頁，該檔按「刪」。\n"
+        "• <b>頁上按鈕</b>：左＝看這檔　<b>籌碼</b>　<b>買入</b>　<b>刪</b>（移出觀察）。\n"
         "• <b>藍字股名</b>：連到奇摩走勢（開網頁，不帶大圖預覽）。\n"
         "\n"
         "<b>⑤ 海選</b>\n"
@@ -292,8 +294,9 @@ HELP_TOPICS = {
         "• 就是本說明頁；可分類點下方按鈕看細節。\n"
         "\n"
         "<b>⑤ 連買區</b>\n"
-        "• 先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>（點訊息下方按鈕）。\n"
-        "• 再選上市或上櫃，再點連買天數（有 25 天就會出現 25）。\n"
+        "• <b>是什麼</b>：官方法人連續買超名單（不是下單訊號）。\n"
+        "• <b>怎麼用</b>：先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>，再點天數。\n"
+        "• <b>不分市場</b>：上市櫃一起列，不再分市場。\n"
         "• 名單顯示代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。\n"
         "\n"
@@ -305,7 +308,8 @@ HELP_TOPICS = {
     ),
     "market": (
         "<b>大盤按鈕</b>\n"
-        "第二排、隔日沖右邊。顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
+        "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
+        "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
         "<b>只讀</b>：不把盤中即時價寫進資料庫、不影響 16:30 自動融合或 06:30 早報。"
     ),
@@ -314,8 +318,11 @@ HELP_TOPICS = {
         "\n"
         "<b>在哪裡？</b>\n"
         "主選單第一排最右 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。\n"
-        "• <b>AI倉</b>：只看模擬帳戶現況（不買賣）；點股名可查這檔圖\n"
-        "• <b>AI操盤</b>：在 AI倉 頁訊息下方，立刻依海選跑一輪模擬買賣\n"
+        "\n"
+        "<b>這頁按鈕</b>\n"
+        "• 持倉股名＝查這檔介紹圖／決策卡／導航圖\n"
+        "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣（不推播）\n"
+        "• <b>AI倉</b> 本身：只看模擬帳戶現況（不買賣）\n"
         "\n"
         "<b>自動買進（你問的這個）</b>\n"
         "• 平日 <b>20:00</b> 雲端會：① 寫晚間海選快照 ② 讓<b>你的</b> AI 依海選紀律模擬買進／賣出\n"
@@ -350,12 +357,16 @@ HELP_TOPICS = {
         "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單）。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "06:30 早報第一則是<b>大盤狀況</b>（美股＋台指期夜盤＋白話連動），接著只寄<b>黃金買點／重點觀察／優先看／周帶量</b>（優先看沒名單就跳過）；半年高／站上季線／止跌請按主選單「海選」看完整。\n"
-        "海選＝昨收<b>佈局</b>名單，不是盤中即時掃描。"
-        "每區底部按<b>一鍵傳 LINE</b>：背景生成整區文字＋介紹圖／決策卡。中轉頁可勾選要傳哪幾檔（介紹圖＋決策卡一組），再複製名單或傳勾選的圖；長圖仍是全區。\n"
+        "海選＝昨收<b>佈局</b>名單，不是盤中即時掃描。\n"
+        "\n"
+        "<b>這頁按鈕</b>\n"
+        "• 左鍵（代號＋股名）＝看這檔完整圖\n"
+        "• 右 <b>➕</b>＝加入觀察\n"
+        "• 區底 <b>一鍵傳 LINE</b>：背景生成整區文字＋介紹圖／決策卡。中轉頁可勾選要傳哪幾檔（介紹圖＋決策卡一組），再複製名單或傳勾選的圖；長圖仍是全區。\n"
         "（主選單<b>決策卡</b>＝單檔盤中刷新，不是整區黃金買點名單。）\n"
         "股名右「開 LINE・傳這檔」直跳 LINE；區底「一鍵傳 LINE」進勾選頁。<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣是生存法則：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
-        "藍字股名＝奇摩。下面按鈕：左＝代號＋股名（看圖）；右➕＝觀察。\n"
+        "藍字股名＝奇摩。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
@@ -365,44 +376,67 @@ HELP_TOPICS = {
         "保險進場＝不要追過當日收盤；第一停利＝+3% 先出一部分；衝頂＝+6%；保險停損＝當日均價跌破先走。\n"
         "只在平日 <b>09:00–13:30 盤中</b> 按才有意義（即時複核漲幅 2%～8.5%）；收盤後按不會出名單。\n"
         "隔夜美股逆風（收盤或盤後大跌、恐慌指數高）時這頁會空，避免開盤缺口硬沖。\n"
-        "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。不是保證獲利。"
+        "\n"
+        "<b>這頁按鈕</b>\n"
+        "• 左鍵（代號＋股名）＝現價＋圖\n"
+        "• 右 <b>➕</b>＝加入觀察\n"
+        "• 藍字股名＝奇摩。不是保證獲利。"
     ),
     "overnight": (
         "<b>隔日沖怎麼用</b>\n"
         "保險買進＝尾盤昨收附近、不要摸高；明早開高目標 +3.5%～+4.8%；衝頂 +7%；保險防守＝開盤與均價較低者，跌破先走。\n"
         "進場參考時段＝平日 <b>09:00–13:30</b>（尾盤前）；收盤後按只顯示強勢收盤候選，供明早開盤參考，不是叫你再買。\n"
-        "藍字＝奇摩；左鍵代號＋股名＝現價＋圖；➕＝觀察。"
+        "\n"
+        "<b>這頁按鈕</b>\n"
+        "• 左鍵（代號＋股名）＝現價＋圖\n"
+        "• 右 <b>➕</b>＝加入觀察\n"
+        "• 藍字股名＝奇摩。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
         "這裡只顯示你手記的真實買入，不是觀察、也不是 AI 模擬倉。記買入：選股→記買入→打 <code>張數 價格</code>。\n"
         "\n"
-        "<b>訊息下方按鈕</b>\n"
-        "• 股名＝看這檔決策卡　• <b>賣出</b>＝記賣出張數與價格\n"
-        "• <b>AI倉</b>＝主選單第一排最右，假錢對照組現況（不買賣）\n"
-        "• 持股頁下方仍可按 AI倉 捷徑\n"
-        "• <b>AI操盤</b>＝立刻依海選跑一輪模擬買賣\n"
+        "<b>這頁按鈕（由上到下對應該檔）</b>\n"
+        "• 左＝股名，看這檔介紹圖／決策卡／導航圖\n"
+        "• <b>賣出</b>＝記賣出張數與價格\n"
+        "• <b>成交</b>＝你手記的買賣紀錄\n"
+        "• <b>復盤</b>＝對照昨收怎麼走\n"
+        "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第一排最右也有\n"
         "\n"
         "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。詳見說明頁「AI」。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
         "自選清單，還沒買也可以加。空的很正常。\n"
-        "加入：打股名或海選旁的 ➕。刪除：觀察頁該檔按「刪」。\n"
+        "加入：打股名或海選／當沖旁的 <b>➕</b>。\n"
+        "\n"
+        "<b>這頁按鈕（由上到下對應該檔）</b>\n"
+        "• 左＝股名，看這檔\n"
+        "• <b>籌碼</b>＝三大法人買賣超圖\n"
+        "• <b>買入</b>＝記真實持股（同查股的記買入）\n"
+        "• <b>刪</b>＝移出觀察\n"
         "藍字股名＝奇摩走勢（只開網頁，不帶預覽大圖）。"
     ),
     "stock": (
-        "<b>單檔第一眼建議看這些</b>\n"
-        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）；籌碼／營收／產業按<b>圖下方</b>按鈕，不是主選單。\n"
+        "<b>查股頁（圖下方按鈕）</b>\n"
+        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）。點縮圖可放大。\n"
+        "籌碼／營收／產業按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
+        "\n"
+        "<b>圖下方這一排</b>\n"
+        "• <b>籌碼</b>：三大法人買賣超圖\n"
+        "• <b>營收</b>：月營收、季報毛利\n"
+        "• <b>產業</b>：同業中位數＋這族法人，講人話\n"
+        "• <b>觀察</b>：加入自選（還沒買）\n"
+        "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>\n"
+        "\n"
+        "<b>介紹圖／決策卡先看這些</b>\n"
         "1 股號旁當日 K 縮圖＋收盤連漲／連跌＋開高低\n"
-        "2 獲利＝近60個日曆日收盤低（與 CaryBot 同；貼20日低不歸零）；距60根低是另外一欄\n"
-        "3 溫度＝20日收盤位置＋月乖離；溫度計是領先指標。"
-        "創歷史新高且溫度≥80要注意（少追）。"
-        "升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追。"
-        "表頭「今日態度」是白話提醒（先等／別追／先看表），不是下單指令。\n"
-        "   表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名。\n"
-        "4 預警欄：K20高＝收盤靠近20日高且偏熱；K20低＝貼近20日低或月線乖離轉負。"
-        "預警欄沒訊號時仍會露出高低（20高／10低），不藏表\n"
+        "2 獲利＝從近60個日曆天收盤低算上來（與 CaryBot 同；貼20日低不歸零）；距60根低是另外一欄\n"
+        "3 溫度＝20日收盤位置＋月乖離。溫度計是領先指標。創歷史新高且溫度≥80要注意（少追）。\n"
+        "　升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追。\n"
+        "　表頭「今日態度」是白話提醒（先等／別追／先看表），不是下單指令。\n"
+        "　表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名。\n"
+        "4 預警欄：K20高＝收盤靠近20日高且偏熱；K20低＝貼近20日低或月線乖離轉負。沒訊號時仍會露出高低（20高／10低），不藏表。\n"
         "5 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
         "6 本益／淨值／殖利率、融資融券餘額（張與使用率）＝官方有數才上卡；沒有真分點就不會出現主力成本\n"
         "7 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
@@ -410,12 +444,23 @@ HELP_TOPICS = {
         "9 海選靠近 20 日收盤高＝少追，排後面；高低卡才是少賠主軸\n"
         "10 隔夜美股＝現金收盤＋收盤後盤後（台積美股／那斯達克期貨續勢），盤中期貨不看；大跌 06:30 會先通知。只過濾逆風，不拿來追高"
     ),
-    "chips": "<b>籌碼</b>\n三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。",
-    "fund": "<b>營收毛利</b>\n官方月營收與季報。本益／淨值／殖利率、融資融券餘額（張、使用率）有官方數才一併顯示；沒有就不畫。產業對照請按「產業」。",
+    "chips": (
+        "<b>籌碼按鈕</b>\n"
+        "查完一檔後，按<b>圖下方「籌碼」</b>（不在右側 ⌨️）。\n"
+        "三大法人買賣超（張）。紅＝買超、綠＝賣超。籌碼佔量＝法人合計買賣超÷當日成交量。"
+    ),
+    "fund": (
+        "<b>營收按鈕</b>\n"
+        "查完一檔後，按<b>圖下方「營收」</b>（不在右側 ⌨️）。\n"
+        "官方月營收與季報。本益／淨值／殖利率、融資融券餘額（張、使用率）有官方數才一併顯示；沒有就不畫。\n"
+        "同業對照請按旁邊的「產業」。"
+    ),
     "industry": (
-        "<b>產業說明怎麼用</b>\n"
-        "看這檔後按下方「產業」，或打 /industry 代號。用官方月營收、季報毛利率跟同業中位數比，再加上這族法人張數。\n"
-        "這是落後的公開數字，幫你看懂這族，不是內幕。少賠仍看高低卡：靠近 20 日收盤高少追。"
+        "<b>產業按鈕</b>\n"
+        "查完一檔後，按<b>圖下方「產業」</b>（不在右側 ⌨️）。\n"
+        "也可打 /industry 代號。\n"
+        "會列出官方產業別、這檔月營收／毛利率、同業中位數、這族法人張數。\n"
+        "進場仍看高低卡，不要因為同業敘事追高。"
     ),
     "buy": (
         "<b>記買入</b>\n"
@@ -425,17 +470,28 @@ HELP_TOPICS = {
     "pick": "請打股名或代號，例如 <b>南亞</b>、<b>2324</b>。",
     "flow": (
         "<b>資金移動怎麼用</b>\n"
+        "主選單第二排「資金」。這頁沒有再往下點的子按鈕，看完數字即可。\n"
         "盤後資金輪動：同一交易日依產業把三大法人張數加總，對照前一日。熱 3 族＋族內代表股當佈局參考。\n"
         "個股區塊是外資／投信買賣超與短線熱股，不含你的持股或觀察（各走自己的選單）。\n"
         "只看官方法人＋價量，不抓分點、不抓論壇。法人也會幌，輪動不單獨當訊號。"
     ),
     "streak": (
         "<b>連買區怎麼用</b>\n"
-        "主選單次排「連買區」。先選要看哪一種：<b>外資</b>、 <b>投信</b>、或<b>外資+投信</b>（同一天兩家都買超才算）。\n"
-        "點訊息下方按鈕選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>。\n"
-        "再選<b>上市</b>或<b>上櫃</b>，再點連買天數。\n"
-        "天數只列出「剛好有股票」的連買天數（最長會標在訊息裡）；點 6 就只看剛好連買 6 天的股票。\n"
-        "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。點股名＝一般查股；按<b>籌碼</b>核對官方法人表。"
+        "主選單第二排「連買區」。\n"
+        "\n"
+        "<b>第一步（訊息下方三顆）</b>\n"
+        "• <b>外資</b>＝外資連續買超\n"
+        "• <b>投信</b>＝投信連續買超\n"
+        "• <b>外資+投信</b>＝同一天兩家都買超才算一天\n"
+        "\n"
+        "<b>第二步</b>：點連買天數（只列出剛好有股票的天數）。\n"
+        "上市櫃一起列，不再分市場。\n"
+        "點 6 就只看剛好連買 6 天的股票。\n"
+        "\n"
+        "<b>名單按鈕</b>\n"
+        "• 股名＝一般查股（介紹圖／決策卡／導航圖）\n"
+        "• <b>籌碼</b>＝核對官方法人表\n"
+        "每檔顯示代號、股名、N 日連買幾張、佔 N 日總成交％。"
     ),
 }
 
@@ -866,16 +922,6 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
-    def _streak_market_keyboard(self):
-        rows = [
-            [KeyboardButton("上市"), KeyboardButton("上櫃")],
-            self._streak_nav_row(back_step=True),
-        ]
-        try:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
-        except TypeError:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
     def _streak_days_keyboard(self, days: list[int]):
         rows = []
         row = []
@@ -929,21 +975,6 @@ class WayneTelegramBot:
             ]
         )
 
-    def _streak_market_inline(self, kind: str):
-        k = str(kind or "").strip() or "foreign"
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("上市", callback_data=f"fb:m:{k}:TW"),
-                    InlineKeyboardButton("上櫃", callback_data=f"fb:m:{k}:TWO"),
-                ],
-                [
-                    InlineKeyboardButton("上一步", callback_data="fb:back:kind"),
-                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
-                ],
-            ]
-        )
-
     def _streak_days_inline(self, kind: str, market: str, days: list[int]):
         k = str(kind or "").strip()
         m = str(market or "").strip()
@@ -958,7 +989,7 @@ class WayneTelegramBot:
             rows.append(row)
         rows.append(
             [
-                InlineKeyboardButton("上一步", callback_data=f"fb:back:mkt:{k}"),
+                InlineKeyboardButton("上一步", callback_data="fb:back:kind"),
                 InlineKeyboardButton("回主選單", callback_data="fb:home"),
             ]
         )
@@ -1017,24 +1048,11 @@ class WayneTelegramBot:
         self._pending.pop(actor, None)
         await message.reply_html("已回到兩排主選單。", reply_markup=self._reply_menu())
 
-    async def _ask_streak_market(self, message, uid: str, actor: str, kind: str) -> None:
-        from buy_streak import KIND_LABEL
-
-        self._pending[actor] = f"fbuy:mkt:{kind}"
-        await self._streak_send_step(
-            message,
-            f"<b>{KIND_LABEL.get(kind, kind)}</b>\n請點下面按鈕選 <b>上市</b> 或 <b>上櫃</b>。",
-            inline=self._streak_market_inline(kind),
-            reply_kb=self._streak_market_keyboard(),
-            tray_hint="也可點輸入區鍵盤：上市／上櫃",
-        )
-
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
     ) -> bool:
         from buy_streak import (
             KIND_LABEL,
-            MARKET_LABEL,
             PAGE_SIZE,
             find_row,
             format_list_html,
@@ -1043,7 +1061,6 @@ class WayneTelegramBot:
             page_bounds,
             parse_days,
             parse_kind,
-            parse_market,
             parse_stock_code,
         )
 
@@ -1061,12 +1078,10 @@ class WayneTelegramBot:
             elif step == "mkt":
                 await self._start_buy_streak(message, uid)
             elif step == "days":
-                kind = parts[2] if len(parts) > 2 else ""
-                await self._ask_streak_market(message, uid, actor, kind)
+                await self._start_buy_streak(message, uid)
             elif step == "pick":
                 kind = parts[2] if len(parts) > 2 else ""
-                market = parts[3] if len(parts) > 3 else ""
-                await self._streak_show_days(message, uid, actor, kind, market)
+                await self._streak_show_days(message, uid, actor, kind, "ALL")
             else:
                 await self._start_buy_streak(message, uid)
             return True
@@ -1084,16 +1099,12 @@ class WayneTelegramBot:
                     tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
                 )
                 return True
-            await self._ask_streak_market(message, uid, actor, kind)
+            await self._streak_show_days(message, uid, actor, kind, "ALL")
             return True
 
         if step == "mkt":
             kind = parts[2] if len(parts) > 2 else ""
-            market = parse_market(text)
-            if not market:
-                await self._ask_streak_market(message, uid, actor, kind)
-                return True
-            await self._streak_show_days(message, uid, actor, kind, market)
+            await self._streak_show_days(message, uid, actor, kind, "ALL")
             return True
 
         if step == "days":
@@ -1144,8 +1155,7 @@ class WayneTelegramBot:
             row = find_row(snap, days, code)
             if row:
                 recap = (
-                    f"<b>{KIND_LABEL.get(kind, kind)} {days} 天 · "
-                    f"{MARKET_LABEL.get(market, market)}</b>\n"
+                    f"<b>{KIND_LABEL.get(kind, kind)} {days} 天</b>\n"
                     f"{format_stock_html(row, kind, self.db_path)}\n"
                     "下面是一般查股內容；按籌碼可核對官方法人表。"
                 )
@@ -1178,23 +1188,18 @@ class WayneTelegramBot:
             await self._start_buy_streak(q.message, uid)
             return
         if op == "back" and len(parts) > 2 and parts[2] == "mkt":
-            kind = parts[3] if len(parts) > 3 else ""
-            await self._ask_streak_market(q.message, uid, actor, kind)
+            await self._start_buy_streak(q.message, uid)
             return
         if op == "k" and len(parts) > 2:
             kind = parts[2]
             if kind not in ("foreign", "trust", "both"):
                 await self._start_buy_streak(q.message, uid)
                 return
-            await self._ask_streak_market(q.message, uid, actor, kind)
+            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
             return
         if op == "m" and len(parts) > 3:
             kind = parts[2]
-            market = parts[3]
-            if market not in ("TW", "TWO"):
-                await self._ask_streak_market(q.message, uid, actor, kind)
-                return
-            await self._streak_show_days(q.message, uid, actor, kind, market)
+            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
             return
         if op == "d" and len(parts) > 4:
             kind = parts[2]
@@ -1212,8 +1217,9 @@ class WayneTelegramBot:
             return
 
     async def _streak_show_days(self, message, uid: str, actor: str, kind: str, market: str) -> None:
-        from buy_streak import KIND_LABEL, MARKET_LABEL, load_snapshot
+        from buy_streak import KIND_LABEL, MARKET_ALL, load_snapshot
 
+        market = MARKET_ALL
         status = await self._transient_status(message, "整理連買名單…")
         try:
             snap = await asyncio.wait_for(
@@ -1225,10 +1231,10 @@ class WayneTelegramBot:
             await self._delete_message(status)
             await message.reply_html(
                 f"連買名單讀取失敗：{html_escape(e)}",
-                reply_markup=self._streak_market_inline(kind),
+                reply_markup=self._streak_kind_inline(),
                 disable_web_page_preview=True,
             )
-            self._pending[actor] = f"fbuy:mkt:{kind}"
+            self._pending[actor] = "fbuy:kind"
             return
         await self._delete_message(status)
         self._pending[actor] = f"fbuy:days:{kind}:{market}"
@@ -1240,22 +1246,23 @@ class WayneTelegramBot:
             as_of_s = format_trading_date_zh(as_of)
         except Exception:
             as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else (as_of or "—")
+        title = f"<b>{KIND_LABEL.get(kind, kind)}</b>"
         if not days:
             await self._streak_send_step(
                 message,
-                f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
-                f"截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
-                inline=self._streak_market_inline(kind),
-                reply_kb=self._streak_market_keyboard(),
-                tray_hint="請改選上市／上櫃，或回主選單",
+                f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
+                inline=self._streak_kind_inline(),
+                reply_kb=self._streak_kind_keyboard(),
+                tray_hint="請改選外資／投信／外資+投信，或回主選單",
             )
-            self._pending[actor] = f"fbuy:mkt:{kind}"
+            self._pending[actor] = "fbuy:kind"
             return
         await self._streak_send_step(
             message,
-            f"<b>{KIND_LABEL.get(kind, kind)} · {MARKET_LABEL.get(market, market)}</b>\n"
+            f"{title}\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
             "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
+            "上市櫃一起列。\n"
             f"<b>可選天數</b>（有股票才列出）：{' '.join(str(n) for n in days)}",
             inline=self._streak_days_inline(kind, market, days),
             reply_kb=self._streak_days_keyboard(days),
@@ -1274,7 +1281,9 @@ class WayneTelegramBot:
         *,
         offset: int = 0,
     ) -> None:
-        from buy_streak import PAGE_SIZE, format_list_html, load_snapshot, page_bounds
+        from buy_streak import PAGE_SIZE, MARKET_ALL, format_list_html, load_snapshot, page_bounds
+
+        market = MARKET_ALL
 
         status = await self._transient_status(message, "列出連買股票…")
         try:
@@ -1320,9 +1329,12 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton("第一排", callback_data="?:row1"),
                     InlineKeyboardButton("第二排", callback_data="?:row2"),
-                    InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("連買", callback_data="?:streak"),
                 ],
-                [InlineKeyboardButton("✕", callback_data="hx")],
+                [
+                    InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("✕", callback_data="hx"),
+                ],
             ]
         )
 
@@ -2023,7 +2035,7 @@ class WayneTelegramBot:
             "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
             "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 看單檔完整圖。左下也可按 /menu。\n"
-            "次排 <b>連買區</b> 查外資／投信／兩家皆買。不熟按鈕請按 <b>說明</b>。",
+            "次排 <b>連買區</b> 查外資／投信／兩家皆買（上市櫃一起）。不熟按鈕請按 <b>說明</b>。",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 
