@@ -350,6 +350,7 @@ HELP_TOPICS = {
         "<b>這頁按鈕</b>\n"
         "• 持倉股名＝查這檔介紹圖／決策卡／導航圖\n"
         "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣（不推播）\n"
+        "• <b>進化</b>：看目前編碼與近況日誌（倉位倍數、哪類少買）\n"
         "• <b>AI倉</b> 本身：只看模擬帳戶現況（不買賣）\n"
         "\n"
         "<b>自動買進</b>\n"
@@ -363,6 +364,12 @@ HELP_TOPICS = {
         "• 優先黃金買點；第二份只買重點觀察／黃金買點。當沖不隔夜；靠近20日高、美股逆風不買；停損約 -7%、停利約 +8%\n"
         "• 這是對照組，不會動你的真實持股，也不會真的下單，也不會自動改程式。\n"
         "• 這不是證券 App 裡的量化積木，也不能把這支程式塞進手機下單軟體。\n"
+        "\n"
+        "<b>進化怎麼做（對未來量化積木）</b>\n"
+        "• 表面：AI倉仍只顯示模擬買進／賣出與持倉。\n"
+        "• 背後：每一輪把勝率寫進庫，只調單筆倍數與哪類海選少買；週五收盤後寄一則進化回報。\n"
+        "• 進場規則鎖死高低卡黃金買點，進化不會改這條，也不會自己重寫程式。\n"
+        "• 將來接到富邦＝你用手把回報裡的條件打進積木。WayneBot 不會幫你下單。\n"
         "\n"
         "<b>跟真實持股的差別</b>\n"
         "• <b>持股</b>＝你手動記的買入\n"
@@ -1699,6 +1706,7 @@ class WayneTelegramBot:
         kb.append(
             [
                 InlineKeyboardButton("AI操盤", callback_data="ai_run"),
+                InlineKeyboardButton("進化", callback_data="ai_evolve"),
                 self._q("ai"),
             ]
         )
@@ -3620,6 +3628,26 @@ class WayneTelegramBot:
             logger.exception("AI 模擬倉顯示失敗")
             await message.reply_text(f"AI 模擬倉顯示失敗：{e}", reply_markup=self._keyboard())
 
+    async def _send_ai_evolve(self, message, uid: str):
+        """只看進化編碼與日誌，不執行買賣。"""
+        from ai_trader import ai_user_id, format_evolve_report_html
+
+        self._touch_user(uid)
+        try:
+            html = await asyncio.to_thread(
+                format_evolve_report_html, self.db_path, ai_user_id(uid)
+            )
+            from ai_trader import ai_desk_positions
+
+            positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
+            parts = chunk_telegram_html(html)
+            for i, part in enumerate(parts):
+                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
+                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        except Exception as e:
+            logger.exception("AI 進化回報失敗")
+            await message.reply_text(f"AI 進化回報失敗：{e}", reply_markup=self._keyboard())
+
     async def _run_ai_now(self, message, uid: str):
         self._touch_user(uid)
         status = await self._transient_status(message, "AI 模擬操盤執行中（依今日海選紀律）…")
@@ -4596,6 +4624,9 @@ class WayneTelegramBot:
             return
         if data == "ai_run":
             await self._run_ai_now(q.message, str(q.from_user.id))
+            return
+        if data == "ai_evolve":
+            await self._send_ai_evolve(q.message, str(q.from_user.id))
             return
         if data == "screen":
             await self._run_manual_screening(q.message)

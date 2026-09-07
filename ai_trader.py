@@ -1,8 +1,8 @@
 """WayneBot AI 模擬操盤：50 萬本金切 3 等份，平常只用 1 份，永遠留現金。
 
 每位 Telegram 使用者各有一套模擬帳戶（ai_{uid}），與手記持股完全分開。
-不會改寫自己的程式碼；進化是調整倉位比例與哪類海選最近準（寫入資料庫）。
-這是模擬倉，不是真實下單。
+不會改寫自己的程式碼；進化是調整倉位比例與哪類海選最近準（寫入 ai_lessons／ai_params）。
+這是模擬倉，不是真實下單，也不能塞進富邦量化積木。
 """
 from __future__ import annotations
 
@@ -45,6 +45,16 @@ def ensure_ai_tables(db_path: str) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_nav_log)")}
     if "user_id" not in cols:
         conn.execute(f"ALTER TABLE ai_nav_log ADD COLUMN user_id TEXT DEFAULT '{AI_USER_LEGACY}'")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_lessons (
+            user_id TEXT NOT NULL,
+            as_of TEXT NOT NULL,
+            lesson TEXT NOT NULL,
+            encoding TEXT DEFAULT '',
+            created_at TEXT,
+            PRIMARY KEY (user_id, as_of)
+        );"""
+    )
     try:
         from screen_review import ensure_ai_fills_table
 
@@ -297,6 +307,159 @@ def _adapt_from_trades(engine: PortfolioEngine, db_path: str, user_id: str) -> s
     else:
         notes.append("倉位倍數維持")
     return "，".join(notes)
+
+
+def current_ai_encoding(db_path: str, user_id: str = AI_USER_LEGACY) -> Dict[str, Any]:
+    """模擬倉下一輪會用的參數。進場規則仍是高低卡，這裡只調倉位與哪類少買。"""
+    from screen_review import BUCKETS, bucket_weight
+
+    uid = str(user_id or AI_USER_LEGACY)
+    weights = {key: float(bucket_weight(db_path, key)) for key, _label in BUCKETS}
+    return {
+        "entry": "leave_zero",
+        "observe": "golden_buy",
+        "not_entry": "red_arrow",
+        "stop_pct": STOP_PCT,
+        "take_pct": TAKE_PCT,
+        "core_slots": CORE_SLOTS,
+        "dip_slots": DIP_SLOTS,
+        "cash_slots": 1,
+        "size_mult": _load_size_mult(db_path, uid),
+        "bucket_w": weights,
+    }
+
+
+def persist_ai_lesson(
+    db_path: str,
+    user_id: str,
+    as_of: str,
+    lesson: str,
+    encoding: Optional[Dict[str, Any]] = None,
+) -> None:
+    """每一輪模擬操盤把進化結果存起來，給週報／以後對量化積木用。"""
+    import json
+    from datetime import datetime
+
+    as_of = str(as_of or "").replace("-", "")[:8]
+    uid = str(user_id or AI_USER_LEGACY)
+    if not as_of or not uid:
+        return
+    ensure_ai_tables(db_path)
+    enc = encoding if encoding is not None else current_ai_encoding(db_path, uid)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """INSERT OR REPLACE INTO ai_lessons(user_id, as_of, lesson, encoding, created_at)
+           VALUES (?,?,?,?,?)""",
+        (
+            uid,
+            as_of,
+            str(lesson or "").strip(),
+            json.dumps(enc, ensure_ascii=False, sort_keys=True),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _evolve_week_key(user_id: str, as_of: str) -> str:
+    as_of = str(as_of or "").replace("-", "")[:8]
+    try:
+        from datetime import datetime
+
+        iso = datetime.strptime(as_of, "%Y%m%d").isocalendar()
+        week = f"{iso[0]}W{int(iso[1]):02d}"
+    except Exception:
+        week = as_of or "none"
+    return f"evolve_week:{user_id}:{week}"
+
+
+def should_send_weekly_evolve(db_path: str, user_id: str, as_of: str) -> bool:
+    """週五收盤後那一輪才寄週報；同一週不重寄。"""
+    as_of = str(as_of or "").replace("-", "")[:8]
+    try:
+        from datetime import datetime
+
+        if datetime.strptime(as_of, "%Y%m%d").weekday() != 4:
+            return False
+    except Exception:
+        return False
+    ensure_ai_tables(db_path)
+    key = _evolve_week_key(user_id, as_of)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT v FROM ai_params WHERE k=?", (key,)).fetchone()
+    conn.close()
+    return row is None
+
+
+def mark_weekly_evolve_sent(db_path: str, user_id: str, as_of: str) -> None:
+    ensure_ai_tables(db_path)
+    key = _evolve_week_key(user_id, as_of)
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT OR REPLACE INTO ai_params(k, v) VALUES (?, ?)", (key, 1.0))
+    conn.commit()
+    conn.close()
+
+
+def format_evolve_report_html(db_path: str, user_id: str = AI_USER_LEGACY) -> str:
+    """給人看的進化週報／編碼卡。不是買訊，也不能貼進下單 App 當腳本。"""
+    from tg_layout import html_escape
+
+    from screen_review import BUCKETS
+
+    uid = str(user_id or AI_USER_LEGACY)
+    ensure_ai_tables(db_path)
+    enc = current_ai_encoding(db_path, uid)
+    labels = dict(BUCKETS)
+    size_mult = float(enc.get("size_mult") or 1.0)
+    lines = [
+        "<b>AI倉進化回報</b>",
+        "表面仍是模擬買進／賣出。背後只調倉位倍數與哪類海選少買。",
+        "進場只認高低卡表的黃金買點。紅箭頭不是買訊。不會改程式，也不能塞進富邦量化積木。",
+        "",
+        "<b>目前編碼</b>",
+        "進場＝高低卡黃金買點（獲利剛離 0）",
+        "第二份＝大盤偏空才買重點觀察／黃金買點",
+        f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金",
+        f"單筆倍數 {size_mult:.2f}（0.40～1.20，依近況勝率縮放）",
+    ]
+    wbits = []
+    for key, label in BUCKETS:
+        w = float((enc.get("bucket_w") or {}).get(key) or 0)
+        if w <= 0:
+            wbits.append(f"{label} 暫停")
+        elif abs(w - 1.0) >= 0.05:
+            wbits.append(f"{label} ×{w:.2f}")
+    if wbits:
+        lines.append("弱的類別：" + "　".join(wbits[:6]))
+    else:
+        lines.append("各桶權重維持，沒有類別被關掉。")
+    lines.extend(
+        [
+            "",
+            "<b>以後要接到富邦量化積木</b>",
+            "用手把上面條件打進積木（OHLC／均線／近 60 曆日低）。不要把 WayneBot 貼進下單軟體。",
+            "這份編碼只給你對照；真倉進場仍只認高低卡表。",
+        ]
+    )
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute(
+        """
+        SELECT as_of, lesson FROM ai_lessons
+        WHERE user_id=? ORDER BY as_of DESC LIMIT 8
+        """,
+        (uid,),
+    ).fetchall()
+    conn.close()
+    if rows:
+        lines.extend(["", "<b>近況日誌</b>"])
+        for as_of, lesson in rows:
+            day = _fmt_ymd(str(as_of or ""))
+            text = html_escape(str(lesson or "").strip() or "—")
+            lines.append(f"• {html_escape(day)}　{text}")
+    else:
+        lines.extend(["", "還沒有存過進化日誌。今晚 20:00 模擬操盤後會開始寫。"])
+    return "\n".join(lines)
 
 
 def _snapshot(
@@ -713,6 +876,7 @@ def run_ai_desk(
             break
 
     _snapshot(engine, db_path, user_id, as_of, quotes, lesson)
+    persist_ai_lesson(db_path, user_id, as_of, lesson)
     return {
         "sold": sold,
         "bought": bought,

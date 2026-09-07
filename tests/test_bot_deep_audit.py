@@ -68,6 +68,7 @@ def _bot():
         ("x:", "reply_text"),
         ("ai_view", "_send_ai_desk_view"),
         ("ai_run", "_run_ai_now"),
+        ("ai_evolve", "_send_ai_evolve"),
         ("portfolio", "_send_portfolio"),
         ("watch", "_send_watch"),
         ("screen", "_run_manual_screening"),
@@ -88,6 +89,7 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     bot._send_industry = AsyncMock()
     bot._send_ai_desk_view = AsyncMock()
     bot._run_ai_now = AsyncMock()
+    bot._send_ai_evolve = AsyncMock()
     bot._send_portfolio = AsyncMock()
     bot._send_watch = AsyncMock()
     bot._run_manual_screening = AsyncMock()
@@ -116,6 +118,8 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
         bot._send_ai_desk_view.assert_awaited_once()
     elif prefix == "ai_run":
         bot._run_ai_now.assert_awaited_once()
+    elif prefix == "ai_evolve":
+        bot._send_ai_evolve.assert_awaited_once()
     elif prefix == "portfolio":
         bot._send_portfolio.assert_awaited_once()
     elif prefix == "watch":
