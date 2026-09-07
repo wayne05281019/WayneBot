@@ -157,7 +157,7 @@ HELP_TOPICS = {
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。點輸入框右邊 ⌨️ 展開兩排。\n"
         "打完字若只剩英文鍵盤，再點一次 ⌨️。也可打 /menu。\n"
-        "打 /help 或按「說明」看本頁。\n"
+        "打 /help 或按「說明」看本頁。要圖就點下方「圖文」（9 張手機長圖）。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
@@ -258,7 +258,7 @@ HELP_TOPICS = {
         "<b>④ 觀察</b>\n"
         "• 是什麼：自選清單，還沒買也可以先放。\n"
         "• 怎麼加：海選或查股旁的 <b>➕</b>，或打股名查詢後按「觀察」。\n"
-        "• 頁上按鈕：左＝看這檔　<b>籌碼</b>　<b>買入</b>　<b>刪</b>（移出觀察）。\n"
+        "• 頁上按鈕：上排看這檔／籌碼；下排買入／刪（移出觀察）。\n"
         "• 藍字股名：連到奇摩走勢（開網頁，不帶大圖預覽）。\n"
         "\n"
         "<b>⑤ 海選</b>\n"
@@ -292,7 +292,7 @@ HELP_TOPICS = {
         "• 不是什麼：不含你的持股／觀察；也不是分點、也不是論壇消息。\n"
         "\n"
         "<b>④ 說明</b>\n"
-        "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／AI／第一排／第二排／連買／記買入／按錯。\n"
+        "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／圖文／第一排／第二排／連買／記買入／按錯。\n"
         "• 怎麼用：按主選單「說明」，或打 /help。按 <b>✕</b> 收合。\n"
         "• 亂了：先看「按錯」；還是怪就按最右「回報」。\n"
         "\n"
@@ -423,18 +423,16 @@ HELP_TOPICS = {
         "• <b>復盤</b>＝對照昨收怎麼走\n"
         "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第一排最右也有\n"
         "\n"
-        "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。詳見說明頁「AI」。"
+        "<b>自動買進</b>：每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。AI 規則寫在「第一排」那頁。"
     ),
     "watch": (
         "<b>觀察怎麼用</b>\n"
         "自選清單，還沒買也可以加。空的很正常。\n"
         "加入：打股名或海選／當沖旁的 <b>➕</b>。\n"
         "\n"
-        "<b>這頁按鈕（由上到下對應該檔）</b>\n"
-        "• 左＝股名，看這檔\n"
-        "• <b>籌碼</b>＝三大法人買賣超圖\n"
-        "• <b>買入</b>＝記真實持股（同查股的記買入）\n"
-        "• <b>刪</b>＝移出觀察\n"
+        "<b>這頁按鈕（每檔兩排，避免手機擠成一排四顆）</b>\n"
+        "• 上排：左＝股名看這檔　右＝<b>籌碼</b>\n"
+        "• 下排：<b>買入</b>＝記真實持股　<b>刪</b>＝移出觀察\n"
         "藍字股名＝奇摩走勢（只開網頁，不帶預覽大圖）。"
     ),
     "stock": (
@@ -1410,7 +1408,7 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton("總覽", callback_data="?:guide"),
                     InlineKeyboardButton("查股", callback_data="?:stock"),
-                    InlineKeyboardButton("AI", callback_data="?:ai"),
+                    InlineKeyboardButton("圖文", callback_data="?:pics"),
                 ],
                 [
                     InlineKeyboardButton("第一排", callback_data="?:row1"),
@@ -1455,8 +1453,8 @@ class WayneTelegramBot:
             self._help_msgs[actor] = sent_msgs
 
     def _keyboard(self):
-        """不再附直立式「說明／主選單」——兩排鍵盤已有說明，重複會讓人按錯。"""
-        return None
+        """錯誤／提示改釘回兩排主選單。直立式「說明／主選單」已廢。"""
+        return self._reply_menu()
 
     def _hub_keyboard(self, code: str, topic: str = "stock"):
         """手機閱讀：每列最多三顆，常用放第一排。"""
@@ -1537,7 +1535,7 @@ class WayneTelegramBot:
         if tail:
             rows.append(tail)
         if not rows:
-            return self._keyboard()
+            return None
         return InlineKeyboardMarkup(rows)
 
     def _persist_bucket_line_pack(self, bucket_key: str, rows: list) -> None:
@@ -1574,7 +1572,7 @@ class WayneTelegramBot:
                 ]
             )
         rows.append([self._q("stock")])
-        return InlineKeyboardMarkup(rows) if rows else self._keyboard()
+        return InlineKeyboardMarkup(rows) if rows else None
 
     def _hits_list_html(self, hits, lead: str = "") -> str:
         """多檔時訊息裡列出藍字股名，按鈕序號才對得上。"""
@@ -1616,6 +1614,10 @@ class WayneTelegramBot:
                 [
                     InlineKeyboardButton(stock_btn_label(c, n), callback_data=f"k:{c}"),
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+                ]
+            )
+            kb.append(
+                [
                     InlineKeyboardButton("買入", callback_data=f"b:{c}"),
                     InlineKeyboardButton("刪", callback_data=f"rw:{c}"),
                 ]
@@ -1644,7 +1646,7 @@ class WayneTelegramBot:
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
-        lines.append("下面由上到下對應該檔：左＝看這檔　籌碼　記買入　刪。")
+        lines.append("下面每檔兩排：上＝看這檔／籌碼；下＝記買入／刪。")
         return "\n".join(lines), self._watch_list_keyboard(shown)
 
     def _ai_desk_keyboard(self, positions=None):
@@ -2122,7 +2124,7 @@ class WayneTelegramBot:
             "2　直接打四碼看圖，例如 <code>2330</code>（不要先按「決策卡」）\n"
             "3　籌碼／營收／產業在圖下面，不在右側鍵盤\n"
             "\n"
-            "詳情按第二排「說明」，或打 /help。亂了點說明裡的「按錯」。\n"
+            "詳情按第二排「說明」，或打 /help。圖文說明在說明頁下方「圖文」。亂了點「按錯」。\n"
             "盤中刷新上一檔請按首排最左 <b>決策卡</b>。\n"
             "看加權請按第二排 <b>大盤</b>（隔日沖右邊）。\n"
             "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
@@ -2141,6 +2143,61 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         await self._enter_main_menu(update.message, uid)
         await self._reply_help_topic(update.message, "guide")
+
+    async def _send_picture_guide(self, message) -> None:
+        """說明頁「圖文」：9 張手機長圖相簿。後續張不帶 caption 參數。"""
+        from telegram import InputMediaPhoto
+
+        from picture_guide import render_picture_guide
+
+        status = await message.reply_text("正在產出圖文說明（9 張）…")
+        handles = []
+        try:
+            charts = getattr(self, "charts_dir", None)
+            paths = await asyncio.to_thread(
+                render_picture_guide, os.path.join(str(charts or "data/charts"), "picture_guide")
+            )
+            media = []
+            caption = "圖文說明。點縮圖放大。文字版按「總覽」或「按錯」。"
+            for i, path in enumerate((paths or [])[:10]):
+                if not path or not os.path.isfile(path):
+                    continue
+                fh = open(path, "rb")
+                handles.append(fh)
+                if not media:
+                    media.append(InputMediaPhoto(media=fh, caption=caption[:1024]))
+                else:
+                    media.append(InputMediaPhoto(media=fh))
+            if not media:
+                await message.reply_html(
+                    "圖文說明暫時產不出來。請先看文字「總覽」。",
+                    reply_markup=self._help_nav_keyboard("guide"),
+                )
+                return
+            if len(media) == 1:
+                await message.reply_photo(photo=media[0].media, caption=media[0].caption)
+            else:
+                await message.reply_media_group(media=media)
+            await message.reply_html(
+                "看完可點「總覽」或「按錯」。AI倉規則在「第一排」。",
+                reply_markup=self._help_nav_keyboard("pics"),
+            )
+        except Exception:
+            logger.exception("圖文說明送出失敗")
+            await message.reply_html(
+                "圖文說明送出失敗，請稍後再按一次「圖文」，或先看文字總覽。",
+                reply_markup=self._help_nav_keyboard("guide"),
+            )
+        finally:
+            for fh in handles:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+            try:
+                await status.delete()
+            except Exception:
+                pass
 
     @staticmethod
     def _format_elapsed(sec: int) -> str:
@@ -3207,6 +3264,10 @@ class WayneTelegramBot:
         if text in ("說明", "幫助") or text.lower().lstrip("/") == "help":
             self._pending.pop(actor, None)
             await self.help_cmd(update, context)
+            return
+        if text == "圖文":
+            self._pending.pop(actor, None)
+            await self._send_picture_guide(update.message)
             return
         if text == "選股":
             self._pending.pop(actor, None)
@@ -4279,6 +4340,13 @@ class WayneTelegramBot:
             return
         if data.startswith("?:"):
             topic = data[2:] or "guide"
+            if topic in ("pics", "book"):
+                try:
+                    await q.answer("正在送圖文說明")
+                except Exception:
+                    pass
+                await self._send_picture_guide(q.message)
+                return
             if topic == "menu":
                 uid = str(q.from_user.id)
                 self._invalidate_menu_layout(uid)

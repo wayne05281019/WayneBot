@@ -683,13 +683,24 @@ def test_parse_taifex_history_csv_picks_front_month():
         "2026/08/03,TX,202608  ,43186,43836,42989,43230,-497,-1.14%,69550,43219,109589,43231,43247,49470,39442,,一般,,\n"
         "2026/08/03,TX,202609  ,43368,43966,43260,43388,-500,-1.14%,485,43363,6108,43373,43391,49651,24962,,一般,,\n"
         "2026/08/03,TX,202608  ,43200,43400,43000,43100,-130,-0.30%,38000,43100,0,43110,43120,49470,39442,,盤後,,\n"
-    ).encode("big5")
-    out = _parse_taifex_history_csv(sample)
+    )
+    out = _parse_taifex_history_csv(sample.encode("big5"))
     assert "20260803" in out
     assert out["20260803"]["regular"]["close"] == 43230.0
     assert out["20260803"]["regular"]["volume"] == 69550
     assert out["20260803"]["night"]["close"] == 43100.0
     assert out["20260803"]["night"]["session"] == "night"
+    utf = _parse_taifex_history_csv(sample.encode("utf-8"))
+    assert utf["20260803"]["regular"]["close"] == 43230.0
+
+
+def test_decode_official_bytes_utf8_and_big5():
+    from taiwan_market import _decode_official_bytes
+
+    s = "交易日期,契約\n"
+    assert "交易日期" in _decode_official_bytes(s.encode("utf-8"))
+    assert "交易日期" in _decode_official_bytes(s.encode("utf-8-sig"))
+    assert "交易日期" in _decode_official_bytes(s.encode("big5"))
 
 
 @patch("taiwan_market._fetch_taifex_tx_sessions")

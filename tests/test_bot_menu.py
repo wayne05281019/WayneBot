@@ -84,6 +84,8 @@ def test_help_nav_keyboard_has_topic_buttons():
     labels = [btn.text for row in kb.inline_keyboard for btn in row]
     assert "總覽" in labels
     assert "查股" in labels
+    assert "圖文" in labels
+    assert "AI" not in labels
     assert "第一排" in labels
     assert "第二排" in labels
     assert "連買" in labels
@@ -97,6 +99,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "?:guide" in cbs
     assert "?:stock" in cbs
+    assert "?:pics" in cbs
     assert "?:streak" in cbs
     assert "?:oops" in cbs
     assert "?:screen" not in cbs
@@ -309,11 +312,14 @@ def test_force_reply_menu_invalidates_layout_cache():
     asyncio.run(run())
 
 
-def test_inline_fallback_keyboard_is_gone():
-    from bot_servers import WayneTelegramBot
+def test_inline_fallback_keyboard_is_two_row_menu():
+    from bot_servers import MENU_BTN_REPORT, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    assert bot._keyboard() is None
+    kb = bot._keyboard()
+    assert kb is not None
+    row2 = [b.text for b in kb.keyboard[1]]
+    assert row2[-1] == MENU_BTN_REPORT
 
 
 def test_streak_kind_keyboard_magic_three_choices():
