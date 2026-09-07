@@ -35,7 +35,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "記買入" in blob
     assert "外資+投信" in blob
     assert "四格" in blob
-    assert CACHE_VER == "v4"
+    assert "第 2 張" in blob
+    assert CACHE_VER == "v5"
     assert PAGE_WIDTH >= 1440
     for p in paths:
         assert os.path.getsize(p) > 20_000
@@ -74,7 +75,7 @@ def test_page_render_roundtrip(tmp_path):
         assert im.size[0] == PAGE_WIDTH
 
 
-def test_send_picture_guide_media_group_no_caption_none(tmp_path):
+def test_send_picture_guide_one_page_with_next_button(tmp_path):
     import asyncio
     import inspect
     from unittest.mock import AsyncMock, MagicMock, patch
@@ -83,6 +84,7 @@ def test_send_picture_guide_media_group_no_caption_none(tmp_path):
 
     src = inspect.getsource(WayneTelegramBot._send_picture_guide)
     assert "caption=None" not in src
+    assert "reply_media_group" not in src
     dest = str(tmp_path / "g")
     paths = render_picture_guide(dest, force=True)
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -92,15 +94,62 @@ def test_send_picture_guide_media_group_no_caption_none(tmp_path):
     status.delete = AsyncMock()
     msg.reply_text = AsyncMock(return_value=status)
     msg.reply_html = AsyncMock()
-    msg.reply_media_group = AsyncMock(return_value=[MagicMock()])
+    msg.reply_media_group = AsyncMock()
     msg.reply_photo = AsyncMock()
+    msg.edit_media = AsyncMock()
 
     async def _run():
         with patch("picture_guide.render_picture_guide", return_value=paths):
             await bot._send_picture_guide(msg)
 
     asyncio.run(_run())
-    msg.reply_media_group.assert_awaited()
-    media = msg.reply_media_group.await_args.kwargs.get("media") or msg.reply_media_group.await_args.args[0]
-    assert len(media) == 9
-    assert media[0].caption
+    msg.reply_photo.assert_awaited()
+    msg.reply_media_group.assert_not_called()
+    kwargs = msg.reply_photo.await_args.kwargs
+    assert "圖文 1／" in str(kwargs.get("caption") or "")
+    labels = [b.text for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    assert "第 2 張 →" in labels
+    assert not any(t.startswith("←") for t in labels)
+
+
+def test_picture_guide_keyboard_middle_and_last():
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    mid = bot._picture_guide_keyboard(4, 9)
+    labels = [b.text for row in mid.inline_keyboard for b in row]
+    assert "← 第 4 張" in labels
+    assert "第 6 張 →" in labels
+    last = bot._picture_guide_keyboard(8, 9)
+    labels = [b.text for row in last.inline_keyboard for b in row]
+    assert "← 第 8 張" in labels
+    assert not any("→" in t for t in labels if t.startswith("第"))
+
+
+def test_picture_guide_flip_edits_same_message(tmp_path):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+
+    dest = str(tmp_path / "g")
+    paths = render_picture_guide(dest, force=True)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.charts_dir = dest
+    msg = MagicMock()
+    msg.edit_media = AsyncMock()
+    msg.reply_photo = AsyncMock()
+    msg.delete = AsyncMock()
+
+    async def _run():
+        with patch("picture_guide.render_picture_guide", return_value=paths):
+            await bot._show_picture_guide_page(msg, 1, edit=True)
+
+    asyncio.run(_run())
+    msg.edit_media.assert_awaited()
+    msg.reply_photo.assert_not_called()
+    media = msg.edit_media.await_args.kwargs["media"]
+    assert "圖文 2／" in str(media.caption or "")
+    labels = [b.text for row in msg.edit_media.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
+    assert "← 第 1 張" in labels
+    assert "第 3 張 →" in labels

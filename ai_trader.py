@@ -450,25 +450,31 @@ def format_ai_desk_html(
         *_ai_phone_lines("對照你手記持股，不是真下單。"),
         *_ai_phone_lines("本金最多分 3 等份，單檔不超過一槽；空槽不把剩錢加碼下一檔。"),
         *_ai_phone_lines("停損 −7%、停利 ＋8%。優先買黃金買點欄。"),
+        "",
+        "<b>帳戶</b>",
         kv_html_compact("總資產", html_money(s["total_assets"], signed=False, compact=True)),
         kv_html_compact("現金", html_money(s["cash"], signed=False, compact=True)),
         kv_html_compact("市值", html_money(s["stock_market_value"], signed=False, compact=True)),
         kv_html_compact("未實現", html_money(unreal, compact=True)),
         kv_html_compact("已實現", html_money(realized, compact=True)),
         kv_html_compact("總損益", html_num_paren(_plain_num(s["total_pnl"], signed=True), s["total_pnl_pct"], compact=True)),
+        "",
+        "<b>槽位</b>",
         kv_compact("已用槽", f"{used}/{MAX_SLOTS}"),
+        ("●" * used) + ("○" * max(0, MAX_SLOTS - used)),
         kv_compact("每槽上限", f"{slot:,.0f}"),
         kv_compact("本金", f"{initial:,.0f}"),
         kv_compact("倍數", f"{size_mult:.2f}"),
     ]
     if not s["positions"]:
+        lines.extend(["", "<b>持倉</b>"])
         lines.extend(
             _ai_phone_lines(
                 f"尚無持倉。{MAX_SLOTS} 個空槽、每槽 {slot:,.0f}。有名單才買；靠近20日高／美股逆風／當沖名單不隔夜。"
             )
         )
     else:
-        lines.append("<b>持倉</b>")
+        lines.extend(["", "<b>持倉</b>"])
         sell_notes: Dict[str, str] = {}
         try:
             from sell_discipline import sell_notes_for_stocks
@@ -498,6 +504,7 @@ def format_ai_desk_html(
                 title = html_stock_anchor(sid, name, engine.db_path)
             except Exception:
                 title = f"<code>{html_escape(sid)}</code> {html_escape(name)}"
+            lines.append(f"<b>第 {i + 1} 槽</b>")
             lines.append(title)
             sh = int(p["shares"] or 0)
             qty_label = "張數" if sh >= 1000 and sh % 1000 == 0 else "股數"
@@ -531,7 +538,7 @@ def format_ai_desk_html(
 
     fills = _recent_fills(engine, user_id, 8)
     if fills:
-        lines.append("<b>成交紀錄</b>")
+        lines.extend(["", "<b>成交紀錄</b>"])
         for t in fills:
             act = "買" if str(t.get("action") or "").upper() == "BUY" else "賣"
             lot = _fmt_lots_html(int(t.get("shares") or 0))
@@ -560,7 +567,7 @@ def format_ai_desk_html(
         rows = []
     conn.close()
     if rows:
-        lines.append("<b>淨值</b>")
+        lines.extend(["", "<b>淨值</b>"])
         for date, nav, pnl in rows:
             lines.append(
                 f"• {_fmt_ymd(date)} {html_money(nav, signed=False)} {html_pct(pnl).strip()}"

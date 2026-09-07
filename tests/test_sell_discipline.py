@@ -522,7 +522,7 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     bought = eng.buy(user, "20260904", "3703", "欣陸", 19.95, 8000, reason="黃金買點：獲利離零")
     assert bought.get("success") is True
 
-    def fake_notes(ids, db_path, *, full=False):
+    def fake_notes(ids, db_path, *, full=False, as_of=None):
         assert "3703" in [str(x) for x in ids]
         assert full is True
         return {"3703": f"{NOTE_HI_TEMP}。不是叫你買。"}
@@ -532,6 +532,9 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     assert "紀律：" in html
     assert "先出一點" in html
     assert "不是叫你買" in html
+    assert "<b>第 1 槽</b>" in html
+    assert "<b>槽位</b>" in html
+    assert "○" in html
 
 
 def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):

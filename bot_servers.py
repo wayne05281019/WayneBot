@@ -148,6 +148,7 @@ HELP_TOPICS = {
     "guide": (
         "<b>WayneBot 使用說明</b>\n"
         "點訊息下方分類鈕看細節，按 <b>✕</b> 收合。\n"
+        "「圖文」一共 9 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
         "\n"
         "<b>第一次用，先做這三步</b>\n"
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
@@ -157,7 +158,7 @@ HELP_TOPICS = {
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
         "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
-        "打 /help 或按「說明」看本頁。要圖就點下方「圖文」（9 張手機長圖）。\n"
+        "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
@@ -166,17 +167,20 @@ HELP_TOPICS = {
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
+        "\n"
         "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 個日曆天收盤低、獲利還在 0 附近。是叫你注意、觀察，不是已經起漲，也不是立刻買。\n"
         "盤中請打開該檔決策卡對獲利格。名單是昨收掃的，不是盤中即時。\n"
         "\n"
         "<b>查某一檔</b>\n"
         "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。點縮圖可放大。\n"
+        "\n"
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
         "• <b>營收</b>　月營收、季報毛利\n"
         "• <b>產業</b>　同業中位數＋這族法人，講人話\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>\n"
+        "\n"
         "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。細節看「查股」。\n"
         "名稱撞名：藍字股名＝奇摩；左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
         "\n"
@@ -194,7 +198,10 @@ HELP_TOPICS = {
         "• <b>AI倉</b>＝假錢對照組（也可打 AI模擬倉）；頁上 <b>AI操盤</b> 可立刻跑一輪\n"
         "\n"
         "<b>每日時間（台灣）</b>\n"
-        "06:30 早上海選（對美股）｜12:45 尾盤可切版｜16:30 官方收盤寫庫｜20:00 晚間海選＋AI 模擬買（不推播）\n"
+        "06:30 早上海選（對美股）\n"
+        "12:45 尾盤可切版\n"
+        "16:30 官方收盤寫庫\n"
+        "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "盤中查股用證交所即時價（不寫庫）。13:30～16:30 融合前若即時價空白，會用奇摩參考價；16:30 後以庫內官方收盤為準。\n"
         "\n"
         "<b>資料正確性</b>\n"
@@ -206,7 +213,7 @@ HELP_TOPICS = {
         "海選／大盤／資金／連買名單是全市場同一份；家人正在跑海選，你再按只會共用那一次掃描。\n"
         "\n"
         "<b>完全新手小詞典</b>\n"
-        "• <b>張</b>：台股一張＝1000 股；記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
+        "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
         "• <b>觀察</b>：自選清單，還沒真的買\n"
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
@@ -217,6 +224,7 @@ HELP_TOPICS = {
         "• <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖給偉權\n"
         "\n"
         "<b>按錯了怎麼辦</b>\n"
+        "亂按沒關係。下面幾條最常見；更完整請點下方「按錯」。\n"
         "• 一打開先按了「決策卡」：那顆是刷新上一檔。還沒查過就直接打四碼。\n"
         "• 「當沖」沒名單：週末／收盤後本來就空；改看「海選」或「隔日沖」。平日 09:00–13:30 才有當沖。\n"
         "• 「海選」等很久：那是掃全市場，不是查某一檔；不要連按。\n"
@@ -228,7 +236,6 @@ HELP_TOPICS = {
         "• 找不到股票：再打一次四碼；撞名點左邊股名。\n"
         "• 主選單不見：點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
         "• 畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
-        "更完整請點下方「按錯」。\n"
         "\n"
         "<b>提醒</b>\n"
         "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。"
@@ -449,10 +456,12 @@ HELP_TOPICS = {
         "\n"
         "<b>介紹圖粉紅「紀律」（先別追／先出一點）</b>\n"
         "先講現在怎樣，再講怎麼做。不是買訊。\n"
+        "\n"
         "• 現在高點跟熱度都退了 → 先別追、也先別加碼；有持股就先出一點\n"
         "• 現在價到高了、熱度沒跟上 → 先出一點、不要追\n"
         "• 現在很熱但價沒過前高 → 先出一點、不要追高\n"
         "• 現在高點跟熱度都沒了 → 這波先當結束；有持股就先出一點\n"
+        "\n"
         "已經連好幾天貼在高檔：先不要追。有持股考慮先出。剛貼到高檔：先看、先別追。\n"
         "\n"
         "<b>介紹圖／決策卡先看這些</b>\n"
@@ -2144,44 +2153,81 @@ class WayneTelegramBot:
         await self._enter_main_menu(update.message, uid)
         await self._reply_help_topic(update.message, "guide")
 
-    async def _send_picture_guide(self, message) -> None:
-        """說明頁「圖文」：9 張手機長圖相簿。後續張不帶 caption 參數。"""
+    def _picture_guide_caption(self, page: int, n: int, title: str) -> str:
+        p = int(page) + 1
+        n = max(1, int(n))
+        lines = [f"圖文 {p}／{n}", str(title or "").strip()]
+        if p < n:
+            lines.append(f"一共 {n} 張，現在這張。按「第 {p + 1} 張」換頁，這一張會換成下一張。")
+        elif n > 1:
+            lines.append("這是最後一張。按上一張可回去。文字版按「總覽」。")
+        else:
+            lines.append("文字版按「總覽」或「按錯」。")
+        return "\n".join(x for x in lines if x)[:1024]
+
+    def _picture_guide_keyboard(self, page: int, n: int):
+        page = int(page)
+        n = max(1, int(n))
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(f"← 第 {page} 張", callback_data=f"pg:{page - 1}"))
+        if page + 1 < n:
+            nav.append(InlineKeyboardButton(f"第 {page + 2} 張 →", callback_data=f"pg:{page + 1}"))
+        rows = [nav] if nav else []
+        help_kb = self._help_nav_keyboard("pics")
+        rows.extend(list(help_kb.inline_keyboard))
+        return InlineKeyboardMarkup(rows)
+
+    async def _show_picture_guide_page(self, message, page: int, *, edit: bool) -> None:
+        """一次只出一張。換頁用 edit_media，舊圖原地換成新圖。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import render_picture_guide
+        from picture_guide import PAGES, render_picture_guide
 
-        status = await message.reply_text("正在產出圖文說明（9 張）…")
-        handles = []
-        try:
-            charts = getattr(self, "charts_dir", None)
-            paths = await asyncio.to_thread(
-                render_picture_guide, os.path.join(str(charts or "data/charts"), "picture_guide")
-            )
-            media = []
-            caption = "圖文說明。點縮圖放大。文字版按「總覽」或「按錯」。"
-            for i, path in enumerate((paths or [])[:10]):
-                if not path or not os.path.isfile(path):
-                    continue
-                fh = open(path, "rb")
-                handles.append(fh)
-                if not media:
-                    media.append(InputMediaPhoto(media=fh, caption=caption[:1024]))
-                else:
-                    media.append(InputMediaPhoto(media=fh))
-            if not media:
-                await message.reply_html(
-                    "圖文說明暫時產不出來。請先看文字「總覽」。",
-                    reply_markup=self._help_nav_keyboard("guide"),
-                )
-                return
-            if len(media) == 1:
-                await message.reply_photo(photo=media[0].media, caption=media[0].caption)
-            else:
-                await message.reply_media_group(media=media)
+        charts = getattr(self, "charts_dir", None)
+        paths = await asyncio.to_thread(
+            render_picture_guide, os.path.join(str(charts or "data/charts"), "picture_guide")
+        )
+        n = len(paths or [])
+        if n <= 0:
             await message.reply_html(
-                "看完可點「總覽」或「按錯」。AI倉規則在「第一排」。",
-                reply_markup=self._help_nav_keyboard("pics"),
+                "圖文說明暫時產不出來。請先看文字「總覽」。",
+                reply_markup=self._help_nav_keyboard("guide"),
             )
+            return
+        page = max(0, min(int(page), n - 1))
+        path = paths[page]
+        if not path or not os.path.isfile(path):
+            await message.reply_html(
+                "這一張圖找不到。請先看文字「總覽」。",
+                reply_markup=self._help_nav_keyboard("guide"),
+            )
+            return
+        title = PAGES[page][1] if page < len(PAGES) else ""
+        caption = self._picture_guide_caption(page, n, title)
+        kb = self._picture_guide_keyboard(page, n)
+        with open(path, "rb") as fh:
+            if edit:
+                try:
+                    await message.edit_media(
+                        media=InputMediaPhoto(media=fh, caption=caption),
+                        reply_markup=kb,
+                    )
+                    return
+                except Exception:
+                    logger.debug("圖文換頁原地更新失敗，改發新訊息", exc_info=True)
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    fh.seek(0)
+            await message.reply_photo(photo=fh, caption=caption, reply_markup=kb)
+
+    async def _send_picture_guide(self, message) -> None:
+        """說明頁「圖文」：一次一張，鍵盤換頁。"""
+        status = await message.reply_text("正在產出圖文說明（一次一張，共 9 張）…")
+        try:
+            await self._show_picture_guide_page(message, 0, edit=False)
         except Exception:
             logger.exception("圖文說明送出失敗")
             await message.reply_html(
@@ -2189,11 +2235,6 @@ class WayneTelegramBot:
                 reply_markup=self._help_nav_keyboard("guide"),
             )
         finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
             try:
                 await status.delete()
             except Exception:
@@ -4325,6 +4366,18 @@ class WayneTelegramBot:
         if data.startswith("fb:"):
             await self._handle_buy_streak_callback(q, uid, data)
             return
+        if data.startswith("pg:"):
+            try:
+                page = int(str(data[3:]).strip() or "0")
+            except ValueError:
+                await q.answer("頁碼不對")
+                return
+            if page < 0 or page > 20:
+                await q.answer("沒有這一張")
+                return
+            await q.answer(f"換成第 {page + 1} 張")
+            await self._show_picture_guide_page(q.message, page, edit=True)
+            return
         await q.answer()
         if data == "fw:s":
             await self._reply_line_share(q.message)
@@ -4342,10 +4395,21 @@ class WayneTelegramBot:
             topic = data[2:] or "guide"
             if topic in ("pics", "book"):
                 try:
-                    await q.answer("正在送圖文說明")
+                    await q.answer("圖文 1／9")
                 except Exception:
                     pass
-                await self._send_picture_guide(q.message)
+                is_photo = bool(getattr(q.message, "photo", None))
+                if is_photo:
+                    await self._show_picture_guide_page(q.message, 0, edit=True)
+                else:
+                    await self._send_picture_guide(q.message)
+                return
+            if bool(getattr(q.message, "photo", None)):
+                try:
+                    await q.message.delete()
+                except Exception:
+                    pass
+                await self._reply_help_topic(q.message, topic)
                 return
             if topic == "menu":
                 uid = str(q.from_user.id)

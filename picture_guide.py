@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""哥哥圖文說明：手機長圖 9 頁，說明頁「圖文」一次送相簿。"""
+"""哥哥圖文說明：手機長圖 9 頁，說明頁「圖文」一次一張、按第 N 張換頁。"""
 from __future__ import annotations
 
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v4"
-# 話筒相簿：加寬加大字給老花；圖可以往下。
+CACHE_VER = "v5"
+# 話筒一次一張：加寬加大字給老花；圖可以往下。
 PAGE_WIDTH = 1440
 MARGIN = 72
 TITLE_SIZE = 76
@@ -55,7 +55,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "3  三張圖出來後，籌碼／營收／產業\n"
         "   在圖下面那一排，不在右邊四格鍵盤\n"
         "\n"
-        "這本說明給手機看。點縮圖可放大。\n"
+        "這本說明給手機看。一次只看一張。\n"
+        "按「第 2 張」換頁，這一張會換成下一張。\n"
         "挑股只認高低卡表的黃金買點。\n"
         "圖上紅箭頭不是買訊。",
     ),
