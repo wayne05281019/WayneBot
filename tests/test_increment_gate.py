@@ -92,3 +92,32 @@ def test_verify_increment_import_passes_when_sides_full():
         assert report["ok"] is True, report["reasons"]
     finally:
         os.remove(path)
+
+
+def test_fuse_done_message_is_not_a_screen_or_buy_signal():
+    from main_runner import MainRunner
+
+    msg = MainRunner._fuse_done_message("20260907", {"tw": 980, "two": 720})
+    assert "2026/09/07" in msg
+    assert "上市 980" in msg
+    assert "上櫃 720" in msg
+    assert "官方收盤已寫進庫" in msg
+    assert "不是海選" in msg
+    assert "不是買訊" in msg
+    assert "黃金買點" not in msg
+    assert "買進" not in msg
+
+
+def test_increment_job_sends_done_only_after_gate_passes():
+    import inspect
+
+    from main_runner import MainRunner
+
+    src = inspect.getsource(MainRunner.run_increment_job)
+    fail_at = src.index("if not self._increment_ok")
+    done_at = src.index("_fuse_done_message")
+    assert fail_at < done_at
+    before_done = src[:done_at]
+    assert "return False" in before_done
+    assert "盤後繼續補齊" in before_done
+    assert "_fuse_done_message" not in src.split("return False")[0]

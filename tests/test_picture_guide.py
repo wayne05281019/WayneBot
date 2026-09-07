@@ -52,7 +52,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v10"
+    assert CACHE_VER == "v11"
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920
     assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
@@ -70,6 +70,35 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
             assert im.size == (PAGE_WIDTH, PAGE_HEIGHT)
             sizes.add(im.size)
     assert len(sizes) == 1
+
+
+def test_panel_marks_match_page_copy():
+    """每頁示意的按鈕／入口必須出現在該頁內文，避免再文不對題。"""
+    from picture_guide_draw import PANEL_MARKS
+
+    by_slug = {slug: body for slug, _title, body in PAGES}
+    for slug, marks in PANEL_MARKS.items():
+        body = by_slug[slug]
+        blob = by_slug[slug]
+        for mark in marks:
+            assert mark in blob, f"{slug} copy missing {mark!r}"
+    assert "開 LINE・傳這檔" in by_slug["screen"]
+    assert "一鍵傳 LINE" in by_slug["screen"]
+    assert "外資+投信" in by_slug["streak"]
+    assert "記買入" in by_slug["hub"]
+    assert "連買區" in by_slug["menu"]
+
+
+def test_page_panels_are_not_the_same_keyboard_crop(tmp_path):
+    from hashlib import sha1
+
+    from picture_guide_draw import draw_page_panel
+
+    hashes = []
+    for slug, _t, _b in PAGES:
+        im = draw_page_panel(slug, 640, 480)
+        hashes.append(sha1(im.tobytes()).hexdigest())
+    assert len(set(hashes)) == 9
 
 
 def test_shot_builder_swaps_help_and_streak():

@@ -42,7 +42,8 @@ class LookupImageTests(unittest.TestCase):
         }
         out = _glance_photo_caption("網頁走勢", card)
         self.assertIn("網頁走勢", out)
-        self.assertIn("紀律", out)
+        self.assertIn("Ai建議", out)
+        self.assertNotIn("紀律　", out)
         self.assertIn("先出一點", out)
         self.assertIn("熱度沒跟上", out)
         self.assertNotIn("買訊", out)
@@ -54,26 +55,36 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_glance_photo_caption("", None), "當日K＋籌碼價量")
 
     def test_card_caption_appends_sell_note(self):
-        from bot_servers import _photo_sell_caption
+        from bot_servers import _decision_card_photo_caption, _photo_sell_caption
 
         card = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
             "sell_action": "直接減碼",
             "sell_why": "不同步（最高價但非最高溫）",
         }
-        out = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
-        self.assertIn("高低決策卡", out)
-        self.assertIn("紀律", out)
+        out = _decision_card_photo_caption(card, "2330")
+        self.assertTrue(out.startswith("台積電"))
+        self.assertNotIn("高低決策卡", out)
+        self.assertIn("Ai建議", out)
+        self.assertNotIn("紀律　", out)
         self.assertIn("先出一點、不要追", out)
         self.assertNotIn("買訊", out)
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
+
+    def test_stock_caption_name_strips_code_prefix(self):
+        from bot_servers import _stock_caption_name
+
+        self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "台積電"}, "2330"), "台積電")
+        self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330 台積電"}, "2330"), "台積電")
+        self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330"}, "2330"), "2330")
 
     def test_send_card_uses_lookup_album(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_send_lookup_album", src)
         self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
-        self.assertIn("_photo_sell_caption", src)
-        self.assertIn("card_cap", src)
+        self.assertIn("_decision_card_photo_caption", src)
 
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)

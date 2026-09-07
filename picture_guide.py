@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v10"
+CACHE_VER = "v11"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -80,7 +80,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "平日自動（台灣）\n"
         "06:30 早報　12:45 尾盤可切\n"
-        "16:30 官方收盤寫庫　20:00 AI倉模擬買賣，不推播",
+        "16:30 官方收盤寫庫（齊了會發一則，不是海選）　20:00 AI倉模擬買賣，不推播",
     ),
     (
         "charts",
@@ -449,10 +449,11 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
             break
     assert title_font is not None and body_font is not None
     remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
-    shot = _page_shot(slug)
-    card = None
-    if shot is not None:
-        card = _shot_card(shot, max_w, remain, keep="top" if slug == "discipline" else "center")
+    from picture_guide_draw import draw_page_panel
+
+    panel = draw_page_panel(slug, max_w, remain)
+    card = Image.new("RGB", (max_w, remain), _BG)
+    card.paste(panel, (0, 0))
     img = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), _BG)
     draw = ImageDraw.Draw(img)
     draw.rectangle((0, 0, PAGE_WIDTH, bar_h), fill=_ACCENT)

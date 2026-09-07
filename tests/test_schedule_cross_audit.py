@@ -57,7 +57,8 @@ def test_main_scheduler_slots_match_help_clocks():
     for clock in ("06:30", "12:45", "16:30", "20:00"):
         assert clock in guide
         assert clock in blob
-    assert "不寄" in guide or "不推播" in HELP_TOPICS["ai"]
+    assert "齊了發一則" in guide
+    assert "不是海選" in _read("main_runner.py")
 
 
 def test_evening_ai_is_silent_and_uses_official_close():
