@@ -1,0 +1,463 @@
+"""大盤頁頂部時段跑馬燈。Telegram 氣泡不能捲字，改送循環 GIF。
+
+沒接到的市場不寫。加權即時用證交所 MIS；台指期用期交所／庫內；
+日經／韓國／滬指與美股指數／盤前期貨用 Yahoo 公開報價（與隔夜美股同一路）。
+"""
+from __future__ import annotations
+
+import logging
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, time as dt_time
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote as url_quote
+from zoneinfo import ZoneInfo
+
+import requests
+
+logger = logging.getLogger("WayneBot.MarketTicker")
+
+TW = ZoneInfo("Asia/Taipei")
+NY = ZoneInfo("America/New_York")
+
+# 名稱, Yahoo 代號（沒有官方即時列才走這條）
+ASIA_INDEX = (
+    ("日經", "^N225"),
+    ("韓國", "^KS11"),
+    ("滬指", "000001.SS"),
+)
+US_CASH = (
+    ("道瓊", "^DJI"),
+    ("標普", "^GSPC"),
+    ("那斯達克", "^IXIC"),
+    ("費半", "^SOX"),
+)
+US_PRE_FUT = (
+    ("標普期", "ES=F"),
+    ("那斯達克期", "NQ=F"),
+    ("道瓊期", "YM=F"),
+)
+
+SLOT_TITLE = {
+    "tw_open": "台股開盤",
+    "asia_pm": "亞股午後",
+    "us_pre": "美股盤前",
+    "us_night": "美股時段",
+    "weekend": "休市對照",
+}
+
+_UP = (232, 72, 72)
+_DOWN = (46, 168, 96)
+_INK = (236, 242, 248)
+_MUTED = (168, 186, 204)
+_BG = (18, 26, 38)
+_LABEL_BG = (28, 52, 78)
+_LABEL_FG = (140, 210, 255)
+_RULE = (70, 96, 122)
+
+_SESSION = requests.Session()
+_SESSION.headers.update(
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+    }
+)
+
+
+def ticker_slot(now: Optional[datetime] = None) -> str:
+    """依台北時段＋美股盤別決定跑馬燈。週六凌晨若美股現金還在，仍走美股時段。"""
+    from config import taipei_now
+    from trading_calendar import is_tw_equity_session, is_tw_market_holiday
+
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TW)
+    else:
+        dt = dt.astimezone(TW)
+    if is_tw_equity_session(dt):
+        return "tw_open"
+    t = dt.time()
+    tw_off = dt.weekday() >= 5 or is_tw_market_holiday(dt.strftime("%Y%m%d"))
+    if not tw_off:
+        if dt_time(13, 30) < t < dt_time(16, 0):
+            return "asia_pm"
+        if dt_time(16, 0) <= t < dt_time(21, 30):
+            return "us_pre"
+    try:
+        from us_overnight import us_tape_phase
+
+        if us_tape_phase(dt) in ("regular", "post"):
+            return "us_night"
+    except Exception:
+        pass
+    if not tw_off and (t >= dt_time(21, 30) or t < dt_time(9, 0)):
+        return "us_night"
+    return "weekend"
+
+
+def _fmt_px(px: float) -> str:
+    if abs(px) >= 1000:
+        return f"{px:,.0f}"
+    if abs(px) >= 100:
+        return f"{px:,.1f}"
+    return f"{px:,.2f}"
+
+
+def _fmt_pct(pct: Optional[float]) -> str:
+    if pct is None:
+        return ""
+    return f"{pct:+.2f}%"
+
+
+def _seg(name: str, px=None, pct=None, extra: str = "") -> Optional[Dict[str, Any]]:
+    if extra:
+        side_pct = 1.0 if extra == "漲" else (-1.0 if extra == "跌" else None)
+        return {"name": name, "text": f"{name} {extra}", "pct": side_pct}
+    if px is None:
+        return None
+    body = f"{name} {_fmt_px(float(px))}"
+    p = None if pct is None else float(pct)
+    if p is not None:
+        body += f" {_fmt_pct(p)}"
+    return {"name": name, "text": body, "pct": p, "px": float(px)}
+
+
+def _yahoo_quote(sym: str, timeout: float = 3.5) -> Optional[Dict[str, Any]]:
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/"
+        f"{url_quote(sym, safe='')}?interval=1d&range=5d"
+    )
+    try:
+        resp = _SESSION.get(url, timeout=timeout)
+        resp.raise_for_status()
+        result = (resp.json().get("chart") or {}).get("result") or []
+        if not result:
+            return None
+        meta = result[0].get("meta") or {}
+        px = meta.get("regularMarketPrice")
+        pct = meta.get("regularMarketChangePercent")
+        if px is None:
+            return None
+        px = float(px)
+        if px <= 0:
+            return None
+        pct_f = float(pct) if pct is not None else None
+        return {"px": px, "pct": pct_f, "symbol": meta.get("symbol") or sym}
+    except Exception:
+        logger.debug("跑馬燈 Yahoo 沒接到 %s", sym, exc_info=True)
+        return None
+
+
+def _yahoo_many(pairs: Tuple[Tuple[str, str], ...], timeout: float = 3.5) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if not pairs:
+        return out
+    with ThreadPoolExecutor(max_workers=min(6, len(pairs))) as ex:
+        futs = {ex.submit(_yahoo_quote, sym, timeout): name for name, sym in pairs}
+        for fut in as_completed(futs):
+            name = futs[fut]
+            try:
+                q = fut.result()
+            except Exception:
+                q = None
+            if not q:
+                continue
+            seg = _seg(name, q.get("px"), q.get("pct"))
+            if seg:
+                out.append(seg)
+    order = {name: i for i, (name, _s) in enumerate(pairs)}
+    out.sort(key=lambda x: order.get(x["name"], 99))
+    return out
+
+
+def _tw_index_seg(live: Optional[Dict[str, Any]], snap: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    live = live or {}
+    snap = snap or {}
+    px = float(live.get("close") or 0) or float(snap.get("close") or 0)
+    if px <= 0:
+        return None
+    pct = live.get("pct_change")
+    if pct is None:
+        pct = snap.get("chg1_pct")
+    return _seg("加權", px, pct)
+
+
+def _tx_seg(snap: Optional[Dict[str, Any]], *, night: bool = False) -> Optional[Dict[str, Any]]:
+    snap = snap or {}
+    fut = (snap.get("futures_night") if night else None) or snap.get("futures") or {}
+    if night:
+        from taiwan_market import resolve_futures_night
+
+        db = snap.get("_db_path")
+        night_row = snap.get("futures_night")
+        if not night_row and db:
+            try:
+                night_row = resolve_futures_night(db, snap.get("as_of"))
+            except Exception:
+                night_row = None
+        fut = night_row or fut
+    px = float((fut or {}).get("close") or 0)
+    if px <= 0:
+        return None
+    pct = fut.get("pct_change")
+    label = "台指期夜盤" if night else "台指期"
+    return _seg(label, px, pct)
+
+
+def _us_from_snap(us: Dict[str, Any], keys) -> List[Dict[str, Any]]:
+    out = []
+    mapping = (
+        ("道瓊", "dji_px", "dji_pct"),
+        ("標普", "spx_px", "spx_pct"),
+        ("那斯達克", "ixic_px", "ixic_pct"),
+        ("費半", "sox_px", "sox_pct"),
+        ("標普期", "es_f_px", "es_f_pct"),
+        ("那斯達克期", "nq_f_px", "nq_f_pct"),
+        ("道瓊期", "ym_f_px", "ym_f_pct"),
+    )
+    want = set(keys)
+    for name, px_k, pct_k in mapping:
+        if name not in want:
+            continue
+        px = us.get(px_k)
+        pct = us.get(pct_k)
+        if px is None and pct is None:
+            continue
+        if px is None:
+            # 只有漲跌％也寫，不編造價格
+            out.append({"name": name, "text": f"{name} {_fmt_pct(pct)}", "pct": pct})
+        else:
+            seg = _seg(name, px, pct)
+            if seg:
+                out.append(seg)
+    return out
+
+
+def _load_us(db_path: str) -> Dict[str, Any]:
+    try:
+        from us_overnight import load_us_overnight
+        from taiwan_market import resolve_market_as_of
+
+        as_of = resolve_market_as_of(db_path)
+        us = load_us_overnight(db_path, as_of) if as_of else {}
+        if us.get("ok") or us.get("vix") is not None or us.get("dji_pct") is not None:
+            return us
+    except Exception:
+        logger.debug("跑馬燈讀美股快取失敗", exc_info=True)
+    return {}
+
+
+def collect_ticker(
+    db_path: str = None,
+    *,
+    live: Optional[Dict[str, Any]] = None,
+    snap: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+    yahoo: bool = True,
+) -> Dict[str, Any]:
+    """組時段項目。yahoo=False 時只用不需外網的庫內／MIS／期貨。"""
+    slot = ticker_slot(now)
+    title = SLOT_TITLE[slot]
+    snap = dict(snap or {})
+    if db_path:
+        snap["_db_path"] = db_path
+    items: List[Dict[str, Any]] = []
+
+    if slot in ("tw_open", "asia_pm", "weekend"):
+        tw = _tw_index_seg(live, snap)
+        if tw:
+            items.append(tw)
+        tx = _tx_seg(snap, night=False)
+        if tx:
+            items.append(tx)
+        if yahoo and slot != "weekend":
+            items.extend(_yahoo_many(ASIA_INDEX))
+
+    if slot == "us_pre":
+        us = _load_us(db_path) if db_path else {}
+        fut = _us_from_snap(us, ("標普期", "那斯達克期", "道瓊期"))
+        if yahoo:
+            fetched = _yahoo_many(US_PRE_FUT)
+            if fetched:
+                fut = fetched
+        items.extend(fut)
+        tw = _tw_index_seg(live, snap)
+        if tw:
+            items.append(tw)
+
+    if slot == "us_night":
+        us = _load_us(db_path) if db_path else {}
+        cash = _us_from_snap(us, ("道瓊", "標普", "那斯達克", "費半"))
+        if yahoo and not cash:
+            cash = _yahoo_many(US_CASH)
+        elif yahoo:
+            # 快取太舊時仍補即時四大
+            fresh = _yahoo_many(US_CASH)
+            if fresh:
+                cash = fresh
+        items.extend(cash)
+        try:
+            from us_overnight import electronics_night_side
+
+            side = electronics_night_side(us)
+            if side:
+                items.append(_seg("電子夜盤", extra=side))
+        except Exception:
+            pass
+        night = _tx_seg(snap, night=True)
+        if night:
+            items.append(night)
+
+    items = [x for x in items if x]
+    return {"slot": slot, "title": title, "items": items}
+
+
+def ticker_plain(bundle: Dict[str, Any]) -> str:
+    title = str(bundle.get("title") or "")
+    bits = [str(x.get("text") or "") for x in (bundle.get("items") or []) if x.get("text")]
+    if not bits:
+        return ""
+    return f"{title}　" + "　·　".join(bits)
+
+
+def ticker_html(bundle: Dict[str, Any]) -> str:
+    from tg_layout import html_escape
+
+    plain = ticker_plain(bundle)
+    if not plain:
+        return ""
+    return f"<i>{html_escape(plain)}</i>"
+
+
+def _ticker_font(size: int, *, bold: bool = False):
+    from PIL import ImageFont
+
+    try:
+        from wayne_navigator import _WEIGHT_BOLD, _WEIGHT_TEXT, _weight_font_path
+
+        path = _weight_font_path(_WEIGHT_BOLD if bold else _WEIGHT_TEXT)
+        if path:
+            return ImageFont.truetype(path, size)
+    except Exception:
+        pass
+    for path in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ):
+        try:
+            return ImageFont.truetype(path, size, index=0)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _ink_color(pct) -> tuple:
+    if pct is None:
+        return _INK
+    if float(pct) > 0:
+        return _UP
+    if float(pct) < 0:
+        return _DOWN
+    return _INK
+
+
+def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
+    """左固定時段名、右循環捲動報價。沒有項目就不畫。"""
+    from PIL import Image, ImageDraw
+
+    items = [x for x in (bundle.get("items") or []) if x.get("text")]
+    if not items:
+        return ""
+    title = str(bundle.get("title") or "跑馬燈")
+    W, H = 1080, 72
+    pad = 10
+    label_f = _ticker_font(26, bold=True)
+    body_f = _ticker_font(28, bold=True)
+    label_w = int(label_f.getlength(title) + 36)
+    label_w = max(168, min(260, label_w))
+    scroll_x0 = pad + label_w + 8
+    scroll_w = W - pad - scroll_x0
+
+    segs: List[Tuple[str, tuple]] = []
+    for it in items:
+        segs.append((str(it["text"]) + "    ·    ", _ink_color(it.get("pct"))))
+    # 量一次總寬
+    measure = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    parts_w = [measure.textlength(t, font=body_f) for t, _c in segs]
+    total_w = int(sum(parts_w))
+    loop_w = max(total_w, scroll_w + 1)
+    # 畫兩份做無縫
+    strip = Image.new("RGB", (loop_w * 2 + 40, H), _BG)
+    sd = ImageDraw.Draw(strip)
+    x = 0
+    for _copy in range(2):
+        for (text, color), tw in zip(segs, parts_w):
+            ty = (H - 28) / 2 - 4
+            try:
+                sd.text((x, H / 2), text, font=body_f, fill=color, anchor="lm")
+            except TypeError:
+                sd.text((x, ty), text, font=body_f, fill=color)
+            x += tw
+
+    n = 36 if total_w > scroll_w else 1
+    step = max(2, int(round(loop_w / max(n, 1))))
+    frames = []
+    for i in range(n):
+        ox = (i * step) % loop_w
+        frame = Image.new("RGB", (W, H), _BG)
+        dr = ImageDraw.Draw(frame)
+        dr.rounded_rectangle((4, 4, W - 4, H - 4), radius=16, fill=_BG, outline=_RULE, width=2)
+        dr.rounded_rectangle((pad, 10, pad + label_w, H - 10), radius=12, fill=_LABEL_BG)
+        dr.text(
+            (pad + label_w / 2, H / 2),
+            title,
+            font=label_f,
+            fill=_LABEL_FG,
+            anchor="mm",
+        )
+        crop = strip.crop((ox, 0, ox + scroll_w, H))
+        frame.paste(crop, (scroll_x0, 0))
+        # 左緣淡出，避免字切一半太刺
+        frames.append(frame)
+
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    frames[0].save(
+        save_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=70,
+        loop=0,
+        optimize=True,
+        disposal=2,
+    )
+    return save_path
+
+
+def build_market_ticker(
+    db_path: str,
+    *,
+    live: Optional[Dict[str, Any]] = None,
+    snap: Optional[Dict[str, Any]] = None,
+    save_dir: str = None,
+    now: Optional[datetime] = None,
+    yahoo: bool = True,
+) -> Dict[str, Any]:
+    """回傳 bundle + gif 路徑；失敗就空路徑，頁面仍可送。"""
+    bundle = collect_ticker(db_path, live=live, snap=snap, now=now, yahoo=yahoo)
+    gif = ""
+    if bundle.get("items"):
+        try:
+            from config import get_charts_dir
+
+            folder = save_dir or get_charts_dir()
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, f"market_ticker_{int(time.time() * 1000)}.gif")
+            gif = render_ticker_gif(bundle, path)
+        except Exception:
+            logger.exception("跑馬燈 GIF 失敗")
+            gif = ""
+    bundle["gif"] = gif
+    bundle["plain"] = ticker_plain(bundle)
+    bundle["html"] = ticker_html(bundle)
+    return bundle

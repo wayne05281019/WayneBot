@@ -3489,6 +3489,7 @@ def format_taiwan_market_page_html(
     live: Optional[Dict[str, Any]] = None,
     snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    ticker_html: Optional[str] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
     ref_hint = resolve_market_as_of(db_path, as_of)
@@ -3511,7 +3512,7 @@ def format_taiwan_market_page_html(
     chg_pts = (show_px - yest) if show_px and yest else None
     clock = str((live or {}).get("update_time") or "")[:5]
     if live_px > 0:
-        as_of_note = "<i>盤中即時；漲跌家數／法人仍依庫內最近完整日</i>"
+        as_of_note = f"截至 <b>{ref}</b>　盤中即時（漲跌家數／法人仍依庫內最近完整日）"
         px_line = f"<b>{show_px:,.2f}</b>"
         if chg_pts is not None:
             px_line += f"　{chg_pts:+,.2f}（{show_pct:+.2f}%）"
@@ -3520,23 +3521,28 @@ def format_taiwan_market_page_html(
         if clock:
             px_line += f"　{clock}"
     else:
-        as_of_note = "<i>庫內官方融合收盤</i>"
+        as_of_note = f"截至 <b>{ref}</b>　庫內官方融合收盤"
         pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
         px_line = f"收盤 <b>{float(snap['close']):,.2f}</b>{pct_bit}"
         if chg_pts is not None:
             px_line += f"　{chg_pts:+,.2f}"
     lines = [
         "<b>📊 台股大盤</b>",
-        f"截至 <b>{ref}</b>",
         as_of_note,
-        "",
-        "<b>加權指數</b>",
-        px_line,
-        *_format_performance_lines(snap, live),
-        "",
-        _TG_SECTION,
-        "<b>漲跌家數</b>",
     ]
+    if ticker_html:
+        lines.append(ticker_html)
+    lines.extend(
+        [
+            "",
+            "<b>加權指數</b>",
+            px_line,
+            *_format_performance_lines(snap, live),
+            "",
+            _TG_SECTION,
+            "<b>漲跌家數</b>",
+        ]
+    )
     qb = _quote_up_down_counts(db_path, ref)
     if int(qb.get("n") or 0) > 0 and int(qb.get("up") or 0) + int(qb.get("down") or 0) > 0:
         line = f"漲 {qb['up']}　跌 {qb['down']}"
