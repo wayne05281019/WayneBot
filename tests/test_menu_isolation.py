@@ -52,14 +52,15 @@ def _bot():
 
 @pytest.mark.parametrize(
     "text",
-    ("我的自選股清單", "今日海選名單", "模擬持倉報告", "海選結果"),
+    ("我剛剛看到一則新聞", "隨便亂打xyz", "asdfgh"),
 )
-def test_substring_does_not_trigger_menu(text):
-    """含「自選／海選／模擬持倉」等字樣的普通文字不應觸發選單。"""
+def test_unrelated_text_does_not_trigger_menu(text):
+    """無關字句不應觸發海選／持股／觀察。"""
     bot = _bot()
     bot.screen_cmd = AsyncMock()
     bot.portfolio_cmd = AsyncMock()
     bot.watch_cmd = AsyncMock()
+    bot._dispatch_intent = AsyncMock(return_value=False)
 
     async def run():
         with patch("wayne_db.lookup_stocks", return_value=[]):

@@ -255,6 +255,7 @@ def test_ai_desk_keyboard_has_no_sell_buttons():
     kb = bot._ai_desk_keyboard()
     datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "ai_run" in datas
+    assert "ai_evolve" in datas
     assert not any(str(d).startswith("x:") for d in datas)
 
 
@@ -267,6 +268,7 @@ def test_ai_desk_keyboard_lists_held_names():
     assert "k:2330" in datas
     assert "k:2454" in datas
     assert "ai_run" in datas
+    assert "ai_evolve" in datas
     assert not any(str(d).startswith("x:") for d in datas)
 
 

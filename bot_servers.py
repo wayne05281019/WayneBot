@@ -48,6 +48,14 @@ from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
 from ai_trader import format_ai_desk_html, run_ai_desk
 from chips import generate_chips_image
+from intent_router import (
+    NEEDS_STOCK,
+    no_cost_honest_html,
+    parse_intent,
+    sell_honest_html,
+    why_honest_html,
+    why_hub_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +75,15 @@ def html_escape(val) -> str:
     )
 
 
+def _stock_caption_name(card: dict | None, code: str = "") -> str:
+    """決策卡圖說第一行用股名（台積電），不要寫「高低決策卡」。"""
+    name = str((card or {}).get("stock_name") or "").strip()
+    sid = str((card or {}).get("stock_id") or code or "").strip()
+    if name and sid and (name == sid or name.startswith(sid)):
+        name = name[len(sid) :].strip(" 　") if name.startswith(sid) else ""
+    return name or sid or "決策卡"
+
+
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
     """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
     cap = str(base or "").strip() or fallback
@@ -82,7 +99,12 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
         return cap
     if not short:
         return cap
-    return f"{cap}\n紀律　{html_escape(short)}"
+    return f"{cap}\nAi建議　{html_escape(short)}"
+
+
+def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
+    title = f"{_stock_caption_name(card, code)}{live_note}"
+    return _photo_sell_caption(title, card, fallback=title)
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
@@ -148,7 +170,7 @@ HELP_TOPICS = {
     "guide": (
         "<b>WayneBot 使用說明</b>\n"
         "點訊息下方分類鈕看細節，按 <b>✕</b> 收合。\n"
-        "「圖文」一共 9 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
+        "「圖文」一共 16 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
         "\n"
         "<b>第一次用，先做這三步</b>\n"
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
@@ -160,10 +182,15 @@ HELP_TOPICS = {
         "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
+        "<b>平常話／三條槓「原因」</b>\n"
+        "輸入列<b>左邊三條槓</b>有「原因」（／why）。用平常的話問，會對到官方資料，<b>不編新聞、不編成本</b>。\n"
+        "例：為什麼跌、2330怎麼賣、外資、產業、大盤、海選。沒寫代號用上一檔。聊天室直接打這些詞也行。\n"
+        "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
         "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>連買區</b>｜<b>說明</b>｜<b>回報</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按最右「回報」。\n"
+        "大盤最上頭是時段跑馬燈：電子數字倒數試搓／台指期，並帶強弱族群與該看的警語；整條從最左跑到最右；長住那一則自己換價，也可按「刷新跑馬燈」。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -177,11 +204,11 @@ HELP_TOPICS = {
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
         "• <b>營收</b>　月營收、季報毛利\n"
-        "• <b>產業</b>　同業中位數＋本產業法人，講人話\n"
+        "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁有公開細項小框（沒有就不畫）\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
-        "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。細節看「查股」。\n"
+        "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
         "名稱撞名：藍字股名＝奇摩；左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
@@ -190,17 +217,17 @@ HELP_TOPICS = {
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
         "• 區底「一鍵傳 LINE」＝進勾選頁，可勾好幾檔再傳（介紹圖＋決策卡一組）\n"
-        "靠近 20 日收盤高會標「少追」，不是叫立刻買。\n"
+        "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
         "\n"
         "<b>三種清單不要搞混</b>\n"
         "• <b>觀察</b>＝自選，還沒買\n"
         "• <b>持股</b>＝你手記的真實買入（成交／復盤在持股頁下方）\n"
-        "• <b>AI倉</b>＝假錢對照組（也可打 AI模擬倉）；50 萬切 3 等份，平常最多 1 份，超跌才第 2 份，第 3 份留現金；頁上 <b>AI操盤</b> 可立刻跑一輪\n"
+        "• <b>AI倉</b>＝假錢對照組（也可打 AI模擬倉）；50 萬切 3 等份，平常最多 1 份，超跌才第 2 份，第 3 份留現金；頁上 <b>AI操盤</b> 立刻跑一輪，<b>進化</b>只調倍數、不改黃金買點\n"
         "\n"
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
         "12:45 尾盤可切版\n"
-        "16:30 官方收盤寫庫\n"
+        "16:30 官方收盤寫庫（齊了發一則，不是海選）\n"
         "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "盤中查股用證交所即時價（不寫庫）。13:30～16:30 融合前若即時價空白，會用奇摩參考價；16:30 後以庫內官方收盤為準。\n"
         "\n"
@@ -321,7 +348,7 @@ HELP_TOPICS = {
         "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
         "\n"
         "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
-        "最上頭是時段跑馬燈（循環短圖）：台股開盤跑加權／台指期／日經／韓國／滬指；午後跑亞股收盤；下午跑美股盤前期貨；美股時段跑四大指數＋電子夜盤＋台指期夜盤。沒接到的市場不寫。\n"
+        "最上頭是時段跑馬燈：整條從最左跑到最右，數字用電子錶字。開盤前倒數試搓／台指期；試搓中寫個股試搓價格中；9:00 起加權／櫃買／台指期；13:30 後日盤收、加權盤後、櫃買續跑；15:00 後寫加權／櫃買收盤與漲跌。有官方列才寫強勢／弱勢族群，以及跌家遠多於漲家、跌停家數、恐慌指數、期貨領跌等警語。沒接到不寫；長住那一則自己換價，也可按「刷新跑馬燈」。\n"
         "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附前一交易日收盤；不是沒資料就空白。\n"
         "\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
@@ -336,6 +363,7 @@ HELP_TOPICS = {
         "<b>這頁按鈕</b>\n"
         "• 持倉股名＝查這檔介紹圖／決策卡／導航圖\n"
         "• <b>AI操盤</b>：立刻依海選跑一輪模擬買賣（不推播）\n"
+        "• <b>進化</b>：看目前編碼與近況日誌（倉位倍數、哪類少買）\n"
         "• <b>AI倉</b> 本身：只看模擬帳戶現況（不買賣）\n"
         "\n"
         "<b>自動買進</b>\n"
@@ -349,6 +377,12 @@ HELP_TOPICS = {
         "• 優先黃金買點；第二份只買重點觀察／黃金買點。當沖不隔夜；靠近20日高、美股逆風不買；停損約 -7%、停利約 +8%\n"
         "• 這是對照組，不會動你的真實持股，也不會真的下單，也不會自動改程式。\n"
         "• 這不是證券 App 裡的量化積木，也不能把這支程式塞進手機下單軟體。\n"
+        "\n"
+        "<b>進化怎麼做（對未來量化積木）</b>\n"
+        "• 表面：AI倉仍只顯示模擬買進／賣出與持倉。\n"
+        "• 背後：每一輪把勝率寫進庫，只調單筆倍數與哪類海選少買；週五收盤後寄一則進化回報。\n"
+        "• 進場規則鎖死高低卡黃金買點，進化不會改這條，也不會自己重寫程式。\n"
+        "• 將來接到富邦＝你用手把回報裡的條件打進積木。WayneBot 不會幫你下單。\n"
         "\n"
         "<b>跟真實持股的差別</b>\n"
         "• <b>持股</b>＝你手動記的買入\n"
@@ -373,6 +407,7 @@ HELP_TOPICS = {
         "<b>第二排</b>：隔日沖／大盤／資金／連買區／說明／<b>回報</b>\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
+        "輸入列<b>左邊三條槓</b>有「原因」（／why）：用平常話對出正確資料。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "完整分類說明請按主選單「說明」，或看本頁導覽下方各分類鈕。"
     ),
@@ -453,7 +488,7 @@ HELP_TOPICS = {
         "<b>圖下方這一排</b>\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
-        "• <b>產業</b>：同業中位數＋本產業法人，講人話\n"
+        "• <b>產業</b>：一張圖卡（同業中位＋本產業法人）；股名旁有公開細項小框，沒抓到不畫\n"
         "• <b>觀察</b>：加入自選（還沒買）\n"
         "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>\n"
         "\n"
@@ -483,7 +518,7 @@ HELP_TOPICS = {
         "• 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
         "• 本益／淨值／殖利率、融資融券餘額（張與使用率）＝官方有數才上卡；沒有真分點就不會出現主力成本\n"
         "• 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
-        "• 產業說明＝官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣，講人話；不是內幕\n"
+        "• 產業說明＝一張圖卡：官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣；股名旁公開細項小框（沒抓到不畫）；不是內幕\n"
         "• 海選靠近 20 日收盤高＝少追，排後面；高低卡才是少賠主軸\n"
         "• 隔夜美股＝現金收盤＋收盤後盤後（台積美股／那斯達克期貨續勢），盤中期貨不看；大跌 06:30 會先通知。只過濾逆風，不拿來追高"
     ),
@@ -506,8 +541,9 @@ HELP_TOPICS = {
         "查完一檔後，按<b>圖下方「產業」</b>（不在右側 ⌨️）。\n"
         "也可打 /industry 代號。\n"
         "\n"
-        "會列出官方產業別、籌碼K細項小框、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
-        "進場仍看高低卡，不要因為同業敘事追高。"
+        "會先送一張圖卡：官方產業別、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
+        "股名旁若有公開細項（例如代工、記憶體製造），用小框標；沒抓到就不畫，不留空白。\n"
+        "圖卡出不來才改送文字。進場仍看高低卡，不要因為同業敘事追高。"
     ),
     "buy": (
         "<b>記買入</b>\n"
@@ -586,6 +622,9 @@ HELP_TOPICS = {
         "<b>「回報」按下去又反悔</b>\n"
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
+        "<b>想問為什麼跌／怎麼賣</b>\n"
+        "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
+        "\n"
         "<b>找不到股票</b>\n"
         "再打一次四碼比打股名準。名稱撞名時：藍字＝奇摩網頁，左邊股名＝看這檔圖。\n"
         "\n"
@@ -594,6 +633,25 @@ HELP_TOPICS = {
         "\n"
         "<b>畫面怪、數字怪、按鈕錯了</b>\n"
         "按第二排最右「回報」，打字或傳截圖給偉權。"
+    ),
+    "why": (
+        "<b>原因（三條槓／平常話）</b>\n"
+        "在輸入列<b>左邊三條槓</b>點「原因」，或打 /why。聊天室直接打平常的詞也會對到同一套資料。\n"
+        "\n"
+        "<b>會對到什麼（都是官方資料，不編）</b>\n"
+        "• 為什麼跌／為什麼漲／原因　→ 這檔介紹圖＋決策卡＋導航圖。沒有官方新聞跌因欄\n"
+        "• 怎麼賣／如何賣／減碼　→ 如何賣（最高價＝20日高對最高溫）。不是買訊、不自動賣\n"
+        "• 外資／投信／法人／籌碼　→ 三大法人買賣超圖\n"
+        "• 產業／同業　→ 產業圖卡\n"
+        "• 營收／財報／毛利　→ 月營收與季報\n"
+        "• 大盤／加權／美股　→ 大盤頁\n"
+        "• 資金／產業輪動　→ 資金頁（有寫代號則改看該檔籌碼）\n"
+        "• 海選／黃金買點／重點觀察　→ 海選\n"
+        "• 持股／觀察／當沖／隔日沖／連買／AI倉　→ 對應那一頁\n"
+        "• 主力成本／外資成本　→ 說明官方沒這欄，改看籌碼\n"
+        "\n"
+        "沒寫代號就用<b>上一檔</b>；還沒查過請打四碼，例如 <code>2330為什麼跌</code>。\n"
+        "進場仍只認高低卡表的黃金買點，紅箭頭不是買訊。"
     ),
 }
 
@@ -615,6 +673,20 @@ MENU_BTN_PREV_PAGE = "上一批"
 # v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
 MENU_LAYOUT_VERSION = "11"
 MAX_PICK_INLINE_ROWS = 8
+
+# 輸入列左邊三條槓（Telegram BotCommand）。why 放第一，平常話對官方資料。
+TELEGRAM_BOT_COMMANDS = (
+    ("why", "原因：平常話對出正確資料"),
+    ("menu", "回到主選單（下方兩排）"),
+    ("market", "大盤指數與風險"),
+    ("help", "使用說明"),
+    ("screen", "海選"),
+    ("portfolio", "持股"),
+    ("watch", "觀察"),
+    ("flow", "資金移動"),
+    ("industry", "產業說明"),
+    ("start", "開始"),
+)
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -651,6 +723,7 @@ class WayneTelegramBot:
         self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
+        self._ticker_refresh_task: Dict[str, asyncio.Task] = {}
 
     @staticmethod
     def _actor_key(
@@ -1428,6 +1501,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton("總覽", callback_data="?:guide"),
                     InlineKeyboardButton("查股", callback_data="?:stock"),
                     InlineKeyboardButton("圖文", callback_data="?:pics"),
+                    InlineKeyboardButton("原因", callback_data="?:why"),
                 ],
                 [
                     InlineKeyboardButton("第一排", callback_data="?:row1"),
@@ -1492,6 +1566,170 @@ class WayneTelegramBot:
                 ],
             ]
         )
+
+    def _why_hub_keyboard(self, last_code: str = ""):
+        """三條槓「原因」：上一檔快捷 + 全市場頁。"""
+        rows = []
+        c = str(last_code or "").strip()[:6]
+        if c:
+            rows.append(
+                [
+                    InlineKeyboardButton("這檔決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
+                ]
+            )
+            rows.append(
+                [
+                    InlineKeyboardButton("如何賣", callback_data=f"ys:{c}"),
+                    InlineKeyboardButton("營收", callback_data=f"f:{c}"),
+                ]
+            )
+        rows.append(
+            [
+                InlineKeyboardButton("大盤", callback_data="yw:market"),
+                InlineKeyboardButton("海選", callback_data="yw:screen"),
+                InlineKeyboardButton("持股", callback_data="yw:portfolio"),
+            ]
+        )
+        rows.append([self._q("why")])
+        return InlineKeyboardMarkup(rows)
+
+    def _ticker_keyboard(self):
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("刷新跑馬燈", callback_data="tk:r"),
+                    self._q("market"),
+                ]
+            ]
+        )
+
+    def _cancel_chat_ticker_refresh(self, chat_id) -> None:
+        tasks = getattr(self, "_ticker_refresh_task", None)
+        if not isinstance(tasks, dict) or chat_id is None:
+            return
+        prefix = f"{chat_id}:"
+        for k in [k for k in tasks if str(k).startswith(prefix)]:
+            old = tasks.pop(k, None)
+            if old is not None:
+                old.cancel()
+
+    def _schedule_ticker_refresh(self, anim_msg) -> None:
+        """長住同一則跑馬燈，隔幾秒原地換成新 GIF。測試用 MagicMock 不會排程。"""
+        if not isinstance(getattr(anim_msg, "message_id", None), int):
+            return
+        chat_id = getattr(anim_msg, "chat_id", None)
+        if chat_id is None:
+            chat = getattr(anim_msg, "chat", None)
+            chat_id = getattr(chat, "id", None)
+        key = f"{chat_id}:{getattr(anim_msg, 'message_id', '')}"
+        tasks = getattr(self, "_ticker_refresh_task", None)
+        if not isinstance(tasks, dict):
+            self._ticker_refresh_task = {}
+            tasks = self._ticker_refresh_task
+        self._cancel_chat_ticker_refresh(chat_id)
+        try:
+            tasks[key] = asyncio.create_task(self._ticker_refresh_loop(anim_msg, key))
+        except Exception:
+            logger.debug("跑馬燈刷新排程失敗", exc_info=True)
+
+    async def _ticker_refresh_loop(self, anim_msg, key: str) -> None:
+        # 0＝一直換到這則被刪、或使用者再按一次大盤（取消舊任務）。
+        try:
+            rounds = int(os.getenv("WAYNE_TICKER_REFRESH_ROUNDS", "0"))
+        except (TypeError, ValueError):
+            rounds = 0
+        try:
+            pause = float(os.getenv("WAYNE_TICKER_REFRESH_SEC", "5"))
+        except (TypeError, ValueError):
+            pause = 12.0
+        n = 0
+        try:
+            from telegram import InputMediaAnimation
+
+            from live_quote import fetch_mis_index_quote
+            from market_ticker import build_market_ticker
+
+            while True:
+                await asyncio.sleep(max(4.0, pause))
+                live = await asyncio.to_thread(
+                    fetch_mis_index_quote, fresh=True, require_session=False
+                )
+
+                def _build():
+                    from taiwan_market import analyze_taiwan_market
+
+                    snap = analyze_taiwan_market(
+                        self.db_path, None, db_only=True, page_light=True
+                    )
+                    return build_market_ticker(self.db_path, live=live, snap=snap)
+
+                tick = await asyncio.to_thread(_build)
+                gif = str((tick or {}).get("gif") or "")
+                if not gif or not os.path.isfile(gif) or os.path.getsize(gif) < 800:
+                    n += 1
+                    if rounds > 0 and n >= rounds:
+                        break
+                    continue
+                with open(gif, "rb") as f:
+                    await anim_msg.edit_media(
+                        media=InputMediaAnimation(media=f),
+                        reply_markup=self._ticker_keyboard(),
+                    )
+                n += 1
+                if rounds > 0 and n >= rounds:
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("跑馬燈原地刷新停止", exc_info=True)
+        finally:
+            tasks = getattr(self, "_ticker_refresh_task", None)
+            if isinstance(tasks, dict):
+                tasks.pop(key, None)
+
+    async def _refresh_ticker_message(self, message) -> None:
+        """使用者按「刷新跑馬燈」：立刻重抓即時、換圖。"""
+        from telegram import InputMediaAnimation
+
+        from live_quote import fetch_mis_index_quote
+        from market_ticker import build_market_ticker
+        from taiwan_market import analyze_taiwan_market
+
+        def _build():
+            live = fetch_mis_index_quote(fresh=True, require_session=False)
+            snap = analyze_taiwan_market(self.db_path, None, db_only=True, page_light=True)
+            return build_market_ticker(self.db_path, live=live, snap=snap)
+
+        try:
+            tick = await asyncio.wait_for(asyncio.to_thread(_build), timeout=18.0)
+        except Exception:
+            logger.exception("跑馬燈手動刷新失敗")
+            return
+        gif = str((tick or {}).get("gif") or "")
+        if not gif or not os.path.isfile(gif):
+            return
+        try:
+            with open(gif, "rb") as f:
+                if hasattr(message, "edit_media"):
+                    await message.edit_media(
+                        media=InputMediaAnimation(media=f),
+                        reply_markup=self._ticker_keyboard(),
+                    )
+                    if isinstance(getattr(message, "message_id", None), int):
+                        self._schedule_ticker_refresh(message)
+                    return
+        except Exception:
+            logger.debug("跑馬燈 edit_media 失敗，改新發", exc_info=True)
+        try:
+            with open(gif, "rb") as f:
+                anim = await message.reply_animation(
+                    animation=f, reply_markup=self._ticker_keyboard()
+                )
+            self._schedule_ticker_refresh(anim)
+        except Exception:
+            logger.exception("跑馬燈刷新送出失敗")
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -1684,6 +1922,7 @@ class WayneTelegramBot:
         kb.append(
             [
                 InlineKeyboardButton("AI操盤", callback_data="ai_run"),
+                InlineKeyboardButton("進化", callback_data="ai_evolve"),
                 self._q("ai"),
             ]
         )
@@ -2086,7 +2325,7 @@ class WayneTelegramBot:
             cap = f"{html_escape(code)}"
             self._send_photo(chat_id, glance, caption=cap)
         for path in self._card_photo_paths(card_img):
-            self._send_photo(chat_id, path, caption=f"{html_escape(code)} 高低決策卡")
+            self._send_photo(chat_id, path, caption=html_escape(name or code))
         last_kb = self._hub_keyboard(code)
         if chart_path:
             self._send_photo(
@@ -2149,6 +2388,7 @@ class WayneTelegramBot:
             "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
             "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 也可查股。左下也可按 /menu。\n"
+            "輸入列<b>左邊三條槓</b>「原因」：用平常話問（為什麼跌、怎麼賣），對出正確資料。\n"
             "次排 <b>連買區</b> 查外資／投信／兩家皆買（上市櫃一起）。",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
@@ -2174,40 +2414,70 @@ class WayneTelegramBot:
         n = max(1, int(n))
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton(f"← 第 {page} 張", callback_data=f"pg:{page - 1}"))
+            nav.append(
+                InlineKeyboardButton(
+                    f"✦ ← 第 {page} 張",
+                    callback_data=f"pg:{page}-{page - 1}",
+                )
+            )
         if page + 1 < n:
-            nav.append(InlineKeyboardButton(f"第 {page + 2} 張 →", callback_data=f"pg:{page + 1}"))
+            nav.append(
+                InlineKeyboardButton(
+                    f"第 {page + 2} 張 → ✦",
+                    callback_data=f"pg:{page}-{page + 1}",
+                )
+            )
         rows = [nav] if nav else []
         help_kb = self._help_nav_keyboard("pics")
         rows.extend(list(help_kb.inline_keyboard))
         return InlineKeyboardMarkup(rows)
 
-    async def _show_picture_guide_page(self, message, page: int, *, edit: bool) -> None:
-        """一次只出一張。換頁用 edit_media，舊圖原地換成新圖。"""
+    async def _show_picture_guide_page(
+        self, message, page: int, *, edit: bool, from_page: int | None = None
+    ) -> None:
+        """一次只渲正在看的那一張。換頁先滑頁 GIF，再換成下一張原圖。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import render_picture_guide
+        from picture_guide import PAGE_SLUGS, ensure_flip_gif, ensure_page
 
         charts = getattr(self, "charts_dir", None)
-        paths = await asyncio.to_thread(
-            render_picture_guide, os.path.join(str(charts or "data/charts"), "picture_guide")
-        )
-        n = len(paths or [])
-        if n <= 0:
+        dest = os.path.join(str(charts or "data/charts"), "picture_guide")
+        n = len(PAGE_SLUGS)
+        page = max(0, min(int(page), n - 1))
+        slug = PAGE_SLUGS[page]
+        try:
+            path = await asyncio.to_thread(ensure_page, slug, dest)
+        except Exception:
+            logger.exception("圖文說明產圖失敗 page=%s", page)
+            path = ""
+        if not path or not os.path.isfile(path):
             await message.reply_html(
                 "圖文說明暫時產不出來。請先看文字「總覽」。",
                 reply_markup=self._help_nav_keyboard("guide"),
             )
             return
-        page = max(0, min(int(page), n - 1))
-        path = paths[page]
-        if not path or not os.path.isfile(path):
-            await message.reply_html(
-                "這一張圖找不到。請先看文字「總覽」。",
-                reply_markup=self._help_nav_keyboard("guide"),
-            )
-            return
         kb = self._picture_guide_keyboard(page, n)
+        src_i = None if from_page is None else max(0, min(int(from_page), n - 1))
+        if edit and src_i is not None and src_i != page:
+            try:
+                gif = await asyncio.to_thread(
+                    ensure_flip_gif, PAGE_SLUGS[src_i], slug, dest
+                )
+            except Exception:
+                logger.debug("圖文滑頁 GIF 失敗", exc_info=True)
+                gif = ""
+            if gif and os.path.isfile(gif):
+                try:
+                    from telegram import InputMediaAnimation
+
+                    with open(gif, "rb") as fh:
+                        await message.edit_media(
+                            media=InputMediaAnimation(media=fh, caption=""),
+                            reply_markup=kb,
+                        )
+                    await asyncio.sleep(0.48)
+                except Exception:
+                    logger.debug("圖文滑頁送出失敗，改直接換圖", exc_info=True)
         with open(path, "rb") as fh:
             if edit:
                 try:
@@ -2227,7 +2497,7 @@ class WayneTelegramBot:
 
     async def _send_picture_guide(self, message) -> None:
         """說明頁「圖文」：一次一張，鍵盤換頁。"""
-        status = await message.reply_text("正在產出圖文說明（一次一張，共 9 張）…")
+        status = await message.reply_text("正在產出圖文說明（一次一張，共 16 張）…")
         try:
             await self._show_picture_guide_page(message, 0, edit=False)
         except Exception:
@@ -2847,12 +3117,18 @@ class WayneTelegramBot:
             return
         try:
             gif = str((tick or {}).get("gif") or "")
+            anim_msg = None
             if gif and os.path.isfile(gif) and os.path.getsize(gif) > 800:
                 try:
                     with open(gif, "rb") as f:
-                        await message.reply_animation(animation=f)
+                        anim_msg = await message.reply_animation(
+                            animation=f,
+                            reply_markup=self._ticker_keyboard(),
+                        )
                 except Exception:
                     logger.exception("跑馬燈 GIF 送出失敗")
+            if anim_msg is not None:
+                self._schedule_ticker_refresh(anim_msg)
             for i, part in enumerate(parts):
                 kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -3052,7 +3328,7 @@ class WayneTelegramBot:
             "card": "看這檔：請先打四碼（例 2330）或點觀察清單。會一次出介紹圖、決策卡、導航圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
-            "industry": "產業說明：請先選一檔。會用官方營收／毛利跟同業比，講人話。",
+            "industry": "產業說明：請先選一檔。會送一張圖卡，用官方營收／毛利跟同業比。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
         }
         rows = get_user_watchlist(self.db_path, uid)
@@ -3094,11 +3370,19 @@ class WayneTelegramBot:
 
     async def chips_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
-        if not args:
-            await update.message.reply_text("用法：/chips 2330")
-            return
         uid = str(update.effective_user.id)
-        code = args[0].strip()
+        if not args:
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_chips_to(update.message, last, uid)
+                return
+            await self._prompt_pick(update.message, uid, "chips")
+            return
+        await self._send_chips_to(update.message, args[0].strip(), uid)
+
+    async def _send_chips_to(self, message, code: str, uid: str = ""):
+        code = str(code or "").strip()
+        uid = uid or self._uid_from_message(message)
         chip_img = await asyncio.to_thread(
             generate_chips_image,
             code,
@@ -3106,27 +3390,47 @@ class WayneTelegramBot:
             self._scratch_chart_path(self.charts_dir, code, "chips", uid),
         )
         if chip_img:
-            with open(chip_img, "rb") as f:
-                await update.message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code))
+            try:
+                with open(chip_img, "rb") as f:
+                    await message.reply_photo(
+                        photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
+                    )
+            except Exception:
+                await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
         else:
-            await update.message.reply_html("查無籌碼", reply_markup=self._keyboard())
+            await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
 
     async def fund_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
+        uid = str(update.effective_user.id)
         if not args:
-            await update.message.reply_text("用法：/fund 2330")
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_fund_to(update.message, last)
+                return
+            await self._prompt_pick(update.message, uid, "fund")
             return
+        await self._send_fund_to(update.message, args[0].strip())
+
+    async def _send_fund_to(self, message, code: str):
         from fundamentals import format_fundamentals_html
 
         # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
-        code = args[0].strip()
+        code = str(code or "").strip()
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-        await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
+        await message.reply_html(
+            html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
+        )
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
+        uid = str(update.effective_user.id)
         if not args:
-            await self._prompt_pick(update.message, str(update.effective_user.id), "industry")
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_industry(update.message, last)
+                return
+            await self._prompt_pick(update.message, uid, "industry")
             return
         await self._send_industry(update.message, args[0].strip())
 
@@ -3166,6 +3470,161 @@ class WayneTelegramBot:
             logger.exception("產業說明失敗 code=%s", code)
             html = f"產業說明失敗：{html_escape(err or e)}"
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+
+    async def why_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """三條槓「原因」：平常話對官方資料。"""
+        uid = str(update.effective_user.id)
+        raw_args = getattr(context, "args", None)
+        args = raw_args if isinstance(raw_args, (list, tuple)) else []
+        text = _normalize_menu_text(" ".join(str(a) for a in args))
+        if not text:
+            await self._send_why_hub(update.message, uid)
+            return
+        await self._dispatch_intent(
+            update.message, uid, text, from_why=True, update=update, context=context
+        )
+
+    async def _send_why_hub(self, message, uid: str) -> None:
+        last = str(self._last_card.get(uid) or "").strip()
+        self._pending[self._pending_actor(message, uid=uid)] = "why"
+        await message.reply_html(
+            why_hub_html(last),
+            reply_markup=self._why_hub_keyboard(last),
+            disable_web_page_preview=True,
+        )
+
+    async def _dispatch_intent(
+        self,
+        message,
+        uid: str,
+        text: str,
+        *,
+        from_why: bool = False,
+        update=None,
+        context=None,
+    ) -> bool:
+        hit = parse_intent(text, default_kind="why" if from_why else "")
+        if hit is None:
+            return False
+        kind = hit.kind
+        if kind == "hub":
+            await self._send_why_hub(message, uid)
+            return True
+        code = str(hit.code or "").strip()
+        hits = []
+        if code:
+            hits = lookup_stocks(self.db_path, code)
+            if hits:
+                code = str(hits[0]["stock_id"])
+            else:
+                code = ""
+        if not code and hit.query:
+            hits = lookup_stocks(self.db_path, hit.query)
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
+            elif len(hits) > 1:
+                self._pending[self._pending_actor(message, uid=uid)] = "why"
+                await message.reply_html(
+                    self._hits_list_html(hits, "這句對到多檔，請點選："),
+                    reply_markup=self._hits_keyboard(hits),
+                    disable_web_page_preview=True,
+                )
+                return True
+        if not code and kind in NEEDS_STOCK:
+            code = str(self._last_card.get(uid) or "").strip()
+        if kind in NEEDS_STOCK and not code:
+            self._pending[self._pending_actor(message, uid=uid)] = "why"
+            await message.reply_html(
+                "這句要帶一檔才出得了正確資料。請打四碼，例如 <code>2330</code>；"
+                "或先查一檔，再用上一檔。",
+                reply_markup=self._why_hub_keyboard(""),
+                disable_web_page_preview=True,
+            )
+            return True
+        await self._run_intent_kind(
+            message, uid, kind, code, update=update, context=context
+        )
+        return True
+
+    async def _run_intent_kind(
+        self,
+        message,
+        uid: str,
+        kind: str,
+        code: str,
+        *,
+        update=None,
+        context=None,
+    ) -> None:
+        from types import SimpleNamespace
+
+        code = str(code or "").strip()
+        if kind == "why":
+            await message.reply_html(why_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(message, code, uid)
+            return
+        if kind in ("lookup", "card"):
+            if kind == "card":
+                await self._send_decision_card_quick(message, code, uid)
+            else:
+                await self._send_card_to(message, code, uid)
+            return
+        if kind == "sell":
+            await message.reply_html(sell_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(message, code, uid)
+            return
+        if kind == "no_cost":
+            await message.reply_html(no_cost_honest_html(), disable_web_page_preview=True)
+            await self._send_chips_to(message, code, uid)
+            return
+        if kind == "chips":
+            await self._send_chips_to(message, code, uid)
+            return
+        if kind == "industry":
+            await self._send_industry(message, code)
+            return
+        if kind == "fund":
+            await self._send_fund_to(message, code)
+            return
+        user = getattr(message, "from_user", None)
+        upd = update if update is not None else SimpleNamespace(
+            message=message, effective_user=user
+        )
+        ctx = context if context is not None else SimpleNamespace(args=[])
+        if kind == "market":
+            await self.market_cmd(upd, ctx)
+            return
+        if kind == "flow":
+            await self.flow_cmd(upd, ctx)
+            return
+        if kind == "screen":
+            await self.screen_cmd(upd, ctx)
+            return
+        if kind == "portfolio":
+            await self.portfolio_cmd(upd, ctx)
+            return
+        if kind == "watch":
+            await self.watch_cmd(upd, ctx)
+            return
+        if kind == "daytrade":
+            await self.daytrade_cmd(upd, ctx)
+            return
+        if kind == "overnight":
+            await self.overnight_cmd(upd, ctx)
+            return
+        if kind == "streak":
+            await self.streak_cmd(upd, ctx)
+            return
+        if kind == "ai":
+            await self._send_ai_desk_view(message, uid)
+            return
+        if kind == "help":
+            await self.help_cmd(upd, ctx)
+            return
+        if kind == "report":
+            await self.report_cmd(upd, ctx)
+            return
+        await self._send_card_to(message, code, uid)
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -3398,6 +3857,11 @@ class WayneTelegramBot:
             logger.info("主選單：觀察 uid=%s", uid)
             await self.watch_cmd(update, context)
             return
+        if text in ("原因",) or text.lower().lstrip("/") == "why":
+            logger.info("主選單：原因 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.why_cmd(update, context)
+            return
         if text in (MENU_BTN_REPORT, "回報問題", "狀況回覆", "狀況"):
             logger.info("主選單：回報 uid=%s", uid)
             await self.report_cmd(update, context)
@@ -3408,6 +3872,7 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
+        why_follow = None
         async with self._pending_lock(actor):
             pending = self._pending.get(actor, "")
             if pending.startswith("fbuy:"):
@@ -3422,63 +3887,85 @@ class WayneTelegramBot:
                     update.message, uid, body=raw, photo_file_id=""
                 )
                 return
-            pending = self._pending.pop(actor, "")
-            if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
-                handled = await self._handle_pending_pick(update.message, uid, pending, text, actor=actor)
-                if handled:
-                    return
-            if pending == "sell" or pending.startswith("sell:"):
-                code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
-                held_lots = self._held_lots_for(uid, code) if code else None
-                parsed_code, lots, price = self._parse_sell_text(
-                    text, code, held_lots=held_lots, uid=uid
-                )
-                if parsed_code is None:
-                    self._pending[actor] = pending or "sell"
-                    if held_is_odd_lot_only(held_lots):
-                        hint = _sell_holdings_prompt(code or "代號", held_lots)
-                    else:
-                        hint = (
-                            "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
-                            "也可：代號 張數 價格　例如：2330 1 520"
-                        )
-                    await update.message.reply_text(
-                        hint,
-                        reply_markup=self._keyboard(),
+            if pending == "why":
+                self._pending.pop(actor, None)
+                why_follow = text
+            else:
+                pending = self._pending.pop(actor, "")
+                if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
+                    handled = await self._handle_pending_pick(
+                        update.message, uid, pending, text, actor=actor
                     )
-                    return
-                msg = await asyncio.to_thread(
-                    record_sell, self.db_path, uid, parsed_code, lots, price
-                )
-                await update.message.reply_text(msg, reply_markup=self._keyboard())
-                return
-            if pending == "buy" or pending.startswith("buy:"):
-                code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
-                parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
-                if parsed_code is None:
-                    self._pending[actor] = pending or "buy"
+                    if handled:
+                        return
+                if pending == "sell" or pending.startswith("sell:"):
+                    code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
                     held_lots = self._held_lots_for(uid, code) if code else None
-                    if code:
-                        hint = _buy_holdings_prompt(code, held_lots)
-                    else:
-                        hint = (
-                            "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
-                            "也可：代號 張數 價格　例如：2330 1 500"
-                        )
-                    await update.message.reply_text(
-                        hint,
-                        reply_markup=self._keyboard(),
+                    parsed_code, lots, price = self._parse_sell_text(
+                        text, code, held_lots=held_lots, uid=uid
                     )
+                    if parsed_code is None:
+                        self._pending[actor] = pending or "sell"
+                        if held_is_odd_lot_only(held_lots):
+                            hint = _sell_holdings_prompt(code or "代號", held_lots)
+                        else:
+                            hint = (
+                                "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                                "也可：代號 張數 價格　例如：2330 1 520"
+                            )
+                        await update.message.reply_text(
+                            hint,
+                            reply_markup=self._keyboard(),
+                        )
+                        return
+                    msg = await asyncio.to_thread(
+                        record_sell, self.db_path, uid, parsed_code, lots, price
+                    )
+                    await update.message.reply_text(msg, reply_markup=self._keyboard())
                     return
-                hits = lookup_stocks(self.db_path, parsed_code)
-                name = hits[0]["stock_name"] if hits else parsed_code
-                msg = await asyncio.to_thread(
-                    record_buy, self.db_path, uid, parsed_code, name, lots, price
-                )
-                await update.message.reply_text(msg, reply_markup=self._keyboard())
+                if pending == "buy" or pending.startswith("buy:"):
+                    code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
+                    parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
+                    if parsed_code is None:
+                        self._pending[actor] = pending or "buy"
+                        held_lots = self._held_lots_for(uid, code) if code else None
+                        if code:
+                            hint = _buy_holdings_prompt(code, held_lots)
+                        else:
+                            hint = (
+                                "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                                "也可：代號 張數 價格　例如：2330 1 500"
+                            )
+                        await update.message.reply_text(
+                            hint,
+                            reply_markup=self._keyboard(),
+                        )
+                        return
+                    hits = lookup_stocks(self.db_path, parsed_code)
+                    name = hits[0]["stock_name"] if hits else parsed_code
+                    msg = await asyncio.to_thread(
+                        record_buy, self.db_path, uid, parsed_code, name, lots, price
+                    )
+                    await update.message.reply_text(msg, reply_markup=self._keyboard())
+                    return
+        if why_follow is not None:
+            handled = await self._dispatch_intent(
+                update.message,
+                uid,
+                why_follow,
+                from_why=True,
+                update=update,
+                context=context,
+            )
+            if handled:
                 return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
+            handled = await self._dispatch_intent(
+                update.message, uid, text, from_why=False, update=update, context=context
+            )
+            if handled:
+                return
             hits = lookup_stocks(self.db_path, text)
             if len(hits) == 1:
                 code = str(hits[0]["stock_id"])
@@ -3574,6 +4061,26 @@ class WayneTelegramBot:
         except Exception as e:
             logger.exception("AI 模擬倉顯示失敗")
             await message.reply_text(f"AI 模擬倉顯示失敗：{e}", reply_markup=self._keyboard())
+
+    async def _send_ai_evolve(self, message, uid: str):
+        """只看進化編碼與日誌，不執行買賣。"""
+        from ai_trader import ai_user_id, format_evolve_report_html
+
+        self._touch_user(uid)
+        try:
+            html = await asyncio.to_thread(
+                format_evolve_report_html, self.db_path, ai_user_id(uid)
+            )
+            from ai_trader import ai_desk_positions
+
+            positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
+            parts = chunk_telegram_html(html)
+            for i, part in enumerate(parts):
+                kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
+                await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
+        except Exception as e:
+            logger.exception("AI 進化回報失敗")
+            await message.reply_text(f"AI 進化回報失敗：{e}", reply_markup=self._keyboard())
 
     async def _run_ai_now(self, message, uid: str):
         self._touch_user(uid)
@@ -3829,7 +4336,7 @@ class WayneTelegramBot:
                 with open(card_path, "rb") as f:
                     await message.reply_photo(
                         photo=f,
-                        caption=_photo_sell_caption(f"高低決策卡{live_note}", card, fallback="高低決策卡"),
+                        caption=_decision_card_photo_caption(card, code, live_note),
                         parse_mode="HTML",
                         reply_markup=hub,
                     )
@@ -4188,7 +4695,7 @@ class WayneTelegramBot:
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
             glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
-            card_cap = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
+            card_cap = _decision_card_photo_caption(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),
@@ -4408,8 +4915,10 @@ class WayneTelegramBot:
             await self._handle_buy_streak_callback(q, uid, data)
             return
         if data.startswith("pg:"):
+            from picture_guide import parse_guide_callback
+
             try:
-                page = int(str(data[3:]).strip() or "0")
+                from_page, page = parse_guide_callback(data)
             except ValueError:
                 await q.answer("頁碼不對")
                 return
@@ -4417,7 +4926,16 @@ class WayneTelegramBot:
                 await q.answer("沒有這一張")
                 return
             await q.answer(f"換成第 {page + 1} 張")
-            await self._show_picture_guide_page(q.message, page, edit=True)
+            await self._show_picture_guide_page(
+                q.message, page, edit=True, from_page=from_page
+            )
+            return
+        if data == "tk:r":
+            try:
+                await q.answer("正在抓即時…")
+            except Exception:
+                pass
+            await self._refresh_ticker_message(q.message)
             return
         await q.answer()
         if data == "fw:s":
@@ -4481,6 +4999,17 @@ class WayneTelegramBot:
         if data.startswith("k:"):
             uid = str(q.from_user.id)
             await self._send_card_to(q.message, data[2:], uid)
+            return
+        if data.startswith("ys:"):
+            uid = str(q.from_user.id)
+            code = data[3:].strip()
+            await q.message.reply_html(sell_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(q.message, code, uid)
+            return
+        if data.startswith("yw:"):
+            uid = str(q.from_user.id)
+            kind = data[3:].strip()
+            await self._run_intent_kind(q.message, uid, kind, "")
             return
         if data.startswith("h:"):
             code = data[2:].strip()
@@ -4547,6 +5076,9 @@ class WayneTelegramBot:
             return
         if data == "ai_run":
             await self._run_ai_now(q.message, str(q.from_user.id))
+            return
+        if data == "ai_evolve":
+            await self._send_ai_evolve(q.message, str(q.from_user.id))
             return
         if data == "screen":
             await self._run_manual_screening(q.message)
@@ -4618,17 +5150,7 @@ class WayneTelegramBot:
                 logger.exception("字型預熱失敗")
             try:
                 await app.bot.set_my_commands(
-                    [
-                        BotCommand("menu", "回到主選單（下方兩排）"),
-                        BotCommand("market", "大盤指數與風險"),
-                        BotCommand("start", "開始"),
-                        BotCommand("help", "使用說明"),
-                        BotCommand("screen", "海選"),
-                        BotCommand("portfolio", "持股"),
-                        BotCommand("watch", "觀察"),
-                        BotCommand("flow", "資金移動"),
-                        BotCommand("industry", "產業說明"),
-                    ]
+                    [BotCommand(name, desc) for name, desc in TELEGRAM_BOT_COMMANDS]
                 )
                 await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
             except Exception:
@@ -4651,6 +5173,7 @@ class WayneTelegramBot:
         )
         app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
         app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
+        app.add_handler(CommandHandler("why", self._wrap_cmd(self.why_cmd)))
         app.add_handler(CommandHandler("market", self._wrap_cmd(self.market_cmd)))
         app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))
         app.add_handler(CommandHandler("screen", self._wrap_cmd(self.screen_cmd)))

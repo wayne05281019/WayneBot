@@ -374,7 +374,7 @@ def render_industry_png(
     for kind, item, _h in measured:
         if kind == "banner":
             kicker = "產業說明"
-            tx, ty = centered_text_xy(head_f, kicker, (pad_x, cy, pad_x + head_f.getlength(kicker) + 4, cy + 48))
+            tx, ty = centered_text_xy(head_f, kicker, (pad_x, cy, W - pad_x, cy + 48))
             dr.text((tx, ty), kicker, font=head_f, fill=HEAD + (255,))
             cy += 52
             name_txt = f"{item[1]} {item[2]}"

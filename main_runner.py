@@ -631,6 +631,53 @@ class MainRunner:
             logger.warning("AI 模擬操盤略過：%s", e, exc_info=True)
             return {}
 
+    def _maybe_send_evolve_digest(self, as_of: str) -> None:
+        """週五晚間：買賣仍不推播，另寄一則進化編碼週報。"""
+        try:
+            from config import scheduler_may_push
+            from ai_trader import (
+                ai_user_id,
+                format_evolve_report_html,
+                mark_weekly_evolve_sent,
+                should_send_weekly_evolve,
+            )
+            from wayne_db import list_tg_user_ids
+        except Exception:
+            return
+        if not scheduler_may_push("evening"):
+            return
+        uids = list_tg_user_ids(self.db_path)
+        if not uids and self.chat_id:
+            uids = [str(self.chat_id)]
+        for uid in uids:
+            user_id = ai_user_id(uid)
+            if not should_send_weekly_evolve(self.db_path, user_id, as_of):
+                continue
+            html = format_evolve_report_html(self.db_path, user_id)
+            if not html:
+                continue
+            try:
+                self.send_telegram_message(html, chat_id=uid)
+                mark_weekly_evolve_sent(self.db_path, user_id, as_of)
+            except Exception:
+                logger.exception("AI 進化週報失敗 uid=%s", uid)
+
+    @staticmethod
+    def _fuse_done_message(cap: str, health: Dict[str, Any]) -> str:
+        """盤後融合通過關卡後才准發。不是海選、不是買訊。"""
+        ymd = str(cap or "").replace("-", "")[:8]
+        if len(ymd) == 8 and ymd.isdigit():
+            pretty = f"{ymd[:4]}/{ymd[4:6]}/{ymd[6:]}"
+        else:
+            pretty = ymd or "—"
+        tw = int((health or {}).get("tw") or 0)
+        two = int((health or {}).get("two") or 0)
+        return (
+            f"📦 官方收盤已寫進庫（{pretty}）\n"
+            f"上市 {tw}　上櫃 {two}\n"
+            "不是海選、不是買訊。明早 06:30 才寄海選。"
+        )
+
     def run_increment_job(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
@@ -678,6 +725,11 @@ class MainRunner:
             f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
+        if notify:
+            try:
+                self.send_telegram_message(self._fuse_done_message(cap, health))
+            except Exception:
+                logger.exception("盤後融合完成推播失敗")
         try:
             from us_holidays import refresh_us_holiday_calendar
 
@@ -784,6 +836,7 @@ class MainRunner:
             if not any(results.values()):
                 results = load_session_results(self.db_path, as_of, "morning")
             self._run_ai_desk(as_of, results=results, notify=False)
+            self._maybe_send_evolve_digest(as_of)
             return True
         if not as_of:
             logger.error("無完整交易日可寫晚間海選快照")
@@ -804,6 +857,7 @@ class MainRunner:
             results=(screening or {}).get("results") or {},
             notify=False,
         )
+        self._maybe_send_evolve_digest(as_of)
         if notify:
             logger.info("晚間海選名單不另推；AI 模擬倉在背景更新，不主動推播。")
         self._mark_pipeline("success", "evening", run_date=key)

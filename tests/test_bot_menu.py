@@ -91,6 +91,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "第二排" in labels
     assert "連買" in labels
     assert "記買入" in labels
+    assert "原因" in labels
     assert "按錯" in labels
     assert "✕" in labels
     assert "海選" not in labels
@@ -103,6 +104,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "?:pics" in cbs
     assert "?:streak" in cbs
     assert "?:oops" in cbs
+    assert "?:why" in cbs
     assert "?:screen" not in cbs
     assert "?:market" not in cbs
 
