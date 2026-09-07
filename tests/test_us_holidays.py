@@ -129,11 +129,13 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
     assert "上一收盤 20260904" in html
     assert "上一收盤日該看" in html
     assert "上一收盤指數" in html
+    assert "上一收盤判斷" in html
     assert "美股時段" not in html
     assert "前一晚該看" not in html
     assert "道瓊" in html
     assert "+0.40%" in html
     assert "現金盤中" not in html
+    assert "電子鏈夜盤" not in html
     open_html = format_taiwan_market_page_html(
         db, as_of, now=datetime(2026, 9, 8, 10, 0, tzinfo=NY)
     )
@@ -162,9 +164,17 @@ def test_format_us_html_holiday_then_prior_tape():
     assert "20260907 美股勞動節休市" in html
     assert "上一收盤 20260904" in html
     assert "上一收盤指數" in html
+    assert "上一收盤判斷" in html
     assert "+0.10%（+10.00點）" in html
     assert "美股交易日" not in html
     assert "美股時段" not in html
+    from us_overnight import format_night_plain
+
+    night = format_night_plain(snap, now=datetime(2026, 9, 7, 21, 0, tzinfo=NY))
+    assert "上一收盤判斷　大盤中性" in night
+    assert "上一收盤指數" in night
+    assert "電子夜盤" not in night
+    assert "美股已收＋盤後／隔夜" not in night
     open_html = format_us_html(snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=NY))
     assert "勞動節休市" not in open_html
     assert "美股交易日" in open_html

@@ -756,7 +756,7 @@ def format_us_html(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
         head = headline_lines(
             "<b>美股收盤</b>",
             *[html_escape(x) for x in holiday],
-            f"判斷　{html_escape(label)}",
+            f"上一收盤判斷　{html_escape(label)}",
         )
     else:
         head = headline_lines(
@@ -787,19 +787,28 @@ def format_night_plain(snap: Dict[str, Any], now: Optional[datetime] = None) -> 
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
     phase = snap.get("us_phase") or "regular"
     phase_s = _PHASE_LABEL.get(phase, "")
-    lines = [
-        "＝＝夜盤判斷＝＝",
-        *_us_holiday_head(now),
-        label,
-        phase_s,
-        f"【{_SECTION_INDEX_CLOSE}】",
-        _plain_quote_rows(snap, _CASH_ITEMS),
-        f"恐慌指數　{_fmt_vix(snap)}",
-    ]
+    holiday = _us_holiday_head(now)
+    cash_title = _SECTION_PRIOR_CLOSE if holiday else _SECTION_INDEX_CLOSE
+    lines = ["＝＝夜盤判斷＝＝", *holiday]
+    if holiday:
+        lines.append(f"上一收盤判斷　{label}")
+    else:
+        lines.append(label)
+        if phase_s:
+            lines.append(phase_s)
+    lines.extend(
+        [
+            f"【{cash_title}】",
+            _plain_quote_rows(snap, _CASH_ITEMS),
+            f"恐慌指數　{_fmt_vix(snap)}",
+        ]
+    )
     if phase in ("post", "overnight"):
         lines.extend(["【盤後期貨】", _post_futures_line(snap), "【台積美股】", _post_adr_line(snap, with_cash=True)])
     else:
         lines.extend(["【台積美股】", _post_adr_line(snap), "（美股現金收盤，盤中期貨不看）"])
+    if holiday:
+        return "\n".join(lines)
     side = electronics_night_side(snap)
     if side:
         lines.extend(
@@ -850,7 +859,7 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None, now: Opti
             "一早提醒",
             "<b>美股收盤偏弱</b>",
             *[html_escape(x) for x in holiday],
-            f"判斷　{html_escape(label)}",
+            f"上一收盤判斷　{html_escape(label)}",
         )
     else:
         head = headline_lines(

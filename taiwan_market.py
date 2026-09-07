@@ -1357,7 +1357,11 @@ def _format_overnight_watch_lines(
         )
 
         label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股收盤")
-        head = f"判斷　{html_escape(label)}"
+        head = (
+            f"上一收盤判斷　{html_escape(label)}"
+            if holiday_lines
+            else f"判斷　{html_escape(label)}"
+        )
         phase = _PHASE_LABEL.get(str(us.get("us_phase") or ""), "")
         if phase and not holiday_lines:
             head += f"　{html_escape(phase)}"
@@ -1390,7 +1394,7 @@ def _format_overnight_watch_lines(
             bits.append("台積／輝達")
             bits.extend(adr)
         side = electronics_night_side(us)
-        if side:
+        if side and not holiday_lines:
             bits.append(_watch_kv("電子鏈夜盤", side))
     night_line = _format_futures_night_line(
         night or {},
@@ -3357,6 +3361,14 @@ def format_screen_market_outlook_html(
 
     from us_overnight import REGIME_LABEL, _fmt_vix, electronics_night_side
 
+    holiday_lines: List[str] = []
+    try:
+        from us_holidays import closed_us_session, holiday_banner_lines
+
+        holiday_lines = holiday_banner_lines(closed_us_session(None, db_path))
+    except Exception:
+        holiday_lines = []
+
     us_regime = str(us.get("regime") or "unknown")
     us_label = REGIME_LABEL.get(us_regime, "美股收盤")
     ixic = us.get("ixic_pct")
@@ -3406,7 +3418,7 @@ def format_screen_market_outlook_html(
         if tail_bits:
             body.append("　".join(tail_bits))
         side = electronics_night_side(us)
-        if side:
+        if side and not holiday_lines:
             body.append(f"電子鏈夜盤{html_escape(side)}")
     body.extend(
         _outlook_night_plain_lines(
