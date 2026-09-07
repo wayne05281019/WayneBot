@@ -5,16 +5,18 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v9"
-# 九頁同一張手機比例，話筒裡才不會忽大忽小。
-# 2560×5550＝19.5:9（常見手機全畫面），邊長已在 Telegram 照片壓縮前的實用上限。
-PAGE_WIDTH = 2560
-PAGE_HEIGHT = 5550
-MARGIN = 128
-TITLE_SIZE = 96
-BODY_SIZE = 60
-BOTTOM_PAD = 56
-MIN_SHOT_RATIO = 0.40
+CACHE_VER = "v10"
+# 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
+# 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
+PAGE_WIDTH = 1080
+PAGE_HEIGHT = 1920
+MARGIN = 28
+TITLE_SIZE = 76
+BODY_SIZE = 52
+MIN_TITLE_SIZE = 68
+MIN_BODY_SIZE = 48
+BOTTOM_PAD = 12
+MIN_SHOT_RATIO = 0.30
 TG_PHOTO_MAX_BYTES = 9_800_000
 _BREAK_AFTER = set("、。；：，,./／）)」」】》 ")
 PAGE_SLUGS = (
@@ -66,13 +68,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "menu",
         "兩排主選單在哪",
-        "不在訊息最下面。\n"
-        "點輸入列旁邊的四格鍵盤圖示，展開兩排。\n"
-        "\n"
-        "漢堡鈕在輸入列左邊。\n"
-        "四格圖示在輸入列右邊。\n"
-        "打完字若只剩英文鍵盤，再點一次四格。\n"
-        "也可打 /menu。\n"
+        "不在訊息最下面。點輸入列旁邊的四格鍵盤圖示展開兩排。也可打 /menu。\n"
         "\n"
         "第一排（左到右）\n"
         "決策卡　當沖　持股　觀察　海選　AI倉\n"
@@ -80,14 +76,11 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "第二排（左到右）\n"
         "隔日沖　大盤　資金　連買區　說明　回報\n"
         "\n"
-        "決策卡＝刷新上一檔，不是海選名單。\n"
-        "還沒查過股，請直接打四碼，不要先按決策卡。\n"
-        "畫面怪按最右「回報」。\n"
+        "決策卡＝刷新上一檔，不是海選。還沒查過請直接打四碼。畫面怪按最右「回報」。\n"
         "\n"
         "平日自動（台灣）\n"
         "06:30 早報　12:45 尾盤可切\n"
-        "16:30 官方收盤寫庫\n"
-        "20:00 AI倉模擬買賣，不推播",
+        "16:30 官方收盤寫庫　20:00 AI倉模擬買賣，不推播",
     ),
     (
         "charts",
@@ -124,31 +117,18 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "discipline",
         "粉紅紀律不是買訊",
-        "介紹圖粉紅「紀律」、決策卡「今日態度」\n"
-        "只講現在怎樣：先別追，或有持股先出一點。\n"
-        "句子跟下面那張20日表的數字、底色對齊。\n"
-        "不是買訊，也不改海選名單。\n"
+        "介紹圖「紀律」、決策卡「今日態度」只講現在怎樣，不是買訊。\n"
+        "句子跟下面那張 20 日表的數字、底色對齊。不改海選。\n"
+        "徽章才寫月K還在往上、已走空或在整理。不是買訊。\n"
         "\n"
-        "徽章才寫月K還在往上、已走空或在整理。\n"
-        "跟表上月乖離不是同一條尺，不是買訊。\n"
+        "高點跟熱度都退了 → 先別追；有持股先出一點\n"
+        "價到高了、熱度沒跟上 → 先出一點、不要追\n"
+        "很熱但價沒過前高 → 先出一點、不要追高\n"
+        "高點跟熱度都沒了 → 這波先當結束；先出一點\n"
         "\n"
-        "現在高點跟熱度都退了\n"
-        "→ 先別追、也先別加碼；有持股就先出一點\n"
-        "現在價到高了、熱度沒跟上\n"
-        "→ 先出一點、不要追\n"
-        "現在很熱但價沒過前高\n"
-        "→ 先出一點、不要追高\n"
-        "現在高點跟熱度都沒了\n"
-        "→ 這波先當結束；有持股就先出一點\n"
-        "\n"
-        "黃金買點＝獲利剛離開 0，或還在 0.x% 綠底。\n"
-        "（以前叫起漲）\n"
-        "重點觀察＝還壓在近 60 個日曆天收盤低。\n"
-        "注意，不是立刻買。\n"
-        "\n"
-        "如何賣（不是買訊、不自動賣）\n"
-        "最高價＝20日高，對最高溫。\n"
-        "只標在查股圖、決策卡、持股、AI倉。",
+        "黃金買點＝獲利剛離開 0（以前叫起漲）\n"
+        "重點觀察＝還壓在近 60 個日曆天收盤低，不是立刻買\n"
+        "如何賣：最高價＝20日高，對最高溫。不自動賣。",
     ),
     (
         "screen",
@@ -203,21 +183,17 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "oops",
         "按錯了怎麼辦",
-        "一打開先按了「決策卡」\n"
-        "那顆是刷新上一檔。還沒查過就直接打四碼。\n"
+        "一打開先按了「決策卡」：那顆是刷新上一檔。還沒查過就直接打四碼。\n"
         "\n"
-        "「當沖」沒名單：週末／收盤後本來就空。\n"
-        "改看海選或隔日沖。平日 09:00–13:30 才有當沖。\n"
-        "\n"
-        "「海選」等很久：那是掃全市場；不要連按。\n"
-        "觀察跟持股搞混：觀察＝還沒買；持股＝按過記買入才會在。\n"
-        "持股跟 AI倉搞混：持股＝你手記的；AI倉＝假錢對照組。\n"
+        "「當沖」沒名單：週末／收盤後本來就空。平日 09:00–13:30 才有。\n"
+        "「海選」等很久：掃全市場；不要連按。\n"
+        "觀察＝還沒買；持股＝按過記買入才會在。\n"
+        "持股＝你手記的；AI倉＝假錢對照組。\n"
         "找不到產業：在圖下面那一排。\n"
         "\n"
         "「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
-        "主選單不見：點輸入列旁邊四格鍵盤圖示，或打 /menu。\n"
-        "畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。\n"
-        "不用給程式密鑰、不用給機器人密碼。",
+        "主選單不見：點四格鍵盤圖示，或打 /menu。\n"
+        "畫面怪按第二排最右「回報」。不用給密鑰或密碼。",
     ),
 )
 
@@ -329,7 +305,36 @@ def _page_shot(slug: str):
     path = os.path.join(asset_dir(), name)
     if not os.path.isfile(path) or os.path.getsize(path) < 8_000:
         return None
-    return Image.open(path).convert("RGB")
+    im = Image.open(path).convert("RGB")
+    return _trim_guide_shot(name, im)
+
+
+def _trim_guide_shot(name: str, im):
+    """桌面話筒截圖左右／上方空白裁掉，兩排按鈕才能放大鋪滿。"""
+    keyboard = {
+        "cover_menu.png",
+        "lists.png",
+        "streak.png",
+        "oops.png",
+        "screen.png",
+    }
+    w, h = im.size
+    if name in keyboard and w >= 1400:
+        left = int(w * 0.18)
+        right = int(w * 0.76)
+        top = int(h * 0.32)
+        bottom = int(h * 0.80)  # 去掉截圖自己的底欄說明，避免裁字
+        return im.crop((left, top, right, bottom))
+    if name in {"charts.png", "hub.png"} and w >= 1400:
+        left = int(w * 0.14)
+        right = int(w * 0.86)
+        return im.crop((left, 0, right, h))
+    if name == "discipline.png" and w >= 900:
+        left = int(w * 0.16)
+        right = int(w * 0.84)
+        bottom = int(h * 0.72)  # 留粉紅紀律＋表頭，不要只剩表尾
+        return im.crop((left, 0, right, bottom))
+    return im
 
 
 def _fit_box(im, max_w: int, max_h: int):
@@ -346,22 +351,41 @@ def _fit_box(im, max_w: int, max_h: int):
     return im.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
-def _shot_card(shot, max_w: int, max_h: int):
-    """截圖放大塞進剩餘區塊，白底圓角卡。"""
+def _fit_cover(im, max_w: int, max_h: int, *, keep: str = "center"):
+    """鋪滿目標框：放大後裁切，不留左右空白。寬圖裁左右；高圖依 keep 留頂或置中。"""
+    from PIL import Image
+
+    w, h = im.size
+    if w <= 0 or h <= 0 or max_w <= 0 or max_h <= 0:
+        return im
+    scale = max(max_w / w, max_h / h)
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+    if (nw, nh) != (w, h):
+        im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+        w, h = im.size
+    left = max(0, (w - max_w) // 2)
+    if keep == "top":
+        top = 0
+    elif keep == "bottom":
+        top = max(0, h - max_h)
+    else:
+        top = max(0, (h - max_h) // 2)
+    return im.crop((left, top, left + max_w, top + max_h))
+
+
+def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
+    """截圖鋪滿剩餘區塊，左右貼齊畫布；不留大塊米色邊。"""
     from PIL import Image, ImageDraw
 
-    pad = max(24, int(max_w * 0.016))
-    lift = max(12, pad // 2)
-    inner_w = max(1, max_w - pad * 2 - lift)
-    inner_h = max(1, max_h - pad * 2 - lift)
-    shot = _fit_box(shot, inner_w, inner_h)
-    card_w = shot.width + pad * 2
-    card_h = shot.height + pad * 2
-    out = Image.new("RGB", (card_w + lift, card_h + lift), _BG)
+    pad = 8
+    inner_w = max(1, max_w - pad * 2)
+    inner_h = max(1, max_h - pad * 2)
+    shot = _fit_cover(shot, inner_w, inner_h, keep=keep)
+    out = Image.new("RGB", (max_w, max_h), _BG)
     d = ImageDraw.Draw(out)
-    rad = max(18, pad)
-    d.rounded_rectangle((lift, lift, card_w + lift - 1, card_h + lift - 1), rad, fill=_SHADOW)
-    d.rounded_rectangle((0, 0, card_w - 1, card_h - 1), rad, fill=_CARD, outline=_LINE, width=4)
+    rad = 16
+    d.rounded_rectangle((0, 0, max_w - 1, max_h - 1), rad, fill=_CARD, outline=_LINE, width=3)
     out.paste(shot, (pad, pad))
     return out
 
@@ -388,11 +412,11 @@ def _save_page_image(img, out_path: str) -> None:
 
 
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
-    """固定手機全畫面比例：字在上、截圖置中貼底。九頁同一尺寸。"""
+    """一屏 9:16：字夠大可讀，截圖貼底左右貼齊。九頁同一尺寸。"""
     from PIL import Image, ImageDraw
 
     max_w = PAGE_WIDTH - 2 * MARGIN
-    bar_h = 16
+    bar_h = 10
     min_shot_h = int(PAGE_HEIGHT * MIN_SHOT_RATIO)
     probe = Image.new("RGB", (PAGE_WIDTH, 200), _BG)
     pdraw = ImageDraw.Draw(probe)
@@ -403,32 +427,32 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     title_lh = body_lh = gap_h = 0
     title_font = body_font = None
     text_h = 0
-    for scale in (1.0, 0.94, 0.88, 0.82, 0.76, 0.70, 0.64):
-        title_size = max(56, int(round(TITLE_SIZE * scale)))
-        body_size = max(40, int(round(BODY_SIZE * scale)))
+    # 只微縮兩檔；低於 MIN_BODY_SIZE 會在話筒裡看不清，改讓截圖變矮。
+    for scale in (1.0, 0.94, 0.90):
+        title_size = max(MIN_TITLE_SIZE, int(round(TITLE_SIZE * scale)))
+        body_size = max(MIN_BODY_SIZE, int(round(BODY_SIZE * scale)))
         title_font = _load_font(title_size, bold=True)
         body_font = _load_font(body_size)
-        title_lh = max(int(round(title_size * 1.28)), title_size + 12)
-        body_lh = max(int(round(body_size * 1.46)), body_size + 10)
-        gap_h = max(int(round(body_size * 0.52)), 18)
+        title_lh = max(int(round(title_size * 1.16)), title_size + 6)
+        body_lh = max(int(round(body_size * 1.30)), body_size + 6)
+        gap_h = max(int(round(body_size * 0.34)), 12)
         title_lines = _wrap_line(pdraw, title, title_font, max_w, max_w)
         body_rows = _layout_body(pdraw, body, body_font, max_w)
-        # 標題＋分隔＋本文；頂欄不再重複寫 WayneBot，把空間留給內文。
         text_h = (
-            28
+            12
             + len(title_lines) * title_lh
-            + 28
+            + 16
             + _text_block_h(body_rows, body_lh, gap_h)
         )
         remain = PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h
         if remain >= min_shot_h:
             break
     assert title_font is not None and body_font is not None
-    remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, min_shot_h)
+    remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
     shot = _page_shot(slug)
     card = None
     if shot is not None:
-        card = _shot_card(shot, max_w, remain)
+        card = _shot_card(shot, max_w, remain, keep="top" if slug == "discipline" else "center")
     img = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), _BG)
     draw = ImageDraw.Draw(img)
     draw.rectangle((0, 0, PAGE_WIDTH, bar_h), fill=_ACCENT)
@@ -436,9 +460,9 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     for line in title_lines:
         draw.text((MARGIN, y), line, font=title_font, fill=_INK)
         y += title_lh
-    y += 8
-    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=5)
-    y += 20
+    y += 6
+    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=4)
+    y += 16
     for row in body_rows:
         if row is None:
             y += gap_h
@@ -447,11 +471,10 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         draw.text((MARGIN + indent, y), line, font=body_font, fill=_INK)
         y += body_lh
     if card is not None:
-        x = (PAGE_WIDTH - card.width) // 2
         y_shot = PAGE_HEIGHT - BOTTOM_PAD - card.height
-        if y_shot < y + 16:
-            y_shot = y + 16
-        img.paste(card, (x, y_shot))
+        if y_shot < y + 8:
+            y_shot = y + 8
+        img.paste(card, (MARGIN, y_shot))
     _save_page_image(img, out_path)
     return out_path
 

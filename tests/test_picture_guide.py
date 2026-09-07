@@ -7,16 +7,21 @@ import os
 from PIL import Image
 
 from picture_guide import (
+    BODY_SIZE,
     CACHE_VER,
+    MARGIN,
+    MIN_BODY_SIZE,
     PAGE_SHOTS,
     PAGE_SLUGS,
     PAGE_HEIGHT,
     PAGE_WIDTH,
     PAGES,
+    TITLE_SIZE,
     asset_dir,
     page_copy_blob,
     render_page,
     render_picture_guide,
+    _trim_guide_shot,
 )
 
 
@@ -47,9 +52,16 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v9"
-    assert PAGE_WIDTH == 2560
-    assert PAGE_HEIGHT == 5550
+    assert CACHE_VER == "v10"
+    assert PAGE_WIDTH == 1080
+    assert PAGE_HEIGHT == 1920
+    assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
+    assert TITLE_SIZE >= 72
+    assert BODY_SIZE >= 50
+    assert MIN_BODY_SIZE >= 48
+    assert MARGIN <= 32
+    # 390 寬話筒點開：52px 內文 ≈ 19 點，不要再縮到看不清。
+    assert BODY_SIZE * (390 / PAGE_WIDTH) >= 18
     sizes = set()
     for p in paths:
         assert os.path.getsize(p) > 20_000
@@ -98,6 +110,36 @@ def test_page_render_roundtrip(tmp_path):
     render_page(slug, title, body, out)
     with Image.open(out) as im:
         assert im.size == (PAGE_WIDTH, PAGE_HEIGHT)
+
+
+def test_shot_panel_fills_content_width(tmp_path):
+    """下半截圖左右貼齊內文寬，不要再留大塊米色邊。"""
+    slug, title, body = PAGES[1]
+    out = str(tmp_path / "menu.png")
+    render_page(slug, title, body, out)
+    with Image.open(out) as im:
+        y = int(im.height * 0.84)
+        bg = (246, 241, 232)
+
+        def _near(c, t, tol=18):
+            return all(abs(a - b) <= tol for a, b in zip(c, t))
+
+        xs = [x for x in range(im.width) if not _near(im.getpixel((x, y)), bg)]
+        assert xs, "lower third should be the screenshot, not empty beige"
+        assert xs[0] <= MARGIN + 12
+        assert xs[-1] >= PAGE_WIDTH - MARGIN - 12
+        assert (xs[-1] - xs[0]) >= PAGE_WIDTH - 2 * MARGIN - 24
+
+
+def test_keyboard_shot_trimmed_to_buttons():
+    path = os.path.join(asset_dir(), "cover_menu.png")
+    from PIL import Image
+
+    im = Image.open(path)
+    trimmed = _trim_guide_shot("cover_menu.png", im.convert("RGB"))
+    assert trimmed.width < im.width
+    assert trimmed.height < im.height
+    assert trimmed.width / trimmed.height < 5.0
 
 
 def test_send_picture_guide_one_page_with_next_button(tmp_path):
