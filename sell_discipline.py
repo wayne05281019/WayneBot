@@ -186,10 +186,12 @@ def sell_notes_for_stocks(
     *,
     full: bool = False,
     as_of: Optional[str] = None,
+    readings: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Dict[str, str]:
     """多檔一次查如何賣。值是短句或 HTML 長句；失敗的檔不出現。不自動賣。
 
     as_of：釘死某一完整交易日。不傳就用庫內最新完整日。
+    readings：若傳入空 dict，會順便寫入 monthly_stage／monthly_stage_short。
     """
     out: Dict[str, str] = {}
     ids: List[str] = []
@@ -214,6 +216,11 @@ def sell_notes_for_stocks(
             if not card or card.get("error"):
                 continue
             attach_sell(card)
+            if readings is not None:
+                readings[sid] = {
+                    "monthly_stage": str(card.get("monthly_stage") or ""),
+                    "monthly_stage_short": str(card.get("monthly_stage_short") or ""),
+                }
             if full:
                 lines = sell_note_lines(card)
                 note = lines[0] if lines else ""

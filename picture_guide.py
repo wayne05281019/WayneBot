@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v5"
+CACHE_VER = "v6"
 # 話筒一次一張：加寬加大字給老花；圖可以往下。
 PAGE_WIDTH = 1440
 MARGIN = 72
@@ -119,6 +119,9 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "介紹圖粉紅「紀律」、決策卡「今日態度」\n"
         "只講現在怎樣：先別追，或有持股先出一點。\n"
         "不是買訊，也不改海選名單。\n"
+        "\n"
+        "決策卡也會寫月線還在往上、已走空、或在整理。\n"
+        "只是讓你對位置，不是買訊。\n"
         "\n"
         "現在高點跟熱度都退了\n"
         "→ 先別追、也先別加碼；有持股就先出一點\n"

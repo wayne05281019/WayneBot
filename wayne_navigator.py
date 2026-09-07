@@ -409,6 +409,7 @@ class NavigatorEngine:
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
+            monthly_stage_from_ohlc,
             prev_close_from_change_pct,
             profit_floor_at,
             resolve_daily_change_pct,
@@ -659,6 +660,13 @@ class NavigatorEngine:
             except Exception:
                 pass
         badges.append(regime)
+        try:
+            stage_src = df["close"].where(~df["is_halt"]) if "is_halt" in df.columns else df["close"]
+            monthly_kind, monthly_stage, monthly_short = monthly_stage_from_ohlc(
+                df["date"].tolist(), stage_src.tolist()
+            )
+        except Exception:
+            monthly_kind, monthly_stage, monthly_short = "", "", ""
         # 高低／均線略過無量日；20 日表要含官方無量交易日，否則冷門／KY 會跳 9/2、9/3。
         table_src = df
         table = table_src.tail(lookback)[
@@ -751,6 +759,9 @@ class NavigatorEngine:
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "stance": stance,
             "stance_kind": stance_kind,
+            "monthly_stage": monthly_stage,
+            "monthly_stage_kind": monthly_kind,
+            "monthly_stage_short": monthly_short,
             "table": table,
             "_ohlc": df,
         }
@@ -1817,7 +1828,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     try:
         from decision_card_signals import stance_explain
 
-        stance_note = stance_explain(str(card.get("stance_kind") or "wait"), sell_note=sell_sub)
+        stance_note = stance_explain(
+            str(card.get("stance_kind") or "wait"),
+            sell_note=sell_sub,
+            monthly_stage=str(card.get("monthly_stage") or ""),
+        )
     except Exception:
         stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
     stance_h = 6.2
@@ -2271,6 +2286,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
     bias_s = f"{float(bias):+.1f}%" if bias is not None else "—"
+    month_s = str(card.get("monthly_stage_short") or "").strip()
     from decision_card_signals import volume_headline_rank, volume_rank_pair_text
 
     vol_lab, vol_n = volume_headline_rank(
@@ -2323,6 +2339,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("月空間", f"{card['space_20']}%"),
             kv_compact("季空間", f"{card['space_60']}%"),
             kv_compact("月乖離", bias_s),
+            *([kv_compact("月線", month_s)] if month_s else []),
         ),
         section(
             kv_compact("溫度", card.get("temp_c") or "—"),
@@ -2522,6 +2539,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
                 regime = bit
             continue
         rest.append(bit)
+    monthly_bit = str(card.get("monthly_stage") or "").strip()
+    if monthly_bit:
+        rest.insert(0, monthly_bit)
     # 格局白字、與時間同字級；產業上移後除權／量排名往左。
     meta_x = 20.2
     if regime:

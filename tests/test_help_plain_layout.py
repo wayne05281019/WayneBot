@@ -33,6 +33,8 @@ def test_stock_help_has_plain_discipline_notes():
     assert "現在價到高了" in stock
     assert "現在很熱但價沒過前高" in stock
     assert "現在高點跟熱度都沒了" in stock
+    assert "月線一句" in stock
+    assert "不改海選" in stock
 
 
 def test_screen_help_separates_two_line_doors():

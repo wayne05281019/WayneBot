@@ -476,6 +476,7 @@ def format_ai_desk_html(
     else:
         lines.extend(["", "<b>持倉</b>"])
         sell_notes: Dict[str, str] = {}
+        readings: Dict[str, Dict[str, str]] = {}
         try:
             from sell_discipline import sell_notes_for_stocks
 
@@ -483,9 +484,11 @@ def format_ai_desk_html(
                 [p.get("stock_id") for p in s["positions"]],
                 engine.db_path,
                 full=True,
+                readings=readings,
             )
         except Exception:
             sell_notes = {}
+            readings = {}
         for i, p in enumerate(s["positions"]):
             if i:
                 lines.append("")
@@ -532,6 +535,9 @@ def format_ai_desk_html(
             note = sell_notes.get(sid) or ""
             if note:
                 lines.extend(_ai_phone_lines(f"紀律：{note}"))
+            month = str((readings.get(sid) or {}).get("monthly_stage_short") or "").strip()
+            if month:
+                lines.extend(_ai_phone_lines(f"月線　{month}"))
         empty = MAX_SLOTS - used
         if empty > 0:
             lines.extend(_ai_phone_lines(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"))

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import pytest
+
 from decision_card_signals import (
     card_daily_stance,
     double_green_breakout,
@@ -190,6 +192,61 @@ def test_stance_explain_is_plain_speech():
     sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
     assert "不是叫你買" in sell
     assert "買訊" not in sell
+    staged = stance_explain("wait", monthly_stage="月線還在往上")
+    assert staged.startswith("月線還在往上。")
+    assert "20日表" in staged
+
+
+def test_monthly_stage_from_ohlc_three_phases():
+    from decision_card_signals import (
+        MONTHLY_STAGE_DOWN,
+        MONTHLY_STAGE_SIDE,
+        MONTHLY_STAGE_UP,
+        monthly_stage_from_ohlc,
+    )
+
+    def yyyymm(i: int) -> str:
+        y, m = divmod(i, 12)
+        return f"{2024 + y}{m + 1:02d}28"
+
+    rising = [10.0 + i for i in range(18)]
+    dates = [yyyymm(i) for i in range(18)]
+    kind, label, short = monthly_stage_from_ohlc(dates, rising)
+    assert kind == "up"
+    assert label == MONTHLY_STAGE_UP
+    assert short == "還在往上"
+
+    falling = [40.0 - i for i in range(18)]
+    kind, label, short = monthly_stage_from_ohlc(dates, falling)
+    assert kind == "down"
+    assert label == MONTHLY_STAGE_DOWN
+    assert short == "已走空"
+
+    # 均線仍往上但本月大跌 → 整理，不喊往上
+    pullback = list(rising)
+    pullback[-1] = pullback[-2] * 0.8
+    kind, label, short = monthly_stage_from_ohlc(dates, pullback)
+    assert kind == "side"
+    assert label == MONTHLY_STAGE_SIDE
+    assert short == "在整理"
+
+    kind, label, short = monthly_stage_from_ohlc(["20260115"], [10])
+    assert (kind, label, short) == ("", "", "")
+
+
+@pytest.mark.production_db
+def test_hot_names_monthly_stage_matches_chart_phase():
+    """2383 月線還在往上、4915 已走空；不是買訊。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    eng = NavigatorEngine(get_db_path())
+    up = eng.get_decision_card("2383", merge_live=False)
+    assert up.get("monthly_stage_kind") == "up"
+    assert up.get("monthly_stage") == "月線還在往上"
+    down = eng.get_decision_card("4915", merge_live=False)
+    assert down.get("monthly_stage_kind") == "down"
+    assert down.get("monthly_stage") == "月線已走空"
 
 
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):

@@ -474,19 +474,97 @@ def card_daily_stance(
     return "今天先看表，先等", "wait"
 
 
-def stance_explain(kind: str, *, sell_note: str = "") -> str:
+MONTHLY_STAGE_UP = "月線還在往上"
+MONTHLY_STAGE_DOWN = "月線已走空"
+MONTHLY_STAGE_SIDE = "月線在整理"
+_MONTHLY_STAGE_SHORT = {
+    "up": "還在往上",
+    "down": "已走空",
+    "side": "在整理",
+}
+# 本月收比上月低超過這比例，即使 12 月均線還在爬也不喊往上（均線會慢一拍）。
+_MONTHLY_PULLBACK = 0.08
+
+
+def monthly_last_closes(dates, closes) -> list[float]:
+    """每個日曆月最後一根有效收盤。無量／停牌 0 元略過。"""
+    last: dict[str, tuple[str, float]] = {}
+    for raw_d, raw_c in zip(dates or [], closes or []):
+        ds = str(raw_d or "").replace("-", "").replace("/", "")[:8]
+        if len(ds) < 6:
+            continue
+        try:
+            cv = float(raw_c)
+        except (TypeError, ValueError):
+            continue
+        if cv != cv or cv <= 0:
+            continue
+        ym = ds[:6]
+        prev = last.get(ym)
+        if prev is None or ds >= prev[0]:
+            last[ym] = (ds, cv)
+    return [last[k][1] for k in sorted(last)]
+
+
+def monthly_stage_from_ohlc(dates, closes) -> tuple[str, str, str]:
+    """每月收盤相對近 12 個月均線：往上／走空／整理。不是買訊，不改海選。
+
+    回傳 (kind, 全句, 短句)。資料不足三個月就空白，不上卡。
+    """
+    series = monthly_last_closes(dates, closes)
+    if len(series) < 3:
+        return "", "", ""
+    cur = float(series[-1])
+    prev = float(series[-2])
+    kind = "side"
+    if len(series) >= 13:
+        arr = np.asarray(series, dtype=float)
+        sma = pd.Series(arr).rolling(12, min_periods=12).mean().to_numpy()
+        sma_now = float(sma[-1])
+        sma_prev = float(sma[-2])
+        if sma_now == sma_now and sma_prev == sma_prev and sma_now > 0:
+            above = cur > sma_now
+            rising = sma_now + 1e-12 >= sma_prev
+            drop = (cur - prev) / prev if prev > 0 else 0.0
+            if above and rising and drop >= -_MONTHLY_PULLBACK:
+                kind = "up"
+            elif (not above) and (not rising) and drop <= _MONTHLY_PULLBACK:
+                kind = "down"
+            else:
+                kind = "side"
+    else:
+        older = float(series[-3])
+        if cur > prev > older:
+            kind = "up"
+        elif cur < prev < older:
+            kind = "down"
+    label = {
+        "up": MONTHLY_STAGE_UP,
+        "down": MONTHLY_STAGE_DOWN,
+        "side": MONTHLY_STAGE_SIDE,
+    }[kind]
+    return kind, label, _MONTHLY_STAGE_SHORT[kind]
+
+
+def stance_explain(kind: str, *, sell_note: str = "", monthly_stage: str = "") -> str:
     """今日態度後面那句人話：告訴你現在先別急，不是下單指令。"""
     note = str(sell_note or "").strip()
     if note:
         if "不是叫你買" not in note:
             note = note.rstrip("。") + "。不是叫你買。"
-        return note
-    k = str(kind or "wait")
-    if k == "avoid":
-        return "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
-    if k == "watch":
-        return "靠近低點可以放進觀察，先別急著買。進場只看下面這張表。"
-    return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
+        body = note
+    else:
+        k = str(kind or "wait")
+        if k == "avoid":
+            body = "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
+        elif k == "watch":
+            body = "靠近低點可以放進觀察，先別急著買。進場只看下面這張表。"
+        else:
+            body = "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
+    stage = str(monthly_stage or "").strip().rstrip("。")
+    if stage and stage not in body:
+        return f"{stage}。{body}"
+    return body
 
 
 def alert_tag(
