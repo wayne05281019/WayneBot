@@ -18,6 +18,8 @@ def test_guide_starts_with_three_steps_in_first_chunk():
     assert "⌨️" in first
     assert "四格" in first
     assert "圖下面" in first or "圖下方" in first
+    assert "一次只出一張" in first
+    assert "第 2 張" in first
     assert len(chunks) == 1, "總覽應一則看完，不要切成兩則"
 
 

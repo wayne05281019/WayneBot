@@ -126,6 +126,7 @@ def test_ai_desk_readable():
     assert "總資產：" in html
     assert "已用槽：" in html
     assert "每槽上限：" in html
+    assert "○" in html or "●" in html
     for line in html.split("\n"):
         plain = re.sub(r"<[^>]+>", "", line)
         if any(k in plain for k in ("這是長期照紀律", "對照你手記持股", "本金最多分", "停損 −7%")):

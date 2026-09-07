@@ -24,6 +24,7 @@ def _msg(chat_id: int, uid: int, text: str = ""):
     message.reply_photo = AsyncMock()
     message.edit_text = AsyncMock()
     message.delete = AsyncMock()
+    message.photo = None
     return message
 
 
@@ -159,6 +160,22 @@ def test_help_callback_edits_in_place_not_new_message():
     asyncio.run(run())
     bot._reply_help_topic.assert_awaited_once()
     assert bot._reply_help_topic.await_args.kwargs.get("edit_target") is msg
+
+
+def test_help_callback_from_picture_does_not_edit_photo():
+    bot = _bot()
+    bot._reply_help_topic = AsyncMock()
+    upd, msg = _cb("?:stock")
+    msg.photo = (object(),)
+
+    async def run():
+        await bot.on_callback(upd, MagicMock())
+
+    asyncio.run(run())
+    msg.delete.assert_awaited_once()
+    bot._reply_help_topic.assert_awaited_once()
+    assert bot._reply_help_topic.await_args.kwargs.get("edit_target") is None
+    assert bot._reply_help_topic.await_args.args[1] == "stock"
 
 
 def test_hx_deletes_help_message():
