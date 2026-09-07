@@ -314,7 +314,7 @@ def closed_us_session(now: Optional[datetime] = None, db_path: str = None) -> Op
 
 
 def holiday_banner_lines(closed: Optional[Dict[str, str]]) -> list[str]:
-    """大盤／美股塊開頭：20260907 美股勞動節休市＋前一日 20260904。"""
+    """大盤／美股塊開頭：20260907 美股勞動節休市＋上一收盤 20260904。"""
     if not closed:
         return []
     zh = str(closed.get("zh") or "").strip()
@@ -324,7 +324,7 @@ def holiday_banner_lines(closed: Optional[Dict[str, str]]) -> list[str]:
         return []
     lines = [f"{ymd} 美股{zh}休市"]
     if prev:
-        lines.append(f"前一日 {prev}")
+        lines.append(f"上一收盤 {prev}")
     return lines
 
 

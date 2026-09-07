@@ -45,7 +45,7 @@ def test_banner_labor_day_then_prior_close():
     assert closed["prev_ymd"] == "20260904"
     lines = holiday_banner_lines(closed)
     assert lines[0] == "20260907 美股勞動節休市"
-    assert lines[1] == "前一日 20260904"
+    assert lines[1] == "上一收盤 20260904"
 
 
 def test_banner_thanksgiving():
@@ -126,8 +126,11 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
         db, as_of, now=datetime(2026, 9, 7, 22, 0, tzinfo=NY)
     )
     assert "20260907 美股勞動節休市" in html
-    assert "前一日 20260904" in html
-    assert "指數收盤" in html
+    assert "上一收盤 20260904" in html
+    assert "上一收盤日該看" in html
+    assert "上一收盤指數" in html
+    assert "美股時段" not in html
+    assert "前一晚該看" not in html
     assert "道瓊" in html
     assert "+0.40%" in html
     assert "現金盤中" not in html
@@ -157,9 +160,11 @@ def test_format_us_html_holiday_then_prior_tape():
     }
     html = format_us_html(snap, now=datetime(2026, 9, 7, 21, 0, tzinfo=NY))
     assert "20260907 美股勞動節休市" in html
-    assert "前一日 20260904" in html
+    assert "上一收盤 20260904" in html
+    assert "上一收盤指數" in html
     assert "+0.10%（+10.00點）" in html
     assert "美股交易日" not in html
+    assert "美股時段" not in html
     open_html = format_us_html(snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=NY))
     assert "勞動節休市" not in open_html
     assert "美股交易日" in open_html

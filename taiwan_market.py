@@ -1367,7 +1367,7 @@ def _format_overnight_watch_lines(
         bits.append(head)
         cash = _watch_quote_rows(us, _CASH_ITEMS)
         if cash:
-            bits.append("指數收盤")
+            bits.append("上一收盤指數" if holiday_lines else "指數收盤")
             bits.extend(cash)
         mood = _vix_mood(us.get("vix"))
         vix_s = _fmt_vix(us)
@@ -1402,7 +1402,7 @@ def _format_overnight_watch_lines(
         bits.append(night_line)
     if not bits:
         return []
-    return ["", _TG_SECTION, "<b>前一晚該看</b>", *bits]
+    return ["", _TG_SECTION, "<b>上一收盤日該看</b>", *bits]
 
 
 def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
@@ -3489,7 +3489,6 @@ def format_taiwan_market_page_html(
     live: Optional[Dict[str, Any]] = None,
     snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
-    ticker_html: Optional[str] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
     ref_hint = resolve_market_as_of(db_path, as_of)
@@ -3530,8 +3529,6 @@ def format_taiwan_market_page_html(
         "<b>📊 台股大盤</b>",
         as_of_note,
     ]
-    if ticker_html:
-        lines.append(ticker_html)
     lines.extend(
         [
             "",

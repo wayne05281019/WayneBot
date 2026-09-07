@@ -161,20 +161,6 @@ def test_render_gif_scrolls(tmp_path):
     assert (tmp_path / "ticker.gif").stat().st_size > 2000
 
 
-def test_ticker_keyboard_refresh_and_skip_mock():
-    from bot_servers import WayneTelegramBot
-
-    bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    kb = bot._ticker_keyboard()
-    labels = [b.text for row in kb.inline_keyboard for b in row]
-    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert "刷新跑馬燈" in labels
-    assert "tk:r" in cbs
-    bot._ticker_refresh_task = {}
-    bot._schedule_ticker_refresh(type("M", (), {"message_id": "x", "chat_id": 1})())
-    assert bot._ticker_refresh_task == {}
-
-
 def test_morning_countdown_and_match_copy(tmp_path):
     snap = {"close": 47326.27, "chg1_pct": 1.67, "futures": {"close": 47470, "pct_change": 0.3}}
     live = {"close": 47326.27, "pct_change": 1.67}
@@ -323,45 +309,12 @@ def test_ticker_full_width_slow_loop_and_live_refresh(monkeypatch):
     assert ticker_refresh_sec() == 4.0
 
 
-def test_ticker_refresh_loop_keeps_editing_until_rounds(tmp_path, monkeypatch):
-    import asyncio
-    from unittest.mock import AsyncMock, MagicMock, patch
-
-    from bot_servers import WayneTelegramBot
-
-    monkeypatch.setenv("WAYNE_TICKER_REFRESH_ROUNDS", "2")
-    monkeypatch.setenv("WAYNE_TICKER_REFRESH_SEC", "4")
-    gif = str(tmp_path / "t.gif")
-    render_ticker_gif(
-        {
-            "title": "台股開盤",
-            "items": [{"name": "加權", "text": "加權 1 +0.10%", "pct": 0.1}],
-        },
-        gif,
-    )
-    bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = str(tmp_path / "x.db")
-    bot._ticker_refresh_task = {"1:9": None}
-    anim = MagicMock()
-    anim.message_id = 9
-    anim.chat_id = 1
-    anim.edit_media = AsyncMock()
-
-    async def _run():
-        with patch("asyncio.sleep", new=AsyncMock()), patch(
-            "live_quote.fetch_mis_index_quote", return_value={"close": 1.0, "pct_change": 0.1}
-        ), patch(
-            "taiwan_market.analyze_taiwan_market",
-            return_value={"close": 1.0, "chg1_pct": 0.1},
-        ), patch(
-            "market_ticker.build_market_ticker",
-            return_value={"gif": gif},
-        ):
-            await bot._ticker_refresh_loop(anim, "1:9")
-
-    asyncio.run(_run())
-    assert anim.edit_media.await_count == 2
-    assert "1:9" not in bot._ticker_refresh_task
+def test_bot_market_page_no_longer_sends_ticker():
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "build_market_ticker" not in src
+    assert "_ticker_keyboard" not in src
+    assert "tk:r" not in src
+    assert "刷新跑馬燈" not in src
 
 
 def test_ticker_sectors_and_alerts_from_official(tmp_path):
