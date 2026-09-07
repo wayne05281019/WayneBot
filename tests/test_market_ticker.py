@@ -7,6 +7,7 @@ from PIL import Image
 from market_ticker import (
     TICKER_FRAMES,
     TICKER_H,
+    TICKER_INK_PAD,
     TICKER_W,
     collect_ticker,
     render_ticker_gif,
@@ -239,6 +240,44 @@ def test_render_gif_uses_casio_digits(tmp_path):
                 if g >= r + 10 and g >= 140 and b < 200:
                     mint += 1
         assert mint >= 8
+
+
+def test_render_gif_ink_hugs_top_and_bottom(tmp_path):
+    """中文與七段要貼近上下緣，不能只擠在中間三分之一。"""
+    bundle = {
+        "title": "台股開盤",
+        "items": [
+            {
+                "name": "加權",
+                "label": "加權",
+                "digits": "47326.78",
+                "text": "加權 47326.78",
+                "pct": 1.67,
+            },
+        ],
+    }
+    path = str(tmp_path / "hug.gif")
+    render_ticker_gif(bundle, path)
+    with Image.open(path) as im:
+        rgb = im.convert("RGB")
+        navy = (18, 26, 38)
+
+        def ink_count(y0, y1):
+            n = 0
+            for y in range(y0, y1 + 1):
+                for x in range(0, TICKER_W, 2):
+                    p = rgb.getpixel((x, y))[:3]
+                    if abs(p[0] - navy[0]) + abs(p[1] - navy[1]) + abs(p[2] - navy[2]) > 40:
+                        n += 1
+            return n
+
+        top0 = TICKER_INK_PAD
+        bot1 = TICKER_H - TICKER_INK_PAD - 1
+        assert ink_count(top0, top0 + 2) >= 8
+        assert ink_count(bot1 - 2, bot1) >= 8
+        # 中間當然也有墨，但不能是唯一有字的區域
+        mid0, mid1 = TICKER_H // 2 - 6, TICKER_H // 2 + 6
+        assert ink_count(mid0, mid1) >= 8
 
 
 def test_render_gif_full_width_always_scrolls(tmp_path):

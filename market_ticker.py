@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -729,6 +730,8 @@ TICKER_W = 1080
 TICKER_H = 96
 TICKER_FRAMES = 40
 TICKER_FRAME_MS = 55
+# 頂底青線各 4px；字與七段從內緣貼齊，避免卡在中間難讀。
+TICKER_INK_PAD = 4
 
 _CASIO_ON = (186, 214, 168)
 _CASIO_OFF = (32, 44, 52)
@@ -745,6 +748,75 @@ _CASIO_MAP = {
     "9": "abfgcd",
     "-": "g",
 }
+
+
+def _font_bbox(font, text: str):
+    try:
+        return font.getbbox(text)
+    except Exception:
+        w = 0.0
+        try:
+            w = float(font.getlength(text))
+        except Exception:
+            w = float(len(text or "") * 12)
+        size = int(getattr(font, "size", 42) or 42)
+        return (0, 0, w, size)
+
+
+def _ticker_inner_band(h: int = TICKER_H) -> tuple:
+    y0 = TICKER_INK_PAD
+    y1 = h - TICKER_INK_PAD
+    return y0, y1, max(24, y1 - y0)
+
+
+def _fit_ticker_body_font(inner_h: int):
+    """把中文墨水高度拉到幾乎填滿內緣，不要只佔條的中間三分之一。"""
+    samples = ("盤", "加", "權", "收", "距", "試", "搓", "台")
+    lo, hi = 20, inner_h + 48
+    best = _ticker_font(max(24, inner_h - 6), bold=True)
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        font = _ticker_font(mid, bold=True)
+        ink_h = 0
+        for ch in samples:
+            b = _font_bbox(font, ch)
+            ink_h = max(ink_h, b[3] - b[1])
+        if ink_h <= inner_h - 1:
+            best = font
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def _label_sprite(text: str, font, fill, target_h: int):
+    """中文墨水垂直拉滿內緣；標點太扁就不硬拉，避免圓點變成長條。"""
+    from PIL import Image, ImageDraw
+
+    th = max(1, int(target_h))
+    if not text:
+        return Image.new("RGBA", (1, th), (0, 0, 0, 0))
+    b = _font_bbox(font, text)
+    x0, y0b, x1, y1b = b
+    w = max(1, int(math.ceil(x1 - x0)) + 2)
+    h = max(1, int(math.ceil(y1b - y0b)) + 2)
+    tmp = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(tmp).text(
+        (1 - x0, 1 - y0b),
+        text,
+        font=font,
+        fill=(int(fill[0]), int(fill[1]), int(fill[2]), 255),
+    )
+    ink = tmp.getbbox()
+    if ink:
+        tmp = tmp.crop(ink)
+    if tmp.size[1] >= max(8, int(th * 0.45)):
+        nw = max(1, int(round(tmp.size[0] * th / tmp.size[1])))
+        resample = getattr(Image, "Resampling", Image).LANCZOS
+        return tmp.resize((nw, th), resample)
+    canvas = Image.new("RGBA", (tmp.size[0], th), (0, 0, 0, 0))
+    canvas.paste(tmp, (0, (th - tmp.size[1]) // 2), tmp)
+    return canvas
 
 
 def _casio_digit_w(h: int) -> int:
@@ -846,14 +918,15 @@ def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
         return ""
     title = str(bundle.get("title") or "跑馬燈")
     W, H = TICKER_W, TICKER_H
-    body_f = _ticker_font(42, bold=True)
-    digit_h = 56
-    measure = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    y0, y1, inner_h = _ticker_inner_band(H)
+    body_f = _fit_ticker_body_font(inner_h)
+    digit_h = inner_h
     gap = 28
 
-    pieces: List[Tuple[str, str, tuple, float]] = []
-    title_w = float(measure.textlength(title + "    ·    ", font=body_f))
-    pieces.append((title + "    ·    ", "", _LABEL_FG, title_w))
+    pieces: List[Tuple[Any, str, tuple, int]] = []
+    title_lab = title + "    ·    "
+    title_sprite = _label_sprite(title_lab, body_f, _LABEL_FG, inner_h)
+    pieces.append((title_sprite, "", _LABEL_FG, title_sprite.size[0]))
     for it in items:
         label = str(it.get("label") or it.get("name") or "")
         digits = str(it.get("digits") or "")
@@ -862,25 +935,23 @@ def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
         if kind in ("clock", "count"):
             color = _CASIO_ON
         lab = (label + " ") if digits else (str(it.get("text") or label) + "    ·    ")
-        lw = float(measure.textlength(lab, font=body_f))
+        fill = _LABEL_FG if digits else color
+        sprite = _label_sprite(lab, body_f, fill, inner_h)
         dw = _casio_width(digits, digit_h) if digits else 0
-        pieces.append((lab, digits, color, lw + dw + (gap if digits else 0)))
+        tw = sprite.size[0] + dw + (gap if digits else 0)
+        pieces.append((sprite, digits, color, tw))
 
     unit_w = max(1, int(round(sum(p[3] for p in pieces))))
     copies = max(3, (W + unit_w + unit_w - 1) // unit_w)
     strip_w = unit_w * copies + 8
     strip = Image.new("RGB", (strip_w, H), _BG)
     sd = ImageDraw.Draw(strip)
-    x = 0.0
+    x = 0
     for _copy in range(copies):
-        for lab, digits, color, tw in pieces:
-            try:
-                sd.text((x, H / 2), lab, font=body_f, fill=_LABEL_FG if digits else color, anchor="lm")
-            except TypeError:
-                sd.text((x, max(6, (H - 42) / 2)), lab, font=body_f, fill=_LABEL_FG if digits else color)
-            lw = float(measure.textlength(lab, font=body_f))
+        for sprite, digits, color, tw in pieces:
+            strip.paste(sprite, (x, y0), sprite)
             if digits:
-                _draw_casio_text(sd, x + lw, (H - digit_h) / 2, digit_h, digits, color)
+                _draw_casio_text(sd, x + sprite.size[0], y0, digit_h, digits, color)
             x += tw
 
     n = TICKER_FRAMES
