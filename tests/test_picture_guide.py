@@ -34,7 +34,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     dest = str(tmp_path / "guide")
     paths = render_picture_guide(dest, force=True)
     assert [os.path.basename(p).split("-", 1)[-1].replace(".png", "") for p in paths] == list(PAGE_SLUGS)
-    assert len(paths) == 9
+    assert len(paths) == 16
+    assert len(PAGE_SLUGS) == 16
     blob = page_copy_blob()
     assert "⌨️" not in blob
     assert "➕" not in blob
@@ -60,7 +61,10 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "20:00 AI倉模擬" in blob
     assert "原因" in blob
     assert "三條槓" in blob
-    assert CACHE_VER == "v16"
+    assert "刷新跑馬燈" in blob
+    assert "進化" in blob
+    assert "直接打四碼" in blob
+    assert CACHE_VER == "v17"
     assert "一張圖卡" in blob
     assert "跑馬燈" in blob
     assert "細項小框" in blob
@@ -227,16 +231,18 @@ def test_send_picture_guide_one_page_with_next_button(tmp_path):
 
 def test_picture_guide_keyboard_middle_and_last():
     from bot_servers import WayneTelegramBot
+    from picture_guide import PAGE_SLUGS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    mid = bot._picture_guide_keyboard(4, 9)
+    n = len(PAGE_SLUGS)
+    mid = bot._picture_guide_keyboard(4, n)
     labels = [b.text for row in mid.inline_keyboard for b in row]
     assert any("← 第 4 張" in t for t in labels)
     assert any("第 6 張 →" in t for t in labels)
-    last = bot._picture_guide_keyboard(8, 9)
+    last = bot._picture_guide_keyboard(n - 1, n)
     labels = [b.text for row in last.inline_keyboard for b in row]
-    assert any("← 第 8 張" in t for t in labels)
-    assert not any("→" in t for t in labels if "第 9 張" in t or t.startswith("第"))
+    assert any(f"← 第 {n - 1} 張" in t for t in labels)
+    assert not any("→" in t for t in labels if f"第 {n} 張" in t or t.startswith("第"))
 
 
 def test_picture_guide_flip_edits_same_message(tmp_path):
