@@ -374,3 +374,103 @@ def test_m006_clears_journal_holdings_once(tmp_path):
     left = conn.execute("SELECT stock_code FROM user_holdings").fetchall()
     conn.close()
     assert left == [("2330",)]
+
+
+def test_m008_resets_ai_desk_once(tmp_path):
+    """虛擬倉一次清空並重開 50 萬；手記持股不動。"""
+    path = str(tmp_path / "ai.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE user_funds (
+            user_id TEXT PRIMARY KEY,
+            cash REAL NOT NULL,
+            initial_capital REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE user_positions (
+            user_id TEXT NOT NULL,
+            stock_id TEXT NOT NULL,
+            stock_name TEXT,
+            shares INTEGER,
+            cost_price REAL,
+            highest_price REAL,
+            buy_date TEXT,
+            warning_days INTEGER,
+            strategy_type TEXT
+        );
+        CREATE TABLE trade_logs (
+            id INTEGER PRIMARY KEY,
+            user_id TEXT,
+            date TEXT,
+            stock_id TEXT,
+            action TEXT
+        );
+        CREATE TABLE user_holdings (
+            user_id TEXT NOT NULL,
+            stock_code TEXT NOT NULL,
+            stock_name TEXT DEFAULT '',
+            shares REAL NOT NULL,
+            cost_price REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, stock_code)
+        );
+        CREATE TABLE ai_fills (id INTEGER PRIMARY KEY, user_id TEXT, stock_id TEXT);
+        CREATE TABLE ai_nav_log (date TEXT, nav REAL, user_id TEXT);
+        CREATE TABLE ai_params (k TEXT PRIMARY KEY, v REAL);
+        INSERT INTO user_funds VALUES
+            ('ai_1001', 12000, 500000, '2026-08-01', '2026-09-01'),
+            ('wayne_ai', 0, 500000, '2026-08-01', '2026-09-01'),
+            ('8528875978', 400000, 500000, '2026-08-01', '2026-09-01');
+        INSERT INTO user_positions (user_id, stock_id, stock_name, shares, cost_price)
+            VALUES
+            ('ai_1001','2330','台積電',1000,100),
+            ('wayne_ai','2303','聯電',2000,50);
+        INSERT INTO trade_logs (user_id, date, stock_id, action)
+            VALUES ('ai_1001','20260901','2330','BUY');
+        INSERT INTO user_holdings VALUES ('8528875978','1303','南亞',1,210,'2026-09-01');
+        INSERT INTO ai_fills (user_id, stock_id) VALUES ('ai_1001','2330');
+        INSERT INTO ai_nav_log VALUES ('20260901', 510000, 'ai_1001');
+        INSERT INTO ai_params VALUES ('size_mult:ai_1001', 1.2);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    ensure_migration_table(path)
+    conn = sqlite3.connect(path)
+    for ver, name, _fn in MIGRATIONS:
+        if ver >= 8:
+            break
+        conn.execute(
+            "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?,?,?)",
+            (ver, name, "2026-09-01T00:00:00"),
+        )
+    conn.commit()
+    conn.close()
+
+    out = run_migrations(path)
+    assert 8 in out["applied"]
+    conn = sqlite3.connect(path)
+    cash = conn.execute("SELECT cash, initial_capital FROM user_funds WHERE user_id='ai_1001'").fetchone()
+    legacy = conn.execute("SELECT cash, initial_capital FROM user_funds WHERE user_id='wayne_ai'").fetchone()
+    pos = conn.execute("SELECT COUNT(*) FROM user_positions").fetchone()[0]
+    logs = conn.execute("SELECT COUNT(*) FROM trade_logs").fetchone()[0]
+    fills = conn.execute("SELECT COUNT(*) FROM ai_fills").fetchone()[0]
+    nav = conn.execute("SELECT COUNT(*) FROM ai_nav_log").fetchone()[0]
+    mult = conn.execute("SELECT COUNT(*) FROM ai_params").fetchone()[0]
+    hold = conn.execute("SELECT COUNT(*) FROM user_holdings").fetchone()[0]
+    real_cash = conn.execute("SELECT cash FROM user_funds WHERE user_id='8528875978'").fetchone()[0]
+    conn.close()
+    assert cash == (500000, 500000)
+    assert legacy == (500000, 500000)
+    assert pos == 0
+    assert logs == 0
+    assert fills == 0
+    assert nav == 0
+    assert mult == 0
+    assert hold == 1
+    assert real_cash == 400000
+    second = run_migrations(path)
+    assert second["applied"] == []

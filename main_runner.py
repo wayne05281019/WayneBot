@@ -580,7 +580,7 @@ class MainRunner:
         notify: bool = True,
         telegram_uid: str = "",
     ) -> Dict[str, Any]:
-        """模擬倉真正下單（每人 ai_{uid}／50 萬）。有名單才買，最多 3 檔。"""
+        """模擬倉真正下單（每人 ai_{uid}／50 萬）。有名單才買；平常 1 檔，超跌最多 2 檔，永遠留現金。"""
         try:
             from ai_trader import run_ai_desk
             from wayne_db import list_tg_user_ids

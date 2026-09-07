@@ -148,7 +148,41 @@ def _m007_official_snapshots(conn: sqlite3.Connection) -> None:
     )
 
 
-# 只能往後加，不能改號、不能重排。
+def _m008_reset_ai_desk(conn: sqlite3.Connection) -> None:
+    """虛擬倉一次清空：50 萬本金重開。手記持股／觀察清單不動。只跑一次。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ai_users: List[str] = []
+    seen: set[str] = set()
+    for table in ("user_funds", "user_positions", "trade_logs"):
+        if not _table_exists(conn, table):
+            continue
+        rows = conn.execute(
+            f"SELECT user_id FROM {table} WHERE user_id = 'wayne_ai' OR user_id LIKE 'ai_%'"
+        ).fetchall()
+        for r in rows:
+            uid = str(r[0] or "")
+            if uid and uid not in seen:
+                seen.add(uid)
+                ai_users.append(uid)
+    for uid in ai_users:
+        if _table_exists(conn, "user_positions"):
+            conn.execute("DELETE FROM user_positions WHERE user_id=?", (uid,))
+        if _table_exists(conn, "trade_logs"):
+            conn.execute("DELETE FROM trade_logs WHERE user_id=?", (uid,))
+        conn.execute(
+            "UPDATE user_funds SET cash=500000, initial_capital=500000, updated_at=? WHERE user_id=?",
+            (now, uid),
+        )
+    if _table_exists(conn, "ai_fills"):
+        conn.execute("DELETE FROM ai_fills")
+    if _table_exists(conn, "ai_nav_log"):
+        conn.execute("DELETE FROM ai_nav_log")
+    if _table_exists(conn, "ai_params"):
+        conn.execute("DELETE FROM ai_params WHERE k='size_mult' OR k LIKE 'size_mult:%'")
+    if _table_exists(conn, "simulated_positions"):
+        conn.execute("DELETE FROM simulated_positions")
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -157,6 +191,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (5, "排程心跳與告警去重表", _m005_ops_watchdog_tables),
     (6, "清空手記持股", _m006_clear_journal_holdings),
     (7, "官方估值／資券餘額／暫停當沖表", _m007_official_snapshots),
+    (8, "清空 AI 虛擬倉並重開 50 萬", _m008_reset_ai_desk),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)
