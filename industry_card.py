@@ -38,6 +38,109 @@ def _card_font(size: int, *, bold: bool = False):
     return ImageFont.load_default()
 
 
+def _blend(a, b, t: float):
+    t = 0.0 if t < 0 else 1.0 if t > 1 else t
+    return tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3))
+
+
+def _lighten(rgb, amt: float = 0.18):
+    return _blend(rgb, (255, 255, 255), amt)
+
+
+def _darken(rgb, amt: float = 0.18):
+    return _blend(rgb, (0, 0, 0), amt)
+
+
+def _ink_box(font, text: str):
+    bbox = font.getbbox(str(text or ""))
+    return bbox[0], bbox[1], bbox[2], bbox[3]
+
+
+def centered_text_xy(font, text: str, box) -> tuple:
+    """ImageDraw.text 原點：讓真實墨水框的中心對上 box 幾何中心。"""
+    x0, y0, x1, y1 = box
+    l, t, r, b = _ink_box(font, text)
+    tw, th = r - l, b - t
+    return x0 + (x1 - x0 - tw) / 2.0 - l, y0 + (y1 - y0 - th) / 2.0 - t
+
+
+def _chip_wh(font, tag: str, *, pad_x: int = 18, height: int = 46) -> tuple:
+    l, _t, r, _b = _ink_box(font, tag)
+    return int(round((r - l) + pad_x * 2)), height
+
+
+def draw_fine_chip(im, box, text: str, bg, bd, fg, font) -> None:
+    """膠囊小框：外光＋陰影＋垂直漸層＋內高光，文字用 mm 錨點上下左右居中。"""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+
+    x0, y0, x1, y1 = (int(round(v)) for v in box)
+    w, h = max(8, x1 - x0), max(8, y1 - y0)
+    rad = h / 2.0
+    pad = 10
+    layer = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+
+    glow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    ImageDraw.Draw(glow).rounded_rectangle(
+        (pad - 2, pad - 1, pad + w + 2, pad + h + 3),
+        radius=rad + 2,
+        fill=bd + (70,),
+    )
+    layer.alpha_composite(glow.filter(ImageFilter.GaussianBlur(3.0)))
+
+    sh = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle(
+        (pad, pad + 4, pad + w, pad + h + 4),
+        radius=rad,
+        fill=(0, 0, 0, 140),
+    )
+    layer.alpha_composite(sh.filter(ImageFilter.GaussianBlur(2.4)))
+
+    body = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    bd_draw = ImageDraw.Draw(body)
+    for yy in range(h):
+        t = yy / max(h - 1, 1)
+        col = _blend(_lighten(bg, 0.38), _darken(bg, 0.22), t) + (255,)
+        bd_draw.line([(pad, pad + yy), (pad + w - 1, pad + yy)], fill=col)
+    mask = Image.new("L", layer.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (pad, pad, pad + w, pad + h), radius=rad, fill=255
+    )
+    body.putalpha(mask)
+    layer.alpha_composite(body)
+
+    gloss = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    gh = max(8, int(h * 0.42))
+    ImageDraw.Draw(gloss).rounded_rectangle(
+        (pad + 2, pad + 2, pad + w - 2, pad + gh),
+        radius=max(4, rad - 4),
+        fill=(255, 255, 255, 22),
+    )
+    r, g, b, a = gloss.split()
+    gloss = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a, mask)))
+    layer.alpha_composite(gloss)
+
+    ink = ImageDraw.Draw(layer)
+    inner = (pad, pad, pad + w, pad + h)
+    ink.rounded_rectangle(inner, radius=rad, outline=_lighten(bd, 0.12) + (255,), width=2)
+    ink.rounded_rectangle(
+        (pad + 2, pad + 2, pad + w - 2, pad + h - 2),
+        radius=max(2, rad - 2),
+        outline=(255, 255, 255, 55),
+        width=1,
+    )
+    cx = pad + w / 2.0
+    cy = pad + h / 2.0 + 2  # CJK 視覺中心略低於 em 盒中線
+    ink.text((cx, cy), text, font=font, fill=fg + (255,), anchor="mm")
+
+    dest = (x0 - pad, y0 - pad)
+    if im.mode != "RGBA":
+        rgba = im.convert("RGBA")
+        rgba.alpha_composite(layer, dest)
+        im.paste(rgba.convert(im.mode))
+    else:
+        im.alpha_composite(layer, dest)
+
+
 def _wrap_px(text: str, font, max_w: float) -> List[str]:
     raw = str(text or "")
     if not raw:
@@ -108,19 +211,23 @@ def render_industry_png(
     out = save_path or os.path.join(charts, f"{sid}_industry.png")
 
     W = 1080
-    pad_x = 44
+    pad_x = 48
     max_w = W - pad_x * 2
     title_f = _card_font(48, bold=True)
-    head_f = _card_font(36, bold=True)
+    head_f = _card_font(34, bold=True)
     body_f = _card_font(32)
     chip_f = _card_font(26, bold=True)
-    line_h = 46
-    head_h = 56
+    line_h = 48
+    head_h = 58
+    CHIP_H = 48
+    CHIP_GAP = 12
 
-    BG = (15, 22, 32)
-    CARD = (24, 37, 51)
+    BG = (12, 18, 28)
+    CARD = (22, 34, 48)
+    CARD_EDGE = (78, 118, 158)
+    CARD_INNER = (40, 58, 78)
     TEXT = (236, 242, 248)
-    HEAD = (120, 200, 255)
+    HEAD = (132, 208, 255)
     MUTED = (168, 186, 204)
     tags0 = list(snap.get("fine_tags") or [])
     items: List[tuple] = [("banner", sid, name, tags0)]
@@ -202,12 +309,12 @@ def render_industry_png(
         x = start_x
         rows = 1
         for tag in tags:
-            w = chip_f.getlength(tag) + 28
+            w, _h = _chip_wh(chip_f, tag, height=CHIP_H)
             if x > start_x and x + w > pad_x + max_w:
                 x = start_x
                 rows += 1
-            x += w + 12
-        return rows * 50
+            x += w + CHIP_GAP
+        return rows * (CHIP_H + 10)
 
     y = 36
     measured: List[tuple] = []
@@ -217,91 +324,121 @@ def render_industry_png(
             tags = item[3]
             name_txt = f"{item[1]} {item[2]}"
             name_w = title_f.getlength(name_txt)
-            h = 56 + 12 + 58 + _chip_row_h(tags, pad_x + name_w + 16)
+            h = 62 + 14 + max(62, _chip_row_h(tags, pad_x + name_w + 18) or 62)
             measured.append((kind, item, h))
             y += h
         elif kind == "peer_inline":
             tags = item[4]
             left = f"{item[1]}  {item[2]}"
             left_w = body_f.getlength(left)
-            h = max(line_h, _chip_row_h(tags, pad_x + left_w + 12) or line_h)
-            measured.append((kind, item, h + 8))
-            y += h + 8
+            h = max(line_h, _chip_row_h(tags, pad_x + left_w + 14) or line_h)
+            measured.append((kind, item, h + 10))
+            y += h + 10
         elif kind == "h":
-            measured.append((kind, item, head_h + 8))
-            y += head_h + 8
+            measured.append((kind, item, head_h + 10))
+            y += head_h + 10
         else:
             wraps = _wrap_px(item[1], body_f, max_w)
             h = len(wraps) * line_h
             measured.append((kind, item, h))
             y += h
 
-    H = y + 56
-    im = Image.new("RGB", (W, H), BG)
+    H = y + 64
+    im = Image.new("RGBA", (W, H), BG + (255,))
     dr = ImageDraw.Draw(im)
-    dr.rounded_rectangle((20, 16, W - 20, H - 16), radius=28, fill=CARD)
-    cy = 40
+    dr.rounded_rectangle((18, 14, W - 18, H - 14), radius=30, fill=CARD + (255,))
+    dr.rounded_rectangle((18, 14, W - 18, H - 14), radius=30, outline=CARD_EDGE + (255,), width=2)
+    dr.rounded_rectangle((22, 18, W - 22, H - 18), radius=26, outline=CARD_INNER + (180,), width=1)
+    cy = 42
 
-    def _chips_at(x0: float, y0: float, tags: List[str], max_right: float) -> float:
-        x, y = x0, y0
-        chip_h = 40
+    def _chips_at(x0: float, mid_y: float, tags: List[str], max_right: float) -> float:
+        """mid_y＝列的垂直中線；小框貼齊這條中線。"""
+        x = x0
+        y = mid_y - CHIP_H / 2.0
+        row_bottom = y + CHIP_H
         for tag in tags:
-            tw = chip_f.getlength(tag)
-            w = tw + 28
+            w, h = _chip_wh(chip_f, tag, height=CHIP_H)
             if x > x0 and x + w > max_right:
                 x = x0
-                y += chip_h + 10
+                y = row_bottom + 10
             bg, bd, fg = chip_color(tag)
-            dr.rounded_rectangle(
-                (x, y, x + w, y + chip_h),
-                radius=10,
-                fill=bg,
-                outline=bd,
-                width=2,
-            )
-            dr.text((x + 14, y + 6), tag, font=chip_f, fill=fg)
-            x += w + 12
-        return y + chip_h if tags else y
+            draw_fine_chip(im, (x, y, x + w, y + h), tag, bg, bd, fg, chip_f)
+            x += w + CHIP_GAP
+            row_bottom = max(row_bottom, y + h)
+        return row_bottom if tags else mid_y + CHIP_H / 2.0
+
+    def _text_mid_y(font, text: str, y_top: float) -> float:
+        l, t, r, b = _ink_box(font, text)
+        return y_top + (t + b) / 2.0
 
     for kind, item, _h in measured:
         if kind == "banner":
-            dr.text((pad_x, cy), "產業說明", font=head_f, fill=HEAD)
-            cy += 56
+            kicker = "產業說明"
+            tx, ty = centered_text_xy(head_f, kicker, (pad_x, cy, pad_x + head_f.getlength(kicker) + 4, cy + 48))
+            dr.text((tx, ty), kicker, font=head_f, fill=HEAD + (255,))
+            cy += 52
             name_txt = f"{item[1]} {item[2]}"
-            dr.text((pad_x, cy), name_txt, font=title_f, fill=TEXT)
+            name_box_h = 58
+            nx, ny = centered_text_xy(
+                title_f, name_txt, (pad_x, cy, pad_x + title_f.getlength(name_txt) + 2, cy + name_box_h)
+            )
+            dr.text((nx, ny), name_txt, font=title_f, fill=TEXT + (255,))
             tags = item[3]
             if tags:
-                nx = pad_x + title_f.getlength(name_txt) + 16
-                chip_y = cy + 6
-                end_y = _chips_at(nx, chip_y, tags, pad_x + max_w)
-                cy = max(cy + 58, end_y + 8)
+                mid = _text_mid_y(title_f, name_txt, ny)
+                chip_x = pad_x + title_f.getlength(name_txt) + 18
+                end_y = _chips_at(chip_x, mid, tags, pad_x + max_w)
+                cy = max(cy + name_box_h, end_y + 12)
             else:
-                cy += 58
-            cy += 8
+                cy += name_box_h
+            cy += 6
         elif kind == "h":
-            cy += 8
-            dr.text((pad_x, cy), item[1], font=head_f, fill=HEAD)
+            cy += 10
+            bar_y0 = cy + 10
+            bar_y1 = cy + head_h - 16
+            dr.rounded_rectangle(
+                (pad_x, bar_y0, pad_x + 8, bar_y1),
+                radius=4,
+                fill=HEAD + (255,),
+            )
+            hx, hy = centered_text_xy(
+                head_f, item[1], (pad_x + 20, cy, pad_x + 20 + head_f.getlength(item[1]) + 4, cy + head_h - 6)
+            )
+            dr.text((hx, hy), item[1], font=head_f, fill=HEAD + (255,))
             cy += head_h
         elif kind == "peer_inline":
             left = f"{item[1]}  {item[2]}"
             pct = f"{item[3]:+.1f}%"
-            dr.text((pad_x, cy), left, font=body_f, fill=TEXT)
-            x = pad_x + body_f.getlength(left) + 12
+            lx, ly = centered_text_xy(
+                body_f, left, (pad_x, cy, pad_x + body_f.getlength(left) + 2, cy + line_h)
+            )
+            dr.text((lx, ly), left, font=body_f, fill=TEXT + (255,))
+            pct_w = body_f.getlength(pct)
+            px, py = centered_text_xy(
+                body_f, pct, (pad_x + max_w - pct_w, cy, pad_x + max_w, cy + line_h)
+            )
             tags = item[4]
             if tags:
-                end_y = _chips_at(x, cy, tags, pad_x + max_w - body_f.getlength(pct) - 16)
-                x = min(pad_x + max_w - body_f.getlength(pct), x + 8)
-                # 年增靠右
-                dr.text((pad_x + max_w - body_f.getlength(pct), cy), pct, font=body_f, fill=TEXT)
-                cy = max(cy + line_h, end_y + 8)
+                mid = _text_mid_y(body_f, left, ly)
+                end_y = _chips_at(
+                    pad_x + body_f.getlength(left) + 14,
+                    mid,
+                    tags,
+                    pad_x + max_w - pct_w - 16,
+                )
+                dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
+                cy = max(cy + line_h, end_y + 10)
             else:
-                dr.text((pad_x + max_w - body_f.getlength(pct), cy), pct, font=body_f, fill=TEXT)
+                dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
                 cy += line_h
         else:
             fill = MUTED if kind == "muted" else TEXT
             for ln in _wrap_px(item[1], body_f, max_w):
-                dr.text((pad_x, cy), ln, font=body_f, fill=fill)
+                tx, ty = centered_text_xy(
+                    body_f, ln, (pad_x, cy, pad_x + body_f.getlength(ln) + 2, cy + line_h)
+                )
+                dr.text((tx, ty), ln, font=body_f, fill=fill + (255,))
                 cy += line_h
-    im.save(out, "PNG", optimize=True)
+    im.convert("RGB").save(out, "PNG", optimize=True)
     return out
 

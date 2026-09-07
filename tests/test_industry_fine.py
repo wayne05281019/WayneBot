@@ -118,6 +118,40 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
     assert os.path.getsize(out) > 20_000
 
 
+def test_chip_text_origin_centers_ink_box():
+    from industry_card import _card_font, centered_text_xy
+
+    font = _card_font(26, bold=True)
+    box = (40.0, 20.0, 220.0, 66.0)
+    x, y = centered_text_xy(font, "代工", box)
+    bbox = font.getbbox("代工")
+    ink_cx = x + (bbox[0] + bbox[2]) / 2.0
+    ink_cy = y + (bbox[1] + bbox[3]) / 2.0
+    assert abs(ink_cx - (box[0] + box[2]) / 2.0) < 0.51
+    assert abs(ink_cy - (box[1] + box[3]) / 2.0) < 0.51
+
+
+def test_draw_fine_chip_ink_near_center():
+    import numpy as np
+
+    from industry_card import _card_font, draw_fine_chip
+
+    font = _card_font(26, bold=True)
+    im = Image.new("RGB", (360, 140), (22, 34, 48))
+    box = (50, 40, 250, 86)
+    draw_fine_chip(im, box, "代工", (8, 72, 78), (8, 72, 78), (255, 255, 255), font)
+    arr = np.array(im)
+    x0, y0, x1, y1 = box
+    crop = arr[y0 + 8 : y1 - 8, x0 + 10 : x1 - 10]
+    lum = crop.mean(axis=2)
+    ys, xs = np.where(lum > 200)
+    assert xs.size > 20
+    cx = xs.mean() + 10
+    cy = ys.mean() + 8
+    assert abs(cx - (x1 - x0) / 2.0) < 5
+    assert abs(cy - (y1 - y0) / 2.0) < 5
+
+
 def test_parse_category_index_and_bulk_sync(tmp_path, monkeypatch):
     from industry_fine import parse_cmoney_category_index, sync_all_fine_industry
     from wayne_db import ensure_core_schema
