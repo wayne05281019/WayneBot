@@ -1,7 +1,8 @@
 """大盤頁頂部時段跑馬燈。Telegram 氣泡不能捲字，改送循環 GIF。
 
-沒接到的市場不寫。加權即時用證交所 MIS；台指期用期交所／庫內；
-日經／韓國／滬指與美股指數／盤前期貨用 Yahoo 公開報價（與隔夜美股同一路）。
+沒接到的市場不寫。加權／櫃買用證交所 MIS 最後一筆（delay=0）；
+台指期用期交所即時報價，沒接到才退庫內；
+日經／韓國／滬指與美股指數／盤前期貨用 Yahoo 1 分鐘 spark（與隔夜美股同一路）。
 """
 from __future__ import annotations
 
@@ -56,6 +57,9 @@ _LABEL_BG = (28, 52, 78)
 _LABEL_FG = (140, 210, 255)
 _RULE = (70, 96, 122)
 
+_TAIFEX_QUOTE_URL = "https://mis.taifex.com.tw/futures/api/getQuoteList"
+_YAHOO_SPARK = "https://query1.finance.yahoo.com/v8/finance/spark"
+
 _SESSION = requests.Session()
 _SESSION.headers.update(
     {
@@ -63,6 +67,12 @@ _SESSION.headers.update(
         "Accept": "application/json",
     }
 )
+_TAIFEX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Origin": "https://mis.taifex.com.tw",
+    "Referer": "https://mis.taifex.com.tw/",
+}
 
 
 def ticker_slot(now: Optional[datetime] = None) -> str:
@@ -123,10 +133,10 @@ def _seg(name: str, px=None, pct=None, extra: str = "") -> Optional[Dict[str, An
     return {"name": name, "text": body, "pct": p, "px": float(px)}
 
 
-def _yahoo_quote(sym: str, timeout: float = 3.5) -> Optional[Dict[str, Any]]:
+def _yahoo_quote(sym: str, timeout: float = 2.2) -> Optional[Dict[str, Any]]:
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/"
-        f"{url_quote(sym, safe='')}?interval=1d&range=5d"
+        f"{url_quote(sym, safe='')}?interval=1m&range=1d&includePrePost=true"
     )
     try:
         resp = _SESSION.get(url, timeout=timeout)
@@ -134,41 +144,125 @@ def _yahoo_quote(sym: str, timeout: float = 3.5) -> Optional[Dict[str, Any]]:
         result = (resp.json().get("chart") or {}).get("result") or []
         if not result:
             return None
-        meta = result[0].get("meta") or {}
-        px = meta.get("regularMarketPrice")
-        pct = meta.get("regularMarketChangePercent")
-        if px is None:
-            return None
-        px = float(px)
-        if px <= 0:
-            return None
-        pct_f = float(pct) if pct is not None else None
-        return {"px": px, "pct": pct_f, "symbol": meta.get("symbol") or sym}
+        return _quote_from_yahoo_chart(result[0], sym)
     except Exception:
         logger.debug("跑馬燈 Yahoo 沒接到 %s", sym, exc_info=True)
         return None
 
 
-def _yahoo_many(pairs: Tuple[Tuple[str, str], ...], timeout: float = 3.5) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _last_non_null(vals) -> Optional[float]:
+    for v in reversed(list(vals or [])):
+        if v is None:
+            continue
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            continue
+        if n == n:  # not NaN
+            return n
+    return None
+
+
+def _quote_from_yahoo_chart(block: Dict[str, Any], sym: str) -> Optional[Dict[str, Any]]:
+    meta = (block or {}).get("meta") or {}
+    qblock = (((block or {}).get("indicators") or {}).get("quote") or [{}])[0]
+    last_1m = _last_non_null((qblock or {}).get("close"))
+    px = last_1m
+    if px is None:
+        try:
+            px = float(meta.get("regularMarketPrice"))
+        except (TypeError, ValueError):
+            px = None
+    if px is None or px <= 0:
+        return None
+    prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+    try:
+        prev_f = float(prev) if prev is not None else None
+    except (TypeError, ValueError):
+        prev_f = None
+    pct = meta.get("regularMarketChangePercent")
+    if prev_f and prev_f > 0:
+        pct = (px - prev_f) / prev_f * 100.0
+    try:
+        pct_f = float(pct) if pct is not None else None
+    except (TypeError, ValueError):
+        pct_f = None
+    return {"px": px, "pct": pct_f, "symbol": meta.get("symbol") or sym}
+
+
+def _quote_from_spark_block(block: Dict[str, Any], sym: str) -> Optional[Dict[str, Any]]:
+    last_1m = _last_non_null((block or {}).get("close"))
+    px = last_1m
+    if px is None:
+        try:
+            px = float(block.get("fulldayPrice"))
+        except (TypeError, ValueError):
+            px = None
+    if px is None or px <= 0:
+        return None
+    prev = block.get("chartPreviousClose") or block.get("previousClose")
+    try:
+        prev_f = float(prev) if prev is not None else None
+    except (TypeError, ValueError):
+        prev_f = None
+    pct = block.get("fulldayChangePercent")
+    if last_1m is not None and prev_f and prev_f > 0:
+        pct = (last_1m - prev_f) / prev_f * 100.0
+    try:
+        pct_f = float(pct) if pct is not None else None
+    except (TypeError, ValueError):
+        pct_f = None
+    return {"px": float(px), "pct": pct_f, "symbol": block.get("symbol") or sym}
+
+
+def _yahoo_spark(pairs: Tuple[Tuple[str, str], ...], timeout: float = 2.4) -> List[Dict[str, Any]]:
+    """一次抓多檔 1 分鐘 spark；沒接到的不寫。失敗再逐檔 1 分鐘圖。"""
     if not pairs:
-        return out
-    with ThreadPoolExecutor(max_workers=min(6, len(pairs))) as ex:
-        futs = {ex.submit(_yahoo_quote, sym, timeout): name for name, sym in pairs}
-        for fut in as_completed(futs):
-            name = futs[fut]
-            try:
-                q = fut.result()
-            except Exception:
-                q = None
-            if not q:
+        return []
+    syms = [sym for _n, sym in pairs]
+    by_sym: Dict[str, Dict[str, Any]] = {}
+    try:
+        resp = _SESSION.get(
+            _YAHOO_SPARK,
+            params={"symbols": ",".join(syms), "range": "1d", "interval": "1m"},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        for sym in syms:
+            block = payload.get(sym)
+            if not isinstance(block, dict):
                 continue
-            seg = _seg(name, q.get("px"), q.get("pct"))
-            if seg:
-                out.append(seg)
-    order = {name: i for i, (name, _s) in enumerate(pairs)}
-    out.sort(key=lambda x: order.get(x["name"], 99))
+            q = _quote_from_spark_block(block, sym)
+            if q:
+                by_sym[sym] = q
+    except Exception:
+        logger.debug("跑馬燈 Yahoo spark 失敗", exc_info=True)
+    missing = [(name, sym) for name, sym in pairs if sym not in by_sym]
+    if missing:
+        with ThreadPoolExecutor(max_workers=min(6, len(missing))) as ex:
+            futs = {ex.submit(_yahoo_quote, sym, timeout): (name, sym) for name, sym in missing}
+            for fut in as_completed(futs):
+                name, sym = futs[fut]
+                try:
+                    q = fut.result()
+                except Exception:
+                    q = None
+                if q:
+                    by_sym[sym] = q
+    out: List[Dict[str, Any]] = []
+    for name, sym in pairs:
+        q = by_sym.get(sym)
+        if not q:
+            continue
+        seg = _seg(name, q.get("px"), q.get("pct"))
+        if seg:
+            out.append(seg)
     return out
+
+
+def _yahoo_many(pairs: Tuple[Tuple[str, str], ...], timeout: float = 2.4) -> List[Dict[str, Any]]:
+    return _yahoo_spark(pairs, timeout=timeout)
 
 
 def _tw_index_seg(live: Optional[Dict[str, Any]], snap: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -183,7 +277,10 @@ def _tw_index_seg(live: Optional[Dict[str, Any]], snap: Optional[Dict[str, Any]]
     return _seg("加權", px, pct)
 
 
-def _tx_seg(snap: Optional[Dict[str, Any]], *, night: bool = False) -> Optional[Dict[str, Any]]:
+def _tx_seg(snap: Optional[Dict[str, Any]], *, night: bool = False, live: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    if live and float(live.get("close") or 0) > 0:
+        label = "台指期夜盤" if night else "台指期"
+        return _seg(label, live.get("close"), live.get("pct_change"))
     snap = snap or {}
     fut = (snap.get("futures_night") if night else None) or snap.get("futures") or {}
     if night:
@@ -203,6 +300,78 @@ def _tx_seg(snap: Optional[Dict[str, Any]], *, night: bool = False) -> Optional[
     pct = fut.get("pct_change")
     label = "台指期夜盤" if night else "台指期"
     return _seg(label, px, pct)
+
+
+def _num_or_none(val) -> Optional[float]:
+    s = str(val or "").replace(",", "").replace("+", "").replace("%", "").strip()
+    if s in ("", "-", "--", "N/A", "null", "None"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def pick_tx_quote_row(rows: List[Dict[str, Any]], *, night: bool) -> Optional[Dict[str, Any]]:
+    """近月臺指期：日盤 *-F、夜盤 *-M。量最大者；沒量就取第一筆有成交價的。"""
+    suffix = "-M" if night else "-F"
+    cands: List[Tuple[float, Dict[str, Any]]] = []
+    for row in rows or []:
+        sid = str(row.get("SymbolID") or "")
+        if not sid.startswith("TXF") or sid.endswith("-S") or sid.endswith("-P"):
+            continue
+        if not sid.endswith(suffix):
+            continue
+        px = _num_or_none(row.get("CLastPrice"))
+        if not px or px <= 0:
+            continue
+        vol = _num_or_none(row.get("CTotalVolume")) or 0.0
+        cands.append((vol, row))
+    if not cands:
+        return None
+    cands.sort(key=lambda kv: kv[0], reverse=True)
+    return cands[0][1]
+
+
+def fetch_tx_live(*, night: bool = False, timeout: float = 2.2) -> Optional[Dict[str, Any]]:
+    """期交所即時報價（不寫庫）。沒接到回 None。"""
+    payload = {
+        "MarketType": "1" if night else "0",
+        "SymbolType": "F",
+        "KindID": "1",
+        "CID": "",
+        "ExpireMonth": "",
+        "SymbolID": "",
+        "Fcode": "",
+    }
+    try:
+        resp = requests.post(
+            _TAIFEX_QUOTE_URL,
+            json=payload,
+            headers=_TAIFEX_HEADERS,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        rows = ((resp.json() or {}).get("RtData") or {}).get("QuoteList") or []
+        row = pick_tx_quote_row(rows, night=night)
+        if not row:
+            return None
+        px = _num_or_none(row.get("CLastPrice"))
+        if not px or px <= 0:
+            return None
+        pct = _num_or_none(row.get("CDiffRate"))
+        t = str(row.get("CTime") or "").strip()
+        clock = f"{t[0:2]}:{t[2:4]}:{t[4:6]}" if len(t) >= 6 else t
+        return {
+            "close": px,
+            "pct_change": pct,
+            "update_time": clock,
+            "symbol": row.get("SymbolID"),
+            "is_realtime": True,
+        }
+    except Exception:
+        logger.debug("跑馬燈期交所即時失敗 night=%s", night, exc_info=True)
+        return None
 
 
 def _us_from_snap(us: Dict[str, Any], keys) -> List[Dict[str, Any]]:
@@ -255,62 +424,96 @@ def collect_ticker(
     snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
     yahoo: bool = True,
+    live_otc: Optional[Dict[str, Any]] = None,
+    live_tx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """組時段項目。yahoo=False 時只用不需外網的庫內／MIS／期貨。"""
-    slot = ticker_slot(now)
+    """組時段項目。yahoo=False 時不打外網（Yahoo／期交所即時）。"""
+    from config import taipei_now
+
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TW)
+    else:
+        dt = dt.astimezone(TW)
+    slot = ticker_slot(dt)
     title = SLOT_TITLE[slot]
     snap = dict(snap or {})
     if db_path:
         snap["_db_path"] = db_path
     items: List[Dict[str, Any]] = []
+    clock = dt.strftime("%H:%M:%S")
+    items.append({"name": "此刻", "text": clock, "pct": None})
+
+    if yahoo:
+        try:
+            from live_quote import fetch_mis_index_quote, fetch_mis_otc_index_quote
+
+            if live is None or not float((live or {}).get("close") or 0):
+                live = fetch_mis_index_quote(fresh=True, require_session=False) or live
+            if live_otc is None:
+                live_otc = fetch_mis_otc_index_quote(fresh=True)
+            if live_tx is None:
+                live_tx = fetch_tx_live(night=(slot in ("us_pre", "us_night")))
+        except Exception:
+            logger.debug("跑馬燈補即時失敗", exc_info=True)
+
+    night_tx = slot in ("us_pre", "us_night")
 
     if slot in ("tw_open", "asia_pm", "weekend"):
         tw = _tw_index_seg(live, snap)
         if tw:
             items.append(tw)
-        tx = _tx_seg(snap, night=False)
+        otc = _seg("櫃買", (live_otc or {}).get("close"), (live_otc or {}).get("pct_change")) if live_otc else None
+        if otc:
+            items.append(otc)
+        tx = _tx_seg(snap, night=False, live=live_tx if not night_tx else None)
         if tx:
             items.append(tx)
         if yahoo and slot != "weekend":
             items.extend(_yahoo_many(ASIA_INDEX))
 
     if slot == "us_pre":
-        us = _load_us(db_path) if db_path else {}
-        fut = _us_from_snap(us, ("標普期", "那斯達克期", "道瓊期"))
         if yahoo:
-            fetched = _yahoo_many(US_PRE_FUT)
-            if fetched:
-                fut = fetched
-        items.extend(fut)
+            fut = _yahoo_many(US_PRE_FUT)
+            if not fut:
+                us = _load_us(db_path) if db_path else {}
+                fut = _us_from_snap(us, ("標普期", "那斯達克期", "道瓊期"))
+            items.extend(fut)
+        else:
+            us = _load_us(db_path) if db_path else {}
+            items.extend(_us_from_snap(us, ("標普期", "那斯達克期", "道瓊期")))
         tw = _tw_index_seg(live, snap)
         if tw:
             items.append(tw)
+        tx = _tx_seg(snap, night=True, live=live_tx)
+        if tx:
+            items.append(tx)
 
     if slot == "us_night":
-        us = _load_us(db_path) if db_path else {}
-        cash = _us_from_snap(us, ("道瓊", "標普", "那斯達克", "費半"))
-        if yahoo and not cash:
+        cash: List[Dict[str, Any]] = []
+        if yahoo:
             cash = _yahoo_many(US_CASH)
-        elif yahoo:
-            # 快取太舊時仍補即時四大
-            fresh = _yahoo_many(US_CASH)
-            if fresh:
-                cash = fresh
+        if not cash:
+            us = _load_us(db_path) if db_path else {}
+            cash = _us_from_snap(us, ("道瓊", "標普", "那斯達克", "費半"))
         items.extend(cash)
         try:
             from us_overnight import electronics_night_side
 
+            us = _load_us(db_path) if db_path else {}
             side = electronics_night_side(us)
             if side:
                 items.append(_seg("電子夜盤", extra=side))
         except Exception:
             pass
-        night = _tx_seg(snap, night=True)
+        night = _tx_seg(snap, night=True, live=live_tx)
         if night:
             items.append(night)
 
     items = [x for x in items if x]
-    return {"slot": slot, "title": title, "items": items}
+    if not any(x.get("name") != "此刻" for x in items):
+        return {"slot": slot, "title": title, "items": [], "clock": clock}
+    return {"slot": slot, "title": title, "items": items, "clock": clock}
 
 
 def ticker_plain(bundle: Dict[str, Any]) -> str:

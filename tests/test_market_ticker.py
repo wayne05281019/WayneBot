@@ -32,12 +32,86 @@ def test_collect_omits_missing_and_keeps_tw(tmp_path):
     bundle = collect_ticker(str(tmp_path / "x.db"), live=live, snap=snap, now=now, yahoo=False)
     assert bundle["slot"] == "tw_open"
     names = [x["name"] for x in bundle["items"]]
+    assert "此刻" in names
+    assert bundle["clock"] == "10:05:00"
     assert "加權" in names
     assert "台指期" in names
     assert "日經" not in names  # yahoo=False 不編造
     plain = ticker_plain(bundle)
     assert "台股開盤" in plain
     assert "47,326" in plain
+    assert "10:05:00" in plain
+
+
+def test_live_otc_and_tx_preferred(tmp_path):
+    snap = {"close": 1.0, "chg1_pct": 0.0, "futures": {"close": 1, "pct_change": 0.0}}
+    live = {"close": 47326.27, "pct_change": 1.67}
+    otc = {"close": 409.33, "pct_change": 1.70}
+    tx = {"close": 47470.0, "pct_change": 1.63}
+    now = datetime(2026, 9, 8, 10, 5, tzinfo=TW)
+    bundle = collect_ticker(
+        str(tmp_path / "x.db"),
+        live=live,
+        snap=snap,
+        now=now,
+        yahoo=False,
+        live_otc=otc,
+        live_tx=tx,
+    )
+    text = ticker_plain(bundle)
+    assert "櫃買 409.3" in text
+    assert "47,470" in text
+    assert "台指期 1" not in text
+
+
+def test_pick_tx_front_month_by_volume():
+    from market_ticker import pick_tx_quote_row
+
+    rows = [
+        {"SymbolID": "TXF-S", "CLastPrice": "47326", "CTotalVolume": "99999"},
+        {"SymbolID": "TXFI6-F", "CLastPrice": "47470", "CTotalVolume": "80000", "CDiffRate": "1.63"},
+        {"SymbolID": "TXFJ6-F", "CLastPrice": "47667", "CTotalVolume": "1200", "CDiffRate": "1.67"},
+        {"SymbolID": "TXFI6-M", "CLastPrice": "47333", "CTotalVolume": "5000", "CDiffRate": "-0.20"},
+    ]
+    day = pick_tx_quote_row(rows, night=False)
+    assert day["SymbolID"] == "TXFI6-F"
+    night = pick_tx_quote_row(rows, night=True)
+    assert night["SymbolID"] == "TXFI6-M"
+
+
+def test_spark_prefers_last_minute_bar():
+    from market_ticker import _quote_from_spark_block
+
+    q = _quote_from_spark_block(
+        {
+            "symbol": "^N225",
+            "close": [100.0, None, 110.0],
+            "fulldayPrice": 99.0,
+            "fulldayChangePercent": -1.0,
+            "previousClose": 100.0,
+            "chartPreviousClose": 100.0,
+        },
+        "^N225",
+    )
+    assert q["px"] == 110.0
+    assert abs(q["pct"] - 10.0) < 0.01
+
+
+def test_spark_uses_fullday_when_no_bars():
+    from market_ticker import _quote_from_spark_block
+
+    q = _quote_from_spark_block(
+        {
+            "symbol": "ES=F",
+            "close": None,
+            "fulldayPrice": 7722.0,
+            "fulldayChangePercent": -0.422,
+            "previousClose": 7754.75,
+        },
+        "ES=F",
+    )
+    assert q["px"] == 7722.0
+    assert abs(q["pct"] + 0.422) < 0.001
 
 
 def test_us_pre_does_not_invent_futures():
@@ -71,5 +145,15 @@ def test_render_gif_scrolls(tmp_path):
     assert (tmp_path / "ticker.gif").stat().st_size > 2000
 
 
-def test_empty_bundle_no_gif(tmp_path):
-    assert render_ticker_gif({"title": "台股開盤", "items": []}, str(tmp_path / "x.gif")) == ""
+def test_ticker_keyboard_refresh_and_skip_mock():
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._ticker_keyboard()
+    labels = [b.text for row in kb.inline_keyboard for b in row]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "刷新跑馬燈" in labels
+    assert "tk:r" in cbs
+    bot._ticker_refresh_task = {}
+    bot._schedule_ticker_refresh(type("M", (), {"message_id": "x", "chat_id": 1})())
+    assert bot._ticker_refresh_task == {}
