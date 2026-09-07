@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v10"
+CACHE_VER = "v11"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -104,7 +104,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "籌碼　三大法人買賣超圖\n"
         "營收　月營收、季報毛利\n"
-        "產業　同業中位數＋這族法人，講人話\n"
+        "產業　同業中位數＋本產業法人，講人話\n"
         "觀察　加入自選（還沒買）\n"
         "記買入　記真實持股\n"
         "接著打「張數 價格」，例 1 68.5\n"

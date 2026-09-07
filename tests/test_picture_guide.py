@@ -52,7 +52,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v10"
+    assert CACHE_VER == "v11"
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920
     assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
