@@ -2153,6 +2153,12 @@ class WayneTelegramBot:
         await self._enter_main_menu(update.message, uid)
         await self._reply_help_topic(update.message, "guide")
 
+    @staticmethod
+    def _message_is_photo(message) -> bool:
+        """真的是圖訊息才算。MagicMock.photo 不能當真。"""
+        photo = getattr(message, "photo", None)
+        return isinstance(photo, (list, tuple)) and len(photo) > 0
+
     def _picture_guide_caption(self, page: int, n: int, title: str) -> str:
         p = int(page) + 1
         n = max(1, int(n))
@@ -4398,13 +4404,13 @@ class WayneTelegramBot:
                     await q.answer("圖文 1／9")
                 except Exception:
                     pass
-                is_photo = bool(getattr(q.message, "photo", None))
+                is_photo = self._message_is_photo(q.message)
                 if is_photo:
                     await self._show_picture_guide_page(q.message, 0, edit=True)
                 else:
                     await self._send_picture_guide(q.message)
                 return
-            if bool(getattr(q.message, "photo", None)):
+            if self._message_is_photo(q.message):
                 try:
                     await q.message.delete()
                 except Exception:
