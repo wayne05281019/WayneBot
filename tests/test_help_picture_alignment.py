@@ -46,6 +46,11 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert "連買區／說明" in menu
     assert row2_help.index("④ 連買區") < row2_help.index("⑤ 說明")
     assert "隔日沖　大盤　資金　連買區　說明　回報" in blob
+    assert "一張圖卡" in blob
+    assert "跑馬燈" in blob
+    assert "圖卡" in HELP_TOPICS["industry"]
+    assert "小框" in HELP_TOPICS["industry"]
+    assert "講人話" not in HELP_TOPICS["industry"]
 
 
 def test_picture_guide_page_order_is_first_use_then_lookup():

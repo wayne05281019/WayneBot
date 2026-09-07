@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""哥哥圖文說明：手機長圖 9 頁，說明頁「圖文」一次一張、按第 N 張換頁。"""
+"""哥哥圖文說明：手機長圖 9 頁，說明頁「圖文」一次一張、按第 N 張換頁。
+
+藍底白字對齊產業圖卡／大盤跑馬燈。一次只渲正在看的那一張，換頁才渲下一張。
+"""
 from __future__ import annotations
 
 import os
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
-CACHE_VER = "v11"
+CACHE_VER = "v12"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -13,11 +16,19 @@ PAGE_HEIGHT = 1920
 MARGIN = 28
 TITLE_SIZE = 76
 BODY_SIZE = 52
+MAX_TITLE_SIZE = 84
+MAX_BODY_SIZE = 64
 MIN_TITLE_SIZE = 68
 MIN_BODY_SIZE = 48
-BOTTOM_PAD = 12
-MIN_SHOT_RATIO = 0.30
+BOTTOM_PAD = 16
+MIN_SHOT_RATIO = 0.28
+CHROME_TOP = 8
+DOT_ROW_H = 28
 TG_PHOTO_MAX_BYTES = 9_800_000
+FLIP_W = 540
+FLIP_H = 960
+FLIP_FRAMES = 8
+FLIP_MS = 55
 _BREAK_AFTER = set("、。；：，,./／）)」」】》 ")
 PAGE_SLUGS = (
     "cover",
@@ -61,7 +72,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "   在圖下面那一排，不在右邊四格鍵盤\n"
         "\n"
         "這本說明給手機看。一次只看一張。\n"
-        "按「第 2 張」換頁，這一張會換成下一張。\n"
+        "按「第 2 張」換頁；往前看按「第 1 張」。\n"
+        "這一張會換成下一張，帶一點滑頁。\n"
         "挑股只認高低卡表的黃金買點。\n"
         "圖上紅箭頭不是買訊。",
     ),
@@ -75,6 +87,9 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "第二排（左到右）\n"
         "隔日沖　大盤　資金　連買區　說明　回報\n"
+        "\n"
+        "「大盤」最上頭是時段跑馬燈（循環短圖），下面才是數字與橫式日K。\n"
+        "美股當天沒開會寫原因，並附前一交易日收盤。沒接到的市場不寫。\n"
         "\n"
         "決策卡＝刷新上一檔，不是海選。還沒查過請直接打四碼。畫面怪按最右「回報」。\n"
         "\n"
@@ -104,7 +119,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "籌碼　三大法人買賣超圖\n"
         "營收　月營收、季報毛利\n"
-        "產業　同業中位數＋本產業法人，講人話\n"
+        "產業　一張圖卡：同業中位＋本產業法人\n"
+        "・股名旁公開細項小框；沒抓到不畫、不留空白\n"
         "觀察　加入自選（還沒買）\n"
         "記買入　記真實持股\n"
         "接著打「張數 價格」，例 1 68.5\n"
@@ -135,6 +151,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "海選怎麼轉 LINE",
         "海選＝依最近一次官方收盤掃全市場。\n"
         "不是盤中即時掃描。\n"
+        "主選單第一排「海選」就是圖上紅圈那顆。\n"
         "按一次等 2～5 分鐘，不要連按。\n"
         "\n"
         "左鍵（代號＋股名）＝看這檔完整圖\n"
@@ -189,7 +206,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "「海選」等很久：掃全市場；不要連按。\n"
         "觀察＝還沒買；持股＝按過記買入才會在。\n"
         "持股＝你手記的；AI倉＝假錢對照組。\n"
-        "找不到產業：在圖下面那一排。\n"
+        "找不到產業：在圖下面那一排。按下去是一張圖卡。\n"
         "\n"
         "「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
         "主選單不見：點四格鍵盤圖示，或打 /menu。\n"
@@ -197,13 +214,14 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     ),
 )
 
-_BG = (246, 241, 232)
-_INK = (26, 36, 51)
-_MUTED = (90, 98, 110)
-_ACCENT = (196, 92, 38)
-_LINE = (214, 204, 188)
-_CARD = (255, 255, 255)
-_SHADOW = (214, 206, 194)
+# 對齊產業圖卡／大盤跑馬燈：深藍底、白字、青標。
+_BG = (18, 26, 38)
+_INK = (236, 242, 248)
+_MUTED = (168, 186, 204)
+_ACCENT = (140, 210, 255)
+_LINE = (70, 96, 122)
+_CARD = (12, 20, 32)
+_LABEL_BG = (28, 52, 78)
 
 
 def _font_paths() -> Tuple[str, str]:
@@ -292,8 +310,26 @@ def _page_path(out_dir: str, slug: str) -> str:
     return os.path.join(out_dir, f"{CACHE_VER}-{slug}.png")
 
 
+def _flip_path(out_dir: str, src: int, dst: int) -> str:
+    return os.path.join(out_dir, f"{CACHE_VER}-flip-{int(src)}-{int(dst)}.gif")
+
+
 def asset_dir() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "picture_guide_assets")
+
+
+def page_index(slug: str) -> int:
+    try:
+        return list(PAGE_SLUGS).index(slug)
+    except ValueError:
+        return 0
+
+
+def page_copy(slug: str) -> Tuple[str, str]:
+    for s, title, body in PAGES:
+        if s == slug:
+            return title, body
+    raise KeyError(slug)
 
 
 def _page_shot(slug: str):
@@ -375,7 +411,7 @@ def _fit_cover(im, max_w: int, max_h: int, *, keep: str = "center"):
 
 
 def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
-    """截圖鋪滿剩餘區塊，左右貼齊畫布；不留大塊米色邊。"""
+    """截圖鋪滿剩餘區塊，左右貼齊畫布；外框對齊產業圖卡青邊。"""
     from PIL import Image, ImageDraw
 
     pad = 8
@@ -385,7 +421,7 @@ def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
     out = Image.new("RGB", (max_w, max_h), _BG)
     d = ImageDraw.Draw(out)
     rad = 16
-    d.rounded_rectangle((0, 0, max_w - 1, max_h - 1), rad, fill=_CARD, outline=_LINE, width=3)
+    d.rounded_rectangle((0, 0, max_w - 1, max_h - 1), rad, fill=_CARD, outline=_ACCENT, width=3)
     out.paste(shot, (pad, pad))
     return out
 
@@ -411,13 +447,35 @@ def _save_page_image(img, out_path: str) -> None:
         )
 
 
+def _draw_dots(draw, y: int, current: int, n: int, x0: int, x1: int) -> None:
+    """九頁同一排圓點；這一張實心青，其餘空心。"""
+    n = max(1, int(n))
+    current = max(0, min(int(current), n - 1))
+    r = 7
+    gap = 18
+    total = n * (r * 2) + (n - 1) * gap
+    start = x0 + max(0, (x1 - x0 - total) // 2)
+    cy = y + DOT_ROW_H // 2
+    for i in range(n):
+        cx = start + i * (r * 2 + gap) + r
+        box = (cx - r, cy - r, cx + r, cy + r)
+        if i == current:
+            draw.ellipse(box, fill=_ACCENT)
+        else:
+            draw.ellipse(box, outline=_LINE, width=2)
+
+
+def _chrome_h() -> int:
+    return CHROME_TOP + 36 + DOT_ROW_H + 8
+
+
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
-    """一屏 9:16：字夠大可讀，截圖貼底左右貼齊。九頁同一尺寸。"""
+    """一屏 9:16：藍底白字填滿上半，截圖貼底左右貼齊。九頁同一尺寸。"""
     from PIL import Image, ImageDraw
 
     max_w = PAGE_WIDTH - 2 * MARGIN
-    bar_h = 10
     min_shot_h = int(PAGE_HEIGHT * MIN_SHOT_RATIO)
+    chrome = _chrome_h()
     probe = Image.new("RGB", (PAGE_WIDTH, 200), _BG)
     pdraw = ImageDraw.Draw(probe)
     title_size = TITLE_SIZE
@@ -427,21 +485,23 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     title_lh = body_lh = gap_h = 0
     title_font = body_font = None
     text_h = 0
-    # 只微縮兩檔；低於 MIN_BODY_SIZE 會在話筒裡看不清，改讓截圖變矮。
-    for scale in (1.0, 0.94, 0.90):
-        title_size = max(MIN_TITLE_SIZE, int(round(TITLE_SIZE * scale)))
-        body_size = max(MIN_BODY_SIZE, int(round(BODY_SIZE * scale)))
+    # 先試較大字把內文鋪滿；鋪不下再微縮。低於 MIN_BODY_SIZE 改讓截圖變矮。
+    scales = (1.22, 1.14, 1.08, 1.0, 0.94, 0.90)
+    for scale in scales:
+        title_size = max(MIN_TITLE_SIZE, min(MAX_TITLE_SIZE, int(round(TITLE_SIZE * scale))))
+        body_size = max(MIN_BODY_SIZE, min(MAX_BODY_SIZE, int(round(BODY_SIZE * scale))))
         title_font = _load_font(title_size, bold=True)
         body_font = _load_font(body_size)
         title_lh = max(int(round(title_size * 1.16)), title_size + 6)
-        body_lh = max(int(round(body_size * 1.30)), body_size + 6)
+        body_lh = max(int(round(body_size * 1.28)), body_size + 6)
         gap_h = max(int(round(body_size * 0.34)), 12)
         title_lines = _wrap_line(pdraw, title, title_font, max_w, max_w)
         body_rows = _layout_body(pdraw, body, body_font, max_w)
         text_h = (
-            12
+            chrome
+            + 8
             + len(title_lines) * title_lh
-            + 16
+            + 10
             + _text_block_h(body_rows, body_lh, gap_h)
         )
         remain = PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h
@@ -449,20 +509,40 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
             break
     assert title_font is not None and body_font is not None
     remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
+    # 內文偏短時把段距拉開，九頁看起來一樣滿。
+    extra = remain - min_shot_h
+    gaps = sum(1 for row in body_rows if row is None)
+    if extra > 24 and gaps:
+        bump = min(extra // (gaps + 1), 22)
+        gap_h += bump
+        text_h += bump * gaps
+        remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
     shot = _page_shot(slug)
     card = None
     if shot is not None:
         card = _shot_card(shot, max_w, remain, keep="top" if slug == "discipline" else "center")
     img = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), _BG)
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, PAGE_WIDTH, bar_h), fill=_ACCENT)
-    y = MARGIN
+    draw.rectangle((0, 0, PAGE_WIDTH, CHROME_TOP), fill=_ACCENT)
+    draw.rectangle((0, 0, 10, PAGE_HEIGHT), fill=_ACCENT)
+    brand_font = _load_font(26, bold=True)
+    mark_font = _load_font(26, bold=True)
+    idx = page_index(slug)
+    n = len(PAGE_SLUGS)
+    y = CHROME_TOP + 8
+    draw.text((MARGIN, y), "WayneBot 圖文", font=brand_font, fill=_ACCENT)
+    mark = f"{idx + 1}／{n}"
+    mw = _text_w(draw, mark, mark_font)
+    draw.text((PAGE_WIDTH - MARGIN - mw, y), mark, font=mark_font, fill=_INK)
+    y += 32
+    _draw_dots(draw, y, idx, n, MARGIN, PAGE_WIDTH - MARGIN)
+    y += DOT_ROW_H + 6
     for line in title_lines:
         draw.text((MARGIN, y), line, font=title_font, fill=_INK)
         y += title_lh
     y += 6
-    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=4)
-    y += 16
+    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=3)
+    y += 12
     for row in body_rows:
         if row is None:
             y += gap_h
@@ -492,17 +572,103 @@ def picture_guide_dir(charts_dir: str | None = None) -> str:
     return path
 
 
-def render_picture_guide(out_dir: str | None = None, *, force: bool = False) -> List[str]:
-    """產出 9 張長圖；已有快取就沿用。"""
+def ensure_page(slug: str, out_dir: str | None = None, *, force: bool = False) -> str:
+    """只渲這一張。第一次按圖文不必先做完九張。"""
     dest = out_dir or picture_guide_dir()
     os.makedirs(dest, exist_ok=True)
-    paths: List[str] = []
-    for slug, title, body in PAGES:
-        path = _page_path(dest, slug)
-        if force or not os.path.isfile(path) or os.path.getsize(path) < 8_000:
-            render_page(slug, title, body, path)
-        paths.append(path)
-    return paths
+    title, body = page_copy(slug)
+    path = _page_path(dest, slug)
+    if force or not os.path.isfile(path) or os.path.getsize(path) < 8_000:
+        render_page(slug, title, body, path)
+    return path
+
+
+def render_picture_guide(out_dir: str | None = None, *, force: bool = False) -> List[str]:
+    """產出 9 張長圖；已有快取就沿用。測試／本機對圖用；話筒走 ensure_page。"""
+    dest = out_dir or picture_guide_dir()
+    os.makedirs(dest, exist_ok=True)
+    return [ensure_page(slug, dest, force=force) for slug, _t, _b in PAGES]
+
+
+def render_flip_gif(
+    src_path: str,
+    dst_path: str,
+    out_path: str,
+    *,
+    forward: bool = True,
+) -> str:
+    """舊頁滑出、新頁滑入。半尺寸 GIF，換頁後再換成原圖。"""
+    from PIL import Image, ImageDraw, ImageEnhance
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    a = Image.open(src_path).convert("RGB").resize((FLIP_W, FLIP_H), Image.Resampling.LANCZOS)
+    b = Image.open(dst_path).convert("RGB").resize((FLIP_W, FLIP_H), Image.Resampling.LANCZOS)
+    frames = []
+    n = FLIP_FRAMES
+    for i in range(n):
+        t = (i + 1) / float(n)
+        e = t * t * (3.0 - 2.0 * t)
+        dx = int(round(FLIP_W * e))
+        canvas = Image.new("RGB", (FLIP_W, FLIP_H), _BG)
+        if forward:
+            canvas.paste(a, (-dx, 0))
+            canvas.paste(b, (FLIP_W - dx, 0))
+            seam = FLIP_W - dx
+        else:
+            canvas.paste(a, (dx, 0))
+            canvas.paste(b, (dx - FLIP_W, 0))
+            seam = dx
+        overlay = Image.new("RGBA", (FLIP_W, FLIP_H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        glow = max(8, int(28 * (1.0 - abs(0.5 - t) * 2)))
+        x0 = max(0, seam - glow)
+        x1 = min(FLIP_W - 1, seam + glow)
+        od.rectangle((x0, 0, x1, FLIP_H), fill=_ACCENT + (int(90 * (1.0 - abs(0.5 - t) * 2)),))
+        mixed = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
+        if i == 0:
+            mixed = ImageEnhance.Brightness(mixed).enhance(1.08)
+        frames.append(mixed)
+    frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=FLIP_MS,
+        loop=1,
+        optimize=True,
+        disposal=2,
+    )
+    return out_path
+
+
+def ensure_flip_gif(
+    src_slug: str,
+    dst_slug: str,
+    out_dir: str,
+    *,
+    force: bool = False,
+) -> Optional[str]:
+    src_i = page_index(src_slug)
+    dst_i = page_index(dst_slug)
+    if src_i == dst_i:
+        return None
+    src = ensure_page(src_slug, out_dir)
+    dst = ensure_page(dst_slug, out_dir)
+    path = _flip_path(out_dir, src_i, dst_i)
+    if force or not os.path.isfile(path) or os.path.getsize(path) < 4_000:
+        render_flip_gif(src, dst, path, forward=dst_i > src_i)
+    return path
+
+
+def parse_guide_callback(data: str) -> Tuple[Optional[int], int]:
+    """pg:3 或 pg:2-3 → (from_page, to_page)。舊按鈕只有目標頁。"""
+    rest = str(data or "")
+    if rest.startswith("pg:"):
+        rest = rest[3:]
+    rest = rest.strip()
+    if "-" in rest:
+        a, b = rest.split("-", 1)
+        return int(a), int(b)
+    return None, int(rest or "0")
 
 
 def page_copy_blob() -> str:

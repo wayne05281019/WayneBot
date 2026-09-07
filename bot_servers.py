@@ -177,7 +177,7 @@ HELP_TOPICS = {
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
         "• <b>營收</b>　月營收、季報毛利\n"
-        "• <b>產業</b>　同業中位數＋本產業法人，講人話\n"
+        "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁有公開細項小框（沒有就不畫）\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
@@ -453,7 +453,7 @@ HELP_TOPICS = {
         "<b>圖下方這一排</b>\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
-        "• <b>產業</b>：同業中位數＋本產業法人，講人話\n"
+        "• <b>產業</b>：一張圖卡（同業中位＋本產業法人）；股名旁有公開細項小框，沒抓到不畫\n"
         "• <b>觀察</b>：加入自選（還沒買）\n"
         "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>\n"
         "\n"
@@ -483,7 +483,7 @@ HELP_TOPICS = {
         "• 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
         "• 本益／淨值／殖利率、融資融券餘額（張與使用率）＝官方有數才上卡；沒有真分點就不會出現主力成本\n"
         "• 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
-        "• 產業說明＝官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣，講人話；不是內幕\n"
+        "• 產業說明＝一張圖卡：官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣；股名旁公開細項小框（沒抓到不畫）；不是內幕\n"
         "• 海選靠近 20 日收盤高＝少追，排後面；高低卡才是少賠主軸\n"
         "• 隔夜美股＝現金收盤＋收盤後盤後（台積美股／那斯達克期貨續勢），盤中期貨不看；大跌 06:30 會先通知。只過濾逆風，不拿來追高"
     ),
@@ -506,8 +506,9 @@ HELP_TOPICS = {
         "查完一檔後，按<b>圖下方「產業」</b>（不在右側 ⌨️）。\n"
         "也可打 /industry 代號。\n"
         "\n"
-        "會列出官方產業別、籌碼K細項小框、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
-        "進場仍看高低卡，不要因為同業敘事追高。"
+        "會先送一張圖卡：官方產業別、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
+        "股名旁若有公開細項（例如代工、記憶體製造），用小框標；沒抓到就不畫，不留空白。\n"
+        "圖卡出不來才改送文字。進場仍看高低卡，不要因為同業敘事追高。"
     ),
     "buy": (
         "<b>記買入</b>\n"
@@ -2174,40 +2175,70 @@ class WayneTelegramBot:
         n = max(1, int(n))
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton(f"← 第 {page} 張", callback_data=f"pg:{page - 1}"))
+            nav.append(
+                InlineKeyboardButton(
+                    f"✦ ← 第 {page} 張",
+                    callback_data=f"pg:{page}-{page - 1}",
+                )
+            )
         if page + 1 < n:
-            nav.append(InlineKeyboardButton(f"第 {page + 2} 張 →", callback_data=f"pg:{page + 1}"))
+            nav.append(
+                InlineKeyboardButton(
+                    f"第 {page + 2} 張 → ✦",
+                    callback_data=f"pg:{page}-{page + 1}",
+                )
+            )
         rows = [nav] if nav else []
         help_kb = self._help_nav_keyboard("pics")
         rows.extend(list(help_kb.inline_keyboard))
         return InlineKeyboardMarkup(rows)
 
-    async def _show_picture_guide_page(self, message, page: int, *, edit: bool) -> None:
-        """一次只出一張。換頁用 edit_media，舊圖原地換成新圖。"""
+    async def _show_picture_guide_page(
+        self, message, page: int, *, edit: bool, from_page: int | None = None
+    ) -> None:
+        """一次只渲正在看的那一張。換頁先滑頁 GIF，再換成下一張原圖。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import render_picture_guide
+        from picture_guide import PAGE_SLUGS, ensure_flip_gif, ensure_page
 
         charts = getattr(self, "charts_dir", None)
-        paths = await asyncio.to_thread(
-            render_picture_guide, os.path.join(str(charts or "data/charts"), "picture_guide")
-        )
-        n = len(paths or [])
-        if n <= 0:
+        dest = os.path.join(str(charts or "data/charts"), "picture_guide")
+        n = len(PAGE_SLUGS)
+        page = max(0, min(int(page), n - 1))
+        slug = PAGE_SLUGS[page]
+        try:
+            path = await asyncio.to_thread(ensure_page, slug, dest)
+        except Exception:
+            logger.exception("圖文說明產圖失敗 page=%s", page)
+            path = ""
+        if not path or not os.path.isfile(path):
             await message.reply_html(
                 "圖文說明暫時產不出來。請先看文字「總覽」。",
                 reply_markup=self._help_nav_keyboard("guide"),
             )
             return
-        page = max(0, min(int(page), n - 1))
-        path = paths[page]
-        if not path or not os.path.isfile(path):
-            await message.reply_html(
-                "這一張圖找不到。請先看文字「總覽」。",
-                reply_markup=self._help_nav_keyboard("guide"),
-            )
-            return
         kb = self._picture_guide_keyboard(page, n)
+        src_i = None if from_page is None else max(0, min(int(from_page), n - 1))
+        if edit and src_i is not None and src_i != page:
+            try:
+                gif = await asyncio.to_thread(
+                    ensure_flip_gif, PAGE_SLUGS[src_i], slug, dest
+                )
+            except Exception:
+                logger.debug("圖文滑頁 GIF 失敗", exc_info=True)
+                gif = ""
+            if gif and os.path.isfile(gif):
+                try:
+                    from telegram import InputMediaAnimation
+
+                    with open(gif, "rb") as fh:
+                        await message.edit_media(
+                            media=InputMediaAnimation(media=fh, caption=""),
+                            reply_markup=kb,
+                        )
+                    await asyncio.sleep(0.48)
+                except Exception:
+                    logger.debug("圖文滑頁送出失敗，改直接換圖", exc_info=True)
         with open(path, "rb") as fh:
             if edit:
                 try:
@@ -3052,7 +3083,7 @@ class WayneTelegramBot:
             "card": "看這檔：請先打四碼（例 2330）或點觀察清單。會一次出介紹圖、決策卡、導航圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
-            "industry": "產業說明：請先選一檔。會用官方營收／毛利跟同業比，講人話。",
+            "industry": "產業說明：請先選一檔。會送一張圖卡，用官方營收／毛利跟同業比。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
         }
         rows = get_user_watchlist(self.db_path, uid)
@@ -4408,8 +4439,10 @@ class WayneTelegramBot:
             await self._handle_buy_streak_callback(q, uid, data)
             return
         if data.startswith("pg:"):
+            from picture_guide import parse_guide_callback
+
             try:
-                page = int(str(data[3:]).strip() or "0")
+                from_page, page = parse_guide_callback(data)
             except ValueError:
                 await q.answer("頁碼不對")
                 return
@@ -4417,7 +4450,9 @@ class WayneTelegramBot:
                 await q.answer("沒有這一張")
                 return
             await q.answer(f"換成第 {page + 1} 張")
-            await self._show_picture_guide_page(q.message, page, edit=True)
+            await self._show_picture_guide_page(
+                q.message, page, edit=True, from_page=from_page
+            )
             return
         await q.answer()
         if data == "fw:s":

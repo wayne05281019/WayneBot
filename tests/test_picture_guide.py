@@ -21,6 +21,7 @@ from picture_guide import (
     page_copy_blob,
     render_page,
     render_picture_guide,
+    ensure_page,
     _trim_guide_shot,
 )
 
@@ -47,12 +48,16 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "平常最多用 1 份" in blob
     assert "這波先當結束" in blob
     assert "官方收盤掃全市場" in blob
+    assert "紅圈" in blob
     assert "連買區　說明　回報" in blob
     assert "如何賣" in blob
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v11"
+    assert CACHE_VER == "v12"
+    assert "一張圖卡" in blob
+    assert "跑馬燈" in blob
+    assert "細項小框" in blob
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920
     assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
@@ -119,13 +124,13 @@ def test_shot_panel_fills_content_width(tmp_path):
     render_page(slug, title, body, out)
     with Image.open(out) as im:
         y = int(im.height * 0.84)
-        bg = (246, 241, 232)
+        bg = (18, 26, 38)
 
         def _near(c, t, tol=18):
             return all(abs(a - b) <= tol for a, b in zip(c, t))
 
         xs = [x for x in range(im.width) if not _near(im.getpixel((x, y)), bg)]
-        assert xs, "lower third should be the screenshot, not empty beige"
+        assert xs, "lower third should be the screenshot, not empty navy"
         assert xs[0] <= MARGIN + 12
         assert xs[-1] >= PAGE_WIDTH - MARGIN - 12
         assert (xs[-1] - xs[0]) >= PAGE_WIDTH - 2 * MARGIN - 24
@@ -175,8 +180,8 @@ def test_send_picture_guide_one_page_with_next_button(tmp_path):
     assert not (kwargs.get("caption") or "")
     assert "圖文 1／" not in str(kwargs)
     labels = [b.text for row in kwargs["reply_markup"].inline_keyboard for b in row]
-    assert "第 2 張 →" in labels
-    assert not any(t.startswith("←") for t in labels)
+    assert any("第 2 張 →" in t for t in labels)
+    assert not any("← 第" in t for t in labels)
 
 
 def test_picture_guide_keyboard_middle_and_last():
@@ -185,12 +190,12 @@ def test_picture_guide_keyboard_middle_and_last():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     mid = bot._picture_guide_keyboard(4, 9)
     labels = [b.text for row in mid.inline_keyboard for b in row]
-    assert "← 第 4 張" in labels
-    assert "第 6 張 →" in labels
+    assert any("← 第 4 張" in t for t in labels)
+    assert any("第 6 張 →" in t for t in labels)
     last = bot._picture_guide_keyboard(8, 9)
     labels = [b.text for row in last.inline_keyboard for b in row]
-    assert "← 第 8 張" in labels
-    assert not any("→" in t for t in labels if t.startswith("第"))
+    assert any("← 第 8 張" in t for t in labels)
+    assert not any("→" in t for t in labels if "第 9 張" in t or t.startswith("第"))
 
 
 def test_picture_guide_flip_edits_same_message(tmp_path):
@@ -218,5 +223,68 @@ def test_picture_guide_flip_edits_same_message(tmp_path):
     media = msg.edit_media.await_args.kwargs["media"]
     assert not (getattr(media, "caption", None) or "")
     labels = [b.text for row in msg.edit_media.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
-    assert "← 第 1 張" in labels
-    assert "第 3 張 →" in labels
+    assert any("← 第 1 張" in t for t in labels)
+    assert any("第 3 張 →" in t for t in labels)
+
+
+def test_pages_navy_white_and_utf8(tmp_path):
+    dest = str(tmp_path / "navy")
+    paths = render_picture_guide(dest, force=True)
+    blob = page_copy_blob()
+    assert "�" not in blob
+    assert "图文" not in blob
+    assert "说明书" not in blob
+    beige = (246, 241, 232)
+    for p in paths:
+        with Image.open(p) as im:
+            corner = im.getpixel((24, PAGE_HEIGHT - 12))
+            assert all(abs(a - b) <= 22 for a, b in zip(corner, (18, 26, 38))), corner
+            assert not all(abs(a - b) <= 18 for a, b in zip(corner, beige))
+            left = im.getpixel((4, 200))
+            assert left[2] >= 180  # 左側青條
+
+
+def test_ensure_page_does_not_render_all_nine(tmp_path):
+    dest = str(tmp_path / "lazy")
+    one = ensure_page("cover", dest)
+    names = {n for n in os.listdir(dest) if n.endswith(".png")}
+    assert os.path.basename(one).endswith("cover.png")
+    assert names == {f"{CACHE_VER}-cover.png"}
+
+
+def test_flip_gif_then_photo_when_from_page_known(tmp_path):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+    from picture_guide import ensure_page
+
+    dest = str(tmp_path / "flip")
+    ensure_page("cover", dest)
+    ensure_page("menu", dest)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.charts_dir = dest
+    msg = MagicMock()
+    msg.edit_media = AsyncMock()
+    msg.reply_photo = AsyncMock()
+    msg.delete = AsyncMock()
+
+    async def _run():
+        with patch("asyncio.sleep", new=AsyncMock()):
+            await bot._show_picture_guide_page(msg, 1, edit=True, from_page=0)
+
+    asyncio.run(_run())
+    assert msg.edit_media.await_count == 2
+    first = msg.edit_media.await_args_list[0].kwargs["media"]
+    last = msg.edit_media.await_args_list[1].kwargs["media"]
+    assert type(first).__name__ == "InputMediaAnimation"
+    assert type(last).__name__ == "InputMediaPhoto"
+    msg.reply_photo.assert_not_called()
+
+
+def test_parse_guide_callback_old_and_new():
+    from picture_guide import parse_guide_callback
+
+    assert parse_guide_callback("pg:3") == (None, 3)
+    assert parse_guide_callback("pg:2-3") == (2, 3)
+    assert parse_guide_callback("pg:3-2") == (3, 2)
