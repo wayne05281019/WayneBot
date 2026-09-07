@@ -5,15 +5,18 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v8"
-# 話筒一次一張：加寬加大字給老花；圖可以往下。
-PAGE_WIDTH = 1440
-MARGIN = 72
-TITLE_SIZE = 76
-BODY_SIZE = 50
-FOOT_SIZE = 34
-TITLE_LINE = 94
-BODY_LINE = 74
+CACHE_VER = "v9"
+# 九頁同一張手機比例，話筒裡才不會忽大忽小。
+# 2560×5550＝19.5:9（常見手機全畫面），邊長已在 Telegram 照片壓縮前的實用上限。
+PAGE_WIDTH = 2560
+PAGE_HEIGHT = 5550
+MARGIN = 128
+TITLE_SIZE = 96
+BODY_SIZE = 60
+BOTTOM_PAD = 56
+MIN_SHOT_RATIO = 0.40
+TG_PHOTO_MAX_BYTES = 9_800_000
+_BREAK_AFTER = set("、。；：，,./／）)」」】》 ")
 PAGE_SLUGS = (
     "cover",
     "menu",
@@ -75,11 +78,16 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "決策卡　當沖　持股　觀察　海選　AI倉\n"
         "\n"
         "第二排（左到右）\n"
-        "隔日沖　大盤　資金　說明　連買區　回報\n"
+        "隔日沖　大盤　資金　連買區　說明　回報\n"
         "\n"
         "決策卡＝刷新上一檔，不是海選名單。\n"
         "還沒查過股，請直接打四碼，不要先按決策卡。\n"
-        "畫面怪按最右「回報」。",
+        "畫面怪按最右「回報」。\n"
+        "\n"
+        "平日自動（台灣）\n"
+        "06:30 早報　12:45 尾盤可切\n"
+        "16:30 官方收盤寫庫\n"
+        "20:00 AI倉模擬買賣，不推播",
     ),
     (
         "charts",
@@ -136,7 +144,11 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "黃金買點＝獲利剛離開 0，或還在 0.x% 綠底。\n"
         "（以前叫起漲）\n"
         "重點觀察＝還壓在近 60 個日曆天收盤低。\n"
-        "注意，不是立刻買。",
+        "注意，不是立刻買。\n"
+        "\n"
+        "如何賣（不是買訊、不自動賣）\n"
+        "最高價＝20日高，對最高溫。\n"
+        "只標在查股圖、決策卡、持股、AI倉。",
     ),
     (
         "screen",
@@ -235,27 +247,69 @@ def _load_font(size: int, *, bold: bool = False):
     return ImageFont.load_default()
 
 
-def _wrap(draw, text: str, font, max_w: int) -> List[str]:
+def _text_w(draw, text: str, font) -> float:
+    try:
+        return float(draw.textlength(text, font=font))
+    except Exception:
+        return len(text or "") * (getattr(font, "size", 28) * 0.9)
+
+
+def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str]:
+    """CJK 折行：盡量在頓號／句號切開，不要留下單字孤兒。"""
+    if not text:
+        return [""]
     lines: List[str] = []
-    for para in (text or "").split("\n"):
-        if para == "":
-            lines.append("")
+    buf = ""
+    limit = float(first_w)
+    for ch in text:
+        trial = buf + ch
+        if _text_w(draw, trial, font) <= limit or not buf:
+            buf = trial
             continue
-        buf = ""
-        for ch in para:
-            trial = buf + ch
-            try:
-                w = draw.textlength(trial, font=font)
-            except Exception:
-                w = len(trial) * (getattr(font, "size", 28) * 0.9)
-            if w <= max_w or not buf:
-                buf = trial
-            else:
-                lines.append(buf)
-                buf = ch
-        if buf:
+        cut = -1
+        start = max(1, len(buf) // 2)
+        for i in range(len(buf) - 1, start - 1, -1):
+            if buf[i] in _BREAK_AFTER:
+                cut = i + 1
+                break
+        if cut > 0:
+            lines.append(buf[:cut].rstrip())
+            buf = buf[cut:].lstrip() + ch
+        else:
             lines.append(buf)
-    return lines
+            buf = ch
+        limit = float(rest_w)
+    if buf:
+        if len(buf) == 1 and lines:
+            lines[-1] = lines[-1] + buf
+        else:
+            lines.append(buf)
+    return lines or [""]
+
+
+def _hang_prefix(para: str) -> str:
+    for p in ("1  ", "2  ", "3  ", "・", "→ "):
+        if para.startswith(p):
+            return p
+    if para.startswith("   "):
+        return "   "
+    return ""
+
+
+def _layout_body(draw, body: str, font, max_w: int) -> List[Tuple[int, str] | None]:
+    """段落、編號、箭頭採懸吊縮排。None＝段距。"""
+    out: List[Tuple[int, str] | None] = []
+    for para in (body or "").split("\n"):
+        if para == "":
+            out.append(None)
+            continue
+        prefix = _hang_prefix(para)
+        hang = int(_text_w(draw, prefix, font)) if prefix else 0
+        rest_w = max(max_w - hang, int(max_w * 0.62))
+        wrapped = _wrap_line(draw, para, font, max_w, rest_w)
+        for i, ln in enumerate(wrapped):
+            out.append((hang if i else 0, ln))
+    return out
 
 
 def _page_path(out_dir: str, slug: str) -> str:
@@ -278,90 +332,127 @@ def _page_shot(slug: str):
     return Image.open(path).convert("RGB")
 
 
-def _fit_width(im, max_w: int):
+def _fit_box(im, max_w: int, max_h: int):
     from PIL import Image
 
     w, h = im.size
-    if w <= 0 or h <= 0:
+    if w <= 0 or h <= 0 or max_w <= 0 or max_h <= 0:
         return im
-    if w == max_w:
+    scale = min(max_w / w, max_h / h)
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+    if (nw, nh) == (w, h):
         return im
-    nh = max(1, int(round(h * max_w / w)))
-    return im.resize((max_w, nh), Image.Resampling.LANCZOS)
+    return im.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
-def _shot_card(shot, max_w: int):
-    """白底圓角卡＋淺影，截圖放大貼上。"""
+def _shot_card(shot, max_w: int, max_h: int):
+    """截圖放大塞進剩餘區塊，白底圓角卡。"""
     from PIL import Image, ImageDraw
 
-    inner = max_w - 16
-    shot = _fit_width(shot, inner)
-    pad = 18
-    lift = 10
+    pad = max(24, int(max_w * 0.016))
+    lift = max(12, pad // 2)
+    inner_w = max(1, max_w - pad * 2 - lift)
+    inner_h = max(1, max_h - pad * 2 - lift)
+    shot = _fit_box(shot, inner_w, inner_h)
     card_w = shot.width + pad * 2
     card_h = shot.height + pad * 2
     out = Image.new("RGB", (card_w + lift, card_h + lift), _BG)
     d = ImageDraw.Draw(out)
-    d.rounded_rectangle((lift, lift, card_w + lift - 1, card_h + lift - 1), 22, fill=_SHADOW)
-    d.rounded_rectangle((0, 0, card_w - 1, card_h - 1), 22, fill=_CARD, outline=_LINE, width=3)
+    rad = max(18, pad)
+    d.rounded_rectangle((lift, lift, card_w + lift - 1, card_h + lift - 1), rad, fill=_SHADOW)
+    d.rounded_rectangle((0, 0, card_w - 1, card_h - 1), rad, fill=_CARD, outline=_LINE, width=4)
     out.paste(shot, (pad, pad))
     return out
 
 
+def _text_block_h(rows: List[Tuple[int, str] | None], line_h: int, gap_h: int) -> int:
+    h = 0
+    for row in rows:
+        h += gap_h if row is None else line_h
+    return h
+
+
+def _save_page_image(img, out_path: str) -> None:
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    img.save(out_path, "PNG", compress_level=3, dpi=(300, 300))
+    if os.path.getsize(out_path) > TG_PHOTO_MAX_BYTES:
+        img.convert("RGB").save(
+            out_path,
+            "JPEG",
+            quality=95,
+            optimize=True,
+            subsampling=0,
+            dpi=(300, 300),
+        )
+
+
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
+    """固定手機全畫面比例：字在上、截圖置中貼底。九頁同一尺寸。"""
     from PIL import Image, ImageDraw
 
-    title_font = _load_font(TITLE_SIZE, bold=True)
-    body_font = _load_font(BODY_SIZE)
-    foot_font = _load_font(FOOT_SIZE)
+    max_w = PAGE_WIDTH - 2 * MARGIN
+    bar_h = 16
+    min_shot_h = int(PAGE_HEIGHT * MIN_SHOT_RATIO)
     probe = Image.new("RGB", (PAGE_WIDTH, 200), _BG)
     pdraw = ImageDraw.Draw(probe)
-    max_w = PAGE_WIDTH - 2 * MARGIN
-    title_lines = _wrap(pdraw, title, title_font, max_w)
-    body_lines = _wrap(pdraw, body, body_font, max_w)
+    title_size = TITLE_SIZE
+    body_size = BODY_SIZE
+    title_lines: List[str] = []
+    body_rows: List[Tuple[int, str] | None] = []
+    title_lh = body_lh = gap_h = 0
+    title_font = body_font = None
+    text_h = 0
+    for scale in (1.0, 0.94, 0.88, 0.82, 0.76, 0.70, 0.64):
+        title_size = max(56, int(round(TITLE_SIZE * scale)))
+        body_size = max(40, int(round(BODY_SIZE * scale)))
+        title_font = _load_font(title_size, bold=True)
+        body_font = _load_font(body_size)
+        title_lh = max(int(round(title_size * 1.28)), title_size + 12)
+        body_lh = max(int(round(body_size * 1.46)), body_size + 10)
+        gap_h = max(int(round(body_size * 0.52)), 18)
+        title_lines = _wrap_line(pdraw, title, title_font, max_w, max_w)
+        body_rows = _layout_body(pdraw, body, body_font, max_w)
+        # 標題＋分隔＋本文；頂欄不再重複寫 WayneBot，把空間留給內文。
+        text_h = (
+            28
+            + len(title_lines) * title_lh
+            + 28
+            + _text_block_h(body_rows, body_lh, gap_h)
+        )
+        remain = PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h
+        if remain >= min_shot_h:
+            break
+    assert title_font is not None and body_font is not None
+    remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, min_shot_h)
     shot = _page_shot(slug)
+    card = None
     if shot is not None:
-        shot = _shot_card(shot, max_w)
-        shot_h = shot.height + 36
-    else:
-        shot_h = 0
-    height = (
-        MARGIN
-        + 48
-        + len(title_lines) * TITLE_LINE
-        + 28
-        + len(body_lines) * BODY_LINE
-        + shot_h
-        + 96
-    )
-    height = max(height, 1600)
-    img = Image.new("RGB", (PAGE_WIDTH, height), _BG)
+        card = _shot_card(shot, max_w, remain)
+    img = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), _BG)
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, PAGE_WIDTH, 22), fill=_ACCENT)
+    draw.rectangle((0, 0, PAGE_WIDTH, bar_h), fill=_ACCENT)
     y = MARGIN
-    draw.text((MARGIN, y), "WayneBot", font=foot_font, fill=_MUTED)
-    y += 48
     for line in title_lines:
         draw.text((MARGIN, y), line, font=title_font, fill=_INK)
-        y += TITLE_LINE
-    y += 10
-    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=4)
-    y += 32
-    for line in body_lines:
-        if line == "":
-            y += 22
+        y += title_lh
+    y += 8
+    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=5)
+    y += 20
+    for row in body_rows:
+        if row is None:
+            y += gap_h
             continue
-        draw.text((MARGIN, y), line, font=body_font, fill=_INK)
-        y += BODY_LINE
-    if shot is not None:
-        y += 20
-        img.paste(shot, (MARGIN, y))
-        y += shot.height
-    idx = PAGE_SLUGS.index(slug) + 1 if slug in PAGE_SLUGS else 0
-    foot = f"{idx} / {len(PAGE_SLUGS)}" if idx else CACHE_VER
-    draw.text((MARGIN, height - 64), foot, font=foot_font, fill=_MUTED)
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    img.save(out_path, "PNG", compress_level=4, dpi=(144, 144))
+        indent, line = row
+        draw.text((MARGIN + indent, y), line, font=body_font, fill=_INK)
+        y += body_lh
+    if card is not None:
+        x = (PAGE_WIDTH - card.width) // 2
+        y_shot = PAGE_HEIGHT - BOTTOM_PAD - card.height
+        if y_shot < y + 16:
+            y_shot = y + 16
+        img.paste(card, (x, y_shot))
+    _save_page_image(img, out_path)
     return out_path
 
 

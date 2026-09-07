@@ -162,7 +162,7 @@ HELP_TOPICS = {
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
-        "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>說明</b>｜<b>連買區</b>｜<b>回報</b>\n"
+        "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>連買區</b>｜<b>說明</b>｜<b>回報</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按最右「回報」。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
@@ -298,17 +298,17 @@ HELP_TOPICS = {
         "• 怎麼用：看哪幾族法人加碼、族內代表股；當佈局參考，不是下單訊號。\n"
         "• 不是什麼：不含你的持股／觀察；也不是分點、也不是論壇消息。\n"
         "\n"
-        "<b>④ 說明</b>\n"
-        "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／圖文／第一排／第二排／連買／記買入／按錯。\n"
-        "• 怎麼用：按主選單「說明」，或打 /help。按 <b>✕</b> 收合。\n"
-        "• 亂了：先看「按錯」；還是怪就按最右「回報」。\n"
-        "\n"
-        "<b>⑤ 連買區</b>\n"
+        "<b>④ 連買區</b>\n"
         "• 是什麼：官方法人連續買超名單（不是下單訊號）。\n"
         "• 怎麼用：先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>，再點天數。\n"
         "• 不分市場：上市櫃一起列，不再分市場。選到一半按錯，改按別顆就取消，再按連買區重來。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。\n"
+        "\n"
+        "<b>⑤ 說明</b>\n"
+        "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／圖文／第一排／第二排／連買／記買入／按錯。\n"
+        "• 怎麼用：按主選單「說明」，或打 /help。按 <b>✕</b> 收合。\n"
+        "• 亂了：先看「按錯」；還是怪就按最右「回報」。\n"
         "\n"
         "<b>⑥ 回報</b>\n"
         "• 是什麼：把畫面怪、按鈕錯、數字不對告訴偉權（文字或截圖）。\n"
@@ -346,6 +346,7 @@ HELP_TOPICS = {
         "• 每人本金 50 萬虛擬，切 3 等份。平常最多用 1 份；大盤超跌才動第 2 份抄低。第 3 份永遠留現金\n"
         "• 優先黃金買點；第二份只買重點觀察／黃金買點。當沖不隔夜；靠近20日高、美股逆風不買；停損約 -7%、停利約 +8%\n"
         "• 這是對照組，不會動你的真實持股，也不會真的下單，也不會自動改程式。\n"
+        "• 這不是證券 App 裡的量化積木，也不能把這支程式塞進手機下單軟體。\n"
         "\n"
         "<b>跟真實持股的差別</b>\n"
         "• <b>持股</b>＝你手動記的買入\n"
@@ -367,7 +368,7 @@ HELP_TOPICS = {
         "<b>第一次用</b>：先叫出兩排 → 直接打四碼看圖 → 圖下方看籌碼／營收／產業。\n"
         "\n"
         "<b>第一排</b>：決策卡／當沖／持股／觀察／海選／<b>AI倉</b>\n"
-        "<b>第二排</b>：隔日沖／大盤／資金／說明／連買區／<b>回報</b>\n"
+        "<b>第二排</b>：隔日沖／大盤／資金／連買區／說明／<b>回報</b>\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
@@ -463,6 +464,10 @@ HELP_TOPICS = {
         "• 現在高點跟熱度都沒了 → 這波先當結束；有持股就先出一點\n"
         "\n"
         "已經連好幾天貼在高檔：先不要追。有持股考慮先出。剛貼到高檔：先看、先別追。\n"
+        "\n"
+        "<b>如何賣</b>（作者公開、不是買訊、不自動賣）\n"
+        "最高價＝20日高，對最高溫。同步再脫離＝準備減碼；不同步＝直接減碼。\n"
+        "只標在介紹圖／決策卡／持股／AI倉，不改海選名單。\n"
         "\n"
         "<b>介紹圖／決策卡先看這些</b>\n"
         "• 股號旁：當日 K 縮圖＋連漲／連跌＋開高低\n"
@@ -605,7 +610,8 @@ MENU_BTN_PREV_PAGE = "上一批"
 # v8：版面過期必「新發」帶 ReplyKeyboard 的訊息（edit 無法換兩排按鈕）。
 # v9：次排改為隔日沖／大盤／資金／說明／連買區（少用放最後）。
 # v10：兩排各加一格＝6+6；第一排最右 AI倉；第二排最右回報（文字／截圖）。
-MENU_LAYOUT_VERSION = "10"
+# v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
+MENU_LAYOUT_VERSION = "11"
 MAX_PICK_INLINE_ROWS = 8
 
 
@@ -893,8 +899,8 @@ class WayneTelegramBot:
                 KeyboardButton("隔日沖"),
                 KeyboardButton(MENU_BTN_MARKET),
                 KeyboardButton("資金"),
-                KeyboardButton("說明"),
                 KeyboardButton(MENU_BTN_STREAK),
+                KeyboardButton("說明"),
                 KeyboardButton(MENU_BTN_REPORT),
             ],
         ]
@@ -2161,18 +2167,6 @@ class WayneTelegramBot:
         photo = getattr(message, "photo", None)
         return isinstance(photo, (list, tuple)) and len(photo) > 0
 
-    def _picture_guide_caption(self, page: int, n: int, title: str) -> str:
-        p = int(page) + 1
-        n = max(1, int(n))
-        lines = [f"圖文 {p}／{n}", str(title or "").strip()]
-        if p < n:
-            lines.append(f"一共 {n} 張，現在這張。按「第 {p + 1} 張」換頁，這一張會換成下一張。")
-        elif n > 1:
-            lines.append("這是最後一張。按上一張可回去。文字版按「總覽」。")
-        else:
-            lines.append("文字版按「總覽」或「按錯」。")
-        return "\n".join(x for x in lines if x)[:1024]
-
     def _picture_guide_keyboard(self, page: int, n: int):
         page = int(page)
         n = max(1, int(n))
@@ -2190,7 +2184,7 @@ class WayneTelegramBot:
         """一次只出一張。換頁用 edit_media，舊圖原地換成新圖。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import PAGES, render_picture_guide
+        from picture_guide import render_picture_guide
 
         charts = getattr(self, "charts_dir", None)
         paths = await asyncio.to_thread(
@@ -2211,14 +2205,12 @@ class WayneTelegramBot:
                 reply_markup=self._help_nav_keyboard("guide"),
             )
             return
-        title = PAGES[page][1] if page < len(PAGES) else ""
-        caption = self._picture_guide_caption(page, n, title)
         kb = self._picture_guide_keyboard(page, n)
         with open(path, "rb") as fh:
             if edit:
                 try:
                     await message.edit_media(
-                        media=InputMediaPhoto(media=fh, caption=caption),
+                        media=InputMediaPhoto(media=fh, caption=""),
                         reply_markup=kb,
                     )
                     return
@@ -2229,7 +2221,7 @@ class WayneTelegramBot:
                     except Exception:
                         pass
                     fh.seek(0)
-            await message.reply_photo(photo=fh, caption=caption, reply_markup=kb)
+            await message.reply_photo(photo=fh, reply_markup=kb)
 
     async def _send_picture_guide(self, message) -> None:
         """說明頁「圖文」：一次一張，鍵盤換頁。"""

@@ -33,6 +33,9 @@ def test_stock_help_has_plain_discipline_notes():
     assert "現在價到高了" in stock
     assert "現在很熱但價沒過前高" in stock
     assert "現在高點跟熱度都沒了" in stock
+    assert "如何賣" in stock
+    assert "最高價＝20日高" in stock
+    assert "不自動賣" in stock
     assert "月K一句" in stock
     assert "不改海選" in stock
     assert "200股" in HELP_TOPICS["buy"]
@@ -100,7 +103,9 @@ def test_help_nav_has_oops_and_no_reply_overlap():
 
 def test_row2_help_page_explains_help_button():
     row2 = HELP_TOPICS["row2"]
-    assert "④ 說明" in row2
+    assert "④ 連買區" in row2
+    assert "⑤ 說明" in row2
+    assert row2.index("④ 連買區") < row2.index("⑤ 說明")
     assert "/help" in row2
     assert "按錯" in row2
     assert row2.count("\n") >= 8
