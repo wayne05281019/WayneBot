@@ -3124,7 +3124,7 @@ class WayneTelegramBot:
         png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
 
         def _build():
-            return render_industry_png(code, self.db_path, png_path, allow_fetch=True)
+            return render_industry_png(code, self.db_path, png_path, allow_fetch=True, max_fetch=1)
 
         try:
             out = await asyncio.to_thread(_build)

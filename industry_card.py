@@ -92,12 +92,15 @@ def render_industry_png(
     db_path: str = None,
     save_path: str = None,
     *,
-    allow_fetch: bool = True,
+    allow_fetch: bool = False,
+    max_fetch: int = 1,
 ) -> str:
     from PIL import Image, ImageDraw
 
     path = db_path or get_db_path()
-    snap = attach_fine_industry(industry_snapshot(path, stock_id), path, allow_fetch=allow_fetch)
+    snap = attach_fine_industry(
+        industry_snapshot(path, stock_id), path, allow_fetch=allow_fetch, max_fetch=max_fetch
+    )
     sid = str(snap["stock_id"])
     name = str(snap["stock_name"] or sid)
     charts = get_charts_dir()
@@ -119,11 +122,8 @@ def render_industry_png(
     TEXT = (236, 242, 248)
     HEAD = (120, 200, 255)
     MUTED = (168, 186, 204)
-    CHIP_BG = (18, 48, 72)
-    CHIP_BD = (90, 180, 230)
-    CHIP_FG = (220, 242, 255)
-
-    items: List[tuple] = [("title", f"產業說明　{sid} {name}")]
+    tags0 = list(snap.get("fine_tags") or [])
+    items: List[tuple] = [("banner", sid, name, tags0)]
     if snap.get("is_etf"):
         items.append(("h", "這檔是 ETF／指數商品"))
         items.append(("p", "沒有單一公司的產業面。看成分與資金頁即可。"))
@@ -134,8 +134,7 @@ def render_industry_png(
         items.append(
             ("p", f"同業：{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足")
         )
-        if snap.get("fine_tags"):
-            items.append(("chips", list(snap["fine_tags"])))
+        if tags0:
             items.append(("muted", "細項來自籌碼K公開個股頁"))
         items.append(("muted", "產業名來自證交所／櫃買公司基本資料產業別。"))
         items.append(("muted", "同業＝同一官方產業別全組，不是更細的產品線。"))
@@ -179,48 +178,58 @@ def render_industry_png(
                     items.append(("muted", "—"))
                     return
                 for r in rows:
-                    yoy = float(r.get("yoy") or 0)
                     tag = str(r.get("fine_finest") or "").strip()
-                    line = f"{r['stock_id']}  {r['stock_name']}  {yoy:+.1f}%"
-                    if tag:
-                        items.append(("peer", line, [tag]))
-                    else:
-                        items.append(("p", line))
+                    items.append(
+                        (
+                            "peer_inline",
+                            str(r["stock_id"]),
+                            str(r["stock_name"]),
+                            float(r.get("yoy") or 0),
+                            [tag] if tag else [],
+                        )
+                    )
 
             _peer_items("較強", snap["stronger"])
             _peer_items("較弱", snap["weaker"])
             if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
                 items.append(("muted", "小框是籌碼K細項；年增對照仍是證交所同一產業別全組。"))
 
+    from industry_fine import chip_color
+
+    def _chip_row_h(tags: List[str], start_x: float) -> int:
+        if not tags:
+            return 0
+        x = start_x
+        rows = 1
+        for tag in tags:
+            w = chip_f.getlength(tag) + 28
+            if x > start_x and x + w > pad_x + max_w:
+                x = start_x
+                rows += 1
+            x += w + 12
+        return rows * 50
+
     y = 36
     measured: List[tuple] = []
     for item in items:
         kind = item[0]
-        if kind == "chips":
-            x = 0
-            rows_h = 44
-            for tag in item[1]:
-                tw = chip_f.getlength(tag) + 28
-                if x and x + tw > max_w:
-                    x = 0
-                    rows_h += 52
-                x += tw + 12
-            measured.append((kind, item, rows_h + 8))
-            y += rows_h + 8
-        elif kind == "peer":
-            extra = 44 if item[2] else 0
-            wraps = _wrap_px(item[1], body_f, max_w)
-            h = len(wraps) * line_h + extra
+        if kind == "banner":
+            tags = item[3]
+            name_txt = f"{item[1]} {item[2]}"
+            name_w = title_f.getlength(name_txt)
+            h = 56 + 12 + 58 + _chip_row_h(tags, pad_x + name_w + 16)
             measured.append((kind, item, h))
             y += h
+        elif kind == "peer_inline":
+            tags = item[4]
+            left = f"{item[1]}  {item[2]}"
+            left_w = body_f.getlength(left)
+            h = max(line_h, _chip_row_h(tags, pad_x + left_w + 12) or line_h)
+            measured.append((kind, item, h + 8))
+            y += h + 8
         elif kind == "h":
             measured.append((kind, item, head_h + 8))
             y += head_h + 8
-        elif kind == "title":
-            wraps = _wrap_px(item[1], title_f, max_w)
-            h = len(wraps) * 58 + 12
-            measured.append((kind, item, h))
-            y += h
         else:
             wraps = _wrap_px(item[1], body_f, max_w)
             h = len(wraps) * line_h
@@ -242,35 +251,52 @@ def render_industry_png(
             if x > x0 and x + w > max_right:
                 x = x0
                 y += chip_h + 10
+            bg, bd, fg = chip_color(tag)
             dr.rounded_rectangle(
                 (x, y, x + w, y + chip_h),
                 radius=10,
-                fill=CHIP_BG,
-                outline=CHIP_BD,
+                fill=bg,
+                outline=bd,
                 width=2,
             )
-            dr.text((x + 14, y + 6), tag, font=chip_f, fill=CHIP_FG)
+            dr.text((x + 14, y + 6), tag, font=chip_f, fill=fg)
             x += w + 12
-        return y + chip_h
+        return y + chip_h if tags else y
 
     for kind, item, _h in measured:
-        if kind == "title":
-            for ln in _wrap_px(item[1], title_f, max_w):
-                dr.text((pad_x, cy), ln, font=title_f, fill=TEXT)
+        if kind == "banner":
+            dr.text((pad_x, cy), "產業說明", font=head_f, fill=HEAD)
+            cy += 56
+            name_txt = f"{item[1]} {item[2]}"
+            dr.text((pad_x, cy), name_txt, font=title_f, fill=TEXT)
+            tags = item[3]
+            if tags:
+                nx = pad_x + title_f.getlength(name_txt) + 16
+                chip_y = cy + 6
+                end_y = _chips_at(nx, chip_y, tags, pad_x + max_w)
+                cy = max(cy + 58, end_y + 8)
+            else:
                 cy += 58
-            cy += 12
+            cy += 8
         elif kind == "h":
             cy += 8
             dr.text((pad_x, cy), item[1], font=head_f, fill=HEAD)
             cy += head_h
-        elif kind == "chips":
-            cy = _chips_at(pad_x, cy, item[1], pad_x + max_w) + 12
-        elif kind == "peer":
-            for ln in _wrap_px(item[1], body_f, max_w):
-                dr.text((pad_x, cy), ln, font=body_f, fill=TEXT)
+        elif kind == "peer_inline":
+            left = f"{item[1]}  {item[2]}"
+            pct = f"{item[3]:+.1f}%"
+            dr.text((pad_x, cy), left, font=body_f, fill=TEXT)
+            x = pad_x + body_f.getlength(left) + 12
+            tags = item[4]
+            if tags:
+                end_y = _chips_at(x, cy, tags, pad_x + max_w - body_f.getlength(pct) - 16)
+                x = min(pad_x + max_w - body_f.getlength(pct), x + 8)
+                # 年增靠右
+                dr.text((pad_x + max_w - body_f.getlength(pct), cy), pct, font=body_f, fill=TEXT)
+                cy = max(cy + line_h, end_y + 8)
+            else:
+                dr.text((pad_x + max_w - body_f.getlength(pct), cy), pct, font=body_f, fill=TEXT)
                 cy += line_h
-            if item[2]:
-                cy = _chips_at(pad_x, cy, item[2], pad_x + max_w) + 8
         else:
             fill = MUTED if kind == "muted" else TEXT
             for ln in _wrap_px(item[1], body_f, max_w):
@@ -278,3 +304,4 @@ def render_industry_png(
                 cy += line_h
     im.save(out, "PNG", optimize=True)
     return out
+

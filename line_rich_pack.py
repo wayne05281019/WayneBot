@@ -115,7 +115,7 @@ def render_line_share_pack(
         from industry_card import render_industry_png
 
         industry_png = render_industry_png(
-            sid, db_path, os.path.join(sub, "industry.png"), allow_fetch=True
+            sid, db_path, os.path.join(sub, "industry.png"), allow_fetch=False
         ) or ""
     except Exception:
         industry_png = ""

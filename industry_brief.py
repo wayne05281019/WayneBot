@@ -284,14 +284,16 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     }
 
 
-def attach_fine_industry(snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False) -> Dict[str, Any]:
+def attach_fine_industry(
+    snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
+) -> Dict[str, Any]:
     """把籌碼K細項掛上這檔與對照檔。沒抓到就空，不自造。"""
     from industry_fine import load_or_fetch_fine_industry
 
     ids = [str(snap.get("stock_id") or "")]
     for row in list(snap.get("stronger") or []) + list(snap.get("weaker") or []):
         ids.append(str(row.get("stock_id") or ""))
-    fine = load_or_fetch_fine_industry(db_path, ids, allow_fetch=allow_fetch)
+    fine = load_or_fetch_fine_industry(db_path, ids, allow_fetch=allow_fetch, max_fetch=max_fetch)
     snap["fine"] = fine
     mine = fine.get(str(snap.get("stock_id") or "")) or {}
     snap["fine_tags"] = list(mine.get("tags") or [])
@@ -322,6 +324,9 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     sid = snap["stock_id"]
     name = snap["stock_name"]
     blocks = [title_line("產業說明", sid, name)]
+    if snap.get("fine_tags"):
+        chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
+        blocks[0] = blocks[0] + "　" + chips
 
     if snap["is_etf"]:
         blocks.append(
@@ -341,7 +346,6 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         "同業＝同一官方產業別全組，不是更細的產品線。",
     ]
     if snap.get("fine_tags"):
-        who_lines.append("細項　" + "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"]))
         who_lines.append("細項來自籌碼K公開個股頁。")
     if ind == "半導體業":
         who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")

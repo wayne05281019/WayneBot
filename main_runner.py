@@ -686,6 +686,13 @@ class MainRunner:
             logger.info("海選復盤已對帳 %s 檔、AI 成交 %s 筆（隔日＝%s）", n, nf, cap)
         except Exception:
             logger.exception("海選復盤對帳失敗")
+        try:
+            from industry_fine import sync_all_fine_industry
+
+            fi = sync_all_fine_industry(self.db_path, workers=8)
+            logger.info("籌碼K細項全市場：%s", fi)
+        except Exception as e:
+            logger.warning("籌碼K細項同步略過：%s", e)
         # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
         self.run_evening_screen(skip_if_done=True, notify=False)
         return True

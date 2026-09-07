@@ -7,6 +7,7 @@ waynebot_data/
 waynebot_cache/
 data/*
 !data/.gitkeep
+!data/cmoney_fine_industry.json
 raw_cache/
 logs/
 __pycache__/

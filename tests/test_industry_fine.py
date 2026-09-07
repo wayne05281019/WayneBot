@@ -100,6 +100,14 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
     assert "籌碼K" in html
     assert "[記憶體製造]" in html
     assert "這族" not in html
+    html_title = html.split("\n", 1)[0]
+    assert "台積電" in html_title
+    assert "[代工]" in html_title
+    from industry_fine import chip_color
+
+    assert chip_color("代工") != chip_color("記憶體製造")
+    assert chip_color("LED照明及光元件") != chip_color("代工")
+
     png = str(tmp_path / "2330_industry.png")
     out = render_industry_png("2330", path, png, allow_fetch=False)
     assert out and os.path.isfile(out)
@@ -108,3 +116,46 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
         assert im.size[1] >= 900
         assert im.size[0] + im.size[1] < 10000
     assert os.path.getsize(out) > 20_000
+
+
+def test_parse_category_index_and_bulk_sync(tmp_path, monkeypatch):
+    from industry_fine import parse_cmoney_category_index, sync_all_fine_industry
+    from wayne_db import ensure_core_schema
+
+    html = 'href="/forum/category/C23020">\n              IC-代工\n            '
+    assert parse_cmoney_category_index(html)["C23020"] == "IC-代工"
+    path = str(tmp_path / "bulk.db")
+    ensure_core_schema(path)
+    monkeypatch.setattr("industry_fine.SEED_PATH", str(tmp_path / "no-seed.json"))
+    calls = []
+
+    def fake(sid, timeout=8.0):
+        calls.append(sid)
+        if sid == "2330":
+            return {
+                "stock_id": sid,
+                "chain": "電子上游-IC-代工",
+                "tags": ["電子上游", "IC", "代工"],
+                "cat_id": "C23020",
+                "source": "cmoney_forum",
+            }
+        if sid == "2408":
+            return {
+                "stock_id": sid,
+                "chain": "電子上游-記憶體製造",
+                "tags": ["電子上游", "記憶體製造"],
+                "cat_id": "C23030",
+                "source": "cmoney_forum",
+            }
+        return None
+
+    monkeypatch.setattr("industry_fine.fetch_cmoney_fine_industry", fake)
+    stats = sync_all_fine_industry(path, ids=["2330", "2408", "9999"], workers=2)
+    assert stats["ok"] == 2
+    assert stats["fail"] == 1
+    assert stats["skip"] == 0
+    cached = sync_all_fine_industry(path, ids=["2330", "2408"], workers=2)
+    assert cached["skip"] == 2
+    assert cached["ok"] == 0
+    assert set(calls) == {"2330", "2408", "9999"}
+
