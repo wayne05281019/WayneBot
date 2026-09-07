@@ -1,5 +1,19 @@
 # WayneBot agent notes
 
+## 最優先・不可違反（2026-09-07 使用者鎖死，看過 Spending 紅框）
+
+Cursor 帳單「Included in Pro+」紅框裡有兩條：
+
+- **上方 Cursor Models**（含 Cursor Grok、Composer）：**只准用這條。**
+- **下方 Other Models**：**全面禁止。** 這條已經快用完（當時 95%）。不准再扣。
+
+這條壓過後面所有規則、壓過「比較難」、壓過話筒／開 LINE／看片子／對圖／computerUse。違反＝做錯。
+
+- 全部工作只准紅框**上方** Cursor Models。不准紅框**下方** Other Models。
+- **禁止** Task／子代理／computerUse／話筒代理。那些會吃 Other Models。沒有使用者當回合明文「准開話筒」就不准開。卡住用本機渲圖、pytest、curl，不要再開代理。
+- **禁止**指定 opus、sonnet、gpt、grok-high、grok-xhigh、claude 或其他 listed slug。`model` 只能省略或 `inherit`（必須仍是 Cursor Models）。
+- 不能用換模型打斷 CI，也不能用正式 `TELEGRAM_BOT_TOKEN` 搶 `getUpdates`。
+
 ## 回掃節奏（2026-09-04 起，使用者指定）
 
 每討論滿 **3 個主題**，或使用者連發 **5 段文字**，必須回頭掃一次先前討論，寫出：
@@ -10,14 +24,12 @@
 
 想到就講的補充，自行判斷優先順序，不要被當下新話題把舊項丟掉。
 
-## 只用一般模型（2026-09-05 起，使用者指定；2026-09-06 再鎖）
+## 只用 Cursor Models（2026-09-05 起；2026-09-07 對齊帳單紅框）
 
-其他模型額度不要再用。之後只准目前這個一般模型。
+與文首「最優先」同一條：只准 Cursor Models，禁止 Other Models。下面是執行細節，不能放寬文首。
 
-- 禁止 Task 子代理指定 opus／sonnet／ grok-high／其他 listed slug 換模型。`model` 一律省略或 `inherit`，跟這則對話同一顆。
-- 禁止為了「比較難」、話筒、開 LINE、看片子去開更貴的模型。難關也留在一般模型做。
-- 話筒／computerUse 同樣不准換模型；卡住就換做法，不要再開一顆貴的。
-- 換模型不能打斷已在跑的 CI，也不能用正式 `TELEGRAM_BOT_TOKEN` 搶 `getUpdates`。
+- Task／computerUse／話筒代理預設不開；開了也會吃 Other Models。
+- 禁止為了「比較難」、話筒、開 LINE、看片子去換模型。難關留在 Cursor Models 做。
 
 ## 畫面要知道有沒有在做事（2026-09-04 起，使用者指定）
 
@@ -42,13 +54,13 @@
 
 代理人測試時**只准開這兩個對話**看結果、做比對，不准開第三個：
 
-- **LINE Keep**：只准轉 Keep 來看排版／亂碼；不准用我的帳號傳給其他聯絡人。
+- **Keep筆記**：話筒轉 LINE 時「選聯絡人」，只准指定 **Keep筆記** 這一個對話框來看排版／亂碼。不是官方 Keep 帳號、不是去側欄搜 Keep。不准傳給其他聯絡人。
 - **CaryBot**：要對高低卡準確性才開；對完關掉。不准當第二套策略來源。
 
 禁止再開任何其他 LINE 聊天室。禁止再開 Telegram 正式 Bot（`@WC_ai_trade_bot`）當話筒做轉傳／對圖。
 禁止用正式 `TELEGRAM_BOT_TOKEN` 跑 `getUpdates`（跟 Render 搶輪詢）。本機 `WAYNE_SKIP_POLLING=1`。
 
-改排版先本機把轉 LINE 文字／長圖渲成圖對過。虛擬網頁 LINE 只在本機對完、且已登入時才開 **Keep 一次**；不要反覆對、不要為了看一眼就再開話筒代理花額度。
+改排版先本機把轉 LINE 文字／長圖渲成圖對過。虛擬網頁 LINE 只在本機對完、且已登入時才開 **Keep筆記一次**；不要反覆對、不要為了看一眼就再開話筒代理花額度。
 
 ## 已落地、不要再當待辦
 

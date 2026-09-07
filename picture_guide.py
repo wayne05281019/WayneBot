@@ -5,9 +5,15 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v2"
-PAGE_WIDTH = 1080
-MARGIN = 56
+CACHE_VER = "v4"
+# 話筒相簿：加寬加大字給老花；圖可以往下。
+PAGE_WIDTH = 1440
+MARGIN = 72
+TITLE_SIZE = 76
+BODY_SIZE = 50
+FOOT_SIZE = 34
+TITLE_LINE = 94
+BODY_LINE = 74
 PAGE_SLUGS = (
     "cover",
     "menu",
@@ -20,24 +26,49 @@ PAGE_SLUGS = (
     "oops",
 )
 
+# 每頁對應真實截圖（側欄已裁；紅圈標該頁要按的位置）
+PAGE_SHOTS = {
+    "cover": "cover_menu.png",
+    "menu": "cover_menu.png",
+    "charts": "charts.png",
+    "hub": "hub.png",
+    "discipline": "discipline.png",
+    "screen": "screen.png",
+    "lists": "lists.png",
+    "streak": "streak.png",
+    "oops": "oops.png",
+}
+
 # 禁止 emoji：NotoSansTC 會畫成方塊。鍵盤寫「鍵盤」，加號寫「+」。
 PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "cover",
         "WayneBot 圖文說明",
         "第一次用，先做這三步\n"
-        "1  點輸入框右邊「鍵盤」，叫出兩排按鈕（不見就打 /menu）\n"
-        "2  直接打四碼看圖，例如 2330（不要先按「決策卡」）\n"
-        "3  三張圖出來後，籌碼／營收／產業在圖下面，不在右側鍵盤\n"
+        "\n"
+        "1  點輸入列旁邊的鍵盤圖示（四格那顆）\n"
+        "   叫出兩排按鈕。不見就打 /menu\n"
+        "\n"
+        "2  直接打四碼看圖，例如 2330\n"
+        "   不要先按「決策卡」\n"
+        "\n"
+        "3  三張圖出來後，籌碼／營收／產業\n"
+        "   在圖下面那一排，不在右邊四格鍵盤\n"
         "\n"
         "這本說明給手機看。點縮圖可放大。\n"
-        "挑股只認高低卡表的黃金買點，不認圖上紅箭頭。",
+        "挑股只認高低卡表的黃金買點。\n"
+        "圖上紅箭頭不是買訊。",
     ),
     (
         "menu",
         "兩排主選單在哪",
-        "不在訊息最下面。點輸入框右邊「鍵盤」展開兩排。\n"
-        "打完字若只剩英文鍵盤，再點一次「鍵盤」。也可打 /menu。\n"
+        "不在訊息最下面。\n"
+        "點輸入列旁邊的四格鍵盤圖示，展開兩排。\n"
+        "\n"
+        "漢堡鈕在輸入列左邊。\n"
+        "四格圖示在輸入列右邊。\n"
+        "打完字若只剩英文鍵盤，再點一次四格。\n"
+        "也可打 /menu。\n"
         "\n"
         "第一排（左到右）\n"
         "決策卡　當沖　持股　觀察　海選　AI倉\n"
@@ -53,13 +84,16 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "charts",
         "查一檔：一次三張圖",
         "打股名或代號，例如 2330 或 台積電。\n"
-        "一次出三張：介紹圖 → 決策卡 → 導航圖。點縮圖放大。\n"
+        "一次出三張。點縮圖可放大。\n"
         "\n"
         "介紹圖：這一檔現在熱不熱、獲利離 0 多遠。\n"
         "決策卡：高低卡表。進場只認表，不認紅箭頭。\n"
         "導航圖：近半年走勢，對照自己在哪。\n"
         "\n"
-        "名稱撞名：訊息裡藍字＝奇摩網頁；左邊按鈕＝看這檔；右「+」＝觀察。",
+        "名稱撞名時：\n"
+        "藍字＝奇摩網頁\n"
+        "左邊按鈕＝看這檔\n"
+        "右邊「+」＝加入觀察",
     ),
     (
         "hub",
@@ -70,40 +104,54 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "營收　月營收、季報毛利\n"
         "產業　同業中位數＋這族法人，講人話\n"
         "觀察　加入自選（還沒買）\n"
-        "記買入　記真實持股，接著打「張數 價格」，例 1 68.5\n"
-        "零股請寫「200股 631.6」，不要只打 2 讓人當成張。\n"
+        "記買入　記真實持股\n"
+        "接著打「張數 價格」，例 1 68.5\n"
+        "零股請寫「200股 631.6」\n"
+        "不要只打 2，會被當成 2 張。\n"
         "\n"
-        "找不到產業：在圖下面，不在右側鍵盤。",
+        "找不到產業：在圖下面。\n"
+        "不在輸入列右邊的四格鍵盤。",
     ),
     (
         "discipline",
         "粉紅紀律不是買訊",
-        "介紹圖粉紅「紀律」只講現在怎樣、先別追或先出一點。\n"
+        "介紹圖粉紅「紀律」、決策卡「今日態度」\n"
+        "只講現在怎樣：先別追，或有持股先出一點。\n"
         "不是買訊，也不改海選名單。\n"
         "\n"
-        "現在高點跟熱度都退了 → 先別追、也先別加碼；有持股就先出一點\n"
-        "現在價到高了 → 先別追；有持股可先出一點\n"
-        "現在很熱但價沒過前高 → 先別追熱度\n"
-        "現在高點跟熱度都沒了 → 先別追；有持股先出一點\n"
+        "現在高點跟熱度都退了\n"
+        "→ 先別追、也先別加碼；有持股就先出一點\n"
+        "現在價到高了\n"
+        "→ 先別追；有持股可先出一點\n"
+        "現在很熱但價沒過前高\n"
+        "→ 先別追熱度\n"
+        "現在高點跟熱度都沒了\n"
+        "→ 先別追；有持股先出一點\n"
         "\n"
-        "黃金買點＝獲利剛離開 0，或還在 0.x% 綠底（以前叫起漲）。\n"
-        "重點觀察＝還壓在近 60 個日曆天收盤低。注意，不是立刻買。",
+        "黃金買點＝獲利剛離開 0，或還在 0.x% 綠底。\n"
+        "（以前叫起漲）\n"
+        "重點觀察＝還壓在近 60 個日曆天收盤低。\n"
+        "注意，不是立刻買。",
     ),
     (
         "screen",
         "海選怎麼轉 LINE",
-        "海選＝昨收全市場佈局名單，不是盤中即時掃描。\n"
+        "海選＝昨收全市場佈局名單。\n"
+        "不是盤中即時掃描。\n"
         "按一次等 2～5 分鐘，不要連按。\n"
         "\n"
         "左鍵（代號＋股名）＝看這檔完整圖\n"
         "右「+」＝加入觀察\n"
         "\n"
         "轉 LINE 有兩個入口，不要搞混\n"
-        "・股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
-        "・區底「一鍵傳 LINE」＝進勾選頁，可勾好幾檔再傳\n"
-        "（介紹圖＋決策卡一組）\n"
+        "・股名右「開 LINE・傳這檔」\n"
+        "  只傳這一檔，直跳 LINE，再選聯絡人\n"
+        "・區底「一鍵傳 LINE」\n"
+        "  進勾選頁，可勾好幾檔再傳\n"
+        "  （介紹圖＋決策卡一組）\n"
         "\n"
-        "當沖／隔日沖不在晨間海選，請按主選單那兩顆。",
+        "當沖／隔日沖不在晨間海選。\n"
+        "請按主選單那兩顆。",
     ),
     (
         "lists",
@@ -115,7 +163,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "持股＝你手記的真實買入。頁上：\n"
         "股名　賣出；底下還有成交／復盤／AI倉\n"
         "\n"
-        "AI倉＝假錢對照組（最多 3 檔），不是你口袋裡的股票。\n"
+        "AI倉＝假錢對照組（最多 3 檔）\n"
+        "不是你口袋裡的股票。\n"
         "頁上「AI操盤」立刻跑一輪模擬買賣，不推播。\n"
         "每晚 20:00 雲端也會跑，不會傳到話筒。",
     ),
@@ -130,19 +179,24 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "名單：代號、股名、N 日連買張數與佔成交%。\n"
         "點股名看出完整圖，按籌碼核對官方法人表。\n"
-        "鍵盤被收掉時打 /menu 可重新釘住兩排。",
+        "四格鍵盤被收掉時打 /menu 可重新釘住兩排。",
     ),
     (
         "oops",
         "按錯了怎麼辦",
-        "一打開先按了「決策卡」：那顆是刷新上一檔。還沒查過就直接打四碼。\n"
-        "「當沖」沒名單：週末／收盤後本來就空；改看海選或隔日沖。平日 09:00–13:30 才有當沖。\n"
+        "一打開先按了「決策卡」\n"
+        "那顆是刷新上一檔。還沒查過就直接打四碼。\n"
+        "\n"
+        "「當沖」沒名單：週末／收盤後本來就空。\n"
+        "改看海選或隔日沖。平日 09:00–13:30 才有當沖。\n"
+        "\n"
         "「海選」等很久：那是掃全市場；不要連按。\n"
         "觀察跟持股搞混：觀察＝還沒買；持股＝按過記買入才會在。\n"
         "持股跟 AI倉搞混：持股＝你手記的；AI倉＝假錢對照組。\n"
         "找不到產業：在圖下面那一排。\n"
+        "\n"
         "「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
-        "主選單不見：點輸入框右邊「鍵盤」，或打 /menu。\n"
+        "主選單不見：點輸入列旁邊四格鍵盤圖示，或打 /menu。\n"
         "畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。\n"
         "不用給程式密鑰、不用給機器人密碼。",
     ),
@@ -153,6 +207,8 @@ _INK = (26, 36, 51)
 _MUTED = (90, 98, 110)
 _ACCENT = (196, 92, 38)
 _LINE = (214, 204, 188)
+_CARD = (255, 255, 255)
+_SHADOW = (214, 206, 194)
 
 
 def _font_paths() -> Tuple[str, str]:
@@ -199,44 +255,106 @@ def _page_path(out_dir: str, slug: str) -> str:
     return os.path.join(out_dir, f"{CACHE_VER}-{slug}.png")
 
 
+def asset_dir() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "picture_guide_assets")
+
+
+def _page_shot(slug: str):
+    from PIL import Image
+
+    name = PAGE_SHOTS.get(slug)
+    if not name:
+        return None
+    path = os.path.join(asset_dir(), name)
+    if not os.path.isfile(path) or os.path.getsize(path) < 8_000:
+        return None
+    return Image.open(path).convert("RGB")
+
+
+def _fit_width(im, max_w: int):
+    from PIL import Image
+
+    w, h = im.size
+    if w <= 0 or h <= 0:
+        return im
+    if w == max_w:
+        return im
+    nh = max(1, int(round(h * max_w / w)))
+    return im.resize((max_w, nh), Image.Resampling.LANCZOS)
+
+
+def _shot_card(shot, max_w: int):
+    """白底圓角卡＋淺影，截圖放大貼上。"""
+    from PIL import Image, ImageDraw
+
+    inner = max_w - 16
+    shot = _fit_width(shot, inner)
+    pad = 18
+    lift = 10
+    card_w = shot.width + pad * 2
+    card_h = shot.height + pad * 2
+    out = Image.new("RGB", (card_w + lift, card_h + lift), _BG)
+    d = ImageDraw.Draw(out)
+    d.rounded_rectangle((lift, lift, card_w + lift - 1, card_h + lift - 1), 22, fill=_SHADOW)
+    d.rounded_rectangle((0, 0, card_w - 1, card_h - 1), 22, fill=_CARD, outline=_LINE, width=3)
+    out.paste(shot, (pad, pad))
+    return out
+
+
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     from PIL import Image, ImageDraw
 
-    title_font = _load_font(52, bold=True)
-    body_font = _load_font(34)
-    foot_font = _load_font(26)
+    title_font = _load_font(TITLE_SIZE, bold=True)
+    body_font = _load_font(BODY_SIZE)
+    foot_font = _load_font(FOOT_SIZE)
     probe = Image.new("RGB", (PAGE_WIDTH, 200), _BG)
     pdraw = ImageDraw.Draw(probe)
     max_w = PAGE_WIDTH - 2 * MARGIN
     title_lines = _wrap(pdraw, title, title_font, max_w)
     body_lines = _wrap(pdraw, body, body_font, max_w)
-    title_h = 64
-    body_h = 50
-    height = MARGIN + 36 + len(title_lines) * title_h + 24 + len(body_lines) * body_h + 80
-    height = max(height, 1280)
+    shot = _page_shot(slug)
+    if shot is not None:
+        shot = _shot_card(shot, max_w)
+        shot_h = shot.height + 36
+    else:
+        shot_h = 0
+    height = (
+        MARGIN
+        + 48
+        + len(title_lines) * TITLE_LINE
+        + 28
+        + len(body_lines) * BODY_LINE
+        + shot_h
+        + 96
+    )
+    height = max(height, 1600)
     img = Image.new("RGB", (PAGE_WIDTH, height), _BG)
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, PAGE_WIDTH, 18), fill=_ACCENT)
+    draw.rectangle((0, 0, PAGE_WIDTH, 22), fill=_ACCENT)
     y = MARGIN
     draw.text((MARGIN, y), "WayneBot", font=foot_font, fill=_MUTED)
-    y += 40
+    y += 48
     for line in title_lines:
         draw.text((MARGIN, y), line, font=title_font, fill=_INK)
-        y += title_h
-    y += 8
-    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=3)
-    y += 28
+        y += TITLE_LINE
+    y += 10
+    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=4)
+    y += 32
     for line in body_lines:
         if line == "":
-            y += 18
+            y += 22
             continue
         draw.text((MARGIN, y), line, font=body_font, fill=_INK)
-        y += body_h
+        y += BODY_LINE
+    if shot is not None:
+        y += 20
+        img.paste(shot, (MARGIN, y))
+        y += shot.height
     idx = PAGE_SLUGS.index(slug) + 1 if slug in PAGE_SLUGS else 0
     foot = f"{idx} / {len(PAGE_SLUGS)}" if idx else CACHE_VER
-    draw.text((MARGIN, height - 52), foot, font=foot_font, fill=_MUTED)
+    draw.text((MARGIN, height - 64), foot, font=foot_font, fill=_MUTED)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    img.save(out_path, "PNG", optimize=True)
+    img.save(out_path, "PNG", compress_level=4, dpi=(144, 144))
     return out_path
 
 

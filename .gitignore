@@ -13,6 +13,8 @@ __pycache__/
 *.pyc
 .venv/
 *.png
+!/picture_guide_assets/
+!/picture_guide_assets/**
 !/docs/expert_notes/
 !/docs/expert_notes/飆客/
 !/docs/expert_notes/飆客/charts/
