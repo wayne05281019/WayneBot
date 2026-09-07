@@ -7,7 +7,8 @@
 #   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
 #   - Render 常駐執行緒同樣 16:30
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
-#   - Render 常駐 06:30；GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）
+#   - GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）WAYNE_JOB=morning_screen，唯一推播擁有者
+#   - Render WAYNE_SCHEDULER_ROLE=data 不跑 morning（兩邊 pipeline_runs 互看不見，會雙推）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。

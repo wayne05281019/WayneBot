@@ -96,14 +96,27 @@ def _kb_slice(chat: Image.Image) -> Image.Image:
     return chat.crop((0, 480, chat.width, chat.height))
 
 
+def _swap_row2_streak_help(kb: Image.Image) -> Image.Image:
+    """舊截圖第二排是說明／連買區；對調成連買區／說明再畫圈。"""
+    out = kb.copy()
+    help_box = (453, 118, 493, 154)
+    streak_box = (499, 118, 539, 154)
+    a = kb.crop(help_box)
+    b = kb.crop(streak_box)
+    out.paste(b, help_box[:2])
+    out.paste(a, streak_box[:2])
+    return out
+
+
 def build(src: str = SRC) -> list[str]:
     paths: list[str] = []
 
     kb_src = os.path.join(src, "76b1a.webp")
     if os.path.isfile(kb_src):
         chat = _crop_chat(Image.open(kb_src).convert("RGB"))
+        kb = _swap_row2_streak_help(_kb_slice(chat))
         # 量過的座標（1 倍聊天區；畫圈前再放大 2 倍）
-        sl = _up(_kb_slice(chat))
+        sl = _up(kb)
         d = ImageDraw.Draw(sl)
         _ring(d, 450, 115, 165, 44, 8)
         _ring(d, 555, 172, 26, 20, 6)
@@ -114,24 +127,24 @@ def build(src: str = SRC) -> list[str]:
             )
         )
 
-        sl2 = _up(_kb_slice(chat))
+        sl2 = _up(kb)
         d = ImageDraw.Draw(sl2)
         _ring(d, 425, 92, 28, 22, 6)  # 持股
         _ring(d, 475, 92, 28, 22, 6)  # 觀察
         _ring(d, 575, 92, 30, 22, 6)  # AI倉
         paths.append(_save(_caption_bar(sl2, "紅圈：持股／觀察／AI倉　三種清單不要搞混"), "lists.png"))
 
-        sl3 = _up(_kb_slice(chat))
+        sl3 = _up(kb)
         d = ImageDraw.Draw(sl3)
-        _ring(d, 525, 138, 32, 22, 6)  # 連買區
-        paths.append(_save(_caption_bar(sl3, "紅圈：連買區（第二排右二）　官方法人連買，不是下單"), "streak.png"))
+        _ring(d, 473, 138, 32, 22, 6)  # 連買區（資金右邊）
+        paths.append(_save(_caption_bar(sl3, "紅圈：連買區（第二排資金右邊）　官方法人連買，不是下單"), "streak.png"))
 
-        sl4 = _up(_kb_slice(chat))
+        sl4 = _up(kb)
         d = ImageDraw.Draw(sl4)
         _ring(d, 575, 138, 32, 22, 6)  # 回報
         paths.append(_save(_caption_bar(sl4, "紅圈：回報（第二排最右）　畫面怪打字或傳截圖"), "oops.png"))
 
-        sl5 = _up(_kb_slice(chat))
+        sl5 = _up(kb)
         d = ImageDraw.Draw(sl5)
         _ring(d, 525, 92, 32, 22, 6)  # 海選
         paths.append(

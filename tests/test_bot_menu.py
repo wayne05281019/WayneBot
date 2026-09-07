@@ -22,7 +22,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_MARKET == "大盤"
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_REPORT == "回報"
-    assert MENU_LAYOUT_VERSION == "10"
+    assert MENU_LAYOUT_VERSION == "11"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -30,9 +30,10 @@ def test_reply_menu_is_two_rows_not_three():
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert len(row1) == 6 and len(row2) == 6
     assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
-    assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", "說明", MENU_BTN_STREAK, MENU_BTN_REPORT]
+    assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
     assert row2[-1] == MENU_BTN_REPORT
-    assert row2[-2] == MENU_BTN_STREAK
+    assert row2[-2] == "說明"
+    assert row2[-3] == MENU_BTN_STREAK
 
 
 def test_help_guide_covers_all_main_buttons():
@@ -249,7 +250,8 @@ def test_pin_reply_menu_keeps_keyboard_message():
 
     row2 = [b.text for b in markup.keyboard[1]]
     assert row2[-1] == MENU_BTN_REPORT
-    assert row2[-2] == MENU_BTN_STREAK
+    assert row2[-2] == "說明"
+    assert row2[-3] == MENU_BTN_STREAK
 
 
 def test_refresh_silent_sends_reply_keyboard_with_streak():
@@ -276,7 +278,8 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert "Remove" not in type(markup).__name__
     row2 = [b.text for b in markup.keyboard[1]]
     assert row2[-1] == MENU_BTN_REPORT
-    assert row2[-2] == MENU_BTN_STREAK
+    assert row2[-2] == "說明"
+    assert row2[-3] == MENU_BTN_STREAK
     assert row2[1] == MENU_BTN_MARKET
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 

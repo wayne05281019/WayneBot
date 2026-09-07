@@ -7,15 +7,21 @@ import os
 from PIL import Image
 
 from picture_guide import (
+    BODY_SIZE,
     CACHE_VER,
+    MARGIN,
+    MIN_BODY_SIZE,
     PAGE_SHOTS,
     PAGE_SLUGS,
+    PAGE_HEIGHT,
     PAGE_WIDTH,
     PAGES,
+    TITLE_SIZE,
     asset_dir,
     page_copy_blob,
     render_page,
     render_picture_guide,
+    _trim_guide_shot,
 )
 
 
@@ -41,13 +47,39 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "平常最多用 1 份" in blob
     assert "這波先當結束" in blob
     assert "官方收盤掃全市場" in blob
-    assert CACHE_VER == "v8"
-    assert PAGE_WIDTH >= 1440
+    assert "連買區　說明　回報" in blob
+    assert "如何賣" in blob
+    assert "最高價＝20日高" in blob
+    assert "06:30 早報" in blob
+    assert "20:00 AI倉模擬" in blob
+    assert CACHE_VER == "v10"
+    assert PAGE_WIDTH == 1080
+    assert PAGE_HEIGHT == 1920
+    assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
+    assert TITLE_SIZE >= 72
+    assert BODY_SIZE >= 50
+    assert MIN_BODY_SIZE >= 48
+    assert MARGIN <= 32
+    # 390 寬話筒點開：52px 內文 ≈ 19 點，不要再縮到看不清。
+    assert BODY_SIZE * (390 / PAGE_WIDTH) >= 18
+    sizes = set()
     for p in paths:
         assert os.path.getsize(p) > 20_000
+        assert os.path.getsize(p) <= 9_800_000
         with Image.open(p) as im:
-            assert im.size[0] == PAGE_WIDTH
-            assert im.size[1] >= 1600
+            assert im.size == (PAGE_WIDTH, PAGE_HEIGHT)
+            sizes.add(im.size)
+    assert len(sizes) == 1
+
+
+def test_shot_builder_swaps_help_and_streak():
+    src = open(
+        os.path.join(os.path.dirname(__file__), "..", "scripts", "build_picture_guide_shots.py"),
+        encoding="utf-8",
+    ).read()
+    assert "_swap_row2_streak_help" in src
+    assert "第二排資金右邊" in src
+    assert "第二排右二" not in src
 
 
 def test_assets_crop_sidebar_and_no_pii():
@@ -77,7 +109,37 @@ def test_page_render_roundtrip(tmp_path):
     slug, title, body = PAGES[0]
     render_page(slug, title, body, out)
     with Image.open(out) as im:
-        assert im.size[0] == PAGE_WIDTH
+        assert im.size == (PAGE_WIDTH, PAGE_HEIGHT)
+
+
+def test_shot_panel_fills_content_width(tmp_path):
+    """下半截圖左右貼齊內文寬，不要再留大塊米色邊。"""
+    slug, title, body = PAGES[1]
+    out = str(tmp_path / "menu.png")
+    render_page(slug, title, body, out)
+    with Image.open(out) as im:
+        y = int(im.height * 0.84)
+        bg = (246, 241, 232)
+
+        def _near(c, t, tol=18):
+            return all(abs(a - b) <= tol for a, b in zip(c, t))
+
+        xs = [x for x in range(im.width) if not _near(im.getpixel((x, y)), bg)]
+        assert xs, "lower third should be the screenshot, not empty beige"
+        assert xs[0] <= MARGIN + 12
+        assert xs[-1] >= PAGE_WIDTH - MARGIN - 12
+        assert (xs[-1] - xs[0]) >= PAGE_WIDTH - 2 * MARGIN - 24
+
+
+def test_keyboard_shot_trimmed_to_buttons():
+    path = os.path.join(asset_dir(), "cover_menu.png")
+    from PIL import Image
+
+    im = Image.open(path)
+    trimmed = _trim_guide_shot("cover_menu.png", im.convert("RGB"))
+    assert trimmed.width < im.width
+    assert trimmed.height < im.height
+    assert trimmed.width / trimmed.height < 5.0
 
 
 def test_send_picture_guide_one_page_with_next_button(tmp_path):
@@ -88,7 +150,6 @@ def test_send_picture_guide_one_page_with_next_button(tmp_path):
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._send_picture_guide)
-    assert "caption=None" not in src
     assert "reply_media_group" not in src
     dest = str(tmp_path / "g")
     paths = render_picture_guide(dest, force=True)
@@ -111,7 +172,8 @@ def test_send_picture_guide_one_page_with_next_button(tmp_path):
     msg.reply_photo.assert_awaited()
     msg.reply_media_group.assert_not_called()
     kwargs = msg.reply_photo.await_args.kwargs
-    assert "圖文 1／" in str(kwargs.get("caption") or "")
+    assert not (kwargs.get("caption") or "")
+    assert "圖文 1／" not in str(kwargs)
     labels = [b.text for row in kwargs["reply_markup"].inline_keyboard for b in row]
     assert "第 2 張 →" in labels
     assert not any(t.startswith("←") for t in labels)
@@ -154,7 +216,7 @@ def test_picture_guide_flip_edits_same_message(tmp_path):
     msg.edit_media.assert_awaited()
     msg.reply_photo.assert_not_called()
     media = msg.edit_media.await_args.kwargs["media"]
-    assert "圖文 2／" in str(media.caption or "")
+    assert not (getattr(media, "caption", None) or "")
     labels = [b.text for row in msg.edit_media.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
     assert "← 第 1 張" in labels
     assert "第 3 張 →" in labels
