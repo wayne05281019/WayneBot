@@ -115,6 +115,15 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
         assert im.size[0] == 1080
         assert im.size[1] >= 900
         assert im.size[0] + im.size[1] < 10000
+        xs = []
+        for y in range(44, 90):
+            for x in range(30, im.width - 30, 2):
+                r, g, b = im.getpixel((x, y))[:3]
+                if b >= 180 and g >= 150 and r <= 210:
+                    xs.append(x)
+        assert xs, "產業說明 kicker missing"
+        cx = sum(xs) / len(xs)
+        assert abs(cx - im.width / 2) < 48, cx
     assert os.path.getsize(out) > 20_000
 
 

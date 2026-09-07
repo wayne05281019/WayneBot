@@ -8,21 +8,21 @@ from __future__ import annotations
 import os
 from typing import List, Optional, Sequence, Tuple
 
-CACHE_VER = "v13"
+CACHE_VER = "v14"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
 PAGE_HEIGHT = 1920
-MARGIN = 28
+MARGIN = 40
 TITLE_SIZE = 76
 BODY_SIZE = 52
 MAX_TITLE_SIZE = 84
 MAX_BODY_SIZE = 64
 MIN_TITLE_SIZE = 68
 MIN_BODY_SIZE = 48
-BOTTOM_PAD = 16
-MIN_SHOT_RATIO = 0.28
-TEXT_SHOT_GAP = 36
+BOTTOM_PAD = 48
+TEXT_SHOT_GAP = 96
+SHOT_TOP_RATIO = 0.52
 CHROME_TOP = 8
 DOT_ROW_H = 28
 TG_PHOTO_MAX_BYTES = 9_800_000
@@ -242,6 +242,19 @@ def _load_font(size: int, *, bold: bool = False):
     return ImageFont.load_default()
 
 
+def _ink_box(font, text: str):
+    bbox = font.getbbox(str(text or ""))
+    return bbox[0], bbox[1], bbox[2], bbox[3]
+
+
+def _centered_text_xy(font, text: str, box) -> tuple:
+    """讓真實墨水框的中心對上 box 幾何中心。"""
+    x0, y0, x1, y1 = box
+    l, t, r, b = _ink_box(font, text)
+    tw, th = r - l, b - t
+    return x0 + (x1 - x0 - tw) / 2.0 - l, y0 + (y1 - y0 - th) / 2.0 - t
+
+
 def _text_w(draw, text: str, font) -> float:
     """用實際墨水寬，避免 textlength 低估、最後一個句號被拼回去後超出右緣。"""
     try:
@@ -289,7 +302,15 @@ def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str
             lines[-1] = lines[-1] + buf
         else:
             lines.append(buf)
-    return lines or [""]
+    out: List[str] = []
+    for ln in lines:
+        if out and ln.strip() in "。、；：，,．":
+            out[-1] = out[-1] + ln.strip()
+        elif ln.strip():
+            out.append(ln)
+        else:
+            out.append(ln)
+    return out or [""]
 
 
 def _hang_prefix(para: str) -> str:
@@ -356,8 +377,37 @@ def _page_shot(slug: str):
     return _trim_guide_shot(name, im)
 
 
+def _is_caption_fill(c) -> bool:
+    """配圖底那條米色說明條：(255, 246, 236)。"""
+    r, g, b = c[:3]
+    return r >= 240 and 228 <= g <= 252 and 200 <= b <= 245 and (r - b) >= 8
+
+
+def _strip_caption_bar(im):
+    """整條說明色帶裁掉。殘字「見就打/menu）」就是這條被切一半。"""
+    w, h = im.size
+    px = im.load()
+    cut = h
+    for y in range(h - 1, max(h // 4, 8), -1):
+        n = 0
+        hits = 0
+        for x in range(0, w, 4):
+            n += 1
+            if _is_caption_fill(px[x, y]):
+                hits += 1
+        if n and hits / n >= 0.38:
+            cut = y
+            continue
+        if cut < h:
+            break
+    if h - cut >= 8:
+        return im.crop((0, 0, w, max(1, cut - 8)))
+    return im
+
+
 def _trim_guide_shot(name: str, im):
-    """桌面話筒截圖左右／上方空白裁掉，兩排按鈕才能放大鋪滿。"""
+    """先去掉底欄說明，再裁聊天區。兩排按鈕與四格圖示要在，殘字不能在。"""
+    im = _strip_caption_bar(im)
     keyboard = {
         "cover_menu.png",
         "lists.png",
@@ -369,19 +419,16 @@ def _trim_guide_shot(name: str, im):
     if name in keyboard and w >= 1400:
         left = int(w * 0.08)
         right = int(w * 0.93)
-        top = int(h * 0.18)
-        bottom = int(h * 0.86)  # 留四格圖示；去掉截圖自己的底欄說明
-        return im.crop((left, top, right, bottom))
+        top = int(h * 0.20)
+        return im.crop((left, top, right, h))
     if name in {"charts.png", "hub.png"} and w >= 1400:
         left = int(w * 0.14)
         right = int(w * 0.86)
-        bottom = int(h * 0.88) if name == "hub.png" else h
-        return im.crop((left, 0, right, bottom))
+        return im.crop((left, 0, right, h))
     if name == "discipline.png" and w >= 900:
         left = int(w * 0.16)
         right = int(w * 0.84)
-        bottom = int(h * 0.72)  # 留粉紅紀律＋表頭，不要只剩表尾
-        return im.crop((left, 0, right, bottom))
+        return im.crop((left, 0, right, h))
     return im
 
 
@@ -423,18 +470,25 @@ def _fit_cover(im, max_w: int, max_h: int, *, keep: str = "center"):
 
 
 def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
-    """截圖鋪滿剩餘區塊，左右貼齊畫布；外框對齊產業圖卡青邊。"""
+    """截圖等比放入卡片。不硬鋪滿、不裁按鈕、不留底欄殘字；不夠高就留深藍。"""
     from PIL import Image, ImageDraw
 
-    pad = 8
+    pad = 12
     inner_w = max(1, max_w - pad * 2)
     inner_h = max(1, max_h - pad * 2)
-    shot = _fit_cover(shot, inner_w, inner_h, keep=keep)
-    out = Image.new("RGB", (max_w, max_h), _BG)
+    if keep == "cover":
+        shot = _fit_cover(shot, inner_w, inner_h, keep="center")
+        card_h = max_h
+    else:
+        shot = _fit_box(shot, inner_w, inner_h)
+        card_h = min(max_h, shot.size[1] + pad * 2)
+    sw, sh = shot.size
+    out = Image.new("RGB", (max_w, card_h), _BG)
     d = ImageDraw.Draw(out)
-    rad = 16
-    d.rounded_rectangle((0, 0, max_w - 1, max_h - 1), rad, fill=_CARD, outline=_ACCENT, width=3)
-    out.paste(shot, (pad, pad))
+    d.rounded_rectangle((0, 0, max_w - 1, card_h - 1), 16, fill=_CARD, outline=_ACCENT, width=3)
+    x = pad + max(0, (inner_w - sw) // 2)
+    y = pad + max(0, (card_h - pad * 2 - sh) // 2)
+    out.paste(shot, (x, y))
     return out
 
 
@@ -482,11 +536,11 @@ def _chrome_h() -> int:
 
 
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
-    """一屏 9:16：藍底白字填滿上半，截圖貼底左右貼齊。九頁同一尺寸。"""
+    """上半置中標題＋內文；配圖固定在下半，中間留空，不要黏在一起。"""
     from PIL import Image, ImageDraw
 
     max_w = PAGE_WIDTH - 2 * MARGIN
-    min_shot_h = int(PAGE_HEIGHT * MIN_SHOT_RATIO)
+    shot_top_min = int(PAGE_HEIGHT * SHOT_TOP_RATIO)
     chrome = _chrome_h()
     probe = Image.new("RGB", (PAGE_WIDTH, 200), _BG)
     pdraw = ImageDraw.Draw(probe)
@@ -497,7 +551,7 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     title_lh = body_lh = gap_h = 0
     title_font = body_font = None
     text_h = 0
-    # 先試較大字把內文鋪滿；鋪不下再微縮。低於 MIN_BODY_SIZE 改讓截圖變矮。
+    text_budget = shot_top_min - TEXT_SHOT_GAP
     scales = (1.22, 1.14, 1.08, 1.0, 0.94, 0.90)
     for scale in scales:
         title_size = max(MIN_TITLE_SIZE, min(MAX_TITLE_SIZE, int(round(TITLE_SIZE * scale))))
@@ -506,33 +560,19 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         body_font = _load_font(body_size)
         title_lh = max(int(round(title_size * 1.34)), title_size + 18)
         body_lh = max(int(round(body_size * 1.36)), body_size + 10)
-        gap_h = max(int(round(body_size * 0.34)), 12)
+        gap_h = max(int(round(body_size * 0.28)), 10)
         title_lines = _wrap_line(pdraw, title, title_font, max_w, max_w)
         body_rows = _layout_body(pdraw, body, body_font, max_w)
         text_h = (
             chrome
             + 8
             + len(title_lines) * title_lh
-            + 32
+            + 36
             + _text_block_h(body_rows, body_lh, gap_h)
         )
-        remain = PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h
-        if remain >= min_shot_h:
+        if text_h <= text_budget:
             break
     assert title_font is not None and body_font is not None
-    remain = max(PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h, int(PAGE_HEIGHT * 0.22))
-    # 內文偏短時把段距拉開，九頁看起來一樣滿。
-    extra = remain - min_shot_h
-    gaps = sum(1 for row in body_rows if row is None)
-    if extra > 24 and gaps:
-        bump = min(extra // (gaps + 1), 22)
-        gap_h += bump
-        text_h += bump * gaps
-        remain = max(PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h, int(PAGE_HEIGHT * 0.22))
-    shot = _page_shot(slug)
-    card = None
-    if shot is not None:
-        card = _shot_card(shot, max_w, remain, keep="top" if slug == "discipline" else "center")
     img = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), _BG)
     draw = ImageDraw.Draw(img)
     draw.rectangle((0, 0, PAGE_WIDTH, CHROME_TOP), fill=_ACCENT)
@@ -548,13 +588,22 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     draw.text((PAGE_WIDTH - MARGIN - mw, y), mark, font=mark_font, fill=_INK)
     y += 32
     _draw_dots(draw, y, idx, n, MARGIN, PAGE_WIDTH - MARGIN)
-    y += DOT_ROW_H + 6
+    y += DOT_ROW_H + 10
+    title_box_h = max(title_lh, 72)
     for line in title_lines:
-        draw.text((MARGIN, y), line, font=title_font, fill=_INK)
+        tx, ty = _centered_text_xy(
+            title_font, line, (MARGIN, y, PAGE_WIDTH - MARGIN, y + title_box_h)
+        )
+        draw.text((tx, ty), line, font=title_font, fill=_INK)
         y += title_lh
-    y += 14
-    draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=3)
-    y += 18
+    y += 10
+    tw0 = 0.0
+    for ln in title_lines:
+        tw0 = max(tw0, _text_w(draw, ln, title_font))
+    rule_w = min(max_w - 48, max(tw0 + 64, 220))
+    rx0 = (PAGE_WIDTH - rule_w) / 2.0
+    draw.line((rx0, y, rx0 + rule_w, y), fill=_LINE, width=3)
+    y += 26
     for row in body_rows:
         if row is None:
             y += gap_h
@@ -562,23 +611,17 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         indent, line = row
         draw.text((MARGIN + indent, y), line, font=body_font, fill=_INK)
         y += body_lh
-    if card is not None:
-        keep = "top" if slug == "discipline" else "center"
-        y_shot = PAGE_HEIGHT - BOTTOM_PAD - card.height
-        min_top = y + TEXT_SHOT_GAP
-        if y_shot < min_top:
-            y_shot = min_top
-            max_h = PAGE_HEIGHT - BOTTOM_PAD - y_shot
-            if max_h >= 80 and max_h < card.height:
-                card = _shot_card(shot, max_w, max_h, keep=keep)
-        if y_shot + card.height > PAGE_HEIGHT - BOTTOM_PAD:
-            max_h = PAGE_HEIGHT - BOTTOM_PAD - y_shot
-            if max_h >= 80:
-                card = _shot_card(shot, max_w, max_h, keep=keep)
-            else:
-                card = None
-        if card is not None:
-            img.paste(card, (MARGIN, y_shot))
+    text_end = y
+    y_floor = max(shot_top_min, text_end + TEXT_SHOT_GAP)
+    avail_h = PAGE_HEIGHT - BOTTOM_PAD - y_floor
+    shot = _page_shot(slug)
+    if shot is not None and avail_h >= 80:
+        card = _shot_card(shot, max_w, avail_h)
+        card_h = card.size[1]
+        y_shot = PAGE_HEIGHT - BOTTOM_PAD - card_h
+        if y_shot < y_floor:
+            y_shot = y_floor
+        img.paste(card, (MARGIN, y_shot))
     _save_page_image(img, out_path)
     return out_path
 

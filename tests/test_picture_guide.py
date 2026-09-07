@@ -17,12 +17,15 @@ from picture_guide import (
     PAGE_HEIGHT,
     PAGE_WIDTH,
     PAGES,
+    SHOT_TOP_RATIO,
+    TEXT_SHOT_GAP,
     TITLE_SIZE,
     asset_dir,
     page_copy_blob,
     render_page,
     render_picture_guide,
     ensure_page,
+    _is_caption_fill,
     _trim_guide_shot,
 )
 
@@ -55,7 +58,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v13"
+    assert CACHE_VER == "v14"
     assert "一張圖卡" in blob
     assert "跑馬燈" in blob
     assert "細項小框" in blob
@@ -65,7 +68,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert TITLE_SIZE >= 72
     assert BODY_SIZE >= 50
     assert MIN_BODY_SIZE >= 48
-    assert MARGIN <= 32
+    assert MARGIN <= 40
     # 390 寬話筒點開：52px 內文 ≈ 19 點，不要再縮到看不清。
     assert BODY_SIZE * (390 / PAGE_WIDTH) >= 18
     sizes = set()
@@ -119,19 +122,28 @@ def test_page_render_roundtrip(tmp_path):
 
 
 def test_shot_panel_fills_content_width(tmp_path):
-    """下半截圖左右貼齊內文寬，不要再留大塊米色邊。"""
+    """配圖卡左右貼齊內文寬；貼在下半，不要佔滿到跟字黏在一起。"""
     slug, title, body = PAGES[1]
     out = str(tmp_path / "menu.png")
     render_page(slug, title, body, out)
     with Image.open(out) as im:
-        y = int(im.height * 0.84)
         bg = (18, 26, 38)
 
         def _near(c, t, tol=18):
             return all(abs(a - b) <= tol for a, b in zip(c, t))
 
+        card_top = None
+        for y in range(im.height - 12, int(im.height * 0.45), -1):
+            xs = [x for x in range(MARGIN, im.width - MARGIN) if not _near(im.getpixel((x, y)), bg)]
+            if xs:
+                card_top = y
+            elif card_top is not None:
+                break
+        assert card_top is not None, "lower half should have a screenshot card"
+        assert card_top >= int(PAGE_HEIGHT * 0.48)
+        y = min(im.height - 40, card_top + 20)
         xs = [x for x in range(im.width) if not _near(im.getpixel((x, y)), bg)]
-        assert xs, "lower third should be the screenshot, not empty navy"
+        assert xs, "shot card should have ink"
         assert xs[0] <= MARGIN + 12
         assert xs[-1] >= PAGE_WIDTH - MARGIN - 12
         assert (xs[-1] - xs[0]) >= PAGE_WIDTH - 2 * MARGIN - 24
@@ -139,8 +151,6 @@ def test_shot_panel_fills_content_width(tmp_path):
 
 def test_keyboard_shot_trimmed_to_buttons():
     path = os.path.join(asset_dir(), "cover_menu.png")
-    from PIL import Image
-
     im = Image.open(path)
     trimmed = _trim_guide_shot("cover_menu.png", im.convert("RGB"))
     assert trimmed.width < im.width
@@ -148,6 +158,32 @@ def test_keyboard_shot_trimmed_to_buttons():
     assert trimmed.width / trimmed.height < 5.0
     # 右側要留到「回報／AI倉」，不要裁掉第二排最右。
     assert trimmed.width / im.width >= 0.75
+    cream = 0
+    tw, th = trimmed.size
+    px = trimmed.load()
+    for y in range(max(0, th - 24), th):
+        for x in range(0, tw, 5):
+            if _is_caption_fill(px[x, y]):
+                cream += 1
+    assert cream < 8, cream
+
+
+def test_guide_assets_caption_bar_stripped():
+    for name in set(PAGE_SHOTS.values()):
+        path = os.path.join(asset_dir(), name)
+        im = Image.open(path).convert("RGB")
+        trimmed = _trim_guide_shot(name, im)
+        tw, th = trimmed.size
+        px = trimmed.load()
+        cream = 0
+        n = 0
+        for y in range(max(0, int(th * 0.92)), th):
+            for x in range(0, tw, 6):
+                n += 1
+                if _is_caption_fill(px[x, y]):
+                    cream += 1
+        assert n, name
+        assert cream / n < 0.04, f"{name} leftover caption {cream}/{n}"
 
 
 def test_send_picture_guide_one_page_with_next_button(tmp_path):
@@ -316,3 +352,61 @@ def test_wrapped_lines_stay_inside_and_keep_menu_token():
             assert not line.rstrip().endswith("打 /")
     joined = "\n".join(blob_lines)
     assert "/menu" in joined
+
+
+def _near_rgb(c, t, tol=18):
+    return all(abs(a - b) <= tol for a, b in zip(c[:3], t))
+
+
+def test_cover_and_menu_title_centered_shot_in_lower_half(tmp_path):
+    """主標題置中；配圖在下半；文圖中間留空；底欄不得出現半截「見就打/menu）」。"""
+    dest = str(tmp_path / "layout")
+    os.makedirs(dest, exist_ok=True)
+    bg = (18, 26, 38)
+    for slug in ("cover", "menu"):
+        title, body = next((t, b) for s, t, b in PAGES if s == slug)
+        out = os.path.join(dest, f"{slug}.png")
+        render_page(slug, title, body, out)
+        with Image.open(out) as im:
+            # 標題列約在頂欄底下。找高亮度墨水的水平重心。
+            y0, y1 = 78, 168
+            xs = []
+            for y in range(y0, y1):
+                for x in range(MARGIN + 20, PAGE_WIDTH - MARGIN - 20):
+                    r, g, b = im.getpixel((x, y))[:3]
+                    if r + g + b >= 540 and abs(r - g) < 40:
+                        xs.append(x)
+            assert xs, slug
+            cx = sum(xs) / len(xs)
+            assert abs(cx - PAGE_WIDTH / 2) <= 36, (slug, cx)
+
+            cream = 0
+            n = 0
+            px = im.load()
+            for y in range(PAGE_HEIGHT - 36, PAGE_HEIGHT):
+                for x in range(0, PAGE_WIDTH, 4):
+                    n += 1
+                    if _is_caption_fill(px[x, y]):
+                        cream += 1
+            assert cream / n < 0.02, f"{slug} caption leftover {cream}/{n}"
+
+            card_top = None
+            for y in range(PAGE_HEIGHT - 16, int(PAGE_HEIGHT * 0.40), -2):
+                row = [
+                    x
+                    for x in range(MARGIN, PAGE_WIDTH - MARGIN, 3)
+                    if not _near_rgb(im.getpixel((x, y)), bg)
+                ]
+                if row:
+                    card_top = y
+                elif card_top is not None:
+                    break
+            assert card_top is not None, slug
+            assert card_top >= int(PAGE_HEIGHT * SHOT_TOP_RATIO) - 24
+            gap_ink = 0
+            for y in range(card_top - 56, card_top - 12):
+                for x in range(MARGIN + 80, PAGE_WIDTH - MARGIN - 80, 6):
+                    if not _near_rgb(im.getpixel((x, y)), bg, 28):
+                        gap_ink += 1
+            assert gap_ink < 80, (slug, gap_ink, card_top)
+            assert card_top - 280 >= TEXT_SHOT_GAP
