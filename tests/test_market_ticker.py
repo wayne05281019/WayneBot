@@ -11,7 +11,10 @@ from market_ticker import (
     TICKER_W,
     collect_ticker,
     render_ticker_gif,
+    ticker_loop_sec,
     ticker_plain,
+    ticker_refresh_sec,
+    ticker_send_kwargs,
     ticker_slot,
 )
 
@@ -47,6 +50,11 @@ def test_collect_omits_missing_and_keeps_tw(tmp_path):
     plain = ticker_plain(bundle)
     assert "台股開盤" in plain
     assert "47,326" in plain
+    tw = next(x for x in bundle["items"] if x["name"] == "加權")
+    assert "," not in tw["digits"]
+    assert " " not in tw["digits"]
+    assert tw["digits"] == "47326"
+    assert tw.get("suffix") == "+1.67%"
     assert "10:05:00" in plain
 
 
@@ -302,6 +310,19 @@ def test_render_gif_full_width_always_scrolls(tmp_path):
         assert first != mid
 
 
+def test_ticker_full_width_slow_loop_and_live_refresh(monkeypatch):
+    assert TICKER_W >= 1080
+    assert TICKER_H == 96
+    assert ticker_loop_sec() >= 6
+    kw = ticker_send_kwargs()
+    assert kw["width"] == TICKER_W
+    assert kw["height"] == TICKER_H
+    monkeypatch.delenv("WAYNE_TICKER_REFRESH_SEC", raising=False)
+    assert abs(ticker_refresh_sec() - ticker_loop_sec()) < 0.01
+    monkeypatch.setenv("WAYNE_TICKER_REFRESH_SEC", "4")
+    assert ticker_refresh_sec() == 4.0
+
+
 def test_ticker_refresh_loop_keeps_editing_until_rounds(tmp_path, monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
@@ -392,9 +413,10 @@ def test_ticker_sectors_and_alerts_from_official(tmp_path):
     assert "+1.82%" in plain
     assert "昨收弱勢 鋼鐵" in plain
     assert "-1.24%" in plain
-    assert "跌家 920" in plain
-    assert "跌停 42 家" in plain
-    assert "期貨領跌" in plain
+    assert "跌停 42" in plain
+    assert "跌家 920" not in plain
+    assert "期貨領跌" not in plain
+    assert "昨收強勢 金融" not in plain
     assert peek_live_sector_rows(db) == []
 
     live_bundle = collect_ticker(

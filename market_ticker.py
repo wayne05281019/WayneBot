@@ -157,15 +157,18 @@ def _ticker_item(
     label: str,
     *,
     digits: str = "",
+    suffix: str = "",
     pct=None,
     kind: str = "text",
+    text: str = None,
 ) -> Dict[str, Any]:
-    text = f"{label} {digits}".strip() if digits else label
+    bits = [x for x in (label, digits, suffix) if x]
     return {
         "name": name,
-        "text": text,
+        "text": text if text is not None else " ".join(bits).strip(),
         "label": label,
         "digits": digits,
+        "suffix": suffix,
         "pct": pct,
         "kind": kind,
     }
@@ -177,6 +180,22 @@ def _fmt_px(px: float) -> str:
     if abs(px) >= 100:
         return f"{px:,.1f}"
     return f"{px:,.2f}"
+
+
+def _fmt_casio_px(px: float) -> str:
+    """七段只畫價，不加千分位逗號，避免跟小數點混在一起。"""
+    if abs(px) >= 1000:
+        return f"{px:.0f}"
+    if abs(px) >= 100:
+        return f"{px:.1f}"
+    return f"{px:.2f}"
+
+
+def _casio_safe(digits: str) -> str:
+    s = str(digits or "").strip()
+    if " " in s:
+        s = s.split()[0]
+    return s.replace(",", "")
 
 
 def _fmt_pct(pct: Optional[float]) -> str:
@@ -580,11 +599,11 @@ def _ticker_sector_items(
     weak: List[Dict[str, Any]] = []
     if rows:
         ranked = sorted(rows, key=lambda r: float(r.get("avg_pct") or 0), reverse=True)
-        strong = [r for r in ranked if float(r.get("avg_pct") or 0) >= 0.15][:2]
-        weak = [r for r in reversed(ranked) if float(r.get("avg_pct") or 0) <= -0.15][:2]
+        strong = [r for r in ranked if float(r.get("avg_pct") or 0) >= 0.15][:1]
+        weak = [r for r in reversed(ranked) if float(r.get("avg_pct") or 0) <= -0.15][:1]
     if not strong and not weak:
-        inflow = list((snap or {}).get("sector_inflow") or [])[:2]
-        outflow = list((snap or {}).get("sector_outflow") or [])[:2]
+        inflow = list((snap or {}).get("sector_inflow") or [])[:1]
+        outflow = list((snap or {}).get("sector_outflow") or [])[:1]
         today = dt.strftime("%Y%m%d")
         stale = bool(as_of and as_of < today and slot in ("tw_pre", "tw_match", "tw_open"))
         buy_lab = "昨收法人買超" if stale else "法人買超"
@@ -634,20 +653,20 @@ def _ticker_alert_items(
     except (TypeError, ValueError):
         up = down = lu = ld = 0
     if up and down and down >= up * 2 and down >= 400:
-        items.append(_ticker_item("警語", f"跌家 {down}、漲家 {up}", kind="status", pct=-1.0))
+        items.append(_ticker_item("警語", f"跌家 {down}", kind="status", pct=-1.0))
     elif up and down and up >= down * 2 and up >= 400:
-        items.append(_ticker_item("廣度", f"漲家 {up}、跌家 {down}", kind="status", pct=1.0))
+        items.append(_ticker_item("廣度", f"漲家 {up}", kind="status", pct=1.0))
     if ld >= 30:
-        items.append(_ticker_item("警語", f"跌停 {ld} 家", kind="status", pct=-1.0))
+        items.append(_ticker_item("警語", f"跌停 {ld}", kind="status", pct=-1.0))
     elif lu >= 40:
-        items.append(_ticker_item("廣度", f"漲停 {lu} 家", kind="status", pct=1.0))
+        items.append(_ticker_item("廣度", f"漲停 {lu}", kind="status", pct=1.0))
     lead = (snap or {}).get("futures_lead") or {}
     if isinstance(lead, dict) and str(lead.get("label") or "") == "期貨領跌":
-        items.append(_ticker_item("警語", "近20日偏期貨領跌", kind="status", pct=-1.0))
+        items.append(_ticker_item("警語", "期貨領跌", kind="status", pct=-1.0))
     if str((snap or {}).get("risk_zone") or "") == "elevated":
-        items.append(_ticker_item("警語", "加權在相對高檔", kind="status", pct=-0.5))
+        items.append(_ticker_item("警語", "加權偏高檔", kind="status", pct=-0.5))
     if str((snap or {}).get("support_zone") or "") == "building":
-        items.append(_ticker_item("觀察", "加權在低檔築底觀察", kind="status", pct=0.5))
+        items.append(_ticker_item("觀察", "加權低檔觀察", kind="status", pct=0.5))
     try:
         fr = int((snap or {}).get("falling_risk") or 0)
     except (TypeError, ValueError):
@@ -662,11 +681,19 @@ def _ticker_alert_items(
     except (TypeError, ValueError):
         vix = None
     if vix is not None and vix >= 25:
-        mood = "偏高" if vix < 28 else "恐慌"
         items.append(
-            _ticker_item("警語", f"恐慌指數{mood}", digits=f"{vix:.1f}", pct=-1.0, kind="quote")
+            _ticker_item("警語", "恐慌指數", digits=f"{vix:.1f}", pct=-1.0, kind="quote")
         )
-    return items[:3]
+    # 一則就好，不要整條都是警語
+    order = ("跌停", "跌家", "漲停", "漲家", "恐慌", "期貨領跌", "下跌風險", "高檔", "低檔")
+    def _rank(it):
+        t = str(it.get("text") or "")
+        for i, key in enumerate(order):
+            if key in t:
+                return i
+        return 99
+    items.sort(key=_rank)
+    return items[:1]
 
 
 def _ticker_context_items(
@@ -854,21 +881,43 @@ def collect_ticker(
 
 
 def _quote_item(name: str, seg: Dict[str, Any], *, label: str = None) -> Dict[str, Any]:
+    lab = label or name
+    px = seg.get("px")
+    pct = seg.get("pct")
+    if px is not None:
+        try:
+            px_f = float(px)
+        except (TypeError, ValueError):
+            px_f = None
+        if px_f is not None:
+            suffix = _fmt_pct(pct) if pct is not None else ""
+            return _ticker_item(
+                name,
+                lab,
+                digits=_fmt_casio_px(px_f),
+                suffix=suffix,
+                pct=pct,
+                kind="quote",
+                text=f"{lab} {_fmt_px(px_f)}" + (f" {suffix}" if suffix else ""),
+            )
     body = str(seg.get("text") or "")
-    prefix = (label or name) + " "
+    prefix = lab + " "
     if body.startswith(prefix):
-        digits = body[len(prefix):]
+        rest = body[len(prefix):]
     else:
-        digits = body.replace(name, "", 1).strip()
-    return _ticker_item(name, label or name, digits=digits, pct=seg.get("pct"), kind="quote")
+        rest = body.replace(name, "", 1).strip()
+    digits = _casio_safe(rest)
+    suffix = ""
+    if pct is not None and _fmt_pct(pct) not in digits:
+        suffix = _fmt_pct(pct)
+    return _ticker_item(name, lab, digits=digits, suffix=suffix, pct=pct, kind="quote")
 
 
 def _close_pair(live, live_otc, snap) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     tw = _tw_index_seg(live, snap)
     if tw:
-        side = _side_zh(tw.get("pct"))
-        lab = f"加權收盤{(' ' + side) if side else ''}"
+        lab = "加權收盤"
         out.append(_quote_item("加權", tw, label=lab))
     otc = None
     if live_otc:
@@ -876,8 +925,7 @@ def _close_pair(live, live_otc, snap) -> List[Dict[str, Any]]:
     if not otc:
         otc = _seg("櫃買", (snap or {}).get("otc_close"), (snap or {}).get("otc_chg1_pct"))
     if otc:
-        side = _side_zh(otc.get("pct"))
-        lab = f"櫃買收盤{(' ' + side) if side else ''}"
+        lab = "櫃買收盤"
         out.append(_quote_item("櫃買", otc, label=lab))
     return out
 
@@ -929,6 +977,30 @@ def _ticker_font(size: int, *, bold: bool = False):
     return ImageFont.load_default()
 
 
+def ticker_loop_sec() -> float:
+    return max(1.0, TICKER_FRAMES * TICKER_FRAME_MS / 1000.0)
+
+
+def ticker_refresh_sec() -> float:
+    """沒指定就跟一圈 GIF 一樣長，讓慢慢滑完再換即時數字。"""
+    raw = (os.getenv("WAYNE_TICKER_REFRESH_SEC") or "").strip()
+    if raw:
+        try:
+            return max(3.0, float(raw))
+        except (TypeError, ValueError):
+            pass
+    return max(3.0, ticker_loop_sec())
+
+
+def ticker_send_kwargs() -> Dict[str, int]:
+    """Telegram 依寬條比例鋪滿對話可視寬，不要縮成方塊。"""
+    return {
+        "width": int(TICKER_W),
+        "height": int(TICKER_H),
+        "duration": int(round(ticker_loop_sec())),
+    }
+
+
 def _ink_color(pct) -> tuple:
     if pct is None:
         return _INK
@@ -941,8 +1013,9 @@ def _ink_color(pct) -> tuple:
 
 TICKER_W = 1080
 TICKER_H = 96
-TICKER_FRAMES = 40
-TICKER_FRAME_MS = 55
+# 慢慢滑：約 8 秒捲過一輪內容；刷新預設對齊這一圈，數字換新時不要中途重播。
+TICKER_FRAMES = 64
+TICKER_FRAME_MS = 120
 # 頂底青線各 4px；字與七段從內緣貼齊，避免卡在中間難讀。
 TICKER_INK_PAD = 4
 
@@ -1003,7 +1076,7 @@ def _fit_ticker_body_font(inner_h: int):
 
 
 def _label_sprite(text: str, font, fill, target_h: int):
-    """中文墨水垂直拉滿內緣；標點太扁就不硬拉，避免圓點變成長條。"""
+    """中文保持原字形，垂直置中貼近內緣；不硬拉高，避免字變形。"""
     from PIL import Image, ImageDraw
 
     th = max(1, int(target_h))
@@ -1023,12 +1096,9 @@ def _label_sprite(text: str, font, fill, target_h: int):
     ink = tmp.getbbox()
     if ink:
         tmp = tmp.crop(ink)
-    if tmp.size[1] >= max(8, int(th * 0.45)):
-        nw = max(1, int(round(tmp.size[0] * th / tmp.size[1])))
-        resample = getattr(Image, "Resampling", Image).LANCZOS
-        return tmp.resize((nw, th), resample)
-    canvas = Image.new("RGBA", (tmp.size[0], th), (0, 0, 0, 0))
-    canvas.paste(tmp, (0, (th - tmp.size[1]) // 2), tmp)
+    canvas = Image.new("RGBA", (max(1, tmp.size[0]), th), (0, 0, 0, 0))
+    oy = max(0, (th - tmp.size[1]) // 2)
+    canvas.paste(tmp, (0, oy), tmp)
     return canvas
 
 
@@ -1134,37 +1204,42 @@ def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
     y0, y1, inner_h = _ticker_inner_band(H)
     body_f = _fit_ticker_body_font(inner_h)
     digit_h = inner_h
-    gap = 28
 
-    pieces: List[Tuple[Any, str, tuple, int]] = []
-    title_lab = title + "    ·    "
+    pieces: List[Tuple[Any, str, tuple, Any, int]] = []
+    title_lab = title + " · "
     title_sprite = _label_sprite(title_lab, body_f, _LABEL_FG, inner_h)
-    pieces.append((title_sprite, "", _LABEL_FG, title_sprite.size[0]))
+    empty = Image.new("RGBA", (1, inner_h), (0, 0, 0, 0))
+    pieces.append((title_sprite, "", _LABEL_FG, empty, title_sprite.size[0] + 16))
     for it in items:
         label = str(it.get("label") or it.get("name") or "")
-        digits = str(it.get("digits") or "")
+        digits = _casio_safe(str(it.get("digits") or ""))
+        suffix = str(it.get("suffix") or "")
         kind = str(it.get("kind") or "")
         color = _ink_color(it.get("pct"))
         if kind in ("clock", "count"):
             color = _CASIO_ON
-        lab = (label + " ") if digits else (str(it.get("text") or label) + "    ·    ")
+        lab = (label + " ") if (digits or suffix) else (str(it.get("text") or label) + " · ")
         fill = _LABEL_FG if digits else color
         sprite = _label_sprite(lab, body_f, fill, inner_h)
+        suf = _label_sprite(" " + suffix, body_f, color, inner_h) if suffix else empty
         dw = _casio_width(digits, digit_h) if digits else 0
-        tw = sprite.size[0] + dw + (gap if digits else 0)
-        pieces.append((sprite, digits, color, tw))
+        tw = sprite.size[0] + dw + (suf.size[0] if suffix else 0) + 20
+        pieces.append((sprite, digits, color, suf if suffix else empty, tw))
 
-    unit_w = max(1, int(round(sum(p[3] for p in pieces))))
+    unit_w = max(1, int(round(sum(p[4] for p in pieces))))
     copies = max(3, (W + unit_w + unit_w - 1) // unit_w)
     strip_w = unit_w * copies + 8
     strip = Image.new("RGB", (strip_w, H), _BG)
     sd = ImageDraw.Draw(strip)
     x = 0
     for _copy in range(copies):
-        for sprite, digits, color, tw in pieces:
+        for sprite, digits, color, suf, tw in pieces:
             strip.paste(sprite, (x, y0), sprite)
+            dx = x + sprite.size[0]
             if digits:
-                _draw_casio_text(sd, x + sprite.size[0], y0, digit_h, digits, color)
+                dx = int(round(_draw_casio_text(sd, dx, y0, digit_h, digits, color)))
+            if suf.size[0] > 1:
+                strip.paste(suf, (dx, y0), suf)
             x += tw
 
     n = TICKER_FRAMES
