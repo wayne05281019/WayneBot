@@ -147,6 +147,7 @@ class FuseAndScreenTest(unittest.TestCase):
             "20260828",
             session_plain="今早 06:30　昨收名單",
             us_snap=snap,
+            now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")),
         )
         self.assertIn("電子夜盤", night_line)
         self.assertIn("＝＝夜盤判斷＝＝", night_line)
@@ -235,6 +236,42 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertNotIn("＝＝站上季線＝＝", layout)
         self.assertNotIn("＝＝止跌＝＝", layout)
 
+    def test_morning_keeps_empty_leave_zero_and_golden_buy(self):
+        from screening_engine import format_line_share_packs, format_screening_payload
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 8000,
+            "pct_change": 2,
+            "q60r": 2.1,
+            "ma20": 98,
+            "ma60": 95,
+            "foreign_net": 0,
+            "trust_net": 0,
+            "dealer_net": 0,
+        }
+        results = {
+            "leave_zero": [],
+            "golden_buy": [],
+            "revenue_cross": [item],
+            "select_01": [item],
+        }
+        morning = format_screening_payload(results, "20260907", morning=True)
+        keys = [p.get("mark_key") for p in morning]
+        self.assertEqual(keys, ["leave_zero", "golden_buy", "revenue_cross", "select_01"])
+        blob = "\n".join(p["html"] for p in morning)
+        self.assertIn("＝＝黃金買點", blob)
+        self.assertIn("＝＝重點觀察", blob)
+        self.assertGreaterEqual(blob.count("今日無符合條件標的"), 2)
+        packs = format_line_share_packs(results, "20260907", morning=True)
+        layout = next(p["text"] for p in packs if p["id"] == "layout")
+        self.assertIn("＝＝黃金買點＝＝", layout)
+        self.assertIn("＝＝重點觀察＝＝", layout)
+        self.assertIn("今日沒有符合高低卡條件的檔", layout)
+        self.assertLess(layout.find("＝＝黃金買點＝＝"), layout.find("＝＝優先看＝＝"))
+
     def test_screening_payload_leads_with_market_outlook(self):
         from screening_engine import format_screening_payload
 
@@ -320,6 +357,7 @@ class FuseAndScreenTest(unittest.TestCase):
             "20260828",
             session_plain="今早 06:30",
             us_snap={"regime": "ok", "us_phase": "post", "sox_pct": -2.0, "tsm_pct": -2.1, "nvda_pct": -1.5},
+            now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")),
         )
         ids = [p["id"] for p in packs]
         self.assertEqual(ids, ["night", "layout", "trade"])

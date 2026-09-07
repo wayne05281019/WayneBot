@@ -1034,8 +1034,8 @@ def _compact_line(item: Dict[str, Any]) -> str:
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
 # 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
 SCREEN_PUSH_SPECS = (
-    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, False),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, False),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
     ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
@@ -1043,8 +1043,8 @@ SCREEN_PUSH_SPECS = (
     ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
 )
 MORNING_PUSH_SPECS = (
-    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, True),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）", 8, False),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, False),
     ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, True),
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
 )
@@ -1109,7 +1109,8 @@ def format_screening_payload(
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
-    morning=True：06:30 早報只出黃金買點／重點觀察／優先看／周帶量（沒名單就整區省略）。
+    morning=True：06:30 早報只出黃金買點／重點觀察／優先看／周帶量。
+    黃金買點／重點觀察沒檔也留欄（寫今日沒有）；優先看／周帶量沒名單才整區省略。
     market_html：有內容時插在第一則當大盤狀況。
     """
     results = drop_non_equity_picks(results)
@@ -1418,6 +1419,8 @@ def _share_bucket_block(
         items = items[:cap]
     us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     if not items:
+        if key in ("leave_zero", "golden_buy"):
+            return f"{line_bucket_header(key, 0)}\n今日沒有符合高低卡條件的檔"
         if key in ("day_trade", "overnight") and us_regime == "risk_off":
             return f"{line_bucket_header(key, 0)}\n隔夜逆風：當沖／隔日沖今日不列"
         return ""
@@ -1436,6 +1439,7 @@ def format_line_share_packs(
     us_snap: Optional[Dict[str, Any]] = None,
     *,
     morning: bool = False,
+    now: Optional[datetime] = None,
 ) -> List[Dict[str, str]]:
     """三段 LINE：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
     from line_hop import LINE_PACKS
@@ -1461,7 +1465,7 @@ def format_line_share_packs(
         try:
             from us_overnight import format_night_plain
 
-            night = format_night_plain(us_snap)
+            night = format_night_plain(us_snap, now=now)
         except Exception:
             night = ""
     if not night and us_plain:
@@ -1534,6 +1538,7 @@ def format_line_share_text(
     us_snap: Optional[Dict[str, Any]] = None,
     *,
     morning: bool = False,
+    now: Optional[datetime] = None,
 ) -> str:
     """三段稿接成一則，給測試與存檔。"""
     packs = format_line_share_packs(
@@ -1544,6 +1549,7 @@ def format_line_share_text(
         db_path=db_path,
         us_snap=us_snap,
         morning=morning,
+        now=now,
     )
     return ("\n" + SHARE_SEP + "\n").join(p["text"] for p in packs).strip()
 
