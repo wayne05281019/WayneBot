@@ -48,6 +48,14 @@ from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
 from ai_trader import format_ai_desk_html, run_ai_desk
 from chips import generate_chips_image
+from intent_router import (
+    NEEDS_STOCK,
+    no_cost_honest_html,
+    parse_intent,
+    sell_honest_html,
+    why_honest_html,
+    why_hub_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +181,10 @@ HELP_TOPICS = {
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
         "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
+        "\n"
+        "<b>平常話／三條槓「原因」</b>\n"
+        "輸入列<b>左邊三條槓</b>有「原因」（／why）。用平常的話問，會對到官方資料，<b>不編新聞、不編成本</b>。\n"
+        "例：為什麼跌、2330怎麼賣、外資、產業、大盤、海選。沒寫代號用上一檔。聊天室直接打這些詞也行。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
@@ -394,6 +406,7 @@ HELP_TOPICS = {
         "<b>第二排</b>：隔日沖／大盤／資金／連買區／說明／<b>回報</b>\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
+        "輸入列<b>左邊三條槓</b>有「原因」（／why）：用平常話對出正確資料。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
         "完整分類說明請按主選單「說明」，或看本頁導覽下方各分類鈕。"
     ),
@@ -608,6 +621,9 @@ HELP_TOPICS = {
         "<b>「回報」按下去又反悔</b>\n"
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
+        "<b>想問為什麼跌／怎麼賣</b>\n"
+        "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
+        "\n"
         "<b>找不到股票</b>\n"
         "再打一次四碼比打股名準。名稱撞名時：藍字＝奇摩網頁，左邊股名＝看這檔圖。\n"
         "\n"
@@ -616,6 +632,25 @@ HELP_TOPICS = {
         "\n"
         "<b>畫面怪、數字怪、按鈕錯了</b>\n"
         "按第二排最右「回報」，打字或傳截圖給偉權。"
+    ),
+    "why": (
+        "<b>原因（三條槓／平常話）</b>\n"
+        "在輸入列<b>左邊三條槓</b>點「原因」，或打 /why。聊天室直接打平常的詞也會對到同一套資料。\n"
+        "\n"
+        "<b>會對到什麼（都是官方資料，不編）</b>\n"
+        "• 為什麼跌／為什麼漲／原因　→ 這檔介紹圖＋決策卡＋導航圖。沒有官方新聞跌因欄\n"
+        "• 怎麼賣／如何賣／減碼　→ 如何賣（最高價＝20日高對最高溫）。不是買訊、不自動賣\n"
+        "• 外資／投信／法人／籌碼　→ 三大法人買賣超圖\n"
+        "• 產業／同業　→ 產業圖卡\n"
+        "• 營收／財報／毛利　→ 月營收與季報\n"
+        "• 大盤／加權／美股　→ 大盤頁\n"
+        "• 資金／產業輪動　→ 資金頁（有寫代號則改看該檔籌碼）\n"
+        "• 海選／黃金買點／重點觀察　→ 海選\n"
+        "• 持股／觀察／當沖／隔日沖／連買／AI倉　→ 對應那一頁\n"
+        "• 主力成本／外資成本　→ 說明官方沒這欄，改看籌碼\n"
+        "\n"
+        "沒寫代號就用<b>上一檔</b>；還沒查過請打四碼，例如 <code>2330為什麼跌</code>。\n"
+        "進場仍只認高低卡表的黃金買點，紅箭頭不是買訊。"
     ),
 }
 
@@ -637,6 +672,20 @@ MENU_BTN_PREV_PAGE = "上一批"
 # v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
 MENU_LAYOUT_VERSION = "11"
 MAX_PICK_INLINE_ROWS = 8
+
+# 輸入列左邊三條槓（Telegram BotCommand）。why 放第一，平常話對官方資料。
+TELEGRAM_BOT_COMMANDS = (
+    ("why", "原因：平常話對出正確資料"),
+    ("menu", "回到主選單（下方兩排）"),
+    ("market", "大盤指數與風險"),
+    ("help", "使用說明"),
+    ("screen", "海選"),
+    ("portfolio", "持股"),
+    ("watch", "觀察"),
+    ("flow", "資金移動"),
+    ("industry", "產業說明"),
+    ("start", "開始"),
+)
 
 
 from tg_layout import chunk_telegram_html, chunk_telegram_text
@@ -1450,6 +1499,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton("總覽", callback_data="?:guide"),
                     InlineKeyboardButton("查股", callback_data="?:stock"),
                     InlineKeyboardButton("圖文", callback_data="?:pics"),
+                    InlineKeyboardButton("原因", callback_data="?:why"),
                 ],
                 [
                     InlineKeyboardButton("第一排", callback_data="?:row1"),
@@ -1514,6 +1564,34 @@ class WayneTelegramBot:
                 ],
             ]
         )
+
+    def _why_hub_keyboard(self, last_code: str = ""):
+        """三條槓「原因」：上一檔快捷 + 全市場頁。"""
+        rows = []
+        c = str(last_code or "").strip()[:6]
+        if c:
+            rows.append(
+                [
+                    InlineKeyboardButton("這檔決策卡", callback_data=f"k:{c}"),
+                    InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
+                ]
+            )
+            rows.append(
+                [
+                    InlineKeyboardButton("如何賣", callback_data=f"ys:{c}"),
+                    InlineKeyboardButton("營收", callback_data=f"f:{c}"),
+                ]
+            )
+        rows.append(
+            [
+                InlineKeyboardButton("大盤", callback_data="yw:market"),
+                InlineKeyboardButton("海選", callback_data="yw:screen"),
+                InlineKeyboardButton("持股", callback_data="yw:portfolio"),
+            ]
+        )
+        rows.append([self._q("why")])
+        return InlineKeyboardMarkup(rows)
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -2172,6 +2250,7 @@ class WayneTelegramBot:
             "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
             "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
             "打 <b>南亞</b> 或 <b>2324</b> 也可查股。左下也可按 /menu。\n"
+            "輸入列<b>左邊三條槓</b>「原因」：用平常話問（為什麼跌、怎麼賣），對出正確資料。\n"
             "次排 <b>連買區</b> 查外資／投信／兩家皆買（上市櫃一起）。",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
@@ -3147,11 +3226,19 @@ class WayneTelegramBot:
 
     async def chips_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
-        if not args:
-            await update.message.reply_text("用法：/chips 2330")
-            return
         uid = str(update.effective_user.id)
-        code = args[0].strip()
+        if not args:
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_chips_to(update.message, last, uid)
+                return
+            await self._prompt_pick(update.message, uid, "chips")
+            return
+        await self._send_chips_to(update.message, args[0].strip(), uid)
+
+    async def _send_chips_to(self, message, code: str, uid: str = ""):
+        code = str(code or "").strip()
+        uid = uid or self._uid_from_message(message)
         chip_img = await asyncio.to_thread(
             generate_chips_image,
             code,
@@ -3159,27 +3246,47 @@ class WayneTelegramBot:
             self._scratch_chart_path(self.charts_dir, code, "chips", uid),
         )
         if chip_img:
-            with open(chip_img, "rb") as f:
-                await update.message.reply_photo(photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code))
+            try:
+                with open(chip_img, "rb") as f:
+                    await message.reply_photo(
+                        photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
+                    )
+            except Exception:
+                await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
         else:
-            await update.message.reply_html("查無籌碼", reply_markup=self._keyboard())
+            await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
 
     async def fund_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
+        uid = str(update.effective_user.id)
         if not args:
-            await update.message.reply_text("用法：/fund 2330")
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_fund_to(update.message, last)
+                return
+            await self._prompt_pick(update.message, uid, "fund")
             return
+        await self._send_fund_to(update.message, args[0].strip())
+
+    async def _send_fund_to(self, message, code: str):
         from fundamentals import format_fundamentals_html
 
         # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
-        code = args[0].strip()
+        code = str(code or "").strip()
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-        await update.message.reply_html(html, reply_markup=self._keyboard(), disable_web_page_preview=True)
+        await message.reply_html(
+            html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
+        )
 
     async def industry_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
+        uid = str(update.effective_user.id)
         if not args:
-            await self._prompt_pick(update.message, str(update.effective_user.id), "industry")
+            last = self._last_card.get(uid)
+            if last:
+                await self._send_industry(update.message, last)
+                return
+            await self._prompt_pick(update.message, uid, "industry")
             return
         await self._send_industry(update.message, args[0].strip())
 
@@ -3219,6 +3326,161 @@ class WayneTelegramBot:
             logger.exception("產業說明失敗 code=%s", code)
             html = f"產業說明失敗：{html_escape(err or e)}"
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+
+    async def why_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """三條槓「原因」：平常話對官方資料。"""
+        uid = str(update.effective_user.id)
+        raw_args = getattr(context, "args", None)
+        args = raw_args if isinstance(raw_args, (list, tuple)) else []
+        text = _normalize_menu_text(" ".join(str(a) for a in args))
+        if not text:
+            await self._send_why_hub(update.message, uid)
+            return
+        await self._dispatch_intent(
+            update.message, uid, text, from_why=True, update=update, context=context
+        )
+
+    async def _send_why_hub(self, message, uid: str) -> None:
+        last = str(self._last_card.get(uid) or "").strip()
+        self._pending[self._pending_actor(message, uid=uid)] = "why"
+        await message.reply_html(
+            why_hub_html(last),
+            reply_markup=self._why_hub_keyboard(last),
+            disable_web_page_preview=True,
+        )
+
+    async def _dispatch_intent(
+        self,
+        message,
+        uid: str,
+        text: str,
+        *,
+        from_why: bool = False,
+        update=None,
+        context=None,
+    ) -> bool:
+        hit = parse_intent(text, default_kind="why" if from_why else "")
+        if hit is None:
+            return False
+        kind = hit.kind
+        if kind == "hub":
+            await self._send_why_hub(message, uid)
+            return True
+        code = str(hit.code or "").strip()
+        hits = []
+        if code:
+            hits = lookup_stocks(self.db_path, code)
+            if hits:
+                code = str(hits[0]["stock_id"])
+            else:
+                code = ""
+        if not code and hit.query:
+            hits = lookup_stocks(self.db_path, hit.query)
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
+            elif len(hits) > 1:
+                self._pending[self._pending_actor(message, uid=uid)] = "why"
+                await message.reply_html(
+                    self._hits_list_html(hits, "這句對到多檔，請點選："),
+                    reply_markup=self._hits_keyboard(hits),
+                    disable_web_page_preview=True,
+                )
+                return True
+        if not code and kind in NEEDS_STOCK:
+            code = str(self._last_card.get(uid) or "").strip()
+        if kind in NEEDS_STOCK and not code:
+            self._pending[self._pending_actor(message, uid=uid)] = "why"
+            await message.reply_html(
+                "這句要帶一檔才出得了正確資料。請打四碼，例如 <code>2330</code>；"
+                "或先查一檔，再用上一檔。",
+                reply_markup=self._why_hub_keyboard(""),
+                disable_web_page_preview=True,
+            )
+            return True
+        await self._run_intent_kind(
+            message, uid, kind, code, update=update, context=context
+        )
+        return True
+
+    async def _run_intent_kind(
+        self,
+        message,
+        uid: str,
+        kind: str,
+        code: str,
+        *,
+        update=None,
+        context=None,
+    ) -> None:
+        from types import SimpleNamespace
+
+        code = str(code or "").strip()
+        if kind == "why":
+            await message.reply_html(why_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(message, code, uid)
+            return
+        if kind in ("lookup", "card"):
+            if kind == "card":
+                await self._send_decision_card_quick(message, code, uid)
+            else:
+                await self._send_card_to(message, code, uid)
+            return
+        if kind == "sell":
+            await message.reply_html(sell_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(message, code, uid)
+            return
+        if kind == "no_cost":
+            await message.reply_html(no_cost_honest_html(), disable_web_page_preview=True)
+            await self._send_chips_to(message, code, uid)
+            return
+        if kind == "chips":
+            await self._send_chips_to(message, code, uid)
+            return
+        if kind == "industry":
+            await self._send_industry(message, code)
+            return
+        if kind == "fund":
+            await self._send_fund_to(message, code)
+            return
+        user = getattr(message, "from_user", None)
+        upd = update if update is not None else SimpleNamespace(
+            message=message, effective_user=user
+        )
+        ctx = context if context is not None else SimpleNamespace(args=[])
+        if kind == "market":
+            await self.market_cmd(upd, ctx)
+            return
+        if kind == "flow":
+            await self.flow_cmd(upd, ctx)
+            return
+        if kind == "screen":
+            await self.screen_cmd(upd, ctx)
+            return
+        if kind == "portfolio":
+            await self.portfolio_cmd(upd, ctx)
+            return
+        if kind == "watch":
+            await self.watch_cmd(upd, ctx)
+            return
+        if kind == "daytrade":
+            await self.daytrade_cmd(upd, ctx)
+            return
+        if kind == "overnight":
+            await self.overnight_cmd(upd, ctx)
+            return
+        if kind == "streak":
+            await self.streak_cmd(upd, ctx)
+            return
+        if kind == "ai":
+            await self._send_ai_desk_view(message, uid)
+            return
+        if kind == "help":
+            await self.help_cmd(upd, ctx)
+            return
+        if kind == "report":
+            await self.report_cmd(upd, ctx)
+            return
+        await self._send_card_to(message, code, uid)
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -3451,6 +3713,11 @@ class WayneTelegramBot:
             logger.info("主選單：觀察 uid=%s", uid)
             await self.watch_cmd(update, context)
             return
+        if text in ("原因",) or text.lower().lstrip("/") == "why":
+            logger.info("主選單：原因 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.why_cmd(update, context)
+            return
         if text in (MENU_BTN_REPORT, "回報問題", "狀況回覆", "狀況"):
             logger.info("主選單：回報 uid=%s", uid)
             await self.report_cmd(update, context)
@@ -3461,6 +3728,7 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
+        why_follow = None
         async with self._pending_lock(actor):
             pending = self._pending.get(actor, "")
             if pending.startswith("fbuy:"):
@@ -3475,63 +3743,85 @@ class WayneTelegramBot:
                     update.message, uid, body=raw, photo_file_id=""
                 )
                 return
-            pending = self._pending.pop(actor, "")
-            if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
-                handled = await self._handle_pending_pick(update.message, uid, pending, text, actor=actor)
-                if handled:
-                    return
-            if pending == "sell" or pending.startswith("sell:"):
-                code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
-                held_lots = self._held_lots_for(uid, code) if code else None
-                parsed_code, lots, price = self._parse_sell_text(
-                    text, code, held_lots=held_lots, uid=uid
-                )
-                if parsed_code is None:
-                    self._pending[actor] = pending or "sell"
-                    if held_is_odd_lot_only(held_lots):
-                        hint = _sell_holdings_prompt(code or "代號", held_lots)
-                    else:
-                        hint = (
-                            "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
-                            "也可：代號 張數 價格　例如：2330 1 520"
-                        )
-                    await update.message.reply_text(
-                        hint,
-                        reply_markup=self._keyboard(),
+            if pending == "why":
+                self._pending.pop(actor, None)
+                why_follow = text
+            else:
+                pending = self._pending.pop(actor, "")
+                if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
+                    handled = await self._handle_pending_pick(
+                        update.message, uid, pending, text, actor=actor
                     )
-                    return
-                msg = await asyncio.to_thread(
-                    record_sell, self.db_path, uid, parsed_code, lots, price
-                )
-                await update.message.reply_text(msg, reply_markup=self._keyboard())
-                return
-            if pending == "buy" or pending.startswith("buy:"):
-                code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
-                parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
-                if parsed_code is None:
-                    self._pending[actor] = pending or "buy"
+                    if handled:
+                        return
+                if pending == "sell" or pending.startswith("sell:"):
+                    code = pending.split(":", 1)[1] if pending.startswith("sell:") else ""
                     held_lots = self._held_lots_for(uid, code) if code else None
-                    if code:
-                        hint = _buy_holdings_prompt(code, held_lots)
-                    else:
-                        hint = (
-                            "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
-                            "也可：代號 張數 價格　例如：2330 1 500"
-                        )
-                    await update.message.reply_text(
-                        hint,
-                        reply_markup=self._keyboard(),
+                    parsed_code, lots, price = self._parse_sell_text(
+                        text, code, held_lots=held_lots, uid=uid
                     )
+                    if parsed_code is None:
+                        self._pending[actor] = pending or "sell"
+                        if held_is_odd_lot_only(held_lots):
+                            hint = _sell_holdings_prompt(code or "代號", held_lots)
+                        else:
+                            hint = (
+                                "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                                "也可：代號 張數 價格　例如：2330 1 520"
+                            )
+                        await update.message.reply_text(
+                            hint,
+                            reply_markup=self._keyboard(),
+                        )
+                        return
+                    msg = await asyncio.to_thread(
+                        record_sell, self.db_path, uid, parsed_code, lots, price
+                    )
+                    await update.message.reply_text(msg, reply_markup=self._keyboard())
                     return
-                hits = lookup_stocks(self.db_path, parsed_code)
-                name = hits[0]["stock_name"] if hits else parsed_code
-                msg = await asyncio.to_thread(
-                    record_buy, self.db_path, uid, parsed_code, name, lots, price
-                )
-                await update.message.reply_text(msg, reply_markup=self._keyboard())
+                if pending == "buy" or pending.startswith("buy:"):
+                    code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
+                    parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
+                    if parsed_code is None:
+                        self._pending[actor] = pending or "buy"
+                        held_lots = self._held_lots_for(uid, code) if code else None
+                        if code:
+                            hint = _buy_holdings_prompt(code, held_lots)
+                        else:
+                            hint = (
+                                "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                                "也可：代號 張數 價格　例如：2330 1 500"
+                            )
+                        await update.message.reply_text(
+                            hint,
+                            reply_markup=self._keyboard(),
+                        )
+                        return
+                    hits = lookup_stocks(self.db_path, parsed_code)
+                    name = hits[0]["stock_name"] if hits else parsed_code
+                    msg = await asyncio.to_thread(
+                        record_buy, self.db_path, uid, parsed_code, name, lots, price
+                    )
+                    await update.message.reply_text(msg, reply_markup=self._keyboard())
+                    return
+        if why_follow is not None:
+            handled = await self._dispatch_intent(
+                update.message,
+                uid,
+                why_follow,
+                from_why=True,
+                update=update,
+                context=context,
+            )
+            if handled:
                 return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
+            handled = await self._dispatch_intent(
+                update.message, uid, text, from_why=False, update=update, context=context
+            )
+            if handled:
+                return
             hits = lookup_stocks(self.db_path, text)
             if len(hits) == 1:
                 code = str(hits[0]["stock_id"])
@@ -4559,6 +4849,17 @@ class WayneTelegramBot:
             uid = str(q.from_user.id)
             await self._send_card_to(q.message, data[2:], uid)
             return
+        if data.startswith("ys:"):
+            uid = str(q.from_user.id)
+            code = data[3:].strip()
+            await q.message.reply_html(sell_honest_html(), disable_web_page_preview=True)
+            await self._send_card_to(q.message, code, uid)
+            return
+        if data.startswith("yw:"):
+            uid = str(q.from_user.id)
+            kind = data[3:].strip()
+            await self._run_intent_kind(q.message, uid, kind, "")
+            return
         if data.startswith("h:"):
             code = data[2:].strip()
             uid = str(q.from_user.id)
@@ -4698,17 +4999,7 @@ class WayneTelegramBot:
                 logger.exception("字型預熱失敗")
             try:
                 await app.bot.set_my_commands(
-                    [
-                        BotCommand("menu", "回到主選單（下方兩排）"),
-                        BotCommand("market", "大盤指數與風險"),
-                        BotCommand("start", "開始"),
-                        BotCommand("help", "使用說明"),
-                        BotCommand("screen", "海選"),
-                        BotCommand("portfolio", "持股"),
-                        BotCommand("watch", "觀察"),
-                        BotCommand("flow", "資金移動"),
-                        BotCommand("industry", "產業說明"),
-                    ]
+                    [BotCommand(name, desc) for name, desc in TELEGRAM_BOT_COMMANDS]
                 )
                 await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
             except Exception:
@@ -4731,6 +5022,7 @@ class WayneTelegramBot:
         )
         app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
         app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
+        app.add_handler(CommandHandler("why", self._wrap_cmd(self.why_cmd)))
         app.add_handler(CommandHandler("market", self._wrap_cmd(self.market_cmd)))
         app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))
         app.add_handler(CommandHandler("screen", self._wrap_cmd(self.screen_cmd)))
