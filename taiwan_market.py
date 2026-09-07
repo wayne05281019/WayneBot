@@ -3254,12 +3254,13 @@ def _outlook_tx_foreign_lines(
     except (TypeError, ValueError):
         return []
     line = f"外資台指期　買多 {oi_long:,}口　買空 {oi_short:,}口"
-    lines = _outlook_wrap(line)
     d = _norm_ymd(info.get("date") or "")
     ref = _norm_ymd(as_of or "")
     if d and ref and d != ref:
-        lines.append(f"（{d}）")
-    return lines
+        from trading_calendar import format_trading_date_zh
+
+        line += f"　資料 {format_trading_date_zh(d)}"
+    return _outlook_wrap(line)
 
 
 def _outlook_flow_plain_lines(
@@ -3359,8 +3360,7 @@ def format_screen_market_outlook_html(
         ixic_pct=float(ixic) if ixic is not None else None,
     )
     head = headline_lines(
-        "<b>WayneBot 海選</b>",
-        f"昨收　{html_escape(format_trading_date_zh(ref))}" if ref else "昨收",
+        f"<b>WayneBot 海選</b>　{html_escape(format_trading_date_zh(ref))}" if ref else "<b>WayneBot 海選</b>",
         "＝＝大盤狀況＝＝",
     )
     body: List[str] = list(wrap_cjk_lines(action, 18, unit="chars"))
@@ -3368,7 +3368,7 @@ def format_screen_market_outlook_html(
         close = snap.get("close")
         chg1 = snap.get("chg1_pct")
         if close:
-            body.append(f"加權昨收 <b>{float(close):,.2f}</b>")
+            body.append(f"加權收盤 <b>{float(close):,.2f}</b>")
         pct_bits: List[str] = []
         if chg1 is not None:
             pct_bits.append(html_escape(_fmt_signed_pct(chg1)))

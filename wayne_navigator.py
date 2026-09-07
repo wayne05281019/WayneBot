@@ -409,6 +409,7 @@ class NavigatorEngine:
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
+            monthly_stage_from_ohlc,
             prev_close_from_change_pct,
             profit_floor_at,
             resolve_daily_change_pct,
@@ -659,6 +660,15 @@ class NavigatorEngine:
             except Exception:
                 pass
         badges.append(regime)
+        try:
+            stage_src = df["close"].where(~df["is_halt"]) if "is_halt" in df.columns else df["close"]
+            monthly_kind, monthly_stage, monthly_short = monthly_stage_from_ohlc(
+                df["date"].tolist(), stage_src.tolist()
+            )
+        except Exception:
+            monthly_kind, monthly_stage, monthly_short = "", "", ""
+        if monthly_stage:
+            badges.append(monthly_stage)
         # 高低／均線略過無量日；20 日表要含官方無量交易日，否則冷門／KY 會跳 9/2、9/3。
         table_src = df
         table = table_src.tail(lookback)[
@@ -751,6 +761,9 @@ class NavigatorEngine:
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "stance": stance,
             "stance_kind": stance_kind,
+            "monthly_stage": monthly_stage,
+            "monthly_stage_kind": monthly_kind,
+            "monthly_stage_short": monthly_short,
             "table": table,
             "_ohlc": df,
         }
@@ -1446,6 +1459,8 @@ def _badge_style(text: str):
     """徽章：狀態用實心白字；已除權這類事實才白底描邊。"""
     C = _CARD
     t = str(text or "")
+    if t.startswith("月K"):
+        return C["navy"], C["white"]
     hot_keys = ("創", "新高", "少追", "過熱", "多頭", "上坡", "突破", "注意", "背離")
     cold_keys = ("低", "冷", "超跌", "止跌", "下坡", "箱型")
     if any(k in t for k in hot_keys) or ("高" in t and "低" not in t):
@@ -1817,7 +1832,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     try:
         from decision_card_signals import stance_explain
 
-        stance_note = stance_explain(str(card.get("stance_kind") or "wait"), sell_note=sell_sub)
+        stance_note = stance_explain(
+            str(card.get("stance_kind") or "wait"),
+            sell_note=sell_sub,
+            card=card,
+        )
     except Exception:
         stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
     stance_h = 6.2
@@ -1828,6 +1847,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         b = str(b or "").strip()
         if b and "None" not in b and b not in badges:
             badges.append(b)
+    monthly = str(card.get("monthly_stage") or "").strip()
+    if monthly and monthly not in badges:
+        badges.append(monthly)
+    if len(badges) > 5:
+        keep_m = monthly if monthly in badges else ""
+        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
+        badges = (core + [keep_m]) if keep_m else core
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows, row, row_w = [], [], 0.0
@@ -2271,6 +2297,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
     bias_s = f"{float(bias):+.1f}%" if bias is not None else "—"
+    month_s = str(card.get("monthly_stage_short") or "").strip()
     from decision_card_signals import volume_headline_rank, volume_rank_pair_text
 
     vol_lab, vol_n = volume_headline_rank(
@@ -2323,6 +2350,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("月空間", f"{card['space_20']}%"),
             kv_compact("季空間", f"{card['space_60']}%"),
             kv_compact("月乖離", bias_s),
+            *([kv_compact("月K", month_s)] if month_s else []),
         ),
         section(
             kv_compact("溫度", card.get("temp_c") or "—"),
@@ -2522,6 +2550,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
                 regime = bit
             continue
         rest.append(bit)
+    monthly_bit = str(card.get("monthly_stage") or "").strip()
+    if monthly_bit:
+        rest = [x for x in rest if x != monthly_bit]
+        rest.insert(0, monthly_bit)
     # 格局白字、與時間同字級；產業上移後除權／量排名往左。
     meta_x = 20.2
     if regime:

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import pytest
+
 from decision_card_signals import (
     card_daily_stance,
     double_green_breakout,
@@ -190,6 +192,196 @@ def test_stance_explain_is_plain_speech():
     sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
     assert "不是叫你買" in sell
     assert "買訊" not in sell
+    # 月K不寫進第二行，避免跟表上月乖離撞名。
+    staged = stance_explain("wait", monthly_stage="月K還在往上")
+    assert not staged.startswith("月K")
+    assert "20日表" in staged
+
+
+def test_stance_explain_follows_table_colors():
+    """第二行對最新列／獲利／月乖離，不講月K、不在長線低喊減碼。"""
+    from decision_card_signals import table_reads_as_low
+
+    # 2383 型：獲利粉紅、空頭、月乖離綠、預警低
+    card_2383 = {
+        "gain_pct": 34.0,
+        "space_20": 20,
+        "bias_monthly": -3.2,
+        "badges": ["空頭排列", "月K還在往上"],
+        "table": [
+            {
+                "高低": "No",
+                "預警": "K20低",
+                "profit_pct": 34.0,
+                "bias_monthly": -3.2,
+            }
+        ],
+    }
+    txt = stance_explain("wait", card=card_2383)
+    assert "月K" not in txt
+    assert "往上" not in txt
+    assert "偏空" in txt
+    assert "月線下" in txt
+    assert "先等" in txt
+    assert not table_reads_as_low(card_2383)
+
+    # 4915 9/7 型：近480日低、空間極窄、減碼句要關掉
+    card_4915 = {
+        "gain_pct": 1.3,
+        "space_20": 3,
+        "bias_monthly": 0.1,
+        "badges": ["近480日低", "整理格局", "月K已走空"],
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "table": [{"高低": "No", "預警": "No", "profit_pct": 1.3, "bias_monthly": 0.1}],
+    }
+    assert table_reads_as_low(card_4915)
+    txt = stance_explain(
+        "wait",
+        sell_note="現在高點跟熱度都退了，先別追、也先別加碼。有持股就先出一點",
+        card=card_4915,
+    )
+    assert "先出一點" not in txt
+    assert "高點" not in txt
+    assert "長線低" in txt
+    assert "空間很小" in txt
+
+    # 4915 9/4 型：同一段低，但今天格子是 20高 → 講高，不講壓低
+    card_4915_hi = {
+        "gain_pct": 2.4,
+        "space_20": 3,
+        "bias_monthly": 1.1,
+        "badges": ["近480日低", "整理格局"],
+        "table": [{"高低": "20高", "預警": "K20高", "profit_pct": 2.4, "bias_monthly": 1.1}],
+    }
+    assert not table_reads_as_low(card_4915_hi)
+    txt = stance_explain("wait", card=card_4915_hi)
+    assert "小區間的高" in txt
+    assert "先別追" in txt
+    assert "長線低" not in txt
+
+    # 3105 型：漲多、月乖離正
+    card_run = {
+        "gain_pct": 68.1,
+        "space_20": 39,
+        "bias_monthly": 9.8,
+        "badges": ["多頭格局"],
+        "table": [{"高低": "No", "預警": "No", "profit_pct": 68.1, "bias_monthly": 9.8}],
+    }
+    txt = stance_explain("avoid", card=card_run)
+    assert "拉很開" in txt
+    assert "月線" in txt
+    assert "別追" in txt
+
+
+def test_stance_explain_missing_bias_does_not_invent_monthly():
+    """LINE／海選沒月乖離時，不准說貼著月線。"""
+    txt = stance_explain("wait", card={"profit": 12.3, "close": 100.0}, surface="list")
+    assert "貼著月線" not in txt
+    assert "月線" not in txt
+    assert "紅箭頭不是買進訊號" in txt
+    assert "看下面這張" not in txt
+
+
+def test_ma_matches_price_and_close_gap():
+    from decision_card_signals import close_gap_broken, ma_matches_price
+
+    assert ma_matches_price(100, 98)
+    assert not ma_matches_price(67.1, 1004.1)
+    assert not ma_matches_price(67.1, None)
+    assert not close_gap_broken(None, 67.1)
+    assert close_gap_broken(1490, 67.1)
+    assert not close_gap_broken(100, 101)
+
+
+def test_monthly_stage_from_ohlc_three_phases():
+    from decision_card_signals import (
+        MONTHLY_STAGE_DOWN,
+        MONTHLY_STAGE_SIDE,
+        MONTHLY_STAGE_UP,
+        monthly_stage_from_ohlc,
+    )
+
+    def yyyymm(i: int) -> str:
+        y, m = divmod(i, 12)
+        return f"{2024 + y}{m + 1:02d}28"
+
+    rising = [10.0 + i for i in range(18)]
+    dates = [yyyymm(i) for i in range(18)]
+    kind, label, short = monthly_stage_from_ohlc(dates, rising)
+    assert kind == "up"
+    assert label == MONTHLY_STAGE_UP
+    assert short == "還在往上"
+
+    falling = [40.0 - i for i in range(18)]
+    kind, label, short = monthly_stage_from_ohlc(dates, falling)
+    assert kind == "down"
+    assert label == MONTHLY_STAGE_DOWN
+    assert short == "已走空"
+
+    # 均線仍往上但本月大跌 → 整理，不喊往上
+    pullback = list(rising)
+    pullback[-1] = pullback[-2] * 0.8
+    kind, label, short = monthly_stage_from_ohlc(dates, pullback)
+    assert kind == "side"
+    assert label == MONTHLY_STAGE_SIDE
+    assert short == "在整理"
+
+    kind, label, short = monthly_stage_from_ohlc(["20260115"], [10])
+    assert (kind, label, short) == ("", "", "")
+
+
+@pytest.mark.production_db
+def test_hot_names_monthly_stage_matches_chart_phase():
+    """2383 月K還在往上、4915 已走空；不是買訊。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    eng = NavigatorEngine(get_db_path())
+    up = eng.get_decision_card("2383", merge_live=False)
+    assert up.get("monthly_stage_kind") == "up"
+    assert up.get("monthly_stage") == "月K還在往上"
+    down = eng.get_decision_card("4915", merge_live=False)
+    assert down.get("monthly_stage_kind") == "down"
+    assert down.get("monthly_stage") == "月K已走空"
+
+
+@pytest.mark.production_db
+def test_2383_4915_stance_note_matches_latest_row():
+    """態度第二行對最新列顏色；月K只在徽章。"""
+    from config import get_db_path
+    from sell_discipline import attach_sell, sell_note_short
+    from wayne_navigator import NavigatorEngine
+
+    eng = NavigatorEngine(get_db_path())
+    up = eng.get_decision_card("2383", merge_live=False)
+    attach_sell(up)
+    note = stance_explain(
+        str(up.get("stance_kind") or "wait"),
+        sell_note=sell_note_short(up),
+        card=up,
+    )
+    assert "月K還在往上" in (up.get("badges") or [])
+    assert "月K" not in note
+    assert "往上" not in note
+    assert "偏空" in note
+
+    down = eng.get_decision_card("4915", merge_live=False)
+    attach_sell(down)
+    note = stance_explain(
+        str(down.get("stance_kind") or "wait"),
+        sell_note=sell_note_short(down),
+        card=down,
+    )
+    last = down["table"].iloc[0]
+    hi = str(last.get("高低") or "") in {"20高", "10高"} or str(last.get("預警") or "") == "K20高"
+    if hi:
+        assert "高" in note
+        assert "長線低" not in note
+    else:
+        assert sell_note_short(down) == ""
+        assert "先出一點" not in note
+        assert "長線低" in note or "低附近" in note
 
 
 def test_live_decision_card_png_draws_query_clock(tmp_path, monkeypatch):

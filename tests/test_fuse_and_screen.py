@@ -267,6 +267,25 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("大盤狀況", morning[0]["html"])
         self.assertNotIn("＝＝半年高", "\n".join(p["html"] for p in morning))
 
+    def test_screening_payload_puts_date_on_first_headline(self):
+        from screening_engine import format_screening_payload
+
+        item = {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100,
+            "volume": 8000,
+            "pct_change": 2,
+            "q60r": 2.1,
+            "ma20": 98,
+            "ma60": 95,
+        }
+        payload = format_screening_payload({"leave_zero": [item]}, "20260907")
+        first = (payload[0]["html"] or "").split("\n", 1)[0]
+        self.assertIn("WayneBot 海選", first)
+        self.assertIn("2026/09/07", first)
+        self.assertNotIn("昨收", first)
+
     def test_leave_zero_is_first_screening_section(self):
         from screening_engine import format_line_share_text, format_screening_payload
 
@@ -2113,18 +2132,18 @@ class AIDeskTest(unittest.TestCase):
             ai = run_ai_desk(path, "1001", results, "20260831")
             blob = " ".join(ai.get("bought") or [])
             self.assertIn("2330", blob)
-            self.assertIn("2303", blob)
+            self.assertNotIn("2303", blob)
             self.assertNotIn("2317", blob)
             self.assertNotIn("2412", blob)
             eng = PortfolioEngine(path)
             summary = eng.get_portfolio_summary(ai_user_id("1001"))
-            self.assertGreaterEqual(summary["positions_count"], 2)
+            self.assertEqual(summary["positions_count"], 1)
             self.assertLess(summary["cash"], 500000)
             by_id = {p["stock_id"]: p for p in summary["positions"]}
             self.assertIn("2330", by_id)
             self.assertEqual(by_id["2330"]["shares"], 1000)
-            self.assertEqual(by_id["2303"]["shares"], 3000)
             self.assertAlmostEqual(ai.get("slot") or 0, 500000.0 / MAX_SLOTS, delta=1)
+            self.assertEqual(ai.get("max_held"), 1)
             html = ai.get("html") or ""
             self.assertIn("AI 模擬帳戶", html)
             self.assertIn("已用槽", html)
@@ -2132,10 +2151,11 @@ class AIDeskTest(unittest.TestCase):
             self.assertIn("停損", html)
             self.assertIn("停利", html)
             self.assertIn("成交紀錄", html)
+            self.assertIn("────────────────", html)
             conn = sqlite3.connect(path)
             fills = conn.execute("SELECT stock_id, action, shares, bucket FROM ai_fills ORDER BY id").fetchall()
             conn.close()
-            self.assertGreaterEqual(len(fills), 2)
+            self.assertEqual(len(fills), 1)
             self.assertEqual(fills[0][0], "2330")
             self.assertEqual(fills[0][1], "BUY")
             self.assertEqual(fills[0][2], 1000)
@@ -2230,9 +2250,9 @@ class AIDeskTest(unittest.TestCase):
             sold = " ".join(ai.get("sold") or [])
             bought = " ".join(ai.get("bought") or [])
             self.assertIn("00892", sold)
-            self.assertIn("4915", bought)
+            self.assertFalse(ai.get("bought"))
             ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
-            self.assertEqual(ids, {"9958", "3703", "4915"})
+            self.assertEqual(ids, {"9958", "3703"})
         finally:
             os.remove(path)
 
@@ -2270,18 +2290,6 @@ class AIDeskTest(unittest.TestCase):
         try:
             eng = PortfolioEngine(path)
             eng.ensure_user_exists(ai_user_id("1001"))
-            conn = sqlite3.connect(path)
-            for i, sid in enumerate(("1101", "1102"), 1):
-                conn.execute(
-                    """
-                    INSERT INTO user_positions
-                    (user_id, stock_id, stock_name, shares, cost_price, highest_price, buy_date, warning_days, strategy_type)
-                    VALUES (?,?,?,?,?,?,?,0,'MOMENTUM')
-                    """,
-                    (ai_user_id("1001"), sid, f"占槽{i}", 1000, 10.0, 10.0, "20260828"),
-                )
-            conn.commit()
-            conn.close()
             ai = run_ai_desk(
                 path,
                 "1001",
@@ -2291,8 +2299,108 @@ class AIDeskTest(unittest.TestCase):
             self.assertTrue(ai.get("bought"))
             summary = eng.get_portfolio_summary(ai_user_id("1001"))
             by_id = {p["stock_id"]: p for p in summary["positions"]}
+            self.assertEqual(summary["positions_count"], 1)
             self.assertEqual(by_id["2330"]["shares"], 1000)
             self.assertGreater(summary["cash"], 350000)
+        finally:
+            os.remove(path)
+
+    def test_market_deploy_cap_reserves_cash_until_dip(self):
+        from unittest.mock import patch
+
+        from ai_trader import market_deploy_cap
+
+        dips = {"leave_zero": [{"stock_id": "2330"}], "golden_buy": []}
+        with patch(
+            "taiwan_market.analyze_taiwan_market",
+            return_value={"ok": True, "regime": "bull", "falling_risk": 10, "vs_ma20_pct": 2.0},
+        ):
+            self.assertEqual(market_deploy_cap("x.db", "20260907", dips), 1)
+        with patch(
+            "taiwan_market.analyze_taiwan_market",
+            return_value={"ok": True, "regime": "bear", "falling_risk": 40, "vs_ma20_pct": -2.0},
+        ):
+            self.assertEqual(market_deploy_cap("x.db", "20260907", dips), 2)
+            self.assertEqual(market_deploy_cap("x.db", "20260907", {"select_01": [{"stock_id": "2412"}]}), 1)
+
+    def test_bull_market_does_not_fill_three_slots(self):
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [
+                    {"stock_id": "2330", "stock_name": "台積電", "close": 100.0},
+                    {"stock_id": "2303", "stock_name": "聯電", "close": 50.0},
+                    {"stock_id": "2454", "stock_name": "聯發科", "close": 80.0},
+                ]
+            }
+            ai = run_ai_desk(path, "1001", results, "20260831")
+            eng = PortfolioEngine(path)
+            summary = eng.get_portfolio_summary(ai_user_id("1001"))
+            self.assertEqual(summary["positions_count"], 1)
+            self.assertEqual(ai.get("max_held"), 1)
+            self.assertGreater(summary["cash"], 300000)
+            self.assertIn("留現金", ai.get("html") or "")
+        finally:
+            os.remove(path)
+
+    def test_bear_market_second_slot_is_dip_only(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+                "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
+                "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
+            }
+            with patch(
+                "taiwan_market.analyze_taiwan_market",
+                return_value={"ok": True, "regime": "bear", "falling_risk": 40, "vs_ma20_pct": -2.0},
+            ):
+                ai = run_ai_desk(path, "1001", results, "20260831")
+            eng = PortfolioEngine(path)
+            summary = eng.get_portfolio_summary(ai_user_id("1001"))
+            ids = {p["stock_id"] for p in summary["positions"]}
+            self.assertEqual(ai.get("max_held"), 2)
+            self.assertEqual(ids, {"2330", "4127"})
+            self.assertNotIn("2412", ids)
+            self.assertGreater(summary["cash"], 150000)
+            html = ai.get("html") or ""
+            self.assertIn("────────", html)
+            self.assertIn("成交紀錄", html)
+        finally:
+            os.remove(path)
+
+    def test_ensure_ai_user_does_not_copy_legacy_book(self):
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, ensure_ai_user
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            eng = PortfolioEngine(path)
+            eng.ensure_user_exists("wayne_ai")
+            bought = eng.buy("wayne_ai", "20260831", "2330", "台積電", 100.0, 1000, reason="舊倉")
+            self.assertTrue(bought.get("success"))
+            uid = ensure_ai_user(eng, "1001")
+            self.assertEqual(uid, ai_user_id("1001"))
+            summary = eng.get_portfolio_summary(uid)
+            self.assertEqual(summary["positions_count"], 0)
+            self.assertAlmostEqual(summary["cash"], 500000)
         finally:
             os.remove(path)
 

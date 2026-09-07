@@ -474,19 +474,276 @@ def card_daily_stance(
     return "今天先看表，先等", "wait"
 
 
-def stance_explain(kind: str, *, sell_note: str = "") -> str:
-    """今日態度後面那句人話：告訴你現在先別急，不是下單指令。"""
-    note = str(sell_note or "").strip()
-    if note:
-        if "不是叫你買" not in note:
-            note = note.rstrip("。") + "。不是叫你買。"
-        return note
+MONTHLY_STAGE_UP = "月K還在往上"
+MONTHLY_STAGE_DOWN = "月K已走空"
+MONTHLY_STAGE_SIDE = "月K在整理"
+_MONTHLY_STAGE_SHORT = {
+    "up": "還在往上",
+    "down": "已走空",
+    "side": "在整理",
+}
+# 本月收比上月低超過這比例，即使 12 月均線還在爬也不喊往上（均線會慢一拍）。
+_MONTHLY_PULLBACK = 0.08
+
+
+def monthly_last_closes(dates, closes) -> list[float]:
+    """每個日曆月最後一根有效收盤。無量／停牌 0 元略過。"""
+    last: dict[str, tuple[str, float]] = {}
+    for raw_d, raw_c in zip(dates or [], closes or []):
+        ds = str(raw_d or "").replace("-", "").replace("/", "")[:8]
+        if len(ds) < 6:
+            continue
+        try:
+            cv = float(raw_c)
+        except (TypeError, ValueError):
+            continue
+        if cv != cv or cv <= 0:
+            continue
+        ym = ds[:6]
+        prev = last.get(ym)
+        if prev is None or ds >= prev[0]:
+            last[ym] = (ds, cv)
+    return [last[k][1] for k in sorted(last)]
+
+
+def monthly_stage_from_ohlc(dates, closes) -> tuple[str, str, str]:
+    """每月收盤相對近 12 個月均線：往上／走空／整理。不是買訊，不改海選。
+
+    回傳 (kind, 全句, 短句)。資料不足三個月就空白，不上卡。
+    """
+    series = monthly_last_closes(dates, closes)
+    if len(series) < 3:
+        return "", "", ""
+    cur = float(series[-1])
+    prev = float(series[-2])
+    kind = "side"
+    if len(series) >= 13:
+        arr = np.asarray(series, dtype=float)
+        sma = pd.Series(arr).rolling(12, min_periods=12).mean().to_numpy()
+        sma_now = float(sma[-1])
+        sma_prev = float(sma[-2])
+        if sma_now == sma_now and sma_prev == sma_prev and sma_now > 0:
+            above = cur > sma_now
+            rising = sma_now + 1e-12 >= sma_prev
+            drop = (cur - prev) / prev if prev > 0 else 0.0
+            if above and rising and drop >= -_MONTHLY_PULLBACK:
+                kind = "up"
+            elif (not above) and (not rising) and drop <= _MONTHLY_PULLBACK:
+                kind = "down"
+            else:
+                kind = "side"
+    else:
+        older = float(series[-3])
+        if cur > prev > older:
+            kind = "up"
+        elif cur < prev < older:
+            kind = "down"
+    label = {
+        "up": MONTHLY_STAGE_UP,
+        "down": MONTHLY_STAGE_DOWN,
+        "side": MONTHLY_STAGE_SIDE,
+    }[kind]
+    return kind, label, _MONTHLY_STAGE_SHORT[kind]
+
+
+def ma_matches_price(close, ma, *, max_ratio: float = 3.0) -> bool:
+    """均線跟現價差超過這倍，多半是缺列／減資沒還原，不上卡、不進重點觀察。"""
+    try:
+        c = float(close)
+        m = float(ma)
+    except (TypeError, ValueError):
+        return False
+    if c <= 0 or m <= 0:
+        return False
+    return max(c, m) / min(c, m) <= float(max_ratio)
+
+
+def close_gap_broken(prev, cur, *, max_move: float = 0.45) -> bool:
+    """跟上根收盤差超過這成數，當缺列／分割，月乖離不能信。"""
+    try:
+        p = float(prev)
+        c = float(cur)
+    except (TypeError, ValueError):
+        return False
+    if p <= 0 or c <= 0:
+        return False
+    return abs(c / p - 1.0) > float(max_move)
+
+
+def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
+    """最新一列＋卡面數字，給態度第二行對表。沒有表就用卡上現成欄。"""
+    card = card or {}
+    row: Dict[str, Any] = {}
+    tbl = card.get("table")
+    if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
+        try:
+            row = tbl.iloc[0].to_dict()
+        except Exception:
+            row = {}
+    elif isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
+        row = dict(tbl[0])
+
+    def _num(*keys) -> float | None:
+        for k in keys:
+            for src in (card, row):
+                if k not in src or src.get(k) in (None, ""):
+                    continue
+                try:
+                    return float(src.get(k))
+                except (TypeError, ValueError):
+                    continue
+        return None
+
+    def _txt(*keys) -> str:
+        for k in keys:
+            for src in (card, row):
+                v = src.get(k)
+                if v not in (None, ""):
+                    return str(v)
+        return ""
+
+    return {
+        "gain": _num("gain_pct", "profit_pct", "profit"),
+        "space": _num("space_20"),
+        "bias": _num("bias_monthly", "bias"),
+        "temp": _num("temp_num", "temp"),
+        "hl": _txt("高低", "hl"),
+        "alert": _txt("預警", "alert"),
+        "badges": [str(x) for x in (card.get("badges") or [])],
+    }
+
+
+def table_reads_as_low(card: Dict[str, Any] | None) -> bool:
+    """表在畫長線低／近低時，減碼句會跟格子打架，不上那句。"""
+    facts = last_table_facts(card)
+    badges = facts["badges"]
+    hl = facts["hl"]
+    alert = facts["alert"]
+    gain = facts["gain"]
+    space = facts["space"]
+    at_high = hl in {"20高", "10高"} or alert == "K20高"
+    g = 99.0 if gain is None else gain
+    if any(
+        str(b).startswith(
+            ("近480日低", "近240日低", "近120日低", "創480日新低", "創240日新低", "創120日新低")
+        )
+        for b in badges
+    ):
+        return (not at_high) and g < 15
+    if space is not None and space < 8 and g < 8 and not at_high:
+        return True
+    if (alert in {"60低", "K20低"} or hl in {"60低", "20低", "10低"}) and g < 8:
+        return True
+    return False
+
+
+def _look_table(on_list: bool) -> str:
+    return "先看高低卡再決定。" if on_list else "看下面這張表再決定。"
+
+
+def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool = False) -> str:
+    """依這張卡最新列／獲利／月乖離／徽章組一句，對齊底色，不講月K。"""
+    facts = last_table_facts(card)
+    gain = facts["gain"]
+    space = facts["space"]
+    bias = facts["bias"]
+    hl = facts["hl"]
+    alert = facts["alert"]
+    badges = facts["badges"]
+    k = str(kind or "wait")
+    g = 0.0 if gain is None else gain
+    has_bias = bias is not None
+    has_space = space is not None
+    at_high = hl in {"20高", "10高"} or alert == "K20高"
+    at_near_low = alert in {"60低", "K20低"} or hl in {"60低", "20低", "10低"}
+    long_low = any(
+        str(b).startswith(("近480日低", "近240日低", "近120日低", "創480日新低", "創240日新低", "創120日新低"))
+        for b in badges
+    )
+    bear = any(any(x in b for x in ("空頭排列", "空頭整理", "弱勢破底")) for b in badges)
+    weak_daily = bear or (has_bias and bias < -1) or at_near_low
+
+    if at_high:
+        if has_space and space < 8:
+            return "表貼在這段小區間的高。空間很小，先別追。"
+        if k == "avoid" or g >= 40:
+            return "表貼在高檔。今天別追。"
+        return "表貼在高檔。先別追，" + _look_table(on_list)
+
+    if long_low and g < 15:
+        if has_space and space < 8:
+            return "表還壓在長線低附近，這段空間很小。先看、先別急著買。"
+        return "表還壓在長線低附近。先看、先別急著買。"
+
+    if at_near_low and g < 8:
+        if has_bias and bias < -8:
+            return "表壓在低檔、月乖離偏負。先看、先別急著買。"
+        if bear or (has_bias and bias < -3):
+            return "日線偏空、表壓在低附近。先看、先別急著買。"
+        return "表還壓在低附近。先看、先別急著買。"
+
+    if k == "avoid" or g >= 40:
+        if has_bias and bias >= 8:
+            return "獲利已經拉很開，也高出月線一截。今天別追。"
+        return "獲利已經拉很開。今天別追。"
+
+    if g > 20 and weak_daily:
+        if has_bias and bias < -0.5:
+            return "離低點有一段了，但表還偏空、收在月線下。先等。"
+        return "離低點有一段了，但表還偏空。先等。"
+
+    if k == "watch":
+        if has_bias and bias < -8:
+            return "靠近低點、月乖離偏負。可以放進觀察，先別急著買。"
+        return "靠近低點可以放進觀察，先別急著買。"
+
+    if has_space and space < 8:
+        if has_bias and abs(bias) < 1:
+            return "這段空間很小，貼著月線。先看表再決定。"
+        return "這段空間很小。先看表再決定。"
+
+    if has_bias and abs(bias) < 0.5 and 8 <= g <= 25:
+        return "離低點有一段了，表貼著月線。先看再決定。"
+
+    if bear or (has_bias and bias < -3):
+        return "日線還偏空。今天先看表，先等。"
+
+    if g > 20:
+        return "離低點有一段了。今天沒有急著買或賣，" + _look_table(on_list)
+
+    return _stance_kind_fallback(k, on_list=on_list)
+
+
+def _stance_kind_fallback(kind: str, *, on_list: bool = False) -> str:
     k = str(kind or "wait")
     if k == "avoid":
         return "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
     if k == "watch":
-        return "靠近低點可以放進觀察，先別急著買。進場只看下面這張表。"
+        return "靠近低點可以放進觀察，先別急著買。"
+    if on_list:
+        return "今天沒有急著買或賣。紅箭頭不是買進訊號。"
     return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
+
+
+def stance_explain(
+    kind: str,
+    *,
+    sell_note: str = "",
+    card: Dict[str, Any] | None = None,
+    monthly_stage: str = "",
+    surface: str = "card",
+) -> str:
+    """今日態度後面那句：對這張20日表的數字和底色，不把月K階段寫進來。"""
+    del monthly_stage  # 月K只掛徽章，避免跟表上「月乖離」撞名。
+    on_list = str(surface or "card") == "list"
+    note = str(sell_note or "").strip()
+    if note and not table_reads_as_low(card):
+        if "不是叫你買" not in note:
+            note = note.rstrip("。") + "。不是叫你買。"
+        return note
+    if card:
+        return _stance_from_table(kind, card, on_list=on_list)
+    return _stance_kind_fallback(kind, on_list=on_list)
 
 
 def alert_tag(

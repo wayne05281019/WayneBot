@@ -609,12 +609,14 @@ class PortfolioEngine:
         ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
         quotes_map = self.load_quotes_for(ids, quotes_map)
         sell_notes = {}
+        readings = {}
         try:
             from sell_discipline import sell_notes_for_stocks
 
-            sell_notes = sell_notes_for_stocks(ids, self.db_path, full=True)
+            sell_notes = sell_notes_for_stocks(ids, self.db_path, full=True, readings=readings)
         except Exception:
             sell_notes = {}
+            readings = {}
         lines = [section_eq("我的持股（手記）"), "自己記的真實買入，不是觀察、也不是 AI 模擬倉。"]
         for h in holdings:
             code = str(h.get("stock_code") or h.get("stock_id") or "")
@@ -660,6 +662,9 @@ class PortfolioEngine:
             note = sell_notes.get(code) or ""
             if note:
                 lines.append(kv_compact("紀律", note))
+            month = str((readings.get(code) or {}).get("monthly_stage_short") or "").strip()
+            if month:
+                lines.append(kv_compact("月K", month))
             if h is not holdings[-1]:
                 lines.append("")
         return "\n".join(lines)

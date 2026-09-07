@@ -55,7 +55,8 @@ def test_line_stock_headline_no_yahoo_url():
     assert "獲利" in block and "12.3%" in block
     assert "60日低上來" in block
     assert "今天先看表，先等" in block
-    assert "不是下單指令" in block or "看下面這張" in block
+    assert "貼著月線" not in block
+    assert "紅箭頭不是買進訊號" in block
     assert "半導體業近期營收轉強" in block
     assert not any(ln.startswith(_pad_label(STANCE_LABEL)) for ln in lines)
     geju = next(ln for ln in lines if ln.startswith(_pad_label("格局")))

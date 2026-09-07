@@ -1000,7 +1000,10 @@ def test_format_screen_market_outlook_html_plain_language():
     )
     assert "大盤狀況" in html
     assert "可以照表看黃金買點" in html
-    assert "加權昨收" in html
+    assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/04")
+    assert "昨收" not in html.split("\n", 1)[0]
+    assert "(20260904)" not in html
+    assert "加權收盤" in html
     assert "那斯達克" in html
     assert "恐慌指數" in html
     assert "剛到" in html
@@ -1029,6 +1032,36 @@ def test_format_screen_market_outlook_html_plain_language():
     for ln in html.split("\n"):
         plain = re.sub(r"<[^>]+>", "", ln)
         assert _disp_w(plain) <= 40, plain
+
+
+def test_outlook_tx_foreign_lagged_date_is_plain():
+    """台指期未平倉日 ≠ 海選日時，寫「資料 年月日」，不要裸 (YYYYMMDD)。"""
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260907",
+        snap={
+            "ok": True,
+            "as_of": "20260907",
+            "close": 46551.12,
+            "chg1_pct": 0.32,
+            "vs_ma20_pct": 1.2,
+            "regime": "neutral",
+            "falling_risk": 20,
+            "tx_foreign_oi": {
+                "date": "20260904",
+                "oi_long": 8153,
+                "oi_short": 90542,
+                "oi_net": -82389,
+            },
+        },
+        us_snap={"ok": False},
+    )
+    assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/07")
+    assert "資料 2026/09/04（五）" in html
+    assert "(20260904)" not in html
+    assert "昨收" not in html.split("\n", 1)[0]
 
 
 def test_parse_taifex_tx_inst_oi_rows_picks_foreign():
