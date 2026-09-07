@@ -537,7 +537,7 @@ def format_ai_desk_html(
                 lines.extend(_ai_phone_lines(f"紀律：{note}"))
             month = str((readings.get(sid) or {}).get("monthly_stage_short") or "").strip()
             if month:
-                lines.extend(_ai_phone_lines(f"月線　{month}"))
+                lines.extend(_ai_phone_lines(f"月K　{month}"))
         empty = MAX_SLOTS - used
         if empty > 0:
             lines.extend(_ai_phone_lines(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"))

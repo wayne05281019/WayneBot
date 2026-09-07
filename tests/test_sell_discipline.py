@@ -248,9 +248,9 @@ def test_html_and_glance_wire_sell_notes():
     from portfolio_engine import PortfolioEngine
 
     assert "sell_notes_for_stocks" in inspect.getsource(format_ai_desk_html)
-    assert "月線" in inspect.getsource(format_ai_desk_html)
+    assert "月K" in inspect.getsource(format_ai_desk_html)
     assert "sell_notes_for_stocks" in inspect.getsource(PortfolioEngine.format_holdings_html)
-    assert "月線" in inspect.getsource(PortfolioEngine.format_holdings_html)
+    assert "月K" in inspect.getsource(PortfolioEngine.format_holdings_html)
 
 
 @pytest.mark.production_db
@@ -389,7 +389,9 @@ def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, mon
     )
     assert path and out.is_file()
     joined = "\n".join(seen)
-    assert "紅箭頭不是買進訊號" in joined
+    # mini 卡是 20高／獲利很大：第二行對表講高檔，不是套紅箭頭那句。
+    assert "表貼在高檔" in joined
+    assert "紅箭頭不是買進訊號" not in joined
     assert "紀律　" not in joined
 
 
@@ -508,7 +510,28 @@ def test_4915_20260904_sync_has_no_sell_caption():
     assert _photo_sell_caption("高低決策卡", card, fallback="高低決策卡") == "高低決策卡"
 
 
-def test_sell_notes_for_stocks_empty_inputs():
+def test_sell_note_short_skips_when_table_reads_low():
+    """近480日低且今天不是20高：減碼句不上卡。"""
+    card = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 1.3,
+        "space_20": 3,
+        "bias_monthly": 0.1,
+        "badges": ["近480日低"],
+        "table": [{"高低": "No", "預警": "No"}],
+    }
+    assert sell_note_short(card) == ""
+    assert sell_note_lines(card) == []
+    hot = {
+        "sell_action": "直接減碼",
+        "sell_why": "不同步（最高價但非最高溫）",
+        "gain_pct": 11.8,
+        "space_20": 5,
+        "badges": ["創20日新高"],
+        "table": [{"高低": "20高", "預警": "K20高"}],
+    }
+    assert sell_note_short(hot) == NOTE_HI_PRICE
     assert sell_notes_for_stocks([], "/no/such.db") == {}
     assert sell_notes_for_stocks(["3703"], "") == {}
 
@@ -531,7 +554,7 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
         assert full is True
         if readings is not None:
             readings["3703"] = {
-                "monthly_stage": "月線還在往上",
+                "monthly_stage": "月K還在往上",
                 "monthly_stage_short": "還在往上",
             }
         return {"3703": f"{NOTE_HI_TEMP}。不是叫你買。"}
@@ -539,7 +562,7 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = format_ai_desk_html(eng, uid)
     assert "紀律：" in html
-    assert "月線　還在往上" in html
+    assert "月K　還在往上" in html
     assert "先出一點" in html
     assert "不是叫你買" in html
     assert "<b>第 1 槽</b>" in html
@@ -561,7 +584,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
         assert full is True
         if readings is not None:
             readings["3035"] = {
-                "monthly_stage": "月線已走空",
+                "monthly_stage": "月K已走空",
                 "monthly_stage_short": "已走空",
             }
         return {"3035": f"{NOTE_SYNC_LEFT}。不是叫你買。"}
@@ -578,7 +601,7 @@ def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):
         },
     )
     assert f"{NOTE_SYNC_LEFT}。不是叫你買。" in html
-    assert "月線" in html.split("智原")[-1].split("致伸")[0]
+    assert "月K" in html.split("智原")[-1].split("致伸")[0]
     assert "已走空" in html
     assert html.split("致伸")[-1].count("紀律") == 0
 

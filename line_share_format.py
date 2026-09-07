@@ -162,7 +162,7 @@ def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
             badges=item.get("badges") or [],
         )
     sell = str(item.get("sell_note") or "").strip()
-    explain = stance_explain(kind or "wait", sell_note=sell)
+    explain = stance_explain(kind or "wait", sell_note=sell, card=item)
     return title, explain
 
 

@@ -154,6 +154,13 @@ def sell_note_lines(card: Dict[str, Any]) -> List[str]:
 
 def sell_note_short(card: Dict[str, Any]) -> str:
     """介紹圖／決策卡第二行：現況＋現在怎麼做。"""
+    try:
+        from decision_card_signals import table_reads_as_low
+
+        if table_reads_as_low(card):
+            return ""
+    except Exception:
+        pass
     act = str(card.get("sell_action") or "").strip()
     if not act:
         return ""

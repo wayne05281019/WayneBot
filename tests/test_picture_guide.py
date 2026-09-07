@@ -36,8 +36,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "外資+投信" in blob
     assert "四格" in blob
     assert "第 2 張" in blob
-    assert "月線還在往上" in blob
-    assert CACHE_VER == "v6"
+    assert "月K還在往上" in blob
+    assert CACHE_VER == "v7"
     assert PAGE_WIDTH >= 1440
     for p in paths:
         assert os.path.getsize(p) > 20_000

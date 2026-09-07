@@ -664,7 +664,7 @@ class PortfolioEngine:
                 lines.append(kv_compact("紀律", note))
             month = str((readings.get(code) or {}).get("monthly_stage_short") or "").strip()
             if month:
-                lines.append(kv_compact("月線", month))
+                lines.append(kv_compact("月K", month))
             if h is not holdings[-1]:
                 lines.append("")
         return "\n".join(lines)
