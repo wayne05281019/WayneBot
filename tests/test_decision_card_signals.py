@@ -274,6 +274,26 @@ def test_stance_explain_follows_table_colors():
     assert "別追" in txt
 
 
+def test_stance_explain_missing_bias_does_not_invent_monthly():
+    """LINE／海選沒月乖離時，不准說貼著月線。"""
+    txt = stance_explain("wait", card={"profit": 12.3, "close": 100.0}, surface="list")
+    assert "貼著月線" not in txt
+    assert "月線" not in txt
+    assert "紅箭頭不是買進訊號" in txt
+    assert "看下面這張" not in txt
+
+
+def test_ma_matches_price_and_close_gap():
+    from decision_card_signals import close_gap_broken, ma_matches_price
+
+    assert ma_matches_price(100, 98)
+    assert not ma_matches_price(67.1, 1004.1)
+    assert not ma_matches_price(67.1, None)
+    assert not close_gap_broken(None, 67.1)
+    assert close_gap_broken(1490, 67.1)
+    assert not close_gap_broken(100, 101)
+
+
 def test_monthly_stage_from_ohlc_three_phases():
     from decision_card_signals import (
         MONTHLY_STAGE_DOWN,

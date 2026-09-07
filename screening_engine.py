@@ -659,13 +659,20 @@ def _golden_buy_ok(info: Dict[str, Any]) -> bool:
     if not info.get("at_60_low"):
         return False
     try:
+        from decision_card_signals import close_gap_broken, ma_matches_price
+
         profit = float(info.get("profit_pct") if info.get("profit_pct") is not None else 99)
         bias = float(info.get("bias_monthly") if info.get("bias_monthly") is not None else 0)
+        close = float(info.get("close") or 0)
     except (TypeError, ValueError):
         return False
     if not (-1.5 <= profit <= 2.5):
         return False
     if bias >= -10.0:
+        return False
+    if not ma_matches_price(close, info.get("ma20")):
+        return False
+    if close_gap_broken(info.get("prev_close"), close):
         return False
     sid = str(info.get("stock_id") or "")
     return len(sid) == 4 and sid.isdigit()
@@ -926,10 +933,17 @@ def _stock_card_html(
     md = _quote_md(item)
     if md:
         chip_day = f"近一日　{md}"
-    body.extend([
-        f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}",
-        f"法人　{html_escape(chip_day)}　{_chip_html(item)}",
-    ])
+    try:
+        from decision_card_signals import ma_matches_price
+
+        show_ma = ma_matches_price(item.get("close"), item.get("ma20")) and (
+            not item.get("ma60") or ma_matches_price(item.get("close"), item.get("ma60"))
+        )
+    except Exception:
+        show_ma = True
+    if show_ma:
+        body.append(f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}")
+    body.append(f"法人　{html_escape(chip_day)}　{_chip_html(item)}")
     pat = str(item.get("pattern") or "")
     if pat:
         body.append(f"型態　{html_escape(pat)}")
@@ -1128,8 +1142,7 @@ def format_screening_payload(
 
             as_of_label = format_trading_date_zh(target_date)
             head = headline_lines(
-                "<b>WayneBot 海選</b>",
-                f"昨收　{html_escape(as_of_label)}",
+                f"<b>WayneBot 海選</b>　{html_escape(as_of_label)}",
                 head,
                 f"共 {len(items)} 檔",
             )
@@ -1165,7 +1178,7 @@ def format_screening_payload(
         payload.append(
             {
                 "html": (
-                    f"<b>WayneBot 海選</b>　昨收 {html_escape(format_trading_date_zh(target_date))}\n"
+                    f"<b>WayneBot 海選</b>　{html_escape(format_trading_date_zh(target_date))}\n"
                     "<i>今日無符合條件標的</i>"
                 )
             }

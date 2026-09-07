@@ -133,8 +133,19 @@ def _line_profit_value(item: Dict[str, Any]) -> str:
     if pct is None:
         return ""
     bits = [f"{pct}%", "60日低上來"]
-    if item.get("golden_buy") and item.get("bias_monthly") is not None:
-        bits.append(f"月乖離　{item.get('bias_monthly')}%")
+    try:
+        from decision_card_signals import ma_matches_price
+
+        bias = item.get("bias_monthly")
+        if (
+            item.get("golden_buy")
+            and bias is not None
+            and ma_matches_price(item.get("close"), item.get("ma20"))
+        ):
+            bits.append(f"月乖離　{bias}%")
+    except Exception:
+        if item.get("golden_buy") and item.get("bias_monthly") is not None:
+            bits.append(f"月乖離　{item.get('bias_monthly')}%")
     return "　".join(bits)
 
 
@@ -162,7 +173,7 @@ def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
             badges=item.get("badges") or [],
         )
     sell = str(item.get("sell_note") or "").strip()
-    explain = stance_explain(kind or "wait", sell_note=sell, card=item)
+    explain = stance_explain(kind or "wait", sell_note=sell, card=item, surface="list")
     return title, explain
 
 
@@ -289,8 +300,20 @@ def format_line_stock_block(
         lines.extend(_kv_lines("金額", to_s))
     ma20_s = px_fn(item.get("ma20"))
     ma60_s = px_fn(item.get("ma60"))
-    lines.extend(_kv_lines("均線", f"月　{ma20_s}"))
-    lines.append("　　　" + f"季　{ma60_s}")
+    hide_ma = False
+    try:
+        from decision_card_signals import ma_matches_price
+
+        c = item.get("close")
+        if c not in (None, "") and item.get("ma20") not in (None, "", 0):
+            hide_ma = not ma_matches_price(c, item.get("ma20"))
+        if not hide_ma and c not in (None, "") and item.get("ma60") not in (None, "", 0):
+            hide_ma = not ma_matches_price(c, item.get("ma60"))
+    except Exception:
+        hide_ma = False
+    if not hide_ma:
+        lines.extend(_kv_lines("均線", f"月　{ma20_s}"))
+        lines.append("　　　" + f"季　{ma60_s}")
     lines.extend(_line_chip_kv_lines(item, chip_fn))
     notices = notice_fn(item)
     if notices:

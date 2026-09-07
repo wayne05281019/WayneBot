@@ -94,6 +94,28 @@ def test_pattern_tag_helpers():
     assert _golden_buy_ok(
         {**bear, "stock_id": "2330", "at_60_low": True, "profit_pct": 0.5, "bias_monthly": -12}
     )
+    # 6949 型：均線還停在減資前高價，或中間缺很多根 → 不進重點觀察
+    assert not _golden_buy_ok(
+        {
+            "stock_id": "6949",
+            "at_60_low": True,
+            "profit_pct": 0.5,
+            "bias_monthly": -93.3,
+            "close": 67.1,
+            "ma20": 1004.1,
+        }
+    )
+    assert not _golden_buy_ok(
+        {
+            "stock_id": "6949",
+            "at_60_low": True,
+            "profit_pct": 0.5,
+            "bias_monthly": -12,
+            "close": 67.1,
+            "ma20": 65.0,
+            "prev_close": 1490.0,
+        }
+    )
 
 
 def test_golden_buy_in_screen_push_order():
