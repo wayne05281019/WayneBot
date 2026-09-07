@@ -1,6 +1,6 @@
 """產業說明：用官方月營收、季報、同業中位數、當日法人加總，講人話。
 
-不是內幕、不是法人研報。高低決策卡仍是少賠的主軸；這頁只幫你看懂「這族官方數字現在長怎樣」。
+不是內幕、不是法人研報。高低決策卡仍是少賠的主軸；這頁只幫你看懂「本產業官方數字現在長怎樣」。
 """
 from __future__ import annotations
 
@@ -312,14 +312,16 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         return join_sections(*blocks)
 
     ind = snap["industry"] or "未分類（母體還沒寫到產業）"
-    blocks.append(
-        section(
-            "<b>這檔是什麼</b>",
-            kv_compact("產業", ind),
-            kv_compact("同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足"),
-            "產業名來自證交所／櫃買公司基本資料產業別，不是論壇分類。",
-        )
-    )
+    who_lines = [
+        "<b>這檔是什麼</b>",
+        kv_compact("產業", ind),
+        kv_compact("同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足"),
+        "產業名來自證交所／櫃買公司基本資料產業別。",
+        "同業＝同一官方產業別全組，不是更細的產品線。",
+    ]
+    if ind == "半導體業":
+        who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
+    blocks.append(section(*who_lines))
 
     month = str(snap.get("month") or "")
     mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
@@ -353,32 +355,31 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
     three = int(snap["three_net"] or 0)
     if three > 0 and snap["industry"] in (snap.get("inflow") or []):
-        flow_story = "這族今天在法人買超最多的前 3 族裡。"
+        flow_story = "本產業今天在法人買超最多的前3大族群產業裡。"
     elif three < 0 and snap["industry"] in (snap.get("outflow") or []):
-        flow_story = "這族今天在法人賣超最多的前 3 族裡。"
+        flow_story = "本產業今天在法人賣超最多的前3大族群產業裡。"
     elif three > 0:
-        flow_story = "這族法人合計買超，但還不是當日最熱的 3 族。"
+        flow_story = "本產業法人合計買超，但還不是當日最熱的前3大族群產業。"
     elif three < 0:
-        flow_story = "這族法人合計賣超。"
+        flow_story = "本產業法人合計賣超。"
     else:
-        flow_story = "這族法人加總接近 0，或法人還沒寫進這天。"
+        flow_story = "本產業法人加總接近 0，或法人還沒寫進這天。"
     streak_line = "—"
     if int(snap.get("buy_streak") or 0) >= 2:
-        streak_line = f"這族法人連 {int(snap['buy_streak'])} 個交易日合計買超"
+        streak_line = f"本產業法人連 {int(snap['buy_streak'])} 個交易日合計買超"
     elif int(snap.get("sell_streak") or 0) >= 2:
-        streak_line = f"這族法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
+        streak_line = f"本產業法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
     elif int(snap.get("buy_streak") or 0) == 1:
-        streak_line = "這族今天合計買超（尚未連兩日）"
+        streak_line = "本產業今天合計買超（尚未連兩日）"
     elif int(snap.get("sell_streak") or 0) == 1:
-        streak_line = "這族今天合計賣超（尚未連兩日）"
+        streak_line = "本產業今天合計賣超（尚未連兩日）"
     blocks.append(
         section(
-            "<b>這族資金</b>",
+            "<b>本族群產業狀況簡述</b>",
             kv_compact("基準日", as_s),
             kv_html_compact("法人合計", html_qty_tight(three)),
             flow_story,
             streak_line,
-            "張數是官方法人，不是分點。公開籌碼會落後、也會幌。",
         )
     )
 
@@ -399,7 +400,6 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
                 "<b>同業月營收對照</b>",
                 *_peer_rows("較強", snap["stronger"]),
                 *_peer_rows("較弱", snap["weaker"]),
-                "年增特別大常常是去年基期低，只當對照，不當成一定噴。",
             )
         )
     return join_sections(*blocks)

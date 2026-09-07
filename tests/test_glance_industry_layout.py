@@ -154,6 +154,15 @@ def test_industry_html_one_metric_per_line():
         assert "怎麼用" not in html
         assert "不能替代高低卡" not in html
         assert "少賠：" not in html
+        assert "本族群產業狀況簡述" in html
+        assert "這族資金" not in html
+        assert "這族" not in html
+        assert "不是論壇分類" not in html
+        assert "年增特別大" not in html
+        assert "也會幌" not in html
+        assert "也會晃" not in html
+        assert "半導體業含代工、記憶體、設計" in html
+        assert "同業＝同一官方產業別全組" in html
         lines = html.split("\n")
         for line in lines:
             plain = re.sub(r"<[^>]+>", "", line)
@@ -172,3 +181,35 @@ def test_industry_html_one_metric_per_line():
         assert any("6854" in ln and "錼創科技-KY" in ln for ln in codes)
     finally:
         os.remove(path)
+
+
+@pytest.mark.production_db
+def test_tsmc_peers_share_twse_semiconductor_bucket(production_db):
+    """台積電不是記憶體；南亞科／鈺創出現是因為證交所半導體業太粗。"""
+    import sqlite3
+
+    from industry_brief import format_industry_html
+
+    conn = sqlite3.connect(f"file:{production_db}?mode=ro", uri=True)
+    try:
+        rows = {
+            str(r[0]): (str(r[1] or ""), str(r[2] or ""))
+            for r in conn.execute(
+                "SELECT stock_id, stock_name, industry FROM stock_universe WHERE stock_id IN ('2330','2408','5351')"
+            )
+        }
+    finally:
+        conn.close()
+    assert rows["2330"][1] == "半導體業"
+    assert rows["2408"][1] == "半導體業"
+    assert rows["5351"][1] == "半導體業"
+    html = format_industry_html("2330", production_db)
+    assert "半導體業" in html
+    assert "本族群產業狀況簡述" in html
+    assert "這族資金" not in html
+    assert "這族" not in html
+    assert "不是論壇分類" not in html
+    assert "年增特別大" not in html
+    assert "也會幌" not in html
+    assert "半導體業含代工、記憶體、設計" in html
+    assert "本產業" in html
