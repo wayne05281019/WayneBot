@@ -504,7 +504,7 @@ HELP_TOPICS = {
         "查完一檔後，按<b>圖下方「產業」</b>（不在右側 ⌨️）。\n"
         "也可打 /industry 代號。\n"
         "\n"
-        "會列出官方產業別、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
+        "會列出官方產業別、籌碼K細項小框、這檔月營收／毛利率、同業中位數、本產業法人張數。\n"
         "進場仍看高低卡，不要因為同業敘事追高。"
     ),
     "buy": (
@@ -3117,13 +3117,39 @@ class WayneTelegramBot:
 
     async def _send_industry(self, message, code: str):
         from industry_brief import format_industry_html
+        from industry_card import render_industry_png
 
         code = str(code).strip()
+        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "0")
+        png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
+
+        def _build():
+            return render_industry_png(code, self.db_path, png_path, allow_fetch=True)
+
+        try:
+            out = await asyncio.to_thread(_build)
+        except Exception as e:
+            logger.exception("產業說明圖失敗 code=%s", code)
+            out = ""
+            err = e
+        else:
+            err = None
+        if out and os.path.isfile(out):
+            try:
+                with open(out, "rb") as f:
+                    await message.reply_photo(
+                        photo=f,
+                        caption=f"{html_escape(code)}　產業",
+                        reply_markup=self._hub_keyboard(code),
+                    )
+                return
+            except Exception:
+                logger.exception("產業圖送出失敗 code=%s", code)
         try:
             html = await asyncio.to_thread(format_industry_html, code, self.db_path)
         except Exception as e:
             logger.exception("產業說明失敗 code=%s", code)
-            html = f"產業說明失敗：{html_escape(e)}"
+            html = f"產業說明失敗：{html_escape(err or e)}"
         await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
 
     async def buy_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

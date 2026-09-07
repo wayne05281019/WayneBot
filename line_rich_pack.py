@@ -110,12 +110,22 @@ def render_line_share_pack(
         industry = format_industry_html(sid, db_path) or ""
     except Exception:
         industry = ""
+    industry_png = ""
+    try:
+        from industry_card import render_industry_png
+
+        industry_png = render_industry_png(
+            sid, db_path, os.path.join(sub, "industry.png"), allow_fetch=True
+        ) or ""
+    except Exception:
+        industry_png = ""
     return {
         "stock_id": sid,
         "stock_name": str(card.get("stock_name") or card.get("name") or ""),
         "glance": glance,
         "card": card_png,
         "chips": chips,
+        "industry": industry_png,
         "industry_html": industry,
         "industry_plain": html_to_plain(industry),
         "card_data": card,
