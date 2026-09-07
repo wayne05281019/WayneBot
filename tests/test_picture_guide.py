@@ -19,7 +19,7 @@ from picture_guide import (
 )
 
 
-def test_nine_pages_1080_and_no_emoji(tmp_path):
+def test_nine_pages_large_type_and_no_emoji(tmp_path):
     dest = str(tmp_path / "guide")
     paths = render_picture_guide(dest, force=True)
     assert [os.path.basename(p).split("-", 1)[-1].replace(".png", "") for p in paths] == list(PAGE_SLUGS)
@@ -35,12 +35,13 @@ def test_nine_pages_1080_and_no_emoji(tmp_path):
     assert "記買入" in blob
     assert "外資+投信" in blob
     assert "四格" in blob
-    assert CACHE_VER == "v3"
+    assert CACHE_VER == "v4"
+    assert PAGE_WIDTH >= 1440
     for p in paths:
         assert os.path.getsize(p) > 20_000
         with Image.open(p) as im:
             assert im.size[0] == PAGE_WIDTH
-            assert im.size[1] >= 1200
+            assert im.size[1] >= 1600
 
 
 def test_assets_crop_sidebar_and_no_pii():
