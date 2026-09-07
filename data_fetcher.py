@@ -645,6 +645,265 @@ class DataFetcher:
             self._tpex_status = "thin"
         return best
 
+    def _parse_twse_close_rows(self, raw_rows, target_date: str) -> tuple:
+        """MI_INDEX 收盤表 → (行情列, 無 OHLC 停市列)。漲停鎖死／薄量單價也要留下。"""
+        records = []
+        halts = []
+        for r in raw_rows or []:
+            if len(r) < 11:
+                continue
+            sid, sname, vol_raw, _tx_cnt, turnover_raw, open_raw, high_raw, low_raw, close_raw, sign_raw, diff_raw = r[:11]
+            if not self.is_valid_target(sid, sname):
+                continue
+            volume_shares = self.clean_num(vol_raw, is_float=False)
+            turnover_ntd = self.clean_num(turnover_raw, is_float=True)
+            open_p = self.clean_num(open_raw, is_float=True)
+            high_p = self.clean_num(high_raw, is_float=True)
+            low_p = self.clean_num(low_raw, is_float=True)
+            close_p = self.clean_num(close_raw, is_float=True)
+            diff = self.clean_num(diff_raw, is_float=True)
+            if "-" in str(sign_raw) or "跌" in str(sign_raw):
+                diff = -abs(diff)
+            elif "+" in str(sign_raw) or "漲" in str(sign_raw):
+                diff = abs(diff)
+            if close_p <= 0:
+                # 無量／僅零股：OHLC 是 --，用上一交易日收盤補停市列
+                halts.append(
+                    (
+                        str(sid).strip(),
+                        str(sname).strip(),
+                        int(volume_shares // 1000),
+                    )
+                )
+                continue
+            ref_p = close_p - diff if close_p > 0 else 0.0
+            pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
+            avg_p = round(turnover_ntd / volume_shares, 2) if volume_shares > 0 else close_p
+            records.append({
+                "date": target_date, "stock_id": str(sid).strip(), "stock_name": str(sname).strip(),
+                "market": "TW", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
+                "volume": int(volume_shares // 1000), "turnover_k": round(turnover_ntd / 1000.0, 2),
+                "pct_change": pct, "avg_price": avg_p,
+            })
+        return records, halts
+
+    def _fill_tw_halts(self, records: list, halts: list, target_date: str) -> list:
+        if not halts:
+            return records
+        prev_map = self._prev_closes_for_date(target_date)
+        have = {q["stock_id"] for q in records}
+        out = list(records)
+        for sid, sname, vol_lots in halts:
+            if sid in have:
+                continue
+            prev = float(prev_map.get(sid) or 0)
+            if prev <= 0:
+                continue
+            out.append({
+                "date": target_date, "stock_id": sid, "stock_name": sname,
+                "market": "TW", "open": prev, "high": prev, "low": prev, "close": prev,
+                "volume": int(vol_lots or 0), "turnover_k": 0.0, "pct_change": 0.0, "avg_price": prev,
+            })
+        return out
+
+    def _is_equity_id(self, stock_id: str, stock_name: str = "") -> bool:
+        sid = str(stock_id or "").strip()
+        name = str(stock_name or "")
+        try:
+            from universe import classify_target
+
+            kind, ok = classify_target(sid, name)
+            return bool(ok) and kind in ("STOCK", "KY")
+        except Exception:
+            return len(sid) == 4 and sid.isdigit()
+
+    def _equity_ids_on_date(self, yyyymmdd: str) -> set:
+        ds = str(yyyymmdd or "").replace("-", "")[:8]
+        conn = self.get_db_connection()
+        try:
+            has_uni = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_universe'"
+            ).fetchone()
+            if has_uni:
+                rows = conn.execute(
+                    """
+                    SELECT q.stock_id, COALESCE(u.stock_name, q.stock_name), COALESCE(u.asset_type, '')
+                    FROM daily_quotes q
+                    LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+                    WHERE replace(q.date,'-','')=?
+                    """,
+                    (ds,),
+                ).fetchall()
+                ids = set()
+                for sid, name, asset in rows:
+                    if str(asset or "").upper() in ("STOCK", "KY") or self._is_equity_id(sid, name):
+                        ids.add(str(sid).strip())
+                return ids
+            rows = conn.execute(
+                "SELECT stock_id, stock_name FROM daily_quotes WHERE replace(date,'-','')=?",
+                (ds,),
+            ).fetchall()
+            return {str(sid).strip() for sid, name in rows if self._is_equity_id(sid, name)}
+        finally:
+            conn.close()
+
+    def _list_missing_equities(self, yyyymmdd: str, ref_date: str) -> list:
+        """完整日裡有、這天沒有的現股／KY（1470 薄量、2454 漲停鎖死這類）。"""
+        want = self._equity_ids_on_date(ref_date)
+        have = self._equity_ids_on_date(yyyymmdd)
+        return sorted(want - have)
+
+    def _upsert_quote_dicts(self, records: list) -> int:
+        if not records:
+            return 0
+        fetched_at = datetime.now().isoformat(timespec="seconds")
+        rows = []
+        for q in records:
+            rows.append((
+                q["date"], q["stock_id"], q.get("stock_name") or "", q.get("market") or "TW",
+                q["open"], q["high"], q["low"], q["close"],
+                int(q.get("volume") or 0), float(q.get("turnover_k") or 0),
+                float(q.get("pct_change") or 0), float(q.get("avg_price") or q["close"]),
+                int(q.get("foreign_net") or 0), int(q.get("trust_net") or 0), int(q.get("dealer_net") or 0),
+                str(q.get("source") or "patch_missing"), fetched_at,
+            ))
+        conn = self.get_db_connection()
+        cur = conn.cursor()
+        cur.executemany(
+            """
+            INSERT INTO daily_quotes
+            (date, stock_id, stock_name, market, open, high, low, close, volume, turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net, source, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, stock_id) DO UPDATE SET
+                stock_name=excluded.stock_name,
+                market=excluded.market,
+                open=excluded.open,
+                high=excluded.high,
+                low=excluded.low,
+                close=excluded.close,
+                volume=excluded.volume,
+                turnover_k=excluded.turnover_k,
+                pct_change=excluded.pct_change,
+                avg_price=excluded.avg_price,
+                source=excluded.source,
+                fetched_at=excluded.fetched_at;
+            """,
+            rows,
+        )
+        conn.commit()
+        conn.close()
+        return len(rows)
+
+    def _markets_for_ids(self, ref_date: str, ids: set) -> set:
+        ds = str(ref_date or "").replace("-", "")[:8]
+        if not ids:
+            return set()
+        conn = self.get_db_connection()
+        qmarks = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"""
+            SELECT stock_id, market FROM daily_quotes
+            WHERE replace(date,'-','')=? AND stock_id IN ({qmarks})
+            """,
+            [ds, *list(ids)],
+        ).fetchall()
+        conn.close()
+        out = set()
+        for sid, market in rows:
+            m = str(market or "").upper()
+            if m in ("TWO", "OTC", "ROCO"):
+                out.add("TWO")
+            else:
+                out.add("TW")
+        if not out:
+            out.add("TW")
+        return out
+
+    def _upsert_named_quotes(self, target_date: str, want: set, ref_date: str = "") -> int:
+        if not want:
+            return 0
+        sides = self._markets_for_ids(ref_date or target_date, want)
+        tw_records = []
+        if "TW" in sides:
+            tw_url = (
+                f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+                f"?date={target_date}&type=ALLBUT0999&response=json"
+            )
+            tw_halts = []
+            try:
+                resp = self.session.get(tw_url, timeout=40)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_rows = []
+                    for table in data.get("tables", []):
+                        if "收盤行情" in table.get("title", ""):
+                            raw_rows = table.get("data", [])
+                            break
+                    if not raw_rows and "data9" in data:
+                        raw_rows = data["data9"]
+                    parsed, tw_halts = self._parse_twse_close_rows(raw_rows, target_date)
+                    tw_records = parsed
+            except Exception as e:
+                print(f"⚠️ 缺檔補列上市抓取異常 {target_date}：{e}")
+            tw_records = self._fill_tw_halts(tw_records, tw_halts, target_date)
+        two_records = []
+        if "TWO" in sides:
+            try:
+                two_records = self._fetch_tpex_daily(target_date) or []
+            except Exception as e:
+                print(f"⚠️ 缺檔補列上櫃抓取異常 {target_date}：{e}")
+        picked = []
+        for q in list(tw_records) + list(two_records):
+            if str(q.get("stock_id") or "").strip() in want:
+                picked.append(q)
+        n = self._upsert_quote_dicts(picked)
+        if n:
+            print(f"🩹 {target_date} 補齊缺檔 {n}：{sorted(want)[:12]}")
+        return n
+
+    def patch_missing_equity_quotes(self, lookback: int = 20) -> list:
+        """完整日已齊時，仍把當天缺的現股／KY 從官方日報補上（不整日覆蓋）。"""
+        try:
+            from import_health import latest_complete_quote_date
+
+            ref = latest_complete_quote_date(self.db_path)
+        except Exception:
+            ref = ""
+        if not ref:
+            conn = self.get_db_connection()
+            row = conn.execute(
+                "SELECT replace(date,'-','') FROM daily_quotes ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            ref = str(row[0]) if row else ""
+        if not ref:
+            return []
+        conn = self.get_db_connection()
+        dates = [
+            str(r[0]).replace("-", "")[:8]
+            for r in conn.execute(
+                """
+                SELECT replace(date,'-','') AS d FROM daily_quotes
+                GROUP BY d ORDER BY d DESC LIMIT ?
+                """,
+                (max(3, int(lookback or 20)),),
+            )
+        ]
+        conn.close()
+        dates = [d for d in dates if len(d) == 8]
+        patched = []
+        for ds in sorted(dates):
+            if ds == ref:
+                continue
+            missing = self._list_missing_equities(ds, ref)
+            if not missing:
+                continue
+            n = self._upsert_named_quotes(ds, set(missing), ref_date=ref)
+            if n:
+                patched.append({"date": ds, "n": n, "ids": missing[:12]})
+            time.sleep(0.25)
+        return patched
+
     # --------------------------------------------------------------------------
     # 6. 每日 16:30 增量更新閉環（自動排程調用）
     # --------------------------------------------------------------------------
@@ -687,63 +946,12 @@ class DataFetcher:
                 elif not raw_rows and "data8" in data:
                     raw_rows = data["data8"]
 
-                for r in raw_rows:
-                    if len(r) < 11:
-                        continue
-                    sid, sname, vol_raw, tx_cnt, turnover_raw, open_raw, high_raw, low_raw, close_raw, sign_raw, diff_raw = r[:11]
-                    if not self.is_valid_target(sid, sname):
-                        continue
-
-                    volume_shares = self.clean_num(vol_raw, is_float=False)
-                    turnover_ntd = self.clean_num(turnover_raw, is_float=True)
-                    open_p = self.clean_num(open_raw, is_float=True)
-                    high_p = self.clean_num(high_raw, is_float=True)
-                    low_p = self.clean_num(low_raw, is_float=True)
-                    close_p = self.clean_num(close_raw, is_float=True)
-                    diff = self.clean_num(diff_raw, is_float=True)
-                    if "-" in str(sign_raw) or "跌" in str(sign_raw):
-                        diff = -abs(diff)
-                    elif "+" in str(sign_raw) or "漲" in str(sign_raw):
-                        diff = abs(diff)
-
-                    if close_p <= 0:
-                        # 無量／僅零股：OHLC 是 --，先記下來，用上一交易日收盤補停市列
-                        tw_halts.append(
-                            (
-                                str(sid).strip(),
-                                str(sname).strip(),
-                                int(volume_shares // 1000),
-                            )
-                        )
-                        continue
-
-                    ref_p = close_p - diff if close_p > 0 else 0.0
-                    pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
-                    avg_p = round(turnover_ntd / volume_shares, 2) if volume_shares > 0 else close_p
-
-                    tw_records.append({
-                        "date": target_date, "stock_id": str(sid).strip(), "stock_name": str(sname).strip(),
-                        "market": "TW", "open": open_p, "high": high_p, "low": low_p, "close": close_p,
-                        "volume": int(volume_shares // 1000), "turnover_k": round(turnover_ntd / 1000.0, 2),
-                        "pct_change": pct, "avg_price": avg_p
-                    })
+                parsed, tw_halts = self._parse_twse_close_rows(raw_rows, target_date)
+                tw_records.extend(parsed)
         except Exception as e:
             print(f"⚠️ 上市增量抓取異常：{e}")
 
-        if tw_halts:
-            prev_map = self._prev_closes_for_date(target_date)
-            have = {q["stock_id"] for q in tw_records}
-            for sid, sname, vol_lots in tw_halts:
-                if sid in have:
-                    continue
-                prev = float(prev_map.get(sid) or 0)
-                if prev <= 0:
-                    continue
-                tw_records.append({
-                    "date": target_date, "stock_id": sid, "stock_name": sname,
-                    "market": "TW", "open": prev, "high": prev, "low": prev, "close": prev,
-                    "volume": int(vol_lots or 0), "turnover_k": 0.0, "pct_change": 0.0, "avg_price": prev,
-                })
+        tw_records = self._fill_tw_halts(tw_records, tw_halts, target_date)
 
         two_records = self._fetch_tpex_daily(target_date)
         tpex_status = getattr(self, "_tpex_status", "ok" if two_records else "empty")
@@ -1000,6 +1208,7 @@ class DataFetcher:
         if start > end:
             thin = self._refill_thin_days(end_date, lookback=25, min_rows=1500)
             holes = self.refill_coverage_holes(lookback=25)
+            missing = self.patch_missing_equity_quotes(lookback=20)
             paired = self.sync_paired_markets()
             filled = list(thin)
             for ds in holes:
@@ -1008,6 +1217,7 @@ class DataFetcher:
             return {
                 "from": latest, "to": end_date, "filled": filled, "skipped": [],
                 "note": "已是最新", "refilled_thin": thin, "coverage_holes": holes,
+                "missing_equities": missing,
                 "paired": paired,
             }
         days = 0
@@ -1034,6 +1244,7 @@ class DataFetcher:
         for ds in holes:
             if ds not in filled:
                 filled.append(ds)
+        missing = self.patch_missing_equity_quotes(lookback=20)
         paired = self.sync_paired_markets()
         return {
             "from": latest,
@@ -1042,6 +1253,7 @@ class DataFetcher:
             "skipped": skipped,
             "refilled_thin": thin,
             "coverage_holes": holes,
+            "missing_equities": missing,
             "paired": paired,
         }
 

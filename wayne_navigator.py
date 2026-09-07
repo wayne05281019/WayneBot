@@ -350,11 +350,20 @@ class NavigatorEngine:
         lookback: int = 20,
         merge_live: bool = True,
         live_quote: Optional[dict] = None,
+        as_of: Optional[str] = None,
     ) -> dict:
-        """產出單一標的的買低賣高決策卡。庫內只用到最後完整收盤日；盤中今日 K 僅 MIS 合併、不寫庫。"""
+        """產出單一標的的買低賣高決策卡。庫內只用到最後完整收盤日；盤中今日 K 僅 MIS 合併、不寫庫。
+
+        as_of：釘死某一完整交易日（YYYYMMDD）。驗收／對卡用；有指定就不合併即時列。
+        """
         from quote_integrity import db_as_of_trading_date
 
-        db_as_of = db_as_of_trading_date(self.db_path)
+        cap = str(as_of or "").replace("-", "")[:8]
+        if len(cap) == 8:
+            db_as_of = cap
+            merge_live = False
+        else:
+            db_as_of = db_as_of_trading_date(self.db_path)
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA busy_timeout=10000;")
         df = pd.read_sql_query("""

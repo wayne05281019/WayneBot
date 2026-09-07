@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 LINGER = 3  # 脫離後還標幾根（含今天的前幾根）
 
@@ -185,8 +185,12 @@ def sell_notes_for_stocks(
     db_path: str,
     *,
     full: bool = False,
+    as_of: Optional[str] = None,
 ) -> Dict[str, str]:
-    """多檔一次查如何賣。值是短句或 HTML 長句；失敗的檔不出現。不自動賣。"""
+    """多檔一次查如何賣。值是短句或 HTML 長句；失敗的檔不出現。不自動賣。
+
+    as_of：釘死某一完整交易日。不傳就用庫內最新完整日。
+    """
     out: Dict[str, str] = {}
     ids: List[str] = []
     seen = set()
@@ -206,7 +210,7 @@ def sell_notes_for_stocks(
         return out
     for sid in ids:
         try:
-            card = engine.get_decision_card(sid, merge_live=False)
+            card = engine.get_decision_card(sid, merge_live=False, as_of=as_of)
             if not card or card.get("error"):
                 continue
             attach_sell(card)

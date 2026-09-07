@@ -224,7 +224,9 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertAlmostEqual(float(row[4]), 60.8, places=1)
         self.assertAlmostEqual(float(row[5]), 2.01, places=2)
 
-        card = NavigatorEngine(db).get_decision_card("4915", merge_live=False)
+        card = NavigatorEngine(db).get_decision_card(
+            "4915", merge_live=False, as_of="20260904"
+        )
         self.assertEqual(str(card.get("latest_date")).replace("-", "")[:8], "20260904")
         self.assertAlmostEqual(float(card["close"]), 60.8, places=1)
         self.assertAlmostEqual(float(card["change_pct"]), 2.01, places=2)
