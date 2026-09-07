@@ -91,3 +91,4 @@ def test_honest_copy_does_not_invent_news_or_cost():
     assert "三條槓" in hub
     assert "2330" in hub
     assert "不編新聞" in hub
+    assert "語音" in hub
