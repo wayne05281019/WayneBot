@@ -62,13 +62,46 @@ def _last_price(item: dict, yesterday: float) -> float:
     return yesterday
 
 
+_OTC_MARKETS = {"TWO", "OTC", "TPEX", "ROCO", "ROCC", "上櫃"}
+
+
+def mis_ex_ch(stock_id: str, market: str = "") -> str:
+    """證交所 MIS 頻道：上市 tse_2330.tw、上櫃 otc_3078.tw。後綴是 .tw，不是 Yahoo 的 .TWO。"""
+    sid = str(stock_id).strip()
+    if str(market or "").upper() in _OTC_MARKETS:
+        return f"otc_{sid}.tw"
+    return f"tse_{sid}.tw"
+
+
 def _channels(stock_id: str, market: str = "") -> list:
     sid = str(stock_id).strip()
-    m = (market or "").upper()
-    tse, otc = f"tse_{sid}.tw", f"otc_{sid}.two"
-    if m in ("TWO", "OTC", "ROCC", "上櫃"):
+    tse, otc = f"tse_{sid}.tw", f"otc_{sid}.tw"
+    if str(market or "").upper() in _OTC_MARKETS:
         return [otc, tse]
     return [tse, otc]
+
+
+def _last_positive(series) -> float:
+    if not series:
+        return 0.0
+    for v in reversed(series):
+        n = _num(v)
+        if n > 0:
+            return n
+    return 0.0
+
+
+def _aligned_last_ohlc(opens, highs, lows, closes) -> tuple[float, float, float, float]:
+    """同一根日 K 的開高低收；不要各欄自己倒數以免開盤價落到昨天。"""
+    n = max(len(opens or []), len(highs or []), len(lows or []), len(closes or []))
+    for i in range(n - 1, -1, -1):
+        o = _num(opens[i]) if i < len(opens or []) else 0.0
+        h = _num(highs[i]) if i < len(highs or []) else 0.0
+        l = _num(lows[i]) if i < len(lows or []) else 0.0
+        c = _num(closes[i]) if i < len(closes or []) else 0.0
+        if o > 0 or h > 0 or l > 0 or c > 0:
+            return o, h, l, c
+    return 0.0, 0.0, 0.0, 0.0
 
 
 def _norm_date(val) -> str:
@@ -393,14 +426,12 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
             return None
         meta = result[0].get("meta") or {}
         qblock = ((result[0].get("indicators") or {}).get("quote") or [{}])[0]
+        opens = qblock.get("open") or []
+        highs = qblock.get("high") or []
+        lows = qblock.get("low") or []
         closes = qblock.get("close") or []
         vols = qblock.get("volume") or []
-        px = _num(meta.get("regularMarketPrice"))
-        if px <= 0 and closes:
-            for c in reversed(closes):
-                if c is not None and float(c) > 0:
-                    px = float(c)
-                    break
+        px = _num(meta.get("regularMarketPrice")) or _last_positive(closes)
         if px <= 0:
             return None
         vol = 0
@@ -409,7 +440,17 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
                 if v is not None and float(v) > 0:
                     vol = yahoo_volume_to_lots(v)
                     break
-        y = _num(meta.get("chartPreviousClose") or meta.get("previousClose"))
+        # chartPreviousClose 常是這段 range 第一根，不是昨收；5 日 K 倒數第二根才是。
+        closes_pos = [_num(c) for c in closes if _num(c) > 0]
+        y = closes_pos[-2] if len(closes_pos) >= 2 else 0.0
+        if y <= 0:
+            y = _num(meta.get("previousClose") or meta.get("chartPreviousClose"))
+        arr_o, arr_h, arr_l, _arr_c = _aligned_last_ohlc(opens, highs, lows, closes)
+        bar_open = _num(meta.get("regularMarketOpen")) or arr_o
+        bar_high = _num(meta.get("regularMarketDayHigh")) or arr_h
+        bar_low = _num(meta.get("regularMarketDayLow")) or arr_l
+        o, h, l, _c = sanitize_ohlc(bar_open, bar_high, bar_low, px)
+        o, h, l, px, y = (round(v, 2) if v else 0.0 for v in (o, h, l, px, y))
         pct = meta.get("regularMarketChangePercent")
         chg = meta.get("regularMarketChange")
         try:
@@ -420,9 +461,8 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
             chg_f = round(float(chg), 2) if chg is not None else None
         except (TypeError, ValueError):
             chg_f = None
-        if pct_f is None and y > 0:
+        if y > 0:
             pct_f = round((px - y) / y * 100.0, 2)
-        if chg_f is None and y > 0:
             chg_f = round(px - y, 2)
         update_time = ""
         ts = meta.get("regularMarketTime")
@@ -435,9 +475,9 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
         return {
             "stock_id": sid,
             "stock_name": str(meta.get("longName") or meta.get("shortName") or ""),
-            "open": px,
-            "high": px,
-            "low": px,
+            "open": o,
+            "high": h,
+            "low": l,
             "close": px,
             "volume": vol,
             "pct_change": pct_f or 0.0,
@@ -496,6 +536,8 @@ def fetch_mis_quote(stock_id: str, market: str = "") -> Optional[Dict[str, Any]]
             if not arr:
                 return None
             item = arr[0]
+            if not str(item.get("c") or "").strip():
+                return None
             y = _num(item.get("y"))
             px = _last_price(item, y)
             if px <= 0:

@@ -296,13 +296,13 @@ class DataFetcher:
         for _, row in df_market.iterrows():
             market_map[row["stock_id"]] = (row["market"], row["stock_name"])
 
-        # 2. 組合 MIS API 查詢字串 (ex_ch=tse_2330.tw|otc_6415.two)
+        # 2. 組合 MIS API 查詢字串 (ex_ch=tse_2330.tw|otc_6415.tw)
+        from live_quote import mis_ex_ch
+
         channel_list = []
         for sid in stock_ids:
             m_info = market_map.get(sid, ("TW", sid))
-            prefix = "tse" if m_info[0] == "TW" else "otc"
-            suffix = "tw" if m_info[0] == "TW" else "two"
-            channel_list.append(f"{prefix}_{sid}.{suffix}")
+            channel_list.append(mis_ex_ch(sid, m_info[0]))
 
         results = {}
         # 每次最多查詢 40 檔，避免超出 URL 長度限制
