@@ -8,9 +8,11 @@ from PIL import Image
 
 from picture_guide import (
     CACHE_VER,
+    PAGE_SHOTS,
     PAGE_SLUGS,
     PAGE_WIDTH,
     PAGES,
+    asset_dir,
     page_copy_blob,
     render_page,
     render_picture_guide,
@@ -32,11 +34,25 @@ def test_nine_pages_1080_and_no_emoji(tmp_path):
     assert "回報" in blob
     assert "記買入" in blob
     assert "外資+投信" in blob
+    assert "四格" in blob
+    assert CACHE_VER == "v3"
     for p in paths:
-        assert os.path.getsize(p) > 8_000
+        assert os.path.getsize(p) > 20_000
         with Image.open(p) as im:
             assert im.size[0] == PAGE_WIDTH
             assert im.size[1] >= 1200
+
+
+def test_assets_crop_sidebar_and_no_pii():
+    banned = (b"8528875978", b"wei72152", b"Weichuan", b"gmail.com")
+    names = set(PAGE_SHOTS.values()) | {"help_pics.png"}
+    for name in names:
+        path = os.path.join(asset_dir(), name)
+        assert os.path.isfile(path), name
+        raw = open(path, "rb").read()
+        assert len(raw) > 8_000, name
+        for needle in banned:
+            assert needle not in raw, f"{name} leaked {needle!r}"
 
 
 def test_cache_reuse(tmp_path):

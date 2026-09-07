@@ -16,6 +16,7 @@ def test_guide_starts_with_three_steps_in_first_chunk():
     assert first.index("第一次用") < first.index("挑股")
     assert "直接打四碼" in first
     assert "⌨️" in first
+    assert "四格" in first
     assert "圖下面" in first or "圖下方" in first
     assert len(chunks) == 1, "總覽應一則看完，不要切成兩則"
 

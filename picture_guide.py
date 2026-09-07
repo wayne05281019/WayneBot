@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import List, Sequence, Tuple
 
-CACHE_VER = "v2"
+CACHE_VER = "v3"
 PAGE_WIDTH = 1080
 MARGIN = 56
 PAGE_SLUGS = (
@@ -20,15 +20,30 @@ PAGE_SLUGS = (
     "oops",
 )
 
+# 每頁對應真實截圖（側欄已裁；紅圈標該頁要按的位置）
+PAGE_SHOTS = {
+    "cover": "cover_menu.png",
+    "menu": "cover_menu.png",
+    "charts": "charts.png",
+    "hub": "hub.png",
+    "discipline": "discipline.png",
+    "screen": "screen.png",
+    "lists": "lists.png",
+    "streak": "streak.png",
+    "oops": "oops.png",
+}
+
 # 禁止 emoji：NotoSansTC 會畫成方塊。鍵盤寫「鍵盤」，加號寫「+」。
 PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "cover",
         "WayneBot 圖文說明",
         "第一次用，先做這三步\n"
-        "1  點輸入框右邊「鍵盤」，叫出兩排按鈕（不見就打 /menu）\n"
+        "1  點輸入列旁邊的鍵盤圖示（四格那顆），叫出兩排按鈕\n"
+        "   不見就打 /menu\n"
         "2  直接打四碼看圖，例如 2330（不要先按「決策卡」）\n"
-        "3  三張圖出來後，籌碼／營收／產業在圖下面，不在右側鍵盤\n"
+        "3  三張圖出來後，籌碼／營收／產業在圖下面那一排\n"
+        "   不在輸入列右邊的四格鍵盤\n"
         "\n"
         "這本說明給手機看。點縮圖可放大。\n"
         "挑股只認高低卡表的黃金買點，不認圖上紅箭頭。",
@@ -36,8 +51,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "menu",
         "兩排主選單在哪",
-        "不在訊息最下面。點輸入框右邊「鍵盤」展開兩排。\n"
-        "打完字若只剩英文鍵盤，再點一次「鍵盤」。也可打 /menu。\n"
+        "不在訊息最下面。點輸入列旁邊的四格鍵盤圖示展開兩排。\n"
+        "漢堡鈕在輸入列左邊，四格圖示在右邊。打完字若只剩英文鍵盤，再點一次四格。也可打 /menu。\n"
         "\n"
         "第一排（左到右）\n"
         "決策卡　當沖　持股　觀察　海選　AI倉\n"
@@ -73,13 +88,13 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "記買入　記真實持股，接著打「張數 價格」，例 1 68.5\n"
         "零股請寫「200股 631.6」，不要只打 2 讓人當成張。\n"
         "\n"
-        "找不到產業：在圖下面，不在右側鍵盤。",
+        "找不到產業：在圖下面，不在輸入列右邊的四格鍵盤。",
     ),
     (
         "discipline",
         "粉紅紀律不是買訊",
         "介紹圖粉紅「紀律」只講現在怎樣、先別追或先出一點。\n"
-        "不是買訊，也不改海選名單。\n"
+        "決策卡「今日態度」同一句意思。不是買訊，也不改海選名單。\n"
         "\n"
         "現在高點跟熱度都退了 → 先別追、也先別加碼；有持股就先出一點\n"
         "現在價到高了 → 先別追；有持股可先出一點\n"
@@ -130,7 +145,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "名單：代號、股名、N 日連買張數與佔成交%。\n"
         "點股名看出完整圖，按籌碼核對官方法人表。\n"
-        "鍵盤被收掉時打 /menu 可重新釘住兩排。",
+        "四格鍵盤被收掉時打 /menu 可重新釘住兩排。",
     ),
     (
         "oops",
@@ -142,7 +157,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "持股跟 AI倉搞混：持股＝你手記的；AI倉＝假錢對照組。\n"
         "找不到產業：在圖下面那一排。\n"
         "「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
-        "主選單不見：點輸入框右邊「鍵盤」，或打 /menu。\n"
+        "主選單不見：點輸入列旁邊四格鍵盤圖示，或打 /menu。\n"
         "畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。\n"
         "不用給程式密鑰、不用給機器人密碼。",
     ),
@@ -199,6 +214,34 @@ def _page_path(out_dir: str, slug: str) -> str:
     return os.path.join(out_dir, f"{CACHE_VER}-{slug}.png")
 
 
+def asset_dir() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "picture_guide_assets")
+
+
+def _page_shot(slug: str):
+    from PIL import Image
+
+    name = PAGE_SHOTS.get(slug)
+    if not name:
+        return None
+    path = os.path.join(asset_dir(), name)
+    if not os.path.isfile(path) or os.path.getsize(path) < 8_000:
+        return None
+    return Image.open(path).convert("RGB")
+
+
+def _fit_width(im, max_w: int):
+    from PIL import Image
+
+    w, h = im.size
+    if w <= 0 or h <= 0:
+        return im
+    if w == max_w:
+        return im
+    nh = max(1, int(round(h * max_w / w)))
+    return im.resize((max_w, nh), Image.Resampling.LANCZOS)
+
+
 def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     from PIL import Image, ImageDraw
 
@@ -212,7 +255,13 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     body_lines = _wrap(pdraw, body, body_font, max_w)
     title_h = 64
     body_h = 50
-    height = MARGIN + 36 + len(title_lines) * title_h + 24 + len(body_lines) * body_h + 80
+    shot = _page_shot(slug)
+    if shot is not None:
+        shot = _fit_width(shot, max_w)
+        shot_h = shot.height + 28
+    else:
+        shot_h = 0
+    height = MARGIN + 36 + len(title_lines) * title_h + 24 + len(body_lines) * body_h + shot_h + 80
     height = max(height, 1280)
     img = Image.new("RGB", (PAGE_WIDTH, height), _BG)
     draw = ImageDraw.Draw(img)
@@ -232,6 +281,10 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
             continue
         draw.text((MARGIN, y), line, font=body_font, fill=_INK)
         y += body_h
+    if shot is not None:
+        y += 12
+        img.paste(shot, (MARGIN, y))
+        y += shot.height
     idx = PAGE_SLUGS.index(slug) + 1 if slug in PAGE_SLUGS else 0
     foot = f"{idx} / {len(PAGE_SLUGS)}" if idx else CACHE_VER
     draw.text((MARGIN, height - 52), foot, font=foot_font, fill=_MUTED)
