@@ -1325,13 +1325,24 @@ def _watch_quote_rows(snap: Dict[str, Any], items) -> List[str]:
     return rows
 
 
-def _format_overnight_watch_lines(db_path: str, as_of: str, snap: Dict[str, Any]) -> List[str]:
+def _format_overnight_watch_lines(
+    db_path: str, as_of: str, snap: Dict[str, Any], now: Optional[datetime] = None
+) -> List[str]:
     """開盤前該看：美股收盤／盤後期貨／台積美股盤後＋台指期夜盤。沒數字就整段省略。"""
     from tg_layout import html_escape
 
     us = _latest_us_overnight(db_path, as_of)
     night = snap.get("futures_night") or resolve_futures_night(db_path, as_of)
     bits: List[str] = []
+    holiday_lines: List[str] = []
+    try:
+        from us_holidays import closed_us_session, holiday_banner_lines
+
+        holiday_lines = holiday_banner_lines(closed_us_session(now, db_path))
+    except Exception:
+        logger.debug("美股休市年曆讀不到", exc_info=True)
+    if holiday_lines:
+        bits.extend(html_escape(x) for x in holiday_lines)
     if us.get("ok") or us.get("vix") is not None:
         from us_overnight import (
             REGIME_LABEL,
@@ -1348,10 +1359,10 @@ def _format_overnight_watch_lines(db_path: str, as_of: str, snap: Dict[str, Any]
         label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股收盤")
         head = f"判斷　{html_escape(label)}"
         phase = _PHASE_LABEL.get(str(us.get("us_phase") or ""), "")
-        if phase:
+        if phase and not holiday_lines:
             head += f"　{html_escape(phase)}"
         sess = _session_label(us)
-        if sess and sess != "—":
+        if sess and sess != "—" and not holiday_lines:
             head += f"　交易日 {html_escape(sess)}"
         bits.append(head)
         cash = _watch_quote_rows(us, _CASH_ITEMS)
@@ -3477,6 +3488,7 @@ def format_taiwan_market_page_html(
     *,
     live: Optional[Dict[str, Any]] = None,
     snap: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
     ref_hint = resolve_market_as_of(db_path, as_of)
@@ -3563,7 +3575,7 @@ def format_taiwan_market_page_html(
         for piece in fut_line.split("\n"):
             if piece.strip():
                 lines.append(piece)
-    lines.extend(_format_overnight_watch_lines(db_path, ref, snap))
+    lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now))
     lines.extend(
         [
             "",

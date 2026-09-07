@@ -748,7 +748,7 @@ class USOvernightTest(unittest.TestCase):
             "vix": 19.0,
             "vix_pct": 4.0,
         }
-        night = format_night_plain(snap)
+        night = format_night_plain(snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")))
         self.assertIn("＝＝夜盤判斷＝＝", night)
         self.assertIn("電子夜盤", night)
         self.assertIn("跌", night)
@@ -804,7 +804,7 @@ class USOvernightTest(unittest.TestCase):
         self.assertTrue(by_id["2330"].get("us_peer_headwind"))
         self.assertFalse(by_id["2002"].get("us_peer_headwind"))
         self.assertEqual(results["select_01"][0]["stock_id"], "2002")
-        html = format_us_html(snap)
+        html = format_us_html(snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")))
         self.assertIn("恐慌指數", html)
         self.assertNotIn("當沖／隔日沖今日不列", html)
         payload = format_screening_payload(results, "20260828")
@@ -935,11 +935,11 @@ class USOvernightTest(unittest.TestCase):
             "us_session": "20260831",
         }
         self.assertTrue(should_alert_us_drop(dump))
-        html = format_us_drop_alert(dump)
+        html = format_us_drop_alert(dump, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")))
         self.assertIn("一早提醒", html)
         self.assertIn("那斯達克", html)
         self.assertIn("盤後", html)
-        self.assertIn("盤後", format_us_html(dump))
+        self.assertIn("盤後", format_us_html(dump, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York"))))
         self.assertTrue(
             should_alert_us_drop(
                 {"regime": "ok", "vix": 14.0, "ixic_pct": 0.1, "tsm_pct": 0.2, "tsm_post_pct": -2.2, "us_phase": "post"}

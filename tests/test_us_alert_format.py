@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import unittest
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from us_overnight import _fmt_move, _fmt_pct, format_us_drop_alert, format_us_html
+
+_OPEN_NY = datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York"))
 
 
 class UsAlertFormatTests(unittest.TestCase):
@@ -35,7 +39,7 @@ class UsAlertFormatTests(unittest.TestCase):
             "us_phase": "post",
             "us_session": "20260901",
         }
-        html = format_us_drop_alert(snap)
+        html = format_us_drop_alert(snap, now=_OPEN_NY)
         self.assertIn("美股收盤偏弱", html)
         self.assertIn("一早提醒", html)
         self.assertIn("== 指數收盤 ==", html)
@@ -70,7 +74,7 @@ class UsAlertFormatTests(unittest.TestCase):
             "us_phase": "regular",
             "us_session": "20260901",
         }
-        html = format_us_html(snap)
+        html = format_us_html(snap, now=_OPEN_NY)
         self.assertIn("== 指數收盤 ==", html)
         self.assertIn("+0.10%（+10.00點）", html)
         self.assertNotIn("｜", html)

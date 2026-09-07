@@ -94,13 +94,30 @@ def is_chip_industry(industry: str) -> bool:
 
 
 def us_tape_phase(now: Optional[datetime] = None) -> str:
-    """regular＝美股現金盤中（期貨不看）；post＝16:00–20:00 盤後；overnight＝其餘隔夜。"""
-    dt = datetime.now(NY) if now is None else now.astimezone(NY)
+    """regular＝美股現金盤中（期貨不看）；post＝16:00–20:00 盤後；overnight＝其餘隔夜。
+
+    NYSE 全日休市／週末不當現金盤中。提早收盤 13:00 ET 起改看盤後。
+    """
+    if now is None:
+        dt = datetime.now(NY)
+    elif now.tzinfo is None:
+        dt = now.replace(tzinfo=NY)
+    else:
+        dt = now.astimezone(NY)
+    try:
+        from us_holidays import lookup_us_session
+
+        kind = lookup_us_session(dt.strftime("%Y%m%d")).get("kind") or "open"
+    except Exception:
+        kind = "open"
+    if kind in ("full_close", "weekend"):
+        return "overnight"
     if dt.weekday() < 5:
         hm = (dt.hour, dt.minute)
-        if (9, 30) <= hm < (16, 0):
+        cash_end = (13, 0) if kind == "early_close" else (16, 0)
+        if (9, 30) <= hm < cash_end:
             return "regular"
-        if (16, 0) <= hm < (20, 0):
+        if cash_end <= hm < (20, 0):
             return "post"
     return "overnight"
 
@@ -715,7 +732,17 @@ def _tw_open_ref_line(snap: Dict[str, Any]) -> str:
     return _plain_quote_rows(snap, _DROP_TW_ITEMS)
 
 
-def format_us_html(snap: Dict[str, Any]) -> str:
+def _us_holiday_head(now: Optional[datetime] = None) -> list:
+    try:
+        from us_holidays import closed_us_session, holiday_banner_lines
+
+        return holiday_banner_lines(closed_us_session(now))
+    except Exception:
+        logger.debug("美股休市年曆讀不到", exc_info=True)
+        return []
+
+
+def format_us_html(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
     if not snap:
         return ""
     from tg_layout import headline_lines, html_escape, join_sections
@@ -723,13 +750,22 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
     phase = snap.get("us_phase") or "regular"
     phase_s = _PHASE_LABEL.get(phase, _SECTION_INDEX_CLOSE)
-    blocks = [
-        headline_lines(
+    holiday = _us_holiday_head(now)
+    if holiday:
+        head = headline_lines(
+            "<b>美股收盤</b>",
+            *[html_escape(x) for x in holiday],
+            f"判斷　{html_escape(label)}",
+        )
+    else:
+        head = headline_lines(
             "<b>美股收盤</b>",
             f"判斷　{html_escape(label)}",
             f"階段　{html_escape(phase_s)}",
             f"美股交易日　{html_escape(_session_label(snap))}",
-        ),
+        )
+    blocks = [
+        head,
         _cash_indices_block(snap),
         _vix_row(snap),
     ]
@@ -743,7 +779,7 @@ def format_us_html(snap: Dict[str, Any]) -> str:
     return join_sections(*blocks)
 
 
-def format_night_plain(snap: Dict[str, Any]) -> str:
+def format_night_plain(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
     """轉寄稿用的夜盤整塊：美股現金／盤後＋電子鏈漲跌。"""
     if not snap:
         return "＝＝夜盤判斷＝＝\n這次沒接到美股數字"
@@ -752,6 +788,7 @@ def format_night_plain(snap: Dict[str, Any]) -> str:
     phase_s = _PHASE_LABEL.get(phase, "")
     lines = [
         "＝＝夜盤判斷＝＝",
+        *_us_holiday_head(now),
         label,
         phase_s,
         f"【{_SECTION_INDEX_CLOSE}】",
@@ -800,19 +837,29 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     )
 
 
-def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None) -> str:
+def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None, now: Optional[datetime] = None) -> str:
     """06:30 海選前的單獨一則：只在大跌時寄，一早打開就能看到。"""
     from tg_layout import headline_lines, html_escape, join_sections
 
     snap = _enrich_tw_open_ref(snap or {}, db_path)
     label = REGIME_LABEL.get(snap.get("regime") or "unknown", "大盤偏空")
-    blocks = [
-        headline_lines(
+    holiday = _us_holiday_head(now)
+    if holiday:
+        head = headline_lines(
+            "一早提醒",
+            "<b>美股收盤偏弱</b>",
+            *[html_escape(x) for x in holiday],
+            f"判斷　{html_escape(label)}",
+        )
+    else:
+        head = headline_lines(
             "一早提醒",
             "<b>美股收盤偏弱</b>",
             f"判斷　{html_escape(label)}",
             f"美股交易日　{html_escape(_session_label(snap))}",
-        ),
+        )
+    blocks = [
+        head,
         _cash_indices_block(snap),
         _vix_row(snap),
     ]
