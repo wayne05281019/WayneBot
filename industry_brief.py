@@ -284,7 +284,30 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     }
 
 
-def format_industry_html(stock_id: str, db_path: str = None) -> str:
+def attach_fine_industry(
+    snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
+) -> Dict[str, Any]:
+    """把籌碼K細項掛上這檔與對照檔。沒抓到就空，不自造。"""
+    from industry_fine import load_or_fetch_fine_industry
+
+    ids = [str(snap.get("stock_id") or "")]
+    for row in list(snap.get("stronger") or []) + list(snap.get("weaker") or []):
+        ids.append(str(row.get("stock_id") or ""))
+    fine = load_or_fetch_fine_industry(db_path, ids, allow_fetch=allow_fetch, max_fetch=max_fetch)
+    snap["fine"] = fine
+    mine = fine.get(str(snap.get("stock_id") or "")) or {}
+    snap["fine_tags"] = list(mine.get("tags") or [])
+    snap["fine_chain"] = str(mine.get("chain") or "")
+    snap["fine_finest"] = str(mine.get("finest") or "")
+    for key in ("stronger", "weaker"):
+        for row in snap.get(key) or []:
+            rec = fine.get(str(row.get("stock_id") or "")) or {}
+            row["fine_tags"] = list(rec.get("tags") or [])
+            row["fine_finest"] = str(rec.get("finest") or "")
+    return snap
+
+
+def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: bool = False) -> str:
     from tg_layout import (
         html_escape,
         html_pct_tight,
@@ -297,10 +320,13 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
     )
 
     path = db_path or get_db_path()
-    snap = industry_snapshot(path, stock_id)
+    snap = attach_fine_industry(industry_snapshot(path, stock_id), path, allow_fetch=allow_fetch)
     sid = snap["stock_id"]
     name = snap["stock_name"]
     blocks = [title_line("產業說明", sid, name)]
+    if snap.get("fine_tags"):
+        chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
+        blocks[0] = blocks[0] + "　" + chips
 
     if snap["is_etf"]:
         blocks.append(
@@ -319,6 +345,8 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
         "產業名來自證交所／櫃買公司基本資料產業別。",
         "同業＝同一官方產業別全組，不是更細的產品線。",
     ]
+    if snap.get("fine_tags"):
+        who_lines.append("細項來自籌碼K公開個股頁。")
     if ind == "半導體業":
         who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
     blocks.append(section(*who_lines))
@@ -388,18 +416,24 @@ def format_industry_html(stock_id: str, db_path: str = None) -> str:
             return [f"{title}　—"]
         out = [title]
         for r in rows:
+            tag = str(r.get("fine_finest") or "").strip()
+            tag_bit = f" [{html_escape(tag)}]" if tag else ""
             out.append(
                 f"<code>{html_escape(r['stock_id'])}</code> "
-                f"{html_escape(r['stock_name'])} {html_pct_tight(r['yoy'])}"
+                f"{html_escape(r['stock_name'])}{tag_bit} {html_pct_tight(r['yoy'])}"
             )
         return out
 
     if snap["stronger"] or snap["weaker"]:
+        peer_note = []
+        if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
+            peer_note.append("小框是籌碼K細項；年增對照仍是證交所同一產業別全組。")
         blocks.append(
             section(
                 "<b>同業月營收對照</b>",
                 *_peer_rows("較強", snap["stronger"]),
                 *_peer_rows("較弱", snap["weaker"]),
+                *peer_note,
             )
         )
     return join_sections(*blocks)
