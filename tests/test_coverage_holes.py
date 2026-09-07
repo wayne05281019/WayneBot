@@ -170,3 +170,5 @@ def test_decision_card_table_keeps_halt_days():
     src = inspect.getsource(NavigatorEngine.get_decision_card)
     assert "table_src = df" in src
     assert "高低／均線略過無量日" in src
+    assert "as_of" in src
+    assert "merge_live = False" in src

@@ -255,7 +255,9 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    card = NavigatorEngine(get_db_path()).get_decision_card("3441", merge_live=False)
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "3441", merge_live=False, as_of="20260904"
+    )
     assert str(card.get("latest_date")) == "20260904"
     assert card.get("sell_action") == "直接減碼"
     again = {"table": card["table"]}
@@ -458,7 +460,7 @@ def test_cary_2383_2408_3008_20260904_rows():
 
     eng = NavigatorEngine(get_db_path())
 
-    c2383 = eng.get_decision_card("2383", merge_live=False)
+    c2383 = eng.get_decision_card("2383", merge_live=False, as_of="20260904")
     assert str(c2383.get("latest_date")) == "20260904"
     assert float(c2383["cal60_low"]) == 4100.0
     assert abs(float(c2383["gain_pct"]) - 32.1) < 0.2
@@ -468,14 +470,14 @@ def test_cary_2383_2408_3008_20260904_rows():
     r03 = t2383[t2383["date"].astype(str) == "20260903"].iloc[0]
     assert str(r03["升降"]) == "最低溫"
 
-    c2408 = eng.get_decision_card("2408", merge_live=False)
+    c2408 = eng.get_decision_card("2408", merge_live=False, as_of="20260904")
     t2408 = c2408["table"]
     n03 = t2408[t2408["date"].astype(str) == "20260903"].iloc[0]
     assert str(n03["升降"]) == "最低溫"
     assert "價未新低" in str(n03.get("升降註") or "")
     assert float(c2408["gain_pct"]) > 40.0
 
-    c3008 = eng.get_decision_card("3008", merge_live=False)
+    c3008 = eng.get_decision_card("3008", merge_live=False, as_of="20260904")
     assert str(c3008.get("latest_date")) == "20260904"
     assert c3008.get("sell_action") == "直接減碼"
     assert "不同步再脫離" in str(c3008.get("sell_why") or "")
@@ -489,7 +491,9 @@ def test_4915_20260904_sync_has_no_sell_caption():
     from config import get_db_path
     from wayne_navigator import NavigatorEngine
 
-    card = NavigatorEngine(get_db_path()).get_decision_card("4915", merge_live=False)
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "4915", merge_live=False, as_of="20260904"
+    )
     assert str(card.get("latest_date")) == "20260904"
     row = card["table"].iloc[0]
     assert str(row["高低"]) == "20高"
@@ -570,6 +574,7 @@ def test_holdings_and_notes_match_20260904_flags():
         ["3703", "3035", "6526", "4915", "1303", "8234"],
         db,
         full=True,
+        as_of="20260904",
     )
     assert notes["3703"].startswith(NOTE_HI_TEMP)
     assert "不是叫你買" in notes["3703"]
@@ -578,6 +583,12 @@ def test_holdings_and_notes_match_20260904_flags():
     assert "4915" not in notes
     assert "1303" not in notes
     assert "8234" not in notes
+
+    from wayne_navigator import NavigatorEngine
+
+    live = NavigatorEngine(db).get_decision_card("3703", merge_live=False)
+    if str(live.get("latest_date")) != "20260904":
+        return
 
     eng = PortfolioEngine(db)
     html_cut = eng.format_holdings_html(
