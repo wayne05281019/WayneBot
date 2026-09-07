@@ -68,7 +68,7 @@ def _bot():
 def test_hamburger_lists_why_first():
     names = [name for name, _desc in TELEGRAM_BOT_COMMANDS]
     assert names[0] == "why"
-    assert ("why", "原因：平常話對出正確資料") in TELEGRAM_BOT_COMMANDS
+    assert ("why", "原因：語音或打字對出官方資料") in TELEGRAM_BOT_COMMANDS
     assert "menu" in names
     src = open("bot_servers.py", encoding="utf-8").read()
     assert 'CommandHandler("why"' in src
@@ -224,4 +224,6 @@ def test_help_why_topic_exists():
     assert "三條槓" in body
     assert "不編" in body
     assert "主力成本" in body
+    assert "語音" in body
+    assert "聽寫金鑰" in body
     assert HELP_TOPICS["guide"].count("三條槓") >= 1

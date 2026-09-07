@@ -11,6 +11,7 @@ import gc
 import logging
 import os
 import struct
+import tempfile
 import time
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
@@ -623,7 +624,7 @@ HELP_TOPICS = {
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
         "<b>想問為什麼跌／怎麼賣</b>\n"
-        "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
+        "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」，也可以傳語音。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
         "\n"
         "<b>找不到股票</b>\n"
         "再打一次四碼比打股名準。名稱撞名時：藍字＝奇摩網頁，左邊股名＝看這檔圖。\n"
@@ -636,7 +637,7 @@ HELP_TOPICS = {
     ),
     "why": (
         "<b>原因（三條槓／平常話）</b>\n"
-        "在輸入列<b>左邊三條槓</b>點「原因」，或打 /why。聊天室直接打平常的詞也會對到同一套資料。\n"
+        "在輸入列<b>左邊三條槓</b>點「原因」，或打 /why。聊天室直接打平常的詞、或<b>傳語音</b>，都會對到同一套資料。\n"
         "\n"
         "<b>會對到什麼（都是官方資料，不編）</b>\n"
         "• 為什麼跌／為什麼漲／原因　→ 這檔介紹圖＋決策卡＋導航圖。沒有官方新聞跌因欄\n"
@@ -651,6 +652,7 @@ HELP_TOPICS = {
         "• 主力成本／外資成本　→ 說明官方沒這欄，改看籌碼\n"
         "\n"
         "沒寫代號就用<b>上一檔</b>；還沒查過請打四碼，例如 <code>2330為什麼跌</code>。\n"
+        "語音：按麥克風說同一句。雲端要有聽寫金鑰才聽得懂；沒金鑰不會假裝聽懂，請改打字。\n"
         "進場仍只認高低卡表的黃金買點，紅箭頭不是買訊。"
     ),
 }
@@ -676,7 +678,7 @@ MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。why 放第一，平常話對官方資料。
 TELEGRAM_BOT_COMMANDS = (
-    ("why", "原因：平常話對出正確資料"),
+    ("why", "原因：語音或打字對出官方資料"),
     ("menu", "回到主選單（下方兩排）"),
     ("market", "大盤指數與風險"),
     ("help", "使用說明"),
@@ -3782,8 +3784,16 @@ class WayneTelegramBot:
             msg, uid, body=cap or "（截圖）", photo_file_id=fid
         )
 
-    async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        raw_msg = update.message.text or ""
+    async def on_text(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        *,
+        spoken: str | None = None,
+    ):
+        if not update.message:
+            return
+        raw_msg = spoken if spoken is not None else (update.message.text or "")
         raw = raw_msg.strip()
         if not raw:
             return
@@ -3993,6 +4003,78 @@ class WayneTelegramBot:
                 "查詢失敗。雲端可能還沒有日K，或出圖逾時。請先按 /start，稍後再試。",
                 reply_markup=self._keyboard(),
             )
+
+    async def on_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """語音／音檔 → 聽寫 → 同一條 on_text（原因／平常話）。不編新聞。"""
+        if not update.message:
+            return
+        from voice_stt import (
+            STT_MAX_BYTES,
+            STT_MAX_SEC,
+            audio_suffix,
+            heard_html,
+            stt_configured,
+            stt_missing_html,
+            transcribe_audio,
+        )
+
+        if not stt_configured():
+            await update.message.reply_html(
+                stt_missing_html(), disable_web_page_preview=True
+            )
+            return
+        voice = update.message.voice or update.message.audio
+        if voice is None:
+            return
+        duration = int(getattr(voice, "duration", 0) or 0)
+        if duration > STT_MAX_SEC:
+            await update.message.reply_html(
+                f"這段語音超過 {STT_MAX_SEC} 秒。請講短一點再傳，例如「2330 為什麼漲」。"
+            )
+            return
+        wait = await update.message.reply_text("正在聽…")
+        tmp = None
+        try:
+            tg_file = await context.bot.get_file(voice.file_id)
+            suffix = audio_suffix(voice)
+            fd, tmp = tempfile.mkstemp(suffix=suffix)
+            os.close(fd)
+            await tg_file.download_to_drive(tmp)
+            if os.path.getsize(tmp) > STT_MAX_BYTES:
+                try:
+                    await wait.delete()
+                except Exception:
+                    pass
+                await update.message.reply_html("這段語音太大。請講短一點再傳。")
+                return
+            text = await asyncio.to_thread(transcribe_audio, tmp)
+        except Exception as exc:
+            logger.exception("voice stt failed")
+            try:
+                await wait.delete()
+            except Exception:
+                pass
+            await update.message.reply_html(
+                f"聽寫失敗：{html_escape(str(exc)[:180])}"
+            )
+            return
+        finally:
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        try:
+            await wait.delete()
+        except Exception:
+            pass
+        if not text:
+            await update.message.reply_html("沒聽清楚。請再講一次，或直接打字。")
+            return
+        await update.message.reply_html(
+            heard_html(text), disable_web_page_preview=True
+        )
+        await self.on_text(update, context, spoken=text)
 
     async def _handle_pending_pick(
         self, message, uid: str, pending: str, text: str, *, actor: str = ""
@@ -5194,6 +5276,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("sell", self._wrap_cmd(self.sell_cmd)))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+        app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         app.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         app.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
 
