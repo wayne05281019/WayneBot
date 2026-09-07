@@ -3,7 +3,7 @@
 import os
 import sqlite3
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -244,7 +244,7 @@ def test_release_stale_is_flagged(monkeypatch):
 
     import requests
 
-    old = email.utils.format_datetime(datetime.now().astimezone() - timedelta(days=9))
+    old = email.utils.format_datetime(datetime.now(timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
     from ops_watchdog import gha_pipeline_stale
 
@@ -273,10 +273,10 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
 
     path = _make_db(tmp_path, runs={"screen-20260902": "success", "20260902": "success"})
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    old = email.utils.format_datetime(datetime.now().astimezone() - timedelta(days=9))
+    now = datetime(2026, 9, 2, 19, 0)
+    old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
 
-    now = datetime(2026, 9, 2, 19, 0)
     first = watchdog_scan(path, now=now)
     kinds = [a["kind"] for a in first["alerts"]]
     assert kinds == ["release_publish"]
@@ -292,11 +292,11 @@ def test_watchdog_release_check_can_be_disabled(tmp_path, monkeypatch):
 
     path = _make_db(tmp_path, runs={"screen-20260902": "success", "20260902": "success"})
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
-    old = email.utils.format_datetime(datetime.now().astimezone() - timedelta(days=9))
+    now = datetime(2026, 9, 2, 19, 0)
+    old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
     monkeypatch.setattr(requests, "head", _fake_head(old))
     monkeypatch.setenv("WAYNE_WATCHDOG_RELEASE", "false")
 
-    now = datetime(2026, 9, 2, 19, 0)
     assert watchdog_scan(path, now=now)["alerts"] == []
 
 
