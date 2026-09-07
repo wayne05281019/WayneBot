@@ -132,6 +132,8 @@ def test_help_has_row1_row2_and_ai():
     assert "AI模擬倉" in HELP_TOPICS["ai"]
     assert "AI倉" in HELP_TOPICS["ai"]
     assert "20:00" in HELP_TOPICS["ai"]
+    assert "留現金" in HELP_TOPICS["ai"]
+    assert "3 等份" in HELP_TOPICS["ai"]
     assert "決策卡" in HELP_TOPICS["row1"]
     assert "AI倉" in HELP_TOPICS["row1"]
     assert "隔日沖" in HELP_TOPICS["row2"]

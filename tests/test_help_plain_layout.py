@@ -35,6 +35,14 @@ def test_stock_help_has_plain_discipline_notes():
     assert "現在高點跟熱度都沒了" in stock
     assert "月K一句" in stock
     assert "不改海選" in stock
+    assert "200股" in HELP_TOPICS["buy"]
+    assert "留現金" in HELP_TOPICS["guide"]
+    assert "預留" not in HELP_TOPICS["guide"]
+    assert "官方收盤掃" in HELP_TOPICS["guide"]
+    assert "平常最多 1 份" in HELP_TOPICS["row1"]
+    assert "最多 3 檔" not in HELP_TOPICS["guide"]
+    assert "最多 3 檔" not in HELP_TOPICS["row1"]
+    assert "最多 3 檔" not in HELP_TOPICS["ai"]
 
 
 def test_screen_help_separates_two_line_doors():
