@@ -64,7 +64,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "刷新跑馬燈" in blob
     assert "進化" in blob
     assert "直接打四碼" in blob
-    assert CACHE_VER == "v18"
+    assert CACHE_VER == "v19"
     assert "一張圖卡" in blob
     assert "跑馬燈" in blob
     assert "細項小框" in blob

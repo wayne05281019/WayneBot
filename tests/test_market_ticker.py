@@ -20,7 +20,10 @@ NY = ZoneInfo("America/New_York")
 
 def test_ticker_slot_windows():
     assert ticker_slot(datetime(2026, 9, 8, 10, 0, tzinfo=TW)) == "tw_open"
-    assert ticker_slot(datetime(2026, 9, 8, 14, 0, tzinfo=TW)) == "asia_pm"
+    assert ticker_slot(datetime(2026, 9, 8, 8, 25, tzinfo=TW)) == "tw_pre"
+    assert ticker_slot(datetime(2026, 9, 8, 8, 31, tzinfo=TW)) == "tw_match"
+    assert ticker_slot(datetime(2026, 9, 8, 13, 40, tzinfo=TW)) == "tw_after"
+    assert ticker_slot(datetime(2026, 9, 8, 15, 5, tzinfo=TW)) == "tw_settled"
     assert ticker_slot(datetime(2026, 9, 8, 17, 30, tzinfo=TW)) == "us_pre"
     # 週二凌晨＝美股週一現金盤
     assert ticker_slot(datetime(2026, 9, 8, 1, 22, tzinfo=TW)) == "us_night"
@@ -160,6 +163,84 @@ def test_ticker_keyboard_refresh_and_skip_mock():
     assert "tk:r" in cbs
     bot._ticker_refresh_task = {}
     bot._schedule_ticker_refresh(type("M", (), {"message_id": "x", "chat_id": 1})())
+    assert bot._ticker_refresh_task == {}
+
+
+def test_morning_countdown_and_match_copy(tmp_path):
+    snap = {"close": 47326.27, "chg1_pct": 1.67, "futures": {"close": 47470, "pct_change": 0.3}}
+    live = {"close": 47326.27, "pct_change": 1.67}
+    db = str(tmp_path / "x.db")
+    pre = collect_ticker(db, live=live, snap=snap, now=datetime(2026, 9, 8, 8, 25, tzinfo=TW), yahoo=False)
+    plain = ticker_plain(pre)
+    assert pre["slot"] == "tw_pre"
+    assert "距離試搓 05:00" in plain
+    assert "距離台指期開盤 20:00" in plain
+    assert "加權" not in plain
+    match = collect_ticker(db, live=live, snap=snap, now=datetime(2026, 9, 8, 8, 31, tzinfo=TW), yahoo=False)
+    mp = ticker_plain(match)
+    assert "個股試搓價格中" in mp
+    assert "距離台指期開盤 14:00" in mp
+    assert "加權" not in mp
+    tx_on = collect_ticker(
+        db,
+        live=live,
+        snap=snap,
+        now=datetime(2026, 9, 8, 8, 45, tzinfo=TW),
+        yahoo=False,
+        live_tx={"close": 47470.0, "pct_change": 1.63},
+    )
+    tp = ticker_plain(tx_on)
+    assert "個股試搓價格中" in tp
+    assert "47,470" in tp
+    assert "距離台指期開盤" not in tp
+    after = collect_ticker(
+        db,
+        live=live,
+        snap=snap,
+        now=datetime(2026, 9, 8, 13, 40, tzinfo=TW),
+        yahoo=False,
+        live_otc={"close": 409.33, "pct_change": 1.70},
+    )
+    ap = ticker_plain(after)
+    assert "台股日盤收盤" in ap
+    assert "加權盤後交易中" in ap
+    assert "櫃買 409.3" in ap
+    settled = collect_ticker(
+        db,
+        live=live,
+        snap=snap,
+        now=datetime(2026, 9, 8, 15, 5, tzinfo=TW),
+        yahoo=False,
+        live_otc={"close": 409.0, "pct_change": 1.2},
+    )
+    sp = ticker_plain(settled)
+    assert "加權收盤" in sp
+    assert "櫃買收盤" in sp
+    assert "47,326" in sp
+
+
+def test_render_gif_uses_casio_digits(tmp_path):
+    bundle = {
+        "title": "開盤倒數",
+        "items": [
+            {"name": "此刻", "label": "此刻", "digits": "08:25:00", "text": "此刻 08:25:00", "kind": "clock", "pct": None},
+            {"name": "試搓", "label": "距離試搓", "digits": "05:00", "text": "距離試搓 05:00", "kind": "count", "pct": None},
+        ],
+    }
+    path = str(tmp_path / "casio.gif")
+    render_ticker_gif(bundle, path)
+    with Image.open(path) as im:
+        assert im.size == (TICKER_W, TICKER_H)
+        rgb = im.convert("RGB")
+        mint = 0
+        for x in range(0, TICKER_W, 4):
+            for y in range(10, TICKER_H - 10, 4):
+                r, g, b = rgb.getpixel((x, y))[:3]
+                if g >= r + 10 and g >= 140 and b < 200:
+                    mint += 1
+        assert mint >= 8
+
+
 def test_render_gif_full_width_always_scrolls(tmp_path):
     """短字也要整條從最左捲到最右，不能停在靜態一幀。"""
     bundle = {

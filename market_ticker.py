@@ -41,12 +41,25 @@ US_PRE_FUT = (
 )
 
 SLOT_TITLE = {
+    "tw_pre": "開盤倒數",
+    "tw_match": "試搓中",
     "tw_open": "台股開盤",
+    "tw_after": "日盤已收",
+    "tw_settled": "收盤",
     "asia_pm": "亞股午後",
     "us_pre": "美股盤前",
     "us_night": "美股時段",
     "weekend": "休市對照",
 }
+
+# 試搓 08:30、台指期日盤 08:45–13:45、現股 09:00–13:30、加權盤後到 14:30、櫃買到 15:00。
+_MATCH_AT = dt_time(8, 30)
+_TX_DAY_OPEN = dt_time(8, 45)
+_CASH_OPEN = dt_time(9, 0)
+_CASH_CLOSE = dt_time(13, 30)
+_TX_DAY_CLOSE = dt_time(13, 45)
+_TW_AH_END = dt_time(14, 30)
+_OTC_CLOSE = dt_time(15, 0)
 
 _UP = (232, 72, 72)
 _DOWN = (46, 168, 96)
@@ -76,7 +89,7 @@ _TAIFEX_HEADERS = {
 
 
 def ticker_slot(now: Optional[datetime] = None) -> str:
-    """依台北時段＋美股盤別決定跑馬燈。週六凌晨若美股現金還在，仍走美股時段。"""
+    """依台北時段＋美股盤別決定跑馬燈。交易日早上 8 點起改走開盤倒數／試搓，不再當成美股時段。"""
     from config import taipei_now
     from trading_calendar import is_tw_equity_session, is_tw_market_holiday
 
@@ -90,8 +103,14 @@ def ticker_slot(now: Optional[datetime] = None) -> str:
     t = dt.time()
     tw_off = dt.weekday() >= 5 or is_tw_market_holiday(dt.strftime("%Y%m%d"))
     if not tw_off:
-        if dt_time(13, 30) < t < dt_time(16, 0):
-            return "asia_pm"
+        if dt_time(8, 0) <= t < _MATCH_AT:
+            return "tw_pre"
+        if _MATCH_AT <= t < _CASH_OPEN:
+            return "tw_match"
+        if _CASH_CLOSE < t < _OTC_CLOSE:
+            return "tw_after"
+        if _OTC_CLOSE <= t < dt_time(16, 0):
+            return "tw_settled"
         if dt_time(16, 0) <= t < dt_time(21, 30):
             return "us_pre"
     try:
@@ -101,9 +120,53 @@ def ticker_slot(now: Optional[datetime] = None) -> str:
             return "us_night"
     except Exception:
         pass
-    if not tw_off and (t >= dt_time(21, 30) or t < dt_time(9, 0)):
+    if not tw_off and (t >= dt_time(21, 30) or t < dt_time(8, 0)):
         return "us_night"
     return "weekend"
+
+
+def _countdown_to(dt: datetime, target: dt_time) -> Optional[str]:
+    hit = dt.replace(hour=target.hour, minute=target.minute, second=target.second, microsecond=0)
+    if dt >= hit:
+        return None
+    sec = int((hit - dt).total_seconds())
+    if sec < 0:
+        return None
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _side_zh(pct) -> str:
+    if pct is None:
+        return ""
+    n = float(pct)
+    if n > 0:
+        return "漲"
+    if n < 0:
+        return "跌"
+    return "平"
+
+
+def _ticker_item(
+    name: str,
+    label: str,
+    *,
+    digits: str = "",
+    pct=None,
+    kind: str = "text",
+) -> Dict[str, Any]:
+    text = f"{label} {digits}".strip() if digits else label
+    return {
+        "name": name,
+        "text": text,
+        "label": label,
+        "digits": digits,
+        "pct": pct,
+        "kind": kind,
+    }
 
 
 def _fmt_px(px: float) -> str:
@@ -427,7 +490,7 @@ def collect_ticker(
     live_otc: Optional[Dict[str, Any]] = None,
     live_tx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """組時段項目。yahoo=False 時不打外網（Yahoo／期交所即時）。"""
+    """組時段項目。yahoo=False 時不打外網。沒接到的不寫。"""
     from config import taipei_now
 
     dt = now or taipei_now()
@@ -436,58 +499,112 @@ def collect_ticker(
     else:
         dt = dt.astimezone(TW)
     slot = ticker_slot(dt)
-    title = SLOT_TITLE[slot]
+    title = SLOT_TITLE.get(slot) or "跑馬燈"
     snap = dict(snap or {})
     if db_path:
         snap["_db_path"] = db_path
     items: List[Dict[str, Any]] = []
     clock = dt.strftime("%H:%M:%S")
-    items.append({"name": "此刻", "text": clock, "pct": None})
+    t = dt.time()
+    items.append(_ticker_item("此刻", "此刻", digits=clock, kind="clock"))
+
+    want_tx = slot in ("tw_match", "tw_open", "tw_after", "tw_settled", "us_pre", "us_night") and t >= _TX_DAY_OPEN
+    want_otc = slot in ("tw_open", "tw_after")
+    night_tx = slot in ("us_pre", "us_night", "tw_settled") or t >= _OTC_CLOSE
 
     if yahoo:
         try:
             from live_quote import fetch_mis_index_quote, fetch_mis_otc_index_quote
 
-            if live is None or not float((live or {}).get("close") or 0):
+            if slot in ("tw_open", "tw_settled", "us_pre") and (live is None or not float((live or {}).get("close") or 0)):
                 live = fetch_mis_index_quote(fresh=True, require_session=False) or live
-            if live_otc is None:
+            if want_otc and live_otc is None:
                 live_otc = fetch_mis_otc_index_quote(fresh=True)
-            if live_tx is None:
-                live_tx = fetch_tx_live(night=(slot in ("us_pre", "us_night")))
+            if slot in ("tw_settled", "us_pre") and live_otc is None:
+                live_otc = fetch_mis_otc_index_quote(fresh=True)
+            if want_tx and live_tx is None:
+                live_tx = fetch_tx_live(night=bool(night_tx and t >= _OTC_CLOSE))
+                if live_tx is None and t < _OTC_CLOSE:
+                    live_tx = fetch_tx_live(night=False)
         except Exception:
             logger.debug("跑馬燈補即時失敗", exc_info=True)
 
-    night_tx = slot in ("us_pre", "us_night")
+    if slot == "tw_pre":
+        match_left = _countdown_to(dt, _MATCH_AT)
+        tx_left = _countdown_to(dt, _TX_DAY_OPEN)
+        if match_left:
+            items.append(_ticker_item("試搓", "距離試搓", digits=match_left, kind="count"))
+        if tx_left:
+            items.append(_ticker_item("台指期開盤", "距離台指期開盤", digits=tx_left, kind="count"))
+        return _ticker_bundle(slot, title, items, clock)
 
-    if slot in ("tw_open", "asia_pm", "weekend"):
+    if slot == "tw_match":
+        items.append(_ticker_item("試搓中", "個股試搓價格中", kind="status"))
+        tx_left = _countdown_to(dt, _TX_DAY_OPEN)
+        if tx_left:
+            items.append(_ticker_item("台指期開盤", "距離台指期開盤", digits=tx_left, kind="count"))
+        elif t >= _TX_DAY_OPEN:
+            tx = _tx_seg(snap, night=False, live=live_tx)
+            if tx:
+                items.append(_quote_item("台指期", tx))
+        return _ticker_bundle(slot, title, items, clock)
+
+    if slot == "tw_open":
         tw = _tw_index_seg(live, snap)
         if tw:
-            items.append(tw)
+            items.append(_quote_item("加權", tw))
         otc = _seg("櫃買", (live_otc or {}).get("close"), (live_otc or {}).get("pct_change")) if live_otc else None
         if otc:
-            items.append(otc)
-        tx = _tx_seg(snap, night=False, live=live_tx if not night_tx else None)
+            items.append(_quote_item("櫃買", otc))
+        tx = _tx_seg(snap, night=False, live=live_tx)
         if tx:
-            items.append(tx)
-        if yahoo and slot != "weekend":
-            items.extend(_yahoo_many(ASIA_INDEX))
+            items.append(_quote_item("台指期", tx))
+        if yahoo:
+            items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
+        return _ticker_bundle(slot, title, items, clock)
+
+    if slot == "tw_after":
+        items.append(_ticker_item("日盤", "台股日盤收盤", kind="status"))
+        if t < _TW_AH_END:
+            items.append(_ticker_item("盤後", "加權盤後交易中", kind="status"))
+        else:
+            items.append(_ticker_item("盤後", "加權盤後已收", kind="status"))
+        otc = _seg("櫃買", (live_otc or {}).get("close"), (live_otc or {}).get("pct_change")) if live_otc else None
+        if otc:
+            items.append(_quote_item("櫃買", otc))
+        if t < _TX_DAY_CLOSE:
+            tx = _tx_seg(snap, night=False, live=live_tx)
+            if tx:
+                items.append(_quote_item("台指期", tx))
+        if yahoo:
+            items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
+        return _ticker_bundle(slot, title, items, clock)
+
+    if slot == "tw_settled":
+        items.extend(_close_pair(live, live_otc, snap))
+        if live_tx or (snap or {}).get("futures_night"):
+            tx = _tx_seg(snap, night=True, live=live_tx)
+            if tx:
+                items.append(_quote_item("台指期夜盤", tx))
+        if yahoo:
+            items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
+        return _ticker_bundle(slot, title, items, clock)
 
     if slot == "us_pre":
+        items.extend(_close_pair(live, live_otc, snap))
         if yahoo:
             fut = _yahoo_many(US_PRE_FUT)
             if not fut:
                 us = _load_us(db_path) if db_path else {}
                 fut = _us_from_snap(us, ("標普期", "那斯達克期", "道瓊期"))
-            items.extend(fut)
+            items.extend(_quote_item(x["name"], x) for x in fut)
         else:
             us = _load_us(db_path) if db_path else {}
-            items.extend(_us_from_snap(us, ("標普期", "那斯達克期", "道瓊期")))
-        tw = _tw_index_seg(live, snap)
-        if tw:
-            items.append(tw)
+            items.extend(_quote_item(x["name"], x) for x in _us_from_snap(us, ("標普期", "那斯達克期", "道瓊期")))
         tx = _tx_seg(snap, night=True, live=live_tx)
         if tx:
-            items.append(tx)
+            items.append(_quote_item("台指期夜盤", tx))
+        return _ticker_bundle(slot, title, items, clock)
 
     if slot == "us_night":
         cash: List[Dict[str, Any]] = []
@@ -496,24 +613,67 @@ def collect_ticker(
         if not cash:
             us = _load_us(db_path) if db_path else {}
             cash = _us_from_snap(us, ("道瓊", "標普", "那斯達克", "費半"))
-        items.extend(cash)
+        items.extend(_quote_item(x["name"], x) for x in cash)
         try:
             from us_overnight import electronics_night_side
 
             us = _load_us(db_path) if db_path else {}
             side = electronics_night_side(us)
             if side:
-                items.append(_seg("電子夜盤", extra=side))
+                extra = _seg("電子夜盤", extra=side)
+                if extra:
+                    items.append(_ticker_item("電子夜盤", extra["text"], kind="status", pct=extra.get("pct")))
         except Exception:
             pass
         night = _tx_seg(snap, night=True, live=live_tx)
         if night:
-            items.append(night)
+            items.append(_quote_item("台指期夜盤", night))
+        return _ticker_bundle(slot, title, items, clock)
 
+    tw = _tw_index_seg(live, snap)
+    if tw:
+        items.append(_quote_item("加權", tw, label="加權收盤"))
+    otc = _seg("櫃買", (live_otc or {}).get("close"), (live_otc or {}).get("pct_change")) if live_otc else None
+    if otc:
+        items.append(_quote_item("櫃買", otc, label="櫃買收盤"))
+    return _ticker_bundle(slot, title, items, clock)
+
+
+def _quote_item(name: str, seg: Dict[str, Any], *, label: str = None) -> Dict[str, Any]:
+    body = str(seg.get("text") or "")
+    prefix = (label or name) + " "
+    if body.startswith(prefix):
+        digits = body[len(prefix):]
+    else:
+        digits = body.replace(name, "", 1).strip()
+    return _ticker_item(name, label or name, digits=digits, pct=seg.get("pct"), kind="quote")
+
+
+def _close_pair(live, live_otc, snap) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    tw = _tw_index_seg(live, snap)
+    if tw:
+        side = _side_zh(tw.get("pct"))
+        lab = f"加權收盤{(' ' + side) if side else ''}"
+        out.append(_quote_item("加權", tw, label=lab))
+    otc = None
+    if live_otc:
+        otc = _seg("櫃買", live_otc.get("close"), live_otc.get("pct_change"))
+    if not otc:
+        otc = _seg("櫃買", (snap or {}).get("otc_close"), (snap or {}).get("otc_chg1_pct"))
+    if otc:
+        side = _side_zh(otc.get("pct"))
+        lab = f"櫃買收盤{(' ' + side) if side else ''}"
+        out.append(_quote_item("櫃買", otc, label=lab))
+    return out
+
+
+def _ticker_bundle(slot: str, title: str, items: List[Dict[str, Any]], clock: str) -> Dict[str, Any]:
     items = [x for x in items if x]
     if not any(x.get("name") != "此刻" for x in items):
         return {"slot": slot, "title": title, "items": [], "clock": clock}
     return {"slot": slot, "title": title, "items": items, "clock": clock}
+
 
 
 def ticker_plain(bundle: Dict[str, Any]) -> str:
@@ -566,13 +726,119 @@ def _ink_color(pct) -> tuple:
 
 
 TICKER_W = 1080
-TICKER_H = 88
+TICKER_H = 96
 TICKER_FRAMES = 40
 TICKER_FRAME_MS = 55
 
+_CASIO_ON = (186, 214, 168)
+_CASIO_OFF = (32, 44, 52)
+_CASIO_MAP = {
+    "0": "abcdef",
+    "1": "bc",
+    "2": "abged",
+    "3": "abgcd",
+    "4": "fgbc",
+    "5": "afgcd",
+    "6": "afgcde",
+    "7": "abc",
+    "8": "abcdefg",
+    "9": "abfgcd",
+    "-": "g",
+}
+
+
+def _casio_digit_w(h: int) -> int:
+    return max(18, int(round(h * 0.58)))
+
+
+def _casio_width(text: str, h: int) -> int:
+    dw = _casio_digit_w(h)
+    gap = max(3, h // 16)
+    n = 0
+    for ch in str(text or ""):
+        if ch == ":":
+            n += max(8, dw // 3) + gap
+        elif ch in ".,":
+            n += max(6, dw // 4) + gap
+        elif ch == " ":
+            n += dw // 2
+        elif ch == "%":
+            n += dw + gap
+        else:
+            n += dw + gap
+    return max(1, n)
+
+
+def _draw_seg_poly(draw, pts, fill):
+    draw.polygon(pts, fill=fill)
+
+
+def _draw_casio_digit(draw, x: float, y: float, w: int, h: int, ch: str, on, off) -> None:
+    t = max(3, int(h * 0.14))
+    s = 1
+    xa, xb = x + t, x + w - t
+    ya, yb, yc = y + t, y + h / 2, y + h - t
+    segs = {
+        "a": [(xa + s, y), (xb - s, y), (xb - s - t, y + t), (xa + s + t, y + t)],
+        "g": [
+            (xa + s + t, yb - t / 2),
+            (xb - s - t, yb - t / 2),
+            (xb - s, yb),
+            (xb - s - t, yb + t / 2),
+            (xa + s + t, yb + t / 2),
+            (xa + s, yb),
+        ],
+        "d": [(xa + s + t, yc), (xb - s - t, yc), (xb - s, y + h), (xa + s, y + h)],
+        "f": [(x, ya + s), (x + t, ya + s + t), (x + t, yb - s - t / 2), (x, yb - s)],
+        "b": [(x + w, ya + s), (x + w - t, ya + s + t), (x + w - t, yb - s - t / 2), (x + w, yb - s)],
+        "e": [(x, yb + s), (x + t, yb + s + t / 2), (x + t, yc - s - t), (x, yc - s)],
+        "c": [(x + w, yb + s), (x + w - t, yb + s + t / 2), (x + w - t, yc - s - t), (x + w, yc - s)],
+    }
+    active = set(_CASIO_MAP.get(ch, ""))
+    for name, pts in segs.items():
+        _draw_seg_poly(draw, pts, on if name in active else off)
+
+
+def _draw_casio_text(draw, x: float, y: float, h: int, text: str, on) -> float:
+    dw = _casio_digit_w(h)
+    gap = max(3, h // 16)
+    cx = x
+    off = _CASIO_OFF
+    for ch in str(text or ""):
+        if ch == ":":
+            r = max(2, h // 12)
+            draw.ellipse((cx, y + h * 0.28 - r, cx + r * 2, y + h * 0.28 + r), fill=on)
+            draw.ellipse((cx, y + h * 0.72 - r, cx + r * 2, y + h * 0.72 + r), fill=on)
+            cx += max(8, dw // 3) + gap
+            continue
+        if ch in ".,":
+            r = max(2, h // 14)
+            draw.ellipse((cx, y + h - r * 2 - 2, cx + r * 2, y + h - 2), fill=on)
+            cx += max(6, dw // 4) + gap
+            continue
+        if ch == " ":
+            cx += dw / 2
+            continue
+        if ch == "%":
+            r = max(2, h // 10)
+            draw.ellipse((cx, y + 4, cx + r * 2, y + 4 + r * 2), outline=on, width=2)
+            draw.line((cx + 2, y + h - 6, cx + dw - 2, y + 8), fill=on, width=2)
+            draw.ellipse((cx + dw - r * 2, y + h - 4 - r * 2, cx + dw, y + h - 4), outline=on, width=2)
+            cx += dw + gap
+            continue
+        if ch == "+":
+            mid = y + h / 2
+            draw.rectangle((cx + dw * 0.2, mid - 2, cx + dw * 0.8, mid + 2), fill=on)
+            draw.rectangle((cx + dw * 0.45, y + h * 0.22, cx + dw * 0.55, y + h * 0.78), fill=on)
+            cx += dw + gap
+            continue
+        _draw_casio_digit(draw, cx, y, dw, h, ch if ch in _CASIO_MAP else "8", on, off)
+        cx += dw + gap
+    return cx
+
 
 def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
-    """整條從最左跑到最右，循環無縫。時段名跟報價一起捲，不留左欄。沒有項目就不畫。"""
+    """整條從最左跑到最右。中文標籤＋Casio 電子數字。沒有項目就不畫。"""
     from PIL import Image, ImageDraw
 
     items = [x for x in (bundle.get("items") or []) if x.get("text")]
@@ -580,24 +846,41 @@ def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
         return ""
     title = str(bundle.get("title") or "跑馬燈")
     W, H = TICKER_W, TICKER_H
-    body_f = _ticker_font(50, bold=True)
-    segs: List[Tuple[str, tuple]] = [(f"{title}    ·    ", _LABEL_FG)]
-    for it in items:
-        segs.append((str(it["text"]) + "    ·    ", _ink_color(it.get("pct"))))
+    body_f = _ticker_font(42, bold=True)
+    digit_h = 56
     measure = ImageDraw.Draw(Image.new("RGB", (8, 8)))
-    parts_w = [float(measure.textlength(t, font=body_f)) for t, _c in segs]
-    unit_w = max(1, int(round(sum(parts_w))))
+    gap = 28
+
+    pieces: List[Tuple[str, str, tuple, float]] = []
+    title_w = float(measure.textlength(title + "    ·    ", font=body_f))
+    pieces.append((title + "    ·    ", "", _LABEL_FG, title_w))
+    for it in items:
+        label = str(it.get("label") or it.get("name") or "")
+        digits = str(it.get("digits") or "")
+        kind = str(it.get("kind") or "")
+        color = _ink_color(it.get("pct"))
+        if kind in ("clock", "count"):
+            color = _CASIO_ON
+        lab = (label + " ") if digits else (str(it.get("text") or label) + "    ·    ")
+        lw = float(measure.textlength(lab, font=body_f))
+        dw = _casio_width(digits, digit_h) if digits else 0
+        pieces.append((lab, digits, color, lw + dw + (gap if digits else 0)))
+
+    unit_w = max(1, int(round(sum(p[3] for p in pieces))))
     copies = max(3, (W + unit_w + unit_w - 1) // unit_w)
     strip_w = unit_w * copies + 8
     strip = Image.new("RGB", (strip_w, H), _BG)
     sd = ImageDraw.Draw(strip)
     x = 0.0
     for _copy in range(copies):
-        for (text, color), tw in zip(segs, parts_w):
+        for lab, digits, color, tw in pieces:
             try:
-                sd.text((x, H / 2), text, font=body_f, fill=color, anchor="lm")
+                sd.text((x, H / 2), lab, font=body_f, fill=_LABEL_FG if digits else color, anchor="lm")
             except TypeError:
-                sd.text((x, max(4, (H - 50) / 2)), text, font=body_f, fill=color)
+                sd.text((x, max(6, (H - 42) / 2)), lab, font=body_f, fill=_LABEL_FG if digits else color)
+            lw = float(measure.textlength(lab, font=body_f))
+            if digits:
+                _draw_casio_text(sd, x + lw, (H - digit_h) / 2, digit_h, digits, color)
             x += tw
 
     n = TICKER_FRAMES
