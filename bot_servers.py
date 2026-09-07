@@ -190,7 +190,7 @@ HELP_TOPICS = {
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
         "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>連買區</b>｜<b>說明</b>｜<b>回報</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按最右「回報」。\n"
-        "大盤最上頭是時段跑馬燈：抓當下最後一筆，沒接到不寫；送出後會再刷新，也可按「刷新跑馬燈」。\n"
+        "大盤最上頭是時段跑馬燈：整條從最左跑到最右，抓當下最後一筆，沒接到不寫；長住那一則自己換價，也可按「刷新跑馬燈」。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -348,7 +348,7 @@ HELP_TOPICS = {
         "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
         "\n"
         "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
-        "最上頭是時段跑馬燈（循環短圖）：抓證交所／期交所／公開即時報價的當下最後一筆，沒接到的市場不寫。送出後還會再刷新幾次，也可按「刷新跑馬燈」。台股開盤跑加權／櫃買／台指期／日經／韓國／滬指；午後跑亞股收盤；下午跑美股盤前期貨；美股時段跑四大指數＋電子夜盤＋台指期夜盤。\n"
+        "最上頭是時段跑馬燈：整條從最左跑到最右，循環短圖長住那一則。抓證交所／期交所／公開即時報價的當下最後一筆，沒接到的市場不寫；會自己換價，也可按「刷新跑馬燈」。台股開盤跑加權／櫃買／台指期／日經／韓國／滬指；午後跑亞股收盤；下午跑美股盤前期貨；美股時段跑四大指數＋電子夜盤＋台指期夜盤。\n"
         "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附前一交易日收盤；不是沒資料就空白。\n"
         "\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
@@ -1605,8 +1605,18 @@ class WayneTelegramBot:
             ]
         )
 
+    def _cancel_chat_ticker_refresh(self, chat_id) -> None:
+        tasks = getattr(self, "_ticker_refresh_task", None)
+        if not isinstance(tasks, dict) or chat_id is None:
+            return
+        prefix = f"{chat_id}:"
+        for k in [k for k in tasks if str(k).startswith(prefix)]:
+            old = tasks.pop(k, None)
+            if old is not None:
+                old.cancel()
+
     def _schedule_ticker_refresh(self, anim_msg) -> None:
-        """送出後再抓幾次即時報價，原地換成新 GIF。測試用 MagicMock 不會排程。"""
+        """長住同一則跑馬燈，隔幾秒原地換成新 GIF。測試用 MagicMock 不會排程。"""
         if not isinstance(getattr(anim_msg, "message_id", None), int):
             return
         chat_id = getattr(anim_msg, "chat_id", None)
@@ -1618,24 +1628,30 @@ class WayneTelegramBot:
         if not isinstance(tasks, dict):
             self._ticker_refresh_task = {}
             tasks = self._ticker_refresh_task
-        old = tasks.pop(key, None)
-        if old is not None:
-            old.cancel()
+        self._cancel_chat_ticker_refresh(chat_id)
         try:
             tasks[key] = asyncio.create_task(self._ticker_refresh_loop(anim_msg, key))
         except Exception:
             logger.debug("跑馬燈刷新排程失敗", exc_info=True)
 
     async def _ticker_refresh_loop(self, anim_msg, key: str) -> None:
-        rounds = int(os.getenv("WAYNE_TICKER_REFRESH_ROUNDS", "5"))
-        pause = float(os.getenv("WAYNE_TICKER_REFRESH_SEC", "12"))
+        # 0＝一直換到這則被刪、或使用者再按一次大盤（取消舊任務）。
+        try:
+            rounds = int(os.getenv("WAYNE_TICKER_REFRESH_ROUNDS", "0"))
+        except (TypeError, ValueError):
+            rounds = 0
+        try:
+            pause = float(os.getenv("WAYNE_TICKER_REFRESH_SEC", "12"))
+        except (TypeError, ValueError):
+            pause = 12.0
+        n = 0
         try:
             from telegram import InputMediaAnimation
 
             from live_quote import fetch_mis_index_quote
             from market_ticker import build_market_ticker
 
-            for _ in range(max(0, rounds)):
+            while True:
                 await asyncio.sleep(max(4.0, pause))
                 live = await asyncio.to_thread(
                     fetch_mis_index_quote, fresh=True, require_session=False
@@ -1652,16 +1668,22 @@ class WayneTelegramBot:
                 tick = await asyncio.to_thread(_build)
                 gif = str((tick or {}).get("gif") or "")
                 if not gif or not os.path.isfile(gif) or os.path.getsize(gif) < 800:
+                    n += 1
+                    if rounds > 0 and n >= rounds:
+                        break
                     continue
                 with open(gif, "rb") as f:
                     await anim_msg.edit_media(
                         media=InputMediaAnimation(media=f),
                         reply_markup=self._ticker_keyboard(),
                     )
+                n += 1
+                if rounds > 0 and n >= rounds:
+                    break
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.debug("跑馬燈原地刷新失敗", exc_info=True)
+            logger.debug("跑馬燈原地刷新停止", exc_info=True)
         finally:
             tasks = getattr(self, "_ticker_refresh_task", None)
             if isinstance(tasks, dict):

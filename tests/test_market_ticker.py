@@ -5,6 +5,9 @@ from zoneinfo import ZoneInfo
 from PIL import Image
 
 from market_ticker import (
+    TICKER_FRAMES,
+    TICKER_H,
+    TICKER_W,
     collect_ticker,
     render_ticker_gif,
     ticker_plain,
@@ -139,9 +142,10 @@ def test_render_gif_scrolls(tmp_path):
     assert out == path
     with Image.open(path) as im:
         assert im.format == "GIF"
-        assert im.size == (1080, 72)
+        assert im.size == (TICKER_W, TICKER_H)
         n = getattr(im, "n_frames", 1)
         assert n >= 8
+        assert n == TICKER_FRAMES
     assert (tmp_path / "ticker.gif").stat().st_size > 2000
 
 
@@ -156,4 +160,64 @@ def test_ticker_keyboard_refresh_and_skip_mock():
     assert "tk:r" in cbs
     bot._ticker_refresh_task = {}
     bot._schedule_ticker_refresh(type("M", (), {"message_id": "x", "chat_id": 1})())
-    assert bot._ticker_refresh_task == {}
+def test_render_gif_full_width_always_scrolls(tmp_path):
+    """短字也要整條從最左捲到最右，不能停在靜態一幀。"""
+    bundle = {
+        "title": "台股開盤",
+        "items": [{"name": "加權", "text": "加權 47,326 +1.67%", "pct": 1.67}],
+    }
+    path = str(tmp_path / "short.gif")
+    render_ticker_gif(bundle, path)
+    with Image.open(path) as im:
+        assert im.size == (TICKER_W, TICKER_H)
+        n = getattr(im, "n_frames", 1)
+        assert n == TICKER_FRAMES
+        im.seek(0)
+        first = im.convert("RGB").tobytes()
+        left = im.convert("RGB").getpixel((6, 1))
+        right = im.convert("RGB").getpixel((TICKER_W - 8, 1))
+        assert left[2] >= 180 and right[2] >= 180
+        im.seek(n // 2)
+        mid = im.convert("RGB").tobytes()
+        assert first != mid
+
+
+def test_ticker_refresh_loop_keeps_editing_until_rounds(tmp_path, monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import WayneTelegramBot
+
+    monkeypatch.setenv("WAYNE_TICKER_REFRESH_ROUNDS", "2")
+    monkeypatch.setenv("WAYNE_TICKER_REFRESH_SEC", "4")
+    gif = str(tmp_path / "t.gif")
+    render_ticker_gif(
+        {
+            "title": "台股開盤",
+            "items": [{"name": "加權", "text": "加權 1 +0.10%", "pct": 0.1}],
+        },
+        gif,
+    )
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "x.db")
+    bot._ticker_refresh_task = {"1:9": None}
+    anim = MagicMock()
+    anim.message_id = 9
+    anim.chat_id = 1
+    anim.edit_media = AsyncMock()
+
+    async def _run():
+        with patch("asyncio.sleep", new=AsyncMock()), patch(
+            "live_quote.fetch_mis_index_quote", return_value={"close": 1.0, "pct_change": 0.1}
+        ), patch(
+            "taiwan_market.analyze_taiwan_market",
+            return_value={"close": 1.0, "chg1_pct": 0.1},
+        ), patch(
+            "market_ticker.build_market_ticker",
+            return_value={"gif": gif},
+        ):
+            await bot._ticker_refresh_loop(anim, "1:9")
+
+    asyncio.run(_run())
+    assert anim.edit_media.await_count == 2
+    assert "1:9" not in bot._ticker_refresh_task

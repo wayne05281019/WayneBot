@@ -565,63 +565,51 @@ def _ink_color(pct) -> tuple:
     return _INK
 
 
+TICKER_W = 1080
+TICKER_H = 88
+TICKER_FRAMES = 40
+TICKER_FRAME_MS = 55
+
+
 def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
-    """左固定時段名、右循環捲動報價。沒有項目就不畫。"""
+    """整條從最左跑到最右，循環無縫。時段名跟報價一起捲，不留左欄。沒有項目就不畫。"""
     from PIL import Image, ImageDraw
 
     items = [x for x in (bundle.get("items") or []) if x.get("text")]
     if not items:
         return ""
     title = str(bundle.get("title") or "跑馬燈")
-    W, H = 1080, 72
-    pad = 10
-    label_f = _ticker_font(26, bold=True)
-    body_f = _ticker_font(28, bold=True)
-    label_w = int(label_f.getlength(title) + 36)
-    label_w = max(168, min(260, label_w))
-    scroll_x0 = pad + label_w + 8
-    scroll_w = W - pad - scroll_x0
-
-    segs: List[Tuple[str, tuple]] = []
+    W, H = TICKER_W, TICKER_H
+    body_f = _ticker_font(50, bold=True)
+    segs: List[Tuple[str, tuple]] = [(f"{title}    ·    ", _LABEL_FG)]
     for it in items:
         segs.append((str(it["text"]) + "    ·    ", _ink_color(it.get("pct"))))
-    # 量一次總寬
     measure = ImageDraw.Draw(Image.new("RGB", (8, 8)))
-    parts_w = [measure.textlength(t, font=body_f) for t, _c in segs]
-    total_w = int(sum(parts_w))
-    loop_w = max(total_w, scroll_w + 1)
-    # 畫兩份做無縫
-    strip = Image.new("RGB", (loop_w * 2 + 40, H), _BG)
+    parts_w = [float(measure.textlength(t, font=body_f)) for t, _c in segs]
+    unit_w = max(1, int(round(sum(parts_w))))
+    copies = max(3, (W + unit_w + unit_w - 1) // unit_w)
+    strip_w = unit_w * copies + 8
+    strip = Image.new("RGB", (strip_w, H), _BG)
     sd = ImageDraw.Draw(strip)
-    x = 0
-    for _copy in range(2):
+    x = 0.0
+    for _copy in range(copies):
         for (text, color), tw in zip(segs, parts_w):
-            ty = (H - 28) / 2 - 4
             try:
                 sd.text((x, H / 2), text, font=body_f, fill=color, anchor="lm")
             except TypeError:
-                sd.text((x, ty), text, font=body_f, fill=color)
+                sd.text((x, max(4, (H - 50) / 2)), text, font=body_f, fill=color)
             x += tw
 
-    n = 36 if total_w > scroll_w else 1
-    step = max(2, int(round(loop_w / max(n, 1))))
+    n = TICKER_FRAMES
     frames = []
     for i in range(n):
-        ox = (i * step) % loop_w
+        ox = int(round(i * unit_w / float(n))) % unit_w
+        crop = strip.crop((ox, 0, ox + W, H))
         frame = Image.new("RGB", (W, H), _BG)
+        frame.paste(crop, (0, 0))
         dr = ImageDraw.Draw(frame)
-        dr.rounded_rectangle((4, 4, W - 4, H - 4), radius=16, fill=_BG, outline=_RULE, width=2)
-        dr.rounded_rectangle((pad, 10, pad + label_w, H - 10), radius=12, fill=_LABEL_BG)
-        dr.text(
-            (pad + label_w / 2, H / 2),
-            title,
-            font=label_f,
-            fill=_LABEL_FG,
-            anchor="mm",
-        )
-        crop = strip.crop((ox, 0, ox + scroll_w, H))
-        frame.paste(crop, (scroll_x0, 0))
-        # 左緣淡出，避免字切一半太刺
+        dr.rectangle((0, 0, W - 1, 3), fill=_LABEL_FG)
+        dr.rectangle((0, H - 4, W - 1, H - 1), fill=_LABEL_FG)
         frames.append(frame)
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -629,7 +617,7 @@ def render_ticker_gif(bundle: Dict[str, Any], save_path: str) -> str:
         save_path,
         save_all=True,
         append_images=frames[1:],
-        duration=70,
+        duration=TICKER_FRAME_MS,
         loop=0,
         optimize=True,
         disposal=2,
