@@ -2480,6 +2480,8 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("rw:2317", datas)
         self.assertIn("刪", texts)
         self.assertIn("k:2330", datas)
+        self.assertEqual(len(kb.inline_keyboard[0]), 2)
+        self.assertEqual(len(kb.inline_keyboard[1]), 2)
 
     def test_line_stock_share_persists_and_hop(self):
         import os

@@ -770,11 +770,29 @@ def _pick_front_month_tx_rows(
     }
 
 
+def _decode_official_bytes(raw: bytes) -> str:
+    """官方 CSV：utf-8-sig → utf-8 → cp950 → big5。只解 big5 會把 utf-8 的「交易日期」解成亂碼。"""
+    if not raw:
+        return ""
+    last = ""
+    for enc in ("utf-8-sig", "utf-8", "cp950", "big5"):
+        try:
+            text = raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        last = text
+        if "交易日期" in text or "契約" in text or "Date" in text[:240]:
+            return text
+    if last:
+        return last
+    return raw.decode("big5", errors="replace")
+
+
 def _parse_taifex_history_csv(content: bytes) -> Dict[str, Dict[str, Dict[str, Any]]]:
     import csv
     import io
 
-    text = content.decode("big5", errors="replace")
+    text = _decode_official_bytes(content)
     reader = csv.DictReader(io.StringIO(text))
     by_date: Dict[str, List[Dict[str, Any]]] = {}
     for row in reader:

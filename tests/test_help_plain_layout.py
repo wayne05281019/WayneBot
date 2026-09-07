@@ -76,10 +76,13 @@ def test_help_nav_has_oops_and_no_reply_overlap():
     labels = [btn.text for row in kb.inline_keyboard for btn in row]
     assert labels.count("按錯") == 1
     assert len(kb.inline_keyboard) == 3
+    assert [b.text for b in kb.inline_keyboard[0]] == ["總覽", "查股", "圖文"]
     assert [b.text for b in kb.inline_keyboard[2]] == ["記買入", "按錯", "✕"]
     reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
     overlap = reply & set(labels)
     assert overlap == set(), overlap
+    assert "圖文" in HELP_TOPICS["row2"]
+    assert "圖文" in HELP_TOPICS["guide"]
 
 
 def test_row2_help_page_explains_help_button():
@@ -99,6 +102,7 @@ def test_start_cmd_leads_with_three_steps():
     assert "第一次用，先做這三步" in src
     assert "直接打四碼" in src
     assert "圖下面" in src
+    assert "圖文" in src
     assert "按錯" in src
 
 
