@@ -67,6 +67,15 @@ def html_escape(val) -> str:
     )
 
 
+def _stock_caption_name(card: dict | None, code: str = "") -> str:
+    """決策卡圖說第一行用股名（台積電），不要寫「高低決策卡」。"""
+    name = str((card or {}).get("stock_name") or "").strip()
+    sid = str((card or {}).get("stock_id") or code or "").strip()
+    if name and sid and (name == sid or name.startswith(sid)):
+        name = name[len(sid) :].strip(" 　") if name.startswith(sid) else ""
+    return name or sid or "決策卡"
+
+
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
     """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
     cap = str(base or "").strip() or fallback
@@ -82,7 +91,12 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
         return cap
     if not short:
         return cap
-    return f"{cap}\n紀律　{html_escape(short)}"
+    return f"{cap}\nAi建議　{html_escape(short)}"
+
+
+def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
+    title = f"{_stock_caption_name(card, code)}{live_note}"
+    return _photo_sell_caption(title, card, fallback=title)
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
@@ -200,7 +214,7 @@ HELP_TOPICS = {
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
         "12:45 尾盤可切版\n"
-        "16:30 官方收盤寫庫\n"
+        "16:30 官方收盤寫庫（齊了發一則，不是海選）\n"
         "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "盤中查股用證交所即時價（不寫庫）。13:30～16:30 融合前若即時價空白，會用奇摩參考價；16:30 後以庫內官方收盤為準。\n"
         "\n"
@@ -2087,7 +2101,7 @@ class WayneTelegramBot:
             cap = f"{html_escape(code)}"
             self._send_photo(chat_id, glance, caption=cap)
         for path in self._card_photo_paths(card_img):
-            self._send_photo(chat_id, path, caption=f"{html_escape(code)} 高低決策卡")
+            self._send_photo(chat_id, path, caption=html_escape(name or code))
         last_kb = self._hub_keyboard(code)
         if chart_path:
             self._send_photo(
@@ -3860,7 +3874,7 @@ class WayneTelegramBot:
                 with open(card_path, "rb") as f:
                     await message.reply_photo(
                         photo=f,
-                        caption=_photo_sell_caption(f"高低決策卡{live_note}", card, fallback="高低決策卡"),
+                        caption=_decision_card_photo_caption(card, code, live_note),
                         parse_mode="HTML",
                         reply_markup=hub,
                     )
@@ -4219,7 +4233,7 @@ class WayneTelegramBot:
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
             glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
-            card_cap = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
+            card_cap = _decision_card_photo_caption(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),

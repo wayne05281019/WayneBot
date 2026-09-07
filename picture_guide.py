@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional, Sequence, Tuple
 
-CACHE_VER = "v14"
+CACHE_VER = "v15"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -96,7 +96,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "\n"
         "平日自動（台灣）\n"
         "06:30 早報　12:45 尾盤可切版\n"
-        "16:30 官方收盤寫庫　20:00 AI倉模擬買賣，不推播",
+        "16:30 官方收盤寫庫（齊了發一則，不是海選）　20:00 AI倉模擬買賣，不推播",
     ),
     (
         "charts",
