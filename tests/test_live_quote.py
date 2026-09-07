@@ -5,6 +5,8 @@ from live_quote import (
     calc_vol_rank_120,
     is_live_merge_window,
     live_vol_rank_120,
+    mis_ex_ch,
+    _channels,
 )
 
 
@@ -192,3 +194,63 @@ def test_is_live_merge_window_hours(monkeypatch):
 
     monkeypatch.setattr(live_quote, "taipei_now", midautumn_friday)
     assert is_live_merge_window() is False
+
+
+def test_mis_ex_ch_otc_uses_tw_not_yahoo_two():
+    """上櫃 MIS 是 otc_3078.tw；.two 會回空列，查股只好走 Yahoo 假十字 K。"""
+    assert mis_ex_ch("3078", "TWO") == "otc_3078.tw"
+    assert mis_ex_ch("3078", "OTC") == "otc_3078.tw"
+    assert mis_ex_ch("2330", "TW") == "tse_2330.tw"
+    assert _channels("3078", "TWO")[0] == "otc_3078.tw"
+    assert all(not ch.endswith(".two") for ch in _channels("3078", "TWO"))
+    assert all(not ch.endswith(".two") for ch in _channels("2330", "TW"))
+
+
+def test_fetch_mis_quote_skips_empty_channel_then_otc_tw(monkeypatch):
+    import live_quote
+
+    calls = []
+
+    class _Resp:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, timeout=None):
+        calls.append(url)
+        if "otc_3078.tw" in url:
+            return _Resp(
+                {
+                    "msgArray": [
+                        {
+                            "c": "3078",
+                            "n": "僑威",
+                            "z": "-",
+                            "o": "45.9000",
+                            "h": "46.0000",
+                            "l": "44.8000",
+                            "y": "46.1000",
+                            "v": "388",
+                            "t": "10:19:45",
+                            "b": "44.8500_44.8000_",
+                            "a": "44.9000_44.9500_",
+                        }
+                    ]
+                }
+            )
+        return _Resp({"msgArray": [{"c": "", "z": "-"}]})
+
+    monkeypatch.setattr(live_quote._SESSION, "get", fake_get)
+    live_quote._QUOTE_CACHE.clear()
+    rt = live_quote.fetch_mis_quote("3078", "TWO")
+    assert rt is not None
+    assert rt["open"] == 45.9
+    assert rt["high"] == 46.0
+    assert rt["low"] == 44.8
+    assert rt["yesterday_close"] == 46.1
+    assert {rt["open"], rt["high"], rt["low"]} != {rt["close"]}
+    assert any("otc_3078.tw" in u for u in calls)
+    assert not any(".two" in u for u in calls)

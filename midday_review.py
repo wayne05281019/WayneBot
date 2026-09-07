@@ -79,10 +79,9 @@ def fetch_mis_batch(
         chs = []
         for sid in chunk:
             m = str(market.get(sid) or "TW").upper()
-            if m in ("TWO", "OTC", "ROCO", "上櫃"):
-                chs.append(f"otc_{sid}.two")
-            else:
-                chs.append(f"tse_{sid}.tw")
+            from live_quote import mis_ex_ch
+
+            chs.append(mis_ex_ch(sid, m))
         url = (
             "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
             f"?ex_ch={'|'.join(chs)}&json=1&delay=0&_={int(time.time() * 1000)}"
