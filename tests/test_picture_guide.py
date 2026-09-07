@@ -61,12 +61,10 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "20:00 AI倉模擬" in blob
     assert "原因" in blob
     assert "三條槓" in blob
-    assert "刷新跑馬燈" in blob
     assert "進化" in blob
     assert "直接打四碼" in blob
-    assert CACHE_VER == "v19"
+    assert CACHE_VER == "v20"
     assert "一張圖卡" in blob
-    assert "跑馬燈" in blob
     assert "細項小框" in blob
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920

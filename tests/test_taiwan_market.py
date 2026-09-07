@@ -886,7 +886,9 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "未平倉" in html
     assert "夜盤" in html
     assert "台指期夜盤" in html
-    assert "前一晚該看" in html
+    assert "上一收盤日該看" in html
+    assert "美股時段" not in html
+    assert "前一晚該看" not in html
     assert "盤後期貨" in html
     assert "那斯達克期貨" in html
     assert "那斯達克期貨+" not in html

@@ -54,7 +54,6 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert row2_help.index("④ 連買區") < row2_help.index("⑤ 說明")
     assert "隔日沖　大盤　資金　連買區　說明　回報" in blob
     assert "一張圖卡" in blob
-    assert "跑馬燈" in blob
     assert "圖卡" in HELP_TOPICS["industry"]
     assert "小框" in HELP_TOPICS["industry"]
     assert "講人話" not in HELP_TOPICS["industry"]
@@ -79,7 +78,7 @@ def test_picture_guide_page_order_is_first_use_then_lookup():
     assert blob.index("海選怎麼轉 LINE") < blob.index("三種清單不要搞混")
     assert blob.index("三種清單不要搞混") < blob.index("按錯了怎麼辦")
     assert blob.index("如何賣") < blob.index("海選怎麼轉 LINE")
-    assert blob.index("大盤跑馬燈") < blob.index("用平常話問原因")
+    assert blob.index("大盤頁") < blob.index("用平常話問原因")
 
 
 def test_how_to_sell_and_daily_clock_are_in_help_and_pictures():

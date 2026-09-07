@@ -191,7 +191,6 @@ HELP_TOPICS = {
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
         "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>連買區</b>｜<b>說明</b>｜<b>回報</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按最右「回報」。\n"
-        "大盤最上頭是時段跑馬燈：電子數字倒數試搓／台指期，整寬從螢幕左滑到右、慢慢捲；同一則自己換即時價，也可按「刷新跑馬燈」。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -317,7 +316,7 @@ HELP_TOPICS = {
         "• 收盤後按：只顯示強勢收盤候選，供明天開盤參考，不是叫你收盤再買。\n"
         "\n"
         "<b>② 大盤</b>\n"
-        "• 是什麼：加權指數、漲跌家數、三大法人、台指期日盤／夜盤、前一晚美股與盤後期貨，並附橫式日K。最上頭時段跑馬燈會依開盤改內容。美股休市會寫原因（例如感恩節），並附前一日收盤。\n"
+        "• 是什麼：加權指數、漲跌家數、三大法人、台指期日盤／夜盤、美股上一收盤與盤後期貨，並附橫式日K。美股休市會寫日期與原因（例如勞動節），並附上一收盤日數字。\n"
         "• 怎麼用：隨時按；只讀庫內資料，不會觸發匯入或改寫行情。庫沒夜盤時會讀期交所盤後（只顯示）。\n"
         "• 跟海選：早報／海選第一則就是白話大盤總覽；這頁給你看數字與圖。\n"
         "\n"
@@ -348,9 +347,8 @@ HELP_TOPICS = {
         "<b>大盤按鈕</b>\n"
         "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
         "\n"
-        "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
-        "最上頭是時段跑馬燈：寬度鋪滿對話可視寬，慢慢從左滑到右。開盤前倒數試搓／台指期；試搓中寫個股試搓價格中；9:00 起加權／櫃買／台指期；13:30 後日盤收、加權盤後、櫃買續跑；15:00 後寫加權／櫃買收盤與漲跌。有官方列才各寫一檔強勢、一檔弱勢，外加一則警語。沒接到不寫；長住同一則、滑完一圈再換即時數字，也可按「刷新跑馬燈」。\n"
-        "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附前一交易日收盤；不是沒資料就空白。\n"
+        "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及美股上一收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
+        "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附上一收盤日數字；不是沒資料就空白，也不會假裝還在交易。\n"
         "\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
         "<b>只讀</b>：不把盤中即時價寫進資料庫、不影響 16:30 自動融合或 06:30 早報。"
@@ -725,7 +723,6 @@ class WayneTelegramBot:
         self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
         self._menu_pin_msgs: Dict[str, object] = {}
-        self._ticker_refresh_task: Dict[str, asyncio.Task] = {}
 
     @staticmethod
     def _actor_key(
@@ -1596,143 +1593,6 @@ class WayneTelegramBot:
         )
         rows.append([self._q("why")])
         return InlineKeyboardMarkup(rows)
-
-    def _ticker_keyboard(self):
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("刷新跑馬燈", callback_data="tk:r"),
-                    self._q("market"),
-                ]
-            ]
-        )
-
-    def _cancel_chat_ticker_refresh(self, chat_id) -> None:
-        tasks = getattr(self, "_ticker_refresh_task", None)
-        if not isinstance(tasks, dict) or chat_id is None:
-            return
-        prefix = f"{chat_id}:"
-        for k in [k for k in tasks if str(k).startswith(prefix)]:
-            old = tasks.pop(k, None)
-            if old is not None:
-                old.cancel()
-
-    def _schedule_ticker_refresh(self, anim_msg) -> None:
-        """長住同一則跑馬燈，隔幾秒原地換成新 GIF。測試用 MagicMock 不會排程。"""
-        if not isinstance(getattr(anim_msg, "message_id", None), int):
-            return
-        chat_id = getattr(anim_msg, "chat_id", None)
-        if chat_id is None:
-            chat = getattr(anim_msg, "chat", None)
-            chat_id = getattr(chat, "id", None)
-        key = f"{chat_id}:{getattr(anim_msg, 'message_id', '')}"
-        tasks = getattr(self, "_ticker_refresh_task", None)
-        if not isinstance(tasks, dict):
-            self._ticker_refresh_task = {}
-            tasks = self._ticker_refresh_task
-        self._cancel_chat_ticker_refresh(chat_id)
-        try:
-            tasks[key] = asyncio.create_task(self._ticker_refresh_loop(anim_msg, key))
-        except Exception:
-            logger.debug("跑馬燈刷新排程失敗", exc_info=True)
-
-    async def _ticker_refresh_loop(self, anim_msg, key: str) -> None:
-        # 0＝一直換到這則被刪、或使用者再按一次大盤（取消舊任務）。
-        try:
-            rounds = int(os.getenv("WAYNE_TICKER_REFRESH_ROUNDS", "0"))
-        except (TypeError, ValueError):
-            rounds = 0
-        from market_ticker import ticker_refresh_sec, ticker_send_kwargs
-
-        pause = ticker_refresh_sec()
-        n = 0
-        try:
-            from telegram import InputMediaAnimation
-
-            from live_quote import fetch_mis_index_quote
-            from market_ticker import build_market_ticker
-
-            while True:
-                await asyncio.sleep(pause)
-                live = await asyncio.to_thread(
-                    fetch_mis_index_quote, fresh=True, require_session=False
-                )
-
-                def _build():
-                    from taiwan_market import analyze_taiwan_market
-
-                    snap = analyze_taiwan_market(
-                        self.db_path, None, db_only=True, page_light=True
-                    )
-                    return build_market_ticker(self.db_path, live=live, snap=snap)
-
-                tick = await asyncio.to_thread(_build)
-                gif = str((tick or {}).get("gif") or "")
-                if not gif or not os.path.isfile(gif) or os.path.getsize(gif) < 800:
-                    n += 1
-                    if rounds > 0 and n >= rounds:
-                        break
-                    continue
-                with open(gif, "rb") as f:
-                    await anim_msg.edit_media(
-                        media=InputMediaAnimation(media=f, **ticker_send_kwargs()),
-                        reply_markup=self._ticker_keyboard(),
-                    )
-                n += 1
-                if rounds > 0 and n >= rounds:
-                    break
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.debug("跑馬燈原地刷新停止", exc_info=True)
-        finally:
-            tasks = getattr(self, "_ticker_refresh_task", None)
-            if isinstance(tasks, dict):
-                tasks.pop(key, None)
-
-    async def _refresh_ticker_message(self, message) -> None:
-        """使用者按「刷新跑馬燈」：立刻重抓即時、換圖。"""
-        from telegram import InputMediaAnimation
-
-        from live_quote import fetch_mis_index_quote
-        from market_ticker import build_market_ticker, ticker_send_kwargs
-        from taiwan_market import analyze_taiwan_market
-
-        def _build():
-            live = fetch_mis_index_quote(fresh=True, require_session=False)
-            snap = analyze_taiwan_market(self.db_path, None, db_only=True, page_light=True)
-            return build_market_ticker(self.db_path, live=live, snap=snap)
-
-        try:
-            tick = await asyncio.wait_for(asyncio.to_thread(_build), timeout=18.0)
-        except Exception:
-            logger.exception("跑馬燈手動刷新失敗")
-            return
-        gif = str((tick or {}).get("gif") or "")
-        if not gif or not os.path.isfile(gif):
-            return
-        try:
-            with open(gif, "rb") as f:
-                if hasattr(message, "edit_media"):
-                    await message.edit_media(
-                        media=InputMediaAnimation(media=f, **ticker_send_kwargs()),
-                        reply_markup=self._ticker_keyboard(),
-                    )
-                    if isinstance(getattr(message, "message_id", None), int):
-                        self._schedule_ticker_refresh(message)
-                    return
-        except Exception:
-            logger.debug("跑馬燈 edit_media 失敗，改新發", exc_info=True)
-        try:
-            with open(gif, "rb") as f:
-                anim = await message.reply_animation(
-                    animation=f,
-                    reply_markup=self._ticker_keyboard(),
-                    **ticker_send_kwargs(),
-                )
-            self._schedule_ticker_refresh(anim)
-        except Exception:
-            logger.exception("跑馬燈刷新送出失敗")
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -3073,14 +2933,12 @@ class WayneTelegramBot:
             status = await self._transient_status(message, "讀取大盤…")
         html = ""
         live_quote = None
-        tick: dict = {}
         try:
 
             def _build():
                 from concurrent.futures import ThreadPoolExecutor
 
                 from live_quote import fetch_mis_index_quote
-                from market_ticker import build_market_ticker
                 from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
 
                 with ThreadPoolExecutor(max_workers=2) as ex:
@@ -3090,13 +2948,10 @@ class WayneTelegramBot:
                     )
                     live = live_f.result()
                     snap = snap_f.result()
-                tick = build_market_ticker(self.db_path, live=live, snap=snap)
-                html = format_taiwan_market_page_html(
-                    self.db_path, live=live, snap=snap, ticker_html=tick.get("html") or None
-                )
-                return html, live, tick
+                html = format_taiwan_market_page_html(self.db_path, live=live, snap=snap)
+                return html, live
 
-            html, live_quote, tick = await asyncio.wait_for(asyncio.to_thread(_build), timeout=28.0)
+            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=28.0)
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await self._delete_message(status)
@@ -3119,22 +2974,6 @@ class WayneTelegramBot:
             )
             return
         try:
-            gif = str((tick or {}).get("gif") or "")
-            anim_msg = None
-            if gif and os.path.isfile(gif) and os.path.getsize(gif) > 800:
-                try:
-                    from market_ticker import ticker_send_kwargs
-
-                    with open(gif, "rb") as f:
-                        anim_msg = await message.reply_animation(
-                            animation=f,
-                            reply_markup=self._ticker_keyboard(),
-                            **ticker_send_kwargs(),
-                        )
-                except Exception:
-                    logger.exception("跑馬燈 GIF 送出失敗")
-            if anim_msg is not None:
-                self._schedule_ticker_refresh(anim_msg)
             for i, part in enumerate(parts):
                 kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -5015,13 +4854,6 @@ class WayneTelegramBot:
             await self._show_picture_guide_page(
                 q.message, page, edit=True, from_page=from_page
             )
-            return
-        if data == "tk:r":
-            try:
-                await q.answer("正在抓即時…")
-            except Exception:
-                pass
-            await self._refresh_ticker_message(q.message)
             return
         await q.answer()
         if data == "fw:s":

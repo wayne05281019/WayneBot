@@ -501,6 +501,7 @@ _PHASE_LABEL = {
 }
 
 _SECTION_INDEX_CLOSE = "指數收盤"
+_SECTION_PRIOR_CLOSE = "上一收盤指數"
 _SECTION_US_FUTURES = "美股盤後期貨"
 _SECTION_TW_OPEN = "台股開盤前參考"
 
@@ -646,11 +647,11 @@ def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W
     return "\n".join(lines)
 
 
-def _cash_indices_block(snap: Dict[str, Any]) -> str:
+def _cash_indices_block(snap: Dict[str, Any], *, holiday: bool = False) -> str:
     from tg_layout import section_eq
 
     body = _quote_row_lines(snap, _CASH_ITEMS)
-    title = _SECTION_INDEX_CLOSE
+    title = _SECTION_PRIOR_CLOSE if holiday else _SECTION_INDEX_CLOSE
     return f"{section_eq(title)}\n{body}" if body else section_eq(title)
 
 
@@ -766,7 +767,7 @@ def format_us_html(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
         )
     blocks = [
         head,
-        _cash_indices_block(snap),
+        _cash_indices_block(snap, holiday=bool(holiday)),
         _vix_row(snap),
     ]
     posted = phase in ("post", "overnight") and any(
@@ -860,7 +861,7 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None, now: Opti
         )
     blocks = [
         head,
-        _cash_indices_block(snap),
+        _cash_indices_block(snap, holiday=bool(holiday)),
         _vix_row(snap),
     ]
     phase = snap.get("us_phase") or "regular"
