@@ -679,6 +679,13 @@ class MainRunner:
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
         try:
+            from us_holidays import refresh_us_holiday_calendar
+
+            hol = refresh_us_holiday_calendar(self.db_path)
+            logger.info("美股 NYSE 休市年曆：%s", hol)
+        except Exception as e:
+            logger.warning("美股休市年曆略過：%s", e)
+        try:
             from screen_review import score_ai_fills, score_screen_picks
 
             n = score_screen_picks(self.db_path, cap)

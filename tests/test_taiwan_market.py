@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+from datetime import datetime
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -876,7 +878,9 @@ def test_market_page_includes_futures_section(tmp_path):
 
     tm._TX_SESS_CACHE = (0.0, {})
     with patch("taiwan_market._taifex_openapi_all_rows", return_value=[]):
-        html = format_taiwan_market_page_html(db, "20260824")
+        html = format_taiwan_market_page_html(
+            db, "20260824", now=datetime(2026, 8, 24, 8, 0, tzinfo=ZoneInfo("America/New_York"))
+        )
     assert "台指期" in html
     assert "比現貨" in html
     assert "未平倉" in html
