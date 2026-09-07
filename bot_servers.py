@@ -289,7 +289,7 @@ HELP_TOPICS = {
         "• 收盤後按：只顯示強勢收盤候選，供明天開盤參考，不是叫你收盤再買。\n"
         "\n"
         "<b>② 大盤</b>\n"
-        "• 是什麼：加權指數、漲跌家數、三大法人、台指期日盤／夜盤、前一晚美股與盤後期貨，並附橫式日K。美股休市會寫原因（例如感恩節），並附前一日收盤。\n"
+        "• 是什麼：加權指數、漲跌家數、三大法人、台指期日盤／夜盤、前一晚美股與盤後期貨，並附橫式日K。最上頭時段跑馬燈會依開盤改內容。美股休市會寫原因（例如感恩節），並附前一日收盤。\n"
         "• 怎麼用：隨時按；只讀庫內資料，不會觸發匯入或改寫行情。庫沒夜盤時會讀期交所盤後（只顯示）。\n"
         "• 跟海選：早報／海選第一則就是白話大盤總覽；這頁給你看數字與圖。\n"
         "\n"
@@ -321,6 +321,7 @@ HELP_TOPICS = {
         "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
         "\n"
         "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
+        "最上頭是時段跑馬燈（循環短圖）：台股開盤跑加權／台指期／日經／韓國／滬指；午後跑亞股收盤；下午跑美股盤前期貨；美股時段跑四大指數＋電子夜盤＋台指期夜盤。沒接到的市場不寫。\n"
         "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附前一交易日收盤；不是沒資料就空白。\n"
         "\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
@@ -2799,12 +2800,14 @@ class WayneTelegramBot:
             status = await self._transient_status(message, "讀取大盤…")
         html = ""
         live_quote = None
+        tick: dict = {}
         try:
 
             def _build():
                 from concurrent.futures import ThreadPoolExecutor
 
                 from live_quote import fetch_mis_index_quote
+                from market_ticker import build_market_ticker
                 from taiwan_market import analyze_taiwan_market, format_taiwan_market_page_html
 
                 with ThreadPoolExecutor(max_workers=2) as ex:
@@ -2814,9 +2817,13 @@ class WayneTelegramBot:
                     )
                     live = live_f.result()
                     snap = snap_f.result()
-                return format_taiwan_market_page_html(self.db_path, live=live, snap=snap), live
+                tick = build_market_ticker(self.db_path, live=live, snap=snap)
+                html = format_taiwan_market_page_html(
+                    self.db_path, live=live, snap=snap, ticker_html=tick.get("html") or None
+                )
+                return html, live, tick
 
-            html, live_quote = await asyncio.wait_for(asyncio.to_thread(_build), timeout=25.0)
+            html, live_quote, tick = await asyncio.wait_for(asyncio.to_thread(_build), timeout=28.0)
         except asyncio.TimeoutError:
             logger.warning("大盤專頁逾時 db=%s", self.db_path)
             await self._delete_message(status)
@@ -2839,6 +2846,13 @@ class WayneTelegramBot:
             )
             return
         try:
+            gif = str((tick or {}).get("gif") or "")
+            if gif and os.path.isfile(gif) and os.path.getsize(gif) > 800:
+                try:
+                    with open(gif, "rb") as f:
+                        await message.reply_animation(animation=f)
+                except Exception:
+                    logger.exception("跑馬燈 GIF 送出失敗")
             for i, part in enumerate(parts):
                 kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
