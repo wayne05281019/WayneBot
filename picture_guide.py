@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional, Sequence, Tuple
 
-CACHE_VER = "v12"
+CACHE_VER = "v13"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -22,6 +22,7 @@ MIN_TITLE_SIZE = 68
 MIN_BODY_SIZE = 48
 BOTTOM_PAD = 16
 MIN_SHOT_RATIO = 0.28
+TEXT_SHOT_GAP = 36
 CHROME_TOP = 8
 DOT_ROW_H = 28
 TG_PHOTO_MAX_BYTES = 9_800_000
@@ -29,7 +30,7 @@ FLIP_W = 540
 FLIP_H = 960
 FLIP_FRAMES = 8
 FLIP_MS = 55
-_BREAK_AFTER = set("、。；：，,./／）)」」】》 ")
+_BREAK_AFTER = set("、。；：，,．）)」」】》 \u3000")
 PAGE_SLUGS = (
     "cover",
     "menu",
@@ -62,7 +63,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "WayneBot 圖文說明",
         "第一次用，先做這三步\n"
         "\n"
-        "1  點輸入列旁邊的鍵盤圖示（四格那顆）\n"
+        "1  點輸入列旁邊的四格鍵盤圖示\n"
         "   叫出兩排按鈕。不見就打 /menu\n"
         "\n"
         "2  直接打四碼看圖，例如 2330\n"
@@ -72,8 +73,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "   在圖下面那一排，不在右邊四格鍵盤\n"
         "\n"
         "這本說明給手機看。一次只看一張。\n"
-        "按「第 2 張」換頁；往前看按「第 1 張」。\n"
-        "這一張會換成下一張，帶一點滑頁。\n"
+        "按「第 2 張」看下一張；要回去按上一張。\n"
+        "換頁時這一張會滑走，換成下一張。\n"
         "挑股只認高低卡表的黃金買點。\n"
         "圖上紅箭頭不是買訊。",
     ),
@@ -94,7 +95,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "決策卡＝刷新上一檔，不是海選。還沒查過請直接打四碼。畫面怪按最右「回報」。\n"
         "\n"
         "平日自動（台灣）\n"
-        "06:30 早報　12:45 尾盤可切\n"
+        "06:30 早報　12:45 尾盤可切版\n"
         "16:30 官方收盤寫庫　20:00 AI倉模擬買賣，不推播",
     ),
     (
@@ -193,7 +194,7 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "再點天數。上市櫃一起列，不再分市場。\n"
         "選到一半按錯：改按別顆就取消，再按連買區重來。\n"
         "\n"
-        "名單：代號、股名、N 日連買張數與佔成交%。\n"
+        "名單：代號、股名、N日連買張數與佔成交%。\n"
         "點股名看出完整圖，按籌碼核對官方法人表。\n"
         "四格鍵盤被收掉時打 /menu 可重新釘住兩排。",
     ),
@@ -242,39 +243,49 @@ def _load_font(size: int, *, bold: bool = False):
 
 
 def _text_w(draw, text: str, font) -> float:
+    """用實際墨水寬，避免 textlength 低估、最後一個句號被拼回去後超出右緣。"""
     try:
-        return float(draw.textlength(text, font=font))
+        tl = float(draw.textlength(text, font=font))
     except Exception:
-        return len(text or "") * (getattr(font, "size", 28) * 0.9)
+        tl = len(text or "") * (getattr(font, "size", 28) * 0.9)
+    try:
+        l, _t, r, _b = font.getbbox(text)
+        return max(tl, float(r - l))
+    except Exception:
+        return tl
 
 
 def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str]:
-    """CJK 折行：盡量在頓號／句號切開，不要留下單字孤兒。"""
+    """CJK 折行：盡量在頓號／句號切開。不把 /menu 從斜線拆開；不把溢出的句號拼回去。"""
     if not text:
         return [""]
+    pad = 12.0
     lines: List[str] = []
     buf = ""
-    limit = float(first_w)
+    limit = max(24.0, float(first_w) - pad)
     for ch in text:
         trial = buf + ch
         if _text_w(draw, trial, font) <= limit or not buf:
             buf = trial
             continue
         cut = -1
-        start = max(1, len(buf) // 2)
-        for i in range(len(buf) - 1, start - 1, -1):
+        for i in range(len(buf) - 1, 0, -1):
             if buf[i] in _BREAK_AFTER:
                 cut = i + 1
                 break
-        if cut > 0:
+        if cut > 0 and cut < len(buf):
             lines.append(buf[:cut].rstrip())
             buf = buf[cut:].lstrip() + ch
         else:
             lines.append(buf)
             buf = ch
-        limit = float(rest_w)
+        limit = max(24.0, float(rest_w) - pad)
     if buf:
-        if len(buf) == 1 and lines:
+        if (
+            len(buf) <= 2
+            and lines
+            and _text_w(draw, lines[-1] + buf, font) <= limit
+        ):
             lines[-1] = lines[-1] + buf
         else:
             lines.append(buf)
@@ -356,15 +367,16 @@ def _trim_guide_shot(name: str, im):
     }
     w, h = im.size
     if name in keyboard and w >= 1400:
-        left = int(w * 0.18)
-        right = int(w * 0.76)
-        top = int(h * 0.32)
-        bottom = int(h * 0.80)  # 去掉截圖自己的底欄說明，避免裁字
+        left = int(w * 0.08)
+        right = int(w * 0.93)
+        top = int(h * 0.18)
+        bottom = int(h * 0.86)  # 留四格圖示；去掉截圖自己的底欄說明
         return im.crop((left, top, right, bottom))
     if name in {"charts.png", "hub.png"} and w >= 1400:
         left = int(w * 0.14)
         right = int(w * 0.86)
-        return im.crop((left, 0, right, h))
+        bottom = int(h * 0.88) if name == "hub.png" else h
+        return im.crop((left, 0, right, bottom))
     if name == "discipline.png" and w >= 900:
         left = int(w * 0.16)
         right = int(w * 0.84)
@@ -492,8 +504,8 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         body_size = max(MIN_BODY_SIZE, min(MAX_BODY_SIZE, int(round(BODY_SIZE * scale))))
         title_font = _load_font(title_size, bold=True)
         body_font = _load_font(body_size)
-        title_lh = max(int(round(title_size * 1.16)), title_size + 6)
-        body_lh = max(int(round(body_size * 1.28)), body_size + 6)
+        title_lh = max(int(round(title_size * 1.34)), title_size + 18)
+        body_lh = max(int(round(body_size * 1.36)), body_size + 10)
         gap_h = max(int(round(body_size * 0.34)), 12)
         title_lines = _wrap_line(pdraw, title, title_font, max_w, max_w)
         body_rows = _layout_body(pdraw, body, body_font, max_w)
@@ -501,14 +513,14 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
             chrome
             + 8
             + len(title_lines) * title_lh
-            + 10
+            + 32
             + _text_block_h(body_rows, body_lh, gap_h)
         )
-        remain = PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h
+        remain = PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h
         if remain >= min_shot_h:
             break
     assert title_font is not None and body_font is not None
-    remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
+    remain = max(PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h, int(PAGE_HEIGHT * 0.22))
     # 內文偏短時把段距拉開，九頁看起來一樣滿。
     extra = remain - min_shot_h
     gaps = sum(1 for row in body_rows if row is None)
@@ -516,7 +528,7 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         bump = min(extra // (gaps + 1), 22)
         gap_h += bump
         text_h += bump * gaps
-        remain = max(PAGE_HEIGHT - MARGIN - BOTTOM_PAD - text_h, int(PAGE_HEIGHT * 0.22))
+        remain = max(PAGE_HEIGHT - BOTTOM_PAD - TEXT_SHOT_GAP - text_h, int(PAGE_HEIGHT * 0.22))
     shot = _page_shot(slug)
     card = None
     if shot is not None:
@@ -540,9 +552,9 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     for line in title_lines:
         draw.text((MARGIN, y), line, font=title_font, fill=_INK)
         y += title_lh
-    y += 6
+    y += 14
     draw.line((MARGIN, y, PAGE_WIDTH - MARGIN, y), fill=_LINE, width=3)
-    y += 12
+    y += 18
     for row in body_rows:
         if row is None:
             y += gap_h
@@ -551,10 +563,22 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
         draw.text((MARGIN + indent, y), line, font=body_font, fill=_INK)
         y += body_lh
     if card is not None:
+        keep = "top" if slug == "discipline" else "center"
         y_shot = PAGE_HEIGHT - BOTTOM_PAD - card.height
-        if y_shot < y + 8:
-            y_shot = y + 8
-        img.paste(card, (MARGIN, y_shot))
+        min_top = y + TEXT_SHOT_GAP
+        if y_shot < min_top:
+            y_shot = min_top
+            max_h = PAGE_HEIGHT - BOTTOM_PAD - y_shot
+            if max_h >= 80 and max_h < card.height:
+                card = _shot_card(shot, max_w, max_h, keep=keep)
+        if y_shot + card.height > PAGE_HEIGHT - BOTTOM_PAD:
+            max_h = PAGE_HEIGHT - BOTTOM_PAD - y_shot
+            if max_h >= 80:
+                card = _shot_card(shot, max_w, max_h, keep=keep)
+            else:
+                card = None
+        if card is not None:
+            img.paste(card, (MARGIN, y_shot))
     _save_page_image(img, out_path)
     return out_path
 

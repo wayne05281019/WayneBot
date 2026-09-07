@@ -10,6 +10,7 @@ from picture_guide import (
     BODY_SIZE,
     CACHE_VER,
     MARGIN,
+    MAX_BODY_SIZE,
     MIN_BODY_SIZE,
     PAGE_SHOTS,
     PAGE_SLUGS,
@@ -54,7 +55,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert CACHE_VER == "v12"
+    assert CACHE_VER == "v13"
     assert "一張圖卡" in blob
     assert "跑馬燈" in blob
     assert "細項小框" in blob
@@ -145,6 +146,8 @@ def test_keyboard_shot_trimmed_to_buttons():
     assert trimmed.width < im.width
     assert trimmed.height < im.height
     assert trimmed.width / trimmed.height < 5.0
+    # 右側要留到「回報／AI倉」，不要裁掉第二排最右。
+    assert trimmed.width / im.width >= 0.75
 
 
 def test_send_picture_guide_one_page_with_next_button(tmp_path):
@@ -288,3 +291,28 @@ def test_parse_guide_callback_old_and_new():
     assert parse_guide_callback("pg:3") == (None, 3)
     assert parse_guide_callback("pg:2-3") == (2, 3)
     assert parse_guide_callback("pg:3-2") == (3, 2)
+
+
+def test_wrapped_lines_stay_inside_and_keep_menu_token():
+    from PIL import Image, ImageDraw
+
+    from picture_guide import MAX_BODY_SIZE, _layout_body, _load_font, _text_w
+
+    max_w = PAGE_WIDTH - 2 * MARGIN
+    probe = Image.new("RGB", (200, 200))
+    draw = ImageDraw.Draw(probe)
+    font = _load_font(MAX_BODY_SIZE)
+    blob_lines = []
+    for slug, _title, body in PAGES:
+        rows = _layout_body(draw, body, font, max_w)
+        for row in rows:
+            if row is None:
+                continue
+            indent, line = row
+            right = MARGIN + indent + _text_w(draw, line, font)
+            assert right <= PAGE_WIDTH - MARGIN + 2.0, f"{slug} {right:.1f} {line!r}"
+            blob_lines.append(line)
+            assert line.strip() not in ("/", "menu")
+            assert not line.rstrip().endswith("打 /")
+    joined = "\n".join(blob_lines)
+    assert "/menu" in joined
