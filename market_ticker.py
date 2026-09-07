@@ -3,6 +3,7 @@
 沒接到的市場不寫。加權／櫃買用證交所 MIS 最後一筆（delay=0）；
 台指期用期交所即時報價，沒接到才退庫內；
 日經／韓國／滬指與美股指數／盤前期貨用 Yahoo 1 分鐘 spark（與隔夜美股同一路）。
+強弱族群只用官方日 K 均漲或盤中 MIS 熱快取、法人張數；警語只用廣度／恐慌指數／期貨領跌。不編新聞、不編成本。
 """
 from __future__ import annotations
 
@@ -481,6 +482,207 @@ def _load_us(db_path: str) -> Dict[str, Any]:
     return {}
 
 
+def _short_industry(name: str) -> str:
+    try:
+        from money_flow import _sector_short_name
+
+        return _sector_short_name(name)
+    except Exception:
+        ind = str(name or "").strip()
+        if ind.endswith("業") and len(ind) > 2:
+            return ind[:-1]
+        return ind or "產業"
+
+
+def _ticker_as_of(snap: Optional[Dict[str, Any]], db_path: Optional[str]) -> str:
+    for key in ("as_of", "sector_flow_as_of", "chips_as_of", "breadth_as_of"):
+        raw = str((snap or {}).get(key) or "").replace("-", "")[:8]
+        if len(raw) == 8 and raw.isdigit():
+            return raw
+    if not db_path:
+        return ""
+    try:
+        from taiwan_market import resolve_market_as_of
+
+        return str(resolve_market_as_of(db_path) or "").replace("-", "")[:8]
+    except Exception:
+        return ""
+
+
+def _sector_rank_rows(db_path: str, as_of: str) -> List[Dict[str, Any]]:
+    if not db_path or not as_of:
+        return []
+    import sqlite3
+
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        has = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_sector_flow'"
+        ).fetchone()
+        if has:
+            rows = conn.execute(
+                """
+                SELECT industry, avg_pct, three_net, COALESCE(stock_n, 0)
+                FROM daily_sector_flow
+                WHERE date=? AND industry IS NOT NULL AND industry <> '' AND industry <> '未分類'
+                """,
+                (as_of,),
+            ).fetchall()
+            out = []
+            for ind, avg, three, n in rows or []:
+                try:
+                    out.append(
+                        {
+                            "industry": str(ind),
+                            "avg_pct": float(avg or 0),
+                            "three_net": int(three or 0),
+                            "stock_n": int(n or 0),
+                        }
+                    )
+                except (TypeError, ValueError):
+                    continue
+            if out:
+                return out
+        from money_flow import compute_sector_rows
+
+        return list(compute_sector_rows(conn, as_of) or [])
+    except Exception:
+        logger.debug("跑馬燈讀產業列失敗", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+
+def _ticker_sector_items(
+    db_path: Optional[str],
+    snap: Optional[Dict[str, Any]],
+    slot: str,
+    dt: datetime,
+    *,
+    live_sectors: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """強勢／弱勢族群。盤中只用 MIS 熱快取，不在跑馬燈路徑新打 40 檔。沒列就不寫。"""
+    rows = list(live_sectors or [])
+    live = bool(rows)
+    if not rows and db_path:
+        try:
+            from money_flow import peek_live_sector_rows
+
+            rows = list(peek_live_sector_rows(db_path) or [])
+            live = bool(rows)
+        except Exception:
+            rows = []
+            live = False
+    as_of = _ticker_as_of(snap, db_path)
+    if not rows:
+        rows = _sector_rank_rows(db_path or "", as_of)
+    strong: List[Dict[str, Any]] = []
+    weak: List[Dict[str, Any]] = []
+    if rows:
+        ranked = sorted(rows, key=lambda r: float(r.get("avg_pct") or 0), reverse=True)
+        strong = [r for r in ranked if float(r.get("avg_pct") or 0) >= 0.15][:2]
+        weak = [r for r in reversed(ranked) if float(r.get("avg_pct") or 0) <= -0.15][:2]
+    if not strong and not weak:
+        inflow = list((snap or {}).get("sector_inflow") or [])[:2]
+        outflow = list((snap or {}).get("sector_outflow") or [])[:2]
+        today = dt.strftime("%Y%m%d")
+        stale = bool(as_of and as_of < today and slot in ("tw_pre", "tw_match", "tw_open"))
+        buy_lab = "昨收法人買超" if stale else "法人買超"
+        sell_lab = "昨收法人賣超" if stale else "法人賣超"
+        items: List[Dict[str, Any]] = []
+        for pair in inflow:
+            name = pair[0] if isinstance(pair, (list, tuple)) else str(pair)
+            short = _short_industry(str(name))
+            if short:
+                items.append(_ticker_item("法人買超", f"{buy_lab} {short}", kind="status", pct=1.0))
+        for pair in outflow:
+            name = pair[0] if isinstance(pair, (list, tuple)) else str(pair)
+            short = _short_industry(str(name))
+            if short:
+                items.append(_ticker_item("法人賣超", f"{sell_lab} {short}", kind="status", pct=-1.0))
+        return items
+    today = dt.strftime("%Y%m%d")
+    stale = (not live) and bool(as_of and as_of < today and slot in ("tw_pre", "tw_match", "tw_open"))
+    strong_lab = "昨收強勢" if stale else "強勢"
+    weak_lab = "昨收弱勢" if stale else "弱勢"
+    items = []
+    for r in strong:
+        short = _short_industry(str(r.get("industry") or ""))
+        pct = float(r.get("avg_pct") or 0)
+        items.append(_ticker_item(strong_lab, f"{strong_lab} {short}", digits=_fmt_pct(pct), pct=pct, kind="quote"))
+    for r in weak:
+        short = _short_industry(str(r.get("industry") or ""))
+        pct = float(r.get("avg_pct") or 0)
+        items.append(_ticker_item(weak_lab, f"{weak_lab} {short}", digits=_fmt_pct(pct), pct=pct, kind="quote"))
+    return items
+
+
+def _ticker_alert_items(
+    snap: Optional[Dict[str, Any]],
+    db_path: Optional[str],
+) -> List[Dict[str, Any]]:
+    """只寫有官方數字的警語。沒有真數就不上。"""
+    items: List[Dict[str, Any]] = []
+    ob = (snap or {}).get("official_breadth") or {}
+    if not isinstance(ob, dict):
+        ob = {}
+    try:
+        up = int(ob.get("up_count") or 0)
+        down = int(ob.get("down_count") or 0)
+        lu = int(ob.get("limit_up") or 0)
+        ld = int(ob.get("limit_down") or 0)
+    except (TypeError, ValueError):
+        up = down = lu = ld = 0
+    if up and down and down >= up * 2 and down >= 400:
+        items.append(_ticker_item("警語", f"跌家 {down}、漲家 {up}", kind="status", pct=-1.0))
+    elif up and down and up >= down * 2 and up >= 400:
+        items.append(_ticker_item("廣度", f"漲家 {up}、跌家 {down}", kind="status", pct=1.0))
+    if ld >= 30:
+        items.append(_ticker_item("警語", f"跌停 {ld} 家", kind="status", pct=-1.0))
+    elif lu >= 40:
+        items.append(_ticker_item("廣度", f"漲停 {lu} 家", kind="status", pct=1.0))
+    lead = (snap or {}).get("futures_lead") or {}
+    if isinstance(lead, dict) and str(lead.get("label") or "") == "期貨領跌":
+        items.append(_ticker_item("警語", "近20日偏期貨領跌", kind="status", pct=-1.0))
+    if str((snap or {}).get("risk_zone") or "") == "elevated":
+        items.append(_ticker_item("警語", "加權在相對高檔", kind="status", pct=-0.5))
+    if str((snap or {}).get("support_zone") or "") == "building":
+        items.append(_ticker_item("觀察", "加權在低檔築底觀察", kind="status", pct=0.5))
+    try:
+        fr = int((snap or {}).get("falling_risk") or 0)
+    except (TypeError, ValueError):
+        fr = 0
+    if fr >= 60:
+        items.append(_ticker_item("警語", "下跌風險偏高", kind="status", pct=-1.0))
+    us = {}
+    if db_path:
+        us = _load_us(db_path)
+    try:
+        vix = float(us["vix"]) if us.get("vix") is not None else None
+    except (TypeError, ValueError):
+        vix = None
+    if vix is not None and vix >= 25:
+        mood = "偏高" if vix < 28 else "恐慌"
+        items.append(
+            _ticker_item("警語", f"恐慌指數{mood}", digits=f"{vix:.1f}", pct=-1.0, kind="quote")
+        )
+    return items[:3]
+
+
+def _ticker_context_items(
+    db_path: Optional[str],
+    snap: Optional[Dict[str, Any]],
+    slot: str,
+    dt: datetime,
+    *,
+    live_sectors: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    out.extend(_ticker_sector_items(db_path, snap, slot, dt, live_sectors=live_sectors))
+    out.extend(_ticker_alert_items(snap, db_path))
+    return [x for x in out if x and x.get("text")]
+
+
 def collect_ticker(
     db_path: str = None,
     *,
@@ -490,6 +692,7 @@ def collect_ticker(
     yahoo: bool = True,
     live_otc: Optional[Dict[str, Any]] = None,
     live_tx: Optional[Dict[str, Any]] = None,
+    live_sectors: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """組時段項目。yahoo=False 時不打外網。沒接到的不寫。"""
     from config import taipei_now
@@ -530,6 +733,8 @@ def collect_ticker(
         except Exception:
             logger.debug("跑馬燈補即時失敗", exc_info=True)
 
+    extras = _ticker_context_items(db_path, snap, slot, dt, live_sectors=live_sectors)
+
     if slot == "tw_pre":
         match_left = _countdown_to(dt, _MATCH_AT)
         tx_left = _countdown_to(dt, _TX_DAY_OPEN)
@@ -537,6 +742,7 @@ def collect_ticker(
             items.append(_ticker_item("試搓", "距離試搓", digits=match_left, kind="count"))
         if tx_left:
             items.append(_ticker_item("台指期開盤", "距離台指期開盤", digits=tx_left, kind="count"))
+        items.extend(extras)
         return _ticker_bundle(slot, title, items, clock)
 
     if slot == "tw_match":
@@ -548,6 +754,7 @@ def collect_ticker(
             tx = _tx_seg(snap, night=False, live=live_tx)
             if tx:
                 items.append(_quote_item("台指期", tx))
+        items.extend(extras)
         return _ticker_bundle(slot, title, items, clock)
 
     if slot == "tw_open":
@@ -560,6 +767,7 @@ def collect_ticker(
         tx = _tx_seg(snap, night=False, live=live_tx)
         if tx:
             items.append(_quote_item("台指期", tx))
+        items.extend(extras)
         if yahoo:
             items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
         return _ticker_bundle(slot, title, items, clock)
@@ -577,6 +785,7 @@ def collect_ticker(
             tx = _tx_seg(snap, night=False, live=live_tx)
             if tx:
                 items.append(_quote_item("台指期", tx))
+        items.extend(extras)
         if yahoo:
             items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
         return _ticker_bundle(slot, title, items, clock)
@@ -587,6 +796,7 @@ def collect_ticker(
             tx = _tx_seg(snap, night=True, live=live_tx)
             if tx:
                 items.append(_quote_item("台指期夜盤", tx))
+        items.extend(extras)
         if yahoo:
             items.extend(_quote_item(x["name"], x) for x in _yahoo_many(ASIA_INDEX))
         return _ticker_bundle(slot, title, items, clock)
@@ -605,6 +815,7 @@ def collect_ticker(
         tx = _tx_seg(snap, night=True, live=live_tx)
         if tx:
             items.append(_quote_item("台指期夜盤", tx))
+        items.extend(extras)
         return _ticker_bundle(slot, title, items, clock)
 
     if slot == "us_night":
@@ -629,6 +840,7 @@ def collect_ticker(
         night = _tx_seg(snap, night=True, live=live_tx)
         if night:
             items.append(_quote_item("台指期夜盤", night))
+        items.extend(extras)
         return _ticker_bundle(slot, title, items, clock)
 
     tw = _tw_index_seg(live, snap)
@@ -637,6 +849,7 @@ def collect_ticker(
     otc = _seg("櫃買", (live_otc or {}).get("close"), (live_otc or {}).get("pct_change")) if live_otc else None
     if otc:
         items.append(_quote_item("櫃買", otc, label="櫃買收盤"))
+    items.extend(extras)
     return _ticker_bundle(slot, title, items, clock)
 
 

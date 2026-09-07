@@ -341,3 +341,90 @@ def test_ticker_refresh_loop_keeps_editing_until_rounds(tmp_path, monkeypatch):
     asyncio.run(_run())
     assert anim.edit_media.await_count == 2
     assert "1:9" not in bot._ticker_refresh_task
+
+
+def test_ticker_sectors_and_alerts_from_official(tmp_path):
+    import sqlite3
+
+    from money_flow import ensure_sector_flow_table, peek_live_sector_rows
+
+    db = str(tmp_path / "s.db")
+    conn = sqlite3.connect(db)
+    ensure_sector_flow_table(conn)
+    conn.executemany(
+        """
+        INSERT INTO daily_sector_flow(date, industry, stock_n, avg_pct, three_net)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [
+            ("20260907", "半導體業", 12, 1.82, 8000),
+            ("20260907", "金融保險業", 8, 0.91, 3000),
+            ("20260907", "鋼鐵工業", 6, -1.24, -4000),
+            ("20260907", "航運業", 5, 0.02, 100),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    snap = {
+        "close": 47326.27,
+        "chg1_pct": 1.67,
+        "as_of": "20260907",
+        "official_breadth": {
+            "up_count": 210,
+            "down_count": 920,
+            "limit_up": 4,
+            "limit_down": 42,
+        },
+        "futures_lead": {"label": "期貨領跌"},
+        "falling_risk": 70,
+        "risk_zone": "elevated",
+    }
+    live = {"close": 47326.27, "pct_change": 1.67}
+    bundle = collect_ticker(
+        db,
+        live=live,
+        snap=snap,
+        now=datetime(2026, 9, 8, 10, 5, tzinfo=TW),
+        yahoo=False,
+    )
+    plain = ticker_plain(bundle)
+    assert "昨收強勢 半導體" in plain
+    assert "+1.82%" in plain
+    assert "昨收弱勢 鋼鐵" in plain
+    assert "-1.24%" in plain
+    assert "跌家 920" in plain
+    assert "跌停 42 家" in plain
+    assert "期貨領跌" in plain
+    assert peek_live_sector_rows(db) == []
+
+    live_bundle = collect_ticker(
+        db,
+        live=live,
+        snap=snap,
+        now=datetime(2026, 9, 8, 10, 5, tzinfo=TW),
+        yahoo=False,
+        live_sectors=[
+            {"industry": "金融保險業", "avg_pct": 0.85, "mode": "live"},
+            {"industry": "鋼鐵工業", "avg_pct": -1.10, "mode": "live"},
+        ],
+    )
+    lp = ticker_plain(live_bundle)
+    assert "強勢 金融" in lp
+    assert "昨收強勢" not in lp
+    assert "弱勢 鋼鐵" in lp
+    assert "+0.85%" in lp
+
+
+def test_ticker_does_not_invent_sectors(tmp_path):
+    bundle = collect_ticker(
+        str(tmp_path / "empty.db"),
+        live={"close": 47326.27, "pct_change": 1.67},
+        snap={"close": 47326.27, "chg1_pct": 1.67},
+        now=datetime(2026, 9, 8, 10, 5, tzinfo=TW),
+        yahoo=False,
+    )
+    plain = ticker_plain(bundle)
+    assert "強勢" not in plain
+    assert "弱勢" not in plain
+    assert "警語" not in plain
+    assert "法人買超" not in plain

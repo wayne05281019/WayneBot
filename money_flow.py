@@ -633,6 +633,17 @@ def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
     return rows
 
 
+def peek_live_sector_rows(db_path: str = None) -> List[Dict[str, Any]]:
+    """只讀盤中族群快取，不打 MIS。跑馬燈用，避免大盤頁多等 4 秒。"""
+    import time as _time
+
+    cache_key = str(db_path or get_db_path())
+    cached = _LIVE_SECTOR_CACHE.get(cache_key)
+    if cached and (_time.time() - float(cached.get("ts") or 0)) < _LIVE_SECTOR_TTL:
+        return list(cached.get("rows") or [])
+    return []
+
+
 def sector_representative_stocks_live(
     db_path: str,
     industry: str,
