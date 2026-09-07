@@ -190,7 +190,7 @@ HELP_TOPICS = {
         "第一排：<b>決策卡</b>｜<b>當沖</b>｜<b>持股</b>｜<b>觀察</b>｜<b>海選</b>｜<b>AI倉</b>\n"
         "第二排：<b>隔日沖</b>｜<b>大盤</b>｜<b>資金</b>｜<b>連買區</b>｜<b>說明</b>｜<b>回報</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按最右「回報」。\n"
-        "大盤最上頭是時段跑馬燈：電子數字倒數試搓／台指期，並帶強弱族群與該看的警語；整條從最左跑到最右；長住那一則自己換價，也可按「刷新跑馬燈」。\n"
+        "大盤最上頭是時段跑馬燈：電子數字倒數試搓／台指期，整寬從螢幕左滑到右、慢慢捲；同一則自己換即時價，也可按「刷新跑馬燈」。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -348,7 +348,7 @@ HELP_TOPICS = {
         "第二排、隔日沖右邊。這頁沒有再往下點的子按鈕，看完數字與橫式日K即可。\n"
         "\n"
         "顯示加權現價／收盤與漲跌點、開高低／振幅、量增減、漲跌家數、三大法人、距月線／年高，台指期日盤／夜盤，以及前一晚美股收盤／盤後期貨／恐慌指數／台積美股，並附橫式日K圖（對齊個股導航圖）。\n"
-        "最上頭是時段跑馬燈：整條從最左跑到最右，數字用電子錶字。開盤前倒數試搓／台指期；試搓中寫個股試搓價格中；9:00 起加權／櫃買／台指期；13:30 後日盤收、加權盤後、櫃買續跑；15:00 後寫加權／櫃買收盤與漲跌。有官方列才寫強勢／弱勢族群，以及跌家遠多於漲家、跌停家數、恐慌指數、期貨領跌等警語。沒接到不寫；長住那一則自己換價，也可按「刷新跑馬燈」。\n"
+        "最上頭是時段跑馬燈：寬度鋪滿對話可視寬，慢慢從左滑到右。開盤前倒數試搓／台指期；試搓中寫個股試搓價格中；9:00 起加權／櫃買／台指期；13:30 後日盤收、加權盤後、櫃買續跑；15:00 後寫加權／櫃買收盤與漲跌。有官方列才各寫一檔強勢、一檔弱勢，外加一則警語。沒接到不寫；長住同一則、滑完一圈再換即時數字，也可按「刷新跑馬燈」。\n"
         "美股若當日沒開（NYSE 年曆，例如感恩節、勞動節），會寫日期與原因，並附前一交易日收盤；不是沒資料就空白。\n"
         "\n"
         "若庫內沒有台指期夜盤，會讀期交所最新盤後（只顯示、不寫資料庫）。\n"
@@ -1640,10 +1640,9 @@ class WayneTelegramBot:
             rounds = int(os.getenv("WAYNE_TICKER_REFRESH_ROUNDS", "0"))
         except (TypeError, ValueError):
             rounds = 0
-        try:
-            pause = float(os.getenv("WAYNE_TICKER_REFRESH_SEC", "5"))
-        except (TypeError, ValueError):
-            pause = 12.0
+        from market_ticker import ticker_refresh_sec, ticker_send_kwargs
+
+        pause = ticker_refresh_sec()
         n = 0
         try:
             from telegram import InputMediaAnimation
@@ -1652,7 +1651,7 @@ class WayneTelegramBot:
             from market_ticker import build_market_ticker
 
             while True:
-                await asyncio.sleep(max(4.0, pause))
+                await asyncio.sleep(pause)
                 live = await asyncio.to_thread(
                     fetch_mis_index_quote, fresh=True, require_session=False
                 )
@@ -1674,7 +1673,7 @@ class WayneTelegramBot:
                     continue
                 with open(gif, "rb") as f:
                     await anim_msg.edit_media(
-                        media=InputMediaAnimation(media=f),
+                        media=InputMediaAnimation(media=f, **ticker_send_kwargs()),
                         reply_markup=self._ticker_keyboard(),
                     )
                 n += 1
@@ -1694,7 +1693,7 @@ class WayneTelegramBot:
         from telegram import InputMediaAnimation
 
         from live_quote import fetch_mis_index_quote
-        from market_ticker import build_market_ticker
+        from market_ticker import build_market_ticker, ticker_send_kwargs
         from taiwan_market import analyze_taiwan_market
 
         def _build():
@@ -1714,7 +1713,7 @@ class WayneTelegramBot:
             with open(gif, "rb") as f:
                 if hasattr(message, "edit_media"):
                     await message.edit_media(
-                        media=InputMediaAnimation(media=f),
+                        media=InputMediaAnimation(media=f, **ticker_send_kwargs()),
                         reply_markup=self._ticker_keyboard(),
                     )
                     if isinstance(getattr(message, "message_id", None), int):
@@ -1725,7 +1724,9 @@ class WayneTelegramBot:
         try:
             with open(gif, "rb") as f:
                 anim = await message.reply_animation(
-                    animation=f, reply_markup=self._ticker_keyboard()
+                    animation=f,
+                    reply_markup=self._ticker_keyboard(),
+                    **ticker_send_kwargs(),
                 )
             self._schedule_ticker_refresh(anim)
         except Exception:
@@ -3120,10 +3121,13 @@ class WayneTelegramBot:
             anim_msg = None
             if gif and os.path.isfile(gif) and os.path.getsize(gif) > 800:
                 try:
+                    from market_ticker import ticker_send_kwargs
+
                     with open(gif, "rb") as f:
                         anim_msg = await message.reply_animation(
                             animation=f,
                             reply_markup=self._ticker_keyboard(),
+                            **ticker_send_kwargs(),
                         )
                 except Exception:
                     logger.exception("跑馬燈 GIF 送出失敗")
