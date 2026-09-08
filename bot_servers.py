@@ -14,6 +14,7 @@ import struct
 import tempfile
 import time
 import unicodedata
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
@@ -109,7 +110,7 @@ def _stock_caption_name(card: dict | None, code: str = "") -> str:
 
 
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
-    """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
+    """圖說：有如何賣就寫在圖底下。沒有說明字就不要硬塞標題。"""
     cap = str(base or "").strip() or fallback
     if not card:
         return cap
@@ -123,7 +124,9 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
         return cap
     if not short:
         return cap
-    return f"{cap}\nAi建議　{html_escape(short)}"
+    if cap:
+        return f"{cap}\nAi建議　{html_escape(short)}"
+    return f"Ai建議　{html_escape(short)}"
 
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
@@ -132,8 +135,8 @@ def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: s
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
-    """介紹圖說明：有如何賣就寫在第一張圖底下。"""
-    return _photo_sell_caption(base, card)
+    """介紹圖底下：有如何賣才寫；不要網頁走勢／點縮圖。"""
+    return _photo_sell_caption(base, card, fallback="")
 
 
 def _buy_holdings_prompt(code: str, lots=None) -> str:
@@ -228,7 +231,7 @@ HELP_TOPICS = {
         "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。\n"
         "\n"
         "<b>查某一檔</b>\n"
-        "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。點縮圖可放大。\n"
+        "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。\n"
         "\n"
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
@@ -521,7 +524,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>查股頁（圖下方按鈕）</b>\n"
-        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）。點縮圖可放大。\n"
+        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖。\n"
         "籌碼／營收／產業／K線按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
         "\n"
         "<b>圖下方這一排</b>\n"
@@ -1283,7 +1286,19 @@ class WayneTelegramBot:
         )
         return InlineKeyboardMarkup(rows)
 
-    def _streak_pick_inline(self, rows_data):
+    def _streak_pick_inline(
+        self,
+        rows_data,
+        *,
+        kind: str = "",
+        market: str = "",
+        days: int = 0,
+        offset: int = 0,
+        has_prev: bool = False,
+        has_next: bool = False,
+    ):
+        from buy_streak import PAGE_SIZE
+
         kb = []
         for item in rows_data:
             c = str(item.stock_id).strip()[:6]
@@ -1293,21 +1308,36 @@ class WayneTelegramBot:
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                 ]
             )
+        nav = []
+        if has_prev:
+            prev_off = max(0, int(offset) - int(PAGE_SIZE))
+            nav.append(
+                InlineKeyboardButton(
+                    "上一頁",
+                    callback_data=f"fb:pg:{kind}:{market}:{int(days)}:{prev_off}",
+                )
+            )
+        if has_next:
+            next_off = int(offset) + int(PAGE_SIZE)
+            nav.append(
+                InlineKeyboardButton(
+                    "下一頁",
+                    callback_data=f"fb:pg:{kind}:{market}:{int(days)}:{next_off}",
+                )
+            )
+        if nav:
+            kb.append(nav)
+        kb.append(
+            [
+                InlineKeyboardButton("上一步", callback_data=f"fb:back:days:{kind}:{market}"),
+                InlineKeyboardButton("回主選單", callback_data="fb:home"),
+            ]
+        )
         return InlineKeyboardMarkup(kb) if kb else None
 
-    async def _streak_send_step(
-        self, message, html: str, *, inline, reply_kb, tray_hint: str
-    ) -> None:
-        """精靈步驟：訊息下方 Inline（一定看得到）＋再掛 ReplyKeyboard（輸入區鍵盤）。
-
-        Telegram 一則訊息只能帶一種 markup，所以拆兩則；桌面版常把 Reply 鍵盤收起，
-        只靠 Reply 會以為「沒按鈕」。
-        """
+    async def _streak_send_step(self, message, html: str, *, inline) -> None:
+        """精靈步驟只掛訊息下方 Inline；底下兩排主選單不要換成重複按鈕。"""
         await message.reply_html(html, reply_markup=inline, disable_web_page_preview=True)
-        try:
-            await message.reply_text(tray_hint, reply_markup=reply_kb)
-        except Exception:
-            logger.exception("連買精靈 ReplyKeyboard 補掛失敗")
 
     async def streak_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
@@ -1322,13 +1352,10 @@ class WayneTelegramBot:
         await self._streak_send_step(
             message,
             "<b>連買區域</b>\n"
-            "先選要看哪一種連買（點訊息下方按鈕）。\n"
             "• <b>外資</b>＝外資連續買超\n"
             "• <b>投信</b>＝投信連續買超\n"
             "• <b>外資+投信</b>＝同一天兩家都買超，再連起來算天數",
             inline=self._streak_kind_inline(),
-            reply_kb=self._streak_kind_keyboard(),
-            tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
         )
 
     async def _restore_main_menu(self, message, uid: str) -> None:
@@ -1385,8 +1412,6 @@ class WayneTelegramBot:
                     message,
                     "請選 <b>外資</b>、<b>投信</b> 或 <b>外資+投信</b>。",
                     inline=self._streak_kind_inline(),
-                    reply_kb=self._streak_kind_keyboard(),
-                    tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
                 )
                 return True
             await self._streak_show_days(message, uid, actor, kind, "ALL")
@@ -1407,10 +1432,8 @@ class WayneTelegramBot:
                 self._pending[actor] = f"fbuy:days:{kind}:{market}"
                 await self._streak_send_step(
                     message,
-                    "請點天數（訊息下方或輸入區鍵盤）。",
+                    "請點下面天數。",
                     inline=self._streak_days_inline(kind, market, []),
-                    reply_kb=self._streak_days_keyboard([]),
-                    tray_hint="也可點輸入區鍵盤上的天數",
                 )
                 return True
             await self._streak_show_stocks(message, uid, actor, kind, market, days, offset=0)
@@ -1449,7 +1472,7 @@ class WayneTelegramBot:
                     return False
                 self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
                 await message.reply_html(
-                    "請點鍵盤上的股票，或打代號。",
+                    "請點下面股名，或打代號。",
                     disable_web_page_preview=True,
                 )
                 return True
@@ -1492,8 +1515,22 @@ class WayneTelegramBot:
         if op == "kind" or (op == "back" and len(parts) > 2 and parts[2] == "kind"):
             await self._start_buy_streak(q.message, uid)
             return
-        if op == "back" and len(parts) > 2 and parts[2] == "mkt":
-            await self._start_buy_streak(q.message, uid)
+        if op == "back" and len(parts) > 2 and parts[2] == "days":
+            kind = parts[3] if len(parts) > 3 else ""
+            market = parts[4] if len(parts) > 4 else "ALL"
+            await self._streak_show_days(q.message, uid, actor, kind, market)
+            return
+        if op == "pg" and len(parts) > 5:
+            kind = parts[2]
+            market = parts[3]
+            try:
+                days = int(parts[4])
+                offset = int(parts[5])
+            except ValueError:
+                return
+            await self._streak_show_stocks(
+                q.message, uid, actor, kind, market, days, offset=offset
+            )
             return
         if op == "k" and len(parts) > 2:
             kind = parts[2]
@@ -1557,8 +1594,6 @@ class WayneTelegramBot:
                 message,
                 f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
                 inline=self._streak_kind_inline(),
-                reply_kb=self._streak_kind_keyboard(),
-                tray_hint="請改選外資／投信／外資+投信，或回主選單",
             )
             self._pending[actor] = "fbuy:kind"
             return
@@ -1566,11 +1601,9 @@ class WayneTelegramBot:
             message,
             f"{title}\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-            "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
+            "請點下面天數。名單是「剛好連買這麼多天」（不是以上）。\n"
             "上市櫃一起列。",
             inline=self._streak_days_inline(kind, market, days),
-            reply_kb=self._streak_days_keyboard(days),
-            tray_hint="也可點輸入區鍵盤上的天數",
         )
 
     async def _streak_show_stocks(
@@ -1605,21 +1638,27 @@ class WayneTelegramBot:
         chunk = rows[off : off + PAGE_SIZE]
         self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{off}"
         html = format_list_html(snap, days, self.db_path, offset=off, limit=PAGE_SIZE)
+        pick_kb = self._streak_pick_inline(
+            chunk,
+            kind=kind,
+            market=market,
+            days=days,
+            offset=off,
+            has_prev=has_prev,
+            has_next=has_next,
+        )
         try:
             await message.reply_html(
                 html,
-                reply_markup=self._streak_pick_inline(chunk),
+                reply_markup=pick_kb,
                 disable_web_page_preview=True,
             )
         except Exception:
             logger.exception("連買清單 HTML 失敗")
             await message.reply_text(
-                f"連買 {days} 天 {len(chunk)} 檔。請點鍵盤股名看圖。",
+                f"連買 {days} 天 {len(chunk)} 檔。請點下面股名看圖。",
+                reply_markup=pick_kb,
             )
-        await message.reply_text(
-            "點上面股名或這排鍵盤看完整圖；籌碼可核對。",
-            reply_markup=self._streak_stocks_keyboard(chunk, has_prev=has_prev, has_next=has_next),
-        )
 
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
@@ -2615,17 +2654,6 @@ class WayneTelegramBot:
             except Exception:
                 pass
             await self._reply_screening_payload(message, result)
-            as_of = str(result.get("as_of") or result.get("date") or "")
-            try:
-                from screen_sessions import screen_session_has_data
-
-                if screen_session_has_data(self.db_path, as_of):
-                    await message.reply_text(
-                        "名單已寫入快取。現在可按主選單「當沖」「隔日沖」做盤中複核。",
-                        reply_markup=hub,
-                    )
-            except Exception:
-                pass
         except asyncio.TimeoutError:
             logger.exception("手動海選逾時")
             await message.reply_text(
@@ -2839,7 +2867,6 @@ class WayneTelegramBot:
             lines.append("已畫：" + "、".join(done))
         if rest:
             lines.append("接著：" + "、".join(rest))
-        lines.append("三張齊了一次送出，點縮圖放大")
         return "\n".join(lines)
 
     @staticmethod
@@ -4690,14 +4717,6 @@ class WayneTelegramBot:
         except Exception:
             news_stats = None
         hub = self._hub_keyboard(code, em=is_em, news=news_stats)
-        cap_links = ""
-        try:
-            from stock_links import yahoo_urls
-
-            web, mobile = yahoo_urls(code, self.db_path)
-            cap_links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
-        except Exception:
-            cap_links = ""
 
         live_rt = None
         if not is_em:
@@ -4741,10 +4760,16 @@ class WayneTelegramBot:
                 return False
             for attempt in range(3):
                 try:
-                    with open(path, "rb") as f:
-                        await message.reply_photo(
-                            photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
-                        )
+                    bio = BytesIO(self._telegram_photo_bytes(path))
+                    bio.name = os.path.basename(path) or f"{kind or 'photo'}.png"
+                    kw = {"photo": bio}
+                    if markup is not None:
+                        kw["reply_markup"] = markup
+                    cap = str(caption or "").strip()
+                    if cap:
+                        kw["caption"] = cap
+                        kw["parse_mode"] = "HTML"
+                    await message.reply_photo(**kw)
                     logger.info(
                         "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
                         kind,
@@ -4762,8 +4787,15 @@ class WayneTelegramBot:
                         await asyncio.sleep(1.5 * (attempt + 1))
                         continue
                     try:
-                        with open(path, "rb") as f:
-                            await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
+                        bio = BytesIO(self._telegram_photo_bytes(path))
+                        bio.name = os.path.basename(path) or f"{kind or 'photo'}.png"
+                        kw = {"photo": bio}
+                        if markup is not None:
+                            kw["reply_markup"] = markup
+                        cap = str(caption or "").strip()[:200]
+                        if cap:
+                            kw["caption"] = cap
+                        await message.reply_photo(**kw)
                         logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
                         if not lookup_faded:
                             lookup_faded = True
@@ -4910,24 +4942,18 @@ class WayneTelegramBot:
             def _render_glance():
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
-            glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
+            glance_cap = _glance_photo_caption("", card)
             card_cap = _decision_card_photo_caption(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),
-                (
-                    "chart",
-                    _render_chart,
-                    _CHART_RENDER_TIMEOUT,
-                    "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠。",
-                    hub,
-                ),
+                ("chart", _render_chart, _CHART_RENDER_TIMEOUT, "", None),
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 三張都畫完再一次送相簿：話筒上一則裡三個縮圖，點開才放大。
+            # 三張一次相簿：遠看是一塊四角形。不要逐張放大，也不要寫「點縮圖」。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -4976,7 +5002,7 @@ class WayneTelegramBot:
                                 self._chart_progress_text(
                                     int(time.monotonic() - op_t0),
                                     sent=sent_kinds,
-                                    current=nxt or "album",
+                                    current=nxt,
                                 )
                             )
                         except Exception:
@@ -4989,6 +5015,8 @@ class WayneTelegramBot:
 
             album_ok = False
             if len(ready_items) >= 2:
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "album"})
+                st["current"] = "album"
                 album_ok = await self._send_lookup_album(message, ready_items)
             if album_ok:
                 sent_any = True
@@ -4996,7 +5024,9 @@ class WayneTelegramBot:
                     lookup_faded = True
                     await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
             else:
-                for kind, path, caption, markup in ready_items:
+                last_i = len(ready_items) - 1
+                for i, (kind, path, caption, _markup) in enumerate(ready_items):
+                    markup = hub if i == last_i else None
                     ok = await send_photo(path, caption, markup, kind=kind)
                     if ok and markup is hub:
                         hub_on = True
@@ -5004,14 +5034,13 @@ class WayneTelegramBot:
                         sent_any = True
 
             if sent_any and not hub_on:
-                if len(sent_kinds) >= len(render_plan):
-                    done_txt = "點縮圖可放大。籌碼／產業／觀察按這排。"
-                else:
-                    miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
-                    done_txt = (
-                        f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
-                        f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
-                    )
+                miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
+                done_txt = (
+                    f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
+                    f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
+                    if miss
+                    else html_escape(_stock_caption_name(card, code) or code)
+                )
                 await _reply_visible(done_txt, html=True, markup=hub)
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
@@ -5062,33 +5091,63 @@ class WayneTelegramBot:
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
 
+    @staticmethod
+    def _telegram_photo_bytes(path: str, *, max_edge: int = 2560) -> bytes:
+        """Telegram 相簿會把長邊壓到約 2560；先 LANCZOS 再送，座長圖小字比較不會糊。"""
+        with open(path, "rb") as f:
+            raw = f.read()
+        try:
+            from PIL import Image
+
+            im = Image.open(BytesIO(raw))
+            im.load()
+            w, h = im.size
+            edge = max(w, h)
+            if edge <= max_edge or w < 1 or h < 1:
+                return raw
+            scale = max_edge / float(edge)
+            nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+            if im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGBA")
+            out = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            buf = BytesIO()
+            out.save(buf, format="PNG", optimize=True)
+            data = buf.getvalue()
+            return data or raw
+        except Exception:
+            logger.debug("telegram 圖縮失敗 path=%s", path, exc_info=True)
+            return raw
+
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""
+        """三張一次送，Telegram 會顯示一塊四角形縮圖；點開才看大圖。"""
         from telegram import InputMediaPhoto
 
         if len(items) < 2:
             return False
-        handles = []
+        buffers = []
         try:
             media = []
             first_cap = str(items[0][2] or "").strip()
-            album_cap = "介紹／決策／導航　點任一張縮圖放大"
-            if first_cap:
-                album_cap = f"{first_cap}\n{album_cap}"
             for kind, path, _caption, _markup in items:
                 if kind == "chart":
                     if not self._chart_png_looks_ok(path):
                         continue
                 elif not self._png_looks_ok(path):
                     continue
-                fh = open(path, "rb")
-                handles.append(fh)
+                buf = BytesIO(self._telegram_photo_bytes(path))
+                buf.name = os.path.basename(path) or f"{kind}.png"
+                buffers.append(buf)
                 if not media:
-                    media.append(
-                        InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
-                    )
+                    if first_cap:
+                        media.append(
+                            InputMediaPhoto(
+                                media=buf, caption=first_cap[:1024], parse_mode="HTML"
+                            )
+                        )
+                    else:
+                        media.append(InputMediaPhoto(media=buf))
                 else:
-                    media.append(InputMediaPhoto(media=fh))
+                    media.append(InputMediaPhoto(media=buf))
             if len(media) < 2:
                 return False
             await message.reply_media_group(media=media)
@@ -5097,12 +5156,6 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("送相簿失敗，改逐張")
             return False
-        finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query

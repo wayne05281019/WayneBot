@@ -66,6 +66,8 @@ def test_send_card_locked_source_keeps_visible_fallback():
     assert src.index("reply_text") < src.index("fetch_stock_news_stats")
     assert "_pin_reply_menu" not in src
     assert "兩排主選單在輸入列旁邊四格" not in src
+    assert "點縮圖可放大" not in src
+    assert "_send_lookup_album" in src
 
 
 def test_send_card_locked_last_resort_plain_text():

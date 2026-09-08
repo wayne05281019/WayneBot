@@ -49,3 +49,22 @@ class NavOhlcClampTests(unittest.TestCase):
             fm.findfont(fm.FontProperties(), fallback_to_default=True)
         msgs = [str(w.message) for w in caught]
         self.assertFalse(any("Failed to find font weight" in m for m in msgs), msgs)
+
+    def test_stock_nav_draws_daily_ma_lines_like_index(self):
+        """個股導航圖要把 5／20／60 日均線連起來，跟大盤日K同一套。"""
+        import inspect
+
+        from wayne_navigator import _draw_nav_legend, draw_from_ohlc
+
+        src = inspect.getsource(draw_from_ohlc)
+        self.assertIn('work["ma5"]', src)
+        self.assertIn('work["ma60"]', src)
+        self.assertIn('ax1.plot(xs, work["ma5"]', src)
+        self.assertIn('ax1.plot(xs, work["ma60"]', src)
+        self.assertIn('ax2.plot(xs, work["vol_ma"]', src)
+        self.assertNotIn("SMA(20)", src)
+        legend = inspect.getsource(_draw_nav_legend)
+        self.assertIn("5日均", legend)
+        self.assertIn("月線", legend)
+        self.assertIn("季線", legend)
+        self.assertNotIn("SMA(20)", legend)

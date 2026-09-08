@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
+from wayne_navigator import NAV_CHART_DPI, NAV_FIG_H, NAV_FIG_W, _fp, _mpl_serial, _telegram_fig_dpi
 from decision_card_signals import candle_up_taiwan
 
 logger = logging.getLogger(__name__)
@@ -187,11 +187,12 @@ def render_index_kline_png(
     ymax = float(hi_s.max()) + span * 0.10
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    nav_dpi = _telegram_fig_dpi(NAV_FIG_W, NAV_FIG_H, NAV_CHART_DPI)
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(12.8, 7.55),
-        dpi=NAV_CHART_DPI,
+        figsize=(NAV_FIG_W, NAV_FIG_H),
+        dpi=nav_dpi,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.15, 1.45), hspace=0.04),
         facecolor=_BG,
@@ -326,7 +327,7 @@ def render_index_kline_png(
         fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=_BG)
+    fig.savefig(save_path, dpi=nav_dpi, facecolor=_BG)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
