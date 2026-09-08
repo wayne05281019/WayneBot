@@ -185,6 +185,7 @@ class EmergingScreenIsolationTests(unittest.TestCase):
 
         self.assertEqual(parse_intent("興櫃海選").kind, "emerging_screen")
         self.assertEqual(parse_intent("興櫃名單").kind, "emerging_screen")
+        self.assertEqual(parse_intent("興櫃").kind, "emerging_screen")
         self.assertEqual(parse_intent("海選").kind, "screen")
 
     def test_increment_job_syncs_emerging_not_into_daily_quotes(self):

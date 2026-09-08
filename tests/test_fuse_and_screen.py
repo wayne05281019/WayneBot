@@ -2739,6 +2739,8 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("k:2330", datas)
         self.assertIn("k:4915", datas)
         self.assertIn("w:2330", datas)
+        self.assertIn("em:go", datas)
+        self.assertEqual(texts.count("興櫃"), 1)
         send_src = inspect.getsource(WayneTelegramBot._send_line_rich_bucket)
         self.assertNotIn("_dismiss_screening_section", send_src)
         self.assertIn("_send_card_share_groups", send_src)

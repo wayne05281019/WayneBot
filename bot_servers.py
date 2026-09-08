@@ -244,7 +244,7 @@ HELP_TOPICS = {
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
-        "興櫃另打「興櫃海選」：用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
+        "興櫃：說明頁或海選底下按「興櫃」（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 股名右「開 LINE・傳這檔」＝只傳這一檔，開手機 LINE 選聯絡人\n"
@@ -314,7 +314,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請打「興櫃海選」（獨立名單，不混進上市櫃海選）。\n"
+        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請按說明頁或海選底下「興櫃」（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -470,6 +470,7 @@ HELP_TOPICS = {
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
+        "興櫃不混進這份名單。說明頁或海選底下按「興櫃」（也可打「興櫃」）。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
@@ -1643,6 +1644,7 @@ class WayneTelegramBot:
                 ],
                 [
                     InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("興櫃", callback_data="em:go"),
                     InlineKeyboardButton("按錯", callback_data="?:oops"),
                     InlineKeyboardButton("✕", callback_data="hx"),
                 ],
@@ -1768,7 +1770,12 @@ class WayneTelegramBot:
                     [InlineKeyboardButton("一鍵傳 LINE", url=line_url)]
                 )
         if include_menu:
-            rows.append([self._q("screen")])
+            rows.append(
+                [
+                    self._q("screen"),
+                    InlineKeyboardButton("興櫃", callback_data="em:go"),
+                ]
+            )
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -2465,10 +2472,10 @@ class WayneTelegramBot:
     async def _show_picture_guide_page(
         self, message, page: int, *, edit: bool, from_page: int | None = None
     ) -> None:
-        """一次只渲正在看的那一張。換頁先滑頁 GIF，再換成下一張原圖。"""
+        """一次只渲正在看的那一張。換頁直接換靜態圖，不再送滑頁 GIF。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import PAGE_SLUGS, ensure_flip_gif, ensure_page
+        from picture_guide import PAGE_SLUGS, ensure_page
 
         charts = getattr(self, "charts_dir", None)
         dest = os.path.join(str(charts or "data/charts"), "picture_guide")
@@ -2487,27 +2494,7 @@ class WayneTelegramBot:
             )
             return
         kb = self._picture_guide_keyboard(page, n)
-        src_i = None if from_page is None else max(0, min(int(from_page), n - 1))
-        if edit and src_i is not None and src_i != page:
-            try:
-                gif = await asyncio.to_thread(
-                    ensure_flip_gif, PAGE_SLUGS[src_i], slug, dest
-                )
-            except Exception:
-                logger.debug("圖文滑頁 GIF 失敗", exc_info=True)
-                gif = ""
-            if gif and os.path.isfile(gif):
-                try:
-                    from telegram import InputMediaAnimation
-
-                    with open(gif, "rb") as fh:
-                        await message.edit_media(
-                            media=InputMediaAnimation(media=fh, caption=""),
-                            reply_markup=kb,
-                        )
-                    await asyncio.sleep(0.48)
-                except Exception:
-                    logger.debug("圖文滑頁送出失敗，改直接換圖", exc_info=True)
+        _ = from_page
         with open(path, "rb") as fh:
             if edit:
                 try:
@@ -2903,13 +2890,13 @@ class WayneTelegramBot:
             )
         except asyncio.TimeoutError:
             await message.reply_text(
-                "興櫃海選逾時。請稍後再打「興櫃海選」。",
+                "興櫃海選逾時。請稍後再按「興櫃」，或打「興櫃海選」。",
                 reply_markup=hub,
             )
             return
         except Exception:
             logger.exception("興櫃海選失敗")
-            await message.reply_text("興櫃海選失敗。請稍後再打「興櫃海選」。", reply_markup=hub)
+            await message.reply_text("興櫃海選失敗。請稍後再按「興櫃」，或打「興櫃海選」。", reply_markup=hub)
             return
         finally:
             try:
@@ -2920,7 +2907,7 @@ class WayneTelegramBot:
         if n <= 0:
             await message.reply_html(
                 "興櫃海選：目前沒有可用的官方日均價序列。\n"
-                "請等盤後同步櫃買「興櫃股票當日行情表」後再打「興櫃海選」。",
+                "請等盤後同步櫃買「興櫃股票當日行情表」後再按「興櫃」。",
                 reply_markup=hub,
                 disable_web_page_preview=True,
             )
@@ -3934,7 +3921,7 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.screen_cmd(update, context)
             return
-        if text in ("興櫃海選", "興櫃名單"):
+        if text in ("興櫃", "興櫃海選", "興櫃名單"):
             logger.info("主選單：興櫃海選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.emerging_screen_cmd(update, context)
@@ -4502,7 +4489,7 @@ class WayneTelegramBot:
                         _, clock_line = format_card_query_stamp(
                             is_live=True,
                             latest_date=card.get("latest_date"),
-                            generated_at=card.get("generated_at") or card.get("live_time"),
+                            generated_at=card.get("generated_at"),
                         )
                     live_note = f"（{clock_line}）" if clock_line else "（盤中即時）"
                 with open(card_path, "rb") as f:
@@ -5165,6 +5152,10 @@ class WayneTelegramBot:
             await self._show_picture_guide_page(
                 q.message, page, edit=True, from_page=from_page
             )
+            return
+        if data == "em:go":
+            await q.answer("興櫃海選開始")
+            await self._run_emerging_screening(q.message)
             return
         await q.answer()
         if data == "fw:s":

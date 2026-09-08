@@ -1190,16 +1190,18 @@ def _wcag(fg, bg) -> float:
     return (a + 0.05) / (b + 0.05)
 
 
-def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
+def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3, rounding=None):
     if not text or text in ("No", "—", "nan"):
         ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center", zorder=z + 1)
         return
+    # 短 pill 不能用固定 0.45 圓角，會變成圓點把「最低溫／未新低」吃掉。
+    r = rounding if rounding is not None else min(0.18, max(0.08, float(h) * 0.28))
     ax.add_patch(
         patches.FancyBboxPatch(
             (cx - w / 2, cy - h / 2),
             w,
             h,
-            boxstyle="round,pad=0,rounding_size=0.45",
+            boxstyle=f"round,pad=0,rounding_size={r}",
             facecolor=bg,
             edgecolor=bg,
             linewidth=0,
@@ -1843,7 +1845,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
-    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.62
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.82
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
@@ -2137,13 +2139,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     from decision_card_signals import display_alert_cell
     _ = profit_cell_style, vol_rank_cell_style, temp_cell_style
 
-    def _status_pill(cx, cy, text, bg, fg, *, w, h, fs):
+    def _status_pill(cx, cy, text, bg, fg, *, w, h, fs, rounding=None):
         sbg, sfg = _status_badge_colors(bg, fg)
         if sfg != C["white"] and sbg in (C["white"], C["panel"], C["neutral_bg"]):
             ax.text(cx, cy, text, fontproperties=_fp(fs), color=sfg,
                     ha="center", va="center", zorder=3)
             return
-        _pill(ax, cx, cy, text, sbg, sfg, w=w, h=h, fs=fs)
+        _pill(ax, cx, cy, text, sbg, sfg, w=w, h=h, fs=fs, rounding=rounding)
 
     for row_i, (_, r) in enumerate(table.iterrows()):
         y1 = ry - body_h
@@ -2198,17 +2200,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    main_fs = 9.6 if len(main_lab) >= 3 else 10.2
-                    note_fs = 8.8
-                    main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
-                    note_w = min(tw(note, note_fs) + 2.0, max_w)
+                    main_fs = 10.0 if len(main_lab) >= 3 else 10.6
+                    note_fs = 9.2
+                    main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
+                    note_w = min(tw(note, note_fs) + 2.2, max_w)
+                    dual_r = min(0.12, body_h * 0.18)
                     _status_pill(
                         cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
-                        w=main_w, h=body_h * 0.32, fs=main_fs,
+                        w=main_w, h=body_h * 0.36, fs=main_fs, rounding=dual_r,
                     )
                     _status_pill(
                         cx, cy - body_h * 0.24, note, nbg, nfg,
-                        w=note_w, h=body_h * 0.28, fs=note_fs,
+                        w=note_w, h=body_h * 0.32, fs=note_fs, rounding=dual_r,
                     )
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
@@ -2552,7 +2555,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             date_line, clock_line = format_card_query_stamp(
                 is_live=bool(card.get("is_live")),
                 latest_date=card.get("latest_date"),
-                generated_at=card.get("generated_at") or card.get("live_time"),
+                generated_at=card.get("generated_at"),
             )
     except Exception:
         date_line = _fmt_md(card.get("latest_date"))

@@ -324,12 +324,19 @@ def test_flip_gif_then_photo_when_from_page_known(tmp_path):
             await bot._show_picture_guide_page(msg, 1, edit=True, from_page=0)
 
     asyncio.run(_run())
-    assert msg.edit_media.await_count == 2
-    first = msg.edit_media.await_args_list[0].kwargs["media"]
-    last = msg.edit_media.await_args_list[1].kwargs["media"]
-    assert type(first).__name__ == "InputMediaAnimation"
+    assert msg.edit_media.await_count == 1
+    last = msg.edit_media.await_args_list[0].kwargs["media"]
     assert type(last).__name__ == "InputMediaPhoto"
     msg.reply_photo.assert_not_called()
+
+
+def test_ensure_flip_gif_is_disabled(tmp_path):
+    from picture_guide import ensure_flip_gif
+
+    dest = str(tmp_path / "nogif")
+    assert ensure_flip_gif("cover", "menu", dest) in (None, "")
+    names = os.listdir(dest) if os.path.isdir(dest) else []
+    assert not any(n.endswith(".gif") for n in names)
 
 
 def test_parse_guide_callback_old_and_new():

@@ -278,6 +278,8 @@ def parse_intent(text: str, *, default_kind: str = "") -> Optional[IntentHit]:
         if default_kind:
             return IntentHit(default_kind, "", "", "", default_kind in NEEDS_STOCK)
         return None
+    if raw in ("興櫃", "興櫃海選", "興櫃名單"):
+        return IntentHit("emerging_screen", "", "", raw, False)
 
     codes = _CODE_RE.findall(raw)
     work = _CODE_RE.sub("", raw)
