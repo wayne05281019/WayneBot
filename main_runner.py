@@ -11,6 +11,7 @@
 #   - Render WAYNE_SCHEDULER_ROLE=data 不跑 morning（兩邊 pipeline_runs 互看不見，會雙推）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
+# 22:15 抓人事行政總處北市停班（週日也跑）；06:30 再抓一次涵蓋 04:30 補發
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
 # 20:00／重啟若快照已寫過，不再重掃全市場，仍用快照再跑 AI 模擬倉（清 ETF 槽、依收盤停利停損）。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
@@ -738,6 +739,15 @@ class MainRunner:
         except Exception as e:
             logger.warning("美股休市年曆略過：%s", e)
         try:
+            from tw_holidays import refresh_tw_holiday_calendar, refresh_tw_typhoon_halt
+
+            tw_hol = refresh_tw_holiday_calendar(self.db_path)
+            logger.info("台股開休市年曆：%s", tw_hol)
+            typh = refresh_tw_typhoon_halt(self.db_path)
+            logger.info("北市停班：%s", typh)
+        except Exception as e:
+            logger.warning("台股休市年曆略過：%s", e)
+        try:
             from screen_review import score_ai_fills, score_screen_picks
 
             n = score_screen_picks(self.db_path, cap)
@@ -758,6 +768,30 @@ class MainRunner:
 
     def run_morning_screen(self, skip_if_done: bool = False) -> bool:
         from import_health import latest_complete_quote_date
+        from tw_holidays import closed_tw_session, refresh_tw_typhoon_halt
+
+        try:
+            typh = refresh_tw_typhoon_halt(self.db_path)
+            logger.info("今早北市停班：%s", typh)
+        except Exception as e:
+            logger.warning("今早北市停班略過：%s", e)
+        closed = closed_tw_session(db_path=self.db_path)
+        if closed:
+            from trading_calendar import morning_screen_pipeline_key
+
+            key = morning_screen_pipeline_key(self.db_path)
+            logger.info(
+                "今日台股休市 %s %s，不寄今早海選（%s）",
+                closed.get("ymd"),
+                closed.get("zh"),
+                key,
+            )
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip morning",
+                run_date=key,
+            )
+            return True
 
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
@@ -865,9 +899,23 @@ class MainRunner:
 
     def run_midday_review(self, skip_if_done: bool = False) -> bool:
         from import_health import latest_complete_quote_date
+        from tw_holidays import closed_tw_session
 
+        closed = closed_tw_session(db_path=self.db_path)
         as_of = latest_complete_quote_date(self.db_path)
         key = f"midday-{as_of or 'none'}"
+        if closed:
+            logger.info(
+                "今日台股休市 %s %s，不寄尾盤可切",
+                closed.get("ymd"),
+                closed.get("zh"),
+            )
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip midday",
+                run_date=key,
+            )
+            return True
         if skip_if_done and as_of and self.already_completed_today(key):
             logger.info("尾盤可切 %s 已寄過，略過。", key)
             return True
@@ -887,6 +935,14 @@ class MainRunner:
             self.send_telegram_message(line)
         self._mark_pipeline("success", "midday", run_date=key)
         return True
+
+    def run_typhoon_peek(self) -> bool:
+        """前一晚 22:15 抓人事行政總處；北市全日／上午停班才記台股休市。"""
+        from tw_holidays import refresh_tw_typhoon_halt
+
+        out = refresh_tw_typhoon_halt(self.db_path)
+        logger.info("22:15 人事行政總處北市停班：%s", out)
+        return bool(out.get("ok"))
 
     def run_pipeline(self, skip_if_done: bool = False) -> bool:
         """相容舊呼叫：只做盤後融合，不寄海選。"""

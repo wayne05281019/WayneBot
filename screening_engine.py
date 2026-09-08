@@ -1454,9 +1454,17 @@ def format_line_share_packs(
     ]
     if morning:
         specs_layout = [pair for pair in specs_layout if pair[0] in MORNING_LAYOUT_KEYS]
+    tw_bits: List[str] = []
+    try:
+        from tw_holidays import closed_tw_session, holiday_banner_lines
+
+        tw_bits = holiday_banner_lines(closed_tw_session(now, db_path))
+    except Exception:
+        tw_bits = []
     head = "\n".join(
         [
             f"WayneBot 海選　{_date_slash(target_date)}",
+            *tw_bits,
             session_plain or "昨收名單。量化輔助，不是立即下單。",
         ]
     )

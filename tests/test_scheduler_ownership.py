@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 import main  # noqa: E402
 
-ALL_JOBS = ("morning", "midday", "fuse", "evening")
+ALL_JOBS = ("morning", "midday", "fuse", "evening", "typhoon")
 
 
 def test_default_role_is_data(monkeypatch):
@@ -56,7 +56,7 @@ def test_data_role_keeps_midday_because_gha_has_no_such_cron(monkeypatch):
 
 def test_data_role_refreshes_silently(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    for job in ("fuse", "evening"):
+    for job in ("fuse", "evening", "typhoon"):
         assert config.scheduler_owns(job) is True
         assert config.scheduler_may_push(job) is False
 
@@ -103,6 +103,10 @@ class _Recorder:
         self.calls.append(("fuse", kw))
         return True
 
+    def run_typhoon_peek(self, **kw):
+        self.calls.append(("typhoon", kw))
+        return True
+
 
 @pytest.fixture()
 def recorder(monkeypatch):
@@ -117,6 +121,12 @@ def test_dispatch_skips_unowned_job(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     main.run_scheduled_job("morning")
     assert recorder.calls == []
+
+
+def test_dispatch_runs_typhoon_on_data_role(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    main.run_scheduled_job("typhoon")
+    assert [c[0] for c in recorder.calls] == ["typhoon"]
 
 
 def test_dispatch_runs_owned_job(monkeypatch, recorder):

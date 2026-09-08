@@ -353,6 +353,16 @@ def _schema_steps():
 
         ensure_us_overnight_table(path)
 
+    def _us_holidays(path):
+        from us_holidays import ensure_us_holidays_table
+
+        ensure_us_holidays_table(path)
+
+    def _tw_holidays(path):
+        from tw_holidays import ensure_tw_holidays_table
+
+        ensure_tw_holidays_table(path)
+
     def _screen_sessions(path):
         from screen_sessions import ensure_screen_session_table
 
@@ -389,6 +399,8 @@ def _schema_steps():
         ("ex_rights", _ex_rights),
         ("screen_review", _screen_review),
         ("us_overnight", _us_overnight),
+        ("us_holidays", _us_holidays),
+        ("tw_holidays", _tw_holidays),
         ("screen_sessions", _screen_sessions),
         ("portfolio", _portfolio),
         ("ai_tables", _ai_tables),
