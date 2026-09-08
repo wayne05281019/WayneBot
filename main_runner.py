@@ -156,9 +156,38 @@ class MainRunner:
     def send_telegram_message(self, text: str, chat_id: Optional[str] = None):
         if not text:
             return
-        target = chat_id or self.chat_id
+        target = chat_id or getattr(self, "chat_id", None)
         for part in chunk_telegram_text(text):
             self._send_one(part, target)
+
+    def _family_chat_ids(self) -> list:
+        """曾按開始的話筒帳號；每人私聊各寄一份。運維失敗通知仍只寄擁有者。"""
+        from wayne_db import list_tg_user_ids
+
+        ids: list[str] = []
+        seen: set[str] = set()
+        try:
+            raw = list_tg_user_ids(self.db_path)
+        except Exception:
+            raw = []
+        owner = str(getattr(self, "chat_id", None) or "").strip()
+        for uid in list(raw) + ([owner] if owner else []):
+            s = str(uid or "").strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            ids.append(s)
+        return ids
+
+    def _broadcast_family(self, text: str) -> None:
+        if not text:
+            return
+        ids = self._family_chat_ids()
+        if not ids:
+            self.send_telegram_message(text)
+            return
+        for cid in ids:
+            self.send_telegram_message(text, chat_id=cid)
 
     def _send_one(self, text: str, chat_id: str):
         if self.bot and hasattr(self.bot, "send_message"):
@@ -490,11 +519,12 @@ class MainRunner:
             logger.warning("AI 帳戶概況略過：%s", e)
             return ""
 
-    def _format_watch_radar_section(self) -> str:
-        if not self.portfolio_engine or not self.chat_id:
+    def _format_watch_radar_section(self, telegram_uid: str = "") -> str:
+        uid = str(telegram_uid or getattr(self, "chat_id", None) or "")
+        if not self.portfolio_engine or not uid:
             return ""
         quotes = self._load_latest_quotes_map()
-        watch = self.portfolio_engine.get_watchlist(self.chat_id)
+        watch = self.portfolio_engine.get_watchlist(uid)
         if not watch:
             return ""
         lines = ["───────────────────", "🎯 <b>【自選守護雷達】</b>"]
@@ -522,22 +552,24 @@ class MainRunner:
 
     def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = ""):
         delivered = self._screening_delivered(screening)
+        ids = self._family_chat_ids()
         if self.bot and delivered:
             try:
-                self.bot.send_screening_report(screening)
+                for cid in ids:
+                    self.bot.send_screening_report(screening, chat_id=cid)
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
-                self.send_telegram_message(
+                self._broadcast_family(
                     screening.get("message") or self._screening_fail_message()
                 )
                 delivered = False
         else:
             report_text = (screening or {}).get("message") if screening else ""
-            self.send_telegram_message(report_text or self._screening_fail_message())
+            self._broadcast_family(report_text or self._screening_fail_message())
         if not delivered:
             logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
             return
-        extra_bits = [self._format_watch_radar_section()]
+        extra_bits = []
         try:
             from taiwan_market import format_taiwan_market_brief_html
 
@@ -577,8 +609,18 @@ class MainRunner:
         except Exception:
             pass
         extra_text = "\n".join(x for x in extra_bits if x)
-        if extra_text:
-            self.send_telegram_message(extra_text)
+        owner = str(getattr(self, "chat_id", None) or "").strip()
+        targets = ids or ([owner] if owner else [])
+        if not targets:
+            if extra_text:
+                self.send_telegram_message(extra_text)
+        else:
+            for cid in targets:
+                text = "\n".join(
+                    x for x in (extra_text, self._format_watch_radar_section(cid)) if x
+                )
+                if text:
+                    self.send_telegram_message(text, chat_id=cid)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
 
     def _run_ai_desk(
@@ -758,7 +800,7 @@ class MainRunner:
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
         if notify:
             try:
-                self.send_telegram_message(self._fuse_done_message(cap, health))
+                self._broadcast_family(self._fuse_done_message(cap, health))
             except Exception:
                 logger.exception("盤後融合完成推播失敗")
         try:
@@ -866,7 +908,7 @@ class MainRunner:
             us_snap = refresh_us_overnight(self.db_path, as_of) or {}
             if should_alert_us_drop(us_snap):
                 logger.info("美股收盤偏弱，先寄一早通知 regime=%s", us_snap.get("regime"))
-                self.send_telegram_message(format_us_drop_alert(us_snap))
+                self._broadcast_family(format_us_drop_alert(us_snap))
         except Exception as e:
             logger.warning("美股大跌通知略過：%s", e)
         screening = None
@@ -959,9 +1001,9 @@ class MainRunner:
         html = out.get("html") or ""
         line = (out.get("line_share") or "").strip()
         if html:
-            self.send_telegram_message(html)
+            self._broadcast_family(html)
         if line:
-            self.send_telegram_message("↓ 下面這一則可整段複製，轉貼哥哥 LINE（一次貼完）")
+            self.send_telegram_message("↓ 下面這一則可整段複製，要轉 LINE 自己選聯絡人（一次貼完）")
             self.send_telegram_message(line)
         self._mark_pipeline("success", "midday", run_date=key)
         return True

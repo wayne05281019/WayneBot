@@ -269,8 +269,11 @@ HELP_TOPICS = {
         "你挑股認黃金買點欄：若名單上的檔，打開決策卡獲利格不是剛離零，請按回報或貼給偉權。\n"
         "\n"
         "<b>家人各用各的</b>\n"
-        "每人用自己的話筒帳號跟機器人私聊：持股、觀察、成交、連買、查股出圖都各看各的。\n"
-        "海選／大盤／資金／連買名單是全市場同一份；家人正在跑海選，你再按只會共用那一次掃描。\n"
+        "同一顆機器人 <code>@WC_ai_trade_bot</code>，每人用<b>自己的話筒</b>私聊。不要拉進同一個群組。\n"
+        "怎麼給家人：打開你跟機器人的對話 → 點最上面機器人名字 → 分享 → 選他的聯絡人。或把連結傳給他：https://t.me/WC_ai_trade_bot\n"
+        "對方只要按<b>開始</b>，不用給密鑰、不用給密碼、不用給你他的帳號。\n"
+        "他按開始之後：查股／海選／持股／觀察／當沖／隔日沖／AI倉／連買／大盤／資金／說明圖文都可用。持股、觀察、記買入、成交、AI倉各看各的，不會看到對方的。\n"
+        "06:30 早上海選、12:45 尾盤、16:30 收盤寫庫通知會各寄一份（市場名單同一份）。家人正在跑海選，你再按只會共用那一次掃描。\n"
         "\n"
         "<b>完全新手小詞典</b>\n"
         "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
@@ -2341,20 +2344,21 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_photo: %s", e)
 
-    def send_screening_report(self, result: Dict[str, Any]):
-        if not self.token or not self.chat_id:
+    def send_screening_report(self, result: Dict[str, Any], chat_id: str | None = None):
+        dest = str(chat_id or self.chat_id or "").strip()
+        if not self.token or not dest:
             return
         import time as _t
 
         parts = self._screening_payload(result)
         if not parts:
-            self._send_html(self.chat_id, result.get("message") or self._format_screening_html(result))
+            self._send_html(dest, result.get("message") or self._format_screening_html(result))
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
             gif = self._mark_gif_path(part.get("mark_key") or "")
             if gif:
-                self._send_animation(self.chat_id, gif)
+                self._send_animation(dest, gif)
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last_chunk = j == len(chunks) - 1
@@ -2365,7 +2369,7 @@ class WayneTelegramBot:
                     picks=part.get("picks") if is_last_chunk else None,
                 )
                 self._send_html(
-                    self.chat_id,
+                    dest,
                     chunk,
                     extra_keyboard=kb,
                     attach_menu=False,
@@ -2458,7 +2462,8 @@ class WayneTelegramBot:
             + "（不要先按「刷新」）\n"
             "3　籌碼／營收／產業／K線在圖下面，不在右側四格鍵盤\n"
             "\n"
-            "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n",
+            "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
+            "給家人用：點最上面機器人名字 → 分享。對方用自己的帳號按開始，持股各看各的。\n",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 

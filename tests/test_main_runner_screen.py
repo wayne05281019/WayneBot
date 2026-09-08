@@ -33,7 +33,7 @@ def test_push_screening_failure_skips_extras(monkeypatch):
     runner.bot = object()
     sent = []
 
-    runner.send_telegram_message = lambda text: sent.append(("msg", text))
+    runner.send_telegram_message = lambda text, chat_id=None: sent.append(("msg", text))
     runner._format_portfolio_section = lambda: "PORTFOLIO"
     runner._run_ai_desk = lambda *a, **k: sent.append(("ai", True))
 
@@ -51,11 +51,11 @@ def test_push_screening_success_skips_ai_push(monkeypatch):
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = ":memory:"
     runner.today_str = "20260901"
-    runner.bot = type("B", (), {"send_screening_report": lambda _s, _x: None})()
+    runner.bot = type("B", (), {"send_screening_report": lambda _s, _x, chat_id=None: None})()
     sent = []
     ai_calls = []
 
-    runner.send_telegram_message = lambda text: sent.append(text)
+    runner.send_telegram_message = lambda text, chat_id=None: sent.append(text)
     runner._format_watch_radar_section = lambda: ""
     runner._run_ai_desk = lambda *a, **k: ai_calls.append(k) or {}
 
@@ -114,3 +114,48 @@ def test_oneshot_jobs_skip_if_already_done():
     assert "run_evening_screen(skip_if_done=True, notify=False)" in src
     assert "run_midday_review(skip_if_done=True)" in src
     assert "run_increment_job(skip_if_done=True)" in src
+
+
+def test_family_chat_ids_owner_and_touched_users(tmp_path):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "fam.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "9002", "家人")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    assert runner._family_chat_ids() == ["9001", "9002"]
+
+
+def test_push_screening_sends_each_family_member(tmp_path):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "fam.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "9002", "家人")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    runner.today_str = "20260901"
+    runner.portfolio_engine = None
+    sent = []
+
+    class _Bot:
+        def send_screening_report(self, screening, chat_id=None):
+            sent.append(("screen", chat_id))
+
+    runner.bot = _Bot()
+    runner.send_telegram_message = lambda text, chat_id=None: sent.append(("extra", chat_id))
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner._push_screening(
+        {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+        as_of="20260831",
+    )
+    assert ("screen", "9001") in sent
+    assert ("screen", "9002") in sent

@@ -10,6 +10,7 @@ import pytest
 
 from config import get_db_path
 from decision_card_signals import display_alert_cell
+from wayne_navigator import NavigatorEngine
 
 pytestmark = pytest.mark.production_db
 
@@ -88,9 +89,11 @@ class CaryBotUserFixtureTests(unittest.TestCase):
     def test_2324_high_low_summary_matches_carybot(self):
         """CaryBot 高低摘要：截圖日 9/2 收 39.7；20／60 高 43.2、10 高 41.6、60曆日低 33.75。
 
-        最新收盤會隨盤後日滾動，不鎖在截圖價。
+        摘要高低釘在截圖日 as_of；最新收盤列會隨盤後日滾動，不鎖在截圖價。
         """
-        card = self._card("2324")
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "2324", lookback=40, merge_live=False, as_of="20260902"
+        )
         row = self._row(card, "20260902")
         self.assertAlmostEqual(float(row["close"]), 39.7, places=1)
         self.assertAlmostEqual(float(card["h10"]), 41.6, places=1)
