@@ -2,7 +2,7 @@
 
 只把關鍵字對到既有功能：查股三張圖、籌碼、產業、營收、如何賣、
 大盤、資金、海選、持股、觀察、當沖、隔日沖、連買、AI倉。
-「為什麼跌」沒有官方新聞欄，對到決策卡／籌碼等真資料。
+「為什麼跌」沒有官方新聞欄，對到查股三張圖。
 """
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from typing import Optional, Tuple
 # 需要帶一檔代號才出得了正確資料。
 NEEDS_STOCK = frozenset(
     {
-        "why",
         "lookup",
         "card",
         "chips",
@@ -28,7 +27,6 @@ NEEDS_STOCK = frozenset(
 # 全市場頁，代號可有可無（有就記住，不改頁）。
 GLOBAL_KINDS = frozenset(
     {
-        "hub",
         "market",
         "flow",
         "screen",
@@ -69,31 +67,31 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("準備減碼", "sell"),
     ("直接減碼", "sell"),
     ("出場協助", "sell"),
-    ("為什麼下跌", "why"),
-    ("為甚麼下跌", "why"),
-    ("為什麼跌這麼多", "why"),
-    ("為甚麼跌這麼多", "why"),
-    ("為何下跌", "why"),
-    ("為什麼跌", "why"),
-    ("為甚麼跌", "why"),
-    ("為何跌", "why"),
-    ("怎麼跌這麼多", "why"),
-    ("怎麼跌", "why"),
-    ("跌這麼多", "why"),
-    ("為什麼上漲", "why"),
-    ("為甚麼上漲", "why"),
-    ("為什麼漲這麼多", "why"),
-    ("為甚麼漲這麼多", "why"),
-    ("為何上漲", "why"),
-    ("為什麼漲", "why"),
-    ("為甚麼漲", "why"),
-    ("為何漲", "why"),
-    ("怎麼漲這麼多", "why"),
-    ("怎麼漲", "why"),
-    ("漲這麼多", "why"),
-    ("什麼原因", "why"),
-    ("啥原因", "why"),
-    ("什麼緣故", "why"),
+    ("為什麼下跌", "lookup"),
+    ("為甚麼下跌", "lookup"),
+    ("為什麼跌這麼多", "lookup"),
+    ("為甚麼跌這麼多", "lookup"),
+    ("為何下跌", "lookup"),
+    ("為什麼跌", "lookup"),
+    ("為甚麼跌", "lookup"),
+    ("為何跌", "lookup"),
+    ("怎麼跌這麼多", "lookup"),
+    ("怎麼跌", "lookup"),
+    ("跌這麼多", "lookup"),
+    ("為什麼上漲", "lookup"),
+    ("為甚麼上漲", "lookup"),
+    ("為什麼漲這麼多", "lookup"),
+    ("為甚麼漲這麼多", "lookup"),
+    ("為何上漲", "lookup"),
+    ("為什麼漲", "lookup"),
+    ("為甚麼漲", "lookup"),
+    ("為何漲", "lookup"),
+    ("怎麼漲這麼多", "lookup"),
+    ("怎麼漲", "lookup"),
+    ("漲這麼多", "lookup"),
+    ("什麼原因", "lookup"),
+    ("啥原因", "lookup"),
+    ("什麼緣故", "lookup"),
     ("主力成本", "no_cost"),
     ("外資成本", "no_cost"),
     ("投信成本", "no_cost"),
@@ -163,10 +161,9 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("減碼", "sell"),
     ("出場", "sell"),
     ("停利", "sell"),
-    ("為何", "why"),
-    ("為什麼", "why"),
-    ("為甚麼", "why"),
-    ("原因", "hub"),
+    ("為何", "lookup"),
+    ("為什麼", "lookup"),
+    ("為甚麼", "lookup"),
     ("怎麼用", "help"),
     ("說明書", "help"),
     ("說明", "help"),
@@ -176,7 +173,6 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("查股", "lookup"),
     ("查一下", "lookup"),
     ("看看", "lookup"),
-    ("why", "why"),
     ("chips", "chips"),
     ("industry", "industry"),
     ("market", "market"),
@@ -301,16 +297,14 @@ def parse_intent(text: str, *, default_kind: str = "") -> Optional[IntentHit]:
 
     query = _strip_fillers(work)
     code = (codes[0].upper() if codes else "")
-    if kind == "hub" and (code or query):
-        kind = "why"
     if kind == "flow" and (code or query):
         # 「2330資金／台積電資金」對個股法人，不是全市場資金頁。
         kind = "chips"
     if kind in ("help", "report", "watch", "portfolio") and (code or query):
-        # 「2330說明／台積電觀察」帶檔就出這檔資料，不整頁說明。
-        kind = "why"
+        # 「2330說明／台積電觀察」帶檔就出這檔圖，不整頁說明。
+        kind = "lookup"
     if kind == "ai" and code:
-        kind = "why"
+        kind = "lookup"
     needs = kind in NEEDS_STOCK
     return IntentHit(
         kind=kind,
@@ -318,13 +312,6 @@ def parse_intent(text: str, *, default_kind: str = "") -> Optional[IntentHit]:
         code=code,
         matched=matched,
         needs_stock=needs,
-    )
-
-
-def why_honest_html() -> str:
-    return (
-        "官方<b>沒有</b>「為什麼漲跌」新聞欄，也不編新聞、不編成本。\n"
-        "下面是這檔<b>決策卡／介紹圖／導航圖</b>（官方價量）。籌碼／產業／營收在圖下面。"
     )
 
 
@@ -339,24 +326,4 @@ def no_cost_honest_html() -> str:
     return (
         "官方<b>沒有</b>外資／投信／融資／主力成本價。三大法人不是主力。\n"
         "沒有真分點列就不上「主力成本」。改看<b>籌碼</b>（官方法人張數）。"
-    )
-
-
-def why_hub_html(last_code: str = "") -> str:
-    last = f"<code>{last_code}</code>" if last_code else "（還沒查過，請打代號）"
-    return (
-        "<b>原因</b>（輸入列左邊三條槓）\n"
-        "用平常的話問，會對到<b>官方資料</b>，不編新聞、不編成本。\n"
-        "也可以直接<b>對麥克風說話</b>（Telegram 語音），聽成文字後走同一條路。\n"
-        "\n"
-        "例：\n"
-        "• 為什麼跌／為什麼漲　→ 這檔決策卡（沒有官方跌因欄）\n"
-        "• 2330怎麼賣　→ 如何賣（20日高對最高溫）\n"
-        "• 外資／籌碼／法人　→ 三大法人圖\n"
-        "• 產業／營收　→ 產業圖卡／月營收\n"
-        "• 大盤／海選／持股　→ 對應那一頁\n"
-        "• 主力成本　→ 說明沒有這欄，改看出官方法人\n"
-        "\n"
-        f"上一檔：{last}\n"
-        "沒寫代號就用上一檔。也可直接在聊天室打這些詞，不必先開選單。"
     )

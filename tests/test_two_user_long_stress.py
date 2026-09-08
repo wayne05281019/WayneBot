@@ -466,14 +466,14 @@ def test_pending_report_and_why_survive_other_user(tmp_path):
     wayne = f"{WAYNE}:{WAYNE}"
     bro = f"{BRO}:{BRO}"
     bot._pending[wayne] = "report"
-    bot._pending[bro] = "why"
+    bot._pending[bro] = "buy:2317"
     bot._last_card[BRO] = "3105"
 
     async def run():
         await bot.on_text(_update(_msg(WAYNE_I, "大盤")), MagicMock())
 
     asyncio.run(run())
-    assert bot._pending.get(bro) == "why"
+    assert bot._pending.get(bro) == "buy:2317"
     assert bot._pending.get(wayne) != "report"
     assert "大盤" in bot._stress_hits[WAYNE]
     assert bot._stress_hits[BRO] == []

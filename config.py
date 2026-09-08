@@ -38,11 +38,14 @@ def get_charts_dir() -> str:
 
 def get_public_base_url() -> str:
     """Telegram 開 LINE 鈕要走 https。Render 會帶 RENDER_EXTERNAL_URL。"""
-    return (
+    raw = (
         os.getenv("WAYNE_PUBLIC_URL")
         or os.getenv("RENDER_EXTERNAL_URL")
         or "https://waynebot-service.onrender.com"
-    ).rstrip("/")
+    ).strip().rstrip("/")
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    return f"https://{raw}"
 
 
 def scheduled_job_kind(cron_expr: str) -> str:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""三條槓「原因」＋平常話路由到官方資料。"""
+"""平常話路由到官方資料；三條槓不再放「原因」。"""
 from __future__ import annotations
 
 import asyncio
@@ -63,36 +63,36 @@ def _bot():
     bot.help_cmd = AsyncMock()
     bot.report_cmd = AsyncMock()
     bot._send_ai_desk_view = AsyncMock()
+    bot._keyboard = MagicMock(return_value=None)
     return bot
 
 
-def test_hamburger_lists_why_first():
+def test_hamburger_omits_why():
     names = [name for name, _desc in TELEGRAM_BOT_COMMANDS]
-    assert names[0] == "why"
-    assert ("why", "原因：語音或打字對出官方資料") in TELEGRAM_BOT_COMMANDS
-    assert "menu" in names
+    assert "why" not in names
+    assert names[0] == "menu"
+    assert ("why", "原因：語音或打字對出官方資料") not in TELEGRAM_BOT_COMMANDS
     src = open("bot_servers.py", encoding="utf-8").read()
-    assert 'CommandHandler("why"' in src
-    assert "TELEGRAM_BOT_COMMANDS" in src
+    assert "_why_hub_keyboard" not in src
+    assert "_send_why_hub" not in src
+    assert "why" not in HELP_TOPICS
+    assert "三條槓「原因」" not in HELP_TOPICS["guide"]
+    assert "／why" not in HELP_TOPICS["guide"]
+    assert "／why" not in HELP_TOPICS["menu"]
 
 
-def test_why_hub_has_last_stock_and_market_buttons():
+def test_stale_why_command_tells_user_to_type_ticker():
     bot = _bot()
-    kb = bot._why_hub_keyboard("2330")
-    labels = [b.text for row in kb.inline_keyboard for b in row]
-    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert "這檔決策卡" in labels
-    assert "如何賣" in labels
-    assert "大盤" in labels
-    assert "海選" in labels
-    assert "k:2330" in cbs
-    assert "ys:2330" in cbs
-    assert "yw:market" in cbs
-    assert "?:why" in cbs
-    empty = bot._why_hub_keyboard("")
-    empty_labels = [b.text for row in empty.inline_keyboard for b in row]
-    assert "這檔決策卡" not in empty_labels
-    assert "大盤" in empty_labels
+    msg = _msg(9, "/why")
+    ctx = SimpleNamespace(args=[])
+
+    async def run():
+        await bot.why_cmd(_update(msg), ctx)
+
+    asyncio.run(run())
+    text = msg.reply_text.await_args.args[0]
+    assert "打代號" in text
+    assert bot._pending.get("99:9") != "why"
 
 
 def test_on_text_why_drop_uses_last_card():
@@ -106,9 +106,8 @@ def test_on_text_why_drop_uses_last_card():
     asyncio.run(run())
     bot._send_card_to.assert_awaited()
     assert bot._send_card_to.await_args.args[1] == "2330"
-    html = msg.reply_html.await_args.args[0]
-    assert "沒有" in html
-    assert "新聞" in html
+    htmls = [str(c.args[0]) for c in msg.reply_html.await_args_list if c.args]
+    assert not any("新聞" in h and "沒有" in h for h in htmls)
 
 
 def test_on_text_sell_with_name_looks_up():
@@ -187,24 +186,9 @@ def test_bare_code_still_looks_up_without_why_caption():
     bot._send_card_to.assert_not_awaited()
 
 
-def test_why_command_empty_opens_hub():
+def test_stale_why_pending_then_code_looks_up():
     bot = _bot()
-    bot._last_card["9"] = "2330"
-    msg = _msg(9, "/why")
-    ctx = SimpleNamespace(args=[])
-
-    async def run():
-        await bot.why_cmd(_update(msg), ctx)
-
-    asyncio.run(run())
-    html = msg.reply_html.await_args.args[0]
-    assert "原因" in html
-    assert "2330" in html
-    assert bot._pending.get("99:9") == "why"
-
-
-def test_why_pending_then_code_sends_card():
-    bot = _bot()
+    bot._reply_card = AsyncMock()
     bot._pending["99:9"] = "why"
     msg = _msg(9, "2454")
 
@@ -216,8 +200,8 @@ def test_why_pending_then_code_sends_card():
             await bot.on_text(_update(msg), MagicMock())
 
     asyncio.run(run())
-    bot._send_card_to.assert_awaited()
-    assert bot._send_card_to.await_args.args[1] == "2454"
+    bot._reply_card.assert_awaited()
+    assert bot._reply_card.await_args.args[1] == "2454"
 
 
 def test_streak_pending_does_not_swallow_why_drop():
@@ -234,7 +218,7 @@ def test_streak_pending_does_not_swallow_why_drop():
     assert bot._send_card_to.await_args.args[1] == "2330"
     assert "99:9" not in bot._pending
     blob = " ".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
-    assert "請選" not in blob or "新聞" in blob
+    assert "請選" not in blob
 
 
 def test_buy_pending_does_not_swallow_why_drop():
@@ -291,11 +275,7 @@ def test_daytrade_lock_blocks_second_press():
     assert "進行中" in text
 
 
-def test_help_why_topic_exists():
-    body = HELP_TOPICS["why"]
-    assert "三條槓" in body
-    assert "不編" in body
-    assert "主力成本" in body
-    assert "語音" in body
-    assert "聽寫金鑰" in body
-    assert HELP_TOPICS["guide"].count("三條槓") >= 1
+def test_help_drops_why_topic():
+    assert "why" not in HELP_TOPICS
+    assert "三條槓" not in HELP_TOPICS["guide"]
+    assert "三條槓" not in HELP_TOPICS["menu"]
