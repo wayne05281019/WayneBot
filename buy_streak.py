@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""連買區域：外資／投信／外資+投信 連續買超（上市櫃一起算）。"""
+"""連買區域：先選上市櫃或興櫃，再選外資／投信／外資+投信。"""
 from __future__ import annotations
 
 import sqlite3
@@ -27,7 +27,15 @@ KIND_BTN = {
 MARKET_TW = "TW"
 MARKET_TWO = "TWO"
 MARKET_ALL = "ALL"
-MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃", MARKET_ALL: ""}
+MARKET_EM = "EM"
+MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃", MARKET_ALL: "上市櫃", MARKET_EM: "興櫃"}
+UNI_BTN = {MARKET_ALL: "上市櫃", MARKET_EM: "興櫃"}
+EM_NO_CHIPS_HTML = (
+    "<b>興櫃連買</b>\n"
+    "興櫃沒有官方法人買賣超表，不能算外資／投信連買天，"
+    "也不會用 0 去凑連買天數。\n"
+    "請改看上市櫃，或回主選單。"
+)
 MARKET_ALIASES = {
     "上市": MARKET_TW,
     "上市股票": MARKET_TW,
@@ -39,6 +47,12 @@ MARKET_ALIASES = {
     "otc": MARKET_TWO,
     "tpex": MARKET_TWO,
     "two": MARKET_TWO,
+    "上市櫃": MARKET_ALL,
+    "上市上櫃": MARKET_ALL,
+    "all": MARKET_ALL,
+    "興櫃": MARKET_EM,
+    "em": MARKET_EM,
+    "emerging": MARKET_EM,
 }
 
 KIND_ALIASES = {
@@ -123,6 +137,17 @@ class StreakSnapshot:
 def parse_kind(text: str) -> Optional[str]:
     t = (text or "").strip()
     return KIND_ALIASES.get(t)
+
+
+def parse_universe(text: str) -> Optional[str]:
+    """連買第一步：上市櫃（TW+TWO）或興櫃。不是上市／上櫃分開。"""
+    t = (text or "").strip()
+    key = t.lower()
+    if t in ("上市櫃", "上市上櫃") or key in ("all", "listed"):
+        return MARKET_ALL
+    if t in ("興櫃",) or key in ("em", "emerging"):
+        return MARKET_EM
+    return None
 
 
 def parse_market(text: str) -> Optional[str]:
@@ -254,7 +279,7 @@ def format_list_html(
         + (f" · {mkt}" if mkt else "")
         + f"</b>　{total} 檔\n"
         f"截至 {as_of_s} 官方籌碼（剛好連買 {days} 天，不是以上）。\n"
-        "股名＝奇摩走勢；點鍵盤股名看出完整圖；旁「籌碼」核對法人買賣超。"
+        "股名＝看這檔；旁「籌碼」核對法人買賣超。按鈕只在這則訊息下面，輸入列維持兩排主選單。"
     )
     if not chunk:
         return head + "\n\n<i>這個天數目前沒有股票。</i>"
@@ -407,6 +432,8 @@ def load_snapshot(
     market = str(market or "").strip().upper()
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind}")
+    if market == MARKET_EM:
+        raise ValueError("emerging has no official chip table")
     if market == MARKET_ALL:
         tw = load_snapshot(
             db_path, kind, MARKET_TW, as_of=as_of, lookback=lookback, use_cache=use_cache

@@ -40,8 +40,8 @@ sleep 0.4
 snap "00_ready"
 
 send "連買區" "01_streak" 6
-send "外資" "02_foreign" 5
-send "上市" "03_tw" 10
+send "上市櫃" "02_uni" 5
+send "外資" "03_foreign" 5
 send "19" "04_days19" 10
 send "1524" "05_1524" 16
 send "回主選單" "06_back" 5

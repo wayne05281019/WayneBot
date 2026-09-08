@@ -464,6 +464,7 @@ def test_l3_em_hub_omits_chips_fund_industry():
     assert "產業" in labels
     assert "觀察" in labels
     assert "K線" not in labels
+    assert [b.text for b in kb.inline_keyboard[0]] == ["產業", "觀察", "記買入", "說明"]
 
 
 def test_l3_listed_hub_has_chips():
@@ -474,6 +475,7 @@ def test_l3_listed_hub_has_chips():
     assert "營收" in labels
     assert "產業" in labels
     assert "K線" in labels
+    assert "導航圖" in labels
 
 
 # ===========================================================================
@@ -1044,9 +1046,13 @@ def test_l9_streak_days_does_not_reprint_number_list():
     html = msg.reply_html.await_args.args[0]
     assert "可選天數" not in html
     assert "22 21 19" not in html
-    hint = msg.reply_text.await_args.args[0]
-    assert hint == "也可點輸入區鍵盤上的天數"
-    assert "22" not in hint
+    assert "輸入區鍵盤" not in html
+    assert "上市櫃一起列" not in html
+    markup = msg.reply_html.await_args.kwargs.get("reply_markup")
+    assert markup is not None
+    assert getattr(markup, "inline_keyboard", None)
+    assert not getattr(markup, "keyboard", None)
+    assert msg.reply_text.await_count == 0
     src = _src(WayneTelegramBot._streak_show_days)
     assert "可選天數" not in src
     from main_runner import main

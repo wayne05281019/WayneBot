@@ -97,11 +97,13 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     assert not any("曆日低" in t or "曆日底" in t for t in texts)
     assert "紀律" in texts
     assert any("先出一點" in t for t in texts)
-    legend_y = [y for y, t in seen if "左上 K" in t][0]
+    assert not any("左上 K" in t for t in texts)
     note_y = min(y for y, t in seen if "先出一點" in t)
-    assert note_y - legend_y >= 2.4
+    disc_y = [y for y, t in seen if t == "紀律"][0]
+    assert disc_y > note_y
     with __import__("PIL").Image.open(out) as im:
         assert im.size[0] >= 2000
+        assert im.size[1] >= 2200
         assert sum(im.size) < 10000
 
 

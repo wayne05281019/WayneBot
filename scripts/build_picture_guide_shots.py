@@ -167,10 +167,10 @@ def build(src: str = SRC) -> list[str]:
         chat = _crop_chat(Image.open(alb_src).convert("RGB"))
         sl = _up(chat.crop((0, 0, chat.width, 500)))
         d = ImageDraw.Draw(sl)
-        _ring(d, 360, 410, 180, 48, 8)  # 介紹／決策／導航縮圖
+        _ring(d, 360, 410, 180, 48, 8)  # 介紹／決策卡縮圖
         paths.append(
             _save(
-                _caption_bar(sl, "紅圈：介紹／決策／導航縮圖　點開放大；一次三張"),
+                _caption_bar(sl, "紅圈：介紹／決策卡縮圖　點開放大；一次兩張"),
                 "charts.png",
             )
         )

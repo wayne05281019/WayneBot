@@ -66,7 +66,7 @@ def _msg(uid, text=""):
 
 async def main():
     from bot_servers import MENU_BTN_MARKET
-    from buy_streak import KIND_FOREIGN, KIND_TRUST, MARKET_TW, MARKET_TWO, load_snapshot
+    from buy_streak import KIND_FOREIGN, KIND_TRUST, MARKET_ALL, load_snapshot
 
     bot = _make_bot()
     rounds = []
@@ -76,7 +76,6 @@ async def main():
         bot._pending[actor] = "fbuy:kind"
         t0 = time.perf_counter()
         await bot._handle_buy_streak(_msg(WAYNE, "外資"), str(WAYNE), "fbuy:kind", "外資", actor=actor)
-        await bot._handle_buy_streak(_msg(WAYNE, "上市"), str(WAYNE), bot._pending[actor], "上市", actor=actor)
         ms = int((time.perf_counter() - t0) * 1000)
         return {"who": "wayne", "round": i, "pending": bot._pending.get(actor, ""), "ms": ms}
 
@@ -85,7 +84,6 @@ async def main():
         bot._pending[actor] = "fbuy:kind"
         t0 = time.perf_counter()
         await bot._handle_buy_streak(_msg(BRO, "投信"), str(BRO), "fbuy:kind", "投信", actor=actor)
-        await bot._handle_buy_streak(_msg(BRO, "上櫃"), str(BRO), bot._pending[actor], "上櫃", actor=actor)
         ms = int((time.perf_counter() - t0) * 1000)
         return {"who": "bro", "round": i, "pending": bot._pending.get(actor, ""), "ms": ms}
 
@@ -100,14 +98,14 @@ async def main():
     for i in range(10):
         w_actor = f"{WAYNE}:{WAYNE}"
         b_actor = f"{BRO}:{BRO}"
-        bot._pending[w_actor] = "fbuy:days:foreign:TW"
+        bot._pending[w_actor] = "fbuy:days:foreign:ALL"
         t0 = time.perf_counter()
         w_res, b_res = await asyncio.gather(wayne_streak(i), bro_streak(i))
         await bro_market()
-        isolated = bot._pending.get(w_actor) == "fbuy:days:foreign:TW" or w_res["pending"].startswith("fbuy:days:")
+        isolated = bot._pending.get(w_actor) == "fbuy:days:foreign:ALL" or w_res["pending"].startswith("fbuy:days:")
         ok = (
-            w_res["pending"].startswith("fbuy:days:foreign:TW")
-            and b_res["pending"].startswith("fbuy:days:trust:TWO")
+            w_res["pending"].startswith("fbuy:days:foreign:ALL")
+            and b_res["pending"].startswith("fbuy:days:trust:ALL")
         )
         rounds.append(
             {
@@ -122,15 +120,15 @@ async def main():
             }
         )
 
-    snap_w = load_snapshot(bot.db_path, KIND_FOREIGN, MARKET_TW, use_cache=True)
-    snap_b = load_snapshot(bot.db_path, KIND_TRUST, MARKET_TWO, use_cache=True)
+    snap_w = load_snapshot(bot.db_path, KIND_FOREIGN, MARKET_ALL, use_cache=True)
+    snap_b = load_snapshot(bot.db_path, KIND_TRUST, MARKET_ALL, use_cache=True)
     p1 = bot._scratch_chart_path(bot.charts_dir, "2330", "chips", str(WAYNE))
     p2 = bot._scratch_chart_path(bot.charts_dir, "2330", "chips", str(BRO))
 
     lines = [
         "【雙人重度同時使用 ×10】",
         f"偉權 {WAYNE}　哥哥 {BRO}",
-        f"連買基準 {snap_w.as_of}（外資上市 max={snap_w.max_days}，投信上櫃 max={snap_b.max_days}）",
+        f"連買基準 {snap_w.as_of}（外資上市櫃 max={snap_w.max_days}，投信上市櫃 max={snap_b.max_days}）",
         f"出圖檔名隔離：{p1 != p2}",
         "",
     ]

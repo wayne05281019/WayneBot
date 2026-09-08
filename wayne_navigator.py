@@ -65,18 +65,36 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
-# 介紹圖畫布比決策卡窄，同樣 320DPI 橫向像素比較少，對話框裡會比較軟。
-# 加到 440：橫向約 2033px，接近決策卡 2272px；寬+高仍低於 Telegram sendPhoto 10000。
+# 介紹圖與高低卡同寬。上半用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）；
+# 下半是 180 日高低導航（紫高／綠低箭頭）。完整橫式導航仍走圖下「導航圖」。
 CARD_PNG_DPI = 320
-GLANCE_PNG_DPI = 440
+GLANCE_PNG_DPI = 320
 CARD_FIG_W = 7.1
-GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 17.7
+GLANCE_FIG_W = CARD_FIG_W
+GLANCE_FIG_H = 12.4
 NAV_CHART_DPI = 320
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
 _WEIGHT_FILES = {}
+
+
+def _finite_num(val):
+    """有限數字才回傳；NaN／None／非數字不當 0、也不印 +nan%。"""
+    if val is None:
+        return None
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(v):
+        return None
+    return v
+
+
+def _pos_px(val) -> float:
+    v = _finite_num(val)
+    return v if v is not None and v > 0 else 0.0
 
 
 def bundled_weight_path(step: int) -> str:
@@ -621,13 +639,13 @@ class NavigatorEngine:
         h120 = float(latest["high_120"]) if pd.notna(latest.get("high_120")) else 0.0
         h240 = float(latest["high_240"]) if pd.notna(latest.get("high_240")) else 0.0
         h480 = float(latest["high_480"]) if pd.notna(latest.get("high_480")) else 0.0
-        l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
-        l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
-        l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
+        l120 = _pos_px(latest["low_120"] if pd.notna(latest.get("low_120")) else 0.0)
+        l240 = _pos_px(latest["low_240"] if pd.notna(latest.get("low_240")) else 0.0)
+        l480 = _pos_px(latest["low_480"] if pd.notna(latest.get("low_480")) else 0.0)
         if hl_display_adjusted:
-            l120 = float(close_s.rolling(120, min_periods=20).min().iloc[-1] or 0)
-            l240 = float(close_s.rolling(240, min_periods=40).min().iloc[-1] or 0)
-            l480 = float(close_s.rolling(480, min_periods=80).min().iloc[-1] or 0)
+            l120 = _pos_px(close_s.rolling(120, min_periods=20).min().iloc[-1])
+            l240 = _pos_px(close_s.rolling(240, min_periods=40).min().iloc[-1])
+            l480 = _pos_px(close_s.rolling(480, min_periods=80).min().iloc[-1])
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")
@@ -770,9 +788,9 @@ class NavigatorEngine:
             "l10": l10, "dist_l10": _dist_l(l10),
             "l20": l20, "dist_l20": _dist_l(l20),
             "l60": l60, "dist_l60": _dist_l(l60),
-            "l120": l120, "dist_l120": _dist_l(l120) if l120 else None,
-            "l240": l240, "dist_l240": _dist_l(l240) if l240 else None,
-            "l480": l480, "dist_l480": _dist_l(l480) if l480 else None,
+            "l120": l120 or None, "dist_l120": _dist_l(l120) if l120 else None,
+            "l240": l240 or None, "dist_l240": _dist_l(l240) if l240 else None,
+            "l480": l480 or None, "dist_l480": _dist_l(l480) if l480 else None,
             "space_20": space_20,
             "space_60": space_60,
             "temp_c": latest["溫度計"],
@@ -1279,35 +1297,24 @@ def horizon_low_cells(card: dict) -> list:
         (240, "l240", "dist_l240"),
         (480, "l480", "dist_l480"),
     ):
-        px, dist = card.get(pk), card.get(dk)
-        if px is None or dist is None:
-            continue
-        try:
-            px_f, dist_f = float(px), float(dist)
-        except (TypeError, ValueError):
-            continue
-        if px_f <= 0:
+        px_f, dist_f = _finite_num(card.get(pk)), _finite_num(card.get(dk))
+        if px_f is None or dist_f is None or px_f <= 0:
             continue
         out.append((f"{days}低", px_f, dist_f))
     return out
 
 
 def _fmt_dist(val) -> str:
-    if val is None:
+    v = _finite_num(val)
+    if v is None:
         return "—"
-    try:
-        return f"{float(val):+.1f}%"
-    except (TypeError, ValueError):
-        return "—"
+    return f"{v:+.1f}%"
 
 
 def _fmt_dist_short(val) -> str:
     """漲跌幅緊湊寫法：破百的小數點是雜訊，去掉才排得進一列三個數字。"""
-    if val is None:
-        return "—"
-    try:
-        v = float(val)
-    except (TypeError, ValueError):
+    v = _finite_num(val)
+    if v is None:
         return "—"
     return f"{v:+.0f}%" if abs(v) >= 100 else f"{v:+.1f}%"
 
@@ -2304,12 +2311,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     except Exception:
         pass
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
-    try:
-        from stock_links import yahoo_urls
-
-        web, mobile = yahoo_urls(sid, db_path or get_db_path())
-    except Exception:
-        web = mobile = ""
     pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
     from tg_layout import kv_compact, section, join_sections
@@ -2322,9 +2323,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if last:
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    links = ""
-    if web:
-        links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
     industry = str(card.get("industry") or "").strip()
     if industry:
@@ -2332,12 +2330,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     event = str(card.get("next_event") or "").strip()
     if event:
         head = f"{head}　{html_escape(event)}"
-    if links:
-        head = f"{head}　　{links}"
     title_block = f"{head}\n{html_escape(badge)}" if badge else head
     chip_block = ""
     chip_lines = []
-    if tape:
+    tape_has_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
+    if tape_has_chips:
         chip_lines = [
             kv_compact("外資", f"{fmt_lots(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
             kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
@@ -2406,9 +2403,10 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%"),
             kv_compact("起算", f"近60個日曆天收盤低 {card.get('cal60_low', '—')}"),
             kv_compact("距60根低", f"{card.get('dist_l60'):+.1f}%"),
-            kv_compact("距120低", _fmt_dist(card.get("dist_l120"))),
-            kv_compact("距240低", _fmt_dist(card.get("dist_l240"))),
-            kv_compact("距480低", _fmt_dist(card.get("dist_l480"))),
+            *[
+                kv_compact(f"距{lab}", _fmt_dist(dist))
+                for lab, _px, dist in horizon_low_cells(card)
+            ],
             kv_compact("月空間", f"{card['space_20']}%"),
             kv_compact("季空間", f"{card['space_60']}%"),
             kv_compact("月乖離", bias_s),
@@ -2427,12 +2425,20 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
 
 
 @_mpl_serial
-def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
-    """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
+def render_first_glance_png(
+    stock_id: str,
+    card: dict,
+    tape: dict,
+    save_path: str,
+    db_path: str = None,
+    ohlc=None,
+) -> str:
+    """上半＝高低卡同一套堆疊（高度跟內容走，字不壓線）；下半＝180日高低導航箭頭。"""
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     from chip_tape import fmt_lots
+    from decision_card_signals import format_card_query_stamp, volume_headline_rank, volume_rank_pair_text
 
     try:
         from fundamentals import glance_fundamentals_plain
@@ -2446,10 +2452,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         mc = visible_main_cost(card.get("main_cost"))
     except Exception:
         mc = None
-    if mc is not None:
-        fund_rows = [("主力成本", f"{float(mc):.2f}")] + list(fund_rows or [])
+    # 主力成本只畫在收盤區（跟高低卡同一格），基本面不再重複一列。
     official = [p for p in (fund_rows or []) if str(p[0]) in ("估值", "資券餘額")]
-    rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額")]
+    rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額", "主力成本")]
     fund_rows = official + rest
     sell_note = ""
     try:
@@ -2474,339 +2479,367 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
     C = _CARD
-    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
-    ax.axis("off")
-    fig.subplots_adjust(left=0.028, right=0.972, top=0.988, bottom=0.016)
+    fig_w = GLANCE_FIG_W
+    inch = 0.076
+    pad_x = 2.6
+    pane_w = 100 - 2 * pad_x
+    inner_l, inner_r = pad_x + 3.2, 100 - pad_x - 3.2
+    row_w = inner_r - inner_l
+    gap, m_top, m_bot = 1.5, 1.0, 1.15
+    head_h, title_band, pane_pad, row_h = 5.7, 3.4, 1.15, 3.7
+    badge_h, badge_gap = 3.05, 0.95
 
-    def pane(x, y, w, h, fc=None, ec=None):
-        fc = fc or C["panel"]
-        ec = ec or C["line"]
-        ax.add_patch(patches.FancyBboxPatch(
-            (x + 0.32, y - 0.40), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
-            facecolor=C["shadow"], edgecolor="none", zorder=1,
-        ))
-        ax.add_patch(patches.FancyBboxPatch(
-            (x, y), w, h, boxstyle="round,pad=0.18,rounding_size=0.55",
-            facecolor=fc, edgecolor=ec, linewidth=1.1, zorder=2,
-        ))
+    def tw(text, fs, weight=900):
+        return _text_w(text, fs, fig_w, weight)
 
-    def ink(x, y, text, size=12, color="#607D8B", ha="left", va="center"):
-        ax.text(x, y, text, fontproperties=_fp(size, "bold"), color=color, ha=ha, va=va, zorder=3)
-
-    row_w = 96.4 - 4.8
-    pad_x, pane_w = 1.4, 97.2
-
-    def wid(text, fs):
-        return _text_w(text, fs, GLANCE_FIG_W, 800)
-
-    def fit_fs(text, fs, avail, floor=8.5):
-        """字太長就縮到放得下，長期低點那種一列四個數字才不會撞到邊。"""
-        while fs > floor and wid(text, fs) > avail:
-            fs -= 0.4
-        return fs
-
-    def sec_title(x, cy, text, ink_c, sub=""):
-        ax.add_patch(patches.FancyBboxPatch(
-            (x, cy - 1.05), 0.85, 2.1, boxstyle="round,pad=0,rounding_size=0.38",
-            facecolor=ink_c, edgecolor="none", zorder=3))
-        ax.text(x + 1.9, cy, text, fontproperties=_fp(13, "bold"), color=ink_c, va="center", zorder=3)
-        if sub:
-            ax.text(
-                x + 1.9 + wid(text, 13) + 1.4, cy, sub,
-                fontproperties=_fp(9.2, "bold"), color=C["ink_soft"], va="center", zorder=3,
-            )
-
-    def right_pill(cy, text, bg, fg, fs=13.0):
-        label = str(text or "—")
-        tw = max(wid(label, fs) + 3.6, 11.2)
-        h = 2.48
-        x = 96.4 - tw
-        ax.add_patch(patches.FancyBboxPatch(
-            (x, cy - h / 2), tw, h,
-            boxstyle="round,pad=0,rounding_size=0.55",
-            facecolor=bg, edgecolor=bg, linewidth=0, zorder=3,
-        ))
-        ax.text(
-            x + tw / 2, cy, label, fontproperties=_fp(fs, "bold"),
-            color=fg, ha="center", va="center", zorder=4,
+    date_line = str(card.get("query_date") or "")
+    clock_line = str(card.get("query_clock") or "")
+    if not date_line or not clock_line:
+        date_line, clock_line = format_card_query_stamp(
+            is_live=bool(card.get("is_live")),
+            latest_date=card.get("latest_date"),
+            generated_at=card.get("generated_at"),
         )
+    badges = []
+    for b in list(card.get("badges") or []):
+        b = str(b or "").strip()
+        if b and "None" not in b and b not in badges:
+            badges.append(b)
+    monthly = str(card.get("monthly_stage") or "").strip()
+    if monthly and monthly not in badges:
+        badges.append(monthly)
+    if len(badges) > 5:
+        keep_m = monthly if monthly in badges else ""
+        core = [b for b in badges if b != keep_m][: 5 - (1 if keep_m else 0)]
+        badges = (core + [keep_m]) if keep_m else core
+    badges = badges[:5] or ["整理格局"]
+    badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
+    badge_rows, row, acc = [], [], 0.0
+    # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價，避免字疊字。
+    limit = 58.0
+    for b, bw in zip(badges, badge_w):
+        if row and acc + 1.7 + bw > limit:
+            badge_rows.append(row)
+            row, acc = [], 0.0
+        row.append((b, bw))
+        acc += (1.7 if acc else 0) + bw
+    if row:
+        badge_rows.append(row)
+    mc_line_h = 2.45 if mc is not None else 0.0
+    n_badge = max(len(badge_rows), 1)
+    price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h
 
-    note_fs = 12.5
-    footer_notes = list(footer_src)
-    wrapped_notes = []
-    for n in footer_notes:
-        wrapped_notes.extend(_wrap_fit(n, note_fs, row_w, GLANCE_FIG_W) or [n])
-    m_bot = 1.05
-    legend_h = 2.55
-    note_box_h = (3.15 + 2.55 * len(wrapped_notes)) if wrapped_notes else 0.0
-    footer_top = m_bot + legend_h + (0.7 + note_box_h if wrapped_notes else 0.0)
-
-    gap = 0.85
-    y_top = 99.15
-    head_h = 8.55
-    price_h = 11.7
-    space_h = 16.35
-    heat_h = 12.55
-    chips_h = 16.7
-    y = y_top - head_h
-
-    pane(pad_x, y, pane_w, head_h, fc=C["navy"], ec=C["navy"])
-    ax.add_patch(patches.FancyBboxPatch(
-        (3.0, y + 0.55), 14.8, 7.45, boxstyle="round,pad=0.1,rounding_size=0.4",
-        facecolor="#F4F6FB", edgecolor="none", zorder=2,
-    ))
-    _draw_mini_candle(
-        ax, 4.1, y + 0.85, 12.6, 6.85,
-        last.get("open") or card.get("open") or card.get("close") or 0,
-        last.get("high") or card.get("high") or card.get("close") or 0,
-        last.get("low") or card.get("low") or card.get("close") or 0,
-        last.get("close") or card.get("close") or 0,
-        last.get("yesterday_close") or card.get("prev_close") or None,
-    )
-    try:
-        from decision_card_signals import format_card_query_stamp
-
-        date_line = str(card.get("query_date") or "")
-        clock_line = str(card.get("query_clock") or "")
-        if not date_line or not clock_line:
-            date_line, clock_line = format_card_query_stamp(
-                is_live=bool(card.get("is_live")),
-                latest_date=card.get("latest_date"),
-                generated_at=card.get("generated_at"),
-            )
-    except Exception:
-        date_line = _fmt_md(card.get("latest_date"))
-        clock_line = "13:30收盤"
-    stamp_c = "#FFE082" if "收盤" in clock_line or "盤中" in clock_line else "#C5CAE9"
-    stamp_fs = 11
-    # 右上日期／時間；產業對齊時間的字級與高度，放在中文股名正下方。
-    ink(96.8, y + head_h - 1.85, date_line, stamp_fs, stamp_c, ha="right")
-    if clock_line:
-        ink(96.8, y + head_h - 4.15, clock_line, stamp_fs, stamp_c, ha="right")
-    code = str(card.get("stock_id") or stock_id)
-    name = str(card.get("stock_name") or "")
-    title = f"{code}  {name}".strip()
-    title_avail = 96.8 - 20.2 - (wid(date_line, stamp_fs) if date_line else 0) - 2.4
-    title_fs = fit_fs(title, 20, title_avail, floor=13.0)
-    ink(20.2, y + head_h - 1.85, code, title_fs, "#FFFFFF")
-    name_x = 20.2 + wid(code, title_fs) + 1.8
-    if name:
-        ink(name_x, y + head_h - 1.85, name, title_fs, "#FFFFFF")
-    industry = str(card.get("industry") or "").strip()
-    news = str(card.get("news_label") or "").strip()
-    extra = industry
-    if industry and news:
-        extra = f"{industry}　{news}"
-    elif news:
-        extra = news
-    if extra:
-        ink(name_x if name else 20.2, y + head_h - 4.15, extra, stamp_fs, stamp_c)
-    event = str(card.get("next_event") or "").strip()
-    regime = ""
-    rest = []
-    _regime_keys = ("格局", "空頭排列", "弱勢破底", "月線下整理", "空頭整理", "多頭排列")
-    for raw in card.get("badges") or []:
-        bit = str(raw or "").strip()
-        if not bit:
-            continue
-        if bit.startswith("盤中") or bit.startswith("收盤"):
-            continue
-        if any(k in bit for k in _regime_keys):
-            if not regime:
-                regime = bit
-            continue
-        rest.append(bit)
-    monthly_bit = str(card.get("monthly_stage") or "").strip()
-    if monthly_bit:
-        rest = [x for x in rest if x != monthly_bit]
-        rest.insert(0, monthly_bit)
-    # 格局白字、與時間同字級；產業上移後除權／量排名往左。
-    meta_x = 20.2
-    if regime:
-        ink(20.2, y + 1.55, regime, stamp_fs, "#FFFFFF")
-        meta_x = 20.2 + wid(regime, stamp_fs) + 2.2
-    meta = "　".join(x for x in [event, *rest] if x)
-    if meta:
-        ink(
-            meta_x,
-            y + 1.55,
-            meta,
-            fit_fs(meta, stamp_fs, 96.8 - meta_x - 1.2, floor=8.5),
-            "#FFE082",
-        )
-    elif not regime:
-        ink(20.2, y + 1.55, "—", stamp_fs, "#C5CAE9")
-
-    y -= gap + price_h
-    chg = float(card.get("change_pct") or 0)
-    up = int(move.get("sign") or 0)
-    tri_c = C["up"] if up > 0 else (C["down"] if up < 0 else C["ink"])
-    pane(pad_x, y, pane_w, price_h)
-    ink(4.8, y + price_h - 1.85, "收盤", 11, C["ink_soft"])
-    ink(4.8, y + price_h - 5.55, _fmt_price(card.get("close")), 32, C["ink"])
-    ohlc_src = last or {}
-    ohlc_items = [
-        ("開", _fmt_price(ohlc_src.get("open") or card.get("open"))),
-        ("高", _fmt_price(ohlc_src.get("high") or card.get("high"))),
-        ("低", _fmt_price(ohlc_src.get("low") or card.get("low"))),
+    gain_n = _finite_num(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60"))
+    gain = float(gain_n if gain_n is not None else 0)
+    dist_h20 = _finite_num(card.get("dist_h20"))
+    long_lows = horizon_low_cells(card)
+    space_rows = [
+        ("距20日高（賣壓）", f"{dist_h20:+.1f}%" if dist_h20 is not None else "—"),
+        ("獲利", f"{gain:+.1f}%"),
     ]
-    slot = (96.4 - 4.8) / max(len(ohlc_items), 1)
-    for i, (lab, val) in enumerate(ohlc_items):
-        ink(4.8 + (i + 0.5) * slot, y + 1.85, f"{lab} {val}", 12, C["ink_soft"], ha="center")
-    ink(96.4, y + price_h - 2.35, move.get("text") or f"{chg:+.2f}%", 16, tri_c, ha="right")
-    ink(96.4, y + price_h - 5.85, f"當日 {chg:+.2f}%", 14, tri_c, ha="right")
-
-    def kv_block(y0, h, title, rows, *, sub="", pills=None):
-        pane(pad_x, y0, pane_w, h)
-        sec_title(4.8, y0 + h - 1.7, title, C["navy"], sub=sub)
-        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W)
-        yy = y0 + h - 4.55
-        pills = pills or {}
-        for i, ((_, b, c), a) in enumerate(zip(rows, labels)):
-            ink(4.8, yy, a, fa, C["ink_soft"])
-            style = pills.get(i)
-            if style:
-                right_pill(yy, b, style[0], style[1], fs=max(fb, 12.5))
-            else:
-                ink(96.4, yy, b, fb, _fg_on_panel(c), ha="right")
-            yy -= 3.35
-
-    gain = float(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60") or 0)
-    gain_s = f"{gain:+.1f}%"
-    dist_h20 = float(card["dist_h20"])
-    y -= gap + space_h
-    kv_block(y, space_h, "空間／位置", [
-        ("距20日高（賣壓）", f"{dist_h20:+.1f}%",
-         price_cell_style("20高" if dist_h20 >= -1 else "No", C["white"])[1]),
-        ("獲利", gain_s, signed_pct_ink(gain)),
-        (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
-            _fmt_dist_short(card.get("dist_l120")),
-            _fmt_dist_short(card.get("dist_l240")),
-            _fmt_dist_short(card.get("dist_l480")),
-        ]), C["ink"]),
-        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", C["ink"]),
-    ], sub="獲利＝從近60個日曆天收盤低算上來", pills={
-        1: _profit_heat_draw(gain, None, C["white"]),
-    })
+    if long_lows:
+        n_labs = "／".join(lab.replace("低", "") for lab, _, _ in long_lows)
+        space_rows.append(
+            (f"距{n_labs}低", "  ".join(_fmt_dist_short(d) for _, _, d in long_lows))
+        )
+    s20 = card.get("space_20")
+    s60 = card.get("space_60")
+    space_rows.append(
+        ("月／季空間", f"{s20}%　／　{s60}%" if s20 is not None and s60 is not None else "—")
+    )
     _temp_n = _temp_num(card.get("temp_c"))
-    from decision_card_signals import volume_headline_rank, volume_rank_pair_text
-
     vol_lab, vol_n = volume_headline_rank(
         card.get("vol_rank_480") or 99,
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
+    del vol_lab
     vol_pair = volume_rank_pair_text(
         card.get("vol_rank_480") or 99,
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
-    y -= gap + heat_h
-    kv_block(y, heat_h, "熱度／量能", [
-        ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, C["white"])[1]),
-        ("量排名", vol_pair,
-         vol_rank_cell_style(int(vol_n or 99), C["white"])[1]),
-        ("量比", (tape or {}).get("volume", {}).get("line") or "—", C["ink"]),
-    ], pills={
-        0: _temp_heat_draw(_temp_n, C["white"]),
-        1: _vol_heat_draw(int(vol_n or 99), C["white"]),
-    })
-
-    def chip_color(n):
-        if n > 0:
-            return C["up"]
-        if n < 0:
-            return C["down"]
-        return C["ink_soft"]
-
+    heat_rows = [
+        ("溫度", str(card.get("temp_c") or "—")),
+        ("量排名", vol_pair),
+        ("量比", ((tape or {}).get("volume") or {}).get("line") or "—"),
+    ]
+    show_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
     chips = [
         ("外資", (tape or {}).get("foreign") or {}),
         ("投信", (tape or {}).get("trust") or {}),
         ("自營", (tape or {}).get("dealer") or {}),
         ("法人", (tape or {}).get("three") or {}),
     ]
-    y -= gap + chips_h
-    pane(pad_x, y, pane_w, chips_h)
-    sec_title(4.8, y + chips_h - 1.7, "籌碼（張）", C["navy"])
-    ink(96.4, y + chips_h - 1.7, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, C["ink_soft"], ha="right")
-    # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
-    lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
-    phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
-    f_name, f_lots = 12.0, 16.0
-    name_w = max(wid(n, f_name) for n, _ in chips)
-    lots_x = 4.8 + name_w + 2.2
-    lots_w = max(wid(lots_of[n], f_lots) for n, _ in chips)
-    phrase_left = lots_x + lots_w + 3.2
-    phrase_avail = max(16.0, 96.4 - phrase_left)
-    f_phrase = min(
-        fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
-    )
-    cy = y + chips_h - 5.05
-    for name, item in chips:
-        net = int(item.get("net") or 0)
-        ink(4.8, cy, name, f_name, C["ink"])
-        ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
-        ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
-        cy -= 3.35
 
-    fund_h = max(10.5, y - gap - footer_top)
-    y = footer_top
-    pane(pad_x, y, pane_w, fund_h)
-    sec_title(4.8, y + fund_h - 1.7, "基本面", C["navy"])
-    fy = y + fund_h - 4.45
-    fund_floor = y + 1.15
-    note = (tape or {}).get("conflict") or ""
-    if note:
-        nlines = _wrap_fit(note, 13, row_w, GLANCE_FIG_W) or [note]
-        for ln in nlines:
-            if fy - 2.2 < fund_floor:
-                break
-            ink(4.8, fy, ln, 13, C["hi_ink"])
-            fy -= 2.45
     other_pairs = [(str(a), str(b)) for a, b in fund_rows]
     if official:
         other_pairs = [(a, b) for a, b in other_pairs if a != "較去年累計"]
-    if other_pairs:
-        # 跟空間／熱度同一檔：標題 12、數字 13，不要被季報長句壓到 8pt。
-        labels, fa, fb = fit_rows(
-            other_pairs, row_w, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=12.0
-        )
-        for (_lab, val), shown in zip(other_pairs, labels):
-            val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
-            vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
-            need = 2.55 + 2.15 * max(0, len(vlines) - 1)
-            if fy - need < fund_floor:
+    fund_drawn = []
+    floor = 12.0
+    for lab, val in other_pairs:
+        lab_fs, val_fs = 12.0, 13.0
+        lab_w = tw(lab, lab_fs)
+        val_avail = max(18.0, row_w - lab_w - 6.0)
+        vlines = _wrap_fit(str(val), val_fs, val_avail, fig_w) or [str(val)]
+        fund_drawn.append((lab, vlines, lab_fs, val_fs))
+    note = (tape or {}).get("conflict") or ""
+    conflict_lines = _wrap_fit(str(note), 13, row_w, fig_w) if note else []
+    wrapped_notes = []
+    for n in footer_src:
+        wrapped_notes.extend(_wrap_fit(n, 12.5, row_w, fig_w) or [n])
+
+    def kv_h(n):
+        return title_band + pane_pad + n * row_h + pane_pad
+
+    space_h = kv_h(len(space_rows))
+    heat_h = kv_h(len(heat_rows))
+    chips_h = kv_h(4) if show_chips else 0.0
+    fund_body = 0.0
+    if conflict_lines:
+        fund_body += 2.6 * len(conflict_lines)
+    for _, vlines, _, _ in fund_drawn:
+        fund_body += 3.3 + 2.2 * max(0, len(vlines) - 1)
+    fund_h = (title_band + pane_pad + max(fund_body, 3.3) + pane_pad) if (fund_drawn or conflict_lines) else 0.0
+    note_h = (3.2 + 2.55 * len(wrapped_notes) + 1.0) if wrapped_notes else 0.0
+
+    H = (
+        m_top + head_h + gap + price_h + gap + space_h + gap + heat_h
+        + (gap + chips_h if show_chips else 0)
+        + (gap + fund_h if fund_h else 0)
+        + (gap + note_h if note_h else 0)
+        + m_bot
+    )
+    info_inch = max(H * inch, 4.8)
+    nav_inch = 4.55
+    fig = plt.figure(figsize=(fig_w, info_inch + nav_inch), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    gs = fig.add_gridspec(2, 1, height_ratios=(info_inch, nav_inch), hspace=0.055)
+    ax = fig.add_subplot(gs[0])
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, H)
+    ax.axis("off")
+    gs_n = gs[1].subgridspec(3, 1, height_ratios=(5.15, 0.42, 1.35), hspace=0.06)
+    ax_px = fig.add_subplot(gs_n[0])
+    ax_sig = fig.add_subplot(gs_n[1], sharex=ax_px)
+    ax_vol = fig.add_subplot(gs_n[2], sharex=ax_px)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.045)
+
+    def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
+        ax.add_patch(patches.FancyBboxPatch(
+            (x + 0.32, y - 0.40), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
+            facecolor=C["shadow"], edgecolor="none", zorder=1))
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
+            facecolor=fc, edgecolor=ec, linewidth=1.1, zorder=2))
+
+    def sec_title(x, cy, text, ink, sub=""):
+        ax.add_patch(patches.FancyBboxPatch(
+            (x, cy - 1.2), 0.9, 2.4, boxstyle="round,pad=0,rounding_size=0.42",
+            facecolor=ink, edgecolor="none", zorder=3))
+        ax.text(x + 2.1, cy, text, fontproperties=_fp(13.5, "bold"), color=ink, va="center", zorder=3)
+        if sub:
+            sub_x = x + 2.1 + tw(text, 13.5) + 1.9
+            if sub_x + tw(sub, 9.6) < inner_r - 0.4:
+                ax.text(sub_x, cy, sub, fontproperties=_fp(9.6), color=C["ink_soft"], va="center", zorder=3)
+
+    y = H - m_top - head_h
+    ax.add_patch(patches.FancyBboxPatch(
+        (pad_x, y), pane_w, head_h, boxstyle="round,pad=0,rounding_size=0.85",
+        facecolor=C["navy"], edgecolor="none", zorder=2))
+    code = str(card.get("stock_id") or stock_id)
+    name = str(card.get("stock_name") or "")
+    title_cy = y + head_h / 2
+    ax.text(pad_x + 2.6, title_cy, code, fontproperties=_fp(22, "bold"), color="#FFFFFF", va="center", zorder=3)
+    name_x = pad_x + 2.6 + tw(code, 22) + 1.8
+    ax.text(name_x, title_cy, name, fontproperties=_fp(20, "bold"), color="#FFFFFF", va="center", zorder=3)
+    brand_x = 100 - pad_x - 2.6
+    stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
+    cursor = name_x + tw(name, 20) + 1.8
+    right_limit = brand_x - tw(stamp, 11.2) - 3.4
+    industry = str(card.get("industry") or "").strip()
+    event = str(card.get("next_event") or "").strip()
+    news = str(card.get("news_label") or "").strip()
+    for text, fs, color in fit_title_bar_extras(industry, event, right_limit - cursor, tw, news=news):
+        ax.text(cursor, title_cy, text, fontproperties=_fp(fs), color=color, va="center", zorder=3)
+        cursor += tw(text, fs) + 1.8
+    ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
+            color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
+
+    # 左：開高低昨＋徽章；右：收盤價與漲跌。兩欄分開，不要互壓。
+    y -= gap + price_h
+    pane(pad_x, y, pane_w, price_h)
+    chg = float(card.get("change_pct") or 0)
+    chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
+    prev_c = float(last.get("yesterday_close") or card.get("prev_close") or 0)
+    close_v = last.get("close") if last.get("close") is not None else card.get("close")
+    chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
+    close_s = _fmt_price(close_v)
+    ax.text(inner_r, y + price_h * 0.70, close_s, fontproperties=_fp(28, "bold"),
+            color=chg_c, ha="right", va="center", zorder=3)
+    ax.text(inner_r - tw(close_s, 28) - 2.0, y + price_h * 0.70, "收盤",
+            fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
+    move_txt = (move.get("text") or "").strip()
+    chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
+    if chg_amt is not None and not move_txt:
+        chg_bits.append(_fmt_price_signed(chg_amt))
+    ax.text(inner_r, y + price_h * 0.24, "　".join(chg_bits),
+            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    ohlc_bits = [
+        f"開 {_fmt_price(last.get('open') or card.get('open'))}",
+        f"高 {_fmt_price(last.get('high') or card.get('high'))}",
+        f"低 {_fmt_price(last.get('low') or card.get('low'))}",
+    ]
+    if prev_c:
+        ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
+    ohlc_y = y + price_h - 2.25
+    ax.text(inner_l, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
+            color=C["ink_soft"], va="center", zorder=3)
+    if mc is not None:
+        ax.text(inner_l, ohlc_y - 2.2, f"主力成本 {float(mc):.2f}（分點平均買超）",
+                fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3)
+    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap) if badge_rows else y + 1.35
+    for brow in badge_rows:
+        bx = inner_l
+        for btxt, bw in brow:
+            b_bg, b_fg = _badge_style(btxt)
+            solid = b_fg == C["white"]
+            ax.add_patch(patches.FancyBboxPatch(
+                (bx, by), bw, badge_h, boxstyle="round,pad=0,rounding_size=0.55",
+                facecolor=b_bg, edgecolor=b_bg if solid else C["line"],
+                linewidth=0 if solid else 0.9, zorder=3))
+            ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
+                    color=b_fg, ha="center", va="center", zorder=4)
+            bx += bw + 1.7
+        by -= badge_h + badge_gap
+
+    def draw_kv(y0, h, title, rows, *, sub="", pills=None):
+        pane(pad_x, y0, pane_w, h)
+        sec_title(pad_x + 2.6, y0 + h - title_band / 2, title, C["navy"], sub=sub)
+        pills = pills or {}
+        yy = y0 + h - title_band - pane_pad - row_h / 2
+        for i, (lab, val) in enumerate(rows):
+            lab_fs, val_fs = 12.5, 14.0
+            while tw(lab, lab_fs) + 5.5 + tw(val, val_fs) > row_w and lab_fs > floor:
+                lab_fs -= 0.3
+                val_fs -= 0.3
+            ax.text(inner_l, yy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], ha="left", va="center", zorder=3)
+            style = pills.get(i)
+            if style:
+                bg, fg = style
+                pill_w = max(tw(val, max(val_fs, 12.5)) + 3.6, 11.2)
+                ax.add_patch(patches.FancyBboxPatch(
+                    (inner_r - pill_w, yy - 1.24), pill_w, 2.48,
+                    boxstyle="round,pad=0,rounding_size=0.55",
+                    facecolor=bg, edgecolor=bg, linewidth=0, zorder=3))
+                ax.text(inner_r - pill_w / 2, yy, val, fontproperties=_fp(max(val_fs, 12.5), "bold"),
+                        color=fg, ha="center", va="center", zorder=4)
+            else:
+                ax.text(inner_r, yy, val, fontproperties=_fp(val_fs, "bold"),
+                        color=_fg_on_panel(C["ink"]), ha="right", va="center", zorder=3)
+            yy -= row_h
+
+    y -= gap + space_h
+    draw_kv(y, space_h, "空間／位置", space_rows, sub="獲利＝近60個日曆天收盤低算上來", pills={
+        1: _profit_heat_draw(gain, None, C["white"]),
+    })
+    y -= gap + heat_h
+    draw_kv(y, heat_h, "熱度／量能", heat_rows, pills={
+        0: _temp_heat_draw(_temp_n, C["white"]),
+        1: _vol_heat_draw(int(vol_n or 99), C["white"]),
+    })
+
+    if show_chips:
+        y -= gap + chips_h
+        pane(pad_x, y, pane_w, chips_h)
+        sec_title(pad_x + 2.6, y + chips_h - title_band / 2, "籌碼（張）", C["navy"])
+        inst = f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交"
+        if inner_r - tw(inst, 11) > pad_x + 2.6 + tw("籌碼（張）", 13.5) + 6.0:
+            ax.text(inner_r, y + chips_h - title_band / 2, inst, fontproperties=_fp(11),
+                    color=C["ink_soft"], ha="right", va="center", zorder=3)
+        lots_of = {nm: fmt_lots(int(item.get("net") or 0)) for nm, item in chips}
+        phrase_of = {nm: (item.get("phrase") or "—") for nm, item in chips}
+        name_w = max(tw(nm, 12.0) for nm, _ in chips)
+        lots_x = inner_l + name_w + 2.2
+        lots_w = max(tw(lots_of[nm], 16.0) for nm, _ in chips)
+        phrase_left = lots_x + lots_w + 3.0
+        phrase_avail = max(12.0, inner_r - phrase_left)
+        f_phrase = 12.0
+        while f_phrase > floor and any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
+            f_phrase -= 0.3
+        cy = y + chips_h - title_band - pane_pad - row_h / 2
+        for nm, item in chips:
+            net = int(item.get("net") or 0)
+            cc = C["up"] if net > 0 else (C["down"] if net < 0 else C["ink_soft"])
+            ax.text(inner_l, cy, nm, fontproperties=_fp(12.0, "bold"), color=C["ink"], ha="left", va="center", zorder=3)
+            ax.text(lots_x, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, ha="left", va="center", zorder=3)
+            ax.text(inner_r, cy, phrase_of[nm], fontproperties=_fp(f_phrase, "bold"),
+                    color=cc, ha="right", va="center", zorder=3)
+            cy -= row_h
+
+    if fund_h:
+        y -= gap + fund_h
+        pane(pad_x, y, pane_w, fund_h)
+        sec_title(pad_x + 2.6, y + fund_h - title_band / 2, "基本面", C["navy"])
+        fy = y + fund_h - title_band - pane_pad - 1.4
+        fund_floor = y + pane_pad
+        for ln in conflict_lines:
+            if fy - 1.2 < fund_floor:
                 break
-            ink(4.8, fy, shown, fa, C["ink_soft"])
-            ink(96.4, fy, vlines[0] if vlines else val, fb, C["ink"], ha="right")
-            fy -= 2.55
+            ax.text(inner_l, fy, ln, fontproperties=_fp(13, "bold"), color=C["hi_ink"], va="center", zorder=3)
+            fy -= 2.6
+        for lab, vlines, lab_fs, val_fs in fund_drawn:
+            need = 3.3 + 2.2 * max(0, len(vlines) - 1)
+            if fy - need + 1.5 < fund_floor:
+                break
+            ax.text(inner_l, fy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], va="center", zorder=3)
+            ax.text(inner_r, fy, vlines[0], fontproperties=_fp(val_fs, "bold"),
+                    color=C["ink"], ha="right", va="center", zorder=3)
+            fy -= 3.3
             for extra in vlines[1:]:
-                if fy - 2.0 < fund_floor:
+                if fy - 1.6 < fund_floor:
                     break
-                ink(96.4, fy, extra, fb, C["ink"], ha="right")
-                fy -= 2.15
+                ax.text(inner_r, fy, extra, fontproperties=_fp(val_fs, "bold"),
+                        color=C["ink"], ha="right", va="center", zorder=3)
+                fy -= 2.2
 
-    legend_y = m_bot + 1.15
-    if wrapped_notes:
-        box_y = legend_y + 1.55
-        pane(pad_x, box_y, pane_w, note_box_h, fc=C["hi_fill"], ec=C["hi_line"])
-        ink(4.8, box_y + note_box_h - 1.45, "紀律", 12, "#AD1457")
-        ny = box_y + note_box_h - 3.85
+    if note_h:
+        y -= gap + note_h
+        pane(pad_x, y, pane_w, note_h, fc=C["hi_fill"], ec=C["hi_line"])
+        ax.text(inner_l, y + note_h - 1.55, "紀律", fontproperties=_fp(12, "bold"), color="#AD1457", va="center", zorder=3)
+        ny = y + note_h - 4.0
         for ln in wrapped_notes:
-            ink(4.8, ny, ln, note_fs, "#AD1457")
+            ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=3)
             ny -= 2.55
-    ink(4.8, legend_y, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, C["ink_mute"])
-    ink(96.4, legend_y, "▲連漲　▼連跌", 10, C["ink_mute"], ha="right")
-    plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
-    plt.close()
-    return save_path
 
+    bars = ohlc
+    if bars is None or getattr(bars, "empty", True):
+        try:
+            bars = _load_ohlc(stock_id, db_path or get_db_path(), 180)
+        except Exception:
+            bars = None
+    work = _nav_work_or_none(bars, already_normalized=ohlc is not None) if bars is not None else None
+    if work is not None:
+        _paint_nav_on_axes(
+            ax_px, ax_sig, ax_vol, work.tail(180).copy(),
+            str(card.get("stock_id") or stock_id),
+            str(card.get("stock_name") or ""),
+            compact=True,
+        )
+    else:
+        for a in (ax_px, ax_sig, ax_vol):
+            a.axis("off")
+        ax_px.text(0.5, 0.5, "尚無日K，導航暫缺", transform=ax_px.transAxes,
+                   ha="center", va="center", fontproperties=_fp(12, "bold"), color=C["ink_soft"])
+
+    fig.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return save_path
 
 
 # 導航箭頭配色：(淡底, 尖端墨水)——決策卡溫度計那套：淡色底＋同色系深字。
 # 高點用洋紅／紫（不要跟 20 高粉紅底帶同一碼），低點用綠、60 低用青。
+
+
 _NAV_TONE = {
     "h20": ("#F3E5F5", "#6A1B9A"),
     "h20_near": ("#F8EAF9", "#7B1FA2"),
@@ -2949,19 +2982,11 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
     )
 
 
-@_mpl_serial
-def draw_from_ohlc(
-    df: pd.DataFrame,
-    stock_id: str,
-    stock_name: str,
-    save_path: str,
-    *,
-    already_normalized: bool = False,
-) -> str:
-    """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
-    if df.empty:
-        return ""
-    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+
+def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
+    """整理 180 日 OHLC；沒有可畫的列就回 None。"""
+    if df is None or getattr(df, "empty", True):
+        return None
     if already_normalized or "is_halt" in df.columns:
         work = df.copy()
     else:
@@ -2977,9 +3002,14 @@ def draw_from_ohlc(
         work["dt"] = pd.to_datetime(work["date"].astype(str), errors="coerce")
     work = work.dropna(subset=["dt"]).reset_index(drop=True)
     if work.empty:
-        return ""
+        return None
     if "is_halt" not in work.columns:
         work["is_halt"] = False
+    return work
+
+
+def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str, *, compact: bool = False) -> None:
+    """同一套紫高／綠低箭頭。compact＝塞進介紹圖下半，圖例改一行標題，避免壓到 K。"""
     n = len(work)
     xs = np.arange(n, dtype=float)
     halt = work["is_halt"].fillna(False).astype(bool)
@@ -2990,29 +3020,21 @@ def draw_from_ohlc(
     l20 = float(lo_s.tail(20).min())
     h60 = float(hi_s.tail(60).max())
     l60 = float(lo_s.tail(60).min())
+    work = work.copy()
     work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
     work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
     tr = (work["high"] - work["low"]).where(~halt)
     work["atr20"] = tr.rolling(20, min_periods=5).mean()
     last = work.iloc[-1]
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
-
-    # 時間軸橫向；畫布改橫幅，手機縮圖後日期軸才讀得下去。
-    fig, (ax1, ax_sig, ax2) = plt.subplots(
-        3,
-        1,
-        figsize=(12.8, 7.55),
-        dpi=NAV_CHART_DPI,
-        sharex=True,
-        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
-        facecolor="#ffffff",
-    )
-    # 短粗箭頭：寬頭短柄，佔不到一根 K 的高度，遠看不會跟影線糊成一坨。
     arrow_h = span * 0.048
     arrow_gap = span * 0.022
     arrow_hw = 0.72
     ymin = float(lo_s.min()) - arrow_gap - arrow_h - span * 0.02
     ymax = float(hi_s.max()) + arrow_gap + arrow_h + span * 0.03
+    ax1.set_facecolor("#ffffff")
+    ax_sig.set_facecolor("#ffffff")
+    ax2.set_facecolor("#ffffff")
     ax1.axhspan(h20, ymax, color="#f8bbd0", alpha=0.16, zorder=0)
     ax1.axhspan(l20, h20, color="#fffde7", alpha=0.28, zorder=0)
     ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
@@ -3069,13 +3091,8 @@ def draw_from_ohlc(
         atr = float(work["atr20"].iloc[i] or 0)
         vol_low = bool(cl > 0 and atr / cl < 0.018)
         warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
-
-        # 價格列只標「當天才發生」的事件：連續貼著高低的每一天都畫，箭頭就得縮小到看不清。
-        # 期間有沒有連續，看 K 棒貼在哪一條帶就知道；逐日紀錄在決策卡的表裡。
         near_h = not is_20h and hi >= wick_h20 * 0.985
         near_l = not is_20l and lo <= wick_l20 * 1.015
-        # 每根 K 每側只留一支：高側 h20 > 脫離 > 接近；低側 60低 > 20低 > 脫離 > 接近。
-        # 相鄰兩日弱訊號再擋一次，寬頭才不會跟隔壁糊成一坨。
         dn_pick = None
         if is_20h and not was_20h:
             dn_pick = ("h20", 1.0, False)
@@ -3114,9 +3131,6 @@ def draw_from_ohlc(
             _nav_arrow(ax1, tip, x, down=False, face=pastel, ink=ink,
                        arrow_h=arrow_h * sc, hw=arrow_hw * sc, z=6, hollow=hollow)
             last_up_i = i
-
-        # 量能列：月波動底、警告▲、量能異常▲、月波動低▲ —— 即使價格列沒有對應箭頭也要畫
-        # 底色只在月波動低時上色，其餘留白；原本三天一換的橘藍相間只是視覺噪音。
         if vol_low:
             ax_sig.add_patch(patches.Rectangle((x - 0.45, 0.08), 0.9, 0.84,
                                                facecolor="#90caf9", edgecolor="none", zorder=2))
@@ -3128,7 +3142,6 @@ def draw_from_ohlc(
             _sig_arrow(ax_sig, x, 0.38, "#6a1b9a", "#311b92", scale=1.22, z=6)
         elif vol_low:
             _sig_arrow(ax_sig, x, 0.38, "#ce93d8", "#6a1b9a", scale=0.78, z=4)
-
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
@@ -3146,57 +3159,48 @@ def draw_from_ohlc(
             live_note = f"  ·{mis_session_label(t)}" + (f" {t[:5]}" if t else "")
         except Exception:
             live_note = "  ·盤中即時"
-    ax1.set_title(
-        f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026",
-        fontproperties=_fp(14, "bold"),
-        pad=38,
+    title = (
+        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠"
+        if compact
+        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026"
     )
+    ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
-    _draw_nav_legend(ax1)
+    if not compact:
+        _draw_nav_legend(ax1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
-    ax1.tick_params(labelsize=9)
+    ax1.tick_params(labelsize=8 if compact else 9)
     for lab in ax1.get_yticklabels():
-        lab.set_fontproperties(_fp(9))
-    ax1.text(
-        0.004,
-        0.985,
-        f"Op:{_fmt_price(last['open'])}  Hi:{_fmt_price(last['high'])}  "
-        f"Lo:{_fmt_price(last['low'])}  Cl:{_fmt_price(last['close'])}"
-        f"    SMA(20): {_fmt_price(last['ma20'])}",
-        transform=ax1.transAxes,
-        ha="left",
-        va="top",
-        fontproperties=_fp(10, "bold"),
-        color="#1b5e20",
-        zorder=9,
-        bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
-    )
-
+        lab.set_fontproperties(_fp(8 if compact else 9))
+    if not compact:
+        ax1.text(
+            0.004, 0.985,
+            f"Op:{_fmt_price(last['open'])}  Hi:{_fmt_price(last['high'])}  "
+            f"Lo:{_fmt_price(last['low'])}  Cl:{_fmt_price(last['close'])}"
+            f"    SMA(20): {_fmt_price(last['ma20'])}",
+            transform=ax1.transAxes, ha="left", va="top",
+            fontproperties=_fp(10, "bold"), color="#1b5e20", zorder=9,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
+        )
     ax_sig.set_yticks([])
     ax_sig.set_ylim(0, 1)
     ax_sig.set_xlim(-0.8, n - 0.2)
     ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
-
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
-    ax2.tick_params(labelsize=9)
+    ax2.tick_params(labelsize=8 if compact else 9)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.text(
-        0.006,
-        0.92,
-        format_nav_volume_label(last["volume"]),
-        transform=ax2.transAxes,
-        fontproperties=_fp(10, "bold"),
-        va="top",
-        zorder=4,
+        0.006, 0.92, format_nav_volume_label(last["volume"]),
+        transform=ax2.transAxes, fontproperties=_fp(9 if compact else 10, "bold"),
+        va="top", zorder=4,
         bbox=dict(boxstyle="round,pad=0.2", facecolor="#eceff1", edgecolor="none"),
     )
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
-    # 月份刻度
     months, mpos = [], []
     prev_m = None
     for i, dt in enumerate(work["dt"]):
@@ -3206,20 +3210,37 @@ def draw_from_ohlc(
             mpos.append(i)
             prev_m = key
     ax2.set_xticks(mpos)
-    ax2.set_xticklabels(months, fontproperties=_fp(9))
+    ax2.set_xticklabels(months, fontproperties=_fp(8 if compact else 9))
     for lab in ax2.get_yticklabels():
-        lab.set_fontproperties(_fp(9))
+        lab.set_fontproperties(_fp(8 if compact else 9))
 
+
+@_mpl_serial
+def draw_from_ohlc(
+    df: pd.DataFrame,
+    stock_id: str,
+    stock_name: str,
+    save_path: str,
+    *,
+    already_normalized: bool = False,
+) -> str:
+    """橫式高低導航：價格列放 20 高／低／脫離／60低；量能列放量能異常、警告、月波動低。"""
+    work = _nav_work_or_none(df, already_normalized)
+    if work is None:
+        return ""
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    fig, (ax1, ax_sig, ax2) = plt.subplots(
+        3, 1, figsize=(12.8, 7.55), dpi=NAV_CHART_DPI, sharex=True,
+        gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
+        facecolor="#ffffff",
+    )
+    _paint_nav_on_axes(ax1, ax_sig, ax2, work, stock_id, stock_name, compact=False)
     fig.subplots_adjust(left=0.03, right=0.96, top=0.80, bottom=0.11)
     fig.text(
-        0.50,
-        0.015,
+        0.50, 0.015,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；實心＝當日觸發、空心＝接近；高點紫／低點青綠，不跟底帶同色　　"
         "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低",
-        ha="center",
-        va="bottom",
-        fontproperties=_fp(9, "bold"),
-        color="#263238",
+        ha="center", va="bottom", fontproperties=_fp(9, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
     plt.close()
@@ -3440,7 +3461,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     except Exception:
         tape = {}
     glance = render_first_glance_png(
-        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
+        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path, ohlc=ohlc
     ) or ""
     card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
     chart = generate_chart(

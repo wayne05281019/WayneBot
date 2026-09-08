@@ -55,7 +55,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
 
 
 def test_picture_guide_page_order_is_first_use_then_lookup():
-    """八頁順序：先叫鍵盤 → 查股三張圖 → 三種清單 → 海選轉 LINE → 如何賣 → 其餘鈕 → 按錯。"""
+    """八頁順序：先叫鍵盤 → 查股兩張圖 → 三種清單 → 海選轉 LINE → 如何賣 → 其餘鈕 → 按錯。"""
     assert tuple(PAGE_SLUGS) == GUIDE_PAGE_ORDER
     assert PAGE_SLUGS[0] == "cover"
     assert PAGE_SLUGS[1] == "menu"

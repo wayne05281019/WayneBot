@@ -276,7 +276,9 @@ def test_increment_and_glance_wire_official():
     glance = inspect.getsource(render_first_glance_png)
     assert "fmt_lots_align" not in glance
     assert "lots_right" not in glance
+    assert "lots_x" in glance
     assert 'ha="left"' in glance
+    assert 'ha="right"' in glance
     scan = inspect.getsource(execute_full_screening)
     assert "drop_paused_daytrade" in scan
 

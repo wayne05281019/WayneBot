@@ -423,3 +423,60 @@ def test_em_last_card_not_shared_for_chips():
     bot._send_chips_to.assert_awaited()
     assert bot._send_chips_to.await_args.args[1] == "1413"
     assert bot._last_card[str(WAYNE_UID)] == "3595"
+
+
+@pytest.mark.parametrize("round_i", range(8))
+def test_concurrent_streak_universe_isolated(round_i):
+    """兩人同時走連買第一步：一人上市櫃、一人興櫃，pending 不得互洗。"""
+    bot = _bot()
+
+    async def fake_kind(message, uid, actor, market="ALL"):
+        bot._pending[actor] = f"fbuy:kind:{market}"
+
+    async def fake_em(message, uid, actor):
+        bot._pending[actor] = "fbuy:em"
+
+    async def run():
+        w_actor = f"{WAYNE_UID}:{WAYNE_UID}"
+        b_actor = f"{BRO_UID}:{BRO_UID}"
+        bot._pending[w_actor] = "fbuy:uni"
+        bot._pending[b_actor] = "fbuy:uni"
+        with patch.object(bot, "_streak_show_kind", side_effect=fake_kind), patch.object(
+            bot, "_streak_show_emerging", side_effect=fake_em
+        ):
+            if round_i % 2 == 0:
+                await bot._handle_buy_streak(
+                    _msg(WAYNE_UID, "上市櫃"), str(WAYNE_UID), "fbuy:uni", "上市櫃", actor=w_actor
+                )
+                await bot._handle_buy_streak(
+                    _msg(BRO_UID, "興櫃"), str(BRO_UID), "fbuy:uni", "興櫃", actor=b_actor
+                )
+                assert bot._pending[w_actor] == "fbuy:kind:ALL"
+                assert bot._pending[b_actor] == "fbuy:em"
+            else:
+                await bot._handle_buy_streak(
+                    _msg(BRO_UID, "上市櫃"), str(BRO_UID), "fbuy:uni", "上市櫃", actor=b_actor
+                )
+                await bot._handle_buy_streak(
+                    _msg(WAYNE_UID, "興櫃"), str(WAYNE_UID), "fbuy:uni", "興櫃", actor=w_actor
+                )
+                assert bot._pending[b_actor] == "fbuy:kind:ALL"
+                assert bot._pending[w_actor] == "fbuy:em"
+
+    asyncio.run(run())
+
+
+def test_streak_home_does_not_clear_other_user_pending():
+    bot = _bot()
+    wayne = f"{WAYNE_UID}:{WAYNE_UID}"
+    bro = f"{BRO_UID}:{BRO_UID}"
+    bot._pending[wayne] = "fbuy:days:foreign:ALL"
+    bot._pending[bro] = "fbuy:kind:ALL"
+    bot._reply_menu = MagicMock()
+
+    async def run():
+        await bot._restore_main_menu(_msg(WAYNE_UID, "回主選單"), str(WAYNE_UID))
+
+    asyncio.run(run())
+    assert wayne not in bot._pending
+    assert bot._pending.get(bro) == "fbuy:kind:ALL"

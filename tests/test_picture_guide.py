@@ -65,7 +65,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v32"
+    assert CACHE_VER == "v35"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -98,6 +98,8 @@ def test_shot_builder_swaps_help_and_streak():
     assert "_swap_row2_streak_help" in src
     assert "第二排資金右邊" in src
     assert "第二排右二" not in src
+    assert "一次三張" not in src
+    assert "一次兩張" in src
 
 
 def test_assets_crop_sidebar_and_no_pii():

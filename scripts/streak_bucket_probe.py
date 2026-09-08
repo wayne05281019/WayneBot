@@ -18,8 +18,7 @@ from buy_streak import (
     KIND_BOTH,
     KIND_FOREIGN,
     KIND_TRUST,
-    MARKET_TW,
-    MARKET_TWO,
+    MARKET_ALL,
     clear_cache,
     load_snapshot,
 )
@@ -80,10 +79,10 @@ def verify_streak_data(db_path: str, rounds: int = 10) -> list[dict]:
     assert official == cap, f"as_of mismatch official={official} cap={cap}"
     out = []
     kinds = (KIND_FOREIGN, KIND_TRUST, KIND_BOTH)
-    markets = (MARKET_TW, MARKET_TWO)
+    markets = (MARKET_ALL,)
     for i in range(rounds):
         kind = kinds[i % 3]
-        market = markets[(i // 3) % 2]
+        market = markets[0]
         t0 = time.perf_counter()
         snap = load_snapshot(db_path, kind, market, use_cache=False)
         elapsed = time.perf_counter() - t0
@@ -130,17 +129,18 @@ async def probe_wizard_flow(bot: WayneTelegramBot, uid: int = 9101) -> dict:
     uid_s = str(uid)
     actor = f"99:{uid_s}"
     await bot.streak_cmd(SimpleNamespace(message=m, effective_user=user), MagicMock())
-    for text in ("外資", "上市"):
+    for text in ("上市櫃", "外資"):
         await bot._handle_buy_streak(m, uid_s, bot._pending[actor], text, actor=actor)
-    snap = load_snapshot(bot.db_path, KIND_FOREIGN, MARKET_TW, use_cache=False)
+    snap = load_snapshot(bot.db_path, KIND_FOREIGN, MARKET_ALL, use_cache=False)
     if snap.max_days < 2:
         return {"ok": False, "reason": "no streak rows"}
     await bot._handle_buy_streak(m, uid_s, bot._pending[actor], str(snap.max_days), actor=actor)
     htmls = []
     for call in m.reply_html.await_args_list:
         htmls.append(call.args[0] if call.args else call.kwargs.get("text", ""))
+    as_of_zh = format_trading_date_zh(snap.as_of)
     return {
-        "ok": any("外資連買" in str(x) and "2026/09/03" in str(x) for x in htmls),
+        "ok": any("外資連買" in str(x) and as_of_zh in str(x) for x in htmls),
         "days": snap.max_days,
         "as_of": snap.as_of,
     }

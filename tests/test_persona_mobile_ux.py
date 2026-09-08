@@ -21,9 +21,9 @@ def test_hub_keyboard_mobile_compact():
     kline = next(b for r in rows for b in r if b.text == "K線")
     assert (kline.url or "").endswith("/k/2330")
     assert (kline.url or "").startswith("https://")
-    assert "導航圖" not in texts
+    assert "導航圖" in texts
     cbs = [b.callback_data for r in rows for b in r]
-    assert any((c or "").startswith("n:") for c in cbs)
+    assert any((c or "").startswith("g:") for c in cbs)
 
 
 def test_em_hub_omits_empty_chip_buttons():
@@ -34,7 +34,11 @@ def test_em_hub_omits_empty_chip_buttons():
     assert "營收" not in texts
     assert "產業" in texts
     assert "觀察" in texts
+    assert "記買入" in texts
+    assert "說明" in texts
     assert "K線" not in texts
+    assert len(kb.inline_keyboard) == 1
+    assert len(kb.inline_keyboard[0]) == 4
 
 
 def test_picks_keyboard_caps_rows():

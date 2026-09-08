@@ -1279,6 +1279,25 @@ class LookupCardTest(unittest.TestCase):
         )
         self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
         self.assertEqual(cells[0][1], 70.0)
+        skip_nan = horizon_low_cells(
+            {
+                "l120": 1256.63,
+                "dist_l120": 24.5,
+                "l240": 1256.63,
+                "dist_l240": 24.5,
+                "l480": float("nan"),
+                "dist_l480": float("nan"),
+            }
+        )
+        self.assertEqual([c[0] for c in skip_nan], ["120低", "240低"])
+
+    def test_fmt_dist_never_prints_nan(self):
+        from wayne_navigator import _fmt_dist, _fmt_dist_short
+
+        self.assertNotIn("nan", _fmt_dist(float("nan")).lower())
+        self.assertNotIn("nan", _fmt_dist_short(float("nan")).lower())
+        self.assertEqual(_fmt_dist(None), "—")
+        self.assertEqual(_fmt_dist_short(24.5), "+24.5%")
 
     def test_label_and_value_never_collide_on_one_row(self):
         import matplotlib
@@ -1702,7 +1721,8 @@ class LookupCardTest(unittest.TestCase):
         )
 
         self.assertGreaterEqual(CARD_PNG_DPI, 320)
-        self.assertGreaterEqual(GLANCE_PNG_DPI, 440)
+        self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
+        self.assertGreaterEqual(GLANCE_PNG_DPI, 320)
         table = pd.DataFrame(
             [
                 {
@@ -1759,8 +1779,11 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn('ha="right"', src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
-        self.assertIn("floor=12.0", glance_src)
+        self.assertIn("floor = 12.0", glance_src)
         self.assertNotIn("floor=8.0", glance_src)
+        self.assertIn("_paint_nav_on_axes", glance_src)
+        self.assertIn("compact=True", glance_src)
+        self.assertNotIn("_draw_mini_candle", glance_src)
         self.assertIn("linewidth=1.1", glance_src)
         self.assertNotIn("獲利（近60曆日低）", glance_src)
         self.assertIn("日曆天", glance_src)

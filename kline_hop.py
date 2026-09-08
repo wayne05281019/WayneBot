@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from stock_links import quote_market, tradingview_exchange
+from stock_links import listed_kline_ok, quote_market
 
 INTERVALS = ("D", "15", "60", "5D", "10D", "M", "Q")
 _BAR_LIMIT = 1600
@@ -31,7 +31,7 @@ border-radius:8px;padding:8px 11px;font-size:14px;line-height:1;min-height:40px}
 nav button.on{background:#1565c0;border-color:#1565c0;color:#fff;font-weight:700}
 #stage{flex:1;position:relative;min-height:320px;margin:0 8px 8px;background:#fff;
 border:1px solid #d7dee4;border-radius:10px;overflow:hidden}
-#tv,canvas{position:absolute;inset:0;width:100%;height:100%}
+canvas{position:absolute;inset:0;width:100%;height:100%}
 #empty{display:none;margin:3em 1.2em;text-align:center;color:#607d8b;font-size:15px}
 .note{margin:0 12px 10px;font-size:12px;color:#78909c}
 </style>
@@ -51,7 +51,6 @@ border:1px solid #d7dee4;border-radius:10px;overflow:hidden}
 <button type="button" data-i="Q">季線</button>
 </nav>
 <div id="stage">
-<div id="tv"></div>
 <canvas id="own" hidden></canvas>
 <p id="empty"></p>
 </div>
@@ -67,10 +66,9 @@ function setOn(key){
 }
 function wipe(){
   var st=$("stage");
-  st.innerHTML='<div id="tv"></div><canvas id="own" hidden></canvas><p id="empty"></p>';
+  st.innerHTML='<canvas id="own" hidden></canvas><p id="empty"></p>';
 }
 function showEmpty(msg){
-  $("tv").style.display="none";
   var cv=$("own"); cv.hidden=true; cv.style.display="none";
   var el=$("empty"); el.style.display="block"; el.textContent=msg;
 }
@@ -455,10 +453,9 @@ def render_kline_html(
             "<title>查無代號</title></head><body>查無代號</body></html>"
         )
     start = normalize_interval(interval)
-    ex = tradingview_exchange(sid, db_path or None)
     name = _stock_name(sid, db_path or None)
     head = f"{sid} {name}".strip()
-    if not ex:
+    if not listed_kline_ok(sid, db_path or None):
         return (
             "<!DOCTYPE html><html lang='zh-Hant'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
