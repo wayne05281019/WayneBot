@@ -8,6 +8,7 @@ from PIL import Image
 
 from picture_guide import (
     BODY_SIZE,
+    BOTTOM_PAD,
     CACHE_VER,
     MARGIN,
     MAX_BODY_SIZE,
@@ -65,7 +66,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v30"
+    assert CACHE_VER == "v31"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -439,3 +440,26 @@ def test_cover_and_menu_title_centered_shot_in_lower_half(tmp_path):
                         gap_ink += 1
             assert gap_ink < 80, (slug, gap_ink, card_top)
             assert card_top - 280 >= TEXT_SHOT_GAP
+
+
+def test_all_pages_share_lower_panel_band(tmp_path):
+    """有截圖的頁下半同一條青框；說明頁底部固定金框。不要有的有框有的沒框。"""
+    from picture_guide import EDITORIAL_PANEL_H, PAGE_SHOTS
+
+    dest = str(tmp_path / "band")
+    paths = render_picture_guide(dest, force=True)
+    shot_y = int(PAGE_HEIGHT * SHOT_TOP_RATIO)
+    edit_y = PAGE_HEIGHT - BOTTOM_PAD - EDITORIAL_PANEL_H
+    for p in paths:
+        slug = os.path.basename(p).split("-", 1)[-1].removesuffix(".png")
+        expect = shot_y if slug in PAGE_SHOTS else edit_y
+        with Image.open(p) as im:
+            found = None
+            for y in range(expect - 8, expect + 36):
+                r, g, b = im.getpixel((MARGIN + 48, y))[:3]
+                if b >= 180 and g >= 150 and r <= 190:
+                    found = y
+                    break
+            assert found is not None, (slug, expect)
+            rr, gg, bb = im.getpixel((PAGE_WIDTH - MARGIN - 48, found))[:3]
+            assert bb >= 150, (slug, rr, gg, bb)

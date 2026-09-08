@@ -86,6 +86,8 @@ def test_how_to_sell_and_daily_clock_are_in_help_and_pictures():
     for clock in ("06:30", "12:45", "16:30", "20:00"):
         assert clock in guide, clock
         assert clock in blob, clock
+    assert "16:45" not in guide
+    assert "16:45" not in blob
     assert "台股休市當日" in guide
     assert "台股休市當日" in blob
     assert "美股當天沒開" in blob
