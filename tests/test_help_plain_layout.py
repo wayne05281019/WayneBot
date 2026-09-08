@@ -106,12 +106,13 @@ def test_help_nav_has_oops_and_no_reply_overlap():
 
 
 def test_row2_help_page_explains_help_button():
+    row1 = HELP_TOPICS["row1"]
     row2 = HELP_TOPICS["row2"]
-    assert "④ 連買區" in row2
-    assert "⑤ 說明" in row2
-    assert row2.index("④ 連買區") < row2.index("⑤ 說明")
-    assert "/help" in row2
-    assert "按錯" in row2
+    assert "① 說明" in row1
+    assert "⑥ 連買區" in row2
+    assert row2.index("① 大盤") < row2.index("⑥ 連買區")
+    assert "/help" in row1
+    assert "按錯" in row1
     assert row2.count("\n") >= 8
 
 

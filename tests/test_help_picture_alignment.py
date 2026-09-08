@@ -14,24 +14,14 @@ from bot_servers import (
 )
 from picture_guide import PAGE_SLUGS, page_copy_blob
 
-ROW1 = [MENU_BTN_CARD, "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
-ROW2 = ["隔日沖", MENU_BTN_MARKET, "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
+ROW1 = ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT]
+ROW2 = [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
 GUIDE_PAGE_ORDER = (
     "cover",
     "menu",
     "lookup",
-    "charts",
-    "hub",
-    "discipline",
-    "sell",
-    "screen",
     "lists",
-    "ai",
-    "daytrade",
-    "market",
-    "streak",
-    "why",
-    "rhythm",
+    "more",
     "oops",
 )
 
@@ -43,18 +33,19 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ROW1
     assert row2 == ROW2
-    assert MENU_LAYOUT_VERSION == "12"
+    assert MENU_LAYOUT_VERSION == "13"
 
     guide = HELP_TOPICS["guide"]
     menu = HELP_TOPICS["menu"]
+    row1_help = HELP_TOPICS["row1"]
     row2_help = HELP_TOPICS["row2"]
     blob = page_copy_blob()
     assert "連買區" in guide and "說明" in guide
-    assert "<b>連買區</b>｜<b>說明</b>" in guide
-    assert "連買區／說明" in menu
-    assert row2_help.index("④ 連買區") < row2_help.index("⑤ 說明")
-    assert "隔日沖　大盤　資金　連買區　說明　回報" in blob
-    assert "刷新上一檔　當沖　持股　觀察　海選　AI倉" in blob
+    assert "說明／海選" in menu or "說明／海選／持股" in menu
+    assert row1_help.index("① 說明") < row1_help.index("② 海選")
+    assert row2_help.index("① 大盤") < row2_help.index("⑥ 連買區")
+    assert "說明　海選　持股　觀察　刷新上一檔　回報" in blob
+    assert "大盤　資金　當沖　隔日沖　AI倉　連買區" in blob
     assert "一張圖卡" in blob
     assert "圖卡" in HELP_TOPICS["industry"]
     assert "小框" in HELP_TOPICS["industry"]
@@ -62,17 +53,12 @@ def test_reply_keyboard_matches_help_and_picture_copy():
 
 
 def test_picture_guide_page_order_is_first_use_then_lookup():
-    """十六頁順序：先叫鍵盤 → 查股三張圖 → 紀律／如何賣 → 海選 → 清單／AI倉 → 大盤／原因 → 按錯。"""
+    """六頁順序：先叫鍵盤 → 查股三張圖 → 如何賣／海選／清單 → 其他鈕／原因 → 按錯。"""
     assert tuple(PAGE_SLUGS) == GUIDE_PAGE_ORDER
     assert PAGE_SLUGS[0] == "cover"
     assert PAGE_SLUGS[1] == "menu"
-    assert PAGE_SLUGS.index("lookup") < PAGE_SLUGS.index("charts")
-    assert PAGE_SLUGS.index("charts") < PAGE_SLUGS.index("hub")
-    assert PAGE_SLUGS.index("discipline") < PAGE_SLUGS.index("sell")
-    assert PAGE_SLUGS.index("sell") < PAGE_SLUGS.index("screen")
-    assert PAGE_SLUGS.index("lists") < PAGE_SLUGS.index("ai")
-    assert PAGE_SLUGS.index("market") < PAGE_SLUGS.index("why")
-    assert PAGE_SLUGS.index("lists") < PAGE_SLUGS.index("streak")
+    assert PAGE_SLUGS.index("lookup") < PAGE_SLUGS.index("lists")
+    assert PAGE_SLUGS.index("lists") < PAGE_SLUGS.index("more")
     assert PAGE_SLUGS[-1] == "oops"
     blob = page_copy_blob()
     assert blob.index("第一次用") < blob.index("兩排主選單在哪")

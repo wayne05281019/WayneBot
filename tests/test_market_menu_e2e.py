@@ -84,13 +84,13 @@ class TestMarketMenuE2E:
         assert MENU_BTN_MARKET == "大盤"
         from bot_servers import MENU_BTN_AI, MENU_BTN_REPORT, MENU_BTN_STREAK
 
-        assert MENU_LAYOUT_VERSION == "12"
+        assert MENU_LAYOUT_VERSION == "13"
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
         row1 = [b.text for b in bot._reply_menu().keyboard[0]]
         row2 = [b.text for b in bot._reply_menu().keyboard[1]]
-        assert row1 == ["刷新上一檔", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
-        assert row2 == ["隔日沖", "大盤", "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
-        assert row2[-1] == MENU_BTN_REPORT
+        assert row1 == ["說明", "海選", "持股", "觀察", "刷新上一檔", MENU_BTN_REPORT]
+        assert row2 == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
+        assert row1[-1] == MENU_BTN_REPORT
 
     def test_help_no_reserved_slot_text(self):
         assert "預留" not in HELP_TOPICS["menu"]
