@@ -1026,7 +1026,29 @@ def test_l9_fbuy_kind_escapes_why():
     asyncio.run(run())
 
 
-def test_l9_skip_if_done_in_cli_main():
+def test_l9_streak_days_does_not_reprint_number_list():
+    """天數已在訊息下方按鈕；不要再印一則「可選天數：22 21 19…」。"""
+    bot = _bot()
+    msg = _msg(WAYNE_UID, "外資")
+    snap = SimpleNamespace(
+        as_of="20260908",
+        max_days=22,
+        days_menu=lambda: [22, 21, 19, 17, 16, 14, 13, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+    )
+
+    async def run():
+        with patch("buy_streak.load_snapshot", return_value=snap):
+            await bot._streak_show_days(msg, str(WAYNE_UID), f"{WAYNE_UID}:{WAYNE_UID}", "foreign", "ALL")
+
+    asyncio.run(run())
+    html = msg.reply_html.await_args.args[0]
+    assert "可選天數" not in html
+    assert "22 21 19" not in html
+    hint = msg.reply_text.await_args.args[0]
+    assert hint == "也可點輸入區鍵盤上的天數"
+    assert "22" not in hint
+    src = _src(WayneTelegramBot._streak_show_days)
+    assert "可選天數" not in src
     from main_runner import main
 
     src = _src(main)
