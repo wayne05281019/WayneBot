@@ -2722,7 +2722,7 @@ def render_first_glance_png(
             while tw(lab, lab_fs) + 5.5 + tw(val, val_fs) > row_w and lab_fs > floor:
                 lab_fs -= 0.3
                 val_fs -= 0.3
-            ax.text(inner_l, yy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], va="center", zorder=3)
+            ax.text(inner_l, yy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], ha="left", va="center", zorder=3)
             style = pills.get(i)
             if style:
                 bg, fg = style
@@ -2770,8 +2770,8 @@ def render_first_glance_png(
         for nm, item in chips:
             net = int(item.get("net") or 0)
             cc = C["up"] if net > 0 else (C["down"] if net < 0 else C["ink_soft"])
-            ax.text(inner_l, cy, nm, fontproperties=_fp(12.0, "bold"), color=C["ink"], va="center", zorder=3)
-            ax.text(lots_x, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, va="center", zorder=3)
+            ax.text(inner_l, cy, nm, fontproperties=_fp(12.0, "bold"), color=C["ink"], ha="left", va="center", zorder=3)
+            ax.text(lots_x, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, ha="left", va="center", zorder=3)
             ax.text(inner_r, cy, phrase_of[nm], fontproperties=_fp(f_phrase, "bold"),
                     color=cc, ha="right", va="center", zorder=3)
             cy -= row_h
