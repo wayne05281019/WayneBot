@@ -83,7 +83,8 @@ def classify_target(stock_id: str, stock_name: str = "") -> Tuple[str, bool]:
 
 
 # 查股代號：2330／0050／00878／00631L／00990A。海選仍不收 ETF。
-_LOOKUP_TICKER_RE = re.compile(r"^(?:\d{3,6}|[0-9]{4,6}[A-Za-z])$", re.I)
+# 至少四碼：不要把「100 天」這種三位數當代號。
+_LOOKUP_TICKER_RE = re.compile(r"^(?:\d{4,6}|[0-9]{4,6}[A-Za-z])$", re.I)
 
 
 def is_lookup_ticker(query: str) -> bool:

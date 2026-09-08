@@ -56,9 +56,9 @@ class ScreeningEngine:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT replace(date,'-','') FROM daily_quotes
-                GROUP BY replace(date,'-','')
-                ORDER BY replace(date,'-','') DESC
+                SELECT date FROM daily_quotes
+                GROUP BY date
+                ORDER BY date DESC
                 LIMIT 15
                 """
             )
@@ -68,7 +68,7 @@ class ScreeningEngine:
                 d = str(raw or "").replace("-", "")[:8]
                 if d and is_trading_weekday(d):
                     return d
-            cursor.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
+            cursor.execute("SELECT MAX(date) FROM daily_quotes;")
             row = cursor.fetchone()
             return row[0] if row and row[0] else datetime.now().strftime("%Y%m%d")
 

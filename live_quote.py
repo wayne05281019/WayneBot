@@ -364,7 +364,7 @@ def _db_latest_close(db_path: str, stock_id: str) -> Optional[float]:
 
         conn = sqlite3.connect(db_path)
         row = conn.execute(
-            "SELECT close FROM daily_quotes WHERE stock_id=? AND replace(date,'-','')=? LIMIT 1;",
+            "SELECT close FROM daily_quotes WHERE stock_id=? AND date=? LIMIT 1;",
             (str(stock_id).strip(), str(as_of).replace("-", "")[:8]),
         ).fetchone()
         conn.close()
