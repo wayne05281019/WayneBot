@@ -1279,6 +1279,25 @@ class LookupCardTest(unittest.TestCase):
         )
         self.assertEqual([c[0] for c in cells], ["120低", "240低", "480低"])
         self.assertEqual(cells[0][1], 70.0)
+        skip_nan = horizon_low_cells(
+            {
+                "l120": 1256.63,
+                "dist_l120": 24.5,
+                "l240": 1256.63,
+                "dist_l240": 24.5,
+                "l480": float("nan"),
+                "dist_l480": float("nan"),
+            }
+        )
+        self.assertEqual([c[0] for c in skip_nan], ["120低", "240低"])
+
+    def test_fmt_dist_never_prints_nan(self):
+        from wayne_navigator import _fmt_dist, _fmt_dist_short
+
+        self.assertNotIn("nan", _fmt_dist(float("nan")).lower())
+        self.assertNotIn("nan", _fmt_dist_short(float("nan")).lower())
+        self.assertEqual(_fmt_dist(None), "—")
+        self.assertEqual(_fmt_dist_short(24.5), "+24.5%")
 
     def test_label_and_value_never_collide_on_one_row(self):
         import matplotlib

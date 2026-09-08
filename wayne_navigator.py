@@ -78,6 +78,24 @@ _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
 _WEIGHT_FILES = {}
 
 
+def _finite_num(val):
+    """有限數字才回傳；NaN／None／非數字不當 0、也不印 +nan%。"""
+    if val is None:
+        return None
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(v):
+        return None
+    return v
+
+
+def _pos_px(val) -> float:
+    v = _finite_num(val)
+    return v if v is not None and v > 0 else 0.0
+
+
 def bundled_weight_path(step: int) -> str:
     return os.path.join(_BUNDLE_FONTS, f"NotoSansTC-w{int(step)}.ttf")
 
@@ -620,13 +638,13 @@ class NavigatorEngine:
         h120 = float(latest["high_120"]) if pd.notna(latest.get("high_120")) else 0.0
         h240 = float(latest["high_240"]) if pd.notna(latest.get("high_240")) else 0.0
         h480 = float(latest["high_480"]) if pd.notna(latest.get("high_480")) else 0.0
-        l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
-        l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
-        l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
+        l120 = _pos_px(latest["low_120"] if pd.notna(latest.get("low_120")) else 0.0)
+        l240 = _pos_px(latest["low_240"] if pd.notna(latest.get("low_240")) else 0.0)
+        l480 = _pos_px(latest["low_480"] if pd.notna(latest.get("low_480")) else 0.0)
         if hl_display_adjusted:
-            l120 = float(close_s.rolling(120, min_periods=20).min().iloc[-1] or 0)
-            l240 = float(close_s.rolling(240, min_periods=40).min().iloc[-1] or 0)
-            l480 = float(close_s.rolling(480, min_periods=80).min().iloc[-1] or 0)
+            l120 = _pos_px(close_s.rolling(120, min_periods=20).min().iloc[-1])
+            l240 = _pos_px(close_s.rolling(240, min_periods=40).min().iloc[-1])
+            l480 = _pos_px(close_s.rolling(480, min_periods=80).min().iloc[-1])
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")
@@ -769,9 +787,9 @@ class NavigatorEngine:
             "l10": l10, "dist_l10": _dist_l(l10),
             "l20": l20, "dist_l20": _dist_l(l20),
             "l60": l60, "dist_l60": _dist_l(l60),
-            "l120": l120, "dist_l120": _dist_l(l120) if l120 else None,
-            "l240": l240, "dist_l240": _dist_l(l240) if l240 else None,
-            "l480": l480, "dist_l480": _dist_l(l480) if l480 else None,
+            "l120": l120 or None, "dist_l120": _dist_l(l120) if l120 else None,
+            "l240": l240 or None, "dist_l240": _dist_l(l240) if l240 else None,
+            "l480": l480 or None, "dist_l480": _dist_l(l480) if l480 else None,
             "space_20": space_20,
             "space_60": space_60,
             "temp_c": latest["溫度計"],
@@ -1278,35 +1296,24 @@ def horizon_low_cells(card: dict) -> list:
         (240, "l240", "dist_l240"),
         (480, "l480", "dist_l480"),
     ):
-        px, dist = card.get(pk), card.get(dk)
-        if px is None or dist is None:
-            continue
-        try:
-            px_f, dist_f = float(px), float(dist)
-        except (TypeError, ValueError):
-            continue
-        if px_f <= 0:
+        px_f, dist_f = _finite_num(card.get(pk)), _finite_num(card.get(dk))
+        if px_f is None or dist_f is None or px_f <= 0:
             continue
         out.append((f"{days}低", px_f, dist_f))
     return out
 
 
 def _fmt_dist(val) -> str:
-    if val is None:
+    v = _finite_num(val)
+    if v is None:
         return "—"
-    try:
-        return f"{float(val):+.1f}%"
-    except (TypeError, ValueError):
-        return "—"
+    return f"{v:+.1f}%"
 
 
 def _fmt_dist_short(val) -> str:
     """漲跌幅緊湊寫法：破百的小數點是雜訊，去掉才排得進一列三個數字。"""
-    if val is None:
-        return "—"
-    try:
-        v = float(val)
-    except (TypeError, ValueError):
+    v = _finite_num(val)
+    if v is None:
         return "—"
     return f"{v:+.0f}%" if abs(v) >= 100 else f"{v:+.1f}%"
 
@@ -2395,9 +2402,10 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("獲利", f"{card.get('gain_pct', card.get('dist_l60')):+.1f}%"),
             kv_compact("起算", f"近60個日曆天收盤低 {card.get('cal60_low', '—')}"),
             kv_compact("距60根低", f"{card.get('dist_l60'):+.1f}%"),
-            kv_compact("距120低", _fmt_dist(card.get("dist_l120"))),
-            kv_compact("距240低", _fmt_dist(card.get("dist_l240"))),
-            kv_compact("距480低", _fmt_dist(card.get("dist_l480"))),
+            *[
+                kv_compact(f"距{lab}", _fmt_dist(dist))
+                for lab, _px, dist in horizon_low_cells(card)
+            ],
             kv_compact("月空間", f"{card['space_20']}%"),
             kv_compact("季空間", f"{card['space_60']}%"),
             kv_compact("月乖離", bias_s),
@@ -2747,18 +2755,24 @@ def render_first_glance_png(
     gain = float(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60") or 0)
     gain_s = f"{gain:+.1f}%"
     dist_h20 = float(card["dist_h20"])
-    y -= gap + space_h
-    kv_block(y, space_h, "空間／位置", [
+    long_lows = horizon_low_cells(card)
+    space_rows = [
         ("距20日高（賣壓）", f"{dist_h20:+.1f}%",
          price_cell_style("20高" if dist_h20 >= -1 else "No", C["white"])[1]),
         ("獲利", gain_s, signed_pct_ink(gain)),
-        (["距120／240／480低", "距120/240/480低", "距長期低"], " ".join([
-            _fmt_dist_short(card.get("dist_l120")),
-            _fmt_dist_short(card.get("dist_l240")),
-            _fmt_dist_short(card.get("dist_l480")),
-        ]), C["ink"]),
-        ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", C["ink"]),
-    ], sub="獲利＝從近60個日曆天收盤低算上來", pills={
+    ]
+    if long_lows:
+        n_labs = "／".join(lab.replace("低", "") for lab, _, _ in long_lows)
+        space_rows.append(
+            (
+                [f"距{n_labs}低", "距長期低"],
+                " ".join(_fmt_dist_short(dist) for _, _, dist in long_lows),
+                C["ink"],
+            )
+        )
+    space_rows.append(("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", C["ink"]))
+    y -= gap + space_h
+    kv_block(y, space_h, "空間／位置", space_rows, sub="獲利＝從近60個日曆天收盤低算上來", pills={
         1: _profit_heat_draw(gain, None, C["white"]),
     })
     _temp_n = _temp_num(card.get("temp_c"))

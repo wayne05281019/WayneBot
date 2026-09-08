@@ -169,6 +169,26 @@ def test_glance_combo_canvas_matches_card_width():
     src = inspect.getsource(render_first_glance_png)
     assert "_draw_glance_daily_k" in src
     assert "has_chips" in src
+    assert "horizon_low_cells" in src
+    assert 'card.get("dist_l480")' not in src
+
+
+def test_fmt_dist_omits_nan():
+    from wayne_navigator import _fmt_dist, _fmt_dist_short, horizon_low_cells
+
+    assert "nan" not in _fmt_dist(float("nan")).lower()
+    assert "nan" not in _fmt_dist_short(float("nan")).lower()
+    cells = horizon_low_cells(
+        {
+            "l120": 1256.63,
+            "dist_l120": 24.5,
+            "l240": 1256.63,
+            "dist_l240": 24.5,
+            "l480": float("nan"),
+            "dist_l480": float("nan"),
+        }
+    )
+    assert [c[0] for c in cells] == ["120低", "240低"]
 
 
 def test_emerging_snapshot_refuses_fake_chip_streaks():
