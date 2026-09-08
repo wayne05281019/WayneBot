@@ -94,7 +94,8 @@ def test_twelve_menu_buttons_exist_in_order():
 def test_help_script_ready_for_brother_video():
     first = chunk_telegram_html(HELP_TOPICS["guide"])[0]
     assert "第一次用" in first
-    assert "直接打四碼" in first
+    assert "直接打代號" in first
+    assert "00981A" in first
     assert "先別追" in HELP_TOPICS["stock"]
     assert "開 LINE・傳這檔" in HELP_TOPICS["screen"]
     assert "一鍵傳 LINE" in HELP_TOPICS["screen"]

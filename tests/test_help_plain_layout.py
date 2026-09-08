@@ -14,7 +14,9 @@ def test_guide_starts_with_three_steps_in_first_chunk():
     assert chunks, "總覽不該是空的"
     first = chunks[0]
     assert first.index("第一次用") < first.index("挑股")
-    assert "直接打四碼" in first
+    assert "直接打代號" in first
+    assert "00981A" in first
+    assert "00631L" in first
     assert "⌨️" in first
     assert "四格" in first
     assert "圖下面" in first or "圖下方" in first
@@ -118,13 +120,15 @@ def test_start_cmd_leads_with_three_steps():
 
     src = inspect.getsource(WayneTelegramBot.start_cmd)
     assert "第一次用，先做這三步" in src
-    assert "直接打四碼" in src
+    assert "直接打代號" in src
+    assert "00981A" in src
     assert "圖下面" in src
     assert "圖文" in src
-    assert "按錯" in src
+    assert "回報" in src
 
 
 def test_pick_and_decision_are_first_time_friendly():
     assert "不要先按" in HELP_TOPICS["pick"]
-    assert "直接打四碼" in HELP_TOPICS["decision"]
+    assert "直接打代號" in HELP_TOPICS["decision"]
+    assert "00981A" in HELP_TOPICS["pick"]
     assert "第一次用" in HELP_TOPICS["menu"]

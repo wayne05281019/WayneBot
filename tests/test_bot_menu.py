@@ -71,7 +71,9 @@ def test_help_guide_covers_all_main_buttons():
     assert "現價漲跌 → 決策卡圖 → 介紹圖" not in guide
     assert "要再看才按" not in guide
     assert "按錯了" in guide
-    assert "直接打四碼" in guide
+    assert "直接打代號" in guide
+    assert "00981A" in guide
+    assert "打「持倉」會開" in guide
     stock = HELP_TOPICS["stock"]
     assert "圖下方" in stock
     assert "決策卡 → 介紹圖" not in stock

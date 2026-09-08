@@ -337,7 +337,7 @@ def no_cost_honest_html() -> str:
 
 
 def why_hub_html(last_code: str = "") -> str:
-    last = f"<code>{last_code}</code>" if last_code else "（還沒查過，請打四碼）"
+    last = f"<code>{last_code}</code>" if last_code else "（還沒查過，請打代號）"
     return (
         "<b>原因</b>（輸入列左邊三條槓）\n"
         "用平常的話問，會對到<b>官方資料</b>，不編新聞、不編成本。\n"
