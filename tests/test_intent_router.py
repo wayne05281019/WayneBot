@@ -36,6 +36,7 @@ def test_plain_speech_maps_to_official_paths():
         "當沖": "daytrade",
         "決策卡": "card",
         "刷新上一檔": "card",
+        "刷新": "card",
         "連買區": "streak",
         "外資連買": "streak",
         "AI倉": "ai",

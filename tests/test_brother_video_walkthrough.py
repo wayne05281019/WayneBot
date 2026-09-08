@@ -103,7 +103,12 @@ def test_help_script_ready_for_brother_video():
     assert "按錯" in HELP_TOPICS["oops"]
     hub = WayneTelegramBot.__new__(WayneTelegramBot)._hub_keyboard("2330")
     texts = [b.text for r in hub.inline_keyboard for b in r]
-    assert texts[:5] == ["籌碼", "營收", "產業", "觀察", "記買入"]
+    assert "籌碼" in texts and "營收" in texts and "產業" in texts
+    assert "觀察" in texts and "記買入" in texts
+    assert "K線" in texts
+    kline = next(b for r in hub.inline_keyboard for b in r if b.text == "K線")
+    assert (kline.url or "").endswith("/k/2330")
+    assert (kline.url or "").startswith("https://")
 
 
 def test_ten_personas_help_and_menu_clear_wrong_pending():

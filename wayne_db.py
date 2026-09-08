@@ -310,6 +310,12 @@ def ensure_core_schema(db_path: str = None) -> None:
             """
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sector_flow_date ON daily_sector_flow(date);")
+        try:
+            from emerging_quotes import ensure_emerging_table
+
+            ensure_emerging_table(path)
+        except Exception:
+            pass
         cols = {r[1] for r in cur.execute("PRAGMA table_info(daily_sector_flow)")}
         for name, spec in (
             ("top_sell_id", "TEXT DEFAULT ''"),
@@ -536,12 +542,45 @@ def _hydrate_lookup_hits(
         ):
             quotes[str(qr["stock_id"])] = qr
         missing = [sid for sid in ids if sid not in quotes]
-        for sid in missing:
+        if missing:
+            try:
+                conn.execute("SELECT 1 FROM emerging_quotes LIMIT 1")
+                have_em = True
+            except sqlite3.OperationalError:
+                have_em = False
+            if have_em:
+                em_marks = ",".join("?" * len(missing))
+                em_date = ""
+                try:
+                    row = conn.execute("SELECT MAX(date) FROM emerging_quotes").fetchone()
+                    em_date = str(row[0] or "") if row else ""
+                except sqlite3.OperationalError:
+                    em_date = ""
+                if em_date:
+                    for qr in conn.execute(
+                        f"""SELECT stock_id, close, pct_change, volume FROM emerging_quotes
+                            WHERE date=? AND stock_id IN ({em_marks})""",
+                        (em_date, *missing),
+                    ):
+                        quotes[str(qr["stock_id"])] = qr
+        still = [sid for sid in ids if sid not in quotes]
+        for sid in still:
             qr = conn.execute(
                 """SELECT close, pct_change, volume FROM daily_quotes
                    WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
                 (sid,),
             ).fetchone()
+            if qr:
+                quotes[sid] = qr
+                continue
+            try:
+                qr = conn.execute(
+                    """SELECT close, pct_change, volume FROM emerging_quotes
+                       WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
+                    (sid,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                qr = None
             if qr:
                 quotes[sid] = qr
     for r in drows:
@@ -728,6 +767,17 @@ def ensure_stock_directory(db_path: str) -> None:
         n_em = conn.execute(
             "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
         ).fetchone()[0]
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO stock_directory (stock_id, stock_name, market)
+                   SELECT stock_id, stock_name, 'EM' FROM emerging_quotes
+                   WHERE date=(SELECT MAX(date) FROM emerging_quotes);"""
+            )
+            n_em = conn.execute(
+                "SELECT COUNT(*) FROM stock_directory WHERE market='EM';"
+            ).fetchone()[0]
+        except sqlite3.OperationalError:
+            pass
     if n_em >= 20:
         return
     try:

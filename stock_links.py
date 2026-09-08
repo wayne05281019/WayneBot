@@ -15,12 +15,13 @@ _EX_CACHE: Dict[str, str] = {}
 _EX_CACHE_MAX = 4096
 
 
-def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
+def quote_market(stock_id: str, db_path: Optional[str] = None) -> str:
+    """庫內市場標記：TW／TWO／EM。沒列就空字串。"""
     sid = str(stock_id or "").strip()
     path = db_path or get_db_path()
-    key = f"{path}|{sid}"
+    key = f"m|{path}|{sid}"
     cached = _EX_CACHE.get(key)
-    if cached:
+    if cached is not None:
         return cached
     market = ""
     try:
@@ -37,21 +38,68 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
                 ).fetchone()
             except Exception:
                 row = None
+        if not row:
+            try:
+                row = conn.execute(
+                    "SELECT market_type FROM stock_universe WHERE stock_id=? LIMIT 1;",
+                    (sid,),
+                ).fetchone()
+            except Exception:
+                row = None
         conn.close()
         if row:
             market = str(row[0] or "")
     except Exception:
         market = ""
-    m = market.upper()
-    if m in ("TWO", "TPEX", "OTC", "ROCO", "EM", "ESB", "EMERGING"):
-        ex = "TWO"
-    else:
-        ex = "TW"
+    m = str(market or "").strip().upper()
     if sid:
         if len(_EX_CACHE) >= _EX_CACHE_MAX:
             _EX_CACHE.clear()
-        _EX_CACHE[key] = ex
-    return ex
+        _EX_CACHE[key] = m
+    return m
+
+
+def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
+    m = quote_market(stock_id, db_path)
+    if m in ("TWO", "TPEX", "OTC", "ROCO", "EM", "ESB", "EMERGING"):
+        return "TWO"
+    return "TW"
+
+
+def tradingview_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
+    """TradingView 交易所前綴。興櫃沒有可靠代號就不給。"""
+    m = quote_market(stock_id, db_path)
+    if m in ("EM", "ESB", "EMERGING"):
+        return ""
+    if m in ("TWO", "TPEX", "OTC", "ROCO"):
+        return "TPEX"
+    return "TWSE"
+
+
+def tradingview_widget_symbol(stock_id: str, db_path: Optional[str] = None) -> str:
+    """圖表元件內部代號。使用者看得見的文案仍寫上市／上櫃，不要把此外掛到說明書。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    ex = tradingview_exchange(sid, db_path)
+    if not ex:
+        return ""
+    return f"{ex}:{sid}"
+
+
+def tradingview_chart_url(
+    stock_id: str, db_path: Optional[str] = None, base_url: str = ""
+) -> str:
+    """查股圖下 K線：開自家這一檔圖（先進日K）。興櫃不給。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    if not tradingview_exchange(sid, db_path):
+        return ""
+    from config import get_public_base_url
+
+    base = (base_url or get_public_base_url()).rstrip("/")
+    return f"{base}/k/{sid}"
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:

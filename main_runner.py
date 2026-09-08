@@ -22,7 +22,8 @@
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
-#   7. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
+#   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
+#   8. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
 # 海選 06:30 與 12:45 寄出給家人轉 LINE；盤後 16:30 只融合；20:00 不寄。
 # 盤後融合順便用庫內下一根日 K 對昨天海選復盤；不另抓數。弱類別只調 AI 模擬倉權重。
 # 早上海選會再抓美股現金收盤：四大＋VIX＋費半／台積ADR；收盤後再看盤後（ADR／那指期續勢）。
@@ -263,6 +264,13 @@ class MainRunner:
         except Exception as e:
             logger.error("產業資金輪動失敗: %s", e, exc_info=True)
 
+        try:
+            from emerging_quotes import sync_emerging_quotes
+
+            em = sync_emerging_quotes(self.db_path)
+            logger.info("興櫃官方日均價寫入：%s", em)
+        except Exception as e:
+            logger.warning("興櫃日均價同步略過：%s", e)
         try:
             from fundamentals import sync_fundamentals
             fund = sync_fundamentals(self.db_path)

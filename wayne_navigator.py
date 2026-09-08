@@ -372,6 +372,18 @@ class NavigatorEngine:
             WHERE stock_id = ?
             ORDER BY date DESC LIMIT 520;
         """, conn, params=(stock_id,))
+        quote_source = "daily_quotes"
+        if len(df) < 5:
+            try:
+                from emerging_quotes import load_stock_bars
+
+                em = load_stock_bars(self.db_path, stock_id, 520)
+            except Exception:
+                em = None
+            if em is not None and len(em) >= 5:
+                df = em
+                quote_source = "emerging_quotes"
+                merge_live = False
         conn.close()
 
         if len(df) < 5:
@@ -568,6 +580,8 @@ class NavigatorEngine:
         raw_qty60 = float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)
         qty60 = int(round(raw_qty60))
         badges = []
+        if quote_source == "emerging_quotes":
+            badges.append("興櫃官方日均價")
         if is_live:
             try:
                 from live_quote import mis_session_label
@@ -720,6 +734,8 @@ class NavigatorEngine:
             "stock_name": str(latest.get("stock_name") or stock_id),
             "industry": industry,
             "next_event": next_event,
+            "news_label": "",
+            "quote_source": quote_source,
             "latest_date": latest["date"],
             "db_as_of": db_as_of,
             "is_live": is_live,
@@ -1623,12 +1639,13 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
         return 0.0
 
 
-def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8):
-    """股名右側：最近一件（法說／股東會／除權息）優先，產業有空再放。"""
+def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = ""):
+    """股名右側：最近一件優先，產業、報導則數有空再放。報導不是買賣訊。"""
     out = []
     remaining = float(avail or 0)
     event = str(event or "").strip()
     industry = str(industry or "").strip()
+    news = str(news or "").strip()
     if event:
         fs = 11.0
         while fs >= 8.5 and tw(event, fs) + 0.2 > remaining:
@@ -1642,6 +1659,13 @@ def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: fl
             fs -= 0.5
         if tw(industry, fs) + 0.2 <= remaining:
             out.append((industry, fs, "#FFE082"))
+            remaining -= tw(industry, fs) + gap
+    if news:
+        fs = 11.0
+        while fs >= 8.5 and tw(news, fs) + 0.2 > remaining:
+            fs -= 0.5
+        if tw(news, fs) + 0.2 <= remaining:
+            out.append((news, fs, "#B3E5FC"))
     return out
 
 
@@ -1964,7 +1988,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     industry = str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
-    for text, fs, color in fit_title_bar_extras(industry, event, right_limit - cursor, tw):
+    news = str(card.get("news_label") or "").strip()
+    for text, fs, color in fit_title_bar_extras(
+        industry, event, right_limit - cursor, tw, news=news
+    ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
                 color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
@@ -2213,10 +2240,23 @@ def _load_ohlc(stock_id: str, db_path: str = None, days: int = 180) -> pd.DataFr
         params=(str(stock_id).strip(), days),
     )
     conn.close()
+    emerging = False
+    if df.empty or len(df) < 5:
+        try:
+            from emerging_quotes import load_stock_bars
+
+            em = load_stock_bars(path, stock_id, days)
+        except Exception:
+            em = None
+        if em is not None and not em.empty:
+            df = em
+            emerging = True
     if df.empty:
         return df
     df = df.iloc[::-1].reset_index(drop=True)
     df["stock_id"] = str(stock_id).strip()
+    if emerging:
+        return df
     try:
         from live_quote import append_live_bar
 
@@ -2533,8 +2573,14 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if name:
         ink(name_x, y + head_h - 1.85, name, title_fs, "#FFFFFF")
     industry = str(card.get("industry") or "").strip()
-    if industry:
-        ink(name_x if name else 20.2, y + head_h - 4.15, industry, stamp_fs, stamp_c)
+    news = str(card.get("news_label") or "").strip()
+    extra = industry
+    if industry and news:
+        extra = f"{industry}　{news}"
+    elif news:
+        extra = news
+    if extra:
+        ink(name_x if name else 20.2, y + head_h - 4.15, extra, stamp_fs, stamp_c)
     event = str(card.get("next_event") or "").strip()
     regime = ""
     rest = []
