@@ -65,7 +65,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v25"
+    assert CACHE_VER == "v26"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -400,9 +400,6 @@ def test_cover_and_menu_title_centered_shot_in_lower_half(tmp_path):
                     if _is_caption_fill(px[x, y]):
                         cream += 1
             assert cream / n < 0.02, f"{slug} caption leftover {cream}/{n}"
-
-            if slug == "cover":
-                continue
 
             card_top = None
             for y in range(PAGE_HEIGHT - 16, int(PAGE_HEIGHT * 0.40), -2):

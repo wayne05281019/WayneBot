@@ -9,7 +9,7 @@ import os
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
-CACHE_VER = "v25"
+CACHE_VER = "v26"
 # 六頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -112,6 +112,7 @@ PAGE_SLUGS = tuple(slug for slug, _title, _body in PAGES)
 
 # 每頁對應真實截圖（側欄已裁）。按鈕順序已改，舊紅圈不拿來當位置依據。
 PAGE_SHOTS = {
+    "cover": "cover_menu.png",
     "lookup": "charts.png",
     "lists": "lists.png",
 }
@@ -365,6 +366,12 @@ def _trim_guide_shot(name: str, im):
         "screen.png",
     }
     w, h = im.size
+    if name == "cover_menu.png" and w >= 900:
+        # 封面要看到四格圖示＋兩排在哪；鈕名以第 2 張文字為準。
+        left = int(w * 0.10)
+        right = int(w * 0.92)
+        top = int(h * 0.36)
+        return im.crop((left, top, right, h))
     if name in keyboard and w >= 1400:
         left = int(w * 0.08)
         right = int(w * 0.93)
