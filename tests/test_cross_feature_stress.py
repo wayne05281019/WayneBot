@@ -69,7 +69,7 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         msg = _msg(uid, "說明")
         kb = bot._reply_menu()
         row2 = [b.text for b in kb.keyboard[1]]
-        assert row2[-3:] == [MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
+        assert row2[-1] == MENU_BTN_STREAK
         await bot._reply_help_topic(msg, "guide")
         await bot._reply_help_topic(msg, "row2")
         return uid, bot._actor_key(msg)
@@ -78,11 +78,11 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         rows = await asyncio.gather(*[one(9000 + i) for i in range(20)])
         keys = [k for _, k in rows]
         assert len(set(keys)) == 20
-        assert MENU_BTN_AI in [b.text for b in bot._reply_menu().keyboard[0]]
+        assert MENU_BTN_AI in [b.text for b in bot._reply_menu().keyboard[1]]
         assert MENU_BTN_MARKET in [b.text for b in bot._reply_menu().keyboard[1]]
 
     asyncio.run(run())
-    assert "④ 連買區" in HELP_TOPICS["row2"]
+    assert "⑥ 連買區" in HELP_TOPICS["row2"]
 
 
 def test_screening_gate_blocks_second_family_member():

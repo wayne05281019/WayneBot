@@ -148,7 +148,7 @@ def _src(obj) -> str:
         ("融資成本", "no_cost"),
         ("黃金買點", "screen"),
         ("重點觀察", "screen"),
-        ("持倉", "ai"),
+        ("持倉", "portfolio"),
         ("我的持股", "portfolio"),
         ("成交量為什麼跌", "why"),
         ("2330資金", "chips"),
@@ -1047,7 +1047,9 @@ def test_l9_holdings_alias_portfolio_not_ai():
     hit = parse_intent("持股")
     assert hit.kind == "portfolio"
     hit2 = parse_intent("持倉")
-    assert hit2.kind == "ai"
+    assert hit2.kind == "portfolio"
+    assert parse_intent("持倉報告").kind == "ai"
+    assert parse_intent("模擬持倉").kind == "ai"
 
 
 # ===========================================================================

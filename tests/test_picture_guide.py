@@ -34,8 +34,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     dest = str(tmp_path / "guide")
     paths = render_picture_guide(dest, force=True)
     assert [os.path.basename(p).split("-", 1)[-1].replace(".png", "") for p in paths] == list(PAGE_SLUGS)
-    assert len(paths) == 16
-    assert len(PAGE_SLUGS) == 16
+    assert len(paths) == 6
+    assert len(PAGE_SLUGS) == 6
     blob = page_copy_blob()
     assert "⌨️" not in blob
     assert "➕" not in blob
@@ -54,7 +54,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "這波先當結束" in blob
     assert "官方收盤掃全市場" in blob
     assert "紅圈" in blob
-    assert "連買區　說明　回報" in blob
+    assert "連買區" in blob
+    assert "說明　海選　持股" in blob
     assert "如何賣" in blob
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
@@ -64,7 +65,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v24"
+    assert CACHE_VER == "v26"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -131,7 +132,7 @@ def test_page_render_roundtrip(tmp_path):
 
 def test_shot_panel_fills_content_width(tmp_path):
     """配圖卡左右貼齊內文寬；貼在下半，不要佔滿到跟字黏在一起。"""
-    slug, title, body = PAGES[1]
+    slug, title, body = next((s, t, b) for s, t, b in PAGES if s == "lookup")
     out = str(tmp_path / "menu.png")
     render_page(slug, title, body, out)
     with Image.open(out) as im:
@@ -373,7 +374,7 @@ def test_cover_and_menu_title_centered_shot_in_lower_half(tmp_path):
     dest = str(tmp_path / "layout")
     os.makedirs(dest, exist_ok=True)
     bg = (18, 26, 38)
-    for slug in ("cover", "menu"):
+    for slug in ("cover", "lookup"):
         title, body = next((t, b) for s, t, b in PAGES if s == slug)
         out = os.path.join(dest, f"{slug}.png")
         render_page(slug, title, body, out)

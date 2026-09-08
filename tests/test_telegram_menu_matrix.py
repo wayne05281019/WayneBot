@@ -102,6 +102,16 @@ def test_decision_card_typed_alias_still_routes():
     bot.decision_card_btn.assert_awaited_once()
 
 
+def test_holdings_typed_alias_routes_to_portfolio():
+    bot = _bot()
+
+    async def run():
+        await bot.on_text(_update(_msg(1001, "持倉")), MagicMock())
+
+    asyncio.run(run())
+    bot._send_portfolio.assert_awaited()
+
+
 @pytest.mark.parametrize("label,hint", list(INSTANT_ACK_BUTTONS.items()))
 def test_instant_ack_before_slow_work(label, hint):
     """大盤／資金須先回「讀取…」再跑重活（PR #134 契約）。"""

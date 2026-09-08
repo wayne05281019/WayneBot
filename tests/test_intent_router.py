@@ -39,6 +39,8 @@ def test_plain_speech_maps_to_official_paths():
         "連買區": "streak",
         "外資連買": "streak",
         "AI倉": "ai",
+        "持倉": "portfolio",
+        "持倉報告": "ai",
         "模擬持倉報告": "ai",
         "原因": "hub",
         "主力成本": "no_cost",
