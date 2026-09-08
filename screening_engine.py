@@ -969,7 +969,14 @@ def _stock_card_html(
         show_ma = True
     if show_ma:
         body.append(f"均線　月{_px_str(item.get('ma20'))}　季{_px_str(item.get('ma60'))}")
-    body.append(f"法人　{html_escape(chip_day)}　{_chip_html(item)}")
+    try:
+        from wayne_db import payload_is_emerging
+
+        show_chips = not payload_is_emerging(item)
+    except Exception:
+        show_chips = True
+    if show_chips:
+        body.append(f"法人　{html_escape(chip_day)}　{_chip_html(item)}")
     pat = str(item.get("pattern") or "")
     if pat:
         body.append(f"型態　{html_escape(pat)}")

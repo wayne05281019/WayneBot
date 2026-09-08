@@ -130,10 +130,16 @@ def hydrate_line_share_item(
     if not str(out.get("quote_date") or "").strip():
         out["quote_date"] = str(out.get("latest_date") or out.get("db_as_of") or "")
     keys = ("foreign_net", "trust_net", "dealer_net")
+    try:
+        from wayne_db import payload_is_emerging
+
+        skip_chips = payload_is_emerging(out)
+    except Exception:
+        skip_chips = False
     missing = any(k not in out for k in keys)
     item_has = any(_chip_int(out.get(k)) for k in keys)
     sid = str(out.get("stock_id") or out.get("code") or "").strip()
-    if db_path and sid and (missing or not item_has):
+    if db_path and sid and not skip_chips and (missing or not item_has):
         try:
             from chip_tape import last_complete_chip_nets
 
@@ -401,6 +407,13 @@ def format_line_stock_block(
 
 def _line_chip_kv_lines(item: Dict[str, Any], chip_fn) -> List[str]:
     """法人：近一日日期一列，外資／投信／自營各一列，手機才不會從數字中間折。"""
+    try:
+        from wayne_db import payload_is_emerging
+
+        if payload_is_emerging(item):
+            return []
+    except Exception:
+        pass
     tag = "近一日"
     md = _quote_md(item)
     if md:

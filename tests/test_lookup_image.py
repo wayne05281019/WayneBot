@@ -40,9 +40,9 @@ class LookupImageTests(unittest.TestCase):
             "sell_action": "直接減碼",
             "sell_why": "不同步（最高價但非最高溫）",
         }
-        out = _glance_photo_caption("網頁走勢", card)
-        self.assertIn("網頁走勢", out)
+        out = _glance_photo_caption("", card)
         self.assertIn("Ai建議", out)
+        self.assertNotIn("網頁走勢", out)
         self.assertNotIn("紀律　", out)
         self.assertIn("先出一點", out)
         self.assertIn("熱度沒跟上", out)
@@ -52,7 +52,7 @@ class LookupImageTests(unittest.TestCase):
         from bot_servers import _glance_photo_caption
 
         self.assertEqual(_glance_photo_caption("當日K＋籌碼價量", {"sell_action": ""}), "當日K＋籌碼價量")
-        self.assertEqual(_glance_photo_caption("", None), "當日K＋籌碼價量")
+        self.assertEqual(_glance_photo_caption("", None), "")
 
     def test_card_caption_appends_sell_note(self):
         from bot_servers import _decision_card_photo_caption, _photo_sell_caption
@@ -107,7 +107,7 @@ class LookupImageTests(unittest.TestCase):
         txt = WayneTelegramBot._chart_progress_text(3, current="glance")
         self.assertIn("介紹圖", txt)
         self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
-        self.assertLess(txt.index("決策卡"), txt.index("導航"))
+        self.assertNotIn("導航", txt)
 
     def test_chart_progress_records_sent_stage(self):
         txt = WayneTelegramBot._chart_progress_text(
@@ -115,7 +115,8 @@ class LookupImageTests(unittest.TestCase):
         )
         self.assertIn("已畫：介紹圖", txt)
         self.assertIn("現在：決策卡", txt)
-        self.assertIn("接著：導航圖", txt)
+        self.assertNotIn("接著：導航圖", txt)
+        self.assertIn("兩張齊了", txt)
 
     def test_op_state_map_works_without_init(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)

@@ -81,7 +81,7 @@ def test_help_guide_covers_all_main_buttons():
     assert "回報" in guide
     assert "不用給程式密鑰" in guide
     assert "低買高賣" in guide
-    assert "介紹圖" in guide and "一次出三張圖" in guide
+    assert "介紹圖" in guide and "一次出兩張圖" in guide
     assert "現價漲跌 → 決策卡圖 → 介紹圖" not in guide
     assert "要再看才按" not in guide
     assert "按錯了" in guide
@@ -212,7 +212,10 @@ def test_help_streak_does_not_split_listed_otc():
     assert "再選<b>上市</b>" not in blob
     assert "上市或上櫃" not in blob
     assert "外資+投信" in HELP_TOPICS["streak"]
-    assert "上市櫃一起列" in HELP_TOPICS["streak"]
+    assert "先選" in HELP_TOPICS["streak"] and "上市櫃" in HELP_TOPICS["streak"]
+    assert "興櫃" in HELP_TOPICS["streak"]
+    assert "上市櫃一起列" not in HELP_TOPICS["streak"]
+    assert "訊息下面" in HELP_TOPICS["streak"] or "訊息下方" in HELP_TOPICS["streak"]
     assert "連買區" in HELP_TOPICS["row2"]
     assert "曆日" not in blob
     assert "日曆天" in HELP_TOPICS["guide"]
@@ -241,6 +244,24 @@ def test_streak_wizard_has_no_listed_otc_step():
     src = open("bot_servers.py", encoding="utf-8").read()
     assert 'KeyboardButton("上市")' not in src
     assert 'InlineKeyboardButton("上市"' not in src
+
+
+def test_streak_wizard_does_not_clone_reply_keyboard():
+    """連買步驟鈕只掛訊息下方；輸入列維持十二鈕，不要複製同一排。"""
+    from bot_servers import WayneTelegramBot
+
+    assert not hasattr(WayneTelegramBot, "_streak_kind_keyboard")
+    assert not hasattr(WayneTelegramBot, "_streak_days_keyboard")
+    assert not hasattr(WayneTelegramBot, "_streak_stocks_keyboard")
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "tray_hint" not in src
+    assert "也可點輸入區鍵盤" not in src
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    uni = [b.text for row in bot._streak_uni_inline().inline_keyboard for b in row]
+    assert uni[:2] == ["上市櫃", "興櫃"]
+    em = [b.text for row in bot._streak_em_inline().inline_keyboard for b in row]
+    assert "改看上市櫃" in em
+    assert "興櫃" not in em
 
 
 def test_help_nav_does_not_duplicate_reply_menu_labels():
@@ -364,15 +385,23 @@ def test_inline_fallback_keyboard_is_two_row_menu():
     assert row1[-1] == MENU_BTN_REPORT
 
 
-def test_streak_kind_keyboard_magic_three_choices():
+def test_streak_kind_inline_magic_three_choices():
     from bot_servers import MENU_BTN_BACK_MAIN, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    kb = bot._streak_kind_keyboard()
-    labels = [b.text for row in kb.keyboard for b in row]
+    assert not hasattr(WayneTelegramBot, "_streak_kind_keyboard")
+    assert not hasattr(WayneTelegramBot, "_streak_days_keyboard")
+    assert not hasattr(WayneTelegramBot, "_streak_stocks_keyboard")
+    kb = bot._streak_kind_inline("ALL")
+    rows = kb.inline_keyboard
+    labels = [b.text for row in rows for b in row]
     assert labels[:3] == ["外資", "投信", "外資+投信"]
+    assert len(rows[0]) == 3
     assert MENU_BTN_BACK_MAIN in labels
     assert "上市" not in labels
+    uni = bot._streak_uni_inline()
+    uni_labels = [b.text for row in uni.inline_keyboard for b in row]
+    assert uni_labels[:2] == ["上市櫃", "興櫃"]
 
 
 def test_portfolio_keyboard_shows_stock_name():

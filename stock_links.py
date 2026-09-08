@@ -66,35 +66,18 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
     return "TW"
 
 
-def tradingview_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
-    """TradingView 交易所前綴。興櫃沒有可靠代號就不給。"""
+def listed_kline_ok(stock_id: str, db_path: Optional[str] = None) -> bool:
+    """上市櫃才掛自家 /k/ 日K頁。興櫃沒有這張即時K。"""
     m = quote_market(stock_id, db_path)
-    if m in ("EM", "ESB", "EMERGING"):
-        return ""
-    if m in ("TWO", "TPEX", "OTC", "ROCO"):
-        return "TPEX"
-    return "TWSE"
+    return m not in ("EM", "ESB", "EMERGING")
 
 
-def tradingview_widget_symbol(stock_id: str, db_path: Optional[str] = None) -> str:
-    """圖表元件內部代號。使用者看得見的文案仍寫上市／上櫃，不要把此外掛到說明書。"""
-    sid = str(stock_id or "").strip()
-    if not sid:
-        return ""
-    ex = tradingview_exchange(sid, db_path)
-    if not ex:
-        return ""
-    return f"{ex}:{sid}"
-
-
-def tradingview_chart_url(
+def kline_page_url(
     stock_id: str, db_path: Optional[str] = None, base_url: str = ""
 ) -> str:
-    """查股圖下 K線：開自家這一檔圖（先進日K）。興櫃不給。"""
+    """查股圖下 K線：開自家這一檔圖（先進日K）。興櫃不給。不是外站圖表。"""
     sid = str(stock_id or "").strip()
-    if not sid:
-        return ""
-    if not tradingview_exchange(sid, db_path):
+    if not sid or not listed_kline_ok(sid, db_path):
         return ""
     from config import get_public_base_url
 
@@ -103,12 +86,11 @@ def tradingview_chart_url(
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:
+    """兩個都回奇摩報價頁。K線走自家 /k/，不再另開奇摩技術分析。"""
     sid = str(stock_id or "").strip()
     ex = yahoo_exchange(sid, db_path)
     web = f"https://tw.stock.yahoo.com/quote/{sid}.{ex}"
-    # 技術線另開技術分析頁；LINE／股名點進去要用報價頁（第一屏股名＋現價），見 line_yahoo_quote_url。
-    mobile = f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/technical-analysis"
-    return web, mobile
+    return web, web
 
 
 def yahoo_income_url(stock_id: str, db_path: Optional[str] = None) -> str:

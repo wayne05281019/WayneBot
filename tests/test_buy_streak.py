@@ -11,6 +11,8 @@ from buy_streak import (
     KIND_BOTH,
     KIND_FOREIGN,
     KIND_TRUST,
+    MARKET_ALL,
+    MARKET_EM,
     MARKET_TW,
     MARKET_TWO,
     MIN_STREAK,
@@ -23,6 +25,7 @@ from buy_streak import (
     parse_kind,
     parse_market,
     parse_stock_code,
+    parse_universe,
 )
 
 
@@ -155,7 +158,10 @@ def test_parse_helpers():
     assert parse_days("25天") == 25
     assert parse_days("0050") is None
     assert parse_days("00878") is None
-    assert parse_stock_code("2330 台積電") == "2330"
+    assert parse_universe("上市櫃") == MARKET_ALL
+    assert parse_universe("興櫃") == MARKET_EM
+    assert parse_universe("上市") is None
+    assert parse_universe("上櫃") is None
     assert parse_stock_code("2330台積電") == "2330"
     assert parse_stock_code("00706L") == "00706L"
     assert parse_stock_code("00990a") == "00990A"
@@ -219,11 +225,12 @@ def test_all_market_merges_listed_and_otc(db):
     ids = {r.stock_id for xs in snap.by_days.values() for r in xs}
     assert "2330" in ids
     assert "3105" in ids
-    assert snap.label == "外資連買"
+    assert snap.label == "外資連買 · 上市櫃"
     html = format_list_html(snap, 6, db)
     assert "2330" in html
-    assert " · 上市" not in html
+    assert " · 上市櫃" in html
     assert " · 上櫃" not in html
+    assert "輸入區鍵盤" not in html
 
 
 def test_etf_excluded(db):

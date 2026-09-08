@@ -109,8 +109,8 @@ def _stock_caption_name(card: dict | None, code: str = "") -> str:
 
 
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
-    """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
-    cap = str(base or "").strip() or fallback
+    """圖說：有如何賣就寫在圖底下；沒有就不硬塞網頁走勢／點縮圖講解。"""
+    cap = str(base or "").strip() or str(fallback or "").strip()
     if not card:
         return cap
     try:
@@ -123,7 +123,8 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
         return cap
     if not short:
         return cap
-    return f"{cap}\nAi建議　{html_escape(short)}"
+    note = f"Ai建議　{html_escape(short)}"
+    return f"{cap}\n{note}" if cap else note
 
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
@@ -132,8 +133,8 @@ def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: s
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
-    """介紹圖說明：有如何賣就寫在第一張圖底下。"""
-    return _photo_sell_caption(base, card)
+    """介紹圖圖說：只留如何賣；不要網頁走勢／點縮圖講義。"""
+    return _photo_sell_caption(base, card, fallback="")
 
 
 def _buy_holdings_prompt(code: str, lots=None) -> str:
@@ -207,7 +208,7 @@ HELP_TOPICS = {
         "2　<b>直接打代號</b>看圖，例如 "
         + LOOKUP_CODE_EXAMPLES_HTML
         + "（不要先按「刷新」）。股票四碼、ETF 可含 L／R／A。海選名單仍只有股票／KY\n"
-        "3　三張圖出來後，<b>籌碼／營收／產業／K線</b>在圖下面，不在右側四格鍵盤\n"
+        "3　兩張圖出來後，<b>籌碼／營收／產業／K線／導航圖</b>在圖下面，不在右側四格鍵盤\n"
         "\n"
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
@@ -228,7 +229,7 @@ HELP_TOPICS = {
         "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。\n"
         "\n"
         "<b>查某一檔</b>\n"
-        "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。點縮圖可放大。\n"
+        "打股名或代號會<b>一次出兩張圖</b>：<b>介紹圖</b>（上半資訊、下半日K）→ 決策卡。完整 180 日按圖下<b>導航圖</b>。\n"
         "\n"
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
@@ -373,8 +374,8 @@ HELP_TOPICS = {
         "\n"
         "<b>⑥ 連買區</b>\n"
         "• 是什麼：官方法人連續買超名單（不是下單訊號）。\n"
-        "• 怎麼用：先選<b>外資</b>／<b>投信</b>／<b>外資+投信</b>，再點天數。\n"
-        "• 不分市場：上市櫃一起列，不再分市場。選到一半按錯，改按別顆就取消，再按連買區重來。\n"
+        "• 怎麼用：先選<b>上市櫃</b>或<b>興櫃</b>（選了另一個就不會同時出現）。上市櫃再選外資／投信／外資+投信，再點天數。\n"
+        "• 興櫃沒有官方法人表，不算連買天。按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按第一排最右「回報」。\n"
         "圖文在說明頁下方分類鈕。"
@@ -523,10 +524,11 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>查股頁（圖下方按鈕）</b>\n"
-        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）。點縮圖可放大。\n"
-        "籌碼／營收／產業／K線按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
+        "打股名或按看這檔：一次出介紹圖、決策卡（相簿）。完整 180 日按圖下「導航圖」。\n"
+        "籌碼／營收／產業／K線／導航圖按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
         "\n"
         "<b>圖下方這一排</b>\n"
+        "• <b>導航圖</b>：180 日高低導航（查股不自動出）\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
         "• <b>產業</b>：一張圖卡（同業中位＋本產業法人）；股名旁有公開細項小框，沒抓到不畫\n"
@@ -606,7 +608,7 @@ HELP_TOPICS = {
         "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
-        "一次出三張圖：介紹圖 → 決策卡 → 導航圖。\n"
+        "一次出兩張圖：介紹圖 → 決策卡。完整 180 日按圖下「導航圖」。\n"
         "找不到：撞名或國字打不準會列出相近的請你點；再打代號最準。"
     ),
     "flow": (
@@ -621,14 +623,17 @@ HELP_TOPICS = {
         "<b>連買區怎麼用</b>\n"
         "主選單第二排「連買區」。\n"
         "\n"
-        "<b>第一步（訊息下方三顆）</b>\n"
+        "<b>第一步</b>：先選並點<b>上市櫃</b>或<b>興櫃</b>（選了另一個就消失，不會兩顆一直留著）。\n"
+        "興櫃沒有官方法人買賣超表，不能算連買天。\n"
+        "\n"
+        "<b>第二步（上市櫃）</b>：點訊息下方三顆\n"
         "• <b>外資</b>＝外資連續買超\n"
         "• <b>投信</b>＝投信連續買超\n"
         "• <b>外資+投信</b>＝同一天兩家都買超才算一天\n"
         "\n"
-        "<b>第二步</b>：點連買天數（只列出剛好有股票的天數）。\n"
-        "上市櫃一起列，不再分市場。不要找「上市／上櫃」按鈕，已經沒有了。\n"
-        "點 6 就只看剛好連買 6 天的股票。\n"
+        "<b>第三步</b>：點連買天數（只列出剛好有股票的天數）。\n"
+        "不要找「上市／上櫃」分開的按鈕。點 6 就只看剛好連買 6 天的股票。\n"
+        "按鈕只在這則訊息下面；輸入列維持兩排主選單，不再複製同一排。\n"
         "\n"
         "<b>選到一半按錯了</b>\n"
         "改按主選單其他按鈕就取消；要重來再按「連買區」。也可打 /menu。\n"
@@ -663,8 +668,8 @@ HELP_TOPICS = {
         "查完一檔，按鈕在<b>圖下面那一排</b>，不在右側 ⌨️ 主選單。\n"
         "\n"
         "<b>連買選到一半按錯</b>\n"
-        "先選外資／投信／外資+投信，再點天數。中途改按別顆就取消；再按「連買區」重來。\n"
-        "上市櫃已經一起列，不用再選市場。\n"
+        "先選上市櫃或興櫃，上市櫃再選外資／投信／外資+投信，再點天數。中途改按別顆就取消；再按「連買區」重來。\n"
+        "興櫃沒有官方法人表，不算連買天。按鈕只在訊息下面。\n"
         "\n"
         "<b>「回報」按下去又反悔</b>\n"
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
@@ -1192,82 +1197,40 @@ class WayneTelegramBot:
         self._invalidate_menu_layout(uid)
         await self._refresh_reply_menu(message, uid=uid, silent=False)
 
-    def _streak_nav_row(self, *, back_step: bool = False):
-        row = []
-        if back_step:
-            row.append(KeyboardButton(MENU_BTN_BACK_STEP))
-        row.append(KeyboardButton(MENU_BTN_BACK_MAIN))
-        return row
-
-    def _streak_kind_keyboard(self):
-        from buy_streak import KIND_BTN
-
-        rows = [
-            [KeyboardButton(KIND_BTN["foreign"]), KeyboardButton(KIND_BTN["trust"])],
-            [KeyboardButton(KIND_BTN["both"])],
-            self._streak_nav_row(back_step=False),
-        ]
-        try:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
-        except TypeError:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
-    def _streak_days_keyboard(self, days: list[int]):
-        rows = []
-        row = []
-        for n in days:
-            row.append(KeyboardButton(str(n)))
-            if len(row) == 5:
-                rows.append(row)
-                row = []
-        if row:
-            rows.append(row)
-        rows.append(self._streak_nav_row(back_step=True))
-        try:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
-        except TypeError:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
-    def _streak_stocks_keyboard(self, rows_data, *, has_prev: bool, has_next: bool):
-        rows = []
-        pair = []
-        for item in rows_data:
-            pair.append(KeyboardButton(f"{item.stock_id} {item.name}".strip()[:28]))
-            if len(pair) == 2:
-                rows.append(pair)
-                pair = []
-        if pair:
-            rows.append(pair)
-        nav = []
-        if has_prev:
-            nav.append(KeyboardButton(MENU_BTN_PREV_PAGE))
-        if has_next:
-            nav.append(KeyboardButton(MENU_BTN_NEXT_PAGE))
-        if nav:
-            rows.append(nav)
-        rows.append(self._streak_nav_row(back_step=True))
-        try:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
-        except TypeError:
-            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
-    def _streak_kind_inline(self):
-        from buy_streak import KIND_BTN
+    def _streak_uni_inline(self):
+        from buy_streak import MARKET_ALL, MARKET_EM, UNI_BTN
 
         return InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton(KIND_BTN["foreign"], callback_data="fb:k:foreign"),
-                    InlineKeyboardButton(KIND_BTN["trust"], callback_data="fb:k:trust"),
+                    InlineKeyboardButton(UNI_BTN[MARKET_ALL], callback_data="fb:uni:ALL"),
+                    InlineKeyboardButton(UNI_BTN[MARKET_EM], callback_data="fb:uni:EM"),
                 ],
-                [InlineKeyboardButton(KIND_BTN["both"], callback_data="fb:k:both")],
                 [InlineKeyboardButton("回主選單", callback_data="fb:home")],
+            ]
+        )
+
+    def _streak_kind_inline(self, market: str = "ALL"):
+        from buy_streak import KIND_BTN
+
+        m = str(market or "ALL").strip() or "ALL"
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(KIND_BTN["foreign"], callback_data=f"fb:k:foreign:{m}"),
+                    InlineKeyboardButton(KIND_BTN["trust"], callback_data=f"fb:k:trust:{m}"),
+                    InlineKeyboardButton(KIND_BTN["both"], callback_data=f"fb:k:both:{m}"),
+                ],
+                [
+                    InlineKeyboardButton("上一步", callback_data="fb:back:uni"),
+                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
+                ],
             ]
         )
 
     def _streak_days_inline(self, kind: str, market: str, days: list[int]):
         k = str(kind or "").strip()
-        m = str(market or "").strip()
+        m = str(market or "").strip() or "ALL"
         rows = []
         row = []
         for n in days:
@@ -1279,13 +1242,15 @@ class WayneTelegramBot:
             rows.append(row)
         rows.append(
             [
-                InlineKeyboardButton("上一步", callback_data="fb:back:kind"),
+                InlineKeyboardButton("上一步", callback_data=f"fb:back:kind:{m}"),
                 InlineKeyboardButton("回主選單", callback_data="fb:home"),
             ]
         )
         return InlineKeyboardMarkup(rows)
 
-    def _streak_pick_inline(self, rows_data):
+    def _streak_pick_inline(self, rows_data, *, kind: str, market: str, days: int, offset: int, has_prev: bool, has_next: bool):
+        from buy_streak import PAGE_SIZE
+
         kb = []
         for item in rows_data:
             c = str(item.stock_id).strip()[:6]
@@ -1295,21 +1260,45 @@ class WayneTelegramBot:
                     InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
                 ]
             )
-        return InlineKeyboardMarkup(kb) if kb else None
+        nav = []
+        if has_prev:
+            nav.append(
+                InlineKeyboardButton(
+                    "上一頁",
+                    callback_data=f"fb:p:{kind}:{market}:{int(days)}:{max(0, int(offset) - PAGE_SIZE)}",
+                )
+            )
+        if has_next:
+            nav.append(
+                InlineKeyboardButton(
+                    "下一頁",
+                    callback_data=f"fb:p:{kind}:{market}:{int(days)}:{int(offset) + PAGE_SIZE}",
+                )
+            )
+        if nav:
+            kb.append(nav)
+        kb.append(
+            [
+                InlineKeyboardButton("上一步", callback_data=f"fb:back:days:{kind}:{market}"),
+                InlineKeyboardButton("回主選單", callback_data="fb:home"),
+            ]
+        )
+        return InlineKeyboardMarkup(kb)
 
-    async def _streak_send_step(
-        self, message, html: str, *, inline, reply_kb, tray_hint: str
-    ) -> None:
-        """精靈步驟：訊息下方 Inline（一定看得到）＋再掛 ReplyKeyboard（輸入區鍵盤）。
+    def _streak_em_inline(self):
+        return InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("改看上市櫃", callback_data="fb:uni:ALL")],
+                [
+                    InlineKeyboardButton("上一步", callback_data="fb:back:uni"),
+                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
+                ],
+            ]
+        )
 
-        Telegram 一則訊息只能帶一種 markup，所以拆兩則；桌面版常把 Reply 鍵盤收起，
-        只靠 Reply 會以為「沒按鈕」。
-        """
+    async def _streak_send_step(self, message, html: str, *, inline) -> None:
+        """精靈步驟只掛訊息下方 Inline；輸入列維持兩排主選單，不要複製同一排按鈕。"""
         await message.reply_html(html, reply_markup=inline, disable_web_page_preview=True)
-        try:
-            await message.reply_text(tray_hint, reply_markup=reply_kb)
-        except Exception:
-            logger.exception("連買精靈 ReplyKeyboard 補掛失敗")
 
     async def streak_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
@@ -1320,17 +1309,42 @@ class WayneTelegramBot:
 
     async def _start_buy_streak(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
-        self._pending[actor] = "fbuy:kind"
+        self._pending[actor] = "fbuy:uni"
         await self._streak_send_step(
             message,
             "<b>連買區域</b>\n"
-            "先選要看哪一種連買（點訊息下方按鈕）。\n"
+            "先選<b>上市櫃</b>或<b>興櫃</b>（點訊息下方按鈕；選了另一個就不會同時出現）。\n"
+            "• <b>上市櫃</b>＝上市＋上櫃，官方法人買賣超可算連買天\n"
+            "• <b>興櫃</b>＝沒有官方法人表，不能算外資／投信連買",
+            inline=self._streak_uni_inline(),
+        )
+
+    async def _streak_show_kind(self, message, uid: str, actor: str, market: str = "ALL") -> None:
+        from buy_streak import MARKET_ALL, MARKET_EM
+
+        market = str(market or MARKET_ALL).strip().upper() or MARKET_ALL
+        if market == MARKET_EM:
+            await self._streak_show_emerging(message, uid, actor)
+            return
+        self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
+        await self._streak_send_step(
+            message,
+            "<b>連買區域 · 上市櫃</b>\n"
+            "已選上市櫃。再選哪一種連買（點訊息下方按鈕）。\n"
             "• <b>外資</b>＝外資連續買超\n"
             "• <b>投信</b>＝投信連續買超\n"
             "• <b>外資+投信</b>＝同一天兩家都買超，再連起來算天數",
-            inline=self._streak_kind_inline(),
-            reply_kb=self._streak_kind_keyboard(),
-            tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
+            inline=self._streak_kind_inline(MARKET_ALL),
+        )
+
+    async def _streak_show_emerging(self, message, uid: str, actor: str) -> None:
+        from buy_streak import EM_NO_CHIPS_HTML
+
+        self._pending[actor] = "fbuy:em"
+        await self._streak_send_step(
+            message,
+            EM_NO_CHIPS_HTML,
+            inline=self._streak_em_inline(),
         )
 
     async def _restore_main_menu(self, message, uid: str) -> None:
@@ -1342,16 +1356,13 @@ class WayneTelegramBot:
         self, message, uid: str, pending: str, text: str, *, actor: str
     ) -> bool:
         from buy_streak import (
-            KIND_LABEL,
+            MARKET_ALL,
+            MARKET_EM,
             PAGE_SIZE,
-            find_row,
-            format_list_html,
-            format_stock_html,
-            load_snapshot,
-            page_bounds,
             parse_days,
             parse_kind,
             parse_stock_code,
+            parse_universe,
         )
 
         parts = (pending or "").split(":")
@@ -1362,65 +1373,91 @@ class WayneTelegramBot:
             await self._restore_main_menu(message, uid)
             return True
         if text == MENU_BTN_BACK_STEP:
-            step = parts[1] if len(parts) > 1 else "kind"
-            if step in ("kind",):
-                await self._start_buy_streak(message, uid)
-            elif step == "mkt":
+            step = parts[1] if len(parts) > 1 else "uni"
+            if step in ("uni",):
+                await self._restore_main_menu(message, uid)
+            elif step in ("kind", "em", "mkt"):
                 await self._start_buy_streak(message, uid)
             elif step == "days":
-                await self._start_buy_streak(message, uid)
+                await self._streak_show_kind(message, uid, actor, MARKET_ALL)
             elif step == "pick":
                 kind = parts[2] if len(parts) > 2 else ""
-                await self._streak_show_days(message, uid, actor, kind, "ALL")
+                market = parts[3] if len(parts) > 3 else MARKET_ALL
+                await self._streak_show_days(message, uid, actor, kind, market)
             else:
                 await self._start_buy_streak(message, uid)
             return True
 
-        step = parts[1] if len(parts) > 1 else "kind"
+        step = parts[1] if len(parts) > 1 else "uni"
+        if step == "uni":
+            uni = parse_universe(text)
+            if uni == MARKET_EM:
+                await self._streak_show_emerging(message, uid, actor)
+                return True
+            if uni == MARKET_ALL:
+                await self._streak_show_kind(message, uid, actor, MARKET_ALL)
+                return True
+            kind = parse_kind(text)
+            if kind:
+                await self._streak_show_days(message, uid, actor, kind, MARKET_ALL)
+                return True
+            if _text_escapes_pending(text):
+                return False
+            await self._start_buy_streak(message, uid)
+            return True
+
+        if step == "em":
+            uni = parse_universe(text)
+            if uni == MARKET_ALL or text in ("改看上市櫃", "上市櫃"):
+                await self._streak_show_kind(message, uid, actor, MARKET_ALL)
+                return True
+            if uni == MARKET_EM:
+                await self._streak_show_emerging(message, uid, actor)
+                return True
+            if _text_escapes_pending(text):
+                return False
+            await self._streak_show_emerging(message, uid, actor)
+            return True
+
         if step == "kind":
+            uni = parse_universe(text)
+            if uni == MARKET_EM:
+                await self._streak_show_emerging(message, uid, actor)
+                return True
             kind = parse_kind(text)
             if not kind:
                 if _text_escapes_pending(text):
                     return False
-                self._pending[actor] = "fbuy:kind"
-                await self._streak_send_step(
-                    message,
-                    "請選 <b>外資</b>、<b>投信</b> 或 <b>外資+投信</b>。",
-                    inline=self._streak_kind_inline(),
-                    reply_kb=self._streak_kind_keyboard(),
-                    tray_hint="也可點輸入區鍵盤：外資／投信／外資+投信",
-                )
+                await self._streak_show_kind(message, uid, actor, MARKET_ALL)
                 return True
-            await self._streak_show_days(message, uid, actor, kind, "ALL")
+            await self._streak_show_days(message, uid, actor, kind, MARKET_ALL)
             return True
 
         if step == "mkt":
             kind = parts[2] if len(parts) > 2 else ""
-            await self._streak_show_days(message, uid, actor, kind, "ALL")
+            await self._streak_show_days(message, uid, actor, kind, MARKET_ALL)
             return True
 
         if step == "days":
             kind = parts[2] if len(parts) > 2 else ""
-            market = parts[3] if len(parts) > 3 else ""
+            market = parts[3] if len(parts) > 3 else MARKET_ALL
+            if str(market).upper() == MARKET_EM:
+                await self._streak_show_emerging(message, uid, actor)
+                return True
             days = parse_days(text)
             if days is None:
                 if _text_escapes_pending(text):
                     return False
-                self._pending[actor] = f"fbuy:days:{kind}:{market}"
-                await self._streak_send_step(
-                    message,
-                    "請點天數（訊息下方或輸入區鍵盤）。",
-                    inline=self._streak_days_inline(kind, market, []),
-                    reply_kb=self._streak_days_keyboard([]),
-                    tray_hint="也可點輸入區鍵盤上的天數",
-                )
+                await self._streak_show_days(message, uid, actor, kind, MARKET_ALL)
                 return True
-            await self._streak_show_stocks(message, uid, actor, kind, market, days, offset=0)
+            await self._streak_show_stocks(
+                message, uid, actor, kind, MARKET_ALL, days, offset=0
+            )
             return True
 
         if step == "pick":
             kind = parts[2] if len(parts) > 2 else ""
-            market = parts[3] if len(parts) > 3 else ""
+            market = parts[3] if len(parts) > 3 else MARKET_ALL
             days = int(parts[4]) if len(parts) > 4 and str(parts[4]).isdigit() else 0
             offset = int(parts[5]) if len(parts) > 5 and str(parts[5]).isdigit() else 0
             if text == MENU_BTN_NEXT_PAGE:
@@ -1451,26 +1488,10 @@ class WayneTelegramBot:
                     return False
                 self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
                 await message.reply_html(
-                    "請點鍵盤上的股票，或打代號。",
+                    "請點名單下方的股名，或打代號。",
                     disable_web_page_preview=True,
                 )
                 return True
-            snap = await asyncio.to_thread(load_snapshot, self.db_path, kind, market)
-            row = find_row(snap, days, code)
-            if row:
-                recap = (
-                    f"<b>{KIND_LABEL.get(kind, kind)} {days} 天</b>\n"
-                    f"{format_stock_html(row, kind, self.db_path)}\n"
-                    "下面是一般查股內容；按籌碼可核對官方法人表。"
-                )
-                try:
-                    await message.reply_html(
-                        recap,
-                        reply_markup=self._hub_keyboard(code),
-                        disable_web_page_preview=True,
-                    )
-                except Exception:
-                    logger.exception("連買摘要失敗 code=%s", code)
             self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
             await self._send_card_to(message, code, uid)
             return True
@@ -1478,7 +1499,9 @@ class WayneTelegramBot:
         return False
 
     async def _handle_buy_streak_callback(self, q, uid: str, data: str) -> None:
-        """連買精靈 Inline 按鈕：訊息下方一定看得到，不依賴桌面版 Reply 鍵盤托盤。"""
+        """連買精靈只掛訊息下方 Inline；輸入列維持兩排主選單。"""
+        from buy_streak import MARKET_ALL, MARKET_EM
+
         actor = self._actor_key(q.message, uid=uid)
         parts = (data or "").split(":")
         try:
@@ -1491,22 +1514,48 @@ class WayneTelegramBot:
         if op == "home":
             await self._restore_main_menu(q.message, uid)
             return
-        if op == "kind" or (op == "back" and len(parts) > 2 and parts[2] == "kind"):
+        if op == "uni":
+            market = parts[2] if len(parts) > 2 else MARKET_ALL
+            if str(market).upper() == MARKET_EM:
+                await self._streak_show_emerging(q.message, uid, actor)
+            else:
+                await self._streak_show_kind(q.message, uid, actor, MARKET_ALL)
+            return
+        if op == "back":
+            dest = parts[2] if len(parts) > 2 else "uni"
+            if dest == "uni":
+                await self._start_buy_streak(q.message, uid)
+                return
+            if dest == "kind":
+                await self._streak_show_kind(q.message, uid, actor, MARKET_ALL)
+                return
+            if dest == "days":
+                kind = parts[3] if len(parts) > 3 else ""
+                market = parts[4] if len(parts) > 4 else MARKET_ALL
+                await self._streak_show_days(q.message, uid, actor, kind, market)
+                return
+            if dest == "mkt":
+                await self._start_buy_streak(q.message, uid)
+                return
             await self._start_buy_streak(q.message, uid)
             return
-        if op == "back" and len(parts) > 2 and parts[2] == "mkt":
+        if op == "kind":
             await self._start_buy_streak(q.message, uid)
             return
         if op == "k" and len(parts) > 2:
             kind = parts[2]
+            market = parts[3] if len(parts) > 3 else MARKET_ALL
             if kind not in ("foreign", "trust", "both"):
                 await self._start_buy_streak(q.message, uid)
                 return
-            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
+            if str(market).upper() == MARKET_EM:
+                await self._streak_show_emerging(q.message, uid, actor)
+                return
+            await self._streak_show_days(q.message, uid, actor, kind, MARKET_ALL)
             return
         if op == "m" and len(parts) > 3:
             kind = parts[2]
-            await self._streak_show_days(q.message, uid, actor, kind, "ALL")
+            await self._streak_show_days(q.message, uid, actor, kind, MARKET_ALL)
             return
         if op == "d" and len(parts) > 4:
             kind = parts[2]
@@ -1522,10 +1571,27 @@ class WayneTelegramBot:
                 q.message, uid, actor, kind, market, days, offset=0
             )
             return
+        if op == "p" and len(parts) > 5:
+            kind = parts[2]
+            market = parts[3]
+            try:
+                days = int(parts[4])
+                offset = int(parts[5])
+            except ValueError:
+                await self._streak_show_days(q.message, uid, actor, kind, market)
+                return
+            await self._streak_show_stocks(
+                q.message, uid, actor, kind, market, days, offset=max(0, offset)
+            )
+            return
 
     async def _streak_show_days(self, message, uid: str, actor: str, kind: str, market: str) -> None:
-        from buy_streak import KIND_LABEL, MARKET_ALL, load_snapshot
+        from buy_streak import KIND_LABEL, MARKET_ALL, MARKET_EM, load_snapshot
 
+        market = str(market or MARKET_ALL).strip().upper() or MARKET_ALL
+        if market == MARKET_EM:
+            await self._streak_show_emerging(message, uid, actor)
+            return
         market = MARKET_ALL
         status = await self._transient_status(message, "整理連買名單…")
         try:
@@ -1536,12 +1602,12 @@ class WayneTelegramBot:
         except Exception as e:
             logger.exception("連買名單失敗 kind=%s market=%s", kind, market)
             await self._delete_message(status)
-            await message.reply_html(
+            await self._streak_send_step(
+                message,
                 f"連買名單讀取失敗：{html_escape(e)}",
-                reply_markup=self._streak_kind_inline(),
-                disable_web_page_preview=True,
+                inline=self._streak_kind_inline(MARKET_ALL),
             )
-            self._pending[actor] = "fbuy:kind"
+            self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
             return
         await self._delete_message(status)
         self._pending[actor] = f"fbuy:days:{kind}:{market}"
@@ -1553,26 +1619,21 @@ class WayneTelegramBot:
             as_of_s = format_trading_date_zh(as_of)
         except Exception:
             as_of_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:8]}" if len(as_of) == 8 else (as_of or "—")
-        title = f"<b>{KIND_LABEL.get(kind, kind)}</b>"
+        title = f"<b>{KIND_LABEL.get(kind, kind)} · 上市櫃</b>"
         if not days:
             await self._streak_send_step(
                 message,
                 f"{title}\n截至 {as_of_s}。目前沒有連續買超 2 天以上的股票。",
-                inline=self._streak_kind_inline(),
-                reply_kb=self._streak_kind_keyboard(),
-                tray_hint="請改選外資／投信／外資+投信，或回主選單",
+                inline=self._streak_kind_inline(MARKET_ALL),
             )
-            self._pending[actor] = "fbuy:kind"
+            self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
             return
         await self._streak_send_step(
             message,
             f"{title}\n"
             f"截至 {as_of_s} 官方籌碼。目前最長 <b>{snap.max_days}</b> 天。\n"
-            "請點下面天數（或輸入區鍵盤）；名單是「剛好連買這麼多天」（不是以上）。\n"
-            "上市櫃一起列。",
+            "請點訊息下方天數。名單是「剛好連買這麼多天」（不是以上）。",
             inline=self._streak_days_inline(kind, market, days),
-            reply_kb=self._streak_days_keyboard(days),
-            tray_hint="也可點輸入區鍵盤上的天數",
         )
 
     async def _streak_show_stocks(
@@ -1586,8 +1647,12 @@ class WayneTelegramBot:
         *,
         offset: int = 0,
     ) -> None:
-        from buy_streak import PAGE_SIZE, MARKET_ALL, format_list_html, load_snapshot, page_bounds
+        from buy_streak import PAGE_SIZE, MARKET_ALL, MARKET_EM, format_list_html, load_snapshot, page_bounds
 
+        market = str(market or MARKET_ALL).strip().upper() or MARKET_ALL
+        if market == MARKET_EM:
+            await self._streak_show_emerging(message, uid, actor)
+            return
         market = MARKET_ALL
 
         status = await self._transient_status(message, "列出連買股票…")
@@ -1607,21 +1672,28 @@ class WayneTelegramBot:
         chunk = rows[off : off + PAGE_SIZE]
         self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{off}"
         html = format_list_html(snap, days, self.db_path, offset=off, limit=PAGE_SIZE)
+        inline = self._streak_pick_inline(
+            chunk,
+            kind=kind,
+            market=market,
+            days=days,
+            offset=off,
+            has_prev=has_prev,
+            has_next=has_next,
+        )
         try:
             await message.reply_html(
                 html,
-                reply_markup=self._streak_pick_inline(chunk),
+                reply_markup=inline,
                 disable_web_page_preview=True,
             )
         except Exception:
             logger.exception("連買清單 HTML 失敗")
-            await message.reply_text(
-                f"連買 {days} 天 {len(chunk)} 檔。請點鍵盤股名看圖。",
+            await message.reply_html(
+                f"連買 {days} 天 {len(chunk)} 檔。請點訊息下方股名看圖。",
+                reply_markup=inline,
+                disable_web_page_preview=True,
             )
-        await message.reply_text(
-            "點上面股名或這排鍵盤看完整圖；籌碼可核對。",
-            reply_markup=self._streak_stocks_keyboard(chunk, has_prev=has_prev, has_next=has_next),
-        )
 
     def _q(self, topic: str):
         """網頁版把 ❓ 畫成紅圈問號，看起來像壞掉；改用「說明」二字。"""
@@ -1692,38 +1764,51 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """手機閱讀：每列最多三顆。產業／報導／K線放最上；興櫃沒有法人表就不掛籌碼／營收。"""
+        """興櫃四顆一排：產業／觀察／記買入／說明。上市櫃最多三顆一排；導航圖按需。"""
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
         news_url = _http_url(news.get("url") or "")
-        tv_url = ""
+        k_url = ""
         if not em:
             try:
-                from stock_links import tradingview_chart_url
+                from stock_links import kline_page_url
 
-                tv_url = _http_url(tradingview_chart_url(c, getattr(self, "db_path", None)))
+                k_url = _http_url(kline_page_url(c, getattr(self, "db_path", None)))
             except Exception:
-                tv_url = ""
-        top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
-        if news_label and news_url:
-            top.append(InlineKeyboardButton(news_label[:16], url=news_url))
-        if tv_url:
-            top.append(InlineKeyboardButton("K線", url=tv_url))
+                k_url = ""
+        nav = InlineKeyboardButton("導航圖", callback_data=f"g:{c}")
         actions = [
             InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
             self._q(topic),
         ]
         if em:
-            return InlineKeyboardMarkup([top, actions])
+            return InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton("產業", callback_data=f"n:{c}"),
+                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                        self._q(topic),
+                    ]
+                ]
+            )
+        top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
+        if news_label and news_url:
+            top.append(InlineKeyboardButton(news_label[:16], url=news_url))
+        if k_url:
+            top.append(InlineKeyboardButton("K線", url=k_url))
         listed = [
             InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
             InlineKeyboardButton("營收", callback_data=f"f:{c}"),
         ]
-        if len(top) >= 2:
+        if len(top) >= 3:
+            listed.append(nav)
             return InlineKeyboardMarkup([top, listed, actions])
-        # 沒有報導、也沒有 K 線：維持兩排，產業跟籌碼／營收同一排。
+        if len(top) >= 2:
+            top.append(nav)
+            return InlineKeyboardMarkup([top, listed, actions])
         return InlineKeyboardMarkup(
             [
                 [
@@ -1731,7 +1816,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
                     InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                 ],
-                actions,
+                [nav, actions[0], actions[1]],
             ]
         )
 
@@ -2344,41 +2429,22 @@ class WayneTelegramBot:
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
             return
-        from wayne_navigator import generate_card_with_chart, generate_chart, generate_decision_card
+        from wayne_navigator import generate_card_with_chart
 
         try:
             packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
-            html = packed[0]
             card_img = packed[1] if len(packed) > 1 else ""
-            chart_path = packed[2] if len(packed) > 2 else ""
             glance = packed[3] if len(packed) > 3 else ""
         except Exception:
-            html = generate_decision_card(code, self.db_path)
             card_img = ""
-            chart_path = generate_chart(
-                code,
-                name,
-                self.db_path,
-                self._scratch_chart_path(self.charts_dir, code, "nav", str(chat_id)),
-            )
             glance = ""
         if glance:
-            cap = f"{html_escape(code)}"
-            self._send_photo(chat_id, glance, caption=cap)
+            self._send_photo(chat_id, glance, caption=html_escape(name or code))
         for path in self._card_photo_paths(card_img):
             self._send_photo(chat_id, path, caption=html_escape(name or code))
-        last_kb = self._hub_keyboard(code)
-        if chart_path:
-            self._send_photo(
-                chat_id,
-                chart_path,
-                caption=f"{html_escape(code)} 高低導航：價格列20高／脫離／20低／60低；紫▲量能異常與紅▲警告只在量能列",
-                reply_markup=last_kb,
-            )
-        elif glance:
-            self._send_photo(chat_id, glance, caption=f"{html_escape(code)}", reply_markup=last_kb)
-        else:
-            self._send_html(chat_id, "選單", extra_keyboard=last_kb, attach_menu=False)
+        self._send_html(
+            chat_id, html_escape(name or code), extra_keyboard=self._hub_keyboard(code), attach_menu=False
+        )
 
     def _format_screening_html(self, result: Dict[str, Any]) -> str:
         lines = [
@@ -2423,7 +2489,7 @@ class WayneTelegramBot:
             "2　直接打代號看圖，例如 "
             + LOOKUP_CODE_EXAMPLES_HTML
             + "（不要先按「刷新」）\n"
-            "3　籌碼／營收／產業／K線在圖下面，不在右側四格鍵盤\n"
+            "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
             "\n"
             "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
             "給家人用：點最上面機器人名字 → 分享。對方用自己的帳號按開始，持股各看各的。\n",
@@ -2831,7 +2897,7 @@ class WayneTelegramBot:
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
         labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
-        order = ("glance", "card", "chart")
+        order = ("glance", "card")
         sent_ks = [str(k) for k in (sent or [])]
         elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
         now = labels.get(str(current or ""), "")
@@ -2844,7 +2910,7 @@ class WayneTelegramBot:
             lines.append("已畫：" + "、".join(done))
         if rest:
             lines.append("接著：" + "、".join(rest))
-        lines.append("三張齊了一次送出，點縮圖放大")
+        lines.append("兩張齊了一次送出")
         return "\n".join(lines)
 
     @staticmethod
@@ -3379,7 +3445,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。會一次出介紹圖、決策卡、導航圖。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。會一次出介紹圖、決策卡。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡，用官方營收／毛利跟同業比。",
@@ -4533,7 +4599,8 @@ class WayneTelegramBot:
         """按需產 180 日高低導航（重用剛查過的 _ohlc，免重跑決策卡）。"""
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)
-        hub = self._hub_keyboard(code)
+        hits = lookup_stocks(self.db_path, code)
+        hub = self._hub_keyboard(code, em=self._hit_is_emerging(code, hits))
         ohlc = self._get_lookup_ohlc(uid, code)
         if ohlc is None or getattr(ohlc, "empty", True):
             from wayne_navigator import NavigatorEngine
@@ -4695,14 +4762,6 @@ class WayneTelegramBot:
         except Exception:
             news_stats = None
         hub = self._hub_keyboard(code, em=is_em, news=news_stats)
-        cap_links = ""
-        try:
-            from stock_links import yahoo_urls
-
-            web, mobile = yahoo_urls(code, self.db_path)
-            cap_links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
-        except Exception:
-            cap_links = ""
 
         live_rt = None
         if not is_em:
@@ -4848,7 +4907,6 @@ class WayneTelegramBot:
             from chip_tape import build_tape
             from wayne_navigator import (
                 NavigatorEngine,
-                generate_chart,
                 render_decision_card_png,
                 render_first_glance_png,
             )
@@ -4871,11 +4929,12 @@ class WayneTelegramBot:
                 return card, ohlc
 
             def _build_tape():
-                if is_em:
-                    return {}
                 try:
                     return build_tape(
-                        self.db_path, code, merge_live=True, live_quote=live_rt
+                        self.db_path,
+                        code,
+                        merge_live=not is_em,
+                        live_quote=None if is_em else live_rt,
                     ) or {}
                 except Exception:
                     return {}
@@ -4902,37 +4961,27 @@ class WayneTelegramBot:
             req_tag = f"{uid_key or '0'}_{int(time.time() * 1000)}"
             glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
             card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
-            chart_path_f = os.path.join(self.charts_dir, f"{code}_{req_tag}.png")
-            ohlc = card.get("_ohlc")
-            card.pop("_ohlc", None)
+            ohlc = ohlc if ohlc is not None else card.get("_ohlc")
+            if isinstance(card, dict):
+                card.pop("_ohlc", None)
             self._cache_lookup_ctx(uid_key, code, ohlc)
 
-            def _render_chart():
-                return generate_chart(
-                    code, "", self.db_path, chart_path_f, ohlc, already_normalized=True
+            def _render_glance():
+                return render_first_glance_png(
+                    code, card, tape, glance_path, self.db_path, ohlc=ohlc
                 )
 
-            def _render_glance():
-                return render_first_glance_png(code, card, tape, glance_path, self.db_path)
-
-            glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
+            glance_cap = _glance_photo_caption("", card)
             card_cap = _decision_card_photo_caption(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
-                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),
-                (
-                    "chart",
-                    _render_chart,
-                    _CHART_RENDER_TIMEOUT,
-                    "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠。",
-                    hub,
-                ),
+                ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 三張都畫完再一次送相簿：話筒上一則裡三個縮圖，點開才放大。
+            # 兩張畫完一次送相簿；180 日導航改圖下「導航圖」。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -5010,7 +5059,7 @@ class WayneTelegramBot:
 
             if sent_any and not hub_on:
                 if len(sent_kinds) >= len(render_plan):
-                    done_txt = "點縮圖可放大。籌碼／產業／觀察按這排。"
+                    done_txt = html_escape(_stock_caption_name(card, code) or code)
                 else:
                     miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
                     done_txt = (
@@ -5068,7 +5117,7 @@ class WayneTelegramBot:
         self._remember_card(uid, code)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""
+        """兩張一次送，Telegram 一則兩個縮圖。圖說不講義。"""
         from telegram import InputMediaPhoto
 
         if len(items) < 2:
@@ -5077,9 +5126,7 @@ class WayneTelegramBot:
         try:
             media = []
             first_cap = str(items[0][2] or "").strip()
-            album_cap = "介紹／決策／導航　點任一張縮圖放大"
-            if first_cap:
-                album_cap = f"{first_cap}\n{album_cap}"
+            album_cap = first_cap
             for kind, path, _caption, _markup in items:
                 if kind == "chart":
                     if not self._chart_png_looks_ok(path):
@@ -5089,9 +5136,12 @@ class WayneTelegramBot:
                 fh = open(path, "rb")
                 handles.append(fh)
                 if not media:
-                    media.append(
-                        InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
-                    )
+                    if album_cap:
+                        media.append(
+                            InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
+                        )
+                    else:
+                        media.append(InputMediaPhoto(media=fh))
                 else:
                     media.append(InputMediaPhoto(media=fh))
             if len(media) < 2:

@@ -14,10 +14,10 @@ from kline_hop import (
 )
 from stock_links import (
     _EX_CACHE,
-    tradingview_chart_url,
-    tradingview_exchange,
-    tradingview_widget_symbol,
+    kline_page_url,
+    listed_kline_ok,
     yahoo_exchange,
+    yahoo_urls,
 )
 
 
@@ -46,21 +46,41 @@ def _db(path: str) -> str:
     return path
 
 
-def test_tradingview_url_is_own_k_page(tmp_path):
+def test_no_tradingview_product_hooks():
+    """產品碼不准再掛外站圖表；AGENTS 密技禁令那一行除外。"""
+    for path in (
+        "stock_links.py",
+        "kline_hop.py",
+        "bot_servers.py",
+        "wayne_navigator.py",
+        "picture_guide.py",
+    ):
+        src = open(path, encoding="utf-8").read().lower()
+        assert "tradingview.com" not in src, path
+        assert "tradingview_chart" not in src, path
+        assert "tradingview_widget" not in src, path
+        assert "tradingview_exchange" not in src, path
+        assert "widgetembed" not in src, path
+        assert "tv.js" not in src, path
+
+
+def test_kline_url_is_own_page(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     assert yahoo_exchange("2330", db) == "TW"
-    assert tradingview_exchange("2330", db) == "TWSE"
-    assert tradingview_widget_symbol("2330", db) == "TWSE:2330"
-    assert tradingview_chart_url("2330", db) == "https://waynebot-service.onrender.com/k/2330"
-    assert tradingview_exchange("6488", db) == "TPEX"
-    assert tradingview_widget_symbol("6488", db) == "TPEX:6488"
-    assert tradingview_chart_url("6488", db) == "https://waynebot-service.onrender.com/k/6488"
+    assert listed_kline_ok("2330", db) is True
+    assert kline_page_url("2330", db) == "https://waynebot-service.onrender.com/k/2330"
+    assert listed_kline_ok("6488", db) is True
+    assert kline_page_url("6488", db) == "https://waynebot-service.onrender.com/k/6488"
+    web, extra = yahoo_urls("2330", db)
+    assert web.endswith("/quote/2330.TW")
+    assert extra == web
+    assert "technical-analysis" not in web
 
 
-def test_tradingview_omits_emerging(tmp_path):
+def test_kline_omits_emerging(tmp_path):
     db = _db(str(tmp_path / "m.db"))
-    assert tradingview_exchange("3595", db) == ""
-    assert tradingview_chart_url("3595", db) == ""
+    assert listed_kline_ok("3595", db) is False
+    assert kline_page_url("3595", db) == ""
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
@@ -69,6 +89,7 @@ def test_tradingview_omits_emerging(tmp_path):
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
     assert "tv.js" not in page
+    assert 'id="tv"' not in page
 
 
 def test_hub_kline_is_https_url_button(tmp_path):
@@ -94,8 +115,7 @@ def test_etf_letter_suffix_stays_in_k_url(tmp_path):
     conn.commit()
     conn.close()
     _EX_CACHE.clear()
-    assert tradingview_chart_url("00631L", db).endswith("/k/00631L")
-    assert tradingview_widget_symbol("00631L", db) == "TWSE:00631L"
+    assert kline_page_url("00631L", db).endswith("/k/00631L")
 
 
 def test_kline_page_defaults_daily_and_has_periods(tmp_path):
@@ -107,6 +127,7 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     assert "TWSE" not in page
     assert "widgetembed" not in page
     assert "tradingview.com" not in page
+    assert 'id="tv"' not in page
     assert "上市" in page
     assert '"D":[' in page
     for label in ("日K", "15分", "60分", "五日", "十日", "月線", "季線"):
@@ -214,9 +235,22 @@ def test_kline_http_route_defaults_daily(tmp_path, monkeypatch):
             assert resp.status == 200
         assert "日K" in body and '"start":"D"' in body
         assert "15分" in body and "五日" in body and "季線" in body
+        assert 'id="tv"' not in body
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/k/2330?i=5D", timeout=8) as resp:
             alt = resp.read().decode("utf-8")
         assert '"start":"5D"' in alt
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_decision_html_has_no_external_chart_links():
+    import inspect
+
+    from wayne_navigator import generate_decision_card
+
+    src = inspect.getsource(generate_decision_card)
+    assert "網頁走勢" not in src
+    assert "技術線" not in src
+    assert "yahoo_urls" not in src
+    assert "technical-analysis" not in src

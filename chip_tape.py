@@ -162,8 +162,9 @@ def volume_tape(volumes: Sequence[float], last_chg: float) -> Dict[str, str]:
     if not vols:
         return {"ratio": "—", "pv": "—", "line": "量　—"}
     last = vols[-1]
-    hist = vols[-21:-1] if len(vols) > 1 else vols
-    ma = sum(hist) / max(len(hist), 1)
+    # 跟海選 q60r 同一套：當日量 ÷ 近 60 根均量（含今日）。
+    window = vols[-60:] if len(vols) >= 60 else vols
+    ma = sum(window) / max(len(window), 1)
     ratio = last / ma if ma > 0 else 0.0
     if last_chg > 0.05 and last > ma * 1.05:
         pv = "價漲量增"
@@ -182,6 +183,56 @@ def volume_tape(volumes: Sequence[float], last_chg: float) -> Dict[str, str]:
     }
 
 
+def stock_tape_is_emerging(db_path: str, stock_id: str) -> bool:
+    """興櫃走 emerging_quotes；不要誤讀上市櫃 daily_quotes 的撞號列。"""
+    sid = str(stock_id or "").strip()
+    if not sid or not db_path:
+        return False
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        try:
+            row = cur.execute(
+                "SELECT market_type FROM stock_universe WHERE stock_id=? LIMIT 1",
+                (sid,),
+            ).fetchone()
+        except Exception:
+            row = None
+        mkt = str((row[0] if row else "") or "").strip().upper()
+        if mkt in ("EM", "EMERGING", "興櫃"):
+            return True
+        try:
+            n_em = int(
+                (cur.execute(
+                    "SELECT COUNT(*) FROM emerging_quotes WHERE stock_id=?",
+                    (sid,),
+                ).fetchone() or [0])[0]
+                or 0
+            )
+        except Exception:
+            n_em = 0
+        try:
+            n_dq = int(
+                (cur.execute(
+                    "SELECT COUNT(*) FROM daily_quotes WHERE stock_id=?",
+                    (sid,),
+                ).fetchone() or [0])[0]
+                or 0
+            )
+        except Exception:
+            n_dq = 0
+        return n_em >= 5 and n_em > n_dq
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def load_tape_rows(
     db_path: str,
     stock_id: str,
@@ -189,20 +240,40 @@ def load_tape_rows(
     merge_live: bool = True,
     live_quote: Optional[dict] = None,
 ) -> List[dict]:
+    sid = str(stock_id).strip()
+    emerging = stock_tape_is_emerging(db_path, sid)
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT date, open, high, low, close, volume, pct_change,
-               COALESCE(foreign_net, 0), COALESCE(trust_net, 0), COALESCE(dealer_net, 0)
-        FROM daily_quotes
-        WHERE stock_id=?
-        ORDER BY date DESC
-        LIMIT ?
-        """,
-        (str(stock_id).strip(), int(limit)),
-    )
-    raw = cur.fetchall()
+    raw = []
+    if emerging:
+        try:
+            cur.execute(
+                """
+                SELECT date, open, high, low, close, volume, pct_change
+                FROM emerging_quotes
+                WHERE stock_id=?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (sid, int(limit)),
+            )
+            raw = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], None, None, None) for r in cur.fetchall()]
+        except Exception:
+            raw = []
+    if not raw:
+        cur.execute(
+            """
+            SELECT date, open, high, low, close, volume, pct_change,
+                   COALESCE(foreign_net, 0), COALESCE(trust_net, 0), COALESCE(dealer_net, 0)
+            FROM daily_quotes
+            WHERE stock_id=?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sid, int(limit)),
+        )
+        raw = cur.fetchall()
+        emerging = False
     conn.close()
     rows = []
     for date, o, h, l, c, vol, pct, f, t, d in reversed(raw):
@@ -214,15 +285,16 @@ def load_tape_rows(
             "close": float(c or 0),
             "volume": float(vol or 0),
             "pct_change": float(pct or 0),
-            "foreign_net": int(f or 0),
-            "trust_net": int(t or 0),
-            "dealer_net": int(d or 0),
+            "foreign_net": None if emerging else int(f or 0),
+            "trust_net": None if emerging else int(t or 0),
+            "dealer_net": None if emerging else int(d or 0),
+            "emerging": bool(emerging),
         })
     try:
         import pandas as pd
         from live_quote import append_live_bar
 
-        if rows and merge_live:
+        if rows and merge_live and not emerging:
             df = pd.DataFrame(rows)
             df = append_live_bar(
                 df, str(stock_id).strip(), merge_live=True, live_quote=live_quote
@@ -263,6 +335,8 @@ def last_complete_chip_nets(
     """最近一筆完整交易日的 T86 張數（不併即時列，避免盤中多出一列全 0）。"""
     sid = str(stock_id or "").strip()
     if not sid or not db_path:
+        return None
+    if stock_tape_is_emerging(db_path, sid):
         return None
     cap = str(as_of or "").replace("-", "")[:8]
     conn = None
@@ -322,19 +396,35 @@ def build_tape(
     merge_live: bool = True,
     live_quote: Optional[dict] = None,
 ) -> Optional[Dict[str, Any]]:
-    rows = load_tape_rows(db_path, stock_id, 40, merge_live=merge_live, live_quote=live_quote)
+    rows = load_tape_rows(db_path, stock_id, 80, merge_live=merge_live, live_quote=live_quote)
     if not rows:
         return None
     last = rows[-1]
     closes = [r["close"] for r in rows]
     vols = [r["volume"] for r in rows]
-    f_net = [r["foreign_net"] for r in rows]
-    t_net = [r["trust_net"] for r in rows]
-    d_net = [r["dealer_net"] for r in rows]
-    three = [a + b + c for a, b, c in zip(f_net, t_net, d_net)]
+    emerging = bool(last.get("emerging")) or any(r.get("foreign_net") is None for r in rows)
     move = price_move(closes, last_pct=last.get("pct_change"))
     vol = volume_tape(vols, last["pct_change"])
     shape = candle_shape(last["open"], last["high"], last["low"], last["close"])
+    if emerging:
+        return {
+            "last": last,
+            "move": move,
+            "shape": shape,
+            "volume": vol,
+            "foreign": {},
+            "trust": {},
+            "dealer": {},
+            "three": {},
+            "inst_pct": None,
+            "conflict": "",
+            "has_chips": False,
+            "emerging": True,
+        }
+    f_net = [int(r["foreign_net"] or 0) for r in rows]
+    t_net = [int(r["trust_net"] or 0) for r in rows]
+    d_net = [int(r["dealer_net"] or 0) for r in rows]
+    three = [a + b + c for a, b, c in zip(f_net, t_net, d_net)]
     three_today = int(three[-1])
     vol_i = int(last["volume"] or 0)
     inst_pct = round(three_today / vol_i * 100.0, 1) if vol_i else 0.0
@@ -358,4 +448,6 @@ def build_tape(
         "three": {"net": three_today, "phrase": chip_phrase(three)},
         "inst_pct": inst_pct,
         "conflict": conflict,
+        "has_chips": True,
+        "emerging": False,
     }

@@ -65,13 +65,12 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
-# 介紹圖畫布比決策卡窄，同樣 320DPI 橫向像素比較少，對話框裡會比較軟。
-# 加到 440：橫向約 2033px，接近決策卡 2272px；寬+高仍低於 Telegram sendPhoto 10000。
+# 介紹圖與高低卡同寬，上半資訊、下半近60日K；完整180日導航改圖下按鈕。
 CARD_PNG_DPI = 320
-GLANCE_PNG_DPI = 440
+GLANCE_PNG_DPI = 320
 CARD_FIG_W = 7.1
-GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 17.7
+GLANCE_FIG_W = CARD_FIG_W
+GLANCE_FIG_H = 12.4
 NAV_CHART_DPI = 320
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
@@ -2304,12 +2303,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     except Exception:
         pass
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
-    try:
-        from stock_links import yahoo_urls
-
-        web, mobile = yahoo_urls(sid, db_path or get_db_path())
-    except Exception:
-        web = mobile = ""
     pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
     from tg_layout import kv_compact, section, join_sections
@@ -2322,9 +2315,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if last:
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    links = ""
-    if web:
-        links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
     industry = str(card.get("industry") or "").strip()
     if industry:
@@ -2332,12 +2322,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     event = str(card.get("next_event") or "").strip()
     if event:
         head = f"{head}　{html_escape(event)}"
-    if links:
-        head = f"{head}　　{links}"
     title_block = f"{head}\n{html_escape(badge)}" if badge else head
     chip_block = ""
     chip_lines = []
-    if tape:
+    tape_has_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
+    if tape_has_chips:
         chip_lines = [
             kv_compact("外資", f"{fmt_lots(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
             kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
@@ -2426,9 +2415,80 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     )
 
 
+def _draw_glance_daily_k(ax_px, ax_vol, df, card: dict | None = None) -> None:
+    """介紹圖下半：近 60 根日K＋量。不是 180 日高低導航。"""
+    from decision_card_signals import candle_up_taiwan
+
+    C = _CARD
+    for a in (ax_px, ax_vol):
+        a.set_facecolor(C["page"])
+        for sp in a.spines.values():
+            sp.set_color(C["line"])
+            sp.set_linewidth(0.7)
+        a.tick_params(colors=C["ink_soft"], labelsize=8)
+    if df is None or getattr(df, "empty", True) or len(df) < 2:
+        ax_px.set_xticks([])
+        ax_px.set_yticks([])
+        ax_vol.set_xticks([])
+        ax_vol.set_yticks([])
+        ax_px.text(
+            0.5, 0.5, "尚無日K", transform=ax_px.transAxes,
+            fontproperties=_fp(12, "bold"), color=C["ink_soft"], ha="center", va="center",
+        )
+        return
+    work = df.tail(60).copy()
+    n = len(work)
+    xs = np.arange(n, dtype=float)
+    halt = work["is_halt"].fillna(False).astype(bool) if "is_halt" in work.columns else pd.Series([False] * n)
+    opens = work["open"].astype(float).to_numpy()
+    highs = work["high"].astype(float).to_numpy()
+    lows = work["low"].astype(float).to_numpy()
+    closes = work["close"].astype(float).to_numpy()
+    vols = work["volume"].astype(float).to_numpy()
+    span = max(float(np.nanmax(highs) - np.nanmin(lows)), 1e-6)
+    src = str((card or {}).get("quote_source") or "")
+    title = "近60日　櫃買日均價" if src == "emerging_quotes" else "近60日K"
+    ax_px.set_title(title, fontproperties=_fp(10, "bold"), color=C["navy"], loc="left", pad=2)
+    for i in range(n):
+        prev = float(closes[i - 1]) if i else None
+        up = candle_up_taiwan(float(closes[i]), prev, float(opens[i]))
+        color = "#bdbdbd" if bool(halt.iloc[i]) else ("#e53935" if up else "#00897b")
+        x = xs[i]
+        ax_px.plot([x, x], [lows[i], highs[i]], color=color, linewidth=1.05, zorder=3, solid_capstyle="round")
+        body = max(abs(closes[i] - opens[i]), span * 0.0018)
+        lo_b = min(opens[i], closes[i])
+        ax_px.add_patch(
+            patches.Rectangle(
+                (x - 0.32, lo_b), 0.64, body, facecolor=color, edgecolor=color, linewidth=0.3, zorder=4,
+            )
+        )
+        ax_vol.bar(x, max(vols[i], 0), width=0.72, color=color, alpha=0.82, linewidth=0)
+    ax_px.set_xlim(-0.8, n - 0.2)
+    ax_px.set_ylabel("")
+    ax_vol.set_ylabel("")
+    ax_px.yaxis.set_major_locator(plt.MaxNLocator(5))
+    ax_vol.yaxis.set_major_locator(plt.MaxNLocator(3))
+    dates = work["date"].astype(str).str.replace("-", "", regex=False)
+    ticks = [0, n // 2, n - 1] if n >= 3 else list(range(n))
+    labels = []
+    for i in ticks:
+        d = str(dates.iloc[int(i)])
+        labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) >= 8 else d[-5:])
+    ax_vol.set_xticks(ticks)
+    ax_vol.set_xticklabels(labels, fontproperties=_fp(8, "bold"))
+    plt.setp(ax_px.get_xticklabels(), visible=False)
+
+
 @_mpl_serial
-def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
-    """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
+def render_first_glance_png(
+    stock_id: str,
+    card: dict,
+    tape: dict,
+    save_path: str,
+    db_path: str = None,
+    ohlc=None,
+) -> str:
+    """與高低卡同寬：上半資訊、下半近60日K。"""
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -2474,11 +2534,22 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
     C = _CARD
-    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    bars = ohlc
+    if bars is None or getattr(bars, "empty", True):
+        try:
+            bars = _load_ohlc(stock_id, db_path or get_db_path(), 60)
+        except Exception:
+            bars = None
+    fig = plt.figure(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    gs = fig.add_gridspec(2, 1, height_ratios=(1.28, 1.0), hspace=0.08)
+    ax = fig.add_subplot(gs[0])
+    gs_k = gs[1].subgridspec(2, 1, height_ratios=(3.25, 1.05), hspace=0.05)
+    ax_px = fig.add_subplot(gs_k[0])
+    ax_vol = fig.add_subplot(gs_k[1], sharex=ax_px)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
-    fig.subplots_adjust(left=0.028, right=0.972, top=0.988, bottom=0.016)
+    fig.subplots_adjust(left=0.07, right=0.97, top=0.988, bottom=0.055)
 
     def pane(x, y, w, h, fc=None, ec=None):
         fc = fc or C["panel"]
@@ -2727,29 +2798,31 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("自營", (tape or {}).get("dealer") or {}),
         ("法人", (tape or {}).get("three") or {}),
     ]
-    y -= gap + chips_h
-    pane(pad_x, y, pane_w, chips_h)
-    sec_title(4.8, y + chips_h - 1.7, "籌碼（張）", C["navy"])
-    ink(96.4, y + chips_h - 1.7, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, C["ink_soft"], ha="right")
-    # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
-    lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
-    phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
-    f_name, f_lots = 12.0, 16.0
-    name_w = max(wid(n, f_name) for n, _ in chips)
-    lots_x = 4.8 + name_w + 2.2
-    lots_w = max(wid(lots_of[n], f_lots) for n, _ in chips)
-    phrase_left = lots_x + lots_w + 3.2
-    phrase_avail = max(16.0, 96.4 - phrase_left)
-    f_phrase = min(
-        fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
-    )
-    cy = y + chips_h - 5.05
-    for name, item in chips:
-        net = int(item.get("net") or 0)
-        ink(4.8, cy, name, f_name, C["ink"])
-        ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
-        ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
-        cy -= 3.35
+    show_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
+    if show_chips:
+        y -= gap + chips_h
+        pane(pad_x, y, pane_w, chips_h)
+        sec_title(4.8, y + chips_h - 1.7, "籌碼（張）", C["navy"])
+        ink(96.4, y + chips_h - 1.7, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, C["ink_soft"], ha="right")
+        # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
+        lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
+        phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
+        f_name, f_lots = 12.0, 16.0
+        name_w = max(wid(n, f_name) for n, _ in chips)
+        lots_x = 4.8 + name_w + 2.2
+        lots_w = max(wid(lots_of[n], f_lots) for n, _ in chips)
+        phrase_left = lots_x + lots_w + 3.2
+        phrase_avail = max(16.0, 96.4 - phrase_left)
+        f_phrase = min(
+            fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
+        )
+        cy = y + chips_h - 5.05
+        for name, item in chips:
+            net = int(item.get("net") or 0)
+            ink(4.8, cy, name, f_name, C["ink"])
+            ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
+            ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
+            cy -= 3.35
 
     fund_h = max(10.5, y - gap - footer_top)
     y = footer_top
@@ -2799,8 +2872,9 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             ny -= 2.55
     ink(4.8, legend_y, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, C["ink_mute"])
     ink(96.4, legend_y, "▲連漲　▼連跌", 10, C["ink_mute"], ha="right")
-    plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
-    plt.close()
+    _draw_glance_daily_k(ax_px, ax_vol, bars, card)
+    fig.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
+    plt.close(fig)
     return save_path
 
 
@@ -3440,7 +3514,7 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     except Exception:
         tape = {}
     glance = render_first_glance_png(
-        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path
+        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path, ohlc=ohlc
     ) or ""
     card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
     chart = generate_chart(

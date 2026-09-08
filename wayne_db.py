@@ -35,6 +35,18 @@ def listing_is_emerging(hit: dict | None) -> bool:
     return mkt in ("EM", "EMERGING", "興櫃")
 
 
+def payload_is_emerging(item: dict | None) -> bool:
+    """海選／LINE／查股 payload：興櫃沒有三大法人，不要印 +0。"""
+    if listing_is_emerging(item):
+        return True
+    raw = item or {}
+    for key in ("universe", "market_type", "market"):
+        mkt = str(raw.get(key) or "").strip().upper()
+        if mkt in ("EM", "EMERGING", "興櫃"):
+            return True
+    return str(raw.get("quote_source") or "").strip() == "emerging_quotes"
+
+
 def split_lookup_code_name(query: str) -> tuple[str, str]:
     """「2330台積電／00631L元大正2／２３３０」拆成代號；其餘當名稱。"""
     from universe import canonical_lookup_ticker, is_lookup_ticker
