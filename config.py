@@ -46,9 +46,12 @@ def get_public_base_url() -> str:
 
 
 def scheduled_job_kind(cron_expr: str) -> str:
-    """GHA 兩個 cron：22:30 UTC＝早上海選；其餘＝盤後融合。"""
+    """GHA：UTC 22:30＝早上海選；08:30／08:45＝盤後融合。不要把 16:45 補跑判成海選。"""
     s = str(cron_expr or "").strip().strip("'\"")
-    if s.startswith("30 22") or " 22 " in f" {s} ":
+    if s.startswith("30 22") or s.startswith("30 22 "):
+        return "morning_screen"
+    parts = s.split()
+    if len(parts) >= 2 and parts[1] == "22":
         return "morning_screen"
     return "increment"
 

@@ -352,6 +352,11 @@ class FuseAndScreenTest(unittest.TestCase):
 
         self.assertEqual(scheduled_job_kind("30 22 * * 0-4"), "morning_screen")
         self.assertEqual(scheduled_job_kind("30 8 * * 1-5"), "increment")
+        self.assertEqual(
+            scheduled_job_kind("45 8 * * 1-5"),
+            "increment",
+            "16:45 GHA 是盤後補跑，不是早上海選",
+        )
         packs = format_line_share_packs(
             {"leave_zero": [leave], "day_trade": [hot]},
             "20260828",
