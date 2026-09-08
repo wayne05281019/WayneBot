@@ -106,3 +106,11 @@ def test_evening_skip_reruns_ai_from_snapshot(monkeypatch, tmp_path):
     assert ai[0]["results"]["leave_zero"][0]["stock_id"] == "4915"
     assert ai[0]["results"]["leave_zero"][0]["close"] == 60.8
     assert ai[0].get("notify") is False
+
+
+def test_oneshot_jobs_skip_if_already_done():
+    src = open("main_runner.py", encoding="utf-8").read()
+    assert "run_morning_screen(skip_if_done=True)" in src
+    assert "run_evening_screen(skip_if_done=True, notify=False)" in src
+    assert "run_midday_review(skip_if_done=True)" in src
+    assert "run_increment_job(skip_if_done=True)" in src

@@ -14,11 +14,12 @@ WAYNE_UID = 9001
 BRO_UID = 9002
 
 
-def _msg(uid: int, text: str = ""):
+def _msg(uid: int, text: str = "", *, chat_id: int | None = None):
+    cid = int(chat_id) if chat_id is not None else int(uid)
     user = SimpleNamespace(id=uid, first_name="u")
-    chat = SimpleNamespace(id=uid)
+    chat = SimpleNamespace(id=cid)
     message = MagicMock()
-    message.chat_id = uid
+    message.chat_id = cid
     message.chat = chat
     message.from_user = user
     message.text = text
@@ -52,10 +53,23 @@ def _bot():
     bot._pending_locks = {}
     bot._lookup_op_state = {}
     bot._screening_running = set()
+    bot._trade_running = set()
     bot._screening_gate = asyncio.Lock()
     bot._screening_global_owner = ""
     bot._menu_fade_gen = {}
+    bot._menu_pin_msgs = {}
     bot._touch_user = MagicMock()
+    bot._dismiss_menu_transients = AsyncMock()
+    bot._enter_main_menu = AsyncMock()
+    bot._reply_menu = MagicMock()
+    bot._keyboard = MagicMock()
+    bot._held_lots_for = MagicMock(return_value=None)
+    bot._send_trade_journal = AsyncMock()
+    bot._send_ai_desk_view = AsyncMock()
+    bot._send_chips_to = AsyncMock()
+    bot._send_industry = AsyncMock()
+    bot._send_fund_to = AsyncMock()
+    bot._transient_status = AsyncMock(return_value=MagicMock())
     bot._dismiss_menu_transients = AsyncMock()
     bot._transient_status = AsyncMock(return_value=MagicMock())
     bot._delete_message = AsyncMock()
@@ -252,3 +266,124 @@ def test_ai_desk_button_isolated_for_brother_and_wayne():
     uids = [c.args[1] for c in bot._send_ai_desk_view.await_args_list]
     assert uids == [str(BRO_UID), str(WAYNE_UID)]
     assert bot._pending.get(f"{WAYNE_UID}:{WAYNE_UID}") is None
+
+
+SHARED_CHAT = 777
+
+
+def test_bro_price_does_not_fill_wayne_buy():
+    """哥哥打 68.5 不能幫偉權把記買入寫進去。"""
+    bot = _bot()
+    wayne = f"{WAYNE_UID}:{WAYNE_UID}"
+    bot._pending[wayne] = "buy:2330"
+
+    async def run():
+        with patch("bot_servers.record_buy") as rb, patch(
+            "bot_servers.lookup_stocks", return_value=[]
+        ):
+            await bot.on_text(_update(_msg(BRO_UID, "68.5")), MagicMock())
+        return rb
+
+    rb = asyncio.run(run())
+    rb.assert_not_called()
+    assert bot._pending.get(wayne) == "buy:2330"
+
+
+def test_same_chat_bro_why_does_not_swallow_wayne_streak():
+    """同一聊天室：偉權停在連買區，哥哥打為什麼跌只用哥哥上一檔。"""
+    bot = _bot()
+    wayne = f"{SHARED_CHAT}:{WAYNE_UID}"
+    bro = f"{SHARED_CHAT}:{BRO_UID}"
+    bot._pending[wayne] = "fbuy:kind"
+    bot._last_card[str(WAYNE_UID)] = "2330"
+    bot._last_card[str(BRO_UID)] = "3105"
+
+    async def run():
+        await bot.on_text(
+            _update(_msg(BRO_UID, "為什麼跌", chat_id=SHARED_CHAT)), MagicMock()
+        )
+
+    asyncio.run(run())
+    assert bot._pending.get(wayne) == "fbuy:kind"
+    bot._send_card_to.assert_awaited()
+    assert bot._send_card_to.await_args.args[1] == "3105"
+    assert bro not in bot._pending
+
+
+def test_same_chat_trade_lock_is_per_person():
+    """偉權當沖進行中，哥哥仍可按當沖；同一人連按才擋。"""
+    bot = _bot()
+    bot._trade_running.add(f"{SHARED_CHAT}:{WAYNE_UID}")
+    wayne_msg = _msg(WAYNE_UID, "當沖", chat_id=SHARED_CHAT)
+    bro_msg = _msg(BRO_UID, "當沖", chat_id=SHARED_CHAT)
+
+    async def run():
+        await bot._run_trade_bucket(
+            wayne_msg,
+            bucket_key="day_trade",
+            live_bucket="daytrade",
+            title="x",
+            subtitle="",
+            topic="daytrade",
+            status_text="查",
+            menu_label="當沖",
+            loader=lambda: [],
+        )
+        with patch("trading_calendar.is_tw_equity_session", return_value=False), patch(
+            "trading_calendar.tw_session_phase", return_value="closed"
+        ), patch("trading_calendar.daytrade_closed_title", return_value="休市"), patch(
+            "trading_calendar.daytrade_closed_message", return_value="尚未開盤"
+        ):
+            await bot._run_trade_bucket(
+                bro_msg,
+                bucket_key="day_trade",
+                live_bucket="daytrade",
+                title="x",
+                subtitle="",
+                topic="daytrade",
+                status_text="查",
+                menu_label="當沖",
+                loader=lambda: [],
+            )
+
+    asyncio.run(run())
+    w_blob = " ".join(
+        str(c.args[0]) for c in wayne_msg.reply_text.await_args_list if c.args
+    )
+    b_blob = " ".join(
+        str(c.args[0]) for c in (bro_msg.reply_text.await_args_list + bro_msg.reply_html.await_args_list) if c.args
+    )
+    assert "進行中" in w_blob
+    assert "進行中" not in b_blob
+    assert "休市" in b_blob or "尚未開盤" in b_blob
+
+
+def test_brother_ai_desk_does_not_clear_wayne_buy():
+    bot = _bot()
+    bot._send_ai_desk_view = AsyncMock()
+    wayne = f"{WAYNE_UID}:{WAYNE_UID}"
+    bot._pending[wayne] = "buy:2330"
+
+    async def run():
+        await bot.on_text(_update(_msg(BRO_UID, "AI倉")), MagicMock())
+
+    asyncio.run(run())
+    bot._send_ai_desk_view.assert_awaited_once()
+    assert bot._send_ai_desk_view.await_args.args[1] == str(BRO_UID)
+    assert bot._pending.get(wayne) == "buy:2330"
+
+
+def test_em_last_card_not_shared_for_chips():
+    """偉權查興櫃後，哥哥打籌碼仍用哥哥上一檔，不沿用偉權的 3595。"""
+    bot = _bot()
+    bot._send_chips_to = AsyncMock()
+    bot._remember_card(str(WAYNE_UID), "3595")
+    bot._remember_card(str(BRO_UID), "1413")
+
+    async def run():
+        await bot.on_text(_update(_msg(BRO_UID, "籌碼")), MagicMock())
+
+    asyncio.run(run())
+    bot._send_chips_to.assert_awaited()
+    assert bot._send_chips_to.await_args.args[1] == "1413"
+    assert bot._last_card[str(WAYNE_UID)] == "3595"

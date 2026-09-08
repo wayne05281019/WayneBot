@@ -32,3 +32,20 @@ def test_lookup_stocks_uses_db_as_of_not_max_date(monkeypatch, tmp_path):
     assert len(hits) == 1
     assert float(hits[0]["close"]) == 4310.0
     assert float(hits[0]["pct_change"]) == 0.12
+
+
+def test_lookup_mixed_code_name_and_fullwidth(monkeypatch, tmp_path):
+    db = str(tmp_path / "t.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    _insert_quote(conn, "20260828", 4310.0, 0.12)
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date",
+        lambda dp, now=None: "20260828",
+    )
+    for q in ("2454聯發科", "聯發科2454", "2454 聯發科", "２４５４"):
+        hits = lookup_stocks(db, q)
+        assert len(hits) == 1, q
+        assert hits[0]["stock_id"] == "2454"

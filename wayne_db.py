@@ -11,12 +11,37 @@ WayneBot 台股量化交易系統 - Phase 1：資料庫底層與資料結構模�
 
 import os
 import json
+import re
 import sqlite3
 import threading
 import traceback
+import unicodedata
 from datetime import datetime
 from contextlib import contextmanager
 from typing import NamedTuple, Optional, Dict, Any, List, Union
+
+_CODE_THEN_NAME_RE = re.compile(
+    r"^(?P<code>\d{3,6})[\s\u3000]*(?P<name>[\u4e00-\u9fffA-Za-z].+)$"
+)
+_NAME_THEN_CODE_RE = re.compile(
+    r"^(?P<name>[\u4e00-\u9fff].+?)[\s\u3000]*(?P<code>\d{3,6})$"
+)
+
+
+def listing_is_emerging(hit: dict | None) -> bool:
+    mkt = str((hit or {}).get("market") or "").strip().upper()
+    return mkt in ("EM", "EMERGING", "興櫃")
+
+
+def split_lookup_code_name(query: str) -> tuple[str, str]:
+    """「2330台積電／台積電2330／２３３０」拆成代號；其餘當名稱。"""
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    if q.isdigit() and 3 <= len(q) <= 6:
+        return q, ""
+    m = _CODE_THEN_NAME_RE.match(q) or _NAME_THEN_CODE_RE.match(q)
+    if m:
+        return m.group("code"), (m.group("name") or "").strip()
+    return "", q
 
 
 class SellResult(NamedTuple):
@@ -488,7 +513,8 @@ def _resolve_lookup_quote_date(db_path: str) -> Optional[str]:
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
     """用代號或中文名（如南亞、山太士）查標的；興櫃也查名稱目錄。"""
     ensure_core_schema(db_path)
-    q = (query or "").strip()
+    code, name_q = split_lookup_code_name(query)
+    q = code or name_q
     if not q:
         return []
     with get_db_connection(db_path, write=False) as conn:

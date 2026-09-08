@@ -977,14 +977,15 @@ def main():
 
         runner = MainRunner()
         kind = job_kind()
+        # GHA cron 與 trigger 檔可能各跑一次；略過已完成才不會寄兩份早報。
         if kind == "morning_screen":
-            ok = runner.run_morning_screen(skip_if_done=False)
+            ok = runner.run_morning_screen(skip_if_done=True)
         elif kind == "evening_screen":
-            ok = runner.run_evening_screen(skip_if_done=False, notify=False)
+            ok = runner.run_evening_screen(skip_if_done=True, notify=False)
         elif kind == "midday_review":
-            ok = runner.run_midday_review(skip_if_done=False)
+            ok = runner.run_midday_review(skip_if_done=True)
         else:
-            ok = runner.run_increment_job(skip_if_done=False)
+            ok = runner.run_increment_job(skip_if_done=True)
         if not ok:
             sys.exit(1)
     except Exception as e:
