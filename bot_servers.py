@@ -23,6 +23,7 @@ _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
 
 from config import get_charts_dir, get_db_path, get_telegram_config, skip_chart_warmup
+from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
     init_database,
     get_user_portfolio,
@@ -202,7 +203,8 @@ HELP_TOPICS = {
         "\n"
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
-        "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
+        "        打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
+        "也可打股名：撞名或國字打不準會列出相近的請你點，不會猜錯就出圖。\n"
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
         "<b>平常話／三條槓「原因」</b>\n"
@@ -230,8 +232,8 @@ HELP_TOPICS = {
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
-        "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
-        "名稱撞名：藍字股名＝奇摩；左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
+        "        介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
+        "名稱撞名、國字打不準、KY 沒寫對：會列出相近的；藍字＝奇摩，左邊＝看這檔，右 <b>➕</b>＝觀察。讀音猜中也要點確認才出圖。\n"
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
@@ -284,7 +286,7 @@ HELP_TOPICS = {
         "• 找不到「產業」：在圖下面那一排，不在右側 ⌨️。\n"
         "• 連買選到一半按錯：改按別顆就取消；再按「連買區」重來。\n"
         "• 「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
-        "• 找不到股票：再打一次代號（ETF 含 0050、00631L、00981A）；撞名點左邊股名。\n"
+        "• 找不到股票：打股名即可，撞名或國字打不準會列出請你點；再打一次代號最準（ETF 含 0050、00631L、00981A）。\n"
         "• 主選單不見：點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
         "• 畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
@@ -592,7 +594,7 @@ HELP_TOPICS = {
         "\n"
         "不要先按「決策卡」——那顆是刷新上一檔。\n"
         "一次出三張圖：介紹圖 → 決策卡 → 導航圖。\n"
-        "找不到：再打一次代號；名稱撞名時點藍字或左邊股名。"
+        "找不到：撞名或國字打不準會列出相近的請你點；再打代號最準。"
     ),
     "flow": (
         "<b>資金移動怎麼用</b>\n"
@@ -658,7 +660,7 @@ HELP_TOPICS = {
         "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」，也可以傳語音。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
         "\n"
         "<b>找不到股票</b>\n"
-        "再打一次代號比打股名準（ETF 含 0050、00631L、00981A）。名稱撞名時：藍字＝奇摩網頁，左邊股名＝看這檔圖。\n"
+        "打股名即可（南亞會列出南亞／南亞科）。國字打錯、同音、KY 沒打對，也會猜相近的請你點，不會直接出圖。再打代號最準（ETF 含 0050、00631L、00981A）。\n"
         "\n"
         "<b>主選單不見</b>\n"
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
@@ -1377,6 +1379,14 @@ class WayneTelegramBot:
             code = parse_stock_code(text)
             if not code:
                 hits = lookup_stocks(self.db_path, text.split()[0].strip()) if text else []
+                if hits_need_picker(hits):
+                    self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
+                    await message.reply_html(
+                        self._hits_list_html(hits),
+                        reply_markup=self._hits_keyboard(hits),
+                        disable_web_page_preview=True,
+                    )
+                    return True
                 if len(hits) == 1:
                     code = str(hits[0]["stock_id"])
             if not code:
@@ -1773,8 +1783,7 @@ class WayneTelegramBot:
         except Exception:
             html_stock_anchor = None
         lines = [
-            lead
-            or "名稱相近，請選要看哪一檔。藍字＝奇摩；按鈕＝看這檔。"
+            lead or lookup_picker_lead(hits)
         ]
         for i, h in enumerate((hits or [])[:8], start=1):
             sid = str(h.get("stock_id") or "")
@@ -3462,16 +3471,16 @@ class WayneTelegramBot:
                 code = ""
         if not code and hit.query:
             hits = lookup_stocks(self.db_path, hit.query)
-            if len(hits) == 1:
-                code = str(hits[0]["stock_id"])
-            elif len(hits) > 1:
+            if hits_need_picker(hits):
                 self._pending[self._pending_actor(message, uid=uid)] = "why"
                 await message.reply_html(
-                    self._hits_list_html(hits, "這句對到多檔，請點選："),
+                    self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return True
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
         if not code and kind in NEEDS_STOCK:
             code = str(self._last_card.get(uid) or "").strip()
         if kind in NEEDS_STOCK and not code:
@@ -3936,20 +3945,20 @@ class WayneTelegramBot:
             if handled:
                 return
             hits = lookup_stocks(self.db_path, text)
-            if len(hits) == 1:
-                code = str(hits[0]["stock_id"])
-                logger.info("名稱查詢命中 %s -> %s", text, code)
-                await self._reply_card(update, code)
-                return
-            if len(hits) > 1:
+            if hits_need_picker(hits):
                 await update.message.reply_html(
                     self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
+                logger.info("名稱查詢命中 %s -> %s", text, code)
+                await self._reply_card(update, code)
+                return
             await update.message.reply_text(
-                "找不到這檔。請打代號或名稱（如 南亞、2330）。",
+                "找不到這檔。請打代號或名稱。撞名或國字打不準會列出相近的請你點。",
                 reply_markup=self._keyboard(),
             )
         except Exception:
@@ -4038,12 +4047,15 @@ class WayneTelegramBot:
         hits = lookup_stocks(self.db_path, text.split()[0].strip())
         if not hits:
             self._pending[actor] = pending
-            await message.reply_text("找不到這檔。請打南亞或 2330。", reply_markup=self._keyboard())
+            await message.reply_text(
+                "找不到這檔。請打代號或名稱。撞名或國字打不準會列出相近的請你點。",
+                reply_markup=self._keyboard(),
+            )
             return True
-        if len(hits) > 1:
+        if hits_need_picker(hits):
             self._pending[actor] = pending
             await message.reply_html(
-                self._hits_list_html(hits, "找到多檔，請點選："),
+                self._hits_list_html(hits),
                 reply_markup=self._hits_keyboard(hits),
                 disable_web_page_preview=True,
             )

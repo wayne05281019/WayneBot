@@ -63,7 +63,7 @@ def test_unrelated_text_does_not_trigger_menu(text):
     bot._dispatch_intent = AsyncMock(return_value=False)
 
     async def run():
-        with patch("wayne_db.lookup_stocks", return_value=[]):
+        with patch("bot_servers.lookup_stocks", return_value=[]):
             await bot.on_text(_update(_msg(1, 1, text)), MagicMock())
 
     asyncio.run(run())
@@ -78,7 +78,7 @@ def test_buy_pending_not_lost_on_unrelated_text():
     bot._pending["1:42"] = "buy:2330"
 
     async def run():
-        with patch("wayne_db.lookup_stocks", return_value=[]):
+        with patch("bot_servers.lookup_stocks", return_value=[]):
             await bot.on_text(_update(_msg(1, 42, "随便乱打")), MagicMock())
 
     asyncio.run(run())

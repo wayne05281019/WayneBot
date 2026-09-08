@@ -517,82 +517,178 @@ def _resolve_lookup_quote_date(db_path: str) -> Optional[str]:
         return None
 
 
+def _hydrate_lookup_hits(
+    conn: sqlite3.Connection,
+    drows: List[Any],
+    latest: Optional[str],
+    *,
+    fuzzy: bool = False,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    ids = [str(r["stock_id"]) for r in drows]
+    quotes: Dict[str, Any] = {}
+    if latest and ids:
+        qmarks = ",".join("?" * len(ids))
+        for qr in conn.execute(
+            f"""SELECT stock_id, close, pct_change, volume FROM daily_quotes
+                WHERE date=? AND stock_id IN ({qmarks})""",
+            (latest, *ids),
+        ):
+            quotes[str(qr["stock_id"])] = qr
+        missing = [sid for sid in ids if sid not in quotes]
+        for sid in missing:
+            qr = conn.execute(
+                """SELECT close, pct_change, volume FROM daily_quotes
+                   WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
+                (sid,),
+            ).fetchone()
+            if qr:
+                quotes[sid] = qr
+    for r in drows:
+        item = dict(r)
+        quote = quotes.get(str(item["stock_id"]))
+        if quote:
+            item["close"] = quote["close"]
+            item["pct_change"] = quote["pct_change"]
+            item["volume"] = quote["volume"] if "volume" in quote.keys() else None
+            item["quote_date"] = latest
+        else:
+            item["close"] = None
+            item["pct_change"] = None
+        item["fuzzy"] = bool(fuzzy)
+        out.append(item)
+    return out
+
+
+def _rank_exact_name_hits(hits: List[Dict[str, Any]], q: str) -> List[Dict[str, Any]]:
+    from lookup_fuzzy import cjk_only, strip_lookup_name
+
+    qn = strip_lookup_name(q)
+    qc = cjk_only(qn)
+
+    def key(h: Dict[str, Any]) -> tuple:
+        name = strip_lookup_name(str(h.get("stock_name") or ""))
+        nc = cjk_only(name)
+        if name == qn or (qc and nc == qc):
+            rank = 0
+        elif name.startswith(qn) or (qc and nc.startswith(qc)):
+            rank = 1
+        else:
+            rank = 2
+        try:
+            vol = -float(h["volume"] or 0)
+        except (TypeError, ValueError, KeyError):
+            vol = 0.0
+        return (rank, vol, str(h.get("stock_id") or ""))
+
+    hits.sort(key=key)
+    return hits
+
+
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號或中文名（如南亞、山太士、00631L）查標的；ETF 含主動／被動／槓桿。"""
+    """用代號或中文名（如南亞、山太士、00631L）查標的；ETF 含主動／被動／槓桿。
+
+    名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
+    再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
+    """
+    from lookup_fuzzy import FUZZY_MIN_SCORE, cjk_only, name_match_score, strip_lookup_name
     from universe import is_lookup_ticker
 
     ensure_core_schema(db_path)
     code, name_q = split_lookup_code_name(query)
-    q = code or name_q
-    if not q:
+    raw = code or name_q
+    if not raw:
         return []
+    ticker = is_lookup_ticker(raw)
+    name_q = strip_lookup_name(name_q or ("" if ticker else raw))
+    like_q = raw if ticker else (name_q or raw)
+    cap = int(limit)
+    latest = _resolve_lookup_quote_date(db_path)
+    exact: List[Dict[str, Any]] = []
     with get_db_connection(db_path, write=False) as conn:
-        latest = _resolve_lookup_quote_date(db_path)
-        rows = []
-        if latest and is_lookup_ticker(q):
+        if latest and ticker:
             rows = conn.execute(
-                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
                    WHERE date=? AND UPPER(stock_id)=? LIMIT 1;""",
-                (latest, q.upper()),
+                (latest, raw.upper()),
             ).fetchall()
-        elif latest:
+            exact = [dict(r) for r in rows]
+        elif latest and not ticker:
             rows = conn.execute(
-                """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
+                """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
                    WHERE date=? AND stock_name LIKE ?
                    ORDER BY volume DESC LIMIT ?;""",
-                (latest, f"%{q}%", int(limit)),
+                (latest, f"%{like_q}%", cap),
             ).fetchall()
-        hits = [dict(r) for r in rows]
-        if hits:
-            for h in hits:
-                h["quote_date"] = latest
-            return hits
+            exact = [dict(r) for r in rows]
+        for h in exact:
+            h["quote_date"] = latest
+            h["fuzzy"] = False
+    if ticker:
+        if exact:
+            return exact
+        with get_db_connection(db_path, write=False) as conn:
+            try:
+                drows = conn.execute(
+                    "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",
+                    (raw.upper(),),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return []
+            return _hydrate_lookup_hits(conn, drows, latest, fuzzy=False)
+    want_fuzzy = len(cjk_only(like_q)) >= 2
+    if exact:
+        exact = _rank_exact_name_hits(exact, like_q)
+    elif not want_fuzzy:
+        return []
+
+    def _fuzzy_from_catalog(conn: sqlite3.Connection, catalog: List[Any]) -> List[Dict[str, Any]]:
+        have = {str(h.get("stock_id")) for h in exact}
+        scored: List[tuple] = []
+        for row in catalog:
+            sid = str(row["stock_id"])
+            if sid in have:
+                continue
+            score = name_match_score(like_q, str(row["stock_name"] or ""))
+            if score >= FUZZY_MIN_SCORE:
+                scored.append((score, row))
+        scored.sort(key=lambda x: (-x[0], str(x[1]["stock_id"])))
+        room = max(0, cap - len(exact))
+        return _hydrate_lookup_hits(
+            conn, [row for _s, row in scored[:room]], latest, fuzzy=True
+        )
+
+    extra: List[Dict[str, Any]] = []
+    if want_fuzzy and latest:
+        with get_db_connection(db_path, write=False) as conn:
+            catalog = conn.execute(
+                """SELECT stock_id, stock_name, market FROM daily_quotes
+                   WHERE date=? AND stock_name IS NOT NULL AND stock_name != ''""",
+                (latest,),
+            ).fetchall()
+            extra = _fuzzy_from_catalog(conn, catalog)
+        if exact or extra:
+            return (exact + extra)[:cap]
+    if not want_fuzzy:
+        return exact
     ensure_stock_directory(db_path)
     with get_db_connection(db_path, write=False) as conn:
-        latest = _resolve_lookup_quote_date(db_path)
-        if is_lookup_ticker(q):
-            drows = conn.execute(
-                "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",
-                (q.upper(),),
-            ).fetchall()
-        else:
+        if not exact:
             drows = conn.execute(
                 """SELECT stock_id, stock_name, market FROM stock_directory
                    WHERE stock_name LIKE ? ORDER BY stock_id LIMIT ?;""",
-                (f"%{q}%", int(limit)),
+                (f"%{like_q}%", cap),
             ).fetchall()
-        out = []
-        ids = [str(r["stock_id"]) for r in drows]
-        quotes = {}
-        if latest and ids:
-            qmarks = ",".join("?" * len(ids))
-            for qr in conn.execute(
-                f"""SELECT stock_id, close, pct_change FROM daily_quotes
-                    WHERE date=? AND stock_id IN ({qmarks})""",
-                (latest, *ids),
-            ):
-                quotes[str(qr["stock_id"])] = qr
-            missing = [sid for sid in ids if sid not in quotes]
-            for sid in missing:
-                qr = conn.execute(
-                    """SELECT close, pct_change FROM daily_quotes
-                       WHERE stock_id=? ORDER BY date DESC LIMIT 1;""",
-                    (sid,),
-                ).fetchone()
-                if qr:
-                    quotes[sid] = qr
-        for r in drows:
-            item = dict(r)
-            quote = quotes.get(str(item["stock_id"]))
-            if quote:
-                item["close"] = quote["close"]
-                item["pct_change"] = quote["pct_change"]
-                item["quote_date"] = latest
-            else:
-                item["close"] = None
-                item["pct_change"] = None
-            out.append(item)
-        return out
+            if drows:
+                exact = _rank_exact_name_hits(
+                    _hydrate_lookup_hits(conn, drows, latest, fuzzy=False),
+                    like_q,
+                )
+        catalog = conn.execute(
+            "SELECT stock_id, stock_name, market FROM stock_directory"
+        ).fetchall()
+        extra = _fuzzy_from_catalog(conn, catalog)
+    return (exact + extra)[:cap]
 
 
 def ensure_stock_directory(db_path: str) -> None:

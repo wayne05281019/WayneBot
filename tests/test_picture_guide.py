@@ -64,7 +64,9 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v22"
+    assert CACHE_VER == "v23"
+    assert "國字打不準" in blob
+    assert "點左邊確認" in blob
     assert "一張圖卡" in blob
     assert "細項小框" in blob
     assert PAGE_WIDTH == 1080

@@ -262,7 +262,7 @@ def test_chaos_inputs_get_friendly_not_found():
     bot = _bot()
 
     async def run():
-        with patch("wayne_db.lookup_stocks", return_value=[]):
+        with patch("bot_servers.lookup_stocks", return_value=[]):
             for text in ("asdfgh", "股票", "123", "🙂"):
                 msg = _msg(2, 2, text)
                 await bot.on_text(_update(msg), MagicMock())

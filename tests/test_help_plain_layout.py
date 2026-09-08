@@ -65,7 +65,9 @@ def test_oops_covers_streak_report_not_found_weekend():
     oops = HELP_TOPICS["oops"]
     assert "連買" in oops
     assert "回報" in oops
-    assert "找不到股票" in oops or "再打一次四碼" in oops
+    assert "找不到股票" in oops
+    assert "國字打錯" in oops or "同音" in oops
+    assert "南亞科" in oops
     assert "海選" in oops and "隔日沖" in oops
     assert "當沖" in oops
     assert "圖下面" in oops or "圖下方" in oops
@@ -121,7 +123,10 @@ def test_start_cmd_leads_with_three_steps():
     src = inspect.getsource(WayneTelegramBot.start_cmd)
     assert "第一次用，先做這三步" in src
     assert "直接打代號" in src
-    assert "00981A" in src
+    assert "LOOKUP_CODE_EXAMPLES_HTML" in src
+    from bot_servers import LOOKUP_CODE_EXAMPLES_HTML
+
+    assert "00981A" in LOOKUP_CODE_EXAMPLES_HTML
     assert "圖下面" in src
     assert "圖文" in src
     assert "回報" in src
