@@ -9,6 +9,18 @@ def test_typed_shortcuts_open_overnight_and_ai_desk():
     assert "_send_ai_desk_view" in src
 
 
+def test_refresh_last_button_keeps_decision_card_alias():
+    import inspect
+
+    from bot_servers import MENU_BTN_CARD, MENU_BTN_CARD_ALIASES, WayneTelegramBot
+
+    assert MENU_BTN_CARD == "刷新上一檔"
+    assert "決策卡" in MENU_BTN_CARD_ALIASES
+    src = inspect.getsource(WayneTelegramBot.on_text)
+    assert "MENU_BTN_CARD_ALIASES" in src
+    assert "decision_card_btn" in src
+
+
 def test_reply_menu_is_two_rows_not_three():
     from bot_servers import (
         MENU_BTN_AI,
@@ -22,14 +34,14 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_MARKET == "大盤"
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_REPORT == "回報"
-    assert MENU_LAYOUT_VERSION == "11"
+    assert MENU_LAYOUT_VERSION == "12"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert len(row1) == 6 and len(row2) == 6
-    assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
+    assert row1 == ["刷新上一檔", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
     assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
     assert row2[-1] == MENU_BTN_REPORT
     assert row2[-2] == "說明"
@@ -41,6 +53,7 @@ def test_help_guide_covers_all_main_buttons():
 
     guide = HELP_TOPICS["guide"]
     for label in (
+        "刷新上一檔",
         "決策卡",
         "當沖",
         "持股",

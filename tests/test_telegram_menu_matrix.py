@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot_servers import MENU_BTN_AI, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
+from bot_servers import MENU_BTN_AI, MENU_BTN_CARD, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
 
 MENU_BUTTONS = [
-    ("決策卡", "decision_card_btn"),
+    (MENU_BTN_CARD, "decision_card_btn"),
     ("當沖", "daytrade_cmd"),
     ("持股", "_send_portfolio"),
     ("觀察", "_send_watch"),
@@ -90,6 +90,16 @@ def test_menu_button_routes_to_handler(label, handler):
 
     asyncio.run(run())
     getattr(bot, handler).assert_awaited_once()
+
+
+def test_decision_card_typed_alias_still_routes():
+    bot = _bot()
+
+    async def run():
+        await bot.on_text(_update(_msg(1001, "決策卡")), MagicMock())
+
+    asyncio.run(run())
+    bot.decision_card_btn.assert_awaited_once()
 
 
 @pytest.mark.parametrize("label,hint", list(INSTANT_ACK_BUTTONS.items()))

@@ -48,7 +48,7 @@ xdotool windowactivate --sync "$WIN"
 sleep 1
 
 # 5 人格：行為完全不同
-WAIT_S=12 run_persona p01_weiquan "偉權" "決策卡" "大盤" "資金" "海選"
+WAIT_S=12 run_persona p01_weiquan "偉權" "刷新上一檔" "大盤" "資金" "海選"
 WAIT_S=10 run_persona p02_gege "哥哥" "觀察" "大盤" "當沖"
 WAIT_S=10 run_persona p03_newbie "新手" "/start" "連買區" "說明" "大盤"
 WAIT_S=8  run_persona p04_luan "不懂股" "asdfgh" "股票" "持股"

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 PERSONAS = [
-    ("偉權", 9001, ["決策卡", "大盤", "資金", "海選"]),
+    ("偉權", 9001, ["刷新上一檔", "大盤", "資金", "海選"]),
     ("哥哥", 9002, ["觀察", "大盤", "持股"]),
     ("新手", 9003, ["連買區", "說明", "大盤", "資金"]),
     ("不懂股", 9004, ["股票", "asdf", "持股"]),
