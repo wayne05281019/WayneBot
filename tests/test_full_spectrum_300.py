@@ -1158,6 +1158,82 @@ def test_l9b_brother_help_exists():
     assert "第一次用" in HELP_TOPICS["guide"] or "四碼" in HELP_TOPICS["guide"]
 
 
+def test_l9c_guide_family_invite_one_chunk():
+    from tg_layout import chunk_telegram_html
+
+    guide = HELP_TOPICS["guide"]
+    chunks = chunk_telegram_html(guide)
+    assert len(chunks) == 1
+    assert "t.me/WC_ai_trade_bot" in guide
+    assert "按<b>開始</b>" in guide or "按開始" in guide
+    assert "不要拉進同一個群組" in guide
+    assert "各看各的" in guide
+    assert "06:30" in guide and "各寄一份" in guide
+    assert "16:45" not in guide
+
+
+@pytest.mark.parametrize("topic", sorted(HELP_TOPICS))
+def test_l9c_help_topic_layout_and_jargon(topic):
+    from tg_layout import chunk_telegram_html
+
+    body = HELP_TOPICS[topic]
+    assert body.strip()
+    assert "<b>" in body
+    assert "TWSE" not in body
+    assert "TPEX" not in body
+    for phrase in ("外資成本", "投信成本", "融資成本"):
+        if phrase in body:
+            assert "沒這欄" in body or "官方沒" in body, topic
+    chunks = chunk_telegram_html(body)
+    assert chunks
+    assert all(part.strip() for part in chunks)
+    if topic == "guide":
+        assert len(chunks) == 1
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["說明", "海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區"],
+)
+def test_l9c_twelve_buttons_named_in_guide_and_row_help(label):
+    from bot_servers import MENU_ROW1, MENU_ROW2
+
+    assert label in MENU_ROW1 + MENU_ROW2
+    assert label in HELP_TOPICS["guide"]
+    blob = HELP_TOPICS["row1"] + "\n" + HELP_TOPICS["row2"]
+    assert label in blob
+    assert "是什麼" in blob
+    assert "怎麼用" in blob or "怎麼加" in blob
+
+
+def _circled(i: int) -> str:
+    return "①②③④⑤⑥⑦⑧⑨⑩"[i - 1]
+
+
+def test_l9c_row_help_covers_each_button_intro():
+    from bot_servers import MENU_ROW1, MENU_ROW2
+
+    for rows, blob in ((MENU_ROW1, HELP_TOPICS["row1"]), (MENU_ROW2, HELP_TOPICS["row2"])):
+        for i, label in enumerate(rows, start=1):
+            start = blob.index(f"<b>{_circled(i)} {label}</b>")
+            end = blob.index(f"<b>{_circled(i + 1)} ", start) if i < 6 else len(blob)
+            section = blob[start:end]
+            assert "是什麼" in section
+            assert ("怎麼用" in section) or ("怎麼加" in section)
+
+
+def test_l9c_gha_morning_only_at_0630():
+    from pathlib import Path
+
+    from config import scheduled_job_kind
+
+    text = Path(".github/workflows/daily_run.yml").read_text(encoding="utf-8")
+    assert "WAYNE_FAMILY_CHAT_IDS" in text
+    assert scheduled_job_kind("30 22 * * 0-4") == "morning_screen"
+    assert scheduled_job_kind("30 8 * * 1-5") == "increment"
+    assert scheduled_job_kind("45 8 * * 1-5") == "increment"
+
+
 # ===========================================================================
 # L10 生產庫：速度＋視覺（標記 production_db）
 # ===========================================================================

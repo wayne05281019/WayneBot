@@ -2,9 +2,11 @@ name: WayneBot Daily Screening
 
 on:
   schedule:
-    # 台灣時間週一至週五 16:30（UTC 08:30）— 融合後通過完整性才蓋掉 Release zip
+    # 盤後融合：台灣週一至五 16:30（UTC 08:30）。只抓數、蓋 Release，不寄海選。
     - cron: '30 8 * * 1-5'
-    # 台灣時間週一至週五 06:30（UTC 日～四 22:30）— 昨收＋美股收盤／盤後寄海選；大跌先通知
+    # GitHub 常晚幾分鐘才排到 08:30；08:45 只補跑盤後。不是早上海選。
+    - cron: '45 8 * * 1-5'
+    # 早上海選：台灣週一至五 06:30（UTC 日～四 22:30）。只准這一條。不要再加帶 22 的備份。
     - cron: '30 22 * * 0-4'
   workflow_dispatch:
     inputs:
@@ -84,10 +86,12 @@ jobs:
           else
             SCHED="${{ github.event.schedule }}"
             echo "schedule=[$SCHED]"
-            case "$SCHED" in
-              *22*) JOB="morning_screen" ;;
-              *) JOB="increment" ;;
-            esac
+            # 早上海選只認 22:30 那一條。其餘排程（16:30／16:45）都是盤後，不要寄海選。
+            if [ "$SCHED" = "30 22 * * 0-4" ]; then
+              JOB="morning_screen"
+            else
+              JOB="increment"
+            fi
           fi
           echo "job=$JOB" >> "$GITHUB_OUTPUT"
           echo "本次工作：$JOB"
@@ -116,6 +120,7 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TG_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
+          WAYNE_FAMILY_CHAT_IDS: ${{ secrets.WAYNE_FAMILY_CHAT_IDS }}
           PYTHONUNBUFFERED: "1"
         run: |
           python main.py --once

@@ -6,6 +6,7 @@ import os
 import re
 
 from bot_servers import HELP_TOPICS
+from config import scheduled_job_kind
 from picture_guide import page_copy_blob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,8 +21,17 @@ def test_gha_daily_run_owns_morning_and_fuse_only():
     text = _read(".github/workflows/daily_run.yml")
     crons = re.findall(r"cron:\s*'([^']+)'", text)
     assert "30 8 * * 1-5" in crons  # UTC 08:30＝台北 16:30 盤後融合
+    assert "45 8 * * 1-5" in crons  # UTC 08:45＝台北 16:45 盤後補跑，不是海選
     assert "30 22 * * 0-4" in crons  # UTC 22:30 日～四＝台北週一～五 06:30
+    assert crons.count("30 22 * * 0-4") == 1
+    assert not any(c != "30 22 * * 0-4" and " 22 " in f" {c} " for c in crons)
+    assert '*22*' not in text
+    assert '"$SCHED" = "30 22 * * 0-4"' in text
+    assert scheduled_job_kind("30 8 * * 1-5") == "increment"
+    assert scheduled_job_kind("45 8 * * 1-5") == "increment"
+    assert scheduled_job_kind("30 22 * * 0-4") == "morning_screen"
     assert "increment" in text and "morning_screen" in text
+    assert "WAYNE_FAMILY_CHAT_IDS" in text
     assert "run_midday_review" not in text
     assert "run_evening_screen" not in text
 

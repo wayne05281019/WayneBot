@@ -9,7 +9,7 @@ import os
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
-CACHE_VER = "v30"
+CACHE_VER = "v31"
 # 八頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -22,8 +22,9 @@ MAX_BODY_SIZE = 64
 MIN_TITLE_SIZE = 68
 MIN_BODY_SIZE = 48
 BOTTOM_PAD = 48
-TEXT_SHOT_GAP = 96
+TEXT_SHOT_GAP = 88
 SHOT_TOP_RATIO = 0.52
+EDITORIAL_PANEL_H = 300
 CHROME_TOP = 8
 PROGRESS_H = 22
 KICKER_H = 44
@@ -64,13 +65,9 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "lookup",
         "查一檔：一次三張圖",
-        "打股名或代號，例如 2330、0050、0052、00631L、00981A。不要先按「刷新」。\n"
-        "\n"
-        "1  輸入列打代號或股名，送出就出圖。撞名或國字打不準會列出相近的，點左邊確認才出圖。KY 可只打前面。ETF 可含 L／R／A；海選名單仍只有股票／KY\n"
-        "2  一次出三張：介紹圖（熱不熱、獲利離 0）／決策卡（高低卡表，進場只認表）／導航圖（近半年）\n"
-        "3  圖下面最上：產業（一張圖卡，細項小框沒抓到不畫）、報導、K線（先開日K＋量）。下一排籌碼、營收、觀察、記買入。零股寫「200股 631.6」\n"
-        "\n"
-        "黃金買點＝獲利剛離開 0。重點觀察＝還壓在近 60 個日曆天收盤低。股名旁若有法說／股東會／除權息，是官方最近一件。興櫃用櫃買日均價畫線與量，沒有法人表。介紹圖紀律／月K還在往上只講現在怎樣，不是買訊。",
+        "打 2330、0050、00631L、00981A。不要先按「刷新」。國字打不準就點左邊確認。ETF 可含 L／R／A。"
+        "一次三張：介紹圖／決策卡／導航圖。圖下產業（一張圖卡，細項小框沒抓到不畫）、報導、K線（可改15分／五日／月線）。下一排籌碼、營收、記買入。零股「200股」。"
+        "黃金買點＝獲利剛離 0。重點觀察＝近 60 日。月K還在往上不是買訊。興櫃用日均價。",
     ),
     (
         "lists",
@@ -83,15 +80,12 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     ),
     (
         "screen",
-        "海選怎麼看、怎麼轉 LINE",
-        "海選怎麼轉 LINE：依最近一次官方收盤掃全市場，不是盤中即時掃描。主選單第一排「海選」。按一次等 2～5 分鐘，不要連按。配圖紅圈只標位置，以這頁文字的按鈕順序為準。\n"
-        "\n"
-        "1  左鍵＝看這檔完整圖；右 + ＝加入觀察\n"
-        "2  股名右「開 LINE・傳這檔」＝只傳這一檔\n"
-        "3  區底「一鍵傳 LINE」＝可勾好幾檔再傳\n"
-        "\n"
-        "認欄：黃金買點＝獲利剛離 0，才是進場表。重點觀察＝還壓在低點，先看不要追。靠近 20 日收盤高會標「少追」，不是叫立刻買。\n"
-        "興櫃請打「興櫃海選」或「興櫃名單」。那是獨立名單，不混進上市櫃海選。黃金買點、重點觀察會配小動圖認欄。完整海選還有優先看、周帶量、半年高、站上季線、止跌。",
+        "海選怎麼轉 LINE",
+        "依最近一次官方收盤掃全市場，不是盤中即時。主選單「海選」按一次等，不要連按。紅圈只標位置。\n"
+        "1  左鍵＝這檔完整圖；右 + ＝觀察\n"
+        "2  「開 LINE・傳這檔」＝只傳這一檔\n"
+        "3  「一鍵傳 LINE」＝可勾好幾檔再傳\n"
+        "黃金買點才是進場表。重點觀察先看。20 日高標「少追」。興櫃海選／興櫃名單不混進上市櫃。小動圖。優先看、周帶量、半年高、站上季線、止跌。",
     ),
     (
         "sell",
@@ -104,11 +98,10 @@ PAGES: Sequence[Tuple[str, str, str]] = (
     (
         "more",
         "其餘按鈕、一天什麼時候動",
-        "大盤頁：第二排最左。加權、漲跌家數、法人、台指期、美股上一收盤。美股當天沒開會寫日期與原因。台股國定假或北市全日／上午停班同樣寫原因。\n"
-        "資金：盤後哪個產業法人買超／賣超，只當佈局對照，不是買訊。\n"
-        "當沖：平日 09:00–13:30 才有。隔日沖：尾盤佈局明早；收盤後按只供參考。連買區：先選外資／投信／外資+投信，再點天數，上市櫃一起列。\n"
-        "AI倉：第二排右二。用平常話問原因：輸入列左邊三條槓有「原因」。為什麼跌／怎麼賣／外資／產業／大盤／海選會對到官方資料。也可傳語音。沒有官方新聞跌因欄，不編故事。\n"
-        "一天什麼時候動（台灣）：06:30 早報、12:45 尾盤、16:30 官方收盤寫庫（興櫃日均價也在這時寫獨立表）、20:00 AI倉模擬買賣不推播。台股休市當日不寄 06:30 與 12:45。",
+        "大盤頁：第二排最左。加權、漲跌家數、法人、台指期、美股上一收盤。美股當天沒開、台股國定假或北市全日／上午停班會寫原因。\n"
+        "資金：盤後產業法人買超／賣超，只當佈局對照。當沖平日 09:00–13:30 才有。隔日沖尾盤佈局明早。連買區先選外資／投信／外資+投信再點天數。\n"
+        "用平常話問原因：左邊三條槓有「原因」。也可傳語音。沒有官方新聞跌因欄，不編故事。\n"
+        "一天什麼時候動（台灣）：06:30 早報（早上海選）、12:45 尾盤、16:30 官方收盤寫庫（興櫃日均價也在這時寫獨立表）、20:00 AI倉模擬買賣不推播。台股休市當日不寄 06:30 與 12:45。",
     ),
     (
         "oops",
@@ -448,8 +441,11 @@ def _fit_cover(im, max_w: int, max_h: int, *, keep: str = "center"):
     return im.crop((left, top, left + max_w, top + max_h))
 
 
-def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
-    """截圖等比放入卡片。不硬鋪滿、不裁按鈕、不留底欄殘字；不夠高就留深藍。"""
+def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center", fill_h: bool = False):
+    """截圖等比放入卡片。不硬鋪滿、不裁按鈕、不留底欄殘字；不夠高就留深藍。
+
+    fill_h=True：卡片高度仍佔滿下半帶（八張同一框），圖本身仍等比、不裁按鈕。
+    """
     from PIL import Image, ImageDraw
 
     pad = 14
@@ -460,7 +456,7 @@ def _shot_card(shot, max_w: int, max_h: int, *, keep: str = "center"):
         card_h = max_h
     else:
         shot = _fit_box(shot, inner_w, inner_h)
-        card_h = min(max_h, shot.size[1] + pad * 2)
+        card_h = max_h if fill_h else min(max_h, shot.size[1] + pad * 2)
     sw, sh = shot.size
     out = Image.new("RGB", (max_w, card_h), _BG)
     d = ImageDraw.Draw(out)
@@ -587,13 +583,17 @@ def _draw_legend_panel(draw, title: str, labels: Sequence[str], box) -> None:
         if x + w > x0 + 40 + inner_w and x > x0 + 40:
             x = x0 + 40
             y += row_h + gap
-        if y + row_h > y1 - 36:
+        if y + row_h > y1 - 72:
             break
         pill = (x, y, x + w, y + row_h)
         draw.rounded_rectangle(pill, 29, fill=_LABEL_BG, outline=_GOLD, width=2)
         px, py = _centered_text_xy(font, lab, pill)
         draw.text((px, py), lab, font=font, fill=_GOLD_HI)
         x += w + gap
+    foot = "只認高低卡表  ·  紅箭頭不是買訊"
+    foot_font = _load_font(26, bold=True)
+    fx, fy = _centered_text_xy(foot_font, foot, (x0, y1 - 56, x1, y1 - 16))
+    draw.text((fx, fy), foot, font=foot_font, fill=_MUTED)
 
 
 def _draw_watermark(draw, idx: int, n: int) -> None:
@@ -640,7 +640,7 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
     title_font = body_font = None
     text_h = 0
     if layout == "editorial":
-        text_budget = PAGE_HEIGHT - BOTTOM_PAD - 120
+        text_budget = PAGE_HEIGHT - BOTTOM_PAD - EDITORIAL_PANEL_H - TEXT_SHOT_GAP
     else:
         text_budget = shot_top_min - TEXT_SHOT_GAP
     cover_steps = _parse_numbered_steps(body) if layout == "cover" else []
@@ -748,35 +748,25 @@ def render_page(slug: str, title: str, body: str, out_path: str) -> str:
                 draw.text((MARGIN + indent, y), line, font=body_font, fill=_INK)
             y += body_lh
 
-    text_end = y
-    y_floor = max(shot_top_min, text_end + TEXT_SHOT_GAP)
-    avail_h = PAGE_HEIGHT - BOTTOM_PAD - y_floor
+    # 有截圖：下半從 0.52 起同一框。說明頁：底部固定金框，不要有的有框有的沒框。
+    panel_bot = PAGE_HEIGHT - BOTTOM_PAD
     shot = _page_shot(slug)
-    if shot is not None and avail_h >= 80:
-        card = _shot_card(shot, max_w, avail_h)
-        card_h = card.size[1]
-        y_shot = PAGE_HEIGHT - BOTTOM_PAD - card_h
-        if y_shot < y_floor:
-            y_shot = y_floor
-        img.paste(card, (MARGIN, y_shot))
+    if shot is not None:
+        y_floor = shot_top_min
+        avail_h = panel_bot - y_floor
+        if avail_h >= 80:
+            card = _shot_card(shot, max_w, avail_h, fill_h=True)
+            img.paste(card, (MARGIN, y_floor))
     elif layout == "editorial":
         pills = PAGE_PILLS.get(slug) or ()
-        panel_top = max(y_floor, int(PAGE_HEIGHT * 0.58))
-        panel_bot = PAGE_HEIGHT - BOTTOM_PAD - 64
-        if pills and panel_bot - panel_top >= 180:
+        y_floor = panel_bot - EDITORIAL_PANEL_H
+        if pills:
             _draw_legend_panel(
                 draw,
                 PAGE_PANEL.get(slug, "WayneBot"),
                 pills,
-                (MARGIN, panel_top, PAGE_WIDTH - MARGIN, panel_bot),
+                (MARGIN, y_floor, PAGE_WIDTH - MARGIN, panel_bot),
             )
-        foot = "WayneBot  ·  只認高低卡表  ·  紅箭頭不是買訊"
-        foot_font = _load_font(28, bold=True)
-        fy = PAGE_HEIGHT - BOTTOM_PAD - 36
-        fx, fyy = _centered_text_xy(
-            foot_font, foot, (MARGIN, fy, PAGE_WIDTH - MARGIN, fy + 36)
-        )
-        draw.text((fx, fyy), foot, font=foot_font, fill=_MUTED)
     _save_page_image(img, out_path)
     return out_path
 

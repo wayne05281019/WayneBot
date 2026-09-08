@@ -86,6 +86,8 @@ def test_how_to_sell_and_daily_clock_are_in_help_and_pictures():
     for clock in ("06:30", "12:45", "16:30", "20:00"):
         assert clock in guide, clock
         assert clock in blob, clock
+    assert "16:45" not in guide
+    assert "16:45" not in blob
     assert "台股休市當日" in guide
     assert "台股休市當日" in blob
     assert "美股當天沒開" in blob
@@ -99,3 +101,12 @@ def test_ai_help_stays_simulated_not_broker_injection():
     assert "不能把這支程式塞進" in ai
     assert "place_order" not in ai
     assert "Neo" not in ai
+
+
+def test_family_invite_is_in_help():
+    guide = HELP_TOPICS["guide"]
+    assert "t.me/WC_ai_trade_bot" in guide
+    assert "按<b>開始</b>" in guide or "按開始" in guide
+    assert "不要拉進同一個群組" in guide
+    assert "各看各的" in guide
+    assert "06:30" in guide and "各寄一份" in guide

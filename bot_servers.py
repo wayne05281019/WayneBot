@@ -205,7 +205,7 @@ HELP_TOPICS = {
         "\n"
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
-        "        打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
+        "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
         "也可打股名：撞名或國字打不準會列出相近的請你點，不會猜錯就出圖。\n"
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
@@ -237,7 +237,7 @@ HELP_TOPICS = {
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
-        "        介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
+        "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
         "名稱撞名、國字打不準、KY 沒寫對：會列出相近的；藍字＝奇摩，左邊＝看這檔，右 <b>➕</b>＝觀察。讀音猜中也要點確認才出圖。\n"
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
@@ -254,7 +254,6 @@ HELP_TOPICS = {
         "• <b>持股</b>＝你手記的真實買入（成交／復盤在持股頁下方）\n"
         "• <b>AI倉</b>＝假錢對照組（也可打 AI模擬倉）；50 萬切 3 等份，平常最多 1 份，超跌才第 2 份，第 3 份留現金；頁上 <b>AI操盤</b> 立刻跑一輪，<b>進化</b>只調倍數、不改黃金買點\n"
         "打「持倉」會開 <b>持股</b>（手記）。「持倉報告／模擬持倉」才是 AI倉。\n"
-        "打「精簡選單」只留第一週六顆；「完整選單」恢復十二顆。\n"
         "\n"
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
@@ -269,8 +268,8 @@ HELP_TOPICS = {
         "你挑股認黃金買點欄：若名單上的檔，打開決策卡獲利格不是剛離零，請按回報或貼給偉權。\n"
         "\n"
         "<b>家人各用各的</b>\n"
-        "每人用自己的話筒帳號跟機器人私聊：持股、觀察、成交、連買、查股出圖都各看各的。\n"
-        "海選／大盤／資金／連買名單是全市場同一份；家人正在跑海選，你再按只會共用那一次掃描。\n"
+        "各自私聊。不要拉進同一個群組。https://t.me/WC_ai_trade_bot 對方按<b>開始</b>即可。\n"
+        "十二顆同一套。持股／觀察／AI倉各看各的。06:30 早報各寄一份。\n"
         "\n"
         "<b>完全新手小詞典</b>\n"
         "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
@@ -2341,20 +2340,21 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_photo: %s", e)
 
-    def send_screening_report(self, result: Dict[str, Any]):
-        if not self.token or not self.chat_id:
+    def send_screening_report(self, result: Dict[str, Any], chat_id: str | None = None):
+        dest = str(chat_id or self.chat_id or "").strip()
+        if not self.token or not dest:
             return
         import time as _t
 
         parts = self._screening_payload(result)
         if not parts:
-            self._send_html(self.chat_id, result.get("message") or self._format_screening_html(result))
+            self._send_html(dest, result.get("message") or self._format_screening_html(result))
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
             gif = self._mark_gif_path(part.get("mark_key") or "")
             if gif:
-                self._send_animation(self.chat_id, gif)
+                self._send_animation(dest, gif)
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last_chunk = j == len(chunks) - 1
@@ -2365,7 +2365,7 @@ class WayneTelegramBot:
                     picks=part.get("picks") if is_last_chunk else None,
                 )
                 self._send_html(
-                    self.chat_id,
+                    dest,
                     chunk,
                     extra_keyboard=kb,
                     attach_menu=False,
@@ -2458,7 +2458,8 @@ class WayneTelegramBot:
             + "（不要先按「刷新」）\n"
             "3　籌碼／營收／產業／K線在圖下面，不在右側四格鍵盤\n"
             "\n"
-            "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n",
+            "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
+            "給家人用：點最上面機器人名字 → 分享。對方用自己的帳號按開始，持股各看各的。\n",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 

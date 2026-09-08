@@ -46,9 +46,12 @@ def get_public_base_url() -> str:
 
 
 def scheduled_job_kind(cron_expr: str) -> str:
-    """GHA 兩個 cron：22:30 UTC＝早上海選；其餘＝盤後融合。"""
+    """GHA：UTC 22:30＝早上海選；08:30／08:45＝盤後融合。不要把 16:45 補跑判成海選。"""
     s = str(cron_expr or "").strip().strip("'\"")
-    if s.startswith("30 22") or " 22 " in f" {s} ":
+    if s.startswith("30 22") or s.startswith("30 22 "):
+        return "morning_screen"
+    parts = s.split()
+    if len(parts) >= 2 and parts[1] == "22":
         return "morning_screen"
     return "increment"
 
@@ -69,11 +72,41 @@ def get_telegram_token() -> str:
 
 
 def get_telegram_chat_id() -> str:
-    return (
+    raw = (
         os.getenv("TELEGRAM_CHAT_ID")
         or os.getenv("TG_CHAT_ID")
         or ""
     ).strip()
+    return raw.split(",")[0].strip()
+
+
+def extra_family_chat_ids() -> list:
+    """GHA 排程庫沒有 Render 上按開始的帳號時，用環境變數補家人 id。
+
+    只讀 WAYNE_FAMILY_CHAT_IDS，以及 TELEGRAM_CHAT_ID／TG_CHAT_ID 逗號後面的額外 id。
+    第一個仍是擁有者，不算家人。不要把真人 id 寫進程式庫。
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+
+    def take(blob: str, *, skip_first: bool = False) -> None:
+        parts = [
+            p.strip()
+            for p in str(blob or "").replace(";", ",").split(",")
+            if p.strip()
+        ]
+        if skip_first:
+            parts = parts[1:]
+        for s in parts:
+            if s in seen:
+                continue
+            seen.add(s)
+            ids.append(s)
+
+    take(os.getenv("WAYNE_FAMILY_CHAT_IDS") or "")
+    take(os.getenv("TELEGRAM_CHAT_ID") or "", skip_first=True)
+    take(os.getenv("TG_CHAT_ID") or "", skip_first=True)
+    return ids
 
 
 def get_telegram_config() -> dict:
