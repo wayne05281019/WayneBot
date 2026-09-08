@@ -2826,7 +2826,9 @@ def _draw_nav_legend(ax1) -> None:
                 markeredgecolor="#e53935", markeredgewidth=0.0, markersize=12), "警告"),
         (Line2D([], [], linestyle="none", marker="^", markerfacecolor="#ce93d8",
                 markeredgecolor="#ce93d8", markeredgewidth=0.0, markersize=11), "月波動低"),
-        (Line2D([], [], color="#f9a825", lw=2.25), "SMA(20)"),
+        (Line2D([], [], color="#ef6c00", lw=1.15), "5日均"),
+        (Line2D([], [], color="#f9a825", lw=2.25), "月線"),
+        (Line2D([], [], color="#7b1fa2", lw=1.35), "季線"),
         (Line2D([], [], color="#f48fb1", lw=1.75), "季高點線"),
         (Line2D([], [], color="#81c784", lw=1.75), "季低點線"),
         (Line2D([], [], color="#f8bbd0", lw=1.15, linestyle="--"), "月高點線"),
@@ -2852,7 +2854,7 @@ def _draw_nav_legend(ax1) -> None:
     ax1.add_artist(leg1)
     ax1.legend(
         [h for h, _ in row2], [t for _, t in row2],
-        bbox_to_anchor=(0.0, 1.004), ncol=8, **kw,
+        bbox_to_anchor=(0.0, 1.004), ncol=5, **kw,
     )
 
 
@@ -2968,7 +2970,10 @@ def draw_from_ohlc(
     l20 = float(lo_s.tail(20).min())
     h60 = float(hi_s.tail(60).max())
     l60 = float(lo_s.tail(60).min())
-    work["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    cl_ma = cl_s.ffill()
+    work["ma5"] = cl_ma.rolling(5, min_periods=1).mean()
+    work["ma20"] = cl_ma.rolling(20, min_periods=1).mean()
+    work["ma60"] = cl_ma.rolling(60, min_periods=1).mean()
     work["vol_ma"] = work["volume"].where(~halt).rolling(20, min_periods=1).mean()
     tr = (work["high"] - work["low"]).where(~halt)
     work["atr20"] = tr.rolling(20, min_periods=5).mean()
@@ -3110,7 +3115,9 @@ def draw_from_ohlc(
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
+    ax1.plot(xs, work["ma5"], color="#ef6c00", linewidth=1.15, zorder=4)
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
+    ax1.plot(xs, work["ma60"], color="#7b1fa2", linewidth=1.35, zorder=4)
     ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
     ax1.axhline(l60, color="#81c784", linewidth=1.35)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--")
@@ -3141,7 +3148,7 @@ def draw_from_ohlc(
         0.985,
         f"Op:{_fmt_price(last['open'])}  Hi:{_fmt_price(last['high'])}  "
         f"Lo:{_fmt_price(last['low'])}  Cl:{_fmt_price(last['close'])}"
-        f"    SMA(20): {_fmt_price(last['ma20'])}",
+        f"    5日 {_fmt_price(last['ma5'])}  月線 {_fmt_price(last['ma20'])}  季線 {_fmt_price(last['ma60'])}",
         transform=ax1.transAxes,
         ha="left",
         va="top",
@@ -3159,6 +3166,7 @@ def draw_from_ohlc(
 
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
+    ax2.plot(xs, work["vol_ma"], color="#90a4ae", linewidth=1.05, zorder=4)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=9)
