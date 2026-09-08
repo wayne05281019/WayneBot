@@ -194,7 +194,7 @@ HELP_TOPICS = {
     "guide": (
         "<b>WayneBot 使用說明</b>\n"
         "點訊息下方分類鈕看細節，按 <b>✕</b> 收合。\n"
-        "「圖文」一共 6 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
+        "「圖文」一共 8 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
         "\n"
         "<b>第一次用，先做這三步</b>\n"
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
@@ -2555,7 +2555,7 @@ class WayneTelegramBot:
 
     async def _send_picture_guide(self, message) -> None:
         """說明頁「圖文」：一次一張，鍵盤換頁。"""
-        status = await message.reply_text("正在產出圖文說明（一次一張，共 6 張）…")
+        status = await message.reply_text("正在產出圖文說明（一次一張，共 8 張）…")
         try:
             await self._show_picture_guide_page(message, 0, edit=False)
         except Exception:
@@ -5201,7 +5201,9 @@ class WayneTelegramBot:
             topic = data[2:] or "guide"
             if topic in ("pics", "book"):
                 try:
-                    await q.answer("圖文 1／6")
+                    from picture_guide import PAGE_SLUGS
+
+                    await q.answer(f"圖文 1／{len(PAGE_SLUGS)}")
                 except Exception:
                     pass
                 is_photo = self._message_is_photo(q.message)

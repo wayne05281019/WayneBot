@@ -34,8 +34,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     dest = str(tmp_path / "guide")
     paths = render_picture_guide(dest, force=True)
     assert [os.path.basename(p).split("-", 1)[-1].replace(".png", "") for p in paths] == list(PAGE_SLUGS)
-    assert len(paths) == 6
-    assert len(PAGE_SLUGS) == 6
+    assert len(paths) == 8
+    assert len(PAGE_SLUGS) == 8
     blob = page_copy_blob()
     assert "⌨️" not in blob
     assert "➕" not in blob
@@ -65,7 +65,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v27"
+    assert CACHE_VER == "v28"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -363,6 +363,24 @@ def test_wrapped_lines_stay_inside_and_keep_menu_token():
             assert not line.rstrip().endswith("打 /")
     joined = "\n".join(blob_lines)
     assert "/menu" in joined
+
+
+def test_picture_guide_covers_all_features():
+    from picture_guide import FEATURE_PHRASES, PAGE_SLUGS, page_copy_blob
+
+    assert PAGE_SLUGS == (
+        "cover",
+        "menu",
+        "lookup",
+        "lists",
+        "screen",
+        "sell",
+        "more",
+        "oops",
+    )
+    blob = page_copy_blob()
+    missing = [p for p in FEATURE_PHRASES if p not in blob]
+    assert not missing, f"圖文漏介紹：{missing}"
 
 
 def _near_rgb(c, t, tol=18):
