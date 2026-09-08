@@ -200,7 +200,7 @@ HELP_TOPICS = {
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
         "2　<b>直接打代號</b>看圖，例如 "
         + LOOKUP_CODE_EXAMPLES_HTML
-        + "（不要先按「刷新上一檔」）。股票四碼、ETF 可含 L／R／A。海選名單仍只有股票／KY\n"
+        + "（不要先按「刷新」）。股票四碼、ETF 可含 L／R／A。海選名單仍只有股票／KY\n"
         "3　三張圖出來後，<b>籌碼／營收／產業</b>在圖下面，不在右側四格鍵盤\n"
         "\n"
         "<b>主選單在哪？</b>\n"
@@ -214,7 +214,7 @@ HELP_TOPICS = {
         "例：為什麼跌、2330怎麼賣、外資、產業、大盤、海選。沒寫代號用上一檔。聊天室直接打這些詞也行。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
-        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新上一檔</b>｜<b>回報</b>\n"
+        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>\n"
         "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按第一排最右「回報」。\n"
         "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
@@ -231,7 +231,8 @@ HELP_TOPICS = {
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
         "• <b>營收</b>　月營收、季報毛利\n"
-        "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁有公開細項小框（沒有就不畫）\n"
+        "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁公開細項小框（沒有就不畫）\n"
+        "• <b>報導</b>　近 7 日 Google 新聞則數（有真數才出現）。點數字開搜尋自己讀；則數變多不是賣訊、不進海選\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
@@ -240,6 +241,7 @@ HELP_TOPICS = {
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
+        "興櫃另打「興櫃海選」：用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
@@ -256,7 +258,7 @@ HELP_TOPICS = {
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
         "12:45 尾盤可切版\n"
-        "16:30 官方收盤寫庫（齊了發一則，不是海選）\n"
+        "16:30 官方收盤寫庫（齊了發一則，不是海選；興櫃日均價寫獨立表，不混上市櫃）\n"
         "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "台股休市當日（國定假或北市全日／上午停班）不寄 06:30 海選與 12:45 尾盤。\n"
         "盤中查股用證交所即時價（不寫庫）。13:30～16:30 融合前若即時價空白，會用奇摩參考價；16:30 後以庫內官方收盤為準。\n"
@@ -273,7 +275,7 @@ HELP_TOPICS = {
         "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
         "• <b>觀察</b>：自選清單，還沒真的買\n"
         "• <b>持股</b>：你有手記買入的才會出現\n"
-        "• <b>刷新上一檔</b>：第一排右二，刷新上一檔決策卡；也可打「決策卡」\n"
+        "• <b>刷新</b>：第一排右二，刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
         "• <b>海選</b>：電腦掃全市場的候選名單；低買高賣、按表操課\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
@@ -283,7 +285,7 @@ HELP_TOPICS = {
         "\n"
         "<b>按錯了怎麼辦</b>\n"
         "亂按沒關係。下面幾條最常見；更完整請點下方「按錯」。\n"
-        "• 一打開先按了「刷新上一檔」：還沒查過就直接打代號。打「決策卡」也是同一顆。\n"
+        "• 一打開先按了「刷新」：還沒查過就直接打代號。打「決策卡」也是同一顆。\n"
         "• 「當沖」沒名單：週末／收盤後本來就空；改看「海選」或「隔日沖」。平日 09:00–13:30 才有當沖。\n"
         "• 「海選」等很久：那是掃全市場，不是查某一檔；不要連按。\n"
         "• 「觀察」跟「持股」搞混：觀察＝還沒買；持股＝按過記買入才會在。\n"
@@ -310,7 +312,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。\n"
+        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請打「興櫃海選」（獨立名單，不混進上市櫃海選）。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -325,8 +327,8 @@ HELP_TOPICS = {
         "• 頁上按鈕：上排看這檔／籌碼；下排買入／刪（移出觀察）。\n"
         "• 藍字股名：連到奇摩走勢（開網頁，不帶大圖預覽）。\n"
         "\n"
-        "<b>⑤ 刷新上一檔</b>\n"
-        "• 是什麼：盤中刷新「上一檔」的高低決策卡，不用重打代號。也可打「決策卡」。\n"
+        "<b>⑤ 刷新</b>\n"
+        "• 是什麼：盤中刷新「上一檔」的高低決策卡，不用重打代號。也可打「決策卡」或「刷新上一檔」。\n"
         "• 怎麼用：先打一次股名或代號看圖，之後盤中常按這顆刷新即時現價、量排名。\n"
         "• 沒反應：還沒查過任何股，會請你先打代號或從觀察清單點一檔。\n"
         "• 注意：這是單檔快捷鍵，不是海選黃金買點名單。\n"
@@ -421,8 +423,8 @@ HELP_TOPICS = {
         "• <b>AI模擬倉</b>＝假錢對照組（每人一套，家人也各看各的）"
     ),
     "decision": (
-        "<b>刷新上一檔</b>\n"
-        "第一排右二。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」也行。\n"
+        "<b>刷新</b>\n"
+        "第一排右二。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」或「刷新上一檔」也行。\n"
         "\n"
         "• 還沒查過任何股：會請你先打代號，或從觀察清單點一檔。\n"
         "• 已查過：盤中重複按這顆即可更新，不必重打代號。\n"
@@ -437,7 +439,7 @@ HELP_TOPICS = {
         "\n"
         "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
-        "<b>第一排</b>：說明／海選／持股／觀察／刷新上一檔／<b>回報</b>\n"
+        "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>\n"
         "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>\n"
         "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
         "\n"
@@ -462,7 +464,7 @@ HELP_TOPICS = {
         "<b>轉 LINE 有兩個入口，不要搞混</b>\n"
         "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
         "• 區底「一鍵傳 LINE」＝進勾選頁，可勾選要傳哪幾檔（介紹圖＋決策卡一組），再複製名單或傳勾選的圖；長圖仍是全區\n"
-        "（主選單「刷新上一檔」＝單檔盤中刷新，不是整區黃金買點名單。打「決策卡」也是這顆。）\n"
+        "（主選單「刷新」＝單檔盤中刷新，不是整區黃金買點名單。打「決策卡」也是這顆。）\n"
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
@@ -599,7 +601,7 @@ HELP_TOPICS = {
         + "。\n"
         "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
-        "不要先按「刷新上一檔」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
+        "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
         "一次出三張圖：介紹圖 → 決策卡 → 導航圖。\n"
         "找不到：撞名或國字打不準會列出相近的請你點；再打代號最準。"
     ),
@@ -636,7 +638,7 @@ HELP_TOPICS = {
         "<b>按錯了怎麼辦</b>\n"
         "亂按沒關係。下面每一條都能把你導回來。\n"
         "\n"
-        "<b>一打開先按了「刷新上一檔」</b>\n"
+        "<b>一打開先按了「刷新」</b>\n"
         "還沒查過就<b>直接打代號</b>，例如 "
         + LOOKUP_CODE_EXAMPLES_HTML
         + "。\n"
@@ -702,8 +704,8 @@ MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
-MENU_BTN_CARD = "刷新上一檔"
-MENU_BTN_CARD_ALIASES = (MENU_BTN_CARD, "決策卡")
+MENU_BTN_CARD = "刷新"
+MENU_BTN_CARD_ALIASES = (MENU_BTN_CARD, "刷新上一檔", "決策卡")
 MENU_BTN_BACK_MAIN = "回主選單"
 MENU_BTN_BACK_STEP = "上一步"
 MENU_BTN_NEXT_PAGE = "下一批"
@@ -738,8 +740,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v10：兩排各加一格＝6+6；第一排最右 AI倉；第二排最右回報（文字／截圖）。
 # v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
 # v12：第一排最左「刷新上一檔」（決策卡當別名）。
-# v13：第一排改第一週常用（說明／海選／持股／觀察／刷新上一檔／回報）；第二排大盤／資金／當沖／隔日沖／AI倉／連買區。可打「精簡選單」。
-MENU_LAYOUT_VERSION = "13"
+# v14：精簡六顆全兩字（刷新上一檔→刷新）避免換行；完整十二顆第一排同步。
+MENU_LAYOUT_VERSION = "14"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。why 放第一，平常話對官方資料。
@@ -992,8 +994,10 @@ class WayneTelegramBot:
         except Exception:
             title = f"{sid} {name}".strip()
         return (
-            f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
-            "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。"
+            f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
+            "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
+            "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡／導航圖。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1089,7 +1093,7 @@ class WayneTelegramBot:
                 [KeyboardButton(t) for t in MENU_ROW1],
                 [KeyboardButton(t) for t in MENU_ROW2],
             ]
-            placeholder = "打股名／代號，或按「刷新上一檔」"
+            placeholder = "打股名／代號，或按「刷新」"
         try:
             return ReplyKeyboardMarkup(
                 rows,
@@ -1175,7 +1179,7 @@ class WayneTelegramBot:
             text = (
                 "精簡六顆已掛上。打「完整選單」恢復十二顆。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "精簡六顆：說明／海選／持股／觀察／刷新上一檔／回報。打「完整選單」恢復十二顆。"
+                else "精簡六顆：說明／海選／持股／觀察／刷新／回報。打「完整選單」恢復十二顆。"
             )
         else:
             text = (
@@ -1693,19 +1697,37 @@ class WayneTelegramBot:
         """錯誤／提示改釘回兩排主選單。直立式「說明／主選單」已廢。"""
         return self._reply_menu()
 
-    def _hub_keyboard(self, code: str, topic: str = "stock", *, em: bool = False):
-        """手機閱讀：每列最多三顆，常用放第一排。興櫃沒有法人／產業日K，不掛空鈕。"""
+    def _hub_keyboard(
+        self,
+        code: str,
+        topic: str = "stock",
+        *,
+        em: bool = False,
+        news: dict | None = None,
+    ):
+        """手機閱讀：每列最多三顆。產業／報導放最上；興櫃沒有法人表就不掛籌碼／營收。"""
         c = str(code).strip()[:6]
+        news = news or {}
+        news_label = str(news.get("label") or "").strip()
+        news_url = str(news.get("url") or "").strip()
+        top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
+        if news_label and news_url:
+            top.append(InlineKeyboardButton(news_label[:16], url=news_url))
+        actions = [
+            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+            self._q(topic),
+        ]
         if em:
-            return InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-                        self._q(topic),
-                    ]
-                ]
-            )
+            rows = [top, actions]
+            return InlineKeyboardMarkup(rows)
+        listed = [
+            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+            InlineKeyboardButton("營收", callback_data=f"f:{c}"),
+        ]
+        if news_label and news_url:
+            return InlineKeyboardMarkup([top, listed, actions])
+        # 沒有報導則數：維持兩排，產業跟籌碼／營收同一排，避免空一列。
         return InlineKeyboardMarkup(
             [
                 [
@@ -1713,11 +1735,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton("營收", callback_data=f"f:{c}"),
                     InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                 ],
-                [
-                    InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-                    InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-                    self._q(topic),
-                ],
+                actions,
             ]
         )
 
@@ -2073,14 +2091,23 @@ class WayneTelegramBot:
         return code, float(lots or 0), price
 
     def _screening_payload(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        from screening_engine import format_screening_payload
+        from screening_engine import EMERGING_PUSH_SPECS, format_screening_payload
 
         parts = result.get("payload")
         if parts:
             return parts
-        return format_screening_payload(
-            result.get("results") or {}, result.get("as_of") or result.get("date") or ""
-        )
+        as_of = result.get("as_of") or result.get("date") or ""
+        if str(result.get("universe") or "").upper() == "EM":
+            return format_screening_payload(
+                {
+                    "leave_zero": result.get("leave_zero") or [],
+                    "golden_buy": result.get("golden_buy") or [],
+                },
+                as_of,
+                title="WayneBot 興櫃海選",
+                specs=EMERGING_PUSH_SPECS,
+            )
+        return format_screening_payload(result.get("results") or {}, as_of)
 
     def _remember_line_share(self, result: Optional[Dict[str, Any]] = None, body: str = ""):
         """海選 LINE 稿已寫入 sqlite；不再用程序記憶體快取，避免多用戶互相覆蓋。"""
@@ -2137,13 +2164,14 @@ class WayneTelegramBot:
         last = len(parts) - 1
         for i, part in enumerate(parts):
             pack_id = str(part.get("line_pack_id") or "")
-            fid = self._cat_sticker_id(part.get("mark_key") or "")
-            if fid and callable(getattr(message, "reply_sticker", None)):
+            gif = self._mark_gif_path(part.get("mark_key") or "")
+            if gif and callable(getattr(message, "reply_animation", None)):
                 try:
-                    sticker_msg = await message.reply_sticker(sticker=fid)
-                    self._track_screening_msg(actor, pack_id, sticker_msg)
+                    with open(gif, "rb") as fh:
+                        anim_msg = await message.reply_animation(animation=fh)
+                    self._track_screening_msg(actor, pack_id, anim_msg)
                 except Exception:
-                    logger.exception("分類貼紙傳送失敗")
+                    logger.exception("分類動圖傳送失敗")
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             if not chunks:
                 continue
@@ -2166,15 +2194,33 @@ class WayneTelegramBot:
         if result.get("line_share_packs") or result.get("line_share"):
             self._remember_line_share(result)
 
-    def _cat_sticker_id(self, key: str) -> str:
+    def _mark_gif_path(self, key: str) -> str:
         if not key:
             return ""
         try:
-            from telegram_cat_marks import load_sticker_ids
+            from telegram_cat_marks import ensure_mark_gif
 
-            return load_sticker_ids().get(key) or ""
+            return ensure_mark_gif(key) or ""
         except Exception:
             return ""
+
+    def _cat_sticker_id(self, key: str) -> str:
+        """舊椅子貼紙不再送。保留函式以免測試／排程舊呼叫炸掉。"""
+        return ""
+
+    def _send_animation(self, chat_id: str, path: str):
+        try:
+            import requests
+
+            with open(path, "rb") as fh:
+                requests.post(
+                    f"https://api.telegram.org/bot{self.token}/sendAnimation",
+                    data={"chat_id": chat_id},
+                    files={"animation": fh},
+                    timeout=30,
+                )
+        except Exception as e:
+            logger.error("send_animation: %s", e)
 
     def _send_sticker(self, chat_id: str, file_id: str):
         try:
@@ -2295,9 +2341,9 @@ class WayneTelegramBot:
             return
         last = len(parts) - 1
         for i, part in enumerate(parts):
-            fid = self._cat_sticker_id(part.get("mark_key") or "")
-            if fid:
-                self._send_sticker(self.chat_id, fid)
+            gif = self._mark_gif_path(part.get("mark_key") or "")
+            if gif:
+                self._send_animation(self.chat_id, gif)
             chunks = chunk_telegram_html(part.get("html") or "", 3500)
             for j, chunk in enumerate(chunks):
                 is_last_chunk = j == len(chunks) - 1
@@ -2398,7 +2444,7 @@ class WayneTelegramBot:
             "1　點輸入列旁邊四格 ⌨️ 叫出兩排（不見就打 /menu）\n"
             "2　直接打代號看圖，例如 "
             + LOOKUP_CODE_EXAMPLES_HTML
-            + "（不要先按「刷新上一檔」）\n"
+            + "（不要先按「刷新」）\n"
             "3　籌碼／營收／產業在圖下面，不在右側四格鍵盤\n"
             "\n"
             "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n",
@@ -2865,6 +2911,53 @@ class WayneTelegramBot:
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_manual_screening(update.message)
+
+    async def emerging_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await self._run_emerging_screening(update.message)
+
+    async def _run_emerging_screening(self, message):
+        """興櫃獨立海選：不跟上市櫃海選搶同一把鎖、不寫進上市櫃快取。"""
+        hub = self._reply_menu()
+        status = await message.reply_text(
+            "興櫃海選開始：抓櫃買官方日均價、只掃黃金買點／重點觀察。\n"
+            "跟上市櫃「海選」分開，不會混進那份名單。"
+        )
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self.screener.run_emerging_screening, None, True),
+                timeout=240.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "興櫃海選逾時。請稍後再打「興櫃海選」。",
+                reply_markup=hub,
+            )
+            return
+        except Exception:
+            logger.exception("興櫃海選失敗")
+            await message.reply_text("興櫃海選失敗。請稍後再打「興櫃海選」。", reply_markup=hub)
+            return
+        finally:
+            try:
+                await status.delete()
+            except Exception:
+                pass
+        n = int(result.get("n") or 0)
+        if n <= 0:
+            await message.reply_html(
+                "興櫃海選：目前沒有可用的官方日均價序列。\n"
+                "請等盤後同步櫃買「興櫃股票當日行情表」後再打「興櫃海選」。",
+                reply_markup=hub,
+                disable_web_page_preview=True,
+            )
+            return
+        await self._reply_screening_payload(message, result)
+        await message.reply_html(
+            f"以上是<b>興櫃</b>獨立名單（官方日均價 {html_escape(str(result.get('as_of') or ''))}，"
+            f"掃描 {n} 檔）。上市櫃請按主選單「海選」。",
+            reply_markup=hub,
+            disable_web_page_preview=True,
+        )
 
     async def _reply_trade_list(
         self,
@@ -3456,13 +3549,7 @@ class WayneTelegramBot:
 
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
-        if self._hit_is_emerging(code, hits):
-            await message.reply_html(
-                self._em_no_listed_html(code, hits),
-                reply_markup=self._hub_keyboard(code, em=True),
-                disable_web_page_preview=True,
-            )
-            return
+        em = self._hit_is_emerging(code, hits)
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "0")
         png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
 
@@ -3483,7 +3570,7 @@ class WayneTelegramBot:
                     await message.reply_photo(
                         photo=f,
                         caption=f"{html_escape(code)}　產業",
-                        reply_markup=self._hub_keyboard(code),
+                        reply_markup=self._hub_keyboard(code, em=em),
                     )
                 return
             except Exception:
@@ -3493,7 +3580,9 @@ class WayneTelegramBot:
         except Exception as e:
             logger.exception("產業說明失敗 code=%s", code)
             html = f"產業說明失敗：{html_escape(err or e)}"
-        await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+        await message.reply_html(
+            html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
+        )
 
     async def why_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """三條槓「原因」：平常話對官方資料。"""
@@ -3623,6 +3712,9 @@ class WayneTelegramBot:
             return
         if kind == "screen":
             await self.screen_cmd(upd, ctx)
+            return
+        if kind == "emerging_screen":
+            await self.emerging_screen_cmd(upd, ctx)
             return
         if kind == "portfolio":
             await self.portfolio_cmd(upd, ctx)
@@ -3885,7 +3977,7 @@ class WayneTelegramBot:
             await self._send_ai_desk_view(update.message, uid)
             return
         if text in MENU_BTN_CARD_ALIASES:
-            logger.info("主選單：刷新上一檔 uid=%s", uid)
+            logger.info("主選單：刷新 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.decision_card_btn(update, context)
             return
@@ -3893,6 +3985,11 @@ class WayneTelegramBot:
             logger.info("主選單：海選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.screen_cmd(update, context)
+            return
+        if text in ("興櫃海選", "興櫃名單"):
+            logger.info("主選單：興櫃海選 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.emerging_screen_cmd(update, context)
             return
         if text in ("持股", "持倉"):
             logger.info("主選單：持股 uid=%s", uid)
@@ -4636,7 +4733,23 @@ class WayneTelegramBot:
         hits: list,
     ):
         lookup_faded = False
-        hub = self._hub_keyboard(code)
+        is_em = self._hit_is_emerging(code, hits)
+        news_stats = None
+        try:
+            from stock_news import fetch_stock_news_stats
+
+            name0 = ""
+            if hits:
+                name0 = str(hits[0].get("stock_name") or "")
+            news_stats = await asyncio.wait_for(
+                asyncio.to_thread(
+                    fetch_stock_news_stats, self.db_path, code, name0
+                ),
+                timeout=5.0,
+            )
+        except Exception:
+            news_stats = None
+        hub = self._hub_keyboard(code, em=is_em, news=news_stats)
         cap_links = ""
         try:
             from stock_links import yahoo_urls
@@ -4646,7 +4759,9 @@ class WayneTelegramBot:
         except Exception:
             cap_links = ""
 
-        live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, hits)
+        live_rt = None
+        if not is_em:
+            live_rt = await asyncio.to_thread(self._prefetch_mis_quote, code, hits)
 
         async def _header_bg() -> None:
             try:
@@ -4774,7 +4889,7 @@ class WayneTelegramBot:
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(
-                    code, lookback=20, merge_live=True, live_quote=live_rt
+                    code, lookback=20, merge_live=not is_em, live_quote=None if is_em else live_rt
                 )
                 if isinstance(card, dict):
                     try:
@@ -4783,10 +4898,14 @@ class WayneTelegramBot:
                         attach_main_cost(card, self.db_path, fetch=False)
                     except Exception:
                         pass
+                    if news_stats and news_stats.get("label"):
+                        card["news_label"] = str(news_stats.get("label") or "")
                 ohlc = card.pop("_ohlc", None) if isinstance(card, dict) else None
                 return card, ohlc
 
             def _build_tape():
+                if is_em:
+                    return {}
                 try:
                     return build_tape(
                         self.db_path, code, merge_live=True, live_quote=live_rt

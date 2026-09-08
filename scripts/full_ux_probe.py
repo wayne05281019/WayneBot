@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 ALL_MENU_BUTTONS = [
-    "刷新上一檔",
+    "刷新",
     "當沖",
     "持股",
     "觀察",

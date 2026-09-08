@@ -12,7 +12,7 @@
 import os
 import sqlite3
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Sequence
 import pandas as pd
 import numpy as np
 
@@ -91,7 +91,8 @@ class ScreeningEngine:
           AND q.volume >= ?
           AND q.turnover_k >= ?
           AND q.close > 0
-          AND UPPER(COALESCE(u.asset_type, 'STOCK')) IN ('STOCK', 'KY');
+          AND UPPER(COALESCE(u.asset_type, 'STOCK')) IN ('STOCK', 'KY')
+          AND UPPER(COALESCE(u.market_type, '')) NOT IN ('EM', 'EMERGING');
         """
         df_candidates = pd.read_sql_query(
             query_candidates, conn, params=(target_date, min_volume, min_turnover_k)
@@ -527,6 +528,31 @@ class ScreeningEngine:
         """主選單隔日沖：只讀海選快取 + 盤中 MIS 複核，不跑全市場掃描。"""
         target_date = target_date or self.get_latest_trading_date()
         return self._screen_trade_bucket_from_cache("overnight", target_date)
+
+    def run_emerging_screening(
+        self, target_date: Optional[str] = None, sync: bool = False
+    ) -> Dict[str, Any]:
+        """興櫃獨立海選：只跑黃金買點／重點觀察。不寫進上市櫃海選桶。"""
+        from emerging_quotes import (
+            emerging_date_count,
+            load_emerging_frames,
+            sync_emerging_quotes,
+        )
+
+        if sync or emerging_date_count(self.db_path) < 20:
+            sync_emerging_quotes(self.db_path)
+        dfs = load_emerging_frames(self.db_path, target_date)
+        raw = self.execute_all_strategies(dfs) if dfs else {}
+        as_of = str(target_date or "")
+        if not as_of and dfs:
+            as_of = str(next(iter(dfs.values()))["date"].iloc[-1] or "").replace("-", "")[:8]
+        return {
+            "leave_zero": list(raw.get("leave_zero") or []),
+            "golden_buy": list(raw.get("golden_buy") or []),
+            "as_of": as_of,
+            "universe": "EM",
+            "n": len(dfs),
+        }
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)
@@ -1049,6 +1075,10 @@ MORNING_PUSH_SPECS = (
     ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
 )
 MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
+EMERGING_PUSH_SPECS = (
+    ("leave_zero", "🌱", "黃金買點", "興櫃官方日均價；高低卡獲利實綠／雙綠脫離", 8, False),
+    ("golden_buy", "✨", "重點觀察", "興櫃 60 低＋獲利≈0＋月乖離<-10%", 8, False),
+)
 
 LINE_TRADE_POINTER = (
     "＝＝短線（不在晨間海選）＝＝\n"
@@ -1106,6 +1136,8 @@ def format_screening_payload(
     *,
     morning: bool = False,
     market_html: str = "",
+    title: str = "WayneBot 海選",
+    specs: Optional[Sequence] = None,
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
@@ -1115,7 +1147,9 @@ def format_screening_payload(
     """
     results = drop_non_equity_picks(results)
     payload: List[Dict[str, Any]] = []
-    specs = list(MORNING_PUSH_SPECS if morning else SCREEN_PUSH_SPECS)
+    specs = list(specs) if specs is not None else list(
+        MORNING_PUSH_SPECS if morning else SCREEN_PUSH_SPECS
+    )
     first = True
     outlook = str(market_html or "").strip()
     if outlook:
@@ -1143,7 +1177,7 @@ def format_screening_payload(
 
             as_of_label = format_trading_date_zh(target_date)
             head = headline_lines(
-                f"<b>WayneBot 海選</b>　{html_escape(as_of_label)}",
+                f"<b>{html_escape(title)}</b>　{html_escape(as_of_label)}",
                 head,
                 f"共 {len(items)} 檔",
             )

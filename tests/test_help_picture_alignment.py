@@ -33,7 +33,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ROW1
     assert row2 == ROW2
-    assert MENU_LAYOUT_VERSION == "13"
+    assert MENU_LAYOUT_VERSION == "14"
 
     guide = HELP_TOPICS["guide"]
     menu = HELP_TOPICS["menu"]
@@ -44,7 +44,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert "說明／海選" in menu or "說明／海選／持股" in menu
     assert row1_help.index("① 說明") < row1_help.index("② 海選")
     assert row2_help.index("① 大盤") < row2_help.index("⑥ 連買區")
-    assert "說明　海選　持股　觀察　刷新上一檔　回報" in blob
+    assert "說明　海選　持股　觀察　刷新　回報" in blob
     assert "大盤　資金　當沖　隔日沖　AI倉　連買區" in blob
     assert "一張圖卡" in blob
     assert "圖卡" in HELP_TOPICS["industry"]

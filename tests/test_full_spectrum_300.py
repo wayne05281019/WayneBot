@@ -461,7 +461,7 @@ def test_l3_em_hub_omits_chips_fund_industry():
     labels = [b.text for row in kb.inline_keyboard for b in row]
     assert "籌碼" not in labels
     assert "營收" not in labels
-    assert "產業" not in labels
+    assert "產業" in labels
     assert "觀察" in labels
 
 

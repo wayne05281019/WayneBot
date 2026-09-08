@@ -1,4 +1,8 @@
-"""WayneBot 分類用小型動態表情（跟字一樣大，不是大圖）。"""
+"""WayneBot 分類用小型動態表情（跟字一樣大，不是大圖）。
+
+海選只在黃金買點／重點觀察送一顆脈衝動圖（閃一下讓人知道這區重要）。
+周帶量等其餘桶不再送椅子形旋轉柱，太多會亂。
+"""
 from __future__ import annotations
 
 import json
@@ -6,7 +10,7 @@ import math
 import os
 from typing import Dict, Tuple
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "revenue_cross": ("📈", (232, 140, 50), "bars", "優先看"),
@@ -18,6 +22,10 @@ MARK_SPECS: Dict[str, Tuple[str, Tuple[int, int, int], str, str]] = {
     "day_trade": ("⚡", (240, 190, 40), "bolt", "當沖"),
     "overnight": ("🌙", (80, 130, 210), "moon", "隔日沖"),
 }
+
+# 只這兩區值得閃：進場認高低卡表。其餘區位不配動圖。
+ANIM_KEYS = frozenset({"leave_zero", "golden_buy"})
+GIF_VER = "pulse2"
 
 SET_NAME = "waynebot_marks_by_WC_ai_trade_bot"
 BAR_SET_NAME = "waynebot_bars_by_WC_ai_trade_bot"
@@ -176,3 +184,94 @@ def render_thin_sticker(
         f"{path} >/dev/null 2>&1"
     )
     return path
+
+
+def _spark(d, x: float, y: float, r: float, col: Tuple[int, int, int, int]):
+    d.ellipse((x - r, y - r, x + r, y + r), fill=col)
+
+
+def render_pulse_gif(
+    kind: str,
+    rgb: Tuple[int, int, int],
+    path: str,
+    *,
+    frames: int = 16,
+    size: int = 128,
+) -> str:
+    """圓心脈衝＋兩顆星點閃爍。不是旋轉椅子柱。"""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    frames_im = []
+    cx = cy = size / 2
+    for i in range(frames):
+        im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        t = i / max(frames - 1, 1)
+        pulse = 0.55 + 0.45 * (0.5 - 0.5 * math.cos(t * 2 * math.pi))
+        ring_r = 18 + 16 * pulse
+        alpha = int(70 + 110 * pulse)
+        gd.ellipse(
+            (cx - ring_r, cy - ring_r, cx + ring_r, cy + ring_r),
+            fill=rgb + (max(40, alpha // 3),),
+        )
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=6))
+        im.alpha_composite(glow)
+        d = ImageDraw.Draw(im)
+        core_r = 14 + 4 * pulse
+        d.ellipse(
+            (cx - core_r, cy - core_r, cx + core_r, cy + core_r),
+            fill=rgb + (255,),
+        )
+        inner = 7
+        d.ellipse(
+            (cx - inner, cy - inner, cx + inner, cy + inner),
+            fill=(255, 255, 255, int(180 + 50 * pulse)),
+        )
+        # 兩顆星點對角閃，提醒這區是重點；不要第三顆以免看起來亂。
+        spark_a = 90 + 28 * math.sin(t * 2 * math.pi)
+        for ang, phase in ((0.55, 0.0), (3.7, 0.5)):
+            blink = 0.35 + 0.65 * abs(math.sin((t + phase) * math.pi))
+            sx = cx + math.cos(ang) * spark_a
+            sy = cy + math.sin(ang) * spark_a
+            _spark(d, sx, sy, 3.2 + 2.2 * blink, rgb + (int(80 + 175 * blink),))
+        if kind == "star":
+            # 重點觀察：多一點金閃，仍維持同一套圓形語言。
+            _spark(d, cx, cy - 28 * pulse, 2.4, (255, 230, 120, int(120 + 80 * pulse)))
+        frames_im.append(im)
+    frames_im[0].save(
+        path,
+        save_all=True,
+        append_images=frames_im[1:],
+        duration=80,
+        loop=0,
+        disposal=2,
+        optimize=True,
+    )
+    return path
+
+
+def mark_gif_dir() -> str:
+    try:
+        from config import get_charts_dir
+
+        root = get_charts_dir()
+    except Exception:
+        root = os.path.join("data", "charts")
+    out = os.path.join(root, "marks")
+    os.makedirs(out, exist_ok=True)
+    return out
+
+
+def ensure_mark_gif(key: str) -> str:
+    """黃金買點／重點觀察才產 GIF；其他 key 空字串。"""
+    if key not in ANIM_KEYS:
+        return ""
+    spec = MARK_SPECS.get(key)
+    if not spec:
+        return ""
+    _emoji, rgb, kind, _label = spec
+    path = os.path.join(mark_gif_dir(), f"{GIF_VER}-{key}.gif")
+    if os.path.isfile(path) and os.path.getsize(path) > 800:
+        return path
+    return render_pulse_gif(kind, rgb, path)
+
