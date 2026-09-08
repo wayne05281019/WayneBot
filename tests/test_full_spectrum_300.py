@@ -132,14 +132,14 @@ def _src(obj) -> str:
 @pytest.mark.parametrize(
     "text,kind",
     [
-        ("為什麼跌", "why"),
-        ("為甚麼跌", "why"),
-        ("為何跌", "why"),
-        ("怎麼跌", "why"),
-        ("為什麼漲", "why"),
-        ("2330為什麼跌", "why"),
-        ("00706L為什麼跌", "why"),
-        ("００７０６Ｌ為什麼跌", "why"),
+        ("為什麼跌", "lookup"),
+        ("為甚麼跌", "lookup"),
+        ("為何跌", "lookup"),
+        ("怎麼跌", "lookup"),
+        ("為什麼漲", "lookup"),
+        ("2330為什麼跌", "lookup"),
+        ("00706L為什麼跌", "lookup"),
+        ("００７０６Ｌ為什麼跌", "lookup"),
         ("如何賣", "sell"),
         ("怎麼賣", "sell"),
         ("主力成本", "no_cost"),
@@ -150,10 +150,10 @@ def _src(obj) -> str:
         ("重點觀察", "screen"),
         ("持倉", "portfolio"),
         ("我的持股", "portfolio"),
-        ("成交量為什麼跌", "why"),
+        ("成交量為什麼跌", "lookup"),
         ("2330資金", "chips"),
         ("台積電資金", "chips"),
-        ("2330說明", "why"),
+        ("2330說明", "lookup"),
         ("籌碼", "chips"),
         ("同業", "industry"),
         ("營收", "fund"),
@@ -553,12 +553,12 @@ def test_l4_listing_em_aliases():
     assert not listing_is_emerging(None)
 
 
-def test_l4_why_honest_no_news():
-    from intent_router import why_honest_html
+def test_l4_no_cost_honest_no_invented_price():
+    from intent_router import no_cost_honest_html
 
-    html = why_honest_html()
+    html = no_cost_honest_html()
     assert "沒有" in html
-    assert "不編" in html
+    assert "主力成本" in html
 
 
 # ===========================================================================
@@ -933,7 +933,7 @@ def test_l8_etf_not_in_screen_payload():
 def test_l8_intent_etf_code_upper():
     hit = parse_intent("00706l為什麼跌")
     assert hit is not None
-    assert hit.kind == "why"
+    assert hit.kind == "lookup"
     assert hit.code == "00706L"
 
 
@@ -1026,7 +1026,29 @@ def test_l9_fbuy_kind_escapes_why():
     asyncio.run(run())
 
 
-def test_l9_skip_if_done_in_cli_main():
+def test_l9_streak_days_does_not_reprint_number_list():
+    """天數已在訊息下方按鈕；不要再印一則「可選天數：22 21 19…」。"""
+    bot = _bot()
+    msg = _msg(WAYNE_UID, "外資")
+    snap = SimpleNamespace(
+        as_of="20260908",
+        max_days=22,
+        days_menu=lambda: [22, 21, 19, 17, 16, 14, 13, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+    )
+
+    async def run():
+        with patch("buy_streak.load_snapshot", return_value=snap):
+            await bot._streak_show_days(msg, str(WAYNE_UID), f"{WAYNE_UID}:{WAYNE_UID}", "foreign", "ALL")
+
+    asyncio.run(run())
+    html = msg.reply_html.await_args.args[0]
+    assert "可選天數" not in html
+    assert "22 21 19" not in html
+    hint = msg.reply_text.await_args.args[0]
+    assert hint == "也可點輸入區鍵盤上的天數"
+    assert "22" not in hint
+    src = _src(WayneTelegramBot._streak_show_days)
+    assert "可選天數" not in src
     from main_runner import main
 
     src = _src(main)
@@ -1061,9 +1083,9 @@ def test_l9_holdings_alias_portfolio_not_ai():
 @pytest.mark.parametrize(
     "text,kind",
     [
-        ("為什麼下跌", "why"),
-        ("為甚麼上漲", "why"),
-        ("啥原因", "why"),
+        ("為什麼下跌", "lookup"),
+        ("為甚麼上漲", "lookup"),
+        ("啥原因", "lookup"),
         ("自營成本", "no_cost"),
         ("三大法人", "chips"),
         ("外資買超", "chips"),
@@ -1094,7 +1116,6 @@ def test_l9_holdings_alias_portfolio_not_ai():
         ("真實持股", "portfolio"),
         ("假錢", "ai"),
         ("怎麼用", "help"),
-        ("why", "why"),
     ],
 )
 def test_l9b_more_plain_speech(text, kind):

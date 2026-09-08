@@ -263,15 +263,6 @@ def mark_gif_dir() -> str:
 
 
 def ensure_mark_gif(key: str) -> str:
-    """黃金買點／重點觀察才產 GIF；其他 key 空字串。"""
-    if key not in ANIM_KEYS:
-        return ""
-    spec = MARK_SPECS.get(key)
-    if not spec:
-        return ""
-    _emoji, rgb, kind, _label = spec
-    path = os.path.join(mark_gif_dir(), f"{GIF_VER}-{key}.gif")
-    if os.path.isfile(path) and os.path.getsize(path) > 800:
-        return path
-    return render_pulse_gif(kind, rgb, path)
+    """海選不再送圓球 GIF；保留函式以免舊呼叫炸掉。"""
+    return ""
 

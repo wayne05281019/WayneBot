@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""語音聽寫後走同一條原因／平常話路由。"""
+"""語音聽寫後走同一條平常話／查股路由。"""
 from __future__ import annotations
 
 import asyncio

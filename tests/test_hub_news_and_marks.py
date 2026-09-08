@@ -12,7 +12,20 @@ def test_only_entry_buckets_get_pulse_gif(tmp_path):
     assert tmp_path.joinpath("pulse.gif").stat().st_size > 800
     assert ANIM_KEYS == frozenset({"leave_zero", "golden_buy"})
     assert ensure_mark_gif("select_01") == ""
-    assert ensure_mark_gif("leave_zero")
+    assert ensure_mark_gif("leave_zero") == ""
+    assert ensure_mark_gif("golden_buy") == ""
+
+
+def test_hub_keyboard_skips_non_http_urls():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._hub_keyboard(
+        "2330",
+        news={"label": "報導12↑", "url": "javascript:alert(1)"},
+    )
+    urls = [b.url for r in kb.inline_keyboard for b in r if getattr(b, "url", None)]
+    assert all((u or "").startswith("http") for u in urls)
+    labels = [b.text for r in kb.inline_keyboard for b in r]
+    assert "報導12↑" not in labels
 
 
 def test_hub_news_url_button_on_top():

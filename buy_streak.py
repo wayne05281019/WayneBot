@@ -220,7 +220,12 @@ def format_stock_html(row: StreakRow, kind: str, db_path: Optional[str] = None) 
 
         title = html_stock_anchor(row.stock_id, row.name, db_path)
     except Exception:
-        title = f"{row.stock_id} {row.name}".strip()
+        sid = str(row.stock_id or "")
+        name = str(row.name or "")
+        title = f"{sid} {name}".strip()
+        title = (
+            title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        )
     lines = [title, *format_row_lines(row, kind)]
     return "\n".join(lines)
 

@@ -61,12 +61,11 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "最高價＝20日高" in blob
     assert "06:30 早報" in blob
     assert "20:00 AI倉模擬" in blob
-    assert "原因" in blob
-    assert "三條槓" in blob
+    assert "左邊三條槓" not in blob
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v31"
+    assert CACHE_VER == "v32"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
