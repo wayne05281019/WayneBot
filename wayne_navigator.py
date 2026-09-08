@@ -63,16 +63,26 @@ DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Telegram sendPhoto：寬+高 < 10000；相簿縮圖格會依第一張長寬比縮整塊。
-# 介紹圖改近 1:2（仍豎長）：三張遠看是一塊四角形，不是細長條。點開長邊仍約 2560。
-# 舊 4.62×17.7 點開只剩 ~670px 寬，座長圖與小字會糊。
-CARD_PNG_DPI = 400
-GLANCE_PNG_DPI = 440
+# Telegram sendPhoto：寬+高 < 10000。畫素拉到接近上限，長邊才不會被再壓糊。
+# 介紹圖對齊高低卡總尺寸（約 0.68 寬高比），兩欄排，不要再當細長條。
+_TG_WH_CAP = 9900
+CARD_PNG_DPI = 560
+GLANCE_PNG_DPI = 560
 CARD_FIG_W = 7.1
-GLANCE_FIG_W = 7.5
-GLANCE_FIG_H = 15.0
-GLANCE_FS = 1.45  # 畫布變寬，點級跟著放大，點開才清楚
-NAV_CHART_DPI = 320
+GLANCE_FIG_W = 7.1
+GLANCE_FIG_H = 10.5
+GLANCE_FS = 1.05
+NAV_CHART_DPI = 480
+NAV_FIG_W = 12.8
+NAV_FIG_H = 7.55
+
+
+def _telegram_fig_dpi(w_in: float, h_in: float, preferred: int) -> int:
+    """figsize 加總超過上限時把 DPI 往下收，寬+高仍 < 10000。"""
+    tot = float(w_in) + float(h_in)
+    if tot <= 0:
+        return int(preferred)
+    return max(120, min(int(preferred), int(_TG_WH_CAP / tot)))
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -1846,7 +1856,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
-    tbl_title_h, hdr_h, body_h = 3.5, 3.35, 4.35
+    tbl_title_h, hdr_h, body_h = 3.5, 3.35, 5.55
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
@@ -1908,7 +1918,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         m_top + head_h + gap + price_h + gap + stance_h + gap + hi_pane_h + gap + lo_pane_h
         + gap + tbl_title_h + hdr_h + n * body_h + m_bot
     )
-    fig, ax = plt.subplots(figsize=(fig_w, H * 0.076), dpi=CARD_PNG_DPI, facecolor=C["page"])
+    fig_h_in = H * 0.076
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h_in), dpi=CARD_PNG_DPI, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
@@ -2201,17 +2212,20 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    main_fs = 13.4 if len(main_lab) >= 3 else 14.2
-                    note_fs = 12.4
-                    main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
-                    note_w = min(tw(note, note_fs) + 2.0, max_w)
+                    main_fs = 14.2 if len(main_lab) >= 3 else 15.0
+                    note_fs = 13.0
+                    main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
+                    note_w = min(tw(note, note_fs) + 2.2, max_w)
+                    main_h = body_h * 0.33
+                    note_h = body_h * 0.29
+                    gap_p = body_h * 0.14
                     _status_pill(
-                        cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
-                        w=main_w, h=body_h * 0.36, fs=main_fs,
+                        cx, cy + (main_h + gap_p) / 2, main_lab, tr_bg, tr_fg,
+                        w=main_w, h=main_h, fs=main_fs,
                     )
                     _status_pill(
-                        cx, cy - body_h * 0.24, note, nbg, nfg,
-                        w=note_w, h=body_h * 0.32, fs=note_fs,
+                        cx, cy - (note_h + gap_p) / 2, note, nbg, nfg,
+                        w=note_w, h=note_h, fs=note_fs,
                     )
                 else:
                     pill_w = min(tw(val, 12.5) + 3.0, col_w * 0.90)
@@ -2414,7 +2428,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
 
 @_mpl_serial
 def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: str, db_path: str = None) -> str:
-    """窄長圖、大字、高 DPI：Telegram 依對話框寬縮放，靠字級與留白保證能讀。"""
+    """介紹圖：總尺寸對齊高低卡，兩欄排，不要細長條。"""
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -2461,12 +2475,13 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     move = (tape or {}).get("move") or {}
     C = _CARD
     gfs = GLANCE_FS
-    _fp_base = _fp
+    _fp_draw = globals()["_fp"]
 
     def _fp(size, weight="bold"):
-        return _fp_base(float(size) * gfs, weight)
+        return _fp_draw(float(size) * gfs, weight)
 
-    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    g_dpi = _telegram_fig_dpi(GLANCE_FIG_W, GLANCE_FIG_H, GLANCE_PNG_DPI)
+    fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=g_dpi, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
@@ -2489,6 +2504,10 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
 
     row_w = 96.4 - 4.8
     pad_x, pane_w = 1.4, 97.2
+    gutter = 1.35
+    col_w = (pane_w - gutter) / 2.0
+    left_x = pad_x
+    right_x = pad_x + col_w + gutter
 
     def wid(text, fs):
         return _text_w(text, float(fs) * gfs, GLANCE_FIG_W, 800)
@@ -2510,11 +2529,11 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
                 fontproperties=_fp(9.2, "bold"), color=C["ink_soft"], va="center", zorder=3,
             )
 
-    def right_pill(cy, text, bg, fg, fs=13.0):
+    def right_pill(cy, text, bg, fg, fs=13.0, edge_x=96.4):
         label = str(text or "—")
-        tw = max(wid(label, fs) + 3.6, 11.2)
-        h = 2.48
-        x = 96.4 - tw
+        tw = max(wid(label, fs) + 3.2, 9.6)
+        h = 2.35
+        x = edge_x - tw
         ax.add_patch(patches.FancyBboxPatch(
             (x, cy - h / 2), tw, h,
             boxstyle="round,pad=0,rounding_size=0.55",
@@ -2531,26 +2550,25 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     for n in footer_notes:
         wrapped_notes.extend(_wrap_fit(n, note_fs * gfs, row_w, GLANCE_FIG_W) or [n])
     m_bot = 1.05
-    legend_h = 2.55
-    note_box_h = (3.15 + 2.55 * len(wrapped_notes)) if wrapped_notes else 0.0
-    footer_top = m_bot + legend_h + (0.7 + note_box_h if wrapped_notes else 0.0)
+    legend_h = 2.35
+    note_box_h = (3.0 + 2.35 * len(wrapped_notes)) if wrapped_notes else 0.0
+    footer_top = m_bot + legend_h + (0.55 + note_box_h if wrapped_notes else 0.0)
 
-    gap = 0.85
+    gap = 0.7
     y_top = 99.15
-    head_h = 8.55
-    price_h = 11.7
-    space_h = 16.35
-    heat_h = 12.55
-    chips_h = 16.7
+    head_h = 7.15
+    price_h = 8.15
+    space_h = 18.6
+    heat_h = 14.4
     y = y_top - head_h
 
     pane(pad_x, y, pane_w, head_h, fc=C["navy"], ec=C["navy"])
     ax.add_patch(patches.FancyBboxPatch(
-        (3.0, y + 0.55), 14.8, 7.45, boxstyle="round,pad=0.1,rounding_size=0.4",
+        (3.0, y + 0.5), 12.6, 6.15, boxstyle="round,pad=0.1,rounding_size=0.4",
         facecolor="#F4F6FB", edgecolor="none", zorder=2,
     ))
     _draw_mini_candle(
-        ax, 4.1, y + 0.85, 12.6, 6.85,
+        ax, 3.9, y + 0.75, 10.8, 5.65,
         last.get("open") or card.get("open") or card.get("close") or 0,
         last.get("high") or card.get("high") or card.get("close") or 0,
         last.get("low") or card.get("low") or card.get("close") or 0,
@@ -2636,8 +2654,8 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     up = int(move.get("sign") or 0)
     tri_c = C["up"] if up > 0 else (C["down"] if up < 0 else C["ink"])
     pane(pad_x, y, pane_w, price_h)
-    ink(4.8, y + price_h - 1.85, "收盤", 11, C["ink_soft"])
-    ink(4.8, y + price_h - 5.55, _fmt_price(card.get("close")), 32, C["ink"])
+    ink(4.8, y + price_h - 1.65, "收盤", 11, C["ink_soft"])
+    ink(4.8, y + price_h - 4.85, _fmt_price(card.get("close")), 28, C["ink"])
     ohlc_src = last or {}
     ohlc_items = [
         ("開", _fmt_price(ohlc_src.get("open") or card.get("open"))),
@@ -2646,30 +2664,38 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     ]
     slot = (96.4 - 4.8) / max(len(ohlc_items), 1)
     for i, (lab, val) in enumerate(ohlc_items):
-        ink(4.8 + (i + 0.5) * slot, y + 1.85, f"{lab} {val}", 12, C["ink_soft"], ha="center")
-    ink(96.4, y + price_h - 2.35, move.get("text") or f"{chg:+.2f}%", 16, tri_c, ha="right")
-    ink(96.4, y + price_h - 5.85, f"當日 {chg:+.2f}%", 14, tri_c, ha="right")
+        ink(4.8 + (i + 0.5) * slot, y + 1.55, f"{lab} {val}", 12, C["ink_soft"], ha="center")
+    ink(96.4, y + price_h - 2.05, move.get("text") or f"{chg:+.2f}%", 15, tri_c, ha="right")
+    ink(96.4, y + price_h - 4.95, f"當日 {chg:+.2f}%", 13, tri_c, ha="right")
 
-    def kv_block(y0, h, title, rows, *, sub="", pills=None):
-        pane(pad_x, y0, pane_w, h)
-        sec_title(4.8, y0 + h - 1.7, title, C["navy"], sub=sub)
-        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W, scale=gfs)
-        yy = y0 + h - 4.55
+    def kv_block(x, y0, w, h, title, rows, *, sub="", pills=None):
+        pane(x, y0, w, h)
+        left = x + 2.5
+        right = x + w - 2.5
+        sec_title(left, y0 + h - 1.55, title, C["navy"], sub=sub)
+        labels, fa, fb = fit_rows(
+            [(r[0], r[1]) for r in rows], right - left, GLANCE_FIG_W,
+            fa=12.0, fb=15.0, floor=12.0, scale=gfs
+        )
+        yy = y0 + h - 4.35
+        step = min(3.45, max(2.7, (h - 5.6) / max(len(rows), 1)))
         pills = pills or {}
         for i, ((_, b, c), a) in enumerate(zip(rows, labels)):
-            ink(4.8, yy, a, fa, C["ink_soft"])
+            ink(left, yy, a, fa, C["ink_soft"])
             style = pills.get(i)
             if style:
-                right_pill(yy, b, style[0], style[1], fs=max(fb, 12.5))
+                right_pill(yy, b, style[0], style[1], fs=max(fb, 12.5), edge_x=right)
             else:
-                ink(96.4, yy, b, fb, _fg_on_panel(c), ha="right")
-            yy -= 3.35
+                ink(right, yy, b, fb, _fg_on_panel(c), ha="right")
+            yy -= step
 
     gain = float(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60") or 0)
     gain_s = f"{gain:+.1f}%"
     dist_h20 = float(card["dist_h20"])
-    y -= gap + space_h
-    kv_block(y, space_h, "空間／位置", [
+    y -= gap
+    pair_h = space_h + gap + heat_h
+    y -= pair_h
+    kv_block(left_x, y + heat_h + gap, col_w, space_h, "空間／位置", [
         ("距20日高（賣壓）", f"{dist_h20:+.1f}%",
          price_cell_style("20高" if dist_h20 >= -1 else "No", C["white"])[1]),
         ("獲利", gain_s, signed_pct_ink(gain)),
@@ -2679,7 +2705,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             _fmt_dist_short(card.get("dist_l480")),
         ]), C["ink"]),
         ("月／季空間", f"{card['space_20']}%　／　{card['space_60']}%", C["ink"]),
-    ], sub="獲利＝從近60個日曆天收盤低算上來", pills={
+    ], sub="獲利＝近60日曆天收盤低", pills={
         1: _profit_heat_draw(gain, None, C["white"]),
     })
     _temp_n = _temp_num(card.get("temp_c"))
@@ -2695,8 +2721,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
-    y -= gap + heat_h
-    kv_block(y, heat_h, "熱度／量能", [
+    kv_block(left_x, y, col_w, heat_h, "熱度／量能", [
         ("溫度", str(card.get("temp_c") or "—"), temp_cell_style(_temp_n, C["white"])[1]),
         ("量排名", vol_pair,
          vol_rank_cell_style(int(vol_n or 99), C["white"])[1]),
@@ -2719,79 +2744,94 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
         ("自營", (tape or {}).get("dealer") or {}),
         ("法人", (tape or {}).get("three") or {}),
     ]
-    y -= gap + chips_h
-    pane(pad_x, y, pane_w, chips_h)
-    sec_title(4.8, y + chips_h - 1.7, "籌碼（張）", C["navy"])
-    ink(96.4, y + chips_h - 1.7, f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交", 11, C["ink_soft"], ha="right")
-    # 標籤與張數靠左；連買／連賣句靠右，中間留空，大張數才不會壓到國字。
+    chips_h = pair_h
+    pane(right_x, y, col_w, chips_h)
+    c_left = right_x + 2.5
+    c_right = right_x + col_w - 2.5
+    sec_title(c_left, y + chips_h - 1.55, "籌碼（張）", C["navy"])
+    ink(
+        c_right, y + chips_h - 1.55,
+        f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%",
+        10, C["ink_soft"], ha="right",
+    )
     lots_of = {name: fmt_lots(int(item.get("net") or 0)) for name, item in chips}
     phrase_of = {name: (item.get("phrase") or "—") for name, item in chips}
-    f_name, f_lots = 12.0, 16.0
+    f_name, f_lots = 12.0, 15.0
     name_w = max(wid(n, f_name) for n, _ in chips)
-    lots_x = 4.8 + name_w + 2.2
+    lots_x = c_left + name_w + 1.8
     lots_w = max(wid(lots_of[n], f_lots) for n, _ in chips)
-    phrase_left = lots_x + lots_w + 3.2
-    phrase_avail = max(16.0, 96.4 - phrase_left)
+    phrase_left = lots_x + lots_w + 2.2
+    phrase_avail = max(10.0, c_right - phrase_left)
     f_phrase = min(
-        fit_fs(phrase_of[name], 12, phrase_avail, floor=11.0) for name, _ in chips
+        fit_fs(phrase_of[name], 11, phrase_avail, floor=9.0) for name, _ in chips
     )
-    cy = y + chips_h - 5.05
+    cy = y + chips_h - 5.15
+    step = (chips_h - 6.4) / max(len(chips), 1)
     for name, item in chips:
         net = int(item.get("net") or 0)
-        ink(4.8, cy, name, f_name, C["ink"])
+        ink(c_left, cy, name, f_name, C["ink"])
         ink(lots_x, cy, lots_of[name], f_lots, chip_color(net), ha="left")
-        ink(96.4, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
-        cy -= 3.35
+        ink(c_right, cy, phrase_of[name], f_phrase, chip_color(net), ha="right")
+        cy -= step
 
-    fund_h = max(10.5, y - gap - footer_top)
+    fund_h = max(11.0, y - gap - footer_top)
     y = footer_top
     pane(pad_x, y, pane_w, fund_h)
-    sec_title(4.8, y + fund_h - 1.7, "基本面", C["navy"])
-    fy = y + fund_h - 4.45
-    fund_floor = y + 1.15
+    sec_title(4.8, y + fund_h - 1.55, "基本面", C["navy"])
+    fy = y + fund_h - 4.2
+    fund_floor = y + 1.05
     note = (tape or {}).get("conflict") or ""
     if note:
         nlines = _wrap_fit(note, 13 * gfs, row_w, GLANCE_FIG_W) or [note]
         for ln in nlines:
-            if fy - 2.2 < fund_floor:
+            if fy - 2.1 < fund_floor:
                 break
             ink(4.8, fy, ln, 13, C["hi_ink"])
-            fy -= 2.45
+            fy -= 2.3
     other_pairs = [(str(a), str(b)) for a, b in fund_rows]
     if official:
         other_pairs = [(a, b) for a, b in other_pairs if a != "較去年累計"]
     if other_pairs:
-        # 跟空間／熱度同一檔：標題 12、數字 13，不要被季報長句壓到 8pt。
-        labels, fa, fb = fit_rows(
-            other_pairs, row_w, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=12.0, scale=gfs
-        )
-        for (_lab, val), shown in zip(other_pairs, labels):
-            val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
-            vlines = _wrap_fit(val, fb * gfs, val_avail, GLANCE_FIG_W)
-            need = 2.55 + 2.15 * max(0, len(vlines) - 1)
-            if fy - need < fund_floor:
-                break
-            ink(4.8, fy, shown, fa, C["ink_soft"])
-            ink(96.4, fy, vlines[0] if vlines else val, fb, C["ink"], ha="right")
-            fy -= 2.55
-            for extra in vlines[1:]:
-                if fy - 2.0 < fund_floor:
+        mid = (len(other_pairs) + 1) // 2
+        columns = (other_pairs[:mid], other_pairs[mid:])
+        col_pair_w = (pane_w - gutter) / 2.0
+        for ci, col_pairs in enumerate(columns):
+            if not col_pairs:
+                continue
+            cx0 = pad_x + ci * (col_pair_w + gutter)
+            left = cx0 + 2.5
+            right = cx0 + col_pair_w - 2.5
+            labels, fa, fb = fit_rows(
+                col_pairs, right - left, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=11.5, scale=gfs
+            )
+            yy = fy
+            for (_lab, val), shown in zip(col_pairs, labels):
+                val_avail = max(12.0, right - left - wid(shown, fa) - 3.0)
+                vlines = _wrap_fit(val, fb * gfs, val_avail, GLANCE_FIG_W)
+                need = 2.45 + 2.05 * max(0, len(vlines) - 1)
+                if yy - need < fund_floor:
                     break
-                ink(96.4, fy, extra, fb, C["ink"], ha="right")
-                fy -= 2.15
+                ink(left, yy, shown, fa, C["ink_soft"])
+                ink(right, yy, vlines[0] if vlines else val, fb, C["ink"], ha="right")
+                yy -= 2.45
+                for extra in vlines[1:]:
+                    if yy - 1.9 < fund_floor:
+                        break
+                    ink(right, yy, extra, fb, C["ink"], ha="right")
+                    yy -= 2.05
 
-    legend_y = m_bot + 1.15
+    legend_y = m_bot + 1.05
     if wrapped_notes:
-        box_y = legend_y + 1.55
+        box_y = legend_y + 1.4
         pane(pad_x, box_y, pane_w, note_box_h, fc=C["hi_fill"], ec=C["hi_line"])
-        ink(4.8, box_y + note_box_h - 1.45, "紀律", 12, "#AD1457")
-        ny = box_y + note_box_h - 3.85
+        ink(4.8, box_y + note_box_h - 1.35, "紀律", 12, "#AD1457")
+        ny = box_y + note_box_h - 3.55
         for ln in wrapped_notes:
             ink(4.8, ny, ln, note_fs, "#AD1457")
-            ny -= 2.55
+            ny -= 2.35
     ink(4.8, legend_y, "左上 K＝當日開高低收（紅漲綠跌＝相對昨收）", 10, C["ink_mute"])
     ink(96.4, legend_y, "▲連漲　▼連跌", 10, C["ink_mute"], ha="right")
-    plt.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
+    plt.savefig(save_path, dpi=g_dpi, facecolor=fig.get_facecolor())
     plt.close()
     return save_path
 
@@ -2995,11 +3035,12 @@ def draw_from_ohlc(
     span = max(float(hi_s.max()) - float(lo_s.min()), 1.0)
 
     # 時間軸橫向；畫布改橫幅，手機縮圖後日期軸才讀得下去。
+    nav_dpi = _telegram_fig_dpi(NAV_FIG_W, NAV_FIG_H, NAV_CHART_DPI)
     fig, (ax1, ax_sig, ax2) = plt.subplots(
         3,
         1,
-        figsize=(12.8, 7.55),
-        dpi=NAV_CHART_DPI,
+        figsize=(NAV_FIG_W, NAV_FIG_H),
+        dpi=nav_dpi,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.15, 0.42, 1.35), hspace=0.04),
         facecolor="#ffffff",
@@ -3221,7 +3262,7 @@ def draw_from_ohlc(
         fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
+    plt.savefig(save_path, dpi=nav_dpi, facecolor="#ffffff")
     plt.close()
     return save_path
 

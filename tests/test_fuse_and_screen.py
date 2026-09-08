@@ -1757,9 +1757,10 @@ class LookupCardTest(unittest.TestCase):
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("pad_x + 3.2", src)
         self.assertIn('ha="right"', src)
-        self.assertIn("note_fs = 12.4", src)
+        self.assertIn("note_fs = 13.0", src)
         self.assertNotIn("note_fs = 8.8", src)
-        self.assertIn("main_fs = 13.4", src)
+        self.assertIn("main_fs = 14.2", src)
+        self.assertIn("gap_p = body_h * 0.14", src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
         self.assertIn("floor=12.0", glance_src)
@@ -1781,7 +1782,7 @@ class LookupCardTest(unittest.TestCase):
             with Image.open(gout) as gim:
                 self.assertGreaterEqual(gim.size[0], 2000)
                 self.assertLess(sum(gim.size), 10000)
-                self.assertAlmostEqual(gim.size[0] / gim.size[1], 0.5, delta=0.04)
+                self.assertAlmostEqual(gim.size[0] / gim.size[1], 7.1 / 10.5, delta=0.05)
         finally:
             if os.path.exists(path):
                 os.remove(path)
@@ -1872,8 +1873,8 @@ class LookupCardTest(unittest.TestCase):
             # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。
             per_row = (h8 - h1) / 7.0
             self.assertGreater(per_row, 20)
-            self.assertLess(per_row, 120)
-            self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=2.0)
+            self.assertLess(per_row, 280)
+            self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=12.0)
             overhead = h1 - per_row
             self.assertGreater(overhead, per_row * 8)
         finally:
