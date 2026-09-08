@@ -70,13 +70,15 @@ def _normalize_menu_text(text: str) -> str:
 
 def _text_escapes_pending(text: str) -> bool:
     """連買／記買入精靈若收到平常話或代號，不要吞掉改重問步驟。"""
+    from universe import is_lookup_ticker
+
     t = _normalize_menu_text(text)
     if not t:
         return False
     if parse_intent(t) is not None:
         return True
     compact = t.replace(" ", "")
-    return compact.isdigit() and 3 <= len(compact) <= 6
+    return is_lookup_ticker(compact)
 
 
 def html_escape(val) -> str:

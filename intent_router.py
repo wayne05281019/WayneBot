@@ -237,7 +237,7 @@ _FILLERS = tuple(
 )
 
 _PUNCT = "？?！!。．，,、；;：:「」『』\"'“”‘’（）()【】[]…·．~～-—_/\\"
-_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
+_CODE_RE = re.compile(r"(?<![A-Za-z0-9])(\d{4,6}[A-Za-z]?)(?![A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -294,7 +294,7 @@ def parse_intent(text: str, *, default_kind: str = "") -> Optional[IntentHit]:
         return None
 
     query = _strip_fillers(work)
-    code = codes[0] if codes else ""
+    code = (codes[0].upper() if codes else "")
     if kind == "hub" and (code or query):
         kind = "why"
     if kind == "flow" and (code or query):

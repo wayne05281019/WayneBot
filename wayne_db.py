@@ -21,10 +21,12 @@ from contextlib import contextmanager
 from typing import NamedTuple, Optional, Dict, Any, List, Union
 
 _CODE_THEN_NAME_RE = re.compile(
-    r"^(?P<code>\d{3,6})[\s\u3000]*(?P<name>[\u4e00-\u9fffA-Za-z].+)$"
+    r"^(?P<code>\d{3,6}[A-Za-z]?)[\s\u3000]*(?P<name>[\u4e00-\u9fff].+)$",
+    re.I,
 )
 _NAME_THEN_CODE_RE = re.compile(
-    r"^(?P<name>[\u4e00-\u9fff].+?)[\s\u3000]*(?P<code>\d{3,6})$"
+    r"^(?P<name>[\u4e00-\u9fff].+?)[\s\u3000]*(?P<code>\d{3,6}[A-Za-z]?)$",
+    re.I,
 )
 
 
@@ -34,13 +36,18 @@ def listing_is_emerging(hit: dict | None) -> bool:
 
 
 def split_lookup_code_name(query: str) -> tuple[str, str]:
-    """「2330台積電／台積電2330／２３３０」拆成代號；其餘當名稱。"""
+    """「2330台積電／00631L元大正2／２３３０」拆成代號；其餘當名稱。"""
+    from universe import canonical_lookup_ticker, is_lookup_ticker
+
     q = unicodedata.normalize("NFKC", (query or "").strip())
-    if q.isdigit() and 3 <= len(q) <= 6:
-        return q, ""
+    tick = canonical_lookup_ticker(q)
+    if tick:
+        return tick, ""
     m = _CODE_THEN_NAME_RE.match(q) or _NAME_THEN_CODE_RE.match(q)
     if m:
-        return m.group("code"), (m.group("name") or "").strip()
+        raw = (m.group("code") or "").strip()
+        tick = canonical_lookup_ticker(raw) or (raw.upper() if is_lookup_ticker(raw) else raw)
+        return tick, (m.group("name") or "").strip()
     return "", q
 
 
@@ -511,7 +518,9 @@ def _resolve_lookup_quote_date(db_path: str) -> Optional[str]:
 
 
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號或中文名（如南亞、山太士）查標的；興櫃也查名稱目錄。"""
+    """用代號或中文名（如南亞、山太士、00631L）查標的；ETF 含主動／被動／槓桿。"""
+    from universe import is_lookup_ticker
+
     ensure_core_schema(db_path)
     code, name_q = split_lookup_code_name(query)
     q = code or name_q
@@ -520,11 +529,11 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     with get_db_connection(db_path, write=False) as conn:
         latest = _resolve_lookup_quote_date(db_path)
         rows = []
-        if latest and q.isdigit() and 3 <= len(q) <= 6:
+        if latest and is_lookup_ticker(q):
             rows = conn.execute(
                 """SELECT stock_id, stock_name, close, pct_change FROM daily_quotes
-                   WHERE date=? AND stock_id=? LIMIT 1;""",
-                (latest, q),
+                   WHERE date=? AND UPPER(stock_id)=? LIMIT 1;""",
+                (latest, q.upper()),
             ).fetchall()
         elif latest:
             rows = conn.execute(
@@ -541,10 +550,10 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     ensure_stock_directory(db_path)
     with get_db_connection(db_path, write=False) as conn:
         latest = _resolve_lookup_quote_date(db_path)
-        if q.isdigit() and 3 <= len(q) <= 6:
+        if is_lookup_ticker(q):
             drows = conn.execute(
-                "SELECT stock_id, stock_name, market FROM stock_directory WHERE stock_id=? LIMIT 1;",
-                (q,),
+                "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",
+                (q.upper(),),
             ).fetchall()
         else:
             drows = conn.execute(

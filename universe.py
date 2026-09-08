@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -79,6 +80,23 @@ def classify_target(stock_id: str, stock_name: str = "") -> Tuple[str, bool]:
     if len(sid) == 4 and sid.isdigit():
         return "STOCK", True
     return "OTHER", False
+
+
+# 查股代號：2330／0050／00878／00631L／00990A。海選仍不收 ETF。
+_LOOKUP_TICKER_RE = re.compile(r"^(?:\d{3,6}|[0-9]{4,6}[A-Za-z])$", re.I)
+
+
+def is_lookup_ticker(query: str) -> bool:
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    return bool(_LOOKUP_TICKER_RE.fullmatch(q))
+
+
+def canonical_lookup_ticker(query: str) -> str:
+    """查股用代號：全形轉半形、槓桿／主動後綴大寫。"""
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    if not _LOOKUP_TICKER_RE.fullmatch(q):
+        return ""
+    return q.upper() if q[-1:].isalpha() else q
 
 
 def default_industry(asset_type: str, industry: str = "") -> str:

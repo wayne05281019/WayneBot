@@ -140,10 +140,15 @@ def parse_days(text: str) -> Optional[int]:
 
 
 def parse_stock_code(text: str) -> Optional[str]:
+    from universe import canonical_lookup_ticker
+
     t = (text or "").strip()
     if not t:
         return None
     head = t.split()[0].strip()
+    tick = canonical_lookup_ticker(head)
+    if tick:
+        return tick
     if head.isdigit() and 4 <= len(head) <= 6:
         return head
     return None
