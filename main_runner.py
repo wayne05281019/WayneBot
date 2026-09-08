@@ -509,8 +509,12 @@ class MainRunner:
             "⚡ <b>【動能突破 ＆ 法人籌碼選股】</b>",
         ]
         if rows:
+            from tg_layout import html_escape
+
             for sid, sname, close_p, pct, vol, t_net, f_net in rows:
-                lines.append(f"• <b>{sid} {sname}</b> | 收 <code>{close_p:.2f}</code> (<b>+{pct:.2f}%</b>) 量 {vol:,}張")
+                lines.append(
+                    f"• <b>{html_escape(sid)} {html_escape(sname)}</b> | 收 <code>{close_p:.2f}</code> (<b>+{pct:.2f}%</b>) 量 {vol:,}張"
+                )
         else:
             lines.append("• <i>今日無符合高動能突破標準之標的。</i>")
         return "\n".join(lines)
@@ -534,13 +538,17 @@ class MainRunner:
         watch = self.portfolio_engine.get_watchlist(uid)
         if not watch:
             return ""
+        from tg_layout import html_escape
+
         lines = ["───────────────────", "🎯 <b>【自選守護雷達】</b>"]
         for w in watch[:8]:
+            sid = html_escape(w.get("stock_id") or "")
+            sname = html_escape(w.get("stock_name") or "")
             q = quotes.get(w["stock_id"])
             if q:
-                lines.append(f"• {w['stock_id']} {w['stock_name']} 收 {q['close']:.2f} ({q['pct_change']:+.2f}%)")
+                lines.append(f"• {sid} {sname} 收 {q['close']:.2f} ({q['pct_change']:+.2f}%)")
             else:
-                lines.append(f"• {w['stock_id']} {w['stock_name']}")
+                lines.append(f"• {sid} {sname}")
         return "\n".join(lines)
 
     def _increment_ok(self, health: Dict[str, Any]) -> bool:

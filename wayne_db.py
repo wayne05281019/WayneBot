@@ -498,9 +498,43 @@ def normalize_quote_hygiene(db_path: str) -> Dict[str, int]:
         """
     )
     volume_filled = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    name_scrubbed = 0
+    try:
+        from universe import clean_stock_name, name_or_sid
+
+        dirty = cur.execute(
+            """
+            SELECT DISTINCT stock_id, stock_name FROM daily_quotes
+            WHERE substr(stock_name, 1, 1) = '['
+               OR instr(stock_name, '<p') > 0
+               OR instr(stock_name, 'style=') > 0
+            """
+        ).fetchall()
+        dir_map: Dict[str, str] = {}
+        try:
+            for sid, n in cur.execute("SELECT stock_id, stock_name FROM stock_directory"):
+                if clean_stock_name(n):
+                    dir_map[str(sid)] = n
+        except sqlite3.OperationalError:
+            dir_map = {}
+        for sid, name in dirty:
+            if clean_stock_name(name):
+                continue
+            good = dir_map.get(str(sid)) or name_or_sid(name, sid)
+            cur.execute(
+                "UPDATE daily_quotes SET stock_name=? WHERE stock_id=? AND stock_name=?",
+                (good, sid, name),
+            )
+            name_scrubbed += int(cur.rowcount or 0)
+    except Exception:
+        name_scrubbed = 0
     conn.commit()
     conn.close()
-    return {"date_fixed": int(date_fixed), "volume_filled": int(volume_filled)}
+    return {
+        "date_fixed": int(date_fixed),
+        "volume_filled": int(volume_filled),
+        "name_scrubbed": int(name_scrubbed),
+    }
 
 
 def get_user_watchlist(db_path: str, user_id: str) -> List[Dict[str, Any]]:

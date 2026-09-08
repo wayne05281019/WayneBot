@@ -155,6 +155,22 @@ def name_or_sid(name: str, sid: str) -> str:
     return n if n else sid
 
 
+def decode_isin_bytes(raw: bytes) -> str:
+    """ISIN 頁：utf-8 優先。硬解 cp950 會把 utf-8 的「台積電」解成亂碼。"""
+    if not raw:
+        return ""
+    last = ""
+    for enc in ("utf-8-sig", "utf-8", "cp950", "big5"):
+        try:
+            text = raw.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            continue
+        last = text
+        if "有價證券" in text or "台積電" in text or "國際證券辨識" in text:
+            return text
+    return last or raw.decode("utf-8", errors="replace")
+
+
 def _parse_isin_html(html: str) -> List[Tuple[str, str, str]]:
     rows: List[Tuple[str, str, str]] = []
     try:
@@ -196,8 +212,8 @@ def fetch_isin_universe() -> List[Dict]:
     for market, url in urls:
         try:
             resp = session.get(url, timeout=25)
-            resp.encoding = "cp950"
-            rows = _parse_isin_html(resp.text)
+            text = decode_isin_bytes(resp.content or b"")
+            rows = _parse_isin_html(text)
             for sid, sname, industry in rows:
                 atype, keep = classify_target(sid, sname)
                 if not keep:
