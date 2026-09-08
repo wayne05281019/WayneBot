@@ -150,7 +150,9 @@ def test_help_says_two_images():
     assert "一次出兩張圖" in guide
     assert "一次出三張圖" not in guide
     assert "導航圖" in HELP_TOPICS["stock"]
-    assert "上半資訊" in guide or "下半日K" in guide
+    assert "上半資訊" in guide
+    assert "下半180日高低導航" in guide
+    assert "下半日K" not in guide
 
 
 def test_glance_combo_canvas_matches_card_width():
@@ -167,7 +169,11 @@ def test_glance_combo_canvas_matches_card_width():
     assert GLANCE_PNG_DPI == CARD_PNG_DPI
     assert GLANCE_FIG_H < 16
     src = inspect.getsource(render_first_glance_png)
-    assert "_draw_glance_daily_k" in src
+    assert "_paint_nav_on_axes" in src
+    assert "compact=True" in src
+    assert "_draw_glance_daily_k" not in src
+    assert "_draw_mini_candle" not in src
+    assert "limit = 58.0" in src
     assert "has_chips" in src
     assert "horizon_low_cells" in src
     assert 'card.get("dist_l480")' not in src
