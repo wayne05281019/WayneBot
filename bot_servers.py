@@ -921,7 +921,7 @@ class WayneTelegramBot:
             return None
 
     def send_message(self, text: str, chat_id: str = None):
-        self._send_html(chat_id or self.chat_id, text)
+        return self._send_html(chat_id or self.chat_id, text)
 
     def _icon_btn(self, text: str, callback_data: str, mark_key: str = ""):
         kwargs = {}
@@ -2309,9 +2309,18 @@ class WayneTelegramBot:
                 payload["reply_markup"] = extra_keyboard.to_dict()
             elif attach_menu:
                 payload["reply_markup"] = self._reply_menu().to_dict()
-            requests.post(url, json=payload, timeout=20)
+            resp = requests.post(url, json=payload, timeout=20)
+            if getattr(resp, "status_code", 0) != 200:
+                logger.error(
+                    "send_html HTTP %s body=%s",
+                    getattr(resp, "status_code", "?"),
+                    (getattr(resp, "text", None) or "")[:240],
+                )
+                return False
+            return True
         except Exception as e:
             logger.error("send_html: %s", e)
+            return False
 
     def _line_open_url(self, pack_id: str) -> str:
         from config import get_public_base_url
@@ -2398,33 +2407,43 @@ class WayneTelegramBot:
     def send_screening_report(self, result: Dict[str, Any], chat_id: str | None = None):
         dest = str(chat_id or self.chat_id or "").strip()
         if not self.token or not dest:
-            return
+            logger.warning("海選未寄：token 或 chat_id 空")
+            return False
         import time as _t
 
         parts = self._screening_payload(result)
+        ok = True
         if not parts:
-            self._send_html(dest, result.get("message") or self._format_screening_html(result))
-            return
-        last = len(parts) - 1
-        for i, part in enumerate(parts):
-            chunks = chunk_telegram_html(part.get("html") or "", 3500)
-            for j, chunk in enumerate(chunks):
-                is_last_chunk = j == len(chunks) - 1
-                is_last_part = i == last
-                kb = self._screening_section_keyboard(
-                    line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
-                    include_menu=is_last_part and is_last_chunk,
-                    picks=part.get("picks") if is_last_chunk else None,
-                )
-                self._send_html(
-                    dest,
-                    chunk,
-                    extra_keyboard=kb,
-                    attach_menu=False,
-                )
-            _t.sleep(0.25)
+            ok = bool(self._send_html(dest, result.get("message") or self._format_screening_html(result)))
+        else:
+            last = len(parts) - 1
+            n_ok = 0
+            n_try = 0
+            for i, part in enumerate(parts):
+                chunks = chunk_telegram_html(part.get("html") or "", 3500)
+                for j, chunk in enumerate(chunks):
+                    is_last_chunk = j == len(chunks) - 1
+                    is_last_part = i == last
+                    kb = self._screening_section_keyboard(
+                        line_pack_id=part.get("line_pack_id") if is_last_chunk else None,
+                        include_menu=is_last_part and is_last_chunk,
+                        picks=part.get("picks") if is_last_chunk else None,
+                    )
+                    n_try += 1
+                    if self._send_html(
+                        dest,
+                        chunk,
+                        extra_keyboard=kb,
+                        attach_menu=False,
+                    ):
+                        n_ok += 1
+                    else:
+                        ok = False
+                _t.sleep(0.25)
+            logger.info("海選本文送出 %d/%d 則", n_ok, n_try)
         if result.get("line_share_packs") or result.get("line_share"):
             self._remember_line_share(result)
+        return ok
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
         if not code:
