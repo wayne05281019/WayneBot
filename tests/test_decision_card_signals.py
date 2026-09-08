@@ -113,7 +113,39 @@ def test_card_query_stamp_after_close_is_fixed():
     assert clock_s == "13:30收盤"
 
 
-def test_card_daily_stance_is_table_not_arrow():
+def test_evening_lookup_stamp_is_close_not_wall_clock():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from decision_card_signals import format_card_query_stamp
+
+    night = datetime(2026, 9, 8, 21, 40, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    _, clock_s = format_card_query_stamp(
+        is_live=True, latest_date="20260908", generated_at=night
+    )
+    assert clock_s == "13:30收盤"
+    _, clock_s = format_card_query_stamp(
+        is_live=False, latest_date="20260908", generated_at=night
+    )
+    assert clock_s == "13:30收盤"
+
+
+def test_stamp_and_dual_pill_do_not_reuse_live_clock_or_round_dots():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+    from wayne_navigator import _pill, render_decision_card_png, render_first_glance_png
+
+    glance = inspect.getsource(render_first_glance_png)
+    card_png = inspect.getsource(render_decision_card_png)
+    caption = inspect.getsource(WayneTelegramBot._send_decision_card_quick)
+    assert 'or card.get("live_time")' not in glance
+    assert 'or card.get("live_time")' not in caption
+    assert "rounding_size=0.45" not in inspect.getsource(_pill)
+    assert "body_h * 0.36" in card_png
+    show = inspect.getsource(WayneTelegramBot._show_picture_guide_page)
+    assert "InputMediaAnimation" not in show
+    assert "ensure_flip_gif" not in show
     """高檔／溫度≥80＝不要追；60低＋超跌＝觀察。不是下單、不抄紅箭頭。"""
     txt, kind = card_daily_stance(
         profit_pct=99.2, alert="No", hl="No", temp=72.4, badges=[]

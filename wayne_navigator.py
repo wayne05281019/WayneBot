@@ -384,6 +384,10 @@ class NavigatorEngine:
                 df = em
                 quote_source = "emerging_quotes"
                 merge_live = False
+                if len(str(cap)) != 8:
+                    em_max = str(df["date"].astype(str).str.replace("-", "", regex=False).max() or "")[:8]
+                    if len(em_max) == 8:
+                        db_as_of = em_max
         conn.close()
 
         if len(df) < 5:
@@ -438,7 +442,8 @@ class NavigatorEngine:
         df["profit_pct"] = profit_pct
         cal60_low = float(cal60_floors[-1]) if len(cal60_floors) else 0.0
         profit_floor = profit_floor_at(profit_src, -1, cal60_lows=cal60_floors)
-        # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
+        # 高低點窗口：用除權前收盤算溫度／預警（對齊作者卡）。高點資訊盒子若跟還原現價
+        # 差超過一倍（除權後 7800／-204% 那種），改用還原序列，避免哥哥看不懂。
         hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
         df["high_5"] = hl_src.rolling(5, min_periods=1).max()
         df["low_5"] = hl_src.rolling(5, min_periods=1).min()
@@ -559,6 +564,16 @@ class NavigatorEngine:
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
+        close_now = float(latest["close"] or 0)
+        hl_display_adjusted = False
+        if close_now > 0 and h60 > close_now * 1.6:
+            hl_display_adjusted = True
+            h10 = float(close_s.rolling(10, min_periods=1).max().iloc[-1])
+            h20 = float(close_s.rolling(20, min_periods=1).max().iloc[-1])
+            h60 = float(close_s.rolling(60, min_periods=1).max().iloc[-1])
+            l10 = float(close_s.rolling(10, min_periods=1).min().iloc[-1])
+            l20 = float(close_s.rolling(20, min_periods=1).min().iloc[-1])
+            l60 = float(close_s.rolling(60, min_periods=1).min().iloc[-1])
 
         def _dist_h(h):
             c = float(latest["close"])
@@ -609,6 +624,10 @@ class NavigatorEngine:
         l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
         l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
         l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
+        if hl_display_adjusted:
+            l120 = float(close_s.rolling(120, min_periods=20).min().iloc[-1] or 0)
+            l240 = float(close_s.rolling(240, min_periods=40).min().iloc[-1] or 0)
+            l480 = float(close_s.rolling(480, min_periods=80).min().iloc[-1] or 0)
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")
@@ -1190,16 +1209,18 @@ def _wcag(fg, bg) -> float:
     return (a + 0.05) / (b + 0.05)
 
 
-def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3):
+def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3, rounding=None):
     if not text or text in ("No", "—", "nan"):
         ax.text(cx, cy, "No", fontproperties=_fp(11), color="#9e9e9e", ha="center", va="center", zorder=z + 1)
         return
+    # 短 pill 不能用固定 0.45 圓角，會變成圓點把「最低溫／未新低」吃掉。
+    r = rounding if rounding is not None else min(0.18, max(0.08, float(h) * 0.28))
     ax.add_patch(
         patches.FancyBboxPatch(
             (cx - w / 2, cy - h / 2),
             w,
             h,
-            boxstyle="round,pad=0,rounding_size=0.45",
+            boxstyle=f"round,pad=0,rounding_size={r}",
             facecolor=bg,
             edgecolor=bg,
             linewidth=0,
@@ -1843,7 +1864,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
-    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.62
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.82
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
@@ -2137,13 +2158,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     from decision_card_signals import display_alert_cell
     _ = profit_cell_style, vol_rank_cell_style, temp_cell_style
 
-    def _status_pill(cx, cy, text, bg, fg, *, w, h, fs):
+    def _status_pill(cx, cy, text, bg, fg, *, w, h, fs, rounding=None):
         sbg, sfg = _status_badge_colors(bg, fg)
         if sfg != C["white"] and sbg in (C["white"], C["panel"], C["neutral_bg"]):
             ax.text(cx, cy, text, fontproperties=_fp(fs), color=sfg,
                     ha="center", va="center", zorder=3)
             return
-        _pill(ax, cx, cy, text, sbg, sfg, w=w, h=h, fs=fs)
+        _pill(ax, cx, cy, text, sbg, sfg, w=w, h=h, fs=fs, rounding=rounding)
 
     for row_i, (_, r) in enumerate(table.iterrows()):
         y1 = ry - body_h
@@ -2198,17 +2219,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    main_fs = 9.6 if len(main_lab) >= 3 else 10.2
-                    note_fs = 8.8
-                    main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
-                    note_w = min(tw(note, note_fs) + 2.0, max_w)
+                    main_fs = 10.0 if len(main_lab) >= 3 else 10.6
+                    note_fs = 9.2
+                    main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
+                    note_w = min(tw(note, note_fs) + 2.2, max_w)
+                    dual_r = min(0.12, body_h * 0.18)
                     _status_pill(
                         cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
-                        w=main_w, h=body_h * 0.32, fs=main_fs,
+                        w=main_w, h=body_h * 0.36, fs=main_fs, rounding=dual_r,
                     )
                     _status_pill(
                         cx, cy - body_h * 0.24, note, nbg, nfg,
-                        w=note_w, h=body_h * 0.28, fs=note_fs,
+                        w=note_w, h=body_h * 0.32, fs=note_fs, rounding=dual_r,
                     )
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
@@ -2552,7 +2574,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
             date_line, clock_line = format_card_query_stamp(
                 is_live=bool(card.get("is_live")),
                 latest_date=card.get("latest_date"),
-                generated_at=card.get("generated_at") or card.get("live_time"),
+                generated_at=card.get("generated_at"),
             )
     except Exception:
         date_line = _fmt_md(card.get("latest_date"))

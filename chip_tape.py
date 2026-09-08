@@ -255,6 +255,67 @@ def load_tape_rows(
     return rows
 
 
+def last_complete_chip_nets(
+    db_path: str,
+    stock_id: str,
+    as_of: str = "",
+) -> Optional[Dict[str, Any]]:
+    """最近一筆完整交易日的 T86 張數（不併即時列，避免盤中多出一列全 0）。"""
+    sid = str(stock_id or "").strip()
+    if not sid or not db_path:
+        return None
+    cap = str(as_of or "").replace("-", "")[:8]
+    conn = None
+    row = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        if len(cap) == 8 and cap.isdigit():
+            cur.execute(
+                """
+                SELECT date,
+                       COALESCE(foreign_net, 0),
+                       COALESCE(trust_net, 0),
+                       COALESCE(dealer_net, 0)
+                FROM daily_quotes
+                WHERE stock_id=? AND REPLACE(IFNULL(date,''), '-', '') <= ?
+                ORDER BY date DESC
+                LIMIT 1
+                """,
+                (sid, cap),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT date,
+                       COALESCE(foreign_net, 0),
+                       COALESCE(trust_net, 0),
+                       COALESCE(dealer_net, 0)
+                FROM daily_quotes
+                WHERE stock_id=?
+                ORDER BY date DESC
+                LIMIT 1
+                """,
+                (sid,),
+            )
+        row = cur.fetchone()
+    except Exception:
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if not row:
+        return None
+    return {
+        "quote_date": str(row[0] or ""),
+        "foreign_net": int(row[1] or 0),
+        "trust_net": int(row[2] or 0),
+        "dealer_net": int(row[3] or 0),
+    }
+
+
 def build_tape(
     db_path: str,
     stock_id: str,

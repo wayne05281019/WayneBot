@@ -244,11 +244,11 @@ HELP_TOPICS = {
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
-        "興櫃另打「興櫃海選」：用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
+        "興櫃：說明頁或海選底下按「興櫃」（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
-        "• 區底「一鍵傳 LINE」＝進勾選頁，可勾好幾檔再傳（介紹圖＋決策卡一組）\n"
+        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，開手機 LINE 選聯絡人\n"
+        "• 區底「一鍵傳 LINE」＝整區開啟 LINE，再選要傳給誰（不要複製貼上）\n"
         "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
         "\n"
         "<b>三種清單不要搞混</b>\n"
@@ -314,7 +314,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請打「興櫃海選」（獨立名單，不混進上市櫃海選）。\n"
+        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請按說明頁或海選底下「興櫃」（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -462,13 +462,15 @@ HELP_TOPICS = {
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 藍字股名＝奇摩走勢\n"
         "\n"
-        "<b>轉 LINE 有兩個入口，不要搞混</b>\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
-        "• 區底「一鍵傳 LINE」＝進勾選頁，可勾選要傳哪幾檔（介紹圖＋決策卡一組），再複製名單或傳勾選的圖；長圖仍是全區\n"
+        "<b>轉 LINE 都是開手機 LINE 選聯絡人</b>\n"
+        "• 股名右「開 LINE・傳這檔」＝只傳這一檔\n"
+        "• 區底「一鍵傳 LINE」＝整區一次開 LINE，再選要傳給誰\n"
+        "不要複製文字再貼。當沖／隔日沖的「傳 LINE」同一套。\n"
         "（主選單「刷新」＝單檔盤中刷新，不是整區黃金買點名單。打「決策卡」也是這顆。）\n"
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
+        "興櫃不混進這份名單。說明頁或海選底下按「興櫃」（也可打「興櫃」）。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
@@ -1642,6 +1644,7 @@ class WayneTelegramBot:
                 ],
                 [
                     InlineKeyboardButton("記買入", callback_data="?:buy"),
+                    InlineKeyboardButton("興櫃", callback_data="em:go"),
                     InlineKeyboardButton("按錯", callback_data="?:oops"),
                     InlineKeyboardButton("✕", callback_data="hx"),
                 ],
@@ -1749,7 +1752,7 @@ class WayneTelegramBot:
         include_menu: bool = False,
         picks=None,
     ):
-        """海選整區：左鍵看這檔；區底生成介紹圖／決策卡，長按轉 LINE。"""
+        """海選整區：左鍵看這檔；區底開 LINE 選聯絡人。"""
         rows = []
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
@@ -1761,11 +1764,18 @@ class WayneTelegramBot:
             if code:
                 rows.append(self._stock_action_row(code, name, idx=i))
         if line_pack_id:
-            rows.append(
-                [InlineKeyboardButton("一鍵傳 LINE", callback_data=f"lp:{line_pack_id}")]
-            )
+            line_url = self._line_open_url(line_pack_id)
+            if line_url:
+                rows.append(
+                    [InlineKeyboardButton("一鍵傳 LINE", url=line_url)]
+                )
         if include_menu:
-            rows.append([self._q("screen")])
+            rows.append(
+                [
+                    self._q("screen"),
+                    InlineKeyboardButton("興櫃", callback_data="em:go"),
+                ]
+            )
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -1786,7 +1796,7 @@ class WayneTelegramBot:
         if line_pack_id:
             line_url = self._line_open_url(line_pack_id)
             if line_url:
-                rows.append([InlineKeyboardButton("傳 LINE", url=line_url)])
+                rows.append([InlineKeyboardButton("開 LINE 選聯絡人", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -2093,12 +2103,16 @@ class WayneTelegramBot:
         if not packs:
             await message.reply_text("目前沒有可傳 LINE 的三段。請先按一次「海選」。")
             return
-        await message.reply_text("三段各有一顆鈕。按下去會開啟 LINE，再自己選要傳給誰。")
+        await message.reply_text("每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
         for p in packs:
+            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
             await message.reply_text(
-                p.get("text") or "",
+                label,
                 disable_web_page_preview=True,
-                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+                reply_markup=self._line_open_keyboard(
+                    p.get("id") or "",
+                    label="開 LINE 選聯絡人",
+                ),
             )
 
     def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
@@ -2108,12 +2122,16 @@ class WayneTelegramBot:
         packs = self._load_line_share_packs()
         if not packs:
             return
-        self._send_plain(chat_id, "整段夜盤／黃金買點／當沖稿（可選）：")
+        self._send_plain(chat_id, "每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
         for p in packs:
+            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
             self._send_plain(
                 chat_id,
-                p.get("text") or "",
-                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+                label,
+                reply_markup=self._line_open_keyboard(
+                    p.get("id") or "",
+                    label="開 LINE 選聯絡人",
+                ),
             )
 
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
@@ -2223,16 +2241,21 @@ class WayneTelegramBot:
             for pid, label, _title in LINE_PACKS
         ]
 
-    def _line_open_keyboard(self, pack_id: str = ""):
+    def _line_open_keyboard(self, pack_id: str = "", label: str = ""):
+        pid = str(pack_id or "").strip()
+        if pid:
+            text = str(label or "").strip() or "開 LINE 選聯絡人"
+            return InlineKeyboardMarkup(
+                [[InlineKeyboardButton(text, url=self._line_open_url(pid))]]
+            )
         from line_hop import LINE_PACKS
 
-        if pack_id:
-            for pid, label, _title in LINE_PACKS:
-                if pid == pack_id:
-                    return InlineKeyboardMarkup(
-                        [[InlineKeyboardButton(label, url=self._line_open_url(pid))]]
-                    )
-        return InlineKeyboardMarkup(self._line_open_rows())
+        return InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton(lab, url=self._line_open_url(xid))]
+                for xid, lab, _title in LINE_PACKS
+            ]
+        )
 
     def _send_plain(self, chat_id: str, text: str, reply_markup=None):
         try:
@@ -2449,10 +2472,10 @@ class WayneTelegramBot:
     async def _show_picture_guide_page(
         self, message, page: int, *, edit: bool, from_page: int | None = None
     ) -> None:
-        """一次只渲正在看的那一張。換頁先滑頁 GIF，再換成下一張原圖。"""
+        """一次只渲正在看的那一張。換頁直接換靜態圖，不再送滑頁 GIF。"""
         from telegram import InputMediaPhoto
 
-        from picture_guide import PAGE_SLUGS, ensure_flip_gif, ensure_page
+        from picture_guide import PAGE_SLUGS, ensure_page
 
         charts = getattr(self, "charts_dir", None)
         dest = os.path.join(str(charts or "data/charts"), "picture_guide")
@@ -2471,27 +2494,7 @@ class WayneTelegramBot:
             )
             return
         kb = self._picture_guide_keyboard(page, n)
-        src_i = None if from_page is None else max(0, min(int(from_page), n - 1))
-        if edit and src_i is not None and src_i != page:
-            try:
-                gif = await asyncio.to_thread(
-                    ensure_flip_gif, PAGE_SLUGS[src_i], slug, dest
-                )
-            except Exception:
-                logger.debug("圖文滑頁 GIF 失敗", exc_info=True)
-                gif = ""
-            if gif and os.path.isfile(gif):
-                try:
-                    from telegram import InputMediaAnimation
-
-                    with open(gif, "rb") as fh:
-                        await message.edit_media(
-                            media=InputMediaAnimation(media=fh, caption=""),
-                            reply_markup=kb,
-                        )
-                    await asyncio.sleep(0.48)
-                except Exception:
-                    logger.debug("圖文滑頁送出失敗，改直接換圖", exc_info=True)
+        _ = from_page
         with open(path, "rb") as fh:
             if edit:
                 try:
@@ -2664,7 +2667,7 @@ class WayneTelegramBot:
 
         if not items:
             return False
-        lead = "長按圖 → 分享 → LINE → 選聯絡人"
+        lead = "圖可長按分享。文字請按下一則「開 LINE 選聯絡人」"
         sent_any = False
         i = 0
         first_group = True
@@ -2718,7 +2721,7 @@ class WayneTelegramBot:
         return sent_any
 
     async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """生成介紹圖／決策卡；海選名單留下。長按圖轉 LINE。"""
+        """舊 lp: 鈕仍可生成圖；完成後給「開 LINE 選聯絡人」，不丟複製稿。"""
         from import_health import latest_complete_quote_date
         from line_rich_pack import (
             bucket_stock_rows,
@@ -2794,17 +2797,19 @@ class WayneTelegramBot:
 
         cards = share_card_files(self.charts_dir, manifest)
         album_ok = await self._send_card_share_groups(message, cards)
+        line_kb = self._line_open_keyboard(bucket_key, label="開 LINE 選聯絡人")
         if album_ok:
             await message.reply_html(
                 f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔介紹圖／決策卡。{warn}\n"
-                "長按圖 → 分享 → LINE → 選聯絡人。要哪張轉哪張。",
+                "按下方會開啟手機 LINE，再選要傳給誰。",
+                reply_markup=line_kb,
                 disable_web_page_preview=True,
             )
         else:
             await message.reply_html(
-                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔文字名單已備。{warn}\n"
-                "圖沒送出；名單如下，可複製後傳到 LINE。\n"
-                f"<pre>{html_escape(line_body[:3500])}</pre>",
+                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備。{warn}\n"
+                "按下方會開啟手機 LINE，再選要傳給誰。",
+                reply_markup=line_kb,
                 disable_web_page_preview=True,
             )
         await self._pin_reply_menu(message)
@@ -2885,13 +2890,13 @@ class WayneTelegramBot:
             )
         except asyncio.TimeoutError:
             await message.reply_text(
-                "興櫃海選逾時。請稍後再打「興櫃海選」。",
+                "興櫃海選逾時。請稍後再按「興櫃」，或打「興櫃海選」。",
                 reply_markup=hub,
             )
             return
         except Exception:
             logger.exception("興櫃海選失敗")
-            await message.reply_text("興櫃海選失敗。請稍後再打「興櫃海選」。", reply_markup=hub)
+            await message.reply_text("興櫃海選失敗。請稍後再按「興櫃」，或打「興櫃海選」。", reply_markup=hub)
             return
         finally:
             try:
@@ -2902,7 +2907,7 @@ class WayneTelegramBot:
         if n <= 0:
             await message.reply_html(
                 "興櫃海選：目前沒有可用的官方日均價序列。\n"
-                "請等盤後同步櫃買「興櫃股票當日行情表」後再打「興櫃海選」。",
+                "請等盤後同步櫃買「興櫃股票當日行情表」後再按「興櫃」。",
                 reply_markup=hub,
                 disable_web_page_preview=True,
             )
@@ -3916,7 +3921,7 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.screen_cmd(update, context)
             return
-        if text in ("興櫃海選", "興櫃名單"):
+        if text in ("興櫃", "興櫃海選", "興櫃名單"):
             logger.info("主選單：興櫃海選 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.emerging_screen_cmd(update, context)
@@ -4484,7 +4489,7 @@ class WayneTelegramBot:
                         _, clock_line = format_card_query_stamp(
                             is_live=True,
                             latest_date=card.get("latest_date"),
-                            generated_at=card.get("generated_at") or card.get("live_time"),
+                            generated_at=card.get("generated_at"),
                         )
                     live_note = f"（{clock_line}）" if clock_line else "（盤中即時）"
                 with open(card_path, "rb") as f:
@@ -5147,6 +5152,10 @@ class WayneTelegramBot:
             await self._show_picture_guide_page(
                 q.message, page, edit=True, from_page=from_page
             )
+            return
+        if data == "em:go":
+            await q.answer("興櫃海選開始")
+            await self._run_emerging_screening(q.message)
             return
         await q.answer()
         if data == "fw:s":

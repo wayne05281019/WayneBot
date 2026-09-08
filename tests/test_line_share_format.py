@@ -227,3 +227,97 @@ def test_yahoo_hop_otc_uses_two_suffix():
     assert "6488.TWO" in page
     assert "technical-analysis" not in page
     assert "location.replace" in page
+
+
+def test_line_block_hydrates_t86_from_db_like_1210(tmp_path):
+    """決策卡沒有 foreign_net 時，LINE 稿要跟介紹圖同一天張數，不能印全 0。"""
+    import sqlite3
+
+    from line_share_format import format_line_stock_block, hydrate_line_share_item
+
+    db = tmp_path / "wayne.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO daily_quotes(
+            date, stock_id, stock_name, market, open, high, low, close, volume,
+            turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "20260908",
+            "1210",
+            "大成",
+            "TW",
+            52.4,
+            52.8,
+            52.0,
+            52.5,
+            1365,
+            72000,
+            0.77,
+            52.5,
+            775,
+            0,
+            -31,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    card = {
+        "stock_id": "1210",
+        "stock_name": "大成",
+        "close": 52.5,
+        "change_pct": 0.77,
+        "volume": 1365,
+        "latest_date": "20260908",
+        "gain_pct": 2.1,
+        "ma20": 52.33,
+        "ma60s": 55.0,
+    }
+    filled = hydrate_line_share_item(card, str(db))
+    assert filled["foreign_net"] == 775
+    assert filled["trust_net"] == 0
+    assert filled["dealer_net"] == -31
+    block = format_line_stock_block(card, 1, str(db), bucket_key="leave_zero")
+    assert "外資+775張" in block
+    assert "投信+0張" in block
+    assert "自營-31張" in block
+    assert "外資+0張" not in block
+    assert "近一日　09-08" in block
+    assert "2.1%" in block
+
+
+def test_line_block_keeps_item_chips_when_db_empty(tmp_path):
+    import sqlite3
+
+    from line_share_format import format_line_stock_block
+
+    db = tmp_path / "empty.db"
+    sqlite3.connect(db).close()
+    block = format_line_stock_block(
+        {
+            "stock_id": "1210",
+            "stock_name": "大成",
+            "close": 52.5,
+            "foreign_net": 775,
+            "trust_net": 0,
+            "dealer_net": -31,
+            "quote_date": "20260908",
+        },
+        1,
+        str(db),
+    )
+    assert "外資+775張" in block
+    assert "自營-31張" in block

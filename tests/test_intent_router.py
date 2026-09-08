@@ -26,6 +26,8 @@ def test_plain_speech_maps_to_official_paths():
         "資金移動": "flow",
         "產業輪動": "flow",
         "今日海選名單": "screen",
+        "興櫃": "emerging_screen",
+        "興櫃海選": "emerging_screen",
         "黃金買點": "screen",
         "重點觀察": "screen",
         "我的持股": "portfolio",

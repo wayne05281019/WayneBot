@@ -84,8 +84,8 @@ PAGES: Sequence[Tuple[str, str, str]] = (
         "依最近一次官方收盤掃全市場，不是盤中即時。主選單「海選」按一次等，不要連按。紅圈只標位置。\n"
         "1  左鍵＝這檔完整圖；右 + ＝觀察\n"
         "2  「開 LINE・傳這檔」＝只傳這一檔\n"
-        "3  「一鍵傳 LINE」＝可勾好幾檔再傳\n"
-        "黃金買點才是進場表。重點觀察先看。20 日高標「少追」。興櫃海選／興櫃名單不混進上市櫃。小動圖。優先看、周帶量、半年高、站上季線、止跌。",
+        "3  「一鍵傳 LINE」＝開啟手機 LINE，選要傳給誰\n"
+        "黃金買點才是進場表。重點觀察先看。20 日高標「少追」。興櫃獨立名單：說明頁或海選底下按「興櫃」，也可打興櫃海選／興櫃名單，不混進上市櫃。優先看、周帶量、半年高、站上季線、止跌。",
     ),
     (
         "sell",
@@ -859,16 +859,9 @@ def ensure_flip_gif(
     *,
     force: bool = False,
 ) -> Optional[str]:
-    src_i = page_index(src_slug)
-    dst_i = page_index(dst_slug)
-    if src_i == dst_i:
-        return None
-    src = ensure_page(src_slug, out_dir)
-    dst = ensure_page(dst_slug, out_dir)
-    path = _flip_path(out_dir, src_i, dst_i)
-    if force or not os.path.isfile(path) or os.path.getsize(path) < 4_000:
-        render_flip_gif(src, dst, path, forward=dst_i > src_i)
-    return path
+    """圖文換頁不再產滑頁 GIF。保留函式以免舊呼叫炸掉。"""
+    _ = src_slug, dst_slug, out_dir, force
+    return None
 
 
 def parse_guide_callback(data: str) -> Tuple[Optional[int], int]:
@@ -940,7 +933,6 @@ FEATURE_PHRASES: Tuple[str, ...] = (
     "半年高",
     "站上季線",
     "止跌",
-    "小動圖",
     "如何賣",
     "20日高",
     "最高溫",
