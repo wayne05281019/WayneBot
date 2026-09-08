@@ -132,6 +132,17 @@ def name_match_score(query: str, stock_name: str) -> int:
     return 0
 
 
+def name_is_exact_hit(query: str, stock_name: str) -> bool:
+    """去掉 KY 後，打的字就是這檔股名（南亞科不算南亞）。"""
+    q = strip_lookup_name(query)
+    n = strip_lookup_name(stock_name)
+    if q and q == n:
+        return True
+    qc = cjk_only(q)
+    nc = cjk_only(n)
+    return bool(qc) and qc == nc
+
+
 def hits_need_picker(hits: Sequence[Dict[str, Any]] | None) -> bool:
     """讀音猜中即使只有一檔也要確認；字形命中多檔也要選。"""
     rows = list(hits or [])

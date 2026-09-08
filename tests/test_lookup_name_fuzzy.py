@@ -69,6 +69,9 @@ def _seed(db: str, monkeypatch) -> None:
         ("6515", "穎崴", 220.0, 800),
         ("4966", "譜瑞-KY", 1200.0, 900),
         ("6854", "錼創科技-KY", 80.0, 400),
+        ("2421", "建準", 70.0, 2000),
+        ("3322", "建舜電", 50.0, 1100),
+        ("4561", "健椿", 30.0, 900),
     ]
     for sid, name, close, vol in rows:
         conn.execute(
@@ -146,6 +149,10 @@ def test_lookup_exact_name_and_ticker_not_fuzzy(monkeypatch, tmp_path):
     assert len(wang) == 1
     assert wang[0]["stock_id"] == "6237"
     assert not wang[0].get("fuzzy")
+    jian = lookup_stocks(db, "建準")
+    assert [h["stock_id"] for h in jian] == ["2421"]
+    assert not jian[0].get("fuzzy")
+    assert not hits_need_picker(jian)
 
 
 def test_lookup_merges_substring_and_homophone(monkeypatch, tmp_path):

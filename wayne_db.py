@@ -591,7 +591,13 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
     再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
     """
-    from lookup_fuzzy import FUZZY_MIN_SCORE, cjk_only, name_match_score, strip_lookup_name
+    from lookup_fuzzy import (
+        FUZZY_MIN_SCORE,
+        cjk_only,
+        name_is_exact_hit,
+        name_match_score,
+        strip_lookup_name,
+    )
     from universe import is_lookup_ticker
 
     ensure_core_schema(db_path)
@@ -639,10 +645,14 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     want_fuzzy = len(cjk_only(like_q)) >= 2
     if exact:
         exact = _rank_exact_name_hits(exact, like_q)
+        if any(name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in exact):
+            return exact[:cap]
     elif not want_fuzzy:
         return []
 
-    def _fuzzy_from_catalog(conn: sqlite3.Connection, catalog: List[Any]) -> List[Dict[str, Any]]:
+    def _fuzzy_from_catalog(
+        conn: sqlite3.Connection, catalog: List[Any], min_score: int
+    ) -> List[Dict[str, Any]]:
         have = {str(h.get("stock_id")) for h in exact}
         scored: List[tuple] = []
         for row in catalog:
@@ -650,7 +660,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
             if sid in have:
                 continue
             score = name_match_score(like_q, str(row["stock_name"] or ""))
-            if score >= FUZZY_MIN_SCORE:
+            if score >= min_score:
                 scored.append((score, row))
         scored.sort(key=lambda x: (-x[0], str(x[1]["stock_id"])))
         room = max(0, cap - len(exact))
@@ -666,7 +676,9 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
                    WHERE date=? AND stock_name IS NOT NULL AND stock_name != ''""",
                 (latest,),
             ).fetchall()
-            extra = _fuzzy_from_catalog(conn, catalog)
+            extra = _fuzzy_from_catalog(
+                conn, catalog, 90 if exact else FUZZY_MIN_SCORE
+            )
         if exact or extra:
             return (exact + extra)[:cap]
     if not want_fuzzy:
@@ -684,10 +696,14 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
                     _hydrate_lookup_hits(conn, drows, latest, fuzzy=False),
                     like_q,
                 )
+                if any(name_is_exact_hit(like_q, str(h.get("stock_name") or "")) for h in exact):
+                    return exact[:cap]
         catalog = conn.execute(
             "SELECT stock_id, stock_name, market FROM stock_directory"
         ).fetchall()
-        extra = _fuzzy_from_catalog(conn, catalog)
+        extra = _fuzzy_from_catalog(
+            conn, catalog, 90 if exact else FUZZY_MIN_SCORE
+        )
     return (exact + extra)[:cap]
 
 
