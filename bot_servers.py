@@ -201,7 +201,7 @@ HELP_TOPICS = {
         "2　<b>直接打代號</b>看圖，例如 "
         + LOOKUP_CODE_EXAMPLES_HTML
         + "（不要先按「刷新」）。股票四碼、ETF 可含 L／R／A。海選名單仍只有股票／KY\n"
-        "3　三張圖出來後，<b>籌碼／營收／產業</b>在圖下面，不在右側四格鍵盤\n"
+        "3　三張圖出來後，<b>籌碼／營收／產業／K線</b>在圖下面，不在右側四格鍵盤\n"
         "\n"
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
@@ -233,6 +233,7 @@ HELP_TOPICS = {
         "• <b>營收</b>　月營收、季報毛利\n"
         "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁公開細項小框（沒有就不畫）\n"
         "• <b>報導</b>　近 7 日 Google 新聞則數（有真數才出現）。點數字開搜尋自己讀；則數變多不是賣訊、不進海選\n"
+        "• <b>K線</b>　開 TradingView 看這檔日K，網址已帶上市／上櫃代號。用你帳號裡存的版面；高低卡／獲利不會帶過去。興櫃沒這檔就不出現\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
@@ -521,12 +522,13 @@ HELP_TOPICS = {
     "stock": (
         "<b>查股頁（圖下方按鈕）</b>\n"
         "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）。點縮圖可放大。\n"
-        "籌碼／營收／產業按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
+        "籌碼／營收／產業／K線按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
         "\n"
         "<b>圖下方這一排</b>\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
         "• <b>產業</b>：一張圖卡（同業中位＋本產業法人）；股名旁有公開細項小框，沒抓到不畫\n"
+        "• <b>K線</b>：開 TradingView 看這檔（網址已帶 TWSE／TPEX 代號）。高低卡不會帶過去\n"
         "• <b>觀察</b>：加入自選（還沒買）\n"
         "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>\n"
         "\n"
@@ -1705,29 +1707,38 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """手機閱讀：每列最多三顆。產業／報導放最上；興櫃沒有法人表就不掛籌碼／營收。"""
+        """手機閱讀：每列最多三顆。產業／報導／K線放最上；興櫃沒有法人表就不掛籌碼／營收。"""
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
         news_url = str(news.get("url") or "").strip()
+        tv_url = ""
+        if not em:
+            try:
+                from stock_links import tradingview_chart_url
+
+                tv_url = tradingview_chart_url(c, getattr(self, "db_path", None))
+            except Exception:
+                tv_url = ""
         top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
         if news_label and news_url:
             top.append(InlineKeyboardButton(news_label[:16], url=news_url))
+        if tv_url:
+            top.append(InlineKeyboardButton("K線", url=tv_url))
         actions = [
             InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
             self._q(topic),
         ]
         if em:
-            rows = [top, actions]
-            return InlineKeyboardMarkup(rows)
+            return InlineKeyboardMarkup([top, actions])
         listed = [
             InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
             InlineKeyboardButton("營收", callback_data=f"f:{c}"),
         ]
-        if news_label and news_url:
+        if len(top) >= 2:
             return InlineKeyboardMarkup([top, listed, actions])
-        # 沒有報導則數：維持兩排，產業跟籌碼／營收同一排，避免空一列。
+        # 沒有報導、也沒有 K 線：維持兩排，產業跟籌碼／營收同一排。
         return InlineKeyboardMarkup(
             [
                 [
@@ -2445,7 +2456,7 @@ class WayneTelegramBot:
             "2　直接打代號看圖，例如 "
             + LOOKUP_CODE_EXAMPLES_HTML
             + "（不要先按「刷新」）\n"
-            "3　籌碼／營收／產業在圖下面，不在右側四格鍵盤\n"
+            "3　籌碼／營收／產業／K線在圖下面，不在右側四格鍵盤\n"
             "\n"
             "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n",
         )

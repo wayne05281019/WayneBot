@@ -12,11 +12,14 @@ def test_hub_keyboard_mobile_compact():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("2330")
     rows = kb.inline_keyboard
-    assert len(rows) == 2
+    assert len(rows) >= 2
     assert all(len(r) <= 3 for r in rows)
     texts = [b.text for r in rows for b in r]
     assert "籌碼" in texts and "記買入" in texts
     assert "產業" in texts
+    assert "K線" in texts
+    kline = next(b for r in rows for b in r if b.text == "K線")
+    assert (kline.url or "").startswith("https://www.tradingview.com/chart/?symbol=TWSE:2330")
     assert "導航圖" not in texts
     cbs = [b.callback_data for r in rows for b in r]
     assert any((c or "").startswith("n:") for c in cbs)
@@ -30,6 +33,7 @@ def test_em_hub_omits_empty_chip_buttons():
     assert "營收" not in texts
     assert "產業" in texts
     assert "觀察" in texts
+    assert "K線" not in texts
 
 
 def test_picks_keyboard_caps_rows():
