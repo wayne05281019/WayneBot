@@ -5,6 +5,7 @@ from __future__ import annotations
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_CARD,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
@@ -13,7 +14,7 @@ from bot_servers import (
 )
 from picture_guide import PAGE_SLUGS, page_copy_blob
 
-ROW1 = ["決策卡", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
+ROW1 = [MENU_BTN_CARD, "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
 ROW2 = ["隔日沖", MENU_BTN_MARKET, "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
 GUIDE_PAGE_ORDER = (
     "cover",
@@ -42,7 +43,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ROW1
     assert row2 == ROW2
-    assert MENU_LAYOUT_VERSION == "11"
+    assert MENU_LAYOUT_VERSION == "12"
 
     guide = HELP_TOPICS["guide"]
     menu = HELP_TOPICS["menu"]
@@ -53,6 +54,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert "連買區／說明" in menu
     assert row2_help.index("④ 連買區") < row2_help.index("⑤ 說明")
     assert "隔日沖　大盤　資金　連買區　說明　回報" in blob
+    assert "刷新上一檔　當沖　持股　觀察　海選　AI倉" in blob
     assert "一張圖卡" in blob
     assert "圖卡" in HELP_TOPICS["industry"]
     assert "小框" in HELP_TOPICS["industry"]

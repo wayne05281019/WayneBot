@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_CARD,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
@@ -19,7 +20,7 @@ from tg_layout import chunk_telegram_html
 
 
 MENU_BUTTONS = [
-    ("決策卡", "decision_card_btn"),
+    (MENU_BTN_CARD, "decision_card_btn"),
     ("當沖", "daytrade_cmd"),
     ("持股", "_send_portfolio"),
     ("觀察", "_send_watch"),
@@ -87,7 +88,7 @@ def test_twelve_menu_buttons_exist_in_order():
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["決策卡", "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
+    assert row1 == [MENU_BTN_CARD, "當沖", "持股", "觀察", "海選", MENU_BTN_AI]
     assert row2 == ["隔日沖", MENU_BTN_MARKET, "資金", MENU_BTN_STREAK, "說明", MENU_BTN_REPORT]
 
 

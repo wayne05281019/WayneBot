@@ -114,6 +114,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("月營收", "fund"),
     ("使用說明", "help"),
     ("圖文說明", "help"),
+    ("刷新上一檔", "card"),
     ("決策卡", "card"),
     ("介紹圖", "lookup"),
     ("導航圖", "lookup"),
