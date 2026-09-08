@@ -88,6 +88,42 @@ def test_scratch_chart_paths_differ_for_two_users():
     assert str(BRO_UID) in p2
 
 
+def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
+    """新帳號預設十二顆與查股圖下鈕跟擁有者同一套，不是另一個精簡機器人。"""
+    from bot_servers import MENU_ROW1, MENU_ROW2, WayneTelegramBot
+    from wayne_db import init_database
+
+    db = str(tmp_path / "samekb.db")
+    init_database(db)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = db
+    kb_w = bot._reply_menu(str(WAYNE_UID))
+    kb_b = bot._reply_menu(str(BRO_UID))
+    wayne = [[b.text for b in row] for row in kb_w.keyboard]
+    bro = [[b.text for b in row] for row in kb_b.keyboard]
+    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2)]
+    hub_w = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
+    hub_b = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
+    assert hub_w == hub_b
+    assert "產業" in hub_w and "K線" in hub_w and "籌碼" in hub_w
+
+
+def test_owner_compact_menu_does_not_shrink_brother(tmp_path):
+    """偉權改精簡六顆，哥哥仍是完整十二顆。"""
+    from bot_servers import MENU_COMPACT_ROWS, MENU_ROW1, MENU_ROW2, WayneTelegramBot
+    from wayne_db import init_database
+
+    db = str(tmp_path / "compactiso.db")
+    init_database(db)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = db
+    bot._set_menu_compact(str(WAYNE_UID), True)
+    wayne = [b.text for row in bot._reply_menu(str(WAYNE_UID)).keyboard for b in row]
+    bro = [[b.text for b in row] for row in bot._reply_menu(str(BRO_UID)).keyboard]
+    assert wayne == [t for row in MENU_COMPACT_ROWS for t in row]
+    assert bro == [list(MENU_ROW1), list(MENU_ROW2)]
+
+
 @pytest.mark.parametrize("round_i", range(10))
 def test_concurrent_buy_streak_wizards_isolated(round_i):
     """十輪：兩人同時走連買區不同路徑，pending 互不干擾。"""

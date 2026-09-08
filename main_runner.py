@@ -171,7 +171,14 @@ class MainRunner:
         except Exception:
             raw = []
         owner = str(getattr(self, "chat_id", None) or "").strip()
-        for uid in list(raw) + ([owner] if owner else []):
+        extras: list[str] = []
+        try:
+            from config import extra_family_chat_ids
+
+            extras = extra_family_chat_ids()
+        except Exception:
+            extras = []
+        for uid in list(raw) + extras + ([owner] if owner else []):
             s = str(uid or "").strip()
             if not s or s in seen:
                 continue
@@ -555,8 +562,16 @@ class MainRunner:
         ids = self._family_chat_ids()
         if self.bot and delivered:
             try:
-                for cid in ids:
-                    self.bot.send_screening_report(screening, chat_id=cid)
+                dests = ids or [str(getattr(self, "chat_id", None) or "").strip()]
+                dests = [d for d in dests if d]
+                if dests:
+                    for cid in dests:
+                        try:
+                            self.bot.send_screening_report(screening, chat_id=cid)
+                        except Exception as e:
+                            logger.warning("海選寄給 %s 失敗: %s", cid, e)
+                else:
+                    self.bot.send_screening_report(screening)
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
                 self._broadcast_family(

@@ -56,7 +56,7 @@ def test_push_screening_success_skips_ai_push(monkeypatch):
     ai_calls = []
 
     runner.send_telegram_message = lambda text, chat_id=None: sent.append(text)
-    runner._format_watch_radar_section = lambda: ""
+    runner._format_watch_radar_section = lambda uid="": ""
     runner._run_ai_desk = lambda *a, **k: ai_calls.append(k) or {}
 
     runner._push_screening(
@@ -116,10 +116,13 @@ def test_oneshot_jobs_skip_if_already_done():
     assert "run_increment_job(skip_if_done=True)" in src
 
 
-def test_family_chat_ids_owner_and_touched_users(tmp_path):
+def test_family_chat_ids_owner_and_touched_users(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
 
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
     path = str(tmp_path / "fam.db")
     ensure_core_schema(path)
     touch_tg_user(path, "9001", "偉權")
@@ -130,10 +133,100 @@ def test_family_chat_ids_owner_and_touched_users(tmp_path):
     assert runner._family_chat_ids() == ["9001", "9002"]
 
 
-def test_push_screening_sends_each_family_member(tmp_path):
+def test_family_chat_ids_include_env_extras(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
 
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "9003")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001,9004")
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    path = str(tmp_path / "fam.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    assert runner._family_chat_ids() == ["9001", "9003", "9004"]
+
+
+def test_extra_family_chat_ids_skips_owner_only_telegram_id(monkeypatch):
+    from config import extra_family_chat_ids, get_telegram_chat_id
+
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.setenv("TG_CHAT_ID", "9001")
+    assert extra_family_chat_ids() == []
+    assert get_telegram_chat_id() == "9001"
+
+
+def test_watch_radar_section_is_per_uid_not_owner():
+    from main_runner import MainRunner
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.chat_id = "9001"
+    seen = []
+
+    class _Eng:
+        def get_watchlist(self, uid):
+            seen.append(str(uid))
+            if str(uid) == "9002":
+                return [{"stock_id": "2330", "stock_name": "台積電"}]
+            return [{"stock_id": "2317", "stock_name": "鴻海"}]
+
+    runner.portfolio_engine = _Eng()
+    runner._load_latest_quotes_map = lambda: {}
+    wayne = runner._format_watch_radar_section("9001")
+    bro = runner._format_watch_radar_section("9002")
+    assert seen == ["9001", "9002"]
+    assert "2317" in wayne and "2330" not in wayne
+    assert "2330" in bro and "2317" not in bro
+
+
+def test_push_screening_radar_keyed_by_each_family_uid(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    path = str(tmp_path / "fam.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    touch_tg_user(path, "9002", "家人")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    runner.today_str = "20260901"
+    runner.portfolio_engine = None
+    radar_uids = []
+    sent = []
+
+    class _Bot:
+        def send_screening_report(self, screening, chat_id=None):
+            sent.append(("screen", chat_id))
+
+    runner.bot = _Bot()
+    runner.send_telegram_message = lambda text, chat_id=None: sent.append(("extra", chat_id, text))
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": radar_uids.append(str(uid)) or f"RADAR-{uid}"
+    runner._push_screening(
+        {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+        as_of="20260831",
+    )
+    assert ("screen", "9001") in sent
+    assert ("screen", "9002") in sent
+    assert radar_uids == ["9001", "9002"]
+    assert ("extra", "9001", "RADAR-9001") in sent
+    assert ("extra", "9002", "RADAR-9002") in sent
+
+
+def test_push_screening_sends_each_family_member(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
     path = str(tmp_path / "fam.db")
     ensure_core_schema(path)
     touch_tg_user(path, "9001", "偉權")
