@@ -14,6 +14,7 @@ import struct
 import tempfile
 import time
 import unicodedata
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
@@ -4759,15 +4760,16 @@ class WayneTelegramBot:
                 return False
             for attempt in range(3):
                 try:
-                    with open(path, "rb") as f:
-                        kw = {"photo": f}
-                        if markup is not None:
-                            kw["reply_markup"] = markup
-                        cap = str(caption or "").strip()
-                        if cap:
-                            kw["caption"] = cap
-                            kw["parse_mode"] = "HTML"
-                        await message.reply_photo(**kw)
+                    bio = BytesIO(self._telegram_photo_bytes(path))
+                    bio.name = os.path.basename(path) or f"{kind or 'photo'}.png"
+                    kw = {"photo": bio}
+                    if markup is not None:
+                        kw["reply_markup"] = markup
+                    cap = str(caption or "").strip()
+                    if cap:
+                        kw["caption"] = cap
+                        kw["parse_mode"] = "HTML"
+                    await message.reply_photo(**kw)
                     logger.info(
                         "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
                         kind,
@@ -4785,14 +4787,15 @@ class WayneTelegramBot:
                         await asyncio.sleep(1.5 * (attempt + 1))
                         continue
                     try:
-                        with open(path, "rb") as f:
-                            kw = {"photo": f}
-                            if markup is not None:
-                                kw["reply_markup"] = markup
-                            cap = str(caption or "").strip()[:200]
-                            if cap:
-                                kw["caption"] = cap
-                            await message.reply_photo(**kw)
+                        bio = BytesIO(self._telegram_photo_bytes(path))
+                        bio.name = os.path.basename(path) or f"{kind or 'photo'}.png"
+                        kw = {"photo": bio}
+                        if markup is not None:
+                            kw["reply_markup"] = markup
+                        cap = str(caption or "").strip()[:200]
+                        if cap:
+                            kw["caption"] = cap
+                        await message.reply_photo(**kw)
                         logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
                         if not lookup_faded:
                             lookup_faded = True
@@ -4950,7 +4953,7 @@ class WayneTelegramBot:
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 逐張大圖送出；相簿會縮成小圖，說明字也不要再掛在圖下。
+            # 三張一次相簿：遠看是一塊四角形。不要逐張放大，也不要寫「點縮圖」。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -5010,14 +5013,25 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
-            last_i = len(ready_items) - 1
-            for i, (kind, path, caption, _markup) in enumerate(ready_items):
-                markup = hub if i == last_i else None
-                ok = await send_photo(path, caption, markup, kind=kind)
-                if ok and markup is hub:
-                    hub_on = True
-                if ok:
-                    sent_any = True
+            album_ok = False
+            if len(ready_items) >= 2:
+                st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "album"})
+                st["current"] = "album"
+                album_ok = await self._send_lookup_album(message, ready_items)
+            if album_ok:
+                sent_any = True
+                if not lookup_faded:
+                    lookup_faded = True
+                    await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
+            else:
+                last_i = len(ready_items) - 1
+                for i, (kind, path, caption, _markup) in enumerate(ready_items):
+                    markup = hub if i == last_i else None
+                    ok = await send_photo(path, caption, markup, kind=kind)
+                    if ok and markup is hub:
+                        hub_on = True
+                    if ok:
+                        sent_any = True
 
             if sent_any and not hub_on:
                 miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
@@ -5025,7 +5039,7 @@ class WayneTelegramBot:
                     f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
                     f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
                     if miss
-                    else (str(code)[:6] or "查股")
+                    else html_escape(_stock_caption_name(card, code) or code)
                 )
                 await _reply_visible(done_txt, html=True, markup=hub)
             elif not sent_any:
@@ -5077,33 +5091,63 @@ class WayneTelegramBot:
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
 
+    @staticmethod
+    def _telegram_photo_bytes(path: str, *, max_edge: int = 2560) -> bytes:
+        """Telegram 相簿會把長邊壓到約 2560；先 LANCZOS 再送，座長圖小字比較不會糊。"""
+        with open(path, "rb") as f:
+            raw = f.read()
+        try:
+            from PIL import Image
+
+            im = Image.open(BytesIO(raw))
+            im.load()
+            w, h = im.size
+            edge = max(w, h)
+            if edge <= max_edge or w < 1 or h < 1:
+                return raw
+            scale = max_edge / float(edge)
+            nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+            if im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGBA")
+            out = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            buf = BytesIO()
+            out.save(buf, format="PNG", optimize=True)
+            data = buf.getvalue()
+            return data or raw
+        except Exception:
+            logger.debug("telegram 圖縮失敗 path=%s", path, exc_info=True)
+            return raw
+
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""
+        """三張一次送，Telegram 會顯示一塊四角形縮圖；點開才看大圖。"""
         from telegram import InputMediaPhoto
 
         if len(items) < 2:
             return False
-        handles = []
+        buffers = []
         try:
             media = []
             first_cap = str(items[0][2] or "").strip()
-            album_cap = "介紹／決策／導航　點任一張縮圖放大"
-            if first_cap:
-                album_cap = f"{first_cap}\n{album_cap}"
             for kind, path, _caption, _markup in items:
                 if kind == "chart":
                     if not self._chart_png_looks_ok(path):
                         continue
                 elif not self._png_looks_ok(path):
                     continue
-                fh = open(path, "rb")
-                handles.append(fh)
+                buf = BytesIO(self._telegram_photo_bytes(path))
+                buf.name = os.path.basename(path) or f"{kind}.png"
+                buffers.append(buf)
                 if not media:
-                    media.append(
-                        InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
-                    )
+                    if first_cap:
+                        media.append(
+                            InputMediaPhoto(
+                                media=buf, caption=first_cap[:1024], parse_mode="HTML"
+                            )
+                        )
+                    else:
+                        media.append(InputMediaPhoto(media=buf))
                 else:
-                    media.append(InputMediaPhoto(media=fh))
+                    media.append(InputMediaPhoto(media=buf))
             if len(media) < 2:
                 return False
             await message.reply_media_group(media=media)
@@ -5112,12 +5156,6 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("送相簿失敗，改逐張")
             return False
-        finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query

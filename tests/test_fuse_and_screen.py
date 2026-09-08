@@ -1701,7 +1701,7 @@ class LookupCardTest(unittest.TestCase):
             render_first_glance_png,
         )
 
-        self.assertGreaterEqual(CARD_PNG_DPI, 320)
+        self.assertGreaterEqual(CARD_PNG_DPI, 400)
         self.assertGreaterEqual(GLANCE_PNG_DPI, 440)
         table = pd.DataFrame(
             [
@@ -1717,8 +1717,8 @@ class LookupCardTest(unittest.TestCase):
                     "bias_monthly": 1.0,
                     "vol_rank_120": 20,
                     "120日量": "第 20 名",
-                    "升降": "升溫",
-                    "升降註": "",
+                    "升降": "最低溫",
+                    "升降註": "價未新低",
                 }
             ]
         )
@@ -1757,6 +1757,9 @@ class LookupCardTest(unittest.TestCase):
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("pad_x + 3.2", src)
         self.assertIn('ha="right"', src)
+        self.assertIn("note_fs = 12.4", src)
+        self.assertNotIn("note_fs = 8.8", src)
+        self.assertIn("main_fs = 13.4", src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn('ha="right"', glance_src)
         self.assertIn("floor=12.0", glance_src)
@@ -1778,6 +1781,7 @@ class LookupCardTest(unittest.TestCase):
             with Image.open(gout) as gim:
                 self.assertGreaterEqual(gim.size[0], 2000)
                 self.assertLess(sum(gim.size), 10000)
+                self.assertAlmostEqual(gim.size[0] / gim.size[1], 0.5, delta=0.04)
         finally:
             if os.path.exists(path):
                 os.remove(path)

@@ -63,15 +63,15 @@ DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
-# 介紹圖畫布比決策卡窄，同樣 320DPI 橫向像素比較少，對話框裡會比較軟。
-# 加到 440：橫向約 2033px，接近決策卡 2272px；寬+高仍低於 Telegram sendPhoto 10000。
-CARD_PNG_DPI = 320
+# Telegram sendPhoto：寬+高 < 10000；相簿縮圖格會依第一張長寬比縮整塊。
+# 介紹圖改近 1:2（仍豎長）：三張遠看是一塊四角形，不是細長條。點開長邊仍約 2560。
+# 舊 4.62×17.7 點開只剩 ~670px 寬，座長圖與小字會糊。
+CARD_PNG_DPI = 400
 GLANCE_PNG_DPI = 440
 CARD_FIG_W = 7.1
-GLANCE_FIG_W = 4.62
-GLANCE_FIG_H = 17.7
+GLANCE_FIG_W = 7.5
+GLANCE_FIG_H = 15.0
+GLANCE_FS = 1.45  # 畫布變寬，點級跟著放大，點開才清楚
 NAV_CHART_DPI = 320
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
@@ -1782,14 +1782,17 @@ def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
     return best
 
 
-def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor=9.5):
+def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor=9.5, scale=1.0):
     """同一區塊各列共用字級：取各列需求裡最小的那組，字高一致、右對齊的數字才會對齊。
 
     rows 是 (標題或標題備選, 數值) 的序列。回傳 (每列採用的標題, 標題字級, 數值字級)。
+    scale>1 時用放大後的字去量寬，回傳仍是設計字級（繪製端再乘 scale）。
     """
+    s = float(scale) if scale else 1.0
+    fa, fb, floor = fa * s, fb * s, floor * s
     rows = list(rows)
     if not rows:
-        return [], fa, fb
+        return [], fa / s, fb / s
     picked = [
         fit_label_value(labels, value, row_w, fig_w, fa=fa, fb=fb,
                         gap=gap, weight=weight, floor=floor)
@@ -1807,7 +1810,7 @@ def fit_rows(rows, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5, weight=800, floor
                 label = alt
                 break
         out.append(label)
-    return out, ua, ub
+    return out, ua / s, ub / s
 
 
 @_mpl_serial
@@ -1843,7 +1846,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
-    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.62
+    tbl_title_h, hdr_h, body_h = 3.5, 3.35, 4.35
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
@@ -2121,7 +2124,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
               "預警會露出 20高／10低；升降＝溫度升降（不是股價）；最右欄＝120日量")
     headers = ["日期", "股價", "獲利", "預警", "升降", "溫度計", "月乖離", "120日量"]
     # 股價欄加寬（萬元股）、升降略加寬給雙標；日期／獲利略收。手機直向對齊作者卡。
-    weights = [12.2, 12.2, 8.8, 10.6, 14.2, 11.0, 9.6, 12.4]
+    weights = [11.6, 11.8, 8.6, 10.2, 15.4, 12.2, 9.2, 12.0]
     pill_cols = {3, 4}
     span = 100 - 2 * pad_x
     xs = [pad_x]
@@ -2131,7 +2134,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     for i, h in enumerate(headers):
         ax.add_patch(patches.Rectangle((xs[i], tbl_top - hdr_h), xs[i + 1] - xs[i], hdr_h,
                                        facecolor=C["tbl_hdr"], edgecolor=C["tbl_line"], lw=0.7, zorder=2))
-        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h, fontproperties=_fp(11.2, "bold"),
+        ax.text((xs[i] + xs[i + 1]) / 2, tbl_top - hdr_h / 2, h, fontproperties=_fp(12.4, "bold"),
                 ha="center", va="center", color=C["tbl_ink"], zorder=3)
     ry = tbl_top - hdr_h
     from decision_card_signals import display_alert_cell
@@ -2185,37 +2188,42 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.70, fs=11.5)
+                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.70, fs=12.5)
             elif i == 2 and fills[i] == C["lo_hit_fill"]:
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.70, fs=11.5)
+                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.70, fs=12.5)
             elif i in pill_cols:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
-                            fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
+                            fontproperties=_fp(12), color=C["ink_mute"], ha="center", va="center", zorder=3)
                 elif i == 4 and trend_note:
                     note = _trend_note_short(trend_note)
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    main_fs = 9.6 if len(main_lab) >= 3 else 10.2
-                    note_fs = 8.8
+                    main_fs = 13.4 if len(main_lab) >= 3 else 14.2
+                    note_fs = 12.4
                     main_w = min(tw(main_lab, main_fs) + 2.4, max_w)
                     note_w = min(tw(note, note_fs) + 2.0, max_w)
                     _status_pill(
                         cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
-                        w=main_w, h=body_h * 0.32, fs=main_fs,
+                        w=main_w, h=body_h * 0.36, fs=main_fs,
                     )
                     _status_pill(
                         cx, cy - body_h * 0.24, note, nbg, nfg,
-                        w=note_w, h=body_h * 0.28, fs=note_fs,
+                        w=note_w, h=body_h * 0.32, fs=note_fs,
                     )
                 else:
-                    pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
+                    pill_w = min(tw(val, 12.5) + 3.0, col_w * 0.90)
                     _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
-                                 h=body_h * 0.74, fs=11.0)
+                                 h=body_h * 0.74, fs=12.5)
             else:
-                px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
+                if i == 5:
+                    px_fs = 13.5
+                elif i == 1 and len(str(val)) >= 7:
+                    px_fs = 11.5
+                else:
+                    px_fs = 12.5
                 ink = _fg_on_panel(fgs[i], fills[i], fills[i] or C["white"])
                 ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
                         ha="center", va="center", color=ink, zorder=3)
@@ -2452,6 +2460,12 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     last = (tape or {}).get("last") or {}
     move = (tape or {}).get("move") or {}
     C = _CARD
+    gfs = GLANCE_FS
+    _fp_base = _fp
+
+    def _fp(size, weight="bold"):
+        return _fp_base(float(size) * gfs, weight)
+
     fig, ax = plt.subplots(figsize=(GLANCE_FIG_W, GLANCE_FIG_H), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
@@ -2477,7 +2491,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     pad_x, pane_w = 1.4, 97.2
 
     def wid(text, fs):
-        return _text_w(text, fs, GLANCE_FIG_W, 800)
+        return _text_w(text, float(fs) * gfs, GLANCE_FIG_W, 800)
 
     def fit_fs(text, fs, avail, floor=8.5):
         """字太長就縮到放得下，長期低點那種一列四個數字才不會撞到邊。"""
@@ -2515,7 +2529,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     footer_notes = list(footer_src)
     wrapped_notes = []
     for n in footer_notes:
-        wrapped_notes.extend(_wrap_fit(n, note_fs, row_w, GLANCE_FIG_W) or [n])
+        wrapped_notes.extend(_wrap_fit(n, note_fs * gfs, row_w, GLANCE_FIG_W) or [n])
     m_bot = 1.05
     legend_h = 2.55
     note_box_h = (3.15 + 2.55 * len(wrapped_notes)) if wrapped_notes else 0.0
@@ -2639,7 +2653,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     def kv_block(y0, h, title, rows, *, sub="", pills=None):
         pane(pad_x, y0, pane_w, h)
         sec_title(4.8, y0 + h - 1.7, title, C["navy"], sub=sub)
-        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W)
+        labels, fa, fb = fit_rows([(r[0], r[1]) for r in rows], row_w, GLANCE_FIG_W, scale=gfs)
         yy = y0 + h - 4.55
         pills = pills or {}
         for i, ((_, b, c), a) in enumerate(zip(rows, labels)):
@@ -2737,7 +2751,7 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     fund_floor = y + 1.15
     note = (tape or {}).get("conflict") or ""
     if note:
-        nlines = _wrap_fit(note, 13, row_w, GLANCE_FIG_W) or [note]
+        nlines = _wrap_fit(note, 13 * gfs, row_w, GLANCE_FIG_W) or [note]
         for ln in nlines:
             if fy - 2.2 < fund_floor:
                 break
@@ -2749,11 +2763,11 @@ def render_first_glance_png(stock_id: str, card: dict, tape: dict, save_path: st
     if other_pairs:
         # 跟空間／熱度同一檔：標題 12、數字 13，不要被季報長句壓到 8pt。
         labels, fa, fb = fit_rows(
-            other_pairs, row_w, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=12.0
+            other_pairs, row_w, GLANCE_FIG_W, fa=12.0, fb=13.0, floor=12.0, scale=gfs
         )
         for (_lab, val), shown in zip(other_pairs, labels):
             val_avail = max(24.0, 96.4 - 4.8 - wid(shown, fa) - 5.0)
-            vlines = _wrap_fit(val, fb, val_avail, GLANCE_FIG_W)
+            vlines = _wrap_fit(val, fb * gfs, val_avail, GLANCE_FIG_W)
             need = 2.55 + 2.15 * max(0, len(vlines) - 1)
             if fy - need < fund_floor:
                 break

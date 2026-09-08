@@ -4,6 +4,7 @@ import inspect
 import os
 import tempfile
 import unittest
+from io import BytesIO
 
 import pytest
 
@@ -80,14 +81,35 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330 台積電"}, "2330"), "台積電")
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330"}, "2330"), "2330")
 
-    def test_send_card_sends_full_photos_not_album(self):
+    def test_send_card_uses_album_without_thumb_hints(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-        self.assertNotIn("_send_lookup_album", src)
+        self.assertIn("_send_lookup_album", src)
         self.assertNotIn("點縮圖可放大", src)
         self.assertNotIn("網頁走勢", src)
         self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
+        album_src = inspect.getsource(WayneTelegramBot._send_lookup_album)
+        self.assertNotIn("點任一張", album_src)
+        self.assertNotIn("點縮圖", album_src)
+
+    def test_telegram_photo_lanczos_long_edge(self):
+        import tempfile
+
+        from PIL import Image
+
+        im = Image.new("RGB", (3300, 6600), "#112233")
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            im.save(path)
+            data = WayneTelegramBot._telegram_photo_bytes(path, max_edge=2560)
+            out = Image.open(BytesIO(data))
+            self.assertEqual(out.size[1], 2560)
+            self.assertEqual(out.size[0], 1280)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
