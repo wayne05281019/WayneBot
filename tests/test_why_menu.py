@@ -42,6 +42,7 @@ def _bot():
     bot._lookup_locks = {}
     bot._pending_locks = {}
     bot._screening_running = set()
+    bot._trade_running = set()
     bot._menu_fade_gen = {}
     bot._menu_layout_ok = MagicMock(return_value=True)
     bot._touch_user = MagicMock()
@@ -217,6 +218,77 @@ def test_why_pending_then_code_sends_card():
     asyncio.run(run())
     bot._send_card_to.assert_awaited()
     assert bot._send_card_to.await_args.args[1] == "2454"
+
+
+def test_streak_pending_does_not_swallow_why_drop():
+    bot = _bot()
+    bot._pending["99:9"] = "fbuy:kind"
+    bot._last_card["9"] = "2330"
+    msg = _msg(9, "為什麼跌")
+
+    async def run():
+        await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot._send_card_to.assert_awaited()
+    assert bot._send_card_to.await_args.args[1] == "2330"
+    assert "99:9" not in bot._pending
+    blob = " ".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
+    assert "請選" not in blob or "新聞" in blob
+
+
+def test_buy_pending_does_not_swallow_why_drop():
+    bot = _bot()
+    bot._pending["99:9"] = "buy:3595"
+    bot._last_card["9"] = "3595"
+    bot._held_lots_for = MagicMock(return_value=None)
+    bot._keyboard = MagicMock(return_value=None)
+    msg = _msg(9, "為什麼跌")
+
+    async def run():
+        await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot._send_card_to.assert_awaited()
+    assert bot._send_card_to.await_args.args[1] == "3595"
+    assert "99:9" not in bot._pending
+
+
+def test_chengjiao_text_opens_journal():
+    bot = _bot()
+    bot._send_trade_journal = AsyncMock()
+    msg = _msg(9, "成交")
+
+    async def run():
+        await bot.on_text(_update(msg), MagicMock())
+
+    asyncio.run(run())
+    bot._send_trade_journal.assert_awaited()
+    assert bot._send_trade_journal.await_args.kwargs.get("review") is False
+
+
+def test_daytrade_lock_blocks_second_press():
+    bot = _bot()
+    bot._trade_running = {"99:9"}
+    bot._reply_menu = MagicMock()
+    msg = _msg(9, "當沖")
+
+    async def run():
+        await bot._run_trade_bucket(
+            msg,
+            bucket_key="day_trade",
+            live_bucket="daytrade",
+            title="x",
+            subtitle="",
+            topic="daytrade",
+            status_text="x",
+            menu_label="當沖",
+            loader=lambda: [],
+        )
+
+    asyncio.run(run())
+    text = str(msg.reply_text.await_args.args[0])
+    assert "進行中" in text
 
 
 def test_help_why_topic_exists():

@@ -106,7 +106,7 @@ def count_markets(db_path: str, yyyymmdd: str) -> Tuple[int, int, int]:
             SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END),
             COUNT(*)
         FROM daily_quotes
-        WHERE replace(date,'-','')=?
+        WHERE date=?
         """,
         (yyyymmdd,),
     ).fetchone()
@@ -137,7 +137,7 @@ def latest_complete_quote_date(
     cur = conn.cursor()
     rows = cur.execute(
         """
-        SELECT replace(date,'-','') AS d,
+        SELECT date AS d,
                SUM(CASE WHEN market IN ('TW','TSE') THEN 1 ELSE 0 END) AS tw,
                SUM(CASE WHEN market IN ('TWO','OTC','ROCO') THEN 1 ELSE 0 END) AS two
         FROM daily_quotes
@@ -148,7 +148,7 @@ def latest_complete_quote_date(
                 LIMIT 40
             )
         )
-        GROUP BY replace(date,'-','')
+        GROUP BY date
         ORDER BY d DESC
         """
     ).fetchall()
@@ -438,7 +438,7 @@ def inventory_payload(db_path: str) -> Dict[str, Any]:
         else:
             counts[t] = 0
     span = cur.execute(
-        "SELECT MIN(replace(date,'-','')), MAX(replace(date,'-','')), COUNT(DISTINCT replace(date,'-','')) FROM daily_quotes"
+        "SELECT MIN(date), MAX(date), COUNT(DISTINCT date) FROM daily_quotes"
     ).fetchone() if "daily_quotes" in tables else ("", "", 0)
     conn.close()
     gaps = health.get("history_issues") or []

@@ -131,7 +131,15 @@ def parse_market(text: str) -> Optional[str]:
 
 
 def parse_days(text: str) -> Optional[int]:
-    t = (text or "").strip().replace("天", "").replace("日", "")
+    import unicodedata
+
+    from universe import is_lookup_ticker
+
+    t = unicodedata.normalize("NFKC", (text or "").strip())
+    t = t.replace("天", "").replace("日", "").replace(" ", "").replace("\u3000", "")
+    # 0050／00878 是 ETF 代號，int("0050")==50 不能當成 50 天連買。
+    if is_lookup_ticker(t):
+        return None
     if t.isdigit():
         n = int(t)
         if 1 <= n <= 120:
@@ -140,10 +148,22 @@ def parse_days(text: str) -> Optional[int]:
 
 
 def parse_stock_code(text: str) -> Optional[str]:
+    from universe import canonical_lookup_ticker
+    from wayne_db import split_lookup_code_name
+
     t = (text or "").strip()
     if not t:
         return None
+    tick = canonical_lookup_ticker(t)
+    if tick:
+        return tick
     head = t.split()[0].strip()
+    tick = canonical_lookup_ticker(head)
+    if tick:
+        return tick
+    code, _name = split_lookup_code_name(t)
+    if code:
+        return canonical_lookup_ticker(code) or code
     if head.isdigit() and 4 <= len(head) <= 6:
         return head
     return None

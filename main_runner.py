@@ -220,7 +220,7 @@ class MainRunner:
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','') = ?;", (fuse_to,))
+        cursor.execute("SELECT COUNT(*) FROM daily_quotes WHERE date=?;", (fuse_to,))
         count = cursor.fetchone()[0]
         conn.close()
         if count > inserted_count:
@@ -237,12 +237,12 @@ class MainRunner:
 
                 latest = db_as_of_trading_date(self.db_path) or ""
             except Exception:
-                cur.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes;")
+                cur.execute("SELECT MAX(date) FROM daily_quotes;")
                 latest = cur.fetchone()[0]
             chip_sum = 0
             if latest:
                 chip_sum = cur.execute(
-                    "SELECT COALESCE(SUM(ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net)),0) FROM daily_quotes WHERE replace(date,'-','')=?",
+                    "SELECT COALESCE(SUM(ABS(foreign_net)+ABS(trust_net)+ABS(dealer_net)),0) FROM daily_quotes WHERE date=?",
                     (str(latest).replace("-", ""),),
                 ).fetchone()[0]
             conn.close()
@@ -977,14 +977,15 @@ def main():
 
         runner = MainRunner()
         kind = job_kind()
+        # GHA cron 與 trigger 檔可能各跑一次；略過已完成才不會寄兩份早報。
         if kind == "morning_screen":
-            ok = runner.run_morning_screen(skip_if_done=False)
+            ok = runner.run_morning_screen(skip_if_done=True)
         elif kind == "evening_screen":
-            ok = runner.run_evening_screen(skip_if_done=False, notify=False)
+            ok = runner.run_evening_screen(skip_if_done=True, notify=False)
         elif kind == "midday_review":
-            ok = runner.run_midday_review(skip_if_done=False)
+            ok = runner.run_midday_review(skip_if_done=True)
         else:
-            ok = runner.run_increment_job(skip_if_done=False)
+            ok = runner.run_increment_job(skip_if_done=True)
         if not ok:
             sys.exit(1)
     except Exception as e:

@@ -57,6 +57,18 @@ class ScreenExcludesEtfTests(unittest.TestCase):
         self.assertFalse(is_screen_equity("00411A", "主動統一前沿科技"))
         self.assertFalse(is_screen_equity("2330", "台積電", "ETF_PASSIVE"))
 
+    def test_lookup_ticker_accepts_etf_codes_screen_still_drops(self):
+        from universe import canonical_lookup_ticker, classify_target, is_lookup_ticker
+
+        self.assertTrue(is_lookup_ticker("0050"))
+        self.assertTrue(is_lookup_ticker("00962"))
+        self.assertEqual(canonical_lookup_ticker("00706l"), "00706L")
+        self.assertEqual(canonical_lookup_ticker("00990A"), "00990A")
+        self.assertEqual(canonical_lookup_ticker("00632R"), "00632R")
+        self.assertEqual(classify_target("00706L", "期元大S&P日圓正2")[0], "ETF_LEVERAGED")
+        self.assertEqual(classify_target("00990A", "主動元大AI新經濟")[0], "ETF_ACTIVE")
+        self.assertEqual(classify_target("00962", "台新AI優息動能")[0], "ETF_PASSIVE")
+
     def test_format_payload_and_cache_drop_etf(self):
         from screening_engine import drop_non_equity_picks, format_screening_payload
         from screen_review import save_screen_picks

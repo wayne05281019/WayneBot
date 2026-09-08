@@ -58,6 +58,12 @@ def test_code_and_name_extracted():
     assert hit.kind == "chips" and hit.code == "2330"
     hit = parse_intent("原因 2454")
     assert hit.kind == "why" and hit.code == "2454"
+    hit = parse_intent("00631L為什麼跌")
+    assert hit.kind == "why" and hit.code == "00631L"
+    hit = parse_intent("00990A怎麼賣")
+    assert hit.kind == "sell" and hit.code == "00990A"
+    hit = parse_intent("00706l籌碼")
+    assert hit.kind == "chips" and hit.code == "00706L"
 
 
 def test_bare_stock_name_is_not_intent():

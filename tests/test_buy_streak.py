@@ -153,7 +153,12 @@ def test_parse_helpers():
     assert parse_market("上櫃") == MARKET_TWO
     assert parse_days("6") == 6
     assert parse_days("25天") == 25
+    assert parse_days("0050") is None
+    assert parse_days("00878") is None
     assert parse_stock_code("2330 台積電") == "2330"
+    assert parse_stock_code("2330台積電") == "2330"
+    assert parse_stock_code("00706L") == "00706L"
+    assert parse_stock_code("00990a") == "00990A"
 
 
 def test_foreign_tw_exact_days_and_lots(db):

@@ -35,7 +35,7 @@ def _asof(db_path: str) -> str:
     except Exception:
         pass
     conn = sqlite3.connect(db_path)
-    row = conn.execute("SELECT MAX(replace(date,'-','')) FROM daily_quotes").fetchone()
+    row = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
     conn.close()
     return str(row[0] or "").replace("-", "")
 
@@ -159,7 +159,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
                 SELECT COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
                 FROM daily_quotes q
                 JOIN stock_universe u ON u.stock_id = q.stock_id
-                WHERE replace(q.date,'-','')=? AND u.industry=? AND length(q.stock_id)=4
+                WHERE q.date=? AND u.industry=? AND length(q.stock_id)=4
                   AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
                 """,
                 (as_of, industry),
@@ -171,7 +171,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             SELECT u.industry, SUM(q.foreign_net+q.trust_net+q.dealer_net) AS three_net
             FROM daily_quotes q
             JOIN stock_universe u ON u.stock_id = q.stock_id
-            WHERE replace(q.date,'-','')=? AND length(q.stock_id)=4
+            WHERE q.date=? AND length(q.stock_id)=4
               AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
               AND TRIM(COALESCE(u.industry,'')) NOT IN ('', 'ETF', '指數投資證券', '存託憑證')
             GROUP BY u.industry
@@ -188,8 +188,8 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             str(r[0])
             for r in conn.execute(
                 """
-                SELECT DISTINCT replace(date,'-','') AS d FROM daily_quotes
-                WHERE replace(date,'-','') <= ? ORDER BY d DESC LIMIT 8
+                SELECT DISTINCT date AS d FROM daily_quotes
+                WHERE date <= ? ORDER BY d DESC LIMIT 8
                 """,
                 (as_of,),
             ).fetchall()
@@ -199,11 +199,11 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             qmarks = ",".join("?" * len(dates))
             for d, net in conn.execute(
                 f"""
-                SELECT replace(q.date,'-','') AS d,
+                SELECT q.date AS d,
                        COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
                 FROM daily_quotes q
                 JOIN stock_universe u ON u.stock_id = q.stock_id
-                WHERE replace(q.date,'-','') IN ({qmarks}) AND u.industry=? AND length(q.stock_id)=4
+                WHERE q.date IN ({qmarks}) AND u.industry=? AND length(q.stock_id)=4
                   AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
                 GROUP BY 1
                 """,

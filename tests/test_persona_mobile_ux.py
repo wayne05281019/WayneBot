@@ -22,6 +22,16 @@ def test_hub_keyboard_mobile_compact():
     assert any((c or "").startswith("n:") for c in cbs)
 
 
+def test_em_hub_omits_empty_chip_buttons():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._hub_keyboard("3595", em=True)
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert "籌碼" not in texts
+    assert "營收" not in texts
+    assert "產業" not in texts
+    assert "觀察" in texts and "記買入" in texts
+
+
 def test_picks_keyboard_caps_rows():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = "data/wayne_market.db"

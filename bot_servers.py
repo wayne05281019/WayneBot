@@ -23,12 +23,14 @@ _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
 
 from config import get_charts_dir, get_db_path, get_telegram_config, skip_chart_warmup
+from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
     init_database,
     get_user_portfolio,
     add_to_watchlist,
     remove_from_watchlist,
     lookup_stocks,
+    listing_is_emerging,
     touch_tg_user,
 )
 from trade_journal import (
@@ -65,6 +67,19 @@ def _normalize_menu_text(text: str) -> str:
     """主選單按鈕文字正規化（全形、空白）。"""
     t = unicodedata.normalize("NFKC", (text or "").strip())
     return t.replace("\u3000", "").strip()
+
+
+def _text_escapes_pending(text: str) -> bool:
+    """連買／記買入精靈若收到平常話或代號，不要吞掉改重問步驟。"""
+    from universe import is_lookup_ticker
+
+    t = _normalize_menu_text(text)
+    if not t:
+        return False
+    if parse_intent(t) is not None:
+        return True
+    compact = t.replace(" ", "")
+    return is_lookup_ticker(compact)
 
 
 def html_escape(val) -> str:
@@ -167,6 +182,12 @@ except ImportError:
     Update = Any  # type: ignore
     ContextTypes = type("ContextTypes", (), {"DEFAULT_TYPE": Any})  # type: ignore
 
+# 查股：股票四碼＋ETF（被動／主動／兩倍槓桿）。海選仍不收 ETF。
+LOOKUP_CODE_EXAMPLES_HTML = (
+    "<code>2330</code>、<code>0050</code>、<code>0052</code>、"
+    "<code>00631L</code>、<code>00981A</code>"
+)
+
 HELP_TOPICS = {
     "guide": (
         "<b>WayneBot 使用說明</b>\n"
@@ -175,12 +196,15 @@ HELP_TOPICS = {
         "\n"
         "<b>第一次用，先做這三步</b>\n"
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
-        "2　<b>直接打四碼</b>看圖，例如 <code>2330</code>（不要先按「決策卡」）\n"
+        "2　<b>直接打代號</b>看圖，例如 "
+        + LOOKUP_CODE_EXAMPLES_HTML
+        + "（不要先按「決策卡」）。股票四碼、ETF 可含 L／R／A。海選名單仍只有股票／KY\n"
         "3　三張圖出來後，<b>籌碼／營收／產業</b>在圖下面，不在右側四格鍵盤\n"
         "\n"
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面。漢堡在輸入列左邊，四格鍵盤圖示在右邊。點四格展開兩排。\n"
-        "打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
+        "        打完字若只剩英文鍵盤，再點一次四格 ⌨️。也可打 /menu。\n"
+        "也可打股名：撞名或國字打不準會列出相近的請你點，不會猜錯就出圖。\n"
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
         "<b>平常話／三條槓「原因」</b>\n"
@@ -208,8 +232,8 @@ HELP_TOPICS = {
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
-        "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
-        "名稱撞名：藍字股名＝奇摩；左邊＝看這檔，右 <b>➕</b>＝觀察。\n"
+        "        介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
+        "名稱撞名、國字打不準、KY 沒寫對：會列出相近的；藍字＝奇摩，左邊＝看這檔，右 <b>➕</b>＝觀察。讀音猜中也要點確認才出圖。\n"
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
@@ -223,6 +247,7 @@ HELP_TOPICS = {
         "• <b>觀察</b>＝自選，還沒買\n"
         "• <b>持股</b>＝你手記的真實買入（成交／復盤在持股頁下方）\n"
         "• <b>AI倉</b>＝假錢對照組（也可打 AI模擬倉）；50 萬切 3 等份，平常最多 1 份，超跌才第 2 份，第 3 份留現金；頁上 <b>AI操盤</b> 立刻跑一輪，<b>進化</b>只調倍數、不改黃金買點\n"
+        "打「持倉」會開 <b>AI倉</b>（假錢），不是手記持股。手記請按「持股」。\n"
         "\n"
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
@@ -253,7 +278,7 @@ HELP_TOPICS = {
         "\n"
         "<b>按錯了怎麼辦</b>\n"
         "亂按沒關係。下面幾條最常見；更完整請點下方「按錯」。\n"
-        "• 一打開先按了「決策卡」：那顆是刷新上一檔。還沒查過就直接打四碼。\n"
+        "• 一打開先按了「決策卡」：那顆是刷新上一檔。還沒查過就直接打代號。\n"
         "• 「當沖」沒名單：週末／收盤後本來就空；改看「海選」或「隔日沖」。平日 09:00–13:30 才有當沖。\n"
         "• 「海選」等很久：那是掃全市場，不是查某一檔；不要連按。\n"
         "• 「觀察」跟「持股」搞混：觀察＝還沒買；持股＝按過記買入才會在。\n"
@@ -261,7 +286,7 @@ HELP_TOPICS = {
         "• 找不到「產業」：在圖下面那一排，不在右側 ⌨️。\n"
         "• 連買選到一半按錯：改按別顆就取消；再按「連買區」重來。\n"
         "• 「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
-        "• 找不到股票：再打一次四碼；撞名點左邊股名。\n"
+        "• 找不到股票：打股名即可，撞名或國字打不準會列出請你點；再打一次代號最準（ETF 含 0050、00631L、00981A）。\n"
         "• 主選單不見：點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
         "• 畫面怪、數字怪：按第二排最右「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
@@ -396,13 +421,15 @@ HELP_TOPICS = {
         "• 還沒查過任何股：會請你先打代號，或從觀察清單點一檔。\n"
         "• 已查過：盤中重複按這顆即可更新，不必重打代號。\n"
         "• 跟海選不同：海選是全市場昨收掃描；這顆是單檔盤中工具。\n"
-        "• 第一次用請直接打四碼，例如 <code>2330</code>，不要先按這顆。"
+        "• 第一次用請直接打代號，例如 "
+        + LOOKUP_CODE_EXAMPLES_HTML
+        + "，不要先按這顆。"
     ),
     "menu": (
         "<b>主選單在哪？</b>\n"
         "不在訊息最下面，在輸入列旁邊<b>四格鍵盤圖示 ⌨️</b>展開的兩排按鈕。\n"
         "\n"
-        "<b>第一次用</b>：先叫出兩排 → 直接打四碼看圖 → 圖下方看籌碼／營收／產業。\n"
+        "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
         "<b>第一排</b>：決策卡／當沖／持股／觀察／海選／<b>AI倉</b>\n"
         "<b>第二排</b>：隔日沖／大盤／資金／連買區／說明／<b>回報</b>\n"
@@ -560,11 +587,14 @@ HELP_TOPICS = {
     ),
     "pick": (
         "<b>查某一檔</b>\n"
-        "直接打股名或四碼，例如 <b>南亞</b>、<b>2324</b>。\n"
+        "直接打股名或代號，例如 <b>南亞</b>、"
+        + LOOKUP_CODE_EXAMPLES_HTML
+        + "。\n"
+        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「決策卡」——那顆是刷新上一檔。\n"
         "一次出三張圖：介紹圖 → 決策卡 → 導航圖。\n"
-        "找不到：再打一次四碼；名稱撞名時點藍字或左邊股名。"
+        "找不到：撞名或國字打不準會列出相近的請你點；再打代號最準。"
     ),
     "flow": (
         "<b>資金移動怎麼用</b>\n"
@@ -600,7 +630,9 @@ HELP_TOPICS = {
         "亂按沒關係。下面每一條都能把你導回來。\n"
         "\n"
         "<b>一打開先按了「決策卡」</b>\n"
-        "那顆是刷新上一檔。還沒查過就<b>直接打四碼</b>，例如 <code>2330</code>。\n"
+        "那顆是刷新上一檔。還沒查過就<b>直接打代號</b>，例如 "
+        + LOOKUP_CODE_EXAMPLES_HTML
+        + "。\n"
         "\n"
         "<b>「當沖」沒名單</b>\n"
         "週末／收盤後本來就空。改看「海選」或「隔日沖」，不要連按當沖。\n"
@@ -628,7 +660,7 @@ HELP_TOPICS = {
         "左邊三條槓點「原因」，或直接打「為什麼跌」「怎麼賣」，也可以傳語音。沒有官方新聞原因欄，會給決策卡／籌碼等真資料，不編故事。\n"
         "\n"
         "<b>找不到股票</b>\n"
-        "再打一次四碼比打股名準。名稱撞名時：藍字＝奇摩網頁，左邊股名＝看這檔圖。\n"
+        "打股名即可（南亞會列出南亞／南亞科）。國字打錯、同音、KY 沒打對，也會猜相近的請你點，不會直接出圖。再打代號最準（ETF 含 0050、00631L、00981A）。\n"
         "\n"
         "<b>主選單不見</b>\n"
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
@@ -652,7 +684,7 @@ HELP_TOPICS = {
         "• 持股／觀察／當沖／隔日沖／連買／AI倉　→ 對應那一頁\n"
         "• 主力成本／外資成本　→ 說明官方沒這欄，改看籌碼\n"
         "\n"
-        "沒寫代號就用<b>上一檔</b>；還沒查過請打四碼，例如 <code>2330為什麼跌</code>。\n"
+        "沒寫代號就用<b>上一檔</b>；還沒查過請打代號，例如 <code>2330為什麼跌</code>、<code>00631L怎麼賣</code>。\n"
         "語音：按麥克風說同一句。雲端要有聽寫金鑰才聽得懂；沒金鑰不會假裝聽懂，請改打字。\n"
         "進場仍只認高低卡表的黃金買點，紅箭頭不是買訊。"
     ),
@@ -722,6 +754,7 @@ class WayneTelegramBot:
         self._lookup_op_state: Dict[str, dict] = {}
         self._pending_locks: Dict[str, asyncio.Lock] = {}
         self._screening_running: set[str] = set()
+        self._trade_running: set[str] = set()
         self._screening_gate = asyncio.Lock()
         self._screening_global_owner: str = ""
         self._menu_fade_gen: Dict[str, int] = {}
@@ -910,6 +943,26 @@ class WayneTelegramBot:
         if uid and c:
             self._last_card[uid] = c
 
+    def _hit_is_emerging(self, code: str, hits: list | None = None) -> bool:
+        rows = hits if hits is not None else lookup_stocks(self.db_path, code)
+        return bool(rows) and listing_is_emerging(rows[0])
+
+    def _em_no_listed_html(self, code: str, hits: list | None = None) -> str:
+        h = (hits or lookup_stocks(self.db_path, code) or [{}])[0]
+        sid = html_escape(h.get("stock_id") or code)
+        name = html_escape(h.get("stock_name") or "")
+        mkt = html_escape(h.get("market") or "EM")
+        try:
+            from stock_links import html_stock_anchor
+
+            title = html_stock_anchor(h.get("stock_id") or code, h.get("stock_name") or "", self.db_path)
+        except Exception:
+            title = f"{sid} {name}".strip()
+        return (
+            f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
+            "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。"
+        )
+
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
         if not uid or not code or ohlc is None:
             return
@@ -944,7 +997,9 @@ class WayneTelegramBot:
         self._pending[self._pending_actor(message, uid=uid)] = "dcard"
         await message.reply_html(
             "這顆會刷新<b>上一檔</b>。你這邊還沒查過股票，所以沒有上一檔。\n"
-            "請直接打四碼，例如 <code>2330</code>；或點下面觀察清單。",
+            "請直接打代號，例如 "
+            + LOOKUP_CODE_EXAMPLES_HTML
+            + "；或點下面觀察清單。",
             reply_markup=InlineKeyboardMarkup(kb),
         )
 
@@ -1268,6 +1323,8 @@ class WayneTelegramBot:
         if step == "kind":
             kind = parse_kind(text)
             if not kind:
+                if _text_escapes_pending(text):
+                    return False
                 self._pending[actor] = "fbuy:kind"
                 await self._streak_send_step(
                     message,
@@ -1290,6 +1347,8 @@ class WayneTelegramBot:
             market = parts[3] if len(parts) > 3 else ""
             days = parse_days(text)
             if days is None:
+                if _text_escapes_pending(text):
+                    return False
                 self._pending[actor] = f"fbuy:days:{kind}:{market}"
                 await self._streak_send_step(
                     message,
@@ -1320,9 +1379,19 @@ class WayneTelegramBot:
             code = parse_stock_code(text)
             if not code:
                 hits = lookup_stocks(self.db_path, text.split()[0].strip()) if text else []
+                if hits_need_picker(hits):
+                    self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
+                    await message.reply_html(
+                        self._hits_list_html(hits),
+                        reply_markup=self._hits_keyboard(hits),
+                        disable_web_page_preview=True,
+                    )
+                    return True
                 if len(hits) == 1:
                     code = str(hits[0]["stock_id"])
             if not code:
+                if _text_escapes_pending(text):
+                    return False
                 self._pending[actor] = f"fbuy:pick:{kind}:{market}:{days}:{offset}"
                 await message.reply_html(
                     "請點鍵盤上的股票，或打代號。",
@@ -1551,9 +1620,19 @@ class WayneTelegramBot:
         """錯誤／提示改釘回兩排主選單。直立式「說明／主選單」已廢。"""
         return self._reply_menu()
 
-    def _hub_keyboard(self, code: str, topic: str = "stock"):
-        """手機閱讀：每列最多三顆，常用放第一排。"""
+    def _hub_keyboard(self, code: str, topic: str = "stock", *, em: bool = False):
+        """手機閱讀：每列最多三顆，常用放第一排。興櫃沒有法人／產業日K，不掛空鈕。"""
         c = str(code).strip()[:6]
+        if em:
+            return InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                        self._q(topic),
+                    ]
+                ]
+            )
         return InlineKeyboardMarkup(
             [
                 [
@@ -1704,8 +1783,7 @@ class WayneTelegramBot:
         except Exception:
             html_stock_anchor = None
         lines = [
-            lead
-            or "名稱相近，請選要看哪一檔。藍字＝奇摩；按鈕＝看這檔。"
+            lead or lookup_picker_lead(hits)
         ]
         for i, h in enumerate((hits or [])[:8], start=1):
             sid = str(h.get("stock_id") or "")
@@ -2245,17 +2323,12 @@ class WayneTelegramBot:
             "\n"
             "<b>第一次用，先做這三步</b>\n"
             "1　點輸入列旁邊四格 ⌨️ 叫出兩排（不見就打 /menu）\n"
-            "2　直接打四碼看圖，例如 <code>2330</code>（不要先按「決策卡」）\n"
+            "2　直接打代號看圖，例如 "
+            + LOOKUP_CODE_EXAMPLES_HTML
+            + "（不要先按「決策卡」）\n"
             "3　籌碼／營收／產業在圖下面，不在右側四格鍵盤\n"
             "\n"
-            "詳情按第二排「說明」，或打 /help。圖文說明在說明頁下方「圖文」。亂了點「按錯」。\n"
-            "盤中刷新上一檔請按首排最左 <b>決策卡</b>。\n"
-            "看加權請按第二排 <b>大盤</b>（隔日沖右邊）。\n"
-            "第一排最右 <b>AI倉</b> 是假錢對照組，不是你手記的持股。\n"
-            "第二排最右 <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖。\n"
-            "打 <b>南亞</b> 或 <b>2324</b> 也可查股。左下也可按 /menu。\n"
-            "輸入列<b>左邊三條槓</b>「原因」：用平常話問（為什麼跌、怎麼賣），對出正確資料。\n"
-            "次排 <b>連買區</b> 查外資／投信／兩家皆買（上市櫃一起）。",
+            "詳情按第二排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按最右「回報」。\n",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 
@@ -2819,29 +2892,34 @@ class WayneTelegramBot:
         )
 
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_trade_running"):
+            self._trade_running = set()
+        if actor in self._trade_running:
+            await message.reply_text(
+                f"{menu_label}進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(),
+            )
+            return
+        self._trade_running.add(actor)
         # 進度泡泡不掛 ReplyKeyboard，否則 delete 時兩排主選單會被客戶端收掉。
-        status = await message.reply_text(status_text)
-        await self._enter_main_menu(message, uid)
-        phase = tw_session_phase()
-        display_title = title
-        effective_live_bucket = live_bucket
-        effective_subtitle = subtitle
-        if live_bucket == "daytrade" and not is_tw_equity_session():
-            try:
+        status = None
+        try:
+            status = await message.reply_text(status_text)
+            await self._enter_main_menu(message, uid)
+            phase = tw_session_phase()
+            display_title = title
+            effective_live_bucket = live_bucket
+            effective_subtitle = subtitle
+            if live_bucket == "daytrade" and not is_tw_equity_session():
                 await message.reply_html(
                     f"<b>{daytrade_closed_title(phase)}</b>\n<i>{daytrade_closed_message(phase)}</i>",
                     reply_markup=self._reply_menu(),
                 )
-            finally:
-                try:
-                    await status.delete()
-                except Exception:
-                    pass
-            return
-        if live_bucket == "overnight" and not is_tw_equity_session():
-            effective_live_bucket = None
-            display_title, effective_subtitle = overnight_list_heading(phase)
-        try:
+                return
+            if live_bucket == "overnight" and not is_tw_equity_session():
+                effective_live_bucket = None
+                display_title, effective_subtitle = overnight_list_heading(phase)
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(loader), timeout=45.0)
             except asyncio.TimeoutError:
@@ -2898,6 +2976,7 @@ class WayneTelegramBot:
                 reply_markup=self._reply_menu(),
             )
         finally:
+            self._trade_running.discard(actor)
             if status is not None:
                 try:
                     await status.delete()
@@ -3173,7 +3252,7 @@ class WayneTelegramBot:
         from wayne_db import get_user_watchlist
 
         hints = {
-            "card": "看這檔：請先打四碼（例 2330）或點觀察清單。會一次出介紹圖、決策卡、導航圖。",
+            "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。會一次出介紹圖、決策卡、導航圖。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "industry": "產業說明：請先選一檔。會送一張圖卡，用官方營收／毛利跟同業比。",
@@ -3231,6 +3310,14 @@ class WayneTelegramBot:
     async def _send_chips_to(self, message, code: str, uid: str = ""):
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)
+        hits = lookup_stocks(self.db_path, code)
+        if self._hit_is_emerging(code, hits):
+            await message.reply_html(
+                self._em_no_listed_html(code, hits),
+                reply_markup=self._hub_keyboard(code, em=True),
+                disable_web_page_preview=True,
+            )
+            return
         chip_img = await asyncio.to_thread(
             generate_chips_image,
             code,
@@ -3265,6 +3352,14 @@ class WayneTelegramBot:
 
         # 按鈕／指令路徑只讀庫，不跑全市場 sync（那會卡死整機；交給盤後流水線）。
         code = str(code or "").strip()
+        hits = lookup_stocks(self.db_path, code)
+        if self._hit_is_emerging(code, hits):
+            await message.reply_html(
+                self._em_no_listed_html(code, hits),
+                reply_markup=self._hub_keyboard(code, em=True),
+                disable_web_page_preview=True,
+            )
+            return
         html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
         await message.reply_html(
             html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
@@ -3287,6 +3382,14 @@ class WayneTelegramBot:
         from industry_card import render_industry_png
 
         code = str(code).strip()
+        hits = lookup_stocks(self.db_path, code)
+        if self._hit_is_emerging(code, hits):
+            await message.reply_html(
+                self._em_no_listed_html(code, hits),
+                reply_markup=self._hub_keyboard(code, em=True),
+                disable_web_page_preview=True,
+            )
+            return
         uid = str(getattr(getattr(message, "from_user", None), "id", "") or "0")
         png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
 
@@ -3368,22 +3471,22 @@ class WayneTelegramBot:
                 code = ""
         if not code and hit.query:
             hits = lookup_stocks(self.db_path, hit.query)
-            if len(hits) == 1:
-                code = str(hits[0]["stock_id"])
-            elif len(hits) > 1:
+            if hits_need_picker(hits):
                 self._pending[self._pending_actor(message, uid=uid)] = "why"
                 await message.reply_html(
-                    self._hits_list_html(hits, "這句對到多檔，請點選："),
+                    self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return True
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
         if not code and kind in NEEDS_STOCK:
             code = str(self._last_card.get(uid) or "").strip()
         if kind in NEEDS_STOCK and not code:
             self._pending[self._pending_actor(message, uid=uid)] = "why"
             await message.reply_html(
-                "這句要帶一檔才出得了正確資料。請打四碼，例如 <code>2330</code>；"
+                "這句要帶一檔才出得了正確資料。請打代號，例如 <code>2330</code>、<code>00631L</code>；"
                 "或先查一檔，再用上一檔。",
                 reply_markup=self._why_hub_keyboard(""),
                 disable_web_page_preview=True,
@@ -3675,10 +3778,12 @@ class WayneTelegramBot:
             return
         if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
             logger.info("主選單：資金 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.flow_cmd(update, context)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
             logger.info("主選單：大盤 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.market_cmd(update, context)
             return
         if text == "當沖":
@@ -3698,6 +3803,7 @@ class WayneTelegramBot:
             return
         if text == "決策卡":
             logger.info("主選單：決策卡 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.decision_card_btn(update, context)
             return
         if text == "海選":
@@ -3707,10 +3813,22 @@ class WayneTelegramBot:
             return
         if text == "持股":
             logger.info("主選單：持股 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.portfolio_cmd(update, context)
+            return
+        if text in ("成交", "成交紀錄", "我的成交"):
+            logger.info("主選單：成交 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._send_trade_journal(update.message, uid, review=False)
+            return
+        if text in ("復盤", "我的復盤"):
+            logger.info("主選單：復盤 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._send_trade_journal(update.message, uid, review=True)
             return
         if text == "觀察":
             logger.info("主選單：觀察 uid=%s", uid)
+            self._pending.pop(actor, None)
             await self.watch_cmd(update, context)
             return
         if text in ("原因",) or text.lower().lstrip("/") == "why":
@@ -3761,49 +3879,53 @@ class WayneTelegramBot:
                         text, code, held_lots=held_lots, uid=uid
                     )
                     if parsed_code is None:
-                        self._pending[actor] = pending or "sell"
-                        if held_is_odd_lot_only(held_lots):
-                            hint = _sell_holdings_prompt(code or "代號", held_lots)
-                        else:
-                            hint = (
-                                "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
-                                "也可：代號 張數 價格　例如：2330 1 520"
+                        if not _text_escapes_pending(text):
+                            self._pending[actor] = pending or "sell"
+                            if held_is_odd_lot_only(held_lots):
+                                hint = _sell_holdings_prompt(code or "代號", held_lots)
+                            else:
+                                hint = (
+                                    "請輸入：價格（全賣）　例如：72\n或：張數 價格　例如：1 72\n"
+                                    "也可：代號 張數 價格　例如：2330 1 520"
+                                )
+                            await update.message.reply_text(
+                                hint,
+                                reply_markup=self._keyboard(),
                             )
-                        await update.message.reply_text(
-                            hint,
-                            reply_markup=self._keyboard(),
+                            return
+                    else:
+                        msg = await asyncio.to_thread(
+                            record_sell, self.db_path, uid, parsed_code, lots, price
                         )
+                        await update.message.reply_text(msg, reply_markup=self._keyboard())
                         return
-                    msg = await asyncio.to_thread(
-                        record_sell, self.db_path, uid, parsed_code, lots, price
-                    )
-                    await update.message.reply_text(msg, reply_markup=self._keyboard())
-                    return
                 if pending == "buy" or pending.startswith("buy:"):
                     code = pending.split(":", 1)[1] if pending.startswith("buy:") else ""
                     parsed_code, lots, price = self._parse_buy_text(text, code, uid=uid)
                     if parsed_code is None:
-                        self._pending[actor] = pending or "buy"
-                        held_lots = self._held_lots_for(uid, code) if code else None
-                        if code:
-                            hint = _buy_holdings_prompt(code, held_lots)
-                        else:
-                            hint = (
-                                "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
-                                "也可：代號 張數 價格　例如：2330 1 500"
+                        if not _text_escapes_pending(text):
+                            self._pending[actor] = pending or "buy"
+                            held_lots = self._held_lots_for(uid, code) if code else None
+                            if code:
+                                hint = _buy_holdings_prompt(code, held_lots)
+                            else:
+                                hint = (
+                                    "請輸入：價格（1張）　例如：68.5\n或：張數 價格　例如：2 68.5\n"
+                                    "也可：代號 張數 價格　例如：2330 1 500"
+                                )
+                            await update.message.reply_text(
+                                hint,
+                                reply_markup=self._keyboard(),
                             )
-                        await update.message.reply_text(
-                            hint,
-                            reply_markup=self._keyboard(),
+                            return
+                    else:
+                        hits = lookup_stocks(self.db_path, parsed_code)
+                        name = hits[0]["stock_name"] if hits else parsed_code
+                        msg = await asyncio.to_thread(
+                            record_buy, self.db_path, uid, parsed_code, name, lots, price
                         )
+                        await update.message.reply_text(msg, reply_markup=self._keyboard())
                         return
-                    hits = lookup_stocks(self.db_path, parsed_code)
-                    name = hits[0]["stock_name"] if hits else parsed_code
-                    msg = await asyncio.to_thread(
-                        record_buy, self.db_path, uid, parsed_code, name, lots, price
-                    )
-                    await update.message.reply_text(msg, reply_markup=self._keyboard())
-                    return
         if why_follow is not None:
             handled = await self._dispatch_intent(
                 update.message,
@@ -3823,20 +3945,20 @@ class WayneTelegramBot:
             if handled:
                 return
             hits = lookup_stocks(self.db_path, text)
-            if len(hits) == 1:
-                code = str(hits[0]["stock_id"])
-                logger.info("名稱查詢命中 %s -> %s", text, code)
-                await self._reply_card(update, code)
-                return
-            if len(hits) > 1:
+            if hits_need_picker(hits):
                 await update.message.reply_html(
                     self._hits_list_html(hits),
                     reply_markup=self._hits_keyboard(hits),
                     disable_web_page_preview=True,
                 )
                 return
+            if len(hits) == 1:
+                code = str(hits[0]["stock_id"])
+                logger.info("名稱查詢命中 %s -> %s", text, code)
+                await self._reply_card(update, code)
+                return
             await update.message.reply_text(
-                "找不到這檔。請打代號或名稱（如 南亞、2330）。",
+                "找不到這檔。請打代號或名稱。撞名或國字打不準會列出相近的請你點。",
                 reply_markup=self._keyboard(),
             )
         except Exception:
@@ -3925,12 +4047,15 @@ class WayneTelegramBot:
         hits = lookup_stocks(self.db_path, text.split()[0].strip())
         if not hits:
             self._pending[actor] = pending
-            await message.reply_text("找不到這檔。請打南亞或 2330。", reply_markup=self._keyboard())
+            await message.reply_text(
+                "找不到這檔。請打代號或名稱。撞名或國字打不準會列出相近的請你點。",
+                reply_markup=self._keyboard(),
+            )
             return True
-        if len(hits) > 1:
+        if hits_need_picker(hits):
             self._pending[actor] = pending
             await message.reply_html(
-                self._hits_list_html(hits, "找到多檔，請點選："),
+                self._hits_list_html(hits),
                 reply_markup=self._hits_keyboard(hits),
                 disable_web_page_preview=True,
             )
@@ -4395,11 +4520,10 @@ class WayneTelegramBot:
             mkt_raw = (h.get("market") or "").strip().upper()
             mkt = html_escape(h.get("market") or "")
             is_em = mkt_raw in ("EM", "EMERGING", "興櫃")
+            uid_em = uid or self._uid_from_message(message)
+            self._remember_card(uid_em, str(h.get("stock_id") or code))
             if is_em:
-                body = (
-                    f"{title}\n此檔目前是<b>興櫃／未納入上市櫃日K母體</b>（市場 {mkt}），"
-                    "所以沒有決策卡格子與法人表。請點上面奇摩連結看走勢；上櫃後會自動進日K。"
-                )
+                body = self._em_no_listed_html(str(h.get("stock_id") or code), [h])
             else:
                 body = (
                     f"{title}\n這是上市櫃股票（市場 {mkt or 'TW'}），"
@@ -4408,7 +4532,7 @@ class WayneTelegramBot:
                 )
             await message.reply_html(
                 body,
-                reply_markup=self._hub_keyboard(h["stock_id"]),
+                reply_markup=self._hub_keyboard(h["stock_id"], em=is_em),
                 disable_web_page_preview=True,
             )
             return
@@ -4933,33 +5057,10 @@ class WayneTelegramBot:
             await self._run_intent_kind(q.message, uid, kind, "")
             return
         if data.startswith("h:"):
-            code = data[2:].strip()
-            uid = str(q.from_user.id)
-            chip_img = await asyncio.to_thread(
-                generate_chips_image,
-                code,
-                self.db_path,
-                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
-            )
-            if chip_img:
-                try:
-                    with open(chip_img, "rb") as f:
-                        await q.message.reply_photo(
-                            photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
-                        )
-                except Exception:
-                    await q.message.reply_html("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
-            else:
-                await q.message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
+            await self._send_chips_to(q.message, data[2:].strip(), str(q.from_user.id))
             return
         if data.startswith("f:"):
-            from fundamentals import format_fundamentals_html
-
-            code = data[2:].strip()
-            html = await asyncio.to_thread(format_fundamentals_html, code, self.db_path)
-            await q.message.reply_html(
-                html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True
-            )
+            await self._send_fund_to(q.message, data[2:].strip())
             return
         if data.startswith("n:"):
             await self._send_industry(q.message, data[2:].strip())

@@ -237,7 +237,7 @@ _FILLERS = tuple(
 )
 
 _PUNCT = "？?！!。．，,、；;：:「」『』\"'“”‘’（）()【】[]…·．~～-—_/\\"
-_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
+_CODE_RE = re.compile(r"(?<![A-Za-z0-9])(\d{4,6}[A-Za-z]?)(?![A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -294,7 +294,7 @@ def parse_intent(text: str, *, default_kind: str = "") -> Optional[IntentHit]:
         return None
 
     query = _strip_fillers(work)
-    code = codes[0] if codes else ""
+    code = (codes[0].upper() if codes else "")
     if kind == "hub" and (code or query):
         kind = "why"
     if kind == "flow" and (code or query):
@@ -337,7 +337,7 @@ def no_cost_honest_html() -> str:
 
 
 def why_hub_html(last_code: str = "") -> str:
-    last = f"<code>{last_code}</code>" if last_code else "（還沒查過，請打四碼）"
+    last = f"<code>{last_code}</code>" if last_code else "（還沒查過，請打代號）"
     return (
         "<b>原因</b>（輸入列左邊三條槓）\n"
         "用平常的話問，會對到<b>官方資料</b>，不編新聞、不編成本。\n"

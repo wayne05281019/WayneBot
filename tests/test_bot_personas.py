@@ -206,7 +206,7 @@ def test_simplified_buy_pending_single_price():
 
     async def run():
         with patch("bot_servers.record_buy", return_value="已記錄買入 2330 台積電 1張 @ 68.5") as rb, patch(
-            "wayne_db.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]
+            "bot_servers.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]
         ):
             await bot.on_text(_update(msg), MagicMock())
         return rb
@@ -224,7 +224,7 @@ def test_lookup_no_ack_spam():
     msg = _msg(3, 3, "台積電")
 
     async def run():
-        with patch("wayne_db.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]):
+        with patch("bot_servers.lookup_stocks", return_value=[{"stock_id": "2330", "stock_name": "台積電"}]):
             await bot.on_text(_update(msg), MagicMock())
 
     asyncio.run(run())
