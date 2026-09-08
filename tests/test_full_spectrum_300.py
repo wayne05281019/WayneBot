@@ -1044,11 +1044,13 @@ def test_l9_streak_days_does_not_reprint_number_list():
     html = msg.reply_html.await_args.args[0]
     assert "可選天數" not in html
     assert "22 21 19" not in html
-    hint = msg.reply_text.await_args.args[0]
-    assert hint == "也可點輸入區鍵盤上的天數"
-    assert "22" not in hint
+    assert "輸入區鍵盤" not in html
+    texts = [str(c.args[0]) for c in msg.reply_text.await_args_list if c.args]
+    assert all("也可點輸入區" not in t for t in texts)
+    assert all("可選天數" not in t for t in texts)
     src = _src(WayneTelegramBot._streak_show_days)
     assert "可選天數" not in src
+    assert "tray_hint" not in _src(WayneTelegramBot._streak_send_step)
     from main_runner import main
 
     src = _src(main)
