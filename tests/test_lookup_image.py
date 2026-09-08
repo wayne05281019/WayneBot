@@ -40,8 +40,9 @@ class LookupImageTests(unittest.TestCase):
             "sell_action": "直接減碼",
             "sell_why": "不同步（最高價但非最高溫）",
         }
-        out = _glance_photo_caption("網頁走勢", card)
-        self.assertIn("網頁走勢", out)
+        out = _glance_photo_caption("", card)
+        self.assertNotIn("網頁走勢", out)
+        self.assertNotIn("點縮圖", out)
         self.assertIn("Ai建議", out)
         self.assertNotIn("紀律　", out)
         self.assertIn("先出一點", out)
@@ -51,8 +52,8 @@ class LookupImageTests(unittest.TestCase):
     def test_glance_caption_silent_when_no_sell(self):
         from bot_servers import _glance_photo_caption
 
-        self.assertEqual(_glance_photo_caption("當日K＋籌碼價量", {"sell_action": ""}), "當日K＋籌碼價量")
-        self.assertEqual(_glance_photo_caption("", None), "當日K＋籌碼價量")
+        self.assertEqual(_glance_photo_caption("", {"sell_action": ""}), "")
+        self.assertEqual(_glance_photo_caption("", None), "")
 
     def test_card_caption_appends_sell_note(self):
         from bot_servers import _decision_card_photo_caption, _photo_sell_caption
@@ -79,9 +80,11 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330 台積電"}, "2330"), "台積電")
         self.assertEqual(_stock_caption_name({"stock_id": "2330", "stock_name": "2330"}, "2330"), "2330")
 
-    def test_send_card_uses_lookup_album(self):
+    def test_send_card_sends_full_photos_not_album(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-        self.assertIn("_send_lookup_album", src)
+        self.assertNotIn("_send_lookup_album", src)
+        self.assertNotIn("點縮圖可放大", src)
+        self.assertNotIn("網頁走勢", src)
         self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
@@ -116,6 +119,8 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("已畫：介紹圖", txt)
         self.assertIn("現在：決策卡", txt)
         self.assertIn("接著：導航圖", txt)
+        self.assertNotIn("點縮圖", txt)
+        self.assertNotIn("一次送出", txt)
 
     def test_op_state_map_works_without_init(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)

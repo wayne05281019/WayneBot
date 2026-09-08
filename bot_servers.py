@@ -109,7 +109,7 @@ def _stock_caption_name(card: dict | None, code: str = "") -> str:
 
 
 def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日K＋籌碼價量") -> str:
-    """圖說：有如何賣就寫在圖底下，縮圖也能看到。"""
+    """圖說：有如何賣就寫在圖底下。沒有說明字就不要硬塞標題。"""
     cap = str(base or "").strip() or fallback
     if not card:
         return cap
@@ -123,7 +123,9 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
         return cap
     if not short:
         return cap
-    return f"{cap}\nAi建議　{html_escape(short)}"
+    if cap:
+        return f"{cap}\nAi建議　{html_escape(short)}"
+    return f"Ai建議　{html_escape(short)}"
 
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
@@ -132,8 +134,8 @@ def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: s
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
-    """介紹圖說明：有如何賣就寫在第一張圖底下。"""
-    return _photo_sell_caption(base, card)
+    """介紹圖底下：有如何賣才寫；不要網頁走勢／點縮圖。"""
+    return _photo_sell_caption(base, card, fallback="")
 
 
 def _buy_holdings_prompt(code: str, lots=None) -> str:
@@ -228,7 +230,7 @@ HELP_TOPICS = {
         "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。\n"
         "\n"
         "<b>查某一檔</b>\n"
-        "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。點縮圖可放大。\n"
+        "打股名或代號會<b>一次出三張圖</b>：<b>介紹圖</b> → 決策卡 → 導航圖。\n"
         "\n"
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
@@ -521,7 +523,7 @@ HELP_TOPICS = {
     ),
     "stock": (
         "<b>查股頁（圖下方按鈕）</b>\n"
-        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖（相簿）。點縮圖可放大。\n"
+        "打股名或按看這檔：一次出介紹圖、決策卡、導航圖。\n"
         "籌碼／營收／產業／K線按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
         "\n"
         "<b>圖下方這一排</b>\n"
@@ -2864,7 +2866,6 @@ class WayneTelegramBot:
             lines.append("已畫：" + "、".join(done))
         if rest:
             lines.append("接著：" + "、".join(rest))
-        lines.append("三張齊了一次送出，點縮圖放大")
         return "\n".join(lines)
 
     @staticmethod
@@ -4715,14 +4716,6 @@ class WayneTelegramBot:
         except Exception:
             news_stats = None
         hub = self._hub_keyboard(code, em=is_em, news=news_stats)
-        cap_links = ""
-        try:
-            from stock_links import yahoo_urls
-
-            web, mobile = yahoo_urls(code, self.db_path)
-            cap_links = f'<a href="{web}">網頁走勢</a>　<a href="{mobile}">技術線</a>'
-        except Exception:
-            cap_links = ""
 
         live_rt = None
         if not is_em:
@@ -4767,9 +4760,14 @@ class WayneTelegramBot:
             for attempt in range(3):
                 try:
                     with open(path, "rb") as f:
-                        await message.reply_photo(
-                            photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
-                        )
+                        kw = {"photo": f}
+                        if markup is not None:
+                            kw["reply_markup"] = markup
+                        cap = str(caption or "").strip()
+                        if cap:
+                            kw["caption"] = cap
+                            kw["parse_mode"] = "HTML"
+                        await message.reply_photo(**kw)
                     logger.info(
                         "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
                         kind,
@@ -4788,7 +4786,13 @@ class WayneTelegramBot:
                         continue
                     try:
                         with open(path, "rb") as f:
-                            await message.reply_photo(photo=f, caption=caption[:200], reply_markup=markup)
+                            kw = {"photo": f}
+                            if markup is not None:
+                                kw["reply_markup"] = markup
+                            cap = str(caption or "").strip()[:200]
+                            if cap:
+                                kw["caption"] = cap
+                            await message.reply_photo(**kw)
                         logger.info("送圖成功(無HTML) kind=%s code=%s", kind, code)
                         if not lookup_faded:
                             lookup_faded = True
@@ -4935,24 +4939,18 @@ class WayneTelegramBot:
             def _render_glance():
                 return render_first_glance_png(code, card, tape, glance_path, self.db_path)
 
-            glance_cap = _glance_photo_caption(cap_links or "當日K＋籌碼價量", card)
+            glance_cap = _glance_photo_caption("", card)
             card_cap = _decision_card_photo_caption(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, None),
-                (
-                    "chart",
-                    _render_chart,
-                    _CHART_RENDER_TIMEOUT,
-                    "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠。",
-                    hub,
-                ),
+                ("chart", _render_chart, _CHART_RENDER_TIMEOUT, "", None),
             ]
             kind_labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 三張都畫完再一次送相簿：話筒上一則裡三個縮圖，點開才放大。
+            # 逐張大圖送出；相簿會縮成小圖，說明字也不要再掛在圖下。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -5001,7 +4999,7 @@ class WayneTelegramBot:
                                 self._chart_progress_text(
                                     int(time.monotonic() - op_t0),
                                     sent=sent_kinds,
-                                    current=nxt or "album",
+                                    current=nxt,
                                 )
                             )
                         except Exception:
@@ -5012,31 +5010,23 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
-            album_ok = False
-            if len(ready_items) >= 2:
-                album_ok = await self._send_lookup_album(message, ready_items)
-            if album_ok:
-                sent_any = True
-                if not lookup_faded:
-                    lookup_faded = True
-                    await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
-            else:
-                for kind, path, caption, markup in ready_items:
-                    ok = await send_photo(path, caption, markup, kind=kind)
-                    if ok and markup is hub:
-                        hub_on = True
-                    if ok:
-                        sent_any = True
+            last_i = len(ready_items) - 1
+            for i, (kind, path, caption, _markup) in enumerate(ready_items):
+                markup = hub if i == last_i else None
+                ok = await send_photo(path, caption, markup, kind=kind)
+                if ok and markup is hub:
+                    hub_on = True
+                if ok:
+                    sent_any = True
 
             if sent_any and not hub_on:
-                if len(sent_kinds) >= len(render_plan):
-                    done_txt = "點縮圖可放大。籌碼／產業／觀察按這排。"
-                else:
-                    miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
-                    done_txt = (
-                        f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
-                        f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
-                    )
+                miss = [kind_labels[k] for k, *_ in render_plan if k not in sent_kinds]
+                done_txt = (
+                    f"已送 {len(sent_kinds)}/{len(render_plan)} 張"
+                    f"（缺：{'、'.join(miss)}）。請再打一次代號補圖。"
+                    if miss
+                    else (str(code)[:6] or "查股")
+                )
                 await _reply_visible(done_txt, html=True, markup=hub)
             elif not sent_any:
                 from wayne_navigator import generate_decision_card
