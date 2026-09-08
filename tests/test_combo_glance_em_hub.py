@@ -154,9 +154,17 @@ def test_help_says_two_images():
 
 
 def test_glance_combo_canvas_matches_card_width():
-    from wayne_navigator import CARD_FIG_W, GLANCE_FIG_H, GLANCE_FIG_W, render_first_glance_png
+    from wayne_navigator import (
+        CARD_FIG_W,
+        CARD_PNG_DPI,
+        GLANCE_FIG_H,
+        GLANCE_FIG_W,
+        GLANCE_PNG_DPI,
+        render_first_glance_png,
+    )
 
     assert GLANCE_FIG_W == CARD_FIG_W
+    assert GLANCE_PNG_DPI == CARD_PNG_DPI
     assert GLANCE_FIG_H < 16
     src = inspect.getsource(render_first_glance_png)
     assert "_draw_glance_daily_k" in src
