@@ -112,7 +112,7 @@ async def main():
             bot._pending[actor] = "fbuy:kind"
             kind = ["外資", "投信", "外資+投信"][round_i % 3]
             await bot._handle_buy_streak(_msg(uid, kind), str(uid), "fbuy:kind", kind, actor=actor)
-            if bot._pending.get(actor, "").startswith("fbuy:mkt:"):
+            if bot._pending.get(actor, "").startswith("fbuy:days:"):
                 streak_ok += 1
 
     lines = [
