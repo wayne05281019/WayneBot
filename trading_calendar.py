@@ -1,110 +1,29 @@
-"""台股收盤基準日：跳過週末；國定假日用證交所開休市表；颱風停市靠庫裡無完整行情。"""
+"""台股收盤基準日：跳過週末；國定假日／北市停班見 tw_holidays。"""
 from __future__ import annotations
 
 from datetime import datetime, time as dt_time, timedelta
-from typing import Optional, Set
+from typing import Optional
 
 
 _WEEKDAY_ZH = "一二三四五六日"
 
-# 證交所 115 年開休市：只列「平日休市」（週末不必重複）。開始／最後交易日不列入。
-# https://www.twse.com.tw/zh/trading/holiday.html
-_CLOSED_WEEKDAYS_2026 = frozenset(
-    {
-        "20260101",
-        "20260212",
-        "20260213",
-        "20260216",
-        "20260217",
-        "20260218",
-        "20260219",
-        "20260220",
-        "20260227",
-        "20260403",
-        "20260406",
-        "20260501",
-        "20260619",
-        "20260925",
-        "20260928",
-        "20261009",
-        "20261026",
-        "20261225",
-    }
-)
-_CLOSED_CACHE: dict[str, Set[str]] = {"2026": set(_CLOSED_WEEKDAYS_2026)}
-
-
-def _roc_to_ymd(roc_date: str) -> str:
-    """1150101 → 20260101。"""
-    s = str(roc_date or "").replace("-", "").strip()
-    if len(s) == 7:
-        yy, md = int(s[:3]), s[3:]
-        return f"{yy + 1911}{md}"
-    return s[:8]
-
-
-def _row_is_closed_session(name: str, desc: str) -> bool:
-    blob = f"{name or ''}{desc or ''}"
-    if "開始交易" in blob or "最後交易" in blob:
-        return False
-    return "市場無交易" in blob or "放假" in blob or "補假" in blob
-
-
-def _closed_weekdays_for_year(year: int) -> Set[str]:
-    key = str(year)
-    cached = _CLOSED_CACHE.get(key)
-    if cached is not None:
-        return cached
-    closed: Set[str] = set()
-    if year == 2026:
-        closed.update(_CLOSED_WEEKDAYS_2026)
-    try:
-        import requests
-
-        r = requests.get(
-            "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
-            timeout=4,
-        )
-        r.raise_for_status()
-        rows = r.json()
-        if isinstance(rows, list):
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                ymd = _roc_to_ymd(str(row.get("Date") or ""))
-                if len(ymd) != 8 or not ymd.startswith(key):
-                    continue
-                try:
-                    if datetime.strptime(ymd, "%Y%m%d").weekday() >= 5:
-                        continue
-                except ValueError:
-                    continue
-                if _row_is_closed_session(
-                    str(row.get("Name") or ""), str(row.get("Description") or "")
-                ):
-                    closed.add(ymd)
-    except Exception:
-        pass
-    _CLOSED_CACHE[key] = closed
-    return closed
-
 
 def is_tw_market_holiday(ymd: str) -> bool:
-    """平日國定假／補假／無交易結算日。週末請用 weekday，不走這份表。"""
+    """平日國定假／補假／僅結算／北市停班。週末請用 weekday，不走這份表。"""
     s = normalize_ymd(ymd)
     if len(s) != 8:
         return False
     try:
-        d = datetime.strptime(s, "%Y%m%d")
+        datetime.strptime(s, "%Y%m%d")
     except ValueError:
         return False
-    if d.weekday() >= 5:
-        return False
-    return s in _closed_weekdays_for_year(d.year)
+    from tw_holidays import lookup_tw_session
+
+    return lookup_tw_session(s)["kind"] == "full_close"
 
 
 def is_tw_open_calendar_day(ymd: str) -> bool:
-    """週一～五且不是國定休市。颱風臨時停市不在年曆，仍靠庫無收盤。"""
+    """週一～五且不是國定休市／北市停班。"""
     return is_trading_weekday(ymd) and not is_tw_market_holiday(ymd)
 
 
@@ -131,8 +50,19 @@ def last_weekday_on_or_before(ymd: str) -> str:
     return d.strftime("%Y%m%d")
 
 
+def last_open_calendar_day_on_or_before(ymd: str) -> str:
+    """往回跳過週末與台股休市（年曆／北市停班）。"""
+    d = datetime.strptime(normalize_ymd(ymd), "%Y%m%d")
+    for _ in range(20):
+        s = d.strftime("%Y%m%d")
+        if is_trading_weekday(s) and not is_tw_market_holiday(s):
+            return s
+        d -= timedelta(days=1)
+    return d.strftime("%Y%m%d")
+
+
 def fuse_end_trading_date(now=None) -> str:
-    """16:30 前不算今天；結果必為週一～五（不含國定假，假日本身靠 fuse 不寫庫）。"""
+    """16:30 前不算今天；結果必為可開市的週一～五。"""
     from config import taipei_now
 
     now = now or taipei_now()
@@ -141,7 +71,7 @@ def fuse_end_trading_date(now=None) -> str:
         raw = now.strftime("%Y%m%d")
     else:
         raw = (now - timedelta(days=1)).strftime("%Y%m%d")
-    return last_weekday_on_or_before(raw)
+    return last_open_calendar_day_on_or_before(raw)
 
 
 def format_trading_date_zh(ymd: str) -> str:
@@ -202,7 +132,7 @@ def is_tw_equity_session(now=None) -> bool:
 
 
 def tw_session_phase(now=None) -> str:
-    """pre＝開盤前；open＝盤中；after＝收盤後；weekend＝週末或國定假。"""
+    """pre＝開盤前；open＝盤中；after＝收盤後；weekend＝週末或台股休市。"""
     from config import taipei_now
 
     now = now or taipei_now()
@@ -226,8 +156,8 @@ def overnight_list_heading(phase: str) -> tuple[str, str]:
         )
     if phase == "weekend":
         return (
-            "⚡ 隔日沖候選（假日參考）",
-            "假日參考：上個交易日強勢收盤候選，不是叫你現在買。"
+            "⚡ 隔日沖候選（休市參考）",
+            "休市參考：上個交易日強勢收盤候選，不是叫你現在買。"
             "明早開高觀察；未持倉僅供參考。",
         )
     return (
@@ -239,12 +169,12 @@ def overnight_list_heading(phase: str) -> tuple[str, str]:
 
 def daytrade_closed_title(phase: str) -> str:
     """非盤中當沖標題：不要再寫盤中即時。"""
-    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
+    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "休市"}.get(phase, "非盤中")
     return f"⚡ 當沖候選（{label}）"
 
 
 def daytrade_closed_message(phase: str) -> str:
-    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "假日"}.get(phase, "非盤中")
+    label = {"pre": "尚未開盤", "after": "已收盤", "weekend": "休市"}.get(phase, "非盤中")
     return (
         f"{label}。當沖只在平日 <b>09:00–13:30</b> 盤中即時複核；此刻不應再進當沖。"
         "尾盤想佈局明早，請看「隔日沖」；長線佈局請看「海選」。"

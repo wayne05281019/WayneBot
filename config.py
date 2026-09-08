@@ -107,7 +107,7 @@ def taipei_today_str() -> str:
 
 
 def fuse_end_date(now=None) -> str:
-    """最後一個要把收盤寫進庫的交易日曆日（週末往回跳；假日靠官方無行情不寫庫）。"""
+    """最後一個要把收盤寫進庫的交易日曆日（週末／國定假／北市停班往回跳）。"""
     from trading_calendar import fuse_end_trading_date
 
     return fuse_end_trading_date(now)

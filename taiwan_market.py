@@ -1357,7 +1357,11 @@ def _format_overnight_watch_lines(
         )
 
         label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股收盤")
-        head = f"判斷　{html_escape(label)}"
+        head = (
+            f"上一收盤判斷　{html_escape(label)}"
+            if holiday_lines
+            else f"判斷　{html_escape(label)}"
+        )
         phase = _PHASE_LABEL.get(str(us.get("us_phase") or ""), "")
         if phase and not holiday_lines:
             head += f"　{html_escape(phase)}"
@@ -1390,7 +1394,7 @@ def _format_overnight_watch_lines(
             bits.append("台積／輝達")
             bits.extend(adr)
         side = electronics_night_side(us)
-        if side:
+        if side and not holiday_lines:
             bits.append(_watch_kv("電子鏈夜盤", side))
     night_line = _format_futures_night_line(
         night or {},
@@ -1402,7 +1406,16 @@ def _format_overnight_watch_lines(
         bits.append(night_line)
     if not bits:
         return []
-    return ["", _TG_SECTION, "<b>上一收盤日該看</b>", *bits]
+    title = "<b>上一收盤日該看</b>"
+    if not holiday_lines:
+        try:
+            from us_overnight import us_tape_phase
+
+            if us_tape_phase(now) == "regular":
+                title = "<b>美股盤中該看</b>"
+        except Exception:
+            pass
+    return ["", _TG_SECTION, title, *bits]
 
 
 def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
@@ -3338,6 +3351,7 @@ def format_screen_market_outlook_html(
     us_snap: Optional[Dict[str, Any]] = None,
     rotated_names: Optional[List[str]] = None,
     flow_maps: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
 ) -> str:
     """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
     from tg_layout import headline_lines, html_escape, wrap_cjk_lines
@@ -3357,6 +3371,25 @@ def format_screen_market_outlook_html(
 
     from us_overnight import REGIME_LABEL, _fmt_vix, electronics_night_side
 
+    holiday_lines: List[str] = []
+    try:
+        from us_holidays import closed_us_session, holiday_banner_lines
+
+        holiday_lines = holiday_banner_lines(closed_us_session(now, db_path))
+    except Exception:
+        holiday_lines = []
+    tw_banner: List[str] = []
+    tw_closed = None
+    try:
+        from tw_holidays import closed_tw_session
+        from tw_holidays import holiday_banner_lines as tw_holiday_banner_lines
+
+        tw_closed = closed_tw_session(now, db_path)
+        tw_banner = tw_holiday_banner_lines(tw_closed)
+    except Exception:
+        tw_closed = None
+        tw_banner = []
+
     us_regime = str(us.get("regime") or "unknown")
     us_label = REGIME_LABEL.get(us_regime, "美股收盤")
     ixic = us.get("ixic_pct")
@@ -3370,11 +3403,16 @@ def format_screen_market_outlook_html(
         vs_ma20=float(vs20) if vs20 is not None else None,
         ixic_pct=float(ixic) if ixic is not None else None,
     )
+    if tw_closed:
+        action = "台股今天休市；下面是上一收盤，不是今天會開盤。"
     head = headline_lines(
         f"<b>WayneBot 海選</b>　{html_escape(format_trading_date_zh(ref))}" if ref else "<b>WayneBot 海選</b>",
         "＝＝大盤狀況＝＝",
     )
-    body: List[str] = list(wrap_cjk_lines(action, 18, unit="chars"))
+    body: List[str] = []
+    body.extend(html_escape(x) for x in tw_banner)
+    body.extend(html_escape(x) for x in holiday_lines)
+    body.extend(wrap_cjk_lines(action, 18, unit="chars"))
     if snap.get("ok"):
         close = snap.get("close")
         chg1 = snap.get("chg1_pct")
@@ -3406,7 +3444,7 @@ def format_screen_market_outlook_html(
         if tail_bits:
             body.append("　".join(tail_bits))
         side = electronics_night_side(us)
-        if side:
+        if side and not holiday_lines and not tw_closed:
             body.append(f"電子鏈夜盤{html_escape(side)}")
     body.extend(
         _outlook_night_plain_lines(
@@ -3491,6 +3529,8 @@ def format_taiwan_market_page_html(
     now: Optional[datetime] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
+    from tg_layout import html_escape
+
     ref_hint = resolve_market_as_of(db_path, as_of)
     if snap is None:
         snap = analyze_taiwan_market(db_path, ref_hint, db_only=True, page_light=True)
@@ -3505,6 +3545,17 @@ def format_taiwan_market_page_html(
     light = _regime_traffic_light(snap.get("regime"))
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     live_px = float((live or {}).get("close") or 0)
+    tw_banner: List[str] = []
+    try:
+        from tw_holidays import closed_tw_session, holiday_banner_lines
+
+        tw_closed = closed_tw_session(now, db_path)
+        tw_banner = [html_escape(x) for x in holiday_banner_lines(tw_closed)]
+        if tw_closed:
+            live_px = 0.0
+    except Exception:
+        tw_closed = None
+        tw_banner = []
     yest = float((live or {}).get("yesterday_close") or snap.get("prev_close") or 0)
     show_px = live_px if live_px > 0 else float(snap.get("close") or 0)
     show_pct = float((live or {}).get("pct_change") or day_pct or snap.get("chg1_pct") or 0)
@@ -3520,15 +3571,16 @@ def format_taiwan_market_page_html(
         if clock:
             px_line += f"　{clock}"
     else:
-        as_of_note = f"截至 <b>{ref}</b>　庫內官方融合收盤"
+        as_of_note = (
+            f"截至 <b>{ref}</b>　台股休市，庫內上一收盤"
+            if tw_banner
+            else f"截至 <b>{ref}</b>　庫內官方融合收盤"
+        )
         pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
         px_line = f"收盤 <b>{float(snap['close']):,.2f}</b>{pct_bit}"
         if chg_pts is not None:
             px_line += f"　{chg_pts:+,.2f}"
-    lines = [
-        "<b>📊 台股大盤</b>",
-        as_of_note,
-    ]
+    lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
     lines.extend(
         [
             "",

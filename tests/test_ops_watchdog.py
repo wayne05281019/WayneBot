@@ -129,6 +129,13 @@ def test_missed_jobs_skips_weekend(tmp_path, monkeypatch):
     assert missed_jobs(path, now=saturday) == []
 
 
+def test_missed_jobs_skips_tw_national_holiday(tmp_path, monkeypatch):
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    mid_autumn = datetime(2026, 9, 25, 19, 0)
+    assert missed_jobs(path, now=mid_autumn) == []
+
+
 def test_claim_alert_dedupes(tmp_path):
     path = _make_db(tmp_path)
     assert claim_alert(path, "increment", "20260902") is True

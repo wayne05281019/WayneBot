@@ -438,6 +438,8 @@ def run_scheduled_job(kind: str) -> None:
         runner.run_midday_review(skip_if_done=True)
     elif kind == "evening":
         runner.run_evening_screen(skip_if_done=True, notify=False)
+    elif kind == "typhoon":
+        runner.run_typhoon_peek()
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
 
@@ -467,13 +469,18 @@ def start_daily_scheduler():
             (12, 45, "midday"),
             (16, 30, "fuse"),
             (20, 0, "evening"),
+            (5, 10, "typhoon"),
+            (22, 15, "typhoon"),
         )
         best = None
         for day_off in range(0, 8):
             day = now + timedelta(days=day_off)
-            if day.weekday() >= 5:
-                continue
             for hour, minute, kind in slots:
+                if kind == "typhoon":
+                    if day.weekday() == 5:
+                        continue
+                elif day.weekday() >= 5:
+                    continue
                 t = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if t <= now:
                     continue
@@ -498,7 +505,10 @@ def start_daily_scheduler():
             time.sleep(wait)
             try:
                 now = _taipei_now()
-                if now.weekday() >= 5:
+                if kind == "typhoon":
+                    if now.weekday() == 5:
+                        continue
+                elif now.weekday() >= 5:
                     continue
                 run_scheduled_job(kind)
             except Exception as e:

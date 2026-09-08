@@ -63,7 +63,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "三條槓" in blob
     assert "進化" in blob
     assert "直接打四碼" in blob
-    assert CACHE_VER == "v20"
+    assert CACHE_VER == "v21"
     assert "一張圖卡" in blob
     assert "細項小框" in blob
     assert PAGE_WIDTH == 1080
