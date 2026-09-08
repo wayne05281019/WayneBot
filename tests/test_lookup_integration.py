@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股端到端：實際產三張圖 + 多使用者隔離 + 模擬 Telegram 送圖。"""
+"""查股端到端：實際產介紹圖＋決策卡 + 多使用者隔離 + 模擬 Telegram 送圖。"""
 from __future__ import annotations
 
 import asyncio
@@ -100,11 +100,13 @@ class LookupIntegrationTests(unittest.TestCase):
                     f"{kind} failed png check size={os.path.getsize(path)}",
                 )
 
-            # 介紹圖應明顯快於導航圖（使用者等 50s 才看到第一張的根因）
-            self.assertLess(timings["glance"], timings["chart"])
+            # 相簿只送介紹圖＋決策卡；介紹圖下半已含 compact 導航，不再跟獨立導航圖比誰快。
+            self.assertLess(timings["glance"], 20.0)
+            self.assertLess(timings["card"], 20.0)
+            self.assertLess(timings["chart"], 20.0)
 
     def test_send_card_to_locked_posts_album_not_three_bubbles(self):
-        """三張畫完走 reply_media_group：話筒上一則三個縮圖。"""
+        """兩張畫完走 reply_media_group：話筒上一則兩個縮圖。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股編碼壓力：多檔同時產決策卡／三張圖，偉權＋哥哥路徑不互搶。"""
+"""查股編碼壓力：多檔同時產決策卡／介紹圖，偉權＋哥哥路徑不互搶。"""
 from __future__ import annotations
 
 import os
@@ -64,4 +64,4 @@ def test_four_tier_png_packs_parallel():
         assert cards and os.path.isfile(cards[0]) and os.path.getsize(cards[0]) > 2000, sid
         print(f"pack {sid} {dt:.3f}s")
     print(f"four_tier_png_packs_parallel wall={wall:.3f}s")
-    assert wall < 45.0, f"四檔三張圖並行太慢 {wall:.2f}s"
+    assert wall < 45.0, f"四檔出圖並行太慢 {wall:.2f}s"
