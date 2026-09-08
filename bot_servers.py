@@ -247,8 +247,8 @@ HELP_TOPICS = {
         "興櫃另打「興櫃海選」：用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
-        "• 區底「一鍵傳 LINE」＝進勾選頁，可勾好幾檔再傳（介紹圖＋決策卡一組）\n"
+        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，開手機 LINE 選聯絡人\n"
+        "• 區底「一鍵傳 LINE」＝整區開啟 LINE，再選要傳給誰（不要複製貼上）\n"
         "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
         "\n"
         "<b>三種清單不要搞混</b>\n"
@@ -462,9 +462,10 @@ HELP_TOPICS = {
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 藍字股名＝奇摩走勢\n"
         "\n"
-        "<b>轉 LINE 有兩個入口，不要搞混</b>\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，直跳 LINE\n"
-        "• 區底「一鍵傳 LINE」＝進勾選頁，可勾選要傳哪幾檔（介紹圖＋決策卡一組），再複製名單或傳勾選的圖；長圖仍是全區\n"
+        "<b>轉 LINE 都是開手機 LINE 選聯絡人</b>\n"
+        "• 股名右「開 LINE・傳這檔」＝只傳這一檔\n"
+        "• 區底「一鍵傳 LINE」＝整區一次開 LINE，再選要傳給誰\n"
+        "不要複製文字再貼。當沖／隔日沖的「傳 LINE」同一套。\n"
         "（主選單「刷新」＝單檔盤中刷新，不是整區黃金買點名單。打「決策卡」也是這顆。）\n"
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
@@ -1749,7 +1750,7 @@ class WayneTelegramBot:
         include_menu: bool = False,
         picks=None,
     ):
-        """海選整區：左鍵看這檔；區底生成介紹圖／決策卡，長按轉 LINE。"""
+        """海選整區：左鍵看這檔；區底開 LINE 選聯絡人。"""
         rows = []
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
@@ -1761,9 +1762,11 @@ class WayneTelegramBot:
             if code:
                 rows.append(self._stock_action_row(code, name, idx=i))
         if line_pack_id:
-            rows.append(
-                [InlineKeyboardButton("一鍵傳 LINE", callback_data=f"lp:{line_pack_id}")]
-            )
+            line_url = self._line_open_url(line_pack_id)
+            if line_url:
+                rows.append(
+                    [InlineKeyboardButton("一鍵傳 LINE", url=line_url)]
+                )
         if include_menu:
             rows.append([self._q("screen")])
         if not rows:
@@ -1786,7 +1789,7 @@ class WayneTelegramBot:
         if line_pack_id:
             line_url = self._line_open_url(line_pack_id)
             if line_url:
-                rows.append([InlineKeyboardButton("傳 LINE", url=line_url)])
+                rows.append([InlineKeyboardButton("開 LINE 選聯絡人", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -2093,12 +2096,16 @@ class WayneTelegramBot:
         if not packs:
             await message.reply_text("目前沒有可傳 LINE 的三段。請先按一次「海選」。")
             return
-        await message.reply_text("三段各有一顆鈕。按下去會開啟 LINE，再自己選要傳給誰。")
+        await message.reply_text("每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
         for p in packs:
+            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
             await message.reply_text(
-                p.get("text") or "",
+                label,
                 disable_web_page_preview=True,
-                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+                reply_markup=self._line_open_keyboard(
+                    p.get("id") or "",
+                    label="開 LINE 選聯絡人",
+                ),
             )
 
     def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
@@ -2108,12 +2115,16 @@ class WayneTelegramBot:
         packs = self._load_line_share_packs()
         if not packs:
             return
-        self._send_plain(chat_id, "整段夜盤／黃金買點／當沖稿（可選）：")
+        self._send_plain(chat_id, "每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
         for p in packs:
+            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
             self._send_plain(
                 chat_id,
-                p.get("text") or "",
-                reply_markup=self._line_open_keyboard(p.get("id") or ""),
+                label,
+                reply_markup=self._line_open_keyboard(
+                    p.get("id") or "",
+                    label="開 LINE 選聯絡人",
+                ),
             )
 
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
@@ -2223,16 +2234,21 @@ class WayneTelegramBot:
             for pid, label, _title in LINE_PACKS
         ]
 
-    def _line_open_keyboard(self, pack_id: str = ""):
+    def _line_open_keyboard(self, pack_id: str = "", label: str = ""):
+        pid = str(pack_id or "").strip()
+        if pid:
+            text = str(label or "").strip() or "開 LINE 選聯絡人"
+            return InlineKeyboardMarkup(
+                [[InlineKeyboardButton(text, url=self._line_open_url(pid))]]
+            )
         from line_hop import LINE_PACKS
 
-        if pack_id:
-            for pid, label, _title in LINE_PACKS:
-                if pid == pack_id:
-                    return InlineKeyboardMarkup(
-                        [[InlineKeyboardButton(label, url=self._line_open_url(pid))]]
-                    )
-        return InlineKeyboardMarkup(self._line_open_rows())
+        return InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton(lab, url=self._line_open_url(xid))]
+                for xid, lab, _title in LINE_PACKS
+            ]
+        )
 
     def _send_plain(self, chat_id: str, text: str, reply_markup=None):
         try:
@@ -2664,7 +2680,7 @@ class WayneTelegramBot:
 
         if not items:
             return False
-        lead = "長按圖 → 分享 → LINE → 選聯絡人"
+        lead = "圖可長按分享。文字請按下一則「開 LINE 選聯絡人」"
         sent_any = False
         i = 0
         first_group = True
@@ -2718,7 +2734,7 @@ class WayneTelegramBot:
         return sent_any
 
     async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """生成介紹圖／決策卡；海選名單留下。長按圖轉 LINE。"""
+        """舊 lp: 鈕仍可生成圖；完成後給「開 LINE 選聯絡人」，不丟複製稿。"""
         from import_health import latest_complete_quote_date
         from line_rich_pack import (
             bucket_stock_rows,
@@ -2794,17 +2810,19 @@ class WayneTelegramBot:
 
         cards = share_card_files(self.charts_dir, manifest)
         album_ok = await self._send_card_share_groups(message, cards)
+        line_kb = self._line_open_keyboard(bucket_key, label="開 LINE 選聯絡人")
         if album_ok:
             await message.reply_html(
                 f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔介紹圖／決策卡。{warn}\n"
-                "長按圖 → 分享 → LINE → 選聯絡人。要哪張轉哪張。",
+                "按下方會開啟手機 LINE，再選要傳給誰。",
+                reply_markup=line_kb,
                 disable_web_page_preview=True,
             )
         else:
             await message.reply_html(
-                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔文字名單已備。{warn}\n"
-                "圖沒送出；名單如下，可複製後傳到 LINE。\n"
-                f"<pre>{html_escape(line_body[:3500])}</pre>",
+                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備。{warn}\n"
+                "按下方會開啟手機 LINE，再選要傳給誰。",
+                reply_markup=line_kb,
                 disable_web_page_preview=True,
             )
         await self._pin_reply_menu(message)

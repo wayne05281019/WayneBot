@@ -83,8 +83,10 @@ def test_render_line_rich_share_html_has_album_and_line():
     assert 'class="stock-pick"' in page
     assert 'value="2330"' in page
     assert "勾要傳的檔" in page
-    assert "複製勾選名單到 LINE" in page
+    assert "開 LINE 選聯絡人" in page
     assert "傳勾選的圖到 LINE" in page
+    assert "複製勾選名單到 LINE" not in page
+    assert "請開 LINE → 選聯絡人 → 長按貼上" not in page
     assert "分享全區長圖" in page
     assert 'id="pickAll"' in page
     assert 'id="pickNone"' in page
@@ -204,10 +206,12 @@ def test_rebuild_manifest_from_line_pack(tmp_path):
     assert "華航" in hit.get("line_text", "")
 
 
-def test_long_line_text_skips_auto_redirect():
+def test_long_line_text_still_opens_line():
     from line_hop import render_line_redirect_html
 
     long_text = "測" * 3000
     page = render_line_redirect_html(long_text)
-    assert "手動" in page
-    assert "http-equiv=\"refresh\"" not in page
+    assert "開 LINE 選聯絡人" in page
+    assert "line://msg/text/" in page
+    assert "line.me/R/share" in page
+    assert "手動" not in page

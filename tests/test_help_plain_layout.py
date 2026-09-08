@@ -56,7 +56,7 @@ def test_screen_help_separates_two_line_doors():
     assert "開 LINE・傳這檔" in screen
     assert "一鍵傳 LINE" in screen
     assert "只傳這一檔" in screen
-    assert "勾選" in screen
+    assert "選聯絡人" in screen
     pos_one = screen.index("開 LINE・傳這檔")
     pos_pack = screen.index("一鍵傳 LINE")
     assert pos_one != pos_pack

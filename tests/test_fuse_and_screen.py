@@ -2733,13 +2733,18 @@ class WatchListTest(unittest.TestCase):
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
         self.assertEqual(texts.count("一鍵傳 LINE"), 1)
-        self.assertTrue(any(d and d == "lp:leave_zero" for d in datas))
+        urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
+        self.assertTrue(any(u and "/line/leave_zero" in (u or "") for u in urls))
+        self.assertFalse(any(d and d == "lp:leave_zero" for d in datas))
         self.assertIn("k:2330", datas)
         self.assertIn("k:4915", datas)
         self.assertIn("w:2330", datas)
         send_src = inspect.getsource(WayneTelegramBot._send_line_rich_bucket)
         self.assertNotIn("_dismiss_screening_section", send_src)
         self.assertIn("_send_card_share_groups", send_src)
+        self.assertIn("開 LINE 選聯絡人", send_src)
+        self.assertNotIn("可複製後傳到 LINE", send_src)
+        self.assertNotIn("<pre>", send_src)
         day_kb = bot._picks_keyboard(
             [("2330", "台積電")],
             include_menu=True,

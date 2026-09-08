@@ -10,7 +10,7 @@ def test_render_line_redirect_html_opens_line_app_on_mobile():
     page = render_line_redirect_html("WayneBot 測試\n1. 台積電 (2330)")
     assert "line://msg/text/" in page
     assert "line.me/R/share" in page
-    assert "開啟 LINE App" in page
+    assert "開啟 LINE App" in page or "開 LINE 選聯絡人" in page
     assert "mobile" in page
 
 
@@ -21,12 +21,13 @@ def test_render_line_hop_html_compat():
     assert "line://msg/text/" in page
 
 
-def test_long_line_share_uses_clipboard_not_url():
+def test_long_line_share_still_opens_line_app():
     from line_hop import render_line_redirect_html
 
     long_body = "WayneBot 海選\n" + ("1. 測試 (2330)\n" * 80)
     page = render_line_redirect_html(long_body)
-    assert "複製文字並開 LINE" in page
-    assert "navigator.share" in page
-    assert "shareLong" in page
-    assert 'href="line://' not in page
+    assert "開 LINE 選聯絡人" in page
+    assert "line://msg/text/" in page
+    assert "line.me/R/share" in page
+    assert "複製文字並開 LINE" not in page
+    assert "請手動全選" not in page

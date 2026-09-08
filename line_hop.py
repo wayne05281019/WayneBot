@@ -14,59 +14,51 @@ LINE_PACKS = (
 )
 PACK_IDS = {p[0] for p in LINE_PACKS}
 
-# 手機內建瀏覽器對超長 line.me 網址常失敗；超過則改 Web Share / 剪貼簿
-LINE_SHARE_URL_SAFE_LEN = 2000
-# 中文 URL 編碼後約 5～6 倍；保守估計純文字上限
-LINE_SHARE_TEXT_SAFE_LEN = 380
+# 舊測試相容；轉 LINE 一律喚起 App，不再用長度改走剪貼簿。
+LINE_SHARE_URL_SAFE_LEN = 8000
+LINE_SHARE_TEXT_SAFE_LEN = 4000
 
 
 def _line_share_urls_safe(text: str) -> tuple:
     body = (text or "").strip()
     share_url = line_share_href(body)
     app_url = line_app_href(body)
-    auto = len(body) <= LINE_SHARE_TEXT_SAFE_LEN and len(share_url) <= LINE_SHARE_URL_SAFE_LEN
-    return share_url, app_url, auto
+    return share_url, app_url, True
+
+
+def _open_line_js() -> str:
+    """手機 line:// 再備援 line.me/R/share，直接進 LINE 選聯絡人。"""
+    return (
+        "function goShare(text){"
+        "var u='https://line.me/R/share?text='+encodeURIComponent(text||'');"
+        "try{location.replace(u);}catch(e){location.href=u;}"
+        "}"
+        "function goApp(text){"
+        "var u='line://msg/text/'+encodeURIComponent(text||'');"
+        "try{location.href=u;}catch(e){}"
+        "setTimeout(function(){goShare(text);},900);"
+        "}"
+        "function openLine(text){"
+        "var body=String(text||'');"
+        "if(!body) return;"
+        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
+        "if(mobile){goApp(body);}else{goShare(body);}"
+        "}"
+    )
 
 
 def _line_share_page_script(text_json: str, *, auto_open: bool) -> str:
-    """長文：Web Share → 剪貼簿 → 短網址；短句：維持 line:// 喚起。"""
-    auto_script = "if(mobile){goApp();}else{goShare();}" if auto_open else ""
+    """一律開 LINE 選聯絡人；不再先複製貼上。"""
+    auto_script = "openLine(body);" if auto_open else ""
     return (
         "<script>"
         "(function(){"
         f"var body={text_json};"
-        "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
-        "function goShare(){"
-        "var u='https://line.me/R/share?text='+encodeURIComponent(body);"
-        "try{location.replace(u);}catch(e){location.href=u;}"
-        "}"
-        "function goApp(){"
-        "var u='line://msg/text/'+encodeURIComponent(body);"
-        "try{location.href=u;}catch(e){}"
-        "setTimeout(goShare,900);"
-        "}"
-        "async function copyText(){"
-        "try{if(navigator.clipboard&&navigator.clipboard.writeText){"
-        "await navigator.clipboard.writeText(body);return true;}}"
-        "catch(e){}"
-        "var ta=document.createElement('textarea');"
-        "ta.value=body;ta.style.position='fixed';ta.style.left='-9999px';"
-        "document.body.appendChild(ta);ta.select();"
-        "var ok=false;try{ok=document.execCommand('copy');}catch(e){}"
-        "document.body.removeChild(ta);return ok;"
-        "}"
-        "async function shareLong(ev){"
-        "if(ev&&ev.preventDefault)ev.preventDefault();"
-        "if(navigator.share){"
-        "try{await navigator.share({text:body,title:'WayneBot'});return;}catch(e){}"
-        "}"
-        "var ok=await copyText();"
-        "var msg=ok?'已複製全文。請開 LINE → 選聯絡人 → 長按貼上。':'請手動全選下方文字複製';"
-        "alert(msg);"
-        "if(mobile){try{location.href='line://';}catch(e){}}"
-        "}"
+        f"{_open_line_js()}"
         "var btn=document.getElementById('shareLine');"
-        "if(btn){btn.addEventListener('click',shareLong);}"
+        "if(btn){btn.addEventListener('click',function(ev){"
+        "if(ev&&ev.preventDefault)ev.preventDefault();openLine(body);"
+        "});}"
         f"{auto_script}"
         "})();"
         "</script>"
@@ -128,49 +120,21 @@ def render_line_redirect_html_for_url(line_share_url: str) -> str:
 
 
 def render_line_redirect_html(text: str) -> str:
-    """中轉頁：短句 line://；長文 Web Share / 剪貼簿。"""
+    """中轉頁：立刻喚起手機 LINE，選要傳給誰。"""
     body = (text or "").strip()
     if not body:
         return "<!DOCTYPE html><html><body>無內容</body></html>"
-    share_url, app_url, auto_open = _line_share_urls_safe(body)
+    share_url, app_url, _auto = _line_share_urls_safe(body)
     body_json = json.dumps(body, ensure_ascii=False)
-    if auto_open:
-        safe_share = html.escape(share_url, quote=True)
-        safe_app = html.escape(app_url, quote=True)
-        share_json = json.dumps(share_url, ensure_ascii=False)
-        app_json = json.dumps(app_url, ensure_ascii=False)
-        refresh = f'<meta http-equiv="refresh" content="1;url={safe_share}">'
-        btn = (
-            f'<a id="shareLine" href="{safe_app}" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
-            'background:#06c755;color:#fff;text-decoration:none;border-radius:8px">'
-            "開啟 LINE App</a>"
-        )
-        script = (
-            "<script>"
-            "(function(){"
-            f"var share={share_json},app={app_json};"
-            "var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');"
-            "function goShare(){try{location.replace(share);}catch(e){location.href=share;}}"
-            "function goApp(){try{location.href=app;}catch(e){}"
-            "setTimeout(goShare,900);}"
-            "if(mobile){goApp();}else{goShare();}"
-            "})();"
-            "</script>"
-        )
-        hint = ""
-    else:
-        refresh = ""
-        btn = (
-            '<button id="shareLine" type="button" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
-            'background:#06c755;color:#fff;border:none;border-radius:8px;font-size:1.05em">'
-            "複製文字並開 LINE</button>"
-        )
-        script = _line_share_page_script(body_json, auto_open=False)
-        hint = (
-            '<p style="text-align:center;color:#b45309;font-size:0.95em">'
-            "文字較長，按綠色鈕：先分享或複製全文，再開 LINE 選聯絡人貼上</p>"
-        )
     safe_share = html.escape(share_url, quote=True)
+    safe_app = html.escape(app_url, quote=True)
+    refresh = f'<meta http-equiv="refresh" content="1;url={safe_share}">'
+    btn = (
+        f'<a id="shareLine" href="{safe_app}" style="display:inline-block;margin:0.5em;padding:0.6em 1em;'
+        'background:#06c755;color:#fff;text-decoration:none;border-radius:8px">'
+        "開 LINE 選聯絡人</a>"
+    )
+    script = _line_share_page_script(body_json, auto_open=True)
     return (
         "<!DOCTYPE html><html><head>"
         '<meta charset="utf-8">'
@@ -179,9 +143,10 @@ def render_line_redirect_html(text: str) -> str:
         "</head><body>"
         '<p style="font-family:sans-serif;text-align:center;margin-top:2em">'
         "正在開啟 LINE…</p>"
-        f"{hint}"
+        '<p style="text-align:center;color:#334155;font-size:0.95em">'
+        "請在 LINE 選要傳給誰</p>"
         f'<p style="text-align:center;font-size:1.05em">{btn}</p>'
-        f'<p style="text-align:center"><a href="{safe_share}">改用瀏覽器分享（短句才有效）</a></p>'
+        f'<p style="text-align:center"><a href="{safe_share}">改用瀏覽器開啟 LINE</a></p>'
         f"{script}"
         "</body></html>"
     )
@@ -228,8 +193,11 @@ def selected_line_text(manifest: Dict[str, Any], stock_ids: Optional[list] = Non
 
 
 def _line_picker_script() -> str:
-    """勾選檔後：複製對應名單、傳勾選的介紹圖／決策卡。"""
-    return """<script>(function(){
+    """勾選檔後：開 LINE 選聯絡人；圖走系統分享（可選 LINE）。"""
+    return (
+        "<script>(function(){"
+        f"{_open_line_js()}"
+        """
 var data=JSON.parse(document.getElementById('pickPayload').textContent||'{}');
 function boxes(){return Array.prototype.slice.call(document.querySelectorAll('.stock-pick'));}
 function checkedIds(){return boxes().filter(function(el){return el.checked;}).map(function(el){return String(el.value);});}
@@ -249,28 +217,17 @@ function selectedText(){
   var header=(data.header||('＝＝'+(data.title||'海選')+'＝＝'))+'\\n共 '+blocks.length+' 檔';
   return String(data.prefix||'WayneBot 海選')+'\\n'+header+'\\n'+blocks.join('\\n'+(data.sep||'────────────')+'\\n');
 }
-async function copyText(body){
-  try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(body);return true;}}catch(e){}
-  var ta=document.createElement('textarea');ta.value=body;ta.style.position='fixed';ta.style.left='-9999px';
-  document.body.appendChild(ta);ta.select();
-  var ok=false;try{ok=document.execCommand('copy');}catch(e){}
-  document.body.removeChild(ta);return ok;
-}
-async function shareText(ev){
+function shareText(ev){
   if(ev&&ev.preventDefault)ev.preventDefault();
   var body=selectedText();
   if(!body){alert('請先勾要傳的檔');return;}
-  if(navigator.share){try{await navigator.share({text:body,title:'WayneBot'});return;}catch(e){}}
-  var ok=await copyText(body);
-  alert(ok?'已複製勾選名單。請開 LINE → 選聯絡人 → 長按貼上。':'請手動全選下方文字複製');
-  var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent||'');
-  if(mobile){try{location.href='line://';}catch(e){}}
+  openLine(body);
 }
 async function shareImages(ev){
   if(ev&&ev.preventDefault)ev.preventDefault();
   var picked=selectedStocks();
   if(!picked.length){alert('請先勾要傳的檔');return;}
-  var files=[], names=[];
+  var files=[];
   for(var i=0;i<picked.length;i++){
     var st=picked[i], sid=String(st.stock_id||'stock');
     var urls=[st.glance_url,st.card_url,(!st.glance_url&&!st.card_url)?st.strip_url:''];
@@ -282,7 +239,6 @@ async function shareImages(ev){
         var kind=u===0&&st.glance_url?'glance':(u===1&&st.card_url?'card':'strip');
         var fn=sid+'-'+kind+'.png';
         files.push(new File([blob],fn,{type:'image/png'}));
-        names.push(fn);
       }catch(e){}
     }
   }
@@ -293,7 +249,7 @@ async function shareImages(ev){
       }
     }catch(e){}
   }
-  alert('這支手機一次傳多張圖不穩。請改長按勾選檔的介紹圖／決策卡 → 分享 → LINE。');
+  openLine(selectedText());
 }
 var shareBtn=document.getElementById('shareLine');
 if(shareBtn) shareBtn.addEventListener('click',shareText);
@@ -318,6 +274,7 @@ if(albumBtn&&navigator.share&&album){
   });
 }
 })();</script>"""
+    )
 
 
 def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
@@ -445,7 +402,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         "</style>"
         "</head><body>"
         f"<h2 style=\"text-align:center\">{title}　{count} 檔</h2>"
-        "<p class=\"hint\">勾要傳的檔（介紹圖＋決策卡）。圖是縮圖，傳出仍是完整卡 → LINE → 選聯絡人。</p>"
+        "<p class=\"hint\">勾要傳的檔。綠鈕會開啟手機 LINE，再選要傳給誰。</p>"
         f"{text_only_note}"
         '<p class="toolbar">'
         '<button class="btn ghost" id="pickAll" type="button">全選</button>'
@@ -453,7 +410,7 @@ def render_line_rich_share_html(manifest: Dict[str, Any]) -> str:
         '<span id="pickCount" style="display:inline-block;margin:8px 4px;color:#334155">已勾 0 檔</span>'
         "</p>"
         '<p class="toolbar">'
-        '<button class="btn green" id="shareLine" type="button">複製勾選名單到 LINE</button>'
+        '<button class="btn green" id="shareLine" type="button">開 LINE 選聯絡人</button>'
         '<button class="btn green" id="sharePicked" type="button">傳勾選的圖到 LINE</button>'
         f"{album_btn}"
         "</p>"

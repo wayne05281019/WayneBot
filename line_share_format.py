@@ -102,6 +102,54 @@ def colored_line_segments(ln: str, *, in_stance_cont: bool) -> Tuple[List[Tuple[
     return [(s, False)], False
 
 
+def _chip_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def hydrate_line_share_item(
+    item: Dict[str, Any],
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """LINE 稿對齊介紹圖／三大法人表：決策卡沒有 T86 欄時改讀庫內最近完整日。
+
+    決策卡 payload 沒有 foreign_net；先前直接 _chip_plain 會印出全 0。
+    """
+    out = dict(item or {})
+    if out.get("pct_change") is None and out.get("change_pct") is not None:
+        out["pct_change"] = out["change_pct"]
+    if out.get("profit") is None:
+        if out.get("gain_pct") is not None:
+            out["profit"] = out["gain_pct"]
+        elif out.get("profit_pct") is not None:
+            out["profit"] = out["profit_pct"]
+    if out.get("ma60") is None and out.get("ma60s") is not None:
+        out["ma60"] = out["ma60s"]
+    if not str(out.get("quote_date") or "").strip():
+        out["quote_date"] = str(out.get("latest_date") or out.get("db_as_of") or "")
+    keys = ("foreign_net", "trust_net", "dealer_net")
+    missing = any(k not in out for k in keys)
+    item_has = any(_chip_int(out.get(k)) for k in keys)
+    sid = str(out.get("stock_id") or out.get("code") or "").strip()
+    if db_path and sid and (missing or not item_has):
+        try:
+            from chip_tape import last_complete_chip_nets
+
+            nets = last_complete_chip_nets(db_path, sid, str(out.get("quote_date") or ""))
+        except Exception:
+            nets = None
+        if nets:
+            db_has = any(_chip_int(nets.get(k)) for k in keys)
+            if db_has or missing:
+                for k in keys:
+                    out[k] = _chip_int(nets.get(k))
+                if nets.get("quote_date") and not str(out.get("quote_date") or "").strip():
+                    out["quote_date"] = str(nets.get("quote_date") or "")
+    return out
+
+
 def _quote_md(item: Dict[str, Any]) -> str:
     """近一日行情日：MM-DD；沒日期就空。"""
     raw = str(
@@ -247,6 +295,7 @@ def format_line_stock_block(
     notice_fn = notice_fn or _share_notices_plain
     plan_fn = plan_fn or _safety_plan_plain
 
+    item = hydrate_line_share_item(item, db_path)
     sid = str(item.get("stock_id") or item.get("code") or "")
     sname = str(item.get("stock_name") or item.get("name") or "")
 
