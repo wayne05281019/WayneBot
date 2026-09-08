@@ -384,6 +384,10 @@ class NavigatorEngine:
                 df = em
                 quote_source = "emerging_quotes"
                 merge_live = False
+                if len(str(cap)) != 8:
+                    em_max = str(df["date"].astype(str).str.replace("-", "", regex=False).max() or "")[:8]
+                    if len(em_max) == 8:
+                        db_as_of = em_max
         conn.close()
 
         if len(df) < 5:
@@ -438,7 +442,8 @@ class NavigatorEngine:
         df["profit_pct"] = profit_pct
         cal60_low = float(cal60_floors[-1]) if len(cal60_floors) else 0.0
         profit_floor = profit_floor_at(profit_src, -1, cal60_lows=cal60_floors)
-        # 高低點窗口：用除權前收盤（CaryBot 60日高 4560 等），均線仍用還原價。
+        # 高低點窗口：用除權前收盤算溫度／預警（對齊作者卡）。高點資訊盒子若跟還原現價
+        # 差超過一倍（除權後 7800／-204% 那種），改用還原序列，避免哥哥看不懂。
         hl_src = close_raw.where(~df["is_halt"]) if "is_halt" in df.columns else close_raw
         df["high_5"] = hl_src.rolling(5, min_periods=1).max()
         df["low_5"] = hl_src.rolling(5, min_periods=1).min()
@@ -559,6 +564,16 @@ class NavigatorEngine:
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
         h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
         l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
+        close_now = float(latest["close"] or 0)
+        hl_display_adjusted = False
+        if close_now > 0 and h60 > close_now * 1.6:
+            hl_display_adjusted = True
+            h10 = float(close_s.rolling(10, min_periods=1).max().iloc[-1])
+            h20 = float(close_s.rolling(20, min_periods=1).max().iloc[-1])
+            h60 = float(close_s.rolling(60, min_periods=1).max().iloc[-1])
+            l10 = float(close_s.rolling(10, min_periods=1).min().iloc[-1])
+            l20 = float(close_s.rolling(20, min_periods=1).min().iloc[-1])
+            l60 = float(close_s.rolling(60, min_periods=1).min().iloc[-1])
 
         def _dist_h(h):
             c = float(latest["close"])
@@ -609,6 +624,10 @@ class NavigatorEngine:
         l120 = float(latest["low_120"]) if pd.notna(latest.get("low_120")) else 0.0
         l240 = float(latest["low_240"]) if pd.notna(latest.get("low_240")) else 0.0
         l480 = float(latest["low_480"]) if pd.notna(latest.get("low_480")) else 0.0
+        if hl_display_adjusted:
+            l120 = float(close_s.rolling(120, min_periods=20).min().iloc[-1] or 0)
+            l240 = float(close_s.rolling(240, min_periods=40).min().iloc[-1] or 0)
+            l480 = float(close_s.rolling(480, min_periods=80).min().iloc[-1] or 0)
         c0 = float(latest["close"])
         if h480 and c0 >= h480 * 0.998:
             badges.append("創480日新高")

@@ -152,6 +152,13 @@ class EmergingScreenIsolationTests(unittest.TestCase):
         os.close(fd)
         try:
             ensure_core_schema(path)
+            conn = sqlite3.connect(path)
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260810", "2330", "台積電", "TW", 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0),
+            )
+            conn.commit()
+            conn.close()
             rows = []
             for i in range(20):
                 d = f"202608{i+1:02d}" if i < 31 else f"202609{i-30:02d}"
@@ -179,6 +186,8 @@ class EmergingScreenIsolationTests(unittest.TestCase):
             self.assertNotIn("error", card)
             self.assertEqual(card.get("quote_source"), "emerging_quotes")
             self.assertIn("興櫃官方日均價", card.get("badges") or [])
+            last_em = max(d for d, _ in rows)
+            self.assertEqual(str(card.get("latest_date")).replace("-", "")[:8], last_em)
         finally:
             os.remove(path)
         from intent_router import parse_intent

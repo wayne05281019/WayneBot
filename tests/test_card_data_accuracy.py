@@ -235,6 +235,34 @@ class CardDataAccuracyTests(unittest.TestCase):
         self.assertEqual(card.get("stance_kind"), "wait")
         self.assertIn("先等", str(card.get("stance") or ""))
 
+    @pytest.mark.production_db
+    def test_6669_high_distance_same_basis_as_close(self):
+        """除權後高點％必須跟現價同一套還原，不能出現 7800／-200%。"""
+        db = get_db_path()
+        import sqlite3
+
+        from wayne_navigator import NavigatorEngine
+
+        conn = sqlite3.connect(db)
+        n = conn.execute(
+            "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='6669'"
+        ).fetchone()[0]
+        conn.close()
+        if not n:
+            self.skipTest("no 6669 quotes")
+        card = NavigatorEngine(db).get_decision_card("6669", merge_live=False)
+        close = float(card["close"])
+        h60 = float(card["h60"])
+        dist = float(card["dist_h60"])
+        self.assertGreater(close, 0)
+        self.assertLess(h60, close * 2.2)
+        self.assertGreater(dist, -80.0)
+        self.assertLess(float(card["space_60"]), 120)
+        l60 = float(card.get("l60") or 0)
+        l120 = float(card.get("l120") or 0)
+        if l60 and l120:
+            self.assertLessEqual(l120, l60 + 1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()
