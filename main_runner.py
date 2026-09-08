@@ -471,7 +471,8 @@ class MainRunner:
                 logger.error(f"四大選股失敗：{e}", exc_info=True)
         if not report_text:
             report_text = self._screening_fail_message()
-        extra = [report_text, self._format_watch_radar_section()]
+        # 自選雷達依 Telegram uid 各做一段，不可綁進這份共用長文（會把擁有者觀察洩給家人）。
+        extra = [report_text]
         try:
             from fundamentals import format_hot_revenue_html
             hot = format_hot_revenue_html(self.db_path)
@@ -509,8 +510,12 @@ class MainRunner:
             "⚡ <b>【動能突破 ＆ 法人籌碼選股】</b>",
         ]
         if rows:
+            from tg_layout import html_escape
+
             for sid, sname, close_p, pct, vol, t_net, f_net in rows:
-                lines.append(f"• <b>{sid} {sname}</b> | 收 <code>{close_p:.2f}</code> (<b>+{pct:.2f}%</b>) 量 {vol:,}張")
+                lines.append(
+                    f"• <b>{html_escape(sid)} {html_escape(sname)}</b> | 收 <code>{close_p:.2f}</code> (<b>+{pct:.2f}%</b>) 量 {vol:,}張"
+                )
         else:
             lines.append("• <i>今日無符合高動能突破標準之標的。</i>")
         return "\n".join(lines)
@@ -526,21 +531,75 @@ class MainRunner:
             logger.warning("AI 帳戶概況略過：%s", e)
             return ""
 
+    def _watch_radar_rows(self, uid: str) -> List[Dict[str, Any]]:
+        """觀察鈕寫 user_watchlist；舊表 user_watchlists 若還有列就併入，不互蓋。"""
+        uid = str(uid or "").strip()
+        merged: Dict[str, Dict[str, Any]] = {}
+        db = str(getattr(self, "db_path", None) or "").strip()
+        if db:
+            try:
+                from wayne_db import get_user_watchlist
+
+                for r in get_user_watchlist(db, uid) or []:
+                    sid = str((r or {}).get("stock_code") or "").strip()
+                    if not sid:
+                        continue
+                    merged[sid] = {
+                        "stock_id": sid,
+                        "stock_name": str((r or {}).get("stock_name") or sid),
+                    }
+            except Exception:
+                logger.debug("watch radar read user_watchlist uid=%s", uid, exc_info=True)
+        eng = getattr(self, "portfolio_engine", None)
+        if eng is not None:
+            try:
+                raw = eng.get_watchlist(uid)
+            except Exception:
+                raw = []
+            if isinstance(raw, (list, tuple)):
+                for w in raw:
+                    sid = str((w or {}).get("stock_id") or "").strip()
+                    if not sid:
+                        continue
+                    name = str((w or {}).get("stock_name") or sid)
+                    if sid not in merged:
+                        merged[sid] = {"stock_id": sid, "stock_name": name}
+                    elif not merged[sid].get("stock_name") or merged[sid]["stock_name"] == sid:
+                        merged[sid]["stock_name"] = name
+        return list(merged.values())
+
     def _format_watch_radar_section(self, telegram_uid: str = "") -> str:
         uid = str(telegram_uid or getattr(self, "chat_id", None) or "")
-        if not self.portfolio_engine or not uid:
+        if not uid:
             return ""
-        quotes = self._load_latest_quotes_map()
-        watch = self.portfolio_engine.get_watchlist(uid)
+        watch = self._watch_radar_rows(uid)
         if not watch:
             return ""
+        quotes: Dict[str, Dict[str, Any]] = {}
+        try:
+            quotes = self._load_latest_quotes_map() or {}
+        except Exception:
+            quotes = {}
+        from tg_layout import html_escape
+
         lines = ["───────────────────", "🎯 <b>【自選守護雷達】</b>"]
         for w in watch[:8]:
-            q = quotes.get(w["stock_id"])
-            if q:
-                lines.append(f"• {w['stock_id']} {w['stock_name']} 收 {q['close']:.2f} ({q['pct_change']:+.2f}%)")
+            raw_sid = str(w.get("stock_id") or "")
+            sid = html_escape(raw_sid)
+            sname = html_escape(w.get("stock_name") or "")
+            q = quotes.get(raw_sid) if isinstance(quotes, dict) else None
+            close_p = None
+            pct = None
+            if isinstance(q, dict):
+                try:
+                    close_p = float(q.get("close"))
+                    pct = float(q.get("pct_change") if q.get("pct_change") is not None else 0)
+                except (TypeError, ValueError):
+                    close_p = None
+            if close_p is not None and pct is not None:
+                lines.append(f"• {sid} {sname} 收 {close_p:.2f} ({pct:+.2f}%)")
             else:
-                lines.append(f"• {w['stock_id']} {w['stock_name']}")
+                lines.append(f"• {sid} {sname}")
         return "\n".join(lines)
 
     def _increment_ok(self, health: Dict[str, Any]) -> bool:
@@ -631,9 +690,12 @@ class MainRunner:
                 self.send_telegram_message(extra_text)
         else:
             for cid in targets:
-                text = "\n".join(
-                    x for x in (extra_text, self._format_watch_radar_section(cid)) if x
-                )
+                try:
+                    radar = self._format_watch_radar_section(cid)
+                except Exception as e:
+                    logger.warning("自選雷達略過 uid=%s: %s", cid, e)
+                    radar = ""
+                text = "\n".join(x for x in (extra_text, radar) if x)
                 if text:
                     self.send_telegram_message(text, chat_id=cid)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)

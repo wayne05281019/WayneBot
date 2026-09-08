@@ -175,6 +175,19 @@ class DataFetcher:
             return False
 
     @staticmethod
+    def safe_stock_name(stock_id: str, stock_name: str) -> str:
+        """官方名才寫庫。MIS／表格把整列或 <p> 塞進名稱時改存代號，不要把 HTML 當股名。"""
+        try:
+            from universe import name_or_sid
+
+            return name_or_sid(stock_name, stock_id)
+        except Exception:
+            s = str(stock_name or "").strip()
+            if s.startswith("[") or "<p" in s or "style=" in s:
+                return str(stock_id or "").strip()
+            return s or str(stock_id or "").strip()
+
+    @staticmethod
     def clean_num(val, is_float: bool = True):
         if val is None:
             return 0.0 if is_float else 0
@@ -352,7 +365,7 @@ class DataFetcher:
 
                     results[sid] = {
                         "stock_id": sid,
-                        "stock_name": sname,
+                    "stock_name": self.safe_stock_name(sid, sname),
                         "current_price": current_price,
                         "open": open_p,
                         "high": high_p,
@@ -547,7 +560,7 @@ class DataFetcher:
             if not r or len(r) < 7:
                 continue
             sid = str(col(r, "代號", 0)).strip()
-            sname = str(col(r, "名稱", 1)).strip()
+            sname = self.safe_stock_name(sid, str(col(r, "名稱", 1)).strip())
             if not self.is_valid_target(sid, sname):
                 continue
             close_p = self.clean_num(col(r, "收盤", 2), True)
@@ -653,6 +666,7 @@ class DataFetcher:
             if len(r) < 11:
                 continue
             sid, sname, vol_raw, _tx_cnt, turnover_raw, open_raw, high_raw, low_raw, close_raw, sign_raw, diff_raw = r[:11]
+            sname = self.safe_stock_name(sid, sname)
             if not self.is_valid_target(sid, sname):
                 continue
             volume_shares = self.clean_num(vol_raw, is_float=False)

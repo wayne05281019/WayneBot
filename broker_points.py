@@ -83,12 +83,19 @@ def ensure_schema(db_path: str | None = None) -> str:
 
 
 def decode_csv_bytes(raw: bytes) -> str:
+    """分點 CSV：utf-8 優先。先解 cp950／big5 會把 utf-8 表頭解成亂碼。"""
+    if not raw:
+        return ""
+    last = ""
     for enc in ("utf-8-sig", "utf-8", "cp950", "big5"):
         try:
-            return raw.decode(enc)
+            text = raw.decode(enc)
         except UnicodeDecodeError:
             continue
-    return raw.decode("utf-8", errors="replace")
+        last = text
+        if "券商" in text or "證券商" in text or "買進股數" in text:
+            return text
+    return last or raw.decode("utf-8", errors="replace")
 
 
 def _header_map(cells: list[str]) -> dict[str, int]:
