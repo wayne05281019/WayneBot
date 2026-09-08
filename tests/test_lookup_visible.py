@@ -64,6 +64,8 @@ def test_send_card_locked_source_keeps_visible_fallback():
     assert "卡片沒送出" in src
     assert "timeout=6.0" in src
     assert src.index("reply_text") < src.index("fetch_stock_news_stats")
+    assert "_pin_reply_menu" not in src
+    assert "兩排主選單在輸入列旁邊四格" not in src
 
 
 def test_send_card_locked_last_resort_plain_text():
@@ -91,3 +93,5 @@ def test_send_card_locked_last_resort_plain_text():
     texts = [str(c.args[0]) for c in msg.reply_text.await_args_list if c.args]
     assert texts, "查股失敗後必須留下一則字"
     assert any("2330" in t or "代號" in t or "日K" in t or "查詢" in t for t in texts)
+    assert all("兩排主選單在輸入列旁邊四格" not in t for t in texts)
+    bot._pin_reply_menu.assert_not_awaited()

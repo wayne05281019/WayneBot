@@ -266,6 +266,9 @@ def test_pin_reply_menu_keeps_keyboard_message():
     asyncio.run(bot._pin_reply_menu(msg))
     asyncio.run(asyncio.sleep(0.45))
     pin.delete.assert_not_called()
+    sent = msg.reply_text.await_args.args[0]
+    assert sent == "·"
+    assert "兩排主選單" not in sent
     markup = msg.reply_text.await_args.kwargs.get("reply_markup")
     assert markup is not None
     from bot_servers import MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_STREAK
@@ -275,6 +278,16 @@ def test_pin_reply_menu_keeps_keyboard_message():
     assert row1[-1] == MENU_BTN_REPORT
     assert row1[0] == "說明"
     assert row2[-1] == MENU_BTN_STREAK
+
+
+def test_pin_reply_menu_does_not_explain_keyboard_location():
+    import inspect
+
+    from bot_servers import WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._pin_reply_menu)
+    assert "兩排主選單在輸入列旁邊四格" not in src
+    assert '("·", "主選單")' in src
 
 
 def test_refresh_silent_sends_reply_keyboard_with_streak():

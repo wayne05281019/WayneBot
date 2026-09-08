@@ -1106,18 +1106,15 @@ class WayneTelegramBot:
             prev = self._menu_pin_msgs
         uid = self._menu_uid_from_message(message)
         markup = self._reply_menu(uid)
-        for text in ("兩排主選單在輸入列旁邊四格 ⌨️。", "·"):
+        # Telegram 只能用新訊息掛 ReplyKeyboard；字愈短愈好，不要再講鍵盤位置。
+        for text in ("·", "主選單"):
             try:
                 pin = await message.reply_text(text, reply_markup=markup)
                 self._menu_pin_msgs[actor] = pin
                 return
             except Exception:
                 continue
-        try:
-            pin = await message.reply_text("主選單", reply_markup=self._reply_menu(uid))
-            self._menu_pin_msgs[actor] = pin
-        except Exception:
-            logger.exception("pin reply menu 失敗")
+        logger.exception("pin reply menu 失敗")
 
     @staticmethod
     def _scratch_chart_path(charts_dir: str, code: str, kind: str, uid: str = "") -> str:
@@ -5064,10 +5061,6 @@ class WayneTelegramBot:
             self._op_state_map().pop(actor, None)
         uid = uid or self._uid_from_message(message)
         self._remember_card(uid, code)
-        try:
-            await self._pin_reply_menu(message)
-        except Exception:
-            logger.debug("查股後重釘主選單失敗", exc_info=True)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
         """三張一次送，Telegram 會顯示一張大圖＋縮圖，不佔三則訊息。"""
