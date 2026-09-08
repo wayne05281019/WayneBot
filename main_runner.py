@@ -199,9 +199,12 @@ class MainRunner:
     def _send_one(self, text: str, chat_id: str):
         if self.bot and hasattr(self.bot, "send_message"):
             try:
-                self.bot.send_message(text, chat_id=chat_id)
-                logger.info("📤 透過 WayneTelegramBot 成功發送推播")
-                return
+                sent = self.bot.send_message(text, chat_id=chat_id)
+                if sent is False:
+                    logger.warning("⚠️ bot.send_message 回報 Telegram 未接受，切換原生 API...")
+                else:
+                    logger.info("📤 透過 WayneTelegramBot 成功發送推播")
+                    return
             except Exception as e:
                 logger.warning(f"⚠️ bot.send_message 失敗: {e}，切換原生 API...")
         if self.token and chat_id:
@@ -619,16 +622,22 @@ class MainRunner:
     def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = ""):
         delivered = self._screening_delivered(screening)
         ids = self._family_chat_ids()
+        logger.info("海選收件人數 %d（payload=%s）", len(ids), "有" if delivered else "無")
         if self.bot and delivered:
             try:
                 dests = ids or [str(getattr(self, "chat_id", None) or "").strip()]
                 dests = [d for d in dests if d]
                 if dests:
+                    sent_n = 0
                     for cid in dests:
                         try:
-                            self.bot.send_screening_report(screening, chat_id=cid)
+                            if self.bot.send_screening_report(screening, chat_id=cid) is False:
+                                logger.warning("海選 Telegram 未接受 dest_len=%s", len(str(cid)))
+                            else:
+                                sent_n += 1
                         except Exception as e:
-                            logger.warning("海選寄給 %s 失敗: %s", cid, e)
+                            logger.warning("海選寄出失敗 dest_len=%s: %s", len(str(cid)), e)
+                    logger.info("海選寄出成功 %d/%d 人", sent_n, len(dests))
                 else:
                     self.bot.send_screening_report(screening)
             except Exception as e:
@@ -1105,8 +1114,12 @@ def main():
         runner = MainRunner()
         kind = job_kind()
         # GHA cron 與 trigger 檔可能各跑一次；略過已完成才不會寄兩份早報。
+        # trigger 檔（push）是補跑：必須真的再寄，不能因為 pipeline_runs 已標成功就略過。
         if kind == "morning_screen":
-            ok = runner.run_morning_screen(skip_if_done=True)
+            skip_if_done = True
+            if (os.getenv("GITHUB_EVENT_NAME") or "").strip() == "push":
+                skip_if_done = False
+            ok = runner.run_morning_screen(skip_if_done=skip_if_done)
         elif kind == "evening_screen":
             ok = runner.run_evening_screen(skip_if_done=True, notify=False)
         elif kind == "midday_review":

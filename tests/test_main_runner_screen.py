@@ -110,10 +110,18 @@ def test_evening_skip_reruns_ai_from_snapshot(monkeypatch, tmp_path):
 
 def test_oneshot_jobs_skip_if_already_done():
     src = open("main_runner.py", encoding="utf-8").read()
-    assert "run_morning_screen(skip_if_done=True)" in src
+    assert "skip_if_done = True" in src
+    assert 'GITHUB_EVENT_NAME' in src
+    assert "run_morning_screen(skip_if_done=skip_if_done)" in src
     assert "run_evening_screen(skip_if_done=True, notify=False)" in src
     assert "run_midday_review(skip_if_done=True)" in src
     assert "run_increment_job(skip_if_done=True)" in src
+
+
+def test_oneshot_morning_push_trigger_does_not_skip():
+    src = open("main_runner.py", encoding="utf-8").read()
+    assert 'os.getenv("GITHUB_EVENT_NAME")' in src
+    assert "skip_if_done = False" in src
 
 
 def test_family_chat_ids_owner_and_touched_users(tmp_path, monkeypatch):
@@ -252,3 +260,44 @@ def test_push_screening_sends_each_family_member(tmp_path, monkeypatch):
     )
     assert ("screen", "9001") in sent
     assert ("screen", "9002") in sent
+
+
+def test_send_html_returns_false_on_http_error(monkeypatch, caplog):
+    import logging
+
+    from bot_servers import WayneTelegramBot
+
+    class _Resp:
+        status_code = 400
+        text = '{"ok":false,"description":"Bad Request: can\'t parse entities"}'
+
+    monkeypatch.setattr("requests.post", lambda *a, **k: _Resp())
+    bot = object.__new__(WayneTelegramBot)
+    bot.token = "x"
+    bot.chat_id = "1"
+    with caplog.at_level(logging.ERROR):
+        assert bot._send_html("1", "<b>hi</b>") is False
+    assert "send_html HTTP 400" in caplog.text
+
+
+def test_send_html_returns_true_on_200(monkeypatch):
+    from bot_servers import WayneTelegramBot
+
+    class _Resp:
+        status_code = 200
+        text = '{"ok":true}'
+
+    monkeypatch.setattr("requests.post", lambda *a, **k: _Resp())
+    bot = object.__new__(WayneTelegramBot)
+    bot.token = "x"
+    bot.chat_id = "1"
+    assert bot._send_html("1", "<b>hi</b>") is True
+
+
+def test_send_screening_report_empty_dest_returns_false():
+    from bot_servers import WayneTelegramBot
+
+    bot = object.__new__(WayneTelegramBot)
+    bot.token = ""
+    bot.chat_id = ""
+    assert bot.send_screening_report({"payload": [{"html": "x"}]}) is False

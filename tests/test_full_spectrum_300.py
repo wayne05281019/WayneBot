@@ -853,7 +853,8 @@ def test_l7_morning_skip_if_done():
     from main_runner import MainRunner, main
 
     src = _src(main) + _src(MainRunner.run_morning_screen)
-    assert "skip_if_done=True" in _src(main)
+    assert "skip_if_done = True" in _src(main)
+    assert 'GITHUB_EVENT_NAME' in _src(main)
     assert "skip_if_done" in _src(MainRunner.run_morning_screen)
 
 
@@ -1058,7 +1059,7 @@ def test_l9_streak_days_does_not_reprint_number_list():
     from main_runner import main
 
     src = _src(main)
-    assert "run_morning_screen(skip_if_done=True)" in src
+    assert "run_morning_screen(skip_if_done=skip_if_done)" in src
     assert "run_evening_screen(skip_if_done=True" in src
     assert "run_midday_review(skip_if_done=True)" in src
     assert "run_increment_job(skip_if_done=True)" in src
