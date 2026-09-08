@@ -107,8 +107,8 @@ def test_help_script_ready_for_brother_video():
     assert "觀察" in texts and "記買入" in texts
     assert "K線" in texts
     kline = next(b for r in hub.inline_keyboard for b in r if b.text == "K線")
-    assert "tradingview.com/chart/" in (kline.url or "")
-    assert "TWSE:2330" in (kline.url or "")
+    assert (kline.url or "").endswith("/k/2330")
+    assert (kline.url or "").startswith("https://")
 
 
 def test_ten_personas_help_and_menu_clear_wrong_pending():

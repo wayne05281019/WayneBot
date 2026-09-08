@@ -92,6 +92,9 @@ def test_help_guide_covers_all_main_buttons():
     stock = HELP_TOPICS["stock"]
     assert "圖下方" in stock
     assert "決策卡 → 介紹圖" not in stock
+    assert "五日" in stock
+    assert "月線" in stock
+    assert "15 分" in stock
 
 
 def test_help_nav_keyboard_has_topic_buttons():

@@ -76,17 +76,30 @@ def tradingview_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
     return "TWSE"
 
 
-def tradingview_chart_url(stock_id: str, db_path: Optional[str] = None) -> str:
-    """開 TradingView 日K，網址已帶交易所＋代號。高低卡不會帶過去。"""
+def tradingview_widget_symbol(stock_id: str, db_path: Optional[str] = None) -> str:
+    """圖表元件內部代號。使用者看得見的文案仍寫上市／上櫃，不要把此外掛到說明書。"""
     sid = str(stock_id or "").strip()
     if not sid:
         return ""
     ex = tradingview_exchange(sid, db_path)
     if not ex:
         return ""
-    from urllib.parse import quote
+    return f"{ex}:{sid}"
 
-    return f"https://www.tradingview.com/chart/?symbol={quote(f'{ex}:{sid}', safe=':')}"
+
+def tradingview_chart_url(
+    stock_id: str, db_path: Optional[str] = None, base_url: str = ""
+) -> str:
+    """查股圖下 K線：開自家這一檔圖（先進日K）。興櫃不給。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    if not tradingview_exchange(sid, db_path):
+        return ""
+    from config import get_public_base_url
+
+    base = (base_url or get_public_base_url()).rstrip("/")
+    return f"{base}/k/{sid}"
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:

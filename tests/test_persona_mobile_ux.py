@@ -19,7 +19,8 @@ def test_hub_keyboard_mobile_compact():
     assert "產業" in texts
     assert "K線" in texts
     kline = next(b for r in rows for b in r if b.text == "K線")
-    assert (kline.url or "").startswith("https://www.tradingview.com/chart/?symbol=TWSE:2330")
+    assert (kline.url or "").endswith("/k/2330")
+    assert (kline.url or "").startswith("https://")
     assert "導航圖" not in texts
     cbs = [b.callback_data for r in rows for b in r]
     assert any((c or "").startswith("n:") for c in cbs)

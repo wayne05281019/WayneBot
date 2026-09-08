@@ -29,7 +29,7 @@ def test_hub_news_url_button_on_top():
     assert (rows[0][1].url or "").startswith("https://news.google.com")
     assert any(b.text == "K線" for b in rows[0])
     kline = next(b for b in rows[0] if b.text == "K線")
-    assert "TWSE:2330" in (kline.url or "")
+    assert (kline.url or "").endswith("/k/2330")
     texts = [b.text for r in rows for b in r]
     assert "籌碼" in texts and "產業" in texts
 

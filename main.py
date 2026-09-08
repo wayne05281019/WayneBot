@@ -221,6 +221,30 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if route.startswith("/k/"):
+            import re as _re
+            from urllib.parse import parse_qs
+
+            from config import get_db_path
+            from kline_hop import render_kline_html
+
+            sid = _re.sub(r"[^0-9A-Za-z]", "", route[3:].split("/", 1)[0])[:8]
+            interval = "D"
+            if "?" in self.path:
+                interval = (parse_qs(self.path.split("?", 1)[1]).get("i") or ["D"])[0]
+            page = render_kline_html(
+                sid, db_path=get_db_path(), interval=interval
+            ).encode("utf-8")
+            self.send_response(200 if sid else 404)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Content-Length", str(len(page)))
+            self.end_headers()
+            try:
+                self.wfile.write(page)
+            except BrokenPipeError:
+                pass
+            return
         if route.startswith("/y/"):
             import re as _re
 
