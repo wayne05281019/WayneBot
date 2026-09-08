@@ -49,6 +49,7 @@ def test_main_scheduler_slots_match_help_clocks():
     assert '(12, 45, "midday")' in src
     assert '(16, 30, "fuse")' in src
     assert '(20, 0, "evening")' in src
+    assert '(5, 10, "typhoon")' in src
     assert '(22, 15, "typhoon")' in src
     header = _read("main_runner.py")[:2500]
     assert "Render WAYNE_SCHEDULER_ROLE=data 不跑 morning" in header
@@ -66,6 +67,7 @@ def test_main_scheduler_slots_match_help_clocks():
     assert "22:00 前公告" not in HELP_TOPICS["row2"]
     assert "不寄 06:30 海選" in HELP_TOPICS["guide"]
     assert "不寄今早海選" in HELP_TOPICS["screen"]
+    assert "台股休市當日" in HELP_TOPICS["screen"]
     assert "台股休市" in HELP_TOPICS["daytrade"]
     assert "齊了發一則" in guide
     assert "不是海選" in _read("main_runner.py")

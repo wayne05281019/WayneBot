@@ -55,11 +55,13 @@ _SEED_CLOSED: Dict[str, str] = {
 
 _ROC_YMD = re.compile(r"(\d{3})年\s*(\d{1,2})月\s*(\d{1,2})日")
 _UPDATED = re.compile(r"更新時間：\s*(20\d{2}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})")
+# 真實頁是 <TD headers='city_Name'><FONT>臺北市</FONT></TD><TD headers='StopWorkSchool_Info'>…
 _CITY_ROW = re.compile(
-    r"<td[^>]*headers=['\"]city_Name['\"][^>]*>\s*([^<]+?)\s*</td>\s*"
-    r"<td[^>]*>\s*(.*?)\s*</td>",
+    r"<td[^>]*headers=['\"]city_Name['\"][^>]*>(.*?)</td>\s*"
+    r"<td[^>]*>(.*?)</td>",
     re.I | re.S,
 )
+_TAG = re.compile(r"<[^>]+>")
 
 
 def _norm_ymd(val) -> str:
@@ -138,11 +140,21 @@ def parse_twse_holiday_rows(rows: List[Any]) -> Dict[str, Dict[str, str]]:
     return out
 
 
+def _plain_cell(html: str) -> str:
+    text = _TAG.sub("", str(html or ""))
+    return re.sub(r"\s+", "", text)
+
+
 def parse_dgpa_nds(html: str) -> Dict[str, Any]:
     """解析人事行政總處停班頁。沒北市列或無訊息＝開市。"""
     raw = str(html or "")
     ymd = ""
-    m = _ROC_YMD.search(raw)
+    header = re.search(
+        r"Header_YMD[^>]*>\s*([^<]*\d{3}年[^<]*\d{1,2}月[^<]*\d{1,2}日)",
+        raw,
+        re.I,
+    )
+    m = _ROC_YMD.search(header.group(1) if header else raw)
     if m:
         ymd = f"{int(m.group(1)) + 1911}{int(m.group(2)):02d}{int(m.group(3)):02d}"
     um = _UPDATED.search(raw)
@@ -155,9 +167,8 @@ def parse_dgpa_nds(html: str) -> Dict[str, Any]:
         return {"ymd": ymd, "taipei_text": "", "halt": False, "zh": "", "updated": updated}
     taipei = ""
     for city, cell in _CITY_ROW.findall(raw):
-        city_s = re.sub(r"<[^>]+>", "", city).strip()
-        cell_s = re.sub(r"<[^>]+>", "", cell)
-        cell_s = re.sub(r"\s+", "", cell_s)
+        city_s = _plain_cell(city)
+        cell_s = _plain_cell(cell)
         if city_s in ("臺北市", "台北市"):
             taipei = cell_s
             break
@@ -283,7 +294,10 @@ def holiday_banner_lines(closed: Optional[Dict[str, str]]) -> List[str]:
     prev = str(closed.get("prev_ymd") or "")
     if not ymd or not zh:
         return []
-    lines = [f"{ymd} 台股{zh}休市"]
+    if zh == "僅結算":
+        lines = [f"{ymd} 台股僅結算、無交易"]
+    else:
+        lines = [f"{ymd} 台股{zh}休市"]
     if prev:
         lines.append(f"上一收盤 {prev}")
     return lines
@@ -333,6 +347,7 @@ def _upsert_close(conn: sqlite3.Connection, ymd: str, zh: str, source: str) -> N
             name_zh=excluded.name_zh,
             source=excluded.source,
             fetched_at=excluded.fetched_at
+        WHERE tw_holidays.source != 'twse' OR excluded.source = 'twse'
         """,
         (ymd, zh, source, datetime.now(TW).strftime("%Y-%m-%d %H:%M:%S")),
     )
@@ -384,6 +399,15 @@ def refresh_tw_typhoon_halt(db_path: str = None, html: str = None) -> Dict[str, 
         finally:
             conn.close()
         return {"ok": True, "halt": False, "ymd": ymd, "zh": ""}
+    existing = lookup_tw_session(ymd, path)
+    if existing.get("source") in ("twse", "seed"):
+        return {
+            "ok": True,
+            "halt": True,
+            "ymd": ymd,
+            "zh": existing.get("zh") or str(parsed.get("zh") or "北市停班"),
+            "kept": existing.get("source"),
+        }
     conn = sqlite3.connect(path)
     try:
         _upsert_close(conn, ymd, str(parsed.get("zh") or "北市停班"), "dgpa")

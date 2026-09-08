@@ -11,7 +11,7 @@
 #   - Render WAYNE_SCHEDULER_ROLE=data 不跑 morning（兩邊 pipeline_runs 互看不見，會雙推）
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
-# 22:15 抓人事行政總處北市停班（週日也跑）；06:30 再抓一次涵蓋 04:30 補發
+# 22:15 抓人事行政總處北市停班（週日也跑）；05:10 再抓一次涵蓋 04:30 補發；06:30 海選前再確認
 # 16:30 融合成功後會順便跑晚間海選＋AI，讓 Release zip 帶得走模擬持倉。
 # 20:00／重啟若快照已寫過，不再重掃全市場，仍用快照再跑 AI 模擬倉（清 ETF 槽、依收盤停利停損）。
 # 16:30 寫入項目（皆融合進同一 sqlite）：
@@ -680,6 +680,28 @@ class MainRunner:
         )
 
     def run_increment_job(self, skip_if_done: bool = False, notify: bool = True) -> bool:
+        from tw_holidays import closed_tw_session, refresh_tw_holiday_calendar, refresh_tw_typhoon_halt
+
+        closed = closed_tw_session(db_path=self.db_path)
+        if closed:
+            logger.info(
+                "今日台股休市 %s %s，盤後融合改記成功、不重抓今天",
+                closed.get("ymd"),
+                closed.get("zh"),
+            )
+            try:
+                logger.info("台股開休市年曆：%s", refresh_tw_holiday_calendar(self.db_path))
+            except Exception as e:
+                logger.warning("台股休市年曆略過：%s", e)
+            try:
+                logger.info("北市停班：%s", refresh_tw_typhoon_halt(self.db_path))
+            except Exception as e:
+                logger.warning("北市停班略過：%s", e)
+            self._mark_pipeline(
+                "success",
+                f"tw closed {closed.get('ymd')} {closed.get('zh')} skip increment",
+            )
+            return True
         if skip_if_done and self.already_completed_today():
             logger.info("ℹ️ %s 盤後融合已成功，略過。", self.today_str)
             return True
@@ -937,11 +959,11 @@ class MainRunner:
         return True
 
     def run_typhoon_peek(self) -> bool:
-        """前一晚 22:15 抓人事行政總處；北市全日／上午停班才記台股休市。"""
+        """22:15／05:10 抓人事行政總處；北市全日／上午停班才記台股休市。"""
         from tw_holidays import refresh_tw_typhoon_halt
 
         out = refresh_tw_typhoon_halt(self.db_path)
-        logger.info("22:15 人事行政總處北市停班：%s", out)
+        logger.info("人事行政總處北市停班：%s", out)
         return bool(out.get("ok"))
 
     def run_pipeline(self, skip_if_done: bool = False) -> bool:

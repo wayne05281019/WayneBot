@@ -469,6 +469,7 @@ def start_daily_scheduler():
             (12, 45, "midday"),
             (16, 30, "fuse"),
             (20, 0, "evening"),
+            (5, 10, "typhoon"),
             (22, 15, "typhoon"),
         )
         best = None

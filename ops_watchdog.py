@@ -187,6 +187,13 @@ def missed_jobs(db_path: str, *, now: Optional[datetime] = None) -> List[Dict[st
     ref = now or taipei_now()
     if ref.weekday() >= 5:
         return []
+    try:
+        from trading_calendar import is_tw_market_holiday
+
+        if is_tw_market_holiday(ref.strftime("%Y%m%d")):
+            return []
+    except Exception:
+        pass
     minutes = ref.hour * 60 + ref.minute
     keys = _expected_run_keys(db_path, ref)
     out: List[Dict[str, Any]] = []

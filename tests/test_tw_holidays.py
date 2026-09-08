@@ -46,6 +46,18 @@ _DGPA_TAIPEI_PM = """
 </TABLE>
 """
 
+# 2024-07-24 凱米：真實頁用 FONT 包縣市名；舊正則 [^<]+ 會整表抓不到。
+_DGPA_LIVE_FONT = """
+<div class="Header_YMD">113年 7月 24日 天然災害停止上班及上課情形</div>
+更新時間：2024/07/24 10:29:11
+<TABLE id="Table"><TBODY class="Table_Body">
+<TR><TD headers='city_Name' vAlign=center align=middle width='13%'><FONT >基隆市</FONT></TD>
+<TD headers='StopWorkSchool_Info' vAlign=center align=left width='70%'><FONT color=#FF0000 >今天停止上班、停止上課。  </FONT></TD></TR>
+<TR><TD headers='city_Name' vAlign=center align=middle width='13%'><FONT >臺北市</FONT></TD>
+<TD headers='StopWorkSchool_Info' vAlign=center align=left width='70%'><FONT color=#FF0000 >今天停止上班、停止上課。  </FONT></TD></TR>
+</TBODY></TABLE>
+"""
+
 _TWSE_ROWS = [
     {"Name": "勞動節", "Date": "1150501", "Description": "依規定放假1日。"},
     {"Name": "中秋節", "Date": "1150925", "Description": "依規定放假1日。"},
@@ -141,6 +153,25 @@ def test_dgpa_afternoon_only_not_halt():
     assert out["halt"] is False
 
 
+def test_dgpa_live_font_tags_detect_taipei_halt():
+    out = parse_dgpa_nds(_DGPA_LIVE_FONT)
+    assert out["ymd"] == "20240724"
+    assert out["halt"] is True
+    assert "停止上班" in out["taipei_text"]
+    assert out["zh"] == "北市停班"
+
+
+def test_banner_settlement_only():
+    closed = {
+        "ymd": "20260212",
+        "zh": "僅結算",
+        "prev_ymd": "20260211",
+    }
+    lines = holiday_banner_lines(closed)
+    assert lines[0] == "20260212 台股僅結算、無交易"
+    assert "休市" not in lines[0]
+
+
 def test_refresh_writes_calendar_and_typhoon(tmp_path):
     db = str(tmp_path / "h.db")
     cal = refresh_tw_holiday_calendar(db, rows=_TWSE_ROWS)
@@ -167,6 +198,22 @@ def test_dgpa_none_clears_same_day_halt(tmp_path):
     out = refresh_tw_typhoon_halt(db, html=none_same)
     assert out["halt"] is False
     assert lookup_tw_session("20260723", db)["kind"] == "open"
+
+
+def test_dgpa_does_not_overwrite_twse_national_holiday(tmp_path):
+    db = str(tmp_path / "h.db")
+    refresh_tw_holiday_calendar(db, rows=_TWSE_ROWS)
+    assert lookup_tw_session("20260925", db)["source"] in ("twse", "seed")
+    typh_html = """
+<div class="Header_YMD">115年 9月 25日 天然災害停止上班及上課情形</div>
+<TABLE id="Table">
+<TR><TD headers='city_Name'>臺北市</TD><TD>因颱風停止上班及上課</TD></TR>
+</TABLE>
+"""
+    refresh_tw_typhoon_halt(db, html=typh_html)
+    rec = lookup_tw_session("20260925", db)
+    assert rec["kind"] == "full_close"
+    assert rec["zh"] == "中秋節"
 
 
 def test_outlook_shows_tw_holiday_not_open_high(tmp_path):
