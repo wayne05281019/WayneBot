@@ -222,18 +222,33 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if route.startswith("/k/"):
+            import json as _json
             import re as _re
             from urllib.parse import parse_qs
 
             from config import get_db_path
-            from kline_hop import render_kline_html
+            from kline_hop import fetch_yahoo_minutes, render_kline_html
 
-            sid = _re.sub(r"[^0-9A-Za-z]", "", route[3:].split("/", 1)[0])[:8]
+            parts = [p for p in route.split("/") if p]
+            sid = _re.sub(r"[^0-9A-Za-z]", "", (parts[1] if len(parts) > 1 else ""))[:8]
             interval = "D"
             if "?" in self.path:
                 interval = (parse_qs(self.path.split("?", 1)[1]).get("i") or ["D"])[0]
+            if len(parts) >= 3 and parts[2] == "m":
+                bars = fetch_yahoo_minutes(sid, interval or "15", get_db_path())
+                body = _json.dumps({"bars": bars}, ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if sid else 404)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except BrokenPipeError:
+                    pass
+                return
             page = render_kline_html(
-                sid, db_path=get_db_path(), interval=interval
+                sid, db_path=get_db_path(), interval=interval, live=True
             ).encode("utf-8")
             self.send_response(200 if sid else 404)
             self.send_header("Content-Type", "text/html; charset=utf-8")

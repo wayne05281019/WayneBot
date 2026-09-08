@@ -56,7 +56,6 @@ border:1px solid #d7dee4;border-radius:10px;overflow:hidden}
 <p id="empty"></p>
 </div>
 <p class="note">不是買訊。高低卡／獲利不會畫在這張圖上。</p>
-<script src="https://s3.tradingview.com/tv.js"></script>
 <script>
 var D=@@DATA@@;
 var UP="#e53935", DN="#00897b";
@@ -75,43 +74,16 @@ function showEmpty(msg){
   var cv=$("own"); cv.hidden=true; cv.style.display="none";
   var el=$("empty"); el.style.display="block"; el.textContent=msg;
 }
-function mountTv(iv){
-  wipe();
-  setOn(iv);
-  if(typeof TradingView==="undefined"||!TradingView.widget){
-    showEmpty("即時圖還在載入，請稍後再切一次日K／15分／60分。");
-    return;
-  }
-  $("empty").style.display="none";
-  new TradingView.widget({
-    autosize:true,
-    symbol:D.sym,
-    interval:iv,
-    timezone:"Asia/Taipei",
-    theme:"light",
-    style:"1",
-    locale:"zh_TW",
-    hide_top_toolbar:true,
-    hide_side_toolbar:true,
-    allow_symbol_change:false,
-    save_image:false,
-    calendar:false,
-    hide_volume:false,
-    withdateranges:false,
-    enable_publishing:false,
-    container_id:"tv",
-    support_host:"https://www.tradingview.com"
-  });
-}
 function ymd(t){
-  var s=String(t||"").replace(/-/g,"").slice(0,8);
-  if(s.length!==8) return t||"";
-  return s.slice(0,4)+"/"+s.slice(4,6)+"/"+s.slice(6,8);
+  var s=String(t||"").replace(/[-/: ]/g,"");
+  if(s.length>=12) return s.slice(4,6)+"/"+s.slice(6,8)+" "+s.slice(8,10)+":"+s.slice(10,12);
+  if(s.length===8) return s.slice(0,4)+"/"+s.slice(4,6)+"/"+s.slice(6,8);
+  return t||"";
 }
-function drawOwn(bars){
+function drawOwn(bars, miss){
   wipe();
   if(!bars||!bars.length){
-    showEmpty("這檔還沒有日K可以疊五日／十日／月線／季線。");
+    showEmpty(miss||"這檔還沒有K線可畫。");
     return;
   }
   $("empty").style.display="none";
@@ -127,7 +99,7 @@ function drawOwn(bars){
   var g=cv.getContext("2d");
   g.setTransform(dpr,0,0,dpr,0,0);
   g.fillStyle="#fff"; g.fillRect(0,0,w,h);
-  var padL=48, padR=10, padT=12, gap=8, volH=Math.floor(h*0.22);
+  var padL=58, padR=10, padT=12, gap=8, volH=Math.floor(h*0.22);
   var plotH=h-padT-volH-gap-22;
   var n=Math.min(bars.length, Math.max(12, Math.floor((w-padL-padR)/7)));
   var view=bars.slice(-n);
@@ -172,8 +144,19 @@ function drawOwn(bars){
 }
 function go(iv){
   setOn(iv);
-  if(iv==="D"||iv==="15"||iv==="60"){ mountTv(iv); return; }
-  drawOwn((D.packed||{})[iv]||[]);
+  if(iv==="15"||iv==="60"){
+    showEmpty(iv==="15"?"載入 15 分K…":"載入 60 分K…");
+    fetch("/k/"+encodeURIComponent(D.sid)+"/m?i="+encodeURIComponent(iv), {cache:"no-store"})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        setOn(iv);
+        drawOwn(j.bars||[], "15分／60分暫時沒資料。");
+      })
+      .catch(function(){ showEmpty("15分／60分暫時抓不到。"); });
+    return;
+  }
+  var miss=iv==="D"?"這檔還沒有日K。":"這檔還沒有日K可以疊五日／十日／月線／季線。";
+  drawOwn((D.packed||{})[iv]||[], miss);
 }
 document.querySelectorAll("nav button").forEach(function(b){
   b.addEventListener("click", function(){ go(b.getAttribute("data-i")); });
@@ -343,6 +326,7 @@ def _stock_name(stock_id: str, db_path: Optional[str] = None) -> str:
 
 def packed_series(bars: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     return {
+        "D": bars[-250:],
         "5D": aggregate_n_day(bars, 5),
         "10D": aggregate_n_day(bars, 10),
         "M": aggregate_calendar(bars, "M"),
@@ -350,10 +334,119 @@ def packed_series(bars: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]
     }
 
 
+def merge_live_daily(
+    stock_id: str, bars: List[Dict[str, Any]], db_path: str
+) -> List[Dict[str, Any]]:
+    """盤中把今日即時列接在官方日K後面，不寫回資料庫。"""
+    if not bars:
+        return bars
+    try:
+        from config import taipei_today_str
+        from live_quote import fetch_lookup_quote, is_live_merge_window
+
+        if not is_live_merge_window():
+            return bars
+        today = str(taipei_today_str() or "").replace("-", "")[:8]
+        last = str(bars[-1].get("t") or "")
+        if not today or last >= today:
+            return bars
+        rt = fetch_lookup_quote(stock_id, "", db_path)
+        if not rt or float(rt.get("close") or 0) <= 0:
+            return bars
+        out = list(bars)
+        out.append(
+            {
+                "t": today,
+                "o": float(rt.get("open") or rt["close"]),
+                "h": float(rt.get("high") or rt["close"]),
+                "l": float(rt.get("low") or rt["close"]),
+                "c": float(rt["close"]),
+                "v": float(rt.get("volume") or 0),
+            }
+        )
+        return out
+    except Exception:
+        return bars
+
+
+def parse_yahoo_chart_bars(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Yahoo chart JSON → 我們的 K 柱。量從股數換成張。"""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    block = ((payload.get("chart") or {}).get("result") or [None])[0] or {}
+    stamps = block.get("timestamp") or []
+    q = ((block.get("indicators") or {}).get("quote") or [{}])[0]
+    tz = ZoneInfo("Asia/Taipei")
+    out: List[Dict[str, Any]] = []
+    for ts, op, hi, lo, cl, vol in zip(
+        stamps,
+        q.get("open") or [],
+        q.get("high") or [],
+        q.get("low") or [],
+        q.get("close") or [],
+        q.get("volume") or [],
+    ):
+        if cl is None or op is None:
+            continue
+        try:
+            dt = datetime.fromtimestamp(int(ts), tz=timezone.utc).astimezone(tz)
+        except (TypeError, ValueError, OSError):
+            continue
+        c = float(cl)
+        o = float(op)
+        h = float(hi if hi is not None else max(o, c))
+        l = float(lo if lo is not None else min(o, c))
+        v = float(vol or 0) / 1000.0
+        out.append(
+            {
+                "t": dt.strftime("%Y%m%d%H%M"),
+                "o": o,
+                "h": h,
+                "l": l,
+                "c": c,
+                "v": max(0.0, v),
+            }
+        )
+    return out
+
+
+def fetch_yahoo_minutes(
+    stock_id: str, interval: str, db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """15 分／60 分走 Yahoo 分K，同一檔代號，不開整站。"""
+    import requests
+
+    from stock_links import yahoo_exchange
+
+    sid = str(stock_id or "").strip()
+    iv = "15m" if normalize_interval(interval) == "15" else "60m"
+    rng = "5d" if iv == "15m" else "1mo"
+    if not sid:
+        return []
+    yid = f"{sid}.{yahoo_exchange(sid, db_path)}"
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
+        f"?interval={iv}&range={rng}"
+    )
+    try:
+        resp = requests.get(
+            url,
+            timeout=8,
+            headers={"User-Agent": "WayneBot/1.0"},
+        )
+        resp.raise_for_status()
+        return parse_yahoo_chart_bars(resp.json() or {})
+    except Exception:
+        return []
+
+
 def render_kline_html(
     stock_id: str,
     db_path: str = "",
     interval: str = "D",
+    *,
+    live: bool = False,
 ) -> str:
     sid = str(stock_id or "").strip()
     if not sid:
@@ -376,9 +469,10 @@ def render_kline_html(
         )
     market = plain_market_label(sid, db_path or None)
     bars = load_daily_bars(sid, db_path or None)
+    if live:
+        bars = merge_live_daily(sid, bars, db_path or "")
     payload = {
         "sid": sid,
-        "sym": f"{ex}:{sid}",
         "start": start,
         "packed": packed_series(bars),
     }

@@ -102,15 +102,46 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     page = render_kline_html("2330", db_path=db)
     assert "lang=\"zh-Hant\"" in page
-    assert "locale:\"zh_TW\"" in page
-    assert "timezone:\"Asia/Taipei\"" in page
-    assert "hide_volume:false" in page
     assert '"start":"D"' in page
-    assert "TWSE:2330" in page
-    assert "上市" in page and "TWSE" not in page.split("<body>")[1].split("<script")[0]
+    assert "/m?i=" in page
+    assert "TWSE" not in page
+    assert "widgetembed" not in page
+    assert "tradingview.com" not in page
+    assert "上市" in page
+    assert '"D":[' in page
     for label in ("日K", "15分", "60分", "五日", "十日", "月線", "季線"):
         assert label in page
     assert "高低卡" in page
+
+
+def test_parse_yahoo_chart_bars_to_lots():
+    from kline_hop import parse_yahoo_chart_bars
+
+    payload = {
+        "chart": {
+            "result": [
+                {
+                    "timestamp": [1757312100],
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [100.0],
+                                "high": [101.0],
+                                "low": [99.0],
+                                "close": [100.5],
+                                "volume": [12000],
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    bars = parse_yahoo_chart_bars(payload)
+    assert len(bars) == 1
+    assert bars[0]["o"] == 100.0
+    assert bars[0]["v"] == 12.0
+    assert len(bars[0]["t"]) >= 12
 
 
 def test_normalize_interval():
