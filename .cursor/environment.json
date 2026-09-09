@@ -5,7 +5,7 @@
     {
       "name": "waynebot-web",
       "command": "WAYNE_SKIP_POLLING=1 .venv/bin/python main.py",
-      "description": "WayneBot web/health server on :10000 (/health, /inventory). Runs with WAYNE_SKIP_POLLING=1 so it never competes with the production Telegram bot; unset it and provide TELEGRAM_BOT_TOKEN to enable interactive polling."
+      "description": "WayneBot web/health server on :10000 (/health, /inventory). Always send-only in Cursor Cloud: WAYNE_SKIP_POLLING=1 plus CURSOR_AGENT auto-skip, so TELEGRAM_BOT_TOKEN may sendMessage but never getUpdates against Render."
     }
   ],
   "ports": [

@@ -22,7 +22,13 @@ _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
 
-from config import get_charts_dir, get_db_path, get_telegram_config, skip_chart_warmup
+from config import (
+    get_charts_dir,
+    get_db_path,
+    get_telegram_config,
+    skip_chart_warmup,
+    skip_telegram_polling,
+)
 from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
     init_database,
@@ -5401,6 +5407,9 @@ class WayneTelegramBot:
             return
         if not self.token:
             logger.error("缺少 TELEGRAM_BOT_TOKEN")
+            return
+        if skip_telegram_polling():
+            logger.info("WAYNE_SKIP_POLLING／Cursor Cloud：拒絕啟動 getUpdates 輪詢")
             return
         async def _heartbeat_loop():
             """在事件迴圈裡跳，迴圈卡死心跳就變舊，/health 才抓得到。"""
