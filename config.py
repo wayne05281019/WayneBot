@@ -84,10 +84,11 @@ def get_telegram_chat_id() -> str:
 
 
 def extra_family_chat_ids() -> list:
-    """GHA 排程庫沒有 Render 上按開始的帳號時，用環境變數補家人 id。
+    """哥哥等額外白名單 id。不要把真人 id 寫進程式庫。
 
-    只讀 WAYNE_FAMILY_CHAT_IDS，以及 TELEGRAM_CHAT_ID／TG_CHAT_ID 逗號後面的額外 id。
-    第一個仍是擁有者，不算家人。不要把真人 id 寫進程式庫。
+    只讀 WAYNE_FAMILY_CHAT_IDS／WAYNE_BROTHER_CHAT_ID，
+    以及 TELEGRAM_CHAT_ID／TG_CHAT_ID 逗號後面的額外 id。
+    第一個仍是擁有者（偉權），不算家人。
     """
     ids: list[str] = []
     seen: set[str] = set()
@@ -107,9 +108,46 @@ def extra_family_chat_ids() -> list:
             ids.append(s)
 
     take(os.getenv("WAYNE_FAMILY_CHAT_IDS") or "")
+    take(os.getenv("WAYNE_BROTHER_CHAT_ID") or "")
     take(os.getenv("TELEGRAM_CHAT_ID") or "", skip_first=True)
     take(os.getenv("TG_CHAT_ID") or "", skip_first=True)
     return ids
+
+
+def allowed_telegram_uids() -> list:
+    """私人 Bot 白名單：偉權（TELEGRAM_CHAT_ID 第一個）＋哥哥（其餘／WAYNE_FAMILY_CHAT_IDS）。
+
+    真人 Telegram uid 只准放 Render／本機環境變數，不准寫進 git。
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    owner = get_telegram_chat_id()
+    if owner:
+        ids.append(owner)
+        seen.add(owner)
+    for uid in extra_family_chat_ids():
+        if uid in seen:
+            continue
+        seen.add(uid)
+        ids.append(uid)
+    return ids
+
+
+def telegram_uid_allowed(uid: object) -> bool:
+    """陌生人按開始／亂傳訊息時回 False。沒設任何 uid＝設定錯誤，正式環境關門。"""
+    needle = str(uid or "").strip()
+    if not needle:
+        return False
+    allowed = allowed_telegram_uids()
+    if not allowed:
+        # pytest 現有測試用各種假 uid；要測關門設 WAYNE_ALLOWLIST_EMPTY_CLOSED=1。
+        flag = str(os.getenv("WAYNE_ALLOWLIST_EMPTY_CLOSED") or "").strip().lower()
+        if flag in ("1", "true", "yes"):
+            return False
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            return True
+        return False
+    return needle in set(allowed)
 
 
 def get_telegram_config() -> dict:

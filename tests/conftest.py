@@ -65,6 +65,16 @@ def pytest_configure(config):
 @pytest.fixture(autouse=True)
 def _db_path_guard(request, tmp_path, monkeypatch):
     """未標記的測試一律導向臨時庫；標記的才拿到真的庫。"""
+    for key in (
+        "TELEGRAM_CHAT_ID",
+        "TG_CHAT_ID",
+        "WAYNE_FAMILY_CHAT_IDS",
+        "WAYNE_BROTHER_CHAT_ID",
+        "TELEGRAM_BOT_TOKEN",
+        "TG_BOT_TOKEN",
+        "WAYNE_ALLOWLIST_EMPTY_CLOSED",
+    ):
+        monkeypatch.delenv(key, raising=False)
     if request.node.get_closest_marker("production_db"):
         if not has_production_db():
             pytest.skip(

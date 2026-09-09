@@ -28,6 +28,7 @@ from config import (
     get_telegram_config,
     skip_chart_warmup,
     skip_telegram_polling,
+    telegram_uid_allowed,
 )
 from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
@@ -38,6 +39,7 @@ from wayne_db import (
     lookup_stocks,
     listing_is_emerging,
     touch_tg_user,
+    export_private_user_payload,
 )
 from trade_journal import (
     ensure_user_trade_logs,
@@ -948,6 +950,8 @@ class WayneTelegramBot:
         return str(getattr(user, "id", "") or "")
 
     def _touch_user(self, uid: str, display_name: str = "") -> None:
+        if not telegram_uid_allowed(uid):
+            return
         try:
             touch_tg_user(self.db_path, uid, display_name)
         except Exception:
@@ -960,8 +964,31 @@ class WayneTelegramBot:
             self._touch_user(uid, getattr(user, "first_name", "") or "")
         return uid
 
+    async def _reject_stranger(self, update: Update) -> bool:
+        """陌生人按開始只回「這是私人 Bot」，不進 tg_users、不做事。"""
+        user = getattr(update, "effective_user", None)
+        uid = str(getattr(user, "id", "") or "")
+        if telegram_uid_allowed(uid):
+            return False
+        q = getattr(update, "callback_query", None)
+        if q is not None:
+            try:
+                await q.answer("這是私人 Bot", show_alert=True)
+            except Exception:
+                pass
+            return True
+        msg = getattr(update, "effective_message", None) or getattr(update, "message", None)
+        if msg is not None and hasattr(msg, "reply_text"):
+            try:
+                await msg.reply_text("這是私人 Bot")
+            except Exception:
+                pass
+        return True
+
     def _wrap_cmd(self, handler):
         async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if await self._reject_stranger(update):
+                return
             self._touch_from_update(update)
             return await handler(update, context)
 
@@ -2517,9 +2544,36 @@ class WayneTelegramBot:
             "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
             "\n"
             "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
-            "偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n",
+            "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n",
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
+
+    async def backup_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """把這人的持股／觀察／成交／AI 倉匯出成 JSON。不要上傳 GitHub。"""
+        if not update.message:
+            return
+        import json
+        from io import BytesIO
+
+        uid = str(update.effective_user.id)
+        if not telegram_uid_allowed(uid):
+            await update.message.reply_text("這是私人 Bot")
+            return
+        payload = await asyncio.to_thread(export_private_user_payload, self.db_path, uid)
+        raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        bio = BytesIO(raw)
+        try:
+            from config import taipei_today_str
+
+            ymd = taipei_today_str()
+        except Exception:
+            ymd = time.strftime("%Y%m%d")
+        fname = f"waynebot_private_{uid}_{ymd}.json"
+        await update.message.reply_document(
+            document=bio,
+            filename=fname,
+            caption="私人備份：持股／觀察／成交／AI倉。放自己電腦或加密雲端，不要上傳 GitHub。",
+        )
 
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
@@ -3881,6 +3935,8 @@ class WayneTelegramBot:
         msg = update.message
         if msg is None:
             return
+        if await self._reject_stranger(update):
+            return
         uid = str(getattr(update.effective_user, "id", "") or "")
         if not uid:
             return
@@ -3900,6 +3956,8 @@ class WayneTelegramBot:
     async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message
         if msg is None:
+            return
+        if await self._reject_stranger(update):
             return
         doc = getattr(msg, "document", None)
         mime = str(getattr(doc, "mime_type", "") or "")
@@ -3929,6 +3987,8 @@ class WayneTelegramBot:
     ):
         if not update.message:
             return
+        if await self._reject_stranger(update):
+            return
         raw_msg = spoken if spoken is not None else (update.message.text or "")
         raw = raw_msg.strip()
         if not raw:
@@ -3940,6 +4000,10 @@ class WayneTelegramBot:
         if text.lower().lstrip("/") in ("start", "開始"):
             self._pending.pop(actor, None)
             await self.start_cmd(update, context)
+            return
+        if text in ("備份", "私人備份") or text.lower().lstrip("/") == "backup":
+            self._pending.pop(actor, None)
+            await self.backup_cmd(update, context)
             return
         if text == MENU_BTN_BACK_MAIN:
             await self._restore_main_menu(update.message, uid)
@@ -4161,6 +4225,8 @@ class WayneTelegramBot:
     async def on_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """語音／音檔 → 聽寫 → 同一條 on_text。不編新聞。"""
         if not update.message:
+            return
+        if await self._reject_stranger(update):
             return
         from voice_stt import (
             STT_MAX_BYTES,
@@ -5187,6 +5253,8 @@ class WayneTelegramBot:
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query
         uid = str(q.from_user.id)
+        if await self._reject_stranger(update):
+            return
         self._touch_user(uid, getattr(q.from_user, "first_name", "") or "")
         data = q.data or ""
         if data.startswith("cat:") or data.startswith("noop"):
@@ -5459,6 +5527,7 @@ class WayneTelegramBot:
         )
         app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
         app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
+        app.add_handler(CommandHandler("backup", self._wrap_cmd(self.backup_cmd)))
         app.add_handler(CommandHandler("why", self._wrap_cmd(self.why_cmd)))
         app.add_handler(CommandHandler("market", self._wrap_cmd(self.market_cmd)))
         app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))
