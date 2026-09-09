@@ -112,6 +112,16 @@ def test_missed_jobs_incomplete_still_alerts(tmp_path, monkeypatch):
     assert [m["status"] for m in missed] == ["incomplete"]
 
 
+def test_missed_jobs_computed_still_alerts(tmp_path, monkeypatch):
+    """GHA notify-off 的 computed 不能讓死人開關當成已寄出。"""
+    path = _make_db(tmp_path, runs={"screen-20260902": "computed"})
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 2, 9, 0)
+    missed = missed_jobs(path, now=now)
+    assert [m["status"] for m in missed] == ["computed"]
+
+
 def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")

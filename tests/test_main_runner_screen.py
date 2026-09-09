@@ -330,6 +330,7 @@ def test_morning_screen_does_not_mark_when_telegram_rejects(tmp_path, monkeypatc
     monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
     monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
     monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    runner._refresh_official_sidecars = lambda: None
 
     assert runner.run_morning_screen(skip_if_done=False, notify=True) is False
     assert runner.already_completed_today("screen-20260908") is False
@@ -367,6 +368,7 @@ def test_morning_screen_marks_only_after_telegram_accepts(tmp_path, monkeypatch)
     monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
     monkeypatch.setattr("taiwan_market.format_taiwan_market_brief_html", lambda *_a, **_k: "")
     monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False})
+    runner._refresh_official_sidecars = lambda: None
 
     assert runner.run_morning_screen(skip_if_done=False, notify=True) is True
     assert runner.already_completed_today("screen-20260908") is True
@@ -411,3 +413,121 @@ def test_send_screening_report_empty_dest_returns_false():
     bot.token = ""
     bot.chat_id = ""
     assert bot.send_screening_report({"payload": [{"html": "x"}]}) is False
+
+
+def _stub_morning_deps(monkeypatch, runner):
+    monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20260908")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    runner._refresh_official_sidecars = lambda: None
+
+
+def test_morning_notify_off_marks_computed_not_success(tmp_path, monkeypatch):
+    """GHA 不算已寄過：Release zip 灌進 Render 不能讓 skip_if_done 跳過真寄。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "computed.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda *a, **k: True
+    runner.token = ""
+    _stub_morning_deps(monkeypatch, runner)
+
+    assert runner.run_morning_screen(skip_if_done=False, notify=False) is True
+    assert runner.already_completed_today("screen-20260908") is False
+    import sqlite3
+
+    row = sqlite3.connect(path).execute(
+        "SELECT status, notes FROM pipeline_runs WHERE run_date=?",
+        ("screen-20260908",),
+    ).fetchone()
+    assert row[0] == "computed"
+    assert "notify-off" in row[1]
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is True
+
+
+def test_morning_skip_increment_refreshes_sidecars(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "side.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner.send_telegram_message = lambda *a, **k: True
+    runner.token = ""
+    called = []
+    runner._refresh_official_sidecars = lambda: called.append("sidecars")
+    monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20260908")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    monkeypatch.setattr("taiwan_market.format_taiwan_market_brief_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False})
+
+    bumped = []
+
+    def boom(*_a, **_k):
+        bumped.append(True)
+        raise AssertionError("行情已齊不該再跑全市場增量")
+
+    runner.run_daily_increment = boom
+    assert runner.run_morning_screen(skip_if_done=False, notify=True) is True
+    assert called == ["sidecars"]
+    assert bumped == []
+
+
+def test_midday_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "mid.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = object()
+    runner.token = "x"
+    runner._broadcast_family = lambda _t: False
+    runner.send_telegram_message = lambda *_a, **_k: False
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr(
+        "midday_review.run_midday_review",
+        lambda *_a, **_k: {"html": "<b>尾盤</b>", "line_share": ""},
+    )
+    assert runner.run_midday_review(skip_if_done=False) is False
+    assert runner.already_completed_today("midday-20260908") is False

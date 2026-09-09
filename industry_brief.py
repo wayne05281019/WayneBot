@@ -128,7 +128,8 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             ).fetchone()[0]
             or 0
         )
-        if latest_m:
+        peer_month = str(my_m["yyyymm"]) if my_m else latest_m
+        if peer_month:
             peers_m = conn.execute(
                 """
                 SELECT m.stock_id, m.stock_name, m.yoy_pct, m.mom_pct, m.ytd_yoy_pct, m.revenue
@@ -137,9 +138,11 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
                 WHERE m.yyyymm=? AND u.industry=? AND length(m.stock_id)=4
                   AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
                 """,
-                (latest_m, industry),
+                (peer_month, industry),
             ).fetchall()
-        if q_year:
+        peer_year = int(my_q["year"]) if my_q else q_year
+        peer_season = int(my_q["season"]) if my_q else q_season
+        if peer_year:
             peers_q = conn.execute(
                 """
                 SELECT q.stock_id, q.stock_name, q.gross_margin_pct, q.eps
@@ -148,7 +151,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
                 WHERE q.year=? AND q.season=? AND u.industry=? AND length(q.stock_id)=4
                   AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
                 """,
-                (q_year, q_season, industry),
+                (peer_year, peer_season, industry),
             ).fetchall()
 
     three = 0
