@@ -457,8 +457,22 @@ def catch_up_missed_jobs(now=None) -> None:
         logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
         runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
     if need_morning:
-        logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
-        runner.run_morning_screen(skip_if_done=True)
+        # 基準日當日（剛融合完）不提早寄：要等隔天 06:30 吃美股隔夜。
+        try:
+            from import_health import latest_complete_quote_date
+
+            as_of = latest_complete_quote_date(runner.db_path)
+        except Exception:
+            as_of = None
+        today = now.strftime("%Y%m%d")
+        if as_of and today <= str(as_of):
+            logger.info(
+                "補跑：基準日 %s 當日不提早寄早上海選（等隔日 06:30 吃美股）",
+                as_of,
+            )
+        else:
+            logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
+            runner.run_morning_screen(skip_if_done=True)
     if need_midday:
         logger.info("補跑：已過台灣 12:45，若尾盤可切沒寄過就補寄")
         runner.run_midday_review(skip_if_done=True)

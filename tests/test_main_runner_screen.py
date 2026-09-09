@@ -605,3 +605,77 @@ def test_midday_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
     )
     assert runner.run_midday_review(skip_if_done=False) is False
     assert runner.already_completed_today("midday-20260908") is False
+
+
+
+def test_demote_premature_morning_screens_same_day(tmp_path):
+    """盤後當日標的 screen-{as_of} success 要降級，隔日早報才寄得出。"""
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema
+    import sqlite3
+
+    path = str(tmp_path / "premature.db")
+    ensure_core_schema(path)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20260909", "2026-09-09T08:56:51", "success", "morning"),
+    )
+    # 隔日 06:30 真寄過的應保留
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs VALUES (?,?,?,?)",
+        ("screen-20260908", "2026-09-09T22:35:00", "success", "morning"),
+    )
+    conn.commit()
+    conn.close()
+
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    assert runner.demote_premature_morning_screens() == 1
+    rows = {
+        r[0]: r[1:]
+        for r in sqlite3.connect(path).execute(
+            "SELECT run_date, status, notes FROM pipeline_runs"
+        )
+    }
+    assert rows["screen-20260909"][0] == "computed"
+    assert "premature-morning" in rows["screen-20260909"][1]
+    assert rows["screen-20260908"][0] == "success"
+
+
+def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
+    """基準日當日補跑不可提早寄早上海選。"""
+    import main as main_mod
+    import main_runner
+    import config
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    calls = []
+
+    class FakeRunner:
+        db_path = "/tmp/x.db"
+
+        def run_increment_job(self, **kw):
+            calls.append(("fuse", kw))
+
+        def run_morning_screen(self, **kw):
+            calls.append(("morning", kw))
+
+        def run_midday_review(self, **kw):
+            calls.append(("midday", kw))
+
+        def run_evening_screen(self, **kw):
+            calls.append(("evening", kw))
+
+    monkeypatch.setattr(main_runner, "MainRunner", FakeRunner)
+    monkeypatch.setattr(config, "scheduler_owns", lambda job: True)
+    monkeypatch.setattr(config, "scheduler_may_push", lambda job: True)
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260909"
+    )
+    now = datetime(2026, 9, 9, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    main_mod.catch_up_missed_jobs(now)
+    kinds = [c[0] for c in calls]
+    assert "morning" not in kinds
+    assert "fuse" in kinds
