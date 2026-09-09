@@ -31,8 +31,12 @@ def test_gha_daily_run_owns_morning_and_fuse_only():
     assert scheduled_job_kind("45 8 * * 1-5") == "increment"
     assert scheduled_job_kind("30 22 * * 0-4") == "morning_screen"
     assert "increment" in text and "morning_screen" in text
-    assert "WAYNE_FAMILY_CHAT_IDS" in text
     assert "WAYNE_SCREEN_NOTIFY" in text
+    assert "secrets.TELEGRAM_BOT_TOKEN" not in text
+    assert "secrets.TG_BOT_TOKEN" not in text
+    assert "secrets.TELEGRAM_CHAT_ID" not in text
+    assert "secrets.TG_CHAT_ID" not in text
+    assert "WAYNE_FAMILY_CHAT_IDS" not in text
     assert "run_midday_review" not in text
     assert "run_evening_screen" not in text
 

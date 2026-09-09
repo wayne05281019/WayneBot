@@ -1258,8 +1258,10 @@ def test_l9c_gha_morning_only_at_0630():
     from config import scheduled_job_kind
 
     text = Path(".github/workflows/daily_run.yml").read_text(encoding="utf-8")
-    assert "WAYNE_FAMILY_CHAT_IDS" in text
     assert "WAYNE_SCREEN_NOTIFY" in text
+    assert "secrets.TELEGRAM_BOT_TOKEN" not in text
+    assert "secrets.TG_BOT_TOKEN" not in text
+    assert "WAYNE_FAMILY_CHAT_IDS" not in text
     assert scheduled_job_kind("30 22 * * 0-4") == "morning_screen"
     assert scheduled_job_kind("30 8 * * 1-5") == "increment"
     assert scheduled_job_kind("45 8 * * 1-5") == "increment"

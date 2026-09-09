@@ -110,17 +110,13 @@ jobs:
             echo "警告：zip 內找不到 .db，流水線將建立空白庫"
           fi
 
+      # GHA 只算名單／蓋 zip，不寄 Telegram。不要注入 token，過期 GitHub Secret 才不會 401。
       - name: 執行每日工作
         id: run_job
         env:
           WAYNE_JOB: ${{ steps.job.outputs.job }}
           WAYNE_MODE: ${{ steps.job.outputs.job }}
           WAYNE_DB_PATH: data/wayne_market.db
-          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TG_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
-          WAYNE_FAMILY_CHAT_IDS: ${{ secrets.WAYNE_FAMILY_CHAT_IDS }}
           WAYNE_SCREEN_NOTIFY: "0"
           PYTHONUNBUFFERED: "1"
         run: |
