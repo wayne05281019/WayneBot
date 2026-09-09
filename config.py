@@ -216,8 +216,19 @@ def screen_notify_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def _in_cursor_cloud() -> bool:
+    """Cursor Cloud Agent pod。正式 token 在這裡只能寄訊，不能 getUpdates。"""
+    return (os.getenv("CURSOR_AGENT") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def skip_telegram_polling() -> bool:
-    """Cursor／本機除錯不要跟 Render 搶同一個 Bot 的 getUpdates。"""
+    """Cursor／本機除錯不要跟 Render 搶同一個 Bot 的 getUpdates。
+
+    Cursor Cloud（CURSOR_AGENT）一律跳過輪詢：密鑰注入後，忘了設
+    WAYNE_SKIP_POLLING 也不能搶 Render。本機仍靠 WAYNE_SKIP_POLLING=1。
+    """
+    if _in_cursor_cloud():
+        return True
     raw = (os.getenv("WAYNE_SKIP_POLLING") or "").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
