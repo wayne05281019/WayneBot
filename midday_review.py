@@ -115,6 +115,56 @@ def fetch_mis_batch(
     return out
 
 
+def _px_txt(val: float) -> str:
+    x = round(float(val), 2)
+    s = f"{x:.2f}".rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _signed_txt(val: float, nd: int = 2) -> str:
+    x = round(float(val), nd)
+    if abs(x) < 0.5 * (10 ** (-nd)):
+        return "0"
+    return f"{x:+.{nd}f}".rstrip("0").rstrip(".")
+
+
+def morning_ref_price(row: Dict[str, Any]) -> float:
+    """今早海選上的價＝名單收盤（pick_close）；沒有才退保險進場。"""
+    for key in ("pick_close", "entry_price"):
+        try:
+            v = float(row.get(key) or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            return v
+    return 0.0
+
+
+def format_midday_stock_line(
+    row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False
+) -> str:
+    """現價旁空一格接今早價，再寫漲跌差。例：4915 致伸 現 62.1 早 60.8 +1.3（+2.1%）"""
+    sid = str(row.get("stock_id") or "").strip()
+    name = str(row.get("stock_name") or "").strip()
+    tag = "【雙時段】" if dual else ""
+    prefix = f"{tag}{sid} {name}".strip()
+    try:
+        px = float((live or {}).get("close") or 0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if px <= 0:
+        return prefix
+    morning = morning_ref_price(row)
+    if morning <= 0:
+        return f"{prefix} 現 {_px_txt(px)}"
+    diff = px - morning
+    pct = (px - morning) / morning * 100.0
+    return (
+        f"{prefix} 現 {_px_txt(px)} 早 {_px_txt(morning)} "
+        f"{_signed_txt(diff)}（{_signed_txt(pct, 1)}%）"
+    )
+
+
 def classify_row(row: Dict[str, Any], live: Dict[str, Any]) -> str:
     px = float(live.get("close") or 0)
     hi20 = float(row["hi20_close"] or 0) if row.get("hi20_close") is not None else 0.0
@@ -131,7 +181,7 @@ def classify_row(row: Dict[str, Any], live: Dict[str, Any]) -> str:
 def format_midday_line(as_of: str, groups: Dict[str, List[str]]) -> str:
     lines = [
         f"WayneBot 尾盤可切 12:45（對照今早 06:30 海選 {as_of}）",
-        "轉貼哥哥 LINE：整則複製。【建議切入】＝今早有、現價還沒靠近20日高。不是新的突破海選。",
+        "現價旁＝今早名單價與漲跌差。【建議切入】＝今早有、現價還沒靠近20日高。不是新的突破海選。",
         "",
         "【建議切入】" + ("" if groups["ok"] else " 無"),
     ]
@@ -156,15 +206,16 @@ def format_midday_html(as_of: str, groups: Dict[str, List[str]]) -> str:
         body = "\n".join(html_escape(x) for x in rows) if rows else f"<i>{html_escape(empty)}</i>"
         return f"<b>{html_escape(title)}</b>\n{body}"
 
-    return "\n\n".join(
-        [
-            f"<b>尾盤可切</b>　對照今早 06:30　昨收 {html_escape(as_of)}",
-            "<i>只複核早上名單＋高低卡。下一則純文字轉 LINE。</i>",
-            block("建議切入", groups["ok"], "無"),
-            block("今早有、現在少追", groups["chase"], "無"),
-            block("現價高過保險進場、不要追", groups["above_entry"], "無"),
-        ]
-    )
+    parts = [
+        f"<b>尾盤可切</b>　對照今早 06:30　昨收 {html_escape(as_of)}",
+        "<i>現價旁＝今早名單價與漲跌差。只複核早上名單＋高低卡。</i>",
+        block("建議切入", groups["ok"], "無"),
+        block("今早有、現在少追", groups["chase"], "無"),
+        block("現價高過保險進場、不要追", groups["above_entry"], "無"),
+    ]
+    if groups.get("no_quote"):
+        parts.append(block("盤中沒接到", groups["no_quote"], "無"))
+    return "\n\n".join(parts)
 
 
 def run_midday_review(db_path: str, as_of: str) -> Dict[str, Any]:
@@ -176,22 +227,23 @@ def run_midday_review(db_path: str, as_of: str) -> Dict[str, Any]:
             f"WayneBot 尾盤可切 12:45\n"
             "今早 06:30 名單還沒存到，沒有可切標的（不是新突破海選）。"
         )
-        return {"html": f"<b>尾盤可切</b>\n<i>{html_escape(msg.split(chr(10),1)[-1])}</i>", "line_share": msg, "n": 0}
+        return {
+            "html": f"<b>尾盤可切</b>\n<i>{html_escape(msg.split(chr(10),1)[-1])}</i>",
+            "line_share": "",
+            "n": 0,
+        }
     both = overlap_ids(db_path, as_of)
     live = fetch_mis_batch([r["stock_id"] for r in rows], db_path)
     groups = {"ok": [], "chase": [], "above_entry": [], "no_quote": []}
     for r in rows:
         sid = str(r["stock_id"])
-        name = str(r["stock_name"] or "")
         q = live.get(sid) or {}
         kind = classify_row(r, q)
-        px = q.get("close") or 0
-        tag = "【雙時段】" if sid in both else ""
-        line = f"{tag}{sid} {name} 現{px:g}" if px else f"{tag}{sid} {name}"
+        line = format_midday_stock_line(r, q, dual=sid in both)
         groups[kind].append(line)
     return {
         "html": format_midday_html(as_of, groups),
-        "line_share": format_midday_line(as_of, groups),
+        "line_share": "",
         "n": len(rows),
         "ok_n": len(groups["ok"]),
     }

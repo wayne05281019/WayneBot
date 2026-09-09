@@ -1246,6 +1246,8 @@ class DualSessionTest(unittest.TestCase):
         text = format_midday_line("20260828", {"ok": ["2330 台積電 現97"], "chase": [], "above_entry": [], "no_quote": []})
         self.assertIn("建議切入", text)
         self.assertIn("06:30", text)
+        self.assertNotIn("LINE", text)
+        self.assertNotIn("轉貼", text)
 
     def test_job_kind_evening_and_midday(self):
         from config import job_kind
