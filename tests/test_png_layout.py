@@ -88,3 +88,21 @@ def test_industry_kv_uses_right_edge():
     assert '("kv", "產業"' in src
     assert '("kv", "這檔年增"' in src
     assert "pad_x + max_w - ln_w" in src
+
+
+def test_stance_short_title_puts_note_on_same_row():
+    from wayne_navigator import CARD_FIG_W, _stance_pane_plan, _text_w
+
+    def tw(text, fs, weight=900):
+        return _text_w(text, fs, CARD_FIG_W, weight)
+
+    plan = _stance_pane_plan(
+        "在低點附近，先看表",
+        "表還壓在低附近。先看、先別急著買。",
+        tw,
+        2.6,
+        CARD_FIG_W,
+    )
+    assert plan["same_row"]
+    assert "先看" in plan["same_row"]
+    assert plan["h"] < 6.0

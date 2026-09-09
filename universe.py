@@ -10,7 +10,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -117,16 +117,71 @@ _ETF_KIND_ALIASES = {
     "etf": ("ETF_PASSIVE", "ETF_ACTIVE", "ETF_LEVERAGED", "ETF_INVERSE"),
 }
 
+_ETF_ALL_KINDS = ("ETF_PASSIVE", "ETF_ACTIVE", "ETF_LEVERAGED", "ETF_INVERSE")
+_ETF_SPOT_KINDS = ("ETF_PASSIVE", "ETF_ACTIVE")
+_ETF_CADENCE_ALIASES = {
+    "月配": "月配",
+    "月配etf": "月配",
+    "月配息": "月配",
+    "季配": "季配",
+    "季配etf": "季配",
+    "季配息": "季配",
+    "半年配": "半年配",
+    "半年配etf": "半年配",
+}
+_ETF_NAME_ALIASES = {
+    "高股息": ("高股息", "高息"),
+    "高股息etf": ("高股息", "高息"),
+    "高息etf": ("高股息", "高息"),
+    "高息": ("高股息", "高息"),
+}
+
+
+def _norm_etf_lookup_key(query: str) -> str:
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    q = re.sub(r"[\s\u3000]+", "", q)
+    key = q.replace("槓杆", "槓桿").replace("ＥＴＦ", "ETF").replace("Etf", "ETF")
+    return key.lower()
+
+
+def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
+    """對話框分類詞：官方 asset_type、官方除息日距、或官股名含高息。不走讀音撞現股。"""
+    key = _norm_etf_lookup_key(query)
+    if not key or is_lookup_ticker(key):
+        return None
+    kinds = _ETF_KIND_ALIASES.get(key)
+    if kinds:
+        return {
+            "kinds": kinds,
+            "cadence": "",
+            "needles": (),
+            "label": etf_kind_label(kinds),
+        }
+    cadence = _ETF_CADENCE_ALIASES.get(key)
+    if cadence:
+        return {
+            "kinds": _ETF_ALL_KINDS,
+            "cadence": cadence,
+            "needles": (),
+            "label": f"{cadence} ETF",
+        }
+    needles = _ETF_NAME_ALIASES.get(key)
+    if needles:
+        return {
+            "kinds": _ETF_SPOT_KINDS,
+            "cadence": "",
+            "needles": needles,
+            "label": "高股息 ETF",
+        }
+    return None
+
 
 def parse_etf_lookup_kinds(query: str) -> Optional[Tuple[str, ...]]:
     """對話框打「兩倍槓桿／主被動ETF」對到官方分類。代號查詢不走這裡。"""
-    q = unicodedata.normalize("NFKC", (query or "").strip())
-    q = re.sub(r"[\s\u3000]+", "", q)
-    if not q or is_lookup_ticker(q):
+    spec = parse_etf_lookup_spec(query)
+    if not spec or spec.get("cadence") or spec.get("needles"):
         return None
-    key = q.replace("槓杆", "槓桿").replace("ＥＴＦ", "ETF").replace("Etf", "ETF")
-    key = key.lower()
-    return _ETF_KIND_ALIASES.get(key)
+    return spec["kinds"]
 
 
 def etf_kind_label(kinds) -> str:

@@ -847,6 +847,10 @@ class NavigatorEngine:
             attach_sell(payload, hl_tags, trend_labels)
         except Exception:
             pass
+        try:
+            attach_etf_price_nav(payload, self.db_path)
+        except Exception:
+            pass
         return payload
 
     def scan_double_green_breakout(self) -> list:
@@ -1243,6 +1247,91 @@ def _vol_heat_draw(rank, base: str):
 def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
     """第 0 排對齊原本漲跌那層；多出來的框往上疊，不把收盤價搬走。"""
     return float(pane_y) + 1.35 + int(row_i) * (badge_h + badge_gap)
+
+
+def _etf_nav_extra_h(card) -> float:
+    if card is None or card.get("etf_nav") is None:
+        return 0.0
+    return 7.2 if card.get("etf_premium") is not None else 3.8
+
+
+def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
+    """查股卡收盤旁：官方淨值／折溢價。沒有真數不加欄。"""
+    if not card or card.get("error") or not card.get("etf_kind"):
+        return card
+    if card.get("etf_nav") is not None:
+        return card
+    try:
+        from official_snapshots import etf_price_nav
+
+        info = etf_price_nav(
+            str(card.get("stock_id") or ""),
+            db_path or get_db_path(),
+            close=card.get("close"),
+            as_of=str(card.get("latest_date") or card.get("db_as_of") or ""),
+        )
+    except Exception:
+        return card
+    if not info:
+        return card
+    card["etf_nav"] = info.get("nav")
+    card["etf_nav_date"] = info.get("date") or ""
+    if info.get("premium") is not None:
+        card["etf_premium"] = info["premium"]
+    return card
+
+
+def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card):
+    """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。"""
+    extra = _etf_nav_extra_h(card)
+    if extra:
+        close_y = y + price_h - 2.55
+        chg_y = close_y - 3.05
+    else:
+        close_y = y + price_h * 0.70
+        chg_y = y + price_h * 0.24
+    ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
+            color=chg_c, ha="right", va="center", zorder=3)
+    ax.text(px_right - tw(close_s, 28) - 2.0, close_y, "收盤",
+            fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
+    ax.text(px_right, chg_y, "　".join(chg_bits),
+            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    if not extra:
+        return
+    try:
+        nav_f = float(card.get("etf_nav"))
+    except (TypeError, ValueError):
+        return
+    date = str(card.get("etf_nav_date") or "")
+    md = f"{date[4:6]}/{date[6:8]}" if len(date) == 8 else ""
+    nav_s = f"{nav_f:.2f}" + (f"（{md}）" if md else "")
+    prem = card.get("etf_premium")
+    prem_c = C["ink"]
+    try:
+        if prem is not None:
+            pv = float(prem)
+            if pv > 0:
+                prem_c = C["up"]
+            elif pv < 0:
+                prem_c = C["down"]
+            else:
+                prem_c = C["ink"]
+    except (TypeError, ValueError):
+        prem = None
+        prem_c = C["ink"]
+    nav_y = chg_y - 2.55
+    ax.text(
+        px_right, nav_y, f"淨值 {nav_s}",
+        fontproperties=_fp(12.0, "bold"),
+        color=prem_c if prem is not None else C["ink"],
+        ha="right", va="center", zorder=3,
+    )
+    if prem is not None:
+        ax.text(
+            px_right, nav_y - 2.40, f"折溢價 {float(prem):+.2f}%",
+            fontproperties=_fp(13.5, "bold"), color=prem_c,
+            ha="right", va="center", zorder=3,
+        )
 
 
 def _pack_badge_rows(pairs, limit: float = 50.0, gap: float = 1.7):
@@ -1905,6 +1994,46 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
     return [ln for ln in out if ln]
 
 
+def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w: float) -> dict:
+    """今日態度：標題短就讓說明靠右同一行，避免第一行右邊空一大塊。"""
+    title = str(stance_txt or "今天先看表，先等").strip() or "今天先看表，先等"
+    note = str(stance_note or "").strip()
+    pane_w = 100.0
+    chip_w = tw("今日態度", 11.0) + 3.2
+    title_x = pad_x + 3.0 + chip_w + 1.6
+    right = pane_w - pad_x - 3.2
+    title_fs = 15.0
+    while tw(title, title_fs) > max(8.0, right - title_x) and title_fs > 11.5:
+        title_fs -= 0.3
+    remain = right - (title_x + tw(title, title_fs)) - 2.2
+    full_w = pane_w - 2 * pad_x - 6.4
+    same_row = ""
+    below: list = []
+    if note:
+        # 整句塞得進標題右就同一行；塞不下整段仍走下一行，不把一句拆兩截。
+        if remain >= 16.0 and tw(note, 11.2) <= remain:
+            same_row = note
+        else:
+            below = _wrap_fit(note, 11.2, full_w, fig_w)
+            if not below:
+                below = [note]
+    if same_row and not below:
+        h = 4.5
+    elif same_row:
+        h = 4.5 + 0.55 + 2.2 * len(below)
+    else:
+        h = 6.2 + 2.2 * max(0, len(below) - 1)
+    return {
+        "chip_w": chip_w,
+        "title_x": title_x,
+        "title_fs": title_fs,
+        "same_row": same_row,
+        "below": below,
+        "h": h,
+        "right": right,
+    }
+
+
 def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
                     weight=800, floor=9.5):
     """左標題右數值同一列：等比縮字級直到中間留得下 gap；還是撐不下就換較短的標題寫法。
@@ -1960,6 +2089,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     """單張長圖：區塊由上往下堆疊，圖高跟內容走，Telegram 縮圖後仍能讀。"""
     if not card or card.get("error"):
         return ""
+    try:
+        attach_etf_price_nav(card)
+    except Exception:
+        pass
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     table = card["table"]
     n = max(len(table), 1)
@@ -2008,11 +2141,15 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     except Exception:
         stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
-    note_max = 100 - 2 * pad_x - 6.4
-    stance_note_lines = _wrap_fit(str(stance_note or "").strip(), 11.2, note_max, CARD_FIG_W)
-    if not stance_note_lines and str(stance_note or "").strip():
-        stance_note_lines = [str(stance_note).strip()]
-    stance_h = 6.2 + 2.2 * max(0, len(stance_note_lines) - 1)
+    stance_txt_plan = str(card.get("stance") or "今天先看表，先等")
+    stance_plan = _stance_pane_plan(
+        stance_txt_plan,
+        stance_note,
+        lambda t, fs, weight=900: _text_w(t, fs, CARD_FIG_W, weight),
+        pad_x,
+        CARD_FIG_W,
+    )
+    stance_h = float(stance_plan["h"])
 
     fig_w = CARD_FIG_W
     badges = []
@@ -2038,7 +2175,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         mc_val = None
     # 有分點平均買超才加一行；沒有真數就不畫、不加高度。
     mc_line_h = 2.45 if mc_val is not None else 0.0
-    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap + mc_line_h
+    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap + mc_line_h + _etf_nav_extra_h(card)
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -2148,15 +2285,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
     px_right = 100 - pad_x - 3.2
     close_s = _fmt_price(card["close"])
-    ax.text(px_right, y + price_h * 0.70, close_s, fontproperties=_fp(28, "bold"),
-            color=chg_c, ha="right", va="center", zorder=3)
-    ax.text(px_right - tw(close_s, 28) - 2.0, y + price_h * 0.70, "收盤",
-            fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     chg_bits = [f"{chg:+.2f}%"]
     if chg_amt is not None:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(px_right, y + price_h * 0.24, "　".join(chg_bits),
-            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card)
     ohlc_bits = [
         f"開 {_fmt_price(card.get('open'))}",
         f"高 {_fmt_price(card.get('high'))}",
@@ -2192,7 +2324,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
 
-    # 左：今日態度＋白話標題；下一行完整說明（不要術語）。
+    # 左：今日態度＋白話標題；標題短就把說明靠右同一行，其餘下一行。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
     stance_txt = str(card.get("stance") or "今天先看表，先等")
@@ -2203,7 +2335,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     else:
         s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
     pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=C["panel"])
-    chip_w = tw("今日態度", 11.0) + 3.2
+    chip_w = float(stance_plan["chip_w"])
     chip_h = 2.15
     chip_y = y + stance_h - chip_h - 0.55
     ax.add_patch(patches.FancyBboxPatch(
@@ -2212,14 +2344,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         facecolor=s_fc, edgecolor=s_ec, linewidth=0.8, zorder=4))
     ax.text(pad_x + 3.0 + chip_w / 2, chip_y + chip_h / 2, "今日態度",
             fontproperties=_fp(11.0, "bold"), color=s_ink, ha="center", va="center", zorder=5)
-    title_x = pad_x + 3.0 + chip_w + 1.6
-    title_fs = 15.0
-    while tw(stance_txt, title_fs) > (100 - pad_x - 3.2 - title_x) and title_fs > 11.5:
-        title_fs -= 0.3
+    title_x = float(stance_plan["title_x"])
+    title_fs = float(stance_plan["title_fs"])
     ax.text(title_x, chip_y + chip_h / 2, stance_txt,
             fontproperties=_fp(title_fs, "bold"), color=s_ink, va="center", zorder=4)
-    ny = y + 1.35 + 2.2 * max(0, len(stance_note_lines) - 1)
-    for ln in stance_note_lines:
+    same_row = str(stance_plan.get("same_row") or "")
+    if same_row:
+        note_x = title_x + tw(stance_txt, title_fs) + 2.4
+        ax.text(note_x, chip_y + chip_h / 2, same_row,
+                fontproperties=_fp(11.2), color=C["ink_soft"], ha="left", va="center", zorder=4)
+    below = list(stance_plan.get("below") or [])
+    ny = y + 1.35 + 2.2 * max(0, len(below) - 1)
+    for ln in below:
         ax.text(pad_x + 3.2, ny, ln,
                 fontproperties=_fp(11.2), color=C["ink_soft"], va="center", zorder=4)
         ny -= 2.2
@@ -2507,6 +2643,20 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("開高低", ohlc or "—"),
             kv_compact("收盤", f"{_fmt_price(card['close'])}　{move}"),
             kv_compact("當日", f"{chg:+.2f}%"),
+            *([
+                kv_compact(
+                    "淨值",
+                    f"{float(card['etf_nav']):.2f}"
+                    + (
+                        f"（{str(card.get('etf_nav_date'))[4:6]}/{str(card.get('etf_nav_date'))[6:8]}）"
+                        if len(str(card.get('etf_nav_date') or '')) == 8
+                        else ""
+                    ),
+                )
+            ] if card.get("etf_nav") is not None else []),
+            *([
+                kv_compact("折溢價", f"{float(card['etf_premium']):+.2f}%")
+            ] if card.get("etf_premium") is not None else []),
         ),
         section(
             kv_compact("距20日高", f"{card['dist_h20']:+.1f}%"),
@@ -2547,6 +2697,10 @@ def render_first_glance_png(
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    try:
+        attach_etf_price_nav(card, db_path)
+    except Exception:
+        pass
     from chip_tape import fmt_lots
     from decision_card_signals import format_card_query_stamp, volume_headline_rank, volume_rank_pair_text
 
@@ -2563,7 +2717,7 @@ def render_first_glance_png(
     except Exception:
         mc = None
     # 主力成本只畫在收盤區（跟高低卡同一格），基本面不再重複一列。
-    official_labs = ("估值", "資券餘額", "類型", "淨值", "折溢價")
+    official_labs = ("類型", "配息", "上次配", "下次除息", "估值", "資券餘額")
     official = [p for p in (fund_rows or []) if str(p[0]) in official_labs]
     rest = [p for p in (fund_rows or []) if str(p[0]) not in official_labs and str(p[0]) != "主力成本"]
     fund_rows = official + rest
@@ -2629,7 +2783,7 @@ def render_first_glance_png(
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     mc_line_h = 2.45 if mc is not None else 0.0
     n_badge = max(len(badge_rows), 1)
-    price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h
+    price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h + _etf_nav_extra_h(card)
 
     gain_n = _finite_num(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60"))
     gain = float(gain_n if gain_n is not None else 0)
@@ -2779,16 +2933,12 @@ def render_first_glance_png(
     close_v = last.get("close") if last.get("close") is not None else card.get("close")
     chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
     close_s = _fmt_price(close_v)
-    ax.text(inner_r, y + price_h * 0.70, close_s, fontproperties=_fp(28, "bold"),
-            color=chg_c, ha="right", va="center", zorder=3)
-    ax.text(inner_r - tw(close_s, 28) - 2.0, y + price_h * 0.70, "收盤",
-            fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     move_txt = (move.get("text") or "").strip()
     chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
     if chg_amt is not None and not move_txt:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(inner_r, y + price_h * 0.24, "　".join(chg_bits),
-            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card)
+    # 股票收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
     ohlc_bits = [
         f"開 {_fmt_price(last.get('open') or card.get('open'))}",
         f"高 {_fmt_price(last.get('high') or card.get('high'))}",

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""官方快照：本益／淨值／殖利率、融資融券餘額、暫停當沖、ETF 前一日淨值、加權全日量、產業代碼。
+"""官方快照：本益／淨值／殖利率、融資融券餘額、暫停當沖、ETF 前一日淨值與配息、加權全日量、產業代碼。
 
 只存官方欄位。空字串＝沒有真數，不上卡。禁止推估成本價。
-ETF 折溢價只用已結算單位淨值對同一天收盤；盤中預估淨值不上。
+ETF 折溢價只用已結算單位淨值對畫面收盤；盤中預估淨值不上。
+配息只存證交所 etfDiv 已列的除息日與每單位金額；金額 null＝未公告，不上數字。
 盤後一次平行抓，縮短等待；查股只讀庫。
 """
 from __future__ import annotations
@@ -35,6 +36,8 @@ TPEX_MARGN = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"
 TPEX_COMPANY = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 # 證交所 MIS：h＝前一營業日單位淨值（已結算）。f／g 是盤中預估，不上卡。
 MIS_ALL_ETF = "https://mis.twse.com.tw/stock/data/all_etf.txt"
+# 證交所 ETF 收益分配：除息日＋每單位金額。null＝尚未公告，禁止拿來預估。
+TWSE_ETF_DIV = "https://www.twse.com.tw/rwd/zh/ETF/etfDiv?response=json"
 
 # 證交所／櫃買「產業別」代碼 → 官方產業名（含電子業細分 24–31）。
 # 來源：公開資訊觀測站／上市櫃公司基本資料產業別。
@@ -90,6 +93,13 @@ def roc_to_ymd(raw: str) -> str:
 
 
 def _num(val: Any) -> Optional[float]:
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        n = float(val)
+        if n != n:
+            return None
+        return n
     s = str(val or "").replace(",", "").replace("%", "").strip()
     if s in ("", "-", "--", "n/a", "N/A", "null", "None", "nan"):
         return None
@@ -192,6 +202,53 @@ def parse_mis_etf_nav(payload: dict) -> List[dict]:
     return out
 
 
+def fetch_etf_div_payload(timeout: int = 45) -> dict:
+    headers = dict(_UA)
+    headers["Referer"] = "https://www.twse.com.tw/"
+    req = Request(TWSE_ETF_DIV, headers=headers)
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def parse_etf_div(payload: dict) -> List[dict]:
+    """證交所 etfDiv。金額 null／空＝未公告，整列仍留除息日；不上預估數字。"""
+    if not isinstance(payload, dict):
+        return []
+    fields = [str(x) for x in (payload.get("fields") or [])]
+    rows = payload.get("data") or []
+    if not fields or not isinstance(rows, list):
+        return []
+    out: List[dict] = []
+    seen = set()
+    for row in rows:
+        if not isinstance(row, (list, tuple)):
+            continue
+        m = {fields[i]: row[i] if i < len(row) else "" for i in range(len(fields))}
+        sid = str(m.get("證券代號") or "").strip()
+        ex = roc_to_ymd(str(m.get("除息交易日") or ""))
+        if not sid or len(ex) != 8:
+            continue
+        key = (sid, ex)
+        if key in seen:
+            continue
+        seen.add(key)
+        amount = _num(m.get("收益分配金額 (每1受益權益單位)"))
+        if amount is not None and amount < 0:
+            amount = None
+        out.append(
+            {
+                "stock_id": sid,
+                "ex_date": ex,
+                "amount": amount,
+                "record_date": roc_to_ymd(str(m.get("收益分配基準日") or "")),
+                "pay_date": roc_to_ymd(str(m.get("收益分配發放日") or "")),
+                "source": "twse_etfDiv",
+            }
+        )
+    return out
+
+
 def ensure_schema(db_path: str | None = None) -> str:
     path = db_path or get_db_path()
     parent = os.path.dirname(path)
@@ -240,10 +297,21 @@ def ensure_schema(db_path: str | None = None) -> str:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (stock_id, date)
             );
+            CREATE TABLE IF NOT EXISTS etf_div_event (
+                stock_id TEXT NOT NULL,
+                ex_date TEXT NOT NULL,
+                amount REAL,
+                pay_date TEXT NOT NULL DEFAULT '',
+                record_date TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (stock_id, ex_date)
+            );
             CREATE INDEX IF NOT EXISTS idx_valuation_date ON daily_valuation(date);
             CREATE INDEX IF NOT EXISTS idx_margin_date ON daily_margin(date);
             CREATE INDEX IF NOT EXISTS idx_daytrade_date ON daytrade_status(date, suspended);
             CREATE INDEX IF NOT EXISTS idx_etf_nav_date ON etf_nav_snapshot(date);
+            CREATE INDEX IF NOT EXISTS idx_etf_div_date ON etf_div_event(ex_date);
             """
         )
         conn.commit()
@@ -505,6 +573,52 @@ def _upsert_etf_nav(conn: sqlite3.Connection, rows: Iterable[dict], now: str) ->
     return n
 
 
+def _upsert_etf_div(conn: sqlite3.Connection, rows: Iterable[dict], now: str) -> int:
+    n = 0
+    for r in rows:
+        sid = str(r.get("stock_id") or "").strip()
+        ex = str(r.get("ex_date") or "").replace("-", "")[:8]
+        if not sid or len(ex) != 8:
+            continue
+        amount = r.get("amount")
+        if amount is not None:
+            try:
+                amount = float(amount)
+            except (TypeError, ValueError):
+                amount = None
+            if amount is not None and amount < 0:
+                amount = None
+        conn.execute(
+            """
+            INSERT INTO etf_div_event(stock_id, ex_date, amount, pay_date, record_date, source, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(stock_id, ex_date) DO UPDATE SET
+                amount=CASE
+                    WHEN excluded.amount IS NOT NULL THEN excluded.amount
+                    ELSE etf_div_event.amount END,
+                pay_date=CASE
+                    WHEN excluded.pay_date != '' THEN excluded.pay_date
+                    ELSE etf_div_event.pay_date END,
+                record_date=CASE
+                    WHEN excluded.record_date != '' THEN excluded.record_date
+                    ELSE etf_div_event.record_date END,
+                source=excluded.source,
+                updated_at=excluded.updated_at
+            """,
+            (
+                sid,
+                ex,
+                amount,
+                str(r.get("pay_date") or ""),
+                str(r.get("record_date") or ""),
+                r.get("source") or "twse_etfDiv",
+                now,
+            ),
+        )
+        n += 1
+    return n
+
+
 def _upsert_daytrade(conn: sqlite3.Connection, rows: Iterable[dict], now: str) -> int:
     n = 0
     for r in rows:
@@ -632,7 +746,7 @@ def overlay_industry(db_path: str, pairs: Sequence[Tuple[str, str]]) -> int:
 
 
 def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
-    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／ETF 前一日淨值／加權量與開高低／產業名。"""
+    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／ETF 前一日淨值與配息／加權量與開高低／產業名。"""
     path = ensure_schema(db_path)
     jobs = {
         "bwibbu": TWSE_BWIBBU,
@@ -647,16 +761,17 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
     }
     fetched: Dict[str, Any] = {}
     errors: Dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=11) as pool:
         futs = {pool.submit(fetch_json, url): name for name, url in jobs.items()}
         futs[pool.submit(fetch_mis_etf_payload)] = "etf_nav"
+        futs[pool.submit(fetch_etf_div_payload)] = "etf_div"
         for fut in as_completed(futs):
             name = futs[fut]
             try:
                 fetched[name] = fut.result()
             except Exception as exc:
                 errors[name] = str(exc)
-                fetched[name] = [] if name != "etf_nav" else {}
+                fetched[name] = {} if name in ("etf_nav", "etf_div") else []
                 log.warning("官方快照 %s 失敗：%s", name, exc)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -669,7 +784,7 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
             fallback = fuse_end_trading_date()
         except Exception:
             fallback = ""
-    val_n = mar_n = dt_n = nav_n = 0
+    val_n = mar_n = dt_n = nav_n = div_n = 0
     conn = sqlite3.connect(path)
     try:
         val_n += _upsert_valuation(conn, parse_bwibbu(fetched.get("bwibbu") or []), now)
@@ -678,6 +793,7 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         mar_n += _upsert_margin(conn, parse_tpex_margin(fetched.get("tpex_margin") or []), now)
         dt_n += _upsert_daytrade(conn, parse_twtb4u(fetched.get("twtb4u") or []), now)
         nav_n += _upsert_etf_nav(conn, parse_mis_etf_nav(fetched.get("etf_nav") or {}), now)
+        div_n += _upsert_etf_div(conn, parse_etf_div(fetched.get("etf_div") or {}), now)
         conn.commit()
     finally:
         conn.close()
@@ -689,11 +805,12 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
     ind_n = overlay_industry(path, industry_pairs)
 
     return {
-        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n > 0,
+        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n + div_n > 0,
         "valuation": val_n,
         "margin": mar_n,
         "daytrade": dt_n,
         "etf_nav": nav_n,
+        "etf_div": div_n,
         "fmtqik": fmt_n,
         "index_ohlc": ohlc_n,
         "industry": ind_n,
@@ -775,18 +892,29 @@ def paused_daytrade_ids(db_path: str | None = None, as_of: str | None = None) ->
     return {str(r[0]) for r in rows}
 
 
-def latest_etf_nav(stock_id: str, db_path: str | None = None) -> Optional[Dict[str, Any]]:
+def latest_etf_nav(stock_id: str, db_path: str | None = None, as_of: str | None = None) -> Optional[Dict[str, Any]]:
     path = db_path or get_db_path()
     ensure_schema(path)
+    cap = str(as_of or "").replace("-", "")[:8]
     conn = sqlite3.connect(path)
     try:
-        row = conn.execute(
-            """
-            SELECT date, nav, source
-            FROM etf_nav_snapshot WHERE stock_id=? ORDER BY date DESC LIMIT 1
-            """,
-            (str(stock_id).strip(),),
-        ).fetchone()
+        if len(cap) == 8:
+            row = conn.execute(
+                """
+                SELECT date, nav, source
+                FROM etf_nav_snapshot WHERE stock_id=? AND date<=?
+                ORDER BY date DESC LIMIT 1
+                """,
+                (str(stock_id).strip(), cap),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT date, nav, source
+                FROM etf_nav_snapshot WHERE stock_id=? ORDER BY date DESC LIMIT 1
+                """,
+                (str(stock_id).strip(),),
+            ).fetchone()
     except sqlite3.OperationalError:
         return None
     finally:
@@ -840,6 +968,148 @@ def etf_nav_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tuple[
         prem = (close - nav_f) / nav_f * 100.0
         rows.append(("折溢價", f"{prem:+.2f}%"))
     return rows
+
+
+def etf_price_nav(
+    stock_id: str,
+    db_path: str | None = None,
+    *,
+    close: float | None = None,
+    as_of: str | None = None,
+) -> Optional[Dict[str, Any]]:
+    """收盤旁用：已結算淨值＋相對畫面收盤的折溢價。不用盤中預估淨值。"""
+    nav_row = latest_etf_nav(stock_id, db_path, as_of=as_of)
+    if not nav_row:
+        return None
+    try:
+        nav_f = float(nav_row.get("nav"))
+    except (TypeError, ValueError):
+        return None
+    date = str(nav_row.get("date") or "")
+    if nav_f <= 0 or len(date) != 8:
+        return None
+    px = None
+    if close is not None:
+        try:
+            px = float(close)
+        except (TypeError, ValueError):
+            px = None
+        if px is not None and px <= 0:
+            px = None
+    if px is None:
+        px = _quote_close_on(stock_id, date, db_path)
+    out: Dict[str, Any] = {"nav": nav_f, "date": date, "source": nav_row.get("source") or ""}
+    if px is not None:
+        out["close"] = px
+        out["premium"] = (px - nav_f) / nav_f * 100.0
+    return out
+
+
+def _fmt_etf_div_amt(n: float) -> str:
+    s = f"{float(n):.4f}".rstrip("0").rstrip(".")
+    if "." not in s:
+        return s + ".00"
+    if len(s.split(".", 1)[1]) == 1:
+        return s + "0"
+    return s
+
+
+def etf_div_cadence_label(ex_dates: Sequence[str]) -> str:
+    """用官方除息日距：月配／季配／半年配。對不準就不上。"""
+    uniq = sorted(
+        {str(d or "").replace("-", "")[:8] for d in ex_dates if len(str(d or "").replace("-", "")[:8]) == 8}
+    )
+    if len(uniq) < 2:
+        return ""
+    gaps = []
+    for a, b in zip(uniq, uniq[1:]):
+        try:
+            gaps.append((datetime.strptime(b, "%Y%m%d") - datetime.strptime(a, "%Y%m%d")).days)
+        except ValueError:
+            continue
+    if not gaps:
+        return ""
+    med = sorted(gaps)[len(gaps) // 2]
+    if 20 <= med <= 45:
+        return "月配"
+    if 70 <= med <= 110:
+        return "季配"
+    if 150 <= med <= 220:
+        return "半年配"
+    return ""
+
+
+def etf_div_plain_rows(
+    stock_id: str,
+    db_path: str | None = None,
+    *,
+    today: str | None = None,
+) -> List[Tuple[str, str]]:
+    """第一次看：配息節奏、上次配、下次除息。金額只上已公告，不預估。"""
+    path = db_path or get_db_path()
+    sid = str(stock_id or "").strip()
+    if not sid or not path:
+        return []
+    ensure_schema(path)
+    day = str(today or "").replace("-", "")[:8]
+    if len(day) != 8:
+        try:
+            from config import taipei_today_str
+
+            day = taipei_today_str()
+        except Exception:
+            day = datetime.now().strftime("%Y%m%d")
+    conn = sqlite3.connect(path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT ex_date, amount FROM etf_div_event
+            WHERE stock_id=? ORDER BY ex_date ASC
+            """,
+            (sid,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+    events = []
+    for ex, amt in rows:
+        ex_s = str(ex or "").replace("-", "")[:8]
+        if len(ex_s) != 8:
+            continue
+        events.append({"ex_date": ex_s, "amount": amt})
+    if not events:
+        return []
+    out: List[Tuple[str, str]] = []
+    cadence = etf_div_cadence_label([e["ex_date"] for e in events])
+    if cadence:
+        out.append(("配息", cadence))
+    past = [e for e in events if e["ex_date"] < day]
+    nxt = [e for e in events if e["ex_date"] >= day]
+    last = None
+    for e in reversed(past):
+        if e.get("amount") is not None:
+            try:
+                if float(e["amount"]) >= 0:
+                    last = e
+                    break
+            except (TypeError, ValueError):
+                continue
+    if last:
+        md = f"{last['ex_date'][4:6]}/{last['ex_date'][6:8]}"
+        out.append(("上次配", f"{_fmt_etf_div_amt(float(last['amount']))}（{md}）"))
+    if nxt:
+        n = nxt[0]
+        md = f"{n['ex_date'][4:6]}/{n['ex_date'][6:8]}"
+        amt = n.get("amount")
+        if amt is not None:
+            try:
+                out.append(("下次除息", f"{md} 配 {_fmt_etf_div_amt(float(amt))}"))
+            except (TypeError, ValueError):
+                out.append(("下次除息", md))
+        else:
+            out.append(("下次除息", md))
+    return out
 
 
 def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tuple[str, str]]:

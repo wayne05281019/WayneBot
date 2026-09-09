@@ -565,9 +565,9 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
             if kind:
                 rows.append(("類型", kind))
             try:
-                from official_snapshots import valuation_plain_rows
+                from official_snapshots import etf_div_plain_rows
 
-                rows.extend(valuation_plain_rows(sid, path))
+                rows.extend(etf_div_plain_rows(sid, path))
             except Exception:
                 pass
             if not rows:
@@ -655,16 +655,17 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
             blocks.append(
                 section(
                     f"這檔是{kind_txt}，沒有公司月營收／季報毛利率。",
-                    "公司本益不上卡。官方單位淨值有數才上折溢價。",
+                    "公司本益不上卡。折溢價看收盤旁；配息只上已公告金額。",
                 )
             )
             kv = []
             if kind:
                 kv.append(kv_compact("類型", kind))
             try:
-                from official_snapshots import valuation_plain_rows
+                from official_snapshots import etf_div_plain_rows, etf_nav_plain_rows
 
-                kv.extend(kv_compact(a, b) for a, b in valuation_plain_rows(sid, path))
+                kv.extend(kv_compact(a, b) for a, b in etf_nav_plain_rows(sid, path))
+                kv.extend(kv_compact(a, b) for a, b in etf_div_plain_rows(sid, path))
             except Exception:
                 pass
             if kv:

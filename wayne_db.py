@@ -670,22 +670,44 @@ def _rank_exact_name_hits(hits: List[Dict[str, Any]], q: str) -> List[Dict[str, 
     return hits
 
 
+def _lookup_etf_cadence_map(conn) -> Dict[str, str]:
+    try:
+        rows = conn.execute(
+            "SELECT stock_id, ex_date FROM etf_div_event ORDER BY stock_id, ex_date"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    by: Dict[str, list] = {}
+    for sid, ex in rows:
+        by.setdefault(str(sid), []).append(str(ex or ""))
+    try:
+        from official_snapshots import etf_div_cadence_label
+    except Exception:
+        return {}
+    return {sid: etf_div_cadence_label(dates) for sid, dates in by.items()}
+
+
 def _lookup_etf_by_kinds(
     db_path: str,
     kinds: Tuple[str, ...],
     limit: int,
     latest: Optional[str],
+    *,
+    cadence: str = "",
+    needles: Tuple[str, ...] = (),
+    label: str = "",
 ) -> List[Dict[str, Any]]:
-    """依官方 asset_type 列出當日成交量較大的 ETF，不要用讀音去撞現股。"""
+    """依官方 asset_type／除息日距／股名列出當日成交量較大的 ETF，不要用讀音去撞現股。"""
     from universe import classify_target, etf_kind_label
 
     want = {str(k) for k in kinds}
-    label = etf_kind_label(kinds)
+    show = str(label or "").strip() or etf_kind_label(kinds)
     cap = max(1, int(limit))
     out: List[Dict[str, Any]] = []
     with get_db_connection(db_path, write=False) as conn:
         rows: List[Any] = []
         from_universe = False
+        cadence_map = _lookup_etf_cadence_map(conn) if cadence else {}
         if latest:
             try:
                 qmarks = ",".join("?" * len(want))
@@ -718,11 +740,16 @@ def _lookup_etf_by_kinds(
                 kind, ok = classify_target(r["stock_id"], r["stock_name"] or "")
                 if not ok or kind not in want:
                     continue
+            name = str(r["stock_name"] or "")
+            if needles and not any(n in name for n in needles):
+                continue
+            if cadence and cadence_map.get(str(r["stock_id"])) != cadence:
+                continue
             item = dict(r)
             item["quote_date"] = latest
             item["fuzzy"] = False
             item["category"] = True
-            item["category_label"] = label
+            item["category_label"] = show
             out.append(item)
             if len(out) >= cap:
                 break
@@ -730,7 +757,7 @@ def _lookup_etf_by_kinds(
 
 
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／0050／00631L）。
+    """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／月配／高股息／0050／00631L）。
 
     名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
     再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
@@ -755,11 +782,19 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     cap = int(limit)
     latest = _resolve_lookup_quote_date(db_path)
     if not ticker:
-        from universe import parse_etf_lookup_kinds
+        from universe import parse_etf_lookup_spec
 
-        kinds = parse_etf_lookup_kinds(raw)
-        if kinds:
-            return _lookup_etf_by_kinds(db_path, kinds, cap, latest)
+        spec = parse_etf_lookup_spec(raw)
+        if spec:
+            return _lookup_etf_by_kinds(
+                db_path,
+                spec["kinds"],
+                cap,
+                latest,
+                cadence=str(spec.get("cadence") or ""),
+                needles=tuple(spec.get("needles") or ()),
+                label=str(spec.get("label") or ""),
+            )
     exact: List[Dict[str, Any]] = []
     with get_db_connection(db_path, write=False) as conn:
         if latest and ticker:
