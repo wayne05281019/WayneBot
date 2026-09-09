@@ -32,6 +32,12 @@ JOB_SPECS: Dict[str, Dict[str, Any]] = {
         "due_minutes": 8 * 60,
         "key": "screen",
     },
+    "midday_review": {
+        "label": "尾盤可切",
+        "scheduled": "12:45",
+        "due_minutes": 13 * 60 + 15,
+        "key": "midday",
+    },
 }
 
 HEARTBEAT_POLLING = "telegram_polling"
@@ -41,6 +47,7 @@ _POLLING_STALE_SECONDS = 900
 _WATCHDOG_SCHEDULER_JOB = {
     "increment": "fuse",
     "morning_screen": "morning",
+    "midday_review": "midday",
 }
 
 
@@ -171,9 +178,13 @@ def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     try:
         from trading_calendar import morning_screen_pipeline_key
 
-        keys["morning_screen"] = morning_screen_pipeline_key(db_path, now=now)
+        screen_key = morning_screen_pipeline_key(db_path, now=now)
+        keys["morning_screen"] = screen_key
+        as_of = str(screen_key or "").split("-", 1)[-1] or "none"
+        keys["midday_review"] = f"midday-{as_of}"
     except Exception:
         keys["morning_screen"] = "screen-none"
+        keys["midday_review"] = "midday-none"
     return keys
 
 

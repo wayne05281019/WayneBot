@@ -136,12 +136,42 @@ class MainRunner:
             logger.warning("ℹ️ 未設置 Telegram Token，將輸出日誌而不推播。")
 
     def already_completed_today(self, run_date: str = None) -> bool:
+        return self.pipeline_status(run_date) == "success"
+
+    def pipeline_status(self, run_date: str = None) -> str:
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute("SELECT status FROM pipeline_runs WHERE run_date = ?;", (run_date or self.today_str,))
         row = cur.fetchone()
         conn.close()
-        return bool(row and row[0] == "success")
+        return str(row[0] or "") if row else ""
+
+    def demote_unsent_screen_success(self) -> int:
+        """GHA 從不寄海選。zip 裡 screen-* success 是 401／notify-off 假已寄。
+
+        寫進 Release 前改成 computed，空碟還原時 Render 才會真寄。
+        非 GitHub Actions 不改（常駐 success 是真的送到）。
+        """
+        if not (os.getenv("GITHUB_ACTIONS") or "").strip():
+            return 0
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cur = conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET status = 'computed',
+                    notes = CASE
+                        WHEN COALESCE(notes, '') LIKE '%gha-sanitize%' THEN notes
+                        ELSE trim(COALESCE(notes, '') || ' gha-sanitize-no-send')
+                    END
+                WHERE run_date LIKE 'screen-%' AND status = 'success'
+                """
+            )
+            n = int(cur.rowcount or 0)
+            conn.commit()
+            return n
+        finally:
+            conn.close()
 
     def _mark_pipeline(self, status: str, notes: str = "", run_date: str = None):
         conn = sqlite3.connect(self.db_path)
@@ -665,9 +695,8 @@ class MainRunner:
                 sent_ok = False
         else:
             report_text = (screening or {}).get("message") if screening else ""
-            self._broadcast_family(report_text or self._screening_fail_message())
-            # 沒有 bot 物件就無法從 send_screening_report 取 ACK；本機預覽不算已寄到。
-            sent_ok = False
+            # 沒有 bot 物件就走原生 API；有 token 且 Telegram 接受才算寄到。
+            sent_ok = bool(self._broadcast_family(report_text or self._screening_fail_message()))
         if not delivered:
             logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
             return False
@@ -1011,9 +1040,14 @@ class MainRunner:
 
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
-        if skip_if_done and as_of and self.already_completed_today(key):
-            logger.info("早上海選 %s 已寄過，略過。", key)
-            return True
+        if skip_if_done and as_of:
+            status = self.pipeline_status(key)
+            if status == "success":
+                logger.info("早上海選 %s 已寄過，略過。", key)
+                return True
+            if status == "computed" and not notify:
+                logger.info("早上海選 %s 已算出（不寄），略過。", key)
+                return True
         logger.info("☀️ 06:30 先確認庫已齊，再寄海選")
         from config import fuse_end_date
 
@@ -1200,6 +1234,11 @@ def main():
         from config import job_kind
 
         runner = MainRunner()
+        gha = bool((os.getenv("GITHUB_ACTIONS") or "").strip())
+        if gha:
+            n = runner.demote_unsent_screen_success()
+            if n:
+                logger.info("GHA zip 海選假成功已改成 computed：%s 筆", n)
         kind = job_kind()
         # GHA cron 與 trigger 檔可能各跑一次；略過已完成才不會寄兩份早報。
         # trigger 檔（push）是補跑：必須真的再寄，不能因為 pipeline_runs 已標成功就略過。
@@ -1218,7 +1257,6 @@ def main():
             ok = runner.run_midday_review(skip_if_done=True)
         else:
             # GitHub Actions 盤後只融合、不寄「官方收盤已寫進庫」。寄訊歸 Render。
-            gha = bool((os.getenv("GITHUB_ACTIONS") or "").strip())
             ok = runner.run_increment_job(skip_if_done=True, notify=not gha)
         if not ok:
             sys.exit(1)

@@ -95,6 +95,27 @@ def test_missed_jobs_flags_morning_in_data_role(tmp_path, monkeypatch):
     assert "morning_screen" in kinds
 
 
+def test_missed_jobs_flags_midday_after_deadline(tmp_path, monkeypatch):
+    path = _make_db(tmp_path)
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 2, 13, 20)
+    kinds = {m["kind"] for m in missed_jobs(path, now=now)}
+    assert kinds == {"morning_screen", "midday_review"}
+    assert all(m["run_date"] != "midday-none" for m in missed_jobs(path, now=now))
+
+
+def test_missed_jobs_midday_success_clears(tmp_path, monkeypatch):
+    path = _make_db(
+        tmp_path,
+        runs={"screen-20260902": "success", "midday-20260902": "success"},
+    )
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 2, 13, 20)
+    assert missed_jobs(path, now=now) == []
+
+
 def test_missed_jobs_success_clears(tmp_path, monkeypatch):
     path = _make_db(tmp_path, runs={"screen-20260902": "success"})
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "full")
@@ -128,7 +149,7 @@ def test_missed_jobs_flags_both_after_evening(tmp_path, monkeypatch):
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)  # 過了 18:30
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
-    assert kinds == {"increment", "morning_screen"}
+    assert kinds == {"increment", "morning_screen", "midday_review"}
 
 
 def test_missed_jobs_skips_weekend(tmp_path, monkeypatch):
@@ -162,10 +183,10 @@ def test_watchdog_scan_alerts_once(tmp_path, monkeypatch):
 
     first = watchdog_scan(path, now=now, check_release=False)
     assert first["enabled"] is True
-    assert len(first["alerts"]) == 2
+    assert len(first["alerts"]) == 3
 
     second = watchdog_scan(path, now=now, check_release=False)
-    assert len(second["missed"]) == 2
+    assert len(second["missed"]) == 3
     assert second["alerts"] == []
 
 
@@ -185,7 +206,7 @@ def test_watchdog_scan_no_claim_is_readonly(tmp_path, monkeypatch):
     now = datetime(2026, 9, 2, 19, 0)
     a = watchdog_scan(path, now=now, claim=False, check_release=False)
     b = watchdog_scan(path, now=now, claim=False, check_release=False)
-    assert len(a["alerts"]) == len(b["alerts"]) == 2
+    assert len(a["alerts"]) == len(b["alerts"]) == 3
 
 
 def test_format_watchdog_alert():
@@ -288,7 +309,10 @@ def test_watchdog_scan_alerts_on_stale_release(tmp_path, monkeypatch):
 
     import requests
 
-    path = _make_db(tmp_path, runs={"screen-20260902": "success", "20260902": "success"})
+    path = _make_db(
+        tmp_path,
+        runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
+    )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))
@@ -307,7 +331,10 @@ def test_watchdog_release_check_can_be_disabled(tmp_path, monkeypatch):
 
     import requests
 
-    path = _make_db(tmp_path, runs={"screen-20260902": "success", "20260902": "success"})
+    path = _make_db(
+        tmp_path,
+        runs={"screen-20260902": "success", "20260902": "success", "midday-20260902": "success"},
+    )
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 2, 19, 0)
     old = email.utils.format_datetime(now.replace(tzinfo=timezone.utc) - timedelta(days=9))

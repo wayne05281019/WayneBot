@@ -260,6 +260,7 @@ def test_watchdog_loop_retries_before_alert():
     assert "release_publish" not in body
     assert "run_morning_screen" in body
     assert "run_increment_job" in body
+    assert "run_midday_review" in body
 
 
 def test_watchdog_retry_runs_morning_before_alert(monkeypatch, recorder):
@@ -289,6 +290,19 @@ def test_watchdog_retry_fuses_before_morning(monkeypatch, recorder):
     assert ran == ["increment", "morning_screen"]
     assert [c[0] for c in recorder.calls] == ["fuse", "morning"]
     assert recorder.calls[0][1]["notify"] is False
+
+
+def test_watchdog_retry_runs_midday_before_alert(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [{"kind": "midday_review", "run_date": "midday-20260908"}],
+    )
+    ran = main.retry_missed_owned_jobs()
+    assert ran == ["midday_review"]
+    assert [c[0] for c in recorder.calls] == ["midday"]
+    assert recorder.calls[0][1]["skip_if_done"] is True
 
 
 def test_watchdog_retry_skips_release(monkeypatch, recorder):
