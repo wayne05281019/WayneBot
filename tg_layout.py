@@ -509,7 +509,9 @@ _LEAD_PUNCT = set("，。、；：）」』】!！?？)]}")
 _SENTENCE_END = set("。！？；")
 _SECONDARY_BREAK = set("，、｜／")
 _KV_LINE_RE = re.compile(r"^[\u4e00-\u9fff]{2,4}　")
-_REVIEW_STAT_RE = re.compile(r"\d+檔漲\d+檔|\d+筆漲\d+筆|（勝[^）\n]*／\s*\d+）")
+_REVIEW_STAT_RE = re.compile(
+    r"\d+檔漲\d+檔|\d+筆漲\d+筆|筆模擬買進|筆上漲|（勝[^）\n]*／\s*\d+）"
+)
 _RATIO_TAIL_RE = re.compile(r"^\d{1,4}[）)]?$")
 
 

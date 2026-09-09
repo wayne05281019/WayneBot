@@ -2537,8 +2537,11 @@ class AIDeskTest(unittest.TestCase):
             html = format_ai_review_html(path, user_id=ai_user_id("1001"))
             self.assertIn("AI 成交復盤", html)
             self.assertIn("2330", html)
+            self.assertIn("筆模擬買進", html)
             self.assertIn("筆漲", html)
             self.assertNotIn("勝 ", html)
+            self.assertNotIn("檔漲", html)
+            self.assertNotIn("3筆漲1筆", html)
             self.assertEqual(bucket_weight(path, "leave_zero"), 0.0)
         finally:
             os.remove(path)
