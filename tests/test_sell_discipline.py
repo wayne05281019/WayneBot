@@ -298,11 +298,12 @@ def test_html_and_glance_wire_sell_notes():
     assert "stance_explain" in card_src
     assert "今日態度" in card_src
     assert "monthly_stage" in card_src
-    from ai_trader import format_ai_desk_html
+    from ai_trader import format_ai_desk_html, format_ai_desk_pages
     from portfolio_engine import PortfolioEngine
 
-    assert "sell_notes_for_stocks" in inspect.getsource(format_ai_desk_html)
-    assert "月K" in inspect.getsource(format_ai_desk_html)
+    assert "sell_notes_for_stocks" in inspect.getsource(format_ai_desk_pages)
+    assert "月K" in inspect.getsource(format_ai_desk_pages)
+    assert "format_ai_desk_pages" in inspect.getsource(format_ai_desk_html)
     assert "sell_notes_for_stocks" in inspect.getsource(PortfolioEngine.format_holdings_html)
     assert "月K" in inspect.getsource(PortfolioEngine.format_holdings_html)
 
@@ -601,7 +602,7 @@ def test_sell_note_short_skips_when_table_reads_low():
 def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     from wayne_db import ensure_core_schema
     from portfolio_engine import PortfolioEngine
-    from ai_trader import ensure_ai_user, format_ai_desk_html
+    from ai_trader import ensure_ai_user, format_ai_desk_html, format_ai_desk_pages
 
     path = str(tmp_path / "ai_sell.db")
     ensure_core_schema(path)
@@ -623,6 +624,8 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
 
     monkeypatch.setattr("sell_discipline.sell_notes_for_stocks", fake_notes)
     html = format_ai_desk_html(eng, uid)
+    pages = format_ai_desk_pages(eng, uid)
+    assert len(pages) >= 2
     assert "紀律：" in html
     assert "月K　還在往上" in html
     assert "先出一點" in html
@@ -630,6 +633,8 @@ def test_ai_desk_html_wires_sell_note(monkeypatch, tmp_path):
     assert "<b>第 1 槽</b>" in html
     assert "<b>槽位</b>" in html
     assert "○" in html
+    assert any("第 1 槽" in p for p in pages)
+    assert not any("總資產" in p and "第 1 槽" in p for p in pages)
 
 
 def test_holdings_html_wires_sell_note(monkeypatch, tmp_path):

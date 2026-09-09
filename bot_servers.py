@@ -57,7 +57,7 @@ from trade_journal import (
 )
 from screening_engine import ScreeningEngine
 from portfolio_engine import PortfolioEngine
-from ai_trader import format_ai_desk_html, run_ai_desk
+from ai_trader import format_ai_desk_html, format_ai_desk_pages, run_ai_desk
 from chips import generate_chips_image
 from intent_router import (
     NEEDS_STOCK,
@@ -565,13 +565,13 @@ HELP_TOPICS = {
         "• 獲利＝從近60個日曆天收盤低算上來（貼20日低不歸零）；距60根低是另外一欄\n"
         "• 溫度＝20日收盤位置＋月乖離。溫度≥80 且創歷史新高要注意（少追）\n"
         "• 升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追\n"
-        "• 表頭「今日態度」第二行只講這張20日表的數字和底色（先等／別追／先看表），不是下單指令\n"
+        "• 表頭「今日態度」標題旁邊講這張20日表的數字和底色（先等／別追／先看表）；標題短就同一行靠右，不是下單指令\n"
         "• 月K一句掛徽章：還在往上／已走空／在整理。跟表上「月乖離」（離20日線）不是同一條尺。不是買訊，不改海選\n"
         "• 表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名\n"
         "• 預警欄：K20高＝收盤靠近20日高且偏熱；K20低＝貼近20日低或月線乖離轉負。沒訊號時仍會露出高低（20高／10低），不藏表\n"
         "• 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
         "• 本益／淨值／殖利率、融資融券餘額（張與使用率）＝官方有數才上卡；沒有真分點就不會出現主力成本\n"
-        "• ETF 股名旁標被動／主動／正2／反1；沒有公司月營收、毛利率、公司本益。官方單位淨值有數才上折溢價，沒有就不畫\n"
+        "• ETF 第一次看：股名旁標被動／主動／正2／反1；收盤旁看官方淨值與折溢價（溢紅折綠）。下半只留類型、配息節奏、上次配、下次除息（金額只在已公告時寫）。沒有公司月營收、毛利率、公司本益，也不預估下次配多少\n"
         "• 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
         "• 產業說明＝一張圖卡：官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣；股名旁公開細項小框（沒抓到不畫）；不是內幕\n"
         "• 海選靠近 20 日收盤高＝少追，排後面；高低卡才是少賠主軸\n"
@@ -617,7 +617,7 @@ HELP_TOPICS = {
         "直接打股名或代號，例如 <b>南亞</b>、"
         + LOOKUP_CODE_EXAMPLES_HTML
         + "。\n"
-        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」列出成交量較大的幾檔。海選名單仍只有股票／KY，但查股收 ETF。\n"
+        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」「月配」「高股息」列出成交量較大的幾檔。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
         "一次出兩張圖：介紹圖（上半資訊、下半180日高低導航）→ 決策卡。完整橫式導航按圖下「導航圖」。\n"
@@ -4430,10 +4430,12 @@ class WayneTelegramBot:
 
         self._touch_user(uid)
         try:
-            html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine, uid)
+            pages = await asyncio.to_thread(format_ai_desk_pages, self.portfolio_engine, uid)
             positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
             # 這頁已依手機自行斷行；再 reflow 會把「5檔漲2檔」「倍數 1.00」拆到下一行。
-            parts = chunk_telegram_html(html)
+            parts: list = []
+            for page in pages:
+                parts.extend(chunk_telegram_html(page))
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
