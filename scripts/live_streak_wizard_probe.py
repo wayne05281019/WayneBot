@@ -16,10 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WAYNE = 9001
 BRO = 9002
 COMBOS = (
-    ("上市櫃", "外資"),
-    ("上市櫃", "投信"),
-    ("上市櫃", "外資+投信"),
-    ("興櫃", ""),
+    ("外資",),
+    ("投信",),
+    ("外資+投信",),
 )
 
 
@@ -79,32 +78,15 @@ def _htmls(msg) -> list[str]:
     return out
 
 
-async def walk_wizard(bot, uid: int, universe: str, kind: str) -> dict:
+async def walk_wizard(bot, uid: int, kind: str) -> dict:
     from buy_streak import KIND_ALIASES, MARKET_ALL, load_snapshot
 
     actor = f"{uid}:{uid}"
     t0 = time.perf_counter()
     await bot._start_buy_streak(_msg(uid, "連買區"), str(uid))
-    assert bot._pending.get(actor) == "fbuy:uni"
-
-    m0 = _msg(uid, universe)
-    await bot._handle_buy_streak(m0, str(uid), "fbuy:uni", universe, actor=actor)
-    if universe == "興櫃":
-        ms = int((time.perf_counter() - t0) * 1000)
-        return {
-            "uid": uid,
-            "kind": kind or "—",
-            "market": "興櫃",
-            "as_of": "",
-            "max_days": 0,
-            "first": None,
-            "pending": bot._pending.get(actor, ""),
-            "ms": ms,
-            "ok": bot._pending.get(actor) == "fbuy:em",
-        }
+    assert bot._pending.get(actor) == f"fbuy:kind:{MARKET_ALL}"
 
     kcode = KIND_ALIASES[kind]
-    assert bot._pending.get(actor) == f"fbuy:kind:{MARKET_ALL}"
     m1 = _msg(uid, kind)
     await bot._handle_buy_streak(m1, str(uid), bot._pending[actor], kind, actor=actor)
     pending_now = bot._pending.get(actor, "")
@@ -141,13 +123,14 @@ async def walk_wizard(bot, uid: int, universe: str, kind: str) -> dict:
 async def main():
     bot = _bot()
     combo_results = []
-    for universe, kind in COMBOS:
-        combo_results.append(await walk_wizard(bot, WAYNE, universe, kind))
+    for (kind,) in COMBOS:
+        combo_results.append(await walk_wizard(bot, WAYNE, kind))
 
     interleave = []
+    n = len(COMBOS)
     for i in range(10):
-        w = await walk_wizard(bot, WAYNE, COMBOS[i % 4][0], COMBOS[i % 4][1])
-        b = await walk_wizard(bot, BRO, COMBOS[(i + 1) % 4][0], COMBOS[(i + 1) % 4][1])
+        w = await walk_wizard(bot, WAYNE, COMBOS[i % n][0])
+        b = await walk_wizard(bot, BRO, COMBOS[(i + 1) % n][0])
         isolated = (
             bot._pending.get(f"{WAYNE}:{WAYNE}", "").startswith("fbuy:")
             and bot._pending.get(f"{BRO}:{BRO}", "").startswith("fbuy:")

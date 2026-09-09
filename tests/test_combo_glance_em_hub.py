@@ -241,7 +241,7 @@ def test_emerging_snapshot_refuses_fake_chip_streaks():
         load_snapshot(":memory:", "foreign", MARKET_EM)
 
 
-def test_streak_start_is_universe_inline_only():
+def test_streak_start_goes_to_listed_kind():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
@@ -252,11 +252,13 @@ def test_streak_start_is_universe_inline_only():
     msg.reply_html = AsyncMock()
 
     asyncio.run(bot._start_buy_streak(msg, "1"))
-    assert bot._pending["1:1"] == "fbuy:uni"
+    assert bot._pending["1:1"] == "fbuy:kind:ALL"
     html = msg.reply_html.await_args.args[0]
-    assert "上市櫃" in html and "興櫃" in html
+    assert "外資" in html and "投信" in html
+    assert "先選" not in html or "興櫃沒有" in html
     markup = msg.reply_html.await_args.kwargs["reply_markup"]
     labels = [b.text for row in markup.inline_keyboard for b in row]
-    assert labels[:2] == ["上市櫃", "興櫃"]
+    assert labels[:3] == ["外資", "投信", "外資+投信"]
+    assert "興櫃" not in labels
     assert not getattr(markup, "keyboard", None)
     assert msg.reply_html.await_count == 1

@@ -253,7 +253,7 @@ HELP_TOPICS = {
         "\n"
         "<b>海選怎麼轉 LINE</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
-        "興櫃：說明頁或海選底下按「興櫃」（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
+        "興櫃：按「海選」後選興櫃（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 股名右「開 LINE・傳這檔」＝只傳這一檔，開手機 LINE 選聯絡人\n"
@@ -323,7 +323,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請按說明頁或海選底下「興櫃」（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
+        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請按「海選」後選興櫃（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -382,8 +382,8 @@ HELP_TOPICS = {
         "\n"
         "<b>⑥ 連買區</b>\n"
         "• 是什麼：官方法人連續買超名單（不是下單訊號）。\n"
-        "• 怎麼用：先選<b>上市櫃</b>或<b>興櫃</b>（選了另一個就不會同時出現）。上市櫃再選外資／投信／外資+投信，再點天數。\n"
-        "• 興櫃沒有官方法人表，不算連買天。按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
+        "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區；興櫃名單請按「海選」再選興櫃。\n"
+        "• 按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按第一排最右「回報」。\n"
         "圖文在說明頁下方分類鈕。"
@@ -465,6 +465,7 @@ HELP_TOPICS = {
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "06:30 早報第一則是大盤狀況（美股＋台指期夜盤＋白話連動），接著寄黃金買點／重點觀察（沒檔也寫今日沒有）／優先看／周帶量（優先看沒名單就跳過）；半年高／站上季線／止跌請按主選單「海選」看完整。\n"
         "海選＝依最近一次官方收盤掃的<b>佈局</b>名單，不是盤中即時掃描。\n"
+        "按下去先選<b>上市櫃</b>或<b>興櫃</b>。興櫃用櫃買官方日均價，只掃黃金買點／重點觀察，不混進上市櫃。\n"
         "\n"
         "<b>這頁按鈕</b>\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
@@ -479,7 +480,7 @@ HELP_TOPICS = {
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
-        "興櫃不混進這份名單。說明頁或海選底下按「興櫃」（也可打「興櫃」）。\n"
+        "興櫃不混進這份名單。按「海選」後選興櫃（也可打「興櫃」）。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
@@ -613,7 +614,7 @@ HELP_TOPICS = {
         "直接打股名或代號，例如 <b>南亞</b>、"
         + LOOKUP_CODE_EXAMPLES_HTML
         + "。\n"
-        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。海選名單仍只有股票／KY，但查股收 ETF。\n"
+        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」列出成交量較大的幾檔。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
         "一次出兩張圖：介紹圖（上半資訊、下半180日高低導航）→ 決策卡。完整橫式導航按圖下「導航圖」。\n"
@@ -631,15 +632,13 @@ HELP_TOPICS = {
         "<b>連買區怎麼用</b>\n"
         "主選單第二排「連買區」。\n"
         "\n"
-        "<b>第一步</b>：先選並點<b>上市櫃</b>或<b>興櫃</b>（選了另一個就消失，不會兩顆一直留著）。\n"
-        "興櫃沒有官方法人買賣超表，不能算連買天。\n"
-        "\n"
-        "<b>第二步（上市櫃）</b>：點訊息下方三顆\n"
+        "<b>第一步</b>：點訊息下方三顆（只看上市櫃；興櫃沒有官方法人表，不算連買）。\n"
         "• <b>外資</b>＝外資連續買超\n"
         "• <b>投信</b>＝投信連續買超\n"
         "• <b>外資+投信</b>＝同一天兩家都買超才算一天\n"
+        "興櫃名單請按「海選」再選興櫃。\n"
         "\n"
-        "<b>第三步</b>：點連買天數（只列出剛好有股票的天數）。\n"
+        "<b>第二步</b>：點連買天數（只列出剛好有股票的天數）。\n"
         "不要找「上市／上櫃」分開的按鈕。點 6 就只看剛好連買 6 天的股票。\n"
         "按鈕只在這則訊息下面；輸入列維持兩排主選單，不再複製同一排。\n"
         "\n"
@@ -676,8 +675,8 @@ HELP_TOPICS = {
         "查完一檔，按鈕在<b>圖下面那一排</b>，不在右側 ⌨️ 主選單。\n"
         "\n"
         "<b>連買選到一半按錯</b>\n"
-        "先選上市櫃或興櫃，上市櫃再選外資／投信／外資+投信，再點天數。中途改按別顆就取消；再按「連買區」重來。\n"
-        "興櫃沒有官方法人表，不算連買天。按鈕只在訊息下面。\n"
+        "連買區直接選外資／投信／外資+投信，再點天數。中途改按別顆就取消；再按「連買區」重來。\n"
+        "興櫃沒有連買，請按「海選」再選興櫃。按鈕只在訊息下面。\n"
         "\n"
         "<b>「回報」按下去又反悔</b>\n"
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
@@ -1248,19 +1247,6 @@ class WayneTelegramBot:
         self._invalidate_menu_layout(uid)
         await self._refresh_reply_menu(message, uid=uid, silent=False)
 
-    def _streak_uni_inline(self):
-        from buy_streak import MARKET_ALL, MARKET_EM, UNI_BTN
-
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(UNI_BTN[MARKET_ALL], callback_data="fb:uni:ALL"),
-                    InlineKeyboardButton(UNI_BTN[MARKET_EM], callback_data="fb:uni:EM"),
-                ],
-                [InlineKeyboardButton("回主選單", callback_data="fb:home")],
-            ]
-        )
-
     def _streak_kind_inline(self, market: str = "ALL"):
         from buy_streak import KIND_BTN
 
@@ -1272,10 +1258,7 @@ class WayneTelegramBot:
                     InlineKeyboardButton(KIND_BTN["trust"], callback_data=f"fb:k:trust:{m}"),
                     InlineKeyboardButton(KIND_BTN["both"], callback_data=f"fb:k:both:{m}"),
                 ],
-                [
-                    InlineKeyboardButton("上一步", callback_data="fb:back:uni"),
-                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
-                ],
+                [InlineKeyboardButton("回主選單", callback_data="fb:home")],
             ]
         )
 
@@ -1340,10 +1323,8 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton("改看上市櫃", callback_data="fb:uni:ALL")],
-                [
-                    InlineKeyboardButton("上一步", callback_data="fb:back:uni"),
-                    InlineKeyboardButton("回主選單", callback_data="fb:home"),
-                ],
+                [InlineKeyboardButton("興櫃海選", callback_data="em:go")],
+                [InlineKeyboardButton("回主選單", callback_data="fb:home")],
             ]
         )
 
@@ -1360,15 +1341,7 @@ class WayneTelegramBot:
 
     async def _start_buy_streak(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
-        self._pending[actor] = "fbuy:uni"
-        await self._streak_send_step(
-            message,
-            "<b>連買區域</b>\n"
-            "先選<b>上市櫃</b>或<b>興櫃</b>（點訊息下方按鈕；選了另一個就不會同時出現）。\n"
-            "• <b>上市櫃</b>＝上市＋上櫃，官方法人買賣超可算連買天\n"
-            "• <b>興櫃</b>＝沒有官方法人表，不能算外資／投信連買",
-            inline=self._streak_uni_inline(),
-        )
+        await self._streak_show_kind(message, uid, actor, "ALL")
 
     async def _streak_show_kind(self, message, uid: str, actor: str, market: str = "ALL") -> None:
         from buy_streak import MARKET_ALL, MARKET_EM
@@ -1380,8 +1353,9 @@ class WayneTelegramBot:
         self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
         await self._streak_send_step(
             message,
-            "<b>連買區域 · 上市櫃</b>\n"
-            "已選上市櫃。再選哪一種連買（點訊息下方按鈕）。\n"
+            "<b>連買區域</b>\n"
+            "興櫃沒有官方法人表，這裡只看上市櫃。\n"
+            "點訊息下方選哪一種連買。\n"
             "• <b>外資</b>＝外資連續買超\n"
             "• <b>投信</b>＝投信連續買超\n"
             "• <b>外資+投信</b>＝同一天兩家都買超，再連起來算天數",
@@ -1767,7 +1741,6 @@ class WayneTelegramBot:
                 ],
                 [
                     InlineKeyboardButton("記買入", callback_data="?:buy"),
-                    InlineKeyboardButton("興櫃", callback_data="em:go"),
                     InlineKeyboardButton("按錯", callback_data="?:oops"),
                     InlineKeyboardButton("✕", callback_data="hx"),
                 ],
@@ -1906,12 +1879,7 @@ class WayneTelegramBot:
                     [InlineKeyboardButton("一鍵傳 LINE", url=line_url)]
                 )
         if include_menu:
-            rows.append(
-                [
-                    self._q("screen"),
-                    InlineKeyboardButton("興櫃", callback_data="em:go"),
-                ]
-            )
+            rows.append([self._q("screen")])
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -3030,7 +2998,71 @@ class WayneTelegramBot:
         return WayneTelegramBot._png_looks_ok(path, min_bytes=48_000, min_w=500, min_h=900)
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await self._run_manual_screening(update.message)
+        uid = str(update.effective_user.id)
+        await self._start_screen_pick(update.message, uid)
+
+    def _screen_uni_inline(self):
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("上市櫃", callback_data="sc:listed"),
+                    InlineKeyboardButton("興櫃", callback_data="sc:em"),
+                ],
+                [InlineKeyboardButton("回主選單", callback_data="sc:home")],
+            ]
+        )
+
+    async def _start_screen_pick(self, message, uid: str) -> None:
+        actor = self._actor_key(message, uid=uid)
+        self._pending[actor] = "screen:uni"
+        await message.reply_html(
+            "<b>海選</b>\n"
+            "先選<b>上市櫃</b>或<b>興櫃</b>（點訊息下方按鈕）。\n"
+            "• <b>上市櫃</b>＝上市＋上櫃，官方收盤掃黃金買點／重點觀察等\n"
+            "• <b>興櫃</b>＝櫃買官方日均價，只掃黃金買點／重點觀察，不混進上市櫃",
+            reply_markup=self._screen_uni_inline(),
+            disable_web_page_preview=True,
+        )
+
+    async def _handle_screen_pick(self, message, uid: str, text: str, *, actor: str) -> bool:
+        from buy_streak import MARKET_ALL, MARKET_EM, MARKET_TW, MARKET_TWO, parse_universe
+
+        t = _normalize_menu_text(text)
+        if t == MENU_BTN_BACK_MAIN:
+            await self._restore_main_menu(message, uid)
+            return True
+        uni = parse_universe(t)
+        if uni == MARKET_EM or t in ("興櫃海選", "興櫃名單"):
+            self._pending.pop(actor, None)
+            await self._run_emerging_screening(message)
+            return True
+        if uni in (MARKET_ALL, MARKET_TW, MARKET_TWO):
+            self._pending.pop(actor, None)
+            await self._run_manual_screening(message)
+            return True
+        if _text_escapes_pending(t):
+            return False
+        await self._start_screen_pick(message, uid)
+        return True
+
+    async def _handle_screen_pick_callback(self, q, uid: str, data: str) -> None:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        op = (data or "").split(":")[1] if ":" in (data or "") else ""
+        if op == "home":
+            await self._restore_main_menu(q.message, uid)
+            return
+        actor = self._actor_key(q.message, uid=uid)
+        self._pending.pop(actor, None)
+        if op == "em":
+            await self._run_emerging_screening(q.message)
+            return
+        if op == "listed":
+            await self._run_manual_screening(q.message)
+            return
+        await self._start_screen_pick(q.message, uid)
 
     async def emerging_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_emerging_screening(update.message)
@@ -3049,13 +3081,13 @@ class WayneTelegramBot:
             )
         except asyncio.TimeoutError:
             await message.reply_text(
-                "興櫃海選逾時。請稍後再按「興櫃」，或打「興櫃海選」。",
+                "興櫃海選逾時。請稍後再按「海選」選興櫃，或打「興櫃海選」。",
                 reply_markup=hub,
             )
             return
         except Exception:
             logger.exception("興櫃海選失敗")
-            await message.reply_text("興櫃海選失敗。請稍後再按「興櫃」，或打「興櫃海選」。", reply_markup=hub)
+            await message.reply_text("興櫃海選失敗。請稍後再按「海選」選興櫃，或打「興櫃海選」。", reply_markup=hub)
             return
         finally:
             try:
@@ -3066,7 +3098,7 @@ class WayneTelegramBot:
         if n <= 0:
             await message.reply_html(
                 "興櫃海選：目前沒有可用的官方日均價序列。\n"
-                "請等盤後同步櫃買「興櫃股票當日行情表」後再按「興櫃」。",
+                "請等盤後同步櫃買「興櫃股票當日行情表」後再按「海選」選興櫃。",
                 reply_markup=hub,
                 disable_web_page_preview=True,
             )
@@ -3074,7 +3106,7 @@ class WayneTelegramBot:
         await self._reply_screening_payload(message, result)
         await message.reply_html(
             f"以上是<b>興櫃</b>獨立名單（官方日均價 {html_escape(str(result.get('as_of') or ''))}，"
-            f"掃描 {n} 檔）。上市櫃請按主選單「海選」。",
+            f"掃描 {n} 檔）。上市櫃請再按「海選」，選上市櫃。",
             reply_markup=hub,
             disable_web_page_preview=True,
         )
@@ -4138,6 +4170,12 @@ class WayneTelegramBot:
             if pending.startswith("fbuy:"):
                 handled = await self._handle_buy_streak(
                     update.message, uid, pending, text, actor=actor
+                )
+                if handled:
+                    return
+            if pending == "screen:uni":
+                handled = await self._handle_screen_pick(
+                    update.message, uid, text, actor=actor
                 )
                 if handled:
                     return
@@ -5313,6 +5351,9 @@ class WayneTelegramBot:
                 q.message, page, edit=True, from_page=from_page
             )
             return
+        if data.startswith("sc:"):
+            await self._handle_screen_pick_callback(q, uid, data)
+            return
         if data == "em:go":
             await q.answer("興櫃海選開始")
             await self._run_emerging_screening(q.message)
@@ -5449,7 +5490,7 @@ class WayneTelegramBot:
             await self._send_ai_evolve(q.message, str(q.from_user.id))
             return
         if data == "screen":
-            await self._run_manual_screening(q.message)
+            await self._start_screen_pick(q.message, str(q.from_user.id))
         elif data == "daytrade":
             await self._run_trade_bucket(
                 q.message,

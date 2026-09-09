@@ -111,7 +111,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "第二排" in labels
     assert "連買" in labels
     assert "記買入" in labels
-    assert "興櫃" in labels
+    assert "興櫃" not in labels
     assert "原因" not in labels
     assert "按錯" in labels
     assert "✕" in labels
@@ -125,7 +125,7 @@ def test_help_nav_keyboard_has_topic_buttons():
     assert "?:pics" in cbs
     assert "?:streak" in cbs
     assert "?:oops" in cbs
-    assert "em:go" in cbs
+    assert "em:go" not in cbs
     assert "?:why" not in cbs
     assert "?:screen" not in cbs
     assert "?:market" not in cbs
@@ -212,8 +212,9 @@ def test_help_streak_does_not_split_listed_otc():
     assert "再選<b>上市</b>" not in blob
     assert "上市或上櫃" not in blob
     assert "外資+投信" in HELP_TOPICS["streak"]
-    assert "先選" in HELP_TOPICS["streak"] and "上市櫃" in HELP_TOPICS["streak"]
+    assert "只看上市櫃" in HELP_TOPICS["streak"]
     assert "興櫃" in HELP_TOPICS["streak"]
+    assert "先選<b>上市櫃</b>或<b>興櫃</b>" not in HELP_TOPICS["streak"]
     assert "上市櫃一起列" not in HELP_TOPICS["streak"]
     assert "訊息下面" in HELP_TOPICS["streak"] or "訊息下方" in HELP_TOPICS["streak"]
     assert "連買區" in HELP_TOPICS["row2"]
@@ -257,11 +258,38 @@ def test_streak_wizard_does_not_clone_reply_keyboard():
     assert "tray_hint" not in src
     assert "也可點輸入區鍵盤" not in src
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    uni = [b.text for row in bot._streak_uni_inline().inline_keyboard for b in row]
-    assert uni[:2] == ["上市櫃", "興櫃"]
+    kind = [b.text for row in bot._streak_kind_inline().inline_keyboard for b in row]
+    assert kind[:3] == ["外資", "投信", "外資+投信"]
+    assert "興櫃" not in kind
     em = [b.text for row in bot._streak_em_inline().inline_keyboard for b in row]
     assert "改看上市櫃" in em
-    assert "興櫃" not in em
+    assert "興櫃海選" in em
+    screen = [b.text for row in bot._screen_uni_inline().inline_keyboard for b in row]
+    assert screen[:2] == ["上市櫃", "興櫃"]
+
+
+def test_screen_start_picks_listed_or_emerging():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._actor_key = MagicMock(return_value="1:1")
+    msg = MagicMock()
+    msg.reply_html = AsyncMock()
+
+    asyncio.run(bot._start_screen_pick(msg, "1"))
+    assert bot._pending["1:1"] == "screen:uni"
+    html = msg.reply_html.await_args.args[0]
+    assert "上市櫃" in html and "興櫃" in html
+    labels = [
+        b.text
+        for row in msg.reply_html.await_args.kwargs["reply_markup"].inline_keyboard
+        for b in row
+    ]
+    assert labels[:2] == ["上市櫃", "興櫃"]
 
 
 def test_help_nav_does_not_duplicate_reply_menu_labels():
@@ -399,9 +427,7 @@ def test_streak_kind_inline_magic_three_choices():
     assert len(rows[0]) == 3
     assert MENU_BTN_BACK_MAIN in labels
     assert "上市" not in labels
-    uni = bot._streak_uni_inline()
-    uni_labels = [b.text for row in uni.inline_keyboard for b in row]
-    assert uni_labels[:2] == ["上市櫃", "興櫃"]
+    assert "興櫃" not in labels
 
 
 def test_portfolio_keyboard_shows_stock_name():

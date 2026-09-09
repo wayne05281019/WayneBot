@@ -114,9 +114,9 @@ def test_help_nav_has_oops_and_no_reply_overlap():
     assert labels.count("按錯") == 1
     assert len(kb.inline_keyboard) == 3
     assert [b.text for b in kb.inline_keyboard[0]] == ["總覽", "查股", "圖文"]
-    assert [b.text for b in kb.inline_keyboard[2]] == ["記買入", "興櫃", "按錯", "✕"]
+    assert [b.text for b in kb.inline_keyboard[2]] == ["記買入", "按錯", "✕"]
     cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
-    assert "em:go" in cbs
+    assert "em:go" not in cbs
     reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
     overlap = reply & set(labels)
     assert overlap == set(), overlap
