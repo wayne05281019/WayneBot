@@ -171,6 +171,67 @@ def _pipeline_status(db_path: str, run_date: str) -> str:
     return str(row[0]) if row and row[0] else ""
 
 
+def _pipeline_rows(db_path: str, run_dates: List[str]) -> Dict[str, Dict[str, str]]:
+    """一次查出多筆 pipeline_runs（status／finished_at／notes）。"""
+    path = str(db_path or "").strip()
+    keys = [str(k).strip() for k in (run_dates or []) if str(k).strip()]
+    if not path or not keys or not os.path.isfile(path):
+        return {}
+    try:
+        conn = sqlite3.connect(path, timeout=10.0)
+        try:
+            q = ",".join("?" * len(keys))
+            rows = conn.execute(
+                f"SELECT run_date, status, finished_at, notes FROM pipeline_runs WHERE run_date IN ({q})",
+                keys,
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return {}
+    out: Dict[str, Dict[str, str]] = {}
+    for run_date, status, finished_at, notes in rows:
+        out[str(run_date)] = {
+            "status": str(status or ""),
+            "finished_at": str(finished_at or ""),
+            "notes": str(notes or ""),
+        }
+    return out
+
+
+def pipeline_stamps(db_path: str, *, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """給 /ready：今天各排程最後一筆。success＝Telegram 認到才標的已寄。
+
+    computed＝算出但沒寄（GHA notify-off／401 假成功已降級）。無紀錄＝還沒跑。
+    不打外部網路、不掃全庫。
+    """
+    try:
+        from config import taipei_now
+    except Exception:
+        taipei_now = datetime.now  # type: ignore
+
+    ref = now or taipei_now()
+    keys = _expected_run_keys(db_path, ref)
+    rows = _pipeline_rows(db_path, list(keys.values()))
+    out: Dict[str, Any] = {}
+    for kind, spec in JOB_SPECS.items():
+        key = keys.get(kind) or ""
+        row = rows.get(key) or {}
+        status = str(row.get("status") or "")
+        stamp = {
+            "key": key,
+            "label": str(spec.get("label") or kind),
+            "scheduled": str(spec.get("scheduled") or ""),
+            "status": status or "無紀錄",
+            "finished_at": str(row.get("finished_at") or ""),
+            "notes": str(row.get("notes") or ""),
+        }
+        if kind in ("morning_screen", "midday_review"):
+            stamp["delivered"] = status == "success"
+        out[kind] = stamp
+    return out
+
+
 def _expected_run_keys(db_path: str, now: datetime) -> Dict[str, str]:
     """每個排程今天該留下的 pipeline_runs 鍵值。"""
     today = now.strftime("%Y%m%d")
@@ -358,4 +419,5 @@ def watchdog_payload(db_path: str, *, now: Optional[datetime] = None) -> Dict[st
         "missed_n": len(missed),
         "polling_alive": alive,
         "polling_age_s": heartbeat_age_seconds(db_path, HEARTBEAT_POLLING),
+        "jobs": pipeline_stamps(db_path, now=now),
     }

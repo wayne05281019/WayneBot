@@ -188,6 +188,9 @@ def test_ready_does_not_run_full_audit(serve, monkeypatch):
     monkeypatch.setattr(automation_health, "run_automation_audit", _boom)
     code, body = get("/ready")
     assert "watchdog" in body
+    assert "jobs" in body
+    assert "morning_screen" in body["jobs"]
+    assert "delivered" in body["jobs"]["morning_screen"]
     assert "error" not in body or "health_payload" not in str(body.get("error") or "")
 
 

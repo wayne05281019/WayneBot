@@ -220,6 +220,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     "latest_complete": data.get("latest_complete") or "",
                     "reasons": list(data.get("reasons") or []),
                     "watchdog": watch,
+                    "jobs": watch.get("jobs") or {},
                 }
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self.send_response(200 if ready else 503)
@@ -526,7 +527,7 @@ def run_scheduled_job(kind: str) -> None:
     push = scheduler_may_push(kind)
     runner = MainRunner()
     if kind == "morning":
-        runner.run_morning_screen(skip_if_done=True)
+        runner.run_morning_screen(skip_if_done=True, notify=push)
     elif kind == "midday":
         runner.run_midday_review(skip_if_done=True)
     elif kind == "evening":

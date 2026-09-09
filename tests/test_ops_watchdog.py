@@ -16,6 +16,7 @@ from ops_watchdog import (  # noqa: E402
     format_watchdog_alert,
     heartbeat_age_seconds,
     missed_jobs,
+    pipeline_stamps,
     polling_alive,
     record_heartbeat,
     watchdog_payload,
@@ -224,8 +225,30 @@ def test_watchdog_payload_shape(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     payload = watchdog_payload(path)
-    assert set(payload) >= {"enabled", "missed", "missed_n", "polling_alive", "polling_age_s"}
+    assert set(payload) >= {"enabled", "missed", "missed_n", "polling_alive", "polling_age_s", "jobs"}
     assert payload["missed_n"] == len(payload["missed"])
+    assert set(payload["jobs"]) >= {"morning_screen", "midday_review", "increment"}
+
+
+def test_pipeline_stamps_marks_delivered_only_on_success(tmp_path, monkeypatch):
+    path = _make_db(
+        tmp_path,
+        runs={
+            "screen-20260902": "success",
+            "midday-20260902": "computed",
+            "20260902": "success",
+        },
+    )
+    monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
+    now = datetime(2026, 9, 2, 14, 0)
+    stamps = pipeline_stamps(path, now=now)
+    assert stamps["morning_screen"]["delivered"] is True
+    assert stamps["morning_screen"]["status"] == "success"
+    assert stamps["morning_screen"]["finished_at"]
+    assert stamps["midday_review"]["delivered"] is False
+    assert stamps["midday_review"]["status"] == "computed"
+    assert stamps["increment"]["status"] == "success"
+    assert "delivered" not in stamps["increment"]
 
 
 def test_ensure_ops_tables_idempotent(tmp_path):
