@@ -1217,7 +1217,9 @@ def main():
         elif kind == "midday_review":
             ok = runner.run_midday_review(skip_if_done=True)
         else:
-            ok = runner.run_increment_job(skip_if_done=True)
+            # GitHub Actions 盤後只融合、不寄「官方收盤已寫進庫」。寄訊歸 Render。
+            gha = bool((os.getenv("GITHUB_ACTIONS") or "").strip())
+            ok = runner.run_increment_job(skip_if_done=True, notify=not gha)
         if not ok:
             sys.exit(1)
     except Exception as e:

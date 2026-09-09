@@ -117,7 +117,8 @@ def test_oneshot_jobs_skip_if_already_done():
     assert "notify=screen_notify_enabled()" in src
     assert "run_evening_screen(skip_if_done=True, notify=False)" in src
     assert "run_midday_review(skip_if_done=True)" in src
-    assert "run_increment_job(skip_if_done=True)" in src
+    assert "run_increment_job(skip_if_done=True, notify=not gha)" in src
+    assert 'os.getenv("GITHUB_ACTIONS")' in src
 
 
 def test_oneshot_morning_push_trigger_does_not_skip():
