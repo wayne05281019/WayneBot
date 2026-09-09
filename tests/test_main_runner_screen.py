@@ -273,6 +273,105 @@ def test_push_screening_sends_each_family_member(tmp_path, monkeypatch):
     assert ("screen", "9002") in sent
 
 
+def test_push_screening_returns_false_when_telegram_rejects(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    path = str(tmp_path / "rej.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.chat_id = "9001"
+    runner.today_str = "20260909"
+    runner.portfolio_engine = None
+    extras = []
+
+    class _Bot:
+        def send_screening_report(self, screening, chat_id=None):
+            return False
+
+    runner.bot = _Bot()
+    runner.send_telegram_message = lambda text, chat_id=None: extras.append((chat_id, text))
+    runner._run_ai_desk = lambda *a, **k: extras.append("ai")
+    ok = runner._push_screening(
+        {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+        as_of="20260908",
+    )
+    assert ok is False
+    assert extras == []
+
+
+def test_morning_screen_does_not_mark_when_telegram_rejects(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "mark.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: False)})()
+
+    monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20260908")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+
+    assert runner.run_morning_screen(skip_if_done=False, notify=True) is False
+    assert runner.already_completed_today("screen-20260908") is False
+    assert runner.run_morning_screen(skip_if_done=True, notify=True) is False
+    assert runner.already_completed_today("screen-20260908") is False
+
+
+def test_morning_screen_marks_only_after_telegram_accepts(tmp_path, monkeypatch):
+    from main_runner import MainRunner
+    from wayne_db import ensure_core_schema, touch_tg_user
+
+    path = str(tmp_path / "ok.db")
+    ensure_core_schema(path)
+    touch_tg_user(path, "9001", "偉權")
+    runner = MainRunner.__new__(MainRunner)
+    runner.db_path = path
+    runner.today_str = "20260909"
+    runner.chat_id = "9001"
+    runner.bot = type("B", (), {"send_screening_report": staticmethod(lambda *a, **k: True)})()
+    runner._format_watch_radar_section = lambda uid="": ""
+    runner._run_ai_desk = lambda *a, **k: {}
+    runner.send_telegram_message = lambda *a, **k: None
+
+    monkeypatch.setattr("tw_holidays.refresh_tw_typhoon_halt", lambda *_a, **_k: {})
+    monkeypatch.setattr("tw_holidays.closed_tw_session", lambda **_k: None)
+    monkeypatch.setattr("import_health.latest_complete_quote_date", lambda *_a, **_k: "20260908")
+    monkeypatch.setattr("config.fuse_end_date", lambda: "20260908")
+    monkeypatch.setattr(
+        "main_runner.run_full_screening",
+        lambda **_k: {"status": "success", "payload": [{"html": "海選"}], "results": {}},
+    )
+    monkeypatch.setattr("taiwan_market.sync_futures_daily", lambda *_a, **_k: {})
+    monkeypatch.setattr("taiwan_market.sync_futures_inst_oi", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.refresh_us_overnight", lambda *_a, **_k: {})
+    monkeypatch.setattr("us_overnight.should_alert_us_drop", lambda *_a, **_k: False)
+    monkeypatch.setattr("taiwan_market.format_taiwan_market_brief_html", lambda *_a, **_k: "")
+    monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: {"ok": False})
+
+    assert runner.run_morning_screen(skip_if_done=False, notify=True) is True
+    assert runner.already_completed_today("screen-20260908") is True
+
+
 def test_send_html_returns_false_on_http_error(monkeypatch, caplog):
     import logging
 

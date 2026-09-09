@@ -53,6 +53,15 @@ def _uptime_seconds() -> float:
     return max(0.0, time.time() - _PROCESS_STARTED_AT)
 
 
+def _code_revision() -> str:
+    """Render／GHA 會注入 commit；用來確認常駐是不是還停在舊版。"""
+    for key in ("RENDER_GIT_COMMIT", "GITHUB_SHA"):
+        raw = (os.getenv(key) or "").strip()
+        if raw:
+            return raw[:40]
+    return ""
+
+
 def _in_boot_grace() -> bool:
     return _uptime_seconds() < _boot_grace_seconds()
 
@@ -157,6 +166,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "booting": live.get("booting", False),
                 "uptime_s": live.get("uptime_s"),
                 "boot_grace_s": _boot_grace_seconds(),
+                "git_sha": _code_revision(),
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
@@ -495,7 +505,7 @@ def start_daily_scheduler():
         logger.info("WAYNE_SCHEDULER_ROLE=off：本行程不跑任何排程")
         return None
     logger.info(
-        "排程角色 %s（data＝只保持本機庫新鮮，準時推播歸 GitHub Actions）",
+        "排程角色 %s（data＝常駐寄 06:30 海選與 12:45 尾盤；GHA 只算名單不寄）",
         role,
     )
 
