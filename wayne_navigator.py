@@ -1232,6 +1232,11 @@ def _vol_heat_draw(rank, base: str):
     )
 
 
+def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
+    """第 0 排對齊原本漲跌那層；多出來的框往上疊，不把收盤價搬走。"""
+    return float(pane_y) + 1.35 + int(row_i) * (badge_h + badge_gap)
+
+
 def _cell_wash(ax, x, y, w, h, color, edge):
     """整格同一底色。不要上淺下深兩截，溫度計／獲利／量看起來會像破圖。"""
     C = _CARD
@@ -1970,7 +1975,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows, row, row_w = [], [], 0.0
-    limit = 58.0
+    limit = 50.0
     for b, bw in zip(badges, badge_w):
         if row and row_w + 1.7 + bw > limit:
             badge_rows.append(row)
@@ -2125,8 +2130,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             va="center",
             zorder=3,
         )
-    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
-    for brow in badge_rows:
+    for row_i, brow in enumerate(badge_rows):
+        by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = pad_x + 3.2
         for btxt, bw in brow:
             b_bg, b_fg = _badge_style(btxt)
@@ -2139,7 +2144,6 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
-        by -= badge_h + badge_gap
 
     # 左：今日態度＋白話標題；下一行完整說明（不要術語）。
     y -= gap + stance_h
@@ -2575,7 +2579,7 @@ def render_first_glance_png(
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
     badge_rows, row, acc = [], [], 0.0
     # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價，避免字疊字。
-    limit = 58.0
+    limit = 50.0
     for b, bw in zip(badges, badge_w):
         if row and acc + 1.7 + bw > limit:
             badge_rows.append(row)
@@ -2741,7 +2745,7 @@ def render_first_glance_png(
     chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
     if chg_amt is not None and not move_txt:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(inner_r, y + price_h * 0.46, "　".join(chg_bits),
+    ax.text(inner_r, y + price_h * 0.24, "　".join(chg_bits),
             fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     ohlc_bits = [
         f"開 {_fmt_price(last.get('open') or card.get('open'))}",
@@ -2756,8 +2760,8 @@ def render_first_glance_png(
     if mc is not None:
         ax.text(inner_l, ohlc_y - 2.2, f"主力成本 {float(mc):.2f}（分點平均買超）",
                 fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3)
-    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap) if badge_rows else y + 1.35
-    for brow in badge_rows:
+    for row_i, brow in enumerate(badge_rows):
+        by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = inner_l
         for btxt, bw in brow:
             b_bg, b_fg = _badge_style(btxt)
@@ -2769,7 +2773,6 @@ def render_first_glance_png(
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
-        by -= badge_h + badge_gap
 
     def draw_kv(y0, h, title, rows, *, sub="", pills=None):
         pane(pad_x, y0, pane_w, h)
