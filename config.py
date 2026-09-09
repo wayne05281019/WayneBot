@@ -174,8 +174,8 @@ def daily_scheduler_enabled() -> bool:
 
 
 # 每個排程只能有一個擁有者，否則兩邊各自的 pipeline_runs 讓 skip_if_done 失效，
-# 使用者會收到兩份同樣的推播。GHA 是可靠的計時器（Render 免費方案會休眠），
-# 所以準時推播歸 GHA；Render 只負責讓自己磁碟上的庫保持新鮮供互動查詢。
+# 使用者會收到兩份同樣的推播。06:30 海選推播歸常駐（有效 token＋按開始的話筒）；
+# GHA morning_screen 只算名單、蓋 zip，WAYNE_SCREEN_NOTIFY=0 不寄。
 SCHEDULER_ROLES = ("data", "full", "off")
 
 
@@ -196,18 +196,24 @@ def scheduler_owns(job: str) -> bool:
         return False
     if role == "full":
         return True
-    # data 角色：morning 推播歸 GHA，其餘（含唯一擁有者 midday）留在本地。
-    return str(job or "").strip().lower() != "morning"
+    # data：常駐跑 morning／midday／fuse／evening／typhoon。GHA 另跑 fuse＋morning 算數，不寄海選。
+    return True
 
 
 def scheduler_may_push(job: str) -> bool:
-    """data 角色只在自己是唯一擁有者的排程上推播（midday）。"""
+    """data 角色只推播常駐擁有的通知（06:30 海選、12:45 尾盤）。"""
     role = scheduler_role()
     if role == "off":
         return False
     if role == "full":
         return True
-    return str(job or "").strip().lower() == "midday"
+    return str(job or "").strip().lower() in ("morning", "midday")
+
+
+def screen_notify_enabled() -> bool:
+    """GHA 早上海選算名單但不寄：WAYNE_SCREEN_NOTIFY=0。常駐預設寄。"""
+    raw = (os.getenv("WAYNE_SCREEN_NOTIFY") or "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 
 def skip_telegram_polling() -> bool:

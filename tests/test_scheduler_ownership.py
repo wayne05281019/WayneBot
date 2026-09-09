@@ -42,10 +42,10 @@ def test_unknown_role_falls_back_to_data(monkeypatch):
     assert config.scheduler_role() == "data"
 
 
-def test_data_role_yields_morning_to_gha(monkeypatch):
+def test_data_role_pushes_morning_on_resident(monkeypatch):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    assert config.scheduler_owns("morning") is False
-    assert config.scheduler_may_push("morning") is False
+    assert config.scheduler_owns("morning") is True
+    assert config.scheduler_may_push("morning") is True
 
 
 def test_data_role_keeps_midday_because_gha_has_no_such_cron(monkeypatch):
@@ -76,11 +76,13 @@ def test_full_role_owns_everything(monkeypatch):
 
 
 def test_every_job_has_exactly_one_pusher(monkeypatch):
-    """data 角色下，會推播的工作與 GHA 的 cron 不能重疊。"""
+    """data 角色下，會推播的工作與 GHA 真正寄 Telegram 的 cron 不能重疊。"""
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    gha_jobs = {"morning", "fuse"}  # daily_run.yml 的兩個 cron
+    gha_telegram_jobs = set()  # daily_run.yml WAYNE_SCREEN_NOTIFY=0；increment 不寄海選
     local_pushers = {j for j in ALL_JOBS if config.scheduler_may_push(j)}
-    assert local_pushers & gha_jobs == set()
+    assert local_pushers & gha_telegram_jobs == set()
+    assert "morning" in local_pushers
+    assert "midday" in local_pushers
 
 
 class _Recorder:
@@ -117,10 +119,10 @@ def recorder(monkeypatch):
     return rec
 
 
-def test_dispatch_skips_unowned_job(monkeypatch, recorder):
+def test_dispatch_runs_morning_on_data_role(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     main.run_scheduled_job("morning")
-    assert recorder.calls == []
+    assert [c[0] for c in recorder.calls] == ["morning"]
 
 
 def test_dispatch_runs_typhoon_on_data_role(monkeypatch, recorder):
@@ -178,10 +180,12 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
     assert "evening" in kinds
-    assert "morning" not in kinds
+    assert "morning" in kinds
     eve = [c for c in recorder.calls if c[0] == "evening"][0]
     assert eve[1]["skip_if_done"] is True
     assert eve[1]["notify"] is False
+    morn = [c for c in recorder.calls if c[0] == "morning"][0]
+    assert morn[1]["skip_if_done"] is True
 
 
 def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
@@ -191,7 +195,8 @@ def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert recorder.calls == []
+    assert [c[0] for c in recorder.calls] == ["morning"]
+    assert recorder.calls[0][1]["skip_if_done"] is True
 
 
 def test_catch_up_weekend_runs_nothing(monkeypatch, recorder):
@@ -218,6 +223,9 @@ def test_increment_job_notify_flag_is_accepted():
     sig = inspect.signature(MainRunner.run_increment_job)
     assert "notify" in sig.parameters
     assert sig.parameters["notify"].default is True
+    ms = inspect.signature(MainRunner.run_morning_screen)
+    assert "notify" in ms.parameters
+    assert ms.parameters["notify"].default is True
 
 
 def test_render_yaml_declares_the_owner():

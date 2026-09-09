@@ -112,7 +112,9 @@ def test_oneshot_jobs_skip_if_already_done():
     src = open("main_runner.py", encoding="utf-8").read()
     assert "skip_if_done = True" in src
     assert 'GITHUB_EVENT_NAME' in src
-    assert "run_morning_screen(skip_if_done=skip_if_done)" in src
+    assert "run_morning_screen(" in src
+    assert "skip_if_done=skip_if_done" in src
+    assert "notify=screen_notify_enabled()" in src
     assert "run_evening_screen(skip_if_done=True, notify=False)" in src
     assert "run_midday_review(skip_if_done=True)" in src
     assert "run_increment_job(skip_if_done=True)" in src
@@ -122,6 +124,15 @@ def test_oneshot_morning_push_trigger_does_not_skip():
     src = open("main_runner.py", encoding="utf-8").read()
     assert 'os.getenv("GITHUB_EVENT_NAME")' in src
     assert "skip_if_done = False" in src
+
+
+def test_screen_notify_defaults_on_and_gha_can_mute(monkeypatch):
+    from config import screen_notify_enabled
+
+    monkeypatch.delenv("WAYNE_SCREEN_NOTIFY", raising=False)
+    assert screen_notify_enabled() is True
+    monkeypatch.setenv("WAYNE_SCREEN_NOTIFY", "0")
+    assert screen_notify_enabled() is False
 
 
 def test_family_chat_ids_owner_and_touched_users(tmp_path, monkeypatch):

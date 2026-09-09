@@ -20,9 +20,8 @@ services:
         value: 1c-2g
       - key: WAYNE_RENDER_LITE
         value: "0"
-      # 每個排程只能有一個擁有者。GHA 是可靠的計時器（本服務會休眠），
-      # 所以 06:30 海選推播歸 GHA；這裡只保持本機庫新鮮供互動查詢，
-      # 並負責唯一沒有 GHA 對應的 12:45 尾盤複核。
+      # 每個排程只能有一個擁有者。06:30 海選推播歸本服務（有效 token＋按開始的話筒）。
+      # GHA morning_screen 只算名單、蓋 zip，不寄。12:45 尾盤仍只在這裡。
       - key: WAYNE_SCHEDULER_ROLE
         value: data
       # 付費機磁碟上已有庫；寬限只擋「庫還沒可讀」的 503，不必拉到 15～30 分鐘。
