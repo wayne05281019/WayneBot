@@ -6,11 +6,13 @@ import pandas as pd
 import pytest
 
 from sell_discipline import (
+    FACE_NOTES,
     NOTE_DESYNC_LEFT,
     NOTE_HI_PRICE,
     NOTE_HI_TEMP,
     NOTE_SYNC_LEFT,
     attach_sell,
+    card_discipline_face,
     classify_how_to_sell,
     sell_note_lines,
     sell_note_short,
@@ -75,6 +77,58 @@ def test_all_sell_notes_say_what_to_do_now():
         assert "可以先" not in note
         assert "到過" not in note
         assert "減碼" not in note
+
+
+def test_discipline_bank_has_at_least_fifty_faces():
+    assert len(FACE_NOTES) >= 50
+    assert len(set(FACE_NOTES.values())) >= 50
+    for note in FACE_NOTES.values():
+        assert "減碼" not in note
+        assert "買訊" not in note
+        assert "先" in note or "少追" in note or "不要追" in note
+
+
+def test_warming_near_high_does_not_say_heat_left():
+    """2382 9/9 型：K20高、升溫、距20日高 −1.6%。不能寫熱度退了。"""
+    card = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 22.6,
+        "dist_h20": -1.6,
+        "temp_c": "61.1 °C",
+        "table": [
+            {
+                "date": "20260909",
+                "高低": "No",
+                "預警": "K20高",
+                "升降": "升溫",
+                "升降註": "",
+                "溫度計": "61.1 °C",
+                "profit_pct": 22.6,
+            }
+        ],
+    }
+    face = card_discipline_face(card)
+    assert face["pos"] == "near_hi"
+    assert face["heat"] == "up"
+    note = sell_note_short(card)
+    assert "退了" not in note
+    assert "都沒了" not in note
+    assert "升" in note
+    assert "20日高" in note
+    assert "別追" in note
+    assert "先出一點" in note
+
+
+def test_cooling_leave_still_says_heat_left():
+    card = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 20.1,
+        "dist_h20": -2.8,
+        "table": [{"高低": "No", "預警": "No", "升降": "降溫", "溫度計": "53.5 °C"}],
+    }
+    assert sell_note_short(card) == NOTE_SYNC_LEFT
 
 
 def test_discipline_box_drops_conflicting_pink():
@@ -272,7 +326,9 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     assert "不要追" in line
     assert "不是叫你買" in line
     assert "不同步（" not in line
-    assert sell_note_short(again) == NOTE_HI_PRICE
+    assert "先出一點" in sell_note_short(again)
+    assert "不要追" in sell_note_short(again)
+    assert "退了" not in sell_note_short(again)
 
 
 def _mini_card_for_png(**extra):
@@ -358,7 +414,8 @@ def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
     assert path and out.is_file()
     joined = "\n".join(seen)
     joined = "\n".join(seen)
-    assert f"{NOTE_HI_PRICE}。不是叫你買。" in seen
+    assert any("先出一點" in t and "不要追" in t and "不是叫你買" in t for t in seen)
+    assert not any("熱度都退了" in t for t in seen)
     assert "紅箭頭不是買進訊號" not in joined
     assert "按表操課" not in joined
 
@@ -454,7 +511,8 @@ def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
     path = render_first_glance_png("3441", card, tape, str(out))
     assert path and out.is_file()
     assert "紀律" in seen
-    assert NOTE_HI_PRICE in seen
+    assert any("先出一點" in s and "不要追" in s for s in seen)
+    assert not any("熱度都退了" in s for s in seen)
     assert not any(s.startswith("紀律　") for s in seen)
 
 
@@ -487,7 +545,11 @@ def test_cary_2383_2408_3008_20260904_rows():
     assert str(c3008.get("latest_date")) == "20260904"
     assert c3008.get("sell_action") == "直接減碼"
     assert "不同步再脫離" in str(c3008.get("sell_why") or "")
-    assert sell_note_short(c3008) == NOTE_DESYNC_LEFT
+    note3008 = sell_note_short(c3008)
+    assert "先出一點" in note3008
+    assert "退了" not in note3008
+    assert "都沒了" not in note3008
+    assert "升" in note3008
 
 
 @pytest.mark.production_db
@@ -619,10 +681,13 @@ def test_holdings_and_notes_match_20260904_flags():
         full=True,
         as_of="20260904",
     )
-    assert notes["3703"].startswith(NOTE_HI_TEMP)
+    assert "先出一點" in notes["3703"]
+    assert "不要追高" in notes["3703"]
     assert "不是叫你買" in notes["3703"]
     assert notes["3035"].startswith(NOTE_SYNC_LEFT)
-    assert notes["6526"].startswith(NOTE_SYNC_LEFT)
+    assert "退了" not in notes["6526"]
+    assert "升" in notes["6526"]
+    assert "先別追" in notes["6526"]
     assert "4915" not in notes
     assert "1303" not in notes
     assert "8234" not in notes
@@ -639,7 +704,8 @@ def test_holdings_and_notes_match_20260904_flags():
         quotes_map={"3703": {"close": 20.0, "pct_change": 0.5}},
     )
     assert "紀律：" in html_cut
-    assert NOTE_HI_TEMP in html_cut
+    assert "先出一點" in html_cut
+    assert "不要追高" in html_cut
     html_sync = eng.format_holdings_html(
         [{"stock_code": "4915", "stock_name": "致伸", "shares": 1, "cost_price": 60.8}],
         quotes_map={"4915": {"close": 60.8, "pct_change": 0.3}},
