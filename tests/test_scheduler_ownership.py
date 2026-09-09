@@ -228,6 +228,14 @@ def test_increment_job_notify_flag_is_accepted():
     assert ms.parameters["notify"].default is True
 
 
+def test_scheduler_log_says_resident_sends_morning():
+    import inspect
+
+    src = inspect.getsource(main.start_daily_scheduler)
+    assert "準時推播歸 GitHub Actions" not in src
+    assert "常駐寄 06:30 海選" in src
+
+
 def test_render_yaml_declares_the_owner():
     """擁有者要寫在程式碼裡，不能只存在 Render 後台。"""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

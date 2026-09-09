@@ -76,6 +76,20 @@ def test_health_200_when_process_can_serve(serve):
     assert body["ok"] is True
     assert body["status"] == "healthy"
     assert body["db_ok"] is True
+    assert "git_sha" in body
+
+
+def test_code_revision_reads_render_commit(monkeypatch):
+    import main as main_mod
+
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    assert main_mod._code_revision() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    monkeypatch.delenv("RENDER_GIT_COMMIT", raising=False)
+    monkeypatch.setenv("GITHUB_SHA", "deadbeef")
+    assert main_mod._code_revision() == "deadbeef"
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    assert main_mod._code_revision() == ""
 
 
 def test_health_reports_data_staleness_without_failing(serve):

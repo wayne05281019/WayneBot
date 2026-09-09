@@ -619,10 +619,15 @@ class MainRunner:
             return True
         return str(screening.get("status") or "") in ("success", "empty")
 
-    def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = ""):
+    def _push_screening(self, screening: Optional[Dict[str, Any]], as_of: str = "") -> bool:
+        """寄出海選本文。回傳是否每個收件人都被 Telegram 接受。
+
+        算出名單 ≠ 已寄到。401／空 token 必須回 False，否則 skip_if_done 會把失敗當成已完成。
+        """
         delivered = self._screening_delivered(screening)
         ids = self._family_chat_ids()
         logger.info("海選收件人數 %d（payload=%s）", len(ids), "有" if delivered else "無")
+        sent_ok = False
         if self.bot and delivered:
             try:
                 dests = ids or [str(getattr(self, "chat_id", None) or "").strip()]
@@ -638,20 +643,27 @@ class MainRunner:
                         except Exception as e:
                             logger.warning("海選寄出失敗 dest_len=%s: %s", len(str(cid)), e)
                     logger.info("海選寄出成功 %d/%d 人", sent_n, len(dests))
+                    sent_ok = sent_n == len(dests) and sent_n > 0
                 else:
-                    self.bot.send_screening_report(screening)
+                    sent_ok = self.bot.send_screening_report(screening) is not False
             except Exception as e:
                 logger.warning("分類戰報推播失敗，改送長文: %s", e)
                 self._broadcast_family(
                     screening.get("message") or self._screening_fail_message()
                 )
                 delivered = False
+                sent_ok = False
         else:
             report_text = (screening or {}).get("message") if screening else ""
             self._broadcast_family(report_text or self._screening_fail_message())
+            # 沒有 bot 物件就無法從 send_screening_report 取 ACK；本機預覽不算已寄到。
+            sent_ok = False
         if not delivered:
             logger.warning("早上海選未產出名單，略過 AI 模擬倉／資金輪動附帶推播")
-            return
+            return False
+        if not sent_ok:
+            logger.error("早上海選已算出但 Telegram 沒送到，附帶區塊也不寄")
+            return False
         extra_bits = []
         try:
             from taiwan_market import format_taiwan_market_brief_html
@@ -708,6 +720,7 @@ class MainRunner:
                 if text:
                     self.send_telegram_message(text, chat_id=cid)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
+        return True
 
     def _run_ai_desk(
         self,
@@ -1006,8 +1019,9 @@ class MainRunner:
                 )
             except Exception as e:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
+        sent_ok = True
         if notify:
-            self._push_screening(screening, as_of=as_of)
+            sent_ok = bool(self._push_screening(screening, as_of=as_of))
         else:
             logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
             if self._screening_delivered(screening):
@@ -1019,11 +1033,13 @@ class MainRunner:
                     )
                 except Exception as e:
                     logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
-        if self._screening_delivered(screening):
+        if self._screening_delivered(screening) and sent_ok:
             self._mark_pipeline("success", "morning", run_date=key)
+        elif self._screening_delivered(screening) and not sent_ok:
+            logger.error("早上海選已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
         else:
             logger.error("早上海選未產出名單，基準日 %s", as_of)
-        return self._screening_delivered(screening)
+        return bool(self._screening_delivered(screening) and sent_ok)
 
     def run_evening_screen(self, skip_if_done: bool = False, notify: bool = False) -> bool:
         """台股收盤後的名單只存庫，不寄 Telegram（美股還沒開）。"""

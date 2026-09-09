@@ -856,6 +856,7 @@ def test_l7_morning_skip_if_done():
     assert "skip_if_done = True" in _src(main)
     assert 'GITHUB_EVENT_NAME' in _src(main)
     assert "skip_if_done" in _src(MainRunner.run_morning_screen)
+    assert "不標已寄過" in _src(MainRunner.run_morning_screen)
 
 
 def test_l7_increment_count_indexed():

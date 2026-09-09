@@ -45,7 +45,7 @@ _WATCHDOG_SCHEDULER_JOB = {
 
 
 def _watchdog_job_owned(kind: str) -> bool:
-    """本行程不擁有的排程（如 Render data 角色的早上海選）不在本地 pipeline_runs 查。"""
+    """本行程不擁有的排程不在本地 pipeline_runs 查。"""
     job = _WATCHDOG_SCHEDULER_JOB.get(str(kind or "").strip())
     if not job:
         return True
