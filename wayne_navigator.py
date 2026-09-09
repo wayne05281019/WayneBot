@@ -1569,6 +1569,21 @@ def _status_badge_colors(bg, fg):
     return bg, fg
 
 
+def _glance_kv_pill(bg, fg):
+    """介紹圖 pill 沒有整格墊底：白字壓在淺綠／淡粉上會消失，改實心底。"""
+    C = _CARD
+    try:
+        if fg == C["white"] and bg and _wcag(fg, bg) < 4.5:
+            if bg in (C["lo_fill"], C["lo_hit_fill"], C["pill_lo"]):
+                return C["pill_lo"], C["white"]
+            if bg in (C["hi_fill"], C["temp_hot_bg"], C["temp_warm_bg"], C["vol_hi_bg"], C["pill_hi"]):
+                return C["pill_hi"], C["white"]
+            return C["navy"], C["white"]
+    except Exception:
+        pass
+    return bg, fg
+
+
 def profit_cell_style(profit, prev_profit=None, base: str = "#FFFFFF"):
     """獲利格：0.0% 綠底白字、0.x% 實綠底紅字、1%～未滿 8% 白底紅字、再高紅底白字。
 
@@ -2655,18 +2670,18 @@ def render_first_glance_png(
         + m_bot
     )
     info_inch = max(H * inch, 4.8)
-    nav_inch = 4.55
+    nav_inch = 5.05
     fig = plt.figure(figsize=(fig_w, info_inch + nav_inch), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
     gs = fig.add_gridspec(2, 1, height_ratios=(info_inch, nav_inch), hspace=0.055)
     ax = fig.add_subplot(gs[0])
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
-    gs_n = gs[1].subgridspec(3, 1, height_ratios=(5.15, 0.42, 1.35), hspace=0.06)
+    gs_n = gs[1].subgridspec(3, 1, height_ratios=(5.15, 0.95, 1.55), hspace=0.08)
     ax_px = fig.add_subplot(gs_n[0])
     ax_sig = fig.add_subplot(gs_n[1], sharex=ax_px)
     ax_vol = fig.add_subplot(gs_n[2], sharex=ax_px)
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.045)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.058)
 
     def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
         ax.add_patch(patches.FancyBboxPatch(
@@ -2726,7 +2741,7 @@ def render_first_glance_png(
     chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
     if chg_amt is not None and not move_txt:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(inner_r, y + price_h * 0.24, "　".join(chg_bits),
+    ax.text(inner_r, y + price_h * 0.46, "　".join(chg_bits),
             fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     ohlc_bits = [
         f"開 {_fmt_price(last.get('open') or card.get('open'))}",
@@ -2784,12 +2799,12 @@ def render_first_glance_png(
 
     y -= gap + space_h
     draw_kv(y, space_h, "空間／位置", space_rows, sub="獲利＝近60個日曆天收盤低算上來", pills={
-        1: _profit_heat_draw(gain, None, C["white"]),
+        1: _glance_kv_pill(*_profit_heat_draw(gain, None, C["white"])),
     })
     y -= gap + heat_h
     draw_kv(y, heat_h, "熱度／量能", heat_rows, pills={
-        0: _temp_heat_draw(_temp_n, C["white"]),
-        1: _vol_heat_draw(int(vol_n or 99), C["white"]),
+        0: _glance_kv_pill(*_temp_heat_draw(_temp_n, C["white"])),
+        1: _glance_kv_pill(*_vol_heat_draw(int(vol_n or 99), C["white"])),
     })
 
     if show_chips:
@@ -3220,7 +3235,13 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
         _draw_nav_legend(ax1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
-    ax1.tick_params(labelsize=8 if compact else 9)
+    ax1.tick_params(
+        labelsize=8 if compact else 9,
+        labelbottom=False,
+        bottom=False,
+        left=False,
+        right=True,
+    )
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(8 if compact else 9))
     if not compact:
@@ -3236,7 +3257,10 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
     ax_sig.set_yticks([])
     ax_sig.set_ylim(0, 1)
     ax_sig.set_xlim(-0.8, n - 0.2)
-    ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
+    if compact:
+        ax_sig.set_ylabel("")
+    else:
+        ax_sig.set_ylabel("量能\n訊號", fontproperties=_fp(7.5))
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)

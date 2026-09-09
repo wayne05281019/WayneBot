@@ -165,6 +165,7 @@ def test_glance_combo_canvas_matches_card_width():
         GLANCE_FIG_H,
         GLANCE_FIG_W,
         GLANCE_PNG_DPI,
+        _paint_nav_on_axes,
         render_first_glance_png,
     )
 
@@ -180,6 +181,18 @@ def test_glance_combo_canvas_matches_card_width():
     assert "has_chips" in src
     assert "horizon_low_cells" in src
     assert 'card.get("dist_l480")' not in src
+    assert "height_ratios=(5.15, 0.95, 1.55)" in src
+    assert "_glance_kv_pill" in src
+    assert "price_h * 0.46" in src
+    src_nav = inspect.getsource(_paint_nav_on_axes)
+    assert 'ax_sig.set_ylabel("")' in src_nav
+    assert "labelbottom=False" in src_nav
+    from wayne_navigator import _CARD, _glance_kv_pill, _profit_heat_draw, _wcag
+
+    bg, fg = _glance_kv_pill(*_profit_heat_draw(0.0, None, _CARD["white"]))
+    assert bg == _CARD["pill_lo"]
+    assert fg == _CARD["white"]
+    assert _wcag(fg, bg) >= 4.5
 
 
 def test_fmt_dist_omits_nan():
