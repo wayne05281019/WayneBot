@@ -942,8 +942,10 @@ def _stock_card_html(
         except Exception:
             pass
     body.extend([
-        f"格局　{geju_left}" + (f"　{_hot(stance_title)}" if stance_title else ""),
+        f"格局　{geju_left}",
     ])
+    if stance_title:
+        body.append(_hot(stance_title))
     note = str(explain or "").strip()
     if note and stance_title and note.startswith(stance_title):
         note = note[len(stance_title) :].lstrip("。").strip()

@@ -247,8 +247,11 @@ def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str
         limit = max(24.0, float(rest_w) - pad)
     if buf:
         if (
-            len(buf) <= 2
-            and lines
+            lines
+            and (
+                len(buf) <= 2
+                or buf.strip() in "。、；：，,．"
+            )
             and _text_w(draw, lines[-1] + buf, font) <= limit
         ):
             lines[-1] = lines[-1] + buf

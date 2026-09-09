@@ -2,6 +2,7 @@
 """Telegram 文字排版：標籤固定寬、區塊之間空一行。"""
 from __future__ import annotations
 
+import re
 from typing import List
 
 
@@ -67,14 +68,16 @@ def wrap_cjk_lines(text: str, width: int, *, unit: str = "disp") -> List[str]:
         return bool(s) and (len(s) == 1 or tw(s) <= 2)
 
     k = 0
+    lead_punct = set("，。、；：）」』】!！?？")
     while k < len(lines):
         cur = lines[k]
-        if not _is_orphan(cur) or len(lines) == 1:
+        starts_punct = bool(cur) and cur[0] in lead_punct
+        if (not _is_orphan(cur) and not starts_punct) or len(lines) == 1:
             k += 1
             continue
         if k > 0:
             prev = lines[k - 1]
-            if tw(prev + cur) <= width:
+            if tw(prev + cur) <= width or starts_punct:
                 lines[k - 1] = prev + cur
                 lines.pop(k)
                 k = max(0, k - 1)
@@ -487,8 +490,155 @@ def chunk_telegram_text(text: str, limit: int = 3500) -> List[str]:
     return [text[i : i + limit] for i in range(0, len(text), limit)]
 
 
-def chunk_telegram_html(html: str, limit: int = 3500) -> List[str]:
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_PHONE_CHARS = 18
+_LEAD_PUNCT = set("，。、；：）」』】!！?？)]}")
+_SENTENCE_END = set("。！？；")
+_SECONDARY_BREAK = set("，、｜／")
+_KV_LINE_RE = re.compile(r"^[\u4e00-\u9fff]{2,4}　")
+
+
+def _html_plain(s: str) -> str:
+    return _HTML_TAG_RE.sub("", str(s or ""))
+
+
+def _html_stream(s: str):
+    """逐字：(字, 在標籤內, 開著的元素層數)。層數>0 表示還在 <b>/<code> 裡。"""
+    in_tag = False
+    tag: List[str] = []
+    depth = 0
+    for ch in str(s or ""):
+        if ch == "<":
+            in_tag = True
+            tag = ["<"]
+            yield ch, True, depth
+            continue
+        if in_tag:
+            tag.append(ch)
+            if ch == ">":
+                in_tag = False
+                raw = "".join(tag)
+                name = raw.strip("<>/ ").split()[0].lower() if raw.strip("<>/ ") else ""
+                self_c = raw.endswith("/>") or name in {"br", "img", "hr"}
+                if raw.startswith("</"):
+                    depth = max(0, depth - 1)
+                elif not self_c:
+                    depth += 1
+            yield ch, True, depth
+            continue
+        yield ch, False, depth
+
+
+def _split_html_after(s: str, ends: set) -> List[str]:
+    """在標籤外、且不在 <b>/<code> 內的標點後面切開，避免拆壞成對標籤。"""
+    parts: List[str] = []
+    buf: List[str] = []
+    for ch, in_tag, depth in _html_stream(s):
+        buf.append(ch)
+        if (not in_tag) and depth == 0 and ch in ends:
+            parts.append("".join(buf))
+            buf = []
+    if buf:
+        parts.append("".join(buf))
+    return [p for p in parts if p]
+
+
+def _is_compact_kv_line(plain: str) -> bool:
+    """海選／持股那種「收盤　60.80」短欄，不要再拆。"""
+    return bool(_KV_LINE_RE.match(str(plain or "")))
+
+
+def _html_orphan_plain(plain: str) -> bool:
+    s = str(plain or "").strip()
+    if not s:
+        return False
+    if s[:1] in _LEAD_PUNCT or all(ch in _LEAD_PUNCT for ch in s):
+        return True
+    if len(s) == 1:
+        return True
+    return _disp_w(s) <= 2
+
+
+def _glue_html_orphans(lines: List[str], width: int) -> List[str]:
+    out = [ln for ln in lines]
+    k = 0
+    while k < len(out):
+        if _html_orphan_plain(_html_plain(out[k])) and k > 0:
+            out[k - 1] = out[k - 1] + out[k]
+            out.pop(k)
+            k = max(0, k - 1)
+            continue
+        k += 1
+    return out
+
+
+def _pack_html_pieces(pieces: List[str], width: int) -> List[str]:
+    packed: List[str] = []
+    buf = ""
+    for piece in pieces:
+        trial = buf + piece if buf else piece
+        if buf and len(_html_plain(trial)) > width:
+            packed.append(buf.rstrip())
+            buf = piece.lstrip()
+        else:
+            buf = trial
+    if buf:
+        packed.append(buf.rstrip())
+    return packed
+
+
+def _expand_long_html_piece(piece: str, width: int) -> List[str]:
+    plain = _html_plain(piece)
+    if len(plain) <= width:
+        return [piece]
+    if any(ch in plain for ch in _SECONDARY_BREAK):
+        sub = _split_html_after(piece, _SECONDARY_BREAK)
+        if len(sub) > 1:
+            packed = _pack_html_pieces(sub, width)
+            out: List[str] = []
+            for part in packed:
+                if part != piece and len(_html_plain(part)) > width:
+                    out.extend(_expand_long_html_piece(part, width))
+                else:
+                    out.append(part)
+            if out and out != [piece]:
+                return out
+    if "<" not in piece:
+        return wrap_cjk_lines(piece, width, unit="chars") or [piece]
+    return [piece]
+
+
+def _reflow_one_html_line(line: str, width: int) -> List[str]:
+    plain = _html_plain(line)
+    if not plain.strip():
+        return [line]
+    if _is_compact_kv_line(plain):
+        return [line]
+    if len(plain) <= width:
+        return [line]
+    pieces = _split_html_after(line, _SENTENCE_END)
+    if len(pieces) <= 1:
+        pieces = _split_html_after(line, _SECONDARY_BREAK)
+    packed = _pack_html_pieces(pieces, width)
+    final: List[str] = []
+    for piece in packed or [line]:
+        final.extend(_expand_long_html_piece(piece, width))
+    return final or [line]
+
+
+def reflow_telegram_html(html: str, *, width: int = _PHONE_CHARS) -> str:
+    """手機氣泡約 18 字。長句在句號／頓號切開，行末不留孤字或孤句號。"""
+    width = max(8, int(width or _PHONE_CHARS))
+    lines: List[str] = []
+    for raw in str(html or "").split("\n"):
+        lines.extend(_reflow_one_html_line(raw, width))
+    return "\n".join(_glue_html_orphans(lines, width))
+
+
+def chunk_telegram_html(html: str, limit: int = 3500, *, reflow: bool = False) -> List[str]:
     """依 </blockquote> 或換行切開，避免把 <a> 切成半截導致 Telegram parse 失敗。"""
+    if reflow:
+        html = reflow_telegram_html(html)
     if not html:
         return []
     if len(html) <= limit:
