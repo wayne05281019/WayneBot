@@ -92,6 +92,58 @@ def is_lookup_ticker(query: str) -> bool:
     return bool(_LOOKUP_TICKER_RE.fullmatch(q))
 
 
+_ETF_KIND_ALIASES = {
+    "兩倍槓桿": ("ETF_LEVERAGED",),
+    "二倍槓桿": ("ETF_LEVERAGED",),
+    "2倍槓桿": ("ETF_LEVERAGED",),
+    "兩倍": ("ETF_LEVERAGED",),
+    "二倍": ("ETF_LEVERAGED",),
+    "2倍": ("ETF_LEVERAGED",),
+    "槓桿": ("ETF_LEVERAGED",),
+    "槓桿etf": ("ETF_LEVERAGED",),
+    "正2etf": ("ETF_LEVERAGED",),
+    "反向": ("ETF_INVERSE",),
+    "反向etf": ("ETF_INVERSE",),
+    "反1": ("ETF_INVERSE",),
+    "反1etf": ("ETF_INVERSE",),
+    "主動etf": ("ETF_ACTIVE",),
+    "主動": ("ETF_ACTIVE",),
+    "被動etf": ("ETF_PASSIVE",),
+    "被動": ("ETF_PASSIVE",),
+    "主被動etf": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主被動": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主動被動etf": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主動被動": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "etf": ("ETF_PASSIVE", "ETF_ACTIVE", "ETF_LEVERAGED", "ETF_INVERSE"),
+}
+
+
+def parse_etf_lookup_kinds(query: str) -> Optional[Tuple[str, ...]]:
+    """對話框打「兩倍槓桿／主被動ETF」對到官方分類。代號查詢不走這裡。"""
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    q = re.sub(r"[\s\u3000]+", "", q)
+    if not q or is_lookup_ticker(q):
+        return None
+    key = q.replace("槓杆", "槓桿").replace("ＥＴＦ", "ETF").replace("Etf", "ETF")
+    key = key.lower()
+    return _ETF_KIND_ALIASES.get(key)
+
+
+def etf_kind_label(kinds) -> str:
+    s = {str(k) for k in (kinds or ())}
+    if s == {"ETF_LEVERAGED"}:
+        return "兩倍槓桿 ETF"
+    if s == {"ETF_INVERSE"}:
+        return "反向 ETF"
+    if s == {"ETF_ACTIVE"}:
+        return "主動 ETF"
+    if s == {"ETF_PASSIVE"}:
+        return "被動 ETF"
+    if s == {"ETF_ACTIVE", "ETF_PASSIVE"}:
+        return "主動／被動 ETF"
+    return "ETF"
+
+
 def canonical_lookup_ticker(query: str) -> str:
     """查股用代號：全形轉半形、槓桿／主動後綴大寫。"""
     q = unicodedata.normalize("NFKC", (query or "").strip())

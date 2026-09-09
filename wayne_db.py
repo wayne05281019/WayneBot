@@ -18,7 +18,7 @@ import traceback
 import unicodedata
 from datetime import datetime
 from contextlib import contextmanager
-from typing import NamedTuple, Optional, Dict, Any, List, Union
+from typing import NamedTuple, Optional, Dict, Any, List, Union, Tuple
 
 _CODE_THEN_NAME_RE = re.compile(
     r"^(?P<code>\d{3,6}[A-Za-z]?)[\s\u3000]*(?P<name>[\u4e00-\u9fff].+)$",
@@ -670,8 +670,67 @@ def _rank_exact_name_hits(hits: List[Dict[str, Any]], q: str) -> List[Dict[str, 
     return hits
 
 
+def _lookup_etf_by_kinds(
+    db_path: str,
+    kinds: Tuple[str, ...],
+    limit: int,
+    latest: Optional[str],
+) -> List[Dict[str, Any]]:
+    """依官方 asset_type 列出當日成交量較大的 ETF，不要用讀音去撞現股。"""
+    from universe import classify_target, etf_kind_label
+
+    want = {str(k) for k in kinds}
+    label = etf_kind_label(kinds)
+    cap = max(1, int(limit))
+    out: List[Dict[str, Any]] = []
+    with get_db_connection(db_path, write=False) as conn:
+        rows: List[Any] = []
+        from_universe = False
+        if latest:
+            try:
+                qmarks = ",".join("?" * len(want))
+                rows = conn.execute(
+                    f"""
+                    SELECT q.stock_id, q.stock_name, q.close, q.pct_change, q.volume
+                    FROM daily_quotes q
+                    JOIN stock_universe u ON u.stock_id = q.stock_id
+                    WHERE q.date=? AND u.asset_type IN ({qmarks})
+                    ORDER BY q.volume DESC
+                    """,
+                    (latest, *sorted(want)),
+                ).fetchall()
+                from_universe = bool(rows)
+            except sqlite3.OperationalError:
+                rows = []
+            if not rows:
+                try:
+                    rows = conn.execute(
+                        """SELECT stock_id, stock_name, close, pct_change, volume
+                           FROM daily_quotes
+                           WHERE date=? AND (stock_id LIKE '00%' OR stock_id LIKE '01%')
+                           ORDER BY volume DESC""",
+                        (latest,),
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    rows = []
+        for r in rows:
+            if not from_universe:
+                kind, ok = classify_target(r["stock_id"], r["stock_name"] or "")
+                if not ok or kind not in want:
+                    continue
+            item = dict(r)
+            item["quote_date"] = latest
+            item["fuzzy"] = False
+            item["category"] = True
+            item["category_label"] = label
+            out.append(item)
+            if len(out) >= cap:
+                break
+    return out
+
+
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號或中文名（如南亞、山太士、00631L）查標的；ETF 含主動／被動／槓桿。
+    """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／0050／00631L）。
 
     名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
     再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
@@ -695,6 +754,12 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     like_q = raw if ticker else (name_q or raw)
     cap = int(limit)
     latest = _resolve_lookup_quote_date(db_path)
+    if not ticker:
+        from universe import parse_etf_lookup_kinds
+
+        kinds = parse_etf_lookup_kinds(raw)
+        if kinds:
+            return _lookup_etf_by_kinds(db_path, kinds, cap, latest)
     exact: List[Dict[str, Any]] = []
     with get_db_connection(db_path, write=False) as conn:
         if latest and ticker:
