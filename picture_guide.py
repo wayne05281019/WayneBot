@@ -9,7 +9,7 @@ import os
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
-CACHE_VER = "v35"
+CACHE_VER = "v36"
 # 八頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
@@ -34,6 +34,8 @@ FLIP_H = 960
 FLIP_FRAMES = 8
 FLIP_MS = 55
 _BREAK_AFTER = set("、。；：，,．）)」」】》 \u3000")
+_NO_START = set("。、；：，,．）)」」】》")
+_NO_END = set("（(「『【《")
 
 # 禁止 emoji：NotoSansTC 會畫成方塊。鍵盤寫「鍵盤」，加號寫「+」。
 PAGES: Sequence[Tuple[str, str, str]] = (
@@ -221,7 +223,7 @@ def _text_w(draw, text: str, font) -> float:
 
 
 def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str]:
-    """CJK 折行：盡量在頓號／句號切開。不把 /menu 從斜線拆開；不把溢出的句號拼回去。"""
+    """CJK 折行：盡量在頓號／句號切開。行首不放句號／右括；行末句號可懸一顆。"""
     if not text:
         return [""]
     pad = 12.0
@@ -233,9 +235,23 @@ def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str
         if _text_w(draw, trial, font) <= limit or not buf:
             buf = trial
             continue
+        if ch in _NO_START:
+            extra = _text_w(draw, trial, font) - limit
+            hung = max(float(getattr(font, "size", 28)) * 0.7, 24.0)
+            if extra <= hung:
+                buf = trial
+                continue
+            take = 1
+            while take < min(3, len(buf)) and buf[-take] in _NO_START:
+                take += 1
+            if len(buf) > take:
+                lines.append(buf[:-take].rstrip())
+                buf = buf[-take:] + ch
+                limit = max(24.0, float(rest_w) - pad)
+                continue
         cut = -1
         for i in range(len(buf) - 1, 0, -1):
-            if buf[i] in _BREAK_AFTER:
+            if buf[i] in _BREAK_AFTER and buf[i] not in _NO_END:
                 cut = i + 1
                 break
         if cut > 0 and cut < len(buf):
@@ -245,6 +261,23 @@ def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str
             lines.append(buf)
             buf = ch
         limit = max(24.0, float(rest_w) - pad)
+        while buf and buf[0] in _NO_START and lines:
+            prev = lines[-1]
+            if len(prev) >= 2:
+                buf = prev[-1] + buf
+                lines[-1] = prev[:-1]
+                if not lines[-1]:
+                    lines.pop()
+            else:
+                lines[-1] = prev + buf[0]
+                buf = buf[1:]
+                break
+        while lines and lines[-1] and lines[-1][-1] in _NO_END:
+            buf = lines[-1][-1] + buf
+            lines[-1] = lines[-1][:-1]
+            if not lines[-1]:
+                lines.pop()
+                break
     if buf:
         if (
             lines
@@ -259,13 +292,22 @@ def _wrap_line(draw, text: str, font, first_w: float, rest_w: float) -> List[str
             lines.append(buf)
     out: List[str] = []
     for ln in lines:
-        if out and ln.strip() in "。、；：，,．":
-            out[-1] = out[-1] + ln.strip()
-        elif ln.strip():
-            out.append(ln)
-        else:
-            out.append(ln)
-    return out or [""]
+        raw = ln
+        while out and raw and raw[0] in _NO_START:
+            prev = out[-1]
+            if len(prev) >= 2:
+                raw = prev[-1] + raw
+                out[-1] = prev[:-1]
+                if not out[-1]:
+                    out.pop()
+            else:
+                out[-1] = prev + raw[0]
+                raw = raw[1:]
+        if raw.strip():
+            out.append(raw)
+        elif raw:
+            out.append(raw)
+    return [ln for ln in out if ln] or [""]
 
 
 def _hang_prefix(para: str) -> str:

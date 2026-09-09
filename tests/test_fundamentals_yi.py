@@ -67,5 +67,11 @@ def test_format_fundamentals_html_uses_yi_not_mom_yoy_pct(tmp_path):
     assert "較上月" in blob
     assert "EPS" in blob
     assert "毛利／EPS" not in blob
+    assert "毛利率" in blob
+    assert "營益率" in blob
+    labs = [a for a, _b in plain]
+    assert labs.count("毛利") == 1
+    assert "毛利率" in labs
+    assert "營益率" in labs
     assert "MoM" not in blob
     assert "YoY" not in blob

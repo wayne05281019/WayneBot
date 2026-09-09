@@ -253,9 +253,9 @@ def render_industry_png(
     else:
         ind = snap["industry"] or "未分類（母體還沒寫到產業）"
         items.append(("h", "這檔是什麼"))
-        items.append(("p", f"產業：{ind}"))
+        items.append(("kv", "產業", ind))
         items.append(
-            ("p", f"同業：{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足")
+            ("kv", "同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "名單不足")
         )
         if tags0:
             items.append(("muted", "細項來自籌碼K公開個股頁"))
@@ -267,29 +267,34 @@ def render_industry_png(
         month = str(snap.get("month") or "")
         mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
         items.append(("h", "營收看同業"))
-        items.append(("p", f"月營收：{mlabel}"))
+        items.append(("kv", "月營收", mlabel))
         if snap["my_yoy"] is not None:
-            items.append(("p", f"這檔年增：{snap['my_yoy']:+.1f}%"))
+            items.append(("kv", "這檔年增", f"{snap['my_yoy']:+.1f}%"))
             if snap["my_mom"] is not None:
-                items.append(("p", f"這檔月增：{snap['my_mom']:+.1f}%"))
+                items.append(("kv", "這檔月增", f"{snap['my_mom']:+.1f}%"))
             if snap["yoy_med"] is not None:
                 items.append(
-                    ("p", f"同業中位年增：{snap['yoy_med']:+.1f}%（{snap['yoy_n']}家有月報）")
+                    ("kv", "同業中位年增", f"{snap['yoy_med']:+.1f}%（{snap['yoy_n']}家有月報）")
                 )
             items.append(("p", _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")))
         else:
             items.append(("p", "這檔還沒有月營收列"))
         if snap["my_gm"] is not None:
-            items.append(("p", f"季報：{snap['year']}Q{snap['season']}"))
-            items.append(("p", f"這檔毛利率：{snap['my_gm']:.1f}%"))
+            items.append(("kv", "季報", f"{snap['year']}Q{snap['season']}"))
+            items.append(("kv", "這檔毛利率", f"{snap['my_gm']:.1f}%"))
             if snap["gm_med"] is not None:
-                items.append(("p", f"同業中位毛利率：{snap['gm_med']:.1f}%"))
+                items.append(("kv", "同業中位毛利率", f"{snap['gm_med']:.1f}%"))
             items.append(("p", _vs_peer(snap["my_gm"], snap["gm_med"], "pt")))
         else:
             items.append(("p", "這檔還沒有季報列"))
 
         items.append(("h", "本族群產業狀況簡述"))
         for ln in _flow_lines(snap):
+            if "：" in ln:
+                lab, _, val = ln.partition("：")
+                if lab and val and "：" not in val:
+                    items.append(("kv", lab, val))
+                    continue
             items.append(("p", ln))
 
         if snap["stronger"] or snap["weaker"]:
@@ -350,6 +355,13 @@ def render_industry_png(
             h = max(line_h, _chip_row_h(tags, pad_x + left_w + 14) or line_h)
             measured.append((kind, item, h + 10))
             y += h + 10
+        elif kind == "kv":
+            lab, val = item[1], item[2]
+            avail = max(80.0, max_w - body_f.getlength(lab) - 28)
+            wraps = _wrap_px(val, body_f, avail)
+            h = max(line_h, len(wraps) * line_h)
+            measured.append((kind, item, h))
+            y += h
         elif kind == "h":
             measured.append((kind, item, head_h + 10))
             y += head_h + 10
@@ -446,6 +458,21 @@ def render_industry_png(
                 cy = max(cy + line_h, end_y + 10)
             else:
                 dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
+                cy += line_h
+        elif kind == "kv":
+            lab, val = item[1], item[2]
+            avail = max(80.0, max_w - body_f.getlength(lab) - 28)
+            wraps = _wrap_px(val, body_f, avail) or [val]
+            lx, ly = centered_text_xy(
+                body_f, lab, (pad_x, cy, pad_x + body_f.getlength(lab) + 2, cy + line_h)
+            )
+            dr.text((lx, ly), lab, font=body_f, fill=MUTED + (255,))
+            for ln in wraps:
+                ln_w = body_f.getlength(ln)
+                px, py = centered_text_xy(
+                    body_f, ln, (pad_x + max_w - ln_w, cy, pad_x + max_w, cy + line_h)
+                )
+                dr.text((px, py), ln, font=body_f, fill=TEXT + (255,))
                 cy += line_h
         else:
             fill = MUTED if kind == "muted" else TEXT

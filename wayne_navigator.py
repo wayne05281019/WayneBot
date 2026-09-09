@@ -936,6 +936,32 @@ def _trend_note_short(note: str) -> str:
     }.get(n, n)
 
 
+def dual_trend_pill_geom(body_h: float) -> dict:
+    """升降主標＋註兩顆 pill：兩顆中間留空，也不要貼到列的上下格線。
+
+    貼齊格線會讓上一列「未新低」跟下一列「最低溫」隔線相貼，看起來像壓字。
+    """
+    h = max(float(body_h), 1.0)
+    main_fs, note_fs = 8.2, 7.6
+    edge = h * 0.18
+    main_h = h * 0.28
+    note_h = h * 0.26
+    main_dy = h / 2.0 - edge - main_h / 2.0
+    note_dy = h / 2.0 - edge - note_h / 2.0
+    inner_gap = (main_dy - main_h / 2.0) - (-note_dy + note_h / 2.0)
+    return {
+        "main_fs": main_fs,
+        "note_fs": note_fs,
+        "main_h": main_h,
+        "note_h": note_h,
+        "main_dy": main_dy,
+        "note_dy": note_dy,
+        "rounding": min(0.08, h * 0.12),
+        "gap": inner_gap,
+        "edge": edge,
+    }
+
+
 def _fmt_md(date_val) -> str:
     d = str(date_val or "")
     if len(d) == 8 and d.isdigit():
@@ -1874,7 +1900,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     head_h = 5.7
     title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
-    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 3.82
+    tbl_title_h, hdr_h, body_h = 3.5, 3.15, 5.05
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
@@ -1894,7 +1920,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         )
     except Exception:
         stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
-    stance_h = 6.2
+    note_max = 100 - 2 * pad_x - 6.4
+    stance_note_lines = _wrap_fit(str(stance_note or "").strip(), 11.2, note_max, CARD_FIG_W)
+    if not stance_note_lines and str(stance_note or "").strip():
+        stance_note_lines = [str(stance_note).strip()]
+    stance_h = 6.2 + 2.2 * max(0, len(stance_note_lines) - 1)
 
     fig_w = CARD_FIG_W
     badges = []
@@ -2109,13 +2139,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         title_fs -= 0.3
     ax.text(title_x, chip_y + chip_h / 2, stance_txt,
             fontproperties=_fp(title_fs, "bold"), color=s_ink, va="center", zorder=4)
-    note = str(stance_note or "").strip()
-    note_fs = 11.2
-    note_max = 100 - 2 * pad_x - 6.4
-    while tw(note, note_fs) > note_max and note_fs > 8.8:
-        note_fs -= 0.25
-    ax.text(pad_x + 3.2, y + 1.35, note,
-            fontproperties=_fp(note_fs), color=C["ink_soft"], va="center", zorder=4)
+    ny = y + 1.35 + 2.2 * max(0, len(stance_note_lines) - 1)
+    for ln in stance_note_lines:
+        ax.text(pad_x + 3.2, ny, ln,
+                fontproperties=_fp(11.2), color=C["ink_soft"], va="center", zorder=4)
+        ny -= 2.2
 
     # 高點
     y -= gap + hi_pane_h
@@ -2229,18 +2257,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
                     max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    main_fs = 10.0 if len(main_lab) >= 3 else 10.6
-                    note_fs = 9.2
+                    geom = dual_trend_pill_geom(body_h)
+                    main_fs = geom["main_fs"] if len(main_lab) >= 3 else geom["main_fs"] + 0.4
+                    note_fs = geom["note_fs"]
                     main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
                     note_w = min(tw(note, note_fs) + 2.2, max_w)
-                    dual_r = min(0.12, body_h * 0.18)
                     _status_pill(
-                        cx, cy + body_h * 0.22, main_lab, tr_bg, tr_fg,
-                        w=main_w, h=body_h * 0.36, fs=main_fs, rounding=dual_r,
+                        cx, cy + geom["main_dy"], main_lab, tr_bg, tr_fg,
+                        w=main_w, h=geom["main_h"], fs=main_fs, rounding=geom["rounding"],
                     )
                     _status_pill(
-                        cx, cy - body_h * 0.24, note, nbg, nfg,
-                        w=note_w, h=body_h * 0.32, fs=note_fs, rounding=dual_r,
+                        cx, cy - geom["note_dy"], note, nbg, nfg,
+                        w=note_w, h=geom["note_h"], fs=note_fs, rounding=geom["rounding"],
                     )
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
@@ -2762,19 +2790,25 @@ def render_first_glance_png(
         lots_of = {nm: fmt_lots(int(item.get("net") or 0)) for nm, item in chips}
         phrase_of = {nm: (item.get("phrase") or "—") for nm, item in chips}
         name_w = max(tw(nm, 12.0) for nm, _ in chips)
-        lots_x = inner_l + name_w + 2.2
         lots_w = max(tw(lots_of[nm], 16.0) for nm, _ in chips)
-        phrase_left = lots_x + lots_w + 3.0
+        lots_col = inner_l + max(name_w + lots_w + 4.0, row_w * 0.46)
+        phrase_left = lots_col + 3.0
         phrase_avail = max(12.0, inner_r - phrase_left)
         f_phrase = 12.0
         while f_phrase > floor and any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
             f_phrase -= 0.3
+        if any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
+            lots_col = inner_l + name_w + lots_w + 4.0
+            phrase_avail = max(12.0, inner_r - lots_col - 3.0)
+            f_phrase = 12.0
+            while f_phrase > floor and any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
+                f_phrase -= 0.3
         cy = y + chips_h - title_band - pane_pad - row_h / 2
         for nm, item in chips:
             net = int(item.get("net") or 0)
             cc = C["up"] if net > 0 else (C["down"] if net < 0 else C["ink_soft"])
             ax.text(inner_l, cy, nm, fontproperties=_fp(12.0, "bold"), color=C["ink"], ha="left", va="center", zorder=3)
-            ax.text(lots_x, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, ha="left", va="center", zorder=3)
+            ax.text(lots_col, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, ha="right", va="center", zorder=3)
             ax.text(inner_r, cy, phrase_of[nm], fontproperties=_fp(f_phrase, "bold"),
                     color=cc, ha="right", va="center", zorder=3)
             cy -= row_h
