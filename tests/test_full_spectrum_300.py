@@ -1066,6 +1066,7 @@ def test_l9_streak_days_does_not_reprint_number_list():
     assert "run_midday_review(skip_if_done=True)" in src
     assert "run_increment_job(skip_if_done=True, notify=not gha)" in src
     assert 'os.getenv("GITHUB_ACTIONS")' in src
+    assert "demote_unsent_screen_success" in src
 
 
 def test_l9_etf_callback_code_not_truncated():

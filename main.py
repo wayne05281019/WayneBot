@@ -469,11 +469,12 @@ def catch_up_missed_jobs(now=None) -> None:
 _RETRYABLE_WATCHDOG = {
     "increment": "fuse",
     "morning_screen": "morning",
+    "midday_review": "midday",
 }
 
 
 def retry_missed_owned_jobs(now=None) -> list:
-    """死人開關先補跑本行程擁有的海選／融合，再決定要不要告警。不重試 Release zip。"""
+    """死人開關先補跑本行程擁有的融合／海選／尾盤，再決定要不要告警。不重試 Release zip。"""
     from config import get_db_path, scheduler_may_push, scheduler_owns
     from main_runner import MainRunner
     from ops_watchdog import missed_jobs
@@ -482,8 +483,8 @@ def retry_missed_owned_jobs(now=None) -> list:
     kinds = {m["kind"] for m in missed}
     ran: list = []
     runner = None
-    # 先融合再海選，名單才吃得到剛補上的收盤。
-    for kind in ("increment", "morning_screen"):
+    # 先融合再海選再尾盤，名單才吃得到剛補上的收盤。
+    for kind in ("increment", "morning_screen", "midday_review"):
         if kind not in kinds:
             continue
         job = _RETRYABLE_WATCHDOG[kind]
@@ -493,6 +494,8 @@ def retry_missed_owned_jobs(now=None) -> list:
         logger.info("死人開關補跑 %s", kind)
         if kind == "morning_screen":
             runner.run_morning_screen(skip_if_done=True)
+        elif kind == "midday_review":
+            runner.run_midday_review(skip_if_done=True)
         else:
             runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
         ran.append(kind)
