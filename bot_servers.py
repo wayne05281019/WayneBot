@@ -241,7 +241,7 @@ HELP_TOPICS = {
         "\n"
         "圖下方（查完才出現，不是主選單那兩排）：\n"
         "• <b>籌碼</b>　三大法人買賣超圖\n"
-        "• <b>營收</b>　月營收、季報毛利\n"
+        "• <b>營收</b>　月營收、季報毛利；ETF 沒這顆\n"
         "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁公開細項小框（沒有就不畫）\n"
         "• <b>報導</b>　近 7 日 Google 新聞則數（有真數才出現）。點數字開搜尋自己讀；則數變多不是賣訊、不進海選\n"
         "• <b>K線</b>　開這一檔圖：一進先鎖定即時日K＋成交量，灰線連每根收盤。可自己改 15 分／60 分，或五日／十日／月線／季線。高低卡／獲利不會帶過去。興櫃沒這檔就不出現\n"
@@ -570,6 +570,7 @@ HELP_TOPICS = {
         "• 預警欄：K20高＝收盤靠近20日高且偏熱；K20低＝貼近20日低或月線乖離轉負。沒訊號時仍會露出高低（20高／10低），不藏表\n"
         "• 外資／投信／自營／法人當日張數＋連買連賣；完整法人格按籌碼\n"
         "• 本益／淨值／殖利率、融資融券餘額（張與使用率）＝官方有數才上卡；沒有真分點就不會出現主力成本\n"
+        "• ETF 股名旁標被動／主動／正2／反1；沒有公司月營收、毛利率、公司本益。官方單位淨值有數才上折溢價，沒有就不畫\n"
         "• 高低導航橫式：價格列＝20高／20高脫離／20低／20低脫離／60低；量能列才有量能異常、警告、月波動低\n"
         "• 產業說明＝一張圖卡：官方產業別＋同業月營收／毛利率中位＋本產業法人連買／連賣；股名旁公開細項小框（沒抓到不畫）；不是內幕\n"
         "• 海選靠近 20 日收盤高＝少追，排後面；高低卡才是少賠主軸\n"
@@ -587,6 +588,7 @@ HELP_TOPICS = {
         "查完一檔後，按<b>圖下方「營收」</b>（不在右側 ⌨️）。\n"
         "\n"
         "官方月營收與季報。本益／淨值／殖利率、融資融券餘額（張、使用率）有官方數才一併顯示；沒有就不畫。\n"
+        "ETF 沒有公司月營收，圖下也不出現這顆。\n"
         "同業對照請按旁邊的「產業」。"
     ),
     "industry": (
@@ -1818,28 +1820,39 @@ class WayneTelegramBot:
                     ]
                 ]
             )
+        etf = False
+        try:
+            from universe import is_etf_asset
+
+            etf = is_etf_asset(stock_id=c)
+        except Exception:
+            etf = False
         top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
         if news_label and news_url:
             top.append(InlineKeyboardButton(news_label[:16], url=news_url))
         if k_url:
             top.append(InlineKeyboardButton("K線", url=k_url))
-        listed = [
-            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
-            InlineKeyboardButton("營收", callback_data=f"f:{c}"),
-        ]
+        listed = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
+        if not etf:
+            listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
         if len(top) >= 3:
             listed.append(nav)
             return InlineKeyboardMarkup([top, listed, actions])
         if len(top) >= 2:
             top.append(nav)
             return InlineKeyboardMarkup([top, listed, actions])
+        row1 = [
+            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+        ]
+        if not etf:
+            row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+        row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
+        if etf and len(row1) < 3:
+            row1.append(nav)
+            return InlineKeyboardMarkup([row1, [actions[0], actions[1], self._q(topic)]])
         return InlineKeyboardMarkup(
             [
-                [
-                    InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
-                    InlineKeyboardButton("營收", callback_data=f"f:{c}"),
-                    InlineKeyboardButton("產業", callback_data=f"n:{c}"),
-                ],
+                row1,
                 [nav, actions[0], actions[1]],
             ]
         )

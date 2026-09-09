@@ -248,8 +248,12 @@ def render_industry_png(
     tags0 = list(snap.get("fine_tags") or [])
     items: List[tuple] = [("banner", sid, name, tags0)]
     if snap.get("is_etf"):
-        items.append(("h", "這檔是 ETF／指數商品"))
-        items.append(("p", "沒有單一公司的產業面。看成分與資金頁即可。"))
+        from universe import etf_card_kind_label
+
+        kind = etf_card_kind_label(snap.get("asset_type") or "", sid)
+        kind_txt = f"{kind} ETF" if kind else "ETF／指數商品"
+        items.append(("h", f"這檔是{kind_txt}"))
+        items.append(("p", "沒有單一公司的產業面。進場仍先看高低卡。成分股現在不畫。"))
     else:
         ind = snap["industry"] or "未分類（母體還沒寫到產業）"
         items.append(("h", "這檔是什麼"))

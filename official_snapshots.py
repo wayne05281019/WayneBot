@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""官方快照：本益／淨值／殖利率、融資融券餘額、暫停當沖、加權全日量、產業代碼。
+"""官方快照：本益／淨值／殖利率、融資融券餘額、暫停當沖、ETF 前一日淨值、加權全日量、產業代碼。
 
 只存官方欄位。空字串＝沒有真數，不上卡。禁止推估成本價。
+ETF 折溢價只用已結算單位淨值對同一天收盤；盤中預估淨值不上。
 盤後一次平行抓，縮短等待；查股只讀庫。
 """
 from __future__ import annotations
@@ -32,6 +33,8 @@ TWSE_COMPANY = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_PE = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
 TPEX_MARGN = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"
 TPEX_COMPANY = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+# 證交所 MIS：h＝前一營業日單位淨值（已結算）。f／g 是盤中預估，不上卡。
+MIS_ALL_ETF = "https://mis.twse.com.tw/stock/data/all_etf.txt"
 
 # 證交所／櫃買「產業別」代碼 → 官方產業名（含電子業細分 24–31）。
 # 來源：公開資訊觀測站／上市櫃公司基本資料產業別。
@@ -131,6 +134,64 @@ def fetch_json(url: str, timeout: int = 45) -> List[dict]:
     return []
 
 
+def previous_open_calendar_day(ymd: str) -> str:
+    """嚴格早於 ymd 的最近一個台股開市日。"""
+    from datetime import timedelta
+
+    from trading_calendar import last_open_calendar_day_on_or_before, normalize_ymd
+
+    s = normalize_ymd(ymd)
+    d = datetime.strptime(s, "%Y%m%d") - timedelta(days=1)
+    return last_open_calendar_day_on_or_before(d.strftime("%Y%m%d"))
+
+
+def fetch_mis_etf_payload(timeout: int = 45) -> dict:
+    headers = dict(_UA)
+    headers["Referer"] = "https://mis.twse.com.tw/stock/index.jsp"
+    req = Request(MIS_ALL_ETF, headers=headers)
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def parse_mis_etf_nav(payload: dict) -> List[dict]:
+    """只取前一營業日單位淨值。預估淨值／預估折溢價不上。"""
+    out: List[dict] = []
+    if not isinstance(payload, dict):
+        return out
+    seen = set()
+    for block in payload.get("a1") or []:
+        if not isinstance(block, dict):
+            continue
+        for row in block.get("msgArray") or []:
+            if not isinstance(row, dict):
+                continue
+            sid = str(row.get("a") or "").strip()
+            nav = _num(row.get("h"))
+            feed = str(row.get("i") or "").replace("-", "")[:8]
+            if not sid or nav is None or nav <= 0 or len(feed) != 8:
+                continue
+            try:
+                nav_date = previous_open_calendar_day(feed)
+            except Exception:
+                continue
+            if len(nav_date) != 8:
+                continue
+            key = (sid, nav_date)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "stock_id": sid,
+                    "date": nav_date,
+                    "nav": nav,
+                    "source": "twse_mis_prev_nav",
+                }
+            )
+    return out
+
+
 def ensure_schema(db_path: str | None = None) -> str:
     path = db_path or get_db_path()
     parent = os.path.dirname(path)
@@ -171,9 +232,18 @@ def ensure_schema(db_path: str | None = None) -> str:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (stock_id, date)
             );
+            CREATE TABLE IF NOT EXISTS etf_nav_snapshot (
+                stock_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                nav REAL NOT NULL,
+                source TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (stock_id, date)
+            );
             CREATE INDEX IF NOT EXISTS idx_valuation_date ON daily_valuation(date);
             CREATE INDEX IF NOT EXISTS idx_margin_date ON daily_margin(date);
             CREATE INDEX IF NOT EXISTS idx_daytrade_date ON daytrade_status(date, suspended);
+            CREATE INDEX IF NOT EXISTS idx_etf_nav_date ON etf_nav_snapshot(date);
             """
         )
         conn.commit()
@@ -408,6 +478,33 @@ def _upsert_margin(conn: sqlite3.Connection, rows: Iterable[dict], now: str) -> 
     return n
 
 
+def _upsert_etf_nav(conn: sqlite3.Connection, rows: Iterable[dict], now: str) -> int:
+    n = 0
+    for r in rows:
+        date = str(r.get("date") or "")
+        sid = str(r.get("stock_id") or "")
+        nav = r.get("nav")
+        if not sid or len(date) != 8 or nav is None:
+            continue
+        try:
+            nav_f = float(nav)
+        except (TypeError, ValueError):
+            continue
+        if nav_f <= 0:
+            continue
+        conn.execute(
+            """
+            INSERT INTO etf_nav_snapshot(stock_id, date, nav, source, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(stock_id, date) DO UPDATE SET
+                nav=excluded.nav, source=excluded.source, updated_at=excluded.updated_at
+            """,
+            (sid, date, nav_f, r.get("source") or "", now),
+        )
+        n += 1
+    return n
+
+
 def _upsert_daytrade(conn: sqlite3.Connection, rows: Iterable[dict], now: str) -> int:
     n = 0
     for r in rows:
@@ -535,7 +632,7 @@ def overlay_industry(db_path: str, pairs: Sequence[Tuple[str, str]]) -> int:
 
 
 def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
-    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／加權量與開高低／產業名。"""
+    """盤後：平行抓官方 JSON，寫估值／融資餘額／暫停當沖／ETF 前一日淨值／加權量與開高低／產業名。"""
     path = ensure_schema(db_path)
     jobs = {
         "bwibbu": TWSE_BWIBBU,
@@ -548,17 +645,18 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         "twse_co": TWSE_COMPANY,
         "tpex_co": TPEX_COMPANY,
     }
-    fetched: Dict[str, List[dict]] = {}
+    fetched: Dict[str, Any] = {}
     errors: Dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=9) as pool:
+    with ThreadPoolExecutor(max_workers=10) as pool:
         futs = {pool.submit(fetch_json, url): name for name, url in jobs.items()}
+        futs[pool.submit(fetch_mis_etf_payload)] = "etf_nav"
         for fut in as_completed(futs):
             name = futs[fut]
             try:
                 fetched[name] = fut.result()
             except Exception as exc:
                 errors[name] = str(exc)
-                fetched[name] = []
+                fetched[name] = [] if name != "etf_nav" else {}
                 log.warning("官方快照 %s 失敗：%s", name, exc)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -571,7 +669,7 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
             fallback = fuse_end_trading_date()
         except Exception:
             fallback = ""
-    val_n = mar_n = dt_n = 0
+    val_n = mar_n = dt_n = nav_n = 0
     conn = sqlite3.connect(path)
     try:
         val_n += _upsert_valuation(conn, parse_bwibbu(fetched.get("bwibbu") or []), now)
@@ -579,6 +677,7 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         mar_n += _upsert_margin(conn, parse_twse_margin(fetched.get("margn") or [], fallback_date=fallback), now)
         mar_n += _upsert_margin(conn, parse_tpex_margin(fetched.get("tpex_margin") or []), now)
         dt_n += _upsert_daytrade(conn, parse_twtb4u(fetched.get("twtb4u") or []), now)
+        nav_n += _upsert_etf_nav(conn, parse_mis_etf_nav(fetched.get("etf_nav") or {}), now)
         conn.commit()
     finally:
         conn.close()
@@ -590,10 +689,11 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
     ind_n = overlay_industry(path, industry_pairs)
 
     return {
-        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n > 0,
+        "ok": not errors or val_n + mar_n + dt_n + fmt_n + ohlc_n + nav_n > 0,
         "valuation": val_n,
         "margin": mar_n,
         "daytrade": dt_n,
+        "etf_nav": nav_n,
         "fmtqik": fmt_n,
         "index_ohlc": ohlc_n,
         "industry": ind_n,
@@ -675,16 +775,89 @@ def paused_daytrade_ids(db_path: str | None = None, as_of: str | None = None) ->
     return {str(r[0]) for r in rows}
 
 
+def latest_etf_nav(stock_id: str, db_path: str | None = None) -> Optional[Dict[str, Any]]:
+    path = db_path or get_db_path()
+    ensure_schema(path)
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            """
+            SELECT date, nav, source
+            FROM etf_nav_snapshot WHERE stock_id=? ORDER BY date DESC LIMIT 1
+            """,
+            (str(stock_id).strip(),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {"date": row[0], "nav": row[1], "source": row[2]}
+
+
+def _quote_close_on(stock_id: str, date: str, db_path: str | None = None) -> Optional[float]:
+    """折溢價只跟同一天官方收盤比；對不到就不上。"""
+    path = db_path or get_db_path()
+    if not path or not os.path.isfile(path):
+        return None
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            "SELECT close FROM daily_quotes WHERE stock_id=? AND date=? LIMIT 1",
+            (str(stock_id).strip(), str(date).strip()),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        close = float(row[0] or 0)
+    except (TypeError, ValueError):
+        return None
+    return close if close > 0 else None
+
+
+def etf_nav_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tuple[str, str]]:
+    """單位淨值＝前一營業日官方結算。折溢價＝該日收盤 vs 該日淨值。沒有真數不上。"""
+    nav_row = latest_etf_nav(stock_id, db_path)
+    if not nav_row:
+        return []
+    nav = nav_row.get("nav")
+    date = str(nav_row.get("date") or "")
+    try:
+        nav_f = float(nav)
+    except (TypeError, ValueError):
+        return []
+    if nav_f <= 0 or len(date) != 8:
+        return []
+    md = f"{date[4:6]}/{date[6:8]}"
+    rows: List[Tuple[str, str]] = [("淨值", f"{nav_f:.2f}（{md}）")]
+    close = _quote_close_on(stock_id, date, db_path)
+    if close is not None:
+        prem = (close - nav_f) / nav_f * 100.0
+        rows.append(("折溢價", f"{prem:+.2f}%"))
+    return rows
+
+
 def valuation_plain_rows(stock_id: str, db_path: str | None = None) -> List[Tuple[str, str]]:
-    """介紹圖／查股：有官方數才上列。"""
+    """介紹圖／查股：有官方數才上列。ETF 不上公司本益／股價淨值比。"""
+    from universe import is_etf_asset
+
     rows: List[Tuple[str, str]] = []
+    etf = is_etf_asset(stock_id=str(stock_id).strip())
+    if etf:
+        rows.extend(etf_nav_plain_rows(stock_id, db_path))
     val = latest_valuation(stock_id, db_path)
     if val:
         bits = []
-        if val.get("pe") is not None:
-            bits.append(f"本益 {val['pe']:.2f}")
-        if val.get("pb") is not None:
-            bits.append(f"淨值 {val['pb']:.2f}")
+        if not etf:
+            if val.get("pe") is not None:
+                bits.append(f"本益 {val['pe']:.2f}")
+            if val.get("pb") is not None:
+                bits.append(f"淨值 {val['pb']:.2f}")
         if val.get("dividend_yield") is not None:
             bits.append(f"殖利率 {val['dividend_yield']:.2f}%")
         if bits:

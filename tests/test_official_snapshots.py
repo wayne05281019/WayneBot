@@ -273,6 +273,8 @@ def test_increment_and_glance_wire_official():
     sync_src = inspect.getsource(sync_fn)
     assert "overlay_index_ohlc" in sync_src
     assert "TWSE_MI5MINS" in sync_src
+    assert "fetch_mis_etf_payload" in sync_src
+    assert "parse_mis_etf_nav" in sync_src
     glance = inspect.getsource(render_first_glance_png)
     assert "fmt_lots_align" not in glance
     assert "lots_right" not in glance
@@ -292,3 +294,5 @@ def test_help_does_not_promise_main_cost():
     assert "會畫主力成本" not in guide + stock
     assert "本益" in stock
     assert "融資融券餘額" in stock
+    assert "被動／主動／正2／反1" in stock
+    assert "折溢價" in stock

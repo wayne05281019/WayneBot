@@ -773,16 +773,24 @@ class NavigatorEngine:
         except Exception:
             next_event = ""
         industry = ""
+        asset_type = ""
+        etf_kind = ""
         try:
-            from universe import card_industry_label
+            from universe import card_asset_type, card_industry_label, etf_card_kind_label
 
             industry = card_industry_label(str(stock_id), self.db_path)
+            asset_type = card_asset_type(str(stock_id), self.db_path)
+            etf_kind = etf_card_kind_label(asset_type, str(stock_id))
         except Exception:
             industry = ""
+            asset_type = ""
+            etf_kind = ""
         payload = {
             "stock_id": str(stock_id),
             "stock_name": str(latest.get("stock_name") or stock_id),
             "industry": industry,
+            "asset_type": asset_type,
+            "etf_kind": etf_kind,
             "next_event": next_event,
             "news_label": "",
             "quote_source": quote_source,
@@ -1763,13 +1771,23 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
         return 0.0
 
 
-def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = ""):
-    """股名右側：最近一件優先，產業、報導則數有空再放。報導不是買賣訊。"""
+def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = "", lead: str = ""):
+    """股名右側：ETF 類型固定先放；最近一件其次，產業、報導則數有空再放。報導不是買賣訊。"""
     out = []
     remaining = float(avail or 0)
+    lead = str(lead or "").strip()
     event = str(event or "").strip()
     industry = str(industry or "").strip()
+    if lead and industry == lead:
+        industry = ""
     news = str(news or "").strip()
+    if lead:
+        fs = 12.0
+        while fs >= 9.0 and tw(lead, fs) + 0.2 > remaining:
+            fs -= 0.5
+        if tw(lead, fs) + 0.2 <= remaining:
+            out.append((lead, fs, "#FFE082"))
+            remaining -= tw(lead, fs) + gap
     if event:
         fs = 11.0
         while fs >= 8.5 and tw(event, fs) + 0.2 > remaining:
@@ -2108,11 +2126,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
-    industry = str(card.get("industry") or "").strip()
+    etf_kind = str(card.get("etf_kind") or "").strip()
+    industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     for text, fs, color in fit_title_bar_extras(
-        industry, event, right_limit - cursor, tw, news=news
+        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
                 color=color, va="center", zorder=3)
@@ -2415,7 +2434,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
-    industry = str(card.get("industry") or "").strip()
+    industry = str(card.get("etf_kind") or card.get("industry") or "").strip()
     if industry:
         head = f"{head}　{html_escape(industry)}"
     event = str(card.get("next_event") or "").strip()
@@ -2544,8 +2563,9 @@ def render_first_glance_png(
     except Exception:
         mc = None
     # 主力成本只畫在收盤區（跟高低卡同一格），基本面不再重複一列。
-    official = [p for p in (fund_rows or []) if str(p[0]) in ("估值", "資券餘額")]
-    rest = [p for p in (fund_rows or []) if str(p[0]) not in ("估值", "資券餘額", "主力成本")]
+    official_labs = ("估值", "資券餘額", "類型", "淨值", "折溢價")
+    official = [p for p in (fund_rows or []) if str(p[0]) in official_labs]
+    rest = [p for p in (fund_rows or []) if str(p[0]) not in official_labs and str(p[0]) != "主力成本"]
     fund_rows = official + rest
     sell_note = ""
     try:
@@ -2738,10 +2758,13 @@ def render_first_glance_png(
     stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
-    industry = str(card.get("industry") or "").strip()
+    etf_kind = str(card.get("etf_kind") or "").strip()
+    industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
-    for text, fs, color in fit_title_bar_extras(industry, event, right_limit - cursor, tw, news=news):
+    for text, fs, color in fit_title_bar_extras(
+        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
+    ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs), color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
     ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
@@ -2866,7 +2889,7 @@ def render_first_glance_png(
     if fund_h:
         y -= gap + fund_h
         pane(pad_x, y, pane_w, fund_h)
-        sec_title(pad_x + 2.6, y + fund_h - title_band / 2, "基本面", C["navy"])
+        sec_title(pad_x + 2.6, y + fund_h - title_band / 2, "ETF" if card.get("etf_kind") else "基本面", C["navy"])
         fy = y + fund_h - title_band - pane_pad - 1.4
         fund_floor = y + pane_pad
         for ln in conflict_lines:

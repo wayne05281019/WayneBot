@@ -144,6 +144,55 @@ def etf_kind_label(kinds) -> str:
     return "ETF"
 
 
+ETF_CARD_KIND = {
+    "ETF_PASSIVE": "被動",
+    "ETF_ACTIVE": "主動",
+    "ETF_LEVERAGED": "正2",
+    "ETF_INVERSE": "反1",
+}
+
+
+def is_etf_asset(asset_type: str = "", stock_id: str = "", stock_name: str = "") -> bool:
+    """查股／圖下鈕用：有 universe.asset_type 就認官方；沒有就用代號規則。"""
+    at = str(asset_type or "").strip().upper()
+    if at:
+        return at.startswith("ETF")
+    if stock_id:
+        kind, _ok = classify_target(stock_id, stock_name)
+        return str(kind).startswith("ETF")
+    return False
+
+
+def etf_card_kind_label(asset_type: str = "", stock_id: str = "", stock_name: str = "") -> str:
+    """查股標題旁：被動／主動／正2／反1。不是清單用的長名。"""
+    at = str(asset_type or "").strip().upper()
+    if not at.startswith("ETF") and stock_id:
+        kind, _ok = classify_target(stock_id, stock_name)
+        at = str(kind or "").strip().upper()
+    return ETF_CARD_KIND.get(at, "")
+
+
+def card_asset_type(stock_id: str, db_path: str = None) -> str:
+    """查股讀母體分類；庫沒列再退回代號規則。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            "SELECT asset_type FROM stock_universe WHERE stock_id=?",
+            (sid,),
+        ).fetchone()
+        conn.close()
+        if row and str(row[0] or "").strip():
+            return str(row[0]).strip().upper()
+    except Exception:
+        pass
+    kind, _ok = classify_target(sid)
+    return str(kind or "").strip().upper()
+
+
 def canonical_lookup_ticker(query: str) -> str:
     """查股用代號：全形轉半形、槓桿／主動後綴大寫。"""
     q = unicodedata.normalize("NFKC", (query or "").strip())

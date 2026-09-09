@@ -236,6 +236,8 @@ def test_title_bar_prefers_event_over_long_industry():
     assert [t[0] for t in wide] == ["今日法說", "電子"]
     empty = fit_title_bar_extras("電子", "", 20.0, tw)
     assert [t[0] for t in empty] == ["電子"]
+    etf = fit_title_bar_extras("ETF", "除息剩 -- 天", 24.0, tw, lead="主動")
+    assert [t[0] for t in etf][0] == "主動"
 
 
 def test_decision_card_png_renders_next_event():

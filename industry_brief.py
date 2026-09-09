@@ -332,10 +332,14 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         blocks[0] = blocks[0] + "　" + chips
 
     if snap["is_etf"]:
+        from universe import etf_card_kind_label
+
+        kind = etf_card_kind_label(snap.get("asset_type") or "", sid)
+        kind_txt = f"{kind} ETF" if kind else "ETF／指數商品"
         blocks.append(
             section(
-                "這檔是 ETF／指數商品，沒有單一公司的產業面。",
-                "看成分與「資金」頁的法人流向即可。進場仍先看高低卡，不要因為盤勢敘事追高。",
+                f"這檔是{kind_txt}，沒有單一公司的產業面。",
+                "進場仍先看高低卡，不要因為盤勢敘事追高。成分股之後再接官方清單，現在不畫。",
             )
         )
         return join_sections(*blocks)
