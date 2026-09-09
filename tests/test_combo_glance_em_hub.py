@@ -177,13 +177,34 @@ def test_glance_combo_canvas_matches_card_width():
     assert "compact=True" in src
     assert "_draw_glance_daily_k" not in src
     assert "_draw_mini_candle" not in src
-    assert "limit = 58.0" in src
+    assert "_pack_badge_rows" in src
+    assert "limit = 58.0" not in src
     assert "has_chips" in src
     assert "horizon_low_cells" in src
     assert 'card.get("dist_l480")' not in src
     assert "height_ratios=(5.15, 0.95, 1.55)" in src
     assert "_glance_kv_pill" in src
-    assert "price_h * 0.46" in src
+    assert "price_h * 0.24" in src
+    assert "price_h * 0.46" not in src
+    assert "_price_badge_row_y" in src
+    from wayne_navigator import _price_badge_row_y
+
+    by = _price_badge_row_y(1.0, 0, 3.05, 0.95)
+    assert abs(by - (1.0 + 1.35)) < 1e-9
+    by1 = _price_badge_row_y(1.0, 1, 3.05, 0.95)
+    assert by1 > by
+    from wayne_navigator import _pack_badge_rows
+
+    four = [("a", 12.0), ("b", 12.0), ("c", 12.0), ("d", 12.0)]
+    packed = _pack_badge_rows(four)
+    assert [len(r) for r in packed] == [2, 2]
+    assert [b for b, _w in packed[1]] == ["a", "b"]
+    assert [b for b, _w in packed[0]] == ["c", "d"]
+    one = _pack_badge_rows([("只一顆", 14.0)])
+    assert len(one) == 1 and len(one[0]) == 1
+    from wayne_navigator import render_decision_card_png
+
+    assert "_price_badge_row_y" in inspect.getsource(render_decision_card_png)
     src_nav = inspect.getsource(_paint_nav_on_axes)
     assert 'ax_sig.set_ylabel("")' in src_nav
     assert "labelbottom=False" in src_nav

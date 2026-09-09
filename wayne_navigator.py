@@ -1232,6 +1232,48 @@ def _vol_heat_draw(rank, base: str):
     )
 
 
+def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
+    """第 0 排對齊原本漲跌那層；多出來的框往上疊，不把收盤價搬走。"""
+    return float(pane_y) + 1.35 + int(row_i) * (badge_h + badge_gap)
+
+
+def _pack_badge_rows(pairs, limit: float = 50.0, gap: float = 1.7):
+    """徽章左欄換行。4 顆排上二下二；多出來的排在畫面上在上面。"""
+    items = [(str(b), float(w)) for b, w in (pairs or [])]
+    if not items:
+        return []
+
+    def row_w(row):
+        if not row:
+            return 0.0
+        return sum(w for _b, w in row) + gap * (len(row) - 1)
+
+    def fits(row):
+        return row_w(row) <= limit + 1e-6
+
+    n = len(items)
+    if n == 4:
+        top, bot = items[:2], items[2:]
+        if fits(top) and fits(bot):
+            return [bot, top]
+    if n == 5:
+        for top_n in (3, 2):
+            top, bot = items[:top_n], items[top_n:]
+            if fits(top) and fits(bot):
+                return [bot, top]
+
+    rows, row, acc = [], [], 0.0
+    for b, w in items:
+        if row and acc + gap + w > limit:
+            rows.append(row)
+            row, acc = [], 0.0
+        row.append((b, w))
+        acc += (gap if acc else 0.0) + w
+    if row:
+        rows.append(row)
+    return rows
+
+
 def _cell_wash(ax, x, y, w, h, color, edge):
     """整格同一底色。不要上淺下深兩截，溫度計／獲利／量看起來會像破圖。"""
     C = _CARD
@@ -1969,16 +2011,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         badges = (core + [keep_m]) if keep_m else core
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
-    badge_rows, row, row_w = [], [], 0.0
-    limit = 58.0
-    for b, bw in zip(badges, badge_w):
-        if row and row_w + 1.7 + bw > limit:
-            badge_rows.append(row)
-            row, row_w = [], 0.0
-        row.append((b, bw))
-        row_w += (1.7 if row_w else 0) + bw
-    if row:
-        badge_rows.append(row)
+    badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
         from broker_points import visible_main_cost
 
@@ -2125,8 +2158,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             va="center",
             zorder=3,
         )
-    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap)
-    for brow in badge_rows:
+    for row_i, brow in enumerate(badge_rows):
+        by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = pad_x + 3.2
         for btxt, bw in brow:
             b_bg, b_fg = _badge_style(btxt)
@@ -2139,7 +2172,6 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
-        by -= badge_h + badge_gap
 
     # 左：今日態度＋白話標題；下一行完整說明（不要術語）。
     y -= gap + stance_h
@@ -2573,17 +2605,8 @@ def render_first_glance_png(
         badges = (core + [keep_m]) if keep_m else core
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
-    badge_rows, row, acc = [], [], 0.0
-    # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價，避免字疊字。
-    limit = 58.0
-    for b, bw in zip(badges, badge_w):
-        if row and acc + 1.7 + bw > limit:
-            badge_rows.append(row)
-            row, acc = [], 0.0
-        row.append((b, bw))
-        acc += (1.7 if acc else 0) + bw
-    if row:
-        badge_rows.append(row)
+    # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價；4 顆上二下二。
+    badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     mc_line_h = 2.45 if mc is not None else 0.0
     n_badge = max(len(badge_rows), 1)
     price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h
@@ -2741,7 +2764,7 @@ def render_first_glance_png(
     chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
     if chg_amt is not None and not move_txt:
         chg_bits.append(_fmt_price_signed(chg_amt))
-    ax.text(inner_r, y + price_h * 0.46, "　".join(chg_bits),
+    ax.text(inner_r, y + price_h * 0.24, "　".join(chg_bits),
             fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     ohlc_bits = [
         f"開 {_fmt_price(last.get('open') or card.get('open'))}",
@@ -2756,8 +2779,8 @@ def render_first_glance_png(
     if mc is not None:
         ax.text(inner_l, ohlc_y - 2.2, f"主力成本 {float(mc):.2f}（分點平均買超）",
                 fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3)
-    by = y + 1.35 + (len(badge_rows) - 1) * (badge_h + badge_gap) if badge_rows else y + 1.35
-    for brow in badge_rows:
+    for row_i, brow in enumerate(badge_rows):
+        by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = inner_l
         for btxt, bw in brow:
             b_bg, b_fg = _badge_style(btxt)
@@ -2769,7 +2792,6 @@ def render_first_glance_png(
             ax.text(bx + bw / 2, by + badge_h / 2, btxt, fontproperties=_fp(10.2, "bold"),
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
-        by -= badge_h + badge_gap
 
     def draw_kv(y0, h, title, rows, *, sub="", pills=None):
         pane(pad_x, y0, pane_w, h)
