@@ -143,6 +143,71 @@ def test_allowlisted_start_touches_user(tmp_path, monkeypatch):
     msg.reply_html.assert_awaited()
 
 
+def test_callback_without_effective_user_uses_from_user(tmp_path, monkeypatch):
+    """pytest 空白名單時，callback 只有 from_user 也要放行（deep-audit 測法）。"""
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    db = str(tmp_path / "cb-open.db")
+    bot = _bot(db)
+    q = SimpleNamespace(
+        data="?:stock",
+        from_user=SimpleNamespace(id=1, first_name="u"),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    update = SimpleNamespace(callback_query=q)
+
+    async def run():
+        return await bot._reject_stranger(update)
+
+    assert asyncio.run(run()) is False
+    q.answer.assert_not_awaited()
+
+
+def test_callback_stranger_without_effective_user_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    db = str(tmp_path / "cb-closed.db")
+    bot = _bot(db)
+    q = SimpleNamespace(
+        data="?:stock",
+        from_user=SimpleNamespace(id=7777, first_name="路人"),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    update = SimpleNamespace(callback_query=q)
+
+    async def run():
+        return await bot._reject_stranger(update)
+
+    assert asyncio.run(run()) is True
+    q.answer.assert_awaited()
+    assert q.answer.await_args.args[0] == "這是私人 Bot"
+
+
+def test_callback_owner_without_effective_user_allowed(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
+    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.delenv("TG_CHAT_ID", raising=False)
+    db = str(tmp_path / "cb-owner.db")
+    bot = _bot(db)
+    q = SimpleNamespace(
+        data="?:stock",
+        from_user=SimpleNamespace(id=9001, first_name="權"),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    update = SimpleNamespace(callback_query=q)
+
+    async def run():
+        return await bot._reject_stranger(update)
+
+    assert asyncio.run(run()) is False
+    q.answer.assert_not_awaited()
+
+
 def test_wrap_cmd_rejects_stranger(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
     monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)

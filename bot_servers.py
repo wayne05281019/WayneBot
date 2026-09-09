@@ -949,6 +949,23 @@ class WayneTelegramBot:
         user = getattr(message, "from_user", None)
         return str(getattr(user, "id", "") or "")
 
+    @staticmethod
+    def _uid_from_update(update) -> str:
+        """正式 Update 有 effective_user；測試 callback 往往只有 callback_query.from_user。"""
+        user = getattr(update, "effective_user", None)
+        uid = str(getattr(user, "id", None) or "")
+        if uid:
+            return uid
+        q = getattr(update, "callback_query", None)
+        if q is not None:
+            uid = str(getattr(getattr(q, "from_user", None), "id", None) or "")
+            if uid:
+                return uid
+        msg = getattr(update, "effective_message", None) or getattr(update, "message", None)
+        if msg is not None:
+            return WayneTelegramBot._uid_from_message(msg)
+        return ""
+
     def _touch_user(self, uid: str, display_name: str = "") -> None:
         if not telegram_uid_allowed(uid):
             return
@@ -958,16 +975,18 @@ class WayneTelegramBot:
             logger.debug("touch_tg_user failed uid=%s", uid, exc_info=True)
 
     def _touch_from_update(self, update: Update) -> str:
-        user = update.effective_user
-        uid = str(getattr(user, "id", "") or "")
+        uid = self._uid_from_update(update)
+        user = getattr(update, "effective_user", None)
+        if user is None:
+            q = getattr(update, "callback_query", None)
+            user = getattr(q, "from_user", None) if q is not None else None
         if uid:
             self._touch_user(uid, getattr(user, "first_name", "") or "")
         return uid
 
     async def _reject_stranger(self, update: Update) -> bool:
         """陌生人按開始只回「這是私人 Bot」，不進 tg_users、不做事。"""
-        user = getattr(update, "effective_user", None)
-        uid = str(getattr(user, "id", "") or "")
+        uid = self._uid_from_update(update)
         if telegram_uid_allowed(uid):
             return False
         q = getattr(update, "callback_query", None)
