@@ -142,7 +142,7 @@ def test_stamp_and_dual_pill_do_not_reuse_live_clock_or_round_dots():
     assert 'or card.get("live_time")' not in glance
     assert 'or card.get("live_time")' not in caption
     assert "rounding_size=0.45" not in inspect.getsource(_pill)
-    assert "body_h * 0.36" in card_png
+    assert "dual_trend_pill_geom" in card_png
     show = inspect.getsource(WayneTelegramBot._show_picture_guide_page)
     assert "InputMediaAnimation" not in show
     assert "ensure_flip_gif" not in show

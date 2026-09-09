@@ -143,6 +143,17 @@ def _fmt_vol(v: float, _pos=None) -> str:
     return f"{v:,.0f}張"
 
 
+def _fmt_last_vol(v: float) -> str:
+    """加權指數當日量 Yahoo 常是 0，不要寫「量 0張」讓人以為沒量。"""
+    try:
+        n = float(v or 0)
+    except (TypeError, ValueError):
+        n = 0.0
+    if n <= 0:
+        return "—"
+    return _fmt_vol(n)
+
+
 @_mpl_serial
 def render_index_kline_png(
     df: pd.DataFrame,
@@ -291,7 +302,7 @@ def render_index_kline_png(
     ax2.text(
         0.006,
         0.92,
-        f"量 {_fmt_vol(float(last['volume']))}　20日均 {_fmt_vol(float(last['vol_ma']))}",
+        f"量 {_fmt_last_vol(float(last['volume']))}　20日均 {_fmt_vol(float(last['vol_ma']))}",
         transform=ax2.transAxes,
         fontproperties=_fp(10, "bold"),
         va="top",

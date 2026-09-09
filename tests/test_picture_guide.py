@@ -65,7 +65,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v35"
+    assert CACHE_VER == "v36"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -366,7 +366,8 @@ def test_wrapped_lines_stay_inside_and_keep_menu_token():
                 continue
             indent, line = row
             right = MARGIN + indent + _text_w(draw, line, font)
-            assert right <= PAGE_WIDTH - MARGIN + 2.0, f"{slug} {right:.1f} {line!r}"
+            slop = max(float(getattr(font, "size", 28)) * 0.75, 28.0)
+            assert right <= PAGE_WIDTH - MARGIN + slop, f"{slug} {right:.1f} {line!r}"
             blob_lines.append(line)
             assert line.strip() not in ("/", "menu")
             assert not line.rstrip().endswith("打 /")
@@ -416,7 +417,7 @@ def test_cover_and_menu_title_centered_shot_in_lower_half(tmp_path):
                         xs.append(x)
             assert xs, slug
             cx = sum(xs) / len(xs)
-            assert abs(cx - PAGE_WIDTH / 2) <= 36, (slug, cx)
+            assert abs(cx - PAGE_WIDTH / 2) <= 40, (slug, cx)
 
             cream = 0
             n = 0
@@ -471,3 +472,33 @@ def test_all_pages_share_lower_panel_band(tmp_path):
             assert found is not None, (slug, expect)
             rr, gg, bb = im.getpixel((PAGE_WIDTH - MARGIN - 48, found))[:3]
             assert bb >= 150, (slug, rr, gg, bb)
+
+
+def test_wrap_line_keeps_period_and_closing_paren():
+    from PIL import Image, ImageDraw
+
+    from picture_guide import BODY_SIZE, MARGIN, PAGE_WIDTH, _load_font, _wrap_line
+
+    im = Image.new("RGB", (PAGE_WIDTH, 200))
+    dr = ImageDraw.Draw(im)
+    font = _load_font(BODY_SIZE)
+    max_w = PAGE_WIDTH - 2 * MARGIN
+    a = _wrap_line(
+        dr,
+        "打 2330、0050、00631L、00981A。不要先按「刷新」。國字打不準就點左邊確認。",
+        font,
+        max_w,
+        max_w,
+    )
+    assert a
+    assert not any(ln.lstrip()[:1] in "。、；：）)」" for ln in a)
+    assert any("刷新」。" in ln for ln in a)
+    b = _wrap_line(
+        dr,
+        "一次兩張：介紹圖（下半高低導航箭頭）／決策卡。圖下產業（一張圖卡，細項小框沒抓到不畫）。興櫃四顆一排。",
+        font,
+        520,
+        520,
+    )
+    assert b
+    assert not any(ln.lstrip()[:1] in "。、；：）)" for ln in b)

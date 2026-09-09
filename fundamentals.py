@@ -584,13 +584,10 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
         rows.append(("季報", f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}"))
-        rows.append(
-            (
-                "毛利",
-                f"{format_yi(q.get('gross_profit') or 0)}　"
-                f"毛利率 {float(q['gross_margin_pct']):.1f}%　營益率 {opm:.1f}%",
-            )
-        )
+        rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
+        rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
+        if rev:
+            rows.append(("營益率", f"{opm:.1f}%"))
         rows.append(("EPS", f"{float(q['eps']):.2f}"))
     try:
         from official_snapshots import valuation_plain_rows
