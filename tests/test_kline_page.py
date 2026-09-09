@@ -133,6 +133,10 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     for label in ("日K", "15分", "60分", "五日", "十日", "月線", "季線"):
         assert label in page
     assert "高低卡" in page
+    src = open("kline_hop.py", encoding="utf-8").read()
+    assert "g.lineTo(x,y)" in src
+    assert "yx(b.c)" in src
+    assert "灰線把每根收盤連起來" in src
 
 
 def test_parse_yahoo_chart_bars_to_lots():
