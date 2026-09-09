@@ -8,7 +8,8 @@ import logging
 import os
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from html.parser import HTMLParser
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -28,6 +29,9 @@ TWSE_MONTHLY = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
 TPEX_MONTHLY = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O"
 TWSE_INCOME = "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
 TPEX_INCOME = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci"
+# 公開資訊觀測站「已公告」月營收彙總（無驗證碼）。OpenAPI 月營收是全市場同一期，
+# 10 號前仍停在上上月時，先公告的公司（例如緯穎 8 月）只出現在這份表。
+MOPS_NAS_MONTHLY = "https://mopsov.twse.com.tw/nas/t21/{ex}/t21sc03_{roc}_{month}_{kind}.html"
 
 
 def _num(val) -> float:
@@ -123,6 +127,155 @@ def _get(url: str) -> list:
     raise last
 
 
+def _get_bytes(url: str) -> bytes:
+    last = None
+    for i in range(3):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=40)
+            if getattr(resp, "status_code", 0) == 404:
+                return b""
+            resp.raise_for_status()
+            return resp.content or b""
+        except Exception as e:
+            last = e
+            time.sleep(1.2 * (i + 1))
+    raise last
+
+
+def _decode_mops_html(raw: bytes) -> str:
+    for enc in ("cp950", "big5", "utf-8"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("cp950", "replace")
+
+
+def previous_calendar_yyyymm(today_ymd: str = "") -> str:
+    raw = str(today_ymd or "").replace("-", "")[:8]
+    if len(raw) == 8 and raw.isdigit():
+        y, m = int(raw[:4]), int(raw[4:6])
+    else:
+        from datetime import datetime
+
+        now = datetime.now()
+        y, m = now.year, now.month
+    m -= 1
+    if m <= 0:
+        m = 12
+        y -= 1
+    return f"{y:04d}{m:02d}"
+
+
+def mops_monthly_urls(yyyymm: str) -> List[Tuple[str, str]]:
+    """上市／上櫃 × 本國／外國。kind 0=本國、1=外國（KY）。"""
+    s = str(yyyymm or "").replace("-", "")[:6]
+    if len(s) != 6 or not s.isdigit():
+        return []
+    roc = int(s[:4]) - 1911
+    month = int(s[4:6])
+    if roc < 1 or month < 1 or month > 12:
+        return []
+    out: List[Tuple[str, str]] = []
+    for ex, market in (("sii", "TW"), ("otc", "TWO")):
+        for kind in (0, 1):
+            out.append(
+                (
+                    MOPS_NAS_MONTHLY.format(ex=ex, roc=roc, month=month, kind=kind),
+                    market,
+                )
+            )
+    return out
+
+
+class _T21sc03Parser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.rows: List[Tuple[str, List[str]]] = []
+        self.industry = ""
+        self._tr: Optional[List[str]] = None
+        self._cell: Optional[List[str]] = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self._tr = []
+        elif tag in ("td", "th") and self._tr is not None:
+            self._cell = []
+
+    def handle_endtag(self, tag):
+        if tag in ("td", "th") and self._tr is not None and self._cell is not None:
+            text = "".join(self._cell).strip()
+            self._tr.append(text)
+            if tag == "th" and text.startswith("產業別："):
+                self.industry = text.split("：", 1)[-1].strip()
+            self._cell = None
+        elif tag == "tr" and self._tr is not None:
+            cells = self._tr
+            self._tr = None
+            if (
+                cells
+                and cells[0].isdigit()
+                and len(cells[0]) in (4, 5, 6)
+                and len(cells) >= 10
+            ):
+                self.rows.append((self.industry, cells))
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+
+def parse_t21sc03_html(html: str, yyyymm: str, market: str) -> List[Dict[str, Any]]:
+    """公開資訊觀測站已公告月營收彙總表。金額單位千元，與 OpenAPI 相同。"""
+    yyyymm = str(yyyymm or "").replace("-", "")[:6]
+    if len(yyyymm) != 6:
+        return []
+    parser = _T21sc03Parser()
+    parser.feed(html or "")
+    out: List[Dict[str, Any]] = []
+    for industry, cells in parser.rows:
+        sid = cells[0]
+        if sid in ("合計",):
+            continue
+        out.append(
+            {
+                "stock_id": sid,
+                "yyyymm": yyyymm,
+                "stock_name": cells[1],
+                "market": market,
+                "industry": industry,
+                "revenue": _num(cells[2]),
+                "revenue_prev_month": _num(cells[3]),
+                "revenue_prev_year": _num(cells[4]),
+                "mom_pct": _num(cells[5]),
+                "yoy_pct": _num(cells[6]),
+                "ytd_revenue": _num(cells[7]),
+                "ytd_prev_year": _num(cells[8]),
+                "ytd_yoy_pct": _num(cells[9]),
+                "published_roc": "",
+            }
+        )
+    return out
+
+
+def fetch_mops_monthly_filings(yyyymm: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    rows: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    for url, market in mops_monthly_urls(yyyymm):
+        try:
+            html = _decode_mops_html(_get_bytes(url))
+            if not html.strip():
+                continue
+            parsed = parse_t21sc03_html(html, yyyymm, market)
+            rows.extend(parsed)
+            logger.info("MOPS 月營收 %s %s 解析 %s 筆", yyyymm, market, len(parsed))
+        except Exception as e:
+            msg = f"mops {yyyymm} {market}: {e}"
+            errors.append(msg)
+            logger.warning(msg)
+    return rows, errors
+
+
 def parse_monthly_row(item: dict, market: str) -> Optional[Dict[str, Any]]:
     sid = str(item.get("公司代號") or item.get("SecuritiesCompanyCode") or "").strip()
     if not sid:
@@ -191,7 +344,8 @@ def _upsert_monthly(conn: sqlite3.Connection, rows: List[Dict[str, Any]]) -> int
                 published_roc, updated_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(stock_id, yyyymm) DO UPDATE SET
-                stock_name=excluded.stock_name, market=excluded.market, industry=excluded.industry,
+                stock_name=excluded.stock_name, market=excluded.market,
+                industry=CASE WHEN excluded.industry!='' THEN excluded.industry ELSE monthly_revenue.industry END,
                 revenue=excluded.revenue, revenue_prev_month=excluded.revenue_prev_month,
                 revenue_prev_year=excluded.revenue_prev_year, mom_pct=excluded.mom_pct,
                 yoy_pct=excluded.yoy_pct, ytd_revenue=excluded.ytd_revenue,
@@ -268,6 +422,20 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
     m_n = _upsert_monthly(conn, monthly_rows)
     i_n = _upsert_income(conn, income_rows)
     conn.commit()
+    filing_month = previous_calendar_yyyymm()
+    mops_n = 0
+    try:
+        mops_rows, mops_err = fetch_mops_monthly_filings(filing_month)
+        errors.extend(mops_err)
+        if mops_rows:
+            mops_n = _upsert_monthly(conn, mops_rows)
+            conn.commit()
+            monthly_rows.extend(mops_rows)
+            logger.info("已公告月營收 %s 寫入 %s 筆（OpenAPI 尚未換期也要每天對）", filing_month, mops_n)
+    except Exception as e:
+        msg = f"mops {filing_month}: {e}"
+        errors.append(msg)
+        logger.warning(msg)
     months = sorted({r["yyyymm"] for r in monthly_rows})
     quarters = sorted({f"{r['year']}Q{r['season']}" for r in income_rows})
     m_max = conn.execute("SELECT COUNT(*), MAX(yyyymm) FROM monthly_revenue").fetchone()
@@ -275,6 +443,8 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
     conn.close()
     stats = {
         "monthly_rows": m_n,
+        "mops_filing_month": filing_month,
+        "mops_rows": mops_n,
         "income_rows": i_n,
         "errors": errors,
         "months_in_feed": months[-3:],
@@ -283,7 +453,7 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         "db_latest_month": m_max[1] or "",
         "db_income": int(q_max[0] or 0),
         "db_latest_quarter": f"{q_max[1]}Q{q_max[2]}" if q_max[1] else "",
-        "note": "官方 OpenAPI 永遠是目前最新一期；公司公布後隔日盤後就會寫入，不必指定財報日。月營收約每月10日前後、季報約5/8/11月中與隔年3月底陸續出表。",
+        "note": "OpenAPI 月營收是全市場同一期快照；已先公告的公司另從公開資訊觀測站 NAS 彙總表每天補入。季報 OpenAPI 亦為最新一期。",
     }
     logger.info("基本面同步完成 %s", stats)
     return stats

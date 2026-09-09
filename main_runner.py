@@ -974,7 +974,14 @@ class MainRunner:
 
         cap = fuse_end_date()
         if as_of and as_of == cap:
-            logger.info("今早庫已是完整日 %s，略過再抓行情，直接海選", as_of)
+            logger.info("今早庫已是完整日 %s，略過再抓行情，仍確認月營收／季報", as_of)
+            try:
+                from fundamentals import sync_fundamentals
+
+                fund = sync_fundamentals(self.db_path)
+                logger.info("今早月營收／季報：%s", fund)
+            except Exception as e:
+                logger.warning("今早基本面略過：%s", e)
         else:
             self.run_daily_increment(notify=False)
         as_of = latest_complete_quote_date(self.db_path)
