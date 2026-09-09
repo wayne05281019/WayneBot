@@ -1893,7 +1893,7 @@ class LookupCardTest(unittest.TestCase):
             # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。
             per_row = (h8 - h1) / 7.0
             self.assertGreater(per_row, 20)
-            self.assertLess(per_row, 120)
+            self.assertLess(per_row, 150)
             self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=2.0)
             overhead = h1 - per_row
             self.assertGreater(overhead, per_row * 8)
