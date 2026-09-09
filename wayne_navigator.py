@@ -1237,6 +1237,43 @@ def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
     return float(pane_y) + 1.35 + int(row_i) * (badge_h + badge_gap)
 
 
+def _pack_badge_rows(pairs, limit: float = 50.0, gap: float = 1.7):
+    """徽章左欄換行。4 顆排上二下二；多出來的排在畫面上在上面。"""
+    items = [(str(b), float(w)) for b, w in (pairs or [])]
+    if not items:
+        return []
+
+    def row_w(row):
+        if not row:
+            return 0.0
+        return sum(w for _b, w in row) + gap * (len(row) - 1)
+
+    def fits(row):
+        return row_w(row) <= limit + 1e-6
+
+    n = len(items)
+    if n == 4:
+        top, bot = items[:2], items[2:]
+        if fits(top) and fits(bot):
+            return [bot, top]
+    if n == 5:
+        for top_n in (3, 2):
+            top, bot = items[:top_n], items[top_n:]
+            if fits(top) and fits(bot):
+                return [bot, top]
+
+    rows, row, acc = [], [], 0.0
+    for b, w in items:
+        if row and acc + gap + w > limit:
+            rows.append(row)
+            row, acc = [], 0.0
+        row.append((b, w))
+        acc += (gap if acc else 0.0) + w
+    if row:
+        rows.append(row)
+    return rows
+
+
 def _cell_wash(ax, x, y, w, h, color, edge):
     """整格同一底色。不要上淺下深兩截，溫度計／獲利／量看起來會像破圖。"""
     C = _CARD
@@ -1974,16 +2011,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         badges = (core + [keep_m]) if keep_m else core
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
-    badge_rows, row, row_w = [], [], 0.0
-    limit = 50.0
-    for b, bw in zip(badges, badge_w):
-        if row and row_w + 1.7 + bw > limit:
-            badge_rows.append(row)
-            row, row_w = [], 0.0
-        row.append((b, bw))
-        row_w += (1.7 if row_w else 0) + bw
-    if row:
-        badge_rows.append(row)
+    badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     try:
         from broker_points import visible_main_cost
 
@@ -2577,17 +2605,8 @@ def render_first_glance_png(
         badges = (core + [keep_m]) if keep_m else core
     badges = badges[:5] or ["整理格局"]
     badge_w = [_text_w(b, 10.4, fig_w, 900) + 3.4 for b in badges]
-    badge_rows, row, acc = [], [], 0.0
-    # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價，避免字疊字。
-    limit = 50.0
-    for b, bw in zip(badges, badge_w):
-        if row and acc + 1.7 + bw > limit:
-            badge_rows.append(row)
-            row, acc = [], 0.0
-        row.append((b, bw))
-        acc += (1.7 if acc else 0) + bw
-    if row:
-        badge_rows.append(row)
+    # 跟高低卡同一套：徽章只佔左欄，右欄留給收盤價；4 顆上二下二。
+    badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     mc_line_h = 2.45 if mc is not None else 0.0
     n_badge = max(len(badge_rows), 1)
     price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h
