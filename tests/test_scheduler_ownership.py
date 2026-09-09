@@ -123,6 +123,7 @@ def test_dispatch_runs_morning_on_data_role(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     main.run_scheduled_job("morning")
     assert [c[0] for c in recorder.calls] == ["morning"]
+    assert recorder.calls[0][1]["notify"] is True
 
 
 def test_dispatch_runs_typhoon_on_data_role(monkeypatch, recorder):
