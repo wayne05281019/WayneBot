@@ -72,12 +72,25 @@ def wrap_cjk_lines(text: str, width: int, *, unit: str = "disp") -> List[str]:
     while k < len(lines):
         cur = lines[k]
         starts_punct = bool(cur) and cur[0] in lead_punct
-        if (not _is_orphan(cur) and not starts_punct) or len(lines) == 1:
+        if starts_punct and k > 0:
+            n_p = 0
+            while n_p < len(cur) and cur[n_p] in lead_punct:
+                n_p += 1
+            lines[k - 1] = lines[k - 1] + cur[:n_p]
+            rest = cur[n_p:]
+            if rest:
+                lines[k] = rest
+                k += 1
+            else:
+                lines.pop(k)
+                k = max(0, k - 1)
+            continue
+        if not _is_orphan(cur) or len(lines) == 1:
             k += 1
             continue
         if k > 0:
             prev = lines[k - 1]
-            if tw(prev + cur) <= width or starts_punct:
+            if tw(prev + cur) <= width:
                 lines[k - 1] = prev + cur
                 lines.pop(k)
                 k = max(0, k - 1)

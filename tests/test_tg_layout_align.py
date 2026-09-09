@@ -97,6 +97,14 @@ class TgLayoutAlignTests(unittest.TestCase):
         self.assertEqual(wrap_cjk_lines("439股", 20), ["439股"])
         self.assertEqual(wrap_cjk_lines("", 20), [])
 
+    def test_wrap_cjk_chars_still_breaks_long_sentence(self):
+        from tg_layout import wrap_cjk_lines
+
+        lines = wrap_cjk_lines("半導體業近期營收轉強，法人買超持續增加中", 10, unit="chars")
+        self.assertGreaterEqual(len(lines), 2)
+        self.assertFalse(any(ln.startswith("，") for ln in lines))
+        self.assertEqual("".join(lines), "半導體業近期營收轉強，法人買超持續增加中")
+
 
 if __name__ == "__main__":
     unittest.main()
