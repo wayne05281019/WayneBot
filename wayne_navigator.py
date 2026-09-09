@@ -1779,7 +1779,10 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
         out.extend(bits)
     if len(out) >= 2:
         last, prev = out[-1], out[-2]
-        if 0 < len(last) <= 3 and len(prev) >= 8:
+        if last[:1] in "。、；：）)%）":
+            out[-2] = prev + last
+            out.pop()
+        elif 0 < len(last) <= 3 and len(prev) >= 8:
             take = 2 if len(prev) >= 10 else 1
             out[-1] = prev[-take:] + last
             out[-2] = prev[:-take]

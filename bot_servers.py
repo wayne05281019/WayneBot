@@ -755,7 +755,7 @@ TELEGRAM_BOT_COMMANDS = (
 )
 
 
-from tg_layout import chunk_telegram_html, chunk_telegram_text
+from tg_layout import chunk_telegram_html, chunk_telegram_text, reflow_telegram_html
 
 
 class WayneTelegramBot:
@@ -1776,7 +1776,7 @@ class WayneTelegramBot:
         )
 
     async def _reply_help_topic(self, message, topic: str = "guide", *, edit_target=None) -> None:
-        body = HELP_TOPICS.get(topic) or HELP_TOPICS["guide"]
+        body = reflow_telegram_html(HELP_TOPICS.get(topic) or HELP_TOPICS["guide"])
         kb = self._help_nav_keyboard(topic)
         chunks = chunk_telegram_html(body)
         text = chunks[0] if chunks else body
@@ -2552,18 +2552,20 @@ class WayneTelegramBot:
         uid = str(update.effective_user.id)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         await update.message.reply_html(
-            "<b>WayneBot</b>\n"
-            "主選單在輸入列旁邊<b>四格鍵盤圖示 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
-            "\n"
-            "<b>第一次用，先做這三步</b>\n"
-            "1　點輸入列旁邊四格 ⌨️ 叫出兩排（不見就打 /menu）\n"
-            "2　直接打代號看圖，例如 "
-            + LOOKUP_CODE_EXAMPLES_HTML
-            + "（不要先按「刷新」）\n"
-            "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
-            "\n"
-            "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
-            "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n",
+            reflow_telegram_html(
+                "<b>WayneBot</b>\n"
+                "主選單在輸入列旁邊<b>四格鍵盤圖示 ⌨️</b>展開的兩排（不附在訊息最下面）。\n"
+                "\n"
+                "<b>第一次用，先做這三步</b>\n"
+                "1　點輸入列旁邊四格 ⌨️ 叫出兩排（不見就打 /menu）\n"
+                "2　直接打代號看圖，例如 "
+                + LOOKUP_CODE_EXAMPLES_HTML
+                + "（不要先按「刷新」）\n"
+                "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
+                "\n"
+                "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
+                "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n"
+            ),
         )
         await self._force_reply_menu(update.message, str(update.effective_user.id))
 
@@ -3338,7 +3340,7 @@ class WayneTelegramBot:
             await self._delete_message(status)
             await message.reply_text(f"大盤讀取失敗：{e}", reply_markup=self._keyboard())
             return
-        parts = chunk_telegram_html(html)
+        parts = chunk_telegram_html(html, reflow=True)
         if not parts:
             await self._delete_message(status)
             await message.reply_text(
@@ -3463,7 +3465,7 @@ class WayneTelegramBot:
             await update.message.reply_text(f"資金移動失敗：{e}", reply_markup=self._keyboard())
             return
         await self._delete_message(status)
-        parts = chunk_telegram_html(html)
+        parts = chunk_telegram_html(html, reflow=True)
         for i, part in enumerate(parts):
             kb = InlineKeyboardMarkup([[self._q("flow")]]) if i == len(parts) - 1 else None
             await update.message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -4382,7 +4384,7 @@ class WayneTelegramBot:
         try:
             html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine, uid)
             positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
-            parts = chunk_telegram_html(html)
+            parts = chunk_telegram_html(html, reflow=True)
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -4402,7 +4404,7 @@ class WayneTelegramBot:
             from ai_trader import ai_desk_positions
 
             positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
-            parts = chunk_telegram_html(html)
+            parts = chunk_telegram_html(html, reflow=True)
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -4428,7 +4430,7 @@ class WayneTelegramBot:
                 bits.append("<b>本次賣出</b>\n" + "\n".join(html_escape(x) for x in ai["sold"]))
             if ai.get("lesson"):
                 bits.append("進化：" + html_escape(ai["lesson"]))
-            parts = chunk_telegram_html("\n\n".join(bits))
+            parts = chunk_telegram_html("\n\n".join(bits), reflow=True)
             from ai_trader import ai_desk_positions
 
             positions = await asyncio.to_thread(

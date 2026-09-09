@@ -104,6 +104,9 @@ def test_screen_payload_leave_zero_has_two_char_labels_and_stance():
     assert "＝＝黃金買點" in blob
     assert "格局　黃金買點" in blob
     assert "今天先看表，先等" in blob
+    geju = [ln for ln in blob.split("\n") if ln.startswith("格局")]
+    assert geju
+    assert "今天先看表" not in geju[0]
     assert "量能　" in blob
     assert "金額　" in blob
     assert not re.search(r"(^|\n)量　", blob)

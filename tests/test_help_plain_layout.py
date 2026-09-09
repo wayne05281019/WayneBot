@@ -78,6 +78,22 @@ def test_oops_covers_streak_report_not_found_weekend():
     assert "改按其他按鈕即可" in guide
 
 
+def test_help_reflow_keeps_one_guide_chunk_and_no_orphan_lines():
+    from tg_layout import chunk_telegram_html, reflow_telegram_html
+
+    guide = reflow_telegram_html(HELP_TOPICS["guide"])
+    chunks = chunk_telegram_html(guide)
+    assert len(chunks) == 1, "總覽折行後仍應一則看完"
+    assert "第一次用" in guide
+    assert guide.count("<b>") == guide.count("</b>")
+    assert guide.count("<code>") == guide.count("</code>")
+    for ln in guide.split("\n"):
+        plain = re.sub(r"<[^>]+>", "", ln).strip()
+        if not plain:
+            continue
+        assert plain not in {"。", "、", "）", "報", "區", "盤"}, plain
+
+
 def test_help_html_tags_balanced_and_no_wide_pad():
     pad = re.compile(r"^(產業|同業|單位|用途)\s{3,}", re.M)
     for key, body in HELP_TOPICS.items():

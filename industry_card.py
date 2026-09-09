@@ -157,6 +157,22 @@ def _wrap_px(text: str, font, max_w: float) -> List[str]:
             cur = ch
     if cur:
         out.append(cur)
+    k = 0
+    while k < len(out):
+        cur = out[k]
+        starts_punct = bool(cur) and cur[0] in "。、；：），,．"
+        orphan = bool(cur.strip()) and (len(cur.strip()) <= 2 or starts_punct)
+        if orphan and k > 0:
+            joined = out[k - 1] + cur
+            if font.getlength(joined) <= max_w or starts_punct:
+                out[k - 1] = joined
+                out.pop(k)
+                k = max(0, k - 1)
+                continue
+            if len(out[k - 1]) >= 2:
+                out[k] = out[k - 1][-1] + cur
+                out[k - 1] = out[k - 1][:-1]
+        k += 1
     return out or [""]
 
 
