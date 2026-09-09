@@ -179,13 +179,17 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     now = datetime(2026, 9, 4, 20, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
-    assert "evening" in kinds
-    assert "morning" in kinds
+    assert kinds == ["fuse", "morning", "midday", "evening"]
     eve = [c for c in recorder.calls if c[0] == "evening"][0]
     assert eve[1]["skip_if_done"] is True
     assert eve[1]["notify"] is False
     morn = [c for c in recorder.calls if c[0] == "morning"][0]
     assert morn[1]["skip_if_done"] is True
+    fuse = [c for c in recorder.calls if c[0] == "fuse"][0]
+    assert fuse[1]["skip_if_done"] is True
+    assert fuse[1]["notify"] is False
+    mid = [c for c in recorder.calls if c[0] == "midday"][0]
+    assert mid[1]["skip_if_done"] is True
 
 
 def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
@@ -195,8 +199,19 @@ def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["morning"]
+    assert [c[0] for c in recorder.calls] == ["fuse", "morning", "midday"]
     assert recorder.calls[0][1]["skip_if_done"] is True
+    assert recorder.calls[1][1]["skip_if_done"] is True
+
+
+def test_catch_up_morning_only_before_midday(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 4, 7, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    assert [c[0] for c in recorder.calls] == ["morning"]
 
 
 def test_catch_up_weekend_runs_nothing(monkeypatch, recorder):
@@ -234,6 +249,57 @@ def test_scheduler_log_says_resident_sends_morning():
     src = inspect.getsource(main.start_daily_scheduler)
     assert "準時推播歸 GitHub Actions" not in src
     assert "常駐寄 06:30 海選" in src
+
+
+def test_watchdog_loop_retries_before_alert():
+    import inspect
+
+    src = inspect.getsource(main.start_watchdog)
+    assert "retry_missed_owned_jobs" in src
+    body = inspect.getsource(main.retry_missed_owned_jobs)
+    assert "release_publish" not in body
+    assert "run_morning_screen" in body
+    assert "run_increment_job" in body
+
+
+def test_watchdog_retry_runs_morning_before_alert(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [{"kind": "morning_screen", "run_date": "screen-20260908"}],
+    )
+    ran = main.retry_missed_owned_jobs()
+    assert ran == ["morning_screen"]
+    assert [c[0] for c in recorder.calls] == ["morning"]
+    assert recorder.calls[0][1]["skip_if_done"] is True
+
+
+def test_watchdog_retry_fuses_before_morning(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [
+            {"kind": "morning_screen", "run_date": "screen-x"},
+            {"kind": "increment", "run_date": "20260908"},
+        ],
+    )
+    ran = main.retry_missed_owned_jobs()
+    assert ran == ["increment", "morning_screen"]
+    assert [c[0] for c in recorder.calls] == ["fuse", "morning"]
+    assert recorder.calls[0][1]["notify"] is False
+
+
+def test_watchdog_retry_skips_release(monkeypatch, recorder):
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [{"kind": "release_publish", "run_date": "release-20260909"}],
+    )
+    assert main.retry_missed_owned_jobs() == []
+    assert recorder.calls == []
 
 
 def test_render_yaml_declares_the_owner():

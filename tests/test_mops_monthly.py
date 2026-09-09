@@ -132,8 +132,13 @@ def test_industry_peers_use_this_stock_month_not_global_max(tmp_path):
 
 def test_morning_still_confirms_fundamentals_when_quotes_complete():
     src = open("main_runner.py", encoding="utf-8").read()
-    assert "仍確認月營收／季報" in src
-    assert "sync_fundamentals" in src
-    i_skip = src.find("略過再抓行情，仍確認月營收")
-    i_sync = src.find("sync_fundamentals", i_skip)
+    assert "仍對官方側車" in src
+    assert "_refresh_official_sidecars" in src
+    i_skip = src.find("略過再抓行情，仍對官方側車")
+    i_sync = src.find("_refresh_official_sidecars()", i_skip)
     assert i_skip != -1 and i_sync != -1 and i_sync - i_skip < 400
+    helper = src[src.find("def _refresh_official_sidecars") :]
+    assert "sync_fundamentals" in helper
+    assert "sync_company_events" in helper
+    assert "sync_ex_preview" in helper
+    assert "sync_official_snapshots" in helper

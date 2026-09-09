@@ -437,25 +437,66 @@ def _taipei_now() -> datetime:
 
 
 def catch_up_missed_jobs(now=None) -> None:
-    """重啟補跑：已過 06:30 補早上海選；已過 20:00 補晚間 AI 模擬倉（快照若已寫仍會再跑成交）。"""
-    from config import scheduler_owns
+    """重啟補跑：已過死線的擁有排程（融合→海選→尾盤→晚間模擬倉）。"""
+    from config import scheduler_may_push, scheduler_owns
     from main_runner import MainRunner
 
     now = now or _taipei_now()
     if now.weekday() >= 5:
         return
     mins = now.hour * 60 + now.minute
+    need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
+    need_midday = scheduler_owns("midday") and mins >= 12 * 60 + 45
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
-    if not need_morning and not need_evening:
+    if not any((need_fuse, need_morning, need_midday, need_evening)):
         return
     runner = MainRunner()
+    if need_fuse:
+        logger.info("補跑：已過台灣 16:30，若盤後融合沒成功就補跑")
+        runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
     if need_morning:
         logger.info("補跑：已過台灣 06:30，若今早海選沒寄過就補寄")
         runner.run_morning_screen(skip_if_done=True)
+    if need_midday:
+        logger.info("補跑：已過台灣 12:45，若尾盤可切沒寄過就補寄")
+        runner.run_midday_review(skip_if_done=True)
     if need_evening:
         logger.info("補跑：已過台灣 20:00，晚間快照若已寫過仍再跑 AI 模擬倉")
         runner.run_evening_screen(skip_if_done=True, notify=False)
+
+
+_RETRYABLE_WATCHDOG = {
+    "increment": "fuse",
+    "morning_screen": "morning",
+}
+
+
+def retry_missed_owned_jobs(now=None) -> list:
+    """死人開關先補跑本行程擁有的海選／融合，再決定要不要告警。不重試 Release zip。"""
+    from config import get_db_path, scheduler_may_push, scheduler_owns
+    from main_runner import MainRunner
+    from ops_watchdog import missed_jobs
+
+    missed = missed_jobs(get_db_path(), now=now)
+    kinds = {m["kind"] for m in missed}
+    ran: list = []
+    runner = None
+    # 先融合再海選，名單才吃得到剛補上的收盤。
+    for kind in ("increment", "morning_screen"):
+        if kind not in kinds:
+            continue
+        job = _RETRYABLE_WATCHDOG[kind]
+        if not scheduler_owns(job):
+            continue
+        runner = runner or MainRunner()
+        logger.info("死人開關補跑 %s", kind)
+        if kind == "morning_screen":
+            runner.run_morning_screen(skip_if_done=True)
+        else:
+            runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
+        ran.append(kind)
+    return ran
 
 
 def _seconds_until(hour: int, minute: int) -> float:
@@ -586,6 +627,10 @@ def start_watchdog():
 
         while True:
             try:
+                try:
+                    retry_missed_owned_jobs()
+                except Exception:
+                    logger.exception("死人開關補跑失敗")
                 scan = watchdog_scan(get_db_path())
                 alerts = scan.get("alerts") or []
                 if alerts:

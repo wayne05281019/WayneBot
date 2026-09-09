@@ -20,7 +20,7 @@
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
-#   5. 月營收 monthly_revenue、季報 quarterly_income（官方 OpenAPI 最新一期）
+#   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
 #   7. 興櫃 emerging_quotes（櫃買當日行情表／日表；不寫進上市櫃 daily_quotes）
 #   8. 匯入健康檢查；上市／上櫃沒齊就不標成功、不覆蓋完整舊資料
@@ -153,12 +153,17 @@ class MainRunner:
         conn.commit()
         conn.close()
 
-    def send_telegram_message(self, text: str, chat_id: Optional[str] = None):
+    def send_telegram_message(self, text: str, chat_id: Optional[str] = None) -> bool:
         if not text:
-            return
+            return False
         target = chat_id or getattr(self, "chat_id", None)
+        ok = True
+        n = 0
         for part in chunk_telegram_text(text):
-            self._send_one(part, target)
+            n += 1
+            if self._send_one(part, target) is False:
+                ok = False
+        return bool(n and ok)
 
     def _family_chat_ids(self) -> list:
         """曾按開始的話筒帳號；每人私聊各寄一份。運維失敗通知仍只寄擁有者。"""
@@ -186,17 +191,19 @@ class MainRunner:
             ids.append(s)
         return ids
 
-    def _broadcast_family(self, text: str) -> None:
+    def _broadcast_family(self, text: str) -> bool:
         if not text:
-            return
+            return False
         ids = self._family_chat_ids()
         if not ids:
-            self.send_telegram_message(text)
-            return
+            return bool(self.send_telegram_message(text))
+        ok = True
         for cid in ids:
-            self.send_telegram_message(text, chat_id=cid)
+            if self.send_telegram_message(text, chat_id=cid) is False:
+                ok = False
+        return ok
 
-    def _send_one(self, text: str, chat_id: str):
+    def _send_one(self, text: str, chat_id: str) -> bool:
         if self.bot and hasattr(self.bot, "send_message"):
             try:
                 sent = self.bot.send_message(text, chat_id=chat_id)
@@ -204,7 +211,7 @@ class MainRunner:
                     logger.warning("⚠️ bot.send_message 回報 Telegram 未接受，切換原生 API...")
                 else:
                     logger.info("📤 透過 WayneTelegramBot 成功發送推播")
-                    return
+                    return True
             except Exception as e:
                 logger.warning(f"⚠️ bot.send_message 失敗: {e}，切換原生 API...")
         if self.token and chat_id:
@@ -214,12 +221,15 @@ class MainRunner:
                 resp = requests.post(url, json=payload, timeout=15)
                 if resp.status_code == 200:
                     logger.info("📤 原生 API 成功送出 Telegram 推播")
-                else:
-                    logger.error(f"❌ Telegram API 錯誤 ({resp.status_code}): {resp.text}")
+                    return True
+                logger.error(f"❌ Telegram API 錯誤 ({resp.status_code}): {resp.text}")
+                return False
             except Exception as e:
                 logger.error(f"❌ 發送 Telegram 異常: {e}")
-        else:
-            logger.info(f"📋 [本機推播預覽]\n{text}")
+                return False
+        logger.info(f"📋 [本機推播預覽]\n{text}")
+        # 沒有 token 的本機預覽不算已寄到，避免 skip_if_done 把預覽當成功。
+        return False
 
     def run_daily_increment(self, notify: bool = True) -> int:
         logger.info(f"📥 開始 {self.today_str} 增量更新...")
@@ -937,6 +947,41 @@ class MainRunner:
         self.run_evening_screen(skip_if_done=True, notify=False)
         return True
 
+    def _refresh_official_sidecars(self) -> None:
+        """行情已齊時仍每天對官方側車。不重抓全市場日K、不分點。
+
+        月營收 OpenAPI 常整期才換檔；已先公告的公司要對公開資訊觀測站 NAS。
+        股東會／法說、除權息預告、本益／融資快照也是查股會讀的官方列。
+        """
+        try:
+            from fundamentals import sync_fundamentals
+
+            fund = sync_fundamentals(self.db_path)
+            logger.info("今早月營收／季報：%s", fund)
+        except Exception as e:
+            logger.warning("今早基本面略過：%s", e)
+        try:
+            from company_events import sync_company_events
+
+            ev = sync_company_events(self.db_path)
+            logger.info("今早股東會／法說：%s", ev)
+        except Exception as e:
+            logger.warning("今早公司行事略過：%s", e)
+        try:
+            from ex_rights import sync_ex_preview
+
+            preview = sync_ex_preview(self.db_path)
+            logger.info("今早除權息預告：%s", preview)
+        except Exception as e:
+            logger.warning("今早除權息預告略過：%s", e)
+        try:
+            from official_snapshots import sync_official_snapshots
+
+            snap = sync_official_snapshots(self.db_path)
+            logger.info("今早官方快照：%s", snap)
+        except Exception as e:
+            logger.warning("今早官方快照略過：%s", e)
+
     def run_morning_screen(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session, refresh_tw_typhoon_halt
@@ -974,14 +1019,8 @@ class MainRunner:
 
         cap = fuse_end_date()
         if as_of and as_of == cap:
-            logger.info("今早庫已是完整日 %s，略過再抓行情，仍確認月營收／季報", as_of)
-            try:
-                from fundamentals import sync_fundamentals
-
-                fund = sync_fundamentals(self.db_path)
-                logger.info("今早月營收／季報：%s", fund)
-            except Exception as e:
-                logger.warning("今早基本面略過：%s", e)
+            logger.info("今早庫已是完整日 %s，略過再抓行情，仍對官方側車", as_of)
+            self._refresh_official_sidecars()
         else:
             self.run_daily_increment(notify=False)
         as_of = latest_complete_quote_date(self.db_path)
@@ -1041,7 +1080,13 @@ class MainRunner:
                 except Exception as e:
                     logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
         if self._screening_delivered(screening) and sent_ok:
-            self._mark_pipeline("success", "morning", run_date=key)
+            if notify:
+                self._mark_pipeline("success", "morning", run_date=key)
+            else:
+                # GHA notify=0 只算名單。若標 success，Release zip 灌進 Render
+                # 會讓 skip_if_done 以為已寄過（401 那天就是這樣）。
+                self._mark_pipeline("computed", "morning notify-off", run_date=key)
+                logger.info("早上海選已算出但不標已寄過（notify=0）%s", key)
         elif self._screening_delivered(screening) and not sent_ok:
             logger.error("早上海選已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
         else:
@@ -1122,13 +1167,20 @@ class MainRunner:
         out = run_midday_review(self.db_path, as_of)
         html = out.get("html") or ""
         line = (out.get("line_share") or "").strip()
+        sent_ok = True
         if html:
-            self._broadcast_family(html)
+            sent_ok = bool(self._broadcast_family(html)) and sent_ok
         if line:
-            self.send_telegram_message("↓ 下面這一則可整段複製，要轉 LINE 自己選聯絡人（一次貼完）")
-            self.send_telegram_message(line)
-        self._mark_pipeline("success", "midday", run_date=key)
-        return True
+            hint_ok = self.send_telegram_message(
+                "↓ 下面這一則可整段複製，要轉 LINE 自己選聯絡人（一次貼完）"
+            )
+            line_ok = self.send_telegram_message(line)
+            sent_ok = bool(hint_ok) and bool(line_ok) and sent_ok
+        if sent_ok:
+            self._mark_pipeline("success", "midday", run_date=key)
+        else:
+            logger.error("尾盤可切已算出但 Telegram 沒送到，不標已寄過，基準日 %s", as_of)
+        return bool(sent_ok)
 
     def run_typhoon_peek(self) -> bool:
         """22:15／05:10 抓人事行政總處；北市全日／上午停班才記台股休市。"""

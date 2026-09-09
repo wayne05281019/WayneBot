@@ -286,7 +286,11 @@ def audit_import(db_path: str, yyyymmdd: str = None, *, history: bool = True) ->
 
 
 def expected_latest_revenue_month(today_ymd: str = "") -> str:
-    """依法次月 10 日前應公布的最新月。10 號前通常還停在再上一個月。"""
+    """依法次月 10 日前應公布的最新月。10 號前健康檢查不把「還沒整期換檔」當缺資料。
+
+    已先公告的個股（例如緯穎 8 月營收 9/8 就上公開資訊觀測站）不走這條期限，
+    由 fundamentals.fetch_mops_monthly_filings 每天對 NAS 彙總表補入。
+    """
     raw = _audit_today(today_ymd)
     y, m, d = int(raw[:4]), int(raw[4:6]), int(raw[6:8])
     m -= 2 if d < 11 else 1

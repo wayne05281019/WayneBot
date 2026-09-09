@@ -453,7 +453,7 @@ def sync_fundamentals(db_path: str = None) -> Dict[str, Any]:
         "db_latest_month": m_max[1] or "",
         "db_income": int(q_max[0] or 0),
         "db_latest_quarter": f"{q_max[1]}Q{q_max[2]}" if q_max[1] else "",
-        "note": "OpenAPI 月營收是全市場同一期快照；已先公告的公司另從公開資訊觀測站 NAS 彙總表每天補入。季報 OpenAPI 亦為最新一期。",
+        "note": "OpenAPI 月營收是全市場同一期快照；已先公告的公司另從公開資訊觀測站 NAS 彙總表每天補入。季報 OpenAPI 亦為最新一期（無免驗證碼 NAS 彙總表，不抓驗證碼頁）。",
     }
     logger.info("基本面同步完成 %s", stats)
     return stats
