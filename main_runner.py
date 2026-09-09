@@ -146,6 +146,69 @@ class MainRunner:
         conn.close()
         return str(row[0] or "") if row else ""
 
+    def demote_premature_morning_screens(self) -> int:
+        """盤後當日補跑若先標 screen-{as_of} success，隔天 06:30 會略過、吃不到美股隔夜。
+
+        若 success 的 finished_at（台北曆日）<= as_of，視為過早，降成 computed 讓真・早報可寄。
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT run_date, finished_at, notes
+                FROM pipeline_runs
+                WHERE run_date LIKE 'screen-%' AND status = 'success'
+                """
+            ).fetchall()
+            n = 0
+            for run_date, finished_at, notes in rows:
+                as_of = str(run_date or "").replace("screen-", "", 1)
+                if not (as_of.isdigit() and len(as_of) == 8):
+                    continue
+                fin_tw = self._pipeline_finished_tw_ymd(finished_at)
+                if not fin_tw or fin_tw > as_of:
+                    continue
+                note = str(notes or "")
+                if "premature-morning" not in note:
+                    note = (note + " premature-morning-before-us").strip()
+                conn.execute(
+                    """
+                    UPDATE pipeline_runs
+                    SET status = 'computed', notes = ?
+                    WHERE run_date = ? AND status = 'success'
+                    """,
+                    (note, run_date),
+                )
+                n += 1
+            if n:
+                conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _pipeline_finished_tw_ymd(finished_at) -> str:
+        """pipeline finished_at → 台北 YYYYMMDD；解析失敗回空字串。"""
+        if not finished_at:
+            return ""
+        raw = str(finished_at).strip()
+        try:
+            from datetime import datetime, timezone
+            from zoneinfo import ZoneInfo
+
+            if raw.endswith("Z"):
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            else:
+                dt = datetime.fromisoformat(raw)
+            if dt.tzinfo is None:
+                # Release／舊列多半當 UTC 存
+                dt = dt.replace(tzinfo=timezone.utc)
+            tw = dt.astimezone(ZoneInfo("Asia/Taipei"))
+            return tw.strftime("%Y%m%d")
+        except Exception:
+            digits = "".join(ch for ch in raw[:10] if ch.isdigit())
+            return digits if len(digits) == 8 else ""
+
     def demote_unsent_screen_success(self) -> int:
         """GHA 從不寄海選。zip 裡 screen-* success 是 401／notify-off 假已寄。
 
@@ -1023,6 +1086,11 @@ class MainRunner:
                 run_date=key,
             )
             return True
+
+        if notify:
+            demoted = self.demote_premature_morning_screens()
+            if demoted:
+                logger.info("過早海選 success 已降級 %s 筆，改為可重寄", demoted)
 
         as_of = latest_complete_quote_date(self.db_path)
         key = f"screen-{as_of or 'none'}"
