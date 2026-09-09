@@ -1178,10 +1178,9 @@ class WayneTelegramBot:
     @staticmethod
     def _scratch_chart_path(charts_dir: str, code: str, kind: str, uid: str = "") -> str:
         """每人每次出圖用獨立檔名，避免哥哥／偉權同時查同一檔互相覆蓋。"""
-        safe = str(code or "").strip()[:6] or "x"
-        who = str(uid or "0").strip()[:16]
-        tag = f"{who}_{int(time.time() * 1000)}"
-        return os.path.join(charts_dir, f"{safe}_{kind}_{tag}.png")
+        from wayne_navigator import unique_chart_path
+
+        return unique_chart_path(charts_dir, code, kind, uid)
 
     def _menu_layout_ok(self, uid: str) -> bool:
         from wayne_db import get_cached_data
@@ -2103,7 +2102,7 @@ class WayneTelegramBot:
     async def _send_trade_journal(self, message, uid: str, *, review: bool = False) -> None:
         fn = format_user_review_html if review else format_user_trades_html
         html = await asyncio.to_thread(fn, self.db_path, uid)
-        parts = chunk_telegram_html(html)
+        parts = chunk_telegram_html(html, reflow=True)
         holdings = get_user_portfolio(self.db_path, uid)
         for i, part in enumerate(parts):
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
@@ -2497,13 +2496,15 @@ class WayneTelegramBot:
             self._remember_line_share(result)
         return ok
 
-    def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = ""):
+    def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = "", uid: str = ""):
         if not code:
             return
         from wayne_navigator import generate_card_with_chart
 
         try:
-            packed = generate_card_with_chart(code, self.db_path, self.charts_dir)
+            packed = generate_card_with_chart(
+                code, self.db_path, self.charts_dir, uid=uid or str(chat_id or "0")
+            )
             card_img = packed[1] if len(packed) > 1 else ""
             glance = packed[3] if len(packed) > 3 else ""
         except Exception:
@@ -2981,14 +2982,6 @@ class WayneTelegramBot:
         await self._pin_reply_menu(message)
 
     @staticmethod
-    def _scratch_chart_path(charts_dir: str, code: str, kind: str, uid: str = "") -> str:
-        """每人每次出圖用獨立檔名，避免哥哥／偉權同時查同一檔互相覆蓋。"""
-        safe = str(code or "").strip()[:6] or "x"
-        who = str(uid or "0").strip()[:16]
-        tag = f"{who}_{int(time.time() * 1000)}"
-        return os.path.join(charts_dir, f"{safe}_{kind}_{tag}.png")
-
-    @staticmethod
     def _chart_progress_text(
         elapsed_sec: int,
         *,
@@ -3352,7 +3345,9 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 kb = InlineKeyboardMarkup([[self._q("market")]]) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-            await self._send_market_kline(message, live=live_quote)
+            await self._send_market_kline(
+                message, live=live_quote, uid=self._uid_from_message(message)
+            )
         except Exception as e:
             logger.exception("大盤 HTML 送出失敗")
             plain = html.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
@@ -3363,7 +3358,7 @@ class WayneTelegramBot:
         finally:
             await self._delete_message(status)
 
-    async def _send_market_kline(self, message, *, live=None) -> None:
+    async def _send_market_kline(self, message, *, live=None, uid: str = "") -> None:
         """大盤專頁附圖：加權日 K（淺底）。"""
         from config import skip_chart_warmup
 
@@ -3375,7 +3370,8 @@ class WayneTelegramBot:
         except Exception:
             pass
         os.makedirs(self.charts_dir, exist_ok=True)
-        chart_path = os.path.join(self.charts_dir, f"twii_kline_{int(time.time() * 1000)}.png")
+        uid = uid or self._uid_from_message(message)
+        chart_path = self._scratch_chart_path(self.charts_dir, "TWII", "kline", uid)
         try:
             from index_kline_chart import build_market_kline_chart
 
@@ -3401,7 +3397,7 @@ class WayneTelegramBot:
                 pass
         if not path or not self._chart_png_looks_ok(path):
             return
-        cap = "加權指數日K（K棒・MA5/20/60・量・KD）"
+        cap = "加權指數日K（K棒・MA5/20/60・量）"
         try:
             with open(path, "rb") as f:
                 await message.reply_photo(
@@ -3473,7 +3469,7 @@ class WayneTelegramBot:
     async def _send_portfolio(self, message, uid: str):
         holdings = get_user_portfolio(self.db_path, uid)
         mine = self.portfolio_engine.format_holdings_html(holdings)
-        parts = chunk_telegram_html(mine)
+        parts = chunk_telegram_html(mine, reflow=True)
         for i, part in enumerate(parts):
             kb = self._portfolio_keyboard(holdings) if i == len(parts) - 1 else None
             await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
@@ -3664,20 +3660,20 @@ class WayneTelegramBot:
         if not args:
             last = self._last_card.get(uid)
             if last:
-                await self._send_industry(update.message, last)
+                await self._send_industry(update.message, last, uid)
                 return
             await self._prompt_pick(update.message, uid, "industry")
             return
-        await self._send_industry(update.message, args[0].strip())
+        await self._send_industry(update.message, args[0].strip(), uid)
 
-    async def _send_industry(self, message, code: str):
+    async def _send_industry(self, message, code: str, uid: str = ""):
         from industry_brief import format_industry_html
         from industry_card import render_industry_png
 
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
         em = self._hit_is_emerging(code, hits)
-        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "0")
+        uid = str(uid or self._uid_from_message(message) or "0")
         png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
 
         def _build():
@@ -3795,7 +3791,7 @@ class WayneTelegramBot:
             await self._send_chips_to(message, code, uid)
             return
         if kind == "industry":
-            await self._send_industry(message, code)
+            await self._send_industry(message, code, uid)
             return
         if kind == "fund":
             await self._send_fund_to(message, code)
@@ -4372,7 +4368,7 @@ class WayneTelegramBot:
             await message.reply_html(html, reply_markup=self._hub_keyboard(code), disable_web_page_preview=True)
             return True
         if pending == "industry":
-            await self._send_industry(message, code)
+            await self._send_industry(message, code, uid)
             return True
         return False
 
@@ -4742,7 +4738,7 @@ class WayneTelegramBot:
         except Exception:
             pass
         os.makedirs(self.charts_dir, exist_ok=True)
-        chart_path = os.path.join(self.charts_dir, f"{code}_nav_{int(time.time() * 1000)}.png")
+        chart_path = self._scratch_chart_path(self.charts_dir, code, "nav", uid)
         try:
             from wayne_navigator import generate_chart
 
@@ -5070,9 +5066,8 @@ class WayneTelegramBot:
                 return
             os.makedirs(self.charts_dir, exist_ok=True)
             uid_key = uid or self._uid_from_message(message)
-            req_tag = f"{uid_key or '0'}_{int(time.time() * 1000)}"
-            glance_path = os.path.join(self.charts_dir, f"{code}_glance_{req_tag}.png")
-            card_path_f = os.path.join(self.charts_dir, f"{code}_card_{req_tag}.png")
+            glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
+            card_path_f = self._scratch_chart_path(self.charts_dir, code, "card", uid_key)
             ohlc = ohlc if ohlc is not None else card.get("_ohlc")
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
@@ -5413,7 +5408,7 @@ class WayneTelegramBot:
             await self._send_fund_to(q.message, data[2:].strip())
             return
         if data.startswith("n:"):
-            await self._send_industry(q.message, data[2:].strip())
+            await self._send_industry(q.message, data[2:].strip(), str(q.from_user.id))
             return
         if data.startswith("b:"):
             uid = str(q.from_user.id)

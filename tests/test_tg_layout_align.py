@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import os
+import tempfile
 import unittest
 
 from tg_layout import aligned_block, aligned_rows, headline_lines, html_quote_move, kv_html
@@ -63,6 +65,43 @@ class TgLayoutAlignTests(unittest.TestCase):
                 continue
             self.assertNotEqual(plain, "。")
             self.assertGreaterEqual(len(plain), 2)
+
+    def test_holdings_and_journal_send_reflow(self):
+        import inspect
+
+        from bot_servers import WayneTelegramBot
+
+        self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_portfolio))
+        self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_trade_journal))
+
+    def test_empty_holdings_reflow_wraps_howto_keeps_period(self):
+        import tempfile
+
+        from portfolio_engine import PortfolioEngine
+        from tg_layout import reflow_telegram_html
+
+        db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        try:
+            html = PortfolioEngine(db_path=db).format_holdings_html([])
+            out = reflow_telegram_html(html, width=18)
+            self.assertIn("記買入", out)
+            self.assertGreaterEqual(out.count("\n"), 2)
+            for ln in out.split("\n"):
+                plain = (
+                    ln.replace("<b>", "")
+                    .replace("</b>", "")
+                    .replace("<code>", "")
+                    .replace("</code>", "")
+                    .strip()
+                )
+                if not plain:
+                    continue
+                self.assertNotEqual(plain, "。")
+        finally:
+            try:
+                os.unlink(db)
+            except OSError:
+                pass
 
     def test_reflow_keeps_compact_kv_line(self):
         from tg_layout import reflow_telegram_html

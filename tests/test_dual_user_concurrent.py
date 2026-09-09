@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -86,6 +87,15 @@ def test_scratch_chart_paths_differ_for_two_users():
     assert p1 != p2
     assert str(WAYNE_UID) in p1
     assert str(BRO_UID) in p2
+    assert str(os.getpid()) in p1
+    assert str(os.getpid()) in p2
+
+
+def test_scratch_chart_paths_same_uid_still_unique():
+    bot = _bot()
+    p1 = bot._scratch_chart_path(bot.charts_dir, "2330", "nav", str(WAYNE_UID))
+    p2 = bot._scratch_chart_path(bot.charts_dir, "2330", "nav", str(WAYNE_UID))
+    assert p1 != p2
 
 
 def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
@@ -480,3 +490,80 @@ def test_streak_home_does_not_clear_other_user_pending():
     asyncio.run(run())
     assert wayne not in bot._pending
     assert bot._pending.get(bro) == "fbuy:kind:ALL"
+
+
+def test_industry_callback_passes_clicker_uid():
+    import inspect
+
+    src = inspect.getsource(WayneTelegramBot.on_callback)
+    assert "_send_industry(q.message, data[2:].strip(), str(q.from_user.id))" in src
+    ind = inspect.getsource(WayneTelegramBot._send_industry)
+    assert "uid or self._uid_from_message" in ind
+    nav = inspect.getsource(WayneTelegramBot._send_navigation_chart)
+    assert "_scratch_chart_path" in nav
+    twii = inspect.getsource(WayneTelegramBot._send_market_kline)
+    assert "_scratch_chart_path" in twii
+    assert "twii_kline_" not in twii
+    assert "KD" not in twii
+
+
+def test_industry_scratch_path_uses_passed_uid_not_message_user():
+    bot = _bot()
+    captured = []
+
+    def fake_png(code, db, path, **kw):
+        captured.append(path)
+        return ""
+
+    async def run():
+        msg = _msg(555)
+        with patch("bot_servers.lookup_stocks", return_value=[{"stock_id": "2330"}]), patch(
+            "industry_card.render_industry_png", side_effect=fake_png
+        ), patch("industry_brief.format_industry_html", return_value="x"):
+            await WayneTelegramBot._send_industry(bot, msg, "2330", str(WAYNE_UID))
+            await WayneTelegramBot._send_industry(bot, msg, "2330", str(BRO_UID))
+
+    asyncio.run(run())
+    assert len(captured) == 2
+    assert str(WAYNE_UID) in captured[0]
+    assert str(BRO_UID) in captured[1]
+    assert "555" not in captured[0]
+    assert captured[0] != captured[1]
+
+
+def test_wayne_buy_pending_survives_bro_screen_and_lookup():
+    bot = _bot()
+    wayne = f"{WAYNE_UID}:{WAYNE_UID}"
+    bot._pending[wayne] = "buy:2330"
+    bot.screen_cmd = AsyncMock()
+    bot._reply_card = AsyncMock()
+
+    async def run():
+        await bot.on_text(_update(_msg(BRO_UID, "海選")), MagicMock())
+        with patch(
+            "bot_servers.lookup_stocks",
+            return_value=[{"stock_id": "2330", "stock_name": "台積電"}],
+        ), patch("bot_servers.hits_need_picker", return_value=False):
+            await bot.on_text(_update(_msg(BRO_UID, "2330")), MagicMock())
+
+    asyncio.run(run())
+    assert bot._pending.get(wayne) == "buy:2330"
+    bot.screen_cmd.assert_awaited_once()
+
+
+def test_render_stock_pack_paths_include_uid_and_pid():
+    import inspect
+
+    from wayne_navigator import render_stock_pack, unique_chart_path
+
+    src = inspect.getsource(render_stock_pack)
+    assert "unique_chart_path" in src
+    assert "{sid}_glance.png" not in src
+    assert "{sid}_card.png" not in src
+    p1 = unique_chart_path("data/charts", "2330", "glance", str(WAYNE_UID))
+    p2 = unique_chart_path("data/charts", "2330", "glance", str(BRO_UID))
+    assert p1 != p2
+    assert str(WAYNE_UID) in p1
+    assert str(BRO_UID) in p2
+    assert str(os.getpid()) in p1
+
