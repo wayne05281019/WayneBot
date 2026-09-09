@@ -53,6 +53,10 @@ class IndexKlineChartTests(unittest.TestCase):
         self.assertIn("NAV_CHART_DPI", src)
         self.assertIn("7.55", src)
         self.assertIn("vol_ma", src)
+        self.assertIn("fig.text", src)
+        self.assertNotIn("ax1.text", src)
+        self.assertNotIn("transform=ax1.transAxes", src)
+        self.assertIn("top=0.78", src)
         import index_kline_chart as ik
 
         mod = inspect.getsource(ik)

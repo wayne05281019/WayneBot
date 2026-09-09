@@ -276,19 +276,10 @@ def render_index_kline_png(
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(9))
     sign = "▲" if up else "▼"
-    ax1.text(
-        0.004,
-        0.985,
+    ohlc_line = (
         f"Op:{float(last['open']):,.2f}  Hi:{float(last['high']):,.2f}  "
         f"Lo:{float(last['low']):,.2f}  Cl:{close:,.2f}  {sign}{chg:+,.2f}（{chg_pct:+.2f}%）"
-        f"    月線: {float(last['ma20']):,.2f}",
-        transform=ax1.transAxes,
-        ha="left",
-        va="top",
-        fontproperties=_fp(10, "bold"),
-        color="#1b5e20",
-        zorder=9,
-        bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
+        f"    月線: {float(last['ma20']):,.2f}"
     )
 
     vol_colors = [_vol_color(candle_up[i]) for i in range(n)]
@@ -326,7 +317,18 @@ def render_index_kline_png(
         ax1.spines[side].set_visible(False)
         ax2.spines[side].set_visible(False)
 
-    fig.subplots_adjust(left=0.03, right=0.96, top=0.80, bottom=0.11)
+    fig.subplots_adjust(left=0.03, right=0.96, top=0.78, bottom=0.11)
+    fig.text(
+        0.03,
+        0.955,
+        ohlc_line,
+        ha="left",
+        va="top",
+        fontproperties=_fp(10, "bold"),
+        color="#1b5e20",
+        zorder=9,
+        bbox=dict(boxstyle="round,pad=0.25", facecolor="#e8f5e9", edgecolor="#a5d6a7", linewidth=0.6),
+    )
     as_of = work["dt"].iloc[-1].strftime("%Y/%m/%d")
     fig.text(
         0.50,

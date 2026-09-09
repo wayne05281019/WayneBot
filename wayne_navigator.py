@@ -4,8 +4,10 @@ WayneBot 核心模組：買低賣高決策卡與 180 日 K 線趨勢圖引擎
 檔案名稱：wayne_navigator.py
 """
 
+import itertools
 import os
 import sqlite3
+import time
 import urllib.request
 from datetime import datetime
 from typing import Optional
@@ -62,6 +64,17 @@ BASE_DIR = os.path.dirname(get_db_path()) or "."
 DB_PATH = get_db_path()
 OUTPUT_DIR = get_charts_dir()
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+_CHART_PATH_SEQ = itertools.count()
+
+
+def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") -> str:
+    """每人每次出圖獨立檔名，避免兩人同時查同一檔互相覆蓋。"""
+    safe = str(stock_id or "").strip()[:6] or "x"
+    who = str(uid or "0").strip()[:16]
+    tag = f"{who}_{os.getpid()}_{int(time.time() * 1000)}_{next(_CHART_PATH_SEQ)}"
+    return os.path.join(charts_dir or ".", f"{safe}_{kind}_{tag}.png")
+
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
@@ -3465,7 +3478,7 @@ def generate_card_image(stock_id: str, db_path: str = None, save_path: str = Non
     return [path] if path else []
 
 
-def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None) -> dict:
+def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None, *, uid: str = "") -> dict:
     """看這檔：決策卡只算一次，介紹圖／高低卡／導航／籌碼一次產出。"""
     sid = str(stock_id).strip()
     db_path = db_path or get_db_path()
@@ -3498,17 +3511,17 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     except Exception:
         tape = {}
     glance = render_first_glance_png(
-        sid, card, tape, os.path.join(charts_dir, f"{sid}_glance.png"), db_path=db_path, ohlc=ohlc
+        sid, card, tape, unique_chart_path(charts_dir, sid, "glance", uid), db_path=db_path, ohlc=ohlc
     ) or ""
-    card_path = render_decision_card_png(card, os.path.join(charts_dir, f"{sid}_card.png")) or ""
+    card_path = render_decision_card_png(card, unique_chart_path(charts_dir, sid, "card", uid)) or ""
     chart = generate_chart(
-        sid, "", db_path, os.path.join(charts_dir, f"{sid}.png"), ohlc, already_normalized=True
+        sid, "", db_path, unique_chart_path(charts_dir, sid, "nav", uid), ohlc, already_normalized=True
     ) or ""
     chips = ""
     try:
         from chips import generate_chips_image
 
-        chips = generate_chips_image(sid, db_path, os.path.join(charts_dir, f"{sid}_chips.png")) or ""
+        chips = generate_chips_image(sid, db_path, unique_chart_path(charts_dir, sid, "chips", uid)) or ""
     except Exception:
         chips = ""
     return {
@@ -3521,8 +3534,8 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
     }
 
 
-def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None):
+def generate_card_with_chart(stock_id: str, db_path: str = None, charts_dir: str = None, *, uid: str = ""):
     sid = str(stock_id).strip()
-    pack = render_stock_pack(sid, db_path, charts_dir)
+    pack = render_stock_pack(sid, db_path, charts_dir, uid=uid)
     html = generate_decision_card(sid, db_path, lookback=20)
     return html, pack.get("cards") or [], pack.get("chart") or "", pack.get("glance") or ""
