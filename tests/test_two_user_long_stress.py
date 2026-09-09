@@ -165,6 +165,7 @@ def _bot(db: str) -> WayneTelegramBot:
 def _runner(db: str, monkeypatch) -> MainRunner:
     monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
     monkeypatch.setenv("TELEGRAM_CHAT_ID", WAYNE)
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", BRO)
     monkeypatch.delenv("TG_CHAT_ID", raising=False)
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = db

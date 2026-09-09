@@ -137,7 +137,7 @@ def test_screen_notify_defaults_on_and_gha_can_mute(monkeypatch):
     assert screen_notify_enabled() is False
 
 
-def test_family_chat_ids_owner_and_touched_users(tmp_path, monkeypatch):
+def test_family_chat_ids_ignore_strangers_in_tg_users(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
 
@@ -147,11 +147,11 @@ def test_family_chat_ids_owner_and_touched_users(tmp_path, monkeypatch):
     path = str(tmp_path / "fam.db")
     ensure_core_schema(path)
     touch_tg_user(path, "9001", "偉權")
-    touch_tg_user(path, "9002", "家人")
+    touch_tg_user(path, "9002", "路人")
     runner = MainRunner.__new__(MainRunner)
     runner.db_path = path
     runner.chat_id = "9001"
-    assert runner._family_chat_ids() == ["9001", "9002"]
+    assert runner._family_chat_ids() == ["9001"]
 
 
 def test_family_chat_ids_include_env_extras(tmp_path, monkeypatch):
@@ -207,7 +207,7 @@ def test_push_screening_radar_keyed_by_each_family_uid(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
 
-    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "9002")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
     monkeypatch.delenv("TG_CHAT_ID", raising=False)
     path = str(tmp_path / "fam.db")
@@ -245,7 +245,7 @@ def test_push_screening_sends_each_family_member(tmp_path, monkeypatch):
     from main_runner import MainRunner
     from wayne_db import ensure_core_schema, touch_tg_user
 
-    monkeypatch.delenv("WAYNE_FAMILY_CHAT_IDS", raising=False)
+    monkeypatch.setenv("WAYNE_FAMILY_CHAT_IDS", "9002")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "9001")
     monkeypatch.delenv("TG_CHAT_ID", raising=False)
     path = str(tmp_path / "fam.db")

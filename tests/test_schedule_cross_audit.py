@@ -40,7 +40,9 @@ def test_gha_daily_run_owns_morning_and_fuse_only():
     assert "run_midday_review" not in text
     assert "run_evening_screen" not in text
     assert "早上海選只驗基準日齊" in text
+    assert "strip_private_user_data" in text
     assert text.count("gh release upload") == 1
+    assert text.count("from wayne_db import strip_private_user_data") == 1
 
 
 def test_render_data_role_pushes_morning(monkeypatch):

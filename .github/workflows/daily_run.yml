@@ -173,7 +173,7 @@ jobs:
           print("早上海選關卡通過")
           PY
 
-      # 早上海選只驗基準日齊。Release zip 只准盤後 increment 蓋，避免略過後把舊 zip 再上傳。
+      # 早上海選只驗基準日齊。Release zip 只准盤後 increment 蓋，上傳前清私人表。
 
       - name: 完整性通過才蓋掉舊 Release zip
         if: success() && steps.job.outputs.job == 'increment'
@@ -195,6 +195,13 @@ jobs:
           if not report.get("ok"):
               sys.exit("完整性未過，不覆蓋 Release：" + "；".join(report.get("reasons") or []))
           print("完整性通過，蓋掉舊 zip")
+          PY
+          python - <<'PY'
+          from wayne_db import strip_private_user_data
+          from config import get_db_path
+
+          deleted = strip_private_user_data(get_db_path())
+          print("stripped_private", deleted)
           PY
           rm -f waynebot_production_complete.zip
           zip -1 -j waynebot_production_complete.zip data/wayne_market.db

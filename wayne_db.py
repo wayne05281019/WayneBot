@@ -927,6 +927,114 @@ def list_tg_user_ids(db_path: str) -> List[str]:
     return sorted(ids)
 
 
+# 公開 GitHub Release zip 不准帶走的表。行情／財報／海選名單留著；持股／觀察／成交／AI 倉／話筒帳號清掉。
+PRIVATE_USER_TABLES: tuple[str, ...] = (
+    "tg_users",
+    "user_watchlist",
+    "user_holdings",
+    "user_trade_logs",
+    "user_states",
+    "user_funds",
+    "user_positions",
+    "user_watchlists",
+    "trade_logs",
+    "trade_history",
+    "simulated_positions",
+    "ai_params",
+    "ai_nav_log",
+    "ai_fills",
+    "ai_lessons",
+    "tg_issue_reports",
+)
+
+
+def strip_private_user_data(db_path: str | None = None, *, vacuum: bool = True) -> Dict[str, int]:
+    """清空私人表，行情不動。給公開 zip 用；不要對 Render 正式碟跑。"""
+    path = str(db_path or DEFAULT_DB_PATH)
+    deleted: Dict[str, int] = {}
+    if not os.path.isfile(path):
+        return deleted
+    with get_db_connection(path) as conn:
+        names = {
+            str(r[0])
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        for table in PRIVATE_USER_TABLES:
+            if table not in names:
+                continue
+            n = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+            conn.execute(f"DELETE FROM {table}")
+            deleted[table] = n
+        conn.commit()
+    if vacuum:
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+    return deleted
+
+
+def _table_dicts(db_path: str, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+    try:
+        with get_db_connection(db_path, write=False) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.OperationalError:
+        return []
+
+
+def export_private_user_payload(db_path: str, user_id: str) -> Dict[str, Any]:
+    """某一 uid 的持股／觀察／成交／AI 倉。給私人備份；不要上傳 GitHub Release。"""
+    uid = str(user_id or "").strip()
+    ai_uid = f"ai_{uid}" if uid and not uid.startswith("ai_") else uid
+    return {
+        "user_id": uid,
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "watchlist": get_user_watchlist(db_path, uid) if uid else [],
+        "holdings": get_user_portfolio(db_path, uid) if uid else [],
+        "trades": _table_dicts(
+            db_path,
+            "SELECT * FROM user_trade_logs WHERE user_id=? ORDER BY id",
+            (uid,),
+        ),
+        "issue_reports": _table_dicts(
+            db_path,
+            "SELECT * FROM tg_issue_reports WHERE user_id=? ORDER BY id",
+            (uid,),
+        ),
+        "ai_desk": {
+            "user_id": ai_uid,
+            "funds": _table_dicts(
+                db_path,
+                "SELECT * FROM user_funds WHERE user_id=?",
+                (ai_uid,),
+            ),
+            "positions": _table_dicts(
+                db_path,
+                "SELECT * FROM user_positions WHERE user_id=?",
+                (ai_uid,),
+            ),
+            "fills": _table_dicts(
+                db_path,
+                "SELECT * FROM ai_fills WHERE user_id=? ORDER BY id",
+                (ai_uid,),
+            ),
+            "lessons": _table_dicts(
+                db_path,
+                "SELECT * FROM ai_lessons WHERE user_id=? ORDER BY as_of",
+                (ai_uid,),
+            ),
+            "nav_log": _table_dicts(
+                db_path,
+                "SELECT * FROM ai_nav_log WHERE user_id=? ORDER BY date",
+                (ai_uid,),
+            ),
+        },
+    }
+
+
 def get_user_portfolio(db_path: str, user_id: str) -> List[Dict[str, Any]]:
     ensure_core_schema(db_path)
     with get_db_connection(db_path, write=False) as conn:

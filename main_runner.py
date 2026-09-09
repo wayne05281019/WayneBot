@@ -196,30 +196,14 @@ class MainRunner:
         return bool(n and ok)
 
     def _family_chat_ids(self) -> list:
-        """曾按開始的話筒帳號；每人私聊各寄一份。運維失敗通知仍只寄擁有者。"""
-        from wayne_db import list_tg_user_ids
+        """只寄白名單：偉權＋哥哥。不掃 tg_users，陌生人按開始也不會進早報。"""
+        from config import allowed_telegram_uids
 
-        ids: list[str] = []
-        seen: set[str] = set()
-        try:
-            raw = list_tg_user_ids(self.db_path)
-        except Exception:
-            raw = []
+        ids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
+        if ids:
+            return ids
         owner = str(getattr(self, "chat_id", None) or "").strip()
-        extras: list[str] = []
-        try:
-            from config import extra_family_chat_ids
-
-            extras = extra_family_chat_ids()
-        except Exception:
-            extras = []
-        for uid in list(raw) + extras + ([owner] if owner else []):
-            s = str(uid or "").strip()
-            if not s or s in seen:
-                continue
-            seen.add(s)
-            ids.append(s)
-        return ids
+        return [owner] if owner else []
 
     def _broadcast_family(self, text: str) -> bool:
         if not text:
@@ -773,7 +757,7 @@ class MainRunner:
         """模擬倉真正下單（每人 ai_{uid}／50 萬）。有名單才買；平常 1 檔，超跌最多 2 檔，永遠留現金。"""
         try:
             from ai_trader import run_ai_desk
-            from wayne_db import list_tg_user_ids
+            from config import allowed_telegram_uids, telegram_uid_allowed
 
             if results is None:
                 if not run_full_screening:
@@ -786,7 +770,10 @@ class MainRunner:
                 )
                 results = (screening or {}).get("results") or {}
 
-            uids = [str(telegram_uid)] if telegram_uid else list_tg_user_ids(self.db_path)
+            if telegram_uid:
+                uids = [str(telegram_uid)] if telegram_uid_allowed(telegram_uid) else []
+            else:
+                uids = list(allowed_telegram_uids())
             if not uids and self.chat_id:
                 uids = [str(self.chat_id)]
             if not uids:
@@ -823,19 +810,18 @@ class MainRunner:
     def _maybe_send_evolve_digest(self, as_of: str) -> None:
         """週五晚間：買賣仍不推播，另寄一則進化編碼週報。"""
         try:
-            from config import scheduler_may_push
+            from config import allowed_telegram_uids, scheduler_may_push
             from ai_trader import (
                 ai_user_id,
                 format_evolve_report_html,
                 mark_weekly_evolve_sent,
                 should_send_weekly_evolve,
             )
-            from wayne_db import list_tg_user_ids
         except Exception:
             return
         if not scheduler_may_push("evening"):
             return
-        uids = list_tg_user_ids(self.db_path)
+        uids = list(allowed_telegram_uids())
         if not uids and self.chat_id:
             uids = [str(self.chat_id)]
         for uid in uids:

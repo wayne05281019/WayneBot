@@ -76,6 +76,10 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 
 - **Render 永久碟**：`wayne-data` 5GB，掛在 `/opt/render/project/src/data`（對到 `data/wayne_market.db`）。
 - **雙 Bot**：已否決。不是偉權／哥哥各一顆機器人；延後清單裡的「雙 Bot」是第二顆 token／第二套產品，沒規格。功能全同＋雙人同時重度使用見文首「最高產品原則」。
+- **私人 Bot 白名單**：只認 Render 環境變數裡的兩個 Telegram uid（`TELEGRAM_CHAT_ID`＝偉權，`WAYNE_FAMILY_CHAT_IDS` 或逗號後＝哥哥）。真人 id 不准寫進 git。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉排程只寄白名單，不掃所有用過 Bot 的人。沒設任何 uid＝關門。
+- **公開 Release zip**：只准日 K／財報這類公開行情。GHA 上傳前 `strip_private_user_data` 清持股／觀察／成交／AI 倉／`tg_users`。不要把 Render 正式碟整顆上傳。
+- **Token 當密碼**：正式 `TELEGRAM_BOT_TOKEN` 只放 Render 環境變數。不准貼聊天、不准進 git、不准給 GHA 注入。GitHub 上那顆已 401＝作廢，BotFather 作廢那顆是人工一步。Cursor My Secrets 給新代理人寄訊，同樣不要貼出來。本機 `WAYNE_SKIP_POLLING=1`。
+- **私人備份**：行情可用公開 zip 救災。持股／日記／AI 倉公開 zip 救不回。白名單帳號打「備份」會拿到自己那份 JSON；或本機 `scripts/backup_private_user_data.py`。拷到自己電腦或加密雲端，不要上傳 GitHub。
 
 ## 獲利驗收
 
