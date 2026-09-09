@@ -134,6 +134,9 @@ def test_start_cmd_leads_with_three_steps():
     assert "圖下面" in src
     assert "圖文" in src
     assert "回報" in src
+    assert "給家人用" not in src
+    assert "對方用自己的帳號按開始" not in src
+    assert "不必再分享邀請" in src
 
 
 def test_pick_and_decision_are_first_time_friendly():

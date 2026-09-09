@@ -1190,14 +1190,16 @@ def test_l9b_brother_help_exists():
     assert "第一次用" in HELP_TOPICS["guide"] or "四碼" in HELP_TOPICS["guide"]
 
 
-def test_l9c_guide_family_invite_one_chunk():
+def test_l9c_guide_family_no_invite_one_chunk():
     from tg_layout import chunk_telegram_html
 
     guide = HELP_TOPICS["guide"]
     chunks = chunk_telegram_html(guide)
     assert len(chunks) == 1
     assert "t.me/WC_ai_trade_bot" in guide
-    assert "按<b>開始</b>" in guide or "按開始" in guide
+    assert "不必再分享邀請" in guide
+    assert "對方按" not in guide
+    assert "給家人用" not in guide
     assert "不要拉進同一個群組" in guide
     assert "各看各的" in guide
     assert "06:30" in guide and "各寄一份" in guide
