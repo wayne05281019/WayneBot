@@ -54,7 +54,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
 <canvas id="own" hidden></canvas>
 <p id="empty"></p>
 </div>
-<p class="note">不是買訊。高低卡／獲利不會畫在這張圖上。</p>
+<p class="note">灰線把每根收盤連起來，比較好跟走勢。不是買訊。高低卡／獲利不會畫在這張圖上。</p>
 <script>
 var D=@@DATA@@;
 var UP="#e53935", DN="#00897b";
@@ -118,6 +118,7 @@ function drawOwn(bars, miss){
   g.font="11px sans-serif"; g.fillStyle="#78909c";
   g.fillText(hi.toFixed(hi>=100?1:2), 6, padT+10);
   g.fillText(lo.toFixed(lo>=100?1:2), 6, padT+plotH);
+  g.lineWidth=1.2;
   view.forEach(function(b, i){
     var x=padL+slot*(i+0.5);
     var up=b.c>=b.o;
@@ -125,13 +126,26 @@ function drawOwn(bars, miss){
     g.beginPath(); g.moveTo(x,yx(b.h)); g.lineTo(x,yx(b.l)); g.stroke();
     var y1=yx(Math.max(b.o,b.c)), y2=yx(Math.min(b.o,b.c));
     var bw=Math.max(3, slot*0.62);
-    g.fillRect(x-bw/2, y1, bw, Math.max(1, y2-y1));
+    var bh=Math.max(1, y2-y1);
+    g.fillRect(x-bw/2, y1, bw, bh);
+    g.strokeRect(x-bw/2, y1, bw, bh);
     var vh=Math.max(1, (b.v/vmax)*volH);
     var vy=padT+plotH+gap+(volH-vh);
     g.globalAlpha=0.85;
     g.fillRect(x-bw/2, vy, bw, vh);
     g.globalAlpha=1;
   });
+  g.lineWidth=1.7;
+  g.lineJoin="round";
+  g.lineCap="round";
+  g.strokeStyle="#455a64";
+  g.beginPath();
+  view.forEach(function(b, i){
+    var x=padL+slot*(i+0.5);
+    var y=yx(b.c);
+    if(i===0) g.moveTo(x,y); else g.lineTo(x,y);
+  });
+  g.stroke();
   g.fillStyle="#90a4ae";
   g.fillText("量（張）", 6, padT+plotH+gap+12);
   var last=view[view.length-1];
