@@ -55,6 +55,42 @@ def test_parse_t21sc03_huatong_august():
     assert r["ytd_revenue"] == 816657663
 
 
+def test_parse_t21sc03_keeps_every_listed_row():
+    """NAS 彙總表是全市場已公告列，不能只收某一檔。"""
+    html = """
+    <html><table>
+    <tr><th class=tt align=left >產業別：水泥工業</th></tr>
+    <tr align=right><td align=center>1101</td><td align=left>台泥</td>
+    <td nowrap>1000</td><td nowrap>900</td><td nowrap>800</td>
+    <td nowrap>11.11</td><td nowrap>25.00</td>
+    <td nowrap>8000</td><td nowrap>7000</td><td nowrap>14.29</td>
+    <td align=left></td></tr>
+    <tr><th class=tt align=left >產業別：電腦及週邊設備業</th></tr>
+    <tr align=right><td align=center>6669</td><td align=left>緯穎</td>
+    <td nowrap>144311808</td><td nowrap>117685530</td><td nowrap>95978718</td>
+    <td nowrap>22.62</td><td nowrap>50.35</td>
+    <td nowrap>816657663</td><td nowrap>571906228</td><td nowrap>42.79</td>
+    <td align=left></td></tr>
+    </table></html>
+    """
+    rows = parse_t21sc03_html(html, "202608", "TW")
+    assert [r["stock_id"] for r in rows] == ["1101", "6669"]
+    assert rows[0]["revenue"] == 1000
+    assert rows[1]["revenue"] == 144311808
+
+
+def test_mops_fetch_has_no_stock_allowlist():
+    import inspect
+
+    from fundamentals import fetch_mops_monthly_filings, mops_monthly_urls, parse_t21sc03_html
+
+    blob = inspect.getsource(mops_monthly_urls) + inspect.getsource(fetch_mops_monthly_filings)
+    blob += inspect.getsource(parse_t21sc03_html)
+    assert "6669" not in blob
+    assert "stock_id ==" not in blob
+    assert "allowlist" not in blob.lower()
+
+
 def test_sync_merges_mops_when_openapi_still_july(tmp_path, monkeypatch):
     db = str(tmp_path / "f.db")
     monkeypatch.setattr(
