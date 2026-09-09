@@ -32,19 +32,20 @@ def test_gha_daily_run_owns_morning_and_fuse_only():
     assert scheduled_job_kind("30 22 * * 0-4") == "morning_screen"
     assert "increment" in text and "morning_screen" in text
     assert "WAYNE_FAMILY_CHAT_IDS" in text
+    assert "WAYNE_SCREEN_NOTIFY" in text
     assert "run_midday_review" not in text
     assert "run_evening_screen" not in text
 
 
-def test_render_data_role_does_not_push_morning(monkeypatch):
+def test_render_data_role_pushes_morning(monkeypatch):
     import config
 
     yaml = _read("render.yaml")
     assert "WAYNE_SCHEDULER_ROLE" in yaml
     assert "value: data" in yaml
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
-    assert config.scheduler_owns("morning") is False
-    assert config.scheduler_may_push("morning") is False
+    assert config.scheduler_owns("morning") is True
+    assert config.scheduler_may_push("morning") is True
     assert config.scheduler_owns("midday") is True
     assert config.scheduler_may_push("midday") is True
     assert config.scheduler_owns("fuse") is True
@@ -61,8 +62,8 @@ def test_main_scheduler_slots_match_help_clocks():
     assert '(20, 0, "evening")' in src
     assert '(5, 10, "typhoon")' in src
     assert '(22, 15, "typhoon")' in src
-    header = _read("main_runner.py")[:2500]
-    assert "Render WAYNE_SCHEDULER_ROLE=data 不跑 morning" in header
+    header = _read("main_runner.py")[:2800]
+    assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
     guide = HELP_TOPICS["guide"]
     blob = page_copy_blob()

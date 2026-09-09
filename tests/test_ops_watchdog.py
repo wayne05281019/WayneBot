@@ -86,13 +86,13 @@ def test_missed_jobs_flags_morning_screen(tmp_path, monkeypatch):
     assert missed[0]["status"] == "無紀錄"
 
 
-def test_missed_jobs_skips_gha_owned_morning_in_data_role(tmp_path, monkeypatch):
+def test_missed_jobs_flags_morning_in_data_role(tmp_path, monkeypatch):
     path = _make_db(tmp_path)
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("trading_calendar.resolve_screen_as_of", lambda *a, **k: "20260902")
     now = datetime(2026, 9, 3, 18, 0)
     kinds = {m["kind"] for m in missed_jobs(path, now=now)}
-    assert "morning_screen" not in kinds
+    assert "morning_screen" in kinds
 
 
 def test_missed_jobs_success_clears(tmp_path, monkeypatch):

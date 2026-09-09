@@ -7,8 +7,8 @@
 #   - GitHub Actions cron 30 8 * * 1-5（UTC＝台灣 16:30）WAYNE_JOB=increment
 #   - Render 常駐執行緒同樣 16:30
 # 早上海選：台灣週一～五 06:30 寄出（昨收＋美股收盤／盤後；大跌先單獨通知）
-#   - GHA cron 30 22 * * 0-4（UTC＝台灣 06:30）WAYNE_JOB=morning_screen，唯一推播擁有者
-#   - Render WAYNE_SCHEDULER_ROLE=data 不跑 morning（兩邊 pipeline_runs 互看不見，會雙推）
+#   - 常駐 data 角色 06:30 寄出（有效 token＋按開始的話筒）
+#   - GHA cron 30 22 * * 0-4 仍跑 morning_screen 算名單、蓋 zip；WAYNE_SCREEN_NOTIFY=0 不寄
 # 12:45 尾盤可切：只複核今早名單＋高低卡，主動寄出轉 LINE
 # 20:00 晚間台股收盤海選寫快照，並讓 AI 模擬倉依收盤名單買（海選本文不寄；不主動推播模擬倉）
 # 22:15 抓人事行政總處北市停班（週日也跑）；05:10 再抓一次涵蓋 04:30 補發；06:30 海選前再確認
@@ -924,7 +924,7 @@ class MainRunner:
         self.run_evening_screen(skip_if_done=True, notify=False)
         return True
 
-    def run_morning_screen(self, skip_if_done: bool = False) -> bool:
+    def run_morning_screen(self, skip_if_done: bool = False, notify: bool = True) -> bool:
         from import_health import latest_complete_quote_date
         from tw_holidays import closed_tw_session, refresh_tw_typhoon_halt
 
@@ -994,7 +994,8 @@ class MainRunner:
             us_snap = refresh_us_overnight(self.db_path, as_of) or {}
             if should_alert_us_drop(us_snap):
                 logger.info("美股收盤偏弱，先寄一早通知 regime=%s", us_snap.get("regime"))
-                self._broadcast_family(format_us_drop_alert(us_snap))
+                if notify:
+                    self._broadcast_family(format_us_drop_alert(us_snap))
         except Exception as e:
             logger.warning("美股大跌通知略過：%s", e)
         screening = None
@@ -1005,7 +1006,19 @@ class MainRunner:
                 )
             except Exception as e:
                 logger.error("四大選股失敗: %s", e, exc_info=True)
-        self._push_screening(screening, as_of=as_of)
+        if notify:
+            self._push_screening(screening, as_of=as_of)
+        else:
+            logger.info("早上海選不寄 Telegram（notify=0），只寫快照")
+            if self._screening_delivered(screening):
+                try:
+                    self._run_ai_desk(
+                        as_of or self.today_str,
+                        results=(screening or {}).get("results") or {},
+                        notify=False,
+                    )
+                except Exception as e:
+                    logger.warning("無推播早報仍跑 AI 模擬倉略過：%s", e)
         if self._screening_delivered(screening):
             self._mark_pipeline("success", "morning", run_date=key)
         else:
@@ -1119,7 +1132,11 @@ def main():
             skip_if_done = True
             if (os.getenv("GITHUB_EVENT_NAME") or "").strip() == "push":
                 skip_if_done = False
-            ok = runner.run_morning_screen(skip_if_done=skip_if_done)
+            from config import screen_notify_enabled
+
+            ok = runner.run_morning_screen(
+                skip_if_done=skip_if_done, notify=screen_notify_enabled()
+            )
         elif kind == "evening_screen":
             ok = runner.run_evening_screen(skip_if_done=True, notify=False)
         elif kind == "midday_review":

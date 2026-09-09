@@ -163,7 +163,7 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
             if not inc or str(inc.get("status") or "") != "success":
                 reasons.append(f"盤後融合 {today} 未成功")
         # 早上海選：06:45 後才要求 screen-{基準日} success（基準日＝06:30 當下庫內完整日）
-        # Render data 角色不擁有 morning，pipeline_runs 在 GHA 那份庫，本地查會誤報。
+        # 常駐 data 角色擁有 morning 推播，本地 pipeline_runs 要有今早紀錄。
         if hour >= 7:
             from config import scheduler_owns
             from trading_calendar import morning_screen_pipeline_key
