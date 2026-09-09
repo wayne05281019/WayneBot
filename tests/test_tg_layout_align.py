@@ -73,6 +73,7 @@ class TgLayoutAlignTests(unittest.TestCase):
 
         self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_portfolio))
         self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_trade_journal))
+        self.assertNotIn("reflow=True", inspect.getsource(WayneTelegramBot._send_ai_desk_view))
 
     def test_empty_holdings_reflow_wraps_howto_keeps_period(self):
         import tempfile
@@ -108,6 +109,29 @@ class TgLayoutAlignTests(unittest.TestCase):
 
         line = "收盤　60.80　漲跌　+2.01%"
         self.assertEqual(reflow_telegram_html(line, width=18), line)
+
+    def test_reflow_keeps_review_stat_win_count(self):
+        from screen_review import fmt_review_stat_line
+        from tg_layout import reflow_telegram_html
+
+        self.assertEqual(
+            fmt_review_stat_line("黃金買點", 5, 0.0, 0.4),
+            "黃金買點　均 +0.0%　5檔漲2檔",
+        )
+        line = "黃金買點　均 +0.0%　5檔漲2檔"
+        self.assertEqual(reflow_telegram_html(line, width=18), line)
+        longish = "重點觀察　均 +0.9%　15檔漲11檔"
+        self.assertEqual(reflow_telegram_html(longish, width=18), longish)
+        blob = "\n".join((line, longish, "優先看　均 -1.0%　11檔漲3檔"))
+        out = reflow_telegram_html(blob, width=18)
+        self.assertNotIn("／", out)
+        self.assertEqual(out.count("\n"), 2)
+        for ln in out.split("\n"):
+            self.assertIn("檔漲", ln)
+            self.assertTrue(ln.endswith("檔"))
+        note = "均＝隔日平均漲跌；5檔漲2檔＝5檔裡有2檔上漲。弱的類別只讓 AI 模擬倉少買。"
+        noted = reflow_telegram_html(note, width=18)
+        self.assertGreaterEqual(noted.count("\n"), 1)
 
     def test_reflow_splits_menu_row_at_bar(self):
         from tg_layout import reflow_telegram_html

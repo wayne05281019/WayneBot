@@ -584,16 +584,14 @@ def format_ai_desk_html(
     realized = _realized_pnl(engine, user_id)
     unreal = sum(float(p.get("unrealized_pnl") or 0) for p in s["positions"])
 
+    empty = max(0, MAX_SLOTS - used)
+    dots = ("●" * used) + ("○" * empty)
     lines = [
         section_eq("AI 模擬帳戶"),
-        *_ai_phone_lines("這是長期照紀律買的對照組（假錢）。"),
-        *_ai_phone_lines("對照你手記持股，不是真下單。"),
-        *_ai_phone_lines("本金 50 萬切 3 等份。"),
-        *_ai_phone_lines("平常最多用 1 份。"),
-        *_ai_phone_lines("大盤超跌才動第 2 份抄低。"),
-        *_ai_phone_lines("第 3 份永遠留現金，不買滿。"),
-        *_ai_phone_lines("單檔不超過一份。停損 −7%、停利 ＋8%。"),
-        *_ai_phone_lines("優先買黃金買點欄。"),
+        "假錢對照組，不是真下單。",
+        "本金 50 萬分 3 份，平常最多用 1 份。",
+        "超跌才動第 2 份，第 3 份留現金。",
+        "停損 −7%、停利 ＋8%。只買黃金買點。",
         "",
         "────────────────",
         "<b>帳戶</b>",
@@ -606,21 +604,15 @@ def format_ai_desk_html(
         "",
         "────────────────",
         "<b>槽位</b>",
-        kv_compact("已用槽", f"{used}/{MAX_SLOTS}"),
-        ("●" * used) + ("○" * max(0, MAX_SLOTS - used)),
-        kv_compact("每槽上限", f"{slot:,.0f}"),
+        kv_compact("已用槽", f"{dots}　{used}/{MAX_SLOTS}"),
+        kv_compact("每槽上限", f"{slot:,.0f}　倍數 {size_mult:.2f}"),
         kv_compact("本金", f"{initial:,.0f}"),
-        kv_compact("倍數", f"{size_mult:.2f}"),
-        *_ai_phone_lines("空心＝留現金。不是三份都要買滿。"),
+        "空心＝留現金，不是三份都要買滿。",
     ]
     if not s["positions"]:
         lines.extend(["", "────────────────", "<b>持倉</b>"])
-        lines.extend(
-            _ai_phone_lines(
-                f"尚無持倉。平常最多 1 檔（每槽 {slot:,.0f}）。"
-            )
-        )
-        lines.extend(_ai_phone_lines("另兩份留著抄低／加碼。有名單才買。"))
+        lines.append("尚無持倉。平常最多 1 檔。")
+        lines.append(f"每槽 {slot:,.0f}。另兩份留著抄低或加碼。")
     else:
         lines.extend(["", "────────────────", "<b>持倉</b>"])
         sell_notes: Dict[str, str] = {}
@@ -655,8 +647,7 @@ def format_ai_desk_html(
                 title = html_stock_anchor(sid, name, engine.db_path)
             except Exception:
                 title = f"<code>{html_escape(sid)}</code> {html_escape(name)}"
-            lines.append(f"<b>第 {i + 1} 槽</b>")
-            lines.append(title)
+            lines.append(f"<b>第 {i + 1} 槽</b>　{title}")
             sh = int(p["shares"] or 0)
             qty_label = "張數" if sh >= 1000 and sh % 1000 == 0 else "股數"
             lines.append(kv_html_compact(qty_label, _fmt_lots_html(sh)))
@@ -686,9 +677,8 @@ def format_ai_desk_html(
             month = str((readings.get(sid) or {}).get("monthly_stage_short") or "").strip()
             if month:
                 lines.extend(_ai_phone_lines(f"月K　{month}"))
-        empty = MAX_SLOTS - used
         if empty > 0:
-            lines.extend(_ai_phone_lines(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"))
+            lines.append(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}")
 
     fills = _recent_fills(engine, user_id, 8)
     if fills:

@@ -30,6 +30,21 @@ WEAK_N = 5
 FILL_WEAK_N = 3
 
 
+def _win_count(n: int, hit_rate: float) -> int:
+    total = int(n or 0)
+    if total <= 0:
+        return 0
+    wins = int(round(float(hit_rate or 0) * total))
+    return max(0, min(total, wins))
+
+
+def fmt_review_stat_line(label: str, n: int, avg: float, hit_rate: float) -> str:
+    """一列講清楚：隔日平均漲跌，以及這類幾檔裡有幾檔上漲。不要勝率／樣本斜線。"""
+    total = int(n or 0)
+    wins = _win_count(total, hit_rate)
+    return f"{label}　均 {float(avg):+.1f}%　{total}檔漲{wins}檔"
+
+
 def ensure_screen_review_table(db_path: str = None) -> None:
     path = db_path or get_db_path()
     conn = sqlite3.connect(path)
@@ -331,13 +346,14 @@ def format_review_html(db_path: str) -> str:
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else as_of
     lines = [
         f"<b>海選復盤</b>　名單日 {html_escape(as_s)} 的隔日收盤",
-        "用庫內日 K，不是盤中、也不改程式。弱的類別只讓 AI 模擬倉少買。",
+        "用庫內日 K，不是盤中。弱的類別只讓 AI 模擬倉少買。",
+        "均＝隔日平均漲跌。5檔漲2檔＝5檔裡有2檔上漲。",
     ]
     bits = []
     for key, n, avg, hit in stats:
         if n <= 0:
             continue
-        bits.append(f"{labels.get(key, key)} {avg:+.1f}%（勝 {hit:.0%}／{n}）")
+        bits.append(fmt_review_stat_line(labels.get(key, key), n, avg, hit))
     if bits:
         lines.extend(bits[:4])
         if len(bits) > 4:
@@ -614,19 +630,19 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
         )
     avg = sum(float(r[2]) for r in fills) / n
     hits = sum(1 for r in fills if float(r[2]) > 0)
-    wr = hits / n if n else 0.0
     sample = fills[:6]
     labels = dict(BUCKETS)
     lines = [
         "<b>AI 成交復盤</b>",
-        f"模擬買進隔日　勝 {wr:.0%}／{n}　均 {html_pct(avg).strip()}",
-        "用實際成交，不是只看海選名單。弱的類別下一輪少買。"
+        f"模擬買進　{n}筆漲{hits}筆　均 {html_pct(avg).strip()}",
+        "用實際成交對隔日收盤。弱的類別下一輪少買。",
+        "3筆漲1筆＝3筆裡有1筆隔日上漲。",
     ]
     bits = []
     for key, fn, favg, fhit in _ai_fill_stats(db_path, user_id=uid):
         if fn <= 0:
             continue
-        bits.append(f"{labels.get(key, key)} {favg:+.1f}%（勝 {fhit:.0%}／{fn}）")
+        bits.append(fmt_review_stat_line(labels.get(key, key), fn, favg, fhit))
     if bits:
         lines.extend(bits[:4])
     if sample:
@@ -642,8 +658,7 @@ def format_ai_review_html(db_path: str, user_id: str = "wayne_ai") -> str:
                 if html_stock_anchor
                 else f"{html_escape(sid)} {html_escape(name)}"
             )
-            lines.append(f"{i}. {title}")
             lines.append(
-                f"{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
+                f"{i}. {title}　{float(pct):+.1f}%　{html_escape(labels.get(bucket, bucket) or '')}　{html_escape(as_s)}"
             )
     return "\n".join(lines)

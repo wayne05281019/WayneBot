@@ -4380,7 +4380,8 @@ class WayneTelegramBot:
         try:
             html = await asyncio.to_thread(format_ai_desk_html, self.portfolio_engine, uid)
             positions = await asyncio.to_thread(ai_desk_positions, self.portfolio_engine, uid)
-            parts = chunk_telegram_html(html, reflow=True)
+            # 這頁已依手機自行斷行；再 reflow 會把「5檔漲2檔」「倍數 1.00」拆到下一行。
+            parts = chunk_telegram_html(html)
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
