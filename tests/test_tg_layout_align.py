@@ -73,6 +73,7 @@ class TgLayoutAlignTests(unittest.TestCase):
 
         self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_portfolio))
         self.assertIn("reflow=True", inspect.getsource(WayneTelegramBot._send_trade_journal))
+        self.assertNotIn("reflow=True", inspect.getsource(WayneTelegramBot._send_ai_desk_view))
 
     def test_empty_holdings_reflow_wraps_howto_keeps_period(self):
         import tempfile
@@ -108,6 +109,91 @@ class TgLayoutAlignTests(unittest.TestCase):
 
         line = "收盤　60.80　漲跌　+2.01%"
         self.assertEqual(reflow_telegram_html(line, width=18), line)
+
+    def test_reflow_keeps_review_stat_win_count(self):
+        from screen_review import fmt_review_stat_line
+        from tg_layout import reflow_telegram_html
+
+        self.assertEqual(
+            fmt_review_stat_line("黃金買點", 5, 0.0, 0.4),
+            "黃金買點　均 +0.0%　5檔漲2檔",
+        )
+        line = "黃金買點　均 +0.0%　5檔漲2檔"
+        self.assertEqual(reflow_telegram_html(line, width=18), line)
+        longish = "重點觀察　均 +0.9%　15檔漲11檔"
+        self.assertEqual(reflow_telegram_html(longish, width=18), longish)
+        blob = "\n".join((line, longish, "優先看　均 -1.0%　11檔漲3檔"))
+        out = reflow_telegram_html(blob, width=18)
+        self.assertNotIn("／", out)
+        self.assertEqual(out.count("\n"), 2)
+        for ln in out.split("\n"):
+            self.assertIn("檔漲", ln)
+            self.assertTrue(ln.endswith("檔"))
+        fill = fmt_review_stat_line("重點觀察", 2, -5.3, 0.0, unit="筆")
+        self.assertEqual(fill, "重點觀察　均 -5.3%　2筆漲0筆")
+        self.assertEqual(reflow_telegram_html(fill, width=18), fill)
+        note = "均＝隔日平均漲跌；5檔漲2檔＝5檔裡有2檔上漲。弱的類別只讓 AI 模擬倉少買。"
+        noted = reflow_telegram_html(note, width=18)
+        self.assertGreaterEqual(noted.count("\n"), 1)
+
+    def test_ai_fill_review_phone_shot_is_plain_one_line(self):
+        """截圖那種「勝 0% / 2」拆行、一檔兩行，改成幾筆買幾筆漲、每檔一列。"""
+        import re
+        import sqlite3
+        import tempfile
+
+        from screen_review import ensure_ai_fills_table, format_ai_review_html, fmt_fill_overview_lines
+
+        self.assertEqual(
+            fmt_fill_overview_lines(2, 0, -5.3),
+            ["2筆模擬買進，隔日 0筆上漲", "平均　-5.3%"],
+        )
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_ai_fills_table(path)
+            conn = sqlite3.connect(path)
+            rows = [
+                ("6669", "緯穎", -0.6, "golden_buy", "20260908"),
+                ("6949", "沛爾生醫*-創", -10.0, "golden_buy", "20260907"),
+            ]
+            for sid, name, pct, bucket, as_of in rows:
+                conn.execute(
+                    """
+                    INSERT INTO ai_fills(
+                        user_id, as_of, stock_id, stock_name, action, price, shares,
+                        amount, reason, bucket, next_pct, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    ("wayne_ai", as_of, sid, name, "BUY", 100, 1000, 100000, "", bucket, pct, "t"),
+                )
+            conn.commit()
+            conn.close()
+            html = format_ai_review_html(path)
+            plain = re.sub(r"<[^>]+>", "", html)
+            self.assertIn("2筆模擬買進，隔日 0筆上漲", plain)
+            self.assertIn("平均　-5.3%", plain)
+            self.assertIn("重點觀察　均 -5.3%　2筆漲0筆", plain)
+            self.assertNotIn("勝", plain)
+            self.assertNotIn("／", plain)
+            self.assertNotIn("3筆漲1筆", plain)
+            self.assertNotIn("檔漲", plain)
+            self.assertNotIn("*-創", plain)
+            self.assertIn("1. 6669 緯穎　-0.6%　09/08", plain)
+            self.assertIn("2. 6949 沛爾生醫　-10.0%　09/07", plain)
+            for ln in plain.split("\n"):
+                if "6669" in ln:
+                    self.assertIn("-0.6%", ln)
+                    self.assertIn("09/08", ln)
+                    self.assertNotIn("重點觀察", ln)
+                if "6949" in ln:
+                    self.assertIn("-10.0%", ln)
+                    self.assertIn("09/07", ln)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def test_reflow_splits_menu_row_at_bar(self):
         from tg_layout import reflow_telegram_html

@@ -71,7 +71,7 @@ def _bot():
         ("ai_evolve", "_send_ai_evolve"),
         ("portfolio", "_send_portfolio"),
         ("watch", "_send_watch"),
-        ("screen", "_run_manual_screening"),
+        ("screen", "_start_screen_pick"),
         ("daytrade", "_run_trade_bucket"),
         ("overnight", "_run_trade_bucket"),
         ("k:", "_send_card_to"),
@@ -125,7 +125,7 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     elif prefix == "watch":
         bot._send_watch.assert_awaited_once()
     elif prefix == "screen":
-        bot._run_manual_screening.assert_awaited_once()
+        bot._start_screen_pick.assert_awaited_once()
     elif prefix == "daytrade":
         bot._run_trade_bucket.assert_awaited_once()
     elif prefix == "overnight":

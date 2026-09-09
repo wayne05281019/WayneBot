@@ -10,7 +10,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -90,6 +90,179 @@ _LOOKUP_TICKER_RE = re.compile(r"^(?:\d{4,6}|[0-9]{4,6}[A-Za-z])$", re.I)
 def is_lookup_ticker(query: str) -> bool:
     q = unicodedata.normalize("NFKC", (query or "").strip())
     return bool(_LOOKUP_TICKER_RE.fullmatch(q))
+
+
+_ETF_KIND_ALIASES = {
+    "兩倍槓桿": ("ETF_LEVERAGED",),
+    "二倍槓桿": ("ETF_LEVERAGED",),
+    "2倍槓桿": ("ETF_LEVERAGED",),
+    "兩倍": ("ETF_LEVERAGED",),
+    "二倍": ("ETF_LEVERAGED",),
+    "2倍": ("ETF_LEVERAGED",),
+    "槓桿": ("ETF_LEVERAGED",),
+    "槓桿etf": ("ETF_LEVERAGED",),
+    "正2etf": ("ETF_LEVERAGED",),
+    "反向": ("ETF_INVERSE",),
+    "反向etf": ("ETF_INVERSE",),
+    "反1": ("ETF_INVERSE",),
+    "反1etf": ("ETF_INVERSE",),
+    "主動etf": ("ETF_ACTIVE",),
+    "主動": ("ETF_ACTIVE",),
+    "被動etf": ("ETF_PASSIVE",),
+    "被動": ("ETF_PASSIVE",),
+    "主被動etf": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主被動": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主動被動etf": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "主動被動": ("ETF_ACTIVE", "ETF_PASSIVE"),
+    "etf": ("ETF_PASSIVE", "ETF_ACTIVE", "ETF_LEVERAGED", "ETF_INVERSE"),
+}
+
+_ETF_ALL_KINDS = ("ETF_PASSIVE", "ETF_ACTIVE", "ETF_LEVERAGED", "ETF_INVERSE")
+_ETF_SPOT_KINDS = ("ETF_PASSIVE", "ETF_ACTIVE")
+_ETF_CADENCE_ALIASES = {
+    "月配": "月配",
+    "月配etf": "月配",
+    "月配息": "月配",
+    "季配": "季配",
+    "季配etf": "季配",
+    "季配息": "季配",
+    "半年配": "半年配",
+    "半年配etf": "半年配",
+}
+_ETF_NAME_ALIASES = {
+    "高股息": ("高股息", "高息"),
+    "高股息etf": ("高股息", "高息"),
+    "高息etf": ("高股息", "高息"),
+    "高息": ("高股息", "高息"),
+}
+_ETF_DIV_ALIASES = {
+    "配息型",
+    "配息型etf",
+    "配息etf",
+    "配息",
+}
+
+
+def _norm_etf_lookup_key(query: str) -> str:
+    q = unicodedata.normalize("NFKC", (query or "").strip())
+    q = re.sub(r"[\s\u3000]+", "", q)
+    key = q.replace("槓杆", "槓桿").replace("ＥＴＦ", "ETF").replace("Etf", "ETF")
+    return key.lower()
+
+
+def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
+    """對話框分類詞：官方 asset_type、官方除息日距、或官股名含高息。不走讀音撞現股。"""
+    key = _norm_etf_lookup_key(query)
+    if not key or is_lookup_ticker(key):
+        return None
+    kinds = _ETF_KIND_ALIASES.get(key)
+    if kinds:
+        return {
+            "kinds": kinds,
+            "cadence": "",
+            "needles": (),
+            "has_div": False,
+            "label": etf_kind_label(kinds),
+        }
+    cadence = _ETF_CADENCE_ALIASES.get(key)
+    if cadence:
+        return {
+            "kinds": _ETF_ALL_KINDS,
+            "cadence": cadence,
+            "needles": (),
+            "has_div": False,
+            "label": f"{cadence} ETF",
+        }
+    needles = _ETF_NAME_ALIASES.get(key)
+    if needles:
+        return {
+            "kinds": _ETF_SPOT_KINDS,
+            "cadence": "",
+            "needles": needles,
+            "has_div": False,
+            "label": "高股息 ETF",
+        }
+    if key in _ETF_DIV_ALIASES:
+        return {
+            "kinds": _ETF_ALL_KINDS,
+            "cadence": "",
+            "needles": (),
+            "has_div": True,
+            "label": "配息型 ETF",
+        }
+    return None
+
+
+def parse_etf_lookup_kinds(query: str) -> Optional[Tuple[str, ...]]:
+    """對話框打「兩倍槓桿／主被動ETF」對到官方分類。代號查詢不走這裡。"""
+    spec = parse_etf_lookup_spec(query)
+    if not spec or spec.get("cadence") or spec.get("needles") or spec.get("has_div"):
+        return None
+    return spec["kinds"]
+
+
+def etf_kind_label(kinds) -> str:
+    s = {str(k) for k in (kinds or ())}
+    if s == {"ETF_LEVERAGED"}:
+        return "兩倍槓桿 ETF"
+    if s == {"ETF_INVERSE"}:
+        return "反向 ETF"
+    if s == {"ETF_ACTIVE"}:
+        return "主動 ETF"
+    if s == {"ETF_PASSIVE"}:
+        return "被動 ETF"
+    if s == {"ETF_ACTIVE", "ETF_PASSIVE"}:
+        return "主動／被動 ETF"
+    return "ETF"
+
+
+ETF_CARD_KIND = {
+    "ETF_PASSIVE": "被動",
+    "ETF_ACTIVE": "主動",
+    "ETF_LEVERAGED": "正2",
+    "ETF_INVERSE": "反1",
+}
+
+
+def is_etf_asset(asset_type: str = "", stock_id: str = "", stock_name: str = "") -> bool:
+    """查股／圖下鈕用：有 universe.asset_type 就認官方；沒有就用代號規則。"""
+    at = str(asset_type or "").strip().upper()
+    if at:
+        return at.startswith("ETF")
+    if stock_id:
+        kind, _ok = classify_target(stock_id, stock_name)
+        return str(kind).startswith("ETF")
+    return False
+
+
+def etf_card_kind_label(asset_type: str = "", stock_id: str = "", stock_name: str = "") -> str:
+    """查股標題旁：被動／主動／正2／反1。不是清單用的長名。"""
+    at = str(asset_type or "").strip().upper()
+    if not at.startswith("ETF") and stock_id:
+        kind, _ok = classify_target(stock_id, stock_name)
+        at = str(kind or "").strip().upper()
+    return ETF_CARD_KIND.get(at, "")
+
+
+def card_asset_type(stock_id: str, db_path: str = None) -> str:
+    """查股讀母體分類；庫沒列再退回代號規則。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            "SELECT asset_type FROM stock_universe WHERE stock_id=?",
+            (sid,),
+        ).fetchone()
+        conn.close()
+        if row and str(row[0] or "").strip():
+            return str(row[0]).strip().upper()
+    except Exception:
+        pass
+    kind, _ok = classify_target(sid)
+    return str(kind or "").strip().upper()
 
 
 def canonical_lookup_ticker(query: str) -> str:

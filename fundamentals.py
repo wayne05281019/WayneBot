@@ -555,6 +555,26 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     """[(標籤, 值), ...] 給第一眼圖／文字共用。金額一律億元，不再顯示 MoM/YoY％。"""
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
+    try:
+        from universe import card_asset_type, etf_card_kind_label, is_etf_asset
+
+        asset = card_asset_type(sid, path)
+        if is_etf_asset(asset, sid):
+            rows = []
+            kind = etf_card_kind_label(asset, sid)
+            if kind:
+                rows.append(("類型", kind))
+            try:
+                from official_snapshots import etf_div_plain_rows
+
+                rows.extend(etf_div_plain_rows(sid, path))
+            except Exception:
+                pass
+            if not rows:
+                rows.append(("ETF", "沒有公司月營收／毛利率"))
+            return rows
+    except Exception:
+        pass
     m = get_latest_monthly(path, sid)
     q = get_latest_income(path, sid)
     rows = []
@@ -610,6 +630,49 @@ def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
 def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     path = db_path or get_db_path()
     sid = str(stock_id).strip()
+    try:
+        from universe import card_asset_type, etf_card_kind_label, is_etf_asset
+
+        asset = card_asset_type(sid, path)
+        if is_etf_asset(asset, sid):
+            from tg_layout import title_line, kv_compact, section, join_sections
+
+            kind = etf_card_kind_label(asset, sid)
+            name = sid
+            try:
+                conn = sqlite3.connect(path)
+                row = conn.execute(
+                    "SELECT stock_name FROM stock_universe WHERE stock_id=?",
+                    (sid,),
+                ).fetchone()
+                conn.close()
+                if row and row[0]:
+                    name = str(row[0])
+            except Exception:
+                name = sid
+            kind_txt = f"{kind} ETF" if kind else "ETF"
+            blocks = [title_line("ETF", sid, name)]
+            blocks.append(
+                section(
+                    f"這檔是{kind_txt}，沒有公司月營收／季報毛利率。",
+                    "公司本益不上卡。折溢價看收盤旁；配息只上已公告金額。",
+                )
+            )
+            kv = []
+            if kind:
+                kv.append(kv_compact("類型", kind))
+            try:
+                from official_snapshots import etf_div_plain_rows, etf_nav_plain_rows
+
+                kv.extend(kv_compact(a, b) for a, b in etf_nav_plain_rows(sid, path))
+                kv.extend(kv_compact(a, b) for a, b in etf_div_plain_rows(sid, path))
+            except Exception:
+                pass
+            if kv:
+                blocks.append(section(*kv))
+            return join_sections(*blocks)
+    except Exception:
+        pass
     m = get_latest_monthly(path, sid)
     q = get_latest_income(path, sid)
     if not m and not q:

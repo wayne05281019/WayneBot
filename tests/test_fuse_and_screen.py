@@ -727,6 +727,9 @@ class ScreenReviewTest(unittest.TestCase):
             html = format_review_html(path)
             self.assertIn("海選復盤", html)
             self.assertIn("+2.0%", html)
+            self.assertIn("檔漲", html)
+            self.assertNotIn("（勝", html)
+            self.assertNotIn("勝 100%／", html)
             conn = sqlite3.connect(path)
             for i in range(5):
                 as_of = f"2026082{i}"
@@ -2534,6 +2537,11 @@ class AIDeskTest(unittest.TestCase):
             html = format_ai_review_html(path, user_id=ai_user_id("1001"))
             self.assertIn("AI 成交復盤", html)
             self.assertIn("2330", html)
+            self.assertIn("筆模擬買進", html)
+            self.assertIn("筆漲", html)
+            self.assertNotIn("勝 ", html)
+            self.assertNotIn("檔漲", html)
+            self.assertNotIn("3筆漲1筆", html)
             self.assertEqual(bucket_weight(path, "leave_zero"), 0.0)
         finally:
             os.remove(path)
@@ -2764,8 +2772,8 @@ class WatchListTest(unittest.TestCase):
         self.assertIn("k:2330", datas)
         self.assertIn("k:4915", datas)
         self.assertIn("w:2330", datas)
-        self.assertIn("em:go", datas)
-        self.assertEqual(texts.count("興櫃"), 1)
+        self.assertNotIn("em:go", datas)
+        self.assertEqual(texts.count("興櫃"), 0)
         send_src = inspect.getsource(WayneTelegramBot._send_line_rich_bucket)
         self.assertNotIn("_dismiss_screening_section", send_src)
         self.assertIn("_send_card_share_groups", send_src)

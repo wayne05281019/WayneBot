@@ -436,42 +436,46 @@ def test_em_last_card_not_shared_for_chips():
 
 
 @pytest.mark.parametrize("round_i", range(8))
-def test_concurrent_streak_universe_isolated(round_i):
-    """兩人同時走連買第一步：一人上市櫃、一人興櫃，pending 不得互洗。"""
+def test_concurrent_screen_universe_isolated(round_i):
+    """兩人同時按海選：一人上市櫃、一人興櫃，pending 不得互洗。"""
     bot = _bot()
+    listed = []
+    emerging = []
 
-    async def fake_kind(message, uid, actor, market="ALL"):
-        bot._pending[actor] = f"fbuy:kind:{market}"
+    async def fake_listed(message):
+        listed.append(int(message.from_user.id))
 
-    async def fake_em(message, uid, actor):
-        bot._pending[actor] = "fbuy:em"
+    async def fake_em(message):
+        emerging.append(int(message.from_user.id))
 
     async def run():
         w_actor = f"{WAYNE_UID}:{WAYNE_UID}"
         b_actor = f"{BRO_UID}:{BRO_UID}"
-        bot._pending[w_actor] = "fbuy:uni"
-        bot._pending[b_actor] = "fbuy:uni"
-        with patch.object(bot, "_streak_show_kind", side_effect=fake_kind), patch.object(
-            bot, "_streak_show_emerging", side_effect=fake_em
+        bot._pending[w_actor] = "screen:uni"
+        bot._pending[b_actor] = "screen:uni"
+        with patch.object(bot, "_run_manual_screening", side_effect=fake_listed), patch.object(
+            bot, "_run_emerging_screening", side_effect=fake_em
         ):
             if round_i % 2 == 0:
-                await bot._handle_buy_streak(
-                    _msg(WAYNE_UID, "上市櫃"), str(WAYNE_UID), "fbuy:uni", "上市櫃", actor=w_actor
+                await bot._handle_screen_pick(
+                    _msg(WAYNE_UID, "上市櫃"), str(WAYNE_UID), "上市櫃", actor=w_actor
                 )
-                await bot._handle_buy_streak(
-                    _msg(BRO_UID, "興櫃"), str(BRO_UID), "fbuy:uni", "興櫃", actor=b_actor
+                await bot._handle_screen_pick(
+                    _msg(BRO_UID, "興櫃"), str(BRO_UID), "興櫃", actor=b_actor
                 )
-                assert bot._pending[w_actor] == "fbuy:kind:ALL"
-                assert bot._pending[b_actor] == "fbuy:em"
+                assert listed == [WAYNE_UID]
+                assert emerging == [BRO_UID]
             else:
-                await bot._handle_buy_streak(
-                    _msg(BRO_UID, "上市櫃"), str(BRO_UID), "fbuy:uni", "上市櫃", actor=b_actor
+                await bot._handle_screen_pick(
+                    _msg(BRO_UID, "上市櫃"), str(BRO_UID), "上市櫃", actor=b_actor
                 )
-                await bot._handle_buy_streak(
-                    _msg(WAYNE_UID, "興櫃"), str(WAYNE_UID), "fbuy:uni", "興櫃", actor=w_actor
+                await bot._handle_screen_pick(
+                    _msg(WAYNE_UID, "興櫃"), str(WAYNE_UID), "興櫃", actor=w_actor
                 )
-                assert bot._pending[b_actor] == "fbuy:kind:ALL"
-                assert bot._pending[w_actor] == "fbuy:em"
+                assert listed == [BRO_UID]
+                assert emerging == [WAYNE_UID]
+        assert w_actor not in bot._pending
+        assert b_actor not in bot._pending
 
     asyncio.run(run())
 

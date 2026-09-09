@@ -509,6 +509,10 @@ _LEAD_PUNCT = set("，。、；：）」』】!！?？)]}")
 _SENTENCE_END = set("。！？；")
 _SECONDARY_BREAK = set("，、｜／")
 _KV_LINE_RE = re.compile(r"^[\u4e00-\u9fff]{2,4}　")
+_REVIEW_STAT_RE = re.compile(
+    r"\d+檔漲\d+檔|\d+筆漲\d+筆|筆模擬買進|筆上漲|（勝[^）\n]*／\s*\d+）"
+)
+_RATIO_TAIL_RE = re.compile(r"^\d{1,4}[）)]?$")
 
 
 def _html_plain(s: str) -> str:
@@ -557,8 +561,17 @@ def _split_html_after(s: str, ends: set) -> List[str]:
 
 
 def _is_compact_kv_line(plain: str) -> bool:
-    """海選／持股那種「收盤　60.80」短欄，不要再拆。"""
-    return bool(_KV_LINE_RE.match(str(plain or "")))
+    """海選／持股那種「收盤　60.80」短欄，不要再拆。
+
+    海選復盤「黃金買點　均 +0.0%　5檔漲2檔」也是一筆，不要拆開。
+    說明句裡的「5檔漲2檔＝…」仍要在句號折行。
+    """
+    s = str(plain or "")
+    if _KV_LINE_RE.match(s):
+        return True
+    if "＝" in s or "=" in s:
+        return False
+    return bool(_REVIEW_STAT_RE.search(s))
 
 
 def _html_orphan_plain(plain: str) -> bool:
@@ -568,6 +581,8 @@ def _html_orphan_plain(plain: str) -> bool:
     if s[:1] in _LEAD_PUNCT or all(ch in _LEAD_PUNCT for ch in s):
         return True
     if len(s) == 1:
+        return True
+    if _RATIO_TAIL_RE.match(s):
         return True
     return _disp_w(s) <= 2
 

@@ -183,6 +183,42 @@ def _m008_reset_ai_desk(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM simulated_positions")
 
 
+def _m009_etf_nav_snapshot(conn: sqlite3.Connection) -> None:
+    """ETF 前一營業日單位淨值。CREATE IF NOT EXISTS，可重跑。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS etf_nav_snapshot (
+            stock_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            nav REAL NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (stock_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_etf_nav_date ON etf_nav_snapshot(date);
+        """
+    )
+
+
+def _m010_etf_div_event(conn: sqlite3.Connection) -> None:
+    """證交所 ETF 收益分配（除息日／每單位金額）。CREATE IF NOT EXISTS，可重跑。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS etf_div_event (
+            stock_id TEXT NOT NULL,
+            ex_date TEXT NOT NULL,
+            amount REAL,
+            pay_date TEXT NOT NULL DEFAULT '',
+            record_date TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (stock_id, ex_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_etf_div_date ON etf_div_event(ex_date);
+        """
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -192,6 +228,8 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (6, "清空手記持股", _m006_clear_journal_holdings),
     (7, "官方估值／資券餘額／暫停當沖表", _m007_official_snapshots),
     (8, "清空 AI 虛擬倉並重開 50 萬", _m008_reset_ai_desk),
+    (9, "ETF 前一營業日單位淨值", _m009_etf_nav_snapshot),
+    (10, "ETF 官方收益分配除息日", _m010_etf_div_event),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)

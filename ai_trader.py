@@ -553,10 +553,10 @@ def _ai_phone_lines(text: str) -> List[str]:
     return wrap_cjk_lines(raw, 18, unit="chars") or [raw]
 
 
-def format_ai_desk_html(
+def format_ai_desk_pages(
     engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
-) -> str:
-    """券商帳戶式：總資產／現金／市值／損益、等份槽、持倉停損停利、成交與復盤。"""
+) -> List[str]:
+    """帳戶／持倉／成交／復盤分開則，避免 Telegram 一則塞滿。"""
     from tg_layout import (
         html_escape,
         html_last_move,
@@ -584,16 +584,14 @@ def format_ai_desk_html(
     realized = _realized_pnl(engine, user_id)
     unreal = sum(float(p.get("unrealized_pnl") or 0) for p in s["positions"])
 
-    lines = [
+    empty = max(0, MAX_SLOTS - used)
+    dots = ("●" * used) + ("○" * empty)
+    head = [
         section_eq("AI 模擬帳戶"),
-        *_ai_phone_lines("這是長期照紀律買的對照組（假錢）。"),
-        *_ai_phone_lines("對照你手記持股，不是真下單。"),
-        *_ai_phone_lines("本金 50 萬切 3 等份。"),
-        *_ai_phone_lines("平常最多用 1 份。"),
-        *_ai_phone_lines("大盤超跌才動第 2 份抄低。"),
-        *_ai_phone_lines("第 3 份永遠留現金，不買滿。"),
-        *_ai_phone_lines("單檔不超過一份。停損 −7%、停利 ＋8%。"),
-        *_ai_phone_lines("優先買黃金買點欄。"),
+        "假錢對照組，不是真下單。",
+        "本金 50 萬分 3 份，平常最多用 1 份。",
+        "超跌才動第 2 份，第 3 份留現金。",
+        "停損 −7%、停利 ＋8%。只買黃金買點。",
         "",
         "────────────────",
         "<b>帳戶</b>",
@@ -606,23 +604,19 @@ def format_ai_desk_html(
         "",
         "────────────────",
         "<b>槽位</b>",
-        kv_compact("已用槽", f"{used}/{MAX_SLOTS}"),
-        ("●" * used) + ("○" * max(0, MAX_SLOTS - used)),
-        kv_compact("每槽上限", f"{slot:,.0f}"),
+        kv_compact("已用槽", f"{dots}　{used}/{MAX_SLOTS}"),
+        kv_compact("每槽上限", f"{slot:,.0f}　倍數 {size_mult:.2f}"),
         kv_compact("本金", f"{initial:,.0f}"),
-        kv_compact("倍數", f"{size_mult:.2f}"),
-        *_ai_phone_lines("空心＝留現金。不是三份都要買滿。"),
+        "空心＝留現金，不是三份都要買滿。",
     ]
+    pages: List[str] = []
     if not s["positions"]:
-        lines.extend(["", "────────────────", "<b>持倉</b>"])
-        lines.extend(
-            _ai_phone_lines(
-                f"尚無持倉。平常最多 1 檔（每槽 {slot:,.0f}）。"
-            )
-        )
-        lines.extend(_ai_phone_lines("另兩份留著抄低／加碼。有名單才買。"))
+        head.extend(["", "────────────────", "<b>持倉</b>"])
+        head.append("尚無持倉。平常最多 1 檔。")
+        head.append(f"每槽 {slot:,.0f}。另兩份留著抄低或加碼。")
+        pages.append("\n".join(head))
     else:
-        lines.extend(["", "────────────────", "<b>持倉</b>"])
+        pages.append("\n".join(head))
         sell_notes: Dict[str, str] = {}
         readings: Dict[str, Dict[str, str]] = {}
         try:
@@ -637,9 +631,8 @@ def format_ai_desk_html(
         except Exception:
             sell_notes = {}
             readings = {}
+        pos_pages: List[str] = []
         for i, p in enumerate(s["positions"]):
-            if i:
-                lines.append("")
             sid = p["stock_id"]
             name = p.get("stock_name") or ""
             cost = float(p["cost_price"] or 0)
@@ -655,47 +648,46 @@ def format_ai_desk_html(
                 title = html_stock_anchor(sid, name, engine.db_path)
             except Exception:
                 title = f"<code>{html_escape(sid)}</code> {html_escape(name)}"
-            lines.append(f"<b>第 {i + 1} 槽</b>")
-            lines.append(title)
             sh = int(p["shares"] or 0)
-            qty_label = "張數" if sh >= 1000 and sh % 1000 == 0 else "股數"
-            lines.append(kv_html_compact(qty_label, _fmt_lots_html(sh)))
-            lines.append(kv_html_compact("成本", html_price(cost, compact=True)))
+            qty = _fmt_lots_html(sh)
+            cost_s = html_price(cost, compact=True)
             if chg is not None:
-                lines.append(kv_html_compact("現價", html_last_move(last, chg, move_pct, compact=True)))
+                last_s = html_last_move(last, chg, move_pct, compact=True)
             else:
-                lines.append(kv_html_compact("現價", html_price(last, compact=True)))
-            lines.append(
+                last_s = html_price(last, compact=True)
+            block = [
+                "<b>持倉</b>" if i == 0 else "",
+                f"<b>第 {i + 1} 槽</b>　{title}",
+                f"{qty}　成本 {cost_s}　現 {last_s}",
                 kv_html_compact(
                     "未實現",
                     html_num_paren(_plain_num(p["unrealized_pnl"], signed=True), p["pnl_pct"], compact=True),
-                )
-            )
-            lines.append(
-                kv_html_compact("停損", html_num_paren(f"{stop_px:,.2f}", STOP_PCT, compact=True))
-            )
-            lines.append(
-                kv_html_compact("停利", html_num_paren(f"{take_px:,.2f}", TAKE_PCT, compact=True))
-            )
+                ),
+                kv_html_compact("停損", html_num_paren(f"{stop_px:,.2f}", STOP_PCT, compact=True)),
+                kv_html_compact("停利", html_num_paren(f"{take_px:,.2f}", TAKE_PCT, compact=True)),
+            ]
             reason = reasons.get(sid) or "海選紀律"
             bought = _fmt_ymd(p.get("buy_date") or "")
-            lines.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
+            block.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
             note = sell_notes.get(sid) or ""
             if note:
-                lines.extend(_ai_phone_lines(f"紀律：{note}"))
+                block.extend(_ai_phone_lines(f"紀律：{note}"))
             month = str((readings.get(sid) or {}).get("monthly_stage_short") or "").strip()
             if month:
-                lines.extend(_ai_phone_lines(f"月K　{month}"))
-        empty = MAX_SLOTS - used
+                block.extend(_ai_phone_lines(f"月K　{month}"))
+            pos_pages.append("\n".join(x for x in block if x))
+        held_txt = "\n\n".join(pos_pages)
         if empty > 0:
-            lines.extend(_ai_phone_lines(f"空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"))
+            held_txt += f"\n空槽 {empty}/{MAX_SLOTS}　每槽仍 {slot:,.0f}"
+        pages.append(held_txt)
 
+    fill_lines: List[str] = []
     fills = _recent_fills(engine, user_id, 8)
     if fills:
-        lines.extend(["", "────────────────", "<b>成交紀錄</b>"])
+        fill_lines.extend(["<b>成交紀錄</b>"])
         for i, t in enumerate(fills):
             if i:
-                lines.append("────────")
+                fill_lines.append("────────")
             act = "買" if str(t.get("action") or "").upper() == "BUY" else "賣"
             lot = _fmt_lots_html(int(t.get("shares") or 0))
             extra = ""
@@ -705,10 +697,10 @@ def format_ai_desk_html(
                 )
             sid = html_escape(t.get("stock_id"))
             nm = html_escape(t.get("stock_name") or "")
-            lines.append(f"{_fmt_ymd(t.get('date'))}　{act}　<code>{sid}</code> {nm}".strip())
-            lines.append(f"{lot} @{html_price(t.get('price'), compact=True)}{extra}")
+            fill_lines.append(f"{_fmt_ymd(t.get('date'))}　{act}　<code>{sid}</code> {nm}".strip())
+            fill_lines.append(f"{lot} @{html_price(t.get('price'), compact=True)}{extra}")
             if t.get("reason"):
-                lines.append(html_escape(str(t["reason"])))
+                fill_lines.append(html_escape(str(t["reason"])))
 
     ensure_ai_tables(engine.db_path)
     conn = sqlite3.connect(engine.db_path)
@@ -721,23 +713,42 @@ def format_ai_desk_html(
         rows = []
     conn.close()
     if rows:
-        lines.extend(["", "────────────────", "<b>淨值</b>"])
+        if fill_lines:
+            fill_lines.extend(["", "────────────────"])
+        fill_lines.append("<b>淨值</b>")
         for date, nav, pnl in rows:
-            lines.append(
+            fill_lines.append(
                 f"• {_fmt_ymd(date)} {html_money(nav, signed=False)} {html_pct(pnl).strip()}"
             )
+    if fill_lines:
+        pages.append("\n".join(fill_lines))
+
     try:
         from screen_review import format_ai_review_html, format_review_html
 
-        ai_rev = format_ai_review_html(engine.db_path, user_id=user_id)
-        if ai_rev:
-            lines.extend(["", "────────────────", ai_rev])
-        rev = format_review_html(engine.db_path)
-        if rev:
-            lines.extend(["", "────────────────", rev])
+        review_bits: List[str] = []
+        for blob in (
+            format_ai_review_html(engine.db_path, user_id=user_id),
+            format_review_html(engine.db_path),
+        ):
+            txt = str(blob or "").strip()
+            if not txt:
+                continue
+            if "還沒有" in txt and len(txt) < 220:
+                continue
+            review_bits.append(txt)
+        if review_bits:
+            pages.append("\n\n────────────────\n\n".join(review_bits))
     except Exception:
         pass
-    return "\n".join(lines)
+    return [p for p in pages if str(p or "").strip()]
+
+
+def format_ai_desk_html(
+    engine: PortfolioEngine, telegram_uid: str, quotes: Optional[dict] = None
+) -> str:
+    """券商帳戶式全文；Telegram 請走 format_ai_desk_pages 分則。"""
+    return "\n\n────────────────\n\n".join(format_ai_desk_pages(engine, telegram_uid, quotes))
 
 
 def _record_fill(

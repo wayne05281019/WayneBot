@@ -127,10 +127,9 @@ def test_ai_desk_readable():
     assert "已用槽：" in html
     assert "每槽上限：" in html
     assert "○" in html or "●" in html
-    for line in html.split("\n"):
-        plain = re.sub(r"<[^>]+>", "", line)
-        if any(k in plain for k in ("這是長期照紀律", "對照你手記持股", "本金最多分", "停損 −7%")):
-            assert len(plain) <= 22, plain
+    assert "假錢對照組" in html
+    assert "只買黃金買點" in html
+    assert "（勝" not in html
 
 
 def test_us_alert_still_good_baseline():

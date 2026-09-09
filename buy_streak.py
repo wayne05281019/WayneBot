@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""連買區域：先選上市櫃或興櫃，再選外資／投信／外資+投信。"""
+"""連買區域：上市櫃外資／投信／外資+投信。興櫃沒有官方法人表，不算連買。"""
 from __future__ import annotations
 
 import sqlite3
@@ -31,10 +31,10 @@ MARKET_EM = "EM"
 MARKET_LABEL = {MARKET_TW: "上市", MARKET_TWO: "上櫃", MARKET_ALL: "上市櫃", MARKET_EM: "興櫃"}
 UNI_BTN = {MARKET_ALL: "上市櫃", MARKET_EM: "興櫃"}
 EM_NO_CHIPS_HTML = (
-    "<b>興櫃連買</b>\n"
-    "興櫃沒有官方法人買賣超表，不能算外資／投信連買天，"
+    "<b>興櫃沒有連買</b>\n"
+    "興櫃沒有官方法人買賣超表，連買區只看上市櫃，"
     "也不會用 0 去凑連買天數。\n"
-    "請改看上市櫃，或回主選單。"
+    "要看興櫃名單請按「海選」再選興櫃。"
 )
 MARKET_ALIASES = {
     "上市": MARKET_TW,
