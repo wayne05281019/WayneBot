@@ -159,6 +159,7 @@ def test_lookup_etf_category_phrases(monkeypatch, tmp_path):
     assert hi[0]["category_label"] == "高股息 ETF"
     assert "精剛" not in [h["stock_name"] for h in hi]
     assert lookup_stocks(db, "00631L")[0]["stock_id"] == "00631L"
+    assert lookup_stocks(db, "配息型") == []
 
 
 def test_lookup_etf_monthly_uses_official_ex_dates(monkeypatch, tmp_path):
@@ -174,6 +175,7 @@ def test_lookup_etf_monthly_uses_official_ex_dates(monkeypatch, tmp_path):
         ("00878", "國泰永續高股息", "ETF_PASSIVE", 8000),
         ("00940", "元大台灣價值高息", "ETF_PASSIVE", 7000),
         ("00919", "群益台灣精選高息", "ETF_PASSIVE", 6000),
+        ("00631L", "元大台灣50正2", "ETF_LEVERAGED", 9500),
         ("1584", "精剛", "STOCK", 99999),
     ]
     for sid, name, atype, vol in rows:
@@ -219,3 +221,9 @@ def test_lookup_etf_monthly_uses_official_ex_dates(monkeypatch, tmp_path):
     assert lookup_stocks(db, "季配")[0]["stock_id"] == "00878"
     assert lookup_stocks(db, "半年配")[0]["stock_id"] == "0050"
     assert "1584" not in [h["stock_id"] for h in lookup_stocks(db, "月配")]
+    pays = lookup_stocks(db, "配息型")
+    assert [h["stock_id"] for h in pays] == ["0050", "00878", "00940", "00919"]
+    assert all(h.get("category_label") == "配息型 ETF" for h in pays)
+    assert lookup_stocks(db, "配息型ETF")[0]["stock_id"] == "0050"
+    assert "1584" not in [h["stock_id"] for h in pays]
+    assert "00631L" not in [h["stock_id"] for h in pays]

@@ -670,6 +670,15 @@ def _rank_exact_name_hits(hits: List[Dict[str, Any]], q: str) -> List[Dict[str, 
     return hits
 
 
+def _lookup_etf_div_ids(conn) -> set:
+    """證交所 etfDiv 有除息日的代號。沒表或沒列＝沒有配息型名單，不拿股名猜。"""
+    try:
+        rows = conn.execute("SELECT DISTINCT stock_id FROM etf_div_event").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {str(r[0]) for r in rows if r and r[0]}
+
+
 def _lookup_etf_cadence_map(conn) -> Dict[str, str]:
     try:
         rows = conn.execute(
@@ -695,6 +704,7 @@ def _lookup_etf_by_kinds(
     *,
     cadence: str = "",
     needles: Tuple[str, ...] = (),
+    has_div: bool = False,
     label: str = "",
 ) -> List[Dict[str, Any]]:
     """依官方 asset_type／除息日距／股名列出當日成交量較大的 ETF，不要用讀音去撞現股。"""
@@ -708,6 +718,7 @@ def _lookup_etf_by_kinds(
         rows: List[Any] = []
         from_universe = False
         cadence_map = _lookup_etf_cadence_map(conn) if cadence else {}
+        div_ids = _lookup_etf_div_ids(conn) if has_div else set()
         if latest:
             try:
                 qmarks = ",".join("?" * len(want))
@@ -745,6 +756,8 @@ def _lookup_etf_by_kinds(
                 continue
             if cadence and cadence_map.get(str(r["stock_id"])) != cadence:
                 continue
+            if has_div and str(r["stock_id"]) not in div_ids:
+                continue
             item = dict(r)
             item["quote_date"] = latest
             item["fuzzy"] = False
@@ -757,7 +770,7 @@ def _lookup_etf_by_kinds(
 
 
 def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, Any]]:
-    """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／月配／高股息／0050／00631L）。
+    """用代號、中文名或 ETF 分類詞查標的（兩倍槓桿／主被動ETF／配息型／月配／高股息／0050／00631L）。
 
     名稱多檔（南亞／南亞科）原樣列出。字形對不到或只對到別檔子字串時，
     再用讀音／近似拼音補候選；fuzzy 列必須請使用者點確認，不可直接出圖。
@@ -793,6 +806,7 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
                 latest,
                 cadence=str(spec.get("cadence") or ""),
                 needles=tuple(spec.get("needles") or ()),
+                has_div=bool(spec.get("has_div")),
                 label=str(spec.get("label") or ""),
             )
     exact: List[Dict[str, Any]] = []

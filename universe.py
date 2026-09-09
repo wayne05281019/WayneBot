@@ -135,6 +135,12 @@ _ETF_NAME_ALIASES = {
     "高息etf": ("高股息", "高息"),
     "高息": ("高股息", "高息"),
 }
+_ETF_DIV_ALIASES = {
+    "配息型",
+    "配息型etf",
+    "配息etf",
+    "配息",
+}
 
 
 def _norm_etf_lookup_key(query: str) -> str:
@@ -155,6 +161,7 @@ def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
             "kinds": kinds,
             "cadence": "",
             "needles": (),
+            "has_div": False,
             "label": etf_kind_label(kinds),
         }
     cadence = _ETF_CADENCE_ALIASES.get(key)
@@ -163,6 +170,7 @@ def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
             "kinds": _ETF_ALL_KINDS,
             "cadence": cadence,
             "needles": (),
+            "has_div": False,
             "label": f"{cadence} ETF",
         }
     needles = _ETF_NAME_ALIASES.get(key)
@@ -171,7 +179,16 @@ def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
             "kinds": _ETF_SPOT_KINDS,
             "cadence": "",
             "needles": needles,
+            "has_div": False,
             "label": "高股息 ETF",
+        }
+    if key in _ETF_DIV_ALIASES:
+        return {
+            "kinds": _ETF_ALL_KINDS,
+            "cadence": "",
+            "needles": (),
+            "has_div": True,
+            "label": "配息型 ETF",
         }
     return None
 
@@ -179,7 +196,7 @@ def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
 def parse_etf_lookup_kinds(query: str) -> Optional[Tuple[str, ...]]:
     """對話框打「兩倍槓桿／主被動ETF」對到官方分類。代號查詢不走這裡。"""
     spec = parse_etf_lookup_spec(query)
-    if not spec or spec.get("cadence") or spec.get("needles"):
+    if not spec or spec.get("cadence") or spec.get("needles") or spec.get("has_div"):
         return None
     return spec["kinds"]
 
