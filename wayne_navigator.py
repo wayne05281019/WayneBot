@@ -2543,6 +2543,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                        f"{lab[:-1]}日低點", px, dist, high=False, hit=hit)
 
     # 過去 20 天：欄序跟作者卡同一套（預警→升降→溫度計）。升降＝溫度趨勢，不是股價漲跌。
+    # 20 日表列白底，不要斑馬紋；獲利／預警／升降／溫度用淡色 pill。
     y -= gap + tbl_title_h
     sec_title(pad_x + 0.6, y + tbl_title_h / 2, "過去 20 天記錄", "#37474F",
               "預警會露出 20高／10低；升降＝溫度升降（不是股價）；最右欄＝120日量")
