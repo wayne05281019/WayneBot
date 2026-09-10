@@ -57,6 +57,11 @@ def _bot():
     bot._help_msgs = {}
     bot.screener = MagicMock()
     bot.portfolio_engine = MagicMock()
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._held_lots_for = MagicMock(return_value=None)
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._keyboard = MagicMock(return_value=None)
     return bot
 
 
