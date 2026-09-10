@@ -108,9 +108,9 @@ class FuseAndScreenTest(unittest.TestCase):
             "dealer_net": -10,
         }
         html = _stock_card_html(item, 1)
-        self.assertIn("保險進場", html)
-        self.assertIn("第一停利", html)
-        self.assertIn("保險停損", html)
+        self.assertIn("現在不要貴過", html)
+        self.assertIn("漲到這裡先出", html)
+        self.assertIn("跌破這裡就走", html)
         self.assertIn("103", html)
         chased = dict(item)
         chased["chase_warning"] = True
@@ -122,7 +122,7 @@ class FuseAndScreenTest(unittest.TestCase):
         line = format_line_share_text({"day_trade": [item]}, "20260828")
         self.assertIn("主選單", line)
         self.assertIn("當沖", line)
-        self.assertNotIn("保險進場", line)
+        self.assertNotIn("現在不要貴過", line)
         self.assertNotIn("＝＝當沖＝＝", line)
         self.assertNotIn("整則複製", line)
         snap = {
@@ -1246,8 +1246,9 @@ class DualSessionTest(unittest.TestCase):
         self.assertEqual(classify_row(row, {"close": 97}), "ok")
         self.assertEqual(classify_row(row, {"close": 119}), "chase")
         self.assertEqual(classify_row(row, {"close": 100}), "above_entry")
-        text = format_midday_line("20260828", {"ok": ["2330 台積電 現97"], "chase": [], "above_entry": [], "no_quote": []})
-        self.assertIn("建議切入", text)
+        text = format_midday_line("20260828", {"ok": ["2330 台積電　現在 97　今早 96　比今早 +1 元（+1.0%）"], "chase": [], "above_entry": [], "no_quote": []})
+        self.assertIn("現在還能看", text)
+        self.assertIn("現在要做的事", text)
         self.assertIn("06:30", text)
         self.assertNotIn("LINE", text)
         self.assertNotIn("轉貼", text)

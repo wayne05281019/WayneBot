@@ -254,3 +254,28 @@ def test_daytrade_closed_title_not_intraday():
     msg = daytrade_closed_message("weekend")
     assert msg.startswith("休市。")
     assert "09:00" in msg
+
+
+def test_daytrade_list_heading_tail_says_what_to_do_now():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from trading_calendar import daytrade_list_heading, is_tw_tail_session
+
+    open_t, open_s = daytrade_list_heading("open")
+    assert "盤中" in open_t
+    assert "沒進場" in open_s
+    assert "現在不要貴過" in open_s
+    tail_t, tail_s = daytrade_list_heading("tail")
+    assert "尾盤" in tail_t
+    assert "12:45" in tail_s
+    assert "不要再進當沖" in tail_s
+    assert "隔日沖" in tail_s
+    assert "漲到這裡先出" in tail_s
+    taipei = ZoneInfo("Asia/Taipei")
+    morning = datetime(2026, 9, 10, 10, 0, tzinfo=taipei)
+    tail = datetime(2026, 9, 10, 12, 50, tzinfo=taipei)
+    after = datetime(2026, 9, 10, 14, 0, tzinfo=taipei)
+    assert not is_tw_tail_session(morning)
+    assert is_tw_tail_session(tail)
+    assert not is_tw_tail_session(after)

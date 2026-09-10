@@ -851,19 +851,19 @@ def _chip_html(item: Dict[str, Any]) -> str:
 
 
 def _safety_plan_plain(item: Dict[str, Any]) -> List[str]:
-    """當沖／隔日沖：保險進多少、出多少、守哪裡。"""
+    """當沖／隔日沖：現在不要貴過多少、漲到哪先出、跌破哪就走。"""
     lines: List[str] = []
     if item.get("target_1") is not None or item.get("entry_price") is not None:
         entry = _px_str(item.get("entry_price") if item.get("entry_price") is not None else item.get("close"))
-        lines.append(f"保險進場　≤ {entry}（量能放大當日收盤；不要追更高）")
-        lines.append(f"第一停利　{_px_str(item.get('target_1'))}（+3%，先出一部分鎖利）")
-        lines.append(f"衝頂停利　{_px_str(item.get('target_2'))}（+6%，剩下再衝；沖不到就不要硬等）")
-        lines.append(f"保險停損　{_px_str(item.get('stop_loss'))}（當日均價；跌破先走，不要硬扛）")
+        lines.append(f"現在不要貴過　{entry}")
+        lines.append(f"漲到這裡先出　{_px_str(item.get('target_1'))}（+3%）")
+        lines.append(f"再衝看這裡　{_px_str(item.get('target_2'))}（+6%）")
+        lines.append(f"跌破這裡就走　{_px_str(item.get('stop_loss'))}（當日均價）")
     elif item.get("buy_range") is not None:
-        lines.append(f"保險買進　尾盤 {item.get('buy_range')}（昨收附近，不要摸高）")
-        lines.append(f"明早開高　{item.get('target_gap')}（+3.5%～+4.8% 目標）")
-        lines.append(f"衝頂　　　{_px_str(item.get('target_max'))}（+7%）")
-        lines.append(f"保險防守　{_px_str(item.get('defense_price'))}（開盤與均價較低者；跌破先走）")
+        lines.append(f"尾盤買這裡　{item.get('buy_range')}（昨收附近，不要摸高）")
+        lines.append(f"明早開高看　{item.get('target_gap')}（+3.5%～+4.8%）")
+        lines.append(f"再衝看這裡　{_px_str(item.get('target_max'))}（+7%）")
+        lines.append(f"跌破這裡就走　{_px_str(item.get('defense_price'))}（開盤與均價較低者）")
     return lines
 
 

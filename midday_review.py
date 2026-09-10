@@ -143,7 +143,7 @@ def morning_ref_price(row: Dict[str, Any]) -> float:
 def format_midday_stock_line(
     row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False
 ) -> str:
-    """現價旁空一格接今早價，再寫漲跌差。例：4915 致伸 現 62.1 早 60.8 +1.3（+2.1%）"""
+    """現在價、今早名單價、比今早差幾元。例：4915 致伸　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"""
     sid = str(row.get("stock_id") or "").strip()
     name = str(row.get("stock_name") or "").strip()
     tag = "【雙時段】" if dual else ""
@@ -156,12 +156,12 @@ def format_midday_stock_line(
         return prefix
     morning = morning_ref_price(row)
     if morning <= 0:
-        return f"{prefix} 現 {_px_txt(px)}"
+        return f"{prefix}　現在 {_px_txt(px)}"
     diff = px - morning
     pct = (px - morning) / morning * 100.0
     return (
-        f"{prefix} 現 {_px_txt(px)} 早 {_px_txt(morning)} "
-        f"{_signed_txt(diff)}（{_signed_txt(pct, 1)}%）"
+        f"{prefix}　現在 {_px_txt(px)}　今早 {_px_txt(morning)}　"
+        f"比今早 {_signed_txt(diff)} 元（{_signed_txt(pct, 1)}%）"
     )
 
 
@@ -179,19 +179,24 @@ def classify_row(row: Dict[str, Any], live: Dict[str, Any]) -> str:
 
 
 def format_midday_line(as_of: str, groups: Dict[str, List[str]]) -> str:
+    from trading_calendar import format_trading_date_zh
+
+    as_of_label = format_trading_date_zh(as_of) or as_of
     lines = [
-        f"WayneBot 尾盤可切 12:45（對照今早 06:30 海選 {as_of}）",
-        "現價旁＝今早名單價與漲跌差。【建議切入】＝今早有、現價還沒靠近20日高。不是新的突破海選。",
+        f"WayneBot 尾盤 12:45　現在要做的事",
+        "沒買：只看第一區。已貼 20 日高、或現價貴過今早保險進場的，現在不要追。",
+        "已買：先看要不要停利，不要加碼。",
+        f"對照今早 06:30 名單（{as_of_label}）。不是新海選。現在＝此刻成交價，今早＝今早名單上的價。",
         "",
-        "【建議切入】" + ("" if groups["ok"] else " 無"),
+        "【現在還能看（沒貼高、沒超過保險進場）】" + ("" if groups["ok"] else "　這一區現在沒有"),
     ]
     lines.extend(groups["ok"] or [])
-    lines += ["", "【今早有、現在少追】" + ("" if groups["chase"] else " 無")]
+    lines += ["", "【已靠近 20 日高　現在不要追】" + ("" if groups["chase"] else "　無")]
     lines.extend(groups["chase"] or [])
-    lines += ["", "【現價高過保險進場、不要追】" + ("" if groups["above_entry"] else " 無")]
+    lines += ["", "【已貴過今早保險進場　現在不要追】" + ("" if groups["above_entry"] else "　無")]
     lines.extend(groups["above_entry"] or [])
     if groups["no_quote"]:
-        lines += ["", "【盤中沒接到】"]
+        lines += ["", "【盤中沒接到現價】"]
         lines.extend(groups["no_quote"])
     lines.append("")
     lines.append("（WayneBot）")
@@ -202,19 +207,23 @@ def format_midday_line(as_of: str, groups: Dict[str, List[str]]) -> str:
 
 
 def format_midday_html(as_of: str, groups: Dict[str, List[str]]) -> str:
+    from trading_calendar import format_trading_date_zh
+
     def block(title: str, rows: List[str], empty: str) -> str:
         body = "\n".join(html_escape(x) for x in rows) if rows else f"<i>{html_escape(empty)}</i>"
         return f"<b>{html_escape(title)}</b>\n{body}"
 
+    as_of_label = format_trading_date_zh(as_of) or as_of
     parts = [
-        f"<b>尾盤可切</b>　對照今早 06:30　昨收 {html_escape(as_of)}",
-        "<i>現價旁＝今早名單價與漲跌差。只複核早上名單＋高低卡。</i>",
-        block("建議切入", groups["ok"], "無"),
-        block("今早有、現在少追", groups["chase"], "無"),
-        block("現價高過保險進場、不要追", groups["above_entry"], "無"),
+        "<b>尾盤 12:45　現在要做的事</b>",
+        "<i>沒買：只看第一區。已貼 20 日高、或現價貴過今早保險進場的，現在不要追。已買：先看要不要停利，不要加碼。</i>",
+        f"對照今早 06:30 名單（{html_escape(as_of_label)}）。不是新海選。現在＝此刻成交價，今早＝今早名單上的價。",
+        block("現在還能看（沒貼高、沒超過保險進場）", groups["ok"], "這一區現在沒有"),
+        block("已靠近 20 日高　現在不要追", groups["chase"], "無"),
+        block("已貴過今早保險進場　現在不要追", groups["above_entry"], "無"),
     ]
     if groups.get("no_quote"):
-        parts.append(block("盤中沒接到", groups["no_quote"], "無"))
+        parts.append(block("盤中沒接到現價", groups["no_quote"], "無"))
     return "\n\n".join(parts)
 
 
@@ -224,11 +233,14 @@ def run_midday_review(db_path: str, as_of: str) -> Dict[str, Any]:
     rows = load_morning_rows(db_path, as_of)
     if not rows:
         msg = (
-            f"WayneBot 尾盤可切 12:45\n"
-            "今早 06:30 名單還沒存到，沒有可切標的（不是新突破海選）。"
+            f"WayneBot 尾盤 12:45\n"
+            "今早 06:30 名單還沒存到，沒有可對照的標的。現在不要自己找突破來買。"
         )
         return {
-            "html": f"<b>尾盤可切</b>\n<i>{html_escape(msg.split(chr(10),1)[-1])}</i>",
+            "html": (
+                "<b>尾盤 12:45　現在要做的事</b>\n"
+                f"<i>{html_escape(msg.split(chr(10), 1)[-1])}</i>"
+            ),
             "line_share": "",
             "n": 0,
         }
