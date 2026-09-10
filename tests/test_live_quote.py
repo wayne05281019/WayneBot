@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+import live_quote
 from live_quote import (
     append_live_bar,
     calc_vol_rank_120,
@@ -254,3 +256,125 @@ def test_fetch_mis_quote_skips_empty_channel_then_otc_tw(monkeypatch):
     assert {rt["open"], rt["high"], rt["low"]} != {rt["close"]}
     assert any("otc_3078.tw" in u for u in calls)
     assert not any(".two" in u for u in calls)
+
+
+def test_append_live_bar_keeps_chinese_name_when_yahoo_english(monkeypatch):
+    import live_quote
+    import pandas as pd
+
+    yahoo_rt = {
+        "stock_name": "Taiwan Semiconductor Manufacturing Company Limited",
+        "open": 99.0,
+        "high": 102.0,
+        "low": 98.0,
+        "close": 101.0,
+        "volume": 55000,
+        "pct_change": 2.0,
+        "update_time": "13:45:00",
+        "source": "yahoo",
+    }
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260901")
+    df = pd.DataFrame(
+        [
+            {
+                "date": "20260829",
+                "stock_name": "台積電",
+                "open": 95.0,
+                "high": 96.0,
+                "low": 94.0,
+                "close": 95.0,
+                "volume": 10000,
+            }
+        ]
+    )
+    out = live_quote.append_live_bar(df, "2330", merge_live=True, live_quote=yahoo_rt)
+    assert str(out.iloc[-1]["stock_name"]) == "台積電"
+    assert float(out.iloc[-1]["close"]) == 101.0
+
+
+def test_append_live_bar_mis_chinese_fills_code_name(monkeypatch):
+    import live_quote
+    import pandas as pd
+
+    mis_rt = {
+        "stock_name": "台積電",
+        "open": 99.0,
+        "high": 102.0,
+        "low": 98.0,
+        "close": 101.0,
+        "volume": 12000,
+        "pct_change": 2.0,
+        "update_time": "11:05:00",
+    }
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260901")
+    df = pd.DataFrame(
+        [{"date": "20260829", "stock_name": "2330", "close": 95.0, "volume": 10000}]
+    )
+    out = live_quote.append_live_bar(df, "2330", merge_live=True, live_quote=mis_rt)
+    assert str(out.iloc[-1]["stock_name"]) == "台積電"
+
+
+def test_append_live_bar_keeps_etf_official_mixed_name(monkeypatch):
+    import live_quote
+    import pandas as pd
+
+    yahoo_rt = {
+        "stock_name": "Yuanta Daily S&P 500 Bull 2X ETF",
+        "open": 19.0,
+        "high": 19.5,
+        "low": 18.8,
+        "close": 19.2,
+        "volume": 800,
+        "pct_change": 1.0,
+        "update_time": "13:40:00",
+        "source": "yahoo",
+    }
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260901")
+    df = pd.DataFrame(
+        [
+            {
+                "date": "20260829",
+                "stock_name": "期元大S&P日圓正2",
+                "close": 19.0,
+                "volume": 100,
+            }
+        ]
+    )
+    out = live_quote.append_live_bar(df, "00706L", merge_live=True, live_quote=yahoo_rt)
+    assert str(out.iloc[-1]["stock_name"]) == "期元大S&P日圓正2"
+
+
+@pytest.mark.production_db
+def test_live_yahoo_decision_card_keeps_official_chinese_name(monkeypatch):
+    """MIS 空白走 Yahoo 時，高低卡標題仍是官方中文股名。"""
+    import sqlite3
+
+    from tests.conftest import require_production_db
+    from wayne_navigator import NavigatorEngine
+
+    db = require_production_db()
+    monkeypatch.setattr(live_quote, "is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr(live_quote, "taipei_today_str", lambda: "20260910")
+    conn = sqlite3.connect(db)
+    close = conn.execute(
+        "SELECT close FROM daily_quotes WHERE stock_id='2330' ORDER BY date DESC LIMIT 1"
+    ).fetchone()[0]
+    conn.close()
+    px = float(close)
+    rt = {
+        "stock_name": "Taiwan Semiconductor Manufacturing Company Limited",
+        "open": px,
+        "high": px + 5,
+        "low": px - 5,
+        "close": px,
+        "volume": 20000,
+        "pct_change": 0.2,
+        "update_time": "13:45:00",
+        "source": "yahoo",
+    }
+    card = NavigatorEngine(db).get_decision_card("2330", merge_live=True, live_quote=rt)
+    assert not card.get("error"), card.get("error")
+    assert card["stock_name"] == "台積電"

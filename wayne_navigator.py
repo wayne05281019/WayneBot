@@ -795,9 +795,24 @@ class NavigatorEngine:
             industry = ""
             asset_type = ""
             etf_kind = ""
+        raw_name = str(latest.get("stock_name") or "")
+        try:
+            from universe import (
+                looks_like_yahoo_english_name,
+                official_stock_name,
+                prefer_display_stock_name,
+            )
+
+            face_name = prefer_display_stock_name(raw_name, "", stock_id)
+            if looks_like_yahoo_english_name(raw_name):
+                face_name = prefer_display_stock_name(
+                    official_stock_name(str(stock_id), self.db_path), "", stock_id
+                )
+        except Exception:
+            face_name = raw_name or str(stock_id)
         payload = {
             "stock_id": str(stock_id),
-            "stock_name": str(latest.get("stock_name") or stock_id),
+            "stock_name": face_name,
             "industry": industry,
             "asset_type": asset_type,
             "etf_kind": etf_kind,

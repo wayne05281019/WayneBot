@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from broker_points import decode_csv_bytes, parse_broker_csv
 from data_fetcher import DataFetcher
-from universe import clean_stock_name, decode_isin_bytes, name_or_sid
+from universe import (
+    clean_stock_name,
+    decode_isin_bytes,
+    looks_like_yahoo_english_name,
+    name_or_sid,
+    official_stock_name,
+    prefer_display_stock_name,
+)
 from wayne_db import ensure_core_schema, normalize_quote_hygiene
 
 
@@ -81,3 +88,34 @@ def test_quote_hygiene_scrubs_html_names(tmp_path):
     conn.close()
     assert name == "京城銀"
     assert "<p" not in name
+
+
+def test_prefer_display_stock_name_blocks_yahoo_english():
+    yahoo = "Taiwan Semiconductor Manufacturing Company Limited"
+    assert looks_like_yahoo_english_name(yahoo) is True
+    assert looks_like_yahoo_english_name("台積電") is False
+    assert looks_like_yahoo_english_name("LINEPAY") is False
+    assert looks_like_yahoo_english_name("IKKA-KY") is False
+    assert looks_like_yahoo_english_name("Q BURGER") is False
+    assert looks_like_yahoo_english_name("期元大S&P日圓正2") is False
+    assert prefer_display_stock_name("台積電", yahoo, "2330") == "台積電"
+    assert prefer_display_stock_name("期元大S&P日圓正2", "Yuanta S&P 500 ETF", "00706L") == "期元大S&P日圓正2"
+    assert prefer_display_stock_name("LINEPAY", "LINE Pay Taiwan Limited", "7722") == "LINEPAY"
+    assert prefer_display_stock_name("2330", "台積電", "2330") == "台積電"
+    assert prefer_display_stock_name(yahoo, "", "2330") == "2330"
+
+
+def test_official_stock_name_skips_yahoo_english(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "names.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE stock_universe(stock_id TEXT, stock_name TEXT, is_active INT)"
+    )
+    conn.execute(
+        "INSERT INTO stock_universe VALUES ('2330','台積電',1)"
+    )
+    conn.commit()
+    conn.close()
+    assert official_stock_name("2330", db) == "台積電"

@@ -35,6 +35,11 @@ EXCLUDE_NAME_TOKENS = (
 
 WARRANT_CODE = re.compile(r"^(0[3-8]\d{4}|7\d{5}|\d{4,6}[PQCFX])$", re.I)
 DIRTY_NAME = re.compile(r"^\[|<p\s|style=", re.I)
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_YAHOO_EN_TOKENS = re.compile(
+    r"\b(limited|ltd\.?|inc\.?|corp\.?|corporation|holdings|company|manufacturing)\b",
+    re.I,
+)
 
 
 def clean_stock_name(name: str) -> str:
@@ -42,6 +47,72 @@ def clean_stock_name(name: str) -> str:
     if DIRTY_NAME.search(s) or s.startswith("['"):
         return ""
     return s
+
+
+def has_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(str(text or "")))
+
+
+def looks_like_yahoo_english_name(name: str) -> bool:
+    """Yahoo chart longName（Taiwan Semiconductor Manufacturing Company Limited）。
+
+    官方拉丁股名（LINEPAY、M31、IKKA-KY、Q BURGER）不是這種公司全名。
+    """
+    s = clean_stock_name(name)
+    if not s or has_cjk(s):
+        return False
+    if _YAHOO_EN_TOKENS.search(s):
+        return True
+    return len(s.split()) >= 3
+
+
+def prefer_display_stock_name(existing: str, incoming: str = "", sid: str = "") -> str:
+    """卡面／圖說用官方中文股名。Yahoo 英文長名不准蓋掉。
+
+    ETF 官方名可含 S&P／NASDAQ，但一定有漢字；純英文公司全名不當股名。
+    """
+    ex = clean_stock_name(existing)
+    inc = clean_stock_name(incoming)
+    code = str(sid or "").strip()
+    if looks_like_yahoo_english_name(ex):
+        ex = ""
+    if looks_like_yahoo_english_name(inc):
+        inc = ""
+    if has_cjk(ex):
+        return ex
+    if has_cjk(inc):
+        return inc
+    if ex and ex != code:
+        return ex
+    if inc and inc != code:
+        return inc
+    return code or ex or inc
+
+
+def official_stock_name(stock_id: str, db_path: str = None) -> str:
+    """母體／最新日 K 的官方名。Yahoo 英文長名當沒有。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    name = ""
+    try:
+        conn = sqlite3.connect(path, timeout=10.0)
+        for sql in (
+            "SELECT stock_name FROM stock_universe WHERE stock_id=? LIMIT 1",
+            "SELECT stock_name FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1",
+        ):
+            row = conn.execute(sql, (sid,)).fetchone()
+            cand = clean_stock_name(row[0] if row else "")
+            if cand and not looks_like_yahoo_english_name(cand):
+                name = cand
+                break
+        conn.close()
+    except Exception:
+        name = ""
+    if looks_like_yahoo_english_name(name):
+        return sid
+    return name or sid
 
 
 def classify_target(stock_id: str, stock_name: str = "") -> Tuple[str, bool]:

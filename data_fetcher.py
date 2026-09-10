@@ -412,6 +412,7 @@ class DataFetcher:
         # 判斷是否需要拼接今日盤中數據
         if include_today_realtime:
             from config import taipei_today_str
+            from universe import prefer_display_stock_name
 
             today_str = taipei_today_str()
             latest_db_date = str(df["date"].iloc[-1])
@@ -430,7 +431,11 @@ class DataFetcher:
                         today_row = {
                             "date": today_str,
                             "stock_id": stock_id,
-                            "stock_name": rt["stock_name"] or df["stock_name"].iloc[-1],
+                            "stock_name": prefer_display_stock_name(
+                                df["stock_name"].iloc[-1],
+                                rt.get("stock_name"),
+                                stock_id,
+                            ),
                             "market": df["market"].iloc[-1],
                             "open": rt["open"],
                             "high": rt["high"],

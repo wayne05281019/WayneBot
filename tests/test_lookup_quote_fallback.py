@@ -52,6 +52,46 @@ def test_fetch_yahoo_tw_quote_converts_share_volume(monkeypatch):
     # 只有收、沒開高低時才允許落到現價；有日 K 時不要畫假十字。
     assert rt["close"] == 2410.0
     assert rt["yesterday_close"] == 2390.0
+    assert rt["stock_name"] == ""
+
+
+def test_fetch_yahoo_tw_quote_ignores_english_long_name(monkeypatch):
+    from live_quote import fetch_yahoo_tw_quote
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {
+                                "regularMarketPrice": 2410.0,
+                                "longName": "Taiwan Semiconductor Manufacturing Company Limited",
+                                "shortName": "TSMC",
+                                "chartPreviousClose": 2390.0,
+                            },
+                            "indicators": {
+                                "quote": [
+                                    {
+                                        "close": [2410.0],
+                                        "volume": [1_000_000],
+                                    }
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr("live_quote._SESSION.get", lambda *a, **k: _Resp())
+    monkeypatch.setattr("stock_links.yahoo_exchange", lambda *a, **k: "TW")
+    rt = fetch_yahoo_tw_quote("2330")
+    assert rt["stock_name"] == ""
+    assert "Taiwan" not in (rt.get("stock_name") or "")
+    assert rt["stock_name"] == ""
 
 
 def test_fetch_yahoo_tw_quote_uses_session_ohlc_not_last_price(monkeypatch):

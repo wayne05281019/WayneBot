@@ -119,6 +119,12 @@ def _stock_caption_name(card: dict | None, code: str = "") -> str:
     sid = str((card or {}).get("stock_id") or code or "").strip()
     if name and sid and (name == sid or name.startswith(sid)):
         name = name[len(sid) :].strip(" 　") if name.startswith(sid) else ""
+    try:
+        from universe import prefer_display_stock_name
+
+        name = prefer_display_stock_name(name, "", sid)
+    except Exception:
+        pass
     return name or sid or "決策卡"
 
 

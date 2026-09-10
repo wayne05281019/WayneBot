@@ -701,6 +701,17 @@ def test_l6_decision_caption_uses_name():
 
     assert _stock_caption_name({"stock_name": "台積電", "stock_id": "2330"}, "2330") == "台積電"
     assert _stock_caption_name({"stock_name": "2330台積電", "stock_id": "2330"}, "2330") == "台積電"
+    assert (
+        _stock_caption_name(
+            {
+                "stock_name": "Taiwan Semiconductor Manufacturing Company Limited",
+                "stock_id": "2330",
+            },
+            "2330",
+        )
+        == "2330"
+    )
+    assert _stock_caption_name({"stock_name": "期元大S&P日圓正2", "stock_id": "00706L"}, "00706L") == "期元大S&P日圓正2"
 
 
 def test_l6_png_looks_ok_rejects_tiny():

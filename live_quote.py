@@ -474,7 +474,8 @@ def fetch_yahoo_tw_quote(stock_id: str, db_path: str = None) -> Optional[Dict[st
             )
         return {
             "stock_id": sid,
-            "stock_name": str(meta.get("longName") or meta.get("shortName") or ""),
+            # Yahoo longName／shortName 是英文公司全名，不要當台股股名畫上高低卡。
+            "stock_name": "",
             "open": o,
             "high": h,
             "low": l,
@@ -587,8 +588,13 @@ def _apply_rt_to_row(row: dict, rt: Dict[str, Any], stock_id: str) -> dict:
     out = dict(row)
     out["date"] = taipei_today_str()
     out["stock_id"] = str(stock_id)
-    if "stock_name" in out and rt.get("stock_name"):
-        out["stock_name"] = rt["stock_name"]
+    if "stock_name" in out:
+        from universe import prefer_display_stock_name
+
+        incoming = "" if str(rt.get("source") or "") == "yahoo" else rt.get("stock_name")
+        out["stock_name"] = prefer_display_stock_name(
+            out.get("stock_name"), incoming, stock_id
+        )
     sess = session_bar_from_mis(rt) or {}
     for k in ("open", "high", "low", "close", "volume"):
         if k in out and sess.get(k) is not None:
