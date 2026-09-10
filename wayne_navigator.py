@@ -1250,9 +1250,10 @@ def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
 
 
 def _etf_nav_extra_h(card) -> float:
+    """右欄四行拉開後的加高。7.2 會讓淨值貼在漲跌下、折溢價再黏一行。"""
     if card is None or card.get("etf_nav") is None:
         return 0.0
-    return 7.2 if card.get("etf_premium") is not None else 3.8
+    return 11.6 if card.get("etf_premium") is not None else 5.8
 
 
 def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
@@ -1285,17 +1286,20 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。"""
     extra = _etf_nav_extra_h(card)
     if extra:
-        close_y = y + price_h - 2.55
-        chg_y = close_y - 3.05
+        # 28pt 收盤與 15.5pt 漲跌中心距至少約 4.8，否則右上會黏成一塊。
+        close_y = y + price_h - 2.70
+        chg_y = close_y - 4.80
+        chg_fs = 13.5 if tw("　".join(chg_bits), 15.5) > 36.0 else 15.5
     else:
         close_y = y + price_h * 0.70
         chg_y = y + price_h * 0.24
+        chg_fs = 15.5
     ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
             color=chg_c, ha="right", va="center", zorder=3)
     ax.text(px_right - tw(close_s, 28) - 2.0, close_y, "收盤",
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     ax.text(px_right, chg_y, "　".join(chg_bits),
-            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     if not extra:
         return
     try:
@@ -1319,7 +1323,7 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     except (TypeError, ValueError):
         prem = None
         prem_c = C["ink"]
-    nav_y = chg_y - 2.55
+    nav_y = chg_y - 3.50
     ax.text(
         px_right, nav_y, f"淨值 {nav_s}",
         fontproperties=_fp(12.0, "bold"),
@@ -1328,7 +1332,7 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     )
     if prem is not None:
         ax.text(
-            px_right, nav_y - 2.40, f"折溢價 {float(prem):+.2f}%",
+            px_right, nav_y - 3.40, f"折溢價 {float(prem):+.2f}%",
             fontproperties=_fp(13.5, "bold"), color=prem_c,
             ha="right", va="center", zorder=3,
         )
@@ -2267,8 +2271,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    lead = "" if (etf_kind and etf_kind in name) else etf_kind
     for text, fs, color in fit_title_bar_extras(
-        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
+        industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
                 color=color, va="center", zorder=3)
@@ -2916,8 +2921,9 @@ def render_first_glance_png(
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    lead = "" if (etf_kind and etf_kind in name) else etf_kind
     for text, fs, color in fit_title_bar_extras(
-        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
+        industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs), color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
