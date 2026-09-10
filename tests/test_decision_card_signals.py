@@ -142,7 +142,7 @@ def test_stamp_and_dual_pill_do_not_reuse_live_clock_or_round_dots():
     assert 'or card.get("live_time")' not in glance
     assert 'or card.get("live_time")' not in caption
     assert "rounding_size=0.45" not in inspect.getsource(_pill)
-    assert "dual_trend_pill_geom" in card_png
+    assert "dual_trend_half_boxes" in card_png
     show = inspect.getsource(WayneTelegramBot._show_picture_guide_page)
     assert "InputMediaAnimation" not in show
     assert "ensure_flip_gif" not in show
@@ -221,6 +221,7 @@ def test_stance_explain_is_plain_speech():
     assert "追進去容易挨打" in avoid
     watch = stance_explain("watch")
     assert "先別急著買" in watch
+    assert "低點訊號不是買訊" in watch
     sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
     assert "不是叫你買" in sell
     assert "買訊" not in sell
@@ -277,6 +278,27 @@ def test_stance_explain_follows_table_colors():
     assert "高點" not in txt
     assert "長線低" in txt
     assert "空間很小" in txt
+    assert "低點訊號不是買訊" in txt
+
+    # 康普型：貼低、獲利還在 0 附近 → 低點訊號不是買、先不要動作
+    card_4739 = {
+        "gain_pct": 0.1,
+        "space_20": 6,
+        "bias_monthly": -7.5,
+        "badges": ["整理格局"],
+        "table": [
+            {
+                "高低": "20低",
+                "預警": "K20低",
+                "profit_pct": 0.1,
+                "bias_monthly": -7.5,
+            }
+        ],
+    }
+    txt = stance_explain("watch", card=card_4739)
+    assert "低點訊號不是買訊" in txt
+    assert "獲利還沒離開0" in txt
+    assert "先別急著買" in txt
 
     # 4915 9/4 型：同一段低，但今天格子是 20高 → 講高，不講壓低
     card_4915_hi = {

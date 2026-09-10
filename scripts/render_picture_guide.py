@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""本機把圖文說明 8 頁渲出來，方便對排版。"""
+"""本機把圖文說明 9 頁渲出來，方便對排版。"""
 from __future__ import annotations
 
 import os

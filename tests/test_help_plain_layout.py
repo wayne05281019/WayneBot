@@ -36,6 +36,9 @@ def test_stock_help_has_plain_discipline_notes():
     assert "現在很熱但價沒過前高" in stock
     assert "現在高點跟熱度都沒了" in stock
     assert "如何賣" in stock
+    assert "如何低買" in stock
+    assert "低點訊號" in stock
+    assert "獲利還沒離開" in stock
     assert "最高價＝20日高" in stock
     assert "粉紅底" in stock
     assert "不自動賣" in stock

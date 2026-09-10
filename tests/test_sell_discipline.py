@@ -90,6 +90,9 @@ def test_discipline_bank_has_at_least_fifty_faces():
         assert "減碼" not in note
         assert "買訊" not in note
         assert "先" in note or "少追" in note or "不要追" in note
+    low_floor = FACE_NOTES[("near_lo", "floor", "sync_left")]
+    assert "低點訊號也先別樂觀" in low_floor
+    assert "獲利還沒離開0先不要動作" in low_floor
 
 
 def test_warming_near_high_does_not_say_heat_left():
