@@ -2087,6 +2087,44 @@ class LookupCardTest(unittest.TestCase):
                 {"close": 100, "ma20": 95, "ma60": 90, "low20": 88, "d20": 5, "pct_change": 2.0}
             )
         )
+        self.assertTrue(
+            _leave_zero_trend_ok(
+                {
+                    "close": 100,
+                    "ma20": 95,
+                    "ma60": 90,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                    "monthly_stage_kind": "up",
+                }
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {
+                    "close": 100,
+                    "ma20": 95,
+                    "ma60": 90,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                    "monthly_stage_kind": "down",
+                }
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {
+                    "close": 102,
+                    "ma20": 95,
+                    "ma60": 110,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                }
+            )
+        )  # 只站上月線、季線仍在上＝空頭反彈
         self.assertFalse(
             _leave_zero_trend_ok(
                 {"close": 80, "ma20": 95, "ma60": 100, "low20": 79, "d20": 3, "pct_change": 1.0}

@@ -20,7 +20,7 @@ LINE_SHARE_SEP = "────────────"
 
 # bucket_key → (標題, 副標；與 Telegram 海選 SCREEN_PUSH_SPECS 一致)
 LINE_BUCKET_META: Dict[str, tuple] = {
-    "leave_zero": ("黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）"),
+    "leave_zero": ("黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）"),
     "golden_buy": ("重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）"),
     "revenue_cross": ("優先看", "營收轉強 × 量價突破"),
     "select_01": ("周帶量", "突破5日高＋60日量比≥2"),

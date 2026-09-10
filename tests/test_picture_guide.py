@@ -59,6 +59,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "說明　海選　持股" in blob
     assert "如何賣" in blob
     assert "如何低買" in blob
+    assert "趨勢向上" in blob
     assert "低點訊號出現不是買" in blob
     assert "獲利還沒離開 0" in blob
     assert "最高價＝20日高" in blob
@@ -68,7 +69,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v38"
+    assert CACHE_VER == "v39"
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
