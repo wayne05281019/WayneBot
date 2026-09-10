@@ -158,8 +158,8 @@ def _bot(db: str) -> WayneTelegramBot:
     async def _ai(message, uid):
         hits.setdefault(str(uid), []).append("AI倉")
 
-    async def _bk(message, *, ask=""):
-        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+    async def _bk(message, *, ask="", uid=""):
+        uid = str(uid or getattr(getattr(message, "from_user", None), "id", "") or "")
         hits.setdefault(uid, []).append("飆客")
 
     bot._send_ai_desk_view = AsyncMock(side_effect=_ai)

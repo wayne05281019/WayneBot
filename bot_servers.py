@@ -3522,11 +3522,28 @@ class WayneTelegramBot:
             ]
         )
 
-    async def _send_biaoke_page(self, message, *, ask: str = "") -> None:
-        """飆客獨立區：語料頁。不進海選、不跑高低卡。"""
+    def _enter_biaoke_chat(self, message, uid: str = "") -> None:
+        uid = str(uid or self._uid_from_message(message) or "")
+        if not uid:
+            return
+        actor = self._actor_key(message, uid=uid)
+        try:
+            from biaoke_brain import PENDING as BIAOKE_PENDING
+        except Exception:
+            BIAOKE_PENDING = "biaoke:chat"
+        self._pending[actor] = BIAOKE_PENDING
+
+    async def _send_biaoke_page(self, message, *, ask: str = "", uid: str = "") -> None:
+        """飆客獨立區：持續對話。語料沒寫過的檔也套官方 K。不進海選。"""
+        from biaoke_brain import answer_biaoke, is_desk_query
         from biaoke_desk import format_biaoke_html
 
-        html = format_biaoke_html(ask)
+        self._enter_biaoke_chat(message, uid)
+        q = (ask or "").strip()
+        if is_desk_query(q):
+            html = format_biaoke_html(q)
+        else:
+            html = await asyncio.to_thread(answer_biaoke, self.db_path, q)
         parts = chunk_telegram_html(html, reflow=True)
         if not parts:
             await message.reply_text("飆客區讀取失敗。", reply_markup=self._keyboard())
@@ -3857,7 +3874,9 @@ class WayneTelegramBot:
             return False
         kind = hit.kind
         if kind == "biaoke":
-            await self._send_biaoke_page(message, ask=hit.query or hit.code)
+            await self._send_biaoke_page(
+                message, ask=hit.query or hit.code, uid=uid
+            )
             return True
         code = str(hit.code or "").strip()
         hits = []
@@ -4202,8 +4221,8 @@ class WayneTelegramBot:
             return
         if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
             logger.info("主選單：飆客 uid=%s", uid)
-            self._pending.pop(actor, None)
-            await self._send_biaoke_page(update.message)
+            self._enter_biaoke_chat(update.message, uid)
+            await self._send_biaoke_page(update.message, uid=uid)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
             logger.info("主選單：大盤 uid=%s", uid)
@@ -4295,9 +4314,11 @@ class WayneTelegramBot:
                     update.message, uid, body=raw, photo_file_id=""
                 )
                 return
-            if pending == "biaoke:ask":
-                self._pending.pop(actor, None)
-                await self._send_biaoke_page(update.message, ask=raw or text)
+            if pending in ("biaoke:ask", "biaoke:chat"):
+                self._pending[actor] = "biaoke:chat"
+                await self._send_biaoke_page(
+                    update.message, ask=raw or text, uid=uid
+                )
                 return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
@@ -5510,19 +5531,19 @@ class WayneTelegramBot:
             kind = data[3:]
             if kind == "see":
                 await q.answer("怎麼觀察")
-                await self._send_biaoke_page(q.message, ask="怎麼觀察")
+                await self._send_biaoke_page(q.message, ask="怎麼觀察", uid=uid)
                 return
             if kind == "yend":
                 await q.answer("去年年底")
-                await self._send_biaoke_page(q.message, ask="去年年底")
+                await self._send_biaoke_page(q.message, ask="去年年底", uid=uid)
                 return
             if kind == "ask":
                 await q.answer("問一檔")
-                actor = self._actor_key(q.message, uid=uid)
-                self._pending[actor] = "biaoke:ask"
+                from biaoke_brain import CHAT_HINT
+
+                self._enter_biaoke_chat(q.message, uid)
                 await q.message.reply_html(
-                    "打股名、族群或「去年年底」。語音也行。一次一句。"
-                    "沒寫過的檔不會猜。改按其他鈕就取消。",
+                    CHAT_HINT,
                     disable_web_page_preview=True,
                 )
                 return

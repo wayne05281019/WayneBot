@@ -105,6 +105,33 @@ def test_circled_face_routes_like_biaoda():
     upd = SimpleNamespace(message=msg, effective_user=user)
     asyncio.run(bot.on_text(upd, MagicMock()))
     bot._send_biaoke_page.assert_awaited()
+    assert bot._pending["1:1"] == "biaoke:chat"
+
+
+def test_biaoke_chat_keeps_pending_when_asking_unknown_name():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {"1:1": "biaoke:chat"}
+    bot._pending_locks = {}
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot._send_biaoke_page = AsyncMock()
+    user = SimpleNamespace(id=1, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.chat_id = 1
+    msg.text = "藝舍-KY"
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    bot._send_biaoke_page.assert_awaited()
+    assert "藝舍" in str(bot._send_biaoke_page.await_args.kwargs.get("ask") or "")
+    assert bot._pending["1:1"] == "biaoke:chat"
 
 
 def test_blank_slot_is_silent_no_lookup():

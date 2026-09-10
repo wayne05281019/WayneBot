@@ -56,7 +56,7 @@ def format_biaoke_desk_html() -> str:
         "<b>問語料</b>\n"
         "裡面不要一次建很多選項。常用就三顆：怎麼觀察、去年年底、問一檔（打字或按麥克風）。"
         "精簡六顆沒這鈕，打 <code>飆大</code> 或「完整選單」。"
-        "也可打 <code>飆大 勤誠</code>。"
+        "也可打 <code>飆大 勤誠</code>。語料沒寫過的檔（例如藝舍-KY）也會用同一套框架套官方 K，不上買訊。"
     )
 
 
@@ -66,7 +66,7 @@ def _date_ok(post: Dict[str, Any], start: str, end: str) -> bool:
 
 
 def search_biaoke(ask: str, *, limit: int = 6) -> str:
-    """關鍵字／時間查語料。不編新聞、不猜沒寫過的股票。"""
+    """關鍵字／時間查語料。沒對上就交給對話腦用官方 K 套框架，不說不猜。"""
     q = (ask or "").strip()
     if not q:
         return format_biaoke_desk_html()
@@ -132,8 +132,7 @@ def search_biaoke(ask: str, *, limit: int = 6) -> str:
     if not scored:
         return (
             f"<b>{title}</b>\n"
-            "這批 520 篇裡沒對上。換股票名、族群或「去年年底」再問。"
-            "這區不猜沒寫過的代號。"
+            "語料沒對上這句。會改用官方 K＋飆大框架來看；不是買訊。"
         )
     lines = [f"<b>{title}</b>", head] if head else [f"<b>{title}</b>"]
     for _sc, p in scored[:limit]:
