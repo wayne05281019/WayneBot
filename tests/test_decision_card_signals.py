@@ -65,7 +65,7 @@ def test_card_query_stamp_live_includes_seconds():
     date_s, clock_s = format_card_query_stamp(
         is_live=True, latest_date="20260904", generated_at=dt
     )
-    assert date_s == "2026/09/04"
+    assert date_s == "2026/09/04（五）"
     assert clock_s == "盤中 10:15"
     date_s, clock_s = format_card_query_stamp(
         is_live=True,
@@ -76,7 +76,7 @@ def test_card_query_stamp_live_includes_seconds():
     date_s, clock_s = format_card_query_stamp(
         is_live=False, latest_date="20260904", generated_at=dt
     )
-    assert date_s == "2026/09/04"
+    assert date_s == "2026/09/04（五）"
     assert clock_s == "13:30收盤"
 
 
@@ -90,7 +90,7 @@ def test_card_query_stamp_after_close_is_fixed():
     date_s, clock_s = format_card_query_stamp(
         is_live=False, latest_date="20260904", generated_at=after
     )
-    assert date_s == "2026/09/04"
+    assert date_s == "2026/09/04（五）"
     assert clock_s == "13:30收盤"
     date_s, clock_s = format_card_query_stamp(
         is_live=True, latest_date="20260904", generated_at="2026-09-04 13:30:00"
@@ -256,6 +256,8 @@ def test_stance_explain_follows_table_colors():
     assert "偏空" in txt
     assert "月線下" in txt
     assert "先等" in txt
+    assert "34.0%" in txt
+    assert "-3.2%" in txt
     assert not table_reads_as_low(card_2383)
 
     # 4915 9/7 型：近480日低、空間極窄、減碼句要關掉
@@ -298,6 +300,7 @@ def test_stance_explain_follows_table_colors():
     txt = stance_explain("watch", card=card_4739)
     assert "低點訊號不是買訊" in txt
     assert "獲利還沒離開0" in txt
+    assert "0.1%" in txt
     assert "先別急著買" in txt
 
     # 4915 9/4 型：同一段低，但今天格子是 20高 → 講高，不講壓低
@@ -326,6 +329,8 @@ def test_stance_explain_follows_table_colors():
     assert "拉很開" in txt
     assert "月線" in txt
     assert "別追" in txt
+    assert "68.1%" in txt
+    assert "+9.8%" in txt
 
 
 def test_stance_explain_00631l_warming_not_cooling():

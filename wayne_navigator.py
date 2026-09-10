@@ -3683,10 +3683,21 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
             live_note = f"  ·{mis_session_label(t)}" + (f" {t[:5]}" if t else "")
         except Exception:
             live_note = "  ·盤中即時"
+    stamp = ""
+    if not compact:
+        try:
+            from decision_card_signals import format_card_query_stamp
+
+            last_d = str(work["date"].iloc[-1] or "")
+            is_live = "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1])
+            date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+            stamp = f"　{date_s} {clock_s}"
+        except Exception:
+            stamp = ""
     title = (
         f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026"
+        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}   WayneBot ® 2026"
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)

@@ -329,8 +329,20 @@ def render_kline_html(
         "packed": packed,
         "nav": nav,
     }
+    stamp = ""
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        last_t = ""
+        daily = packed.get("D") or []
+        if daily:
+            last_t = str(daily[-1].get("t") or "")[:8]
+        date_s, clock_s = format_card_query_stamp(is_live=bool(live), latest_date=last_t)
+        stamp = f"{date_s} {clock_s}　"
+    except Exception:
+        stamp = ""
     sub = (
-        f"{market}　日K 可滑動對價，高低箭頭跟導航圖同一套。"
+        f"{market}　{stamp}日K 可滑動對價，高低箭頭跟導航圖同一套。"
         "可改 15 分／60 分，或五日／十日／月線／季線。"
     )
     page = (

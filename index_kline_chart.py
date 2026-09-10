@@ -250,8 +250,17 @@ def render_index_kline_png(
     if live_px > 0:
         t = str((live or {}).get("update_time") or "")
         live_note = f"  ·盤中 {t[:5]}" if t else "  ·盤中即時"
+    stamp = ""
+    try:
+        from decision_card_signals import format_card_query_stamp
+
+        last_d = str(last.get("date") or "")
+        date_s, clock_s = format_card_query_stamp(is_live=bool(live_px > 0), latest_date=last_d)
+        stamp = f"  {date_s} {clock_s}"
+    except Exception:
+        stamp = ""
     ax1.set_title(
-        f"{title} (日K線) {n}日區間  高低帶＝近20日高／低{live_note}   WayneBot ® 2026",
+        f"{title} (日K線) {n}日區間  高低帶＝近20日高／低{live_note}{stamp}   WayneBot ® 2026",
         fontproperties=_fp(14, "bold"),
         pad=38,
         color=_TEXT,

@@ -87,6 +87,19 @@ def format_trading_date_zh(ymd: str) -> str:
     return f"{s[:4]}/{s[4:6]}/{s[6:8]}（{wd}）"
 
 
+def format_md_weekday(ymd: str) -> str:
+    """20260909 → 9/9（三）。籌碼表頭用短日期＋星期。"""
+    s = normalize_ymd(ymd)
+    if len(s) != 8:
+        return str(ymd or "")
+    try:
+        d = datetime.strptime(s, "%Y%m%d")
+    except ValueError:
+        return s
+    wd = _WEEKDAY_ZH[d.weekday()]
+    return f"{int(s[4:6])}/{int(s[6:8])}（{wd}）"
+
+
 def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
     """
     海選／盤後顯示基準日：

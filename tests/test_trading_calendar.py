@@ -58,10 +58,12 @@ def test_latest_complete_skips_weekend_in_db(tmp_path):
 
 
 def test_format_trading_date_zh():
-    from trading_calendar import format_trading_date_zh
+    from trading_calendar import format_md_weekday, format_trading_date_zh
 
     assert format_trading_date_zh("20260828") == "2026/08/28（五）"
     assert format_trading_date_zh("20260830") == "2026/08/30（日）"
+    assert format_md_weekday("20260909") == "9/9（三）"
+    assert format_md_weekday("20260910") == "9/10（四）"
 
 
 def test_tw_equity_session_open_hours():

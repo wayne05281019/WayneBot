@@ -116,3 +116,22 @@ def test_major_player_rows_skip_trailing_pending(tmp_path):
     assert rows[0]["foreign_net"] == 767
     assert rows[0]["three_net"] == 418
     assert rows[0]["ratio_pct"] == 4.7
+
+
+def test_chips_header_stamp_has_weekday_and_produced_clock():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from chips import _chips_header_stamp
+
+    s = _chips_header_stamp(
+        "20260909",
+        generated_at=datetime(2026, 9, 10, 10, 15, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "9/9（三）" in s
+    assert "盤中 10:15" in s
+    closed = _chips_header_stamp(
+        "20260909",
+        generated_at=datetime(2026, 9, 10, 21, 40, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "13:30收盤" in closed
