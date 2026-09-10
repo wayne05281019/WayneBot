@@ -3352,6 +3352,161 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
 
 
 
+NAV_KIND_LABEL = {
+    "h20": "20高",
+    "h20_near": "接近20高",
+    "h20_leave": "20高脫離",
+    "l20": "20低",
+    "l20_near": "接近20低",
+    "l20_leave": "20低脫離",
+    "l60": "60低",
+    "vol_a": "量能異常",
+    "warn": "警告",
+    "vol_low": "月波動低",
+}
+
+
+def compute_nav_overlay(work: pd.DataFrame) -> dict:
+    """跟導航圖同一套：價格列 20 高／低／脫離／60低；量能列量能異常／警告／月波動低。"""
+    n = len(work)
+    halt = work["is_halt"].fillna(False).astype(bool) if "is_halt" in work.columns else pd.Series([False] * n)
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max()) if n else 0.0
+    l20 = float(lo_s.tail(20).min()) if n else 0.0
+    h60 = float(hi_s.tail(60).max()) if n else 0.0
+    l60 = float(lo_s.tail(60).min()) if n else 0.0
+    frame = work.copy()
+    frame["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    frame["vol_ma"] = frame["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (frame["high"] - frame["low"]).where(~halt)
+    frame["atr20"] = tr.rolling(20, min_periods=5).mean()
+    from decision_card_signals import candle_up_taiwan
+
+    candle_up = []
+    for i in range(n):
+        prev_c = float(frame["close"].iloc[i - 1]) if i else None
+        candle_up.append(
+            candle_up_taiwan(float(frame["close"].iloc[i]), prev_c, float(frame["open"].iloc[i]))
+        )
+    was_20h = was_20l = was_60l = was_near_h = was_near_l = False
+    last_dn_i = last_up_i = -9
+    price: list = []
+    vol: list = []
+    ma20 = []
+    for i in range(n):
+        ma_i = frame["ma20"].iloc[i]
+        try:
+            ma20.append(None if ma_i != ma_i else round(float(ma_i), 4))
+        except (TypeError, ValueError):
+            ma20.append(None)
+        if bool(halt.iloc[i]):
+            continue
+        op, cl = float(frame["open"].iloc[i]), float(frame["close"].iloc[i])
+        hi, lo = float(frame["high"].iloc[i]), float(frame["low"].iloc[i])
+        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
+        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
+        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
+        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
+        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
+        ma20_i = float(frame["ma20"].iloc[i] or 0)
+        bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
+        hh, ll = close_h20, close_l20
+        rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+        is_20h = hi >= wick_h20 * 0.999 or cl >= close_h20 * 0.998
+        is_20l = lo <= wick_l20 * 1.001 or cl <= close_l20 * 1.002
+        is_60l = lo <= wick_l60 * 1.001
+        leave_h = was_20h and not is_20h
+        leave_l = was_20l and not is_20l
+        vol_a = float(frame["volume"].iloc[i] or 0) >= float(frame["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(frame["atr20"].iloc[i] or 0)
+        vol_low = bool(cl > 0 and atr / cl < 0.018)
+        warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
+        near_h = not is_20h and hi >= wick_h20 * 0.985
+        near_l = not is_20l and lo <= wick_l20 * 1.015
+        dn_pick = None
+        if is_20h and not was_20h:
+            dn_pick = ("h20", False, hi)
+        elif leave_h:
+            dn_pick = ("h20_leave", False, hi)
+        elif near_h and not was_near_h:
+            dn_pick = ("h20_near", True, hi)
+        up_pick = None
+        if is_60l and not was_60l:
+            up_pick = ("l60", False, lo)
+        elif is_20l and not was_20l:
+            up_pick = ("l20", False, lo)
+        elif leave_l:
+            up_pick = ("l20_leave", False, lo)
+        elif near_l and not was_near_l:
+            up_pick = ("l20_near", True, lo)
+        if dn_pick and dn_pick[0] in ("h20_near", "h20_leave") and i - last_dn_i < 2:
+            dn_pick = None
+        if up_pick and up_pick[0] in ("l20_near", "l20_leave") and i - last_up_i < 2:
+            up_pick = None
+        if dn_pick:
+            kind, hollow, px = dn_pick
+            price.append({"i": i, "kind": kind, "hollow": hollow, "px": round(float(px), 4), "dir": "down"})
+            last_dn_i = i
+        if up_pick:
+            kind, hollow, px = up_pick
+            price.append({"i": i, "kind": kind, "hollow": hollow, "px": round(float(px), 4), "dir": "up"})
+            last_up_i = i
+        if vol_low:
+            vol.append({"i": i, "kind": "vol_low"})
+        if warn:
+            vol.append({"i": i, "kind": "warn"})
+        if vol_a:
+            vol.append({"i": i, "kind": "vol_a"})
+        was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
+        was_near_h, was_near_l = near_h, near_l
+    return {
+        "h20": round(h20, 4),
+        "l20": round(l20, 4),
+        "h60": round(h60, 4),
+        "l60": round(l60, 4),
+        "ma20": ma20,
+        "up": candle_up,
+        "price": price,
+        "vol": vol,
+        "labels": dict(NAV_KIND_LABEL),
+    }
+
+
+def nav_overlay_from_bars(bars: list) -> dict:
+    """給 /k/ 日K用：同一套高低箭頭，不重算決策卡。"""
+    if not bars:
+        return {}
+    rows = []
+    for b in bars:
+        d = str(b.get("t") or "").replace("-", "")[:8]
+        try:
+            o, h, l, c = float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])
+            v = float(b.get("v") or 0)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if len(d) != 8 or not d.isdigit() or c <= 0:
+            continue
+        rows.append(
+            {
+                "date": d,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+                "is_halt": False,
+            }
+        )
+    if not rows:
+        return {}
+    work = _nav_work_or_none(pd.DataFrame(rows), already_normalized=True)
+    if work is None:
+        return {}
+    return compute_nav_overlay(work)
+
+
 def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     """整理 180 日 OHLC；沒有可畫的列就回 None。"""
     if df is None or getattr(df, "empty", True):

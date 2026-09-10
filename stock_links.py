@@ -75,7 +75,7 @@ def listed_kline_ok(stock_id: str, db_path: Optional[str] = None) -> bool:
 def kline_page_url(
     stock_id: str, db_path: Optional[str] = None, base_url: str = ""
 ) -> str:
-    """查股圖下 K線：開自家這一檔圖（先進日K）。興櫃不給。不是外站圖表。"""
+    """查股圖下 K線：開自家可滑動日K（疊導航箭頭）。興櫃不給。不是外站圖表。"""
     sid = str(stock_id or "").strip()
     if not sid or not listed_kline_ok(sid, db_path):
         return ""
