@@ -476,6 +476,16 @@ def stance_title_from_face(card: Dict[str, Any] | None) -> tuple[str, str]:
     return "今天別追", "avoid"
 
 
+def sell_highlight_kind(card: Dict[str, Any] | None) -> str:
+    """作者提醒當下要打底色。cut＝不同步／不同步再脫離；prepare＝同步再脫離。"""
+    act = str((card or {}).get("sell_action") or "").strip()
+    if act == "直接減碼":
+        return "cut"
+    if act == "準備減碼":
+        return "prepare"
+    return ""
+
+
 def apply_face_stance(card: Dict[str, Any]) -> Dict[str, Any]:
     """有如何賣標時，今日態度標題改跟五十句同一把鑰匙。沒標／表在低檔就不動。"""
     if not card or card.get("error"):

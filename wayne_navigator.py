@@ -1516,6 +1516,8 @@ _CARD = {
     "hi_ink": "#AD1457",
     "hi_line": "#F2B4CB",
     "hi_fill": "#FFF0FF",
+    "cut_fill": "#F9A8D4",
+    "cut_line": "#DB2777",
     "lo_ink": "#166534",
     "lo_line": "#86EFAC",
     "lo_fill": "#DCFCE7",
@@ -2330,17 +2332,33 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
 
-    # 左：今日態度＋白話標題；標題短就把說明靠右同一行，其餘下一行。
+    # 左：今日態度＋白話標題；作者提醒當下整塊打底，金句再墊一層，避免看漏。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
     stance_txt = str(card.get("stance") or "今天先看表，先等")
-    if kind == "avoid" or str(card.get("sell_action") or "") == "直接減碼":
+    hl_kind = ""
+    try:
+        from sell_discipline import sell_highlight_kind
+
+        hl_kind = sell_highlight_kind(card)
+    except Exception:
+        hl_kind = ""
+    if hl_kind == "cut":
+        s_fc, s_ec, s_ink = C["cut_fill"], C["cut_line"], C["hi_ink"]
+        pane_fc = C["cut_fill"]
+    elif hl_kind == "prepare":
         s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
+        pane_fc = C["hi_fill"]
+    elif kind == "avoid":
+        s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
+        pane_fc = C["panel"]
     elif kind == "watch":
         s_fc, s_ec, s_ink = C["lo_hit_fill"], C["lo_hit_line"], C["lo_ink"]
+        pane_fc = C["panel"]
     else:
         s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
-    pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=C["panel"])
+        pane_fc = C["panel"]
+    pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=pane_fc)
     chip_w = float(stance_plan["chip_w"])
     chip_h = 2.15
     chip_y = y + stance_h - chip_h - 0.55
@@ -2355,15 +2373,37 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(title_x, chip_y + chip_h / 2, stance_txt,
             fontproperties=_fp(title_fs, "bold"), color=s_ink, va="center", zorder=4)
     same_row = str(stance_plan.get("same_row") or "")
+    note_ink = C["hi_ink"] if hl_kind else C["ink_soft"]
+    # 直接減碼整塊已是 cut_fill，金句墊淺粉；準備減碼整塊淺粉，金句墊深一層。
+    if hl_kind == "cut":
+        note_wash = "#FCE7F3"
+    elif hl_kind == "prepare":
+        note_wash = C["cut_fill"]
+    else:
+        note_wash = ""
     if same_row:
         note_x = title_x + tw(stance_txt, title_fs) + 2.4
+        if note_wash:
+            nw = tw(same_row, 11.2) + 2.4
+            ax.add_patch(patches.FancyBboxPatch(
+                (note_x - 1.1, chip_y + chip_h / 2 - 1.15), nw, 2.3,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=note_wash, edgecolor="none", zorder=4))
         ax.text(note_x, chip_y + chip_h / 2, same_row,
-                fontproperties=_fp(11.2), color=C["ink_soft"], ha="left", va="center", zorder=4)
+                fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
+                color=note_ink, ha="left", va="center", zorder=5)
     below = list(stance_plan.get("below") or [])
     ny = y + 1.35 + 2.2 * max(0, len(below) - 1)
     for ln in below:
+        if note_wash:
+            nw = min(tw(ln, 11.2) + 2.8, 100 - 2 * pad_x - 5.0)
+            ax.add_patch(patches.FancyBboxPatch(
+                (pad_x + 2.4, ny - 1.15), nw, 2.3,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=note_wash, edgecolor="none", zorder=4))
         ax.text(pad_x + 3.2, ny, ln,
-                fontproperties=_fp(11.2), color=C["ink_soft"], va="center", zorder=4)
+                fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
+                color=note_ink, va="center", zorder=5)
         ny -= 2.2
 
     # 高點
@@ -2632,6 +2672,13 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
 
         attach_sell(card)
         sell_lines = sell_note_lines(card)
+        try:
+            from sell_discipline import sell_highlight_kind
+
+            if sell_highlight_kind(card) and sell_lines:
+                sell_lines = [f"<b>作者提醒</b>　{sell_lines[0]}"] + sell_lines[1:]
+        except Exception:
+            pass
     except Exception:
         sell_lines = []
     setup_block = section("<b>協助判斷</b>", *sell_lines) if sell_lines else ""
@@ -3071,11 +3118,20 @@ def render_first_glance_png(
 
     if note_h:
         y -= gap + note_h
-        pane(pad_x, y, pane_w, note_h, fc=C["hi_fill"], ec=C["hi_line"])
+        sell_act = str(card.get("sell_action") or "")
+        note_fc = C["cut_fill"] if sell_act == "直接減碼" else C["hi_fill"]
+        note_ec = C["cut_line"] if sell_act == "直接減碼" else C["hi_line"]
+        pane(pad_x, y, pane_w, note_h, fc=note_fc, ec=note_ec)
         ax.text(inner_l, y + note_h - 1.55, "紀律", fontproperties=_fp(12, "bold"), color="#AD1457", va="center", zorder=3)
         ny = y + note_h - 4.0
         for ln in wrapped_notes:
-            ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=3)
+            wash = "#FCE7F3" if sell_act == "直接減碼" else C["cut_fill"]
+            nw = min(tw(ln, 12.5) + 2.6, inner_r - inner_l + 0.6)
+            ax.add_patch(patches.FancyBboxPatch(
+                (inner_l - 0.8, ny - 1.2), nw, 2.4,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=wash, edgecolor="none", zorder=3))
+            ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
 
     bars = ohlc

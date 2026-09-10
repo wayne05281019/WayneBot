@@ -19,6 +19,7 @@ from sell_discipline import (
     sell_note_lines,
     sell_note_short,
     sell_notes_for_stocks,
+    sell_highlight_kind,
     stance_title_from_face,
 )
 
@@ -603,7 +604,9 @@ def test_html_and_glance_wire_sell_notes():
     assert '"#AD1457"' in png_src
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
-    assert "apply_face_stance" in card_src
+    assert "cut_fill" in card_src
+    assert "sell_highlight_kind" in card_src
+    assert "cut_fill" in png_src
     assert "stance_explain" in card_src
     assert "今日態度" in card_src
     assert "monthly_stage" in card_src
@@ -618,6 +621,13 @@ def test_html_and_glance_wire_sell_notes():
     assert "format_ai_desk_pages" in inspect.getsource(format_ai_desk_html)
     assert "sell_notes_for_stocks" in inspect.getsource(PortfolioEngine.format_holdings_html)
     assert "月K" in inspect.getsource(PortfolioEngine.format_holdings_html)
+
+
+def test_sell_highlight_kind_cut_and_prepare():
+    assert sell_highlight_kind({"sell_action": "直接減碼"}) == "cut"
+    assert sell_highlight_kind({"sell_action": "準備減碼"}) == "prepare"
+    assert sell_highlight_kind({"sell_action": ""}) == ""
+    assert sell_highlight_kind({}) == ""
 
 
 @pytest.mark.production_db
@@ -863,6 +873,35 @@ def test_cary_2383_2408_3008_20260904_rows():
     assert "退了" not in note3008
     assert "都沒了" not in note3008
     assert "升" in note3008
+
+
+@pytest.mark.production_db
+def test_6547_20260909_author_desync_matches_gold_note():
+    """6547 9/9：作者圈最高價＋升溫＝不同步，金句必須熱度在升不是最高溫。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "6547", merge_live=False, as_of="20260909"
+    )
+    assert str(card.get("latest_date")) == "20260909"
+    row = card["table"].iloc[0]
+    assert str(row["高低"]) == "20高"
+    assert str(row["升降"]) == "升溫"
+    attach_sell(card)
+    assert card.get("sell_action") == "直接減碼"
+    assert "最高價但非最高溫" in str(card.get("sell_why") or "")
+    assert sell_highlight_kind(card) == "cut"
+    face = card_discipline_face(card)
+    assert face["pos"] == "hi20"
+    assert face["heat"] == "up"
+    note = sell_note_short(card)
+    assert "升" in note
+    assert "不是最高溫" in note
+    assert "漲多" in note
+    assert "已降" not in note
+    assert "退了" not in note
+    assert "先出一點" in note
 
 
 @pytest.mark.production_db
