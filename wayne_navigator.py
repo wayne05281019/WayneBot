@@ -1610,29 +1610,27 @@ def _fmt_dist_short(val) -> str:
 
 def _paint_lr_box(
     ax, x, y, w, h, lab, primary, secondary=None, *,
-    lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=16.0, sec_fs=10.5,
+    lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=15.0, sec_fs=10.0,
 ):
-    """一格左右對半：左一行標籤置中，右一或兩行數字。高低卡與介紹圖同一套閱讀感。"""
+    """一格左右齊線：標籤靠左細字，數字靠右；兩行拉開，不要黏、不要兩團置中。"""
     C = _CARD
     if fc in (C["white"], C["panel"], C.get("neutral_bg"), C.get("zebra")):
         ec = C["line"]
     ax.add_patch(patches.FancyBboxPatch(
-        (x, y), w, h, boxstyle="round,pad=0,rounding_size=0.6",
-        facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
+        (x, y), w, h, boxstyle="round,pad=0,rounding_size=0.45",
+        facecolor=fc, edgecolor=ec, linewidth=0.9, zorder=3))
     mid = y + h / 2
-    split = x + w * 0.50
-    left_cx = (x + split) / 2
-    right_cx = (split + x + w) / 2
-    ax.text(left_cx, mid, lab, fontproperties=_fp(lab_fs, "bold"), color=lab_c,
-            ha="center", va="center", zorder=4)
+    lx, rx = x + 1.45, x + w - 1.45
+    ax.text(lx, mid, lab, fontproperties=_fp(lab_fs, "normal"), color=lab_c,
+            ha="left", va="center", zorder=4)
     if secondary:
-        ax.text(right_cx, mid + 1.12, primary, fontproperties=_fp(prim_fs, "bold"),
-                color=prim_c, ha="center", va="center", zorder=4)
-        ax.text(right_cx, mid - 1.22, secondary, fontproperties=_fp(sec_fs),
-                color=sec_c if sec_c is not None else prim_c, ha="center", va="center", zorder=4)
+        ax.text(rx, mid + 1.55, primary, fontproperties=_fp(prim_fs, "bold"),
+                color=prim_c, ha="right", va="center", zorder=4)
+        ax.text(rx, mid - 1.70, secondary, fontproperties=_fp(sec_fs, "normal"),
+                color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
     else:
-        ax.text(right_cx, mid, primary, fontproperties=_fp(prim_fs, "bold"),
-                color=prim_c, ha="center", va="center", zorder=4)
+        ax.text(rx, mid, primary, fontproperties=_fp(prim_fs, "bold"),
+                color=prim_c, ha="right", va="center", zorder=4)
 
 
 def _vol_rank_lr_lines(text: str):
@@ -2268,7 +2266,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             generated_at=card.get("generated_at"),
         )
     head_h = 5.7
-    title_band, box_h, box_gap, pane_pad = 3.4, 6.6, 0.85, 1.0
+    title_band, box_h, box_gap, pane_pad = 3.4, 7.4, 0.95, 1.05
     tbl_title_h, hdr_h, body_h = 3.5, 3.15, 5.05
     gap = 1.5
     badge_h, badge_gap = 3.05, 0.95
@@ -2362,7 +2360,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 一格切左右兩欄才平均：左一行標籤置中，右兩行價格＋％，不要上下疊三行。
+        # 一格左右齊線才俐落：左標籤細字、右兩行價格＋％，不要上下疊三行、不要兩團置中。
         fc, ec = C["white"], C["line"]
         try:
             dlt = float(dist) if dist is not None else None
@@ -3035,7 +3033,7 @@ def render_first_glance_png(
     for n in footer_src:
         wrapped_notes.extend(_wrap_fit(n, 12.5, row_w, fig_w) or [n])
 
-    lr_box_h, lr_gap = 6.6, 0.85
+    lr_box_h, lr_gap = 7.4, 0.95
     space_n_rows = 2 if long_lows else 1
     space_h = title_band + pane_pad + space_n_rows * lr_box_h + (space_n_rows - 1) * lr_gap + pane_pad
     heat_h = title_band + pane_pad + lr_box_h + pane_pad
@@ -3045,7 +3043,7 @@ def render_first_glance_png(
     fund_body = 0.0
     if conflict_lines:
         fund_body += 2.6 * len(conflict_lines)
-    fund_box_hs = [lr_box_h if len(vlines) > 1 else 5.2 for _, vlines, _, _ in fund_drawn]
+    fund_box_hs = [lr_box_h if len(vlines) > 1 else 5.8 for _, vlines, _, _ in fund_drawn]
     if fund_box_hs:
         fund_body += sum(fund_box_hs) + 0.7 * (len(fund_box_hs) - 1)
     fund_h = (title_band + pane_pad + max(fund_body, 3.3) + pane_pad + 1.2) if (fund_drawn or conflict_lines) else 0.0
@@ -3184,7 +3182,8 @@ def render_first_glance_png(
         pass
     d20s = _fmt_dist(dist_h20)
     hi_dc = C["down"] if (dist_h20 is not None and float(dist_h20) < 0) else C["up"]
-    pbg, pfg = _glance_kv_pill(*_profit_heat_draw(gain, None, C["white"]))
+    _, pfg = _glance_kv_pill(*_profit_heat_draw(gain, None, C["white"]))
+    profit_c = C["up"] if pfg == C["white"] else pfg
     space_top = [
         {
             "lab": "20日高點", "primary": _fmt_price(card.get("h20")),
@@ -3194,9 +3193,8 @@ def render_first_glance_png(
         },
         {
             "lab": "獲利", "primary": f"{gain:+.1f}%", "secondary": "近60日低",
-            "lab_c": _fg_on_panel(C["ink_soft"], pbg, panel=pbg),
-            "prim_c": pfg, "sec_c": _fg_on_panel(C["ink_soft"], pbg, panel=pbg),
-            "fc": pbg, "ec": pbg,
+            "lab_c": C["ink_soft"], "prim_c": profit_c, "sec_c": C["ink_mute"],
+            "fc": C["white"], "ec": C["line"],
         },
         {
             "lab": "月／季空間",
@@ -3230,21 +3228,22 @@ def render_first_glance_png(
     y -= gap + heat_h
     pane(pad_x, y, pane_w, heat_h)
     sec_title(pad_x + 2.6, y + heat_h - title_band / 2, "熱度／量能", C["navy"])
-    tbg, tfg = _glance_kv_pill(*_temp_heat_draw(_temp_n, C["white"]))
-    vbg, vfg = _glance_kv_pill(*_vol_heat_draw(int(vol_n or 99), C["white"]))
+    _, tfg = _glance_kv_pill(*_temp_heat_draw(_temp_n, C["white"]))
+    _, vfg = _glance_kv_pill(*_vol_heat_draw(int(vol_n or 99), C["white"]))
+    temp_c = C["ink"] if tfg == C["white"] else tfg
+    vol_c = C["ink"] if vfg == C["white"] else vfg
     vol_prim, vol_sec = _vol_rank_lr_lines(vol_pair)
     vol_line = str(((tape or {}).get("volume") or {}).get("line") or "—")
     heat_specs = [
         {
             "lab": "溫度", "primary": str(card.get("temp_c") or "—"), "secondary": None,
-            "lab_c": _fg_on_panel(C["ink_soft"], tbg, panel=tbg),
-            "prim_c": tfg, "fc": tbg, "ec": tbg,
+            "lab_c": C["ink_soft"], "prim_c": temp_c,
+            "fc": C["white"], "ec": C["line"],
         },
         {
             "lab": "量排名", "primary": vol_prim, "secondary": vol_sec,
-            "lab_c": _fg_on_panel(C["ink_soft"], vbg, panel=vbg),
-            "prim_c": vfg, "sec_c": _fg_on_panel(C["ink_soft"], vbg, panel=vbg),
-            "fc": vbg, "ec": vbg,
+            "lab_c": C["ink_soft"], "prim_c": vol_c, "sec_c": C["ink_mute"],
+            "fc": C["white"], "ec": C["line"],
         },
         {
             "lab": "量比", "primary": vol_line, "secondary": None,
@@ -3294,13 +3293,13 @@ def render_first_glance_png(
                     ha="left", va="center", zorder=3)
         fw = 100 - 2 * inner_x
         for lab, vlines, lab_fs, val_fs in fund_drawn:
-            fh = lr_box_h if len(vlines) > 1 else 5.2
+            fh = lr_box_h if len(vlines) > 1 else 5.8
             fy -= fh
             _paint_lr_box(
                 ax, inner_x, fy, fw, fh, lab, vlines[0],
                 vlines[1] if len(vlines) > 1 else None,
-                lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink"],
-                fc=C["white"], ec=C["line"], lab_fs=lab_fs, prim_fs=val_fs, sec_fs=max(val_fs - 1.0, 11.0),
+                lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink_soft"],
+                fc=C["white"], ec=C["line"], lab_fs=11.5, prim_fs=13.0, sec_fs=11.5,
             )
             fy -= 0.7
 
