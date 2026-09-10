@@ -2341,6 +2341,12 @@ def analyze_taiwan_market(
     db_only: bool = False,
     page_light: bool = False,
 ) -> Dict[str, Any]:
+    try:
+        from universe import restore_universe_if_wiped
+
+        restore_universe_if_wiped(db_path)
+    except Exception:
+        logger.debug("母體自癒略過", exc_info=True)
     ref_date = resolve_market_as_of(db_path, as_of)
     idx = load_index_daily(db_path, ref_date or None, db_only=db_only)
     if idx.empty and db_only:

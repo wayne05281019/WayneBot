@@ -319,7 +319,11 @@ class MainRunner:
             logger.warning(f"行情清洗略過：{e}")
 
         try:
-            from universe import sync_universe
+            from universe import restore_universe_if_wiped, sync_universe
+
+            healed = restore_universe_if_wiped(self.db_path)
+            if healed:
+                logger.warning("增量前母體全被關掉，已重新打開 %s 檔", healed)
             stats = sync_universe(self.db_path)
             logger.info(f"母體同步：{stats}")
         except Exception as e:

@@ -790,6 +790,14 @@ def run_web():
                 time.sleep(index_delay_s)
             logger.info("背景：檢查資料庫索引（大檔可能要一兩分鐘）")
             ensure_core_schema(get_db_path())
+            try:
+                from universe import restore_universe_if_wiped
+
+                n_u = restore_universe_if_wiped(get_db_path())
+                if n_u:
+                    logger.warning("啟動時母體全被關掉，已重新打開 %s 檔", n_u)
+            except Exception:
+                logger.exception("母體自癒失敗")
             from quote_integrity import ensure_quote_integrity
 
             stats = ensure_quote_integrity(get_db_path())

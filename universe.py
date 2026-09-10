@@ -648,24 +648,92 @@ def ensure_universe_table(db_path: str) -> None:
     conn.close()
 
 
-def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Dict[str, int]:
+def restore_universe_if_wiped(db_path: str = None) -> int:
+    """母體列還在但全被 is_active=0：重新打開。空 ISIN 抓失敗時大盤 sample_n 才不會變 0。"""
+    path = db_path or get_db_path()
+    if not path or not os.path.isfile(path):
+        return 0
+    conn = sqlite3.connect(path)
+    try:
+        cur = conn.cursor()
+        hit = cur.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_universe'"
+        ).fetchone()
+        if not hit:
+            return 0
+        active = int(
+            cur.execute(
+                "SELECT COUNT(*) FROM stock_universe WHERE is_active=1"
+            ).fetchone()[0]
+            or 0
+        )
+        total = int(cur.execute("SELECT COUNT(*) FROM stock_universe").fetchone()[0] or 0)
+        if active > 0 or total == 0:
+            return 0
+        cur.execute("UPDATE stock_universe SET is_active=1 WHERE COALESCE(is_active,0)=0")
+        n = int(cur.rowcount or 0)
+        conn.commit()
+        logger.warning("母體全被關掉，已重新打開 %s 檔", n)
+        return n
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()
+
+
+def _universe_counts(db_path: str) -> Tuple[int, int]:
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        active = int(
+            cur.execute("SELECT COUNT(*) FROM stock_universe WHERE is_active=1").fetchone()[0]
+            or 0
+        )
+        total = int(cur.execute("SELECT COUNT(*) FROM stock_universe").fetchone()[0] or 0)
+        return active, total
+    except sqlite3.OperationalError:
+        return 0, 0
+    finally:
+        conn.close()
+
+
+def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Dict[str, Any]:
     path = db_path or get_db_path()
     ensure_universe_table(path)
     items = items if items is not None else fetch_isin_universe()
+    if not items:
+        restored = restore_universe_if_wiped(path)
+        active_n, total = _universe_counts(path)
+        logger.warning(
+            "ISIN 空清單，不關掉現有母體 active=%s total=%s restored=%s",
+            active_n,
+            total,
+            restored,
+        )
+        return {
+            "universe": 0,
+            "active": active_n,
+            "quotes_ids": 0,
+            "deleted_junk_rows": 0,
+            "industry_from_monthly": 0,
+            "skipped": "empty_isin",
+            "restored": restored,
+        }
     now = datetime.now().isoformat(timespec="seconds")
     conn = sqlite3.connect(path)
     cur = conn.cursor()
     cur.execute("UPDATE stock_universe SET is_active = 0;")
     rows = [
         (
-            u["stock_id"],
-            u["stock_name"],
-            u["market_type"],
-            u["asset_type"],
+            str(u.get("stock_id") or "").strip(),
+            u.get("stock_name") or "",
+            u.get("market_type") or "",
+            u.get("asset_type") or "",
             default_industry(u.get("asset_type") or "", u.get("industry") or ""),
             now,
         )
         for u in items
+        if str(u.get("stock_id") or "").strip()
     ]
     if rows:
         cur.executemany(
@@ -682,8 +750,25 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
             """,
             rows,
         )
+    active_n = int(
+        cur.execute("SELECT COUNT(*) FROM stock_universe WHERE is_active=1").fetchone()[0] or 0
+    )
+    if active_n == 0:
+        conn.rollback()
+        conn.close()
+        restored = restore_universe_if_wiped(path)
+        logger.error("母體同步後 0 檔，已回滾 restored=%s", restored)
+        active_n, _total = _universe_counts(path)
+        return {
+            "universe": len(items),
+            "active": active_n,
+            "quotes_ids": 0,
+            "deleted_junk_rows": 0,
+            "industry_from_monthly": 0,
+            "skipped": "zero_active",
+            "restored": restored,
+        }
     conn.commit()
-    active_n = cur.execute("SELECT COUNT(*) FROM stock_universe WHERE is_active=1").fetchone()[0]
     cur.execute("""
     UPDATE daily_quotes
     SET stock_name = (
@@ -750,6 +835,7 @@ def sync_universe(db_path: str = None, items: Optional[List[Dict]] = None) -> Di
 def get_active_ids(db_path: str = None) -> set:
     path = db_path or get_db_path()
     ensure_universe_table(path)
+    restore_universe_if_wiped(path)
     conn = sqlite3.connect(path)
     ids = {r[0] for r in conn.execute("SELECT stock_id FROM stock_universe WHERE is_active=1")}
     conn.close()

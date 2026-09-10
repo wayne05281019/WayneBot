@@ -67,6 +67,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert 'kind in ("morning", "midday", "fuse", "evening")' in src
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
+    assert "restore_universe_if_wiped" in boot
 
 
 def test_poll_wait_session_after_night():
