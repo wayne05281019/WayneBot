@@ -42,7 +42,9 @@ def test_progress_page_is_independent():
     html = format_biaoke_desk_html()
     assert "海選" in html and "無關" in html
     assert "細微波" in html
-    assert "費半" in html
+    assert "費半" in html or "1-4" in html
+    assert "量先價行" in html
+    assert "量價背離" in html
     assert "不是買訊" in html
 
 
@@ -70,6 +72,17 @@ def test_qincheng_hits_corpus_not_invented():
     html = search_biaoke("勤誠")
     assert "勤誠" in html
     assert "海選" not in html or "無關" in html or "語料" in html
+
+
+def test_knowhow_shixinke_ticker_is_4916():
+    from pathlib import Path
+
+    text = Path("docs/expert_notes/飆客/knowhow.md").read_text(encoding="utf-8")
+    assert "事欣科 **4916**" in text or "事欣科 4916" in text
+    assert "3679 新至陞" in text
+    src = Path("scripts/biaoke_verify_knowhow.py").read_text(encoding="utf-8")
+    assert '("無人機 事欣科", "4916"' in src
+    assert '("無人機 事欣科", "3679"' not in src
 
 
 def test_circled_face_routes_like_biaoda():

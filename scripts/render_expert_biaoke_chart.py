@@ -26,6 +26,15 @@ BIAOKE_LEVELS_20260723: Dict[str, Tuple[float, str]] = {
     "44850": (44850.0, "7/23 發文日收盤"),
 }
 
+# 2026-07-31：A 波低＋他 15 分圖標的關卡（現貨／期貨口徑混用，圖上註明）
+BIAOKE_LEVELS_20260731: Dict[str, Tuple[float, str]] = {
+    "48218": (48218.0, "60m 波段高"),
+    "41967": (41967.0, "7/20 現貨低／60m 低"),
+    "40816": (40816.0, "7/29 夜盤第一關（他口述）"),
+    "39385": (39385.0, "7/29 現貨低＝他後來說的 A 波低"),
+    "39442": (39442.0, "7/29 台指期 15 分圖標低"),
+}
+
 
 def _load_series(db_path: str, table: str, symbol: str) -> List[Tuple[str, float, float, float]]:
     conn = sqlite3.connect(db_path)
@@ -175,6 +184,9 @@ def render_chart(
         "48218": "#d62728",
         "41967": "#2ca02c",
         "44850": "#9467bd",
+        "40816": "#ff7f0e",
+        "39385": "#2ca02c",
+        "39442": "#98df8a",
     }
     for key, (price, note) in level_map.items():
         ax.axhline(price, color=colors.get(key, "#888"), linestyle="--", linewidth=0.9, alpha=0.75)
@@ -231,8 +243,13 @@ def main() -> None:
     from config import get_db_path
 
     db = args.db or get_db_path()
-    levels = BIAOKE_LEVELS_20260723 if args.as_of == "20260723" else None
-    twii = args.twii_primary or args.as_of == "20260723"
+    if args.as_of == "20260723":
+        levels = BIAOKE_LEVELS_20260723
+    elif args.as_of == "20260731":
+        levels = BIAOKE_LEVELS_20260731
+    else:
+        levels = None
+    twii = args.twii_primary or args.as_of in {"20260723", "20260731"}
     suffix = f"（as-of {args.as_of}）" if args.as_of else ""
     meta = render_chart(
         db,
