@@ -152,6 +152,17 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
     if run_count == 0:
         return {"ok": True, "skipped": True, "cap": cap, "today": today, "reasons": [], "recent": []}
     recent = pipeline_recent_status(db_path).get("runs") or []
+    if (os.getenv("GITHUB_ACTIONS") or "").strip():
+        # Release zip 不是常駐碟：GHA 上傳前會把 screen-* success 改成 computed，
+        # 早上 job 也不蓋 zip。拿快照查今早有沒有寄永遠是假紅。
+        return {
+            "ok": True,
+            "skipped": True,
+            "cap": cap,
+            "today": today,
+            "reasons": [],
+            "recent": recent[:6],
+        }
 
     now = taipei_now()
     hour = now.hour if now else 0

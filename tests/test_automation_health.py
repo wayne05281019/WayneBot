@@ -60,6 +60,97 @@ def test_pipeline_expectations_skips_empty_db():
         os.remove(path)
 
 
+def _seed_pipeline_row(path: str, run_date: str = "20260909") -> None:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT OR REPLACE INTO pipeline_runs(run_date, finished_at, status, notes) VALUES (?,?,?,?)",
+        (run_date, "2026-09-09T16:40:00", "success", "increment"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_pipeline_expectations_skips_morning_on_gha_zip(monkeypatch):
+    """GHA 巡檢的是 Release zip，不能當今早海選有沒有寄。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        _seed_pipeline_row(path)
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+        now = datetime(2026, 9, 10, 8, 43, tzinfo=ZoneInfo("Asia/Taipei"))
+        monkeypatch.setattr("config.taipei_now", lambda: now)
+        monkeypatch.setattr("config.taipei_today_str", lambda: "20260910")
+        r = pipeline_expectations_met(path, cap="20260909")
+        assert r.get("ok") is True
+        assert r.get("skipped") is True
+        assert r.get("reasons") == []
+    finally:
+        os.remove(path)
+
+
+def test_pipeline_expectations_requires_morning_on_resident(monkeypatch):
+    """常駐碟 07:00 後沒有 screen success，巡檢必須紅。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        _seed_pipeline_row(path)
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+        now = datetime(2026, 9, 10, 8, 43, tzinfo=ZoneInfo("Asia/Taipei"))
+        monkeypatch.setattr("config.taipei_now", lambda: now)
+        monkeypatch.setattr("config.taipei_today_str", lambda: "20260910")
+        monkeypatch.setattr(
+            "trading_calendar.morning_screen_pipeline_key",
+            lambda *_a, **_k: "screen-20260909",
+        )
+        r = pipeline_expectations_met(path, cap="20260909")
+        assert r.get("ok") is False
+        assert any("早上海選 screen-20260909 未成功" == x for x in r.get("reasons") or [])
+    finally:
+        os.remove(path)
+
+
+def test_pipeline_expectations_resident_ok_when_screen_success(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        ensure_core_schema(path)
+        _seed_pipeline_row(path)
+        conn = sqlite3.connect(path)
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_runs(run_date, finished_at, status, notes) VALUES (?,?,?,?)",
+            ("screen-20260909", "2026-09-10T06:32:00", "success", "sent"),
+        )
+        conn.commit()
+        conn.close()
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+        now = datetime(2026, 9, 10, 8, 43, tzinfo=ZoneInfo("Asia/Taipei"))
+        monkeypatch.setattr("config.taipei_now", lambda: now)
+        monkeypatch.setattr("config.taipei_today_str", lambda: "20260910")
+        monkeypatch.setattr(
+            "trading_calendar.morning_screen_pipeline_key",
+            lambda *_a, **_k: "screen-20260909",
+        )
+        r = pipeline_expectations_met(path, cap="20260909")
+        assert r.get("ok") is True, r
+        assert r.get("reasons") == []
+    finally:
+        os.remove(path)
+
+
 def test_verify_release_snapshot_passes_complete_day():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

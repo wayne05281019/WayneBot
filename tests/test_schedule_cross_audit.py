@@ -45,6 +45,17 @@ def test_gha_daily_run_owns_morning_and_fuse_only():
     assert text.count("from wayne_db import strip_private_user_data") == 1
 
 
+def test_gha_health_migrates_zip_before_scheduled_audit():
+    """Release zip 會落後 schema；定時巡檢要先套遷移，不能把待辦遷移當永久紅。"""
+    text = _read(".github/workflows/automation_health.yml")
+    assert "run_migrations" in text
+    assert "pending_migrations" in text
+    assert "verify_scheduled_audit" in text
+    src = _read("automation_health.py")
+    assert 'os.getenv("GITHUB_ACTIONS")' in src
+    assert "Release zip 不是常駐碟" in src
+
+
 def test_render_data_role_pushes_morning(monkeypatch):
     import config
 
