@@ -196,7 +196,13 @@ class ScreeningEngine:
             l60_w = float(low_series.tail(60).min()) if len(low_series) else 0.0
             bias_m = ((float(latest_close) - float(ma20)) / float(ma20) * 100.0) if ma20 else 0.0
             temp_n = compute_card_temperature(
-                float(latest_close), h20_w, l20_w, bias_m, high60=h60_w, low60=l60_w
+                float(latest_close),
+                h20_w,
+                l20_w,
+                bias_m,
+                high60=h60_w,
+                low60=l60_w,
+                ma60=float(ma60 or 0),
             )
             near_ath = bool(
                 (hi120 and float(latest_close) >= float(hi120) * 0.998)

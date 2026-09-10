@@ -308,19 +308,49 @@ def compute_card_temperature(
     *,
     high60: float = 0.0,
     low60: float = 0.0,
+    ma60: float = 0.0,
 ) -> float:
-    """溫度計：冷股可到個位數；大波動股仍可上 70°C+（對齊 CaryBot 範本尺度）。"""
+    """溫度計：冷股可到個位數；大波動股仍可上 70°C+（對齊 CaryBot 範本尺度）。
+
+    決策卡 °C 對的是作者技術表 VAM 欄的數字，公式沒公開，這裡只用公開日 K
+    做尺度近似，不抄 PWave／VAM／ATRB。
+
+    跌破季線後在 60 日區間下半盤整、又不是 20 高／20 低／60 低：改走窄尺，
+    避免舊高把溫度撐到 40°C+（中石化 8 月 VAM 0.5 型）。20 高熱尺（8234 76.9、
+    致伸 9/4 69.3）不變。貼 20 高但 VAM 只有 50～55（6547／台塑）同一把熱尺
+    對不上，不能為了那兩檔把 8234 整表降溫。
+    """
     try:
         c, h20, l20 = float(close), float(high20), float(low20)
         bias = float(bias_monthly or 0)
         h60, l60 = float(high60 or h20), float(low60 or l20)
+        m60 = float(ma60 or 0)
     except (TypeError, ValueError):
         return 0.0
     span = max(h20 - l20, c * 0.002 if c > 0 else 0.01)
-    rf = max(0.0, min(1.0, (c - l20) / span))
-    rf = rf ** 0.94
+    p20 = max(0.0, min(1.0, (c - l20) / span))
+    rf = p20 ** 0.94
     space60 = (h60 - l60) / l60 * 100.0 if l60 > 0 else (span / c * 100.0 if c > 0 else 10.0)
-    if space60 < 8:
+    p60 = (c - l60) / (h60 - l60) if (h60 - l60) > 1e-12 else p20
+    space20 = (h20 - l20) / l20 * 100.0 if l20 > 0 else space60
+    at_60_low = l60 > 0 and c <= l60 * 1.005
+    at_20_high = h20 > 0 and c >= h20 * 0.998
+    at_20_low = l20 > 0 and c <= l20 * 1.002
+    below_ma60 = m60 > 0 and c < m60
+    # 20 日還算寬、60 日舊高還掛著：才是「跌完在盤」不是 60 低附近的窄幅彈（致伸／華建）。
+    dumped_chop = (
+        below_ma60
+        and (not at_60_low)
+        and (not at_20_high)
+        and (not at_20_low)
+        and p60 < 0.42
+        and p20 < 0.85
+        and space20 >= 12.0
+        and (space60 - space20) >= 18.0
+    )
+    if dumped_chop:
+        t_min, t_span, bias_k = 1.0, 14.0, 0.18
+    elif space60 < 8:
         t_min, t_span, bias_k = 6.0, 4.5, 0.22
     elif space60 < 16:
         t_min, t_span, bias_k = 8.0, 22.0, 0.27

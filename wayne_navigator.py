@@ -518,7 +518,10 @@ class NavigatorEngine:
             l60 = float(df["low_60"].iloc[i])
             h60_i = float(df["high_60"].iloc[i])
             bias = float(df["bias_monthly"].iloc[i])
-            t = compute_card_temperature(c, h20, l20, bias, high60=h60_i, low60=l60)
+            ma60_i = float(df["ma60"].iloc[i] or 0)
+            t = compute_card_temperature(
+                c, h20, l20, bias, high60=h60_i, low60=l60, ma60=ma60_i
+            )
             temp_nums.append(t)
             if c >= h20 * 0.998:
                 hl_tags.append("20高")
