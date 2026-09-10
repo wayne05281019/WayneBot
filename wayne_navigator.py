@@ -972,28 +972,37 @@ def _trend_note_short(note: str) -> str:
 
 
 def dual_trend_pill_geom(body_h: float) -> dict:
-    """升降主標＋註兩顆 pill：兩顆中間留空，也不要貼到列的上下格線。
+    """升降雙標：格子上下對切各 50%。上半主標、下半註，底色鋪滿各半格。
 
-    貼齊格線會讓上一列「未新低」跟下一列「最低溫」隔線相貼，看起來像壓字。
+    單標（只有升溫／最低溫、沒有註）仍走中間一顆 pill，不切兩半。
     """
     h = max(float(body_h), 1.0)
-    main_fs, note_fs = 8.2, 7.6
-    edge = h * 0.18
-    main_h = h * 0.28
-    note_h = h * 0.26
-    main_dy = h / 2.0 - edge - main_h / 2.0
-    note_dy = h / 2.0 - edge - note_h / 2.0
-    inner_gap = (main_dy - main_h / 2.0) - (-note_dy + note_h / 2.0)
+    half = h * 0.5
     return {
-        "main_fs": main_fs,
-        "note_fs": note_fs,
-        "main_h": main_h,
-        "note_h": note_h,
-        "main_dy": main_dy,
-        "note_dy": note_dy,
-        "rounding": min(0.08, h * 0.12),
-        "gap": inner_gap,
-        "edge": edge,
+        "main_fs": 10.2,
+        "note_fs": 10.2,
+        "main_h": half,
+        "note_h": half,
+        "main_dy": h * 0.25,
+        "note_dy": h * 0.25,
+        "rounding": 0.0,
+        "gap": 0.0,
+        "edge": 0.0,
+    }
+
+
+def dual_trend_half_boxes(x: float, y1: float, col_w: float, body_h: float) -> dict:
+    """格底 y1。回傳上半／下半 (x, y, w, h) 與文字中心。"""
+    g = dual_trend_pill_geom(body_h)
+    half = float(g["main_h"])
+    cx = x + col_w / 2.0
+    return {
+        "main_box": (x, y1 + half, col_w, half),
+        "note_box": (x, y1, col_w, half),
+        "main_xy": (cx, y1 + half + half / 2.0),
+        "note_xy": (cx, y1 + half / 2.0),
+        "main_fs": g["main_fs"],
+        "note_fs": g["note_fs"],
     }
 
 
@@ -1417,6 +1426,21 @@ def _wcag(fg, bg) -> float:
     """字色與底色的對比倍數；白字壓深底至少要 4.5 才不吃力。"""
     a, b = sorted((_lum(fg), _lum(bg)), reverse=True)
     return (a + 0.05) / (b + 0.05)
+
+
+def _draw_trend_half(ax, box, xy, text, bg, fg, fs):
+    """升降雙標半格：Rectangle 鋪滿該半，三字置中。不是小 pill。"""
+    sbg, sfg = _status_badge_colors(bg, fg)
+    x, y, w, h = box
+    ax.add_patch(
+        patches.Rectangle(
+            (x, y), w, h, facecolor=sbg, edgecolor="none", lw=0, zorder=2.5
+        )
+    )
+    ax.text(
+        xy[0], xy[1], text, fontproperties=_fp(fs, "bold"),
+        color=sfg, ha="center", va="center", zorder=3,
+    )
 
 
 def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3, rounding=None):
@@ -2509,9 +2533,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             str(r["月乖離"]).replace("+", ""),
             str(r["120日量"]),
         ]
+        dual_trend = bool(trend_note) and not is_blank_card_signal(trend)
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
-            _cell_wash(ax, xs[i], y1, col_w, body_h, fills[i], C["line"])
+            wash = C["white"] if (i == 4 and dual_trend) else fills[i]
+            _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
@@ -2523,24 +2549,23 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
                             fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
-                elif i == 4 and trend_note:
+                elif i == 4 and dual_trend:
                     note = _trend_note_short(trend_note)
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
-                    max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    geom = dual_trend_pill_geom(body_h)
-                    main_fs = geom["main_fs"] if len(main_lab) >= 3 else geom["main_fs"] + 0.4
-                    note_fs = geom["note_fs"]
-                    main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
-                    note_w = min(tw(note, note_fs) + 2.2, max_w)
-                    _status_pill(
-                        cx, cy + geom["main_dy"], main_lab, tr_bg, tr_fg,
-                        w=main_w, h=geom["main_h"], fs=main_fs, rounding=geom["rounding"],
+                    halves = dual_trend_half_boxes(xs[i], y1, col_w, body_h)
+                    _draw_trend_half(
+                        ax, halves["main_box"], halves["main_xy"],
+                        main_lab, tr_bg, tr_fg, halves["main_fs"],
                     )
-                    _status_pill(
-                        cx, cy - geom["note_dy"], note, nbg, nfg,
-                        w=note_w, h=geom["note_h"], fs=note_fs, rounding=geom["rounding"],
+                    _draw_trend_half(
+                        ax, halves["note_box"], halves["note_xy"],
+                        note, nbg, nfg, halves["note_fs"],
                     )
+                    ax.add_patch(patches.Rectangle(
+                        (xs[i], y1), col_w, body_h, facecolor="none",
+                        edgecolor=C["tbl_line"], lw=0.7, zorder=4,
+                    ))
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
                     _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
@@ -2642,7 +2667,15 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
             kv_compact("自營", f"{fmt_lots(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
             kv_compact("法人", f"{fmt_lots(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
-            kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
+            kv_compact(
+                "籌碼佔量",
+                (
+                    f"截至 {tape.get('chip_asof_label')}　"
+                    if str(tape.get("chip_asof_label") or "").strip()
+                    else ""
+                )
+                + f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）",
+            ),
         ]
     try:
         from broker_points import visible_main_cost
@@ -3071,6 +3104,9 @@ def render_first_glance_png(
         pane(pad_x, y, pane_w, chips_h)
         sec_title(pad_x + 2.6, y + chips_h - title_band / 2, "籌碼（張）", C["navy"])
         inst = f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交"
+        asof = str((tape or {}).get("chip_asof_label") or "").strip()
+        if asof:
+            inst = f"截至 {asof}　{inst}"
         if inner_r - tw(inst, 11) > pad_x + 2.6 + tw("籌碼（張）", 13.5) + 6.0:
             ax.text(inner_r, y + chips_h - title_band / 2, inst, fontproperties=_fp(11),
                     color=C["ink_soft"], ha="right", va="center", zorder=3)
