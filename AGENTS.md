@@ -5,9 +5,10 @@
 使用者講「話筒」，**只**指偉權與哥哥手機 App，或 Telegram 網頁版，裡面實際在用的那顆 `@WC_ai_trade_bot`。
 
 - **不是** Cursor 話筒代理、computerUse、LINE Keep、本機模擬。
-- **更新到話筒**＝把程式合進 `main`，等 Render `waynebot-service` 重開。手機不會自動吃 Git 分支。
+- **所有更新／建構只算上兩支手機**：把程式合進 `main`，等 Render `waynebot-service` 重開。只合進分支、只停在 Cursor、只本機測過＝沒做完。
 - 核對有沒有更新：看 `https://waynebot-service.onrender.com/health` 的 `git_sha`，不要用正式 token 搶 `getUpdates`。
 - 代理人禁止再開 Cursor 話筒代理去「轉傳／對圖」；那不是使用者說的話筒。
+- 偉權與哥哥功能全同；鍵盤／飆大／查股都要兩邊同一顆程式。
 
 ## 產品憲法（2026-09-10 使用者鎖死）
 

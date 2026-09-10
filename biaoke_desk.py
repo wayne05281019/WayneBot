@@ -226,24 +226,10 @@ def corpus_span(db_path: Optional[str] = None) -> str:
 
 
 def format_biaoke_welcome_html() -> str:
-    """按飆大進去：不放選單，只教打字／語音提問。"""
-    span = html_escape(corpus_span())
-    return (
-        "<b>飆客獨立區</b>\n"
-        "這區跟海選／高低卡無關，也不改黃金買點。來源是 CMoney「期股多空雙飆客」公開發文"
-        f"（{span}）。不是買訊。\n"
-        "\n"
-        "<b>直接打字或語音問就好</b>，裡面沒有選單。\n"
-        "問句會在這邊用飆大的思考親自彙整後回你（雲端對話腦，兩支手機同一條路）。例如：\n"
-        "• 勤誠　／　藝舍-KY\n"
-        "• 去年年底在做什麼\n"
-        "• 大概何時止跌\n"
-        "• 量先價行怎麼看\n"
-        "\n"
-        "語料沒寫過的檔也會用同一套框架套官方 K。食衣住行不答。\n"
-        "精簡六顆沒這鈕時，打 <code>飆大</code> 或「完整選單」。"
-        "按下面其他鈕或打「回主選單」就離開。"
-    )
+    """按飆大進去：開成對話窗口，不倒課綱。問句走這顆對話腦。"""
+    from biaoke_brain import WINDOW_OPEN
+
+    return WINDOW_OPEN
 
 
 def format_biaoke_desk_html() -> str:

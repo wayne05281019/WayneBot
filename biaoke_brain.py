@@ -15,17 +15,12 @@ from tg_layout import html_escape
 
 PENDING = "biaoke:chat"
 DISCLAIMER = (
-    "⚠️ <b>這不是買訊。</b>不是飆大本人在線上。"
-    "問句在這邊用他公開文的思考彙整後回你；語料沒點名的檔也用同一套框架，可能看錯。"
+    "⚠️ <b>這不是買訊。</b>問句由這顆對話腦即時彙整後回你。"
+    "語料沒點名的檔也用同一套框架，可能看錯。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
-CHAT_HINT = (
-    "直接打字或語音問就好，裡面沒有選單。"
-    "問句會在這邊用飆大的思考彙整後回你。"
-    "股名、代號、大盤（例如大概何時止跌）都可以。"
-    "語料沒寫過的檔也會用同一套框架套官方 K。"
-    "按下面其他鈕或打「回主選單」離開。不是買訊。"
-)
+WINDOW_OPEN = "這是對話窗口。直接打字或語音。"
+CHAT_HINT = WINDOW_OPEN
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
 _OFF = re.compile(
@@ -47,21 +42,10 @@ _FILL = re.compile(
     r"(能不能買|可以買嗎|該買嗎|會不會跌|幫我看|分析一下|怎麼看|"
     r"的走勢|這檔|看看)"
 )
-def is_desk_query(ask: str) -> bool:
-    from biaoke_desk import _PROGRESS, _YEAR_END as _YEND
 
-    q = (ask or "").strip()
-    if not q:
-        return True
-    leftover = stock_query(q)
-    leftover = _PROGRESS.sub("", leftover)
-    leftover = _YEND.sub("", leftover)
-    leftover = re.sub(r"(飆大|飆客|AI飆客)", "", leftover).strip()
-    if _PROGRESS.search(q) and not leftover and not _TICKER.search(q):
-        return True
-    if _YEND.search(q) and not leftover and not _TICKER.search(q):
-        return True
-    return False
+def is_desk_query(ask: str) -> bool:
+    """只有空字串才出開場 stub。怎麼觀察／去年年底當問句走對話腦。"""
+    return not (ask or "").strip()
 
 
 def is_offtopic(ask: str) -> bool:

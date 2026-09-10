@@ -128,9 +128,16 @@ def test_offtopic_lifestyle_refused():
 
 
 def test_desk_query_still_rules():
-    assert is_desk_query("怎麼觀察")
     assert is_desk_query("")
+    assert is_desk_query("   ")
+    assert not is_desk_query("怎麼觀察")
+    assert not is_desk_query("去年年底")
     assert not is_desk_query("藝舍-KY")
+    html = answer_biaoke(":memory:", "怎麼觀察")
+    assert "這不是買訊" in html
+    assert "細微波" in html
+    assert "兩年進步在哪" not in html
+    assert "對話窗口" not in html
 
 
 def test_volume_first_price_spike_is_high_volume_day():

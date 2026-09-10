@@ -1636,15 +1636,35 @@ def _paint_lr_box(
         facecolor=fc, edgecolor=ec, linewidth=0.9, zorder=3))
     mid = y + h / 2
     lx, rx = x + 1.45, x + w - 1.45
-    ax.text(lx, mid, lab, fontproperties=_fp(lab_fs, "normal"), color=lab_c,
+    try:
+        fig_w = float(ax.figure.get_figwidth() or 7.2)
+    except Exception:
+        fig_w = 7.2
+    lab_s = str(lab or "")
+    prim = str(primary or "")
+    avail = max(8.0, w - 2.9 - _text_w(lab_s, lab_fs, fig_w, 400) - 1.2)
+    pfs = float(prim_fs)
+    while _text_w(prim, pfs, fig_w, 800) > avail and pfs > 10.0:
+        pfs -= 0.35
+    ax.text(lx, mid, lab_s, fontproperties=_fp(lab_fs, "normal"), color=lab_c,
             ha="left", va="center", zorder=4)
     if secondary:
-        ax.text(rx, mid + 1.55, primary, fontproperties=_fp(prim_fs, "bold"),
+        sec = str(secondary)
+        sfs = float(sec_fs)
+        while _text_w(sec, sfs, fig_w, 400) > avail and sfs > 8.0:
+            sfs -= 0.3
+        if _text_w(sec, sfs, fig_w, 400) > avail:
+            cut = sec
+            while cut and _text_w(cut + "…", sfs, fig_w, 400) > avail:
+                cut = cut[:-1]
+            sec = (cut + "…") if cut else ""
+        ax.text(rx, mid + 1.55, prim, fontproperties=_fp(pfs, "bold"),
                 color=prim_c, ha="right", va="center", zorder=4)
-        ax.text(rx, mid - 1.70, secondary, fontproperties=_fp(sec_fs, "normal"),
-                color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
+        if sec:
+            ax.text(rx, mid - 1.70, sec, fontproperties=_fp(sfs, "normal"),
+                    color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
     else:
-        ax.text(rx, mid, primary, fontproperties=_fp(prim_fs, "bold"),
+        ax.text(rx, mid, prim, fontproperties=_fp(pfs, "bold"),
                 color=prim_c, ha="right", va="center", zorder=4)
 
 

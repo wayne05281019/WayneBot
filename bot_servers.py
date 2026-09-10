@@ -300,7 +300,7 @@ HELP_TOPICS = {
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>刷新</b>：刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>飆大</b>：獨立觀點區，也叫飆客；不是海選\n"
+        "• <b>飆大</b>：這顆對話腦的即時窗口（也叫飆客）；打字就回，不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
@@ -363,9 +363,9 @@ HELP_TOPICS = {
         "• 要取消：改按其他按鈕即可，不會送出。\n"
         "\n"
         "<b>⑦ 飆大</b>\n"
-        "• 是什麼：獨立觀點區。讀「期股多空雙飆客」公開發文與他自己的一、二層樓中樓（含回在別人留言裡的、以及他附的圖）。不是海選、不改黃金買點。路人留言不收。\n"
-        "• 怎麼用：按進去直接打字或語音提問，裡面沒有選單。問句會在這邊用飆大公開文的思考彙整後回你（偉權／哥哥同一條路）。股名、代號、大盤、怎麼觀察都可以問。\n"
-        "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊，也不接到大盤／海選。"
+        "• 是什麼：這顆對話腦的即時窗口。不是海選、不改黃金買點。\n"
+        "• 怎麼用：按進去就是對話。打字或語音即時回（偉權／哥哥同一條路）。食衣住行不答。\n"
+        "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
         "<b>第二排按鈕（左→右）</b>\n"
@@ -783,7 +783,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v15：兩排各加一格＝7+7；上排最右飆客獨立區，下排最右空白格。
 # v16：上排最右改「飆大」；按進去直接對話，不放裡面選單。
 # v17：飆大兩個字上的圈拿掉；舊圈圈鍵盤仍認。
-MENU_LAYOUT_VERSION = "17"
+# v18：v17 去圈後，只按飆大不會重掛 ReplyKeyboard，手機仍顯示舊圈圈。這版任何進飆大都會帶現在的兩排（沒圈）。
+MENU_LAYOUT_VERSION = "18"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1827,9 +1828,9 @@ class WayneTelegramBot:
         if sent_msgs:
             self._help_msgs[actor] = sent_msgs
 
-    def _keyboard(self):
+    def _keyboard(self, uid: str = ""):
         """錯誤／提示改釘回兩排主選單。直立式「說明／主選單」已廢。"""
-        return self._reply_menu()
+        return self._reply_menu(uid)
 
     def _hub_keyboard(
         self,
@@ -3530,30 +3531,46 @@ class WayneTelegramBot:
         self._pending[actor] = BIAOKE_PENDING
 
     async def _send_biaoke_page(self, message, *, ask: str = "", uid: str = "") -> None:
-        """飆客獨立區：持續對話。問句在這邊彙整。語料沒寫過的檔也套官方 K。不進海選。"""
-        from biaoke_brain import answer_biaoke, is_desk_query
+        """飆大＝這顆對話腦的即時窗口。問句在這邊彙整。語料沒寫過的檔也套官方 K。不進海選。"""
+        from biaoke_brain import answer_biaoke
         from biaoke_desk import format_biaoke_html
 
+        uid = str(uid or self._uid_from_message(message) or "")
+        try:
+            await self._ensure_reply_menu_if_needed(message, uid)
+        except Exception:
+            logger.exception("飆大刷新鍵盤略過")
         self._enter_biaoke_chat(message, uid)
         q = (ask or "").strip()
         actor = self._actor_key(message, uid=uid)
         if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
             self._biaoke_hist = {}
         hist = list(self._biaoke_hist.get(actor) or [])
-        if is_desk_query(q):
-            html = format_biaoke_html(q)
-        else:
+        if q:
+            try:
+                chat = getattr(message, "chat", None)
+                if chat is not None and hasattr(chat, "send_action"):
+                    await chat.send_action("typing")
+            except Exception:
+                pass
             html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist)
-        if q and not is_desk_query(q):
             bucket = self._biaoke_hist.setdefault(actor, [])
             bucket.append({"ask": q, "answer": html[:400]})
             del bucket[:-8]
+        else:
+            html = format_biaoke_html(q)
         parts = chunk_telegram_html(html, reflow=True)
+        kb = self._reply_menu(uid)
         if not parts:
-            await message.reply_text("飆客區讀取失敗。", reply_markup=self._keyboard())
+            await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
             return
-        for part in parts:
-            await message.reply_html(part, disable_web_page_preview=True)
+        n = len(parts)
+        for i, part in enumerate(parts):
+            await message.reply_html(
+                part,
+                disable_web_page_preview=True,
+                reply_markup=kb if i == n - 1 else None,
+            )
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""

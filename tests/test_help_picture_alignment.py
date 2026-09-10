@@ -38,7 +38,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert row1 == ROW1
     assert row2[:6] == ROW2_LABELS
     assert row2[6].strip() == ""
-    assert MENU_LAYOUT_VERSION == "17"
+    assert MENU_LAYOUT_VERSION == "18"
 
     guide = HELP_TOPICS["guide"]
     menu = HELP_TOPICS["menu"]

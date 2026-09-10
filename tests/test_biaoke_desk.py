@@ -53,13 +53,15 @@ def test_progress_page_is_independent():
 
 
 def test_welcome_teaches_chat_not_a_menu():
+    from biaoke_brain import WINDOW_OPEN
     from biaoke_desk import format_biaoke_html, format_biaoke_welcome_html
 
     html = format_biaoke_welcome_html()
+    assert html == WINDOW_OPEN
+    assert "對話窗口" in html
     assert "直接打字" in html
-    assert "語音" in html
-    assert "沒有選單" in html
-    assert "彙整" in html
+    assert "勤誠" not in html
+    assert "彙整" not in html
     assert "問一檔" not in html
     assert "三顆" not in html
     assert "麥克風" not in html
@@ -68,7 +70,6 @@ def test_welcome_teaches_chat_not_a_menu():
     see = format_biaoke_desk_html()
     assert "量先價行" in see
     assert "細微波" in see
-    assert "直接打字" in see
     assert "問一檔" not in see
 
 
@@ -177,10 +178,20 @@ def test_biaoke_page_has_no_inside_menu():
     assert "bk:see" not in src
     assert "怎麼觀察" not in src
     assert "問一檔" not in src
+    assert "_reply_menu" in src
+    assert "reply_markup" in src
+    assert "_ensure_reply_menu_if_needed" in src
+    assert "send_action" in src
+    assert "typing" in src
     assert not hasattr(WayneTelegramBot, "_biaoke_inline")
     whole = inspect.getsource(WayneTelegramBot)
     assert 'InlineKeyboardButton("怎麼觀察"' not in whole
     assert 'kind == "see"' in whole  # 舊訊息三顆還能答，只是不再畫選單
+    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_LAYOUT_VERSION
+
+    assert MENU_BTN_BIAOKE_FACE == "飆大"
+    assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
+    assert MENU_LAYOUT_VERSION == "18"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():

@@ -18,9 +18,9 @@ from biaoke_mind import (
 
 def test_welcome_says_compile_not_menu():
     html = format_biaoke_welcome_html()
-    assert "彙整" in html
-    assert "沒有選單" in html
+    assert "對話窗口" in html
     assert "問一檔" not in html
+    assert "彙整" in DISCLAIMER
 
 
 def test_method_curriculum_is_100_and_answers():
