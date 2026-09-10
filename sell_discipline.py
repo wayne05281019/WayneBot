@@ -221,6 +221,32 @@ FACE_NOTES: Dict[tuple, str] = {
     ("hi20", "flat", "hi_price"): "價貼20日高、熱度沒再走沒跟上。先出一點、不要追",
     ("near_lo", "flat", "sync_left"): "表靠近低檔、熱度沒再走。先看。有持股先出一點",
     ("near_lo", "flat", "desync_left"): "表靠近低檔、熱度沒再動。先看。有持股先出一點",
+    # 獲利已大：同一把格子再加「這段已經漲多」，未來漲多卡才對得上。
+    ("near_hi", "down", "sync_left_run"): "價靠近20日高、熱度已降、這段已經漲多。先別追、先別加碼。有持股就先出一點",
+    ("near_hi", "flat", "sync_left_run"): "價靠近20日高、熱度沒再走、這段已經漲多。先別追。有持股就先出一點",
+    ("near_hi", "floor", "sync_left_run"): "價靠近20日高、熱度在最低、這段已經漲多。先看、不要追。有持股就先出一點",
+    ("near_hi", "diverge", "sync_left_run"): "價靠近高檔、價溫背離、這段已經漲多。少追。有持股就先出一點",
+    ("near_hi", "up", "desync_left_run"): "高點剛離開又靠回來、熱度在升、這段已經漲多。今天別追。有持股就先出一點",
+    ("near_hi", "down", "desync_left_run"): "價靠近20日高、熱度在降、這段已經漲多。先別追。有持股就先出一點",
+    ("near_hi", "flat", "desync_left_run"): "價靠近20日高、熱度沒再走、這段已經漲多。少追。有持股就先出一點",
+    ("near_hi", "floor", "desync_left_run"): "價靠近20日高、熱度在最低、這段已經漲多。不要追。有持股就先出一點",
+    ("hi20", "up", "hi_price_run"): "價已貼20日高、熱度在升不是最高溫、這段已經漲多。先出一點、不要追",
+    ("hi20", "down", "hi_price_run"): "價貼20日高、熱度在降沒跟上、這段已經漲多。先出一點、不要追",
+    ("hi20", "flat", "hi_price_run"): "價貼20日高、熱度沒再走、這段已經漲多。先出一點、不要追",
+    ("hi20", "diverge", "hi_price_run"): "價在20日高、價溫背離、這段已經漲多。少追、先出一點",
+    ("hi20", "floor", "hi_price_run"): "價在20日高、熱度掉到最低、這段已經漲多。先出一點、不要追",
+    ("left_hi", "up", "sync_left_run"): "高點已離開，熱度又升回來、這段已經漲多。先別追。有持股就先出一點",
+    ("left_hi", "down", "sync_left_run"): "高點跟熱度都退了、這段已經漲多。先別追、也先別加碼。有持股就先出一點",
+    ("left_hi", "floor", "desync_left_run"): "高點離開、熱度在最低、獲利已經很大。這波先當結束。有持股就先出一點",
+    ("left_hi", "down", "desync_left_run"): "高點跟熱度都在退、獲利已經很大。這波先當結束。有持股就先出一點",
+    ("hi10", "up", "sync_left_run"): "價在10日高、熱度在升、這段已經漲多。先別追。有持股先出一點",
+    ("hi10", "down", "sync_left_run"): "價在10日高、熱度在降、這段已經漲多。先別追。有持股先出一點",
+    ("hi10", "up", "desync_left_run"): "價停在10日高、熱度在升、這段已經漲多。不要追高。有持股先出一點",
+    ("hi10", "peak", "hi_temp_run"): "熱度最高，價只到10日高、這段已經漲多。先出一點、不要追高",
+    ("near_hi", "peak", "hi_temp_run"): "熱度最高、價靠近20日高、這段已經漲多。先出一點、不要追高",
+    ("left_hi", "peak", "hi_temp_run"): "熱度最高、價已離開20日高、這段已經漲多。先出一點、不要追高",
+    ("mid", "up", "sync_left_run"): "高點已離開，熱度又升、這段已經漲多。先別追。有持股就先出一點",
+    ("mid", "down", "sync_left_run"): "高點跟熱度都退了、這段已經漲多。先別追。有持股就先出一點",
 }
 
 
@@ -316,10 +342,10 @@ def card_discipline_face(card: Dict[str, Any] | None) -> Dict[str, str]:
     why = _WHY_CODE.get(_why_short(card.get("sell_why") or ""), "")
     if why == "hi_price" and pos == "hi20" and heat == "up" and temp is not None and temp >= 80:
         why = "hi_price_hot"
-    elif why == "sync_left" and pos == "near_hi" and heat == "up" and gain is not None and gain >= 20:
-        why = "sync_left_run"
-    elif why == "desync_left" and pos == "left_hi" and heat == "up" and gain is not None and gain >= 40:
-        why = "desync_left_run"
+    elif why and gain is not None and gain >= 20:
+        run = f"{why}_run"
+        if (pos, heat, run) in FACE_NOTES:
+            why = run
     return {"pos": pos, "heat": heat, "why": why, "trend": trend}
 
 
@@ -356,6 +382,8 @@ def _note_from_face(card: Dict[str, Any]) -> str:
             return note
         base_why = {
             "hi_price_hot": "hi_price",
+            "hi_price_run": "hi_price",
+            "hi_temp_run": "hi_temp",
             "sync_left_run": "sync_left",
             "desync_left_run": "desync_left",
         }.get(why, why)

@@ -165,6 +165,60 @@ def test_flat_heat_near_high_does_not_say_gone():
     assert "已降" not in title
 
 
+def test_run_face_says_already_up_when_gain_large():
+    """獲利大的未來卡：降溫／貼20高／升溫脫離都要寫已經漲多。"""
+    cool = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 46.8,
+        "dist_h20": -1.2,
+        "table": [{"date": "20260909", "高低": "No", "預警": "K20高", "升降": "降溫", "profit_pct": 46.8}],
+    }
+    face = card_discipline_face(cool)
+    assert face["why"] == "sync_left_run"
+    note = sell_note_short(cool)
+    assert "漲多" in note
+    assert "已降" in note
+    assert "在升" not in note
+
+    hi20 = {
+        "sell_action": "直接減碼",
+        "sell_why": "不同步（最高價但非最高溫）",
+        "gain_pct": 20.4,
+        "table": [{"date": "20260909", "高低": "20高", "預警": "K20高", "升降": "No", "profit_pct": 20.4}],
+    }
+    assert card_discipline_face(hi20)["why"] == "hi_price_run"
+    assert "漲多" in sell_note_short(hi20)
+    assert "沒再走" in sell_note_short(hi20)
+
+    back = {
+        "sell_action": "直接減碼",
+        "sell_why": "不同步再脫離",
+        "gain_pct": 35.4,
+        "dist_h20": -1.0,
+        "table": [{"date": "20260909", "高低": "No", "預警": "K20高", "升降": "升溫", "profit_pct": 35.4}],
+    }
+    assert card_discipline_face(back)["why"] == "desync_left_run"
+    note2 = sell_note_short(back)
+    assert "漲多" in note2
+    assert "升" in note2
+    assert "已降" not in note2
+
+
+def test_small_gain_does_not_use_run_face():
+    card = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 12.0,
+        "dist_h20": -1.2,
+        "table": [{"date": "20260909", "高低": "No", "預警": "K20高", "升降": "降溫", "profit_pct": 12.0}],
+    }
+    assert card_discipline_face(card)["why"] == "sync_left"
+    note = sell_note_short(card)
+    assert "漲多" not in note
+    assert "已降" in note
+
+
 def test_00631l_warming_near_high_uses_rising_face():
     """00631L 型：最新列 K20高＋升溫＋獲利大。五十句寫在升，態度標題不寫已降。"""
     today = {
@@ -378,7 +432,7 @@ def test_cooling_leave_still_says_heat_left():
     card = {
         "sell_action": "準備減碼",
         "sell_why": "先前同步再脫離",
-        "gain_pct": 20.1,
+        "gain_pct": 18.1,
         "dist_h20": -2.8,
         "table": [{"高低": "No", "預警": "No", "升降": "降溫", "溫度計": "53.5 °C"}],
     }
@@ -947,7 +1001,10 @@ def test_holdings_and_notes_match_20260904_flags():
     assert "先出一點" in notes["3703"]
     assert "不要追高" in notes["3703"]
     assert "不是叫你買" in notes["3703"]
-    assert notes["3035"].startswith(NOTE_SYNC_LEFT)
+    assert "退了" in notes["3035"]
+    assert "漲多" in notes["3035"]
+    assert "先別追" in notes["3035"]
+    assert "不是叫你買" in notes["3035"]
     assert "退了" not in notes["6526"]
     assert "升" in notes["6526"]
     assert "先別追" in notes["6526"]
