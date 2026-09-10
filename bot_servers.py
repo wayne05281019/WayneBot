@@ -303,7 +303,7 @@ HELP_TOPICS = {
         "• <b>飆大</b>：圈住觀點，也叫飆客；不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
-        "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 檔，不買滿\n"
+        "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
         "• <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖給偉權\n"
         "\n"
         "<b>按錯了怎麼辦</b>\n"
@@ -699,7 +699,7 @@ HELP_TOPICS = {
         "<b>三種清單搞混</b>\n"
         "• 觀察＝自選，還沒買\n"
         "• 持股＝你按過記買入的才會在\n"
-        "• AI倉＝假錢對照組，不是你口袋裡的股票；平常最多 1 檔，不買滿\n"
+        "• AI倉＝假錢對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
         "\n"
         "<b>找不到「產業／籌碼／營收」</b>\n"
         "查完一檔，按鈕在<b>圖下面那一排</b>，不在右側 ⌨️ 主選單。\n"
@@ -1397,7 +1397,7 @@ class WayneTelegramBot:
         self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
         await self._streak_send_step(
             message,
-            "<b>連買區域</b>\n"
+            "<b>連買區</b>\n"
             "興櫃沒有官方法人表，這裡只看上市櫃。\n"
             "點訊息下方選哪一種連買。\n"
             "• <b>外資</b>＝外資連續買超\n"
@@ -4594,7 +4594,7 @@ class WayneTelegramBot:
             bits = [ai.get("html") or ""]
             if not ai.get("bought") and not ai.get("sold"):
                 bits.append(
-                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。平常最多 1 檔、超跌才第 2 檔，第 3 份留現金；或名單被高低卡／美股濾掉。</i>"
+                    f"<i>本次沒有新成交（候選 {ai.get('candidates') or 0} 檔）。平常最多 1 份、超跌才第 2 份，第 3 份留現金；或名單被高低卡／美股濾掉。</i>"
                 )
             if ai.get("bought"):
                 bits.append("<b>本次買進</b>\n" + "\n".join(html_escape(x) for x in ai["bought"]))

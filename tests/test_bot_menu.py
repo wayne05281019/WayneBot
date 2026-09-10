@@ -242,6 +242,24 @@ def test_help_streak_does_not_split_listed_otc():
     assert "怎麼用" not in HELP_TOPICS["industry"] or "產業按鈕" in HELP_TOPICS["industry"]
 
 
+def test_streak_entry_title_matches_button():
+    import inspect
+
+    from bot_servers import MENU_BTN_STREAK, WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._streak_show_kind)
+    assert MENU_BTN_STREAK == "連買區"
+    assert "<b>連買區</b>" in src
+    assert "<b>連買區域</b>" not in src
+    blob = "\n".join(
+        [
+            open("bot_servers.py", encoding="utf-8").read(),
+            open("ai_trader.py", encoding="utf-8").read(),
+        ]
+    )
+    assert "平常最多 1 檔" not in blob
+
+
 def test_streak_wizard_has_no_listed_otc_step():
     from bot_servers import WayneTelegramBot
 

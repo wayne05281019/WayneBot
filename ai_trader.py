@@ -612,7 +612,7 @@ def format_ai_desk_pages(
     pages: List[str] = []
     if not s["positions"]:
         head.extend(["", "────────────────", "<b>持倉</b>"])
-        head.append("尚無持倉。平常最多 1 檔。")
+        head.append("尚無持倉。平常最多 1 份。")
         head.append(f"每槽 {slot:,.0f}。另兩份留著抄低或加碼。")
         pages.append("\n".join(head))
     else:
