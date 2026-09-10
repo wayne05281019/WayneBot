@@ -258,6 +258,7 @@ class IntentHit:
 
 def compact_text(text: str) -> str:
     t = unicodedata.normalize("NFKC", text or "").strip()
+    t = "".join(ch for ch in t if unicodedata.category(ch) not in ("Mn", "Me"))
     t = t.replace("\u3000", "").replace(" ", "")
     if t.startswith("/"):
         t = t[1:]
