@@ -1329,8 +1329,8 @@ def _close_move_bits(chg, chg_amt) -> list:
     return [format_move_plain(chg_amt, chg)]
 
 
-def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card):
-    """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。"""
+def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
+    """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。今日小 K 畫在「收盤」左邊。"""
     extra = _etf_nav_extra_h(card)
     if extra:
         # 28pt 收盤與 15.5pt 漲跌中心距至少約 4.8，否則右上會黏成一塊。
@@ -1343,8 +1343,18 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
         chg_fs = 15.5
     ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
             color=chg_c, ha="right", va="center", zorder=3)
-    ax.text(px_right - tw(close_s, 28) - 2.0, close_y, "收盤",
+    label = "收盤"
+    label_x = px_right - tw(close_s, 28) - 2.0
+    ax.text(label_x, close_y, label,
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
+    ohlc = _card_ohlc_tuple(card, last)
+    if ohlc:
+        o, hi, lo, cl, prev = ohlc
+        cw, ch = 2.35, 4.15
+        candle_right = label_x - tw(label, 11.0) - 1.15
+        _draw_mini_candle(
+            ax, candle_right - cw, close_y - ch * 0.5, cw, ch, o, hi, lo, cl, prev
+        )
     ax.text(px_right, chg_y, "　".join(chg_bits),
             fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     if not extra:
@@ -1518,14 +1528,9 @@ def _card_ohlc_tuple(card: dict, last: dict | None = None):
 
 
 def _paint_title_stamp(ax, tw, C, brand_x, title_cy, stamp, clock_line, ohlc=None):
-    """右上日期時鐘；有 OHLC 時在「收盤／盤中」左邊畫今日小 K。"""
+    """右上日期時鐘。今日小 K 畫在收盤價「收盤」左邊，不畫在標題列。"""
+    del ohlc
     stamp = str(stamp or "")
-    stamp_w = tw(stamp, 11.2) if stamp else 0.0
-    if ohlc:
-        o, hi, lo, cl, prev = ohlc
-        cw, ch = 1.7, 3.15
-        x = brand_x - stamp_w - 1.25 - cw
-        _draw_mini_candle(ax, x, title_cy - ch * 0.5, cw, ch, o, hi, lo, cl, prev)
     ax.text(
         brand_x, title_cy, stamp, fontproperties=_fp(11.2),
         color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3,
@@ -2317,23 +2322,37 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 作者卡小盒子白底灰標；％在價下面，高點負數綠、低點正數紅。
-        del hit
+        # 高低小盒子：左標右價；貼近高點淡粉、貼近低點淡綠，其餘白底。
+        fc, ec = C["white"], C["line"]
+        try:
+            dlt = float(dist) if dist is not None else None
+        except (TypeError, ValueError):
+            dlt = None
+        if high:
+            lc = C["hi_ink"]
+            if dlt is not None and dlt >= -1.5:
+                fc, ec = C["hi_fill"], C["hi_line"]
+        elif hit or (dlt is not None and dlt <= 0.35):
+            lc = C["lo_ink"]
+            if dlt is not None and dlt <= 0.35:
+                fc, ec = C["lo_fill"], C["lo_line"]
+        else:
+            lc = C["lo_ink"]
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
-            facecolor=C["white"], edgecolor=C["line"], linewidth=1.0, zorder=3))
-        cx = x + box_w / 2
-        ax.text(cx, y + box_h * 0.74, lab, fontproperties=_fp(10.5, "bold"),
-                color=C["ink_soft"], ha="center", va="center", zorder=4)
-        ax.text(cx, y + box_h * 0.42, _fmt_price(px), fontproperties=_fp(16, "bold"),
-                color=C["ink"], ha="center", va="center", zorder=4)
+            facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
+        lx, rx = x + 1.15, x + box_w - 1.2
+        ax.text(lx, y + box_h / 2, lab, fontproperties=_fp(11.0, "bold"), color=lc,
+                ha="left", va="center", zorder=4)
+        ax.text(rx, y + box_h * 0.70, _fmt_price(px), fontproperties=_fp(16, "bold"),
+                color=C["ink"], ha="right", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(cx, y + box_h * 0.16, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
-                color=dc, ha="center", va="center", zorder=4)
+        ax.text(rx, y + box_h * 0.24, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
+                color=dc, ha="right", va="center", zorder=4)
 
     # 標題：左代號股名，右只放當下日期時間。標語不要。
     y = H - m_top - head_h
@@ -2492,7 +2511,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     # 高點
     y -= gap + hi_pane_h
-    pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["line"])
+    pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["hi_line"])
     sec_title(pad_x + 2.6, y + hi_pane_h - title_band / 2, "高點資訊", C["hi_ink"],
               f"10日／20日／60日　MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}")
     highs = [("10日高點", card["h10"], card["dist_h10"]),
@@ -2503,7 +2522,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     # 低點：短中期一排，120／240／480 另一排。
     y -= gap + lo_pane_h
-    pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["line"])
+    pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["lo_line"])
     sec_title(pad_x + 2.6, y + lo_pane_h - title_band / 2, "低點資訊", C["lo_ink"],
               f"20日（高低操作空間 {card['space_20']}%）／60日（高低操作空間 {card['space_60']}%）")
     lows = [("10日低點", card["l10"], card["dist_l10"]),
@@ -3091,7 +3110,7 @@ def render_first_glance_png(
     chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
     close_s = _fmt_price(close_v)
     chg_bits = _close_move_bits(chg, chg_amt)
-    _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card)
+    _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card, last)
     # 股票收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
     ohlc_bits = [
         f"開 {_fmt_price(last.get('open') or card.get('open'))}",

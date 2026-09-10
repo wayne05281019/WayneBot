@@ -243,6 +243,8 @@ def test_etf_price_nav_beside_close_not_in_fundamentals(tmp_path):
     assert 'C["up"]' in src
     assert 'C["down"]' in src
     assert "折溢價" in src
+    assert "_draw_mini_candle" in src
+    assert "收盤" in src
 
 
 def test_etf_div_last_and_next_amount_only_when_announced(tmp_path):
