@@ -2130,8 +2130,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
     try:
-        from sell_discipline import sell_note_short
+        from sell_discipline import apply_face_stance, sell_note_short
 
+        apply_face_stance(card)
         sell_sub = sell_note_short(card)
     except Exception:
         sell_sub = ""

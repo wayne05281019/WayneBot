@@ -11,12 +11,15 @@ from sell_discipline import (
     NOTE_HI_PRICE,
     NOTE_HI_TEMP,
     NOTE_SYNC_LEFT,
+    apply_face_stance,
     attach_sell,
     card_discipline_face,
     classify_how_to_sell,
+    latest_table_row,
     sell_note_lines,
     sell_note_short,
     sell_notes_for_stocks,
+    stance_title_from_face,
 )
 
 
@@ -120,6 +123,257 @@ def test_warming_near_high_does_not_say_heat_left():
     assert "先出一點" in note
 
 
+def _etf_near_high_card(table, *, trend="升溫", **extra):
+    card = {
+        "sell_action": "準備減碼",
+        "sell_why": "先前同步再脫離",
+        "gain_pct": 29.7,
+        "dist_h20": -2.8,
+        "temp_c": "57.8 °C",
+        "stance": "今天先看表，先等",
+        "stance_kind": "wait",
+        "table": table,
+    }
+    card.update(extra)
+    return card
+
+
+def test_flat_heat_near_high_does_not_say_gone():
+    """升降＝No：熱度沒再走，不能寫都沒了／已降。"""
+    card = _etf_near_high_card(
+        [
+            {
+                "date": "20260910",
+                "高低": "No",
+                "預警": "K20高",
+                "升降": "No",
+                "profit_pct": 17.3,
+            }
+        ],
+        gain_pct=17.3,
+        sell_action="直接減碼",
+        sell_why="不同步再脫離",
+    )
+    face = card_discipline_face(card)
+    assert face["heat"] == "flat"
+    note = sell_note_short(card)
+    assert "沒再走" in note
+    assert "都沒了" not in note
+    assert "已降" not in note
+    assert "退了" not in note
+    title, _ = stance_title_from_face(card)
+    assert "已降" not in title
+
+
+def test_00631l_warming_near_high_uses_rising_face():
+    """00631L 型：最新列 K20高＋升溫＋獲利大。五十句寫在升，態度標題不寫已降。"""
+    today = {
+        "date": "20260910",
+        "高低": "No",
+        "預警": "K20高",
+        "升降": "升溫",
+        "升降註": "",
+        "溫度計": "57.8 °C",
+        "profit_pct": 29.7,
+    }
+    yest = {
+        "date": "20260909",
+        "高低": "No",
+        "預警": "K20高",
+        "升降": "降溫",
+        "升降註": "",
+        "溫度計": "69.7 °C",
+        "profit_pct": 28.0,
+    }
+    newest_first = pd.DataFrame([today, yest])
+    oldest_first = pd.DataFrame([yest, today])
+    for tbl in (newest_first, oldest_first, [today, yest], [yest, today]):
+        card = _etf_near_high_card(tbl)
+        row = latest_table_row(card)
+        assert str(row.get("date")) == "20260910"
+        assert str(row.get("升降")) == "升溫"
+        face = card_discipline_face(card)
+        assert face["pos"] == "near_hi"
+        assert face["heat"] == "up"
+        assert face["why"] == "sync_left_run"
+        note = sell_note_short(card)
+        assert "升" in note
+        assert "已降" not in note
+        assert "退了" not in note
+        assert "都沒了" not in note
+        assert "20日高" in note
+        assert "先出一點" in note
+        title, kind = stance_title_from_face(card)
+        assert kind == "avoid"
+        assert "已降" not in title
+        assert "別追" in title
+        apply_face_stance(card)
+        assert card["stance"] == title
+        assert "已降" not in card["stance"]
+
+
+def test_cooling_near_high_title_says_heat_dropped():
+    card = _etf_near_high_card(
+        [
+            {
+                "date": "20260910",
+                "高低": "No",
+                "預警": "K20高",
+                "升降": "降溫",
+                "profit_pct": 29.7,
+            }
+        ]
+    )
+    note = sell_note_short(card)
+    assert "已降" in note or "在降" in note
+    assert "在升" not in note
+    title, kind = stance_title_from_face(card)
+    assert kind == "avoid"
+    assert "已降" in title
+
+
+def test_attach_sell_overwrites_stance_from_face():
+    tbl = pd.DataFrame(
+        {
+            "date": ["20260909", "20260910"],
+            "高低": ["20高", "No"],
+            "預警": ["K20高", "K20高"],
+            "升降": ["最高溫", "升溫"],
+        }
+    )
+    card = {
+        "table": tbl,
+        "gain_pct": 29.7,
+        "dist_h20": -2.8,
+        "stance": "今天先看表，先等",
+        "stance_kind": "wait",
+    }
+    attach_sell(card)
+    assert card["sell_action"] == "準備減碼"
+    assert "同步再脫離" in card["sell_why"]
+    assert "已降" not in card["stance"]
+    assert "別追" in card["stance"]
+    assert "升" in sell_note_short(card)
+
+
+def test_decision_card_png_00631l_warming_not_cooling(tmp_path, monkeypatch):
+    """決策卡今日態度＋紀律：升溫靠近20日高，畫面不能出現熱度已降。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.axes
+
+    from wayne_navigator import render_decision_card_png, render_first_glance_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260910",
+                "close": 24.5,
+                "獲利": "29.7%",
+                "高低": "No",
+                "預警": "K20高",
+                "溫度計": "57.8 °C",
+                "升降": "升溫",
+                "升降註": "",
+                "月乖離": "+4.1%",
+                "120日量": "第 40 名",
+                "profit_pct": 29.7,
+                "bias_monthly": 4.1,
+                "vol_rank_120": 40,
+                "temp_num": 57.8,
+            },
+            {
+                "date": "20260909",
+                "close": 24.1,
+                "獲利": "28.0%",
+                "高低": "No",
+                "預警": "K20高",
+                "溫度計": "69.7 °C",
+                "升降": "降溫",
+                "升降註": "",
+                "月乖離": "+3.8%",
+                "120日量": "第 42 名",
+                "profit_pct": 28.0,
+                "bias_monthly": 3.8,
+                "vol_rank_120": 42,
+                "temp_num": 69.7,
+            },
+            {
+                "date": "20260908",
+                "close": 24.8,
+                "獲利": "31.0%",
+                "高低": "20高",
+                "預警": "K20高",
+                "溫度計": "72.0 °C",
+                "升降": "最高溫",
+                "升降註": "",
+                "月乖離": "+5.0%",
+                "120日量": "第 38 名",
+                "profit_pct": 31.0,
+                "bias_monthly": 5.0,
+                "vol_rank_120": 38,
+                "temp_num": 72.0,
+            },
+        ]
+    )
+    card = _mini_card_for_png(
+        table=table,
+        sell_action="準備減碼",
+        sell_why="先前同步再脫離",
+        gain_pct=29.7,
+        dist_h20=-2.8,
+        temp_c="57.8 °C",
+        stance="今天先看表，先等",
+        stance_kind="wait",
+        stock_id="00631L",
+        stock_name="元大台灣50正2",
+        latest_date="20260910",
+        query_date="2026/09/10",
+        close=24.5,
+    )
+    out = tmp_path / "00631L_warm.png"
+    path = render_decision_card_png(card, str(out))
+    assert path and out.is_file()
+    joined = "\n".join(seen)
+    assert "已降" not in joined
+    assert "退了" not in joined
+    assert "升" in joined
+    assert "別追" in joined
+    assert "今日態度" in joined
+
+    seen.clear()
+    glance = tmp_path / "00631L_glance.png"
+    tape = {
+        "last": {},
+        "move": {},
+        "volume": {},
+        "foreign": {},
+        "trust": {},
+        "dealer": {},
+        "three": {},
+        "inst_pct": 0,
+        "conflict": "",
+    }
+    gpath = render_first_glance_png("00631L", card, tape, str(glance))
+    assert gpath and glance.is_file()
+    joined_g = "\n".join(seen)
+    assert "已降" not in joined_g
+    assert "退了" not in joined_g
+    assert "升" in joined_g
+
+
 def test_cooling_leave_still_says_heat_left():
     card = {
         "sell_action": "準備減碼",
@@ -177,7 +431,7 @@ def test_glance_png_sync_leave_uses_plain_peak_heat(tmp_path, monkeypatch):
             {"date": "20260904", "高低": "No", "升降": "降溫"},
         ]
     )
-    card = _mini_card_for_png(table=table, sell_action="", sell_why="")
+    card = _mini_card_for_png(table=table, sell_action="", sell_why="", dist_h20=-5.2)
     tape = {
         "last": {},
         "move": {},
@@ -295,9 +549,13 @@ def test_html_and_glance_wire_sell_notes():
     assert '"#AD1457"' in png_src
     card_src = inspect.getsource(render_decision_card_png)
     assert "sell_note_short" in card_src
+    assert "apply_face_stance" in card_src
     assert "stance_explain" in card_src
     assert "今日態度" in card_src
     assert "monthly_stage" in card_src
+    from sell_discipline import attach_sell as attach_fn
+
+    assert "apply_face_stance" in inspect.getsource(attach_fn)
     from ai_trader import format_ai_desk_html, format_ai_desk_pages
     from portfolio_engine import PortfolioEngine
 

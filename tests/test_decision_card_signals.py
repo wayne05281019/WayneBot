@@ -306,6 +306,59 @@ def test_stance_explain_follows_table_colors():
     assert "別追" in txt
 
 
+def test_stance_explain_00631l_warming_not_cooling():
+    """K20高＋升溫：第二行用五十句「在升」，不能抄降溫那句。"""
+    import pandas as pd
+
+    from sell_discipline import attach_sell, sell_note_short
+
+    card = {
+        "gain_pct": 29.7,
+        "dist_h20": -2.8,
+        "space_20": 12,
+        "bias_monthly": 4.1,
+        "stance": "今天先看表，先等",
+        "stance_kind": "wait",
+        "table": pd.DataFrame(
+            [
+                {
+                    "date": "20260908",
+                    "高低": "20高",
+                    "預警": "K20高",
+                    "升降": "最高溫",
+                    "profit_pct": 31.0,
+                },
+                {
+                    "date": "20260909",
+                    "高低": "No",
+                    "預警": "K20高",
+                    "升降": "降溫",
+                    "profit_pct": 28.0,
+                },
+                {
+                    "date": "20260910",
+                    "高低": "No",
+                    "預警": "K20高",
+                    "升降": "升溫",
+                    "profit_pct": 29.7,
+                },
+            ]
+        ),
+    }
+    attach_sell(card)
+    note = stance_explain(
+        str(card.get("stance_kind") or "wait"),
+        sell_note=sell_note_short(card),
+        card=card,
+    )
+    assert card.get("sell_action") == "準備減碼"
+    assert "升" in note
+    assert "已降" not in note
+    assert "退了" not in note
+    assert "先出一點" in note
+    assert "已降" not in str(card.get("stance") or "")
+
+
 def test_stance_explain_missing_bias_does_not_invent_monthly():
     """LINE／海選沒月乖離時，不准說貼著月線。"""
     txt = stance_explain("wait", card={"profit": 12.3, "close": 100.0}, surface="list")

@@ -9,7 +9,13 @@
 - 不同步（含脫離前）→ 直接減碼
 - 先前同步再脫離 → 準備減碼
 
-只顯示在查股協助判斷／介紹圖紀律列／決策卡態度第二行／持股與 AI 模擬倉。不刪當沖、不改黃金買點桶（leave_zero）、不自動賣。
+使用時機（同一把鑰匙＝當日高低／預警／升降＋如何賣原因）：
+- 介紹圖粉紅「紀律」
+- 決策卡「今日態度」標題（短）＋第二行（五十句）
+- 圖說 Ai建議、持股／AI 模擬倉「紀律」
+沒有減碼標（今天同步、或從來沒高檔）就不上這五十句。低檔表不上減碼句。升溫／最高溫不准寫已降、退了、都沒了。
+
+不刪當沖、不改黃金買點桶（leave_zero）、不自動賣。
 """
 from __future__ import annotations
 
@@ -99,7 +105,7 @@ def _chrono_table(tbl: Any):
 
 
 def attach_sell(card: Dict[str, Any], hl_tags=None, temp_labels=None) -> Dict[str, Any]:
-    """寫入決策卡。hl／升降可從 table 補。"""
+    """寫入決策卡。hl／升降可從 table 補。有減碼標就把今日態度標題對到五十句。"""
     if not card or card.get("error"):
         return card
     if hl_tags is None or temp_labels is None:
@@ -114,6 +120,7 @@ def attach_sell(card: Dict[str, Any], hl_tags=None, temp_labels=None) -> Dict[st
         temp_labels if temp_labels is not None else [],
     )
     card.update(flags)
+    apply_face_stance(card)
     return card
 
 
@@ -203,6 +210,17 @@ FACE_NOTES: Dict[tuple, str] = {
     ("near_hi", "down", "hi_temp"): "熱度標最高但格子在降、價靠近20日高。先出一點、不要追高",
     ("mid", "up", "hi_temp"): "熱度最高、價還在區間裡沒過20日高。先出一點、不要追高",
     ("left_hi", "up", "hi_temp"): "熱度最高、價已離開20日高還在升。先出一點、不要追高",
+    ("near_hi", "flat", "sync_left"): "價靠近20日高、熱度沒再走。先別追。有持股就先出一點",
+    ("near_hi", "flat", "desync_left"): "價靠近20日高、熱度沒再走。少追。有持股就先出一點",
+    ("left_hi", "flat", "sync_left"): "高點已離開，熱度沒再走。先別追。有持股就先出一點",
+    ("left_hi", "flat", "desync_left"): "高點離開、熱度沒再走。這波先當結束。有持股就先出一點",
+    ("hi10", "flat", "sync_left"): "價在10日高、熱度沒再走。先別追。有持股先出一點",
+    ("hi10", "flat", "desync_left"): "價停在10日高、熱度沒再走。不要追高。有持股先出一點",
+    ("mid", "flat", "sync_left"): "高點已離開，熱度沒再走。先別追、先別加碼。有持股就先出一點",
+    ("mid", "flat", "desync_left"): "高點沒了，熱度也沒再走。這波先當結束。有持股就先出一點",
+    ("hi20", "flat", "hi_price"): "價貼20日高、熱度沒再走沒跟上。先出一點、不要追",
+    ("near_lo", "flat", "sync_left"): "表靠近低檔、熱度沒再走。先看。有持股先出一點",
+    ("near_lo", "flat", "desync_left"): "表靠近低檔、熱度沒再動。先看。有持股先出一點",
 }
 
 
@@ -211,18 +229,33 @@ def _why_plain(why: str) -> str:
     return _NOTE_BY_WHY.get(raw, raw)
 
 
-def _row0(card: Dict[str, Any] | None) -> Dict[str, Any]:
+def latest_table_row(card: Dict[str, Any] | None) -> Dict[str, Any]:
+    """當日列＝日期最新那根。決策卡表是新→舊，分類用正序，這裡兩邊都對到同一天。"""
     tbl = (card or {}).get("table")
     if tbl is None:
         return {}
     if hasattr(tbl, "iloc") and len(tbl):
         try:
-            return tbl.iloc[0].to_dict()
+            src = _chrono_table(tbl)
+            return src.iloc[-1].to_dict()
         except Exception:
+            try:
+                return tbl.iloc[0].to_dict()
+            except Exception:
+                return {}
+    if isinstance(tbl, (list, tuple)) and tbl:
+        rows = [dict(x) for x in tbl if isinstance(x, dict)]
+        if not rows:
             return {}
-    if isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
-        return dict(tbl[0])
+        dated = [r for r in rows if str(r.get("date") or "").strip()]
+        if dated:
+            return max(dated, key=lambda r: str(r.get("date") or ""))
+        return dict(rows[0])
     return {}
+
+
+def _row0(card: Dict[str, Any] | None) -> Dict[str, Any]:
+    return latest_table_row(card)
 
 
 def _fnum(*vals) -> float | None:
@@ -275,6 +308,8 @@ def card_discipline_face(card: Dict[str, Any] | None) -> Dict[str, str]:
         heat = "up"
     elif trend == "降溫":
         heat = "down"
+    elif trend in ("No", "—"):
+        heat = "flat"
     else:
         heat = ""
 
@@ -288,12 +323,36 @@ def card_discipline_face(card: Dict[str, Any] | None) -> Dict[str, str]:
     return {"pos": pos, "heat": heat, "why": why, "trend": trend}
 
 
+_COOL_IN_NOTE = ("已降", "退了", "都沒了", "在降", "掉到最低", "熱度在最低")
+_WARM_IN_NOTE = ("熱度在升", "還在升", "又升回來", "過熱還在升")
+
+_WARM_BY_POS = {
+    "hi20": "價已貼20日高、熱度在升但不是最高溫。先出一點、不要追",
+    "hi10": "價在10日高、熱度在升，20日高還沒過。先別追。有持股先出一點",
+    "near_hi": "價靠近20日高、熱度在升。今天別追。有持股就先出一點",
+    "left_hi": "高點已離開，熱度又升回來。先別追、也先別加碼。有持股就先出一點",
+    "mid": "高點已離開，熱度又升。先別追、先別加碼。有持股就先出一點",
+    "near_lo": "表靠近低檔、熱度在升。先看、先別急著追。有持股先出一點",
+}
+
+
+def _note_fits_heat(heat: str, note: str) -> bool:
+    n = str(note or "")
+    if not n:
+        return False
+    if heat in ("up", "peak"):
+        return not any(m in n for m in _COOL_IN_NOTE)
+    if heat in ("down", "floor"):
+        return not any(m in n for m in _WARM_IN_NOTE)
+    return True
+
+
 def _note_from_face(card: Dict[str, Any]) -> str:
     face = card_discipline_face(card)
     pos, heat, why = face["pos"], face["heat"], face["why"]
     if heat and why:
         note = FACE_NOTES.get((pos, heat, why))
-        if note:
+        if note and _note_fits_heat(heat, note):
             return note
         base_why = {
             "hi_price_hot": "hi_price",
@@ -301,10 +360,17 @@ def _note_from_face(card: Dict[str, Any]) -> str:
             "desync_left_run": "desync_left",
         }.get(why, why)
         note = FACE_NOTES.get((pos, heat, base_why))
-        if note:
+        if note and _note_fits_heat(heat, note):
             return note
+    if heat in ("up", "peak"):
+        warm = _WARM_BY_POS.get(pos) or FACE_NOTES.get((pos, "up", why or "sync_left"), "")
+        if warm and _note_fits_heat(heat, warm):
+            return warm
     raw = _why_short(card.get("sell_why") or "")
-    return _NOTE_BY_WHY.get(raw, "")
+    fallback = _NOTE_BY_WHY.get(raw, "")
+    if heat in ("up", "peak") and not _note_fits_heat(heat, fallback):
+        return _WARM_BY_POS.get(pos, "價在高檔附近、熱度在升。今天別追。有持股就先出一點")
+    return fallback
 
 
 def sell_note_lines(card: Dict[str, Any]) -> List[str]:
@@ -317,7 +383,7 @@ def sell_note_lines(card: Dict[str, Any]) -> List[str]:
 
 
 def sell_note_short(card: Dict[str, Any]) -> str:
-    """介紹圖／決策卡第二行：對當日高低卡講現況＋現在怎麼做。"""
+    """介紹圖紀律／決策卡態度第二行／持股／圖說：五十句對當日格子。沒有減碼標就空白。"""
     try:
         from decision_card_signals import table_reads_as_low
 
@@ -331,15 +397,75 @@ def sell_note_short(card: Dict[str, Any]) -> str:
     note = _note_from_face(card)
     if note:
         return note
+    heat = card_discipline_face(card).get("heat") or ""
     why = _why_short(card.get("sell_why") or "")
-    note = _NOTE_BY_WHY.get(why)
-    if note:
+    note = _NOTE_BY_WHY.get(why, "")
+    if note and _note_fits_heat(heat, note):
         return note
+    if heat in ("up", "peak"):
+        pos = card_discipline_face(card).get("pos") or "mid"
+        return _WARM_BY_POS.get(pos, "價在高檔附近、熱度在升。今天別追。有持股就先出一點")
     if act == "準備減碼":
         return NOTE_SYNC_LEFT
     if act == "直接減碼":
         return NOTE_HI_PRICE
     return ""
+
+
+def stance_title_from_face(card: Dict[str, Any] | None) -> tuple[str, str]:
+    """今日態度標題：跟五十句同一把（位置＋升降）。短句，給同一行排版。"""
+    card = card or {}
+    face = card_discipline_face(card)
+    pos, heat = face.get("pos") or "mid", face.get("heat") or ""
+    gain = _fnum(card.get("gain_pct"), card.get("profit_pct"), card.get("profit"))
+    high = pos in ("hi20", "hi10", "near_hi", "left_hi")
+    if pos == "near_lo" and heat != "peak":
+        return "靠近低點，先看表", "watch"
+    if heat in ("peak", "diverge"):
+        return "今天別追高", "avoid"
+    if high and heat == "down":
+        if gain is not None and gain >= 15:
+            return "漲多了，熱度已降", "avoid"
+        return "熱度已降，別追", "avoid"
+    if high and heat == "floor":
+        return "熱度在最低，別追", "avoid"
+    if high and heat == "up":
+        if gain is not None and gain >= 15:
+            return "漲多了，今天別追", "avoid"
+        return "今天別追", "avoid"
+    if high and heat == "flat":
+        if gain is not None and gain >= 15:
+            return "漲多了，今天別追", "avoid"
+        return "今天別追", "avoid"
+    if heat == "up":
+        return "今天別追", "avoid"
+    if heat == "down":
+        if gain is not None and gain >= 15:
+            return "漲多了，今天別追", "avoid"
+        return "今天別追", "avoid"
+    if gain is not None and gain >= 15:
+        return "漲多了，今天別追", "avoid"
+    return "今天別追", "avoid"
+
+
+def apply_face_stance(card: Dict[str, Any]) -> Dict[str, Any]:
+    """有如何賣標時，今日態度標題改跟五十句同一把鑰匙。沒標／表在低檔就不動。"""
+    if not card or card.get("error"):
+        return card
+    if not str(card.get("sell_action") or "").strip():
+        return card
+    try:
+        from decision_card_signals import table_reads_as_low
+
+        if table_reads_as_low(card):
+            return card
+    except Exception:
+        pass
+    title, kind = stance_title_from_face(card)
+    if title:
+        card["stance"] = title
+        card["stance_kind"] = kind
+    return card
 
 
 def discipline_box_notes(card: Dict[str, Any], pink_note: str = "") -> List[str]:

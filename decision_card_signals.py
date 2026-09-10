@@ -574,14 +574,21 @@ def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
     """最新一列＋卡面數字，給態度第二行對表。沒有表就用卡上現成欄。"""
     card = card or {}
     row: Dict[str, Any] = {}
-    tbl = card.get("table")
-    if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
-        try:
-            row = tbl.iloc[0].to_dict()
-        except Exception:
-            row = {}
-    elif isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
-        row = dict(tbl[0])
+    try:
+        from sell_discipline import latest_table_row
+
+        row = latest_table_row(card)
+    except Exception:
+        row = {}
+    if not row:
+        tbl = card.get("table")
+        if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
+            try:
+                row = tbl.iloc[0].to_dict()
+            except Exception:
+                row = {}
+        elif isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
+            row = dict(tbl[0])
 
     def _num(*keys) -> float | None:
         for k in keys:
