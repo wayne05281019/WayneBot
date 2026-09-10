@@ -550,6 +550,13 @@ def run_scheduled_job(kind: str) -> None:
         runner.run_typhoon_peek()
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
+    if kind in ("morning", "midday", "fuse", "evening"):
+        try:
+            from biaoke_ingest import run_biaoke_ingest_quiet
+
+            run_biaoke_ingest_quiet()
+        except Exception:
+            logger.exception("飆大公開文匯入略過")
 
 
 def _scheduler_role() -> str:
@@ -816,6 +823,12 @@ def run_web():
     start_market_backfill(delay_s=backfill_delay_s)
     if daily_scheduler_enabled():
         start_daily_scheduler()
+        try:
+            from biaoke_ingest import start_biaoke_poller
+
+            start_biaoke_poller()
+        except Exception:
+            logger.exception("飆大輪詢沒開起來")
     start_watchdog()
 
     token = get_telegram_token()
