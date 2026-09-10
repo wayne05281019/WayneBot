@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import sqlite3
 
+from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import ensure_core_schema, lookup_stocks
 
 
@@ -227,3 +228,70 @@ def test_lookup_etf_monthly_uses_official_ex_dates(monkeypatch, tmp_path):
     assert lookup_stocks(db, "配息型ETF")[0]["stock_id"] == "0050"
     assert "1584" not in [h["stock_id"] for h in pays]
     assert "00631L" not in [h["stock_id"] for h in pays]
+
+
+def test_lookup_etf_incomplete_and_zhuyin_guides_choice(monkeypatch, tmp_path):
+    from bot_servers import WayneTelegramBot
+    from universe import parse_etf_lookup_spec, suggest_etf_lookup_specs
+    from wayne_db import lookup_stocks
+
+    assert parse_etf_lookup_spec("主動型")["label"] == "主動 ETF"
+    assert parse_etf_lookup_spec("被動型")["label"] == "被動 ETF"
+    picks = {str(x.get("pick") or x.get("label")) for x in suggest_etf_lookup_specs("主")}
+    assert any("主動" in p for p in picks)
+    assert any("主被動" in p or "主動／被動" in str(x.get("label") or "") for x, p in ((x, x.get("pick")) for x in suggest_etf_lookup_specs("主")))
+    assert suggest_etf_lookup_specs("被")[0]["label"] == "被動 ETF"
+    assert all("槓桿" not in str(x.get("label") or "") for x in suggest_etf_lookup_specs("被"))
+    assert suggest_etf_lookup_specs("配")[0]["label"] == "配息型 ETF"
+    zhu = suggest_etf_lookup_specs("ㄓㄨˇㄉㄨㄥˋ")
+    assert zhu and zhu[0]["label"] == "主動 ETF"
+    pei = suggest_etf_lookup_specs("ㄆㄟˋ")
+    assert pei and any("配息" in str(x.get("label") or "") for x in pei)
+
+    db = str(tmp_path / "etf_hint.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    rows = [
+        ("0050", "元大台灣50", "ETF_PASSIVE", 9000),
+        ("00981A", "主動統一台股增長", "ETF_ACTIVE", 4000),
+        ("00631L", "元大台灣50正2", "ETF_LEVERAGED", 7000),
+        ("1584", "精剛", "STOCK", 99999),
+    ]
+    for sid, name, atype, vol in rows:
+        conn.execute(
+            """INSERT OR REPLACE INTO daily_quotes
+               (date, stock_id, stock_name, market, open, high, low, close, volume,
+                turnover_k, pct_change, avg_price)
+               VALUES ('20260828', ?, ?, 'TW', 10, 10, 10, 10, ?, 1000, 1.0, 10)""",
+            (sid, name, vol),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO stock_universe
+               (stock_id, stock_name, market_type, asset_type, industry, is_active, updated_at)
+               VALUES (?, ?, 'TWSE', ?, 'ETF', 1, 't')""",
+            (sid, name, atype),
+        )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date",
+        lambda dp, now=None: "20260828",
+    )
+    choices = lookup_stocks(db, "主")
+    assert all(h.get("category_choice") for h in choices)
+    assert hits_need_picker(choices)
+    assert "打得還不完整" in lookup_picker_lead(choices)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._hits_keyboard(choices)
+    data = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert any(str(d).startswith("e:") for d in data)
+    assert not any(str(d).startswith("k:") for d in data)
+
+    active = lookup_stocks(db, "主動型")
+    assert [h["stock_id"] for h in active] == ["00981A"]
+    short = lookup_stocks(db, "00981")
+    assert [h["stock_id"] for h in short] == ["00981A"]
+    assert short[0].get("fuzzy") is True
+    html = bot._hits_list_html(choices)
+    assert "主動" in html
+    assert "打得還不完整" in html

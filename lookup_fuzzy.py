@@ -155,6 +155,8 @@ def hits_need_picker(hits: Sequence[Dict[str, Any]] | None) -> bool:
 
 def lookup_picker_lead(hits: Sequence[Dict[str, Any]] | None) -> str:
     rows = list(hits or [])
+    if any(h.get("category_choice") for h in rows):
+        return "打得還不完整。點你要的 ETF 分類，再從名單選一檔。"
     if any(h.get("category") for h in rows):
         label = str(rows[0].get("category_label") or "ETF").strip() or "ETF"
         return f"這些是成交量較大的{label}，點左邊看這檔。"

@@ -617,7 +617,7 @@ HELP_TOPICS = {
         "直接打股名或代號，例如 <b>南亞</b>、"
         + LOOKUP_CODE_EXAMPLES_HTML
         + "。\n"
-        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」「配息型」「月配」「高股息」列出成交量較大的幾檔。海選名單仍只有股票／KY，但查股收 ETF。\n"
+        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」「配息型」「月配」「高股息」列出成交量較大的幾檔。打不完整（主動型、被、配、注音）會先列出分類請你點。代號沒打完（00981）會列出 00981A 這種後綴。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
         "一次出兩張圖：介紹圖（上半資訊、下半180日高低導航）→ 決策卡。完整橫式導航按圖下「導航圖」。\n"
@@ -1946,6 +1946,13 @@ class WayneTelegramBot:
         """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
         rows = []
         for h in hits[:8]:
+            if h.get("category_choice"):
+                pick = str(h.get("category_pick") or h.get("stock_id") or "").strip()
+                label = str(h.get("stock_name") or pick).strip()[:18] or pick
+                if not pick:
+                    continue
+                rows.append([InlineKeyboardButton(label, callback_data=f"e:{pick}")])
+                continue
             c = str(h.get("stock_id") or "")
             n = str(h.get("stock_name") or "")
             if not c:
@@ -1972,6 +1979,9 @@ class WayneTelegramBot:
         for i, h in enumerate((hits or [])[:8], start=1):
             sid = str(h.get("stock_id") or "")
             sname = str(h.get("stock_name") or "")
+            if h.get("category_choice"):
+                lines.append(f"{i}. {html_escape(sname or sid)}")
+                continue
             if not sid:
                 continue
             if html_stock_anchor:
@@ -4842,9 +4852,45 @@ class WayneTelegramBot:
                 logger.exception("導航圖送出失敗 code=%s", code)
         await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
 
+    async def _send_etf_category_pick(self, message, phrase: str, uid: str = ""):
+        """分類詞還沒打完：先讓人點主動／被動／配息型，再列出成交量較大的幾檔。"""
+        phrase = str(phrase or "").strip()
+        if not phrase:
+            await message.reply_text("請再打一次主動、被動或配息型。", reply_markup=self._keyboard())
+            return
+        hits = lookup_stocks(self.db_path, phrase)
+        if hits_need_picker(hits):
+            await message.reply_html(
+                self._hits_list_html(hits),
+                reply_markup=self._hits_keyboard(hits),
+                disable_web_page_preview=True,
+            )
+            return
+        if len(hits) == 1:
+            await self._send_card_to(message, str(hits[0].get("stock_id") or phrase), uid)
+            return
+        await message.reply_text(
+            "找不到這個 ETF 分類。可打主動、被動、配息型、月配、高股息。",
+            reply_markup=self._keyboard(),
+        )
+
     async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
+        if hits and (
+            hits[0].get("category_choice")
+            or (
+                hits[0].get("category")
+                and str(hits[0].get("stock_id") or "") != code
+            )
+        ):
+            if hits_need_picker(hits) or hits[0].get("category_choice"):
+                await message.reply_html(
+                    self._hits_list_html(hits),
+                    reply_markup=self._hits_keyboard(hits),
+                    disable_web_page_preview=True,
+                )
+                return
         if hits and hits[0].get("close") is None:
             h = hits[0]
             try:
@@ -5434,6 +5480,10 @@ class WayneTelegramBot:
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)
             await self._send_decision_card_quick(q.message, data[2:].strip(), uid)
+            return
+        if data.startswith("e:"):
+            uid = str(q.from_user.id)
+            await self._send_etf_category_pick(q.message, data[2:].strip(), uid)
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
