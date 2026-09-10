@@ -130,7 +130,15 @@ def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str
     )
     # 個股報價頁較易喚起奇摩股市 App；技術分析留給明確要圖時再用
     href = web.replace("&", "&amp;")
-    return f'<a href="{href}">{esc}</a>'
+    tag = ""
+    try:
+        from wayne_db import listing_zh
+
+        tag = listing_zh(quote_market(sid, db_path))
+    except Exception:
+        tag = ""
+    suffix = f"　{tag}" if tag else ""
+    return f'<a href="{href}">{esc}</a>{suffix}'
 
 
 def ranked_stock_anchor(

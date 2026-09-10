@@ -141,13 +141,25 @@ def morning_ref_price(row: Dict[str, Any]) -> float:
 
 
 def format_midday_stock_line(
-    row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False
+    row: Dict[str, Any], live: Dict[str, Any], *, dual: bool = False, db_path: str = None
 ) -> str:
-    """現在價、今早名單價、比今早差幾元。例：4915 致伸　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"""
+    """現在價、今早名單價、比今早差幾元。例：4915 致伸　上市　現在 62.1　今早 60.8　比今早 +1.3 元（+2.1%）"""
     sid = str(row.get("stock_id") or "").strip()
     name = str(row.get("stock_name") or "").strip()
     tag = "【雙時段】" if dual else ""
-    prefix = f"{tag}{sid} {name}".strip()
+    listing = ""
+    try:
+        from wayne_db import listing_zh
+
+        listing = listing_zh(row)
+        if not listing and sid:
+            from stock_links import quote_market
+
+            listing = listing_zh(quote_market(sid, db_path))
+    except Exception:
+        listing = ""
+    listing_bit = f"　{listing}" if listing else ""
+    prefix = f"{tag}{sid} {name}{listing_bit}".strip()
     try:
         px = float((live or {}).get("close") or 0)
     except (TypeError, ValueError):
@@ -251,7 +263,7 @@ def run_midday_review(db_path: str, as_of: str) -> Dict[str, Any]:
         sid = str(r["stock_id"])
         q = live.get(sid) or {}
         kind = classify_row(r, q)
-        line = format_midday_stock_line(r, q, dual=sid in both)
+        line = format_midday_stock_line(r, q, dual=sid in both, db_path=db_path)
         groups[kind].append(line)
     return {
         "html": format_midday_html(as_of, groups),

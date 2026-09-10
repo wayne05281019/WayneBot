@@ -795,6 +795,14 @@ class NavigatorEngine:
             industry = ""
             asset_type = ""
             etf_kind = ""
+        listing = ""
+        try:
+            from stock_links import quote_market
+            from wayne_db import listing_zh
+
+            listing = listing_zh(quote_market(str(stock_id), self.db_path))
+        except Exception:
+            listing = ""
         raw_name = str(latest.get("stock_name") or "")
         try:
             from universe import (
@@ -814,6 +822,7 @@ class NavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": face_name,
             "industry": industry,
+            "listing": listing,
             "asset_type": asset_type,
             "etf_kind": etf_kind,
             "next_event": next_event,
@@ -1314,6 +1323,24 @@ def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
     if info.get("premium") is not None:
         card["etf_premium"] = info["premium"]
     return card
+
+
+def _close_chg_color(chg, C):
+    try:
+        v = float(chg or 0)
+    except (TypeError, ValueError):
+        v = 0.0
+    if v > 0:
+        return C["up"]
+    if v < 0:
+        return C["down"]
+    return C["ink"]
+
+
+def _close_move_bits(chg, chg_amt) -> list:
+    from tg_layout import format_move_plain
+
+    return [format_move_plain(chg_amt, chg)]
 
 
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card):
@@ -2323,7 +2350,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
-    lead = "" if (etf_kind and etf_kind in name) else etf_kind
+    listing = str(card.get("listing") or "").strip()
+    kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
+    lead = "　".join(x for x in (listing, kind_lead) if x)
     for text, fs, color in fit_title_bar_extras(
         industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
@@ -2337,14 +2366,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     y -= gap + price_h
     pane(pad_x, y, 100 - 2 * pad_x, price_h)
     chg = float(card.get("change_pct") or 0)
-    chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
+    chg_c = _close_chg_color(chg, C)
     prev_c = float(card.get("prev_close") or 0)
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
     px_right = 100 - pad_x - 3.2
     close_s = _fmt_price(card["close"])
-    chg_bits = [f"{chg:+.2f}%"]
-    if chg_amt is not None:
-        chg_bits.append(_fmt_price_signed(chg_amt))
+    chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card)
     ohlc_bits = [
         f"開 {_fmt_price(card.get('open'))}",
@@ -2655,17 +2682,22 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
     pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
-    from tg_layout import kv_compact, section, join_sections
+    prev_c = float(card.get("prev_close") or 0)
+    chg_amt = (float(card["close"]) - prev_c) if prev_c else None
+    from tg_layout import format_move_plain, kv_compact, section, join_sections
     from chip_tape import build_tape, fmt_lots
 
     tape = build_tape(db_path or get_db_path(), sid) or {}
-    move = (tape.get("move") or {}).get("text") or f"{chg:+.2f}%"
+    move = format_move_plain(chg_amt, chg)
     last = tape.get("last") or {}
     ohlc = ""
     if last:
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
+    listing = str(card.get("listing") or "").strip()
+    if listing:
+        head = f"{head}　{html_escape(listing)}"
     industry = str(card.get("etf_kind") or card.get("industry") or "").strip()
     if industry:
         head = f"{head}　{html_escape(industry)}"
@@ -2753,7 +2785,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("日期", _fmt_md(card["latest_date"]) + date_note),
             kv_compact("開高低", ohlc or "—"),
             kv_compact("收盤", f"{_fmt_price(card['close'])}　{move}"),
-            kv_compact("當日", f"{chg:+.2f}%"),
             *([
                 kv_compact(
                     "淨值",
@@ -2853,7 +2884,6 @@ def render_first_glance_png(
         footer_src = [n for n in (sell_note, pink_note) if n]
 
     last = (tape or {}).get("last") or {}
-    move = (tape or {}).get("move") or {}
     C = _CARD
     fig_w = GLANCE_FIG_W
     inch = 0.076
@@ -3027,7 +3057,9 @@ def render_first_glance_png(
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
-    lead = "" if (etf_kind and etf_kind in name) else etf_kind
+    listing = str(card.get("listing") or "").strip()
+    kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
+    lead = "　".join(x for x in (listing, kind_lead) if x)
     for text, fs, color in fit_title_bar_extras(
         industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
@@ -3040,15 +3072,12 @@ def render_first_glance_png(
     y -= gap + price_h
     pane(pad_x, y, pane_w, price_h)
     chg = float(card.get("change_pct") or 0)
-    chg_c = C["up"] if chg > 0 else (C["down"] if chg < 0 else C["ink"])
+    chg_c = _close_chg_color(chg, C)
     prev_c = float(last.get("yesterday_close") or card.get("prev_close") or 0)
     close_v = last.get("close") if last.get("close") is not None else card.get("close")
     chg_amt = (float(close_v) - prev_c) if prev_c and close_v is not None else None
     close_s = _fmt_price(close_v)
-    move_txt = (move.get("text") or "").strip()
-    chg_bits = [move_txt] if move_txt else [f"{chg:+.2f}%"]
-    if chg_amt is not None and not move_txt:
-        chg_bits.append(_fmt_price_signed(chg_amt))
+    chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card)
     # 股票收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
     ohlc_bits = [

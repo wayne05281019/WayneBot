@@ -31,6 +31,8 @@ TWSE_INCOME = "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
 TPEX_INCOME = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci"
 # 公開資訊觀測站「已公告」月營收彙總（無驗證碼）。OpenAPI 月營收是全市場同一期，
 # 10 號前仍停在上上月時，先公告的公司（例如緯穎 8 月）只出現在這份表。
+# 興櫃 NAS rot（t21/rot/t21sc03）2026-09 回 404；個股 t05st10 要驗證碼，不抓。
+# 沒有免登入興櫃月營收彙總就不寫庫、產業頁明寫尚未公告。
 MOPS_NAS_MONTHLY = "https://mopsov.twse.com.tw/nas/t21/{ex}/t21sc03_{roc}_{month}_{kind}.html"
 
 
@@ -580,7 +582,12 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     rows = []
     if m:
         yyyymm = str(m.get("yyyymm") or "")
-        label = f"{yyyymm[:4]}/{yyyymm[4:]}" if len(yyyymm) >= 6 else yyyymm
+        try:
+            from industry_brief import format_month_zh
+
+            label = format_month_zh(yyyymm) if len(yyyymm) >= 6 else yyyymm
+        except Exception:
+            label = f"{yyyymm[:4]}/{yyyymm[4:]}" if len(yyyymm) >= 6 else yyyymm
         rows.append(
             (
                 "月營收",
@@ -603,7 +610,13 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
     if q:
         rev = float(q.get("revenue") or 0)
         opm = round(float(q.get("operating_income") or 0) / rev * 100.0, 1) if rev else 0.0
-        rows.append(("季報", f"{q['year']}Q{q['season']}　營收 {format_yi(q.get('revenue') or 0)}"))
+        try:
+            from industry_brief import format_season_zh
+
+            q_lab = format_season_zh(q["year"], q["season"])
+        except Exception:
+            q_lab = f"{q['year']}Q{q['season']}"
+        rows.append(("季報", f"{q_lab}　營收 {format_yi(q.get('revenue') or 0)}"))
         rows.append(("毛利", format_yi(q.get("gross_profit") or 0)))
         rows.append(("毛利率", f"{float(q['gross_margin_pct']):.1f}%"))
         if rev:
@@ -678,12 +691,26 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if not m and not q:
         return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（等盤後流水線寫入；按鈕路徑不再現場全市場同步）。"
     name = (m or q or {}).get("stock_name") or sid
+    listing = ""
+    try:
+        from stock_links import quote_market
+        from wayne_db import listing_zh
+
+        listing = listing_zh(quote_market(sid, path))
+    except Exception:
+        listing = ""
+    title_name = f"{name}　{listing}" if listing else name
     from tg_layout import title_line, kv_compact, section, join_sections
 
-    blocks = [title_line("基本面", sid, name)]
+    blocks = [title_line("基本面", sid, title_name)]
     if m:
         yyyymm = m["yyyymm"]
-        label = f"{yyyymm[:4]}/{yyyymm[4:]}"
+        try:
+            from industry_brief import format_month_zh
+
+            label = format_month_zh(yyyymm)
+        except Exception:
+            label = f"{yyyymm[:4]}/{yyyymm[4:]}"
         blocks.append(
             section(
                 kv_compact("期間", label),
@@ -696,12 +723,20 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if q:
         prev = prior_income(path, q)
         gm_note = ""
+        try:
+            from industry_brief import format_season_zh
+
+            q_lab = format_season_zh(q["year"], q["season"])
+            prev_lab = format_season_zh(prev["year"], prev["season"]) if prev else ""
+        except Exception:
+            q_lab = f"{q['year']}Q{q['season']}"
+            prev_lab = f"{prev['year']}Q{prev['season']}" if prev else ""
         if prev and prev.get("gross_margin_pct") is not None:
             diff = q["gross_margin_pct"] - prev["gross_margin_pct"]
-            gm_note = f"（較{prev['year']}Q{prev['season']} {diff:+.1f}pt）"
+            gm_note = f"（較{prev_lab} {diff:+.1f}pt）"
         blocks.append(
             section(
-                kv_compact("季報", f"{q['year']}Q{q['season']}"),
+                kv_compact("季報", q_lab),
                 kv_compact("營收", format_yi(q.get("revenue") or 0)),
                 kv_compact("毛利", format_yi(q.get("gross_profit") or 0)),
                 kv_compact("毛利率", f"{q['gross_margin_pct']:.1f}%{gm_note}"),
@@ -747,7 +782,12 @@ def format_hot_revenue_html(db_path: str) -> str:
     if not rows:
         return ""
     yyyymm = rows[0]["yyyymm"]
-    label = f"{yyyymm[:4]}/{yyyymm[4:]}"
+    try:
+        from industry_brief import format_month_zh
+
+        label = format_month_zh(yyyymm)
+    except Exception:
+        label = f"{yyyymm[:4]}/{yyyymm[4:]}"
     lines = [f"🔥 <b>【月營收轉強】{label} 年增≥20% 且月增≥0</b>"]
     for r in rows:
         lines.append(

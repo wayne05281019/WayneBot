@@ -52,16 +52,24 @@ def _universe_row(conn: sqlite3.Connection, sid: str) -> Dict[str, Any]:
             (sid,),
         ).fetchone()
         if not q:
-            return {"stock_id": sid, "stock_name": sid, "asset_type": "", "industry": ""}
+            return {
+                "stock_id": sid,
+                "stock_name": sid,
+                "market_type": "",
+                "asset_type": "",
+                "industry": "",
+            }
         return {
             "stock_id": str(q["stock_id"]),
             "stock_name": str(q["stock_name"] or sid),
+            "market_type": "",
             "asset_type": "",
             "industry": "",
         }
     return {
         "stock_id": str(row["stock_id"]),
         "stock_name": str(row["stock_name"] or sid),
+        "market_type": str(row["market_type"] or ""),
         "asset_type": str(row["asset_type"] or ""),
         "industry": str(row["industry"] or "").strip(),
     }
@@ -80,7 +88,54 @@ def _vs_peer(mine: Optional[float], med: Optional[float], unit: str = "pt") -> s
         return f"比同業略強（高 {diff:.1f}{unit}）"
     if ad >= 15:
         return f"比同業明顯較弱（低 {ad:.1f}{unit}）"
-    return f"比同業略弱（低 {ad:.1f}{unit}）"
+        return f"比同業略弱（低 {ad:.1f}{unit}）"
+
+
+def format_month_zh(yyyymm: str) -> str:
+    s = str(yyyymm or "").replace("-", "")[:6]
+    if len(s) != 6 or not s.isdigit():
+        return s or "—"
+    return f"{int(s[:4])}年{int(s[4:6])}月"
+
+
+def format_season_zh(year, season) -> str:
+    try:
+        y, s = int(year), int(season)
+    except (TypeError, ValueError):
+        return "—"
+    if y <= 0 or s <= 0:
+        return "—"
+    return f"{y}年第{s}季"
+
+
+def month_display(my_month: str, latest_month: str) -> str:
+    mine = str(my_month or "").replace("-", "")[:6]
+    latest = str(latest_month or "").replace("-", "")[:6]
+    if not mine:
+        return "—"
+    label = format_month_zh(mine)
+    if latest and mine < latest and len(latest) == 6:
+        return f"{label}（{int(latest[4:6])}月尚未公告）"
+    return label
+
+
+def peer_mix_label(snap: Dict[str, Any]) -> str:
+    n = int(snap.get("peer_n") or 0)
+    if not n:
+        return "同業名單不足"
+    bits = []
+    tw = int(snap.get("peer_tw") or 0)
+    two = int(snap.get("peer_two") or 0)
+    em = int(snap.get("peer_em") or 0)
+    if tw:
+        bits.append(f"上市{tw}")
+    if two:
+        bits.append(f"上櫃{two}")
+    if em:
+        bits.append(f"興櫃{em}")
+    mix = "／".join(bits)
+    extra = f"（{mix}，不含ETF）" if mix else "（不含ETF）"
+    return f"{n}家現股{extra}"
 
 
 def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
@@ -98,6 +153,13 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     industry = u.get("industry") or ""
     asset = (u.get("asset_type") or "").upper()
     as_of = _asof(path)
+    try:
+        from wayne_db import listing_zh
+    except Exception:
+        def listing_zh(market):  # type: ignore
+            return ""
+
+    listing = listing_zh(u.get("market_type"))
 
     latest_m = conn.execute("SELECT MAX(yyyymm) FROM monthly_revenue").fetchone()[0] or ""
     latest_q = conn.execute("SELECT MAX(year), MAX(season) FROM quarterly_income").fetchone()
@@ -116,6 +178,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     peers_m: List[sqlite3.Row] = []
     peers_q: List[sqlite3.Row] = []
     peer_n = 0
+    peer_tw = peer_two = peer_em = 0
     if industry and industry not in ("ETF", "指數投資證券"):
         peer_n = int(
             conn.execute(
@@ -128,11 +191,27 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             ).fetchone()[0]
             or 0
         )
+        for mkt, n in conn.execute(
+            """
+            SELECT market_type, COUNT(*) FROM stock_universe
+            WHERE industry=? AND is_active=1 AND length(stock_id)=4
+              AND COALESCE(asset_type,'') NOT LIKE 'ETF%'
+            GROUP BY 1
+            """,
+            (industry,),
+        ):
+            zh = listing_zh(mkt)
+            if zh == "上市":
+                peer_tw = int(n or 0)
+            elif zh == "上櫃":
+                peer_two = int(n or 0)
+            elif zh == "興櫃":
+                peer_em = int(n or 0)
         peer_month = str(my_m["yyyymm"]) if my_m else latest_m
         if peer_month:
             peers_m = conn.execute(
                 """
-                SELECT m.stock_id, m.stock_name, m.yoy_pct, m.mom_pct, m.ytd_yoy_pct, m.revenue
+                SELECT m.stock_id, m.stock_name, m.yoy_pct, m.mom_pct, m.ytd_yoy_pct, m.revenue, u.market_type
                 FROM monthly_revenue m
                 JOIN stock_universe u ON u.stock_id = m.stock_id
                 WHERE m.yyyymm=? AND u.industry=? AND length(m.stock_id)=4
@@ -233,6 +312,44 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
         inflow, outflow = [], []
         buy_streak, sell_streak = 0, 0
 
+    vol = None
+    vol_med = None
+    vol_n = 0
+    vol_em_n = 0
+    if industry and as_of and industry not in ("ETF", "指數投資證券"):
+        listed_vols = conn.execute(
+            """
+            SELECT q.stock_id, q.volume, u.market_type
+            FROM daily_quotes q
+            JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE replace(q.date,'-','')=? AND u.industry=? AND length(q.stock_id)=4
+              AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+            """,
+            (as_of, industry),
+        ).fetchall()
+        try:
+            em_vols = conn.execute(
+                """
+                SELECT e.stock_id, e.volume, u.market_type
+                FROM emerging_quotes e
+                JOIN stock_universe u ON u.stock_id = e.stock_id
+                WHERE replace(e.date,'-','')=? AND u.industry=? AND length(e.stock_id)=4
+                  AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                """,
+                (as_of, industry),
+            ).fetchall()
+        except Exception:
+            em_vols = []
+        seen: Dict[str, tuple] = {}
+        for r in list(listed_vols) + list(em_vols):
+            seen[str(r[0])] = (float(r[1] or 0), str(r[2] or ""))
+        vols = [v for v, _m in seen.values()]
+        vol_n = len(vols)
+        vol_em_n = sum(1 for _v, m in seen.values() if listing_zh(m) == "興櫃")
+        vol_med = _median(vols)
+        mine_vol = seen.get(sid)
+        vol = mine_vol[0] if mine_vol else None
+
     conn.close()
 
     yoy_med = _median([float(r["yoy_pct"] or 0) for r in peers_m])
@@ -259,16 +376,30 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
         "stock_name": u.get("stock_name") or sid,
         "industry": industry,
         "asset_type": asset,
+        "listing": listing,
         "is_etf": asset.startswith("ETF") or industry in ("ETF", "指數投資證券"),
         "peer_n": peer_n,
+        "peer_tw": peer_tw,
+        "peer_two": peer_two,
+        "peer_em": peer_em,
         "as_of": as_of,
         "month": str(my_m["yyyymm"]) if my_m else latest_m,
+        "latest_month": str(latest_m or ""),
+        "month_label": month_display(str(my_m["yyyymm"]) if my_m else "", latest_m),
         "my_yoy": my_yoy,
         "my_mom": float(my_m["mom_pct"]) if my_m else None,
         "yoy_med": yoy_med,
         "yoy_n": len(peers_m),
         "year": int(my_q["year"]) if my_q else q_year,
         "season": int(my_q["season"]) if my_q else q_season,
+        "season_label": format_season_zh(
+            int(my_q["year"]) if my_q else q_year,
+            int(my_q["season"]) if my_q else q_season,
+        ),
+        "vol": vol,
+        "vol_med": vol_med,
+        "vol_n": vol_n,
+        "vol_em_n": vol_em_n,
         "my_gm": my_gm,
         "gm_med": gm_med,
         "three_net": three,
@@ -277,11 +408,21 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
         "inflow": inflow,
         "outflow": outflow,
         "stronger": [
-            {"stock_id": str(r["stock_id"]), "stock_name": str(r["stock_name"] or ""), "yoy": float(r["yoy_pct"] or 0)}
+            {
+                "stock_id": str(r["stock_id"]),
+                "stock_name": str(r["stock_name"] or ""),
+                "yoy": float(r["yoy_pct"] or 0),
+                "listing": listing_zh(r["market_type"] if "market_type" in r.keys() else ""),
+            }
             for r in stronger
         ],
         "weaker": [
-            {"stock_id": str(r["stock_id"]), "stock_name": str(r["stock_name"] or ""), "yoy": float(r["yoy_pct"] or 0)}
+            {
+                "stock_id": str(r["stock_id"]),
+                "stock_name": str(r["stock_name"] or ""),
+                "yoy": float(r["yoy_pct"] or 0),
+                "listing": listing_zh(r["market_type"] if "market_type" in r.keys() else ""),
+            }
             for r in weaker
         ],
     }
@@ -326,7 +467,9 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     snap = attach_fine_industry(industry_snapshot(path, stock_id), path, allow_fetch=allow_fetch)
     sid = snap["stock_id"]
     name = snap["stock_name"]
-    blocks = [title_line("產業說明", sid, name)]
+    listing = str(snap.get("listing") or "").strip()
+    title_name = f"{name}　{listing}" if listing else name
+    blocks = [title_line("產業說明", sid, title_name)]
     if snap.get("fine_tags"):
         chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
         blocks[0] = blocks[0] + "　" + chips
@@ -348,7 +491,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     who_lines = [
         "<b>這檔是什麼</b>",
         kv_compact("產業", ind),
-        kv_compact("同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "同業名單不足"),
+        kv_compact("同業", peer_mix_label(snap)),
         "產業名來自證交所／櫃買公司基本資料產業別。",
         "同業＝同一官方產業別全組，不是更細的產品線。",
     ]
@@ -358,8 +501,10 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
     blocks.append(section(*who_lines))
 
-    month = str(snap.get("month") or "")
-    mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
+    mlabel = str(snap.get("month_label") or "").strip()
+    if not mlabel:
+        month = str(snap.get("month") or "")
+        mlabel = format_month_zh(month) if len(month) >= 6 else (month or "—")
     rev_rows = ["<b>營收看同業</b>", kv_compact("月營收", mlabel)]
     if snap["my_yoy"] is not None:
         rev_rows.append(kv_html_compact("這檔年增", html_pct_tight(snap["my_yoy"])))
@@ -374,10 +519,24 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
             )
         rev_rows.append(_vs_peer(snap["my_yoy"], snap["yoy_med"], "%"))
     else:
-        rev_rows.append("這檔還沒有月營收列")
-        rev_rows.append("等公司公布、盤後寫進庫再比。")
+        if listing == "興櫃":
+            rev_rows.append("興櫃沒有免登入的全市場月營收彙總，沒官方列就不顯示。")
+        else:
+            rev_rows.append("這檔還沒有月營收列")
+            latest_m = str(snap.get("latest_month") or "")
+            if latest_m:
+                rev_rows.append(f"市場已有{format_month_zh(latest_m)}，這檔尚未公告。")
+            else:
+                rev_rows.append("等公司公布、盤後寫進庫再比。")
+    if snap.get("vol") is not None and snap.get("vol_med") is not None and float(snap["vol_med"] or 0) > 0:
+        ratio = float(snap["vol"]) / float(snap["vol_med"])
+        vol_s = f"{int(round(float(snap['vol']))):,}張　同業中位 {int(round(float(snap['vol_med']))):,}張（量比 {ratio:.1f}）"
+        if int(snap.get("vol_em_n") or 0):
+            vol_s += f"；含興櫃{int(snap['vol_em_n'])}家日均量"
+        rev_rows.append(kv_compact("量比", vol_s))
     if snap["my_gm"] is not None:
-        rev_rows.append(kv_compact("季報", f"{snap['year']}Q{snap['season']}"))
+        season_s = str(snap.get("season_label") or "").strip() or f"{snap['year']}Q{snap['season']}"
+        rev_rows.append(kv_compact("季報", season_s))
         rev_rows.append(kv_compact("這檔毛利率", f"{snap['my_gm']:.1f}%"))
         if snap["gm_med"] is not None:
             rev_rows.append(kv_compact("同業中位毛利率", f"{snap['gm_med']:.1f}%"))
@@ -425,9 +584,10 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         for r in rows:
             tag = str(r.get("fine_finest") or "").strip()
             tag_bit = f" [{html_escape(tag)}]" if tag else ""
+            listing_bit = f"　{html_escape(r['listing'])}" if str(r.get("listing") or "").strip() else ""
             out.append(
                 f"<code>{html_escape(r['stock_id'])}</code> "
-                f"{html_escape(r['stock_name'])}{tag_bit} {html_pct_tight(r['yoy'])}"
+                f"{html_escape(r['stock_name'])}{listing_bit}{tag_bit} {html_pct_tight(r['yoy'])}"
             )
         return out
 

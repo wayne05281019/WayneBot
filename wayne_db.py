@@ -30,9 +30,28 @@ _NAME_THEN_CODE_RE = re.compile(
 )
 
 
+def listing_zh(market: str | dict | None) -> str:
+    """市場碼 → 上市／上櫃／興櫃。沒對上就空字串，不要猜。"""
+    if isinstance(market, dict):
+        market = (
+            (market or {}).get("market")
+            or (market or {}).get("market_type")
+            or (market or {}).get("universe")
+            or ""
+        )
+    m = str(market or "").strip().upper()
+    if m in ("EM", "EMERGING", "ESB", "興櫃"):
+        return "興櫃"
+    if m in ("TWO", "TPEX", "OTC", "ROCO", "上櫃"):
+        return "上櫃"
+    if m in ("TW", "TWSE", "TSE", "上市"):
+        return "上市"
+    return ""
+
+
 def listing_is_emerging(hit: dict | None) -> bool:
     mkt = str((hit or {}).get("market") or "").strip().upper()
-    return mkt in ("EM", "EMERGING", "興櫃")
+    return mkt in ("EM", "EMERGING", "興櫃") or listing_zh(hit) == "興櫃"
 
 
 def payload_is_emerging(item: dict | None) -> bool:

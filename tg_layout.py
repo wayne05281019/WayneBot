@@ -373,17 +373,36 @@ def price_change(close, pct, yesterday=None):
     return round(c - yest, 2)
 
 
-def html_move(change, pct) -> str:
-    """奇摩式漲跌：先金額再％。下跌 ▼ 5.50（-3.05%），上漲 ▲。"""
+def format_move_plain(change, pct) -> str:
+    """奇摩式漲跌：先金額再％。平盤無三角；上漲 ▲、下跌 ▼。"""
     try:
-        d = float(change)
         p = float(pct)
     except (TypeError, ValueError):
         return "—"
-    if abs(d) < 0.005 and abs(p) < 0.005:
-        return html_escape("0.00（0.00%）")
-    arrow = "▲" if d > 0 else "▼"
-    body = f"{arrow} {abs(d):.2f}（{p:+.2f}%）"
+    d = None
+    if change is not None:
+        try:
+            d = float(change)
+        except (TypeError, ValueError):
+            d = None
+    if d is not None:
+        if abs(d) < 0.005 and abs(p) < 0.005:
+            return "0.00（0.00%）"
+        arrow = "▲" if d > 0 else ("▼" if d < 0 else ("▲" if p > 0 else "▼"))
+        return f"{arrow} {abs(d):.2f}（{p:+.2f}%）"
+    if abs(p) < 0.005:
+        return "0.00（0.00%）"
+    arrow = "▲" if p > 0 else "▼"
+    return f"{arrow}（{p:+.2f}%）"
+
+
+def html_move(change, pct) -> str:
+    """奇摩式漲跌：先金額再％。下跌 ▼ 5.50（-3.05%），上漲 ▲。"""
+    body = format_move_plain(change, pct)
+    if body == "—":
+        return "—"
+    if body == "0.00（0.00%）":
+        return html_escape(body)
     return f"<b>{html_escape(body)}</b>"
 
 

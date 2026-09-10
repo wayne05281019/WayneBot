@@ -4,7 +4,13 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List
 
-from industry_brief import attach_fine_industry, industry_snapshot, _vs_peer
+from industry_brief import (
+    attach_fine_industry,
+    format_month_zh,
+    industry_snapshot,
+    peer_mix_label,
+    _vs_peer,
+)
 
 try:
     from config import get_charts_dir, get_db_path
@@ -236,6 +242,8 @@ def render_industry_png(
     )
     sid = str(snap["stock_id"])
     name = str(snap["stock_name"] or sid)
+    listing = str(snap.get("listing") or "").strip()
+    name_disp = f"{name}　{listing}" if listing else name
     charts = get_charts_dir()
     os.makedirs(charts, exist_ok=True)
     out = save_path or os.path.join(charts, f"{sid}_industry.png")
@@ -260,7 +268,7 @@ def render_industry_png(
     HEAD = (132, 208, 255)
     MUTED = (168, 186, 204)
     tags0 = list(snap.get("fine_tags") or [])
-    items: List[tuple] = [("banner", sid, name, tags0)]
+    items: List[tuple] = [("banner", sid, name_disp, tags0)]
     if snap.get("is_etf"):
         from universe import etf_card_kind_label
 
@@ -273,7 +281,7 @@ def render_industry_png(
         items.append(("h", "這檔是什麼"))
         items.append(("kv", "產業", ind))
         items.append(
-            ("kv", "同業", f"{snap['peer_n']}家現股（不含ETF）" if snap["peer_n"] else "名單不足")
+            ("kv", "同業", peer_mix_label(snap) if snap["peer_n"] else "名單不足")
         )
         if tags0:
             items.append(("muted", "細項來自籌碼K公開個股頁"))
@@ -282,8 +290,10 @@ def render_industry_png(
         if ind == "半導體業":
             items.append(("muted", "半導體業含代工、記憶體、設計，不是只跟晶圓代工比。"))
 
-        month = str(snap.get("month") or "")
-        mlabel = f"{month[:4]}/{month[4:]}" if len(month) >= 6 else (month or "—")
+        mlabel = str(snap.get("month_label") or "").strip()
+        if not mlabel:
+            month = str(snap.get("month") or "")
+            mlabel = format_month_zh(month) if len(month) >= 6 else (month or "—")
         items.append(("h", "營收看同業"))
         items.append(("kv", "月營收", mlabel))
         if snap["my_yoy"] is not None:
@@ -296,9 +306,22 @@ def render_industry_png(
                 )
             items.append(("p", _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")))
         else:
-            items.append(("p", "這檔還沒有月營收列"))
+            if listing == "興櫃":
+                items.append(("p", "興櫃沒有免登入的全市場月營收彙總，沒官方列就不顯示。"))
+            else:
+                items.append(("p", "這檔還沒有月營收列"))
+                latest_m = str(snap.get("latest_month") or "")
+                if latest_m:
+                    items.append(("muted", f"市場已有{format_month_zh(latest_m)}，這檔尚未公告。"))
+        if snap.get("vol") is not None and snap.get("vol_med") is not None and float(snap["vol_med"] or 0) > 0:
+            ratio = float(snap["vol"]) / float(snap["vol_med"])
+            vol_s = f"{int(round(float(snap['vol']))):,}張　同業中位 {int(round(float(snap['vol_med']))):,}張（量比 {ratio:.1f}）"
+            if int(snap.get("vol_em_n") or 0):
+                vol_s += f"；含興櫃{int(snap['vol_em_n'])}家日均量"
+            items.append(("kv", "量比", vol_s))
         if snap["my_gm"] is not None:
-            items.append(("kv", "季報", f"{snap['year']}Q{snap['season']}"))
+            season_s = str(snap.get("season_label") or "").strip() or f"{snap['year']}Q{snap['season']}"
+            items.append(("kv", "季報", season_s))
             items.append(("kv", "這檔毛利率", f"{snap['my_gm']:.1f}%"))
             if snap["gm_med"] is not None:
                 items.append(("kv", "同業中位毛利率", f"{snap['gm_med']:.1f}%"))
@@ -325,11 +348,15 @@ def render_industry_png(
                     return
                 for r in rows:
                     tag = str(r.get("fine_finest") or "").strip()
+                    pname = str(r["stock_name"])
+                    listing_p = str(r.get("listing") or "").strip()
+                    if listing_p:
+                        pname = f"{pname}　{listing_p}"
                     items.append(
                         (
                             "peer_inline",
                             str(r["stock_id"]),
-                            str(r["stock_name"]),
+                            pname,
                             float(r.get("yoy") or 0),
                             [tag] if tag else [],
                         )
