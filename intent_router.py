@@ -28,6 +28,7 @@ NEEDS_STOCK = frozenset(
 GLOBAL_KINDS = frozenset(
     {
         "market",
+        "biaoke",
         "flow",
         "screen",
         "emerging_screen",
@@ -141,6 +142,10 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("融券", "fund"),
     ("資金", "flow"),
     ("輪動", "flow"),
+    ("AI飆客", "biaoke"),
+    ("期股多空雙飆客", "biaoke"),
+    ("飆大", "biaoke"),
+    ("飆客", "biaoke"),
     ("大盤", "market"),
     ("加權", "market"),
     ("指數", "market"),

@@ -225,10 +225,10 @@ HELP_TOPICS = {
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
-        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>\n"
-        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>\n"
-        "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按第一排最右「回報」。\n"
-        "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
+        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>｜<b>飆客</b>\n"
+        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜（空白）\n"
+        "點下方「第一排」「第二排」看每顆怎麼用。\n"
+        "打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -286,9 +286,9 @@ HELP_TOPICS = {
         "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
         "• <b>觀察</b>：自選清單，還沒真的買\n"
         "• <b>持股</b>：你有手記買入的才會出現\n"
-        "• <b>刷新</b>：第一排右二，刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
+        "• <b>刷新</b>：第一排「刷新」，刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>海選</b>：電腦掃全市場的候選名單；低買高賣、按表操課\n"
+        "• <b>飆客</b>：獨立觀點，不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 檔，不買滿\n"
@@ -306,10 +306,10 @@ HELP_TOPICS = {
         "• 「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
         "• 找不到股票：打股名即可，撞名或國字打不準會列出請你點；再打一次代號最準（ETF 含 0050、00631L、00981A）。\n"
         "• 主選單不見：點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
-        "• 畫面怪、數字怪：按第一排最右「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
+        "• 畫面怪、數字怪：按「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
         "<b>提醒</b>\n"
-        "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。"
+        "這是輔助看盤，不是下單系統。有問題找偉權。"
     ),
     "row1": (
         "<b>第一排按鈕（左→右）</b>\n"
@@ -317,7 +317,7 @@ HELP_TOPICS = {
         "<b>① 說明</b>\n"
         "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／圖文／第一排／第二排／連買／記買入／按錯。\n"
         "• 怎麼用：按主選單「說明」，或打 /help。按 <b>✕</b> 收合。\n"
-        "• 亂了：先看「按錯」；還是怪就按最右「回報」。\n"
+        "• 亂了：先看「按錯」；還是怪就按「回報」。\n"
         "\n"
         "<b>② 海選</b>\n"
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
@@ -330,7 +330,7 @@ HELP_TOPICS = {
         "• 怎麼用：按進去看清單；每檔可「賣出」、點股名看圖。\n"
         "• 成交／復盤：持股頁下方。成交＝手記買賣紀錄，復盤＝對照昨收怎麼走。\n"
         "• 記買入：查股後按「記買入」，再打 <code>張數 價格</code>，例 <code>1 68.5</code>。\n"
-        "• AI倉：模擬帳戶在第二排右二，不要跟手記持股搞混。平常最多 1 份，超跌才第 2 份，第 3 份留現金。\n"
+        "• AI倉：模擬帳戶在第二排「AI倉」，不要跟手記持股搞混。平常最多 1 份，超跌才第 2 份，第 3 份留現金。\n"
         "\n"
         "<b>④ 觀察</b>\n"
         "• 是什麼：自選清單，還沒買也可以先放。\n"
@@ -348,7 +348,12 @@ HELP_TOPICS = {
         "• 是什麼：把畫面怪、按鈕錯、數字不對告訴偉權（文字或截圖）。\n"
         "• 怎麼用：按下去，接著打字或傳手機截圖。記下來後會轉給偉權。\n"
         "• 不用給：不用程式密鑰、不用機器人密碼、也不用另外傳話筒編號。\n"
-        "• 要取消：改按其他按鈕即可，不會送出。"
+        "• 要取消：改按其他按鈕即可，不會送出。\n"
+        "\n"
+        "<b>⑦ 飆客</b>\n"
+        "• 是什麼：獨立觀點區，讀「期股多空雙飆客」公開發文語料。不是海選、不改黃金買點。\n"
+        "• 怎麼用：按進去看他兩年怎麼觀察；再打「飆客 去年年底」或「飆客 勤誠」查原文。\n"
+        "• 不是什麼：不是買訊，也不接到大盤／海選。"
     ),
     "row2": (
         "<b>第二排按鈕（左→右）</b>\n"
@@ -385,7 +390,8 @@ HELP_TOPICS = {
         "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區；興櫃名單請按「海選」再選興櫃。\n"
         "• 按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
-        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按第一排最右「回報」。\n"
+        "• 第二排最右一格是空白，還沒接功能；不要當成海選。\n"
+        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
         "圖文在說明頁下方分類鈕。"
     ),
     "market": (
@@ -403,7 +409,7 @@ HELP_TOPICS = {
         "<b>AI 模擬倉與自動買進</b>\n"
         "\n"
         "<b>在哪裡？</b>\n"
-        "主選單第二排右二 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。「持倉報告／模擬持倉」也來這裡。\n"
+        "主選單第二排 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。「持倉報告／模擬持倉」也來這裡。\n"
         "\n"
         "<b>這頁按鈕</b>\n"
         "• 持倉股名＝查這檔介紹圖／決策卡（圖下可再要導航圖）\n"
@@ -435,7 +441,7 @@ HELP_TOPICS = {
     ),
     "decision": (
         "<b>刷新</b>\n"
-        "第一排右二。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」或「刷新上一檔」也行。\n"
+        "第一排「刷新」。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」或「刷新上一檔」也行。\n"
         "\n"
         "• 還沒查過任何股：會請你先打代號，或從觀察清單點一檔。\n"
         "• 已查過：盤中重複按這顆即可更新，不必重打代號。\n"
@@ -450,9 +456,9 @@ HELP_TOPICS = {
         "\n"
         "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
-        "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>\n"
-        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>\n"
-        "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
+        "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>／<b>飆客</b>\n"
+        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>／（空白）\n"
+        "打「精簡選單」只留第一週常用六顆；「完整選單」恢復兩排（含飆客）。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
@@ -517,7 +523,7 @@ HELP_TOPICS = {
         "• <b>賣出</b>＝記賣出張數與價格\n"
         "• <b>成交</b>＝你手記的買賣紀錄\n"
         "• <b>復盤</b>＝對照昨收怎麼走\n"
-        "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第二排右二也有。50 萬切 3 等份，不買滿\n"
+        "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第二排也有。50 萬切 3 等份，不買滿\n"
         "\n"
         "<b>自動買進</b>：盤後融合成功與每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。AI 規則寫在「第一排」那頁。"
     ),
@@ -703,16 +709,19 @@ HELP_TOPICS = {
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
         "\n"
         "<b>畫面怪、數字怪、按鈕錯了</b>\n"
-        "按第一排最右「回報」，打字或傳截圖給偉權。"
+        "按「回報」，打字或傳截圖給偉權。"
     ),
 }
 
-# 主選單十二顆：第一週常用在第一排；當沖／隔日沖／AI倉／連買區在第二排後面。
+# 主選單兩排：原十二顆變窄，上排最右飆客、下排最右空白格（不寫「預留」）。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
 MENU_BTN_CARD = "刷新"
+MENU_BTN_BIAOKE = "飆客"
+MENU_BTN_SLOT = "\u3000"
+MENU_BTN_BIAOKE_ALIASES = (MENU_BTN_BIAOKE, "飆大", "AI飆客", "期股多空雙飆客")
 MENU_BTN_CARD_ALIASES = (MENU_BTN_CARD, "刷新上一檔", "決策卡")
 MENU_BTN_BACK_MAIN = "回主選單"
 MENU_BTN_BACK_STEP = "上一步"
@@ -725,6 +734,7 @@ MENU_ROW1 = (
     "觀察",
     MENU_BTN_CARD,
     MENU_BTN_REPORT,
+    MENU_BTN_BIAOKE,
 )
 MENU_ROW2 = (
     MENU_BTN_MARKET,
@@ -733,6 +743,7 @@ MENU_ROW2 = (
     "隔日沖",
     MENU_BTN_AI,
     MENU_BTN_STREAK,
+    MENU_BTN_SLOT,
 )
 MENU_COMPACT_ROWS = (
     ("說明", "海選", "持股"),
@@ -749,7 +760,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
 # v12：第一排最左「刷新上一檔」（決策卡當別名）。
 # v14：精簡六顆全兩字（刷新上一檔→刷新）避免換行；完整十二顆第一排同步。
-MENU_LAYOUT_VERSION = "14"
+# v15：兩排各加一格＝7+7；上排最右飆客獨立區，下排最右空白格。
+MENU_LAYOUT_VERSION = "15"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1135,10 +1147,10 @@ class WayneTelegramBot:
         self._invalidate_menu_layout(uid)
 
     def _reply_menu(self, uid: str = ""):
-        """預設十二顆兩排；精簡模式每人六顆（第一週常用）。"""
+        """預設兩排各七格（十二顆＋飆客＋空白）；精簡模式每人六顆。"""
         if self._menu_compact_on(uid):
             rows = [[KeyboardButton(t) for t in row] for row in MENU_COMPACT_ROWS]
-            placeholder = "打股名／代號；「完整選單」恢復十二顆"
+            placeholder = "打股名／代號；「完整選單」恢復兩排"
         else:
             rows = [
                 [KeyboardButton(t) for t in MENU_ROW1],
@@ -1224,15 +1236,15 @@ class WayneTelegramBot:
         compact = self._menu_compact_on(uid)
         if compact:
             text = (
-                "精簡六顆已掛上。打「完整選單」恢復十二顆。點輸入列旁邊四格 ⌨️。"
+                "精簡六顆已掛上。打「完整選單」恢復兩排。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "精簡六顆：說明／海選／持股／觀察／刷新／回報。打「完整選單」恢復十二顆。"
+                else "精簡六顆：說明／海選／持股／觀察／刷新／回報。打「完整選單」恢復兩排。"
             )
         else:
             text = (
-                "兩排已更新：第一排說明…回報，第二排大盤…連買區。點輸入列旁邊四格 ⌨️。"
+                "兩排已更新：第一排說明…飆客，第二排大盤…連買區。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右回報）。打「精簡選單」可收成六顆。"
+                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右飆客）。打「精簡選單」可收成六顆。"
             )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -2565,7 +2577,7 @@ class WayneTelegramBot:
                 + "（不要先按「刷新」）\n"
                 "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
                 "\n"
-                "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
+                "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按「回報」。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n"
             ),
         )
@@ -3479,6 +3491,18 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("大盤日K圖送出失敗")
 
+    async def _send_biaoke_page(self, message, *, ask: str = "") -> None:
+        """飆客獨立區：語料頁。不進海選、不跑高低卡。"""
+        from biaoke_desk import format_biaoke_html
+
+        html = format_biaoke_html(ask)
+        parts = chunk_telegram_html(html, reflow=True)
+        if not parts:
+            await message.reply_text("飆客區讀取失敗。", reply_markup=self._keyboard())
+            return
+        for part in parts:
+            await message.reply_html(part, disable_web_page_preview=True)
+
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
         uid = str(update.effective_user.id)
@@ -3797,6 +3821,9 @@ class WayneTelegramBot:
         if hit is None:
             return False
         kind = hit.kind
+        if kind == "biaoke":
+            await self._send_biaoke_page(message, ask=hit.query or hit.code)
+            return True
         code = str(hit.code or "").strip()
         hits = []
         if code:
@@ -3873,6 +3900,9 @@ class WayneTelegramBot:
         ctx = context if context is not None else SimpleNamespace(args=[])
         if kind == "market":
             await self.market_cmd(upd, ctx)
+            return
+        if kind == "biaoke":
+            await self._send_biaoke_page(message, ask="")
             return
         if kind == "flow":
             await self.flow_cmd(upd, ctx)
@@ -4081,6 +4111,8 @@ class WayneTelegramBot:
         if not raw:
             return
         text = _normalize_menu_text(raw)
+        if not text:
+            return
         uid = str(update.effective_user.id)
         actor = self._actor_key(update.message, uid=uid)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
@@ -4132,6 +4164,11 @@ class WayneTelegramBot:
             logger.info("主選單：資金 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.flow_cmd(update, context)
+            return
+        if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
+            logger.info("主選單：飆客 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._send_biaoke_page(update.message)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
             logger.info("主選單：大盤 uid=%s", uid)

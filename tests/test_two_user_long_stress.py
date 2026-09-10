@@ -50,7 +50,7 @@ BRO = "9002"
 WAYNE_I = 9001
 BRO_I = 9002
 
-ALL_BUTTONS = list(MENU_ROW1) + list(MENU_ROW2)
+ALL_BUTTONS = [t for t in list(MENU_ROW1) + list(MENU_ROW2) if str(t).strip()]
 ALIASES = ("刷新上一檔", "決策卡", "完整選單", "精簡選單", "選單", "幫助")
 HAMMER_SEC = 5.0
 BUTTON_ROUNDS = 48
@@ -158,7 +158,12 @@ def _bot(db: str) -> WayneTelegramBot:
     async def _ai(message, uid):
         hits.setdefault(str(uid), []).append("AI倉")
 
+    async def _bk(message, *, ask=""):
+        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        hits.setdefault(uid, []).append("飆客")
+
     bot._send_ai_desk_view = AsyncMock(side_effect=_ai)
+    bot._send_biaoke_page = AsyncMock(side_effect=_bk)
     return bot
 
 
@@ -316,6 +321,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         "觀察",
         MENU_BTN_CARD,
         MENU_BTN_REPORT,
+        "飆客",
         MENU_BTN_MARKET,
         "資金",
         "當沖",
@@ -347,7 +353,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區"):
+        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區"):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

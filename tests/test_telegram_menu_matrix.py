@@ -23,6 +23,7 @@ MENU_BUTTONS = [
     (MENU_BTN_STREAK, "streak_cmd"),
     (MENU_BTN_MARKET, "market_cmd"),
     (MENU_BTN_REPORT, "report_cmd"),
+    ("飆客", "_send_biaoke_page"),
 ]
 
 INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取大盤", "資金": "讀取當日資金移動"}

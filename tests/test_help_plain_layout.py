@@ -132,6 +132,7 @@ def test_row2_help_page_explains_help_button():
     row1 = HELP_TOPICS["row1"]
     row2 = HELP_TOPICS["row2"]
     assert "① 說明" in row1
+    assert "⑦ 飆客" in row1
     assert "⑥ 連買區" in row2
     assert row2.index("① 大盤") < row2.index("⑥ 連買區")
     assert "/help" in row1
