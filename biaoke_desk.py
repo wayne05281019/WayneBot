@@ -164,7 +164,13 @@ def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
             posts.append(row)
             by_id[aid] = row
         else:
+            keep_tags = list(old.get("tags") or [])
+            keep_text = str(old.get("text") or "")
             old.update(row)
+            if not (old.get("tags") or []) and keep_tags:
+                old["tags"] = keep_tags
+            if not str(old.get("text") or "").strip() and keep_text:
+                old["text"] = keep_text
     posts.sort(
         key=lambda p: (
             str(p.get("date") or ""),
@@ -176,8 +182,11 @@ def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
     for i, p in enumerate(posts, 1):
         p["n"] = i
     dates = [str(p.get("date") or "") for p in posts if p.get("date")]
+    n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
+    n_rep = sum(1 for p in posts if p.get("kind") == "reply")
     blob["posts"] = posts
-    blob["n"] = len(posts)
+    blob["n"] = n_post
+    blob["replies"] = n_rep
     blob["from"] = min(dates) if dates else blob.get("from") or ""
     blob["to"] = max(dates) if dates else blob.get("to") or ""
     return blob
@@ -200,9 +209,41 @@ def _default_db_path() -> Optional[str]:
         return None
 
 
+def biaoke_article_url(aid: str) -> str:
+    """樓中樓 id 是 184499206:a2，連結仍指主文。"""
+    base = str(aid or "").split(":")[0]
+    if not base.isdigit():
+        return ""
+    return f"https://www.cmoney.tw/forum/article/{base}"
+
+
 def corpus_span(db_path: Optional[str] = None) -> str:
     blob = load_corpus(db_path if db_path is not None else _default_db_path())
-    return f"{blob.get('from') or ''}～{blob.get('to') or ''}　{blob.get('n') or 0} 篇"
+    n = int(blob.get("n") or 0)
+    replies = int(blob.get("replies") or 0)
+    extra = f"＋{replies} 則回覆" if replies else ""
+    return f"{blob.get('from') or ''}～{blob.get('to') or ''}　{n} 篇{extra}"
+
+
+def format_biaoke_welcome_html() -> str:
+    """按飆大進去：不放選單，只教打字／語音提問。"""
+    span = html_escape(corpus_span())
+    return (
+        "<b>飆客獨立區</b>\n"
+        "這區跟海選／高低卡無關，也不改黃金買點。來源是 CMoney「期股多空雙飆客」公開發文"
+        f"（{span}）。不是買訊。\n"
+        "\n"
+        "<b>直接打字或語音問就好</b>，裡面沒有選單。\n"
+        "問句會在這邊用飆大的思考親自彙整後回你（雲端對話腦，兩支手機同一條路）。例如：\n"
+        "• 勤誠　／　藝舍-KY\n"
+        "• 去年年底在做什麼\n"
+        "• 大概何時止跌\n"
+        "• 量先價行怎麼看\n"
+        "\n"
+        "語料沒寫過的檔也會用同一套框架套官方 K。食衣住行不答。\n"
+        "精簡六顆沒這鈕時，打 <code>飆大</code> 或「完整選單」。"
+        "按下面其他鈕或打「回主選單」就離開。"
+    )
 
 
 def format_biaoke_desk_html() -> str:
@@ -230,8 +271,8 @@ def format_biaoke_desk_html() -> str:
         "8 量價背離只認連續一波攻擊到頂（他 2025-06-27 原文），不是大盤反彈或台積電緩漲\n"
         "9 KD／MACD／布林他不算技術分析；認支撐、窒息量、波浪段數。停損約 7～10%（長線龍頭另論）\n"
         "\n"
-        "<b>問語料</b>\n"
-        "裡面不要一次建很多選項。常用就三顆：怎麼觀察、去年年底、問一檔（打字或按麥克風）。"
+        "<b>接著怎麼問</b>\n"
+        "直接打字或語音即可，裡面沒有選單。問句會在這邊彙整後回你。"
         "精簡六顆沒這鈕，打 <code>飆大</code> 或「完整選單」。"
         "也可打 <code>飆大 勤誠</code>。語料沒寫過的檔（例如藝舍-KY）也會用同一套框架套官方 K，不上買訊。"
     )
@@ -246,7 +287,7 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
     """關鍵字／時間查語料。沒對上就交給對話腦用官方 K 套框架，不說不猜。"""
     q = (ask or "").strip()
     if not q:
-        return format_biaoke_desk_html()
+        return format_biaoke_welcome_html()
     if _PROGRESS.search(q) and not re.search(r"\d{4}", q):
         return format_biaoke_desk_html()
 
@@ -316,12 +357,13 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
         tags = "、".join(html_escape(t) for t in (p.get("tags") or [])[:6])
         snip = html_escape(re.sub(r"\s+", " ", str(p.get("text") or ""))[:180])
         aid = html_escape(str(p.get("id") or ""))
+        href = biaoke_article_url(str(p.get("id") or ""))
         lines.append(
             f"{html_escape(p.get('date'))} {html_escape(p.get('time') or '')}"
             + (f"　{tags}" if tags else "")
             + "\n"
             + snip
-            + (f"\nhttps://www.cmoney.tw/forum/article/{aid}" if aid else "")
+            + (f"\n{html_escape(href)}" if href else "")
         )
     return "\n\n".join(x for x in lines if x)
 

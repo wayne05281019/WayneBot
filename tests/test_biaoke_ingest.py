@@ -32,6 +32,18 @@ def test_parse_user_ids_keeps_order():
     assert parse_user_article_ids(html) == ["184499206", "184431393"]
 
 
+def test_parse_user_ids_skips_other_people_and_utm_links():
+    html = (
+        '<script>window.__NUXT__=(function(){return {articles:['
+        '{id:"184499206",creatorId:r,x:1},'
+        '{id:"184431393",creatorId:r,x:2},'
+        '{id:"184523396",creatorId:$,x:3}'
+        ']}})</script>'
+        '<a href="https://www.cmoney.tw/forum/article/184482173?utm_source=forum_app">other</a>'
+    )
+    assert parse_user_article_ids(html) == ["184499206", "184431393"]
+
+
 def test_parse_article_html_body_and_tags():
     html = """
     <meta property="article:published_time" content="2026-9-10T9:51:28+08:00">
@@ -68,6 +80,9 @@ def test_ingest_hook_is_on_product_clocks():
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
     assert "restore_universe_if_wiped" in boot
+    assert "seed_biaoke_archive" in boot
+    assert SESSION_EVERY_SEC == 10 * 60
+    assert AFTER_EVERY_SEC == 3 * 60 * 60
 
 
 def test_poll_wait_session_after_night():
@@ -77,7 +92,9 @@ def test_poll_wait_session_after_night():
     after = datetime(2026, 9, 9, 16, 40, tzinfo=tz)
     assert poll_wait_seconds(after) == AFTER_EVERY_SEC
     night = datetime(2026, 9, 9, 23, 10, tzinfo=tz)
-    assert poll_wait_seconds(night) == NIGHT_EVERY_SEC
+    assert poll_wait_seconds(night) == AFTER_EVERY_SEC
+    dawn = datetime(2026, 9, 10, 2, 0, tzinfo=tz)
+    assert poll_wait_seconds(dawn) == 7 * 60 * 60
     sat = datetime(2026, 9, 12, 10, 30, tzinfo=tz)
     assert poll_wait_seconds(sat) == NIGHT_EVERY_SEC
 
@@ -123,6 +140,47 @@ def test_parse_author_replies_layer1_and_layer2_skips_bystander():
     assert all(r["kind"] == "reply" and r["parent"] == "184431393" for r in rows)
 
 
+def test_parse_author_replies_keeps_nested_inside_bystander_with_chart():
+    html = """
+    <div class="articleComment">
+      <a href="/forum/user/111">路人甲</a>
+      <div class="articleComment__content">如果大盤測48218失敗怎麼辦</div>
+      <span>昨天 13:00</span>
+      <div class="articleReply nested">
+        <a href="/forum/user/25263">期股多空雙飆客</a>
+        <div class="articleReply__content">如果大盤測48218失敗很難</div>
+        <img src="https://image.cmoney.tw/attachment/post/1789000000/chart.png">
+        <span>昨天 13:07</span>
+      </div>
+    </div>
+    """
+    now = datetime(2026, 9, 10, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    rows = parse_author_replies(html, parent_id="184499206", now=now)
+    assert len(rows) == 1
+    assert rows[0]["layer"] == 2
+    assert "48218失敗很難" in rows[0]["text"]
+    assert "附圖：" in rows[0]["text"]
+    assert "chart.png" in rows[0]["text"]
+    assert "怎麼辦" not in rows[0]["text"]
+
+
+def test_parse_author_replies_skips_css_noise():
+    html = """
+    <div class="articleReply">
+      <a href="/forum/user/25263">期股多空雙飆客</a>
+      <div class="articleReply__content">.articleVirtualItem{padding-top:12px}</div>
+      <span>昨天 13:07</span>
+    </div>
+    <div class="articleReply">
+      <a href="/forum/user/25263">期股多空雙飆客</a>
+      <div>查看 231 則留言...</div>
+    </div>
+    """
+    now = datetime(2026, 9, 10, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    rows = parse_author_replies(html, parent_id="184499206", now=now)
+    assert rows == []
+
+
 def test_merge_reply_into_corpus(tmp_path):
     class _Fake:
         def __init__(self):
@@ -165,54 +223,3 @@ def test_merge_reply_into_corpus(tmp_path):
     texts = " ".join(p.get("text") or "" for p in blob["posts"])
     assert "看中一檔" in texts
     assert "Bearer" not in open("biaoke_ingest.py", encoding="utf-8").read() or "不准放 Bearer" in open("biaoke_ingest.py", encoding="utf-8").read()
-
-
-
-def test_parse_published_taipei():
-    date, tm = parse_published("2026-9-10T9:51:28+08:00")
-    assert date == "2026-09-10"
-    assert tm == "09:51"
-
-
-def test_parse_user_ids_keeps_order():
-    html = (
-        '<a href="/forum/article/184499206">x</a>'
-        '<a href="/forum/article/184431393">y</a>'
-        '<a href="/forum/article/184499206">dup</a>'
-    )
-    assert parse_user_article_ids(html) == ["184499206", "184431393"]
-
-
-def test_parse_article_html_body_and_tags():
-    html = """
-    <meta property="article:published_time" content="2026-9-10T9:51:28+08:00">
-    <meta property="article:tag" content="3017奇鋐">
-    <meta property="article:tag" content="TWA00加權指數">
-    <article>
-      <div>期股多空雙飆客</div>
-      <div>追蹤</div>
-      <div>1.台指期連續盤，細微波這兩天開始進行abc修正。</div>
-      <div>2.目前台股長線主流股族群目前就是散熱族群最為強勢。</div>
-      <div>查看 222 則留言...</div>
-      <div>這行不該進來</div>
-    </article>
-    """
-    row = parse_article_html("184499206", html)
-    assert row is not None
-    assert row["id"] == "184499206"
-    assert row["date"] == "2026-09-10"
-    assert row["time"] == "09:51"
-    assert "奇鋐" in row["tags"]
-    assert "加權指數" not in row["tags"]
-    assert "散熱族群" in row["text"]
-    assert "這行不該進來" not in row["text"]
-    assert "查看" not in row["text"]
-
-
-def test_ingest_hook_is_on_product_clocks():
-    import inspect
-    import main
-
-    src = inspect.getsource(main.run_scheduled_job)
-    assert "run_biaoke_ingest_quiet" in src
-    assert 'kind in ("morning", "midday", "fuse", "evening")' in src

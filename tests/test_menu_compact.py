@@ -32,7 +32,7 @@ def test_compact_six_buttons_are_two_chars_no_wrap():
         assert len(row) == 3
         for t in row:
             assert len(t) == 2, t
-    assert MENU_LAYOUT_VERSION == "16"
+    assert MENU_LAYOUT_VERSION == "17"
     assert MENU_ROW1 == ("說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE)
     assert MENU_ROW2[:6] == (MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK)
     assert MENU_ROW2[6].strip() == ""

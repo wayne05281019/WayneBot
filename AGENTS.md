@@ -95,7 +95,7 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 
 - **Render 永久碟**：`wayne-data` 5GB，掛在 `/opt/render/project/src/data`（對到 `data/wayne_market.db`）。
 - **話筒更新路徑**：合進 `main` → Render `waynebot-service`。核對 `/health` 的 `git_sha`。偉權與哥哥手機同一顆 Bot。
-- **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。種子 JSON 只當底。
+- **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。種子 JSON 只當底；Drive 1709 公開文 gzip 開機補進 overlay。只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖；路人留言不收。社團 72 不進公開語料。按飆大＝對話（無裡面選單、按鈕兩個字沒有圈），問句在 Render 上用這顆對話腦彙整回答；不准另開 Cursor 話筒代理、不准 Other Models。盤中 10 分抓公開文＋一二層回覆，收盤後到凌晨 1 點每 3 小時。
 - **雙 Bot**：已否決。不是偉權／哥哥各一顆機器人；延後清單裡的「雙 Bot」是第二顆 token／第二套產品，沒規格。功能全同＋雙人同時重度使用見文首「最高產品原則」。
 - **私人 Bot 白名單**：只認 Render 環境變數裡的兩個 Telegram uid（`TELEGRAM_CHAT_ID`＝偉權，`WAYNE_FAMILY_CHAT_IDS` 或逗號後＝哥哥）。真人 id 不准寫進 git。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉排程只寄白名單，不掃所有用過 Bot 的人。沒設任何 uid＝關門。
 - **公開 Release zip**：只准日 K／財報這類公開行情。GHA 上傳前 `strip_private_user_data` 清持股／觀察／成交／AI 倉／`tg_users`。不要把 Render 正式碟整顆上傳。

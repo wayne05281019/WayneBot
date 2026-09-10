@@ -13,9 +13,13 @@ from intent_router import parse_intent
 from biaoke_desk import format_biaoke_desk_html, search_biaoke
 
 
-def test_biaoke_button_is_circled_biaoda_top_right():
+def test_biaoke_button_is_plain_biaoda_top_right():
     assert MENU_BTN_BIAOKE == "飆大"
-    assert MENU_BTN_BIAOKE_FACE == "飆\u20dd大\u20dd"
+    assert MENU_BTN_BIAOKE_FACE == "飆大"
+    assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
+    from bot_servers import MENU_BTN_BIAOKE_ALIASES, _circled_menu_label
+
+    assert _circled_menu_label("飆大") in MENU_BTN_BIAOKE_ALIASES
     assert _normalize_menu_text(MENU_BTN_BIAOKE_FACE) == "飆大"
     assert MENU_ROW1[-1] == MENU_BTN_BIAOKE_FACE
     assert MENU_ROW2[-1] == MENU_BTN_SLOT
@@ -24,8 +28,8 @@ def test_biaoke_button_is_circled_biaoda_top_right():
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     face = [b.text for b in kb.keyboard[0]][-1]
-    assert face == MENU_BTN_BIAOKE_FACE
-    assert "\u20dd" in face
+    assert face == "飆大"
+    assert "\u20dd" not in face
     assert _normalize_menu_text(face) == "飆大"
     assert [b.text for b in kb.keyboard[1]][-1].strip() == ""
 
@@ -48,13 +52,24 @@ def test_progress_page_is_independent():
     assert "不是買訊" in html
 
 
-def test_desk_has_three_options_not_a_tree():
-    html = format_biaoke_desk_html()
-    assert "怎麼觀察" in html
-    assert "去年年底" in html
-    assert "問一檔" in html
-    assert "麥克風" in html
-    assert "精簡六顆" in html
+def test_welcome_teaches_chat_not_a_menu():
+    from biaoke_desk import format_biaoke_html, format_biaoke_welcome_html
+
+    html = format_biaoke_welcome_html()
+    assert "直接打字" in html
+    assert "語音" in html
+    assert "沒有選單" in html
+    assert "彙整" in html
+    assert "問一檔" not in html
+    assert "三顆" not in html
+    assert "麥克風" not in html
+    assert format_biaoke_html("") == html
+    assert format_biaoke_html() == html
+    see = format_biaoke_desk_html()
+    assert "量先價行" in see
+    assert "細微波" in see
+    assert "直接打字" in see
+    assert "問一檔" not in see
 
 
 def test_intent_biaoke_keeps_query():
@@ -134,7 +149,7 @@ def test_biaoke_chat_keeps_pending_when_asking_unknown_name():
     assert bot._pending["1:1"] == "biaoke:chat"
 
 
-def test_blank_slot_is_silent_no_lookup():
+def test_circled_face_routes_like_biaoda():
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
@@ -152,3 +167,52 @@ def test_blank_slot_is_silent_no_lookup():
     asyncio.run(bot.on_text(upd, MagicMock()))
     msg.reply_text.assert_not_awaited()
     msg.reply_html.assert_not_awaited()
+
+
+def test_biaoke_page_has_no_inside_menu():
+    import inspect
+
+    src = inspect.getsource(WayneTelegramBot._send_biaoke_page)
+    assert "_biaoke_inline" not in src
+    assert "bk:see" not in src
+    assert "怎麼觀察" not in src
+    assert "問一檔" not in src
+    assert not hasattr(WayneTelegramBot, "_biaoke_inline")
+    whole = inspect.getsource(WayneTelegramBot)
+    assert 'InlineKeyboardButton("怎麼觀察"' not in whole
+    assert 'kind == "see"' in whole  # 舊訊息三顆還能答，只是不再畫選單
+
+
+def test_two_uids_both_enter_biaoke_chat_without_submenu():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {}
+    bot._pending_locks = {}
+    bot._send_biaoke_page = AsyncMock()
+
+    def _actor(message, uid=""):
+        return f"{message.chat_id}:{uid or message.from_user.id}"
+
+    bot._actor_key = _actor
+
+    async def _run(uid: int):
+        user = SimpleNamespace(id=uid, first_name="u")
+        msg = MagicMock()
+        msg.from_user = user
+        msg.chat_id = uid
+        msg.text = MENU_BTN_BIAOKE_FACE
+        msg.reply_text = AsyncMock()
+        msg.reply_html = AsyncMock()
+        upd = SimpleNamespace(message=msg, effective_user=user)
+        await bot.on_text(upd, MagicMock())
+
+    asyncio.run(_run(11))
+    asyncio.run(_run(22))
+    assert bot._pending["11:11"] == "biaoke:chat"
+    assert bot._pending["22:22"] == "biaoke:chat"
+    assert bot._send_biaoke_page.await_count == 2

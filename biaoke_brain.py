@@ -16,13 +16,15 @@ from tg_layout import html_escape
 PENDING = "biaoke:chat"
 DISCLAIMER = (
     "⚠️ <b>這不是買訊。</b>不是飆大本人在線上。"
-    "是把他公開文的思考套在官方數據上；語料沒點名的檔也用同一套框架，可能看錯。"
+    "問句在這邊用他公開文的思考彙整後回你；語料沒點名的檔也用同一套框架，可能看錯。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
 CHAT_HINT = (
-    "直接打股名、代號或大盤問題（例如大概何時止跌）。語音也行。"
+    "直接打字或語音問就好，裡面沒有選單。"
+    "問句會在這邊用飆大的思考彙整後回你。"
+    "股名、代號、大盤（例如大概何時止跌）都可以。"
     "語料沒寫過的檔也會用同一套框架套官方 K。"
-    "按回主選單離開。不是買訊。"
+    "按下面其他鈕或打「回主選單」離開。不是買訊。"
 )
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
@@ -350,17 +352,22 @@ def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> L
 def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:
     if not posts:
         return ""
+    from biaoke_desk import biaoke_article_url
+
     lines = ["<b>語料有寫到</b>"]
     for p in posts:
         snip = html_escape(re.sub(r"\s+", " ", str(p.get("text") or ""))[:140])
-        aid = html_escape(str(p.get("id") or ""))
         tags = "、".join(html_escape(t) for t in (p.get("tags") or [])[:5])
         bit = f"{html_escape(p.get('date'))}"
+        if p.get("kind") == "reply":
+            layer = int(p.get("layer") or 1)
+            bit += f"　樓中樓{layer}層"
         if tags:
             bit += f"　{tags}"
         bit += f"\n{snip}"
-        if aid:
-            bit += f"\nhttps://www.cmoney.tw/forum/article/{aid}"
+        href = biaoke_article_url(str(p.get("id") or ""))
+        if href:
+            bit += f"\n{html_escape(href)}"
         lines.append(bit)
     return "\n\n".join(lines)
 
@@ -570,9 +577,14 @@ def _load_mkt(db_path: str) -> Dict[str, Any]:
         return {}
 
 
-def answer_biaoke(db_path: str, ask: str) -> str:
-    """一句問句 → Telegram HTML。永遠帶警語（食衣住行除外）。"""
-    q = (ask or "").strip()
+def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = None) -> str:
+    """一句問句 → Telegram HTML。用飆大公開文思考彙整，不是選單考卷。
+
+    history：同一人上一句（偉權／哥哥分開），讓『那呢』接得上。
+    """
+    from biaoke_mind import follow_up_ask, format_methods_html
+
+    q = follow_up_ask((ask or "").strip(), history)
     if is_offtopic(q):
         return OFFTOPIC
     if is_desk_query(q):
@@ -580,8 +592,9 @@ def answer_biaoke(db_path: str, ask: str) -> str:
 
         return format_biaoke_html(q)
 
+    methods = format_methods_html(q)
     hits = resolve_stock(db_path, q)
-    posts = match_posts(q, limit=3, db_path=db_path)
+    posts = match_posts(q, limit=5, db_path=db_path)
     want_mkt = is_market_question(q)
     stock_like = bool(stock_query(q)) and not want_mkt
     if hits and (stock_like or (not want_mkt) or len(stock_query(q)) >= 2):
@@ -615,12 +628,19 @@ def answer_biaoke(db_path: str, ask: str) -> str:
                 mkt=_load_mkt(db_path),
                 night=_load_night(db_path),
             )
-        chunks = [DISCLAIMER, body]
+        chunks = [DISCLAIMER]
+        if methods:
+            chunks.append(methods)
+        chunks.append(body)
         if extra:
             chunks.append(extra)
         if cite:
             chunks.append(cite)
         return "\n\n".join(chunks)
+
+    if methods and not hits and not want_mkt:
+        cite = _cite_posts(posts)
+        return "\n\n".join(x for x in (DISCLAIMER, methods, cite) if x)
 
     if want_mkt or not hits:
         if want_mkt or re.search(r"(止跌|連跌|美股|台股|大盤|費半)", q):
@@ -636,9 +656,9 @@ def answer_biaoke(db_path: str, ask: str) -> str:
                 night=_load_night(db_path),
             )
             cite = _cite_posts(posts)
-            return "\n\n".join(x for x in (DISCLAIMER, body, cite) if x)
+            return "\n\n".join(x for x in (DISCLAIMER, methods, body, cite) if x)
         if posts:
-            return "\n\n".join(x for x in (DISCLAIMER, _cite_posts(posts)) if x)
+            return "\n\n".join(x for x in (DISCLAIMER, methods, _cite_posts(posts)) if x)
         return (
             DISCLAIMER
             + "\n聽成大盤或個股問題。直接打股名／代號，或問『大概何時止跌』。"

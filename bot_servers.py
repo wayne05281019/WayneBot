@@ -300,7 +300,7 @@ HELP_TOPICS = {
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>刷新</b>：刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>飆大</b>：圈住觀點，也叫飆客；不是海選\n"
+        "• <b>飆大</b>：獨立觀點區，也叫飆客；不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
@@ -363,8 +363,8 @@ HELP_TOPICS = {
         "• 要取消：改按其他按鈕即可，不會送出。\n"
         "\n"
         "<b>⑦ 飆大</b>\n"
-        "• 是什麼：獨立觀點區（鍵盤上兩個字有圈）。讀「期股多空雙飆客」公開發文。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去只有三顆：怎麼觀察、去年年底、問一檔（打字或語音）。不必一次建很多選項。\n"
+        "• 是什麼：獨立觀點區。讀「期股多空雙飆客」公開發文與他自己的一、二層樓中樓（含回在別人留言裡的、以及他附的圖）。不是海選、不改黃金買點。路人留言不收。\n"
+        "• 怎麼用：按進去直接打字或語音提問，裡面沒有選單。問句會在這邊用飆大公開文的思考彙整後回你（偉權／哥哥同一條路）。股名、代號、大盤、怎麼觀察都可以問。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊，也不接到大盤／海選。"
     ),
     "row2": (
@@ -470,7 +470,7 @@ HELP_TOPICS = {
         "\n"
         "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>／<b>飆大</b>\n"
         "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>／（空白）\n"
-        "打「精簡選單」只留六顆；「完整選單」恢復兩排（含圈住的飆大）。\n"
+        "打「精簡選單」只留六顆；「完整選單」恢復兩排（含飆大）。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
@@ -725,18 +725,19 @@ HELP_TOPICS = {
     ),
 }
 
-# 主選單兩排：原十二顆變窄，上排最右圈住的飆大、下排最右空白格。
+# 主選單兩排：原十二顆變窄，上排最右飆大、下排最右空白格。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
 MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
-MENU_BTN_BIAOKE_FACE = _circled_menu_label(MENU_BTN_BIAOKE)
+MENU_BTN_BIAOKE_FACE = MENU_BTN_BIAOKE
 MENU_BTN_SLOT = "\u3000"
 MENU_BTN_BIAOKE_ALIASES = (
     MENU_BTN_BIAOKE,
     MENU_BTN_BIAOKE_FACE,
+    _circled_menu_label(MENU_BTN_BIAOKE),
     "飆客",
     "AI飆客",
     "期股多空雙飆客",
@@ -780,8 +781,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v12：第一排最左「刷新上一檔」（決策卡當別名）。
 # v14：精簡六顆全兩字（刷新上一檔→刷新）避免換行；完整十二顆第一排同步。
 # v15：兩排各加一格＝7+7；上排最右飆客獨立區，下排最右空白格。
-# v16：上排最右改圈住的「飆大」；裡面三顆（怎麼觀察／去年年底／問一檔）。
-MENU_LAYOUT_VERSION = "16"
+# v16：上排最右改「飆大」；按進去直接對話，不放裡面選單。
+# v17：飆大兩個字上的圈拿掉；舊圈圈鍵盤仍認。
+MENU_LAYOUT_VERSION = "17"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -814,6 +816,7 @@ class WayneTelegramBot:
         self.screener = ScreeningEngine(self.db_path)
         self.portfolio_engine = PortfolioEngine(self.db_path)
         self._pending: Dict[str, str] = {}
+        self._biaoke_hist: Dict[str, list] = {}
         self._last_card: Dict[str, str] = {}
         self._lookup_ctx: Dict[str, dict] = {}
         # actor_key（chat_id:uid）隔離，避免同機多用戶互相刪訊息／搶快取
@@ -884,6 +887,10 @@ class WayneTelegramBot:
         actor = self._actor_key(message, uid=uid)
         if clear_pending:
             self._pending.pop(actor, None)
+            try:
+                self._biaoke_hist.pop(actor, None)
+            except Exception:
+                pass
         await self._dismiss_menu_transients(actor)
         if not self._menu_layout_ok(uid):
             await self._refresh_reply_menu(message, uid=uid, silent=silent_keyboard)
@@ -1264,7 +1271,7 @@ class WayneTelegramBot:
             text = (
                 "兩排已更新：第一排說明…飆大，第二排大盤…連買區。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右圈住飆大）。打「精簡選單」可收成六顆。"
+                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右飆大）。打「精簡選單」可收成六顆。"
             )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -3511,17 +3518,6 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("大盤日K圖送出失敗")
 
-    def _biaoke_inline(self):
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("怎麼觀察", callback_data="bk:see"),
-                    InlineKeyboardButton("去年年底", callback_data="bk:yend"),
-                ],
-                [InlineKeyboardButton("問一檔（打字或語音）", callback_data="bk:ask")],
-            ]
-        )
-
     def _enter_biaoke_chat(self, message, uid: str = "") -> None:
         uid = str(uid or self._uid_from_message(message) or "")
         if not uid:
@@ -3534,26 +3530,30 @@ class WayneTelegramBot:
         self._pending[actor] = BIAOKE_PENDING
 
     async def _send_biaoke_page(self, message, *, ask: str = "", uid: str = "") -> None:
-        """飆客獨立區：持續對話。語料沒寫過的檔也套官方 K。不進海選。"""
+        """飆客獨立區：持續對話。問句在這邊彙整。語料沒寫過的檔也套官方 K。不進海選。"""
         from biaoke_brain import answer_biaoke, is_desk_query
         from biaoke_desk import format_biaoke_html
 
         self._enter_biaoke_chat(message, uid)
         q = (ask or "").strip()
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
+            self._biaoke_hist = {}
+        hist = list(self._biaoke_hist.get(actor) or [])
         if is_desk_query(q):
             html = format_biaoke_html(q)
         else:
-            html = await asyncio.to_thread(answer_biaoke, self.db_path, q)
+            html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist)
+        if q and not is_desk_query(q):
+            bucket = self._biaoke_hist.setdefault(actor, [])
+            bucket.append({"ask": q, "answer": html[:400]})
+            del bucket[:-8]
         parts = chunk_telegram_html(html, reflow=True)
         if not parts:
             await message.reply_text("飆客區讀取失敗。", reply_markup=self._keyboard())
             return
-        nav = self._biaoke_inline()
-        for i, part in enumerate(parts):
-            kb = nav if i == len(parts) - 1 else None
-            await message.reply_html(
-                part, reply_markup=kb, disable_web_page_preview=True
-            )
+        for part in parts:
+            await message.reply_html(part, disable_web_page_preview=True)
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""

@@ -805,6 +805,14 @@ def run_web():
                 logger.info("啟動清假資料：%s", stats)
             logger.info("背景：資料庫索引完成")
             try:
+                from biaoke_archive import seed_biaoke_archive
+
+                n_bk = seed_biaoke_archive(get_db_path())
+                if n_bk:
+                    logger.info("飆大公開文 overlay 補進 %s 列", n_bk)
+            except Exception:
+                logger.exception("飆大 1709 overlay 補進失敗")
+            try:
                 from company_events import ensure_events_loaded
 
                 n_ev = ensure_events_loaded(get_db_path())

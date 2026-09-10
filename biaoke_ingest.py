@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。只抓 CMoney 公開頁，不進海選。
 
-盤中 20 分、盤後到 21:30 每 30 分、夜間併入 20:00／06:30。
+盤中 10 分、盤後到凌晨 1 點每 3 小時、夜間併入 06:30。
 不准放 Bearer／localStorage／同學會 token。社團不抓。
-公開 HTML 常常不帶留言正文：有 SSR 就收，沒有就只更新主文，不假裝聽到。
+只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
+路人留言不收。公開 HTML 常常不帶留言正文：有 SSR 就收，沒有就只更新主文，不假裝聽到。
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 import requests
@@ -43,10 +44,23 @@ _UA = {
     "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
-SESSION_EVERY_SEC = 20 * 60
-AFTER_EVERY_SEC = 30 * 60
+SESSION_EVERY_SEC = 10 * 60
+AFTER_EVERY_SEC = 3 * 60 * 60
 NIGHT_EVERY_SEC = 3 * 60 * 60
 _ID_RE = re.compile(r"/forum/article/(\d{6,})")
+_HREF_OWN = re.compile(
+    r'href="(?:https://www\.cmoney\.tw)?/forum/article/(\d{6,})"'
+)
+_NUXT_FEED = re.compile(
+    r'articles:\[\{id:"(\d{6,})",creatorId:([A-Za-z_$][\w$]*)'
+)
+_NUXT_ID_CREATOR = re.compile(
+    r'\{id:"(\d{6,})",creatorId:([A-Za-z_$][\w$]*)'
+)
+_CHART_URL = re.compile(
+    r"https://image\.cmoney\.tw/attachment/[^\s\"'<>]+",
+    re.I,
+)
 _PUB_RE = re.compile(
     r'property="article:published_time"\s+content="([^"]+)"',
     re.I,
@@ -78,10 +92,55 @@ def parse_published(raw: str) -> tuple[str, str]:
     return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}", f"{int(hh):02d}:{mm}"
 
 
+def chart_urls(*blobs: str) -> List[str]:
+    """只收飆大附在主文／樓中樓的 attachment 圖，不要頭像、不要路人圖。"""
+    out: List[str] = []
+    seen = set()
+    for blob in blobs:
+        for url in _CHART_URL.findall(blob or ""):
+            if url not in seen:
+                seen.add(url)
+                out.append(url)
+    return out
+
+
+def _append_charts(text: str, urls: Sequence[str], *, limit: int = 6) -> str:
+    body = (text or "").rstrip()
+    for url in list(urls)[:limit]:
+        if url and url not in body:
+            body = (body + "\n附圖：" + url).strip()
+    return body
+
+
 def parse_user_article_ids(html_text: str) -> List[str]:
+    """只收飆大自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。"""
+    raw = html_text or ""
+    m = _NUXT_FEED.search(raw)
+    if m:
+        owner = m.group(2)
+        chunk = raw[m.start() : m.start() + 180000]
+        ids: List[str] = []
+        seen = set()
+        for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
+            if cid != owner or len(aid) <= 6:
+                continue
+            if aid in seen:
+                continue
+            seen.add(aid)
+            ids.append(aid)
+            if len(ids) >= 20:
+                break
+        if ids:
+            return ids
     ids: List[str] = []
     seen = set()
-    for aid in _ID_RE.findall(html_text or ""):
+    for aid in _HREF_OWN.findall(raw):
+        if aid not in seen:
+            seen.add(aid)
+            ids.append(aid)
+    if ids:
+        return ids
+    for aid in _ID_RE.findall(raw):
         if aid not in seen:
             seen.add(aid)
             ids.append(aid)
@@ -141,9 +200,21 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
         t = re.sub(r"^[A-Z]{0,5}\d{3,6}", "", t).strip()
         if t and t not in tags and t not in {"加權指數"}:
             tags.append(t)
-    text = _strip_article_text(html_text or "")
+    raw = html_text or ""
+    if AUTHOR_NAME not in raw and f"/forum/user/{AUTHOR_ID}" not in raw:
+        return None
+    text = _strip_article_text(raw)
     if not date or not text:
         return None
+    main = raw
+    art = re.search(r"<article[^>]*>(.*)</article>", raw, re.S | re.I)
+    if art:
+        main = re.split(
+            r"articleComment|articleReply|replyRespond",
+            art.group(1),
+            maxsplit=1,
+        )[0]
+    text = _append_charts(text, chart_urls(main))
     return {
         "n": 0,
         "date": date,
@@ -157,6 +228,8 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
 def fetch_html(url: str, session: Optional[requests.Session] = None, timeout: int = 12) -> str:
     sess = session or _session()
     resp = sess.get(url, timeout=timeout)
+    if getattr(resp, "status_code", 200) == 404:
+        return ""
     resp.raise_for_status()
     resp.encoding = resp.apparent_encoding or "utf-8"
     return resp.text or ""
@@ -167,7 +240,7 @@ def taipei_now() -> datetime:
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """盤中 20 分；13:40～21:30 每 30 分；其餘 3 小時（併入 20:00／06:30）。"""
+    """盤中 10 分；收盤後到凌晨 1 點每 3 小時；1 點到 9 點等到開盤。週末 3 小時。"""
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -178,9 +251,10 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
         return NIGHT_EVERY_SEC
     if 9 * 60 <= hm <= 13 * 60 + 40:
         return SESSION_EVERY_SEC
-    if 13 * 60 + 40 < hm <= 21 * 60 + 30:
+    if hm >= 13 * 60 + 40 or hm < 60:
         return AFTER_EVERY_SEC
-    return NIGHT_EVERY_SEC
+    # 01:00～09:00：等到開盤再抓
+    return max(60, 9 * 60 - hm) * 60
 
 
 def parse_display_time(
@@ -218,13 +292,30 @@ def _plain(html_text: str) -> str:
     return "\n".join(lines)
 
 
+def _reply_noise(body: str) -> bool:
+    s = body or ""
+    if not s.strip():
+        return True
+    if "data-v-" in s or ".article" in s:
+        return True
+    if "查看" in s and "則留言" in s:
+        return True
+    if s.count("{") >= 2:
+        return True
+    return False
+
+
 def parse_author_replies(
     html_text: str,
     *,
     parent_id: str,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    """公開頁裡飆大自己的一、二層回覆。路人留言不收。沒 SSR 就空列表。"""
+    """只收飆大自己的一、二層樓中樓。路人正文不收。
+
+    他常回在別人留言裡面（nested / 樓中樓），那一則仍要收。
+    他自己附的 attachment 圖一併留下。公開頁沒 SSR 就空列表。
+    """
     raw = html_text or ""
     if f"/forum/user/{AUTHOR_ID}" not in raw and AUTHOR_NAME not in raw:
         return []
@@ -237,9 +328,16 @@ def parse_author_replies(
     for ch in chunks:
         if f"/forum/user/{AUTHOR_ID}" not in ch and AUTHOR_NAME not in ch:
             continue
-        if "articleContent__baseCont" in ch and "articleReply" not in ch and "articleComment__content" not in ch:
+        if (
+            "articleContent__baseCont" in ch
+            and "articleReply" not in ch
+            and "articleComment__content" not in ch
+            and "replyRespond" not in ch
+        ):
             continue
-        layer = 2 if re.search(r"articleReply[^>]*nested|replyRespond|層回覆", ch) else 1
+        layer = 2 if re.search(
+            r"articleReply[^>]*nested|replyRespond|層回覆|樓中樓", ch
+        ) else 1
         body = ""
         for cls in (
             r'articleReply__content[^>]*>(.*?)</div>',
@@ -251,16 +349,15 @@ def parse_author_replies(
                 body = _plain(m.group(1))
                 if body:
                     break
+        imgs = chart_urls(ch)
         if not body:
             plain = _plain(ch)
-            # 去掉作者名、讚、回覆鈕
             plain = re.sub(rf"{AUTHOR_NAME}|讚|回覆|超級幫手|Lv\.\d+", " ", plain)
             plain = re.sub(r"\s+", " ", plain).strip()
-            if 8 <= len(plain) <= 400 and not plain.startswith("http"):
+            if 8 <= len(plain) <= 400 and not _reply_noise(plain):
                 body = plain
-        if not body or body in seen:
-            continue
-        if body.startswith("1.") or body.startswith("1、"):
+        body = _append_charts(body, imgs, limit=4)
+        if _reply_noise(body) or body in seen:
             continue
         tm_raw = ""
         tm = re.search(r"(昨天|昨日|前天)?\s*\d{1,2}:\d{2}", ch)
@@ -279,10 +376,10 @@ def parse_author_replies(
                 "layer": layer,
                 "kind": "reply",
                 "tags": [],
-                "text": body[:800],
+                "text": body[:1200],
             }
         )
-        if len(out) >= 12:
+        if len(out) >= 40:
             break
     return out
 
@@ -341,7 +438,7 @@ def ingest_public_posts(
     db_path: str = "",
     session: Optional[requests.Session] = None,
     max_ids: int = 12,
-    refresh_latest: int = 2,
+    refresh_latest: int = 4,
 ) -> Dict[str, Any]:
     """抓公開個人頁最新文＋最新兩篇的飆大一／二層回覆。失敗不改海選。
 
@@ -389,6 +486,8 @@ def ingest_public_posts(
             continue
         try:
             html_text = fetch_html(ARTICLE_URL.format(aid=aid), sess)
+            if not html_text:
+                continue
             row = parse_article_html(aid, html_text)
         except Exception:
             logger.debug("飆大單篇失敗 id=%s", aid, exc_info=True)
@@ -454,7 +553,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：盤中 20 分、盤後 30 分打公開頁。GHA --once 不開。"""
+    """常駐：盤中 10 分、盤後到凌晨 1 點每 3 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
     import threading
     import time as _time
 
