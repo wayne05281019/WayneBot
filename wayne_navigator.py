@@ -484,6 +484,7 @@ class NavigatorEngine:
         df["low_20"] = hl_src.rolling(20, min_periods=1).min()
         df["high_60"] = hl_src.rolling(60, min_periods=1).max()
         df["low_60"] = hl_src.rolling(60, min_periods=1).min()
+        df["ma60_hl"] = hl_src.rolling(60, min_periods=1).mean()
         df["low_120"] = hl_src.rolling(120, min_periods=20).min()
         df["low_240"] = hl_src.rolling(240, min_periods=40).min()
         df["low_480"] = hl_src.rolling(480, min_periods=80).min()
@@ -518,7 +519,13 @@ class NavigatorEngine:
             l60 = float(df["low_60"].iloc[i])
             h60_i = float(df["high_60"].iloc[i])
             bias = float(df["bias_monthly"].iloc[i])
-            ma60_i = float(df["ma60"].iloc[i] or 0)
+            ma60_raw = df["ma60_hl"].iloc[i] if "ma60_hl" in df.columns else df["ma60"].iloc[i]
+            try:
+                ma60_i = float(ma60_raw or 0)
+                if ma60_i != ma60_i:
+                    ma60_i = 0.0
+            except (TypeError, ValueError):
+                ma60_i = 0.0
             t = compute_card_temperature(
                 c, h20, l20, bias, high60=h60_i, low60=l60, ma60=ma60_i
             )

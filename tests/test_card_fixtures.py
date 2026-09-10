@@ -211,3 +211,21 @@ def test_twenty_low_leave_zero_does_not_compress_to_zero():
         18.8, 19.9, 18.8, -3.0, high60=21.1, low60=18.45, ma60=19.55
     )
     assert 5.0 <= t <= 10.0
+
+
+def test_below_ma60_not_twenty_high_compresses_even_if_p20_mid():
+    """長榮 7/30 型：收在季線下、還沒貼 20 高，VAM 3.5，不能沿用 60 日舊高到 50°C+。"""
+    hot = compute_card_temperature(201.0, 206.0, 185.5, 1.5, high60=237.0, low60=181.0)
+    cold = compute_card_temperature(
+        201.0, 206.0, 185.5, 1.5, high60=237.0, low60=181.0, ma60=205.86
+    )
+    assert hot >= 50.0
+    assert cold < 16.0
+
+
+def test_twenty_high_narrow_sixty_not_stuck_at_thirty():
+    """萬海 8/13 型：已貼 20 高、60 日空間約 14%，VAM 56.8，不要卡在 30°C。"""
+    t = compute_card_temperature(
+        87.5, 87.5, 79.5, 3.0, high60=87.5, low60=76.7, ma60=82.55
+    )
+    assert 45.0 <= t <= 58.0

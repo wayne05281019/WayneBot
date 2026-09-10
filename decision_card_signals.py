@@ -316,9 +316,10 @@ def compute_card_temperature(
     做尺度近似，不抄 PWave／VAM／ATRB。
 
     跌破季線後在 60 日區間下半盤整、又不是 20 高／20 低／60 低：改走窄尺，
-    避免舊高把溫度撐到 40°C+（中石化 8 月 VAM 0.5 型）。20 高熱尺（8234 76.9、
-    致伸 9/4 69.3）不變。貼 20 高但 VAM 只有 50～55（6547／台塑）同一把熱尺
-    對不上，不能為了那兩檔把 8234 整表降溫。
+    避免舊高把溫度撐到 40°C+（中石化 8 月 VAM 0.5、長榮 7 月底 VAM 3.5）。
+    貼 20 高且 60 日空間仍 ≥12% 時，窄尺至少拉到 40°C 一段（萬海 8/13 VAM 56.8）。
+    20 高熱尺（8234 76.9、致伸 9/4 69.3）不變。貼 20 高但 VAM 只有 50～55
+    （6547／台塑）對 8234／大成鋼 100 同一把尺對不上，不整表改熱尺、不抄 VAM。
     """
     try:
         c, h20, l20 = float(close), float(high20), float(low20)
@@ -344,8 +345,7 @@ def compute_card_temperature(
         and (not at_20_high)
         and (not at_20_low)
         and p60 < 0.42
-        and p20 < 0.85
-        and space20 >= 12.0
+        and space20 >= 11.0
         and (space60 - space20) >= 18.0
     )
     if dumped_chop:
@@ -358,6 +358,9 @@ def compute_card_temperature(
         t_min, t_span, bias_k = 10.0, 63.0, 0.26
     else:
         t_min, t_span, bias_k = 10.0, 68.0, 0.28
+    # 貼 20 高但 60 日區間不算大：作者 VAM 仍可到 50～60（萬海 8/13），不要卡在 30°C。
+    if at_20_high and space60 >= 12.0 and t_span < 40.0:
+        t_span = 40.0
     t = t_min + t_span * rf + bias_k * bias
     return round(max(0.0, min(99.9, t)), 1)
 
