@@ -166,6 +166,18 @@ def test_display_alert_shows_hi_lo_when_blank():
     assert hi_lo_tag(643, 667, 667, 644, 572, 630, 630) == "No"
     assert hi_lo_tag(595, 610, 610, 595, 572, 578, 578) == "5高"
     assert hi_lo_tag(667, 667, 667, 667, 572, 572, 572) == "20高"
+    # 6770 9/7：收 72.9 碰到 5 日高，10 日高是 73.0，不能因 0.2% 貼齊改標 10高。
+    assert hi_lo_tag(72.9, 78.4, 73.0, 72.9, 66.6, 67.8, 67.8) == "5高"
+
+
+def test_alert_tag_k20_low_needs_near_twenty_low():
+    """6770 9/4：RSV 低、月乖離負，離 20 低還有一段 → Cary 預警 No。"""
+    from decision_card_signals import alert_tag
+
+    rsv = (68.5 - 66.6) / (78.4 - 66.6) * 100.0
+    assert rsv < 35
+    assert alert_tag(68.5, low60=49.55, high20=78.4, low20=66.6, bias_monthly=-2.7, rsv=rsv) == "No"
+    assert alert_tag(66.6, low60=49.55, high20=78.4, low20=66.6, bias_monthly=-3.0, rsv=0.0) == "K20低"
 
 
 def test_candle_up_taiwan_vs_prev_close():

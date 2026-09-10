@@ -447,9 +447,21 @@ class NavigatorEngine:
             is_live = True
             live_time = str(df["_live_time"].iloc[-1] or "") if "_live_time" in df.columns else ""
         df, xq_notes = normalize_ohlc(df, self.db_path)
-        close_s = df["close"].where(~df["is_halt"])
+        # 小額除息不要改高低卡 20 日表（6770 8/27 除息 0.23 元，Cary 仍寫 70.20）。
+        # 大額除權／減資才用還原列，避免 6669 那種 7800／-200%。
+        raw_px = close_raw.astype(float)
+        adj_px = df["close"].astype(float)
+        tail_n = min(int(lookback), len(df))
+        tail_raw = raw_px.iloc[-tail_n:]
+        tail_adj = adj_px.iloc[-tail_n:]
+        denom = tail_raw.mask(tail_raw == 0)
+        rel = ((tail_adj - tail_raw).abs() / denom).fillna(0.0)
+        use_raw_table = float(rel.max() or 0) < 0.02
+        px = raw_px if use_raw_table else adj_px
+        close_s = px.where(~df["is_halt"]) if "is_halt" in df.columns else px
         df["ma20"] = close_s.rolling(20, min_periods=1).mean()
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
+        df["_table_close"] = px
         from decision_card_signals import (
             TEMP_ATH_WATCH,
             alert_tag,
@@ -493,7 +505,7 @@ class NavigatorEngine:
         df["high_120"] = hl_src.rolling(120, min_periods=20).max()
         df["high_240"] = hl_src.rolling(240, min_periods=40).max()
         df["high_480"] = hl_src.rolling(480, min_periods=80).max()
-        df["bias_monthly"] = (((df["close"] - df["ma20"]) / df["ma20"]) * 100.0).round(1)
+        df["bias_monthly"] = (((px - df["ma20"]) / df["ma20"]) * 100.0).round(1)
         df["vol_rank_120"] = self._calc_rolling_rank(
             df["volume"], window=120, closes=close_s,
             turnovers=df["turnover_k"] if "turnover_k" in df.columns else None,
@@ -551,7 +563,7 @@ class NavigatorEngine:
 
         temps = [f"{x:.1f} °C" if x > 0 else "—" for x in temp_nums]
         trend_labels, trend_notes = compute_temp_trend_labels(
-            temp_nums, closes=[float(x) for x in df["close"].tolist()]
+            temp_nums, closes=[float(x) for x in px.tolist()]
         )
         df["獲利"] = [f"{p:.1f}%" if pd.notna(p) else "—" for p in df["profit_pct"]]
         df["高低"] = hl_tags
@@ -634,7 +646,10 @@ class NavigatorEngine:
                 badges.append(f"{tag} {clock}".strip() if clock else tag)
             except Exception:
                 badges.append("盤中 " + (live_time[:5] if live_time else "即時"))
-        if any("除權" in x or "錯價" in x or "官方除權息" in x for x in xq_notes):
+        if (not use_raw_table) and any(
+            "除權" in x or "錯價" in x or "官方除權息" in x or "減資" in x or "分割" in x
+            for x in xq_notes
+        ):
             badges.append("已除權還原")
         vr480 = int(latest["vol_rank_480"])
         vr120 = int(latest["vol_rank_120"])
@@ -734,10 +749,10 @@ class NavigatorEngine:
         table_src = df
         table = table_src.tail(lookback)[
             [
-                "date", "close", "獲利", "高低", "預警", "溫度計", "升降", "升降註", "月乖離", "120日量",
+                "date", "_table_close", "獲利", "高低", "預警", "溫度計", "升降", "升降註", "月乖離", "120日量",
                 "profit_pct", "bias_monthly", "vol_rank_120", "temp_num",
             ]
-        ].iloc[::-1]
+        ].iloc[::-1].rename(columns={"_table_close": "close"})
         last_tbl = table.iloc[0] if len(table) else None
         if last_tbl is not None:
             stance, stance_kind = card_daily_stance(

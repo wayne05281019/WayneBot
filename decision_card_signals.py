@@ -878,7 +878,8 @@ def alert_tag(
     if l60 > 0 and c <= l60 * 1.005:
         return "60低"
     if k is not None:
-        if k <= 35.0 and (l20 > 0 and c <= l20 * 1.005 or bias < -0.5):
+        # 6770 9/4：RSV 低、月乖離負，但離 20 低還有一段；Cary 預警 No，不能只因乖離標 K20低。
+        if k <= 35.0 and l20 > 0 and c <= l20 * 1.005:
             return "K20低"
         if k >= 70.0 and h20 > 0 and c >= h20 * K20_HIGH_NEAR:
             return "K20高"
@@ -893,9 +894,10 @@ def alert_tag(
 
 
 def hi_lo_tag(close, h20, h10, h5, l20, l10, l5) -> str:
-    """高低格：20／10 仍允許 0.2% 貼齊；5 高／5 低要收盤碰到當日 5 日極值。
+    """高低格：20 高／20 低允許 0.2% 貼齊；10／5 要收盤碰到當日極值。
 
     6526 9/9 收 643、5 日高 644：Cary 預警 No，不能因 0.998 誤標 5高。
+    6770 9/7 收 72.9、10 日高 73.0：Cary 寫 5高，0.998 會誤標 10高。
     """
     try:
         c = float(close)
@@ -913,7 +915,7 @@ def hi_lo_tag(close, h20, h10, h5, l20, l10, l5) -> str:
     l20, l10, l5 = _px(l20), _px(l10), _px(l5)
     if h20 > 0 and c >= h20 * 0.998:
         return "20高"
-    if h10 > 0 and c >= h10 * 0.998:
+    if h10 > 0 and c >= h10:
         return "10高"
     if h5 > 0 and c >= h5:
         return "5高"

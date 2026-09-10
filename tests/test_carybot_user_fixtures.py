@@ -254,6 +254,40 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertGreater(self._temp(row), 70.0)
         self.assertLess(self._temp(row), 90.0)
 
+    def test_6770_20260910_matches_carybot_official_closes(self):
+        """力積電 9/10 Cary 截圖：股價用官方收盤，不要把 8/27 除息 0.23 元還原進表。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "6770", lookback=20, merge_live=False, as_of="20260910"
+        )
+        self.assertAlmostEqual(float(card["close"]), 73.5, places=1)
+        self.assertAlmostEqual(float(card["h10"]), 73.5, places=1)
+        self.assertAlmostEqual(float(card["h20"]), 78.4, places=1)
+        self.assertAlmostEqual(float(card["h60"]), 85.7, places=1)
+        self.assertAlmostEqual(float(card["l10"]), 67.8, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 66.6, places=1)
+        self.assertAlmostEqual(float(card["l60"]), 49.55, places=2)
+        self.assertEqual(card["space_20"], 18)
+        self.assertEqual(card["space_60"], 73)
+        badges = card.get("badges") or []
+        self.assertFalse(any("已除權還原" in str(b) for b in badges))
+        row = self._row(card, "20260910")
+        self.assertAlmostEqual(float(row["close"]), 73.5, places=1)
+        self.assertEqual(row["獲利"], "48.3%")
+        self.assertEqual(self._shown_alert(row), "10高")
+        self.assertEqual(str(row["高低"]), "10高")
+        r26 = self._row(card, "20260826")
+        self.assertAlmostEqual(float(r26["close"]), 70.2, places=1)
+        r14 = self._row(card, "20260814")
+        self.assertAlmostEqual(float(r14["close"]), 78.4, places=1)
+        self.assertEqual(self._shown_alert(r14), "20高")
+        r07 = self._row(card, "20260907")
+        self.assertAlmostEqual(float(r07["close"]), 72.9, places=1)
+        self.assertEqual(self._shown_alert(r07), "5高")
+        r04 = self._row(card, "20260904")
+        self.assertEqual(self._shown_alert(r04), "No")
+        r03 = self._row(card, "20260903")
+        self.assertEqual(self._shown_alert(r03), "10低")
+
 
 if __name__ == "__main__":
     unittest.main()
