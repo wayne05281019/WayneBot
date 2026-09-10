@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_BIAOKE_FACE,
     MENU_BTN_CARD,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
@@ -32,6 +33,8 @@ MENU_BUTTONS = [
     (MENU_BTN_STREAK, "streak_cmd"),
     (MENU_BTN_MARKET, "market_cmd"),
     (MENU_BTN_REPORT, "report_cmd"),
+    ("飆客", "_send_biaoke_page"),
+    (MENU_BTN_BIAOKE_FACE, "_send_biaoke_page"),
 ]
 
 
@@ -88,8 +91,9 @@ def test_twelve_menu_buttons_exist_in_order():
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT]
-    assert row2 == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
+    assert row1 == ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE]
+    assert row2[:6] == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
+    assert row2[6].strip() == ""
 
 
 def test_help_script_ready_for_brother_video():

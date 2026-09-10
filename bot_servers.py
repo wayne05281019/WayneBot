@@ -69,9 +69,15 @@ from intent_router import (
 logger = logging.getLogger(__name__)
 
 
+def _circled_menu_label(text: str) -> str:
+    """每個字後面加圈（Telegram 鍵盤畫得出來的圈住字）。"""
+    return "".join(ch + "\u20dd" for ch in str(text or "") if not ch.isspace())
+
+
 def _normalize_menu_text(text: str) -> str:
-    """主選單按鈕文字正規化（全形、空白）。"""
+    """主選單按鈕文字正規化（全形、空白、圈圈）。"""
     t = unicodedata.normalize("NFKC", (text or "").strip())
+    t = "".join(ch for ch in t if unicodedata.category(ch) not in ("Mn", "Me"))
     return t.replace("\u3000", "").strip()
 
 
@@ -209,7 +215,7 @@ HELP_TOPICS = {
     "guide": (
         "<b>WayneBot 使用說明</b>\n"
         "點訊息下方分類鈕看細節，按 <b>✕</b> 收合。\n"
-        "「圖文」一共 8 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
+        "「圖文」一共 9 張，<b>一次只出一張</b>。按「第 2 張」換頁，這一張會換成下一張。\n"
         "\n"
         "<b>第一次用，先做這三步</b>\n"
         "1　點輸入列旁邊的鍵盤圖示（<b>四格那顆 ⌨️</b>），叫出兩排按鈕（不見就打 /menu）\n"
@@ -225,16 +231,16 @@ HELP_TOPICS = {
         "打 /help 或按「說明」看本頁。要圖就點下方「圖文」。\n"
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
-        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>\n"
-        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>\n"
-        "點下方「第一排」「第二排」看每顆怎麼用。畫面怪按第一排最右「回報」。\n"
-        "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
+        "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>｜<b>飆大</b>\n"
+        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜（空白）\n"
+        "點下方「第一排」「第二排」看每顆怎麼用。\n"
+        "打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
         "\n"
-        "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 個日曆天收盤低、獲利還在 0 附近。是叫你注意、觀察，不是已經起漲，也不是立刻買。\n"
-        "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。\n"
+        "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 個日曆天收盤低、獲利還在 0 附近。是叫你注意、觀察，不是已經起漲，也不是立刻買。空頭／下坡不進這欄。\n"
+        "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。海選各桶都要趨勢向上，不收空頭。\n"
         "\n"
         "<b>查某一檔</b>\n"
         "打股名或代號會<b>一次出兩張圖</b>：<b>介紹圖</b>（上半資訊、下半180日高低導航）→ 決策卡。完整橫式導航按圖下<b>導航圖</b>。\n"
@@ -244,7 +250,7 @@ HELP_TOPICS = {
         "• <b>營收</b>　月營收、季報毛利；ETF 沒這顆\n"
         "• <b>產業</b>　一張圖卡：同業中位＋本產業法人；股名旁公開細項小框（沒有就不畫）\n"
         "• <b>報導</b>　近 7 日 Google 新聞則數（有真數才出現）。點數字開搜尋自己讀；則數變多不是賣訊、不進海選\n"
-        "• <b>K線</b>　開這一檔圖：一進先鎖定即時日K＋成交量，灰線連每根收盤。可自己改 15 分／60 分，或五日／十日／月線／季線。高低卡／獲利不會帶過去。興櫃沒這檔就不出現\n"
+        "• <b>K線</b>　開這一檔可滑動的日K（不是 TradingView）：手指對價、紫／綠箭頭跟導航圖同一套。可改 15 分／60 分，或五日／十日／月線／季線。興櫃沒這顆\n"
         "• <b>觀察</b>　加入自選（還沒買）\n"
         "• <b>記買入</b>　記真實持股，接著打 <code>張數 價格</code>，例 <code>1 68.5</code>；零股請寫 <code>200股 631.6</code>\n"
         "\n"
@@ -268,7 +274,7 @@ HELP_TOPICS = {
         "\n"
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
-        "12:45 尾盤可切（現價旁寫今早名單價與漲跌差；這則不轉 LINE）\n"
+        "12:45 尾盤：對今早名單報現價，先講現在要做什麼（不轉 LINE）\n"
         "16:30 官方收盤寫庫（齊了發一則，不是海選；興櫃日均價寫獨立表，不混上市櫃）\n"
         "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "台股休市當日（國定假或北市全日／上午停班）不寄 06:30 海選與 12:45 尾盤。\n"
@@ -286,11 +292,11 @@ HELP_TOPICS = {
         "• <b>張</b>：台股一張＝1000 股。記買入打「1 68.5」＝買 1 張、每股 68.5 元\n"
         "• <b>觀察</b>：自選清單，還沒真的買\n"
         "• <b>持股</b>：你有手記買入的才會出現\n"
-        "• <b>刷新</b>：第一排右二，刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
+        "• <b>刷新</b>：刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>海選</b>：電腦掃全市場的候選名單；低買高賣、按表操課\n"
+        "• <b>飆大</b>：圈住觀點，也叫飆客；不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
-        "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買\n"
+        "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 檔，不買滿\n"
         "• <b>回報</b>：畫面怪或按鈕有問題，打字或傳截圖給偉權\n"
         "\n"
@@ -306,10 +312,10 @@ HELP_TOPICS = {
         "• 「回報」按下去又反悔：改按其他按鈕即可，不會送出。\n"
         "• 找不到股票：打股名即可，撞名或國字打不準會列出請你點；再打一次代號最準（ETF 含 0050、00631L、00981A）。\n"
         "• 主選單不見：點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
-        "• 畫面怪、數字怪：按第一排最右「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
+        "• 畫面怪、數字怪：按「回報」，打字或傳截圖。不用給程式密鑰、不用給機器人密碼。\n"
         "\n"
         "<b>提醒</b>\n"
-        "這是輔助看盤工具，不是下單系統；名單是候選，不保證獲利。有問題找偉權。"
+        "這是輔助看盤，不是下單系統。有問題找偉權。"
     ),
     "row1": (
         "<b>第一排按鈕（左→右）</b>\n"
@@ -317,20 +323,20 @@ HELP_TOPICS = {
         "<b>① 說明</b>\n"
         "• 是什麼：本說明頁。點訊息下方分類鈕看總覽／查股／圖文／第一排／第二排／連買／記買入／按錯。\n"
         "• 怎麼用：按主選單「說明」，或打 /help。按 <b>✕</b> 收合。\n"
-        "• 亂了：先看「按錯」；還是怪就按最右「回報」。\n"
+        "• 亂了：先看「按錯」；還是怪就按「回報」。\n"
         "\n"
         "<b>② 海選</b>\n"
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
-        "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤可切版。\n"
-        "• 注意：不是盤中即時掃描；當沖／隔日沖要另按主選單按鈕。興櫃請按「海選」後選興櫃（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
+        "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤版（現在要做的事先講）。\n"
+        "• 注意：不是盤中即時掃描；各桶須趨勢向上，不收空頭／下坡。當沖／隔日沖要另按主選單按鈕。興櫃請按「海選」後選興櫃（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
         "• 怎麼用：按進去看清單；每檔可「賣出」、點股名看圖。\n"
         "• 成交／復盤：持股頁下方。成交＝手記買賣紀錄，復盤＝對照昨收怎麼走。\n"
         "• 記買入：查股後按「記買入」，再打 <code>張數 價格</code>，例 <code>1 68.5</code>。\n"
-        "• AI倉：模擬帳戶在第二排右二，不要跟手記持股搞混。平常最多 1 份，超跌才第 2 份，第 3 份留現金。\n"
+        "• AI倉：模擬帳戶在第二排「AI倉」，不要跟手記持股搞混。平常最多 1 份，超跌才第 2 份，第 3 份留現金。\n"
         "\n"
         "<b>④ 觀察</b>\n"
         "• 是什麼：自選清單，還沒買也可以先放。\n"
@@ -348,7 +354,12 @@ HELP_TOPICS = {
         "• 是什麼：把畫面怪、按鈕錯、數字不對告訴偉權（文字或截圖）。\n"
         "• 怎麼用：按下去，接著打字或傳手機截圖。記下來後會轉給偉權。\n"
         "• 不用給：不用程式密鑰、不用機器人密碼、也不用另外傳話筒編號。\n"
-        "• 要取消：改按其他按鈕即可，不會送出。"
+        "• 要取消：改按其他按鈕即可，不會送出。\n"
+        "\n"
+        "<b>⑦ 飆大</b>\n"
+        "• 是什麼：獨立觀點區（鍵盤上兩個字有圈）。讀「期股多空雙飆客」公開發文。不是海選、不改黃金買點。\n"
+        "• 怎麼用：按進去只有三顆：怎麼觀察、去年年底、問一檔（打字或語音）。不必一次建很多選項。\n"
+        "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊，也不接到大盤／海選。"
     ),
     "row2": (
         "<b>第二排按鈕（左→右）</b>\n"
@@ -365,7 +376,7 @@ HELP_TOPICS = {
         "\n"
         "<b>③ 當沖</b>\n"
         "• 是什麼：盤中即時複核的當沖候選（漲幅約 2%～8.5%）。\n"
-        "• 怎麼用：平日 <b>09:00–13:30</b> 按；列出保險進場、停利、停損參考價。\n"
+        "• 怎麼用：平日 <b>09:00–13:30</b> 按。卡片會寫「現在不要貴過／漲到這裡先出／跌破這裡就走」。12:45 之後沒進場就不要再進，改看「隔日沖」。\n"
         "• 收盤後／週末：按了不會出名單。改看「海選」或「隔日沖」，不要連按當沖。\n"
         "• 會是空的：美股隔夜大跌、恐慌指數高時故意不列，避免硬沖。\n"
         "\n"
@@ -385,7 +396,8 @@ HELP_TOPICS = {
         "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區；興櫃名單請按「海選」再選興櫃。\n"
         "• 按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
-        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按第一排最右「回報」。\n"
+        "• 第二排最右一格是空白，還沒接功能；不要當成海選。\n"
+        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
         "圖文在說明頁下方分類鈕。"
     ),
     "market": (
@@ -403,7 +415,7 @@ HELP_TOPICS = {
         "<b>AI 模擬倉與自動買進</b>\n"
         "\n"
         "<b>在哪裡？</b>\n"
-        "主選單第二排右二 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。「持倉報告／模擬持倉」也來這裡。\n"
+        "主選單第二排 <b>AI倉</b>（也可打 AI倉／AI模擬倉）。「持倉報告／模擬持倉」也來這裡。\n"
         "\n"
         "<b>這頁按鈕</b>\n"
         "• 持倉股名＝查這檔介紹圖／決策卡（圖下可再要導航圖）\n"
@@ -435,7 +447,7 @@ HELP_TOPICS = {
     ),
     "decision": (
         "<b>刷新</b>\n"
-        "第一排右二。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」或「刷新上一檔」也行。\n"
+        "第一排「刷新」。盤中刷新「上一檔」的高低決策卡與即時價量。打「決策卡」或「刷新上一檔」也行。\n"
         "\n"
         "• 還沒查過任何股：會請你先打代號，或從觀察清單點一檔。\n"
         "• 已查過：盤中重複按這顆即可更新，不必重打代號。\n"
@@ -450,9 +462,9 @@ HELP_TOPICS = {
         "\n"
         "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
-        "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>\n"
-        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>\n"
-        "打「精簡選單」只留第一週常用六顆；「完整選單」恢復十二顆。\n"
+        "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>／<b>飆大</b>\n"
+        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>／（空白）\n"
+        "打「精簡選單」只留六顆；「完整選單」恢復兩排（含圈住的飆大）。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」「說明」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。\n"
@@ -460,8 +472,8 @@ HELP_TOPICS = {
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
-        "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤可切（對照今早名單，現價旁寫今早價與漲跌差；這則不轉 LINE）。\n"
-        "台股休市當日（國定假或北市全日／上午停班），不寄今早海選、也不寄尾盤可切。\n"
+        "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤（對今早名單報現價：沒貼高還能看，貼高或貴過保險進場的現在不要追；這則不轉 LINE）。\n"
+        "台股休市當日（國定假或北市全日／上午停班），不寄今早海選、也不寄 12:45 尾盤。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "06:30 早報第一則是大盤狀況（美股＋台指期夜盤＋白話連動），接著寄黃金買點／重點觀察（沒檔也寫今日沒有）／優先看／周帶量（優先看沒名單就跳過）；半年高／站上季線／止跌請按主選單「海選」看完整。\n"
         "海選＝依最近一次官方收盤掃的<b>佈局</b>名單，不是盤中即時掃描。\n"
@@ -487,8 +499,8 @@ HELP_TOPICS = {
     ),
     "daytrade": (
         "<b>當沖怎麼用</b>\n"
-        "保險進場＝不要追過當日收盤；第一停利＝+3% 先出一部分；衝頂＝+6%；保險停損＝當日均價跌破先走。\n"
-        "只在平日 <b>09:00–13:30 盤中</b> 按才有意義（即時複核漲幅 2%～8.5%）；收盤後、週末、台股休市按不會出名單。\n"
+        "現在不要貴過＝保險進場價；漲到這裡先出＝+3%；跌破這裡就走＝當日均價。\n"
+        "只在平日 <b>09:00–13:30 盤中</b> 按才有名單（即時複核漲幅 2%～8.5%）。12:45 之後沒進場不要再進；收盤後、週末、台股休市按不會出名單。\n"
         "沒名單時改看「隔日沖」（尾盤佈局明早）或「海選」（長線佈局），不要連按當沖。\n"
         "隔夜美股逆風（收盤或盤後大跌、恐慌指數高）時這頁會空，避免開盤缺口硬沖。\n"
         "\n"
@@ -517,7 +529,7 @@ HELP_TOPICS = {
         "• <b>賣出</b>＝記賣出張數與價格\n"
         "• <b>成交</b>＝你手記的買賣紀錄\n"
         "• <b>復盤</b>＝對照昨收怎麼走\n"
-        "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第二排右二也有。50 萬切 3 等份，不買滿\n"
+        "• <b>AI倉</b>＝假錢對照組現況（不買賣）；主選單第二排也有。50 萬切 3 等份，不買滿\n"
         "\n"
         "<b>自動買進</b>：盤後融合成功與每晚 20:00 雲端會自動模擬買，但<b>不推播</b>；請按主選單 <b>AI倉</b> 查看。AI 規則寫在「第一排」那頁。"
     ),
@@ -537,11 +549,11 @@ HELP_TOPICS = {
         "籌碼／營收／產業／K線／導航圖按<b>圖下方</b>按鈕，不是右側 ⌨️ 主選單。\n"
         "\n"
         "<b>圖下方這一排</b>\n"
-        "• <b>導航圖</b>：再要一次完整 180 日高低導航（不同顏色箭頭）\n"
+        "• <b>導航圖</b>：聊天室再要一次完整 180 日高低導航圖\n"
         "• <b>籌碼</b>：三大法人買賣超圖\n"
         "• <b>營收</b>：月營收、季報毛利\n"
         "• <b>產業</b>：一張圖卡（同業中位＋本產業法人）；股名旁有公開細項小框，沒抓到不畫\n"
-        "• <b>K線</b>：開這一檔圖，先進日K＋成交量，灰線連每根收盤；可改 15 分／60 分／五日／十日／月線／季線。高低卡不會帶過去\n"
+        "• <b>K線</b>：開可滑動日K（不是 TradingView），手指對價、箭頭跟導航圖同一套；可改 15 分／60 分／五日／十日／月線／季線\n"
         "• <b>觀察</b>：加入自選（還沒買）\n"
         "• <b>記買入</b>：記真實持股，接著打 <code>張數 價格</code>\n"
         "\n"
@@ -557,15 +569,24 @@ HELP_TOPICS = {
         "已經連好幾天貼在高檔：先不要追。有持股考慮先出。剛貼到高檔：先看、先別追。\n"
         "\n"
         "<b>如何賣</b>（作者公開、不是買訊、不自動賣）\n"
-        "最高價＝20日高，對最高溫。同步再脫離＝準備減碼；不同步＝直接減碼。\n"
+        "最高價＝20日高（高低格），最高溫＝升降溫「最高溫」。\n"
+        "• 同一天兩個都有＝同步，這天不標減碼\n"
+        "• 只有其中一個＝不同步 → 直接減碼（6547 9/9：最高價＋升溫、沒有最高溫）\n"
+        "• 今天兩個都沒有＝脫離。先前同步再脫離＝準備減碼；不同步再脫離＝直接減碼\n"
+        "作者提醒當下，決策卡「今日態度」和介紹圖「紀律」會打粉紅底，不要略過。\n"
         "只標在介紹圖／決策卡／持股／AI倉，不改海選名單。\n"
+        "\n"
+        "<b>如何低買</b>（作者公開、不是買訊、不改海選）\n"
+        "低點訊號出現不是買。賣壓要時間消化。月營收比前幾月少，主力不會出重手。最好橫盤整理。\n"
+        "不要跌破前波低、也不要跌破昨天低。獲利還沒離開 0 先不要動作。已經買、跌破該低 → 停損觀望。\n"
+        "進場仍看高低卡黃金買點。紅箭頭不是買訊。\n"
         "\n"
         "<b>介紹圖／決策卡先看這些</b>\n"
         "• 股號旁：當日 K 縮圖＋連漲／連跌＋開高低\n"
         "• 獲利＝從近60個日曆天收盤低算上來（貼20日低不歸零）；距60根低是另外一欄\n"
         "• 溫度＝20日收盤位置＋月乖離。溫度≥80 且創歷史新高要注意（少追）\n"
         "• 升降溫「最低溫＋價未新低」＝低檔背離；「降溫＋價溫背離」＝價創新高但溫度已降，少追\n"
-        "• 表頭「今日態度」標題旁邊講這張20日表的數字和底色（先等／別追／先看表）；標題短就同一行靠右，不是下單指令\n"
+        "• 表頭「今日態度」標題對當日升降溫（升溫＝今天別追；降溫＝熱度已降）；旁邊那句跟介紹圖紀律同一套五十句，不是下單指令\n"
         "• 月K一句掛徽章：還在往上／已走空／在整理。跟表上「月乖離」（離20日線）不是同一條尺。不是買訊，不改海選\n"
         "• 表頭量能：近480／120／60日量前10會亮短窗；介紹圖寫「60日第7 · 120日第25」。表格最右欄永遠是120日量排名\n"
         "• 預警欄：K20高＝收盤靠近20日高且偏熱；K20低＝貼近20日低或月線乖離轉負。沒訊號時仍會露出高低（20高／10低），不藏表\n"
@@ -617,7 +638,7 @@ HELP_TOPICS = {
         "直接打股名或代號，例如 <b>南亞</b>、"
         + LOOKUP_CODE_EXAMPLES_HTML
         + "。\n"
-        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」「配息型」「月配」「高股息」列出成交量較大的幾檔。海選名單仍只有股票／KY，但查股收 ETF。\n"
+        "股票四碼、ETF 可含 L／R／A（正2／反1／主動）。也可打「兩倍槓桿」「主被動ETF」「配息型」「月配」「高股息」列出成交量較大的幾檔。打不完整（主動型、被、配、注音）會先列出分類請你點。代號沒打完（00981）會列出 00981A 這種後綴。海選名單仍只有股票／KY，但查股收 ETF。\n"
         "\n"
         "不要先按「刷新」——那顆只刷新上一檔。打「決策卡」也是同一顆。\n"
         "一次出兩張圖：介紹圖（上半資訊、下半180日高低導航）→ 決策卡。完整橫式導航按圖下「導航圖」。\n"
@@ -694,16 +715,26 @@ HELP_TOPICS = {
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
         "\n"
         "<b>畫面怪、數字怪、按鈕錯了</b>\n"
-        "按第一排最右「回報」，打字或傳截圖給偉權。"
+        "按「回報」，打字或傳截圖給偉權。"
     ),
 }
 
-# 主選單十二顆：第一週常用在第一排；當沖／隔日沖／AI倉／連買區在第二排後面。
+# 主選單兩排：原十二顆變窄，上排最右圈住的飆大、下排最右空白格。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
 MENU_BTN_CARD = "刷新"
+MENU_BTN_BIAOKE = "飆大"
+MENU_BTN_BIAOKE_FACE = _circled_menu_label(MENU_BTN_BIAOKE)
+MENU_BTN_SLOT = "\u3000"
+MENU_BTN_BIAOKE_ALIASES = (
+    MENU_BTN_BIAOKE,
+    MENU_BTN_BIAOKE_FACE,
+    "飆客",
+    "AI飆客",
+    "期股多空雙飆客",
+)
 MENU_BTN_CARD_ALIASES = (MENU_BTN_CARD, "刷新上一檔", "決策卡")
 MENU_BTN_BACK_MAIN = "回主選單"
 MENU_BTN_BACK_STEP = "上一步"
@@ -716,6 +747,7 @@ MENU_ROW1 = (
     "觀察",
     MENU_BTN_CARD,
     MENU_BTN_REPORT,
+    MENU_BTN_BIAOKE_FACE,
 )
 MENU_ROW2 = (
     MENU_BTN_MARKET,
@@ -724,6 +756,7 @@ MENU_ROW2 = (
     "隔日沖",
     MENU_BTN_AI,
     MENU_BTN_STREAK,
+    MENU_BTN_SLOT,
 )
 MENU_COMPACT_ROWS = (
     ("說明", "海選", "持股"),
@@ -740,7 +773,9 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v11：說明與連買區對調＝隔日沖／大盤／資金／連買區／說明／回報。
 # v12：第一排最左「刷新上一檔」（決策卡當別名）。
 # v14：精簡六顆全兩字（刷新上一檔→刷新）避免換行；完整十二顆第一排同步。
-MENU_LAYOUT_VERSION = "14"
+# v15：兩排各加一格＝7+7；上排最右飆客獨立區，下排最右空白格。
+# v16：上排最右改圈住的「飆大」；裡面三顆（怎麼觀察／去年年底／問一檔）。
+MENU_LAYOUT_VERSION = "16"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1126,10 +1161,10 @@ class WayneTelegramBot:
         self._invalidate_menu_layout(uid)
 
     def _reply_menu(self, uid: str = ""):
-        """預設十二顆兩排；精簡模式每人六顆（第一週常用）。"""
+        """預設兩排各七格（十二顆＋飆客＋空白）；精簡模式每人六顆。"""
         if self._menu_compact_on(uid):
             rows = [[KeyboardButton(t) for t in row] for row in MENU_COMPACT_ROWS]
-            placeholder = "打股名／代號；「完整選單」恢復十二顆"
+            placeholder = "打股名／代號；「完整選單」恢復兩排"
         else:
             rows = [
                 [KeyboardButton(t) for t in MENU_ROW1],
@@ -1215,15 +1250,15 @@ class WayneTelegramBot:
         compact = self._menu_compact_on(uid)
         if compact:
             text = (
-                "精簡六顆已掛上。打「完整選單」恢復十二顆。點輸入列旁邊四格 ⌨️。"
+                "精簡六顆已掛上。打「完整選單」恢復兩排。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "精簡六顆：說明／海選／持股／觀察／刷新／回報。打「完整選單」恢復十二顆。"
+                else "精簡六顆：說明／海選／持股／觀察／刷新／回報。打「完整選單」恢復兩排。"
             )
         else:
             text = (
-                "兩排已更新：第一排說明…回報，第二排大盤…連買區。點輸入列旁邊四格 ⌨️。"
+                "兩排已更新：第一排說明…飆大，第二排大盤…連買區。點輸入列旁邊四格 ⌨️。"
                 if silent
-                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右回報）。打「精簡選單」可收成六顆。"
+                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右圈住飆大）。打「精簡選單」可收成六顆。"
             )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -1946,6 +1981,13 @@ class WayneTelegramBot:
         """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
         rows = []
         for h in hits[:8]:
+            if h.get("category_choice"):
+                pick = str(h.get("category_pick") or h.get("stock_id") or "").strip()
+                label = str(h.get("stock_name") or pick).strip()[:18] or pick
+                if not pick:
+                    continue
+                rows.append([InlineKeyboardButton(label, callback_data=f"e:{pick}")])
+                continue
             c = str(h.get("stock_id") or "")
             n = str(h.get("stock_name") or "")
             if not c:
@@ -1972,6 +2014,9 @@ class WayneTelegramBot:
         for i, h in enumerate((hits or [])[:8], start=1):
             sid = str(h.get("stock_id") or "")
             sname = str(h.get("stock_name") or "")
+            if h.get("category_choice"):
+                lines.append(f"{i}. {html_escape(sname or sid)}")
+                continue
             if not sid:
                 continue
             if html_stock_anchor:
@@ -2546,7 +2591,7 @@ class WayneTelegramBot:
                 + "（不要先按「刷新」）\n"
                 "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
                 "\n"
-                "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按第一排最右「回報」。\n"
+                "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按「回報」。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n"
             ),
         )
@@ -2663,7 +2708,7 @@ class WayneTelegramBot:
 
     async def _send_picture_guide(self, message) -> None:
         """說明頁「圖文」：一次一張，鍵盤換頁。"""
-        status = await message.reply_text("正在產出圖文說明（一次一張，共 8 張）…")
+        status = await message.reply_text("正在產出圖文說明（一次一張，共 9 張）…")
         try:
             await self._show_picture_guide_page(message, 0, edit=False)
         except Exception:
@@ -3218,7 +3263,9 @@ class WayneTelegramBot:
         from trading_calendar import (
             daytrade_closed_message,
             daytrade_closed_title,
+            daytrade_list_heading,
             is_tw_equity_session,
+            is_tw_tail_session,
             overnight_list_heading,
             tw_session_phase,
         )
@@ -3249,6 +3296,9 @@ class WayneTelegramBot:
                     reply_markup=self._reply_menu(),
                 )
                 return
+            if live_bucket == "daytrade" and is_tw_equity_session():
+                kind = "tail" if is_tw_tail_session() else "open"
+                display_title, effective_subtitle = daytrade_list_heading(kind)
             if live_bucket == "overnight" and not is_tw_equity_session():
                 effective_live_bucket = None
                 display_title, effective_subtitle = overnight_list_heading(phase)
@@ -3320,8 +3370,8 @@ class WayneTelegramBot:
             update.message,
             bucket_key="day_trade",
             live_bucket="daytrade",
-            title="⚡ 當沖候選（盤中即時）",
-            subtitle="盤中即時複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
+            title="⚡ 當沖候選（盤中）",
+            subtitle="現在盤中。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
             topic="daytrade",
             status_text="⚡ 當沖查詢中（盤中現價複核）…",
             menu_label="當沖",
@@ -3454,6 +3504,33 @@ class WayneTelegramBot:
                 )
         except Exception:
             logger.exception("大盤日K圖送出失敗")
+
+    def _biaoke_inline(self):
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("怎麼觀察", callback_data="bk:see"),
+                    InlineKeyboardButton("去年年底", callback_data="bk:yend"),
+                ],
+                [InlineKeyboardButton("問一檔（打字或語音）", callback_data="bk:ask")],
+            ]
+        )
+
+    async def _send_biaoke_page(self, message, *, ask: str = "") -> None:
+        """飆客獨立區：語料頁。不進海選、不跑高低卡。"""
+        from biaoke_desk import format_biaoke_html
+
+        html = format_biaoke_html(ask)
+        parts = chunk_telegram_html(html, reflow=True)
+        if not parts:
+            await message.reply_text("飆客區讀取失敗。", reply_markup=self._keyboard())
+            return
+        nav = self._biaoke_inline()
+        for i, part in enumerate(parts):
+            kb = nav if i == len(parts) - 1 else None
+            await message.reply_html(
+                part, reply_markup=kb, disable_web_page_preview=True
+            )
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
@@ -3773,6 +3850,9 @@ class WayneTelegramBot:
         if hit is None:
             return False
         kind = hit.kind
+        if kind == "biaoke":
+            await self._send_biaoke_page(message, ask=hit.query or hit.code)
+            return True
         code = str(hit.code or "").strip()
         hits = []
         if code:
@@ -3849,6 +3929,9 @@ class WayneTelegramBot:
         ctx = context if context is not None else SimpleNamespace(args=[])
         if kind == "market":
             await self.market_cmd(upd, ctx)
+            return
+        if kind == "biaoke":
+            await self._send_biaoke_page(message, ask="")
             return
         if kind == "flow":
             await self.flow_cmd(upd, ctx)
@@ -4057,6 +4140,8 @@ class WayneTelegramBot:
         if not raw:
             return
         text = _normalize_menu_text(raw)
+        if not text:
+            return
         uid = str(update.effective_user.id)
         actor = self._actor_key(update.message, uid=uid)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
@@ -4108,6 +4193,11 @@ class WayneTelegramBot:
             logger.info("主選單：資金 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.flow_cmd(update, context)
+            return
+        if text in MENU_BTN_BIAOKE_ALIASES or text.lower().lstrip("/") in ("biaoke", "biaoda"):
+            logger.info("主選單：飆客 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self._send_biaoke_page(update.message)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
             logger.info("主選單：大盤 uid=%s", uid)
@@ -4198,6 +4288,10 @@ class WayneTelegramBot:
                 await self._commit_issue_report(
                     update.message, uid, body=raw, photo_file_id=""
                 )
+                return
+            if pending == "biaoke:ask":
+                self._pending.pop(actor, None)
+                await self._send_biaoke_page(update.message, ask=raw or text)
                 return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
@@ -4827,7 +4921,7 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             return
-        cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點青綠，點開可放大。"
+        cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要滑動對價按圖下「K線」。"
         for attempt in range(3):
             try:
                 with open(path, "rb") as f:
@@ -4842,9 +4936,45 @@ class WayneTelegramBot:
                 logger.exception("導航圖送出失敗 code=%s", code)
         await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
 
+    async def _send_etf_category_pick(self, message, phrase: str, uid: str = ""):
+        """分類詞還沒打完：先讓人點主動／被動／配息型，再列出成交量較大的幾檔。"""
+        phrase = str(phrase or "").strip()
+        if not phrase:
+            await message.reply_text("請再打一次主動、被動或配息型。", reply_markup=self._keyboard())
+            return
+        hits = lookup_stocks(self.db_path, phrase)
+        if hits_need_picker(hits):
+            await message.reply_html(
+                self._hits_list_html(hits),
+                reply_markup=self._hits_keyboard(hits),
+                disable_web_page_preview=True,
+            )
+            return
+        if len(hits) == 1:
+            await self._send_card_to(message, str(hits[0].get("stock_id") or phrase), uid)
+            return
+        await message.reply_text(
+            "找不到這個 ETF 分類。可打主動、被動、配息型、月配、高股息。",
+            reply_markup=self._keyboard(),
+        )
+
     async def _send_card_to(self, message, code: str, uid: str = ""):
         code = str(code).strip()
         hits = lookup_stocks(self.db_path, code)
+        if hits and (
+            hits[0].get("category_choice")
+            or (
+                hits[0].get("category")
+                and str(hits[0].get("stock_id") or "") != code
+            )
+        ):
+            if hits_need_picker(hits) or hits[0].get("category_choice"):
+                await message.reply_html(
+                    self._hits_list_html(hits),
+                    reply_markup=self._hits_keyboard(hits),
+                    disable_web_page_preview=True,
+                )
+                return
         if hits and hits[0].get("close") is None:
             h = hits[0]
             try:
@@ -5332,10 +5462,10 @@ class WayneTelegramBot:
             hints = {
                 "revenue_cross": "優先看：營收轉強 × 量價突破",
                 "leave_zero": "黃金買點：獲利格剛離零且趨勢向上（按表，不是每個紅箭頭低點）",
-                "golden_buy": "重點觀察：60低超跌（注意觀察，不是今天必買）",
-                "select_01": "周帶量：短線轉強，靠近20日高少追",
-                "select_02": "站上季線：昨收在季線下、今日站上",
-                "select_03": "止跌：月低附近有人接、量沒死",
+                "golden_buy": "重點觀察：60低超跌且趨勢向上（注意觀察，不是今天必買）",
+                "select_01": "周帶量：短線轉強且趨勢向上，靠近20日高少追",
+                "select_02": "站上季線：昨收在季線下、今日站上；空頭反彈不進",
+                "select_03": "止跌：月低附近有人接、量沒死；空頭反彈不進",
                 "day_trade": "當沖：進場 / 停利 / 停損",
                 "overnight": "隔日沖：尾盤佈局",
             }
@@ -5369,6 +5499,28 @@ class WayneTelegramBot:
             return
         if data.startswith("sc:"):
             await self._handle_screen_pick_callback(q, uid, data)
+            return
+        if data.startswith("bk:"):
+            kind = data[3:]
+            if kind == "see":
+                await q.answer("怎麼觀察")
+                await self._send_biaoke_page(q.message, ask="怎麼觀察")
+                return
+            if kind == "yend":
+                await q.answer("去年年底")
+                await self._send_biaoke_page(q.message, ask="去年年底")
+                return
+            if kind == "ask":
+                await q.answer("問一檔")
+                actor = self._actor_key(q.message, uid=uid)
+                self._pending[actor] = "biaoke:ask"
+                await q.message.reply_html(
+                    "打股名、族群或「去年年底」。語音也行。一次一句。"
+                    "沒寫過的檔不會猜。改按其他鈕就取消。",
+                    disable_web_page_preview=True,
+                )
+                return
+            await q.answer()
             return
         if data == "em:go":
             await q.answer("興櫃海選開始")
@@ -5434,6 +5586,10 @@ class WayneTelegramBot:
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)
             await self._send_decision_card_quick(q.message, data[2:].strip(), uid)
+            return
+        if data.startswith("e:"):
+            uid = str(q.from_user.id)
+            await self._send_etf_category_pick(q.message, data[2:].strip(), uid)
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
@@ -5512,8 +5668,8 @@ class WayneTelegramBot:
                 q.message,
                 bucket_key="day_trade",
                 live_bucket="daytrade",
-                title="⚡ 當沖候選（盤中即時）",
-                subtitle="盤中即時複核：只列此刻漲幅 2%～8.5% 的標的；現價旁小字＝報價時間。保險進≤昨收；+3% 先出一部分；+6% 衝頂；均價跌破先走。",
+                title="⚡ 當沖候選（盤中）",
+                subtitle="現在盤中。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
                 topic="daytrade",
                 status_text="⚡ 當沖查詢中（盤中現價複核）…",
                 menu_label="當沖",

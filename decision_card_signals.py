@@ -36,6 +36,11 @@ def taipei_now(now: datetime | None = None) -> datetime:
     return now.astimezone(_TAIPEI)
 
 
+def _ymd8(date_val) -> str:
+    d = str(date_val or "").strip().replace("-", "").replace("/", "")
+    return d[:8] if len(d) >= 8 and d[:8].isdigit() else ""
+
+
 def format_ymd_slash(date_val) -> str:
     d = str(date_val or "").strip()
     if len(d) == 8 and d.isdigit():
@@ -43,6 +48,19 @@ def format_ymd_slash(date_val) -> str:
     if len(d) >= 10 and d[4] in "-/" and d[7] in "-/":
         return f"{d[0:4]}/{d[5:7]}/{d[8:10]}"
     return d
+
+
+def format_ymd_slash_weekday(date_val) -> str:
+    """20260910 → 2026/09/10（四）。圖戳日期一律帶星期。"""
+    ymd = _ymd8(date_val)
+    if ymd:
+        try:
+            from trading_calendar import format_trading_date_zh
+
+            return format_trading_date_zh(ymd)
+        except Exception:
+            pass
+    return format_ymd_slash(date_val)
 
 
 def _parse_stamp_dt(generated_at: datetime | str | None) -> datetime:
@@ -93,18 +111,24 @@ def format_card_query_stamp(
     latest_date="",
     generated_at: datetime | str | None = None,
 ) -> Tuple[str, str]:
-    """高低卡／介紹圖右上角：日期永遠配時間。
+    """高低卡／介紹圖右上角：日期帶星期，永遠配產出時刻。
 
     盤中查詢（有即時列、台北 09:00～未滿 13:30）寫當下 HH:MM。
     已過收盤、週末、或卡上是官方收盤列：一律「13:30收盤」，不要寫晚上查詢的時鐘。
     """
-    date_s = format_ymd_slash(latest_date)
     dt = _parse_stamp_dt(generated_at)
+    date_s = format_ymd_slash_weekday(latest_date)
     if not date_s:
-        date_s = dt.strftime("%Y/%m/%d")
+        date_s = format_ymd_slash_weekday(dt.strftime("%Y%m%d"))
     if is_live and _in_cash_session(dt):
         return date_s, f"盤中 {dt.strftime('%H:%M')}"
     return date_s, "13:30收盤"
+
+
+def format_produced_clock(*, generated_at: datetime | str | None = None) -> str:
+    """這張圖產出時刻：盤中 HH:MM，否則 13:30收盤。"""
+    _, clock = format_card_query_stamp(is_live=True, generated_at=generated_at)
+    return clock
 
 
 def _quote_datetimes(df) -> pd.Series:
@@ -308,19 +332,49 @@ def compute_card_temperature(
     *,
     high60: float = 0.0,
     low60: float = 0.0,
+    ma60: float = 0.0,
 ) -> float:
-    """溫度計：冷股可到個位數；大波動股仍可上 70°C+（對齊 CaryBot 範本尺度）。"""
+    """溫度計：冷股可到個位數；大波動股仍可上 70°C+（對齊 CaryBot 範本尺度）。
+
+    決策卡 °C 對的是作者技術表 VAM 欄的數字，公式沒公開，這裡只用公開日 K
+    做尺度近似，不抄 PWave／VAM／ATRB。
+
+    跌破季線後在 60 日區間下半盤整、又不是 20 高／20 低／60 低：改走窄尺，
+    避免舊高把溫度撐到 40°C+（中石化 8 月 VAM 0.5、長榮 7 月底 VAM 3.5）。
+    貼 20 高且 60 日空間仍 ≥12% 時，窄尺至少拉到 40°C 一段（萬海 8/13 VAM 56.8）。
+    20 高熱尺（8234 76.9、致伸 9/4 69.3）不變。貼 20 高但 VAM 只有 50～55
+    （6547／台塑）對 8234／大成鋼 100 同一把尺對不上，不整表改熱尺、不抄 VAM。
+    """
     try:
         c, h20, l20 = float(close), float(high20), float(low20)
         bias = float(bias_monthly or 0)
         h60, l60 = float(high60 or h20), float(low60 or l20)
+        m60 = float(ma60 or 0)
     except (TypeError, ValueError):
         return 0.0
     span = max(h20 - l20, c * 0.002 if c > 0 else 0.01)
-    rf = max(0.0, min(1.0, (c - l20) / span))
-    rf = rf ** 0.94
+    p20 = max(0.0, min(1.0, (c - l20) / span))
+    rf = p20 ** 0.94
     space60 = (h60 - l60) / l60 * 100.0 if l60 > 0 else (span / c * 100.0 if c > 0 else 10.0)
-    if space60 < 8:
+    p60 = (c - l60) / (h60 - l60) if (h60 - l60) > 1e-12 else p20
+    space20 = (h20 - l20) / l20 * 100.0 if l20 > 0 else space60
+    at_60_low = l60 > 0 and c <= l60 * 1.005
+    at_20_high = h20 > 0 and c >= h20 * 0.998
+    at_20_low = l20 > 0 and c <= l20 * 1.002
+    below_ma60 = m60 > 0 and c < m60
+    # 20 日還算寬、60 日舊高還掛著：才是「跌完在盤」不是 60 低附近的窄幅彈（致伸／華建）。
+    dumped_chop = (
+        below_ma60
+        and (not at_60_low)
+        and (not at_20_high)
+        and (not at_20_low)
+        and p60 < 0.42
+        and space20 >= 11.0
+        and (space60 - space20) >= 18.0
+    )
+    if dumped_chop:
+        t_min, t_span, bias_k = 1.0, 14.0, 0.18
+    elif space60 < 8:
         t_min, t_span, bias_k = 6.0, 4.5, 0.22
     elif space60 < 16:
         t_min, t_span, bias_k = 8.0, 22.0, 0.27
@@ -328,6 +382,9 @@ def compute_card_temperature(
         t_min, t_span, bias_k = 10.0, 63.0, 0.26
     else:
         t_min, t_span, bias_k = 10.0, 68.0, 0.28
+    # 貼 20 高但 60 日區間不算大：作者 VAM 仍可到 50～60（萬海 8/13），不要卡在 30°C。
+    if at_20_high and space60 >= 12.0 and t_span < 40.0:
+        t_span = 40.0
     t = t_min + t_span * rf + bias_k * bias
     return round(max(0.0, min(99.9, t)), 1)
 
@@ -574,14 +631,21 @@ def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
     """最新一列＋卡面數字，給態度第二行對表。沒有表就用卡上現成欄。"""
     card = card or {}
     row: Dict[str, Any] = {}
-    tbl = card.get("table")
-    if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
-        try:
-            row = tbl.iloc[0].to_dict()
-        except Exception:
-            row = {}
-    elif isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
-        row = dict(tbl[0])
+    try:
+        from sell_discipline import latest_table_row
+
+        row = latest_table_row(card)
+    except Exception:
+        row = {}
+    if not row:
+        tbl = card.get("table")
+        if tbl is not None and hasattr(tbl, "iloc") and len(tbl):
+            try:
+                row = tbl.iloc[0].to_dict()
+            except Exception:
+                row = {}
+        elif isinstance(tbl, (list, tuple)) and tbl and isinstance(tbl[0], dict):
+            row = dict(tbl[0])
 
     def _num(*keys) -> float | None:
         for k in keys:
@@ -606,9 +670,10 @@ def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
         "gain": _num("gain_pct", "profit_pct", "profit"),
         "space": _num("space_20"),
         "bias": _num("bias_monthly", "bias"),
-        "temp": _num("temp_num", "temp"),
+        "temp": _num("temp_num", "temp", "temperature"),
         "hl": _txt("高低", "hl"),
         "alert": _txt("預警", "alert"),
+        "lift": _txt("升降"),
         "badges": [str(x) for x in (card.get("badges") or [])],
     }
 
@@ -641,14 +706,45 @@ def _look_table(on_list: bool) -> str:
     return "先看高低卡再決定。" if on_list else "看下面這張表再決定。"
 
 
+def _fact_gain(g: float) -> str:
+    return f"獲利 {format_profit_pct(g)}"
+
+
+def _fact_bias(bias: float) -> str:
+    return f"月乖離 {float(bias):+.1f}%"
+
+
+def _fact_space(space: float) -> str:
+    try:
+        return f"空間 {int(round(float(space)))}%"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _fact_temp(temp) -> str:
+    if temp is None:
+        return ""
+    try:
+        return f"溫度 {float(temp):.0f}°C"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _paren(*bits: str) -> str:
+    parts = [str(b).strip() for b in bits if b]
+    return f"（{'、'.join(parts)}）" if parts else ""
+
+
 def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool = False) -> str:
-    """依這張卡最新列／獲利／月乖離／徽章組一句，對齊底色，不講月K。"""
+    """依這張卡最新列數字組一句，對齊底色，不講月K。"""
     facts = last_table_facts(card)
     gain = facts["gain"]
     space = facts["space"]
     bias = facts["bias"]
+    temp = facts["temp"]
     hl = facts["hl"]
     alert = facts["alert"]
+    lift = facts["lift"]
     badges = facts["badges"]
     k = str(kind or "wait")
     g = 0.0 if gain is None else gain
@@ -662,55 +758,69 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
     )
     bear = any(any(x in b for x in ("空頭排列", "空頭整理", "弱勢破底")) for b in badges)
     weak_daily = bear or (has_bias and bias < -1) or at_near_low
+    mark = hl if hl in {"20高", "10高", "20低", "10低", "60低"} else (alert if alert not in {"", "No", "—"} else "")
+    heat = lift if lift and lift not in {"No", "—"} else ""
+    tbit = _fact_temp(temp)
+    gbit = _fact_gain(g)
+    sbit = _fact_space(space) if has_space else ""
+    bbit = _fact_bias(bias) if has_bias else ""
 
     if at_high:
         if has_space and space < 8:
-            return "表貼在這段小區間的高。空間很小，先別追。"
+            return f"表貼在這段小區間的高{_paren(mark, sbit, gbit)}。空間很小，先別追。"
         if k == "avoid" or g >= 40:
-            return "表貼在高檔。今天別追。"
-        return "表貼在高檔。先別追，" + _look_table(on_list)
+            return f"表貼在高檔{_paren(mark, gbit, tbit, heat)}。今天別追。"
+        return f"表貼在高檔{_paren(mark, gbit, tbit)}。先別追，" + _look_table(on_list)
 
     if long_low and g < 15:
         if has_space and space < 8:
-            return "表還壓在長線低附近，這段空間很小。先看、先別急著買。"
-        return "表還壓在長線低附近。先看、先別急著買。"
+            return f"表還壓在長線低附近{_paren(gbit, sbit)}，這段空間很小。低點訊號不是買訊。先看、先別急著買。"
+        return f"表還壓在長線低附近{_paren(gbit, mark)}。低點訊號不是買訊。先看、先別急著買。"
 
     if at_near_low and g < 8:
+        if g < 1.0:
+            return f"表壓在低附近{_paren(mark)}、獲利還沒離開0{_paren(gbit)}。低點訊號不是買訊。先看、先別急著買。"
         if has_bias and bias < -8:
-            return "表壓在低檔、月乖離偏負。先看、先別急著買。"
+            return f"表壓在低檔{_paren(mark, gbit)}、{bbit}偏負。低點訊號不是買訊。先看、先別急著買。"
         if bear or (has_bias and bias < -3):
-            return "日線偏空、表壓在低附近。先看、先別急著買。"
-        return "表還壓在低附近。先看、先別急著買。"
+            return f"日線偏空、表壓在低附近{_paren(mark, gbit, bbit)}。低點訊號不是買訊。先看、先別急著買。"
+        return f"表還壓在低附近{_paren(mark, gbit)}。低點訊號不是買訊。先看、先別急著買。"
 
     if k == "avoid" or g >= 40:
         if has_bias and bias >= 8:
-            return "獲利已經拉很開，也高出月線一截。今天別追。"
-        return "獲利已經拉很開。今天別追。"
+            return f"獲利已經拉很開{_paren(gbit)}，也高出月線一截{_paren(bbit, tbit)}。今天別追。"
+        return f"獲利已經拉很開{_paren(gbit, tbit)}。今天別追。"
 
     if g > 20 and weak_daily:
         if has_bias and bias < -0.5:
-            return "離低點有一段了，但表還偏空、收在月線下。先等。"
-        return "離低點有一段了，但表還偏空。先等。"
+            return f"離低點有一段了{_paren(gbit)}，但表還偏空、收在月線下{_paren(bbit)}。先等。"
+        return f"離低點有一段了{_paren(gbit)}，但表還偏空。先等。"
 
     if k == "watch":
         if has_bias and bias < -8:
-            return "靠近低點、月乖離偏負。可以放進觀察，先別急著買。"
-        return "靠近低點可以放進觀察，先別急著買。"
+            return f"靠近低點{_paren(gbit)}、{bbit}偏負。可以放進觀察，先別急著買。"
+        return f"靠近低點{_paren(gbit)}可以放進觀察，先別急著買。"
 
     if has_space and space < 8:
         if has_bias and abs(bias) < 1:
-            return "這段空間很小，貼著月線。先看表再決定。"
-        return "這段空間很小。先看表再決定。"
+            return f"這段空間很小{_paren(sbit, gbit)}，貼著月線。先看表再決定。"
+        return f"這段空間很小{_paren(sbit, gbit)}。先看表再決定。"
 
     if has_bias and abs(bias) < 0.5 and 8 <= g <= 25:
-        return "離低點有一段了，表貼著月線。先看再決定。"
+        return f"離低點有一段了{_paren(gbit)}，表貼著月線{_paren(bbit)}。先看再決定。"
 
     if bear or (has_bias and bias < -3):
-        return "日線還偏空。今天先看表，先等。"
+        extra = _paren(gbit, bbit)
+        return f"日線還偏空{extra}。今天先看表，先等。"
 
     if g > 20:
-        return "離低點有一段了。今天沒有急著買或賣，" + _look_table(on_list)
+        return f"離低點有一段了{_paren(gbit, tbit)}。今天沒有急著買或賣，" + _look_table(on_list)
 
+    extra = _paren(gbit, tbit, heat)
+    if extra:
+        if on_list:
+            return f"今天沒有急著買或賣{extra}。紅箭頭不是買進訊號。"
+        return f"今天沒有急著買或賣{extra}。看下面這張20日表再決定。紅箭頭不是買進訊號。"
     return _stance_kind_fallback(k, on_list=on_list)
 
 
@@ -719,7 +829,7 @@ def _stance_kind_fallback(kind: str, *, on_list: bool = False) -> str:
     if k == "avoid":
         return "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
     if k == "watch":
-        return "靠近低點可以放進觀察，先別急著買。"
+        return "靠近低點可以放進觀察。低點訊號不是買訊，先別急著買。"
     if on_list:
         return "今天沒有急著買或賣。紅箭頭不是買進訊號。"
     return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"

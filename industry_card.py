@@ -178,7 +178,18 @@ def _wrap_px(text: str, font, max_w: float) -> List[str]:
 
 def _flow_lines(snap: Dict[str, Any]) -> List[str]:
     as_of = snap["as_of"]
-    as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(str(as_of or "")) == 8 else (as_of or "—")
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        as_s = format_trading_date_zh(as_of) or (as_of or "—")
+    except Exception:
+        as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(str(as_of or "")) == 8 else (as_of or "—")
+    try:
+        from decision_card_signals import format_produced_clock
+
+        produced = format_produced_clock()
+    except Exception:
+        produced = ""
     three = int(snap["three_net"] or 0)
     if three > 0 and snap["industry"] in (snap.get("inflow") or []):
         flow_story = "本產業今天在法人買超最多的前3大族群產業裡。"
@@ -200,7 +211,10 @@ def _flow_lines(snap: Dict[str, Any]) -> List[str]:
     elif int(snap.get("sell_streak") or 0) == 1:
         streak_line = "本產業今天合計賣超（尚未連兩日）"
     sign = "+" if three > 0 else ""
-    lines = [f"基準日：{as_s}", f"法人合計：{sign}{three:,}張", flow_story]
+    lines = [f"基準日：{as_s}"]
+    if produced:
+        lines.append(f"產出：{produced}")
+    lines.extend([f"法人合計：{sign}{three:,}張", flow_story])
     if streak_line:
         lines.append(streak_line)
     return lines

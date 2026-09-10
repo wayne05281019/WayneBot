@@ -107,8 +107,18 @@ _ETF_KIND_ALIASES = {
     "反1": ("ETF_INVERSE",),
     "反1etf": ("ETF_INVERSE",),
     "主動etf": ("ETF_ACTIVE",),
+    "主動型": ("ETF_ACTIVE",),
+    "主動型etf": ("ETF_ACTIVE",),
+    "主动": ("ETF_ACTIVE",),
+    "主动etf": ("ETF_ACTIVE",),
+    "主动型": ("ETF_ACTIVE",),
     "主動": ("ETF_ACTIVE",),
     "被動etf": ("ETF_PASSIVE",),
+    "被動型": ("ETF_PASSIVE",),
+    "被動型etf": ("ETF_PASSIVE",),
+    "被动": ("ETF_PASSIVE",),
+    "被动etf": ("ETF_PASSIVE",),
+    "被动型": ("ETF_PASSIVE",),
     "被動": ("ETF_PASSIVE",),
     "主被動etf": ("ETF_ACTIVE", "ETF_PASSIVE"),
     "主被動": ("ETF_ACTIVE", "ETF_PASSIVE"),
@@ -191,6 +201,147 @@ def parse_etf_lookup_spec(query: str) -> Optional[Dict[str, Any]]:
             "label": "配息型 ETF",
         }
     return None
+
+
+_BOPO_TONES = "ˉˊˇˋ˙"
+_BOPO_RE = re.compile(r"[\u3105-\u312f]")
+_ETF_SUGGEST_SKIP = {"型", "etf", "式", "的", "類"}
+
+
+def _cjk_only_key(s: str) -> str:
+    return "".join(ch for ch in (s or "") if "\u4e00" <= ch <= "\u9fff")
+
+
+def _has_bopomofo(s: str) -> bool:
+    return bool(_BOPO_RE.search(s or "")) or any(ch in _BOPO_TONES for ch in (s or ""))
+
+
+def _fold_bopomofo(s: str) -> str:
+    text = unicodedata.normalize("NFKC", s or "")
+    text = re.sub(r"[\s\u3000]+", "", text)
+    for mark in _BOPO_TONES:
+        text = text.replace(mark, "")
+    return text
+
+
+def _pinyin_compact(s: str) -> str:
+    core = _cjk_only_key(s)
+    if not core:
+        return ""
+    try:
+        from pypinyin import Style, lazy_pinyin
+
+        return "".join(str(x or "").lower() for x in lazy_pinyin(core, style=Style.NORMAL))
+    except Exception:
+        return ""
+
+
+def _bopo_compact(s: str) -> str:
+    if _has_bopomofo(s):
+        return _fold_bopomofo(s)
+    core = _cjk_only_key(s)
+    if not core:
+        return ""
+    try:
+        from pypinyin import Style, lazy_pinyin
+
+        return _fold_bopomofo("".join(str(x or "") for x in lazy_pinyin(core, style=Style.BOPOMOFO)))
+    except Exception:
+        return ""
+
+
+def etf_lookup_catalog() -> List[Dict[str, Any]]:
+    """分類詞去重：給打不完整／注音對。"""
+    grouped: Dict[tuple, Dict[str, Any]] = {}
+    aliases: List[str] = []
+    aliases.extend(_ETF_KIND_ALIASES.keys())
+    aliases.extend(_ETF_CADENCE_ALIASES.keys())
+    aliases.extend(_ETF_NAME_ALIASES.keys())
+    aliases.extend(_ETF_DIV_ALIASES)
+    for alias in aliases:
+        spec = parse_etf_lookup_spec(alias)
+        if not spec:
+            continue
+        sig = (
+            tuple(spec.get("kinds") or ()),
+            str(spec.get("cadence") or ""),
+            tuple(spec.get("needles") or ()),
+            bool(spec.get("has_div")),
+        )
+        slot = grouped.get(sig)
+        cand = _cjk_only_key(alias) or alias
+        if slot is None:
+            slot = {
+                "kinds": spec["kinds"],
+                "cadence": spec.get("cadence") or "",
+                "needles": tuple(spec.get("needles") or ()),
+                "has_div": bool(spec.get("has_div")),
+                "label": spec.get("label") or "",
+                "pick": cand,
+                "aliases": [],
+            }
+            grouped[sig] = slot
+        slot["aliases"].append(alias)
+        cur = str(slot.get("pick") or "")
+        cur_cjk = _cjk_only_key(cur)
+        if cand and (not cur_cjk or (2 <= len(cand) < len(cur_cjk) or (not cur_cjk and cand))):
+            slot["pick"] = cand
+    return list(grouped.values())
+
+
+def suggest_etf_lookup_specs(query: str) -> List[Dict[str, Any]]:
+    """打不完整、注音沒轉完時，列出可能的 ETF 分類。不是個股讀音。"""
+    exact = parse_etf_lookup_spec(query)
+    if exact:
+        exact = dict(exact)
+        exact["pick"] = _cjk_only_key(query) or _norm_etf_lookup_key(query)
+        return [exact]
+    raw = unicodedata.normalize("NFKC", (query or "").strip())
+    key = _norm_etf_lookup_key(query)
+    if not key or is_lookup_ticker(key) or key in _ETF_SUGGEST_SKIP:
+        return []
+    q_cjk = _cjk_only_key(key)
+    if len(q_cjk) == 1 and not _has_bopomofo(raw) and q_cjk not in {"主", "被", "配", "槓", "反", "月", "季"}:
+        return []
+    q_bopo = _fold_bopomofo(raw) if _has_bopomofo(raw) else ""
+    q_py = _pinyin_compact(key) if q_cjk else ""
+    scored: List[tuple] = []
+    for item in etf_lookup_catalog():
+        names = list(item.get("aliases") or []) + [str(item.get("label") or ""), str(item.get("pick") or "")]
+        best = 0
+        for name in names:
+            n = _norm_etf_lookup_key(name)
+            n_cjk = _cjk_only_key(n)
+            if not n:
+                continue
+            if q_cjk and (n.startswith(key) or n_cjk.startswith(q_cjk)):
+                best = max(best, 94 if len(q_cjk) >= 2 else 88)
+            elif key and n.startswith(key):
+                best = max(best, 90)
+            elif q_cjk and len(q_cjk) >= 2 and q_cjk in n_cjk:
+                best = max(best, 80)
+            n_py = _pinyin_compact(n)
+            if q_py and n_py and n_py.startswith(q_py) and len(q_cjk) >= 2:
+                best = max(best, 92 if len(q_py) >= 4 else 84)
+            n_bopo = _bopo_compact(n)
+            if q_bopo and n_bopo and n_bopo.startswith(q_bopo):
+                best = max(best, 92 if len(q_bopo) >= 2 else 86)
+        if q_bopo:
+            pick_bopo = _bopo_compact(str(item.get("pick") or item.get("label") or ""))
+            if pick_bopo and pick_bopo.startswith(q_bopo):
+                best = max(best, 90)
+        if best >= 80:
+            scored.append((best, str(item.get("label") or ""), item))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for _score, _lab, item in scored:
+        pick = str(item.get("pick") or "")
+        if not pick or pick in seen:
+            continue
+        seen.add(pick)
+        out.append(dict(item))
+    return out
 
 
 def parse_etf_lookup_kinds(query: str) -> Optional[Tuple[str, ...]]:

@@ -8,16 +8,19 @@ from screening_engine import (
     _golden_buy_ok,
     _is_downtrend_no_touch,
     _pattern_tag,
+    _screen_trend_up_ok,
 )
 
 
-def _bars(closes, *, stock_id="2330", vol=12000):
+def _bars(closes, *, stock_id="2330", vol=12000, last_vol=None):
     rows = []
     start = datetime(2026, 1, 5)
+    n = len(closes)
     for i, c in enumerate(closes):
         prev = closes[i - 1] if i else c
         pct = round((c - prev) / prev * 100.0, 2) if prev else 0
         d = (start + timedelta(days=i)).strftime("%Y%m%d")
+        v = last_vol if last_vol is not None and i == n - 1 else vol
         rows.append(
             {
                 "date": d,
@@ -28,8 +31,8 @@ def _bars(closes, *, stock_id="2330", vol=12000):
                 "high": c + 0.5,
                 "low": c - 0.5,
                 "close": c,
-                "volume": vol,
-                "turnover_k": vol * c,
+                "volume": v,
+                "turnover_k": v * c,
                 "pct_change": pct,
                 "avg_price": c,
                 "foreign_net": 0,
@@ -40,15 +43,13 @@ def _bars(closes, *, stock_id="2330", vol=12000):
     return pd.DataFrame(rows)
 
 
-def test_golden_buy_bucket_matches_decision_card_fields():
+def test_golden_buy_downtrend_oversold_not_in_bucket():
+    """60低超跌公式仍可能成立，但整份海選不收空頭，下坡不進桶。"""
     closes = [70.0] * 45 + [62.0] * 8 + [55.0] * 7 + [48.0] * 5 + [42.0] * 10
     out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": _bars(closes)})
-    assert out["golden_buy"], "應進重點觀察桶（golden_buy）"
-    item = out["golden_buy"][0]
-    assert item.get("at_60_low") is True
-    assert -1.5 <= float(item["profit_pct"]) <= 2.5
-    assert float(item["bias_monthly"]) < -10.0
-    assert item.get("golden_buy") is True
+    assert out["golden_buy"] == []
+    assert out["leave_zero"] == []
+    assert out["select_03"] == []
 
 
 def test_golden_buy_rejects_uptrend_far_from_zero():
@@ -60,10 +61,34 @@ def test_golden_buy_rejects_uptrend_far_from_zero():
 def test_downtrend_excluded_from_layout_buckets():
     slide = [100.0 - i * 0.8 for i in range(70)]
     bounce = slide + [slide[-1] * 1.004, slide[-1] * 1.012]
-    out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": _bars(bounce)})
+    out = ScreeningEngine(db_path=":memory:").execute_all_strategies(
+        {"2330": _bars(bounce, last_vol=24000)}
+    )
     assert out["leave_zero"] == []
     assert out["golden_buy"] == []
     assert out["select_01"] == []
+    assert out["select_02"] == []
+    assert out["select_03"] == []
+    assert out["day_trade"] == []
+    assert out["overnight"] == []
+    assert out["half_year_high"] == []
+
+
+def test_uptrend_volume_break_still_enters_select_01():
+    # 箱型多頭小突破：不要大到被半年高整檔帶走。
+    closes = [100.0] * 80 + [100.0, 100.0, 100.0, 101.0, 102.0]
+    out = ScreeningEngine(db_path=":memory:").execute_all_strategies(
+        {"2330": _bars(closes, vol=3000, last_vol=8000)}
+    )
+    assert out["select_01"]
+    assert out["half_year_high"] == []
+
+
+def test_uptrend_near_20_low_can_enter_select_03():
+    """多頭排列、月低附近翻紅、離 20 高夠遠：止跌仍可進。"""
+    closes = [90.0] * 40 + [100.0] * 25 + [105.0, 99.4, 100.6]
+    out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": _bars(closes)})
+    assert out["select_03"]
 
 
 def test_pattern_tag_helpers():
@@ -91,6 +116,7 @@ def test_pattern_tag_helpers():
     }
     assert _pattern_tag(bear) == "下坡"
     assert _is_downtrend_no_touch(bear)
+    assert not _screen_trend_up_ok(bear)
     assert _golden_buy_ok(
         {**bear, "stock_id": "2330", "at_60_low": True, "profit_pct": 0.5, "bias_monthly": -12}
     )
@@ -120,6 +146,11 @@ def test_pattern_tag_helpers():
 
 def test_golden_buy_in_screen_push_order():
     from screening_engine import SCREEN_PUSH_SPECS
+    from line_share_format import LINE_BUCKET_META
 
     keys = [k for k, *_ in SCREEN_PUSH_SPECS]
     assert keys.index("golden_buy") == keys.index("leave_zero") + 1
+    specs = {k: hint for k, _, _, hint, *_ in SCREEN_PUSH_SPECS}
+    assert "不收空頭" in specs["golden_buy"]
+    assert "可收" not in specs["golden_buy"]
+    assert "不收空頭" in LINE_BUCKET_META["golden_buy"][1]

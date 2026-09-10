@@ -484,6 +484,7 @@ class NavigatorEngine:
         df["low_20"] = hl_src.rolling(20, min_periods=1).min()
         df["high_60"] = hl_src.rolling(60, min_periods=1).max()
         df["low_60"] = hl_src.rolling(60, min_periods=1).min()
+        df["ma60_hl"] = hl_src.rolling(60, min_periods=1).mean()
         df["low_120"] = hl_src.rolling(120, min_periods=20).min()
         df["low_240"] = hl_src.rolling(240, min_periods=40).min()
         df["low_480"] = hl_src.rolling(480, min_periods=80).min()
@@ -518,7 +519,16 @@ class NavigatorEngine:
             l60 = float(df["low_60"].iloc[i])
             h60_i = float(df["high_60"].iloc[i])
             bias = float(df["bias_monthly"].iloc[i])
-            t = compute_card_temperature(c, h20, l20, bias, high60=h60_i, low60=l60)
+            ma60_raw = df["ma60_hl"].iloc[i] if "ma60_hl" in df.columns else df["ma60"].iloc[i]
+            try:
+                ma60_i = float(ma60_raw or 0)
+                if ma60_i != ma60_i:
+                    ma60_i = 0.0
+            except (TypeError, ValueError):
+                ma60_i = 0.0
+            t = compute_card_temperature(
+                c, h20, l20, bias, high60=h60_i, low60=l60, ma60=ma60_i
+            )
             temp_nums.append(t)
             if c >= h20 * 0.998:
                 hl_tags.append("20高")
@@ -962,28 +972,37 @@ def _trend_note_short(note: str) -> str:
 
 
 def dual_trend_pill_geom(body_h: float) -> dict:
-    """升降主標＋註兩顆 pill：兩顆中間留空，也不要貼到列的上下格線。
+    """升降雙標：格子上下對切各 50%。上半主標、下半註，底色鋪滿各半格。
 
-    貼齊格線會讓上一列「未新低」跟下一列「最低溫」隔線相貼，看起來像壓字。
+    單標（只有升溫／最低溫、沒有註）仍走中間一顆 pill，不切兩半。
     """
     h = max(float(body_h), 1.0)
-    main_fs, note_fs = 8.2, 7.6
-    edge = h * 0.18
-    main_h = h * 0.28
-    note_h = h * 0.26
-    main_dy = h / 2.0 - edge - main_h / 2.0
-    note_dy = h / 2.0 - edge - note_h / 2.0
-    inner_gap = (main_dy - main_h / 2.0) - (-note_dy + note_h / 2.0)
+    half = h * 0.5
     return {
-        "main_fs": main_fs,
-        "note_fs": note_fs,
-        "main_h": main_h,
-        "note_h": note_h,
-        "main_dy": main_dy,
-        "note_dy": note_dy,
-        "rounding": min(0.08, h * 0.12),
-        "gap": inner_gap,
-        "edge": edge,
+        "main_fs": 10.2,
+        "note_fs": 10.2,
+        "main_h": half,
+        "note_h": half,
+        "main_dy": h * 0.25,
+        "note_dy": h * 0.25,
+        "rounding": 0.0,
+        "gap": 0.0,
+        "edge": 0.0,
+    }
+
+
+def dual_trend_half_boxes(x: float, y1: float, col_w: float, body_h: float) -> dict:
+    """格底 y1。回傳上半／下半 (x, y, w, h) 與文字中心。"""
+    g = dual_trend_pill_geom(body_h)
+    half = float(g["main_h"])
+    cx = x + col_w / 2.0
+    return {
+        "main_box": (x, y1 + half, col_w, half),
+        "note_box": (x, y1, col_w, half),
+        "main_xy": (cx, y1 + half + half / 2.0),
+        "note_xy": (cx, y1 + half / 2.0),
+        "main_fs": g["main_fs"],
+        "note_fs": g["note_fs"],
     }
 
 
@@ -1250,9 +1269,10 @@ def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
 
 
 def _etf_nav_extra_h(card) -> float:
+    """右欄四行拉開後的加高。7.2 會讓淨值貼在漲跌下、折溢價再黏一行。"""
     if card is None or card.get("etf_nav") is None:
         return 0.0
-    return 7.2 if card.get("etf_premium") is not None else 3.8
+    return 11.6 if card.get("etf_premium") is not None else 5.8
 
 
 def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
@@ -1285,17 +1305,20 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。"""
     extra = _etf_nav_extra_h(card)
     if extra:
-        close_y = y + price_h - 2.55
-        chg_y = close_y - 3.05
+        # 28pt 收盤與 15.5pt 漲跌中心距至少約 4.8，否則右上會黏成一塊。
+        close_y = y + price_h - 2.70
+        chg_y = close_y - 4.80
+        chg_fs = 13.5 if tw("　".join(chg_bits), 15.5) > 36.0 else 15.5
     else:
         close_y = y + price_h * 0.70
         chg_y = y + price_h * 0.24
+        chg_fs = 15.5
     ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
             color=chg_c, ha="right", va="center", zorder=3)
     ax.text(px_right - tw(close_s, 28) - 2.0, close_y, "收盤",
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     ax.text(px_right, chg_y, "　".join(chg_bits),
-            fontproperties=_fp(15.5, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     if not extra:
         return
     try:
@@ -1319,7 +1342,7 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     except (TypeError, ValueError):
         prem = None
         prem_c = C["ink"]
-    nav_y = chg_y - 2.55
+    nav_y = chg_y - 3.50
     ax.text(
         px_right, nav_y, f"淨值 {nav_s}",
         fontproperties=_fp(12.0, "bold"),
@@ -1328,7 +1351,7 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     )
     if prem is not None:
         ax.text(
-            px_right, nav_y - 2.40, f"折溢價 {float(prem):+.2f}%",
+            px_right, nav_y - 3.40, f"折溢價 {float(prem):+.2f}%",
             fontproperties=_fp(13.5, "bold"), color=prem_c,
             ha="right", va="center", zorder=3,
         )
@@ -1403,6 +1426,21 @@ def _wcag(fg, bg) -> float:
     """字色與底色的對比倍數；白字壓深底至少要 4.5 才不吃力。"""
     a, b = sorted((_lum(fg), _lum(bg)), reverse=True)
     return (a + 0.05) / (b + 0.05)
+
+
+def _draw_trend_half(ax, box, xy, text, bg, fg, fs):
+    """升降雙標半格：Rectangle 鋪滿該半，三字置中。不是小 pill。"""
+    sbg, sfg = _status_badge_colors(bg, fg)
+    x, y, w, h = box
+    ax.add_patch(
+        patches.Rectangle(
+            (x, y), w, h, facecolor=sbg, edgecolor="none", lw=0, zorder=2.5
+        )
+    )
+    ax.text(
+        xy[0], xy[1], text, fontproperties=_fp(fs, "bold"),
+        color=sfg, ha="center", va="center", zorder=3,
+    )
 
 
 def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3, rounding=None):
@@ -1512,6 +1550,8 @@ _CARD = {
     "hi_ink": "#AD1457",
     "hi_line": "#F2B4CB",
     "hi_fill": "#FFF0FF",
+    "cut_fill": "#F9A8D4",
+    "cut_line": "#DB2777",
     "lo_ink": "#166534",
     "lo_line": "#86EFAC",
     "lo_fill": "#DCFCE7",
@@ -2126,8 +2166,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     badge_h, badge_gap = 3.05, 0.95
     sell_sub = ""
     try:
-        from sell_discipline import sell_note_short
+        from sell_discipline import apply_face_stance, sell_note_short
 
+        apply_face_stance(card)
         sell_sub = sell_note_short(card)
     except Exception:
         sell_sub = ""
@@ -2267,8 +2308,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    lead = "" if (etf_kind and etf_kind in name) else etf_kind
     for text, fs, color in fit_title_bar_extras(
-        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
+        industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
                 color=color, va="center", zorder=3)
@@ -2324,17 +2366,33 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
 
-    # 左：今日態度＋白話標題；標題短就把說明靠右同一行，其餘下一行。
+    # 左：今日態度＋白話標題；作者提醒當下整塊打底，金句再墊一層，避免看漏。
     y -= gap + stance_h
     kind = str(card.get("stance_kind") or "wait")
     stance_txt = str(card.get("stance") or "今天先看表，先等")
-    if kind == "avoid" or str(card.get("sell_action") or "") == "直接減碼":
+    hl_kind = ""
+    try:
+        from sell_discipline import sell_highlight_kind
+
+        hl_kind = sell_highlight_kind(card)
+    except Exception:
+        hl_kind = ""
+    if hl_kind == "cut":
+        s_fc, s_ec, s_ink = C["cut_fill"], C["cut_line"], C["hi_ink"]
+        pane_fc = C["cut_fill"]
+    elif hl_kind == "prepare":
         s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
+        pane_fc = C["hi_fill"]
+    elif kind == "avoid":
+        s_fc, s_ec, s_ink = C["hi_fill"], C["hi_line"], C["hi_ink"]
+        pane_fc = C["panel"]
     elif kind == "watch":
         s_fc, s_ec, s_ink = C["lo_hit_fill"], C["lo_hit_line"], C["lo_ink"]
+        pane_fc = C["panel"]
     else:
         s_fc, s_ec, s_ink = C["panel"], C["line"], C["ink"]
-    pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=C["panel"])
+        pane_fc = C["panel"]
+    pane(pad_x, y, 100 - 2 * pad_x, stance_h, ec=s_ec, fc=pane_fc)
     chip_w = float(stance_plan["chip_w"])
     chip_h = 2.15
     chip_y = y + stance_h - chip_h - 0.55
@@ -2349,15 +2407,37 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.text(title_x, chip_y + chip_h / 2, stance_txt,
             fontproperties=_fp(title_fs, "bold"), color=s_ink, va="center", zorder=4)
     same_row = str(stance_plan.get("same_row") or "")
+    note_ink = C["hi_ink"] if hl_kind else C["ink_soft"]
+    # 直接減碼整塊已是 cut_fill，金句墊淺粉；準備減碼整塊淺粉，金句墊深一層。
+    if hl_kind == "cut":
+        note_wash = "#FCE7F3"
+    elif hl_kind == "prepare":
+        note_wash = C["cut_fill"]
+    else:
+        note_wash = ""
     if same_row:
         note_x = title_x + tw(stance_txt, title_fs) + 2.4
+        if note_wash:
+            nw = tw(same_row, 11.2) + 2.4
+            ax.add_patch(patches.FancyBboxPatch(
+                (note_x - 1.1, chip_y + chip_h / 2 - 1.15), nw, 2.3,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=note_wash, edgecolor="none", zorder=4))
         ax.text(note_x, chip_y + chip_h / 2, same_row,
-                fontproperties=_fp(11.2), color=C["ink_soft"], ha="left", va="center", zorder=4)
+                fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
+                color=note_ink, ha="left", va="center", zorder=5)
     below = list(stance_plan.get("below") or [])
     ny = y + 1.35 + 2.2 * max(0, len(below) - 1)
     for ln in below:
+        if note_wash:
+            nw = min(tw(ln, 11.2) + 2.8, 100 - 2 * pad_x - 5.0)
+            ax.add_patch(patches.FancyBboxPatch(
+                (pad_x + 2.4, ny - 1.15), nw, 2.3,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=note_wash, edgecolor="none", zorder=4))
         ax.text(pad_x + 3.2, ny, ln,
-                fontproperties=_fp(11.2), color=C["ink_soft"], va="center", zorder=4)
+                fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
+                color=note_ink, va="center", zorder=5)
         ny -= 2.2
 
     # 高點
@@ -2453,9 +2533,11 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             str(r["月乖離"]).replace("+", ""),
             str(r["120日量"]),
         ]
+        dual_trend = bool(trend_note) and not is_blank_card_signal(trend)
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
-            _cell_wash(ax, xs[i], y1, col_w, body_h, fills[i], C["line"])
+            wash = C["white"] if (i == 4 and dual_trend) else fills[i]
+            _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
@@ -2467,24 +2549,23 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
                             fontproperties=_fp(11), color=C["ink_mute"], ha="center", va="center", zorder=3)
-                elif i == 4 and trend_note:
+                elif i == 4 and dual_trend:
                     note = _trend_note_short(trend_note)
                     nbg, nfg = temp_trend_note_cell_style(trend_note, base)
-                    max_w = col_w * 0.92
                     main_lab = "壓縮" if trend == "溫度壓縮" else trend
-                    geom = dual_trend_pill_geom(body_h)
-                    main_fs = geom["main_fs"] if len(main_lab) >= 3 else geom["main_fs"] + 0.4
-                    note_fs = geom["note_fs"]
-                    main_w = min(tw(main_lab, main_fs) + 2.6, max_w)
-                    note_w = min(tw(note, note_fs) + 2.2, max_w)
-                    _status_pill(
-                        cx, cy + geom["main_dy"], main_lab, tr_bg, tr_fg,
-                        w=main_w, h=geom["main_h"], fs=main_fs, rounding=geom["rounding"],
+                    halves = dual_trend_half_boxes(xs[i], y1, col_w, body_h)
+                    _draw_trend_half(
+                        ax, halves["main_box"], halves["main_xy"],
+                        main_lab, tr_bg, tr_fg, halves["main_fs"],
                     )
-                    _status_pill(
-                        cx, cy - geom["note_dy"], note, nbg, nfg,
-                        w=note_w, h=geom["note_h"], fs=note_fs, rounding=geom["rounding"],
+                    _draw_trend_half(
+                        ax, halves["note_box"], halves["note_xy"],
+                        note, nbg, nfg, halves["note_fs"],
                     )
+                    ax.add_patch(patches.Rectangle(
+                        (xs[i], y1), col_w, body_h, facecolor="none",
+                        edgecolor=C["tbl_line"], lw=0.7, zorder=4,
+                    ))
                 else:
                     pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
                     _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
@@ -2586,7 +2667,15 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
             kv_compact("自營", f"{fmt_lots(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
             kv_compact("法人", f"{fmt_lots(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
-            kv_compact("籌碼佔量", f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）"),
+            kv_compact(
+                "籌碼佔量",
+                (
+                    f"截至 {tape.get('chip_asof_label')}　"
+                    if str(tape.get("chip_asof_label") or "").strip()
+                    else ""
+                )
+                + f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）",
+            ),
         ]
     try:
         from broker_points import visible_main_cost
@@ -2626,6 +2715,13 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
 
         attach_sell(card)
         sell_lines = sell_note_lines(card)
+        try:
+            from sell_discipline import sell_highlight_kind
+
+            if sell_highlight_kind(card) and sell_lines:
+                sell_lines = [f"<b>作者提醒</b>　{sell_lines[0]}"] + sell_lines[1:]
+        except Exception:
+            pass
     except Exception:
         sell_lines = []
     setup_block = section("<b>協助判斷</b>", *sell_lines) if sell_lines else ""
@@ -2916,8 +3012,9 @@ def render_first_glance_png(
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    lead = "" if (etf_kind and etf_kind in name) else etf_kind
     for text, fs, color in fit_title_bar_extras(
-        industry, event, right_limit - cursor, tw, news=news, lead=etf_kind
+        industry, event, right_limit - cursor, tw, news=news, lead=lead
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs), color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
@@ -3007,6 +3104,9 @@ def render_first_glance_png(
         pane(pad_x, y, pane_w, chips_h)
         sec_title(pad_x + 2.6, y + chips_h - title_band / 2, "籌碼（張）", C["navy"])
         inst = f"佔量 {(tape or {}).get('inst_pct', 0):+.1f}%＝法人÷成交"
+        asof = str((tape or {}).get("chip_asof_label") or "").strip()
+        if asof:
+            inst = f"截至 {asof}　{inst}"
         if inner_r - tw(inst, 11) > pad_x + 2.6 + tw("籌碼（張）", 13.5) + 6.0:
             ax.text(inner_r, y + chips_h - title_band / 2, inst, fontproperties=_fp(11),
                     color=C["ink_soft"], ha="right", va="center", zorder=3)
@@ -3064,11 +3164,20 @@ def render_first_glance_png(
 
     if note_h:
         y -= gap + note_h
-        pane(pad_x, y, pane_w, note_h, fc=C["hi_fill"], ec=C["hi_line"])
+        sell_act = str(card.get("sell_action") or "")
+        note_fc = C["cut_fill"] if sell_act == "直接減碼" else C["hi_fill"]
+        note_ec = C["cut_line"] if sell_act == "直接減碼" else C["hi_line"]
+        pane(pad_x, y, pane_w, note_h, fc=note_fc, ec=note_ec)
         ax.text(inner_l, y + note_h - 1.55, "紀律", fontproperties=_fp(12, "bold"), color="#AD1457", va="center", zorder=3)
         ny = y + note_h - 4.0
         for ln in wrapped_notes:
-            ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=3)
+            wash = "#FCE7F3" if sell_act == "直接減碼" else C["cut_fill"]
+            nw = min(tw(ln, 12.5) + 2.6, inner_r - inner_l + 0.6)
+            ax.add_patch(patches.FancyBboxPatch(
+                (inner_l - 0.8, ny - 1.2), nw, 2.4,
+                boxstyle="round,pad=0,rounding_size=0.4",
+                facecolor=wash, edgecolor="none", zorder=3))
+            ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
 
     bars = ohlc
@@ -3241,6 +3350,161 @@ def _sig_arrow(ax, x, y, face: str, edge: str, scale: float = 1.0, z=6):
         )
     )
 
+
+
+NAV_KIND_LABEL = {
+    "h20": "20高",
+    "h20_near": "接近20高",
+    "h20_leave": "20高脫離",
+    "l20": "20低",
+    "l20_near": "接近20低",
+    "l20_leave": "20低脫離",
+    "l60": "60低",
+    "vol_a": "量能異常",
+    "warn": "警告",
+    "vol_low": "月波動低",
+}
+
+
+def compute_nav_overlay(work: pd.DataFrame) -> dict:
+    """跟導航圖同一套：價格列 20 高／低／脫離／60低；量能列量能異常／警告／月波動低。"""
+    n = len(work)
+    halt = work["is_halt"].fillna(False).astype(bool) if "is_halt" in work.columns else pd.Series([False] * n)
+    hi_s = work["high"].where(~halt)
+    lo_s = work["low"].where(~halt)
+    cl_s = work["close"].where(~halt)
+    h20 = float(hi_s.tail(20).max()) if n else 0.0
+    l20 = float(lo_s.tail(20).min()) if n else 0.0
+    h60 = float(hi_s.tail(60).max()) if n else 0.0
+    l60 = float(lo_s.tail(60).min()) if n else 0.0
+    frame = work.copy()
+    frame["ma20"] = cl_s.rolling(20, min_periods=1).mean()
+    frame["vol_ma"] = frame["volume"].where(~halt).rolling(20, min_periods=1).mean()
+    tr = (frame["high"] - frame["low"]).where(~halt)
+    frame["atr20"] = tr.rolling(20, min_periods=5).mean()
+    from decision_card_signals import candle_up_taiwan
+
+    candle_up = []
+    for i in range(n):
+        prev_c = float(frame["close"].iloc[i - 1]) if i else None
+        candle_up.append(
+            candle_up_taiwan(float(frame["close"].iloc[i]), prev_c, float(frame["open"].iloc[i]))
+        )
+    was_20h = was_20l = was_60l = was_near_h = was_near_l = False
+    last_dn_i = last_up_i = -9
+    price: list = []
+    vol: list = []
+    ma20 = []
+    for i in range(n):
+        ma_i = frame["ma20"].iloc[i]
+        try:
+            ma20.append(None if ma_i != ma_i else round(float(ma_i), 4))
+        except (TypeError, ValueError):
+            ma20.append(None)
+        if bool(halt.iloc[i]):
+            continue
+        op, cl = float(frame["open"].iloc[i]), float(frame["close"].iloc[i])
+        hi, lo = float(frame["high"].iloc[i]), float(frame["low"].iloc[i])
+        wick_h20 = float(hi_s.iloc[max(0, i - 19) : i + 1].max())
+        wick_l20 = float(lo_s.iloc[max(0, i - 19) : i + 1].min())
+        close_h20 = float(cl_s.iloc[max(0, i - 19) : i + 1].max())
+        close_l20 = float(cl_s.iloc[max(0, i - 19) : i + 1].min())
+        wick_l60 = float(lo_s.iloc[max(0, i - 59) : i + 1].min())
+        ma20_i = float(frame["ma20"].iloc[i] or 0)
+        bias_i = ((cl - ma20_i) / ma20_i * 100.0) if ma20_i else 0.0
+        hh, ll = close_h20, close_l20
+        rsv = ((cl - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
+        is_20h = hi >= wick_h20 * 0.999 or cl >= close_h20 * 0.998
+        is_20l = lo <= wick_l20 * 1.001 or cl <= close_l20 * 1.002
+        is_60l = lo <= wick_l60 * 1.001
+        leave_h = was_20h and not is_20h
+        leave_l = was_20l and not is_20l
+        vol_a = float(frame["volume"].iloc[i] or 0) >= float(frame["vol_ma"].iloc[i] or 1) * 2.0
+        atr = float(frame["atr20"].iloc[i] or 0)
+        vol_low = bool(cl > 0 and atr / cl < 0.018)
+        warn = rsv >= 80 or bias_i >= 8.0 or cl >= close_h20 * 0.99
+        near_h = not is_20h and hi >= wick_h20 * 0.985
+        near_l = not is_20l and lo <= wick_l20 * 1.015
+        dn_pick = None
+        if is_20h and not was_20h:
+            dn_pick = ("h20", False, hi)
+        elif leave_h:
+            dn_pick = ("h20_leave", False, hi)
+        elif near_h and not was_near_h:
+            dn_pick = ("h20_near", True, hi)
+        up_pick = None
+        if is_60l and not was_60l:
+            up_pick = ("l60", False, lo)
+        elif is_20l and not was_20l:
+            up_pick = ("l20", False, lo)
+        elif leave_l:
+            up_pick = ("l20_leave", False, lo)
+        elif near_l and not was_near_l:
+            up_pick = ("l20_near", True, lo)
+        if dn_pick and dn_pick[0] in ("h20_near", "h20_leave") and i - last_dn_i < 2:
+            dn_pick = None
+        if up_pick and up_pick[0] in ("l20_near", "l20_leave") and i - last_up_i < 2:
+            up_pick = None
+        if dn_pick:
+            kind, hollow, px = dn_pick
+            price.append({"i": i, "kind": kind, "hollow": hollow, "px": round(float(px), 4), "dir": "down"})
+            last_dn_i = i
+        if up_pick:
+            kind, hollow, px = up_pick
+            price.append({"i": i, "kind": kind, "hollow": hollow, "px": round(float(px), 4), "dir": "up"})
+            last_up_i = i
+        if vol_low:
+            vol.append({"i": i, "kind": "vol_low"})
+        if warn:
+            vol.append({"i": i, "kind": "warn"})
+        if vol_a:
+            vol.append({"i": i, "kind": "vol_a"})
+        was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
+        was_near_h, was_near_l = near_h, near_l
+    return {
+        "h20": round(h20, 4),
+        "l20": round(l20, 4),
+        "h60": round(h60, 4),
+        "l60": round(l60, 4),
+        "ma20": ma20,
+        "up": candle_up,
+        "price": price,
+        "vol": vol,
+        "labels": dict(NAV_KIND_LABEL),
+    }
+
+
+def nav_overlay_from_bars(bars: list) -> dict:
+    """給 /k/ 日K用：同一套高低箭頭，不重算決策卡。"""
+    if not bars:
+        return {}
+    rows = []
+    for b in bars:
+        d = str(b.get("t") or "").replace("-", "")[:8]
+        try:
+            o, h, l, c = float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])
+            v = float(b.get("v") or 0)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if len(d) != 8 or not d.isdigit() or c <= 0:
+            continue
+        rows.append(
+            {
+                "date": d,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+                "is_halt": False,
+            }
+        )
+    if not rows:
+        return {}
+    work = _nav_work_or_none(pd.DataFrame(rows), already_normalized=True)
+    if work is None:
+        return {}
+    return compute_nav_overlay(work)
 
 
 def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
@@ -3419,10 +3683,21 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
             live_note = f"  ·{mis_session_label(t)}" + (f" {t[:5]}" if t else "")
         except Exception:
             live_note = "  ·盤中即時"
+    stamp = ""
+    if not compact:
+        try:
+            from decision_card_signals import format_card_query_stamp
+
+            last_d = str(work["date"].iloc[-1] or "")
+            is_live = "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1])
+            date_s, clock_s = format_card_query_stamp(is_live=is_live, latest_date=last_d)
+            stamp = f"　{date_s} {clock_s}"
+        except Exception:
+            stamp = ""
     title = (
         f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}   WayneBot ® 2026"
+        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}   WayneBot ® 2026"
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)

@@ -184,3 +184,48 @@ def test_template_temperature_cold_stock_scale():
     assert t < 15.0
     t_hot = compute_card_temperature(40.05, 40.15, 39.3, 0.5, high60=41.5, low60=39.3)
     assert t_hot < 20.0
+
+
+def test_dumped_chop_below_ma60_uses_narrow_temp_scale():
+    """中石化 8 月型：跌破季線、60 日下半盤整，不能沿用舊高寬尺到 40°C+。"""
+    old = compute_card_temperature(7.82, 8.27, 7.37, 0.8, high60=10.4, low60=6.9)
+    new = compute_card_temperature(
+        7.82, 8.27, 7.37, 0.8, high60=10.4, low60=6.9, ma60=8.09
+    )
+    assert old >= 35.0
+    assert new < 12.0
+    assert new < old
+
+
+def test_twenty_high_at_sixty_low_does_not_compress():
+    """致伸 9/4 型：60 日低附近但已貼 20 高，仍走熱尺。"""
+    t = compute_card_temperature(
+        60.8, 60.9, 59.4, 1.1, high60=77.5, low60=59.4, ma60=65.55
+    )
+    assert t >= 60.0
+
+
+def test_twenty_low_leave_zero_does_not_compress_to_zero():
+    """華建 8/31 型：貼 20 低、獲利 0，窄尺本來就個位數，不要再壓成 0。"""
+    t = compute_card_temperature(
+        18.8, 19.9, 18.8, -3.0, high60=21.1, low60=18.45, ma60=19.55
+    )
+    assert 5.0 <= t <= 10.0
+
+
+def test_below_ma60_not_twenty_high_compresses_even_if_p20_mid():
+    """長榮 7/30 型：收在季線下、還沒貼 20 高，VAM 3.5，不能沿用 60 日舊高到 50°C+。"""
+    hot = compute_card_temperature(201.0, 206.0, 185.5, 1.5, high60=237.0, low60=181.0)
+    cold = compute_card_temperature(
+        201.0, 206.0, 185.5, 1.5, high60=237.0, low60=181.0, ma60=205.86
+    )
+    assert hot >= 50.0
+    assert cold < 16.0
+
+
+def test_twenty_high_narrow_sixty_not_stuck_at_thirty():
+    """萬海 8/13 型：已貼 20 高、60 日空間約 14%，VAM 56.8，不要卡在 30°C。"""
+    t = compute_card_temperature(
+        87.5, 87.5, 79.5, 3.0, high60=87.5, low60=76.7, ma60=82.55
+    )
+    assert 45.0 <= t <= 58.0

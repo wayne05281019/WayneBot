@@ -1227,12 +1227,13 @@ def test_l9c_help_topic_layout_and_jargon(topic):
 
 @pytest.mark.parametrize(
     "label",
-    ["說明", "海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區"],
+    ["說明", "海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大"],
 )
 def test_l9c_twelve_buttons_named_in_guide_and_row_help(label):
-    from bot_servers import MENU_ROW1, MENU_ROW2
+    from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
 
-    assert label in MENU_ROW1 + MENU_ROW2
+    names = [_normalize_menu_text(t) for t in MENU_ROW1 + MENU_ROW2]
+    assert label in names
     assert label in HELP_TOPICS["guide"]
     blob = HELP_TOPICS["row1"] + "\n" + HELP_TOPICS["row2"]
     assert label in blob
@@ -1245,12 +1246,13 @@ def _circled(i: int) -> str:
 
 
 def test_l9c_row_help_covers_each_button_intro():
-    from bot_servers import MENU_ROW1, MENU_ROW2
+    from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
 
     for rows, blob in ((MENU_ROW1, HELP_TOPICS["row1"]), (MENU_ROW2, HELP_TOPICS["row2"])):
-        for i, label in enumerate(rows, start=1):
+        labeled = [_normalize_menu_text(t) for t in rows if str(t).strip()]
+        for i, label in enumerate(labeled, start=1):
             start = blob.index(f"<b>{_circled(i)} {label}</b>")
-            end = blob.index(f"<b>{_circled(i + 1)} ", start) if i < 6 else len(blob)
+            end = blob.index(f"<b>{_circled(i + 1)} ", start) if i < len(labeled) else len(blob)
             section = blob[start:end]
             assert "是什麼" in section
             assert ("怎麼用" in section) or ("怎麼加" in section)

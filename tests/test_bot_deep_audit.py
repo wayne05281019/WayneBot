@@ -75,6 +75,7 @@ def _bot():
         ("daytrade", "_run_trade_bucket"),
         ("overnight", "_run_trade_bucket"),
         ("k:", "_send_card_to"),
+        ("e:", "_send_etf_category_pick"),
         ("f:", "reply_html"),
         ("n:", "_send_industry"),
     ],
@@ -93,6 +94,8 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     bot._send_portfolio = AsyncMock()
     bot._send_watch = AsyncMock()
     bot._run_manual_screening = AsyncMock()
+    bot._start_screen_pick = AsyncMock()
+    bot._send_etf_category_pick = AsyncMock()
     bot._run_trade_bucket = AsyncMock()
     bot._reply_help_topic = AsyncMock()
     bot._send_line_rich_bucket = AsyncMock()
@@ -132,6 +135,8 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
         bot._run_trade_bucket.assert_awaited_once()
     elif prefix == "k:":
         bot._send_card_to.assert_awaited_once()
+    elif prefix == "e:":
+        bot._send_etf_category_pick.assert_awaited_once()
     elif prefix == "f:":
         msg.reply_html.assert_awaited()
     elif prefix == "n:":

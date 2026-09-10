@@ -2202,7 +2202,7 @@ def regime_plus_screening_note(snap: Dict[str, Any]) -> str:
         "trend_up_late": "多頭末端：少追、降 cap、多看獲利格。",
         "range": "箱型震盪：偏選股，不賭方向。",
         "trend_down": "空頭延伸：縮短線桶，佈局需極嚴。",
-        "down_exhaust": "空頭衰竭：低檔觀察，重點觀察欄可略放但仍不賭刀。",
+        "down_exhaust": "空頭衰竭：低檔觀察，海選仍不收空頭，不賭刀。",
         "repair": "跌後修復：觀察 3 日站穩，不急追。",
     }
     return f"盤勢　<b>{label}</b>{tail}　{notes.get(rp, '')}"

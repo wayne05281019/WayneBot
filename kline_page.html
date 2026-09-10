@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="robots" content="noindex">
+<title>@@TITLE@@</title>
+<style>
+html,body{margin:0;height:100%;background:#eef2f6;color:#1f2933;
+font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;}
+body{display:flex;flex-direction:column;min-height:100%;}
+header{padding:10px 12px 4px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
+.sub{margin:4px 0 0;font-size:13px;color:#546e7a;line-height:1.45}
+#hud{min-height:2.6em;margin:6px 12px 0;padding:8px 10px;background:#fff;
+border:1px solid #d7dee4;border-radius:10px;font-size:13px;line-height:1.45}
+#hud b{font-weight:800}
+.leg{display:flex;flex-wrap:wrap;gap:6px 10px;padding:6px 12px 0;font-size:11px;color:#546e7a}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 8px}
+nav button{appearance:none;border:1px solid #c5ced6;background:#fff;color:#1f2933;
+border-radius:8px;padding:8px 11px;font-size:14px;line-height:1;min-height:40px}
+nav button.on{background:#1565c0;border-color:#1565c0;color:#fff;font-weight:700}
+#stage{flex:1;position:relative;min-height:360px;margin:0 8px 8px;background:#fff;
+border:1px solid #d7dee4;border-radius:10px;overflow:hidden;touch-action:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#empty{display:none;margin:3em 1.2em;text-align:center;color:#607d8b;font-size:15px}
+.note{margin:0 12px 10px;font-size:12px;color:#78909c;line-height:1.45}
+</style>
+</head>
+<body>
+<header>
+<h1>@@HEAD@@</h1>
+<p class="sub">@@SUB@@</p>
+</header>
+<div id="hud">手指按住圖：直條＝那一天，橫線＝那個價。左右滑移動、雙指縮放。紫／綠箭頭跟導航圖同一套。</div>
+<p class="leg">
+<span><i style="background:#6A1B9A"></i>20高</span>
+<span><i style="background:#4527A0"></i>20高脫離</span>
+<span><i style="background:#1B5E20"></i>20低</span>
+<span><i style="background:#006064"></i>60低</span>
+<span><i style="background:#fff;border:1px solid #7B1FA2"></i>接近（空心）</span>
+<span><i style="background:#6a1b9a"></i>量能異常</span>
+<span><i style="background:#e53935"></i>警告</span>
+<span><i style="background:#ce93d8"></i>月波動低</span>
+<span><i style="background:#f9a825"></i>月線 SMA20</span>
+</p>
+<nav>
+<button type="button" data-i="D">日K</button>
+<button type="button" data-i="15">15分</button>
+<button type="button" data-i="60">60分</button>
+<button type="button" data-i="5D">五日</button>
+<button type="button" data-i="10D">十日</button>
+<button type="button" data-i="M">月線</button>
+<button type="button" data-i="Q">季線</button>
+</nav>
+<div id="stage">
+<canvas id="own" hidden></canvas>
+<p id="empty"></p>
+</div>
+<p class="note">不是 TradingView，也不是買訊。日K 高低箭頭＝導航圖同一套。溫度計在決策卡，不是這張圖的箭頭。外資／投信／融資均價官方沒有成本價，不畫。</p>
+<script>
+var D=@@DATA@@;
+var UP="#e53935", DN="#00897b";
+var TONE={h20:"#6A1B9A",h20_near:"#7B1FA2",h20_leave:"#4527A0",
+l20:"#1B5E20",l20_near:"#2E7D32",l20_leave:"#004D40",l60:"#006064"};
+var LABELS=(D.nav&&D.nav.labels)||{};
+var S={iv:"D", bars:[], nav:null, end:0, n:80, hover:-1, px:null, w:0, h:0};
+function $(id){return document.getElementById(id);}
+function setOn(key){
+  document.querySelectorAll("nav button").forEach(function(b){
+    b.classList.toggle("on", b.getAttribute("data-i")===key);
+  });
+}
+function ymd(t){
+  var s=String(t||"").replace(/[-/: ]/g,"");
+  if(s.length>=12) return s.slice(4,6)+"/"+s.slice(6,8)+" "+s.slice(8,10)+":"+s.slice(10,12);
+  if(s.length===8) return s.slice(4,6)+"/"+s.slice(6,8);
+  return t||"";
+}
+function fmt(p){
+  if(p==null||!(p===p)) return "—";
+  var n=Math.abs(p)>=100?1:2;
+  return Number(p).toFixed(n);
+}
+function showEmpty(msg){
+  var cv=$("own"); if(cv){cv.hidden=true; cv.style.display="none";}
+  var el=$("empty"); el.style.display="block"; el.textContent=msg;
+}
+function vis(){
+  var bars=S.bars||[];
+  var n=Math.max(12, Math.min(S.n, bars.length));
+  var end=Math.max(n, Math.min(S.end, bars.length));
+  var start=end-n;
+  return {bars:bars.slice(start,end), start:start, end:end, n:n};
+}
+function layout(){
+  var padL=52, padR=48, padT=10, bot=18, gap=6;
+  var sigH=22, volH=Math.max(44, Math.floor(S.h*0.20));
+  var plotH=S.h-padT-sigH-volH-gap*2-bot;
+  return {padL:padL,padR:padR,padT:padT,bot:bot,gap:gap,sigH:sigH,volH:volH,plotH:plotH};
+}
+function drawArrow(g,x,y,down,color,hollow,hw,hh){
+  var s=down?1:-1;
+  var head=hh*0.70, shaft=hh*0.30, sw=hw*0.22;
+  g.beginPath();
+  g.moveTo(x,y);
+  g.lineTo(x+hw, y+s*head);
+  g.lineTo(x+sw, y+s*head);
+  g.lineTo(x+sw, y+s*(head+shaft));
+  g.lineTo(x-sw, y+s*(head+shaft));
+  g.lineTo(x-sw, y+s*head);
+  g.lineTo(x-hw, y+s*head);
+  g.closePath();
+  if(hollow){ g.strokeStyle=color; g.lineWidth=1.4; g.stroke(); }
+  else { g.fillStyle=color; g.fill(); }
+}
+function paint(){
+  var cv=$("own");
+  if(!cv||cv.hidden) return;
+  var g=cv.getContext("2d");
+  var w=S.w, h=S.h;
+  g.setTransform(window.devicePixelRatio||1,0,0,window.devicePixelRatio||1,0,0);
+  g.fillStyle="#fff"; g.fillRect(0,0,w,h);
+  var v=vis();
+  var view=v.bars;
+  if(!view.length) return;
+  var L=layout();
+  var hi=-1e9, lo=1e9, vmax=1;
+  view.forEach(function(b){
+    if(b.h>hi)hi=b.h; if(b.l<lo)lo=b.l;
+    if(b.v>vmax)vmax=b.v;
+  });
+  var nav=S.iv==="D"?S.nav:null;
+  if(nav){
+    if(nav.h20>hi)hi=nav.h20; if(nav.l20<lo)lo=nav.l20;
+    if(nav.h60>hi)hi=nav.h60; if(nav.l60<lo)lo=nav.l60;
+  }
+  var pad= (hi-lo)*0.06 || 1;
+  hi+=pad; lo-=pad;
+  var slot=(w-L.padL-L.padR)/view.length;
+  function yx(px){return L.padT+(hi-px)/(hi-lo)*L.plotH;}
+  function xOf(i){return L.padL+slot*(i+0.5);}
+  if(nav){
+    g.fillStyle="rgba(248,187,208,0.16)";
+    g.fillRect(L.padL, L.padT, w-L.padL-L.padR, Math.max(0, yx(nav.h20)-L.padT));
+    g.fillStyle="rgba(200,230,201,0.16)";
+    g.fillRect(L.padL, yx(nav.l20), w-L.padL-L.padR, Math.max(0, L.padT+L.plotH-yx(nav.l20)));
+  }
+  g.strokeStyle="#eceff1"; g.beginPath();
+  for(var i=0;i<5;i++){
+    var yy=L.padT+L.plotH*i/4;
+    g.moveTo(L.padL,yy); g.lineTo(w-L.padR,yy);
+  }
+  g.stroke();
+  g.font="11px sans-serif"; g.fillStyle="#78909c";
+  g.textAlign="left";
+  g.fillText(fmt(hi), 6, L.padT+10);
+  g.fillText(fmt(lo), 6, L.padT+L.plotH);
+  g.textAlign="right";
+  g.fillText(fmt(hi), w-8, L.padT+10);
+  g.fillText(fmt(lo), w-8, L.padT+L.plotH);
+  g.textAlign="left";
+  if(nav){
+    g.setLineDash([4,4]);
+    g.strokeStyle="#f8bbd0"; g.beginPath(); g.moveTo(L.padL,yx(nav.h20)); g.lineTo(w-L.padR,yx(nav.h20)); g.stroke();
+    g.strokeStyle="#80deea"; g.beginPath(); g.moveTo(L.padL,yx(nav.l20)); g.lineTo(w-L.padR,yx(nav.l20)); g.stroke();
+    g.setLineDash([]);
+    g.strokeStyle="#f48fb1"; g.beginPath(); g.moveTo(L.padL,yx(nav.h60)); g.lineTo(w-L.padR,yx(nav.h60)); g.stroke();
+    g.strokeStyle="#81c784"; g.beginPath(); g.moveTo(L.padL,yx(nav.l60)); g.lineTo(w-L.padR,yx(nav.l60)); g.stroke();
+  }
+  var bw=Math.max(2.2, Math.min(11, slot*0.62));
+  view.forEach(function(b,i){
+    var x=xOf(i);
+    var up=b.c>=b.o;
+    var col=up?UP:DN;
+    g.strokeStyle=col; g.fillStyle=col;
+    g.lineWidth=1.15;
+    g.beginPath(); g.moveTo(x,yx(b.h)); g.lineTo(x,yx(b.l)); g.stroke();
+    var y1=yx(Math.max(b.o,b.c)), y2=yx(Math.min(b.o,b.c));
+    g.fillRect(x-bw/2, y1, bw, Math.max(1, y2-y1));
+  });
+  g.lineWidth=1.55; g.lineJoin="round"; g.lineCap="round"; g.strokeStyle="#546e7a";
+  g.beginPath();
+  view.forEach(function(b,i){
+    var x=xOf(i), y=yx(b.c);
+    if(i===0) g.moveTo(x,y); else g.lineTo(x,y);
+  });
+  g.stroke();
+  if(nav&&nav.ma20){
+    g.strokeStyle="#f9a825"; g.lineWidth=1.85; g.beginPath();
+    var started=false;
+    view.forEach(function(b,i){
+      var m=nav.ma20[v.start+i];
+      if(m==null) return;
+      var x=xOf(i), y=yx(m);
+      if(!started){g.moveTo(x,y); started=true;} else g.lineTo(x,y);
+    });
+    g.stroke();
+  }
+  var arrowH=Math.max(8, L.plotH*0.045);
+  if(nav&&nav.price){
+    nav.price.forEach(function(m){
+      var i=m.i-v.start;
+      if(i<0||i>=view.length) return;
+      var x=xOf(i);
+      var y=m.dir==="down"? yx(view[i].h)-3 : yx(view[i].l)+3;
+      drawArrow(g,x,y,m.dir==="down", TONE[m.kind]||"#546e7a", !!m.hollow, Math.max(4.2,slot*0.42), arrowH);
+    });
+  }
+  var sigY=L.padT+L.plotH+L.gap;
+  g.fillStyle="#fafafa"; g.fillRect(L.padL, sigY, w-L.padL-L.padR, L.sigH);
+  if(nav&&nav.vol){
+    nav.vol.forEach(function(m){
+      var i=m.i-v.start;
+      if(i<0||i>=view.length) return;
+      var x=xOf(i);
+      if(m.kind==="vol_low"){
+        g.fillStyle="#90caf9";
+        g.fillRect(x-bw/2, sigY+2, bw, L.sigH-4);
+      }
+      if(m.kind==="warn"){
+        g.fillStyle="#e53935";
+        g.beginPath(); g.moveTo(x, sigY+5); g.lineTo(x+4, sigY+L.sigH-5); g.lineTo(x-4, sigY+L.sigH-5); g.closePath(); g.fill();
+      }
+      if(m.kind==="vol_a"){
+        g.fillStyle="#6a1b9a";
+        g.beginPath(); g.moveTo(x, sigY+5); g.lineTo(x+5, sigY+L.sigH-4); g.lineTo(x-5, sigY+L.sigH-4); g.closePath(); g.fill();
+      }
+    });
+  }
+  var volTop=sigY+L.sigH+L.gap;
+  view.forEach(function(b,i){
+    var x=xOf(i);
+    var vh=Math.max(1,(b.v/vmax)*L.volH);
+    g.fillStyle=b.c>=b.o?UP:DN;
+    g.globalAlpha=0.88;
+    g.fillRect(x-bw/2, volTop+L.volH-vh, bw, vh);
+    g.globalAlpha=1;
+  });
+  if(S.hover>=0 && S.hover<view.length){
+    var hb=view[S.hover];
+    var hx=xOf(S.hover);
+    var py=S.px==null? yx(hb.c): yx(S.px);
+    g.strokeStyle="rgba(33,150,243,0.85)"; g.lineWidth=1;
+    g.setLineDash([3,3]);
+    g.beginPath(); g.moveTo(hx, L.padT); g.lineTo(hx, L.padT+L.plotH+L.sigH+L.volH+L.gap); g.stroke();
+    g.beginPath(); g.moveTo(L.padL, py); g.lineTo(w-L.padR, py); g.stroke();
+    g.setLineDash([]);
+    var cmp=S.px==null? hb.c: S.px;
+    view.forEach(function(b,i){
+      if(b.l<=cmp && b.h>=cmp){
+        g.fillStyle="rgba(33,150,243,0.12)";
+        g.fillRect(xOf(i)-bw/2, L.padT, bw, L.plotH);
+      }
+    });
+    g.fillStyle="#1565c0";
+    g.font="11px sans-serif";
+    g.textAlign="right";
+    g.fillText(fmt(cmp), w-8, Math.max(L.padT+10, Math.min(L.padT+L.plotH, py-3)));
+    g.textAlign="left";
+  }
+  g.fillStyle="#90a4ae"; g.font="11px sans-serif";
+  g.fillText("量（張）", 6, volTop+12);
+  g.fillText(ymd(view[0].t), L.padL, h-5);
+  g.textAlign="right";
+  g.fillText(ymd(view[view.length-1].t), w-L.padR, h-5);
+  g.textAlign="left";
+  hud();
+}
+function marksAt(absI){
+  var out=[];
+  var nav=S.iv==="D"?S.nav:null;
+  if(!nav) return out;
+  (nav.price||[]).forEach(function(m){ if(m.i===absI) out.push(LABELS[m.kind]||m.kind); });
+  (nav.vol||[]).forEach(function(m){ if(m.i===absI) out.push(LABELS[m.kind]||m.kind); });
+  return out;
+}
+function hud(){
+  var el=$("hud");
+  var v=vis();
+  var i=S.hover>=0? S.hover: v.bars.length-1;
+  var b=v.bars[i];
+  if(!b){ el.textContent="還沒有K線。"; return; }
+  var abs=v.start+i;
+  var bits=["日期 "+ymd(b.t), "開 "+fmt(b.o), "高 "+fmt(b.h), "低 "+fmt(b.l), "收 "+fmt(b.c), "量 "+Math.round(b.v)+"張"];
+  if(S.px!=null) bits.push("對價 "+fmt(S.px));
+  var mk=marksAt(abs);
+  var extra=mk.length? "　"+mk.join("／"): "";
+  el.innerHTML="<b>"+bits[0]+"</b>　"+bits.slice(1).join("　")+extra;
+}
+function bind(cv){
+  var pts={};
+  function loc(e){
+    var r=cv.getBoundingClientRect();
+    return {x:e.clientX-r.left, y:e.clientY-r.top};
+  }
+  function barFromX(x){
+    var L=layout();
+    var v=vis();
+    var slot=(S.w-L.padL-L.padR)/Math.max(1,v.n);
+    var i=Math.floor((x-L.padL)/slot);
+    if(i<0) i=0; if(i>=v.n) i=v.n-1;
+    return i;
+  }
+  function priceFromY(y){
+    var L=layout();
+    var v=vis();
+    var hi=-1e9, lo=1e9;
+    v.bars.forEach(function(b){ if(b.h>hi)hi=b.h; if(b.l<lo)lo=b.l; });
+    var nav=S.iv==="D"?S.nav:null;
+    if(nav){ if(nav.h20>hi)hi=nav.h20; if(nav.l20<lo)lo=nav.l20; if(nav.h60>hi)hi=nav.h60; if(nav.l60<lo)lo=nav.l60; }
+    var pad=(hi-lo)*0.06||1; hi+=pad; lo-=pad;
+    var t=(y-L.padT)/L.plotH;
+    return hi-t*(hi-lo);
+  }
+  function applyHover(x,y){
+    S.hover=barFromX(x);
+    S.px=priceFromY(y);
+    paint();
+  }
+  cv.addEventListener("pointerdown", function(e){
+    cv.setPointerCapture(e.pointerId);
+    pts[e.pointerId]=loc(e);
+    if(Object.keys(pts).length===1) applyHover(pts[e.pointerId].x, pts[e.pointerId].y);
+  });
+  cv.addEventListener("pointermove", function(e){
+    if(!pts[e.pointerId]) return;
+    var ids=Object.keys(pts);
+    var p=loc(e);
+    if(ids.length>=2){
+      var a=pts[ids[0]], b=pts[ids[1]];
+      pts[e.pointerId]=p;
+      var a2=pts[ids[0]], b2=pts[ids[1]];
+      var d0=Math.hypot(a.x-b.x, a.y-b.y), d1=Math.hypot(a2.x-b2.x, a2.y-b2.y);
+      if(d0>8 && d1>8){
+        var scale=d1/d0;
+        var mid=Math.round((S.end-S.n/2));
+        S.n=Math.max(18, Math.min(S.bars.length, Math.round(S.n/scale)));
+        S.end=Math.max(S.n, Math.min(S.bars.length, mid+Math.round(S.n/2)));
+        paint();
+      }
+      return;
+    }
+    var dx=p.x-pts[e.pointerId].x;
+    pts[e.pointerId]=p;
+    if(Math.abs(dx)>2){
+      var L=layout();
+      var slot=(S.w-L.padL-L.padR)/Math.max(1,S.n);
+      var shift=Math.round(-dx/slot);
+      if(shift){
+        S.end=Math.max(S.n, Math.min(S.bars.length, S.end+shift));
+      }
+    }
+    applyHover(p.x,p.y);
+  });
+  function up(e){ delete pts[e.pointerId]; }
+  cv.addEventListener("pointerup", up);
+  cv.addEventListener("pointercancel", up);
+  cv.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var mid=S.end-S.n/2;
+    S.n=Math.max(18, Math.min(S.bars.length, Math.round(S.n*(e.deltaY>0?1.12:0.88))));
+    S.end=Math.max(S.n, Math.min(S.bars.length, Math.round(mid+S.n/2)));
+    paint();
+  }, {passive:false});
+}
+function mount(bars, miss, nav){
+  if(!bars||!bars.length){ showEmpty(miss||"這檔還沒有K線可畫。"); return; }
+  $("empty").style.display="none";
+  var cv=$("own");
+  cv.hidden=false; cv.style.display="block";
+  var box=$("stage");
+  S.w=Math.max(280, box.clientWidth||320);
+  S.h=Math.max(280, box.clientHeight||360);
+  var dpr=window.devicePixelRatio||1;
+  cv.width=Math.floor(S.w*dpr); cv.height=Math.floor(S.h*dpr);
+  cv.style.width=S.w+"px"; cv.style.height=S.h+"px";
+  S.bars=bars; S.nav=nav||null;
+  S.end=bars.length;
+  S.n=Math.max(18, Math.min(bars.length, Math.floor((S.w-100)/7)));
+  S.hover=S.n-1; S.px=null;
+  if(!cv._bound){ bind(cv); cv._bound=true; }
+  paint();
+}
+function go(iv){
+  S.iv=iv; setOn(iv);
+  if(iv==="15"||iv==="60"){
+    showEmpty(iv==="15"?"載入 15 分K…":"載入 60 分K…");
+    fetch("/k/"+encodeURIComponent(D.sid)+"/m?i="+encodeURIComponent(iv), {cache:"no-store"})
+      .then(function(r){return r.json();})
+      .then(function(j){ setOn(iv); mount(j.bars||[], "15分／60分暫時沒資料。", null); })
+      .catch(function(){ showEmpty("15分／60分暫時抓不到。"); });
+    return;
+  }
+  var miss=iv==="D"?"這檔還沒有日K。":"這檔還沒有日K可以疊五日／十日／月線／季線。";
+  mount((D.packed||{})[iv]||[], miss, iv==="D"?D.nav:null);
+}
+document.querySelectorAll("nav button").forEach(function(b){
+  b.addEventListener("click", function(){ go(b.getAttribute("data-i")); });
+});
+window.addEventListener("resize", function(){ if(S.bars.length) mount(S.bars, "", S.nav); });
+go(D.start||"D");
+</script>
+</body>
+</html>

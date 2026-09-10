@@ -20,13 +20,13 @@ LINE_SHARE_SEP = "────────────"
 
 # bucket_key → (標題, 副標；與 Telegram 海選 SCREEN_PUSH_SPECS 一致)
 LINE_BUCKET_META: Dict[str, tuple] = {
-    "leave_zero": ("黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；排除明顯空頭）"),
-    "golden_buy": ("重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）"),
-    "revenue_cross": ("優先看", "營收轉強 × 量價突破"),
-    "select_01": ("周帶量", "突破5日高＋60日量比≥2"),
-    "half_year_high": ("半年高", "收盤創120日新高且量比≥2.5"),
-    "select_02": ("站上季線", "昨收在季線下、今日站上季線"),
-    "select_03": ("止跌", "月低附近有人接、量比≥1、今日翻紅"),
+    "leave_zero": ("黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）"),
+    "golden_buy": ("重點觀察", "60低＋獲利≈0＋月乖離<-10%（須趨勢向上；不收空頭）"),
+    "revenue_cross": ("優先看", "營收轉強 × 量價突破（須趨勢向上）"),
+    "select_01": ("周帶量", "突破5日高＋60日量比≥2（須趨勢向上）"),
+    "half_year_high": ("半年高", "收盤創120日新高且量比≥2.5（須趨勢向上）"),
+    "select_02": ("站上季線", "昨收在季線下、今日站上季線（須趨勢向上）"),
+    "select_03": ("止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上）"),
     "day_trade": ("當沖", "盤中漲幅2%～8.5%"),
     "overnight": ("隔日沖", "尾盤強勢紅K"),
 }
@@ -151,15 +151,18 @@ def hydrate_line_share_item(
             if db_has or missing:
                 for k in keys:
                     out[k] = _chip_int(nets.get(k))
-                if nets.get("quote_date") and not str(out.get("quote_date") or "").strip():
-                    out["quote_date"] = str(nets.get("quote_date") or "")
+                if nets.get("quote_date"):
+                    out["chip_date"] = str(nets.get("quote_date") or "")
+                    if not str(out.get("quote_date") or "").strip():
+                        out["quote_date"] = out["chip_date"]
     return out
 
 
 def _quote_md(item: Dict[str, Any]) -> str:
-    """近一日行情日：MM-DD；沒日期就空。"""
+    """籌碼日：MM-DD。盤中現價日跟 T86 不同日時用 chip_date。"""
     raw = str(
-        item.get("quote_date")
+        item.get("chip_date")
+        or item.get("quote_date")
         or item.get("latest_date")
         or item.get("db_as_of")
         or ""
@@ -170,7 +173,7 @@ def _quote_md(item: Dict[str, Any]) -> str:
 
 
 def _line_chip_value(item: Dict[str, Any], chip_fn) -> str:
-    """T86 最近一筆完整交易日買賣超張數（與該列 OHLC 同一天）。"""
+    """T86 最近一筆完整交易日買賣超張數；盤中現價日還沒有 T86 時用 chip_date。"""
     body = str(chip_fn(item) or "").strip()
     tag = "近一日"
     md = _quote_md(item)

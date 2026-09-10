@@ -87,6 +87,19 @@ def format_trading_date_zh(ymd: str) -> str:
     return f"{s[:4]}/{s[4:6]}/{s[6:8]}（{wd}）"
 
 
+def format_md_weekday(ymd: str) -> str:
+    """20260909 → 9/9（三）。籌碼表頭用短日期＋星期。"""
+    s = normalize_ymd(ymd)
+    if len(s) != 8:
+        return str(ymd or "")
+    try:
+        d = datetime.strptime(s, "%Y%m%d")
+    except ValueError:
+        return s
+    wd = _WEEKDAY_ZH[d.weekday()]
+    return f"{int(s[4:6])}/{int(s[6:8])}（{wd}）"
+
+
 def resolve_screen_as_of(db_path: str, now=None) -> Optional[str]:
     """
     海選／盤後顯示基準日：
@@ -129,6 +142,16 @@ def is_tw_equity_session(now=None) -> bool:
         return False
     t = now.time()
     return dt_time(9, 0) <= t <= dt_time(13, 30)
+
+
+def is_tw_tail_session(now=None) -> bool:
+    """尾盤：交易日 12:45–13:30。當沖不該再新進，改對照已進場或看隔日沖。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    if not is_tw_equity_session(now):
+        return False
+    return now.time() >= dt_time(12, 45)
 
 
 def tw_session_phase(now=None) -> str:
@@ -178,4 +201,21 @@ def daytrade_closed_message(phase: str) -> str:
     return (
         f"{label}。當沖只在平日 <b>09:00–13:30</b> 盤中即時複核；此刻不應再進當沖。"
         "尾盤想佈局明早，請看「隔日沖」；長線佈局請看「海選」。"
+    )
+
+
+def daytrade_list_heading(kind: str) -> tuple[str, str]:
+    """盤中／尾盤當沖標題與「現在要做什麼」。數字怎麼讀寫在卡片上。"""
+    if kind == "tail":
+        return (
+            "⚡ 當沖候選（尾盤）",
+            "現在已過 12:45。沒進場的不要再進當沖。"
+            "已進場的：看下面「漲到這裡先出／跌破這裡就走」。"
+            "尾盤想佈局明早，請按「隔日沖」。",
+        )
+    return (
+        "⚡ 當沖候選（盤中）",
+        "現在盤中。沒進場：不要貴過「現在不要貴過」那一價。"
+        "已進場：漲 3% 先出一部分，跌破均價先走。"
+        "只列此刻漲幅 2%～8.5%；現價旁邊小字是報價幾點幾分。",
     )

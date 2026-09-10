@@ -51,6 +51,7 @@ def test_no_tradingview_product_hooks():
     for path in (
         "stock_links.py",
         "kline_hop.py",
+        "kline_page.html",
         "bot_servers.py",
         "wayne_navigator.py",
         "picture_guide.py",
@@ -132,11 +133,16 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     assert '"D":[' in page
     for label in ("日K", "15分", "60分", "五日", "十日", "月線", "季線"):
         assert label in page
-    assert "高低卡" in page
-    src = open("kline_hop.py", encoding="utf-8").read()
+    assert "導航圖" in page
+    assert '"nav":' in page
+    assert "20高" in page
+    src = open("kline_page.html", encoding="utf-8").read()
     assert "g.lineTo(x,y)" in src
     assert "yx(b.c)" in src
-    assert "灰線把每根收盤連起來" in src
+    assert "pointerdown" in src
+    assert "對價" in src
+    assert "20高" in src
+    assert "tradingview.com" not in src.lower()
 
 
 def test_parse_yahoo_chart_bars_to_lots():
@@ -240,6 +246,8 @@ def test_kline_http_route_defaults_daily(tmp_path, monkeypatch):
         assert "日K" in body and '"start":"D"' in body
         assert "15分" in body and "五日" in body and "季線" in body
         assert 'id="tv"' not in body
+        assert "pointerdown" in body
+        assert '"nav":' in body
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/k/2330?i=5D", timeout=8) as resp:
             alt = resp.read().decode("utf-8")
         assert '"start":"5D"' in alt
@@ -258,3 +266,27 @@ def test_decision_html_has_no_external_chart_links():
     assert "技術線" not in src
     assert "yahoo_urls" not in src
     assert "technical-analysis" not in src
+
+
+def test_nav_overlay_from_uptrend_has_20_high():
+    from datetime import date, timedelta
+
+    from wayne_navigator import nav_overlay_from_bars
+
+    start = date(2026, 1, 5)
+    bars = []
+    i = 0
+    px = 40.0
+    while len(bars) < 80:
+        d = start + timedelta(days=i)
+        i += 1
+        if d.weekday() >= 5:
+            continue
+        px += 0.8
+        bars.append({"t": d.strftime("%Y%m%d"), "o": px - 0.4, "h": px + 0.6, "l": px - 0.7, "c": px, "v": 1200})
+    ov = nav_overlay_from_bars(bars)
+    assert ov["labels"]["h20"] == "20高"
+    assert ov["labels"]["vol_a"] == "量能異常"
+    assert len(ov["ma20"]) == len(bars)
+    kinds = {m["kind"] for m in ov["price"]}
+    assert "h20" in kinds

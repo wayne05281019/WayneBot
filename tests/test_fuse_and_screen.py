@@ -108,9 +108,9 @@ class FuseAndScreenTest(unittest.TestCase):
             "dealer_net": -10,
         }
         html = _stock_card_html(item, 1)
-        self.assertIn("保險進場", html)
-        self.assertIn("第一停利", html)
-        self.assertIn("保險停損", html)
+        self.assertIn("現在不要貴過", html)
+        self.assertIn("漲到這裡先出", html)
+        self.assertIn("跌破這裡就走", html)
         self.assertIn("103", html)
         chased = dict(item)
         chased["chase_warning"] = True
@@ -122,7 +122,7 @@ class FuseAndScreenTest(unittest.TestCase):
         line = format_line_share_text({"day_trade": [item]}, "20260828")
         self.assertIn("主選單", line)
         self.assertIn("當沖", line)
-        self.assertNotIn("保險進場", line)
+        self.assertNotIn("現在不要貴過", line)
         self.assertNotIn("＝＝當沖＝＝", line)
         self.assertNotIn("整則複製", line)
         snap = {
@@ -1246,8 +1246,9 @@ class DualSessionTest(unittest.TestCase):
         self.assertEqual(classify_row(row, {"close": 97}), "ok")
         self.assertEqual(classify_row(row, {"close": 119}), "chase")
         self.assertEqual(classify_row(row, {"close": 100}), "above_entry")
-        text = format_midday_line("20260828", {"ok": ["2330 台積電 現97"], "chase": [], "above_entry": [], "no_quote": []})
-        self.assertIn("建議切入", text)
+        text = format_midday_line("20260828", {"ok": ["2330 台積電　現在 97　今早 96　比今早 +1 元（+1.0%）"], "chase": [], "above_entry": [], "no_quote": []})
+        self.assertIn("現在還能看", text)
+        self.assertIn("現在要做的事", text)
         self.assertIn("06:30", text)
         self.assertNotIn("LINE", text)
         self.assertNotIn("轉貼", text)
@@ -2035,7 +2036,7 @@ class LookupCardTest(unittest.TestCase):
 
         bounce = [100.0] * 50 + [88.0] * 18 + [90.0]
         out2 = engine.execute_all_strategies({"2330": bars(bounce)})
-        self.assertTrue(out2["select_03"])
+        self.assertEqual(out2["select_03"], [])  # 月線下反彈＝空頭，止跌也不收
 
         # 高低卡獲利：昨收貼近 60 曆日低（≈0.0%），今日剛轉正且 ≤2.5%
         leave = [50.0] * 40 + [50.0, 50.4]
@@ -2086,6 +2087,44 @@ class LookupCardTest(unittest.TestCase):
                 {"close": 100, "ma20": 95, "ma60": 90, "low20": 88, "d20": 5, "pct_change": 2.0}
             )
         )
+        self.assertTrue(
+            _leave_zero_trend_ok(
+                {
+                    "close": 100,
+                    "ma20": 95,
+                    "ma60": 90,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                    "monthly_stage_kind": "up",
+                }
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {
+                    "close": 100,
+                    "ma20": 95,
+                    "ma60": 90,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                    "monthly_stage_kind": "down",
+                }
+            )
+        )
+        self.assertFalse(
+            _leave_zero_trend_ok(
+                {
+                    "close": 102,
+                    "ma20": 95,
+                    "ma60": 110,
+                    "low20": 88,
+                    "d20": 5,
+                    "pct_change": 2.0,
+                }
+            )
+        )  # 只站上月線、季線仍在上＝空頭反彈
         self.assertFalse(
             _leave_zero_trend_ok(
                 {"close": 80, "ma20": 95, "ma60": 100, "low20": 79, "d20": 3, "pct_change": 1.0}
@@ -2096,6 +2135,19 @@ class LookupCardTest(unittest.TestCase):
                 {"close": 50, "ma20": 55, "ma60": 60, "low20": 50.2, "d20": 0.5, "pct_change": 0.8}
             )
         )
+        from screening_engine import _screen_trend_up_ok
+
+        side_bull = {
+            "close": 100,
+            "ma20": 95,
+            "ma60": 90,
+            "low20": 88,
+            "d20": 5,
+            "pct_change": 2.0,
+            "monthly_stage_kind": "side",
+        }
+        self.assertTrue(_screen_trend_up_ok(side_bull))
+        self.assertFalse(_leave_zero_trend_ok(side_bull))
 
         import pandas as pd
         from datetime import datetime, timedelta

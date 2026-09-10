@@ -795,9 +795,32 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
     cap = int(limit)
     latest = _resolve_lookup_quote_date(db_path)
     if not ticker:
-        from universe import parse_etf_lookup_spec
+        from universe import parse_etf_lookup_spec, suggest_etf_lookup_specs
 
         spec = parse_etf_lookup_spec(raw)
+        if not spec:
+            guessed = suggest_etf_lookup_specs(raw)
+            if len(guessed) == 1:
+                spec = guessed[0]
+            elif len(guessed) >= 2:
+                choices = []
+                for item in guessed[:8]:
+                    pick = str(item.get("pick") or "").strip()
+                    if not pick:
+                        continue
+                    choices.append(
+                        {
+                            "stock_id": pick,
+                            "stock_name": str(item.get("label") or pick),
+                            "category": True,
+                            "category_choice": True,
+                            "category_pick": pick,
+                            "category_label": str(item.get("label") or "ETF"),
+                            "fuzzy": True,
+                        }
+                    )
+                if choices:
+                    return choices
         if spec:
             return _lookup_etf_by_kinds(
                 db_path,
@@ -833,6 +856,29 @@ def lookup_stocks(db_path: str, query: str, limit: int = 8) -> List[Dict[str, An
         if exact:
             return exact
         with get_db_connection(db_path, write=False) as conn:
+            pref: List[Dict[str, Any]] = []
+            if latest and len(raw) >= 4:
+                try:
+                    from universe import classify_target
+
+                    prow = conn.execute(
+                        """SELECT stock_id, stock_name, close, pct_change, volume FROM daily_quotes
+                           WHERE date=? AND UPPER(stock_id) LIKE ?
+                           ORDER BY volume DESC LIMIT ?;""",
+                        (latest, raw.upper() + "%", cap),
+                    ).fetchall()
+                    for r in prow:
+                        item = dict(r)
+                        kind, ok = classify_target(str(item.get("stock_id") or ""), str(item.get("stock_name") or ""))
+                        if not ok or not str(kind).startswith("ETF"):
+                            continue
+                        item["quote_date"] = latest
+                        item["fuzzy"] = str(item.get("stock_id") or "").upper() != raw.upper()
+                        pref.append(item)
+                except sqlite3.OperationalError:
+                    pref = []
+            if pref:
+                return pref
             try:
                 drows = conn.execute(
                     "SELECT stock_id, stock_name, market FROM stock_directory WHERE UPPER(stock_id)=? LIMIT 1;",

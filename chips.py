@@ -241,6 +241,14 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
         (sid, need),
     )
     raw = list(reversed(cur.fetchall()))
+    ready = None
+    if raw:
+        try:
+            from chip_tape import dates_with_market_t86
+
+            ready = dates_with_market_t86(conn, [r[0] for r in raw])
+        except Exception:
+            ready = None
     conn.close()
     if not raw:
         return []
@@ -261,6 +269,11 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
             "three_net": three, "ratio_pct": ratio, "acc_10d": acc,
         })
     built.reverse()
+    if ready:
+        while built and str(built[0].get("date") or "") not in ready:
+            built.pop(0)
+    elif ready is not None:
+        built = []
     return built[:limit]
 
 
@@ -316,6 +329,23 @@ def _fmt_ymd_short(date_val) -> str:
     return d
 
 
+def _chips_header_stamp(date_val, *, generated_at=None) -> str:
+    """資料日＋星期＋這張圖產出時刻。"""
+    try:
+        from trading_calendar import format_md_weekday
+
+        date_s = format_md_weekday(date_val) or _fmt_ymd_short(date_val)
+    except Exception:
+        date_s = _fmt_ymd_short(date_val)
+    try:
+        from decision_card_signals import format_produced_clock
+
+        clock = format_produced_clock(generated_at=generated_at)
+    except Exception:
+        clock = ""
+    return f"{date_s}  {clock}".strip() if clock else date_s
+
+
 def _chips_signed_style(v, C):
     if v > 0:
         return C["hi_fill"], C["hi_ink"]
@@ -359,7 +389,13 @@ def fit_table_cols(headers, col_vals, fig_w, span, *, fs=11.5, hdr_fs=11.5,
     return xs, body_fs, head_fs
 
 
-def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str = "") -> str:
+def render_chips_png(
+    rows: List[Dict[str, Any]],
+    save_path: str,
+    stock_id: str = "",
+    *,
+    generated_at=None,
+) -> str:
     """籌碼表：色票與決策卡同一套，欄寬依真實字寬算，同一張表共用字級。"""
     if not rows:
         return ""
@@ -400,8 +436,8 @@ def render_chips_png(rows: List[Dict[str, Any]], save_path: str, stock_id: str =
                 color="#FFFFFF", ha="center", va="center", zorder=4)
         ax.text(100 - pad_x - 2.6, y + head_h - 2.9, "WayneBot", fontproperties=_fp(11.5, "bold"),
                 color=C["navy_soft"], ha="right", va="center", zorder=3)
-        ax.text(100 - pad_x - 2.6, y + 2.78, _fmt_ymd_short(rows[0].get("date")),
-                fontproperties=_fp(11, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
+        ax.text(100 - pad_x - 2.6, y + 2.78, _chips_header_stamp(rows[0].get("date"), generated_at=generated_at),
+                fontproperties=_fp(10.4, "bold"), color="#C5D0E8", ha="right", va="center", zorder=3)
 
         y -= gap + sub_h
         ax.text(pad_x + 0.4, y + sub_h / 2, "買賣超＝三大法人合計　超比＝合計／成交量　單位：張",

@@ -85,13 +85,22 @@ def _stock_flags(g: pd.DataFrame, sample_dates: set) -> pd.DataFrame:
     high60 = close.rolling(60, min_periods=1).max()
     low60 = close.rolling(60, min_periods=1).min()
     ma20 = close.rolling(20, min_periods=1).mean()
+    ma60 = close.rolling(60, min_periods=1).mean()
     bias = ((close - ma20) / ma20.replace(0, np.nan) * 100.0).fillna(0.0)
     hl = np.where(close >= high20 * 0.998, "20高", "No").tolist()
     temps = [
         compute_card_temperature(
-            float(c), float(h20), float(l20), float(b), high60=float(h60), low60=float(l60)
+            float(c),
+            float(h20),
+            float(l20),
+            float(b),
+            high60=float(h60),
+            low60=float(l60),
+            ma60=float(m60),
         )
-        for c, h20, l20, b, h60, l60 in zip(close, high20, low20, bias, high60, low60)
+        for c, h20, l20, b, h60, l60, m60 in zip(
+            close, high20, low20, bias, high60, low60, ma60
+        )
     ]
     labels, _notes = compute_temp_trend_labels(temps, closes=list(close))
     dates = g["date"].tolist()

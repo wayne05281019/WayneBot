@@ -36,7 +36,11 @@ def test_stock_help_has_plain_discipline_notes():
     assert "現在很熱但價沒過前高" in stock
     assert "現在高點跟熱度都沒了" in stock
     assert "如何賣" in stock
+    assert "如何低買" in stock
+    assert "低點訊號" in stock
+    assert "獲利還沒離開" in stock
     assert "最高價＝20日高" in stock
+    assert "粉紅底" in stock
     assert "不自動賣" in stock
     assert "月K一句" in stock
     assert "不改海選" in stock
@@ -128,6 +132,7 @@ def test_row2_help_page_explains_help_button():
     row1 = HELP_TOPICS["row1"]
     row2 = HELP_TOPICS["row2"]
     assert "① 說明" in row1
+    assert "⑦ 飆大" in row1
     assert "⑥ 連買區" in row2
     assert row2.index("① 大盤") < row2.index("⑥ 連買區")
     assert "/help" in row1

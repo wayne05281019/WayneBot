@@ -226,6 +226,25 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         self.assertEqual(str(row["升降"]), "最低溫")
         self.assertEqual(str(row["120日量"]), "第1名")
 
+    def test_1314_20260820_dumped_chop_not_mid_hot(self):
+        """中石化 8/20：Cary VAM 0.5。跌破季線盤整不該沿用舊高走到 40°C。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "1314", lookback=40, merge_live=False, as_of="20260820"
+        )
+        row = self._row(card, "20260820")
+        self.assertAlmostEqual(float(row["close"]), 7.82, places=2)
+        self.assertLess(self._temp(row), 12.0)
+        self.assertNotEqual(str(row["升降"]), "最高溫")
+
+    def test_2603_20260730_below_ma60_not_mid_hot(self):
+        """長榮 7/30：Cary VAM 3.5。季線下還沒貼 20 高，不該 50°C+。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "2603", lookback=40, merge_live=False, as_of="20260730"
+        )
+        row = self._row(card, "20260730")
+        self.assertAlmostEqual(float(row["close"]), 201.0, places=1)
+        self.assertLess(self._temp(row), 16.0)
+
     def test_3008_20260902_price_high_not_cary_temp_scale(self):
         """大立光 9/2 截圖價 7810、20高。Cary 溫度 90.4 是另一把尺，不鎖成回歸。"""
         row = self._row(self._card("3008"), "20260902")
