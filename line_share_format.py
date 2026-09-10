@@ -151,15 +151,18 @@ def hydrate_line_share_item(
             if db_has or missing:
                 for k in keys:
                     out[k] = _chip_int(nets.get(k))
-                if nets.get("quote_date") and not str(out.get("quote_date") or "").strip():
-                    out["quote_date"] = str(nets.get("quote_date") or "")
+                if nets.get("quote_date"):
+                    out["chip_date"] = str(nets.get("quote_date") or "")
+                    if not str(out.get("quote_date") or "").strip():
+                        out["quote_date"] = out["chip_date"]
     return out
 
 
 def _quote_md(item: Dict[str, Any]) -> str:
-    """近一日行情日：MM-DD；沒日期就空。"""
+    """籌碼日：MM-DD。盤中現價日跟 T86 不同日時用 chip_date。"""
     raw = str(
-        item.get("quote_date")
+        item.get("chip_date")
+        or item.get("quote_date")
         or item.get("latest_date")
         or item.get("db_as_of")
         or ""
@@ -170,7 +173,7 @@ def _quote_md(item: Dict[str, Any]) -> str:
 
 
 def _line_chip_value(item: Dict[str, Any], chip_fn) -> str:
-    """T86 最近一筆完整交易日買賣超張數（與該列 OHLC 同一天）。"""
+    """T86 最近一筆完整交易日買賣超張數；盤中現價日還沒有 T86 時用 chip_date。"""
     body = str(chip_fn(item) or "").strip()
     tag = "近一日"
     md = _quote_md(item)

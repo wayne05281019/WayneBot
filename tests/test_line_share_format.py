@@ -299,6 +299,55 @@ def test_line_block_hydrates_t86_from_db_like_1210(tmp_path):
     assert "2.1%" in block
 
 
+def test_line_block_skips_intraday_zero_t86_like_5351(tmp_path):
+    """盤後日 K 已有今日列、T86 還沒進時，LINE 稿不能把 DEFAULT 0 當法人。"""
+    import sqlite3
+
+    from line_share_format import format_line_stock_block, hydrate_line_share_item
+
+    db = tmp_path / "wayne.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )
+        """
+    )
+    q = """
+        INSERT INTO daily_quotes(
+            date, stock_id, stock_name, market, open, high, low, close, volume,
+            turnover_k, pct_change, avg_price, foreign_net, trust_net, dealer_net
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """
+    conn.execute(q, ("20260909", "5351", "鈺創", "TWO", 118, 118, 118, 118, 8941, 1, 0, 118, 767, -20, -329))
+    conn.execute(q, ("20260910", "5351", "鈺創", "TWO", 117, 118.5, 116, 116.2, 4681, 1, -1.48, 116.2, 0, 0, 0))
+    conn.commit()
+    conn.close()
+    card = {
+        "stock_id": "5351",
+        "stock_name": "鈺創",
+        "close": 116.2,
+        "change_pct": -1.48,
+        "volume": 4681,
+        "latest_date": "20260910",
+        "quote_date": "20260910",
+        "gain_pct": 75.5,
+    }
+    filled = hydrate_line_share_item(card, str(db))
+    assert filled["foreign_net"] == 767
+    assert filled["trust_net"] == -20
+    assert filled["dealer_net"] == -329
+    assert filled["chip_date"] == "20260909"
+    block = format_line_stock_block(card, 1, str(db), bucket_key="leave_zero")
+    assert "外資+767張" in block
+    assert "外資+0張" not in block
+    assert "近一日　09-09" in block
+
+
 def test_line_block_keeps_item_chips_when_db_empty(tmp_path):
     import sqlite3
 

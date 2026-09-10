@@ -233,6 +233,48 @@ def stock_tape_is_emerging(db_path: str, stock_id: str) -> bool:
                 pass
 
 
+def fmt_chip_md(date_val: Any) -> str:
+    """籌碼日短標：9/9。"""
+    d = str(date_val or "").replace("-", "")
+    if len(d) == 8 and d.isdigit():
+        return f"{int(d[4:6])}/{int(d[6:8])}"
+    return d
+
+
+def dates_with_market_t86(conn: sqlite3.Connection, dates: Sequence[str]) -> set:
+    """哪些日期全市場已有任一檔非 0 的 T86（當日法人表已進庫）。"""
+    uniq = []
+    seen = set()
+    for raw in dates:
+        d = str(raw or "").strip()
+        if not d or d in seen:
+            continue
+        seen.add(d)
+        uniq.append(d)
+    if not uniq:
+        return set()
+    ph = ",".join("?" * len(uniq))
+    cur = conn.execute(
+        f"""
+        SELECT date FROM daily_quotes
+         WHERE date IN ({ph})
+         GROUP BY date
+        HAVING SUM(
+            ABS(COALESCE(foreign_net,0))+ABS(COALESCE(trust_net,0))+ABS(COALESCE(dealer_net,0))
+        ) > 0
+        """,
+        uniq,
+    )
+    return {str(r[0]) for r in cur.fetchall()}
+
+
+def _mark_trailing_chip_pending(rows: List[dict], ready: set) -> None:
+    i = len(rows) - 1
+    while i >= 0 and str(rows[i].get("date") or "") not in ready:
+        rows[i]["chips_pending"] = True
+        i -= 1
+
+
 def load_tape_rows(
     db_path: str,
     stock_id: str,
@@ -274,7 +316,6 @@ def load_tape_rows(
         )
         raw = cur.fetchall()
         emerging = False
-    conn.close()
     rows = []
     for date, o, h, l, c, vol, pct, f, t, d in reversed(raw):
         rows.append({
@@ -289,7 +330,18 @@ def load_tape_rows(
             "trust_net": None if emerging else int(t or 0),
             "dealer_net": None if emerging else int(d or 0),
             "emerging": bool(emerging),
+            "chips_pending": False,
         })
+    if rows and not emerging:
+        try:
+            ready = dates_with_market_t86(conn, [r["date"] for r in rows[-8:]])
+            _mark_trailing_chip_pending(rows, ready)
+        except Exception:
+            pass
+    try:
+        conn.close()
+    except Exception:
+        pass
     try:
         import pandas as pd
         from live_quote import append_live_bar
@@ -310,9 +362,11 @@ def load_tape_rows(
                     "close": float(extra["close"]),
                     "volume": float(extra["volume"]),
                     "pct_change": float(extra.get("pct_change") or extra.get("change_pct") or 0),
+                    # 盤中 MIS 沒有官方 T86。0 是占位不是買賣超，連買句不要吃這列。
                     "foreign_net": 0,
                     "trust_net": 0,
                     "dealer_net": 0,
+                    "chips_pending": True,
                 })
                 rows.append(last)
             else:
@@ -332,7 +386,11 @@ def last_complete_chip_nets(
     stock_id: str,
     as_of: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """最近一筆完整交易日的 T86 張數（不併即時列，避免盤中多出一列全 0）。"""
+    """最近一筆完整交易日的 T86 張數。
+
+    不併即時列。盤後日 K 已寫進庫、全市場 T86 還沒進時，該日欄位會是 DEFAULT 0，
+    不能拿這檔自己全 0 當缺資料，要用「當日全市場是否已有任一檔非 0」判斷就緒。
+    """
     sid = str(stock_id or "").strip()
     if not sid or not db_path:
         return None
@@ -344,34 +402,33 @@ def last_complete_chip_nets(
     try:
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
+        where = "q.stock_id=?"
+        args: List[Any] = [sid]
         if len(cap) == 8 and cap.isdigit():
-            cur.execute(
-                """
-                SELECT date,
-                       COALESCE(foreign_net, 0),
-                       COALESCE(trust_net, 0),
-                       COALESCE(dealer_net, 0)
-                FROM daily_quotes
-                WHERE stock_id=? AND REPLACE(IFNULL(date,''), '-', '') <= ?
-                ORDER BY date DESC
-                LIMIT 1
-                """,
-                (sid, cap),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT date,
-                       COALESCE(foreign_net, 0),
-                       COALESCE(trust_net, 0),
-                       COALESCE(dealer_net, 0)
-                FROM daily_quotes
-                WHERE stock_id=?
-                ORDER BY date DESC
-                LIMIT 1
-                """,
-                (sid,),
-            )
+            where += " AND REPLACE(IFNULL(q.date,''), '-', '') <= ?"
+            args.append(cap)
+        cur.execute(
+            f"""
+            SELECT q.date,
+                   COALESCE(q.foreign_net, 0),
+                   COALESCE(q.trust_net, 0),
+                   COALESCE(q.dealer_net, 0)
+            FROM daily_quotes q
+            WHERE {where}
+              AND EXISTS (
+                SELECT 1 FROM daily_quotes m
+                 WHERE m.date = q.date
+                   AND (
+                    ABS(COALESCE(m.foreign_net,0))
+                    + ABS(COALESCE(m.trust_net,0))
+                    + ABS(COALESCE(m.dealer_net,0))
+                   ) > 0
+              )
+            ORDER BY q.date DESC
+            LIMIT 1
+            """,
+            args,
+        )
         row = cur.fetchone()
     except Exception:
         return None
@@ -406,37 +463,50 @@ def build_tape(
     move = price_move(closes, last_pct=last.get("pct_change"))
     vol = volume_tape(vols, last["pct_change"])
     shape = candle_shape(last["open"], last["high"], last["low"], last["close"])
+    empty_chips = {
+        "last": last,
+        "move": move,
+        "shape": shape,
+        "volume": vol,
+        "foreign": {},
+        "trust": {},
+        "dealer": {},
+        "three": {},
+        "inst_pct": None,
+        "conflict": "",
+        "has_chips": False,
+        "emerging": bool(emerging),
+        "chip_date": "",
+        "chip_asof_label": "",
+    }
     if emerging:
-        return {
-            "last": last,
-            "move": move,
-            "shape": shape,
-            "volume": vol,
-            "foreign": {},
-            "trust": {},
-            "dealer": {},
-            "three": {},
-            "inst_pct": None,
-            "conflict": "",
-            "has_chips": False,
-            "emerging": True,
-        }
-    f_net = [int(r["foreign_net"] or 0) for r in rows]
-    t_net = [int(r["trust_net"] or 0) for r in rows]
-    d_net = [int(r["dealer_net"] or 0) for r in rows]
+        return {**empty_chips, "emerging": True}
+    chip_rows = [r for r in rows if not r.get("chips_pending")]
+    if not chip_rows:
+        return empty_chips
+    f_net = [int(r["foreign_net"] or 0) for r in chip_rows]
+    t_net = [int(r["trust_net"] or 0) for r in chip_rows]
+    d_net = [int(r["dealer_net"] or 0) for r in chip_rows]
     three = [a + b + c for a, b, c in zip(f_net, t_net, d_net)]
+    last_chip = chip_rows[-1]
     three_today = int(three[-1])
-    vol_i = int(last["volume"] or 0)
+    vol_i = int(last_chip["volume"] or 0)
     inst_pct = round(three_today / vol_i * 100.0, 1) if vol_i else 0.0
     conflict = ""
-    if move["sign"] > 0 and f_net[-1] < 0:
-        conflict = "價漲外資轉賣"
-    elif move["sign"] < 0 and f_net[-1] > 0:
-        conflict = "價跌外資買超"
-    elif move["sign"] > 0 and three_today < 0:
-        conflict = "價漲法人轉賣"
-    elif move["sign"] < 0 and three_today > 0:
-        conflict = "價跌法人買超"
+    same_day = str(last.get("date") or "") == str(last_chip.get("date") or "")
+    if same_day:
+        if move["sign"] > 0 and f_net[-1] < 0:
+            conflict = "價漲外資轉賣"
+        elif move["sign"] < 0 and f_net[-1] > 0:
+            conflict = "價跌外資買超"
+        elif move["sign"] > 0 and three_today < 0:
+            conflict = "價漲法人轉賣"
+        elif move["sign"] < 0 and three_today > 0:
+            conflict = "價跌法人買超"
+    chip_date = str(last_chip.get("date") or "")
+    chip_asof_label = ""
+    if chip_date and str(last.get("date") or "") != chip_date:
+        chip_asof_label = fmt_chip_md(chip_date)
     return {
         "last": last,
         "move": move,
@@ -450,4 +520,6 @@ def build_tape(
         "conflict": conflict,
         "has_chips": True,
         "emerging": False,
+        "chip_date": chip_date,
+        "chip_asof_label": chip_asof_label,
     }

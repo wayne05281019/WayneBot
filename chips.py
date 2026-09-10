@@ -241,6 +241,14 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
         (sid, need),
     )
     raw = list(reversed(cur.fetchall()))
+    ready = None
+    if raw:
+        try:
+            from chip_tape import dates_with_market_t86
+
+            ready = dates_with_market_t86(conn, [r[0] for r in raw])
+        except Exception:
+            ready = None
     conn.close()
     if not raw:
         return []
@@ -261,6 +269,11 @@ def major_player_rows(db_path: str, stock_id: str, limit: int = 15) -> List[Dict
             "three_net": three, "ratio_pct": ratio, "acc_10d": acc,
         })
     built.reverse()
+    if ready:
+        while built and str(built[0].get("date") or "") not in ready:
+            built.pop(0)
+    elif ready is not None:
+        built = []
     return built[:limit]
 
 
