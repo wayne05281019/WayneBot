@@ -2036,7 +2036,7 @@ class LookupCardTest(unittest.TestCase):
 
         bounce = [100.0] * 50 + [88.0] * 18 + [90.0]
         out2 = engine.execute_all_strategies({"2330": bars(bounce)})
-        self.assertTrue(out2["select_03"])
+        self.assertEqual(out2["select_03"], [])  # 月線下反彈＝空頭，止跌也不收
 
         # 高低卡獲利：昨收貼近 60 曆日低（≈0.0%），今日剛轉正且 ≤2.5%
         leave = [50.0] * 40 + [50.0, 50.4]
@@ -2135,6 +2135,19 @@ class LookupCardTest(unittest.TestCase):
                 {"close": 50, "ma20": 55, "ma60": 60, "low20": 50.2, "d20": 0.5, "pct_change": 0.8}
             )
         )
+        from screening_engine import _screen_trend_up_ok
+
+        side_bull = {
+            "close": 100,
+            "ma20": 95,
+            "ma60": 90,
+            "low20": 88,
+            "d20": 5,
+            "pct_change": 2.0,
+            "monthly_stage_kind": "side",
+        }
+        self.assertTrue(_screen_trend_up_ok(side_bull))
+        self.assertFalse(_leave_zero_trend_ok(side_bull))
 
         import pandas as pd
         from datetime import datetime, timedelta

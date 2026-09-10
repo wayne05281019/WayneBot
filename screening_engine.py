@@ -286,14 +286,15 @@ class ScreeningEngine:
             if _is_half_year_high_break(info):
                 enriched = _enrich_decision_fields(df, info)
                 enriched["pattern"] = _pattern_tag(enriched)
-                if not _is_downtrend_no_touch(enriched):
+                if _screen_trend_up_ok(enriched):
                     res_half_year_high.append(enriched)
                 continue
             if _skip_long_term_high_push(info):
                 continue
             info = _enrich_decision_fields(df, info)
             info["pattern"] = _pattern_tag(info)
-            layout_ok = not _is_downtrend_no_touch(info)
+            # 整份海選不收空頭：下坡、月K走空／整理、空頭反彈不進任何桶。
+            layout_ok = _screen_trend_up_ok(info)
 
             c = info["close"]
             o = info["open"]
@@ -342,8 +343,9 @@ class ScreeningEngine:
             ):
                 res_sel_03.append(info)
 
-            # 重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位；可收下坡末端）。
-            if _golden_buy_ok(info):
+            # 重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位）。
+            # 公式仍可在月線下成立；整份海選另須趨勢向上，空頭／下坡不進桶。
+            if layout_ok and _golden_buy_ok(info):
                 golden = dict(info)
                 golden["golden_buy"] = True
                 res_golden_buy.append(golden)
@@ -391,7 +393,7 @@ class ScreeningEngine:
             # ------------------------------------------------------------------
             # 當沖動能專區：量能放大 (Q60R >= 2.0)、5MA 向上、振幅 2.0%~8.0%
             # ------------------------------------------------------------------
-            if q >= 2.0 and ma5_hook and 2.0 <= pct <= 8.5:
+            if layout_ok and q >= 2.0 and ma5_hook and 2.0 <= pct <= 8.5:
                 day_trade_item = dict(info)
                 day_trade_item["entry_price"] = c
                 day_trade_item["target_1"] = round(c * 1.03, 2)   # +3% 第一停利
@@ -402,7 +404,7 @@ class ScreeningEngine:
             # ------------------------------------------------------------------
             # 隔日沖精選專區：尾盤強勢實體紅K (收盤>開盤1.8%)、量比 Q60R >= 1.8
             # ------------------------------------------------------------------
-            if q >= 1.8 and c >= o * 1.018 and c > info["ma20"] and pct >= 2.5:
+            if layout_ok and q >= 1.8 and c >= o * 1.018 and c > info["ma20"] and pct >= 2.5:
                 overnight_item = dict(info)
                 overnight_item["buy_range"] = f"{round(c * 0.992, 2)} ~ {c}"
                 overnight_item["target_gap"] = f"{round(c * 1.035, 2)} ~ {round(c * 1.048, 2)}" # +3.5%~+4.8%
@@ -696,7 +698,7 @@ def _is_downtrend_no_touch(info: Dict[str, Any]) -> bool:
 
 
 def _golden_buy_ok(info: Dict[str, Any]) -> bool:
-    """重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離 < -10%（可在下坡末端，專桶收）。"""
+    """重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離 < -10%。公式不含趨勢；海選另須 _screen_trend_up_ok。"""
     if not info.get("at_60_low"):
         return False
     try:
@@ -743,15 +745,20 @@ def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
     return ok
 
 
-def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
-    """黃金買點桶（leave_zero）：必須趨勢向上。月K走空／整理、下坡、空頭反彈不進桶。"""
+def _screen_trend_up_ok(info: Dict[str, Any], *, block_monthly_side: bool = False) -> bool:
+    """整份海選共用：必須不是空頭。下坡、月K走空、空頭反彈不進桶。
+
+    黃金買點另擋月K整理（block_monthly_side=True）。其餘桶允許多頭排列下的箱型突破。
+    """
     if _is_downtrend_no_touch(info):
         return False
     regime = _regime_label(info)
     if regime in ("空頭排列", "弱勢破底", "月線下整理", "貼近20日低"):
         return False
     mk = str(info.get("monthly_stage_kind") or "")
-    if mk in ("down", "side"):
+    if mk == "down":
+        return False
+    if block_monthly_side and mk == "side":
         return False
     try:
         c = float(info.get("close") or 0)
@@ -763,10 +770,15 @@ def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
         return False
     if mk == "up":
         return True
-    # 月K資料不足：只收多頭排列（收盤≥月線≥季線），不要只站上月線的空頭反彈。
+    # 月K資料不足或整理：只收多頭排列（收盤≥月線≥季線），不要只站上月線的空頭反彈。
     if regime == "多頭排列":
         return True
     return bool(ma60 > 0 and ma20 >= ma60)
+
+
+def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
+    """黃金買點桶：趨勢向上，且月K整理也不進。"""
+    return _screen_trend_up_ok(info, block_monthly_side=True)
 
 
 def _pct_str(pct) -> str:
@@ -1089,23 +1101,23 @@ def _compact_line(item: Dict[str, Any]) -> str:
 # 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）", 8, False),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, False),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
-    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5", 8, True),
-    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線", 8, True),
-    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（須趨勢向上；不收空頭）", 8, False),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上）", 8, False),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上）", 8, True),
+    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5（須趨勢向上）", 8, True),
+    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線（須趨勢向上）", 8, True),
+    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上）", 8, True),
 )
 MORNING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）", 8, False),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（可收下坡末端）", 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破", 8, True),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2", 8, True),
+    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（須趨勢向上；不收空頭）", 8, False),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上）", 8, True),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上）", 8, True),
 )
 MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
 EMERGING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", "興櫃官方日均價；高低卡獲利實綠／雙綠脫離；須趨勢向上", 8, False),
-    ("golden_buy", "✨", "重點觀察", "興櫃 60 低＋獲利≈0＋月乖離<-10%", 8, False),
+    ("golden_buy", "✨", "重點觀察", "興櫃 60 低＋獲利≈0＋月乖離<-10%；須趨勢向上", 8, False),
 )
 
 LINE_TRADE_POINTER = (
@@ -1513,7 +1525,7 @@ def format_line_share_packs(
 
     specs_layout = [
         ("leave_zero", "黃金買點　高低卡獲利剛離零且趨勢向上"),
-        ("golden_buy", "重點觀察　60低超跌"),
+        ("golden_buy", "重點觀察　60低超跌且趨勢向上"),
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),
@@ -1716,7 +1728,7 @@ def execute_full_screening(
         sid = str(item.get("stock_id") or "")
         if sid in seen or sid not in hot_ids:
             continue
-        if _is_downtrend_no_touch(item):
+        if not _screen_trend_up_ok(item):
             continue
         if int(item.get("trust_net") or 0) < 0 and int(item.get("foreign_net") or 0) < 0:
             continue
