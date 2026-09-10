@@ -228,17 +228,47 @@ def audit_untrusted_quotes(db_path: str, now=None) -> Dict[str, Any]:
     }
 
 
+def _halt_copy_bar(
+    volume: float, open_p: float, high: float, low: float, close: float, pct
+) -> bool:
+    """無量且開高低收同一價、官方平盤：停市／無量日複製列，不能拿上一根未交易收盤重算。"""
+    try:
+        vol = float(volume or 0)
+        o, h, l, c = float(open_p or 0), float(high or 0), float(low or 0), float(close or 0)
+        stored = float(pct) if pct is not None else 0.0
+    except (TypeError, ValueError):
+        return False
+    if vol > 0 or c <= 0:
+        return False
+    if abs(stored) > 1e-9:
+        return False
+    return abs(o - c) <= _EPS and abs(h - c) <= _EPS and abs(l - c) <= _EPS
+
+
 def repair_pct_change_from_prior(db_path: str, tolerance: float = 0.2) -> int:
-    """漲跌幅必須與前一根官方收盤價一致；偏差過大就依收盤重算。"""
+    """漲跌幅對齊前收。除權息日用官方參考價，不能拿未還原昨收把神達那種寫成假跌停。"""
     if not db_path:
         return 0
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
+    ex_ref: Dict[Tuple[str, str], float] = {}
+    try:
+        for sid, d, ref in cur.execute(
+            """
+            SELECT stock_id, replace(ex_date,'-',''), ref_price
+            FROM ex_rights
+            WHERE COALESCE(ref_price, 0) > 0
+            """
+        ):
+            ex_ref[(str(sid), str(d)[:8])] = float(ref)
+    except sqlite3.OperationalError:
+        ex_ref = {}
     fixed = 0
-    for (sid,) in cur.execute("SELECT DISTINCT stock_id FROM daily_quotes"):
+    sids = [str(r[0]) for r in cur.execute("SELECT DISTINCT stock_id FROM daily_quotes").fetchall()]
+    for sid in sids:
         rows = cur.execute(
             """
-            SELECT rowid, replace(date,'-','') AS d, close, pct_change
+            SELECT rowid, replace(date,'-','') AS d, open, high, low, close, volume, pct_change
             FROM daily_quotes
             WHERE stock_id=?
             ORDER BY d
@@ -246,13 +276,21 @@ def repair_pct_change_from_prior(db_path: str, tolerance: float = 0.2) -> int:
             (str(sid),),
         ).fetchall()
         prev_close: Optional[float] = None
-        for rowid, _d, close, pct in rows:
+        for rowid, d, open_p, high, low, close, volume, pct in rows:
             try:
                 c = float(close or 0)
             except (TypeError, ValueError):
                 c = 0.0
-            if prev_close and prev_close > 0 and c > 0:
+            ref = ex_ref.get((str(sid), str(d)[:8]))
+            if ref and ref > 0 and c > 0:
+                expected = round((c - ref) / ref * 100.0, 2)
+            elif _halt_copy_bar(volume, open_p, high, low, c, pct):
+                expected = None
+            elif prev_close and prev_close > 0 and c > 0:
                 expected = round((c - prev_close) / prev_close * 100.0, 2)
+            else:
+                expected = None
+            if expected is not None:
                 try:
                     cur_pct = float(pct) if pct is not None else None
                 except (TypeError, ValueError):

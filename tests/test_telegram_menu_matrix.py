@@ -117,7 +117,11 @@ def test_holdings_typed_alias_routes_to_portfolio():
 def test_instant_ack_before_slow_work(label, hint):
     """大盤／資金須先回「讀取…」再跑重活（PR #134 契約）。"""
     bot = _bot()
-    bot._enter_main_menu = AsyncMock(side_effect=lambda *a, **k: asyncio.sleep(0.05) or None)
+    async def _enter(*_a, **_k):
+        await asyncio.sleep(0.05)
+        return None
+
+    bot._enter_main_menu = AsyncMock(side_effect=_enter)
     calls = []
 
     async def track_status(message, text, **kw):

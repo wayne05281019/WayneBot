@@ -150,6 +150,112 @@ def test_repair_pct_change_from_prior(tmp_path):
     assert abs(float(pct) - 9.94) < 0.05
 
 
+def test_repair_pct_uses_ex_rights_ref_not_unadjusted_prev(tmp_path):
+    """除權息日：神達 91.3→81.8 是參考價 80.27，不是跌停。"""
+    db = tmp_path / "xr.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE ex_rights (
+            stock_id TEXT, ex_date TEXT, stock_name TEXT, market TEXT, kind TEXT,
+            close_before REAL, ref_price REAL, right_plus_div REAL, factor REAL,
+            source TEXT, updated_at TEXT
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO daily_quotes VALUES
+        ('20260908','3706','神達','TW',92.7,92.7,91.1,91.3,16006,0,-1.4,91.3,0,0,0),
+        ('20260909','3706','神達','TW',81.6,82.3,81.1,81.8,17193,0,0.0,81.6,0,0,0)"""
+    )
+    conn.execute(
+        """INSERT INTO ex_rights VALUES
+        ('3706','20260909','神達','TW','權息',91.3,80.27,0,0.879,'twse','t')"""
+    )
+    conn.commit()
+    conn.close()
+    from quote_integrity import repair_pct_change_from_prior
+
+    repair_pct_change_from_prior(str(db))
+    conn = sqlite3.connect(db)
+    pct = conn.execute(
+        "SELECT pct_change FROM daily_quotes WHERE stock_id='3706' AND date='20260909'"
+    ).fetchone()[0]
+    conn.close()
+    assert abs(float(pct) - 1.91) < 0.05
+    assert float(pct) > 0
+
+
+def test_repair_pct_keeps_halt_copy_flat(tmp_path):
+    """無量複製列官方平盤，不能拿缺日上一根算出漲跌。"""
+    db = tmp_path / "halt.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO daily_quotes VALUES
+        ('20260908','2035','唐榮','TWO',26.35,26.4,26.3,26.35,10,0,0.19,26.35,0,0,0),
+        ('20260909','2035','唐榮','TWO',26.4,26.4,26.4,26.4,0,0,0.0,26.4,0,0,0)"""
+    )
+    conn.commit()
+    conn.close()
+    from quote_integrity import repair_pct_change_from_prior
+
+    repair_pct_change_from_prior(str(db))
+    conn = sqlite3.connect(db)
+    pct = conn.execute(
+        "SELECT pct_change FROM daily_quotes WHERE stock_id='2035' AND date='20260909'"
+    ).fetchone()[0]
+    conn.close()
+    assert float(pct) == 0.0
+
+
+def test_repair_pct_walks_every_stock_not_just_first(tmp_path):
+    """同一 cursor 不能邊掃 DISTINCT 邊 SELECT；第二檔也要修到。"""
+    db = tmp_path / "two.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.executemany(
+        "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("20260831", "1101", "台泥", "TW", 30, 31, 29, 30, 100, 0, 0, 30, 0, 0, 0),
+            ("20260901", "1101", "台泥", "TW", 31, 33, 30, 33, 100, 0, 0.0, 33, 0, 0, 0),
+            ("20260831", "3105", "穩懋", "TWO", 440, 450, 430, 447.5, 1000, 0, 1.94, 447.5, 0, 0, 0),
+            ("20260901", "3105", "穩懋", "TWO", 450, 500, 440, 492, 1000, 0, 99.0, 492, 0, 0, 0),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    from quote_integrity import repair_pct_change_from_prior
+
+    repair_pct_change_from_prior(str(db))
+    conn = sqlite3.connect(db)
+    a = conn.execute("SELECT pct_change FROM daily_quotes WHERE stock_id='1101' AND date='20260901'").fetchone()[0]
+    b = conn.execute("SELECT pct_change FROM daily_quotes WHERE stock_id='3105' AND date='20260901'").fetchone()[0]
+    conn.close()
+    assert abs(float(a) - 10.0) < 0.05
+    assert abs(float(b) - 9.94) < 0.05
+
+
 def test_audit_reports_stub_without_mutating(tmp_path):
     db = tmp_path / "t.db"
     conn = sqlite3.connect(db)
