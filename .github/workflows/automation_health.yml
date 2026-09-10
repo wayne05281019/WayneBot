@@ -51,6 +51,29 @@ jobs:
             echo "警告：找不到 Release 資料庫"
           fi
 
+      - name: 套用尚未進 zip 的 schema 遷移
+        env:
+          WAYNE_DB_PATH: data/wayne_market.db
+        run: |
+          python - <<'PY'
+          import os, sys
+          from config import get_db_path
+          from db_migrations import pending_migrations, run_migrations, schema_health
+
+          path = get_db_path()
+          if not os.path.isfile(path):
+              print("沒有資料庫，略過遷移")
+              sys.exit(0)
+          pending = pending_migrations(path)
+          if pending:
+              print("待套用", [v for v, _ in pending])
+              print(run_migrations(path))
+          health = schema_health(path)
+          print("schema", {k: health.get(k) for k in ("ok", "version", "latest", "reasons")})
+          if not health.get("ok"):
+              sys.exit("遷移後 schema 仍不健康：" + "；".join(health.get("reasons") or []))
+          PY
+
       - name: 自動化管線煙霧測試
         env:
           WAYNE_DB_PATH: data/wayne_market.db
