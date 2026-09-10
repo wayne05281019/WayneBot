@@ -1722,6 +1722,7 @@ class LookupCardTest(unittest.TestCase):
         from wayne_navigator import (
             CARD_PNG_DPI,
             GLANCE_PNG_DPI,
+            _paint_lr_box,
             render_decision_card_png,
             render_first_glance_png,
         )
@@ -1793,9 +1794,14 @@ class LookupCardTest(unittest.TestCase):
         box_src = inspect.getsource(render_decision_card_png)
         self.assertIn("左一行標籤置中", box_src)
         self.assertIn("右兩行價格", box_src)
-        self.assertIn("box_w * 0.50", box_src)
-        self.assertIn("mid + 1.12", box_src)
-        self.assertIn("ha=\"center\"", box_src)
+        self.assertIn("_paint_lr_box", box_src)
+        lr_src = inspect.getsource(_paint_lr_box)
+        self.assertIn("w * 0.50", lr_src)
+        self.assertIn("mid + 1.12", lr_src)
+        self.assertIn('ha="center"', lr_src)
+        glance_src = inspect.getsource(render_first_glance_png)
+        self.assertIn("_paint_lr_box", glance_src)
+        self.assertIn("_vol_rank_lr_lines", glance_src)
         glance_src = inspect.getsource(render_first_glance_png)
         self.assertIn("_paint_title_stamp", glance_src)
         self.assertIn("floor = 12.0", glance_src)

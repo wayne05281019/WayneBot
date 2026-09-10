@@ -216,6 +216,14 @@ def test_glance_combo_canvas_matches_card_width():
     assert _wcag(fg, bg) >= 4.5
 
 
+def test_vol_rank_lr_lines_splits_window():
+    from wayne_navigator import _vol_rank_lr_lines
+
+    assert _vol_rank_lr_lines("120日第 103 名") == ("第 103 名", "120日")
+    assert _vol_rank_lr_lines("60日第7 · 120日第25") == ("60日第7", "120日第25")
+    assert _vol_rank_lr_lines("—") == ("—", None)
+
+
 def test_fmt_dist_omits_nan():
     from wayne_navigator import _fmt_dist, _fmt_dist_short, horizon_low_cells
 

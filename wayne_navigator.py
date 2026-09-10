@@ -1608,6 +1608,45 @@ def _fmt_dist_short(val) -> str:
     return f"{v:+.0f}%" if abs(v) >= 100 else f"{v:+.1f}%"
 
 
+def _paint_lr_box(
+    ax, x, y, w, h, lab, primary, secondary=None, *,
+    lab_c, prim_c, sec_c=None, fc, ec, lab_fs=11.0, prim_fs=16.0, sec_fs=10.5,
+):
+    """一格左右對半：左一行標籤置中，右一或兩行數字。高低卡與介紹圖同一套閱讀感。"""
+    C = _CARD
+    if fc in (C["white"], C["panel"], C.get("neutral_bg"), C.get("zebra")):
+        ec = C["line"]
+    ax.add_patch(patches.FancyBboxPatch(
+        (x, y), w, h, boxstyle="round,pad=0,rounding_size=0.6",
+        facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
+    mid = y + h / 2
+    split = x + w * 0.50
+    left_cx = (x + split) / 2
+    right_cx = (split + x + w) / 2
+    ax.text(left_cx, mid, lab, fontproperties=_fp(lab_fs, "bold"), color=lab_c,
+            ha="center", va="center", zorder=4)
+    if secondary:
+        ax.text(right_cx, mid + 1.12, primary, fontproperties=_fp(prim_fs, "bold"),
+                color=prim_c, ha="center", va="center", zorder=4)
+        ax.text(right_cx, mid - 1.22, secondary, fontproperties=_fp(sec_fs),
+                color=sec_c if sec_c is not None else prim_c, ha="center", va="center", zorder=4)
+    else:
+        ax.text(right_cx, mid, primary, fontproperties=_fp(prim_fs, "bold"),
+                color=prim_c, ha="center", va="center", zorder=4)
+
+
+def _vol_rank_lr_lines(text: str):
+    """量排名右欄兩行：第 N 名在上、窗口在下。"""
+    s = str(text or "—").strip()
+    if " · " in s:
+        a, b = s.split(" · ", 1)
+        return a.strip(), b.strip()
+    idx = s.find("第")
+    if idx > 0:
+        return s[idx:].strip(), s[:idx].strip()
+    return s, None
+
+
 # 決策卡色票集中一處：要換配色只改這裡，版面計算不動。
 _CARD = {
     "page": "#F5F6F8",
@@ -2339,24 +2378,16 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 fc, ec = C["lo_fill"], C["lo_line"]
         else:
             lc = C["lo_ink"]
-        ax.add_patch(patches.FancyBboxPatch(
-            (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
-            facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
-        mid = y + box_h / 2
-        split = x + box_w * 0.50
-        left_cx = (x + split) / 2
-        right_cx = (split + x + box_w) / 2
-        ax.text(left_cx, mid, lab, fontproperties=_fp(11.0, "bold"), color=lc,
-                ha="center", va="center", zorder=4)
-        ax.text(right_cx, mid + 1.12, _fmt_price(px), fontproperties=_fp(16, "bold"),
-                color=C["ink"], ha="center", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(right_cx, mid - 1.22, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
-                color=dc, ha="center", va="center", zorder=4)
+        _paint_lr_box(
+            ax, x, y, box_w, box_h, lab, _fmt_price(px),
+            f"({d})" if d != "—" else d,
+            lab_c=lc, prim_c=C["ink"], sec_c=dc, fc=fc, ec=ec,
+        )
 
     # 標題：左代號股名，右只放當下日期時間。標語不要。
     y = H - m_top - head_h
@@ -2965,20 +2996,8 @@ def render_first_glance_png(
     gain = float(gain_n if gain_n is not None else 0)
     dist_h20 = _finite_num(card.get("dist_h20"))
     long_lows = horizon_low_cells(card)
-    space_rows = [
-        ("距20日高（賣壓）", f"{dist_h20:+.1f}%" if dist_h20 is not None else "—"),
-        ("獲利", f"{gain:+.1f}%"),
-    ]
-    if long_lows:
-        n_labs = "／".join(lab.replace("低", "") for lab, _, _ in long_lows)
-        space_rows.append(
-            (f"距{n_labs}低", "  ".join(_fmt_dist_short(d) for _, _, d in long_lows))
-        )
     s20 = card.get("space_20")
     s60 = card.get("space_60")
-    space_rows.append(
-        ("月／季空間", f"{s20}%　／　{s60}%" if s20 is not None and s60 is not None else "—")
-    )
     _temp_n = _temp_num(card.get("temp_c"))
     vol_lab, vol_n = volume_headline_rank(
         card.get("vol_rank_480") or 99,
@@ -2991,11 +3010,6 @@ def render_first_glance_png(
         card.get("vol_rank") or 99,
         card.get("vol_rank_60") or 99,
     )
-    heat_rows = [
-        ("溫度", str(card.get("temp_c") or "—")),
-        ("量排名", vol_pair),
-        ("量比", ((tape or {}).get("volume") or {}).get("line") or "—"),
-    ]
     show_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
     chips = [
         ("外資", (tape or {}).get("foreign") or {}),
@@ -3012,8 +3026,8 @@ def render_first_glance_png(
     for lab, val in other_pairs:
         lab_fs, val_fs = 12.0, 13.0
         lab_w = tw(lab, lab_fs)
-        val_avail = max(18.0, row_w - lab_w - 6.0)
-        vlines = _wrap_fit(str(val), val_fs, val_avail, fig_w) or [str(val)]
+        val_avail = max(16.0, pane_w * 0.46)
+        vlines = (_wrap_fit(str(val), val_fs, val_avail, fig_w) or [str(val)])[:2]
         fund_drawn.append((lab, vlines, lab_fs, val_fs))
     note = (tape or {}).get("conflict") or ""
     conflict_lines = _wrap_fit(str(note), 13, row_w, fig_w) if note else []
@@ -3021,18 +3035,20 @@ def render_first_glance_png(
     for n in footer_src:
         wrapped_notes.extend(_wrap_fit(n, 12.5, row_w, fig_w) or [n])
 
-    def kv_h(n):
-        return title_band + pane_pad + n * row_h + pane_pad
-
-    space_h = kv_h(len(space_rows))
-    heat_h = kv_h(len(heat_rows))
-    chips_h = kv_h(4) if show_chips else 0.0
+    lr_box_h, lr_gap = 6.6, 0.85
+    space_n_rows = 2 if long_lows else 1
+    space_h = title_band + pane_pad + space_n_rows * lr_box_h + (space_n_rows - 1) * lr_gap + pane_pad
+    heat_h = title_band + pane_pad + lr_box_h + pane_pad
+    chips_h = (
+        title_band + pane_pad + 2 * lr_box_h + lr_gap + pane_pad
+    ) if show_chips else 0.0
     fund_body = 0.0
     if conflict_lines:
         fund_body += 2.6 * len(conflict_lines)
-    for _, vlines, _, _ in fund_drawn:
-        fund_body += 3.3 + 2.2 * max(0, len(vlines) - 1)
-    fund_h = (title_band + pane_pad + max(fund_body, 3.3) + pane_pad) if (fund_drawn or conflict_lines) else 0.0
+    fund_box_hs = [lr_box_h if len(vlines) > 1 else 5.2 for _, vlines, _, _ in fund_drawn]
+    if fund_box_hs:
+        fund_body += sum(fund_box_hs) + 0.7 * (len(fund_box_hs) - 1)
+    fund_h = (title_band + pane_pad + max(fund_body, 3.3) + pane_pad + 1.2) if (fund_drawn or conflict_lines) else 0.0
     note_h = (3.2 + 2.55 * len(wrapped_notes) + 1.0) if wrapped_notes else 0.0
 
     H = (
@@ -3126,7 +3142,7 @@ def render_first_glance_png(
         ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
     ohlc_y = y + price_h - 2.25
     ax.text(inner_l, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
-            color=C["ink_soft"], va="center", zorder=3)
+            color=C["ink_soft"], ha="left", va="center", zorder=3)
     if mc is not None:
         ax.text(inner_l, ohlc_y - 2.2, f"主力成本 {float(mc):.2f}（分點平均買超）",
                 fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3)
@@ -3144,41 +3160,99 @@ def render_first_glance_png(
                     color=b_fg, ha="center", va="center", zorder=4)
             bx += bw + 1.7
 
-    def draw_kv(y0, h, title, rows, *, sub="", pills=None):
-        pane(pad_x, y0, pane_w, h)
-        sec_title(pad_x + 2.6, y0 + h - title_band / 2, title, C["navy"], sub=sub)
-        pills = pills or {}
-        yy = y0 + h - title_band - pane_pad - row_h / 2
-        for i, (lab, val) in enumerate(rows):
-            lab_fs, val_fs = 12.5, 14.0
-            while tw(lab, lab_fs) + 5.5 + tw(val, val_fs) > row_w and lab_fs > floor:
-                lab_fs -= 0.3
-                val_fs -= 0.3
-            ax.text(inner_l, yy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], ha="left", va="center", zorder=3)
-            style = pills.get(i)
-            if style:
-                bg, fg = style
-                pill_w = max(tw(val, max(val_fs, 12.5)) + 3.6, 11.2)
-                ax.add_patch(patches.FancyBboxPatch(
-                    (inner_r - pill_w, yy - 1.24), pill_w, 2.48,
-                    boxstyle="round,pad=0,rounding_size=0.55",
-                    facecolor=bg, edgecolor=bg, linewidth=0, zorder=3))
-                ax.text(inner_r - pill_w / 2, yy, val, fontproperties=_fp(max(val_fs, 12.5), "bold"),
-                        color=fg, ha="center", va="center", zorder=4)
-            else:
-                ax.text(inner_r, yy, val, fontproperties=_fp(val_fs, "bold"),
-                        color=_fg_on_panel(C["ink"]), ha="right", va="center", zorder=3)
-            yy -= row_h
+    inner_x = pad_x + 2.2
+    box_gap_x = 1.7
+
+    def row_xs(n):
+        bw = (100 - 2 * inner_x - (n - 1) * box_gap_x) / float(max(n, 1))
+        return bw, [inner_x + i * (bw + box_gap_x) for i in range(n)]
+
+    def paint_lr_row(y_box, specs):
+        bw, xs = row_xs(len(specs))
+        for x0, spec in zip(xs, specs):
+            _paint_lr_box(ax, x0, y_box, bw, lr_box_h, **spec)
 
     y -= gap + space_h
-    draw_kv(y, space_h, "空間／位置", space_rows, sub="獲利＝近60個日曆天收盤低算上來", pills={
-        1: _glance_kv_pill(*_profit_heat_draw(gain, None, C["white"])),
-    })
+    pane(pad_x, y, pane_w, space_h)
+    sec_title(pad_x + 2.6, y + space_h - title_band / 2, "空間／位置", C["navy"],
+              sub="獲利＝近60個日曆天收盤低算上來")
+    hi_fc, hi_ec = C["white"], C["line"]
+    try:
+        if dist_h20 is not None and float(dist_h20) >= -1.5:
+            hi_fc, hi_ec = C["hi_fill"], C["hi_line"]
+    except (TypeError, ValueError):
+        pass
+    d20s = _fmt_dist(dist_h20)
+    hi_dc = C["down"] if (dist_h20 is not None and float(dist_h20) < 0) else C["up"]
+    pbg, pfg = _glance_kv_pill(*_profit_heat_draw(gain, None, C["white"]))
+    space_top = [
+        {
+            "lab": "20日高點", "primary": _fmt_price(card.get("h20")),
+            "secondary": f"({d20s})" if d20s != "—" else d20s,
+            "lab_c": C["hi_ink"], "prim_c": C["ink"], "sec_c": hi_dc,
+            "fc": hi_fc, "ec": hi_ec,
+        },
+        {
+            "lab": "獲利", "primary": f"{gain:+.1f}%", "secondary": "近60日低",
+            "lab_c": _fg_on_panel(C["ink_soft"], pbg, panel=pbg),
+            "prim_c": pfg, "sec_c": _fg_on_panel(C["ink_soft"], pbg, panel=pbg),
+            "fc": pbg, "ec": pbg,
+        },
+        {
+            "lab": "月／季空間",
+            "primary": f"{s20}%" if s20 is not None else "—",
+            "secondary": f"{s60}%" if s60 is not None else None,
+            "lab_c": C["ink_soft"], "prim_c": C["ink"], "sec_c": C["ink_soft"],
+            "fc": C["white"], "ec": C["line"],
+        },
+    ]
+    top_y = y + space_h - title_band - pane_pad - lr_box_h
+    paint_lr_row(top_y, space_top)
+    if long_lows:
+        low_specs = []
+        for lab, px, dist in long_lows[:3]:
+            lo_fc, lo_ec = C["white"], C["line"]
+            try:
+                if dist is not None and float(dist) <= 0.35:
+                    lo_fc, lo_ec = C["lo_fill"], C["lo_line"]
+            except (TypeError, ValueError):
+                pass
+            d = _fmt_dist(dist)
+            low_specs.append({
+                "lab": f"{str(lab).replace('低', '')}日低點" if str(lab).endswith("低") else str(lab),
+                "primary": _fmt_price(px),
+                "secondary": f"({d})" if d != "—" else d,
+                "lab_c": C["lo_ink"], "prim_c": C["ink"], "sec_c": C["up"],
+                "fc": lo_fc, "ec": lo_ec,
+            })
+        paint_lr_row(top_y - lr_box_h - lr_gap, low_specs)
+
     y -= gap + heat_h
-    draw_kv(y, heat_h, "熱度／量能", heat_rows, pills={
-        0: _glance_kv_pill(*_temp_heat_draw(_temp_n, C["white"])),
-        1: _glance_kv_pill(*_vol_heat_draw(int(vol_n or 99), C["white"])),
-    })
+    pane(pad_x, y, pane_w, heat_h)
+    sec_title(pad_x + 2.6, y + heat_h - title_band / 2, "熱度／量能", C["navy"])
+    tbg, tfg = _glance_kv_pill(*_temp_heat_draw(_temp_n, C["white"]))
+    vbg, vfg = _glance_kv_pill(*_vol_heat_draw(int(vol_n or 99), C["white"]))
+    vol_prim, vol_sec = _vol_rank_lr_lines(vol_pair)
+    vol_line = str(((tape or {}).get("volume") or {}).get("line") or "—")
+    heat_specs = [
+        {
+            "lab": "溫度", "primary": str(card.get("temp_c") or "—"), "secondary": None,
+            "lab_c": _fg_on_panel(C["ink_soft"], tbg, panel=tbg),
+            "prim_c": tfg, "fc": tbg, "ec": tbg,
+        },
+        {
+            "lab": "量排名", "primary": vol_prim, "secondary": vol_sec,
+            "lab_c": _fg_on_panel(C["ink_soft"], vbg, panel=vbg),
+            "prim_c": vfg, "sec_c": _fg_on_panel(C["ink_soft"], vbg, panel=vbg),
+            "fc": vbg, "ec": vbg,
+        },
+        {
+            "lab": "量比", "primary": vol_line, "secondary": None,
+            "lab_c": C["ink_soft"], "prim_c": C["ink"],
+            "fc": C["white"], "ec": C["line"], "prim_fs": 13.0,
+        },
+    ]
+    paint_lr_row(y + heat_h - title_band - pane_pad - lr_box_h, heat_specs)
 
     if show_chips:
         y -= gap + chips_h
@@ -3193,55 +3267,42 @@ def render_first_glance_png(
                     color=C["ink_soft"], ha="right", va="center", zorder=3)
         lots_of = {nm: fmt_lots(int(item.get("net") or 0)) for nm, item in chips}
         phrase_of = {nm: (item.get("phrase") or "—") for nm, item in chips}
-        name_w = max(tw(nm, 12.0) for nm, _ in chips)
-        lots_w = max(tw(lots_of[nm], 16.0) for nm, _ in chips)
-        lots_col = inner_l + max(name_w + lots_w + 4.0, row_w * 0.46)
-        phrase_left = lots_col + 3.0
-        phrase_avail = max(12.0, inner_r - phrase_left)
-        f_phrase = 12.0
-        while f_phrase > floor and any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
-            f_phrase -= 0.3
-        if any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
-            lots_col = inner_l + name_w + lots_w + 4.0
-            phrase_avail = max(12.0, inner_r - lots_col - 3.0)
-            f_phrase = 12.0
-            while f_phrase > floor and any(tw(phrase_of[nm], f_phrase) > phrase_avail for nm, _ in chips):
-                f_phrase -= 0.3
-        cy = y + chips_h - title_band - pane_pad - row_h / 2
+        chip_specs = []
         for nm, item in chips:
             net = int(item.get("net") or 0)
             cc = C["up"] if net > 0 else (C["down"] if net < 0 else C["ink_soft"])
-            ax.text(inner_l, cy, nm, fontproperties=_fp(12.0, "bold"), color=C["ink"], ha="left", va="center", zorder=3)
-            ax.text(lots_col, cy, lots_of[nm], fontproperties=_fp(16.0, "bold"), color=cc, ha="right", va="center", zorder=3)
-            ax.text(inner_r, cy, phrase_of[nm], fontproperties=_fp(f_phrase, "bold"),
-                    color=cc, ha="right", va="center", zorder=3)
-            cy -= row_h
+            chip_specs.append({
+                "lab": nm, "primary": lots_of[nm], "secondary": phrase_of[nm],
+                "lab_c": C["ink"], "prim_c": cc, "sec_c": cc,
+                "fc": C["white"], "ec": C["line"],
+            })
+        chip_top = y + chips_h - title_band - pane_pad - lr_box_h
+        paint_lr_row(chip_top, chip_specs[:2])
+        paint_lr_row(chip_top - lr_box_h - lr_gap, chip_specs[2:4])
 
     if fund_h:
         y -= gap + fund_h
         pane(pad_x, y, pane_w, fund_h)
         sec_title(pad_x + 2.6, y + fund_h - title_band / 2, "ETF" if card.get("etf_kind") else "基本面", C["navy"])
-        fy = y + fund_h - title_band - pane_pad - 1.4
+        fy = y + fund_h - title_band - pane_pad
         fund_floor = y + pane_pad
         for ln in conflict_lines:
             if fy - 1.2 < fund_floor:
                 break
-            ax.text(inner_l, fy, ln, fontproperties=_fp(13, "bold"), color=C["hi_ink"], va="center", zorder=3)
             fy -= 2.6
+            ax.text(inner_l, fy + 1.3, ln, fontproperties=_fp(13, "bold"), color=C["hi_ink"],
+                    ha="left", va="center", zorder=3)
+        fw = 100 - 2 * inner_x
         for lab, vlines, lab_fs, val_fs in fund_drawn:
-            need = 3.3 + 2.2 * max(0, len(vlines) - 1)
-            if fy - need + 1.5 < fund_floor:
-                break
-            ax.text(inner_l, fy, lab, fontproperties=_fp(lab_fs, "bold"), color=C["ink_soft"], va="center", zorder=3)
-            ax.text(inner_r, fy, vlines[0], fontproperties=_fp(val_fs, "bold"),
-                    color=C["ink"], ha="right", va="center", zorder=3)
-            fy -= 3.3
-            for extra in vlines[1:]:
-                if fy - 1.6 < fund_floor:
-                    break
-                ax.text(inner_r, fy, extra, fontproperties=_fp(val_fs, "bold"),
-                        color=C["ink"], ha="right", va="center", zorder=3)
-                fy -= 2.2
+            fh = lr_box_h if len(vlines) > 1 else 5.2
+            fy -= fh
+            _paint_lr_box(
+                ax, inner_x, fy, fw, fh, lab, vlines[0],
+                vlines[1] if len(vlines) > 1 else None,
+                lab_c=C["ink_soft"], prim_c=C["ink"], sec_c=C["ink"],
+                fc=C["white"], ec=C["line"], lab_fs=lab_fs, prim_fs=val_fs, sec_fs=max(val_fs - 1.0, 11.0),
+            )
+            fy -= 0.7
 
     if note_h:
         y -= gap + note_h
