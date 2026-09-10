@@ -151,7 +151,7 @@ def test_alert_tag_k20_high_near_95pct_winbond_like():
 
 
 def test_display_alert_shows_hi_lo_when_blank():
-    from decision_card_signals import display_alert_cell
+    from decision_card_signals import display_alert_cell, hi_lo_tag
 
     assert display_alert_cell("No", "10低") == "10低"
     assert display_alert_cell("K20高", "20高") == "20高"
@@ -159,6 +159,13 @@ def test_display_alert_shows_hi_lo_when_blank():
     assert display_alert_cell("60低", "10低") == "60低"
     assert display_alert_cell("No", "No") == "No"
     assert display_alert_cell("", "No") == "No"
+    assert display_alert_cell("K20高", "5低") == "K20高"
+    assert display_alert_cell("K20高", "5高") == "5高"
+    assert display_alert_cell("No", "5高") == "5高"
+    assert display_alert_cell("K20低", "5低") == "5低"
+    assert hi_lo_tag(643, 667, 667, 644, 572, 630, 630) == "No"
+    assert hi_lo_tag(595, 610, 610, 595, 572, 578, 578) == "5高"
+    assert hi_lo_tag(667, 667, 667, 667, 572, 572, 572) == "20高"
 
 
 def test_candle_up_taiwan_vs_prev_close():

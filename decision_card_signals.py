@@ -892,14 +892,60 @@ def alert_tag(
     return "No"
 
 
+def hi_lo_tag(close, h20, h10, h5, l20, l10, l5) -> str:
+    """高低格：20／10 仍允許 0.2% 貼齊；5 高／5 低要收盤碰到當日 5 日極值。
+
+    6526 9/9 收 643、5 日高 644：Cary 預警 No，不能因 0.998 誤標 5高。
+    """
+    try:
+        c = float(close)
+    except (TypeError, ValueError):
+        return "No"
+
+    def _px(v) -> float:
+        try:
+            x = float(v or 0)
+            return x if x == x else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    h20, h10, h5 = _px(h20), _px(h10), _px(h5)
+    l20, l10, l5 = _px(l20), _px(l10), _px(l5)
+    if h20 > 0 and c >= h20 * 0.998:
+        return "20高"
+    if h10 > 0 and c >= h10 * 0.998:
+        return "10高"
+    if h5 > 0 and c >= h5:
+        return "5高"
+    if l20 > 0 and c <= l20 * 1.002:
+        return "20低"
+    if l10 > 0 and c <= l10 * 1.002:
+        return "10低"
+    if l5 > 0 and c <= l5:
+        return "5低"
+    return "No"
+
+
 def display_alert_cell(alert: str, hi_lo: str) -> str:
-    """預警欄呈現：No 時仍露出高低；K20 與 20高／10低重疊時優先顯示高低（CaryBot 同欄）。"""
+    """預警欄呈現：No 時仍露出高低；K20 與 20高／10低重疊時優先顯示高低（CaryBot 同欄）。
+
+    5高／5低不蓋過反向 K20（6526 8/17 Cary 是 K20高，不是 5低）。
+    """
     a = str(alert or "").strip()
     h = str(hi_lo or "").strip()
     if a == "60低":
         return a
-    if h in ("20高", "10高", "5高", "20低", "10低", "5低"):
+    if h in ("20高", "10高", "20低", "10低"):
         if a in ("", "No", "—") or a.startswith("K20"):
+            return h
+    if h in ("5高", "5低"):
+        if a in ("", "No", "—"):
+            return h
+        if a.startswith("K20"):
+            a_high = "高" in a and "低" not in a
+            h_high = "高" in h
+            if a_high != h_high:
+                return a
             return h
     if a and a not in ("No", "—"):
         return a

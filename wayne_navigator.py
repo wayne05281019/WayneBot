@@ -452,10 +452,12 @@ class NavigatorEngine:
         df["ma60"] = close_s.rolling(60, min_periods=1).mean()
         from decision_card_signals import (
             TEMP_ATH_WATCH,
+            alert_tag,
             cal60_profit_bundle,
             card_daily_stance,
             card_regime_label,
             compute_card_temperature,
+            hi_lo_tag,
             monthly_stage_from_ohlc,
             prev_close_from_change_pct,
             profit_floor_at,
@@ -530,25 +532,10 @@ class NavigatorEngine:
                 c, h20, l20, bias, high60=h60_i, low60=l60, ma60=ma60_i
             )
             temp_nums.append(t)
-            if c >= h20 * 0.998:
-                hl_tags.append("20高")
-            elif c >= h10 * 0.998:
-                hl_tags.append("10高")
-            elif c >= h5 * 0.998:
-                hl_tags.append("5高")
-            elif c <= l20 * 1.002:
-                hl_tags.append("20低")
-            elif c <= l10 * 1.002:
-                hl_tags.append("10低")
-            elif c <= l5 * 1.002:
-                hl_tags.append("5低")
-            else:
-                hl_tags.append("No")
+            hl_tags.append(hi_lo_tag(c, h20, h10, h5, l20, l10, l5))
             if c <= l60 * 1.005:
                 alert_tags.append("60低")
             else:
-                from decision_card_signals import alert_tag
-
                 hh, ll = h20, l20
                 rsv_i = ((c - ll) / (hh - ll) * 100.0) if hh > ll else 50.0
                 alert_tags.append(
@@ -1254,14 +1241,15 @@ def _profit_heat_draw(profit, prev_profit, base: str):
     # 1%～未滿 8%：作者低檔卡是白底紅字（致伸 1.5%／2.4%、越峰 3.9%），不要淡粉熱圖。
     if p < 8:
         return bg, fg
-    # 色階只能愈高愈深；淡粉紅字、實粉／洋紅底改白字（金像電 44%／69%）。
+    # Cary 獲利 pill 約 #FF98CD、16～35% 幾乎同色；不要 30% 就洗成洋紅整格。
     heat_bg, _heat_fg = _heat_pair(
         p,
         (
             (8.0, "#FCE4EC", C["up"]),
-            (20.0, "#F8BBD0", C["up"]),
-            (32.0, "#EC407A", C["white"]),
-            (50.0, C["pill_hi"], C["white"]),
+            (16.0, "#FFC1E0", C["up"]),
+            (32.0, "#FF98CD", C["up"]),
+            (50.0, "#F48FB1", C["up"]),
+            (70.0, C["pill_hi"], C["white"]),
         ),
     )
     return heat_bg, ink_on_fill(C["up"] if p > 0 else C["down"], heat_bg)
@@ -1274,15 +1262,13 @@ def _vol_heat_draw(rank, base: str):
         r = int(rank)
     except (TypeError, ValueError):
         return base, C["neutral_fg"]
-    if r > 40:
+    if r > 10:
         return base, C["neutral_fg"]
     return _heat_pair(
-        max(1, min(r, 40)),
+        max(1, min(r, 10)),
         (
             (1.0, C["pill_hi"], C["white"]),
             (10.0, "#F8BBD0", C["vol_hi_fg"]),
-            (25.0, "#FCE4EC", C["hi_ink"]),
-            (40.0, base, C["neutral_fg"]),
         ),
     )
 
@@ -1507,6 +1493,45 @@ def _pill(ax, cx, cy, text, bg, fg, w=11.2, h=2.15, fs=10, z=3, rounding=None):
             zorder=z + 1)
 
 
+def _card_ohlc_tuple(card: dict, last: dict | None = None):
+    """標題列小 K 用的開高低收／昨收。缺一根就不畫。"""
+    src = last or {}
+
+    def g(*keys):
+        for k in keys:
+            v = src.get(k) if src else None
+            if v is None and card:
+                v = card.get(k)
+            try:
+                f = float(v)
+                if f == f and f > 0:
+                    return f
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    o, hi, lo, cl = g("open"), g("high"), g("low"), g("close")
+    prev = g("prev_close", "yesterday_close")
+    if None in (o, hi, lo, cl):
+        return None
+    return o, hi, lo, cl, prev
+
+
+def _paint_title_stamp(ax, tw, C, brand_x, title_cy, stamp, clock_line, ohlc=None):
+    """右上日期時鐘；有 OHLC 時在「收盤／盤中」左邊畫今日小 K。"""
+    stamp = str(stamp or "")
+    stamp_w = tw(stamp, 11.2) if stamp else 0.0
+    if ohlc:
+        o, hi, lo, cl, prev = ohlc
+        cw, ch = 1.7, 3.15
+        x = brand_x - stamp_w - 1.25 - cw
+        _draw_mini_candle(ax, x, title_cy - ch * 0.5, cw, ch, o, hi, lo, cl, prev)
+    ax.text(
+        brand_x, title_cy, stamp, fontproperties=_fp(11.2),
+        color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3,
+    )
+
+
 def _draw_mini_candle(ax, x, y, w, h, open_, high, low, close, prev_close=None):
     """在資料座標畫當日 K：台股紅漲綠跌（相對昨收），含上下影。"""
     from decision_card_signals import candle_up_taiwan
@@ -1579,10 +1604,10 @@ def _fmt_dist_short(val) -> str:
 
 # 決策卡色票集中一處：要換配色只改這裡，版面計算不動。
 _CARD = {
-    "page": "#EDF1F7",
+    "page": "#F5F6F8",
     "panel": "#FFFFFF",
-    "line": "#DCE3EC",
-    "shadow": "#CBD4E1",
+    "line": "#E6E7E9",
+    "shadow": "#D8DCE3",
     "navy": "#1E293B",
     "navy_soft": "#9FB3D9",
     "tag": "#C2185B",
@@ -1604,9 +1629,9 @@ _CARD = {
     # 白字要壓在上面的底色壓深一階，對白色至少 5:1 對比。
     "pill_hi": "#AD1457",
     "pill_lo": "#2E7D32",
-    "tbl_hdr": "#E7EEF8",
-    "tbl_line": "#BACCE6",
-    "tbl_ink": "#1E3A8A",
+    "tbl_hdr": "#F3F4F6",
+    "tbl_line": "#D2D3D7",
+    "tbl_ink": "#4B5563",
     "zebra": "#FFFFFF",
     "neutral_bg": "#FFFFFF",
     "neutral_fg": "#4B5563",
@@ -1894,10 +1919,6 @@ def vol_rank_cell_style(rank, base: str):
         return base, C["neutral_fg"]
     if r <= 10:
         return C["pill_hi"], C["white"]
-    if r <= 20:
-        return C["vol_hi_bg"], C["vol_hi_fg"]
-    if r <= 50:
-        return C["hi_fill"], C["hi_ink"]
     return C["neutral_bg"], C["neutral_fg"]
 
 
@@ -2296,37 +2317,23 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 高低小盒子：貼近高點淡粉、貼近低點淡綠，其餘白底（作者卡同一套）；％在價下面。
-        fc, ec = C["white"], C["line"]
-        try:
-            dlt = float(dist) if dist is not None else None
-        except (TypeError, ValueError):
-            dlt = None
-        if high:
-            lc = C["hi_ink"]
-            if dlt is not None and dlt >= -1.5:
-                fc, ec = C["hi_fill"], C["hi_line"]
-        elif hit or (dlt is not None and dlt <= 0.35):
-            lc = C["lo_ink"]
-            if dlt is not None and dlt <= 0.35:
-                fc, ec = C["lo_fill"], C["lo_line"]
-        else:
-            lc = C["lo_ink"]
+        # 作者卡小盒子白底灰標；％在價下面，高點負數綠、低點正數紅。
+        del hit
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
-            facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
-        lx, rx = x + 1.15, x + box_w - 1.2
-        ax.text(lx, y + box_h / 2, lab, fontproperties=_fp(11.0, "bold"), color=lc,
-                ha="left", va="center", zorder=4)
-        ax.text(rx, y + box_h * 0.70, _fmt_price(px), fontproperties=_fp(16, "bold"),
-                color=C["ink"], ha="right", va="center", zorder=4)
+            facecolor=C["white"], edgecolor=C["line"], linewidth=1.0, zorder=3))
+        cx = x + box_w / 2
+        ax.text(cx, y + box_h * 0.74, lab, fontproperties=_fp(10.5, "bold"),
+                color=C["ink_soft"], ha="center", va="center", zorder=4)
+        ax.text(cx, y + box_h * 0.42, _fmt_price(px), fontproperties=_fp(16, "bold"),
+                color=C["ink"], ha="center", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(rx, y + box_h * 0.24, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
-                color=dc, ha="right", va="center", zorder=4)
+        ax.text(cx, y + box_h * 0.16, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
+                color=dc, ha="center", va="center", zorder=4)
 
     # 標題：左代號股名，右只放當下日期時間。標語不要。
     y = H - m_top - head_h
@@ -2359,8 +2366,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs),
                 color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
-    ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
-            color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
+    _paint_title_stamp(
+        ax, tw, C, brand_x, title_cy, stamp, clock_line, _card_ohlc_tuple(card)
+    )
 
     # 左：開高低昨＋徽章；右：收盤價與漲跌，不要跟左邊搶。
     y -= gap + price_h
@@ -2484,7 +2492,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
 
     # 高點
     y -= gap + hi_pane_h
-    pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["hi_line"])
+    pane(pad_x, y, 100 - 2 * pad_x, hi_pane_h, ec=C["line"])
     sec_title(pad_x + 2.6, y + hi_pane_h - title_band / 2, "高點資訊", C["hi_ink"],
               f"10日／20日／60日　MA60S {card.get('ma60s')}　QTY60 {int(card.get('qty60') or 0):,}")
     highs = [("10日高點", card["h10"], card["dist_h10"]),
@@ -2493,9 +2501,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     for i, (lab, px, dist) in enumerate(highs):
         metric_box(inner_x + i * (box_w + box_gap_x), y + pane_pad, lab, px, dist, high=True)
 
-    # 低點：短中期一排，120／240／480 另一排，貼到 2% 內就實綠。
+    # 低點：短中期一排，120／240／480 另一排。
     y -= gap + lo_pane_h
-    pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["lo_line"])
+    pane(pad_x, y, 100 - 2 * pad_x, lo_pane_h, ec=C["line"])
     sec_title(pad_x + 2.6, y + lo_pane_h - title_band / 2, "低點資訊", C["lo_ink"],
               f"20日（高低操作空間 {card['space_20']}%）／60日（高低操作空間 {card['space_60']}%）")
     lows = [("10日低點", card["l10"], card["dist_l10"]),
@@ -2518,7 +2526,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     headers = ["日期", "股價", "獲利", "預警", "升降", "溫度計", "月乖離", "120日量"]
     # 股價欄加寬（萬元股）、升降略加寬給雙標；日期／獲利略收。手機直向對齊作者卡。
     weights = [12.2, 12.2, 8.8, 10.6, 14.2, 11.0, 9.6, 12.4]
-    pill_cols = {3, 4}
+    pill_cols = {2, 3, 4, 5}
     span = 100 - 2 * pad_x
     xs = [pad_x]
     for wgt in weights:
@@ -2534,7 +2542,8 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     _ = profit_cell_style, vol_rank_cell_style, temp_cell_style
 
     def _status_pill(cx, cy, text, bg, fg, *, w, h, fs, rounding=None):
-        sbg, sfg = _status_badge_colors(bg, fg)
+        # 作者卡預警／升降／溫度是淡底深字；實心白字只留給本來就是白字的深底。
+        sbg, sfg = (bg, fg) if fg != C["white"] else _status_badge_colors(bg, fg)
         if sfg != C["white"] and sbg in (C["white"], C["panel"], C["neutral_bg"]):
             ax.text(cx, cy, text, fontproperties=_fp(fs), color=sfg,
                     ha="center", va="center", zorder=3)
@@ -2564,7 +2573,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         vbg, vfg = _vol_heat_draw(rank, base)
         b_bg, b_fg = bias_cell_style(bias, base)
         fills = [base, px_bg, p_bg, al_bg, tr_bg, tbg, b_bg, vbg]
-        fgs = [C["ink"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
+        fgs = [C["ink_soft"], px_fg, p_fg, al_fg, tr_fg, tfg, b_fg, vfg]
         vals = [
             _fmt_md_tpl(r["date"]),
             _fmt_price(r["close"]),
@@ -2578,15 +2587,17 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         dual_trend = bool(trend_note) and not is_blank_card_signal(trend)
         for i, val in enumerate(vals):
             col_w = xs[i + 1] - xs[i]
-            wash = C["white"] if (i == 4 and dual_trend) else fills[i]
+            wash = C["white"]
+            if i == 7 and vbg not in (C["white"], C["panel"], C["neutral_bg"]):
+                wash = vbg
             _cell_wash(ax, xs[i], y1, col_w, body_h, wash, C["line"])
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ry + y1) / 2
             if i == 2 and fills[i] in (C["lo_fill"], C["pill_lo"]):
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.70, fs=11.5)
+                _pill(ax, cx, cy, val, C["pill_lo"], C["white"], w=pill_w, h=body_h * 0.62, fs=11.5)
             elif i == 2 and fills[i] == C["lo_hit_fill"]:
                 pill_w = min(tw(val, 12) + 3.2, col_w * 0.92)
-                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.70, fs=11.5)
+                _pill(ax, cx, cy, val, fills[i], fgs[i], w=pill_w, h=body_h * 0.62, fs=11.5)
             elif i in pill_cols:
                 if is_blank_card_signal(val):
                     ax.text(cx, cy, "No",
@@ -2609,12 +2620,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                         edgecolor=C["tbl_line"], lw=0.7, zorder=4,
                     ))
                 else:
-                    pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.90)
+                    pill_w = min(tw(val, 11.0) + 3.0, col_w * 0.88)
                     _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
-                                 h=body_h * 0.74, fs=11.0)
+                                 h=body_h * 0.58, fs=10.8)
             else:
                 px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
-                ink = _fg_on_panel(fgs[i], fills[i], fills[i] or C["white"])
+                ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
                 ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
                         ha="center", va="center", color=ink, zorder=3)
         ry = y1
@@ -3065,8 +3076,10 @@ def render_first_glance_png(
     ):
         ax.text(cursor, title_cy, text, fontproperties=_fp(fs), color=color, va="center", zorder=3)
         cursor += tw(text, fs) + 1.8
-    ax.text(brand_x, title_cy, stamp, fontproperties=_fp(11.2),
-            color="#FFE082" if clock_line else "#C5D0E8", ha="right", va="center", zorder=3)
+    _paint_title_stamp(
+        ax, tw, C, brand_x, title_cy, stamp, clock_line,
+        _card_ohlc_tuple(card, last),
+    )
 
     # 左：開高低昨＋徽章；右：收盤價與漲跌。兩欄分開，不要互壓。
     y -= gap + price_h

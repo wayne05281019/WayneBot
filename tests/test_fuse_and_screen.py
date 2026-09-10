@@ -1443,7 +1443,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("display_alert_cell", src)
         self.assertIn("vol_rank_cell_style", src)
         self.assertIn("_status_badge_colors", src)
-        self.assertIn("pill_cols = {3, 4}", src)
+        self.assertIn("pill_cols = {2, 3, 4, 5}", src)
         self.assertIn("_temp_heat_draw", src)
         self.assertIn("_cell_wash", src)
         src_heat = inspect.getsource(_profit_heat_draw)
@@ -1780,11 +1780,14 @@ class LookupCardTest(unittest.TestCase):
         }
         import inspect
 
+        from wayne_navigator import _paint_title_stamp
+
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("pad_x + 3.2", src)
-        self.assertIn('ha="right"', src)
+        self.assertIn("_paint_title_stamp", src)
+        self.assertIn('ha="right"', inspect.getsource(_paint_title_stamp))
         glance_src = inspect.getsource(render_first_glance_png)
-        self.assertIn('ha="right"', glance_src)
+        self.assertIn("_paint_title_stamp", glance_src)
         self.assertIn("floor = 12.0", glance_src)
         self.assertNotIn("floor=8.0", glance_src)
         self.assertIn("_paint_nav_on_axes", glance_src)
