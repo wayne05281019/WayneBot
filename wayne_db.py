@@ -462,6 +462,11 @@ def _schema_steps():
 
         ensure_issue_reports_table(path)
 
+    def _biaoke_posts(path):
+        from biaoke_desk import ensure_biaoke_posts_table
+
+        ensure_biaoke_posts_table(path)
+
     return (
         ("index_daily", _index_daily),
         ("fundamentals", _fundamentals),
@@ -476,6 +481,7 @@ def _schema_steps():
         ("broker_points", _broker_points),
         ("official_snapshots", _official_snapshots),
         ("issue_reports", _issue_reports),
+        ("biaoke_posts", _biaoke_posts),
         ("quote_hygiene", normalize_quote_hygiene),
     )
 
@@ -1106,7 +1112,7 @@ def list_tg_user_ids(db_path: str) -> List[str]:
     return sorted(ids)
 
 
-# 公開 GitHub Release zip 不准帶走的表。行情／財報／海選名單留著；持股／觀察／成交／AI 倉／話筒帳號清掉。
+# 公開 GitHub Release zip 不准帶走的表。行情／財報／海選名單／飆大公開文 overlay 留著；持股／觀察／成交／AI 倉／話筒帳號清掉。
 PRIVATE_USER_TABLES: tuple[str, ...] = (
     "tg_users",
     "user_watchlist",

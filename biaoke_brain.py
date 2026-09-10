@@ -315,7 +315,7 @@ def down_streak(bars: Sequence[Dict[str, Any]]) -> int:
     return n
 
 
-def match_posts(ask: str, *, limit: int = 4) -> List[Dict[str, Any]]:
+def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
     try:
         from biaoke_desk import load_corpus
     except Exception:
@@ -325,7 +325,7 @@ def match_posts(ask: str, *, limit: int = 4) -> List[Dict[str, Any]]:
     keys = [k for k in re.split(r"[\s,，、]+", q) if k and k not in skip]
     if not keys:
         return []
-    posts = list((load_corpus() or {}).get("posts") or [])
+    posts = list((load_corpus(db_path) or {}).get("posts") or [])
     scored: List[Tuple[int, Dict[str, Any]]] = []
     for p in posts:
         text = str(p.get("text") or "")
@@ -581,7 +581,7 @@ def answer_biaoke(db_path: str, ask: str) -> str:
         return format_biaoke_html(q)
 
     hits = resolve_stock(db_path, q)
-    posts = match_posts(q, limit=3)
+    posts = match_posts(q, limit=3, db_path=db_path)
     want_mkt = is_market_question(q)
     stock_like = bool(stock_query(q)) and not want_mkt
     if hits and (stock_like or (not want_mkt) or len(stock_query(q)) >= 2):

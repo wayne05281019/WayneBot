@@ -18,7 +18,14 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from biaoke_desk import _DIR, _INDEX, load_corpus
+from biaoke_desk import (
+    _DIR,
+    _INDEX,
+    ensure_biaoke_posts_table,
+    load_corpus,
+    load_corpus_cache_clear,
+    upsert_biaoke_posts,
+)
 
 logger = logging.getLogger("WayneBot.BiaokeIngest")
 
@@ -306,7 +313,7 @@ def _save_corpus(path: str, blob: Dict[str, Any], posts: List[Dict[str, Any]]) -
         fh.write("\n")
     os.replace(tmp, path)
     try:
-        load_corpus.cache_clear()
+        load_corpus_cache_clear()
     except Exception:
         pass
 
@@ -331,14 +338,27 @@ def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ro
 def ingest_public_posts(
     corpus_path: str = "",
     *,
+    db_path: str = "",
     session: Optional[requests.Session] = None,
     max_ids: int = 12,
     refresh_latest: int = 2,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋最新兩篇的飆大一／二層回覆。失敗不改海選。"""
+    """抓公開個人頁最新文＋最新兩篇的飆大一／二層回覆。失敗不改海選。
+
+    正式碟：動到的列 UPSERT 進同一顆 wayne_market.db 的 biaoke_posts。
+    種子 JSON 不整檔改寫，避免 Render 重開把新文蓋掉。
+    """
     path = corpus_path or _INDEX
+    dbp = str(db_path or "").strip()
+    if not dbp:
+        try:
+            from config import get_db_path
+
+            dbp = str(get_db_path() or "").strip()
+        except Exception:
+            dbp = ""
     sess = session or _session()
-    stats = {"fetched": 0, "added": 0, "updated": 0, "replies": 0, "n": 0}
+    stats = {"fetched": 0, "added": 0, "updated": 0, "replies": 0, "n": 0, "db": 0}
     try:
         user_html = fetch_html(USER_URL, sess)
         ids = parse_user_article_ids(user_html)[: max(1, int(max_ids))]
@@ -348,16 +368,20 @@ def ingest_public_posts(
     if not ids:
         return {**stats, "ok": False, "reason": "no_ids"}
 
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as fh:
-            blob = json.load(fh)
+    if corpus_path:
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as fh:
+                blob = json.load(fh)
+        else:
+            blob = {"source": f"cmoney-{AUTHOR_ID}", "n": 0, "from": "", "to": "", "posts": []}
     else:
-        blob = {"source": f"cmoney-{AUTHOR_ID}", "n": 0, "from": "", "to": "", "posts": []}
+        blob = load_corpus(dbp if dbp and os.path.isfile(dbp) else None)
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     by_id = {str(p.get("id") or ""): p for p in posts}
     added = 0
     updated = 0
     replies = 0
+    touched: List[str] = []
     refresh_n = max(1, int(refresh_latest))
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
@@ -372,6 +396,8 @@ def ingest_public_posts(
         stats["fetched"] += 1
         if row:
             hit = _merge_row(posts, by_id, row)
+            if hit:
+                touched.append(str(row.get("id") or aid))
             if hit == "added":
                 added += 1
             elif hit == "updated":
@@ -381,7 +407,22 @@ def ingest_public_posts(
                 hit = _merge_row(posts, by_id, rep)
                 if hit:
                     replies += 1
-    _save_corpus(path, blob, posts)
+                    rid = str(rep.get("id") or "")
+                    if rid:
+                        touched.append(rid)
+    if dbp:
+        ensure_biaoke_posts_table(dbp)
+        uniq = []
+        seen = set()
+        for aid in touched:
+            if aid and aid not in seen and aid in by_id:
+                seen.add(aid)
+                uniq.append(by_id[aid])
+        stats["db"] = upsert_biaoke_posts(dbp, uniq)
+    if corpus_path or not dbp:
+        _save_corpus(path, blob, posts)
+    else:
+        load_corpus_cache_clear()
     stats.update(
         {
             "ok": True,
@@ -392,11 +433,12 @@ def ingest_public_posts(
         }
     )
     logger.info(
-        "飆大公開匯入 added=%s updated=%s replies=%s n=%s",
+        "飆大公開匯入 added=%s updated=%s replies=%s n=%s db=%s",
         added,
         updated,
         replies,
         stats["n"],
+        stats.get("db") or 0,
     )
     return stats
 
@@ -404,7 +446,9 @@ def ingest_public_posts(
 def run_biaoke_ingest_quiet() -> None:
     """排程／輪詢用：失敗不影響 16:30 融合、不進海選。"""
     try:
-        ingest_public_posts()
+        from config import get_db_path
+
+        ingest_public_posts(db_path=get_db_path())
     except Exception:
         logger.exception("飆大定時匯入失敗")
 

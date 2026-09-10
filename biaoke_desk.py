@@ -2,9 +2,12 @@
 """飆客獨立區：語料檢索與觀點頁。不進海選、不改高低卡。"""
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
+import sqlite3
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
@@ -16,15 +19,189 @@ _INDEX = os.path.join(_DIR, "corpus_index.json")
 _YEAR_END = re.compile(r"(去年年底|去年底|年底|年終|過年|年終獎金|2025年底|12月)")
 _PROGRESS = re.compile(r"(進步|怎麼觀察|如何觀察|為什麼進步|為何進步|觀察方法|細微波)")
 
+_BIAOKE_POSTS_DDL = """
+CREATE TABLE IF NOT EXISTS biaoke_posts (
+    id TEXT PRIMARY KEY,
+    n INTEGER NOT NULL DEFAULT 0,
+    date TEXT NOT NULL DEFAULT '',
+    time TEXT NOT NULL DEFAULT '',
+    parent TEXT NOT NULL DEFAULT '',
+    layer INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'post',
+    tags TEXT NOT NULL DEFAULT '[]',
+    text TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+"""
+
+
+def ensure_biaoke_posts_table(db_path: str) -> None:
+    """公開語料 overlay。同一顆 wayne_market.db，不是私人表。"""
+    if not db_path:
+        return
+    parent = os.path.dirname(os.path.abspath(db_path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute(_BIAOKE_POSTS_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
+    """只寫動到的列。種子 JSON 不動。"""
+    if not db_path or not rows:
+        return 0
+    ensure_biaoke_posts_table(db_path)
+    now = datetime.now().isoformat(timespec="seconds")
+    n = 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        for row in rows:
+            aid = str(row.get("id") or "").strip()
+            if not aid:
+                continue
+            tags = row.get("tags") or []
+            if not isinstance(tags, str):
+                tags = json.dumps(list(tags), ensure_ascii=False)
+            conn.execute(
+                """
+                INSERT INTO biaoke_posts (
+                    id, n, date, time, parent, layer, kind, tags, text, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    n=excluded.n,
+                    date=excluded.date,
+                    time=excluded.time,
+                    parent=excluded.parent,
+                    layer=excluded.layer,
+                    kind=excluded.kind,
+                    tags=excluded.tags,
+                    text=excluded.text,
+                    updated_at=excluded.updated_at;
+                """,
+                (
+                    aid,
+                    int(row.get("n") or 0),
+                    str(row.get("date") or ""),
+                    str(row.get("time") or ""),
+                    str(row.get("parent") or ""),
+                    int(row.get("layer") or 0),
+                    str(row.get("kind") or "post"),
+                    tags,
+                    str(row.get("text") or ""),
+                    now,
+                ),
+            )
+            n += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return n
+
+
+def _overlay_posts(db_path: Optional[str]) -> List[Dict[str, Any]]:
+    if not db_path or not os.path.isfile(db_path):
+        return []
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+        ).fetchone()
+        if not hit:
+            return []
+        rows = conn.execute(
+            "SELECT id, n, date, time, parent, layer, kind, tags, text FROM biaoke_posts"
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        raw_tags = r[7]
+        try:
+            tags = json.loads(raw_tags) if isinstance(raw_tags, str) else list(raw_tags or [])
+        except json.JSONDecodeError:
+            tags = []
+        if not isinstance(tags, list):
+            tags = []
+        out.append(
+            {
+                "id": r[0],
+                "n": r[1],
+                "date": r[2] or "",
+                "time": r[3] or "",
+                "parent": r[4] or "",
+                "layer": int(r[5] or 0),
+                "kind": r[6] or "post",
+                "tags": tags,
+                "text": r[8] or "",
+            }
+        )
+    return out
+
 
 @lru_cache(maxsize=1)
-def load_corpus() -> Dict[str, Any]:
+def _load_seed() -> Dict[str, Any]:
     with open(_INDEX, encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def corpus_span() -> str:
-    blob = load_corpus()
+def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """git 種子 JSON + 同一顆行情庫 overlay。同一篇 id 以資料庫為準。"""
+    blob = copy.deepcopy(_load_seed())
+    posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
+    by_id = {str(p.get("id") or ""): p for p in posts if p.get("id")}
+    for row in _overlay_posts(db_path):
+        aid = str(row.get("id") or "")
+        if not aid:
+            continue
+        old = by_id.get(aid)
+        if old is None:
+            posts.append(row)
+            by_id[aid] = row
+        else:
+            old.update(row)
+    posts.sort(
+        key=lambda p: (
+            str(p.get("date") or ""),
+            str(p.get("time") or ""),
+            0 if p.get("kind") != "reply" else 1,
+            str(p.get("id") or ""),
+        )
+    )
+    for i, p in enumerate(posts, 1):
+        p["n"] = i
+    dates = [str(p.get("date") or "") for p in posts if p.get("date")]
+    blob["posts"] = posts
+    blob["n"] = len(posts)
+    blob["from"] = min(dates) if dates else blob.get("from") or ""
+    blob["to"] = max(dates) if dates else blob.get("to") or ""
+    return blob
+
+
+def load_corpus_cache_clear() -> None:
+    try:
+        _load_seed.cache_clear()
+    except Exception:
+        pass
+
+
+def _default_db_path() -> Optional[str]:
+    try:
+        from config import get_db_path
+
+        path = get_db_path()
+        return path if path and os.path.isfile(path) else None
+    except Exception:
+        return None
+
+
+def corpus_span(db_path: Optional[str] = None) -> str:
+    blob = load_corpus(db_path if db_path is not None else _default_db_path())
     return f"{blob.get('from') or ''}～{blob.get('to') or ''}　{blob.get('n') or 0} 篇"
 
 
@@ -65,7 +242,7 @@ def _date_ok(post: Dict[str, Any], start: str, end: str) -> bool:
     return start <= d <= end
 
 
-def search_biaoke(ask: str, *, limit: int = 6) -> str:
+def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) -> str:
     """關鍵字／時間查語料。沒對上就交給對話腦用官方 K 套框架，不說不猜。"""
     q = (ask or "").strip()
     if not q:
@@ -73,7 +250,7 @@ def search_biaoke(ask: str, *, limit: int = 6) -> str:
     if _PROGRESS.search(q) and not re.search(r"\d{4}", q):
         return format_biaoke_desk_html()
 
-    blob = load_corpus()
+    blob = load_corpus(db_path if db_path is not None else _default_db_path())
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     start, end = "", "9999"
     title = f"飆客語料　{html_escape(q)}"

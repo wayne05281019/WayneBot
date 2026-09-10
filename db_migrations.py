@@ -219,6 +219,27 @@ def _m010_etf_div_event(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m011_biaoke_posts(conn: sqlite3.Connection) -> None:
+    """飆大公開文 overlay。同一顆行情庫，不是私人表。CREATE IF NOT EXISTS，可重跑。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS biaoke_posts (
+            id TEXT PRIMARY KEY,
+            n INTEGER NOT NULL DEFAULT 0,
+            date TEXT NOT NULL DEFAULT '',
+            time TEXT NOT NULL DEFAULT '',
+            parent TEXT NOT NULL DEFAULT '',
+            layer INTEGER NOT NULL DEFAULT 0,
+            kind TEXT NOT NULL DEFAULT 'post',
+            tags TEXT NOT NULL DEFAULT '[]',
+            text TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_biaoke_posts_date ON biaoke_posts(date, time);
+        """
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -230,6 +251,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (8, "清空 AI 虛擬倉並重開 50 萬", _m008_reset_ai_desk),
     (9, "ETF 前一營業日單位淨值", _m009_etf_nav_snapshot),
     (10, "ETF 官方收益分配除息日", _m010_etf_div_event),
+    (11, "飆大公開文 overlay 表", _m011_biaoke_posts),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)

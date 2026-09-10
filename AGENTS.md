@@ -9,6 +9,15 @@
 - 核對有沒有更新：看 `https://waynebot-service.onrender.com/health` 的 `git_sha`，不要用正式 token 搶 `getUpdates`。
 - 代理人禁止再開 Cursor 話筒代理去「轉傳／對圖」；那不是使用者說的話筒。
 
+## 產品憲法（2026-09-10 使用者鎖死）
+
+**現在寫的、以後寫的，全部都要讓偉權與哥哥兩人都能完整用到每一個功能。** 這條壓過「先做偉權再補哥哥」、壓過單人測過就收工、壓過只合進分支不部署。
+
+- **話筒就是兩支手機**：更新＝合進 `main` → Render `waynebot-service`。不是 Cursor 代理、不是 LINE Keep、不是本機話筒。
+- **功能全同**：十二鈕、打代號兩張圖、海選／興櫃／連買／持股／觀察／AI倉／資金／大盤／記買入／飆大，兩邊都能走完同一條路。不能做成哥哥精簡版、偉權專用鈕、或某條路徑只給一個 uid。
+- **資料隔離不是功能隔離**：持股／觀察／AI倉／pending／上一檔／出圖檔按人分開，是避免洗掉對方，不是少給一邊功能。
+- **「全部都看過」**：把這條對話多出來的東西再掃一遍，兩人 uid 都走一次，寫出已做完／做到一半／還沒做。想到就講的補充，不要被當下新話題把舊項丟掉。
+
 ## 最優先・不可違反（2026-09-07 使用者鎖死，看過 Spending 紅框）
 
 Cursor 帳單「Included in Pro+」紅框裡有兩條：
@@ -47,8 +56,8 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 
 與文首「最優先」同一條：只准 Cursor Models，禁止 Other Models。下面是執行細節，不能放寬文首。
 
-- Task／computerUse／話筒代理預設不開；開了也會吃 Other Models。
-- 禁止為了「比較難」、話筒、開 LINE、看片子去換模型。難關留在 Cursor Models 做。
+- Task／computerUse／Cursor 話筒代理預設不開；開了也會吃 Other Models。
+- 禁止為了「比較難」、開 LINE、看片子去換模型。難關留在 Cursor Models 做。使用者要的「更新到話筒」＝部署 Render，不是開代理。
 
 ## 畫面要知道有沒有在做事（2026-09-04 起，使用者指定）
 
@@ -85,6 +94,8 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 ## 已落地、不要再當待辦
 
 - **Render 永久碟**：`wayne-data` 5GB，掛在 `/opt/render/project/src/data`（對到 `data/wayne_market.db`）。
+- **話筒更新路徑**：合進 `main` → Render `waynebot-service`。核對 `/health` 的 `git_sha`。偉權與哥哥手機同一顆 Bot。
+- **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。種子 JSON 只當底。
 - **雙 Bot**：已否決。不是偉權／哥哥各一顆機器人；延後清單裡的「雙 Bot」是第二顆 token／第二套產品，沒規格。功能全同＋雙人同時重度使用見文首「最高產品原則」。
 - **私人 Bot 白名單**：只認 Render 環境變數裡的兩個 Telegram uid（`TELEGRAM_CHAT_ID`＝偉權，`WAYNE_FAMILY_CHAT_IDS` 或逗號後＝哥哥）。真人 id 不准寫進 git。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉排程只寄白名單，不掃所有用過 Bot 的人。沒設任何 uid＝關門。
 - **公開 Release zip**：只准日 K／財報這類公開行情。GHA 上傳前 `strip_private_user_data` 清持股／觀察／成交／AI 倉／`tg_users`。不要把 Render 正式碟整顆上傳。

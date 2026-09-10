@@ -272,17 +272,35 @@ def test_strip_private_user_data_keeps_quotes(tmp_path):
     )
     conn.commit()
     conn.close()
+    from biaoke_desk import upsert_biaoke_posts
+
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": "184499206",
+                "date": "2026-09-10",
+                "time": "09:51",
+                "kind": "post",
+                "tags": ["測試"],
+                "text": "公開文 overlay 不是私人資料",
+            }
+        ],
+    )
     deleted = strip_private_user_data(db)
     assert deleted.get("user_holdings", 0) >= 1
     assert deleted.get("user_watchlist", 0) >= 1
     assert deleted.get("tg_users", 0) >= 1
+    assert "biaoke_posts" not in deleted
     assert list_tg_user_ids(db) == []
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM daily_quotes").fetchone()[0]
     h = conn.execute("SELECT COUNT(*) FROM user_holdings").fetchone()[0]
+    biao = conn.execute("SELECT COUNT(*) FROM biaoke_posts").fetchone()[0]
     conn.close()
     assert n == 1
     assert h == 0
+    assert biao == 1
     blob = Path(db).read_bytes()
     assert b"secret-uid-999" not in blob
 
