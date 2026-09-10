@@ -1350,8 +1350,9 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     ohlc = _card_ohlc_tuple(card, last)
     if ohlc:
         o, hi, lo, cl, prev = ohlc
-        cw, ch = 2.35, 4.15
-        candle_right = label_x - tw(label, 11.0) - 1.15
+        # 跟 28pt 收盤同高，畫在「收盤」左手邊；不要放標題列。
+        cw, ch = 2.7, 5.0
+        candle_right = label_x - tw(label, 11.0) - 1.35
         _draw_mini_candle(
             ax, candle_right - cw, close_y - ch * 0.5, cw, ch, o, hi, lo, cl, prev
         )
@@ -2322,7 +2323,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     box_w = (100 - 2 * inner_x - 2 * box_gap_x) / 3.0
 
     def metric_box(x, y, lab, px, dist, *, high, hit=False):
-        # 高低小盒子：左標右價；貼近高點淡粉、貼近低點淡綠，其餘白底。
+        # 一格兩欄：左一行標籤置中，右兩行價格＋％貼在一起，不要拆成三行。
         fc, ec = C["white"], C["line"]
         try:
             dlt = float(dist) if dist is not None else None
@@ -2341,17 +2342,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax.add_patch(patches.FancyBboxPatch(
             (x, y), box_w, box_h, boxstyle="round,pad=0,rounding_size=0.6",
             facecolor=fc, edgecolor=ec, linewidth=1.0, zorder=3))
-        lx, rx = x + 1.15, x + box_w - 1.2
-        ax.text(lx, y + box_h / 2, lab, fontproperties=_fp(11.0, "bold"), color=lc,
+        mid = y + box_h / 2
+        lx, rx = x + 1.25, x + box_w - 1.25
+        ax.text(lx, mid, lab, fontproperties=_fp(11.0, "bold"), color=lc,
                 ha="left", va="center", zorder=4)
-        ax.text(rx, y + box_h * 0.70, _fmt_price(px), fontproperties=_fp(16, "bold"),
+        ax.text(rx, mid + 1.12, _fmt_price(px), fontproperties=_fp(16, "bold"),
                 color=C["ink"], ha="right", va="center", zorder=4)
         d = _fmt_dist(dist)
         if high:
             dc = C["down"] if (dist is not None and float(dist) < 0) else C["up"]
         else:
             dc = C["up"]
-        ax.text(rx, y + box_h * 0.24, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
+        ax.text(rx, mid - 1.22, f"({d})" if d != "—" else d, fontproperties=_fp(10.5),
                 color=dc, ha="right", va="center", zorder=4)
 
     # 標題：左代號股名，右只放當下日期時間。標語不要。
