@@ -322,7 +322,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
             SELECT q.stock_id, q.volume, u.market_type
             FROM daily_quotes q
             JOIN stock_universe u ON u.stock_id = q.stock_id
-            WHERE replace(q.date,'-','')=? AND u.industry=? AND length(q.stock_id)=4
+            WHERE q.date=? AND u.industry=? AND length(q.stock_id)=4
               AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
             """,
             (as_of, industry),
@@ -333,7 +333,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
                 SELECT e.stock_id, e.volume, u.market_type
                 FROM emerging_quotes e
                 JOIN stock_universe u ON u.stock_id = e.stock_id
-                WHERE replace(e.date,'-','')=? AND u.industry=? AND length(e.stock_id)=4
+                WHERE e.date=? AND u.industry=? AND length(e.stock_id)=4
                   AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
                 """,
                 (as_of, industry),
