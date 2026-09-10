@@ -1,5 +1,14 @@
 # WayneBot agent notes
 
+## 話筒＝偉權／哥哥的 Telegram 軟體（2026-09-10 鎖死）
+
+使用者講「話筒」，**只**指偉權與哥哥手機 App，或 Telegram 網頁版，裡面實際在用的那顆 `@WC_ai_trade_bot`。
+
+- **不是** Cursor 話筒代理、computerUse、LINE Keep、本機模擬。
+- **更新到話筒**＝把程式合進 `main`，等 Render `waynebot-service` 重開。手機不會自動吃 Git 分支。
+- 核對有沒有更新：看 `https://waynebot-service.onrender.com/health` 的 `git_sha`，不要用正式 token 搶 `getUpdates`。
+- 代理人禁止再開 Cursor 話筒代理去「轉傳／對圖」；那不是使用者說的話筒。
+
 ## 最優先・不可違反（2026-09-07 使用者鎖死，看過 Spending 紅框）
 
 Cursor 帳單「Included in Pro+」紅框裡有兩條：
@@ -10,7 +19,7 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 這條壓過後面所有規則、壓過「比較難」、壓過話筒／開 LINE／看片子／對圖／computerUse。違反＝做錯。
 
 - 全部工作只准紅框**上方** Cursor Models。不准紅框**下方** Other Models。
-- **禁止** Task／子代理／computerUse／話筒代理。那些會吃 Other Models。沒有使用者當回合明文「准開話筒」就不准開。卡住用本機渲圖、pytest、curl，不要再開代理。
+- **禁止** Task／子代理／computerUse／Cursor 話筒代理。那些會吃 Other Models。卡住用本機渲圖、pytest、curl。使用者講「話筒」＝他們手機／網頁 Telegram，見文首。
 - **禁止**指定 opus、sonnet、gpt、grok-high、grok-xhigh、claude 或其他 listed slug。`model` 只能省略或 `inherit`（必須仍是 Cursor Models）。
 - 不能用換模型打斷 CI，也不能用正式 `TELEGRAM_BOT_TOKEN` 搶 `getUpdates`。
 
@@ -67,10 +76,11 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 - **Keep筆記**：話筒轉 LINE 時「選聯絡人」，只准指定 **Keep筆記** 這一個對話框來看排版／亂碼。不是官方 Keep 帳號、不是去側欄搜 Keep。不准傳給其他聯絡人。
 - **CaryBot**：要對高低卡準確性才開；對完關掉。不准當第二套策略來源。
 
-禁止再開任何其他 LINE 聊天室。禁止再開 Telegram 正式 Bot（`@WC_ai_trade_bot`）當話筒做轉傳／對圖。
+禁止再開任何其他 LINE 聊天室。
 禁止用正式 `TELEGRAM_BOT_TOKEN` 跑 `getUpdates`（跟 Render 搶輪詢）。本機 `WAYNE_SKIP_POLLING=1`。
+「更新到話筒」走 Render 正式服務，不要開 Cursor 代理去登他們的 Telegram。
 
-改排版先本機把轉 LINE 文字／長圖渲成圖對過。虛擬網頁 LINE 只在本機對完、且已登入時才開 **Keep筆記一次**；不要反覆對、不要為了看一眼就再開話筒代理花額度。
+改排版先本機把轉 LINE 文字／長圖渲成圖對過。虛擬網頁 LINE 只在本機對完、且已登入時才開 **Keep筆記一次**；不要反覆對、不要為了看一眼就再開 Cursor 代理花額度。
 
 ## 已落地、不要再當待辦
 
