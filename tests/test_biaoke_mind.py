@@ -18,7 +18,7 @@ from biaoke_mind import (
 
 def test_welcome_says_compile_not_menu():
     html = format_biaoke_welcome_html()
-    assert "對話窗口" in html
+    assert "直接打字" in html
     assert "問一檔" not in html
     assert "彙整" in DISCLAIMER
 

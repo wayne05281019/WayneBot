@@ -137,7 +137,7 @@ def test_desk_query_still_rules():
     assert "這不是買訊" in html
     assert "細微波" in html
     assert "兩年進步在哪" not in html
-    assert "對話窗口" not in html
+    assert "在。直接打字" not in html
 
 
 def test_volume_first_price_spike_is_high_volume_day():

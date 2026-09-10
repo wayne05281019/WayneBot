@@ -1,0 +1,64 @@
+# -*- coding: utf-8 -*-
+"""飆大即時對話線：有金鑰走 chat completions，pytest 預設不打外網。"""
+from unittest.mock import patch
+
+from biaoke_live import live_enabled, live_endpoint, live_model, live_reply, live_key
+
+
+def test_pytest_does_not_enable_live_without_flag(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.delenv("WAYNE_BIAOKE_LIVE_TEST", raising=False)
+    assert live_key() == "gsk_test"
+    assert not live_enabled()
+    assert live_reply(":memory:", "2330") == ""
+
+
+def test_groq_key_picks_groq_chat(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.delenv("WAYNE_BIAOKE_LLM_KEY", raising=False)
+    monkeypatch.delenv("WAYNE_BIAOKE_LLM_URL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("WAYNE_STT_KEY", raising=False)
+    assert live_enabled()
+    assert live_endpoint().startswith("https://api.groq.com")
+    assert "llama" in live_model()
+
+
+def test_live_reply_posts_chat_and_escapes(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    class _Res:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"content": "勤誠量先價行 <b>不是買訊</b>"}}
+                ]
+            }
+
+    with patch("biaoke_live.requests.post", return_value=_Res()) as post:
+        html = live_reply(":memory:", "勤誠怎麼看", [{"ask": "大盤", "answer": "費半先行"}])
+    assert "勤誠量先價行" in html
+    assert "<b>" not in html
+    assert "&lt;b&gt;" in html
+    kwargs = post.call_args.kwargs
+    assert post.call_args.args[0].startswith("https://api.groq.com")
+    body = kwargs["json"]
+    assert body["messages"][0]["role"] == "system"
+    assert body["messages"][-1]["content"] == "勤誠怎麼看"
+    assert any(m.get("content") == "大盤" for m in body["messages"])
+
+
+def test_answer_biaoke_uses_live_when_flagged(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    from biaoke_brain import answer_biaoke
+
+    with patch("biaoke_live.live_reply", return_value="即時：夜盤先看"):
+        html = answer_biaoke(":memory:", "大概何時止跌")
+    assert html == "即時：夜盤先看"
+    assert "這不是買訊" not in html

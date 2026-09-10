@@ -58,8 +58,8 @@ def test_welcome_teaches_chat_not_a_menu():
 
     html = format_biaoke_welcome_html()
     assert html == WINDOW_OPEN
-    assert "對話窗口" in html
     assert "直接打字" in html
+    assert "語音" in html
     assert "勤誠" not in html
     assert "彙整" not in html
     assert "問一檔" not in html

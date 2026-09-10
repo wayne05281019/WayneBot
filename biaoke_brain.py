@@ -19,7 +19,7 @@ DISCLAIMER = (
     "語料沒點名的檔也用同一套框架，可能看錯。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
-WINDOW_OPEN = "這是對話窗口。直接打字或語音。"
+WINDOW_OPEN = "在。直接打字或語音。"
 CHAT_HINT = WINDOW_OPEN
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
@@ -569,6 +569,18 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
     from biaoke_mind import follow_up_ask, format_methods_html
 
     q = follow_up_ask((ask or "").strip(), history)
+    if not q:
+        from biaoke_desk import format_biaoke_html
+
+        return format_biaoke_html("")
+    try:
+        from biaoke_live import live_reply
+
+        live = live_reply(db_path, q, history)
+    except Exception:
+        live = ""
+    if live:
+        return live
     if is_offtopic(q):
         return OFFTOPIC
     if is_desk_query(q):

@@ -300,7 +300,7 @@ HELP_TOPICS = {
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>刷新</b>：刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>飆大</b>：這顆對話腦的即時窗口（也叫飆客）；打字就回，不是海選\n"
+        "• <b>飆大</b>：即時對話窗口（也叫飆客）；打字或語音暢談，不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
@@ -363,8 +363,8 @@ HELP_TOPICS = {
         "• 要取消：改按其他按鈕即可，不會送出。\n"
         "\n"
         "<b>⑦ 飆大</b>\n"
-        "• 是什麼：這顆對話腦的即時窗口。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去就是對話。打字或語音即時回（偉權／哥哥同一條路）。食衣住行不答。\n"
+        "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
+        "• 怎麼用：按進去直接打字或語音。偉權／哥哥同一條路。食衣住行一句帶過。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
@@ -3555,8 +3555,8 @@ class WayneTelegramBot:
                 pass
             html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist)
             bucket = self._biaoke_hist.setdefault(actor, [])
-            bucket.append({"ask": q, "answer": html[:400]})
-            del bucket[:-8]
+            bucket.append({"ask": q, "answer": html[:800]})
+            del bucket[:-16]
         else:
             html = format_biaoke_html(q)
         parts = chunk_telegram_html(html, reflow=True)
