@@ -2906,7 +2906,7 @@ class WatchListTest(unittest.TestCase):
         send_src = inspect.getsource(WayneTelegramBot._send_watch)
         self.assertIn("disable_web_page_preview=True", send_src)
         self.assertGreaterEqual(send_src.count("disable_web_page_preview=True"), 2)
-        self.assertIn("_remove_watch_clicked", inspect.getsource(WayneTelegramBot.on_callback))
+        self.assertIn("_remove_watch_clicked", inspect.getsource(WayneTelegramBot._on_callback_bound))
 
 
 if __name__ == "__main__":

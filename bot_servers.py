@@ -15,7 +15,13 @@ import struct
 import tempfile
 import time
 import unicodedata
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple
+
+# 當下一則是誰在按。asyncio 任務各自一份，不能用 instance 全域。
+# 精簡六顆／例外頁回鍵盤都靠這，才不會哥哥出錯把偉權的十二鈕蓋過去。
+_ACTIVE_PHONE_UID: ContextVar[str] = ContextVar("wayne_phone_uid", default="")
+PHONE_BUSY = "這一步暫時沒跑完，請稍後再按一次。細節已記在後台，不會影響你其他按鈕。"
 
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
@@ -722,6 +728,10 @@ HELP_TOPICS = {
         "\n"
         "<b>主選單不見</b>\n"
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
+        "按鈕太多打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
+        "\n"
+        "<b>語音</b>\n"
+        "按輸入列麥克風講代號或問題，會先聽寫再當文字處理。\n"
         "\n"
         "<b>畫面怪、數字怪、按鈕錯了</b>\n"
         "按「回報」，打字或傳截圖給偉權。"
@@ -850,7 +860,11 @@ class WayneTelegramBot:
         uid: str = "",
     ) -> str:
         if message is not None:
-            uid = uid or WayneTelegramBot._uid_from_message(message)
+            if not uid:
+                uid = WayneTelegramBot._uid_from_message(message)
+                ctx = str(_ACTIVE_PHONE_UID.get() or "")
+                if ctx:
+                    uid = ctx
             if chat_id is None:
                 chat_id = int(message.chat_id)
         if user is not None:
@@ -1062,8 +1076,12 @@ class WayneTelegramBot:
         async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if await self._reject_stranger(update):
                 return
-            self._touch_from_update(update)
-            return await handler(update, context)
+            uid = self._touch_from_update(update)
+            token = _ACTIVE_PHONE_UID.set(uid)
+            try:
+                return await handler(update, context)
+            finally:
+                _ACTIVE_PHONE_UID.reset(token)
 
         return wrapped
 
@@ -1179,6 +1197,7 @@ class WayneTelegramBot:
 
     def _reply_menu(self, uid: str = ""):
         """預設兩排各七格（十二顆＋飆客＋空白）；精簡模式每人六顆。"""
+        uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
             from biaoke_digest import biaoke_button_label
@@ -1212,6 +1231,9 @@ class WayneTelegramBot:
     def _menu_uid_from_message(self, message, uid: str = "") -> str:
         if uid:
             return str(uid)
+        ctx = str(_ACTIVE_PHONE_UID.get() or "")
+        if ctx:
+            return ctx
         try:
             return str(getattr(message.from_user, "id", "") or "")
         except Exception:
@@ -1441,7 +1463,11 @@ class WayneTelegramBot:
     async def _restore_main_menu(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
         self._pending.pop(actor, None)
-        await message.reply_html("已回到兩排主選單。", reply_markup=self._reply_menu(uid))
+        if self._menu_compact_on(uid):
+            text = "已回到主選單（精簡六顆）。"
+        else:
+            text = "已回到兩排主選單。"
+        await message.reply_html(text, reply_markup=self._reply_menu(uid))
 
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
@@ -1690,12 +1716,12 @@ class WayneTelegramBot:
                 asyncio.to_thread(load_snapshot, self.db_path, kind, market),
                 timeout=25.0,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("連買名單失敗 kind=%s market=%s", kind, market)
             await self._delete_message(status)
             await self._streak_send_step(
                 message,
-                f"連買名單讀取失敗：{html_escape(e)}",
+                PHONE_BUSY,
                 inline=self._streak_kind_inline(MARKET_ALL),
             )
             self._pending[actor] = f"fbuy:kind:{MARKET_ALL}"
@@ -1752,10 +1778,10 @@ class WayneTelegramBot:
                 asyncio.to_thread(load_snapshot, self.db_path, kind, market),
                 timeout=25.0,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("連買清單失敗")
             await self._delete_message(status)
-            await message.reply_html(f"連買清單失敗：{html_escape(e)}")
+            await message.reply_html(PHONE_BUSY, reply_markup=self._keyboard())
             return
         await self._delete_message(status)
         rows = snap.stocks(days)
@@ -2349,7 +2375,7 @@ class WayneTelegramBot:
             if extra_keyboard:
                 payload["reply_markup"] = extra_keyboard.to_dict()
             elif attach_menu:
-                payload["reply_markup"] = self._reply_menu().to_dict()
+                payload["reply_markup"] = self._reply_menu(str(chat_id)).to_dict()
             resp = requests.post(url, json=payload, timeout=20)
             if getattr(resp, "status_code", 0) != 200:
                 logger.error(
@@ -2524,6 +2550,7 @@ class WayneTelegramBot:
                 "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
                 "\n"
                 "詳情按第一排「說明」，或打 /help。圖文在說明頁下方「圖文」。亂了按「回報」。\n"
+                "打「精簡選單」可收成六顆；「完整選單」恢復兩排。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n"
             ),
         )
@@ -2691,13 +2718,14 @@ class WayneTelegramBot:
             "仍在掃描全市場，完成後會自動推送。"
         )
 
-    async def _run_manual_screening(self, message):
+    async def _run_manual_screening(self, message, uid: str = ""):
         """手動海選：進度提示 + 逾時保護 + 完成後提示當沖可用。"""
-        actor = self._actor_key(message)
+        uid = str(uid or self._menu_uid_from_message(message) or "")
+        actor = self._actor_key(message, uid=uid)
         if actor in self._screening_running:
             await message.reply_text(
                 "海選進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(),
+                reply_markup=self._reply_menu(uid),
             )
             return
         async with self._screening_gate:
@@ -2706,13 +2734,13 @@ class WayneTelegramBot:
                     "海選正在掃描全市場（可能是你或家人剛按的），約 2～5 分鐘。\n"
                     "完成後你再按一次「海選」讀快取即可；名單是同一份，"
                     "不會和對方的持股／觀察／連買混在一起。",
-                    reply_markup=self._reply_menu(),
+                    reply_markup=self._reply_menu(uid),
                 )
                 return
             self._screening_global_owner = actor
         self._screening_running.add(actor)
         await self._dismiss_menu_transients(actor)
-        hub = self._reply_menu()
+        hub = self._reply_menu(uid)
         # 進度泡泡絕不可掛 ReplyKeyboard：刪掉時許多客戶端會把兩排主選單一起收掉。
         status = await message.reply_text(self._screening_progress_text(0))
         stop = asyncio.Event()
@@ -2763,11 +2791,10 @@ class WayneTelegramBot:
                 "或等明早 06:30 自動海選。",
                 reply_markup=hub,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("海選失敗")
             await message.reply_text(
-                f"海選失敗：{e}\n"
-                "請到 Render Logs 搜「四大選股失敗」；或稍後再按「海選」。",
+                PHONE_BUSY,
                 reply_markup=hub,
             )
         finally:
@@ -2905,9 +2932,10 @@ class WayneTelegramBot:
     async def emerging_screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_emerging_screening(update.message)
 
-    async def _run_emerging_screening(self, message):
+    async def _run_emerging_screening(self, message, uid: str = ""):
         """興櫃獨立海選：不跟上市櫃海選搶同一把鎖、不寫進上市櫃快取。"""
-        hub = self._reply_menu()
+        uid = str(uid or self._menu_uid_from_message(message) or "")
+        hub = self._reply_menu(uid)
         status = await message.reply_text(
             "興櫃海選開始：抓櫃買官方日均價、只掃黃金買點／重點觀察。\n"
             "跟上市櫃「海選」分開，不會混進那份名單。"
@@ -3047,14 +3075,18 @@ class WayneTelegramBot:
             tw_session_phase,
         )
 
-        uid = str(getattr(getattr(message, "from_user", None), "id", "") or "")
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
         actor = self._actor_key(message, uid=uid)
         if not hasattr(self, "_trade_running"):
             self._trade_running = set()
         if actor in self._trade_running:
             await message.reply_text(
                 f"{menu_label}進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(),
+                reply_markup=self._reply_menu(uid),
             )
             return
         self._trade_running.add(actor)
@@ -3070,7 +3102,7 @@ class WayneTelegramBot:
             if live_bucket == "daytrade" and not is_tw_equity_session():
                 await message.reply_html(
                     f"<b>{daytrade_closed_title(phase)}</b>\n<i>{daytrade_closed_message(phase)}</i>",
-                    reply_markup=self._reply_menu(),
+                    reply_markup=self._reply_menu(uid),
                 )
                 return
             if live_bucket == "daytrade" and is_tw_equity_session():
@@ -3085,7 +3117,7 @@ class WayneTelegramBot:
                 await message.reply_text(
                     f"⚠️ {menu_label}查詢逾時（名單讀取較久）。"
                     "請稍後再按一次；若持續發生請回報。",
-                    reply_markup=self._reply_menu(),
+                    reply_markup=self._reply_menu(uid),
                 )
                 return
             try:
@@ -3105,13 +3137,13 @@ class WayneTelegramBot:
                         f"<b>{display_title}</b>\n"
                         f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
                         "請按主選單「海選」執行後再查；會用盤中即時現價複核。</i>",
-                        reply_markup=self._reply_menu(),
+                        reply_markup=self._reply_menu(uid),
                     )
                 else:
                     await message.reply_html(
                         f"<b>{display_title}</b>\n"
                         f"<i>昨收掃描後此桶無候選，或盤中複核後無符合標的。</i>",
-                        reply_markup=self._reply_menu(),
+                        reply_markup=self._reply_menu(uid),
                     )
                 return
             await self._reply_trade_list(
@@ -3126,13 +3158,13 @@ class WayneTelegramBot:
         except asyncio.TimeoutError:
             await message.reply_text(
                 f"⚠️ {menu_label}盤中複核逾時，請稍後再按一次。",
-                reply_markup=self._reply_menu(),
+                reply_markup=self._reply_menu(uid),
             )
-        except Exception as e:
+        except Exception:
             logger.exception("%s 查詢失敗", live_bucket)
             await message.reply_text(
-                f"{menu_label}查詢失敗：{e}\n請稍後再按一次主選單「{menu_label}」。",
-                reply_markup=self._reply_menu(),
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
             )
         finally:
             self._trade_running.discard(actor)
@@ -3201,10 +3233,10 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
-        except Exception as e:
+        except Exception:
             logger.exception("大盤專頁失敗")
             await self._delete_message(status)
-            await message.reply_text(f"大盤讀取失敗：{e}", reply_markup=self._keyboard())
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
             return
         parts = chunk_telegram_html(html, reflow=True)
         if not parts:
@@ -3402,10 +3434,10 @@ class WayneTelegramBot:
                 reply_markup=self._keyboard(),
             )
             return
-        except Exception as e:
+        except Exception:
             logger.exception("資金移動失敗")
             await self._delete_message(status)
-            await update.message.reply_text(f"資金移動失敗：{e}", reply_markup=self._keyboard())
+            await update.message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
             return
         await self._delete_message(status)
         parts = chunk_telegram_html(html, reflow=True)
@@ -3628,12 +3660,9 @@ class WayneTelegramBot:
 
         try:
             out = await asyncio.to_thread(_build)
-        except Exception as e:
+        except Exception:
             logger.exception("產業說明圖失敗 code=%s", code)
             out = ""
-            err = e
-        else:
-            err = None
         if out and os.path.isfile(out):
             try:
                 with open(out, "rb") as f:
@@ -3647,9 +3676,9 @@ class WayneTelegramBot:
                 logger.exception("產業圖送出失敗 code=%s", code)
         try:
             html = await asyncio.to_thread(format_industry_html, code, self.db_path)
-        except Exception as e:
+        except Exception:
             logger.exception("產業說明失敗 code=%s", code)
-            html = f"產業說明失敗：{html_escape(err or e)}"
+            html = PHONE_BUSY
         await message.reply_html(
             html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
         )
@@ -3757,7 +3786,7 @@ class WayneTelegramBot:
             await self.market_cmd(upd, ctx)
             return
         if kind == "biaoke":
-            await self._send_biaoke_page(message, ask="")
+            await self._send_biaoke_page(message, ask="", uid=uid)
             return
         if kind == "flow":
             await self.flow_cmd(upd, ctx)
@@ -3912,18 +3941,22 @@ class WayneTelegramBot:
         uid = str(getattr(update.effective_user, "id", "") or "")
         if not uid:
             return
-        actor = self._actor_key(msg, uid=uid)
-        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
-        photos = getattr(msg, "photo", None) or []
-        fid = str(getattr(photos[-1], "file_id", "") or "") if photos else ""
-        cap = str(getattr(msg, "caption", "") or "")
-        async with self._pending_lock(actor):
-            if self._pending.get(actor) != "report":
-                return
-            self._pending.pop(actor, None)
-        await self._commit_issue_report(
-            msg, uid, body=cap or "（截圖）", photo_file_id=fid
-        )
+        token = _ACTIVE_PHONE_UID.set(uid)
+        try:
+            actor = self._actor_key(msg, uid=uid)
+            self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+            photos = getattr(msg, "photo", None) or []
+            fid = str(getattr(photos[-1], "file_id", "") or "") if photos else ""
+            cap = str(getattr(msg, "caption", "") or "")
+            async with self._pending_lock(actor):
+                if self._pending.get(actor) != "report":
+                    return
+                self._pending.pop(actor, None)
+            await self._commit_issue_report(
+                msg, uid, body=cap or "（截圖）", photo_file_id=fid
+            )
+        finally:
+            _ACTIVE_PHONE_UID.reset(token)
 
     async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = update.message
@@ -3938,17 +3971,21 @@ class WayneTelegramBot:
         uid = str(getattr(update.effective_user, "id", "") or "")
         if not uid:
             return
-        actor = self._actor_key(msg, uid=uid)
-        self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
-        fid = str(getattr(doc, "file_id", "") or "")
-        cap = str(getattr(msg, "caption", "") or "")
-        async with self._pending_lock(actor):
-            if self._pending.get(actor) != "report":
-                return
-            self._pending.pop(actor, None)
-        await self._commit_issue_report(
-            msg, uid, body=cap or "（截圖）", photo_file_id=fid
-        )
+        token = _ACTIVE_PHONE_UID.set(uid)
+        try:
+            actor = self._actor_key(msg, uid=uid)
+            self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
+            fid = str(getattr(doc, "file_id", "") or "")
+            cap = str(getattr(msg, "caption", "") or "")
+            async with self._pending_lock(actor):
+                if self._pending.get(actor) != "report":
+                    return
+                self._pending.pop(actor, None)
+            await self._commit_issue_report(
+                msg, uid, body=cap or "（截圖）", photo_file_id=fid
+            )
+        finally:
+            _ACTIVE_PHONE_UID.reset(token)
 
     async def on_text(
         self,
@@ -3969,6 +4006,13 @@ class WayneTelegramBot:
         if not text:
             return
         uid = str(update.effective_user.id)
+        token = _ACTIVE_PHONE_UID.set(uid)
+        try:
+            await self._on_text_bound(update, context, raw=raw, text=text, uid=uid)
+        finally:
+            _ACTIVE_PHONE_UID.reset(token)
+
+    async def _on_text_bound(self, update, context, *, raw, text, uid: str):
         actor = self._actor_key(update.message, uid=uid)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
         if text.lower().lstrip("/") in ("start", "開始"):
@@ -4219,6 +4263,14 @@ class WayneTelegramBot:
             return
         if await self._reject_stranger(update):
             return
+        uid = str(getattr(update.effective_user, "id", "") or "")
+        token = _ACTIVE_PHONE_UID.set(uid)
+        try:
+            await self._on_voice_bound(update, context)
+        finally:
+            _ACTIVE_PHONE_UID.reset(token)
+
+    async def _on_voice_bound(self, update, context):
         from voice_stt import (
             STT_MAX_BYTES,
             STT_MAX_SEC,
@@ -4259,15 +4311,13 @@ class WayneTelegramBot:
                 await update.message.reply_html("這段語音太大。請講短一點再傳。")
                 return
             text = await asyncio.to_thread(transcribe_audio, tmp)
-        except Exception as exc:
+        except Exception:
             logger.exception("voice stt failed")
             try:
                 await wait.delete()
             except Exception:
                 pass
-            await update.message.reply_html(
-                f"聽寫失敗：{html_escape(str(exc)[:180])}"
-            )
+            await update.message.reply_html(PHONE_BUSY, reply_markup=self._keyboard())
             return
         finally:
             if tmp:
@@ -4361,9 +4411,9 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception as e:
+        except Exception:
             logger.exception("AI 模擬倉顯示失敗")
-            await message.reply_text(f"AI 模擬倉顯示失敗：{e}", reply_markup=self._keyboard())
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
 
     async def _send_ai_evolve(self, message, uid: str):
         """只看進化編碼與日誌，不執行買賣。"""
@@ -4381,9 +4431,9 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception as e:
+        except Exception:
             logger.exception("AI 進化回報失敗")
-            await message.reply_text(f"AI 進化回報失敗：{e}", reply_markup=self._keyboard())
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
 
     async def _run_ai_now(self, message, uid: str):
         self._touch_user(uid)
@@ -4412,9 +4462,9 @@ class WayneTelegramBot:
             for i, part in enumerate(parts):
                 kb = self._ai_desk_keyboard(positions) if i == len(parts) - 1 else None
                 await message.reply_html(part, reply_markup=kb, disable_web_page_preview=True)
-        except Exception as e:
+        except Exception:
             logger.exception("AI 操盤失敗")
-            await message.reply_text(f"AI 操盤失敗：{e}", reply_markup=self._keyboard())
+            await message.reply_text(PHONE_BUSY, reply_markup=self._keyboard())
         finally:
             await self._delete_message(status)
 
@@ -5285,6 +5335,13 @@ class WayneTelegramBot:
         if await self._reject_stranger(update):
             return
         self._touch_user(uid, getattr(q.from_user, "first_name", "") or "")
+        token = _ACTIVE_PHONE_UID.set(uid)
+        try:
+            await self._on_callback_bound(update, context, q, uid)
+        finally:
+            _ACTIVE_PHONE_UID.reset(token)
+
+    async def _on_callback_bound(self, update, context, q, uid: str):
         data = q.data or ""
         if data.startswith("cat:") or data.startswith("noop"):
             hints = {

@@ -499,7 +499,7 @@ def test_streak_home_does_not_clear_other_user_pending():
 def test_industry_callback_passes_clicker_uid():
     import inspect
 
-    src = inspect.getsource(WayneTelegramBot.on_callback)
+    src = inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert "_send_industry(q.message, data[2:].strip(), str(q.from_user.id))" in src
     ind = inspect.getsource(WayneTelegramBot._send_industry)
     assert "uid or self._uid_from_message" in ind

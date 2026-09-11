@@ -3,7 +3,7 @@ def test_typed_shortcuts_open_overnight_and_ai_desk():
 
     from bot_servers import WayneTelegramBot
 
-    src = inspect.getsource(WayneTelegramBot.on_text)
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
     assert '"隔沖"' in src and '"隔日"' in src
     assert '"AI模擬倉"' in src and '"模擬倉"' in src and '"AI倉"' in src
     assert "_send_ai_desk_view" in src
@@ -16,7 +16,7 @@ def test_refresh_last_button_keeps_decision_card_alias():
 
     assert MENU_BTN_CARD == "刷新"
     assert "決策卡" in MENU_BTN_CARD_ALIASES
-    src = inspect.getsource(WayneTelegramBot.on_text)
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
     assert "MENU_BTN_CARD_ALIASES" in src
     assert "decision_card_btn" in src
 
@@ -630,7 +630,7 @@ def test_sell_holdings_prompt_shows_odd_lots():
     assert "現有 1張439股" in mixed
     assert "200股" in mixed
     assert "1 72" not in mixed
-    src = inspect.getsource(WayneTelegramBot.on_callback)
+    src = inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert "_sell_holdings_prompt" in src
     assert "_held_lots_for" in src
 
@@ -653,7 +653,7 @@ def test_buy_holdings_prompt_shows_odd_lots():
     assert "現有 1張439股" in mixed
     assert "200股" in mixed
     assert "2 68.5" not in mixed
-    src = inspect.getsource(WayneTelegramBot.on_callback)
+    src = inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert "_buy_holdings_prompt" in src
 
 
