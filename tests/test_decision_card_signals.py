@@ -672,3 +672,71 @@ def test_closed_cards_draw_industry_and_fixed_close_clock(tmp_path, monkeypatch)
     assert any("已除權還原" in t for t in seen)
     assert any("60日量第 5 名" in t for t in seen)
     assert not any("23:22" in t for t in seen)
+
+
+def test_kotei_wait_label_matches_cary_months():
+    from decision_card_signals import format_kotei_note, kotei_to_window_extreme, kotei_wait_label
+
+    assert kotei_wait_label(5) == "再5個交易日"
+    assert "約1個月" in kotei_wait_label(19)
+    assert "約2個月" in kotei_wait_label(30)
+    note = format_kotei_note(m20_low=19, m60_low=30)
+    assert "月線還有19個交易日（約1個月）" in note
+    assert "季線扣抵距低點還有30個交易日（約2個月）" in note
+    assert "不是買訊" in note
+    hi = format_kotei_note(close=30, ma60=28, hl="20高", m60_high=5)
+    assert "再5個交易日過高點" in hi
+    assert "進場仍看表" in hi
+    dates = [f"{20250101 + i}" for i in range(80)]
+    closes = [10.0] * 80
+    closes[-2] = 7.0
+    got = kotei_to_window_extreme(dates, closes, 20, kind="low")
+    assert got["ok"]
+    assert got["remain"] == 19
+    highs = [10.0] * 80
+    highs[24] = 20.0
+    got_h = kotei_to_window_extreme(dates, highs, 60, kind="high")
+    assert got_h["ok"]
+    assert got_h["remain"] == 5
+
+
+@pytest.mark.production_db
+def test_4739_kotei_matches_cary_sep10():
+    """CaryBot 4739 2026-09-10：月線約一個月、季線約兩個月。"""
+    from tests.conftest import require_production_db
+    from wayne_navigator import NavigatorEngine
+
+    db = require_production_db()
+    card = NavigatorEngine(db).get_decision_card("4739", lookback=20, as_of="20260910")
+    assert card.get("kotei_m20_low_days") == 19
+    assert card.get("kotei_m60_low_days") == 30
+    note = card.get("kotei_note") or ""
+    assert "約1個月" in note
+    assert "約2個月" in note
+    assert "不是買訊" in note
+    html = stance_explain(card.get("stance_kind") or "wait", card=card)
+    assert "約2個月" in html
+    assert "語料" not in html
+
+
+@pytest.mark.production_db
+def test_3630_kotei_five_days_to_high():
+    """CaryBot 3630 2026-09-04：季線扣抵再過五天通過最高點。"""
+    import sqlite3
+
+    from decision_card_signals import kotei_to_window_extreme
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        "SELECT date, close, high FROM daily_quotes WHERE stock_id='3630' AND date<=? ORDER BY date",
+        ("20260904",),
+    ).fetchall()
+    conn.close()
+    dates = [r[0] for r in rows]
+    highs = [r[2] for r in rows]
+    got = kotei_to_window_extreme(dates, highs, 60, kind="high")
+    assert got.get("ok")
+    assert got["remain"] == 5
+    assert str(got.get("extreme_date") or "").replace("-", "")[:8] == "20260617"

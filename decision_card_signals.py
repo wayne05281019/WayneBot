@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -835,6 +835,155 @@ def _stance_kind_fallback(kind: str, *, on_list: bool = False) -> str:
     return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
 
 
+def kotei_to_window_extreme(
+    dates: Sequence[Any],
+    values: Sequence[Any],
+    period: int,
+    *,
+    kind: str = "low",
+) -> Dict[str, Any]:
+    """均線扣抵：n 日前那根是今天的扣抵值；窗內極值還要幾根交易日才被扣到。
+
+    月線 n=20、季線 n=60。對齊 CaryBot：
+    - 3630 2026-09-04「季線扣抵再過五天通過最高點」→ 季線距窗內高 = 5
+    - 4739 2026-09-10「月線一個月／季線兩個月」→ 月線 19 日、季線 30 日（約 1／2 個月）
+    不是買訊、不進海選。
+    """
+    empty: Dict[str, Any] = {"ok": False, "remain": None, "period": int(period or 0)}
+    n = int(period or 0)
+    if n < 5:
+        return empty
+    ds: List[str] = []
+    vs: List[float] = []
+    for raw_d, raw_v in zip(list(dates or []), list(values or [])):
+        d = _ymd8(raw_d)
+        try:
+            v = float(raw_v)
+        except (TypeError, ValueError):
+            continue
+        if len(d) != 8 or v != v or v <= 0:
+            continue
+        ds.append(d)
+        vs.append(v)
+    if len(ds) <= n:
+        return empty
+    t = len(ds) - 1
+    kote_i = t - n
+    if kote_i < 0:
+        return empty
+    win = range(kote_i + 1, t + 1)
+    if kind == "high":
+        ext_i = max(win, key=lambda i: vs[i])
+    else:
+        ext_i = min(win, key=lambda i: vs[i])
+    remain = int(ext_i - kote_i)
+    return {
+        "ok": True,
+        "period": n,
+        "kind": "high" if kind == "high" else "low",
+        "kotei_date": ds[kote_i],
+        "kotei_value": vs[kote_i],
+        "extreme_date": ds[ext_i],
+        "extreme": vs[ext_i],
+        "remain": remain,
+    }
+
+
+def kotei_wait_label(td: Any) -> str:
+    """交易日 → 等多久。13 日以上用約 N 個月（20 日≈1 個月），對齊康普 19／30。"""
+    try:
+        n = int(td)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return "已通過"
+    if n <= 5:
+        return f"再{n}個交易日"
+    months = int(round(n / 20.0))
+    if n >= 13 and months >= 1:
+        return f"{n}個交易日（約{months}個月）"
+    weeks = max(1, int(round(n / 5.0)))
+    return f"{n}個交易日（約{weeks}週）"
+
+
+def format_kotei_note(
+    *,
+    close: float = 0.0,
+    ma60: float = 0.0,
+    hl: str = "",
+    m20_low: Optional[int] = None,
+    m60_low: Optional[int] = None,
+    m60_high: Optional[int] = None,
+) -> str:
+    """高低卡說明用。過高點只在站上季線且即將扣到高點時寫；否則寫距低點要等多久。"""
+    try:
+        c = float(close or 0)
+        q = float(ma60 or 0)
+    except (TypeError, ValueError):
+        c, q = 0.0, 0.0
+    hi = str(hl or "")
+    above_q = q > 0 and c >= q * 0.998
+    near_high = hi in ("20高", "10高")
+    try:
+        rh = int(m60_high) if m60_high is not None else None
+    except (TypeError, ValueError):
+        rh = None
+    if above_q and near_high and rh is not None and 0 < rh <= 15:
+        return f"季線扣抵{kotei_wait_label(rh)}過高點。只是說明，進場仍看表。"
+    bits: List[str] = []
+    try:
+        rq = int(m60_low) if m60_low is not None else None
+    except (TypeError, ValueError):
+        rq = None
+    try:
+        rm = int(m20_low) if m20_low is not None else None
+    except (TypeError, ValueError):
+        rm = None
+    if rq is not None and rq > 0:
+        bits.append("季線扣抵距低點還有" + kotei_wait_label(rq))
+    if rm is not None and rm > 0:
+        bits.append("月線還有" + kotei_wait_label(rm))
+    if not bits:
+        return ""
+    return "；".join(bits) + "。這是等多久打底，不是買訊。"
+
+
+def attach_kotei_note(
+    card: Dict[str, Any],
+    dates: Sequence[Any],
+    closes: Sequence[Any],
+    highs: Optional[Sequence[Any]] = None,
+) -> Dict[str, Any]:
+    """寫進決策卡。不改黃金買點、不進海選。"""
+    if not card or card.get("error"):
+        return card
+    m20 = kotei_to_window_extreme(dates, closes, 20, kind="low")
+    m60l = kotei_to_window_extreme(dates, closes, 60, kind="low")
+    m60h = kotei_to_window_extreme(dates, highs if highs is not None else closes, 60, kind="high")
+    card["kotei_m20_low_days"] = m20.get("remain") if m20.get("ok") else None
+    card["kotei_m60_low_days"] = m60l.get("remain") if m60l.get("ok") else None
+    card["kotei_m60_high_days"] = m60h.get("remain") if m60h.get("ok") else None
+    card["kotei_m20_low_date"] = m20.get("extreme_date") or ""
+    card["kotei_m60_low_date"] = m60l.get("extreme_date") or ""
+    card["kotei_m60_high_date"] = m60h.get("extreme_date") or ""
+    last_hl = ""
+    tbl = card.get("table")
+    try:
+        if tbl is not None and hasattr(tbl, "iloc") and len(tbl) and "高低" in tbl.columns:
+            last_hl = str(tbl.iloc[0].get("高低") or "")
+    except Exception:
+        last_hl = str(card.get("hl") or "")
+    card["kotei_note"] = format_kotei_note(
+        close=float(card.get("close") or 0),
+        ma60=float(card.get("ma60") or 0),
+        hl=last_hl,
+        m20_low=card.get("kotei_m20_low_days"),
+        m60_low=card.get("kotei_m60_low_days"),
+        m60_high=card.get("kotei_m60_high_days"),
+    )
+    return card
+
+
 def stance_explain(
     kind: str,
     *,
@@ -850,10 +999,15 @@ def stance_explain(
     if note and not table_reads_as_low(card):
         if "不是叫你買" not in note:
             note = note.rstrip("。") + "。不是叫你買。"
-        return note
-    if card:
-        return _stance_from_table(kind, card, on_list=on_list)
-    return _stance_kind_fallback(kind, on_list=on_list)
+        body = note
+    elif card:
+        body = _stance_from_table(kind, card, on_list=on_list)
+    else:
+        body = _stance_kind_fallback(kind, on_list=on_list)
+    kotei = str((card or {}).get("kotei_note") or "").strip()
+    if kotei and not on_list and kotei not in body:
+        body = (body.rstrip("。") + "。" if body else "") + kotei
+    return body
 
 
 def alert_tag(

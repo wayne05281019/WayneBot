@@ -852,6 +852,7 @@ class NavigatorEngine:
             "space_60": space_60,
             "temp_c": latest["溫度計"],
             "ma20": float(latest["ma20"]),
+            "ma60": float(latest["ma60"] or 0),
             "ma60s": ma60s,
             "qty60": int(qty60),
             "xq_notes": xq_notes,
@@ -881,6 +882,17 @@ class NavigatorEngine:
             from sell_discipline import attach_sell
 
             attach_sell(payload, hl_tags, trend_labels)
+        except Exception:
+            pass
+        try:
+            from decision_card_signals import attach_kotei_note
+
+            attach_kotei_note(
+                payload,
+                df["date"].tolist(),
+                px.tolist(),
+                df["high"].astype(float).tolist(),
+            )
         except Exception:
             pass
         try:
