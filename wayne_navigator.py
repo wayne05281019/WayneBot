@@ -712,11 +712,19 @@ class NavigatorEngine:
             ))
             if space_60 and sp_prev and space_60 >= sp_prev + 6:
                 badges.append("波動放大")
+        try:
+            stage_src = df["close"].where(~df["is_halt"]) if "is_halt" in df.columns else df["close"]
+            monthly_kind, monthly_stage, monthly_short = monthly_stage_from_ohlc(
+                df["date"].tolist(), stage_src.tolist()
+            )
+        except Exception:
+            monthly_kind, monthly_stage, monthly_short = "", "", ""
         regime = card_regime_label(
             float(latest["close"]),
             float(latest["ma20"] or latest["close"]),
             float(latest["ma60"] or latest["ma20"] or latest["close"]),
             space_60=float(space_60 or 0),
+            monthly_kind=monthly_kind,
         )
         if regime == "整理格局":
             try:
@@ -736,13 +744,6 @@ class NavigatorEngine:
             except Exception:
                 pass
         badges.append(regime)
-        try:
-            stage_src = df["close"].where(~df["is_halt"]) if "is_halt" in df.columns else df["close"]
-            monthly_kind, monthly_stage, monthly_short = monthly_stage_from_ohlc(
-                df["date"].tolist(), stage_src.tolist()
-            )
-        except Exception:
-            monthly_kind, monthly_stage, monthly_short = "", "", ""
         if monthly_stage:
             badges.append(monthly_stage)
         # 高低／均線略過無量日；20 日表要含官方無量交易日，否則冷門／KY 會跳 9/2、9/3。
@@ -1227,6 +1228,67 @@ def ohlc_line_bits(card, last=None, prev_c=None) -> list:
     return bits
 
 
+def ohlc_face_rows(card, last=None, prev_c=None) -> list:
+    """今開高一列、今低／昨收一列，不要一條長字把昨天跟今天黏在一起。"""
+    bits = ohlc_line_bits(card, last, prev_c)
+    if len(bits) >= 4:
+        return ["　".join(bits[:2]), "　".join(bits[2:4])]
+    return ["　".join(bits)] if bits else []
+
+
+def etf_nav_is_yesterday(card) -> bool:
+    """證交所單位淨值是已結算的前一日；盤中對的一定是昨淨值。"""
+    if not card:
+        return False
+    if card.get("is_live"):
+        return True
+    date = str(card.get("etf_nav_date") or "")
+    latest = str(card.get("latest_date") or "")
+    return bool(date and latest and date != latest)
+
+
+def etf_nav_line_bits(card) -> list:
+    """左欄第二層：昨淨值／折價或溢價。盤中對昨淨值，不要跟現價混成「收盤旁淨值」。"""
+    if not card or card.get("etf_nav") is None:
+        return []
+    try:
+        nav_f = float(card.get("etf_nav"))
+    except (TypeError, ValueError):
+        return []
+    if nav_f <= 0:
+        return []
+    date = str(card.get("etf_nav_date") or "")
+    md = f"{date[4:6]}/{date[6:8]}" if len(date) == 8 else ""
+    prev = etf_nav_is_yesterday(card)
+    lab = "昨淨值" if prev else "淨值"
+    bits = [f"{lab} {nav_f:.2f}" + (f"（{md}）" if md else "")]
+    prem = card.get("etf_premium")
+    if prem is None:
+        return bits
+    try:
+        pv = float(prem)
+    except (TypeError, ValueError):
+        return bits
+    vs = "（對昨淨值）" if prev else ""
+    if pv > 0.005:
+        bits.append(f"溢價 {pv:.2f}%{vs}")
+    elif pv < -0.005:
+        bits.append(f"折價 {abs(pv):.2f}%{vs}")
+    else:
+        bits.append("平價" + vs)
+    return bits
+
+
+def _ohlc_nav_extra_h(card, last=None, prev_c=None) -> float:
+    """左欄多出來的今低／昨收列＋淨值列。右欄不再為淨值加高。"""
+    extra = 0.0
+    if len(ohlc_face_rows(card, last, prev_c)) >= 2:
+        extra += 2.25
+    if etf_nav_line_bits(card):
+        extra += 2.45
+    return extra
+
+
 def table_row_is_live(card, row_date) -> bool:
     """20 天表第一列若是盤中即時列，日期旁要標盤中。"""
     if not card or not card.get("is_live"):
@@ -1347,10 +1409,8 @@ def _price_badge_row_y(pane_y, row_i, badge_h, badge_gap) -> float:
 
 
 def _etf_nav_extra_h(card) -> float:
-    """右欄四行拉開後的加高。7.2 會讓淨值貼在漲跌下、折溢價再黏一行。"""
-    if card is None or card.get("etf_nav") is None:
-        return 0.0
-    return 11.6 if card.get("etf_premium") is not None else 5.8
+    """舊名：淨值改畫左欄，高度跟 _ohlc_nav_extra_h 同一套。"""
+    return _ohlc_nav_extra_h(card)
 
 
 def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
@@ -1398,17 +1458,10 @@ def _close_move_bits(chg, chg_amt) -> list:
 
 
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
-    """右欄現價或收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。今日小 K 畫在標籤左邊。"""
-    extra = _etf_nav_extra_h(card)
-    if extra:
-        # 28pt 收盤與 15.5pt 漲跌中心距至少約 4.8，否則右上會黏成一塊。
-        close_y = y + price_h - 2.70
-        chg_y = close_y - 4.80
-        chg_fs = 13.5 if tw("　".join(chg_bits), 15.5) > 36.0 else 15.5
-    else:
-        close_y = y + price_h * 0.70
-        chg_y = y + price_h * 0.24
-        chg_fs = 15.5
+    """右欄現價或收盤／較昨漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。"""
+    close_y = y + price_h * 0.70
+    chg_y = y + price_h * 0.24
+    chg_fs = 15.5
     ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
             color=chg_c, ha="right", va="center", zorder=3)
     label = session_price_label(card)
@@ -1437,45 +1490,38 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
     move_s = "　".join(chg_bits)
     if ohlc and ohlc[4]:
         move_s = "較昨　" + move_s
-        if extra:
-            chg_fs = 13.5 if tw(move_s, 15.5) > 36.0 else chg_fs
+        if tw(move_s, 15.5) > 36.0:
+            chg_fs = 13.5
     ax.text(px_right, chg_y, move_s,
             fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
-    if not extra:
-        return
-    try:
-        nav_f = float(card.get("etf_nav"))
-    except (TypeError, ValueError):
-        return
-    date = str(card.get("etf_nav_date") or "")
-    md = f"{date[4:6]}/{date[6:8]}" if len(date) == 8 else ""
-    nav_s = f"{nav_f:.2f}" + (f"（{md}）" if md else "")
-    prem = card.get("etf_premium")
-    prem_c = C["ink"]
-    try:
-        if prem is not None:
-            pv = float(prem)
-            if pv > 0:
-                prem_c = C["up"]
-            elif pv < 0:
-                prem_c = C["down"]
+
+
+def _paint_price_left(ax, tw, C, x, y, price_h, card, last, prev_c, mc_val):
+    """左欄：今開高、今低／昨收、昨淨值／折溢價、主力成本。溢紅折綠。"""
+    cy = y + price_h - 2.25
+    for line in ohlc_face_rows(card, last, prev_c):
+        ax.text(x, cy, line, fontproperties=_fp(13.0), color=C["ink_soft"], va="center", zorder=3)
+        cy -= 2.25
+    nav_bits = etf_nav_line_bits(card)
+    if nav_bits:
+        ax.text(x, cy, nav_bits[0], fontproperties=_fp(12.0, "bold"), color=C["ink"], va="center", zorder=3)
+        if len(nav_bits) > 1:
+            prem = nav_bits[1]
+            if prem.startswith("溢"):
+                pc = C["up"]
+            elif prem.startswith("折"):
+                pc = C["down"]
             else:
-                prem_c = C["ink"]
-    except (TypeError, ValueError):
-        prem = None
-        prem_c = C["ink"]
-    nav_y = chg_y - 3.50
-    ax.text(
-        px_right, nav_y, f"淨值 {nav_s}",
-        fontproperties=_fp(12.0, "bold"),
-        color=prem_c if prem is not None else C["ink"],
-        ha="right", va="center", zorder=3,
-    )
-    if prem is not None:
+                pc = C["ink"]
+            ax.text(
+                x + tw(nav_bits[0], 12.0) + 2.0, cy, prem,
+                fontproperties=_fp(12.0, "bold"), color=pc, va="center", zorder=3,
+            )
+        cy -= 2.25
+    if mc_val is not None:
         ax.text(
-            px_right, nav_y - 3.40, f"折溢價 {float(prem):+.2f}%",
-            fontproperties=_fp(13.5, "bold"), color=prem_c,
-            ha="right", va="center", zorder=3,
+            x, cy, f"主力成本 {float(mc_val):.2f}（分點平均買超）",
+            fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3,
         )
 
 
@@ -2259,13 +2305,17 @@ def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w
     same_row = ""
     below: list = []
     if note:
-        # 整句塞得進標題右就同一行；塞不下整段仍走下一行，不把一句拆兩截。
-        if remain >= 16.0 and tw(note, 11.2) <= remain:
-            same_row = note
+        paras = [p.strip() for p in note.split("\n") if p.strip()]
+        first = paras[0] if paras else ""
+        rest = paras[1:]
+        # 扣抵另起一段；整句塞得進標題右才同一行，不要跟扣抵黏成一塊。
+        if not rest and remain >= 16.0 and tw(first, 11.2) <= remain:
+            same_row = first
         else:
-            below = _wrap_fit(note, 11.2, full_w, fig_w)
+            for para in paras:
+                below.extend(_wrap_fit(para, 11.2, full_w, fig_w) or [para])
             if not below:
-                below = [note]
+                below = paras or [note]
     if same_row and not below:
         h = 4.5
     elif same_row:
@@ -2425,7 +2475,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         mc_val = None
     # 有分點平均買超才加一行；沒有真數就不畫、不加高度。
     mc_line_h = 2.45 if mc_val is not None else 0.0
-    price_h = 8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap + mc_line_h + _etf_nav_extra_h(card)
+    price_h = (
+        8.2 + len(badge_rows) * badge_h + (len(badge_rows) - 1) * badge_gap
+        + mc_line_h + _ohlc_nav_extra_h(card)
+    )
     hi_pane_h = title_band + pane_pad + box_h + pane_pad
     lo_pane_h = title_band + pane_pad + low_rows * box_h + (low_rows - 1) * box_gap + pane_pad
     H = (
@@ -2536,20 +2589,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     close_s = _fmt_price(card["close"])
     chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card)
-    ohlc_bits = ohlc_line_bits(card, prev_c=prev_c)
-    ohlc_y = y + price_h - 2.25
-    ax.text(pad_x + 3.2, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
-            color=C["ink_soft"], va="center", zorder=3)
-    if mc_val is not None:
-        ax.text(
-            pad_x + 3.2,
-            ohlc_y - 2.2,
-            f"主力成本 {mc_val:.2f}（分點平均買超）",
-            fontproperties=_fp(12.5, "bold"),
-            color=C["ink"],
-            va="center",
-            zorder=3,
-        )
+    _paint_price_left(ax, tw, C, pad_x + 3.2, y, price_h, card, None, prev_c, mc_val)
     for row_i, brow in enumerate(badge_rows):
         by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = pad_x + 3.2
@@ -2955,20 +2995,10 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("今開高低", ohlc or "—"),
             *([kv_compact("昨收", _fmt_price(prev_c))] if prev_c else []),
             kv_compact(session_price_label(card), f"{_fmt_price(card['close'])}　{('較昨 ' + move) if prev_c else move}"),
-            *([
-                kv_compact(
-                    "淨值",
-                    f"{float(card['etf_nav']):.2f}"
-                    + (
-                        f"（{str(card.get('etf_nav_date'))[4:6]}/{str(card.get('etf_nav_date'))[6:8]}）"
-                        if len(str(card.get('etf_nav_date') or '')) == 8
-                        else ""
-                    ),
-                )
-            ] if card.get("etf_nav") is not None else []),
-            *([
-                kv_compact("折溢價", f"{float(card['etf_premium']):+.2f}%")
-            ] if card.get("etf_premium") is not None else []),
+            *[
+                kv_compact(bit.split(" ", 1)[0], bit.split(" ", 1)[1])
+                for bit in etf_nav_line_bits(card) if " " in bit
+            ],
         ),
         section(
             kv_compact("距20日高", f"{card['dist_h20']:+.1f}%"),
@@ -3094,7 +3124,10 @@ def render_first_glance_png(
     badge_rows = _pack_badge_rows(list(zip(badges, badge_w)))
     mc_line_h = 2.45 if mc is not None else 0.0
     n_badge = max(len(badge_rows), 1)
-    price_h = 8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap + mc_line_h + _etf_nav_extra_h(card)
+    price_h = (
+        8.2 + n_badge * badge_h + (n_badge - 1) * badge_gap
+        + mc_line_h + _ohlc_nav_extra_h(card, last)
+    )
 
     gain_n = _finite_num(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60"))
     gain = float(gain_n if gain_n is not None else 0)
@@ -3236,14 +3269,7 @@ def render_first_glance_png(
     close_s = _fmt_price(close_v)
     chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card, last)
-    # 股票現價／收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
-    ohlc_bits = ohlc_line_bits(card, last, prev_c=prev_c)
-    ohlc_y = y + price_h - 2.25
-    ax.text(inner_l, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
-            color=C["ink_soft"], ha="left", va="center", zorder=3)
-    if mc is not None:
-        ax.text(inner_l, ohlc_y - 2.2, f"主力成本 {float(mc):.2f}（分點平均買超）",
-                fontproperties=_fp(12.5, "bold"), color=C["ink"], va="center", zorder=3)
+    _paint_price_left(ax, tw, C, inner_l, y, price_h, card, last, prev_c, mc)
     for row_i, brow in enumerate(badge_rows):
         by = _price_badge_row_y(y, row_i, badge_h, badge_gap)
         bx = inner_l

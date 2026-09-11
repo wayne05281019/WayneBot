@@ -395,14 +395,17 @@ def card_regime_label(
     ma60: float,
     *,
     space_60: float = 0.0,
+    monthly_kind: str = "",
 ) -> str:
-    """格局徽章：窄波動時多標整理格局，勿一站上月線就喊多頭。"""
+    """格局徽章：貼月線不到 0.8%、或月K已走空，不要喊多頭。"""
     try:
         c, m20, m60 = float(close), float(ma20 or 0), float(ma60 or 0)
         sp = float(space_60 or 0)
     except (TypeError, ValueError):
         return "整理格局"
-    if m20 > 0 and m60 > 0 and c >= m20 and m20 >= m60 and sp >= 16:
+    if m20 > 0 and m60 > 0 and c >= m20 * 1.008 and m20 >= m60 and sp >= 16:
+        if str(monthly_kind or "") == "down":
+            return "整理格局"
         return "多頭格局"
     return "整理格局"
 
@@ -906,6 +909,14 @@ def kotei_wait_label(td: Any) -> str:
     return f"{n}個交易日（約{weeks}週）"
 
 
+def kotei_remain_phrase(td: Any) -> str:
+    """接到「還有」後面：不要寫成「還有再3個交易日」。"""
+    lab = kotei_wait_label(td)
+    if lab.startswith("再"):
+        return lab[1:]
+    return lab
+
+
 def format_kotei_note(
     *,
     close: float = 0.0,
@@ -914,6 +925,7 @@ def format_kotei_note(
     m20_low: Optional[int] = None,
     m60_low: Optional[int] = None,
     m60_high: Optional[int] = None,
+    gain_pct: Optional[float] = None,
 ) -> str:
     """高低卡說明用。過高點只在站上季線且即將扣到高點時寫；否則寫距低點要等多久。"""
     try:
@@ -940,12 +952,19 @@ def format_kotei_note(
     except (TypeError, ValueError):
         rm = None
     if rq is not None and rq > 0:
-        bits.append("季線扣抵距低點還有" + kotei_wait_label(rq))
+        bits.append("季線扣抵距低點還有" + kotei_remain_phrase(rq))
     if rm is not None and rm > 0:
-        bits.append("月線還有" + kotei_wait_label(rm))
+        bits.append("月線還有" + kotei_remain_phrase(rm))
     if not bits:
         return ""
-    return "；".join(bits) + "。這是等多久打底，不是買訊。"
+    body = "；".join(bits) + "。"
+    try:
+        g = float(gain_pct) if gain_pct is not None else None
+    except (TypeError, ValueError):
+        g = None
+    if g is not None and g >= 12:
+        return body + "這是均線把舊高低扣掉的時間，不是買訊。"
+    return body + "這是等多久打底，不是買訊。"
 
 
 def attach_kotei_note(
@@ -980,6 +999,7 @@ def attach_kotei_note(
         m20_low=card.get("kotei_m20_low_days"),
         m60_low=card.get("kotei_m60_low_days"),
         m60_high=card.get("kotei_m60_high_days"),
+        gain_pct=card.get("gain_pct", card.get("dist_l60")),
     )
     return card
 
@@ -1006,7 +1026,7 @@ def stance_explain(
         body = _stance_kind_fallback(kind, on_list=on_list)
     kotei = str((card or {}).get("kotei_note") or "").strip()
     if kotei and not on_list and kotei not in body:
-        body = (body.rstrip("。") + "。" if body else "") + kotei
+        body = ((body.rstrip("。") + "。") if body else "") + "\n" + kotei
     return body
 
 

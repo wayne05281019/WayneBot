@@ -195,6 +195,10 @@ def test_template_regime_narrow_range_is_consolidation():
     """2633/2530 範本：60日區間過小時標整理格局，不是多頭。"""
     assert card_regime_label(26.25, 26.0, 25.8, space_60=7) == "整理格局"
     assert card_regime_label(19.75, 19.4, 19.0, space_60=14) == "整理格局"
+    # 貼月線 0.13% 不算多頭（00631L 盤中型）
+    assert card_regime_label(35.92, 35.873, 35.627, space_60=46) == "整理格局"
+    assert card_regime_label(38.0, 35.0, 34.0, space_60=46) == "多頭格局"
+    assert card_regime_label(38.0, 35.0, 34.0, space_60=46, monthly_kind="down") == "整理格局"
 
 
 def test_template_temperature_cold_stock_scale():

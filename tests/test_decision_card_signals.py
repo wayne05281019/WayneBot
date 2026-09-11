@@ -684,6 +684,13 @@ def test_kotei_wait_label_matches_cary_months():
     assert "月線還有19個交易日（約1個月）" in note
     assert "季線扣抵距低點還有30個交易日（約2個月）" in note
     assert "不是買訊" in note
+    assert "還有再" not in format_kotei_note(m20_low=3, m60_low=29)
+    assert "月線還有3個交易日" in format_kotei_note(m20_low=3, m60_low=29)
+    far = format_kotei_note(m20_low=3, m60_low=29, gain_pct=26.6)
+    assert "打底" not in far
+    assert "均線把舊高低扣掉" in far
+    near = format_kotei_note(m20_low=19, m60_low=30, gain_pct=2.0)
+    assert "打底" in near
     hi = format_kotei_note(close=30, ma60=28, hl="20高", m60_high=5)
     assert "再5個交易日過高點" in hi
     assert "進場仍看表" in hi

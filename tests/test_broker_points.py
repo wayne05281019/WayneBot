@@ -114,6 +114,7 @@ def test_lookup_attaches_cost_screen_does_not_fetch():
 
     from wayne_navigator import (
         NavigatorEngine,
+        _paint_price_left,
         generate_decision_card,
         render_decision_card_png,
         render_first_glance_png,
@@ -127,6 +128,7 @@ def test_lookup_attaches_cost_screen_does_not_fetch():
     html_src = inspect.getsource(generate_decision_card)
     png_src = inspect.getsource(render_decision_card_png)
     glance_src = inspect.getsource(render_first_glance_png)
+    left_src = inspect.getsource(_paint_price_left)
     import bot_servers
 
     bot_src = inspect.getsource(bot_servers)
@@ -138,9 +140,11 @@ def test_lookup_attaches_cost_screen_does_not_fetch():
     assert "attach_main_cost(card, self.db_path, fetch=False)" in bot_src
     assert "attach_main_cost(card, self.db_path, fetch=True)" not in bot_src
     assert "主力成本" in html_src
-    assert "主力成本" in png_src
-    assert "分點平均買超" in png_src
-    assert "主力成本" in glance_src
+    left_src = inspect.getsource(_paint_price_left)
+    assert "主力成本" in left_src
+    assert "分點平均買超" in left_src
+    assert "主力成本" in png_src or "主力成本" in left_src
+    assert "主力成本" in glance_src or "主力成本" in left_src
     for src in (html_src, png_src, glance_src):
         assert "外資成本" not in src
         assert "投信成本" not in src

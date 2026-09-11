@@ -10,6 +10,7 @@ import pandas as pd
 
 from wayne_navigator import (
     generate_decision_card,
+    ohlc_face_rows,
     ohlc_line_bits,
     render_decision_card_png,
     session_price_label,
@@ -22,6 +23,31 @@ def test_session_price_label_live_vs_close():
     assert session_price_label({"is_live": False}) == "收盤"
     assert session_price_label({}) == "收盤"
     assert session_price_label(None) == "收盤"
+
+
+def test_ohlc_face_rows_split_today_and_yesterday():
+    rows = ohlc_face_rows(
+        {"open": 36, "high": 36.16, "low": 35.66, "prev_close": 37.15},
+    )
+    assert rows == ["今開 36　今高 36.16", "今低 35.66　昨收 37.15"]
+
+
+def test_etf_nav_line_bits_live_uses_yesterday_nav():
+    from wayne_navigator import etf_nav_line_bits
+
+    bits = etf_nav_line_bits(
+        {
+            "is_live": True,
+            "latest_date": "20260911",
+            "etf_nav": 37.10,
+            "etf_nav_date": "20260910",
+            "etf_premium": -3.18,
+        }
+    )
+    assert bits[0].startswith("昨淨值 37.10")
+    assert "09/10" in bits[0]
+    assert bits[1].startswith("折價 3.18%")
+    assert "對昨淨值" in bits[1]
 
 
 def test_ohlc_line_bits_mark_today_and_yesterday():
@@ -53,9 +79,9 @@ def test_html_card_labels_follow_session():
     assert "昨收" in html_src
     assert "session_price_label" in html_src
     png_src = inspect.getsource(wn.render_decision_card_png)
-    assert "ohlc_line_bits" in png_src
+    assert "_paint_price_left" in png_src
     glance_src = inspect.getsource(wn.render_first_glance_png)
-    assert "ohlc_line_bits" in glance_src
+    assert "_paint_price_left" in glance_src
 
 
 def _mini_table():
