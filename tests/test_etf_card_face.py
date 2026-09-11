@@ -19,7 +19,11 @@ from official_snapshots import (
     etf_price_nav,
     parse_etf_div,
     parse_mis_etf_nav,
+    parse_etfortune_nav,
+    parse_tpex_etf_product_nav,
     previous_open_calendar_day,
+    refresh_one_etf_nav,
+    slash_date_to_ymd,
     valuation_plain_rows,
 )
 from universe import etf_card_kind_label, is_etf_asset
@@ -81,6 +85,83 @@ def test_parse_mis_etf_nav_keeps_prev_nav_drops_estimate():
     blob = str(rows)
     assert "999.99" not in blob
     assert "12.34" not in blob
+
+
+def test_etfortune_and_tpex_nav_take_last_settled_only():
+    assert slash_date_to_ymd("2026/09/10") == "20260910"
+    assert slash_date_to_ymd("09/10", today="20260911") == "20260910"
+    assert slash_date_to_ymd("12/31", today="20260105") == "20251231"
+    rows = parse_etfortune_nav(
+        {
+            "netPrice": [
+                {"date": "2026/09/08", "count": 37.35},
+                {"date": "2026/09/10", "count": 37.10},
+            ],
+            "atmps": [{"date": "2026/09/10", "count": 0.13}],
+        },
+        "00631L",
+    )
+    assert rows == [
+        {
+            "stock_id": "00631L",
+            "date": "20260910",
+            "nav": 37.10,
+            "source": "twse_etfortune_nav",
+        }
+    ]
+    two = parse_tpex_etf_product_nav(
+        {
+            "stockNo": "006201",
+            "netPrice": [
+                {"date": "09/09", "count": 45.50},
+                {"date": "09/10", "count": 45.17},
+            ],
+            "atmps": [{"date": "09/10", "count": -0.55}],
+        }
+    )
+    assert two[0]["stock_id"] == "006201"
+    assert two[0]["date"] == "20260910"
+    assert two[0]["nav"] == 45.17
+    assert two[0]["source"] == "tpex_etf_product_nav"
+
+
+def test_refresh_one_etf_nav_uses_injected_fetcher(tmp_path):
+    db = _etf_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM etf_nav_snapshot WHERE stock_id='00631L'")
+    conn.commit()
+    conn.close()
+
+    def fake_twse(sid):
+        assert sid == "00631L"
+        return {"netPrice": [{"date": "2026/09/10", "count": 37.10}]}
+
+    n = refresh_one_etf_nav(
+        "00631L",
+        db,
+        force=True,
+        fetch_twse=fake_twse,
+        fetch_tpex=lambda sid: {},
+    )
+    assert n == 1
+    info = etf_price_nav("00631L", db, close=35.7)
+    assert info["nav"] == pytest.approx(37.10)
+    assert info["date"] == "20260910"
+    from wayne_navigator import attach_etf_price_nav, etf_nav_line_bits
+
+    card = {
+        "stock_id": "00631L",
+        "etf_kind": "正2",
+        "asset_type": "ETF_LEVERAGED",
+        "close": 35.7,
+        "is_live": True,
+        "latest_date": "20260911",
+    }
+    attach_etf_price_nav(card, db)
+    bits = etf_nav_line_bits(card)
+    assert bits[0].startswith("昨淨值 37.10")
+    assert bits[1].startswith("折價")
+    assert "對昨淨值" in bits[1]
 
 
 def _etf_db(tmp_path, *, with_close: bool = True) -> str:

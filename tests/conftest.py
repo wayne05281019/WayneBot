@@ -87,6 +87,7 @@ def _db_path_guard(request, tmp_path, monkeypatch):
 
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "isolated.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("WAYNE_SKIP_ETF_NAV_REFRESH", "1")
     yield
 
 

@@ -275,6 +275,7 @@ def test_increment_and_glance_wire_official():
     assert "TWSE_MI5MINS" in sync_src
     assert "fetch_mis_etf_payload" in sync_src
     assert "parse_mis_etf_nav" in sync_src
+    assert "fill_missing_etf_nav" in sync_src
     assert "fetch_etf_div_payload" in sync_src
     assert "parse_etf_div" in sync_src
     glance = inspect.getsource(render_first_glance_png)

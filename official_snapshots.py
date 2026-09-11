@@ -4,7 +4,7 @@
 只存官方欄位。空字串＝沒有真數，不上卡。禁止推估成本價。
 ETF 折溢價只用已結算單位淨值對畫面收盤；盤中預估淨值不上。
 配息只存證交所 etfDiv 已列的除息日與每單位金額；金額 null＝未公告，不上數字。
-盤後一次平行抓，縮短等待；查股只讀庫。
+盤後一次平行抓。查股先讀庫；庫沒有昨淨值就補抓 e添富／櫃買已結算淨值寫進庫再畫。
 """
 from __future__ import annotations
 
@@ -13,8 +13,9 @@ import logging
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 try:
@@ -36,6 +37,9 @@ TPEX_MARGN = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"
 TPEX_COMPANY = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 # 證交所 MIS：h＝前一營業日單位淨值（已結算）。f／g 是盤中預估，不上卡。
 MIS_ALL_ETF = "https://mis.twse.com.tw/stock/data/all_etf.txt"
+# MIS 在部分機房會被斷線；改走證交所 e添富／櫃買 ETF 訊息中心已結算淨值。
+TWSE_ETF_NAV_CHART = "https://www.twse.com.tw/zh/ETFortune/ajaxEtfInfoChart"
+TPEX_ETF_PRODUCT = "https://info.tpex.org.tw/api/etfProduct"
 # 證交所 ETF 收益分配：除息日＋每單位金額。null＝尚未公告，禁止拿來預估。
 TWSE_ETF_DIV = "https://www.twse.com.tw/rwd/zh/ETF/etfDiv?response=json"
 
@@ -80,6 +84,10 @@ INDUSTRY_CODE_NAME = {
 }
 
 _UA = {"User-Agent": "WayneBot/1.0 (+https://github.com/wayne05281019/WayneBot)"}
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
 
 
 def roc_to_ymd(raw: str) -> str:
@@ -156,8 +164,7 @@ def previous_open_calendar_day(ymd: str) -> str:
 
 
 def fetch_mis_etf_payload(timeout: int = 45) -> dict:
-    headers = dict(_UA)
-    headers["Referer"] = "https://mis.twse.com.tw/stock/index.jsp"
+    headers = {"User-Agent": _BROWSER_UA, "Referer": "https://mis.twse.com.tw/stock/index.jsp"}
     req = Request(MIS_ALL_ETF, headers=headers)
     with urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8", errors="replace"))
@@ -200,6 +207,270 @@ def parse_mis_etf_nav(payload: dict) -> List[dict]:
                 }
             )
     return out
+
+
+def etf_nav_refresh_allowed() -> bool:
+    raw = (os.getenv("WAYNE_SKIP_ETF_NAV_REFRESH") or "").strip().lower()
+    return raw not in ("1", "true", "yes", "on")
+
+
+def _today_ymd() -> str:
+    try:
+        from config import taipei_today_str
+
+        s = str(taipei_today_str() or "").replace("-", "")[:8]
+        if len(s) == 8:
+            return s
+    except Exception:
+        pass
+    return datetime.now().strftime("%Y%m%d")
+
+
+def slash_date_to_ymd(raw: str, today: str | None = None) -> str:
+    """e添富 YYYY/MM/DD、櫃買 MM/DD → YYYYMMDD。櫃買跨年用今天判斷。"""
+    s = str(raw or "").strip().replace("-", "/")
+    cap = str(today or _today_ymd()).replace("-", "")[:8]
+    if not cap:
+        cap = datetime.now().strftime("%Y%m%d")
+    parts = [p for p in s.split("/") if p]
+    try:
+        if len(parts) == 3:
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            if y < 1911:
+                y += 1911
+            return f"{y:04d}{m:02d}{d:02d}"
+        if len(parts) == 2:
+            m, d = int(parts[0]), int(parts[1])
+            y = int(cap[:4])
+            cand = f"{y:04d}{m:02d}{d:02d}"
+            if cand > cap:
+                cand = f"{y - 1:04d}{m:02d}{d:02d}"
+            return cand
+    except (TypeError, ValueError):
+        return ""
+    return ""
+
+
+def parse_etfortune_nav(payload: dict, stock_id: str) -> List[dict]:
+    """證交所 e添富 fundPric：已結算淨值序列，取最後一筆。不用折溢價數列。"""
+    sid = str(stock_id or "").strip()
+    if not sid or not isinstance(payload, dict):
+        return []
+    last = None
+    for pt in payload.get("netPrice") or []:
+        if not isinstance(pt, dict):
+            continue
+        nav = _num(pt.get("count"))
+        date = slash_date_to_ymd(pt.get("date"))
+        if nav is None or nav <= 0 or len(date) != 8:
+            continue
+        last = {
+            "stock_id": sid,
+            "date": date,
+            "nav": nav,
+            "source": "twse_etfortune_nav",
+        }
+    return [last] if last else []
+
+
+def parse_tpex_etf_product_nav(payload: dict) -> List[dict]:
+    """櫃買 ETF 訊息中心已結算淨值，取最後一筆。"""
+    if not isinstance(payload, dict):
+        return []
+    sid = str(payload.get("stockNo") or "").strip()
+    if not sid:
+        return []
+    last = None
+    for pt in payload.get("netPrice") or []:
+        if not isinstance(pt, dict):
+            continue
+        nav = _num(pt.get("count"))
+        date = slash_date_to_ymd(pt.get("date"))
+        if nav is None or nav <= 0 or len(date) != 8:
+            continue
+        last = {
+            "stock_id": sid,
+            "date": date,
+            "nav": nav,
+            "source": "tpex_etf_product_nav",
+        }
+    return [last] if last else []
+
+
+def fetch_etfortune_nav_payload(stock_id: str, timeout: int = 20) -> dict:
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return {}
+    end = datetime.strptime(_today_ymd(), "%Y%m%d")
+    start = end - timedelta(days=14)
+    body = urlencode(
+        {
+            "id": sid,
+            "startDate": start.strftime("%Y/%m/%d"),
+            "endDate": end.strftime("%Y/%m/%d"),
+            "type": "fundPric",
+        }
+    ).encode("utf-8")
+    headers = {
+        "User-Agent": _BROWSER_UA,
+        "Referer": f"https://www.twse.com.tw/zh/ETFortune/etfInfo?id={sid}",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json,text/javascript,*/*;q=0.8",
+    }
+    req = Request(TWSE_ETF_NAV_CHART, data=body, headers=headers)
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def fetch_tpex_etf_product_payload(stock_id: str, timeout: int = 20) -> dict:
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return {}
+    url = f"{TPEX_ETF_PRODUCT}?lang=zh-tw&query={sid}"
+    headers = {
+        "User-Agent": _BROWSER_UA,
+        "Referer": f"https://info.tpex.org.tw/ETF/zh/detail.html?query={sid}",
+        "Accept": "application/json,text/javascript,*/*;q=0.8",
+    }
+    req = Request(url, headers=headers)
+    with urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def _nav_is_fresh(date: str, today: str | None = None) -> bool:
+    cap = str(today or _today_ymd()).replace("-", "")[:8]
+    day = str(date or "").replace("-", "")[:8]
+    if len(day) != 8 or len(cap) != 8:
+        return False
+    try:
+        target = previous_open_calendar_day(cap)
+    except Exception:
+        target = cap
+    return day >= target
+
+
+def _collect_one_etf_nav(
+    stock_id: str,
+    *,
+    fetch_twse=None,
+    fetch_tpex=None,
+) -> List[dict]:
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return []
+    twse_fn = fetch_twse or fetch_etfortune_nav_payload
+    tpex_fn = fetch_tpex or fetch_tpex_etf_product_payload
+    try:
+        rows = parse_etfortune_nav(twse_fn(sid) or {}, sid)
+    except Exception as exc:
+        log.warning("e添富淨值 %s 失敗：%s", sid, exc)
+        rows = []
+    if rows:
+        return rows
+    try:
+        return parse_tpex_etf_product_nav(tpex_fn(sid) or {})
+    except Exception as exc:
+        log.warning("櫃買淨值 %s 失敗：%s", sid, exc)
+        return []
+
+
+def refresh_one_etf_nav(
+    stock_id: str,
+    db_path: str | None = None,
+    *,
+    force: bool = False,
+    fetch_twse=None,
+    fetch_tpex=None,
+) -> int:
+    """庫沒有這檔已結算昨淨值才抓。盤中預估不上。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return 0
+    if fetch_twse is None and fetch_tpex is None and not etf_nav_refresh_allowed():
+        return 0
+    path = ensure_schema(db_path)
+    have = latest_etf_nav(sid, path)
+    if have and not force and _nav_is_fresh(str(have.get("date") or "")):
+        return 0
+    rows = _collect_one_etf_nav(sid, fetch_twse=fetch_twse, fetch_tpex=fetch_tpex)
+    if not rows:
+        return 0
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(path)
+    try:
+        n = _upsert_etf_nav(conn, rows, now)
+        conn.commit()
+    finally:
+        conn.close()
+    return n
+
+
+def _universe_etf_ids(db_path: str) -> List[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT stock_id FROM stock_universe WHERE UPPER(COALESCE(asset_type,'')) LIKE 'ETF%'"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+    out, seen = [], set()
+    for row in rows:
+        sid = str(row[0] or "").strip()
+        if sid and sid not in seen:
+            seen.add(sid)
+            out.append(sid)
+    return out
+
+
+def fill_missing_etf_nav(
+    db_path: str | None = None,
+    stock_ids: Optional[Sequence[str]] = None,
+    *,
+    fetch_twse=None,
+    fetch_tpex=None,
+    max_workers: int = 8,
+) -> int:
+    """MIS 沒寫進庫時，平行補 e添富／櫃買已結算淨值。"""
+    if fetch_twse is None and fetch_tpex is None and not etf_nav_refresh_allowed():
+        return 0
+    path = ensure_schema(db_path)
+    ids = [str(x).strip() for x in (stock_ids or _universe_etf_ids(path)) if str(x).strip()]
+    if not ids:
+        return 0
+    need = []
+    for sid in ids:
+        have = latest_etf_nav(sid, path)
+        if have and _nav_is_fresh(str(have.get("date") or "")):
+            continue
+        need.append(sid)
+    if not need:
+        return 0
+    collected: List[dict] = []
+    workers = max(1, min(int(max_workers or 1), 8, len(need)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {
+            pool.submit(_collect_one_etf_nav, sid, fetch_twse=fetch_twse, fetch_tpex=fetch_tpex): sid
+            for sid in need
+        }
+        for fut in as_completed(futs):
+            try:
+                collected.extend(fut.result() or [])
+            except Exception as exc:
+                log.warning("補 ETF 淨值 %s 失敗：%s", futs[fut], exc)
+    if not collected:
+        return 0
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(path)
+    try:
+        n = _upsert_etf_nav(conn, collected, now)
+        conn.commit()
+    finally:
+        conn.close()
+    return n
 
 
 def fetch_etf_div_payload(timeout: int = 45) -> dict:
@@ -797,6 +1068,13 @@ def sync_official_snapshots(db_path: str | None = None) -> Dict[str, Any]:
         conn.commit()
     finally:
         conn.close()
+    if nav_n < 50:
+        try:
+            extra = fill_missing_etf_nav(path)
+            nav_n += extra
+        except Exception as exc:
+            log.warning("e添富／櫃買淨值補抓略過：%s", exc)
+            errors["etf_nav_web"] = str(exc)
 
     fmt_n = overlay_fmtqik(path, fmt_rows) if fmt_rows else 0
     ohlc_n = overlay_index_ohlc(path, parse_mi5mins_hist(fetched.get("mi5mins") or []))
@@ -979,6 +1257,12 @@ def etf_price_nav(
 ) -> Optional[Dict[str, Any]]:
     """收盤旁用：已結算淨值＋相對畫面收盤的折溢價。不用盤中預估淨值。"""
     nav_row = latest_etf_nav(stock_id, db_path, as_of=as_of)
+    if not nav_row:
+        try:
+            refresh_one_etf_nav(stock_id, db_path)
+        except Exception as exc:
+            log.warning("查股補昨淨值 %s 略過：%s", stock_id, exc)
+        nav_row = latest_etf_nav(stock_id, db_path, as_of=as_of)
     if not nav_row:
         return None
     try:

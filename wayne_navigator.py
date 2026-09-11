@@ -1415,7 +1415,17 @@ def _etf_nav_extra_h(card) -> float:
 
 def attach_etf_price_nav(card: dict, db_path: str = None) -> dict:
     """查股卡收盤旁：官方淨值／折溢價。沒有真數不加欄。"""
-    if not card or card.get("error") or not card.get("etf_kind"):
+    if not card or card.get("error"):
+        return card
+    try:
+        from universe import is_etf_asset
+
+        is_etf = bool(card.get("etf_kind")) or is_etf_asset(
+            card.get("asset_type"), str(card.get("stock_id") or "")
+        )
+    except Exception:
+        is_etf = bool(card.get("etf_kind"))
+    if not is_etf:
         return card
     if card.get("etf_nav") is not None:
         return card
