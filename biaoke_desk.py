@@ -15,6 +15,7 @@ from tg_layout import html_escape
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "expert_notes", "飆客")
 _INDEX = os.path.join(_DIR, "corpus_index.json")  # 只補標籤；不准當融合底圖
+_CATCHUP = os.path.join(_DIR, "catchup.json")  # 1709 之後的公開主文；overlay 仍優先
 
 _YEAR_END = re.compile(r"(去年年底|去年底|年底|年終|過年|年終獎金|2025年底|12月)")
 _PROGRESS = re.compile(r"(進步|怎麼觀察|如何觀察|為什麼進步|為何進步|觀察方法|細微波)")
@@ -168,6 +169,20 @@ def _empty_blob() -> Dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
+def _load_catchup() -> List[Dict[str, Any]]:
+    """1709 底圖之後、overlay 之前的公開主文。沒這檔就空。"""
+    if not os.path.isfile(_CATCHUP):
+        return []
+    try:
+        with open(_CATCHUP, encoding="utf-8") as fh:
+            blob = json.load(fh) or {}
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = list(blob.get("posts") or [])
+    return [r for r in rows if isinstance(r, dict) and r.get("id")]
+
+
+@lru_cache(maxsize=1)
 def _load_archive() -> Dict[str, Any]:
     """Drive 公開主文＋樓中樓。沒這包就空，不准退回 520 篇種子。"""
     try:
@@ -230,6 +245,8 @@ def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
             seed_rows = []
         for row in seed_rows:
             _put_post(posts, by_id, copy.deepcopy(row), overwrite=False)
+        for row in _load_catchup():
+            _put_post(posts, by_id, copy.deepcopy(row), overwrite=False)
     for row in _overlay_posts(db_path):
         aid = str(row.get("id") or "")
         if not aid:
@@ -274,6 +291,10 @@ def load_corpus_cache_clear() -> None:
         pass
     try:
         _load_archive.cache_clear()
+    except Exception:
+        pass
+    try:
+        _load_catchup.cache_clear()
     except Exception:
         pass
     try:

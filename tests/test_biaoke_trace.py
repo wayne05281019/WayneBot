@@ -53,7 +53,13 @@ def test_verify_tsmc_rail_on_production_db():
     assert tw["broke_close"] is False
 
 
-def test_45839_watch_is_not_2025_tsmc_rail():
+def test_wave_question_uses_sep11_levels():
+    text = format_trace("目前大盤是屬於哪個位階 以波浪來看的話")
+    assert "45839" in text
+    assert "46506" in text
+    assert "48218" in text
+    assert "17200" not in text
+    assert "語料" not in text
     text = format_trace("45839 有沒有守住")
     assert "45839" in text
     assert "右肩" in text

@@ -16,7 +16,7 @@ FAMILIES: List[Tuple[str, re.Pattern[str]]] = [
     ("wash", re.compile(r"(洗盤|出貨|破線翻|破線洗盤)")),
     ("three", re.compile(r"(連三天|連三日|三日不破|三日之內|三日內|三日不回補|破三日低|假跌破)")),
     ("wave4", re.compile(r"(次級四|次級波|次級 4|次級4浪|回測四浪)")),
-    ("micro", re.compile(r"(細微波|四步|15 分|15分|60 分|60分)")),
+    ("micro", re.compile(r"(細微波|四步|15 分|15分|60 分|60分|波浪|位階|段數)")),
     ("label", re.compile(r"(多標籤|B-a-2|A-c-3|B-a-4|三種波浪)")),
     ("shoulder", re.compile(r"(右肩|45839|低不破前低|高有過前高|高檔震[盪檔]|汰弱留強)")),
     ("volfirst", re.compile(r"(量先價行|爆大量|價穩量縮|窒息量)")),

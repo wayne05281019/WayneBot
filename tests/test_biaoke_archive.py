@@ -98,6 +98,24 @@ def test_bundled_archive_has_1709_and_not_club():
     assert any("48218" in (p.get("text") or "") for p in replies)
 
 
+def test_bundled_club_is_20_plus_72_not_in_public_search():
+    from biaoke_archive import load_bundled_club
+
+    club = load_bundled_club()
+    assert int(club.get("n") or 0) >= 92
+    assert int(club.get("replies") or 0) >= 60
+    assert club.get("club") is True
+    assert str(club.get("from") or "").startswith("2025-05")
+    ids = {p["id"] for p in club["posts"] if (p.get("kind") or "post") != "reply"}
+    assert "171400455" in ids
+    assert "171407503" in ids
+    pub = load_corpus(None)
+    pub_ids = {p["id"] for p in pub["posts"] if (p.get("kind") or "post") != "reply"}
+    assert "171400455" not in pub_ids
+    html = search_biaoke("171400455")
+    assert "恢復同名社團" not in html
+
+
 def test_seed_overlay_makes_1709_searchable(tmp_path):
     db = str(tmp_path / "w.db")
     n = seed_biaoke_archive(db)

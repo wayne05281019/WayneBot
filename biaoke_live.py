@@ -23,16 +23,18 @@ _TIMEOUT = 28.0
 
 SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按「飆大」進來，打字或語音都是對你說。
 
-你不是飆大本人，也不是課綱朗讀機。用下面筆記裡他的公開文、官方日 K、夜盤數字當依據，用你自己的話組織回答。對面剛問什麼就先答什麼，接得上上一句。
+你不是飆大本人，也不是課綱朗讀機。只用下面筆記裡「最新發文／最新樓下／官方K／他原文點位」。對面剛問什麼就先答什麼。
 
-不要開場念規則。不要用「第一、第二、他這套怎麼想、三買點對照」講義體。不要每則把細微波、1-4、KD、買點清單倒一遍——只有他問方法時才講。
+硬規則：
+- 點位只准用筆記裡出現過的數字。沒有就說「這句筆記沒這點位」，不准自己編。
+- 加權／台指期現在是四萬點這一級。禁止寫 17000、16500、17200 這種對不上官方K的數。2025 年的 22000 不是現在。
+- 波浪只引用他公開文的細微波／段數／45839／46506／48218，禁止套教科書「上升三浪」。
+- 問「可以用嗎／讀得到嗎」：用最新一則的日期＋他原話裡一個點位或一句話證明你讀到了。禁止客服腔（不要說打字會傳到我這裡、根據你提供的資訊）。
+- 樓下＝他自己回覆，不是路人。庫沒有 15 分K就不數他的段數對不對。
+- 最新發文優先於舊文。
 
-講到「能不能買／該出嗎」才補一句這不是買訊。不要編外資／投信／融資成本。不要自稱 Gemini、ChatGPT、Claude。
-繁體中文。兩三段。筆記不要照抄「發文」「官方K」「爆量日=」欄位格式。
-
-例如「你好」→「在，你說。」
-「大概何時止跌」→先講現況，再說他不猜日曆、條件齊不齊。不要列 1 2 3 4。
-問股名或代號→用筆記的收盤／爆量日講現在像不像站上撐，不要貼整份課綱。
+不要開場念規則。不要用「第一、第二」講義體。講到「能不能買／該出嗎」才補一句這不是買訊。不要自稱 Gemini、ChatGPT、Claude。
+繁體中文。兩三段。
 """
 
 
@@ -117,43 +119,119 @@ def _to_talk(text: str) -> str:
     return html_escape(s)
 
 
-def _grounding(db_path: str, ask: str) -> str:
-    bits: List[str] = []
+def live_notes(db_path: str, ask: str) -> str:
+    """每句對話都帶：最新主文、最新樓下自回、官方點位。沒對到關鍵字也不准空手。"""
+    bits: List[str] = [
+        "硬規則：點位只准用下面出現過的數字。沒有就說沒有。禁止 17000／16500。最新優先於舊文。"
+    ]
     try:
-        from biaoke_brain import match_posts, resolve_stock, volume_first_price, load_bars
+        from biaoke_desk import load_corpus
+        from biaoke_brain import load_index_bars, match_posts, resolve_stock, volume_first_price, load_bars
+        from biaoke_walk import extract_index_levels, post_chart_urls
+
+        blob = load_corpus(db_path if db_path else None)
+        posts = list((blob or {}).get("posts") or [])
+        mains = [p for p in posts if (p.get("kind") or "post") != "reply"]
+        replies = [p for p in posts if p.get("kind") == "reply"]
+        bits.append(
+            f"庫 {blob.get('from') or ''}～{blob.get('to') or ''} "
+            f"主文{blob.get('n') or 0}＋樓下{blob.get('replies') or 0}"
+        )
+        for p in mains[-3:]:
+            charts = post_chart_urls(str(p.get("text") or ""))
+            extra = f" 附圖{len(charts)}" if charts else ""
+            bits.append(
+                "最新發文 "
+                + str(p.get("date") or "")
+                + " "
+                + str(p.get("time") or "")
+                + extra
+                + " "
+                + _clip(p.get("text") or "", 420)
+            )
+        for p in replies[-8:]:
+            bits.append(
+                "最新樓下 "
+                + str(p.get("date") or "")
+                + " "
+                + str(p.get("time") or "")
+                + " "
+                + _clip(p.get("text") or "", 280)
+            )
+        for p in list(mains[-3:]) + list(replies[-8:]):
+            for hit in extract_index_levels(str(p.get("text") or "")):
+                bits.append(
+                    "他原文點位 "
+                    + str(p.get("date") or "")
+                    + " "
+                    + str(hit.get("role") or "")
+                    + " "
+                    + str(hit.get("level") or "")
+                    + " "
+                    + _clip(hit.get("ctx") or "", 80)
+                )
+        bars = load_index_bars(db_path, n=2) if db_path else []
+        if bars:
+            last = bars[-1]
+            bits.append(
+                "官方加權 "
+                + str(last.get("date") or "")
+                + " 收 "
+                + str(last.get("close") or "")
+                + " 高 "
+                + str(last.get("high") or "")
+                + " 低 "
+                + str(last.get("low") or "")
+            )
+        else:
+            bits.append("官方加權：這顆庫還沒這列，不准自己寫點位。")
+        try:
+            from taiwan_market import load_futures_daily, load_futures_night
+
+            tx = load_futures_daily(db_path) if db_path else None
+            if tx:
+                bits.append(
+                    "官方台指期日盤 "
+                    + str(tx.get("date") or "")
+                    + " 收 "
+                    + str(tx.get("close") or "")
+                    + " 高 "
+                    + str(tx.get("high") or "")
+                    + " 低 "
+                    + str(tx.get("low") or "")
+                )
+            night = load_futures_night(db_path) if db_path else None
+            if night:
+                bits.append(
+                    "官方台指期夜盤 "
+                    + str(night.get("date") or "")
+                    + " 收 "
+                    + str(night.get("close") or "")
+                    + " 高 "
+                    + str(night.get("high") or "")
+                    + " 低 "
+                    + str(night.get("low") or "")
+                )
+        except Exception:
+            pass
         from biaoke_link import format_link_notes
         from biaoke_mind import match_methods
         from biaoke_trace import format_trace
 
         tr = format_trace(ask, db_path)
         if tr:
-            bits.append("時間線 " + _clip(tr, 700))
-        try:
-            from biaoke_fuse import format_fuse_html, is_fuse_query
-
-            if is_fuse_query(ask):
-                bits.append("課綱回測 " + _clip(format_fuse_html(), 700))
-        except Exception:
-            pass
-        try:
-            from biaoke_sox import format_sox_html, is_sox_query
-
-            if is_sox_query(ask):
-                bits.append("費半對表 " + _clip(format_sox_html(), 700))
-        except Exception:
-            pass
+            bits.append("時間線 " + _clip(tr, 900))
         for _title, body in match_methods(ask, limit=2):
-            bits.append("方法 " + _clip(body, 500))
-
-        posts = match_posts(ask, limit=4, db_path=db_path)
-        for p in posts:
+            bits.append("方法 " + _clip(body, 400))
+        keyed = match_posts(ask, limit=3, db_path=db_path)
+        for p in keyed:
             bits.append(
-                "發文 "
+                "關鍵字命中（舊文可能過時） "
                 + str(p.get("date") or "")
                 + " "
-                + _clip(p.get("text") or "", 180)
+                + _clip(p.get("text") or "", 160)
             )
-        note = format_link_notes(posts, db_path=db_path, limit=3)
+        note = format_link_notes(keyed, db_path=db_path, limit=3)
         if note:
             bits.append(note)
         hits = resolve_stock(db_path, ask) if db_path else []
@@ -170,11 +248,10 @@ def _grounding(db_path: str, ask: str) -> str:
                     bits.append("彙整 " + _clip(walk, 500))
             except Exception:
                 pass
-        if hits:
             hit = hits[0]
             sid = str(hit.get("stock_id") or "")
-            bars = load_bars(db_path, sid) if sid else []
-            st = volume_first_price(bars) if bars else {}
+            bars_s = load_bars(db_path, sid) if sid else []
+            st = volume_first_price(bars_s) if bars_s else {}
             bits.append(
                 "官方K "
                 + sid
@@ -191,9 +268,11 @@ def _grounding(db_path: str, ask: str) -> str:
             )
     except Exception:
         logger.debug("飆大即時參考略過", exc_info=True)
-    if not bits:
-        return "筆記：這句沒對到摘錄，就照他問的講，不要硬套課綱。"
-    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:8])
+    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:28])
+
+
+def _grounding(db_path: str, ask: str) -> str:
+    return live_notes(db_path, ask)
 
 
 def _history_messages(history: Optional[Sequence[Any]]) -> List[dict]:
@@ -263,7 +342,7 @@ def live_reply(
                 json={
                     "model": model,
                     "messages": messages,
-                    "temperature": 0.55,
+                    "temperature": 0.2,
                     "max_tokens": 900,
                 },
                 timeout=timeout,

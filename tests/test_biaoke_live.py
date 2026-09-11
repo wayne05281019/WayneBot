@@ -152,6 +152,46 @@ def test_live_grounding_includes_method_notes(monkeypatch):
     assert "認可" in sys_msg
 
 
+def test_live_notes_always_has_latest_posts_and_replies():
+    from biaoke_desk import load_corpus_cache_clear
+    from biaoke_live import live_notes
+
+    load_corpus_cache_clear()
+    note = live_notes("", "可以使用嗎")
+    assert "46506" in note
+    assert "45839" in note
+    assert "最新發文" in note
+    assert "最新樓下" in note
+    assert "禁止 17000" in note
+    wave = live_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
+    assert "細微波" in wave or "48218" in wave
+    assert "45839" in wave
+    assert "時間線" in wave
+
+
+def test_live_reply_system_forbids_invented_index(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    class _Res:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "夜盤先看 46506。"}}]}
+
+    with patch("biaoke_live.requests.post", return_value=_Res()) as post:
+        live_reply(":memory:", "目前大盤是屬於哪個位階 以波浪來看的話")
+    sys_msg = post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "46506" in sys_msg
+    assert "45839" in sys_msg
+    assert "禁止" in sys_msg
+    assert "客服腔" in sys_msg
+    assert post.call_args.kwargs["json"]["temperature"] == 0.2
+
+
 def test_live_configured_ignores_pytest_flag(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
     monkeypatch.delenv("WAYNE_BIAOKE_LIVE_TEST", raising=False)

@@ -14,10 +14,18 @@ from typing import Any, Dict, List, Optional, Sequence
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "expert_notes", "飆客")
 ARCHIVE_GZ = os.path.join(_DIR, "archive_1709.json.gz")
+CLUB_GZ = os.path.join(_DIR, "archive_club.json.gz")
 _SEED = os.path.join(_DIR, "corpus_index.json")
-# 融合／匯入唯一底圖＝雲端硬碟那一千七百多則公開主文，不是 git 520 篇種子。
+# 雲端硬碟同一資料夾三檔，1709 只是公開那一份：
+# 1. 完整語料庫 全量1709篇＋雙層樓中樓回覆 → archive_1709.json.gz → 公開 overlay
+# 2. 社團專屬 共20篇
+# 3. 社團專屬 共72篇（跟 20 篇不是同一批）
+# 2+3 → archive_club.json.gz → 只對價建檔／內化規則，不進公開庫、不進話筒原文
 # 資料夾：https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG
-# 另檔：https://drive.google.com/file/d/1Nw79n7rNgIfnmcQzPjf-jNGEIAYKlw-n/view?usp=sharing
+DRIVE_FOLDER = "https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG"
+DRIVE_PUBLIC_ID = "1YIpy6ONThmHT_0c2GlKqBg4ntO1sYskI"
+DRIVE_CLUB20_ID = "1FT7owt8C5X3vvq2skT9MS5O9qTETH1_a"
+DRIVE_CLUB72_ID = "1FuMADpDLzPQrUXdn3LxwOsQ-aYhNtik1"
 ARCHIVE_BASELINE_N = 1700
 
 _POST_HEAD = re.compile(
@@ -277,6 +285,18 @@ def load_bundled_archive() -> Dict[str, Any]:
         return {}
     with gzip.open(ARCHIVE_GZ, "rt", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def load_bundled_club() -> Dict[str, Any]:
+    """社團 20＋72。不進公開 overlay；給對價建檔用。"""
+    if not os.path.isfile(CLUB_GZ):
+        return {}
+    with gzip.open(CLUB_GZ, "rt", encoding="utf-8") as fh:
+        blob = json.load(fh) or {}
+    if not blob.get("posts"):
+        return {}
+    blob["club"] = True
+    return blob
 
 
 def write_archive_gzip(blob: Dict[str, Any], path: str = "") -> str:

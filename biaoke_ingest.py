@@ -681,9 +681,9 @@ def ingest_public_posts(
     db_path: str = "",
     session: Optional[requests.Session] = None,
     max_ids: int = 12,
-    refresh_latest: int = 4,
+    refresh_latest: int = 12,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋最新兩篇的飆大一／二層回覆。失敗不改海選。
+    """抓公開個人頁最新文＋每一篇的飆大一／二層回覆。失敗不改海選。
 
     融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
@@ -736,7 +736,7 @@ def ingest_public_posts(
     replies = 0
     touched: List[str] = []
     events: List[Dict[str, Any]] = []
-    refresh_n = max(1, int(refresh_latest))
+    refresh_n = max(1, min(int(refresh_latest), max(1, len(ids))))
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
         if known and i >= refresh_n:

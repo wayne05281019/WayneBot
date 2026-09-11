@@ -17,6 +17,8 @@ def test_load_corpus_uses_full_archive_not_seed_520():
         str(p.get("date") or "") == "2023-12-04" and "智原" in str(p.get("text") or "")
         for p in blob["posts"]
     )
+    assert str(blob.get("to") or "") >= "2026-09-11"
+    assert any("46506" in str(p.get("text") or "") for p in blob["posts"])
     desk = open("biaoke_desk.py", encoding="utf-8").read()
     assert "copy.deepcopy(_load_seed())" not in desk
     assert "不要退回 520" in desk

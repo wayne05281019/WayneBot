@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS biaoke_day_facts (
     post_time TEXT NOT NULL DEFAULT '',
     snippet TEXT NOT NULL DEFAULT '',
     claimed TEXT NOT NULL DEFAULT '',
+    club INTEGER NOT NULL DEFAULT 0,
     open REAL,
     high REAL,
     low REAL,
@@ -59,6 +60,39 @@ _TPEX_DAY = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
 _LEVEL = re.compile(
     r"(支撐|壓力|不跌破|不破|頸線|目標|買點|停損)\s*[：: ]?\s*(\d{2,5}(?:\.\d+)?)"
 )
+_CHART_URL = re.compile(
+    r"https://image\.cmoney\.tw/attachment/[^\s\"'<>]+",
+    re.I,
+)
+_YEAR_NUM = re.compile(r"^(?:19|20)\d{2}$")
+_IDX_CTX = re.compile(
+    r"(夜盤|台指期|台指|加權|大盤|細微波|穿刺|穿越|觀盤|右肩|下降軌|下降壓|上升軌)"
+)
+_STOCK_CTX = re.compile(
+    r"(台光電|奇鋐|健策|聯亞|南亞科|華邦電|群聯|勤誠|金像電|富喬|金居|"
+    r"旺矽|穎崴|台積電|聯發科|智原)"
+)
+_IDX_NUM = re.compile(r"(?<![\d.])(\d{4,5}(?:\.\d+)?)(?![\d])")
+_LEVELS_DDL = """
+CREATE TABLE IF NOT EXISTS biaoke_level_facts (
+    post_id TEXT NOT NULL,
+    claimed REAL NOT NULL,
+    post_date TEXT NOT NULL DEFAULT '',
+    post_time TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    snippet TEXT NOT NULL DEFAULT '',
+    charts TEXT NOT NULL DEFAULT '',
+    twii_high REAL,
+    twii_low REAL,
+    twii_close REAL,
+    tx_high REAL,
+    tx_low REAL,
+    tx_close REAL,
+    hit TEXT NOT NULL DEFAULT '',
+    club INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (post_id, claimed)
+);
+"""
 
 
 def _ymd(raw: Any) -> str:
@@ -76,9 +110,92 @@ def ensure_biaoke_facts_table(db_path: str) -> None:
     try:
         conn.execute(_FACTS_DDL)
         conn.execute(_FACTS_SID_IX)
+        conn.execute(_LEVELS_DDL)
+        for table, col in (
+            ("biaoke_day_facts", "club"),
+            ("biaoke_level_facts", "club"),
+        ):
+            cols = {str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})")}
+            if col not in cols:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
+                )
         conn.commit()
     finally:
         conn.close()
+
+
+def extract_index_levels(text: str) -> List[Dict[str, Any]]:
+    """文內大盤／台指期點位。個股價、年份不進這張表。"""
+    blob = str(text or "")
+    hits: List[Dict[str, Any]] = []
+    seen = set()
+    for m in _IDX_NUM.finditer(blob):
+        raw = m.group(1)
+        whole = raw.split(".")[0]
+        if _YEAR_NUM.fullmatch(whole) and "." not in raw:
+            continue
+        try:
+            n = float(raw)
+        except ValueError:
+            continue
+        ctx = blob[max(0, m.start() - 28) : m.end() + 18]
+        if n < 15000 and _STOCK_CTX.search(ctx) and not _IDX_CTX.search(ctx):
+            continue
+        if n < 15000 and not _IDX_CTX.search(blob):
+            continue
+        if n < 15000 and not _IDX_CTX.search(ctx) and not _IDX_CTX.search(blob):
+            continue
+        key = round(n, 2)
+        if key in seen:
+            continue
+        seen.add(key)
+        if "夜盤" in ctx:
+            role = "夜盤"
+        elif "台指" in ctx:
+            role = "台指"
+        elif "加權" in ctx or "大盤" in ctx:
+            role = "加權"
+        else:
+            role = "點位"
+        hits.append(
+            {
+                "level": n,
+                "role": role,
+                "ctx": re.sub(r"\s+", " ", ctx).strip()[:90],
+            }
+        )
+    return hits
+
+
+def post_chart_urls(text: str) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for url in _CHART_URL.findall(text or ""):
+        if "profile/" in url:
+            continue
+        if url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out
+
+
+def _hit_note(level: float, bar: Optional[Dict[str, Any]], *, label: str) -> str:
+    if not bar:
+        return ""
+    hi = bar.get("high")
+    lo = bar.get("low")
+    if hi is None or lo is None:
+        return ""
+    try:
+        h, l = float(hi), float(lo)
+    except (TypeError, ValueError):
+        return ""
+    if l <= level <= h:
+        return f"{label}當日K碰到"
+    if level > h:
+        return f"{label}當日高未到"
+    return f"{label}當日低已破"
 
 
 def _px(raw: Any) -> Optional[float]:
@@ -433,6 +550,9 @@ def walk_biaoke_posts(
         "missing": 0,
         "fetched_months": 0,
         "stocks": 0,
+        "levels": 0,
+        "charts": 0,
+        "club_posts": 0,
     }
     if not db_path:
         return stats
@@ -453,54 +573,109 @@ def walk_biaoke_posts(
         fetched = fetch_missing_quotes(db_path, g.posts, session=session)
         stats["fetched_months"] = int(fetched.get("months") or 0)
     rows: List[Tuple[Any, ...]] = []
+    level_rows: List[Tuple[Any, ...]] = []
     with_bar = 0
     missing = 0
     stocks = set()
-    for p in sorted(
-        g.posts,
-        key=lambda p: (
-            str(p.get("date") or ""),
-            str(p.get("time") or ""),
-            0 if p.get("kind") != "reply" else 1,
-            str(p.get("id") or ""),
-        ),
-    ):
-        aid = str(p.get("id") or "")
-        day = str(p.get("date") or "")
-        ymd = _ymd(day)
-        if not aid or not ymd:
-            continue
-        text = str(p.get("text") or "")
-        claimed = _claimed(text)
-        names = list(p.get("_snames") or [])
-        for i, sid in enumerate(p.get("_sids") or []):
-            if not sid:
+    n_charts = 0
+    tw_cache: Dict[str, Any] = {}
+    tx_cache: Dict[str, Any] = {}
+    load_tx = None
+    try:
+        from taiwan_market import load_futures_daily as load_tx
+    except Exception:
+        load_tx = None
+    batches: List[Tuple[List[Dict[str, Any]], int]] = [(list(g.posts), 0)]
+    try:
+        from biaoke_archive import load_bundled_club
+
+        club_posts = list((load_bundled_club() or {}).get("posts") or [])
+    except Exception:
+        club_posts = []
+    stats["club_posts"] = sum(
+        1 for p in club_posts if (p.get("kind") or "post") != "reply"
+    )
+    if club_posts:
+        batches.append((list(MentionGraph(club_posts, db_path=db_path).posts), 1))
+    for src_posts, club_flag in batches:
+        for p in sorted(
+            src_posts,
+            key=lambda p: (
+                str(p.get("date") or ""),
+                str(p.get("time") or ""),
+                0 if p.get("kind") != "reply" else 1,
+                str(p.get("id") or ""),
+            ),
+        ):
+            aid = str(p.get("id") or "")
+            day = str(p.get("date") or "")
+            ymd = _ymd(day)
+            if not aid or not ymd:
                 continue
-            name = names[i] if i < len(names) else sid
-            stocks.add(sid)
-            bar = bar_on(db_path, sid, day)
-            if bar:
-                with_bar += 1
-            else:
-                missing += 1
-            rows.append(
-                (
-                    aid,
-                    sid,
-                    name,
-                    day,
-                    str(p.get("time") or ""),
-                    _snippet(text, name),
-                    claimed,
-                    None,
-                    bar.get("high") if bar else None,
-                    bar.get("low") if bar else None,
-                    bar.get("close") if bar else None,
-                    None,
-                    None,
-                    "daily_quotes" if bar else "",
+            text = str(p.get("text") or "")
+            claimed = _claimed(text)
+            names = list(p.get("_snames") or [])
+            charts = post_chart_urls(text)
+            n_charts += len(charts)
+            for i, sid in enumerate(p.get("_sids") or []):
+                if not sid:
+                    continue
+                name = names[i] if i < len(names) else sid
+                stocks.add(sid)
+                bar = bar_on(db_path, sid, day)
+                if bar:
+                    with_bar += 1
+                else:
+                    missing += 1
+                rows.append(
+                    (
+                        aid,
+                        sid,
+                        name,
+                        day,
+                        str(p.get("time") or ""),
+                        _snippet(text, name),
+                        claimed,
+                        None,
+                        bar.get("high") if bar else None,
+                        bar.get("low") if bar else None,
+                        bar.get("close") if bar else None,
+                        None,
+                        None,
+                        "daily_quotes" if bar else "",
+                        int(club_flag),
+                    )
                 )
-            )
+            tw = tw_cache.get(day)
+            if day not in tw_cache:
+                tw = bar_on(db_path, "TWII", day)
+                tw_cache[day] = tw
+            if day not in tx_cache:
+                tx_cache[day] = load_tx(db_path, ymd) if load_tx else None
+            tx = tx_cache[day]
+            for hit in extract_index_levels(text):
+                note = _hit_note(float(hit["level"]), tw, label="加權")
+                tx_note = _hit_note(float(hit["level"]), tx, label="台指") if tx else ""
+                verdict = "；".join(x for x in (note, tx_note) if x) or "庫沒這天"
+                level_rows.append(
+                    (
+                        aid,
+                        float(hit["level"]),
+                        day,
+                        str(p.get("time") or ""),
+                        str(hit.get("role") or ""),
+                        str(hit.get("ctx") or ""),
+                        " ".join(charts[:4]),
+                        tw.get("high") if tw else None,
+                        tw.get("low") if tw else None,
+                        tw.get("close") if tw else None,
+                        tx.get("high") if tx else None,
+                        tx.get("low") if tx else None,
+                        tx.get("close") if tx else None,
+                        verdict,
+                        int(club_flag),
+                    )
+                )
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.execute("DELETE FROM biaoke_day_facts")
@@ -508,11 +683,22 @@ def walk_biaoke_posts(
             """
             INSERT OR REPLACE INTO biaoke_day_facts
             (post_id, stock_id, stock_name, post_date, post_time, snippet, claimed,
-             open, high, low, close, volume, pct_change, source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             open, high, low, close, volume, pct_change, source, club)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             rows,
         )
+        conn.execute("DELETE FROM biaoke_level_facts")
+        if level_rows:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO biaoke_level_facts
+                (post_id, claimed, post_date, post_time, role, snippet, charts,
+                 twii_high, twii_low, twii_close, tx_high, tx_low, tx_close, hit, club)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                level_rows,
+            )
         conn.commit()
     finally:
         conn.close()
@@ -520,13 +706,18 @@ def walk_biaoke_posts(
     stats["with_bar"] = with_bar
     stats["missing"] = missing
     stats["stocks"] = len(stocks)
+    stats["levels"] = len(level_rows)
+    stats["charts"] = n_charts
     logger.info(
-        "飆大連續讀 posts=%s facts=%s with_bar=%s missing=%s stocks=%s fetched_months=%s",
+        "飆大連續讀 posts=%s club_posts=%s facts=%s with_bar=%s missing=%s stocks=%s levels=%s charts=%s fetched_months=%s",
         stats["posts"],
+        stats["club_posts"],
         stats["facts"],
         stats["with_bar"],
         stats["missing"],
         stats["stocks"],
+        stats["levels"],
+        stats["charts"],
         stats["fetched_months"],
     )
     return stats
@@ -556,7 +747,7 @@ def stock_timeline(db_path: str, sid: str, *, limit: int = 8) -> Dict[str, Any]:
             """
             SELECT post_date, stock_name, snippet, claimed, high, low, close, post_id
             FROM biaoke_day_facts
-            WHERE stock_id=?
+            WHERE stock_id=? AND IFNULL(club,0)=0
             ORDER BY post_date, post_time, post_id
             """,
             (sid,),

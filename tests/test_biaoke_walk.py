@@ -63,6 +63,7 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     seed_biaoke_archive(db)
     stats = walk_biaoke_posts(db, fetch_missing=False)
     assert stats["posts"] >= 1709
+    assert stats.get("club_posts", 0) >= 92
     assert stats["facts"] >= 1000
     assert stats["stocks"] >= 40
     conn = sqlite3.connect(db)
@@ -78,12 +79,24 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     first = conn.execute(
         "SELECT post_date, snippet FROM biaoke_day_facts WHERE stock_id='3035' ORDER BY post_date LIMIT 1"
     ).fetchone()
+    n_club = conn.execute(
+        "SELECT COUNT(*) FROM biaoke_day_facts WHERE IFNULL(club,0)=1"
+    ).fetchone()[0]
+    n_lv = conn.execute("SELECT COUNT(*) FROM biaoke_level_facts").fetchone()[0]
+    lv465 = conn.execute(
+        "SELECT 1 FROM biaoke_level_facts WHERE claimed BETWEEN 46500 AND 46520"
+    ).fetchone()
     conn.close()
     assert nanya >= 5
     assert zhi >= 5
     assert bulk == 0
     assert first[0].startswith("2023-12")
     assert "智原" in (first[1] or "")
+    assert stats["levels"] >= 8
+    assert stats["charts"] >= 1
+    assert n_lv >= 8
+    assert n_club >= 1
+    assert lv465
     tl = stock_timeline(db, "3035")
     assert tl["n"] >= 5
     assert str(tl.get("from") or "").startswith("2023-12")
@@ -91,6 +104,17 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     assert "3035" in html
     assert "不是買訊" in html
     assert "語料" not in html
+
+
+def test_extract_index_levels_skips_stock_keeps_night():
+    from biaoke_walk import extract_index_levels
+
+    zhi = extract_index_levels("智原這幾天支撐線370不跌破，就會開始進入推升另一波脈動！")
+    assert zhi == []
+    night = extract_index_levels(
+        "今晚夜盤至少要穿越46506為今晚觀盤重點。加權指數細微波修正已經走5段。"
+    )
+    assert any(abs(float(h["level"]) - 46506) < 0.1 for h in night)
 
 
 def test_upsert_does_not_invent_when_empty():
