@@ -380,24 +380,44 @@ def _collect_one_etf_nav(
     *,
     fetch_twse=None,
     fetch_tpex=None,
+    fetch_mis=None,
 ) -> List[dict]:
+    """e添富 → 櫃買 → MIS。GHA 對部分槓桿／反向偶發空回應或 307，多試兩次並用 MIS 補。"""
+    import time
+
     sid = str(stock_id or "").strip()
     if not sid:
         return []
     twse_fn = fetch_twse or fetch_etfortune_nav_payload
     tpex_fn = fetch_tpex or fetch_tpex_etf_product_payload
+    rows: List[dict] = []
+    for attempt in range(3):
+        try:
+            rows = parse_etfortune_nav(twse_fn(sid) or {}, sid)
+        except Exception as exc:
+            log.warning("e添富淨值 %s 失敗（%s/3）：%s", sid, attempt + 1, exc)
+            rows = []
+        if rows:
+            return rows
+        time.sleep(0.35 * (attempt + 1))
     try:
-        rows = parse_etfortune_nav(twse_fn(sid) or {}, sid)
-    except Exception as exc:
-        log.warning("e添富淨值 %s 失敗：%s", sid, exc)
-        rows = []
-    if rows:
-        return rows
-    try:
-        return parse_tpex_etf_product_nav(tpex_fn(sid) or {})
+        rows = parse_tpex_etf_product_nav(tpex_fn(sid) or {})
+        if rows:
+            return rows
     except Exception as exc:
         log.warning("櫃買淨值 %s 失敗：%s", sid, exc)
+    # 單元測試若只注入 twse/tpex、未注入 fetch_mis，勿再打真 MIS。
+    # 有注入 fetch_mis（或正式路徑未注入任何 fetcher）才走 MIS 後援。
+    if fetch_mis is None and (fetch_twse is not None or fetch_tpex is not None):
         return []
+    mis_fn = fetch_mis if fetch_mis is not None else fetch_mis_etf_payload
+    try:
+        for row in parse_mis_etf_nav(mis_fn() or {}):
+            if str(row.get("stock_id") or "").strip() == sid:
+                return [row]
+    except Exception as exc:
+        log.warning("MIS 淨值 %s 失敗：%s", sid, exc)
+    return []
 
 
 def refresh_one_etf_nav(

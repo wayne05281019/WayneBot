@@ -104,3 +104,28 @@ def test_etfortune_follows_307(monkeypatch):
     assert calls[0][2] == "POST" and calls[1][2] == "POST"
     assert calls[0][1] == calls[1][1]
     assert "rwd" in calls[1][0]
+
+
+def test_collect_falls_back_to_mis():
+    """e添富／櫃買都空時，改吃 MIS 前一營業日淨值。"""
+    import official_snapshots as osnap
+
+    rows = osnap._collect_one_etf_nav(
+        "00631L",
+        fetch_twse=lambda sid: {},
+        fetch_tpex=lambda sid: {},
+        fetch_mis=lambda: {
+            "a1": [
+                {
+                    "msgArray": [
+                        {"a": "00631L", "h": "36.00", "i": "20260911"},
+                        {"a": "0050", "h": "107.49", "i": "20260911"},
+                    ]
+                }
+            ]
+        },
+    )
+    assert len(rows) == 1
+    assert rows[0]["stock_id"] == "00631L"
+    assert rows[0]["nav"] == 36.0
+    assert rows[0]["source"] == "twse_mis_prev_nav"
