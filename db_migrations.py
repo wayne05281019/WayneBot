@@ -240,6 +240,27 @@ def _m011_biaoke_posts(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m012_minute_bars(conn: sqlite3.Connection) -> None:
+    """15／60 分 K 歷史。Yahoo 單次 range 不夠長，開過的檔下次從庫接。CREATE IF NOT EXISTS，可重跑。"""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS minute_bars (
+            stock_id TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            ts TEXT NOT NULL,
+            o REAL NOT NULL,
+            h REAL NOT NULL,
+            l REAL NOT NULL,
+            c REAL NOT NULL,
+            v REAL NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT 'yahoo',
+            PRIMARY KEY (stock_id, interval, ts)
+        );
+        CREATE INDEX IF NOT EXISTS idx_minute_bars_sid_iv ON minute_bars(stock_id, interval, ts);
+        """
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -252,6 +273,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (9, "ETF 前一營業日單位淨值", _m009_etf_nav_snapshot),
     (10, "ETF 官方收益分配除息日", _m010_etf_div_event),
     (11, "飆大公開文 overlay 表", _m011_biaoke_posts),
+    (12, "15／60 分 K 歷史庫", _m012_minute_bars),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)

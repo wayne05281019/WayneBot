@@ -140,9 +140,84 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     assert "g.lineTo(x,y)" in src
     assert "yx(b.c)" in src
     assert "pointerdown" in src
+    assert "PAN_PX=6" in src
+    assert "輕點對價" in src
+    assert 'mode==="pan"' in src
     assert "對價" in src
     assert "20高" in src
     assert "tradingview.com" not in src.lower()
+
+
+def test_merge_minute_bars_remote_wins_same_ts():
+    from kline_hop import merge_minute_bars
+
+    stored = [{"t": "202609010900", "o": 1, "h": 1, "l": 1, "c": 1, "v": 1}]
+    remote = [
+        {"t": "202609010900", "o": 2, "h": 2, "l": 2, "c": 2, "v": 2},
+        {"t": "202609011000", "o": 3, "h": 3, "l": 3, "c": 3, "v": 3},
+    ]
+    out = merge_minute_bars(stored, remote)
+    assert [b["t"] for b in out] == ["202609010900", "202609011000"]
+    assert out[0]["c"] == 2
+
+
+def test_minute_bars_union_without_network(tmp_path, monkeypatch):
+    from kline_hop import fetch_yahoo_minutes, save_minute_bars
+
+    db = str(tmp_path / "m.db")
+    save_minute_bars(
+        "2330",
+        "15",
+        [{"t": "202609010900", "o": 1, "h": 2, "l": 1, "c": 1.5, "v": 10}],
+        db,
+    )
+    remote = [{"t": "202609011000", "o": 2, "h": 3, "l": 2, "c": 2.5, "v": 11}]
+    monkeypatch.setattr("kline_hop._download_yahoo_minutes", lambda *a, **k: remote)
+    out = fetch_yahoo_minutes("2330", "15", db)
+    assert [b["t"] for b in out] == ["202609010900", "202609011000"]
+    monkeypatch.setattr("kline_hop._download_yahoo_minutes", lambda *a, **k: [])
+    again = fetch_yahoo_minutes("2330", "15", db)
+    assert [b["t"] for b in again] == ["202609010900", "202609011000"]
+    assert again[1]["c"] == 2.5
+
+
+def test_yahoo_minute_ranges_try_longer_first():
+    from kline_hop import _yahoo_minute_ranges
+
+    assert _yahoo_minute_ranges("15m")[0] == "60d"
+    assert _yahoo_minute_ranges("60m")[0] == "2y"
+
+
+def test_kline_minute_http_uses_store(tmp_path, monkeypatch):
+    import json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    import main
+    from kline_hop import save_minute_bars
+
+    db = _db(str(tmp_path / "m.db"))
+    save_minute_bars(
+        "2330",
+        "15",
+        [{"t": "202609010900", "o": 1, "h": 2, "l": 1, "c": 1.5, "v": 10}],
+        db,
+    )
+    monkeypatch.setenv("WAYNE_DB_PATH", db)
+    monkeypatch.setattr("kline_hop._download_yahoo_minutes", lambda *a, **k: [])
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), main.HealthHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        port = httpd.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/k/2330/m?i=15", timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            assert resp.status == 200
+        assert payload["bars"][0]["t"] == "202609010900"
+        assert payload["bars"][0]["c"] == 1.5
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_parse_yahoo_chart_bars_to_lots():

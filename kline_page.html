@@ -33,7 +33,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 <h1>@@HEAD@@</h1>
 <p class="sub">@@SUB@@</p>
 </header>
-<div id="hud">手指按住圖：直條＝那一天，橫線＝那個價。左右滑移動、雙指縮放。紫／綠箭頭跟導航圖同一套。</div>
+<div id="hud">輕點對價；左右拖移動、雙指縮放。紫／綠箭頭跟導航圖同一套。</div>
 <p class="leg">
 <span><i style="background:#6A1B9A"></i>20高</span>
 <span><i style="background:#4527A0"></i>20高脫離</span>
@@ -291,6 +291,10 @@ function hud(){
 }
 function bind(cv){
   var pts={};
+  var mode="";
+  var origin=null;
+  var vel=0, lastT=0, inertId=0;
+  var PAN_PX=6;
   function loc(e){
     var r=cv.getBoundingClientRect();
     return {x:e.clientX-r.left, y:e.clientY-r.top};
@@ -319,16 +323,38 @@ function bind(cv){
     S.px=priceFromY(y);
     paint();
   }
+  function stopInert(){ inertId += 1; }
+  function runInert(v0){
+    var token=++inertId;
+    var v=v0;
+    function step(){
+      if(token!==inertId) return;
+      if(Math.abs(v)<0.18) return;
+      var shift=Math.round(v);
+      if(shift){
+        S.end=Math.max(S.n, Math.min(S.bars.length, S.end+shift));
+        paint();
+      }
+      v*=0.86;
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
   cv.addEventListener("pointerdown", function(e){
     cv.setPointerCapture(e.pointerId);
+    stopInert();
     pts[e.pointerId]=loc(e);
-    if(Object.keys(pts).length===1) applyHover(pts[e.pointerId].x, pts[e.pointerId].y);
+    origin=pts[e.pointerId];
+    mode="tap";
+    vel=0;
+    lastT=Date.now();
   });
   cv.addEventListener("pointermove", function(e){
     if(!pts[e.pointerId]) return;
     var ids=Object.keys(pts);
     var p=loc(e);
     if(ids.length>=2){
+      mode="pinch";
       var a=pts[ids[0]], b=pts[ids[1]];
       pts[e.pointerId]=p;
       var a2=pts[ids[0]], b2=pts[ids[1]];
@@ -342,23 +368,44 @@ function bind(cv){
       }
       return;
     }
-    var dx=p.x-pts[e.pointerId].x;
-    pts[e.pointerId]=p;
-    if(Math.abs(dx)>2){
+    if(mode==="pinch") return;
+    var start=origin||pts[e.pointerId];
+    if(mode==="tap" && Math.hypot(p.x-start.x, p.y-start.y)>PAN_PX){
+      mode="pan";
+      S.hover=-1;
+      S.px=null;
+    }
+    if(mode==="pan"){
+      var prev=pts[e.pointerId];
+      var dx=p.x-prev.x;
+      var now=Date.now();
+      var dt=Math.max(8, now-lastT);
       var L=layout();
       var slot=(S.w-L.padL-L.padR)/Math.max(1,S.n);
+      vel=(-dx/slot)*(16/dt);
+      lastT=now;
+      pts[e.pointerId]=p;
       var shift=Math.round(-dx/slot);
       if(shift){
         S.end=Math.max(S.n, Math.min(S.bars.length, S.end+shift));
+        paint();
       }
+      return;
     }
-    applyHover(p.x,p.y);
+    pts[e.pointerId]=p;
   });
-  function up(e){ delete pts[e.pointerId]; }
+  function up(e){
+    var p=pts[e.pointerId];
+    delete pts[e.pointerId];
+    if(mode==="tap" && p) applyHover(p.x, p.y);
+    else if(mode==="pan" && Math.abs(vel)>0.25) runInert(vel);
+    if(Object.keys(pts).length===0){ mode=""; origin=null; }
+  }
   cv.addEventListener("pointerup", up);
   cv.addEventListener("pointercancel", up);
   cv.addEventListener("wheel", function(e){
     e.preventDefault();
+    stopInert();
     var mid=S.end-S.n/2;
     S.n=Math.max(18, Math.min(S.bars.length, Math.round(S.n*(e.deltaY>0?1.12:0.88))));
     S.end=Math.max(S.n, Math.min(S.bars.length, Math.round(mid+S.n/2)));

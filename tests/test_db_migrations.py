@@ -283,6 +283,14 @@ def test_ensure_core_schema_reaches_latest_version(tmp_path):
     assert current_version(path) == LATEST_VERSION
 
 
+def test_minute_bars_table_after_migrate(fresh):
+    run_migrations(fresh)
+    conn = sqlite3.connect(fresh)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(minute_bars)")}
+    conn.close()
+    assert cols >= {"stock_id", "interval", "ts", "o", "h", "l", "c", "v", "source"}
+
+
 def test_automation_audit_flags_pending_migrations(tmp_path, monkeypatch):
     """巡檢要抓到 schema 沒升級，而不是等奇怪的查詢錯誤浮現。"""
     from automation_health import run_automation_audit

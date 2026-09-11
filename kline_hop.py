@@ -214,6 +214,131 @@ def merge_live_daily(
         return bars
 
 
+def ensure_minute_bars_table(db_path: Optional[str]) -> None:
+    if not db_path:
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS minute_bars (
+                stock_id TEXT NOT NULL,
+                interval TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                o REAL NOT NULL,
+                h REAL NOT NULL,
+                l REAL NOT NULL,
+                c REAL NOT NULL,
+                v REAL NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'yahoo',
+                PRIMARY KEY (stock_id, interval, ts)
+            );
+            CREATE INDEX IF NOT EXISTS idx_minute_bars_sid_iv ON minute_bars(stock_id, interval, ts);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def merge_minute_bars(
+    stored: List[Dict[str, Any]], remote: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """同一根遠端蓋過庫內；回傳時間由舊到新。"""
+    by_ts: Dict[str, Dict[str, Any]] = {}
+    for chunk in (stored, remote):
+        for raw in chunk or []:
+            ts = str((raw or {}).get("t") or "")
+            if not ts:
+                continue
+            by_ts[ts] = raw
+    return [by_ts[k] for k in sorted(by_ts)]
+
+
+def load_minute_bars(
+    stock_id: str, interval: str, db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    sid = str(stock_id or "").strip()
+    iv = "15" if normalize_interval(interval) == "15" else "60"
+    if not sid or not db_path:
+        return []
+    ensure_minute_bars_table(db_path)
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            """
+            SELECT ts, o, h, l, c, v FROM minute_bars
+            WHERE stock_id=? AND interval=?
+            ORDER BY ts
+            """,
+            (sid, iv),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    for ts, o, h, l, c, v in rows:
+        try:
+            out.append(
+                {
+                    "t": str(ts),
+                    "o": float(o),
+                    "h": float(h),
+                    "l": float(l),
+                    "c": float(c),
+                    "v": float(v or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def save_minute_bars(
+    stock_id: str,
+    interval: str,
+    bars: List[Dict[str, Any]],
+    db_path: Optional[str] = None,
+    *,
+    source: str = "yahoo",
+) -> int:
+    sid = str(stock_id or "").strip()
+    iv = "15" if normalize_interval(interval) == "15" else "60"
+    if not sid or not db_path or not bars:
+        return 0
+    ensure_minute_bars_table(db_path)
+    written = 0
+    conn = sqlite3.connect(db_path)
+    try:
+        for b in bars:
+            ts = str((b or {}).get("t") or "")
+            try:
+                o = float(b["o"])
+                h = float(b["h"])
+                l = float(b["l"])
+                c = float(b["c"])
+                v = float(b.get("v") or 0)
+            except (TypeError, ValueError, KeyError):
+                continue
+            if not ts or c <= 0:
+                continue
+            conn.execute(
+                """
+                INSERT INTO minute_bars(stock_id, interval, ts, o, h, l, c, v, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(stock_id, interval, ts) DO UPDATE SET
+                    o=excluded.o, h=excluded.h, l=excluded.l,
+                    c=excluded.c, v=excluded.v, source=excluded.source
+                """,
+                (sid, iv, ts, o, h, l, c, v, source),
+            )
+            written += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return written
+
+
 def parse_yahoo_chart_bars(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Yahoo chart JSON → 我們的 K 柱。量從股數換成張。"""
     from datetime import datetime, timezone
@@ -256,34 +381,60 @@ def parse_yahoo_chart_bars(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-def fetch_yahoo_minutes(
+def _yahoo_minute_ranges(yahoo_iv: str) -> tuple:
+    if yahoo_iv == "15m":
+        return ("60d", "3mo", "1mo", "5d")
+    return ("2y", "1y", "6mo", "1mo")
+
+
+def _download_yahoo_minutes(
     stock_id: str, interval: str, db_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """15 分／60 分走 Yahoo 分K，同一檔代號，不開整站。"""
+    """Yahoo 分 K：長 range 失敗再縮。不寫庫。"""
     import requests
 
     from stock_links import yahoo_exchange
 
     sid = str(stock_id or "").strip()
-    iv = "15m" if normalize_interval(interval) == "15" else "60m"
-    rng = "5d" if iv == "15m" else "1mo"
     if not sid:
         return []
+    yahoo_iv = "15m" if normalize_interval(interval) == "15" else "60m"
     yid = f"{sid}.{yahoo_exchange(sid, db_path)}"
-    url = (
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
-        f"?interval={iv}&range={rng}"
-    )
-    try:
-        resp = requests.get(
-            url,
-            timeout=8,
-            headers={"User-Agent": "WayneBot/1.0"},
+    last: List[Dict[str, Any]] = []
+    for rng in _yahoo_minute_ranges(yahoo_iv):
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
+            f"?interval={yahoo_iv}&range={rng}"
         )
-        resp.raise_for_status()
-        return parse_yahoo_chart_bars(resp.json() or {})
-    except Exception:
+        try:
+            resp = requests.get(
+                url,
+                timeout=8,
+                headers={"User-Agent": "WayneBot/1.0"},
+            )
+            if resp.status_code != 200:
+                continue
+            bars = parse_yahoo_chart_bars(resp.json() or {})
+            if bars:
+                return bars
+            last = bars
+        except Exception:
+            continue
+    return last
+
+
+def fetch_yahoo_minutes(
+    stock_id: str, interval: str, db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """15 分／60 分：Yahoo 新柱併進庫，回傳庫內舊柱 ∪ 遠端。不開整站回補。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
         return []
+    stored = load_minute_bars(sid, interval, db_path) if db_path else []
+    remote = _download_yahoo_minutes(sid, interval, db_path)
+    if db_path and remote:
+        save_minute_bars(sid, interval, remote, db_path)
+    return merge_minute_bars(stored, remote)
 
 
 def render_kline_html(
@@ -342,7 +493,7 @@ def render_kline_html(
     except Exception:
         stamp = ""
     sub = (
-        f"{market}　{stamp}日K 可滑動對價，高低箭頭跟導航圖同一套。"
+        f"{market}　{stamp}日K 輕點對價、左右拖移動；高低箭頭跟導航圖同一套。"
         "可改 15 分／60 分，或五日／十日／月線／季線。"
     )
     page = (
