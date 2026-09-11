@@ -237,14 +237,18 @@ def test_etf_price_nav_beside_close_not_in_fundamentals(tmp_path):
     labs = [a for a, _ in glance_fundamentals_plain("0050", db)]
     assert "淨值" not in labs
     assert "折溢價" not in labs
-    from wayne_navigator import _paint_close_right
+    from wayne_navigator import _paint_close_right, session_price_label
 
     src = inspect.getsource(_paint_close_right)
     assert 'C["up"]' in src
     assert 'C["down"]' in src
     assert "折溢價" in src
     assert "_draw_mini_candle" in src
-    assert "收盤" in src
+    assert "session_price_label" in src
+    assert "今K" in src
+    lab_src = inspect.getsource(session_price_label)
+    assert "現價" in lab_src
+    assert "收盤" in lab_src
 
 
 def test_etf_div_last_and_next_amount_only_when_announced(tmp_path):

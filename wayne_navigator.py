@@ -1193,6 +1193,47 @@ def _fmt_md_tpl(date_val) -> str:
     return d
 
 
+def session_price_label(card) -> str:
+    """大字標籤：盤中是現價，收盤後才叫收盤。"""
+    return "現價" if bool(card and card.get("is_live")) else "收盤"
+
+
+def ohlc_line_bits(card, last=None, prev_c=None) -> list:
+    """最上列：今開／今高／今低／昨收。盤中盤後同一套讀法。"""
+    src = last if isinstance(last, dict) else {}
+
+    def pick(key):
+        v = src.get(key) if src else None
+        if v is None and card:
+            v = card.get(key)
+        return v
+
+    bits = [
+        f"今開 {_fmt_price(pick('open'))}",
+        f"今高 {_fmt_price(pick('high'))}",
+        f"今低 {_fmt_price(pick('low'))}",
+    ]
+    prev = prev_c
+    if prev is None:
+        prev = pick("yesterday_close")
+        if prev is None:
+            prev = pick("prev_close")
+    try:
+        prev_f = float(prev or 0)
+    except (TypeError, ValueError):
+        prev_f = 0.0
+    if prev_f:
+        bits.append(f"昨收 {_fmt_price(prev_f)}")
+    return bits
+
+
+def table_row_is_live(card, row_date) -> bool:
+    """20 天表第一列若是盤中即時列，日期旁要標盤中。"""
+    if not card or not card.get("is_live"):
+        return False
+    return str(row_date or "") == str(card.get("latest_date") or "")
+
+
 def _lum(color) -> float:
     """相對亮度（WCAG）；用來判斷字色算亮還是暗。"""
     out = 0.0
@@ -1357,7 +1398,7 @@ def _close_move_bits(chg, chg_amt) -> list:
 
 
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
-    """右欄收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。今日小 K 畫在「收盤」左邊。"""
+    """右欄現價或收盤／漲跌；ETF 再疊淨值與折溢價（溢紅折綠）。今日小 K 畫在標籤左邊。"""
     extra = _etf_nav_extra_h(card)
     if extra:
         # 28pt 收盤與 15.5pt 漲跌中心距至少約 4.8，否則右上會黏成一塊。
@@ -1370,20 +1411,35 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
         chg_fs = 15.5
     ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
             color=chg_c, ha="right", va="center", zorder=3)
-    label = "收盤"
+    label = session_price_label(card)
     label_x = px_right - tw(close_s, 28) - 2.0
     ax.text(label_x, close_y, label,
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     ohlc = _card_ohlc_tuple(card, last)
     if ohlc:
         o, hi, lo, cl, prev = ohlc
-        # 跟 28pt 收盤同高，畫在白色欄「收盤」左手邊；不要放標題列。
+        # 跟 28pt 現價／收盤同高，畫在白色欄標籤左手邊；不要放標題列。
         cw, ch = 3.2, 5.6
         candle_right = label_x - tw(label, 11.0) - 1.15
         _draw_mini_candle(
             ax, candle_right - cw, close_y - ch * 0.5, cw, ch, o, hi, lo, cl, prev
         )
-    ax.text(px_right, chg_y, "　".join(chg_bits),
+        ax.text(
+            candle_right - cw - 0.35,
+            close_y,
+            "今K",
+            fontproperties=_fp(8.5, "bold"),
+            color=C["ink_soft"],
+            ha="right",
+            va="center",
+            zorder=3,
+        )
+    move_s = "　".join(chg_bits)
+    if ohlc and ohlc[4]:
+        move_s = "較昨　" + move_s
+        if extra:
+            chg_fs = 13.5 if tw(move_s, 15.5) > 36.0 else chg_fs
+    ax.text(px_right, chg_y, move_s,
             fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
     if not extra:
         return
@@ -2469,7 +2525,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         ax, tw, C, brand_x, title_cy, stamp, clock_line, _card_ohlc_tuple(card)
     )
 
-    # 左：開高低昨＋徽章；右：收盤價與漲跌，不要跟左邊搶。
+    # 左：今開高低／昨收＋徽章；右：現價或收盤，不要跟左邊搶。
     y -= gap + price_h
     pane(pad_x, y, 100 - 2 * pad_x, price_h)
     chg = float(card.get("change_pct") or 0)
@@ -2480,13 +2536,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     close_s = _fmt_price(card["close"])
     chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card)
-    ohlc_bits = [
-        f"開 {_fmt_price(card.get('open'))}",
-        f"高 {_fmt_price(card.get('high'))}",
-        f"低 {_fmt_price(card.get('low'))}",
-    ]
-    if prev_c:
-        ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
+    ohlc_bits = ohlc_line_bits(card, prev_c=prev_c)
     ohlc_y = y + price_h - 2.25
     ax.text(pad_x + 3.2, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
             color=C["ink_soft"], va="center", zorder=3)
@@ -2653,6 +2703,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     for row_i, (_, r) in enumerate(table.iterrows()):
         y1 = ry - body_h
         bias = float(r.get("bias_monthly") or 0)
+        date_live = table_row_is_live(card, r["date"])
         rank = int(r.get("vol_rank_120") or 99)
         temp_n = float(r.get("temp_num") or 0) or _parse_temp_n(r.get("溫度計"))
         trend = str(r.get("升降") or "No")
@@ -2724,6 +2775,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                     _status_pill(cx, cy, val, fills[i], fgs[i], w=pill_w,
                                  h=body_h * 0.58, fs=10.8)
             else:
+                if i == 0 and date_live:
+                    ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
+                    ax.text(cx, cy + 0.78, val, fontproperties=_fp(10.5),
+                            ha="center", va="center", color=ink, zorder=3)
+                    ax.text(cx, cy - 0.98, "盤中", fontproperties=_fp(9.0, "bold"),
+                            ha="center", va="center", color=C["pill_hi"], zorder=3)
+                    continue
                 px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
                 ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
                 ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
@@ -2894,8 +2952,9 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         title_block,
         section(
             kv_compact("日期", _fmt_md(card["latest_date"]) + date_note),
-            kv_compact("開高低", ohlc or "—"),
-            kv_compact("收盤", f"{_fmt_price(card['close'])}　{move}"),
+            kv_compact("今開高低", ohlc or "—"),
+            *([kv_compact("昨收", _fmt_price(prev_c))] if prev_c else []),
+            kv_compact(session_price_label(card), f"{_fmt_price(card['close'])}　{('較昨 ' + move) if prev_c else move}"),
             *([
                 kv_compact(
                     "淨值",
@@ -3166,7 +3225,7 @@ def render_first_glance_png(
         _card_ohlc_tuple(card, last),
     )
 
-    # 左：開高低昨＋徽章；右：收盤價與漲跌。兩欄分開，不要互壓。
+    # 左：今開高低／昨收＋徽章；右：現價或收盤。兩欄分開，不要互壓。
     y -= gap + price_h
     pane(pad_x, y, pane_w, price_h)
     chg = float(card.get("change_pct") or 0)
@@ -3177,14 +3236,8 @@ def render_first_glance_png(
     close_s = _fmt_price(close_v)
     chg_bits = _close_move_bits(chg, chg_amt)
     _paint_close_right(ax, tw, C, inner_r, y, price_h, close_s, chg_c, chg_bits, card, last)
-    # 股票收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
-    ohlc_bits = [
-        f"開 {_fmt_price(last.get('open') or card.get('open'))}",
-        f"高 {_fmt_price(last.get('high') or card.get('high'))}",
-        f"低 {_fmt_price(last.get('low') or card.get('low'))}",
-    ]
-    if prev_c:
-        ohlc_bits.append(f"昨 {_fmt_price(prev_c)}")
+    # 股票現價／收盤／漲跌仍用 price_h * 0.24；ETF 才往下加淨值／折溢價。
+    ohlc_bits = ohlc_line_bits(card, last, prev_c=prev_c)
     ohlc_y = y + price_h - 2.25
     ax.text(inner_l, ohlc_y, "　".join(ohlc_bits), fontproperties=_fp(13.0),
             color=C["ink_soft"], ha="left", va="center", zorder=3)

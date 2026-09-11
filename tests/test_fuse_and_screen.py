@@ -1781,7 +1781,7 @@ class LookupCardTest(unittest.TestCase):
         }
         import inspect
 
-        from wayne_navigator import _paint_close_right, _paint_title_stamp
+        from wayne_navigator import _paint_close_right, _paint_title_stamp, session_price_label
 
         src = inspect.getsource(render_decision_card_png)
         self.assertIn("pad_x + 3.2", src)
@@ -1790,7 +1790,11 @@ class LookupCardTest(unittest.TestCase):
         self.assertNotIn("_draw_mini_candle", inspect.getsource(_paint_title_stamp))
         close_src = inspect.getsource(_paint_close_right)
         self.assertIn("_draw_mini_candle", close_src)
-        self.assertIn("收盤", close_src)
+        self.assertIn("session_price_label", close_src)
+        self.assertIn("今K", close_src)
+        self.assertIn("較昨", close_src)
+        self.assertIn("現價", inspect.getsource(session_price_label))
+        self.assertIn("收盤", inspect.getsource(session_price_label))
         box_src = inspect.getsource(render_decision_card_png)
         self.assertIn("左標籤細字", box_src)
         self.assertIn("右兩行價格", box_src)
