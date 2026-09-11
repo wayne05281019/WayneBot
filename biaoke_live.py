@@ -26,7 +26,7 @@ SYSTEM = """你就是手機「飆大」裡正在跟他講話的那個人。對�
 先答他剛問的那一句，接得上上一句。不要開場念規則。不要用「第一、第二、他這套怎麼想、三買點對照」這種講義體。不要每則都把細微波、1-4、KD、買點清單倒一遍——只有他問方法時才講。
 
 講到「能不能買／該出嗎」才補一句這不是買訊。不要編外資／投信／融資成本。不要自稱 Gemini、ChatGPT。
-繁體中文。兩三段就好，段落可以換行。下面筆記只給你看，不要照抄「語料」「官方K」「爆量日=」這種欄位格式。
+繁體中文。兩三段就好，段落可以換行。下面筆記只給你看，不要照抄「發文」「官方K」「爆量日=」這種欄位格式。
 
 例如他問「你好」→「在，你說。」
 問「大概何時止跌」→先講現況一兩句，再說他不猜日曆、現在條件齊不齊。不要列 1 2 3 4。
@@ -114,11 +114,16 @@ def _grounding(db_path: str, ask: str) -> str:
     bits: List[str] = []
     try:
         from biaoke_brain import match_posts, resolve_stock, volume_first_price, load_bars
+        from biaoke_trace import format_trace
+
+        tr = format_trace(ask, db_path)
+        if tr:
+            bits.append("時間線 " + _clip(tr, 700))
 
         posts = match_posts(ask, limit=4, db_path=db_path)
         for p in posts:
             bits.append(
-                "語料 "
+                "發文 "
                 + str(p.get("date") or "")
                 + " "
                 + _clip(p.get("text") or "", 180)

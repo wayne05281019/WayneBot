@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""飆客獨立區：語料檢索與觀點頁。不進海選、不改高低卡。"""
+"""飆客獨立區：公開文檢索與觀點頁。不進海選、不改高低卡。"""
 from __future__ import annotations
 
 import copy
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS biaoke_posts (
 
 
 def ensure_biaoke_posts_table(db_path: str) -> None:
-    """公開語料 overlay。同一顆 wayne_market.db，不是私人表。"""
+    """公開文 overlay。同一顆 wayne_market.db，不是私人表。"""
     if not db_path:
         return
     parent = os.path.dirname(os.path.abspath(db_path))
@@ -260,7 +260,7 @@ def format_biaoke_desk_html() -> str:
         "<b>接著怎麼問</b>\n"
         "直接打字或語音即可，裡面沒有選單。問句會在這邊彙整後回你。"
         "精簡六顆沒這鈕，打 <code>飆大</code> 或「完整選單」。"
-        "也可打 <code>飆大 勤誠</code>。語料沒寫過的檔（例如藝舍-KY）也會用同一套框架套官方 K，不上買訊。"
+        "也可打 <code>飆大 勤誠</code>。資料庫沒寫過的檔（例如藝舍-KY）也會用同一套框架套官方 K，不上買訊。"
     )
 
 
@@ -270,7 +270,7 @@ def _date_ok(post: Dict[str, Any], start: str, end: str) -> bool:
 
 
 def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) -> str:
-    """關鍵字／時間查語料。沒對上就交給對話腦用官方 K 套框架，不說不猜。"""
+    """關鍵字／時間查公開文。沒對上就交給對話腦用官方 K 套框架，不說不猜。"""
     q = (ask or "").strip()
     if not q:
         return format_biaoke_welcome_html()
@@ -280,7 +280,7 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
     blob = load_corpus(db_path if db_path is not None else _default_db_path())
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     start, end = "", "9999"
-    title = f"飆客語料　{html_escape(q)}"
+    title = f"飆客公開文　{html_escape(q)}"
     year_end = bool(_YEAR_END.search(q))
     if year_end:
         start, end = "2025-11-15", "2026-01-20"
@@ -336,7 +336,7 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
     if not scored:
         return (
             f"<b>{title}</b>\n"
-            "語料沒對上這句。會改用官方 K＋飆大框架來看；不是買訊。"
+            "資料庫沒對上這句。會改用官方 K＋飆大框架來看；不是買訊。"
         )
     lines = [f"<b>{title}</b>", head] if head else [f"<b>{title}</b>"]
     for _sc, p in scored[:limit]:

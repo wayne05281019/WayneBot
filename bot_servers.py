@@ -3532,7 +3532,7 @@ class WayneTelegramBot:
         self._pending[actor] = BIAOKE_PENDING
 
     async def _send_biaoke_page(self, message, *, ask: str = "", uid: str = "") -> None:
-        """飆大＝這顆對話腦的即時窗口。問句在這邊彙整。語料沒寫過的檔也套官方 K。不進海選。"""
+        """飆大＝這顆對話腦的即時窗口。問句在這邊彙整。資料庫沒寫過的檔也套官方 K。不進海選。"""
         from biaoke_brain import answer_biaoke
         from biaoke_desk import format_biaoke_html
 

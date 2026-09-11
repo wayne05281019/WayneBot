@@ -101,7 +101,7 @@ def test_yishe_not_in_corpus_still_answers(tmp_path):
     html = answer_biaoke(db, "藝舍-KY")
     assert "這不是買訊" in html
     assert "藝舍" in html
-    assert "語料從頭到尾沒點名" in html
+    assert "資料庫從頭到尾沒點名" in html
     assert "不猜" not in html
     assert "爆大量日" in html
     assert "2026-09-08" in html

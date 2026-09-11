@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """飆大對話腦：公開文思考套官方日 K／大盤。不是買訊、不進海選。
 
-語料有寫過就引原文。沒寫過的檔（例如藝舍-KY）仍用同一套框架看官方 K，
+公開文有寫過就引原文。沒寫過的檔（例如藝舍-KY）仍用同一套框架看官方 K，
 不說「不猜」。止跌只講結構條件，不給保證日期。食衣住行不答。
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from tg_layout import html_escape
 PENDING = "biaoke:chat"
 DISCLAIMER = (
     "這不是買訊。問句由這顆對話腦即時彙整後回你。"
-    "語料沒點名的檔也用同一套框架，可能看錯。"
+    "資料庫沒點名的檔也用同一套框架，可能看錯。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
 WINDOW_OPEN = "在。打字或語音都行。"
@@ -444,7 +444,7 @@ def overlay_stock(
         return f"{sid} {name} 官方日 K 還不夠，我先不硬套。"
     head = f"{sid} {name}。"
     if not in_corpus:
-        head = f"{sid} {name} 語料從頭到尾沒點名這檔，我就拿官方日 K 用他那套量價看，可能看錯。"
+        head = f"{sid} {name} 資料庫從頭到尾沒點名這檔，我就拿官方日 K 用他那套量價看，可能看錯。"
     body = (
         f"{html_escape(struct.get('date'))} 收 {_px(struct.get('close'))}"
         f"（{_pct(struct.get('pct'))}）。"
@@ -538,6 +538,7 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
     history：同一人上一句（偉權／哥哥分開），讓『那呢』接得上。
     """
     from biaoke_mind import follow_up_ask, format_methods_html
+    from biaoke_trace import format_trace_html
 
     q = follow_up_ask((ask or "").strip(), history)
     if not q:
@@ -562,6 +563,7 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         return format_biaoke_html(q)
 
     methods = format_methods_html(q)
+    trace = format_trace_html(q, db_path)
     hits = resolve_stock(db_path, q)
     posts = match_posts(q, limit=5, db_path=db_path)
     want_mkt = is_market_question(q)
@@ -597,13 +599,33 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
                 mkt=_load_mkt(db_path),
                 night=_load_night(db_path),
             )
-        chunks = [body]
+        chunks = []
+        if trace:
+            chunks.append(trace)
+        chunks.append(body)
         if extra:
             chunks.append(extra)
         if cite:
             chunks.append(cite)
         chunks.append(DISCLAIMER)
         return "\n\n".join(chunks)
+
+    if trace:
+        cite = _cite_posts(posts)
+        extra = ""
+        if want_mkt:
+            twii = load_index_bars(db_path)
+            tsmc = volume_first_price(load_bars(db_path, "2330"))
+            us = _us_facts(db_path, str((twii[-1].get("date") if twii else "") or ""))
+            extra = overlay_market(
+                twii=twii,
+                tsmc=tsmc,
+                us=us,
+                us_down=_us_down_days(db_path),
+                mkt=_load_mkt(db_path),
+                night=_load_night(db_path),
+            )
+        return "\n\n".join(x for x in (trace, extra, methods, cite, DISCLAIMER) if x)
 
     if methods and not hits and not want_mkt:
         cite = _cite_posts(posts)

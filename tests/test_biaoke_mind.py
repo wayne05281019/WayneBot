@@ -48,7 +48,7 @@ def test_corpus_curriculum_has_300_from_1709():
 
 
 def test_follow_up_uses_history_per_turn():
-    hist = [{"ask": "勤誠", "answer": "語料有勤誠"}]
+    hist = [{"ask": "勤誠", "answer": "庫裡有勤誠"}]
     assert "勤誠" in follow_up_ask("那怎麼看", hist)
     assert "勤誠" in follow_up_ask("所以呢", hist)
     assert follow_up_ask("藝舍-KY", hist) == "藝舍-KY"
@@ -92,6 +92,6 @@ def test_k_curriculum_300_unnamed_on_production_db():
     bars = load_bars(db, sid)
     st = volume_first_price(bars)
     html = overlay_stock({"stock_id": sid, "stock_name": name}, st, in_corpus=False)
-    assert "語料從頭到尾沒點名" in html
+    assert "資料庫從頭到尾沒點名" in html
     assert "買訊" not in html or "不是" in html
 

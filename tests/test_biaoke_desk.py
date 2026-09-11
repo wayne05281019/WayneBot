@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""飆客獨立區：語料可查、不進海選。"""
+"""飆客獨立區：公開文可查、不進海選。"""
 from bot_servers import (
     MENU_BTN_BIAOKE,
     MENU_BTN_BIAOKE_FACE,
@@ -87,7 +87,7 @@ def test_intent_biaoke_keeps_query():
 def test_qincheng_hits_corpus_not_invented():
     html = search_biaoke("勤誠")
     assert "勤誠" in html
-    assert "海選" not in html or "無關" in html or "語料" in html
+    assert "海選" not in html or "無關" in html or "公開" in html
 
 
 def test_knowhow_shixinke_ticker_is_4916():
