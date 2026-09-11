@@ -89,7 +89,7 @@ CaryBot：要對高低卡準確性才開；對完關掉。不准當第二套策�
 
 - **Render 永久碟**：`wayne-data` 5GB，掛在 `/opt/render/project/src/data`（對到 `data/wayne_market.db`）。
 - **話筒更新路徑**：合進 `main` → Render `waynebot-service`。核對 `/health` 的 `git_sha`。偉權與哥哥手機同一顆 Bot。
-- **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。**融合／匯入唯一底圖＝雲端硬碟那一千七百多則**（`archive_1709.json.gz`，`n >= 1700`），[Drive 資料夾](https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG)。**不准**用 `corpus_index.json` 520 篇當融合起點或寫回那檔。沒 1709 包就空，不要退回 520。開機 `seed_biaoke_archive`，盤中 ingest 也先補缺再 overlay 新文。只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖；路人留言不收。社團 72 不進公開庫。按飆大＝對話（無裡面選單、按鈕兩個字沒有圈），問句在 Render 上用這顆對話腦彙整回答；不准另開 Cursor 話筒代理、不准 Other Models。盤中 10 分抓公開文＋一二層回覆，收盤後到凌晨 1 點每 3 小時。
+- **飆大 overlay**：公開文寫進同一顆 `wayne_market.db` 的 `biaoke_posts`，不進 `PRIVATE_USER_TABLES`，不進海選。**融合／匯入唯一底圖＝雲端硬碟那一千七百多則**（`archive_1709.json.gz`，`n >= 1700`），[Drive 資料夾](https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG)。**不准**用 `corpus_index.json` 520 篇當融合起點或寫回那檔。沒 1709 包就空，不要退回 520。開機 `seed_biaoke_archive`，盤中 ingest 也先補缺再 overlay 新文。只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖；路人留言不收。社團 72 不進公開庫。按飆大＝對話（無裡面選單、按鈕兩個字沒有圈），問句在 Render 上用這顆對話腦彙整回答；不准另開 Cursor 話筒代理、不准 Other Models。盤中 10 分抓公開文＋一二層回覆，收盤後到凌晨 1 點半每 3 小時。
 - **雙 Bot**：已否決。不是偉權／哥哥各一顆機器人；延後清單裡的「雙 Bot」是第二顆 token／第二套產品，沒規格。功能全同＋雙人同時重度使用見文首「最高產品原則」。
 - **私人 Bot 白名單**：只認 Render 環境變數裡的兩個 Telegram uid（`TELEGRAM_CHAT_ID`＝偉權，`WAYNE_FAMILY_CHAT_IDS` 或逗號後＝哥哥）。真人 id 不准寫進 git。陌生人按開始回「這是私人 Bot」然後不理，也不進 `tg_users`。早報／AI 倉排程只寄白名單，不掃所有用過 Bot 的人。沒設任何 uid＝關門。
 - **公開 Release zip**：只准日 K／財報這類公開行情。GHA 上傳前 `strip_private_user_data` 清持股／觀察／成交／AI 倉／`tg_users`。不要把 Render 正式碟整顆上傳。

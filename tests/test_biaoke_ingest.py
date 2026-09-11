@@ -97,6 +97,8 @@ def test_poll_wait_session_after_night():
     assert poll_wait_seconds(night) == AFTER_EVERY_SEC
     dawn = datetime(2026, 9, 10, 2, 0, tzinfo=tz)
     assert poll_wait_seconds(dawn) == 7 * 60 * 60
+    late_night = datetime(2026, 9, 10, 1, 20, tzinfo=tz)
+    assert poll_wait_seconds(late_night) == AFTER_EVERY_SEC
     sat = datetime(2026, 9, 12, 10, 30, tzinfo=tz)
     assert poll_wait_seconds(sat) == NIGHT_EVERY_SEC
 

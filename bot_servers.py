@@ -80,6 +80,12 @@ def _normalize_menu_text(text: str) -> str:
     t = unicodedata.normalize("NFKC", (text or "").strip())
     t = "".join(ch for ch in t if unicodedata.category(ch) not in ("Mn", "Me"))
     t = t.replace("\u3000", "").strip()
+    try:
+        from biaoke_digest import normalize_biaoke_button
+
+        t = normalize_biaoke_button(t)
+    except Exception:
+        pass
     return t
 
 
@@ -1172,12 +1178,23 @@ class WayneTelegramBot:
 
     def _reply_menu(self, uid: str = ""):
         """預設兩排各七格（十二顆＋飆客＋空白）；精簡模式每人六顆。"""
+        biaoke_face = MENU_BTN_BIAOKE_FACE
+        try:
+            from biaoke_digest import biaoke_button_label
+
+            biaoke_face = biaoke_button_label(
+                str(uid or ""),
+                str(getattr(self, "db_path", "") or ""),
+            ) or MENU_BTN_BIAOKE_FACE
+        except Exception:
+            biaoke_face = MENU_BTN_BIAOKE_FACE
         if self._menu_compact_on(uid):
             rows = [[KeyboardButton(t) for t in row] for row in MENU_COMPACT_ROWS]
             placeholder = "打股名／代號；「完整選單」恢復兩排"
         else:
+            row1 = [KeyboardButton(t) for t in MENU_ROW1[:-1]] + [KeyboardButton(biaoke_face)]
             rows = [
-                [KeyboardButton(t) for t in MENU_ROW1],
+                row1,
                 [KeyboardButton(t) for t in MENU_ROW2],
             ]
             placeholder = "打股名／代號，或按「刷新」"
@@ -3279,6 +3296,7 @@ class WayneTelegramBot:
         if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
             self._biaoke_hist = {}
         hist = list(self._biaoke_hist.get(actor) or [])
+        mark_read = False
         if q:
             try:
                 chat = getattr(message, "chat", None)
@@ -3291,10 +3309,28 @@ class WayneTelegramBot:
             plain = re.sub(r"<[^>]+>", "", html)
             bucket.append({"ask": q, "answer": plain[:900]})
             del bucket[:-16]
+            mark_read = True
         else:
-            html = format_biaoke_html(q)
+            html = ""
+            try:
+                from biaoke_digest import take_unread_digest
+
+                html = take_unread_digest(uid, self.db_path)
+            except Exception:
+                html = ""
+            if html:
+                mark_read = True
+            else:
+                html = format_biaoke_html(q)
         # 對話不要再切成 18 字講義行；Telegram 自己會折。
         parts = chunk_telegram_html(html, reflow=False)
+        if parts and mark_read:
+            try:
+                from biaoke_digest import mark_biaoke_read
+
+                mark_biaoke_read(uid, self.db_path)
+            except Exception:
+                pass
         kb = self._reply_menu(uid)
         if not parts:
             await message.reply_text("飆客區讀取失敗。", reply_markup=kb)

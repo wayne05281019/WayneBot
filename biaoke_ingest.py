@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。只抓 CMoney 公開頁，不進海選。
 
-盤中 10 分、盤後到凌晨 1 點每 3 小時、夜間併入 06:30。
+盤中 10 分、盤後到凌晨 1 點半每 3 小時、夜間併入 06:30。
 不准放 Bearer／localStorage／同學會 token。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
 路人留言不收。公開 HTML 常常不帶留言正文：有 SSR 就收，沒有就只更新主文，不假裝聽到。
@@ -239,7 +239,7 @@ def taipei_now() -> datetime:
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """盤中 10 分；收盤後到凌晨 1 點每 3 小時；1 點到 9 點等到開盤。週末 3 小時。"""
+    """盤中 10 分；收盤後到凌晨 1 點半每 3 小時；1 點半到 9 點等到開盤。週末 3 小時。"""
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -250,9 +250,9 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
         return NIGHT_EVERY_SEC
     if 9 * 60 <= hm <= 13 * 60 + 40:
         return SESSION_EVERY_SEC
-    if hm >= 13 * 60 + 40 or hm < 60:
+    if hm >= 13 * 60 + 40 or hm < 90:
         return AFTER_EVERY_SEC
-    # 01:00～09:00：等到開盤再抓
+    # 01:30～09:00：等到開盤再抓
     return max(60, 9 * 60 - hm) * 60
 
 
@@ -499,6 +499,7 @@ def ingest_public_posts(
     updated = 0
     replies = 0
     touched: List[str] = []
+    events: List[Dict[str, Any]] = []
     refresh_n = max(1, int(refresh_latest))
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
@@ -517,6 +518,7 @@ def ingest_public_posts(
             hit = _merge_row(posts, by_id, row)
             if hit:
                 touched.append(str(row.get("id") or aid))
+                events.append(dict(row))
             if hit == "added":
                 added += 1
             elif hit == "updated":
@@ -529,6 +531,7 @@ def ingest_public_posts(
                     rid = str(rep.get("id") or "")
                     if rid:
                         touched.append(rid)
+                    events.append(dict(rep))
     n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
     if dbp:
         ensure_biaoke_posts_table(dbp)
@@ -539,6 +542,12 @@ def ingest_public_posts(
                 seen.add(aid)
                 uniq.append(by_id[aid])
         stats["db"] = upsert_biaoke_posts(dbp, uniq)
+        try:
+            from biaoke_digest import record_ingest_events
+
+            stats["inbox"] = record_ingest_events(dbp, events)
+        except Exception:
+            logger.exception("飆大未讀匣寫入失敗")
         try:
             from biaoke_link import link_biaoke_db
 
@@ -591,7 +600,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：盤中 10 分、盤後到凌晨 1 點每 3 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
+    """常駐：盤中 10 分、盤後到凌晨 1 點半每 3 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
     import threading
     import time as _time
 
