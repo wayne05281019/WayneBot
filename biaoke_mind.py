@@ -18,6 +18,13 @@ DISCLAIMER_LINE = (
 # 問句 → 彙整答案。社團規則寫成公開能講的句子，不貼社團連結。
 _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
     (
+        re.compile(r"(融會貫通|三百.*一百|課綱|七百次|700.?次)"),
+        "三百／一百／三百",
+        "課綱是先融會 300 則公開文，再練 100 則判斷問句，再拿另外 300 則對官方日 K 回測。"
+        "底圖是 Drive 1709 主文＋他自己的一／二層樓中樓。不進海選、不是買訊。"
+        "問『融會貫通』時對話腦會帶本輪回測數字。",
+    ),
+    (
         re.compile(r"(細微波|四步|怎麼觀察|如何觀察|觀察方法)"),
         "細微波四步",
         "他自己 2026-04-07 寫的細微波四步：先認識調整型態 → 會拆線 → 完整結構出現後消去不符合的 → 升／降軌道破壞才算轉折。"
@@ -206,6 +213,8 @@ def follow_up_ask(ask: str, history: Optional[Sequence[Any]] = None) -> str:
 def method_curriculum() -> List[str]:
     """一百題判斷問句。答案走 match_methods，不是 100 顆按鈕。"""
     stems = [
+        "融會貫通是什麼",
+        "三百一百三百課綱",
         "細微波四步是什麼",
         "他怎麼觀察細微波",
         "夜盤先於日盤是什麼意思",
@@ -289,8 +298,44 @@ def method_curriculum() -> List[str]:
     return out
 
 
+def main_posts(posts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [p for p in posts if (p.get("kind") or "post") != "reply"]
+
+
+def stratified_main_posts(
+    posts: Sequence[Dict[str, Any]], n: int, *, phase: int = 0
+) -> List[Dict[str, Any]]:
+    """沿時間軸均勻抽 n 則主文。phase=1 錯開半步，給第二輪 300 用。"""
+    mains = sorted(
+        main_posts(posts),
+        key=lambda p: (str(p.get("date") or ""), str(p.get("id") or "")),
+    )
+    if not mains or n <= 0:
+        return []
+    if len(mains) <= n:
+        return list(mains)
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    step = len(mains) / float(n)
+    shift = 0.5 * step if int(phase) else 0.0
+    for i in range(n):
+        idx = int(i * step + shift) % len(mains)
+        p = mains[idx]
+        aid = str(p.get("id") or "")
+        if aid in seen:
+            for j in range(1, len(mains)):
+                q = mains[(idx + j) % len(mains)]
+                qid = str(q.get("id") or "")
+                if qid not in seen:
+                    p, aid = q, qid
+                    break
+        seen.add(aid)
+        out.append(p)
+    return out
+
+
 def corpus_curriculum(posts: Sequence[Dict[str, Any]], *, limit: int = 300) -> List[str]:
-    """三百題公開文對答：點名、日期、原文關鍵。"""
+    """三百題公開文對答：沿 1709 時間軸均勻抽，不是只拿最早 300 則。"""
     asks: List[str] = []
     seen = set()
 
@@ -300,9 +345,7 @@ def corpus_curriculum(posts: Sequence[Dict[str, Any]], *, limit: int = 300) -> L
             seen.add(q)
             asks.append(q)
 
-    for p in posts:
-        if (p.get("kind") or "post") == "reply":
-            continue
+    for p in stratified_main_posts(posts, int(limit), phase=0):
         for t in p.get("tags") or []:
             add(str(t))
         date = str(p.get("date") or "")

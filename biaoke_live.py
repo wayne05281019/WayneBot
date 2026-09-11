@@ -121,6 +121,13 @@ def _grounding(db_path: str, ask: str) -> str:
         tr = format_trace(ask, db_path)
         if tr:
             bits.append("時間線 " + _clip(tr, 700))
+        try:
+            from biaoke_fuse import format_fuse_html, is_fuse_query
+
+            if is_fuse_query(ask):
+                bits.append("課綱回測 " + _clip(format_fuse_html(), 700))
+        except Exception:
+            pass
         for _title, body in match_methods(ask, limit=2):
             bits.append("方法 " + _clip(body, 500))
 
