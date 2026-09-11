@@ -60,3 +60,47 @@ def test_highlow_cards_show_settled_nav(monkeypatch):
         if "昨淨值" not in blob and "淨值" not in blob:
             failed.append(f"{sid} 圖上沒有淨值字")
     assert not failed, "\n".join(failed)
+
+
+def test_etfortune_follows_307(monkeypatch):
+    """證交所 POST 若回 307，要帶原 body 跟到 Location，不能直接放棄。"""
+    import io
+    from urllib.error import HTTPError
+
+    import official_snapshots as osnap
+
+    calls = []
+
+    class FakeResp:
+        def __init__(self, body: bytes):
+            self._body = body
+
+        def read(self):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=20):
+        calls.append((req.full_url, req.data, req.get_method()))
+        if len(calls) == 1:
+            raise HTTPError(
+                req.full_url,
+                307,
+                "Temporary Redirect",
+                hdrs={"Location": "https://www.twse.com.tw/rwd/zh/ETFortune/ajaxEtfInfoChart"},
+                fp=io.BytesIO(b""),
+            )
+        return FakeResp(b'{"netPrice":[{"date":"2026/09/10","count":100.5}]}')
+
+    monkeypatch.setattr(osnap, "urlopen", fake_urlopen)
+    monkeypatch.setattr(osnap, "_today_ymd", lambda: "20260911")
+    payload = osnap.fetch_etfortune_nav_payload("0050")
+    assert payload.get("netPrice")
+    assert len(calls) == 2
+    assert calls[0][2] == "POST" and calls[1][2] == "POST"
+    assert calls[0][1] == calls[1][1]
+    assert "rwd" in calls[1][0]

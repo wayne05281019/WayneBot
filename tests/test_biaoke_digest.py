@@ -16,12 +16,12 @@ from biaoke_ingest import AFTER_EVERY_SEC, poll_wait_seconds
 from bot_servers import MENU_BTN_BIAOKE, WayneTelegramBot, _normalize_menu_text
 
 
-def test_poll_wait_until_one_thirty():
+def test_poll_wait_until_one():
     tz = ZoneInfo("Asia/Taipei")
-    still = datetime(2026, 9, 10, 1, 20, tzinfo=tz)
+    still = datetime(2026, 9, 10, 0, 50, tzinfo=tz)
     assert poll_wait_seconds(still) == AFTER_EVERY_SEC
-    stop = datetime(2026, 9, 10, 1, 30, tzinfo=tz)
-    assert poll_wait_seconds(stop) == 7 * 60 * 60 + 30 * 60
+    stop = datetime(2026, 9, 10, 1, 0, tzinfo=tz)
+    assert poll_wait_seconds(stop) == 8 * 60 * 60
 
 
 def test_unread_dedupes_same_post_and_splits_users(tmp_path):

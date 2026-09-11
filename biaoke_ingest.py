@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
-盤中 10 分、盤後到凌晨 1 點半每 3 小時、夜間併入 06:30。
+盤中 10 分、盤後到凌晨 1 點每 1 小時、夜間併入 06:30。
 主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
 不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
 不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
@@ -46,7 +46,7 @@ _UA = {
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
 SESSION_EVERY_SEC = 10 * 60
-AFTER_EVERY_SEC = 3 * 60 * 60
+AFTER_EVERY_SEC = 1 * 60 * 60
 NIGHT_EVERY_SEC = 3 * 60 * 60
 _ID_RE = re.compile(r"/forum/article/(\d{6,})")
 _HREF_OWN = re.compile(
@@ -241,7 +241,7 @@ def taipei_now() -> datetime:
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """盤中 10 分；收盤後到凌晨 1 點半每 3 小時；1 點半到 9 點等到開盤。週末 3 小時。"""
+    """盤中 10 分；收盤後到凌晨 1 點每 1 小時；1 點到 9 點等到開盤。週末仍 3 小時。"""
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -252,9 +252,9 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
         return NIGHT_EVERY_SEC
     if 9 * 60 <= hm <= 13 * 60 + 40:
         return SESSION_EVERY_SEC
-    if hm >= 13 * 60 + 40 or hm < 90:
+    if hm >= 13 * 60 + 40 or hm < 60:
         return AFTER_EVERY_SEC
-    # 01:30～09:00：等到開盤再抓
+    # 01:00～09:00：等到開盤再抓
     return max(60, 9 * 60 - hm) * 60
 
 
@@ -847,7 +847,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：盤中 10 分、盤後到凌晨 1 點半每 3 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
+    """常駐：盤中 10 分、盤後到凌晨 1 點每 1 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
     import threading
     import time as _time
 
