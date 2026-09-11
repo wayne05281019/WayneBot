@@ -81,6 +81,8 @@ def test_ingest_hook_is_on_product_clocks():
     assert "start_biaoke_poller" in boot
     assert "restore_universe_if_wiped" in boot
     assert "seed_biaoke_archive" in boot
+    assert "link_biaoke_db" in boot
+    assert "walk_biaoke_posts" in boot
     assert SESSION_EVERY_SEC == 10 * 60
     assert AFTER_EVERY_SEC == 3 * 60 * 60
 

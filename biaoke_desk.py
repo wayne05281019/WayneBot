@@ -48,6 +48,12 @@ def ensure_biaoke_posts_table(db_path: str) -> None:
         conn.commit()
     finally:
         conn.close()
+    try:
+        from biaoke_link import ensure_biaoke_mentions_table
+
+        ensure_biaoke_mentions_table(db_path)
+    except Exception:
+        pass
 
 
 def upsert_biaoke_posts(db_path: str, rows: List[Dict[str, Any]]) -> int:
@@ -268,6 +274,12 @@ def load_corpus_cache_clear() -> None:
         pass
     try:
         _load_archive.cache_clear()
+    except Exception:
+        pass
+    try:
+        from biaoke_link import link_cache_clear
+
+        link_cache_clear()
     except Exception:
         pass
 

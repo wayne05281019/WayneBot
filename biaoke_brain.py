@@ -316,7 +316,7 @@ def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> L
     if not q:
         return []
     posts = list((load_corpus(db_path) or {}).get("posts") or [])
-    return related_posts(q, posts, limit=limit)
+    return related_posts(q, posts, limit=limit, db_path=str(db_path or ""))
 
 
 def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:
@@ -569,6 +569,13 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         body = overlay_stock(hit, struct, in_corpus=in_corpus)
         cite = _cite_posts(posts)
         extra = ""
+        walk = ""
+        try:
+            from biaoke_walk import format_stock_walk
+
+            walk = format_stock_walk(db_path, sid, name=str(hit.get("stock_name") or ""))
+        except Exception:
+            walk = ""
         if want_mkt:
             twii = load_index_bars(db_path)
             tsmc = volume_first_price(load_bars(db_path, "2330"))
@@ -587,6 +594,8 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         chunks.append(body)
         if extra:
             chunks.append(extra)
+        if walk:
+            chunks.append(walk)
         if cite:
             chunks.append(cite)
         chunks.append(DISCLAIMER)

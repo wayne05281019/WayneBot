@@ -114,6 +114,7 @@ def _grounding(db_path: str, ask: str) -> str:
     bits: List[str] = []
     try:
         from biaoke_brain import match_posts, resolve_stock, volume_first_price, load_bars
+        from biaoke_link import format_link_notes
         from biaoke_mind import match_methods
         from biaoke_trace import format_trace
 
@@ -131,7 +132,23 @@ def _grounding(db_path: str, ask: str) -> str:
                 + " "
                 + _clip(p.get("text") or "", 180)
             )
+        note = format_link_notes(posts, db_path=db_path, limit=3)
+        if note:
+            bits.append(note)
         hits = resolve_stock(db_path, ask) if db_path else []
+        if hits:
+            try:
+                from biaoke_walk import format_stock_walk
+
+                walk = format_stock_walk(
+                    db_path,
+                    str(hits[0].get("stock_id") or ""),
+                    name=str(hits[0].get("stock_name") or ""),
+                )
+                if walk:
+                    bits.append("彙整 " + _clip(walk, 500))
+            except Exception:
+                pass
         if hits:
             hit = hits[0]
             sid = str(hit.get("stock_id") or "")
@@ -155,7 +172,7 @@ def _grounding(db_path: str, ask: str) -> str:
         logger.debug("飆大即時參考略過", exc_info=True)
     if not bits:
         return "筆記：這句沒對到摘錄，就照他問的講，不要硬套課綱。"
-    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:6])
+    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:8])
 
 
 def _history_messages(history: Optional[Sequence[Any]]) -> List[dict]:

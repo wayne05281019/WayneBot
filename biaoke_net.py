@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from biaoke_link import graph_for
+
 # 方法族＝一條連接。問到其中一個詞，就連同族其他節點。
 FAMILIES: List[Tuple[str, re.Pattern[str]]] = [
     ("wash", re.compile(r"(洗盤|出貨|破線翻|破線洗盤)")),
@@ -57,8 +59,9 @@ def related_posts(
     posts: Sequence[Dict[str, Any]],
     *,
     limit: int = 6,
+    db_path: str = "",
 ) -> List[Dict[str, Any]]:
-    """問句 → 先命中，再走 1 跳：樓中樓主文、同檔、同方法。最多 limit 則。"""
+    """問句 → 命中後走 2 跳：樓中樓、同代號（含最早一則）、同方法。最多 limit 則。"""
     q = (ask or "").strip()
     keys = _keys(q)
     if not q or not posts:
@@ -80,7 +83,8 @@ def related_posts(
     )
     cap = max(1, int(limit))
     out: List[Dict[str, Any]] = []
-    seen = set()
+    seen: set = set()
+    g = graph_for(posts, str(db_path or ""))
 
     def add(p: Optional[Dict[str, Any]]) -> None:
         if not p:
@@ -91,17 +95,30 @@ def related_posts(
         seen.add(aid)
         out.append(p)
 
-    for _s, p in scored[: max(3, cap)]:
+    for _s, p in scored[:2]:
         add(p)
+    seed_sids = g.sids_of(out)
+    add(g.oldest(seed_sids))
+    for p in list(out):
         parent = str(p.get("parent") or "")
         if parent:
             add(by_id.get(parent))
+        for ch in (g.children.get(str(p.get("id") or "")) or [])[:2]:
+            add(ch)
         if len(out) >= cap:
             return out[:cap]
+    if len(out) >= cap:
+        return out[:cap]
+    for sid in seed_sids:
+        for p in g.newest(sid, skip=seen, limit=2):
+            add(p)
+            if len(out) >= cap:
+                return out[:cap]
 
     seed_tags = set()
     for p in out:
         seed_tags.update(str(t) for t in (p.get("tags") or []) if t)
+        seed_tags.update(str(n) for n in (p.get("_snames") or []) if n)
     if seed_tags or ask_fams:
         extras: List[Tuple[int, Dict[str, Any]]] = []
         have = {str(p.get("id") or "") for p in out}
@@ -110,9 +127,10 @@ def related_posts(
             if aid in have:
                 continue
             tags = {str(t) for t in (p.get("tags") or [])}
+            names = {str(n) for n in (p.get("_snames") or [])}
             fams = family_ids(str(p.get("text") or "") + " " + " ".join(tags))
             hop = 0
-            if seed_tags and tags & seed_tags:
+            if seed_tags and (tags | names) & seed_tags:
                 hop += 4
             if ask_fams and any(f in fams for f in ask_fams):
                 hop += 3

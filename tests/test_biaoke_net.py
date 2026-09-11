@@ -37,3 +37,8 @@ def test_match_posts_walks_neighbors_not_the_whole_pile():
     assert "南亞科" in joined or "2408" in joined
     assert "洗盤" in joined
     assert "語料" not in joined
+    zhi = match_posts("智原", limit=6)
+    dates = {str(p.get("date") or "") for p in zhi}
+    assert any(d.startswith("2023-12") for d in dates)
+    assert any(d.startswith("2026-") for d in dates)
+    assert any("3035" in (p.get("_sids") or []) for p in zhi)

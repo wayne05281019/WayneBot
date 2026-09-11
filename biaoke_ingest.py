@@ -471,6 +471,7 @@ def ingest_public_posts(
         "replies": 0,
         "n": 0,
         "db": 0,
+        "links": 0,
         "baseline": "archive_1709",
     }
     if dbp:
@@ -538,6 +539,17 @@ def ingest_public_posts(
                 seen.add(aid)
                 uniq.append(by_id[aid])
         stats["db"] = upsert_biaoke_posts(dbp, uniq)
+        try:
+            from biaoke_link import link_biaoke_db
+
+            linked = link_biaoke_db(dbp)
+            stats["links"] = int(linked.get("mentions") or 0)
+            from biaoke_walk import walk_biaoke_posts
+
+            walked = walk_biaoke_posts(dbp, fetch_missing=False)
+            stats["facts"] = int(walked.get("facts") or 0)
+        except Exception:
+            logger.exception("飆大公開文連到行情庫失敗")
     if dest and not _is_git_seed_path(dest):
         _save_corpus(dest, blob, posts)
     else:

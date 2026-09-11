@@ -810,6 +810,25 @@ def run_web():
                 n_bk = seed_biaoke_archive(get_db_path())
                 if n_bk:
                     logger.info("飆大公開文 overlay 補進 %s 列", n_bk)
+                from biaoke_link import link_biaoke_db
+
+                n_link = link_biaoke_db(get_db_path())
+                if n_link.get("mentions"):
+                    logger.info(
+                        "飆大公開文連到行情庫 mentions=%s stocks=%s",
+                        n_link.get("mentions"),
+                        n_link.get("stocks"),
+                    )
+                from biaoke_walk import walk_biaoke_posts
+
+                n_walk = walk_biaoke_posts(get_db_path(), fetch_missing=True)
+                logger.info(
+                    "飆大連續讀 facts=%s with_bar=%s missing=%s fetched_months=%s",
+                    n_walk.get("facts"),
+                    n_walk.get("with_bar"),
+                    n_walk.get("missing"),
+                    n_walk.get("fetched_months"),
+                )
             except Exception:
                 logger.exception("飆大 1709 overlay 補進失敗")
             try:
