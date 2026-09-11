@@ -23,7 +23,7 @@ FAMILIES: List[Tuple[str, re.Pattern[str]]] = [
     ("buy3", re.compile(r"(三個買點|整理末端|突破回測|隔日沖|半山腰)")),
     ("rail", re.compile(r"(上升軌|下降壓|浪\s*2|浪\s*4|連線|黃軌|三角)")),
     ("leader", re.compile(r"(次族群|誰先過前高|領頭|族群發動)")),
-    ("sox", re.compile(r"(費半|1-4|１-４|一四重疊)")),
+    ("sox", re.compile(r"(費半|費城半導體|SOX|1[\s\-－]*4\s*重疊|一四重疊|１４重疊)")),
     ("news", re.compile(r"(新聞變多|法說|技術面領先)")),
 ]
 

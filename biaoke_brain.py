@@ -552,6 +552,14 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
             fuse_html = format_fuse_html()
     except Exception:
         fuse_html = ""
+    sox_html = ""
+    try:
+        from biaoke_sox import format_sox_html, is_sox_query
+
+        if is_sox_query(q):
+            sox_html = format_sox_html()
+    except Exception:
+        sox_html = ""
     methods = format_methods_html(q)
     trace = format_trace_html(q, db_path)
     hits = resolve_stock(db_path, q)
@@ -629,6 +637,10 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
     if fuse_html and not hits:
         cite = _cite_posts(posts)
         return "\n\n".join(x for x in (fuse_html, methods, cite, DISCLAIMER) if x)
+
+    if sox_html and not hits:
+        cite = _cite_posts(posts)
+        return "\n\n".join(x for x in (sox_html, methods, cite, DISCLAIMER) if x)
 
     if methods and not hits and not want_mkt:
         cite = _cite_posts(posts)

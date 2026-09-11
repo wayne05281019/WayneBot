@@ -128,6 +128,13 @@ def _grounding(db_path: str, ask: str) -> str:
                 bits.append("課綱回測 " + _clip(format_fuse_html(), 700))
         except Exception:
             pass
+        try:
+            from biaoke_sox import format_sox_html, is_sox_query
+
+            if is_sox_query(ask):
+                bits.append("費半對表 " + _clip(format_sox_html(), 700))
+        except Exception:
+            pass
         for _title, body in match_methods(ask, limit=2):
             bits.append("方法 " + _clip(body, 500))
 
