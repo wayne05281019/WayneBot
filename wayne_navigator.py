@@ -573,7 +573,9 @@ class NavigatorEngine:
         df["升降註"] = trend_notes
         df["temp_num"] = temp_nums
         df["月乖離"] = [f"{b:+.1f}%" for b in df["bias_monthly"]]
-        df["120日量"] = [f"第{int(r)}名" for r in df["vol_rank_120"]]
+        df["120日量"] = [
+            f"第{int(r)}名" if _finite_num(r) is not None else "—" for r in df["vol_rank_120"]
+        ]
 
         latest = df.iloc[-1]
         prev_close = 0.0
@@ -602,8 +604,8 @@ class NavigatorEngine:
             if official_prev > 0:
                 prev_close = official_prev
         # 決策卡高／低：N 根「收盤」（南亞範本：20 日低是 165 不是日曆窗的 180）
-        h10, h20, h60 = float(latest["high_10"]), float(latest["high_20"]), float(latest["high_60"])
-        l10, l20, l60 = float(latest["low_10"]), float(latest["low_20"]), float(latest["low_60"])
+        h10, h20, h60 = _pos_px(latest["high_10"]), _pos_px(latest["high_20"]), _pos_px(latest["high_60"])
+        l10, l20, l60 = _pos_px(latest["low_10"]), _pos_px(latest["low_20"]), _pos_px(latest["low_60"])
         close_now = float(latest["close"] or 0)
         hl_display_adjusted = False
         if close_now > 0 and h60 > close_now * 1.6:
@@ -629,10 +631,10 @@ class NavigatorEngine:
         if len(df) >= 8:
             from decision_card_signals import compute_ma60s
 
-            m0 = float(latest["ma60"] or 0)
-            m7 = float(df["ma60"].iloc[-8] or 0)
+            m0 = _pos_px(latest["ma60"])
+            m7 = _pos_px(df["ma60"].iloc[-8])
             ma60s = compute_ma60s(m0, m7, float(latest["close"] or 0))
-        raw_qty60 = float(df.loc[~df["is_halt"], "volume"].tail(60).mean() or 0)
+        raw_qty60 = _finite_num(df.loc[~df["is_halt"], "volume"].tail(60).mean()) or 0.0
         qty60 = int(round(raw_qty60))
         badges = []
         if quote_source == "emerging_quotes":
@@ -705,11 +707,9 @@ class NavigatorEngine:
         if space_60 and space_60 < 16:
             badges.append("60日區間過小")
         if len(df) >= 40:
-            sp_prev = int(round(
-                (float(df["high_60"].iloc[-21]) - float(df["low_60"].iloc[-21]))
-                / float(df["low_60"].iloc[-21] or 1)
-                * 100.0
-            ))
+            lo21 = _pos_px(df["low_60"].iloc[-21])
+            hi21 = _pos_px(df["high_60"].iloc[-21])
+            sp_prev = int(round((hi21 - lo21) / lo21 * 100.0)) if lo21 else 0
             if space_60 and sp_prev and space_60 >= sp_prev + 6:
                 badges.append("波動放大")
         try:
