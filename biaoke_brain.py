@@ -306,35 +306,17 @@ def down_streak(bars: Sequence[Dict[str, Any]]) -> int:
 
 
 def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """問句對公開文：完整庫當底圖，只取相鄰幾則，不掃成講義。"""
     try:
         from biaoke_desk import load_corpus
+        from biaoke_net import related_posts
     except Exception:
         return []
     q = (ask or "").strip()
-    skip = {"飆客", "飆大", "AI飆客", "去年年底", "去年底", "年底", "年終"}
-    keys = [k for k in re.split(r"[\s,，、]+", q) if k and k not in skip]
-    if not keys:
+    if not q:
         return []
     posts = list((load_corpus(db_path) or {}).get("posts") or [])
-    scored: List[Tuple[int, Dict[str, Any]]] = []
-    for p in posts:
-        text = str(p.get("text") or "")
-        tags = [str(t) for t in (p.get("tags") or [])]
-        blob = text + " " + " ".join(tags)
-        score = 0
-        for k in keys:
-            if k in tags:
-                score += 6
-            score += blob.count(k)
-        if score > 0:
-            scored.append((score, p))
-    scored.sort(
-        key=lambda x: (
-            -x[0],
-            -int(str(x[1].get("date") or "0").replace("-", "") or 0),
-        )
-    )
-    return [p for _s, p in scored[:limit]]
+    return related_posts(q, posts, limit=limit)
 
 
 def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:

@@ -150,11 +150,63 @@ def _load_seed() -> Dict[str, Any]:
         return json.load(fh)
 
 
+@lru_cache(maxsize=1)
+def _load_archive() -> Dict[str, Any]:
+    """Drive 公開主文＋樓中樓。沒這包才退回 520 篇種子。"""
+    try:
+        from biaoke_archive import load_bundled_archive
+
+        blob = load_bundled_archive() or {}
+    except Exception:
+        return {}
+    return blob if blob.get("posts") else {}
+
+
+def _put_post(
+    posts: List[Dict[str, Any]],
+    by_id: Dict[str, Dict[str, Any]],
+    row: Dict[str, Any],
+    *,
+    overwrite: bool,
+) -> None:
+    aid = str(row.get("id") or "")
+    if not aid:
+        return
+    old = by_id.get(aid)
+    if old is None:
+        posts.append(row)
+        by_id[aid] = row
+        return
+    if not overwrite:
+        if not (old.get("tags") or []) and (row.get("tags") or []):
+            old["tags"] = list(row.get("tags") or [])
+        if not str(old.get("text") or "").strip() and str(row.get("text") or "").strip():
+            old["text"] = row.get("text")
+        return
+    keep_tags = list(old.get("tags") or [])
+    keep_text = str(old.get("text") or "")
+    old.update(row)
+    if not (old.get("tags") or []) and keep_tags:
+        old["tags"] = keep_tags
+    if not str(old.get("text") or "").strip() and keep_text:
+        old["text"] = keep_text
+
+
 def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
-    """git 種子 JSON + 同一顆行情庫 overlay。同一篇 id 以資料庫為準。"""
-    blob = copy.deepcopy(_load_seed())
+    """完整公開文（約 1700 則主文）＋種子缺的 id＋同一顆行情庫 overlay。
+
+    同一篇 id 以資料庫為準（盤中 ingest）。沒裝 1709 包才只用 520 篇種子。
+    """
+    arch = _load_archive()
+    if arch.get("posts"):
+        blob = copy.deepcopy(arch)
+    else:
+        blob = copy.deepcopy(_load_seed())
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     by_id = {str(p.get("id") or ""): p for p in posts if p.get("id")}
+    if arch.get("posts"):
+        for row in list((_load_seed() or {}).get("posts") or []):
+            _put_post(posts, by_id, copy.deepcopy(row), overwrite=False)
     for row in _overlay_posts(db_path):
         aid = str(row.get("id") or "")
         if not aid:
@@ -195,6 +247,10 @@ def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
 def load_corpus_cache_clear() -> None:
     try:
         _load_seed.cache_clear()
+    except Exception:
+        pass
+    try:
+        _load_archive.cache_clear()
     except Exception:
         pass
 
