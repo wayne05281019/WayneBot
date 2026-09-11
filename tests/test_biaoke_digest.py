@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from biaoke_digest import (
     biaoke_button_label,
+    format_latest_focus,
     format_unread_digest,
     mark_biaoke_read,
     normalize_biaoke_button,
@@ -106,3 +107,54 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
     bot.db_path = db
     kb = bot._reply_menu(uid)
     assert [b.text for b in kb.keyboard[0]][-1] == "飆大 2"
+
+
+def test_latest_focus_is_sep11_not_july_bwave():
+    html = format_latest_focus("")
+    assert html.startswith("飆大最新公開文")
+    assert "2026-09-11" in html
+    assert "17:49" in html
+    assert "46506" in html
+    assert "45839" in html
+    assert "08:43" in html
+    assert "45000" not in html
+    assert "46000" not in html
+    assert "今天飆大重點就是" not in html
+    assert "語料" not in html
+
+
+def test_old_inbox_not_counted_as_unread(tmp_path):
+    db = str(tmp_path / "w.db")
+    uid = "9001"
+    tz = ZoneInfo("Asia/Taipei")
+    record_ingest_events(
+        db,
+        [
+            {
+                "post_id": "181149602",
+                "kind": "post",
+                "date": "2026-07-30",
+                "time": "09:55",
+                "text": "就算大盤今天開始正式開始走大B波反彈，反彈目標45000~46000",
+            }
+        ],
+        now=datetime(2026, 9, 11, 22, 0, tzinfo=tz),
+    )
+    assert unread_count(uid, db) == 0
+    record_ingest_events(
+        db,
+        [
+            {
+                "post_id": "184545002",
+                "kind": "post",
+                "date": "2026-09-11",
+                "time": "17:49",
+                "text": "今晚夜盤至少要穿越46506",
+            }
+        ],
+        now=datetime(2026, 9, 11, 22, 1, tzinfo=tz),
+    )
+    html = take_unread_digest(uid, db, now=datetime(2026, 9, 11, 22, 3, tzinfo=tz))
+    assert "46506" in html
+    assert "45000" not in html
+    assert "2026-09-11 17:49" in html

@@ -181,6 +181,8 @@ def test_biaoke_page_has_no_inside_menu():
     assert "_ensure_reply_menu_if_needed" in src
     assert "send_action" in src
     assert "typing" in src
+    assert "format_latest_focus" in src
+    assert "take_unread_digest" not in src
     assert "reflow=False" in src
     assert not hasattr(WayneTelegramBot, "_biaoke_inline")
     whole = inspect.getsource(WayneTelegramBot)

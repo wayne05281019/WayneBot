@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
@@ -123,13 +123,14 @@ def unread_events(user_id: str, db_path: str) -> List[Dict[str, Any]]:
             (uid,),
         ).fetchone()
         last = str(row[0] or "") if row else ""
+        floor = (taipei_now() - timedelta(days=14)).strftime("%Y-%m-%d")
         if last:
             rows = conn.execute(
                 """
                 SELECT post_id, kind, date, time, text, fetched_at
                 FROM biaoke_inbox
                 WHERE fetched_at > ?
-                ORDER BY fetched_at ASC, date, time, post_id
+                ORDER BY date DESC, time DESC, post_id DESC
                 """,
                 (last,),
             ).fetchall()
@@ -138,24 +139,29 @@ def unread_events(user_id: str, db_path: str) -> List[Dict[str, Any]]:
                 """
                 SELECT post_id, kind, date, time, text, fetched_at
                 FROM biaoke_inbox
-                ORDER BY fetched_at ASC, date, time, post_id
+                ORDER BY date DESC, time DESC, post_id DESC
                 """
             ).fetchall()
     except sqlite3.Error:
         return []
     finally:
         conn.close()
-    return [
-        {
-            "post_id": r[0],
-            "kind": r[1],
-            "date": r[2],
-            "time": r[3],
-            "text": r[4],
-            "fetched_at": r[5],
-        }
-        for r in rows
-    ]
+    out = []
+    for r in rows:
+        day = str(r[2] or "")
+        if day and day < floor:
+            continue
+        out.append(
+            {
+                "post_id": r[0],
+                "kind": r[1],
+                "date": r[2],
+                "time": r[3],
+                "text": r[4],
+                "fetched_at": r[5],
+            }
+        )
+    return out
 
 
 def unread_count(user_id: str, db_path: str) -> int:
@@ -198,10 +204,11 @@ def normalize_biaoke_button(text: str) -> str:
     return t
 
 
-def _oral_body(text: str) -> str:
+def _oral_body(text: str, limit: int = 280) -> str:
     s = _CHART.sub("（有圖）", text or "")
     s = _SPACE.sub(" ", s).strip()
-    return s if len(s) <= 280 else s[:279] + "…"
+    n = max(40, int(limit))
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def format_unread_digest(
@@ -220,17 +227,26 @@ def format_unread_digest(
         if pid:
             uniq[pid] = dict(ev)
     rows = list(uniq.values())
-    rows.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("time") or ""), str(x.get("post_id") or "")))
+    rows.sort(
+        key=lambda x: (
+            str(x.get("date") or ""),
+            str(x.get("time") or ""),
+            str(x.get("post_id") or ""),
+        ),
+        reverse=True,
+    )
     bits: List[str] = []
     for ev in rows[:8]:
         body = _oral_body(str(ev.get("text") or ""))
         if not body:
             continue
+        day = str(ev.get("date") or "").strip()
         when = str(ev.get("time") or "").strip()
+        stamp = " ".join(x for x in (day, when) if x)
         if ev.get("kind") == "reply":
-            head = f"他自己樓下補{'（' + when + '）' if when else ''}："
+            head = f"他自己樓下補{'（' + stamp + '）' if stamp else ''}："
         else:
-            head = f"新發／改寫{'（' + when + '）' if when else ''}："
+            head = f"新發／改寫{'（' + stamp + '）' if stamp else ''}："
         bits.append(head + body)
     if not bits:
         return ""
@@ -239,6 +255,62 @@ def format_unread_digest(
         "今天飆大重點就是：\n\n"
         + html_escape(blob)
         + f"\n\n（以上資料更新至 {clock}）"
+    )
+
+
+def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4) -> str:
+    """按飆大空白進去：庫裡最新主文＋那些文的樓下自回。不是未讀匣由舊到新。"""
+    try:
+        from biaoke_desk import load_corpus
+    except Exception:
+        return ""
+    blob = load_corpus(db_path if db_path else None)
+    posts = list((blob or {}).get("posts") or [])
+    mains = [p for p in posts if (p.get("kind") or "post") != "reply"]
+    replies = [p for p in posts if p.get("kind") == "reply"]
+    if not mains:
+        return ""
+    latest = list(reversed(mains[-max(1, int(n_main)) :]))
+    ids = {str(p.get("id") or "") for p in latest if p.get("id")}
+    related = [
+        r
+        for r in replies
+        if str(r.get("parent") or "").split(":")[0] in ids
+    ]
+    related = list(reversed(related[-max(0, int(n_reply)) :])) if related else []
+    bits: List[str] = []
+    for p in latest:
+        body = _oral_body(str(p.get("text") or ""), 420)
+        if not body:
+            continue
+        day = str(p.get("date") or "").strip()
+        when = str(p.get("time") or "").strip()
+        stamp = " ".join(x for x in (day, when) if x)
+        bits.append(f"{stamp} 新發：".strip() + body)
+    for p in related:
+        body = _oral_body(str(p.get("text") or ""), 280)
+        if not body:
+            continue
+        day = str(p.get("date") or "").strip()
+        when = str(p.get("time") or "").strip()
+        stamp = " ".join(x for x in (day, when) if x)
+        bits.append(f"{stamp} 他自己樓下補：".strip() + body)
+    if not bits:
+        return ""
+    stamp = ""
+    if latest:
+        stamp = " ".join(
+            x
+            for x in (
+                str(latest[0].get("date") or "").strip(),
+                str(latest[0].get("time") or "").strip(),
+            )
+            if x
+        )
+    return (
+        "飆大最新公開文：\n\n"
+        + html_escape("\n\n".join(bits))
+        + f"\n\n（庫到 {html_escape(stamp or str((blob or {}).get('to') or ''))}。不是買訊。）"
     )
 
 
