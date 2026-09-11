@@ -38,9 +38,10 @@ def test_em_hub_omits_empty_chip_buttons():
     assert "觀察" in texts
     assert "記買入" in texts
     assert "說明" in texts
-    assert "K線" not in texts
-    assert len(kb.inline_keyboard) == 1
-    assert len(kb.inline_keyboard[0]) == 4
+    assert "導航圖" in texts
+    assert "籌碼" not in texts
+    assert "營收" not in texts
+    assert len(kb.inline_keyboard) == 2
 
 
 def test_picks_keyboard_caps_rows():

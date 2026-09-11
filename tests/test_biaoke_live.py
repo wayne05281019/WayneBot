@@ -2,7 +2,14 @@
 """飆大即時對話線：有金鑰走 chat completions，pytest 預設不打外網。"""
 from unittest.mock import patch
 
-from biaoke_live import live_enabled, live_endpoint, live_model, live_reply, live_key
+from biaoke_live import (
+    live_configured,
+    live_enabled,
+    live_endpoint,
+    live_model,
+    live_reply,
+    live_key,
+)
 
 
 def test_pytest_does_not_enable_live_without_flag(monkeypatch):
@@ -50,6 +57,8 @@ def test_live_reply_posts_chat_and_escapes(monkeypatch):
     assert post.call_args.args[0].startswith("https://api.groq.com")
     body = kwargs["json"]
     assert body["messages"][0]["role"] == "system"
+    assert "認可" in body["messages"][0]["content"]
+    assert "課綱" in body["messages"][0]["content"]
     assert body["messages"][-1]["content"] == "勤誠怎麼看"
     assert any(m.get("content") == "大盤" for m in body["messages"])
 
@@ -140,3 +149,46 @@ def test_live_grounding_includes_method_notes(monkeypatch):
     assert "方法" in sys_msg
     assert "2024-07-08" in sys_msg
     assert "語料" not in sys_msg
+    assert "認可" in sys_msg
+
+
+def test_live_configured_ignores_pytest_flag(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.delenv("WAYNE_BIAOKE_LIVE_TEST", raising=False)
+    assert live_configured() is True
+    assert not live_enabled()
+
+
+def test_live_retries_on_network_error(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.delenv("WAYNE_BIAOKE_LLM_MODEL", raising=False)
+
+    class _Hit:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "在，你說。"}}]}
+
+    with patch(
+        "biaoke_live.requests.post",
+        side_effect=[RuntimeError("timeout"), _Hit()],
+    ) as post:
+        html = live_reply(":memory:", "你好")
+    assert html == "在，你說。"
+    assert post.call_count == 2
+
+
+def test_answer_biaoke_live_miss_does_not_dump_lecture(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    from biaoke_brain import LIVE_MISS, answer_biaoke
+
+    with patch("biaoke_live.live_reply", return_value=""):
+        html = answer_biaoke(":memory:", "勤誠怎麼看")
+    assert html == LIVE_MISS
+    assert "量先價行" not in html
+    assert "課綱" not in html

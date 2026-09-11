@@ -307,7 +307,7 @@ HELP_TOPICS = {
         "• <b>持股</b>：你有手記買入的才會出現\n"
         "• <b>刷新</b>：刷新上一檔決策卡；也可打「決策卡」或「刷新上一檔」\n"
         "• <b>決策卡</b>：一張圖看這檔近期高低點與量，不是叫你立刻買\n"
-        "• <b>飆大</b>：即時對話窗口（也叫飆客）；打字或語音暢談，不是海選\n"
+        "• <b>飆大</b>：即時對話窗口（也叫飆客）；打字或按麥克風講都會回，不是海選\n"
         "• <b>黃金買點</b>：獲利格剛離開 0，或還在 0.x% 綠底（以前叫起漲）\n"
         "• <b>重點觀察</b>：還壓在近 60 個日曆天收盤低。注意觀察，不是立刻買；空頭不進桶\n"
         "• <b>AI倉</b>：假錢照紀律買的對照組，不是你口袋裡的股票；平常最多 1 份，不買滿\n"
@@ -371,7 +371,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 飆大</b>\n"
         "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去直接打字或語音。偉權／哥哥同一條路。食衣住行一句帶過。\n"
+        "• 怎麼用：按進去後打字或按麥克風講，都會自動聽懂再回資料。不必打字才能問。偉權／哥哥同一條路。食衣住行一句帶過。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
@@ -1091,7 +1091,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡（圖下可再要導航圖）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下可開可滑的導航圖。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1854,23 +1854,22 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """興櫃四顆一排：產業／觀察／記買入／說明。上市櫃最多三顆一排；導航圖按需。"""
+        """興櫃兩排：K線／導航圖／產業，再觀察／記買入／說明。上市櫃最多三顆一排。"""
         c = str(code).strip()[:6]
         news = news or {}
         news_label = str(news.get("label") or "").strip()
         news_url = _http_url(news.get("url") or "")
         k_url = ""
         nav_url = ""
-        if not em:
-            try:
-                from stock_links import kline_page_url
+        try:
+            from stock_links import kline_page_url
 
-                dbp = getattr(self, "db_path", None)
-                k_url = _http_url(kline_page_url(c, dbp))
-                nav_url = _http_url(kline_page_url(c, dbp, span=180))
-            except Exception:
-                k_url = ""
-                nav_url = ""
+            dbp = getattr(self, "db_path", None)
+            k_url = _http_url(kline_page_url(c, dbp))
+            nav_url = _http_url(kline_page_url(c, dbp, span=180))
+        except Exception:
+            k_url = ""
+            nav_url = ""
         nav = (
             InlineKeyboardButton("導航圖", url=nav_url)
             if nav_url
@@ -1882,14 +1881,19 @@ class WayneTelegramBot:
             self._q(topic),
         ]
         if em:
+            top = []
+            if k_url:
+                top.append(InlineKeyboardButton("K線", url=k_url))
+            top.append(nav)
+            top.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
             return InlineKeyboardMarkup(
                 [
+                    top[:3],
                     [
-                        InlineKeyboardButton("產業", callback_data=f"n:{c}"),
                         InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
                         InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
                         self._q(topic),
-                    ]
+                    ],
                 ]
             )
         etf = False
@@ -4210,7 +4214,7 @@ class WayneTelegramBot:
             )
 
     async def on_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """語音／音檔 → 聽寫 → 同一條 on_text。不編新聞。"""
+        """語音／音檔 → 聽寫 → 同一條 on_text。人在飆大視窗就回飆大，不必打字。"""
         if not update.message:
             return
         if await self._reject_stranger(update):

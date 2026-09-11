@@ -124,6 +124,48 @@ def load_daily_bars(
         ).fetchall()
         conn.close()
     except Exception:
+        rows = []
+    out: List[Dict[str, Any]] = []
+    for row in reversed(rows or []):
+        d = _ymd(str(row["date"] or ""))
+        try:
+            o = float(row["open"])
+            h = float(row["high"])
+            l = float(row["low"])
+            c = float(row["close"])
+            v = float(row["volume"] or 0)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not d or c <= 0:
+            continue
+        if h < max(o, c, l) or l > min(o, c, h):
+            h = max(h, o, c)
+            l = min(l, o, c)
+        out.append({"t": d, "o": o, "h": h, "l": l, "c": c, "v": max(0, v)})
+    if not out:
+        return _load_emerging_daily_bars(sid, db_path, limit)
+    return out
+
+
+def _load_emerging_daily_bars(
+    stock_id: str, db_path: str, limit: int
+) -> List[Dict[str, Any]]:
+    """興櫃官方日均價：前日均價＝open、日最高／最低、日均價＝close。"""
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT date, open, high, low, close, volume
+            FROM emerging_quotes
+            WHERE stock_id=?
+            ORDER BY date DESC
+            LIMIT ?;
+            """,
+            (stock_id, int(limit)),
+        ).fetchall()
+        conn.close()
+    except Exception:
         return []
     out: List[Dict[str, Any]] = []
     for row in reversed(rows):
@@ -155,6 +197,14 @@ def _stock_name(stock_id: str, db_path: Optional[str] = None) -> str:
             "SELECT stock_name FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1;",
             (sid,),
         ).fetchone()
+        if not row:
+            try:
+                row = conn.execute(
+                    "SELECT stock_name FROM emerging_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1;",
+                    (sid,),
+                ).fetchone()
+            except Exception:
+                row = None
         if not row:
             try:
                 row = conn.execute(
@@ -460,7 +510,7 @@ def render_kline_html(
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<title>{_esc(head or sid)}</title></head><body>"
             f"<p style='font-family:sans-serif;margin:2em;text-align:center'>"
-            f"{_esc(head or sid)}　興櫃沒有這張即時K，請回 Telegram 看介紹圖與決策卡。"
+            f"{_esc(head or sid)}　沒有這張 K 線頁。"
             "</p></body></html>"
         )
     market = plain_market_label(sid, db_path or None)
@@ -502,15 +552,21 @@ def render_kline_html(
         stamp = f"{date_s} {clock_s}　"
     except Exception:
         stamp = ""
-    sub = (
-        f"{market}　{stamp}"
-        + (
+    if market == "興櫃":
+        extra = (
+            "官方日均價約 180 根，輕點對價、左右拖、雙指縮放；紫／綠箭頭跟高低卡同一套。"
+            if span_n >= 120
+            else "官方日均價，輕點對價、左右拖移動；高低箭頭跟導航圖同一套。"
+        )
+    else:
+        extra = (
             "導航約 180 根日K，輕點對價、左右拖、雙指縮放；紫／綠箭頭跟高低卡同一套。"
             if span_n >= 120
             else "日K 輕點對價、左右拖移動；高低箭頭跟導航圖同一套。"
-        )
-        + "可改 15 分／60 分，或五日／十日／月線／季線。"
-    )
+        ) + "可改 15 分／60 分，或五日／十日／月線／季線。"
+    if market == "興櫃":
+        extra += "五日／十日／月線／季線可改；15 分／60 分有資料才有。"
+    sub = f"{market}　{stamp}" + extra
     page = (
         _PAGE.replace("@@TITLE@@", _esc(f"{head}　K線"))
         .replace("@@HEAD@@", _esc(head))

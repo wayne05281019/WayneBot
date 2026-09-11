@@ -41,6 +41,14 @@ def quote_market(stock_id: str, db_path: Optional[str] = None) -> str:
         if not row:
             try:
                 row = conn.execute(
+                    "SELECT market FROM emerging_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1;",
+                    (sid,),
+                ).fetchone()
+            except Exception:
+                row = None
+        if not row:
+            try:
+                row = conn.execute(
                     "SELECT market_type FROM stock_universe WHERE stock_id=? LIMIT 1;",
                     (sid,),
                 ).fetchone()
@@ -67,9 +75,8 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
 
 
 def listed_kline_ok(stock_id: str, db_path: Optional[str] = None) -> bool:
-    """上市櫃才掛自家 /k/ 日K頁。興櫃沒有這張即時K。"""
-    m = quote_market(stock_id, db_path)
-    return m not in ("EM", "ESB", "EMERGING")
+    """有代號就掛自家 /k/ 日K頁。興櫃用官方日均價，不是沒圖。"""
+    return bool(str(stock_id or "").strip())
 
 
 def kline_page_url(
@@ -79,7 +86,7 @@ def kline_page_url(
     *,
     span: int | None = None,
 ) -> str:
-    """查股圖下 K線：開自家可滑動日K（疊導航箭頭）。興櫃不給。不是外站圖表。"""
+    """查股圖下 K線：開自家可滑動日K（疊導航箭頭）。興櫃用官方日均價。不是外站圖表。"""
     sid = str(stock_id or "").strip()
     if not sid or not listed_kline_ok(sid, db_path):
         return ""

@@ -116,12 +116,15 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
     assert abs(float(tape["last"]["volume"]) - 30) < 1e-6
 
 
-def test_em_hub_one_row_four_buttons():
+def test_em_hub_has_kline_and_nav():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
-    assert len(kb.inline_keyboard) == 1
-    labels = [b.text for b in kb.inline_keyboard[0]]
-    assert labels == ["產業", "觀察", "記買入", "說明"]
+    assert len(kb.inline_keyboard) == 2
+    labels0 = [b.text for b in kb.inline_keyboard[0]]
+    labels1 = [b.text for b in kb.inline_keyboard[1]]
+    assert "導航圖" in labels0
+    assert "產業" in labels0
+    assert labels1 == ["觀察", "記買入", "說明"]
 
 
 def test_listed_hub_has_nav_button():

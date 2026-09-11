@@ -167,6 +167,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "uptime_s": live.get("uptime_s"),
                 "boot_grace_s": _boot_grace_seconds(),
                 "git_sha": _code_revision(),
+                "stt_ok": False,
+                "biaoke_live_ok": False,
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
@@ -189,6 +191,18 @@ class HealthHandler(BaseHTTPRequestHandler):
                 except Exception as e:
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)
+            try:
+                from voice_stt import stt_configured
+
+                payload["stt_ok"] = bool(stt_configured())
+            except Exception:
+                payload["stt_ok"] = False
+            try:
+                from biaoke_live import live_configured
+
+                payload["biaoke_live_ok"] = bool(live_configured())
+            except Exception:
+                payload["biaoke_live_ok"] = False
             payload["ok"] = bool(payload["serving"])
             payload["status"] = "healthy" if payload["serving"] else "unhealthy"
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

@@ -15,11 +15,12 @@ from tg_layout import html_escape
 
 PENDING = "biaoke:chat"
 DISCLAIMER = (
-    "這不是買訊。問句由這顆對話腦即時彙整後回你。"
-    "資料庫沒點名的檔也用同一套框架，可能看錯。"
+    "這不是買訊。按了飆大之後打字或語音都由即時對話線回你。"
+    "依據是把他公開文加官方數字彙整，不是飆大本人。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
-WINDOW_OPEN = "在。打字或語音都行。"
+WINDOW_OPEN = "在。打字或按旁邊麥克風講都行，我直接回。不必打字才能問。"
+LIVE_MISS = "這句雲端沒接上。再說一次，打字或語音都可以。"
 CHAT_HINT = WINDOW_OPEN
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
@@ -515,10 +516,7 @@ def _load_mkt(db_path: str) -> Dict[str, Any]:
 
 
 def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = None) -> str:
-    """一句問句 → Telegram HTML。用飆大公開文思考彙整，不是選單考卷。
-
-    history：同一人上一句（偉權／哥哥分開），讓『那呢』接得上。
-    """
+    """按了飆大之後：打字或語音都走即時對話線。pytest 沒開 live 才走筆記彙整。"""
     from biaoke_mind import follow_up_ask, format_methods_html
     from biaoke_trace import format_trace_html
 
@@ -528,13 +526,24 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
 
         return format_biaoke_html("")
     try:
-        from biaoke_live import live_reply
+        from biaoke_live import live_enabled, live_reply
 
         live = live_reply(db_path, q, history)
+        if live:
+            return live
+        if live_enabled():
+            live = live_reply(db_path, q, history)
+            if live:
+                return live
+            return LIVE_MISS
     except Exception:
-        live = ""
-    if live:
-        return live
+        try:
+            from biaoke_live import live_enabled as _on
+
+            if _on():
+                return LIVE_MISS
+        except Exception:
+            pass
     if _HI.match(q):
         return "在，你說。"
     if is_offtopic(q):

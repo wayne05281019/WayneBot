@@ -54,5 +54,5 @@ def test_em_hub_has_industry_omits_chips():
     assert "產業" in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
-    assert "K線" not in texts
-    assert [b.text for b in kb.inline_keyboard[0]] == ["產業", "觀察", "記買入", "說明"]
+    assert "導航圖" in texts
+    assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入", "說明"]

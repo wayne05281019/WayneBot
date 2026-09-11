@@ -77,6 +77,10 @@ def test_health_200_when_process_can_serve(serve):
     assert body["status"] == "healthy"
     assert body["db_ok"] is True
     assert "git_sha" in body
+    assert "stt_ok" in body
+    assert body["stt_ok"] in (True, False)
+    assert "biaoke_live_ok" in body
+    assert body["biaoke_live_ok"] in (True, False)
 
 
 def test_code_revision_reads_render_commit(monkeypatch):

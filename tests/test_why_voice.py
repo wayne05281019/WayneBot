@@ -98,6 +98,32 @@ def test_on_voice_routes_like_typed_why(monkeypatch):
     assert bot._send_card_to.await_args.args[1] == "2330"
 
 
+def test_on_voice_in_biaoke_goes_to_biaoke_not_card(monkeypatch):
+    """按了飆大之後，語音聽寫走飆大回文，不必打字，也不改走查股卡。"""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    bot = _bot()
+    bot._send_biaoke_page = AsyncMock()
+    bot._last_card["9"] = "2330"
+    msg = _voice_msg(9)
+    bot._pending[bot._actor_key(msg, uid="9")] = "biaoke:chat"
+    tg_file = SimpleNamespace(download_to_drive=AsyncMock())
+    ctx = MagicMock()
+    ctx.bot.get_file = AsyncMock(return_value=tg_file)
+
+    async def run():
+        with patch("voice_stt.transcribe_audio", return_value="勤誠怎麼看"):
+            await bot.on_voice(_update(msg), ctx)
+
+    asyncio.run(run())
+    heard = msg.reply_html.await_args_list[0].args[0]
+    assert "聽到" in heard
+    assert "勤誠" in heard
+    bot._send_biaoke_page.assert_awaited()
+    ask = bot._send_biaoke_page.await_args.kwargs.get("ask") or ""
+    assert "勤誠" in ask
+    bot._send_card_to.assert_not_awaited()
+
+
 def test_on_text_spoken_kwarg_same_as_typing():
     bot = _bot()
     bot._last_card["9"] = "2454"

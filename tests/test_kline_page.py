@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股圖下「K線」＝自家這一檔圖。一進日K＋量，可改 15／60 分與五日／十日／月／季。興櫃不掛。"""
+"""查股圖下「K線」＝自家這一檔圖。一進日K＋量，可改 15／60 分與五日／十日／月／季。興櫃用官方日均價。"""
 from __future__ import annotations
 
 import sqlite3
@@ -27,7 +27,15 @@ def _db(path: str) -> str:
         "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,"
         " open REAL, high REAL, low REAL, close REAL, volume INTEGER)"
     )
-    conn.execute("CREATE TABLE stock_directory (stock_id TEXT, stock_name TEXT, market TEXT)")
+    conn.execute(
+        "CREATE TABLE emerging_quotes (date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,"
+        " open REAL, high REAL, low REAL, close REAL, volume INTEGER)"
+    )
+    conn.execute(
+        "INSERT INTO emerging_quotes(date,stock_id,stock_name,market,open,high,low,close,volume)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        ("20260908", "6488X", "測試興櫃", "EM", 11, 13, 10, 12, 80),
+    )
     conn.execute(
         "CREATE TABLE stock_universe (stock_id TEXT, stock_name TEXT, market_type TEXT, asset_type TEXT)"
     )
@@ -81,19 +89,26 @@ def test_kline_url_is_own_page(tmp_path):
     assert "technical-analysis" not in web
 
 
-def test_kline_omits_emerging(tmp_path):
+def test_kline_includes_emerging(tmp_path):
     db = _db(str(tmp_path / "m.db"))
-    assert listed_kline_ok("3595", db) is False
-    assert kline_page_url("3595", db) == ""
+    assert listed_kline_ok("3595", db) is True
+    assert kline_page_url("3595", db) == "https://waynebot-service.onrender.com/k/3595"
+    assert kline_page_url("3595", db, span=180).endswith("/k/3595?n=180")
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert "K線" not in texts
+    assert "K線" in texts
+    assert "導航圖" in texts
+    assert "產業" in texts
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
+    assert '"D":[' in page
     assert "tv.js" not in page
     assert 'id="tv"' not in page
+    only_em = render_kline_html("6488X", db_path=db)
+    assert "官方日均價" in only_em
+    assert '"c":12' in only_em or '"c": 12' in only_em
 
 
 def test_hub_kline_is_https_url_button(tmp_path):

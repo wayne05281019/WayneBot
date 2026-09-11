@@ -61,7 +61,7 @@ def stt_missing_html() -> str:
     return (
         "語音聽寫<b>還沒接金鑰</b>，現在聽不懂。\n"
         "請在雲端設定 <code>OPENAI_API_KEY</code> 或 <code>GROQ_API_KEY</code>（或 <code>WAYNE_STT_KEY</code>）。\n"
-        "沒金鑰不會假裝聽懂。也可以改<b>打字</b>：「為什麼跌」「2330怎麼賣」。"
+        "沒金鑰不會假裝聽懂。按了飆大也可以先<b>打字</b>問，例如「勤誠怎麼看」。"
     )
 
 

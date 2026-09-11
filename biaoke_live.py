@@ -21,16 +21,18 @@ _GROQ_CHAT = "https://api.groq.com/openai/v1/chat/completions"
 _OPENAI_CHAT = "https://api.openai.com/v1/chat/completions"
 _TIMEOUT = 28.0
 
-SYSTEM = """你就是手機「飆大」裡正在跟他講話的那個人。對面說話，不是客服、不是簡報、不是老師在唸條文。
+SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按「飆大」進來，打字或語音都是對你說。
 
-先答他剛問的那一句，接得上上一句。不要開場念規則。不要用「第一、第二、他這套怎麼想、三買點對照」這種講義體。不要每則都把細微波、1-4、KD、買點清單倒一遍——只有他問方法時才講。
+你不是飆大本人，也不是課綱朗讀機。用下面筆記裡他的公開文、官方日 K、夜盤數字當依據，用你自己的話組織回答。對面剛問什麼就先答什麼，接得上上一句。
 
-講到「能不能買／該出嗎」才補一句這不是買訊。不要編外資／投信／融資成本。不要自稱 Gemini、ChatGPT。
-繁體中文。兩三段就好，段落可以換行。下面筆記只給你看，不要照抄「發文」「官方K」「爆量日=」這種欄位格式。
+不要開場念規則。不要用「第一、第二、他這套怎麼想、三買點對照」講義體。不要每則把細微波、1-4、KD、買點清單倒一遍——只有他問方法時才講。
 
-例如他問「你好」→「在，你說。」
-問「大概何時止跌」→先講現況一兩句，再說他不猜日曆、現在條件齊不齊。不要列 1 2 3 4。
-問股名或代號→用筆記裡的收盤／爆量日講這檔現在像不像站上撐，不要把整份課綱貼回去。
+講到「能不能買／該出嗎」才補一句這不是買訊。不要編外資／投信／融資成本。不要自稱 Gemini、ChatGPT、Claude。
+繁體中文。兩三段。筆記不要照抄「發文」「官方K」「爆量日=」欄位格式。
+
+例如「你好」→「在，你說。」
+「大概何時止跌」→先講現況，再說他不猜日曆、條件齊不齊。不要列 1 2 3 4。
+問股名或代號→用筆記的收盤／爆量日講現在像不像站上撐，不要貼整份課綱。
 """
 
 
@@ -42,6 +44,11 @@ def live_key() -> str:
         or os.getenv("WAYNE_STT_KEY")
         or ""
     ).strip()
+
+
+def live_configured() -> bool:
+    """雲端有沒有對話金鑰。健檢用；不看 pytest 開關。"""
+    return bool(live_key())
 
 
 def live_enabled() -> bool:
@@ -231,7 +238,7 @@ def live_reply(
     ask: str,
     history: Optional[Sequence[Any]] = None,
 ) -> str:
-    """即時一句回覆。沒金鑰或外網失敗回空字串，由呼叫端走彙整。"""
+    """即時一句回覆。沒金鑰回空。外網失敗換下一顆模型，不中途放棄。"""
     q = (ask or "").strip()
     if not q or not live_enabled():
         return ""
@@ -256,14 +263,15 @@ def live_reply(
                 json={
                     "model": model,
                     "messages": messages,
-                    "temperature": 0.85,
+                    "temperature": 0.55,
                     "max_tokens": 900,
                 },
                 timeout=timeout,
             )
         except Exception:
             logger.exception("飆大即時對話線失敗 model=%s", model)
-            return ""
+            last_err = f"{model}:exc"
+            continue
         status = int(getattr(res, "status_code", 200) or 200)
         if status in (400, 404, 422) and i < len(models) - 1:
             logger.warning("飆大即時 model=%s status=%s，換下一顆", model, status)
@@ -274,12 +282,11 @@ def live_reply(
             text = _parse_content(res.json())
         except Exception:
             logger.exception("飆大即時對話線失敗 model=%s", model)
-            return ""
+            last_err = f"{model}:http"
+            continue
         if not text:
             last_err = f"{model}:empty"
-            if i < len(models) - 1:
-                continue
-            return ""
+            continue
         return _to_talk(text)
     if last_err:
         logger.warning("飆大即時對話線全數未回 %s", last_err)
