@@ -49,6 +49,7 @@ def test_biaoke_posts_not_private_user_table():
     assert "biaoke_posts" not in PRIVATE_USER_TABLES
     assert "biaoke_mentions" not in PRIVATE_USER_TABLES
     assert "biaoke_day_facts" not in PRIVATE_USER_TABLES
+    assert "biaoke_claims" not in PRIVATE_USER_TABLES
 
 
 def test_overlay_same_id_db_wins(tmp_path):

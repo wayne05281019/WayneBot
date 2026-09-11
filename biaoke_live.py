@@ -27,6 +27,7 @@ SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按�
 
 硬規則：
 - 點位只准用筆記裡出現過的數字。沒有就說「這句筆記沒這點位」，不准自己編。
+- 他預估哪一檔會到哪個價：只用彙整列的當日收與後來實價。沒這列不准編目標。
 - 加權／台指期現在是四萬點這一級。禁止寫 17000、16500、17200 這種對不上官方K的數。2025 年的 22000 不是現在。
 - 波浪只引用他公開文的細微波／段數／45839／46506／48218，禁止套教科書「上升三浪」。
 - 問「可以用嗎／讀得到嗎」：用最新一則的日期＋他原話裡一個點位或一句話證明你讀到了。禁止客服腔（不要說打字會傳到我這裡、根據你提供的資訊）。
@@ -245,7 +246,7 @@ def live_notes(db_path: str, ask: str) -> str:
                     name=str(hits[0].get("stock_name") or ""),
                 )
                 if walk:
-                    bits.append("彙整 " + _clip(walk, 500))
+                    bits.append("彙整 " + _clip(walk, 900))
             except Exception:
                 pass
             hit = hits[0]
@@ -268,7 +269,7 @@ def live_notes(db_path: str, ask: str) -> str:
             )
     except Exception:
         logger.debug("飆大即時參考略過", exc_info=True)
-    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:28])
+    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:36])
 
 
 def _grounding(db_path: str, ask: str) -> str:

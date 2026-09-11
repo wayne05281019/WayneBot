@@ -86,6 +86,20 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     lv465 = conn.execute(
         "SELECT 1 FROM biaoke_level_facts WHERE claimed BETWEEN 46500 AND 46520"
     ).fetchone()
+    n370 = conn.execute(
+        "SELECT COUNT(*) FROM biaoke_claims WHERE stock_id='3035' AND role='support' "
+        "AND lo BETWEEN 369 AND 371 AND IFNULL(club,0)=0"
+    ).fetchone()[0]
+    n397 = conn.execute(
+        "SELECT COUNT(*) FROM biaoke_claims WHERE stock_id='3035' AND role='target' "
+        "AND lo BETWEEN 396 AND 398 AND IFNULL(club,0)=0"
+    ).fetchone()[0]
+    n_claim_club = conn.execute(
+        "SELECT COUNT(*) FROM biaoke_claims WHERE IFNULL(club,0)=1"
+    ).fetchone()[0]
+    n465c = conn.execute(
+        "SELECT 1 FROM biaoke_claims WHERE stock_id='TWII' AND lo BETWEEN 46500 AND 46520"
+    ).fetchone()
     conn.close()
     assert nanya >= 5
     assert zhi >= 5
@@ -97,6 +111,12 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     assert n_lv >= 8
     assert n_club >= 1
     assert lv465
+    assert stats.get("claims", 0) >= 80
+    assert stats.get("targets", 0) >= 20
+    assert n370 >= 1
+    assert n397 >= 1
+    assert n_claim_club >= 1
+    assert n465c
     tl = stock_timeline(db, "3035")
     assert tl["n"] >= 5
     assert str(tl.get("from") or "").startswith("2023-12")
@@ -104,6 +124,7 @@ def test_walk_from_first_post_without_fetch(tmp_path):
     assert "3035" in html
     assert "不是買訊" in html
     assert "語料" not in html
+    assert "397" in html or "370" in html
 
 
 def test_extract_index_levels_skips_stock_keeps_night():

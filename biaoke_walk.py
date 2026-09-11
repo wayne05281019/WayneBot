@@ -553,6 +553,8 @@ def walk_biaoke_posts(
         "levels": 0,
         "charts": 0,
         "club_posts": 0,
+        "claims": 0,
+        "targets": 0,
     }
     if not db_path:
         return stats
@@ -636,12 +638,12 @@ def walk_biaoke_posts(
                         str(p.get("time") or ""),
                         _snippet(text, name),
                         claimed,
-                        None,
+                        bar.get("open") if bar else None,
                         bar.get("high") if bar else None,
                         bar.get("low") if bar else None,
                         bar.get("close") if bar else None,
-                        None,
-                        None,
+                        bar.get("volume") if bar else None,
+                        bar.get("pct_change") if bar else None,
                         "daily_quotes" if bar else "",
                         int(club_flag),
                     )
@@ -702,6 +704,16 @@ def walk_biaoke_posts(
         conn.commit()
     finally:
         conn.close()
+    try:
+        from biaoke_claims import file_biaoke_claims
+
+        filed = file_biaoke_claims(db_path, batches)
+        stats["claims"] = int(filed.get("claims") or 0)
+        stats["targets"] = int(filed.get("targets") or 0)
+    except Exception:
+        logger.exception("飆大目標價建檔失敗")
+        stats["claims"] = 0
+        stats["targets"] = 0
     stats["facts"] = len(rows)
     stats["with_bar"] = with_bar
     stats["missing"] = missing
@@ -709,7 +721,7 @@ def walk_biaoke_posts(
     stats["levels"] = len(level_rows)
     stats["charts"] = n_charts
     logger.info(
-        "飆大連續讀 posts=%s club_posts=%s facts=%s with_bar=%s missing=%s stocks=%s levels=%s charts=%s fetched_months=%s",
+        "飆大連續讀 posts=%s club_posts=%s facts=%s with_bar=%s missing=%s stocks=%s levels=%s charts=%s claims=%s targets=%s fetched_months=%s",
         stats["posts"],
         stats["club_posts"],
         stats["facts"],
@@ -718,6 +730,8 @@ def walk_biaoke_posts(
         stats["stocks"],
         stats["levels"],
         stats["charts"],
+        stats.get("claims") or 0,
+        stats.get("targets") or 0,
         stats["fetched_months"],
     )
     return stats
@@ -828,5 +842,15 @@ def format_stock_walk(db_path: str, sid: str, *, name: str = "") -> str:
         elif d.get("snippet"):
             bit += " " + html_escape(re.sub(r"\s+", " ", d["snippet"])[:40])
         lines.append(bit)
+    try:
+        from biaoke_claims import format_stock_claims
+
+        extra = format_stock_claims(db_path, sid, name=tl.get("stock_name") or name)
+    except Exception:
+        extra = ""
+    if extra:
+        for ln in extra.split("\n"):
+            if ln and ln not in lines and ln != "不是買訊。":
+                lines.append(ln)
     lines.append("不是買訊。")
     return "\n".join(lines)

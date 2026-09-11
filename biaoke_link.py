@@ -182,7 +182,29 @@ def name_index(db_path: str = "") -> Tuple[Tuple[str, str], ...]:
         ("長榮", "2603"),
         ("陽明", "2609"),
         ("華碩", "2357"),
+        ("宏碁", "2353"),
         ("南亞", "1303"),
+        ("飛捷", "6206"),
+        ("漢唐", "2404"),
+        ("穩懋", "3105"),
+        ("信音", "6126"),
+        ("蔚華科", "3055"),
+        ("東捷", "8064"),
+        ("聖暉", "5536"),
+        ("創意", "3443"),
+        ("AES-KY", "6781"),
+        ("台達電", "2308"),
+        ("富世達", "6805"),
+        ("建暐", "8092"),
+        ("均華", "6640"),
+        ("事欣科", "4916"),
+        ("新漢", "8234"),
+        ("威強電", "3022"),
+        ("華星光", "4979"),
+        ("眾達", "4977"),
+        ("聯鈞", "3450"),
+        ("新應材", "4749"),
+        ("藝舍", "2724"),
     ]
     for n, sid in extra:
         by_name.setdefault(n, sid)
@@ -429,26 +451,66 @@ def bar_on(db_path: str, sid: str, date_s: str) -> Optional[Dict[str, Any]]:
     conn = sqlite3.connect(db_path, timeout=15.0)
     try:
         if sid == "TWII":
-            row = conn.execute(
-                "SELECT date, high, low, close FROM index_daily WHERE symbol='TWII' AND date=?",
-                (ymd,),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    "SELECT date, high, low, close, open, volume, pct_change "
+                    "FROM index_daily WHERE symbol='TWII' AND date=?",
+                    (ymd,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = conn.execute(
+                    "SELECT date, high, low, close FROM index_daily "
+                    "WHERE symbol='TWII' AND date=?",
+                    (ymd,),
+                ).fetchone()
+                if row:
+                    row = tuple(row) + (None, None, None)
         else:
-            row = conn.execute(
-                "SELECT date, high, low, close FROM daily_quotes WHERE stock_id=? AND date=?",
-                (sid, ymd),
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    "SELECT date, high, low, close, open, volume, pct_change "
+                    "FROM daily_quotes WHERE stock_id=? AND date=?",
+                    (sid, ymd),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = conn.execute(
+                    "SELECT date, high, low, close FROM daily_quotes "
+                    "WHERE stock_id=? AND date=?",
+                    (sid, ymd),
+                ).fetchone()
+                if row:
+                    row = tuple(row) + (None, None, None)
     except sqlite3.OperationalError:
         row = None
     finally:
         conn.close()
     if not row:
         return None
+    if row[1] is None or row[2] is None or row[3] is None:
+        return None
+
+    def _f(i: int) -> Optional[float]:
+        if i >= len(row) or row[i] is None:
+            return None
+        try:
+            return float(row[i])
+        except (TypeError, ValueError):
+            return None
+
+    vol = None
+    if len(row) > 5 and row[5] is not None:
+        try:
+            vol = int(float(row[5]))
+        except (TypeError, ValueError):
+            vol = None
     return {
         "date": str(row[0]),
         "high": float(row[1]),
         "low": float(row[2]),
         "close": float(row[3]),
+        "open": _f(4),
+        "volume": vol,
+        "pct_change": _f(6),
     }
 
 
