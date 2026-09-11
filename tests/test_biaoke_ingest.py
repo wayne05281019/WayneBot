@@ -215,11 +215,30 @@ def test_merge_reply_into_corpus(tmp_path):
     path = str(tmp_path / "corpus.json")
     stats = ingest_public_posts(path, session=_Fake(), max_ids=3, refresh_latest=2)
     assert stats["ok"]
-    assert stats["added"] >= 1
+    assert int(stats["n"]) >= 1709
+    assert stats["added"] + stats["updated"] + stats["replies"] >= 1
     import json
     blob = json.loads(open(path, encoding="utf-8").read())
     kinds = {p.get("kind") or "post" for p in blob["posts"]}
     assert "reply" in kinds
     texts = " ".join(p.get("text") or "" for p in blob["posts"])
     assert "看中一檔" in texts
-    assert "Bearer" not in open("biaoke_ingest.py", encoding="utf-8").read() or "不准放 Bearer" in open("biaoke_ingest.py", encoding="utf-8").read()
+    assert "智原" in texts
+    assert int(blob.get("n") or 0) >= 1709
+    ingest_src = open("biaoke_ingest.py", encoding="utf-8").read()
+    assert "Bearer" not in ingest_src or "不准放 Bearer" in ingest_src
+    assert "corpus_path or _INDEX" not in ingest_src
+    assert "seed_biaoke_archive" in ingest_src
+
+
+def test_ingest_never_uses_520_seed_as_baseline():
+    import inspect
+    from biaoke_desk import load_corpus
+    from biaoke_ingest import ingest_public_posts
+
+    src = inspect.getsource(ingest_public_posts)
+    assert "_INDEX" not in src
+    assert "seed_biaoke_archive" in src
+    desk = inspect.getsource(load_corpus)
+    assert "copy.deepcopy(_load_seed())" not in desk
+    assert "不要退回 520" in desk

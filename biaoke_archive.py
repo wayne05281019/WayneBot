@@ -15,6 +15,10 @@ from typing import Any, Dict, List, Optional, Sequence
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "expert_notes", "飆客")
 ARCHIVE_GZ = os.path.join(_DIR, "archive_1709.json.gz")
 _SEED = os.path.join(_DIR, "corpus_index.json")
+# 融合／匯入唯一底圖＝雲端硬碟那一千七百多則公開主文，不是 git 520 篇種子。
+# 資料夾：https://drive.google.com/drive/folders/1z4iNeBhO2-r1tlOLmv_vS-oNaAMaatXG
+# 另檔：https://drive.google.com/file/d/1Nw79n7rNgIfnmcQzPjf-jNGEIAYKlw-n/view?usp=sharing
+ARCHIVE_BASELINE_N = 1700
 
 _POST_HEAD = re.compile(
     r"^## \[(社團)?貼文 (\d+)\]\s+(.+?)\s*$",

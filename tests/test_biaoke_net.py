@@ -6,7 +6,10 @@ from biaoke_net import related_posts
 
 
 def test_load_corpus_uses_full_archive_not_seed_520():
+    from biaoke_archive import ARCHIVE_BASELINE_N
+
     blob = load_corpus(None)
+    assert int(blob.get("n") or 0) >= ARCHIVE_BASELINE_N
     assert int(blob.get("n") or 0) >= 1709
     assert int(blob.get("replies") or 0) >= 1300
     assert str(blob.get("from") or "").startswith("2023-12")
@@ -14,6 +17,9 @@ def test_load_corpus_uses_full_archive_not_seed_520():
         str(p.get("date") or "") == "2023-12-04" and "智原" in str(p.get("text") or "")
         for p in blob["posts"]
     )
+    desk = open("biaoke_desk.py", encoding="utf-8").read()
+    assert "copy.deepcopy(_load_seed())" not in desk
+    assert "不要退回 520" in desk
 
 
 def test_match_posts_walks_neighbors_not_the_whole_pile():

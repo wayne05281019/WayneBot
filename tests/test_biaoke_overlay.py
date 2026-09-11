@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""飆大語料：git 種子 + 同一顆行情庫 overlay。同一 id 以資料庫為準。"""
+"""飆大公開文：Drive 1709 底圖 + 同一顆行情庫 overlay。同一 id 以資料庫為準。"""
 from __future__ import annotations
 
 import json
@@ -105,14 +105,20 @@ def test_ingest_upserts_overlay_and_keeps_seed(tmp_path):
     )
     after = open(seed_path, "rb").read()
     assert stats["ok"]
+    assert int(stats["n"]) >= 1709
     assert stats["db"] >= 1
     assert os.path.isfile(corpus)
     blob = json.loads(open(corpus, encoding="utf-8").read())
+    assert int(blob.get("n") or 0) >= 1709
     assert any("看中一檔" in (p.get("text") or "") for p in blob["posts"])
+    assert any(
+        str(p.get("date") or "") == "2023-12-04" and "智原" in str(p.get("text") or "")
+        for p in blob["posts"]
+    )
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM biaoke_posts").fetchone()[0]
     conn.close()
-    assert n >= 1
+    assert n >= 1709
     assert before == after
 
 
@@ -123,8 +129,35 @@ def test_ingest_db_only_does_not_rewrite_git_seed(tmp_path):
     stats = ingest_public_posts(db_path=db, session=_Fake(), max_ids=3, refresh_latest=2)
     after = open(seed_path, "rb").read()
     assert stats["ok"]
+    assert int(stats["n"]) >= 1709
     assert stats["db"] >= 1
     assert before == after
     fused = load_corpus(db)
+    assert int(fused["n"]) >= 1709
+    assert str(fused.get("from") or "").startswith("2023-12")
     texts = " ".join(p.get("text") or "" for p in fused["posts"])
     assert "看中一檔" in texts
+    assert "智原" in texts
+
+
+def test_ingest_never_starts_from_520_or_empty_dump(tmp_path):
+    """空 dump、甚至被指去寫 520 種子，融合仍從 1709 起算、種子 bytes 不變。"""
+    from biaoke_archive import ARCHIVE_BASELINE_N
+
+    db = str(tmp_path / "w.db")
+    seed_path = "docs/expert_notes/飆客/corpus_index.json"
+    before = open(seed_path, "rb").read()
+    stats = ingest_public_posts(
+        seed_path, db_path=db, session=_Fake(), max_ids=3, refresh_latest=2
+    )
+    after = open(seed_path, "rb").read()
+    assert before == after
+    assert stats["ok"]
+    assert int(stats["n"]) >= ARCHIVE_BASELINE_N
+    assert int(stats["n"]) >= 1709
+    fused = load_corpus(db)
+    assert int(fused["n"]) >= 1709
+    assert any(
+        str(p.get("date") or "") == "2023-12-04" and "智原" in str(p.get("text") or "")
+        for p in fused["posts"]
+    )

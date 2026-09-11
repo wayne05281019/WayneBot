@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from tg_layout import html_escape
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "expert_notes", "飆客")
-_INDEX = os.path.join(_DIR, "corpus_index.json")
+_INDEX = os.path.join(_DIR, "corpus_index.json")  # 只補標籤；不准當融合底圖
 
 _YEAR_END = re.compile(r"(去年年底|去年底|年底|年終|過年|年終獎金|2025年底|12月)")
 _PROGRESS = re.compile(r"(進步|怎麼觀察|如何觀察|為什麼進步|為何進步|觀察方法|細微波)")
@@ -150,9 +150,20 @@ def _load_seed() -> Dict[str, Any]:
         return json.load(fh)
 
 
+def _empty_blob() -> Dict[str, Any]:
+    return {
+        "source": "drive-1709-public",
+        "n": 0,
+        "replies": 0,
+        "from": "",
+        "to": "",
+        "posts": [],
+    }
+
+
 @lru_cache(maxsize=1)
 def _load_archive() -> Dict[str, Any]:
-    """Drive 公開主文＋樓中樓。沒這包才退回 520 篇種子。"""
+    """Drive 公開主文＋樓中樓。沒這包就空，不准退回 520 篇種子。"""
     try:
         from biaoke_archive import load_bundled_archive
 
@@ -193,19 +204,25 @@ def _put_post(
 
 
 def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
-    """完整公開文（約 1700 則主文）＋種子缺的 id＋同一顆行情庫 overlay。
+    """完整公開文（Drive 約 1700 則主文）＋同一顆行情庫 overlay。
 
-    同一篇 id 以資料庫為準（盤中 ingest）。沒裝 1709 包才只用 520 篇種子。
+    融合基準永遠是 archive_1709.json.gz（雲端硬碟那一千七百多則）。
+    不准用 corpus_index.json 當底。沒這包就空，不要退回 520。
+    同一篇 id 以資料庫為準（盤中 ingest）。
     """
     arch = _load_archive()
     if arch.get("posts"):
         blob = copy.deepcopy(arch)
     else:
-        blob = copy.deepcopy(_load_seed())
+        blob = _empty_blob()
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
     by_id = {str(p.get("id") or ""): p for p in posts if p.get("id")}
     if arch.get("posts"):
-        for row in list((_load_seed() or {}).get("posts") or []):
+        try:
+            seed_rows = list((_load_seed() or {}).get("posts") or [])
+        except Exception:
+            seed_rows = []
+        for row in seed_rows:
             _put_post(posts, by_id, copy.deepcopy(row), overwrite=False)
     for row in _overlay_posts(db_path):
         aid = str(row.get("id") or "")

@@ -19,9 +19,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from biaoke_archive import ARCHIVE_BASELINE_N, seed_biaoke_archive
 from biaoke_desk import (
-    _DIR,
-    _INDEX,
     ensure_biaoke_posts_table,
     load_corpus,
     load_corpus_cache_clear,
@@ -396,23 +395,31 @@ def _save_corpus(path: str, blob: Dict[str, Any], posts: List[Dict[str, Any]]) -
     for i, p in enumerate(posts, 1):
         p["n"] = i
     dates = [str(p.get("date") or "") for p in posts if p.get("date")]
+    n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
+    n_rep = sum(1 for p in posts if p.get("kind") == "reply")
     blob["posts"] = posts
-    blob["n"] = len(posts)
+    blob["n"] = n_post
+    blob["replies"] = n_rep
     blob["from"] = min(dates) if dates else blob.get("from") or ""
     blob["to"] = max(dates) if dates else blob.get("to") or ""
-    blob["source"] = blob.get("source") or f"cmoney-{AUTHOR_ID}"
+    blob["source"] = blob.get("source") or "drive-1709-public"
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(blob, fh, ensure_ascii=False, indent=2)
+        json.dump(blob, fh, ensure_ascii=False, separators=(",", ":"))
         fh.write("\n")
     os.replace(tmp, path)
     try:
         load_corpus_cache_clear()
     except Exception:
         pass
+
+
+def _is_git_seed_path(path: str) -> bool:
+    """git 裡 520 篇種子不准當融合起點、也不准寫回。"""
+    return os.path.basename(os.path.abspath(path or "")) == "corpus_index.json"
 
 
 def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], row: Dict[str, Any]) -> str:
@@ -442,12 +449,14 @@ def ingest_public_posts(
 ) -> Dict[str, Any]:
     """抓公開個人頁最新文＋最新兩篇的飆大一／二層回覆。失敗不改海選。
 
-    正式碟：動到的列 UPSERT 進同一顆 wayne_market.db 的 biaoke_posts。
-    種子 JSON 不整檔改寫，避免 Render 重開把新文蓋掉。
+    融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
+    不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
+    正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
+    corpus_index.json 不准當起點、不准寫回。
     """
-    path = corpus_path or _INDEX
+    dest = str(corpus_path or "").strip()
     dbp = str(db_path or "").strip()
-    if not dbp:
+    if not dbp and not dest:
         try:
             from config import get_db_path
 
@@ -455,7 +464,27 @@ def ingest_public_posts(
         except Exception:
             dbp = ""
     sess = session or _session()
-    stats = {"fetched": 0, "added": 0, "updated": 0, "replies": 0, "n": 0, "db": 0}
+    stats = {
+        "fetched": 0,
+        "added": 0,
+        "updated": 0,
+        "replies": 0,
+        "n": 0,
+        "db": 0,
+        "baseline": "archive_1709",
+    }
+    if dbp:
+        ensure_biaoke_posts_table(dbp)
+        try:
+            seed_biaoke_archive(dbp)
+        except Exception:
+            logger.exception("飆大 1709 融合底圖寫庫失敗")
+
+    blob = load_corpus(dbp if dbp and os.path.isfile(dbp) else None)
+    posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
+    by_id = {str(p.get("id") or ""): p for p in posts}
+    stats["n"] = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
+
     try:
         user_html = fetch_html(USER_URL, sess)
         ids = parse_user_article_ids(user_html)[: max(1, int(max_ids))]
@@ -465,16 +494,6 @@ def ingest_public_posts(
     if not ids:
         return {**stats, "ok": False, "reason": "no_ids"}
 
-    if corpus_path:
-        if os.path.isfile(path):
-            with open(path, encoding="utf-8") as fh:
-                blob = json.load(fh)
-        else:
-            blob = {"source": f"cmoney-{AUTHOR_ID}", "n": 0, "from": "", "to": "", "posts": []}
-    else:
-        blob = load_corpus(dbp if dbp and os.path.isfile(dbp) else None)
-    posts: List[Dict[str, Any]] = list(blob.get("posts") or [])
-    by_id = {str(p.get("id") or ""): p for p in posts}
     added = 0
     updated = 0
     replies = 0
@@ -509,6 +528,7 @@ def ingest_public_posts(
                     rid = str(rep.get("id") or "")
                     if rid:
                         touched.append(rid)
+    n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
     if dbp:
         ensure_biaoke_posts_table(dbp)
         uniq = []
@@ -518,8 +538,8 @@ def ingest_public_posts(
                 seen.add(aid)
                 uniq.append(by_id[aid])
         stats["db"] = upsert_biaoke_posts(dbp, uniq)
-    if corpus_path or not dbp:
-        _save_corpus(path, blob, posts)
+    if dest and not _is_git_seed_path(dest):
+        _save_corpus(dest, blob, posts)
     else:
         load_corpus_cache_clear()
     stats.update(
@@ -528,11 +548,17 @@ def ingest_public_posts(
             "added": added,
             "updated": updated,
             "replies": replies,
-            "n": len(posts),
+            "n": n_post,
         }
     )
+    if n_post < ARCHIVE_BASELINE_N:
+        logger.warning(
+            "飆大融合底圖不足 n=%s（應 >= %s，Drive 那一千七百多則）",
+            n_post,
+            ARCHIVE_BASELINE_N,
+        )
     logger.info(
-        "飆大公開匯入 added=%s updated=%s replies=%s n=%s db=%s",
+        "飆大公開匯入 added=%s updated=%s replies=%s n=%s db=%s baseline=archive_1709",
         added,
         updated,
         replies,
