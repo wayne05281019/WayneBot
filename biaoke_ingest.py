@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""飆大公開發文＋最新文一二層回覆匯入。只抓 CMoney 公開頁，不進海選。
+"""飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
 盤中 10 分、盤後到凌晨 1 點半每 3 小時、夜間併入 06:30。
-不准放 Bearer／localStorage／同學會 token。社團不抓。
+主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
+不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
+不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
-路人留言不收。公開 HTML 常常不帶留言正文：有 SSR 就收，沒有就只更新主文，不假裝聽到。
+路人留言不收。
 """
 from __future__ import annotations
 
@@ -383,6 +385,240 @@ def parse_author_replies(
     return out
 
 
+def _cmoney_api_headers() -> Dict[str, str]:
+    """偉權抓碼那組標頭。token 只從環境變數來，沒有就不帶 Authorization。"""
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "x-version": "2.0",
+        "cmoneyapi-trace-context": '{"device":"Mozilla/5.0"}',
+        "referer": USER_URL,
+        "origin": "https://www.cmoney.tw",
+    }
+    try:
+        from config import get_cmoney_auth_token
+
+        token = get_cmoney_auth_token()
+    except Exception:
+        token = ""
+    if token:
+        headers["authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _api_member_id(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    info = item.get("creatorInfo") or {}
+    if not isinstance(info, dict):
+        info = {}
+    return str(
+        item.get("memberId")
+        or item.get("creatorId")
+        or info.get("memberId")
+        or ""
+    )
+
+
+def _api_nickname(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    info = item.get("creatorInfo") or {}
+    if not isinstance(info, dict):
+        info = {}
+    return str(item.get("nickname") or info.get("nickname") or "")
+
+
+def _api_is_author(item: Any) -> bool:
+    return _api_member_id(item) == AUTHOR_ID or AUTHOR_NAME in _api_nickname(item)
+
+
+def _api_text(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    content = item.get("content")
+    if isinstance(content, dict):
+        return str(content.get("text") or "").strip()
+    return str(item.get("text") or "").strip()
+
+
+def _api_comment_id(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("id") or item.get("commentId") or "").strip()
+
+
+def _api_stamp(item: Any, now: Optional[datetime] = None) -> tuple[str, str]:
+    raw = (item or {}).get("createTime") if isinstance(item, dict) else ""
+    if raw in (None, ""):
+        raw = (item or {}).get("createdAt") if isinstance(item, dict) else ""
+    if isinstance(raw, (int, float)) or (isinstance(raw, str) and raw.isdigit()):
+        try:
+            n = int(raw)
+            if n > 10_000_000_000:
+                n = n / 1000.0
+            dt = datetime.fromtimestamp(n, TAIPEI)
+            return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+        except (OSError, OverflowError, ValueError):
+            pass
+    date_s, time_s = parse_published(str(raw or ""))
+    if date_s:
+        return date_s, time_s
+    return parse_display_time(str(raw or ""), now=now)
+
+
+def _api_children(item: Any) -> List[Dict[str, Any]]:
+    if not isinstance(item, dict):
+        return []
+    for key in ("replies", "subComments", "childComments"):
+        chunk = item.get(key)
+        if isinstance(chunk, list):
+            return [c for c in chunk if isinstance(c, dict)]
+    return []
+
+
+def _api_child_count(item: Any) -> int:
+    if not isinstance(item, dict):
+        return 0
+    kids = _api_children(item)
+    if kids:
+        return len(kids)
+    for key in ("replyCount", "repliesCount"):
+        try:
+            n = int(item.get(key) or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n:
+            return n
+    return 0
+
+
+def _reply_row(
+    item: Dict[str, Any],
+    *,
+    parent_id: str,
+    layer: int,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    body = _api_text(item)
+    imgs = chart_urls(json.dumps(item, ensure_ascii=False))
+    body = _append_charts(body, imgs, limit=4)
+    if _reply_noise(body):
+        return None
+    cid = _api_comment_id(item)
+    rid = f"{parent_id}:c{cid}" if cid else f"{parent_id}:t{body[:40]}"
+    date_s, time_s = _api_stamp(item, now=now)
+    return {
+        "n": 0,
+        "date": date_s,
+        "time": time_s,
+        "id": rid,
+        "parent": str(parent_id),
+        "layer": int(layer),
+        "kind": "reply",
+        "tags": [],
+        "text": body[:1200],
+    }
+
+
+def _comment_list(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [c for c in payload if isinstance(c, dict)]
+    if isinstance(payload, dict):
+        for key in ("comments", "items", "data"):
+            chunk = payload.get(key)
+            if isinstance(chunk, list):
+                return [c for c in chunk if isinstance(c, dict)]
+    return []
+
+
+def parse_api_author_replies(
+    payload: Any,
+    *,
+    parent_id: str,
+    now: Optional[datetime] = None,
+    nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> List[Dict[str, Any]]:
+    """JSON 留言只收飆大本人。路人樓裡的自回（二層）仍收。"""
+    nested_by_id = nested_by_id or {}
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for cm in _comment_list(payload):
+        if _api_is_author(cm):
+            row = _reply_row(cm, parent_id=parent_id, layer=1, now=now)
+            if row and row["text"] not in seen:
+                seen.add(row["text"])
+                out.append(row)
+        kids = list(_api_children(cm))
+        extra = nested_by_id.get(_api_comment_id(cm) or "") or []
+        for sub in kids + extra:
+            if not _api_is_author(sub):
+                continue
+            row = _reply_row(sub, parent_id=parent_id, layer=2, now=now)
+            if row and row["text"] not in seen:
+                seen.add(row["text"])
+                out.append(row)
+        if len(out) >= 40:
+            break
+    return out
+
+
+def _get_json(session: requests.Session, url: str, timeout: int = 12) -> Any:
+    resp = session.get(url, headers=_cmoney_api_headers(), timeout=timeout)
+    if getattr(resp, "status_code", 200) != 200:
+        return None
+    try:
+        return resp.json()
+    except Exception:
+        return None
+
+
+def fetch_author_replies_api(
+    article_id: str,
+    session: Optional[requests.Session] = None,
+    *,
+    now: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    """偉權抓碼：Comments?startCommentIndex=0&fetch=-100，缺樓中樓再打 Replies。"""
+    try:
+        from config import get_cmoney_auth_token
+
+        if not get_cmoney_auth_token():
+            return []
+    except Exception:
+        return []
+    aid = str(article_id or "").strip()
+    if not aid:
+        return []
+    sess = session or _session()
+    payload = _get_json(
+        sess,
+        f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comments"
+        f"?startCommentIndex=0&fetch=-100",
+    )
+    if payload is None:
+        logger.info("飆大留言 JSON 讀不到 id=%s（沒 token 或 401）", aid)
+        return []
+    nested: Dict[str, List[Dict[str, Any]]] = {}
+    for cm in _comment_list(payload):
+        cid = _api_comment_id(cm)
+        if not cid or _api_children(cm) or _api_child_count(cm) <= 0:
+            continue
+        extra = _get_json(
+            sess,
+            f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
+            f"?fetch=-50",
+        )
+        kids = _comment_list(extra) if extra is not None else []
+        if not kids and isinstance(extra, dict):
+            kids = _api_children(extra)
+        if kids:
+            nested[cid] = kids
+    return parse_api_author_replies(
+        payload, parent_id=aid, now=now, nested_by_id=nested
+    )
+
+
 def _save_corpus(path: str, blob: Dict[str, Any], posts: List[Dict[str, Any]]) -> None:
     posts.sort(
         key=lambda p: (
@@ -524,7 +760,18 @@ def ingest_public_posts(
             elif hit == "updated":
                 updated += 1
         if i < refresh_n:
-            for rep in parse_author_replies(html_text, parent_id=str(aid)):
+            api_reps = []
+            try:
+                api_reps = fetch_author_replies_api(str(aid), sess)
+            except Exception:
+                logger.debug("飆大留言 JSON 失敗 id=%s", aid, exc_info=True)
+            html_reps = parse_author_replies(html_text, parent_id=str(aid))
+            by_text = {}
+            for rep in html_reps + api_reps:
+                key = str(rep.get("id") or "") or str(rep.get("text") or "")
+                if key:
+                    by_text[key] = rep
+            for rep in by_text.values():
                 hit = _merge_row(posts, by_id, rep)
                 if hit:
                     replies += 1

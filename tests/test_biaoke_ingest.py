@@ -10,10 +10,12 @@ from biaoke_ingest import (
     ingest_public_posts,
     parse_article_html,
     parse_author_replies,
+    parse_api_author_replies,
     parse_display_time,
     parse_published,
     parse_user_article_ids,
     poll_wait_seconds,
+    fetch_author_replies_api,
 )
 
 
@@ -235,7 +237,97 @@ def test_merge_reply_into_corpus(tmp_path):
     assert "seed_biaoke_archive" in ingest_src
 
 
-def test_ingest_never_uses_520_seed_as_baseline():
+def test_parse_api_author_replies_keeps_nested_under_bystander():
+    payload = [
+        {
+            "id": "c1",
+            "memberId": 111,
+            "nickname": "楓糖ouo",
+            "content": {"text": "感謝飆大~"},
+            "createTime": "2026-09-11T03:55:32Z",
+        },
+        {
+            "id": "c2",
+            "memberId": 14444662,
+            "nickname": "Lucky911",
+            "content": {
+                "text": "謝謝飆大分享！\n耐心等待行情後續發展。相信機會是留給有耐心的人。"
+            },
+            "createTime": "2026-09-11T03:52:29Z",
+            "replyCount": 1,
+            "replies": [
+                {
+                    "id": "c2r1",
+                    "memberId": 25263,
+                    "nickname": "期股多空雙飆客",
+                    "content": {
+                        "text": "「耐心等待行情後續發展。相信機會是留給有耐心的人。」 Yes"
+                    },
+                    "createTime": "2026-09-11T03:53:00Z",
+                }
+            ],
+        },
+    ]
+    rows = parse_api_author_replies(payload, parent_id="184526608")
+    texts = " ".join(r["text"] for r in rows)
+    assert "Yes" in texts
+    assert "感謝飆大" not in texts
+    assert all(r["kind"] == "reply" and r["parent"] == "184526608" for r in rows)
+    assert any(r["layer"] == 2 for r in rows)
+    assert all(r["id"].startswith("184526608:c") for r in rows)
+
+
+def test_cmoney_comment_api_skipped_without_env_token(monkeypatch):
+    monkeypatch.delenv("CMONEY_AUTH_TOKEN", raising=False)
+    from config import get_cmoney_auth_token
+    from biaoke_ingest import fetch_author_replies_api
+
+    assert get_cmoney_auth_token() == ""
+    assert fetch_author_replies_api("184526608") == []
+
+
+def test_fetch_author_replies_api_uses_user_script_urls(monkeypatch):
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "test-token-not-real")
+    seen = []
+
+    class _Fake:
+        def get(self, url, headers=None, timeout=12):
+            seen.append((url, (headers or {}).get("authorization"), (headers or {}).get("x-version")))
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    if "/Comments" in url and "/Comment/" not in url:
+                        return [
+                            {
+                                "id": "c2",
+                                "memberId": 14444662,
+                                "nickname": "Lucky911",
+                                "content": {"text": "謝謝飆大分享"},
+                                "replyCount": 1,
+                                "replies": [],
+                            }
+                        ]
+                    return [
+                        {
+                            "id": "c2r1",
+                            "memberId": 25263,
+                            "nickname": "期股多空雙飆客",
+                            "content": {"text": "「耐心等待行情後續發展。」 Yes"},
+                        }
+                    ]
+
+            return R()
+
+    rows = fetch_author_replies_api("184526608", session=_Fake())
+    assert any("/Comments?startCommentIndex=0&fetch=-100" in u for u, *_ in seen)
+    assert any("/Comment/c2/Replies?fetch=-50" in u for u, *_ in seen)
+    assert seen[0][1] == "Bearer test-token-not-real"
+    assert seen[0][2] == "2.0"
+    texts = " ".join(r["text"] for r in rows)
+    assert "Yes" in texts
+    assert "謝謝飆大分享" not in texts
     import inspect
     from biaoke_desk import load_corpus
     from biaoke_ingest import ingest_public_posts

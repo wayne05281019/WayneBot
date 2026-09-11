@@ -74,6 +74,20 @@ def get_telegram_token() -> str:
     ).strip()
 
 
+def get_cmoney_auth_token() -> str:
+    """同學會留言 JSON 用。只讀環境變數，不准進 git、不准貼帳密。
+
+    空字串＝只抓公開主文 HTML。瀏覽器能看留言是因為分頁已登入；
+    雲端打 /api/mach/.../Comments 沒帶這個會 401。
+    """
+    raw = (os.getenv("CMONEY_AUTH_TOKEN") or "").strip()
+    if not raw or "請替換" in raw or raw.startswith("YOUR_"):
+        return ""
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+    return raw
+
+
 def get_telegram_chat_id() -> str:
     raw = (
         os.getenv("TELEGRAM_CHAT_ID")
