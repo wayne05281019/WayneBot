@@ -13,7 +13,8 @@ def test_http_server_has_no_line_share_routes():
     assert 'startswith("/line")' not in src
     assert "render_line_redirect_html" not in src
     assert "render_line_rich_share_html" not in src
-    assert "line.me/R/share" not in src
+    assert not (ROOT / "line_hop.py").exists()
+    assert not (ROOT / "line_rich_pack.py").exists()
 
 
 def test_bot_has_no_line_share_buttons_or_copy():

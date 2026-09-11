@@ -1510,8 +1510,6 @@ def format_line_share_packs(
     now: Optional[datetime] = None,
 ) -> List[Dict[str, str]]:
     """三段 LINE：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
-    from line_hop import LINE_PACKS
-
     specs_layout = [
         ("leave_zero", "黃金買點　高低卡獲利剛離零且趨勢向上"),
         ("golden_buy", "重點觀察　60低超跌且趨勢向上"),
@@ -1593,7 +1591,11 @@ def format_line_share_packs(
     if night.startswith("＝＝夜盤判斷"):
         bodies["night"] = ("\n" + SHARE_SEP + "\n").join([head, night, foot])
     packs = []
-    for pid, label, title in LINE_PACKS:
+    for pid, label, title in (
+        ("night", "夜盤", "夜盤判斷"),
+        ("layout", "黃金買點", "黃金買點與佈局"),
+        ("trade", "短線", "短線說明"),
+    ):
         packs.append(
             {
                 "id": pid,

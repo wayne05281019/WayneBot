@@ -1,4 +1,4 @@
-"""LINE 轉傳純文字排版：直向對齊、產業可跨行；奇摩走自家 /y/ 避免大圖預覽。"""
+"""海選／卡片純文字排版：直向對齊、產業可跨行。奇摩連官方報價頁。"""
 from __future__ import annotations
 
 import html as html_lib
@@ -404,13 +404,12 @@ def format_line_stock_block(
     if industry:
         lines.extend(_kv_lines("產業", industry))
     try:
-        from stock_links import yahoo_hop_url
+        from stock_links import yahoo_urls
 
-        hop = yahoo_hop_url(sid)
+        hop, _ = yahoo_urls(sid)
     except Exception:
         hop = ""
     if hop:
-        # 網址單獨一列，避免手機把「奇摩　https://…」折爛；走 /y/ 才不會抓奇摩大圖
         lines.append(_pad_label("奇摩"))
         lines.append(hop)
     return "\n".join(lines)

@@ -14,3 +14,5 @@ def test_line_rich_pack_not_wired_to_bot_or_http():
     assert "from line_rich_pack import" not in main
     assert "/line/rich" not in main
     assert "一鍵傳 LINE" not in bot
+    assert not (ROOT / "line_hop.py").exists()
+    assert not (ROOT / "line_rich_pack.py").exists()

@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_line_stock_headline_no_yahoo_url():
     from line_share_format import (
         STANCE_LABEL,
@@ -38,8 +35,8 @@ def test_line_stock_headline_no_yahoo_url():
     )
     lines = block.split("\n")
     assert lines[0] == "1. 台積電 (2330)"
-    assert "tw.stock.yahoo.com" not in block
-    assert "/y/2330" in block
+    assert "tw.stock.yahoo.com/quote/2330" in block
+    assert "/y/2330" not in block
     two = ("格局", "收盤", "量能", "金額", "均線", "法人", "獲利", "產業")
     for lab in two:
         assert any(ln.startswith(_pad_label(lab)) for ln in lines)
@@ -196,37 +193,6 @@ def test_line_phone_bubble_width():
     assert "60日低上來" in block
     # 法人三欄各自成列，手機不會從張數中間折
     assert any(ln.strip() == "外資+32張" or ln.endswith("外資+32張") for ln in block.split("\n"))
-
-
-def test_yahoo_hop_html_has_no_preview_card():
-    from line_hop import render_yahoo_hop_html
-
-    page = render_yahoo_hop_html("2330", "台積電")
-    assert "og:image" not in page
-    assert "location.replace" in page
-    assert "tw.stock.yahoo.com/quote/2330.TW" in page
-    assert "technical-analysis" not in page
-    assert "http-equiv" not in page
-    assert "正在開啟" in page
-
-
-def test_yahoo_hop_4915_quote_not_chart_tab():
-    from line_hop import render_yahoo_hop_html
-
-    page = render_yahoo_hop_html("4915", "致伸")
-    assert "4915.TW" in page
-    assert "technical-analysis" not in page
-
-
-@pytest.mark.production_db
-def test_yahoo_hop_otc_uses_two_suffix():
-    from line_hop import render_yahoo_hop_html
-    from tests.conftest import require_production_db
-
-    page = render_yahoo_hop_html("6488", db_path=require_production_db())
-    assert "6488.TWO" in page
-    assert "technical-analysis" not in page
-    assert "location.replace" in page
 
 
 def test_line_block_hydrates_t86_from_db_like_1210(tmp_path):

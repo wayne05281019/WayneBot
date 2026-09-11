@@ -367,10 +367,12 @@ def load_bucket_rich_manifest(db_path: str, bucket_key: str, as_of: str = "") ->
 
 
 def load_line_packs(db_path: str, as_of: str = "") -> list:
-    from line_hop import LINE_PACKS
-
     out = []
-    for pid, label, title in LINE_PACKS:
+    for pid, label, title in (
+        ("night", "夜盤", "夜盤判斷"),
+        ("layout", "黃金買點", "黃金買點與佈局"),
+        ("trade", "短線", "短線說明"),
+    ):
         row = load_line_pack(db_path, pid, as_of)
         if not row.get("text"):
             continue
