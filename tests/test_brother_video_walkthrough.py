@@ -102,8 +102,8 @@ def test_help_script_ready_for_brother_video():
     assert "直接打代號" in first
     assert "00981A" in first
     assert "先別追" in HELP_TOPICS["stock"]
-    assert "開 LINE・傳這檔" in HELP_TOPICS["screen"]
-    assert "一鍵傳 LINE" in HELP_TOPICS["screen"]
+    assert "開 LINE" not in HELP_TOPICS["screen"]
+    assert "一鍵傳 LINE" not in HELP_TOPICS["screen"]
     assert "按錯" in HELP_TOPICS["oops"]
     hub = WayneTelegramBot.__new__(WayneTelegramBot)._hub_keyboard("2330")
     texts = [b.text for r in hub.inline_keyboard for b in r]

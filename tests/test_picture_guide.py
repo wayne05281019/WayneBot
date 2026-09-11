@@ -42,8 +42,9 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "➕" not in blob
     assert "①" not in blob
     assert "黃金買點" in blob
-    assert "開 LINE・傳這檔" in blob
-    assert "一鍵傳 LINE" in blob
+    assert "開 LINE" not in blob
+    assert "一鍵傳 LINE" not in blob
+    assert "傳這檔" not in blob
     assert "回報" in blob
     assert "記買入" in blob
     assert "外資+投信" in blob
@@ -71,7 +72,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v46"
+    assert CACHE_VER == "v47"
     assert "不收空頭" in blob
     assert "刷新上一檔" in blob
     assert "國字打不準" in blob

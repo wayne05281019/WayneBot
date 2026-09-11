@@ -135,3 +135,26 @@ def test_stance_short_title_puts_note_on_same_row():
     assert plan["same_row"]
     assert "先看" in plan["same_row"]
     assert plan["h"] < 6.0
+
+
+def test_stance_note_fills_pane_not_left_cluster():
+    from wayne_navigator import CARD_FIG_W, _stance_pane_plan, _text_w
+
+    def tw(text, fs, weight=900):
+        return _text_w(text, fs, CARD_FIG_W, weight)
+
+    plan = _stance_pane_plan(
+        "今天先看表，先等",
+        "這段空間很小（空間7%、獲利14.8%），貼著月線。先看表再決定。"
+        "離低點有一段了，今天沒有急著買或賣，看下面這張20日表。",
+        tw,
+        2.6,
+        CARD_FIG_W,
+    )
+    assert not plan["same_row"]
+    below = plan["below"]
+    assert len(below) >= 2
+    full_w = float(plan["full_w"])
+    widths = [_text_w(ln, 11.2, CARD_FIG_W, 700) for ln in below]
+    for w in widths[:-1]:
+        assert w >= full_w * 0.72, (below, widths, full_w)

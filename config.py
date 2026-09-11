@@ -37,7 +37,7 @@ def get_charts_dir() -> str:
 
 
 def get_public_base_url() -> str:
-    """Telegram 開 LINE 鈕要走 https。Render 會帶 RENDER_EXTERNAL_URL。"""
+    """公開網址。Render 會帶 RENDER_EXTERNAL_URL。"""
     raw = (
         os.getenv("WAYNE_PUBLIC_URL")
         or os.getenv("RENDER_EXTERNAL_URL")

@@ -157,7 +157,7 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
         if "今K" not in texts:
             out.append("沒有今K")
         if float(card.get("prev_close") or 0) and "較昨" not in blob:
-            out.append("有昨收但漲跌沒寫較昨")
+            out.append("有昨收但漲跌沒寫較昨日")
         if " 開 " in blob or blob.startswith("開 "):
             out.append("還在用舊標開高低")
         px = _fmt_price(card.get("close"))
@@ -171,6 +171,8 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
         out.append("扣抵寫成還有再")
     if "語料" in kotei or "語料" in stance:
         out.append("敘述出現語料")
+    if "扣抵距低點" in blob or "等多久打底" in blob:
+        out.append("今日態度不該寫季線／月線扣抵倒數")
     try:
         gain = float(card.get("gain_pct") if card.get("gain_pct") is not None else card.get("dist_l60") or 0)
     except (TypeError, ValueError):

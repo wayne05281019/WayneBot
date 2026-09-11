@@ -59,15 +59,14 @@ def test_stock_help_has_plain_discipline_notes():
     assert "最多 3 檔" not in HELP_TOPICS["ai"]
 
 
-def test_screen_help_separates_two_line_doors():
+def test_screen_help_has_no_line_share():
     screen = HELP_TOPICS["screen"]
-    assert "開 LINE・傳這檔" in screen
-    assert "一鍵傳 LINE" in screen
-    assert "只傳這一檔" in screen
-    assert "選聯絡人" in screen
-    pos_one = screen.index("開 LINE・傳這檔")
-    pos_pack = screen.index("一鍵傳 LINE")
-    assert pos_one != pos_pack
+    assert "開 LINE" not in screen
+    assert "一鍵傳 LINE" not in screen
+    assert "傳這檔" not in screen
+    assert "選聯絡人" not in screen
+    assert "左鍵" in screen
+    assert "少追" in screen
 
 
 def test_oops_covers_streak_report_not_found_weekend():

@@ -184,8 +184,11 @@ def test_glance_combo_canvas_matches_card_width():
     assert 'card.get("dist_l480")' not in src
     assert "height_ratios=(5.15, 0.95, 1.55)" in src
     assert "_glance_kv_pill" in src
-    assert "price_h * 0.24" in src
-    assert "price_h * 0.46" not in src
+    from wayne_navigator import _paint_close_right
+
+    close_src = inspect.getsource(_paint_close_right)
+    assert "price_h * 0.24" in close_src
+    assert "price_h * 0.46" not in close_src
     assert "_price_badge_row_y" in src
     from wayne_navigator import _price_badge_row_y
 

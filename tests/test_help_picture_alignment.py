@@ -58,7 +58,7 @@ def test_reply_keyboard_matches_help_and_picture_copy():
 
 
 def test_picture_guide_page_order_is_first_use_then_lookup():
-    """九頁順序：先叫鍵盤 → 查股兩張圖 → 三種清單 → 海選轉 LINE → 如何賣 → 如何低買 → 其餘鈕 → 按錯。"""
+    """九頁順序：先叫鍵盤 → 查股兩張圖 → 三種清單 → 海選怎麼用 → 如何賣 → 如何低買 → 其餘鈕 → 按錯。"""
     assert tuple(PAGE_SLUGS) == GUIDE_PAGE_ORDER
     assert PAGE_SLUGS[0] == "cover"
     assert PAGE_SLUGS[1] == "menu"
@@ -71,8 +71,8 @@ def test_picture_guide_page_order_is_first_use_then_lookup():
     blob = page_copy_blob()
     assert blob.index("第一次用") < blob.index("兩排主選單在哪")
     assert blob.index("查一檔") < blob.index("三種清單不要搞混")
-    assert blob.index("三種清單不要搞混") < blob.index("海選怎麼轉 LINE")
-    assert blob.index("海選怎麼轉 LINE") < blob.index("如何賣")
+    assert blob.index("三種清單不要搞混") < blob.index("海選怎麼用")
+    assert blob.index("海選怎麼用") < blob.index("如何賣")
     assert blob.index("如何賣") < blob.index("如何低買")
     assert blob.index("如何低買") < blob.index("大盤頁")
     assert blob.index("大盤頁") < blob.index("按錯了怎麼辦")

@@ -1070,6 +1070,56 @@ def test_outlook_tx_foreign_lagged_date_is_plain():
     assert "昨收" not in html.split("\n", 1)[0]
 
 
+def test_outlook_just_rotated_chips_vs_electronics_drop():
+    """剛輪到半導體、隔夜費半跌：判斷句講電子鏈逆風，並加一句別追。"""
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260910",
+        snap={
+            "ok": True,
+            "as_of": "20260910",
+            "close": 26500.0,
+            "chg1_pct": 0.10,
+            "vs_ma20_pct": 0.4,
+            "regime": "neutral",
+            "falling_risk": 20,
+            "tx_foreign_oi": {
+                "date": "20260910",
+                "oi_long": 8153,
+                "oi_short": 90542,
+                "oi_net": -82389,
+            },
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "ixic_pct": -0.4,
+            "sox_pct": -2.4,
+            "tsm_pct": -2.1,
+            "nvda_pct": -1.6,
+            "vix": 16.3,
+            "vix_pct": 6.4,
+        },
+        flow_maps={
+            "just_rotated": {"半導體業": 1},
+            "just_rotated_rows": [{"industry": "半導體業", "three_net": 50000}],
+            "inflow_rows": [{"industry": "半導體業", "three_net": 50000}],
+            "outflow_rows": [],
+        },
+    )
+    assert "指數還中性，電子鏈逆風" in html
+    assert "大盤中性" not in html
+    assert "電子鏈夜盤跌" in html
+    assert "昨天剛輪到、隔夜費半跌" in html
+    assert "今天別追電子高檔" in html
+    lines = html.split("\n")
+    assert any("買多 8,153口" in ln for ln in lines)
+    assert any("買空 90,542口" in ln for ln in lines)
+    assert any("跳升" in ln for ln in lines)
+
+
 def test_parse_taifex_tx_inst_oi_rows_picks_foreign():
     from taiwan_market import _parse_taifex_tx_inst_oi_rows
 

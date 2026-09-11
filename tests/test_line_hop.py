@@ -1,33 +1,43 @@
-def test_line_hop_url_uses_server_hop():
-    from line_hop import line_hop_url
+# -*- coding: utf-8 -*-
+"""產品已拿掉傳給 LINE：中轉頁、按鈕、幫助文都不該再出現。"""
+from __future__ import annotations
 
-    assert line_hop_url("leave_zero", "https://example.com") == "https://example.com/line/leave_zero"
-
-
-def test_render_line_redirect_html_opens_line_app_on_mobile():
-    from line_hop import render_line_redirect_html
-
-    page = render_line_redirect_html("WayneBot 測試\n1. 台積電 (2330)")
-    assert "line://msg/text/" in page
-    assert "line.me/R/share" in page
-    assert "開啟 LINE App" in page or "開 LINE 選聯絡人" in page
-    assert "mobile" in page
+from pathlib import Path
 
 
-def test_render_line_hop_html_compat():
-    from line_hop import render_line_hop_html
-
-    page = render_line_hop_html("開 LINE・黃金買點", "測試內容")
-    assert "line://msg/text/" in page
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_long_line_share_still_opens_line_app():
-    from line_hop import render_line_redirect_html
+def test_http_server_has_no_line_share_routes():
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert 'startswith("/line")' not in src
+    assert "render_line_redirect_html" not in src
+    assert "render_line_rich_share_html" not in src
+    assert "line.me/R/share" not in src
 
-    long_body = "WayneBot 海選\n" + ("1. 測試 (2330)\n" * 80)
-    page = render_line_redirect_html(long_body)
-    assert "開 LINE 選聯絡人" in page
-    assert "line://msg/text/" in page
-    assert "line.me/R/share" in page
-    assert "複製文字並開 LINE" not in page
-    assert "請手動全選" not in page
+
+def test_bot_has_no_line_share_buttons_or_copy():
+    src = (ROOT / "bot_servers.py").read_text(encoding="utf-8")
+    assert "開 LINE" not in src
+    assert "一鍵傳 LINE" not in src
+    assert "傳這檔" not in src
+    assert "選聯絡人" not in src
+    assert "_send_line_rich_bucket" not in src
+    assert "_reply_line_share" not in src
+    from bot_servers import HELP_TOPICS
+
+    blob = "\n".join(HELP_TOPICS.values())
+    assert "開 LINE" not in blob
+    assert "一鍵傳 LINE" not in blob
+    assert "轉 LINE" not in blob
+
+
+def test_screening_html_has_no_line_stock_link():
+    from screening_engine import _stock_card_html
+
+    html = _stock_card_html(
+        {"stock_id": "2330", "stock_name": "台積電", "close": 100, "volume": 1},
+        1,
+    )
+    assert "開 LINE" not in html
+    assert "/line/" not in html

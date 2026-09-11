@@ -208,7 +208,7 @@ def _line_profit_value(item: Dict[str, Any]) -> str:
 
 def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
     """這一檔今天的態度＋該怎麼做（人話，不是下單指令）。"""
-    from decision_card_signals import card_daily_stance, stance_explain
+    from decision_card_signals import card_daily_stance, stance_explain, trim_stance_echo
 
     title = str(item.get("stance") or "").strip()
     kind = str(item.get("stance_kind") or "").strip()
@@ -220,6 +220,13 @@ def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
         if not alert and item.get("at_60_low"):
             alert = "60低"
         hl = str(item.get("hl") or item.get("hi_lo") or item.get("高低") or "")
+        near_high = bool(item.get("chase_warning"))
+        try:
+            dist_h = item.get("dist_h20")
+            if dist_h is not None and float(dist_h) >= -1.5:
+                near_high = True
+        except (TypeError, ValueError):
+            pass
         title, kind = card_daily_stance(
             profit_pct=profit,
             alert=alert,
@@ -228,10 +235,11 @@ def _line_stance_pair(item: Dict[str, Any]) -> Tuple[str, str]:
             trend_note=str(item.get("trend_note") or item.get("升降註") or ""),
             bias=item.get("bias") or item.get("bias_monthly") or 0,
             badges=item.get("badges") or [],
+            near_high=near_high,
         )
     sell = str(item.get("sell_note") or "").strip()
     explain = stance_explain(kind or "wait", sell_note=sell, card=item, surface="list")
-    return title, explain
+    return title, trim_stance_echo(title, explain)
 
 
 def _line_stance_value(item: Dict[str, Any]) -> str:

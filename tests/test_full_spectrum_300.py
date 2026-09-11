@@ -1167,8 +1167,12 @@ def test_l9b_voice_stt_not_required_for_text():
     stt_configured()
 
 
-def test_l9b_line_share_copy():
-    assert "LINE" in HELP_TOPICS.get("screen", "") or "LINE" in HELP_TOPICS.get("guide", "")
+def test_l9b_line_share_removed():
+    from bot_servers import HELP_TOPICS
+
+    assert "開 LINE" not in HELP_TOPICS.get("screen", "")
+    assert "開 LINE" not in HELP_TOPICS.get("guide", "")
+    assert "一鍵傳 LINE" not in HELP_TOPICS.get("screen", "")
 
 
 def test_l9b_fake_units_empty_card_omits():

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""高低決策卡欄位語意 — 海選／LINE 須跟這套一致，勿另寫平行公式。
+"""高低決策卡欄位語意 — 海選／高低卡須跟這套一致，勿另寫平行公式。
 
 對照來源：
 - wayne_navigator.get_decision_card（獲利／預警／高低）
@@ -492,10 +492,12 @@ def card_daily_stance(
     trend_note: str = "",
     bias: float = 0.0,
     badges: list | None = None,
+    near_high: bool = False,
 ) -> Tuple[str, str]:
     """今日態度：只認高低卡表，不複製 Cary 紅箭頭當買訊、也不是下單指令。
 
     回傳 (文案, kind)，kind ∈ avoid / watch / wait。
+    near_high＝貼近 20 日收盤高（少追），即使高低格還沒寫 20高。
     """
     badges = [str(x) for x in (badges or [])]
     alert = str(alert or "")
@@ -513,7 +515,7 @@ def card_daily_stance(
         b = float(bias or 0)
     except (TypeError, ValueError):
         b = 0.0
-    at_high = hl in ("20高", "10高") or alert == "K20高"
+    at_high = bool(near_high) or hl in ("20高", "10高") or alert == "K20高"
     at_60_low = alert == "60低" or hl == "60低"
     if (
         any("溫度≥80" in x or "價溫背離" in x for x in badges)
@@ -525,6 +527,8 @@ def card_daily_stance(
         return "漲多了，今天別追", "avoid"
     if p >= 40:
         return "漲多了，今天別追", "avoid"
+    if at_high:
+        return "貼著高檔，先等", "wait"
     if at_60_low and -1.5 <= p <= 2.5 and b < -10:
         return "靠近低點，先看表", "watch"
     if at_60_low:
@@ -669,7 +673,7 @@ def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
                     return str(v)
         return ""
 
-    return {
+    out = {
         "gain": _num("gain_pct", "profit_pct", "profit"),
         "space": _num("space_20"),
         "bias": _num("bias_monthly", "bias"),
@@ -678,7 +682,22 @@ def last_table_facts(card: Dict[str, Any] | None) -> Dict[str, Any]:
         "alert": _txt("預警", "alert"),
         "lift": _txt("升降"),
         "badges": [str(x) for x in (card.get("badges") or [])],
+        "dist_h20": _num("dist_h20"),
+        "near_high": bool(card.get("chase_warning")),
     }
+    dist_h20 = out["dist_h20"]
+    if dist_h20 is not None:
+        try:
+            if float(dist_h20) >= -1.5:
+                out["near_high"] = True
+        except (TypeError, ValueError):
+            pass
+    if not out["near_high"]:
+        close = _num("close")
+        h20 = _num("hi20_close", "h20")
+        if close is not None and h20 is not None and h20 > 0 and close >= h20 * 0.985:
+            out["near_high"] = True
+    return out
 
 
 def table_reads_as_low(card: Dict[str, Any] | None) -> bool:
@@ -707,6 +726,27 @@ def table_reads_as_low(card: Dict[str, Any] | None) -> bool:
 
 def _look_table(on_list: bool) -> str:
     return "先看高低卡再決定。" if on_list else "看下面這張表再決定。"
+
+
+def trim_stance_echo(title: str, note: str) -> str:
+    """標題已講的開頭／結尾，正文不要再抄一次。"""
+    title = str(title or "").strip()
+    note = str(note or "").strip()
+    if not note:
+        return note
+    if title and note.startswith(title):
+        note = note[len(title) :].lstrip("。").strip()
+    lead = title.split("，")[0] if title else ""
+    if lead and len(lead) >= 4 and note.startswith(lead):
+        note = note[len(lead) :].lstrip("，。；").strip()
+    if title and "別追" in title:
+        for tail in ("今天別追。", "今天別追"):
+            if note.endswith(tail):
+                note = note[: -len(tail)].rstrip("。，")
+                break
+        if note:
+            note = note.rstrip("。") + "。"
+    return note
 
 
 def _fact_gain(g: float) -> str:
@@ -753,7 +793,13 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
     g = 0.0 if gain is None else gain
     has_bias = bias is not None
     has_space = space is not None
-    at_high = hl in {"20高", "10高"} or alert == "K20高"
+    at_high = hl in {"20高", "10高"} or alert == "K20高" or bool(facts.get("near_high"))
+    try:
+        dist_h = facts.get("dist_h20")
+        if dist_h is not None and float(dist_h) >= -1.5:
+            at_high = True
+    except (TypeError, ValueError):
+        pass
     at_near_low = alert in {"60低", "K20低"} or hl in {"60低", "20低", "10低"}
     long_low = any(
         str(b).startswith(("近480日低", "近240日低", "近120日低", "創480日新低", "創240日新低", "創120日新低"))
@@ -771,7 +817,9 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
     if at_high:
         if has_space and space < 8:
             return f"表貼在這段小區間的高{_paren(mark, sbit, gbit)}。空間很小，先別追。"
-        if k == "avoid" or g >= 40:
+        if k == "avoid" or g >= 15:
+            if has_bias and bias >= 8:
+                return f"表貼在高檔{_paren(mark, gbit)}，也高出月線一截{_paren(bbit)}。今天別追。"
             return f"表貼在高檔{_paren(mark, gbit, tbit, heat)}。今天別追。"
         return f"表貼在高檔{_paren(mark, gbit, tbit)}。先別追，" + _look_table(on_list)
 
@@ -1012,22 +1060,20 @@ def stance_explain(
     monthly_stage: str = "",
     surface: str = "card",
 ) -> str:
-    """今日態度後面那句：對這張20日表的數字和底色，不把月K階段寫進來。"""
+    """今日態度後面那句：對這張20日表的數字和底色。
+
+    讀者主要看獲利有沒有離零、現在這張表的狀況。季線／月線扣抵倒數不改這兩件事，不上畫面。
+    """
     del monthly_stage  # 月K只掛徽章，避免跟表上「月乖離」撞名。
     on_list = str(surface or "card") == "list"
     note = str(sell_note or "").strip()
     if note and not table_reads_as_low(card):
         if "不是叫你買" not in note:
             note = note.rstrip("。") + "。不是叫你買。"
-        body = note
-    elif card:
-        body = _stance_from_table(kind, card, on_list=on_list)
-    else:
-        body = _stance_kind_fallback(kind, on_list=on_list)
-    kotei = str((card or {}).get("kotei_note") or "").strip()
-    if kotei and not on_list and kotei not in body:
-        body = ((body.rstrip("。") + "。") if body else "") + "\n" + kotei
-    return body
+        return note
+    if card:
+        return _stance_from_table(kind, card, on_list=on_list)
+    return _stance_kind_fallback(kind, on_list=on_list)
 
 
 def alert_tag(

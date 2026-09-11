@@ -146,6 +146,9 @@ def test_stamp_and_dual_pill_do_not_reuse_live_clock_or_round_dots():
     show = inspect.getsource(WayneTelegramBot._show_picture_guide_page)
     assert "InputMediaAnimation" not in show
     assert "ensure_flip_gif" not in show
+
+
+def test_card_daily_stance():
     """高檔／溫度≥80＝不要追；60低＋超跌＝觀察。不是下單、不抄紅箭頭。"""
     txt, kind = card_daily_stance(
         profit_pct=99.2, alert="No", hl="No", temp=72.4, badges=[]
@@ -210,6 +213,71 @@ def test_4915_sep4_leave_zero_is_wait_not_buy():
     assert kind == "wait"
     assert "先等" in txt
     assert "別追" not in txt
+    assert "離低點" not in txt
+    # 少追＝貼 20 日高：不能再寫離低點；獲利已大就改別追。
+    txt, kind = card_daily_stance(
+        profit_pct=37.4, alert="No", hl="No", temp=50.0, badges=[], near_high=True
+    )
+    assert kind == "avoid"
+    assert "別追" in txt
+    assert "離低點" not in txt
+    txt, kind = card_daily_stance(
+        profit_pct=2.4, alert="No", hl="No", temp=40.0, badges=[], near_high=True
+    )
+    assert kind == "wait"
+    assert "高檔" in txt
+    assert "離低點" not in txt
+
+
+def test_trim_stance_echo_drops_title_lead_and_dont_chase_tail():
+    from decision_card_signals import trim_stance_echo
+
+    note = trim_stance_echo(
+        "離低點有一段了，先等",
+        "離低點有一段了（獲利 37.4%）。今天沒有急著買或賣，先看高低卡再決定。",
+    )
+    assert not note.startswith("離低點有一段了")
+    assert "獲利 37.4%" in note
+    trimmed = trim_stance_echo(
+        "漲多了，今天別追",
+        "表貼在高檔（獲利 37.4%）。今天別追。",
+    )
+    assert trimmed == "表貼在高檔（獲利 37.4%）。"
+    assert "今天別追" not in trimmed
+
+
+def test_priority_watch_near_high_html_matches_chase_tag():
+    """6441 型：注意已標少追，標題不能再講離低點，正文也不抄標題。"""
+    from screening_engine import _stock_card_html
+
+    html = _stock_card_html(
+        {
+            "stock_id": "6441",
+            "stock_name": "廣錠",
+            "close": 26.10,
+            "pct_change": 9.89,
+            "volume": 1953,
+            "q60r": 13.73,
+            "turnover_k": 50000,
+            "ma20": 22.11,
+            "ma60": 21.81,
+            "profit": 37.4,
+            "bias_monthly": 18.0,
+            "chase_warning": True,
+            "us_peer_headwind": True,
+            "both_sessions": True,
+            "pattern": "上坡",
+        },
+        1,
+        bucket_label="優先看",
+        show_line_link=False,
+    )
+    assert "離低點" not in html
+    assert "漲多了，今天別追" in html
+    assert html.count("漲多了，今天別追") == 1
+    assert "表貼在高檔" in html
+    assert "少追" in html
+    assert "今天沒有急著買或賣" not in html
 
 
 def test_stance_explain_is_plain_speech():
@@ -694,6 +762,16 @@ def test_kotei_wait_label_matches_cary_months():
     hi = format_kotei_note(close=30, ma60=28, hl="20高", m60_high=5)
     assert "再5個交易日過高點" in hi
     assert "進場仍看表" in hi
+    noisy = {
+        "kotei_note": "季線扣抵距低點還有30個交易日（約2個月）。這是等多久打底，不是買訊。",
+        "close": 107.3,
+        "profit": 14.8,
+    }
+    assert "扣抵" not in stance_explain("wait", card=noisy)
+    assert "過高點" not in stance_explain(
+        "wait",
+        card={"kotei_note": "季線扣抵再5個交易日過高點。只是說明，進場仍看表。"},
+    )
     dates = [f"{20250101 + i}" for i in range(80)]
     closes = [10.0] * 80
     closes[-2] = 7.0
@@ -722,7 +800,8 @@ def test_4739_kotei_matches_cary_sep10():
     assert "約2個月" in note
     assert "不是買訊" in note
     html = stance_explain(card.get("stance_kind") or "wait", card=card)
-    assert "約2個月" in html
+    assert "約2個月" not in html
+    assert "扣抵" not in html
     assert "語料" not in html
 
 

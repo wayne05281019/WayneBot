@@ -86,6 +86,12 @@ CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
 NAV_CHART_DPI = 320
+# 上下疊字行距（資料座標）。13pt 字高約 2.54，舊 2.25 會黏成一行。
+_OHLC_STACK = 2.95
+_NAV_STACK = 2.80
+_STANCE_NOTE_STACK = 2.58
+_LR_PRIM_DY = 1.78
+_LR_SEC_DY = 1.92
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -464,6 +470,7 @@ class NavigatorEngine:
         df["_table_close"] = px
         from decision_card_signals import (
             TEMP_ATH_WATCH,
+            _in_cash_session,
             alert_tag,
             cal60_profit_bundle,
             card_daily_stance,
@@ -479,6 +486,8 @@ class NavigatorEngine:
             volume_headline_rank,
         )
         generated_at = taipei_now().strftime("%Y-%m-%d %H:%M:%S")
+        if is_live and not _in_cash_session(taipei_now()):
+            is_live = False
 
         # 獲利：決策卡／顯示一律 60 曆日低（對齊 CaryBot）；貼 20 日低不歸零。
         profit_src = df.copy()
@@ -756,6 +765,11 @@ class NavigatorEngine:
         ].iloc[::-1].rename(columns={"_table_close": "close"})
         last_tbl = table.iloc[0] if len(table) else None
         if last_tbl is not None:
+            near_high = False
+            try:
+                near_high = float(_dist_h(h20)) >= -1.5
+            except (TypeError, ValueError):
+                near_high = False
             stance, stance_kind = card_daily_stance(
                 profit_pct=float(last_tbl.get("profit_pct") or 0),
                 alert=str(last_tbl.get("預警") or ""),
@@ -764,6 +778,7 @@ class NavigatorEngine:
                 trend_note=str(last_tbl.get("升降註") or ""),
                 bias=float(last_tbl.get("bias_monthly") or 0),
                 badges=badges,
+                near_high=near_high,
             )
         else:
             stance, stance_kind = "今天先看表，先等", "wait"
@@ -1248,7 +1263,7 @@ def etf_nav_is_yesterday(card) -> bool:
 
 
 def etf_nav_line_bits(card) -> list:
-    """左欄第二層：昨淨值／折價或溢價。盤中對昨淨值，不要跟現價混成「收盤旁淨值」。"""
+    """左欄第二層：昨淨值一列、折價或溢價一列。折溢價對照昨淨值，不要跟現價黏同一行。"""
     if not card or card.get("etf_nav") is None:
         return []
     try:
@@ -1258,7 +1273,7 @@ def etf_nav_line_bits(card) -> list:
     if nav_f <= 0:
         return []
     date = str(card.get("etf_nav_date") or "")
-    md = f"{date[4:6]}/{date[6:8]}" if len(date) == 8 else ""
+    md = f"{date[4:6]}月{date[6:8]}日" if len(date) == 8 else ""
     prev = etf_nav_is_yesterday(card)
     lab = "昨淨值" if prev else "淨值"
     bits = [f"{lab} {nav_f:.2f}" + (f"（{md}）" if md else "")]
@@ -1269,23 +1284,25 @@ def etf_nav_line_bits(card) -> list:
         pv = float(prem)
     except (TypeError, ValueError):
         return bits
-    vs = "（對昨淨值）" if prev else ""
+    vs = "（對照昨淨值）" if prev else "（對照淨值）"
+    head = "今天" if prev else ""
     if pv > 0.005:
-        bits.append(f"溢價 {pv:.2f}%{vs}")
+        bits.append(f"{head}溢價 {pv:.2f}%{vs}")
     elif pv < -0.005:
-        bits.append(f"折價 {abs(pv):.2f}%{vs}")
+        bits.append(f"{head}折價 {abs(pv):.2f}%{vs}")
     else:
-        bits.append("平價" + vs)
+        bits.append(f"{head}平價 {vs}".replace("  ", " "))
     return bits
 
 
 def _ohlc_nav_extra_h(card, last=None, prev_c=None) -> float:
-    """左欄多出來的今低／昨收列＋淨值列。右欄不再為淨值加高。"""
+    """左欄多出來的今低／昨收列＋淨值列＋折溢價列。右欄不再為淨值加高。"""
     extra = 0.0
     if len(ohlc_face_rows(card, last, prev_c)) >= 2:
-        extra += 2.25
-    if etf_nav_line_bits(card):
-        extra += 2.45
+        extra += _OHLC_STACK
+    n = len(etf_nav_line_bits(card))
+    if n:
+        extra += _NAV_STACK * n
     return extra
 
 
@@ -1468,7 +1485,7 @@ def _close_move_bits(chg, chg_amt) -> list:
 
 
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
-    """右欄現價或收盤／較昨漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。"""
+    """右欄現價或收盤／較昨日漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。"""
     close_y = y + price_h * 0.70
     chg_y = y + price_h * 0.24
     chg_fs = 15.5
@@ -1499,7 +1516,7 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
         )
     move_s = "　".join(chg_bits)
     if ohlc and ohlc[4]:
-        move_s = "較昨　" + move_s
+        move_s = "較昨日　" + move_s
         if tw(move_s, 15.5) > 36.0:
             chg_fs = 13.5
     ax.text(px_right, chg_y, move_s,
@@ -1507,27 +1524,21 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
 
 
 def _paint_price_left(ax, tw, C, x, y, price_h, card, last, prev_c, mc_val):
-    """左欄：今開高、今低／昨收、昨淨值／折溢價、主力成本。溢紅折綠。"""
-    cy = y + price_h - 2.25
+    """左欄：今開高、今低／昨收、昨淨值、折溢價、主力成本。折價在淨值下一列。溢紅折綠。"""
+    del tw
+    cy = y + price_h - _OHLC_STACK
     for line in ohlc_face_rows(card, last, prev_c):
         ax.text(x, cy, line, fontproperties=_fp(13.0), color=C["ink_soft"], va="center", zorder=3)
-        cy -= 2.25
-    nav_bits = etf_nav_line_bits(card)
-    if nav_bits:
-        ax.text(x, cy, nav_bits[0], fontproperties=_fp(12.0, "bold"), color=C["ink"], va="center", zorder=3)
-        if len(nav_bits) > 1:
-            prem = nav_bits[1]
-            if prem.startswith("溢"):
-                pc = C["up"]
-            elif prem.startswith("折"):
-                pc = C["down"]
-            else:
-                pc = C["ink"]
-            ax.text(
-                x + tw(nav_bits[0], 12.0) + 2.0, cy, prem,
-                fontproperties=_fp(12.0, "bold"), color=pc, va="center", zorder=3,
-            )
-        cy -= 2.25
+        cy -= _OHLC_STACK
+    for bit in etf_nav_line_bits(card):
+        if "溢價" in bit:
+            pc = C["up"]
+        elif "折價" in bit:
+            pc = C["down"]
+        else:
+            pc = C["ink"]
+        ax.text(x, cy, bit, fontproperties=_fp(12.0, "bold"), color=pc, va="center", zorder=3)
+        cy -= _NAV_STACK
     if mc_val is not None:
         ax.text(
             x, cy, f"主力成本 {float(mc_val):.2f}（分點平均買超）",
@@ -1782,10 +1793,10 @@ def _paint_lr_box(
             while cut and _text_w(cut + "…", sfs, fig_w, 400) > avail:
                 cut = cut[:-1]
             sec = (cut + "…") if cut else ""
-        ax.text(rx, mid + 1.55, prim, fontproperties=_fp(pfs, "bold"),
+        ax.text(rx, mid + _LR_PRIM_DY, prim, fontproperties=_fp(pfs, "bold"),
                 color=prim_c, ha="right", va="center", zorder=4)
         if sec:
-            ax.text(rx, mid - 1.70, sec, fontproperties=_fp(sfs, "normal"),
+            ax.text(rx, mid - _LR_SEC_DY, sec, fontproperties=_fp(sfs, "normal"),
                     color=sec_c if sec_c is not None else prim_c, ha="right", va="center", zorder=4)
     else:
         ax.text(rx, mid, prim, fontproperties=_fp(pfs, "bold"),
@@ -2216,7 +2227,7 @@ def _text_w(text, fs: float, fig_w: float, weight=700) -> float:
     return pt / 72.0 / (fig_w / 100.0)
 
 
-def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
+def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800, min_fill=0.0) -> list:
     """依資料座標寬度折行；優先在全形空白切開，避免「（0.9%）」被拆成兩行。"""
     s = str(text or "").replace("\n", " ").strip()
     if not s:
@@ -2274,11 +2285,12 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
             if buf and tw(trial) > max_w:
                 cut = max((k for k, c in enumerate(buf) if c in "，。；、"), default=-1)
                 if cut >= 2 and cut < len(buf) - 1:
-                    bits.append(buf[: cut + 1])
-                    buf = buf[cut + 1 :] + ch
-                else:
-                    bits.append(buf)
-                    buf = ch
+                    if min_fill <= 0 or tw(buf[: cut + 1]) >= max_w * float(min_fill):
+                        bits.append(buf[: cut + 1])
+                        buf = buf[cut + 1 :] + ch
+                        continue
+                bits.append(buf)
+                buf = ch
             else:
                 buf = trial
             i += 1
@@ -2290,8 +2302,8 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
         if last[:1] in "。、；：）)%）":
             out[-2] = prev + last
             out.pop()
-        elif 0 < len(last) <= 3 and len(prev) >= 8:
-            take = 2 if len(prev) >= 10 else 1
+        elif 0 < len(last) <= 4 and len(prev) >= 8:
+            take = 3 if len(prev) >= 12 else 2
             out[-1] = prev[-take:] + last
             out[-2] = prev[:-take]
             if not out[-2]:
@@ -2299,39 +2311,50 @@ def _wrap_fit(text, fs: float, max_w: float, fig_w: float, weight=800) -> list:
     return [ln for ln in out if ln]
 
 
+def _join_cjk_paras(note: str) -> str:
+    """今日態度小字合成一段再折行，才撐得滿欄寬，不要一段一段都擠在左邊。"""
+    paras = [p.strip() for p in str(note or "").split("\n") if p.strip()]
+    if not paras:
+        return ""
+    out = paras[0]
+    for p in paras[1:]:
+        if out and out[-1] not in "。！？；":
+            out += "。"
+        out += p
+    return out
+
+
 def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w: float) -> dict:
-    """今日態度：標題短就讓說明靠右同一行，避免第一行右邊空一大塊。"""
+    """今日態度：短句才跟標題同一行；多段小字合成一段折滿欄寬，不要全擠左側。"""
     title = str(stance_txt or "今天先看表，先等").strip() or "今天先看表，先等"
     note = str(stance_note or "").strip()
     pane_w = 100.0
     chip_w = tw("今日態度", 11.0) + 3.2
     title_x = pad_x + 3.0 + chip_w + 1.6
-    right = pane_w - pad_x - 3.2
+    right = pane_w - pad_x - 2.4
     title_fs = 15.0
     while tw(title, title_fs) > max(8.0, right - title_x) and title_fs > 11.5:
         title_fs -= 0.3
     remain = right - (title_x + tw(title, title_fs)) - 2.2
-    full_w = pane_w - 2 * pad_x - 6.4
+    full_w = pane_w - 2 * pad_x - 5.2
     same_row = ""
     below: list = []
     if note:
         paras = [p.strip() for p in note.split("\n") if p.strip()]
         first = paras[0] if paras else ""
         rest = paras[1:]
-        # 扣抵另起一段；整句塞得進標題右才同一行，不要跟扣抵黏成一塊。
         if not rest and remain >= 16.0 and tw(first, 11.2) <= remain:
             same_row = first
         else:
-            for para in paras:
-                below.extend(_wrap_fit(para, 11.2, full_w, fig_w) or [para])
-            if not below:
-                below = paras or [note]
+            blob = _join_cjk_paras(note)
+            below = _wrap_fit(blob, 11.2, full_w, fig_w, weight=700, min_fill=0.84) or [blob]
+    note_dy = _STANCE_NOTE_STACK
     if same_row and not below:
-        h = 4.5
+        h = 4.6
     elif same_row:
-        h = 4.5 + 0.55 + 2.2 * len(below)
+        h = 4.6 + 0.70 + note_dy * len(below)
     else:
-        h = 6.2 + 2.2 * max(0, len(below) - 1)
+        h = 6.55 + note_dy * max(0, len(below) - 1)
     return {
         "chip_w": chip_w,
         "title_x": title_x,
@@ -2340,6 +2363,8 @@ def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w
         "below": below,
         "h": h,
         "right": right,
+        "note_dy": note_dy,
+        "full_w": full_w,
     }
 
 
@@ -2442,7 +2467,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     except Exception:
         sell_sub = ""
     try:
-        from decision_card_signals import stance_explain
+        from decision_card_signals import stance_explain, trim_stance_echo
 
         stance_note = stance_explain(
             str(card.get("stance_kind") or "wait"),
@@ -2452,6 +2477,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     except Exception:
         stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
     stance_txt_plan = str(card.get("stance") or "今天先看表，先等")
+    try:
+        stance_note = trim_stance_echo(stance_txt_plan, stance_note)
+    except Exception:
+        pass
     stance_plan = _stance_pane_plan(
         stance_txt_plan,
         stance_note,
@@ -2676,18 +2705,19 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                 fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
                 color=note_ink, ha="left", va="center", zorder=5)
     below = list(stance_plan.get("below") or [])
-    ny = y + 1.35 + 2.2 * max(0, len(below) - 1)
+    note_dy = float(stance_plan.get("note_dy") or _STANCE_NOTE_STACK)
+    ny = y + 1.50 + note_dy * max(0, len(below) - 1)
     for ln in below:
         if note_wash:
-            nw = min(tw(ln, 11.2) + 2.8, 100 - 2 * pad_x - 5.0)
+            nw = min(tw(ln, 11.2) + 2.8, 100 - 2 * pad_x - 4.2)
             ax.add_patch(patches.FancyBboxPatch(
-                (pad_x + 2.4, ny - 1.15), nw, 2.3,
+                (pad_x + 2.4, ny - 1.20), nw, 2.45,
                 boxstyle="round,pad=0,rounding_size=0.4",
                 facecolor=note_wash, edgecolor="none", zorder=4))
         ax.text(pad_x + 3.2, ny, ln,
                 fontproperties=_fp(11.2, "bold") if hl_kind else _fp(11.2),
                 color=note_ink, va="center", zorder=5)
-        ny -= 2.2
+        ny -= note_dy
 
     # 高點
     y -= gap + hi_pane_h
@@ -3004,7 +3034,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             kv_compact("日期", _fmt_md(card["latest_date"]) + date_note),
             kv_compact("今開高低", ohlc or "—"),
             *([kv_compact("昨收", _fmt_price(prev_c))] if prev_c else []),
-            kv_compact(session_price_label(card), f"{_fmt_price(card['close'])}　{('較昨 ' + move) if prev_c else move}"),
+            kv_compact(session_price_label(card), f"{_fmt_price(card['close'])}　{('較昨日 ' + move) if prev_c else move}"),
             *[
                 kv_compact(bit.split(" ", 1)[0], bit.split(" ", 1)[1])
                 for bit in etf_nav_line_bits(card) if " " in bit

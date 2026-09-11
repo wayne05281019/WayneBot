@@ -907,7 +907,7 @@ def _stock_card_html(
     item: Dict[str, Any],
     idx: int,
     *,
-    show_line_link: bool = True,
+    show_line_link: bool = False,
     bucket_label: str = "",
 ) -> str:
     from tg_layout import html_qty_tight
@@ -959,8 +959,7 @@ def _stock_card_html(
     except (TypeError, ValueError):
         to_s = ""
     body = [
-        f"<b>{idx}.</b> {stock_title}"
-        + (f"　{_line_stock_html_link(sid)}" if sid and show_line_link else ""),
+        f"<b>{idx}.</b> {stock_title}",
     ]
     live = item.get("live")
     if live:
@@ -1196,7 +1195,7 @@ def format_screening_payload(
         payload.append(
             {
                 "mark_key": "market",
-                "line_pack_id": "",
+            "line_pack_id": "",
                 "mark_label": "大盤狀況",
                 "mark_hint": "美股＋台指期夜盤＋連動",
                 "html": outlook,
@@ -1226,7 +1225,7 @@ def format_screening_payload(
             head = f"{head}　共 {len(items)} 檔"
         part: Dict[str, Any] = {
             "mark_key": key,
-            "line_pack_id": key,
+            "line_pack_id": "",
             "mark_label": f"{label} · {len(items)}檔",
             "mark_hint": subtitle,
         }
@@ -1266,16 +1265,6 @@ def format_screening_sections(results: Dict[str, List[Dict[str, Any]]], target_d
 
 
 SHARE_SEP = "────────────────"
-
-
-def _line_stock_html_link(stock_id: str) -> str:
-    from config import get_public_base_url
-
-    sid = str(stock_id or "").strip()
-    if not sid:
-        return ""
-    url = f"{get_public_base_url()}/line/stock/{sid}"
-    return f'<a href="{html_escape(url)}">開 LINE・傳這檔</a>'
 
 
 def _date_slash(target_date: str) -> str:
@@ -1476,7 +1465,7 @@ def build_line_bucket_packs(
         packs.append(
             {
                 "id": key,
-                "label": f"開 LINE・{label}",
+                "label": label,
                 "title": f"傳 {label} 到 LINE",
                 "text": text,
             }
@@ -1684,28 +1673,11 @@ def execute_full_screening(
     stock_dfs = engine.load_market_data(target_date=target_date, min_volume=1000, min_turnover_k=30000.0)
 
     if not stock_dfs:
-        empty_packs = format_line_share_packs(
-            {},
-            target_date,
-            session_plain="今日無通過流動性的標的。",
-            db_path=engine.db_path,
-        )
-        empty_body = ("\n────────\n").join(p["text"] for p in empty_packs)
-        try:
-            from screen_sessions import save_line_packs, save_line_share
-
-            save_line_share(engine.db_path, target_date, empty_body)
-            save_line_packs(engine.db_path, target_date, empty_packs)
-        except Exception:
-            pass
         return {
             "status": "empty",
             "date": target_date,
             "as_of": target_date,
             "message": f"⚠️ 查無 {target_date} 之有效交易行情或無標的通過流動性檢驗（日量>=1,000張且日額>=3,000萬）。",
-            "line_share": empty_body,
-            "line_share_chunks": [p["text"] for p in empty_packs],
-            "line_share_packs": empty_packs,
             "results": {},
             "daytrade": [],
             "overnight": [],
@@ -1749,19 +1721,6 @@ def execute_full_screening(
             results = apply_market_weights(results, mkt_snap, db_path=engine.db_path)
         except Exception:
             mkt_snap = {}
-    us_plain = ""
-    session_plain = ""
-    if session == "evening":
-        session_plain = "晚間台股收盤（尚未對美股）"
-    elif session == "morning":
-        session_plain = "今早 06:30（已對美股收盤／盤後）"
-    if apply_us:
-        try:
-            from us_overnight import format_us_plain
-
-            us_plain = format_us_plain(us_snap)
-        except Exception:
-            pass
 
     results = drop_non_equity_picks(results, engine.db_path)
     try:
@@ -1825,30 +1784,6 @@ def execute_full_screening(
                 "reason": "突破後法人轉賣超",
             })
 
-    line_packs = format_line_share_packs(
-        results,
-        target_date,
-        us_plain=us_plain,
-        session_plain=session_plain,
-        db_path=engine.db_path,
-        us_snap=us_snap if apply_us else None,
-        morning=is_morning,
-    )
-    line_body = ("\n────────\n").join(p["text"] for p in line_packs)
-    try:
-        from screen_sessions import save_line_packs, save_line_share, save_line_stocks
-
-        save_line_share(engine.db_path, target_date, line_body)
-        bucket_packs = build_line_bucket_packs(results, target_date, engine.db_path)
-        save_line_packs(engine.db_path, target_date, line_packs + bucket_packs)
-        save_line_stocks(
-            engine.db_path,
-            target_date,
-            build_line_stock_bodies(results, target_date, engine.db_path),
-        )
-    except Exception:
-        pass
-
     return {
         "status": "success",
         "date": target_date,
@@ -1861,9 +1796,6 @@ def execute_full_screening(
         "daytrade": daytrade,
         "overnight": overnight,
         "major_alerts": major_alerts,
-        "line_share": line_body,
-        "line_share_chunks": [p["text"] for p in line_packs],
-        "line_share_packs": line_packs,
     }
 
 

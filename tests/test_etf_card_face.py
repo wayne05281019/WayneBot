@@ -160,8 +160,8 @@ def test_refresh_one_etf_nav_uses_injected_fetcher(tmp_path):
     attach_etf_price_nav(card, db)
     bits = etf_nav_line_bits(card)
     assert bits[0].startswith("昨淨值 37.10")
-    assert bits[1].startswith("折價")
-    assert "對昨淨值" in bits[1]
+    assert bits[1].startswith("今天折價")
+    assert "對照昨淨值" in bits[1]
 
 
 def _etf_db(tmp_path, *, with_close: bool = True) -> str:
@@ -327,9 +327,11 @@ def test_etf_price_nav_beside_close_not_in_fundamentals(tmp_path):
     left_src = inspect.getsource(_paint_price_left)
     assert 'C["up"]' in left_src
     assert 'C["down"]' in left_src
+    assert "tw(nav_bits[0]" not in left_src
     nav_src = inspect.getsource(etf_nav_line_bits)
     assert "昨淨值" in nav_src
-    assert "折價" in nav_src
+    assert "今天折價" in nav_src or "折價" in nav_src
+    assert "對照昨淨值" in nav_src
     assert "溢價" in nav_src
     lab_src = inspect.getsource(session_price_label)
     assert "現價" in lab_src

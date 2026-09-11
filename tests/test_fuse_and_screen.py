@@ -347,7 +347,6 @@ class FuseAndScreenTest(unittest.TestCase):
         )
         self.assertLess(line.find("＝＝黃金買點＝＝"), line.find("＝＝優先看＝＝"))
         from config import scheduled_job_kind
-        from line_hop import line_share_href, render_line_hop_html
         from screening_engine import format_line_share_packs
 
         self.assertEqual(scheduled_job_kind("30 22 * * 0-4"), "morning_screen")
@@ -371,13 +370,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertNotIn("說明：", packs[1]["text"])
         self.assertIn("主選單", packs[2]["text"])
         self.assertNotIn("＝＝當沖＝＝", packs[2]["text"])
-        href = line_share_href("測試")
-        self.assertTrue(href.startswith("https://line.me/R/share?text="))
-        page = render_line_hop_html("開 LINE・黃金買點", packs[1]["text"])
-        self.assertIn("line.me/R/share", page)
-        self.assertIn("line://msg/text/", page)
-        self.assertNotIn("哥哥", page)
-        self.assertNotIn("自己選要傳給誰", page)
+        self.assertNotIn("哥哥", packs[1]["text"])
 
     def test_format_line_share_packs_ignores_us_regime_metadata(self):
         from screening_engine import format_line_share_packs
@@ -760,6 +753,71 @@ class USOvernightTest(unittest.TestCase):
             classify_us_regime({"vix": 15.0, "ixic_pct": 0.1, "spx_pct": 0.0, "dji_pct": 0.1, "nq_f_pct": -4.0}),
             "ok",
         )
+
+    def test_regime_face_label_sox_headwind_keeps_ok(self):
+        from us_overnight import classify_us_regime, format_us_html, regime_face_label
+
+        snap = {
+            "regime": "ok",
+            "vix": 16.0,
+            "ixic_pct": -1.0,
+            "spx_pct": -0.8,
+            "dji_pct": -0.5,
+            "sox_pct": -3.2,
+            "us_phase": "regular",
+            "us_session": "20260910",
+        }
+        self.assertEqual(classify_us_regime(snap), "ok")
+        self.assertEqual(regime_face_label(snap), "指數還中性，電子鏈逆風")
+        html = format_us_html(snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")))
+        self.assertIn("指數還中性，電子鏈逆風", html)
+        self.assertNotIn("判斷　大盤中性", html)
+
+    def test_vix_mood_jump_not_normal(self):
+        from us_overnight import _vix_mood, format_us_html
+
+        self.assertEqual(_vix_mood(16.3, 4.5), "正常")
+        self.assertEqual(_vix_mood(16.3, 6.0), "跳升")
+        self.assertEqual(_vix_mood(21.0, 8.0), "跳升")
+        self.assertEqual(_vix_mood(22.0, 8.0), "偏高")
+        html = format_us_html(
+            {
+                "regime": "ok",
+                "vix": 16.3,
+                "vix_pct": 6.4,
+                "dji_pct": 0.1,
+                "spx_pct": 0.0,
+                "ixic_pct": 0.2,
+                "sox_pct": 0.1,
+                "us_phase": "regular",
+                "us_session": "20260910",
+            },
+            now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York")),
+        )
+        self.assertIn("跳升", html)
+        self.assertNotIn("正常", html)
+
+    def test_drop_alert_demotes_not_deletes_layout(self):
+        from us_overnight import format_us_drop_alert, regime_face_label
+
+        snap = {
+            "regime": "ok",
+            "vix": 14.0,
+            "ixic_pct": 0.1,
+            "spx_pct": 0.0,
+            "dji_pct": 0.2,
+            "sox_pct": -2.4,
+            "us_phase": "regular",
+            "us_session": "20260910",
+        }
+        self.assertEqual(regime_face_label(snap), "指數還中性，電子鏈逆風")
+        html = format_us_drop_alert(
+            snap, now=datetime(2026, 9, 1, 17, 0, tzinfo=ZoneInfo("America/New_York"))
+        )
+        self.assertIn("指數還中性，電子鏈逆風", html)
+        self.assertIn("會往後排、標少追", html)
+        self.assertIn("不是從佈局名單刪掉", html)
+        self.assertNotIn("會拿掉", html)
 
     def test_electronics_night_side_and_plain(self):
         from us_overnight import electronics_night_side, format_night_plain
@@ -1792,7 +1850,7 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("_draw_mini_candle", close_src)
         self.assertIn("session_price_label", close_src)
         self.assertIn("今K", close_src)
-        self.assertIn("較昨", close_src)
+        self.assertIn("較昨日", close_src)
         self.assertIn("現價", inspect.getsource(session_price_label))
         self.assertIn("收盤", inspect.getsource(session_price_label))
         box_src = inspect.getsource(render_decision_card_png)
@@ -1800,7 +1858,8 @@ class LookupCardTest(unittest.TestCase):
         self.assertIn("右兩行價格", box_src)
         self.assertIn("_paint_lr_box", box_src)
         lr_src = inspect.getsource(_paint_lr_box)
-        self.assertIn("mid + 1.55", lr_src)
+        self.assertIn("_LR_PRIM_DY", lr_src)
+        self.assertIn("_LR_SEC_DY", lr_src)
         self.assertIn('ha="left"', lr_src)
         self.assertIn('ha="right"', lr_src)
         glance_src = inspect.getsource(render_first_glance_png)
@@ -2750,39 +2809,6 @@ class WatchListTest(unittest.TestCase):
         self.assertEqual(len(kb.inline_keyboard[0]), 2)
         self.assertEqual(len(kb.inline_keyboard[1]), 2)
 
-    def test_line_stock_share_persists_and_hop(self):
-        import os
-        import tempfile
-        from line_hop import hop_stock_response, render_line_hop_html
-        from screening_engine import build_line_stock_bodies, format_stock_line_share_text
-        from screen_sessions import load_line_stock, save_line_stocks
-
-        item = {
-            "stock_id": "2330",
-            "stock_name": "台積電",
-            "close": 100.0,
-            "pct_change": 2.5,
-            "volume": 8000,
-            "q60r": 2.1,
-        }
-        text = format_stock_line_share_text(item, "20260828", bucket_label="黃金買點")
-        self.assertIn("2330", text)
-        self.assertNotIn("開 LINE", text)
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        try:
-            bodies = build_line_stock_bodies({"leave_zero": [item]}, "20260828")
-            save_line_stocks(path, "20260828", bodies)
-            self.assertIn("2330", load_line_stock(path, "2330")["text"])
-            hop = hop_stock_response(path, "2330")
-            self.assertTrue((hop.get("redirect") or "").startswith("https://line.me/R/share?text="))
-            page = render_line_hop_html("傳 2330", load_line_stock(path, "2330")["text"])
-            self.assertIn("line.me/R/share", page)
-            self.assertIn("location.replace", page)
-            self.assertNotIn("哥哥", page)
-        finally:
-            os.remove(path)
-
     def test_stock_card_inline_line_link_on_title_row(self):
         from screening_engine import _stock_card_html
 
@@ -2803,8 +2829,8 @@ class WatchListTest(unittest.TestCase):
             1,
         )
         self.assertIn("<blockquote>", card)
-        self.assertIn("開 LINE・傳這檔", card)
-        self.assertIn("/line/stock/2330", card)
+        self.assertNotIn("開 LINE", card)
+        self.assertNotIn("/line/", card)
         slim = _stock_card_html(
             {
                 "stock_id": "2330",
@@ -2822,12 +2848,12 @@ class WatchListTest(unittest.TestCase):
             1,
             show_line_link=False,
         )
-        self.assertNotIn("開 LINE・傳這檔", slim)
+        self.assertNotIn("開 LINE", slim)
         first = card.split("\n", 1)[0]
         self.assertIn("台積電", first)
-        self.assertIn("開 LINE・傳這檔", first)
+        self.assertNotIn("開 LINE", first)
 
-    def test_screen_keyboard_has_section_line_button(self):
+    def test_screen_keyboard_has_no_line_button(self):
         import inspect
         from bot_servers import WayneTelegramBot
 
@@ -2840,21 +2866,17 @@ class WatchListTest(unittest.TestCase):
         )
         datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
         texts = [btn.text for row in kb.inline_keyboard for btn in row]
-        self.assertEqual(texts.count("一鍵傳 LINE"), 1)
+        self.assertEqual(texts.count("一鍵傳 LINE"), 0)
+        self.assertTrue(all("LINE" not in (t or "") for t in texts))
         urls = [getattr(btn, "url", None) for row in kb.inline_keyboard for btn in row]
-        self.assertTrue(any(u and "/line/leave_zero" in (u or "") for u in urls))
-        self.assertFalse(any(d and d == "lp:leave_zero" for d in datas))
+        self.assertFalse(any(u and "/line/" in (u or "") for u in urls))
+        self.assertFalse(any(d and str(d).startswith("lp:") for d in datas))
         self.assertIn("k:2330", datas)
         self.assertIn("k:4915", datas)
         self.assertIn("w:2330", datas)
         self.assertNotIn("em:go", datas)
         self.assertEqual(texts.count("興櫃"), 0)
-        send_src = inspect.getsource(WayneTelegramBot._send_line_rich_bucket)
-        self.assertNotIn("_dismiss_screening_section", send_src)
-        self.assertIn("_send_card_share_groups", send_src)
-        self.assertIn("開 LINE 選聯絡人", send_src)
-        self.assertNotIn("可複製後傳到 LINE", send_src)
-        self.assertNotIn("<pre>", send_src)
+        self.assertFalse(hasattr(WayneTelegramBot, "_send_line_rich_bucket"))
         day_kb = bot._picks_keyboard(
             [("2330", "台積電")],
             include_menu=True,
@@ -2862,12 +2884,11 @@ class WatchListTest(unittest.TestCase):
             line_pack_id="day_trade",
         )
         day_urls = [getattr(btn, "url", None) for row in day_kb.inline_keyboard for btn in row]
-        self.assertTrue(any(u and "/line/day_trade" in (u or "") for u in day_urls))
+        self.assertFalse(any(u and "/line/" in (u or "") for u in day_urls))
         send_src = inspect.getsource(WayneTelegramBot.send_screening_report)
-        self.assertNotIn("_send_line_share(self.chat_id", send_src)
+        self.assertNotIn("_send_line_share", send_src)
         payload_src = inspect.getsource(WayneTelegramBot._reply_screening_payload)
-        self.assertIn("_remember_line_share", payload_src)
-        self.assertIn("line_pack_id", payload_src)
+        self.assertNotIn("_remember_line_share", payload_src)
 
     def test_watch_html_yahoo_link_and_send_disables_preview(self):
         import inspect

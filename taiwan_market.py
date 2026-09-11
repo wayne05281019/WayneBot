@@ -1345,18 +1345,17 @@ def _format_overnight_watch_lines(
         bits.extend(html_escape(x) for x in holiday_lines)
     if us.get("ok") or us.get("vix") is not None:
         from us_overnight import (
-            REGIME_LABEL,
             _ADR_CASH_ITEMS,
             _CASH_ITEMS,
             _FUTURES_ITEMS,
             _PHASE_LABEL,
             _fmt_vix,
-            _vix_mood,
             _session_label,
             electronics_night_side,
+            regime_face_label,
         )
 
-        label = REGIME_LABEL.get(str(us.get("regime") or "unknown"), "美股收盤")
+        label = regime_face_label(us)
         head = (
             f"上一收盤判斷　{html_escape(label)}"
             if holiday_lines
@@ -1373,12 +1372,8 @@ def _format_overnight_watch_lines(
         if cash:
             bits.append("上一收盤指數" if holiday_lines else "指數收盤")
             bits.extend(cash)
-        mood = _vix_mood(us.get("vix"))
-        vix_s = _fmt_vix(us)
-        if mood:
-            vix_s = f"{vix_s}　{mood}"
         if us.get("vix") is not None:
-            bits.append(_watch_kv("恐慌指數", vix_s))
+            bits.append(_watch_kv("恐慌指數", _fmt_vix(us)))
         fut = _watch_quote_rows(us, _FUTURES_ITEMS)
         if fut:
             bits.append("盤後期貨")
@@ -3283,14 +3278,17 @@ def _outlook_tx_foreign_lines(
         oi_short = int(info.get("oi_short"))
     except (TypeError, ValueError):
         return []
-    line = f"外資台指期　買多 {oi_long:,}口　買空 {oi_short:,}口"
     d = _norm_ymd(info.get("date") or "")
     ref = _norm_ymd(as_of or "")
+    out = [
+        f"外資台指期　買多 {oi_long:,}口",
+        f"　　　　　　買空 {oi_short:,}口",
+    ]
     if d and ref and d != ref:
         from trading_calendar import format_trading_date_zh
 
-        line += f"　資料 {format_trading_date_zh(d)}"
-    return _outlook_wrap(line)
+        out.append(f"　　　　　　資料 {format_trading_date_zh(d)}")
+    return out
 
 
 def _outlook_flow_plain_lines(
@@ -3375,7 +3373,7 @@ def format_screen_market_outlook_html(
     if not snap.get("ok") and not us_ok:
         return ""
 
-    from us_overnight import REGIME_LABEL, _fmt_vix, electronics_night_side
+    from us_overnight import _fmt_vix, electronics_night_side, regime_face_label
 
     holiday_lines: List[str] = []
     try:
@@ -3397,7 +3395,7 @@ def format_screen_market_outlook_html(
         tw_banner = []
 
     us_regime = str(us.get("regime") or "unknown")
-    us_label = REGIME_LABEL.get(us_regime, "美股收盤")
+    us_label = regime_face_label(us)
     ixic = us.get("ixic_pct")
     night_vs = _night_vs_day_pct(snap) if snap.get("ok") else None
     vs20 = snap.get("vs_ma20_pct") if snap.get("ok") else None
@@ -3460,11 +3458,18 @@ def format_screen_market_outlook_html(
         )
     )
     body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
-    body.extend(
-        _outlook_flow_plain_lines(
-            db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
-        )
+    flow_lines = _outlook_flow_plain_lines(
+        db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
     )
+    body.extend(flow_lines)
+    flow_blob = "".join(flow_lines)
+    if (
+        us_ok
+        and electronics_night_side(us) == "跌"
+        and any(k in flow_blob for k in ("半導體", "電子零組件", "電子"))
+        and "剛到" in flow_blob
+    ):
+        body.extend(_outlook_wrap("昨天剛輪到、隔夜費半跌，今天別追電子高檔。"))
     return head + "\n" + "\n".join(body)
 
 

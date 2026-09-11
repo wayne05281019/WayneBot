@@ -87,5 +87,5 @@ def test_run_midday_review_uses_pick_close_and_skips_line_share(tmp_path):
 def test_main_runner_midday_does_not_send_copy_paste():
     src = open("main_runner.py", encoding="utf-8").read()
     assert "下面這一則可整段複製" not in src
+    assert "現在／今早價分開寫，先講現在要做什麼" in src
     assert "要轉 LINE 自己選聯絡人" not in src
-    assert "現在／今早價分開寫，先講現在要做什麼，不轉 LINE" in src

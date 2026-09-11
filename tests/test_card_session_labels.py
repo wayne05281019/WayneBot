@@ -45,9 +45,25 @@ def test_etf_nav_line_bits_live_uses_yesterday_nav():
         }
     )
     assert bits[0].startswith("昨淨值 37.10")
-    assert "09/10" in bits[0]
-    assert bits[1].startswith("折價 3.18%")
-    assert "對昨淨值" in bits[1]
+    assert "09月10日" in bits[0]
+    assert bits[1].startswith("今天折價 3.18%")
+    assert "對照昨淨值" in bits[1]
+    from wayne_navigator import _NAV_STACK, _ohlc_nav_extra_h
+
+    extra = _ohlc_nav_extra_h(
+        {
+            "is_live": True,
+            "latest_date": "20260911",
+            "etf_nav": 37.10,
+            "etf_nav_date": "20260910",
+            "etf_premium": -3.18,
+            "open": 36,
+            "high": 36.16,
+            "low": 35.66,
+            "prev_close": 37.15,
+        }
+    )
+    assert extra >= _NAV_STACK * 2 + 2.5
 
 
 def test_ohlc_line_bits_mark_today_and_yesterday():

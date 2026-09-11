@@ -103,9 +103,7 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     bot._send_etf_category_pick = AsyncMock()
     bot._run_trade_bucket = AsyncMock()
     bot._reply_help_topic = AsyncMock()
-    bot._send_line_rich_bucket = AsyncMock()
     bot._remove_watch_clicked = AsyncMock()
-    bot._reply_line_share = AsyncMock()
 
     data = f"{prefix}2330" if prefix.endswith(":") else prefix
     upd, msg = _cb(data)

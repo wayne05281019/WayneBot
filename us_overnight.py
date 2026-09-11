@@ -494,6 +494,17 @@ REGIME_LABEL = {
     "unknown": "美股收盤沒接到",
 }
 
+
+def regime_face_label(snap: Dict[str, Any] | None) -> str:
+    """畫面用的判斷句。指數中性但費半大跌時，不要只寫大盤中性。"""
+    snap = snap or {}
+    regime = str(snap.get("regime") or classify_us_regime(snap) or "unknown")
+    base = REGIME_LABEL.get(regime, "美股收盤")
+    sox = effective_sox_pct(snap)
+    if regime == "ok" and sox is not None and sox <= -1.5:
+        return "指數還中性，電子鏈逆風"
+    return base
+
 _PHASE_LABEL = {
     "regular": "美股現金盤中（期指不看）",
     "post": "美股已收＋盤後交易中",
@@ -578,10 +589,13 @@ def _fmt_move(pct, chg=None, *, pts_decimals: int = 2) -> str:
     return f"{pct_s}（{pts_s}）" if pts_s else pct_s
 
 
-def _vix_mood(level) -> str:
+def _vix_mood(level, pct=None) -> str:
     v = _as_float(level)
     if v is None:
         return ""
+    jump = _as_float(pct)
+    if jump is not None and jump >= 6.0 and v < 22:
+        return "跳升"
     if v < 14:
         return "極低"
     if v < 18:
@@ -602,9 +616,10 @@ def _fmt_vix(snap: Dict[str, Any]) -> str:
     except (TypeError, ValueError):
         return "—"
     pct = snap.get("vix_pct")
-    if pct is None:
-        return base
-    return f"{base}（{_fmt_pct(pct)}）"
+    if pct is not None:
+        base = f"{base}（{_fmt_pct(pct)}）"
+    mood = _vix_mood(level, pct)
+    return f"{base}　{mood}" if mood else base
 
 
 def _enrich_tw_open_ref(snap: Dict[str, Any], db_path: str = None) -> Dict[str, Any]:
@@ -689,11 +704,7 @@ def _tw_open_ref_block(snap: Dict[str, Any]) -> str:
 def _vix_row(snap: Dict[str, Any]) -> str:
     from tg_layout import html_escape, pad_label
 
-    mood = _vix_mood(snap.get("vix"))
-    vix_s = _fmt_vix(snap)
-    if mood:
-        vix_s = f"{vix_s}　{mood}"
-    return f"{pad_label('恐慌指數', _LABEL_W)}　{html_escape(vix_s)}"
+    return f"{pad_label('恐慌指數', _LABEL_W)}　{html_escape(_fmt_vix(snap))}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:
@@ -748,7 +759,7 @@ def format_us_html(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
         return ""
     from tg_layout import headline_lines, html_escape, join_sections
 
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    label = regime_face_label(snap)
     phase = snap.get("us_phase") or "regular"
     phase_s = _PHASE_LABEL.get(phase, _SECTION_INDEX_CLOSE)
     holiday = _us_holiday_head(now)
@@ -784,7 +795,7 @@ def format_night_plain(snap: Dict[str, Any], now: Optional[datetime] = None) -> 
     """轉寄稿用的夜盤整塊：美股現金／盤後＋電子鏈漲跌。"""
     if not snap:
         return "＝＝夜盤判斷＝＝\n這次沒接到美股數字"
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    label = regime_face_label(snap)
     phase = snap.get("us_phase") or "regular"
     phase_s = _PHASE_LABEL.get(phase, "")
     holiday = _us_holiday_head(now)
@@ -834,7 +845,7 @@ def format_us_plain(snap: Dict[str, Any]) -> str:
     """短行摘要；轉寄稿請用 format_night_plain。"""
     if not snap:
         return ""
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "美股收盤")
+    label = regime_face_label(snap)
     phase = snap.get("us_phase") or "regular"
     extra = ""
     if phase in ("post", "overnight") and snap.get("nq_f_pct") is not None:
@@ -852,7 +863,7 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None, now: Opti
     from tg_layout import headline_lines, html_escape, join_sections
 
     snap = _enrich_tw_open_ref(snap or {}, db_path)
-    label = REGIME_LABEL.get(snap.get("regime") or "unknown", "大盤偏空")
+    label = regime_face_label(snap)
     holiday = _us_holiday_head(now)
     if holiday:
         head = headline_lines(
@@ -889,8 +900,8 @@ def format_us_drop_alert(snap: Dict[str, Any], *, db_path: str = None, now: Opti
         )
     else:
         blocks.append(
-            "06:30 海選會加嚴：靠近20日高與電子逆風檔會拿掉。\n"
-            "不是叫你現在下單。"
+            "06:30 海選：靠近20日高與電子逆風檔會往後排、標少追。\n"
+            "不是從佈局名單刪掉，也不是叫你現在下單。"
         )
     return join_sections(*blocks)
 

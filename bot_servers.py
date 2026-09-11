@@ -79,7 +79,8 @@ def _normalize_menu_text(text: str) -> str:
     """主選單按鈕文字正規化（全形、空白、圈圈）。"""
     t = unicodedata.normalize("NFKC", (text or "").strip())
     t = "".join(ch for ch in t if unicodedata.category(ch) not in ("Mn", "Me"))
-    return t.replace("\u3000", "").strip()
+    t = t.replace("\u3000", "").strip()
+    return t
 
 
 def _text_escapes_pending(text: str) -> bool:
@@ -264,13 +265,11 @@ HELP_TOPICS = {
         "介紹圖粉紅「紀律」＝先別追／有持股先出一點，<b>不是買訊</b>。如何賣：最高價＝20日高對最高溫，不自動賣。細節看「查股」。\n"
         "名稱撞名、國字打不準、KY 沒寫對：會列出相近的；藍字＝奇摩，左邊＝看這檔，右 <b>➕</b>＝觀察。讀音猜中也要點確認才出圖。\n"
         "\n"
-        "<b>海選怎麼轉 LINE</b>\n"
+        "<b>海選怎麼用</b>\n"
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
         "興櫃：按「海選」後選興櫃（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔，開手機 LINE 選聯絡人\n"
-        "• 區底「一鍵傳 LINE」＝整區開啟 LINE，再選要傳給誰（不要複製貼上）\n"
         "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
         "\n"
         "<b>三種清單不要搞混</b>\n"
@@ -281,7 +280,7 @@ HELP_TOPICS = {
         "\n"
         "<b>每日時間（台灣）</b>\n"
         "06:30 早上海選（對美股）\n"
-        "12:45 尾盤：對今早名單報現價，先講現在要做什麼（不轉 LINE）\n"
+        "12:45 尾盤：對今早名單報現價，先講現在要做什麼\n"
         "16:30 官方收盤寫庫（齊了發一則，不是海選；興櫃日均價寫獨立表，不混上市櫃）\n"
         "20:00 晚間海選＋AI 模擬買（不推播）\n"
         "台股休市當日（國定假或北市全日／上午停班）不寄 06:30 海選與 12:45 尾盤。\n"
@@ -479,7 +478,7 @@ HELP_TOPICS = {
     ),
     "screen": (
         "<b>海選怎麼用</b>\n"
-        "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤（對今早名單報現價：沒貼高還能看，貼高或貴過保險進場的現在不要追；這則不轉 LINE）。\n"
+        "週一～五台灣 06:30 用昨收＋美股收盤／盤後寄出；12:45 再寄尾盤（對今早名單報現價：沒貼高還能看，貼高或貴過保險進場的現在不要追）。\n"
         "台股休市當日（國定假或北市全日／上午停班），不寄今早海選、也不寄 12:45 尾盤。\n"
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "06:30 早報第一則是大盤狀況（美股＋台指期夜盤＋白話連動），接著寄黃金買點／重點觀察（沒檔也寫今日沒有）／優先看／周帶量（優先看沒名單就跳過）；半年高／站上季線／止跌請按主選單「海選」看完整。\n"
@@ -491,10 +490,6 @@ HELP_TOPICS = {
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 藍字股名＝奇摩走勢\n"
         "\n"
-        "<b>轉 LINE 都是開手機 LINE 選聯絡人</b>\n"
-        "• 股名右「開 LINE・傳這檔」＝只傳這一檔\n"
-        "• 區底「一鍵傳 LINE」＝整區一次開 LINE，再選要傳給誰\n"
-        "不要複製文字再貼。當沖／隔日沖的「傳 LINE」同一套。\n"
         "（主選單「刷新」＝單檔盤中刷新，不是整區黃金買點名單。打「決策卡」也是這顆。）\n"
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
@@ -824,7 +819,7 @@ class WayneTelegramBot:
         # actor_key（chat_id:uid）隔離，避免同機多用戶互相刪訊息／搶快取
         self._menu_fade_msgs: Dict[str, list] = {}
         self._lookup_fade_msgs: Dict[str, list] = {}
-        # actor_key → pack_id → 海選分類訊息（一鍵傳 LINE 後整段收起）
+        # actor_key → pack_id → 海選分類訊息
         self._screening_msgs: Dict[str, Dict[str, list]] = {}
         self._line_pack_status_msgs: Dict[str, list] = {}
         self._help_msgs: Dict[str, list] = {}
@@ -927,7 +922,7 @@ class WayneTelegramBot:
         self._screening_msgs.setdefault(str(actor_key), {}).setdefault(str(pack_id), []).append(msg)
 
     def _track_line_pack_status(self, actor_key: str, msg) -> None:
-        """一鍵傳 LINE 的「生成中」進度；完成後刪除，不動含 LINE 鈕的完成訊息。"""
+        """海選生成中進度；完成後刪除。"""
         if msg is None:
             return
         self._line_pack_status_msgs.setdefault(str(actor_key), []).append(msg)
@@ -941,7 +936,7 @@ class WayneTelegramBot:
                 pass
 
     async def _dismiss_screening_section(self, actor_key: str, pack_id: str) -> None:
-        """海選該分類的貼紙＋文字塊：傳 LINE 備好後整段消失。"""
+        """海選該分類的貼紙＋文字塊。"""
         bucket = (self._screening_msgs.get(str(actor_key)) or {}).pop(str(pack_id), [])
         for msg in bucket:
             try:
@@ -1925,7 +1920,7 @@ class WayneTelegramBot:
         include_menu: bool = False,
         picks=None,
     ):
-        """海選整區：左鍵看這檔；區底開 LINE 選聯絡人。"""
+        """海選整區：左鍵看這檔、右鍵加觀察。"""
         rows = []
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
@@ -1936,12 +1931,6 @@ class WayneTelegramBot:
                 name = ""
             if code:
                 rows.append(self._stock_action_row(code, name, idx=i))
-        if line_pack_id:
-            line_url = self._line_open_url(line_pack_id)
-            if line_url:
-                rows.append(
-                    [InlineKeyboardButton("一鍵傳 LINE", url=line_url)]
-                )
         if include_menu:
             rows.append([self._q("screen")])
         if not rows:
@@ -1961,10 +1950,6 @@ class WayneTelegramBot:
             if not c:
                 continue
             rows.append(self._stock_action_row(c, name or "", idx=i))
-        if line_pack_id:
-            line_url = self._line_open_url(line_pack_id)
-            if line_url:
-                rows.append([InlineKeyboardButton("開 LINE 選聯絡人", url=line_url)])
         tail = []
         if include_menu or rows:
             tail.append(self._q(topic))
@@ -1975,22 +1960,7 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows)
 
     def _persist_bucket_line_pack(self, bucket_key: str, rows: list) -> None:
-        if not rows:
-            return
-        try:
-            from import_health import latest_complete_quote_date
-            from screening_engine import build_line_bucket_packs, build_line_stock_bodies
-            from screen_sessions import upsert_line_pack, upsert_line_stocks
-
-            as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
-            packs = build_line_bucket_packs({bucket_key: rows}, as_of, self.db_path)
-            if packs:
-                upsert_line_pack(self.db_path, as_of, packs[0])
-            bodies = build_line_stock_bodies({bucket_key: rows}, as_of, self.db_path)
-            if bodies:
-                upsert_line_stocks(self.db_path, as_of, bodies)
-        except Exception:
-            logger.exception("寫入 %s LINE 稿失敗", bucket_key)
+        return
 
     def _hits_keyboard(self, hits):
         """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
@@ -2262,56 +2232,6 @@ class WayneTelegramBot:
             )
         return format_screening_payload(result.get("results") or {}, as_of)
 
-    def _remember_line_share(self, result: Optional[Dict[str, Any]] = None, body: str = ""):
-        """海選 LINE 稿已寫入 sqlite；不再用程序記憶體快取，避免多用戶互相覆蓋。"""
-        _ = result, body
-
-    def _load_line_share_packs(self) -> List[Dict[str, str]]:
-        try:
-            from screen_sessions import load_line_packs
-
-            return load_line_packs(self.db_path) or []
-        except Exception:
-            return []
-
-    async def _reply_line_share(self, message, result: Optional[Dict[str, Any]] = None):
-        if result is not None:
-            self._remember_line_share(result)
-        packs = self._load_line_share_packs()
-        if not packs:
-            await message.reply_text("目前沒有可傳 LINE 的三段。請先按一次「海選」。")
-            return
-        await message.reply_text("每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
-        for p in packs:
-            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
-            await message.reply_text(
-                label,
-                disable_web_page_preview=True,
-                reply_markup=self._line_open_keyboard(
-                    p.get("id") or "",
-                    label="開 LINE 選聯絡人",
-                ),
-            )
-
-    def _send_line_share(self, chat_id: str, result: Optional[Dict[str, Any]] = None):
-        """保留三段整包稿（手動 fw:s）；日常海選改走每檔按鈕。"""
-        if result is not None:
-            self._remember_line_share(result)
-        packs = self._load_line_share_packs()
-        if not packs:
-            return
-        self._send_plain(chat_id, "每段一顆鈕。按下去會開啟手機 LINE，再選要傳給誰。")
-        for p in packs:
-            label = str(p.get("label") or p.get("title") or "開 LINE 選聯絡人")
-            self._send_plain(
-                chat_id,
-                label,
-                reply_markup=self._line_open_keyboard(
-                    p.get("id") or "",
-                    label="開 LINE 選聯絡人",
-                ),
-            )
-
     async def _reply_screening_payload(self, message, result: Dict[str, Any]):
         parts = self._screening_payload(result)
         actor = self._actor_key(message)
@@ -2344,8 +2264,6 @@ class WayneTelegramBot:
                 if pack_id:
                     self._track_screening_msg(actor, pack_id, sent)
             await asyncio.sleep(0.25)
-        if result.get("line_share_packs") or result.get("line_share"):
-            self._remember_line_share(result)
 
     def _mark_gif_path(self, key: str) -> str:
         if not key:
@@ -2414,35 +2332,6 @@ class WayneTelegramBot:
         except Exception as e:
             logger.error("send_html: %s", e)
             return False
-
-    def _line_open_url(self, pack_id: str) -> str:
-        from config import get_public_base_url
-
-        return f"{get_public_base_url()}/line/{pack_id}"
-
-    def _line_open_rows(self):
-        from line_hop import LINE_PACKS
-
-        return [
-            [InlineKeyboardButton(label, url=self._line_open_url(pid))]
-            for pid, label, _title in LINE_PACKS
-        ]
-
-    def _line_open_keyboard(self, pack_id: str = "", label: str = ""):
-        pid = str(pack_id or "").strip()
-        if pid:
-            text = str(label or "").strip() or "開 LINE 選聯絡人"
-            return InlineKeyboardMarkup(
-                [[InlineKeyboardButton(text, url=self._line_open_url(pid))]]
-            )
-        from line_hop import LINE_PACKS
-
-        return InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton(lab, url=self._line_open_url(xid))]
-                for xid, lab, _title in LINE_PACKS
-            ]
-        )
 
     def _send_plain(self, chat_id: str, text: str, reply_markup=None):
         try:
@@ -2534,8 +2423,6 @@ class WayneTelegramBot:
                         ok = False
                 _t.sleep(0.25)
             logger.info("海選本文送出 %d/%d 則", n_ok, n_try)
-        if result.get("line_share_packs") or result.get("line_share"):
-            self._remember_line_share(result)
         return ok
 
     def _send_stock_card_by_code(self, chat_id: str, code: str, name: str = "", uid: str = ""):
@@ -2870,159 +2757,6 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
-    async def _send_card_share_groups(self, message, items: list) -> bool:
-        """把介紹圖／決策卡送到話筒，方便長按轉 LINE。一組最多 10 張。"""
-        from telegram import InputMediaPhoto
-
-        if not items:
-            return False
-        lead = "圖可長按分享。文字請按下一則「開 LINE 選聯絡人」"
-        sent_any = False
-        i = 0
-        first_group = True
-        while i < len(items):
-            sid = str((items[i] or {}).get("stock_id") or "")
-            chunk = [items[i]]
-            i += 1
-            while (
-                i < len(items)
-                and str((items[i] or {}).get("stock_id") or "") == sid
-                and len(chunk) < 10
-            ):
-                chunk.append(items[i])
-                i += 1
-            handles = []
-            try:
-                media = []
-                for rec in chunk:
-                    path = str((rec or {}).get("path") or "")
-                    cap = str((rec or {}).get("caption") or "")
-                    if not self._png_looks_ok(path, min_bytes=8_000, min_w=200, min_h=200):
-                        continue
-                    fh = open(path, "rb")
-                    handles.append(fh)
-                    caption = None
-                    if not media:
-                        caption = cap
-                        if first_group:
-                            caption = f"{lead}\n{cap}" if cap else lead
-                    media.append(
-                        InputMediaPhoto(
-                            media=fh,
-                            caption=(caption[:1024] if caption else None),
-                        )
-                    )
-                first_group = False
-                if len(media) >= 2:
-                    await message.reply_media_group(media=media)
-                    sent_any = True
-                elif len(media) == 1:
-                    await message.reply_photo(photo=media[0].media, caption=media[0].caption)
-                    sent_any = True
-            except Exception:
-                logger.exception("傳 LINE 卡片相簿失敗")
-            finally:
-                for fh in handles:
-                    try:
-                        fh.close()
-                    except Exception:
-                        pass
-        return sent_any
-
-    async def _send_line_rich_bucket(self, message, bucket_key: str):
-        """舊 lp: 鈕仍可生成圖；完成後給「開 LINE 選聯絡人」，不丟複製稿。"""
-        from import_health import latest_complete_quote_date
-        from line_rich_pack import (
-            bucket_stock_rows,
-            bucket_title,
-            build_bucket_rich_pack,
-            share_card_files,
-        )
-        from screen_sessions import upsert_line_pack
-
-        bucket_key = str(bucket_key or "").strip()
-        title = bucket_title(bucket_key)
-        hub = self._reply_menu()
-        actor = self._actor_key(message)
-        as_of = latest_complete_quote_date(self.db_path) or self.screener.get_latest_trading_date()
-        rows = await asyncio.to_thread(bucket_stock_rows, self.db_path, bucket_key, as_of)
-        if not rows:
-            await message.reply_text(
-                f"【{title}】尚無名單。請先按主選單「海選」。",
-                reply_markup=hub,
-            )
-            return
-
-        n = len(rows)
-        status = await message.reply_text(
-            f"正在生成【{title}】{n} 檔介紹圖／決策卡…"
-        )
-        self._track_line_pack_status(actor, status)
-
-        try:
-            manifest = await asyncio.to_thread(
-                build_bucket_rich_pack,
-                self.db_path,
-                bucket_key,
-                as_of,
-                self.charts_dir,
-            )
-        except Exception as exc:
-            logger.exception("LINE 圖文包生成失敗 bucket=%s", bucket_key)
-            await status.edit_text(
-                f"⚠️ 【{title}】生成失敗：{html_escape(str(exc)[:200])}\n請稍後再試一次。"
-            )
-            await self._pin_reply_menu(message)
-            return
-        if manifest.get("error") and not manifest.get("line_text"):
-            err = str(manifest.get("error") or "生成失敗")
-            errs = manifest.get("errors") or []
-            if errs:
-                err += "\n" + "\n".join(errs[:3])
-            await status.edit_text(f"⚠️ 【{title}】{err}")
-            await self._pin_reply_menu(message)
-            return
-
-        line_body = str(manifest.get("line_text") or "").strip()
-        if line_body:
-            upsert_line_pack(
-                self.db_path,
-                as_of,
-                {
-                    "id": bucket_key,
-                    "title": f"傳 {title} 到 LINE",
-                    "label": f"開 LINE・{title}",
-                    "text": line_body,
-                },
-            )
-
-        done_n = int(manifest.get("count") or 0)
-        warn = ""
-        errs = manifest.get("errors") or []
-        if errs:
-            warn = f"\n（{len(errs)} 檔略過：{html_escape(errs[0][:80])}）"
-
-        await self._dismiss_line_pack_status(actor)
-
-        cards = share_card_files(self.charts_dir, manifest)
-        album_ok = await self._send_card_share_groups(message, cards)
-        line_kb = self._line_open_keyboard(bucket_key, label="開 LINE 選聯絡人")
-        if album_ok:
-            await message.reply_html(
-                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔介紹圖／決策卡。{warn}\n"
-                "按下方會開啟手機 LINE，再選要傳給誰。",
-                reply_markup=line_kb,
-                disable_web_page_preview=True,
-            )
-        else:
-            await message.reply_html(
-                f"✅ <b>【{html_escape(title)}】</b>　{done_n} 檔已備。{warn}\n"
-                "按下方會開啟手機 LINE，再選要傳給誰。",
-                reply_markup=line_kb,
-                disable_web_page_preview=True,
-            )
-        await self._pin_reply_menu(message)
-
     @staticmethod
     def _chart_progress_text(
         elapsed_sec: int,
@@ -3259,8 +2993,6 @@ class WayneTelegramBot:
                 topic=topic,
             )
             await message.reply_html(chunk, reply_markup=kb, disable_web_page_preview=True)
-        if rows:
-            await asyncio.to_thread(self._persist_bucket_line_pack, bucket_key, rows)
 
     async def _run_trade_bucket(
         self,
@@ -5518,10 +5250,6 @@ class WayneTelegramBot:
             }
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
             return
-        if data.startswith("lp:"):
-            await q.answer("正在準備 LINE…")
-            await self._send_line_rich_bucket(q.message, data[3:].strip())
-            return
         if data.startswith("rw:"):
             await self._remove_watch_clicked(q, data[3:].strip())
             return
@@ -5574,9 +5302,6 @@ class WayneTelegramBot:
             await self._run_emerging_screening(q.message)
             return
         await q.answer()
-        if data == "fw:s":
-            await self._reply_line_share(q.message)
-            return
         if data == "hx":
             try:
                 await q.message.delete()
