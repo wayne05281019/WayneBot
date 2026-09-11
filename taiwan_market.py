@@ -515,6 +515,7 @@ def sync_index_breadth_daily(db_path: str, dates: Optional[List[str]] = None) ->
 
 
 _FUTURES_SYMBOL = "TX"
+_FUTURES_SYMBOLS = ("TX", "TE")
 _TAIFEX_OPENAPI = "https://openapi.taifex.com.tw/v1/DailyMarketReportFut"
 _TAIFEX_HIST_URL = "https://www.taifex.com.tw/cht/3/futDataDown"
 _TAIFEX_INST_FUT_URL = (
@@ -721,23 +722,30 @@ def _taifex_num(val: Any, *, allow_dash: bool = True) -> Optional[float]:
         return None
 
 
-_TX_SESS_CACHE: Tuple[float, Dict[str, Dict[str, Dict[str, Any]]]] = (0.0, {})
+_TX_SESS_CACHE: Tuple[float, Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]] = (0.0, {})
 _TX_SESS_TTL = 900.0
 _SESSION_LABEL = {"regular": "一般", "night": "盤後"}
 _SESSION_DB = {"一般": "regular", "盤後": "night"}
+
+
+def _norm_futures_symbol(raw: Any) -> str:
+    s = str(raw or _FUTURES_SYMBOL).strip().upper()
+    return s if s in _FUTURES_SYMBOLS else _FUTURES_SYMBOL
 
 
 def _pick_front_month_tx_rows(
     rows: List[Dict[str, Any]],
     *,
     trading_session: str = "一般",
+    symbol: str = _FUTURES_SYMBOL,
 ) -> Optional[Dict[str, Any]]:
-    """同日多月份：成交量最大之台指期（一般＝日盤、盤後＝夜盤）。"""
+    """同日多月份：成交量最大之近月（一般＝日盤、盤後＝夜盤）。symbol=TX 台指／TE 電子。"""
     want = str(trading_session or "一般")
+    want_sym = _norm_futures_symbol(symbol)
     reg = [
         r
         for r in rows
-        if str(r.get("Contract") or r.get("contract") or "").upper() == _FUTURES_SYMBOL
+        if str(r.get("Contract") or r.get("contract") or "").upper() == want_sym
         and str(r.get("TradingSession") or r.get("session") or "一般") == want
     ]
     if not reg:
@@ -756,6 +764,7 @@ def _pick_front_month_tx_rows(
             pct_raw = chg / close * 100.0
     return {
         "date": _norm_ymd(best.get("Date") or best.get("date")),
+        "symbol": want_sym,
         "contract_month": str(best.get("ContractMonth(Week)") or best.get("contract_month") or "").strip(),
         "open": _taifex_num(best.get("Open") or best.get("open")) or close,
         "high": _taifex_num(best.get("High") or best.get("high")) or close,
@@ -788,10 +797,13 @@ def _decode_official_bytes(raw: bytes) -> str:
     return raw.decode("big5", errors="replace")
 
 
-def _parse_taifex_history_csv(content: bytes) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def _parse_taifex_history_csv(
+    content: bytes, *, symbol: str = _FUTURES_SYMBOL
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
     import csv
     import io
 
+    want_sym = _norm_futures_symbol(symbol)
     text = _decode_official_bytes(content)
     reader = csv.DictReader(io.StringIO(text))
     by_date: Dict[str, List[Dict[str, Any]]] = {}
@@ -804,7 +816,7 @@ def _parse_taifex_history_csv(content: bytes) -> Dict[str, Dict[str, Dict[str, A
         if sess not in ("一般", "盤後"):
             continue
         contract = str(row.get("契約") or row.get("Contract") or "").strip().upper()
-        if contract != _FUTURES_SYMBOL:
+        if contract != want_sym:
             continue
         by_date.setdefault(d, []).append(
             {
@@ -825,17 +837,20 @@ def _parse_taifex_history_csv(content: bytes) -> Dict[str, Dict[str, Dict[str, A
         )
     out: Dict[str, Dict[str, Dict[str, Any]]] = {}
     for d, rows in by_date.items():
-        sess = _sessions_from_taifex_rows(rows)
+        sess = _sessions_from_taifex_rows(rows, symbol=want_sym)
         if sess:
             out[d] = sess
     return out
 
 
-def _download_taifex_history_chunk(start: str, end: str) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def _download_taifex_history_chunk(
+    start: str, end: str, *, symbol: str = _FUTURES_SYMBOL
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """TAIFEX 歷史下載（單次約 31 日）。"""
+    want_sym = _norm_futures_symbol(symbol)
     payload = {
         "down_type": "1",
-        "commodity_id": _FUTURES_SYMBOL,
+        "commodity_id": want_sym,
         "queryStartDate": start,
         "queryEndDate": end,
     }
@@ -844,9 +859,9 @@ def _download_taifex_history_chunk(start: str, end: str) -> Dict[str, Dict[str, 
         resp.raise_for_status()
         if not resp.content or len(resp.content) < 40:
             return {}
-        return _parse_taifex_history_csv(resp.content)
+        return _parse_taifex_history_csv(resp.content, symbol=want_sym)
     except Exception as exc:
-        logger.debug("TAIFEX history %s-%s failed: %s", start, end, exc)
+        logger.debug("TAIFEX history %s %s-%s failed: %s", want_sym, start, end, exc)
         return {}
 
 
@@ -861,18 +876,22 @@ def _taifex_openapi_all_rows() -> List[Dict[str, Any]]:
     return rows if isinstance(rows, list) else []
 
 
-def _sessions_from_taifex_rows(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _sessions_from_taifex_rows(
+    rows: List[Dict[str, Any]], *, symbol: str = _FUTURES_SYMBOL
+) -> Dict[str, Dict[str, Any]]:
+    want_sym = _norm_futures_symbol(symbol)
     out: Dict[str, Dict[str, Any]] = {}
     for db_sess, label in (("regular", "一般"), ("night", "盤後")):
-        picked = _pick_front_month_tx_rows(rows, trading_session=label)
+        picked = _pick_front_month_tx_rows(rows, trading_session=label, symbol=want_sym)
         if picked:
             picked["session"] = db_sess
+            picked["symbol"] = want_sym
             out[db_sess] = picked
     return out
 
 
-def _cached_taifex_sessions_by_date() -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """OpenAPI 一次回最近交易日的日盤＋夜盤；15 分鐘快取，給大盤頁即時讀、不寫庫。"""
+def _cached_taifex_all_sessions() -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+    """OpenAPI 一次回最近交易日；date → symbol → session。15 分鐘快取。"""
     global _TX_SESS_CACHE
     now = time.time()
     ts, data = _TX_SESS_CACHE
@@ -886,28 +905,49 @@ def _cached_taifex_sessions_by_date() -> Dict[str, Dict[str, Dict[str, Any]]]:
         if len(d) != 8:
             continue
         grouped.setdefault(d, []).append(r)
-    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    out: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
     for d, rows in grouped.items():
-        sess = _sessions_from_taifex_rows(rows)
-        if sess:
-            out[d] = sess
+        by_sym: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        for sym in _FUTURES_SYMBOLS:
+            sess = _sessions_from_taifex_rows(rows, symbol=sym)
+            if sess:
+                by_sym[sym] = sess
+        if by_sym:
+            out[d] = by_sym
     if out:
         _TX_SESS_CACHE = (now, out)
     return out
 
 
-def _fetch_taifex_tx_sessions(date: str) -> Dict[str, Dict[str, Any]]:
+def _cached_taifex_sessions_by_date() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """台指 TX 日盤＋夜盤。舊呼叫仍走這層，不要拿到電子期。"""
+    all_s = _cached_taifex_all_sessions()
+    out: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for d, by_sym in (all_s or {}).items():
+        if not isinstance(by_sym, dict):
+            continue
+        tx = by_sym.get("TX")
+        if isinstance(tx, dict) and ("regular" in tx or "night" in tx):
+            out[d] = dict(tx)
+    return out
+
+
+def _fetch_taifex_tx_sessions(
+    date: str, *, symbol: str = _FUTURES_SYMBOL
+) -> Dict[str, Dict[str, Any]]:
     """指定日的日盤／夜盤。對不到該日時不拿別日來充數。"""
     d = _norm_ymd(date)
+    want_sym = _norm_futures_symbol(symbol)
     if len(d) != 8:
         return {}
-    cached = _cached_taifex_sessions_by_date()
-    if d in cached:
-        return dict(cached[d])
+    cached = _cached_taifex_all_sessions()
+    found = ((cached.get(d) or {}).get(want_sym) or {}) if isinstance(cached.get(d), dict) else {}
+    if found:
+        return dict(found)
     dt = datetime.strptime(d, "%Y%m%d")
     start = (dt - timedelta(days=5)).strftime("%Y/%m/%d")
     end = (dt + timedelta(days=5)).strftime("%Y/%m/%d")
-    chunk = _download_taifex_history_chunk(start, end)
+    chunk = _download_taifex_history_chunk(start, end, symbol=want_sym)
     found = chunk.get(d) or {}
     out: Dict[str, Dict[str, Any]] = {}
     for key in ("regular", "night"):
@@ -932,8 +972,11 @@ def _fetch_taifex_tx_day(date: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def load_futures_daily(db_path: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def load_futures_daily(
+    db_path: str, as_of: Optional[str] = None, *, symbol: str = _FUTURES_SYMBOL
+) -> Optional[Dict[str, Any]]:
     ensure_futures_daily_table(db_path)
+    want_sym = _norm_futures_symbol(symbol)
     ref = _norm_ymd(as_of) if as_of else ""
     conn = sqlite3.connect(db_path)
     try:
@@ -945,7 +988,7 @@ def load_futures_daily(db_path: str, as_of: Optional[str] = None) -> Optional[Di
                 FROM futures_daily
                 WHERE symbol=? AND session='regular' AND date=?
                 """,
-                (_FUTURES_SYMBOL, ref),
+                (want_sym, ref),
             ).fetchone()
         else:
             row = conn.execute(
@@ -956,29 +999,16 @@ def load_futures_daily(db_path: str, as_of: Optional[str] = None) -> Optional[Di
                 WHERE symbol=? AND session='regular'
                 ORDER BY date DESC LIMIT 1
                 """,
-                (_FUTURES_SYMBOL,),
+                (want_sym,),
             ).fetchone()
     finally:
         conn.close()
     if not row:
         return None
-    return {
-        "date": str(row[0]),
-        "contract_month": str(row[1] or ""),
-        "open": float(row[2] or 0),
-        "high": float(row[3] or 0),
-        "low": float(row[4] or 0),
-        "close": float(row[5] or 0),
-        "settlement": float(row[6] or row[5] or 0),
-        "volume": int(row[7] or 0),
-        "open_interest": int(row[8] or 0),
-        "pct_change": float(row[9] or 0),
-        "source": str(row[10] or "taifex"),
-        "session": "regular",
-    }
+    return _row_to_futures(row, session="regular", symbol=want_sym)
 
 
-def _row_to_futures(row, *, session: str) -> Dict[str, Any]:
+def _row_to_futures(row, *, session: str, symbol: str = _FUTURES_SYMBOL) -> Dict[str, Any]:
     return {
         "date": str(row[0]),
         "contract_month": str(row[1] or ""),
@@ -992,12 +1022,16 @@ def _row_to_futures(row, *, session: str) -> Dict[str, Any]:
         "pct_change": float(row[9] or 0),
         "source": str(row[10] or "taifex"),
         "session": session,
+        "symbol": _norm_futures_symbol(symbol),
     }
 
 
-def load_futures_night(db_path: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """台指期夜盤（盤後時段）。沒有列就回 None。"""
+def load_futures_night(
+    db_path: str, as_of: Optional[str] = None, *, symbol: str = _FUTURES_SYMBOL
+) -> Optional[Dict[str, Any]]:
+    """期貨夜盤（盤後時段）。沒有列就回 None。symbol=TX 台指／TE 電子。"""
     ensure_futures_daily_table(db_path)
+    want_sym = _norm_futures_symbol(symbol)
     ref = _norm_ymd(as_of) if as_of else ""
     conn = sqlite3.connect(db_path)
     try:
@@ -1010,7 +1044,7 @@ def load_futures_night(db_path: str, as_of: Optional[str] = None) -> Optional[Di
                 WHERE symbol=? AND session='night' AND date<=?
                 ORDER BY date DESC LIMIT 1
                 """,
-                (_FUTURES_SYMBOL, ref),
+                (want_sym, ref),
             ).fetchone()
         else:
             row = conn.execute(
@@ -1021,38 +1055,44 @@ def load_futures_night(db_path: str, as_of: Optional[str] = None) -> Optional[Di
                 WHERE symbol=? AND session='night'
                 ORDER BY date DESC LIMIT 1
                 """,
-                (_FUTURES_SYMBOL,),
+                (want_sym,),
             ).fetchone()
     finally:
         conn.close()
     if not row:
         return None
-    return _row_to_futures(row, session="night")
+    return _row_to_futures(row, session="night", symbol=want_sym)
 
 
 def resolve_futures_night(
     db_path: str,
     as_of: Optional[str] = None,
+    *,
+    symbol: str = _FUTURES_SYMBOL,
 ) -> Optional[Dict[str, Any]]:
     """庫內夜盤優先；沒有就讀期交所最新盤後（只讀、不寫庫）。"""
-    night = load_futures_night(db_path, as_of)
+    want_sym = _norm_futures_symbol(symbol)
+    night = load_futures_night(db_path, as_of, symbol=want_sym)
     if night and night.get("close"):
         return night
-    cached = _cached_taifex_sessions_by_date()
+    cached = _cached_taifex_all_sessions()
     if not cached:
         return None
     want = _norm_ymd(as_of) if as_of else ""
     dates = [want] if want in cached else []
     dates.extend(sorted(cached, reverse=True))
     for d in dates:
-        row = (cached.get(d) or {}).get("night")
+        row = ((cached.get(d) or {}).get(want_sym) or {}).get("night")
         if row and row.get("close"):
             return row
     return None
 
 
-def _nearest_futures_daily(db_path: str, as_of: str) -> Optional[Dict[str, Any]]:
+def _nearest_futures_daily(
+    db_path: str, as_of: str, *, symbol: str = _FUTURES_SYMBOL
+) -> Optional[Dict[str, Any]]:
     ensure_futures_daily_table(db_path)
+    want_sym = _norm_futures_symbol(symbol)
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute(
@@ -1061,13 +1101,13 @@ def _nearest_futures_daily(db_path: str, as_of: str) -> Optional[Dict[str, Any]]
             WHERE symbol=? AND session='regular' AND date <= ?
             ORDER BY date DESC LIMIT 1
             """,
-            (_FUTURES_SYMBOL, _norm_ymd(as_of)),
+            (want_sym, _norm_ymd(as_of)),
         ).fetchone()
     finally:
         conn.close()
     if not row:
         return None
-    return load_futures_daily(db_path, str(row[0]))
+    return load_futures_daily(db_path, str(row[0]), symbol=want_sym)
 
 
 def sync_futures_daily(
@@ -1076,7 +1116,7 @@ def sync_futures_daily(
     *,
     backfill_days: int = 0,
 ) -> Dict[str, Any]:
-    """盤後寫入 TAIFEX 台指近月日 K；抓取失敗不覆蓋舊列。"""
+    """盤後寫入 TAIFEX 台指／電子近月日 K；抓取失敗不覆蓋舊列。"""
     ensure_futures_daily_table(db_path)
     if not dates:
         from trading_calendar import fuse_end_trading_date
@@ -1086,13 +1126,22 @@ def sync_futures_daily(
     if backfill_days <= 0:
         conn = sqlite3.connect(db_path)
         try:
-            cnt = conn.execute(
-                "SELECT COUNT(*) FROM futures_daily WHERE symbol=?",
-                (_FUTURES_SYMBOL,),
-            ).fetchone()
+            counts = {
+                sym: int(
+                    (
+                        conn.execute(
+                            "SELECT COUNT(*) FROM futures_daily WHERE symbol=?",
+                            (sym,),
+                        ).fetchone()
+                        or [0]
+                    )[0]
+                    or 0
+                )
+                for sym in _FUTURES_SYMBOLS
+            }
         finally:
             conn.close()
-        if int(cnt[0] or 0) < 10:
+        if any(n < 10 for n in counts.values()):
             backfill_days = 35
     if backfill_days > 0:
         end_d = max(want) if want else _norm_ymd(dates[0])
@@ -1113,50 +1162,51 @@ def sync_futures_daily(
         for d in sorted(want):
             if len(d) != 8:
                 continue
-            sessions = _fetch_taifex_tx_sessions(d)
-            if not sessions.get("regular"):
-                one = _fetch_taifex_tx_day(d)
-                if one:
-                    sessions["regular"] = one
-            for sess_key, row in sessions.items():
-                if not row or not row.get("close"):
-                    continue
-                sess = str(row.get("session") or sess_key or "regular")
-                if sess not in ("regular", "night"):
-                    sess = "regular"
-                conn.execute(
-                    """
-                    INSERT INTO futures_daily(
-                        date, symbol, session, contract_month, open, high, low, close,
-                        settlement, volume, open_interest, pct_change, source, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(date, symbol, session) DO UPDATE SET
-                        contract_month=excluded.contract_month,
-                        open=excluded.open, high=excluded.high, low=excluded.low,
-                        close=excluded.close, settlement=excluded.settlement,
-                        volume=excluded.volume, open_interest=excluded.open_interest,
-                        pct_change=excluded.pct_change, source=excluded.source,
-                        updated_at=excluded.updated_at
-                    """,
-                    (
-                        row["date"],
-                        _FUTURES_SYMBOL,
-                        sess,
-                        row.get("contract_month") or "",
-                        float(row.get("open") or row["close"]),
-                        float(row.get("high") or row["close"]),
-                        float(row.get("low") or row["close"]),
-                        float(row["close"]),
-                        float(row.get("settlement") or row["close"]),
-                        int(row.get("volume") or 0),
-                        int(row.get("open_interest") or 0),
-                        float(row.get("pct_change") or 0),
-                        row.get("source") or "taifex",
-                        now,
-                    ),
-                )
-                written += 1
-                latest = row["date"]
+            for symbol in _FUTURES_SYMBOLS:
+                sessions = _fetch_taifex_tx_sessions(d, symbol=symbol)
+                if symbol == _FUTURES_SYMBOL and not sessions.get("regular"):
+                    one = _fetch_taifex_tx_day(d)
+                    if one:
+                        sessions["regular"] = one
+                for sess_key, row in sessions.items():
+                    if not row or not row.get("close"):
+                        continue
+                    sess = str(row.get("session") or sess_key or "regular")
+                    if sess not in ("regular", "night"):
+                        sess = "regular"
+                    conn.execute(
+                        """
+                        INSERT INTO futures_daily(
+                            date, symbol, session, contract_month, open, high, low, close,
+                            settlement, volume, open_interest, pct_change, source, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(date, symbol, session) DO UPDATE SET
+                            contract_month=excluded.contract_month,
+                            open=excluded.open, high=excluded.high, low=excluded.low,
+                            close=excluded.close, settlement=excluded.settlement,
+                            volume=excluded.volume, open_interest=excluded.open_interest,
+                            pct_change=excluded.pct_change, source=excluded.source,
+                            updated_at=excluded.updated_at
+                        """,
+                        (
+                            row["date"],
+                            symbol,
+                            sess,
+                            row.get("contract_month") or "",
+                            float(row.get("open") or row["close"]),
+                            float(row.get("high") or row["close"]),
+                            float(row.get("low") or row["close"]),
+                            float(row["close"]),
+                            float(row.get("settlement") or row["close"]),
+                            int(row.get("volume") or 0),
+                            int(row.get("open_interest") or 0),
+                            float(row.get("pct_change") or 0),
+                            row.get("source") or "taifex",
+                            now,
+                        ),
+                    )
+                    written += 1
+                    latest = row["date"]
         conn.commit()
     finally:
         conn.close()
@@ -1253,11 +1303,12 @@ def _format_futures_night_line(
     day: Optional[Dict[str, Any]] = None,
     *,
     spot_close: float = 0.0,
+    label: str = "夜盤",
 ) -> Optional[str]:
     if not night or not night.get("close"):
         return None
     close = float(night["close"])
-    parts = [f"夜盤 <b>{close:,.0f}</b>"]
+    parts = [f"{label} <b>{close:,.0f}</b>"]
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
@@ -1399,6 +1450,15 @@ def _format_overnight_watch_lines(
     if night_line:
         bits.append("台指期夜盤")
         bits.append(night_line)
+    te_night = snap.get("futures_te_night") or resolve_futures_night(db_path, as_of, symbol="TE")
+    te_line = _format_futures_night_line(
+        te_night or {},
+        snap.get("futures_te"),
+        spot_close=0.0,
+    )
+    if te_line:
+        bits.append("電子期夜盤")
+        bits.append(te_line)
     if not bits:
         return []
     title = "<b>上一收盤日該看</b>"
@@ -2407,6 +2467,12 @@ def analyze_taiwan_market(
     futures = load_futures_daily(db_path, ref_date) or _nearest_futures_daily(db_path, ref_date)
     futures_date = futures.get("date") if futures else ref_date
     futures_night = load_futures_night(db_path, ref_date) or resolve_futures_night(db_path, ref_date)
+    futures_te = load_futures_daily(db_path, ref_date, symbol="TE") or _nearest_futures_daily(
+        db_path, ref_date, symbol="TE"
+    )
+    futures_te_night = load_futures_night(db_path, ref_date, symbol="TE") or resolve_futures_night(
+        db_path, ref_date, symbol="TE"
+    )
     spot_close = float(core.get("close") or 0)
     fut_close = float(futures.get("close") or 0) if futures else 0.0
     basis_pct = compute_basis_pct(spot_close, fut_close) if futures else None
@@ -2466,6 +2532,8 @@ def analyze_taiwan_market(
         "support_zone": zones.get("support_zone", "none"),
         "futures": futures,
         "futures_night": futures_night,
+        "futures_te": futures_te,
+        "futures_te_night": futures_te_night,
         "futures_as_of": futures_date,
         "basis_pct": basis_pct,
         "futures_lead": lead,
@@ -3233,12 +3301,13 @@ def _outlook_night_plain_lines(
     day: Optional[Dict[str, Any]] = None,
     *,
     spot_close: float = 0.0,
+    label: str = "夜盤",
 ) -> List[str]:
     """夜盤只寫收盤與相對日盤／現貨；到期月、開高低留給大盤專頁。"""
     if not night or not night.get("close"):
         return []
     close = float(night["close"])
-    bits = [f"夜盤 <b>{close:,.0f}</b>"]
+    bits = [f"{label} <b>{close:,.0f}</b>"]
     extra: List[str] = []
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
@@ -3457,6 +3526,13 @@ def format_screen_market_outlook_html(
             spot_close=float(snap.get("close") or 0),
         )
     )
+    te_night_lines = _outlook_night_plain_lines(
+        snap.get("futures_te_night") or {},
+        snap.get("futures_te"),
+        spot_close=0.0,
+        label="電子期夜盤",
+    )
+    body.extend(te_night_lines)
     body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
     flow_lines = _outlook_flow_plain_lines(
         db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
@@ -3496,6 +3572,18 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
                     snap.get("futures_night") or {},
                     snap.get("futures"),
                     spot_close=float(snap.get("close") or 0),
+                )
+            )
+            else []
+        ),
+        *(
+            [line]
+            if (
+                line := _format_futures_night_line(
+                    snap.get("futures_te_night") or {},
+                    snap.get("futures_te"),
+                    spot_close=0.0,
+                    label="電子期夜盤",
                 )
             )
             else []

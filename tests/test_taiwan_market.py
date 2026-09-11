@@ -694,6 +694,21 @@ def test_parse_taifex_history_csv_picks_front_month():
     assert out["20260803"]["night"]["session"] == "night"
     utf = _parse_taifex_history_csv(sample.encode("utf-8"))
     assert utf["20260803"]["regular"]["close"] == 43230.0
+    te_sample = (
+        "交易日期,契約,到期月份(週別),開盤價,最高價,最低價,收盤價,漲跌價,漲跌%,成交量,結算價,未沖銷契約數,最後最佳買價,最後最佳賣價,歷史最高價,歷史最低價,是否因訊息面暫停交易,交易時段,價差對單式委託成交量\n"
+        "2026/08/03,TE,202608  ,2100,2150,2080,2120,-20,-0.93%,8000,2120,12000,2121,2122,2500,1800,,一般,,\n"
+        "2026/08/03,TE,202609  ,2110,2160,2090,2130,-18,-0.84%,90,2130,400,2131,2132,2510,1810,,一般,,\n"
+        "2026/08/03,TE,202608  ,2115,2140,2095,2105,-15,-0.71%,5000,2105,0,2106,2107,2500,1800,,盤後,,\n"
+        "2026/08/03,TX,202608  ,43186,43836,42989,43230,-497,-1.14%,69550,43219,109589,43231,43247,49470,39442,,一般,,\n"
+    )
+    te = _parse_taifex_history_csv(te_sample.encode("utf-8"), symbol="TE")
+    assert te["20260803"]["regular"]["close"] == 2120.0
+    assert te["20260803"]["regular"]["volume"] == 8000
+    assert te["20260803"]["night"]["close"] == 2105.0
+    assert te["20260803"]["regular"]["symbol"] == "TE"
+    tx_mixed = _parse_taifex_history_csv(te_sample.encode("utf-8"))
+    assert tx_mixed["20260803"]["regular"]["close"] == 43230.0
+    assert tx_mixed["20260803"]["regular"]["symbol"] == "TX"
 
 
 def test_decode_official_bytes_utf8_and_big5():
@@ -710,42 +725,81 @@ def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
     from taiwan_market import ensure_futures_daily_table, load_futures_daily, load_futures_night, sync_futures_daily
 
     db = str(tmp_path / "fut.db")
-    mock_fetch.return_value = {
-        "regular": {
-            "date": "20260901",
-            "contract_month": "202609",
-            "open": 46000.0,
-            "high": 47220.0,
-            "low": 45987.0,
-            "close": 47209.0,
-            "settlement": 47201.0,
-            "volume": 57627,
-            "open_interest": 104368,
-            "pct_change": 2.68,
-            "source": "taifex",
-            "session": "regular",
-        },
-        "night": {
-            "date": "20260901",
-            "contract_month": "202609",
-            "open": 47000.0,
-            "high": 47300.0,
-            "low": 46800.0,
-            "close": 46900.0,
-            "settlement": 46900.0,
-            "volume": 30000,
-            "open_interest": 0,
-            "pct_change": -0.65,
-            "source": "taifex",
-            "session": "night",
-        },
-    }
+
+    def _sessions(_date, *, symbol="TX"):
+        if symbol == "TE":
+            return {
+                "regular": {
+                    "date": "20260901",
+                    "contract_month": "202609",
+                    "open": 2100.0,
+                    "high": 2150.0,
+                    "low": 2080.0,
+                    "close": 2120.0,
+                    "settlement": 2120.0,
+                    "volume": 8000,
+                    "open_interest": 12000,
+                    "pct_change": -0.93,
+                    "source": "taifex",
+                    "session": "regular",
+                },
+                "night": {
+                    "date": "20260901",
+                    "contract_month": "202609",
+                    "open": 2110.0,
+                    "high": 2140.0,
+                    "low": 2090.0,
+                    "close": 2105.0,
+                    "settlement": 2105.0,
+                    "volume": 5000,
+                    "open_interest": 0,
+                    "pct_change": -0.71,
+                    "source": "taifex",
+                    "session": "night",
+                },
+            }
+        return {
+            "regular": {
+                "date": "20260901",
+                "contract_month": "202609",
+                "open": 46000.0,
+                "high": 47220.0,
+                "low": 45987.0,
+                "close": 47209.0,
+                "settlement": 47201.0,
+                "volume": 57627,
+                "open_interest": 104368,
+                "pct_change": 2.68,
+                "source": "taifex",
+                "session": "regular",
+            },
+            "night": {
+                "date": "20260901",
+                "contract_month": "202609",
+                "open": 47000.0,
+                "high": 47300.0,
+                "low": 46800.0,
+                "close": 46900.0,
+                "settlement": 46900.0,
+                "volume": 30000,
+                "open_interest": 0,
+                "pct_change": -0.65,
+                "source": "taifex",
+                "session": "night",
+            },
+        }
+
+    mock_fetch.side_effect = _sessions
     r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
     assert r["ok"]
     row = load_futures_daily(db, "20260901")
     assert row and row["close"] == 47209.0
     night = load_futures_night(db, "20260901")
     assert night and night["close"] == 46900.0
+    te = load_futures_daily(db, "20260901", symbol="TE")
+    assert te and te["close"] == 2120.0
+    te_night = load_futures_night(db, "20260901", symbol="TE")
+    assert te_night and te_night["close"] == 2105.0
 
 
 @patch("taiwan_market._fetch_taifex_tx_sessions")
@@ -765,6 +819,15 @@ def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_pat
                 date, symbol, session, contract_month, open, high, low, close,
                 settlement, volume, open_interest, pct_change, source, updated_at
             ) VALUES (?, 'TX', 'regular', '202609', 1, 2, 1, 2, 2, 10, 10, 0, 'taifex', 't')
+            """,
+            (f"202608{i + 10:02d}",),
+        )
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TE', 'regular', '202609', 1, 2, 1, 2, 2, 10, 10, 0, 'taifex', 't')
             """,
             (f"202608{i + 10:02d}",),
         )
@@ -835,6 +898,24 @@ def test_market_page_includes_futures_section(tmp_path):
             """,
             (d, close + 40, close + 90, close + 20, close + 60, close + 55),
         )
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TE', 'regular', '202608', 2100, 2150, 2080, 2120, 2120, 8000, 12000, -0.5, 'taifex', 'test')
+            """,
+            (d,),
+        )
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TE', 'night', '202608', 2110, 2140, 2090, 2105, 2105, 5000, 0, -0.7, 'taifex', 'test')
+            """,
+            (d,),
+        )
         conn.execute("INSERT INTO daily_quotes VALUES ('2330', ?, ?, 1000)", (d, float(100 + i)))
     conn.commit()
     conn.close()
@@ -886,6 +967,8 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "未平倉" in html
     assert "夜盤" in html
     assert "台指期夜盤" in html
+    assert "電子期夜盤" in html
+    assert "2,105" in html
     assert "上一收盤日該看" in html
     assert "美股時段" not in html
     assert "前一晚該看" not in html
@@ -899,6 +982,38 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "基差" not in html
     assert "近月" not in html
     assert "結構" in html
+
+
+def test_resolve_te_night_from_cache_not_tx(tmp_path):
+    from taiwan_market import (
+        _cached_taifex_sessions_by_date,
+        ensure_futures_daily_table,
+        resolve_futures_night,
+    )
+    import taiwan_market as tm
+
+    db = str(tmp_path / "te.db")
+    ensure_futures_daily_table(db)
+    old_cache = tm._TX_SESS_CACHE
+    tm._TX_SESS_CACHE = (
+        0.0,
+        {
+            "20260901": {
+                "TX": {"night": {"close": 47000, "date": "20260901", "session": "night"}},
+                "TE": {"night": {"close": 2105, "date": "20260901", "session": "night"}},
+            }
+        },
+    )
+    try:
+        te = resolve_futures_night(db, "20260901", symbol="TE")
+        assert te and te["close"] == 2105
+        tx = resolve_futures_night(db, "20260901")
+        assert tx and tx["close"] == 47000
+        unwrapped = _cached_taifex_sessions_by_date()
+        assert unwrapped["20260901"]["night"]["close"] == 47000
+        assert "TE" not in unwrapped["20260901"]
+    finally:
+        tm._TX_SESS_CACHE = old_cache
 
 
 def test_outlook_action_plain_risk_off_and_neutral():
