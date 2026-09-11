@@ -21,14 +21,16 @@ _GROQ_CHAT = "https://api.groq.com/openai/v1/chat/completions"
 _OPENAI_CHAT = "https://api.openai.com/v1/chat/completions"
 _TIMEOUT = 28.0
 
-SYSTEM = """你是 WayneBot 手機話筒「飆大」按鈕後面那顆即時對話腦。
-偉權與哥哥兩支手機同一條路。現在就是對話窗口：直接答、接上一句，不要倒選單、不要倒課綱、不要叫人去按其他鈕才能聊。
+SYSTEM = """你就是手機「飆大」裡正在跟他講話的那個人。對面說話，不是客服、不是簡報、不是老師在唸條文。
 
-你可以暢談：台股、美股、大盤、個股、這顆 Bot 怎麼用（鍵盤、圈圈、海選、持股、觀察、更新到手機）。
-講進出場時加一句「這不是買訊」。不改海選／黃金買點。
-個股用飆大公開文那套想：量先價行、夜盤先於日盤、1-4 重疊、三個買點、半山腰只隔日沖、止跌講結構不猜日曆。語料沒點名的檔也用同一套套官方 K，並說可能看錯。
-下面「參考」是庫內語料與官方 K，有就用，沒有就明講庫沒這筆，不要編造外資／投信／融資成本。
-回答用繁體中文，像對面說話，短句。不要自稱 Gemini 或 ChatGPT。
+先答他剛問的那一句，接得上上一句。不要開場念規則。不要用「第一、第二、他這套怎麼想、三買點對照」這種講義體。不要每則都把細微波、1-4、KD、買點清單倒一遍——只有他問方法時才講。
+
+講到「能不能買／該出嗎」才補一句這不是買訊。不要編外資／投信／融資成本。不要自稱 Gemini、ChatGPT。
+繁體中文。兩三段就好，段落可以換行。下面筆記只給你看，不要照抄「語料」「官方K」「爆量日=」這種欄位格式。
+
+例如他問「你好」→「在，你說。」
+問「大概何時止跌」→先講現況一兩句，再說他不猜日曆、現在條件齊不齊。不要列 1 2 3 4。
+問股名或代號→用筆記裡的收盤／爆量日講這檔現在像不像站上撐，不要把整份課綱貼回去。
 """
 
 
@@ -64,18 +66,48 @@ def live_endpoint() -> str:
     return _OPENAI_CHAT
 
 
-def live_model() -> str:
-    raw = (os.getenv("WAYNE_BIAOKE_LLM_MODEL") or "").strip()
-    if raw:
-        return raw
+_GROQ_CHAT_MODELS = ("openai/gpt-oss-120b", "openai/gpt-oss-20b")
+_OPENAI_CHAT_MODELS = ("gpt-4o-mini",)
+
+
+def live_models() -> List[str]:
+    """Groq 的 llama-3.3-70b-versatile 2026-08-16 已下架；預設走 gpt-oss。"""
+    chosen = (os.getenv("WAYNE_BIAOKE_LLM_MODEL") or "").strip()
     if live_endpoint().startswith("https://api.groq.com"):
-        return "llama-3.3-70b-versatile"
-    return "gpt-4o-mini"
+        pool = list(_GROQ_CHAT_MODELS)
+    else:
+        pool = list(_OPENAI_CHAT_MODELS)
+    if chosen:
+        return [chosen] + [m for m in pool if m != chosen]
+    return pool
+
+
+def live_model() -> str:
+    return live_models()[0]
 
 
 def _clip(text: str, n: int) -> str:
     s = re.sub(r"\s+", " ", str(text or "")).strip()
     return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _clip_talk(text: str, n: int) -> str:
+    """上一句給模型看時保留換行，才不會學成一長段講義。"""
+    s = re.sub(r"[ \t]+", " ", str(text or "")).strip()
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _to_talk(text: str) -> str:
+    """保留換行，拿掉講義式 markdown，才不像一張簡報。"""
+    s = str(text or "").replace("\r\n", "\n").strip()
+    s = re.sub(r"^\s{0,3}#{1,6}\s*", "", s, flags=re.M)
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    s = re.sub(r"^[\-\*]\s+", "", s, flags=re.M)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    if len(s) > 3500:
+        s = s[:3499] + "…"
+    return html_escape(s)
 
 
 def _grounding(db_path: str, ask: str) -> str:
@@ -114,8 +146,8 @@ def _grounding(db_path: str, ask: str) -> str:
     except Exception:
         logger.debug("飆大即時參考略過", exc_info=True)
     if not bits:
-        return "參考：這句庫內沒對到語料摘錄。"
-    return "參考：\n" + "\n".join(bits[:8])
+        return "筆記：這句沒對到摘錄，就照他問的講，不要硬套課綱。"
+    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:6])
 
 
 def _history_messages(history: Optional[Sequence[Any]]) -> List[dict]:
@@ -132,7 +164,7 @@ def _history_messages(history: Optional[Sequence[Any]]) -> List[dict]:
             out.append({"role": "user", "content": _clip(ask, 400)})
         if ans:
             plain = re.sub(r"<[^>]+>", "", ans)
-            out.append({"role": "assistant", "content": _clip(plain, 700)})
+            out.append({"role": "assistant", "content": _clip_talk(plain, 900)})
     return out
 
 
@@ -143,7 +175,16 @@ def _parse_content(payload: Any) -> str:
     if not choices:
         return ""
     msg = (choices[0] or {}).get("message") or {}
-    return str(msg.get("content") or "").strip()
+    content = msg.get("content") or ""
+    if isinstance(content, list):
+        bits: List[str] = []
+        for part in content:
+            if isinstance(part, str):
+                bits.append(part)
+            elif isinstance(part, dict):
+                bits.append(str(part.get("text") or part.get("content") or ""))
+        content = "".join(bits)
+    return str(content or "").strip()
 
 
 def live_reply(
@@ -157,32 +198,50 @@ def live_reply(
         return ""
     key = live_key()
     url = live_endpoint()
-    model = live_model()
     messages = [
         {"role": "system", "content": SYSTEM + "\n" + _grounding(db_path, q)},
     ]
     messages.extend(_history_messages(history))
     messages.append({"role": "user", "content": q})
-    try:
-        res = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": messages,
-                "temperature": 0.5,
-                "max_tokens": 700,
-            },
-            timeout=_TIMEOUT,
-        )
-        res.raise_for_status()
-        text = _parse_content(res.json())
-    except Exception:
-        logger.exception("飆大即時對話線失敗 model=%s", model)
-        return ""
-    if not text:
-        return ""
-    return html_escape(_clip(text, 3500))
+    models = live_models()
+    last_err = ""
+    for i, model in enumerate(models):
+        timeout = _TIMEOUT if i == 0 else 14.0
+        try:
+            res = requests.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.85,
+                    "max_tokens": 900,
+                },
+                timeout=timeout,
+            )
+        except Exception:
+            logger.exception("飆大即時對話線失敗 model=%s", model)
+            return ""
+        status = int(getattr(res, "status_code", 200) or 200)
+        if status in (400, 404, 422) and i < len(models) - 1:
+            logger.warning("飆大即時 model=%s status=%s，換下一顆", model, status)
+            last_err = f"{model}:{status}"
+            continue
+        try:
+            res.raise_for_status()
+            text = _parse_content(res.json())
+        except Exception:
+            logger.exception("飆大即時對話線失敗 model=%s", model)
+            return ""
+        if not text:
+            last_err = f"{model}:empty"
+            if i < len(models) - 1:
+                continue
+            return ""
+        return _to_talk(text)
+    if last_err:
+        logger.warning("飆大即時對話線全數未回 %s", last_err)
+    return ""

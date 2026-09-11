@@ -58,7 +58,7 @@ def test_welcome_teaches_chat_not_a_menu():
 
     html = format_biaoke_welcome_html()
     assert html == WINDOW_OPEN
-    assert "直接打字" in html
+    assert "打字" in html
     assert "語音" in html
     assert "勤誠" not in html
     assert "彙整" not in html
@@ -183,6 +183,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert "_ensure_reply_menu_if_needed" in src
     assert "send_action" in src
     assert "typing" in src
+    assert "reflow=False" in src
     assert not hasattr(WayneTelegramBot, "_biaoke_inline")
     whole = inspect.getsource(WayneTelegramBot)
     assert 'InlineKeyboardButton("怎麼觀察"' not in whole

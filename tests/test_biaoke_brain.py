@@ -105,6 +105,15 @@ def test_yishe_not_in_corpus_still_answers(tmp_path):
     assert "不猜" not in html
     assert "爆大量日" in html
     assert "2026-09-08" in html
+    assert "三買點對照" not in html
+    assert "他這套怎麼想" not in html
+    assert "KD" not in html
+
+
+def test_hello_is_short_not_a_lecture():
+    html = answer_biaoke(":memory:", "你好")
+    assert html == "在，你說。"
+    assert "這不是買訊" not in html
 
 
 def test_stop_drop_uses_conditions_not_a_date(tmp_path):
@@ -137,7 +146,7 @@ def test_desk_query_still_rules():
     assert "這不是買訊" in html
     assert "細微波" in html
     assert "兩年進步在哪" not in html
-    assert "在。直接打字" not in html
+    assert "在。打字" not in html
 
 
 def test_volume_first_price_spike_is_high_volume_day():

@@ -20,7 +20,7 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
     (
         re.compile(r"(細微波|四步|怎麼觀察|如何觀察|觀察方法)"),
         "細微波四步",
-        "他自己 2026-04-07 寫的四步：先認識調整型態 → 會拆線 → 完整結構出現後消去不符合的 → 升／降軌道破壞才算轉折。"
+        "他自己 2026-04-07 寫的細微波四步：先認識調整型態 → 會拆線 → 完整結構出現後消去不符合的 → 升／降軌道破壞才算轉折。"
         "工具是台指期 15 分＋60 分＋夜盤連續盤，不是只看加權日 K。完整結構＝5 或 9 段。庫內沒 15 分就不數段。",
     ),
     (
@@ -128,10 +128,7 @@ def format_methods_html(ask: str) -> str:
     hits = match_methods(ask)
     if not hits:
         return ""
-    lines = ["<b>他這套怎麼想</b>"]
-    for title, body in hits:
-        lines.append(f"<b>{html_escape(title)}</b>　{html_escape(body)}")
-    return "\n".join(lines)
+    return "\n".join(html_escape(body) for _title, body in hits)
 
 
 def is_method_query(ask: str) -> bool:
@@ -146,7 +143,7 @@ def follow_up_ask(ask: str, history: Optional[Sequence[Any]] = None) -> str:
     q = (ask or "").strip()
     if not q or not history:
         return q
-    if not re.match(r"^(那|這個|剛剛|同上|繼續)", q):
+    if not re.match(r"^(那|這個|剛剛|同上|繼續|所以|然後|對啊|對阿|嗯|喔|那呢)", q):
         return q
     if len(q) >= 16:
         return q

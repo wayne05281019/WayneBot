@@ -10,6 +10,7 @@ import asyncio
 import gc
 import logging
 import os
+import re
 import struct
 import tempfile
 import time
@@ -3555,11 +3556,13 @@ class WayneTelegramBot:
                 pass
             html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist)
             bucket = self._biaoke_hist.setdefault(actor, [])
-            bucket.append({"ask": q, "answer": html[:800]})
+            plain = re.sub(r"<[^>]+>", "", html)
+            bucket.append({"ask": q, "answer": plain[:900]})
             del bucket[:-16]
         else:
             html = format_biaoke_html(q)
-        parts = chunk_telegram_html(html, reflow=True)
+        # 對話不要再切成 18 字講義行；Telegram 自己會折。
+        parts = chunk_telegram_html(html, reflow=False)
         kb = self._reply_menu(uid)
         if not parts:
             await message.reply_text("飆客區讀取失敗。", reply_markup=kb)

@@ -15,11 +15,11 @@ from tg_layout import html_escape
 
 PENDING = "biaoke:chat"
 DISCLAIMER = (
-    "⚠️ <b>這不是買訊。</b>問句由這顆對話腦即時彙整後回你。"
+    "這不是買訊。問句由這顆對話腦即時彙整後回你。"
     "語料沒點名的檔也用同一套框架，可能看錯。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
-WINDOW_OPEN = "在。直接打字或語音。"
+WINDOW_OPEN = "在。打字或語音都行。"
 CHAT_HINT = WINDOW_OPEN
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
@@ -36,6 +36,10 @@ _ON = re.compile(
 _MKT = re.compile(
     r"(大盤|台股|美股|止跌|反彈|連跌|費半|那指|那斯達克|標普|道瓊|"
     r"夜盤|加權|空頭|多頭|何時.*止|哪時候.*止|大概.*止|什麼時候.*[漲跌止])"
+)
+_HI = re.compile(
+    r"^(你好|哈囉|嗨|在嗎|在不在|早安|午安|晚安|嘿|嘿啊|嗨嗨|hi|hello|hey)[\s！!。.~～]*$",
+    re.I,
 )
 _FILL = re.compile(
     r"^(飆大|飆客|AI飆客)\s*|"
@@ -336,24 +340,11 @@ def match_posts(ask: str, *, limit: int = 4, db_path: Optional[str] = None) -> L
 def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:
     if not posts:
         return ""
-    from biaoke_desk import biaoke_article_url
-
-    lines = ["<b>語料有寫到</b>"]
-    for p in posts:
-        snip = html_escape(re.sub(r"\s+", " ", str(p.get("text") or ""))[:140])
-        tags = "、".join(html_escape(t) for t in (p.get("tags") or [])[:5])
-        bit = f"{html_escape(p.get('date'))}"
-        if p.get("kind") == "reply":
-            layer = int(p.get("layer") or 1)
-            bit += f"　樓中樓{layer}層"
-        if tags:
-            bit += f"　{tags}"
-        bit += f"\n{snip}"
-        href = biaoke_article_url(str(p.get("id") or ""))
-        if href:
-            bit += f"\n{html_escape(href)}"
-        lines.append(bit)
-    return "\n\n".join(lines)
+    p = posts[0]
+    snip = html_escape(re.sub(r"\s+", " ", str(p.get("text") or ""))[:90])
+    if not snip:
+        return ""
+    return f"他 {html_escape(p.get('date'))} 寫過：{snip}"
 
 
 def _us_facts(db_path: str, as_of: str = "") -> Dict[str, Any]:
@@ -449,32 +440,23 @@ def overlay_stock(
 ) -> str:
     sid = html_escape(str(hit.get("stock_id") or struct.get("sid") or ""))
     name = html_escape(str(hit.get("stock_name") or struct.get("name") or sid))
-    lines = [f"<b>{sid} {name}</b>"]
-    if not in_corpus:
-        lines.append("語料從頭到尾沒點名這檔。下面是用飆大那套量價／三買點去套官方日 K，不是他本人寫過。")
     if not struct:
-        lines.append("官方日 K 不夠，無法套量先價行。")
-        return "\n".join(lines)
-    lines.append(
+        return f"{sid} {name} 官方日 K 還不夠，我先不硬套。"
+    head = f"{sid} {name}。"
+    if not in_corpus:
+        head = f"{sid} {name} 語料從頭到尾沒點名這檔，我就拿官方日 K 用他那套量價看，可能看錯。"
+    body = (
         f"{html_escape(struct.get('date'))} 收 {_px(struct.get('close'))}"
-        f"（{_pct(struct.get('pct'))}）"
-        f"　近窗爆大量日 {html_escape(struct.get('spike_date'))}"
-        f" 高 {_px(struct.get('spike_high'))}／低 {_px(struct.get('spike_low'))}"
-        f"　當日量 {int(float(struct.get('spike_vol') or 0)):,.0f} 張"
-        f"／最新量 {int(float(struct.get('vol_now') or 0)):,.0f} 張"
-        f"　連跌 {int(struct.get('down_streak') or 0)} 日"
+        f"（{_pct(struct.get('pct'))}）。"
+        f"近窗爆大量日 {html_escape(struct.get('spike_date'))}，"
+        f"高 {_px(struct.get('spike_high'))}、低 {_px(struct.get('spike_low'))}。"
+        f"{html_escape(struct.get('stance') or '')}"
     )
-    lines.append(html_escape(struct.get("stance") or ""))
     buy = str(struct.get("buy") or "")
+    extra = ""
     if buy:
-        lines.append(f"三買點對照：{html_escape(buy)}。半山腰只隔日沖，不左側摸底。")
-    else:
-        lines.append("三買點：整理末端／突破回測／行進中隔日沖。現在還對不上他要的量縮站上。")
-    lines.append(
-        "他不算 KD／MACD／布林。量價背離只認連續一波攻擊到頂，不是隨便一天量縮。"
-        "技術面領先新聞，新聞變多常是中短高點。"
-    )
-    return "\n".join(x for x in lines if x)
+        extra = f"對他說的買點來看，比較像{html_escape(buy)}；半山腰他只做隔日沖。"
+    return "\n".join(x for x in (head, body, extra) if x)
 
 
 def overlay_market(
@@ -492,11 +474,7 @@ def overlay_market(
     close = last.get("close")
     pct = last.get("pct_change")
     as_of = _ymd(last.get("date") or mkt.get("as_of") or "")
-    lines = ["<b>大概何時止跌</b>"]
-    lines.append(
-        "飆大不猜日曆。他認的止跌是結構先出現，不是『下週幾』。"
-        "庫內沒有 15 分細微波，這段不編段數。"
-    )
+    lines = ["止跌他不猜日曆，要結構先出來才算。"]
     now_bits = []
     if close:
         now_bits.append(f"加權 {as_of} 收 {_px(close)}（{_pct(pct)}）連跌 {tw_down} 日")
@@ -512,19 +490,12 @@ def overlay_market(
     lines.append(_fmt_us(us) + (f"；那指／費半連跌約 {us_down} 日" if us_down else ""))
     if tsmc:
         lines.append(
-            "台積電量價決勝："
-            f"{html_escape(tsmc.get('date'))} 收 {_px(tsmc.get('close'))}"
-            f"　爆大量日 {html_escape(tsmc.get('spike_date'))}"
-            f" 高 {_px(tsmc.get('spike_high'))}／低 {_px(tsmc.get('spike_low'))}。"
+            f"台積電 {html_escape(tsmc.get('date'))} 收 {_px(tsmc.get('close'))}。"
+            f"爆大量日 {html_escape(tsmc.get('spike_date'))}，"
+            f"高 {_px(tsmc.get('spike_high'))}、低 {_px(tsmc.get('spike_low'))}。"
             f"{html_escape(tsmc.get('stance') or '')}"
         )
-    lines.append(
-        "他要同時看到才比較像下跌趨勢化解：\n"
-        "1 費半下跌段出現 1-4 重疊（這包沒費半 15 分，只看收盤是否不再破低）\n"
-        "2 夜盤先於日盤：夜盤有效過下降壓，才比較不像擴延\n"
-        "3 多標籤時用台積電量價：低檔爆大量且收在撐上\n"
-        "4 細微波完整 5 或 9 段走完（沒 15 分就不數）"
-    )
+    lines.append("他要費半不再破低、夜盤先過下降壓、台積電量價站上撐，這幾件疊在一起才比較像下跌趨勢化解。")
     sox = us.get("sox_pct")
     risk = str(us.get("regime") or "")
     tsmc_low = bool(
@@ -581,6 +552,8 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         live = ""
     if live:
         return live
+    if _HI.match(q):
+        return "在，你說。"
     if is_offtopic(q):
         return OFFTOPIC
     if is_desk_query(q):
@@ -624,19 +597,17 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
                 mkt=_load_mkt(db_path),
                 night=_load_night(db_path),
             )
-        chunks = [DISCLAIMER]
-        if methods:
-            chunks.append(methods)
-        chunks.append(body)
+        chunks = [body]
         if extra:
             chunks.append(extra)
         if cite:
             chunks.append(cite)
+        chunks.append(DISCLAIMER)
         return "\n\n".join(chunks)
 
     if methods and not hits and not want_mkt:
         cite = _cite_posts(posts)
-        return "\n\n".join(x for x in (DISCLAIMER, methods, cite) if x)
+        return "\n\n".join(x for x in (methods, cite, DISCLAIMER) if x)
 
     if want_mkt or not hits:
         if want_mkt or re.search(r"(止跌|連跌|美股|台股|大盤|費半)", q):
@@ -652,12 +623,8 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
                 night=_load_night(db_path),
             )
             cite = _cite_posts(posts)
-            return "\n\n".join(x for x in (DISCLAIMER, methods, body, cite) if x)
+            return "\n\n".join(x for x in (body, cite, DISCLAIMER) if x)
         if posts:
-            return "\n\n".join(x for x in (DISCLAIMER, methods, _cite_posts(posts)) if x)
-        return (
-            DISCLAIMER
-            + "\n聽成大盤或個股問題。直接打股名／代號，或問『大概何時止跌』。"
-            "語料沒寫過也會套官方 K，不假裝沒這檔。"
-        )
+            return "\n\n".join(x for x in (methods, _cite_posts(posts), DISCLAIMER) if x)
+        return "這句我沒對到檔。你直接說股名或大盤就好，也可以接著上一句問。\n" + DISCLAIMER
     return DISCLAIMER

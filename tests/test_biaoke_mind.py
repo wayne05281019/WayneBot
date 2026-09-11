@@ -18,7 +18,7 @@ from biaoke_mind import (
 
 def test_welcome_says_compile_not_menu():
     html = format_biaoke_welcome_html()
-    assert "直接打字" in html
+    assert "在。" in html
     assert "問一檔" not in html
     assert "彙整" in DISCLAIMER
 
@@ -50,6 +50,7 @@ def test_corpus_curriculum_has_300_from_1709():
 def test_follow_up_uses_history_per_turn():
     hist = [{"ask": "勤誠", "answer": "語料有勤誠"}]
     assert "勤誠" in follow_up_ask("那怎麼看", hist)
+    assert "勤誠" in follow_up_ask("所以呢", hist)
     assert follow_up_ask("藝舍-KY", hist) == "藝舍-KY"
 
 
