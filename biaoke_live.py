@@ -114,11 +114,14 @@ def _grounding(db_path: str, ask: str) -> str:
     bits: List[str] = []
     try:
         from biaoke_brain import match_posts, resolve_stock, volume_first_price, load_bars
+        from biaoke_mind import match_methods
         from biaoke_trace import format_trace
 
         tr = format_trace(ask, db_path)
         if tr:
             bits.append("時間線 " + _clip(tr, 700))
+        for _title, body in match_methods(ask, limit=2):
+            bits.append("方法 " + _clip(body, 500))
 
         posts = match_posts(ask, limit=4, db_path=db_path)
         for p in posts:

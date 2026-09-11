@@ -16,6 +16,25 @@ from biaoke_mind import (
 )
 
 
+def test_methods_cover_wash_three_days_and_right_shoulder():
+    wash = format_methods_html("洗盤跟出貨怎麼分")
+    assert "2024-07-08" in wash
+    assert "破線翻" in wash
+    assert "語料" not in wash
+    three = format_methods_html("連三天不破點")
+    assert "三日" in three
+    assert "公開 1709" in three
+    wave = format_methods_html("次級四浪是什麼")
+    assert "萬潤" in wave or "廣達" in wave
+    hold = format_methods_html("45839 有沒有守住")
+    assert "45839" in hold
+    assert "右肩" in hold
+    assert "語料" not in hold
+    html = answer_biaoke(":memory:", "洗盤跟出貨怎麼分")
+    assert "這不是買訊" in html
+    assert "語料" not in html
+
+
 def test_welcome_says_compile_not_menu():
     html = format_biaoke_welcome_html()
     assert "在。" in html

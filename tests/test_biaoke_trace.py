@@ -3,7 +3,7 @@
 import pytest
 
 from biaoke_brain import answer_biaoke
-from biaoke_trace import format_trace, verify_low_rail
+from biaoke_trace import format_trace, verify_level_holds, verify_low_rail
 
 
 def test_phone_text_does_not_say_yuliao(tmp_path):
@@ -51,3 +51,29 @@ def test_verify_tsmc_rail_on_production_db():
     tw = verify_low_rail(db, sid="TWII", d1="20250903", d2="20251121", at="20251216")
     assert tw.get("ok")
     assert tw["broke_close"] is False
+
+
+def test_45839_watch_is_not_2025_tsmc_rail():
+    text = format_trace("45839 有沒有守住")
+    assert "45839" in text
+    assert "右肩" in text
+    assert "1145" not in text
+    assert "語料" not in text
+    html = answer_biaoke(":memory:", "右肩型態 45839")
+    assert "45839" in html
+    assert "這不是買訊" in html
+    assert "語料" not in html
+
+
+@pytest.mark.production_db
+def test_verify_45839_holds_through_sep10():
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
+    chk = verify_level_holds(db, sid="TWII", ymd="20260903")
+    assert chk.get("ok")
+    assert abs(float(chk["level"]) - 45839.36) < 0.02
+    assert chk["held"] is True
+    assert float(chk["nearest_later_low"]) > 45839
+    text = format_trace("45839 有沒有守住", db)
+    assert "還沒破" in text

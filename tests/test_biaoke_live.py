@@ -118,3 +118,25 @@ def test_live_retries_next_groq_model(monkeypatch):
     assert post.call_count == 2
     assert post.call_args_list[0].kwargs["json"]["model"] == "openai/gpt-oss-120b"
     assert post.call_args_list[1].kwargs["json"]["model"] == "openai/gpt-oss-20b"
+
+
+def test_live_grounding_includes_method_notes(monkeypatch):
+    monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    class _Res:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "洗盤不是出貨。"}}]}
+
+    with patch("biaoke_live.requests.post", return_value=_Res()) as post:
+        html = live_reply(":memory:", "洗盤跟出貨怎麼分")
+    assert "洗盤不是出貨" in html
+    sys_msg = post.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "方法" in sys_msg
+    assert "2024-07-08" in sys_msg
+    assert "語料" not in sys_msg

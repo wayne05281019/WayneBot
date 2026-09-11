@@ -36,6 +36,14 @@ RAILS = (
     "他用台積電當先行。不是買訊。"
 )
 
+HOLD = (
+    "2026-09-11 08:43 公開文：未來 2～3 交易日觀盤重點是 9/3 加權低點 45839 有沒有守住。"
+    "有守住＝右肩還是高有過前高、低不破前低，高檔震盪趨勢向上。"
+    "這段不要追高殺低，只汰弱留強（他說很難）；建議抱長線主流龍頭。"
+    "資料庫：20260903 TWII 低 45839.36、收 45857.66；9/4～9/10 的低都高於 45839"
+    "（最近 9/4 低 45966.86）。9/11 起那 2～3 日庫還沒有日 K，守不守還在走。不是買訊。"
+)
+
 _CASES: List[Tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"(汎銓|泛銓|6830)"),
@@ -78,7 +86,11 @@ _CASES: List[Tuple[re.Pattern[str], str]] = [
 
 _RAIL_ASK = re.compile(
     r"(連線|連哪兩天|上升軌|下降壓|黃軌|三角|怎麼看大盤|看大盤|"
-    r"3-2|3-4|9/3|11/24|11/21|軌道)"
+    r"3-2|3-4|11/24|11/21|軌道|1145|1375)"
+)
+_HOLD_ASK = re.compile(
+    r"(45839|右肩|低不破前低|高有過前高|高檔震[盪檔]|追高殺低|汰弱留強|"
+    r"觀盤重點|9/3.{0,12}(低點|低|有守)|守住.{0,12}(45839|低點))"
 )
 _HOW_ASK = re.compile(
     r"(族群發動|怎麼抓龍頭|次族群|誰先過前高|龍頭怎麼抓|"
@@ -168,17 +180,85 @@ def verify_low_rail(
         conn.close()
 
 
+def verify_level_holds(
+    db_path: str,
+    *,
+    sid: str,
+    ymd: str,
+    through: str = "",
+) -> Dict[str, Any]:
+    """那日低點之後，後續日 K 低有沒有再破。庫沒這天就空。"""
+    out: Dict[str, Any] = {"sid": sid, "ok": False, "held": None}
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        bar = _bar_on(conn, sid, ymd)
+        if not bar:
+            return out
+        level = float(bar["low"])
+        params: List[Any] = [ymd]
+        if sid == "TWII":
+            sql = "SELECT date, low FROM index_daily WHERE symbol='TWII' AND date>? "
+            if through:
+                sql += "AND date<=? "
+                params.append(through)
+            sql += "ORDER BY date"
+            rows = conn.execute(sql, params).fetchall()
+        else:
+            sql = "SELECT date, low FROM daily_quotes WHERE stock_id=? AND date>? "
+            params = [sid, ymd]
+            if through:
+                sql += "AND date<=? "
+                params.append(through)
+            sql += "ORDER BY date"
+            rows = conn.execute(sql, params).fetchall()
+        later = [{"date": str(r[0]), "low": float(r[1])} for r in rows if r and r[1] is not None]
+        broke = [r for r in later if r["low"] <= level]
+        nearest = min(later, key=lambda r: r["low"]) if later else None
+        out.update(
+            {
+                "ok": True,
+                "level": round(level, 2),
+                "at": bar["date"],
+                "n_later": len(later),
+                "held": not broke,
+                "broke_on": broke[0]["date"] if broke else "",
+                "nearest_later_low": round(nearest["low"], 2) if nearest else None,
+                "nearest_later_date": nearest["date"] if nearest else "",
+                "last_date": later[-1]["date"] if later else "",
+            }
+        )
+        return out
+    except sqlite3.OperationalError:
+        return out
+    finally:
+        conn.close()
+
+
 def format_trace(ask: str, db_path: str = "") -> str:
     """問句 → 已對過官方日 K 的時間線。沒對上就空字串。"""
     q = (ask or "").strip()
     if not q:
         return ""
-    named: List[str] = []
+    parts: List[str] = []
     for pat, body in _CASES:
         if pat.search(q):
-            named.append(body)
-    if named:
-        return "\n".join(named)
+            parts.append(body)
+    if _HOLD_ASK.search(q):
+        extra = ""
+        chk = verify_level_holds(db_path, sid="TWII", ymd="20260903")
+        if chk.get("ok") and chk.get("n_later"):
+            extra = f" 重算：9/3 低 {chk['level']:.2f}；"
+            if chk.get("held"):
+                extra += (
+                    f"{chk.get('nearest_later_date')} 低 {chk['nearest_later_low']:.2f} 最近，"
+                    f"到 {chk.get('last_date')} 還沒破。"
+                )
+            else:
+                extra += f"{chk.get('broke_on')} 已破。"
+            extra += "9/11 起那 2～3 日庫沒這天就不說守住。"
+        parts.append(HOLD + extra)
     if _RAIL_ASK.search(q):
         extra = ""
         chk = verify_low_rail(
@@ -189,10 +269,10 @@ def format_trace(ask: str, db_path: str = "") -> str:
                 f" 重算：12/16 收 {chk['close']:.0f}、軌 {chk['rail']:.0f}，"
                 + ("收盤跌破。" if chk.get("broke_close") else "收盤還沒破。")
             )
-        return RAILS + extra
+        parts.append(RAILS + extra)
     if _HOW_ASK.search(q):
-        return HOW
-    return ""
+        parts.append(HOW)
+    return "\n".join(parts)
 
 
 def format_trace_html(ask: str, db_path: str = "") -> str:
