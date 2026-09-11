@@ -33,7 +33,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 <h1>@@HEAD@@</h1>
 <p class="sub">@@SUB@@</p>
 </header>
-<div id="hud">輕點對價；左右拖移動、雙指縮放。紫／綠箭頭跟導航圖同一套。</div>
+<div id="hud">輕點對價；左右拖移動、雙指縮放。紫／綠箭頭跟高低卡同一套。</div>
 <p class="leg">
 <span><i style="background:#6A1B9A"></i>20高</span>
 <span><i style="background:#4527A0"></i>20高脫離</span>
@@ -46,6 +46,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 <span><i style="background:#f9a825"></i>月線 SMA20</span>
 </p>
 <nav>
+<button type="button" data-i="NAV">導航</button>
 <button type="button" data-i="D">日K</button>
 <button type="button" data-i="15">15分</button>
 <button type="button" data-i="60">60分</button>
@@ -58,15 +59,24 @@ canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 <canvas id="own" hidden></canvas>
 <p id="empty"></p>
 </div>
-<p class="note">不是 TradingView，也不是買訊。日K 高低箭頭＝導航圖同一套。溫度計在決策卡，不是這張圖的箭頭。外資／投信／融資均價官方沒有成本價，不畫。</p>
+<p class="note">不是 TradingView，也不是買訊。導航＝約 180 根日K，紫／綠箭頭跟高低卡同一套。溫度計在決策卡，不是這張圖的箭頭。外資／投信／融資均價官方沒有成本價，不畫。</p>
 <script>
 var D=@@DATA@@;
 var UP="#e53935", DN="#00897b";
 var TONE={h20:"#6A1B9A",h20_near:"#7B1FA2",h20_leave:"#4527A0",
 l20:"#1B5E20",l20_near:"#2E7D32",l20_leave:"#004D40",l60:"#006064"};
 var LABELS=(D.nav&&D.nav.labels)||{};
-var S={iv:"D", bars:[], nav:null, end:0, n:80, hover:-1, px:null, w:0, h:0};
+var S={iv:"D", bars:[], nav:null, end:0, n:80, hover:-1, px:null, w:0, h:0, wantN:0};
 function $(id){return document.getElementById(id);}
+function requestedN(){
+  var q=0;
+  try{ q=parseInt(new URLSearchParams(location.search).get("n")||"0",10)||0; }catch(e){ q=0; }
+  if(!q) q=parseInt(D.span||0,10)||0;
+  return q>0?q:0;
+}
+function defaultN(bars){
+  return Math.max(18, Math.min(bars.length, Math.floor((S.w-100)/7)));
+}
 function setOn(key){
   document.querySelectorAll("nav button").forEach(function(b){
     b.classList.toggle("on", b.getAttribute("data-i")===key);
@@ -363,6 +373,7 @@ function bind(cv){
         var scale=d1/d0;
         var mid=Math.round((S.end-S.n/2));
         S.n=Math.max(18, Math.min(S.bars.length, Math.round(S.n/scale)));
+        S.wantN=S.n;
         S.end=Math.max(S.n, Math.min(S.bars.length, mid+Math.round(S.n/2)));
         paint();
       }
@@ -408,6 +419,7 @@ function bind(cv){
     stopInert();
     var mid=S.end-S.n/2;
     S.n=Math.max(18, Math.min(S.bars.length, Math.round(S.n*(e.deltaY>0?1.12:0.88))));
+    S.wantN=S.n;
     S.end=Math.max(S.n, Math.min(S.bars.length, Math.round(mid+S.n/2)));
     paint();
   }, {passive:false});
@@ -425,12 +437,21 @@ function mount(bars, miss, nav){
   cv.style.width=S.w+"px"; cv.style.height=S.h+"px";
   S.bars=bars; S.nav=nav||null;
   S.end=bars.length;
-  S.n=Math.max(18, Math.min(bars.length, Math.floor((S.w-100)/7)));
+  var want=S.wantN>0?S.wantN:defaultN(bars);
+  S.n=Math.max(18, Math.min(bars.length, want));
   S.hover=S.n-1; S.px=null;
   if(!cv._bound){ bind(cv); cv._bound=true; }
   paint();
 }
 function go(iv){
+  if(iv==="NAV"){
+    S.wantN=180;
+    S.iv="D";
+    setOn("NAV");
+    mount((D.packed||{})["D"]||[], "這檔還沒有日K。", D.nav);
+    return;
+  }
+  if(iv==="D") S.wantN=0;
   S.iv=iv; setOn(iv);
   if(iv==="15"||iv==="60"){
     showEmpty(iv==="15"?"載入 15 分K…":"載入 60 分K…");
@@ -446,8 +467,19 @@ function go(iv){
 document.querySelectorAll("nav button").forEach(function(b){
   b.addEventListener("click", function(){ go(b.getAttribute("data-i")); });
 });
-window.addEventListener("resize", function(){ if(S.bars.length) mount(S.bars, "", S.nav); });
-go(D.start||"D");
+window.addEventListener("resize", function(){
+  if(!S.bars.length) return;
+  var keepN=S.n, keepEnd=S.end, keepHover=S.hover, keepPx=S.px, keepWant=S.wantN;
+  mount(S.bars, "", S.nav);
+  S.wantN=keepWant;
+  S.n=Math.max(18, Math.min(S.bars.length, keepN));
+  S.end=Math.max(S.n, Math.min(S.bars.length, keepEnd));
+  S.hover=keepHover; S.px=keepPx;
+  paint();
+});
+S.wantN=requestedN();
+if(S.wantN>=120) go("NAV");
+else go(D.start||"D");
 </script>
 </body>
 </html>

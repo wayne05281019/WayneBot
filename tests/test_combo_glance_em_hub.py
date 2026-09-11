@@ -129,7 +129,9 @@ def test_listed_hub_has_nav_button():
     kb = bot._hub_keyboard("2330")
     labels = [b.text for r in kb.inline_keyboard for b in r]
     assert "導航圖" in labels
-    assert any((b.callback_data or "").startswith("g:") for r in kb.inline_keyboard for b in r)
+    nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
+    assert nav.callback_data is None
+    assert (nav.url or "").endswith("/k/2330?n=180")
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 

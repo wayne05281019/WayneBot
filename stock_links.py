@@ -73,7 +73,11 @@ def listed_kline_ok(stock_id: str, db_path: Optional[str] = None) -> bool:
 
 
 def kline_page_url(
-    stock_id: str, db_path: Optional[str] = None, base_url: str = ""
+    stock_id: str,
+    db_path: Optional[str] = None,
+    base_url: str = "",
+    *,
+    span: int | None = None,
 ) -> str:
     """查股圖下 K線：開自家可滑動日K（疊導航箭頭）。興櫃不給。不是外站圖表。"""
     sid = str(stock_id or "").strip()
@@ -82,7 +86,14 @@ def kline_page_url(
     from config import get_public_base_url
 
     base = (base_url or get_public_base_url()).rstrip("/")
-    return f"{base}/k/{sid}"
+    url = f"{base}/k/{sid}"
+    try:
+        n = int(span) if span is not None else 0
+    except (TypeError, ValueError):
+        n = 0
+    if n > 0:
+        url += f"?n={n}"
+    return url
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:

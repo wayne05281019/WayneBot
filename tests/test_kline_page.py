@@ -70,6 +70,9 @@ def test_kline_url_is_own_page(tmp_path):
     assert yahoo_exchange("2330", db) == "TW"
     assert listed_kline_ok("2330", db) is True
     assert kline_page_url("2330", db) == "https://waynebot-service.onrender.com/k/2330"
+    assert kline_page_url("2330", db, span=180) == (
+        "https://waynebot-service.onrender.com/k/2330?n=180"
+    )
     assert listed_kline_ok("6488", db) is True
     assert kline_page_url("6488", db) == "https://waynebot-service.onrender.com/k/6488"
     web, extra = yahoo_urls("2330", db)
@@ -102,6 +105,9 @@ def test_hub_kline_is_https_url_button(tmp_path):
     assert kline.callback_data is None
     assert kline.url == "https://waynebot-service.onrender.com/k/2330"
     assert kline.url.startswith("https://")
+    nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
+    assert nav.callback_data is None
+    assert nav.url == "https://waynebot-service.onrender.com/k/2330?n=180"
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 
@@ -131,12 +137,15 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     assert 'id="tv"' not in page
     assert "上市" in page
     assert '"D":[' in page
-    for label in ("日K", "15分", "60分", "五日", "十日", "月線", "季線"):
+    for label in ("導航", "日K", "15分", "60分", "五日", "十日", "月線", "季線"):
         assert label in page
     assert "導航圖" in page
     assert '"nav":' in page
+    assert '"span":0' in page
     assert "20高" in page
     src = open("kline_page.html", encoding="utf-8").read()
+    assert "requestedN" in src
+    assert 'data-i="NAV"' in src
     assert "g.lineTo(x,y)" in src
     assert "yx(b.c)" in src
     assert "pointerdown" in src
@@ -146,6 +155,9 @@ def test_kline_page_defaults_daily_and_has_periods(tmp_path):
     assert "對價" in src
     assert "20高" in src
     assert "tradingview.com" not in src.lower()
+    page180 = render_kline_html("2330", db_path=db, span=180)
+    assert '"span":180' in page180
+    assert "導航約 180 根" in page180
 
 
 def test_merge_minute_bars_remote_wins_same_ts():
@@ -326,6 +338,10 @@ def test_kline_http_route_defaults_daily(tmp_path, monkeypatch):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/k/2330?i=5D", timeout=8) as resp:
             alt = resp.read().decode("utf-8")
         assert '"start":"5D"' in alt
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/k/2330?n=180", timeout=8) as resp:
+            nav = resp.read().decode("utf-8")
+        assert '"span":180' in nav
+        assert "導航約 180 根" in nav
     finally:
         httpd.shutdown()
         httpd.server_close()

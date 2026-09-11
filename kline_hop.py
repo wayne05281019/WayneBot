@@ -443,6 +443,7 @@ def render_kline_html(
     interval: str = "D",
     *,
     live: bool = False,
+    span: int | None = None,
 ) -> str:
     sid = str(stock_id or "").strip()
     if not sid:
@@ -474,11 +475,20 @@ def render_kline_html(
         nav = nav_overlay_from_bars(packed.get("D") or []) or {}
     except Exception:
         nav = {}
+    try:
+        span_n = int(span) if span is not None else 0
+    except (TypeError, ValueError):
+        span_n = 0
+    if span_n < 0:
+        span_n = 0
+    if span_n > 400:
+        span_n = 400
     payload = {
         "sid": sid,
         "start": start,
         "packed": packed,
         "nav": nav,
+        "span": span_n,
     }
     stamp = ""
     try:
@@ -493,8 +503,13 @@ def render_kline_html(
     except Exception:
         stamp = ""
     sub = (
-        f"{market}　{stamp}日K 輕點對價、左右拖移動；高低箭頭跟導航圖同一套。"
-        "可改 15 分／60 分，或五日／十日／月線／季線。"
+        f"{market}　{stamp}"
+        + (
+            "導航約 180 根日K，輕點對價、左右拖、雙指縮放；紫／綠箭頭跟高低卡同一套。"
+            if span_n >= 120
+            else "日K 輕點對價、左右拖移動；高低箭頭跟導航圖同一套。"
+        )
+        + "可改 15 分／60 分，或五日／十日／月線／季線。"
     )
     page = (
         _PAGE.replace("@@TITLE@@", _esc(f"{head}　K線"))

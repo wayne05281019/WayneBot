@@ -243,8 +243,14 @@ class HealthHandler(BaseHTTPRequestHandler):
             parts = [p for p in route.split("/") if p]
             sid = _re.sub(r"[^0-9A-Za-z]", "", (parts[1] if len(parts) > 1 else ""))[:8]
             interval = "D"
+            span = None
             if "?" in self.path:
-                interval = (parse_qs(self.path.split("?", 1)[1]).get("i") or ["D"])[0]
+                qs = parse_qs(self.path.split("?", 1)[1])
+                interval = (qs.get("i") or ["D"])[0]
+                try:
+                    span = int((qs.get("n") or ["0"])[0] or 0) or None
+                except (TypeError, ValueError):
+                    span = None
             if len(parts) >= 3 and parts[2] == "m":
                 bars = fetch_yahoo_minutes(sid, interval or "15", get_db_path())
                 body = _json.dumps({"bars": bars}, ensure_ascii=False).encode("utf-8")
@@ -259,7 +265,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     pass
                 return
             page = render_kline_html(
-                sid, db_path=get_db_path(), interval=interval, live=True
+                sid, db_path=get_db_path(), interval=interval, live=True, span=span
             ).encode("utf-8")
             self.send_response(200 if sid else 404)
             self.send_header("Content-Type", "text/html; charset=utf-8")

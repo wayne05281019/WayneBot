@@ -79,7 +79,7 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
 # 介紹圖與高低卡同寬。上半用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）；
-# 下半是 180 日高低導航（紫高／綠低箭頭）。完整橫式導航仍走圖下「導航圖」。
+# 下半是 180 日高低導航（紫高／綠低箭頭）。可滑 180 根走圖下「導航圖」。
 CARD_PNG_DPI = 320
 GLANCE_PNG_DPI = 320
 CARD_FIG_W = 7.1
