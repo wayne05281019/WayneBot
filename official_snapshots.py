@@ -15,7 +15,8 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 try:
@@ -297,6 +298,29 @@ def parse_tpex_etf_product_nav(payload: dict) -> List[dict]:
     return [last] if last else []
 
 
+
+def _urlopen_follow(req: Request, timeout: int = 20, max_hops: int = 5):
+    """跟隨 301／302／303／307／308。307／308 保留原 method 與 body（證交所 POST 常用）。"""
+    cur = req
+    for _ in range(max_hops):
+        try:
+            return urlopen(cur, timeout=timeout)
+        except HTTPError as exc:
+            if exc.code not in (301, 302, 303, 307, 308):
+                raise
+            loc = exc.headers.get("Location") if exc.headers else None
+            if not loc:
+                raise
+            target = urljoin(cur.full_url, loc)
+            hdrs = {k: v for k, v in cur.header_items()}
+            if exc.code in (307, 308) and cur.data is not None:
+                cur = Request(target, data=cur.data, headers=hdrs, method=cur.get_method())
+            else:
+                hdrs = {k: v for k, v in hdrs.items() if k.lower() != "content-length"}
+                cur = Request(target, headers=hdrs)
+    raise HTTPError(cur.full_url, 310, "too many redirects", None, None)
+
+
 def fetch_etfortune_nav_payload(stock_id: str, timeout: int = 20) -> dict:
     sid = str(stock_id or "").strip()
     if not sid:
@@ -318,7 +342,7 @@ def fetch_etfortune_nav_payload(stock_id: str, timeout: int = 20) -> dict:
         "Accept": "application/json,text/javascript,*/*;q=0.8",
     }
     req = Request(TWSE_ETF_NAV_CHART, data=body, headers=headers)
-    with urlopen(req, timeout=timeout) as resp:
+    with _urlopen_follow(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8", errors="replace"))
     return payload if isinstance(payload, dict) else {}
 
@@ -334,7 +358,7 @@ def fetch_tpex_etf_product_payload(stock_id: str, timeout: int = 20) -> dict:
         "Accept": "application/json,text/javascript,*/*;q=0.8",
     }
     req = Request(url, headers=headers)
-    with urlopen(req, timeout=timeout) as resp:
+    with _urlopen_follow(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8", errors="replace"))
     return payload if isinstance(payload, dict) else {}
 
