@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from biaoke_ingest import (
     SESSION_EVERY_SEC,
     AFTER_EVERY_SEC,
+    AFTER_UNTIL_HOUR,
     NIGHT_EVERY_SEC,
     ingest_public_posts,
     parse_article_html,
@@ -87,6 +88,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert "walk_biaoke_posts" in boot
     assert SESSION_EVERY_SEC == 10 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
+    assert AFTER_UNTIL_HOUR == 3
 
 
 def test_poll_wait_session_after_night():
@@ -98,11 +100,13 @@ def test_poll_wait_session_after_night():
     night = datetime(2026, 9, 9, 23, 10, tzinfo=tz)
     assert poll_wait_seconds(night) == AFTER_EVERY_SEC
     dawn = datetime(2026, 9, 10, 2, 0, tzinfo=tz)
-    assert poll_wait_seconds(dawn) == 7 * 60 * 60
+    assert poll_wait_seconds(dawn) == AFTER_EVERY_SEC
     late_night = datetime(2026, 9, 10, 0, 50, tzinfo=tz)
     assert poll_wait_seconds(late_night) == AFTER_EVERY_SEC
     after_one = datetime(2026, 9, 10, 1, 20, tzinfo=tz)
-    assert poll_wait_seconds(after_one) == 7 * 60 * 60 + 40 * 60
+    assert poll_wait_seconds(after_one) == AFTER_EVERY_SEC
+    after_three = datetime(2026, 9, 10, 3, 0, tzinfo=tz)
+    assert poll_wait_seconds(after_three) == 6 * 60 * 60
     sat = datetime(2026, 9, 12, 10, 30, tzinfo=tz)
     assert poll_wait_seconds(sat) == NIGHT_EVERY_SEC
 

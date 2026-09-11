@@ -82,4 +82,5 @@ def test_verify_45839_holds_through_sep10():
     assert chk["held"] is True
     assert float(chk["nearest_later_low"]) > 45839
     text = format_trace("45839 有沒有守住", db)
-    assert "還沒破" in text
+    assert "45839" in text
+    assert "低不破" in text or "還沒破" in text or "仍高於 45839" in text

@@ -222,6 +222,22 @@ def live_notes(db_path: str, ask: str) -> str:
         tr = format_trace(ask, db_path)
         if tr:
             bits.append("時間線 " + _clip(tr, 900))
+        try:
+            from biaoke_verify import format_origin_backtest, format_watch, is_watch_ask
+
+            if is_watch_ask(ask):
+                bits.append("核對 " + _clip(format_watch(db_path), 900))
+            if re.search(r"(第一篇|從第一|回測|一步一腳印)", ask):
+                bits.append("從第一篇 " + _clip(format_origin_backtest(db_path), 500))
+        except Exception:
+            pass
+        try:
+            from biaoke_audit import format_audit, is_audit_ask
+
+            if is_audit_ask(ask):
+                bits.append("三遍交叉 " + _clip(format_audit(db_path), 900))
+        except Exception:
+            pass
         for _title, body in match_methods(ask, limit=2):
             bits.append("方法 " + _clip(body, 400))
         keyed = match_posts(ask, limit=3, db_path=db_path)

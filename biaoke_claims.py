@@ -433,6 +433,33 @@ def _claim_key(
     )
 
 
+def _load_tx_bars(conn: sqlite3.Connection, session: str) -> List[Dict[str, Any]]:
+    try:
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, volume FROM futures_daily "
+            "WHERE symbol='TX' AND session=? ORDER BY date",
+            (session,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    out = []
+    for r in rows:
+        ymd = _ymd(r[0])
+        if not ymd or r[2] is None or r[3] is None or r[4] is None:
+            continue
+        out.append(
+            {
+                "date": ymd,
+                "open": r[1],
+                "high": r[2],
+                "low": r[3],
+                "close": r[4],
+                "volume": r[5],
+            }
+        )
+    return out
+
+
 def _load_bars(conn: sqlite3.Connection, sid: str) -> List[Dict[str, Any]]:
     try:
         if sid == "TWII":
@@ -572,9 +599,16 @@ def file_biaoke_claims(
         by_sid: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
         for c in rows:
             sid = str(c.get("stock_id") or "")
-            if sid not in bar_cache:
-                bar_cache[sid] = _load_bars(conn, sid)
-            bars = bar_cache[sid]
+            snippet = str(c.get("snippet") or "")
+            if sid == "TWII" and "夜盤" in snippet:
+                cache_key = "TX:night"
+                if cache_key not in bar_cache:
+                    bar_cache[cache_key] = _load_tx_bars(conn, "night")
+                bars = bar_cache[cache_key]
+            else:
+                if sid not in bar_cache:
+                    bar_cache[sid] = _load_bars(conn, sid)
+                bars = bar_cache[sid]
             bar = _bar_at(bars, c.get("post_date") or "")
             if bar:
                 stats["with_bar"] += 1

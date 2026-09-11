@@ -167,6 +167,12 @@ def test_live_notes_always_has_latest_posts_and_replies():
     assert "細微波" in wave or "48218" in wave
     assert "45839" in wave
     assert "時間線" in wave
+    from unittest.mock import patch
+
+    with patch("biaoke_audit.format_audit", return_value="三遍交叉：指紋全同。不是買訊。"):
+        audit = live_notes("", "要做三次並交叉比對全部資料一字不漏")
+    assert "三遍交叉" in audit
+    assert "指紋全同" in audit
 
 
 def test_live_reply_system_forbids_invented_index(monkeypatch):

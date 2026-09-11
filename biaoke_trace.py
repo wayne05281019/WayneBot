@@ -251,19 +251,26 @@ def format_trace(ask: str, db_path: str = "") -> str:
         if pat.search(q):
             parts.append(body)
     if _HOLD_ASK.search(q):
+        live = ""
+        try:
+            from biaoke_verify import format_watch
+
+            live = format_watch(db_path)
+        except Exception:
+            live = ""
         extra = ""
-        chk = verify_level_holds(db_path, sid="TWII", ymd="20260903")
-        if chk.get("ok") and chk.get("n_later"):
-            extra = f" 重算：9/3 低 {chk['level']:.2f}；"
-            if chk.get("held"):
-                extra += (
-                    f"{chk.get('nearest_later_date')} 低 {chk['nearest_later_low']:.2f} 最近，"
-                    f"到 {chk.get('last_date')} 還沒破。"
-                )
-            else:
-                extra += f"{chk.get('broke_on')} 已破。"
-            extra += "9/11 起那 2～3 日庫沒這天就不說守住。"
-        parts.append(HOLD + extra)
+        if not live:
+            chk = verify_level_holds(db_path, sid="TWII", ymd="20260903")
+            if chk.get("ok") and chk.get("n_later"):
+                extra = f" 重算：9/3 低 {chk['level']:.2f}；"
+                if chk.get("held"):
+                    extra += (
+                        f"{chk.get('nearest_later_date')} 低 {chk['nearest_later_low']:.2f} 最近，"
+                        f"到 {chk.get('last_date')} 還沒破。"
+                    )
+                else:
+                    extra += f"{chk.get('broke_on')} 已破。"
+        parts.append(HOLD + (("\n" + live) if live else extra))
     if _RAIL_ASK.search(q):
         extra = ""
         chk = verify_low_rail(
