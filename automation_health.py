@@ -173,13 +173,14 @@ def pipeline_expectations_met(db_path: str, cap: str = "") -> Dict[str, Any]:
             inc = pipeline_run_status(db_path, today) or pipeline_run_status(db_path, cap)
             if not inc or str(inc.get("status") or "") != "success":
                 reasons.append(f"盤後融合 {today} 未成功")
-        # 早上海選：06:45 後才要求 screen-{基準日} success（基準日＝06:30 當下庫內完整日）
-        # 常駐 data 角色擁有 morning 推播，本地 pipeline_runs 要有今早紀錄。
+        # 早上海選：開市日 06:45 後才要求 screen-{基準日} success。
+        # 週末／國定假不寄早報；若仍用「今天 06:35 基準日」會誤查 screen-{上周五}，
+        # 而週五早上實際寫的是更舊的 as_of，造成假紅。
         if hour >= 7:
             from config import scheduler_owns
-            from trading_calendar import morning_screen_pipeline_key
+            from trading_calendar import is_tw_open_calendar_day, morning_screen_pipeline_key
 
-            if scheduler_owns("morning"):
+            if scheduler_owns("morning") and is_tw_open_calendar_day(today):
                 screen_key = morning_screen_pipeline_key(db_path, now=now)
                 if not screen_key.endswith("-none"):
                     screen = pipeline_run_status(db_path, screen_key)
