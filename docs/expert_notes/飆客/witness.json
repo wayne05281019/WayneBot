@@ -1,0 +1,1249 @@
+{
+  "source": "witness-4way",
+  "n_claims": 216,
+  "gaps": {
+    "twii": 486,
+    "tsmc": 486,
+    "sox": 1255,
+    "tx_days": 397,
+    "tx_night": 376
+  },
+  "confirm": {
+    "n": 9,
+    "hold_pct": 77.8,
+    "mean_ret": 6.52
+  },
+  "confirm_aux2": {
+    "n": 6,
+    "hold_pct": 83.3,
+    "mean_ret": 4.95
+  },
+  "confirm_tsmc": {
+    "n": 3,
+    "hold_pct": 100.0,
+    "mean_ret": 10.0
+  },
+  "prelim": {
+    "n": 85,
+    "hold_pct": 52.9,
+    "mean_ret": 5.26
+  },
+  "rows": [
+    {
+      "id": "174079034",
+      "date": "20251002",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 6.59,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174233062:a1",
+      "date": "20251011",
+      "kind": "retract",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 3.2,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": false
+    },
+    {
+      "id": "174265901",
+      "date": "20251013",
+      "kind": "confirm",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 3.2,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174286038",
+      "date": "20251014",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 4.31,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174350155",
+      "date": "20251017",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 0.53,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174449227",
+      "date": "20251022",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -0.8,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174543276",
+      "date": "20251028",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -3.71,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174709624",
+      "date": "20251105",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 0.27,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174725446",
+      "date": "20251106",
+      "kind": "enter",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -0.37,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174806445",
+      "date": "20251110",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 1.56,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174837856",
+      "date": "20251111",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 1.43,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174845348",
+      "date": "20251111",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 1.43,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174866305:a2",
+      "date": "20251112",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 1.62,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "174955586",
+      "date": "20251117",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 1.53,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175038265",
+      "date": "20251120",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 0.15,
+      "tsmc_fire": false,
+      "sox_fire": false,
+      "tx_have": true
+    },
+    {
+      "id": "175058617:a4",
+      "date": "20251121",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 4.77,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175277637",
+      "date": "20251203",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 5.6,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175370499",
+      "date": "20251208",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 7.53,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175463971",
+      "date": "20251211",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 9.07,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175524137",
+      "date": "20251215",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 11.03,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175549760",
+      "date": "20251216",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 11.89,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175549760:a2",
+      "date": "20251216",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 11.89,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175582225",
+      "date": "20251217",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 14.11,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175626645",
+      "date": "20251219",
+      "kind": "prelim",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 14.67,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "175697119",
+      "date": "20251223",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 12.14,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176003454",
+      "date": "20260107",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 6.09,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176009540",
+      "date": "20260108",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 4.75,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176271818",
+      "date": "20260119",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 11.93,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176415974:a2",
+      "date": "20260129",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 0.72,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176574094",
+      "date": "20260129",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 0.72,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176726296",
+      "date": "20260205",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 6.4,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "176759285",
+      "date": "20260206",
+      "kind": "confirm",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.07,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177159447",
+      "date": "20260303",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -7.58,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177171247:a2",
+      "date": "20260304",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 1.05,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177185078",
+      "date": "20260304",
+      "kind": "retract",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 1.05,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177185078:a4",
+      "date": "20260304",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 1.05,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177239175",
+      "date": "20260306",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -1.1,
+      "tsmc_fire": true,
+      "sox_fire": false,
+      "tx_have": true
+    },
+    {
+      "id": "177285078",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177285078:a3",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177285078:a5",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177290288",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177290288:a1",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177302514",
+      "date": "20260309",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 8.26,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177577644",
+      "date": "20260320",
+      "kind": "retract",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 12.11,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177827162",
+      "date": "20260331",
+      "kind": "confirm",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 22.71,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177869093",
+      "date": "20260402",
+      "kind": "retract",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 25.17,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "177869093:a11",
+      "date": "20260405",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 23.8,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": false
+    },
+    {
+      "id": "177934281",
+      "date": "20260407",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 23.8,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "178215187:a3",
+      "date": "20260418",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 8.7,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "178644919:a2",
+      "date": "20260505",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 11.74,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "178897287",
+      "date": "20260513",
+      "kind": "enter",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 4.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "178975324",
+      "date": "20260515",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 7.28,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "179073099",
+      "date": "20260519",
+      "kind": "prelim",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 14.02,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "179102542",
+      "date": "20260520",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 14.63,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "179103326:a4",
+      "date": "20260520",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 14.63,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "179649871",
+      "date": "20260606",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 4.54,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "179649871:a1",
+      "date": "20260607",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 4.54,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": false
+    },
+    {
+      "id": "179670250",
+      "date": "20260607",
+      "kind": "enter",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": 4.54,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": false
+    },
+    {
+      "id": "179695879",
+      "date": "20260608",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 4.54,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180027059",
+      "date": "20260622",
+      "kind": "confirm",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -7.35,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180095518",
+      "date": "20260624",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -2.59,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180128537",
+      "date": "20260625",
+      "kind": "prelim",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -5.62,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180128537:a3",
+      "date": "20260626",
+      "kind": "retract",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -2.1,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180195092",
+      "date": "20260626",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -2.1,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180248741",
+      "date": "20260629",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -7.55,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180546630",
+      "date": "20260707",
+      "kind": "retract",
+      "aux_n": 1,
+      "aux": [
+        "sox"
+      ],
+      "hold20": false,
+      "ret20": -1.91,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180636248",
+      "date": "20260709",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -2.49,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180760371",
+      "date": "20260715",
+      "kind": "prelim",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -0.25,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "180898248",
+      "date": "20260721",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": 2.43,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181086800",
+      "date": "20260729",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 14.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181095970",
+      "date": "20260729",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 14.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181095970:a2",
+      "date": "20260729",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 14.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181095970:a5",
+      "date": "20260729",
+      "kind": "confirm",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 14.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181132138",
+      "date": "20260729",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "tsmc",
+        "sox"
+      ],
+      "hold20": true,
+      "ret20": 14.47,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181145877",
+      "date": "20260730",
+      "kind": "prelim",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 15.13,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181145877:a1",
+      "date": "20260730",
+      "kind": "prelim",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 15.13,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181180579",
+      "date": "20260731",
+      "kind": "confirm",
+      "aux_n": 3,
+      "aux": [
+        "tsmc",
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": 7.45,
+      "tsmc_fire": true,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "181246707:a2",
+      "date": "20260902",
+      "kind": "prelim",
+      "aux_n": 0,
+      "aux": [],
+      "hold20": false,
+      "ret20": 0.04,
+      "tsmc_fire": false,
+      "sox_fire": false,
+      "tx_have": true
+    },
+    {
+      "id": "184027446",
+      "date": "20260904",
+      "kind": "prelim",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": true,
+      "ret20": -0.79,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    },
+    {
+      "id": "184431393:a4",
+      "date": "20260909",
+      "kind": "enter",
+      "aux_n": 2,
+      "aux": [
+        "sox",
+        "tx"
+      ],
+      "hold20": false,
+      "ret20": -2.12,
+      "tsmc_fire": false,
+      "sox_fire": true,
+      "tx_have": true
+    }
+  ],
+  "now": {
+    "ok": true,
+    "date": "2026-09-11",
+    "twii_close": 46184.85,
+    "twii_low": 45942.44,
+    "aux_n": 1,
+    "aux": [
+      "sox"
+    ],
+    "tsmc": {
+      "fire": false,
+      "vol_ratio": 1.05,
+      "close_eq_low": true,
+      "false_break": false,
+      "close": 2410.0,
+      "low": 2405.0,
+      "volume": 18149016.0,
+      "date": "20260911"
+    },
+    "sox": {
+      "fire": true,
+      "new20_low": false,
+      "hold3": null,
+      "low": 11711.330078125,
+      "date": "20260911"
+    },
+    "tx": {
+      "fire": false,
+      "night_first": false,
+      "have": true,
+      "night_low": 46015.0,
+      "regular_low": 45780.0,
+      "date": "20260911"
+    },
+    "levels": {
+      "45839": true,
+      "46506": false,
+      "47578": false
+    },
+    "infer": "官方四路還沒疊滿，主音不夠、還不到確認"
+  }
+}

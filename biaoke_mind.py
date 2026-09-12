@@ -41,6 +41,13 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
         "同一套方法會錯（不破 40000、今天最低），確認常常晚 1～2 日。不是買訊。",
     ),
     (
+        re.compile(r"(四路|對質|現在確認|確認了沒|輔助現在|證人|官方對不對|疊得上)"),
+        "四路對質",
+        "新角度：確認不靠主音單一路。加權、台積電量價、費半、台指期夜盤四路對質。"
+        "缺官方序列就抓，庫沒 15 分仍不數段。某金融商品沒點名，不准寫死。"
+        "問『現在確認了沒』時帶最新官方日與輔助點了幾路。不是買訊。",
+    ),
+    (
         re.compile(
             r"(細微波|四步|怎麼觀察|如何觀察|觀察方法|走了?\s*5\s*段|五段)"
         ),
@@ -249,6 +256,13 @@ def format_methods_html(ask: str) -> str:
     except Exception:
         pass
     chunks.extend(html_escape(body) for _title, body in hits)
+    try:
+        from biaoke_witness import format_witness_html, is_witness_query
+
+        if is_witness_query(ask):
+            chunks.append(format_witness_html(ask))
+    except Exception:
+        pass
     return "\n".join(chunks)
 
 
@@ -389,6 +403,7 @@ def method_curriculum() -> List[str]:
         "有緣人那則在講什麼",
         "多重比對怎麼確認低點",
         "波浪沒辦法100%為什麼還能確認",
+        "現在確認了沒四路對質",
     ]
     out: List[str] = []
     seen = set()
