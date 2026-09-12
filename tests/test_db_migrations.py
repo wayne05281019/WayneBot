@@ -287,8 +287,10 @@ def test_minute_bars_table_after_migrate(fresh):
     run_migrations(fresh)
     conn = sqlite3.connect(fresh)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(minute_bars)")}
+    zcols = {r[1] for r in conn.execute("PRAGMA table_info(taifex_tick_zips)")}
     conn.close()
     assert cols >= {"stock_id", "interval", "ts", "o", "h", "l", "c", "v", "source"}
+    assert zcols >= {"ymd", "n", "updated_at"}
 
 
 def test_automation_audit_flags_pending_migrations(tmp_path, monkeypatch):

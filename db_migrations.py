@@ -261,6 +261,19 @@ def _m012_minute_bars(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m013_taifex_tick_zips(conn: sqlite3.Connection) -> None:
+    """期交所每日成交 zip 已抓過的檔名。週五夜盤柱時間≠zip 檔名日期。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS taifex_tick_zips (
+            ymd TEXT PRIMARY KEY,
+            n INTEGER,
+            updated_at TEXT
+        )
+        """
+    )
+
+
 MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = (
     (1, "daily_quotes 加 source/fetched_at 溯源", _m001_daily_quotes_lineage),
     (2, "daily_sector_flow 加 top_sell_*", _m002_sector_flow_top_sell),
@@ -274,6 +287,7 @@ MIGRATIONS: Tuple[Tuple[int, str, Callable[[sqlite3.Connection], None]], ...] = 
     (10, "ETF 官方收益分配除息日", _m010_etf_div_event),
     (11, "飆大公開文 overlay 表", _m011_biaoke_posts),
     (12, "15／60 分 K 歷史庫", _m012_minute_bars),
+    (13, "期交所成交 zip 已抓紀錄", _m013_taifex_tick_zips),
 )
 
 LATEST_VERSION = max(v for v, _, _ in MIGRATIONS)

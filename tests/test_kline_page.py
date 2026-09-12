@@ -63,6 +63,7 @@ def test_no_tradingview_product_hooks():
         "bot_servers.py",
         "wayne_navigator.py",
         "picture_guide.py",
+        "taifex_ticks.py",
     ):
         src = open(path, encoding="utf-8").read().lower()
         assert "tradingview.com" not in src, path
@@ -253,12 +254,79 @@ def test_minute_day_cover_cash_session_only(tmp_path):
     assert cover["to"].startswith("20260911")
     assert "1745" not in cover["to"]
     night = minute_cover_note(cover, night=True)
-    assert "夜盤" in night and "無數" in night
-    assert "46200" in night
+    assert "夜盤" in night and "不數" in night
+    assert "46200" not in night
     day = minute_cover_note(cover, night=False)
     assert "不發明" in day
+    assert "46200" in day
     empty = minute_cover_note({}, night=True)
     assert "不數" in empty
+
+
+def test_minute_night_cover_uses_tx_taifex_not_twii(tmp_path):
+    from kline_hop import (
+        minute_cover_note,
+        minute_night_cover,
+        save_minute_bars,
+    )
+
+    db = str(tmp_path / "m.db")
+    bars = []
+    t = 15 * 60
+    while t <= 16 * 60 + 45:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46300,
+                "h": 46400,
+                "l": 46200,
+                "c": 46350,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.extend(
+        [
+            {
+                "t": "202609120000",
+                "o": 46600,
+                "h": 46663,
+                "l": 46580,
+                "c": 46650,
+                "v": 1,
+            },
+            {
+                "t": "202609120445",
+                "o": 46050,
+                "h": 46100,
+                "l": 46041,
+                "c": 46080,
+                "v": 1,
+            },
+        ]
+    )
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    save_minute_bars(
+        "TWII",
+        "15",
+        [{"t": "202609110900", "o": 1, "h": 9, "l": 1, "c": 2, "v": 1}],
+        db,
+    )
+    cover = minute_night_cover("2026-09-11", db)
+    assert cover["session"] == "night"
+    assert cover["stock_id"] == "TX"
+    assert cover["n"] >= 8
+    assert cover["high"] == 46663
+    assert cover["low"] == 46041
+    assert cover["from"].startswith("2026091115")
+    assert "0445" in cover["to"]
+    note = minute_cover_note(cover, night=True)
+    assert "期交所" in note
+    assert "46663" in note
+    assert "46041" in note
+    assert "不發明" in note
+    assert "Yahoo" not in note
 
 
 def test_refresh_biaoke_minutes_skips_under_pytest(tmp_path, monkeypatch):

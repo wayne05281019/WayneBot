@@ -524,10 +524,7 @@ def minute_day_cover(
     ymd: str,
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """某日日盤 09:00～13:45 的 15／60 分覆蓋。沒庫或根數不夠回空。
-
-    Yahoo 沒有台指期夜盤連續盤，17:45 那種圖不在這裡。
-    """
+    """某日日盤 09:00～13:45 的 15／60 分覆蓋。沒庫或根數不夠回空。"""
     day = _ymd(ymd)
     if not day or not db_path:
         return {}
@@ -557,27 +554,74 @@ def minute_day_cover(
     }
 
 
+def minute_night_cover(
+    ymd: str,
+    db_path: Optional[str] = None,
+    *,
+    stock_id: str = "TX",
+    interval: str = "15",
+) -> Dict[str, Any]:
+    """某日夜盤：當日 15:00～23:45＋次日 00:00～05:00。來源期交所成交，不是 Yahoo。"""
+    from datetime import datetime, timedelta
+
+    day = _ymd(ymd)
+    if not day or not db_path:
+        return {}
+    try:
+        nxt = (datetime.strptime(day, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
+    except ValueError:
+        return {}
+    bars = load_minute_bars(stock_id, interval, db_path)
+    night: List[Dict[str, Any]] = []
+    for b in bars:
+        ts = str(b.get("t") or "")
+        if len(ts) < 12:
+            continue
+        d, hm_s = ts[:8], ts[8:12]
+        try:
+            hm = int(hm_s)
+        except ValueError:
+            continue
+        if d == day and 1500 <= hm <= 2345:
+            night.append(b)
+        elif d == nxt and 0 <= hm <= 500:
+            night.append(b)
+    if len(night) < 8:
+        return {}
+    return {
+        "n": len(night),
+        "high": max(float(b["h"]) for b in night),
+        "low": min(float(b["l"]) for b in night),
+        "from": str(night[0].get("t") or ""),
+        "to": str(night[-1].get("t") or ""),
+        "session": "night",
+        "stock_id": str(stock_id),
+        "interval": "15" if normalize_interval(interval) == "15" else "60",
+        "source": "taifex",
+    }
+
+
 def minute_cover_note(
     cover: Optional[Dict[str, Any]],
     *,
     night: bool,
 ) -> str:
-    """給建檔／判斷卡。有日盤柱只報高低，不准數他圖上的段。"""
-    have = bool(cover) and int((cover or {}).get("n") or 0) >= 8
+    """給建檔／判斷卡。有柱只報高低，不准數他圖上的段。"""
+    session = str((cover or {}).get("session") or "")
+    n = int((cover or {}).get("n") or 0)
+    have = bool(cover) and n >= 8
     if night:
-        if have:
+        if have and session == "night":
             h = _minute_px((cover or {}).get("high"))
             l = _minute_px((cover or {}).get("low"))
-            n = int((cover or {}).get("n") or 0)
             return (
-                f"夜盤 15 分無數段（Yahoo 只有日盤）。"
-                f"同日日盤 15 分 {n} 根，高 {h} 低 {l}。"
+                f"夜盤 15 分官方（期交所成交）{n} 根，高 {h} 低 {l}；"
+                f"不發明他圖上哪幾段。"
             )
-        return "夜盤 15 分 Yahoo 沒有，不數這則的段。"
-    if have:
+        return "夜盤 15 分官方還沒進這段，不數這則的段。"
+    if have and session != "night":
         h = _minute_px((cover or {}).get("high"))
         l = _minute_px((cover or {}).get("low"))
-        n = int((cover or {}).get("n") or 0)
         return f"日盤 15 分庫有 {n} 根，高 {h} 低 {l}；不發明他圖上哪幾段。"
     return "庫沒 15 分，不數這則的段。"
 
@@ -587,7 +631,7 @@ def refresh_biaoke_minutes(
     *,
     min_age_s: int = 1800,
 ) -> Dict[str, Any]:
-    """飆大對質用：加權／台積電／費半日盤 15＋60 分。已新就停。pytest 不打外網。"""
+    """飆大對質用：Yahoo 日盤 15＋60 分，外加期交所台指期夜盤成交。pytest 不打外網。"""
     global _LAST_BIAOKE_MINUTES
     import time
 
@@ -610,8 +654,18 @@ def refresh_biaoke_minutes(
                 continue
             saved += save_minute_bars(sid, iv, remote, path, source="yahoo")
             got.append(f"{sid}:{iv}:{len(remote)}")
+    tx: Dict[str, Any] = {}
+    try:
+        from taifex_ticks import refresh_tx_minutes
+
+        tx = refresh_tx_minutes(path, limit_zips=3)
+        saved += int(tx.get("saved") or 0)
+        if tx.get("days"):
+            got.append("TX:" + ",".join(str(x) for x in tx.get("days") or []))
+    except Exception:
+        tx = {"ok": False}
     _LAST_BIAOKE_MINUTES = time.monotonic()
-    stats.update({"ok": True, "saved": saved, "sids": got})
+    stats.update({"ok": True, "saved": saved, "sids": got, "tx": tx})
     return stats
 
 

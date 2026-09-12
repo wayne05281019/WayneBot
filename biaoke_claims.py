@@ -633,16 +633,24 @@ def file_biaoke_claims(
             ):
                 cover = {}
                 try:
-                    from kline_hop import minute_cover_note, minute_day_cover
-
-                    cover = minute_day_cover(
-                        "TWII", "15", str(c.get("post_date") or ""), db_path
+                    from kline_hop import (
+                        minute_cover_note,
+                        minute_day_cover,
+                        minute_night_cover,
                     )
+
                     night = "夜盤" in snip
+                    cover = (
+                        minute_night_cover(str(c.get("post_date") or ""), db_path)
+                        if night
+                        else minute_day_cover(
+                            "TWII", "15", str(c.get("post_date") or ""), db_path
+                        )
+                    )
                     c["hit"] = minute_cover_note(cover, night=night)
                 except Exception:
                     c["hit"] = (
-                        "夜盤15分無數段"
+                        "夜盤15分官方還沒進這段，不數這則的段"
                         if "夜盤" in snip
                         else "庫沒15分K不數段"
                     )

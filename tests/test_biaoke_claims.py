@@ -154,9 +154,7 @@ def test_file_claims_then_price_and_later_hit(tmp_path):
     assert "語料" not in html
 
 
-def test_file_wave_night_reports_day_cover_without_counting(tmp_path):
-    from kline_hop import save_minute_bars
-
+def _wave_night_db(tmp_path):
     db = str(tmp_path / "c.db")
     conn = sqlite3.connect(db)
     conn.execute(
@@ -170,6 +168,27 @@ def test_file_wave_night_reports_day_cover_without_counting(tmp_path):
     )
     conn.commit()
     conn.close()
+    return db
+
+
+def _night_post():
+    return [
+        {
+            "id": "n1",
+            "date": "2026-09-11",
+            "time": "17:49",
+            "kind": "post",
+            "text": "夜盤15分走出5段、下降軌破壞，今晚至少穿越46506。",
+            "_sids": ["TWII"],
+            "_snames": ["加權"],
+        }
+    ]
+
+
+def test_file_wave_night_without_tx_does_not_count(tmp_path):
+    from kline_hop import save_minute_bars
+
+    db = _wave_night_db(tmp_path)
     bars = []
     t = 9 * 60
     while t <= 13 * 60 + 15:
@@ -186,18 +205,7 @@ def test_file_wave_night_reports_day_cover_without_counting(tmp_path):
         )
         t += 15
     save_minute_bars("TWII", "15", bars, db)
-    posts = [
-        {
-            "id": "n1",
-            "date": "2026-09-11",
-            "time": "17:49",
-            "kind": "post",
-            "text": "夜盤15分走出5段、下降軌破壞，今晚至少穿越46506。",
-            "_sids": ["TWII"],
-            "_snames": ["加權"],
-        }
-    ]
-    stats = file_biaoke_claims(db, [(posts, 0)])
+    stats = file_biaoke_claims(db, [(_night_post(), 0)])
     assert stats["claims"] >= 1
     conn = sqlite3.connect(db)
     hit = conn.execute(
@@ -208,6 +216,61 @@ def test_file_wave_night_reports_day_cover_without_counting(tmp_path):
     blob = hit[0] or ""
     assert "夜盤" in blob
     assert "不數" in blob or "無數" in blob
-    assert "日盤" in blob
-    assert "46100" in blob
-    assert "45900" in blob
+    assert "46100" not in blob
+    assert "日盤" not in blob
+
+
+def test_file_wave_night_reports_tx_cover_without_counting(tmp_path):
+    from kline_hop import save_minute_bars
+
+    db = _wave_night_db(tmp_path)
+    bars = []
+    t = 15 * 60
+    while t <= 16 * 60 + 45:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46300,
+                "h": 46400,
+                "l": 46200,
+                "c": 46350,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.append(
+        {
+            "t": "202609120000",
+            "o": 46600,
+            "h": 46663,
+            "l": 46580,
+            "c": 46650,
+            "v": 1,
+        }
+    )
+    bars.append(
+        {
+            "t": "202609120445",
+            "o": 46050,
+            "h": 46100,
+            "l": 46041,
+            "c": 46080,
+            "v": 1,
+        }
+    )
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    stats = file_biaoke_claims(db, [(_night_post(), 0)])
+    assert stats["claims"] >= 1
+    conn = sqlite3.connect(db)
+    hit = conn.execute(
+        "SELECT hit FROM biaoke_claims WHERE role='wave'"
+    ).fetchone()
+    conn.close()
+    assert hit
+    blob = hit[0] or ""
+    assert "期交所" in blob
+    assert "46663" in blob
+    assert "46041" in blob
+    assert "不發明" in blob
+    assert "5段" not in blob.replace(" ", "") or "不發明" in blob
