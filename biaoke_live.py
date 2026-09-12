@@ -29,7 +29,7 @@ SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按�
 
 使用者加這顆鈕，是覺得他判斷很厲害：你要從他問的話反向想——他其實要什麼、飆大為何能這樣判、把你自己變成同一條推論，不要背稿。他沒點名的檔也觸類旁通同一套，可能看錯要講。
 
-神經元必須串成他的推論，不是關鍵字拼盤：①大盤巢穴 ②產業／主戰場還在不在 ③這族龍頭攻或休 ④這檔官方日K量先價行 ⑤長抱還是進出 ⑥可能看錯。材料裡的「神經元鏈」就是這條。先整條走完再開口；缺官方數字就標缺。圖是第④顆的眼睛，不是大腦。
+神經元必須串成他的推論，不是關鍵字拼盤：①大盤巢穴 ②產業／主戰場還在不在 ③這族龍頭攻或休 ④這檔官方日K量先價行 ⑤長抱還是進出 ⑥可能看錯。材料裡的「神經元鏈」就是這條。先整條走完再開口；缺官方數字就標缺。神經元鏈裡的收／高／低／量優先於舊文摘錄的「最近官方K」。圖是第④顆的眼睛，不是大腦。
 
 反向想的骨架（串起來用，不要當標題唸）：
 - 只講飆客本人主文和他樓下自回。路人發文不是重點；除非要對他回誰，否則不要拿別人的文來答。
@@ -151,13 +151,16 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
         "硬規則：點位只准用下面出現過的數字。沒有就說沒有。禁止 17000／16500。最新優先於舊文。"
         "判斷鏈／貫通是沿時間軸互證後的推論，不准改念原文。"
         "先走神經元鏈 1→6，再看最新發文；不准只抽一個關鍵字答完。"
+        "神經元鏈裡的收／高／低／量優先於舊文摘錄。"
     ]
+    chained = False
     try:
         from biaoke_chain import format_chain_notes
 
         chain = format_chain_notes(db_path, ask, uid=uid)
         if chain:
             bits.append(chain)
+            chained = True
     except Exception:
         logger.debug("飆大神經元鏈略過", exc_info=True)
     try:
@@ -183,7 +186,8 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             f"庫 {blob.get('from') or ''}～{blob.get('to') or ''} "
             f"主文{blob.get('n') or 0}＋樓下{blob.get('replies') or 0}"
         )
-        for p in mains[-3:]:
+        keep_m, keep_r = (2, 5) if chained else (3, 8)
+        for p in mains[-keep_m:]:
             charts = post_chart_urls(str(p.get("text") or ""))
             extra = f" 附圖{len(charts)}" if charts else ""
             bits.append(
@@ -195,7 +199,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 + " "
                 + _clip(p.get("text") or "", 420)
             )
-        for p in replies[-8:]:
+        for p in replies[-keep_r:]:
             bits.append(
                 "最新樓下 "
                 + str(p.get("date") or "")
@@ -204,7 +208,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 + " "
                 + _clip(p.get("text") or "", 280)
             )
-        for p in list(mains[-3:]) + list(replies[-8:]):
+        for p in list(mains[-keep_m:]) + list(replies[-keep_r:]):
             for hit in extract_index_levels(str(p.get("text") or "")):
                 bits.append(
                     "他原文點位 "
@@ -300,31 +304,32 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
         if hits:
             hit = hits[0]
             sid = str(hit.get("stock_id") or "")
-            try:
-                from biaoke_judge import format_judge_notes, judge_stock
+            if not chained:
+                try:
+                    from biaoke_judge import format_judge_notes, judge_stock
 
-                judged = format_judge_notes(
-                    judge_stock(db_path, sid, name=str(hit.get("stock_name") or ""))
-                )
-                if judged:
-                    bits.append(judged)
-            except Exception:
-                bars_s = load_bars(db_path, sid) if sid else []
-                st = volume_first_price(bars_s) if bars_s else {}
-                bits.append(
-                    "官方K "
-                    + sid
-                    + " "
-                    + str(hit.get("stock_name") or "")
-                    + " 爆量日="
-                    + str(st.get("spike_date") or "")
-                    + " 高="
-                    + str(st.get("spike_high") or "")
-                    + " 低="
-                    + str(st.get("spike_low") or "")
-                    + " 量縮="
-                    + str(st.get("shrinking"))
-                )
+                    judged = format_judge_notes(
+                        judge_stock(db_path, sid, name=str(hit.get("stock_name") or ""))
+                    )
+                    if judged:
+                        bits.append(judged)
+                except Exception:
+                    bars_s = load_bars(db_path, sid) if sid else []
+                    st = volume_first_price(bars_s) if bars_s else {}
+                    bits.append(
+                        "官方K "
+                        + sid
+                        + " "
+                        + str(hit.get("stock_name") or "")
+                        + " 爆量日="
+                        + str(st.get("spike_date") or "")
+                        + " 高="
+                        + str(st.get("spike_high") or "")
+                        + " 低="
+                        + str(st.get("spike_low") or "")
+                        + " 量縮="
+                        + str(st.get("shrinking"))
+                    )
             try:
                 from biaoke_walk import format_stock_walk
 

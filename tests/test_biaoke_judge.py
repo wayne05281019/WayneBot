@@ -274,3 +274,33 @@ def test_hold_note_splits_long_hold_f10_and_mediatek():
     assert "不是 4/16" in mtk or "不在" in mtk
     assert "尚未納入 F 系列" in mtk
     assert "台積電" in mtk
+
+
+def test_mediatek_self_leader_is_not_missing_leader():
+    from biaoke_judge import audit_certainty
+
+    hit = audit_certainty(
+        {
+            "sid": "2454",
+            "name": "聯發科",
+            "in_corpus": True,
+            "long_hold": False,
+            "struct": {
+                "sid": "2454",
+                "above_support": True,
+                "shrinking": True,
+                "broke_resistance": True,
+            },
+            "leader": {
+                "sid": "2454",
+                "name": "聯發科",
+                "why": "自己就是這族龍頭",
+                "struct": {"above_support": True, "shrinking": True, "broke_resistance": True},
+            },
+        }
+    )
+    blob = " ".join(hit.get("ok") or []) + str(hit.get("verdict") or "")
+    miss = " ".join(hit.get("miss") or [])
+    assert "沒對上這族龍頭" not in miss
+    assert "這族龍頭" in blob or "長抱另論" in blob
+    assert "半山腰" in miss

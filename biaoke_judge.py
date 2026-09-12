@@ -288,10 +288,10 @@ def audit_certainty(brief: Dict[str, Any]) -> Dict[str, Any]:
             ok.append("收在爆大量日低之上")
         else:
             miss.append("量價還沒站上爆大量日低，這次先放棄")
-        if st.get("shrinking"):
-            ok.append("量縮，比較像價穩")
-        elif st.get("broke_resistance") and not brief.get("long_hold"):
+        if st.get("broke_resistance") and not brief.get("long_hold"):
             miss.append("已過爆大量日高，半山腰他不當波段篤定")
+        elif st.get("shrinking"):
+            ok.append("量縮，比較像價穩")
         elif not st.get("broke_resistance"):
             miss.append("量還沒縮到他說的進場")
     lid = str(leader.get("sid") or "")
@@ -305,6 +305,11 @@ def audit_certainty(brief: Dict[str, Any]) -> Dict[str, Any]:
             ok.append(f"龍頭{leader.get('name') or lid}量價有動")
             if ls.get("broke_resistance"):
                 ok.append("龍頭已過高，這檔若還沒過才談補漲條件")
+    elif lid and lid == self_sid:
+        if brief.get("long_hold"):
+            ok.append("自己就是長線龍頭名單，看大盤窗口不是天天短打")
+        else:
+            ok.append("自己就是這族龍頭；長抱另論，不要偷換成 4/16 名單")
     elif brief.get("long_hold"):
         ok.append("自己就是長線龍頭名單，看大盤窗口不是天天短打")
     else:

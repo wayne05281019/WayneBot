@@ -13,6 +13,7 @@ from biaoke_live import SYSTEM, live_notes
 
 def test_system_requires_neuron_chain():
     assert "神經元必須串" in SYSTEM
+    assert "優先於舊文" in SYSTEM
     assert "大盤巢穴" in SYSTEM
     assert "長抱還是進出" in SYSTEM
     assert "圖是第④顆" in SYSTEM or "第④顆" in SYSTEM

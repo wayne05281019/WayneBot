@@ -365,6 +365,21 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
         )
     asks = _likely_asks(latest + latest_replies)
     out = [f"庫 {stamp}。", *lines]
+    try:
+        from biaoke_chain import fire_chain
+
+        nest = next(
+            (
+                s
+                for s in (fire_chain(db_path, "大盤現在怎麼看").get("steps") or [])
+                if s.get("id") == "nest"
+            ),
+            None,
+        )
+        if nest and nest.get("ok") and nest.get("text"):
+            out.insert(1, "現在大盤巢穴：" + str(nest.get("text") or "")[:240])
+    except Exception:
+        pass
     if infer:
         out.append(infer)
     if asks:
