@@ -320,11 +320,16 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         ]
         nest_t = str(nest.get("text") or "")
         if "45839 之上" in nest_t:
-            parts.append("大盤官方收還在 45839 之上，右肩低先當沒破。")
+            nest_bit = "大盤官方收還在 45839 之上，右肩低先當沒破"
         elif "已低於他自己點的 9/3 低 45839" in nest_t:
-            parts.append("大盤官方收已低於 45839，覆巢先當有事。")
+            nest_bit = "大盤官方收已低於 45839，覆巢先當有事"
         else:
-            parts.append("大盤官方點位有了。" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死。")
+            nest_bit = "大盤官方點位有了" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死"
+        if "已過他自己點的 46506" in nest_t:
+            nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
+        elif "還沒過他自己點的 46506" in nest_t:
+            nest_bit += "；夜盤高還沒過 46506"
+        parts.append(nest_bit + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
         if "不另對" in lead_t or "自己就是" in lead_t:
@@ -343,7 +348,7 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             parts.append(_clip(verdict[verdict.find("自問") :], 220))
         else:
             parts.append("沒疊滿就不講死。這不是買訊。")
-        return _clip("".join(parts), 720)
+        return _clip("".join(parts), 820)
     return _clip(
         "這句沒點檔：先把大盤巢穴走完（官方高低、四路對質、個股不數浪）。"
         "產業／長抱只在問句有點到時才串進去。",

@@ -176,6 +176,7 @@ def test_think_chains_45839_and_self_leader():
     fired = fire_chain(db, "台光電怎麼看")
     think = fired["think"]
     assert "45839" in think
+    assert "46506" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調整" in think
     mtk = fire_chain(db, "聯發科怎麼看")
