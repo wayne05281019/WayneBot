@@ -138,6 +138,8 @@ def _cheap_health_data() -> dict:
         "reasons": reasons,
         "biaoke_n": 0,
         "biaoke_replies": 0,
+        "biaoke_latest_id": "",
+        "biaoke_latest_at": "",
     }
     try:
         import sqlite3
@@ -167,6 +169,16 @@ def _cheap_health_data() -> dict:
                     )[0]
                     or 0
                 )
+                latest_post = conn.execute(
+                    "SELECT id, date, time FROM biaoke_posts "
+                    "WHERE IFNULL(kind,'post')!='reply' "
+                    "ORDER BY date DESC, time DESC, id DESC LIMIT 1"
+                ).fetchone()
+                if latest_post:
+                    out["biaoke_latest_id"] = str(latest_post[0] or "")
+                    day = str(latest_post[1] or "").strip()
+                    hm = str(latest_post[2] or "").strip()
+                    out["biaoke_latest_at"] = (day + " " + hm).strip()
         finally:
             conn.close()
     except Exception:
@@ -207,6 +219,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "cmoney_comment_http": 0,
                 "biaoke_n": 0,
                 "biaoke_replies": 0,
+                "biaoke_latest_id": "",
+                "biaoke_latest_at": "",
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
@@ -228,6 +242,12 @@ class HealthHandler(BaseHTTPRequestHandler):
                     payload["reasons"] = list(data.get("reasons") or [])
                     payload["biaoke_n"] = int(data.get("biaoke_n") or 0)
                     payload["biaoke_replies"] = int(data.get("biaoke_replies") or 0)
+                    payload["biaoke_latest_id"] = str(
+                        data.get("biaoke_latest_id") or ""
+                    )
+                    payload["biaoke_latest_at"] = str(
+                        data.get("biaoke_latest_at") or ""
+                    )
                 except Exception as e:
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)

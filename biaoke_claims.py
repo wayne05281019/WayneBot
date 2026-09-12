@@ -373,7 +373,10 @@ def extract_claims(
             if bind and bind.get("stock_id"):
                 note = _clip(sent, 110)
                 if re.search(r"15\s*分|60\s*分", sent):
-                    note = "庫沒15分K不數段。" + note
+                    if re.search(r"夜盤", sent):
+                        note = "夜盤15分無數段。" + note
+                    else:
+                        note = "庫沒15分K不數段。" + note
                 add(
                     {
                         "stock_id": bind["stock_id"],
@@ -621,8 +624,28 @@ def file_biaoke_claims(
                 c["then_open"] = c["then_high"] = c["then_low"] = None
                 c["then_close"] = c["then_volume"] = None
             role = str(c.get("role") or "")
-            if role == "wave" and "庫沒15分K" in str(c.get("snippet") or ""):
-                c["hit"] = "庫沒15分K不數段"
+            snip = str(c.get("snippet") or "")
+            if role == "wave" and (
+                "15分" in snip.replace(" ", "")
+                or "庫沒15分" in snip
+                or "夜盤15分" in snip
+                or "有日盤15分" in snip
+            ):
+                cover = {}
+                try:
+                    from kline_hop import minute_cover_note, minute_day_cover
+
+                    cover = minute_day_cover(
+                        "TWII", "15", str(c.get("post_date") or ""), db_path
+                    )
+                    night = "夜盤" in snip
+                    c["hit"] = minute_cover_note(cover, night=night)
+                except Exception:
+                    c["hit"] = (
+                        "夜盤15分無數段"
+                        if "夜盤" in snip
+                        else "庫沒15分K不數段"
+                    )
                 c["hit_date"] = ""
                 c["later_extreme"] = None
             elif role in ("target", "pressure", "support", "stop"):

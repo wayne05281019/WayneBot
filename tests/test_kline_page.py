@@ -215,6 +215,65 @@ def test_yahoo_minute_ranges_try_longer_first():
     assert _yahoo_minute_ranges("60m")[0] == "2y"
 
 
+def test_yahoo_chart_symbol_index_not_tw_suffix():
+    from kline_hop import yahoo_chart_symbol
+
+    assert yahoo_chart_symbol("TWII") == "^TWII"
+    assert yahoo_chart_symbol("SOX") == "^SOX"
+    assert yahoo_chart_symbol("2330").endswith(".TW")
+
+
+def test_minute_day_cover_cash_session_only(tmp_path):
+    from kline_hop import minute_cover_note, minute_day_cover, save_minute_bars
+
+    db = str(tmp_path / "m.db")
+    bars = []
+    t = 9 * 60
+    while t <= 13 * 60 + 30:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46000,
+                "h": 46200,
+                "l": 45800,
+                "c": 46100,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.append(
+        {"t": "202609111745", "o": 1, "h": 2, "l": 1, "c": 1.5, "v": 0}
+    )
+    save_minute_bars("TWII", "15", bars, db)
+    cover = minute_day_cover("TWII", "15", "2026-09-11", db)
+    assert cover["n"] >= 8
+    assert cover["high"] == 46200
+    assert cover["low"] == 45800
+    assert cover["to"].startswith("20260911")
+    assert "1745" not in cover["to"]
+    night = minute_cover_note(cover, night=True)
+    assert "夜盤" in night and "無數" in night
+    assert "46200" in night
+    day = minute_cover_note(cover, night=False)
+    assert "不發明" in day
+    empty = minute_cover_note({}, night=True)
+    assert "不數" in empty
+
+
+def test_refresh_biaoke_minutes_skips_under_pytest(tmp_path, monkeypatch):
+    from kline_hop import refresh_biaoke_minutes
+
+    called = []
+    monkeypatch.setattr(
+        "kline_hop._download_yahoo_minutes",
+        lambda *a, **k: called.append(1) or [],
+    )
+    out = refresh_biaoke_minutes(str(tmp_path / "m.db"))
+    assert out.get("skipped") == "pytest"
+    assert called == []
+
+
 def test_kline_minute_http_uses_store(tmp_path, monkeypatch):
     import json
     import threading

@@ -170,3 +170,22 @@ def test_ingest_never_starts_from_520_or_empty_dump(tmp_path):
         str(p.get("date") or "") == "2023-12-04" and "智原" in str(p.get("text") or "")
         for p in fused["posts"]
     )
+
+
+def test_unchanged_ingest_skips_walk(tmp_path, monkeypatch):
+    db = str(tmp_path / "w.db")
+    first = ingest_public_posts(
+        db_path=db, session=_Fake(), max_ids=3, refresh_latest=2
+    )
+    assert first["ok"]
+
+    def boom(*_a, **_k):
+        raise AssertionError("沒新文不該再 walk／link")
+
+    monkeypatch.setattr("biaoke_walk.walk_biaoke_posts", boom)
+    monkeypatch.setattr("biaoke_link.link_biaoke_db", boom)
+    again = ingest_public_posts(
+        db_path=db, session=_Fake(), max_ids=3, refresh_latest=2
+    )
+    assert again["ok"]
+    assert again.get("skipped_walk") is True

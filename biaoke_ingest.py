@@ -926,32 +926,41 @@ def ingest_public_posts(
                 uniq.append(by_id[aid])
         stats["db"] = upsert_biaoke_posts(dbp, uniq)
         try:
-            from biaoke_digest import record_ingest_events
+            from kline_hop import refresh_biaoke_minutes
 
-            stats["inbox"] = record_ingest_events(dbp, events)
+            stats["minutes"] = refresh_biaoke_minutes(dbp)
         except Exception:
-            logger.exception("飆大未讀匣寫入失敗")
-        try:
-            from biaoke_link import link_biaoke_db
-
-            linked = link_biaoke_db(dbp)
-            stats["links"] = int(linked.get("mentions") or 0)
-            from biaoke_walk import walk_biaoke_posts
-
-            walked = walk_biaoke_posts(dbp, fetch_missing=False)
-            stats["facts"] = int(walked.get("facts") or 0)
+            logger.exception("飆大日盤15分續補失敗")
+        if uniq:
             try:
-                from biaoke_walk import run_quote_month_backfill
+                from biaoke_digest import record_ingest_events
 
-                filled = run_quote_month_backfill(
-                    dbp, limit=12, sleep_s=0.5, rewalk=True
-                )
-                stats["quote_months"] = int(filled.get("months") or 0)
+                stats["inbox"] = record_ingest_events(dbp, events)
             except Exception:
-                logger.exception("飆大缺月日K續補失敗")
-        except Exception:
-            logger.exception("飆大公開文連到行情庫失敗")
-        _after_ingest_analyze(dbp, events)
+                logger.exception("飆大未讀匣寫入失敗")
+            try:
+                from biaoke_link import link_biaoke_db
+
+                linked = link_biaoke_db(dbp)
+                stats["links"] = int(linked.get("mentions") or 0)
+                from biaoke_walk import walk_biaoke_posts
+
+                walked = walk_biaoke_posts(dbp, fetch_missing=False)
+                stats["facts"] = int(walked.get("facts") or 0)
+                try:
+                    from biaoke_walk import run_quote_month_backfill
+
+                    filled = run_quote_month_backfill(
+                        dbp, limit=12, sleep_s=0.5, rewalk=True
+                    )
+                    stats["quote_months"] = int(filled.get("months") or 0)
+                except Exception:
+                    logger.exception("飆大缺月日K續補失敗")
+            except Exception:
+                logger.exception("飆大公開文連到行情庫失敗")
+            _after_ingest_analyze(dbp, events)
+        else:
+            stats["skipped_walk"] = True
     if dest and not _is_git_seed_path(dest):
         _save_corpus(dest, blob, posts)
     else:

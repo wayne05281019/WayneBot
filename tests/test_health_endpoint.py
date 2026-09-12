@@ -85,6 +85,8 @@ def test_health_200_when_process_can_serve(serve):
     assert "cmoney_comment_http" in body
     assert "biaoke_n" in body
     assert "biaoke_replies" in body
+    assert "biaoke_latest_id" in body
+    assert "biaoke_latest_at" in body
 
 
 def test_health_cmoney_ok_follows_env_without_leaking_token(serve, monkeypatch):
@@ -98,6 +100,35 @@ def test_health_cmoney_ok_follows_env_without_leaking_token(serve, monkeypatch):
     assert body["cmoney_ok"] is True
     dumped = json.dumps(body, ensure_ascii=False)
     assert "not-a-real-token-xyz" not in dumped
+    assert "Bearer" not in dumped
+
+
+def test_health_reports_latest_biaoke_post(serve):
+    get, db, main = serve
+    from biaoke_desk import upsert_biaoke_posts
+
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": "184545002",
+                "n": 1,
+                "date": "2026-09-11",
+                "time": "17:49",
+                "kind": "post",
+                "tags": [],
+                "text": "1. 台指期夜盤15分鐘線",
+            }
+        ],
+    )
+    main._HEALTH_DATA_CACHE["at"] = 0.0
+    main._HEALTH_DATA_CACHE["payload"] = None
+    code, body = get("/health")
+    assert code == 200
+    assert body["biaoke_latest_id"] == "184545002"
+    assert "2026-09-11" in body["biaoke_latest_at"]
+    assert "17:49" in body["biaoke_latest_at"]
+    dumped = json.dumps(body, ensure_ascii=False)
     assert "Bearer" not in dumped
 
 

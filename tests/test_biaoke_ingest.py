@@ -415,6 +415,8 @@ def test_fetch_author_replies_api_uses_user_script_urls(monkeypatch):
     assert "seed_biaoke_archive" in src
     assert "run_quote_month_backfill" in src
     assert "fetch_missing=False" in src
+    assert "refresh_biaoke_minutes" in src
+    assert "skipped_walk" in src
     desk = inspect.getsource(load_corpus)
     assert "copy.deepcopy(_load_seed())" not in desk
     assert "不要退回 520" in desk

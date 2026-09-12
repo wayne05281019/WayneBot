@@ -65,7 +65,8 @@ def test_extract_wave_marks_missing_15m():
     hits = extract_claims("夜盤15分走出5段、下降軌破壞，今晚至少穿越46506。")
     waves = [h for h in hits if h["role"] == "wave"]
     assert waves
-    assert "庫沒15分K不數段" in waves[0]["snippet"]
+    assert "無數" in waves[0]["snippet"] or "不數" in waves[0]["snippet"]
+    assert "夜盤" in waves[0]["snippet"]
 
 
 def test_file_claims_then_price_and_later_hit(tmp_path):
@@ -151,3 +152,62 @@ def test_file_claims_then_price_and_later_hit(tmp_path):
     assert "前次" in html or "後次" in html
     assert "不是買訊" in html
     assert "語料" not in html
+
+
+def test_file_wave_night_reports_day_cover_without_counting(tmp_path):
+    from kline_hop import save_minute_bars
+
+    db = str(tmp_path / "c.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            PRIMARY KEY (date, stock_id)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    bars = []
+    t = 9 * 60
+    while t <= 13 * 60 + 15:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46000,
+                "h": 46100,
+                "l": 45900,
+                "c": 46050,
+                "v": 1,
+            }
+        )
+        t += 15
+    save_minute_bars("TWII", "15", bars, db)
+    posts = [
+        {
+            "id": "n1",
+            "date": "2026-09-11",
+            "time": "17:49",
+            "kind": "post",
+            "text": "夜盤15分走出5段、下降軌破壞，今晚至少穿越46506。",
+            "_sids": ["TWII"],
+            "_snames": ["加權"],
+        }
+    ]
+    stats = file_biaoke_claims(db, [(posts, 0)])
+    assert stats["claims"] >= 1
+    conn = sqlite3.connect(db)
+    hit = conn.execute(
+        "SELECT hit FROM biaoke_claims WHERE role='wave'"
+    ).fetchone()
+    conn.close()
+    assert hit
+    blob = hit[0] or ""
+    assert "夜盤" in blob
+    assert "不數" in blob or "無數" in blob
+    assert "日盤" in blob
+    assert "46100" in blob
+    assert "45900" in blob

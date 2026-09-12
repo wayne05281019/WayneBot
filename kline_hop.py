@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -437,31 +438,46 @@ def _yahoo_minute_ranges(yahoo_iv: str) -> tuple:
     return ("2y", "1y", "6mo", "1mo")
 
 
+def yahoo_chart_symbol(stock_id: str, db_path: Optional[str] = None) -> str:
+    """Yahoo chart 代號。加權／費半是 ^ 指數，不是 .TW。"""
+    sid = str(stock_id or "").strip()
+    key = sid.upper()
+    if key in {"TWII", "TWA00", "^TWII", "TAIEX"}:
+        return "^TWII"
+    if key in {"SOX", "^SOX"}:
+        return "^SOX"
+    if sid.startswith("^"):
+        return sid
+    from stock_links import yahoo_exchange
+
+    return f"{sid}.{yahoo_exchange(sid, db_path)}"
+
+
 def _download_yahoo_minutes(
     stock_id: str, interval: str, db_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Yahoo 分 K：長 range 失敗再縮。不寫庫。"""
     import requests
 
-    from stock_links import yahoo_exchange
-
     sid = str(stock_id or "").strip()
     if not sid:
         return []
     yahoo_iv = "15m" if normalize_interval(interval) == "15" else "60m"
-    yid = f"{sid}.{yahoo_exchange(sid, db_path)}"
+    yid = yahoo_chart_symbol(sid, db_path)
     last: List[Dict[str, Any]] = []
+    ua = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
     for rng in _yahoo_minute_ranges(yahoo_iv):
         url = (
             f"https://query1.finance.yahoo.com/v8/finance/chart/{yid}"
             f"?interval={yahoo_iv}&range={rng}"
         )
         try:
-            resp = requests.get(
-                url,
-                timeout=8,
-                headers={"User-Agent": "WayneBot/1.0"},
-            )
+            resp = requests.get(url, timeout=8, headers=ua)
             if resp.status_code != 200:
                 continue
             bars = parse_yahoo_chart_bars(resp.json() or {})
@@ -485,6 +501,118 @@ def fetch_yahoo_minutes(
     if db_path and remote:
         save_minute_bars(sid, interval, remote, db_path)
     return merge_minute_bars(stored, remote)
+
+
+BIAOKE_MINUTE_SIDS = ("TWII", "2330", "SOX")
+BIAOKE_MINUTE_IVS = ("15", "60")
+_LAST_BIAOKE_MINUTES = 0.0
+
+
+def _minute_px(val: Any) -> str:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if abs(n - round(n)) < 0.05:
+        return str(int(round(n)))
+    return f"{n:.2f}".rstrip("0").rstrip(".")
+
+
+def minute_day_cover(
+    stock_id: str,
+    interval: str,
+    ymd: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """某日日盤 09:00～13:45 的 15／60 分覆蓋。沒庫或根數不夠回空。
+
+    Yahoo 沒有台指期夜盤連續盤，17:45 那種圖不在這裡。
+    """
+    day = _ymd(ymd)
+    if not day or not db_path:
+        return {}
+    bars = load_minute_bars(stock_id, interval, db_path)
+    cash: List[Dict[str, Any]] = []
+    for b in bars:
+        ts = str(b.get("t") or "")
+        if len(ts) < 12 or ts[:8] != day:
+            continue
+        try:
+            hm = int(ts[8:12])
+        except ValueError:
+            continue
+        if 900 <= hm <= 1345:
+            cash.append(b)
+    if len(cash) < 8:
+        return {}
+    return {
+        "n": len(cash),
+        "high": max(float(b["h"]) for b in cash),
+        "low": min(float(b["l"]) for b in cash),
+        "from": str(cash[0].get("t") or ""),
+        "to": str(cash[-1].get("t") or ""),
+        "session": "day",
+        "stock_id": str(stock_id),
+        "interval": "15" if normalize_interval(interval) == "15" else "60",
+    }
+
+
+def minute_cover_note(
+    cover: Optional[Dict[str, Any]],
+    *,
+    night: bool,
+) -> str:
+    """給建檔／判斷卡。有日盤柱只報高低，不准數他圖上的段。"""
+    have = bool(cover) and int((cover or {}).get("n") or 0) >= 8
+    if night:
+        if have:
+            h = _minute_px((cover or {}).get("high"))
+            l = _minute_px((cover or {}).get("low"))
+            n = int((cover or {}).get("n") or 0)
+            return (
+                f"夜盤 15 分無數段（Yahoo 只有日盤）。"
+                f"同日日盤 15 分 {n} 根，高 {h} 低 {l}。"
+            )
+        return "夜盤 15 分 Yahoo 沒有，不數這則的段。"
+    if have:
+        h = _minute_px((cover or {}).get("high"))
+        l = _minute_px((cover or {}).get("low"))
+        n = int((cover or {}).get("n") or 0)
+        return f"日盤 15 分庫有 {n} 根，高 {h} 低 {l}；不發明他圖上哪幾段。"
+    return "庫沒 15 分，不數這則的段。"
+
+
+def refresh_biaoke_minutes(
+    db_path: str,
+    *,
+    min_age_s: int = 1800,
+) -> Dict[str, Any]:
+    """飆大對質用：加權／台積電／費半日盤 15＋60 分。已新就停。pytest 不打外網。"""
+    global _LAST_BIAOKE_MINUTES
+    import time
+
+    stats: Dict[str, Any] = {"ok": False, "saved": 0, "sids": []}
+    path = str(db_path or "").strip()
+    if not path:
+        return stats
+    if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_ALLOW_MINUTES") != "1":
+        return {**stats, "skipped": "pytest"}
+    now = time.monotonic()
+    if _LAST_BIAOKE_MINUTES and now - _LAST_BIAOKE_MINUTES < max(60, int(min_age_s)):
+        return {**stats, "ok": True, "skipped": "fresh"}
+    ensure_minute_bars_table(path)
+    saved = 0
+    got: List[str] = []
+    for sid in BIAOKE_MINUTE_SIDS:
+        for iv in BIAOKE_MINUTE_IVS:
+            remote = _download_yahoo_minutes(sid, iv, path)
+            if not remote:
+                continue
+            saved += save_minute_bars(sid, iv, remote, path, source="yahoo")
+            got.append(f"{sid}:{iv}:{len(remote)}")
+    _LAST_BIAOKE_MINUTES = time.monotonic()
+    stats.update({"ok": True, "saved": saved, "sids": got})
+    return stats
 
 
 def render_kline_html(
