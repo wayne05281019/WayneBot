@@ -280,6 +280,10 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
         asks.append("夜盤過了沒")
     if "45839" in blob:
         asks.append("45839有沒有守")
+    if "47578" in blob:
+        asks.append("47578過了沒")
+    if "長線" in blob or "龍頭" in blob:
+        asks.append("長線龍頭現在怎麼抱")
     for tag in tags:
         if tag in _ASK_SKIP or tag in asks:
             continue
@@ -307,10 +311,24 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
         return ""
     blob = load_corpus(db_path if db_path else None)
     posts = list((blob or {}).get("posts") or [])
-    mains = [p for p in posts if (p.get("kind") or "post") != "reply"]
+    try:
+        from biaoke_ingest import is_biaoke_voice
+    except Exception:
+        is_biaoke_voice = lambda _t: True  # noqa: E731
+    mains = [
+        p
+        for p in posts
+        if (p.get("kind") or "post") != "reply" and is_biaoke_voice(str(p.get("text") or ""))
+    ]
+    replies = [
+        p
+        for p in posts
+        if p.get("kind") == "reply" and is_biaoke_voice(str(p.get("text") or ""))
+    ]
     if not mains:
         return ""
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
+    latest_replies = list(reversed(replies[-max(0, int(n_reply)) :])) if n_reply else []
     lines: List[str] = []
     for p in latest:
         body = _oral_body(str(p.get("text") or ""), 96)
@@ -320,6 +338,14 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
         when = str(p.get("time") or "").strip()
         stamp = " ".join(x for x in (day, when) if x)
         lines.append((stamp + " " + body).strip())
+    for p in latest_replies[:2]:
+        body = _oral_body(str(p.get("text") or ""), 80)
+        if not body:
+            continue
+        day = str(p.get("date") or "").strip()
+        when = str(p.get("time") or "").strip()
+        stamp = " ".join(x for x in (day, when) if x)
+        lines.append(("樓下 " + stamp + " " + body).strip())
     if not lines:
         return ""
     stamp = " ".join(
@@ -330,14 +356,14 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
         )
         if x
     )
-    blob_l = " ".join(str(p.get("text") or "") for p in latest)
+    blob_l = " ".join(str(p.get("text") or "") for p in latest + latest_replies)
     infer = ""
     if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪)", blob_l):
         infer = (
             "這幾則是在看大盤。方向可以準，位階他不講死，要點數再驗。"
-            "個股很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
+            "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
         )
-    asks = _likely_asks(latest)
+    asks = _likely_asks(latest + latest_replies)
     out = [f"庫 {stamp}。", *lines]
     if infer:
         out.append(infer)

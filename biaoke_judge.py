@@ -39,7 +39,18 @@ _CHAIN = (
     (("高階測試", "探針"), "6515", "穎崴"),
     (("IC設計", "IC 設計"), "2454", "聯發科"),
     (("伺服器", "AI伺服"), "2382", "廣達"),
+    (("PCB", "CCL", "銅箔基板"), "2383", "台光電"),
 )
+
+# 2026-04-16：可抱到明年的長線主流龍頭；大盤大跌時介入，不是天天短打。
+_LONG_HOLD = {
+    "2330": "台積電",
+    "2308": "台達電",
+    "2383": "台光電",
+    "6230": "旺矽",
+    "6515": "穎崴",
+    "3017": "奇鋐",
+}
 
 
 def _ymd(raw: Any) -> str:
@@ -93,6 +104,11 @@ def leader_of(db_path: str, sid: str, name: str = "") -> Tuple[str, str, str]:
         if hit[0] == sid:
             return sid, str(name or hit[1]), "自己就是這族龍頭"
         return hit[0], hit[1], "同族跟漲先看龍頭"
+    for _src, (lid, lname) in _FOLLOW.items():
+        if lid == sid:
+            return sid, str(name or lname), "自己就是這族龍頭"
+    if sid in _LONG_HOLD:
+        return sid, str(name or _LONG_HOLD[sid]), "自己就是長線龍頭"
     blob = (name or "") + " " + _industry(db_path, sid)
     for keys, lid, lname in _CHAIN:
         if any(k in blob for k in keys):
@@ -150,13 +166,22 @@ def _rotation(db_path: str, ymd: str, industry: str) -> str:
     return ""
 
 
-def _pace(struct: Dict[str, Any], rot: str, leader: Dict[str, Any]) -> str:
+def _pace(
+    struct: Dict[str, Any],
+    rot: str,
+    leader: Dict[str, Any],
+    *,
+    long_hold: bool = False,
+) -> str:
     if not struct:
         return ""
     if not struct.get("above_support"):
         bit = "這腳量價還在爆大量日低點之下，他這套是先放棄，不是擺著等。"
     elif struct.get("broke_resistance"):
-        bit = "已經過爆大量日高，比較像半山腰；他只做隔日沖。"
+        if long_hold:
+            bit = "量價已過爆大量日高，但這檔他當長線龍頭，不是半山腰隔日沖那一類。"
+        else:
+            bit = "已經過爆大量日高，比較像半山腰；他只做隔日沖。"
     elif struct.get("shrinking"):
         bit = "量縮又站上爆大量日低點，比較像整理末端那一類。"
     else:
@@ -171,6 +196,21 @@ def _pace(struct: Dict[str, Any], rot: str, leader: Dict[str, Any]) -> str:
             bit += f"龍頭{leader.get('name')}還沒站上自己的量價撐，這族比較不像剛起漲。"
         elif ls.get("shrinking"):
             bit += f"龍頭{leader.get('name')}量縮站上，比較像資金要動。"
+    return bit
+
+
+def _hold_note(sid: str, in_corpus: bool) -> str:
+    if sid not in _LONG_HOLD:
+        return ""
+    name = _LONG_HOLD[sid]
+    bit = (
+        f"{name}在他 4/16 長線龍頭名單：產業趨勢還在就不是天天管；"
+        "買點是大盤大跌窗口，不是把波浪套在這檔日 K。"
+    )
+    if sid == "2383":
+        bit += "錨是 7/6 買跌不買漲，官方日 K 7/29 低 3985、7/30 低 3930。"
+    if not in_corpus:
+        bit += "公開文沒點名這檔時只套量價，可能看錯。"
     return bit
 
 
@@ -217,7 +257,14 @@ def judge_stock(db_path: str, sid: str, name: str = "") -> Dict[str, Any]:
     except Exception:
         claims = ""
     out["claims"] = claims
-    out["pace"] = _pace(struct, out.get("rotation") or "", leader)
+    out["long_hold"] = sid in _LONG_HOLD
+    out["hold"] = _hold_note(sid, bool(out.get("in_corpus")))
+    out["pace"] = _pace(
+        struct,
+        out.get("rotation") or "",
+        leader,
+        long_hold=bool(out.get("long_hold")),
+    )
     return out
 
 
@@ -251,12 +298,14 @@ def format_judge_notes(brief: Dict[str, Any]) -> str:
         )
     if brief.get("pace"):
         bits.append(str(brief.get("pace")))
+    if brief.get("hold"):
+        bits.append(str(brief.get("hold")))
     claims = str(brief.get("claims") or "").strip()
     if claims:
         bits.append("他寫過的價：" + claims.replace("\n", "；")[:420])
     else:
         bits.append("這檔他沒寫目標價，不准編會漲到哪。")
-    bits.append("波浪不要套這檔；大盤才用細微波／15分／60分／夜盤。")
+    bits.append("波浪不要套這檔；個股先看產業趨勢，大盤才用細微波／15分／60分／夜盤。")
     return "\n".join(bits)
 
 
@@ -291,6 +340,8 @@ def format_judge_html(brief: Dict[str, Any]) -> str:
         )
     if brief.get("pace"):
         lines.append(html_escape(str(brief.get("pace"))))
+    if brief.get("hold"):
+        lines.append(html_escape(str(brief.get("hold"))))
     claims = str(brief.get("claims") or "").strip()
     if claims:
         for ln in claims.split("\n"):

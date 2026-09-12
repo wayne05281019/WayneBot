@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -68,8 +69,24 @@ _PUB_RE = re.compile(
     re.I,
 )
 _TAG_RE = re.compile(r'property="article:tag"\s+content="([^"]+)"', re.I)
+_META_AUTHOR = re.compile(
+    r'<meta[^>]*name=["\']author["\'][^>]*content=["\']([^"\']+)["\']',
+    re.I,
+)
+_META_AUTHOR_ALT = re.compile(
+    r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*name=["\']author["\']',
+    re.I,
+)
 _BODY_START = re.compile(
     r"(1[\.、．]\s*台指期|目前台股|今天盤後|大盤)",
+)
+# 別人的價值投資長文。側欄出現飆客名字不算他寫的。
+_ALIEN_MARK = re.compile(
+    r"(模糊的精確|安全邊際|沉澱帶|淨利息收入|淨利息支出|估值位階|因果鏈才是)"
+)
+_VOICE_MARK = re.compile(
+    r"(台指期|細微波|夜盤|費半|破線|洗盤|長線主流|下降軌道|"
+    r"15\s*分|60\s*分|量先價行|右肩|護城河)"
 )
 
 def _session() -> requests.Session:
@@ -114,38 +131,56 @@ def _append_charts(text: str, urls: Sequence[str], *, limit: int = 6) -> str:
     return body
 
 
+def is_biaoke_voice(text: str) -> bool:
+    """別人的文即使頁面上出現飆客名字也不收。"""
+    t = text or ""
+    if _ALIEN_MARK.search(t) and not _VOICE_MARK.search(t):
+        return False
+    return True
+
+
+def _meta_author(html_text: str) -> str:
+    raw = html_text or ""
+    m = _META_AUTHOR.search(raw) or _META_AUTHOR_ALT.search(raw)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def page_is_author_article(html_text: str) -> bool:
+    """只認這篇的 author meta／主文區。側欄、推薦文、別人主文不要。"""
+    raw = html_text or ""
+    meta = _meta_author(raw)
+    if meta:
+        return AUTHOR_NAME in meta
+    art = re.search(r"<article[^>]*>(.*)</article>", raw, re.S | re.I)
+    head = art.group(1) if art else raw
+    head = re.split(
+        r"articleComment|articleReply|replyRespond",
+        head,
+        maxsplit=1,
+    )[0]
+    head = head[:4000]
+    return AUTHOR_NAME in head or f"/forum/user/{AUTHOR_ID}" in head
+
+
 def parse_user_article_ids(html_text: str) -> List[str]:
-    """只收飆大自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。"""
+    """只收飆客自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。"""
     raw = html_text or ""
     m = _NUXT_FEED.search(raw)
-    if m:
-        owner = m.group(2)
-        chunk = raw[m.start() : m.start() + 180000]
-        ids: List[str] = []
-        seen = set()
-        for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
-            if cid != owner or len(aid) <= 6:
-                continue
-            if aid in seen:
-                continue
-            seen.add(aid)
-            ids.append(aid)
-            if len(ids) >= 20:
-                break
-        if ids:
-            return ids
+    if not m:
+        return []
+    owner = m.group(2)
+    chunk = raw[m.start() : m.start() + 180000]
     ids: List[str] = []
     seen = set()
-    for aid in _HREF_OWN.findall(raw):
-        if aid not in seen:
-            seen.add(aid)
-            ids.append(aid)
-    if ids:
-        return ids
-    for aid in _ID_RE.findall(raw):
-        if aid not in seen:
-            seen.add(aid)
-            ids.append(aid)
+    for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
+        if cid != owner or len(aid) <= 6:
+            continue
+        if aid in seen:
+            continue
+        seen.add(aid)
+        ids.append(aid)
+        if len(ids) >= 20:
+            break
     return ids
 
 
@@ -203,10 +238,10 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
         if t and t not in tags and t not in {"加權指數"}:
             tags.append(t)
     raw = html_text or ""
-    if AUTHOR_NAME not in raw and f"/forum/user/{AUTHOR_ID}" not in raw:
+    if not page_is_author_article(raw):
         return None
     text = _strip_article_text(raw)
-    if not date or not text:
+    if not date or not text or not is_biaoke_voice(text):
         return None
     main = raw
     art = re.search(r"<article[^>]*>(.*)</article>", raw, re.S | re.I)
@@ -663,6 +698,8 @@ def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ro
     aid = str(row.get("id") or "")
     if not aid:
         return ""
+    if not is_biaoke_voice(str(row.get("text") or "")):
+        return ""
     old = by_id.get(aid)
     if old:
         changed = False
@@ -674,6 +711,32 @@ def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ro
     posts.append(row)
     by_id[aid] = row
     return "added"
+
+
+def purge_alien_overlay(db_path: str) -> int:
+    """把不是飆客聲音的 overlay 列清掉。側欄誤抓的長文不要留在庫裡。"""
+    if not db_path or not os.path.isfile(db_path):
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    n = 0
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+        ).fetchone()
+        if not hit:
+            return 0
+        rows = conn.execute("SELECT id, text FROM biaoke_posts").fetchall()
+        drop = [str(rid) for rid, text in rows if not is_biaoke_voice(str(text or ""))]
+        for rid in drop:
+            conn.execute("DELETE FROM biaoke_posts WHERE id=?", (rid,))
+            n += 1
+        if n:
+            conn.commit()
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    return n
 
 
 def ingest_public_posts(
@@ -717,6 +780,10 @@ def ingest_public_posts(
             seed_biaoke_archive(dbp)
         except Exception:
             logger.exception("飆大 1709 融合底圖寫庫失敗")
+        try:
+            stats["purged"] = purge_alien_overlay(dbp)
+        except Exception:
+            logger.exception("飆大清掉誤抓別人的文失敗")
 
     blob = load_corpus(dbp if dbp and os.path.isfile(dbp) else None)
     posts: List[Dict[str, Any]] = list(blob.get("posts") or [])

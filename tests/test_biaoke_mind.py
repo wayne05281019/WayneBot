@@ -16,6 +16,18 @@ from biaoke_mind import (
 )
 
 
+def test_methods_cover_industry_trend_hold_to_next_year():
+    html = format_methods_html("技術分析最有用是什麼")
+    assert "產業趨勢" in html
+    assert "2026-04-16" in html
+    assert "3930" in html
+    html2 = answer_biaoke(":memory:", "台光電為何能這麼篤定")
+    assert "這不是買訊" in html2
+    assert "抱到明年" in html2 or "產業趨勢" in html2
+    assert "不猜" not in html2
+    assert "現況／量價" not in html2
+
+
 def test_methods_cover_wash_three_days_and_right_shoulder():
     wash = format_methods_html("洗盤跟出貨怎麼分")
     assert "2024-07-08" in wash

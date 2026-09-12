@@ -135,6 +135,14 @@ def _overlay_posts(db_path: Optional[str]) -> List[Dict[str, Any]]:
             tags = []
         if not isinstance(tags, list):
             tags = []
+        text = r[8] or ""
+        try:
+            from biaoke_ingest import is_biaoke_voice
+
+            if not is_biaoke_voice(text):
+                continue
+        except Exception:
+            pass
         out.append(
             {
                 "id": r[0],

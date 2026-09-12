@@ -28,11 +28,21 @@ def test_parse_published_taipei():
 
 def test_parse_user_ids_keeps_order():
     html = (
-        '<a href="/forum/article/184499206">x</a>'
-        '<a href="/forum/article/184431393">y</a>'
-        '<a href="/forum/article/184499206">dup</a>'
+        '<script>window.__NUXT__=(function(){return {articles:['
+        '{id:"184499206",creatorId:r,x:1},'
+        '{id:"184431393",creatorId:r,x:2}'
+        ']}})</script>'
     )
     assert parse_user_article_ids(html) == ["184499206", "184431393"]
+
+
+def test_parse_user_ids_href_only_is_not_enough():
+    html = (
+        '<a href="/forum/article/184556007">sidebar</a>'
+        '<a href="/forum/article/184499206">maybe</a>'
+        '<div>期股多空雙飆客</div>'
+    )
+    assert parse_user_article_ids(html) == []
 
 
 def test_parse_user_ids_skips_other_people_and_utm_links():
@@ -49,6 +59,7 @@ def test_parse_user_ids_skips_other_people_and_utm_links():
 
 def test_parse_article_html_body_and_tags():
     html = """
+    <meta name="author" content="期股多空雙飆客">
     <meta property="article:published_time" content="2026-9-10T9:51:28+08:00">
     <meta property="article:tag" content="3017奇鋐">
     <meta property="article:tag" content="TWA00加權指數">
@@ -71,6 +82,23 @@ def test_parse_article_html_body_and_tags():
     assert "散熱族群" in row["text"]
     assert "這行不該進來" not in row["text"]
     assert "查看" not in row["text"]
+
+
+def test_parse_article_html_rejects_other_author_even_if_sidebar_names_him():
+    html = """
+    <meta name="author" content="價值筆記">
+    <meta property="article:published_time" content="2026-9-12T0:31:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>1. 不追求買在最低點，而是追求「模糊的精確」</div>
+      <div>安全邊際、估值位階、沉澱帶。</div>
+    </article>
+    """
+    assert parse_article_html("999000111", html) is None
+    from biaoke_ingest import is_biaoke_voice
+
+    assert not is_biaoke_voice("1. 不追求買在最低點，而是追求「模糊的精確」 安全邊際")
+    assert is_biaoke_voice("1. 台指期夜盤15分鐘線細微波修正走了5段")
 
 
 def test_ingest_hook_is_on_product_clocks():
@@ -210,12 +238,18 @@ def test_merge_reply_into_corpus(tmp_path):
                     return None
             r = R()
             if "user/25263" in url:
-                r.text = '<a href="/forum/article/184431393">x</a>'
+                r.text = (
+                    '<script>window.__NUXT__=(function(){return {articles:['
+                    '{id:"184431393",creatorId:r,x:1}'
+                    ']}})</script>'
+                )
             else:
                 r.text = """
+                <meta name="author" content="期股多空雙飆客">
                 <meta property="article:published_time" content="2026-9-9T9:08:00+08:00">
                 <meta property="article:tag" content="記憶體">
                 <article>
+                  <div>期股多空雙飆客</div>
                   <div>1.台指期連續盤主文。</div>
                   <div class="articleReply">
                     <a href="/forum/user/25263">期股多空雙飆客</a>

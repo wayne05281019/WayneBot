@@ -175,6 +175,23 @@ def test_live_notes_always_has_latest_posts_and_replies():
     assert "指紋全同" in audit
 
 
+def test_live_notes_reverse_think_emc_hold():
+    from biaoke_desk import load_corpus_cache_clear
+    from biaoke_live import live_notes, SYSTEM
+
+    assert "反向" in SYSTEM
+    assert "產業趨勢" in SYSTEM
+    assert "買跌不買漲" in SYSTEM
+    assert "只講飆客" in SYSTEM or "路人發文不是重點" in SYSTEM
+    assert "模糊的精確" in SYSTEM
+    load_corpus_cache_clear()
+    note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
+    assert "方法" in note
+    assert "2026-04-16" in note
+    assert "3930" in note
+    assert "產業趨勢" in note
+
+
 def test_live_reply_system_forbids_invented_index(monkeypatch):
     monkeypatch.setenv("WAYNE_BIAOKE_LIVE_TEST", "1")
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")

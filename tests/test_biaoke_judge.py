@@ -19,6 +19,75 @@ def test_wave_is_for_index_not_stock():
     assert "提早規劃" in body
 
 
+def test_industry_trend_explains_emc_july_hold():
+    hits = match_methods("台光電 7 月抄底為什麼能抱到明年")
+    assert hits
+    title, body = hits[0]
+    assert title == "個股先看產業趨勢"
+    assert "技術分析最有用是大盤" in body
+    assert "2026-04-16" in body
+    assert "3930" in body
+    assert "不是把波浪套在 2383" in body
+    assert "護城河" in body or "2027" in body
+    assert "不猜" not in body
+    why = match_methods("為什麼能這麼篤定")
+    assert why and "產業趨勢" in why[0][1]
+
+
+def test_emc_is_pcb_leader_and_long_hold():
+    sid, name, why = leader_of("", "2383", "台光電")
+    assert sid == "2383"
+    assert name == "台光電"
+    assert "龍頭" in why
+    notes = format_judge_notes(
+        {
+            "sid": "2383",
+            "name": "台光電",
+            "in_corpus": True,
+            "long_hold": True,
+            "struct": {
+                "date": "2026-09-11",
+                "close": 5295,
+                "spike_date": "2026-08-01",
+                "spike_high": 5400,
+                "spike_low": 4800,
+                "shrinking": False,
+                "above_support": True,
+                "broke_resistance": True,
+            },
+            "hold": "台光電在他 4/16 長線龍頭名單：產業趨勢還在就不是天天管；買點是大盤大跌窗口，不是把波浪套在這檔日 K。錨是 7/6 買跌不買漲，官方日 K 7/29 低 3985、7/30 低 3930。",
+            "pace": "量價已過爆大量日高，但這檔他當長線龍頭，不是半山腰隔日沖那一類。",
+        }
+    )
+    assert "材料" in notes
+    assert "3930" in notes
+    assert "產業趨勢" in notes
+    assert "半山腰隔日沖那一類" in notes
+    assert "現況：" not in notes
+    html = format_judge_html(
+        {
+            "sid": "2383",
+            "name": "台光電",
+            "in_corpus": True,
+            "hold": "台光電在他 4/16 長線龍頭名單：產業趨勢還在就不是天天管。",
+            "pace": "不是半山腰隔日沖那一類。",
+            "struct": {
+                "date": "2026-09-11",
+                "close": 5295,
+                "pct": 1.2,
+                "spike_date": "2026-08-01",
+                "spike_high": 5400,
+                "spike_low": 4800,
+                "stance": "量縮且收在爆大量日低點之上。",
+            },
+        }
+    )
+    assert "台光電" in html
+    assert "天天管" in html
+    assert "不猜" not in html
+    assert "現況／量價" not in html
+
+
 def test_judge_notes_are_materials_not_a_form():
     notes = format_judge_notes(
         {
