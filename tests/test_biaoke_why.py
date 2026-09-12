@@ -99,6 +99,18 @@ def test_live_notes_puts_why_chain_first():
     assert "漢唐" in note2
 
 
+def test_why_hi_test_dark_horses_are_6683_and_6830():
+    body = lookup("高階測試黑馬是哪兩檔")
+    assert "6683" in body
+    assert "6830" in body
+    assert "雍智" in body
+    assert "漢唐" not in body
+    html = format_methods_html("高階測試兩檔黑馬")
+    assert "6683" in html
+    assert "汎銓" in html or "泛銓" in html
+    assert "這不是買訊" in html or "不是買訊" in html
+
+
 def test_why_unspoken_aux_stack():
     body = lookup("他沒講出來的輔助判斷是什麼")
     assert "100%" in body or "有緣人" in body

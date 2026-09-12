@@ -35,6 +35,15 @@ def test_fancheng_timeline_not_a_lecture():
     assert "6830" in html or "泛銓" in html
     assert "新聞變多" in html
     assert "這不是買訊" in html
+    assert "6683" in html or "雍智" in html
+
+
+def test_yongzhi_timeline_names_both_dark_horses():
+    html = answer_biaoke(":memory:", "雍智是高階測試黑馬嗎")
+    assert "語料" not in html
+    assert "6683" in html
+    assert "6830" in html or "汎銓" in html or "泛銓" in html
+    assert "這不是買訊" in html
 
 
 @pytest.mark.production_db
