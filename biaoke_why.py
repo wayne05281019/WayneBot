@@ -79,9 +79,10 @@ _YEAR = re.compile(r"^(?:19|20)\d{2}$")
 _NUM = re.compile(r"(?<![\d.])(\d{2,5}(?:\.\d+)?)(?![\d])")
 _ALIEN = re.compile(r"(模糊的精確|安全邊際|淨利息|估值位階|沉澱帶|因果鏈|和碩|仁寶)")
 _WHY_ASK = re.compile(
-    r"(怎麼來|怎麼判|如何知|為何|為什麼|起頭|哪兩檔|哪兩檔|潛力|"
+    r"(怎麼來|怎麼判|如何知|為何|為什麼|起頭|哪兩檔|潛力|"
     r"走了?\s*5\s*段|下降軌|位階二|護城河|抱到|46506|47578|45839|48218|"
-    r"建築|富喬|聯亞|奇鋐|健策|第五波|9:30|黑手|C-2|C-3)"
+    r"建築|富喬|聯亞|奇鋐|健策|第五波|9:30|黑手|C-2|C-3|"
+    r"貫通|串聯|融會|輪動|怎麼連|台光電)"
 )
 
 
@@ -761,16 +762,27 @@ def lookup(ask: str, *, limit: int = 4) -> str:
     if _ALIEN.search(q) and not re.search(r"(46506|47578|台光電|聯亞|細微波|飆客)", q):
         return "這不是飆客本人的聲音，不拿來當他的判斷。"
     bits: List[str] = []
+    try:
+        from biaoke_weave import weave_lookup
+
+        woven = weave_lookup(q, limit=3)
+        if woven:
+            bits.extend(x for x in woven.split("\n") if x)
+    except Exception:
+        pass
     for t in _topic_hits(q):
-        bits.append(t["a"])
-        if len(bits) >= 2:
+        if t["a"] not in bits:
+            bits.append(t["a"])
+        if len(bits) >= 3:
             break
     blob = load_why()
-    if len(bits) < 2:
+    if len(bits) < 3:
         for c in _card_hits(q, blob, limit=limit):
             prefix = "社團內化：" if c.get("club") else f"{c.get('date') or ''} {c.get('kind') or ''}："
-            bits.append(_clip(prefix + str(c.get("a") or ""), 280))
-            if len(bits) >= limit:
+            line = _clip(prefix + str(c.get("a") or ""), 280)
+            if line and line not in bits:
+                bits.append(line)
+            if len(bits) >= limit + 1:
                 break
     return "\n".join(x for x in bits if x)
 
@@ -786,7 +798,7 @@ def format_why_notes(ask: str, *, limit: int = 3) -> str:
     body = lookup(ask, limit=limit)
     if not body:
         return ""
-    return "判斷鏈 " + _clip(body.replace("\n", "／"), 900)
+    return "判斷鏈 " + _clip(body.replace("\n", "／"), 1400)
 
 
 def why_counts() -> Dict[str, int]:
