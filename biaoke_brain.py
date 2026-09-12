@@ -632,6 +632,14 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         chunks = []
         if trace:
             chunks.append(trace)
+        try:
+            from biaoke_why import format_why_html
+
+            why = format_why_html(q)
+            if why:
+                chunks.append(why)
+        except Exception:
+            pass
         chunks.append(body)
         if extra:
             chunks.append(extra)

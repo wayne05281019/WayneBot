@@ -40,6 +40,7 @@ SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按�
 - 庫沒 15 分就不數他的段數。禁止把「模糊的精確／安全邊際／淨利息」這種別人的文當成他說的。
 
 硬規則：
+- 筆記裡的「判斷鏈」是 1709＋樓下＋兩個社團逐則自問自答後的推論，不准改念原文。沒 15 分就不數段。建築兩檔他沒點名代號。第五波起頭他改口過，不准編死。
 - 點位只准用筆記裡出現過的數字。沒有就說這句筆記沒這點位，不准自己編。
 - 他預估哪一檔會到哪個價：只用彙整列的當日收與後來實價。沒這列不准編目標。
 - 加權／台指期現在是四萬點這一級。禁止寫 17000、16500、17200。2025 年的 22000 不是現在。
@@ -137,7 +138,18 @@ def live_notes(db_path: str, ask: str) -> str:
     """每句對話都帶：最新主文、最新樓下自回、官方點位。沒對到關鍵字也不准空手。"""
     bits: List[str] = [
         "硬規則：點位只准用下面出現過的數字。沒有就說沒有。禁止 17000／16500。最新優先於舊文。"
+        "判斷鏈是逐則自問自答後的推論，不准改念原文。"
     ]
+    try:
+        from biaoke_why import format_why_notes, is_why_query
+
+        why = format_why_notes(ask)
+        if why:
+            bits.append(why)
+        elif is_why_query(ask):
+            bits.append("判斷鏈：這句對不到已建檔的點位／改口鏈，不准編。")
+    except Exception:
+        pass
     try:
         from biaoke_desk import load_corpus
         from biaoke_brain import load_index_bars, match_posts, resolve_stock, volume_first_price, load_bars
