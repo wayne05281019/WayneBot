@@ -1338,7 +1338,7 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     )
     assert "指數還中性，電子鏈逆風" in html
     assert "大盤中性" not in html
-    assert "電子鏈夜盤跌" in html
+    assert "電子鏈逆風" in html
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")

@@ -165,7 +165,11 @@ def page_is_author_article(html_text: str) -> bool:
 
 
 def parse_user_article_ids(html_text: str) -> List[str]:
-    """只收飆客自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。"""
+    """只收飆客自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。
+
+    只吃 Nuxt SSR 的 articles[]（帶 creatorId，可濾掉側欄）。
+    純 href 不夠——側欄／推薦文也是 /forum/article/…。
+    """
     raw = html_text or ""
     m = _NUXT_FEED.search(raw)
     if not m:
