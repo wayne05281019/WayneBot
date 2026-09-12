@@ -763,6 +763,59 @@ def file_biaoke_claims(
     return stats
 
 
+def refresh_wave_minute_hits(db_path: str) -> int:
+    """15／夜盤柱進庫後，只改波浪 hit，不准清空整張目標價表。"""
+    path = str(db_path or "").strip()
+    if not path:
+        return 0
+    conn = sqlite3.connect(path, timeout=30.0)
+    n = 0
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_claims'"
+        ).fetchone()
+        if not hit:
+            return 0
+        rows = conn.execute(
+            """
+            SELECT claim_key, post_date, snippet FROM biaoke_claims
+            WHERE role='wave'
+            """
+        ).fetchall()
+        if not rows:
+            return 0
+        from kline_hop import minute_cover_note, minute_day_cover, minute_night_cover
+
+        for key, day, snip in rows:
+            blob = str(snip or "")
+            packed = blob.replace(" ", "")
+            if not (
+                "15分" in packed
+                or "夜盤15分" in packed
+                or "庫沒15分" in packed
+            ):
+                continue
+            night = "夜盤" in blob
+            try:
+                cover = (
+                    minute_night_cover(str(day or ""), path)
+                    if night
+                    else minute_day_cover("TWII", "15", str(day or ""), path)
+                )
+                note = minute_cover_note(cover, night=night)
+            except Exception:
+                continue
+            conn.execute(
+                "UPDATE biaoke_claims SET hit=? WHERE claim_key=?",
+                (note, key),
+            )
+            n += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return n
+
+
 def stock_claim_rows(
     db_path: str, sid: str, *, club: int = 0, limit: int = 12
 ) -> List[Dict[str, Any]]:

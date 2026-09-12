@@ -87,6 +87,10 @@ def test_health_200_when_process_can_serve(serve):
     assert "biaoke_replies" in body
     assert "biaoke_latest_id" in body
     assert "biaoke_latest_at" in body
+    assert "tx_15_n" in body
+    assert "tx_zip_n" in body
+    assert "tx_night_high" in body
+    assert body["tx_15_n"] == 0
 
 
 def test_health_cmoney_ok_follows_env_without_leaking_token(serve, monkeypatch):
@@ -128,6 +132,61 @@ def test_health_reports_latest_biaoke_post(serve):
     assert body["biaoke_latest_id"] == "184545002"
     assert "2026-09-11" in body["biaoke_latest_at"]
     assert "17:49" in body["biaoke_latest_at"]
+    dumped = json.dumps(body, ensure_ascii=False)
+    assert "Bearer" not in dumped
+
+
+def test_health_reports_tx_night_cover(serve):
+    get, db, main = serve
+    from kline_hop import save_minute_bars
+    from taifex_ticks import _mark_zip
+
+    bars = []
+    t = 15 * 60
+    while t <= 16 * 60 + 45:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46300,
+                "h": 46400,
+                "l": 46200,
+                "c": 46350,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.append(
+        {
+            "t": "202609120000",
+            "o": 46600,
+            "h": 46663,
+            "l": 46580,
+            "c": 46650,
+            "v": 1,
+        }
+    )
+    bars.append(
+        {
+            "t": "202609120445",
+            "o": 46050,
+            "h": 46100,
+            "l": 46041,
+            "c": 46080,
+            "v": 1,
+        }
+    )
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    _mark_zip(db, "20260914", len(bars))
+    main._HEALTH_DATA_CACHE["at"] = 0.0
+    main._HEALTH_DATA_CACHE["payload"] = None
+    code, body = get("/health")
+    assert code == 200
+    assert body["tx_15_n"] >= 8
+    assert body["tx_zip_n"] >= 1
+    assert body["tx_night_high"] == "46663"
+    assert body["tx_night_low"] == "46041"
+    assert body["tx_night_date"] == "2026-09-11"
     dumped = json.dumps(body, ensure_ascii=False)
     assert "Bearer" not in dumped
 

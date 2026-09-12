@@ -274,3 +274,89 @@ def test_file_wave_night_reports_tx_cover_without_counting(tmp_path):
     assert "46041" in blob
     assert "不發明" in blob
     assert "5段" not in blob.replace(" ", "") or "不發明" in blob
+
+
+def test_refresh_wave_minute_hits_keeps_other_claims(tmp_path):
+    from biaoke_claims import refresh_wave_minute_hits
+    from kline_hop import save_minute_bars
+
+    db = _wave_night_db(tmp_path)
+    stats = file_biaoke_claims(db, [(_night_post(), 0)])
+    assert stats["claims"] >= 1
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO biaoke_claims(
+            claim_key, post_id, post_date, post_time, kind, club,
+            stock_id, stock_name, analog_id, analog_name, role, verb,
+            snippet, hit
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "keep-target",
+            "x1",
+            "2026-09-11",
+            "10:00",
+            "post",
+            0,
+            "2330",
+            "台積電",
+            "",
+            "",
+            "target",
+            "目標",
+            "目標價1000",
+            "當日高還沒到",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    bars = []
+    t = 15 * 60
+    while t <= 16 * 60 + 45:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46300,
+                "h": 46400,
+                "l": 46200,
+                "c": 46350,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.append(
+        {
+            "t": "202609120000",
+            "o": 46600,
+            "h": 46663,
+            "l": 46580,
+            "c": 46650,
+            "v": 1,
+        }
+    )
+    bars.append(
+        {
+            "t": "202609120445",
+            "o": 46050,
+            "h": 46100,
+            "l": 46041,
+            "c": 46080,
+            "v": 1,
+        }
+    )
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    n = refresh_wave_minute_hits(db)
+    assert n >= 1
+    conn = sqlite3.connect(db)
+    wave = conn.execute(
+        "SELECT hit FROM biaoke_claims WHERE role='wave'"
+    ).fetchone()
+    keep = conn.execute(
+        "SELECT hit FROM biaoke_claims WHERE claim_key='keep-target'"
+    ).fetchone()
+    conn.close()
+    assert "期交所" in (wave[0] or "")
+    assert "46663" in (wave[0] or "")
+    assert keep[0] == "當日高還沒到"

@@ -140,6 +140,14 @@ def _cheap_health_data() -> dict:
         "biaoke_replies": 0,
         "biaoke_latest_id": "",
         "biaoke_latest_at": "",
+        "tx_15_n": 0,
+        "tx_zip_n": 0,
+        "tx_15_from": "",
+        "tx_15_to": "",
+        "tx_night_n": 0,
+        "tx_night_high": "",
+        "tx_night_low": "",
+        "tx_night_date": "",
     }
     try:
         import sqlite3
@@ -183,6 +191,12 @@ def _cheap_health_data() -> dict:
             conn.close()
     except Exception:
         pass
+    try:
+        from taifex_ticks import tx_health_stats
+
+        out.update(tx_health_stats(path))
+    except Exception:
+        pass
     _HEALTH_DATA_CACHE["at"] = now
     _HEALTH_DATA_CACHE["payload"] = out
     return out
@@ -221,6 +235,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "biaoke_replies": 0,
                 "biaoke_latest_id": "",
                 "biaoke_latest_at": "",
+                "tx_15_n": 0,
+                "tx_zip_n": 0,
+                "tx_15_from": "",
+                "tx_15_to": "",
+                "tx_night_n": 0,
+                "tx_night_high": "",
+                "tx_night_low": "",
+                "tx_night_date": "",
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
@@ -248,6 +270,14 @@ class HealthHandler(BaseHTTPRequestHandler):
                     payload["biaoke_latest_at"] = str(
                         data.get("biaoke_latest_at") or ""
                     )
+                    payload["tx_15_n"] = int(data.get("tx_15_n") or 0)
+                    payload["tx_zip_n"] = int(data.get("tx_zip_n") or 0)
+                    payload["tx_15_from"] = str(data.get("tx_15_from") or "")
+                    payload["tx_15_to"] = str(data.get("tx_15_to") or "")
+                    payload["tx_night_n"] = int(data.get("tx_night_n") or 0)
+                    payload["tx_night_high"] = str(data.get("tx_night_high") or "")
+                    payload["tx_night_low"] = str(data.get("tx_night_low") or "")
+                    payload["tx_night_date"] = str(data.get("tx_night_date") or "")
                 except Exception as e:
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)

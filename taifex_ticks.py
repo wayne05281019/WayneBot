@@ -35,6 +35,9 @@ _UA = {
     )
 }
 _TX = "TX"
+CATCHUP_MIN_ZIPS = 22
+CATCHUP_FETCH = 20
+STEADY_FETCH = 3
 
 
 def _ymd(raw: Any) -> str:
@@ -169,7 +172,7 @@ def bars_from_zip_bytes(blob: bytes) -> Optional[List[Dict[str, Any]]]:
     return aggregate_minute_bars(parse_tx_ticks(text), 15)
 
 
-def _candidate_zip_dates(*, days: int = 40) -> List[str]:
+def _candidate_zip_dates(*, days: int = 45) -> List[str]:
     """含未來兩三天：週五夜盤 zip 常掛下一個交易日檔名。"""
     now = datetime.now(TAIPEI)
     out: List[str] = []
@@ -281,13 +284,112 @@ def _rollup_60(bars15: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+def zip_count(db_path: str) -> int:
+    path = str(db_path or "").strip()
+    if not path:
+        return 0
+    ensure_tick_zips_table(path)
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute("SELECT COUNT(*) FROM taifex_tick_zips").fetchone()
+        return int((row or [0])[0] or 0)
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+
+
+def fetch_budget(db_path: str, *, limit_zips: Optional[int] = None) -> int:
+    """沒補滿 30 日窗就一次多抓；補滿後每輪 3 檔。"""
+    if limit_zips is not None:
+        return max(1, int(limit_zips))
+    return CATCHUP_FETCH if zip_count(db_path) < CATCHUP_MIN_ZIPS else STEADY_FETCH
+
+
+def tx_health_stats(db_path: str) -> Dict[str, Any]:
+    """給 /health：根數、zip 數、時間窗、最新一晚高低。表沒有就全 0。"""
+    out: Dict[str, Any] = {
+        "tx_15_n": 0,
+        "tx_zip_n": 0,
+        "tx_15_from": "",
+        "tx_15_to": "",
+        "tx_night_n": 0,
+        "tx_night_high": "",
+        "tx_night_low": "",
+        "tx_night_date": "",
+    }
+    path = str(db_path or "").strip()
+    if not path:
+        return out
+    conn = sqlite3.connect(path, timeout=2.0)
+    try:
+        has_bars = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='minute_bars'"
+        ).fetchone()
+        has_zips = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='taifex_tick_zips'"
+        ).fetchone()
+        if has_zips:
+            out["tx_zip_n"] = int(
+                (conn.execute("SELECT COUNT(*) FROM taifex_tick_zips").fetchone() or [0])[0]
+                or 0
+            )
+        if not has_bars:
+            return out
+        row = conn.execute(
+            """
+            SELECT COUNT(*), MIN(ts), MAX(ts) FROM minute_bars
+            WHERE stock_id='TX' AND interval='15'
+            """
+        ).fetchone()
+        n, lo, hi = (row or (0, "", ""))[:3]
+        out["tx_15_n"] = int(n or 0)
+        out["tx_15_from"] = str(lo or "")
+        out["tx_15_to"] = str(hi or "")
+        last = str(hi or "")
+        if len(last) >= 12:
+            from datetime import datetime, timedelta
+
+            d, hm = last[:8], int(last[8:12])
+            sess = d
+            if hm <= 500 or 845 <= hm <= 1345:
+                sess = (datetime.strptime(d, "%Y%m%d") - timedelta(days=1)).strftime(
+                    "%Y%m%d"
+                )
+            nxt = (datetime.strptime(sess, "%Y%m%d") + timedelta(days=1)).strftime(
+                "%Y%m%d"
+            )
+            night = conn.execute(
+                """
+                SELECT ts, h, l FROM minute_bars
+                WHERE stock_id='TX' AND interval='15'
+                  AND (
+                    (ts >= ? AND ts <= ?)
+                    OR (ts >= ? AND ts <= ?)
+                  )
+                ORDER BY ts
+                """,
+                (sess + "1500", sess + "2345", nxt + "0000", nxt + "0500"),
+            ).fetchall()
+            if len(night) >= 8:
+                out["tx_night_n"] = len(night)
+                out["tx_night_high"] = str(int(round(max(float(r[1]) for r in night))))
+                out["tx_night_low"] = str(int(round(min(float(r[2]) for r in night))))
+                out["tx_night_date"] = f"{sess[:4]}-{sess[4:6]}-{sess[6:8]}"
+    except Exception:
+        return out
+    finally:
+        conn.close()
+    return out
+
+
 def refresh_tx_minutes(
     db_path: str,
     *,
-    limit_zips: int = 3,
-    days: int = 40,
+    limit_zips: Optional[int] = None,
+    days: int = 45,
 ) -> Dict[str, Any]:
-    """缺哪檔 zip 抓哪檔。已記在 taifex_tick_zips 就跳過。pytest 不打外網。"""
+    """缺哪檔 zip 抓哪檔。沒補滿一次多抓。已記在 taifex_tick_zips 就跳過。pytest 不打外網。"""
     stats: Dict[str, Any] = {"ok": False, "saved": 0, "fetched": 0, "days": []}
     path = str(db_path or "").strip()
     if not path:
@@ -301,7 +403,7 @@ def refresh_tx_minutes(
     attempts = 0
     saved = 0
     got: List[str] = []
-    max_fetch = max(1, int(limit_zips))
+    max_fetch = fetch_budget(path, limit_zips=limit_zips)
     max_attempts = max(8, max_fetch * 5)
     for ymd in _candidate_zip_dates(days=days):
         if fetched >= max_fetch or attempts >= max_attempts:
@@ -330,6 +432,8 @@ def refresh_tx_minutes(
             "fetched": fetched,
             "attempts": attempts,
             "days": got,
+            "budget": max_fetch,
+            "zips": zip_count(path),
         }
     )
     return stats

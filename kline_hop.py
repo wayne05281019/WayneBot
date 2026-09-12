@@ -631,7 +631,10 @@ def refresh_biaoke_minutes(
     *,
     min_age_s: int = 1800,
 ) -> Dict[str, Any]:
-    """飆大對質用：Yahoo 日盤 15＋60 分，外加期交所台指期夜盤成交。pytest 不打外網。"""
+    """飆大對質用：Yahoo 日盤 15＋60 分，外加期交所台指期夜盤成交。pytest 不打外網。
+
+    期交所 zip 還沒補滿 30 日窗時，不受 30 分冷卻擋住。
+    """
     global _LAST_BIAOKE_MINUTES
     import time
 
@@ -641,32 +644,66 @@ def refresh_biaoke_minutes(
         return stats
     if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_ALLOW_MINUTES") != "1":
         return {**stats, "skipped": "pytest"}
+    from taifex_ticks import CATCHUP_MIN_ZIPS, refresh_tx_minutes, zip_count
+
+    catching = zip_count(path) < CATCHUP_MIN_ZIPS
     now = time.monotonic()
-    if _LAST_BIAOKE_MINUTES and now - _LAST_BIAOKE_MINUTES < max(60, int(min_age_s)):
+    yahoo_fresh = bool(
+        _LAST_BIAOKE_MINUTES
+        and now - _LAST_BIAOKE_MINUTES < max(60, int(min_age_s))
+    )
+    if yahoo_fresh and not catching:
         return {**stats, "ok": True, "skipped": "fresh"}
     ensure_minute_bars_table(path)
     saved = 0
     got: List[str] = []
-    for sid in BIAOKE_MINUTE_SIDS:
-        for iv in BIAOKE_MINUTE_IVS:
-            remote = _download_yahoo_minutes(sid, iv, path)
-            if not remote:
-                continue
-            saved += save_minute_bars(sid, iv, remote, path, source="yahoo")
-            got.append(f"{sid}:{iv}:{len(remote)}")
+    if not yahoo_fresh:
+        for sid in BIAOKE_MINUTE_SIDS:
+            for iv in BIAOKE_MINUTE_IVS:
+                remote = _download_yahoo_minutes(sid, iv, path)
+                if not remote:
+                    continue
+                saved += save_minute_bars(sid, iv, remote, path, source="yahoo")
+                got.append(f"{sid}:{iv}:{len(remote)}")
+        saved += _refresh_qincheng_60(path)
     tx: Dict[str, Any] = {}
     try:
-        from taifex_ticks import refresh_tx_minutes
-
-        tx = refresh_tx_minutes(path, limit_zips=3)
+        tx = refresh_tx_minutes(path)
         saved += int(tx.get("saved") or 0)
         if tx.get("days"):
             got.append("TX:" + ",".join(str(x) for x in tx.get("days") or []))
     except Exception:
         tx = {"ok": False}
-    _LAST_BIAOKE_MINUTES = time.monotonic()
+    if int(tx.get("saved") or 0) > 0:
+        try:
+            from biaoke_claims import refresh_wave_minute_hits
+
+            stats["wave_hits"] = refresh_wave_minute_hits(path)
+        except Exception:
+            stats["wave_hits"] = 0
+        try:
+            from biaoke_why import refresh_minute_why_cards
+
+            stats["why_cards"] = refresh_minute_why_cards(path)
+        except Exception:
+            stats["why_cards"] = 0
+    if not yahoo_fresh:
+        _LAST_BIAOKE_MINUTES = time.monotonic()
     stats.update({"ok": True, "saved": saved, "sids": got, "tx": tx})
     return stats
+
+
+def _refresh_qincheng_60(db_path: str) -> int:
+    """勤誠 2025-06-19 他看 60 分。Yahoo 長 range 有那天就進庫；沒有不准編。"""
+    have = load_minute_bars("8210", "60", db_path)
+    if any(str(b.get("t") or "").startswith("20250619") for b in have):
+        return 0
+    if have:
+        return 0
+    remote = _download_yahoo_minutes("8210", "60", db_path)
+    if not remote:
+        return 0
+    return save_minute_bars("8210", "60", remote, db_path, source="yahoo")
 
 
 def render_kline_html(

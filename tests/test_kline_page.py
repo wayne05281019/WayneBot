@@ -342,6 +342,51 @@ def test_refresh_biaoke_minutes_skips_under_pytest(tmp_path, monkeypatch):
     assert called == []
 
 
+def test_refresh_biaoke_minutes_catchup_ignores_yahoo_fresh(tmp_path, monkeypatch):
+    import time
+
+    import kline_hop
+
+    monkeypatch.setenv("WAYNE_ALLOW_MINUTES", "1")
+    kline_hop._LAST_BIAOKE_MINUTES = time.monotonic()
+    called: list[str] = []
+    monkeypatch.setattr("taifex_ticks.zip_count", lambda *a, **k: 0)
+    monkeypatch.setattr(
+        "taifex_ticks.refresh_tx_minutes",
+        lambda *a, **k: called.append("tx") or {"ok": True, "saved": 0, "days": []},
+    )
+    monkeypatch.setattr(
+        "kline_hop._download_yahoo_minutes",
+        lambda *a, **k: called.append("yh") or [],
+    )
+    out = kline_hop.refresh_biaoke_minutes(str(tmp_path / "m.db"))
+    assert out.get("ok") is True
+    assert "tx" in called
+    assert "yh" not in called
+
+
+def test_refresh_qincheng_60_keeps_20250619(tmp_path, monkeypatch):
+    from kline_hop import _refresh_qincheng_60, load_minute_bars
+
+    db = str(tmp_path / "m.db")
+    remote = [
+        {
+            "t": "202506191100",
+            "o": 468,
+            "h": 479,
+            "l": 467,
+            "c": 468,
+            "v": 1,
+        }
+    ]
+    monkeypatch.setattr("kline_hop._download_yahoo_minutes", lambda *a, **k: remote)
+    assert _refresh_qincheng_60(db) == 1
+    bars = load_minute_bars("8210", "60", db)
+    assert bars[0]["h"] == 479
+    assert bars[0]["t"].startswith("20250619")
+    assert _refresh_qincheng_60(db) == 0
+
+
 def test_kline_minute_http_uses_store(tmp_path, monkeypatch):
     import json
     import threading

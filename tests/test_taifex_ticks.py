@@ -150,3 +150,69 @@ def test_refresh_tx_minutes_skips_under_pytest(tmp_path, monkeypatch):
     out = refresh_tx_minutes(str(tmp_path / "t.db"))
     assert out.get("skipped") == "pytest"
     assert called == []
+
+
+def test_fetch_budget_bursts_until_window_filled(tmp_path):
+    from datetime import datetime, timedelta
+    from taifex_ticks import _mark_zip, fetch_budget
+
+    db = str(tmp_path / "t.db")
+    assert fetch_budget(db) == 20
+    assert fetch_budget(db, limit_zips=1) == 1
+    start = datetime(2026, 8, 4)
+    for i in range(22):
+        _mark_zip(db, (start + timedelta(days=i)).strftime("%Y%m%d"), 10)
+    assert fetch_budget(db) == 3
+
+
+def test_tx_health_stats_latest_night(tmp_path):
+    from kline_hop import save_minute_bars
+    from taifex_ticks import _mark_zip, tx_health_stats
+
+    db = str(tmp_path / "t.db")
+    bars = []
+    t = 15 * 60
+    while t <= 16 * 60 + 45:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260911{hh:02d}{mm:02d}",
+                "o": 46300,
+                "h": 46400,
+                "l": 46200,
+                "c": 46350,
+                "v": 1,
+            }
+        )
+        t += 15
+    bars.append(
+        {
+            "t": "202609120000",
+            "o": 46600,
+            "h": 46663,
+            "l": 46580,
+            "c": 46650,
+            "v": 1,
+        }
+    )
+    bars.append(
+        {
+            "t": "202609120445",
+            "o": 46050,
+            "h": 46100,
+            "l": 46041,
+            "c": 46080,
+            "v": 1,
+        }
+    )
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    _mark_zip(db, "20260914", len(bars))
+    st = tx_health_stats(db)
+    assert st["tx_15_n"] >= 8
+    assert st["tx_zip_n"] == 1
+    assert st["tx_15_from"].startswith("20260911")
+    assert st["tx_15_to"].startswith("20260912")
+    assert st["tx_night_n"] >= 8
+    assert st["tx_night_high"] == "46663"
+    assert st["tx_night_low"] == "46041"
+    assert st["tx_night_date"] == "2026-09-11"

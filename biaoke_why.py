@@ -826,6 +826,39 @@ def ingest_why_events(events: Sequence[Dict[str, Any]], db_path: str = "") -> in
     return n
 
 
+def refresh_minute_why_cards(db_path: str) -> int:
+    """夜盤 15 分進庫後，重做有 15 分／夜盤原文的判斷卡。"""
+    path = str(db_path or "").strip()
+    if not path:
+        return 0
+    try:
+        conn = sqlite3.connect(path, timeout=30.0)
+        rows = conn.execute(
+            """
+            SELECT id, date, time, kind, parent, text FROM biaoke_posts
+            WHERE text LIKE '%15分%' OR text LIKE '%15 分%' OR text LIKE '%夜盤%'
+            """
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return 0
+    events = []
+    for aid, day, hm, kind, parent, text in rows:
+        events.append(
+            {
+                "id": aid,
+                "date": day,
+                "time": hm,
+                "kind": kind or "post",
+                "parent": parent or "",
+                "text": text or "",
+            }
+        )
+    if not events:
+        return 0
+    return ingest_why_events(events, path)
+
+
 def latest_thread_digest(*, posts: int = 3, replies: int = 12) -> str:
     """最近三篇主文＋樓下自回。他幾乎不回更早的貼文。"""
     rows = _iter_rows()
