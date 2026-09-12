@@ -111,16 +111,22 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
 
 def test_latest_focus_is_sep11_not_july_bwave():
     html = format_latest_focus("")
-    assert html.startswith("飆大最新公開文")
+    assert "庫 " in html
     assert "2026-09-11" in html
     assert "17:49" in html
     assert "46506" in html
     assert "45839" in html
     assert "08:43" in html
+    assert "你可能會問" in html
+    assert "直接打字或語音" in html
+    assert "位階他不講死" in html
+    assert "新發：" not in html
     assert "45000" not in html
     assert "46000" not in html
     assert "今天飆大重點就是" not in html
     assert "語料" not in html
+    assert "量先價行" not in html
+    assert len(html) < 1400
 
 
 def test_old_inbox_not_counted_as_unread(tmp_path):

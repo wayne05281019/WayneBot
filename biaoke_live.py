@@ -23,19 +23,25 @@ _TIMEOUT = 28.0
 
 SYSTEM = """你是使用者認可、正在跟他講話的那顆 AI。手機按「飆大」進來，打字或語音都是對你說。
 
-你不是飆大本人，也不是課綱朗讀機。只用下面筆記裡「最新發文／最新樓下／官方K／他原文點位」。對面剛問什麼就先答什麼。
+你不是飆大本人，也不是課綱朗讀機。筆記是材料，不是逐條照念的表格。對面剛問什麼就先答什麼，像在講話，不要清單、不要「現況／量價／產業」填空、不要開場念規則。
+
+他怎麼想（串起來用，不要當標題唸）：
+- 最強的是抓資金剛起漲。看一檔先看這族龍頭現在攻還是休息，再看這檔；例如光通訊先看聯亞。
+- 大盤走勢他非常準，但波浪位階不講死：可能先當 A，也可能換成任何一個字母。同一晚可以並存多種標籤，用點數一驗再驗才收斂，不要一次釘死。
+- 波浪／細微波／15分／60分／夜盤是拿來看大盤的。2024-06-02 說用波浪操作股票比解大盤難很多；2024-06-12 說很少用波浪分析個股。不要把波浪百分之百套在個股。
+- 覆巢之下無完卵：大盤不穩，個股會出問題。不是神，但技術分析是為了提早規劃、資金先回收，不是等大跌才跑。
+- 個股看產業趨勢、龍頭量價、誰先過前高、量先價行。庫沒 15 分就不數他的段數。
 
 硬規則：
-- 點位只准用筆記裡出現過的數字。沒有就說「這句筆記沒這點位」，不准自己編。
+- 點位只准用筆記裡出現過的數字。沒有就說這句筆記沒這點位，不准自己編。
 - 他預估哪一檔會到哪個價：只用彙整列的當日收與後來實價。沒這列不准編目標。
-- 加權／台指期現在是四萬點這一級。禁止寫 17000、16500、17200 這種對不上官方K的數。2025 年的 22000 不是現在。
-- 波浪只引用他公開文的細微波／段數／45839／46506／48218，禁止套教科書「上升三浪」。
-- 問「可以用嗎／讀得到嗎」：用最新一則的日期＋他原話裡一個點位或一句話證明你讀到了。禁止客服腔（不要說打字會傳到我這裡、根據你提供的資訊）。
-- 樓下＝他自己回覆，不是路人。庫沒有 15 分K就不數他的段數對不對。
-- 最新發文優先於舊文。
+- 加權／台指期現在是四萬點這一級。禁止寫 17000、16500、17200。2025 年的 22000 不是現在。
+- 禁止套教科書「上升三浪」。
+- 問「可以用嗎／讀得到嗎」：用最新一則的日期＋他原話裡一個點位證明你讀到了。禁止客服腔。
+- 樓下＝他自己回覆，不是路人。最新發文優先於舊文。
 
-不要開場念規則。不要用「第一、第二」講義體。講到「能不能買／該出嗎」才補一句這不是買訊。不要自稱 Gemini、ChatGPT、Claude。
-繁體中文。兩三段。
+講到「能不能買／該出嗎」才補一句這不是買訊。不要自稱 Gemini、ChatGPT、Claude。
+繁體中文。兩三段說完。
 """
 
 
@@ -253,36 +259,45 @@ def live_notes(db_path: str, ask: str) -> str:
             bits.append(note)
         hits = resolve_stock(db_path, ask) if db_path else []
         if hits:
+            hit = hits[0]
+            sid = str(hit.get("stock_id") or "")
+            try:
+                from biaoke_judge import format_judge_notes, judge_stock
+
+                judged = format_judge_notes(
+                    judge_stock(db_path, sid, name=str(hit.get("stock_name") or ""))
+                )
+                if judged:
+                    bits.append(judged)
+            except Exception:
+                bars_s = load_bars(db_path, sid) if sid else []
+                st = volume_first_price(bars_s) if bars_s else {}
+                bits.append(
+                    "官方K "
+                    + sid
+                    + " "
+                    + str(hit.get("stock_name") or "")
+                    + " 爆量日="
+                    + str(st.get("spike_date") or "")
+                    + " 高="
+                    + str(st.get("spike_high") or "")
+                    + " 低="
+                    + str(st.get("spike_low") or "")
+                    + " 量縮="
+                    + str(st.get("shrinking"))
+                )
             try:
                 from biaoke_walk import format_stock_walk
 
                 walk = format_stock_walk(
                     db_path,
-                    str(hits[0].get("stock_id") or ""),
-                    name=str(hits[0].get("stock_name") or ""),
+                    sid,
+                    name=str(hit.get("stock_name") or ""),
                 )
                 if walk:
-                    bits.append("彙整 " + _clip(walk, 900))
+                    bits.append("彙整 " + _clip(walk, 720))
             except Exception:
                 pass
-            hit = hits[0]
-            sid = str(hit.get("stock_id") or "")
-            bars_s = load_bars(db_path, sid) if sid else []
-            st = volume_first_price(bars_s) if bars_s else {}
-            bits.append(
-                "官方K "
-                + sid
-                + " "
-                + str(hit.get("stock_name") or "")
-                + " 爆量日="
-                + str(st.get("spike_date") or "")
-                + " 高="
-                + str(st.get("spike_high") or "")
-                + " 低="
-                + str(st.get("spike_low") or "")
-                + " 量縮="
-                + str(st.get("shrinking"))
-            )
     except Exception:
         logger.debug("飆大即時參考略過", exc_info=True)
     return "筆記（不要照抄格式）：\n" + "\n".join(bits[:36])

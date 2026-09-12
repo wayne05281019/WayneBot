@@ -258,8 +258,49 @@ def format_unread_digest(
     )
 
 
+_ASK_SKIP = {
+    "飆客",
+    "飆大",
+    "AI飆客",
+    "夜盤",
+    "大盤",
+    "加權",
+    "台指期",
+    "細微波",
+}
+
+
+def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
+    asks: List[str] = []
+    blob = " ".join(str(p.get("text") or "") for p in posts)
+    tags: List[str] = []
+    for p in posts:
+        tags.extend(str(t) for t in (p.get("tags") or []) if t)
+    if "夜盤" in blob or "46506" in blob:
+        asks.append("夜盤過了沒")
+    if "45839" in blob:
+        asks.append("45839有沒有守")
+    for tag in tags:
+        if tag in _ASK_SKIP or tag in asks:
+            continue
+        if tag.isdigit() and len(tag) == 4:
+            continue
+        asks.append(tag)
+        if len(asks) >= 4:
+            break
+    if not any("大盤" in a for a in asks):
+        asks.insert(0, "大盤現在怎樣")
+    out: List[str] = []
+    for a in asks:
+        if a not in out:
+            out.append(a)
+        if len(out) >= 4:
+            break
+    return out
+
+
 def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4) -> str:
-    """按飆大空白進去：庫裡最新主文＋那些文的樓下自回。不是未讀匣由舊到新。"""
+    """按飆大空白進去：現況推論＋你可能會問的。不倒原文、不念課綱。"""
     try:
         from biaoke_desk import load_corpus
     except Exception:
@@ -267,51 +308,43 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
     blob = load_corpus(db_path if db_path else None)
     posts = list((blob or {}).get("posts") or [])
     mains = [p for p in posts if (p.get("kind") or "post") != "reply"]
-    replies = [p for p in posts if p.get("kind") == "reply"]
     if not mains:
         return ""
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
-    ids = {str(p.get("id") or "") for p in latest if p.get("id")}
-    related = [
-        r
-        for r in replies
-        if str(r.get("parent") or "").split(":")[0] in ids
-    ]
-    related = list(reversed(related[-max(0, int(n_reply)) :])) if related else []
-    bits: List[str] = []
+    lines: List[str] = []
     for p in latest:
-        body = _oral_body(str(p.get("text") or ""), 420)
+        body = _oral_body(str(p.get("text") or ""), 96)
         if not body:
             continue
         day = str(p.get("date") or "").strip()
         when = str(p.get("time") or "").strip()
         stamp = " ".join(x for x in (day, when) if x)
-        bits.append(f"{stamp} 新發：".strip() + body)
-    for p in related:
-        body = _oral_body(str(p.get("text") or ""), 280)
-        if not body:
-            continue
-        day = str(p.get("date") or "").strip()
-        when = str(p.get("time") or "").strip()
-        stamp = " ".join(x for x in (day, when) if x)
-        bits.append(f"{stamp} 他自己樓下補：".strip() + body)
-    if not bits:
+        lines.append((stamp + " " + body).strip())
+    if not lines:
         return ""
-    stamp = ""
-    if latest:
-        stamp = " ".join(
-            x
-            for x in (
-                str(latest[0].get("date") or "").strip(),
-                str(latest[0].get("time") or "").strip(),
-            )
-            if x
+    stamp = " ".join(
+        x
+        for x in (
+            str(latest[0].get("date") or "").strip(),
+            str(latest[0].get("time") or "").strip(),
         )
-    return (
-        "飆大最新公開文：\n\n"
-        + html_escape("\n\n".join(bits))
-        + f"\n\n（庫到 {html_escape(stamp or str((blob or {}).get('to') or ''))}。不是買訊。）"
+        if x
     )
+    blob_l = " ".join(str(p.get("text") or "") for p in latest)
+    infer = ""
+    if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪)", blob_l):
+        infer = (
+            "這幾則是在看大盤。方向可以準，位階他不講死，要點數再驗。"
+            "個股很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
+        )
+    asks = _likely_asks(latest)
+    out = [f"庫 {stamp}。", *lines]
+    if infer:
+        out.append(infer)
+    if asks:
+        out.append("你可能會問：" + "　".join(asks))
+    out.append("直接打字或語音。不是買訊。")
+    return html_escape("\n\n".join(out))
 
 
 def take_unread_digest(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> str:

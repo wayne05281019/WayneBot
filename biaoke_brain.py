@@ -457,7 +457,11 @@ def overlay_market(
     close = last.get("close")
     pct = last.get("pct_change")
     as_of = _ymd(last.get("date") or mkt.get("as_of") or "")
-    lines = ["止跌他不猜日曆，要結構先出來才算。"]
+    lines = [
+        "止跌他不猜日曆，要結構先出來才算。"
+        "大盤方向可以準，波浪位階不講死：可能先當一種標籤，點數一驗再驗才收斂。"
+        "大盤不穩，個股先想規劃回收，不是等崩了才跑。"
+    ]
     now_bits = []
     if close:
         now_bits.append(f"加權 {as_of} 收 {_px(close)}（{_pct(pct)}）連跌 {tw_down} 日")
@@ -592,6 +596,16 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
         struct = volume_first_price(bars)
         in_corpus = bool(posts)
         body = overlay_stock(hit, struct, in_corpus=in_corpus)
+        try:
+            from biaoke_judge import format_judge_html, judge_stock
+
+            judged = format_judge_html(
+                judge_stock(db_path, sid, name=str(hit.get("stock_name") or ""))
+            )
+            if judged:
+                body = judged
+        except Exception:
+            pass
         cite = _cite_posts(posts)
         extra = ""
         walk = ""
