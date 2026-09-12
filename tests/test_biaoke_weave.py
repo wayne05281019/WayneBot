@@ -98,3 +98,12 @@ def test_weave_same_night_is_one_judgment():
     assert "46506" in body or "45839" in body
     assert "聯亞" in body
     assert "同一晚" in body or "同一條判斷" in body
+
+
+def test_weave_aux_stack_unspoken():
+    body = lookup("有緣人那則沒講出來的輔助")
+    assert "台積電" in body
+    assert "某金融商品" in body
+    assert "不准寫死" in body
+    assert "費半" in body
+    assert is_weave_query("多重比對怎麼確認低點")

@@ -47,6 +47,15 @@ def test_methods_cover_wash_three_days_and_right_shoulder():
     assert "語料" not in html
 
 
+def test_methods_cover_unspoken_aux_stack():
+    html = format_methods_html("他沒講出來的輔助判斷是什麼")
+    assert "有緣人" in html or "100%" in html
+    assert "台積電" in html
+    assert "某金融商品" in html
+    assert "不准寫死" in html
+    assert "初步止訊號" in html or "還不到確認" in html
+
+
 def test_welcome_says_compile_not_menu():
     html = format_biaoke_welcome_html()
     assert "在。" in html

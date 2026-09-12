@@ -97,3 +97,13 @@ def test_live_notes_puts_why_chain_first():
     note2 = live_notes("", "建築兩檔是哪兩檔")
     assert "沒點名" in note2
     assert "漢唐" in note2
+
+
+def test_why_unspoken_aux_stack():
+    body = lookup("他沒講出來的輔助判斷是什麼")
+    assert "100%" in body or "有緣人" in body
+    assert "台積電" in body
+    assert "某金融商品" in body
+    assert "不准寫死" in body
+    assert "初步止訊號" in body or "還不到確認" in body
+    assert is_why_query("有緣人那則在講什麼")
