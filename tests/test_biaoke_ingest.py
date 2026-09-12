@@ -351,6 +351,8 @@ def test_cmoney_token_strips_quotes_and_bearer(monkeypatch):
     from config import get_cmoney_auth_token
 
     assert get_cmoney_auth_token() == "abc.def"
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "Authorization: Bearer abc.def")
+    assert get_cmoney_auth_token() == "abc.def"
 
 
 def test_cmoney_comment_api_skipped_without_env_token(monkeypatch):

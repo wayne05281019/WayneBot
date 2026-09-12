@@ -81,6 +81,8 @@ def get_cmoney_auth_token() -> str:
     雲端打 /api/mach/.../Comments 沒帶這個會 401。
     """
     raw = (os.getenv("CMONEY_AUTH_TOKEN") or "").strip().strip('"').strip("'")
+    if raw.lower().startswith("authorization:"):
+        raw = raw.split(":", 1)[1].strip().strip('"').strip("'")
     if not raw or "請替換" in raw or raw.startswith("YOUR_"):
         return ""
     if raw.lower().startswith("bearer "):
