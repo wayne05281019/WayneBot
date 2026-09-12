@@ -161,7 +161,21 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
         return _step("leader", "沒對上這族龍頭，跟漲沒指引，不能裝這族剛起漲。", ok=False)
     ls = leader.get("struct") or {}
     why = str(leader.get("why") or "同族跟漲先看龍頭")
-    bit = f"{leader.get('sid')} {leader.get('name') or ''}（{why}）"
+    name = str(leader.get("name") or "")
+    self_sid = str(brief.get("sid") or "")
+    if lid == self_sid:
+        if ls:
+            return _step(
+                "leader",
+                f"{lid} {name}（{why}）。跟漲不另對一檔，這檔官方量價留給第 4 顆。",
+                ok=True,
+            )
+        return _step(
+            "leader",
+            f"{lid} {name}（{why}）。自己就是龍頭，但官方 K 還沒齊，攻或休先不講。",
+            ok=False,
+        )
+    bit = f"{lid} {name}（{why}）"
     if ls:
         bit += (
             f" 收 {_px(ls.get('close')) or '—'}"
@@ -169,10 +183,9 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
             f" 高 {_px(ls.get('spike_high')) or '—'} 低 {_px(ls.get('spike_low')) or '—'}"
             f" 站上撐={ls.get('above_support')} 過壓={ls.get('broke_resistance')} 量縮={ls.get('shrinking')}"
         )
-    else:
-        bit += " 龍頭官方 K 還沒齊，跟漲對不上"
-        return _step("leader", bit, ok=False)
-    return _step("leader", bit, ok=True)
+        return _step("leader", bit, ok=True)
+    bit += " 龍頭官方 K 還沒齊，跟漲對不上"
+    return _step("leader", bit, ok=False)
 
 
 def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str, Any]:

@@ -114,3 +114,26 @@ def test_field_does_not_repeat_hold_neuron():
     emc_live = fire_chain(db, "台光電怎麼看")
     rot = next(s for s in emc_live["steps"] if s["id"] == "field")["text"]
     assert rot.count("電子零組件業") <= 1
+
+
+def test_self_leader_defers_ohlc_to_tape():
+    """自己就是龍頭時，第 3 顆不重貼第 4 顆的官方高低。"""
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
+        leader = next(s for s in fired["steps"] if s["id"] == "leader")
+        assert "自己就是" in leader["text"]
+        return
+    fired = fire_chain(db, "台光電怎麼看")
+    leader = next(s for s in fired["steps"] if s["id"] == "leader")
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    assert "自己就是" in leader["text"]
+    assert "留給第 4 顆" in leader["text"] or "不另對" in leader["text"]
+    assert "4510" not in leader["text"]
+    assert "4510" in tape["text"]
+    follow = fire_chain(db, "智原怎麼看")
+    if follow.get("sid") != "3035":
+        return
+    lead = next(s for s in follow["steps"] if s["id"] == "leader")
+    assert "2454" in lead["text"] or "聯發科" in lead["text"]
+    assert "爆量日" in lead["text"] or "收" in lead["text"]
