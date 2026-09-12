@@ -141,3 +141,165 @@ def test_extract_index_levels_skips_stock_keeps_night():
 def test_upsert_does_not_invent_when_empty():
     assert upsert_fetched_quotes("", []) == 0
     assert upsert_fetched_quotes("missing.db", []) == 0
+
+
+def _twse_ok(date_roc="113/07/18", low="960.00", close="980.00"):
+    class R:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "stat": "OK",
+                "title": "113年07月 2330 台積電 各日成交資訊",
+                "data": [
+                    [
+                        date_roc,
+                        "20,000,000",
+                        "1",
+                        "970.00",
+                        "990.00",
+                        low,
+                        close,
+                        "+10.00",
+                        "10,000",
+                        "",
+                    ]
+                ],
+            }
+
+    return R()
+
+
+def test_fetch_stock_month_retries_then_ok(monkeypatch):
+    monkeypatch.setattr("biaoke_walk.time.sleep", lambda *_a, **_k: None)
+    class _Sess:
+        n = 0
+
+        def get(self, url, params=None, headers=None, timeout=18):
+            self.n += 1
+            if self.n == 1:
+                raise RuntimeError("timeout")
+            return _twse_ok()
+
+    sess = _Sess()
+    rows = fetch_stock_month("2330", "202407", session=sess, tries=2)
+    assert len(rows) == 1
+    assert rows[0]["date"] == "20240718"
+    assert sess.n == 2
+
+
+def test_missing_months_skip_index_and_backfill_queue(tmp_path):
+    from biaoke_walk import (
+        enqueue_missing_quote_months,
+        missing_stock_months,
+        run_quote_month_backfill,
+    )
+    from wayne_db import ensure_core_schema
+
+    db = str(tmp_path / "q.db")
+    ensure_core_schema(db)
+    posts = [
+        {"date": "2024-07-18", "_sids": ["2330", "TWII"], "_snames": ["台積電", "加權"]},
+    ]
+    miss = missing_stock_months(db, posts)
+    assert miss == [("2330", "202407", "台積電")]
+    assert enqueue_missing_quote_months(db, posts) == 1
+    assert enqueue_missing_quote_months(db, posts) == 0
+
+    class _Sess:
+        def get(self, url, params=None, headers=None, timeout=18):
+            return _twse_ok()
+
+    stats = run_quote_month_backfill(
+        db, session=_Sess(), limit=5, sleep_s=0, rewalk=False, posts=posts
+    )
+    assert stats["months"] == 1
+    assert stats["rows"] >= 1
+    conn = sqlite3.connect(db)
+    close = conn.execute(
+        "SELECT close FROM daily_quotes WHERE stock_id='2330' AND date='20240718'"
+    ).fetchone()
+    st = conn.execute("SELECT status FROM quote_month_backfill").fetchone()[0]
+    conn.close()
+    assert close and abs(close[0] - 980) < 0.01
+    assert st == "ok"
+    assert enqueue_missing_quote_months(db, posts) == 0
+    assert missing_stock_months(db, posts) == []
+
+
+def test_backfill_marks_none_after_max_tries(tmp_path, monkeypatch):
+    monkeypatch.setattr("biaoke_walk.time.sleep", lambda *_a, **_k: None)
+    from biaoke_walk import run_quote_month_backfill
+    from wayne_db import ensure_core_schema
+
+    db = str(tmp_path / "q.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS quote_month_backfill ("
+        "stock_id TEXT, yyyymm TEXT, stock_name TEXT, status TEXT, "
+        "tries INTEGER, rows INTEGER, updated_at TEXT, PRIMARY KEY(stock_id, yyyymm))"
+    )
+    conn.execute(
+        "INSERT INTO quote_month_backfill VALUES ('9999','202407','無','fail',4,0,'')"
+    )
+    conn.commit()
+    conn.close()
+
+    class _Sess:
+        def get(self, url, params=None, headers=None, timeout=18):
+            class R:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return {"stat": "很抱歉"}
+
+            return R()
+
+    stats = run_quote_month_backfill(
+        db, session=_Sess(), limit=3, sleep_s=0, rewalk=False, posts=[]
+    )
+    assert stats["none"] == 1
+    conn = sqlite3.connect(db)
+    st, tries = conn.execute(
+        "SELECT status, tries FROM quote_month_backfill WHERE stock_id='9999'"
+    ).fetchone()
+    conn.close()
+    assert st == "none"
+    assert tries >= 5
+
+
+def test_fetch_stock_month_skips_index():
+    assert fetch_stock_month("TWII", "202407") == []
+    assert fetch_stock_month("TX", "202407") == []
+
+
+def test_enqueue_from_facts_null_close(tmp_path):
+    from biaoke_walk import enqueue_missing_quote_months, ensure_biaoke_facts_table
+    from wayne_db import ensure_core_schema
+
+    db = str(tmp_path / "f.db")
+    ensure_core_schema(db)
+    ensure_biaoke_facts_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO biaoke_day_facts(post_id, stock_id, stock_name, post_date, club, close) "
+        "VALUES ('p1','2330','台積電','2024-07-18',0,NULL)"
+    )
+    conn.execute(
+        "INSERT INTO biaoke_day_facts(post_id, stock_id, stock_name, post_date, club, close) "
+        "VALUES ('p2','TWII','加權','2024-07-18',0,NULL)"
+    )
+    conn.commit()
+    conn.close()
+    assert enqueue_missing_quote_months(db) == 1
+    assert enqueue_missing_quote_months(db) == 0
+    conn = sqlite3.connect(db)
+    sid, ym = conn.execute(
+        "SELECT stock_id, yyyymm FROM quote_month_backfill"
+    ).fetchone()
+    conn.close()
+    assert sid == "2330"
+    assert ym == "202407"

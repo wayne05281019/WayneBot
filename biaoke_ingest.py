@@ -805,6 +805,15 @@ def ingest_public_posts(
 
             walked = walk_biaoke_posts(dbp, fetch_missing=False)
             stats["facts"] = int(walked.get("facts") or 0)
+            try:
+                from biaoke_walk import run_quote_month_backfill
+
+                filled = run_quote_month_backfill(
+                    dbp, limit=12, sleep_s=0.5, rewalk=True
+                )
+                stats["quote_months"] = int(filled.get("months") or 0)
+            except Exception:
+                logger.exception("飆大缺月日K續補失敗")
         except Exception:
             logger.exception("飆大公開文連到行情庫失敗")
     if dest and not _is_git_seed_path(dest):

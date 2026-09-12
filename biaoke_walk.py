@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -54,7 +55,22 @@ _UA = {
         "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json,text/plain,*/*",
+    "Referer": "https://www.twse.com.tw/zh/trading/historical/stock-day.html",
 }
+_SKIP_SIDS = frozenset({"TWII", "TX", "TXN", "^TWII"})
+_BACKFILL_LOCK = threading.Lock()
+_BACKFILL_DDL = """
+CREATE TABLE IF NOT EXISTS quote_month_backfill (
+    stock_id TEXT NOT NULL,
+    yyyymm TEXT NOT NULL,
+    stock_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    tries INTEGER NOT NULL DEFAULT 0,
+    rows INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (stock_id, yyyymm)
+);
+"""
 _TWSE_DAY = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
 _TPEX_DAY = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
 _LEVEL = re.compile(
@@ -279,6 +295,58 @@ def _rows_from_table(
     return out
 
 
+def _fetch_stock_month_once(
+    sess: requests.Session,
+    sid: str,
+    ym: str,
+    which: str,
+    name: str,
+) -> List[Dict[str, Any]]:
+    date_s = ym + "01"
+    if which == "TW":
+        headers = dict(_UA)
+        resp = sess.get(
+            _TWSE_DAY,
+            params={"response": "json", "date": date_s, "stockNo": sid},
+            headers=headers,
+            timeout=18,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        if str(payload.get("stat") or "") != "OK":
+            return []
+        title = str(payload.get("title") or "")
+        nm = name or (title.split()[2] if len(title.split()) >= 3 else sid)
+        return _rows_from_table(
+            payload.get("data") or [], sid=sid, name=nm, market="TW"
+        )
+    headers = dict(_UA)
+    headers["Referer"] = (
+        "https://www.tpex.org.tw/web/stock/aftertrading/trading_stock_day/st43.php"
+    )
+    resp = sess.get(
+        _TPEX_DAY,
+        params={
+            "date": f"{int(ym[:4])}/{int(ym[4:6]):02d}/01",
+            "code": sid,
+            "response": "json",
+        },
+        headers=headers,
+        timeout=18,
+    )
+    resp.raise_for_status()
+    payload = resp.json() or {}
+    tables = payload.get("tables") or []
+    block = tables[0] if tables else payload
+    data = (block or {}).get("data") or []
+    subtitle = str((block or {}).get("subtitle") or "")
+    nm = name or sid
+    bits = subtitle.split()
+    if len(bits) >= 2:
+        nm = bits[1]
+    return _rows_from_table(data, sid=sid, name=nm, market="TWO")
+
+
 def fetch_stock_month(
     sid: str,
     yyyymm: str,
@@ -286,61 +354,35 @@ def fetch_stock_month(
     market: str = "TW",
     name: str = "",
     session: Optional[requests.Session] = None,
+    tries: int = 2,
 ) -> List[Dict[str, Any]]:
-    """證交所／櫃買一個月官方日 K。沒列就空。"""
+    """證交所／櫃買一個月官方日 K。沒列就空。網路空包會重試，不編。"""
     sid = str(sid or "").strip()
     ym = str(yyyymm or "").replace("-", "")[:6]
-    if not sid or len(ym) != 6:
+    if not sid or len(ym) != 6 or sid in _SKIP_SIDS:
         return []
     sess = session or requests.Session()
-    date_s = ym + "01"
     mk = str(market or "TW").upper()
     order = ["TWO", "TW"] if mk in ("TWO", "OTC", "OT", "TPEX") else ["TW", "TWO"]
+    n_try = max(1, int(tries or 1))
     for which in order:
-        try:
-            if which == "TW":
-                resp = sess.get(
-                    _TWSE_DAY,
-                    params={"response": "json", "date": date_s, "stockNo": sid},
-                    headers=_UA,
-                    timeout=18,
+        for attempt in range(n_try):
+            try:
+                rows = _fetch_stock_month_once(sess, sid, ym, which, name)
+            except Exception:
+                logger.debug(
+                    "飆大補日K失敗 sid=%s ym=%s %s try=%s",
+                    sid,
+                    ym,
+                    which,
+                    attempt + 1,
+                    exc_info=True,
                 )
-                resp.raise_for_status()
-                payload = resp.json() or {}
-                if str(payload.get("stat") or "") != "OK":
-                    continue
-                title = str(payload.get("title") or "")
-                nm = name or (title.split()[2] if len(title.split()) >= 3 else sid)
-                rows = _rows_from_table(
-                    payload.get("data") or [], sid=sid, name=nm, market="TW"
-                )
-            else:
-                resp = sess.get(
-                    _TPEX_DAY,
-                    params={
-                        "date": f"{int(ym[:4])}/{int(ym[4:6]):02d}/01",
-                        "code": sid,
-                        "response": "json",
-                    },
-                    headers=_UA,
-                    timeout=18,
-                )
-                resp.raise_for_status()
-                payload = resp.json() or {}
-                tables = payload.get("tables") or []
-                block = tables[0] if tables else payload
-                data = (block or {}).get("data") or []
-                subtitle = str((block or {}).get("subtitle") or "")
-                nm = name or sid
-                bits = subtitle.split()
-                if len(bits) >= 2:
-                    nm = bits[1]
-                rows = _rows_from_table(data, sid=sid, name=nm, market="TWO")
-        except Exception:
-            logger.debug("飆大補日K失敗 sid=%s ym=%s %s", sid, ym, which, exc_info=True)
-            continue
-        if rows:
-            return rows
+                rows = []
+            if rows:
+                return rows
+            if attempt + 1 < n_try:
+                time.sleep(0.6 * (attempt + 1))
     return []
 
 
@@ -366,6 +408,9 @@ def _market_of(db_path: str, sid: str) -> str:
 def upsert_fetched_quotes(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
     if not db_path or not rows:
         return 0
+    from wayne_db import ensure_core_schema
+
+    ensure_core_schema(db_path)
     now = datetime.now().isoformat(timespec="seconds")
     payload = []
     for q in rows:
@@ -426,6 +471,240 @@ def upsert_fetched_quotes(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
     return len(payload)
 
 
+def ensure_quote_month_backfill_table(db_path: str) -> None:
+    if not db_path:
+        return
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute(_BACKFILL_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _backfill_status_map(db_path: str) -> Dict[Tuple[str, str], str]:
+    if not db_path or not os.path.isfile(db_path):
+        return {}
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        conn.execute(_BACKFILL_DDL)
+        rows = conn.execute(
+            "SELECT stock_id, yyyymm, status FROM quote_month_backfill"
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    return {(str(a), str(b)): str(c) for a, b, c in rows}
+
+
+def enqueue_missing_quote_months(
+    db_path: str, posts: Sequence[Dict[str, Any]] | None = None
+) -> int:
+    """缺月入列。已補成功或官方確認沒列的不再排。"""
+    if not db_path:
+        return 0
+    ensure_quote_month_backfill_table(db_path)
+    if posts is None:
+        todo: List[Tuple[str, str, str]] = []
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            if not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_day_facts'"
+            ).fetchone():
+                return 0
+            rows = conn.execute(
+                """
+                SELECT stock_id, MAX(stock_name),
+                       substr(replace(replace(post_date,'-',''),'/',''),1,6)
+                FROM biaoke_day_facts
+                WHERE IFNULL(club,0)=0 AND (close IS NULL OR close=0)
+                GROUP BY stock_id, substr(replace(replace(post_date,'-',''),'/',''),1,6)
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        finally:
+            conn.close()
+        for sid, name, ym in rows:
+            sid = str(sid or "").strip()
+            ym = str(ym or "").replace("-", "")[:6]
+            if sid and sid not in _SKIP_SIDS and len(ym) == 6:
+                todo.append((sid, ym, str(name or sid)))
+    else:
+        todo = missing_stock_months(db_path, posts)
+    if not todo:
+        return 0
+    done = _backfill_status_map(db_path)
+    now = datetime.now().isoformat(timespec="seconds")
+    payload = []
+    for sid, ym, name in todo:
+        st = done.get((sid, ym), "")
+        if st in ("ok", "none"):
+            continue
+        if st:
+            continue
+        payload.append((sid, ym, name, "pending", 0, 0, now))
+    if not payload:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO quote_month_backfill
+            (stock_id, yyyymm, stock_name, status, tries, rows, updated_at)
+            VALUES (?,?,?,?,?,?,?)
+            """,
+            payload,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return len(payload)
+
+
+def run_quote_month_backfill(
+    db_path: str,
+    *,
+    session: Optional[requests.Session] = None,
+    sleep_s: float = 0.55,
+    limit: int = 40,
+    rewalk: bool = True,
+    posts: Sequence[Dict[str, Any]] | None = None,
+) -> Dict[str, int]:
+    """每次只補一批，失敗下次再抓。補完重算 facts，週末沒日 K 的維持標缺。"""
+    stats = {"months": 0, "rows": 0, "fail": 0, "none": 0, "queued": 0, "pending": 0}
+    if not db_path:
+        return stats
+    with _BACKFILL_LOCK:
+        stats["queued"] = enqueue_missing_quote_months(db_path, posts)
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            conn.execute(_BACKFILL_DDL)
+            todo = conn.execute(
+                """
+                SELECT stock_id, yyyymm, stock_name, tries FROM quote_month_backfill
+                WHERE status IN ('pending','fail') AND tries < 5
+                ORDER BY yyyymm, stock_id
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        finally:
+            conn.close()
+        sess = session or requests.Session()
+        now = datetime.now().isoformat(timespec="seconds")
+        for i, (sid, ym, name, tries) in enumerate(todo):
+            rows = fetch_stock_month(
+                sid,
+                ym,
+                market=_market_of(db_path, sid),
+                name=name,
+                session=sess,
+                tries=2,
+            )
+            n = upsert_fetched_quotes(db_path, rows) if rows else 0
+            if n:
+                status, field = "ok", "months"
+                stats["rows"] += n
+            else:
+                nxt = int(tries or 0) + 1
+                status = "none" if nxt >= 5 else "fail"
+                field = "none" if status == "none" else "fail"
+            stats[field] = int(stats.get(field) or 0) + 1
+            conn = sqlite3.connect(db_path, timeout=30.0)
+            try:
+                conn.execute(
+                    """
+                    UPDATE quote_month_backfill
+                    SET status=?, tries=tries+1, rows=?, updated_at=?
+                    WHERE stock_id=? AND yyyymm=?
+                    """,
+                    (status, n, now, sid, ym),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            if i + 1 < len(todo):
+                time.sleep(max(0.05, float(sleep_s)))
+        conn = sqlite3.connect(db_path, timeout=15.0)
+        try:
+            stats["pending"] = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM quote_month_backfill WHERE status IN ('pending','fail')"
+                ).fetchone()[0]
+                or 0
+            )
+        except sqlite3.Error:
+            pass
+        finally:
+            conn.close()
+        if rewalk and stats["months"]:
+            walk_biaoke_posts(db_path, fetch_missing=False)
+    logger.info(
+        "官方日K缺月補完 months=%s rows=%s fail=%s none=%s pending=%s queued=%s",
+        stats["months"],
+        stats["rows"],
+        stats["fail"],
+        stats["none"],
+        stats["pending"],
+        stats["queued"],
+    )
+    return stats
+
+
+def fetch_missing_quotes(
+    db_path: str,
+    posts: Sequence[Dict[str, Any]],
+    *,
+    session: Optional[requests.Session] = None,
+    sleep_s: float = 0.28,
+    limit: int = 0,
+) -> Dict[str, int]:
+    """缺哪一個月就抓哪一個月。已有的不重抓。分批，給開機／抓文續跑。"""
+    cap = int(limit) if limit else 80
+    return run_quote_month_backfill(
+        db_path,
+        session=session,
+        sleep_s=sleep_s,
+        limit=cap,
+        rewalk=False,
+        posts=posts,
+    )
+
+
+def start_quote_month_backfill(*, delay_s: float = 20.0) -> Optional[threading.Thread]:
+    """開機後背景把飆大點名缺月補完。證交所限速，每次 40 個月。"""
+    from config import daily_scheduler_enabled, is_once_mode
+
+    if is_once_mode() or not daily_scheduler_enabled():
+        return None
+
+    def _loop() -> None:
+        time.sleep(max(0.0, float(delay_s)))
+        from config import get_db_path
+
+        dbp = get_db_path()
+        idle = 0
+        while True:
+            try:
+                got = run_quote_month_backfill(dbp, limit=40, sleep_s=0.55, rewalk=True)
+            except Exception:
+                logger.exception("官方日K缺月背景補失敗")
+                got = {"pending": 1, "months": 0}
+            pending = int(got.get("pending") or 0)
+            if pending <= 0:
+                idle += 1
+                time.sleep(1800 if idle > 2 else 300)
+                continue
+            idle = 0
+            time.sleep(25)
+
+    t = threading.Thread(target=_loop, name="quote-month-backfill", daemon=True)
+    t.start()
+    return t
+
+
 def _snippet(text: str, name: str) -> str:
     blob = re.sub(r"\s+", " ", str(text or "")).strip()
     if not blob:
@@ -481,18 +760,23 @@ def missing_stock_months(
     need: Dict[Tuple[str, str], str] = {}
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        has_q = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_quotes'"
+        ).fetchone()
         for p in posts:
             ymd = _ymd(p.get("date"))
             if not ymd:
                 continue
             names = list(p.get("_snames") or [])
             for i, sid in enumerate(p.get("_sids") or []):
-                if not sid:
+                if not sid or sid in _SKIP_SIDS:
                     continue
-                row = conn.execute(
-                    "SELECT 1 FROM daily_quotes WHERE stock_id=? AND date=?",
-                    (sid, ymd),
-                ).fetchone()
+                row = None
+                if has_q:
+                    row = conn.execute(
+                        "SELECT 1 FROM daily_quotes WHERE stock_id=? AND date=?",
+                        (sid, ymd),
+                    ).fetchone()
                 if row:
                     continue
                 name = names[i] if i < len(names) else sid
@@ -500,40 +784,6 @@ def missing_stock_months(
     finally:
         conn.close()
     return [(sid, ym, name) for (sid, ym), name in sorted(need.items())]
-
-
-def fetch_missing_quotes(
-    db_path: str,
-    posts: Sequence[Dict[str, Any]],
-    *,
-    session: Optional[requests.Session] = None,
-    sleep_s: float = 0.28,
-    limit: int = 0,
-) -> Dict[str, int]:
-    """缺哪一個月就抓哪一個月。已有的不重抓。"""
-    todo = missing_stock_months(db_path, posts)
-    if limit:
-        todo = todo[: int(limit)]
-    stats = {"months": 0, "rows": 0, "fail": 0}
-    sess = session or requests.Session()
-    for i, (sid, ym, name) in enumerate(todo):
-        rows = fetch_stock_month(
-            sid, ym, market=_market_of(db_path, sid), name=name, session=sess
-        )
-        if rows:
-            stats["rows"] += upsert_fetched_quotes(db_path, rows)
-            stats["months"] += 1
-        else:
-            stats["fail"] += 1
-        if i + 1 < len(todo):
-            time.sleep(max(0.05, float(sleep_s)))
-    logger.info(
-        "飆大補日K months=%s rows=%s fail=%s",
-        stats["months"],
-        stats["rows"],
-        stats["fail"],
-    )
-    return stats
 
 
 def walk_biaoke_posts(

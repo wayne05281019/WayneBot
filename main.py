@@ -740,15 +740,17 @@ def run_web():
                         n_link.get("mentions"),
                         n_link.get("stocks"),
                     )
-                from biaoke_walk import walk_biaoke_posts
+                from biaoke_walk import enqueue_missing_quote_months, walk_biaoke_posts
 
-                n_walk = walk_biaoke_posts(get_db_path(), fetch_missing=True)
+                n_walk = walk_biaoke_posts(get_db_path(), fetch_missing=False)
+                n_q = enqueue_missing_quote_months(get_db_path())
                 logger.info(
-                    "飆大連續讀 facts=%s with_bar=%s missing=%s fetched_months=%s",
+                    "飆大連續讀 facts=%s with_bar=%s missing=%s fetched_months=%s queued_months=%s",
                     n_walk.get("facts"),
                     n_walk.get("with_bar"),
                     n_walk.get("missing"),
                     n_walk.get("fetched_months"),
+                    n_q,
                 )
             except Exception:
                 logger.exception("飆大 1709 overlay 補進失敗")
@@ -785,6 +787,12 @@ def run_web():
             start_biaoke_poller()
         except Exception:
             logger.exception("飆大輪詢沒開起來")
+        try:
+            from biaoke_walk import start_quote_month_backfill
+
+            start_quote_month_backfill(delay_s=max(45.0, float(backfill_delay_s or 0) + 20.0))
+        except Exception:
+            logger.exception("官方日K缺月背景補沒開起來")
     start_watchdog()
 
     token = get_telegram_token()
