@@ -90,6 +90,19 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 f"高 {_px(last.get('high')) or '—'} 低 {_px(last.get('low')) or '—'}"
             )
             ok = True
+            try:
+                close = float(last.get("close") or 0)
+            except (TypeError, ValueError):
+                close = 0.0
+            if close >= 45839:
+                bits.append(
+                    f"官方收 {_px(close)} 還在他自己點的 9/3 低 45839 之上，"
+                    "右肩低先當沒破，不是已確認末端"
+                )
+            elif close > 0:
+                bits.append(
+                    f"官方收 {_px(close)} 已低於他自己點的 9/3 低 45839，覆巢先當有事"
+                )
         else:
             bits.append("官方加權這顆庫還沒這列，不准自己寫點位")
     except Exception:

@@ -87,6 +87,8 @@ def test_chain_real_quotes_when_db_present():
     assert "官方加權" in nest["text"]
     assert "圖上演算" in tape["text"]
     assert "不是保證" in tape["text"] or "演算" in fired["think"]
+    assert "45839" in nest["text"]
+    assert "46184" in nest["text"] or "官方收" in nest["text"]
 
 
 def test_field_does_not_repeat_hold_neuron():
