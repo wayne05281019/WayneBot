@@ -10,6 +10,56 @@ def test_optical_followers_look_at_lianya():
     assert "龍頭" in why
 
 
+def test_zhiyuan_follows_mediatek():
+    sid, name, why = leader_of("", "3035", "智原")
+    assert sid == "2454"
+    assert name == "聯發科"
+
+
+def test_catchup_lags_when_leader_already_broke():
+    from biaoke_judge import _catchup
+
+    text = _catchup(
+        {
+            "sid": "3035",
+            "above_support": True,
+            "broke_resistance": False,
+            "shrinking": True,
+        },
+        {
+            "sid": "2454",
+            "name": "聯發科",
+            "struct": {
+                "above_support": True,
+                "broke_resistance": True,
+                "shrinking": False,
+            },
+            "cal60": {"pct": 40},
+        },
+        {"pct": 10},
+    )
+    assert "聯發科" in text
+    assert "補漲" in text
+    assert "波浪" in text
+    assert "保證" not in text or "不是保證" in text
+
+
+def test_catchup_abandons_when_below_spike_low():
+    from biaoke_judge import _catchup
+
+    text = _catchup(
+        {"sid": "3035", "above_support": False, "broke_resistance": False},
+        {
+            "sid": "2454",
+            "name": "聯發科",
+            "struct": {"above_support": True, "broke_resistance": True},
+        },
+        {},
+    )
+    assert "放棄" in text
+    assert "補漲幾成" in text
+
+
 def test_wave_is_for_index_not_stock():
     hits = match_methods("波浪理論可以拿來看個股嗎")
     assert hits
@@ -138,3 +188,70 @@ def test_judge_notes_are_materials_not_a_form():
     assert "聯亞" in html
     assert "爆大量日" in html
     assert "現況／量價" not in html
+
+
+def test_audit_cannot_be_firm_when_layers_missing():
+    from biaoke_judge import audit_certainty, format_judge_html
+
+    miss = audit_certainty(
+        {
+            "sid": "3035",
+            "name": "智原",
+            "in_corpus": False,
+            "struct": {
+                "sid": "3035",
+                "above_support": True,
+                "broke_resistance": False,
+                "shrinking": False,
+            },
+            "leader": {"sid": "2454", "name": "聯發科", "struct": {}},
+        }
+    )
+    assert miss["firm"] is False
+    assert "不能篤定" in miss["verdict"] or "不能" in miss["verdict"]
+    assert "自問" in miss["verdict"]
+    html = format_judge_html(
+        {
+            "sid": "3035",
+            "name": "智原",
+            "in_corpus": False,
+            "audit": miss,
+            "leader": {"sid": "2454", "name": "聯發科", "why": "同族跟漲先看龍頭"},
+            "struct": {
+                "date": "2026-09-10",
+                "close": 136,
+                "pct": 1.49,
+                "spike_date": "2026-09-08",
+                "spike_high": 148,
+                "spike_low": 138,
+                "stance": "站上撐了但量還沒縮。",
+            },
+        }
+    )
+    assert html.startswith("自問")
+    assert "智原" in html
+    assert "聯發科" in html
+
+    firm = audit_certainty(
+        {
+            "sid": "2383",
+            "name": "台光電",
+            "in_corpus": True,
+            "long_hold": True,
+            "rotation": "三大法人這天剛輪進PCB",
+            "struct": {
+                "sid": "2383",
+                "above_support": True,
+                "shrinking": True,
+                "broke_resistance": False,
+            },
+            "leader": {
+                "sid": "2383",
+                "name": "台光電",
+                "struct": {"above_support": True, "shrinking": True},
+            },
+        }
+    )
+    assert firm["firm"] is True
+    assert "能" in firm["verdict"]
+    assert "買訊" in firm["verdict"]

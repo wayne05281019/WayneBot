@@ -121,6 +121,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert AFTER_EVERY_SEC == 1 * 60 * 60
     assert AFTER_UNTIL_HOUR == 3
     assert REFRESH_LATEST == 3
+    assert "refresh_after_market_fuse" in src
 
 
 def test_poll_wait_session_after_night():

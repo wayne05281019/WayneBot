@@ -3349,7 +3349,7 @@ class WayneTelegramBot:
                     await chat.send_action("typing")
             except Exception:
                 pass
-            html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist)
+            html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
             bucket = self._biaoke_hist.setdefault(actor, [])
             plain = re.sub(r"<[^>]+>", "", html)
             bucket.append({"ask": q, "answer": plain[:900]})
@@ -3387,6 +3387,69 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
                 reply_markup=kb if i == n - 1 else None,
             )
+        if q:
+            await self._send_biaoke_structure_chart(message, q, uid)
+
+    async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
+        """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。"""
+        q = (ask or "").strip()
+        if not q:
+            return
+        try:
+            from biaoke_brain import is_market_question, resolve_stock
+
+            if is_market_question(q) and not resolve_stock(self.db_path, q):
+                return
+            hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
+        except Exception:
+            logger.exception("飆大結構圖對檔略過")
+            return
+        if not hits:
+            return
+        sid = str(hits[0].get("stock_id") or "")
+        name = str(hits[0].get("stock_name") or sid)
+        if not sid:
+            return
+        os.makedirs(self.charts_dir, exist_ok=True)
+        path = self._scratch_chart_path(self.charts_dir, sid, "biaoke", uid)
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("upload_photo")
+        except Exception:
+            pass
+        try:
+            from biaoke_chart import build_biaoke_structure_chart
+
+            built = await asyncio.wait_for(
+                asyncio.to_thread(
+                    build_biaoke_structure_chart,
+                    self.db_path,
+                    sid,
+                    path,
+                    name=name,
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("飆大結構圖逾時 sid=%s", sid)
+            return
+        except Exception:
+            logger.exception("飆大結構圖失敗 sid=%s", sid)
+            return
+        png = str((built or {}).get("path") or "")
+        if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
+            return
+        cap = str((built or {}).get("caption") or "飆大結構圖。這不是買訊。")
+        try:
+            with open(png, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap[:900],
+                    reply_markup=self._reply_menu(uid),
+                )
+        except Exception:
+            logger.exception("飆大結構圖送出失敗")
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
@@ -4160,6 +4223,7 @@ class WayneTelegramBot:
                 )
                 return
             if pending in ("biaoke:ask", "biaoke:chat"):
+                # 飆大視窗：股名／股號走飆大完全體＋主庫，不改走查股兩張圖。
                 self._pending[actor] = "biaoke:chat"
                 await self._send_biaoke_page(
                     update.message, ask=raw or text, uid=uid
@@ -4228,6 +4292,7 @@ class WayneTelegramBot:
                     return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
+            # 一般功能：代號／股名出兩張圖卡。沒按飆大就不進 overlay。
             handled = await self._dispatch_intent(
                 update.message, uid, text, update=update, context=context
             )

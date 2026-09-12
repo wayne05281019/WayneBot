@@ -185,6 +185,10 @@ def test_live_notes_reverse_think_emc_hold():
     assert "只講飆客" in SYSTEM or "路人發文不是重點" in SYSTEM
     assert "模糊的精確" in SYSTEM
     assert "波浪沒辦法" in SYSTEM or "沒講完的輔助" in SYSTEM
+    assert "融會貫通" in SYSTEM
+    assert "自問" in SYSTEM
+    assert "不是介紹圖" in SYSTEM
+    assert "出貨" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note

@@ -184,6 +184,11 @@ def test_biaoke_page_has_no_inside_menu():
     assert "format_latest_focus" in src
     assert "take_unread_digest" not in src
     assert "reflow=False" in src
+    assert "_send_biaoke_structure_chart" in src
+    assert "_send_card_to" not in src
+    assert "build_biaoke_structure_chart" in inspect.getsource(
+        WayneTelegramBot._send_biaoke_structure_chart
+    )
     assert not hasattr(WayneTelegramBot, "_biaoke_inline")
     whole = inspect.getsource(WayneTelegramBot)
     assert 'InlineKeyboardButton("怎麼觀察"' not in whole

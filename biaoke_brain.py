@@ -93,6 +93,15 @@ def _pct(val: Any) -> str:
 
 
 def stock_query(ask: str) -> str:
+    """口語收成股名。『你怎麼看智原』要剩下智原，不是整句拿去查。"""
+    try:
+        from biaoke_facts import talk_core
+
+        core = talk_core(ask)
+        if core:
+            return core
+    except Exception:
+        pass
     q = (ask or "").strip()
     q = re.sub(r"^(飆大|飆客|AI飆客)\s*", "", q)
     q = _FILL.sub("", q)
@@ -212,6 +221,25 @@ def _direct_lookup(db_path: str, query: str, *, limit: int = 8) -> List[Dict[str
 
 
 def resolve_stock(db_path: str, query: str) -> List[Dict[str, Any]]:
+    try:
+        from biaoke_facts import resolve_talk_stock
+
+        talked = resolve_talk_stock(db_path, query)
+        if talked:
+            with_bars: List[Dict[str, Any]] = []
+            seen = set()
+            for h in talked:
+                sid = str(h.get("stock_id") or "")
+                if not sid or sid in seen:
+                    continue
+                seen.add(sid)
+                if load_bars(db_path, sid, n=8):
+                    with_bars.append(h)
+            if with_bars:
+                return with_bars
+            return talked
+    except Exception:
+        pass
     q = stock_query(query)
     if not q:
         return []
@@ -521,8 +549,13 @@ def _load_mkt(db_path: str) -> Dict[str, Any]:
         return {}
 
 
-def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = None) -> str:
-    """按了飆大之後：打字或語音都走即時對話線。pytest 沒開 live 才走筆記彙整。"""
+def answer_biaoke(
+    db_path: str,
+    ask: str,
+    history: Optional[Sequence[Any]] = None,
+    uid: str = "",
+) -> str:
+    """按了飆大之後：打字或語音都走即時對話線，可讀主庫。pytest 沒開 live 才走筆記彙整。"""
     from biaoke_mind import follow_up_ask, format_methods_html
     from biaoke_trace import format_trace_html
 
@@ -534,11 +567,11 @@ def answer_biaoke(db_path: str, ask: str, history: Optional[Sequence[Any]] = Non
     try:
         from biaoke_live import live_enabled, live_reply
 
-        live = live_reply(db_path, q, history)
+        live = live_reply(db_path, q, history, uid=uid)
         if live:
             return live
         if live_enabled():
-            live = live_reply(db_path, q, history)
+            live = live_reply(db_path, q, history, uid=uid)
             if live:
                 return live
             return LIVE_MISS

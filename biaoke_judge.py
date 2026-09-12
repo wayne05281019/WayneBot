@@ -32,6 +32,8 @@ _FOLLOW = {
     "6223": ("6515", "穎崴"),
     "6830": ("6515", "穎崴"),
     "6683": ("6515", "穎崴"),
+    "3035": ("2454", "聯發科"),
+    "3443": ("2454", "聯發科"),
 }
 _CHAIN = (
     (("光通", "光通訊", "矽光子", "矽光"), "3081", "聯亞"),
@@ -200,6 +202,152 @@ def _pace(
     return bit
 
 
+def _catchup(
+    struct: Dict[str, Any],
+    leader: Dict[str, Any],
+    cal60: Dict[str, Any],
+    *,
+    long_hold: bool = False,
+) -> str:
+    """位階／補漲：跟龍頭漲勢比，不把波浪套在這檔。不是買訊。"""
+    if not struct:
+        return "官方日 K 還不夠，量價位階先不硬套。"
+    lid = str((leader or {}).get("sid") or "")
+    lname = str((leader or {}).get("name") or lid)
+    ls = (leader or {}).get("struct") or {}
+    self_sid = str(struct.get("sid") or "")
+    if not lid or lid == self_sid:
+        if long_hold:
+            return "這檔就是這族龍頭。位階看大盤窗口＋自己量價，不是補漲。"
+        if not struct.get("above_support"):
+            return "沒對上跟漲龍頭；自己收在爆大量日低之下，他這套先放棄這次量價，不談補漲。"
+        if struct.get("broke_resistance"):
+            return "沒對上跟漲龍頭；自己已過爆大量日高，比較像半山腰，不是落後補漲。"
+        if struct.get("shrinking"):
+            return "沒對上跟漲龍頭；自己量縮站上撐，比較像整理末端，不用波浪算補漲空間。"
+        return "沒對上跟漲龍頭；先看自己量價有沒有縮到他說的進場。"
+    if not ls:
+        return f"這族要先看{lname}，龍頭官方 K 這顆庫還沒齊，補漲先不談。"
+    if not ls.get("above_support"):
+        return (
+            f"龍頭{lname}還沒站上自己的量價撐，這族漲勢還沒對上，"
+            "這檔談不上補漲空間。"
+        )
+    if not struct.get("above_support"):
+        return (
+            f"龍頭{lname}量價已動，但這檔收在自己爆大量日低之下。"
+            "他這套是先放棄這次量價，不是去算補漲幾成。"
+        )
+    if struct.get("broke_resistance") and not long_hold:
+        return (
+            f"這檔已過自己爆大量日高。龍頭{lname}即使還在攻，"
+            "這裡比較像半山腰去接，不是落後補漲。"
+        )
+    me_pct = cal60.get("pct") if cal60 else None
+    lead_pct = ((leader or {}).get("cal60") or {}).get("pct")
+    lag = ""
+    try:
+        if me_pct is not None and lead_pct is not None and float(lead_pct) - float(me_pct) >= 8:
+            lag = (
+                f"近60日這檔距低{_pct(me_pct)}、龍頭距低{_pct(lead_pct)}，相對落後。"
+            )
+    except (TypeError, ValueError):
+        lag = ""
+    if ls.get("broke_resistance") and not struct.get("broke_resistance"):
+        if struct.get("shrinking"):
+            return (
+                f"龍頭{lname}已經過高，這檔還沒過自己爆大量日高、量又縮。"
+                f"{lag}相對落後，比較像有補漲條件；不是保證會補，也不數這檔波浪。"
+            )
+        return (
+            f"龍頭{lname}已經過高，這檔還沒過高但量還沒縮。"
+            f"{lag}落後是落後，補漲要等價穩量縮，不是現在追。"
+        )
+    if ls.get("shrinking") and not struct.get("broke_resistance"):
+        return (
+            f"龍頭{lname}量縮站上，比較像資金要動。這檔還沒過高。"
+            f"{lag}有補漲想像，先看龍頭續攻、產業趨勢還在；不是買訊。"
+        )
+    return (
+        f"先對{lname}的漲勢：龍頭量價還在走，這檔用自己爆大量日高低當位階，"
+        "不把波浪套上來。"
+    )
+
+
+def audit_certainty(brief: Dict[str, Any]) -> Dict[str, Any]:
+    """自問：這檔現在憑什麼篤定？沒疊滿就不能裝篤定。這就是融會貫通。"""
+    st = brief.get("struct") or {}
+    leader = brief.get("leader") or {}
+    ls = leader.get("struct") or {}
+    ok: List[str] = []
+    miss: List[str] = []
+    if not st:
+        miss.append("官方日 K 量價還不夠")
+    else:
+        if st.get("above_support"):
+            ok.append("收在爆大量日低之上")
+        else:
+            miss.append("量價還沒站上爆大量日低，這次先放棄")
+        if st.get("shrinking"):
+            ok.append("量縮，比較像價穩")
+        elif st.get("broke_resistance") and not brief.get("long_hold"):
+            miss.append("已過爆大量日高，半山腰他不當波段篤定")
+        elif not st.get("broke_resistance"):
+            miss.append("量還沒縮到他說的進場")
+    lid = str(leader.get("sid") or "")
+    self_sid = str(brief.get("sid") or st.get("sid") or "")
+    if lid and lid != self_sid:
+        if not ls:
+            miss.append(f"龍頭{leader.get('name') or lid}官方 K 還沒齊，跟漲對不上")
+        elif not ls.get("above_support"):
+            miss.append(f"龍頭{leader.get('name') or lid}還沒站上自己的量價撐")
+        else:
+            ok.append(f"龍頭{leader.get('name') or lid}量價有動")
+            if ls.get("broke_resistance"):
+                ok.append("龍頭已過高，這檔若還沒過才談補漲條件")
+    elif brief.get("long_hold"):
+        ok.append("自己就是長線龍頭名單，看大盤窗口不是天天短打")
+    else:
+        miss.append("沒對上這族龍頭，跟漲沒指引")
+    if brief.get("rotation"):
+        rot = str(brief.get("rotation"))
+        if "流出" in rot or "不像剛起漲" in rot:
+            miss.append(rot)
+        else:
+            ok.append(rot)
+    if brief.get("in_corpus"):
+        ok.append("公開文有點過這檔，判斷鏈對得上")
+    else:
+        miss.append("公開文沒點名，只是觸類旁通量價，不能裝曾經篤定過這檔")
+    firm = bool(ok) and not miss
+    if firm:
+        verdict = (
+            "自問：現在能不能像他一樣篤定？能。自答：因為"
+            + "、".join(ok)
+            + "疊在一起。還不是買訊。"
+        )
+    elif ok and miss:
+        verdict = (
+            "自問：現在能不能篤定？不能。已有"
+            + "、".join(ok)
+            + "；還沒疊的是"
+            + "、".join(miss)
+            + "。他沒疊滿從不言重。"
+        )
+    else:
+        verdict = (
+            "自問：現在能不能篤定？不能。"
+            + ("缺的是" + "、".join(miss) if miss else "輔助數據還沒齊")
+            + "。沒疊滿就不講死。"
+        )
+    return {
+        "firm": firm,
+        "ok": ok,
+        "miss": miss,
+        "verdict": verdict,
+    }
+
+
 def _hold_note(sid: str, in_corpus: bool) -> str:
     if sid not in _LONG_HOLD:
         return ""
@@ -239,8 +387,10 @@ def judge_stock(db_path: str, sid: str, name: str = "") -> Dict[str, Any]:
         if lid != sid:
             lb = load_bars(db_path, lid, n=80) if db_path else []
             leader["struct"] = volume_first_price(lb) if lb else {}
+            leader["cal60"] = _cal60(lb)
         else:
             leader["struct"] = struct
+            leader["cal60"] = out.get("cal60") or {}
     out["leader"] = leader
     posts = []
     try:
@@ -266,6 +416,13 @@ def judge_stock(db_path: str, sid: str, name: str = "") -> Dict[str, Any]:
         leader,
         long_hold=bool(out.get("long_hold")),
     )
+    out["catchup"] = _catchup(
+        struct,
+        leader,
+        out.get("cal60") or {},
+        long_hold=bool(out.get("long_hold")),
+    )
+    out["audit"] = audit_certainty(out)
     return out
 
 
@@ -281,6 +438,9 @@ def format_judge_notes(brief: Dict[str, Any]) -> str:
         f"爆量日{st.get('spike_date') or ''}高{st.get('spike_high') or ''}低{st.get('spike_low') or ''}"
         f" 量縮={st.get('shrinking')} 站上撐={st.get('above_support')}",
     ]
+    audit = brief.get("audit") or {}
+    if audit.get("verdict"):
+        bits.append("融會貫通審核 " + str(audit.get("verdict")))
     if not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只用官方K套他的量價，可能看錯。")
     cal = brief.get("cal60") or {}
@@ -299,6 +459,8 @@ def format_judge_notes(brief: Dict[str, Any]) -> str:
         )
     if brief.get("pace"):
         bits.append(str(brief.get("pace")))
+    if brief.get("catchup"):
+        bits.append("位階／補漲 " + str(brief.get("catchup")))
     if brief.get("hold"):
         bits.append(str(brief.get("hold")))
     claims = str(brief.get("claims") or "").strip()
@@ -318,6 +480,9 @@ def format_judge_html(brief: Dict[str, Any]) -> str:
     sid = html_escape(str(brief.get("sid") or ""))
     name = html_escape(str(brief.get("name") or sid))
     lines: List[str] = []
+    audit = brief.get("audit") or {}
+    if audit.get("verdict"):
+        lines.append(html_escape(str(audit.get("verdict"))))
     if not brief.get("in_corpus"):
         lines.append(
             f"{sid} {name} 資料庫從頭到尾沒點名這檔，我就拿官方日 K 用他那套量價看，可能看錯。"
@@ -341,6 +506,8 @@ def format_judge_html(brief: Dict[str, Any]) -> str:
         )
     if brief.get("pace"):
         lines.append(html_escape(str(brief.get("pace"))))
+    if brief.get("catchup"):
+        lines.append(html_escape(str(brief.get("catchup"))))
     if brief.get("hold"):
         lines.append(html_escape(str(brief.get("hold"))))
     claims = str(brief.get("claims") or "").strip()

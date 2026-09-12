@@ -581,6 +581,13 @@ def run_scheduled_job(kind: str) -> None:
             run_biaoke_ingest_quiet()
         except Exception:
             logger.exception("飆大公開文匯入略過")
+        if kind == "fuse":
+            try:
+                from biaoke_facts import refresh_after_market_fuse
+
+                refresh_after_market_fuse(runner.db_path, kind=kind)
+            except Exception:
+                logger.exception("飆大對回主庫略過")
 
 
 def _scheduler_role() -> str:
