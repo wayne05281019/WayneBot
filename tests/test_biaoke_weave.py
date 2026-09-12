@@ -10,7 +10,7 @@ from biaoke_why import lookup
 def test_weave_covers_named_stocks():
     counts = weave_counts()
     assert counts["n_stocks"] >= 20
-    assert counts["n_masters"] >= 5
+    assert counts["n_masters"] >= 10
 
 
 def test_weave_system_is_one_operating_system():
@@ -54,3 +54,47 @@ def test_methods_html_weaves_through_line():
     assert "量先價行" in html
     note = weave_lookup("台光電")
     assert "護城河" in note or "買跌" in note
+
+
+def test_weave_keeps_wrong_and_right():
+    body = lookup("他改口過什麼")
+    assert "40000" in body or "不破 40000" in body
+    assert "39385" in body
+    assert "及時修正" in body
+
+
+def test_weave_leader_follow():
+    body = lookup("龍頭怎麼跟漲")
+    assert "聯亞" in body
+    assert "奇鋐" in body
+    assert "風向球" in body or "誰先過前高" in body
+
+
+def test_weave_opening_verified():
+    body = lookup("開口之後對不對")
+    assert "記憶體" in body
+    assert "20 日" in body or "20日" in body
+    assert "背離" in body
+
+
+def test_weave_stock_picks_subject_not_incidental():
+    body = lookup("台光電")
+    assert "同族一起判" in body or "金像電" in body
+    assert "後續對" in body or "護城河" in body
+    assert "3-4浪" not in body
+    assert "3-4 浪" not in body
+    note = weave_lookup("台光電")
+    assert "滿足" in note or "350" in note or "護城河" in note
+
+
+def test_weave_lianya_flip_kept():
+    body = lookup("聯亞改口過沒")
+    assert "出清" in body
+    assert "風向球" in body
+
+
+def test_weave_same_night_is_one_judgment():
+    body = lookup("9/11那晚怎麼串")
+    assert "46506" in body or "45839" in body
+    assert "聯亞" in body
+    assert "同一晚" in body or "同一條判斷" in body
