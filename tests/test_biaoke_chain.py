@@ -137,3 +137,28 @@ def test_self_leader_defers_ohlc_to_tape():
     lead = next(s for s in follow["steps"] if s["id"] == "leader")
     assert "2454" in lead["text"] or "聯發科" in lead["text"]
     assert "爆量日" in lead["text"] or "收" in lead["text"]
+
+
+def test_tape_does_not_repeat_hold_or_field():
+    """第 4 顆只留官方量價／演算；長抱、半山腰、產業資金不重貼。"""
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    fired = fire_chain(db, "台光電怎麼看")
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    field = next(s for s in fired["steps"] if s["id"] == "field")
+    assert "4510" in tape["text"]
+    assert "3930" in tape["text"]
+    assert "圖上演算" in tape["text"]
+    assert "勿輕易調整" not in tape["text"]
+    assert "長線龍頭" not in tape["text"]
+    assert "流出前段" not in tape["text"]
+    assert "勿輕易調整" in hold["text"]
+    assert "流出前段" in field["text"] or "電子零組件" in field["text"]
+    mtk = fire_chain(db, "聯發科怎麼看")
+    mt = next(s for s in mtk["steps"] if s["id"] == "tape")
+    mh = next(s for s in mtk["steps"] if s["id"] == "hold")
+    assert "只做隔日沖" not in mt["text"]
+    assert "半山腰" in mh["text"]
+    assert "4/16" in mh["text"]

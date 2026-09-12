@@ -189,6 +189,7 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
 
 
 def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str, Any]:
+    """第 4 顆只講這檔官方量價與圖上演算。產業資金在第 2 顆，長抱／半山腰在第 5 顆。"""
     if not named:
         return _step("tape", "這句沒點檔，不畫個股量價、不數這檔波浪。", skip=True)
     st = brief.get("struct") or {}
@@ -198,7 +199,6 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
             "官方日 K 量價還不夠。沒有爆大量日高低就不能講壓撐，不准編。",
             ok=False,
         )
-    pace = str(brief.get("pace") or "")
     bit = (
         f"{brief.get('sid')} {brief.get('name') or ''} "
         f"{st.get('date') or ''} 收 {_px(st.get('close')) or '—'}。"
@@ -208,8 +208,6 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
         f"站上撐={st.get('above_support')} 過壓={st.get('broke_resistance')} 量縮={st.get('shrinking')}。"
         "站上撐後等價穩量縮才像進，收在低下先放棄。個股不數 5／9 段。"
     )
-    if pace:
-        bit += " " + pace
     sid = str(brief.get("sid") or "")
     if db_path and sid:
         try:
