@@ -167,30 +167,21 @@ def page_is_author_article(html_text: str) -> bool:
 def parse_user_article_ids(html_text: str) -> List[str]:
     """只收飆客自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。
 
-    優先吃 Nuxt SSR 的 articles[]（帶 creatorId，可濾掉側欄）。
-    個人頁若被降成靜態 HTML／測試 Fake 只有 href，再後援路徑解析——
-    呼叫端本就只抓 AUTHOR 個人頁，href 主文可視為本人。
+    只吃 Nuxt SSR 的 articles[]（帶 creatorId，可濾掉側欄）。
+    純 href 不夠——側欄／推薦文也是 /forum/article/…。
     """
     raw = html_text or ""
+    m = _NUXT_FEED.search(raw)
+    if not m:
+        return []
+    owner = m.group(2)
+    chunk = raw[m.start() : m.start() + 180000]
     ids: List[str] = []
     seen = set()
-    m = _NUXT_FEED.search(raw)
-    if m:
-        owner = m.group(2)
-        chunk = raw[m.start() : m.start() + 180000]
-        for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
-            if cid != owner or len(aid) <= 6:
-                continue
-            if aid in seen:
-                continue
-            seen.add(aid)
-            ids.append(aid)
-            if len(ids) >= 20:
-                break
-        if ids:
-            return ids
-    for aid in _HREF_OWN.findall(raw) or _ID_RE.findall(raw):
-        if len(aid) <= 6 or aid in seen:
+    for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
+        if cid != owner or len(aid) <= 6:
+            continue
+        if aid in seen:
             continue
         seen.add(aid)
         ids.append(aid)

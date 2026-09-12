@@ -28,7 +28,13 @@ class _Fake:
 
         r = R()
         if "user/25263" in url:
-            r.text = '<a href="/forum/article/184431393">x</a>'
+            # 個人頁必須有 Nuxt articles[]（純 href 會被當成側欄丟掉）
+            r.text = (
+                '<script>window.__NUXT__=(function(){return {articles:['
+                '{id:"184431393",creatorId:r,x:1}'
+                ']}})</script>'
+                '<a href="/forum/article/184431393">x</a>'
+            )
         else:
             r.text = """
             <meta property="article:published_time" content="2026-9-9T9:08:00+08:00">
