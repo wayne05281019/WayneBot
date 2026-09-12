@@ -305,9 +305,21 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             f"問的是 {sid} {name}。".strip(),
             "先看大盤巢穴會不會覆巢，再問產業趨勢還在不在，再看這族龍頭，才輪到這檔官方日 K 量先價行；長抱跟進出分開，最後才講能不能篤定。",
         ]
-        parts.append("大盤官方點位有了。" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死。")
+        nest_t = str(nest.get("text") or "")
+        if "45839 之上" in nest_t:
+            parts.append("大盤官方收還在 45839 之上，右肩低先當沒破。")
+        elif "已低於他自己點的 9/3 低 45839" in nest_t:
+            parts.append("大盤官方收已低於 45839，覆巢先當有事。")
+        else:
+            parts.append("大盤官方點位有了。" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
-        parts.append("龍頭對得上。" if leader.get("ok") else "龍頭還沒對上。")
+        lead_t = str(leader.get("text") or "")
+        if "不另對" in lead_t or "自己就是" in lead_t:
+            parts.append("自己就是這族龍頭。")
+        elif leader.get("ok"):
+            parts.append("龍頭對得上。")
+        else:
+            parts.append("龍頭還沒對上。")
         parts.append("量價有官方柱。" if tape.get("ok") else "這檔量價還沒齊，不准編壓撐。")
         if "圖上演算" in str(tape.get("text") or ""):
             parts.append("圖上後續只是壓撐＋連點延長演算，不是保證。")

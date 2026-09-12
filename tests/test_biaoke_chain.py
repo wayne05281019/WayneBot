@@ -164,3 +164,18 @@ def test_tape_does_not_repeat_hold_or_field():
     assert "只做隔日沖" not in mt["text"]
     assert "半山腰" in mh["text"]
     assert "4/16" in mh["text"]
+
+
+def test_think_chains_45839_and_self_leader():
+    """推論句要串巢穴官方 45839 和自己就是龍頭，不是只寫點位有了。"""
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    fired = fire_chain(db, "台光電怎麼看")
+    think = fired["think"]
+    assert "45839" in think
+    assert "自己就是這族龍頭" in think
+    assert "勿輕易調整" in think
+    mtk = fire_chain(db, "聯發科怎麼看")
+    assert "自己就是這族龍頭" in mtk["think"]
+    assert "4/16" in mtk["think"] or "半山腰" in mtk["think"]
