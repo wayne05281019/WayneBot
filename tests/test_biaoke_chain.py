@@ -17,6 +17,8 @@ def test_system_requires_neuron_chain():
     assert "大盤巢穴" in SYSTEM
     assert "長抱還是進出" in SYSTEM
     assert "圖是第④顆" in SYSTEM or "第④顆" in SYSTEM
+    assert "演算" in SYSTEM
+    assert "不是預測保證" in SYSTEM or "不是保證" in SYSTEM
 
 
 def test_chain_six_neurons_in_order_for_emc():
@@ -46,6 +48,7 @@ def test_chain_mediatek_is_not_april16_hold():
     assert "IC 設計" in blob or "尚未納入" in blob or "不在" in blob
     notes = format_chain_notes("", "聯發科他有看好嗎")
     assert chain_order_ok(notes)
+    assert "演算" in notes
 
 
 def test_chain_market_skips_stock_tape():
@@ -82,3 +85,5 @@ def test_chain_real_quotes_when_db_present():
     assert "4510" in tape["text"] or "壓" in tape["text"]
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
     assert "官方加權" in nest["text"]
+    assert "圖上演算" in tape["text"]
+    assert "不是保證" in tape["text"] or "演算" in fired["think"]

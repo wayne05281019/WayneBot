@@ -12,7 +12,7 @@
   5 長抱還是進出（7/24 勿輕易調整 vs F10 等回測；聯發科不是 4/16）
   6 可能看錯（沒疊滿、沒點名、改口一起留）
 
-圖是第 4 顆的眼睛，不是大腦。不是買訊、不進海選。
+圖是第 4 顆的眼睛，不是大腦。右灰區只演算最可能碰到哪，不是保證。不是買訊、不進海選。
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[s
         "title": NEURON_TITLES[nid],
         "ok": bool(ok) and not skip,
         "skip": bool(skip),
-        "text": _clip(text, 520),
+        "text": _clip(text, 640),
     }
 
 
@@ -174,7 +174,7 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
     return _step("leader", bit, ok=True)
 
 
-def _tape(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
+def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str, Any]:
     if not named:
         return _step("tape", "這句沒點檔，不畫個股量價、不數這檔波浪。", skip=True)
     st = brief.get("struct") or {}
@@ -196,6 +196,20 @@ def _tape(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
     )
     if pace:
         bit += " " + pace
+    sid = str(brief.get("sid") or "")
+    if db_path and sid:
+        try:
+            from biaoke_brain import load_bars
+            from biaoke_chart import analyze_structure
+
+            bars = load_bars(db_path, sid, n=80)
+            if len(bars) >= 8:
+                proj = (analyze_structure(bars[-60:]) or {}).get("project") or {}
+                label = str(proj.get("label") or "").strip()
+                if label:
+                    bit += " 圖上演算：" + label
+        except Exception:
+            pass
     return _step("tape", bit, ok=True)
 
 
@@ -270,6 +284,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         parts.append("龍頭對得上。" if leader.get("ok") else "龍頭還沒對上。")
         parts.append("量價有官方柱。" if tape.get("ok") else "這檔量價還沒齊，不准編壓撐。")
+        if "圖上演算" in str(tape.get("text") or ""):
+            parts.append("圖上後續只是壓撐＋連點延長演算，不是保證。")
         if hold.get("text"):
             parts.append(_clip(str(hold.get("text")), 180))
         verdict = str(doubt.get("text") or "")
@@ -306,7 +322,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         nest,
         _field(q, brief),
         _leader(brief, named=named),
-        _tape(brief, named=named),
+        _tape(brief, named=named, db_path=db_path),
         _hold(brief, q, named=named),
         _doubt(brief, bool(nest.get("ok")), named=named),
     ]
@@ -335,7 +351,7 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
     think = str(fired.get("think") or "").strip()
     if think:
         lines.append("推論｜" + think)
-    lines.append("圖只解釋第 4 顆量價。這不是買訊。")
+    lines.append("圖只解釋第 4 顆量價。右灰區是壓撐＋連點延長演算，不是保證、不是買訊。")
     return "\n".join(lines)
 
 
