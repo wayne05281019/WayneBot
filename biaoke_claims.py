@@ -640,11 +640,15 @@ def file_biaoke_claims(
                     )
 
                     night = "夜盤" in snip
+                    use_tx = night or "台指" in snip
                     cover = (
                         minute_night_cover(str(c.get("post_date") or ""), db_path)
                         if night
                         else minute_day_cover(
-                            "TWII", "15", str(c.get("post_date") or ""), db_path
+                            "TX" if use_tx else "TWII",
+                            "15",
+                            str(c.get("post_date") or ""),
+                            db_path,
                         )
                     )
                     c["hit"] = minute_cover_note(cover, night=night)

@@ -329,6 +329,68 @@ def test_minute_night_cover_uses_tx_taifex_not_twii(tmp_path):
     assert "Yahoo" not in note
 
 
+def test_minute_day_cover_tx_includes_0845(tmp_path):
+    from kline_hop import minute_cover_note, minute_day_cover, save_minute_bars
+
+    db = str(tmp_path / "m.db")
+    bars = [
+        {
+            "t": "202609020845",
+            "o": 46701,
+            "h": 46746,
+            "l": 46581,
+            "c": 46581,
+            "v": 1,
+        }
+    ]
+    t = 9 * 60
+    while t <= 13 * 60 + 30:
+        hh, mm = divmod(t, 60)
+        bars.append(
+            {
+                "t": f"20260902{hh:02d}{mm:02d}",
+                "o": 46200,
+                "h": 46300,
+                "l": 46131,
+                "c": 46189,
+                "v": 1,
+            }
+        )
+        t += 15
+    save_minute_bars("TX", "15", bars, db, source="taifex")
+    cover = minute_day_cover("TX", "15", "2026-09-02", db)
+    assert cover["from"] == "202609020845"
+    assert cover["high"] == 46746
+    assert cover["low"] == 46131
+    note = minute_cover_note(cover, night=False)
+    assert "台指期" in note
+    assert "46746" in note
+    assert "不發明" in note
+
+
+def test_minute_day_cover_qincheng_60(tmp_path):
+    from kline_hop import minute_cover_note, minute_day_cover, save_minute_bars
+
+    db = str(tmp_path / "m.db")
+    bars = [
+        {"t": "202506190900", "o": 461.5, "h": 466, "l": 460, "c": 463.5, "v": 1},
+        {"t": "202506191000", "o": 463, "h": 469, "l": 461.5, "c": 468, "v": 1},
+        {"t": "202506191100", "o": 468, "h": 479, "l": 467, "c": 468, "v": 1},
+        {"t": "202506191200", "o": 468, "h": 474, "l": 465.5, "c": 473, "v": 1},
+        {"t": "202506191300", "o": 473, "h": 474, "l": 470.5, "c": 471, "v": 1},
+    ]
+    save_minute_bars("8210", "60", bars, db, source="yahoo")
+    cover = minute_day_cover("8210", "60", "2025-06-19", db)
+    assert cover["n"] == 5
+    assert cover["high"] == 479
+    assert cover["low"] == 460
+    note = minute_cover_note(cover, night=False)
+    assert "勤誠" in note
+    assert "60 分" in note
+    assert "479" in note
+    assert "460" in note
+
+
 def test_refresh_biaoke_minutes_skips_under_pytest(tmp_path, monkeypatch):
     from kline_hop import refresh_biaoke_minutes
 

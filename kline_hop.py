@@ -524,12 +524,16 @@ def minute_day_cover(
     ymd: str,
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """某日日盤 09:00～13:45 的 15／60 分覆蓋。沒庫或根數不夠回空。"""
+    """某日日盤的 15／60 分覆蓋。台指期從 08:45；60 分滿 4 根即可。沒庫回空。"""
     day = _ymd(ymd)
     if not day or not db_path:
         return {}
-    bars = load_minute_bars(stock_id, interval, db_path)
+    sid = str(stock_id or "").strip()
+    iv = "15" if normalize_interval(interval) == "15" else "60"
+    bars = load_minute_bars(sid, interval, db_path)
     cash: List[Dict[str, Any]] = []
+    lo_hm = 845 if sid.upper() in {"TX", "TXF"} else 900
+    need = 4 if iv == "60" else 8
     for b in bars:
         ts = str(b.get("t") or "")
         if len(ts) < 12 or ts[:8] != day:
@@ -538,9 +542,9 @@ def minute_day_cover(
             hm = int(ts[8:12])
         except ValueError:
             continue
-        if 900 <= hm <= 1345:
+        if lo_hm <= hm <= 1345:
             cash.append(b)
-    if len(cash) < 8:
+    if len(cash) < need:
         return {}
     return {
         "n": len(cash),
@@ -549,8 +553,8 @@ def minute_day_cover(
         "from": str(cash[0].get("t") or ""),
         "to": str(cash[-1].get("t") or ""),
         "session": "day",
-        "stock_id": str(stock_id),
-        "interval": "15" if normalize_interval(interval) == "15" else "60",
+        "stock_id": sid,
+        "interval": iv,
     }
 
 
@@ -609,20 +613,24 @@ def minute_cover_note(
     """給建檔／判斷卡。有柱只報高低，不准數他圖上的段。"""
     session = str((cover or {}).get("session") or "")
     n = int((cover or {}).get("n") or 0)
-    have = bool(cover) and n >= 8
+    have = bool(cover) and n >= 4
+    iv = str((cover or {}).get("interval") or "15")
+    unit = "60 分" if iv == "60" else "15 分"
+    sid = str((cover or {}).get("stock_id") or "")
+    who = "勤誠 " if sid == "8210" else ("台指期 " if sid.upper() in {"TX", "TXF"} else "")
     if night:
         if have and session == "night":
             h = _minute_px((cover or {}).get("high"))
             l = _minute_px((cover or {}).get("low"))
             return (
-                f"夜盤 15 分官方（期交所成交）{n} 根，高 {h} 低 {l}；"
+                f"夜盤 {unit}官方（期交所成交）{n} 根，高 {h} 低 {l}；"
                 f"不發明他圖上哪幾段。"
             )
         return "夜盤 15 分官方還沒進這段，不數這則的段。"
     if have and session != "night":
         h = _minute_px((cover or {}).get("high"))
         l = _minute_px((cover or {}).get("low"))
-        return f"日盤 15 分庫有 {n} 根，高 {h} 低 {l}；不發明他圖上哪幾段。"
+        return f"{who}日盤 {unit}庫有 {n} 根，高 {h} 低 {l}；不發明他圖上哪幾段。"
     return "庫沒 15 分，不數這則的段。"
 
 

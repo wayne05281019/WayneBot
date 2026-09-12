@@ -74,6 +74,7 @@ _VOLUME = re.compile(r"(量先價行|爆大量|價穩量縮|窒息量|破線洗�
 _IDX = re.compile(r"(大盤|加權|台指|夜盤|費半|那指|細微波|右肩|觀盤)")
 _STOCKISH = re.compile(r"(股票|持股|這檔|次族群|龍頭股)")
 _FIFTEEN = re.compile(r"(15\s*分|十五分|細微波.*[59]\s*段|[59]\s*段)")
+_SIXTY = re.compile(r"60\s*分|六十分")
 _TRACK = re.compile(r"(下降軌|下降壓|上升軌|軌道)")
 _RETRACT = re.compile(r"(已經沒了|沒了|失敗|開始做頭|改口|更正)")
 _FIFTH = re.compile(r"第五波")
@@ -83,6 +84,7 @@ _ALIEN = re.compile(r"(模糊的精確|安全邊際|淨利息|估值位階|沉�
 _WHY_ASK = re.compile(
     r"(怎麼來|怎麼判|如何知|為何|為什麼|起頭|哪兩檔|潛力|"
     r"走了?\s*5\s*段|下降軌|位階二|護城河|抱到|46506|47578|45839|48218|"
+    r"46746|45415|46250|勤誠|8210|"
     r"建築|富喬|聯亞|奇鋐|健策|第五波|9:30|黑手|C-2|C-3|"
     r"高階測試|兩檔黑馬|雍智|汎銓|泛銓|"
     r"貫通|串聯|融會|輪動|怎麼連|台光電|改口|跟漲|開口|那晚|同一晚|"
@@ -154,6 +156,29 @@ _TOPICS: List[Dict[str, Any]] = [
             "官方加權 20260908 高 47578.24。台指期日盤 9/8 高 47593。所以「前波高」＝9/8 這波高，不是亂編。"
             "更大一級前高是加權 20260623 高 48218.87（他 9/10 說下波起漲至少測 48218）。"
             "過 47578＝近波右肩還在；還沒把計數升成大 3。位階不講死。"
+        ),
+    },
+    {
+        "id": "46746",
+        "keys": re.compile(r"(46746|45415|46250|不走.?9\s*段|7\s*段跌完|前波低.?454)"),
+        "q": "46746、45415 怎麼來？穿刺才不走 9 段？",
+        "a": (
+            "2026-09-02：要穿刺 46746 才不走 9 段；7 段跌完看前波低 45415；夜盤 46250～46300 要有效穿刺。"
+            "官方台指期日盤 15 分：9/2 08:45 那根高剛好 46746，收 46189 沒站穩；"
+            "8/31 10:30 那根低剛好 45415；8/13 08:45 那根高剛好 46250。"
+            "9/2 當夜 15 分官方高 46407 低 45686，沒過 46746。"
+            "9/3 夜盤（他 9/4 說睡前已破下降軌）15 分官方高 46559 收 46487。"
+            "點位對官方高低，不數他圖上哪 7 段／9 段。不是買訊。"
+        ),
+    },
+    {
+        "id": "qincheng60",
+        "keys": re.compile(r"(勤誠|8210).{0,12}(背離|60\s*分|出清)|(背離|60\s*分|出清).{0,12}(勤誠|8210)"),
+        "q": "勤誠 6/19 60 分背離——庫有沒有當天 60 分？",
+        "a": (
+            "2025-06-19 他看勤誠 60 分疑似背離、全部出清。規則是連續攻擊才能講量價背離，不是發明公式。"
+            "官方 8210 當天日線收 473。Yahoo 60 分當天 5 根，高 479 低 460（11:00 那根高 479）。"
+            "60 分當日頂 479 不是日線頂 473；他 7 月又買回。不把這句寫進海選。不是買訊。"
         ),
     },
     {
@@ -313,7 +338,7 @@ _TOPICS: List[Dict[str, Any]] = [
             "2025-04-24 已寫「今日 9:30 以後的夜盤可看密切觀察」。"
             "2026-09-11 20:52：市場黑手真正會表態是在 9:30 的第二段，通常也是夜盤指數波動最大的時候。"
             "這則掛在夜盤主文樓下，最像夜盤 21:30 那一根／第二段，不要當成日盤 09:30 開盤就講死。"
-            "沒 15 分連續盤就看不到他說的第二段。"
+            "夜盤 15 分官方有柱也只報高低，不准假裝數過他說的第二段。"
         ),
     },
     {
@@ -669,6 +694,7 @@ def _qa_for(
         bits.append("個股價 " + h + "。")
     if _FIFTEEN.search(text):
         night = bool(re.search(r"夜盤", text))
+        use_tx = night or bool(re.search(r"台指", text))
         if db_path:
             try:
                 from kline_hop import (
@@ -680,7 +706,9 @@ def _qa_for(
                 cover = (
                     minute_night_cover(date, db_path)
                     if night
-                    else minute_day_cover("TWII", "15", date, db_path)
+                    else minute_day_cover(
+                        "TX" if use_tx else "TWII", "15", date, db_path
+                    )
                 )
                 bits.append(minute_cover_note(cover, night=night))
             except Exception:
@@ -695,6 +723,18 @@ def _qa_for(
                 if night
                 else "庫沒 15 分，不數這則的段。"
             )
+    if ("勤誠" in text or "8210" in text or "勤誠" in stocks) and (
+        _SIXTY.search(text) or "背離" in text
+    ):
+        if db_path:
+            try:
+                from kline_hop import minute_cover_note, minute_day_cover
+
+                cover = minute_day_cover("8210", "60", date, db_path)
+                if cover:
+                    bits.append(minute_cover_note(cover, night=False))
+            except Exception:
+                pass
     if _TRACK.search(text):
         bits.append("軌道＝同一次級兩個更低的高（降）或浪2低連浪4低（升），不是均線。沒附圖就不發明連哪兩根。")
     if club and re.search(r"量先價行|爆.*大量", text):

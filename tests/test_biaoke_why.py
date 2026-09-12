@@ -99,6 +99,28 @@ def test_live_notes_puts_why_chain_first():
     assert "漢唐" in note2
 
 
+def test_why_46746_is_tx_sep2_15m_high():
+    body = lookup("46746 怎麼來")
+    assert "46746" in body
+    assert "08:45" in body or "0845" in body
+    assert "45415" in body
+    assert "46250" in body
+    assert "不數" in body
+    assert "46407" in body
+
+
+def test_why_qincheng_60m_has_official_high_low():
+    body = lookup("勤誠量價背離他出清過嗎")
+    assert "479" in body
+    assert "460" in body
+    assert "473" in body
+    assert "60 分" in body or "60分" in body
+    assert "海選" in body
+    html = format_methods_html("勤誠 6/19 60分")
+    assert "479" in html
+    assert "不是買訊" in html or "這不是買訊" in html
+
+
 def test_why_hi_test_dark_horses_are_6683_and_6830():
     body = lookup("高階測試黑馬是哪兩檔")
     assert "6683" in body
