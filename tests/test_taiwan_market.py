@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -792,6 +792,7 @@ def test_sync_futures_daily_writes_row(mock_fetch, tmp_path):
     mock_fetch.side_effect = _sessions
     r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
     assert r["ok"]
+    assert r["history"]["reason"] == "pytest"
     row = load_futures_daily(db, "20260901")
     assert row and row["close"] == 47209.0
     night = load_futures_night(db, "20260901")
@@ -852,6 +853,117 @@ def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_pat
     r = sync_futures_daily(db, dates=["20260901"], backfill_days=0)
     assert r["ok"]
     assert "error" not in r
+    assert r["history"]["reason"] == "pytest"
+
+
+def test_tx_month_bounds():
+    from taiwan_market import _tx_month_bounds
+
+    assert _tx_month_bounds("202501") == ("2025/01/01", "2025/01/31")
+    assert _tx_month_bounds("202502") == ("2025/02/01", "2025/02/28")
+    assert _tx_month_bounds("202512") == ("2025/12/01", "2025/12/31")
+
+
+def test_backfill_tx_monthly_gap_skips_in_pytest(tmp_path):
+    from taiwan_market import backfill_tx_monthly_gap
+
+    r = backfill_tx_monthly_gap(str(tmp_path / "txskip.db"))
+    assert r["reason"] == "pytest"
+    assert r["ok"] is False
+    assert r["fetched"] == 0
+
+
+@patch("taiwan_market._download_taifex_history_chunk")
+def test_backfill_tx_monthly_gap_writes_202501(mock_dl, tmp_path):
+    from taiwan_market import (
+        backfill_tx_monthly_gap,
+        ensure_futures_daily_table,
+        load_futures_daily,
+        load_futures_night,
+    )
+
+    db = str(tmp_path / "txhist.db")
+    ensure_futures_daily_table(db)
+    jan = {}
+    for i in range(2, 22):
+        d = f"202501{i:02d}"
+        jan[d] = {
+            "regular": {
+                "date": d,
+                "session": "regular",
+                "contract_month": "202501",
+                "open": 21900.0,
+                "high": 22100.0,
+                "low": 21800.0,
+                "close": 22000.0 + i,
+                "settlement": 22000.0,
+                "volume": 100,
+                "open_interest": 50,
+                "pct_change": 0.1,
+                "source": "taifex",
+            },
+            "night": {
+                "date": d,
+                "session": "night",
+                "contract_month": "202501",
+                "open": 21850.0,
+                "high": 22050.0,
+                "low": 21750.0,
+                "close": 21950.0 + i,
+                "settlement": 21950.0,
+                "volume": 80,
+                "open_interest": 0,
+                "pct_change": -0.2,
+                "source": "taifex",
+            },
+        }
+
+    def _chunk(start, end, *, symbol="TX"):
+        if str(start).startswith("2025/01"):
+            return jan
+        return {}
+
+    mock_dl.side_effect = _chunk
+    r = backfill_tx_monthly_gap(db, force=True)
+    assert r["ok"]
+    assert r["rows"] == 40
+    assert r["fetched"] >= 1
+    day = load_futures_daily(db, "20250102")
+    assert day and day["low"] == 21800.0 and day["close"] == 22002.0
+    night = load_futures_night(db, "20250102")
+    assert night and night["close"] == 21952.0
+    assert load_futures_daily(db, "20250102", symbol="TE") is None
+
+
+@patch("taiwan_market._download_taifex_history_chunk")
+def test_backfill_tx_monthly_gap_already_skips_download(mock_dl, tmp_path):
+    import sqlite3
+
+    from taiwan_market import backfill_tx_monthly_gap, ensure_futures_daily_table
+
+    db = str(tmp_path / "txfull.db")
+    ensure_futures_daily_table(db)
+    conn = sqlite3.connect(db)
+    d0 = datetime(2025, 1, 2)
+    for i in range(200):
+        d = (d0 + timedelta(days=i)).strftime("%Y%m%d")
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TX', 'regular', '202501', 1, 2, 1, 2, 2, 10, 10, 0, 'taifex', 't')
+            """,
+            (d,),
+        )
+    conn.commit()
+    conn.close()
+    r = backfill_tx_monthly_gap(db, force=True)
+    assert r["ok"]
+    assert r["reason"] == "already"
+    assert r["min"] == "20250102"
+    assert r["n"] == 200
+    mock_dl.assert_not_called()
 
 
 def test_market_page_includes_futures_section(tmp_path):

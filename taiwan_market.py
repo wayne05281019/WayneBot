@@ -1110,6 +1110,127 @@ def _nearest_futures_daily(
     return load_futures_daily(db_path, str(row[0]), symbol=want_sym)
 
 
+_TX_HISTORY_START = "202501"
+
+
+def _tx_month_bounds(yyyymm: str) -> Tuple[str, str]:
+    y = str(yyyymm).replace("-", "")[:6]
+    yyyy, mm = int(y[:4]), int(y[4:6])
+    start = f"{yyyy:04d}/{mm:02d}/01"
+    if mm == 12:
+        end = f"{yyyy:04d}/12/31"
+    else:
+        last = datetime(yyyy, mm + 1, 1) - timedelta(days=1)
+        end = last.strftime("%Y/%m/%d")
+    return start, end
+
+
+def backfill_tx_monthly_gap(db_path: str, *, force: bool = False) -> Dict[str, Any]:
+    """台指期日／夜缺 2025-01 起的月份，用期交所月檔一次補。已齊就停，不逐日打。
+
+    飆大對質要用 7/29 低、夜盤是否先過壓。庫只從 2026-07-30 起＝話筒對不到。
+    pytest 預設不打外網。
+    """
+    empty = {"ok": False, "rows": 0, "fetched": 0, "skipped": 0}
+    if not db_path:
+        return empty
+    if os.environ.get("PYTEST_CURRENT_TEST") and not force:
+        return {**empty, "reason": "pytest"}
+    ensure_futures_daily_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        row = conn.execute(
+            "SELECT MIN(date), COUNT(*) FROM futures_daily "
+            "WHERE symbol=? AND session='regular'",
+            (_FUTURES_SYMBOL,),
+        ).fetchone()
+    finally:
+        conn.close()
+    mn = _norm_ymd((row or [None])[0] or "")
+    n = int((row or [None, 0])[1] or 0)
+    if n >= 200 and mn and mn <= f"{_TX_HISTORY_START}31":
+        return {**empty, "ok": True, "reason": "already", "min": mn, "n": n}
+    end_ym = datetime.now(timezone.utc).strftime("%Y%m")
+    y, m = int(_TX_HISTORY_START[:4]), int(_TX_HISTORY_START[4:6])
+    months: List[str] = []
+    while f"{y:04d}{m:02d}" <= end_ym:
+        months.append(f"{y:04d}{m:02d}")
+        m += 1
+        if m == 13:
+            y, m = y + 1, 1
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    written = 0
+    fetched = 0
+    skipped = 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        have = conn.execute(
+            "SELECT date FROM futures_daily WHERE symbol=? AND session='regular'",
+            (_FUTURES_SYMBOL,),
+        ).fetchall()
+        have_d = {str(r[0]) for r in have}
+        for ym in months:
+            already = sum(1 for d in have_d if d.startswith(ym))
+            if already >= 18:
+                skipped += 1
+                continue
+            start, end = _tx_month_bounds(ym)
+            chunk = _download_taifex_history_chunk(start, end, symbol=_FUTURES_SYMBOL)
+            fetched += 1
+            if not os.environ.get("PYTEST_CURRENT_TEST"):
+                time.sleep(0.35)
+            for d, sess in (chunk or {}).items():
+                for key, one in (sess or {}).items():
+                    if not one or not one.get("close"):
+                        continue
+                    sess_name = str(one.get("session") or key or "regular")
+                    if sess_name not in ("regular", "night"):
+                        sess_name = "regular"
+                    conn.execute(
+                        """
+                        INSERT INTO futures_daily(
+                            date, symbol, session, contract_month, open, high, low, close,
+                            settlement, volume, open_interest, pct_change, source, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(date, symbol, session) DO UPDATE SET
+                            contract_month=excluded.contract_month,
+                            open=excluded.open, high=excluded.high, low=excluded.low,
+                            close=excluded.close, settlement=excluded.settlement,
+                            volume=excluded.volume, open_interest=excluded.open_interest,
+                            pct_change=excluded.pct_change, source=excluded.source,
+                            updated_at=excluded.updated_at
+                        """,
+                        (
+                            one.get("date") or d,
+                            _FUTURES_SYMBOL,
+                            sess_name,
+                            one.get("contract_month") or "",
+                            float(one.get("open") or one["close"]),
+                            float(one.get("high") or one["close"]),
+                            float(one.get("low") or one["close"]),
+                            float(one["close"]),
+                            float(one.get("settlement") or one["close"]),
+                            int(one.get("volume") or 0),
+                            int(one.get("open_interest") or 0),
+                            float(one.get("pct_change") or 0),
+                            one.get("source") or "taifex",
+                            now,
+                        ),
+                    )
+                    written += 1
+                    have_d.add(_norm_ymd(one.get("date") or d))
+            conn.commit()
+    except Exception:
+        logger.exception("台指期月檔回補失敗")
+        return {**empty, "rows": written, "fetched": fetched}
+    finally:
+        conn.close()
+    logger.info(
+        "台指期月檔回補 rows=%s fetched=%s skipped=%s", written, fetched, skipped
+    )
+    return {"ok": True, "rows": written, "fetched": fetched, "skipped": skipped}
+
+
 def sync_futures_daily(
     db_path: str,
     dates: Optional[List[str]] = None,
@@ -1210,7 +1331,13 @@ def sync_futures_daily(
         conn.commit()
     finally:
         conn.close()
-    return {"ok": written > 0, "rows": written, "latest": latest}
+    hist = backfill_tx_monthly_gap(db_path)
+    return {
+        "ok": written > 0 or bool(hist.get("ok")),
+        "rows": written,
+        "latest": latest,
+        "history": hist,
+    }
 
 
 def compute_basis_pct(spot_close: float, futures_close: float) -> Optional[float]:
