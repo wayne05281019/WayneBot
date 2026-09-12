@@ -124,21 +124,22 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
 
 
 def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
+    """第 2 顆只講產業／主戰場。長抱 vs 進出留給第 5 顆，不准兩顆各貼一次。"""
     bits: List[str] = []
     try:
         from biaoke_mind import match_methods
 
         for title, body in match_methods(ask, limit=3):
-            if title in ("個股先看產業趨勢", "長抱主流／F4→F10／聯發科", "去年年底"):
+            if title in ("個股先看產業趨勢", "去年年底"):
                 bits.append(_clip(body, 280))
     except Exception:
         pass
     ind = str(brief.get("industry") or "")
     rot = str(brief.get("rotation") or "")
-    if ind:
-        bits.append("這檔產業 " + ind)
     if rot:
         bits.append(rot)
+    elif ind:
+        bits.append("這檔產業 " + ind)
     if not bits:
         if brief.get("sid"):
             bits.append(

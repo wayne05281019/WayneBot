@@ -87,3 +87,30 @@ def test_chain_real_quotes_when_db_present():
     assert "官方加權" in nest["text"]
     assert "圖上演算" in tape["text"]
     assert "不是保證" in tape["text"] or "演算" in fired["think"]
+
+
+def test_field_does_not_repeat_hold_neuron():
+    """產業是第 2 顆，長抱／F10／聯發科名單是第 5 顆，不要兩顆貼同一段。"""
+    fired = fire_chain("", "聯發科他有看好嗎")
+    field = next(s for s in fired["steps"] if s["id"] == "field")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    assert "主力露餡" not in field["text"]
+    assert "F10 系列" not in field["text"]
+    assert "4/16" in hold["text"] or "尚未納入" in hold["text"]
+    emc = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
+    emc_field = next(s for s in emc["steps"] if s["id"] == "field")
+    emc_hold = next(s for s in emc["steps"] if s["id"] == "hold")
+    assert "產業趨勢" in emc_field["text"]
+    assert "勿輕易調整" in emc_hold["text"]
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    live = fire_chain(db, "聯發科怎麼看")
+    live_field = next(s for s in live["steps"] if s["id"] == "field")
+    live_hold = next(s for s in live["steps"] if s["id"] == "hold")
+    assert "主力露餡" not in live_field["text"]
+    assert "半導體" in live_field["text"] or "產業" in live_field["text"]
+    assert "4/16" in live_hold["text"]
+    emc_live = fire_chain(db, "台光電怎麼看")
+    rot = next(s for s in emc_live["steps"] if s["id"] == "field")["text"]
+    assert rot.count("電子零組件業") <= 1
