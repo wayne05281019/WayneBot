@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""飆大視窗專用結構圖：量價壓撐＋連點軌道＋破線洗盤。
+"""飆大視窗專用結構圖：個股看官方日 K 量先價行。
 
 只給按了「飆大」之後的對話。不是介紹圖、不是決策卡、不進海選。
-軌道＝官方 K 兩個更低的高／兩個更高的低連起來（他自己說連點不是均線）。
-不夠兩點就不畫那條，不准發明 5／9 段、不准畫主力成本。
+個股主圖＝日 K：爆大量那一天最高當壓、最低當撐。
+15／60 分只拿來看大盤／台指期，不准畫在這張個股圖上。
+連點軌道是輔助（兩個更低的高／兩個更高的低）；不夠兩點就不畫。
+不准發明 5／9 段、不准把「三日底點不破」畫成他的固定公式。
 """
 from __future__ import annotations
 
@@ -33,7 +35,15 @@ _HOLD = "#2e7d32"
 _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
 _WASH = "#ef6c00"
-_BARS = 80
+_SPIKE_VOL = "#f9a825"
+_BARS = 60
+
+
+def _md(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    if len(t) == 8 and t.isdigit():
+        return f"{int(t[4:6])}/{int(t[6:8])}"
+    return str(raw or "").strip()
 
 
 def _px(val: Any) -> str:
@@ -137,7 +147,10 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     n = len(rows)
     notes: List[str] = []
     if spike_hi and spike_lo:
-        notes.append(f"壓 {_px(spike_hi)}＝爆大量日高　撐 {_px(spike_lo)}＝爆大量日低")
+        notes.append(
+            f"官方日K（不是15分）量先價行：爆大量那一天 {_md(spike_date) or spike_date} "
+            f"最高 {_px(spike_hi)} 當壓、最低 {_px(spike_lo)} 當撐；站上撐後等價穩量縮才進，否則放棄。"
+        )
     if down:
         y_now = _line_at(down[0], highs[down[0]], down[1], highs[down[1]], n - 1)
         out["down_now"] = y_now
@@ -229,32 +242,59 @@ def render_biaoke_structure_png(
     spike_hi = float(st.get("spike_high") or 0)
     spike_lo = float(st.get("spike_low") or 0)
     spike_i = int(info.get("spike_i") or 0)
+    spike_date = str(st.get("spike_date") or "")
     if spike_hi:
         ax1.axhline(spike_hi, color=_PRESS, linewidth=1.6, zorder=4)
-        ax1.text(n - 0.4, spike_hi, f" 壓 {_px(spike_hi)}", color=_PRESS, fontproperties=_fp(9, "bold"), va="bottom", ha="right")
+        ax1.text(
+            n - 0.4,
+            spike_hi,
+            f" 壓 {_px(spike_hi)}＝爆大量日高",
+            color=_PRESS,
+            fontproperties=_fp(9, "bold"),
+            va="bottom",
+            ha="right",
+        )
     if spike_lo:
         ax1.axhline(spike_lo, color=_HOLD, linewidth=1.6, zorder=4)
-        ax1.text(n - 0.4, spike_lo, f" 撐 {_px(spike_lo)}", color=_HOLD, fontproperties=_fp(9, "bold"), va="top", ha="right")
+        ax1.text(
+            n - 0.4,
+            spike_lo,
+            f" 撐 {_px(spike_lo)}＝爆大量日低",
+            color=_HOLD,
+            fontproperties=_fp(9, "bold"),
+            va="top",
+            ha="right",
+        )
     if 0 <= spike_i < n:
         ax1.axvline(spike_i, color="#90a4ae", linewidth=0.9, linestyle="--", zorder=2)
+        ax1.annotate(
+            f"爆大量日 {_md(spike_date) or spike_date}\n高{_px(spike_hi)}=壓  低{_px(spike_lo)}=撐",
+            xy=(spike_i, spike_hi),
+            xytext=(max(spike_i - n * 0.18, 0.4), min(spike_hi + span * 0.08, ymax)),
+            textcoords="data",
+            color=_TEXT,
+            fontproperties=_fp(9, "bold"),
+            arrowprops=dict(arrowstyle="->", color="#607d8b", lw=0.9),
+            zorder=7,
+        )
     down = info.get("down_track")
     if down:
         x1, x2 = down
         y1, y2 = highs[x1], highs[x2]
         x_end = n - 1
         y_end = _line_at(x1, y1, x2, y2, x_end)
-        ax1.plot([x1, x_end], [y1, y_end], color=_DOWN_TRACK, linewidth=2.0, zorder=5)
-        ax1.scatter([x1, x2], [y1, y2], color=_DOWN_TRACK, s=28, zorder=6)
-        ax1.text(x_end, y_end, " 下降壓", color=_DOWN_TRACK, fontproperties=_fp(9, "bold"), va="bottom")
+        ax1.plot([x1, x_end], [y1, y_end], color=_DOWN_TRACK, linewidth=1.15, linestyle=(0, (3, 2)), zorder=5)
+        ax1.scatter([x1, x2], [y1, y2], color=_DOWN_TRACK, s=18, zorder=6)
+        ax1.text(x_end, y_end, " 下降連點", color=_DOWN_TRACK, fontproperties=_fp(8), va="bottom")
     up = info.get("up_track")
     if up:
         x1, x2 = up
         y1, y2 = lows[x1], lows[x2]
         x_end = n - 1
         y_end = _line_at(x1, y1, x2, y2, x_end)
-        ax1.plot([x1, x_end], [y1, y_end], color=_UP_TRACK, linewidth=2.0, zorder=5)
-        ax1.scatter([x1, x2], [y1, y2], color=_UP_TRACK, s=28, zorder=6)
-        ax1.text(x_end, y_end, " 上升軌", color=_UP_TRACK, fontproperties=_fp(9, "bold"), va="top")
+        ax1.plot([x1, x_end], [y1, y_end], color=_UP_TRACK, linewidth=1.15, linestyle=(0, (3, 2)), zorder=5)
+        ax1.scatter([x1, x2], [y1, y2], color=_UP_TRACK, s=18, zorder=6)
+        ax1.text(x_end, y_end, " 上升連點", color=_UP_TRACK, fontproperties=_fp(8), va="top")
     if info.get("wash"):
         ax1.text(
             0.01,
@@ -275,8 +315,8 @@ def render_biaoke_structure_png(
             fontproperties=_fp(11, "bold"),
             va="top",
         )
-    title = f"{sid} {name} 飆大量價／連點（不是介紹圖／決策卡）".strip()
-    ax1.set_title(title, fontproperties=_fp(14, "bold"), pad=28, color=_TEXT)
+    title = f"{sid} {name}　官方日K・量先價行（不是15分、不是介紹圖／決策卡）".strip()
+    ax1.set_title(title, fontproperties=_fp(13, "bold"), pad=22, color=_TEXT)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
@@ -284,26 +324,33 @@ def render_biaoke_structure_png(
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(9))
-    vol_colors = [_UP if candle_up[i] else _DN for i in range(n)]
+    vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
     ax2.bar(xs, vols, color=vol_colors, width=0.72, zorder=3)
+    if 0 <= spike_i < n and vols[spike_i]:
+        ax2.annotate(
+            "這根＝爆大量日",
+            xy=(spike_i, vols[spike_i]),
+            xytext=(min(spike_i + 3, n - 1), vols[spike_i] * 0.92),
+            color=_TEXT,
+            fontproperties=_fp(8, "bold"),
+            arrowprops=dict(arrowstyle="->", color="#607d8b", lw=0.8),
+        )
+    ax2.set_ylabel("日量", fontproperties=_fp(8), color=_TEXT)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=9, left=False, right=True)
     ax2.set_xlim(-0.8, n - 0.2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
-    months, mpos = [], []
-    prev_m = None
-    for i, r in enumerate(work):
-        d = str(r.get("date") or "").replace("-", "")
-        key = d[:6] if len(d) >= 6 else d
-        if key != prev_m:
-            months.append(f"{d[4:6]}月" if len(d) >= 6 else d)
-            mpos.append(i)
-            prev_m = key
-    if mpos:
-        ax2.set_xticks(mpos)
-        ax2.set_xticklabels(months, fontproperties=_fp(8))
-    fig.subplots_adjust(left=0.04, right=0.92, top=0.88, bottom=0.08)
+    tick_i = list(range(0, n, max(n // 6, 5)))
+    if n - 1 not in tick_i:
+        tick_i.append(n - 1)
+    if 0 <= spike_i < n and spike_i not in tick_i:
+        tick_i.append(spike_i)
+    tick_i = sorted(set(tick_i))
+    labels = [_md(work[i].get("date")) or str(i) for i in tick_i]
+    ax2.set_xticks(tick_i)
+    ax2.set_xticklabels(labels, fontproperties=_fp(8))
+    fig.subplots_adjust(left=0.04, right=0.90, top=0.88, bottom=0.10)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
@@ -312,11 +359,12 @@ def render_biaoke_structure_png(
 def chart_caption(info: Dict[str, Any], *, sid: str = "", name: str = "") -> str:
     head = f"{sid} {name}".strip()
     lines = [
-        f"{head}　飆大結構圖（不是介紹圖／決策卡）".strip(),
+        f"{head}　官方日K量先價行（不是15分、不是介紹圖／決策卡）".strip(),
+        "介入買點首先量先價行：爆大量那一天最高價當壓力、最低價當支撐；站上撐或壓力轉撐之後，等價穩量縮才進，否則放棄。",
     ]
     for note in info.get("notes") or []:
         lines.append(str(note))
-    lines.append("軌道＝兩個更低的高／兩個更高的低連點。不夠兩點就不畫。不數 5／9 段。這不是買訊。")
+    lines.append("連點只是輔助。不夠兩點就不畫。個股不數 5／9 段。這不是買訊。")
     return "\n".join(x for x in lines if x)[:900]
 
 

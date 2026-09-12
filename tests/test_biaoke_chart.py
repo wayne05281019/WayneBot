@@ -50,13 +50,19 @@ def test_structure_flags_wash_and_volume_lines():
     assert info.get("struct", {}).get("spike_low") == 120
     assert info.get("wash") is True
     notes = " ".join(info.get("notes") or [])
-    assert "爆大量日高" in notes
+    assert "爆大量那一天" in notes
+    assert "當壓" in notes
+    assert "當撐" in notes
     assert "洗盤" in notes
     cap = chart_caption(info, sid="3035", name="智原")
     assert "不是介紹圖" in cap
     assert "決策卡" in cap
     assert "這不是買訊" in cap
     assert "5／9" in cap or "5/9" in cap
+    assert "日K" in cap or "日 K" in cap or "官方日K" in cap
+    assert "不是15分" in cap
+    assert "量先價行" in cap
+    assert "爆大量那一天" in cap
 
 
 def _distribution_series():
