@@ -50,7 +50,7 @@ def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[s
         "title": NEURON_TITLES[nid],
         "ok": bool(ok) and not skip,
         "skip": bool(skip),
-        "text": _clip(text, 640),
+        "text": _clip(text, 720),
     }
 
 
@@ -124,6 +124,19 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 f"高 {_px(night.get('high')) or '—'} 低 {_px(night.get('low')) or '—'}；"
                 "有官方柱也只報高低，不數段"
             )
+            try:
+                night_hi = float(night.get("high") or 0)
+            except (TypeError, ValueError):
+                night_hi = 0.0
+            if night_hi >= 46506:
+                bits.append(
+                    f"夜盤高 {_px(night_hi)} 已過他自己點的 46506；"
+                    "確認末端還要四路對質，不准單靠這一價"
+                )
+            elif night_hi > 0:
+                bits.append(
+                    f"夜盤高 {_px(night_hi)} 還沒過他自己點的 46506"
+                )
     except Exception:
         pass
     bits.append(

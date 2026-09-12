@@ -89,6 +89,8 @@ def test_chain_real_quotes_when_db_present():
     assert "不是保證" in tape["text"] or "演算" in fired["think"]
     assert "45839" in nest["text"]
     assert "46184" in nest["text"] or "官方收" in nest["text"]
+    assert "46506" in nest["text"]
+    assert "單靠" in nest["text"] or "還沒過" in nest["text"]
 
 
 def test_field_does_not_repeat_hold_neuron():
