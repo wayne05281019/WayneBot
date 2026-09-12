@@ -191,6 +191,7 @@ def test_live_notes_reverse_think_emc_hold():
     assert "出貨" in SYSTEM
     assert "量先價行" in SYSTEM
     assert "不是15分" in SYSTEM
+    assert "神經元必須串" in SYSTEM
     assert "F10" in SYSTEM
     assert "聯發科" in SYSTEM
     assert "尚未納入 F 系列" in SYSTEM
