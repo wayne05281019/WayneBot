@@ -482,8 +482,18 @@ def _api_text(item: Any) -> str:
         return ""
     content = item.get("content")
     if isinstance(content, dict):
-        return str(content.get("text") or "").strip()
-    return str(item.get("text") or "").strip()
+        return str(content.get("text") or content.get("body") or "").strip()
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                parts.append(str(block.get("text") or block.get("body") or "").strip())
+            elif isinstance(block, str):
+                parts.append(block.strip())
+        return "\n".join(p for p in parts if p)
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    return str(item.get("text") or item.get("body") or "").strip()
 
 
 def _api_comment_id(item: Any) -> str:
@@ -568,11 +578,20 @@ def _reply_row(
 def _comment_list(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         return [c for c in payload if isinstance(c, dict)]
-    if isinstance(payload, dict):
-        for key in ("comments", "items", "data"):
-            chunk = payload.get(key)
-            if isinstance(chunk, list):
-                return [c for c in chunk if isinstance(c, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("comments", "items", "replies", "list"):
+        chunk = payload.get(key)
+        if isinstance(chunk, list):
+            return [c for c in chunk if isinstance(c, dict)]
+    data = payload.get("data")
+    if isinstance(data, list):
+        return [c for c in data if isinstance(c, dict)]
+    if isinstance(data, dict):
+        return _comment_list(data)
+    result = payload.get("result")
+    if isinstance(result, dict):
+        return _comment_list(result)
     return []
 
 
@@ -607,9 +626,36 @@ def parse_api_author_replies(
     return out
 
 
+_LAST_COMMENT_API: Dict[str, Any] = {"http": 0, "replies": 0, "aid": ""}
+
+
+def comment_api_status() -> Dict[str, Any]:
+    """給 /health：只有狀態碼與則數，不准帶 token。"""
+    return {
+        "http": int(_LAST_COMMENT_API.get("http") or 0),
+        "replies": int(_LAST_COMMENT_API.get("replies") or 0),
+        "aid": str(_LAST_COMMENT_API.get("aid") or ""),
+    }
+
+
+def _note_comment_api(*, http: int = 0, replies: Optional[int] = None, aid: str = "") -> None:
+    _LAST_COMMENT_API["http"] = int(http or 0)
+    if replies is not None:
+        _LAST_COMMENT_API["replies"] = int(replies)
+    if aid:
+        _LAST_COMMENT_API["aid"] = str(aid)
+
+
 def _get_json(session: requests.Session, url: str, timeout: int = 12) -> Any:
-    resp = session.get(url, headers=_cmoney_api_headers(), timeout=timeout)
-    if getattr(resp, "status_code", 200) != 200:
+    try:
+        resp = session.get(url, headers=_cmoney_api_headers(), timeout=timeout)
+    except Exception:
+        _note_comment_api(http=0)
+        return None
+    code = int(getattr(resp, "status_code", 0) or 0)
+    _note_comment_api(http=code)
+    if code != 200:
+        logger.info("飆大留言 JSON http=%s url=%s", code, url.split("?")[0])
         return None
     try:
         return resp.json()
@@ -628,8 +674,10 @@ def fetch_author_replies_api(
         from config import get_cmoney_auth_token
 
         if not get_cmoney_auth_token():
+            _note_comment_api(http=0, replies=0)
             return []
     except Exception:
+        _note_comment_api(http=0, replies=0)
         return []
     aid = str(article_id or "").strip()
     if not aid:
@@ -641,7 +689,7 @@ def fetch_author_replies_api(
         f"?startCommentIndex=0&fetch=-100",
     )
     if payload is None:
-        logger.info("飆大留言 JSON 讀不到 id=%s（沒 token 或 401）", aid)
+        logger.info("飆大留言 JSON 讀不到 id=%s（沒 token 或非 200）", aid)
         return []
     nested: Dict[str, List[Dict[str, Any]]] = {}
     for cm in _comment_list(payload):
@@ -658,9 +706,15 @@ def fetch_author_replies_api(
             kids = _api_children(extra)
         if kids:
             nested[cid] = kids
-    return parse_api_author_replies(
+    rows = parse_api_author_replies(
         payload, parent_id=aid, now=now, nested_by_id=nested
     )
+    _note_comment_api(
+        http=int(_LAST_COMMENT_API.get("http") or 200),
+        replies=len(rows),
+        aid=aid,
+    )
+    return rows
 
 
 def _save_corpus(path: str, blob: Dict[str, Any], posts: List[Dict[str, Any]]) -> None:

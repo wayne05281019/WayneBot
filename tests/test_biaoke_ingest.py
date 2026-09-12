@@ -325,6 +325,34 @@ def test_parse_api_author_replies_keeps_nested_under_bystander():
     assert all(r["id"].startswith("184526608:c") for r in rows)
 
 
+def test_parse_api_author_replies_unwraps_nested_data():
+    from biaoke_ingest import parse_api_author_replies
+
+    payload = {
+        "data": {
+            "comments": [
+                {
+                    "id": "c9",
+                    "memberId": 25263,
+                    "nickname": "期股多空雙飆客",
+                    "content": {"text": "夜盤先看有沒有過壓"},
+                    "createTime": "2026-09-11T04:00:00Z",
+                }
+            ]
+        }
+    }
+    rows = parse_api_author_replies(payload, parent_id="184526608")
+    assert len(rows) == 1
+    assert "過壓" in rows[0]["text"]
+
+
+def test_cmoney_token_strips_quotes_and_bearer(monkeypatch):
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", '"Bearer abc.def"')
+    from config import get_cmoney_auth_token
+
+    assert get_cmoney_auth_token() == "abc.def"
+
+
 def test_cmoney_comment_api_skipped_without_env_token(monkeypatch):
     monkeypatch.delenv("CMONEY_AUTH_TOKEN", raising=False)
     from config import get_cmoney_auth_token

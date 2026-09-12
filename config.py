@@ -80,11 +80,11 @@ def get_cmoney_auth_token() -> str:
     空字串＝只抓公開主文 HTML。瀏覽器能看留言是因為分頁已登入；
     雲端打 /api/mach/.../Comments 沒帶這個會 401。
     """
-    raw = (os.getenv("CMONEY_AUTH_TOKEN") or "").strip()
+    raw = (os.getenv("CMONEY_AUTH_TOKEN") or "").strip().strip('"').strip("'")
     if not raw or "請替換" in raw or raw.startswith("YOUR_"):
         return ""
     if raw.lower().startswith("bearer "):
-        raw = raw[7:].strip()
+        raw = raw[7:].strip().strip('"').strip("'")
     return raw
 
 

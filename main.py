@@ -136,7 +136,41 @@ def _cheap_health_data() -> dict:
         "cap": cap,
         "latest_complete": latest,
         "reasons": reasons,
+        "biaoke_n": 0,
+        "biaoke_replies": 0,
     }
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(path, timeout=2.0)
+        try:
+            hit = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_posts'"
+            ).fetchone()
+            if hit:
+                out["biaoke_n"] = int(
+                    (
+                        conn.execute(
+                            "SELECT COUNT(*) FROM biaoke_posts "
+                            "WHERE IFNULL(kind,'post')!='reply'"
+                        ).fetchone()
+                        or [0]
+                    )[0]
+                    or 0
+                )
+                out["biaoke_replies"] = int(
+                    (
+                        conn.execute(
+                            "SELECT COUNT(*) FROM biaoke_posts WHERE kind='reply'"
+                        ).fetchone()
+                        or [0]
+                    )[0]
+                    or 0
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
     _HEALTH_DATA_CACHE["at"] = now
     _HEALTH_DATA_CACHE["payload"] = out
     return out
@@ -169,6 +203,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "git_sha": _code_revision(),
                 "stt_ok": False,
                 "biaoke_live_ok": False,
+                "cmoney_ok": False,
+                "cmoney_comment_http": 0,
+                "biaoke_n": 0,
+                "biaoke_replies": 0,
                 "db_ok": live.get("db_ok"),
                 "polling_alive": live.get("polling_alive"),
                 "polling_age_s": live.get("polling_age_s"),
@@ -188,6 +226,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                     payload["cap"] = data.get("cap") or ""
                     payload["latest_complete"] = data.get("latest_complete") or ""
                     payload["reasons"] = list(data.get("reasons") or [])
+                    payload["biaoke_n"] = int(data.get("biaoke_n") or 0)
+                    payload["biaoke_replies"] = int(data.get("biaoke_replies") or 0)
                 except Exception as e:
                     payload["data_ok"] = False
                     payload["data_error"] = str(e)
@@ -203,6 +243,19 @@ class HealthHandler(BaseHTTPRequestHandler):
                 payload["biaoke_live_ok"] = bool(live_configured())
             except Exception:
                 payload["biaoke_live_ok"] = False
+            try:
+                from config import get_cmoney_auth_token
+
+                payload["cmoney_ok"] = bool(get_cmoney_auth_token())
+            except Exception:
+                payload["cmoney_ok"] = False
+            try:
+                from biaoke_ingest import comment_api_status
+
+                st = comment_api_status()
+                payload["cmoney_comment_http"] = int(st.get("http") or 0)
+            except Exception:
+                payload["cmoney_comment_http"] = 0
             payload["ok"] = bool(payload["serving"])
             payload["status"] = "healthy" if payload["serving"] else "unhealthy"
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

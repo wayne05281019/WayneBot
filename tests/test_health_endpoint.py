@@ -81,6 +81,24 @@ def test_health_200_when_process_can_serve(serve):
     assert body["stt_ok"] in (True, False)
     assert "biaoke_live_ok" in body
     assert body["biaoke_live_ok"] in (True, False)
+    assert body["cmoney_ok"] in (True, False)
+    assert "cmoney_comment_http" in body
+    assert "biaoke_n" in body
+    assert "biaoke_replies" in body
+
+
+def test_health_cmoney_ok_follows_env_without_leaking_token(serve, monkeypatch):
+    get, db, main = serve
+    monkeypatch.delenv("CMONEY_AUTH_TOKEN", raising=False)
+    code, body = get("/health")
+    assert code == 200
+    assert body["cmoney_ok"] is False
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "not-a-real-token-xyz")
+    code, body = get("/health")
+    assert body["cmoney_ok"] is True
+    dumped = json.dumps(body, ensure_ascii=False)
+    assert "not-a-real-token-xyz" not in dumped
+    assert "Bearer" not in dumped
 
 
 def test_code_revision_reads_render_commit(monkeypatch):
