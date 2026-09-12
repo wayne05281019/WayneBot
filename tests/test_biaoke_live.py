@@ -191,12 +191,20 @@ def test_live_notes_reverse_think_emc_hold():
     assert "出貨" in SYSTEM
     assert "量先價行" in SYSTEM
     assert "不是15分" in SYSTEM
+    assert "F10" in SYSTEM
+    assert "聯發科" in SYSTEM
+    assert "尚未納入 F 系列" in SYSTEM
+    assert "抱著波段賺更多" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
     assert "2026-04-16" in note
     assert "3930" in note
     assert "產業趨勢" in note
+    mtk = live_notes("", "聯發科他有看好嗎")
+    assert "2454" in mtk
+    assert "IC 設計主線" in mtk
+    assert "4/16" in mtk
 
 
 def test_live_reply_system_forbids_invented_index(monkeypatch):

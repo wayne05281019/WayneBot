@@ -115,5 +115,42 @@ def test_render_structure_png(tmp_path):
     out = str(tmp_path / "biaoke.png")
     path = render_biaoke_structure_png(_series(), out, sid="3035", name="智原")
     assert path and path == out
-    assert Image.open(path).size[0] >= 800
+    assert Image.open(path).size[0] >= 1000
     assert (tmp_path / "biaoke.png").stat().st_size > 24_000
+
+
+def test_real_daily_quotes_numbers_are_exact():
+    import os
+
+    from biaoke_brain import load_bars
+
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    bars = load_bars(db, "2383", n=120)
+    if len(bars) < 40:
+        return
+    work = bars[-60:]
+    info = analyze_structure(work)
+    st = info.get("struct") or {}
+    lookback = min(40, len(work))
+    window = work[-lookback:]
+    spike = max(window, key=lambda r: float(r.get("volume") or 0))
+    last = work[-1]
+    assert float(st.get("spike_high")) == float(spike["high"])
+    assert float(st.get("spike_low")) == float(spike["low"])
+    assert str(st.get("spike_date") or "").replace("-", "")[:8] == str(spike["date"]).replace("-", "")[:8]
+    assert float((info.get("spike_bar") or {}).get("volume")) == float(spike["volume"])
+    cap = chart_caption(info, sid="2383", name="台光電")
+    assert _px_from_bar(spike["high"]) in cap
+    assert _px_from_bar(spike["low"]) in cap
+    assert _px_from_bar(last["close"]) in cap
+    assert str(int(round(float(spike["volume"])))) in cap.replace(",", "")
+    notes = " ".join(info.get("notes") or [])
+    assert "3930" in notes or _px_from_bar(spike["low"]) in notes
+
+
+def _px_from_bar(val):
+    from biaoke_chart import _px
+
+    return _px(val)

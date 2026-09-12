@@ -255,3 +255,22 @@ def test_audit_cannot_be_firm_when_layers_missing():
     assert firm["firm"] is True
     assert "能" in firm["verdict"]
     assert "買訊" in firm["verdict"]
+
+
+def test_hold_note_splits_long_hold_f10_and_mediatek():
+    from biaoke_judge import _hold_note
+
+    emc = _hold_note("2383", True)
+    assert "勿輕易調整" in emc
+    assert "4/16" in emc
+    assert "3930" in emc
+    delta = _hold_note("2308", True)
+    assert "勿輕易調整" in delta
+    qin = _hold_note("3017", True)
+    assert "F10" in qin
+    assert "回測" in qin
+    mtk = _hold_note("2454", True)
+    assert "4/22" in mtk or "IC 設計" in mtk
+    assert "不是 4/16" in mtk or "不在" in mtk
+    assert "尚未納入 F 系列" in mtk
+    assert "台積電" in mtk

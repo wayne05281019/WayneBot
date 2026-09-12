@@ -28,6 +28,24 @@ def test_methods_cover_industry_trend_hold_to_next_year():
     assert "現況／量價" not in html2
 
 
+def test_methods_cover_long_hold_f10_and_mediatek():
+    html = format_methods_html("F10 長抱跟台光電怎麼分")
+    assert "2026-07-24" in html
+    assert "勿輕易調整" in html
+    assert "奇鋐" in html
+    assert "F10" in html
+    mtk = format_methods_html("聯發科他有看好嗎")
+    assert "2454" in mtk
+    assert "IC 設計主線" in mtk
+    assert "4/16" in mtk
+    assert "不在" in mtk
+    assert "尚未納入 F 系列" in mtk
+    wave = format_methods_html("台光電抱著波段是不是賺更多")
+    assert "勿輕易調整" in wave
+    assert "抱著波段賺更多" in wave
+    assert "對不到" in wave
+
+
 def test_methods_cover_wash_three_days_and_right_shoulder():
     wash = format_methods_html("洗盤跟出貨怎麼分")
     assert "2024-07-08" in wash

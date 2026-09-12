@@ -80,6 +80,19 @@ def test_wave_question_uses_sep11_levels():
     assert "語料" not in html
 
 
+def test_mediatek_timeline_is_ic_design_not_april16_hold():
+    text = format_trace("聯發科他有看好嗎")
+    assert "2454" in text
+    assert "IC 設計主線" in text
+    assert "4/16" in text
+    assert "尚未納入 F 系列" in text
+    assert "語料" not in text
+    html = answer_biaoke(":memory:", "聯發科他有看好嗎")
+    assert "2454" in html
+    assert "這不是買訊" in html
+    assert "語料" not in html
+
+
 @pytest.mark.production_db
 def test_verify_45839_holds_through_sep10():
     from tests.conftest import require_production_db

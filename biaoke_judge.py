@@ -349,6 +349,14 @@ def audit_certainty(brief: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _hold_note(sid: str, in_corpus: bool) -> str:
+    if sid == "2454":
+        bit = (
+            "聯發科不是 4/16 可抱到明年名單（那份是台積電、台達電、台光電、旺矽、穎崴、奇鋐）。"
+            "2026-04-22 公開 IC 設計主線看低位階；2026-07-23 發哥尚未納入 F 系列。"
+        )
+        if not in_corpus:
+            bit += "公開文沒點名這檔時只套量價，可能看錯。"
+        return bit
     if sid not in _LONG_HOLD:
         return ""
     name = _LONG_HOLD[sid]
@@ -357,7 +365,11 @@ def _hold_note(sid: str, in_corpus: bool) -> str:
         "買點是大盤大跌窗口，不是把波浪套在這檔日 K。"
     )
     if sid == "2383":
-        bit += "錨是 7/6 買跌不買漲，官方日 K 7/29 低 3985、7/30 低 3930。"
+        bit += "錨是 7/6 買跌不買漲，官方日 K 7/29 低 3985、7/30 低 3930。7/24 原文：長抱主流勿輕易調整。"
+    elif sid == "2308":
+        bit += "7/24 原文：長抱主流勿輕易調整。"
+    elif sid == "3017":
+        bit += "7/24：F10 效率操作，主力露餡才進、等回測，不要當天追。"
     if not in_corpus:
         bit += "公開文沒點名這檔時只套量價，可能看錯。"
     return bit
