@@ -534,7 +534,7 @@ def format_angles(rows: Sequence[Dict[str, Any]], *, today_replies: int = 0) -> 
         f"一千角交叉：{st['n']} 則全跑，過 {st['passed']}、沒過 {st['failed']}"
         "（沒過＝庫沒或條件不成立，不編）。",
         f"今天 9/11 主文 2 則＋樓下自回 {today_replies} 則（只收飆大本人，路人不收）。",
-        "抓文：盤中 10 分，收盤後到凌晨 3 點每 1 小時。",
+        "抓文：盤中 10 分；休市／凌晨每 1 小時；討論串只重讀最近三篇。",
     ]
     if st["fail_names"]:
         lines.append("沒過的角例如：" + "、".join(st["fail_names"][:8]))

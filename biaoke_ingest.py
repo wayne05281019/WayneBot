@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
-盤中 10 分、盤後到凌晨 3 點每 1 小時、夜間併入 06:30。
+盤中 10 分。收盤後、凌晨、週末、國定假、颱風停市都每 1 小時——他常不發新主文，改在最近幾篇樓下補觀點或改主文。
+討論串只重讀個人頁最新 3 篇（他幾乎不回三篇之前）。新主文仍從個人頁偵測。
 主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
 不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
 不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
-路人留言不收。
+路人留言不收。抓到新文立刻對官方 K 建檔，不清空再等。
 """
 from __future__ import annotations
 
@@ -48,8 +49,9 @@ _UA = {
 }
 SESSION_EVERY_SEC = 10 * 60
 AFTER_EVERY_SEC = 1 * 60 * 60
-NIGHT_EVERY_SEC = 3 * 60 * 60
-AFTER_UNTIL_HOUR = 3  # 收盤後抓到凌晨 3 點（含 02:59），3 點起等到開盤
+NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 休市／週末／凌晨也每小時，不再等到開盤
+AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
+REFRESH_LATEST = 3  # 他幾乎不回三篇之前的貼文
 _ID_RE = re.compile(r"/forum/article/(\d{6,})")
 _HREF_OWN = re.compile(
     r'href="(?:https://www\.cmoney\.tw)?/forum/article/(\d{6,})"'
@@ -277,21 +279,27 @@ def taipei_now() -> datetime:
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """盤中 10 分；收盤後到凌晨 3 點每 1 小時；3 點到 9 點等到開盤。週末仍 3 小時。"""
+    """開市盤中 10 分；其餘時間（盤後、凌晨、週末、國定假、颱風停市）每 1 小時。
+
+    他週四／週五發文後，週末仍可能在最近三篇樓下回別人、補觀點、或改主文。
+    不准再用「等到開盤」把凌晨到 9 點、週末、颱風天空掉。
+    """
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
+    ymd = dt.strftime("%Y%m%d")
+    try:
+        from trading_calendar import is_tw_open_calendar_day
+
+        open_day = bool(is_tw_open_calendar_day(ymd))
+    except Exception:
+        open_day = dt.weekday() < 5
     hm = dt.hour * 60 + dt.minute
-    if dt.weekday() >= 5:
-        return NIGHT_EVERY_SEC
-    if 9 * 60 <= hm <= 13 * 60 + 40:
+    if open_day and 9 * 60 <= hm <= 13 * 60 + 40:
         return SESSION_EVERY_SEC
-    if hm >= 13 * 60 + 40 or hm < AFTER_UNTIL_HOUR * 60:
-        return AFTER_EVERY_SEC
-    # 03:00～09:00：等到開盤再抓
-    return max(60, 9 * 60 - hm) * 60
+    return AFTER_EVERY_SEC
 
 
 def parse_display_time(
@@ -745,14 +753,16 @@ def ingest_public_posts(
     db_path: str = "",
     session: Optional[requests.Session] = None,
     max_ids: int = 12,
-    refresh_latest: int = 12,
+    refresh_latest: int = REFRESH_LATEST,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋每一篇的飆大一／二層回覆。失敗不改海選。
+    """抓公開個人頁最新文＋最近三篇的飆大一／二層回覆。失敗不改海選。
 
     融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
     正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
     corpus_index.json 不准當起點、不准寫回。
+    討論串只重讀個人頁最新 refresh_latest 篇（預設 3）；更早的主文他幾乎不回。
+    新 id 仍會抓主文（含他改過的正文）。
     """
     dest = str(corpus_path or "").strip()
     dbp = str(db_path or "").strip()
@@ -883,6 +893,7 @@ def ingest_public_posts(
                 logger.exception("飆大缺月日K續補失敗")
         except Exception:
             logger.exception("飆大公開文連到行情庫失敗")
+        _after_ingest_analyze(dbp, events)
     if dest and not _is_git_seed_path(dest):
         _save_corpus(dest, blob, posts)
     else:
@@ -913,6 +924,34 @@ def ingest_public_posts(
     return stats
 
 
+def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
+    """新文／樓下／改主文進庫後立刻建檔左證，不等下次開機。"""
+    try:
+        from biaoke_desk import load_corpus_cache_clear
+
+        load_corpus_cache_clear()
+    except Exception:
+        pass
+    try:
+        from biaoke_why import ingest_why_events
+
+        ingest_why_events(list(events or []), db_path)
+    except Exception:
+        logger.exception("飆大判斷鏈即時建檔失敗")
+    try:
+        from biaoke_weave import load_weave
+
+        load_weave.cache_clear()
+    except Exception:
+        pass
+    try:
+        from biaoke_alert import maybe_push_drop_alert
+
+        maybe_push_drop_alert(db_path, events)
+    except Exception:
+        logger.exception("飆大緊急推播略過")
+
+
 def run_biaoke_ingest_quiet() -> None:
     """排程／輪詢用：失敗不影響 16:30 融合、不進海選。"""
     try:
@@ -924,7 +963,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：盤中 10 分、盤後到凌晨 3 點每 1 小時抓飆大主文＋一／二層樓中樓。GHA --once 不開。"""
+    """常駐：盤中 10 分；其餘時間每 1 小時抓最新主文＋最近三篇樓下。GHA --once 不開。"""
     import threading
     import time as _time
 

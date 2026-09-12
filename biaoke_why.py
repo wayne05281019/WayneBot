@@ -82,8 +82,17 @@ _WHY_ASK = re.compile(
     r"(怎麼來|怎麼判|如何知|為何|為什麼|起頭|哪兩檔|潛力|"
     r"走了?\s*5\s*段|下降軌|位階二|護城河|抱到|46506|47578|45839|48218|"
     r"建築|富喬|聯亞|奇鋐|健策|第五波|9:30|黑手|C-2|C-3|"
-    r"貫通|串聯|融會|輪動|怎麼連|台光電|改口|跟漲|開口|那晚|同一晚)"
+    r"貫通|串聯|融會|輪動|怎麼連|台光電|改口|跟漲|開口|那晚|同一晚|"
+    r"最近|樓下|那則|那篇|補充|還能|能不能抱|怎麼看|怎麼講|"
+    r"在說什麼|現在怎樣|那檔|這檔|晚上|他覺得|會不會|要不要)"
 )
+_TALK = re.compile(
+    r"(最近|樓下|那則|那篇|補充|改了|還能|能不能抱|怎麼看|怎麼講|"
+    r"在說什麼|現在怎樣|那檔|這檔|晚上|夜盤|今天|昨天|他覺得|"
+    r"會不會|要不要|還行|怎麼了|那個|這樣|對啊|然後|抱得住|"
+    r"要出場|該出嗎|還能抱|他在講|他說什麼)"
+)
+_RUNTIME_CARDS: List[Dict[str, Any]] = []
 
 
 def _px(val: Any) -> str:
@@ -685,8 +694,92 @@ def load_why() -> Dict[str, Any]:
         with gzip.open(WHY_GZ, "rt", encoding="utf-8") as fh:
             blob = json.load(fh) or {}
         if int(blob.get("n_cards") or 0) >= 1700:
-            return blob
-    return build_why_index()
+            return _merge_runtime_cards(blob)
+    return _merge_runtime_cards(build_why_index())
+
+
+def _merge_runtime_cards(blob: Dict[str, Any]) -> Dict[str, Any]:
+    extra = list(_RUNTIME_CARDS)
+    if not extra:
+        return blob
+    cards = list(blob.get("cards") or [])
+    cmap = {str(c.get("id") or ""): i for i, c in enumerate(cards)}
+    changed = False
+    for c in extra:
+        aid = str(c.get("id") or "")
+        if not aid:
+            continue
+        if aid in cmap:
+            cards[cmap[aid]] = c
+        else:
+            cards.append(c)
+        changed = True
+    if not changed:
+        return blob
+    out = dict(blob)
+    out["cards"] = cards
+    out["n_cards"] = len(cards)
+    return out
+
+
+def ingest_why_events(events: Sequence[Dict[str, Any]], db_path: str = "") -> int:
+    """新抓到的主文／樓下立刻做成判斷卡，對官方 K 左證。"""
+    global _RUNTIME_CARDS
+    rows = [dict(r) for r in (events or []) if r.get("id") and r.get("text")]
+    if not rows:
+        load_why.cache_clear()
+        return 0
+    ohlc = _Ohlc(db_path or "")
+    by_id = {str(c.get("id") or ""): c for c in _RUNTIME_CARDS}
+    n = 0
+    prev: Optional[Dict[str, Any]] = None
+    for row in rows:
+        card = _qa_for(row, ohlc, prev)
+        by_id[str(card.get("id") or "")] = card
+        n += 1
+        if _FIFTH.search(str(row.get("text") or "")):
+            prev = row
+    _RUNTIME_CARDS = [c for c in by_id.values() if c.get("id")]
+    load_why.cache_clear()
+    return n
+
+
+def latest_thread_digest(*, posts: int = 3, replies: int = 12) -> str:
+    """最近三篇主文＋樓下自回。他幾乎不回更早的貼文。"""
+    rows = _iter_rows()
+    mains = [
+        r
+        for r in rows
+        if r.get("kind") != "reply" and not r.get("club")
+    ]
+    if not mains:
+        return ""
+    latest = mains[-max(1, int(posts)) :]
+    ids = {str(p.get("id") or "") for p in latest}
+    under: Dict[str, List[Dict[str, Any]]] = {i: [] for i in ids}
+    for r in rows:
+        if r.get("kind") != "reply" or r.get("club"):
+            continue
+        pid = str(r.get("parent") or "").split(":")[0]
+        if pid in under:
+            under[pid].append(r)
+    bits: List[str] = [
+        "最近三篇主文＋樓下自回（他幾乎不回三篇之前）："
+    ]
+    for p in latest:
+        pid = str(p.get("id") or "")
+        bits.append(
+            f"{p.get('date') or ''} {p.get('time') or ''} 主文："
+            + _clip(str(p.get("text") or ""), 180)
+        )
+        kids = under.get(pid) or []
+        kids.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("time") or "")))
+        for r in kids[-max(1, int(replies)) :]:
+            bits.append(
+                f"{r.get('date') or ''} {r.get('time') or ''} 樓下："
+                + _clip(str(r.get("text") or ""), 140)
+            )
+    return " ".join(bits)
 
 
 def is_why_query(ask: str) -> bool:
@@ -695,7 +788,13 @@ def is_why_query(ask: str) -> bool:
         return False
     if _ALIEN.search(q):
         return True
-    return bool(_WHY_ASK.search(q))
+    if _WHY_ASK.search(q) or _TALK.search(q):
+        return True
+    if named_stocks(q):
+        return True
+    if re.search(r"\d{4,5}", q):
+        return True
+    return False
 
 
 def _topic_hits(ask: str) -> List[Dict[str, str]]:
@@ -784,6 +883,12 @@ def lookup(ask: str, *, limit: int = 4) -> str:
                 bits.append(line)
             if len(bits) >= limit + 1:
                 break
+    if (len(bits) < 2 and (is_why_query(q) or _TALK.search(q) or named_stocks(q))) or re.search(
+        r"(最近|晚上|那則|樓下|他在看)", q
+    ):
+        digest = latest_thread_digest()
+        if digest and digest not in bits:
+            bits.append(_clip(digest, 900))
     return "\n".join(x for x in bits if x)
 
 

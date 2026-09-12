@@ -78,6 +78,15 @@ def test_methods_html_uses_why_chain():
     assert is_why_query("下降軌怎麼畫")
 
 
+def test_colloquial_questions_still_hit_chain():
+    assert is_why_query("那檔還能不能抱")
+    assert is_why_query("晚上那則在講什麼")
+    body = lookup("晚上那則在講什麼")
+    assert "46506" in body or "最近三篇" in body
+    body2 = lookup("他最近在看什麼")
+    assert "最近三篇" in body2 or "護城河" in body2 or "細微波" in body2
+
+
 def test_live_notes_puts_why_chain_first():
     from biaoke_live import live_notes
 

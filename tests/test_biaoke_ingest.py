@@ -8,6 +8,7 @@ from biaoke_ingest import (
     AFTER_EVERY_SEC,
     AFTER_UNTIL_HOUR,
     NIGHT_EVERY_SEC,
+    REFRESH_LATEST,
     ingest_public_posts,
     parse_article_html,
     parse_author_replies,
@@ -107,7 +108,7 @@ def test_ingest_hook_is_on_product_clocks():
 
     src = inspect.getsource(main.run_scheduled_job)
     assert "run_biaoke_ingest_quiet" in src
-    assert 'kind in ("morning", "midday", "fuse", "evening")' in src
+    assert 'kind in ("morning", "midday", "fuse", "evening", "typhoon")' in src
     boot = inspect.getsource(main.run_web)
     assert "start_biaoke_poller" in boot
     assert "restore_universe_if_wiped" in boot
@@ -119,6 +120,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert SESSION_EVERY_SEC == 10 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
     assert AFTER_UNTIL_HOUR == 3
+    assert REFRESH_LATEST == 3
 
 
 def test_poll_wait_session_after_night():
@@ -136,9 +138,13 @@ def test_poll_wait_session_after_night():
     after_one = datetime(2026, 9, 10, 1, 20, tzinfo=tz)
     assert poll_wait_seconds(after_one) == AFTER_EVERY_SEC
     after_three = datetime(2026, 9, 10, 3, 0, tzinfo=tz)
-    assert poll_wait_seconds(after_three) == 6 * 60 * 60
+    assert poll_wait_seconds(after_three) == AFTER_EVERY_SEC
     sat = datetime(2026, 9, 12, 10, 30, tzinfo=tz)
-    assert poll_wait_seconds(sat) == NIGHT_EVERY_SEC
+    assert poll_wait_seconds(sat) == AFTER_EVERY_SEC
+    hol = datetime(2026, 9, 25, 10, 30, tzinfo=tz)
+    assert poll_wait_seconds(hol) == AFTER_EVERY_SEC
+    dawn_open = datetime(2026, 9, 10, 4, 10, tzinfo=tz)
+    assert poll_wait_seconds(dawn_open) == AFTER_EVERY_SEC
 
 
 def test_parse_display_yesterday():

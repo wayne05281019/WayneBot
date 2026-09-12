@@ -22,7 +22,7 @@ def test_poll_wait_until_three():
     still = datetime(2026, 9, 10, 2, 50, tzinfo=tz)
     assert poll_wait_seconds(still) == AFTER_EVERY_SEC
     stop = datetime(2026, 9, 10, 3, 0, tzinfo=tz)
-    assert poll_wait_seconds(stop) == 6 * 60 * 60
+    assert poll_wait_seconds(stop) == AFTER_EVERY_SEC
 
 
 def test_unread_dedupes_same_post_and_splits_users(tmp_path):

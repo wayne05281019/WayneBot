@@ -255,9 +255,13 @@ def follow_up_ask(ask: str, history: Optional[Sequence[Any]] = None) -> str:
     q = (ask or "").strip()
     if not q or not history:
         return q
-    if not re.match(r"^(那|這個|剛剛|同上|繼續|所以|然後|對啊|對阿|嗯|喔|那呢)", q):
+    if not re.match(
+        r"^(那|這個|剛剛|同上|繼續|所以|然後|對啊|對阿|嗯|喔|那呢|"
+        r"還能|會嗎|真的|這樣|對吧|呢$)",
+        q,
+    ):
         return q
-    if len(q) >= 16:
+    if len(q) >= 24:
         return q
     last = ""
     for item in reversed(list(history)):

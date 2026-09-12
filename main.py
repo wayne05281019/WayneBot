@@ -471,7 +471,7 @@ def run_scheduled_job(kind: str) -> None:
         runner.run_typhoon_peek()
     else:
         runner.run_increment_job(skip_if_done=True, notify=push)
-    if kind in ("morning", "midday", "fuse", "evening"):
+    if kind in ("morning", "midday", "fuse", "evening", "typhoon"):
         try:
             from biaoke_ingest import run_biaoke_ingest_quiet
 
