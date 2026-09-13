@@ -468,3 +468,12 @@ def test_thirtyfourth_chain_unnamed_restore_k():
     assert "不是日K" in blob
     assert "截圖約 273" in blob or "271" in blob
     assert "廣達" in blob
+
+
+def test_thirtyfifth_chain_unnamed_k_structure():
+    fired = fire_chain("", "從K線量價結構")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "從K線量價結構" in blob or "上車最佳" in blob
+    assert "不是日K" in blob
+    assert "截圖約 75" in blob or "75.9" in blob
+    assert "雷虎" in blob

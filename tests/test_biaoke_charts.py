@@ -172,7 +172,7 @@ def test_intraday_snip_notes_overlay_not_daily_k():
 def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
     from biaoke_charts import pick_charts
 
-    tt = pick_charts("8033", limit=2, public_only=True)
+    tt = pick_charts("8033", limit=3, public_only=True)
     assert any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in tt)
     assert any("雷虎盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tt)
     assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in tt)
@@ -298,6 +298,18 @@ def test_thirtyfourth_pick_charts_quanta_273_not_tsmc():
     assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in tsmc)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
     assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in skip6416)
+
+
+def test_thirtyfifth_pick_charts_thunder_entry_not_6416():
+    from biaoke_charts import pick_charts
+
+    tt = pick_charts("8033", limit=3, public_only=True)
+    assert any("bc7d90d8-fdd4-47d0-a861-4d091ae87b61" in str(r.get("url") or "") for r in tt)
+    assert any("上車最佳時機" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tt)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("bc7d90d8-fdd4-47d0-a861-4d091ae87b61" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("bc7d90d8-fdd4-47d0-a861-4d091ae87b61" in str(r.get("url") or "") for r in skip5310)
 
 
 @pytest.mark.production_db
