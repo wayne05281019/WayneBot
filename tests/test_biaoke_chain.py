@@ -450,3 +450,12 @@ def test_thirtysecond_chain_unnamed_pullback():
     assert "不是日K" in blob
     assert "38.9" in blob or "40.25" in blob
     assert "佳能" in blob or "協易機" in blob
+
+
+def test_thirtythird_chain_unnamed_stage2():
+    fired = fire_chain("", "第三階段型態極限目標價")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "極限目標價" in blob or "第二階段型態" in blob
+    assert "不是日K" in blob
+    assert "截圖約 62" in blob or "64.5" in blob
+    assert "雷科" in blob

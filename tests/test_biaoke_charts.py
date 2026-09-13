@@ -191,7 +191,7 @@ def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
 def test_twentyeighth_pick_charts_lasertek_not_5310():
     from biaoke_charts import pick_charts
 
-    lk = pick_charts("6207", limit=2, public_only=True)
+    lk = pick_charts("6207", limit=3, public_only=True)
     assert any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in lk)
     assert any("雷科盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
     zs = pick_charts("2467", limit=2, public_only=True)
@@ -268,6 +268,24 @@ def test_thirtysecond_pick_charts_canon_sehi_not_6416():
     skip6117 = pick_charts("6117", limit=6, public_only=True)
     assert not any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in skip6117)
     assert not any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in skip6117)
+
+
+def test_thirtythird_pick_charts_lasertek_stage2_not_6416():
+    from biaoke_charts import pick_charts
+
+    lk = pick_charts("6207", limit=3, public_only=True)
+    assert any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in lk)
+    assert any("第二階段型態目標" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in skip5310)
+    zs = pick_charts("2467", limit=4, public_only=True)
+    assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in zs)
+    hs = pick_charts("3131", limit=4, public_only=True)
+    assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in hs)
+    wr = pick_charts("6187", limit=4, public_only=True)
+    assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in wr)
 
 
 @pytest.mark.production_db

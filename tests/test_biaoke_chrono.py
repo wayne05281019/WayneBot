@@ -691,8 +691,6 @@ def test_thirtyfirst_slice_tech_ma5_prefer_3013():
 
 
 def test_thirtysecond_slice_canon_sehi_limit_up():
-    assert slice_stop() == "2024-04-12"
-    assert next_start() == "2024-04-12"
     body = method_body("圖文時間軸第三十二段")
     assert "2024-04-12" in body
     assert "讓佳能跑掉漲停" in body
@@ -732,6 +730,43 @@ def test_thirtysecond_slice_canon_sehi_limit_up():
     s12 = official_on(db, "4533", "20240412")
     assert s12 == {} or (
         abs(float(s12["high"]) - 40.25) < 0.01 and abs(float(s12["close"]) - 40.25) < 0.01
+    )
+
+
+def test_thirtythird_slice_lasertek_stage2():
+    assert slice_stop() == "2024-04-12"
+    assert next_start() == "2024-04-12"
+    body = method_body("圖文時間軸第三十三段")
+    assert "2024-04-12" in body
+    assert "雷科雖然被關" in body
+    assert "第二階段型態目標價" in body
+    assert "第三階段型態極限目標價" in body
+    assert "不是日K" in body
+    assert "截圖約 62" in body
+    assert "64.6" in body
+    assert "雷科" in body
+    lk = line_for("6207")
+    assert "雷科" in lk
+    assert "截圖約 62" in lk
+    assert "不是日K" in lk
+    ov = overview()
+    assert "第二階段型態目標價" in ov or "雖然被關" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("第三階段型態極限目標價")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "截圖約 62" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "第三階段型態極限目標價")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "極限目標價" in blob or "第二階段型態" in blob
+    assert "截圖約 62" in blob or "64.5" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    b12 = official_on(db, "6207", "20240412")
+    assert b12 == {} or (
+        abs(float(b12["high"]) - 64.5) < 0.01 and abs(float(b12["close"]) - 62.4) < 0.01
     )
 
 
