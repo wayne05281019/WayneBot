@@ -602,6 +602,8 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "回測109",
                 "先測124",
                 "三成獲利",
+                "多方最低標準282",
+                "多空廝殺激烈",
             )
         ):
             try:
@@ -634,6 +636,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "圖文時間軸第十八段",
                     "圖文時間軸第十九段",
                     "圖文時間軸第二十段",
+                    "圖文時間軸第二十一段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)
