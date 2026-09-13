@@ -388,8 +388,6 @@ def test_twentyfirst_slice_quanta_282_battle():
 
 
 def test_twentysecond_slice_quanta_298_holiday():
-    assert slice_stop() == "2024-04-02"
-    assert next_start() == "2024-04-02"
     body = method_body("圖文時間軸第二十二段")
     assert "2024-04-02" in body
     assert "挑戰前高" in body and "298" in body
@@ -402,6 +400,23 @@ def test_twentysecond_slice_quanta_298_holiday():
     assert "292.5" in q
     ov = overview()
     assert "挑戰前高" in ov or "放假前" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentythird_slice_fengda_114_pressure():
+    assert slice_stop() == "2024-04-02"
+    assert next_start() == "2024-04-02"
+    body = method_body("圖文時間軸第二十三段")
+    assert "2024-04-02" in body
+    assert "114-114.5" in body
+    assert "不是日K" in body
+    assert "114" in body
+    assert "去年兩個高點" in body or "壓力" in body
+    f = line_for("3004")
+    assert "豐達科" in f
+    assert "114-114.5" in f or "114" in f
+    ov = overview()
+    assert "114-114.5" in ov or "去年兩個高點" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -490,6 +505,10 @@ def test_taitong_chipbond_official_optional():
     q02 = official_on(db, "2382", "20240402")
     assert q02 == {} or (
         abs(float(q02["high"]) - 299) < 0.01 and abs(float(q02["close"]) - 298) < 0.01
+    )
+    f02 = official_on(db, "3004", "20240402")
+    assert f02 == {} or (
+        abs(float(f02["low"]) - 112.5) < 0.01 and abs(float(f02["close"]) - 115.5) < 0.01
     )
 
 
@@ -626,6 +645,9 @@ def test_methods_html_and_names():
     hol = format_methods_html("挑戰前高298")
     assert "廣達" in hol and "不是日K" in hol
     assert "292.5" in hol and "放假前" in hol
+    fd114 = format_methods_html("回測114-114.5")
+    assert "豐達科" in fd114 and "不是日K" in fd114
+    assert "114-114.5" in fd114
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -776,3 +798,7 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "挑戰前高" in h22
     assert "292.5" in h22
     assert "放假前" in h22
+    fd114 = fire_chain("", "去年兩個高點壓力線")
+    f23 = "".join(s.get("text") or "" for s in fd114["steps"]) + fd114.get("think", "")
+    assert "114-114.5" in f23
+    assert "去年兩個高點" in f23 or "壓力" in f23
