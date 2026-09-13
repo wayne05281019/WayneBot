@@ -604,8 +604,6 @@ def test_twentyninth_slice_supermicro_chassis():
 
 
 def test_thirtieth_slice_ask_who_leads():
-    assert slice_stop() == "2024-04-11"
-    assert next_start() == "2024-04-12"
     body = method_body("圖文時間軸第三十段")
     assert "2024-04-11" in body
     assert "會影響到迎廣走勢" in body
@@ -645,6 +643,52 @@ def test_thirtieth_slice_ask_who_leads():
     c11 = official_on(db, "3013", "20240411")
     assert c11 == {} or (
         abs(float(c11["high"]) - 80.1) < 0.01 and abs(float(c11["close"]) - 72.3) < 0.01
+    )
+
+
+def test_thirtyfirst_slice_tech_ma5_prefer_3013():
+    assert slice_stop() == "2024-04-12"
+    assert next_start() == "2024-04-12"
+    body = method_body("圖文時間軸第三十一段")
+    assert "2024-04-12" in body
+    assert "支撐線沿著5日均線" in body or "支撐線沿著 5 日均線" in body
+    assert "10日均線撐住" in body or "10 日均線撐住" in body
+    assert "單純以技術面來說" in body
+    assert "不是日K" in body
+    assert "76.2" in body
+    assert "97.6" in body
+    assert "迎廣" in body
+    assert "晟銘電" in body
+    assert "雷虎" not in body
+    y = line_for("6117")
+    assert "迎廣" in y
+    assert "97.6" in y
+    assert "不是日K" in y
+    cm = line_for("3013")
+    assert "晟銘電" in cm
+    assert "76.2" in cm
+    ov = overview()
+    assert "優先選 3013" in ov or "沿 5 日均線" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("單純以技術面來說")
+    assert "迎廣" in html and "晟銘電" in html
+    assert "不是日K" in html
+    assert "76.2" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "單純以技術面來說")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "技術面" in blob
+    assert "76.2" in blob or "97.6" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    y12 = official_on(db, "6117", "20240412")
+    assert y12 == {} or (
+        abs(float(y12["low"]) - 93.1) < 0.01 and abs(float(y12["close"]) - 93.1) < 0.01
+    )
+    c12 = official_on(db, "3013", "20240412")
+    assert c12 == {} or (
+        abs(float(c12["high"]) - 78.6) < 0.01 and abs(float(c12["close"]) - 74.3) < 0.01
     )
 
 

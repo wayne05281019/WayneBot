@@ -432,3 +432,12 @@ def test_thirtieth_chain_unnamed_ask_who():
     assert "不是日K" in blob
     assert "75.8" in blob or "100" in blob
     assert "迎廣" in blob or "晟銘電" in blob
+
+
+def test_thirtyfirst_chain_unnamed_tech_ma5():
+    fired = fire_chain("", "單純以技術面來說")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "技術面" in blob
+    assert "不是日K" in blob
+    assert "76.2" in blob or "97.6" in blob
+    assert "迎廣" in blob or "晟銘電" in blob
