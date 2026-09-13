@@ -182,8 +182,6 @@ def test_tenth_slice_guangsheng_125_intraday():
 
 
 def test_eleventh_slice_guangsheng_144_resistance():
-    assert slice_stop() == "2024-03-28"
-    assert next_start() == "2024-03-28"
     body = method_body("圖文時間軸第十一段")
     assert "2024-03-28" in body
     assert "144" in body and "145" in body
@@ -198,6 +196,26 @@ def test_eleventh_slice_guangsheng_144_resistance():
     assert "141" in g
     ov = overview()
     assert "144" in ov and "145" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twelfth_slice_quanta_wash_282():
+    assert slice_stop() == "2024-03-28"
+    assert next_start() == "2024-03-28"
+    body = method_body("圖文時間軸第十二段")
+    assert "2024-03-28" in body
+    assert "282" in body
+    assert "不是日K" in body
+    assert "262.5" in body
+    assert "280" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "洗到" in q
+    assert "282" in q
+    assert "262.5" in q
+    assert "280" in q
+    ov = overview()
+    assert "洗到" in ov and "282" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -346,6 +364,9 @@ def test_methods_html_and_names():
     gs144 = format_methods_html("144-145反壓區")
     assert "光聖" in gs144 and "不是日K" in gs144
     assert "137" in gs144 and "138" in gs144
+    wash = format_methods_html("洗到282")
+    assert "廣達" in wash and "不是日K" in wash
+    assert "262.5" in wash and "280" in wash
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -440,3 +461,8 @@ def test_chain_honhai_chart_is_ennoconn():
     g144 = "".join(s.get("text") or "" for s in gs144["steps"]) + gs144.get("think", "")
     assert "144" in g144 and "145" in g144
     assert "138" in g144 or "137" in g144 or "不是日K" in g144
+    wash = fire_chain("", "廣達洗到282")
+    assert wash["sid"] == "2382"
+    wblob = "".join(s.get("text") or "" for s in wash["steps"]) + wash.get("think", "")
+    assert "282" in wblob
+    assert "洗到" in wblob
