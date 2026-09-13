@@ -176,7 +176,7 @@ def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
     assert any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in tt)
     assert any("雷虎盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tt)
     assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in tt)
-    cm = pick_charts("3013", limit=2, public_only=True)
+    cm = pick_charts("3013", limit=3, public_only=True)
     assert any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in cm)
     assert any("晟銘電盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cm)
     assert not any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in cm)
@@ -220,6 +220,20 @@ def test_twentyninth_pick_charts_iei_chenming_not_6416():
     skip6416 = pick_charts("6416", limit=5, public_only=True)
     assert not any("40be401e-c52c-4114-8a9d-605cb5b37f21" in str(r.get("url") or "") for r in skip6416)
     assert not any("6f617165-51b9-4396-b3b4-3d436947bea7" in str(r.get("url") or "") for r in skip6416)
+
+
+def test_thirtieth_pick_charts_compare_not_6416():
+    from biaoke_charts import pick_charts
+
+    y = pick_charts("6117", limit=5, public_only=True)
+    assert any("3e28b3b3-ae1a-4ebc-9f27-404450609327" in str(r.get("url") or "") for r in y)
+    assert any("波動更大" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in y)
+    cm = pick_charts("3013", limit=4, public_only=True)
+    assert any("8760c259-e431-4c9a-99cc-8d1061413ad2" in str(r.get("url") or "") for r in cm)
+    assert any("比較強" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cm)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("3e28b3b3-ae1a-4ebc-9f27-404450609327" in str(r.get("url") or "") for r in skip6416)
+    assert not any("8760c259-e431-4c9a-99cc-8d1061413ad2" in str(r.get("url") or "") for r in skip6416)
 
 
 @pytest.mark.production_db

@@ -561,8 +561,6 @@ def test_twentyeighth_slice_lasertek_pullback():
 
 
 def test_twentyninth_slice_supermicro_chassis():
-    assert slice_stop() == "2024-04-10"
-    assert next_start() == "2024-04-11"
     body = method_body("圖文時間軸第二十九段")
     assert "2024-04-10" in body
     assert "美超微機殼" in body
@@ -602,6 +600,51 @@ def test_twentyninth_slice_supermicro_chassis():
     c10 = official_on(db, "3013", "20240410")
     assert c10 == {} or (
         abs(float(c10["high"]) - 73.7) < 0.01 and abs(float(c10["close"]) - 73.7) < 0.01
+    )
+
+
+def test_thirtieth_slice_ask_who_leads():
+    assert slice_stop() == "2024-04-11"
+    assert next_start() == "2024-04-12"
+    body = method_body("圖文時間軸第三十段")
+    assert "2024-04-11" in body
+    assert "會影響到迎廣走勢" in body
+    assert "剛公佈的業績" in body
+    assert "有哪位高手可解惑" in body
+    assert "不是日K" in body
+    assert "75.8" in body
+    assert "100" in body
+    assert "迎廣" in body
+    assert "晟銘電" in body
+    y = line_for("6117")
+    assert "迎廣" in y
+    assert "100" in y
+    assert "不是日K" in y
+    cm = line_for("3013")
+    assert "晟銘電" in cm
+    assert "75.8" in cm
+    ov = overview()
+    assert "解惑" in ov or "2-3 日" in ov or "2-3日" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("有哪位高手可解惑")
+    assert "迎廣" in html and "晟銘電" in html
+    assert "不是日K" in html
+    assert "75.8" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "有哪位高手可解惑")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "解惑" in blob
+    assert "75.8" in blob or "100" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    y11 = official_on(db, "6117", "20240411")
+    assert y11 == {} or (
+        abs(float(y11["low"]) - 95) < 0.01 and abs(float(y11["close"]) - 96) < 0.01
+    )
+    c11 = official_on(db, "3013", "20240411")
+    assert c11 == {} or (
+        abs(float(c11["high"]) - 80.1) < 0.01 and abs(float(c11["close"]) - 72.3) < 0.01
     )
 
 

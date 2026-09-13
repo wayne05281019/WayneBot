@@ -180,6 +180,15 @@ def test_twentyninth_methods_supermicro_chassis():
     assert any(t == "圖文時間軸第二十九段" for t, _b in tape)
 
 
+def test_thirtieth_methods_ask_who_leads():
+    html = format_methods_html("剛公佈的業績")
+    assert "晟銘電" in html and "迎廣" in html
+    assert "不是日K" in html
+    assert "75.8" in html and "100" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第三十段" for t, _b in tape)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

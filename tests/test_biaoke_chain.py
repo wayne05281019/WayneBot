@@ -423,3 +423,12 @@ def test_twentyninth_chain_unnamed_best_entry():
     assert "不是日K" in blob
     assert "103.5" in blob or "70" in blob
     assert "迎廣" in blob or "晟銘電" in blob
+
+
+def test_thirtieth_chain_unnamed_ask_who():
+    fired = fire_chain("", "有哪位高手可解惑")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "解惑" in blob
+    assert "不是日K" in blob
+    assert "75.8" in blob or "100" in blob
+    assert "迎廣" in blob or "晟銘電" in blob
