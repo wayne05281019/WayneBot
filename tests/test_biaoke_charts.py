@@ -253,7 +253,7 @@ def test_thirtyfirst_pick_charts_ma5_not_6416():
 def test_thirtysecond_pick_charts_canon_sehi_not_6416():
     from biaoke_charts import pick_charts
 
-    cn = pick_charts("2374", limit=3, public_only=True)
+    cn = pick_charts("2374", limit=4, public_only=True)
     assert any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in cn)
     assert any("佳能盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
     se = pick_charts("4533", limit=3, public_only=True)
@@ -339,7 +339,7 @@ def test_thirtyseventh_pick_charts_lasertek_5ma_not_6416():
 def test_thirtyeighth_pick_charts_lock_not_3167():
     from biaoke_charts import pick_charts
 
-    cn = pick_charts("2374", limit=3, public_only=True)
+    cn = pick_charts("2374", limit=4, public_only=True)
     assert any("b5a3d066-a5d9-46e6-98b0-f7783b9fec02" in str(r.get("url") or "") for r in cn)
     assert any("鎖股40.1" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
     se = pick_charts("4533", limit=3, public_only=True)
@@ -356,6 +356,18 @@ def test_thirtyeighth_pick_charts_lock_not_3167():
     assert not any("b5a3d066-a5d9-46e6-98b0-f7783b9fec02" in str(r.get("url") or "") for r in skip6416)
     skip5310 = pick_charts("5310", limit=5, public_only=True)
     assert not any("a7f487e1-297e-45d5-afc2-3b91158ae8c2" in str(r.get("url") or "") for r in skip5310)
+
+
+def test_thirtyninth_pick_charts_canon_374_not_6416():
+    from biaoke_charts import pick_charts
+
+    cn = pick_charts("2374", limit=4, public_only=True)
+    assert any("d9f126f0-5318-4e29-be3b-966a1cb1f8de" in str(r.get("url") or "") for r in cn)
+    assert any("早盤37.4先買一半" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("d9f126f0-5318-4e29-be3b-966a1cb1f8de" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("d9f126f0-5318-4e29-be3b-966a1cb1f8de" in str(r.get("url") or "") for r in skip5310)
 
 
 @pytest.mark.production_db

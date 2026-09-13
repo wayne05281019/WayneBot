@@ -504,3 +504,12 @@ def test_thirtyeighth_chain_unnamed_lock():
     assert "不是日K" in blob
     assert "截圖約 40.1" in blob or "37.65" in blob
     assert "佳能" in blob and "漢科" in blob
+
+
+def test_thirtyninth_chain_unnamed_374():
+    fired = fire_chain("", "早盤在37.4")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "早盤在37.4" in blob or "先買一半" in blob
+    assert "不是日K" in blob
+    assert "截圖約 38.6" in blob or "38.45" in blob
+    assert "佳能" in blob

@@ -905,8 +905,6 @@ def test_thirtyseventh_slice_lasertek_5ma_entry():
 
 
 def test_thirtyeighth_slice_lock_sold_sehi():
-    assert slice_stop() == "2024-04-15"
-    assert next_start() == "2024-04-15"
     body = method_body("圖文時間軸第三十八段")
     assert "2024-04-15" in body
     assert "這兩檔列入鎖股" in body
@@ -953,6 +951,42 @@ def test_thirtyeighth_slice_lock_sold_sehi():
     h15 = official_on(db, "3402", "20240415")
     assert h15 == {} or (
         abs(float(h15["high"]) - 126.0) < 0.01 and abs(float(h15["close"]) - 121.5) < 0.01
+    )
+
+
+def test_thirtyninth_slice_canon_374_half():
+    assert slice_stop() == "2024-04-16"
+    assert next_start() == "2024-04-16"
+    body = method_body("圖文時間軸第三十九段")
+    assert "2024-04-16" in body
+    assert "早盤在37.4" in body
+    assert "今日10點之前多空交界區" in body
+    assert "先買一半" in body
+    assert "不是日K" in body
+    assert "截圖約 38.6" in body
+    assert "佳能" in body
+    cn = line_for("2374")
+    assert "佳能" in cn
+    assert "截圖約 38.6" in cn
+    assert "不是日K" in cn
+    ov = overview()
+    assert "早盤在37.4" in ov or "多空交界區" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("早盤在37.4")
+    assert "佳能" in html
+    assert "不是日K" in html
+    assert "截圖約 38.6" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "早盤在37.4")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "早盤在37.4" in blob or "先買一半" in blob
+    assert "截圖約 38.6" in blob or "38.45" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    c16 = official_on(db, "2374", "20240416")
+    assert c16 == {} or (
+        abs(float(c16["low"]) - 36.3) < 0.01 and abs(float(c16["close"]) - 38.45) < 0.01
     )
 
 

@@ -277,6 +277,17 @@ def test_thirtyeighth_methods_lock_sold():
     assert any(t == "圖文時間軸第三十八段" for t, _b in hold)
 
 
+def test_thirtyninth_methods_canon_374():
+    html = format_methods_html("早盤在37.4")
+    assert "佳能" in html
+    assert "不是日K" in html
+    assert "截圖約 38.6" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第三十九段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第三十九段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
