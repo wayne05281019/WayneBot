@@ -261,11 +261,11 @@ def test_hold_note_splits_long_hold_f10_and_mediatek():
     from biaoke_judge import _hold_note
 
     emc = _hold_note("2383", True)
-    assert "勿輕易調整" in emc
+    assert "勿輕易調節" in emc
     assert "4/16" in emc
     assert "3930" in emc
     delta = _hold_note("2308", True)
-    assert "勿輕易調整" in delta
+    assert "勿輕易調節" in delta
     qin = _hold_note("3017", True)
     assert "F10" in qin
     assert "回測" in qin

@@ -43,7 +43,7 @@ def test_nanya_and_drone_are_cases_not_new_neurons():
     assert "272" in hold_line("8033")
     assert "S+++" in hold_line("2383")
     assert "3930" in hold_line("2383")
-    assert "勿輕易調整" in hold_line("2383")
+    assert "勿輕易調節" in hold_line("2383")
     assert "4/16" in hold_line("2383")
 
 
@@ -94,3 +94,39 @@ def test_sep10_battlefield_quotes_flag_without_formula():
     assert "散熱" in battle_line("3017")
     assert "破線" in battle_line("3081")
     assert "不透漏" in battle_line("3081")
+
+
+def test_longhold_chain_why_not_f10_or_mediatek():
+    from biaoke_foresight import LONGHOLD_SIDS, longhold_why
+    from biaoke_chain import fire_chain
+    from biaoke_mind import method_body
+
+    why = longhold_why("")
+    assert "倒了就是 AI 時代結束" in why
+    assert "賣設備" in why
+    assert "CoWoS" in why
+    assert "台積電" in why and "台達電" in why and "旺矽" in why
+    assert "聯發科 2454 不在 4/16" in why
+    assert "建築兩檔" in why and "沒點名" in why
+    assert "抱著波段賺更多" in why and "對不到" in why
+    assert "39385" in why
+    assert "3930" in why
+    assert LONGHOLD_SIDS == ("2330", "2308", "2383", "6223", "6515", "3017")
+    assert longhold_why("2454") == ""
+    assert longhold_why("2404") == ""
+    assert "倒了就是 AI 時代結束" in hold_line("2383")
+    assert "僅次台積電" in hold_line("2383")
+    assert "賣設備不行長抱" in hold_line("7769")
+    assert "過路費" in hold_line("6223")
+    body = method_body("能長抱的產業鏈")
+    assert "倒了就是 AI 時代結束" in body
+    assert "2454" in body
+    fired = fire_chain("", "為什麼這些能長抱")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    assert hold.get("skip") is not True
+    assert "倒了就是 AI 時代結束" in hold["text"]
+    assert "賣設備" in hold["text"]
+    mtk = fire_chain("", "聯發科他有看好嗎")
+    mh = next(s for s in mtk["steps"] if s["id"] == "hold")
+    assert "不是 4/16" in mh["text"] or "不在" in mh["text"]
+    assert "可抱到明年" not in mh["text"] or "不是 4/16" in mh["text"]

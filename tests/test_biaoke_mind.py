@@ -70,7 +70,7 @@ def test_methods_cover_nanya_1303_not_office_worker_hold():
 def test_methods_cover_long_hold_f10_and_mediatek():
     html = format_methods_html("F10 長抱跟台光電怎麼分")
     assert "2026-07-24" in html
-    assert "勿輕易調整" in html
+    assert "勿輕易調節" in html
     assert "奇鋐" in html
     assert "F10" in html
     assert "平台依賴度" in html
@@ -82,7 +82,7 @@ def test_methods_cover_long_hold_f10_and_mediatek():
     assert "不在" in mtk
     assert "尚未納入 F 系列" in mtk
     wave = format_methods_html("台光電抱著波段是不是賺更多")
-    assert "勿輕易調整" in wave
+    assert "勿輕易調節" in wave
     assert "抱著波段賺更多" in wave
     assert "對不到" in wave
 

@@ -9,7 +9,7 @@
   2 產業／主戰場還在不在（個股最重要是產業趨勢）
   3 這族龍頭現在攻還是休（跟漲先看龍頭）
   4 這檔官方日 K 量先價行（爆大量日高當壓、低當撐；個股不數浪）
-  5 長抱還是進出（7/24 勿輕易調整 vs F10 等回測；聯發科不是 4/16）
+  5 長抱還是進出（7/24 切勿輕易調節 vs F10 等回測；聯發科不是 4/16）
   6 可能看錯（沒疊滿、沒點名、改口一起留）
 
 圖是第 4 顆的眼睛，不是大腦。右灰區只演算最可能碰到哪，不是保證。不是買訊、不進海選。
@@ -531,6 +531,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "F10",
                 "F4",
                 "長抱",
+                "抱到明年",
                 "聯發科",
                 "抱著波段",
                 "南亞",
@@ -541,23 +542,26 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "很少人提",
                 "台塑",
                 "無人機",
+                "倒了",
+                "CoWoS",
+                "賣設備",
+                "過路費",
+                "AI時代",
             )
         ):
             try:
                 from biaoke_mind import match_methods
 
-                hits = [
-                    body
-                    for title, body in match_methods(ask, limit=3)
-                    if title
-                    in (
-                        "洞燭先機",
-                        "南亞 1303 長抱或進出",
-                        "長抱主流／F4→F10／聯發科",
-                    )
-                ]
-                if hits:
-                    return _step("hold", hits[0], ok=True)
+                picked = match_methods(ask, limit=4)
+                by = {t: b for t, b in picked}
+                for title in (
+                    "能長抱的產業鏈",
+                    "長抱主流／F4→F10／聯發科",
+                    "南亞 1303 長抱或進出",
+                    "洞燭先機",
+                ):
+                    if title in by:
+                        return _step("hold", by[title], ok=True)
             except Exception:
                 pass
         return _step("hold", "這句沒點檔，長抱／進出不套死某一檔。", skip=True)

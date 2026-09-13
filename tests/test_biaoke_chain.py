@@ -33,13 +33,13 @@ def test_chain_six_neurons_in_order_for_emc():
     ids = [s["id"] for s in fired["steps"]]
     assert ids == list(NEURON_IDS)
     hold = next(s for s in fired["steps"] if s["id"] == "hold")
-    assert "勿輕易調整" in hold["text"]
+    assert "勿輕易調節" in hold["text"]
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
     assert "不數" in nest["text"] or "不數" in notes
     think = fired["think"]
     assert "巢穴" in think or "覆巢" in think or "大盤" in think
-    assert "長抱" in think or "勿輕易調整" in hold["text"]
+    assert "長抱" in think or "勿輕易調節" in hold["text"]
 
 
 def test_chain_nanya_1303_is_not_nanya_tech():
@@ -224,7 +224,7 @@ def test_field_does_not_repeat_hold_neuron():
     emc_field = next(s for s in emc["steps"] if s["id"] == "field")
     emc_hold = next(s for s in emc["steps"] if s["id"] == "hold")
     assert "產業趨勢" in emc_field["text"]
-    assert "勿輕易調整" in emc_hold["text"]
+    assert "勿輕易調節" in emc_hold["text"]
     db = "data/wayne_market.db"
     if not os.path.isfile(db):
         return
@@ -279,10 +279,10 @@ def test_tape_does_not_repeat_hold_or_field():
     assert "4510" in tape["text"]
     assert "3930" in tape["text"]
     assert "圖上演算" in tape["text"]
-    assert "勿輕易調整" not in tape["text"]
+    assert "勿輕易調節" not in tape["text"]
     assert "長線龍頭" not in tape["text"]
     assert "流出前段" not in tape["text"]
-    assert "勿輕易調整" in hold["text"]
+    assert "勿輕易調節" in hold["text"]
     assert "流出前段" in field["text"] or "電子零組件" in field["text"]
     mtk = fire_chain(db, "聯發科怎麼看")
     mt = next(s for s in mtk["steps"] if s["id"] == "tape")
@@ -303,7 +303,7 @@ def test_think_chains_45839_and_self_leader():
     assert "46506" in think
     assert "47578" in think
     assert "自己就是這族龍頭" in think
-    assert "勿輕易調整" in think
+    assert "勿輕易調節" in think
     assert "5365" in think
     assert "4510" in think
     assert "3930" in think
@@ -356,7 +356,7 @@ def test_chain_rereads_his_views_without_keyword_ask():
     assert "護城河" in field["text"]
     if tape.get("ok"):
         assert "價穩量縮" in tape["text"] or "量先價行" in tape["text"] or "圖上演算" in tape["text"]
-    assert "勿輕易調整" in hold["text"]
+    assert "勿輕易調節" in hold["text"]
     assert "主力露餡" not in field["text"]
 
 
