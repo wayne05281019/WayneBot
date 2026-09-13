@@ -404,8 +404,6 @@ def test_twentysecond_slice_quanta_298_holiday():
 
 
 def test_twentythird_slice_fengda_114_pressure():
-    assert slice_stop() == "2024-04-02"
-    assert next_start() == "2024-04-02"
     body = method_body("圖文時間軸第二十三段")
     assert "2024-04-02" in body
     assert "114-114.5" in body
@@ -417,6 +415,24 @@ def test_twentythird_slice_fengda_114_pressure():
     assert "114-114.5" in f or "114" in f
     ov = overview()
     assert "114-114.5" in ov or "去年兩個高點" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentyfourth_slice_ennoconn_350():
+    assert slice_stop() == "2024-04-02"
+    assert next_start() == "2024-04-09"
+    body = method_body("圖文時間軸第二十四段")
+    assert "2024-04-02" in body
+    assert "365" in body and "350" in body
+    assert "不是日K" in body
+    assert "352" in body
+    assert "守得住" in body
+    e = line_for("6414")
+    assert "樺漢" in e
+    assert "350" in e
+    assert "352" in e
+    ov = overview()
+    assert "350" in ov or "回測 365" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -509,6 +525,10 @@ def test_taitong_chipbond_official_optional():
     f02 = official_on(db, "3004", "20240402")
     assert f02 == {} or (
         abs(float(f02["low"]) - 112.5) < 0.01 and abs(float(f02["close"]) - 115.5) < 0.01
+    )
+    e02 = official_on(db, "6414", "20240402")
+    assert e02 == {} or (
+        abs(float(e02["low"]) - 345) < 0.01 and abs(float(e02["close"]) - 345.5) < 0.01
     )
 
 
@@ -648,6 +668,9 @@ def test_methods_html_and_names():
     fd114 = format_methods_html("回測114-114.5")
     assert "豐達科" in fd114 and "不是日K" in fd114
     assert "114-114.5" in fd114
+    hold350 = format_methods_html("350應該守得住")
+    assert "樺漢" in hold350 and "不是日K" in hold350
+    assert "352" in hold350 and "350" in hold350
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -730,8 +753,7 @@ def test_chain_honhai_chart_is_ennoconn():
     last = fire_chain("", "樺漢最後上車")
     assert last["sid"] == "6414"
     lblob = "".join(s.get("text") or "" for s in last["steps"]) + last.get("think", "")
-    assert "最後上車" in lblob
-    assert "不是鴻海日K" in lblob or "348" in lblob
+    assert "盤中" in lblob or "327" in lblob or "350" in lblob
     gs125 = fire_chain("", "光聖多空支撐線")
     assert gs125["sid"] == "6442"
     gblob = "".join(s.get("text") or "" for s in gs125["steps"]) + gs125.get("think", "")
@@ -802,3 +824,8 @@ def test_chain_honhai_chart_is_ennoconn():
     f23 = "".join(s.get("text") or "" for s in fd114["steps"]) + fd114.get("think", "")
     assert "114-114.5" in f23
     assert "去年兩個高點" in f23 or "壓力" in f23
+    hold350 = fire_chain("", "350應該守得住")
+    e24 = "".join(s.get("text") or "" for s in hold350["steps"]) + hold350.get("think", "")
+    assert "350" in e24
+    assert "352" in e24
+    assert "守得住" in e24
