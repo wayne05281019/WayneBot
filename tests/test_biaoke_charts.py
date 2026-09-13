@@ -105,14 +105,16 @@ def test_pick_charts_public_only_and_vs_official():
 def test_intraday_snip_notes_overlay_not_daily_k():
     from biaoke_charts import pick_charts
 
-    gs = pick_charts("6442", limit=3, public_only=True)
+    gs = pick_charts("6442", limit=4, public_only=True)
     assert any("47b69e0f-de57-44d9-a9ec-4e809202ca13" in str(r.get("url") or "") for r in gs)
     assert any("b0b38f9c-6ac5-4260-8f9d-0206f1167367" in str(r.get("url") or "") for r in gs)
     assert any("a23ff8ba-c9f6-4086-89a8-b4b7e2d68168" in str(r.get("url") or "") for r in gs)
+    assert any("d6a36765-2022-4e9e-a780-29c96479a294" in str(r.get("url") or "") for r in gs)
     assert any(
         "盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
         for r in gs
     )
+    assert any("整理半年" in str(r.get("note") or "") for r in gs)
     qb = pick_charts("6147", limit=3, public_only=True)
     assert any("925ae6d3-392a-4e43-8cf7-6ef7c03a7406" in str(r.get("url") or "") for r in qb)
     assert any("頎邦盤中走勢" in str(r.get("note") or "") for r in qb)
