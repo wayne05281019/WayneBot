@@ -118,7 +118,7 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     qb = pick_charts("6147", limit=3, public_only=True)
     assert any("925ae6d3-392a-4e43-8cf7-6ef7c03a7406" in str(r.get("url") or "") for r in qb)
     assert any("頎邦盤中走勢" in str(r.get("note") or "") for r in qb)
-    qt = pick_charts("2382", limit=11, public_only=True)
+    qt = pick_charts("2382", limit=12, public_only=True)
     assert any("9a56b8cc-9e24-4397-a5cb-68d6df19c5a5" in str(r.get("url") or "") for r in qt)
     assert any("c3095408-726b-4dde-b71f-7cebd42ae8b5" in str(r.get("url") or "") for r in qt)
     assert any("d9ca1bdc-42f3-444b-87fc-6852e905a126" in str(r.get("url") or "") for r in qt)
@@ -286,6 +286,18 @@ def test_thirtythird_pick_charts_lasertek_stage2_not_6416():
     assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in hs)
     wr = pick_charts("6187", limit=4, public_only=True)
     assert not any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in wr)
+
+
+def test_thirtyfourth_pick_charts_quanta_273_not_tsmc():
+    from biaoke_charts import pick_charts
+
+    qt = pick_charts("2382", limit=12, public_only=True)
+    assert any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in qt)
+    assert any("支撐273不是282" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in qt)
+    tsmc = pick_charts("2330", limit=6, public_only=True)
+    assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in tsmc)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in skip6416)
 
 
 @pytest.mark.production_db

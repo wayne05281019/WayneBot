@@ -734,8 +734,6 @@ def test_thirtysecond_slice_canon_sehi_limit_up():
 
 
 def test_thirtythird_slice_lasertek_stage2():
-    assert slice_stop() == "2024-04-12"
-    assert next_start() == "2024-04-12"
     body = method_body("圖文時間軸第三十三段")
     assert "2024-04-12" in body
     assert "雷科雖然被關" in body
@@ -767,6 +765,42 @@ def test_thirtythird_slice_lasertek_stage2():
     b12 = official_on(db, "6207", "20240412")
     assert b12 == {} or (
         abs(float(b12["high"]) - 64.5) < 0.01 and abs(float(b12["close"]) - 62.4) < 0.01
+    )
+
+
+def test_thirtyfourth_slice_quanta_restore_k():
+    assert slice_stop() == "2024-04-12"
+    assert next_start() == "2024-04-12"
+    body = method_body("圖文時間軸第三十四段")
+    assert "2024-04-12" in body
+    assert "抱到7-8月" in body
+    assert "支撐線不是282" in body
+    assert "還原權值K線" in body
+    assert "不是日K" in body
+    assert "截圖約 273" in body
+    assert "廣達" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "截圖約 273" in q
+    assert "不是日K" in q
+    ov = overview()
+    assert "還原權值K線" in ov or "支撐線不是282" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("還原權值K線")
+    assert "廣達" in html
+    assert "不是日K" in html
+    assert "截圖約 273" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "還原權值K線")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "還原權值" in blob or "273" in blob
+    assert "截圖約 273" in blob or "271" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q12 = official_on(db, "2382", "20240412")
+    assert q12 == {} or (
+        abs(float(q12["low"]) - 271) < 0.01 and abs(float(q12["close"]) - 271) < 0.01
     )
 
 

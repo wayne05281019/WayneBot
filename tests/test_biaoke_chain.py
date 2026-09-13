@@ -459,3 +459,12 @@ def test_thirtythird_chain_unnamed_stage2():
     assert "不是日K" in blob
     assert "截圖約 62" in blob or "64.5" in blob
     assert "雷科" in blob
+
+
+def test_thirtyfourth_chain_unnamed_restore_k():
+    fired = fire_chain("", "還原權值K線")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "還原權值" in blob or "273" in blob
+    assert "不是日K" in blob
+    assert "截圖約 273" in blob or "271" in blob
+    assert "廣達" in blob
