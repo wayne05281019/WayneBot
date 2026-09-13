@@ -79,8 +79,6 @@ def test_fifth_slice_stops_mar19_quanta_gap():
 
 
 def test_sixth_slice_honhai_chart_is_ennoconn():
-    assert slice_stop() == "2024-03-20"
-    assert next_start() == "2024-03-21"
     body = method_body("圖文時間軸第六段")
     assert "2024-03-20" in body
     assert "樺漢" in body
@@ -99,6 +97,28 @@ def test_sixth_slice_honhai_chart_is_ennoconn():
     ov = overview()
     assert "樺漢" in ov
     assert "不是鴻海日K" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_seventh_slice_ennoconn_intraday_reversal():
+    assert slice_stop() == "2024-03-21"
+    assert next_start() == "2024-03-22"
+    body = method_body("圖文時間軸第七段")
+    assert "2024-03-21" in body
+    assert "326" in body and "327" in body
+    assert "先觀望" in body
+    assert "可買" in body
+    assert "不是日K" in body
+    assert "1231" in body or "聯華" in body
+    e = line_for("6414")
+    assert "10:24" in e or "10:20" in e
+    assert "12:37" in e or "12:31" in e
+    assert "326.5" in e
+    assert "334.5" in e
+    assert "先觀望" in e
+    ov = overview()
+    assert "先觀望" in ov
+    assert "改口" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -132,6 +152,8 @@ def test_taitong_chipbond_official_optional():
     assert e20 == {} or (
         abs(float(e20["high"]) - 338.5) < 0.01 and abs(float(e20["close"]) - 331.5) < 0.01
     )
+    e21 = official_on(db, "6414", "20240321")
+    assert e21 == {} or abs(float(e21["close"]) - 334.5) < 0.01
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -216,6 +238,8 @@ def test_methods_html_and_names():
     hon = format_methods_html("鴻海那張圖為什麼貼")
     assert "樺漢" in hon and "不是鴻海日K" in hon
     assert "327" in hon
+    watch = format_methods_html("樺漢326-327先觀望")
+    assert "先觀望" in watch and "334.5" in watch
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -285,3 +309,8 @@ def test_chain_honhai_chart_is_ennoconn():
     eblob = "".join(s.get("text") or "" for s in e["steps"]) + e.get("think", "")
     assert "327" in eblob
     assert "盤中走勢" in eblob or "331.5" in eblob
+    w = fire_chain("", "樺漢326-327先觀望")
+    assert w["sid"] == "6414"
+    wblob = "".join(s.get("text") or "" for s in w["steps"]) + w.get("think", "")
+    assert "先觀望" in wblob
+    assert "334.5" in wblob or "326.5" in wblob

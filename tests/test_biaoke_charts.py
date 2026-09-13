@@ -119,9 +119,13 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     assert any("廣達盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in qt)
     en = pick_charts("6414", limit=3, public_only=True)
     assert any("3e6b15a5-a550-4e9e-a9ea-9d4e20405a82" in str(r.get("url") or "") for r in en)
+    assert any("3d8bf14c-9c2f-4feb-ac93-8c56755b79af" in str(r.get("url") or "") for r in en)
+    assert any("d841fc6b-6dbd-47cc-9b2e-d6c1bf900da8" in str(r.get("url") or "") for r in en)
     assert any("樺漢盤中走勢" in str(r.get("note") or "") for r in en)
     hon = pick_charts("2317", limit=5, public_only=True)
     assert not any("3e6b15a5-a550-4e9e-a9ea-9d4e20405a82" in str(r.get("url") or "") for r in hon)
+    food = pick_charts("1231", limit=5, public_only=True)
+    assert not any("d841fc6b-6dbd-47cc-9b2e-d6c1bf900da8" in str(r.get("url") or "") for r in food)
 
 
 @pytest.mark.production_db
