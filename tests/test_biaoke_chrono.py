@@ -200,8 +200,6 @@ def test_eleventh_slice_guangsheng_144_resistance():
 
 
 def test_twelfth_slice_quanta_wash_282():
-    assert slice_stop() == "2024-03-28"
-    assert next_start() == "2024-03-28"
     body = method_body("圖文時間軸第十二段")
     assert "2024-03-28" in body
     assert "282" in body
@@ -216,6 +214,32 @@ def test_twelfth_slice_quanta_wash_282():
     assert "280" in q
     ov = overview()
     assert "洗到" in ov and "282" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_thirteenth_slice_ennoconn_weekk_400():
+    assert slice_stop() == "2024-03-28"
+    assert next_start() == "2024-03-28"
+    body = method_body("圖文時間軸第十三段")
+    assert "2024-03-28" in body
+    assert "必過" in body and "400" in body
+    assert "不是日K" in body
+    assert "不是周K" in body
+    assert "349" in body
+    assert "360" in body
+    assert "375" in body
+    e = line_for("6414")
+    assert "樺漢" in e
+    assert "最後上車" in e
+    assert "必過" in e and "400" in e
+    assert "不是日K" in e
+    assert "不是周K" in e
+    assert "349" in e
+    assert "360" in e
+    assert "375" in e
+    ov = overview()
+    assert "必過" in ov and "400" in ov
+    assert "13:30" in ov or "不是周K" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -266,6 +290,14 @@ def test_taitong_chipbond_official_optional():
     g28 = official_on(db, "6442", "20240328")
     assert g28 == {} or (
         abs(float(g28["high"]) - 141) < 0.01 and abs(float(g28["close"]) - 138) < 0.01
+    )
+    e28 = official_on(db, "6414", "20240328")
+    assert e28 == {} or (
+        abs(float(e28["high"]) - 360) < 0.01 and abs(float(e28["close"]) - 349) < 0.01
+    )
+    e29 = official_on(db, "6414", "20240329")
+    assert e29 == {} or (
+        abs(float(e29["high"]) - 376) < 0.01 and abs(float(e29["close"]) - 375) < 0.01
     )
 
 
@@ -367,6 +399,11 @@ def test_methods_html_and_names():
     wash = format_methods_html("洗到282")
     assert "廣達" in wash and "不是日K" in wash
     assert "262.5" in wash and "280" in wash
+    over400 = format_methods_html("必過400")
+    assert "樺漢" in over400 and "不是日K" in over400
+    assert "不是周K" in over400
+    assert "349" in over400 and "360" in over400
+    assert "375" in over400
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -466,3 +503,8 @@ def test_chain_honhai_chart_is_ennoconn():
     wblob = "".join(s.get("text") or "" for s in wash["steps"]) + wash.get("think", "")
     assert "282" in wblob
     assert "洗到" in wblob
+    over400 = fire_chain("", "樺漢必過400")
+    assert over400["sid"] == "6414"
+    o400 = "".join(s.get("text") or "" for s in over400["steps"]) + over400.get("think", "")
+    assert "必過" in o400
+    assert "400" in o400
