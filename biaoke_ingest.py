@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
-盤中 10 分。收盤後、凌晨、週末、國定假、颱風停市都每 1 小時——他常不發新主文，改在最近幾篇樓下補觀點或改主文。
-討論串只重讀個人頁最新 3 篇（他幾乎不回三篇之前）。新主文仍從個人頁偵測。
+盤中 10 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘——趕新主文，也重讀舊文樓中樓。
+收盤後、凌晨、週末、國定假、颱風停市都每 1 小時——他常不發新主文，改在最近幾篇樓下補觀點或改主文。
+樓中樓＝貼文討論串裡飆大本人回覆在第一層（直接回主文）及第二層（回在別人留言裡）。
+舊貼文＝個人頁最接近的那一則樓下留言；開盤前只重讀這一則，不往回掃很多篇。
+討論串平時仍重讀個人頁最新 3 篇。新主文仍從個人頁偵測，第一次進來連樓下也收。
 主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
+對圖以主文點名的股票為準；附圖對不上主文就略過該圖，不准把誤標寫進庫。
 不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
 不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
@@ -50,8 +54,12 @@ _UA = {
 SESSION_EVERY_SEC = 10 * 60
 AFTER_EVERY_SEC = 1 * 60 * 60
 NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 休市／週末／凌晨也每小時，不再等到開盤
+PREOPEN_EVERY_SEC = 5 * 60  # 交易日 08:00–09:00 每五分鐘
+PREOPEN_FROM_MIN = 8 * 60
+PREOPEN_UNTIL_MIN = 9 * 60
 AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
-REFRESH_LATEST = 3  # 他幾乎不回三篇之前的貼文
+REFRESH_LATEST = 3  # 平時重讀最新 3 篇樓下
+REFRESH_PREOPEN = 1  # 開盤前舊貼文＝最接近的一則樓下第一層／第二層
 _ID_RE = re.compile(r"/forum/article/(\d{6,})")
 _HREF_OWN = re.compile(
     r'href="(?:https://www\.cmoney\.tw)?/forum/article/(\d{6,})"'
@@ -282,25 +290,52 @@ def taipei_now() -> datetime:
     return datetime.now(TAIPEI)
 
 
-def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """開市盤中 10 分；其餘時間（盤後、凌晨、週末、國定假、颱風停市）每 1 小時。
+def _open_calendar_day(dt: datetime) -> bool:
+    ymd = dt.strftime("%Y%m%d")
+    try:
+        from trading_calendar import is_tw_open_calendar_day
 
-    他週四／週五發文後，週末仍可能在最近三篇樓下回別人、補觀點、或改主文。
-    不准再用「等到開盤」把凌晨到 9 點、週末、颱風天空掉。
+        return bool(is_tw_open_calendar_day(ymd))
+    except Exception:
+        return dt.weekday() < 5
+
+
+def in_preopen_window(now: Optional[datetime] = None) -> bool:
+    """台股交易日開盤前一小時：08:00 ≤ t < 09:00。週末／國定假／颱風停市不算。"""
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    if not _open_calendar_day(dt):
+        return False
+    hm = dt.hour * 60 + dt.minute
+    return PREOPEN_FROM_MIN <= hm < PREOPEN_UNTIL_MIN
+
+
+def refresh_latest_now(now: Optional[datetime] = None) -> int:
+    """開盤前只重讀最接近那一則樓下；其餘時間仍重讀最新 3 篇。"""
+    if in_preopen_window(now):
+        return REFRESH_PREOPEN
+    return REFRESH_LATEST
+
+
+def poll_wait_seconds(now: Optional[datetime] = None) -> int:
+    """開市盤中 10 分；開盤前一小時每 5 分；其餘時間每 1 小時。
+
+    他週四／週五發文後，週末仍可能在最近幾篇樓下回別人、補觀點、或改主文。
+    開盤前一小時（08:00–09:00）加密到 5 分鐘，免得樓中樓改口漏掉。
+    不准再用「等到開盤」把凌晨到 8 點、週末、颱風天空掉。
     """
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
     else:
         dt = dt.astimezone(TAIPEI)
-    ymd = dt.strftime("%Y%m%d")
-    try:
-        from trading_calendar import is_tw_open_calendar_day
-
-        open_day = bool(is_tw_open_calendar_day(ymd))
-    except Exception:
-        open_day = dt.weekday() < 5
+    open_day = _open_calendar_day(dt)
     hm = dt.hour * 60 + dt.minute
+    if open_day and PREOPEN_FROM_MIN <= hm < PREOPEN_UNTIL_MIN:
+        return PREOPEN_EVERY_SEC
     if open_day and 9 * 60 <= hm <= 13 * 60 + 40:
         return SESSION_EVERY_SEC
     return AFTER_EVERY_SEC
@@ -362,7 +397,7 @@ def parse_author_replies(
 ) -> List[Dict[str, Any]]:
     """只收飆大自己的一、二層樓中樓。路人正文不收。
 
-    他常回在別人留言裡面（nested / 樓中樓），那一則仍要收。
+    第一層＝直接回主文。第二層＝回在別人留言裡。兩層都要。
     他自己附的 attachment 圖一併留下。公開頁沒 SSR 就空列表。
     """
     raw = html_text or ""
@@ -813,14 +848,14 @@ def ingest_public_posts(
     max_ids: int = 12,
     refresh_latest: int = REFRESH_LATEST,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋最近三篇的飆大一／二層回覆。失敗不改海選。
+    """抓公開個人頁最新文＋指定篇數的飆大一／二層回覆。失敗不改海選。
 
     融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
     正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
     corpus_index.json 不准當起點、不准寫回。
-    討論串只重讀個人頁最新 refresh_latest 篇（預設 3）；更早的主文他幾乎不回。
-    新 id 仍會抓主文（含他改過的正文）。
+    討論串只重讀個人頁最新 refresh_latest 篇（平時 3；開盤前＝最接近的 1 則）。
+    新 id 仍會抓主文，第一次進來連樓下第一層／第二層也收。
     """
     dest = str(corpus_path or "").strip()
     dbp = str(db_path or "").strip()
@@ -886,6 +921,7 @@ def ingest_public_posts(
             logger.debug("飆大單篇失敗 id=%s", aid, exc_info=True)
             continue
         stats["fetched"] += 1
+        hit = ""
         if row:
             hit = _merge_row(posts, by_id, row)
             if hit:
@@ -895,7 +931,7 @@ def ingest_public_posts(
                 added += 1
             elif hit == "updated":
                 updated += 1
-        if i < refresh_n:
+        if i < refresh_n or hit == "added":
             api_reps = []
             try:
                 api_reps = fetch_author_replies_api(str(aid), sess)
@@ -1024,13 +1060,16 @@ def run_biaoke_ingest_quiet() -> None:
     try:
         from config import get_db_path
 
-        ingest_public_posts(db_path=get_db_path())
+        ingest_public_posts(
+            db_path=get_db_path(),
+            refresh_latest=refresh_latest_now(),
+        )
     except Exception:
         logger.exception("飆大定時匯入失敗")
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：盤中 10 分；其餘時間每 1 小時抓最新主文＋最近三篇樓下。GHA --once 不開。"""
+    """常駐：開盤前一小時每 5 分；盤中 10 分；其餘每 1 小時。GHA --once 不開。"""
     import threading
     import time as _time
 

@@ -8,8 +8,11 @@ from biaoke_ingest import (
     AFTER_EVERY_SEC,
     AFTER_UNTIL_HOUR,
     NIGHT_EVERY_SEC,
+    PREOPEN_EVERY_SEC,
     REFRESH_LATEST,
+    REFRESH_PREOPEN,
     ingest_public_posts,
+    in_preopen_window,
     parse_article_html,
     parse_author_replies,
     parse_api_author_replies,
@@ -17,6 +20,7 @@ from biaoke_ingest import (
     parse_published,
     parse_user_article_ids,
     poll_wait_seconds,
+    refresh_latest_now,
     fetch_author_replies_api,
 )
 
@@ -119,8 +123,13 @@ def test_ingest_hook_is_on_product_clocks():
     assert "start_quote_month_backfill" in boot
     assert SESSION_EVERY_SEC == 10 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
+    assert PREOPEN_EVERY_SEC == 5 * 60
     assert AFTER_UNTIL_HOUR == 3
     assert REFRESH_LATEST == 3
+    assert REFRESH_PREOPEN == 1
+    ingest_src = open("biaoke_ingest.py", encoding="utf-8").read()
+    assert "refresh_latest_now" in ingest_src
+    assert "PREOPEN_EVERY_SEC" in ingest_src
     assert "refresh_after_market_fuse" in src
 
 
@@ -146,6 +155,145 @@ def test_poll_wait_session_after_night():
     assert poll_wait_seconds(hol) == AFTER_EVERY_SEC
     dawn_open = datetime(2026, 9, 10, 4, 10, tzinfo=tz)
     assert poll_wait_seconds(dawn_open) == AFTER_EVERY_SEC
+
+
+def test_poll_wait_preopen_five_minutes_and_old_replies():
+    tz = ZoneInfo("Asia/Taipei")
+    wed_pre = datetime(2026, 9, 9, 8, 0, tzinfo=tz)
+    assert in_preopen_window(wed_pre) is True
+    assert poll_wait_seconds(wed_pre) == PREOPEN_EVERY_SEC
+    assert refresh_latest_now(wed_pre) == 1
+    assert refresh_latest_now(wed_pre) == REFRESH_PREOPEN
+    wed_mid = datetime(2026, 9, 9, 8, 30, tzinfo=tz)
+    assert poll_wait_seconds(wed_mid) == PREOPEN_EVERY_SEC
+    wed_last = datetime(2026, 9, 9, 8, 59, tzinfo=tz)
+    assert poll_wait_seconds(wed_last) == PREOPEN_EVERY_SEC
+    before = datetime(2026, 9, 9, 7, 59, tzinfo=tz)
+    assert in_preopen_window(before) is False
+    assert poll_wait_seconds(before) == AFTER_EVERY_SEC
+    assert refresh_latest_now(before) == REFRESH_LATEST
+    open_bell = datetime(2026, 9, 9, 9, 0, tzinfo=tz)
+    assert in_preopen_window(open_bell) is False
+    assert poll_wait_seconds(open_bell) == SESSION_EVERY_SEC
+    assert refresh_latest_now(open_bell) == REFRESH_LATEST
+    sat_pre = datetime(2026, 9, 12, 8, 30, tzinfo=tz)
+    assert in_preopen_window(sat_pre) is False
+    assert poll_wait_seconds(sat_pre) == AFTER_EVERY_SEC
+    hol_pre = datetime(2026, 9, 25, 8, 30, tzinfo=tz)
+    assert in_preopen_window(hol_pre) is False
+    assert poll_wait_seconds(hol_pre) == AFTER_EVERY_SEC
+
+
+def test_preopen_rereads_only_nearest_post_thread(tmp_path):
+    """開盤前舊貼文＝最接近的一則樓下；第一層第二層都收，更早那篇不重讀。"""
+    from biaoke_desk import load_corpus, upsert_biaoke_posts
+
+    db = str(tmp_path / "w.db")
+    nearest = "188800001"
+    older = "188800002"
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": nearest,
+                "date": "2026-09-12",
+                "time": "15:00",
+                "kind": "post",
+                "tags": [],
+                "text": "1.台指期連續盤主文最近一則。",
+            },
+            {
+                "id": older,
+                "date": "2026-09-11",
+                "time": "15:00",
+                "kind": "post",
+                "tags": [],
+                "text": "1.台指期連續盤主文更早一則。",
+            },
+        ],
+    )
+    seen_urls = []
+
+    class _Fake:
+        def get(self, url, timeout=12, headers=None):
+            seen_urls.append(url)
+
+            class R:
+                encoding = "utf-8"
+                apparent_encoding = "utf-8"
+                text = ""
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return []
+
+            r = R()
+            if "user/25263" in url:
+                r.text = (
+                    '<script>window.__NUXT__=(function(){return {articles:['
+                    f'{{id:"{nearest}",creatorId:r,x:1}},'
+                    f'{{id:"{older}",creatorId:r,x:2}}'
+                    "]}})</script>"
+                )
+            elif nearest in url:
+                r.text = f"""
+                <meta name="author" content="期股多空雙飆客">
+                <meta property="article:published_time" content="2026-9-12T15:00:00+08:00">
+                <article>
+                  <div>期股多空雙飆客</div>
+                  <div>1.台指期連續盤主文最近一則。</div>
+                  <div class="articleReply">
+                    <a href="/forum/user/25263">期股多空雙飆客</a>
+                    <div class="articleReply__content">明天大盤最好能漲至少500點以上，否則要小心C-2轉C-3先在下方留言告知。</div>
+                    <span>昨天 11:53</span>
+                    <div class="articleReply nested">
+                      <a href="/forum/user/25263">期股多空雙飆客</a>
+                      <div class="articleReply__content">這是第二層補一句先看量價。</div>
+                      <span>昨天 11:54</span>
+                    </div>
+                  </div>
+                </article>
+                """
+            elif older in url:
+                r.text = f"""
+                <meta name="author" content="期股多空雙飆客">
+                <meta property="article:published_time" content="2026-9-11T15:00:00+08:00">
+                <article>
+                  <div>期股多空雙飆客</div>
+                  <div>1.台指期連續盤主文更早一則。</div>
+                  <div class="articleReply">
+                    <a href="/forum/user/25263">期股多空雙飆客</a>
+                    <div class="articleReply__content">這則更早貼文樓下不該開盤前重讀。</div>
+                    <span>昨天 10:00</span>
+                  </div>
+                </article>
+                """
+            return r
+
+    stats = ingest_public_posts(
+        db_path=db,
+        session=_Fake(),
+        max_ids=12,
+        refresh_latest=REFRESH_PREOPEN,
+    )
+    assert stats["ok"]
+    article_urls = [u for u in seen_urls if "/forum/article/" in u]
+    assert any(nearest in u for u in article_urls)
+    assert all(older not in u for u in article_urls)
+    fused = load_corpus(db)
+    texts = " ".join(str(p.get("text") or "") for p in fused["posts"])
+    assert "C-2轉C-3" in texts
+    assert "第二層補一句" in texts
+    assert "不該開盤前重讀" not in texts
+    layers = {
+        int(p.get("layer") or 0)
+        for p in fused["posts"]
+        if str(p.get("parent") or "") == nearest
+    }
+    assert 1 in layers and 2 in layers
 
 
 def test_parse_display_yesterday():
@@ -345,6 +493,32 @@ def test_parse_api_author_replies_unwraps_nested_data():
     rows = parse_api_author_replies(payload, parent_id="184526608")
     assert len(rows) == 1
     assert "過壓" in rows[0]["text"]
+
+
+def test_parse_api_author_replies_keeps_layer1_c2_warning():
+    payload = [
+        {
+            "id": "c-old",
+            "memberId": 25263,
+            "nickname": "期股多空雙飆客",
+            "content": {
+                "text": "明天大盤最好能漲至少500點以上，否則要小心C-2轉C-3先在下方留言告知。"
+            },
+            "createTime": "2026-03-13T03:53:00Z",
+        },
+        {
+            "id": "c-bystander",
+            "memberId": 111,
+            "nickname": "路人甲",
+            "content": {"text": "謝謝飆大提醒"},
+            "createTime": "2026-03-13T04:00:00Z",
+        },
+    ]
+    rows = parse_api_author_replies(payload, parent_id="170000001")
+    assert len(rows) == 1
+    assert rows[0]["layer"] == 1
+    assert "C-2轉C-3" in rows[0]["text"]
+    assert "謝謝飆大" not in rows[0]["text"]
 
 
 def test_cmoney_token_strips_quotes_and_bearer(monkeypatch):
