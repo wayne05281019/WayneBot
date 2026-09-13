@@ -256,6 +256,44 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
 ]
 
 
+# 六顆神經元每次開火都重讀這些看法，不是等問句抽到關鍵字才貼。
+NEURON_VIEWS: Dict[str, Tuple[str, ...]] = {
+    "nest": (
+        "四路對質",
+        "波浪對大盤",
+        "右肩／45839",
+        "費半先行",
+        "台積電量價決勝",
+        "夜盤先於日盤",
+        "多重比對／沒講完的輔助",
+    ),
+    "field": ("個股先看產業趨勢", "去年年底"),
+    "leader": ("次族群第一名",),
+    "tape": ("量先價行", "洗盤還是出貨", "連哪兩天的點", "三個買點"),
+    "hold": ("長抱主流／F4→F10／聯發科", "半山腰只隔日沖"),
+    "doubt": ("盲測要疊條件",),
+}
+
+
+def method_body(title: str) -> str:
+    want = str(title or "").strip()
+    if not want:
+        return ""
+    for _pat, t, body in _METHODS:
+        if t == want:
+            return body
+    return ""
+
+
+def views_for_neuron(nid: str) -> List[Tuple[str, str]]:
+    out: List[Tuple[str, str]] = []
+    for title in NEURON_VIEWS.get(str(nid or ""), ()):
+        body = method_body(title)
+        if body:
+            out.append((title, body))
+    return out
+
+
 def match_methods(ask: str, *, limit: int = 3) -> List[Tuple[str, str]]:
     q = ask or ""
     hits: List[Tuple[str, str]] = []

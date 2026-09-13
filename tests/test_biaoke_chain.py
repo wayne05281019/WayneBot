@@ -19,6 +19,7 @@ def test_system_requires_neuron_chain():
     assert "圖是第④顆" in SYSTEM or "第④顆" in SYSTEM
     assert "演算" in SYSTEM
     assert "不是預測保證" in SYSTEM or "不是保證" in SYSTEM
+    assert "重讀" in SYSTEM
 
 
 def test_chain_six_neurons_in_order_for_emc():
@@ -125,6 +126,7 @@ def test_chain_real_quotes_when_db_present():
     assert "台積電官方" in nest["text"]
     assert "不數這檔段" in nest["text"]
     assert "費半" in nest["text"]
+    assert "那指" in nest["text"]
     assert "不准編" in nest["text"] or "這路先當缺" in nest["text"] or "隔夜官方" in nest["text"]
 
 
@@ -153,8 +155,11 @@ def test_field_does_not_repeat_hold_neuron():
     emc_live = fire_chain(db, "台光電怎麼看")
     rot = next(s for s in emc_live["steps"] if s["id"] == "field")["text"]
     assert rot.count("電子零組件業") <= 1
-    assert "護城河" not in rot
-    assert "第五波" not in rot
+    assert "產業趨勢還在不在" in rot
+    assert "護城河" in rot
+    assert "第五波" in rot
+    assert "主力露餡" not in rot
+    assert "F10 系列" not in rot
 
 
 def test_self_leader_defers_ohlc_to_tape():
@@ -231,3 +236,46 @@ def test_think_chains_45839_and_self_leader():
     if follow.get("sid") == "3035":
         assert "聯發科" in follow["think"] or "2454" in follow["think"]
         assert "這族龍頭是" in follow["think"]
+    assert "那指" in think
+
+
+def test_chain_rereads_his_views_without_keyword_ask():
+    """怎麼看也要重讀他的說法，不是等關鍵字才貼。"""
+    notes = format_chain_notes("", "台光電怎麼看")
+    assert "神經元鏈" in notes
+    assert "他的看法" in notes
+    assert "個股先看產業趨勢" in notes
+    assert "量先價行" in notes
+    assert "四路對質" in notes
+    assert "長抱主流" in notes
+    fired = fire_chain("", "台光電怎麼看")
+    field = next(s for s in fired["steps"] if s["id"] == "field")
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    assert "產業趨勢還在不在" in field["text"]
+    assert "護城河" in field["text"]
+    if tape.get("ok"):
+        assert "價穩量縮" in tape["text"] or "量先價行" in tape["text"] or "圖上演算" in tape["text"]
+    assert "勿輕易調整" in hold["text"]
+    assert "主力露餡" not in field["text"]
+
+
+def test_hold_reads_only_this_uid_lot(tmp_path):
+    """有持股只對這人倉；不改倉、不看別人倉。"""
+    from wayne_db import add_to_portfolio, ensure_core_schema, get_user_portfolio
+
+    db = str(tmp_path / "hold.db")
+    ensure_core_schema(db)
+    add_to_portfolio(db, "u-wayne", "2383", "台光電", 10, 3900)
+    add_to_portfolio(db, "u-bro", "2454", "聯發科", 2, 4000)
+    wayne = fire_chain(db, "台光電怎麼看", uid="u-wayne")
+    bro = fire_chain(db, "台光電怎麼看", uid="u-bro")
+    wh = next(s for s in wayne["steps"] if s["id"] == "hold")["text"]
+    bh = next(s for s in bro["steps"] if s["id"] == "hold")["text"]
+    assert "這人持股有這檔" in wh
+    assert "這人持股有這檔" not in bh
+    assert "不准改別人倉" in wh
+    lots = get_user_portfolio(db, "u-wayne")
+    assert lots and float(lots[0]["shares"]) == 10
+    other = get_user_portfolio(db, "u-bro")
+    assert other and str(other[0]["stock_code"]) == "2454"

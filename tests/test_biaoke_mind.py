@@ -12,8 +12,23 @@ from biaoke_mind import (
     follow_up_ask,
     format_methods_html,
     k_curriculum,
+    method_body,
     method_curriculum,
+    views_for_neuron,
 )
+
+
+def test_neuron_views_reread_without_ask():
+    nest = views_for_neuron("nest")
+    titles = [t for t, _b in nest]
+    assert "四路對質" in titles
+    assert "波浪對大盤" in titles
+    assert "右肩／45839" in titles
+    field = views_for_neuron("field")
+    assert field and field[0][0] == "個股先看產業趨勢"
+    assert "價穩量縮" in method_body("量先價行")
+    tape = views_for_neuron("tape")
+    assert any(t == "量先價行" for t, _b in tape)
 
 
 def test_methods_cover_industry_trend_hold_to_next_year():

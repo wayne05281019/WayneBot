@@ -273,3 +273,57 @@ def test_project_rail_coming_down_caps_price():
     assert abs(float(proj.get("target") or 0) - 134) < 1e-6
     assert "被軌壓著" in str(proj.get("label") or "")
     assert "不是保證過軌" in str(proj.get("label") or "")
+
+
+def test_project_wash_without_shrink_waits():
+    rows = _series()
+    rows[-1] = dict(rows[-1], volume=12000, close=126, high=130, low=122, open=124)
+    info = analyze_structure(rows)
+    assert info.get("wash") is True
+    assert info.get("struct", {}).get("shrinking") is False
+    proj = info.get("project") or {}
+    assert proj.get("key") == "wait"
+    assert abs(float(proj.get("target") or 0) - 126) < 1e-6
+    assert "先整理" in str(proj.get("label") or "")
+    assert "不把攻壓" in str(proj.get("label") or "")
+
+
+def _above_support_heavy_volume_series():
+    """站上撐、沒破線、量大：不把攻壓當最可能。"""
+    day = date(2026, 7, 1)
+    rows = []
+    for i in range(28):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        if i == 8:
+            o, h, l, c, v = 100, 120, 96, 118, 18000
+        elif i == 27:
+            o, h, l, c, v = 108, 112, 106, 110, 12000
+        else:
+            px = 104 + i * 0.2
+            o, h, l, c, v = px, px + 2, max(px - 2, 97), px, 2200
+        rows.append(
+            {
+                "date": d,
+                "stock_id": "3035",
+                "stock_name": "智原",
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+                "pct_change": 0,
+            }
+        )
+    return rows
+
+
+def test_project_above_support_without_shrink_waits():
+    info = analyze_structure(_above_support_heavy_volume_series())
+    assert info.get("under_support") is False
+    assert info.get("over_press") is False
+    assert info.get("wash") is False
+    assert info.get("struct", {}).get("shrinking") is False
+    proj = info.get("project") or {}
+    assert proj.get("key") == "wait"
+    assert abs(float(proj.get("target") or 0) - 110) < 1e-6
+    assert "先整理" in str(proj.get("label") or "")

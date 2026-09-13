@@ -255,7 +255,12 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
-    """用壓撐＋兩點連點延長，演算接下來幾根最可能碰到哪。不是預測保證。"""
+    """用壓撐＋連點＋量縮，演算接下來幾根最可能碰到哪。不是預測保證。
+
+    準度來自他自己的順序，不是等幅測距：
+    收在撐下先放棄；出貨往撐下；洗盤／站上撐都要價穩量縮才把攻壓當最可能，
+    量沒縮就先整理。過壓先當壓轉撐；下降連點還壓著就不要畫保證續漲。
+    """
     n = int(info.get("n") or 0)
     closes = list(info.get("closes") or [])
     if n < 8 or not closes:
@@ -264,6 +269,7 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
     st = info.get("struct") or {}
     spike_hi = float(st.get("spike_high") or 0)
     spike_lo = float(st.get("spike_low") or 0)
+    shrinking = bool(st.get("shrinking"))
     x_end = float(n - 1 + _FUTURE)
     down_fut = None
     up_fut = None
@@ -275,25 +281,33 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
     if up_pts:
         (x1, y1, _d1), (x2, y2, _d2) = up_pts
         up_fut = _line_at(x1, y1, x2, y2, x_end)
-    key = "toward_press"
-    target = spike_hi if spike_hi else last
-    label = (
-        f"站上撐，演算下一檔量價看壓 {_px(target)}；要價穩量縮才像進。不是保證。"
-        if spike_hi
-        else "量價壓撐不齊，不演算後續。"
-    )
+    key = "wait"
+    target = last
+    label = "量價壓撐不齊，不演算後續。"
+    if spike_hi and spike_lo:
+        label = (
+            f"站上撐但量還沒縮，最可能先整理，不把攻壓 {_px(spike_hi)} 當最可能。不是保證。"
+        )
     if info.get("distribution"):
         key = "distribution"
         target = spike_lo if spike_lo else last
         label = f"出貨痕跡，演算往撐 {_px(target)}／撐下。不是保證。"
     elif info.get("under_support"):
         key = "abandon"
-        target = last if not spike_lo else min(last, spike_lo)
+        target = last
         label = f"收在撐 {_px(spike_lo)} 之下，這次量價先放棄，不把反彈當最可能。不是保證。"
     elif info.get("wash"):
-        key = "wash"
-        target = spike_hi if spike_hi else last
-        label = f"洗盤痕跡，演算先看壓 {_px(target)}。不是保證。"
+        if shrinking and spike_hi:
+            key = "wash"
+            target = spike_hi
+            label = f"洗盤痕跡且量縮，演算先看壓 {_px(target)}。不是保證。"
+        else:
+            key = "wait"
+            target = last
+            press = _px(spike_hi) if spike_hi else "—"
+            label = (
+                f"洗盤痕跡但量還沒縮，最可能先整理，不把攻壓 {press} 當最可能。不是保證。"
+            )
     elif info.get("over_press"):
         down_now = float(info.get("down_now") or 0)
         clearly_over = bool(spike_hi and last > spike_hi * 1.05)
@@ -323,6 +337,17 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
             key = "press_hold"
             target = last
             label = "已過壓，半山腰／長抱另論，不畫保證續漲。"
+    elif spike_hi and spike_lo and last >= spike_lo:
+        if shrinking:
+            key = "toward_press"
+            target = spike_hi
+            label = f"量縮站上撐，演算下一檔量價看壓 {_px(target)}；要價穩量縮才像進。不是保證。"
+        else:
+            key = "wait"
+            target = last
+            label = (
+                f"站上撐但量還沒縮，最可能先整理，不把攻壓 {_px(spike_hi)} 當最可能。不是保證。"
+            )
     path = []
     tgt = float(target)
     for i in range(_FUTURE + 1):
@@ -347,6 +372,10 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
         mark = f"最可能＝往撐 {_px(tgt)}"
     elif key == "wash":
         mark = f"最可能＝看壓 {_px(tgt)}"
+    elif key == "wait":
+        mark = "最可能＝先整理"
+    elif key == "toward_press":
+        mark = f"最可能＝看壓 {_px(tgt)}"
     return {
         "horizon": _FUTURE,
         "key": key,
@@ -357,6 +386,7 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
         "down_fut": down_fut,
         "up_fut": up_fut,
         "forks": forks,
+        "shrinking": shrinking,
     }
 
 
@@ -561,7 +591,7 @@ def render_biaoke_structure_png(
         mark_i = min(3, len(path) - 1)
         mx, my = path[mark_i]
         key = str(proj.get("key") or "")
-        if key in ("press_hold", "rail_cap"):
+        if key in ("press_hold", "rail_cap", "wait", "abandon"):
             mx = float(n - 0.15)
             my = float(last_c or my) + span * 0.05
         else:

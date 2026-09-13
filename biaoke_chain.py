@@ -52,8 +52,8 @@ def _chg(val: Any) -> str:
     return "0.00%"
 
 
-def _latest_sox(db_path: str) -> Dict[str, Any]:
-    """只讀庫裡最後一筆隔夜費半。不准現抓、不准編今天沒有的點。"""
+def _latest_us_overnight(db_path: str) -> Dict[str, Any]:
+    """只讀庫裡最後一筆隔夜費半／那指。不准現抓、不准編今天沒有的點。"""
     if not db_path:
         return {}
     try:
@@ -62,7 +62,7 @@ def _latest_sox(db_path: str) -> Dict[str, Any]:
         conn = sqlite3.connect(db_path, timeout=8.0)
         try:
             row = conn.execute(
-                "SELECT as_of, sox_pct FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+                "SELECT as_of, sox_pct, ixic_pct FROM us_overnight ORDER BY as_of DESC LIMIT 1"
             ).fetchone()
         except sqlite3.Error:
             row = None
@@ -76,12 +76,64 @@ def _latest_sox(db_path: str) -> Dict[str, Any]:
         out: Dict[str, Any] = {"as_of": as_of}
         if row[1] is not None:
             try:
-                out["pct"] = float(row[1])
+                out["sox_pct"] = float(row[1])
+            except (TypeError, ValueError):
+                pass
+        if len(row) > 2 and row[2] is not None:
+            try:
+                out["ixic_pct"] = float(row[2])
             except (TypeError, ValueError):
                 pass
         return out
     except Exception:
         return {}
+
+
+def _view_line(nid: str, *, n: int = 160) -> str:
+    """這顆神經元重讀他的說法。沒問到關鍵字也要讀，不准抽完就丟。"""
+    try:
+        from biaoke_mind import views_for_neuron
+    except Exception:
+        return ""
+    clips: List[str] = []
+    for title, body in views_for_neuron(nid):
+        bit = _clip(body, n)
+        if bit:
+            clips.append(f"{title}：{bit}")
+        if len(clips) >= 2:
+            break
+    if not clips:
+        return ""
+    return "他的說法：" + " ".join(clips)
+
+
+def _own_holding(db_path: str, uid: str, sid: str) -> Dict[str, Any]:
+    """只讀這人倉。不准改倉、不准看別人倉。"""
+    if not db_path or not uid or not sid:
+        return {}
+    try:
+        from wayne_db import get_user_portfolio
+
+        want = str(sid).strip()
+        for row in get_user_portfolio(db_path, str(uid)):
+            if str(row.get("stock_code") or "").strip() == want:
+                return dict(row)
+    except Exception:
+        return {}
+    return {}
+
+
+def _overnight_bit(label: str, pct: Any, as_of: str, twii_ymd: str, miss_key: str) -> str:
+    ymd = str(as_of or "")
+    if pct is None:
+        return f"{label}官方這顆庫還沒這列，{miss_key}，不准編"
+    chg = _chg(pct)
+    if twii_ymd and ymd and ymd < twii_ymd:
+        return (
+            f"{label}隔夜官方 {ymd} {chg}；還沒對上最新加權日 {twii_ymd}，"
+            f"{miss_key}、不准編今天的{label}"
+        )
+    return f"{label}隔夜官方 {ymd} {chg}；沒{label} 15 分不數段、先行不是保證"
 
 
 def _clip(text: str, n: int) -> str:
@@ -95,7 +147,7 @@ def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[s
         "title": NEURON_TITLES[nid],
         "ok": bool(ok) and not skip,
         "skip": bool(skip),
-        "text": _clip(text, 720),
+        "text": _clip(text, 900),
     }
 
 
@@ -212,21 +264,18 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
             )
     except Exception:
         pass
-    sox = _latest_sox(db_path)
-    if "pct" not in sox:
-        bits.append("費半官方這顆庫還沒這列，四路先缺這路，不准編")
-    else:
-        sox_ymd = str(sox.get("as_of") or "")
-        chg = _chg(sox.get("pct"))
-        if twii_ymd and sox_ymd and sox_ymd < twii_ymd:
-            bits.append(
-                f"費半隔夜官方 {sox_ymd} {chg}；還沒對上最新加權日 {twii_ymd}，"
-                "這路先當缺、不准編今天的費半"
-            )
-        else:
-            bits.append(
-                f"費半隔夜官方 {sox_ymd} {chg}；沒費半 15 分不數段、先行不是保證"
-            )
+    us = _latest_us_overnight(db_path)
+    as_of = str(us.get("as_of") or "")
+    bits.append(
+        _overnight_bit("費半", us.get("sox_pct"), as_of, twii_ymd, "費半這路先當缺")
+        if "sox_pct" in us
+        else "費半官方這顆庫還沒這列，四路先缺這路，不准編"
+    )
+    bits.append(
+        _overnight_bit("那指", us.get("ixic_pct"), as_of, twii_ymd, "那指這路先當缺")
+        if "ixic_pct" in us
+        else "那指官方這顆庫還沒這列，那指這路先當缺、不准編"
+    )
     bits.append(
         "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
@@ -234,12 +283,17 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
     )
     if any(x in (ask or "") for x in ("45839", "46506", "右肩", "細微波", "波浪", "大盤", "夜盤")):
         bits.append("大盤位階用他自己點過的 45839／46506／48218，禁止 17000。")
-    return _step("nest", "。".join(bits), ok=ok)
+    view = _view_line("nest", n=140)
+    if view:
+        bits.append(view)
+    return _step("nest", "。".join(b.rstrip("。") for b in bits if b), ok=ok)
 
 
 def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
     """第 2 顆只講產業／主戰場。長抱 vs 進出留給第 5 顆，不准兩顆各貼一次。"""
     bits: List[str] = []
+    sid = str(brief.get("sid") or "")
+    named = bool(sid)
     want_trend = any(
         k in (ask or "")
         for k in (
@@ -255,6 +309,22 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             "年底",
         )
     )
+    if named:
+        bits.append("個股最重要是產業趨勢還在不在；技術分析最有用在大盤。")
+        if sid == "2383":
+            bits.append(
+                "純 AI 他看到台光電護城河最高，至少可抱到 2027 年大盤第五波結束；"
+                "這條第五波他改口過，9/11 沒標這級第 1 浪起點，不准編死。"
+            )
+        elif sid == "3081":
+            bits.append(
+                "下一個台光電他最看好聯亞及建築兩檔；聯亞＝矽光子風向球，不是再找一檔 CCL。"
+                "建築兩檔沒點名代號。"
+            )
+        elif sid == "2454":
+            bits.append(
+                "2026-04-22 公開 IC 設計主線看聯發科；產業還在不在留給這顆，長抱名單留給第 5 顆。"
+            )
     if want_trend:
         try:
             from biaoke_mind import match_methods
@@ -270,16 +340,12 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
         bits.append(rot)
     elif ind:
         bits.append("這檔產業 " + ind)
-    if not bits:
-        if brief.get("sid"):
-            bits.append(
-                "這句沒點到產業關鍵字，仍要先想趨勢還在不在；"
-                "沒有產業材料就不要裝篤定。"
-            )
-            return _step("field", " ".join(bits), ok=False)
-        bits.append("這句沒點檔，產業先擱；大盤仍用第 1 顆。")
-        return _step("field", " ".join(bits), skip=True)
-    return _step("field", " ".join(bits), ok=True)
+    if named:
+        return _step("field", " ".join(bits), ok=True)
+    if bits:
+        return _step("field", " ".join(bits), ok=True)
+    bits.append("這句沒點檔，產業先擱；大盤仍用第 1 顆。")
+    return _step("field", " ".join(bits), skip=True)
 
 
 def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
@@ -293,18 +359,17 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
     why = str(leader.get("why") or "同族跟漲先看龍頭")
     name = str(leader.get("name") or "")
     self_sid = str(brief.get("sid") or "")
+    view = _view_line("leader", n=140)
     if lid == self_sid:
         if ls:
-            return _step(
-                "leader",
-                f"{lid} {name}（{why}）。跟漲不另對一檔，這檔官方量價留給第 4 顆。",
-                ok=True,
-            )
-        return _step(
-            "leader",
-            f"{lid} {name}（{why}）。自己就是龍頭，但官方 K 還沒齊，攻或休先不講。",
-            ok=False,
-        )
+            bit = f"{lid} {name}（{why}）。跟漲不另對一檔，這檔官方量價留給第 4 顆。"
+            if view:
+                bit += " " + view
+            return _step("leader", bit, ok=True)
+        bit = f"{lid} {name}（{why}）。自己就是龍頭，但官方 K 還沒齊，攻或休先不講。"
+        if view:
+            bit += " " + view
+        return _step("leader", bit, ok=False)
     bit = f"{lid} {name}（{why}）"
     if ls:
         bit += (
@@ -313,8 +378,12 @@ def _leader(brief: Dict[str, Any], *, named: bool) -> Dict[str, Any]:
             f" 高 {_px(ls.get('spike_high')) or '—'} 低 {_px(ls.get('spike_low')) or '—'}"
             f" 站上撐={ls.get('above_support')} 過壓={ls.get('broke_resistance')} 量縮={ls.get('shrinking')}"
         )
+        if view:
+            bit += " " + view
         return _step("leader", bit, ok=True)
     bit += " 龍頭官方 K 還沒齊，跟漲對不上"
+    if view:
+        bit += " " + view
     return _step("leader", bit, ok=False)
 
 
@@ -352,10 +421,13 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
                     bit += " 圖上演算：" + label
         except Exception:
             pass
+    view = _view_line("tape", n=140)
+    if view:
+        bit += " " + view
     return _step("tape", bit, ok=True)
 
 
-def _hold(brief: Dict[str, Any], ask: str, *, named: bool) -> Dict[str, Any]:
+def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", uid: str = "") -> Dict[str, Any]:
     if not named:
         if any(k in (ask or "") for k in ("F10", "F4", "長抱", "聯發科", "抱著波段")):
             try:
@@ -385,6 +457,12 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool) -> Dict[str, Any]:
         bits.append("量價過壓是半山腰那套；長抱另論，不要用過壓叫人出長抱。")
     elif "半山腰" in pace:
         bits.append("已過爆大量日高，這腳進出比較像半山腰，不是落後補漲。")
+    mine = _own_holding(db_path, uid, sid)
+    if mine:
+        bits.append("這人持股有這檔，長抱／進出對這倉看，不准改別人倉。")
+    view = _view_line("hold", n=150)
+    if view:
+        bits.append(view)
     return _step("hold", " ".join(bits), ok=bool(hold or sid))
 
 
@@ -397,8 +475,10 @@ def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str 
     nt = nest_text or ""
     if not nest_ok:
         bits.append("大盤官方點位沒齊，確認末端不准講死")
-    if "這路先當缺" in nt or "四路先缺這路" in nt:
+    if "費半這路先當缺" in nt or "四路先缺這路" in nt:
         extra_miss.append("費半這路官方沒跟上最新加權日，四路沒疊滿")
+    if "那指這路先當缺" in nt:
+        extra_miss.append("那指隔夜官方沒跟上最新加權日")
     if named and not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只是觸類旁通量價，可能看錯")
     if named and miss:
@@ -408,6 +488,9 @@ def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str 
         bits.append("已疊：" + "、".join(ok_bits[:4]))
     if audit.get("verdict"):
         bits.append(str(audit.get("verdict")))
+    view = _view_line("doubt", n=140)
+    if view:
+        bits.append(view)
     if not bits:
         bits.append("沒疊滿就不講死。對跟錯一起留。這不是買訊。")
     return _step("doubt", " ".join(bits), ok=not miss and not extra_miss)
@@ -444,10 +527,14 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；官方高已過 47578"
         if "台積電官方" in nest_t:
             nest_bit += "；台積電官方量價有了"
-        if "這路先當缺" in nest_t or "四路先缺這路" in nest_t:
+        if "費半這路先當缺" in nest_t or "四路先缺這路" in nest_t:
             nest_bit += "；費半這路缺官方"
         elif "費半隔夜官方" in nest_t:
             nest_bit += "；費半隔夜有官方"
+        if "那指這路先當缺" in nest_t:
+            nest_bit += "；那指這路缺官方"
+        elif "那指隔夜官方" in nest_t:
+            nest_bit += "；那指隔夜有官方"
         parts.append(nest_bit + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
@@ -495,15 +582,16 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("官方高還沒過 47578，右肩還沒做完。")
     elif "已過他自己點的前波高 47578" in nest_t:
         parts.append("官方高已過 47578。")
-    if "這路先當缺" in nest_t or "四路先缺這路" in nest_t:
+    if "費半這路先當缺" in nest_t or "四路先缺這路" in nest_t:
         parts.append("費半這路缺官方。")
-    parts.append("個股不數浪。產業／長抱只在問句有點到時才串進去。")
+    if "那指這路先當缺" in nest_t:
+        parts.append("那指這路缺官方。")
+    parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。")
     return _clip("".join(parts), 520)
 
 
 def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
-    """對一句問話開火。uid 預留給之後讀這人持股，現在不改別人倉。"""
-    del uid
+    """對一句問話開火。uid 只讀這人持股，不改倉、不看別人倉。偉權哥哥功能全同。"""
     q = (ask or "").strip()
     sid, name = _resolve_sid(db_path, q)
     named = bool(sid)
@@ -523,7 +611,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         _field(q, brief),
         _leader(brief, named=named),
         _tape(brief, named=named, db_path=db_path),
-        _hold(brief, q, named=named),
+        _hold(brief, q, named=named, db_path=db_path, uid=uid),
         _doubt(brief, bool(nest.get("ok")), named=named, nest_text=str(nest.get("text") or "")),
     ]
     return {
@@ -534,6 +622,24 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         "think": _think(steps, sid, name),
         "firm": bool((brief.get("audit") or {}).get("firm")),
     }
+
+
+def _reread_block() -> str:
+    """六顆用到的看法標題＋摘句，每句對話都重讀，不是關鍵字抽完就丟。"""
+    try:
+        from biaoke_mind import views_for_neuron
+    except Exception:
+        return ""
+    lines = ["他的看法（這條鏈每顆都重讀，不是關鍵字抽完就丟）："]
+    for nid in NEURON_IDS:
+        views = views_for_neuron(nid)
+        if not views:
+            continue
+        titles = "；".join(t for t, _b in views)
+        lines.append(f"{NEURON_TITLES[nid]}｜{titles}")
+        _title, body = views[0]
+        lines.append(_clip(body, 180))
+    return "\n".join(lines)
 
 
 def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
@@ -551,6 +657,9 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
     think = str(fired.get("think") or "").strip()
     if think:
         lines.append("推論｜" + think)
+    reread = _reread_block()
+    if reread:
+        lines.append(reread)
     lines.append("圖只解釋第 4 顆量價。右灰區是壓撐＋連點延長演算，不是保證、不是買訊。")
     return "\n".join(lines)
 
