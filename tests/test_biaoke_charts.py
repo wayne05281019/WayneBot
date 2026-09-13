@@ -250,6 +250,26 @@ def test_thirtyfirst_pick_charts_ma5_not_6416():
     assert not any("237c5965-cc4c-4126-bc0f-f185c2a95603" in str(r.get("url") or "") for r in skip6416)
 
 
+def test_thirtysecond_pick_charts_canon_sehi_not_6416():
+    from biaoke_charts import pick_charts
+
+    cn = pick_charts("2374", limit=2, public_only=True)
+    assert any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in cn)
+    assert any("佳能盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
+    se = pick_charts("4533", limit=2, public_only=True)
+    assert any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in se)
+    assert any("協易機盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in se)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in skip6416)
+    assert not any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in skip6416)
+    skip3013 = pick_charts("3013", limit=6, public_only=True)
+    assert not any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in skip3013)
+    assert not any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in skip3013)
+    skip6117 = pick_charts("6117", limit=6, public_only=True)
+    assert not any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in skip6117)
+    assert not any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in skip6117)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

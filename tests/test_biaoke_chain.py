@@ -441,3 +441,12 @@ def test_thirtyfirst_chain_unnamed_tech_ma5():
     assert "不是日K" in blob
     assert "76.2" in blob or "97.6" in blob
     assert "迎廣" in blob or "晟銘電" in blob
+
+
+def test_thirtysecond_chain_unnamed_pullback():
+    fired = fire_chain("", "找拉回上車時機")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "拉回上車" in blob or "漲停" in blob
+    assert "不是日K" in blob
+    assert "38.9" in blob or "40.25" in blob
+    assert "佳能" in blob or "協易機" in blob

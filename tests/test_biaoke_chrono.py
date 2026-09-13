@@ -647,8 +647,6 @@ def test_thirtieth_slice_ask_who_leads():
 
 
 def test_thirtyfirst_slice_tech_ma5_prefer_3013():
-    assert slice_stop() == "2024-04-12"
-    assert next_start() == "2024-04-12"
     body = method_body("圖文時間軸第三十一段")
     assert "2024-04-12" in body
     assert "支撐線沿著5日均線" in body or "支撐線沿著 5 日均線" in body
@@ -689,6 +687,51 @@ def test_thirtyfirst_slice_tech_ma5_prefer_3013():
     c12 = official_on(db, "3013", "20240412")
     assert c12 == {} or (
         abs(float(c12["high"]) - 78.6) < 0.01 and abs(float(c12["close"]) - 74.3) < 0.01
+    )
+
+
+def test_thirtysecond_slice_canon_sehi_limit_up():
+    assert slice_stop() == "2024-04-12"
+    assert next_start() == "2024-04-12"
+    body = method_body("圖文時間軸第三十二段")
+    assert "2024-04-12" in body
+    assert "讓佳能跑掉漲停" in body
+    assert "第二選擇協易機" in body
+    assert "找拉回上車時機" in body
+    assert "不是日K" in body
+    assert "38.9" in body
+    assert "40.25" in body
+    assert "佳能" in body
+    assert "協易機" in body
+    cn = line_for("2374")
+    assert "佳能" in cn
+    assert "38.9" in cn
+    assert "不是日K" in cn
+    se = line_for("4533")
+    assert "協易機" in se
+    assert "40.25" in se
+    ov = overview()
+    assert "讓佳能跑掉漲停" in ov or "找拉回" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("找拉回上車時機")
+    assert "佳能" in html and "協易機" in html
+    assert "不是日K" in html
+    assert "38.9" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "找拉回上車時機")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "拉回上車" in blob or "漲停" in blob
+    assert "38.9" in blob or "40.25" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    c12 = official_on(db, "2374", "20240412")
+    assert c12 == {} or (
+        abs(float(c12["high"]) - 38.9) < 0.01 and abs(float(c12["close"]) - 38.9) < 0.01
+    )
+    s12 = official_on(db, "4533", "20240412")
+    assert s12 == {} or (
+        abs(float(s12["high"]) - 40.25) < 0.01 and abs(float(s12["close"]) - 40.25) < 0.01
     )
 
 
