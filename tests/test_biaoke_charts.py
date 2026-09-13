@@ -208,6 +208,20 @@ def test_twentyeighth_pick_charts_lasertek_not_5310():
     assert not any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in skip6416)
 
 
+def test_twentyninth_pick_charts_iei_chenming_not_6416():
+    from biaoke_charts import pick_charts
+
+    y = pick_charts("6117", limit=4, public_only=True)
+    assert any("40be401e-c52c-4114-8a9d-605cb5b37f21" in str(r.get("url") or "") for r in y)
+    assert any("最佳上車" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in y)
+    cm = pick_charts("3013", limit=3, public_only=True)
+    assert any("6f617165-51b9-4396-b3b4-3d436947bea7" in str(r.get("url") or "") for r in cm)
+    assert any("強勢反彈" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cm)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("40be401e-c52c-4114-8a9d-605cb5b37f21" in str(r.get("url") or "") for r in skip6416)
+    assert not any("6f617165-51b9-4396-b3b4-3d436947bea7" in str(r.get("url") or "") for r in skip6416)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

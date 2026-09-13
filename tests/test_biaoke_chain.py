@@ -414,3 +414,12 @@ def test_twentyeighth_chain_unnamed_pullback():
     assert "不是日K" in blob
     assert "58.1" in blob
     assert "雷科" in blob
+
+
+def test_twentyninth_chain_unnamed_best_entry():
+    fired = fire_chain("", "最佳上車時機")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "最佳上車" in blob
+    assert "不是日K" in blob
+    assert "103.5" in blob or "70" in blob
+    assert "迎廣" in blob or "晟銘電" in blob
