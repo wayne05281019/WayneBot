@@ -161,8 +161,6 @@ def test_ninth_slice_last_boarding_is_ennoconn_not_honhai():
 
 
 def test_tenth_slice_guangsheng_125_intraday():
-    assert slice_stop() == "2024-03-26"
-    assert next_start() == "2024-03-28"
     body = method_body("圖文時間軸第十段")
     assert "2024-03-26" in body
     assert "多空支撐" in body
@@ -180,6 +178,26 @@ def test_tenth_slice_guangsheng_125_intraday():
     ov = overview()
     assert "3/26" in ov or "2024-03-26" in ov
     assert "多空支撐" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_eleventh_slice_guangsheng_144_resistance():
+    assert slice_stop() == "2024-03-28"
+    assert next_start() == "2024-03-28"
+    body = method_body("圖文時間軸第十一段")
+    assert "2024-03-28" in body
+    assert "144" in body and "145" in body
+    assert "不是日K" in body
+    assert "137" in body
+    assert "138" in body
+    g = line_for("6442")
+    assert "144" in g and "145" in g
+    assert "盤中走勢" in g
+    assert "137" in g
+    assert "138" in g
+    assert "141" in g
+    ov = overview()
+    assert "144" in ov and "145" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -226,6 +244,10 @@ def test_taitong_chipbond_official_optional():
     g26 = official_on(db, "6442", "20240326")
     assert g26 == {} or (
         abs(float(g26["high"]) - 146) < 0.01 and abs(float(g26["close"]) - 132) < 0.01
+    )
+    g28 = official_on(db, "6442", "20240328")
+    assert g28 == {} or (
+        abs(float(g28["high"]) - 141) < 0.01 and abs(float(g28["close"]) - 138) < 0.01
     )
 
 
@@ -321,6 +343,9 @@ def test_methods_html_and_names():
     gs125 = format_methods_html("多空支撐線")
     assert "光聖" in gs125 and "不是日K" in gs125
     assert "139" in gs125 and "132" in gs125
+    gs144 = format_methods_html("144-145反壓區")
+    assert "光聖" in gs144 and "不是日K" in gs144
+    assert "137" in gs144 and "138" in gs144
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -410,3 +435,8 @@ def test_chain_honhai_chart_is_ennoconn():
     gblob = "".join(s.get("text") or "" for s in gs125["steps"]) + gs125.get("think", "")
     assert "125" in gblob
     assert "132" in gblob or "今天收盤不重要" in gblob or "139" in gblob
+    gs144 = fire_chain("", "光聖144-145反壓區")
+    assert gs144["sid"] == "6442"
+    g144 = "".join(s.get("text") or "" for s in gs144["steps"]) + gs144.get("think", "")
+    assert "144" in g144 and "145" in g144
+    assert "138" in g144 or "137" in g144 or "不是日K" in g144
