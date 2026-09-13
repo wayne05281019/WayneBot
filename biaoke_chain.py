@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 NEURON_IDS = ("nest", "field", "leader", "tape", "hold", "doubt")
@@ -227,14 +228,30 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
 def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
     """第 2 顆只講產業／主戰場。長抱 vs 進出留給第 5 顆，不准兩顆各貼一次。"""
     bits: List[str] = []
-    try:
-        from biaoke_mind import match_methods
+    want_trend = any(
+        k in (ask or "")
+        for k in (
+            "產業趨勢",
+            "主戰場",
+            "篤定",
+            "抱到明年",
+            "抄底",
+            "為什麼",
+            "為何",
+            "趨勢還在",
+            "去年年底",
+            "年底",
+        )
+    )
+    if want_trend:
+        try:
+            from biaoke_mind import match_methods
 
-        for title, body in match_methods(ask, limit=3):
-            if title in ("個股先看產業趨勢", "去年年底"):
-                bits.append(_clip(body, 280))
-    except Exception:
-        pass
+            for title, body in match_methods(ask, limit=3):
+                if title in ("個股先看產業趨勢", "去年年底"):
+                    bits.append(_clip(body, 280))
+        except Exception:
+            pass
     ind = str(brief.get("industry") or "")
     rot = str(brief.get("rotation") or "")
     if rot:
@@ -359,24 +376,29 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool) -> Dict[str, Any]:
     return _step("hold", " ".join(bits), ok=bool(hold or sid))
 
 
-def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool) -> Dict[str, Any]:
+def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str = "") -> Dict[str, Any]:
     audit = brief.get("audit") or {}
     miss = [str(x) for x in (audit.get("miss") or [])]
     ok_bits = [str(x) for x in (audit.get("ok") or [])]
     bits: List[str] = []
+    extra_miss: List[str] = []
+    nt = nest_text or ""
     if not nest_ok:
         bits.append("大盤官方點位沒齊，確認末端不准講死")
+    if "這路先當缺" in nt or "四路先缺這路" in nt:
+        extra_miss.append("費半這路官方沒跟上最新加權日，四路沒疊滿")
     if named and not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只是觸類旁通量價，可能看錯")
     if named and miss:
         bits.extend(miss[:4])
+    bits.extend(extra_miss)
     if named and ok_bits:
         bits.append("已疊：" + "、".join(ok_bits[:4]))
     if audit.get("verdict"):
         bits.append(str(audit.get("verdict")))
     if not bits:
         bits.append("沒疊滿就不講死。對跟錯一起留。這不是買訊。")
-    return _step("doubt", " ".join(bits), ok=not miss)
+    return _step("doubt", " ".join(bits), ok=not miss and not extra_miss)
 
 
 def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
@@ -420,9 +442,21 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             parts.append(f"這族龍頭是 {head}。" if head else "龍頭對得上。")
         else:
             parts.append("龍頭還沒對上。")
-        parts.append("量價有官方柱。" if tape.get("ok") else "這檔量價還沒齊，不准編壓撐。")
-        if "圖上演算" in str(tape.get("text") or ""):
-            parts.append("圖上後續只是壓撐＋連點延長演算，不是保證。")
+        tt = str(tape.get("text") or "")
+        if tape.get("ok"):
+            close_m = re.search(r"收 ([0-9.]+)", tt)
+            press_m = re.search(r"高 ([0-9.]+)＝壓", tt)
+            hold_m = re.search(r"低 ([0-9.]+)＝撐", tt)
+            if close_m and press_m and hold_m:
+                parts.append(
+                    f"這檔官方收 {close_m.group(1)}，壓 {press_m.group(1)}、撐 {hold_m.group(1)}。"
+                )
+            else:
+                parts.append("量價有官方柱。")
+            if "圖上演算" in tt:
+                parts.append("圖上後續只是壓撐＋連點延長演算，不是保證。")
+        else:
+            parts.append("這檔量價還沒齊，不准編壓撐。")
         if hold.get("text"):
             parts.append(_clip(str(hold.get("text")), 180))
         verdict = str(doubt.get("text") or "")
@@ -461,7 +495,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         _leader(brief, named=named),
         _tape(brief, named=named, db_path=db_path),
         _hold(brief, q, named=named),
-        _doubt(brief, bool(nest.get("ok")), named=named),
+        _doubt(brief, bool(nest.get("ok")), named=named, nest_text=str(nest.get("text") or "")),
     ]
     return {
         "sid": sid,

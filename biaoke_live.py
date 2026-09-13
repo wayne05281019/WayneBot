@@ -287,7 +287,20 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 bits.append("三遍交叉 " + _clip(format_audit(db_path), 900))
         except Exception:
             pass
-        for _title, body in match_methods(ask, limit=2):
+        skip_method = (
+            {
+                "個股先看產業趨勢",
+                "長抱主流／F4→F10／聯發科",
+                "量先價行",
+                "右肩／45839",
+                "半山腰只隔日沖",
+            }
+            if chained
+            else set()
+        )
+        for title, body in match_methods(ask, limit=2):
+            if title in skip_method:
+                continue
             bits.append("方法 " + _clip(body, 520))
         keyed = match_posts(ask, limit=3, db_path=db_path)
         for p in keyed:

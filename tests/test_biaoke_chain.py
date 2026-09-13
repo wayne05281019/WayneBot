@@ -66,7 +66,8 @@ def test_live_notes_puts_chain_before_keyword_hits():
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "神經元鏈" in note
-    assert note.find("神經元鏈") < note.find("方法")
+    if "方法" in note:
+        assert note.find("神經元鏈") < note.find("方法")
     assert chain_order_ok(note)
     assert "3930" in note
     mtk = live_notes("", "聯發科他有看好嗎")
@@ -122,6 +123,8 @@ def test_field_does_not_repeat_hold_neuron():
     emc_live = fire_chain(db, "台光電怎麼看")
     rot = next(s for s in emc_live["steps"] if s["id"] == "field")["text"]
     assert rot.count("電子零組件業") <= 1
+    assert "護城河" not in rot
+    assert "第五波" not in rot
 
 
 def test_self_leader_defers_ohlc_to_tape():
@@ -183,6 +186,11 @@ def test_think_chains_45839_and_self_leader():
     assert "46506" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調整" in think
+    assert "5365" in think
+    assert "4510" in think
+    assert "3930" in think
+    doubt = next(s for s in fired["steps"] if s["id"] == "doubt")
+    assert "費半" in doubt["text"]
     assert "台積電官方量價" in think or "台積電" in think
     assert "費半" in think
     mtk = fire_chain(db, "聯發科怎麼看")
