@@ -130,3 +130,56 @@ def test_longhold_chain_why_not_f10_or_mediatek():
     mh = next(s for s in mtk["steps"] if s["id"] == "hold")
     assert "不是 4/16" in mh["text"] or "不在" in mh["text"]
     assert "可抱到明年" not in mh["text"] or "不是 4/16" in mh["text"]
+
+
+def test_scan_adds_mediatek_and_lianya_only_when_k_matches():
+    """1709 全盤再掃：聯發科／聯亞對上日K才進表；4/22 沒點發哥；不是 4/16。"""
+    from biaoke_foresight import case_for, longhold_why, names
+    from biaoke_chain import fire_chain
+    from biaoke_mind import format_methods_html, method_body
+    from biaoke_judge import _hold_note
+
+    assert "聯發科" in names()
+    assert "聯亞" in names()
+    mtk = hold_line("2454")
+    assert "不是 4/16" in mtk
+    assert "當天沒點發哥" in mtk or "沒點發哥" in mtk
+    assert "創意" in mtk and "力旺" in mtk and "世芯" in mtk
+    assert "2295" in mtk
+    assert "1895" in mtk
+    assert "3630" in mtk
+    assert "3875" in mtk
+    assert "尚未納入" in mtk or "不敢將發哥列入" in mtk
+    assert "可抱到明年" in mtk and "不是 4/16" in mtk
+    assert longhold_why("2454") == ""
+    assert case_for("3529") is None
+    assert case_for("3661") is None
+    vane = hold_line("3081")
+    assert "風向球" in vane
+    assert "不是 4/16" in vane
+    assert "出清" in vane
+    assert "2010" in vane
+    assert "2850" in vane
+    assert "沒鎖住" in vane
+    assert "建築兩檔" in vane and "沒點名" in vane
+    assert "可抱到明年" not in vane or "不是 4/16" in vane
+    assert "抱著波段賺更多" not in vane
+    body = method_body("洞燭先機")
+    assert "當天沒點發哥" in body or "沒點發哥" in body
+    assert "矽光子風向球" in body
+    html = format_methods_html("聯發科他有看好嗎")
+    assert "沒點發哥" in html
+    assert "4/16" in html
+    note = _hold_note("2454", True)
+    assert "沒點發哥" in note
+    assert "尚未納入 F 系列" in note or "不敢將發哥列入" in note
+    assert "台積電" in note
+    fired = fire_chain("", "聯發科他有看好嗎")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    assert "沒點發哥" in hold["text"]
+    assert "不是 4/16" in hold["text"] or "不在" in hold["text"]
+    ly = fire_chain("", "聯亞他還看好嗎")
+    lh = next(s for s in ly["steps"] if s["id"] == "hold")
+    assert "風向球" in lh["text"]
+    assert "出清" in lh["text"]
+    assert "沒鎖住" in lh["text"] or "對跟錯" in lh["text"]

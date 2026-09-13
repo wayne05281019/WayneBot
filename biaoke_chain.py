@@ -403,7 +403,8 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             )
         elif sid == "2454":
             bits.append(
-                "2026-04-22 公開 IC 設計主線看聯發科；產業還在不在留給這顆，長抱名單留給第 5 顆。"
+                "2026-04-22 公開 IC 設計主線點創意、力旺、世芯，當天沒點發哥；5 月起當平台龍頭。"
+                "產業還在不在留給這顆，長抱名單留給第 5 顆。"
             )
     if want_trend:
         try:
