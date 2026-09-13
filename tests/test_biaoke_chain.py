@@ -69,6 +69,14 @@ def test_chain_market_skips_stock_tape():
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
     assert "覆巢" in nest["text"]
     assert "不數" in nest["text"] or "個股" in nest["text"]
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    live = fire_chain(db, "目前大盤是屬於哪個位階 以波浪來看的話")
+    think = live["think"]
+    assert "45839" in think
+    assert "47578" in think
+    assert live["sid"] == ""
 
 
 def test_live_notes_puts_chain_before_keyword_hits():

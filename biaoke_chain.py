@@ -480,12 +480,25 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             parts.append(_clip(verdict[verdict.find("自問") :], 220))
         else:
             parts.append("沒疊滿就不講死。這不是買訊。")
-        return _clip("".join(parts), 820)
-    return _clip(
-        "這句沒點檔：先把大盤巢穴走完（官方高低、四路對質、個股不數浪）。"
-        "產業／長抱只在問句有點到時才串進去。",
-        420,
-    )
+        return _clip("".join(parts), 900)
+    nest_t = str(nest.get("text") or "")
+    parts = ["這句沒點檔：先把大盤巢穴走完。"]
+    if "45839 之上" in nest_t:
+        parts.append("官方收還在 45839 之上，右肩低先當沒破。")
+    elif "已低於他自己點的 9/3 低 45839" in nest_t:
+        parts.append("官方收已低於 45839，覆巢先當有事。")
+    if "已過他自己點的 46506" in nest_t:
+        parts.append("夜盤高已過 46506，確認仍要四路對質。")
+    elif "還沒過他自己點的 46506" in nest_t:
+        parts.append("夜盤高還沒過 46506。")
+    if "還沒過他自己點的前波高 47578" in nest_t:
+        parts.append("官方高還沒過 47578，右肩還沒做完。")
+    elif "已過他自己點的前波高 47578" in nest_t:
+        parts.append("官方高已過 47578。")
+    if "這路先當缺" in nest_t or "四路先缺這路" in nest_t:
+        parts.append("費半這路缺官方。")
+    parts.append("個股不數浪。產業／長抱只在問句有點到時才串進去。")
+    return _clip("".join(parts), 520)
 
 
 def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
