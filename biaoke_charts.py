@@ -48,6 +48,7 @@ _NOTE_BY_SNIP = {
     "925ae6d3-392a-4e43-8cf7-6ef7c03a7406": "頎邦盤中走勢：回測支撐確認（不是日K）",
     "9a56b8cc-9e24-4397-a5cb-68d6df19c5a5": "廣達盤中走勢：2/15-16缺口壓力（不是日K）",
     "f413de27-c9fa-4a44-8bcb-4832929d6930": "台指期近月日K：上升軌道有點跌破（庫沒柱）",
+    "3e6b15a5-a550-4e9e-a9ea-9d4e20405a82": "樺漢盤中走勢：站上頸線、回測327（主文寫鴻海機器人概念股，圖不是鴻海日K）",
 }
 _TICKERS_BY_SNIP = {
     "516b26b0-786e-494d-bf8f-1897b6f7dd7f": [
@@ -86,6 +87,7 @@ _TICKERS_BY_SNIP = {
     "47b69e0f-de57-44d9-a9ec-4e809202ca13": ["6442"],
     "925ae6d3-392a-4e43-8cf7-6ef7c03a7406": ["6147"],
     "9a56b8cc-9e24-4397-a5cb-68d6df19c5a5": ["2382"],
+    "3e6b15a5-a550-4e9e-a9ea-9d4e20405a82": ["6414"],
 }
 _ALIAS = {
     "穎葳": "6515",
@@ -95,6 +97,7 @@ _ALIAS = {
     "鴻勁": "7769",
     "志聖": "2467",
     "漢唐": "2404",
+    "樺漢": "6414",
 }
 
 
@@ -264,9 +267,9 @@ def charts_for(sid: str) -> List[Dict[str, Any]]:
     for row in load_chart_index().get("charts") or []:
         url = str(row.get("url") or "")
         ticks = [str(t) for t in (row.get("tickers") or [])]
-        for extra in _snip_tickers(url):
-            if extra not in ticks:
-                ticks.append(extra)
+        extra = _snip_tickers(url)
+        if extra:
+            ticks = list(extra)
         if want not in ticks:
             continue
         item = dict(row)
@@ -349,6 +352,7 @@ _NOTE_OWN = (
     ("光聖盤中走勢", "6442"),
     ("頎邦盤中走勢", "6147"),
     ("廣達盤中走勢", "2382"),
+    ("樺漢盤中走勢", "6414"),
 )
 
 

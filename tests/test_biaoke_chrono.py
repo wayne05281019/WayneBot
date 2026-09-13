@@ -31,7 +31,6 @@ def test_third_slice_taitong_chipbond_still_there():
 
 
 def test_fourth_slice_stops_mar19_2024():
-    assert slice_stop() == "2024-03-19"
     body = method_body("圖文時間軸第四段")
     assert "2024-03-18" in body
     assert "光聖" in body
@@ -57,8 +56,6 @@ def test_fourth_slice_stops_mar19_2024():
 
 
 def test_fifth_slice_stops_mar19_quanta_gap():
-    assert slice_stop() == "2024-03-19"
-    assert next_start() == "2024-03-20"
     body = method_body("圖文時間軸第五段")
     assert "2024-03-19" in body
     assert "廣達" in body
@@ -78,6 +75,30 @@ def test_fifth_slice_stops_mar19_quanta_gap():
     ov = overview()
     assert "19250" in ov
     assert "鴻海" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_sixth_slice_honhai_chart_is_ennoconn():
+    assert slice_stop() == "2024-03-20"
+    assert next_start() == "2024-03-21"
+    body = method_body("圖文時間軸第六段")
+    assert "2024-03-20" in body
+    assert "樺漢" in body
+    assert "不是鴻海日K" in body
+    assert "327" in body
+    assert "331.5" in body
+    h = line_for("2317")
+    assert "鴻海" in h
+    assert "不是鴻海日K" in h
+    assert "327" in h
+    e = line_for("6414")
+    assert "樺漢" in e
+    assert "盤中走勢" in e
+    assert "327" in e
+    assert "331.5" in e
+    ov = overview()
+    assert "樺漢" in ov
+    assert "不是鴻海日K" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -105,6 +126,12 @@ def test_taitong_chipbond_official_optional():
     assert q16 == {} or abs(float(q16["close"]) - 248.5) < 0.01
     q28 = official_on(db, "2382", "20240328")
     assert q28 == {} or abs(float(q28["close"]) - 280) < 0.01
+    h20 = official_on(db, "2317", "20240320")
+    assert h20 == {} or abs(float(h20["close"]) - 138) < 0.01
+    e20 = official_on(db, "6414", "20240320")
+    assert e20 == {} or (
+        abs(float(e20["high"]) - 338.5) < 0.01 and abs(float(e20["close"]) - 331.5) < 0.01
+    )
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -173,6 +200,8 @@ def test_methods_html_and_names():
     assert names_in_ask("台通怎麼看")[0][0] == "8011"
     assert names_in_ask("頎邦怎麼看")[0][0] == "6147"
     assert names_in_ask("光聖怎麼看")[0][0] == "6442"
+    assert names_in_ask("鴻海怎麼看")[0][0] == "2317"
+    assert names_in_ask("樺漢怎麼看")[0][0] == "6414"
     flag = format_methods_html("下飄旗型整理多久")
     assert "不透漏" in flag
     assert "13日" not in flag
@@ -184,6 +213,9 @@ def test_methods_html_and_names():
     gap = format_methods_html("廣達缺口那張圖為什麼貼")
     assert "廣達" in gap and "273" in gap
     assert "盤中" in gap or "不是日K" in gap
+    hon = format_methods_html("鴻海那張圖為什麼貼")
+    assert "樺漢" in hon and "不是鴻海日K" in hon
+    assert "327" in hon
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -238,3 +270,18 @@ def test_chain_quanta_gap_uses_chrono():
     blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
     assert "273" in blob or "缺口" in blob
     assert "盤中走勢" in blob or "不是日K" in blob
+
+
+def test_chain_honhai_chart_is_ennoconn():
+    from biaoke_chain import fire_chain
+
+    t = fire_chain("", "鴻海那張圖為什麼貼")
+    assert t["sid"] == "2317"
+    blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
+    assert "不是鴻海日K" in blob
+    assert "327" in blob
+    e = fire_chain("", "樺漢那張圖為什麼貼")
+    assert e["sid"] == "6414"
+    eblob = "".join(s.get("text") or "" for s in e["steps"]) + e.get("think", "")
+    assert "327" in eblob
+    assert "盤中走勢" in eblob or "331.5" in eblob
