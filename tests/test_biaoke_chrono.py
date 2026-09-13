@@ -308,6 +308,25 @@ def test_sixteenth_slice_ennoconn_lower_wick():
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
+def test_seventeenth_slice_quanta_hold_300():
+    assert slice_stop() == "2024-03-29"
+    assert next_start() == "2024-03-29"
+    body = method_body("圖文時間軸第十七段")
+    assert "2024-03-29" in body
+    assert "站穩" in body and "300" in body
+    assert "不是日K" in body
+    assert "293.5" in body
+    assert "賺了幾%" in body or "下車" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "波段" in q or "站穩" in q
+    assert "293.5" in q
+    assert "不是日K" in q
+    ov = overview()
+    assert "下星期上半週" in ov or "站穩 300" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
@@ -490,6 +509,10 @@ def test_methods_html_and_names():
     wick = format_methods_html("長下引線")
     assert "樺漢" in wick and "不是日K" in wick
     assert "356.5" in wick and "375" in wick
+    hold300 = format_methods_html("波段漲勢確認")
+    assert "廣達" in hold300 and "不是日K" in hold300
+    assert "293.5" in hold300 and "300" in hold300
+    assert "下星期" in hold300
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -610,3 +633,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "長下引線" in wblob
     assert "356.5" in wblob
     assert "375" in wblob
+    hold300 = fire_chain("", "波段漲勢確認")
+    h300 = "".join(s.get("text") or "" for s in hold300["steps"]) + hold300.get("think", "")
+    assert "站穩" in h300
+    assert "293.5" in h300
+    assert "300" in h300
