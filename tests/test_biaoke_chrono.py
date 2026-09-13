@@ -7,14 +7,41 @@ from biaoke_facts import names_in_ask
 
 
 def test_second_slice_stops_feb3_2024():
-    assert slice_stop() == "2024-02-03"
-    assert next_start() == "2024-03-15"
     body = method_body("圖文時間軸第二段")
     assert "2024-01-05" in body
     assert "華碩" in body
     assert "台指期不是華碩" in body or "不是華碩日K" in body
     assert "廣達" in body
     assert "456.5" in body or "454" in body
+
+
+def test_third_slice_stops_mar15_2024():
+    assert slice_stop() == "2024-03-15"
+    assert next_start() == "2024-03-18"
+    body = method_body("圖文時間軸第三段")
+    assert "2024-03-15" in body
+    assert "台通" in body
+    assert "頎邦" in body
+    assert "不是台通" in body or "不是台通／頎邦" in body
+    assert "29.1" in body
+    t = line_for("8011")
+    assert "鎖跌停" in t or "收 28" in t
+    assert "不是台通日K" in t
+    q = line_for("6147")
+    assert "76" in q
+    assert "73.5" in q
+
+
+def test_taitong_chipbond_official_optional():
+    db = "data/wayne_market.db"
+    t15 = official_on(db, "8011", "20240315")
+    assert t15 == {} or (
+        abs(float(t15["close"]) - 28) < 0.01 and abs(float(t15["open"]) - 28) < 0.01
+    )
+    t14 = official_on(db, "8011", "20240314")
+    assert t14 == {} or abs(float(t14["close"]) - 31.1) < 0.01
+    c15 = official_on(db, "6147", "20240315")
+    assert c15 == {} or abs(float(c15["close"]) - 76.5) < 0.01
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -80,6 +107,8 @@ def test_methods_html_and_names():
     assert names_in_ask("智原怎麼看")[0][0] == "3035"
     assert names_in_ask("華碩怎麼看")[0][0] == "2357"
     assert names_in_ask("廣達怎麼看")[0][0] == "2382"
+    assert names_in_ask("台通怎麼看")[0][0] == "8011"
+    assert names_in_ask("頎邦怎麼看")[0][0] == "6147"
     flag = format_methods_html("下飄旗型整理多久")
     assert "不透漏" in flag
     assert "13日" not in flag
@@ -110,3 +139,12 @@ def test_chain_asus_quanta_uses_chrono():
     assert q["sid"] == "2382"
     qblob = "".join(s.get("text") or "" for s in q["steps"]) + q.get("think", "")
     assert "頸線" in qblob or "248" in qblob
+
+
+def test_chain_taitong_uses_chrono():
+    from biaoke_chain import fire_chain
+
+    t = fire_chain("", "台通那張圖為什麼貼")
+    assert t["sid"] == "8011"
+    blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
+    assert "29.1" in blob or "不是台通日K" in blob
