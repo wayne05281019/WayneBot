@@ -255,6 +255,17 @@ def test_thirtysixth_methods_thunder_friday_entry():
     assert any(t == "圖文時間軸第三十六段" for t, _b in hold)
 
 
+def test_thirtyseventh_methods_lasertek_5ma():
+    html = format_methods_html("回測5MA支撐線")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "截圖約 61.4" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第三十七段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第三十七段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

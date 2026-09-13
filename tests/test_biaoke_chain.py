@@ -486,3 +486,12 @@ def test_thirtysixth_chain_unnamed_hist_high():
     assert "不是日K" in blob
     assert "截圖約 83.4" in blob or "83.4" in blob
     assert "雷虎" in blob
+
+
+def test_thirtyseventh_chain_unnamed_5ma():
+    fired = fire_chain("", "回測5MA支撐線")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "回測5MA支撐線" in blob or "空手上車" in blob
+    assert "不是日K" in blob
+    assert "截圖約 61.4" in blob or "61.5" in blob
+    assert "雷科" in blob

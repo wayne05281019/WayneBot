@@ -837,8 +837,6 @@ def test_thirtyfifth_slice_thunder_k_structure():
 
 
 def test_thirtysixth_slice_thunder_friday_entry_verified():
-    assert slice_stop() == "2024-04-15"
-    assert next_start() == "2024-04-15"
     body = method_body("圖文時間軸第三十六段")
     assert "2024-04-15" in body
     assert "上星期五中午我說的上車時間" in body
@@ -869,6 +867,42 @@ def test_thirtysixth_slice_thunder_friday_entry_verified():
     t15 = official_on(db, "8033", "20240415")
     assert t15 == {} or (
         abs(float(t15["high"]) - 83.4) < 0.01 and abs(float(t15["close"]) - 83.4) < 0.01
+    )
+
+
+def test_thirtyseventh_slice_lasertek_5ma_entry():
+    assert slice_stop() == "2024-04-15"
+    assert next_start() == "2024-04-15"
+    body = method_body("圖文時間軸第三十七段")
+    assert "2024-04-15" in body
+    assert "回測5MA支撐線" in body
+    assert "不用賣" in body
+    assert "空手上車時間" in body
+    assert "不是日K" in body
+    assert "截圖約 61.4" in body
+    assert "雷科" in body
+    lk = line_for("6207")
+    assert "雷科" in lk
+    assert "截圖約 61.4" in lk
+    assert "不是日K" in lk
+    ov = overview()
+    assert "回測5MA支撐線" in ov or "空手上車時間" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("回測5MA支撐線")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "截圖約 61.4" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "回測5MA支撐線")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "回測5MA支撐線" in blob or "空手上車" in blob
+    assert "截圖約 61.4" in blob or "61.5" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    l15 = official_on(db, "6207", "20240415")
+    assert l15 == {} or (
+        abs(float(l15["low"]) - 59.0) < 0.01 and abs(float(l15["close"]) - 61.5) < 0.01
     )
 
 
