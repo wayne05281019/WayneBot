@@ -367,6 +367,10 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             "趨勢還在",
             "去年年底",
             "年底",
+            "散熱",
+            "光通訊",
+            "下飄旗",
+            "破線",
         )
     )
     if named:
@@ -377,6 +381,14 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             fl = field_line(sid)
             if fl:
                 bits.append(fl)
+        except Exception:
+            pass
+        try:
+            from biaoke_foresight import battle_line
+
+            bl = battle_line(sid)
+            if bl:
+                bits.append(bl)
         except Exception:
             pass
         if sid == "2383":
@@ -398,7 +410,7 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             from biaoke_mind import match_methods
 
             for title, body in match_methods(ask, limit=3):
-                if title in ("個股先看產業趨勢", "去年年底"):
+                if title in ("個股先看產業趨勢", "去年年底", "9/10 主戰場"):
                     bits.append(_clip(body, 280))
         except Exception:
             pass

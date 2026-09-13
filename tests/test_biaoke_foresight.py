@@ -42,3 +42,23 @@ def test_nanya_and_drone_are_cases_not_new_neurons():
     assert "不要再碰" in hold_line("5371")
     assert "272" in hold_line("8033")
     assert hold_line("2383") == ""
+
+
+def test_sep10_battlefield_quotes_flag_without_formula():
+    from biaoke_foresight import battle_line
+    from biaoke_mind import format_methods_html, method_body
+
+    body = method_body("9/10 主戰場")
+    assert "散熱" in body and "強勢" in body
+    assert "7/30" in body and "9/1" in body
+    assert "下飄旗" in body
+    assert "不透漏" in body
+    assert "旗型公式" in body
+    html = format_methods_html("下飄旗型整理多久")
+    assert "不透漏" in html
+    assert "13日" not in html
+    assert "等幅" not in html
+    assert battle_line("3017")
+    assert "散熱" in battle_line("3017")
+    assert "破線" in battle_line("3081")
+    assert "不透漏" in battle_line("3081")

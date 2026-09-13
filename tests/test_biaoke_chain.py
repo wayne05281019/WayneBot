@@ -69,6 +69,25 @@ def test_chain_nanya_1303_is_not_nanya_tech():
     assert "1303" in notes
 
 
+def test_chain_sep10_cooling_and_optical_break():
+    cool = fire_chain("", "奇鋐散熱目前還強嗎")
+    assert cool["sid"] == "3017"
+    field = next(s for s in cool["steps"] if s["id"] == "field")
+    assert "散熱" in field["text"]
+    assert "強勢" in field["text"]
+    optical = fire_chain("", "光通訊破線代表什麼")
+    field_o = next(s for s in optical["steps"] if s["id"] == "field")
+    blob = field_o["text"] + optical["think"]
+    assert "7/30" in blob or "破線" in blob
+    assert "下飄旗" in blob
+    assert "不透漏" in blob
+    flag = fire_chain("", "下飄旗型整理多久")
+    ff = next(s for s in flag["steps"] if s["id"] == "field")
+    assert "不透漏" in ff["text"]
+    assert "旗型公式" in ff["text"]
+    assert "13" not in ff["text"] or "不透漏" in ff["text"]
+
+
 def test_chain_foresight_fancheng_and_formosa_group():
     fired = fire_chain("", "汎銓怎麼從兩百多到一千")
     assert fired["sid"] == "6830"
