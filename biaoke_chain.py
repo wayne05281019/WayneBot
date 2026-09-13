@@ -309,8 +309,8 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 bits.append(
                     "夜盤高低讀不到，他自己點的 46506 這路先當缺，不准編"
                 )
-        elif db_path:
-            # 沒夜盤柱也要把他點過的 46506 標成缺路，推論才能串到這一價
+        elif db_path and ok:
+            # 已有加權／日盤柱、只缺夜盤時，才把他點過的 46506 標成缺路
             bits.append(
                 "夜盤官方這顆庫還沒這列，他自己點的 46506 這路先當缺，不准編夜盤高低"
             )

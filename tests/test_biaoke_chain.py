@@ -3,6 +3,7 @@
 import os
 import re
 
+from conftest import has_production_db
 from biaoke_chain import (
     NEURON_IDS,
     chain_order_ok,
@@ -144,9 +145,9 @@ def test_chain_market_skips_stock_tape():
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
     assert "覆巢" in nest["text"]
     assert "不數" in nest["text"] or "個股" in nest["text"]
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     live = fire_chain(db, "目前大盤是屬於哪個位階 以波浪來看的話")
     think = live["think"]
     assert "45839" in think
@@ -174,9 +175,9 @@ def test_live_notes_puts_chain_before_keyword_hits():
 
 
 def test_chained_live_notes_skip_stale_keyword_hits():
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     note = live_notes(db, "台光電怎麼看")
     assert "神經元鏈" in note
     assert "關鍵字命中" not in note
@@ -184,9 +185,9 @@ def test_chained_live_notes_skip_stale_keyword_hits():
 
 
 def test_chain_real_quotes_when_db_present():
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     fired = fire_chain(db, "台光電怎麼看")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     if not tape.get("ok"):
@@ -226,9 +227,9 @@ def test_field_does_not_repeat_hold_neuron():
     emc_hold = next(s for s in emc["steps"] if s["id"] == "hold")
     assert "產業趨勢" in emc_field["text"]
     assert "勿輕易調節" in emc_hold["text"]
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     live = fire_chain(db, "聯發科怎麼看")
     live_field = next(s for s in live["steps"] if s["id"] == "field")
     live_hold = next(s for s in live["steps"] if s["id"] == "hold")
@@ -248,7 +249,7 @@ def test_field_does_not_repeat_hold_neuron():
 def test_self_leader_defers_ohlc_to_tape():
     """自己就是龍頭時，第 3 顆不重貼第 4 顆的官方高低。"""
     db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
         leader = next(s for s in fired["steps"] if s["id"] == "leader")
         assert "自己就是" in leader["text"]
@@ -270,9 +271,9 @@ def test_self_leader_defers_ohlc_to_tape():
 
 def test_tape_does_not_repeat_hold_or_field():
     """第 4 顆只留官方量價／演算；長抱、半山腰、產業資金不重貼。"""
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     fired = fire_chain(db, "台光電怎麼看")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     hold = next(s for s in fired["steps"] if s["id"] == "hold")
@@ -295,9 +296,9 @@ def test_tape_does_not_repeat_hold_or_field():
 
 def test_think_chains_45839_and_self_leader():
     """推論句要串巢穴官方 45839 和自己就是龍頭，不是只寫點位有了。"""
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     fired = fire_chain(db, "台光電怎麼看")
     think = fired["think"]
     assert "45839" in think
@@ -337,9 +338,9 @@ def test_pointed_calendar_retracts_after_sep16():
     assert "已過" in after
     assert "不准編新聞" in after or "不准編" in after
     assert "回撤" in after
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    if not has_production_db():
         return
+    db = "data/wayne_market.db"
     assert "奇鋐" in after or "聯亞" in after or "新高檔官方日K" in after
 
 
