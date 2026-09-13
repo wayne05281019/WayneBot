@@ -372,8 +372,6 @@ def test_twentieth_slice_fengda_109_124():
 
 
 def test_twentyfirst_slice_quanta_282_battle():
-    assert slice_stop() == "2024-04-01"
-    assert next_start() == "2024-04-02"
     body = method_body("圖文時間軸第二十一段")
     assert "2024-04-01" in body
     assert "多方最低標準" in body
@@ -386,6 +384,24 @@ def test_twentyfirst_slice_quanta_282_battle():
     assert "282.5" in q
     ov = overview()
     assert "多方最低標準" in ov or "多空廝殺" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentysecond_slice_quanta_298_holiday():
+    assert slice_stop() == "2024-04-02"
+    assert next_start() == "2024-04-02"
+    body = method_body("圖文時間軸第二十二段")
+    assert "2024-04-02" in body
+    assert "挑戰前高" in body and "298" in body
+    assert "不是日K" in body
+    assert "292.5" in body
+    assert "放假前" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "挑戰前高" in q or "放假前" in q
+    assert "292.5" in q
+    ov = overview()
+    assert "挑戰前高" in ov or "放假前" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -470,6 +486,10 @@ def test_taitong_chipbond_official_optional():
     f01 = official_on(db, "3004", "20240401")
     assert f01 == {} or (
         abs(float(f01["high"]) - 118) < 0.01 and abs(float(f01["close"]) - 116) < 0.01
+    )
+    q02 = official_on(db, "2382", "20240402")
+    assert q02 == {} or (
+        abs(float(q02["high"]) - 299) < 0.01 and abs(float(q02["close"]) - 298) < 0.01
     )
 
 
@@ -603,6 +623,9 @@ def test_methods_html_and_names():
     battle = format_methods_html("多空廝殺激烈")
     assert "廣達" in battle and "不是日K" in battle
     assert "282.5" in battle and "多方最低標準" in battle
+    hol = format_methods_html("挑戰前高298")
+    assert "廣達" in hol and "不是日K" in hol
+    assert "292.5" in hol and "放假前" in hol
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -748,3 +771,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "多方最低標準" in b21
     assert "282.5" in b21
     assert "多空廝殺" in b21
+    hol = fire_chain("", "挑戰前高298")
+    h22 = "".join(s.get("text") or "" for s in hol["steps"]) + hol.get("think", "")
+    assert "挑戰前高" in h22
+    assert "292.5" in h22
+    assert "放假前" in h22
