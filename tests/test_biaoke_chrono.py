@@ -136,8 +136,6 @@ def test_eighth_slice_ennoconn_327_hold():
 
 
 def test_ninth_slice_last_boarding_is_ennoconn_not_honhai():
-    assert slice_stop() == "2024-03-25"
-    assert next_start() == "2024-03-26"
     body = method_body("圖文時間軸第九段")
     assert "2024-03-25" in body
     assert "最後上車" in body
@@ -159,6 +157,29 @@ def test_ninth_slice_last_boarding_is_ennoconn_not_honhai():
     assert "最後上車" in ov
     assert "不是鴻海日K" in ov
     assert "6416" in ov and "不對圖" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_tenth_slice_guangsheng_125_intraday():
+    assert slice_stop() == "2024-03-26"
+    assert next_start() == "2024-03-28"
+    body = method_body("圖文時間軸第十段")
+    assert "2024-03-26" in body
+    assert "多空支撐" in body
+    assert "不是日K" in body
+    assert "139" in body
+    assert "132" in body
+    g = line_for("6442")
+    assert "光聖" in g
+    assert "盤中走勢" in g
+    assert "不是日K" in g
+    assert "125" in g
+    assert "139" in g
+    assert "132" in g
+    assert "146" in g
+    ov = overview()
+    assert "3/26" in ov or "2024-03-26" in ov
+    assert "多空支撐" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -202,6 +223,10 @@ def test_taitong_chipbond_official_optional():
     )
     h25 = official_on(db, "2317", "20240325")
     assert h25 == {} or abs(float(h25["close"]) - 145.5) < 0.01
+    g26 = official_on(db, "6442", "20240326")
+    assert g26 == {} or (
+        abs(float(g26["high"]) - 146) < 0.01 and abs(float(g26["close"]) - 132) < 0.01
+    )
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -293,6 +318,9 @@ def test_methods_html_and_names():
     last = format_methods_html("最後上車")
     assert "最後上車" in last and "不是鴻海日K" in last
     assert "348" in last and "337" in last
+    gs125 = format_methods_html("多空支撐線")
+    assert "光聖" in gs125 and "不是日K" in gs125
+    assert "139" in gs125 and "132" in gs125
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -377,3 +405,8 @@ def test_chain_honhai_chart_is_ennoconn():
     lblob = "".join(s.get("text") or "" for s in last["steps"]) + last.get("think", "")
     assert "最後上車" in lblob
     assert "不是鴻海日K" in lblob or "348" in lblob
+    gs125 = fire_chain("", "光聖多空支撐線")
+    assert gs125["sid"] == "6442"
+    gblob = "".join(s.get("text") or "" for s in gs125["steps"]) + gs125.get("think", "")
+    assert "125" in gblob
+    assert "132" in gblob or "今天收盤不重要" in gblob or "139" in gblob

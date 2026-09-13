@@ -107,6 +107,7 @@ def test_intraday_snip_notes_overlay_not_daily_k():
 
     gs = pick_charts("6442", limit=3, public_only=True)
     assert any("47b69e0f-de57-44d9-a9ec-4e809202ca13" in str(r.get("url") or "") for r in gs)
+    assert any("b0b38f9c-6ac5-4260-8f9d-0206f1167367" in str(r.get("url") or "") for r in gs)
     assert any(
         "盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
         for r in gs
