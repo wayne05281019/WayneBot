@@ -150,6 +150,18 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 bits.append(
                     f"官方收 {_px(close)} 已低於他自己點的 9/3 低 45839，覆巢先當有事"
                 )
+            try:
+                hi = float(last.get("high") or 0)
+            except (TypeError, ValueError):
+                hi = 0.0
+            if hi >= 47578:
+                bits.append(
+                    f"官方高 {_px(hi)} 已過他自己點的前波高 47578，才比較像維持右肩"
+                )
+            elif hi > 0:
+                bits.append(
+                    f"官方高 {_px(hi)} 還沒過他自己點的前波高 47578，右肩還沒做完"
+                )
         else:
             bits.append("官方加權這顆庫還沒這列，不准自己寫點位")
     except Exception:
@@ -426,6 +438,10 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
         elif "還沒過他自己點的 46506" in nest_t:
             nest_bit += "；夜盤高還沒過 46506"
+        if "還沒過他自己點的前波高 47578" in nest_t:
+            nest_bit += "；官方高還沒過 47578"
+        elif "已過他自己點的前波高 47578" in nest_t:
+            nest_bit += "；官方高已過 47578"
         if "台積電官方" in nest_t:
             nest_bit += "；台積電官方量價有了"
         if "這路先當缺" in nest_t or "四路先缺這路" in nest_t:
