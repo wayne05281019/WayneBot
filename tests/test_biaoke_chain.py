@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """飆大神經元鏈：六顆按他的推論順序，不是關鍵字拼盤。"""
 import os
+import re
 
 from biaoke_chain import (
     NEURON_IDS,
@@ -304,7 +305,11 @@ def test_think_chains_45839_and_self_leader():
     assert "47578" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調節" in think
-    assert "5365" in think
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    # 收盤會隨庫更新，不准寫死某一根；推論要帶這檔官方收＋壓撐
+    m = re.search(r"收\s*(\d{3,5})", str(tape.get("text") or ""))
+    assert m, tape.get("text")
+    assert m.group(1) in think
     assert "4510" in think
     assert "3930" in think
     doubt = next(s for s in fired["steps"] if s["id"] == "doubt")
