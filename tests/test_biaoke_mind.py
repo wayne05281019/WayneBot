@@ -244,6 +244,17 @@ def test_thirtyfifth_methods_thunder_k_structure():
     assert any(t == "圖文時間軸第三十五段" for t, _b in hold)
 
 
+def test_thirtysixth_methods_thunder_friday_entry():
+    html = format_methods_html("挑戰歷史高點85.2")
+    assert "雷虎" in html
+    assert "不是日K" in html
+    assert "截圖約 83.4" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第三十六段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第三十六段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

@@ -477,3 +477,12 @@ def test_thirtyfifth_chain_unnamed_k_structure():
     assert "不是日K" in blob
     assert "截圖約 75" in blob or "75.9" in blob
     assert "雷虎" in blob
+
+
+def test_thirtysixth_chain_unnamed_hist_high():
+    fired = fire_chain("", "挑戰歷史高點85.2")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "挑戰歷史高點85.2" in blob or "上星期五中午" in blob
+    assert "不是日K" in blob
+    assert "截圖約 83.4" in blob or "83.4" in blob
+    assert "雷虎" in blob

@@ -803,8 +803,6 @@ def test_thirtyfourth_slice_quanta_restore_k():
 
 
 def test_thirtyfifth_slice_thunder_k_structure():
-    assert slice_stop() == "2024-04-12"
-    assert next_start() == "2024-04-12"
     body = method_body("圖文時間軸第三十五段")
     assert "2024-04-12" in body
     assert "從K線量價結構" in body
@@ -835,6 +833,42 @@ def test_thirtyfifth_slice_thunder_k_structure():
     t12 = official_on(db, "8033", "20240412")
     assert t12 == {} or (
         abs(float(t12["high"]) - 77.4) < 0.01 and abs(float(t12["close"]) - 75.9) < 0.01
+    )
+
+
+def test_thirtysixth_slice_thunder_friday_entry_verified():
+    assert slice_stop() == "2024-04-15"
+    assert next_start() == "2024-04-15"
+    body = method_body("圖文時間軸第三十六段")
+    assert "2024-04-15" in body
+    assert "上星期五中午我說的上車時間" in body
+    assert "挑戰歷史高點85.2" in body
+    assert "洗個1-3天" in body
+    assert "不是日K" in body
+    assert "截圖約 83.4" in body
+    assert "雷虎" in body
+    tt = line_for("8033")
+    assert "雷虎" in tt
+    assert "截圖約 83.4" in tt
+    assert "不是日K" in tt
+    ov = overview()
+    assert "挑戰歷史高點85.2" in ov or "上星期五中午" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("挑戰歷史高點85.2")
+    assert "雷虎" in html
+    assert "不是日K" in html
+    assert "截圖約 83.4" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "挑戰歷史高點85.2")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "挑戰歷史高點85.2" in blob or "上星期五中午" in blob
+    assert "截圖約 83.4" in blob or "83.4" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    t15 = official_on(db, "8033", "20240415")
+    assert t15 == {} or (
+        abs(float(t15["high"]) - 83.4) < 0.01 and abs(float(t15["close"]) - 83.4) < 0.01
     )
 
 
