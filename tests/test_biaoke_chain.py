@@ -396,3 +396,12 @@ def test_tape_and_hold_read_chart_index_for_emc():
     tape_m = next(s for s in mkt["steps"] if s["id"] == "tape")
     assert tape_m.get("skip") is True
     assert "他的附圖對官方日K" not in str(tape_m.get("text") or "")
+
+
+def test_twentyseventh_chain_unnamed_dump_buy():
+    fired = fire_chain("", "急殺買")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "急殺買" in blob
+    assert "不是日K" in blob
+    assert "71.3" in blob or "70.4" in blob
+    assert "雷虎" in blob or "晟銘電" in blob

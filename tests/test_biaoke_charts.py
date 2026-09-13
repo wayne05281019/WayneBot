@@ -169,6 +169,25 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     assert any("台積電盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tsmc)
 
 
+def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
+    from biaoke_charts import pick_charts
+
+    tt = pick_charts("8033", limit=2, public_only=True)
+    assert any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in tt)
+    assert any("雷虎盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tt)
+    assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in tt)
+    cm = pick_charts("3013", limit=2, public_only=True)
+    assert any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in cm)
+    assert any("晟銘電盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cm)
+    assert not any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in cm)
+    jd = pick_charts("3044", limit=5, public_only=True)
+    assert not any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in jd)
+    assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in jd)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("3129a0d0-1538-4578-8064-47897b3c3025" in str(r.get("url") or "") for r in skip6416)
+    assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in skip6416)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

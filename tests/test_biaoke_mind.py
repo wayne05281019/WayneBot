@@ -153,6 +153,15 @@ def test_follow_up_uses_history_per_turn():
     assert follow_up_ask("藝舍-KY", hist) == "藝舍-KY"
 
 
+def test_twentyseventh_methods_thunder_chenming():
+    html = format_methods_html("今天早盤應該是低點")
+    assert "雷虎" in html and "晟銘電" in html
+    assert "不是日K" in html
+    assert "71.3" in html and "70.4" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第二十七段" for t, _b in tape)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

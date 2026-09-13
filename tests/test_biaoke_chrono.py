@@ -451,8 +451,6 @@ def test_twentyfifth_slice_iei_6117():
 
 
 def test_twentysixth_slice_tsmc_810():
-    assert slice_stop() == "2024-04-09"
-    assert next_start() == "2024-04-09"
     body = method_body("圖文時間軸第二十六段")
     assert "2024-04-09" in body
     assert "810" in body
@@ -466,6 +464,52 @@ def test_twentysixth_slice_tsmc_810():
     ov = overview()
     assert "810" in ov or "9XX" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentyseventh_slice_thunder_chenming_intraday():
+    assert slice_stop() == "2024-04-09"
+    assert next_start() == "2024-04-10"
+    body = method_body("圖文時間軸第二十七段")
+    assert "2024-04-09" in body
+    assert "急殺買" in body
+    assert "今天早盤應該是低點" in body
+    assert "不是日K" in body
+    assert "71.3" in body
+    assert "70.4" in body
+    assert "雷虎" in body
+    assert "晟銘電" in body
+    assert "3044" in body and "不對圖" in body
+    tt = line_for("8033")
+    assert "雷虎" in tt
+    assert "71.3" in tt
+    assert "不是日K" in tt
+    cm = line_for("3013")
+    assert "晟銘電" in cm
+    assert "70.4" in cm
+    assert "急殺買" in cm
+    ov = overview()
+    assert "急殺買" in ov or "早盤低點" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("急殺買")
+    assert "雷虎" in html and "晟銘電" in html
+    assert "不是日K" in html
+    assert "71.3" in html and "70.4" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "急殺買")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "急殺買" in blob
+    assert "71.3" in blob or "70.4" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    r09 = official_on(db, "8033", "20240409")
+    assert r09 == {} or (
+        abs(float(r09["low"]) - 68.5) < 0.01 and abs(float(r09["close"]) - 77) < 0.01
+    )
+    c09 = official_on(db, "3013", "20240409")
+    assert c09 == {} or (
+        abs(float(c09["low"]) - 67) < 0.01 and abs(float(c09["close"]) - 67) < 0.01
+    )
 
 
 def test_taitong_chipbond_official_optional():
