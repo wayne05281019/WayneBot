@@ -274,6 +274,10 @@ def test_hold_note_splits_long_hold_f10_and_mediatek():
     assert "不是 4/16" in mtk or "不在" in mtk
     assert "尚未納入 F 系列" in mtk
     assert "台積電" in mtk
+    vane = _hold_note("3081", True)
+    assert "風向球" in vane
+    assert "不是 4/16" in vane
+    assert "出清" in vane
 
 
 def test_mediatek_self_leader_is_not_missing_leader():

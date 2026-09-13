@@ -51,6 +51,17 @@ def test_chain_mediatek_is_not_april16_hold():
     assert "演算" in notes
 
 
+def test_chain_lianya_is_vane_not_april16_hold():
+    fired = fire_chain("", "聯亞他還看好嗎")
+    assert fired["sid"] == "3081"
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    blob = hold["text"] + fired["think"]
+    assert "風向球" in blob
+    assert "4/16" in blob
+    assert "出清" in blob or "對跟錯" in blob
+    assert "可抱到明年" not in hold["text"] or "不是 4/16" in hold["text"]
+
+
 def test_chain_market_skips_stock_tape():
     fired = fire_chain("", "目前大盤是屬於哪個位階 以波浪來看的話")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")

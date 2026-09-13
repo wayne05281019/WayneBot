@@ -362,6 +362,11 @@ def _hold_note(sid: str, in_corpus: bool) -> str:
         if not in_corpus:
             bit += "公開文沒點名這檔時只套量價，可能看錯。"
         return bit
+    if sid == "3081":
+        return (
+            "聯亞他當矽光子風向球，不是 4/16 可抱到明年名單，也不是再找一檔 CCL。"
+            "7/24 出清過、9/9 又當風向球，對跟錯一起留。這腳進出不是長抱。"
+        )
     if sid not in _LONG_HOLD:
         return ""
     name = _LONG_HOLD[sid]
