@@ -27,6 +27,10 @@ except Exception:
     def get_github_release_url():
         return os.getenv("GITHUB_RELEASE_URL") or ""
 
+# 飆大公開文起始週（第一則 2023-12-04）。歷史日K從這天前一個交易週起補，已齊的日子不重抓。
+BIAOKE_QUOTE_BACKFILL_START = "20231201"
+
+
 class DataFetcher:
     def __init__(
         self,
@@ -649,7 +653,8 @@ class DataFetcher:
                 continue
             for row in parsed:
                 best_map.setdefault(row["stock_id"], row)
-            if i >= 1 and len(best_map) >= 500:
+            # wn1430 已齊就不要再打 dailyQuotes（歷史日常斷線，且會拖慢回補）
+            if len(best_map) >= 400:
                 break
         best = list(best_map.values())
         if matched_empty and len(best) < 400:
@@ -926,10 +931,18 @@ class DataFetcher:
     # --------------------------------------------------------------------------
     # 6. 每日 16:30 增量更新閉環（自動排程調用）
     # --------------------------------------------------------------------------
-    def update_daily_market_data(self, target_date: str = None) -> int:
+    def update_daily_market_data(
+        self,
+        target_date: str = None,
+        *,
+        skip_chips: bool = False,
+        skip_repair: bool = False,
+    ) -> int:
         """
         每日盤後抓取當日上市櫃 2,358 檔行情與三大法人買賣超，並以切片解包寫入 SQLite
         :param target_date: 指定日期 YYYYMMDD，若無則預設今天
+        :param skip_chips: 歷史回補只要 OHLC 時略過三大法人
+        :param skip_repair: 略過寫庫後全表均價掃描（歷史日會掃到現況列）
         :return: 成功寫入筆數
         """
         if not target_date:
@@ -1046,13 +1059,14 @@ class DataFetcher:
         # 三大法人（欄位對齊 chips.py，避免舊 T86 錯欄）
         tw_t86 = {}
         two_t86 = {}
-        try:
-            from chips import fetch_chips_for_date
-            merged = fetch_chips_for_date(self.session, target_date)
-            tw_t86 = merged
-            two_t86 = merged
-        except Exception as e:
-            print(f"⚠️ 法人籌碼抓取異常：{e}")
+        if not skip_chips:
+            try:
+                from chips import fetch_chips_for_date
+                merged = fetch_chips_for_date(self.session, target_date)
+                tw_t86 = merged
+                two_t86 = merged
+            except Exception as e:
+                print(f"⚠️ 法人籌碼抓取異常：{e}")
 
         # 4. 組合並寫入資料庫（末兩欄是溯源，出現可疑數字時要查得出哪來的）
         fetched_at = datetime.now().isoformat(timespec="seconds")
@@ -1123,29 +1137,30 @@ class DataFetcher:
             conn.commit()
             conn.close()
             print(f"✅ {target_date} 增量更新成功：寫入 {len(all_records)} 筆 (上市: {len(tw_records)}, 上櫃: {len(two_records)})")
-            try:
-                from quote_integrity import ensure_quote_integrity
+            if not skip_repair:
+                try:
+                    from quote_integrity import ensure_quote_integrity
 
-                scrub = ensure_quote_integrity(self.db_path)
-                if any(int(v or 0) for v in scrub.values()):
-                    print(f"🧹 {target_date} 寫庫後清假：{scrub}")
-            except Exception:
-                pass
-            try:
-                from import_health import audit_import
-                health = audit_import(self.db_path, target_date)
-                if health.get("problems"):
-                    print(f"⚠️ 匯入檢查 {target_date}：{health['problems']} tw={health['tw']} two={health['two']} chips={health['chips_nonzero']}")
-                else:
-                    print(f"匯入檢查 OK {target_date} 上市{health['tw']} 上櫃{health['two']} 法人非0 {health['chips_nonzero']}")
-            except Exception:
-                pass
-            try:
-                rep = self.repair_bad_avg_prices(since=target_date)
-                if int(rep.get("fixed") or 0):
-                    print(f"🔧 均價修復 {rep['fixed']} 筆")
-            except Exception as e:
-                print(f"⚠️ 均價修復略過：{e}")
+                    scrub = ensure_quote_integrity(self.db_path)
+                    if any(int(v or 0) for v in scrub.values()):
+                        print(f"🧹 {target_date} 寫庫後清假：{scrub}")
+                except Exception:
+                    pass
+                try:
+                    from import_health import audit_import
+                    health = audit_import(self.db_path, target_date)
+                    if health.get("problems"):
+                        print(f"⚠️ 匯入檢查 {target_date}：{health['problems']} tw={health['tw']} two={health['two']} chips={health['chips_nonzero']}")
+                    else:
+                        print(f"匯入檢查 OK {target_date} 上市{health['tw']} 上櫃{health['two']} 法人非0 {health['chips_nonzero']}")
+                except Exception:
+                    pass
+                try:
+                    rep = self.repair_bad_avg_prices(since=target_date)
+                    if int(rep.get("fixed") or 0):
+                        print(f"🔧 均價修復 {rep['fixed']} 筆")
+                except Exception as e:
+                    print(f"⚠️ 均價修復略過：{e}")
             return len(all_records)
         else:
             print(f"⚠️ {target_date} 非交易日或尚無行情資料。")
@@ -1274,6 +1289,131 @@ class DataFetcher:
             "coverage_holes": holes,
             "missing_equities": missing,
             "paired": paired,
+        }
+
+    def _quote_rows_on_date(self, yyyymmdd: str) -> int:
+        ds = str(yyyymmdd or "").replace("-", "")[:8]
+        if len(ds) != 8:
+            return 0
+        conn = self.get_db_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM daily_quotes WHERE replace(date,'-','')=?",
+                (ds,),
+            ).fetchone()
+            return int(row[0] or 0) if row else 0
+        finally:
+            conn.close()
+
+    def fill_historical_market_days(
+        self,
+        start_date: str = BIAOKE_QUOTE_BACKFILL_START,
+        end_date: str = None,
+        max_days: int = 40,
+        sleep_s: float = 0.85,
+        min_rows: int = 1500,
+        skip_chips: bool = True,
+    ) -> dict:
+        """從發文起始把官方上市櫃日K往回補。已齊的交易日不重抓，假日略過。不 commit db。"""
+        start_date = str(start_date or BIAOKE_QUOTE_BACKFILL_START).replace("-", "")[:8]
+        try:
+            from config import fuse_end_date
+
+            cap = str(fuse_end_date() or "").replace("-", "")[:8]
+        except Exception:
+            cap = datetime.now().strftime("%Y%m%d")
+        if len(cap) != 8:
+            cap = datetime.now().strftime("%Y%m%d")
+        end_date = str(end_date or cap).replace("-", "")[:8]
+        if end_date > cap:
+            end_date = cap
+        if len(start_date) != 8 or len(end_date) != 8:
+            return {
+                "from": start_date,
+                "to": end_date,
+                "filled": [],
+                "skipped": [],
+                "already": [],
+                "pending": 0,
+                "note": "日期無效",
+            }
+        if start_date > end_date:
+            return {
+                "from": start_date,
+                "to": end_date,
+                "filled": [],
+                "skipped": [],
+                "already": [],
+                "pending": 0,
+                "note": "已齊或無需回補",
+            }
+        filled, skipped, already = [], [], []
+        fetched = 0
+        d = datetime.strptime(start_date, "%Y%m%d")
+        end = datetime.strptime(end_date, "%Y%m%d")
+        while d <= end and fetched < max(1, int(max_days)):
+            ds = d.strftime("%Y%m%d")
+            if d.weekday() >= 5:
+                skipped.append(ds)
+                d += timedelta(days=1)
+                continue
+            have = self._quote_rows_on_date(ds)
+            if have >= int(min_rows):
+                already.append(ds)
+                d += timedelta(days=1)
+                continue
+            fetched += 1
+            try:
+                n = int(
+                    self.update_daily_market_data(
+                        ds, skip_chips=bool(skip_chips), skip_repair=True
+                    )
+                    or 0
+                )
+            except Exception as e:
+                print(f"⚠️ 歷史日K {ds} 抓取異常：{e}")
+                n = 0
+            if n > 50:
+                filled.append(ds)
+            else:
+                skipped.append(ds)
+            time.sleep(max(0.05, float(sleep_s)))
+            d += timedelta(days=1)
+        pending = 0
+        if d <= end:
+            conn = self.get_db_connection()
+            try:
+                have = {
+                    str(r[0]).replace("-", "")[:8]
+                    for r in conn.execute(
+                        """
+                        SELECT replace(date,'-','') FROM daily_quotes
+                        WHERE replace(date,'-','') >= ? AND replace(date,'-','') <= ?
+                        GROUP BY replace(date,'-','')
+                        HAVING COUNT(*) >= ?
+                        """,
+                        (d.strftime("%Y%m%d"), end_date, int(min_rows)),
+                    )
+                }
+            finally:
+                conn.close()
+            walk = d
+            while walk <= end:
+                if walk.weekday() < 5 and walk.strftime("%Y%m%d") not in have:
+                    pending += 1
+                walk += timedelta(days=1)
+        print(
+            f"📦 歷史日K {start_date}→{end_date} 本輪補 {len(filled)} 日"
+            f" 已齊 {len(already)} 略過 {len(skipped)} 尚餘約 {pending} 個交易日"
+        )
+        return {
+            "from": start_date,
+            "to": end_date,
+            "filled": filled,
+            "skipped": skipped,
+            "already": already,
+            "pending": pending,
+            "fetched": fetched,
         }
 
     def sync_paired_markets(self, min_tw: int = 800, min_two: int = 600) -> list:
