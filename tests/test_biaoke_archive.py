@@ -134,3 +134,23 @@ def test_seed_overlay_makes_1709_searchable(tmp_path):
     )
     # 第二次不覆蓋已有列
     assert seed_biaoke_archive(db) == 0
+
+
+def test_seed_refreshes_when_fsv_added(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "w.db")
+    assert seed_biaoke_archive(db) >= 1709
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        "SELECT id, text FROM biaoke_posts WHERE text LIKE '%fsv.cmoney.tw%' LIMIT 1"
+    ).fetchone()
+    assert row
+    aid, text = row
+    conn.execute(
+        "UPDATE biaoke_posts SET text=? WHERE id=?",
+        (text.replace("fsv.cmoney.tw", "blocked.example"), aid),
+    )
+    conn.commit()
+    conn.close()
+    assert seed_biaoke_archive(db) >= 1

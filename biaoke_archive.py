@@ -299,6 +299,34 @@ def load_bundled_club() -> Dict[str, Any]:
     return blob
 
 
+def merge_archive_posts(*blobs: Dict[str, Any]) -> Dict[str, Any]:
+    """社團 20＋72 合成一包。公開 1709 不要跟社團混。"""
+    posts: List[Dict[str, Any]] = []
+    seen = set()
+    club = False
+    source = ""
+    for blob in blobs:
+        club = club or bool((blob or {}).get("club"))
+        source = source or str((blob or {}).get("source") or "")
+        for row in (blob or {}).get("posts") or []:
+            aid = str(row.get("id") or "")
+            if not aid or aid in seen:
+                continue
+            seen.add(aid)
+            posts.append(row)
+    mains = [p for p in posts if p.get("kind") != "reply"]
+    dates = [str(p.get("date") or "") for p in mains if p.get("date")]
+    return {
+        "source": source or ("drive-club" if club else "drive-1709-public"),
+        "club": club,
+        "n": len(mains),
+        "replies": sum(1 for p in posts if p.get("kind") == "reply"),
+        "from": min(dates) if dates else "",
+        "to": max(dates) if dates else "",
+        "posts": posts,
+    }
+
+
 def write_archive_gzip(blob: Dict[str, Any], path: str = "") -> str:
     dest = path or ARCHIVE_GZ
     parent = os.path.dirname(dest)
@@ -306,10 +334,13 @@ def write_archive_gzip(blob: Dict[str, Any], path: str = "") -> str:
         os.makedirs(parent, exist_ok=True)
     posts = list(blob.get("posts") or [])
     attach_tags(posts)
+    club = bool(blob.get("club")) or os.path.abspath(dest) == os.path.abspath(CLUB_GZ)
     mains = [p for p in posts if p.get("kind") != "reply"]
     payload = {
-        "source": "drive-1709-public",
-        "club": False,
+        "source": str(
+            blob.get("source") or ("drive-club" if club else "drive-1709-public")
+        ),
+        "club": club,
         "n": len(mains),
         "replies": sum(1 for p in posts if p.get("kind") == "reply"),
         "from": blob.get("from") or "",
@@ -321,6 +352,17 @@ def write_archive_gzip(blob: Dict[str, Any], path: str = "") -> str:
         json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, dest)
     return dest
+
+
+_CHART_MARKERS = (
+    "image.cmoney.tw/attachment",
+    "fsv.cmoney.tw/cmstatic",
+)
+
+
+def text_gained_chart(old: str, new: str) -> bool:
+    """舊列沒有、新列有附圖網址（含 fsv）才重寫，不整包覆蓋盤中 ingest。"""
+    return any(m in (new or "") and m not in (old or "") for m in _CHART_MARKERS)
 
 
 def seed_biaoke_archive(db_path: str, *, force: bool = False) -> int:
@@ -359,10 +401,7 @@ def seed_biaoke_archive(db_path: str, *, force: bool = False) -> int:
                 todo.append(r)
                 continue
             new = str(r.get("text") or "")
-            if (
-                "image.cmoney.tw/attachment" in new
-                and "image.cmoney.tw/attachment" not in old
-            ):
+            if text_gained_chart(old, new):
                 todo.append(r)
     if not todo:
         return 0
