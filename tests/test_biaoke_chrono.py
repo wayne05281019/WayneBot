@@ -218,8 +218,6 @@ def test_twelfth_slice_quanta_wash_282():
 
 
 def test_thirteenth_slice_ennoconn_weekk_400():
-    assert slice_stop() == "2024-03-28"
-    assert next_start() == "2024-03-28"
     body = method_body("圖文時間軸第十三段")
     assert "2024-03-28" in body
     assert "必過" in body and "400" in body
@@ -240,6 +238,31 @@ def test_thirteenth_slice_ennoconn_weekk_400():
     ov = overview()
     assert "必過" in ov and "400" in ov
     assert "13:30" in ov or "不是周K" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_fourteenth_slice_quanta_not_honhai_300():
+    assert slice_stop() == "2024-03-28"
+    assert next_start() == "2024-03-29"
+    body = method_body("圖文時間軸第十四段")
+    assert "2024-03-28" in body
+    assert "不可能像鴻海" in body
+    assert "不是日K" in body
+    assert "不是鴻海日K" in body
+    assert "280" in body
+    assert "300" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "不可能像鴻海" in q
+    assert "不是鴻海日K" in q
+    assert "280" in q
+    assert "300" in q
+    h = line_for("2317")
+    assert "不是鴻海日K" in h
+    assert "280" in h or "282" in h
+    ov = overview()
+    assert "站穩 300" in ov or "站穩300" in ov
+    assert "不是鴻海日K" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -266,7 +289,11 @@ def test_taitong_chipbond_official_optional():
     q16 = official_on(db, "2382", "20240216")
     assert q16 == {} or abs(float(q16["close"]) - 248.5) < 0.01
     q28 = official_on(db, "2382", "20240328")
-    assert q28 == {} or abs(float(q28["close"]) - 280) < 0.01
+    assert q28 == {} or (
+        abs(float(q28["high"]) - 280) < 0.01 and abs(float(q28["close"]) - 280) < 0.01
+    )
+    h28 = official_on(db, "2317", "20240328")
+    assert h28 == {} or abs(float(h28["close"]) - 155.5) < 0.01
     h20 = official_on(db, "2317", "20240320")
     assert h20 == {} or abs(float(h20["close"]) - 138) < 0.01
     e20 = official_on(db, "6414", "20240320")
@@ -404,6 +431,10 @@ def test_methods_html_and_names():
     assert "不是周K" in over400
     assert "349" in over400 and "360" in over400
     assert "375" in over400
+    stand300 = format_methods_html("最晚四月下旬站穩300")
+    assert "廣達" in stand300 and "不是日K" in stand300
+    assert "不是鴻海日K" in stand300
+    assert "280" in stand300 and "300" in stand300
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -508,3 +539,9 @@ def test_chain_honhai_chart_is_ennoconn():
     o400 = "".join(s.get("text") or "" for s in over400["steps"]) + over400.get("think", "")
     assert "必過" in o400
     assert "400" in o400
+    stand = fire_chain("", "最晚四月下旬站穩300")
+    sblob = "".join(s.get("text") or "" for s in stand["steps"]) + stand.get("think", "")
+    assert "不可能像鴻海" in sblob
+    assert "不是鴻海日K" in sblob
+    assert "280" in sblob
+    assert "300" in sblob
