@@ -86,6 +86,16 @@ def test_live_notes_puts_chain_before_keyword_hits():
     assert "2454" in mtk
 
 
+def test_chained_live_notes_skip_stale_keyword_hits():
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    note = live_notes(db, "台光電怎麼看")
+    assert "神經元鏈" in note
+    assert "關鍵字命中" not in note
+    assert "4510" in note
+
+
 def test_chain_real_quotes_when_db_present():
     db = "data/wayne_market.db"
     if not os.path.isfile(db):

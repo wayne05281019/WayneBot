@@ -302,14 +302,15 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             if title in skip_method:
                 continue
             bits.append("方法 " + _clip(body, 520))
-        keyed = match_posts(ask, limit=3, db_path=db_path)
-        for p in keyed:
-            bits.append(
-                "關鍵字命中（舊文可能過時） "
-                + str(p.get("date") or "")
-                + " "
-                + _clip(p.get("text") or "", 160)
-            )
+        keyed = match_posts(ask, limit=(2 if chained else 3), db_path=db_path)
+        if not chained:
+            for p in keyed:
+                bits.append(
+                    "關鍵字命中（舊文可能過時） "
+                    + str(p.get("date") or "")
+                    + " "
+                    + _clip(p.get("text") or "", 160)
+                )
         note = format_link_notes(keyed, db_path=db_path, limit=3)
         if note:
             bits.append(note)
