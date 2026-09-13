@@ -495,3 +495,12 @@ def test_thirtyseventh_chain_unnamed_5ma():
     assert "不是日K" in blob
     assert "截圖約 61.4" in blob or "61.5" in blob
     assert "雷科" in blob
+
+
+def test_thirtyeighth_chain_unnamed_lock():
+    fired = fire_chain("", "這兩檔列入鎖股")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "這兩檔列入鎖股" in blob or "協易機爆大量" in blob
+    assert "不是日K" in blob
+    assert "截圖約 40.1" in blob or "37.65" in blob
+    assert "佳能" in blob and "漢科" in blob

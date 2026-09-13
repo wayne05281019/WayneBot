@@ -253,10 +253,10 @@ def test_thirtyfirst_pick_charts_ma5_not_6416():
 def test_thirtysecond_pick_charts_canon_sehi_not_6416():
     from biaoke_charts import pick_charts
 
-    cn = pick_charts("2374", limit=2, public_only=True)
+    cn = pick_charts("2374", limit=3, public_only=True)
     assert any("56a489b6-ca84-40d8-a131-ba1e42ff9978" in str(r.get("url") or "") for r in cn)
     assert any("佳能盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
-    se = pick_charts("4533", limit=2, public_only=True)
+    se = pick_charts("4533", limit=3, public_only=True)
     assert any("ef4a177b-7a37-4712-9c70-2d5c138f9fb0" in str(r.get("url") or "") for r in se)
     assert any("協易機盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in se)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
@@ -334,6 +334,28 @@ def test_thirtyseventh_pick_charts_lasertek_5ma_not_6416():
     assert not any("0b1449bb-43f1-4115-84c3-8b4b243660de" in str(r.get("url") or "") for r in skip6416)
     skip5310 = pick_charts("5310", limit=5, public_only=True)
     assert not any("0b1449bb-43f1-4115-84c3-8b4b243660de" in str(r.get("url") or "") for r in skip5310)
+
+
+def test_thirtyeighth_pick_charts_lock_not_3167():
+    from biaoke_charts import pick_charts
+
+    cn = pick_charts("2374", limit=3, public_only=True)
+    assert any("b5a3d066-a5d9-46e6-98b0-f7783b9fec02" in str(r.get("url") or "") for r in cn)
+    assert any("鎖股40.1" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in cn)
+    se = pick_charts("4533", limit=3, public_only=True)
+    assert any("7cbc1625-37b5-42c6-be61-0338ba837fc3" in str(r.get("url") or "") for r in se)
+    assert any("爆大量已賣" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in se)
+    hk = pick_charts("3402", limit=2, public_only=True)
+    assert any("a7f487e1-297e-45d5-afc2-3b91158ae8c2" in str(r.get("url") or "") for r in hk)
+    assert any("鎖股119" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in hk)
+    skip3167 = pick_charts("3167", limit=5, public_only=True)
+    assert not any("b5a3d066-a5d9-46e6-98b0-f7783b9fec02" in str(r.get("url") or "") for r in skip3167)
+    assert not any("7cbc1625-37b5-42c6-be61-0338ba837fc3" in str(r.get("url") or "") for r in skip3167)
+    assert not any("a7f487e1-297e-45d5-afc2-3b91158ae8c2" in str(r.get("url") or "") for r in skip3167)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("b5a3d066-a5d9-46e6-98b0-f7783b9fec02" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("a7f487e1-297e-45d5-afc2-3b91158ae8c2" in str(r.get("url") or "") for r in skip5310)
 
 
 @pytest.mark.production_db

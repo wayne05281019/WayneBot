@@ -871,8 +871,6 @@ def test_thirtysixth_slice_thunder_friday_entry_verified():
 
 
 def test_thirtyseventh_slice_lasertek_5ma_entry():
-    assert slice_stop() == "2024-04-15"
-    assert next_start() == "2024-04-15"
     body = method_body("圖文時間軸第三十七段")
     assert "2024-04-15" in body
     assert "回測5MA支撐線" in body
@@ -903,6 +901,58 @@ def test_thirtyseventh_slice_lasertek_5ma_entry():
     l15 = official_on(db, "6207", "20240415")
     assert l15 == {} or (
         abs(float(l15["low"]) - 59.0) < 0.01 and abs(float(l15["close"]) - 61.5) < 0.01
+    )
+
+
+def test_thirtyeighth_slice_lock_sold_sehi():
+    assert slice_stop() == "2024-04-15"
+    assert next_start() == "2024-04-15"
+    body = method_body("圖文時間軸第三十八段")
+    assert "2024-04-15" in body
+    assert "這兩檔列入鎖股" in body
+    assert "協易機爆大量" in body
+    assert "已經賣了" in body
+    assert "不是日K" in body
+    assert "截圖約 40.1" in body
+    assert "截圖約 39.65" in body
+    assert "截圖約 119" in body
+    assert "佳能" in body and "協易機" in body and "漢科" in body
+    cn = line_for("2374")
+    assert "佳能" in cn
+    assert "截圖約 40.1" in cn
+    assert "不是日K" in cn
+    se = line_for("4533")
+    assert "協易機" in se
+    assert "截圖約 39.65" in se
+    hk = line_for("3402")
+    assert "漢科" in hk
+    assert "截圖約 119" in hk
+    ov = overview()
+    assert "這兩檔列入鎖股" in ov or "協易機爆大量" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("這兩檔列入鎖股")
+    assert "佳能" in html and "漢科" in html
+    assert "不是日K" in html
+    assert "截圖約 40.1" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "這兩檔列入鎖股")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "這兩檔列入鎖股" in blob or "協易機爆大量" in blob
+    assert "截圖約 40.1" in blob or "37.65" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    c15 = official_on(db, "2374", "20240415")
+    assert c15 == {} or (
+        abs(float(c15["high"]) - 41.1) < 0.01 and abs(float(c15["close"]) - 37.65) < 0.01
+    )
+    s15 = official_on(db, "4533", "20240415")
+    assert s15 == {} or (
+        abs(float(s15["high"]) - 42.5) < 0.01 and abs(float(s15["close"]) - 38.85) < 0.01
+    )
+    h15 = official_on(db, "3402", "20240415")
+    assert h15 == {} or (
+        abs(float(h15["high"]) - 126.0) < 0.01 and abs(float(h15["close"]) - 121.5) < 0.01
     )
 
 
