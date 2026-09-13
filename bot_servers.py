@@ -3389,6 +3389,7 @@ class WayneTelegramBot:
             )
         if q:
             await self._send_biaoke_structure_chart(message, q, uid)
+            await self._send_biaoke_origin_charts(message, q, uid)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
         """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。"""
@@ -3450,6 +3451,54 @@ class WayneTelegramBot:
                 )
         except Exception:
             logger.exception("飆大結構圖送出失敗")
+
+    async def _send_biaoke_origin_charts(self, message, ask: str, uid: str) -> None:
+        """飆大視窗才帶他的公開附圖。一般查股兩張圖不走這裡。社團不送。"""
+        q = (ask or "").strip()
+        if not q:
+            return
+        try:
+            from biaoke_brain import is_market_question, resolve_stock
+
+            if is_market_question(q) and not resolve_stock(self.db_path, q):
+                return
+            hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
+        except Exception:
+            logger.exception("飆大原文附圖對檔略過")
+            return
+        if not hits:
+            return
+        sid = str(hits[0].get("stock_id") or "")
+        if not sid:
+            return
+        try:
+            from biaoke_charts import pick_charts
+
+            rows = pick_charts(sid, limit=2, public_only=True, hold=False)
+        except Exception:
+            logger.exception("飆大原文附圖索引略過")
+            return
+        kb = self._reply_menu(uid)
+        sent = 0
+        for row in rows:
+            url = str(row.get("url") or "").strip()
+            if not url or "profile/" in url:
+                continue
+            cap = (
+                f"{row.get('date') or ''} {row.get('note') or '他的附圖'}。"
+                "公開附圖對官方日K看第4顆。不是買訊。"
+            ).strip()
+            try:
+                await message.reply_photo(
+                    photo=url,
+                    caption=cap[:900],
+                    reply_markup=kb,
+                )
+                sent += 1
+            except Exception:
+                logger.debug("飆大原文附圖送出略過 url=%s", url, exc_info=True)
+            if sent >= 2:
+                break
 
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""

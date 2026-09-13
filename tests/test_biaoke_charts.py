@@ -2,6 +2,8 @@
 """附圖索引：341 張、三來源、頭像不算、F10 排名在、問 2383 有圖。"""
 from __future__ import annotations
 
+import pytest
+
 from biaoke_archive import load_bundled_archive, load_bundled_club
 from biaoke_charts import (
     AVATAR_NEEDLE,
@@ -78,3 +80,35 @@ def test_public_archive_has_fsv_and_club_stays_out():
     pub_ids = {p["id"] for p in pub["posts"] if (p.get("kind") or "post") != "reply"}
     assert "171407503" not in pub_ids
     assert "171400455" not in pub_ids
+
+
+def test_pick_charts_public_only_and_vs_official():
+    from biaoke_charts import format_charts_vs_official, pick_charts
+
+    rows = pick_charts("2383", limit=3, public_only=True)
+    assert rows
+    assert all(r.get("src") == "public1709" for r in rows)
+    notes = " ".join(str(r.get("note") or "") for r in rows)
+    assert "平台依賴" in notes
+    assert "1265" in notes
+    assert "漢唐" not in notes
+    assert any("516b26b0-786e-494d-bf8f-1897b6f7dd7f" in str(r.get("url") or "") for r in rows)
+    hold_rows = pick_charts("2383", limit=2, public_only=True, hold=True)
+    assert hold_rows
+    assert any("平台依賴" in str(r.get("note") or "") or "護城河" in str(r.get("note") or "") or "紅框" in str(r.get("note") or "") for r in hold_rows)
+    text = format_charts_vs_official("2383", "", hold=False, limit=3)
+    assert "他的附圖對官方日K" in text
+    assert "不准編" in text
+    assert pick_charts("0000") == []
+
+
+@pytest.mark.production_db
+def test_2383_redbox_matches_official_day():
+    from tests.conftest import require_production_db
+    from biaoke_charts import format_charts_vs_official
+
+    db = require_production_db()
+    text = format_charts_vs_official("2383", db, hold=False, limit=3)
+    assert "1265" in text
+    assert "1275" in text
+    assert "官方收1275" in text

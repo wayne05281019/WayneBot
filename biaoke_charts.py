@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """1709／社團附圖索引。圖檔不進 git，只留 URL＋短註＋代號。
 
-頭像不算圖。這一檔只給查；神經元下一件才讀圖，不准在這裡改話筒鏈。
+頭像不算圖。第 4／5 顆讀這份索引：問一檔帶公開附圖對官方日K。
+社團附圖只對價，不進話筒原文、不送圖。
 """
 from __future__ import annotations
 
@@ -264,3 +265,147 @@ def load_name_map(db_path: str = "") -> Dict[str, str]:
 def valid_stock_ids(db_path: str = "") -> List[str]:
     names = load_name_map(db_path)
     return sorted(set(names.values()))
+
+
+_PUBLIC_SRC = "public1709"
+_NOTE_WEIGHT = {
+    "平台依賴": 200,
+    "F10": 180,
+    "紅框": 170,
+    "護城河": 160,
+    "舊利空": 90,
+    "破支撐": 90,
+    "不宜當主線": 80,
+    "長抱": 80,
+    "EPS": 60,
+}
+_HOLD_NOTE = ("平台依賴", "護城河", "F10", "長抱", "紅框")
+# 註記已經寫死是哪一檔的，別檔問句不要搶第一。
+_NOTE_OWN = (
+    ("漢唐量沒再放大", "2404"),
+    ("台光電量縮站上1265", "2383"),
+    ("台光電 AI 高速 CCL", "2383"),
+    ("穎崴 2027", "6515"),
+    ("金像電 CCL", "2368"),
+    ("勤誠破支撐", "8210"),
+)
+
+
+def _px_short(val: Any) -> str:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if abs(n - round(n)) < 1e-9:
+        return str(int(round(n)))
+    return f"{n:.2f}".rstrip("0").rstrip(".")
+
+
+def official_on(db_path: str, sid: str, date: str) -> Dict[str, Any]:
+    """這檔這天的官方日K。沒這列就空，不准編。"""
+    if not db_path or not os.path.isfile(db_path) or not sid:
+        return {}
+    ymd = str(date or "").replace("-", "")[:8]
+    if len(ymd) != 8 or not ymd.isdigit():
+        return {}
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT date, open, high, low, close, volume FROM daily_quotes "
+                "WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=? LIMIT 1",
+                (str(sid), ymd),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    return {
+        "date": row[0],
+        "open": row[1],
+        "high": row[2],
+        "low": row[3],
+        "close": row[4],
+        "volume": row[5],
+    }
+
+
+def pick_charts(
+    sid: str,
+    *,
+    limit: int = 3,
+    public_only: bool = True,
+    hold: bool = False,
+) -> List[Dict[str, Any]]:
+    """問一檔只帶最有用的幾張。公開文才進話筒；社團不送。"""
+    rows = charts_for(sid)
+    if public_only:
+        rows = [r for r in rows if str(r.get("src") or "") == _PUBLIC_SRC]
+    if hold:
+        rows = [
+            r
+            for r in rows
+            if any(k in str(r.get("note") or "") for k in _HOLD_NOTE)
+        ]
+
+    def score(row: Dict[str, Any]) -> tuple:
+        note = str(row.get("note") or "")
+        n = 0
+        for key, weight in _NOTE_WEIGHT.items():
+            if key in note:
+                n = max(n, weight)
+        if str(row.get("kind") or "") == "screenshot":
+            n += 10
+        for hint, own in _NOTE_OWN:
+            if hint in note and own and own != str(sid):
+                n -= 120
+                break
+        return (n, str(row.get("date") or ""))
+
+    rows = sorted(rows, key=score, reverse=True)
+    return rows[: max(0, int(limit))]
+
+
+def format_charts_vs_official(
+    sid: str,
+    db_path: str = "",
+    *,
+    hold: bool = False,
+    limit: int = 3,
+) -> str:
+    """第 4 顆眼睛：他的公開附圖對這檔官方日K。沒日K就標缺。"""
+    rows = pick_charts(sid, limit=limit, public_only=True, hold=hold)
+    if not rows:
+        return ""
+    parts: List[str] = []
+    saw_bar = False
+    missing = False
+    for row in rows:
+        note = str(row.get("note") or "附圖").strip()
+        day = str(row.get("date") or "")
+        bar = official_on(db_path, sid, day)
+        if bar:
+            saw_bar = True
+            close = _px_short(bar.get("close"))
+            hi = _px_short(bar.get("high"))
+            lo = _px_short(bar.get("low"))
+            op = _px_short(bar.get("open"))
+            extra = f"官方收{close or '—'} 開{op or '—'} 高{hi or '—'} 低{lo or '—'}"
+            parts.append(f"{day} {note}（{extra}）")
+        else:
+            missing = True
+            parts.append(f"{day} {note}".strip())
+    head = "他的附圖（長抱／F10）：" if hold else "他的附圖對官方日K："
+    text = head + "；".join(parts)
+    if missing and not saw_bar:
+        text += "。官方這顆庫當日沒這列，不准編"
+    elif missing:
+        text += "。缺日K的不准編"
+    text += "。截圖是他當下讀數，會改口。不是買訊"
+    return text[:420]

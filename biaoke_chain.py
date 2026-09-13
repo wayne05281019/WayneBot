@@ -472,12 +472,19 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
     if not named:
         return _step("tape", "這句沒點檔，不畫個股量價、不數這檔波浪。", skip=True)
     st = brief.get("struct") or {}
+    sid = str(brief.get("sid") or "")
     if not st:
-        return _step(
-            "tape",
-            "官方日 K 量價還不夠。沒有爆大量日高低就不能講壓撐，不准編。",
-            ok=False,
-        )
+        bit = "官方日 K 量價還不夠。沒有爆大量日高低就不能講壓撐，不准編。"
+        if sid:
+            try:
+                from biaoke_charts import format_charts_vs_official
+
+                seen = format_charts_vs_official(sid, db_path, hold=False, limit=3)
+                if seen:
+                    bit += " " + seen
+            except Exception:
+                pass
+        return _step("tape", bit, ok=False)
     bit = (
         f"{brief.get('sid')} {brief.get('name') or ''} "
         f"{st.get('date') or ''} 收 {_px(st.get('close')) or '—'}。"
@@ -499,6 +506,15 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
                 label = str(proj.get("label") or "").strip()
                 if label:
                     bit += " 圖上演算：" + label
+        except Exception:
+            pass
+    if sid:
+        try:
+            from biaoke_charts import format_charts_vs_official
+
+            seen = format_charts_vs_official(sid, db_path, hold=False, limit=3)
+            if seen:
+                bit += " " + seen
         except Exception:
             pass
     view = _view_line("tape", n=140)
@@ -562,6 +578,15 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
     mine = _own_holding(db_path, uid, sid)
     if mine:
         bits.append("這人持股有這檔，長抱／進出對這倉看，不准改別人倉。")
+    if sid:
+        try:
+            from biaoke_charts import format_charts_vs_official
+
+            seen = format_charts_vs_official(sid, db_path, hold=True, limit=2)
+            if seen:
+                bits.append(seen)
+        except Exception:
+            pass
     view = _view_line("hold", n=150)
     if view:
         bits.append(view)
@@ -781,7 +806,11 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
     reread = _reread_block()
     if reread:
         lines.append(reread)
-    lines.append("圖只解釋第 4 顆量價。右灰區是壓撐＋連點延長演算，不是保證、不是買訊。")
+    lines.append(
+        "圖只解釋第 4 顆量價；問一檔要讀他的公開附圖對官方日K。"
+        "右灰區是壓撐＋連點延長演算，不是保證、不是買訊。"
+        "社團附圖只對價，不進話筒原文。"
+    )
     return "\n".join(lines)
 
 

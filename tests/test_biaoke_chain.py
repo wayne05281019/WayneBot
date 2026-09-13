@@ -17,6 +17,8 @@ def test_system_requires_neuron_chain():
     assert "大盤巢穴" in SYSTEM
     assert "長抱還是進出" in SYSTEM
     assert "圖是第④顆" in SYSTEM or "第④顆" in SYSTEM
+    assert "附圖索引" in SYSTEM
+    assert "會改口" in SYSTEM
     assert "演算" in SYSTEM
     assert "不是預測保證" in SYSTEM or "不是保證" in SYSTEM
     assert "重讀" in SYSTEM
@@ -377,3 +379,20 @@ def test_hold_reads_only_this_uid_lot(tmp_path):
     assert lots and float(lots[0]["shares"]) == 10
     other = get_user_portfolio(db, "u-bro")
     assert other and str(other[0]["stock_code"]) == "2454"
+
+
+def test_tape_and_hold_read_chart_index_for_emc():
+    fired = fire_chain("", "台光電怎麼看")
+    assert fired["sid"] == "2383"
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    assert "他的附圖對官方日K" in tape["text"]
+    assert "平台依賴度" in tape["text"] or "紅框" in tape["text"]
+    assert "他的附圖（長抱／F10）" in hold["text"]
+    notes = format_chain_notes("", "台光電怎麼看")
+    assert "公開附圖對官方日K" in notes
+    assert "社團附圖只對價" in notes
+    mkt = fire_chain("", "目前大盤是屬於哪個位階 以波浪來看的話")
+    tape_m = next(s for s in mkt["steps"] if s["id"] == "tape")
+    assert tape_m.get("skip") is True
+    assert "他的附圖對官方日K" not in str(tape_m.get("text") or "")
