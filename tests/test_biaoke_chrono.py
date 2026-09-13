@@ -32,7 +32,6 @@ def test_third_slice_taitong_chipbond_still_there():
 
 def test_fourth_slice_stops_mar19_2024():
     assert slice_stop() == "2024-03-19"
-    assert next_start() == "2024-03-19"
     body = method_body("圖文時間軸第四段")
     assert "2024-03-18" in body
     assert "光聖" in body
@@ -54,7 +53,31 @@ def test_fourth_slice_stops_mar19_2024():
     ov = overview()
     assert "光聖" in ov
     assert "盤中走勢" in ov
-    assert "廣達缺口" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_fifth_slice_stops_mar19_quanta_gap():
+    assert slice_stop() == "2024-03-19"
+    assert next_start() == "2024-03-20"
+    body = method_body("圖文時間軸第五段")
+    assert "2024-03-19" in body
+    assert "廣達" in body
+    assert "盤中走勢" in body
+    assert "不是日K" in body
+    assert "273" in body
+    assert "19250" in body
+    q = line_for("2382")
+    assert "缺口" in q
+    assert "盤中走勢" in q
+    assert "不是日K" in q
+    assert "273" in q
+    assert "257" in q
+    tx = line_for("TX")
+    assert "19250" in tx
+    assert "不數段" in tx
+    ov = overview()
+    assert "19250" in ov
+    assert "鴻海" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -76,6 +99,12 @@ def test_taitong_chipbond_official_optional():
     assert c19 == {} or (
         abs(float(c19["high"]) - 80.8) < 0.01 and abs(float(c19["close"]) - 78.5) < 0.01
     )
+    q19 = official_on(db, "2382", "20240319")
+    assert q19 == {} or abs(float(q19["close"]) - 257) < 0.01
+    q16 = official_on(db, "2382", "20240216")
+    assert q16 == {} or abs(float(q16["close"]) - 248.5) < 0.01
+    q28 = official_on(db, "2382", "20240328")
+    assert q28 == {} or abs(float(q28["close"]) - 280) < 0.01
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -152,6 +181,9 @@ def test_methods_html_and_names():
     gs = format_methods_html("光聖那張圖為什麼貼")
     assert "光聖" in gs and "盤中" in gs
     assert "125" in gs
+    gap = format_methods_html("廣達缺口那張圖為什麼貼")
+    assert "廣達" in gap and "273" in gap
+    assert "盤中" in gap or "不是日K" in gap
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -195,4 +227,14 @@ def test_chain_guangsheng_uses_chrono():
     assert t["sid"] == "6442"
     blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
     assert "125" in blob
+    assert "盤中走勢" in blob or "不是日K" in blob
+
+
+def test_chain_quanta_gap_uses_chrono():
+    from biaoke_chain import fire_chain
+
+    t = fire_chain("", "廣達缺口那張圖為什麼貼")
+    assert t["sid"] == "2382"
+    blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
+    assert "273" in blob or "缺口" in blob
     assert "盤中走勢" in blob or "不是日K" in blob
