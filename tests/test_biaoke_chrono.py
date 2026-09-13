@@ -121,8 +121,6 @@ def test_seventh_slice_ennoconn_intraday_reversal():
 
 
 def test_eighth_slice_ennoconn_327_hold():
-    assert slice_stop() == "2024-03-22"
-    assert next_start() == "2024-03-25"
     body = method_body("圖文時間軸第八段")
     assert "2024-03-22" in body
     assert "327" in body
@@ -134,6 +132,33 @@ def test_eighth_slice_ennoconn_327_hold():
     assert "323.5" in e or "324" in e
     ov = overview()
     assert "3/22" in ov or "2024-03-22" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_ninth_slice_last_boarding_is_ennoconn_not_honhai():
+    assert slice_stop() == "2024-03-25"
+    assert next_start() == "2024-03-26"
+    body = method_body("圖文時間軸第九段")
+    assert "2024-03-25" in body
+    assert "最後上車" in body
+    assert "不是鴻海日K" in body
+    assert "348" in body
+    assert "337" in body
+    h = line_for("2317")
+    assert "最後上車" in h
+    assert "不是鴻海日K" in h
+    assert "348" in h
+    assert "145.5" in h
+    e = line_for("6414")
+    assert "最後上車" in e
+    assert "盤中走勢" in e
+    assert "348" in e
+    assert "349" in e
+    assert "337" in e
+    ov = overview()
+    assert "最後上車" in ov
+    assert "不是鴻海日K" in ov
+    assert "6416" in ov and "不對圖" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -171,6 +196,12 @@ def test_taitong_chipbond_official_optional():
     assert e21 == {} or abs(float(e21["close"]) - 334.5) < 0.01
     e22 = official_on(db, "6414", "20240322")
     assert e22 == {} or abs(float(e22["close"]) - 329) < 0.01
+    e25 = official_on(db, "6414", "20240325")
+    assert e25 == {} or (
+        abs(float(e25["high"]) - 349) < 0.01 and abs(float(e25["close"]) - 337) < 0.01
+    )
+    h25 = official_on(db, "2317", "20240325")
+    assert h25 == {} or abs(float(h25["close"]) - 145.5) < 0.01
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -259,6 +290,9 @@ def test_methods_html_and_names():
     assert "先觀望" in watch and "334.5" in watch
     hold327 = format_methods_html("327支撐線有沒有守住")
     assert "327" in hold327 and "329" in hold327
+    last = format_methods_html("最後上車")
+    assert "最後上車" in last and "不是鴻海日K" in last
+    assert "348" in last and "337" in last
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -338,3 +372,8 @@ def test_chain_honhai_chart_is_ennoconn():
     hblob = "".join(s.get("text") or "" for s in h327["steps"]) + h327.get("think", "")
     assert "327" in hblob
     assert "329" in hblob or "12:15" in hblob or "12:20" in hblob
+    last = fire_chain("", "樺漢最後上車")
+    assert last["sid"] == "6414"
+    lblob = "".join(s.get("text") or "" for s in last["steps"]) + last.get("think", "")
+    assert "最後上車" in lblob
+    assert "不是鴻海日K" in lblob or "348" in lblob
