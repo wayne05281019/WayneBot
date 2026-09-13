@@ -357,6 +357,24 @@ def test_nineteenth_slice_quanta_289_291():
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
+def test_twentieth_slice_fengda_109_124():
+    assert slice_stop() == "2024-04-01"
+    assert next_start() == "2024-04-01"
+    body = method_body("圖文時間軸第二十段")
+    assert "2024-04-01" in body
+    assert "109" in body and "124" in body
+    assert "不是日K" in body
+    assert "116.5" in body
+    assert "豐達科" in body or "3004" in body
+    f = line_for("3004")
+    assert "豐達科" in f
+    assert "回測" in f
+    assert "116.5" in f
+    ov = overview()
+    assert "109" in ov and "124" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
@@ -430,6 +448,14 @@ def test_taitong_chipbond_official_optional():
     q01 = official_on(db, "2382", "20240401")
     assert q01 == {} or (
         abs(float(q01["low"]) - 281.5) < 0.01 and abs(float(q01["close"]) - 282.5) < 0.01
+    )
+    f29 = official_on(db, "3004", "20240329")
+    assert f29 == {} or (
+        abs(float(f29["low"]) - 109.5) < 0.01 and abs(float(f29["close"]) - 113) < 0.01
+    )
+    f01 = official_on(db, "3004", "20240401")
+    assert f01 == {} or (
+        abs(float(f01["high"]) - 118) < 0.01 and abs(float(f01["close"]) - 116) < 0.01
     )
 
 
@@ -557,6 +583,9 @@ def test_methods_html_and_names():
     bound = format_methods_html("多空分界")
     assert "廣達" in bound and "不是日K" in bound
     assert "290.5" in bound and "289.5" in bound
+    fd = format_methods_html("回測109")
+    assert "豐達科" in fd and "不是日K" in fd
+    assert "116.5" in fd and "124" in fd
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -692,3 +721,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "289.5" in bblob
     assert "290.5" in bblob
     assert "291" in bblob
+    fd = fire_chain("", "回測109")
+    fblob = "".join(s.get("text") or "" for s in fd["steps"]) + fd.get("think", "")
+    assert "109" in fblob
+    assert "116.5" in fblob
+    assert "124" in fblob
