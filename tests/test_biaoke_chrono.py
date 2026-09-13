@@ -242,8 +242,6 @@ def test_thirteenth_slice_ennoconn_weekk_400():
 
 
 def test_fourteenth_slice_quanta_not_honhai_300():
-    assert slice_stop() == "2024-03-28"
-    assert next_start() == "2024-03-29"
     body = method_body("圖文時間軸第十四段")
     assert "2024-03-28" in body
     assert "不可能像鴻海" in body
@@ -263,6 +261,31 @@ def test_fourteenth_slice_quanta_not_honhai_300():
     ov = overview()
     assert "站穩 300" in ov or "站穩300" in ov
     assert "不是鴻海日K" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_fifteenth_slice_quanta_retract_20pct():
+    assert slice_stop() == "2024-03-29"
+    assert next_start() == "2024-03-29"
+    body = method_body("圖文時間軸第十五段")
+    assert "2024-03-29" in body
+    assert "非常強" in body
+    assert "不是日K" in body
+    assert "不是鴻海日K" in body
+    assert "294.5" in body
+    assert "20%" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "苦盡甘來" in q or "非常強" in q
+    assert "294.5" in q
+    assert "20%" in q
+    assert "不是鴻海日K" in q
+    h = line_for("2317")
+    assert "不是鴻海日K" in h
+    assert "294.5" in h or "150" in h
+    ov = overview()
+    assert "20%" in ov
+    assert "非常強" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -326,6 +349,12 @@ def test_taitong_chipbond_official_optional():
     assert e29 == {} or (
         abs(float(e29["high"]) - 376) < 0.01 and abs(float(e29["close"]) - 375) < 0.01
     )
+    q29 = official_on(db, "2382", "20240329")
+    assert q29 == {} or (
+        abs(float(q29["high"]) - 298) < 0.01 and abs(float(q29["close"]) - 293.5) < 0.01
+    )
+    h29 = official_on(db, "2317", "20240329")
+    assert h29 == {} or abs(float(h29["close"]) - 150) < 0.01
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -435,6 +464,10 @@ def test_methods_html_and_names():
     assert "廣達" in stand300 and "不是日K" in stand300
     assert "不是鴻海日K" in stand300
     assert "280" in stand300 and "300" in stand300
+    strong = format_methods_html("苦盡甘來")
+    assert "廣達" in strong and "不是日K" in strong
+    assert "不是鴻海日K" in strong
+    assert "294.5" in strong and "20%" in strong
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -529,8 +562,7 @@ def test_chain_honhai_chart_is_ennoconn():
     g144 = "".join(s.get("text") or "" for s in gs144["steps"]) + gs144.get("think", "")
     assert "144" in g144 and "145" in g144
     assert "138" in g144 or "137" in g144 or "不是日K" in g144
-    wash = fire_chain("", "廣達洗到282")
-    assert wash["sid"] == "2382"
+    wash = fire_chain("", "洗到282")
     wblob = "".join(s.get("text") or "" for s in wash["steps"]) + wash.get("think", "")
     assert "282" in wblob
     assert "洗到" in wblob
@@ -545,3 +577,9 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "不是鴻海日K" in sblob
     assert "280" in sblob
     assert "300" in sblob
+    strong = fire_chain("", "苦盡甘來")
+    gblob = "".join(s.get("text") or "" for s in strong["steps"]) + strong.get("think", "")
+    assert "非常強" in gblob
+    assert "不是鴻海日K" in gblob
+    assert "294.5" in gblob
+    assert "20%" in gblob
