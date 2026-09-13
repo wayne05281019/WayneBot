@@ -80,6 +80,23 @@ def test_wave_question_uses_sep11_levels():
     assert "語料" not in html
 
 
+def test_nanya_1303_timeline_is_not_nanya_tech():
+    text = format_trace("南亞為什麼適合上班族長期抱")
+    assert "1303" in text
+    assert "2408" in text
+    assert "217" in text
+    assert "對不到" in text
+    assert "台塑" in text
+    assert "語料" not in text
+    tech = format_trace("南亞科今天值得特別關注")
+    assert "2408" in tech
+    assert "217" not in tech
+    html = answer_biaoke(":memory:", "南亞怎麼看")
+    assert "1303" in html
+    assert "這不是買訊" in html
+    assert "語料" not in html
+
+
 def test_mediatek_timeline_is_ic_design_not_april16_hold():
     text = format_trace("聯發科他有看好嗎")
     assert "2454" in text

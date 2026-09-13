@@ -371,6 +371,14 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
     )
     if named:
         bits.append("個股最重要是產業趨勢還在不在；技術分析最有用在大盤。")
+        try:
+            from biaoke_foresight import field_line
+
+            fl = field_line(sid)
+            if fl:
+                bits.append(fl)
+        except Exception:
+            pass
         if sid == "2383":
             bits.append(
                 "純 AI 他看到台光電護城河最高，至少可抱到 2027 年大盤第五波結束；"
@@ -489,14 +497,36 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
 
 def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", uid: str = "") -> Dict[str, Any]:
     if not named:
-        if any(k in (ask or "") for k in ("F10", "F4", "長抱", "聯發科", "抱著波段")):
+        if any(
+            k in (ask or "")
+            for k in (
+                "F10",
+                "F4",
+                "長抱",
+                "聯發科",
+                "抱著波段",
+                "南亞",
+                "1303",
+                "洞燭",
+                "先機",
+                "汎銓",
+                "很少人提",
+                "台塑",
+                "無人機",
+            )
+        ):
             try:
                 from biaoke_mind import match_methods
 
                 hits = [
                     body
                     for title, body in match_methods(ask, limit=3)
-                    if title == "長抱主流／F4→F10／聯發科"
+                    if title
+                    in (
+                        "洞燭先機",
+                        "南亞 1303 長抱或進出",
+                        "長抱主流／F4→F10／聯發科",
+                    )
                 ]
                 if hits:
                     return _step("hold", hits[0], ok=True)
@@ -541,6 +571,15 @@ def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str 
         extra_miss.append("那指隔夜官方沒跟上最新加權日")
     if "還在等 9/16" in nt:
         extra_miss.append("他自己點的 9/16 Fed 還沒到，下一波主流不准裝已確認")
+    if named:
+        try:
+            from biaoke_foresight import doubt_line
+
+            dl = doubt_line(str(brief.get("sid") or ""))
+            if dl:
+                bits.append(dl)
+        except Exception:
+            pass
     if named and not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只是觸類旁通量價，可能看錯")
     if named and miss:

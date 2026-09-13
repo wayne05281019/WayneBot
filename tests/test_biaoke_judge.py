@@ -278,6 +278,18 @@ def test_hold_note_splits_long_hold_f10_and_mediatek():
     assert "風向球" in vane
     assert "不是 4/16" in vane
     assert "出清" in vane
+    nanya = _hold_note("1303", True)
+    assert "不是南亞科 2408" in nanya
+    assert "不是 4/16" in nanya
+    assert "217" in nanya
+    assert "對不到" in nanya
+    assert "台塑" in nanya
+    assert "PCB" in nanya or "AI 材料" in nanya
+    tech = _hold_note("2408", True)
+    assert "217" not in tech
+    fan = _hold_note("6830", True)
+    assert "236" in fan
+    assert "1000" in fan
 
 
 def test_mediatek_self_leader_is_not_missing_leader():

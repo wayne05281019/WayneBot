@@ -40,6 +40,58 @@ def test_chain_six_neurons_in_order_for_emc():
     assert "長抱" in think or "勿輕易調整" in hold["text"]
 
 
+def test_chain_nanya_1303_is_not_nanya_tech():
+    fired = fire_chain("", "南亞怎麼看")
+    assert fired["sid"] == "1303"
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    doubt = next(s for s in fired["steps"] if s["id"] == "doubt")
+    blob = hold["text"] + doubt["text"] + fired["think"]
+    assert "2408" in hold["text"]
+    assert "不是南亞科" in hold["text"] or "不是 4/16" in hold["text"]
+    assert "217" in blob
+    assert "出清" in blob
+    assert "台塑" in hold["text"]
+    assert "PCB" in hold["text"] or "AI 材料" in hold["text"]
+    assert "適合上班族長期抱" in hold["text"]
+    assert "對不到" in hold["text"]
+    assert "上班族可積極" not in hold["text"]
+    tech = fire_chain("", "南亞科怎麼看")
+    assert tech["sid"] == "2408"
+    tech_hold = next(s for s in tech["steps"] if s["id"] == "hold")
+    assert "217" not in tech_hold["text"]
+    office = fire_chain("", "南亞為什麼適合上班族長期抱")
+    assert office["sid"] == "1303"
+    office_hold = next(s for s in office["steps"] if s["id"] == "hold")
+    assert "對不到" in office_hold["text"]
+    assert "217" in office_hold["text"]
+    notes = format_chain_notes("", "南亞怎麼看")
+    assert chain_order_ok(notes)
+    assert "1303" in notes
+
+
+def test_chain_foresight_fancheng_and_formosa_group():
+    fired = fire_chain("", "汎銓怎麼從兩百多到一千")
+    assert fired["sid"] == "6830"
+    hold = next(s for s in fired["steps"] if s["id"] == "hold")
+    field = next(s for s in fired["steps"] if s["id"] == "field")
+    blob = hold["text"] + field["text"] + fired["think"]
+    assert "236" in blob
+    assert "1000" in blob
+    assert "很少人提" in blob
+    assert "新聞變多" in hold["text"] or "新聞變多" in fired["think"]
+    formosa = fire_chain("", "台塑四寶他怎麼講")
+    hold_f = next(s for s in formosa["steps"] if s["id"] == "hold")
+    blob_f = hold_f["text"] + formosa["think"]
+    assert "四寶" in blob_f
+    assert "對不到" in blob_f
+    assert "台塑化" in blob_f or "南亞" in blob_f
+    drone = fire_chain("", "中光電無人機為什麼能早看到後來又出清")
+    assert drone["sid"] == "5371"
+    dh = next(s for s in drone["steps"] if s["id"] == "hold")
+    assert "半山腰" in dh["text"]
+    assert "不要再碰" in dh["text"]
+
+
 def test_chain_mediatek_is_not_april16_hold():
     fired = fire_chain("", "聯發科他有看好嗎")
     assert fired["sid"] == "2454"

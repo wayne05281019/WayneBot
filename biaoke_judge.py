@@ -354,6 +354,14 @@ def audit_certainty(brief: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _hold_note(sid: str, in_corpus: bool) -> str:
+    try:
+        from biaoke_foresight import hold_line
+
+        fs = hold_line(sid)
+        if fs:
+            return fs
+    except Exception:
+        pass
     if sid == "2454":
         bit = (
             "聯發科不是 4/16 可抱到明年名單（那份是台積電、台達電、台光電、旺矽、穎崴、奇鋐）。"

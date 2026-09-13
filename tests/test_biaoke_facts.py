@@ -117,6 +117,8 @@ def test_talk_core_keeps_zhiyuan():
     assert talk_core("智原") == "智原"
     assert talk_core("3035") == "3035"
     assert names_in_ask("你怎麼看智原")[0][0] == "3035"
+    assert names_in_ask("南亞怎麼看")[0] == ("1303", "南亞")
+    assert names_in_ask("南亞科怎麼看")[0] == ("2408", "南亞科")
     assert stock_query("你怎麼看智原") == "智原"
 
 

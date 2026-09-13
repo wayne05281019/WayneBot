@@ -27,6 +27,10 @@ def test_neuron_views_reread_without_ask():
     assert "他點的日曆／國際局勢" in titles
     field = views_for_neuron("field")
     assert field and field[0][0] == "個股先看產業趨勢"
+    assert any(t == "洞燭先機" for t, _b in field)
+    assert "很少人提" in method_body("洞燭先機")
+    assert "1000" in method_body("洞燭先機")
+    assert "對不到「台塑四寶」" in method_body("洞燭先機") or "對不到" in method_body("洞燭先機")
     assert "價穩量縮" in method_body("量先價行")
     tape = views_for_neuron("tape")
     assert any(t == "量先價行" for t, _b in tape)
@@ -42,6 +46,22 @@ def test_methods_cover_industry_trend_hold_to_next_year():
     assert "抱到明年" in html2 or "產業趨勢" in html2
     assert "不猜" not in html2
     assert "現況／量價" not in html2
+
+
+def test_methods_cover_nanya_1303_not_office_worker_hold():
+    html = format_methods_html("南亞為什麼適合上班族長期抱")
+    assert "1303" in html
+    assert "2408" in html
+    assert "217" in html
+    assert "對不到" in html
+    assert "台塑" in html
+    assert "PCB" in html or "AI 材料" in html
+    tech = format_methods_html("南亞科他有看好嗎")
+    assert "217" not in tech
+    html2 = answer_biaoke(":memory:", "南亞怎麼看")
+    assert "1303" in html2
+    assert "這不是買訊" in html2
+    assert "217" in html2
 
 
 def test_methods_cover_long_hold_f10_and_mediatek():
