@@ -188,6 +188,26 @@ def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
     assert not any("7482636f-fcb7-478d-b199-84184302a5e5" in str(r.get("url") or "") for r in skip6416)
 
 
+def test_twentyeighth_pick_charts_lasertek_not_5310():
+    from biaoke_charts import pick_charts
+
+    lk = pick_charts("6207", limit=2, public_only=True)
+    assert any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in lk)
+    assert any("雷科盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
+    zs = pick_charts("2467", limit=2, public_only=True)
+    assert any("d1fb2f19-5bac-4d15-8d8b-5b30b9654f59" in str(r.get("url") or "") for r in zs)
+    assert any("志聖盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in zs)
+    jh = pick_charts("5443", limit=2, public_only=True)
+    assert any("c81d96de-10f0-4de6-b971-45ddb33d511f" in str(r.get("url") or "") for r in jh)
+    assert any("均豪盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in jh)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in skip5310)
+    assert not any("d1fb2f19-5bac-4d15-8d8b-5b30b9654f59" in str(r.get("url") or "") for r in skip5310)
+    assert not any("c81d96de-10f0-4de6-b971-45ddb33d511f" in str(r.get("url") or "") for r in skip5310)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in skip6416)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

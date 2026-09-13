@@ -467,8 +467,6 @@ def test_twentysixth_slice_tsmc_810():
 
 
 def test_twentyseventh_slice_thunder_chenming_intraday():
-    assert slice_stop() == "2024-04-09"
-    assert next_start() == "2024-04-10"
     body = method_body("圖文時間軸第二十七段")
     assert "2024-04-09" in body
     assert "急殺買" in body
@@ -509,6 +507,58 @@ def test_twentyseventh_slice_thunder_chenming_intraday():
     c09 = official_on(db, "3013", "20240409")
     assert c09 == {} or (
         abs(float(c09["low"]) - 67) < 0.01 and abs(float(c09["close"]) - 67) < 0.01
+    )
+
+
+def test_twentyeighth_slice_lasertek_pullback():
+    assert slice_stop() == "2024-04-10"
+    assert next_start() == "2024-04-10"
+    body = method_body("圖文時間軸第二十八段")
+    assert "2024-04-10" in body
+    assert "剛好止漲回測" in body or "止漲回測" in body
+    assert "先買 1/2" in body or "先買1/2" in body
+    assert "不是日K" in body
+    assert "58.1" in body
+    assert "雷科" in body
+    assert "志聖" in body
+    assert "均豪" in body
+    assert "5310" in body and "不對圖" in body
+    lk = line_for("6207")
+    assert "雷科" in lk
+    assert "58.1" in lk
+    assert "不是日K" in lk
+    zs = line_for("2467")
+    assert "志聖" in zs
+    assert "135" in zs
+    jh = line_for("5443")
+    assert "均豪" in jh
+    assert "69.1" in jh
+    ov = overview()
+    assert "止漲回測" in ov or "雷科" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("剛好止漲回測")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "58.1" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "剛好止漲回測")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "止漲回測" in blob
+    assert "58.1" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    r10 = official_on(db, "6207", "20240410")
+    assert r10 == {} or (
+        abs(float(r10["low"]) - 56.4) < 0.01 and abs(float(r10["close"]) - 56.6) < 0.01
+    )
+    z10 = official_on(db, "2467", "20240410")
+    assert z10 == {} or (
+        abs(float(z10["low"]) - 130) < 0.01 and abs(float(z10["close"]) - 131.5) < 0.01
+    )
+    j10 = official_on(db, "5443", "20240410")
+    assert j10 == {} or (
+        abs(float(j10["low"]) - 67.5) < 0.01 and abs(float(j10["close"]) - 69) < 0.01
     )
 
 

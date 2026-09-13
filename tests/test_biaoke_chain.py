@@ -405,3 +405,12 @@ def test_twentyseventh_chain_unnamed_dump_buy():
     assert "不是日K" in blob
     assert "71.3" in blob or "70.4" in blob
     assert "雷虎" in blob or "晟銘電" in blob
+
+
+def test_twentyeighth_chain_unnamed_pullback():
+    fired = fire_chain("", "剛好止漲回測")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "止漲回測" in blob
+    assert "不是日K" in blob
+    assert "58.1" in blob
+    assert "雷科" in blob

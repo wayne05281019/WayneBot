@@ -162,6 +162,15 @@ def test_twentyseventh_methods_thunder_chenming():
     assert any(t == "圖文時間軸第二十七段" for t, _b in tape)
 
 
+def test_twentyeighth_methods_lasertek_pullback():
+    html = format_methods_html("剛好止漲回測")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "58.1" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第二十八段" for t, _b in tape)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
