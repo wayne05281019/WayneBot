@@ -73,6 +73,8 @@ def test_methods_cover_long_hold_f10_and_mediatek():
     assert "勿輕易調整" in html
     assert "奇鋐" in html
     assert "F10" in html
+    assert "平台依賴度" in html
+    assert "鴻勁" in html
     mtk = format_methods_html("聯發科他有看好嗎")
     assert "2454" in mtk
     assert "IC 設計主線" in mtk

@@ -41,7 +41,39 @@ def test_nanya_and_drone_are_cases_not_new_neurons():
     assert "對不到" in hold_line("1303")
     assert "不要再碰" in hold_line("5371")
     assert "272" in hold_line("8033")
-    assert hold_line("2383") == ""
+    assert "S+++" in hold_line("2383")
+    assert "3930" in hold_line("2383")
+    assert "勿輕易調整" in hold_line("2383")
+    assert "4/16" in hold_line("2383")
+
+
+def test_f4_f10_from_public_chart_not_club_quote():
+    """F4／F10 以 1709 附圖＋官方日K 為準；旺矽是 6223。"""
+    assert "S+++" in hold_line("2330")
+    assert "A+/S-候選" in hold_line("3017") or "S-候選" in hold_line("3017")
+    assert "回測" in hold_line("3017")
+    assert "7194" in hold_line("3017") or "2490" in hold_line("3017")
+    assert "6223" in hold_line("6223")
+    assert "6230" in hold_line("6223")
+    assert "尼得科" in hold_line("6223")
+    assert hold_line("6230") == ""
+    assert "出清" in hold_line("6515")
+    assert "S+++" in hold_line("2383")
+    assert "1265" in hold_line("2383")
+    assert "護城河" in field_line("2383") or "CCL" in hold_line("2383")
+    assert "4/16" in hold_line("2368")
+    assert "不在" in hold_line("2368")
+    assert "A-" in hold_line("8210")
+    assert "S" in hold_line("2059")
+    assert "7769" in hold_line("7769")
+    assert "設備" in hold_line("7769")
+    html = format_methods_html("F10 是哪幾檔")
+    assert "台積電" in html and "川湖" in html and "勤誠" in html
+    assert "鴻勁" in html
+    assert "尚未納入 F 系列" in html or "還不在 F 系列" in html
+    body = method_body("長抱主流／F4→F10／聯發科")
+    assert "平台依賴度" in body
+    assert "7769" in body
 
 
 def test_sep10_battlefield_quotes_flag_without_formula():
