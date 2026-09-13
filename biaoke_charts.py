@@ -44,6 +44,8 @@ _NOTE_BY_SNIP = {
     "76b9bce8-f8e9-45ea-b565-17153a894777": "廣達2/2日K：頸線越墊越高",
     "b7132fee-a48f-4a69-956b-ebedacf4f75c": "台指近月60分：上升軌道破壞（主文點台通／頎邦，圖不是個股日K）",
     "54a8021a-7174-4b99-a26f-5ed31a27ca92": "櫃買指數日K：B然後C（不是台通／頎邦日K）",
+    "47b69e0f-de57-44d9-a9ec-4e809202ca13": "光聖盤中走勢：反彈至125附近（不是日K）",
+    "925ae6d3-392a-4e43-8cf7-6ef7c03a7406": "頎邦盤中走勢：回測支撐確認（不是日K）",
 }
 _TICKERS_BY_SNIP = {
     "516b26b0-786e-494d-bf8f-1897b6f7dd7f": [
@@ -79,6 +81,8 @@ _TICKERS_BY_SNIP = {
     "76b9bce8-f8e9-45ea-b565-17153a894777": ["2382"],
     "b7132fee-a48f-4a69-956b-ebedacf4f75c": ["8011", "6147"],
     "54a8021a-7174-4b99-a26f-5ed31a27ca92": ["8011", "6147"],
+    "47b69e0f-de57-44d9-a9ec-4e809202ca13": ["6442"],
+    "925ae6d3-392a-4e43-8cf7-6ef7c03a7406": ["6147"],
 }
 _ALIAS = {
     "穎葳": "6515",
@@ -249,15 +253,25 @@ def load_chart_index() -> Dict[str, Any]:
 
 
 def charts_for(sid: str) -> List[Dict[str, Any]]:
-    """這檔出現在附圖索引裡的列。沒有就空。"""
+    """這檔出現在附圖索引裡的列。沒有就空。已目視短註蓋過索引裡的「日K截圖」。"""
     want = str(sid or "").strip()
     if not want:
         return []
     out: List[Dict[str, Any]] = []
     for row in load_chart_index().get("charts") or []:
+        url = str(row.get("url") or "")
         ticks = [str(t) for t in (row.get("tickers") or [])]
-        if want in ticks:
-            out.append(row)
+        for extra in _snip_tickers(url):
+            if extra not in ticks:
+                ticks.append(extra)
+        if want not in ticks:
+            continue
+        item = dict(row)
+        item["tickers"] = ticks
+        known = _snip_note(url)
+        if known:
+            item["note"] = known
+        out.append(item)
     return out
 
 
@@ -329,6 +343,8 @@ _NOTE_OWN = (
     ("廣達2/2日K", "2382"),
     ("台指近月60分", "8011"),
     ("櫃買指數日K", "6147"),
+    ("光聖盤中走勢", "6442"),
+    ("頎邦盤中走勢", "6147"),
 )
 
 
@@ -401,6 +417,8 @@ def pick_charts(
         for key, weight in _NOTE_WEIGHT.items():
             if key in note:
                 n = max(n, weight)
+        if _snip_note(str(row.get("url") or "")):
+            n = max(n, 95)
         if str(row.get("kind") or "") == "screenshot":
             n += 10
         for hint, own in _NOTE_OWN:

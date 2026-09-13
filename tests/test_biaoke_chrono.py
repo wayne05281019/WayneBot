@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""圖文時間軸：第一段補官方柱，第二段華碩／台指期／廣達對圖。"""
+"""圖文時間軸：第一段智原／貨櫃，第二段華碩／廣達，第三段台通／頎邦，第四段光聖／頎邦回證。"""
 from biaoke_chrono import line_for, next_start, overview, slice_stop
 from biaoke_charts import official_on
 from biaoke_mind import format_methods_html, method_body
@@ -15,9 +15,7 @@ def test_second_slice_stops_feb3_2024():
     assert "456.5" in body or "454" in body
 
 
-def test_third_slice_stops_mar15_2024():
-    assert slice_stop() == "2024-03-15"
-    assert next_start() == "2024-03-18"
+def test_third_slice_taitong_chipbond_still_there():
     body = method_body("圖文時間軸第三段")
     assert "2024-03-15" in body
     assert "台通" in body
@@ -32,6 +30,34 @@ def test_third_slice_stops_mar15_2024():
     assert "73.5" in q
 
 
+def test_fourth_slice_stops_mar19_2024():
+    assert slice_stop() == "2024-03-19"
+    assert next_start() == "2024-03-19"
+    body = method_body("圖文時間軸第四段")
+    assert "2024-03-18" in body
+    assert "光聖" in body
+    assert "盤中走勢" in body
+    assert "不是日K" in body
+    assert "125" in body
+    assert "124" in body
+    assert "121.5" in body
+    g = line_for("6442")
+    assert "光聖" in g
+    assert "盤中走勢" in g
+    assert "不是日K" in g
+    assert "125" in g
+    assert "124" in g
+    assert "121.5" in g
+    q = line_for("6147")
+    assert "80.8" in q or "78.5" in q
+    assert "盤中走勢" in q
+    ov = overview()
+    assert "光聖" in ov
+    assert "盤中走勢" in ov
+    assert "廣達缺口" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
@@ -42,6 +68,14 @@ def test_taitong_chipbond_official_optional():
     assert t14 == {} or abs(float(t14["close"]) - 31.1) < 0.01
     c15 = official_on(db, "6147", "20240315")
     assert c15 == {} or abs(float(c15["close"]) - 76.5) < 0.01
+    g18 = official_on(db, "6442", "20240318")
+    assert g18 == {} or abs(float(g18["close"]) - 124) < 0.01
+    g19 = official_on(db, "6442", "20240319")
+    assert g19 == {} or abs(float(g19["close"]) - 121.5) < 0.01
+    c19 = official_on(db, "6147", "20240319")
+    assert c19 == {} or (
+        abs(float(c19["high"]) - 80.8) < 0.01 and abs(float(c19["close"]) - 78.5) < 0.01
+    )
 
 
 def test_first_slice_official_bars_not_screenshot():
@@ -109,11 +143,15 @@ def test_methods_html_and_names():
     assert names_in_ask("廣達怎麼看")[0][0] == "2382"
     assert names_in_ask("台通怎麼看")[0][0] == "8011"
     assert names_in_ask("頎邦怎麼看")[0][0] == "6147"
+    assert names_in_ask("光聖怎麼看")[0][0] == "6442"
     flag = format_methods_html("下飄旗型整理多久")
     assert "不透漏" in flag
     assert "13日" not in flag
     asus = format_methods_html("華碩那張圖為什麼貼")
     assert "華碩" in asus and "台指期" in asus
+    gs = format_methods_html("光聖那張圖為什麼貼")
+    assert "光聖" in gs and "盤中" in gs
+    assert "125" in gs
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -148,3 +186,13 @@ def test_chain_taitong_uses_chrono():
     assert t["sid"] == "8011"
     blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
     assert "29.1" in blob or "不是台通日K" in blob
+
+
+def test_chain_guangsheng_uses_chrono():
+    from biaoke_chain import fire_chain
+
+    t = fire_chain("", "光聖那張圖為什麼貼")
+    assert t["sid"] == "6442"
+    blob = "".join(s.get("text") or "" for s in t["steps"]) + t.get("think", "")
+    assert "125" in blob
+    assert "盤中走勢" in blob or "不是日K" in blob

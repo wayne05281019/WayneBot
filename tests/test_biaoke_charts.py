@@ -102,6 +102,20 @@ def test_pick_charts_public_only_and_vs_official():
     assert pick_charts("0000") == []
 
 
+def test_intraday_snip_notes_overlay_not_daily_k():
+    from biaoke_charts import pick_charts
+
+    gs = pick_charts("6442", limit=3, public_only=True)
+    assert any("47b69e0f-de57-44d9-a9ec-4e809202ca13" in str(r.get("url") or "") for r in gs)
+    assert any(
+        "盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
+        for r in gs
+    )
+    qb = pick_charts("6147", limit=3, public_only=True)
+    assert any("925ae6d3-392a-4e43-8cf7-6ef7c03a7406" in str(r.get("url") or "") for r in qb)
+    assert any("頎邦盤中走勢" in str(r.get("note") or "") for r in qb)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db
