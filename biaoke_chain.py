@@ -305,6 +305,15 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 bits.append(
                     f"夜盤高 {_px(night_hi)} 還沒過他自己點的 46506"
                 )
+            else:
+                bits.append(
+                    "夜盤高低讀不到，他自己點的 46506 這路先當缺，不准編"
+                )
+        elif db_path and ok:
+            # 已有加權／日盤柱、只缺夜盤時，才把他點過的 46506 標成缺路
+            bits.append(
+                "夜盤官方這顆庫還沒這列，他自己點的 46506 這路先當缺，不准編夜盤高低"
+            )
     except Exception:
         pass
     try:
@@ -620,6 +629,9 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
         bits.append("量價過壓是半山腰那套；長抱另論，不要用過壓叫人出長抱。")
     elif "半山腰" in pace:
         bits.append("已過爆大量日高，這腳進出比較像半山腰，不是落後補漲。")
+    elif sid == "2454":
+        # 發哥公開把長抱／主線跟半山腰隔日沖切開；量價句沒寫半山腰也要補這條
+        bits.append("半山腰只隔日沖；發哥要當長線／主線看，不要用半山腰那套喊隔日進出。")
     mine = _own_holding(db_path, uid, sid)
     if mine:
         bits.append("這人持股有這檔，長抱／進出對這倉看，不准改別人倉。")
@@ -712,6 +724,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
         elif "還沒過他自己點的 46506" in nest_t:
             nest_bit += "；夜盤高還沒過 46506"
+        elif "46506" in nest_t:
+            nest_bit += "；他自己點的 46506 這路先當缺"
         if "還沒過他自己點的前波高 47578" in nest_t:
             nest_bit += "；官方高還沒過 47578"
         elif "已過他自己點的前波高 47578" in nest_t:
@@ -773,6 +787,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("夜盤高已過 46506，確認仍要四路對質。")
     elif "還沒過他自己點的 46506" in nest_t:
         parts.append("夜盤高還沒過 46506。")
+    elif "46506" in nest_t:
+        parts.append("他自己點的 46506 這路先當缺，不准編夜盤高低。")
     if "還沒過他自己點的前波高 47578" in nest_t:
         parts.append("官方高還沒過 47578，右肩還沒做完。")
     elif "已過他自己點的前波高 47578" in nest_t:
