@@ -123,6 +123,63 @@ def _own_holding(db_path: str, uid: str, sid: str) -> Dict[str, Any]:
     return {}
 
 
+_NEW_HIGH_NAMES = (
+    ("3017", "奇鋐"),
+    ("3653", "健策"),
+    ("3081", "聯亞"),
+    ("3443", "創意"),
+    ("2408", "南亞科"),
+)
+
+
+def _new_high_retract(db_path: str) -> str:
+    """9/16 之後只回撤他點過的新高檔官方日K，不准編升息結果。"""
+    if not db_path:
+        return ""
+    try:
+        from biaoke_brain import load_bars, volume_first_price
+    except Exception:
+        return ""
+    parts: List[str] = []
+    for sid, name in _NEW_HIGH_NAMES:
+        try:
+            bars = load_bars(db_path, sid, n=40)
+        except Exception:
+            bars = []
+        st = volume_first_price(bars) if len(bars) >= 8 else {}
+        if not st:
+            continue
+        if st.get("broke_resistance"):
+            flag = "過壓"
+        elif st.get("above_support"):
+            flag = "站上撐"
+        else:
+            flag = "撐下"
+        parts.append(f"{name}收{_px(st.get('close')) or '—'}{flag}")
+    return "新高檔官方日K：" + "、".join(parts) if parts else ""
+
+
+def _pointed_calendar(db_path: str, as_of: str) -> str:
+    """他自己點的日曆／國際局勢。不是看新聞做股票。"""
+    ymd = "".join(ch for ch in str(as_of or "") if ch.isdigit())[:8]
+    if not ymd or ymd < "20260916":
+        return (
+            "他自己點的日曆：還在等 9/16 Fed（9/15～9/16 利率決策），不是看新聞做股票。"
+            "9/4：目前影響股市最大因素是 FED 是否升息。"
+            "9/7 樓下：指標龍頭要有效過前高再拉一波，等 9/16 以後可能性較大。"
+            "9/8：沒升息則已在新史新高的個股理應再表態；到時還在高檔震盪就積極調節、找新標的。"
+            "真正下一波主流要下星期才能確認。升息結果不准編"
+        )
+    bits = [
+        "他自己點的 9/16 Fed 已過。升息有沒有這顆庫沒這列，不准編新聞",
+        "回撤他的如果／就：沒升息→新高檔理應再表態；還在高檔震盪→積極調節",
+    ]
+    tape = _new_high_retract(db_path)
+    if tape:
+        bits.append(tape)
+    return "。".join(bits)
+
+
 def _overnight_bit(label: str, pct: Any, as_of: str, twii_ymd: str, miss_key: str) -> str:
     ymd = str(as_of or "")
     if pct is None:
@@ -276,6 +333,9 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
         if "ixic_pct" in us
         else "那指官方這顆庫還沒這列，那指這路先當缺、不准編"
     )
+    cal = _pointed_calendar(db_path, twii_ymd)
+    if cal:
+        bits.append(cal)
     bits.append(
         "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
@@ -479,6 +539,8 @@ def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str 
         extra_miss.append("費半這路官方沒跟上最新加權日，四路沒疊滿")
     if "那指這路先當缺" in nt:
         extra_miss.append("那指隔夜官方沒跟上最新加權日")
+    if "還在等 9/16" in nt:
+        extra_miss.append("他自己點的 9/16 Fed 還沒到，下一波主流不准裝已確認")
     if named and not brief.get("in_corpus"):
         bits.append("公開文沒點名這檔，只是觸類旁通量價，可能看錯")
     if named and miss:
@@ -535,6 +597,10 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；那指這路缺官方"
         elif "那指隔夜官方" in nest_t:
             nest_bit += "；那指隔夜有官方"
+        if "還在等 9/16" in nest_t:
+            nest_bit += "；還在等他自己點的 9/16 Fed"
+        elif "9/16 Fed 已過" in nest_t:
+            nest_bit += "；他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤"
         parts.append(nest_bit + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
@@ -586,6 +652,10 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("費半這路缺官方。")
     if "那指這路先當缺" in nest_t:
         parts.append("那指這路缺官方。")
+    if "還在等 9/16" in nest_t:
+        parts.append("還在等他自己點的 9/16 Fed，下一波主流不准裝已確認。")
+    elif "9/16 Fed 已過" in nest_t:
+        parts.append("他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤。")
     parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。")
     return _clip("".join(parts), 520)
 

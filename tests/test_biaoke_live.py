@@ -197,6 +197,8 @@ def test_live_notes_reverse_think_emc_hold():
     assert "聯發科" in SYSTEM
     assert "尚未納入 F 系列" in SYSTEM
     assert "抱著波段賺更多" in SYSTEM
+    assert "9/16" in SYSTEM
+    assert "不要看新聞" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note

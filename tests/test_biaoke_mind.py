@@ -24,6 +24,7 @@ def test_neuron_views_reread_without_ask():
     assert "四路對質" in titles
     assert "波浪對大盤" in titles
     assert "右肩／45839" in titles
+    assert "他點的日曆／國際局勢" in titles
     field = views_for_neuron("field")
     assert field and field[0][0] == "個股先看產業趨勢"
     assert "價穩量縮" in method_body("量先價行")

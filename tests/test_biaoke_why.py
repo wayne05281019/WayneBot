@@ -52,6 +52,18 @@ def test_why_building_two_not_named():
     assert "聖暉" in body
 
 
+def test_why_fed_916_is_his_calendar_not_news():
+    body = lookup("9/16 Fed 他在等什麼")
+    assert "9/16" in body
+    assert "Fed" in body or "FED" in body or "聯準會" in body
+    assert "不是看新聞" in body
+    assert "新史新高" in body or "再表態" in body
+    assert "調節" in body
+    assert "不准編" in body
+    sept = lookup("九月16")
+    assert "9/16" in sept or "Fed" in sept or "FED" in sept
+
+
 def test_why_fuqiao_and_heat_leaders():
     fu = lookup("富喬為什麼有潛力")
     assert "上游材料" in fu

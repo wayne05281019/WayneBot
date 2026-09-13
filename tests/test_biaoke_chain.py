@@ -78,6 +78,10 @@ def test_chain_market_skips_stock_tape():
     assert "45839" in think
     assert "47578" in think
     assert live["sid"] == ""
+    nest_live = next(s for s in live["steps"] if s["id"] == "nest")
+    assert "9/16" in nest_live["text"]
+    assert "還在等 9/16" in nest_live["text"]
+    assert "9/16" in think
 
 
 def test_live_notes_puts_chain_before_keyword_hits():
@@ -128,6 +132,11 @@ def test_chain_real_quotes_when_db_present():
     assert "費半" in nest["text"]
     assert "那指" in nest["text"]
     assert "不准編" in nest["text"] or "這路先當缺" in nest["text"] or "隔夜官方" in nest["text"]
+    assert "9/16" in nest["text"]
+    assert "Fed" in nest["text"] or "FED" in nest["text"]
+    assert "不是看新聞" in nest["text"]
+    assert "還在等 9/16" in nest["text"]
+    assert "9/16" in fired["think"]
 
 
 def test_field_does_not_repeat_hold_neuron():
@@ -237,6 +246,23 @@ def test_think_chains_45839_and_self_leader():
         assert "聯發科" in follow["think"] or "2454" in follow["think"]
         assert "這族龍頭是" in follow["think"]
     assert "那指" in think
+    assert "9/16" in think
+
+
+def test_pointed_calendar_retracts_after_sep16():
+    from biaoke_chain import _pointed_calendar
+
+    before = _pointed_calendar("", "20260911")
+    assert "還在等 9/16" in before
+    assert "不是看新聞" in before
+    after = _pointed_calendar("data/wayne_market.db", "20260916")
+    assert "已過" in after
+    assert "不准編新聞" in after or "不准編" in after
+    assert "回撤" in after
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    assert "奇鋐" in after or "聯亞" in after or "新高檔官方日K" in after
 
 
 def test_chain_rereads_his_views_without_keyword_ask():
@@ -248,6 +274,7 @@ def test_chain_rereads_his_views_without_keyword_ask():
     assert "量先價行" in notes
     assert "四路對質" in notes
     assert "長抱主流" in notes
+    assert "他點的日曆" in notes
     fired = fire_chain("", "台光電怎麼看")
     field = next(s for s in fired["steps"] if s["id"] == "field")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
