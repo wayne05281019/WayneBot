@@ -91,6 +91,8 @@ def test_chain_real_quotes_when_db_present():
     assert "46184" in nest["text"] or "官方收" in nest["text"]
     assert "46506" in nest["text"]
     assert "單靠" in nest["text"] or "還沒過" in nest["text"]
+    assert "台積電官方" in nest["text"]
+    assert "不數這檔段" in nest["text"]
 
 
 def test_field_does_not_repeat_hold_neuron():

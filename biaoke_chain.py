@@ -139,6 +139,20 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
                 )
     except Exception:
         pass
+    try:
+        from biaoke_brain import load_bars, volume_first_price
+
+        tsmc = load_bars(db_path, "2330", n=50) if db_path else []
+        st = volume_first_price(tsmc) if len(tsmc) >= 8 else {}
+        if st.get("close") is not None and st.get("spike_high") is not None:
+            bits.append(
+                f"台積電官方日K {st.get('date') or ''} 收 {_px(st.get('close'))} "
+                f"爆量日高 {_px(st.get('spike_high'))}＝壓、低 {_px(st.get('spike_low'))}＝撐，"
+                f"站上撐={st.get('above_support')} 過壓={st.get('broke_resistance')}；"
+                "只報量價，不數這檔段、不是個股買訊"
+            )
+    except Exception:
+        pass
     bits.append(
         "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
