@@ -39,6 +39,50 @@ def _px(val: Any) -> str:
     return f"{n:.2f}".rstrip("0").rstrip(".")
 
 
+def _chg(val: Any) -> str:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if n > 0:
+        return f"＋{n:.2f}%"
+    if n < 0:
+        return f"{n:.2f}%".replace("-", "−")
+    return "0.00%"
+
+
+def _latest_sox(db_path: str) -> Dict[str, Any]:
+    """只讀庫裡最後一筆隔夜費半。不准現抓、不准編今天沒有的點。"""
+    if not db_path:
+        return {}
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT as_of, sox_pct FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+        if not row:
+            return {}
+        as_of = str(row[0] or "").replace("-", "")[:8]
+        if not as_of:
+            return {}
+        out: Dict[str, Any] = {"as_of": as_of}
+        if row[1] is not None:
+            try:
+                out["pct"] = float(row[1])
+            except (TypeError, ValueError):
+                pass
+        return out
+    except Exception:
+        return {}
+
+
 def _clip(text: str, n: int) -> str:
     s = " ".join(str(text or "").split())
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -79,12 +123,14 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
 def _nest(db_path: str, ask: str) -> Dict[str, Any]:
     bits: List[str] = []
     ok = False
+    twii_ymd = ""
     try:
         from biaoke_brain import load_index_bars
 
         bars = load_index_bars(db_path, n=2) if db_path else []
         if bars:
             last = bars[-1]
+            twii_ymd = str(last.get("date") or "").replace("-", "")[:8]
             bits.append(
                 f"官方加權 {last.get('date') or ''} 收 {_px(last.get('close')) or '—'} "
                 f"高 {_px(last.get('high')) or '—'} 低 {_px(last.get('low')) or '—'}"
@@ -153,6 +199,21 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
             )
     except Exception:
         pass
+    sox = _latest_sox(db_path)
+    if "pct" not in sox:
+        bits.append("費半官方這顆庫還沒這列，四路先缺這路，不准編")
+    else:
+        sox_ymd = str(sox.get("as_of") or "")
+        chg = _chg(sox.get("pct"))
+        if twii_ymd and sox_ymd and sox_ymd < twii_ymd:
+            bits.append(
+                f"費半隔夜官方 {sox_ymd} {chg}；還沒對上最新加權日 {twii_ymd}，"
+                "這路先當缺、不准編今天的費半"
+            )
+        else:
+            bits.append(
+                f"費半隔夜官方 {sox_ymd} {chg}；沒費半 15 分不數段、先行不是保證"
+            )
     bits.append(
         "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
@@ -343,13 +404,20 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
         elif "還沒過他自己點的 46506" in nest_t:
             nest_bit += "；夜盤高還沒過 46506"
+        if "台積電官方" in nest_t:
+            nest_bit += "；台積電官方量價有了"
+        if "這路先當缺" in nest_t or "四路先缺這路" in nest_t:
+            nest_bit += "；費半這路缺官方"
+        elif "費半隔夜官方" in nest_t:
+            nest_bit += "；費半隔夜有官方"
         parts.append(nest_bit + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
         if "不另對" in lead_t or "自己就是" in lead_t:
             parts.append("自己就是這族龍頭。")
         elif leader.get("ok"):
-            parts.append("龍頭對得上。")
+            head = lead_t.split("（", 1)[0].strip()
+            parts.append(f"這族龍頭是 {head}。" if head else "龍頭對得上。")
         else:
             parts.append("龍頭還沒對上。")
         parts.append("量價有官方柱。" if tape.get("ok") else "這檔量價還沒齊，不准編壓撐。")

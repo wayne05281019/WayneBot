@@ -93,6 +93,8 @@ def test_chain_real_quotes_when_db_present():
     assert "單靠" in nest["text"] or "還沒過" in nest["text"]
     assert "台積電官方" in nest["text"]
     assert "不數這檔段" in nest["text"]
+    assert "費半" in nest["text"]
+    assert "不准編" in nest["text"] or "這路先當缺" in nest["text"] or "隔夜官方" in nest["text"]
 
 
 def test_field_does_not_repeat_hold_neuron():
@@ -181,6 +183,12 @@ def test_think_chains_45839_and_self_leader():
     assert "46506" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調整" in think
+    assert "台積電官方量價" in think or "台積電" in think
+    assert "費半" in think
     mtk = fire_chain(db, "聯發科怎麼看")
     assert "自己就是這族龍頭" in mtk["think"]
     assert "4/16" in mtk["think"] or "半山腰" in mtk["think"]
+    follow = fire_chain(db, "智原怎麼看")
+    if follow.get("sid") == "3035":
+        assert "聯發科" in follow["think"] or "2454" in follow["think"]
+        assert "這族龍頭是" in follow["think"]
