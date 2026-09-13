@@ -164,6 +164,9 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     assert any("迎廣盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in iei)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
     assert not any("909aaff2-51bc-4393-8a6f-ca014f7ac88f" in str(r.get("url") or "") for r in skip6416)
+    tsmc = pick_charts("2330", limit=5, public_only=True)
+    assert any("e25bcfc1-8852-431b-b463-cf05f9577ab0" in str(r.get("url") or "") for r in tsmc)
+    assert any("台積電盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tsmc)
 
 
 @pytest.mark.production_db

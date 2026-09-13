@@ -435,8 +435,6 @@ def test_twentyfourth_slice_ennoconn_350():
 
 
 def test_twentyfifth_slice_iei_6117():
-    assert slice_stop() == "2024-04-09"
-    assert next_start() == "2024-04-09"
     body = method_body("圖文時間軸第二十五段")
     assert "2024-04-09" in body
     assert "6117" in body
@@ -449,6 +447,24 @@ def test_twentyfifth_slice_iei_6117():
     assert "不是日K" in y
     ov = overview()
     assert "6117" in ov or "迎廣" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentysixth_slice_tsmc_810():
+    assert slice_stop() == "2024-04-09"
+    assert next_start() == "2024-04-09"
+    body = method_body("圖文時間軸第二十六段")
+    assert "2024-04-09" in body
+    assert "810" in body
+    assert "不是日K" in body
+    assert "816" in body
+    assert "9XX" in body
+    t = line_for("2330")
+    assert "台積電" in t
+    assert "810" in t
+    assert "816" in t
+    ov = overview()
+    assert "810" in ov or "9XX" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -549,6 +565,10 @@ def test_taitong_chipbond_official_optional():
     y09 = official_on(db, "6117", "20240409")
     assert y09 == {} or (
         abs(float(y09["high"]) - 108) < 0.01 and abs(float(y09["close"]) - 108) < 0.01
+    )
+    t09 = official_on(db, "2330", "20240409")
+    assert t09 == {} or (
+        abs(float(t09["high"]) - 820) < 0.01 and abs(float(t09["close"]) - 819) < 0.01
     )
 
 
@@ -694,6 +714,9 @@ def test_methods_html_and_names():
     iei = format_methods_html("建立所有部位持股")
     assert "迎廣" in iei and "不是日K" in iei
     assert "107" in iei and "6117" in iei
+    tsmc = format_methods_html("目標價9XX")
+    assert "台積電" in tsmc and "不是日K" in tsmc
+    assert "816" in tsmc and "810" in tsmc
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -857,3 +880,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "6117" in y25
     assert "107" in y25
     assert "迎廣" in y25
+    tsmc = fire_chain("", "目標價9XX")
+    t26 = "".join(s.get("text") or "" for s in tsmc["steps"]) + tsmc.get("think", "")
+    assert "810" in t26
+    assert "816" in t26
+    assert "9XX" in t26
