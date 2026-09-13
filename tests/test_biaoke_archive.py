@@ -41,6 +41,7 @@ _FIXTURE = """
 
 ### 🖼️ 主文附圖 (1 張)：
 - 附圖 1: https://image.cmoney.tw/attachment/post/1789000000/main.png
+- 附圖 2: https://fsv.cmoney.tw/cmstatic/t/images/article/332451/club-chart.png
 
 ### 💬 作者即時盤勢微調、問答與樓中樓指引 (2 則)
 - **[2026/9/10 上午10:40:00] (主文留言)**：矽光子最重要一檔就是聯亞
@@ -69,6 +70,8 @@ def test_parse_public_fixture_not_club():
     assert "chart.png" in nested["text"]
     main = next(p for p in blob["posts"] if p["id"] == "184499206")
     assert "main.png" in main["text"]
+    assert "fsv.cmoney.tw/cmstatic" in main["text"]
+    assert "club-chart.png" in main["text"]
 
 
 def test_parse_club_markdown_is_flagged():

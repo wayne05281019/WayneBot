@@ -40,7 +40,7 @@ _REPLY = re.compile(
     r"^- \*\*\[(.+?)\] \((.+?)\)\*\*：(.*)$"
 )
 _CHART_URL = re.compile(
-    r"https://image\.cmoney\.tw/attachment/[^\s)>\"]+",
+    r"https://(?:image\.cmoney\.tw/attachment/|fsv\.cmoney\.tw/cmstatic/)[^\s)>\"]+",
     re.I,
 )
 _AVATAR_URL = re.compile(
