@@ -67,6 +67,10 @@ _NAME_SID = {
     "泛銓": "6830",
     "雍智": "6683",
     "ABF": "8046",
+    "萬海": "2615",
+    "新興航運": "2605",
+    "新興": "2605",
+    "裕民": "2606",
 }
 _NAMES = sorted(_NAME_SID.keys(), key=len, reverse=True)
 _NAME_RE = re.compile("|".join(re.escape(n) for n in _NAMES))

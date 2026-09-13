@@ -485,6 +485,14 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
                     bit += " " + seen
             except Exception:
                 pass
+            try:
+                from biaoke_chrono import line_for as chrono_line
+
+                ch = chrono_line(sid)
+                if ch:
+                    bit += " " + ch
+            except Exception:
+                pass
         return _step("tape", bit, ok=False)
     bit = (
         f"{brief.get('sid')} {brief.get('name') or ''} "
@@ -518,6 +526,14 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
                 bit += " " + seen
         except Exception:
             pass
+        try:
+            from biaoke_chrono import line_for as chrono_line
+
+            ch = chrono_line(sid)
+            if ch:
+                bit += " " + ch
+        except Exception:
+            pass
     view = _view_line("tape", n=140)
     if view:
         bit += " " + view
@@ -548,6 +564,9 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "賣設備",
                 "過路費",
                 "AI時代",
+                "圖文時間軸",
+                "智原",
+                "萬海",
             )
         ):
             try:
@@ -560,6 +579,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "長抱主流／F4→F10／聯發科",
                     "南亞 1303 長抱或進出",
                     "洞燭先機",
+                    "圖文時間軸第一段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)
@@ -590,6 +610,14 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
             seen = format_charts_vs_official(sid, db_path, hold=True, limit=2)
             if seen:
                 bits.append(seen)
+        except Exception:
+            pass
+        try:
+            from biaoke_chrono import line_for as chrono_line
+
+            ch = chrono_line(sid)
+            if ch:
+                bits.append(ch)
         except Exception:
             pass
     view = _view_line("hold", n=150)
