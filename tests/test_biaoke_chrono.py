@@ -419,8 +419,6 @@ def test_twentythird_slice_fengda_114_pressure():
 
 
 def test_twentyfourth_slice_ennoconn_350():
-    assert slice_stop() == "2024-04-02"
-    assert next_start() == "2024-04-09"
     body = method_body("圖文時間軸第二十四段")
     assert "2024-04-02" in body
     assert "365" in body and "350" in body
@@ -433,6 +431,24 @@ def test_twentyfourth_slice_ennoconn_350():
     assert "352" in e
     ov = overview()
     assert "350" in ov or "回測 365" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_twentyfifth_slice_iei_6117():
+    assert slice_stop() == "2024-04-09"
+    assert next_start() == "2024-04-09"
+    body = method_body("圖文時間軸第二十五段")
+    assert "2024-04-09" in body
+    assert "6117" in body
+    assert "不是日K" in body
+    assert "107" in body
+    assert "建立所有部位" in body or "上車" in body
+    y = line_for("6117")
+    assert "迎廣" in y
+    assert "107" in y
+    assert "不是日K" in y
+    ov = overview()
+    assert "6117" in ov or "迎廣" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -529,6 +545,10 @@ def test_taitong_chipbond_official_optional():
     e02 = official_on(db, "6414", "20240402")
     assert e02 == {} or (
         abs(float(e02["low"]) - 345) < 0.01 and abs(float(e02["close"]) - 345.5) < 0.01
+    )
+    y09 = official_on(db, "6117", "20240409")
+    assert y09 == {} or (
+        abs(float(y09["high"]) - 108) < 0.01 and abs(float(y09["close"]) - 108) < 0.01
     )
 
 
@@ -671,6 +691,9 @@ def test_methods_html_and_names():
     hold350 = format_methods_html("350應該守得住")
     assert "樺漢" in hold350 and "不是日K" in hold350
     assert "352" in hold350 and "350" in hold350
+    iei = format_methods_html("建立所有部位持股")
+    assert "迎廣" in iei and "不是日K" in iei
+    assert "107" in iei and "6117" in iei
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -829,3 +852,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "350" in e24
     assert "352" in e24
     assert "守得住" in e24
+    iei = fire_chain("", "建立所有部位持股")
+    y25 = "".join(s.get("text") or "" for s in iei["steps"]) + iei.get("think", "")
+    assert "6117" in y25
+    assert "107" in y25
+    assert "迎廣" in y25
