@@ -324,8 +324,6 @@ def test_seventeenth_slice_quanta_hold_300():
 
 
 def test_eighteenth_slice_guangsheng_half_year():
-    assert slice_stop() == "2024-03-29"
-    assert next_start() == "2024-04-01"
     body = method_body("圖文時間軸第十八段")
     assert "2024-03-29" in body
     assert "整理半年" in body
@@ -338,6 +336,24 @@ def test_eighteenth_slice_guangsheng_half_year():
     assert "140.5" in g
     ov = overview()
     assert "整理半年" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+
+
+def test_nineteenth_slice_quanta_289_291():
+    assert slice_stop() == "2024-04-01"
+    assert next_start() == "2024-04-01"
+    body = method_body("圖文時間軸第十九段")
+    assert "2024-04-01" in body
+    assert "289.5" in body and "291" in body
+    assert "不是日K" in body
+    assert "290.5" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "多空分界" in q
+    assert "290.5" in q
+    assert "282.5" in q
+    ov = overview()
+    assert "289.5" in ov or "多空分界" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 
@@ -410,6 +426,10 @@ def test_taitong_chipbond_official_optional():
     g29 = official_on(db, "6442", "20240329")
     assert g29 == {} or (
         abs(float(g29["high"]) - 142.5) < 0.01 and abs(float(g29["close"]) - 140.5) < 0.01
+    )
+    q01 = official_on(db, "2382", "20240401")
+    assert q01 == {} or (
+        abs(float(q01["low"]) - 281.5) < 0.01 and abs(float(q01["close"]) - 282.5) < 0.01
     )
 
 
@@ -534,6 +554,9 @@ def test_methods_html_and_names():
     half = format_methods_html("整理半年")
     assert "光聖" in half and "不是日K" in half
     assert "140.5" in half and "161.5" in half
+    bound = format_methods_html("多空分界")
+    assert "廣達" in bound and "不是日K" in bound
+    assert "290.5" in bound and "289.5" in bound
 
 
 def test_chain_zhiyuan_uses_chrono():
@@ -664,3 +687,8 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "整理半年" in hblob
     assert "140.5" in hblob
     assert "161.5" in hblob
+    bound = fire_chain("", "多空分界")
+    bblob = "".join(s.get("text") or "" for s in bound["steps"]) + bound.get("think", "")
+    assert "289.5" in bblob
+    assert "290.5" in bblob
+    assert "291" in bblob
