@@ -657,6 +657,17 @@ def test_sixtyseventh_methods_asus_false_break():
     assert any(t == "圖文時間軸第六十七段" for t, _b in hold)
 
 
+def test_sixtyeighth_methods_eps_313_mystery_is_quanta():
+    html = format_methods_html("第一季EPS 3.13是一個神秘數字")
+    assert "廣達" in html
+    assert "截圖約 287" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第六十八段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第六十八段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
