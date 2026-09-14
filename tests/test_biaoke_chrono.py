@@ -1969,6 +1969,38 @@ def test_sixtysixth_slice_emc_dark_before_dawn():
     )
 
 
+def test_sixtyseventh_slice_asus_false_break_clevo():
+    body = method_body("圖文時間軸第六十七段")
+    assert "2024-05-15" in body
+    assert "假突破" in body
+    assert "藍天連三根漲停" in body
+    assert "不是日K" in body
+    assert "截圖約 58" in body
+    assert "截圖約 501" in body
+    c = line_for("2362")
+    assert "藍天" in c
+    assert "截圖約 58" in c
+    a = line_for("2357")
+    assert "華碩" in a
+    assert "截圖約 501" in a
+    ov = overview()
+    assert "假突破" in ov
+    html = format_methods_html("現在的價格是假突破")
+    assert "華碩" in html and "藍天" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "現在的價格是假突破")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "假突破" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    a15 = official_on(db, "2357", "20240515")
+    assert a15 == {} or (
+        abs(float(a15["close"]) - 498) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

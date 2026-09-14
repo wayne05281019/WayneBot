@@ -767,6 +767,25 @@ def test_sixtysixth_pick_charts_emc_dark_before_dawn():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_sixtyseventh_pick_charts_asus_clevo_not_mixed():
+    from biaoke_charts import pick_charts
+
+    snip_c = "109304d1-ce6c-457f-9900-3bf52e91b411"
+    snip_a = "53d75100-477f-4dc0-bfe7-2219a1d3bc68"
+    c = pick_charts("2362", limit=8, public_only=True)
+    assert any(snip_c in str(r.get("url") or "") for r in c)
+    a = pick_charts("2357", limit=8, public_only=True)
+    assert any(snip_a in str(r.get("url") or "") for r in a)
+    rows_asus = pick_charts("2357", limit=8, public_only=True)
+    assert not any(snip_c in str(r.get("url") or "") for r in rows_asus)
+    rows_clevo = pick_charts("2362", limit=8, public_only=True)
+    assert not any(snip_a in str(r.get("url") or "") for r in rows_clevo)
+    for sid in ("2382", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip_c in str(r.get("url") or "") for r in rows)
+        assert not any(snip_a in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
