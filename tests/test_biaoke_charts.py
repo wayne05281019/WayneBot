@@ -683,6 +683,18 @@ def test_sixtieth_pick_charts_right_shoulder_intraday():
         assert not any(snip_t in str(r.get("url") or "") for r in rows)
 
 
+def test_sixtyfirst_pick_charts_asus_not_shipping():
+    from biaoke_charts import pick_charts
+
+    snip = "5e96754a-7f28-452d-b6a8-bc7f7720aad0"
+    a = pick_charts("2357", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in a)
+    assert any("13:05約471" in str(r.get("note") or "") for r in a)
+    for sid in ("2609", "2615", "2382", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

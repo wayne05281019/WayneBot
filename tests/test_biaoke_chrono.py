@@ -8,7 +8,7 @@ from biaoke_facts import names_in_ask
 
 def test_current_slice_window():
     assert slice_stop() == "2024-05-10"
-    assert next_start() == "2024-05-10"
+    assert next_start() == "2024-05-13"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1781,6 +1781,37 @@ def test_sixtieth_slice_right_shoulder_intraday():
     t10 = official_on(db, "2383", "20240510")
     assert t10 == {} or (
         abs(float(t10["low"]) - 413) < 0.01 and abs(float(t10["close"]) - 416) < 0.01
+    )
+
+
+def test_sixtyfirst_slice_asus_neckline_not_shipping():
+    body = method_body("圖文時間軸第六十一段")
+    assert "2024-05-10" in body
+    assert "主力作價頸線" in body
+    assert "461-462" in body
+    assert "而不是455" in body
+    assert "不是日K" in body
+    assert "截圖約 471" in body
+    s = line_for("2357")
+    assert "華碩" in s
+    assert "截圖約 471" in s
+    assert "不是日K" in s
+    ov = overview()
+    assert "主力作價頸線" in ov
+    html = format_methods_html("主力作價頸線")
+    assert "華碩" in html
+    assert "截圖約 471" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "主力作價頸線")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "461-462" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    a10 = official_on(db, "2357", "20240510")
+    assert a10 == {} or (
+        abs(float(a10["low"]) - 464) < 0.01 and abs(float(a10["close"]) - 470.5) < 0.01
     )
 
 
