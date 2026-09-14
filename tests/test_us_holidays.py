@@ -45,7 +45,7 @@ def test_banner_labor_day_then_prior_close():
     assert closed["prev_ymd"] == "20260904"
     lines = holiday_banner_lines(closed)
     assert lines[0] == "20260907 美股勞動節休市"
-    assert lines[1] == "上一收盤 20260904"
+    assert lines[1] == "美股上一收盤 20260904"
 
 
 def test_banner_thanksgiving():

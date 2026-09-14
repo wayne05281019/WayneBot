@@ -1202,6 +1202,7 @@ def test_format_screen_market_outlook_html_plain_language():
             "vix": 15.2,
         },
         rotated_names=["電腦"],
+        now=datetime(2026, 9, 4, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
         flow_maps={
             "just_rotated": {"電腦及週邊設備業": 1},
             "just_rotated_rows": [{"industry": "電腦及週邊設備業", "three_net": 192637}],
@@ -1290,11 +1291,48 @@ def test_outlook_tx_foreign_lagged_date_is_plain():
             },
         },
         us_snap={"ok": False},
+        now=datetime(2026, 9, 7, 10, 0, tzinfo=ZoneInfo("Asia/Taipei")),
     )
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/07")
     assert "資料 2026/09/04（五）" in html
     assert "(20260904)" not in html
     assert "昨收" not in html.split("\n", 1)[0]
+
+
+def test_outlook_monday_morning_title_is_today_not_friday_close():
+    """週一 06:30 海選標題是今天，上一根台股收盤另寫，不要看起來像上週五的舊報。"""
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260911",
+        snap={
+            "ok": True,
+            "as_of": "20260911",
+            "close": 46184.85,
+            "chg1_pct": -1.61,
+            "vs_ma20_pct": -0.2,
+            "regime": "neutral",
+            "falling_risk": 20,
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "ixic_pct": 0.96,
+            "sox_pct": 1.81,
+            "vix": 15.84,
+            "vix_pct": -11.21,
+        },
+        now=datetime(2026, 9, 14, 6, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    first = html.split("\n", 1)[0]
+    assert first.startswith("<b>WayneBot 海選</b>　2026/09/14（一）")
+    assert "2026/09/11（五）" not in first
+    assert "昨收" not in first
+    assert "台股上一收盤　2026/09/11（五）" in html
+    assert "20260913 美股週末休市" in html
+    assert "美股上一收盤 20260911" in html
+    assert "加權收盤" in html
 
 
 def test_outlook_just_rotated_chips_vs_electronics_drop():

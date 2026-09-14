@@ -3555,7 +3555,7 @@ def format_screen_market_outlook_html(
 ) -> str:
     """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
     from tg_layout import headline_lines, html_escape, wrap_cjk_lines
-    from trading_calendar import format_trading_date_zh
+    from trading_calendar import format_trading_date_zh, taipei_calendar_ymd
 
     if snap is None:
         try:
@@ -3605,10 +3605,18 @@ def format_screen_market_outlook_html(
     )
     if tw_closed:
         action = "台股今天休市；下面是上一收盤，不是今天會開盤。"
-    head = headline_lines(
-        f"<b>WayneBot 海選</b>　{html_escape(format_trading_date_zh(ref))}" if ref else "<b>WayneBot 海選</b>",
-        "＝＝大盤狀況＝＝",
-    )
+    as_of_ymd = str(ref or "").replace("-", "")[:8]
+    today_ymd = taipei_calendar_ymd(now)
+    title_bits = [
+        f"<b>WayneBot 海選</b>　{html_escape(format_trading_date_zh(today_ymd))}"
+        if today_ymd
+        else "<b>WayneBot 海選</b>"
+    ]
+    if as_of_ymd and as_of_ymd != today_ymd:
+        title_bits.append(
+            f"台股上一收盤　{html_escape(format_trading_date_zh(as_of_ymd))}"
+        )
+    head = headline_lines(*title_bits, "＝＝大盤狀況＝＝")
     body: List[str] = []
     body.extend(html_escape(x) for x in tw_banner)
     body.extend(html_escape(x) for x in holiday_lines)

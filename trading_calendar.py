@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, time as dt_time, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 _WEEKDAY_ZH = "一二三四五六日"
 
@@ -85,6 +87,23 @@ def format_trading_date_zh(ymd: str) -> str:
         return s
     wd = _WEEKDAY_ZH[d.weekday()]
     return f"{s[:4]}/{s[4:6]}/{s[6:8]}（{wd}）"
+
+
+def taipei_calendar_ymd(now=None) -> str:
+    """這則海選／早報的日曆日：現在打開的那一天，不是庫內上一根收盤。"""
+    dt = now
+    if dt is None:
+        try:
+            from config import taipei_now
+
+            dt = taipei_now()
+        except Exception:
+            dt = datetime.now(TAIPEI)
+    if getattr(dt, "tzinfo", None) is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    return dt.strftime("%Y%m%d")
 
 
 def format_md_weekday(ymd: str) -> str:

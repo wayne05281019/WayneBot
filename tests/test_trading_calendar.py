@@ -281,3 +281,13 @@ def test_daytrade_list_heading_tail_says_what_to_do_now():
     assert not is_tw_tail_session(morning)
     assert is_tw_tail_session(tail)
     assert not is_tw_tail_session(after)
+
+
+def test_taipei_calendar_ymd_is_today_not_last_close():
+    from trading_calendar import taipei_calendar_ymd
+
+    taipei = ZoneInfo("Asia/Taipei")
+    mon = datetime(2026, 9, 14, 6, 30, tzinfo=taipei)
+    assert taipei_calendar_ymd(mon) == "20260914"
+    sun = datetime(2026, 9, 13, 23, 10, tzinfo=taipei)
+    assert taipei_calendar_ymd(sun) == "20260913"
