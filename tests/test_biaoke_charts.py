@@ -466,7 +466,7 @@ def test_fortyfifth_pick_charts_tx_not_tsmc_hank_canon():
     assert not any("eadff9cf-d2dd-4e94-9ea4-7c82df1c4ccd" in str(r.get("url") or "") for r in skip3402)
     skip2374 = pick_charts("2374", limit=8, public_only=True)
     assert not any("a9e194fd-ba63-432c-8366-88f688d244c5" in str(r.get("url") or "") for r in skip2374)
-    tx = pick_charts("TX", limit=8, public_only=True)
+    tx = charts_for("TX")
     assert any("ffa9234a-1de5-48b4-9f81-aa7ba9a60e8c" in str(r.get("url") or "") for r in tx)
     assert any("台指期夜盤19650" in str(r.get("note") or "") and "不對圖" in str(r.get("note") or "") for r in tx)
 
