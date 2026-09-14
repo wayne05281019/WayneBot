@@ -513,3 +513,13 @@ def test_thirtyninth_chain_unnamed_374():
     assert "不是日K" in blob
     assert "截圖約 38.6" in blob or "38.45" in blob
     assert "佳能" in blob
+
+
+def test_fortieth_chain_unnamed_117():
+    fired = fire_chain("", "先掛117-117.5")
+    assert fired.get("named") is False
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "先掛117-117.5" in blob or "先買1/3" in blob
+    assert "不是日K" in blob
+    assert "截圖約 118" in blob or "115.0" in blob or "115" in blob
+    assert "漢科" in blob

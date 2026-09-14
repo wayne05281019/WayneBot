@@ -288,6 +288,19 @@ def test_thirtyninth_methods_canon_374():
     assert any(t == "圖文時間軸第三十九段" for t, _b in hold)
 
 
+def test_fortieth_methods_hank_117():
+    html = format_methods_html("先掛117-117.5")
+    assert "漢科" in html
+    assert "不是日K" in html
+    assert "截圖約 118" in html
+    assert "先買1/3" in html
+    assert "先買一半" not in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

@@ -990,6 +990,44 @@ def test_thirtyninth_slice_canon_374_half():
     )
 
 
+def test_fortieth_slice_hank_117_third():
+    assert slice_stop() == "2024-04-16"
+    assert next_start() == "2024-04-16"
+    body = method_body("圖文時間軸第四十段")
+    assert "2024-04-16" in body
+    assert "先掛117-117.5" in body
+    assert "兩個價位" in body
+    assert "先買1/3" in body
+    assert "先買一半" not in body
+    assert "不是日K" in body
+    assert "截圖約 118" in body
+    assert "漢科" in body
+    hk = line_for("3402")
+    assert "漢科" in hk
+    assert "截圖約 118" in hk
+    assert "不是日K" in hk
+    assert "先掛117-117.5" in hk
+    ov = overview()
+    assert "先掛117-117.5" in ov or "先買1/3" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("先掛117-117.5")
+    assert "漢科" in html
+    assert "不是日K" in html
+    assert "截圖約 118" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "先掛117-117.5")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "先掛117-117.5" in blob or "先買1/3" in blob
+    assert "截圖約 118" in blob or "115.0" in blob or "115" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    h16 = official_on(db, "3402", "20240416")
+    assert h16 == {} or (
+        abs(float(h16["low"]) - 113.0) < 0.01 and abs(float(h16["close"]) - 115.0) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

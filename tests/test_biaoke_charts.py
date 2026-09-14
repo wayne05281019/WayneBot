@@ -370,6 +370,20 @@ def test_thirtyninth_pick_charts_canon_374_not_6416():
     assert not any("d9f126f0-5318-4e29-be3b-966a1cb1f8de" in str(r.get("url") or "") for r in skip5310)
 
 
+def test_fortieth_pick_charts_hank_117_not_6416():
+    from biaoke_charts import pick_charts
+
+    hk = pick_charts("3402", limit=3, public_only=True)
+    assert any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in hk)
+    assert any("先掛117-117.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in hk)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in skip5310)
+    skip2374 = pick_charts("2374", limit=5, public_only=True)
+    assert not any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in skip2374)
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

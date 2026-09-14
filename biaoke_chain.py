@@ -209,6 +209,8 @@ def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[s
 
 
 def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
+    sid = ""
+    name = ""
     try:
         from biaoke_brain import is_market_question, resolve_stock
 
@@ -216,18 +218,23 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
         if is_market_question(ask) and not hits:
             return "", ""
         if hits:
-            return str(hits[0].get("stock_id") or ""), str(hits[0].get("stock_name") or "")
+            sid = str(hits[0].get("stock_id") or "")
+            name = str(hits[0].get("stock_name") or "")
     except Exception:
-        pass
-    try:
-        from biaoke_facts import names_in_ask
+        sid, name = "", ""
+    if not sid:
+        try:
+            from biaoke_facts import names_in_ask
 
-        names = names_in_ask(ask)
-        if names:
-            return str(names[0][0]), str(names[0][1])
-    except Exception:
-        pass
-    return "", ""
+            names = names_in_ask(ask)
+            if names:
+                sid, name = str(names[0][0]), str(names[0][1])
+        except Exception:
+            sid, name = "", ""
+    # 先掛117-117.5 這種兩個價位不是股票代號。
+    if sid and re.search(rf"(?<!\d){re.escape(sid)}\s*-\s*\d", ask or ""):
+        return "", ""
+    return sid, name
 
 
 def _nest(db_path: str, ask: str) -> Dict[str, Any]:
@@ -655,6 +662,9 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "早盤在37.4",
                 "今日10點之前多空交界區",
                 "先買一半",
+                "先掛117-117.5",
+                "兩個價位",
+                "先買1/3",
             )
         ):
             try:
@@ -706,6 +716,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "圖文時間軸第三十七段",
                     "圖文時間軸第三十八段",
                     "圖文時間軸第三十九段",
+                    "圖文時間軸第四十段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)
