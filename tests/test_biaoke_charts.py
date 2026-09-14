@@ -636,6 +636,21 @@ def test_fiftyseventh_pick_charts_asus_not_quanta():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_fiftyeighth_pick_charts_alchip_not_funai():
+    from biaoke_charts import pick_charts
+
+    snip = "f67e2dfe-1bc5-4e20-8d4f-f20f7f54f02b"
+    a = pick_charts("3661", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in a)
+    assert any(
+        "10:22約2520" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
+        for r in a
+    )
+    for sid in ("2736", "2357", "2382", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
