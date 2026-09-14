@@ -98,6 +98,9 @@ def test_sep10_battlefield_quotes_flag_without_formula():
     assert "8/21" in battle_line("3017")
     assert "中線多頭" in battle_line("2408")
     assert "光學" in battle_line("3008")
+    assert "ASIC" in battle_line("3443")
+    assert "43500" in battle_line("3443")
+    assert "43500" in battle_line("3017")
 
 
 def test_longhold_chain_why_not_f10_or_mediatek():

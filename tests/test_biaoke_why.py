@@ -102,6 +102,15 @@ def test_colloquial_questions_still_hit_chain():
     assert "最近三篇" in body2 or "護城河" in body2 or "細微波" in body2
 
 
+def test_why_sep14_important_comment_summary():
+    body = lookup("創意應該是第一檔噴嗎")
+    assert "ASIC" in body or "風向球" in body
+    assert "43500" in body
+    assert "頭肩底" in body
+    assert "不是看壞" in body or "1～3 個月" in body or "1~3個月" in body
+    assert "路人" in body
+
+
 def test_live_notes_puts_why_chain_first():
     from biaoke_live import live_notes
 

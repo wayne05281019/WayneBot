@@ -62,6 +62,18 @@ def test_parse_user_ids_skips_other_people_and_utm_links():
     assert parse_user_article_ids(html) == ["184499206", "184431393"]
 
 
+def test_parse_user_ids_resolves_nuxt_minified_latest():
+    html = (
+        '<script>window.__NUXT__=(function(r,aP){return {articles:['
+        '{id:aP,creatorId:r,x:1},'
+        '{id:"184545002",creatorId:r,x:2},'
+        '{id:"184553319",creatorId:o,x:3}'
+        ']}}("25263","184578674"));</script>'
+        '<a href="/forum/article/184578674">visible</a>'
+    )
+    assert parse_user_article_ids(html) == ["184578674", "184545002"]
+
+
 def test_parse_article_html_body_and_tags():
     html = """
     <meta name="author" content="期股多空雙飆客">

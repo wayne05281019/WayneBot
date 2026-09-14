@@ -330,8 +330,12 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
     latest_replies = list(reversed(replies[-max(0, int(n_reply)) :])) if n_reply else []
     lines: List[str] = []
-    for p in latest:
-        body = _oral_body(str(p.get("text") or ""), 96)
+    for i, p in enumerate(latest):
+        raw = str(p.get("text") or "")
+        body = _oral_body(raw, 220 if i == 0 else 96)
+        if i == 0 and "重要留言看法分享" in raw:
+            extra = raw.split("重要留言看法分享", 1)[-1]
+            body = (body + " 重要留言看法分享 " + _oral_body(extra, 260)).strip()
         if not body:
             continue
         day = str(p.get("date") or "").strip()

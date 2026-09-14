@@ -180,19 +180,23 @@ _TOPICS: List[Dict[str, Any]] = [
         "id": "sep14-end",
         "keys": re.compile(
             r"(本波指數修正的末端|8/14.{0,4}8/19|Apple股王|光學族群|"
-            r"降低2/3|C波下殺C-1|南亞科中線多頭|不要隨便亂殺低)"
+            r"降低2/3|C波下殺C-1|南亞科中線多頭|不要隨便亂殺低|"
+            r"重要留言看法分享|頭肩底|43500|創意應該是第一檔|ASIC.{0,8}風向球)"
         ),
         "q": "9/14 這則指數末端、光學跟聯亞怎麼分？",
         "a": (
-            "2026-09-14 09:51 主文 184578674。"
+            "2026-09-14 09:51 主文 184578674，後來改主文補「重要留言看法分享」。"
             "60 分鐘他說最後還是 1-2-3-4-5 不是 abc。最差 C-1，等 C-2 轉 C-3 再出清，目前言之過早。"
             "9/11 樓下才說若出現 C-2 轉 C-3 會發文——這則還沒確認轉折，只說更可能像 8/14～8/19，已到本波指數修正末端。"
+            "改主文：消息面多跌一段，本來 60 分 abc／15 分 5 段已結束，變成 60 分 5 段＝本波修正末端；回測頭肩底頸線，型態沒破。不數段。"
+            "記憶體、ABF 不是看壞，整理 1～3 個月跑不掉；同期不如布局相同或更低位階的 PCB 指標股或上游材料。"
+            "創意應是第一檔噴出去，ASIC 變成大盤先行風向球、取代旺矽。創意、健策（加上奇鋐更好）噴出去，才確認大盤不會 C 波下殺到 43500。43500 是他原文，不是官方收。"
             "光學族群（Apple 股王）不是光通訊：光學漲勢結束、周線 abc、至少降 2/3，整理 2 個月跑不掉。"
             "光通訊 InP 龍頭聯亞回到次級四浪、中期支撐區，中線多頭未破壞。"
             "奇鋐如同 8/21、8/24，多頭沒破；健策比奇鋐強看型態。"
             "南亞科中線多頭被破壞，記憶體持續整理像 ABF。"
             "PCB 7 月最後轉弱，很多還在底部，不要亂殺低。"
-            "盤中發文，不把當日截圖當官方收。不數 60 分段。不是買訊。"
+            "盤中發文，不把當日截圖當官方收。路人樓下不收。不是買訊。"
         ),
     },
     {
@@ -971,13 +975,15 @@ def latest_thread_digest(*, posts: int = 3, replies: int = 12) -> str:
         if pid in under:
             under[pid].append(r)
     bits: List[str] = [
-        "最近三篇主文＋樓下自回（他幾乎不回三篇之前）："
+        "最近三篇主文＋樓下自回（他幾乎不回三篇之前；最新在前）："
     ]
-    for p in latest:
+    ordered = list(reversed(latest))
+    for i, p in enumerate(ordered):
         pid = str(p.get("id") or "")
+        clip_n = 800 if i == 0 else 180
         bits.append(
             f"{p.get('date') or ''} {p.get('time') or ''} 主文："
-            + _clip(str(p.get("text") or ""), 180)
+            + _clip(str(p.get("text") or ""), clip_n)
         )
         kids = under.get(pid) or []
         kids.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("time") or "")))
@@ -1095,7 +1101,7 @@ def lookup(ask: str, *, limit: int = 4) -> str:
     ):
         digest = latest_thread_digest()
         if digest and digest not in bits:
-            bits.append(_clip(digest, 900))
+            bits.append(_clip(digest, 1600))
     return "\n".join(x for x in bits if x)
 
 

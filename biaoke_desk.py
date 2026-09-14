@@ -202,6 +202,27 @@ def _load_archive() -> Dict[str, Any]:
     return blob if blob.get("posts") else {}
 
 
+def _keep_richer_text(old: str, new: str) -> str:
+    """overlay 截短時不要蓋掉 catchup 已補上的改主文（例如「重要留言看法分享」）。"""
+    a = str(old or "").strip()
+    b = str(new or "").strip()
+    if not b:
+        return a
+    if not a:
+        return b
+    if b in a and len(a) > len(b) + 20:
+        return a
+    stem = b.rstrip("。．.，,；; ")
+    if stem and a.startswith(stem) and len(a) > len(b) + 20:
+        return a
+    return b
+
+
+def catchup_seed_rows() -> List[Dict[str, Any]]:
+    """git catchup：1709 之後的公開主文＋樓下自回。"""
+    return [copy.deepcopy(r) for r in _load_catchup()]
+
+
 def _put_post(
     posts: List[Dict[str, Any]],
     by_id: Dict[str, Dict[str, Any]],
@@ -269,8 +290,7 @@ def load_corpus(db_path: Optional[str] = None) -> Dict[str, Any]:
             old.update(row)
             if not (old.get("tags") or []) and keep_tags:
                 old["tags"] = keep_tags
-            if not str(old.get("text") or "").strip() and keep_text:
-                old["text"] = keep_text
+            old["text"] = _keep_richer_text(keep_text, str(old.get("text") or ""))
     posts.sort(
         key=lambda p: (
             str(p.get("date") or ""),

@@ -71,6 +71,10 @@ _NUXT_FEED = re.compile(
 _NUXT_ID_CREATOR = re.compile(
     r'\{id:"(\d{6,})",creatorId:([A-Za-z_$][\w$]*)'
 )
+_NUXT_IIFE = re.compile(r"window\.__NUXT__=\(function\(([^)]*)\)\{")
+_NUXT_ART_ITEM = re.compile(
+    r'\{id:(?:"(\d{6,})"|([A-Za-z_$][\w$]*)),creatorId:(?:"(\d+)"|([A-Za-z_$][\w$]*))'
+)
 _CHART_URL = re.compile(
     r"https://image\.cmoney\.tw/attachment/[^\s\"'<>]+",
     re.I,
@@ -185,20 +189,141 @@ def page_is_author_article(html_text: str) -> bool:
     return AUTHOR_NAME in head or f"/forum/user/{AUTHOR_ID}" in head
 
 
+def _split_js_args(src: str) -> List[str]:
+    """切開 Nuxt IIFE 參數。字串／括號內的逗號不要切。"""
+    args: List[str] = []
+    buf: List[str] = []
+    depth = 0
+    in_str = ""
+    esc = False
+    for ch in src or "":
+        if in_str:
+            buf.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == in_str:
+                in_str = ""
+            continue
+        if ch in ('"', "'"):
+            in_str = ch
+            buf.append(ch)
+            continue
+        if ch in "([{":
+            depth += 1
+            buf.append(ch)
+            continue
+        if ch in ")]}":
+            depth -= 1
+            buf.append(ch)
+            continue
+        if ch == "," and depth == 0:
+            args.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(ch)
+    if buf:
+        args.append("".join(buf).strip())
+    return args
+
+
+def _js_literal(raw: str) -> Any:
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if s.startswith('"') and s.endswith('"'):
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            return s[1:-1]
+    if s in ("true", "!0"):
+        return True
+    if s in ("false", "!1"):
+        return False
+    if s in ("null", "void 0"):
+        return None
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    return s
+
+
+def _nuxt_iife_env(html_text: str) -> Dict[str, Any]:
+    """解開 window.__NUXT__=(function(aP,...){...}("184578674",...))。失敗就空。"""
+    raw = html_text or ""
+    m = _NUXT_IIFE.search(raw)
+    if not m:
+        return {}
+    params = [p.strip() for p in m.group(1).split(",") if p.strip()]
+    if not params:
+        return {}
+    start = m.end()
+    script_end = raw.find("</script>", start)
+    chunk = raw[start : script_end if script_end > 0 else start + 400000]
+    pos = chunk.rfind("}(")
+    if pos < 0:
+        return {}
+    args_src = chunk[pos + 2 :].strip()
+    args_src = re.sub(r"\)+\s*;?\s*$", "", args_src)
+    args = _split_js_args(args_src)
+    env: Dict[str, Any] = {}
+    for key, val in zip(params, args):
+        env[key] = _js_literal(val)
+    return env
+
+
+def _nuxt_token(raw: str, env: Dict[str, Any]) -> str:
+    tok = str(raw or "").strip().strip('"')
+    if not tok:
+        return ""
+    if tok in env and env[tok] not in (None, ""):
+        return str(env[tok])
+    return tok
+
+
 def parse_user_article_ids(html_text: str) -> List[str]:
     """只收飆客自己個人頁的主文 id。側欄、別人文章、utm 分享連結不要。
 
     只吃 Nuxt SSR 的 articles[]（帶 creatorId，可濾掉側欄）。
     純 href 不夠——側欄／推薦文也是 /forum/article/…。
+    最新一篇常被縮成 id:aP（數字在 IIFE 參數裡），不能只認 id:"184…"。
     """
     raw = html_text or ""
+    start = raw.find("articles:[")
+    if start < 0:
+        return []
+    env = _nuxt_iife_env(raw)
+    chunk = raw[start : start + 180000]
+    ids: List[str] = []
+    seen = set()
+    owner_tok = ""
+    owner_val = ""
+    for qid, vid, qcid, vcid in _NUXT_ART_ITEM.findall(chunk):
+        aid_tok = qid or vid
+        cid_tok = qcid or vcid
+        aid = _nuxt_token(aid_tok, env)
+        cid = _nuxt_token(cid_tok, env)
+        if not re.fullmatch(r"\d{6,}", aid):
+            continue
+        if not owner_tok:
+            owner_tok = cid_tok
+            owner_val = cid
+        same = cid_tok == owner_tok or (owner_val and cid == owner_val)
+        if not same:
+            continue
+        if aid in seen:
+            continue
+        seen.add(aid)
+        ids.append(aid)
+        if len(ids) >= 20:
+            break
+    if ids:
+        return ids
     m = _NUXT_FEED.search(raw)
     if not m:
         return []
     owner = m.group(2)
     chunk = raw[m.start() : m.start() + 180000]
-    ids: List[str] = []
-    seen = set()
     for aid, cid in _NUXT_ID_CREATOR.findall(chunk):
         if cid != owner or len(aid) <= 6:
             continue

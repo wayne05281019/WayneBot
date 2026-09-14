@@ -106,7 +106,14 @@ def test_sep14_index_end_not_optical_comm():
     from biaoke_desk import load_corpus
 
     blob = load_corpus(None)
-    assert any(str(p.get("id") or "") == "184578674" for p in blob["posts"])
+    hit = next(p for p in blob["posts"] if str(p.get("id") or "") == "184578674")
+    assert "重要留言看法分享" in (hit.get("text") or "")
+    assert "43500" in (hit.get("text") or "")
+    assert "創意" in (hit.get("text") or "")
+    html3 = format_methods_html("創意應該是第一檔")
+    assert "ASIC" in html3 or "風向球" in html3
+    assert "43500" in html3
+    assert "頭肩底" in html3
 
 
 def test_methods_cover_wash_three_days_and_right_shoulder():

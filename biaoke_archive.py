@@ -403,6 +403,24 @@ def seed_biaoke_archive(db_path: str, *, force: bool = False) -> int:
             new = str(r.get("text") or "")
             if text_gained_chart(old, new):
                 todo.append(r)
+    try:
+        from biaoke_desk import catchup_seed_rows
+
+        for r in catchup_seed_rows():
+            aid = str(r.get("id") or "")
+            if not aid:
+                continue
+            old = existing_text.get(aid)
+            new = str(r.get("text") or "")
+            if old is None:
+                todo.append(r)
+                existing_text[aid] = new
+                continue
+            if new and len(new) > len(old):
+                todo.append(r)
+                existing_text[aid] = new
+    except Exception:
+        pass
     if not todo:
         return 0
     return upsert_biaoke_posts(db_path, todo)

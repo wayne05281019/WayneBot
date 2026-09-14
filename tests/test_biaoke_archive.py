@@ -154,3 +154,25 @@ def test_seed_refreshes_when_fsv_added(tmp_path):
     conn.commit()
     conn.close()
     assert seed_biaoke_archive(db) >= 1
+
+
+def test_seed_writes_catchup_when_overlay_is_shorter(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "w.db")
+    assert seed_biaoke_archive(db) >= 1709
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE biaoke_posts SET text=? WHERE id=?",
+        ("短的舊主文沒有重要留言", "184578674"),
+    )
+    conn.commit()
+    n = seed_biaoke_archive(db)
+    assert n >= 1
+    text = conn.execute(
+        "SELECT text FROM biaoke_posts WHERE id=?",
+        ("184578674",),
+    ).fetchone()[0]
+    conn.close()
+    assert "重要留言看法分享" in text
+    assert "43500" in text

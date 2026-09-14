@@ -163,6 +163,8 @@ def test_live_notes_always_has_latest_posts_and_replies():
     assert "最新發文" in note
     assert "最新樓下" in note
     assert "禁止 17000" in note
+    assert "重要留言" in note or "43500" in note
+    assert "創意" in note
     wave = live_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
     assert "細微波" in wave or "48218" in wave
     assert "45839" in wave
@@ -199,6 +201,8 @@ def test_live_notes_reverse_think_emc_hold():
     assert "抱著波段賺更多" in SYSTEM
     assert "9/16" in SYSTEM
     assert "不要看新聞" in SYSTEM
+    assert "重要留言" in SYSTEM
+    assert "43500" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note

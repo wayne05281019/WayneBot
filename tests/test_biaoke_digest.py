@@ -109,19 +109,19 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
     assert [b.text for b in kb.keyboard[0]][-1] == "飆大 2"
 
 
-def test_latest_focus_is_sep11_not_july_bwave():
+def test_latest_focus_is_sep14_not_july_bwave():
     html = format_latest_focus("")
     assert "庫 " in html
+    assert "2026-09-14" in html
+    assert "09:51" in html
+    assert "重要留言" in html or "43500" in html or "創意" in html
     assert "2026-09-11" in html
     assert "17:49" in html
     assert "46506" in html
-    assert "45839" in html
-    assert "08:43" in html
     assert "你可能會問" in html
     assert "直接打字或語音" in html
     assert "位階他不講死" in html
     assert "產業趨勢" in html
-    assert "47578" in html
     assert "模糊的精確" not in html
     assert "安全邊際" not in html
     assert "和碩" not in html
@@ -132,8 +132,7 @@ def test_latest_focus_is_sep11_not_july_bwave():
     assert "今天飆大重點就是" not in html
     assert "語料" not in html
     assert "量先價行" not in html
-    assert "47578" in html or "護城河" in html or "樓下" in html
-    assert len(html) < 1800
+    assert len(html) < 2400
 
 
 def test_old_inbox_not_counted_as_unread(tmp_path):

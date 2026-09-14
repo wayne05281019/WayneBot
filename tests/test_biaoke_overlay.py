@@ -30,9 +30,9 @@ class _Fake:
         if "user/25263" in url:
             # 個人頁必須有 Nuxt articles[]（純 href 會被當成側欄丟掉）
             r.text = (
-                '<script>window.__NUXT__=(function(){return {articles:['
-                '{id:"184431393",creatorId:r,x:1}'
-                ']}})</script>'
+                '<script>window.__NUXT__=(function(r,aP){return {articles:['
+                '{id:aP,creatorId:r,x:1}'
+                ']}}("25263","184431393"));</script>'
                 '<a href="/forum/article/184431393">x</a>'
             )
         else:
@@ -189,3 +189,27 @@ def test_unchanged_ingest_skips_walk(tmp_path, monkeypatch):
     )
     assert again["ok"]
     assert again.get("skipped_walk") is True
+
+
+def test_overlay_shorter_text_keeps_catchup_edit(tmp_path):
+    from biaoke_desk import load_corpus_cache_clear
+
+    db = str(tmp_path / "w.db")
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": "184578674",
+                "date": "2026-09-14",
+                "time": "09:51",
+                "kind": "post",
+                "tags": ["聯亞"],
+                "text": "1.\t我先對大盤做最初淺分析，大盤60分鐘線最後還是走1-2-3-4-5不是abc。",
+            }
+        ],
+    )
+    load_corpus_cache_clear()
+    fused = load_corpus(db)
+    hit = next(p for p in fused["posts"] if str(p.get("id")) == "184578674")
+    assert "重要留言看法分享" in (hit.get("text") or "")
+    assert "43500" in (hit.get("text") or "")
