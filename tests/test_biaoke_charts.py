@@ -182,9 +182,12 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     assert any("迎廣盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in iei)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
     assert not any("909aaff2-51bc-4393-8a6f-ca014f7ac88f" in str(r.get("url") or "") for r in skip6416)
-    tsmc = pick_charts("2330", limit=5, public_only=True)
-    assert any("e25bcfc1-8852-431b-b463-cf05f9577ab0" in str(r.get("url") or "") for r in tsmc)
-    assert any("台積電盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tsmc)
+    assert_snip_owned(
+        "2330",
+        "e25bcfc1-8852-431b-b463-cf05f9577ab0",
+        ("台積電盤中走勢", "不是日K"),
+        ("6416", "5310"),
+    )
 
 
 def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
@@ -703,22 +706,12 @@ def test_sixtyfourth_pick_charts_quanta_282_290():
 
 
 def test_sixtyfifth_pick_charts_shipping_not_tsmc():
-    from biaoke_charts import pick_charts
-
     snip_w = "8089d63a-9bc7-4676-8200-f081a8ac92f2"
     snip_y = "082fe1e0-9a33-4a03-a871-614e2ab2afdf"
     snip_e = "b1e9f107-4112-44b7-8073-c84ed0138a0a"
-    w = pick_charts("2615", limit=8, public_only=True)
-    assert any(snip_w in str(r.get("url") or "") for r in w)
-    y = pick_charts("2609", limit=8, public_only=True)
-    assert any(snip_y in str(r.get("url") or "") for r in y)
-    e = pick_charts("2603", limit=8, public_only=True)
-    assert any(snip_e in str(r.get("url") or "") for r in e)
-    for sid in ("2330", "3162", "2382", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip_w in str(r.get("url") or "") for r in rows)
-        assert not any(snip_y in str(r.get("url") or "") for r in rows)
-        assert not any(snip_e in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2615", snip_w, "10:21約70.4", ("2330", "3162", "2382", "6416", "5310"))
+    assert_snip_owned("2609", snip_y, "10:20約71.4", ("2330", "3162", "2382", "6416", "5310"))
+    assert_snip_owned("2603", snip_e, "10:20約206.5", ("2330", "3162", "2382", "6416", "5310"))
 
 
 def test_sixtysixth_pick_charts_emc_dark_before_dawn():
