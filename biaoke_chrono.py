@@ -9535,6 +9535,13 @@ def _reply_index() -> Dict[str, Tuple[Tuple[str, str], ...]]:
         if layer > 2:
             continue
         txt = str(row.get("text") or "").replace("\n", " ").strip()
+        if (row.get("kind") or "") == "reply":
+            try:
+                from biaoke_ingest import spoken_text
+
+                txt = spoken_text(txt)
+            except Exception:
+                pass
         if len(txt) < 8:
             continue
         by.setdefault(parent, []).append((str(row.get("date") or ""), txt))

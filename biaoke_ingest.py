@@ -109,7 +109,11 @@ _VOICE_MARK = re.compile(
     r"(台指期|細微波|夜盤|費半|破線|洗盤|長線主流|下降軌道|"
     r"15\s*分|60\s*分|量先價行|右肩|護城河)"
 )
-_CITE_RE = re.compile(r'^\s*[「『"“](.+?)[」』"”]\s+(.+)$', re.S)
+_CITE_RE = re.compile(r'^\s*[「『"“](.+?)[」』"”]\s*(.+)$', re.S)
+_USER_HREF = re.compile(
+    r'href="(?:https://www\.cmoney\.tw)?/forum/user/(\d+)"',
+    re.I,
+)
 
 def split_author_cite(text: str) -> tuple[str, str]:
     """他習慣用引號包留言者的話，後面才是自己回答。引號裡不是他的判斷。"""
@@ -124,6 +128,12 @@ def split_author_cite(text: str) -> tuple[str, str]:
     if len(cite) < 2 or len(spoken) < 2:
         return "", raw
     return cite, spoken
+
+
+def spoken_text(text: str) -> str:
+    """回文只取他自己答的部分；引號裡的路人話丟掉。"""
+    _cite, spoken = split_author_cite(text)
+    return spoken or str(text or "").strip()
 
 
 def _session() -> requests.Session:
@@ -549,6 +559,12 @@ def _reply_noise(body: str) -> bool:
     return False
 
 
+def _html_comment_member_id(chunk: str) -> str:
+    """這則留言塊的作者＝第一個 /forum/user/ 連結。正文提到他的名字不算他。"""
+    m = _USER_HREF.search(chunk or "")
+    return m.group(1) if m else ""
+
+
 def parse_author_replies(
     html_text: str,
     *,
@@ -559,6 +575,7 @@ def parse_author_replies(
 
     第一層＝直接回主文。第二層＝回在別人留言裡。兩層都要。
     他自己附的 attachment 圖一併留下。公開頁沒 SSR 就空列表。
+    認人只看會員號，不看正文有沒有他的名字。
     """
     raw = html_text or ""
     if f"/forum/user/{AUTHOR_ID}" not in raw and AUTHOR_NAME not in raw:
@@ -570,7 +587,7 @@ def parse_author_replies(
     out: List[Dict[str, Any]] = []
     seen = set()
     for ch in chunks:
-        if f"/forum/user/{AUTHOR_ID}" not in ch and AUTHOR_NAME not in ch:
+        if _html_comment_member_id(ch) != AUTHOR_ID:
             continue
         if (
             "articleContent__baseCont" in ch
@@ -742,7 +759,9 @@ def _api_nickname(item: Any) -> str:
 
 
 def _api_is_author(item: Any) -> bool:
-    return _api_member_id(item) == AUTHOR_ID or AUTHOR_NAME in _api_nickname(item)
+    if _api_member_id(item) == AUTHOR_ID:
+        return True
+    return _api_nickname(item) == AUTHOR_NAME
 
 
 def _api_text(item: Any) -> str:

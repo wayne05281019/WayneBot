@@ -352,7 +352,15 @@ def _cite_posts(posts: Sequence[Dict[str, Any]]) -> str:
     if not posts:
         return ""
     p = posts[0]
-    snip = html_escape(re.sub(r"\s+", " ", str(p.get("text") or ""))[:90])
+    raw = str(p.get("text") or "")
+    if (p.get("kind") or "") == "reply":
+        try:
+            from biaoke_ingest import spoken_text
+
+            raw = spoken_text(raw)
+        except Exception:
+            pass
+    snip = html_escape(re.sub(r"\s+", " ", raw)[:90])
     if not snip:
         return ""
     return f"他 {html_escape(p.get('date'))} 寫過：{snip}"

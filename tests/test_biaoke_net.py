@@ -44,3 +44,24 @@ def test_match_posts_walks_neighbors_not_the_whole_pile():
     assert any(d.startswith("2023-12") for d in dates)
     assert any(d.startswith("2026-") for d in dates)
     assert any("3035" in (p.get("_sids") or []) for p in zhi)
+
+
+def test_related_posts_do_not_score_bystander_quote():
+    posts = [
+        {
+            "id": "r1",
+            "kind": "reply",
+            "date": "2026-09-14",
+            "tags": [],
+            "text": "「要買南亞科」沒有不太妙，目前測底",
+        },
+        {
+            "id": "p1",
+            "kind": "post",
+            "date": "2026-09-14",
+            "tags": [],
+            "text": "目前已經到本波指數修正的末端",
+        },
+    ]
+    rel = related_posts("南亞科", posts, limit=4)
+    assert all(str(p.get("id")) != "r1" for p in rel)

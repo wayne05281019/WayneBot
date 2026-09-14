@@ -42,6 +42,13 @@ def _keys(ask: str) -> List[str]:
 def score_post(post: Dict[str, Any], keys: Sequence[str], ask_families: Sequence[str]) -> int:
     tags = [str(t) for t in (post.get("tags") or [])]
     text = str(post.get("text") or "")
+    if (post.get("kind") or "") == "reply":
+        try:
+            from biaoke_ingest import spoken_text
+
+            text = spoken_text(text)
+        except Exception:
+            pass
     blob = text + " " + " ".join(tags)
     score = 0
     for k in keys:

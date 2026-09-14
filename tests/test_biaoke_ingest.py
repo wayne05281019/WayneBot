@@ -41,6 +41,13 @@ def test_split_author_cite_quote_is_bystander():
     cite2, spoken2 = split_author_cite("目前已經到本波指數修正的末端")
     assert cite2 == ""
     assert "末端" in spoken2
+    cite3, spoken3 = split_author_cite("「感覺夜盤不太妙」沒有不太妙")
+    assert cite3 == "感覺夜盤不太妙"
+    assert spoken3.startswith("沒有不太妙")
+    from biaoke_ingest import spoken_text
+
+    assert "夜盤不太妙" not in spoken_text("「感覺夜盤不太妙」沒有不太妙")
+    assert spoken_text("沒有不太妙") == "沒有不太妙"
 
 
 def test_parse_user_ids_keeps_order():
@@ -417,6 +424,26 @@ def test_parse_author_replies_keeps_nested_inside_bystander_with_chart():
     assert "怎麼辦" not in rows[0]["text"]
 
 
+def test_parse_author_replies_name_in_bystander_body_is_not_him():
+    html = """
+    <div class="articleComment">
+      <a href="/forum/user/111">路人甲</a>
+      <div class="articleComment__content">期股多空雙飆客 你看夜盤不太妙嗎</div>
+      <span>昨天 21:40</span>
+    </div>
+    <div class="articleReply">
+      <a href="/forum/user/25263">期股多空雙飆客</a>
+      <div class="articleReply__content">「感覺夜盤不太妙」沒有不太妙</div>
+      <span>昨天 21:50</span>
+    </div>
+    """
+    now = datetime(2026, 9, 14, 22, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    rows = parse_author_replies(html, parent_id="184578674", now=now)
+    assert len(rows) == 1
+    assert "沒有不太妙" in rows[0]["text"]
+    assert "你看夜盤" not in rows[0]["text"]
+
+
 def test_parse_author_replies_skips_css_noise():
     html = """
     <div class="articleReply">
@@ -575,6 +602,30 @@ def test_parse_api_author_replies_keeps_layer1_c2_warning():
     assert rows[0]["layer"] == 1
     assert "C-2轉C-3" in rows[0]["text"]
     assert "謝謝飆大" not in rows[0]["text"]
+
+
+def test_parse_api_author_replies_nickname_containing_him_is_not_him():
+    payload = [
+        {
+            "id": "fan",
+            "memberId": 999,
+            "nickname": "期股多空雙飆客的學生",
+            "content": {"text": "老師我覺得夜盤不太妙"},
+            "createTime": "2026-09-14T13:40:00Z",
+        },
+        {
+            "id": "him",
+            "memberId": 25263,
+            "nickname": "期股多空雙飆客",
+            "content": {"text": "「感覺夜盤不太妙」沒有不太妙"},
+            "createTime": "2026-09-14T13:50:00Z",
+        },
+    ]
+    rows = parse_api_author_replies(payload, parent_id="184578674")
+    assert len(rows) == 1
+    assert rows[0]["id"].endswith("chim")
+    assert "沒有不太妙" in rows[0]["text"]
+    assert "老師我覺得" not in " ".join(r["text"] for r in rows)
 
 
 def test_cmoney_token_strips_quotes_and_bearer(monkeypatch):
