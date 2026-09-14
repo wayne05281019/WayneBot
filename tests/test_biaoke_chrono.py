@@ -2186,6 +2186,22 @@ def test_seventythird_slice_index_21100_is_not_tsmc():
     assert line_for("2330") == "" or "1fa3e9ae" not in line_for("2330")
 
 
+def test_seventyfourth_slice_index_wedge_is_not_tsmc():
+    assert_chrono_slice(
+        "圖文時間軸第七十四段",
+        "2024-05-21",
+        ("下降楔形", "不是大盤", "截圖約 838"),
+        "TWII",
+        "加權",
+        "截圖約 838",
+        "這三個交易日型態應該是下降楔形",
+    )
+    w = line_for("TWII")
+    assert "7bdf5e68" not in line_for("2330")
+    ov = overview()
+    assert "下降楔形" in ov
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

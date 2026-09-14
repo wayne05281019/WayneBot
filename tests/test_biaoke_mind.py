@@ -725,6 +725,16 @@ def test_seventythird_methods_index_21100_not_tsmc():
     assert any(t == "圖文時間軸第七十三段" for t, _b in hold)
 
 
+def test_seventyfourth_methods_index_wedge_not_tsmc():
+    html = format_methods_html("這三個交易日型態應該是下降楔形")
+    assert "下降楔形" in html
+    assert "截圖約 838" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第七十四段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第七十四段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

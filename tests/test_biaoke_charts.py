@@ -791,6 +791,16 @@ def test_seventythird_pick_charts_index_21100_not_tsmc():
     )
 
 
+def test_seventyfourth_pick_charts_index_wedge_not_tsmc():
+    snip = "7bdf5e68-2755-4e51-bc46-db0ef8c07e29"
+    assert_snip_owned(
+        "TWII",
+        snip,
+        "主文大盤下降楔形",
+        ("2330", "2382", "6416", "5310"),
+    )
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
