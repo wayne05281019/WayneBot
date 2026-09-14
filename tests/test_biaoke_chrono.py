@@ -1906,6 +1906,41 @@ def test_sixtyfourth_slice_quanta_282_290():
     )
 
 
+def test_sixtyfifth_slice_shipping_intraday_not_tsmc():
+    body = method_body("圖文時間軸第六十五段")
+    assert "2024-05-15" in body
+    assert "要賺快錢" in body
+    assert "不是日K" in body
+    assert "截圖約 70.4" in body
+    assert "截圖約 71.4" in body
+    assert "截圖約 206.5" in body
+    w = line_for("2615")
+    assert "萬海" in w
+    assert "截圖約 70.4" in w
+    y = line_for("2609")
+    assert "陽明" in y
+    assert "截圖約 71.4" in y
+    e = line_for("2603")
+    assert "長榮" in e
+    assert "截圖約 206.5" in e
+    ov = overview()
+    assert "要賺快錢" in ov
+    html = format_methods_html("要賺快錢")
+    assert "萬海" in html and "陽明" in html and "長榮" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "要賺快錢")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "萬海風險最高" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    w15 = official_on(db, "2615", "20240515")
+    assert w15 == {} or (
+        abs(float(w15["close"]) - 70.5) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

@@ -736,6 +736,25 @@ def test_sixtyfourth_pick_charts_quanta_282_290():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_sixtyfifth_pick_charts_shipping_not_tsmc():
+    from biaoke_charts import pick_charts
+
+    snip_w = "8089d63a-9bc7-4676-8200-f081a8ac92f2"
+    snip_y = "082fe1e0-9a33-4a03-a871-614e2ab2afdf"
+    snip_e = "b1e9f107-4112-44b7-8073-c84ed0138a0a"
+    w = pick_charts("2615", limit=8, public_only=True)
+    assert any(snip_w in str(r.get("url") or "") for r in w)
+    y = pick_charts("2609", limit=8, public_only=True)
+    assert any(snip_y in str(r.get("url") or "") for r in y)
+    e = pick_charts("2603", limit=8, public_only=True)
+    assert any(snip_e in str(r.get("url") or "") for r in e)
+    for sid in ("2330", "3162", "2382", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip_w in str(r.get("url") or "") for r in rows)
+        assert not any(snip_y in str(r.get("url") or "") for r in rows)
+        assert not any(snip_e in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
