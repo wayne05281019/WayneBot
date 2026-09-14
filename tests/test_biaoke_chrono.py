@@ -7,7 +7,7 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-07"
+    assert slice_stop() == "2024-05-08"
     assert next_start() == "2024-05-08"
 
 def test_second_slice_stops_feb3_2024():
@@ -1577,6 +1577,39 @@ def test_fiftyfourth_slice_emc_right_shoulder_intraday():
     e07 = official_on(db, "2383", "20240507")
     assert e07 == {} or (
         abs(float(e07["low"]) - 409) < 0.01 and abs(float(e07["close"]) - 420) < 0.01
+    )
+
+
+def test_fiftyfifth_slice_alchip_no_bottom_fish():
+    body = method_body("圖文時間軸第五十五段")
+    assert "2024-05-08" in body
+    assert "抄底3661" in body
+    assert "2150" in body
+    assert "不是日K" in body
+    assert "截圖約 2760" in body
+    assert "不數段" in body
+    s = line_for("3661")
+    assert "世芯" in s
+    assert "抄底3661" in s
+    assert "截圖約 2760" in s
+    assert "不是日K" in s
+    ov = overview()
+    assert "抄底3661" in ov
+    assert "2760" in ov
+    html = format_methods_html("跌幅型態滿足價位在2150")
+    assert "世芯" in html
+    assert "截圖約 2760" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "跌幅型態滿足價位在2150")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "2150" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    a07 = official_on(db, "3661", "20240507")
+    assert a07 == {} or (
+        abs(float(a07["low"]) - 2725) < 0.01 and abs(float(a07["close"]) - 2760) < 0.01
     )
 
 

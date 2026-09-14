@@ -511,6 +511,17 @@ def test_fiftyfourth_methods_emc_right_shoulder():
     assert any(t == "圖文時間軸第五十四段" for t, _b in hold)
 
 
+def test_fiftyfifth_methods_alchip_no_bottom_fish():
+    html = format_methods_html("跌幅型態滿足價位在2150")
+    assert "世芯" in html
+    assert "截圖約 2760" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十五段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十五段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

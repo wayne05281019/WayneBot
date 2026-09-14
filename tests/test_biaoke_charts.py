@@ -591,6 +591,21 @@ def test_fiftyfourth_pick_charts_emc_right_shoulder_not_others():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_fiftyfifth_pick_charts_alchip_not_others():
+    from biaoke_charts import pick_charts
+
+    snip = "171f0639-5819-4329-bbb5-96d4e7e8e3fe"
+    a = pick_charts("3661", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in a)
+    assert any(
+        "13:30約2760" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
+        for r in a
+    )
+    for sid in ("2382", "3035", "2383", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
