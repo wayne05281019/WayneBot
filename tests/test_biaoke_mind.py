@@ -679,6 +679,17 @@ def test_sixtyninth_methods_asus_far_from_target_hold():
     assert any(t == "圖文時間軸第六十九段" for t, _b in hold)
 
 
+def test_seventieth_methods_quanta_attack_cost():
+    html = format_methods_html("昨天是做回測甩轎")
+    assert "廣達" in html
+    assert "截圖約 286.5" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第七十段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第七十段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

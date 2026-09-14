@@ -562,18 +562,20 @@ def test_fiftysecond_pick_charts_quanta_not_others():
 
 
 def test_fiftythird_pick_charts_quanta_min_target_not_others():
-    from biaoke_charts import pick_charts
+    from biaoke_charts import charts_for, pick_charts
 
     snip = "5efc30e4-a857-49d0-a8ff-13a007847d8d"
-    q = pick_charts("2382", limit=8, public_only=True)
+    q = charts_for("2382")
     assert any(snip in str(r.get("url") or "") for r in q)
     assert any(
         "09:42約272.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
         for r in q
     )
     for sid in ("3231", "6669", "3234", "6442", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
+        rows = charts_for(sid)
         assert not any(snip in str(r.get("url") or "") for r in rows)
+        rows_p = pick_charts(sid, limit=32, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows_p)
 
 
 def test_fiftyfourth_pick_charts_emc_right_shoulder_not_others():
@@ -809,6 +811,23 @@ def test_sixtyninth_pick_charts_asus_far_from_target_not_quanta():
     for sid in ("2382", "2383", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
+def test_seventieth_pick_charts_quanta_attack_cost_not_daily_k():
+    from biaoke_charts import charts_for, pick_charts
+
+    snip = "c6dac0ec-b44c-49ae-9e5b-0fe7d8efba71"
+    q = charts_for("2382")
+    assert any(snip in str(r.get("url") or "") for r in q)
+    assert any(
+        "09:23約286.5" in str(r.get("note") or "") and snip in str(r.get("url") or "")
+        for r in q
+    )
+    for sid in ("2357", "2383", "6416", "5310"):
+        rows = charts_for(sid)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+        rows_p = pick_charts(sid, limit=32, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows_p)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():

@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-16"
-    assert next_start() == "2024-05-17"
+    assert slice_stop() == "2024-05-17"
+    assert next_start() == "2024-05-18"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -2060,6 +2060,41 @@ def test_sixtyninth_slice_asus_far_from_target_hold():
     a16 = official_on(db, "2357", "20240516")
     assert a16 == {} or (
         abs(float(a16["high"]) - 520) < 0.01 and abs(float(a16["close"]) - 516) < 0.01
+    )
+
+
+def test_seventieth_slice_quanta_attack_cost_intraday():
+    body = method_body("圖文時間軸第七十段")
+    assert "2024-05-17" in body
+    assert "主力攻擊成本就是3/29" in body
+    assert "270-273" in body
+    assert "回測甩轎" in body
+    assert "不是日K" in body
+    assert "不是3/29那根日K" in body
+    assert "截圖約 286.5" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "截圖約 286.5" in q
+    ov = overview()
+    assert "270-273" in ov
+    html = format_methods_html("昨天是做回測甩轎")
+    assert "廣達" in html
+    assert "截圖約 286.5" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "昨天是做回測甩轎")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "270-273" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q17 = official_on(db, "2382", "20240517")
+    assert q17 == {} or (
+        abs(float(q17["high"]) - 289) < 0.01 and abs(float(q17["close"]) - 286) < 0.01
+    )
+    q29 = official_on(db, "2382", "20240329")
+    assert q29 == {} or (
+        abs(float(q29["high"]) - 298) < 0.01 and abs(float(q29["low"]) - 276.5) < 0.01
     )
 
 
