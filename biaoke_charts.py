@@ -335,6 +335,26 @@ def _event_snip_maps() -> tuple:
         return {}, {}
 
 
+@lru_cache(maxsize=1)
+def _event_alias_and_own() -> tuple:
+    """新股名從 ledger 長出別名與盤中走勢歸屬。"""
+    alias: Dict[str, str] = {}
+    own: List[tuple] = []
+    try:
+        from biaoke_chrono import auto_slice_events
+
+        for e in auto_slice_events():
+            name = str(e.get("name") or "").strip()
+            sid = str(e.get("sid") or "").strip()
+            if not name or not sid:
+                continue
+            alias[name] = sid
+            own.append((f"{name}盤中走勢", sid))
+    except Exception:
+        pass
+    return alias, tuple(own)
+
+
 def _snip_note(url: str) -> str:
     u = url or ""
     notes, _ticks = _event_snip_maps()
@@ -382,6 +402,7 @@ def extract_tickers(
     for sid in _snip_tickers(url):
         _add_sid(found, sid, valid)
     names = dict(_ALIAS)
+    names.update(_event_alias_and_own()[0])
     if name_to_sid:
         names.update(name_to_sid)
     text = (ocr or "") + "\n" + (blob or "")
@@ -526,6 +547,7 @@ def charts_for(sid: str) -> List[Dict[str, Any]]:
 def load_name_map(db_path: str = "") -> Dict[str, str]:
     """官方股名→代號。前華科對不到就不編。"""
     out = dict(_ALIAS)
+    out.update(_event_alias_and_own()[0])
     path = db_path or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "data", "wayne_market.db"
     )
@@ -785,7 +807,7 @@ def pick_charts(
             n = max(n, 95)
         if str(row.get("kind") or "") == "screenshot":
             n += 10
-        for hint, own in _NOTE_OWN:
+        for hint, own in list(_NOTE_OWN) + list(_event_alias_and_own()[1]):
             if hint in note and own and own != str(sid):
                 n -= 120
                 break
