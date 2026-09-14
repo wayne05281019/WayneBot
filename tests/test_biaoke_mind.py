@@ -420,6 +420,18 @@ def test_fortysixth_methods_huang_peishuo():
     assert any(t == "圖文時間軸第四十六段" for t, _b in hold)
 
 
+def test_fortyseventh_methods_old_ai_wistron():
+    html = format_methods_html("小時線站上119")
+    assert "緯創" in html
+    assert "截圖約 115" in html
+    assert "不數段" in html
+    assert "優先佈局金像電" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十七段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十七段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

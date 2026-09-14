@@ -471,6 +471,18 @@ def test_fortysixth_pick_charts_twii_not_stocks():
     assert not any("5d2ca298-069f-44c9-adb9-c0a07bb715a2" in str(r.get("url") or "") for r in skip5310)
 
 
+def test_fortyseventh_pick_charts_wistron_not_quanta_gold_emc():
+    from biaoke_charts import pick_charts
+
+    snip = "28244ab1-8764-4f52-8417-79798406448f"
+    w = pick_charts("3231", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in w)
+    assert any("小時線還沒站上119" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in w)
+    for sid in ("2382", "2368", "2383", "3017", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
