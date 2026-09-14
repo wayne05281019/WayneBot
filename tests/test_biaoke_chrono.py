@@ -7,7 +7,7 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-09"
+    assert slice_stop() == "2024-05-10"
     assert next_start() == "2024-05-10"
 
 def test_second_slice_stops_feb3_2024():
@@ -1712,6 +1712,41 @@ def test_fiftyeighth_slice_alchip_switch_asus():
     a09 = official_on(db, "3661", "20240509")
     assert a09 == {} or (
         abs(float(a09["low"]) - 2500) < 0.01 and abs(float(a09["close"]) - 2625) < 0.01
+    )
+
+
+def test_fiftyninth_slice_leader_without_wistron_chart():
+    body = method_body("圖文時間軸第五十九段")
+    assert "2024-05-10" in body
+    assert "6669是領頭羊" in body
+    assert "不是日K" in body
+    assert "截圖約 275" in body
+    assert "截圖約 417" in body
+    e = line_for("8210")
+    assert "勤誠" in e
+    assert "截圖約 275" in e
+    assert "不是日K" in e
+    t = line_for("2383")
+    assert "台光電" in t
+    assert "截圖約 417" in t
+    w = line_for("6669")
+    assert "領頭羊" in w
+    assert "不是緯穎" in w or "不對圖" in w
+    ov = overview()
+    assert "6669是領頭羊" in ov
+    html = format_methods_html("早盤洗盤是將沒信心籌碼洗乾淨")
+    assert "勤誠" in html and "台光電" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "早盤洗盤是將沒信心籌碼洗乾淨")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "6669是領頭羊" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    e10 = official_on(db, "8210", "20240510")
+    assert e10 == {} or (
+        abs(float(e10["low"]) - 267) < 0.01 and abs(float(e10["close"]) - 287.5) < 0.01
     )
 
 

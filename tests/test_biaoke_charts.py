@@ -651,6 +651,21 @@ def test_fiftyeighth_pick_charts_alchip_not_funai():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_fiftyninth_pick_charts_ennoconn_emc_not_leader():
+    from biaoke_charts import pick_charts
+
+    snip_e = "23219170-a90a-4d45-a3bc-4896dc578cef"
+    snip_t = "5b5ed874-9577-4296-98e6-1eb759affb15"
+    e = pick_charts("8210", limit=8, public_only=True)
+    assert any(snip_e in str(r.get("url") or "") for r in e)
+    t = pick_charts("2383", limit=8, public_only=True)
+    assert any(snip_t in str(r.get("url") or "") for r in t)
+    for sid in ("6669", "2382", "3231", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip_e in str(r.get("url") or "") for r in rows)
+        assert not any(snip_t in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
