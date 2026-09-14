@@ -83,6 +83,9 @@ def test_methods_html_uses_why_chain():
     html = format_methods_html("46506 怎麼來")
     assert "台指" in html
     assert "20260910" in html or "2026-09-10" in html
+    html3 = format_methods_html("Apple股王漲勢結束了嗎")
+    assert "光學" in html3
+    assert "2/3" in html3 or "降 2/3" in html3
     html2 = format_methods_html("台光電為何能這麼篤定")
     assert "2026-04-16" in html2
     assert "3930" in html2

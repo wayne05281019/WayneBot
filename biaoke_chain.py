@@ -384,6 +384,10 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             "光通訊",
             "下飄旗",
             "破線",
+            "Apple",
+            "光學",
+            "殺低",
+            "末端",
         )
     )
     if named:
@@ -413,6 +417,7 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             bits.append(
                 "下一個台光電他最看好聯亞及建築兩檔；聯亞＝矽光子風向球，不是再找一檔 CCL。"
                 "建築兩檔沒點名代號。"
+                "2026-09-14：InP 龍頭回到次級四浪、中期支撐區，中線多頭結構未破壞。"
             )
         elif sid == "2454":
             bits.append(
@@ -424,7 +429,7 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             from biaoke_mind import match_methods
 
             for title, body in match_methods(ask, limit=3):
-                if title in ("個股先看產業趨勢", "去年年底", "9/10 主戰場"):
+                if title in ("個股先看產業趨勢", "去年年底", "9/10 主戰場", "9/14 指數末端"):
                     bits.append(_clip(body, 280))
         except Exception:
             pass

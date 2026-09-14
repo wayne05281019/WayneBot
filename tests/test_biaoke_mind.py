@@ -25,8 +25,10 @@ def test_neuron_views_reread_without_ask():
     assert "波浪對大盤" in titles
     assert "右肩／45839" in titles
     assert "他點的日曆／國際局勢" in titles
+    assert "9/14 指數末端" in titles
     field = views_for_neuron("field")
     assert field and field[0][0] == "個股先看產業趨勢"
+    assert any(t == "9/14 指數末端" for t, _b in field)
     assert any(t == "洞燭先機" for t, _b in field)
     assert "很少人提" in method_body("洞燭先機")
     assert "1000" in method_body("洞燭先機")
@@ -34,6 +36,9 @@ def test_neuron_views_reread_without_ask():
     assert "下飄旗" in method_body("9/10 主戰場")
     assert "不透漏" in method_body("9/10 主戰場")
     assert "散熱" in method_body("9/10 主戰場")
+    assert "末端" in method_body("9/14 指數末端")
+    assert "光學" in method_body("9/14 指數末端")
+    assert "聯亞" in method_body("9/14 指數末端")
     assert "價穩量縮" in method_body("量先價行")
     tape = views_for_neuron("tape")
     assert any(t == "量先價行" for t, _b in tape)
@@ -85,6 +90,23 @@ def test_methods_cover_long_hold_f10_and_mediatek():
     assert "勿輕易調節" in wave
     assert "抱著波段賺更多" in wave
     assert "對不到" in wave
+
+
+def test_sep14_index_end_not_optical_comm():
+    html = format_methods_html("Apple股王")
+    assert "光學" in html
+    assert "光通訊" in html
+    assert "降低" in html or "2/3" in html or "降 2/3" in html
+    assert "聯亞" in html
+    assert "不數" in html
+    html2 = format_methods_html("本波指數修正的末端")
+    assert "8/14" in html2
+    assert "C-1" in html2
+    assert "言之過早" in html2
+    from biaoke_desk import load_corpus
+
+    blob = load_corpus(None)
+    assert any(str(p.get("id") or "") == "184578674" for p in blob["posts"])
 
 
 def test_methods_cover_wash_three_days_and_right_shoulder():
