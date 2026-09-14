@@ -133,6 +133,12 @@ def test_sep14_index_end_not_optical_comm():
     assert "PCB不要亂動" in texts
     assert "富喬再度回到支撐區" in texts
     assert "嚴格不能算光通訊" in texts
+    assert "再一次測底" in texts
+    assert "短線築底" in texts
+    html6 = format_methods_html("感覺夜盤不太妙")
+    assert "測底" in html6
+    assert "短線築底" in html6
+    assert "不是買訊" in html6
 
 
 def test_methods_cover_wash_three_days_and_right_shoulder():

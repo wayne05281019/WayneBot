@@ -116,6 +116,10 @@ def test_why_sep14_important_comment_summary():
     assert "不能算" in lgl or "不算" in lgl
     fu = lookup("富喬再度回到支撐區")
     assert "支撐" in fu
+    retest = lookup("感覺夜盤不太妙")
+    assert "測底" in retest
+    assert "短線築底" in retest
+    assert "21:50" in retest or "2026-09-14" in retest
 
 
 def test_live_notes_puts_why_chain_first():
