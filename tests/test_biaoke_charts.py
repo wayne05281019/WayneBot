@@ -755,6 +755,18 @@ def test_sixtyfifth_pick_charts_shipping_not_tsmc():
         assert not any(snip_e in str(r.get("url") or "") for r in rows)
 
 
+def test_sixtysixth_pick_charts_emc_dark_before_dawn():
+    from biaoke_charts import pick_charts
+
+    snip = "bf1db5dc-a2de-4b60-b121-645c32838250"
+    t = pick_charts("2383", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in t)
+    assert any("10:45約421" in str(r.get("note") or "") for r in t)
+    for sid in ("2382", "2330", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

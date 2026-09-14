@@ -1941,6 +1941,34 @@ def test_sixtyfifth_slice_shipping_intraday_not_tsmc():
     )
 
 
+def test_sixtysixth_slice_emc_dark_before_dawn():
+    body = method_body("圖文時間軸第六十六段")
+    assert "2024-05-15" in body
+    assert "黎明前的黑暗" in body
+    assert "不是日K" in body
+    assert "截圖約 421" in body
+    t = line_for("2383")
+    assert "台光電" in t
+    assert "截圖約 421" in t
+    ov = overview()
+    assert "黎明前的黑暗" in ov
+    html = format_methods_html("最後的黎明前的黑暗")
+    assert "台光電" in html
+    assert "截圖約 421" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "最後的黎明前的黑暗")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "黎明前的黑暗" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    t15 = official_on(db, "2383", "20240515")
+    assert t15 == {} or (
+        abs(float(t15["high"]) - 426) < 0.01 and abs(float(t15["close"]) - 420.5) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
