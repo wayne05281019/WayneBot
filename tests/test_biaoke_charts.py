@@ -771,6 +771,16 @@ def test_seventyfirst_pick_charts_asus_last_entry_not_quanta():
     )
 
 
+def test_seventysecond_pick_charts_emc_three_soldiers_not_3167():
+    snip = "fc2da086-1a6d-4ca4-bd09-0690a67dab80"
+    assert_snip_owned(
+        "2383",
+        snip,
+        "11:35約447.5",
+        ("3167", "2382", "6416", "5310"),
+    )
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

@@ -2147,6 +2147,27 @@ def test_seventyfirst_slice_asus_last_entry_not_quanta():
     )
 
 
+def test_seventysecond_slice_emc_three_soldiers_not_3167():
+    assert_chrono_slice(
+        "圖文時間軸第七十二段",
+        "2024-05-17",
+        ("紅三兵", "不是日K", "截圖約 447.5"),
+        "2383",
+        "台光電",
+        "截圖約 447.5",
+        "連續三根紅K",
+    )
+    t = line_for("2383")
+    assert "3167 不對圖" in t
+    ov = overview()
+    assert "紅三兵" in ov
+    db = "data/wayne_market.db"
+    t17 = official_on(db, "2383", "20240517")
+    assert t17 == {} or (
+        abs(float(t17["high"]) - 451.5) < 0.01 and abs(float(t17["close"]) - 448) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
