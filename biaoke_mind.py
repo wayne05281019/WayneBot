@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tg_layout import html_escape
+from biaoke_chrono import method_from_event
 
 DISCLAIMER_LINE = (
     "⚠️ 這不是買訊。不是飆大本人；是把他公開文的思考在這邊彙整後回你。"
@@ -1354,6 +1355,11 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
         "5310 不對圖。6416 不對圖。不是買訊。不數段。",
     ),
     (
+        re.compile(r"(今天應該是最後上車或加碼的位置)"),
+        "圖文時間軸第七十一段",
+        method_from_event("圖文時間軸第七十一段", "161976222"),
+    ),
+    (
         re.compile(
             r"(能長抱|為什麼.{0,16}長抱|長抱.{0,12}為什麼|抱到明年.{0,16}為什麼|"
             r"為什麼能抱到明年|7\s*月抄底|七月抄底|"
@@ -1511,13 +1517,14 @@ def views_for_neuron(nid: str) -> List[Tuple[str, str]]:
 
 def match_methods(ask: str, *, limit: int = 3) -> List[Tuple[str, str]]:
     q = ask or ""
-    hits: List[Tuple[str, str]] = []
-    for pat, title, body in _METHODS:
-        if pat.search(q):
-            hits.append((title, body))
-        if len(hits) >= limit:
-            break
-    return hits
+    scored: List[Tuple[int, int, str, str]] = []
+    for idx, (pat, title, body) in enumerate(_METHODS):
+        found = pat.search(q)
+        if not found:
+            continue
+        scored.append((len(found.group(0)), -idx, title, body))
+    scored.sort(reverse=True)
+    return [(title, body) for _n, _i, title, body in scored[: max(0, int(limit))]]
 
 
 def format_methods_html(ask: str) -> str:

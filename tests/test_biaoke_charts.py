@@ -761,6 +761,16 @@ def test_seventieth_pick_charts_quanta_attack_cost_not_daily_k():
     )
 
 
+def test_seventyfirst_pick_charts_asus_last_entry_not_quanta():
+    snip = "e5c2ddd7-9252-4296-9ddf-9d5decd178e3"
+    assert_snip_owned(
+        "2357",
+        snip,
+        "10:20約508",
+        ("2382", "2383", "6416", "5310"),
+    )
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

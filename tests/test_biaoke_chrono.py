@@ -2126,6 +2126,27 @@ def test_method_from_event_uses_ledger():
     assert method_from_event("x", "missing") == ""
 
 
+def test_seventyfirst_slice_asus_last_entry_not_quanta():
+    assert_chrono_slice(
+        "圖文時間軸第七十一段",
+        "2024-05-17",
+        ("最後上車或加碼的位置", "不是日K", "截圖約 508"),
+        "2357",
+        "華碩",
+        "截圖約 508",
+        "今天應該是最後上車或加碼的位置",
+    )
+    a = line_for("2357")
+    assert "2382 不對這張" in a
+    ov = overview()
+    assert "最後上車或加碼" in ov
+    db = "data/wayne_market.db"
+    a17 = official_on(db, "2357", "20240517")
+    assert a17 == {} or (
+        abs(float(a17["low"]) - 502) < 0.01 and abs(float(a17["close"]) - 516) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")
