@@ -75,10 +75,10 @@ def get_telegram_token() -> str:
 
 
 def get_cmoney_auth_token() -> str:
-    """同學會留言 JSON 用。只讀環境變數，不准進 git、不准貼帳密。
+    """同學會留言 JSON 備援。只讀環境變數，不准進 git、不准貼帳密。
 
-    空字串＝只抓公開主文 HTML。瀏覽器能看留言是因為分頁已登入；
-    雲端打 /api/mach/.../Comments 沒帶這個會 401。
+    樓下主路是同學會公開訪客 grant（見 biaoke_ingest._fetch_guest_access_token）。
+    這顆登入 Bearer 過期會 401，只當備援。空字串＝只用訪客 token。
     """
     raw = (os.getenv("CMONEY_AUTH_TOKEN") or "").strip().strip('"').strip("'")
     if raw.lower().startswith("authorization:"):

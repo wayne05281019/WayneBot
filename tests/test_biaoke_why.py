@@ -109,6 +109,13 @@ def test_why_sep14_important_comment_summary():
     assert "頭肩底" in body
     assert "不是看壞" in body or "1～3 個月" in body or "1~3個月" in body
     assert "路人" in body
+    pcb = lookup("PCB不要亂動")
+    assert "光通訊" in pcb
+    lgl = lookup("大立光算光通訊嗎")
+    assert "InP" in lgl
+    assert "不能算" in lgl or "不算" in lgl
+    fu = lookup("富喬再度回到支撐區")
+    assert "支撐" in fu
 
 
 def test_live_notes_puts_why_chain_first():

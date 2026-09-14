@@ -303,7 +303,7 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
     return out
 
 
-def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4) -> str:
+def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 8) -> str:
     """按飆大空白進去：現況推論＋你可能會問的。不倒原文、不念課綱。"""
     try:
         from biaoke_desk import load_corpus
@@ -342,14 +342,21 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 4)
         when = str(p.get("time") or "").strip()
         stamp = " ".join(x for x in (day, when) if x)
         lines.append((stamp + " " + body).strip())
-    for p in latest_replies[:2]:
-        body = _oral_body(str(p.get("text") or ""), 80)
+    main_blob = " ".join(str(p.get("text") or "") for p in latest)
+    for p in latest_replies:
+        raw = str(p.get("text") or "")
+        stem = raw.strip().lstrip(".").strip()
+        if len(stem) >= 20 and stem[:20] in main_blob:
+            continue
+        body = _oral_body(raw, 80)
         if not body:
             continue
         day = str(p.get("date") or "").strip()
         when = str(p.get("time") or "").strip()
         stamp = " ".join(x for x in (day, when) if x)
         lines.append(("樓下 " + stamp + " " + body).strip())
+        if sum(1 for x in lines if x.startswith("樓下 ")) >= 4:
+            break
     if not lines:
         return ""
     stamp = " ".join(

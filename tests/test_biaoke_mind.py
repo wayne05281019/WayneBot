@@ -103,8 +103,9 @@ def test_sep14_index_end_not_optical_comm():
     assert "8/14" in html2
     assert "C-1" in html2
     assert "言之過早" in html2
-    from biaoke_desk import load_corpus
+    from biaoke_desk import load_corpus, load_corpus_cache_clear
 
+    load_corpus_cache_clear()
     blob = load_corpus(None)
     hit = next(p for p in blob["posts"] if str(p.get("id") or "") == "184578674")
     assert "重要留言看法分享" in (hit.get("text") or "")
@@ -114,6 +115,21 @@ def test_sep14_index_end_not_optical_comm():
     assert "ASIC" in html3 or "風向球" in html3
     assert "43500" in html3
     assert "頭肩底" in html3
+    html4 = format_methods_html("PCB不要亂動")
+    assert "大於等於光通訊" in html4 or "漲勢" in html4
+    html5 = format_methods_html("大立光算光通訊嗎")
+    assert "InP" in html5
+    assert "不能算" in html5 or "不算" in html5
+    kids = [
+        p
+        for p in blob["posts"]
+        if str(p.get("parent") or "") == "184578674" and p.get("kind") == "reply"
+    ]
+    assert len(kids) >= 8
+    texts = " ".join(str(p.get("text") or "") for p in kids)
+    assert "PCB不要亂動" in texts
+    assert "富喬再度回到支撐區" in texts
+    assert "嚴格不能算光通訊" in texts
 
 
 def test_methods_cover_wash_three_days_and_right_shoulder():

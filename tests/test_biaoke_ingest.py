@@ -639,3 +639,151 @@ def test_fetch_author_replies_api_uses_user_script_urls(monkeypatch):
     desk = inspect.getsource(load_corpus)
     assert "copy.deepcopy(_load_seed())" not in desk
     assert "不要退回 520" in desk
+
+
+def test_fetch_author_replies_api_guest_paginates_without_env(monkeypatch):
+    monkeypatch.delenv("CMONEY_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("WAYNE_CMONEY_GUEST_TEST", "1")
+    from biaoke_ingest import (
+        GUEST_TOKEN_URL,
+        _clear_guest_token_cache,
+        comment_api_status,
+        fetch_author_replies_api,
+    )
+
+    _clear_guest_token_cache()
+    seen = []
+
+    class _Fake:
+        def post(self, url, data=None, headers=None, timeout=12):
+            seen.append(("POST", url, dict(data or {})))
+
+            class R:
+                status_code = 200
+                content = b'{"access_token":"guest-not-real","expires_in":3600}'
+
+                def json(self):
+                    return {"access_token": "guest-not-real", "expires_in": 3600}
+
+            return R()
+
+        def get(self, url, headers=None, timeout=12):
+            seen.append(
+                (
+                    "GET",
+                    url,
+                    (headers or {}).get("authorization"),
+                    (headers or {}).get("x-version"),
+                )
+            )
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    if "startCommentIndex=0" in url:
+                        return {
+                            "comments": [
+                                {
+                                    "id": "184578674-94",
+                                    "memberId": 25263,
+                                    "nickname": "期股多空雙飆客",
+                                    "content": {
+                                        "text": "PCB不要亂動，位階最低，未來漲勢大於等於光通訊"
+                                    },
+                                },
+                                {
+                                    "id": "c-bystander",
+                                    "memberId": 111,
+                                    "nickname": "路人甲",
+                                    "content": {"text": "謝謝飆大"},
+                                },
+                            ],
+                            "remainCount": 1,
+                            "nextCommentIndex": 100,
+                        }
+                    if "startCommentIndex=100" in url:
+                        return {
+                            "comments": [
+                                {
+                                    "id": "184578674-97",
+                                    "memberId": 25263,
+                                    "nickname": "期股多空雙飆客",
+                                    "content": {"text": "富喬再度回到支撐區"},
+                                }
+                            ],
+                            "remainCount": 0,
+                            "nextCommentIndex": 1,
+                        }
+                    return {"comments": [], "remainCount": 0}
+
+            return R()
+
+    rows = fetch_author_replies_api("184578674", session=_Fake())
+    texts = " ".join(r["text"] for r in rows)
+    posts = [item for item in seen if item[0] == "POST"]
+    gets = [item for item in seen if item[0] == "GET"]
+    assert any(item[1] == GUEST_TOKEN_URL for item in posts)
+    assert any(item[2].get("grant_type") == "guest" for item in posts)
+    assert any(
+        "startCommentIndex=0&fetch=-100" in item[1] and item[2] == "Bearer guest-not-real"
+        for item in gets
+    )
+    assert any("startCommentIndex=100" in item[1] for item in gets)
+    assert "PCB不要亂動" in texts
+    assert "富喬再度回到支撐區" in texts
+    assert "謝謝飆大" not in texts
+    assert len(rows) == 2
+    assert comment_api_status()["http"] == 200
+    _clear_guest_token_cache()
+
+
+def test_fetch_author_replies_api_expired_env_falls_back_to_guest(monkeypatch):
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "expired-login-token")
+    monkeypatch.setenv("WAYNE_CMONEY_GUEST_TEST", "1")
+    from biaoke_ingest import _clear_guest_token_cache, fetch_author_replies_api
+
+    _clear_guest_token_cache()
+    used = []
+
+    class _Fake:
+        def post(self, url, data=None, headers=None, timeout=12):
+            class R:
+                status_code = 200
+                content = b'{"access_token":"guest-ok","expires_in":60}'
+
+                def json(self):
+                    return {"access_token": "guest-ok", "expires_in": 60}
+
+            return R()
+
+        def get(self, url, headers=None, timeout=12):
+            auth = (headers or {}).get("authorization")
+            used.append(auth)
+
+            class R:
+                status_code = 200 if auth == "Bearer guest-ok" else 401
+                content = b"{}"
+
+                def json(self):
+                    if self.status_code != 200:
+                        return {}
+                    return {
+                        "comments": [
+                            {
+                                "id": "c1",
+                                "memberId": 25263,
+                                "nickname": "期股多空雙飆客",
+                                "content": {"text": "PCB不要亂動，位階最低"},
+                            }
+                        ],
+                        "remainCount": 0,
+                    }
+
+            return R()
+
+    rows = fetch_author_replies_api("184578674", session=_Fake())
+    assert used and used[0] == "Bearer guest-ok"
+    assert "expired-login-token" not in used
+    assert any("PCB不要亂動" in r["text"] for r in rows)
+    _clear_guest_token_cache()

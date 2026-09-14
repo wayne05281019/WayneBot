@@ -6,11 +6,11 @@
 樓中樓＝貼文討論串裡飆大本人回覆在第一層（直接回主文）及第二層（回在別人留言裡）。
 舊貼文＝個人頁最接近的那一則樓下留言；開盤前只重讀這一則，不往回掃很多篇。
 討論串平時仍重讀個人頁最新 3 篇。新主文仍從個人頁偵測，第一次進來連樓下也收。
-主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
+主文走公開 HTML。樓下自回走同學會網頁同一條公開訪客 grant，再打 /api/mach/.../Comments。
 對圖以主文點名的股票為準；附圖對不上主文就略過該圖，不准把誤標寫進庫。
 圖上時間戳用來鎖定主文那檔／那件事的當下，再對官方量價；不准 OCR，live 沒目視時用發文時間。
-不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
-不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
+不准把 Bearer／localStorage／帳密寫進 git。訪客 token 只活在行程裡；CMONEY_AUTH_TOKEN 只當備援。
+不准放 Bearer 字串當密鑰進 repo。訪客／備援都失敗：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
 路人留言不收。抓到新文立刻對官方 K 建檔，不清空再等。
 """
@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -61,6 +62,11 @@ PREOPEN_UNTIL_MIN = 9 * 60
 AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
 REFRESH_LATEST = 3  # 平時重讀最新 3 篇樓下
 REFRESH_PREOPEN = 1  # 開盤前舊貼文＝最接近的一則樓下第一層／第二層
+GUEST_TOKEN_URL = "https://www.cmoney.tw/api/identity/token"
+GUEST_CLIENT_ID = "cmstockcommunity-web"
+GUEST_GRANT_TYPE = "guest"
+_COMMENT_API_TIMEOUT = 12
+_GUEST_TOKEN_CACHE: Dict[str, Any] = {"token": "", "expires_at": 0.0}
 _ID_RE = re.compile(r"/forum/article/(\d{6,})")
 _HREF_OWN = re.compile(
     r'href="(?:https://www\.cmoney\.tw)?/forum/article/(\d{6,})"'
@@ -605,8 +611,8 @@ def parse_author_replies(
     return out
 
 
-def _cmoney_api_headers() -> Dict[str, str]:
-    """偉權抓碼那組標頭。token 只從環境變數來，沒有就不帶 Authorization。"""
+def _cmoney_api_headers(token: str = "") -> Dict[str, str]:
+    """同學會 Comments 標頭。token 由呼叫端傳入，沒有就不帶 Authorization。"""
     headers = {
         "accept": "application/json, text/plain, */*",
         "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -615,15 +621,85 @@ def _cmoney_api_headers() -> Dict[str, str]:
         "referer": USER_URL,
         "origin": "https://www.cmoney.tw",
     }
+    raw = str(token or "").strip()
+    if not raw:
+        try:
+            from config import get_cmoney_auth_token
+
+            raw = get_cmoney_auth_token()
+        except Exception:
+            raw = ""
+    if raw:
+        headers["authorization"] = f"Bearer {raw}"
+    return headers
+
+
+def _clear_guest_token_cache() -> None:
+    _GUEST_TOKEN_CACHE["token"] = ""
+    _GUEST_TOKEN_CACHE["expires_at"] = 0.0
+
+
+def _fetch_guest_access_token(session: Optional[requests.Session] = None) -> str:
+    """同學會網頁每個訪客都會拿的 grant，不是登入帳密。不准寫進 git／log。"""
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get(
+        "WAYNE_CMONEY_GUEST_TEST"
+    ):
+        return ""
+    cached = str(_GUEST_TOKEN_CACHE.get("token") or "")
+    expires_at = float(_GUEST_TOKEN_CACHE.get("expires_at") or 0.0)
+    if cached and time.time() < expires_at - 60:
+        return cached
+    try:
+        sess = session if session is not None else requests
+        resp = sess.post(
+            GUEST_TOKEN_URL,
+            data={
+                "client_id": GUEST_CLIENT_ID,
+                "grant_type": GUEST_GRANT_TYPE,
+            },
+            headers={
+                "User-Agent": _UA["User-Agent"],
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": "https://www.cmoney.tw/",
+            },
+            timeout=_COMMENT_API_TIMEOUT,
+        )
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            return ""
+        payload = resp.json() if getattr(resp, "content", None) else {}
+    except Exception:
+        return ""
+    token = str((payload or {}).get("access_token") or "").strip()
+    if not token:
+        return ""
+    try:
+        ttl = int((payload or {}).get("expires_in") or 0)
+    except (TypeError, ValueError):
+        ttl = 0
+    _GUEST_TOKEN_CACHE["token"] = token
+    _GUEST_TOKEN_CACHE["expires_at"] = time.time() + max(ttl, 60)
+    return token
+
+
+def _env_cmoney_token() -> str:
     try:
         from config import get_cmoney_auth_token
 
-        token = get_cmoney_auth_token()
+        return get_cmoney_auth_token()
     except Exception:
-        token = ""
-    if token:
-        headers["authorization"] = f"Bearer {token}"
-    return headers
+        return ""
+
+
+def _comment_tokens(session: Optional[requests.Session] = None) -> List[str]:
+    tokens: List[str] = []
+    guest = _fetch_guest_access_token(session)
+    if guest:
+        tokens.append(guest)
+    env_token = _env_cmoney_token()
+    if env_token and env_token not in tokens:
+        tokens.append(env_token)
+    return tokens
 
 
 def _api_member_id(item: Any) -> str:
@@ -821,21 +897,83 @@ def _note_comment_api(*, http: int = 0, replies: Optional[int] = None, aid: str 
         _LAST_COMMENT_API["aid"] = str(aid)
 
 
-def _get_json(session: requests.Session, url: str, timeout: int = 12) -> Any:
+def _get_json(
+    session: requests.Session,
+    url: str,
+    timeout: int = 12,
+    token: str = "",
+) -> Any:
+    payload, _code = _get_json_resp(session, url, timeout=timeout, token=token)
+    return payload
+
+
+def _get_json_resp(
+    session: requests.Session,
+    url: str,
+    timeout: int = 12,
+    token: str = "",
+) -> tuple[Any, int]:
     try:
-        resp = session.get(url, headers=_cmoney_api_headers(), timeout=timeout)
+        resp = session.get(
+            url, headers=_cmoney_api_headers(token), timeout=timeout
+        )
     except Exception:
         _note_comment_api(http=0)
-        return None
+        return None, 0
     code = int(getattr(resp, "status_code", 0) or 0)
     _note_comment_api(http=code)
     if code != 200:
         logger.info("飆大留言 JSON http=%s url=%s", code, url.split("?")[0])
-        return None
+        return None, code
     try:
-        return resp.json()
+        return resp.json(), code
     except Exception:
-        return None
+        return None, code
+
+
+def _fetch_comment_pages(
+    sess: requests.Session, aid: str, auth: str
+) -> tuple[List[Dict[str, Any]], int]:
+    comments: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    start_index = 0
+    status = 0
+    for _ in range(8):
+        url = (
+            f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comments"
+            f"?startCommentIndex={int(start_index)}&fetch=-100"
+        )
+        payload, status = _get_json_resp(
+            sess, url, timeout=_COMMENT_API_TIMEOUT, token=auth
+        )
+        if status != 200 or payload is None:
+            return comments, status
+        page = _comment_list(payload)
+        for cm in page:
+            cid = _api_comment_id(cm)
+            key = cid or f"anon:{len(comments)}"
+            if key in seen:
+                continue
+            seen.add(key)
+            comments.append(cm)
+        remain = 0
+        nxt: Any = None
+        if isinstance(payload, dict):
+            try:
+                remain = int(payload.get("remainCount") or 0)
+            except (TypeError, ValueError):
+                remain = 0
+            nxt = payload.get("nextCommentIndex")
+        if remain <= 0 or not page or nxt is None:
+            break
+        try:
+            nxt_i = int(nxt)
+        except (TypeError, ValueError):
+            break
+        if nxt_i == start_index:
+            break
+        start_index = nxt_i
+    return comments, status
 
 
 def fetch_author_replies_api(
@@ -844,52 +982,64 @@ def fetch_author_replies_api(
     *,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    """偉權抓碼：Comments?startCommentIndex=0&fetch=-100，缺樓中樓再打 Replies。"""
-    try:
-        from config import get_cmoney_auth_token
-
-        if not get_cmoney_auth_token():
-            _note_comment_api(http=0, replies=0)
-            return []
-    except Exception:
-        _note_comment_api(http=0, replies=0)
-        return []
+    """訪客 grant 打 Comments 分頁；缺樓中樓再打 Replies。401 換備援 token。"""
     aid = str(article_id or "").strip()
     if not aid:
+        _note_comment_api(http=0, replies=0)
+        return []
+    tokens = _comment_tokens(session)
+    if not tokens:
+        _note_comment_api(http=0, replies=0)
         return []
     sess = session or _session()
-    payload = _get_json(
-        sess,
-        f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comments"
-        f"?startCommentIndex=0&fetch=-100",
-    )
-    if payload is None:
-        logger.info("飆大留言 JSON 讀不到 id=%s（沒 token 或非 200）", aid)
-        return []
+    last_status = 0
+    for auth in tokens:
+        rows, status = _fetch_author_replies_with_token(aid, auth, sess, now=now)
+        last_status = int(status or 0)
+        if status == 200:
+            _note_comment_api(http=200, replies=len(rows), aid=aid)
+            return rows
+        _note_comment_api(http=last_status, replies=0, aid=aid)
+        if status not in (401, 403):
+            logger.info("飆大留言 JSON 讀不到 id=%s http=%s", aid, last_status)
+            return []
+    logger.info("飆大留言 JSON 讀不到 id=%s http=%s", aid, last_status)
+    return []
+
+
+def _fetch_author_replies_with_token(
+    aid: str,
+    auth: str,
+    sess: requests.Session,
+    *,
+    now: Optional[datetime] = None,
+) -> tuple[List[Dict[str, Any]], int]:
+    comments, status = _fetch_comment_pages(sess, aid, auth)
+    if status != 200:
+        return [], status
     nested: Dict[str, List[Dict[str, Any]]] = {}
-    for cm in _comment_list(payload):
+    for cm in comments:
         cid = _api_comment_id(cm)
         if not cid or _api_children(cm) or _api_child_count(cm) <= 0:
             continue
-        extra = _get_json(
+        extra, extra_status = _get_json_resp(
             sess,
             f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
             f"?fetch=-50",
+            timeout=_COMMENT_API_TIMEOUT,
+            token=auth,
         )
+        if extra_status not in (0, 200):
+            status = extra_status
         kids = _comment_list(extra) if extra is not None else []
         if not kids and isinstance(extra, dict):
             kids = _api_children(extra)
         if kids:
             nested[cid] = kids
     rows = parse_api_author_replies(
-        payload, parent_id=aid, now=now, nested_by_id=nested
+        comments, parent_id=aid, now=now, nested_by_id=nested
     )
-    _note_comment_api(
-        http=int(_LAST_COMMENT_API.get("http") or 200),
-        replies=len(rows),
-        aid=aid,
-    )
-    return rows
+    return rows, status
 
 
 def _save_corpus(path: str, blob: Dict[str, Any], posts: List[Dict[str, Any]]) -> None:

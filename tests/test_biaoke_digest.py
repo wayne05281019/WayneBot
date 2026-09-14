@@ -115,6 +115,7 @@ def test_latest_focus_is_sep14_not_july_bwave():
     assert "2026-09-14" in html
     assert "09:51" in html
     assert "重要留言" in html or "43500" in html or "創意" in html
+    assert "PCB不要亂動" in html or "富喬" in html or "大立光" in html
     assert "2026-09-11" in html
     assert "17:49" in html
     assert "46506" in html
