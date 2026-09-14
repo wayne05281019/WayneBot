@@ -316,12 +316,25 @@ def test_fortyfirst_methods_leike_neck_565():
 def test_fortysecond_methods_index_19650():
     html = format_methods_html("直探19650")
     assert "19650" in html
+    assert "加權指數" in html
     assert "不數段" in html
     assert "截圖約 786" in html
     tape = views_for_neuron("tape")
     assert any(t == "圖文時間軸第四十二段" for t, _b in tape)
     hold = views_for_neuron("hold")
     assert any(t == "圖文時間軸第四十二段" for t, _b in hold)
+
+
+def test_fortythird_methods_gap_neck():
+    html = format_methods_html("19500~19650")
+    assert "19500~19650" in html
+    assert "加權指數" in html
+    assert "不數段" in html
+    assert "244" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十三段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十三段" for t, _b in hold)
 
 
 def test_offtopic_still_refused():

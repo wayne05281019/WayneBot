@@ -956,7 +956,7 @@ def test_thirtyeighth_slice_lock_sold_sehi():
 
 
 def test_thirtyninth_slice_canon_374_half():
-    assert slice_stop() == "2024-04-16"
+    assert slice_stop() == "2024-04-17"
     assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第三十九段")
     assert "2024-04-16" in body
@@ -992,7 +992,7 @@ def test_thirtyninth_slice_canon_374_half():
 
 
 def test_fortieth_slice_hank_117_third():
-    assert slice_stop() == "2024-04-16"
+    assert slice_stop() == "2024-04-17"
     assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第四十段")
     assert "2024-04-16" in body
@@ -1030,7 +1030,7 @@ def test_fortieth_slice_hank_117_third():
 
 
 def test_fortyfirst_slice_leike_neck_565():
-    assert slice_stop() == "2024-04-16"
+    assert slice_stop() == "2024-04-17"
     assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第四十一段")
     assert "2024-04-16" in body
@@ -1068,20 +1068,22 @@ def test_fortyfirst_slice_leike_neck_565():
 
 
 def test_fortysecond_slice_index_19650_not_wrong_charts():
-    assert slice_stop() == "2024-04-16"
+    assert slice_stop() == "2024-04-17"
     assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第四十二段")
     assert "2024-04-16" in body
     assert "直探19650" in body
     assert "19650會測兩次" in body or "測兩次" in body
     assert "不數段" in body
-    assert "不是台指" in body or "不是台指／加權" in body
+    assert "不是加權" in body or "不是加權日K" in body or "加權指數" in body
     assert "不對圖" in body
     assert "佳能" in body and "0050" in body
     assert "截圖約 786" in body
-    tx = line_for("TX")
-    assert "直探19650" in tx
-    assert "不數段" in tx
+    twii = line_for("TWII")
+    assert "直探19650" in twii
+    assert "加權指數" in twii
+    assert "不數段" in twii
+    assert "直探19650" not in line_for("TX")
     tsmc = line_for("2330")
     assert "截圖約 786" in tsmc
     assert "不是日K" in tsmc
@@ -1102,6 +1104,36 @@ def test_fortysecond_slice_index_19650_not_wrong_charts():
     assert t16 == {} or (
         abs(float(t16["low"]) - 785) < 0.01 and abs(float(t16["close"]) - 788) < 0.01
     )
+
+
+def test_fortythird_slice_gap_neck_not_stock_charts():
+    assert slice_stop() == "2024-04-17"
+    assert next_start() == "2024-04-17"
+    body = method_body("圖文時間軸第四十三段")
+    assert "2024-04-17" in body
+    assert "19500~19650" in body
+    assert "缺口至頸線" in body
+    assert "244" in body and "245" in body
+    assert "不數段" in body
+    assert "不對圖" in body
+    tx = line_for("TX")
+    assert "19500~19650" not in tx
+    twii = line_for("TWII")
+    assert "19500~19650" in twii
+    assert "加權指數" in twii
+    otc = line_for("OTC")
+    assert "244" in otc
+    ov = overview()
+    assert "19500~19650" in ov
+    html = format_methods_html("19500~19650")
+    assert "19500~19650" in html
+    assert "不數段" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "19500~19650")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "19500~19650" in blob
+    assert "不數段" in blob
 
 
 def test_taitong_chipbond_official_optional():

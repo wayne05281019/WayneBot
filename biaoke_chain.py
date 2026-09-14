@@ -231,8 +231,14 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
                 sid, name = str(names[0][0]), str(names[0][1])
         except Exception:
             sid, name = "", ""
-    # 先掛117-117.5 這種兩個價位不是股票代號。
-    if sid and re.search(rf"(?<!\d){re.escape(sid)}\s*-\s*\d", ask or ""):
+    # 先掛117-117.5、19500~19650 這種價位／點位區間不是股票代號。
+    if sid and re.search(
+        rf"(?<!\d){re.escape(sid)}\s*[~\-～]\s*\d", ask or ""
+    ):
+        return "", ""
+    if sid and re.search(
+        rf"\d\s*[~\-～]\s*{re.escape(sid)}(?!\d)", ask or ""
+    ):
         return "", ""
     return sid, name
 
@@ -671,6 +677,9 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "直探19650",
                 "星期四前就會來",
                 "19650會測兩次",
+                "19500~19650",
+                "缺口至頸線區間",
+                "櫃買指數技術分析",
             )
         ):
             try:
@@ -725,6 +734,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "圖文時間軸第四十段",
                     "圖文時間軸第四十一段",
                     "圖文時間軸第四十二段",
+                    "圖文時間軸第四十三段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)

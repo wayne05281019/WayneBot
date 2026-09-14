@@ -412,6 +412,17 @@ def test_fortysecond_pick_charts_tsmc_not_canon_etf():
     assert not any("f233c076-a0d5-4be2-8cd5-f6f6946abb12" in str(r.get("url") or "") for r in skip2374_tsmc)
 
 
+def test_fortythird_pick_charts_index_not_tsmc_hank_canon():
+    from biaoke_charts import pick_charts
+
+    skip2330 = pick_charts("2330", limit=8, public_only=True)
+    assert not any("8cd5d5c2-72cf-4b8f-8409-19037d427f95" in str(r.get("url") or "") for r in skip2330)
+    skip3402 = pick_charts("3402", limit=8, public_only=True)
+    assert not any("f26afa9e-f9c8-4b04-a861-065073c91b6c" in str(r.get("url") or "") for r in skip3402)
+    skip2374 = pick_charts("2374", limit=8, public_only=True)
+    assert not any("ac9395fb-1692-4640-a2ec-c81638b9cbe6" in str(r.get("url") or "") for r in skip2374)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

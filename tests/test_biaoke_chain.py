@@ -543,3 +543,12 @@ def test_fortysecond_chain_unnamed_19650():
     assert "不數段" in blob
     assert "截圖約 786" in blob or "788" in blob
     assert "不對圖" in blob
+
+
+def test_fortythird_chain_unnamed_gap_neck():
+    fired = fire_chain("", "19500~19650")
+    assert fired.get("named") is False
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "19500~19650" in blob
+    assert "不數段" in blob
+    assert "不對圖" in blob
