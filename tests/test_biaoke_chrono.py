@@ -2397,7 +2397,9 @@ def test_first_slice_official_bars_not_screenshot():
     assert "教學圖" in x
     assert "6239" in x and "不准把索引誤標" in x
     assert "27.95" in x
-    assert line_for("2454") == ""
+    med = line_for("2454")
+    assert "聯發科" in med
+    assert "截圖約 993" in med
     assert "抱著波段賺更多" in overview() and "對不到" in overview()
 
 
