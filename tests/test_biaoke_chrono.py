@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-13"
-    assert next_start() == "2024-05-14"
+    assert slice_stop() == "2024-05-14"
+    assert next_start() == "2024-05-15"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1844,6 +1844,36 @@ def test_sixtysecond_slice_quanta_wiwynn_not_tsmc_shipping():
     q13 = official_on(db, "2382", "20240513")
     assert q13 == {} or (
         abs(float(q13["high"]) - 276) < 0.01 and abs(float(q13["close"]) - 274.5) < 0.01
+    )
+
+
+def test_sixtythird_slice_quanta_hold_273():
+    body = method_body("圖文時間軸第六十三段")
+    assert "2024-05-14" in body
+    assert "有效地站穩273" in body
+    assert "至少先看290" in body
+    assert "不是日K" in body
+    assert "截圖約 276" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "截圖約 276" in q
+    assert "不是日K" in q
+    ov = overview()
+    assert "有效地站穩273" in ov
+    html = format_methods_html("有效地站穩273")
+    assert "廣達" in html
+    assert "截圖約 276" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "有效地站穩273")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "至少先看290" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q14 = official_on(db, "2382", "20240514")
+    assert q14 == {} or (
+        abs(float(q14["low"]) - 272) < 0.01 and abs(float(q14["close"]) - 288.5) < 0.01
     )
 
 
