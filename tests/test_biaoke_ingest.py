@@ -22,6 +22,7 @@ from biaoke_ingest import (
     poll_wait_seconds,
     refresh_latest_now,
     fetch_author_replies_api,
+    split_author_cite,
 )
 
 
@@ -29,6 +30,17 @@ def test_parse_published_taipei():
     date, tm = parse_published("2026-9-10T9:51:28+08:00")
     assert date == "2026-09-10"
     assert tm == "09:51"
+
+
+def test_split_author_cite_quote_is_bystander():
+    cite, spoken = split_author_cite(
+        '"感覺夜盤不太妙" 沒有不太妙，目前是對第五波再一次測底，不重要。'
+    )
+    assert cite == "感覺夜盤不太妙"
+    assert spoken.startswith("沒有不太妙")
+    cite2, spoken2 = split_author_cite("目前已經到本波指數修正的末端")
+    assert cite2 == ""
+    assert "末端" in spoken2
 
 
 def test_parse_user_ids_keeps_order():

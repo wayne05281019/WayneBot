@@ -109,6 +109,22 @@ _VOICE_MARK = re.compile(
     r"(台指期|細微波|夜盤|費半|破線|洗盤|長線主流|下降軌道|"
     r"15\s*分|60\s*分|量先價行|右肩|護城河)"
 )
+_CITE_RE = re.compile(r'^\s*[「『"“](.+?)[」』"”]\s+(.+)$', re.S)
+
+def split_author_cite(text: str) -> tuple[str, str]:
+    """他習慣用引號包留言者的話，後面才是自己回答。引號裡不是他的判斷。"""
+    raw = str(text or "").strip()
+    if not raw:
+        return "", ""
+    m = _CITE_RE.match(raw)
+    if not m:
+        return "", raw
+    cite = re.sub(r"\s+", " ", m.group(1) or "").strip()
+    spoken = str(m.group(2) or "").strip()
+    if len(cite) < 2 or len(spoken) < 2:
+        return "", raw
+    return cite, spoken
+
 
 def _session() -> requests.Session:
     s = requests.Session()

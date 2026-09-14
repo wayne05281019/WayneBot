@@ -217,8 +217,8 @@ _TOPICS: List[Dict[str, Any]] = [
         ),
         "q": "夜盤不太妙？第五波再一次測底？",
         "a": (
-            "2026-09-14 21:50 自回 184578674 樓下（回在路人「感覺夜盤不太妙」下面；路人原文不收）："
-            "沒有不太妙。目前是對第五波再一次測底，不重要；"
+            "他習慣把路人的話放進引號，後面才是自己回答。這則引「感覺夜盤不太妙」。"
+            "2026-09-14 21:50 他答：沒有不太妙。目前是對第五波再一次測底，不重要；"
             "要看接下來反彈不夠高又急轉下殺，才會大不妙。"
             "今天就是再一次測底（或稱短線築底，等反彈）。"
             "掛在同日 09:51 主文樓下。主文仍說本波修正末端、頭肩底頸線沒破、C-2 轉 C-3 言之過早。"
@@ -738,10 +738,20 @@ def _qa_for(
     prev_fifth: Optional[Dict[str, Any]],
     db_path: str = "",
 ) -> Dict[str, Any]:
-    text = str(row.get("text") or "")
+    raw = str(row.get("text") or "")
     date = str(row.get("date") or "")
     kind = "樓下" if row.get("kind") == "reply" else "主文"
     club = bool(row.get("club"))
+    cite = ""
+    text = raw
+    if kind == "樓下":
+        try:
+            from biaoke_ingest import split_author_cite
+
+            cite, spoken = split_author_cite(raw)
+            text = spoken or raw
+        except Exception:
+            cite, text = "", raw
     stocks = named_stocks(text, row.get("tags"))
     levels = _level_hits(text, date, ohlc)
     stock_lv = _stock_level_hits(text, date, stocks, ohlc)
@@ -751,6 +761,8 @@ def _qa_for(
     bits: List[str] = []
     if club:
         bits.append("社團內化，不引用原文。")
+    if cite:
+        bits.append("引號裡是路人的話，後面才是他自己回答。")
     if scope == "index":
         bits.append("這則在判大盤／台指／夜盤。")
     elif scope == "stock":
@@ -1001,9 +1013,7 @@ def latest_thread_digest(*, posts: int = 3, replies: int = 12) -> str:
         pid = str(r.get("parent") or "").split(":")[0]
         if pid in under:
             under[pid].append(r)
-    bits: List[str] = [
-        "最近三篇主文＋樓下自回（他幾乎不回三篇之前；最新在前）："
-    ]
+    bits: List[str] = ["最近："]
     ordered = list(reversed(latest))
     for i, p in enumerate(ordered):
         pid = str(p.get("id") or "")
@@ -1015,10 +1025,28 @@ def latest_thread_digest(*, posts: int = 3, replies: int = 12) -> str:
         kids = under.get(pid) or []
         kids.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("time") or "")))
         for r in kids[-max(1, int(replies)) :]:
-            bits.append(
-                f"{r.get('date') or ''} {r.get('time') or ''} 樓下："
-                + _clip(str(r.get("text") or ""), 140)
-            )
+            raw = str(r.get("text") or "")
+            cite = ""
+            spoken = raw
+            try:
+                from biaoke_ingest import split_author_cite
+
+                cite, spoken = split_author_cite(raw)
+                spoken = spoken or raw
+            except Exception:
+                cite, spoken = "", raw
+            if cite:
+                bits.append(
+                    f"{r.get('date') or ''} {r.get('time') or ''} 樓下：引「"
+                    + _clip(cite, 40)
+                    + "」。他答："
+                    + _clip(spoken, 120)
+                )
+            else:
+                bits.append(
+                    f"{r.get('date') or ''} {r.get('time') or ''} 樓下："
+                    + _clip(raw, 140)
+                )
     return " ".join(bits)
 
 

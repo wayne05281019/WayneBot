@@ -97,9 +97,9 @@ def test_colloquial_questions_still_hit_chain():
     assert is_why_query("那檔還能不能抱")
     assert is_why_query("晚上那則在講什麼")
     body = lookup("晚上那則在講什麼")
-    assert "46506" in body or "最近三篇" in body
+    assert "46506" in body or "最近" in body
     body2 = lookup("他最近在看什麼")
-    assert "最近三篇" in body2 or "護城河" in body2 or "細微波" in body2
+    assert "最近" in body2 or "護城河" in body2 or "細微波" in body2
 
 
 def test_why_sep14_important_comment_summary():
@@ -120,6 +120,8 @@ def test_why_sep14_important_comment_summary():
     assert "測底" in retest
     assert "短線築底" in retest
     assert "21:50" in retest or "2026-09-14" in retest
+    assert "引號" in retest or "引「" in retest
+    assert "沒有不太妙" in retest
 
 
 def test_live_notes_puts_why_chain_first():

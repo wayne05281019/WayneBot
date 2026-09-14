@@ -515,6 +515,27 @@ class MainRunner:
         except Exception:
             logger.debug("融合後清假略過", exc_info=True)
 
+        try:
+            if self.fetcher and hasattr(self.fetcher, "fill_historical_market_days"):
+                hist = self.fetcher.fill_historical_market_days(
+                    max_days=12, sleep_s=0.45, skip_chips=True
+                )
+                if hist.get("filled") or hist.get("pending"):
+                    logger.info(
+                        "歷史日K缺口 filled=%s pending=%s",
+                        hist.get("filled"),
+                        hist.get("pending"),
+                    )
+        except Exception as e_hist:
+            logger.warning("歷史日K回補略過：%s", e_hist)
+        try:
+            from kline_hop import refresh_biaoke_minutes
+
+            mins = refresh_biaoke_minutes(self.db_path)
+            logger.info("台指期15/60分：%s", {k: mins.get(k) for k in ("ok", "saved", "tx")})
+        except Exception as e_min:
+            logger.warning("15分回補略過：%s", e_min)
+
         return inserted_count
 
     def _load_latest_quotes_map(self) -> Dict[str, Dict[str, Any]]:
