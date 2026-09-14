@@ -384,6 +384,20 @@ def test_fortieth_pick_charts_hank_117_not_6416():
     assert not any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in skip2374)
 
 
+def test_fortyfirst_pick_charts_leike_neck_not_6416():
+    from biaoke_charts import pick_charts
+
+    lk = pick_charts("6207", limit=5, public_only=True)
+    assert any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in lk)
+    assert any("打到頸線56.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in skip5310)
+    skip3402 = pick_charts("3402", limit=5, public_only=True)
+    assert not any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in skip3402)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

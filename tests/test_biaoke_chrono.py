@@ -1029,6 +1029,44 @@ def test_fortieth_slice_hank_117_third():
     )
 
 
+def test_fortyfirst_slice_leike_neck_565():
+    assert slice_stop() == "2024-04-16"
+    assert next_start() == "2024-04-16"
+    body = method_body("圖文時間軸第四十一段")
+    assert "2024-04-16" in body
+    assert "打到頸線56.5" in body
+    assert "第一次不太可能直接跌破" in body
+    assert "三日之內必需重新站上" in body
+    assert "不是日K" in body
+    assert "截圖約 57.5" in body
+    assert "雷科" in body
+    assert "先買1/3" not in body
+    lk = line_for("6207")
+    assert "雷科" in lk
+    assert "截圖約 57.5" in lk
+    assert "不是日K" in lk
+    assert "打到頸線56.5" in lk
+    ov = overview()
+    assert "打到頸線56.5" in ov or "第一次不太可能直接跌破" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("打到頸線56.5")
+    assert "雷科" in html
+    assert "不是日K" in html
+    assert "截圖約 57.5" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "打到頸線56.5")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "打到頸線56.5" in blob or "第一次不太可能直接跌破" in blob
+    assert "截圖約 57.5" in blob or "58.6" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    k16 = official_on(db, "6207", "20240416")
+    assert k16 == {} or (
+        abs(float(k16["low"]) - 56.2) < 0.01 and abs(float(k16["close"]) - 58.6) < 0.01
+    )
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

@@ -523,3 +523,14 @@ def test_fortieth_chain_unnamed_117():
     assert "不是日K" in blob
     assert "截圖約 118" in blob or "115.0" in blob or "115" in blob
     assert "漢科" in blob
+
+
+def test_fortyfirst_chain_unnamed_neck_565():
+    fired = fire_chain("", "打到頸線56.5")
+    assert fired.get("named") is False
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "打到頸線56.5" in blob or "第一次不太可能直接跌破" in blob
+    assert "不是日K" in blob
+    assert "截圖約 57.5" in blob or "58.6" in blob
+    assert "雷科" in blob
+    assert "先買1/3" not in blob
