@@ -384,6 +384,44 @@ def test_fortieth_pick_charts_hank_117_not_6416():
     assert not any("b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in str(r.get("url") or "") for r in skip2374)
 
 
+def test_chart_stamp_locks_text_stock_not_wrong_picture():
+    from biaoke_charts import (
+        chart_matches_text,
+        keep_charts_for_text,
+        official_for_text_at_stamp,
+        parse_chart_stamp,
+    )
+
+    honhai_text = "鴻海機器人概念股今天站上型態頸線，待回測 327 再買完。"
+    hanyun = (
+        "https://image.cmoney.tw/attachment/message/1710000000/"
+        "3e6b15a5-a550-4e9e-a9ea-9d4e20405a82.jpg"
+    )
+    hank_text = "漢科先掛117-117.5兩個價位，先買1/3"
+    hank = (
+        "https://image.cmoney.tw/attachment/message/1713196800/"
+        "b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6.jpg"
+    )
+    assert parse_chart_stamp("2024/04/16 10:25") == ("2024-04-16", "10:25")
+    assert chart_matches_text(honhai_text, hanyun) is False
+    assert chart_matches_text(hank_text, hank) is True
+    assert keep_charts_for_text(honhai_text, [hanyun, hank]) == []
+    assert hank in keep_charts_for_text(hank_text, [hank, hanyun])
+    hit = official_for_text_at_stamp(
+        "data/wayne_market.db",
+        "2317",
+        "2024/03/20 10:24",
+        chart_sids=["6414"],
+    )
+    assert hit["mismatch"] is True
+    assert hit["use_chart"] is False
+    assert hit["stamp_date"] == "2024-03-20"
+    assert hit["stamp_time"] == "10:24"
+    assert hit["sid"] == "2317"
+    bar = hit["official"]
+    assert bar == {} or abs(float(bar["close"]) - 138) < 0.01
+
+
 @pytest.mark.production_db
 def test_2383_redbox_matches_official_day():
     from tests.conftest import require_production_db

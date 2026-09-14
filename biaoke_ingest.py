@@ -8,6 +8,7 @@
 討論串平時仍重讀個人頁最新 3 篇。新主文仍從個人頁偵測，第一次進來連樓下也收。
 主文走公開 HTML。樓下自回走 /api/mach/.../Comments（偉權抓碼那組網址）。
 對圖以主文點名的股票為準；附圖對不上主文就略過該圖，不准把誤標寫進庫。
+圖上時間戳用來鎖定主文那檔／那件事的當下，再對官方量價；不准 OCR，live 沒目視時用發文時間。
 不准把 Bearer／localStorage／帳密寫進 git；token 只讀環境變數 CMONEY_AUTH_TOKEN。
 不准放 Bearer 字串當密鑰進 repo。沒設 token：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
 只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
@@ -141,6 +142,18 @@ def _append_charts(text: str, urls: Sequence[str], *, limit: int = 6) -> str:
     return body
 
 
+def _charts_for_body(body: str, *blobs: str, limit: int = 6) -> str:
+    """主文點名的股票對不上附圖就略過該圖。時間戳另用來鎖定文內那檔當下。"""
+    urls = chart_urls(*blobs)
+    try:
+        from biaoke_charts import keep_charts_for_text
+
+        urls = keep_charts_for_text(body, urls)
+    except Exception:
+        pass
+    return _append_charts(body, urls, limit=limit)
+
+
 def is_biaoke_voice(text: str) -> bool:
     """別人的文即使頁面上出現飆客名字也不收。"""
     t = text or ""
@@ -265,7 +278,7 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
             art.group(1),
             maxsplit=1,
         )[0]
-    text = _append_charts(text, chart_urls(main))
+    text = _charts_for_body(text, main)
     return {
         "n": 0,
         "date": date,
@@ -433,14 +446,13 @@ def parse_author_replies(
                 body = _plain(m.group(1))
                 if body:
                     break
-        imgs = chart_urls(ch)
         if not body:
             plain = _plain(ch)
             plain = re.sub(rf"{AUTHOR_NAME}|讚|回覆|超級幫手|Lv\.\d+", " ", plain)
             plain = re.sub(r"\s+", " ", plain).strip()
             if 8 <= len(plain) <= 400 and not _reply_noise(plain):
                 body = plain
-        body = _append_charts(body, imgs, limit=4)
+        body = _charts_for_body(body, ch, limit=4)
         if _reply_noise(body) or body in seen:
             continue
         tm_raw = ""
@@ -594,8 +606,7 @@ def _reply_row(
     now: Optional[datetime] = None,
 ) -> Optional[Dict[str, Any]]:
     body = _api_text(item)
-    imgs = chart_urls(json.dumps(item, ensure_ascii=False))
-    body = _append_charts(body, imgs, limit=4)
+    body = _charts_for_body(body, json.dumps(item, ensure_ascii=False), limit=4)
     if _reply_noise(body):
         return None
     cid = _api_comment_id(item)

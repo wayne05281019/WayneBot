@@ -97,6 +97,7 @@ def test_sixth_slice_honhai_chart_is_ennoconn():
     ov = overview()
     assert "樺漢" in ov
     assert "不是鴻海日K" in ov
+    assert "時間戳" in ov
     assert "抱著波段賺更多" in ov and "對不到" in ov
 
 

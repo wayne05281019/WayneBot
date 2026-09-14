@@ -89,6 +89,38 @@ def test_parse_article_html_body_and_tags():
     assert "查看" not in row["text"]
 
 
+def test_parse_article_skips_chart_unrelated_to_named_stock():
+    html = """
+    <meta name="author" content="期股多空雙飆客">
+    <meta property="article:published_time" content="2024-3-20T10:24:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>1.鴻海機器人概念股今天站上型態頸線。</div>
+      <img src="https://image.cmoney.tw/attachment/message/1710000000/3e6b15a5-a550-4e9e-a9ea-9d4e20405a82.jpg">
+    </article>
+    """
+    row = parse_article_html("160000001", html)
+    assert row is not None
+    assert "鴻海" in row["text"]
+    assert "3e6b15a5-a550-4e9e-a9ea-9d4e20405a82" not in row["text"]
+
+
+def test_parse_article_keeps_chart_when_named_stock_matches():
+    html = """
+    <meta name="author" content="期股多空雙飆客">
+    <meta property="article:published_time" content="2024-4-16T10:27:00+08:00">
+    <article>
+      <div>期股多空雙飆客</div>
+      <div>1.漢科先掛117-117.5兩個價位，先買1/3。</div>
+      <img src="https://image.cmoney.tw/attachment/message/1713196800/b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6.jpg">
+    </article>
+    """
+    row = parse_article_html("161186954", html)
+    assert row is not None
+    assert "先掛117-117.5" in row["text"]
+    assert "b57e4c6f-34b8-4bc0-b6fc-033e9b51cba6" in row["text"]
+
+
 def test_parse_article_html_rejects_other_author_even_if_sidebar_names_him():
     html = """
     <meta name="author" content="價值筆記">

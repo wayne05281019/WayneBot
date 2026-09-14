@@ -511,6 +511,95 @@ def official_on(db_path: str, sid: str, date: str) -> Dict[str, Any]:
     }
 
 
+_STAMP_RE = re.compile(
+    r"(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?"
+)
+
+
+def parse_chart_stamp(raw: str) -> tuple[str, str]:
+    """圖上 2024/04/16 10:25 → (2024-04-16, 10:25)。沒戳就空。不准 OCR。"""
+    m = _STAMP_RE.search(raw or "")
+    if not m:
+        return "", ""
+    y, mo, d, hh, mm = m.groups()
+    date_s = f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+    if hh is None:
+        return date_s, ""
+    return date_s, f"{int(hh):02d}:{mm}"
+
+
+def text_tickers(
+    blob: str, *, name_to_sid: Optional[Dict[str, str]] = None
+) -> List[str]:
+    """主文點名的股票。不看附圖。"""
+    found = extract_tickers("", blob, url="", name_to_sid=name_to_sid)
+    try:
+        from biaoke_facts import names_in_ask
+
+        for sid, _name in names_in_ask(blob):
+            _add_sid(found, sid, None)
+    except Exception:
+        pass
+    return found
+
+
+def chart_matches_text(blob: str, url: str) -> bool:
+    """主文點名的股票與附圖對得上才用這張圖分析這則。
+
+    沒對上就略過該圖。圖上時間戳另用來鎖定主文那檔的當下量價。
+    附圖還沒目視對代號、或主文沒點名股票，先留著。
+    """
+    chart_sids = _snip_tickers(url)
+    if not chart_sids:
+        return True
+    named = text_tickers(blob)
+    if not named:
+        return True
+    return any(sid in named for sid in chart_sids)
+
+
+def keep_charts_for_text(blob: str, urls: Sequence[str]) -> List[str]:
+    """文不對題的附圖不進這則。"""
+    out: List[str] = []
+    seen = set()
+    for url in urls or []:
+        u = str(url or "").strip()
+        if not u or u in seen:
+            continue
+        if not chart_matches_text(blob, u):
+            continue
+        seen.add(u)
+        out.append(u)
+    return out
+
+
+def official_for_text_at_stamp(
+    db_path: str,
+    text_sid: str,
+    stamp: str,
+    *,
+    chart_sids: Sequence[str] = (),
+) -> Dict[str, Any]:
+    """附圖股票對不上主文：不用這張圖分析該則。
+
+    圖上時間戳鎖定主文那檔／那件事的當下，再對官方量價。
+    截圖價不准寫成官方柱。庫沒這列就空。
+    """
+    date_s, time_s = parse_chart_stamp(stamp)
+    named = str(text_sid or "").strip()
+    chart = [str(s).strip() for s in chart_sids if str(s).strip()]
+    mismatch = bool(named and chart and named not in chart)
+    bar = official_on(db_path, named, date_s) if named and date_s else {}
+    return {
+        "use_chart": not mismatch,
+        "mismatch": mismatch,
+        "stamp_date": date_s,
+        "stamp_time": time_s,
+        "sid": named,
+        "official": bar,
+    }
+
+
 def pick_charts(
     sid: str,
     *,
