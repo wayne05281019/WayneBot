@@ -307,15 +307,12 @@ def test_thirtythird_pick_charts_lasertek_stage2_not_6416():
 
 
 def test_thirtyfourth_pick_charts_quanta_273_not_tsmc():
-    from biaoke_charts import pick_charts
-
-    qt = pick_charts("2382", limit=16, public_only=True)
-    assert any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in qt)
-    assert any("支撐273不是282" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in qt)
-    tsmc = pick_charts("2330", limit=6, public_only=True)
-    assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in tsmc)
-    skip6416 = pick_charts("6416", limit=5, public_only=True)
-    assert not any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in skip6416)
+    assert_snip_owned(
+        "2382",
+        "ada1f9ba-cced-4a3f-8213-6a21cf775572",
+        "支撐273不是282",
+        ("2330", "6416", "5310"),
+    )
 
 
 def test_thirtyfifth_pick_charts_thunder_entry_not_6416():
