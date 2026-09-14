@@ -39,6 +39,9 @@ def test_neuron_views_reread_without_ask():
     assert "末端" in method_body("9/14 指數末端")
     assert "光學" in method_body("9/14 指數末端")
     assert "聯亞" in method_body("9/14 指數末端")
+    assert "航運" in method_body("9/14 指數末端")
+    assert "短期炒作" in method_body("9/14 指數末端")
+    assert "500" in method_body("右肩／45839")
     assert "價穩量縮" in method_body("量先價行")
     tape = views_for_neuron("tape")
     assert any(t == "量先價行" for t, _b in tape)
@@ -531,6 +534,17 @@ def test_fiftysixth_methods_quanta_early_280():
     assert any(t == "圖文時間軸第五十六段" for t, _b in tape)
     hold = views_for_neuron("hold")
     assert any(t == "圖文時間軸第五十六段" for t, _b in hold)
+
+
+def test_fiftyseventh_methods_asus_intraday():
+    html = format_methods_html("先買進1/2，明天回測持續買進")
+    assert "華碩" in html
+    assert "截圖約 478" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十七段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十七段" for t, _b in hold)
 
 
 def test_offtopic_still_refused():
