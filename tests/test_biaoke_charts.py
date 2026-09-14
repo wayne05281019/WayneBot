@@ -105,7 +105,7 @@ def test_pick_charts_public_only_and_vs_official():
 def test_intraday_snip_notes_overlay_not_daily_k():
     from biaoke_charts import pick_charts
 
-    gs = pick_charts("6442", limit=4, public_only=True)
+    gs = pick_charts("6442", limit=8, public_only=True)
     assert any("47b69e0f-de57-44d9-a9ec-4e809202ca13" in str(r.get("url") or "") for r in gs)
     assert any("b0b38f9c-6ac5-4260-8f9d-0206f1167367" in str(r.get("url") or "") for r in gs)
     assert any("a23ff8ba-c9f6-4086-89a8-b4b7e2d68168" in str(r.get("url") or "") for r in gs)
@@ -528,6 +528,22 @@ def test_fiftieth_pick_charts_gigalight_not_others():
     for sid in ("8210", "2382", "6442", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
+def test_fiftyfirst_pick_charts_gigalight_gs_not_others():
+    from biaoke_charts import pick_charts
+
+    g = pick_charts("3234", limit=8, public_only=True)
+    assert any("dfc3e6d9-d626-4189-b2bc-57aa6cbcee15" in str(r.get("url") or "") for r in g)
+    assert any("被處置往下打" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in g)
+    gs = pick_charts("6442", limit=8, public_only=True)
+    assert any("6e00e8dc-c2e8-45d7-bd9a-4af5c867236d" in str(r.get("url") or "") for r in gs)
+    assert any("確認不是假突破" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in gs)
+    assert not any("dfc3e6d9-d626-4189-b2bc-57aa6cbcee15" in str(r.get("url") or "") for r in gs)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("6e00e8dc-c2e8-45d7-bd9a-4af5c867236d" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("dfc3e6d9-d626-4189-b2bc-57aa6cbcee15" in str(r.get("url") or "") for r in skip5310)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():

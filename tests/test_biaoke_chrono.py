@@ -956,7 +956,7 @@ def test_thirtyeighth_slice_lock_sold_sehi():
 
 
 def test_thirtyninth_slice_canon_374_half():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第三十九段")
     assert "2024-04-16" in body
@@ -992,7 +992,7 @@ def test_thirtyninth_slice_canon_374_half():
 
 
 def test_fortieth_slice_hank_117_third():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十段")
     assert "2024-04-16" in body
@@ -1030,7 +1030,7 @@ def test_fortieth_slice_hank_117_third():
 
 
 def test_fortyfirst_slice_leike_neck_565():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十一段")
     assert "2024-04-16" in body
@@ -1068,7 +1068,7 @@ def test_fortyfirst_slice_leike_neck_565():
 
 
 def test_fortysecond_slice_index_19650_not_wrong_charts():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十二段")
     assert "2024-04-16" in body
@@ -1107,7 +1107,7 @@ def test_fortysecond_slice_index_19650_not_wrong_charts():
 
 
 def test_fortythird_slice_gap_neck_not_stock_charts():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十三段")
     assert "2024-04-17" in body
@@ -1137,7 +1137,7 @@ def test_fortythird_slice_gap_neck_not_stock_charts():
 
 
 def test_fortyfourth_slice_honso_limitup_leike_645():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十四段")
     assert "2024-04-17" in body
@@ -1186,7 +1186,7 @@ def test_fortyfourth_slice_honso_limitup_leike_645():
 
 
 def test_fortyfifth_slice_tx_night_19650_twii_19844():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十五段")
     assert "2024-04-18" in body
@@ -1226,7 +1226,7 @@ def test_fortyfifth_slice_tx_night_19650_twii_19844():
 
 
 def test_fortysixth_slice_huang_peishuo_18752():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十六段")
     assert "2024-04-19" in body
@@ -1253,7 +1253,7 @@ def test_fortysixth_slice_huang_peishuo_18752():
 
 
 def test_fortyseventh_slice_old_ai_wistron_intraday():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十七段")
     assert "2024-04-21" in body
@@ -1319,7 +1319,7 @@ def test_fortyseventh_slice_old_ai_wistron_intraday():
 
 
 def test_fortyeighth_slice_old_ai_quanta_wiwynn_ennoconn():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十八段")
     assert "2024-04-26" in body
@@ -1379,7 +1379,7 @@ def test_fortyeighth_slice_old_ai_quanta_wiwynn_ennoconn():
 
 
 def test_fortyninth_slice_ennoconn_289_head_shoulders():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第四十九段")
     assert "2024-04-26" in body
@@ -1418,7 +1418,7 @@ def test_fortyninth_slice_ennoconn_289_head_shoulders():
 
 
 def test_fiftieth_slice_gigalight_intraday_buy():
-    assert slice_stop() == "2024-05-02"
+    assert slice_stop() == "2024-05-03"
     assert next_start() == "2024-05-03"
     body = method_body("圖文時間軸第五十段")
     assert "2024-05-02" in body
@@ -1450,6 +1450,47 @@ def test_fiftieth_slice_gigalight_intraday_buy():
     assert g02 == {} or (
         abs(float(g02["high"]) - 50.9) < 0.01 and abs(float(g02["close"]) - 50.6) < 0.01
         and abs(float(g02["low"]) - 46.85) < 0.01
+    )
+
+
+def test_fiftyfirst_slice_gigalight_disposed_switch_gs():
+    assert slice_stop() == "2024-05-03"
+    assert next_start() == "2024-05-03"
+    body = method_body("圖文時間軸第五十一段")
+    assert "2024-05-03" in body
+    assert "3234被處置" in body
+    assert "不是假突破的6442" in body
+    assert "不是日K" in body
+    assert "截圖約 48.55" in body
+    assert "截圖約 165.5" in body
+    g = line_for("3234")
+    assert "被處置" in g
+    assert "截圖約 48.55" in g
+    assert "不是日K" in g
+    gs = line_for("6442")
+    assert "光聖" in gs
+    assert "不是假突破" in gs
+    assert "截圖約 165.5" in gs
+    ov = overview()
+    assert "3234被處置" in ov
+    html = format_methods_html("3234被處置")
+    assert "光環" in html and "光聖" in html
+    assert "截圖約 48.55" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "3234被處置")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "3234被處置" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    g03 = official_on(db, "3234", "20240503")
+    assert g03 == {} or (
+        abs(float(g03["low"]) - 47.25) < 0.01 and abs(float(g03["close"]) - 47.7) < 0.01
+    )
+    s03 = official_on(db, "6442", "20240503")
+    assert s03 == {} or (
+        abs(float(s03["high"]) - 172) < 0.01 and abs(float(s03["close"]) - 161) < 0.01
     )
 
 

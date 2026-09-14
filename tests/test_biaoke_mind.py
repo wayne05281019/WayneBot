@@ -467,6 +467,17 @@ def test_fiftieth_methods_gigalight_intraday():
     assert any(t == "圖文時間軸第五十段" for t, _b in hold)
 
 
+def test_fiftyfirst_methods_gigalight_disposed():
+    html = format_methods_html("3234被處置")
+    assert "光環" in html and "光聖" in html
+    assert "截圖約 48.55" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十一段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十一段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
