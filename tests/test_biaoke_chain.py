@@ -565,3 +565,15 @@ def test_fortyfourth_chain_unnamed_honso_leike():
     hblob = "".join(s.get("text") or "" for s in hon["steps"]) + hon.get("think", "")
     assert "弘塑" in hblob
     assert "不是日K" in hblob or "1110" in hblob
+
+
+def test_fortyfifth_chain_unnamed_tx_night_19650():
+    fired = fire_chain("", "最多打到19650")
+    assert fired.get("named") is False
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "最多打到19650" in blob
+    assert "不數段" in blob
+    assert "不對圖" in blob
+    night = fire_chain("", "破19844")
+    nblob = "".join(s.get("text") or "" for s in night["steps"]) + night.get("think", "")
+    assert "19844" in nblob

@@ -352,6 +352,18 @@ def test_fortyfourth_methods_honso_leike():
     assert any(t == "圖文時間軸第四十四段" for t, _b in hold)
 
 
+def test_fortyfifth_methods_tx_night_19650():
+    html = format_methods_html("台指期夜盤")
+    assert "最多打到19650" in html
+    assert "19844" in html
+    assert "不數段" in html
+    assert "截圖約 804" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十五段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十五段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
