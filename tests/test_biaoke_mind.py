@@ -591,6 +591,17 @@ def test_sixtyfirst_methods_asus_neckline_intraday():
     assert any(t == "圖文時間軸第六十一段" for t, _b in hold)
 
 
+def test_sixtysecond_methods_quanta_wiwynn_intraday():
+    html = format_methods_html("目前無法完全定位階")
+    assert "廣達" in html and "緯穎" in html
+    assert "截圖約 274.5" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第六十二段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第六十二段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

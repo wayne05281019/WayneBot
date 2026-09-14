@@ -118,7 +118,7 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     qb = pick_charts("6147", limit=3, public_only=True)
     assert any("925ae6d3-392a-4e43-8cf7-6ef7c03a7406" in str(r.get("url") or "") for r in qb)
     assert any("頎邦盤中走勢" in str(r.get("note") or "") for r in qb)
-    qt = pick_charts("2382", limit=16, public_only=True)
+    qt = pick_charts("2382", limit=32, public_only=True)
     assert any("9a56b8cc-9e24-4397-a5cb-68d6df19c5a5" in str(r.get("url") or "") for r in qt)
     assert any("c3095408-726b-4dde-b71f-7cebd42ae8b5" in str(r.get("url") or "") for r in qt)
     assert any("d9ca1bdc-42f3-444b-87fc-6852e905a126" in str(r.get("url") or "") for r in qt)
@@ -693,6 +693,23 @@ def test_sixtyfirst_pick_charts_asus_not_shipping():
     for sid in ("2609", "2615", "2382", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
+def test_sixtysecond_pick_charts_quanta_wiwynn_not_tsmc():
+    from biaoke_charts import pick_charts
+
+    snip_q = "87acb739-5f83-4c24-9641-52b150feba26"
+    snip_w = "f414adc8-792d-4af0-8b51-1c31d31808cd"
+    q = pick_charts("2382", limit=8, public_only=True)
+    assert any(snip_q in str(r.get("url") or "") for r in q)
+    assert any("13:21約274.5" in str(r.get("note") or "") for r in q)
+    w = pick_charts("6669", limit=8, public_only=True)
+    assert any(snip_w in str(r.get("url") or "") for r in w)
+    assert any("13:21約2405" in str(r.get("note") or "") for r in w)
+    for sid in ("2330", "2357", "2609", "2615", "3231", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip_q in str(r.get("url") or "") for r in rows)
+        assert not any(snip_w in str(r.get("url") or "") for r in rows)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():

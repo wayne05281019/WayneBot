@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-10"
-    assert next_start() == "2024-05-13"
+    assert slice_stop() == "2024-05-13"
+    assert next_start() == "2024-05-14"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1812,6 +1812,38 @@ def test_sixtyfirst_slice_asus_neckline_not_shipping():
     a10 = official_on(db, "2357", "20240510")
     assert a10 == {} or (
         abs(float(a10["low"]) - 464) < 0.01 and abs(float(a10["close"]) - 470.5) < 0.01
+    )
+
+
+def test_sixtysecond_slice_quanta_wiwynn_not_tsmc_shipping():
+    body = method_body("圖文時間軸第六十二段")
+    assert "2024-05-13" in body
+    assert "目前無法完全定位階" in body
+    assert "不是日K" in body
+    assert "截圖約 274.5" in body
+    assert "截圖約 2405" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "截圖約 274.5" in q
+    assert "不是日K" in q
+    w = line_for("6669")
+    assert "緯穎" in w
+    assert "截圖約 2405" in w
+    ov = overview()
+    assert "目前無法完全定位階" in ov
+    html = format_methods_html("目前無法完全定位階")
+    assert "廣達" in html and "緯穎" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "目前無法完全定位階")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "2382" in blob or "廣達" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q13 = official_on(db, "2382", "20240513")
+    assert q13 == {} or (
+        abs(float(q13["high"]) - 276) < 0.01 and abs(float(q13["close"]) - 274.5) < 0.01
     )
 
 
