@@ -781,6 +781,16 @@ def test_seventysecond_pick_charts_emc_three_soldiers_not_3167():
     )
 
 
+def test_seventythird_pick_charts_index_21100_not_tsmc():
+    snip = "1fa3e9ae-a32c-4ccf-95cd-eff57ded0189"
+    assert_snip_owned(
+        "TWII",
+        snip,
+        "主文大盤21100",
+        ("2330", "2382", "6416", "5310"),
+    )
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

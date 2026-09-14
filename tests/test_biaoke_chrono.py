@@ -26,8 +26,8 @@ def assert_chrono_slice(title, date, phrases, sid, name, quote, ask):
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-17"
-    assert next_start() == "2024-05-18"
+    assert slice_stop() == "2024-05-21"
+    assert next_start() == "2024-05-22"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -2166,6 +2166,24 @@ def test_seventysecond_slice_emc_three_soldiers_not_3167():
     assert t17 == {} or (
         abs(float(t17["high"]) - 451.5) < 0.01 and abs(float(t17["close"]) - 448) < 0.01
     )
+
+
+def test_seventythird_slice_index_21100_is_not_tsmc():
+    assert_chrono_slice(
+        "圖文時間軸第七十三段",
+        "2024-05-21",
+        ("21100為支撐線", "不是大盤", "截圖約 834"),
+        "TWII",
+        "加權",
+        "截圖約 834",
+        "再測一次昨天低點",
+    )
+    w = line_for("TWII")
+    assert "2330 不對這張" in w
+    assert "不准把 21100 寫成官方柱" in w
+    ov = overview()
+    assert "21100" in ov
+    assert line_for("2330") == "" or "1fa3e9ae" not in line_for("2330")
 
 
 def test_taitong_chipbond_official_optional():
