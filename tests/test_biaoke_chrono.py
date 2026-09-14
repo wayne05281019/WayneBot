@@ -957,7 +957,7 @@ def test_thirtyeighth_slice_lock_sold_sehi():
 
 def test_thirtyninth_slice_canon_374_half():
     assert slice_stop() == "2024-04-16"
-    assert next_start() == "2024-04-16"
+    assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第三十九段")
     assert "2024-04-16" in body
     assert "早盤在37.4" in body
@@ -993,7 +993,7 @@ def test_thirtyninth_slice_canon_374_half():
 
 def test_fortieth_slice_hank_117_third():
     assert slice_stop() == "2024-04-16"
-    assert next_start() == "2024-04-16"
+    assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第四十段")
     assert "2024-04-16" in body
     assert "先掛117-117.5" in body
@@ -1031,7 +1031,7 @@ def test_fortieth_slice_hank_117_third():
 
 def test_fortyfirst_slice_leike_neck_565():
     assert slice_stop() == "2024-04-16"
-    assert next_start() == "2024-04-16"
+    assert next_start() == "2024-04-17"
     body = method_body("圖文時間軸第四十一段")
     assert "2024-04-16" in body
     assert "打到頸線56.5" in body
@@ -1064,6 +1064,43 @@ def test_fortyfirst_slice_leike_neck_565():
     k16 = official_on(db, "6207", "20240416")
     assert k16 == {} or (
         abs(float(k16["low"]) - 56.2) < 0.01 and abs(float(k16["close"]) - 58.6) < 0.01
+    )
+
+
+def test_fortysecond_slice_index_19650_not_wrong_charts():
+    assert slice_stop() == "2024-04-16"
+    assert next_start() == "2024-04-17"
+    body = method_body("圖文時間軸第四十二段")
+    assert "2024-04-16" in body
+    assert "直探19650" in body
+    assert "19650會測兩次" in body or "測兩次" in body
+    assert "不數段" in body
+    assert "不是台指" in body or "不是台指／加權" in body
+    assert "不對圖" in body
+    assert "佳能" in body and "0050" in body
+    assert "截圖約 786" in body
+    tx = line_for("TX")
+    assert "直探19650" in tx
+    assert "不數段" in tx
+    tsmc = line_for("2330")
+    assert "截圖約 786" in tsmc
+    assert "不是日K" in tsmc
+    ov = overview()
+    assert "直探19650" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("直探19650")
+    assert "19650" in html
+    assert "不數段" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "直探19650")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "直探19650" in blob or "19650會測兩次" in blob
+    assert "不數段" in blob
+    db = "data/wayne_market.db"
+    t16 = official_on(db, "2330", "20240416")
+    assert t16 == {} or (
+        abs(float(t16["low"]) - 785) < 0.01 and abs(float(t16["close"]) - 788) < 0.01
     )
 
 

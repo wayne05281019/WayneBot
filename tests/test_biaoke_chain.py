@@ -534,3 +534,12 @@ def test_fortyfirst_chain_unnamed_neck_565():
     assert "截圖約 57.5" in blob or "58.6" in blob
     assert "雷科" in blob
     assert "先買1/3" not in blob
+
+
+def test_fortysecond_chain_unnamed_19650():
+    fired = fire_chain("", "直探19650")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "直探19650" in blob or "19650會測兩次" in blob
+    assert "不數段" in blob
+    assert "截圖約 786" in blob or "788" in blob
+    assert "不對圖" in blob

@@ -398,6 +398,20 @@ def test_fortyfirst_pick_charts_leike_neck_not_6416():
     assert not any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in skip3402)
 
 
+def test_fortysecond_pick_charts_tsmc_not_canon_etf():
+    from biaoke_charts import pick_charts
+
+    tsmc = pick_charts("2330", limit=5, public_only=True)
+    assert any("f233c076-a0d5-4be2-8cd5-f6f6946abb12" in str(r.get("url") or "") for r in tsmc)
+    assert any("法說前786" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in tsmc)
+    skip2374 = pick_charts("2374", limit=8, public_only=True)
+    assert not any("7ad20984-9c2f-4119-811e-a49f4656e7c0" in str(r.get("url") or "") for r in skip2374)
+    skip0050 = pick_charts("0050", limit=8, public_only=True)
+    assert not any("721c2c75-3ca9-4401-879a-c84164150a11" in str(r.get("url") or "") for r in skip0050)
+    skip2374_tsmc = pick_charts("2374", limit=8, public_only=True)
+    assert not any("f233c076-a0d5-4be2-8cd5-f6f6946abb12" in str(r.get("url") or "") for r in skip2374_tsmc)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
