@@ -337,6 +337,21 @@ def test_fortythird_methods_gap_neck():
     assert any(t == "圖文時間軸第四十三段" for t, _b in hold)
 
 
+def test_fortyfourth_methods_honso_leike():
+    html = format_methods_html("我沒有弘塑")
+    assert "弘塑" in html
+    assert "不是日K" in html
+    assert "截圖約 1110" in html
+    assert "也會過前高 64.5" in html
+    html2 = format_methods_html("也會過前高64.5")
+    assert "雷科" in html2
+    assert "64.5" in html2
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十四段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十四段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

@@ -552,3 +552,16 @@ def test_fortythird_chain_unnamed_gap_neck():
     assert "19500~19650" in blob
     assert "不數段" in blob
     assert "不對圖" in blob
+
+
+def test_fortyfourth_chain_unnamed_honso_leike():
+    fired = fire_chain("", "也會過前高64.5")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "也會過前高" in blob
+    assert "不是日K" in blob
+    assert "截圖約 61.5" in blob or "61.4" in blob or "截圖約 1110" in blob
+    assert "雷科" in blob
+    hon = fire_chain("", "我沒有弘塑")
+    hblob = "".join(s.get("text") or "" for s in hon["steps"]) + hon.get("think", "")
+    assert "弘塑" in hblob
+    assert "不是日K" in hblob or "1110" in hblob

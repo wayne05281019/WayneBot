@@ -957,7 +957,7 @@ def test_thirtyeighth_slice_lock_sold_sehi():
 
 def test_thirtyninth_slice_canon_374_half():
     assert slice_stop() == "2024-04-17"
-    assert next_start() == "2024-04-17"
+    assert next_start() == "2024-04-18"
     body = method_body("圖文時間軸第三十九段")
     assert "2024-04-16" in body
     assert "早盤在37.4" in body
@@ -993,7 +993,7 @@ def test_thirtyninth_slice_canon_374_half():
 
 def test_fortieth_slice_hank_117_third():
     assert slice_stop() == "2024-04-17"
-    assert next_start() == "2024-04-17"
+    assert next_start() == "2024-04-18"
     body = method_body("圖文時間軸第四十段")
     assert "2024-04-16" in body
     assert "先掛117-117.5" in body
@@ -1031,7 +1031,7 @@ def test_fortieth_slice_hank_117_third():
 
 def test_fortyfirst_slice_leike_neck_565():
     assert slice_stop() == "2024-04-17"
-    assert next_start() == "2024-04-17"
+    assert next_start() == "2024-04-18"
     body = method_body("圖文時間軸第四十一段")
     assert "2024-04-16" in body
     assert "打到頸線56.5" in body
@@ -1069,7 +1069,7 @@ def test_fortyfirst_slice_leike_neck_565():
 
 def test_fortysecond_slice_index_19650_not_wrong_charts():
     assert slice_stop() == "2024-04-17"
-    assert next_start() == "2024-04-17"
+    assert next_start() == "2024-04-18"
     body = method_body("圖文時間軸第四十二段")
     assert "2024-04-16" in body
     assert "直探19650" in body
@@ -1108,7 +1108,7 @@ def test_fortysecond_slice_index_19650_not_wrong_charts():
 
 def test_fortythird_slice_gap_neck_not_stock_charts():
     assert slice_stop() == "2024-04-17"
-    assert next_start() == "2024-04-17"
+    assert next_start() == "2024-04-18"
     body = method_body("圖文時間軸第四十三段")
     assert "2024-04-17" in body
     assert "19500~19650" in body
@@ -1134,6 +1134,55 @@ def test_fortythird_slice_gap_neck_not_stock_charts():
     blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
     assert "19500~19650" in blob
     assert "不數段" in blob
+
+
+def test_fortyfourth_slice_honso_limitup_leike_645():
+    assert slice_stop() == "2024-04-17"
+    assert next_start() == "2024-04-18"
+    body = method_body("圖文時間軸第四十四段")
+    assert "2024-04-17" in body
+    assert "我沒有弘塑" in body
+    assert "漲停過前高" in body
+    assert "也會過前高 64.5" in body
+    assert "不是日K" in body
+    assert "截圖約 1110" in body
+    assert "截圖約 61.5" in body
+    assert "弘塑" in body and "雷科" in body
+    hs = line_for("3131")
+    assert "弘塑" in hs
+    assert "截圖約 1110" in hs
+    assert "不是日K" in hs
+    assert "我沒有弘塑" in hs or "沒有弘塑" in hs
+    lk = line_for("6207")
+    assert "也會過前高 64.5" in lk
+    assert "截圖約 61.5" in lk
+    assert "不是日K" in lk
+    ov = overview()
+    assert "弘塑漲停過前高" in ov or "也會過前高 64.5" in ov
+    assert "抱著波段賺更多" in ov and "對不到" in ov
+    html = format_methods_html("我沒有弘塑")
+    assert "弘塑" in html
+    assert "不是日K" in html
+    assert "截圖約 1110" in html
+    html2 = format_methods_html("也會過前高64.5")
+    assert "雷科" in html2
+    assert "64.5" in html2
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "也會過前高64.5")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "也會過前高" in blob
+    assert "截圖約 61.5" in blob or "61.4" in blob or "截圖約 1110" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    h17 = official_on(db, "3131", "20240417")
+    assert h17 == {} or (
+        abs(float(h17["high"]) - 1110) < 0.01 and abs(float(h17["close"]) - 1110) < 0.01
+    )
+    k17 = official_on(db, "6207", "20240417")
+    assert k17 == {} or (
+        abs(float(k17["high"]) - 62.4) < 0.01 and abs(float(k17["close"]) - 61.4) < 0.01
+    )
 
 
 def test_taitong_chipbond_official_optional():

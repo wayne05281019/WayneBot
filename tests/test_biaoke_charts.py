@@ -191,7 +191,7 @@ def test_twentyseventh_pick_charts_thunder_chenming_not_jianding():
 def test_twentyeighth_pick_charts_lasertek_not_5310():
     from biaoke_charts import pick_charts
 
-    lk = pick_charts("6207", limit=4, public_only=True)
+    lk = pick_charts("6207", limit=8, public_only=True)
     assert any("a078f516-26c5-49f8-b7de-f7dfe14959cb" in str(r.get("url") or "") for r in lk)
     assert any("雷科盤中走勢" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
     zs = pick_charts("2467", limit=2, public_only=True)
@@ -273,7 +273,7 @@ def test_thirtysecond_pick_charts_canon_sehi_not_6416():
 def test_thirtythird_pick_charts_lasertek_stage2_not_6416():
     from biaoke_charts import pick_charts
 
-    lk = pick_charts("6207", limit=4, public_only=True)
+    lk = pick_charts("6207", limit=8, public_only=True)
     assert any("5945f017-f1e1-407a-abe8-19fe2b06c6fe" in str(r.get("url") or "") for r in lk)
     assert any("第二階段型態目標" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
@@ -327,7 +327,7 @@ def test_thirtysixth_pick_charts_thunder_85_not_6416():
 def test_thirtyseventh_pick_charts_lasertek_5ma_not_6416():
     from biaoke_charts import pick_charts
 
-    lk = pick_charts("6207", limit=4, public_only=True)
+    lk = pick_charts("6207", limit=8, public_only=True)
     assert any("0b1449bb-43f1-4115-84c3-8b4b243660de" in str(r.get("url") or "") for r in lk)
     assert any("回測5MA支撐線" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
@@ -387,7 +387,7 @@ def test_fortieth_pick_charts_hank_117_not_6416():
 def test_fortyfirst_pick_charts_leike_neck_not_6416():
     from biaoke_charts import pick_charts
 
-    lk = pick_charts("6207", limit=5, public_only=True)
+    lk = pick_charts("6207", limit=8, public_only=True)
     assert any("6820b93c-0852-47bd-868e-9c07421125a4" in str(r.get("url") or "") for r in lk)
     assert any("打到頸線56.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
     skip6416 = pick_charts("6416", limit=5, public_only=True)
@@ -421,6 +421,25 @@ def test_fortythird_pick_charts_index_not_tsmc_hank_canon():
     assert not any("f26afa9e-f9c8-4b04-a861-065073c91b6c" in str(r.get("url") or "") for r in skip3402)
     skip2374 = pick_charts("2374", limit=8, public_only=True)
     assert not any("ac9395fb-1692-4640-a2ec-c81638b9cbe6" in str(r.get("url") or "") for r in skip2374)
+
+
+def test_fortyfourth_pick_charts_honso_leike_not_each_other():
+    from biaoke_charts import pick_charts
+
+    hs = pick_charts("3131", limit=5, public_only=True)
+    assert any("acb86ccf-ea62-404a-9a48-c6240e370891" in str(r.get("url") or "") for r in hs)
+    assert any("漲停過前高1110" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in hs)
+    assert not any("7913362a-11b8-4286-beee-d3c4c593ccb4" in str(r.get("url") or "") for r in hs)
+    lk = pick_charts("6207", limit=8, public_only=True)
+    assert any("7913362a-11b8-4286-beee-d3c4c593ccb4" in str(r.get("url") or "") for r in lk)
+    assert any("也會過前高64.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in lk)
+    assert not any("acb86ccf-ea62-404a-9a48-c6240e370891" in str(r.get("url") or "") for r in lk)
+    skip6416 = pick_charts("6416", limit=5, public_only=True)
+    assert not any("acb86ccf-ea62-404a-9a48-c6240e370891" in str(r.get("url") or "") for r in skip6416)
+    assert not any("7913362a-11b8-4286-beee-d3c4c593ccb4" in str(r.get("url") or "") for r in skip6416)
+    skip5310 = pick_charts("5310", limit=5, public_only=True)
+    assert not any("acb86ccf-ea62-404a-9a48-c6240e370891" in str(r.get("url") or "") for r in skip5310)
+    assert not any("7913362a-11b8-4286-beee-d3c4c593ccb4" in str(r.get("url") or "") for r in skip5310)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
