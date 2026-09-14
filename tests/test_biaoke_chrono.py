@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-03"
-    assert next_start() == "2024-05-06"
+    assert slice_stop() == "2024-05-06"
+    assert next_start() == "2024-05-07"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1510,6 +1510,40 @@ def test_fiftysecond_slice_quanta_intraday_not_weekly():
     )
     q02 = official_on(db, "2382", "20240502")
     assert q02 == {} or abs(float(q02["close"]) - 261) < 0.01
+
+
+def test_fiftythird_slice_quanta_min_target_intraday():
+    body = method_body("圖文時間軸第五十三段")
+    assert "2024-05-06" in body
+    assert "型態最少滿足價區到了" in body
+    assert "不是日K" in body
+    assert "截圖約 272.5" in body
+    assert "不數段" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "型態最少滿足價區到了" in q
+    assert "截圖約 272.5" in q
+    assert "不是日K" in q
+    ov = overview()
+    assert "型態最少滿足價區到了" in ov
+    assert "272.5" in ov
+    html = format_methods_html("型態最少滿足價區到了")
+    assert "廣達" in html
+    assert "截圖約 272.5" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "型態最少滿足價區到了")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "型態最少滿足價區到了" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q06 = official_on(db, "2382", "20240506")
+    assert q06 == {} or (
+        abs(float(q06["high"]) - 273) < 0.01
+        and abs(float(q06["low"]) - 262) < 0.01
+        and abs(float(q06["close"]) - 262) < 0.01
+    )
 
 
 
