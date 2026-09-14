@@ -118,7 +118,7 @@ def test_intraday_snip_notes_overlay_not_daily_k():
     qb = pick_charts("6147", limit=3, public_only=True)
     assert any("925ae6d3-392a-4e43-8cf7-6ef7c03a7406" in str(r.get("url") or "") for r in qb)
     assert any("頎邦盤中走勢" in str(r.get("note") or "") for r in qb)
-    qt = pick_charts("2382", limit=12, public_only=True)
+    qt = pick_charts("2382", limit=16, public_only=True)
     assert any("9a56b8cc-9e24-4397-a5cb-68d6df19c5a5" in str(r.get("url") or "") for r in qt)
     assert any("c3095408-726b-4dde-b71f-7cebd42ae8b5" in str(r.get("url") or "") for r in qt)
     assert any("d9ca1bdc-42f3-444b-87fc-6852e905a126" in str(r.get("url") or "") for r in qt)
@@ -291,7 +291,7 @@ def test_thirtythird_pick_charts_lasertek_stage2_not_6416():
 def test_thirtyfourth_pick_charts_quanta_273_not_tsmc():
     from biaoke_charts import pick_charts
 
-    qt = pick_charts("2382", limit=12, public_only=True)
+    qt = pick_charts("2382", limit=16, public_only=True)
     assert any("ada1f9ba-cced-4a3f-8213-6a21cf775572" in str(r.get("url") or "") for r in qt)
     assert any("支撐273不是282" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in qt)
     tsmc = pick_charts("2330", limit=6, public_only=True)
@@ -481,6 +481,29 @@ def test_fortyseventh_pick_charts_wistron_not_quanta_gold_emc():
     for sid in ("2382", "2368", "2383", "3017", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
+def test_fortyeighth_pick_charts_quanta_wiwynn_ennoconn_not_emc():
+    from biaoke_charts import pick_charts
+
+    q = pick_charts("2382", limit=8, public_only=True)
+    assert any("493f2e88-231c-48b2-ab73-035291c94c8b" in str(r.get("url") or "") for r in q)
+    assert any("伺服器漲勢確認" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in q)
+    y = pick_charts("6669", limit=8, public_only=True)
+    assert any("f46970b1-fe3b-4937-b354-95761405af6c" in str(r.get("url") or "") for r in y)
+    assert any("比較看好" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in y)
+    c = pick_charts("8210", limit=8, public_only=True)
+    assert any("848aa61c-5fb5-4719-8a62-2c4c0c61da1a" in str(r.get("url") or "") for r in c)
+    assert any("持續看好可跌再進" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in c)
+    skip_snips = (
+        "848aa61c-5fb5-4719-8a62-2c4c0c61da1a",
+        "493f2e88-231c-48b2-ab73-035291c94c8b",
+        "f46970b1-fe3b-4937-b354-95761405af6c",
+    )
+    for sid in ("2383", "3231", "3035", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        for snip in skip_snips:
+            assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():

@@ -432,6 +432,18 @@ def test_fortyseventh_methods_old_ai_wistron():
     assert any(t == "圖文時間軸第四十七段" for t, _b in hold)
 
 
+def test_fortyeighth_methods_old_ai_confirmed():
+    html = format_methods_html("6669我比較看好")
+    assert "緯穎" in html
+    assert "截圖約 2380" in html
+    assert "不是日K" in html
+    assert "勤誠" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十八段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十八段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

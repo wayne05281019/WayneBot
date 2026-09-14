@@ -956,7 +956,7 @@ def test_thirtyeighth_slice_lock_sold_sehi():
 
 
 def test_thirtyninth_slice_canon_374_half():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第三十九段")
     assert "2024-04-16" in body
@@ -992,7 +992,7 @@ def test_thirtyninth_slice_canon_374_half():
 
 
 def test_fortieth_slice_hank_117_third():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十段")
     assert "2024-04-16" in body
@@ -1030,7 +1030,7 @@ def test_fortieth_slice_hank_117_third():
 
 
 def test_fortyfirst_slice_leike_neck_565():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十一段")
     assert "2024-04-16" in body
@@ -1068,7 +1068,7 @@ def test_fortyfirst_slice_leike_neck_565():
 
 
 def test_fortysecond_slice_index_19650_not_wrong_charts():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十二段")
     assert "2024-04-16" in body
@@ -1107,7 +1107,7 @@ def test_fortysecond_slice_index_19650_not_wrong_charts():
 
 
 def test_fortythird_slice_gap_neck_not_stock_charts():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十三段")
     assert "2024-04-17" in body
@@ -1137,7 +1137,7 @@ def test_fortythird_slice_gap_neck_not_stock_charts():
 
 
 def test_fortyfourth_slice_honso_limitup_leike_645():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十四段")
     assert "2024-04-17" in body
@@ -1186,7 +1186,7 @@ def test_fortyfourth_slice_honso_limitup_leike_645():
 
 
 def test_fortyfifth_slice_tx_night_19650_twii_19844():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十五段")
     assert "2024-04-18" in body
@@ -1226,7 +1226,7 @@ def test_fortyfifth_slice_tx_night_19650_twii_19844():
 
 
 def test_fortysixth_slice_huang_peishuo_18752():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十六段")
     assert "2024-04-19" in body
@@ -1253,7 +1253,7 @@ def test_fortysixth_slice_huang_peishuo_18752():
 
 
 def test_fortyseventh_slice_old_ai_wistron_intraday():
-    assert slice_stop() == "2024-04-21"
+    assert slice_stop() == "2024-04-26"
     assert next_start() == "2024-04-26"
     body = method_body("圖文時間軸第四十七段")
     assert "2024-04-21" in body
@@ -1315,6 +1315,66 @@ def test_fortyseventh_slice_old_ai_wistron_intraday():
     e22 = official_on(db, "2383", "20240422")
     assert e22 == {} or (
         abs(float(e22["low"]) - 350.5) < 0.01 and abs(float(e22["close"]) - 350.5) < 0.01
+    )
+
+
+def test_fortyeighth_slice_old_ai_quanta_wiwynn_ennoconn():
+    assert slice_stop() == "2024-04-26"
+    assert next_start() == "2024-04-26"
+    body = method_body("圖文時間軸第四十八段")
+    assert "2024-04-26" in body
+    assert "6669我比較看好" in body
+    assert "機殼8210持續看好" in body
+    assert "先以跌深反談" in body
+    assert "不是日K" in body
+    assert "截圖約 297" in body
+    assert "截圖約 263.5" in body
+    assert "截圖約 2380" in body
+    assert "不對圖" in body
+    q = line_for("2382")
+    assert "漲勢確認" in q
+    assert "截圖約 263.5" in q
+    assert "不是日K" in q
+    w = line_for("6669")
+    assert "緯穎" in w
+    assert "比較看好" in w
+    assert "截圖約 2380" in w
+    e = line_for("8210")
+    assert "勤誠" in e
+    assert "持續看好" in e
+    assert "截圖約 297" in e
+    emc = line_for("2383")
+    assert "跌深反談" in emc
+    assert "不對圖" in emc
+    ov = overview()
+    assert "6669" in ov
+    assert "8210" in ov
+    html = format_methods_html("6669我比較看好")
+    assert "緯穎" in html
+    assert "截圖約 2380" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "6669我比較看好")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "6669我比較看好" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q26 = official_on(db, "2382", "20240426")
+    assert q26 == {} or (
+        abs(float(q26["high"]) - 269) < 0.01 and abs(float(q26["close"]) - 257.5) < 0.01
+    )
+    y26 = official_on(db, "6669", "20240426")
+    assert y26 == {} or (
+        abs(float(y26["high"]) - 2410) < 0.01 and abs(float(y26["close"]) - 2325) < 0.01
+    )
+    c26 = official_on(db, "8210", "20240426")
+    assert c26 == {} or (
+        abs(float(c26["high"]) - 303) < 0.01 and abs(float(c26["close"]) - 288.5) < 0.01
+    )
+    e26 = official_on(db, "2383", "20240426")
+    assert e26 == {} or (
+        abs(float(e26["low"]) - 390) < 0.01 and abs(float(e26["close"]) - 397) < 0.01
     )
 
 
@@ -1491,6 +1551,8 @@ def test_methods_html_and_names():
     assert names_in_ask("鴻海怎麼看")[0][0] == "2317"
     assert names_in_ask("樺漢怎麼看")[0][0] == "6414"
     assert names_in_ask("緯創怎麼看")[0][0] == "3231"
+    assert names_in_ask("緯穎怎麼看")[0][0] == "6669"
+    assert names_in_ask("勤誠怎麼看")[0][0] == "8210"
     flag = format_methods_html("下飄旗型整理多久")
     assert "不透漏" in flag
     assert "13日" not in flag
