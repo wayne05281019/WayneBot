@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-06"
-    assert next_start() == "2024-05-07"
+    assert slice_stop() == "2024-05-07"
+    assert next_start() == "2024-05-08"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1543,6 +1543,40 @@ def test_fiftythird_slice_quanta_min_target_intraday():
         abs(float(q06["high"]) - 273) < 0.01
         and abs(float(q06["low"]) - 262) < 0.01
         and abs(float(q06["close"]) - 262) < 0.01
+    )
+
+
+def test_fiftyfourth_slice_emc_right_shoulder_intraday():
+    body = method_body("圖文時間軸第五十四段")
+    assert "2024-05-07" in body
+    assert "今天在做型態右肩" in body
+    assert "蔡森" in body
+    assert "8-10根K" in body
+    assert "不是日K" in body
+    assert "截圖約 412.5" in body
+    assert "不數段" in body
+    e = line_for("2383")
+    assert "台光電" in e
+    assert "今天在做型態右肩" in e
+    assert "截圖約 412.5" in e
+    assert "不是日K" in e
+    ov = overview()
+    assert "今天在做型態右肩" in ov
+    assert "412.5" in ov
+    html = format_methods_html("型態大師蔡森")
+    assert "台光電" in html
+    assert "截圖約 412.5" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "型態大師蔡森")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "型態大師蔡森" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    e07 = official_on(db, "2383", "20240507")
+    assert e07 == {} or (
+        abs(float(e07["low"]) - 409) < 0.01 and abs(float(e07["close"]) - 420) < 0.01
     )
 
 

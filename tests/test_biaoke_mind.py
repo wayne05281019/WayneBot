@@ -500,6 +500,17 @@ def test_fiftythird_methods_quanta_min_target():
     assert any(t == "圖文時間軸第五十三段" for t, _b in hold)
 
 
+def test_fiftyfourth_methods_emc_right_shoulder():
+    html = format_methods_html("型態大師蔡森")
+    assert "台光電" in html
+    assert "截圖約 412.5" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十四段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十四段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
