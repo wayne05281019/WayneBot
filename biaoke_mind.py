@@ -10,7 +10,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tg_layout import html_escape
-from biaoke_chrono import method_from_event
+from biaoke_chrono import auto_slice_methods, method_from_event
 
 DISCLAIMER_LINE = (
     "⚠️ 這不是買訊。不是飆大本人；是把他公開文的思考在這邊彙整後回你。"
@@ -1491,6 +1491,8 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
     ),
 ]
 
+
+_METHODS.extend(auto_slice_methods())
 
 # 圖文段標題從 _METHODS 長出來，新段不必再改這兩串。
 _CHRONO_TITLES = tuple(t for _p, t, _b in _METHODS if str(t).startswith("圖文時間軸"))

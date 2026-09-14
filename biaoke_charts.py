@@ -324,8 +324,23 @@ _ALIAS = {
 }
 
 
+@lru_cache(maxsize=1)
+def _event_snip_maps() -> tuple:
+    """76 段起歸屬從 ledger 長出來，不必再抄 _TICKERS_BY_SNIP／_NOTE_BY_SNIP。"""
+    try:
+        from biaoke_chrono import event_snip_maps
+
+        return event_snip_maps()
+    except Exception:
+        return {}, {}
+
+
 def _snip_note(url: str) -> str:
     u = url or ""
+    notes, _ticks = _event_snip_maps()
+    for snip, note in notes.items():
+        if snip in u:
+            return note
     for snip, note in _NOTE_BY_SNIP.items():
         if snip in u:
             return note
@@ -334,6 +349,10 @@ def _snip_note(url: str) -> str:
 
 def _snip_tickers(url: str) -> List[str]:
     u = url or ""
+    _notes, ticks = _event_snip_maps()
+    for snip, ids in ticks.items():
+        if snip in u:
+            return list(ids)
     for snip, ids in _TICKERS_BY_SNIP.items():
         if snip in u:
             return list(ids)

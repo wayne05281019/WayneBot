@@ -80,19 +80,25 @@
 第七十三段：2024-05-21 10:02 文寫大盤再測21100；圖是台積電盤中約834，主文沒點台積電不對圖。
 第七十四段：2024-05-21 11:02 文寫大盤下降楔形；圖是台積電盤中約838，主文沒點台積電不對圖。
 第七十五段：2024-05-21 12:32 文寫廣達集團兩檔難操作；三張是鼎天／廣達／廣明盤中，不是日K。
+第七十六段：2024-05-22 11:17 文寫長榮、萬海第二次上車最後機會，陽明天；三張盤中不是日K。
 社團圖不進這裡。不是買訊。不是 4/16。建築兩檔沒點名代號。
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+import re
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 # 這一段走完的最後一天。下一段從隔天有附圖的文接。
 # 每滿十段回頭看行程：舊測不要改停點；新段只寫 method／event／snip；chain 靠 match_methods。
 # 滿六十段：_CHRONO_TITLES 自動進 tape／hold；不准再加長 biaoke_chain 關鍵字名單。
 # 滿七十段加速（不准改對圖規則）：對圖歸屬測 charts_for 全表，不測 pick_charts 前 N 名；
 # 新段 method 用 method_from_event，官方數字只在 ledger 寫一次。
-SLICE_STOP = "2024-05-21"
-NEXT_START = "2024-05-22"
+# 滿八十段加速（仍不准改對圖規則）：新段在 ledger 寫 note／rx／title／ask，
+# charts 歸屬、mind 問句、overview 尾、停點、測試都從 ledger 長出來，不准再抄四份數字。
+# SLICE_STOP／NEXT_START 在 _EVENTS 後面從最後一天長出來。
+SLICE_STOP = ""
+NEXT_START = ""
 
 HOW = (
     "圖文時間軸是由早到晚對圖、不是一次掃完 1709。"
@@ -105,7 +111,8 @@ HOW = (
 )
 
 # 目視過的第一、二段。截圖報價只當他當下讀數。
-_EVENTS: List[Dict[str, str]] = [
+# 76 段起可加 note／rx／title／ask／phrases／quote／ov；有 note 的圖才自動蓋 gzip 誤標。
+_EVENTS: List[Dict[str, Any]] = [
     {
         "date": "2023-12-19",
         "aid": "158498173",
@@ -3326,11 +3333,117 @@ _EVENTS: List[Dict[str, str]] = [
         ),
         "verdict": "12:32 叫廣達集團兩檔難操作；這張是廣明盤中不是日K。當日收108.5。對跟錯一起留。",
     },
+    {
+        "date": "2024-05-22",
+        "aid": "162095008",
+        "sid": "2609",
+        "name": "陽明",
+        "snip": "ded8852b-e481-461a-8819-1ad29e59b544",
+        "title": "圖文時間軸第七十六段",
+        "rx": r"(第二次上車最後機會)",
+        "ask": "第二次上車最後機會",
+        "phrases": ("第二次上車最後機會", "不是日K", "截圖約 72.5"),
+        "quote": "截圖約 72.5",
+        "ov": "主文長榮、萬海第二次上車最後機會，陽明應該明天。三張盤中不是日K。",
+        "note": "陽明盤中走勢：11:10約72.5，第二次上車最後機會（不是日K，不是長榮／萬海）",
+        "why": (
+            "主文 11:17：今天是長榮、萬海第二次上車最後機會，陽明應該是明天最後一次上車機會。"
+            "這張是 5/22 11:10 陽明 2609 盤中走勢，不是日K。萬海／長榮是另張。"
+            "截圖約 72.5（▲1.1，1.54%）量 13347，圖上 73／71.4／69.8。"
+            "71.4 對上 5/21 官方收 71.4。為什麼貼：陽明明天最後一次上車。"
+            "gzip 標日K截圖 2603,2609,2615：只對得上2609，圖不是日K。2603／2615 不對這張。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "official": (
+            "5/21 官方開 72.1 高 72.1 低 70.4 收 71.4 量 24383。"
+            "5/22 官方開 71.5 高 72.7 低 70.6 收 72 量 25468。"
+            "截圖 11:10 約 72.5／▲1.1 是盤中讀數；圖上高 73 對全日高 72.7。收 72。"
+            "圖上 69.8 不是當日低 70.6。"
+        ),
+        "later": (
+            "同則 11:46 自回：蒙古大，全部押在貨櫃要賺大錢啦！"
+            "同日 11:43 無圖文講Nvidia財報與AI供應鏈，不是這三張貨櫃圖。"
+            "18:59 無圖文：貨櫃三雄看法不變；不數段。"
+            "5/23 官方開 72.4 高 72.4 低 71.2 收 71.3 量 18143。"
+            "5/24 10:38 回證前天長榮／萬海第二次上車、陽明昨天全部驗證。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "verdict": "11:17 叫陽明明天最後一次上車；這張是陽明盤中不是日K。當日收72。對跟錯一起留。",
+    },
+    {
+        "date": "2024-05-22",
+        "aid": "162095008",
+        "sid": "2615",
+        "name": "萬海",
+        "snip": "7de3a76b-86b1-4f44-a4f8-fd9d7e72c175",
+        "note": "萬海盤中走勢：11:15約70.8，第二次上車最後機會（不是日K，不是長榮／陽明）",
+        "quote": "截圖約 70.8",
+        "why": (
+            "同一則：今天是長榮、萬海第二次上車最後機會。"
+            "這張是 5/22 11:15 萬海 2615 盤中走勢，不是日K。陽明／長榮是另張。"
+            "截圖約 70.8（▲2，2.91%）量 4135，圖上 71.5／68.8／66.1。"
+            "68.8 對上 5/21 官方收 68.8。為什麼貼：萬海第二次上車最後機會。"
+            "gzip 標日K截圖 2603,2609,2615：只對得上2615，圖不是日K。2603／2609 不對這張。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "official": (
+            "5/21 官方開 70.6 高 70.6 低 68.8 收 68.8 量 7553。"
+            "5/22 官方開 69.8 高 71.5 低 68.4 收 71.2 量 11412。"
+            "截圖 11:15 約 70.8／▲2 是盤中讀數；圖上高 71.5 對全日高 71.5。收 71.2。"
+            "圖上 66.1 不是當日低 68.4。"
+        ),
+        "later": (
+            "當日收 71.2。5/23 收 71.1。5/24 回證第二次上車。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "verdict": "11:17 叫萬海第二次上車最後機會；這張是萬海盤中不是日K。當日收71.2。對跟錯一起留。",
+    },
+    {
+        "date": "2024-05-22",
+        "aid": "162095008",
+        "sid": "2603",
+        "name": "長榮",
+        "snip": "09121866-2b7a-401a-94c2-519535226006",
+        "note": "長榮盤中走勢：11:15約209.5，第二次上車最後機會（不是日K，不是陽明／萬海）",
+        "quote": "截圖約 209.5",
+        "why": (
+            "同一則：今天是長榮、萬海第二次上車最後機會。"
+            "這張是 5/22 11:15 長榮 2603 盤中走勢，不是日K。陽明／萬海是另張。"
+            "截圖約 209.5（▲1.5，0.72%）量 22286，圖上 211.5／208／204.5。"
+            "208 對上 5/21 官方收 208。為什麼貼：長榮第二次上車最後機會。"
+            "gzip 標日K截圖 2603,2609,2615：只對得上2603，圖不是日K。2609／2615 不對這張。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "official": (
+            "5/21 官方開 213.5 高 213.5 低 205.5 收 208 量 46292。"
+            "5/22 官方開 207.5 高 211 低 205 收 209 量 37603。"
+            "截圖 11:15 約 209.5／▲1.5 是盤中讀數；圖上高 211.5 對全日高 211。收 209。"
+            "圖上 204.5 不是當日低 205。"
+        ),
+        "later": (
+            "當日收 209。5/23 收 209。5/24 回證第二次上車。"
+            "5310 不對圖。6416 不對圖。"
+        ),
+        "verdict": "11:17 叫長榮第二次上車最後機會；這張是長榮盤中不是日K。當日收209。對跟錯一起留。",
+    },
 ]
 
-_BY_SID: Dict[str, List[Dict[str, str]]] = {}
+_BY_SID: Dict[str, List[Dict[str, Any]]] = {}
 for _e in _EVENTS:
     _BY_SID.setdefault(_e["sid"], []).append(_e)
+
+
+def _refresh_slice_bounds() -> None:
+    """停點從 ledger 最後一天長出來，新段不必改兩行日期。"""
+    global SLICE_STOP, NEXT_START
+    last = max(str(e.get("date") or "") for e in _EVENTS)
+    SLICE_STOP = last
+    NEXT_START = (
+        datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)
+    ).strftime("%Y-%m-%d")
+
+
+_refresh_slice_bounds()
 
 OVERVIEW = (
     HOW
@@ -3731,20 +3844,67 @@ OVERVIEW = (
     + "官方廣明 5/20 收 99.7，5/21 開 99.5 高 109.5 低 98 收 108.5 量 45100。"
     + "gzip 標日K截圖夾2382 圖種不對。5310 不對圖。6416 不對圖。"
     + "不是 4/16。建築兩檔沒點名代號。公開對不到「抱著波段賺更多」。不是買訊。"
-    + "下一段從 2024-05-22 接著有附圖的文接，不走 6416。"
 )
 
 
-def events_by_aid(aid: str) -> List[Dict[str, str]]:
+def events_by_aid(aid: str) -> List[Dict[str, Any]]:
     want = str(aid or "").strip()
     if not want:
         return []
     return [e for e in _EVENTS if str(e.get("aid") or "") == want]
 
 
-def event_by_aid(aid: str) -> Optional[Dict[str, str]]:
+def event_by_aid(aid: str) -> Optional[Dict[str, Any]]:
     rows = events_by_aid(aid)
     return rows[0] if rows else None
+
+
+def event_snip_maps() -> Tuple[Dict[str, str], Dict[str, List[str]]]:
+    """有 note 的圖才蓋 gzip 誤標。同一張圖只歸 ledger 寫的那檔。"""
+    notes: Dict[str, str] = {}
+    ticks: Dict[str, List[str]] = {}
+    for e in _EVENTS:
+        snip = str(e.get("snip") or "").strip()
+        note = str(e.get("note") or "").strip()
+        sid = str(e.get("sid") or "").strip()
+        if not snip or not note:
+            continue
+        notes[snip] = note
+        if sid and sid not in ticks.setdefault(snip, []):
+            ticks[snip].append(sid)
+    return notes, ticks
+
+
+def auto_slice_events() -> List[Dict[str, Any]]:
+    return [e for e in _EVENTS if str(e.get("note") or "").strip()]
+
+
+def auto_slice_methods() -> List[Tuple[Any, str, str]]:
+    """76 段起問句從 ledger 長出來，mind 不必再抄正文。"""
+    out: List[Tuple[Any, str, str]] = []
+    seen = set()
+    for e in _EVENTS:
+        aid = str(e.get("aid") or "")
+        title = str(e.get("title") or "").strip()
+        rx = str(e.get("rx") or "").strip()
+        if not aid or aid in seen or not title or not rx:
+            continue
+        seen.add(aid)
+        out.append((re.compile(rx), title, method_from_event(title, aid)))
+    return out
+
+
+def auto_overview() -> str:
+    bits: List[str] = []
+    seen = set()
+    for e in _EVENTS:
+        aid = str(e.get("aid") or "")
+        title = str(e.get("title") or "").strip()
+        if not title or aid in seen:
+            continue
+        seen.add(aid)
+        bits.append(f"{title} {e['date']}。" + str(e.get("ov") or ""))
+    return "".join(bits)
 
 
 def method_from_event(title: str, aid: str, extra: str = "") -> str:
@@ -3772,7 +3932,11 @@ def next_start() -> str:
 
 
 def overview() -> str:
-    return OVERVIEW
+    return (
+        OVERVIEW
+        + auto_overview()
+        + f"下一段從 {NEXT_START} 接著有附圖的文接，不走 6416。"
+    )
 
 
 def line_for(sid: str) -> str:

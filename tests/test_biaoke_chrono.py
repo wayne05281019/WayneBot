@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 """圖文時間軸：第一段智原／貨櫃，第二段華碩／廣達，第三段台通／頎邦，第四段光聖／頎邦回證。"""
-from biaoke_chrono import line_for, method_from_event, next_start, overview, slice_stop
+from biaoke_chrono import (
+    auto_slice_events,
+    line_for,
+    method_from_event,
+    next_start,
+    overview,
+    slice_stop,
+)
 from biaoke_charts import official_on
 from biaoke_mind import format_methods_html, method_body
 from biaoke_facts import names_in_ask
@@ -26,8 +33,10 @@ def assert_chrono_slice(title, date, phrases, sid, name, quote, ask):
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-21"
-    assert next_start() == "2024-05-22"
+    assert slice_stop()
+    assert next_start() > slice_stop()
+    assert len(slice_stop()) == 10
+    assert len(next_start()) == 10
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -2220,6 +2229,48 @@ def test_seventyfifth_slice_quanta_group_three_intraday():
     assert "廣達集團這兩檔" in ov
     html = format_methods_html("廣達也不會寂寞")
     assert "鼎天" in html and "廣達" in html and "廣明" in html
+
+
+def test_auto_chrono_slices_from_ledger():
+    """76 段起只測 ledger，不必每段再抄三份測試。"""
+    from tests.test_biaoke_charts import assert_snip_owned
+    from biaoke_mind import views_for_neuron
+
+    rows = auto_slice_events()
+    assert rows
+    by_aid = {}
+    for e in rows:
+        by_aid.setdefault(str(e.get("aid") or ""), []).append(str(e.get("sid") or ""))
+    tape_titles = {t for t, _b in views_for_neuron("tape")}
+    hold_titles = {t for t, _b in views_for_neuron("hold")}
+    ov = overview()
+    seen_title = set()
+    for e in rows:
+        sid = str(e.get("sid") or "")
+        snip = str(e.get("snip") or "")
+        name = str(e.get("name") or "")
+        quote = str(e.get("quote") or "")
+        assert sid and snip and name
+        siblings = tuple(s for s in by_aid.get(str(e.get("aid") or ""), []) if s and s != sid)
+        not_sids = tuple(e.get("not_sids") or (siblings + ("6416", "5310")))
+        note_bit = quote.replace("截圖約 ", "") if quote.startswith("截圖約 ") else quote
+        assert_snip_owned(sid, snip, note_bit, not_sids)
+        line = line_for(sid)
+        assert name in line
+        if quote:
+            assert quote in line
+        title = str(e.get("title") or "").strip()
+        if not title or title in seen_title:
+            continue
+        seen_title.add(title)
+        phrases = tuple(e.get("phrases") or ())
+        ask = str(e.get("ask") or "")
+        assert phrases and ask
+        assert_chrono_slice(title, e["date"], phrases, sid, name, quote, ask)
+        assert title in tape_titles
+        assert title in hold_titles
+        ov_bit = str(e.get("ov") or phrases[0])
+        assert ov_bit[:8] in ov or phrases[0] in ov
 
 
 def test_taitong_chipbond_official_optional():
