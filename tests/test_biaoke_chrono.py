@@ -7,6 +7,9 @@ from biaoke_chrono import (
     next_start,
     overview,
     slice_stop,
+    stamp_named_official,
+    unused_self_replies,
+    wave_ledger_rows,
 )
 from biaoke_charts import official_on
 from biaoke_mind import format_methods_html, method_body
@@ -2696,3 +2699,32 @@ def test_chain_honhai_chart_is_ennoconn():
     assert "810" in t26
     assert "816" in t26
     assert "9XX" in t26
+
+
+def test_unused_self_replies_fills_abf_floor():
+    extra = unused_self_replies("180986043", "")
+    blob = " ".join(extra)
+    assert "欣興" in blob or "ABF" in blob
+    from biaoke_chrono import event_by_aid
+
+    why = str((event_by_aid("180986043") or {}).get("why") or "")
+    skipped = unused_self_replies("180986043", why)
+    assert skipped
+    assert all(not x.startswith("勤誠目前剛好打到") for x in skipped)
+    body = method_from_event("圖文時間軸第二百二十五段", "180986043")
+    assert "樓下自回補齊" in body
+    assert "欣興" in body
+    assert "已經開始有出現破線翻的初步訊號出來，順便進行教學" in body
+    bits = stamp_named_official(
+        "ABF 欣興、景碩頭部確認、南電全部出清", "20260724", ["8210"]
+    )
+    stamped = " ".join(bits)
+    if bits:
+        assert "3037" in stamped
+        assert "8210" not in stamped
+    line = line_for("8210")
+    assert "樓下自回補齊" in line
+    waves = wave_ledger_rows()
+    titles = {w["title"] for w in waves}
+    assert "圖文時間軸第二百一十九段" in titles
+    assert "圖文時間軸第二百三十段" in titles

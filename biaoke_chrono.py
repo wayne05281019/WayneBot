@@ -95,9 +95,11 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # 這一段走完的最後一天。下一段從隔天有附圖的文接。
 # 每滿十段回頭看行程：舊測不要改停點；新段只寫 method／event／snip；chain 靠 match_methods。
@@ -9470,17 +9472,212 @@ def auto_overview() -> str:
     return "".join(bits)
 
 
+_SKIP_STAMP_SIDS = frozenset({"TWII", "TX", "OTC", "6416", "5310"})
+_STAMP_DROP = re.compile(
+    r"gzip\s*標[^。]*。|"
+    r"\d{3,5}\s*不對(?:這張|圖)[^。]*。|"
+    r"不是[^\s，。、／/]{1,8}"
+)
+_WAVE_MARK = re.compile(r"(細微波|波浪|第[一二三四五1-5][波浪])")
+
+
+def _ymd(raw: str) -> str:
+    return str(raw or "").replace("-", "").replace("/", "")[:8]
+
+
+def _px_bit(val: Any) -> str:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return str(val or "")
+    if abs(n - round(n)) < 1e-9:
+        return str(int(round(n)))
+    return f"{n:.2f}".rstrip("0").rstrip(".")
+
+
+def _stamp_text(blob: str) -> str:
+    return _STAMP_DROP.sub(" ", blob or "")
+
+
+def _market_db() -> str:
+    try:
+        from config import get_db_path
+
+        path = get_db_path()
+    except Exception:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "wayne_market.db")
+    return path if path and os.path.isfile(path) else ""
+
+
+@lru_cache(maxsize=1)
+def _reply_index() -> Dict[str, Tuple[Tuple[str, str], ...]]:
+    """公開庫＋catchup 一／二層自回，按主文 id。路人不在這包。"""
+    from biaoke_archive import load_bundled_archive
+
+    by: Dict[str, List[Tuple[str, str]]] = {}
+    rows = list((load_bundled_archive() or {}).get("posts") or [])
+    try:
+        from biaoke_desk import catchup_seed_rows
+
+        rows.extend(catchup_seed_rows() or [])
+    except Exception:
+        pass
+    for row in rows:
+        if (row.get("kind") or "") != "reply":
+            continue
+        parent = str(row.get("parent") or "")
+        if not parent:
+            continue
+        try:
+            layer = int(row.get("layer") or 1)
+        except (TypeError, ValueError):
+            layer = 1
+        if layer > 2:
+            continue
+        txt = str(row.get("text") or "").replace("\n", " ").strip()
+        if len(txt) < 8:
+            continue
+        by.setdefault(parent, []).append((str(row.get("date") or ""), txt))
+    return {k: tuple(v) for k, v in by.items()}
+
+
+def _unused_self_reply_rows(
+    aid: str, already: str, *, cap: int = 12, each: int = 160
+) -> List[Tuple[str, str]]:
+    seen = already or ""
+    extra: List[Tuple[str, str]] = []
+    for day, txt in _reply_index().get(str(aid or ""), ()):
+        needle = txt[:16]
+        if needle and needle in seen:
+            continue
+        extra.append((day, txt[:each]))
+        if len(extra) >= cap:
+            break
+    return extra
+
+
+def unused_self_replies(
+    aid: str, already: str, *, cap: int = 12, each: int = 160
+) -> List[str]:
+    """archive 自回還沒寫進 why／later 的，一次補進後證。"""
+    return [txt for _day, txt in _unused_self_reply_rows(aid, already, cap=cap, each=each)]
+
+
+@lru_cache(maxsize=4096)
+def _official_cached(sid: str, ymd: str) -> Tuple[str, str, str, str, str]:
+    db = _market_db()
+    if not db or not sid or len(ymd) != 8:
+        return ("", "", "", "", "")
+    from biaoke_charts import official_on
+
+    row = official_on(db, sid, ymd) or {}
+    if not row:
+        return ("", "", "", "", "")
+    return (
+        _px_bit(row.get("open")),
+        _px_bit(row.get("high")),
+        _px_bit(row.get("low")),
+        _px_bit(row.get("close")),
+        _px_bit(row.get("volume")),
+    )
+
+
+def stamp_named_official(
+    blob: str, ymd: str, own: Optional[Sequence[str]] = None
+) -> List[str]:
+    """文裡點到的其他檔，用發文／回文日官方柱補上。沒這列就不寫。"""
+    from biaoke_facts import names_in_ask
+
+    day = _ymd(ymd)
+    if len(day) != 8 or not day.isdigit():
+        return []
+    own_set = {str(x) for x in (own or []) if x} | set(_SKIP_STAMP_SIDS)
+    pretty = f"{day[:4]}-{day[4:6]}-{day[6:8]}"
+    bits: List[str] = []
+    seen = set(own_set)
+    raw = blob or ""
+    for sid, name in names_in_ask(_stamp_text(raw)):
+        if sid in seen:
+            continue
+        if name and f"沒點{name}" in raw:
+            continue
+        seen.add(sid)
+        bar = _official_cached(sid, day)
+        if not bar[0]:
+            continue
+        o, h, lo, c, v = bar
+        bits.append(f"同日戳記 {name} {sid} {pretty} 官方開{o}高{h}低{lo}收{c}量{v}")
+    return bits
+
+
+def _event_fill(ev: Dict[str, Any], own: Optional[Sequence[str]] = None) -> Tuple[str, str]:
+    aid = str(ev.get("aid") or "")
+    already = str(ev.get("why") or "") + str(ev.get("later") or "")
+    ymd = str(ev.get("date") or "")
+    own_sids = [str(x) for x in (own if own is not None else [ev.get("sid") or ""]) if x]
+    rows = _unused_self_reply_rows(aid, already)
+    later_fill = ("樓下自回補齊：" + "；".join(txt for _d, txt in rows)) if rows else ""
+    stamps = stamp_named_official(already, ymd, own_sids)
+    seen = {str(x) for x in own_sids} | set(_SKIP_STAMP_SIDS)
+    for bit in stamps:
+        m = re.search(r" (\d{4}) ", bit)
+        if m:
+            seen.add(m.group(1))
+    for day, txt in rows:
+        more = stamp_named_official(txt, day or ymd, seen)
+        for bit in more:
+            m = re.search(r" (\d{4}) ", bit)
+            if m:
+                seen.add(m.group(1))
+        stamps.extend(more)
+    return later_fill, " ".join(stamps)
+
+
+def wave_ledger_rows() -> List[Dict[str, str]]:
+    """有講波浪／細微波的已建檔段，只摘原文位階，不發明 5／9 段。"""
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for e in _EVENTS:
+        aid = str(e.get("aid") or "")
+        title = str(e.get("title") or "").strip()
+        blob = str(e.get("why") or "") + str(e.get("later") or "")
+        if not title or aid in seen or not _WAVE_MARK.search(blob):
+            continue
+        seen.add(aid)
+        out.append(
+            {
+                "title": title,
+                "date": str(e.get("date") or ""),
+                "aid": aid,
+                "sid": str(e.get("sid") or ""),
+                "quote": str(e.get("quote") or ""),
+                "official": str(e.get("official") or "")[:220],
+                "verdict": str(e.get("verdict") or "")[:180],
+            }
+        )
+    return out
+
+
 def method_from_event(title: str, aid: str, extra: str = "") -> str:
     """新段 method 從 ledger 組出來。同一則多張圖會串在一起，避免兩套數字。"""
     rows = events_by_aid(aid)
     if not rows:
         return ""
     bits = [f"{title} {rows[0]['date']}。"]
+    own = [str(e.get("sid") or "") for e in rows if e.get("sid")]
+    merged = dict(rows[0])
+    merged["why"] = "".join(str(e.get("why") or "") + str(e.get("later") or "") for e in rows)
+    merged["later"] = ""
+    later_fill, stamps = _event_fill(merged, own)
     for e in rows:
         bits.append(e["why"])
         bits.append(e["official"])
         bits.append("後證：" + e["later"])
         bits.append(e["verdict"])
+    if stamps:
+        bits.append(stamps)
+    if later_fill:
+        bits.append(later_fill)
     bits.append(extra)
     bits.append("不是買訊。不數段。")
     return "".join(bits)
@@ -9509,9 +9706,11 @@ def line_for(sid: str) -> str:
         return ""
     bits = [HOW, f"時間軸走到 {SLICE_STOP}。"]
     for e in rows:
+        later_fill, stamps = _event_fill(e)
         bits.append(
             f"{e['date']} {e['name']} {e['sid']}。"
-            f"{e['why']}{e['official']}後證：{e['later']}{e['verdict']}"
+            f"{e['why']}{e['official']}{stamps}"
+            f"後證：{e['later']}{later_fill}{e['verdict']}"
         )
     bits.append("不是 4/16 長抱。不是買訊。")
     return "".join(bits)
