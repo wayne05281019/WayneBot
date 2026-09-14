@@ -472,18 +472,18 @@ def test_fortyfifth_pick_charts_tx_not_tsmc_hank_canon():
 
 
 def test_fortysixth_pick_charts_twii_not_stocks():
-    from biaoke_charts import pick_charts
-
-    twii = pick_charts("TWII", limit=8, public_only=True)
-    assert any("120a18bc-51be-460b-9d01-9b39e46abe87" in str(r.get("url") or "") for r in twii)
-    assert any("5d2ca298-069f-44c9-adb9-c0a07bb715a2" in str(r.get("url") or "") for r in twii)
-    assert any("18752-19012" in str(r.get("note") or "") for r in twii)
-    skip2330 = pick_charts("2330", limit=8, public_only=True)
-    assert not any("120a18bc-51be-460b-9d01-9b39e46abe87" in str(r.get("url") or "") for r in skip2330)
-    skip6416 = pick_charts("6416", limit=5, public_only=True)
-    assert not any("120a18bc-51be-460b-9d01-9b39e46abe87" in str(r.get("url") or "") for r in skip6416)
-    skip5310 = pick_charts("5310", limit=5, public_only=True)
-    assert not any("5d2ca298-069f-44c9-adb9-c0a07bb715a2" in str(r.get("url") or "") for r in skip5310)
+    assert_snip_owned(
+        "TWII",
+        "120a18bc-51be-460b-9d01-9b39e46abe87",
+        "18752-19012",
+        ("2330", "6416", "5310"),
+    )
+    assert_snip_owned(
+        "TWII",
+        "5d2ca298-069f-44c9-adb9-c0a07bb715a2",
+        (),
+        ("2330", "6416", "5310"),
+    )
 
 
 def test_fortyseventh_pick_charts_wistron_not_quanta_gold_emc():
