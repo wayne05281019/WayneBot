@@ -525,9 +525,9 @@ def test_fortyninth_pick_charts_ennoconn_289_not_others():
     from biaoke_charts import pick_charts
 
     snip = "b459a4ea-2d0d-4a99-ab03-c6686c5f11a5"
-    c = pick_charts("8210", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in c)
-    assert any("站上289頭肩底" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in c)
+    rows = charts_for("8210")
+    assert any(snip in str(r.get("url") or "") for r in rows)
+    assert any("站上289頭肩底" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in rows)
     for sid in ("2382", "6669", "3231", "3035", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)
