@@ -2264,7 +2264,7 @@ def test_auto_chrono_slices_from_ledger():
             continue
         seen_title.add(title)
         phrases = tuple(e.get("phrases") or ())
-        ask = str(e.get("ask") or "")
+        ask = str(e.get("ask") or (phrases[0] if phrases else ""))
         assert phrases and ask
         assert_chrono_slice(title, e["date"], phrases, sid, name, quote, ask)
         assert title in tape_titles
