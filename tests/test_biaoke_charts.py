@@ -486,7 +486,7 @@ def test_fortyseventh_pick_charts_wistron_not_quanta_gold_emc():
 def test_fortyeighth_pick_charts_quanta_wiwynn_ennoconn_not_emc():
     from biaoke_charts import pick_charts
 
-    q = pick_charts("2382", limit=8, public_only=True)
+    q = pick_charts("2382", limit=32, public_only=True)
     assert any("493f2e88-231c-48b2-ab73-035291c94c8b" in str(r.get("url") or "") for r in q)
     assert any("伺服器漲勢確認" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in q)
     y = pick_charts("6669", limit=8, public_only=True)
@@ -719,6 +719,18 @@ def test_sixtythird_pick_charts_quanta_hold_273():
     q = pick_charts("2382", limit=8, public_only=True)
     assert any(snip in str(r.get("url") or "") for r in q)
     assert any("10:26約276" in str(r.get("note") or "") for r in q)
+    for sid in ("6669", "2330", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
+def test_sixtyfourth_pick_charts_quanta_282_290():
+    from biaoke_charts import pick_charts
+
+    snip = "d45ebe1b-59ab-48dc-b778-5b02fad3502d"
+    q = pick_charts("2382", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in q)
+    assert any("09:41約288" in str(r.get("note") or "") for r in q)
     for sid in ("6669", "2330", "6416", "5310"):
         rows = pick_charts(sid, limit=8, public_only=True)
         assert not any(snip in str(r.get("url") or "") for r in rows)

@@ -613,6 +613,17 @@ def test_sixtythird_methods_quanta_hold_273():
     assert any(t == "圖文時間軸第六十三段" for t, _b in hold)
 
 
+def test_sixtyfourth_methods_quanta_282_290():
+    html = format_methods_html("今天收盤有站上290")
+    assert "廣達" in html
+    assert "截圖約 288" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第六十四段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第六十四段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

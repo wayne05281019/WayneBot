@@ -7,7 +7,7 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-14"
+    assert slice_stop() == "2024-05-15"
     assert next_start() == "2024-05-15"
 
 def test_second_slice_stops_feb3_2024():
@@ -1874,6 +1874,35 @@ def test_sixtythird_slice_quanta_hold_273():
     q14 = official_on(db, "2382", "20240514")
     assert q14 == {} or (
         abs(float(q14["low"]) - 272) < 0.01 and abs(float(q14["close"]) - 288.5) < 0.01
+    )
+
+
+def test_sixtyfourth_slice_quanta_282_290():
+    body = method_body("圖文時間軸第六十四段")
+    assert "2024-05-15" in body
+    assert "支撐282" in body
+    assert "壓力290" in body
+    assert "不是日K" in body
+    assert "截圖約 288" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "截圖約 288" in q
+    ov = overview()
+    assert "支撐282" in ov and "壓力290" in ov
+    html = format_methods_html("今天收盤有站上290")
+    assert "廣達" in html
+    assert "截圖約 288" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "今天收盤有站上290")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "壓力290" in blob or "支撐282" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q15 = official_on(db, "2382", "20240515")
+    assert q15 == {} or (
+        abs(float(q15["high"]) - 295) < 0.01 and abs(float(q15["close"]) - 287) < 0.01
     )
 
 
