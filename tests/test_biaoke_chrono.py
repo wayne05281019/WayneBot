@@ -2202,6 +2202,26 @@ def test_seventyfourth_slice_index_wedge_is_not_tsmc():
     assert "下降楔形" in ov
 
 
+def test_seventyfifth_slice_quanta_group_three_intraday():
+    assert_chrono_slice(
+        "圖文時間軸第七十五段",
+        "2024-05-21",
+        ("廣達集團這兩檔", "不是日K", "截圖約 58.3"),
+        "3306",
+        "鼎天",
+        "截圖約 58.3",
+        "這兩檔股票除非非常有耐心",
+    )
+    q = line_for("2382")
+    assert "截圖約 282.5" in q
+    g = line_for("6188")
+    assert "截圖約 105" in g
+    ov = overview()
+    assert "廣達集團這兩檔" in ov
+    html = format_methods_html("廣達也不會寂寞")
+    assert "鼎天" in html and "廣達" in html and "廣明" in html
+
+
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"
     t15 = official_on(db, "8011", "20240315")

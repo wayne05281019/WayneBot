@@ -801,6 +801,27 @@ def test_seventyfourth_pick_charts_index_wedge_not_tsmc():
     )
 
 
+def test_seventyfifth_pick_charts_quanta_group_not_mixed():
+    assert_snip_owned(
+        "3306",
+        "7176c3a5-cb62-4fb8-b2ee-d9f657c67f78",
+        "12:22約58.3",
+        ("2382", "6188", "6416", "5310"),
+    )
+    assert_snip_owned(
+        "2382",
+        "8850edce-5e37-4337-bd9b-665b194463bf",
+        "12:26約282.5",
+        ("3306", "6188", "6416", "5310"),
+    )
+    assert_snip_owned(
+        "6188",
+        "d19a4996-49ff-4716-94da-e2b4ffd1e319",
+        "12:23約105",
+        ("2382", "3306", "6416", "5310"),
+    )
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

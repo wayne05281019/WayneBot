@@ -735,6 +735,17 @@ def test_seventyfourth_methods_index_wedge_not_tsmc():
     assert any(t == "圖文時間軸第七十四段" for t, _b in hold)
 
 
+def test_seventyfifth_methods_quanta_group_intraday():
+    html = format_methods_html("廣達集團這兩檔")
+    assert "鼎天" in html and "廣達" in html and "廣明" in html
+    assert "截圖約 58.3" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第七十五段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第七十五段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
