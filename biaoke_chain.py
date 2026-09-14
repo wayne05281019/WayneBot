@@ -560,6 +560,24 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
 
 def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", uid: str = "") -> Dict[str, Any]:
     if not named:
+        try:
+            from biaoke_mind import match_methods
+
+            picked = match_methods(ask, limit=4)
+            by = {t: b for t, b in picked}
+            for title in (
+                "能長抱的產業鏈",
+                "長抱主流／F4→F10／聯發科",
+                "南亞 1303 長抱或進出",
+                "洞燭先機",
+            ):
+                if title in by:
+                    return _step("hold", by[title], ok=True)
+            for title, body in picked:
+                if str(title).startswith("圖文時間軸"):
+                    return _step("hold", body, ok=True)
+        except Exception:
+            pass
         if any(
             k in (ask or "")
             for k in (
@@ -732,57 +750,6 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "長抱主流／F4→F10／聯發科",
                     "南亞 1303 長抱或進出",
                     "洞燭先機",
-                    "圖文時間軸第一段",
-                    "圖文時間軸第二段",
-                    "圖文時間軸第三段",
-                    "圖文時間軸第四段",
-                    "圖文時間軸第五段",
-                    "圖文時間軸第六段",
-                    "圖文時間軸第七段",
-                    "圖文時間軸第八段",
-                    "圖文時間軸第九段",
-                    "圖文時間軸第十段",
-                    "圖文時間軸第十一段",
-                    "圖文時間軸第十二段",
-                    "圖文時間軸第十三段",
-                    "圖文時間軸第十四段",
-                    "圖文時間軸第十五段",
-                    "圖文時間軸第十六段",
-                    "圖文時間軸第十七段",
-                    "圖文時間軸第十八段",
-                    "圖文時間軸第十九段",
-                    "圖文時間軸第二十段",
-                    "圖文時間軸第二十一段",
-                    "圖文時間軸第二十二段",
-                    "圖文時間軸第二十三段",
-                    "圖文時間軸第二十四段",
-                    "圖文時間軸第二十五段",
-                    "圖文時間軸第二十六段",
-                    "圖文時間軸第二十七段",
-                    "圖文時間軸第二十八段",
-                    "圖文時間軸第二十九段",
-                    "圖文時間軸第三十段",
-                    "圖文時間軸第三十一段",
-                    "圖文時間軸第三十二段",
-                    "圖文時間軸第三十三段",
-                    "圖文時間軸第三十四段",
-                    "圖文時間軸第三十五段",
-                    "圖文時間軸第三十六段",
-                    "圖文時間軸第三十七段",
-                    "圖文時間軸第三十八段",
-                    "圖文時間軸第三十九段",
-                    "圖文時間軸第四十段",
-                    "圖文時間軸第四十一段",
-                    "圖文時間軸第四十二段",
-                    "圖文時間軸第四十三段",
-                    "圖文時間軸第四十四段",
-                    "圖文時間軸第四十五段",
-                    "圖文時間軸第四十六段",
-                    "圖文時間軸第四十七段",
-                    "圖文時間軸第四十八段",
-                    "圖文時間軸第四十九段",
-                    "圖文時間軸第五十段",
-                    "圖文時間軸第五十一段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)

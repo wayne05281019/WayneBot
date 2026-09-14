@@ -63,6 +63,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 # 這一段走完的最後一天。下一段從隔天有附圖的文接。
+# 每滿十段回頭看行程：舊測不要改停點；新段只寫 method／event／snip；chain 靠 match_methods。
 SLICE_STOP = "2024-05-03"
 NEXT_START = "2024-05-03"
 
