@@ -190,6 +190,28 @@ def test_judge_notes_are_materials_not_a_form():
     assert "現況／量價" not in html
 
 
+def test_judge_html_keeps_rotation_when_pace_omits_it():
+    html = format_judge_html(
+        {
+            "sid": "6442",
+            "name": "光聖",
+            "in_corpus": True,
+            "rotation": "通信網路業在流入前段",
+            "struct": {
+                "date": "2026-09-11",
+                "close": 100,
+                "pct": 1.2,
+                "spike_date": "2026-08-01",
+                "spike_high": 120,
+                "spike_low": 90,
+                "stance": "量縮且收在爆大量日低點之上。",
+            },
+        }
+    )
+    assert "流入前段" in html
+    assert "神探" not in html
+
+
 def test_audit_cannot_be_firm_when_layers_missing():
     from biaoke_judge import audit_certainty, format_judge_html
 

@@ -120,6 +120,20 @@ def test_pick_charts_public_only_and_vs_official():
     assert pick_charts("0000") == []
 
 
+def test_pick_charts_skips_chart_that_is_not_this_stock():
+    from biaoke_charts import charts_for, pick_charts
+
+    rows = pick_charts("2357", limit=8, public_only=True)
+    blob = " ".join(str(r.get("note") or "") + str(r.get("url") or "") for r in rows)
+    assert "圖不是華碩" not in blob
+    assert "046492e4-cc55-460f-a081-5f1aa9a04bf7" not in blob
+    assert any("華碩" in str(r.get("note") or "") for r in rows)
+    owned = charts_for("2357")
+    assert any("046492e4-cc55-460f-a081-5f1aa9a04bf7" in str(r.get("url") or "") for r in owned)
+    tong = pick_charts("8011", limit=8, public_only=True)
+    assert all("圖不是個股" not in str(r.get("note") or "") for r in tong)
+
+
 def test_intraday_snip_notes_overlay_not_daily_k():
     from biaoke_charts import pick_charts
 

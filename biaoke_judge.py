@@ -536,6 +536,9 @@ def format_judge_html(brief: Dict[str, Any]) -> str:
         )
     if brief.get("pace"):
         lines.append(html_escape(str(brief.get("pace"))))
+    rot = str(brief.get("rotation") or "").strip()
+    if rot and rot not in "\n".join(lines):
+        lines.append(html_escape(rot))
     if brief.get("catchup"):
         lines.append(html_escape(str(brief.get("catchup"))))
     if brief.get("hold"):

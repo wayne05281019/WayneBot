@@ -779,6 +779,35 @@ def official_for_text_at_stamp(
     }
 
 
+def _names_for_sid(sid: str) -> List[str]:
+    want = str(sid or "").strip()
+    if not want:
+        return []
+    names: List[str] = []
+    for name, code in _ALIAS.items():
+        if code == want and name not in names:
+            names.append(name)
+    for name, code in _event_alias_and_own()[0].items():
+        if code == want and name not in names:
+            names.append(name)
+    return names
+
+
+def _note_not_this_stock(note: str, sid: str) -> bool:
+    """目視已寫「圖不是這檔／不是個股日K」就不要當這檔預測圖送。"""
+    blob = str(note or "")
+    mark = blob.find("圖不是")
+    if mark < 0:
+        return False
+    tail = blob[mark:]
+    if "個股" in tail:
+        return True
+    want = str(sid or "").strip()
+    if want and want in tail:
+        return True
+    return any(name and name in tail for name in _names_for_sid(want))
+
+
 def pick_charts(
     sid: str,
     *,
@@ -786,7 +815,7 @@ def pick_charts(
     public_only: bool = True,
     hold: bool = False,
 ) -> List[Dict[str, Any]]:
-    """問一檔只帶最有用的幾張。公開文才進話筒；社團不送。"""
+    """問一檔只帶最有用的幾張。公開文才進話筒；社團不送。圖不是這檔的不送。"""
     rows = charts_for(sid)
     if public_only:
         rows = [r for r in rows if str(r.get("src") or "") == _PUBLIC_SRC]
@@ -796,6 +825,7 @@ def pick_charts(
             for r in rows
             if any(k in str(r.get("note") or "") for k in _HOLD_NOTE)
         ]
+    rows = [r for r in rows if not _note_not_this_stock(str(r.get("note") or ""), sid)]
 
     def score(row: Dict[str, Any]) -> tuple:
         note = str(row.get("note") or "")
