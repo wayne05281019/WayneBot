@@ -7,7 +7,7 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-08"
+    assert slice_stop() == "2024-05-09"
     assert next_start() == "2024-05-09"
 
 def test_second_slice_stops_feb3_2024():
@@ -1649,6 +1649,37 @@ def test_fiftysixth_slice_quanta_early_280_not_others():
     q08 = official_on(db, "2382", "20240508")
     assert q08 == {} or (
         abs(float(q08["high"]) - 277.5) < 0.01 and abs(float(q08["close"]) - 273.5) < 0.01
+    )
+
+
+def test_fiftyseventh_slice_asus_intraday_not_271_bar():
+    body = method_body("圖文時間軸第五十七段")
+    assert "2024-05-09" in body
+    assert "2357直接過271" in body
+    assert "不是日K" in body
+    assert "截圖約 478" in body
+    assert "不准發明" in body
+    a = line_for("2357")
+    assert "華碩" in a
+    assert "截圖約 478" in a
+    assert "不是日K" in a
+    ov = overview()
+    assert "2357直接過271" in ov
+    assert "478" in ov
+    html = format_methods_html("先買進1/2，明天回測持續買進")
+    assert "華碩" in html
+    assert "截圖約 478" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "先買進1/2，明天回測持續買進")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "先買進1/2" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    a09 = official_on(db, "2357", "20240509")
+    assert a09 == {} or (
+        abs(float(a09["high"]) - 483) < 0.01 and abs(float(a09["close"]) - 475) < 0.01
     )
 
 
