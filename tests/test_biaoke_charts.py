@@ -518,6 +518,18 @@ def test_fortyninth_pick_charts_ennoconn_289_not_others():
         assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
+def test_fiftieth_pick_charts_gigalight_not_others():
+    from biaoke_charts import pick_charts
+
+    snip = "7700b8ea-640f-43f5-b5be-778b1c37eea8"
+    g = pick_charts("3234", limit=8, public_only=True)
+    assert any(snip in str(r.get("url") or "") for r in g)
+    assert any("行進中短線買點" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "") for r in g)
+    for sid in ("8210", "2382", "6442", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,

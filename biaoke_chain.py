@@ -713,6 +713,10 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 "站上289以上",
                 "過前高323",
                 "型態滿足目標價會過前高323",
+                "二月份有操作這檔股票",
+                "行進中上車短線買點",
+                "第二階段目標價到了就會賣掉",
+                "含成本不到48",
             )
         ):
             try:
@@ -774,6 +778,7 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                     "圖文時間軸第四十七段",
                     "圖文時間軸第四十八段",
                     "圖文時間軸第四十九段",
+                    "圖文時間軸第五十段",
                 ):
                     if title in by:
                         return _step("hold", by[title], ok=True)

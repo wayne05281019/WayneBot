@@ -456,6 +456,17 @@ def test_fortyninth_methods_ennoconn_289():
     assert any(t == "圖文時間軸第四十九段" for t, _b in hold)
 
 
+def test_fiftieth_methods_gigalight_intraday():
+    html = format_methods_html("行進中上車短線買點")
+    assert "光環" in html
+    assert "截圖約 50.1" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
