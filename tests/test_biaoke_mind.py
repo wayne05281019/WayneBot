@@ -444,6 +444,18 @@ def test_fortyeighth_methods_old_ai_confirmed():
     assert any(t == "圖文時間軸第四十八段" for t, _b in hold)
 
 
+def test_fortyninth_methods_ennoconn_289():
+    html = format_methods_html("站上289以上")
+    assert "勤誠" in html
+    assert "截圖約 289.5" in html
+    assert "不是日K" in html
+    assert "過前高323" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第四十九段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第四十九段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
