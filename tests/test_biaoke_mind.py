@@ -522,6 +522,17 @@ def test_fiftyfifth_methods_alchip_no_bottom_fish():
     assert any(t == "圖文時間軸第五十五段" for t, _b in hold)
 
 
+def test_fiftysixth_methods_quanta_early_280():
+    html = format_methods_html("鼎天、廣明")
+    assert "廣達" in html
+    assert "截圖約 274.5" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十六段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十六段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC

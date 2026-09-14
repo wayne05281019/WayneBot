@@ -8,7 +8,7 @@ from biaoke_facts import names_in_ask
 
 def test_current_slice_window():
     assert slice_stop() == "2024-05-08"
-    assert next_start() == "2024-05-08"
+    assert next_start() == "2024-05-09"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1610,6 +1610,45 @@ def test_fiftyfifth_slice_alchip_no_bottom_fish():
     a07 = official_on(db, "3661", "20240507")
     assert a07 == {} or (
         abs(float(a07["low"]) - 2725) < 0.01 and abs(float(a07["close"]) - 2760) < 0.01
+    )
+
+
+def test_fiftysixth_slice_quanta_early_280_not_others():
+    body = method_body("圖文時間軸第五十六段")
+    assert "2024-05-08" in body
+    assert "鼎天、廣明" in body
+    assert "提早上280" in body
+    assert "不是日K" in body
+    assert "截圖約 274.5" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "提早上280" in q
+    assert "截圖約 274.5" in q
+    assert "不是日K" in q
+    d = line_for("3306")
+    assert "鼎天" in d
+    assert "不對圖" in d
+    assert "圖不是鼎天" in d or "不是鼎天" in d
+    g = line_for("6188")
+    assert "廣明" in g
+    assert "不對圖" in g
+    ov = overview()
+    assert "鼎天、廣明" in ov
+    assert "274.5" in ov
+    html = format_methods_html("鼎天、廣明")
+    assert "廣達" in html
+    assert "截圖約 274.5" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "鼎天、廣明")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "鼎天、廣明" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q08 = official_on(db, "2382", "20240508")
+    assert q08 == {} or (
+        abs(float(q08["high"]) - 277.5) < 0.01 and abs(float(q08["close"]) - 273.5) < 0.01
     )
 
 
