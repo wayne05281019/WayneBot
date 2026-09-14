@@ -1750,6 +1750,39 @@ def test_fiftyninth_slice_leader_without_wistron_chart():
     )
 
 
+def test_sixtieth_slice_right_shoulder_intraday():
+    body = method_body("圖文時間軸第六十段")
+    assert "2024-05-10" in body
+    assert "築右肩" in body
+    assert "要站上450" in body
+    assert "要重新站上289" in body
+    assert "不是日K" in body
+    assert "截圖約 275.5" in body
+    assert "截圖約 416.5" in body
+    e = line_for("8210")
+    assert "勤誠" in e
+    assert "截圖約 275.5" in e
+    assert "不是日K" in e
+    t = line_for("2383")
+    assert "台光電" in t
+    assert "截圖約 416.5" in t
+    ov = overview()
+    assert "築底部型態清洗籌碼" in ov
+    html = format_methods_html("築底部型態清洗籌碼")
+    assert "勤誠" in html and "台光電" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "築底部型態清洗籌碼")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "築右肩" in blob or "要重新站上289" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    t10 = official_on(db, "2383", "20240510")
+    assert t10 == {} or (
+        abs(float(t10["low"]) - 413) < 0.01 and abs(float(t10["close"]) - 416) < 0.01
+    )
+
 
 def test_taitong_chipbond_official_optional():
     db = "data/wayne_market.db"

@@ -666,6 +666,23 @@ def test_fiftyninth_pick_charts_ennoconn_emc_not_leader():
         assert not any(snip_t in str(r.get("url") or "") for r in rows)
 
 
+def test_sixtieth_pick_charts_right_shoulder_intraday():
+    from biaoke_charts import pick_charts
+
+    snip_e = "e54e963e-5576-4058-9e80-761a7d453640"
+    snip_t = "651f4c31-2e20-4429-b317-2d78e36dcbdf"
+    e = pick_charts("8210", limit=8, public_only=True)
+    assert any(snip_e in str(r.get("url") or "") for r in e)
+    assert any("11:31約275.5" in str(r.get("note") or "") for r in e)
+    t = pick_charts("2383", limit=8, public_only=True)
+    assert any(snip_t in str(r.get("url") or "") for r in t)
+    assert any("11:30約416.5" in str(r.get("note") or "") for r in t)
+    for sid in ("6669", "2382", "3231", "6416", "5310"):
+        rows = pick_charts(sid, limit=8, public_only=True)
+        assert not any(snip_e in str(r.get("url") or "") for r in rows)
+        assert not any(snip_t in str(r.get("url") or "") for r in rows)
+
+
 def test_chart_stamp_locks_text_stock_not_wrong_picture():
     from biaoke_charts import (
         chart_matches_text,
