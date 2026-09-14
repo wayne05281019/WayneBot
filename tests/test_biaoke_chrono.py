@@ -8,7 +8,7 @@ from biaoke_facts import names_in_ask
 
 def test_current_slice_window():
     assert slice_stop() == "2024-05-03"
-    assert next_start() == "2024-05-03"
+    assert next_start() == "2024-05-06"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -1470,6 +1470,47 @@ def test_fiftyfirst_slice_gigalight_disposed_switch_gs():
     assert s03 == {} or (
         abs(float(s03["high"]) - 172) < 0.01 and abs(float(s03["close"]) - 161) < 0.01
     )
+
+
+def test_fiftysecond_slice_quanta_intraday_not_weekly():
+    body = method_body("圖文時間軸第五十二段")
+    assert "2024-05-03" in body
+    assert "2382的後勢擔憂" in body
+    assert "60分鐘線是頭肩底" in body
+    assert "週線頭肩頂" in body
+    assert "不是日K" in body
+    assert "不是60分" in body or "不是週線" in body
+    assert "截圖約 256.5" in body
+    assert "不數段" in body
+    q = line_for("2382")
+    assert "廣達" in q
+    assert "後勢擔憂" in q or "60分鐘線是頭肩底" in q
+    assert "截圖約 256.5" in q
+    assert "不是日K" in q
+    assert "2330" in q and "不對圖" in q
+    ov = overview()
+    assert "2382的後勢擔憂" in ov or "很多人對2382" in ov
+    assert "256.5" in ov
+    html = format_methods_html("2382的後勢擔憂")
+    assert "廣達" in html
+    assert "截圖約 256.5" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "最保守會反彈那個價區")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "最保守會反彈那個價區" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    q03 = official_on(db, "2382", "20240503")
+    assert q03 == {} or (
+        abs(float(q03["high"]) - 266) < 0.01
+        and abs(float(q03["low"]) - 256.5) < 0.01
+        and abs(float(q03["close"]) - 256.5) < 0.01
+    )
+    q02 = official_on(db, "2382", "20240502")
+    assert q02 == {} or abs(float(q02["close"]) - 261) < 0.01
+
 
 
 def test_taitong_chipbond_official_optional():

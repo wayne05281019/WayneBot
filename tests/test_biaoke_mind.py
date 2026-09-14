@@ -478,6 +478,17 @@ def test_fiftyfirst_methods_gigalight_disposed():
     assert any(t == "圖文時間軸第五十一段" for t, _b in hold)
 
 
+def test_fiftysecond_methods_quanta_hs_not_weekly_chart():
+    html = format_methods_html("2382的後勢擔憂")
+    assert "廣達" in html
+    assert "截圖約 256.5" in html
+    assert "不是日K" in html
+    tape = views_for_neuron("tape")
+    assert any(t == "圖文時間軸第五十二段" for t, _b in tape)
+    hold = views_for_neuron("hold")
+    assert any(t == "圖文時間軸第五十二段" for t, _b in hold)
+
+
 def test_offtopic_still_refused():
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     assert "買訊" not in OFFTOPIC
