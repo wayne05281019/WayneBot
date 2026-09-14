@@ -7,8 +7,8 @@ from biaoke_facts import names_in_ask
 
 
 def test_current_slice_window():
-    assert slice_stop() == "2024-05-15"
-    assert next_start() == "2024-05-16"
+    assert slice_stop() == "2024-05-16"
+    assert next_start() == "2024-05-17"
 
 def test_second_slice_stops_feb3_2024():
     body = method_body("圖文時間軸第二段")
@@ -2030,6 +2030,36 @@ def test_sixtyeighth_slice_eps_313_mystery_is_quanta():
     q15 = official_on(db, "2382", "20240515")
     assert q15 == {} or (
         abs(float(q15["high"]) - 295) < 0.01 and abs(float(q15["close"]) - 287) < 0.01
+    )
+
+
+def test_sixtyninth_slice_asus_far_from_target_hold():
+    body = method_body("圖文時間軸第六十九段")
+    assert "2024-05-16" in body
+    assert "離目標價還很遠" in body
+    assert "抱牢就對了" in body
+    assert "不是日K" in body
+    assert "截圖約 513" in body
+    a = line_for("2357")
+    assert "華碩" in a
+    assert "截圖約 513" in a
+    assert "2382 不對這張" in a or "不准把這張寫成2382" in a
+    ov = overview()
+    assert "離目標價還很遠" in ov
+    html = format_methods_html("離目標價還很遠")
+    assert "華碩" in html
+    assert "截圖約 513" in html
+    assert "不是日K" in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", "離目標價還很遠")
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert "離目標價還很遠" in blob
+    assert "不是日K" in blob
+    db = "data/wayne_market.db"
+    a16 = official_on(db, "2357", "20240516")
+    assert a16 == {} or (
+        abs(float(a16["high"]) - 520) < 0.01 and abs(float(a16["close"]) - 516) < 0.01
     )
 
 
