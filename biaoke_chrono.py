@@ -84,6 +84,8 @@ from typing import Dict, List, Optional
 # 這一段走完的最後一天。下一段從隔天有附圖的文接。
 # 每滿十段回頭看行程：舊測不要改停點；新段只寫 method／event／snip；chain 靠 match_methods。
 # 滿六十段：_CHRONO_TITLES 自動進 tape／hold；不准再加長 biaoke_chain 關鍵字名單。
+# 滿七十段加速（不准改對圖規則）：對圖歸屬測 charts_for 全表，不測 pick_charts 前 N 名；
+# 新段 method 用 method_from_event，官方數字只在 ledger 寫一次。
 SLICE_STOP = "2024-05-17"
 NEXT_START = "2024-05-18"
 
@@ -3489,6 +3491,29 @@ OVERVIEW = (
     + "不是 4/16。建築兩檔沒點名代號。公開對不到「抱著波段賺更多」。不是買訊。"
     + "下一段從 2024-05-17 10:21 接著有附圖的文接，不走 6416。"
 )
+
+
+def event_by_aid(aid: str) -> Optional[Dict[str, str]]:
+    want = str(aid or "").strip()
+    if not want:
+        return None
+    for e in _EVENTS:
+        if str(e.get("aid") or "") == want:
+            return e
+    return None
+
+
+def method_from_event(title: str, aid: str, extra: str = "") -> str:
+    """新段 method 從 ledger 組出來，避免 event／method 兩套數字。"""
+    e = event_by_aid(aid)
+    if not e:
+        return ""
+    return (
+        f"{title} {e['date']}。"
+        f"{e['why']}{e['official']}後證：{e['later']}{e['verdict']}"
+        f"{extra}"
+        "不是買訊。不數段。"
+    )
 
 
 def slice_stop() -> str:

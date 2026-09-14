@@ -11,7 +11,25 @@ from biaoke_charts import (
     charts_for,
     extract_tickers,
     load_chart_index,
+    pick_charts,
 )
+
+
+def assert_snip_owned(sid, snip, note_bits, not_sids):
+    """歸屬＝charts_for 全表。排名會被新盤中圖挤掉，歸屬不會。"""
+    bits = (note_bits,) if isinstance(note_bits, str) else tuple(note_bits or ())
+    rows = charts_for(sid)
+    hit = [r for r in rows if snip in str(r.get("url") or "")]
+    assert hit
+    note = str(hit[0].get("note") or "")
+    for bit in bits:
+        assert bit in note
+    for other in not_sids:
+        assert not any(snip in str(r.get("url") or "") for r in charts_for(other))
+        assert not any(
+            snip in str(r.get("url") or "")
+            for r in pick_charts(other, limit=32, public_only=True)
+        )
 
 
 def test_avatar_never_indexed():
@@ -547,50 +565,33 @@ def test_fiftyfirst_pick_charts_gigalight_gs_not_others():
 
 
 def test_fiftysecond_pick_charts_quanta_not_others():
-    from biaoke_charts import pick_charts
-
     snip = "37db3808-6362-474f-ab88-348ce95e3cec"
-    q = pick_charts("2382", limit=32, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any(
-        "13:30約256.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
-        for r in q
+    assert_snip_owned(
+        "2382",
+        snip,
+        ("13:30約256.5", "不是日K"),
+        ("2330", "2454", "1459", "3234", "6442", "6416", "5310"),
     )
-    for sid in ("2330", "2454", "1459", "3234", "6442", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
 def test_fiftythird_pick_charts_quanta_min_target_not_others():
-    from biaoke_charts import charts_for, pick_charts
-
     snip = "5efc30e4-a857-49d0-a8ff-13a007847d8d"
-    q = charts_for("2382")
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any(
-        "09:42約272.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
-        for r in q
+    assert_snip_owned(
+        "2382",
+        snip,
+        ("09:42約272.5", "不是日K"),
+        ("3231", "6669", "3234", "6442", "6416", "5310"),
     )
-    for sid in ("3231", "6669", "3234", "6442", "6416", "5310"):
-        rows = charts_for(sid)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
-        rows_p = pick_charts(sid, limit=32, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows_p)
 
 
 def test_fiftyfourth_pick_charts_emc_right_shoulder_not_others():
-    from biaoke_charts import pick_charts
-
     snip = "2b13c5f0-d84b-4deb-ac02-c13f4893a4ff"
-    e = pick_charts("2383", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in e)
-    assert any(
-        "09:30約412.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
-        for r in e
+    assert_snip_owned(
+        "2383",
+        snip,
+        ("09:30約412.5", "不是日K"),
+        ("2382", "3231", "8210", "6416", "5310"),
     )
-    for sid in ("2382", "3231", "8210", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
 def test_fiftyfifth_pick_charts_alchip_not_others():
@@ -609,33 +610,23 @@ def test_fiftyfifth_pick_charts_alchip_not_others():
 
 
 def test_fiftysixth_pick_charts_quanta_not_dingtian():
-    from biaoke_charts import pick_charts
-
     snip = "f867e1ab-7301-4cff-9385-2430f8217ad7"
-    q = pick_charts("2382", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any(
-        "09:15約274.5" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
-        for r in q
+    assert_snip_owned(
+        "2382",
+        snip,
+        ("09:15約274.5", "不是日K"),
+        ("3306", "6188", "6669", "2317", "6416", "5310"),
     )
-    for sid in ("3306", "6188", "6669", "2317", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
 def test_fiftyseventh_pick_charts_asus_not_quanta():
-    from biaoke_charts import pick_charts
-
     snip = "9759bcbb-623d-4f16-bc7c-b616edebbb7b"
-    a = pick_charts("2357", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in a)
-    assert any(
-        "09:54約478" in str(r.get("note") or "") and "不是日K" in str(r.get("note") or "")
-        for r in a
+    assert_snip_owned(
+        "2357",
+        snip,
+        ("09:54約478", "不是日K"),
+        ("2382", "2317", "3661", "6416", "5310"),
     )
-    for sid in ("2382", "2317", "3661", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
 
 
 def test_fiftyeighth_pick_charts_alchip_not_funai():
@@ -654,88 +645,64 @@ def test_fiftyeighth_pick_charts_alchip_not_funai():
 
 
 def test_fiftyninth_pick_charts_ennoconn_emc_not_leader():
-    from biaoke_charts import pick_charts
-
     snip_e = "23219170-a90a-4d45-a3bc-4896dc578cef"
     snip_t = "5b5ed874-9577-4296-98e6-1eb759affb15"
-    e = pick_charts("8210", limit=8, public_only=True)
-    assert any(snip_e in str(r.get("url") or "") for r in e)
-    t = pick_charts("2383", limit=8, public_only=True)
-    assert any(snip_t in str(r.get("url") or "") for r in t)
-    for sid in ("6669", "2382", "3231", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip_e in str(r.get("url") or "") for r in rows)
-        assert not any(snip_t in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("8210", snip_e, (), ("6669", "2382", "3231", "6416", "5310"))
+    assert_snip_owned("2383", snip_t, (), ("6669", "2382", "3231", "6416", "5310"))
 
 
 def test_sixtieth_pick_charts_right_shoulder_intraday():
-    from biaoke_charts import pick_charts
-
     snip_e = "e54e963e-5576-4058-9e80-761a7d453640"
     snip_t = "651f4c31-2e20-4429-b317-2d78e36dcbdf"
-    e = pick_charts("8210", limit=8, public_only=True)
-    assert any(snip_e in str(r.get("url") or "") for r in e)
-    assert any("11:31約275.5" in str(r.get("note") or "") for r in e)
-    t = pick_charts("2383", limit=8, public_only=True)
-    assert any(snip_t in str(r.get("url") or "") for r in t)
-    assert any("11:30約416.5" in str(r.get("note") or "") for r in t)
-    for sid in ("6669", "2382", "3231", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip_e in str(r.get("url") or "") for r in rows)
-        assert not any(snip_t in str(r.get("url") or "") for r in rows)
+    assert_snip_owned(
+        "8210",
+        snip_e,
+        "11:31約275.5",
+        ("6669", "2382", "3231", "6416", "5310"),
+    )
+    assert_snip_owned(
+        "2383",
+        snip_t,
+        "11:30約416.5",
+        ("6669", "2382", "3231", "6416", "5310"),
+    )
 
 
 def test_sixtyfirst_pick_charts_asus_not_shipping():
-    from biaoke_charts import pick_charts
-
     snip = "5e96754a-7f28-452d-b6a8-bc7f7720aad0"
-    a = pick_charts("2357", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in a)
-    assert any("13:05約471" in str(r.get("note") or "") for r in a)
-    for sid in ("2609", "2615", "2382", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned(
+        "2357",
+        snip,
+        "13:05約471",
+        ("2609", "2615", "2382", "6416", "5310"),
+    )
 
 
 def test_sixtysecond_pick_charts_quanta_wiwynn_not_tsmc():
-    from biaoke_charts import pick_charts
-
     snip_q = "87acb739-5f83-4c24-9641-52b150feba26"
     snip_w = "f414adc8-792d-4af0-8b51-1c31d31808cd"
-    q = pick_charts("2382", limit=8, public_only=True)
-    assert any(snip_q in str(r.get("url") or "") for r in q)
-    assert any("13:21約274.5" in str(r.get("note") or "") for r in q)
-    w = pick_charts("6669", limit=8, public_only=True)
-    assert any(snip_w in str(r.get("url") or "") for r in w)
-    assert any("13:21約2405" in str(r.get("note") or "") for r in w)
-    for sid in ("2330", "2357", "2609", "2615", "3231", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip_q in str(r.get("url") or "") for r in rows)
-        assert not any(snip_w in str(r.get("url") or "") for r in rows)
+    assert_snip_owned(
+        "2382",
+        snip_q,
+        "13:21約274.5",
+        ("2330", "2357", "2609", "2615", "3231", "6416", "5310"),
+    )
+    assert_snip_owned(
+        "6669",
+        snip_w,
+        "13:21約2405",
+        ("2330", "2357", "2609", "2615", "3231", "6416", "5310"),
+    )
 
 
 def test_sixtythird_pick_charts_quanta_hold_273():
-    from biaoke_charts import pick_charts
-
     snip = "3c6619ac-f707-4062-b495-5282e17ccb91"
-    q = pick_charts("2382", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any("10:26約276" in str(r.get("note") or "") for r in q)
-    for sid in ("6669", "2330", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2382", snip, "10:26約276", ("6669", "2330", "6416", "5310"))
 
 
 def test_sixtyfourth_pick_charts_quanta_282_290():
-    from biaoke_charts import pick_charts
-
     snip = "d45ebe1b-59ab-48dc-b778-5b02fad3502d"
-    q = pick_charts("2382", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any("09:41約288" in str(r.get("note") or "") for r in q)
-    for sid in ("6669", "2330", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2382", snip, "09:41約288", ("6669", "2330", "6416", "5310"))
 
 
 def test_sixtyfifth_pick_charts_shipping_not_tsmc():
@@ -758,76 +725,40 @@ def test_sixtyfifth_pick_charts_shipping_not_tsmc():
 
 
 def test_sixtysixth_pick_charts_emc_dark_before_dawn():
-    from biaoke_charts import pick_charts
-
     snip = "bf1db5dc-a2de-4b60-b121-645c32838250"
-    t = pick_charts("2383", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in t)
-    assert any("10:45約421" in str(r.get("note") or "") for r in t)
-    for sid in ("2382", "2330", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2383", snip, "10:45約421", ("2382", "2330", "6416", "5310"))
 
 
 def test_sixtyseventh_pick_charts_asus_clevo_not_mixed():
-    from biaoke_charts import pick_charts
-
     snip_c = "109304d1-ce6c-457f-9900-3bf52e91b411"
     snip_a = "53d75100-477f-4dc0-bfe7-2219a1d3bc68"
-    c = pick_charts("2362", limit=8, public_only=True)
-    assert any(snip_c in str(r.get("url") or "") for r in c)
-    a = pick_charts("2357", limit=8, public_only=True)
-    assert any(snip_a in str(r.get("url") or "") for r in a)
-    rows_asus = pick_charts("2357", limit=8, public_only=True)
-    assert not any(snip_c in str(r.get("url") or "") for r in rows_asus)
-    rows_clevo = pick_charts("2362", limit=8, public_only=True)
-    assert not any(snip_a in str(r.get("url") or "") for r in rows_clevo)
-    for sid in ("2382", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip_c in str(r.get("url") or "") for r in rows)
-        assert not any(snip_a in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2362", snip_c, (), ("2357", "2382", "6416", "5310"))
+    assert_snip_owned("2357", snip_a, (), ("2362", "2382", "6416", "5310"))
 
 
 def test_sixtyeighth_pick_charts_eps_313_is_quanta_not_number():
-    from biaoke_charts import pick_charts
-
     snip = "eada4ea7-5ce9-4dad-bde2-dd88315619eb"
-    q = pick_charts("2382", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any("13:30約287" in str(r.get("note") or "") for r in q)
-    assert any("不是數字" in str(r.get("note") or "") for r in q)
-    for sid in ("5287", "2330", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned(
+        "2382",
+        snip,
+        ("13:30約287", "不是數字"),
+        ("5287", "2330", "6416", "5310"),
+    )
 
 
 def test_sixtyninth_pick_charts_asus_far_from_target_not_quanta():
-    from biaoke_charts import pick_charts
-
     snip = "4fd7bb2d-76a2-4b14-a675-0ac8643ff395"
-    a = pick_charts("2357", limit=8, public_only=True)
-    assert any(snip in str(r.get("url") or "") for r in a)
-    assert any("12:18約513" in str(r.get("note") or "") for r in a)
-    for sid in ("2382", "2383", "6416", "5310"):
-        rows = pick_charts(sid, limit=8, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
+    assert_snip_owned("2357", snip, "12:18約513", ("2382", "2383", "6416", "5310"))
 
 
 def test_seventieth_pick_charts_quanta_attack_cost_not_daily_k():
-    from biaoke_charts import charts_for, pick_charts
-
     snip = "c6dac0ec-b44c-49ae-9e5b-0fe7d8efba71"
-    q = charts_for("2382")
-    assert any(snip in str(r.get("url") or "") for r in q)
-    assert any(
-        "09:23約286.5" in str(r.get("note") or "") and snip in str(r.get("url") or "")
-        for r in q
+    assert_snip_owned(
+        "2382",
+        snip,
+        "09:23約286.5",
+        ("2357", "2383", "6416", "5310"),
     )
-    for sid in ("2357", "2383", "6416", "5310"):
-        rows = charts_for(sid)
-        assert not any(snip in str(r.get("url") or "") for r in rows)
-        rows_p = pick_charts(sid, limit=32, public_only=True)
-        assert not any(snip in str(r.get("url") or "") for r in rows_p)
 
 
 def test_chart_stamp_locks_text_stock_not_wrong_picture():

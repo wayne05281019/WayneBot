@@ -1,9 +1,28 @@
 # -*- coding: utf-8 -*-
 """圖文時間軸：第一段智原／貨櫃，第二段華碩／廣達，第三段台通／頎邦，第四段光聖／頎邦回證。"""
-from biaoke_chrono import line_for, next_start, overview, slice_stop
+from biaoke_chrono import line_for, method_from_event, next_start, overview, slice_stop
 from biaoke_charts import official_on
 from biaoke_mind import format_methods_html, method_body
 from biaoke_facts import names_in_ask
+
+
+def assert_chrono_slice(title, date, phrases, sid, name, quote, ask):
+    """新段測主文關鍵字＋歸屬，不複製五十行樣板。"""
+    body = method_body(title)
+    assert date in body
+    for p in phrases:
+        assert p in body
+    line = line_for(sid)
+    assert name in line
+    assert quote in line
+    html = format_methods_html(ask)
+    assert name in html
+    assert quote in html
+    from biaoke_chain import fire_chain
+
+    fired = fire_chain("", ask)
+    blob = "".join(s.get("text") or "" for s in fired["steps"]) + fired.get("think", "")
+    assert phrases[0] in blob
 
 
 def test_current_slice_window():
@@ -2096,6 +2115,15 @@ def test_seventieth_slice_quanta_attack_cost_intraday():
     assert q29 == {} or (
         abs(float(q29["high"]) - 298) < 0.01 and abs(float(q29["low"]) - 276.5) < 0.01
     )
+
+
+def test_method_from_event_uses_ledger():
+    body = method_from_event("圖文時間軸第七十段", "161973277")
+    assert "2024-05-17" in body
+    assert "截圖約 286.5" in body
+    assert "主力攻擊成本就是3/29" in body
+    assert "不是買訊" in body
+    assert method_from_event("x", "missing") == ""
 
 
 def test_taitong_chipbond_official_optional():
