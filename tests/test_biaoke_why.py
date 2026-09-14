@@ -170,6 +170,15 @@ def test_why_hi_test_dark_horses_are_6683_and_6830():
     assert "這不是買訊" in html or "不是買訊" in html
 
 
+def test_why_broker_points_not_his_method():
+    body = lookup("要天天看券商分點嗎")
+    assert "社團內化" in body
+    assert "量價" in body
+    assert "分點" in body
+    assert "神探" not in body
+    assert "月刊" not in body
+
+
 def test_why_unspoken_aux_stack():
     body = lookup("他沒講出來的輔助判斷是什麼")
     assert "100%" in body or "有緣人" in body

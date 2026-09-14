@@ -468,6 +468,16 @@ _TOPICS: List[Dict[str, Any]] = [
             "某金融商品沒點名，不准寫死。夜盤 15 分有官方柱也只報高低，不數段。不是買訊。"
         ),
     },
+    {
+        "id": "no-broker-tape",
+        "keys": re.compile(r"(券商分點|籌碼流向|天天.*分點|分點.*進出)"),
+        "q": "要天天看券商分點嗎？",
+        "a": (
+            "社團內化，不引用原文。"
+            "他認為天天盯分點做不出績效；個股先看量價，不是看分點流向。"
+            "話筒查股的主力成本是官方分點表底，那是另一張卡，不是他的進出法。"
+        ),
+    },
 ]
 
 
@@ -836,6 +846,8 @@ def _qa_for(
         bits.append("介入先看量先價行：爆大量日高當壓、低當撐，價穩量縮才進。")
     if club and "停損" in text:
         bits.append("社團有點名停損價，話筒不貼；公開能講停損大約 7～10%。")
+    if club and re.search(r"券商分點|籌碼流向", text):
+        bits.append("個股先看量價，不是天天盯分點流向。")
     if _FIFTH.search(text) and prev_fifth is not None and _RETRACT.search(text):
         bits.append(f"相對 {prev_fifth.get('date')} 那則第五波規劃，這則是改口。")
     a = "".join(bits)
