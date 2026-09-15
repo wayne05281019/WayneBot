@@ -430,25 +430,172 @@ def _halo_line(ax, xs, ys, color, *, lw=2.0, ls="-", z=6):
     )
 
 
-def _callout(ax, x, y, text, color, *, dx=1.55, dy=0.0, size=11, ha="left"):
+def _leader_note(
+    ax,
+    x,
+    y,
+    text,
+    color,
+    *,
+    tx,
+    ty,
+    size=11,
+    ha="left",
+    va="center",
+) -> None:
+    """點釘原位；虛線拉到空白處再寫字，盒子不准蓋 K。"""
     ax.annotate(
-        text,
-        xy=(x, y),
-        xytext=(x + dx, y + dy),
+        str(text),
+        xy=(float(x), float(y)),
+        xytext=(float(tx), float(ty)),
         color=color,
         fontproperties=_fp(size, "bold"),
         ha=ha,
-        va="center",
-        zorder=11,
+        va=va,
+        zorder=12,
+        annotation_clip=False,
         bbox=dict(
             boxstyle="round,pad=0.28",
             facecolor="#ffffff",
             edgecolor=color,
-            linewidth=1.15,
+            linewidth=1.1,
             alpha=0.97,
         ),
-        arrowprops=dict(arrowstyle="-", color=color, lw=0.9, shrinkA=0, shrinkB=3),
+        arrowprops=dict(
+            arrowstyle="-",
+            color=color,
+            lw=0.95,
+            linestyle="--",
+            shrinkA=0,
+            shrinkB=4,
+        ),
     )
+
+
+def _callout(ax, x, y, text, color, *, dx=1.55, dy=0.0, size=11, ha="left", tx=None, ty=None):
+    _leader_note(
+        ax,
+        x,
+        y,
+        text,
+        color,
+        tx=x + dx if tx is None else tx,
+        ty=y + dy if ty is None else ty,
+        size=size,
+        ha=ha,
+    )
+
+
+def _place_band_notes(
+    ax,
+    notes: Sequence[Dict[str, Any]],
+    *,
+    ty: float,
+    x_lo: float,
+    x_hi: float,
+    min_dx: float,
+) -> None:
+    """標籤排在圖上／圖下空白帶，虛線只沿自己那一根上去，不橫掃別根 K。"""
+    if not notes:
+        return
+    ordered = sorted(notes, key=lambda n: float(n.get("x") or 0))
+    txs: List[float] = []
+    for note in ordered:
+        tx = float(note.get("x") or 0)
+        if txs and tx < txs[-1] + min_dx:
+            tx = txs[-1] + min_dx
+        txs.append(tx)
+    if txs and txs[-1] > x_hi:
+        shift = txs[-1] - x_hi
+        txs = [max(x_lo, t - shift) for t in txs]
+    txs = [min(max(t, x_lo), x_hi) for t in txs]
+    for note, tx in zip(ordered, txs):
+        _leader_note(
+            ax,
+            float(note.get("x") or 0),
+            float(note.get("y") or 0),
+            str(note.get("text") or ""),
+            str(note.get("color") or _TEXT),
+            tx=tx,
+            ty=ty,
+            size=int(note.get("size") or 10),
+            ha="center",
+            va="center",
+        )
+
+
+def _place_right_notes(
+    ax,
+    notes: Sequence[Dict[str, Any]],
+    *,
+    x_text: float,
+    ymin: float,
+    ymax: float,
+    min_gap: float,
+) -> None:
+    """演算區右側空白：虛線拉到右溝，字錯開，不壓延伸線。"""
+    if not notes:
+        return
+    lo = ymin + min_gap * 0.4
+    hi = ymax - min_gap * 0.4
+    tys = _spread_ys_around(
+        [float(n.get("y") or 0) for n in notes],
+        [],
+        min_gap,
+        lo=lo,
+        hi=hi,
+    )
+    for note, ty in zip(notes, tys):
+        _leader_note(
+            ax,
+            float(note.get("x") or 0),
+            float(note.get("y") or 0),
+            str(note.get("text") or ""),
+            str(note.get("color") or _TEXT),
+            tx=x_text,
+            ty=ty,
+            size=int(note.get("size") or 11),
+            ha="left",
+            va="center",
+        )
+
+
+def _spread_ys_around(
+    movable: Sequence[float],
+    fixed: Sequence[float],
+    min_gap: float,
+    *,
+    lo: Optional[float] = None,
+    hi: Optional[float] = None,
+) -> List[float]:
+    """標籤文字錯開：線仍釘原價，字被固定價位／鄰居擠開，避免蓋住數字。"""
+    gap = float(min_gap or 0) or 1.0
+    taken = [float(v) for v in fixed]
+    out: List[float] = []
+    for raw in movable:
+        y = float(raw)
+        for _ in range(12):
+            hit = None
+            best = gap
+            for t in taken:
+                d = abs(y - t)
+                if d < best:
+                    hit = t
+                    best = d
+            if hit is None:
+                break
+            y = hit + gap if y >= hit else hit - gap
+        if lo is not None:
+            y = max(y, float(lo))
+        if hi is not None:
+            y = min(y, float(hi))
+        out.append(y)
+        taken.append(y)
+    return out
+
+
+# 個股長軸縮圖：表頭右側專用帶，不准 inset 蓋 K、不准蓋開高低量。
+_STOCK_LOCATOR_RECT = (0.70, 0.695, 0.27, 0.155)
 
 
 def _ymd8(raw: Any) -> str:
@@ -552,11 +699,10 @@ def paint_locator_inset(
     ax.tick_params(left=False, labelleft=False, length=2, labelsize=7, colors="#546e7a")
     d0 = _ymd8(rows[0].get("date"))
     d1 = _ymd8(rows[-1].get("date"))
-    xt = [0, i0, m - 1]
+    xt = [0, m - 1]
     xl = [
         f"{d0[:4]}/{int(d0[4:6])}" if d0 else "",
-        "大圖這段",
-        f"{int(d1[4:6])}/{int(d1[6:8])}" if d1 else "今",
+        f"{d1[:4]}/{int(d1[4:6])}" if d1 else "今",
     ]
     ax.set_xticks(xt)
     ax.set_xticklabels(xl, fontproperties=_fp(7, "bold"))
@@ -853,8 +999,10 @@ def render_biaoke_structure_png(
     span = max(max(highs) - min(lows), 1.0)
     proj = info.get("project") or {}
     tgt = float(proj.get("target") or 0)
-    ymin = min(lows) - span * 0.10
-    ymax = max(highs) + span * 0.28
+    y_top = max(highs) + span * 0.13
+    y_bot = min(lows) - span * 0.09
+    ymin = min(lows) - span * 0.18
+    ymax = max(highs) + span * 0.24
     if tgt:
         ymin = min(ymin, tgt - span * 0.06)
         ymax = max(ymax, tgt + span * 0.10)
@@ -862,13 +1010,15 @@ def render_biaoke_structure_png(
         if yf:
             ymin = min(ymin, float(yf) - span * 0.04)
             ymax = max(ymax, float(yf) + span * 0.04)
+    ymax = max(ymax, y_top + span * 0.07)
+    ymin = min(ymin, y_bot - span * 0.07)
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     from decision_card_signals import candle_up_taiwan
 
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(14.8, 9.7),
+        figsize=(14.8, 10.2),
         dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
@@ -877,7 +1027,8 @@ def render_biaoke_structure_png(
     ax1.set_facecolor(_PANEL)
     ax2.set_facecolor(_PANEL)
     ax1.set_ylim(ymin, ymax)
-    x_right = n + _FUTURE + 3.2
+    x_gutter = n + _FUTURE + 1.55
+    x_right = n + _FUTURE + 9.6
     ax1.set_xlim(-0.55, x_right)
     ax1.axvspan(n - 0.45, n + _FUTURE + 0.55, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
     ax1.axvline(n - 0.45, color="#ffcc80", linewidth=1.15, linestyle=":", zorder=2)
@@ -923,29 +1074,18 @@ def render_biaoke_structure_png(
                 zorder=3,
             )
         )
+    band_hi: List[Dict[str, Any]] = []
+    band_lo: List[Dict[str, Any]] = []
+    right_notes: List[Dict[str, Any]] = []
     if spike_hi:
         ax1.axhline(spike_hi, color=_PRESS, linewidth=1.55, zorder=4, alpha=0.92)
-        _price_box(
-            ax1,
-            n + _FUTURE + 0.35,
-            spike_hi,
-            f"壓 {_px(spike_hi)}",
-            _PRESS,
-            va="center",
-            ha="left",
-            size=13,
+        right_notes.append(
+            {"x": float(n - 1), "y": spike_hi, "text": f"壓 {_px(spike_hi)}", "color": _PRESS, "size": 12}
         )
     if spike_lo:
         ax1.axhline(spike_lo, color=_HOLD, linewidth=1.55, zorder=4, alpha=0.92)
-        _price_box(
-            ax1,
-            n + _FUTURE + 0.35,
-            spike_lo,
-            f"撐 {_px(spike_lo)}",
-            _HOLD,
-            va="center",
-            ha="left",
-            size=13,
+        right_notes.append(
+            {"x": float(n - 1), "y": spike_lo, "text": f"撐 {_px(spike_lo)}", "color": _HOLD, "size": 12}
         )
     last_c = float(last_bar.get("close") or 0)
     if 0 <= spike_i < n:
@@ -970,37 +1110,15 @@ def render_biaoke_structure_png(
             edgecolors="white",
             linewidths=0.8,
         )
-        _callout(
-            ax1,
-            x1,
-            y1,
-            f"{_md(d1)}高{_px(y1)}",
-            _DOWN_TRACK,
-            dx=-2.2,
-            dy=span * 0.02,
-            size=10,
-            ha="right",
+        band_hi.append(
+            {"x": float(x1), "y": float(y1), "text": f"{_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
         )
         if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
-            _callout(
-                ax1,
-                x2,
-                y2,
-                f"{_md(d2)}高{_px(y2)}",
-                _DOWN_TRACK,
-                dx=1.5,
-                dy=span * 0.03,
-                size=10,
+            band_hi.append(
+                {"x": float(x2), "y": float(y2), "text": f"{_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
             )
-        _callout(
-            ax1,
-            x_fut,
-            y_end,
-            f"連點延長 {_px(y_end)}",
-            _DOWN_TRACK,
-            dx=0.4,
-            dy=span * 0.012,
-            size=10,
+        right_notes.append(
+            {"x": float(x_fut), "y": float(y_end), "text": f"連點延長 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
         )
     if up_pts:
         (x1, y1, d1), (x2, y2, d2) = up_pts
@@ -1019,37 +1137,15 @@ def render_biaoke_structure_png(
             edgecolors="white",
             linewidths=0.8,
         )
-        _callout(
-            ax1,
-            x1,
-            y1,
-            f"{_md(d1)}低{_px(y1)}",
-            _UP_TRACK,
-            dx=-2.2,
-            dy=-span * 0.02,
-            size=10,
-            ha="right",
+        band_lo.append(
+            {"x": float(x1), "y": float(y1), "text": f"{_md(d1)}低{_px(y1)}", "color": _UP_TRACK, "size": 10}
         )
         if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
-            _callout(
-                ax1,
-                x2,
-                y2,
-                f"{_md(d2)}低{_px(y2)}",
-                _UP_TRACK,
-                dx=1.5,
-                dy=-span * 0.03,
-                size=10,
+            band_lo.append(
+                {"x": float(x2), "y": float(y2), "text": f"{_md(d2)}低{_px(y2)}", "color": _UP_TRACK, "size": 10}
             )
-        _callout(
-            ax1,
-            x_fut,
-            y_end,
-            f"連點延長 {_px(y_end)}",
-            _UP_TRACK,
-            dx=0.4,
-            dy=-span * 0.012,
-            size=10,
+        right_notes.append(
+            {"x": float(x_fut), "y": float(y_end), "text": f"連點延長 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
         )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
@@ -1072,15 +1168,14 @@ def render_biaoke_structure_png(
             linewidths=0.9,
         )
         mx, my = path[-1]
-        _callout(
-            ax1,
-            mx,
-            my,
-            str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
-            _PROJECT,
-            dx=0.45,
-            dy=span * 0.02,
-            size=12,
+        right_notes.append(
+            {
+                "x": float(mx),
+                "y": float(my),
+                "text": str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
+                "color": _PROJECT,
+                "size": 12,
+            }
         )
     for fork in proj.get("forks") or []:
         if str(fork.get("name") or "") != "連點延長":
@@ -1099,17 +1194,28 @@ def render_biaoke_structure_png(
             ls=(0, (2, 2.5)),
             z=4,
         )
+    _place_band_notes(ax1, band_hi, ty=y_top, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=7.2)
+    _place_band_notes(ax1, band_lo, ty=y_bot, x_lo=0.4, x_hi=max(n - 2.0, 2.0), min_dx=7.2)
+    _place_right_notes(
+        ax1,
+        right_notes,
+        x_text=x_gutter,
+        ymin=ymin,
+        ymax=ymax,
+        min_gap=span * 0.055,
+    )
     ax1.text(
-        n + _FUTURE * 0.55,
-        ymin + span * 0.03,
+        n + _FUTURE * 0.45,
+        ymin + span * 0.012,
         "演算區（不是保證）",
         color="#546e7a",
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(10, "bold"),
         ha="center",
         va="bottom",
         zorder=8,
     )
     mark = ""
+    mc = _TEXT
     if info.get("wash"):
         mark = "破線洗盤痕跡（破撐後站回，不是保證）"
         mc = _WASH
@@ -1122,30 +1228,6 @@ def render_biaoke_structure_png(
     elif info.get("over_press"):
         mark = "已過爆大量日高（半山腰／突破，長抱另論）"
         mc = _WASH
-    if mark:
-        ax1.text(
-            0.012,
-            0.985,
-            mark,
-            transform=ax1.transAxes,
-            color=mc,
-            fontproperties=_fp(12, "bold"),
-            va="top",
-            zorder=8,
-            bbox=dict(boxstyle="round,pad=0.28", facecolor="#ffffff", edgecolor=mc, linewidth=1.0),
-        )
-    ohlc_s = (
-        f"最近收盤 {_ymd_full(last_bar.get('date'))}　"
-        f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
-        f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
-        f"量 {_vol(last_bar.get('volume'))}"
-    )
-    spike_s = (
-        f"爆大量日 {_ymd_full(spike_date)}　"
-        f"開 {_px(spike_bar.get('open'))}　高 {_px(spike_hi)}＝壓　"
-        f"低 {_px(spike_lo)}＝撐　收 {_px(spike_bar.get('close'))}　"
-        f"量 {_vol(spike_bar.get('volume'))}　｜不是15分、不是介紹圖／決策卡"
-    )
     banner_bits = header_banner_lines(glance)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
@@ -1155,13 +1237,57 @@ def render_biaoke_structure_png(
     ov.set_navigate(False)
     _paint_nameplate(ov, plate)
     _paint_spot(ov, quote)
-    ov.text(4.15, 92.2, ohlc_s, color=_TEXT, fontproperties=_fp(12, "bold"), va="center", ha="left")
-    ov.text(4.15, 89.35, spike_s, color=_PRESS, fontproperties=_fp(12, "bold"), va="center", ha="left")
-    chip_x, chip_y = 4.15, 86.35
+    ov.text(
+        4.15,
+        92.35,
+        f"最近收盤 {_ymd_full(last_bar.get('date'))}",
+        color=_TEXT,
+        fontproperties=_fp(12, "bold"),
+        va="center",
+        ha="left",
+    )
+    ov.text(
+        4.15,
+        89.7,
+        (
+            f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
+            f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
+            f"量 {_vol(last_bar.get('volume'))}"
+        ),
+        color=_TEXT,
+        fontproperties=_fp(12, "bold"),
+        va="center",
+        ha="left",
+    )
+    ov.text(
+        4.15,
+        87.05,
+        (
+            f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
+            f"量 {_vol(spike_bar.get('volume'))}"
+        ),
+        color=_PRESS,
+        fontproperties=_fp(12, "bold"),
+        va="center",
+        ha="left",
+    )
+    ov.text(
+        4.15,
+        84.5,
+        "不是15分、不是介紹圖／決策卡",
+        color="#546e7a",
+        fontproperties=_fp(11, "bold"),
+        va="center",
+        ha="left",
+    )
+    chip_x, chip_y = 4.15, 81.7
+    if mark:
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=10)
+        chip_x, chip_y = 4.15, 78.6
     for bit in banner_bits:
         need = _ow(f" {bit} ", 10) + 1.2
-        if chip_x > 4.2 and chip_x + need > 62:
-            if chip_y - 3.05 < 83:
+        if chip_x > 4.2 and chip_x + need > 64:
+            if chip_y - 3.05 < 73:
                 break
             chip_x = 4.15
             chip_y -= 3.05
@@ -1169,19 +1295,18 @@ def render_biaoke_structure_png(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
         )
     if len(rows) >= n + 16:
-        loc_ax = ax1.inset_axes([0.015, 0.50, 0.30, 0.38], zorder=12)
         paint_locator_inset(
             fig,
             rows,
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
-            ax=loc_ax,
+            rect=_STOCK_LOCATOR_RECT,
             title="長軸定位　橙框＝大圖這段",
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
-    ax1.yaxis.tick_right()
-    ax1.yaxis.set_label_position("right")
-    ax1.tick_params(labelsize=11, left=False, right=True, bottom=False, labelbottom=False, length=5, width=0.8)
+    ax1.yaxis.tick_left()
+    ax1.yaxis.set_label_position("left")
+    ax1.tick_params(labelsize=11, left=True, right=False, bottom=False, labelbottom=False, length=5, width=0.8)
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{v:,.0f}"))
     for lab in ax1.get_yticklabels():
         lab.set_fontproperties(_fp(11, "bold"))
@@ -1190,22 +1315,23 @@ def render_biaoke_structure_png(
     vmax = max(vols) if vols else 1.0
     ax2.set_ylim(0, vmax * 1.45)
     if 0 <= spike_i < n and vols[spike_i]:
-        box_x = spike_i + 0.9 if spike_i < n - 4 else spike_i - 0.9
-        ha_v = "left" if spike_i < n - 4 else "right"
-        _price_box(
+        vol_tx = min(n - 1.2, spike_i + 5.2) if spike_i < n - 6 else max(0.8, spike_i - 5.2)
+        _leader_note(
             ax2,
-            box_x,
-            min(vols[spike_i], vmax * 0.62),
+            float(spike_i),
+            float(vols[spike_i]),
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
-            va="center",
-            ha=ha_v,
+            tx=vol_tx,
+            ty=vmax * 1.22,
             size=11,
+            ha="left" if vol_tx >= spike_i else "right",
+            va="center",
         )
     ax2.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color=_TEXT)
-    ax2.yaxis.tick_right()
-    ax2.yaxis.set_label_position("right")
-    ax2.tick_params(labelsize=11, left=False, right=True, length=5, width=0.8)
+    ax2.yaxis.tick_left()
+    ax2.yaxis.set_label_position("left")
+    ax2.tick_params(labelsize=11, left=True, right=False, length=5, width=0.8)
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{int(round(v)):,}"))
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(10, "bold"))
@@ -1240,7 +1366,7 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.045, right=0.87, top=0.76 if banner_bits else 0.80, bottom=0.075)
+    fig.subplots_adjust(left=0.07, right=0.80, top=0.69, bottom=0.072)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""

@@ -1285,7 +1285,12 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
 
     @_mpl_serial
     def _draw() -> str:
-        from biaoke_chart import _callout, _halo_line, paint_locator_inset
+        from biaoke_chart import (
+            _halo_line,
+            _place_band_notes,
+            _place_right_notes,
+            paint_locator_inset,
+        )
 
         n = len(bars)
         opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -1300,14 +1305,19 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         for r in rays:
             ys.append(float(r.get("y2") or r.get("y") or 0))
             ys.append(float(r.get("y1") or 0))
-        ymin = min(ys) - 400
-        ymax = max(ys) + 900
+        y_top = max(highs) + 620
+        y_bot = min(lows) - 480
+        ymin = min(ys) - 780
+        ymax = max(ys) + 1100
+        ymax = max(ymax, y_top + 280)
+        ymin = min(ymin, y_bot - 280)
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-        fig, ax = plt.subplots(figsize=(13.4, 8.0), dpi=NAV_CHART_DPI)
+        fig, ax = plt.subplots(figsize=(13.6, 8.4), dpi=NAV_CHART_DPI)
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
-        ax.axvspan(n - 0.45, n + 10, facecolor="#fff6e0", alpha=0.95, zorder=0)
+        ax.axvspan(n - 0.45, n + 8.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
         ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
+        x_gutter = n + 9.3
         for i in range(n):
             prev_c = closes[i - 1] if i else None
             up = candle_up_taiwan(closes[i], prev_c, opens[i])
@@ -1335,6 +1345,9 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         styles = {
             "他原文C波最差": (0, (4, 3)),
         }
+        band_hi: list = []
+        band_lo: list = []
+        right_notes: list = []
         for lv, lab, _d in _TWII_LEVELS:
             ax.axhline(
                 lv,
@@ -1343,16 +1356,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 linestyle=styles.get(lab, "-"),
                 zorder=2,
             )
-            ax.text(
-                n + 0.45,
-                lv,
-                f" {lab} {_px(lv)}",
-                color=colors.get(lab, "#37474f"),
-                fontsize=9,
-                fontproperties=_fp(9, "bold"),
-                va="center",
-                ha="left",
-                zorder=6,
+            right_notes.append(
+                {
+                    "x": float(n - 1),
+                    "y": float(lv),
+                    "text": f"{lab} {_px(lv)}",
+                    "color": colors.get(lab, "#37474f"),
+                    "size": 9,
+                }
             )
         segs = wave_path_segments(path_pts)
         for seg in segs:
@@ -1390,36 +1401,30 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 short = str(p.get("point_lab") or _PATH_SHORT.get(p["tag"], p["tag"]))
                 if p.get("pinned"):
                     short += "·釘"
-                _callout(
-                    ax,
-                    float(p["i"]),
-                    float(p["y"]),
-                    short,
-                    color,
-                    dx=1.35,
-                    dy=280 if p.get("kind") != "low" else -280,
-                    size=8,
-                )
+                note = {
+                    "x": float(p["i"]),
+                    "y": float(p["y"]),
+                    "text": short,
+                    "color": color,
+                    "size": 8,
+                }
+                if int(p.get("i") or 0) >= n - 4:
+                    right_notes.append(note)
+                elif p.get("kind") == "low":
+                    band_lo.append(note)
+                else:
+                    band_hi.append(note)
             uniq_tags = {str(p.get("tag") or "") for p in pts}
             if pts and seg.get("lab") and len(uniq_tags) > 1:
                 mid = pts[len(pts) // 2]
-                ax.text(
-                    float(mid["i"]) + 0.2,
-                    float(mid["y"]) + (420 if mid.get("kind") != "low" else -420),
-                    str(seg.get("lab") or ""),
-                    color=color,
-                    fontsize=8,
-                    fontproperties=_fp(8, "bold"),
-                    ha="left",
-                    va="center",
-                    zorder=9,
-                    bbox=dict(
-                        boxstyle="round,pad=0.18",
-                        facecolor="#ffffff",
-                        edgecolor=color,
-                        linewidth=0.7,
-                        alpha=0.94,
-                    ),
+                band_hi.append(
+                    {
+                        "x": float(mid["i"]),
+                        "y": float(mid["y"]),
+                        "text": str(seg.get("lab") or ""),
+                        "color": color,
+                        "size": 8,
+                    }
                 )
         for r in rays:
             _halo_line(
@@ -1431,29 +1436,40 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 ls=(0, (4, 3)),
                 z=5,
             )
-            _callout(
-                ax,
-                float(r["x2"]),
-                float(r["y2"]),
-                str(r.get("label") or ""),
-                "#6a1b9a",
-                dx=-0.55,
-                dy=0.0,
-                size=8,
-                ha="right",
+            right_notes.append(
+                {
+                    "x": float(r["x2"]),
+                    "y": float(r["y2"]),
+                    "text": str(r.get("label") or ""),
+                    "color": "#6a1b9a",
+                    "size": 8,
+                }
             )
+        _place_band_notes(ax, band_hi, ty=y_top, x_lo=0.6, x_hi=max(n - 3.0, 2.0), min_dx=8.4)
+        _place_band_notes(ax, band_lo, ty=y_bot, x_lo=0.6, x_hi=max(n - 3.0, 2.0), min_dx=8.4)
+        _place_right_notes(ax, right_notes, x_text=x_gutter, ymin=ymin, ymax=ymax, min_gap=380)
         last = bars[-1]
         as_of = _ymd(last.get("date"))
         as_show = f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}" if len(as_of) == 8 else as_of
-        ax.set_title(
-            f"加權官方日K　他自己的轉折線　{as_show} 收 {_px(last.get('close'))}"
-            f"　{last_tag or '—'}",
+        fig.text(
+            0.07,
+            0.965,
+            "加權官方日K　他自己的轉折線",
             fontproperties=_fp(13, "bold"),
             color="#1f2933",
-            loc="left",
-            pad=8,
+            ha="left",
+            va="top",
         )
-        ax.set_xlim(-0.6, n + 10)
+        fig.text(
+            0.07,
+            0.932,
+            f"{as_show} 收 {_px(last.get('close'))}　{last_tag or '—'}",
+            fontproperties=_fp(12, "bold"),
+            color="#1f2933",
+            ha="left",
+            va="top",
+        )
+        ax.set_xlim(-0.6, n + 22)
         ax.set_ylim(ymin, ymax)
         ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
         step = max(n // 7, 4)
@@ -1472,22 +1488,23 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.tick_params(labelsize=10)
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.07, right=0.82, top=0.70, bottom=0.11)
+        fig.subplots_adjust(left=0.07, right=0.72, top=0.68, bottom=0.11)
         if long_bars and len(long_bars) > n + 16:
             paint_locator_inset(
                 fig,
                 long_bars,
                 win_from=str(bars[0].get("date") or ""),
                 win_to=str(bars[-1].get("date") or ""),
-                rect=(0.66, 0.735, 0.32, 0.23),
+                rect=(0.68, 0.72, 0.30, 0.23),
                 title="長軸定位　橙框＝大圖這段波浪",
             )
         fig.text(
             0.07,
-            0.03,
-            "右上縮圖時間軸更長，橙框＝上面大圖這段。轉折線按區間拆開，不是 15 分、不發明段號、不是買訊。"
-            "五月到現在不是一路大B。延伸線已建檔，官方柱走完再對質。43500 是他原文最差情境。",
-            fontproperties=_fp(9),
+            0.028,
+            "點釘原位，虛線拉到空白處寫字。右上縮圖時間軸更長，橙框＝上面大圖這段。"
+            "轉折線按區間拆開，不是 15 分、不發明段號、不是買訊。五月到現在不是一路大B。"
+            "延伸線已建檔，官方柱走完再對質。43500 是他原文最差情境。",
+            fontproperties=_fp(8),
             color="#546e7a",
         )
         fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())

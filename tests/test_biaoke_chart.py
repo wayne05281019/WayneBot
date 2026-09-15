@@ -446,10 +446,13 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert (tmp_path / "nameplate.png").stat().st_size > 24_000
     src = inspect.getsource(render_biaoke_structure_png)
     assert "_halo_line" in src
-    assert "_callout" in src
+    assert "_leader_note" in src
+    assert "_place_right_notes" in src
+    assert "inset_axes" not in src
     assert "if down_live" not in src
     assert "x_fut" in src
     assert "paint_locator_inset" in src
+    assert "_STOCK_LOCATOR_RECT" in src
 
 
 def test_locator_inset_marks_window():
@@ -465,6 +468,19 @@ def test_locator_inset_marks_window():
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
+    assert "_place_right_notes" in wsrc
+    assert "_place_band_notes" in wsrc
+
+
+def test_leader_notes_use_dashed_and_stagger():
+    import inspect
+
+    from biaoke_chart import _leader_note, _spread_ys_around
+
+    src = inspect.getsource(_leader_note)
+    assert 'linestyle="--"' in src or "linestyle='--'" in src
+    ys = _spread_ys_around([10.0, 10.2], [10.0], 1.0)
+    assert abs(ys[0] - ys[1]) >= 0.99
 
 
 def test_caption_records_forecast_line():
