@@ -132,6 +132,10 @@ def test_why_sep15_escape_wave():
     assert "創意" in body
     assert "台達電" in body
     assert "證據" in body
+    yong = lookup("雍智科已經整理完成")
+    assert "雍智" in yong
+    assert "精測" in yong
+    assert "旺矽" in yong or "穎崴" in yong or "穎葳" in yong
 
 
 def test_live_notes_puts_why_chain_first():

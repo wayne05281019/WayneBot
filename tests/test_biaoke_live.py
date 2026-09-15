@@ -159,6 +159,7 @@ def test_live_notes_always_has_latest_posts_and_replies():
     load_corpus_cache_clear()
     note = live_notes("", "可以使用嗎")
     assert "逃命波" in note or "184601742" in note or "2026-09-15" in note
+    assert "雍智" in note or "精測" in note or "09:23" in note
     assert "45839" in note
     assert "最新發文" in note
     assert "最新樓下" in note
@@ -203,6 +204,8 @@ def test_live_notes_reverse_think_emc_hold():
     assert "重要留言" in SYSTEM
     assert "PCB不要亂動" in SYSTEM or "嚴格不能算光通訊" in SYSTEM
     assert "43500" in SYSTEM
+    assert "雍智" in SYSTEM
+    assert "09:23" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
