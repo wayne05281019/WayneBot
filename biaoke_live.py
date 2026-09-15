@@ -188,7 +188,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             f"庫 {blob.get('from') or ''}～{blob.get('to') or ''} "
             f"主文{blob.get('n') or 0}＋樓下{blob.get('replies') or 0}"
         )
-        keep_m, keep_r = (2, 8) if chained else (3, 8)
+        keep_m, keep_r = (2, 16) if chained else (3, 16)
         latest_mains = list(mains[-keep_m:])
         for i, p in enumerate(latest_mains):
             charts = post_chart_urls(str(p.get("text") or ""))
