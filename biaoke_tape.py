@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """捕獲飆大主文／自回後立刻對官方日 K 建檔。
 
-點到的檔才寫；IET 這種沒點代號的不准編。引號裡路人話不收。
+點到的檔才寫。IET＝IET-KY 4971。引號裡路人話不收。
 盤中未收盤柱不當官方收，對最後一根完整官方柱。不是買訊。
 """
 from __future__ import annotations
@@ -88,7 +88,7 @@ def _snip(text: str, needle: str, n: int = 80) -> str:
 
 
 def named_pairs(text: str, tags: Optional[Sequence[Any]] = None) -> List[Tuple[str, str]]:
-    """只收他點過、表裡有代號的檔。IET 不在表裡就不編。"""
+    """只收他點過、表裡有代號的檔。IET＝IET-KY 4971。"""
     from biaoke_why import _NAME_SID, named_stocks
 
     spoken = _spoken(text)
@@ -99,15 +99,19 @@ def named_pairs(text: str, tags: Optional[Sequence[Any]] = None) -> List[Tuple[s
         if not sid or sid in seen:
             continue
         seen.add(sid)
-        out.append((sid, name))
+        shown = "IET-KY" if sid == "4971" else name
+        out.append((sid, shown))
     inv: Dict[str, str] = {}
     for name, sid in _NAME_SID.items():
-        inv.setdefault(str(sid), name)
+        sid_s = str(sid)
+        if sid_s not in inv or len(name) > len(inv[sid_s]):
+            inv[sid_s] = name
     for m in _TICKER.finditer(spoken):
         sid = m.group(1)
         if sid in inv and sid not in seen:
             seen.add(sid)
-            out.append((sid, inv[sid]))
+            shown = "IET-KY" if sid == "4971" else inv[sid]
+            out.append((sid, shown))
     return out
 
 

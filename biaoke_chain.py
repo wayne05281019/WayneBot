@@ -433,7 +433,12 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
         elif sid == "3105":
             bits.append(
                 "2026-09-15 09:45 樓下：穩懋昨天跌破支撐立刻站回，細微觀察近期會比台達電強。"
-                "InP 族跟漲先看聯亞。IET 他沒點代號。"
+                "InP 族跟漲先看聯亞。IET＝IET-KY 4971。"
+            )
+        elif sid == "4971":
+            bits.append(
+                "IET＝IET-KY 4971。2026-09-15 10:24 樓下 InP 族還強，跟漲先看龍頭聯亞。"
+                "不能保證 100%。官方 20260914 收 531。"
             )
         elif sid == "3653":
             bits.append(

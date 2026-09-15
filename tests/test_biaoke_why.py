@@ -147,6 +147,7 @@ def test_why_sep15_escape_wave():
     assert "聯亞" in flag
     assert "100%" in flag or "保證" in flag
     assert "IET" in flag
+    assert "4971" in flag or "IET-KY" in flag
     slow = lookup("目前大盤漲不動我反而覺得比較好")
     assert "開牌" in slow or "C-2" in slow
     assert "C-3" in slow
