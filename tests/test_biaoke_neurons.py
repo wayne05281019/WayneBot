@@ -71,6 +71,7 @@ def test_record_and_fire_reads_latest(tmp_path):
     assert "C-2" in nest["text"] or "逃命波" in nest["text"]
     think = fired["think"]
     assert "站回" in think or "逃命波" in think or "C-2" in think
+    assert "這族龍頭是 他自己最新" not in think
 
 
 def test_ingest_hooks_neurons_immediately():

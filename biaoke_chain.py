@@ -989,7 +989,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         if "不另對" in lead_t or "自己就是" in lead_t:
             parts.append("自己就是這族龍頭。")
         elif leader.get("ok"):
-            head = lead_t.split("（", 1)[0].strip()
+            core = re.sub(r"他自己最新：.*", "", lead_t).strip(" 。；")
+            head = core.split("（", 1)[0].strip()
             parts.append(f"這族龍頭是 {head}。" if head else "龍頭對得上。")
         else:
             parts.append("龍頭還沒對上。")
@@ -1083,9 +1084,15 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
             live = {}
     if live:
         for step in steps:
-            extra = _live_bit(live, str(step.get("id") or ""), str(step.get("text") or ""))
-            if extra:
-                step["text"] = _clip(extra + "。" + str(step.get("text") or ""), 900)
+            nid = str(step.get("id") or "")
+            extra = _live_bit(live, nid, str(step.get("text") or ""))
+            if not extra:
+                continue
+            body = str(step.get("text") or "")
+            if nid == "leader":
+                step["text"] = _clip(body + "。" + extra, 900)
+            else:
+                step["text"] = _clip(extra + "。" + body, 900)
     return {
         "sid": sid,
         "name": name,
