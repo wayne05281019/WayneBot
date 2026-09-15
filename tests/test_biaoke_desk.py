@@ -211,7 +211,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "19"
+    assert MENU_LAYOUT_VERSION == "20"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
@@ -249,18 +249,26 @@ def test_two_uids_both_enter_biaoke_chat_without_submenu():
     assert bot._send_biaoke_page.await_count == 2
 
 
-def test_biaoke_keyboard_puts_leave_on_top():
+def test_biaoke_keyboard_toggles_same_slot():
     from bot_servers import MENU_BTN_LEAVE_BIAOKE
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ""
     bot._menu_compact_on = lambda uid="": False
     kb = bot._biaoke_reply_menu()
-    assert [b.text for b in kb.keyboard[0]] == [MENU_BTN_LEAVE_BIAOKE]
-    assert len(kb.keyboard) == 3
     main = bot._reply_menu()
+    assert len(kb.keyboard) == 2
     assert len(main.keyboard) == 2
-    assert [b.text for b in main.keyboard[0]][0] != MENU_BTN_LEAVE_BIAOKE
+    assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_LEAVE_BIAOKE
+    assert [b.text for b in main.keyboard[0]][-1] == "飆大"
+    assert [b.text for b in kb.keyboard[0]][:-1] == [b.text for b in main.keyboard[0]][:-1]
+    assert [b.text for b in kb.keyboard[1]] == [b.text for b in main.keyboard[1]]
+    compact_on = WayneTelegramBot.__new__(WayneTelegramBot)
+    compact_on.db_path = ""
+    compact_on._menu_compact_on = lambda uid="": True
+    compact_kb = compact_on._biaoke_reply_menu()
+    assert len(compact_kb.keyboard) == 2
+    assert [b.text for b in compact_kb.keyboard[0]][-1] == MENU_BTN_LEAVE_BIAOKE
 
 
 def test_leave_biaoke_clears_only_that_uid():

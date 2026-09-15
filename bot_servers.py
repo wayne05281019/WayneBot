@@ -377,7 +377,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 飆大</b>\n"
         "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去後打字或按麥克風講。用完按鍵盤最上「離開飆大」回兩排主選單，或直接按海選／持股／大盤。還在飆大時打字＝問飆大，不是查股兩張圖。\n"
+        "• 怎麼用：按進去後打字或按麥克風講。同一顆會變成「離開飆大」，再按一次回兩排主選單；或直接按海選／持股／大盤。還在飆大時打字＝問飆大，不是查股兩張圖。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
@@ -805,7 +805,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v17：飆大兩個字上的圈拿掉；舊圈圈鍵盤仍認。
 # v18：v17 去圈後，只按飆大不會重掛 ReplyKeyboard，手機仍顯示舊圈圈。這版任何進飆大都會帶現在的兩排（沒圈）。
 # v19：進飆大時鍵盤最上加「離開飆大」，用完一鍵回兩排主選單，不必在十四顆裡找出口。
-MENU_LAYOUT_VERSION = "19"
+# v20：離開不再多一排；上排最右同一顆由「飆大」改成「離開飆大」。
+MENU_LAYOUT_VERSION = "20"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1237,10 +1238,15 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _biaoke_reply_menu(self, uid: str = ""):
-        """還在飆大：最上整排離開，下面仍是原來的功能鍵（按了就離開飆大）。"""
-        base = self._reply_menu(uid)
-        rows = [[KeyboardButton(MENU_BTN_LEAVE_BIAOKE)]] + list(base.keyboard)
-        placeholder = "還在飆大。打字＝問飆大。按「離開飆大」回主選單。"
+        """還在飆大：上排最右同一顆改成「離開飆大」，不是多一排。"""
+        row1 = [KeyboardButton(t) for t in MENU_ROW1[:-1]] + [
+            KeyboardButton(MENU_BTN_LEAVE_BIAOKE)
+        ]
+        rows = [
+            row1,
+            [KeyboardButton(t) for t in MENU_ROW2],
+        ]
+        placeholder = "還在飆大。打字＝問飆大。同一顆「離開飆大」回主選單。"
         try:
             return ReplyKeyboardMarkup(
                 rows,
