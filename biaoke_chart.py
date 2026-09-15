@@ -5,7 +5,8 @@
 個股主圖＝日 K：爆大量那一天最高當壓、最低當撐。
 15／60 分只拿來看大盤／台指期，不准畫在這張個股圖上。
 連點軌道是輔助（兩個更低的高／兩個更高的低）；不夠兩點就不畫。
-不准發明 5／9 段、不准把「三日底點不破」畫成他的固定公式。
+1～5 只准從已確認的錨往前推（大盤＝他自己的第五波高；個股＝下降壓的前高），不准亂數。
+不准把「三日底點不破」畫成他的固定公式。
 """
 from __future__ import annotations
 
@@ -691,6 +692,134 @@ def _major_swings(
     return out
 
 
+def infer_impulse_five(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    peak_i: int,
+    start_i: Optional[int] = None,
+) -> Dict[str, Any]:
+    """已確認第 5 高，才把前面升段推成 1～4。推不出來就不畫，不准亂數。
+
+    規則跟他神經元同一套：1-4 重疊＝這組推動不算；3 不能是 1／3／5 最短的。
+    """
+    n = len(rows)
+    peak_i = int(peak_i)
+    if n < 16 or peak_i < 10 or peak_i >= n:
+        return {}
+    highs = [float(r.get("high") or 0) for r in rows]
+    lows = [float(r.get("low") or 0) for r in rows]
+    peak_y = highs[peak_i]
+    if peak_y <= 0:
+        return {}
+    if start_i is None:
+        lo0 = max(0, peak_i - 220)
+        hi0 = peak_i - 8
+        if hi0 <= lo0:
+            return {}
+        start_i = min(range(lo0, hi0), key=lambda i: lows[i] if lows[i] > 0 else 1e18)
+    start_i = int(start_i)
+    if start_i < 0 or start_i >= peak_i - 8:
+        return {}
+    start_y = lows[start_i]
+    if start_y <= 0 or peak_y <= start_y * 1.02:
+        return {}
+    left = max(3, min(7, (peak_i - start_i) // 18 or 3))
+    w_highs = highs[start_i : peak_i + 1]
+    w_lows = lows[start_i : peak_i + 1]
+    hi_p, lo_p = _pivots(w_highs, w_lows, left=left)
+    hi_abs = [start_i + i for i in hi_p if highs[start_i + i] < peak_y * 0.999]
+    lo_abs = [start_i + i for i in lo_p]
+    if len(hi_abs) < 2:
+        return {}
+
+    def _pack(i1: int, i2: int, i3: int, i4: int) -> Optional[Dict[str, Any]]:
+        if not (start_i < i1 < i2 < i3 < i4 < peak_i):
+            return None
+        if lows[i4] < highs[i1] * 0.998:
+            return None
+        w1 = highs[i1] - start_y
+        w3 = highs[i3] - lows[i2]
+        w5 = peak_y - lows[i4]
+        if min(w1, w3, w5) <= 0:
+            return None
+        if w3 + 1e-9 < min(w1, w5):
+            return None
+        return {
+            "start": {"i": start_i, "y": start_y, "n": "", "kind": "L"},
+            "pts": [
+                {"n": "1", "i": i1, "y": highs[i1], "kind": "H"},
+                {"n": "2", "i": i2, "y": lows[i2], "kind": "L"},
+                {"n": "3", "i": i3, "y": highs[i3], "kind": "H"},
+                {"n": "4", "i": i4, "y": lows[i4], "kind": "L"},
+                {"n": "5", "i": peak_i, "y": peak_y, "kind": "H"},
+            ],
+        }
+
+    hi_rank = sorted(hi_abs, key=lambda i: -highs[i])
+    for i3 in hi_rank:
+        hi_before = [i for i in hi_abs if i < i3 - 2]
+        if not hi_before:
+            continue
+        span = peak_i - start_i
+        early = [i for i in hi_before if i <= start_i + max(span * 0.55, 12)]
+        i1_cands = early if early else hi_before
+        for i1 in i1_cands[:6]:
+            mid12 = [i for i in lo_abs if i1 < i < i3]
+            mid34 = [i for i in lo_abs if i3 < i < peak_i]
+            if not mid12:
+                mid12 = list(range(i1 + 1, i3))
+            if not mid34:
+                mid34 = list(range(i3 + 1, peak_i))
+            if not mid12 or not mid34:
+                continue
+            i2 = min(mid12, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
+            i4 = min(mid34, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
+            got = _pack(i1, i2, i3, i4)
+            if got:
+                return got
+    return {}
+
+
+def impulse_five_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """縮圖升段折線。數字另外用 marks，避免跟線疊在一起。"""
+    pts = list((story or {}).get("pts") or [])
+    start = (story or {}).get("start") or {}
+    seq = ([start] if start else []) + pts
+    if len(seq) < 2:
+        return []
+    return [
+        {
+            "xs": [float(p["i"]) for p in seq],
+            "ys": [float(p["y"]) for p in seq],
+            "color": "#5d4037",
+            "lw": 1.05,
+            "lab": "",
+            "dots": False,
+        }
+    ]
+
+
+def impulse_five_marks(story: Dict[str, Any], *, size: int = 13) -> List[Dict[str, Any]]:
+    """1～5 要夠大。高點寫上面、低點寫下面。"""
+    out: List[Dict[str, Any]] = []
+    for p in (story or {}).get("pts") or []:
+        n = str(p.get("n") or "").strip()
+        if n not in {"1", "2", "3", "4", "5"}:
+            continue
+        hi = str(p.get("kind") or "") == "H"
+        out.append(
+            {
+                "x": float(p["i"]),
+                "y": float(p["y"]),
+                "text": n,
+                "color": "#4e342e",
+                "va": "bottom" if hi else "top",
+                "size": size,
+            }
+        )
+    return out
+
+
 def locator_legs_from_swings(
     rows: Sequence[Dict[str, Any]],
     swings: Sequence[Tuple[int, float, str]],
@@ -768,12 +897,14 @@ def paint_locator_inset(
     win_from: str = "",
     win_to: str = "",
     rect: Tuple[float, float, float, float] = _STOCK_LOCATOR_RECT,
-    title: str = "橙框＝大圖這段　橫軸月份",
+    title: str = "黃底＝預估　橙框＝大圖這段　橫軸月份",
     ax=None,
     legs: Optional[Sequence[Dict[str, Any]]] = None,
     k_on_top: bool = False,
+    forecast_n: int = 0,
+    marks: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> bool:
-    """右上長軸縮圖：標大圖落點，點對點連線，橫軸寫月份。"""
+    """右上長軸縮圖：黃底只給預估，橙框只框大圖這段。點對點連線，橫軸寫月份。"""
     from decision_card_signals import candle_up_taiwan
 
     rows = []
@@ -816,14 +947,27 @@ def paint_locator_inset(
     lo_min = min(lows)
     hi_max = max(highs)
     pad = (hi_max - lo_min) * 0.12 or 1.0
-    ax.axvspan(
-        i0 - 0.6,
-        i1 + 0.6,
-        facecolor="#ffe082",
-        edgecolor="#ef6c00",
-        linewidth=1.2,
-        alpha=0.50,
-        zorder=1,
+    fut = max(0, int(forecast_n or 0))
+    if fut > 0:
+        ax.axvspan(
+            m - 1 - 0.15,
+            m - 1 + fut + 0.35,
+            facecolor=_FUTURE_BG,
+            edgecolor="none",
+            alpha=0.95,
+            zorder=0,
+        )
+        ax.axvline(m - 1 - 0.15, color="#ffcc80", linewidth=0.9, linestyle=":", zorder=2)
+    ax.add_patch(
+        patches.Rectangle(
+            (i0 - 0.55, lo_min - pad * 0.08),
+            (i1 - i0) + 1.1,
+            (hi_max - lo_min) + pad * 0.22,
+            fill=False,
+            edgecolor="#ef6c00",
+            linewidth=1.45,
+            zorder=9,
+        )
     )
     if k_on_top:
         w = 0.94 if m <= 200 else (0.80 if m <= 400 else 0.66)
@@ -888,23 +1032,29 @@ def paint_locator_inset(
             circ = str(leg.get("circle") or "").strip()
             side = str(leg.get("circle_side") or "left")
             if circ:
-                if side == "left":
+                if side == "mid-left":
+                    mx = (xs[0] + xs[-1]) / 2.0
+                    my = (ys[0] + ys[-1]) / 2.0
+                    dx = -max(5.5, m * 0.018)
+                    dy = yspan * 0.045
+                elif side == "right":
+                    mx = (xs[0] + xs[-1]) / 2.0
+                    my = (ys[0] + ys[-1]) / 2.0
+                    dx = max(5.5, m * 0.018)
+                    dy = yspan * 0.045
+                elif side == "left":
                     mx, my = xs[0], ys[0]
                     dx = -max(6.0, m * 0.022)
                     dy = yspan * 0.05
                     if mx + dx < 1.2:
                         dx = max(4.5, m * 0.012)
                         dy = yspan * 0.12
-                elif side == "right":
-                    mx, my = xs[-1], ys[-1]
-                    dx = max(5.0, m * 0.016)
-                    dy = yspan * 0.05
                 else:
                     mid = len(xs) // 2
                     mx, my = xs[mid], ys[mid]
                     dx = 0.0
                     dy = yspan * 0.11
-                _circled_letter(ax, mx, my, circ, color, dx=dx, dy=dy, size=10)
+                _circled_letter(ax, mx, my, circ, color, dx=dx, dy=dy, size=11)
 
     if not k_on_top:
         _draw_legs()
@@ -937,8 +1087,37 @@ def paint_locator_inset(
         edgecolors="#ffffff",
         linewidths=0.5,
     )
-    ax.set_xlim(-0.8, m - 0.2)
-    ax.set_ylim(lo_min - pad, hi_max + pad * 1.15)
+    taken: List[Tuple[float, float]] = []
+    for mk in marks or []:
+        tx = float(mk.get("x") or 0)
+        ty = float(mk.get("y") or 0)
+        va = str(mk.get("va") or "bottom")
+        dy = yspan * (0.045 if va == "bottom" else -0.045)
+        ty2 = ty + dy
+        for ox, oy in taken:
+            if abs(tx - ox) < max(8.0, m * 0.028) and abs(ty2 - oy) < yspan * 0.08:
+                tx += max(6.0, m * 0.02)
+                break
+        taken.append((tx, ty2))
+        ax.text(
+            tx,
+            ty2,
+            str(mk.get("text") or ""),
+            color=str(mk.get("color") or "#4e342e"),
+            fontproperties=_fp(float(mk.get("size") or 13), "bold"),
+            ha="center",
+            va=va,
+            zorder=15,
+            bbox=dict(
+                boxstyle="round,pad=0.12",
+                facecolor="#ffffff",
+                edgecolor="#efebe9",
+                linewidth=0.6,
+                alpha=0.94,
+            ),
+        )
+    ax.set_xlim(-0.8, m - 0.2 + fut)
+    ax.set_ylim(lo_min - pad, hi_max + pad * 1.22)
     ax.set_yticks([])
     ax.tick_params(left=False, labelleft=False, length=2, labelsize=8, colors="#546e7a")
     xt, xl = _locator_month_ticks(rows)
@@ -1517,14 +1696,38 @@ def render_biaoke_structure_png(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
         )
     if len(rows) >= n + 8:
+        loc_legs: List[Dict[str, Any]] = []
+        loc_marks: List[Dict[str, Any]] = []
+        five: Dict[str, Any] = {}
+        if down_pts:
+            off = len(rows) - n
+            peak_i = off + int(down_pts[0][0])
+            five = infer_impulse_five(rows, peak_i=peak_i)
+            loc_legs.extend(impulse_five_legs(five))
+            loc_marks.extend(impulse_five_marks(five, size=13))
+            (x1, y1, _d1), (x2, y2, _d2) = down_pts
+            loc_legs.append(
+                {
+                    "xs": [float(off + x1), float(off + x2)],
+                    "ys": [float(y1), float(y2)],
+                    "color": _DOWN_TRACK,
+                    "lw": 1.25,
+                    "lab": "",
+                    "dots": False,
+                }
+            )
+        if not five:
+            loc_legs = locator_legs_from_swings(rows, _major_swings(rows))
         paint_locator_inset(
             fig,
             rows,
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
             rect=_STOCK_LOCATOR_RECT,
-            title="橙框＝大圖這段　連點＝升／回　橫軸月份",
-            legs=locator_legs_from_swings(rows, _major_swings(rows)),
+            title="黃底＝預估　橙框＝大圖　1～5＝下降壓往前推",
+            legs=loc_legs,
+            forecast_n=_FUTURE,
+            marks=loc_marks,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_left()
@@ -1701,7 +1904,7 @@ def chart_caption(
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
-    lines.append("右上縮圖＝更長時間軸，橙框是大圖這段；連點是實際高低的升／回，橫軸寫月份。個股不數 5／9 段。這不是買訊。")
+    lines.append("右上縮圖：黃底＝預估（與大圖同一段），橙框＝大圖這段。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
     lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return "\n".join(x for x in lines if x)[:1100]
 

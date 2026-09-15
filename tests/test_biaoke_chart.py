@@ -464,8 +464,11 @@ def test_locator_inset_marks_window():
 
     src = inspect.getsource(paint_locator_inset)
     assert "橙框" in src
+    assert "黃底" in src or "預估" in src
     assert "橫軸月份" in src
     assert "legs" in src
+    assert "forecast_n" in src
+    assert "marks" in src
     assert "win_from" in src
     from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
 
@@ -481,7 +484,9 @@ def test_locator_inset_marks_window():
     assert "560" in wsrc or "long_bars" in wsrc
     assert "locator_abc_legs" in wsrc
     assert "wave_abc_story" in wsrc
+    assert "infer_impulse_five" in wsrc
     assert "k_on_top" in wsrc
+    assert "forecast_n" in wsrc
     assert "_TWII_LOCATOR_RECT" in wsrc
     assert "uniq_tags" not in wsrc
     assert "_place_right_notes" in wsrc
@@ -531,6 +536,45 @@ def test_pressure_support_use_consecutive_pivots():
     lows = [10.0, 8.0, 9.0, 7.0, 7.4, 8.5, 9.2]
     assert _asc_low_pair([1, 3, 6], lows) == (3, 6)
     assert _asc_low_pair([1, 4], [10.0, 8.0, 9.0, 8.5, 7.0]) is None
+
+
+def test_infer_impulse_five_from_confirmed_peak():
+    from biaoke_chart import infer_impulse_five, impulse_five_marks
+
+    rows = []
+    path = [
+        (20, 18),
+        (40, 28),
+        (32, 24),
+        (70, 38),
+        (55, 48),
+        (90, 80),
+        (82, 70),
+        (75, 60),
+    ]
+    for i, (h, lo) in enumerate(path):
+        for k in range(8):
+            t = i * 8 + k
+            hh = h - (0 if k == 3 else 2)
+            ll = lo + (0 if k == 5 else 2)
+            rows.append(
+                {
+                    "date": f"202601{(t % 28) + 1:02d}",
+                    "open": (hh + ll) / 2,
+                    "high": hh,
+                    "low": ll,
+                    "close": (hh + ll) / 2,
+                }
+            )
+    peak_i = 5 * 8 + 3
+    story = infer_impulse_five(rows, peak_i=peak_i, start_i=0)
+    nums = [p["n"] for p in (story.get("pts") or [])]
+    assert nums == ["1", "2", "3", "4", "5"]
+    assert int(story["pts"][-1]["i"]) == peak_i
+    marks = impulse_five_marks(story)
+    assert [m["text"] for m in marks] == ["1", "2", "3", "4", "5"]
+    assert all(int(m.get("size") or 0) >= 12 for m in marks)
+    assert infer_impulse_five(rows[:6], peak_i=5) == {}
 
 
 def test_major_swings_and_locator_legs():

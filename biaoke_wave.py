@@ -1038,6 +1038,7 @@ _SPAN_MARK = {
 }
 _TWII_MAIN_BARS = 168
 _TWII_LONG_BARS = 560
+_TWII_FUTURE = 8
 _TWII_LOCATOR_RECT = (0.50, 0.695, 0.48, 0.268)
 _ABC_A_START = "20260623"
 _ABC_A_END = "20260729"
@@ -1267,8 +1268,8 @@ def locator_abc_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
     """縮圖：A↓ B↑ C虛。圈字離開 K；線要細，K 才看得清。"""
     legs: List[Dict[str, Any]] = []
     spec = (
-        ("a", "#2e7d32", "A", "left", "-", 0.95),
-        ("b", "#1565c0", "B", "mid", "-", 0.95),
+        ("a", "#2e7d32", "A", "mid-left", "-", 0.95),
+        ("b", "#1565c0", "B", "right", "-", 0.95),
         ("c", "#6a1b9a", "C", "mid", (0, (3.2, 2.2)), 0.85),
     )
     for key, color, circ, side, ls, lw in spec:
@@ -1487,24 +1488,37 @@ def _paint_abc_on_ax(ax, story: Dict[str, Any], *, n: int, y_top: float, y_bot: 
         )
     a = story.get("a") or {}
     if a.get("xs"):
-        i0 = float(a["xs"][0])
-        y0 = float(a["ys"][0])
-        dx = -max(5.2, n * 0.032)
-        dy = span * 0.025
-        if i0 + dx < 1.0:
-            dx = max(3.2, n * 0.02)
-            dy = span * 0.08
-        _circled_letter(ax, i0, y0, "A", "#2e7d32", dx=dx, dy=dy, size=13)
+        mx = (float(a["xs"][0]) + float(a["xs"][-1])) / 2.0
+        my = (float(a["ys"][0]) + float(a["ys"][-1])) / 2.0
+        _circled_letter(
+            ax,
+            mx,
+            my,
+            "A",
+            "#2e7d32",
+            dx=-max(6.2, n * 0.03),
+            dy=span * 0.02,
+            size=14,
+        )
     b = story.get("b") or {}
     if b.get("xs"):
         mx = (float(b["xs"][0]) + float(b["xs"][-1])) / 2.0
         my = (float(b["ys"][0]) + float(b["ys"][-1])) / 2.0
-        _circled_letter(ax, mx, my, "B", "#1565c0", dx=0.0, dy=span * 0.055, size=13)
+        _circled_letter(
+            ax,
+            mx,
+            my,
+            "B",
+            "#1565c0",
+            dx=max(6.2, n * 0.03),
+            dy=span * 0.02,
+            size=14,
+        )
     c = story.get("c") or {}
     if c.get("xs"):
         mx = (float(c["xs"][0]) + float(c["xs"][-1])) / 2.0
         my = (float(c["ys"][0]) + float(c["ys"][-1])) / 2.0
-        _circled_letter(ax, mx, my, "C", "#6a1b9a", dx=0.0, dy=-span * 0.045, size=13)
+        _circled_letter(ax, mx, my, "C", "#6a1b9a", dx=0.0, dy=-span * 0.06, size=14)
     fifth = story.get("fifth_high") or {}
     if fifth:
         _leader_note(
@@ -1555,7 +1569,7 @@ def _paint_abc_on_ax(ax, story: Dict[str, Any], *, n: int, y_top: float, y_bot: 
             str(c.get("lab") or "C未確認"),
             "#6a1b9a",
             tx=min(n + 6.5, float(c["xs"][-1]) + 3.2),
-            ty=float(c["ys"][-1]),
+            ty=float(c["ys"][-1]) - span * 0.10,
             size=9,
             ha="left",
             va="center",
@@ -1592,6 +1606,9 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         from biaoke_chart import (
             _halo_line,
             _place_right_notes,
+            infer_impulse_five,
+            impulse_five_legs,
+            impulse_five_marks,
             paint_locator_inset,
         )
 
@@ -1621,7 +1638,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig, ax = plt.subplots(figsize=(16.2, 9.4), dpi=NAV_CHART_DPI)
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
-        ax.axvspan(n - 0.45, n + 8.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
+        ax.axvspan(n - 0.45, n + _TWII_FUTURE + 0.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
         ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
         x_gutter = n + 9.0
         for i in range(n):
@@ -1733,7 +1750,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             d = str(bars[i].get("date") or "")
             d = _ymd(d)
             labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) == 8 else d)
-        ticks.append(n - 1 + 8)
+        ticks.append(n - 1 + _TWII_FUTURE)
         labels.append("演算")
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels, fontproperties=_fp(10, "bold"))
@@ -1742,20 +1759,30 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             lab.set_fontproperties(_fp(10, "bold"))
         fig.subplots_adjust(left=0.055, right=0.935, top=0.64, bottom=0.10)
         if long_bars and len(long_bars) > n + 16:
+            loc_legs = locator_abc_legs(long_story)
+            loc_marks: list = []
+            peak_i = _ymd_index(long_bars, _ABC_A_START)
+            start_i = _ymd_index(long_bars, "20250409")
+            if peak_i is not None:
+                five = infer_impulse_five(long_bars, peak_i=peak_i, start_i=start_i)
+                loc_legs = impulse_five_legs(five) + loc_legs
+                loc_marks = impulse_five_marks(five, size=13)
             paint_locator_inset(
                 fig,
                 long_bars,
                 win_from=str(bars[0].get("date") or ""),
                 win_to=str(bars[-1].get("date") or ""),
                 rect=_TWII_LOCATOR_RECT,
-                title="橙框＝大圖這段　圈A在下降線左　K在前　月份",
-                legs=locator_abc_legs(long_story),
+                title="黃底＝預估　橙框＝大圖　1～5＝第五波高往前推",
+                legs=loc_legs,
                 k_on_top=True,
+                forecast_n=_TWII_FUTURE,
+                marks=loc_marks,
             )
         fig.text(
             0.055,
             0.028,
-            "圈Ａ畫在下降Ａ線左邊。7/29 同一點接Ｂ。Ｃ是虛線＝未確認。不是 15 分、不發明段號、不是買訊。43500 是他原文最差。",
+            "圈Ａ在綠線中間偏左。7/29 同一點接Ｂ，Ｂ在藍線右手邊。Ｃ是虛線＝未確認。不是 15 分、不是買訊。43500 是他原文最差。",
             fontproperties=_fp(8),
             color="#546e7a",
         )
@@ -1790,7 +1817,8 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     cap_bits = [
         "加權官方日K＋2026 ABC 轉折線（不是15分、不是介紹圖／決策卡）",
         "A＝6/23第五波高跌到7/29低；7/29同一點＝A完也是B起；B＝反彈到9/8高；C虛線＝9/8後還沒確認。",
-        "圈Ａ畫在下降Ａ線左邊。右上縮圖Ｋ在前、浪在後，避免線壓死Ｋ。",
+            "黃底＝預估，與大圖同一段（最後一根之後）。橙框只框大圖這段，不是預估。",
+            "1～5＝6/23 第五波高確認後，把 4/9 主跌低之後的升段往前推；A 在綠線中間偏左，B 在藍線右手邊。",
         "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
         format_wave_now(db_path, n=420),
     ]
@@ -1798,7 +1826,7 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
         cap_bits.append(f"最新標籤 {last.get('date')} {last.get('tag')}")
     if prev:
         cap_bits.append(f"再前 {prev.get('date')} {prev.get('tag')}")
-    cap_bits.append("對得上他原文的層級才畫。不數 5／9 段。這不是買訊。")
+        cap_bits.append("對得上他原文的層級才畫。1～5 是確認後往前推，不是亂數 5／9。這不是買訊。")
     cap_bits.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return {
         "ok": bool(path),

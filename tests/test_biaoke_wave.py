@@ -350,7 +350,8 @@ def test_wave_abc_story_a_then_b_same_july29():
     circ = [str(x.get("circle") or "") for x in legs]
     assert circ[:2] == ["A", "B"]
     assert "C" in circ
-    assert legs[0]["circle_side"] == "left"
+    assert legs[0]["circle_side"] == "mid-left"
+    assert legs[1]["circle_side"] == "right"
     assert int(legs[0]["xs"][0]) < int(legs[1]["xs"][0]) or (
         int(legs[0]["xs"][0]) == int(story["a"]["i0"])
     )
