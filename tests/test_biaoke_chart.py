@@ -471,16 +471,23 @@ def test_locator_inset_marks_window():
     assert "marks" in src
     assert "win_from" in src
     assert "_WINDOW_BG" in src
+    assert "window_forecast_seams" in src
+    assert "quote" in src
     assert 'edgecolor="#ef6c00"' not in src
-    from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
+    from biaoke_chart import _BARS, _FIG_RIGHT, _STOCK_LOCATOR_RECT
+    from biaoke_wave import _TWII_LOCATOR_RECT
 
     assert _BARS >= 140
     assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
     assert _STOCK_LOCATOR_RECT[2] >= 0.44
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
+    assert abs(_STOCK_LOCATOR_RECT[0] + _STOCK_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
+    assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
-    assert "right=0.94" in rsrc
-    assert "_paint_spot(ov, quote, x=4.15" in rsrc or "x=4.15" in rsrc
+    assert "right=_FIG_RIGHT" in rsrc
+    assert "quote=quote" in rsrc
+    assert "_paint_spot(ov, quote" not in rsrc
+    assert "_paint_locator_quote" in inspect.getsource(paint_locator_inset) or "_paint_locator_quote" in rsrc
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
@@ -497,6 +504,49 @@ def test_locator_inset_marks_window():
     assert 'ha="left"' in spot
     assert "較昨日" in spot
     assert 'ha="right"' not in spot
+    assert "compact" in spot
+    assert "window_forecast_seams" in wsrc or "paint_forecast_span" in wsrc
+    assert "right=_FIG_RIGHT" in wsrc
+    assert "_style_frame" in wsrc
+
+
+def test_locator_window_matches_main_time():
+    import os
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import (
+        _BARS,
+        _FUTURE,
+        _ymd8,
+        locator_positive_rows,
+        locator_window_index,
+        window_forecast_seams,
+    )
+    from biaoke_wave import _TWII_FUTURE, _TWII_LONG_BARS, _TWII_MAIN_BARS, _load_twii_bars
+
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    bars = load_bars(db, "2383", n=360)
+    work = bars[-_BARS:]
+    rows = locator_positive_rows(bars)
+    i0, i1 = locator_window_index(rows, str(work[0]["date"]), str(work[-1]["date"]))
+    assert _ymd8(rows[i0]["date"]) == _ymd8(work[0]["date"])
+    assert _ymd8(rows[i1]["date"]) == _ymd8(work[-1]["date"])
+    assert i1 == len(rows) - 1
+    _wlo, seam, fhi = window_forecast_seams(i0, i1, _FUTURE)
+    main_seam, main_hi = window_forecast_seams(0, len(work) - 1, _FUTURE)[1:]
+    assert abs((seam - i1) - (main_seam - (len(work) - 1))) < 1e-9
+    assert abs((fhi - seam) - (main_hi - main_seam)) < 1e-9
+    tb = _load_twii_bars(db, n=_TWII_LONG_BARS)
+    tm = _load_twii_bars(db, n=_TWII_MAIN_BARS)
+    tr = locator_positive_rows(tb)
+    j0, j1 = locator_window_index(tr, str(tm[0]["date"]), str(tm[-1]["date"]))
+    assert _ymd8(tr[j0]["date"]) == _ymd8(tm[0]["date"])
+    assert _ymd8(tr[j1]["date"]) == _ymd8(tm[-1]["date"])
+    tw_lo, tw_seam, tw_hi = window_forecast_seams(j0, j1, _TWII_FUTURE)
+    m_lo, m_seam, m_hi = window_forecast_seams(0, len(tm) - 1, _TWII_FUTURE)
+    assert abs((tw_hi - tw_seam) - (m_hi - m_seam)) < 1e-9
 
 
 def test_leader_notes_use_dashed_and_stagger():

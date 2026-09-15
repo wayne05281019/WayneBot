@@ -1039,7 +1039,10 @@ _SPAN_MARK = {
 _TWII_MAIN_BARS = 168
 _TWII_LONG_BARS = 560
 _TWII_FUTURE = 8
-_TWII_LOCATOR_RECT = (0.50, 0.668, 0.48, 0.308)
+_TWII_MAIN_TOP = 0.628
+_TWII_LOCATOR_BOTTOM = 0.668
+_TWII_LOCATOR_HEIGHT = 0.300
+_TWII_LOCATOR_RECT = (0.500, _TWII_LOCATOR_BOTTOM, 0.440, _TWII_LOCATOR_HEIGHT)
 _ABC_A_START = "20260623"
 _ABC_A_END = "20260729"
 
@@ -1604,11 +1607,16 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
     @_mpl_serial
     def _draw() -> str:
         from biaoke_chart import (
+            _FIG_BOTTOM,
+            _FIG_LEFT,
+            _FIG_RIGHT,
             _halo_line,
             _place_right_notes,
+            _style_frame,
             infer_impulse_five,
             impulse_five_legs,
             impulse_five_marks,
+            paint_forecast_span,
             paint_locator_inset,
         )
 
@@ -1648,9 +1656,10 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
         axv.set_facecolor("#ffffff")
-        ax.axvspan(n - 0.45, n + _TWII_FUTURE + 0.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
-        ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
-        axv.axvspan(n - 0.45, n + _TWII_FUTURE + 0.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
+        _style_frame(ax)
+        _style_frame(axv)
+        paint_forecast_span(ax, n - 1, _TWII_FUTURE)
+        paint_forecast_span(axv, n - 1, _TWII_FUTURE, line=False)
         axv.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
         x_gutter = n + 9.0
         vol_colors = []
@@ -1740,7 +1749,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         as_of = _ymd(last.get("date"))
         as_show = f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}" if len(as_of) == 8 else as_of
         fig.text(
-            0.055,
+            _FIG_LEFT,
             0.968,
             "加權官方日K　2026 ABC（給看不懂波浪的人）",
             fontproperties=_fp(13, "bold"),
@@ -1749,7 +1758,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             va="top",
         )
         fig.text(
-            0.055,
+            _FIG_LEFT,
             0.938,
             f"{as_show} 收 {_px(last.get('close'))}　現在標籤 {last_tag or '—'}",
             fontproperties=_fp(12, "bold"),
@@ -1758,7 +1767,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             va="top",
         )
         fig.text(
-            0.055,
+            _FIG_LEFT,
             0.908,
             "綠A＝5高→7/29　藍B＝同低→9/8　紫C虛線未確認",
             fontproperties=_fp(9, "bold"),
@@ -1785,7 +1794,9 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         axv.set_xticklabels(labels, fontproperties=_fp(10, "bold"))
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.055, right=0.935, top=0.62, bottom=0.07)
+        fig.subplots_adjust(
+            left=_FIG_LEFT, right=_FIG_RIGHT, top=_TWII_MAIN_TOP, bottom=_FIG_BOTTOM
+        )
         if long_bars and len(long_bars) > n + 16:
             loc_legs = locator_abc_legs(long_story)
             loc_marks: list = []
@@ -1801,14 +1812,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 win_from=str(bars[0].get("date") or ""),
                 win_to=str(bars[-1].get("date") or ""),
                 rect=_TWII_LOCATOR_RECT,
-                title="黃底＝預估　橙底＝大圖　1～5＝第五波高往前推",
+                title="橙＝大圖區間　黃＝預估",
                 legs=loc_legs,
                 k_on_top=True,
                 forecast_n=_TWII_FUTURE,
                 marks=loc_marks,
             )
         fig.text(
-            0.055,
+            _FIG_LEFT,
             0.028,
             "圈Ａ在綠線中間偏左。7/29 同一點接Ｂ，Ｂ在藍線右手邊。Ｃ是虛線＝未確認。不是 15 分、不是買訊。43500 是他原文最差。",
             fontproperties=_fp(8),
@@ -1845,7 +1856,7 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     cap_bits = [
         "加權官方日K＋2026 ABC 轉折線（不是15分、不是介紹圖／決策卡）",
         "A＝6/23第五波高跌到7/29低；7/29同一點＝A完也是B起；B＝反彈到9/8高；C虛線＝9/8後還沒確認。",
-            "黃底＝預估，與大圖同一段（最後一根之後）。橙底＝大圖這段，不是預估。下方成交量（張）。",
+            "黃底＝預估，與大圖同一段（最後一根之後）。橙底＝大圖 K 同一段日期。下方成交量（張）。",
             "1～5＝6/23 第五波高確認後，把 4/9 主跌低之後的升段往前推；A 在綠線中間偏左，B 在藍線右手邊。",
         "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
         format_wave_now(db_path, n=420),

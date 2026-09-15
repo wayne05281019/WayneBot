@@ -45,9 +45,33 @@ _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
 _WINDOW_BG = "#ffe0b2"
 _HALO = "#ffffff"
-# 左表頭（名、今K）貼在縮圖左邊；右上整塊給縮圖。
-_HEADER_CHIP_MAX = 47.0
-_STOCK_LOCATOR_RECT = (0.50, 0.688, 0.48, 0.292)
+_FRAME = "#90a4ae"
+_MUTED = "#607d8b"
+_FIG_LEFT = 0.055
+_FIG_RIGHT = 0.940
+_FIG_BOTTOM = 0.072
+_STOCK_MAIN_TOP = 0.658
+_LOCATOR_LEFT = 0.500
+_LOCATOR_WIDTH = 0.440
+_STOCK_LOCATOR_BOTTOM = 0.690
+_STOCK_LOCATOR_HEIGHT = 0.278
+# 縮圖右緣＝主圖右緣，上下一條線。
+_STOCK_LOCATOR_RECT = (
+    _LOCATOR_LEFT,
+    _STOCK_LOCATOR_BOTTOM,
+    _LOCATOR_WIDTH,
+    _STOCK_LOCATOR_HEIGHT,
+)
+_HEADER_X = 5.50
+_HEADER_CHIP_MAX = 48.0
+
+
+def _style_frame(ax, *, hide_top=False) -> None:
+    for sp in ax.spines.values():
+        sp.set_color(_FRAME)
+        sp.set_linewidth(0.85)
+    if hide_top:
+        ax.spines["top"].set_visible(False)
 
 
 def _md(raw: Any) -> str:
@@ -665,6 +689,58 @@ def _ymd8(raw: Any) -> str:
     return t if len(t) == 8 and t.isdigit() else ""
 
 
+def locator_positive_rows(bars: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for r in bars or []:
+        try:
+            if float(r.get("close") or 0) > 0:
+                rows.append(r)
+        except (TypeError, ValueError):
+            continue
+    return rows
+
+
+def locator_window_index(
+    rows: Sequence[Dict[str, Any]], win_from: str = "", win_to: str = ""
+) -> Tuple[int, int]:
+    """縮圖橙底起迄＝大圖第一根／最後一根的日期。找不到才退回尾段。"""
+    wf, wt = _ymd8(win_from), _ymd8(win_to)
+    i0 = i1 = None
+    for i, r in enumerate(rows):
+        d = _ymd8(r.get("date"))
+        if wf and d >= wf and i0 is None:
+            i0 = i
+        if wt and d <= wt:
+            i1 = i
+    n = len(rows)
+    if i0 is None:
+        i0 = max(0, n - 90)
+    if i1 is None:
+        i1 = max(0, n - 1)
+    if i1 < i0:
+        i0, i1 = i1, i0
+    return int(i0), int(i1)
+
+
+def window_forecast_seams(i0: int, i1: int, fut: int) -> Tuple[float, float, float]:
+    """橙底／黃底接縫跟大圖同一條：最後一根官方柱右邊 n-0.45。
+
+    回傳 (window_lo, seam, forecast_hi)。seam 就是大圖黃底起點。
+    """
+    i0, i1 = int(i0), int(i1)
+    fut = max(0, int(fut or 0))
+    seam = float(i1) + 0.55
+    return float(i0) - 0.45, seam, seam + float(fut) + 1.0
+
+
+def paint_forecast_span(ax, last_i: int, fut: int, *, line: bool = True) -> float:
+    _lo, seam, hi = window_forecast_seams(0, int(last_i), fut)
+    ax.axvspan(seam, hi, facecolor=_FUTURE_BG, edgecolor="none", alpha=0.95, zorder=0)
+    if line:
+        ax.axvline(seam, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
+    return seam
+
+
 def _major_swings(
     rows: Sequence[Dict[str, Any]], *, left: int = 0, max_pts: int = 9
 ) -> List[Tuple[int, float, str]]:
@@ -920,48 +996,28 @@ def paint_locator_inset(
     win_from: str = "",
     win_to: str = "",
     rect: Tuple[float, float, float, float] = _STOCK_LOCATOR_RECT,
-    title: str = "黃底＝預估　橙底＝大圖這段　橫軸月份",
+    title: str = "橙＝大圖區間　黃＝預估",
     ax=None,
     legs: Optional[Sequence[Dict[str, Any]]] = None,
     k_on_top: bool = False,
     forecast_n: int = 0,
     marks: Optional[Sequence[Dict[str, Any]]] = None,
+    quote: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """右上長軸縮圖：橙底＝大圖這段，黃底＝預估。不在縮圖裡再套一層框。"""
+    """右上長軸縮圖：橙底＝大圖同一段日期，黃底＝兩邊都是最後一根之後的演算。橫軸月份。不在縮圖裡再套框。"""
     from decision_card_signals import candle_up_taiwan
 
-    rows = []
-    for r in bars or []:
-        try:
-            if float(r.get("close") or 0) > 0:
-                rows.append(r)
-        except (TypeError, ValueError):
-            continue
+    rows = locator_positive_rows(bars)
     if len(rows) < 24:
         return False
-    wf, wt = _ymd8(win_from), _ymd8(win_to)
-    i0 = i1 = None
-    for i, r in enumerate(rows):
-        d = _ymd8(r.get("date"))
-        if wf and d >= wf and i0 is None:
-            i0 = i
-        if wt and d <= wt:
-            i1 = i
-    if i0 is None:
-        i0 = max(0, len(rows) - 90)
-    if i1 is None:
-        i1 = len(rows) - 1
-    if i1 < i0:
-        i0, i1 = i1, i0
+    i0, i1 = locator_window_index(rows, win_from, win_to)
     if ax is None:
         if fig is None:
             return False
         ax = fig.add_axes([rect[0], rect[1], rect[2], rect[3]], zorder=24)
     ax.set_facecolor("#ffffff")
     ax.patch.set_alpha(1.0)
-    for sp in ax.spines.values():
-        sp.set_color("#cfd8dc")
-        sp.set_linewidth(0.9)
+    _style_frame(ax)
     m = len(rows)
     opens = [float(r.get("open") or r.get("close") or 0) for r in rows]
     highs = [float(r.get("high") or r.get("close") or 0) for r in rows]
@@ -971,9 +1027,10 @@ def paint_locator_inset(
     hi_max = max(highs)
     pad = (hi_max - lo_min) * 0.12 or 1.0
     fut = max(0, int(forecast_n or 0))
+    win_lo, seam, fut_hi = window_forecast_seams(i0, i1, fut)
     ax.axvspan(
-        i0 - 0.55,
-        i1 + 0.55,
+        win_lo,
+        seam,
         facecolor=_WINDOW_BG,
         edgecolor="none",
         alpha=0.92,
@@ -981,14 +1038,14 @@ def paint_locator_inset(
     )
     if fut > 0:
         ax.axvspan(
-            m - 1 - 0.15,
-            m - 1 + fut + 0.35,
+            seam,
+            fut_hi,
             facecolor=_FUTURE_BG,
             edgecolor="none",
             alpha=0.95,
             zorder=1,
         )
-        ax.axvline(m - 1 - 0.15, color="#ffcc80", linewidth=0.9, linestyle=":", zorder=2)
+        ax.axvline(seam, color="#ffcc80", linewidth=0.9, linestyle=":", zorder=2)
     if k_on_top:
         w = 0.94 if m <= 200 else (0.80 if m <= 400 else 0.66)
         lw = 1.15 if m <= 200 else (0.85 if m <= 400 else 0.70)
@@ -1136,15 +1193,115 @@ def paint_locator_inset(
                 alpha=0.94,
             ),
         )
-    ax.set_xlim(-0.8, m - 0.2 + fut)
+    ax.set_xlim(-0.8, max(m - 0.2 + fut, fut_hi))
     ax.set_ylim(lo_min - pad, hi_max + pad * 1.22)
     ax.set_yticks([])
     ax.tick_params(left=False, labelleft=False, length=2, labelsize=8, colors="#546e7a")
     xt, xl = _locator_month_ticks(rows)
     ax.set_xticks(xt)
-    ax.set_xticklabels(xl, fontproperties=_fp(8, "bold"))
-    ax.set_title(title, fontproperties=_fp(8, "bold"), color="#e65100", loc="left", pad=3.0)
+    ax.set_xticklabels(xl, fontproperties=_fp(8), color=_MUTED)
+    ax.set_title("")
+    host = fig if fig is not None else getattr(ax, "figure", None)
+    if host is not None and title:
+        host.text(
+            rect[0] + rect[2],
+            rect[1] + rect[3] + 0.004,
+            title,
+            ha="right",
+            va="bottom",
+            fontproperties=_fp(7, "bold"),
+            color=_MUTED,
+            zorder=25,
+        )
+    if quote and host is not None:
+        _paint_locator_quote(host, rect, quote)
     return True
+
+
+def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Dict[str, Any]) -> None:
+    """今K／現價／漲跌：縮圖匡內左邊垂直置中。用 figure 座標，避免被縮圖裁切。"""
+    close = quote.get("close")
+    if close is None:
+        return
+    from decision_card_signals import candle_up_taiwan
+    from wayne_navigator import _draw_mini_candle
+
+    x, y, w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
+    prev = quote.get("prev")
+    up = candle_up_taiwan(close, prev, quote.get("open"))
+    color = _UP if up else _DN
+    label = str(quote.get("label") or "收盤")
+    px = _px(close)
+    o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
+    try:
+        ohlc_ok = all(float(v) > 0 for v in (o, hi, lo, close))
+    except (TypeError, ValueError):
+        ohlc_ok = False
+    try:
+        from tg_layout import format_move_plain
+
+        move = format_move_plain(quote.get("change"), quote.get("pct"))
+    except Exception:
+        move = ""
+    mid_y = y + h * 0.50
+    left = x + 0.012
+    pad = dict(
+        boxstyle="round,pad=0.18",
+        facecolor="#ffffff",
+        edgecolor="none",
+        alpha=0.90,
+    )
+    if ohlc_ok:
+        cax = fig.add_axes([left, mid_y - 0.020, 0.015, 0.052], zorder=29)
+        cax.set_xlim(0, 1)
+        cax.set_ylim(0, 1)
+        cax.axis("off")
+        cax.set_facecolor("#ffffff")
+        cax.patch.set_alpha(0.90)
+        _draw_mini_candle(
+            cax, 0.18, 0.08, 0.64, 0.84,
+            float(o), float(hi), float(lo), float(close), prev,
+        )
+        tx = left + 0.019
+    else:
+        tx = left
+    fig.text(
+        tx,
+        mid_y + 0.036,
+        "今K　" + label,
+        transform=fig.transFigure,
+        ha="left",
+        va="center",
+        fontproperties=_fp(8, "bold"),
+        color=_MUTED,
+        zorder=29,
+        bbox=pad,
+    )
+    fig.text(
+        tx,
+        mid_y,
+        px,
+        transform=fig.transFigure,
+        ha="left",
+        va="center",
+        fontproperties=_fp(15, "bold"),
+        color=color,
+        zorder=29,
+        bbox=pad,
+    )
+    if move and move != "—":
+        fig.text(
+            tx,
+            mid_y - 0.032,
+            "較昨日　" + move,
+            transform=fig.transFigure,
+            ha="left",
+            va="center",
+            fontproperties=_fp(8, "bold"),
+            color=color,
+            zorder=29,
+            bbox=pad,
+        )
 
 
 def _ow(text: str, size: float = 11) -> float:
@@ -1303,7 +1460,7 @@ def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, 
     return x + _ow(f" {label} ", size) + 1.15
 
 
-def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = 4.15, y: float = 96.35) -> None:
+def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = _HEADER_X, y: float = 96.35) -> None:
     sid = str(plate.get("sid") or "")
     name = str(plate.get("name") or "")
     title = f"{sid} {name}".strip() or "官方日K"
@@ -1334,8 +1491,9 @@ def _paint_spot(
     x: float = 4.15,
     y: float = 92.55,
     align: str = "left",
+    compact: bool = False,
 ) -> None:
-    """今K／現價／漲跌貼在縮圖左邊的表頭帶，不壓主圖 K。"""
+    """今K／現價／漲跌。compact＝縮圖匡內左邊置中。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1358,6 +1516,30 @@ def _paint_spot(
         move = format_move_plain(quote.get("change"), quote.get("pct"))
     except Exception:
         move = ""
+    if compact:
+        ax.text(
+            x, 90, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
+            va="center", ha="left", zorder=22,
+        )
+        if ohlc_ok:
+            _draw_mini_candle(
+                ax, x + 1.0, 58, 8.0, 26,
+                float(o), float(hi), float(lo), float(close), prev,
+            )
+        ax.text(
+            x, 42, label, color="#546e7a", fontproperties=_fp(9, "bold"),
+            va="center", ha="left", zorder=22,
+        )
+        ax.text(
+            x + _ow(label, 9) + 1.2, 42, px, color=color,
+            fontproperties=_fp(18, "bold"), va="center", ha="left", zorder=22,
+        )
+        if move and move != "—":
+            ax.text(
+                x, 16, "較昨日　" + move, color=color,
+                fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
+            )
+        return
     cursor = float(x)
     ax.text(
         cursor, y, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
@@ -1441,12 +1623,13 @@ def render_biaoke_structure_png(
     )
     ax1.set_facecolor(_PANEL)
     ax2.set_facecolor(_PANEL)
+    _style_frame(ax1)
+    _style_frame(ax2)
     ax1.set_ylim(ymin, ymax)
     x_gutter = n + _FUTURE + 0.85
     x_right = n + _FUTURE + 3.15
     ax1.set_xlim(-0.55, x_right)
-    ax1.axvspan(n - 0.45, n + _FUTURE + 0.55, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
-    ax1.axvline(n - 0.45, color="#ffcc80", linewidth=1.15, linestyle=":", zorder=2)
+    paint_forecast_span(ax1, n - 1, _FUTURE)
     candle_up = []
     for i in range(n):
         prev_c = closes[i - 1] if i else None
@@ -1655,64 +1838,63 @@ def render_biaoke_structure_png(
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
     _paint_nameplate(ov, plate)
-    _paint_spot(ov, quote, x=4.15, y=92.55)
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
-        4.15,
-        86.85,
+        _HEADER_X,
+        92.55,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(10, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
-        4.15,
-        84.25,
+        _HEADER_X,
+        89.95,
         (
             f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
             f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
             f"量 {_vol(last_bar.get('volume'))}"
         ),
         color=_TEXT,
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(10, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
-        4.15,
-        81.65,
+        _HEADER_X,
+        87.35,
         (
             f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
             f"量 {_vol(spike_bar.get('volume'))}"
         ),
         color=_PRESS,
-        fontproperties=_fp(11, "bold"),
-        va="center",
-        ha="left",
-    )
-    ov.text(
-        4.15,
-        79.15,
-        "不是15分、不是介紹圖／決策卡",
-        color="#546e7a",
         fontproperties=_fp(10, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = 4.15, 76.4
+    ov.text(
+        _HEADER_X,
+        84.85,
+        "不是15分、不是介紹圖／決策卡",
+        color=_MUTED,
+        fontproperties=_fp(9, "bold"),
+        va="center",
+        ha="left",
+    )
+    chip_x, chip_y = _HEADER_X, 81.9
     if mark:
-        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=10)
-        chip_x, chip_y = 4.15, 73.35
+        chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=9)
+        chip_x, chip_y = _HEADER_X, 78.6
     for bit in banner_bits:
-        need = _ow(f" {bit} ", 10) + 1.2
-        if chip_x > 4.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 3.05 < 68:
+        need = _ow(f" {bit} ", 9) + 1.2
+        if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
+            if chip_y - 2.9 < 68:
                 break
-            chip_x = 4.15
-            chip_y -= 3.05
+            chip_x = _HEADER_X
+            chip_y -= 2.9
         chip_x = _draw_chip(
-            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=9
         )
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
@@ -1723,7 +1905,7 @@ def render_biaoke_structure_png(
             peak_i = off + int(down_pts[0][0])
             five = infer_impulse_five(rows, peak_i=peak_i)
             loc_legs.extend(impulse_five_legs(five))
-            loc_marks.extend(impulse_five_marks(five, size=13))
+            loc_marks.extend(impulse_five_marks(five, size=11))
             (x1, y1, _d1), (x2, y2, _d2) = down_pts
             loc_legs.append(
                 {
@@ -1743,10 +1925,11 @@ def render_biaoke_structure_png(
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
             rect=_STOCK_LOCATOR_RECT,
-            title="黃底＝預估　橙底＝大圖　1～5＝下降壓往前推",
+            title="橙＝大圖區間　黃＝預估",
             legs=loc_legs,
             forecast_n=_FUTURE,
             marks=loc_marks,
+            quote=quote,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_left()
@@ -1781,7 +1964,7 @@ def render_biaoke_structure_png(
     for lab in ax2.get_yticklabels():
         lab.set_fontproperties(_fp(10, "bold"))
     ax2.set_xlim(-0.55, x_right)
-    ax2.axvspan(n - 0.45, n + _FUTURE + 0.35, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
+    paint_forecast_span(ax2, n - 1, _FUTURE, line=False)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
     tick_i = _axis_ticks(n, extra=(spike_i,))
@@ -1796,7 +1979,9 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.055, right=0.94, top=0.655, bottom=0.07)
+    fig.subplots_adjust(
+        left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
+    )
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
@@ -1923,7 +2108,7 @@ def chart_caption(
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
-    lines.append("右上縮圖：黃底＝預估（最後一根之後），橙底＝大圖這段。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
+    lines.append("右上縮圖：橙底＝大圖 K 同一段日期；黃底＝兩邊都是最後一根之後的演算（與大圖同一段）。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
     lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return "\n".join(x for x in lines if x)[:1100]
 
