@@ -81,6 +81,7 @@ def test_degree_path_from_2024_not_invented_2023():
 def test_format_wave_now_compares_and_turning():
     text = format_wave_now("")
     assert "第五波測底" in text or "逃命波" in text
+    assert "開牌" in text or "漲不動" in text or "10:47" in text
     assert "位階二" in text or "修正末端" in text
     assert "A 波低" in text or "A波低" in text or "7/29" in text
     assert "精準" in text or "細微波" in text

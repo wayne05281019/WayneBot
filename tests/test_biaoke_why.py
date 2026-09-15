@@ -136,6 +136,24 @@ def test_why_sep15_escape_wave():
     assert "雍智" in yong
     assert "精測" in yong
     assert "旺矽" in yong or "穎崴" in yong or "穎葳" in yong
+    win = lookup("穩懋就是昨天跌破支撐立刻站回去")
+    assert "3105" in win or "穩懋" in win
+    assert "台達電" in win
+    assert "420" in win or "444" in win
+    inp = lookup("AI關鍵材料最重要就是InP")
+    assert "InP" in inp
+    assert "CCL" in inp
+    flag = lookup("下飄旗型強力洗盤")
+    assert "聯亞" in flag
+    assert "100%" in flag or "保證" in flag
+    assert "IET" in flag
+    slow = lookup("目前大盤漲不動我反而覺得比較好")
+    assert "開牌" in slow or "C-2" in slow
+    assert "C-3" in slow
+    assert "不是已確認" in slow
+    jian = lookup("健策盡然跌停")
+    assert "難操作" in jian or "跌停" in jian
+    assert "5820" in jian or "盤中" in jian
 
 
 def test_live_notes_puts_why_chain_first():

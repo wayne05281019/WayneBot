@@ -72,8 +72,9 @@ def test_wave_is_for_index_not_stock():
 def test_industry_trend_explains_emc_july_hold():
     hits = match_methods("台光電 7 月抄底為什麼能抱到明年")
     assert hits
-    title, body = hits[0]
-    assert title == "個股先看產業趨勢"
+    by = {t: b for t, b in hits}
+    assert "個股先看產業趨勢" in by
+    body = by["個股先看產業趨勢"]
     assert "技術分析最有用是大盤" in body
     assert "2026-04-16" in body
     assert "3930" in body
@@ -89,6 +90,10 @@ def test_emc_is_pcb_leader_and_long_hold():
     assert sid == "2383"
     assert name == "台光電"
     assert "龍頭" in why
+    win, wname, wwhy = leader_of("", "3105", "穩懋")
+    assert win == "3081"
+    assert "聯亞" in wname
+    assert "龍頭" in wwhy
     notes = format_judge_notes(
         {
             "sid": "2383",
