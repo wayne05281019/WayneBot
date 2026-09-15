@@ -322,7 +322,8 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
     mains = [
         p
         for p in posts
-        if (p.get("kind") or "post") != "reply" and is_biaoke_voice(str(p.get("text") or ""))
+        if (p.get("kind") or "post") not in ("reply", "bystander")
+        and is_biaoke_voice(str(p.get("text") or ""))
     ]
     replies = [
         p
@@ -374,7 +375,7 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
     blob_l = " ".join(str(p.get("text") or "") for p in latest + latest_replies)
     infer = ""
     if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪|右肩|位階)", blob_l):
-        infer = "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
+        infer = "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金規劃。"
     asks = _likely_asks(latest + latest_replies)
     out = [f"庫 {stamp}。", *lines]
     try:

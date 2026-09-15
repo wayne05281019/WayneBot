@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from biaoke_ingest import (
     SESSION_EVERY_SEC,
     AFTER_EVERY_SEC,
+    AFTER_CLOSE_EVERY_SEC,
     AFTER_UNTIL_HOUR,
     NIGHT_EVERY_SEC,
     PREOPEN_EVERY_SEC,
@@ -16,6 +17,7 @@ from biaoke_ingest import (
     parse_article_html,
     parse_author_replies,
     parse_api_author_replies,
+    parse_api_thread,
     parse_display_time,
     parse_published,
     parse_user_article_ids,
@@ -187,9 +189,9 @@ def test_ingest_hook_is_on_product_clocks():
     assert "walk_biaoke_posts" in boot
     assert "enqueue_missing_quote_months" in boot
     assert "start_quote_month_backfill" in boot
-    assert SESSION_EVERY_SEC == 5 * 60
+    assert SESSION_EVERY_SEC == 3 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
-    assert PREOPEN_EVERY_SEC == 5 * 60
+    assert PREOPEN_EVERY_SEC == 10 * 60
     assert AFTER_UNTIL_HOUR == 3
     assert REFRESH_LATEST == 2
     assert REFRESH_PREOPEN == 2
@@ -233,15 +235,24 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     wed_mid = datetime(2026, 9, 9, 8, 30, tzinfo=tz)
     assert poll_wait_seconds(wed_mid) == PREOPEN_EVERY_SEC
     wed_last = datetime(2026, 9, 9, 8, 59, tzinfo=tz)
-    assert poll_wait_seconds(wed_last) == PREOPEN_EVERY_SEC
+    assert poll_wait_seconds(wed_last) == 2 * 60
     before = datetime(2026, 9, 9, 7, 59, tzinfo=tz)
     assert in_preopen_window(before) is False
     assert poll_wait_seconds(before) == AFTER_EVERY_SEC
     assert refresh_latest_now(before) == REFRESH_LATEST
     open_bell = datetime(2026, 9, 9, 9, 0, tzinfo=tz)
     assert in_preopen_window(open_bell) is False
-    assert poll_wait_seconds(open_bell) == SESSION_EVERY_SEC
-    assert refresh_latest_now(open_bell) == REFRESH_LATEST
+    assert poll_wait_seconds(open_bell) <= 60
+    session_start = datetime(2026, 9, 9, 9, 1, tzinfo=tz)
+    assert poll_wait_seconds(session_start) == SESSION_EVERY_SEC
+    close_bell = datetime(2026, 9, 9, 13, 30, tzinfo=tz)
+    assert poll_wait_seconds(close_bell) == SESSION_EVERY_SEC
+    after_close = datetime(2026, 9, 9, 13, 31, tzinfo=tz)
+    assert poll_wait_seconds(after_close) == AFTER_CLOSE_EVERY_SEC
+    before_hourly = datetime(2026, 9, 9, 14, 50, tzinfo=tz)
+    assert poll_wait_seconds(before_hourly) == AFTER_CLOSE_EVERY_SEC
+    hourly = datetime(2026, 9, 9, 15, 0, tzinfo=tz)
+    assert poll_wait_seconds(hourly) == AFTER_EVERY_SEC
     sat_pre = datetime(2026, 9, 12, 8, 30, tzinfo=tz)
     assert in_preopen_window(sat_pre) is False
     assert poll_wait_seconds(sat_pre) == AFTER_EVERY_SEC
@@ -782,7 +793,7 @@ def test_fetch_author_replies_api_uses_user_script_urls(monkeypatch):
                 status_code = 200
 
                 def json(self):
-                    if "/Comments" in url and "/Comment/" not in url:
+                    if "/Article/184526608/Comments" in url:
                         return [
                             {
                                 "id": "c2",
@@ -790,23 +801,31 @@ def test_fetch_author_replies_api_uses_user_script_urls(monkeypatch):
                                 "nickname": "Lucky911",
                                 "content": {"text": "謝謝飆大分享"},
                                 "replyCount": 1,
+                                "commentCount": 1,
                                 "replies": [],
                             }
                         ]
-                    return [
-                        {
-                            "id": "c2r1",
-                            "memberId": 25263,
-                            "nickname": "期股多空雙飆客",
-                            "content": {"text": "「耐心等待行情後續發展。」 Yes"},
+                    if "/Article/c2/Comments" in url:
+                        return {
+                            "comments": [
+                                {
+                                    "id": "c2r1",
+                                    "memberId": 25263,
+                                    "nickname": "期股多空雙飆客",
+                                    "content": {
+                                        "text": "「耐心等待行情後續發展。」 Yes"
+                                    },
+                                }
+                            ],
+                            "remainCount": 0,
                         }
-                    ]
+                    return []
 
             return R()
 
     rows = fetch_author_replies_api("184526608", session=_Fake())
     assert any("/Comments?startCommentIndex=0&fetch=-100" in u for u, *_ in seen)
-    assert any("/Comment/c2/Replies?fetch=-50" in u for u, *_ in seen)
+    assert any("/Article/c2/Comments?startCommentIndex=0&fetch=-50" in u for u, *_ in seen)
     assert seen[0][1] == "Bearer test-token-not-real"
     assert seen[0][2] == "2.0"
     texts = " ".join(r["text"] for r in rows)
@@ -974,3 +993,40 @@ def test_fetch_author_replies_api_expired_env_falls_back_to_guest(monkeypatch):
     assert "expired-login-token" not in used
     assert any("PCB不要亂動" in r["text"] for r in rows)
     _clear_guest_token_cache()
+
+
+def test_parse_api_thread_keeps_bystander_and_his_nested_reply():
+    payload = [
+        {
+            "id": "184601742-170",
+            "memberId": 111,
+            "nickname": "路人甲",
+            "content": {"text": "今天健策跌停板 代表甚麼意思?"},
+            "commentCount": 2,
+            "replies": [
+                {
+                    "id": "184601742-170-1",
+                    "memberId": 25263,
+                    "nickname": "期股多空雙飆客",
+                    "content": {"text": "當天無法判斷"},
+                },
+                {
+                    "id": "184601742-170-2",
+                    "memberId": 25263,
+                    "nickname": "期股多空雙飆客",
+                    "content": {"text": "現在跌停盡然能打開，主力實在有夠狠，我點到為止"},
+                },
+            ],
+        }
+    ]
+    all_rows = parse_api_thread(payload, parent_id="184601742")
+    byst = [r for r in all_rows if r["kind"] == "bystander"]
+    auth = [r for r in all_rows if r["kind"] == "reply"]
+    assert any("健策跌停" in r["text"] for r in byst)
+    assert any("當天無法判斷" in r["text"] for r in auth)
+    assert any("點到為止" in r["text"] for r in auth)
+    assert all("健策跌停" not in r["text"] for r in auth)
+    assert any("健策跌停" in str(r.get("reply_to_text") or "") for r in auth)
+    only_him = parse_api_author_replies(payload, parent_id="184601742")
+    assert all(r["kind"] == "reply" for r in only_him)
+    assert not any("健策跌停" in r["text"] for r in only_him)

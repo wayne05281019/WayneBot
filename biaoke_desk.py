@@ -136,6 +136,9 @@ def _overlay_posts(db_path: Optional[str]) -> List[Dict[str, Any]]:
         if not isinstance(tags, list):
             tags = []
         text = r[8] or ""
+        kind = r[6] or "post"
+        if kind == "bystander":
+            continue
         try:
             from biaoke_ingest import is_biaoke_voice
 

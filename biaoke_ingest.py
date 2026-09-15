@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""飆大公開發文＋最新文一二層回覆匯入。不進海選。
+"""飆大公開發文＋最新文討論串匯入。不進海選。
 
-盤中 5 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘。
-收盤後、凌晨、週末、國定假、颱風停市都每 1 小時。
-主文通常只改最新一篇；討論串也多半回在最新一篇，有時回在很早的留言裡（含回文裡的回文）。
-主文通常只改最新一篇。討論串每次都重讀最近兩則（含回在很早留言、回文裡的回文），因為樓下自回會改大盤位階與個股狀態。
-樓中樓＝飆大本人一／二層（含回在別人留言裡、回文裡的回文）。路人正文不收。引號裡不是他的話。
-主文走公開 HTML。樓下自回走同學會公開訪客 grant 打 Comments／Replies JSON。
+交易日 08:00–09:00 每 10 分；09:01–13:30 每 3 分；13:30–15:00 每 10 分。
+15:00 起到隔天 08:00、週末、國定假、颱風停市每 1 小時。
+主文通常只改最新一篇。討論串每次都重讀最近兩則。
+討論串要齊：他自己回、別人回他、他回別人（含回在很早留言、回文裡的回文）。
+路人正文收進討論串、不當他的判斷。引號裡不是他的話。
+主文走公開 HTML。樓下走同學會公開訪客 grant 打 Comments JSON。
+樓中樓＝把該則留言 id 當 article 再打 Comments（不是 /Comment/…/Replies）。
 對圖以主文點名的股票為準；附圖對不上主文就略過該圖。
 不准把 Bearer／localStorage／帳密寫進 git。不准放 Bearer 字串當密鑰進 repo。CMONEY_AUTH_TOKEN 只當備援。
 社團不抓。抓到新文立刻對官方 K 建檔，並做成判斷卡接到神經元。
@@ -50,12 +51,16 @@ _UA = {
     "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
-SESSION_EVERY_SEC = 5 * 60
+SESSION_EVERY_SEC = 3 * 60  # 交易日 09:01–13:30
 AFTER_EVERY_SEC = 1 * 60 * 60
 NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 休市／週末／凌晨也每小時，不再等到開盤
-PREOPEN_EVERY_SEC = 5 * 60  # 交易日 08:00–09:00 每五分鐘
+PREOPEN_EVERY_SEC = 10 * 60  # 交易日 08:00–09:00
+AFTER_CLOSE_EVERY_SEC = 10 * 60  # 交易日 13:30–15:00
 PREOPEN_FROM_MIN = 8 * 60
-PREOPEN_UNTIL_MIN = 9 * 60
+PREOPEN_UNTIL_MIN = 9 * 60  # [08:00, 09:00)
+SESSION_FROM_MIN = 9 * 60 + 1  # 09:01 才進 3 分
+CLOSE_MIN = 13 * 60 + 30
+AFTER_CLOSE_UNTIL_MIN = 15 * 60
 AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
 REFRESH_LATEST = 2  # 視窗：最新兩則。平時只重讀最新一篇主文＋討論串
 REFRESH_PREOPEN = 2  # 同一套；剛發新主文才連前一篇樓下
@@ -469,7 +474,7 @@ def _open_calendar_day(dt: datetime) -> bool:
 
 
 def in_preopen_window(now: Optional[datetime] = None) -> bool:
-    """台股交易日開盤前一小時：08:00 ≤ t < 09:00。週末／國定假／颱風停市不算。"""
+    """台股交易日開盤前：08:00 ≤ t < 09:00。週末／國定假／颱風停市不算。"""
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -512,10 +517,10 @@ def _row_is_fresh(
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """開市盤中 5 分；開盤前一小時每 5 分；其餘時間每 1 小時。
+    """交易日 08:00–09:00 每 10 分；09:01–13:30 每 3 分；13:30–15:00 每 10 分；其餘每 1 小時。
 
-    他週四／週五發文後，週末仍可能在最近幾篇樓下回別人、補觀點、或改主文。
-    開盤前一小時（08:00–09:00）加密到 5 分鐘，免得樓中樓改口漏掉。
+    08:59 不准睡 10 分睡過 09:01。09:00 整點最多等到 09:01。
+    討論串（自己回、別人回他、他回別人）跟主文同一套節奏。
     不准再用「等到開盤」把凌晨到 8 點、週末、颱風天空掉。
     """
     dt = now or taipei_now()
@@ -525,10 +530,16 @@ def poll_wait_seconds(now: Optional[datetime] = None) -> int:
         dt = dt.astimezone(TAIPEI)
     open_day = _open_calendar_day(dt)
     hm = dt.hour * 60 + dt.minute
-    if open_day and PREOPEN_FROM_MIN <= hm < PREOPEN_UNTIL_MIN:
-        return PREOPEN_EVERY_SEC
-    if open_day and 9 * 60 <= hm <= 13 * 60 + 40:
+    if open_day and PREOPEN_FROM_MIN <= hm < SESSION_FROM_MIN:
+        remain = max(30, (SESSION_FROM_MIN - hm) * 60)
+        if hm < PREOPEN_UNTIL_MIN:
+            return min(PREOPEN_EVERY_SEC, remain)
+        return remain
+    if open_day and SESSION_FROM_MIN <= hm <= CLOSE_MIN:
         return SESSION_EVERY_SEC
+    if open_day and CLOSE_MIN < hm < AFTER_CLOSE_UNTIL_MIN:
+        remain = max(30, (AFTER_CLOSE_UNTIL_MIN - hm) * 60)
+        return min(AFTER_CLOSE_EVERY_SEC, remain)
     return AFTER_EVERY_SEC
 
 
@@ -875,6 +886,9 @@ def _reply_row(
         "kind": "reply",
         "tags": [],
         "text": body[:1200],
+        "reply_to": "",
+        "reply_to_text": "",
+        "voice": "author",
     }
 
 
@@ -898,28 +912,47 @@ def _comment_list(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def parse_api_author_replies(
+def parse_api_thread(
     payload: Any,
     *,
     parent_id: str,
     now: Optional[datetime] = None,
     nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    keep_bystander: bool = True,
 ) -> List[Dict[str, Any]]:
-    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，當二層。"""
+    """JSON 留言：他自己回、別人回他、他回別人。路人 kind=bystander，不當他的判斷。"""
     nested_by_id = nested_by_id or {}
     out: List[Dict[str, Any]] = []
     seen = set()
 
-    def walk(items: Sequence[Any], layer: int) -> None:
+    def walk(items: Sequence[Any], layer: int, parent_cm: Optional[Dict[str, Any]] = None) -> None:
         for cm in items:
             if not isinstance(cm, dict):
                 continue
+            cid = _api_comment_id(cm)
             if _api_is_author(cm):
                 row = _reply_row(cm, parent_id=parent_id, layer=layer, now=now)
-                if row and row["text"] not in seen:
-                    seen.add(row["text"])
-                    out.append(row)
-            cid = _api_comment_id(cm)
+                if row:
+                    if parent_cm is not None and not _api_is_author(parent_cm):
+                        row["reply_to"] = _api_comment_id(parent_cm)
+                        row["reply_to_text"] = _api_text(parent_cm)[:240]
+                        row["layer"] = max(int(row.get("layer") or 2), 2)
+                    key = row["text"]
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(row)
+            elif keep_bystander:
+                row = _reply_row(cm, parent_id=parent_id, layer=layer, now=now)
+                if row:
+                    row["kind"] = "bystander"
+                    row["voice"] = "bystander"
+                    if parent_cm is not None:
+                        row["reply_to"] = _api_comment_id(parent_cm)
+                        row["reply_to_text"] = _api_text(parent_cm)[:240]
+                    key = "b:" + (cid or row["text"])
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(row)
             kids = list(_api_children(cm))
             extra = nested_by_id.get(cid or "") or []
             if extra:
@@ -930,10 +963,28 @@ def parse_api_author_replies(
                         continue
                     kids.append(sub)
             if kids:
-                walk(kids, 2)
+                walk(kids, 2, cm)
 
-    walk(_comment_list(payload), 1)
+    walk(_comment_list(payload), 1, None)
     return out
+
+
+def parse_api_author_replies(
+    payload: Any,
+    *,
+    parent_id: str,
+    now: Optional[datetime] = None,
+    nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> List[Dict[str, Any]]:
+    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，當二層。"""
+    rows = parse_api_thread(
+        payload,
+        parent_id=parent_id,
+        now=now,
+        nested_by_id=nested_by_id,
+        keep_bystander=False,
+    )
+    return [r for r in rows if r.get("kind") == "reply"]
 
 
 _LAST_COMMENT_API: Dict[str, Any] = {"http": 0, "replies": 0, "aid": ""}
@@ -1053,7 +1104,9 @@ def fetch_author_replies_api(
     sess = session or _session()
     last_status = 0
     for auth in tokens:
-        rows, status = _fetch_author_replies_with_token(aid, auth, sess, now=now)
+        rows, status = _fetch_author_replies_with_token(
+            aid, auth, sess, now=now, keep_bystander=False
+        )
         last_status = int(status or 0)
         if status == 200:
             _note_comment_api(http=200, replies=len(rows), aid=aid)
@@ -1063,6 +1116,40 @@ def fetch_author_replies_api(
             logger.info("飆大留言 JSON 讀不到 id=%s http=%s", aid, last_status)
             return []
     logger.info("飆大留言 JSON 讀不到 id=%s http=%s", aid, last_status)
+    return []
+
+
+def fetch_article_thread_api(
+    article_id: str,
+    session: Optional[requests.Session] = None,
+    *,
+    now: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    """整串：作者自回＋路人回他＋他回路人。路人 kind=bystander。"""
+    aid = str(article_id or "").strip()
+    if not aid:
+        _note_comment_api(http=0, replies=0)
+        return []
+    tokens = _comment_tokens(session)
+    if not tokens:
+        _note_comment_api(http=0, replies=0)
+        return []
+    sess = session or _session()
+    last_status = 0
+    for auth in tokens:
+        rows, status = _fetch_author_replies_with_token(
+            aid, auth, sess, now=now, keep_bystander=True
+        )
+        last_status = int(status or 0)
+        if status == 200:
+            n_auth = sum(1 for r in rows if r.get("kind") == "reply")
+            _note_comment_api(http=200, replies=n_auth, aid=aid)
+            return rows
+        _note_comment_api(http=last_status, replies=0, aid=aid)
+        if status not in (401, 403):
+            logger.info("飆大討論串 JSON 讀不到 id=%s http=%s", aid, last_status)
+            return []
+    logger.info("飆大討論串 JSON 讀不到 id=%s http=%s", aid, last_status)
     return []
 
 
@@ -1086,14 +1173,24 @@ def _merge_comment_kids(
 def _fetch_replies_payload(
     sess: requests.Session, aid: str, cid: str, auth: str
 ) -> tuple[List[Dict[str, Any]], int]:
+    """樓中樓＝該則留言自己當 article 再打 Comments。舊 Replies 路徑會 404。"""
     extra, extra_status = _get_json_resp(
         sess,
-        f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
-        f"?fetch=-50",
+        f"https://www.cmoney.tw/api/mach/api/Article/{cid}/Comments"
+        f"?startCommentIndex=0&fetch=-50",
         timeout=_COMMENT_API_TIMEOUT,
         token=auth,
     )
     kids = _comment_list(extra) if extra is not None else []
+    if not kids and extra_status == 404:
+        extra, extra_status = _get_json_resp(
+            sess,
+            f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
+            f"?fetch=-50",
+            timeout=_COMMENT_API_TIMEOUT,
+            token=auth,
+        )
+        kids = _comment_list(extra) if extra is not None else []
     if not kids and isinstance(extra, dict):
         kids = _api_children(extra)
     return kids, extra_status
@@ -1111,7 +1208,7 @@ def _fill_nested_replies(
     queue: List[Dict[str, Any]] = [c for c in comments if isinstance(c, dict)]
     seen: set[str] = set()
     pulls = 0
-    while queue and pulls < 80:
+    while queue and pulls < 150:
         cm = queue.pop(0)
         cid = _api_comment_id(cm)
         if not cid or cid in seen:
@@ -1137,6 +1234,7 @@ def _fetch_author_replies_with_token(
     sess: requests.Session,
     *,
     now: Optional[datetime] = None,
+    keep_bystander: bool = False,
 ) -> tuple[List[Dict[str, Any]], int]:
     comments, status = _fetch_comment_pages(sess, aid, auth)
     if status != 200:
@@ -1144,9 +1242,15 @@ def _fetch_author_replies_with_token(
     nested, nest_status = _fill_nested_replies(sess, aid, auth, comments)
     if nest_status not in (0, 200):
         status = nest_status
-    rows = parse_api_author_replies(
-        comments, parent_id=aid, now=now, nested_by_id=nested
+    rows = parse_api_thread(
+        comments,
+        parent_id=aid,
+        now=now,
+        nested_by_id=nested,
+        keep_bystander=keep_bystander,
     )
+    if not keep_bystander:
+        rows = [r for r in rows if r.get("kind") == "reply"]
     return rows, status
 
 
@@ -1193,12 +1297,25 @@ def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ro
     aid = str(row.get("id") or "")
     if not aid:
         return ""
+    if str(row.get("kind") or "") == "bystander" or str(row.get("voice") or "") == "bystander":
+        return ""
     if not is_biaoke_voice(str(row.get("text") or "")):
         return ""
     old = by_id.get(aid)
     if old:
         changed = False
-        for k in ("date", "time", "tags", "text", "parent", "layer", "kind"):
+        for k in (
+            "date",
+            "time",
+            "tags",
+            "text",
+            "parent",
+            "layer",
+            "kind",
+            "reply_to",
+            "reply_to_text",
+            "voice",
+        ):
             if k in row and old.get(k) != row.get(k):
                 old[k] = row[k]
                 changed = True
@@ -1206,6 +1323,75 @@ def _merge_row(posts: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]], ro
     posts.append(row)
     by_id[aid] = row
     return "added"
+
+
+_THREAD_DDL = """
+CREATE TABLE IF NOT EXISTS biaoke_thread (
+    id TEXT PRIMARY KEY,
+    article_id TEXT NOT NULL DEFAULT '',
+    reply_to TEXT NOT NULL DEFAULT '',
+    layer INTEGER NOT NULL DEFAULT 1,
+    voice TEXT NOT NULL DEFAULT 'bystander',
+    date TEXT NOT NULL DEFAULT '',
+    time TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    fetched_at TEXT NOT NULL DEFAULT ''
+);
+"""
+
+
+def upsert_biaoke_thread(db_path: str, rows: Sequence[Dict[str, Any]]) -> int:
+    """路人樓＋他回路人的上下文。正文不當飆大判斷。"""
+    if not db_path or not rows:
+        return 0
+    parent = os.path.dirname(os.path.abspath(db_path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    n = 0
+    try:
+        conn.executescript(_THREAD_DDL)
+        now = taipei_now().strftime("%Y-%m-%dT%H:%M:%S")
+        for row in rows:
+            rid = str(row.get("id") or "").strip()
+            text = str(row.get("text") or "").strip()
+            if not rid or not text:
+                continue
+            conn.execute(
+                """
+                INSERT INTO biaoke_thread(
+                    id, article_id, reply_to, layer, voice, date, time, text, fetched_at
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    article_id=excluded.article_id,
+                    reply_to=excluded.reply_to,
+                    layer=excluded.layer,
+                    voice=excluded.voice,
+                    date=excluded.date,
+                    time=excluded.time,
+                    text=excluded.text,
+                    fetched_at=excluded.fetched_at
+                """,
+                (
+                    rid,
+                    str(row.get("parent") or ""),
+                    str(row.get("reply_to") or ""),
+                    int(row.get("layer") or 1),
+                    str(row.get("voice") or row.get("kind") or "bystander"),
+                    str(row.get("date") or ""),
+                    str(row.get("time") or ""),
+                    text[:1200],
+                    now,
+                ),
+            )
+            n += 1
+        conn.commit()
+    except sqlite3.Error:
+        logger.debug("討論串路人樓寫不進", exc_info=True)
+        return 0
+    finally:
+        conn.close()
+    return n
 
 
 def purge_alien_overlay(db_path: str) -> int:
@@ -1337,11 +1523,15 @@ def ingest_public_posts(
                     updated += 1
         if not want_thread:
             continue
-        api_reps = []
+        thread_rows: List[Dict[str, Any]] = []
         try:
-            api_reps = fetch_author_replies_api(str(aid), sess)
+            thread_rows = fetch_article_thread_api(str(aid), sess)
         except Exception:
-            logger.debug("飆大留言 JSON 失敗 id=%s", aid, exc_info=True)
+            logger.debug("飆大討論串 JSON 失敗 id=%s", aid, exc_info=True)
+        api_reps = [
+            r for r in thread_rows if (r.get("kind") or "reply") == "reply"
+        ]
+        bystanders = [r for r in thread_rows if r.get("kind") == "bystander"]
         html_reps = (
             parse_author_replies(html_text, parent_id=str(aid)) if html_text else []
         )
@@ -1358,6 +1548,13 @@ def ingest_public_posts(
                 if rid:
                     touched.append(rid)
                 events.append(dict(rep))
+        if dbp and bystanders:
+            try:
+                stats["thread"] = int(stats.get("thread") or 0) + upsert_biaoke_thread(
+                    dbp, bystanders
+                )
+            except Exception:
+                logger.exception("飆大路人樓寫入失敗")
     n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
     if dbp:
         ensure_biaoke_posts_table(dbp)
@@ -1488,7 +1685,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：開盤前一小時每 5 分；盤中 5 分；其餘每 1 小時。GHA --once 不開。"""
+    """常駐：08–09 每 10 分；09:01–收盤每 3 分；收～15:00 每 10 分；其餘每 1 小時。GHA --once 不開。"""
     import threading
     import time as _time
 
@@ -1499,10 +1696,16 @@ def start_biaoke_poller() -> Optional[Any]:
 
     def _loop() -> None:
         _time.sleep(90)
+        try:
+            from biaoke_alert import wipe_biaoke_phone_pushes_once
+
+            wipe_biaoke_phone_pushes_once()
+        except Exception:
+            logger.exception("飆大舊推文清除略過")
         while True:
             run_biaoke_ingest_quiet()
             wait = poll_wait_seconds()
-            logger.info("飆大輪詢：%s 秒後再抓公開文／最新文回覆", wait)
+            logger.info("飆大輪詢：%s 秒後再抓公開文／最新文討論串", wait)
             _time.sleep(max(30, int(wait)))
 
     t = threading.Thread(target=_loop, name="biaoke-poll", daemon=True)

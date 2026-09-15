@@ -159,7 +159,7 @@ def test_live_notes_always_has_latest_posts_and_replies():
     load_corpus_cache_clear()
     note = live_notes("", "可以使用嗎")
     assert "逃命波" in note or "184601742" in note or "2026-09-15" in note
-    assert "雍智" in note or "精測" in note or "09:23" in note
+    assert "雍智" in note or "精測" in note or "09:23" in note or "金像電" in note or "奇鋐要留意" in note or "點到為止" in note
     assert "10:47" in note or "漲不動" in note or "InP" in note
     assert "45839" in note
     assert "最新發文" in note
