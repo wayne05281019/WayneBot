@@ -619,6 +619,8 @@ def test_pressure_support_use_consecutive_pivots():
     highs = [10.0, 20.0, 19.0, 22.0, 21.0, 20.0, 15.0]
     assert _desc_high_pair([1, 3, 6], highs) == (3, 6)
     assert _desc_high_pair([1, 4], [10.0, 20.0, 19.0, 18.0, 22.0]) is None
+    # 中間有更高的高，不准跳過去當下降壓。
+    assert _desc_high_pair([1, 6], [10.0, 20.0, 19.0, 25.0, 21.0, 20.0, 15.0]) is None
     lows = [10.0, 8.0, 9.0, 7.0, 7.4, 8.5, 9.2]
     assert _asc_low_pair([1, 3, 6], lows) == (3, 6)
     assert _asc_low_pair([1, 4], [10.0, 8.0, 9.0, 8.5, 7.0]) is None
@@ -686,6 +688,54 @@ def test_infer_impulse_five_from_confirmed_peak():
     assert infer_impulse_five(rows[:6], peak_i=5) == {}
 
 
+def test_infer_impulse_five_rejects_two_bar_wave12():
+    """1～2 只隔兩根＝假轉折，要改選有間隔的 1，不准硬畫。"""
+    from datetime import date, timedelta
+
+    from biaoke_chart import infer_impulse_five
+
+    # 真 1＝55、2＝48；假 1＝70 隔兩根回 60（且是這段最低）。4 低仍高於假 1，才選得到那組。
+    anchors = {
+        0: 40.0,
+        15: 55.0,
+        25: 48.0,
+        40: 70.0,
+        42: 60.0,
+        70: 100.0,
+        82: 72.0,
+        95: 90.0,
+        104: 88.0,
+    }
+    keys = sorted(anchors)
+    rows = []
+    start = date(2025, 10, 1)
+    for i in range(105):
+        for a, b in zip(keys, keys[1:]):
+            if a <= i <= b:
+                t = 0 if b == a else (i - a) / (b - a)
+                px = anchors[a] + (anchors[b] - anchors[a]) * t
+                break
+        else:
+            px = 40.0
+        d = (start + timedelta(days=i)).strftime("%Y%m%d")
+        rows.append(
+            {
+                "date": d,
+                "open": px,
+                "high": px + 0.4,
+                "low": px - 0.4,
+                "close": px,
+                "volume": 1000,
+            }
+        )
+    five = infer_impulse_five(rows, peak_i=95, start_i=0)
+    assert five
+    pts = {str(p["n"]): p for p in five["pts"]}
+    assert int(pts["2"]["i"]) - int(pts["1"]["i"]) >= 4
+    assert int(pts["1"]["i"]) != 40
+    assert float(pts["3"]["y"]) >= 100.0
+
+
 def test_infer_impulse_five_truncated_5_uses_higher_mountain_as_wave3():
     """5 截短時，3 必須是起點到 5 之間的最高山，不能卡在 5 左邊較矮的峰。"""
     from datetime import date, timedelta
@@ -748,10 +798,13 @@ def test_infer_impulse_five_3105_wave3_is_april_mountain():
     pts = {str(p["n"]): p for p in five["pts"]}
     d3 = _ymd8(bars[int(pts["3"]["i"])].get("date"))
     d1 = _ymd8(bars[int(pts["1"]["i"])].get("date"))
+    d2 = _ymd8(bars[int(pts["2"]["i"])].get("date"))
     assert d3 == "20260421"
     assert float(pts["3"]["y"]) >= 630
     assert d1 >= "20251201"
     assert float(pts["1"]["y"]) >= 180
+    assert int(pts["2"]["i"]) - int(pts["1"]["i"]) >= 4
+    assert (d1, d2) != ("20260112", "20260114")
     assert int(pts["3"]["i"]) < int(pts["5"]["i"])
     last = _ymd8(bars[-1].get("date"))
     from config import taipei_today_str

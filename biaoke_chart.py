@@ -171,9 +171,12 @@ def _desc_high_pair(hi_p: Sequence[int], highs: Sequence[float]) -> Optional[Tup
     i, j = int(hi_p[-2]), int(hi_p[-1])
     if j - i < 3:
         return None
-    if highs[j] < highs[i] * 0.999:
-        return i, j
-    return None
+    if highs[j] >= highs[i] * 0.999:
+        return None
+    mid = highs[i + 1 : j]
+    if mid and max(mid) > highs[i] + 1e-9:
+        return None
+    return i, j
 
 
 def _asc_low_pair(lo_p: Sequence[int], lows: Sequence[float]) -> Optional[Tuple[int, int]]:
@@ -939,7 +942,7 @@ def infer_impulse_five(
     """已確認第 5 高，才把前面升段推成 1～4。推不出來就不畫，不准亂數。
 
     點必須落在那根官方 K 的高或低：3＝起點到 5 之間真正最高；2／4＝該段真正最低。
-    1-4 重疊或 3 最短＝這組不算。第 5 可以失敗（低於第 3）。
+    1-4 重疊、3 最短、或 1～2 少於 4 根＝這組不算。第 5 可以失敗（低於第 3）。
     """
     n = len(rows)
     peak_i = int(peak_i)
@@ -994,6 +997,8 @@ def infer_impulse_five(
     def _pack(i1: int, i2: int) -> Optional[Dict[str, Any]]:
         if not (start_i < i1 < i2 < i3 < i4 < peak_i):
             return None
+        if i2 - i1 < 4:
+            return None
         if lows[i4] < highs[i1] * 0.998:
             return None
         w1 = highs[i1] - start_y
@@ -1014,7 +1019,7 @@ def infer_impulse_five(
                 {"n": "4", "i": i4, "y": lows[i4], "kind": "L"},
                 {"n": "5", "i": peak_i, "y": peak_y, "kind": "H"},
             ],
-            "score": (w1, -abs(i2 - i1)),
+            "score": (w1, i2 - i1),
         }
 
     best: Optional[Dict[str, Any]] = None
