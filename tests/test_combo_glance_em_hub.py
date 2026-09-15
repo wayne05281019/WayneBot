@@ -123,6 +123,9 @@ def test_em_hub_has_kline_and_nav():
     labels0 = [b.text for b in kb.inline_keyboard[0]]
     labels1 = [b.text for b in kb.inline_keyboard[1]]
     assert "導航圖" in labels0
+    nav = next(b for b in kb.inline_keyboard[0] if b.text == "導航圖")
+    assert nav.url is None
+    assert nav.callback_data == "g:3595"
     assert "產業" in labels0
     assert labels1 == ["觀察", "記買入", "說明"]
 
@@ -133,8 +136,8 @@ def test_listed_hub_has_nav_button():
     labels = [b.text for r in kb.inline_keyboard for b in r]
     assert "導航圖" in labels
     nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
-    assert nav.callback_data is None
-    assert (nav.url or "").endswith("/k/2330?n=180")
+    assert nav.url is None
+    assert nav.callback_data == "g:2330"
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 
@@ -148,6 +151,8 @@ def test_lookup_album_has_no_lecture_caption():
     assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡"}' in locked
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
     assert 'callback_data=f"g:{c}"' in hub
+    assert "url=nav_url" not in hub
+    assert "span=180" not in hub
 
 
 def test_help_says_two_images():
@@ -155,6 +160,9 @@ def test_help_says_two_images():
     assert "一次出兩張圖" in guide
     assert "一次出三張圖" not in guide
     assert "導航圖" in HELP_TOPICS["stock"]
+    assert "原版" in HELP_TOPICS["stock"]
+    assert "同一頁" not in HELP_TOPICS["stock"]
+    assert "同一頁" not in HELP_TOPICS["guide"]
     assert "上半資訊" in guide
     assert "下半180日高低導航" in guide
     assert "下半日K" not in guide

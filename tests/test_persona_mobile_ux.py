@@ -23,9 +23,8 @@ def test_hub_keyboard_mobile_compact():
     assert (kline.url or "").startswith("https://")
     assert "導航圖" in texts
     nav = next(b for r in rows for b in r if b.text == "導航圖")
-    assert (nav.url or "").endswith("/k/2330?n=180")
-    assert (nav.url or "").startswith("https://")
-    assert nav.callback_data is None
+    assert nav.url is None
+    assert nav.callback_data == "g:2330"
 
 
 def test_em_hub_omits_empty_chip_buttons():

@@ -122,8 +122,8 @@ def test_hub_kline_is_https_url_button(tmp_path):
     assert kline.url == "https://waynebot-service.onrender.com/k/2330"
     assert kline.url.startswith("https://")
     nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
-    assert nav.callback_data is None
-    assert nav.url == "https://waynebot-service.onrender.com/k/2330?n=180"
+    assert nav.url is None
+    assert nav.callback_data == "g:2330"
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 
