@@ -210,6 +210,9 @@ def test_live_notes_reverse_think_emc_hold():
     assert "10:47" in SYSTEM or "漲不動" in SYSTEM
     assert "InP" in SYSTEM
     assert "全部自回" in SYSTEM
+    assert "路人樓下不收" not in SYSTEM
+    assert "正文不當他的判斷" in SYSTEM
+    assert "富喬" in SYSTEM and "正常修正" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
