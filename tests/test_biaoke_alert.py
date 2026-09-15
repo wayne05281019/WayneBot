@@ -161,6 +161,10 @@ def test_escape_wave_caution_is_not_exit_command():
     assert "不是他講的" in html
     assert "不是昨天收盤跌幅" in html
     assert "研判：" not in html
+    assert "沒過按鈕" not in html
+    assert "怕錯過" not in html
+    assert "飆大盤中補充" in html
+    assert "對原文用" in html
     assert "程式標籤（不是他原文）" in html or "官方加權盤中現價" in html
 
 
@@ -185,3 +189,18 @@ def test_night_not_through_is_not_uptrend():
         move={"ok": False, "drop": 0, "pct": 0},
     )
     assert not j["push"]
+
+
+def test_worst_case_almost_never_is_not_an_alarm():
+    j = judge_emergency(
+        "用技術分析K棒來講就是築底等開牌。但有一個更差的波段位階我沒提，"
+        "因為我認為可能性微乎其微，那就是所謂築底只是橫台整理，"
+        "橫台整理之後再走4段，也就是走9波擴延。C-3就會到36000，代表AI 時代結束。",
+        move=_move(294, y=45862.52),
+    )
+    assert not j["push"]
+    j2 = judge_emergency(
+        "最差情境幾乎不可能(5%)，所以目前開盤之後會有比較正向發展機率較大",
+        move=_move(120),
+    )
+    assert not j2["push"]

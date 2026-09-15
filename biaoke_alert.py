@@ -69,6 +69,9 @@ _NIGHT_CRASH = re.compile(r"夜盤.{0,10}(大跌|崩|重挫|跳空)")
 _ROUTINE = re.compile(
     r"(散熱族群最為強勢|輪漲格局|謝謝|感謝飆大|Yes$|耐心等待)"
 )
+_SOFT_WATCH = re.compile(
+    r"(微乎其微|幾乎不可能|反而覺得比較好|點到為止|當天無法判斷)"
+)
 
 # 主音＝波浪／軌道。他自己 7/31 寫「波浪理論沒辦法 100% 確認」。
 _MAIN_DONE = re.compile(
@@ -399,6 +402,12 @@ def judge_emergency(
     blob = str(text or "").strip()
     if not blob:
         return {"push": False, "score": 0, "reasons": []}
+    if _SOFT_WATCH.search(blob) and not (_EXIT.search(blob) or _ENTER.search(blob)):
+        return {
+            "push": False,
+            "score": 0,
+            "reasons": ["觀盤／更差情境他認為機率很低，不推"],
+        }
     mkt = move if move is not None else twii_move()
     s1, w1 = market_shock(mkt, blob)
     s2, w2 = content_intents(blob)
@@ -487,7 +496,7 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
     pct = float(move.get("pct") or 0)
     px = move.get("px") or ""
     y = move.get("y") or ""
-    bits = ["<b>飆大盤中重點（沒過按鈕）</b>"]
+    bits = ["<b>飆大盤中補充</b>"]
     if move.get("ok"):
         way = "跌" if drop > 0 else ("漲" if drop < 0 else "平")
         pts = abs(int(round(drop)))
@@ -506,7 +515,7 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
         f"{html_escape(str(event.get('time') or ''))} {kind}："
     )
     bits.append(html_escape(_clip(str(event.get("text") or ""), 420)))
-    bits.append("怕錯過才直接推。不是買訊。")
+    bits.append("對原文用。不是買訊。")
     return "\n".join(bits)
 
 
@@ -539,6 +548,12 @@ def _send_family(html: str) -> int:
             )
             if int(getattr(resp, "status_code", 0) or 0) == 200:
                 n += 1
+                try:
+                    mid = int(((resp.json() or {}).get("result") or {}).get("message_id") or 0)
+                except Exception:
+                    mid = 0
+                if mid:
+                    _record_push_msg(cid, mid, html)
             else:
                 logger.error("緊急推播 Telegram %s", getattr(resp, "status_code", "?"))
         except Exception:
@@ -560,7 +575,7 @@ def maybe_push_drop_alert(
         return stats
     mkt = move if move is not None else twii_move()
     for ev in rows:
-        if ev.get("club"):
+        if ev.get("club") or ev.get("kind") == "bystander":
             continue
         pid = str(ev.get("id") or ev.get("post_id") or "").strip()
         if not pid:
@@ -591,3 +606,170 @@ def maybe_push_drop_alert(
                 sent,
             )
     return stats
+
+
+_PUSH_MSG_DDL = """
+CREATE TABLE IF NOT EXISTS biaoke_push_msgs (
+    chat_id TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT '',
+    head TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (chat_id, message_id)
+);
+CREATE TABLE IF NOT EXISTS biaoke_push_wipe (
+    day TEXT PRIMARY KEY,
+    done_at TEXT NOT NULL DEFAULT ''
+);
+"""
+OLD_PUSH_MARKS = ("沒過按鈕", "怕錯過才直接推", "研判：")
+
+
+def _push_db() -> str:
+    try:
+        from config import get_db_path
+
+        return get_db_path()
+    except Exception:
+        return ""
+
+
+def _record_push_msg(chat_id: str, message_id: int, html: str) -> None:
+    db = _push_db()
+    if not db or os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        conn = sqlite3.connect(db, timeout=30.0)
+        conn.executescript(_PUSH_MSG_DDL)
+        conn.execute(
+            "INSERT OR REPLACE INTO biaoke_push_msgs(chat_id, message_id, sent_at, head) "
+            "VALUES(?,?,datetime('now'),?)",
+            (str(chat_id), int(message_id), _clip(html, 80)),
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.Error:
+        logger.debug("推播 message_id 寫不進", exc_info=True)
+
+
+def _tg_api(token: str, method: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    import requests
+
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{token}/{method}",
+            json=payload,
+            timeout=20,
+        )
+        return resp.json() if resp is not None else {}
+    except Exception:
+        return {}
+
+
+def wipe_biaoke_phone_pushes(
+    *,
+    lookback: int = 180,
+    marks: Sequence[str] = OLD_PUSH_MARKS,
+) -> Dict[str, Any]:
+    """掃最近訊息，只刪舊的嚇人盤中推文。查股圖／一般對話不刪。"""
+    stats = {"chats": 0, "deleted": 0, "scanned": 0}
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return stats
+    try:
+        from config import allowed_telegram_uids, get_telegram_token
+    except Exception:
+        return stats
+    token = get_telegram_token()
+    uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
+    if not token or not uids:
+        return stats
+    needles = tuple(m for m in (marks or OLD_PUSH_MARKS) if m)
+    for cid in uids:
+        stats["chats"] += 1
+        probe = _tg_api(
+            token,
+            "sendMessage",
+            {
+                "chat_id": cid,
+                "text": "（清舊的飆大推文，這則隨即刪）",
+                "disable_notification": True,
+                "disable_web_page_preview": True,
+            },
+        )
+        hi = int(((probe.get("result") or {}).get("message_id") or 0) or 0)
+        if hi:
+            _tg_api(token, "deleteMessage", {"chat_id": cid, "message_id": hi})
+        if hi <= 0:
+            continue
+        lo = max(1, hi - max(20, int(lookback)))
+        for mid in range(hi - 1, lo - 1, -1):
+            fwd = _tg_api(
+                token,
+                "forwardMessage",
+                {
+                    "chat_id": cid,
+                    "from_chat_id": cid,
+                    "message_id": mid,
+                    "disable_notification": True,
+                },
+            )
+            if not fwd.get("ok"):
+                continue
+            stats["scanned"] += 1
+            res = fwd.get("result") or {}
+            fid = int(res.get("message_id") or 0)
+            blob = str(res.get("text") or res.get("caption") or "")
+            media = bool(
+                res.get("photo")
+                or res.get("document")
+                or res.get("animation")
+                or res.get("video")
+                or res.get("sticker")
+            )
+            if fid:
+                _tg_api(token, "deleteMessage", {"chat_id": cid, "message_id": fid})
+            if media:
+                continue
+            if any(m in blob for m in needles):
+                gone = _tg_api(
+                    token, "deleteMessage", {"chat_id": cid, "message_id": mid}
+                )
+                if gone.get("ok"):
+                    stats["deleted"] += 1
+    logger.info(
+        "飆大舊推文清除 chats=%s scanned=%s deleted=%s",
+        stats["chats"],
+        stats["scanned"],
+        stats["deleted"],
+    )
+    return stats
+
+
+def wipe_biaoke_phone_pushes_once() -> Dict[str, Any]:
+    """開機一天一次。只清舊格式（沒過按鈕／研判：），不清查股圖、不清新的盤中補充。"""
+    empty = {"chats": 0, "deleted": 0, "scanned": 0, "skipped": "once"}
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return empty
+    db = _push_db()
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    day = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    if db:
+        try:
+            conn = sqlite3.connect(db, timeout=30.0)
+            conn.executescript(_PUSH_MSG_DDL)
+            hit = conn.execute(
+                "SELECT 1 FROM biaoke_push_wipe WHERE day=?", (day,)
+            ).fetchone()
+            if hit:
+                conn.close()
+                return empty
+            conn.execute(
+                "INSERT OR REPLACE INTO biaoke_push_wipe(day, done_at) VALUES(?, datetime('now'))",
+                (day,),
+            )
+            conn.commit()
+            conn.close()
+        except sqlite3.Error:
+            logger.debug("推播清除記號寫不進", exc_info=True)
+    return wipe_biaoke_phone_pushes()
