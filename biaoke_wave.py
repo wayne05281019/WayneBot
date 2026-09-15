@@ -619,17 +619,182 @@ def _twii_span(db_path: str) -> Tuple[str, str]:
     return _ymd(row[0]), _ymd(row[1])
 
 
+_WAVE_NEED_YMD = "20240315"
+
+
+def _tx_bar(db_path: str, ymd: str, session: str = "regular") -> Dict[str, Any]:
+    day = _ymd(ymd)
+    if not db_path or not os.path.isfile(db_path) or not day:
+        return {}
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT date, open, high, low, close FROM futures_daily "
+                "WHERE symbol='TX' AND session=? "
+                "AND REPLACE(CAST(date AS TEXT),'-','')=? LIMIT 1",
+                (session, day),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    return {
+        "date": row[0],
+        "open": row[1],
+        "high": row[2],
+        "low": row[3],
+        "close": row[4],
+        "session": session,
+    }
+
+
+def _tx_span(db_path: str, session: str = "regular") -> Tuple[str, str]:
+    if not db_path or not os.path.isfile(db_path):
+        return "", ""
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT MIN(REPLACE(CAST(date AS TEXT),'-','')), "
+                "MAX(REPLACE(CAST(date AS TEXT),'-','')) "
+                "FROM futures_daily WHERE symbol='TX' AND session=?",
+                (session,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+    except Exception:
+        return "", ""
+    if not row:
+        return "", ""
+    return _ymd(row[0]), _ymd(row[1])
+
+
+def _tx_hl(
+    db_path: str, start: str, end: str, session: str = "regular"
+) -> Dict[str, Any]:
+    a, b = _ymd(start), _ymd(end)
+    if not db_path or not os.path.isfile(db_path) or not a or not b:
+        return {}
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT MIN(low), MAX(high), MIN(REPLACE(CAST(date AS TEXT),'-','')), "
+                "MAX(REPLACE(CAST(date AS TEXT),'-','')) "
+                "FROM futures_daily WHERE symbol='TX' AND session=? "
+                "AND REPLACE(CAST(date AS TEXT),'-','')>=? "
+                "AND REPLACE(CAST(date AS TEXT),'-','')<=?",
+                (session, a, b),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    if not row or row[0] is None:
+        return {}
+    return {"low": row[0], "high": row[1], "from": row[2], "to": row[3]}
+
+
+def _need_wave_history(db_path: str) -> bool:
+    start, _end = _twii_span(db_path)
+    if not start or start > _WAVE_NEED_YMD:
+        return True
+    tx0, _tx1 = _tx_span(db_path)
+    if not tx0 or tx0 > _WAVE_NEED_YMD:
+        return True
+    return False
+
+
+def ensure_wave_history(db_path: str, *, force: bool = False) -> Dict[str, Any]:
+    """波浪對質缺加權／台指期柱就自己抓。pytest 不打外網。"""
+    out: Dict[str, Any] = {"ok": False, "twii": 0, "tx": {}}
+    if not db_path or not os.path.isfile(db_path):
+        out["reason"] = "no-db"
+        return out
+    if os.environ.get("PYTEST_CURRENT_TEST") and not force:
+        out["reason"] = "pytest"
+        return out
+    if not force and not _need_wave_history(db_path):
+        out["ok"] = True
+        out["reason"] = "already"
+        return out
+    try:
+        from biaoke_verify import refresh_recent_twii
+
+        out["twii"] = int(
+            refresh_recent_twii(
+                db_path, range_="5y", skip_open_day=True, overwrite=False
+            )
+            or 0
+        )
+    except Exception:
+        out["twii"] = 0
+    try:
+        from taiwan_market import backfill_tx_monthly_gap
+
+        out["tx"] = backfill_tx_monthly_gap(db_path, force=force) or {}
+    except Exception:
+        out["tx"] = {}
+    out["ok"] = True
+    return out
+
+
 def _hist_bits(db_path: str) -> List[str]:
     """沒講到的時間只拿官方柱對他點過的水平，不准補浪名。"""
     bits: List[str] = []
     start, _end = _twii_span(db_path)
+    tx0, _tx1 = _tx_span(db_path)
     if start:
         bits.append(
-            f"這顆庫加權日K 從 {start[:4]}-{start[4:6]}-{start[6:8]} 起才有柱；"
-            "更早他點的 19660／21937／24730 沒柱就不對質"
+            f"這顆庫加權日K 從 {start[:4]}-{start[4:6]}-{start[6:8]} 起才有柱"
         )
     else:
         bits.append("這顆庫還沒加權日K，更早的點位不准自己寫")
+    if tx0:
+        bits.append(
+            f"台指期日盤從 {tx0[:4]}-{tx0[4:6]}-{tx0[6:8]} 起才有柱"
+        )
+    mar = _tx_bar(db_path, "20240319") or _twii_bar(db_path, "20240319")
+    mar_hl = _tx_hl(db_path, "20240315", "20240322")
+    if mar_hl.get("low"):
+        lo = float(mar_hl["low"])
+        gap = lo - 19660
+        hit = "，對得上" if gap <= 40 else ("，接近" if gap <= 120 else "，當日還沒測到")
+        bits.append(f"2024-03-15～19 台指期低 {_px(lo)}，他點回測 19660{hit}")
+    elif mar:
+        src = "台指期" if mar.get("session") else "加權"
+        bits.append(
+            f"2024-03-19 官方{src}低 {_px(mar.get('low'))}，他點回測 19660"
+        )
+    elif not tx0 or tx0 > "20240319":
+        bits.append("19660 這顆庫還沒台指期柱，不對質")
+    jun = _tx_hl(db_path, "20240528", "20240605")
+    if jun.get("high"):
+        hi = float(jun["high"])
+        bits.append(
+            f"2024-05 末～06-02 台指期高 {_px(hi)}，他點 19291～21937 五浪走完"
+            + ("，對得上" if hi >= 21850 else "，還沒到")
+        )
+    elif not tx0 or tx0 > "20240602":
+        bits.append("21937 這顆庫還沒台指期柱，不對質")
+    jul = _tx_hl(db_path, "20240701", "20240731")
+    if jul.get("high"):
+        hi = float(jul["high"])
+        bits.append(
+            f"2024-07 台指期高 {_px(hi)}，他點邪惡第五波七月最多 24730"
+            + ("，對得上" if hi >= 24600 else "，還沒到他點的滿足")
+        )
+    elif not tx0 or tx0 > "20240704":
+        bits.append("24730 這顆庫還沒台指期柱，不對質")
     d304 = _twii_bar(db_path, "20250304")
     d311 = _twii_bar(db_path, "20250311")
     d331 = _twii_bar(db_path, "20250331")
@@ -744,6 +909,11 @@ def format_wave_head(db_path: str = "") -> str:
 
 def format_wave_now(db_path: str = "", *, n: int = 900) -> str:
     """口語：現在位階＝他自己最近一次怎麼點＋再前一次＋官方對質。"""
+    if db_path and n >= 500:
+        try:
+            ensure_wave_history(db_path)
+        except Exception:
+            pass
     last, prev = last_two(db_path)
     bits: List[str] = [format_wave_head(db_path)]
     if last:
@@ -910,6 +1080,10 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
 
 
 def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
+    try:
+        ensure_wave_history(db_path)
+    except Exception:
+        pass
     path = render_twii_degree_png(db_path, save_path)
     last, prev = last_two(db_path)
     cap_bits = [

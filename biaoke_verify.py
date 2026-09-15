@@ -170,8 +170,17 @@ def _tx_row(db_path: str, ymd: str, session: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def refresh_recent_twii(db_path: str, *, range_: str = "1mo") -> int:
-    """缺加權日 K 就用 Yahoo 補。失敗不編。pytest 不打外網。"""
+def refresh_recent_twii(
+    db_path: str,
+    *,
+    range_: str = "1mo",
+    skip_open_day: bool = False,
+    overwrite: bool = True,
+) -> int:
+    """缺加權日 K 就用 Yahoo 補。失敗不編。pytest 不打外網。
+
+    skip_open_day：台北今天還沒收盤的柱不寫。overwrite=False：已有日期不覆蓋官方收。
+    """
     if not db_path or os.environ.get("PYTEST_CURRENT_TEST"):
         return 0
     try:
@@ -186,12 +195,23 @@ def refresh_recent_twii(db_path: str, *, range_: str = "1mo") -> int:
         return 0
     if df is None or getattr(df, "empty", True):
         return 0
+    today = datetime.now(TAIPEI).strftime("%Y%m%d")
     n = 0
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        have = {
+            str(r[0] or "").replace("-", "")[:8]
+            for r in conn.execute(
+                "SELECT date FROM index_daily WHERE symbol='TWII' OR symbol='^TWII'"
+            )
+        }
         for _, r in df.iterrows():
             ymd = _ymd(r.get("date"))
             if not ymd:
+                continue
+            if skip_open_day and ymd >= today:
+                continue
+            if not overwrite and ymd in have:
                 continue
             close = float(r.get("close") or 0)
             if close <= 0:

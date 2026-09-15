@@ -856,6 +856,12 @@ def test_sync_futures_daily_backfill_zero_with_existing_rows(mock_fetch, tmp_pat
     assert r["history"]["reason"] == "pytest"
 
 
+def test_tx_history_start_covers_202403():
+    from taiwan_market import _TX_HISTORY_START
+
+    assert _TX_HISTORY_START == "202403"
+
+
 def test_tx_month_bounds():
     from taiwan_market import _tx_month_bounds
 
@@ -944,7 +950,7 @@ def test_backfill_tx_monthly_gap_already_skips_download(mock_dl, tmp_path):
     db = str(tmp_path / "txfull.db")
     ensure_futures_daily_table(db)
     conn = sqlite3.connect(db)
-    d0 = datetime(2025, 1, 2)
+    d0 = datetime(2024, 3, 2)
     for i in range(200):
         d = (d0 + timedelta(days=i)).strftime("%Y%m%d")
         conn.execute(
@@ -961,7 +967,7 @@ def test_backfill_tx_monthly_gap_already_skips_download(mock_dl, tmp_path):
     r = backfill_tx_monthly_gap(db, force=True)
     assert r["ok"]
     assert r["reason"] == "already"
-    assert r["min"] == "20250102"
+    assert r["min"] == "20240302"
     assert r["n"] == 200
     mock_dl.assert_not_called()
 

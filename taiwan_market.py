@@ -1110,7 +1110,7 @@ def _nearest_futures_daily(
     return load_futures_daily(db_path, str(row[0]), symbol=want_sym)
 
 
-_TX_HISTORY_START = "202501"
+_TX_HISTORY_START = "202403"
 
 
 def _tx_month_bounds(yyyymm: str) -> Tuple[str, str]:
@@ -1126,9 +1126,9 @@ def _tx_month_bounds(yyyymm: str) -> Tuple[str, str]:
 
 
 def backfill_tx_monthly_gap(db_path: str, *, force: bool = False) -> Dict[str, Any]:
-    """台指期日／夜缺 2025-01 起的月份，用期交所月檔一次補。已齊就停，不逐日打。
+    """台指期日／夜缺 2024-03 起的月份，用期交所月檔一次補。已齊就停，不逐日打。
 
-    飆大對質要用 7/29 低、夜盤是否先過壓。庫只從 2026-07-30 起＝話筒對不到。
+    飆大對質要用 3/15 19660、6/2 21937、7/4 24730、7/29 低。庫只從 2025-01 起＝對不到。
     pytest 預設不打外網。
     """
     empty = {"ok": False, "rows": 0, "fetched": 0, "skipped": 0}
@@ -1704,7 +1704,7 @@ def _fetch_index_daily(range_: str = "2y") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def sync_index_daily(db_path: str, range_: str = "2y") -> Dict[str, Any]:
+def sync_index_daily(db_path: str, range_: str = "5y") -> Dict[str, Any]:
     """盤後融合：官方 MI_INDEX 優先、Yahoo 補洞 → index_daily UPSERT。"""
     ensure_index_daily_table(db_path)
     yahoo_df = _fetch_index_daily(range_)

@@ -10,10 +10,12 @@ from biaoke_wave import (
     build_twii_degree_chart,
     degree_hits,
     degree_turns,
+    ensure_wave_history,
     format_wave_now,
     format_wave_path,
     is_wave_question,
     last_two,
+    _hist_bits,
 )
 from biaoke_why import is_why_query, lookup
 from bot_servers import WayneTelegramBot
@@ -96,6 +98,7 @@ def test_format_wave_now_compares_and_turning():
     assert "45398" in live or "低於 45839" in live
     assert "22000" in live
     assert "20250311" in live or "3/11" in live or "21770" in live or "21769" in live
+    assert "19660" in live or "24730" in live or "沒柱" in live or "台指期" in live
 
 
 def test_why_wave_now_and_eyes():
@@ -156,3 +159,52 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     origin = inspect.getsource(WayneTelegramBot._send_biaoke_origin_charts)
     assert "is_wave_question" in origin
     assert "TWII" in origin
+
+
+def test_ensure_wave_history_skips_in_pytest(tmp_path):
+    r = ensure_wave_history(str(tmp_path / "no.db"))
+    assert r.get("reason") in {"pytest", "no-db"}
+    db = "data/wayne_market.db"
+    if os.path.isfile(db):
+        r2 = ensure_wave_history(db)
+        assert r2.get("reason") == "pytest"
+        assert r2.get("ok") is False
+
+
+def test_hist_bits_checks_his_tx_levels(tmp_path):
+    import sqlite3
+
+    from taiwan_market import ensure_futures_daily_table, ensure_index_daily_table
+
+    db = str(tmp_path / "wave-hist.db")
+    ensure_index_daily_table(db)
+    ensure_futures_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume,pct_change,updated_at) "
+        "VALUES ('20240319','TWII',19700,19800,19640,19720,1,0,'t')"
+    )
+    rows = [
+        ("20240319", 19700, 19800, 19650, 19710),
+        ("20240603", 21800, 21940, 21700, 21880),
+        ("20240715", 24000, 24400, 23900, 24300),
+    ]
+    for d, o, h, lo, c in rows:
+        conn.execute(
+            """
+            INSERT INTO futures_daily(
+                date, symbol, session, contract_month, open, high, low, close,
+                settlement, volume, open_interest, pct_change, source, updated_at
+            ) VALUES (?, 'TX', 'regular', '', ?, ?, ?, ?, ?, 1, 1, 0, 'taifex', 't')
+            """,
+            (d, o, h, lo, c, c),
+        )
+    conn.commit()
+    conn.close()
+    bits = "。".join(_hist_bits(db))
+    assert "19660" in bits
+    assert "19650" in bits
+    assert "對得上" in bits or "接近" in bits
+    assert "21937" in bits
+    assert "24730" in bits
+    assert "還沒到他點的滿足" in bits
