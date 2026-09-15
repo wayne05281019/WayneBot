@@ -43,10 +43,11 @@ _FUTURE = 10
 _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
+_WINDOW_BG = "#ffe0b2"
 _HALO = "#ffffff"
-# 左表頭整疊（名、今K、開高低收）；右上整塊給縮圖。
-_HEADER_CHIP_MAX = 37.0
-_STOCK_LOCATOR_RECT = (0.40, 0.688, 0.58, 0.292)
+# 左表頭（名、今K）貼在縮圖左邊；右上整塊給縮圖。
+_HEADER_CHIP_MAX = 47.0
+_STOCK_LOCATOR_RECT = (0.50, 0.688, 0.48, 0.292)
 
 
 def _md(raw: Any) -> str:
@@ -209,7 +210,11 @@ def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     out["distribution"] = bool(saw_over and last < spike_lo and not out["wash"])
     hi_p, lo_p = _pivots(highs, lows)
     down = _desc_high_pair(hi_p, highs)
-    up = _asc_low_pair(lo_p, lows)
+    up = None
+    if down:
+        up = _impulse_support_pair(rows, int(down[0]))
+    if up is None:
+        up = _asc_low_pair(lo_p, lows)
     out["down_track"] = down
     out["up_track"] = up
     n = len(rows)
@@ -780,6 +785,24 @@ def infer_impulse_five(
     return {}
 
 
+def _impulse_support_pair(
+    rows: Sequence[Dict[str, Any]], peak_i: int
+) -> Optional[Tuple[int, int]]:
+    """下降壓確認第 5 高之後，上升撐＝同一推動的 2 低連 4 低。沒兩點就不畫。"""
+    five = infer_impulse_five(rows, peak_i=int(peak_i))
+    pts = {str(p.get("n") or ""): p for p in (five.get("pts") or [])}
+    p2, p4 = pts.get("2"), pts.get("4")
+    if not p2 or not p4:
+        return None
+    i2, i4 = int(p2["i"]), int(p4["i"])
+    lows = [float(r.get("low") or 0) for r in rows]
+    if not (0 <= i2 < i4 < len(lows)):
+        return None
+    if lows[i4] <= lows[i2] * 1.001:
+        return None
+    return i2, i4
+
+
 def impulse_five_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
     """縮圖升段折線。數字另外用 marks，避免跟線疊在一起。"""
     pts = list((story or {}).get("pts") or [])
@@ -897,14 +920,14 @@ def paint_locator_inset(
     win_from: str = "",
     win_to: str = "",
     rect: Tuple[float, float, float, float] = _STOCK_LOCATOR_RECT,
-    title: str = "黃底＝預估　橙框＝大圖這段　橫軸月份",
+    title: str = "黃底＝預估　橙底＝大圖這段　橫軸月份",
     ax=None,
     legs: Optional[Sequence[Dict[str, Any]]] = None,
     k_on_top: bool = False,
     forecast_n: int = 0,
     marks: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> bool:
-    """右上長軸縮圖：黃底只給預估，橙框只框大圖這段。點對點連線，橫軸寫月份。"""
+    """右上長軸縮圖：橙底＝大圖這段，黃底＝預估。不在縮圖裡再套一層框。"""
     from decision_card_signals import candle_up_taiwan
 
     rows = []
@@ -937,8 +960,8 @@ def paint_locator_inset(
     ax.set_facecolor("#ffffff")
     ax.patch.set_alpha(1.0)
     for sp in ax.spines.values():
-        sp.set_color("#ef6c00")
-        sp.set_linewidth(1.5)
+        sp.set_color("#cfd8dc")
+        sp.set_linewidth(0.9)
     m = len(rows)
     opens = [float(r.get("open") or r.get("close") or 0) for r in rows]
     highs = [float(r.get("high") or r.get("close") or 0) for r in rows]
@@ -948,6 +971,14 @@ def paint_locator_inset(
     hi_max = max(highs)
     pad = (hi_max - lo_min) * 0.12 or 1.0
     fut = max(0, int(forecast_n or 0))
+    ax.axvspan(
+        i0 - 0.55,
+        i1 + 0.55,
+        facecolor=_WINDOW_BG,
+        edgecolor="none",
+        alpha=0.92,
+        zorder=0,
+    )
     if fut > 0:
         ax.axvspan(
             m - 1 - 0.15,
@@ -955,20 +986,9 @@ def paint_locator_inset(
             facecolor=_FUTURE_BG,
             edgecolor="none",
             alpha=0.95,
-            zorder=0,
+            zorder=1,
         )
         ax.axvline(m - 1 - 0.15, color="#ffcc80", linewidth=0.9, linestyle=":", zorder=2)
-    ax.add_patch(
-        patches.Rectangle(
-            (i0 - 0.55, lo_min - pad * 0.08),
-            (i1 - i0) + 1.1,
-            (hi_max - lo_min) + pad * 0.22,
-            fill=False,
-            edgecolor="#ef6c00",
-            linewidth=1.45,
-            zorder=9,
-        )
-    )
     if k_on_top:
         w = 0.94 if m <= 200 else (0.80 if m <= 400 else 0.66)
         lw = 1.15 if m <= 200 else (0.85 if m <= 400 else 0.70)
@@ -1315,7 +1335,7 @@ def _paint_spot(
     y: float = 92.55,
     align: str = "left",
 ) -> None:
-    """今K／現價／漲跌全部貼左上。右上不准再放這塊。"""
+    """今K／現價／漲跌貼在縮圖左邊的表頭帶，不壓主圖 K。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1723,7 +1743,7 @@ def render_biaoke_structure_png(
             win_from=str(work[0].get("date") or ""),
             win_to=str(work[-1].get("date") or ""),
             rect=_STOCK_LOCATOR_RECT,
-            title="黃底＝預估　橙框＝大圖　1～5＝下降壓往前推",
+            title="黃底＝預估　橙底＝大圖　1～5＝下降壓往前推",
             legs=loc_legs,
             forecast_n=_FUTURE,
             marks=loc_marks,
@@ -1903,7 +1923,7 @@ def chart_caption(
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
-    lines.append("右上縮圖：黃底＝預估（與大圖同一段），橙框＝大圖這段。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
+    lines.append("右上縮圖：黃底＝預估（最後一根之後），橙底＝大圖這段。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
     lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return "\n".join(x for x in lines if x)[:1100]
 

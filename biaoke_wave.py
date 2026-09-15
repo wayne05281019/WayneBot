@@ -946,7 +946,7 @@ def _load_twii_bars(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
         conn.row_factory = sqlite3.Row
         try:
             rows = conn.execute(
-                "SELECT date, open, high, low, close FROM index_daily "
+                "SELECT date, open, high, low, close, volume FROM index_daily "
                 "WHERE symbol='TWII' OR symbol='^TWII' "
                 "ORDER BY date DESC LIMIT ?",
                 (int(n),),
@@ -1039,7 +1039,7 @@ _SPAN_MARK = {
 _TWII_MAIN_BARS = 168
 _TWII_LONG_BARS = 560
 _TWII_FUTURE = 8
-_TWII_LOCATOR_RECT = (0.40, 0.668, 0.58, 0.308)
+_TWII_LOCATOR_RECT = (0.50, 0.668, 0.48, 0.308)
 _ABC_A_START = "20260623"
 _ABC_A_END = "20260729"
 
@@ -1635,16 +1635,30 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ymax = max(ymax, y_top + 280)
         ymin = min(ymin, y_bot - 280)
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-        fig, ax = plt.subplots(figsize=(16.2, 9.4), dpi=NAV_CHART_DPI)
+        import matplotlib.ticker as mticker
+
+        fig, (ax, axv) = plt.subplots(
+            2,
+            1,
+            figsize=(16.2, 10.8),
+            dpi=NAV_CHART_DPI,
+            sharex=True,
+            gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
+        )
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
+        axv.set_facecolor("#ffffff")
         ax.axvspan(n - 0.45, n + _TWII_FUTURE + 0.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
         ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
+        axv.axvspan(n - 0.45, n + _TWII_FUTURE + 0.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
+        axv.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
         x_gutter = n + 9.0
+        vol_colors = []
         for i in range(n):
             prev_c = closes[i - 1] if i else None
             up = candle_up_taiwan(closes[i], prev_c, opens[i])
             color = "#e53935" if up else "#00897b"
+            vol_colors.append(color)
             ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.2, zorder=3)
             y0, y1 = sorted((opens[i], closes[i]))
             ax.add_patch(
@@ -1658,6 +1672,19 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                     zorder=4,
                 )
             )
+        xs = list(range(n))
+        vols = [float(r.get("volume") or 0) for r in bars]
+        axv.bar(xs, vols, color=vol_colors, width=0.68, zorder=3, edgecolor="#ffffff", linewidth=0.2)
+        vmax = max(vols) if any(v > 0 for v in vols) else 1.0
+        axv.set_ylim(0, vmax * 1.45)
+        axv.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color="#1f2933")
+        axv.yaxis.tick_left()
+        axv.yaxis.set_label_position("left")
+        axv.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _p: f"{int(round(v)):,}"))
+        axv.tick_params(labelsize=10, left=True, right=False, length=5, width=0.8)
+        for lab in axv.get_yticklabels():
+            lab.set_fontproperties(_fp(10, "bold"))
+        axv.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
         colors = {
             "他原文C波最差": "#90a4ae",
             "9/3低右肩": "#546e7a",
@@ -1740,6 +1767,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             va="top",
         )
         ax.set_xlim(-0.6, n + 14)
+        axv.set_xlim(-0.6, n + 14)
         ax.set_ylim(ymin, ymax)
         ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
         from biaoke_chart import _axis_ticks
@@ -1752,12 +1780,12 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) == 8 else d)
         ticks.append(n - 1 + _TWII_FUTURE)
         labels.append("演算")
-        ax.set_xticks(ticks)
-        ax.set_xticklabels(labels, fontproperties=_fp(10, "bold"))
-        ax.tick_params(labelsize=10)
+        ax.tick_params(labelsize=10, bottom=False, labelbottom=False)
+        axv.set_xticks(ticks)
+        axv.set_xticklabels(labels, fontproperties=_fp(10, "bold"))
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.055, right=0.935, top=0.62, bottom=0.10)
+        fig.subplots_adjust(left=0.055, right=0.935, top=0.62, bottom=0.07)
         if long_bars and len(long_bars) > n + 16:
             loc_legs = locator_abc_legs(long_story)
             loc_marks: list = []
@@ -1773,7 +1801,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 win_from=str(bars[0].get("date") or ""),
                 win_to=str(bars[-1].get("date") or ""),
                 rect=_TWII_LOCATOR_RECT,
-                title="黃底＝預估　橙框＝大圖　1～5＝第五波高往前推",
+                title="黃底＝預估　橙底＝大圖　1～5＝第五波高往前推",
                 legs=loc_legs,
                 k_on_top=True,
                 forecast_n=_TWII_FUTURE,
@@ -1817,7 +1845,7 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     cap_bits = [
         "加權官方日K＋2026 ABC 轉折線（不是15分、不是介紹圖／決策卡）",
         "A＝6/23第五波高跌到7/29低；7/29同一點＝A完也是B起；B＝反彈到9/8高；C虛線＝9/8後還沒確認。",
-            "黃底＝預估，與大圖同一段（最後一根之後）。橙框只框大圖這段，不是預估。",
+            "黃底＝預估，與大圖同一段（最後一根之後）。橙底＝大圖這段，不是預估。下方成交量（張）。",
             "1～5＝6/23 第五波高確認後，把 4/9 主跌低之後的升段往前推；A 在綠線中間偏左，B 在藍線右手邊。",
         "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
         format_wave_now(db_path, n=420),

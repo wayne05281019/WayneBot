@@ -463,18 +463,20 @@ def test_locator_inset_marks_window():
     from biaoke_wave import render_twii_degree_png
 
     src = inspect.getsource(paint_locator_inset)
-    assert "橙框" in src
+    assert "橙底" in src
     assert "黃底" in src or "預估" in src
     assert "橫軸月份" in src
     assert "legs" in src
     assert "forecast_n" in src
     assert "marks" in src
     assert "win_from" in src
+    assert "_WINDOW_BG" in src
+    assert 'edgecolor="#ef6c00"' not in src
     from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
 
     assert _BARS >= 140
-    assert _STOCK_LOCATOR_RECT[0] <= 0.42
-    assert _STOCK_LOCATOR_RECT[2] >= 0.52
+    assert 0.46 <= _STOCK_LOCATOR_RECT[0] <= 0.52
+    assert _STOCK_LOCATOR_RECT[2] >= 0.44
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=0.94" in rsrc
@@ -536,6 +538,29 @@ def test_pressure_support_use_consecutive_pivots():
     lows = [10.0, 8.0, 9.0, 7.0, 7.4, 8.5, 9.2]
     assert _asc_low_pair([1, 3, 6], lows) == (3, 6)
     assert _asc_low_pair([1, 4], [10.0, 8.0, 9.0, 8.5, 7.0]) is None
+
+
+def test_impulse_support_after_down_pressure(tmp_path):
+    import os
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import _impulse_support_pair
+
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    bars = load_bars(db, "2383", n=168)
+    info = analyze_structure(bars)
+    assert info.get("down_pts")
+    assert info.get("up_pts"), "台光電下降壓確認後要用 2–4 低當上升撐"
+    (x1, y1, _d1), (x2, y2, _d2) = info["up_pts"]
+    assert y2 > y1
+    peak = int(info["down_pts"][0][0])
+    assert _impulse_support_pair(bars, peak) == (int(x1), int(x2))
+    out = str(tmp_path / "2383-support.png")
+    path = render_biaoke_structure_png(bars, out, sid="2383", name="台光電")
+    assert path
+    assert (tmp_path / "2383-support.png").stat().st_size > 24_000
 
 
 def test_infer_impulse_five_from_confirmed_peak():
