@@ -62,6 +62,7 @@ def test_welcome_teaches_chat_not_a_menu():
     assert "語音" in html or "麥克風" in html
     assert "不必打字" in html
     assert "我直接回" in html
+    assert "離開飆大" in html
     assert "勤誠" not in html
     assert format_biaoke_html("") == html
     assert format_biaoke_html() == html
@@ -176,9 +177,9 @@ def test_biaoke_page_has_no_inside_menu():
     assert "bk:see" not in src
     assert "怎麼觀察" not in src
     assert "問一檔" not in src
-    assert "_reply_menu" in src
+    assert "_biaoke_reply_menu" in src
     assert "reply_markup" in src
-    assert "_ensure_reply_menu_if_needed" in src
+    assert "_mark_menu_layout_ok" in src
     assert "send_action" in src
     assert "typing" in src
     assert "format_latest_focus" in src
@@ -203,11 +204,14 @@ def test_biaoke_page_has_no_inside_menu():
     whole = inspect.getsource(WayneTelegramBot)
     assert 'InlineKeyboardButton("怎麼觀察"' not in whole
     assert 'kind == "see"' in whole  # 舊訊息三顆還能答，只是不再畫選單
-    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_LAYOUT_VERSION
+    assert 'kind == "leave"' in whole
+    assert "MENU_BTN_LEAVE_BIAOKE" in whole
+    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_LEAVE_BIAOKE, MENU_LAYOUT_VERSION
 
     assert MENU_BTN_BIAOKE_FACE == "飆大"
+    assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "18"
+    assert MENU_LAYOUT_VERSION == "19"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
@@ -243,3 +247,80 @@ def test_two_uids_both_enter_biaoke_chat_without_submenu():
     assert bot._pending["11:11"] == "biaoke:chat"
     assert bot._pending["22:22"] == "biaoke:chat"
     assert bot._send_biaoke_page.await_count == 2
+
+
+def test_biaoke_keyboard_puts_leave_on_top():
+    from bot_servers import MENU_BTN_LEAVE_BIAOKE
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    bot._menu_compact_on = lambda uid="": False
+    kb = bot._biaoke_reply_menu()
+    assert [b.text for b in kb.keyboard[0]] == [MENU_BTN_LEAVE_BIAOKE]
+    assert len(kb.keyboard) == 3
+    main = bot._reply_menu()
+    assert len(main.keyboard) == 2
+    assert [b.text for b in main.keyboard[0]][0] != MENU_BTN_LEAVE_BIAOKE
+
+
+def test_leave_biaoke_clears_only_that_uid():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import MENU_BTN_LEAVE_BIAOKE
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {"11:11": "biaoke:chat", "22:22": "biaoke:chat"}
+    bot._pending_locks = {}
+    bot._menu_compact_on = MagicMock(return_value=False)
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._mark_menu_layout_ok = MagicMock()
+
+    def _actor(message, uid=""):
+        return f"{message.chat_id}:{uid or message.from_user.id}"
+
+    bot._actor_key = _actor
+
+    user = SimpleNamespace(id=11, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.chat_id = 11
+    msg.text = MENU_BTN_LEAVE_BIAOKE
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    assert "11:11" not in bot._pending
+    assert bot._pending["22:22"] == "biaoke:chat"
+    msg.reply_html.assert_awaited()
+    html = str(msg.reply_html.await_args.args[0])
+    assert "已離開" in html
+    assert "主選單" in html
+
+
+def test_screen_from_biaoke_clears_pending():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {"1:1": "biaoke:chat"}
+    bot._pending_locks = {}
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot.screen_cmd = AsyncMock()
+    user = SimpleNamespace(id=1, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.chat_id = 1
+    msg.text = "海選"
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    bot.screen_cmd.assert_awaited()
+    assert "1:1" not in bot._pending

@@ -377,7 +377,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 飆大</b>\n"
         "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去後打字或按麥克風講，都會自動聽懂再回資料。不必打字才能問。偉權／哥哥同一條路。食衣住行一句帶過。\n"
+        "• 怎麼用：按進去後打字或按麥克風講。用完按鍵盤最上「離開飆大」回兩排主選單，或直接按海選／持股／大盤。還在飆大時打字＝問飆大，不是查股兩張圖。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
@@ -757,6 +757,13 @@ MENU_BTN_BIAOKE_ALIASES = (
 )
 MENU_BTN_CARD_ALIASES = (MENU_BTN_CARD, "刷新上一檔", "決策卡")
 MENU_BTN_BACK_MAIN = "回主選單"
+MENU_BTN_LEAVE_BIAOKE = "離開飆大"
+MENU_BTN_LEAVE_BIAOKE_ALIASES = (
+    MENU_BTN_LEAVE_BIAOKE,
+    "離開飆客",
+    "退出飆大",
+    "跳出飆大",
+)
 MENU_BTN_BACK_STEP = "上一步"
 MENU_BTN_NEXT_PAGE = "下一批"
 MENU_BTN_PREV_PAGE = "上一批"
@@ -797,7 +804,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v16：上排最右改「飆大」；按進去直接對話，不放裡面選單。
 # v17：飆大兩個字上的圈拿掉；舊圈圈鍵盤仍認。
 # v18：v17 去圈後，只按飆大不會重掛 ReplyKeyboard，手機仍顯示舊圈圈。這版任何進飆大都會帶現在的兩排（沒圈）。
-MENU_LAYOUT_VERSION = "18"
+# v19：進飆大時鍵盤最上加「離開飆大」，用完一鍵回兩排主選單，不必在十四顆裡找出口。
+MENU_LAYOUT_VERSION = "19"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1228,6 +1236,21 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
+    def _biaoke_reply_menu(self, uid: str = ""):
+        """還在飆大：最上整排離開，下面仍是原來的功能鍵（按了就離開飆大）。"""
+        base = self._reply_menu(uid)
+        rows = [[KeyboardButton(MENU_BTN_LEAVE_BIAOKE)]] + list(base.keyboard)
+        placeholder = "還在飆大。打字＝問飆大。按「離開飆大」回主選單。"
+        try:
+            return ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=True,
+                is_persistent=True,
+                input_field_placeholder=placeholder,
+            )
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
     def _menu_uid_from_message(self, message, uid: str = "") -> str:
         if uid:
             return str(uid)
@@ -1468,6 +1491,20 @@ class WayneTelegramBot:
         else:
             text = "已回到兩排主選單。"
         await message.reply_html(text, reply_markup=self._reply_menu(uid))
+
+    async def _leave_biaoke(self, message, uid: str) -> None:
+        """用完飆大：清對話狀態、把鍵盤換回兩排主選單。兩人同一顆。"""
+        actor = self._actor_key(message, uid=uid)
+        self._pending.pop(actor, None)
+        if uid:
+            try:
+                self._mark_menu_layout_ok(uid)
+            except Exception:
+                pass
+        await message.reply_html(
+            "已離開<b>飆大</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡。",
+            reply_markup=self._reply_menu(uid),
+        )
 
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
@@ -3331,11 +3368,12 @@ class WayneTelegramBot:
         from biaoke_desk import format_biaoke_html
 
         uid = str(uid or self._uid_from_message(message) or "")
-        try:
-            await self._ensure_reply_menu_if_needed(message, uid)
-        except Exception:
-            logger.exception("飆大刷新鍵盤略過")
         self._enter_biaoke_chat(message, uid)
+        if uid:
+            try:
+                self._mark_menu_layout_ok(uid)
+            except Exception:
+                pass
         q = (ask or "").strip()
         actor = self._actor_key(message, uid=uid)
         if not hasattr(self, "_biaoke_hist") or self._biaoke_hist is None:
@@ -3378,7 +3416,7 @@ class WayneTelegramBot:
                 mark_biaoke_read(uid, self.db_path)
             except Exception:
                 pass
-        kb = self._reply_menu(uid)
+        kb = self._biaoke_reply_menu(uid)
         if not parts:
             await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
             return
@@ -3459,7 +3497,7 @@ class WayneTelegramBot:
                 await message.reply_photo(
                     photo=f,
                     caption=cap[:900],
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._biaoke_reply_menu(uid),
                 )
         except Exception:
             logger.exception("飆大結構圖送出失敗")
@@ -3500,7 +3538,7 @@ class WayneTelegramBot:
                 await message.reply_photo(
                     photo=f,
                     caption=cap[:900],
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._biaoke_reply_menu(uid),
                 )
         except Exception:
             logger.exception("飆大加權位階圖送出失敗")
@@ -3535,7 +3573,7 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("飆大原文附圖索引略過")
             return
-        kb = self._reply_menu(uid)
+        kb = self._biaoke_reply_menu(uid)
         sent = 0
         for row in rows:
             url = str(row.get("url") or "").strip()
@@ -4193,7 +4231,13 @@ class WayneTelegramBot:
             await self.backup_cmd(update, context)
             return
         if text == MENU_BTN_BACK_MAIN:
-            await self._restore_main_menu(update.message, uid)
+            if str(self._pending.get(actor) or "") in ("biaoke:ask", "biaoke:chat"):
+                await self._leave_biaoke(update.message, uid)
+            else:
+                await self._restore_main_menu(update.message, uid)
+            return
+        if text in MENU_BTN_LEAVE_BIAOKE_ALIASES:
+            await self._leave_biaoke(update.message, uid)
             return
         if text in (MENU_BTN_STREAK, "連買區域", "外資連買區域"):
             logger.info("主選單：連買區 uid=%s", uid)
@@ -5554,6 +5598,10 @@ class WayneTelegramBot:
             return
         if data.startswith("bk:"):
             kind = data[3:]
+            if kind == "leave":
+                await q.answer("離開飆大")
+                await self._leave_biaoke(q.message, uid)
+                return
             if kind == "see":
                 await q.answer("怎麼觀察")
                 await self._send_biaoke_page(q.message, ask="怎麼觀察", uid=uid)
