@@ -3358,9 +3358,11 @@ class WayneTelegramBot:
         else:
             html = ""
             try:
-                from biaoke_digest import format_latest_focus
+                from biaoke_digest import format_latest_focus, take_unread_digest
 
-                html = format_latest_focus(self.db_path)
+                html = take_unread_digest(uid, self.db_path)
+                if not html:
+                    html = format_latest_focus(self.db_path)
             except Exception:
                 html = ""
             if html:

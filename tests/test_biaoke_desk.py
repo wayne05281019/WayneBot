@@ -182,7 +182,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert "send_action" in src
     assert "typing" in src
     assert "format_latest_focus" in src
-    assert "take_unread_digest" not in src
+    assert "take_unread_digest" in src
     assert "reflow=False" in src
     assert "_send_biaoke_structure_chart" in src
     assert "_send_biaoke_origin_charts" in src

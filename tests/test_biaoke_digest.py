@@ -51,6 +51,9 @@ def test_unread_dedupes_same_post_and_splits_users(tmp_path):
     assert "散熱最強" not in html
     assert "不是南亞科" in html
     assert "更新至 11:43" in html
+    assert "對原文用" in html
+    assert "官方加權盤中現價" not in html
+    assert "程式標籤" not in html
     mark_biaoke_read(wayne, db, now=datetime(2026, 9, 11, 11, 44, tzinfo=ZoneInfo("Asia/Taipei")))
     assert unread_count(wayne, db) == 0
     assert unread_count(bro, db) == 2

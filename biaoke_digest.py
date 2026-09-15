@@ -216,7 +216,7 @@ def format_unread_digest(
     *,
     now: Optional[datetime] = None,
 ) -> str:
-    """未讀期間同一篇抓很多次，這裡只留最新再口語化。"""
+    """未讀期間同一篇抓很多次，這裡只留最新再一起顯示。按飆大才看。"""
     dt = now or taipei_now()
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=TAIPEI)
@@ -236,8 +236,8 @@ def format_unread_digest(
         reverse=True,
     )
     bits: List[str] = []
-    for ev in rows[:8]:
-        body = _oral_body(str(ev.get("text") or ""))
+    for ev in rows[:12]:
+        body = _oral_body(str(ev.get("text") or ""), 360)
         if not body:
             continue
         day = str(ev.get("date") or "").strip()
@@ -255,6 +255,7 @@ def format_unread_digest(
         "今天飆大重點就是：\n\n"
         + html_escape(blob)
         + f"\n\n（以上資料更新至 {clock}）"
+        + "\n對原文用。不是買訊。"
     )
 
 

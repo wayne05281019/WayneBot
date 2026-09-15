@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """盤中／夜盤緊急：自己研判要不要跳過飆大鈕，直接推進偉權＋哥哥對話框。
 
-促發不是一組固定名詞。大盤急跌七百點＋「台積電最值得抄底」只是一種例子。
-下次他換句話說、換一種位階改口、或夜盤先崩，也要能判出來。
-看四件事疊在一起：指數力度、這則在做什麼（出清／抄底／改口／通知／命令）、
-跟上則比有沒有翻面、主音（波浪）有沒有疊到他沒講完的輔助。
-波浪他自己說沒辦法 100%；確認低點還要台積電量價、費半先行、夜盤是否過壓。
-單講趨勢向上、初步止訊號、右肩有守＝還不到確認，不推。
-沒把握才問對話線一句 yes/no。不是買訊。同一則不重覆推。社團不推。
+抓到的主文／自回一律先進未讀匣，按「飆大」才一口看。
+直推只留兩類：現在差不多到底／抄底窗口，或現在就要出清。
+如果／萬一／怕＋賣出、舊回憶賣光、發文通知、命令句、加權跌幾點，都不直推。
+確認低點仍要主音疊輔助；單講趨勢向上、初步止訊號、右肩有守＝還不到確認。
+不是買訊。同一則不重覆推。社團不推。
 """
 from __future__ import annotations
 
@@ -22,8 +20,6 @@ from tg_layout import html_escape
 logger = logging.getLogger("WayneBot.BiaokeAlert")
 
 DROP_POINTS = 700.0
-PUSH_SCORE = 5
-GRAY_SCORE = 3
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_alerts (
@@ -36,10 +32,18 @@ CREATE TABLE IF NOT EXISTS biaoke_alerts (
 
 # 族＝意圖，不是單一名詞。新詞只要落在同一族就會加分。
 _EXIT = re.compile(
-    r"(出清|一股不留|全部賣|全部出|先回收|不要再碰|不要再布局|"
+    r"(出清|一股不留|全部賣(?!光)|全部出|先回收|不要再碰|不要再布局|"
     r"不要再介入|不要再買|停損|減碼一半|減碼\s*1\s*/\s*2|"
     r"調節總持股|今天不要有動作|不能介入布局|"
     r"逃命(?!波))"
+)
+_HYPOTHETICAL_ACT = re.compile(
+    r"(如果|萬一|假如|要是|若是).{0,80}"
+    r"(賣出|先賣|抽出|出清|逃命|先回收|減碼|一股不留)"
+)
+_HISTORICAL_SELL = re.compile(
+    r"(幾乎全部賣光|全部賣光|賣光只留|"
+    r"那個時候.{0,40}(賣|出)|過年前.{0,40}(賣|出)|當時.{0,16}(賣|出清))"
 )
 _ENTER = re.compile(
     r"(抄底|開始介入|分批布局|分三次|第一次抄|買跌不買漲|"
@@ -333,62 +337,20 @@ def stance_flip(text: str, prev_text: str = "") -> Tuple[int, List[str]]:
     return 0, []
 
 
-def _llm_yes(text: str, move: Dict[str, Any]) -> Optional[bool]:
-    """灰區才問。pytest／沒金鑰不打。只准 yes/no。"""
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        return None
-    try:
-        from biaoke_live import live_enabled, live_endpoint, live_key, live_models
-    except Exception:
-        return None
-    if not live_enabled():
-        return None
-    key = live_key()
-    if not key:
-        return None
-    drop = move.get("drop") or 0
-    pct = move.get("pct") or 0
-    prompt = (
-        "只判斷這則飆客新文要不要立刻推到兩個手機（使用者可能沒按飆大會錯過）。"
-        "緊急＝大盤急轉、出清、抄底、位階改口、現在就做；"
-        "或他用主音（波浪）再疊台積電量價／費半先行／夜盤過壓，確認低點或大 B 波啟動。"
-        "單講趨勢向上、初步止訊號、右肩有守、日常觀盤、族群輪動不要。"
-        "用詞不一定是抄底／七百點／台積電。只回 yes 或 no。\n"
-        f"加權相對昨收跌{drop}點（{pct}%）\n正文：{_clip(text, 420)}"
-    )
-    import requests
+def _clear_now(blob: str) -> bool:
+    """現在就要出清。如果／萬一／舊回憶賣光不算。"""
+    if not _EXIT.search(blob):
+        return False
+    if _HYPOTHETICAL_ACT.search(blob) or _HISTORICAL_SELL.search(blob):
+        return False
+    return True
 
-    url = live_endpoint()
-    for model in live_models()[:1]:
-        try:
-            res = requests.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": "只回 yes 或 no。"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 8,
-                },
-                timeout=8.0,
-            )
-            body = (res.json() or {}).get("choices") or []
-            msg = ((body[0] or {}).get("message") or {}).get("content") or ""
-            ans = str(msg).strip().lower()
-            if ans.startswith("yes"):
-                return True
-            if ans.startswith("no"):
-                return False
-        except Exception:
-            logger.debug("緊急研判對話線略過", exc_info=True)
-            return None
-    return None
+
+def _bottom_now(blob: str) -> bool:
+    """現在差不多到底／抄底窗口。如果＋賣出那類不算。"""
+    if _HYPOTHETICAL_ACT.search(blob):
+        return False
+    return bool(_ENTER.search(blob) or _MAIN_A_LOW.search(blob))
 
 
 def judge_emergency(
@@ -398,7 +360,7 @@ def judge_emergency(
     prev_text: str = "",
     kind: str = "post",
 ) -> Dict[str, Any]:
-    """自己研判。回 push / score / reasons。"""
+    """自己研判。回 push / score / reasons。直推只留出清／到底。"""
     blob = str(text or "").strip()
     if not blob:
         return {"push": False, "score": 0, "reasons": []}
@@ -415,33 +377,26 @@ def judge_emergency(
     stack = confirm_stack(blob)
     s4 = int(stack.get("score") or 0)
     w4 = list(stack.get("reasons") or [])
-    hard_move = bool(
-        _EXIT.search(blob) or _ENTER.search(blob) or _RETRACT.search(blob) or _COMMAND.search(blob)
-    )
-    # 還沒確認末端：這路不加分。沒有出清／抄底／改口就不要靠觀盤句推。
     if stack.get("veto") and not stack.get("confirmed"):
         s4 = 0
-        if not hard_move and s1 < 4:
-            reasons = w1 + w2 + w3 + w4
-            return {
-                "push": False,
-                "score": s1 + s2 + s3,
-                "reasons": reasons or ["還不到確認末端，主音不夠"],
-            }
         w4 = [x for x in w4 if "疊成確認" not in x]
     score = s1 + s2 + s3 + s4
     reasons = w1 + w2 + w3 + w4
-    # 急跌但只是日常觀盤 → 不吵
+    if _HYPOTHETICAL_ACT.search(blob):
+        reasons.append("如果／萬一情境，先進未讀匣")
+    if _HISTORICAL_SELL.search(blob):
+        reasons.append("舊回憶賣光，不算出清")
+    clear_now = _clear_now(blob)
+    bottom_now = _bottom_now(blob)
+    confirmed = bool(stack.get("confirmed"))
+    push = bool(confirmed or clear_now or bottom_now)
+    if stack.get("veto") and not (confirmed or clear_now or bottom_now):
+        push = False
+        if not reasons:
+            reasons = ["還不到確認末端，主音不夠"]
     if s1 >= 4 and s2 == 0 and s3 == 0 and s4 == 0:
-        return {"push": False, "score": score, "reasons": reasons + ["急跌但這則沒有特別判斷"]}
-    push = score >= PUSH_SCORE or bool(stack.get("confirmed"))
-    if not push and score >= GRAY_SCORE and (s1 >= 2 or s2 >= 3 or s4 >= 3):
-        llm = _llm_yes(blob, mkt if isinstance(mkt, dict) else {})
-        if llm is True:
-            push = True
-            reasons.append("對話線判定這則不能錯過")
-        elif llm is False:
-            reasons.append("對話線判定還不到推播")
+        push = False
+        reasons = reasons + ["急跌但這則沒有特別判斷"]
     return {"push": bool(push), "score": int(score), "reasons": reasons}
 
 
@@ -491,31 +446,17 @@ def _mark(db_path: str, post_id: str, score: int, reasons: Sequence[str]) -> Non
 
 
 def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, Any]) -> str:
+    """手機上只留他原文。加權現價、程式標籤不進對話框。"""
     kind = "樓下" if (event.get("kind") or "") == "reply" else "主文"
-    drop = float(move.get("drop") or 0)
-    pct = float(move.get("pct") or 0)
-    px = move.get("px") or ""
-    y = move.get("y") or ""
-    bits = ["<b>飆大盤中補充</b>"]
-    if move.get("ok"):
-        way = "跌" if drop > 0 else ("漲" if drop < 0 else "平")
-        pts = abs(int(round(drop)))
-        y_s = html_escape(str(y))
-        px_s = html_escape(str(px))
-        pct_s = html_escape(str(pct))
-        bits.append(
-            f"官方加權盤中現價（不是他講的，也不是昨天收盤跌幅）："
-            f"相對昨收 {y_s} {way} {pts} 點（{pct_s}%／現 {px_s}）"
-        )
-    tags = [str(x) for x in (judged.get("reasons") or []) if x]
-    if tags:
-        bits.append("程式標籤（不是他原文）：" + html_escape("、".join(tags[:4])))
-    bits.append(
-        f"他原文 {html_escape(str(event.get('date') or ''))} "
-        f"{html_escape(str(event.get('time') or ''))} {kind}："
-    )
-    bits.append(html_escape(_clip(str(event.get("text") or ""), 420)))
-    bits.append("對原文用。不是買訊。")
+    bits = [
+        "<b>飆大盤中補充</b>",
+        (
+            f"他原文 {html_escape(str(event.get('date') or ''))} "
+            f"{html_escape(str(event.get('time') or ''))} {kind}："
+        ),
+        html_escape(_clip(str(event.get("text") or ""), 420)),
+        "對原文用。不是買訊。",
+    ]
     return "\n".join(bits)
 
 
@@ -621,7 +562,14 @@ CREATE TABLE IF NOT EXISTS biaoke_push_wipe (
     done_at TEXT NOT NULL DEFAULT ''
 );
 """
-OLD_PUSH_MARKS = ("沒過按鈕", "怕錯過才直接推", "研判：")
+OLD_PUSH_MARKS = (
+    "沒過按鈕",
+    "怕錯過才直接推",
+    "研判：",
+    "官方加權盤中現價",
+    "程式標籤（不是他原文）",
+)
+WIPE_RECIPE = "labels-v1"
 
 
 def _push_db() -> str:
@@ -745,7 +693,7 @@ def wipe_biaoke_phone_pushes(
 
 
 def wipe_biaoke_phone_pushes_once() -> Dict[str, Any]:
-    """開機一天一次。只清舊格式（沒過按鈕／研判：），不清查股圖、不清新的盤中補充。"""
+    """開機按配方一天一次。清舊嚇人格式與帶官方現價／程式標籤的堆疊；不清查股圖、不清新的原文補充。"""
     empty = {"chats": 0, "deleted": 0, "scanned": 0, "skipped": "once"}
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return empty
@@ -753,7 +701,7 @@ def wipe_biaoke_phone_pushes_once() -> Dict[str, Any]:
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    day = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    day = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d") + ":" + WIPE_RECIPE
     if db:
         try:
             conn = sqlite3.connect(db, timeout=30.0)

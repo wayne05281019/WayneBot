@@ -47,7 +47,7 @@ def test_degree_retract_plus_night_crash():
         "夜盤目前大跌，最樂觀第五波兩次擴延已經沒了，改走 A-c。",
         move={"ok": False, "drop": 0, "pct": 0},
     )
-    assert j["push"]
+    assert not j["push"]
 
 
 def test_small_dip_chat_is_not_emergency():
@@ -158,14 +158,13 @@ def test_escape_wave_caution_is_not_exit_command():
     assert "他原文" in html
     assert "10:47" in html
     assert "漲不動" in html
-    assert "不是他講的" in html
-    assert "不是昨天收盤跌幅" in html
     assert "研判：" not in html
     assert "沒過按鈕" not in html
     assert "怕錯過" not in html
     assert "飆大盤中補充" in html
     assert "對原文用" in html
-    assert "程式標籤（不是他原文）" in html or "官方加權盤中現價" in html
+    assert "程式標籤（不是他原文）" not in html
+    assert "官方加權盤中現價" not in html
 
 
 def test_stand_back_is_not_an_order():
@@ -204,3 +203,46 @@ def test_worst_case_almost_never_is_not_an_alarm():
         move=_move(120),
     )
     assert not j2["push"]
+
+
+def test_screenshot_old_replies_are_inbox_not_push():
+    from biaoke_alert import format_alert
+
+    move = _move(351, y=45862.52)
+    light = (
+        "最一開始認識飆大就是光聖時期，也是我第一檔玩超過百趴的個股。"
+        "光聖是我過年前封關93介入，過年後不到10個交易日，7根漲停板，"
+        "可是那個時候波段功力比較差，幾乎全部賣光只留一張光聖，"
+        "後面還有2段更大的波段。"
+    )
+    if_c3 = (
+        "如果C-2 轉C-3一定要先將非龍頭股先賣出一趟，因為回檔比較深。"
+        "應該星期二~星期四夜盤，這三天就知道答案了。"
+        "因為只要C走3段就好，應該會落在43000~44000之間，拉回也不少。"
+    )
+    maybe_run = (
+        "今天沒買到 就算了，明天大盤反彈萬一是C-2是要逃命的，"
+        "但現在完全看不出來，先等美股開盤"
+    )
+    for text in (light, if_c3, maybe_run):
+        j = judge_emergency(text, move=move)
+        assert not j["push"], text[:40]
+    db_stats = maybe_push_drop_alert(
+        "",
+        [
+            {"id": "a", "kind": "reply", "date": "2026-09-14", "time": "18:25", "text": light},
+            {"id": "b", "kind": "reply", "date": "2026-09-14", "time": "16:21", "text": if_c3},
+            {"id": "c", "kind": "reply", "date": "2026-09-14", "time": "16:27", "text": maybe_run},
+        ],
+        move=move,
+    )
+    assert db_stats["pushed"] == 0
+    html = format_alert(
+        {"kind": "reply", "date": "2026-09-14", "time": "18:25", "text": light},
+        {"push": False, "score": 0, "reasons": ["出清／逃命／先回收"]},
+        move,
+    )
+    assert "他原文" in html
+    assert "幾乎全部賣光" in html
+    assert "官方加權盤中現價" not in html
+    assert "程式標籤" not in html
