@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
-盤中 10 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘——趕新主文，也重讀舊文樓中樓。
-收盤後、凌晨、週末、國定假、颱風停市都每 1 小時——他常不發新主文，改在最近幾篇樓下補觀點或改主文。
-樓中樓＝貼文討論串裡飆大本人回覆在第一層（直接回主文）及第二層（回在別人留言裡）。
-舊貼文＝個人頁最接近的那一則樓下留言；開盤前只重讀這一則，不往回掃很多篇。
-討論串平時仍重讀個人頁最新 3 篇。新主文仍從個人頁偵測，第一次進來連樓下也收。
-主文走公開 HTML。樓下自回走同學會網頁同一條公開訪客 grant，再打 /api/mach/.../Comments。
-對圖以主文點名的股票為準；附圖對不上主文就略過該圖，不准把誤標寫進庫。
-圖上時間戳用來鎖定主文那檔／那件事的當下，再對官方量價；不准 OCR，live 沒目視時用發文時間。
-不准把 Bearer／localStorage／帳密寫進 git。訪客 token 只活在行程裡；CMONEY_AUTH_TOKEN 只當備援。
-不准放 Bearer 字串當密鑰進 repo。訪客／備援都失敗：公開 HTML 沒留言正文就不假裝聽到。社團不抓。
-只收飆大本人主文＋一／二層樓中樓（含回在別人留言裡的）＋他自己附的圖。
-路人留言不收。抓到新文立刻對官方 K 建檔，不清空再等。
+盤中 10 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘。
+收盤後、凌晨、週末、國定假、颱風停市都每 1 小時。
+主文通常只改最新一篇；討論串也多半回在最新一篇，有時回在很早的留言裡（含回文裡的回文）。
+平時只重讀最新一篇主文＋最新一篇討論串。最新一篇是剛發的、或這次才第一次掃到，才連前一篇樓下一起收。
+樓中樓＝飆大本人一／二層（含回在別人留言裡、回文裡的回文）。路人正文不收。引號裡不是他的話。
+主文走公開 HTML。樓下自回走同學會公開訪客 grant 打 Comments／Replies JSON。
+對圖以主文點名的股票為準；附圖對不上主文就略過該圖。
+不准把 Bearer／localStorage／帳密寫進 git。不准放 Bearer 字串當密鑰進 repo。CMONEY_AUTH_TOKEN 只當備援。
+社團不抓。抓到新文立刻對官方 K 建檔，並做成判斷卡接到神經元。
 """
 from __future__ import annotations
 
@@ -60,8 +57,9 @@ PREOPEN_EVERY_SEC = 5 * 60  # 交易日 08:00–09:00 每五分鐘
 PREOPEN_FROM_MIN = 8 * 60
 PREOPEN_UNTIL_MIN = 9 * 60
 AFTER_UNTIL_HOUR = 3  # 舊常數：排程已改成全天有抓，不再當停止線
-REFRESH_LATEST = 3  # 平時重讀最新 3 篇樓下
-REFRESH_PREOPEN = 1  # 開盤前舊貼文＝最接近的一則樓下第一層／第二層
+REFRESH_LATEST = 2  # 視窗：最新兩則。平時只重讀最新一篇主文＋討論串
+REFRESH_PREOPEN = 2  # 同一套；剛發新主文才連前一篇樓下
+FRESH_POST_HOURS = 8  # 「剛剛發的」：這幾小時內才連前一篇討論串
 GUEST_TOKEN_URL = "https://www.cmoney.tw/api/identity/token"
 GUEST_CLIENT_ID = "cmstockcommunity-web"
 GUEST_GRANT_TYPE = "guest"
@@ -484,10 +482,33 @@ def in_preopen_window(now: Optional[datetime] = None) -> bool:
 
 
 def refresh_latest_now(now: Optional[datetime] = None) -> int:
-    """開盤前只重讀最接近那一則樓下；其餘時間仍重讀最新 3 篇。"""
-    if in_preopen_window(now):
-        return REFRESH_PREOPEN
+    """掃窗固定最新兩則。真正重讀哪幾串由 ingest 依「剛發／第一次看到」決定。"""
     return REFRESH_LATEST
+
+
+def _row_is_fresh(
+    row: Optional[Dict[str, Any]],
+    now: Optional[datetime] = None,
+    *,
+    hours: int = FRESH_POST_HOURS,
+) -> bool:
+    """最新主文是剛剛發的才連前一篇樓下。沒日期就不當剛發。"""
+    if not row:
+        return False
+    day = str(row.get("date") or "")
+    hm = str(row.get("time") or "00:00") or "00:00"
+    try:
+        posted = datetime.strptime(f"{day} {hm[:5]}", "%Y-%m-%d %H:%M").replace(
+            tzinfo=TAIPEI
+        )
+    except ValueError:
+        return False
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TAIPEI)
+    else:
+        dt = dt.astimezone(TAIPEI)
+    return (dt - posted) <= timedelta(hours=max(1, int(hours)))
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
@@ -888,27 +909,34 @@ def parse_api_author_replies(
     now: Optional[datetime] = None,
     nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
-    """JSON 留言只收飆大本人。路人樓裡的自回（二層）仍收。"""
+    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，當二層。"""
     nested_by_id = nested_by_id or {}
     out: List[Dict[str, Any]] = []
     seen = set()
-    for cm in _comment_list(payload):
-        if _api_is_author(cm):
-            row = _reply_row(cm, parent_id=parent_id, layer=1, now=now)
-            if row and row["text"] not in seen:
-                seen.add(row["text"])
-                out.append(row)
-        kids = list(_api_children(cm))
-        extra = nested_by_id.get(_api_comment_id(cm) or "") or []
-        for sub in kids + extra:
-            if not _api_is_author(sub):
+
+    def walk(items: Sequence[Any], layer: int) -> None:
+        for cm in items:
+            if not isinstance(cm, dict):
                 continue
-            row = _reply_row(sub, parent_id=parent_id, layer=2, now=now)
-            if row and row["text"] not in seen:
-                seen.add(row["text"])
-                out.append(row)
-        if len(out) >= 40:
-            break
+            if _api_is_author(cm):
+                row = _reply_row(cm, parent_id=parent_id, layer=layer, now=now)
+                if row and row["text"] not in seen:
+                    seen.add(row["text"])
+                    out.append(row)
+            cid = _api_comment_id(cm)
+            kids = list(_api_children(cm))
+            extra = nested_by_id.get(cid or "") or []
+            if extra:
+                have = {_api_comment_id(k) for k in kids}
+                for sub in extra:
+                    sid = _api_comment_id(sub)
+                    if sid and sid in have:
+                        continue
+                    kids.append(sub)
+            if kids:
+                walk(kids, 2)
+
+    walk(_comment_list(payload), 1)
     return out
 
 
@@ -1042,6 +1070,71 @@ def fetch_author_replies_api(
     return []
 
 
+def _merge_comment_kids(
+    inline: Sequence[Any], extra: Sequence[Any]
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for cm in list(inline or []) + list(extra or []):
+        if not isinstance(cm, dict):
+            continue
+        cid = _api_comment_id(cm)
+        key = cid or f"anon:{len(out)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(cm)
+    return out
+
+
+def _fetch_replies_payload(
+    sess: requests.Session, aid: str, cid: str, auth: str
+) -> tuple[List[Dict[str, Any]], int]:
+    extra, extra_status = _get_json_resp(
+        sess,
+        f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
+        f"?fetch=-50",
+        timeout=_COMMENT_API_TIMEOUT,
+        token=auth,
+    )
+    kids = _comment_list(extra) if extra is not None else []
+    if not kids and isinstance(extra, dict):
+        kids = _api_children(extra)
+    return kids, extra_status
+
+
+def _fill_nested_replies(
+    sess: requests.Session,
+    aid: str,
+    auth: str,
+    comments: Sequence[Dict[str, Any]],
+) -> tuple[Dict[str, List[Dict[str, Any]]], int]:
+    """缺的樓中樓再打 Replies。回文裡還有回文也走一遍。"""
+    nested: Dict[str, List[Dict[str, Any]]] = {}
+    status = 200
+    queue: List[Dict[str, Any]] = [c for c in comments if isinstance(c, dict)]
+    seen: set[str] = set()
+    pulls = 0
+    while queue and pulls < 80:
+        cm = queue.pop(0)
+        cid = _api_comment_id(cm)
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        kids = list(_api_children(cm))
+        count = _api_child_count(cm)
+        if count > len(kids):
+            extra, extra_status = _fetch_replies_payload(sess, aid, cid, auth)
+            pulls += 1
+            if extra_status not in (0, 200):
+                status = extra_status
+            kids = _merge_comment_kids(kids, extra)
+        if kids:
+            nested[cid] = kids
+            queue.extend(kids)
+    return nested, status
+
+
 def _fetch_author_replies_with_token(
     aid: str,
     auth: str,
@@ -1052,25 +1145,9 @@ def _fetch_author_replies_with_token(
     comments, status = _fetch_comment_pages(sess, aid, auth)
     if status != 200:
         return [], status
-    nested: Dict[str, List[Dict[str, Any]]] = {}
-    for cm in comments:
-        cid = _api_comment_id(cm)
-        if not cid or _api_children(cm) or _api_child_count(cm) <= 0:
-            continue
-        extra, extra_status = _get_json_resp(
-            sess,
-            f"https://www.cmoney.tw/api/mach/api/Article/{aid}/Comment/{cid}/Replies"
-            f"?fetch=-50",
-            timeout=_COMMENT_API_TIMEOUT,
-            token=auth,
-        )
-        if extra_status not in (0, 200):
-            status = extra_status
-        kids = _comment_list(extra) if extra is not None else []
-        if not kids and isinstance(extra, dict):
-            kids = _api_children(extra)
-        if kids:
-            nested[cid] = kids
+    nested, nest_status = _fill_nested_replies(sess, aid, auth, comments)
+    if nest_status not in (0, 200):
+        status = nest_status
     rows = parse_api_author_replies(
         comments, parent_id=aid, now=now, nested_by_id=nested
     )
@@ -1169,14 +1246,14 @@ def ingest_public_posts(
     max_ids: int = 12,
     refresh_latest: int = REFRESH_LATEST,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋指定篇數的飆大一／二層回覆。失敗不改海選。
+    """抓公開個人頁最新文＋最新討論串的飆大一／二層回覆。失敗不改海選。
 
     融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
     正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
     corpus_index.json 不准當起點、不准寫回。
-    討論串只重讀個人頁最新 refresh_latest 篇（平時 3；開盤前＝最接近的 1 則）。
-    新 id 仍會抓主文，第一次進來連樓下第一層／第二層也收。
+    已知主文：只重讀最新一篇正文。討論串平時只收最新一篇（含回在很早留言、回文裡的回文）。
+    最新一篇是剛發的、或這次第一次掃到，才連前一篇樓下。新 id 第一次進來連樓下也收。
     """
     dest = str(corpus_path or "").strip()
     dbp = str(db_path or "").strip()
@@ -1228,50 +1305,71 @@ def ingest_public_posts(
     replies = 0
     touched: List[str] = []
     events: List[Dict[str, Any]] = []
-    refresh_n = max(1, min(int(refresh_latest), max(1, len(ids))))
+    window = max(1, min(int(refresh_latest or REFRESH_LATEST), 2))
+    prev_thread = False
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
-        if known and i >= refresh_n:
+        if not known:
+            want_body = i < window
+            want_thread = i < window
+            if i == 0:
+                prev_thread = True
+        else:
+            want_body = i == 0
+            want_thread = i == 0 or (i == 1 and prev_thread)
+        if not want_body and not want_thread:
             continue
-        try:
-            html_text = fetch_html(ARTICLE_URL.format(aid=aid), sess)
-            if not html_text:
-                continue
-            row = parse_article_html(aid, html_text)
-        except Exception:
-            logger.debug("飆大單篇失敗 id=%s", aid, exc_info=True)
-            continue
-        stats["fetched"] += 1
+        html_text = ""
+        row: Optional[Dict[str, Any]] = None
         hit = ""
-        if row:
-            hit = _merge_row(posts, by_id, row)
-            if hit:
-                touched.append(str(row.get("id") or aid))
-                events.append(dict(row))
-            if hit == "added":
-                added += 1
-            elif hit == "updated":
-                updated += 1
-        if i < refresh_n or hit == "added":
-            api_reps = []
+        if want_body:
             try:
-                api_reps = fetch_author_replies_api(str(aid), sess)
+                html_text = fetch_html(ARTICLE_URL.format(aid=aid), sess)
+                if html_text:
+                    row = parse_article_html(aid, html_text)
             except Exception:
-                logger.debug("飆大留言 JSON 失敗 id=%s", aid, exc_info=True)
-            html_reps = parse_author_replies(html_text, parent_id=str(aid))
-            by_text = {}
-            for rep in html_reps + api_reps:
-                key = str(rep.get("id") or "") or str(rep.get("text") or "")
-                if key:
-                    by_text[key] = rep
-            for rep in by_text.values():
-                hit = _merge_row(posts, by_id, rep)
+                logger.debug("飆大單篇失敗 id=%s", aid, exc_info=True)
+                html_text = ""
+                row = None
+            if html_text:
+                stats["fetched"] += 1
+            if row:
+                hit = _merge_row(posts, by_id, row)
                 if hit:
-                    replies += 1
-                    rid = str(rep.get("id") or "")
-                    if rid:
-                        touched.append(rid)
-                    events.append(dict(rep))
+                    touched.append(str(row.get("id") or aid))
+                    events.append(dict(row))
+                if hit == "added":
+                    added += 1
+                    if i == 0:
+                        prev_thread = True
+                elif hit == "updated":
+                    updated += 1
+            stamp = row or by_id.get(aid)
+            if i == 0 and _row_is_fresh(stamp):
+                prev_thread = True
+        if not want_thread:
+            continue
+        api_reps = []
+        try:
+            api_reps = fetch_author_replies_api(str(aid), sess)
+        except Exception:
+            logger.debug("飆大留言 JSON 失敗 id=%s", aid, exc_info=True)
+        html_reps = (
+            parse_author_replies(html_text, parent_id=str(aid)) if html_text else []
+        )
+        by_text = {}
+        for rep in html_reps + api_reps:
+            key = str(rep.get("id") or "") or str(rep.get("text") or "")
+            if key:
+                by_text[key] = rep
+        for rep in by_text.values():
+            rhit = _merge_row(posts, by_id, rep)
+            if rhit:
+                replies += 1
+                rid = str(rep.get("id") or "")
+                if rid:
+                    touched.append(rid)
+                events.append(dict(rep))
     n_post = sum(1 for p in posts if (p.get("kind") or "post") != "reply")
     if dbp:
         ensure_biaoke_posts_table(dbp)

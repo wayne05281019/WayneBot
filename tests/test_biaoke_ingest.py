@@ -188,8 +188,8 @@ def test_ingest_hook_is_on_product_clocks():
     assert AFTER_EVERY_SEC == 1 * 60 * 60
     assert PREOPEN_EVERY_SEC == 5 * 60
     assert AFTER_UNTIL_HOUR == 3
-    assert REFRESH_LATEST == 3
-    assert REFRESH_PREOPEN == 1
+    assert REFRESH_LATEST == 2
+    assert REFRESH_PREOPEN == 2
     ingest_src = open("biaoke_ingest.py", encoding="utf-8").read()
     assert "refresh_latest_now" in ingest_src
     assert "PREOPEN_EVERY_SEC" in ingest_src
@@ -225,7 +225,7 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     wed_pre = datetime(2026, 9, 9, 8, 0, tzinfo=tz)
     assert in_preopen_window(wed_pre) is True
     assert poll_wait_seconds(wed_pre) == PREOPEN_EVERY_SEC
-    assert refresh_latest_now(wed_pre) == 1
+    assert refresh_latest_now(wed_pre) == 2
     assert refresh_latest_now(wed_pre) == REFRESH_PREOPEN
     wed_mid = datetime(2026, 9, 9, 8, 30, tzinfo=tz)
     assert poll_wait_seconds(wed_mid) == PREOPEN_EVERY_SEC
@@ -248,7 +248,7 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
 
 
 def test_preopen_rereads_only_nearest_post_thread(tmp_path):
-    """開盤前舊貼文＝最接近的一則樓下；第一層第二層都收，更早那篇不重讀。"""
+    """最新一篇已在庫且不是剛發：只重讀這一則樓下，前一篇不重讀。"""
     from biaoke_desk import load_corpus, upsert_biaoke_posts
 
     db = str(tmp_path / "w.db")
@@ -357,6 +357,84 @@ def test_preopen_rereads_only_nearest_post_thread(tmp_path):
         if str(p.get("parent") or "") == nearest
     }
     assert 1 in layers and 2 in layers
+
+
+def test_new_latest_post_also_rereads_previous_thread(tmp_path, monkeypatch):
+    """最新一篇這次才第一次掃到：連前一篇樓下一起收。"""
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "test-token-not-real")
+    from biaoke_desk import load_corpus, upsert_biaoke_posts
+
+    db = str(tmp_path / "w.db")
+    newest = "199900001"
+    older = "199900002"
+    upsert_biaoke_posts(
+        db,
+        [
+            {
+                "id": older,
+                "date": "2026-09-11",
+                "time": "15:00",
+                "kind": "post",
+                "tags": [],
+                "text": "1.台指期連續盤主文更早一則。",
+            }
+        ],
+    )
+    seen_urls = []
+
+    class _Fake:
+        def get(self, url, timeout=12, headers=None):
+            seen_urls.append(url)
+
+            class R:
+                encoding = "utf-8"
+                apparent_encoding = "utf-8"
+                text = ""
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    if f"Article/{older}/Comments" in url:
+                        return [
+                            {
+                                "id": "old1",
+                                "memberId": 25263,
+                                "nickname": "期股多空雙飆客",
+                                "content": {"text": "前一篇樓下補一句先看量價"},
+                            }
+                        ]
+                    return []
+
+            r = R()
+            if "user/25263" in url:
+                r.text = (
+                    '<script>window.__NUXT__=(function(){return {articles:['
+                    f'{{id:"{newest}",creatorId:r,x:1}},'
+                    f'{{id:"{older}",creatorId:r,x:2}}'
+                    "]}})</script>"
+                )
+            elif newest in url and "/forum/article/" in url:
+                r.text = f"""
+                <meta name="author" content="期股多空雙飆客">
+                <meta property="article:published_time" content="2026-9-14T21:50:00+08:00">
+                <article>
+                  <div>期股多空雙飆客</div>
+                  <div>1.台指期連續盤主文最新一則。</div>
+                </article>
+                """
+            return r
+
+    stats = ingest_public_posts(
+        db_path=db, session=_Fake(), max_ids=12, refresh_latest=2
+    )
+    assert stats["ok"]
+    fused = load_corpus(db)
+    texts = " ".join(str(p.get("text") or "") for p in fused["posts"])
+    assert "最新一則" in texts
+    assert "前一篇樓下補一句" in texts
+    assert any(f"Article/{older}/Comments" in u for u in seen_urls)
 
 
 def test_parse_display_yesterday():
@@ -555,6 +633,38 @@ def test_parse_api_author_replies_keeps_nested_under_bystander():
     assert all(r["kind"] == "reply" and r["parent"] == "184526608" for r in rows)
     assert any(r["layer"] == 2 for r in rows)
     assert all(r["id"].startswith("184526608:c") for r in rows)
+
+
+def test_parse_api_author_replies_keeps_reply_inside_reply():
+    payload = [
+        {
+            "id": "c1",
+            "memberId": 111,
+            "nickname": "路人甲",
+            "content": {"text": "請問夜盤"},
+            "replies": [
+                {
+                    "id": "c1r1",
+                    "memberId": 222,
+                    "nickname": "另一人",
+                    "content": {"text": "跟著問"},
+                    "replies": [
+                        {
+                            "id": "deep",
+                            "memberId": 25263,
+                            "nickname": "期股多空雙飆客",
+                            "content": {"text": "沒有不太妙，短線築底"},
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    rows = parse_api_author_replies(payload, parent_id="184578674")
+    assert len(rows) == 1
+    assert rows[0]["layer"] == 2
+    assert "短線築底" in rows[0]["text"]
+    assert "請問夜盤" not in " ".join(r["text"] for r in rows)
 
 
 def test_parse_api_author_replies_unwraps_nested_data():
