@@ -21,7 +21,7 @@ from biaoke_mind import (
 def test_neuron_views_reread_without_ask():
     nest = views_for_neuron("nest")
     titles = [t for t, _b in nest]
-    assert titles[0] == "9/15夜思考"
+    assert titles[0] == "9/15夜巢穴"
     assert titles[1] == "真正有用的五件"
     assert "四路對質" in titles
     assert "波浪對大盤" in titles
@@ -29,7 +29,7 @@ def test_neuron_views_reread_without_ask():
     assert "他點的日曆／國際局勢" in titles
     assert "9/14 指數末端" in titles
     field = views_for_neuron("field")
-    assert field and field[0][0] == "9/15夜思考"
+    assert field and field[0][0] == "9/15夜產業"
     assert any(t == "個股先看產業趨勢" for t, _b in field)
     assert any(t == "9/14 指數末端" for t, _b in field)
     assert any(t == "洞燭先機" for t, _b in field)

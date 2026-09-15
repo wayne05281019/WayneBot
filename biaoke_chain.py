@@ -1026,8 +1026,101 @@ def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str 
     return _step("doubt", " ".join(bits), ok=not miss and not extra_miss)
 
 
+def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
+    """五件交叉：波浪／形態／量價／關鍵K／碎形對質，不是六顆各貼一句。
+
+    新啟發只從交叉來：大盤築底×個股轉折K＝輪動不是覆巢；同族轉折K＝跟漲先調節。
+    """
+    by = {str(s.get("id") or ""): s for s in steps}
+
+    def _core(raw: str) -> str:
+        return re.sub(r"他的說法：.*", "", str(raw or ""))
+
+    nest = _core((by.get("nest") or {}).get("text") or "")
+    field = _core((by.get("field") or {}).get("text") or "")
+    leader = _core((by.get("leader") or {}).get("text") or "")
+    tape = _core((by.get("tape") or {}).get("text") or "")
+    hold = _core((by.get("hold") or {}).get("text") or "")
+    fh = field + hold
+    nest_build = any(k in nest for k in ("築底", "蓄積過下降壓", "46767"))
+    nest_cover = "覆巢先當有事" in nest or "已低於他自己點的 9/3 低 45839" in nest
+    nest_c3 = "C-3" in nest or "C-2" in nest
+    own_keyk = any(
+        k in tape
+        for k in ("轉折K", "爆大量跌破平台", "爆大量破平台", "確認出現轉折", "跌破平台")
+    )
+    shown = str(name or "")
+    if shown and re.search(rf"{re.escape(shown)}.{{0,16}}轉折", fh):
+        own_keyk = True
+    if sid == "3653" and "轉折K" in (fh + tape):
+        own_keyk = True
+    sib_keyk = (not own_keyk) and bool(
+        re.search(r"(因.{0,6}轉折K|健策轉折K|龍頭.{0,8}轉折)", fh)
+        or (sid != "3653" and "轉折K" in fh and "健策" in fh)
+    )
+    stopk = "止漲整理" in (fh + tape)
+    # 這檔形態才算。CCL 龍頭句裡「很多 PCB 還在底部」不是台光電自己回測頸線。
+    neck = "回測頸線" in fh or "目前就是在底部" in fh
+    longh = any(k in hold for k in ("勿輕易調節", "先不用管", "沒破線", "續抱"))
+    if not sid:
+        bits: List[str] = []
+        if nest_build and nest_c3:
+            bits.append(
+                "五件交叉：夜盤築底是形態蓄積，C-2轉C-3仍是如果句，兩條不准合成已確認末端。"
+            )
+        elif nest_c3:
+            bits.append("五件交叉：C-2轉C-3未確認，不是個股出清指令。")
+        if "43500" in nest and ("難" in nest or "非常難" in nest):
+            bits.append("某商品量價說43500難破，不是官方收。")
+        bits.append("個股不數5／9。")
+        return "".join(bits)
+    prefix = ""
+    if nest_cover:
+        prefix = "日K收已低於45839，右肩低先當破；"
+    bits = []
+    if (nest_build or nest_cover) and own_keyk:
+        bits.append(
+            prefix
+            + "五件交叉：夜盤築底×這檔轉折K＝資金輪動不是覆巢，也不是確認C-3出清。"
+        )
+        bits.append("碎形：產業轉弱由這檔量價確認，不跟名冊等另一檔龍頭才算。")
+        bits.append("形態真破約22%，破線當天不篤定出貨，假跌破過幾天。")
+    elif (nest_build or nest_cover) and sib_keyk:
+        bits.append(
+            prefix
+            + "五件交叉：同族龍頭已出轉折K，這檔跟漲先當轉弱，即使自己形態模糊。"
+        )
+        bits.append("這是碎形／關鍵K，不是C波出清。")
+    elif nest_build and neck:
+        bits.append(
+            prefix
+            + "五件交叉：夜盤築底×這檔頸線／底部＝形態還沒轉折K，跟漲先看這族龍頭。"
+        )
+    elif stopk:
+        bits.append(prefix + "五件交叉：止漲整理K是這檔進出規則，不是C波出清。")
+        if nest_build:
+            bits.append("夜盤仍在築底，C-3未確認末端。")
+    elif (nest_build or nest_cover) and longh and not own_keyk:
+        bits.append(
+            prefix
+            + "五件交叉：這檔沒破線＝續抱；C-3如果句不准改寫成長抱出清。"
+        )
+    elif nest_build:
+        bits.append(
+            prefix
+            + "五件交叉：夜盤築底、C-2轉C-3未確認；這檔用自己的量價／關鍵K，不准套空sid出清。"
+        )
+    elif nest_cover:
+        bits.append(
+            "五件交叉：日K已低於45839，覆巢先當有事；C-3仍未確認，個股仍看自己的關鍵K。"
+        )
+    else:
+        bits.append("五件交叉：波浪／形態／量價／關鍵K還沒疊滿，不講死。")
+    return "".join(bits)
+
+
 def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
-    """用他的順序把六顆收成一句推論，不是清單。"""
+    """用他的順序把六顆收成一句推論，不是清單。五件交叉當脊骨。"""
     by = {s["id"]: s for s in steps}
     nest = by.get("nest") or {}
     field = by.get("field") or {}
@@ -1040,6 +1133,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             f"問的是 {sid} {name}。".strip(),
         ]
         nest_t = str(nest.get("text") or "")
+        cross = _five_cross(steps, sid, name)
+        if cross:
+            parts.append(cross)
         if "45839 之上" in nest_t:
             nest_bit = "大盤官方收還在 45839 之上，右肩低先當沒破"
         elif "已低於他自己點的 9/3 低 45839" in nest_t:
@@ -1075,9 +1171,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；周四／周五夜盤反彈至少 46767，不是官方收"
         if "43500 非常難" in nest_t:
             nest_bit += "；某商品量價說 43500 難破，不是已確認"
-        if "關鍵K" in nest_t or "碎形" in nest_t:
+        if not cross and "波浪／形態／量價／關鍵K" not in nest_bit:
             nest_bit += "；真正有用＝波浪／形態／量價／關鍵K（碎形）"
-        parts.append(_clip(nest_bit, 260) + "。")
+        parts.append(_clip(nest_bit, 220) + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
         if "不另對" in lead_t or "自己就是" in lead_t:
@@ -1101,6 +1197,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
                 parts.append("量價有官方柱。")
             if "圖上演算" in tt:
                 parts.append("圖上後續只是壓撐＋連點延長演算，不是保證。")
+            if "轉折" in tt or "爆大量" in tt or "關鍵K" in tt:
+                parts.append("這檔關鍵K／量價已對官方柱。")
         else:
             parts.append("這檔量價還沒齊，不准編壓撐。")
         if hold.get("text"):
@@ -1125,6 +1223,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
     live_m = re.search(r"他自己最新：[^。]+", nest_t)
     if live_m:
         parts.append(_clip(live_m.group(0), 100) + "。")
+    cross = _five_cross(steps, "", "")
+    if cross:
+        parts.append(cross)
     if "45839 之上" in nest_t:
         parts.append("官方收還在 45839 之上，右肩低先當沒破。")
     elif "已低於他自己點的 9/3 低 45839" in nest_t:
@@ -1149,8 +1250,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("周四／周五夜盤反彈至少 46767，不是官方收。")
     if "43500 非常難" in nest_t:
         parts.append("某商品量價說 43500 難破，不是已確認。")
-    parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。真正有用＝波浪／形態／量價／關鍵K（碎形）。")
-    return _clip("".join(parts), 520)
+    if "個股不數" not in "".join(parts):
+        parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。真正有用＝波浪／形態／量價／關鍵K（碎形）。")
+    return _clip("".join(parts), 560)
 
 
 def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
@@ -1196,11 +1298,20 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
                 step["text"] = _clip(body + "。" + extra, 900)
             else:
                 step["text"] = _clip(extra + "。" + body, 900)
+    five = _five_cross(steps, sid, name)
+    if five:
+        for step in steps:
+            if str(step.get("id") or "") != "doubt":
+                continue
+            body = str(step.get("text") or "")
+            if five[:18] not in body:
+                step["text"] = _clip(five + " " + body, 900)
     return {
         "sid": sid,
         "name": name,
         "named": named,
         "steps": steps,
+        "five": five,
         "think": _think(steps, sid, name),
         "firm": bool((brief.get("audit") or {}).get("firm")),
     }
@@ -1239,6 +1350,9 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
     think = str(fired.get("think") or "").strip()
     if think:
         lines.append("推論｜" + think)
+    five = str(fired.get("five") or "").strip()
+    if five:
+        lines.append("五件交叉｜" + five)
     reread = _reread_block()
     if reread:
         lines.append(reread)

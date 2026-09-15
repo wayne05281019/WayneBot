@@ -52,6 +52,9 @@ _PAT: Dict[str, re.Pattern[str]] = {
     ),
 }
 _SPACE = re.compile(r"\s+")
+_PUNCT = re.compile(r"[。；！？\n，、]")
+# 沒點檔的 C 波調節／抽出是巢穴，不准當每檔 live hold。
+_INDEX_HOLD = re.compile(r"(C-[123]|逃命波|43500|46767|大盤|加權|夜盤|位階)")
 
 
 def ensure_neuron_hits_table(db_path: str) -> None:
@@ -77,15 +80,22 @@ def _spoken(raw: str) -> str:
         return str(raw or "").strip()
 
 
-def _snip(text: str, needle: str, n: int = 96) -> str:
+def _snip(text: str, needle: str = "", n: int = 96, *, near: str = "") -> str:
+    """摘句對齊檔名或標點，不准從半個字開始、也不准兩檔共用一句。"""
     blob = _SPACE.sub(" ", text or "").strip()
     if not blob:
         return ""
-    i = blob.find(needle) if needle else -1
+    i = blob.find(near) if near else -1
+    if i < 0 and needle:
+        i = blob.find(needle)
     if i < 0:
         return blob[:n]
-    a = max(0, i - 8)
-    return blob[a : a + n]
+    window = blob[max(0, i - 24) : i]
+    last = None
+    for m in _PUNCT.finditer(window):
+        last = m
+    a = (max(0, i - 24) + last.end()) if last else i
+    return blob[a : a + n].lstrip("，、；。 ")
 
 
 def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dict[str, str]]:
@@ -105,42 +115,55 @@ def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dic
     stocks = [(str(s), str(n)) for s, n in pairs if str(s) and str(s) != "TWII"]
     out: List[Dict[str, str]] = []
     seen = set()
+    indexish = any(s == "TWII" for s, _n in pairs) or bool(
+        re.search(r"(大盤|加權|台指|夜盤|逃命波|C-[123]|位階)", spoken)
+    )
     for nid in hit_nids:
         needle = ""
         m = _PAT[nid].search(spoken)
         if m:
             needle = m.group(0)
-        snip = _snip(spoken, needle)
         if nid == "nest":
-            sid, name = "", ""
-            if any(s == "TWII" for s, _n in pairs) or re.search(
-                r"(大盤|加權|台指|夜盤|逃命波|C-[123]|位階)", spoken
-            ):
-                sid, name = "TWII", "加權"
+            sid, name = ("TWII", "加權") if indexish else ("", "")
             key = (nid, sid)
             if key not in seen:
                 seen.add(key)
-                out.append({"neuron": nid, "sid": sid, "name": name, "snippet": snip})
+                out.append(
+                    {
+                        "neuron": nid,
+                        "sid": sid,
+                        "name": name,
+                        "snippet": _snip(spoken, needle),
+                    }
+                )
             continue
-        if nid == "tape":
-            targets = stocks or [("", "")]
-        else:
-            targets = stocks or [("", "")]
+        if nid == "hold" and not stocks and _INDEX_HOLD.search(spoken):
+            continue
+        targets = stocks or [("", "")]
         for sid, name in targets:
             key = (nid, sid)
             if key in seen:
                 continue
             seen.add(key)
-            out.append({"neuron": nid, "sid": sid, "name": name, "snippet": snip})
+            out.append(
+                {
+                    "neuron": nid,
+                    "sid": sid,
+                    "name": name,
+                    "snippet": _snip(spoken, needle, near=name),
+                }
+            )
     return out
 
 
 def record_neuron_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
-    """捕獲後立刻寫進六顆。同一則 UPSERT，不重掃 1709。"""
+    """捕獲後立刻寫進六顆。同一則先刪再寫，舊分類不准留下來累積。"""
     if not db_path:
         return 0
     ensure_neuron_hits_table(db_path)
     rows: List[Tuple[Any, ...]] = []
+    pids: List[str] = []
+    seen_pid = set()
     for ev in events:
         if str(ev.get("kind") or "") == "bystander":
             continue
@@ -148,6 +171,9 @@ def record_neuron_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
         raw = str(ev.get("text") or "").strip()
         if not pid or not raw:
             continue
+        if pid not in seen_pid:
+            seen_pid.add(pid)
+            pids.append(pid)
         day = str(ev.get("date") or "")
         hm = str(ev.get("time") or "")
         for hit in classify_spoken(raw, ev.get("tags")):
@@ -162,18 +188,23 @@ def record_neuron_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
                     hit["snippet"],
                 )
             )
-    if not rows:
+    if not pids:
         return 0
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.executemany(
-            """
-            INSERT OR REPLACE INTO biaoke_neuron_hits
-            (post_id, neuron_id, stock_id, stock_name, post_date, post_time, snippet)
-            VALUES (?,?,?,?,?,?,?)
-            """,
-            rows,
+            "DELETE FROM biaoke_neuron_hits WHERE post_id=?",
+            [(p,) for p in pids],
         )
+        if rows:
+            conn.executemany(
+                """
+                INSERT INTO biaoke_neuron_hits
+                (post_id, neuron_id, stock_id, stock_name, post_date, post_time, snippet)
+                VALUES (?,?,?,?,?,?,?)
+                """,
+                rows,
+            )
         conn.commit()
     finally:
         conn.close()
@@ -181,49 +212,64 @@ def record_neuron_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
 
 
 def latest_bundle(db_path: str, sid: str = "", *, n: int = 2) -> Dict[str, str]:
-    """開火一次讀六顆最近句。個股帶這檔＋沒點檔的產業／大盤句。"""
+    """開火一次讀六顆最近句。個股只收這檔；空 sid 不准蓋到健策／台光電。"""
     if not db_path or not os.path.isfile(db_path):
         return {}
     ensure_neuron_hits_table(db_path)
     want = str(sid or "").strip()
+    lim = max(1, int(n))
+    picked: Dict[str, List[str]] = {nid: [] for nid in NEURON_IDS}
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:
-        rows = conn.execute(
-            """
-            SELECT neuron_id, stock_id, post_date, post_time, snippet
-            FROM biaoke_neuron_hits
-            ORDER BY post_date DESC, post_time DESC
-            LIMIT 80
-            """
-        ).fetchall()
-    except sqlite3.Error:
-        rows = []
+        for nid in NEURON_IDS:
+            try:
+                if nid == "nest":
+                    rows = conn.execute(
+                        """
+                        SELECT stock_id, post_date, post_time, snippet
+                        FROM biaoke_neuron_hits
+                        WHERE neuron_id='nest' AND (stock_id='' OR stock_id='TWII')
+                        ORDER BY post_date DESC, post_time DESC
+                        LIMIT ?
+                        """,
+                        (lim,),
+                    ).fetchall()
+                elif want:
+                    rows = conn.execute(
+                        """
+                        SELECT stock_id, post_date, post_time, snippet
+                        FROM biaoke_neuron_hits
+                        WHERE neuron_id=? AND stock_id=?
+                        ORDER BY post_date DESC, post_time DESC
+                        LIMIT ?
+                        """,
+                        (nid, want, lim),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT stock_id, post_date, post_time, snippet
+                        FROM biaoke_neuron_hits
+                        WHERE neuron_id=? AND IFNULL(stock_id,'')=''
+                        ORDER BY post_date DESC, post_time DESC
+                        LIMIT ?
+                        """,
+                        (nid, lim),
+                    ).fetchall()
+            except sqlite3.Error:
+                rows = []
+            for _stock, day, hm, snip in rows:
+                snip = _SPACE.sub(" ", str(snip or "")).strip()
+                if not snip:
+                    continue
+                stamp = " ".join(x for x in (str(day or ""), str(hm or "")) if x)
+                picked[nid].append(f"{stamp} {snip}".strip() if stamp else snip)
     finally:
         conn.close()
-    picked: Dict[str, List[str]] = {nid: [] for nid in NEURON_IDS}
-    for nid, stock, day, hm, snip in rows:
-        nid = str(nid or "")
-        if nid not in picked or len(picked[nid]) >= max(1, int(n)):
-            continue
-        stock = str(stock or "")
-        snip = _SPACE.sub(" ", str(snip or "")).strip()
-        if not snip:
-            continue
-        if nid == "nest":
-            if stock and stock not in ("", "TWII"):
-                continue
-        elif want:
-            if stock and stock != want:
-                continue
-        else:
-            if stock:
-                continue
-        stamp = " ".join(x for x in (str(day or ""), str(hm or "")) if x)
-        picked[nid].append(f"{stamp} {snip}".strip() if stamp else snip)
     return {k: "；".join(v) for k, v in picked.items() if v}
 
 
-def backfill_recent_neurons(db_path: str, *, n: int = 80) -> int:
+def backfill_recent_neurons(db_path: str, *, n: int = 160) -> int:
     """庫裡最近主文／自回補進六顆。UPSERT，不重掃 1709。"""
     if not db_path or not os.path.isfile(db_path):
         return 0

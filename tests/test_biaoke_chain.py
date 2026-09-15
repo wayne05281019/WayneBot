@@ -618,3 +618,75 @@ def test_chain_sep15_night_five_tools_rewire():
     assert gs["sid"] == "6442"
     assert "這族龍頭是 3081" not in gs["think"]
     assert "3363" in gs["think"] or "上詮" in next(s for s in gs["steps"] if s["id"] == "leader")["text"]
+
+
+def test_five_cross_gives_different_insight_per_stock():
+    """五件交叉：同一套巢穴，個股啟發不准一樣。"""
+    from biaoke_chain import _view_line
+
+    jian = fire_chain("", "健策怎麼看")
+    emc = fire_chain("", "台光電怎麼看")
+    chi = fire_chain("", "奇鋐怎麼看")
+    shang = fire_chain("", "上詮怎麼看")
+    asic = fire_chain("", "創意怎麼看")
+    mkt = fire_chain("", "46767 怎麼看")
+    jf = jian.get("five") or jian["think"]
+    ef = emc.get("five") or emc["think"]
+    cf = chi.get("five") or chi["think"]
+    sf = shang.get("five") or shang["think"]
+    af = asic.get("five") or asic["think"]
+    mf = mkt.get("five") or mkt["think"]
+    assert "輪動不是覆巢" in jf
+    assert "形態真破" in jf or "假跌破" in jf
+    assert "續抱" in ef or "沒破線" in ef
+    assert "輪動不是覆巢" not in ef
+    assert "C-3如果句不准改寫成長抱出清" in ef
+    assert "跟漲先當轉弱" in cf
+    assert "不是C波出清" in cf
+    assert "頸線" in sf or "底部" in sf
+    assert "還沒轉折K" in sf
+    assert "止漲整理K" in af
+    assert "如果句" in mf
+    assert "已確認末端" in mf
+    clips = [_view_line(n) for n in NEURON_IDS]
+    assert len({c for c in clips if c}) == 6
+    assert not all("46767" in c for c in clips)
+
+
+def test_five_cross_daily_break_does_not_wipe_stock_keyk():
+    """日K破45839 仍要跟夜盤築底、個股關鍵K交叉，不准一刀切出清。"""
+    from biaoke_chain import _five_cross
+
+    nest = (
+        "官方收 45511 已低於他自己點的 9/3 低 45839，覆巢先當有事。"
+        "夜盤築底是好事。C-2 轉 C-3 未確認。"
+    )
+    jian = _five_cross(
+        [
+            {"id": "nest", "text": nest},
+            {"id": "field", "text": "散熱轉弱由健策轉折K確認。爆大量跌破平台＝轉折K"},
+            {"id": "leader", "text": "這族龍頭是 3017 奇鋐"},
+            {"id": "tape", "text": "健策爆大量跌破平台，確認出現轉折"},
+            {"id": "hold", "text": "籌碼交換至少 2 周"},
+            {"id": "doubt", "text": ""},
+        ],
+        "3653",
+        "健策",
+    )
+    emc = _five_cross(
+        [
+            {"id": "nest", "text": nest},
+            {"id": "field", "text": "台光電護城河最高"},
+            {"id": "leader", "text": "自己就是這族龍頭"},
+            {"id": "tape", "text": "收 4510 站上撐"},
+            {"id": "hold", "text": "切勿輕易調節"},
+            {"id": "doubt", "text": ""},
+        ],
+        "2383",
+        "台光電",
+    )
+    assert "輪動不是覆巢" in jian
+    assert "45839" in jian
+    assert "續抱" in emc
+    assert "輪動不是覆巢" not in emc
+    assert jian != emc

@@ -1611,7 +1611,7 @@ def ingest_public_posts(
         try:
             from biaoke_neurons import backfill_recent_neurons
 
-            stats["neurons"] = backfill_recent_neurons(dbp, n=80)
+            stats["neurons"] = backfill_recent_neurons(dbp, n=160)
         except Exception:
             logger.exception("飆大神經元近文補檔失敗")
     if dest and not _is_git_seed_path(dest):
