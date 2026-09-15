@@ -469,18 +469,27 @@ def test_locator_inset_marks_window():
     assert "win_from" in src
     from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
 
-    assert _BARS >= 90
-    assert _STOCK_LOCATOR_RECT[0] <= 0.52
-    assert _STOCK_LOCATOR_RECT[2] >= 0.32
+    assert _BARS >= 140
+    assert _STOCK_LOCATOR_RECT[0] >= 0.50
+    assert _STOCK_LOCATOR_RECT[2] >= 0.40
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
+    rsrc = inspect.getsource(render_biaoke_structure_png)
+    assert "right=0.94" in rsrc
+    assert "date_line" in rsrc
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
-    assert "locator_wave_legs" in wsrc
+    assert "locator_abc_legs" in wsrc
+    assert "wave_abc_story" in wsrc
+    assert "k_on_top" in wsrc
     assert "_TWII_LOCATOR_RECT" in wsrc
     assert "uniq_tags" not in wsrc
     assert "_place_right_notes" in wsrc
-    assert "_place_band_notes" in wsrc
+    assert "_paint_abc_on_ax" in wsrc
+    spot = inspect.getsource(_paint_spot)
+    assert 'ha="left"' in spot
+    assert "較昨日" in spot
+    assert 'ha="right"' not in spot
 
 
 def test_leader_notes_use_dashed_and_stagger():
@@ -511,6 +520,17 @@ def test_axis_ticks_drop_near_last_bar():
     assert 12 in ticks
     assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
     assert 56 not in ticks
+
+
+def test_pressure_support_use_consecutive_pivots():
+    from biaoke_chart import _asc_low_pair, _desc_high_pair
+
+    highs = [10.0, 20.0, 19.0, 22.0, 21.0, 20.0, 15.0]
+    assert _desc_high_pair([1, 3, 6], highs) == (3, 6)
+    assert _desc_high_pair([1, 4], [10.0, 20.0, 19.0, 18.0, 22.0]) is None
+    lows = [10.0, 8.0, 9.0, 7.0, 7.4, 8.5, 9.2]
+    assert _asc_low_pair([1, 3, 6], lows) == (3, 6)
+    assert _asc_low_pair([1, 4], [10.0, 8.0, 9.0, 8.5, 7.0]) is None
 
 
 def test_major_swings_and_locator_legs():

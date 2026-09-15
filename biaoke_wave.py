@@ -1036,9 +1036,11 @@ _SPAN_MARK = {
     "2026-d2": "2",
     "2026-C": "C",
 }
-_TWII_MAIN_BARS = 120
+_TWII_MAIN_BARS = 168
 _TWII_LONG_BARS = 560
-_TWII_LOCATOR_RECT = (0.48, 0.72, 0.49, 0.25)
+_TWII_LOCATOR_RECT = (0.50, 0.695, 0.48, 0.268)
+_ABC_A_START = "20260623"
+_ABC_A_END = "20260729"
 
 
 def span_of(date: str, tag: str) -> Dict[str, str]:
@@ -1120,7 +1122,7 @@ def wave_chart_mark(tag: str = "", span: str = "") -> str:
 
 
 def locator_wave_legs(path_pts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """縮圖用：一段線一個 A／B／C。"""
+    """縮圖用：一段線一個 A／B／C。舊路徑仍給測試；主圖改走 locator_abc_legs。"""
     legs: List[Dict[str, Any]] = []
     for seg in wave_path_segments(path_pts):
         pts = list(seg.get("pts") or [])
@@ -1134,6 +1136,158 @@ def locator_wave_legs(path_pts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]
                 "color": str(seg.get("color") or _SPAN_COLOR.get(span, "#455a64")),
                 "lab": _SPAN_MARK.get(span, ""),
                 "lw": 1.25,
+            }
+        )
+    return legs
+
+
+def _ymd_index(rows: Sequence[Dict[str, Any]], ymd: str) -> Optional[int]:
+    want = _ymd(ymd)
+    if not want:
+        return None
+    for i, r in enumerate(rows or []):
+        if _ymd(r.get("date")) == want:
+            return i
+    return None
+
+
+def _md_slash(ymd: Any) -> str:
+    t = _ymd(ymd)
+    if len(t) == 8:
+        return f"{int(t[4:6])}/{int(t[6:8])}"
+    return t
+
+
+def _ohlc_f(row: Optional[Dict[str, Any]], key: str) -> float:
+    try:
+        return float((row or {}).get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def wave_abc_story(
+    rows: Sequence[Dict[str, Any]],
+    last_tag: str = "",
+) -> Dict[str, Any]:
+    """2026 ABC 主線，給完全不懂波浪的人看。
+
+    A 起＝6/23 第五波高；A 完＝7/29 低，同一天就是 B 起；
+    B 高＝7/29 之後官方最高（對得上 9/8）；C 從 B 高往現在，虛線未確認。
+    A 和 B 必須接在同一個 7/29 低，線不准斷。
+    """
+    bars = list(rows or [])
+    out: Dict[str, Any] = {}
+    if len(bars) < 4:
+        return out
+    i_a = _ymd_index(bars, _ABC_A_START)
+    i_low = _ymd_index(bars, _ABC_A_END)
+    if i_a is None or i_low is None or i_low <= i_a:
+        return out
+    y_a = _ohlc_f(bars[i_a], "high")
+    y_low = _ohlc_f(bars[i_low], "low")
+    if y_a <= 0 or y_low <= 0:
+        return out
+    out["a"] = {
+        "xs": [float(i_a), float(i_low)],
+        "ys": [y_a, y_low],
+        "i0": i_a,
+        "i1": i_low,
+        "y0": y_a,
+        "y1": y_low,
+        "d0": str(bars[i_a].get("date") or ""),
+        "d1": str(bars[i_low].get("date") or ""),
+        "color": "#2e7d32",
+        "unconfirmed": False,
+    }
+    out["fifth_high"] = {
+        "i": i_a,
+        "y": y_a,
+        "date": str(bars[i_a].get("date") or ""),
+        "text": f"5高 {_md_slash(bars[i_a].get('date'))} {_px(y_a)}＝A起",
+    }
+    out["a_done"] = {
+        "i": i_low,
+        "y": y_low,
+        "date": str(bars[i_low].get("date") or ""),
+        "text": f"{_md_slash(bars[i_low].get('date'))} A完＝B起 {_px(y_low)}",
+    }
+    i_b = None
+    y_b = 0.0
+    for i in range(i_low + 1, len(bars)):
+        h = _ohlc_f(bars[i], "high")
+        if h > y_b:
+            y_b = h
+            i_b = i
+    if i_b is None or y_b <= 0:
+        return out
+    out["b"] = {
+        "xs": [float(i_low), float(i_b)],
+        "ys": [y_low, y_b],
+        "i0": i_low,
+        "i1": i_b,
+        "y0": y_low,
+        "y1": y_b,
+        "d0": str(bars[i_low].get("date") or ""),
+        "d1": str(bars[i_b].get("date") or ""),
+        "color": "#1565c0",
+        "unconfirmed": False,
+    }
+    out["b_high"] = {
+        "i": i_b,
+        "y": y_b,
+        "date": str(bars[i_b].get("date") or ""),
+        "text": f"{_md_slash(bars[i_b].get('date'))} B高 {_px(y_b)}",
+    }
+    last_i = len(bars) - 1
+    if last_i > i_b:
+        y_now = _ohlc_f(bars[last_i], "close") or _ohlc_f(bars[last_i], "low")
+        tag = str(last_tag or "")
+        c_lab = "C未確認"
+        if "C-2" in tag:
+            c_lab = "C-2未確認"
+        elif "C-3" in tag:
+            c_lab = "C-3未確認"
+        out["c"] = {
+            "xs": [float(i_b), float(last_i)],
+            "ys": [y_b, y_now],
+            "i0": i_b,
+            "i1": last_i,
+            "y0": y_b,
+            "y1": y_now,
+            "d0": str(bars[i_b].get("date") or ""),
+            "d1": str(bars[last_i].get("date") or ""),
+            "color": "#6a1b9a",
+            "unconfirmed": True,
+            "lab": c_lab,
+        }
+    return out
+
+
+def locator_abc_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """縮圖：A↓ B↑ C虛。圈字離開 K；線要細，K 才看得清。"""
+    legs: List[Dict[str, Any]] = []
+    spec = (
+        ("a", "#2e7d32", "A", "left", "-", 0.95),
+        ("b", "#1565c0", "B", "mid", "-", 0.95),
+        ("c", "#6a1b9a", "C", "mid", (0, (3.2, 2.2)), 0.85),
+    )
+    for key, color, circ, side, ls, lw in spec:
+        leg = story.get(key) or {}
+        xs = list(leg.get("xs") or [])
+        ys = list(leg.get("ys") or [])
+        if len(xs) < 2:
+            continue
+        legs.append(
+            {
+                "xs": xs,
+                "ys": ys,
+                "color": color,
+                "lab": "",
+                "lw": lw,
+                "ls": ls,
+                "circle": circ,
+                "circle_side": side,
+                "dots": False,
             }
         )
     return legs
@@ -1296,11 +1450,120 @@ def wave_extend_rays(
         ]
     if bottom:
         return [_ray("fork", fork, "延伸45839")]
-        return [_ray("hold", last_y, "延伸持平")]
+    return []
+
+
+def _paint_abc_on_ax(ax, story: Dict[str, Any], *, n: int, y_top: float, y_bot: float) -> None:
+    """主圖只畫一條連好的 A↓B↑C虛。圈 A 在下降線左邊。"""
+    from biaoke_chart import _circled_letter, _halo_line, _leader_note
+
+    span = max(y_top - y_bot, 1.0)
+    for key, lw in (("a", 1.7), ("b", 1.7), ("c", 1.35)):
+        leg = story.get(key) or {}
+        xs = list(leg.get("xs") or [])
+        ys = list(leg.get("ys") or [])
+        if len(xs) < 2:
+            continue
+        color = str(leg.get("color") or "#455a64")
+        dashed = bool(leg.get("unconfirmed"))
+        _halo_line(
+            ax,
+            xs,
+            ys,
+            color,
+            lw=lw,
+            halo=0.7,
+            ls=(0, (5, 2.6)) if dashed else "-",
+            z=7,
+        )
+        ax.scatter(
+            xs,
+            ys,
+            s=36,
+            facecolors="#ffffff" if dashed else color,
+            edgecolors=color,
+            linewidths=1.2,
+            zorder=9,
+        )
+    a = story.get("a") or {}
+    if a.get("xs"):
+        i0 = float(a["xs"][0])
+        y0 = float(a["ys"][0])
+        dx = -max(5.2, n * 0.032)
+        dy = span * 0.025
+        if i0 + dx < 1.0:
+            dx = max(3.2, n * 0.02)
+            dy = span * 0.08
+        _circled_letter(ax, i0, y0, "A", "#2e7d32", dx=dx, dy=dy, size=13)
+    b = story.get("b") or {}
+    if b.get("xs"):
+        mx = (float(b["xs"][0]) + float(b["xs"][-1])) / 2.0
+        my = (float(b["ys"][0]) + float(b["ys"][-1])) / 2.0
+        _circled_letter(ax, mx, my, "B", "#1565c0", dx=0.0, dy=span * 0.055, size=13)
+    c = story.get("c") or {}
+    if c.get("xs"):
+        mx = (float(c["xs"][0]) + float(c["xs"][-1])) / 2.0
+        my = (float(c["ys"][0]) + float(c["ys"][-1])) / 2.0
+        _circled_letter(ax, mx, my, "C", "#6a1b9a", dx=0.0, dy=-span * 0.045, size=13)
+    fifth = story.get("fifth_high") or {}
+    if fifth:
+        _leader_note(
+            ax,
+            float(fifth["i"]),
+            float(fifth["y"]),
+            str(fifth.get("text") or ""),
+            "#2e7d32",
+            tx=max(0.6, float(fifth["i"]) - max(6.0, n * 0.04)),
+            ty=y_top,
+            size=10,
+            ha="left",
+            va="bottom",
+        )
+    done = story.get("a_done") or {}
+    if done:
+        _leader_note(
+            ax,
+            float(done["i"]),
+            float(done["y"]),
+            str(done.get("text") or ""),
+            "#2e7d32",
+            tx=float(done["i"]) + 5.2,
+            ty=float(done["y"]) - span * 0.045,
+            size=10,
+            ha="left",
+            va="top",
+        )
+    bh = story.get("b_high") or {}
+    if bh:
+        _leader_note(
+            ax,
+            float(bh["i"]),
+            float(bh["y"]),
+            str(bh.get("text") or ""),
+            "#1565c0",
+            tx=min(n - 1.2, float(bh["i"]) + 2.2),
+            ty=y_top,
+            size=10,
+            ha="left",
+            va="bottom",
+        )
+    if c.get("lab"):
+        _leader_note(
+            ax,
+            float(c["xs"][-1]),
+            float(c["ys"][-1]),
+            str(c.get("lab") or "C未確認"),
+            "#6a1b9a",
+            tx=min(n + 6.5, float(c["xs"][-1]) + 3.2),
+            ty=float(c["ys"][-1]),
+            size=9,
+            ha="left",
+            va="center",
+        )
 
 
 def render_twii_degree_png(db_path: str, save_path: str) -> str:
-    """加權日K＋他自己點過的水平＋改口轉折線。不數段、不畫假未來 K。"""
+    """加權日K＋2026 ABC 連線。A 接 B 不准斷。不數段、不畫假未來 K。"""
     bars = _load_twii_bars(db_path, n=_TWII_MAIN_BARS)
     if len(bars) < 8 or not save_path:
         return ""
@@ -1319,15 +1582,15 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
     last_tag = str((last_hit or {}).get("tag") or "")
     if not last_tag and path_pts:
         last_tag = str(path_pts[-1].get("tag") or "")
+    story = wave_abc_story(bars, last_tag)
     rays = wave_extend_rays(path_pts, len(bars), last_tag)
     long_bars = _load_twii_bars(db_path, n=_TWII_LONG_BARS)
-    long_pts = wave_path_points(db_path, long_bars) if long_bars else []
+    long_story = wave_abc_story(long_bars, last_tag) if long_bars else {}
 
     @_mpl_serial
     def _draw() -> str:
         from biaoke_chart import (
             _halo_line,
-            _place_band_notes,
             _place_right_notes,
             paint_locator_inset,
         )
@@ -1338,13 +1601,16 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         lows = [float(r.get("low") or r.get("close") or 0) for r in bars]
         closes = [float(r.get("close") or 0) for r in bars]
         ys = highs + lows
-        for lv, _lab, _d in _TWII_LEVELS:
-            ys.append(lv)
-        for p in path_pts:
-            ys.append(float(p["y"]))
+        keep_lv = {"他原文C波最差", "9/3低右肩"}
+        for lv, lab, _d in _TWII_LEVELS:
+            if lab in keep_lv:
+                ys.append(lv)
         for r in rays:
             ys.append(float(r.get("y2") or r.get("y") or 0))
             ys.append(float(r.get("y1") or 0))
+        for key in ("a", "b", "c"):
+            for y in (story.get(key) or {}).get("ys") or []:
+                ys.append(float(y))
         y_top = max(highs) + 620
         y_bot = min(lows) - 480
         ymin = min(ys) - 780
@@ -1352,43 +1618,40 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ymax = max(ymax, y_top + 280)
         ymin = min(ymin, y_bot - 280)
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-        fig, ax = plt.subplots(figsize=(14.4, 9.2), dpi=NAV_CHART_DPI)
+        fig, ax = plt.subplots(figsize=(16.2, 9.4), dpi=NAV_CHART_DPI)
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
         ax.axvspan(n - 0.45, n + 8.2, facecolor="#fff6e0", alpha=0.95, zorder=0)
         ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
-        x_gutter = n + 9.3
+        x_gutter = n + 9.0
         for i in range(n):
             prev_c = closes[i - 1] if i else None
             up = candle_up_taiwan(closes[i], prev_c, opens[i])
             color = "#e53935" if up else "#00897b"
-            ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.05, zorder=3)
+            ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.2, zorder=3)
             y0, y1 = sorted((opens[i], closes[i]))
             ax.add_patch(
                 plt.Rectangle(
-                    (i - 0.32, y0),
-                    0.64,
+                    (i - 0.34, y0),
+                    0.68,
                     max(y1 - y0, 8),
                     facecolor=color,
                     edgecolor=color,
-                    linewidth=0.35,
+                    linewidth=0.4,
                     zorder=4,
                 )
             )
         colors = {
-            "7/29 A波低": "#2e7d32",
             "他原文C波最差": "#90a4ae",
             "9/3低右肩": "#546e7a",
-            "9/8前波高": "#90a4ae",
-            "6/23大一級前高": "#90a4ae",
         }
         styles = {
             "他原文C波最差": (0, (4, 3)),
         }
-        band_hi: list = []
-        band_lo: list = []
         right_notes: list = []
         for lv, lab, _d in _TWII_LEVELS:
+            if lab not in keep_lv:
+                continue
             ax.axhline(
                 lv,
                 color=colors.get(lab, "#90a4ae"),
@@ -1396,14 +1659,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 linestyle=styles.get(lab, "-"),
                 zorder=2,
             )
-            short_lv = (
-                lab.replace("他原文C波最差", "")
-                .replace("大一級前高", "前高")
-                .replace("9/3低右肩", "9/3低")
-                .strip()
-            )
-            if short_lv == "":
-                continue
+            short_lv = lab.replace("他原文C波最差", "最差43500").replace("9/3低右肩", "9/3低")
             right_notes.append(
                 {
                     "x": float(n - 1),
@@ -1413,57 +1669,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                     "size": 9,
                 }
             )
-        segs = wave_path_segments(path_pts)
-        for seg in segs:
-            pts = list(seg.get("pts") or [])
-            color = str(seg.get("color") or "#455a64")
-            unconf = any(p.get("unconfirmed") for p in pts)
-            if len(pts) >= 2:
-                _halo_line(
-                    ax,
-                    [float(p["i"]) for p in pts],
-                    [float(p["y"]) for p in pts],
-                    color,
-                    lw=1.2,
-                    halo=0.55,
-                    ls=(0, (4, 3)) if unconf else "-",
-                    z=7,
-                )
-            last_b = None
-            for j, p in enumerate(pts):
-                if p.get("tag") == "大B波":
-                    last_b = j
-            for j, p in enumerate(pts):
-                un = bool(p.get("unconfirmed"))
-                ax.scatter(
-                    [p["i"]],
-                    [p["y"]],
-                    s=28,
-                    facecolors="#ffffff" if un else color,
-                    edgecolors=color,
-                    linewidths=1.05,
-                    zorder=8,
-                )
-                if p.get("tag") == "大B波" and last_b is not None and j != last_b:
-                    continue
-                if not _wave_label_keep(p, j, len(pts)):
-                    continue
-                short = wave_chart_mark(str(p.get("tag") or ""), str(p.get("span") or ""))
-                if p.get("pinned"):
-                    short += "釘"
-                note = {
-                    "x": float(p["i"]),
-                    "y": float(p["y"]),
-                    "text": short,
-                    "color": color,
-                    "size": 9,
-                }
-                if int(p.get("i") or 0) >= n - 4:
-                    right_notes.append(note)
-                elif p.get("kind") == "low":
-                    band_lo.append(note)
-                else:
-                    band_hi.append(note)
+        if story:
+            _paint_abc_on_ax(ax, story, n=n, y_top=y_top, y_bot=y_bot)
         for r in rays:
             _halo_line(
                 ax,
@@ -1484,31 +1691,38 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                     "size": 8,
                 }
             )
-        _place_band_notes(ax, band_hi, ty=y_top, x_lo=0.6, x_hi=max(n - 3.0, 2.0), min_dx=max(9.0, n * 0.12))
-        _place_band_notes(ax, band_lo, ty=y_bot, x_lo=0.6, x_hi=max(n - 3.0, 2.0), min_dx=max(9.0, n * 0.12))
         _place_right_notes(ax, right_notes, x_text=x_gutter, ymin=ymin, ymax=ymax, min_gap=520)
         last = bars[-1]
         as_of = _ymd(last.get("date"))
         as_show = f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}" if len(as_of) == 8 else as_of
         fig.text(
-            0.07,
-            0.965,
-            "加權官方日K　轉折線 A／B／C",
+            0.055,
+            0.968,
+            "加權官方日K　2026 ABC（給看不懂波浪的人）",
             fontproperties=_fp(13, "bold"),
             color="#1f2933",
             ha="left",
             va="top",
         )
         fig.text(
-            0.07,
-            0.932,
-            f"{as_show} 收 {_px(last.get('close'))}　{last_tag or '—'}",
+            0.055,
+            0.938,
+            f"{as_show} 收 {_px(last.get('close'))}　現在標籤 {last_tag or '—'}",
             fontproperties=_fp(12, "bold"),
             color="#1f2933",
             ha="left",
             va="top",
         )
-        ax.set_xlim(-0.6, n + 22)
+        fig.text(
+            0.055,
+            0.908,
+            "綠實線Ａ＝6/23第五波高跌到7/29低（Ａ完＝Ｂ起）　藍實線Ｂ＝同一7/29低反彈到9/8高　紫虛線Ｃ＝9/8後還沒確認",
+            fontproperties=_fp(9, "bold"),
+            color="#37474f",
+            ha="left",
+            va="top",
+        )
+        ax.set_xlim(-0.6, n + 14)
         ax.set_ylim(ymin, ymax)
         ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
         from biaoke_chart import _axis_ticks
@@ -1526,7 +1740,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.tick_params(labelsize=10)
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.07, right=0.72, top=0.655, bottom=0.10)
+        fig.subplots_adjust(left=0.055, right=0.935, top=0.64, bottom=0.10)
         if long_bars and len(long_bars) > n + 16:
             paint_locator_inset(
                 fig,
@@ -1534,13 +1748,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 win_from=str(bars[0].get("date") or ""),
                 win_to=str(bars[-1].get("date") or ""),
                 rect=_TWII_LOCATOR_RECT,
-                title="橙框＝大圖這段　A／B／C　橫軸月份",
-                legs=locator_wave_legs(long_pts),
+                title="橙框＝大圖這段　圈A在下降線左　K在前　月份",
+                legs=locator_abc_legs(long_story),
+                k_on_top=True,
             )
         fig.text(
-            0.07,
+            0.055,
             0.028,
-            "主圖標 A／B／C／2。右上縮圖對月份與波段。線按區間拆開，不是 15 分、不發明段號、不是買訊。43500 是他原文最差。",
+            "圈Ａ畫在下降Ａ線左邊。7/29 同一點接Ｂ。Ｃ是虛線＝未確認。不是 15 分、不發明段號、不是買訊。43500 是他原文最差。",
             fontproperties=_fp(8),
             color="#546e7a",
         )
@@ -1573,9 +1788,10 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     except Exception:
         pass
     cap_bits = [
-        "加權官方日K＋他自己點過的水平＋轉折線（不是15分、不是介紹圖／決策卡）",
+        "加權官方日K＋2026 ABC 轉折線（不是15分、不是介紹圖／決策卡）",
+        "A＝6/23第五波高跌到7/29低；7/29同一點＝A完也是B起；B＝反彈到9/8高；C虛線＝9/8後還沒確認。",
+        "圈Ａ畫在下降Ａ線左邊。右上縮圖Ｋ在前、浪在後，避免線壓死Ｋ。",
         "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
-        "右上縮圖＝更長時間軸，橙框是大圖這段；點對點標 A／B／C，橫軸寫月份。",
         format_wave_now(db_path, n=420),
     ]
     if last:

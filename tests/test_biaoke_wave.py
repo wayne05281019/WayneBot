@@ -17,10 +17,12 @@ from biaoke_wave import (
     last_two,
     locator_wave_legs,
     span_of,
+    wave_abc_story,
     wave_chart_mark,
     wave_extend_rays,
     wave_path_points,
     wave_path_segments,
+    locator_abc_legs,
     _hist_bits,
     _ymd,
 )
@@ -311,6 +313,51 @@ def test_wave_chart_mark_is_short_abc():
     assert "A" in labs
     assert "C" in labs
     assert "2026·第五波失敗改A" not in labs
+
+
+def _abc_rows():
+    rows = []
+    # 6/23 高 → 7/29 低 → 9/8 高 → 9/15 收
+    spec = [
+        ("20260623", 47000, 48218.87, 46800, 47500),
+        ("20260701", 45000, 45500, 44000, 44800),
+        ("20260729", 41000, 41600, 39384.85, 39947),
+        ("20260810", 42000, 43000, 41500, 42800),
+        ("20260908", 46000, 47578.24, 45800, 47000),
+        ("20260915", 45800, 46000, 45000, 45511.49),
+    ]
+    for d, o, h, lo, c in spec:
+        rows.append({"date": d, "open": o, "high": h, "low": lo, "close": c})
+    return rows
+
+
+def test_wave_abc_story_a_then_b_same_july29():
+    story = wave_abc_story(_abc_rows(), last_tag="逃命波C-2")
+    assert story.get("a")
+    assert story.get("b")
+    assert story.get("c")
+    assert int(story["a"]["i1"]) == int(story["b"]["i0"])
+    assert _ymd(story["a"]["d0"]).endswith("0623")
+    assert _ymd(story["a"]["d1"]).endswith("0729")
+    assert abs(float(story["a"]["y0"]) - 48218.87) < 0.01
+    assert abs(float(story["a"]["y1"]) - 39384.85) < 0.01
+    assert float(story["a"]["y0"]) > float(story["a"]["y1"])
+    assert _ymd(story["b"]["d1"]).endswith("0908")
+    assert abs(float(story["b"]["y1"]) - 47578.24) < 0.01
+    assert float(story["b"]["y1"]) > float(story["b"]["y0"])
+    assert story["c"].get("unconfirmed") is True
+    legs = locator_abc_legs(story)
+    circ = [str(x.get("circle") or "") for x in legs]
+    assert circ[:2] == ["A", "B"]
+    assert "C" in circ
+    assert legs[0]["circle_side"] == "left"
+    assert int(legs[0]["xs"][0]) < int(legs[1]["xs"][0]) or (
+        int(legs[0]["xs"][0]) == int(story["a"]["i0"])
+    )
+    src = inspect.getsource(__import__("biaoke_wave").render_twii_degree_png)
+    assert "locator_abc_legs" in src
+    assert "k_on_top" in src
+    assert "wave_path_segments" not in src
 
 
 def test_wave_extend_rays_escape_c2_hits_worst():

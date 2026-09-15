@@ -37,15 +37,15 @@ _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
-_BARS = 90
+_BARS = 168
 _FUTURE = 10
 _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
 _HALO = "#ffffff"
-# 圖框鎖定：左表頭、右上縮圖、右報價、主圖左右溝。框穩了才能加長 K。
-_HEADER_CHIP_MAX = 48.0
-_STOCK_LOCATOR_RECT = (0.50, 0.708, 0.36, 0.262)
+# 左表頭＋現價；右上整塊給縮圖；主圖左右拉滿，K 才能加長。
+_HEADER_CHIP_MAX = 50.0
+_STOCK_LOCATOR_RECT = (0.54, 0.698, 0.445, 0.278)
 
 
 def _md(raw: Any) -> str:
@@ -136,24 +136,26 @@ def _pivots(highs: Sequence[float], lows: Sequence[float], *, left: int = 3) -> 
 
 
 def _desc_high_pair(hi_p: Sequence[int], highs: Sequence[float]) -> Optional[Tuple[int, int]]:
-    for b in range(len(hi_p) - 1, 0, -1):
-        for a in range(b - 1, -1, -1):
-            i, j = int(hi_p[a]), int(hi_p[b])
-            if j - i < 3:
-                continue
-            if highs[j] < highs[i] * 0.999:
-                return i, j
+    """只連最近兩個樞紐高，而且後高必須更低。中間若有更高的高，不准跳過去畫假下降壓。"""
+    if len(hi_p) < 2:
+        return None
+    i, j = int(hi_p[-2]), int(hi_p[-1])
+    if j - i < 3:
+        return None
+    if highs[j] < highs[i] * 0.999:
+        return i, j
     return None
 
 
 def _asc_low_pair(lo_p: Sequence[int], lows: Sequence[float]) -> Optional[Tuple[int, int]]:
-    for b in range(len(lo_p) - 1, 0, -1):
-        for a in range(b - 1, -1, -1):
-            i, j = int(lo_p[a]), int(lo_p[b])
-            if j - i < 3:
-                continue
-            if lows[j] > lows[i] * 1.001:
-                return i, j
+    """只連最近兩個樞紐低，而且後低必須更高。中間若有更低的低，不准跳過去畫假上升撐。"""
+    if len(lo_p) < 2:
+        return None
+    i, j = int(lo_p[-2]), int(lo_p[-1])
+    if j - i < 3:
+        return None
+    if lows[j] > lows[i] * 1.001:
+        return i, j
     return None
 
 
@@ -434,6 +436,27 @@ def _price_box(ax, x, y, text, color, *, va="center", ha="left", size=13):
         ha=ha,
         zorder=10,
         bbox=dict(boxstyle="round,pad=0.32", facecolor="#ffffff", edgecolor=color, linewidth=1.25, alpha=0.97),
+    )
+
+
+def _circled_letter(ax, x, y, letter, color, *, dx=-1.8, dy=0.0, size=11):
+    """線左邊（或指定偏移）寫圈起來的 A／B／C。"""
+    ax.text(
+        float(x) + float(dx),
+        float(y) + float(dy),
+        str(letter),
+        color=color,
+        fontproperties=_fp(size, "bold"),
+        ha="center",
+        va="center",
+        zorder=14,
+        bbox=dict(
+            boxstyle="circle,pad=0.28",
+            facecolor="#ffffff",
+            edgecolor=color,
+            linewidth=1.45,
+            alpha=0.97,
+        ),
     )
 
 
@@ -748,6 +771,7 @@ def paint_locator_inset(
     title: str = "橙框＝大圖這段　橫軸月份",
     ax=None,
     legs: Optional[Sequence[Dict[str, Any]]] = None,
+    k_on_top: bool = False,
 ) -> bool:
     """右上長軸縮圖：標大圖落點，點對點連線，橫軸寫月份。"""
     from decision_card_signals import candle_up_taiwan
@@ -801,14 +825,95 @@ def paint_locator_inset(
         alpha=0.50,
         zorder=1,
     )
-    w = 0.72 if m <= 200 else (0.58 if m <= 400 else 0.42)
-    lw = 0.65 if m <= 200 else 0.38
+    if k_on_top:
+        w = 0.94 if m <= 200 else (0.80 if m <= 400 else 0.66)
+        lw = 1.15 if m <= 200 else (0.85 if m <= 400 else 0.70)
+    else:
+        w = 0.86 if m <= 200 else (0.68 if m <= 400 else 0.52)
+        lw = 0.9 if m <= 200 else 0.55
+    k_z = 8 if k_on_top else 3
+    line_z = 4 if k_on_top else 6
+    yspan = hi_max - lo_min
+
+    def _draw_legs() -> None:
+        for leg in legs or []:
+            xs = [float(x) for x in (leg.get("xs") or [])]
+            ys = [float(y) for y in (leg.get("ys") or [])]
+            if len(xs) < 2:
+                continue
+            color = str(leg.get("color") or "#37474f")
+            llw = float(leg.get("lw") or 1.15)
+            ls = leg.get("ls") or "-"
+            if llw >= 0.4:
+                ax.plot(
+                    xs,
+                    ys,
+                    color=color,
+                    linewidth=llw,
+                    linestyle=ls,
+                    zorder=line_z,
+                    solid_capstyle="round",
+                    solid_joinstyle="round",
+                    alpha=0.88 if k_on_top else 0.95,
+                )
+                if (not k_on_top) and leg.get("dots", True):
+                    ax.scatter(
+                        xs,
+                        ys,
+                        s=18,
+                        color=color,
+                        zorder=line_z + 1,
+                        edgecolors="#ffffff",
+                        linewidths=0.4,
+                    )
+            lab = str(leg.get("lab") or "").strip()
+            if lab:
+                mid = len(xs) // 2
+                ax.text(
+                    xs[mid],
+                    ys[mid],
+                    lab,
+                    color=color,
+                    fontproperties=_fp(8, "bold"),
+                    ha="center",
+                    va="bottom",
+                    zorder=12,
+                    bbox=dict(
+                        boxstyle="round,pad=0.12",
+                        facecolor="#ffffff",
+                        edgecolor="none",
+                        alpha=0.9,
+                    ),
+                )
+            circ = str(leg.get("circle") or "").strip()
+            side = str(leg.get("circle_side") or "left")
+            if circ:
+                if side == "left":
+                    mx, my = xs[0], ys[0]
+                    dx = -max(6.0, m * 0.022)
+                    dy = yspan * 0.05
+                    if mx + dx < 1.2:
+                        dx = max(4.5, m * 0.012)
+                        dy = yspan * 0.12
+                elif side == "right":
+                    mx, my = xs[-1], ys[-1]
+                    dx = max(5.0, m * 0.016)
+                    dy = yspan * 0.05
+                else:
+                    mid = len(xs) // 2
+                    mx, my = xs[mid], ys[mid]
+                    dx = 0.0
+                    dy = yspan * 0.11
+                _circled_letter(ax, mx, my, circ, color, dx=dx, dy=dy, size=10)
+
+    if not k_on_top:
+        _draw_legs()
     for i in range(m):
         prev_c = closes[i - 1] if i else None
         up = candle_up_taiwan(closes[i], prev_c, opens[i])
         c = _UP if up else _DN
-        ax.vlines(i, lows[i], highs[i], color=c, linewidth=lw, zorder=3)
-        body = max(abs(closes[i] - opens[i]), (hi_max - lo_min) * 0.0012)
+        ax.vlines(i, lows[i], highs[i], color=c, linewidth=lw, zorder=k_z)
+        body = max(abs(closes[i] - opens[i]), (hi_max - lo_min) * 0.0015)
         ax.add_patch(
             patches.Rectangle(
                 (i - w / 2, min(opens[i], closes[i])),
@@ -816,55 +921,13 @@ def paint_locator_inset(
                 body,
                 facecolor=c,
                 edgecolor=c,
-                linewidth=0.12,
-                zorder=3,
+                linewidth=0.15,
+                zorder=k_z,
+                alpha=0.95,
             )
         )
-    for leg in legs or []:
-        xs = [float(x) for x in (leg.get("xs") or [])]
-        ys = [float(y) for y in (leg.get("ys") or [])]
-        if len(xs) < 2:
-            continue
-        color = str(leg.get("color") or "#37474f")
-        llw = float(leg.get("lw") or 1.15)
-        if llw >= 0.4:
-            ax.plot(
-                xs,
-                ys,
-                color=color,
-                linewidth=llw,
-                zorder=6,
-                solid_capstyle="round",
-                solid_joinstyle="round",
-            )
-            ax.scatter(
-                xs,
-                ys,
-                s=16,
-                color=color,
-                zorder=7,
-                edgecolors="#ffffff",
-                linewidths=0.35,
-            )
-        lab = str(leg.get("lab") or "").strip()
-        if lab:
-            mid = len(xs) // 2
-            ax.text(
-                xs[mid],
-                ys[mid],
-                lab,
-                color=color,
-                fontproperties=_fp(8, "bold"),
-                ha="center",
-                va="bottom",
-                zorder=8,
-                bbox=dict(
-                    boxstyle="round,pad=0.12",
-                    facecolor="#ffffff",
-                    edgecolor="none",
-                    alpha=0.88,
-                ),
-            )
+    if k_on_top:
+        _draw_legs()
     ax.scatter(
         [m - 1],
         [closes[-1]],
@@ -1065,7 +1128,15 @@ def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = 4.15, y: float = 9
         _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=10)
 
 
-def _paint_spot(ax, quote: Dict[str, Any], *, x: float = 97.6, y: float = 96.35) -> None:
+def _paint_spot(
+    ax,
+    quote: Dict[str, Any],
+    *,
+    x: float = 36.0,
+    y: float = 92.35,
+    align: str = "left",
+) -> None:
+    """現價區塊。預設貼左上介紹文字，把右上整塊留給縮圖。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1077,73 +1148,44 @@ def _paint_spot(ax, quote: Dict[str, Any], *, x: float = 97.6, y: float = 96.35)
     color = _UP if up else _DN
     label = str(quote.get("label") or "收盤")
     px = _px(close)
-    ax.text(
-        x,
-        y,
-        px,
-        color=color,
-        fontproperties=_fp(22, "bold"),
-        va="center",
-        ha="right",
-        zorder=22,
-    )
-    lab_x = x - _ow(px, 22) - 0.55
-    ax.text(
-        lab_x,
-        y,
-        label,
-        color="#546e7a",
-        fontproperties=_fp(11, "bold"),
-        va="center",
-        ha="right",
-        zorder=22,
-    )
     o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
     try:
         ohlc_ok = all(float(v) > 0 for v in (o, hi, lo, close))
     except (TypeError, ValueError):
         ohlc_ok = False
-    if ohlc_ok:
-        cw, ch = 2.55, 4.8
-        candle_right = lab_x - _ow(label, 11) - 0.9
-        _draw_mini_candle(
-            ax,
-            candle_right - cw,
-            y - ch * 0.5,
-            cw,
-            ch,
-            float(o),
-            float(hi),
-            float(lo),
-            float(close),
-            prev,
-        )
-        ax.text(
-            candle_right - cw - 0.35,
-            y,
-            "今K",
-            color="#546e7a",
-            fontproperties=_fp(8, "bold"),
-            va="center",
-            ha="right",
-            zorder=22,
-        )
     try:
         from tg_layout import format_move_plain
 
         move = format_move_plain(quote.get("change"), quote.get("pct"))
     except Exception:
         move = ""
+    cursor = float(x)
+    ax.text(
+        cursor, y, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
+        va="center", ha="left", zorder=22,
+    )
+    cursor += _ow("今K", 8) + 0.35
+    if ohlc_ok:
+        cw, ch = 2.45, 4.6
+        _draw_mini_candle(
+            ax, cursor, y - ch * 0.5, cw, ch,
+            float(o), float(hi), float(lo), float(close), prev,
+        )
+        cursor += cw + 0.45
+    ax.text(
+        cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
+        va="center", ha="left", zorder=22,
+    )
+    cursor += _ow(label, 11) + 0.45
+    ax.text(
+        cursor, y, px, color=color, fontproperties=_fp(20, "bold"),
+        va="center", ha="left", zorder=22,
+    )
     if move and move != "—":
+        cursor += _ow(px, 20) + 0.8
         ax.text(
-            x,
-            y - 3.15,
-            "較昨日　" + move,
-            color=color,
-            fontproperties=_fp(12, "bold"),
-            va="center",
-            ha="right",
-            zorder=22,
+            cursor, y, "較昨日　" + move, color=color,
+            fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
         )
 
 
@@ -1193,7 +1235,7 @@ def render_biaoke_structure_png(
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(14.8, 10.8),
+        figsize=(16.4, 10.8),
         dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
@@ -1202,8 +1244,8 @@ def render_biaoke_structure_png(
     ax1.set_facecolor(_PANEL)
     ax2.set_facecolor(_PANEL)
     ax1.set_ylim(ymin, ymax)
-    x_gutter = n + _FUTURE + 1.55
-    x_right = n + _FUTURE + 9.6
+    x_gutter = n + _FUTURE + 0.85
+    x_right = n + _FUTURE + 3.15
     ax1.set_xlim(-0.55, x_right)
     ax1.axvspan(n - 0.45, n + _FUTURE + 0.55, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
     ax1.axvline(n - 0.45, color="#ffcc80", linewidth=1.15, linestyle=":", zorder=2)
@@ -1286,15 +1328,15 @@ def render_biaoke_structure_png(
             linewidths=0.8,
         )
         band_hi.append(
-            {"x": float(x1), "y": float(y1), "text": f"{_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
+            {"x": float(x1), "y": float(y1), "text": f"下降壓 {_md(d1)}高{_px(y1)}", "color": _DOWN_TRACK, "size": 10}
         )
         if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
             band_hi.append(
-                {"x": float(x2), "y": float(y2), "text": f"{_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
+                {"x": float(x2), "y": float(y2), "text": f"下降壓 {_md(d2)}高{_px(y2)}", "color": _DOWN_TRACK, "size": 10}
             )
         if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
             right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"延 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
+                {"x": float(x_fut), "y": float(y_end), "text": f"下降壓 {_px(y_end)}", "color": _DOWN_TRACK, "size": 10}
             )
     if up_pts:
         (x1, y1, d1), (x2, y2, d2) = up_pts
@@ -1314,15 +1356,15 @@ def render_biaoke_structure_png(
             linewidths=0.8,
         )
         band_lo.append(
-            {"x": float(x1), "y": float(y1), "text": f"{_md(d1)}低{_px(y1)}", "color": _UP_TRACK, "size": 10}
+            {"x": float(x1), "y": float(y1), "text": f"上升撐 {_md(d1)}低{_px(y1)}", "color": _UP_TRACK, "size": 10}
         )
         if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
             band_lo.append(
-                {"x": float(x2), "y": float(y2), "text": f"{_md(d2)}低{_px(y2)}", "color": _UP_TRACK, "size": 10}
+                {"x": float(x2), "y": float(y2), "text": f"上升撐 {_md(d2)}低{_px(y2)}", "color": _UP_TRACK, "size": 10}
             )
         if abs(y_end - (tgt or y_end)) / max(span, 1.0) > 0.03:
             right_notes.append(
-                {"x": float(x_fut), "y": float(y_end), "text": f"延 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
+                {"x": float(x_fut), "y": float(y_end), "text": f"上升撐 {_px(y_end)}", "color": _UP_TRACK, "size": 10}
             )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
@@ -1415,16 +1457,17 @@ def render_biaoke_structure_png(
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
     _paint_nameplate(ov, plate)
-    _paint_spot(ov, quote)
+    date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
         4.15,
         92.35,
-        f"最近收盤 {_ymd_full(last_bar.get('date'))}",
+        date_line,
         color=_TEXT,
         fontproperties=_fp(12, "bold"),
         va="center",
         ha="left",
     )
+    _paint_spot(ov, quote, x=min(48.0, 4.15 + _ow(date_line, 12) + 1.6), y=92.35)
     ov.text(
         4.15,
         89.7,
@@ -1473,7 +1516,7 @@ def render_biaoke_structure_png(
         chip_x = _draw_chip(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
         )
-    if len(rows) >= n + 16:
+    if len(rows) >= n + 8:
         paint_locator_inset(
             fig,
             rows,
@@ -1531,7 +1574,7 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.07, right=0.80, top=0.675, bottom=0.072)
+    fig.subplots_adjust(left=0.055, right=0.94, top=0.668, bottom=0.07)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
@@ -1675,7 +1718,7 @@ def build_biaoke_structure_chart(
     from biaoke_brain import load_bars
 
     sid = str(sid or "").strip()
-    bars = load_bars(db_path, sid, n=280) if db_path and sid else []
+    bars = load_bars(db_path, sid, n=360) if db_path and sid else []
     if not bars:
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)
