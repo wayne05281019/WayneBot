@@ -3463,7 +3463,7 @@ class WayneTelegramBot:
             logger.exception("飆大結構圖送出失敗")
 
     async def _send_biaoke_twii_degree_chart(self, message, uid: str) -> None:
-        """問大盤位階才附加權官方日K＋他自己點過的水平。不數段。"""
+        """問大盤位階才附加權官方日K＋他自己的轉折線。不數段。"""
         os.makedirs(self.charts_dir, exist_ok=True)
         path = self._scratch_chart_path(self.charts_dir, "TWII", "biaoke-wave", uid)
         try:

@@ -1461,6 +1461,12 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大判斷鏈即時建檔失敗")
     try:
+        from biaoke_tape import record_events
+
+        record_events(db_path, list(events or []))
+    except Exception:
+        logger.exception("飆大官方K即時建檔失敗")
+    try:
         from biaoke_weave import load_weave
 
         load_weave.cache_clear()

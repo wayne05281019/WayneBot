@@ -962,8 +962,119 @@ def _load_twii_bars(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
     return out
 
 
+_LOW_TAGS = {
+    "A波低",
+    "第五波測底",
+    "逃命波C-2",
+    "C-1",
+    "細微波主跌",
+    "波浪四",
+    "第4浪",
+    "大A-c",
+}
+_HIGH_TAGS = {"大B波", "邪惡第五波", "末升段"}
+_SKIP_PATH = {"第五波條件"}
+_UNCONFIRMED = {"C-3", "逃命波C-2"}
+_PATH_SHORT = {
+    "逃命波C-2": "逃命C-2",
+    "第五波測底": "測底",
+    "修正末端": "末端",
+    "A波低": "A波低",
+    "位階二": "位階二",
+    "右肩": "右肩",
+    "C-3": "小心C-3",
+    "C-1": "C-1",
+    "大B波": "大B波",
+    "波浪四": "波浪四",
+    "第4浪": "第4浪",
+    "細微波主跌": "主跌",
+    "邪惡第五波": "邪惡5",
+    "末升段": "末升",
+    "大A-c": "A-c",
+    "第五波失敗": "五波失敗",
+    "頭肩底": "頭肩底",
+    "3-3-4調整": "3-3-4",
+}
+
+
+def _path_kind(tag: str) -> str:
+    if tag in _LOW_TAGS:
+        return "low"
+    if tag in _HIGH_TAGS:
+        return "high"
+    return "close"
+
+
+def _path_anchor_ymd(turn: Dict[str, str]) -> str:
+    tag = str(turn.get("tag") or "")
+    if tag == "A波低":
+        return "20260729"
+    return _ymd(turn.get("date"))
+
+
+def wave_path_points(
+    db_path: str, bars: Sequence[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """視窗內把他改口過的錨對到官方柱。晚於最後官方柱就釘在最後一根。不數段。"""
+    rows = list(bars or [])
+    if len(rows) < 2:
+        return []
+    by_ymd = {_ymd(b.get("date")): i for i, b in enumerate(rows) if _ymd(b.get("date"))}
+    last_i = len(rows) - 1
+    last_ymd = _ymd(rows[-1].get("date"))
+    raw: List[Dict[str, Any]] = []
+    for turn in degree_turns(db_path):
+        tag = str(turn.get("tag") or "")
+        if not tag or tag in _SKIP_PATH:
+            continue
+        ymd = _path_anchor_ymd(turn)
+        if not ymd or not last_ymd:
+            continue
+        pinned = False
+        if ymd > last_ymd:
+            i = last_i
+            pinned = True
+        elif ymd in by_ymd:
+            i = by_ymd[ymd]
+        else:
+            continue
+        bar = rows[i]
+        kind = _path_kind(tag)
+        try:
+            if kind == "low":
+                y = float(bar.get("low") or bar.get("close") or 0)
+            elif kind == "high":
+                y = float(bar.get("high") or bar.get("close") or 0)
+            else:
+                y = float(bar.get("close") or 0)
+        except (TypeError, ValueError):
+            continue
+        if y <= 0:
+            continue
+        raw.append(
+            {
+                "i": i,
+                "y": y,
+                "tag": tag,
+                "date": str(turn.get("date") or ""),
+                "pinned": pinned,
+                "kind": kind,
+                "unconfirmed": tag in _UNCONFIRMED,
+            }
+        )
+    raw.sort(key=lambda p: (int(p["i"]), -int(_TAG_RANK.get(p["tag"], 0))))
+    out: List[Dict[str, Any]] = []
+    for p in raw:
+        if out and int(out[-1]["i"]) == int(p["i"]) and abs(float(out[-1]["y"]) - float(p["y"])) < 80:
+            if int(_TAG_RANK.get(p["tag"], 0)) >= int(_TAG_RANK.get(out[-1]["tag"], 0)):
+                out[-1] = p
+            continue
+        out.append(p)
+    return out
+
+
 def render_twii_degree_png(db_path: str, save_path: str) -> str:
-    """加權日K＋他自己點過的水平。不數段、不畫假未來 K。"""
+    """加權日K＋他自己點過的水平＋改口轉折線。不數段、不畫假未來 K。"""
     bars = _load_twii_bars(db_path, n=90)
     if len(bars) < 8 or not save_path:
         return ""
@@ -972,10 +1083,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from wayne_navigator import NAV_CHART_DPI, _fp
+        from decision_card_signals import candle_up_taiwan
+        from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
     except Exception:
         return ""
 
+    path_pts = wave_path_points(db_path, bars)
+
+    @_mpl_serial
     def _draw() -> str:
         n = len(bars)
         opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -985,6 +1100,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ys = highs + lows
         for lv, _lab, _d in _TWII_LEVELS:
             ys.append(lv)
+        for p in path_pts:
+            ys.append(float(p["y"]))
         ymin = min(ys) - 400
         ymax = max(ys) + 900
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -992,7 +1109,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
         for i in range(n):
-            up = closes[i] >= opens[i]
+            prev_c = closes[i - 1] if i else None
+            up = candle_up_taiwan(closes[i], prev_c, opens[i])
             color = "#e53935" if up else "#00897b"
             ax.vlines(i, lows[i], highs[i], color=color, linewidth=1.1, zorder=3)
             y0, y1 = sorted((opens[i], closes[i]))
@@ -1026,7 +1144,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 zorder=2,
             )
             ax.text(
-                n - 0.4,
+                n + 0.45,
                 lv,
                 f" {lab} {_px(lv)}",
                 color=colors.get(lab, "#37474f"),
@@ -1036,21 +1154,60 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 ha="left",
                 zorder=6,
             )
+        if len(path_pts) >= 2:
+            xs = [float(p["i"]) for p in path_pts]
+            ys_p = [float(p["y"]) for p in path_pts]
+            ax.plot(
+                xs,
+                ys_p,
+                color="#6a1b9a",
+                linewidth=1.85,
+                zorder=7,
+                solid_capstyle="round",
+            )
+        for p in path_pts:
+            un = bool(p.get("unconfirmed"))
+            ax.scatter(
+                [p["i"]],
+                [p["y"]],
+                s=42,
+                facecolors="#ffffff" if un else "#6a1b9a",
+                edgecolors="#6a1b9a",
+                linewidths=1.4,
+                zorder=8,
+            )
+            short = _PATH_SHORT.get(p["tag"], p["tag"])
+            if p.get("pinned"):
+                short += "·釘"
+            va = "top" if p.get("kind") == "low" else "bottom"
+            dy = -180 if va == "top" else 180
+            ax.annotate(
+                short,
+                xy=(p["i"], p["y"]),
+                xytext=(p["i"] + 0.15, p["y"] + dy),
+                textcoords="data",
+                color="#4a148c",
+                fontsize=8,
+                fontproperties=_fp(8, "bold"),
+                ha="left",
+                va=va,
+                zorder=9,
+                bbox=dict(
+                    boxstyle="round,pad=0.18",
+                    facecolor="#ffffff",
+                    edgecolor="#ce93d8",
+                    linewidth=0.7,
+                    alpha=0.94,
+                ),
+                arrowprops=dict(arrowstyle="-", color="#ce93d8", lw=0.6),
+            )
         last = bars[-1]
         ax.set_title(
-            f"加權官方日K　他自己點過的水平　{_ymd(last.get('date'))} 收 {_px(last.get('close'))}",
+            f"加權官方日K　他自己的轉折線　{_ymd(last.get('date'))} 收 {_px(last.get('close'))}",
             fontproperties=_fp(13, "bold"),
             color="#1f2933",
             loc="left",
-            pad=18,
-        )
-        ax.text(
-            0.0,
-            1.04,
-            "不是 15 分、不數 5／9 段、不是買訊。43500 是他原文最差情境，不是官方收。",
-            transform=ax.transAxes,
-            fontproperties=_fp(9),
-            color="#546e7a",
+            pad=8,
         )
         ax.set_xlim(-0.6, n + 8)
         ax.set_ylim(ymin, ymax)
@@ -1069,7 +1226,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.tick_params(labelsize=10)
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.07, right=0.82, top=0.84, bottom=0.08)
+        fig.subplots_adjust(left=0.07, right=0.82, top=0.90, bottom=0.12)
+        fig.text(
+            0.07,
+            0.03,
+            "轉折線＝他自己改口錨，不是 15 分、不數 5／9 段、不是買訊。43500 是他原文最差情境，不是官方收。",
+            fontproperties=_fp(9),
+            color="#546e7a",
+        )
         fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
         plt.close(fig)
         return save_path if os.path.isfile(save_path) else ""
@@ -1088,14 +1252,14 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     path = render_twii_degree_png(db_path, save_path)
     last, prev = last_two(db_path)
     cap_bits = [
-        "加權官方日K＋他自己點過的水平（不是15分、不是介紹圖／決策卡）",
+        "加權官方日K＋他自己點過的水平＋轉折線（不是15分、不是介紹圖／決策卡）",
         format_wave_now(db_path, n=420),
     ]
     if last:
         cap_bits.append(f"最新標籤 {last.get('date')} {last.get('tag')}")
     if prev:
         cap_bits.append(f"再前 {prev.get('date')} {prev.get('tag')}")
-    cap_bits.append("不數 5／9 段。這不是買訊。")
+    cap_bits.append("轉折線＝他自己改口錨，不數 5／9 段。這不是買訊。")
     return {
         "ok": bool(path),
         "path": path or "",

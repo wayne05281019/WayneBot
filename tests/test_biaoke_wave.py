@@ -15,7 +15,9 @@ from biaoke_wave import (
     format_wave_path,
     is_wave_question,
     last_two,
+    wave_path_points,
     _hist_bits,
+    _ymd,
 )
 from biaoke_why import is_why_query, lookup
 from bot_servers import WayneTelegramBot
@@ -154,6 +156,8 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     cap = built.get("caption") or ""
     assert "不是15分" in cap or "不是 15" in cap
     assert "不是買訊" in cap
+    assert "轉折線" in cap
+    assert "不數" in cap or "5／9" in cap
     src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "is_wave_question" in src
     assert "_send_biaoke_twii_degree_chart" in src
@@ -209,3 +213,51 @@ def test_hist_bits_checks_his_tx_levels(tmp_path):
     assert "21937" in bits
     assert "24730" in bits
     assert "還沒到他點的滿足" in bits
+
+
+def test_wave_path_points_pins_intraday_and_a_low(tmp_path):
+    import sqlite3
+
+    from taiwan_market import ensure_index_daily_table
+
+    db = str(tmp_path / "wave-path.db")
+    ensure_index_daily_table(db)
+    conn = sqlite3.connect(db)
+    rows = [
+        ("20260729", 40000, 40100, 39385, 39500),
+        ("20260730", 39600, 41000, 39500, 40800),
+        ("20260731", 40800, 41200, 40400, 40900),
+        ("20260910", 47000, 47600, 46800, 47200),
+        ("20260911", 47200, 47400, 45840, 46200),
+        ("20260912", 46200, 46800, 46000, 46500),
+        ("20260913", 46500, 46700, 45500, 45600),
+        ("20260914", 46010, 46050, 45398, 45862),
+    ]
+    extra = 0
+    while len(rows) < 12:
+        extra += 1
+        rows.insert(0, (f"202607{10+extra:02d}", 48000, 48200, 47800, 47900))
+    for d, o, h, lo, c in rows:
+        conn.execute(
+            "INSERT INTO index_daily(date,symbol,open,high,low,close,volume,pct_change,updated_at) "
+            "VALUES (?, 'TWII', ?, ?, ?, ?, 1, 0, 't')",
+            (d, o, h, lo, c),
+        )
+    conn.commit()
+    conn.close()
+    from biaoke_wave import _load_twii_bars
+
+    bars = _load_twii_bars(db, n=90)
+    pts = wave_path_points(db, bars)
+    by_tag = {p["tag"]: p for p in pts}
+    assert "A波低" in by_tag
+    a = by_tag["A波低"]
+    assert abs(float(a["y"]) - 39385) < 1
+    assert _ymd(bars[int(a["i"])].get("date")) == "20260729"
+    assert "逃命波C-2" in by_tag
+    c2 = by_tag["逃命波C-2"]
+    assert c2.get("pinned") is True
+    assert _ymd(bars[int(c2["i"])].get("date")) == "20260914"
+    labels = " ".join(p["tag"] for p in pts)
+    assert "1-2-3-4-5" not in labels
+    assert not any(str(p["tag"]).isdigit() for p in pts)
