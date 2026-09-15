@@ -222,6 +222,7 @@ def test_live_notes_reverse_think_emc_hold():
     assert "碎形" in SYSTEM
     assert "CPO" in SYSTEM
     assert "上詮" in SYSTEM
+    assert "破線當天不篤定" in SYSTEM or "五件回測" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
