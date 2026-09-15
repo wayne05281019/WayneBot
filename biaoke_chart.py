@@ -451,6 +451,119 @@ def _callout(ax, x, y, text, color, *, dx=1.55, dy=0.0, size=11, ha="left"):
     )
 
 
+def _ymd8(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    return t if len(t) == 8 and t.isdigit() else ""
+
+
+def paint_locator_inset(
+    fig,
+    bars: Sequence[Dict[str, Any]],
+    *,
+    win_from: str = "",
+    win_to: str = "",
+    rect: Tuple[float, float, float, float] = (0.68, 0.735, 0.30, 0.22),
+    title: str = "長軸定位　橙框＝大圖這段",
+    ax=None,
+) -> bool:
+    """預售屋配置圖那種整棟縮圖：長時間軸小 K，標出大圖落在哪一段。"""
+    from decision_card_signals import candle_up_taiwan
+
+    rows = []
+    for r in bars or []:
+        try:
+            if float(r.get("close") or 0) > 0:
+                rows.append(r)
+        except (TypeError, ValueError):
+            continue
+    if len(rows) < 24:
+        return False
+    wf, wt = _ymd8(win_from), _ymd8(win_to)
+    i0 = i1 = None
+    for i, r in enumerate(rows):
+        d = _ymd8(r.get("date"))
+        if wf and d >= wf and i0 is None:
+            i0 = i
+        if wt and d <= wt:
+            i1 = i
+    if i0 is None:
+        i0 = max(0, len(rows) - 90)
+    if i1 is None:
+        i1 = len(rows) - 1
+    if i1 < i0:
+        i0, i1 = i1, i0
+    if ax is None:
+        if fig is None:
+            return False
+        ax = fig.add_axes([rect[0], rect[1], rect[2], rect[3]], zorder=24)
+    ax.set_facecolor("#ffffff")
+    ax.patch.set_alpha(1.0)
+    for sp in ax.spines.values():
+        sp.set_color("#ef6c00")
+        sp.set_linewidth(1.4)
+    m = len(rows)
+    opens = [float(r.get("open") or r.get("close") or 0) for r in rows]
+    highs = [float(r.get("high") or r.get("close") or 0) for r in rows]
+    lows = [float(r.get("low") or r.get("close") or 0) for r in rows]
+    closes = [float(r.get("close") or 0) for r in rows]
+    lo_min = min(lows)
+    hi_max = max(highs)
+    pad = (hi_max - lo_min) * 0.08 or 1.0
+    ax.axvspan(
+        i0 - 0.6,
+        i1 + 0.6,
+        facecolor="#ffe082",
+        edgecolor="#ef6c00",
+        linewidth=1.35,
+        alpha=0.58,
+        zorder=1,
+    )
+    w = 0.72 if m <= 200 else (0.58 if m <= 400 else 0.42)
+    lw = 0.7 if m <= 200 else 0.4
+    for i in range(m):
+        prev_c = closes[i - 1] if i else None
+        up = candle_up_taiwan(closes[i], prev_c, opens[i])
+        c = _UP if up else _DN
+        ax.vlines(i, lows[i], highs[i], color=c, linewidth=lw, zorder=3)
+        body = max(abs(closes[i] - opens[i]), (hi_max - lo_min) * 0.0012)
+        ax.add_patch(
+            patches.Rectangle(
+                (i - w / 2, min(opens[i], closes[i])),
+                w,
+                body,
+                facecolor=c,
+                edgecolor=c,
+                linewidth=0.12,
+                zorder=3,
+            )
+        )
+    ax.scatter(
+        [m - 1],
+        [closes[-1]],
+        s=22,
+        color="#ef6c00",
+        zorder=5,
+        edgecolors="#ffffff",
+        linewidths=0.5,
+    )
+    ax.set_xlim(-0.8, m - 0.2)
+    ax.set_ylim(lo_min - pad, hi_max + pad)
+    ax.set_yticks([])
+    ax.tick_params(left=False, labelleft=False, length=2, labelsize=7, colors="#546e7a")
+    d0 = _ymd8(rows[0].get("date"))
+    d1 = _ymd8(rows[-1].get("date"))
+    xt = [0, i0, m - 1]
+    xl = [
+        f"{d0[:4]}/{int(d0[4:6])}" if d0 else "",
+        "大圖這段",
+        f"{int(d1[4:6])}/{int(d1[6:8])}" if d1 else "今",
+    ]
+    ax.set_xticks(xt)
+    ax.set_xticklabels(xl, fontproperties=_fp(7, "bold"))
+    ax.set_title(title, fontproperties=_fp(8, "bold"), color="#e65100", loc="left", pad=2.5)
+    return True
+
+
 def _ow(text: str, size: float = 11) -> float:
     """overlay 0–100 大約字寬。只拿來排晶片，不拿來截字。"""
     n = 0.0
@@ -755,7 +868,7 @@ def render_biaoke_structure_png(
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(14.8, 9.2),
+        figsize=(14.8, 9.7),
         dpi=NAV_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
@@ -1055,6 +1168,16 @@ def render_biaoke_structure_png(
         chip_x = _draw_chip(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
         )
+    if len(rows) >= n + 16:
+        loc_ax = ax1.inset_axes([0.015, 0.50, 0.30, 0.38], zorder=12)
+        paint_locator_inset(
+            fig,
+            rows,
+            win_from=str(work[0].get("date") or ""),
+            win_to=str(work[-1].get("date") or ""),
+            ax=loc_ax,
+            title="長軸定位　橙框＝大圖這段",
+        )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
@@ -1117,7 +1240,7 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.045, right=0.87, top=0.78 if banner_bits else 0.82, bottom=0.075)
+    fig.subplots_adjust(left=0.045, right=0.87, top=0.76 if banner_bits else 0.80, bottom=0.075)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
@@ -1244,7 +1367,7 @@ def chart_caption(
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
-    lines.append("連點只是輔助。不夠兩點就不畫。個股不數 5／9 段。這不是買訊。")
+    lines.append("縮圖＝更長時間軸，橙框是大圖這段。連點只是輔助。不夠兩點就不畫。個股不數 5／9 段。這不是買訊。")
     lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return "\n".join(x for x in lines if x)[:1100]
 
@@ -1261,7 +1384,7 @@ def build_biaoke_structure_chart(
     from biaoke_brain import load_bars
 
     sid = str(sid or "").strip()
-    bars = load_bars(db_path, sid, n=120) if db_path and sid else []
+    bars = load_bars(db_path, sid, n=280) if db_path and sid else []
     if not bars:
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)

@@ -1281,10 +1281,11 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
     if not last_tag and path_pts:
         last_tag = str(path_pts[-1].get("tag") or "")
     rays = wave_extend_rays(path_pts, len(bars), last_tag)
+    long_bars = _load_twii_bars(db_path, n=560)
 
     @_mpl_serial
     def _draw() -> str:
-        from biaoke_chart import _callout, _halo_line
+        from biaoke_chart import _callout, _halo_line, paint_locator_inset
 
         n = len(bars)
         opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
@@ -1302,7 +1303,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ymin = min(ys) - 400
         ymax = max(ys) + 900
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-        fig, ax = plt.subplots(figsize=(12.4, 7.2), dpi=NAV_CHART_DPI)
+        fig, ax = plt.subplots(figsize=(13.4, 8.0), dpi=NAV_CHART_DPI)
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
         ax.axvspan(n - 0.45, n + 10, facecolor="#fff6e0", alpha=0.95, zorder=0)
@@ -1471,11 +1472,20 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.tick_params(labelsize=10)
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.07, right=0.82, top=0.90, bottom=0.12)
+        fig.subplots_adjust(left=0.07, right=0.82, top=0.70, bottom=0.11)
+        if long_bars and len(long_bars) > n + 16:
+            paint_locator_inset(
+                fig,
+                long_bars,
+                win_from=str(bars[0].get("date") or ""),
+                win_to=str(bars[-1].get("date") or ""),
+                rect=(0.66, 0.735, 0.32, 0.23),
+                title="長軸定位　橙框＝大圖這段波浪",
+            )
         fig.text(
             0.07,
             0.03,
-            "轉折線按區間拆開，不是 15 分、不發明段號、不是買訊。"
+            "右上縮圖時間軸更長，橙框＝上面大圖這段。轉折線按區間拆開，不是 15 分、不發明段號、不是買訊。"
             "五月到現在不是一路大B。延伸線已建檔，官方柱走完再對質。43500 是他原文最差情境。",
             fontproperties=_fp(9),
             color="#546e7a",
@@ -1511,6 +1521,7 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
     cap_bits = [
         "加權官方日K＋他自己點過的水平＋轉折線（不是15分、不是介紹圖／決策卡）",
         "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
+        "右上縮圖＝更長時間軸，橙框是大圖這段，不是另一套浪。",
         format_wave_now(db_path, n=420),
     ]
     if last:

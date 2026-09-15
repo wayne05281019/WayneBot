@@ -163,6 +163,7 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     assert "不數" in cap or "5／9" in cap
     assert "不是一路大B" in cap or "區間" in cap
     assert "延伸線" in cap
+    assert "縮圖" in cap or "橙框" in cap
     src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "is_wave_question" in src
     assert "_send_biaoke_twii_degree_chart" in src

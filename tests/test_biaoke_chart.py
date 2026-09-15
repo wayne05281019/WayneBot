@@ -449,6 +449,22 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     assert "_callout" in src
     assert "if down_live" not in src
     assert "x_fut" in src
+    assert "paint_locator_inset" in src
+
+
+def test_locator_inset_marks_window():
+    import inspect
+
+    from biaoke_chart import paint_locator_inset
+    from biaoke_wave import render_twii_degree_png
+
+    src = inspect.getsource(paint_locator_inset)
+    assert "橙框" in src
+    assert "長軸定位" in src
+    assert "win_from" in src
+    wsrc = inspect.getsource(render_twii_degree_png)
+    assert "paint_locator_inset" in wsrc
+    assert "560" in wsrc or "long_bars" in wsrc
 
 
 def test_caption_records_forecast_line():
@@ -457,4 +473,5 @@ def test_caption_records_forecast_line():
     assert "官方柱走完再對質" in cap
     assert "這不是買訊" in cap
     assert "不是介紹圖" in cap
+    assert "縮圖" in cap
     assert "5／9" in cap or "5/9" in cap
