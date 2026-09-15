@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 NEURON_IDS = ("nest", "field", "leader", "tape", "hold", "doubt")
@@ -208,6 +209,20 @@ def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[s
     }
 
 
+def _live_bit(bundle: Optional[Dict[str, str]], nid: str, already: str = "") -> str:
+    """捕獲後進神經元的最近一句。已在舊材料裡就不重貼。"""
+    t = str((bundle or {}).get(nid) or "").strip()
+    if not t:
+        return ""
+    blob = already or ""
+    if t in blob or t[:24] in blob:
+        return ""
+    return "他自己最新：" + t
+
+
+_NEST_OFFICIAL: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+
 def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
     sid = ""
     name = ""
@@ -243,7 +258,7 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
     return sid, name
 
 
-def _nest(db_path: str, ask: str) -> Dict[str, Any]:
+def _nest_compute(db_path: str) -> Dict[str, Any]:
     bits: List[str] = []
     ok = False
     twii_ymd = ""
@@ -362,12 +377,27 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
         "確認要四路對質（加權、台積電量價、費半、台指期日／夜），沒疊滿不講已確認。"
     )
-    if any(x in (ask or "") for x in ("45839", "46506", "右肩", "細微波", "波浪", "大盤", "夜盤")):
-        bits.append("大盤位階用他自己點過的 45839／46506／48218，禁止 17000。")
     view = _view_line("nest", n=140)
     if view:
         bits.append(view)
     return _step("nest", "。".join(b.rstrip("。") for b in bits if b), ok=ok)
+
+
+def _nest(db_path: str, ask: str) -> Dict[str, Any]:
+    tick = int(time.time()) // 60
+    key = (str(db_path or ""), tick)
+    core = _NEST_OFFICIAL.get(key)
+    if core is None:
+        core = _nest_compute(db_path)
+        _NEST_OFFICIAL.clear()
+        _NEST_OFFICIAL[key] = core
+    text = str(core.get("text") or "")
+    if not any(x in (ask or "") for x in ("45839", "46506", "右肩", "細微波", "波浪", "大盤", "夜盤")):
+        return core
+    extra = "大盤位階用他自己點過的 45839／46506／48218，禁止 17000。"
+    out = dict(core)
+    out["text"] = _clip(text + "。" + extra, 900)
+    return out
 
 
 def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
@@ -928,6 +958,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit = "大盤官方收已低於 45839，覆巢先當有事"
         else:
             nest_bit = "大盤官方點位有了" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死"
+        live_m = re.search(r"他自己最新：[^。]+", nest_t)
+        if live_m:
+            nest_bit += "；" + _clip(live_m.group(0), 100)
         if "已過他自己點的 46506" in nest_t:
             nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
         elif "還沒過他自己點的 46506" in nest_t:
@@ -989,6 +1022,9 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         m = re.search(r"(現在位階[^。]+)", nest_t)
         if m:
             parts.append(m.group(1).strip() + "。")
+    live_m = re.search(r"他自己最新：[^。]+", nest_t)
+    if live_m:
+        parts.append(_clip(live_m.group(0), 100) + "。")
     if "45839 之上" in nest_t:
         parts.append("官方收還在 45839 之上，右肩低先當沒破。")
     elif "已低於他自己點的 9/3 低 45839" in nest_t:
@@ -1037,6 +1073,19 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         _hold(brief, q, named=named, db_path=db_path, uid=uid),
         _doubt(brief, bool(nest.get("ok")), named=named, nest_text=str(nest.get("text") or "")),
     ]
+    live: Dict[str, str] = {}
+    if db_path:
+        try:
+            from biaoke_neurons import latest_bundle
+
+            live = latest_bundle(db_path, sid)
+        except Exception:
+            live = {}
+    if live:
+        for step in steps:
+            extra = _live_bit(live, str(step.get("id") or ""), str(step.get("text") or ""))
+            if extra:
+                step["text"] = _clip(extra + "。" + str(step.get("text") or ""), 900)
     return {
         "sid": sid,
         "name": name,

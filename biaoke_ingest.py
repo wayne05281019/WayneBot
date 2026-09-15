@@ -1607,6 +1607,13 @@ def ingest_public_posts(
             _after_ingest_analyze(dbp, events)
         else:
             stats["skipped_walk"] = True
+    if dbp:
+        try:
+            from biaoke_neurons import backfill_recent_neurons
+
+            stats["neurons"] = backfill_recent_neurons(dbp, n=80)
+        except Exception:
+            logger.exception("飆大神經元近文補檔失敗")
     if dest and not _is_git_seed_path(dest):
         _save_corpus(dest, blob, posts)
     else:
@@ -1663,6 +1670,12 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_from_events(db_path, list(events or []))
     except Exception:
         logger.exception("飆大演算建檔失敗")
+    try:
+        from biaoke_neurons import record_neuron_events
+
+        record_neuron_events(db_path, list(events or []))
+    except Exception:
+        logger.exception("飆大神經元即時建檔失敗")
     try:
         from biaoke_weave import load_weave
 
