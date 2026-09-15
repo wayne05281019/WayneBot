@@ -248,6 +248,14 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
     ok = False
     twii_ymd = ""
     try:
+        from biaoke_wave import format_wave_head
+
+        head = format_wave_head(db_path)
+        if head:
+            bits.append(head)
+    except Exception:
+        pass
+    try:
         from biaoke_brain import load_index_bars
 
         bars = load_index_bars(db_path, n=2) if db_path else []
@@ -915,6 +923,10 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         return _clip("".join(parts), 900)
     nest_t = str(nest.get("text") or "")
     parts = ["這句沒點檔：先把大盤巢穴走完。"]
+    if "現在位階" in nest_t:
+        m = re.search(r"(現在位階[^。]+)", nest_t)
+        if m:
+            parts.append(m.group(1).strip() + "。")
     if "45839 之上" in nest_t:
         parts.append("官方收還在 45839 之上，右肩低先當沒破。")
     elif "已低於他自己點的 9/3 低 45839" in nest_t:

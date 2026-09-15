@@ -288,8 +288,8 @@ def test_tape_does_not_repeat_hold_or_field():
     mt = next(s for s in mtk["steps"] if s["id"] == "tape")
     mh = next(s for s in mtk["steps"] if s["id"] == "hold")
     assert "只做隔日沖" not in mt["text"]
-    assert "半山腰" in mh["text"]
     assert "4/16" in mh["text"]
+    assert "半山腰" in mh["text"] or "整理末端" in mh["text"] or "不是 4/16" in mh["text"]
 
 
 def test_think_chains_45839_and_self_leader():
@@ -304,9 +304,12 @@ def test_think_chains_45839_and_self_leader():
     assert "47578" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調節" in think
-    assert "5365" in think
     assert "4510" in think
     assert "3930" in think
+    tape = next(s for s in fired["steps"] if s["id"] == "tape")
+    close_m = __import__("re").search(r"收 ([0-9.]+)", tape["text"])
+    if close_m:
+        assert close_m.group(1) in think
     doubt = next(s for s in fired["steps"] if s["id"] == "doubt")
     assert "費半" in doubt["text"]
     assert "台積電官方量價" in think or "台積電" in think

@@ -115,7 +115,7 @@ def test_verify_45839_holds_through_sep10():
     from tests.conftest import require_production_db
 
     db = require_production_db()
-    chk = verify_level_holds(db, sid="TWII", ymd="20260903")
+    chk = verify_level_holds(db, sid="TWII", ymd="20260903", through="20260910")
     assert chk.get("ok")
     assert abs(float(chk["level"]) - 45839.36) < 0.02
     assert chk["held"] is True

@@ -270,6 +270,14 @@ def format_trace(ask: str, db_path: str = "") -> str:
         if pat.search(q):
             parts.append(body)
     if _HOLD_ASK.search(q):
+        try:
+            from biaoke_wave import format_wave_now
+
+            now = format_wave_now(db_path, n=420)
+            if now:
+                parts.append(now)
+        except Exception:
+            pass
         live = ""
         try:
             from biaoke_verify import format_watch

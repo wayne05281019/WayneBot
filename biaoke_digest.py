@@ -278,6 +278,8 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
         tags.extend(str(t) for t in (p.get("tags") or []) if t)
     if "夜盤" in blob or "46506" in blob:
         asks.append("夜盤過了沒")
+    if "波浪" in blob or "位階" in blob or "細微波" in blob or "右肩" in blob:
+        asks.insert(0, "現在波浪位階")
     if "45839" in blob:
         asks.append("45839有沒有守")
     if "47578" in blob:
@@ -369,26 +371,16 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 8)
     )
     blob_l = " ".join(str(p.get("text") or "") for p in latest + latest_replies)
     infer = ""
-    if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪)", blob_l):
-        infer = (
-            "這幾則是在看大盤。方向可以準，位階他不講死，要點數再驗。"
-            "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
-        )
+    if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪|右肩|位階)", blob_l):
+        infer = "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金，不是等崩了才跑。"
     asks = _likely_asks(latest + latest_replies)
     out = [f"庫 {stamp}。", *lines]
     try:
-        from biaoke_chain import fire_chain
+        from biaoke_wave import format_wave_now
 
-        nest = next(
-            (
-                s
-                for s in (fire_chain(db_path, "大盤現在怎麼看").get("steps") or [])
-                if s.get("id") == "nest"
-            ),
-            None,
-        )
-        if nest and nest.get("ok") and nest.get("text"):
-            out.insert(1, "現在大盤巢穴：" + str(nest.get("text") or "")[:240])
+        wave = format_wave_now(db_path, n=360)
+        if wave:
+            out.insert(1, wave)
     except Exception:
         pass
     if infer:

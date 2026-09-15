@@ -3397,6 +3397,14 @@ class WayneTelegramBot:
         if not q:
             return
         try:
+            from biaoke_wave import is_wave_question
+
+            if is_wave_question(q):
+                await self._send_biaoke_twii_degree_chart(message, uid)
+                return
+        except Exception:
+            logger.exception("飆大加權位階圖判斷略過")
+        try:
             from biaoke_brain import is_market_question, resolve_stock
 
             if is_market_question(q) and not resolve_stock(self.db_path, q):
@@ -3452,6 +3460,47 @@ class WayneTelegramBot:
         except Exception:
             logger.exception("飆大結構圖送出失敗")
 
+    async def _send_biaoke_twii_degree_chart(self, message, uid: str) -> None:
+        """問大盤位階才附加權官方日K＋他自己點過的水平。不數段。"""
+        os.makedirs(self.charts_dir, exist_ok=True)
+        path = self._scratch_chart_path(self.charts_dir, "TWII", "biaoke-wave", uid)
+        try:
+            chat = getattr(message, "chat", None)
+            if chat is not None and hasattr(chat, "send_action"):
+                await chat.send_action("upload_photo")
+        except Exception:
+            pass
+        try:
+            from biaoke_wave import build_twii_degree_chart
+
+            built = await asyncio.wait_for(
+                asyncio.to_thread(
+                    build_twii_degree_chart,
+                    self.db_path,
+                    path,
+                ),
+                timeout=_CHART_RENDER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("飆大加權位階圖逾時")
+            return
+        except Exception:
+            logger.exception("飆大加權位階圖失敗")
+            return
+        png = str((built or {}).get("path") or "")
+        if not png or not self._png_looks_ok(png, min_bytes=12_000, min_w=600, min_h=360):
+            return
+        cap = str((built or {}).get("caption") or "加權位階圖。這不是買訊。")
+        try:
+            with open(png, "rb") as f:
+                await message.reply_photo(
+                    photo=f,
+                    caption=cap[:900],
+                    reply_markup=self._reply_menu(uid),
+                )
+        except Exception:
+            logger.exception("飆大加權位階圖送出失敗")
+
     async def _send_biaoke_origin_charts(self, message, ask: str, uid: str) -> None:
         """飆大視窗才帶他的公開附圖。一般查股兩張圖不走這裡。社團不送。"""
         q = (ask or "").strip()
@@ -3459,10 +3508,14 @@ class WayneTelegramBot:
             return
         try:
             from biaoke_brain import is_market_question, resolve_stock
+            from biaoke_wave import is_wave_question
 
-            if is_market_question(q) and not resolve_stock(self.db_path, q):
+            if is_wave_question(q):
+                hits = [{"stock_id": "TWII", "stock_name": "加權"}]
+            elif is_market_question(q) and not resolve_stock(self.db_path, q):
                 return
-            hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
+            else:
+                hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
         except Exception:
             logger.exception("飆大原文附圖對檔略過")
             return

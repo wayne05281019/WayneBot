@@ -121,8 +121,10 @@ def test_latest_focus_is_sep14_not_july_bwave():
     assert "46506" in html
     assert "你可能會問" in html
     assert "直接打字或語音" in html
-    assert "位階他不講死" in html
+    assert "現在位階" in html
+    assert "位階不講死" in html
     assert "產業趨勢" in html
+    assert "現在波浪位階" in html
     assert "模糊的精確" not in html
     assert "安全邊際" not in html
     assert "和碩" not in html
@@ -133,7 +135,7 @@ def test_latest_focus_is_sep14_not_july_bwave():
     assert "今天飆大重點就是" not in html
     assert "語料" not in html
     assert "量先價行" not in html
-    assert len(html) < 2400
+    assert len(html) < 2800
 
 
 def test_old_inbox_not_counted_as_unread(tmp_path):
