@@ -22,7 +22,9 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib import patches
 
-from wayne_navigator import NAV_CHART_DPI, _fp, _mpl_serial
+from wayne_navigator import _fp, _mpl_serial
+
+BIAOKE_CHART_DPI = 160
 
 logger = logging.getLogger("WayneBot.BiaokeChart")
 
@@ -782,6 +784,7 @@ def infer_impulse_five(
     """已確認第 5 高，才把前面升段推成 1～4。推不出來就不畫，不准亂數。
 
     規則跟他神經元同一套：1-4 重疊＝這組推動不算；3 不能是 1／3／5 最短的。
+    第 5 可以失敗（低於第 3）；第 3 要點在 2→5 之間真正的升段高，不准抄後面的小波。
     """
     n = len(rows)
     peak_i = int(peak_i)
@@ -804,12 +807,16 @@ def infer_impulse_five(
     start_y = lows[start_i]
     if start_y <= 0 or peak_y <= start_y * 1.02:
         return {}
+    mid_hi = max(range(start_i + 1, peak_i), key=lambda i: highs[i])
+    total = max(peak_y, highs[mid_hi] if highs[mid_hi] > 0 else peak_y) - start_y
     left = max(3, min(7, (peak_i - start_i) // 18 or 3))
     w_highs = highs[start_i : peak_i + 1]
     w_lows = lows[start_i : peak_i + 1]
     hi_p, lo_p = _pivots(w_highs, w_lows, left=left)
-    hi_abs = [start_i + i for i in hi_p if highs[start_i + i] < peak_y * 0.999]
-    lo_abs = [start_i + i for i in lo_p]
+    hi_abs = [start_i + i for i in hi_p if start_i + i < peak_i]
+    lo_abs = [start_i + i for i in lo_p if start_i + i < peak_i]
+    if highs[mid_hi] > 0 and mid_hi not in hi_abs:
+        hi_abs.append(mid_hi)
     if len(hi_abs) < 2:
         return {}
 
@@ -825,6 +832,8 @@ def infer_impulse_five(
             return None
         if w3 + 1e-9 < min(w1, w5):
             return None
+        if total > 0 and w1 < total * 0.08:
+            return None
         return {
             "start": {"i": start_i, "y": start_y, "n": "", "kind": "L"},
             "pts": [
@@ -834,17 +843,19 @@ def infer_impulse_five(
                 {"n": "4", "i": i4, "y": lows[i4], "kind": "L"},
                 {"n": "5", "i": peak_i, "y": peak_y, "kind": "H"},
             ],
+            "score": (w3, w1, -abs(i4 - i3)),
         }
 
+    best: Optional[Dict[str, Any]] = None
     hi_rank = sorted(hi_abs, key=lambda i: -highs[i])
-    for i3 in hi_rank:
+    for i3 in hi_rank[:12]:
+        if i3 >= peak_i - 2:
+            continue
         hi_before = [i for i in hi_abs if i < i3 - 2]
         if not hi_before:
             continue
-        span = peak_i - start_i
-        early = [i for i in hi_before if i <= start_i + max(span * 0.55, 12)]
-        i1_cands = early if early else hi_before
-        for i1 in i1_cands[:6]:
+        i1_cands = sorted(hi_before, key=lambda i: -highs[i])[:8]
+        for i1 in i1_cands:
             mid12 = [i for i in lo_abs if i1 < i < i3]
             mid34 = [i for i in lo_abs if i3 < i < peak_i]
             if not mid12:
@@ -856,9 +867,14 @@ def infer_impulse_five(
             i2 = min(mid12, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
             i4 = min(mid34, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
             got = _pack(i1, i2, i3, i4)
-            if got:
-                return got
-    return {}
+            if not got:
+                continue
+            if best is None or got["score"] > best["score"]:
+                best = got
+    if not best:
+        return {}
+    best.pop("score", None)
+    return best
 
 
 def _impulse_support_pair(
@@ -877,6 +893,36 @@ def _impulse_support_pair(
     if lows[i4] <= lows[i2] * 1.001:
         return None
     return i2, i4
+
+
+def _map_five_support(
+    work: Sequence[Dict[str, Any]],
+    rows: Sequence[Dict[str, Any]],
+    five: Dict[str, Any],
+) -> Optional[Tuple[Tuple[Any, ...], Tuple[Any, ...]]]:
+    """縮圖 1～5 的 2／4 對回大圖座標，上升撐跟小圖同一組。"""
+    pts = {str(p.get("n") or ""): p for p in (five.get("pts") or [])}
+    p2, p4 = pts.get("2"), pts.get("4")
+    if not p2 or not p4:
+        return None
+    i2r, i4r = int(p2["i"]), int(p4["i"])
+    if not (0 <= i2r < len(rows) and 0 <= i4r < len(rows)):
+        return None
+    d2 = _ymd8(rows[i2r].get("date"))
+    d4 = _ymd8(rows[i4r].get("date"))
+    i2 = i4 = -1
+    for i, r in enumerate(work):
+        d = _ymd8(r.get("date"))
+        if d == d2:
+            i2 = i
+        if d == d4:
+            i4 = i
+    if not (0 <= i2 < i4 < len(work)):
+        return None
+    return (
+        (i2, float(p2["y"]), str(work[i2].get("date") or "")),
+        (i4, float(p4["y"]), str(work[i4].get("date") or "")),
+    )
 
 
 def impulse_five_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -899,11 +945,18 @@ def impulse_five_legs(story: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def impulse_five_marks(story: Dict[str, Any], *, size: int = 13) -> List[Dict[str, Any]]:
-    """1～5 要夠大。高點寫上面、低點寫下面。"""
+    """1～5 要夠大。高點寫上面、低點寫下面。3／5 左右分開，不准疊在同一顆。"""
+    slots = {
+        "1": "above-left",
+        "2": "below",
+        "3": "above-left",
+        "4": "below",
+        "5": "above-right",
+    }
     out: List[Dict[str, Any]] = []
     for p in (story or {}).get("pts") or []:
         n = str(p.get("n") or "").strip()
-        if n not in {"1", "2", "3", "4", "5"}:
+        if n not in slots:
             continue
         hi = str(p.get("kind") or "") == "H"
         out.append(
@@ -914,6 +967,7 @@ def impulse_five_marks(story: Dict[str, Any], *, size: int = 13) -> List[Dict[st
                 "color": "#4e342e",
                 "va": "bottom" if hi else "top",
                 "size": size,
+                "slot": slots[n],
             }
         )
     return out
@@ -1169,15 +1223,44 @@ def paint_locator_inset(
         tx = float(mk.get("x") or 0)
         ty = float(mk.get("y") or 0)
         va = str(mk.get("va") or "bottom")
-        dy = yspan * (0.045 if va == "bottom" else -0.045)
+        slot = str(mk.get("slot") or "")
+        dx = 0.0
+        dy = yspan * (0.055 if va == "bottom" else -0.055)
+        if slot == "above-left":
+            dx = -max(12.0, m * 0.038)
+            dy = yspan * 0.08
+            va = "bottom"
+        elif slot == "above-right":
+            dx = max(12.0, m * 0.038)
+            dy = yspan * 0.08
+            va = "bottom"
+        elif slot == "below":
+            dx = 0.0
+            dy = -yspan * 0.08
+            va = "top"
+        tx2 = tx + dx
         ty2 = ty + dy
-        for ox, oy in taken:
-            if abs(tx - ox) < max(8.0, m * 0.028) and abs(ty2 - oy) < yspan * 0.08:
-                tx += max(6.0, m * 0.02)
+        for _ in range(8):
+            hit = False
+            for ox, oy in taken:
+                if abs(tx2 - ox) < max(10.0, m * 0.032) and abs(ty2 - oy) < yspan * 0.10:
+                    ty2 += yspan * (0.055 if va == "bottom" else -0.055)
+                    hit = True
+                    break
+            if not hit:
                 break
-        taken.append((tx, ty2))
+        if abs(dx) > 0.4 or abs(ty2 - ty) > yspan * 0.02:
+            ax.plot(
+                [tx, tx2],
+                [ty, ty2],
+                color="#bcaaa4",
+                linewidth=0.7,
+                zorder=14,
+                solid_capstyle="round",
+            )
+        taken.append((tx2, ty2))
         ax.text(
-            tx,
+            tx2,
             ty2,
             str(mk.get("text") or ""),
             color=str(mk.get("color") or "#4e342e"),
@@ -1642,7 +1725,7 @@ def render_biaoke_structure_png(
         2,
         1,
         figsize=(16.4, 10.8),
-        dpi=NAV_CHART_DPI,
+        dpi=BIAOKE_CHART_DPI,
         sharex=True,
         gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
         facecolor=_BG,
@@ -1716,6 +1799,13 @@ def render_biaoke_structure_png(
         ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
+    five: Dict[str, Any] = {}
+    if down_pts and len(rows) >= n + 8:
+        off0 = len(rows) - n
+        five = infer_impulse_five(rows, peak_i=off0 + int(down_pts[0][0]))
+        mapped = _map_five_support(work, rows, five)
+        if mapped:
+            up_pts = mapped
     x_fut = n - 1 + _FUTURE
     if down_pts:
         (x1, y1, d1), (x2, y2, d2) = down_pts
@@ -1830,7 +1920,7 @@ def render_biaoke_structure_png(
         x_text=x_gutter,
         ymin=ymin,
         ymax=ymax,
-        min_gap=span * 0.08,
+        min_gap=span * 0.13,
     )
     ax1.text(
         n + _FUTURE * 0.45,
@@ -1925,11 +2015,10 @@ def render_biaoke_structure_png(
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
         loc_marks: List[Dict[str, Any]] = []
-        five: Dict[str, Any] = {}
         if down_pts:
             off = len(rows) - n
-            peak_i = off + int(down_pts[0][0])
-            five = infer_impulse_five(rows, peak_i=peak_i)
+            if not five:
+                five = infer_impulse_five(rows, peak_i=off + int(down_pts[0][0]))
             loc_legs.extend(impulse_five_legs(five))
             loc_marks.extend(impulse_five_marks(five, size=11))
             (x1, y1, _d1), (x2, y2, _d2) = down_pts
@@ -2008,7 +2097,7 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
     )
-    fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
+    fig.savefig(save_path, dpi=BIAOKE_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 

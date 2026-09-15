@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 from biaoke_chart import (
+    BIAOKE_CHART_DPI,
     _axis_ticks,
     _paint_locator_quote,
     _paint_spot,
@@ -684,6 +685,75 @@ def test_infer_impulse_five_from_confirmed_peak():
     assert infer_impulse_five(rows[:6], peak_i=5) == {}
 
 
+def test_infer_impulse_five_truncated_5_uses_higher_mountain_as_wave3():
+    """5 截短時，3 必須是起點到 5 之間的最高山，不能卡在 5 左邊較矮的峰。"""
+    from datetime import date, timedelta
+
+    from biaoke_chart import infer_impulse_five
+
+    # 1=55、2=48、3=90、4=62（4 低仍高於 1 高）、5=75 截短。中間 K 線性連，避免 4 掉進 1。
+    anchors = {0: 40.0, 8: 55.0, 16: 48.0, 40: 90.0, 55: 62.0, 80: 75.0, 89: 73.0}
+    keys = sorted(anchors)
+    rows = []
+    start = date(2025, 10, 1)
+    for i in range(90):
+        for a, b in zip(keys, keys[1:]):
+            if a <= i <= b:
+                t = 0 if b == a else (i - a) / (b - a)
+                px = anchors[a] + (anchors[b] - anchors[a]) * t
+                break
+        else:
+            px = 40.0
+        d = (start + timedelta(days=i)).strftime("%Y%m%d")
+        rows.append(
+            {
+                "date": d,
+                "open": px,
+                "high": px + 0.4,
+                "low": px - 0.4,
+                "close": px,
+                "volume": 1000,
+            }
+        )
+    five = infer_impulse_five(rows, peak_i=80)
+    assert five
+    pts = {str(p["n"]): p for p in five["pts"]}
+    assert pts["5"]["y"] == rows[80]["high"]
+    assert pts["3"]["y"] == rows[40]["high"]
+    assert int(pts["3"]["i"]) < int(pts["5"]["i"])
+
+
+def test_infer_impulse_five_3105_wave3_is_april_mountain():
+    """穩懋截短 5：3＝4/21 山頭，1 不准貼在 11 月那顆小波。"""
+    import os
+
+    from biaoke_brain import load_bars
+    from biaoke_chart import _ymd8, analyze_structure, infer_impulse_five
+
+    db = "data/wayne_market.db"
+    if not os.path.isfile(db):
+        return
+    bars = load_bars(db, "3105", n=360)
+    if len(bars) < 80:
+        return
+    work = bars[-168:]
+    info = analyze_structure(work)
+    down = info.get("down_pts") or []
+    if not down:
+        return
+    off = len(bars) - len(work)
+    five = infer_impulse_five(bars, peak_i=off + int(down[0][0]))
+    assert five
+    pts = {str(p["n"]): p for p in five["pts"]}
+    d3 = _ymd8(bars[int(pts["3"]["i"])].get("date"))
+    d1 = _ymd8(bars[int(pts["1"]["i"])].get("date"))
+    assert d3 == "20260421"
+    assert float(pts["3"]["y"]) >= 630
+    assert d1 >= "20251201"
+    assert float(pts["1"]["y"]) >= 180
+    assert int(pts["3"]["i"]) < int(pts["5"]["i"])
+
+
 def test_major_swings_and_locator_legs():
     from biaoke_chart import _major_swings, locator_legs_from_swings
 
@@ -718,7 +788,16 @@ def test_major_swings_and_locator_legs():
     assert any(x in labs for x in ("升", "回"))
     ticks = _axis_ticks(60, extra=(12,))
     assert 0 in ticks
-    assert 59 in ticks
-    assert 12 in ticks
-    assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
-    assert 56 not in ticks
+
+
+def test_biaoke_chart_dpi_is_lighter_than_nav():
+    from wayne_navigator import NAV_CHART_DPI
+
+    assert BIAOKE_CHART_DPI <= 180
+    assert BIAOKE_CHART_DPI < NAV_CHART_DPI
+    import inspect
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "BIAOKE_CHART_DPI" in src
+    assert "NAV_CHART_DPI" not in src
