@@ -4,7 +4,7 @@
 盤中 10 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘。
 收盤後、凌晨、週末、國定假、颱風停市都每 1 小時。
 主文通常只改最新一篇；討論串也多半回在最新一篇，有時回在很早的留言裡（含回文裡的回文）。
-平時只重讀最新一篇主文＋最新一篇討論串。最新一篇是剛發的、或這次才第一次掃到，才連前一篇樓下一起收。
+主文通常只改最新一篇。討論串每次都重讀最近兩則（含回在很早留言、回文裡的回文），因為樓下自回會改大盤位階與個股狀態。
 樓中樓＝飆大本人一／二層（含回在別人留言裡、回文裡的回文）。路人正文不收。引號裡不是他的話。
 主文走公開 HTML。樓下自回走同學會公開訪客 grant 打 Comments／Replies JSON。
 對圖以主文點名的股票為準；附圖對不上主文就略過該圖。
@@ -1252,8 +1252,8 @@ def ingest_public_posts(
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
     正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
     corpus_index.json 不准當起點、不准寫回。
-    已知主文：只重讀最新一篇正文。討論串平時只收最新一篇（含回在很早留言、回文裡的回文）。
-    最新一篇是剛發的、或這次第一次掃到，才連前一篇樓下。新 id 第一次進來連樓下也收。
+    已知主文：只重讀最新一篇正文。討論串每次重讀最近兩則（含回在很早留言、回文裡的回文）。
+    新 id 第一次進來連樓下也收。
     """
     dest = str(corpus_path or "").strip()
     dbp = str(db_path or "").strip()
@@ -1306,17 +1306,14 @@ def ingest_public_posts(
     touched: List[str] = []
     events: List[Dict[str, Any]] = []
     window = max(1, min(int(refresh_latest or REFRESH_LATEST), 2))
-    prev_thread = False
     for i, aid in enumerate(ids):
         known = aid in by_id and (by_id[aid].get("kind") or "post") != "reply"
         if not known:
             want_body = i < window
             want_thread = i < window
-            if i == 0:
-                prev_thread = True
         else:
             want_body = i == 0
-            want_thread = i == 0 or (i == 1 and prev_thread)
+            want_thread = i < window
         if not want_body and not want_thread:
             continue
         html_text = ""
@@ -1340,13 +1337,8 @@ def ingest_public_posts(
                     events.append(dict(row))
                 if hit == "added":
                     added += 1
-                    if i == 0:
-                        prev_thread = True
                 elif hit == "updated":
                     updated += 1
-            stamp = row or by_id.get(aid)
-            if i == 0 and _row_is_fresh(stamp):
-                prev_thread = True
         if not want_thread:
             continue
         api_reps = []
@@ -1466,6 +1458,12 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_events(db_path, list(events or []))
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
+    try:
+        from biaoke_forecast import record_from_events
+
+        record_from_events(db_path, list(events or []))
+    except Exception:
+        logger.exception("飆大演算建檔失敗")
     try:
         from biaoke_weave import load_weave
 

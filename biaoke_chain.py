@@ -545,6 +545,14 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
                     bit += " " + filed
             except Exception:
                 pass
+            try:
+                from biaoke_forecast import glance_forecast
+
+                fc = glance_forecast(db_path, sid)
+                if fc:
+                    bit += " " + fc
+            except Exception:
+                pass
         return _step("tape", bit, ok=False)
     bit = (
         f"{brief.get('sid')} {brief.get('name') or ''} "
@@ -593,6 +601,14 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
             filed = glance_for(db_path, sid)
             if filed:
                 bit += " " + filed
+        except Exception:
+            pass
+        try:
+            from biaoke_forecast import glance_forecast
+
+            fc = glance_forecast(db_path, sid)
+            if fc:
+                bit += " " + fc
         except Exception:
             pass
     view = _view_line("tape", n=140)

@@ -27,21 +27,22 @@ logger = logging.getLogger("WayneBot.BiaokeChart")
 
 _BG = "#ffffff"
 _PANEL = "#ffffff"
-_GRID = "#bdbdbd"
+_GRID = "#cfd8dc"
 _TEXT = "#1f2933"
 _UP = "#e53935"
 _DN = "#00897b"
-_PRESS = "#c62828"
-_HOLD = "#2e7d32"
+_PRESS = "#ad1457"
+_HOLD = "#1b5e20"
 _DOWN_TRACK = "#6a1b9a"
 _UP_TRACK = "#0277bd"
 _WASH = "#ef6c00"
 _SPIKE_VOL = "#f9a825"
 _BARS = 60
-_FUTURE = 8
-_PROJECT = "#37474f"
-_FORK = "#78909c"
-_FUTURE_BG = "#eceff1"
+_FUTURE = 10
+_PROJECT = "#e65100"
+_FORK = "#5d4037"
+_FUTURE_BG = "#fff6e0"
+_HALO = "#ffffff"
 
 
 def _md(raw: Any) -> str:
@@ -391,7 +392,7 @@ def project_next(info: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _price_box(ax, x, y, text, color, *, va="center", ha="left", size=12):
+def _price_box(ax, x, y, text, color, *, va="center", ha="left", size=13):
     ax.text(
         x,
         y,
@@ -400,9 +401,316 @@ def _price_box(ax, x, y, text, color, *, va="center", ha="left", size=12):
         fontproperties=_fp(size, "bold"),
         va=va,
         ha=ha,
-        zorder=8,
-        bbox=dict(boxstyle="round,pad=0.28", facecolor="#ffffff", edgecolor=color, linewidth=1.1, alpha=0.96),
+        zorder=10,
+        bbox=dict(boxstyle="round,pad=0.32", facecolor="#ffffff", edgecolor=color, linewidth=1.25, alpha=0.97),
     )
+
+
+def _halo_line(ax, xs, ys, color, *, lw=2.0, ls="-", z=6):
+    ax.plot(
+        xs,
+        ys,
+        color=_HALO,
+        linewidth=lw + 2.4,
+        linestyle="-",
+        zorder=z,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        alpha=0.95,
+    )
+    ax.plot(
+        xs,
+        ys,
+        color=color,
+        linewidth=lw,
+        linestyle=ls,
+        zorder=z + 1,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+    )
+
+
+def _callout(ax, x, y, text, color, *, dx=1.55, dy=0.0, size=11, ha="left"):
+    ax.annotate(
+        text,
+        xy=(x, y),
+        xytext=(x + dx, y + dy),
+        color=color,
+        fontproperties=_fp(size, "bold"),
+        ha=ha,
+        va="center",
+        zorder=11,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor="#ffffff",
+            edgecolor=color,
+            linewidth=1.15,
+            alpha=0.97,
+        ),
+        arrowprops=dict(arrowstyle="-", color=color, lw=0.9, shrinkA=0, shrinkB=3),
+    )
+
+
+def _ow(text: str, size: float = 11) -> float:
+    """overlay 0–100 大約字寬。只拿來排晶片，不拿來截字。"""
+    n = 0.0
+    for ch in str(text or ""):
+        n += 1.0 if ord(ch) > 0x2E80 else 0.55
+    return n * (float(size) / 11.0) * 1.08 + 0.15
+
+
+def _in_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
+def stock_nameplate(sid: str, name: str = "", db_path: str = "") -> Dict[str, str]:
+    """股名旁官方產業；自己就是這族／長線龍頭才加一枚龍頭晶片。"""
+    sid = str(sid or "").strip()
+    nm = str(name or "").strip()
+    industry = ""
+    if db_path:
+        try:
+            from universe import card_industry_label
+
+            industry = str(card_industry_label(sid, db_path) or "").strip()
+        except Exception:
+            industry = ""
+    leader = ""
+    why = ""
+    try:
+        from biaoke_judge import _LONG_HOLD, leader_of
+
+        lid, _lname, why = leader_of(db_path, sid, nm)
+        if lid == sid or sid in _LONG_HOLD:
+            leader = "龍頭"
+    except Exception:
+        why = ""
+    return {
+        "sid": sid,
+        "name": nm,
+        "industry": industry,
+        "leader": leader,
+        "why": why,
+    }
+
+
+def header_banner_lines(glance: Optional[Dict[str, str]] = None) -> List[str]:
+    """圖上頭三顆短句，整句畫完，不准截成…。"""
+    g = glance or {}
+    out: List[str] = []
+    for key in ("nest", "field", "leader"):
+        bit = " ".join(str(g.get(key) or "").split())
+        if bit:
+            out.append(bit)
+    return out
+
+
+def _spot_quote(
+    sid: str,
+    last_bar: Optional[Dict[str, Any]] = None,
+    prev_bar: Optional[Dict[str, Any]] = None,
+    db_path: str = "",
+) -> Dict[str, Any]:
+    """右上角現價／收盤。pytest 不打外網；沒即時就用最後官方收。"""
+    last = dict(last_bar or {})
+    prev = dict(prev_bar or {})
+    close = last.get("close")
+    prev_c = prev.get("close") if prev.get("close") is not None else last.get("yesterday_close")
+    pct = last.get("pct_change")
+    chg = None
+    try:
+        if close is not None and prev_c not in (None, 0, 0.0):
+            chg = float(close) - float(prev_c)
+            if pct is None:
+                pct = (chg / float(prev_c)) * 100.0
+    except (TypeError, ValueError):
+        chg = None
+    out: Dict[str, Any] = {
+        "is_live": False,
+        "label": "收盤",
+        "open": last.get("open"),
+        "high": last.get("high"),
+        "low": last.get("low"),
+        "close": close,
+        "prev": prev_c,
+        "pct": pct,
+        "change": chg,
+        "date": last.get("date") or "",
+        "volume": last.get("volume"),
+    }
+    if _in_pytest() or not sid:
+        return out
+    try:
+        from live_quote import fetch_mis_quote
+
+        live = fetch_mis_quote(sid) or {}
+    except Exception:
+        live = {}
+    try:
+        px = float(live.get("close") or 0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if px <= 0:
+        return out
+    y = live.get("yesterday_close")
+    if y in (None, 0, 0.0):
+        y = prev_c
+    try:
+        yf = float(y) if y is not None else 0.0
+    except (TypeError, ValueError):
+        yf = 0.0
+    live_chg = live.get("change")
+    live_pct = live.get("pct_change")
+    if live_chg is None and yf:
+        live_chg = px - yf
+    if live_pct is None and yf:
+        live_pct = (px - yf) / yf * 100.0
+    out.update(
+        {
+            "is_live": True,
+            "label": "現價",
+            "open": live.get("open") if live.get("open") is not None else out["open"],
+            "high": live.get("high") if live.get("high") is not None else out["high"],
+            "low": live.get("low") if live.get("low") is not None else out["low"],
+            "close": px,
+            "prev": yf or out["prev"],
+            "pct": live_pct,
+            "change": live_chg,
+            "volume": live.get("volume") if live.get("volume") is not None else out["volume"],
+            "update_time": live.get("update_time") or "",
+        }
+    )
+    return out
+
+
+def _draw_chip(ax, x: float, y: float, text: str, *, fc: str, ec: str, tc: str, size: int = 10) -> float:
+    label = str(text or "").strip()
+    if not label:
+        return x
+    ax.text(
+        x,
+        y,
+        f" {label} ",
+        color=tc,
+        fontproperties=_fp(size, "bold"),
+        va="center",
+        ha="left",
+        zorder=22,
+        bbox=dict(
+            boxstyle="round,pad=0.28",
+            facecolor=fc,
+            edgecolor=ec,
+            linewidth=1.05,
+            alpha=0.97,
+        ),
+    )
+    return x + _ow(f" {label} ", size) + 1.15
+
+
+def _paint_nameplate(ax, plate: Dict[str, str], *, x: float = 4.15, y: float = 96.35) -> None:
+    sid = str(plate.get("sid") or "")
+    name = str(plate.get("name") or "")
+    title = f"{sid} {name}".strip() or "官方日K"
+    ax.text(
+        x,
+        y,
+        title,
+        color=_TEXT,
+        fontproperties=_fp(17, "bold"),
+        va="center",
+        ha="left",
+        zorder=22,
+    )
+    cx = x + _ow(title, 17) + 1.35
+    industry = str(plate.get("industry") or "").strip()
+    if industry:
+        cx = _draw_chip(
+            ax, cx, y, industry, fc="#eef3f8", ec="#607d8b", tc="#37474f", size=10
+        )
+    if str(plate.get("leader") or "").strip() == "龍頭":
+        _draw_chip(ax, cx, y, "龍頭", fc="#ef6c00", ec="#e65100", tc="#ffffff", size=10)
+
+
+def _paint_spot(ax, quote: Dict[str, Any], *, x: float = 97.6, y: float = 96.35) -> None:
+    close = quote.get("close")
+    if close is None:
+        return
+    from decision_card_signals import candle_up_taiwan
+    from wayne_navigator import _draw_mini_candle
+
+    prev = quote.get("prev")
+    up = candle_up_taiwan(close, prev, quote.get("open"))
+    color = _UP if up else _DN
+    label = str(quote.get("label") or "收盤")
+    px = _px(close)
+    ax.text(
+        x,
+        y,
+        px,
+        color=color,
+        fontproperties=_fp(22, "bold"),
+        va="center",
+        ha="right",
+        zorder=22,
+    )
+    lab_x = x - _ow(px, 22) - 0.55
+    ax.text(
+        lab_x,
+        y,
+        label,
+        color="#546e7a",
+        fontproperties=_fp(11, "bold"),
+        va="center",
+        ha="right",
+        zorder=22,
+    )
+    o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
+    try:
+        ohlc_ok = all(float(v) > 0 for v in (o, hi, lo, close))
+    except (TypeError, ValueError):
+        ohlc_ok = False
+    if ohlc_ok:
+        cw, ch = 2.55, 4.8
+        candle_right = lab_x - _ow(label, 11) - 0.9
+        _draw_mini_candle(
+            ax,
+            candle_right - cw,
+            y - ch * 0.5,
+            cw,
+            ch,
+            float(o),
+            float(hi),
+            float(lo),
+            float(close),
+            prev,
+        )
+        ax.text(
+            candle_right - cw - 0.35,
+            y,
+            "今K",
+            color="#546e7a",
+            fontproperties=_fp(8, "bold"),
+            va="center",
+            ha="right",
+            zorder=22,
+        )
+    try:
+        from tg_layout import format_move_plain
+
+        move = format_move_plain(quote.get("change"), quote.get("pct"))
+    except Exception:
+        move = ""
+    if move and move != "—":
+        ax.text(
+            x,
+            y - 3.15,
+            "較昨日　" + move,
+            color=color,
+            fontproperties=_fp(12, "bold"),
+            va="center",
+            ha="right",
+            zorder=22,
+        )
 
 
 @_mpl_serial
@@ -413,6 +721,9 @@ def render_biaoke_structure_png(
     sid: str = "",
     name: str = "",
     glance: Optional[Dict[str, str]] = None,
+    plate: Optional[Dict[str, str]] = None,
+    quote: Optional[Dict[str, Any]] = None,
+    db_path: str = "",
 ) -> str:
     rows = list(bars or [])
     if len(rows) < 8 or not save_path:
@@ -429,8 +740,8 @@ def render_biaoke_structure_png(
     span = max(max(highs) - min(lows), 1.0)
     proj = info.get("project") or {}
     tgt = float(proj.get("target") or 0)
-    ymin = min(lows) - span * 0.05
-    ymax = max(highs) + span * 0.22
+    ymin = min(lows) - span * 0.10
+    ymax = max(highs) + span * 0.28
     if tgt:
         ymin = min(ymin, tgt - span * 0.06)
         ymax = max(ymax, tgt + span * 0.10)
@@ -444,19 +755,19 @@ def render_biaoke_structure_png(
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
-        figsize=(14.4, 8.6),
+        figsize=(14.8, 9.2),
         dpi=NAV_CHART_DPI,
         sharex=True,
-        gridspec_kw=dict(height_ratios=(5.35, 1.55), hspace=0.045),
+        gridspec_kw=dict(height_ratios=(5.45, 1.45), hspace=0.048),
         facecolor=_BG,
     )
     ax1.set_facecolor(_PANEL)
     ax2.set_facecolor(_PANEL)
     ax1.set_ylim(ymin, ymax)
-    x_right = n + _FUTURE + 2.4
+    x_right = n + _FUTURE + 3.2
     ax1.set_xlim(-0.55, x_right)
-    ax1.axvspan(n - 0.45, n + _FUTURE + 0.35, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
-    ax1.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
+    ax1.axvspan(n - 0.45, n + _FUTURE + 0.55, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
+    ax1.axvline(n - 0.45, color="#ffcc80", linewidth=1.15, linestyle=":", zorder=2)
     candle_up = []
     for i in range(n):
         prev_c = closes[i - 1] if i else None
@@ -467,7 +778,14 @@ def render_biaoke_structure_png(
     spike_i = int(info.get("spike_i") or 0)
     spike_date = str(st.get("spike_date") or "")
     last_bar = info.get("last_bar") or _bar_ohlc(work[-1])
+    prev_bar = _bar_ohlc(work[-2]) if len(work) >= 2 else {}
     spike_bar = info.get("spike_bar") or {}
+    plate = dict(plate or stock_nameplate(sid, name, db_path))
+    if not plate.get("sid"):
+        plate["sid"] = sid
+    if not plate.get("name"):
+        plate["name"] = name
+    quote = dict(quote or _spot_quote(sid, last_bar, prev_bar, db_path))
     for i in range(n):
         c = _UP if candle_up[i] else _DN
         thick = 1.55 if i == spike_i else 1.15
@@ -480,7 +798,7 @@ def render_biaoke_structure_png(
             solid_capstyle="round",
         )
         body = max(abs(closes[i] - opens[i]), span * 0.0016)
-        w = 0.62 if i == spike_i else 0.52
+        w = 0.58 if i == spike_i else 0.46
         ax1.add_patch(
             patches.Rectangle(
                 (xs[i] - w / 2, min(opens[i], closes[i])),
@@ -493,10 +811,10 @@ def render_biaoke_structure_png(
             )
         )
     if spike_hi:
-        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.85, zorder=4)
+        ax1.axhline(spike_hi, color=_PRESS, linewidth=1.55, zorder=4, alpha=0.92)
         _price_box(
             ax1,
-            n + _FUTURE * 0.15,
+            n + _FUTURE + 0.35,
             spike_hi,
             f"壓 {_px(spike_hi)}",
             _PRESS,
@@ -505,10 +823,10 @@ def render_biaoke_structure_png(
             size=13,
         )
     if spike_lo:
-        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.85, zorder=4)
+        ax1.axhline(spike_lo, color=_HOLD, linewidth=1.55, zorder=4, alpha=0.92)
         _price_box(
             ax1,
-            n + _FUTURE * 0.15,
+            n + _FUTURE + 0.35,
             spike_lo,
             f"撐 {_px(spike_lo)}",
             _HOLD,
@@ -519,119 +837,163 @@ def render_biaoke_structure_png(
     last_c = float(last_bar.get("close") or 0)
     if 0 <= spike_i < n:
         ax1.axvline(spike_i, color="#90a4ae", linewidth=1.05, linestyle="--", zorder=2)
-        box_ha = "right" if spike_i > n * 0.62 else "center"
-        box_x = spike_i - 0.45 if box_ha == "right" else spike_i
-        _price_box(
-            ax1,
-            box_x,
-            min(spike_hi + span * 0.06, ymax - span * 0.02) if spike_hi else highs[spike_i],
-            f"爆大量日 {_ymd_full(spike_date)}",
-            _TEXT,
-            va="bottom",
-            ha=box_ha,
-            size=12,
-        )
     down_pts = info.get("down_pts")
     up_pts = info.get("up_pts")
     x_fut = n - 1 + _FUTURE
-    down_now = float(info.get("down_now") or 0)
-    up_now = float(info.get("up_now") or 0)
-    down_live = bool(down_pts and last_c and down_now and last_c < down_now * 1.002)
-    up_live = bool(
-        up_pts and last_c and up_now and last_c > up_now * 0.998 and last_c < up_now * 1.08
-    )
     if down_pts:
         (x1, y1, d1), (x2, y2, d2) = down_pts
-        x_end = x_fut if down_live else float(n - 1)
-        y_end = _line_at(x1, y1, x2, y2, x_end)
-        ax1.plot([x1, x_end], [y1, y_end], color=_DOWN_TRACK, linewidth=1.2, linestyle=(0, (4, 2.2)), zorder=5)
-        ax1.scatter([x1, x2], [y1, y2], color=_DOWN_TRACK, s=36, zorder=6)
-        ax1.text(x1, y1, f"{_md(d1)}高{_px(y1)} ", color=_DOWN_TRACK, fontproperties=_fp(11, "bold"), va="bottom", ha="right")
-        if x2 < n - 4 or abs(y2 - (spike_hi or y2)) / span > 0.07:
-            ax1.text(x2, y2, f" {_md(d2)}高{_px(y2)}", color=_DOWN_TRACK, fontproperties=_fp(11, "bold"), va="bottom", ha="left")
-        if down_live:
-            ax1.text(
-                x_end,
-                y_end,
-                f"連點延長 {_px(y_end)}",
-                color=_DOWN_TRACK,
-                fontproperties=_fp(10, "bold"),
-                va="top",
-                ha="right",
+        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
+        y_end = _line_at(x1, y1, x2, y2, x_fut)
+        _halo_line(ax1, [x1, n - 1], [y1, y_now], _DOWN_TRACK, lw=1.7, ls="-", z=5)
+        _halo_line(
+            ax1, [n - 1, x_fut], [y_now, y_end], _DOWN_TRACK, lw=1.7, ls=(0, (4, 2.2)), z=5
+        )
+        ax1.scatter(
+            [x1, x2],
+            [y1, y2],
+            color=_DOWN_TRACK,
+            s=42,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.8,
+        )
+        _callout(
+            ax1,
+            x1,
+            y1,
+            f"{_md(d1)}高{_px(y1)}",
+            _DOWN_TRACK,
+            dx=-2.2,
+            dy=span * 0.02,
+            size=10,
+            ha="right",
+        )
+        if abs(y2 - (spike_hi or y2)) / span > 0.05 or x2 < n - 6:
+            _callout(
+                ax1,
+                x2,
+                y2,
+                f"{_md(d2)}高{_px(y2)}",
+                _DOWN_TRACK,
+                dx=1.5,
+                dy=span * 0.03,
+                size=10,
             )
+        _callout(
+            ax1,
+            x_fut,
+            y_end,
+            f"連點延長 {_px(y_end)}",
+            _DOWN_TRACK,
+            dx=0.4,
+            dy=span * 0.012,
+            size=10,
+        )
     if up_pts:
         (x1, y1, d1), (x2, y2, d2) = up_pts
-        x_end = x_fut if up_live else float(n - 1)
-        y_end = _line_at(x1, y1, x2, y2, x_end)
-        ax1.plot([x1, x_end], [y1, y_end], color=_UP_TRACK, linewidth=1.2, linestyle=(0, (4, 2.2)), zorder=5)
-        ax1.scatter([x1, x2], [y1, y2], color=_UP_TRACK, s=36, zorder=6)
-        ax1.text(x1, y1, f"{_md(d1)}低{_px(y1)} ", color=_UP_TRACK, fontproperties=_fp(11, "bold"), va="top", ha="right")
-        if x2 < n - 4 or abs(y2 - (spike_lo or y2)) / span > 0.07:
-            ax1.text(x2, y2, f" {_md(d2)}低{_px(y2)}", color=_UP_TRACK, fontproperties=_fp(11, "bold"), va="top", ha="left")
-        if up_live:
-            ax1.text(
-                x_end,
-                y_end,
-                f"連點延長 {_px(y_end)}",
-                color=_UP_TRACK,
-                fontproperties=_fp(10, "bold"),
-                va="top",
-                ha="right",
+        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
+        y_end = _line_at(x1, y1, x2, y2, x_fut)
+        _halo_line(ax1, [x1, n - 1], [y1, y_now], _UP_TRACK, lw=1.7, ls="-", z=5)
+        _halo_line(
+            ax1, [n - 1, x_fut], [y_now, y_end], _UP_TRACK, lw=1.7, ls=(0, (4, 2.2)), z=5
+        )
+        ax1.scatter(
+            [x1, x2],
+            [y1, y2],
+            color=_UP_TRACK,
+            s=42,
+            zorder=6,
+            edgecolors="white",
+            linewidths=0.8,
+        )
+        _callout(
+            ax1,
+            x1,
+            y1,
+            f"{_md(d1)}低{_px(y1)}",
+            _UP_TRACK,
+            dx=-2.2,
+            dy=-span * 0.02,
+            size=10,
+            ha="right",
+        )
+        if abs(y2 - (spike_lo or y2)) / span > 0.05 or x2 < n - 6:
+            _callout(
+                ax1,
+                x2,
+                y2,
+                f"{_md(d2)}低{_px(y2)}",
+                _UP_TRACK,
+                dx=1.5,
+                dy=-span * 0.03,
+                size=10,
             )
+        _callout(
+            ax1,
+            x_fut,
+            y_end,
+            f"連點延長 {_px(y_end)}",
+            _UP_TRACK,
+            dx=0.4,
+            dy=-span * 0.012,
+            size=10,
+        )
     path = list(proj.get("path") or [])
     if len(path) >= 2:
-        ax1.plot(
+        _halo_line(
+            ax1,
             [p[0] for p in path],
             [p[1] for p in path],
-            color=_PROJECT,
-            linewidth=2.15,
-            linestyle=(0, (7, 3)),
-            zorder=7,
-            label="最可能演算",
+            _PROJECT,
+            lw=2.2,
+            ls=(0, (7, 3)),
+            z=7,
         )
-        ax1.scatter([path[-1][0]], [path[-1][1]], color=_PROJECT, s=42, zorder=8)
-        mark_i = min(3, len(path) - 1)
-        mx, my = path[mark_i]
-        key = str(proj.get("key") or "")
-        if key in ("press_hold", "rail_cap", "wait", "abandon"):
-            mx = float(n - 0.15)
-            my = float(last_c or my) + span * 0.05
-        else:
-            my = my + span * 0.03
-        ax1.text(
+        ax1.scatter(
+            [path[-1][0]],
+            [path[-1][1]],
+            color=_PROJECT,
+            s=48,
+            zorder=9,
+            edgecolors="white",
+            linewidths=0.9,
+        )
+        mx, my = path[-1]
+        _callout(
+            ax1,
             mx,
             my,
             str(proj.get("mark") or ("最可能→" + _px(proj.get("target")))),
-            color=_PROJECT,
-            fontproperties=_fp(12, "bold"),
-            va="bottom",
-            ha="left",
-            zorder=8,
+            _PROJECT,
+            dx=0.45,
+            dy=span * 0.02,
+            size=12,
         )
     for fork in proj.get("forks") or []:
         if str(fork.get("name") or "") != "連點延長":
             continue
         fy = float(fork.get("y") or 0)
-        if not fy or not down_live:
+        if not fy:
             continue
         if abs(fy - (tgt or fy)) / max(span, 1.0) < 0.02:
             continue
-        ax1.plot(
+        _halo_line(
+            ax1,
             [n - 1, x_fut],
             [last_c or closes[-1], fy],
-            color=_FORK,
-            linewidth=0.9,
-            linestyle=(0, (2, 2.5)),
-            zorder=4,
+            _FORK,
+            lw=1.15,
+            ls=(0, (2, 2.5)),
+            z=4,
         )
     ax1.text(
-        n + _FUTURE * 0.35,
-        ymax - span * 0.02,
+        n + _FUTURE * 0.55,
+        ymin + span * 0.03,
         "演算區（不是保證）",
         color="#546e7a",
         fontproperties=_fp(11, "bold"),
         ha="center",
-        va="top",
+        va="bottom",
         zorder=8,
     )
     mark = ""
@@ -671,33 +1033,27 @@ def render_biaoke_structure_png(
         f"低 {_px(spike_lo)}＝撐　收 {_px(spike_bar.get('close'))}　"
         f"量 {_vol(spike_bar.get('volume'))}　｜不是15分、不是介紹圖／決策卡"
     )
-    fig.text(
-        0.045,
-        0.965,
-        f"{sid} {name}　官方日K・量先價行".strip(),
-        fontproperties=_fp(18, "bold"),
-        color=_TEXT,
-        va="top",
-    )
-    fig.text(0.045, 0.928, ohlc_s, fontproperties=_fp(13, "bold"), color=_TEXT, va="top")
-    fig.text(0.045, 0.896, spike_s, fontproperties=_fp(13, "bold"), color=_PRESS, va="top")
-    banner = "　".join(
-        x
-        for x in (
-            _short((glance or {}).get("nest") or "", 32),
-            _short((glance or {}).get("field") or "", 28),
-            _short((glance or {}).get("leader") or "", 22),
-        )
-        if x
-    )
-    if banner:
-        fig.text(
-            0.045,
-            0.858,
-            banner,
-            fontproperties=_fp(11, "bold"),
-            color="#37474f",
-            va="top",
+    banner_bits = header_banner_lines(glance)
+    ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
+    ov.set_xlim(0, 100)
+    ov.set_ylim(0, 100)
+    ov.axis("off")
+    ov.patch.set_alpha(0)
+    ov.set_navigate(False)
+    _paint_nameplate(ov, plate)
+    _paint_spot(ov, quote)
+    ov.text(4.15, 92.2, ohlc_s, color=_TEXT, fontproperties=_fp(12, "bold"), va="center", ha="left")
+    ov.text(4.15, 89.35, spike_s, color=_PRESS, fontproperties=_fp(12, "bold"), va="center", ha="left")
+    chip_x, chip_y = 4.15, 86.35
+    for bit in banner_bits:
+        need = _ow(f" {bit} ", 10) + 1.2
+        if chip_x > 4.2 and chip_x + need > 62:
+            if chip_y - 3.05 < 83:
+                break
+            chip_x = 4.15
+            chip_y -= 3.05
+        chip_x = _draw_chip(
+            ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=10
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_right()
@@ -709,16 +1065,18 @@ def render_biaoke_structure_png(
     vol_colors = [_SPIKE_VOL if i == spike_i else (_UP if candle_up[i] else _DN) for i in range(n)]
     ax2.bar(xs, vols, color=vol_colors, width=0.68, zorder=3, edgecolor="#ffffff", linewidth=0.2)
     vmax = max(vols) if vols else 1.0
-    ax2.set_ylim(0, vmax * 1.32)
+    ax2.set_ylim(0, vmax * 1.45)
     if 0 <= spike_i < n and vols[spike_i]:
+        box_x = spike_i + 0.9 if spike_i < n - 4 else spike_i - 0.9
+        ha_v = "left" if spike_i < n - 4 else "right"
         _price_box(
             ax2,
-            spike_i,
-            vols[spike_i],
+            box_x,
+            min(vols[spike_i], vmax * 0.62),
             f"這根＝爆大量　{_vol(vols[spike_i])}",
             _TEXT,
-            va="bottom",
-            ha="center",
+            va="center",
+            ha=ha_v,
             size=11,
         )
     ax2.set_ylabel("日成交量（張）", fontproperties=_fp(11, "bold"), color=_TEXT)
@@ -759,7 +1117,7 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.045, right=0.87, top=0.72 if banner else 0.78, bottom=0.08)
+    fig.subplots_adjust(left=0.045, right=0.87, top=0.78 if banner_bits else 0.82, bottom=0.075)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
@@ -792,24 +1150,24 @@ def neuron_glance(fired: Optional[Dict[str, Any]]) -> Dict[str, str]:
     elif "已低於他自己點的 9/3 低 45839" in nest:
         out["nest"] = "大盤官方收已低於 45839，覆巢先當有事"
     elif nest:
-        out["nest"] = _short(nest, 36)
+        out["nest"] = nest.split("。")[0].strip(" ；")
     field = str((by.get("field") or {}).get("text") or "").replace(_FIELD_LECTURE, "").strip(" ；。")
     if "護城河最高" in field:
         m = re.search(r"[^。]*護城河最高[^。]*", field)
-        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+        out["field"] = (m.group(0) if m else field).split("；")[0].strip(" ；")
     elif re.search(r"F[14]0?", field):
         m = re.search(r"[^。]*F[14]0?[^。]*", field)
-        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+        out["field"] = (m.group(0) if m else field).split("；")[0].strip(" ；")
     elif "護城河" in field:
         m = re.search(r"[^。]*護城河[^。]*", field)
-        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+        out["field"] = (m.group(0) if m else field).split("；")[0].strip(" ；")
     elif field:
-        out["field"] = _short(field.split("。")[0].strip(" ；"), 42)
+        out["field"] = field.split("。")[0].strip(" ；")
     lead = str((by.get("leader") or {}).get("text") or "")
     if "自己就是" in lead:
         out["leader"] = "自己就是這族龍頭"
     elif lead:
-        out["leader"] = _short(lead.split("（", 1)[0], 36)
+        out["leader"] = lead.split("（", 1)[0].strip(" ；。")
     hold = str((by.get("hold") or {}).get("text") or "")
     if "勿輕易調節" in hold and "可抱到明年" in hold:
         out["hold"] = "長抱：可抱到明年，勿輕易調節"
@@ -840,8 +1198,15 @@ def chart_caption(
     sid: str = "",
     name: str = "",
     glance: Optional[Dict[str, str]] = None,
+    plate: Optional[Dict[str, str]] = None,
 ) -> str:
     head = f"{sid} {name}".strip()
+    plate = plate or {}
+    extras = "　".join(
+        x for x in (str(plate.get("industry") or "").strip(), str(plate.get("leader") or "").strip()) if x
+    )
+    if extras:
+        head = f"{head}　{extras}".strip()
     lines = [
         f"{head}　官方日K量先價行（不是15分、不是介紹圖／決策卡）".strip(),
     ]
@@ -880,7 +1245,8 @@ def chart_caption(
     else:
         lines.append("沒疊滿就不講死。")
     lines.append("連點只是輔助。不夠兩點就不畫。個股不數 5／9 段。這不是買訊。")
-    return "\n".join(x for x in lines if x)[:900]
+    lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
+    return "\n".join(x for x in lines if x)[:1100]
 
 
 def build_biaoke_structure_chart(
@@ -911,13 +1277,31 @@ def build_biaoke_structure_chart(
             logger.debug("飆大結構圖神經元略過", exc_info=True)
             fired = None
     glance = neuron_glance(fired)
+    plate = stock_nameplate(sid, nm, db_path)
+    prev = bars[-2] if len(bars) >= 2 else {}
+    last = info.get("last_bar") or bars[-1]
+    quote = _spot_quote(sid, last, prev, db_path)
     path = render_biaoke_structure_png(
-        bars, save_path, sid=sid, name=nm, glance=glance
+        bars,
+        save_path,
+        sid=sid,
+        name=nm,
+        glance=glance,
+        plate=plate,
+        quote=quote,
+        db_path=db_path,
     )
+    try:
+        from biaoke_forecast import record_stock, verify_due
+
+        record_stock(db_path, sid, bars, name=nm)
+        verify_due(db_path, sid)
+    except Exception:
+        logger.debug("結構圖演算建檔略過", exc_info=True)
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": chart_caption(info, sid=sid, name=nm, glance=glance),
+        "caption": chart_caption(info, sid=sid, name=nm, glance=glance, plate=plate),
         "sid": sid,
         "name": nm,
         "wash": bool(info.get("wash")),

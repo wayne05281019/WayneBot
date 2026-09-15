@@ -2,10 +2,14 @@
 from datetime import date, timedelta
 
 from biaoke_chart import (
+    _paint_spot,
+    _spot_quote,
     analyze_structure,
     chart_caption,
+    header_banner_lines,
     neuron_glance,
     render_biaoke_structure_png,
+    stock_nameplate,
 )
 
 
@@ -66,6 +70,7 @@ def test_structure_flags_wash_and_volume_lines():
     assert "爆大量那一天" in cap
     assert "演算" in cap
     assert "不是保證" in cap
+    assert "延伸線已建檔" in cap
     assert "介入買點首先" not in cap
     proj = info.get("project") or {}
     assert proj.get("key") == "wash"
@@ -258,7 +263,7 @@ def _clearly_over_with_down_rail():
         elif i == 18:
             o, h, l, c, v = 140, 150, 138, 145, 3000
         elif i == 26:
-            o, h, l, c, v = 136, 144, 134, 140, 2500
+            o, h, l, c, v = 136, 147, 134, 140, 2500
         elif i == 35:
             o, h, l, c, v = 128, 132, 126, 130, 1800
         else:
@@ -306,12 +311,12 @@ def test_project_clearly_over_uses_down_rail():
 
 def test_project_rail_coming_down_caps_price():
     rows = _clearly_over_with_down_rail()
-    rows[-1] = dict(rows[-1], open=132, high=135, low=131, close=134)
+    rows[-1] = dict(rows[-1], open=140, high=143, low=139, close=141)
     info = analyze_structure(rows)
     assert info.get("over_press") is True
     proj = info.get("project") or {}
     assert proj.get("key") == "rail_cap"
-    assert abs(float(proj.get("target") or 0) - 134) < 1e-6
+    assert abs(float(proj.get("target") or 0) - 141) < 1e-6
     assert "被軌壓著" in str(proj.get("label") or "")
     assert "不是保證過軌" in str(proj.get("label") or "")
 
@@ -368,3 +373,88 @@ def test_project_above_support_without_shrink_waits():
     assert proj.get("key") == "wait"
     assert abs(float(proj.get("target") or 0) - 110) < 1e-6
     assert "先整理" in str(proj.get("label") or "")
+
+
+def test_nameplate_industry_leader_and_spot_quote(tmp_path):
+    import inspect
+    import sqlite3
+
+    from PIL import Image
+
+    db = str(tmp_path / "uni.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE stock_universe (stock_id TEXT PRIMARY KEY, stock_name TEXT, "
+        "industry TEXT, asset_type TEXT)"
+    )
+    conn.execute("INSERT INTO stock_universe VALUES ('2383','台光電','電子零組件業','STOCK')")
+    conn.execute("INSERT INTO stock_universe VALUES ('2368','金像電','電子零組件業','STOCK')")
+    conn.commit()
+    conn.close()
+    lead = stock_nameplate("2383", "台光電", db)
+    follow = stock_nameplate("2368", "金像電", db)
+    assert lead["industry"] == "電子零組件業"
+    assert lead["leader"] == "龍頭"
+    assert follow["industry"] == "電子零組件業"
+    assert follow["leader"] == ""
+    bits = header_banner_lines(
+        {
+            "nest": "現在位階 2026-09-15 10:47 逃命波C-2",
+            "field": "CCL 護城河還在",
+            "leader": "自己就是這族龍頭",
+        }
+    )
+    assert bits[0].startswith("現在位階")
+    assert "逃命波C-2" in bits[0]
+    assert all("…" not in x for x in bits)
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "_short(" not in src
+    assert "box_ha" not in src
+    assert "今K" in inspect.getsource(_paint_spot)
+    quote_src = inspect.getsource(_spot_quote)
+    assert "_in_pytest" in quote_src
+    assert "fetch_mis_quote" in quote_src
+    q = _spot_quote(
+        "2383",
+        {"open": 4400, "high": 4520, "low": 4380, "close": 4510, "date": "20260914"},
+        {"close": 4480},
+    )
+    assert q["is_live"] is False
+    assert q["label"] == "收盤"
+    assert q["close"] == 4510
+    cap = chart_caption(analyze_structure(_series()), sid="2383", name="台光電", plate=lead)
+    assert "電子零組件業" in cap
+    assert "龍頭" in cap
+    assert "不是介紹圖" in cap
+    assert "這不是買訊" in cap
+    out = str(tmp_path / "nameplate.png")
+    path = render_biaoke_structure_png(
+        _series(),
+        out,
+        sid="2383",
+        name="台光電",
+        plate=lead,
+        quote=q,
+        glance={
+            "nest": bits[0],
+            "field": bits[1],
+            "leader": bits[2],
+        },
+    )
+    assert path
+    assert Image.open(path).size[0] >= 1000
+    assert (tmp_path / "nameplate.png").stat().st_size > 24_000
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "_halo_line" in src
+    assert "_callout" in src
+    assert "if down_live" not in src
+    assert "x_fut" in src
+
+
+def test_caption_records_forecast_line():
+    cap = chart_caption(analyze_structure(_series()), sid="3035", name="智原")
+    assert "延伸線已建檔" in cap
+    assert "官方柱走完再對質" in cap
+    assert "這不是買訊" in cap
+    assert "不是介紹圖" in cap
+    assert "5／9" in cap or "5/9" in cap

@@ -250,8 +250,9 @@ def test_poll_wait_preopen_five_minutes_and_old_replies():
     assert poll_wait_seconds(hol_pre) == AFTER_EVERY_SEC
 
 
-def test_preopen_rereads_only_nearest_post_thread(tmp_path):
-    """最新一篇已在庫且不是剛發：只重讀這一則樓下，前一篇不重讀。"""
+def test_preopen_rereads_latest_two_threads(tmp_path, monkeypatch):
+    """最近兩則討論串每次都重讀自回；前一篇主文 HTML 不重抓。"""
+    monkeypatch.setenv("CMONEY_AUTH_TOKEN", "test-token-not-real")
     from biaoke_desk import load_corpus, upsert_biaoke_posts
 
     db = str(tmp_path / "w.db")
@@ -294,6 +295,15 @@ def test_preopen_rereads_only_nearest_post_thread(tmp_path):
                     return None
 
                 def json(self):
+                    if f"Article/{older}/Comments" in url:
+                        return [
+                            {
+                                "id": "old-r1",
+                                "memberId": 25263,
+                                "nickname": "期股多空雙飆客",
+                                "content": {"text": "前一篇樓下補一句先看量價。"},
+                            }
+                        ]
                     return []
 
             r = R()
@@ -304,7 +314,7 @@ def test_preopen_rereads_only_nearest_post_thread(tmp_path):
                     f'{{id:"{older}",creatorId:r,x:2}}'
                     "]}})</script>"
                 )
-            elif nearest in url:
+            elif nearest in url and "/forum/article/" in url:
                 r.text = f"""
                 <meta name="author" content="期股多空雙飆客">
                 <meta property="article:published_time" content="2026-9-12T15:00:00+08:00">
@@ -323,7 +333,7 @@ def test_preopen_rereads_only_nearest_post_thread(tmp_path):
                   </div>
                 </article>
                 """
-            elif older in url:
+            elif older in url and "/forum/article/" in url:
                 r.text = f"""
                 <meta name="author" content="期股多空雙飆客">
                 <meta property="article:published_time" content="2026-9-11T15:00:00+08:00">
@@ -348,12 +358,13 @@ def test_preopen_rereads_only_nearest_post_thread(tmp_path):
     assert stats["ok"]
     article_urls = [u for u in seen_urls if "/forum/article/" in u]
     assert any(nearest in u for u in article_urls)
-    assert all(older not in u for u in article_urls)
+    assert all(f"/forum/article/{older}" not in u for u in article_urls)
+    assert any(f"Article/{older}/Comments" in u for u in seen_urls)
     fused = load_corpus(db)
     texts = " ".join(str(p.get("text") or "") for p in fused["posts"])
     assert "C-2轉C-3" in texts
     assert "第二層補一句" in texts
-    assert "不該開盤前重讀" not in texts
+    assert "前一篇樓下補一句" in texts
     layers = {
         int(p.get("layer") or 0)
         for p in fused["posts"]

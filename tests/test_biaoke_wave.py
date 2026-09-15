@@ -15,7 +15,10 @@ from biaoke_wave import (
     format_wave_path,
     is_wave_question,
     last_two,
+    span_of,
+    wave_extend_rays,
     wave_path_points,
+    wave_path_segments,
     _hist_bits,
     _ymd,
 )
@@ -158,6 +161,8 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     assert "不是買訊" in cap
     assert "轉折線" in cap
     assert "不數" in cap or "5／9" in cap
+    assert "不是一路大B" in cap or "區間" in cap
+    assert "延伸線" in cap
     src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "is_wave_question" in src
     assert "_send_biaoke_twii_degree_chart" in src
@@ -261,3 +266,42 @@ def test_wave_path_points_pins_intraday_and_a_low(tmp_path):
     labels = " ".join(p["tag"] for p in pts)
     assert "1-2-3-4-5" not in labels
     assert not any(str(p["tag"]).isdigit() for p in pts)
+
+
+def test_two_big_b_are_different_spans():
+    turns = degree_turns("")
+    bs = [t for t in turns if t.get("tag") == "大B波"]
+    assert len(bs) >= 2
+    a = span_of(bs[0]["date"], bs[0]["tag"])
+    b = span_of(bs[-1]["date"], bs[-1]["tag"])
+    assert a["span"] != b["span"]
+    assert "第4浪" in a["point_lab"]
+    assert "A波後" in b["point_lab"]
+    segs = wave_path_segments(
+        [
+            {"i": 1, "y": 21000, "tag": "大B波", **a},
+            {"i": 8, "y": 45000, "tag": "大B波", **b},
+        ]
+    )
+    assert len(segs) == 2
+    assert segs[0]["span"] != segs[1]["span"]
+    june = span_of("2026-06-27", "大B波")
+    assert june["span"] == "2026-B"
+    assert "A波後" in june["point_lab"]
+    assert span_of("2024-06-02", "大B波")["span"] == "2024-w4"
+
+
+def test_wave_extend_rays_escape_c2_hits_worst():
+    pts = [{"i": 10, "y": 45862.0, "tag": "逃命波C-2"}]
+    rays = wave_extend_rays(pts, 12, "逃命波C-2")
+    kinds = {r["kind"] for r in rays}
+    assert "worst" in kinds
+    worst = next(r for r in rays if r["kind"] == "worst")
+    assert abs(float(worst["y"]) - 43500) < 1e-6
+    labels = " ".join(str(r.get("label") or "") for r in rays)
+    assert "原文最差" in labels
+    assert "1-2-3-4-5" not in labels
+    assert not any(str(r.get("label") or "").isdigit() for r in rays)
+    src = inspect.getsource(build_twii_degree_chart)
+    assert "wave_extend_rays" in src
+    assert "record_twii" in src

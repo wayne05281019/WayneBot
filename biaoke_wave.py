@@ -1012,6 +1012,99 @@ def _path_anchor_ymd(turn: Dict[str, str]) -> str:
     return _ymd(turn.get("date"))
 
 
+_SPAN_COLOR = {
+    "2024-334": "#8d6e63",
+    "2024-w4": "#6d4c41",
+    "2024-w5": "#5d4037",
+    "2025-drop": "#455a64",
+    "2025-sh": "#546e7a",
+    "2025-w5": "#607d8b",
+    "2026-A": "#1b5e20",
+    "2026-B": "#0277bd",
+    "2026-d2": "#6a1b9a",
+    "2026-C": "#ad1457",
+}
+
+
+def span_of(date: str, tag: str) -> Dict[str, str]:
+    """同一個「大B波」可能是不同區間。線要拆開，標哪一層。不發明段號。"""
+    ymd = str(date or "").replace("-", "")[:8]
+    tag = str(tag or "")
+    if len(ymd) < 8:
+        ymd = "99999999"
+    if tag == "大B波":
+        if ymd < "20250101":
+            sid, slab = "2024-w4", "2024·第4浪修正"
+            point = "2024·第4浪裡的大B"
+        else:
+            sid, slab = "2026-B", "2026·A波後大B（下降區裡）"
+            point = "2026·A波後大B"
+        return {
+            "span": sid,
+            "span_lab": slab,
+            "span_color": _SPAN_COLOR.get(sid, "#6a1b9a"),
+            "point_lab": point,
+        }
+    if ymd < "20240501":
+        sid, slab = "2024-334", "2024·3-3-4調整"
+    elif ymd < "20240704":
+        sid, slab = "2024-w4", "2024·第4浪修正"
+    elif ymd < "20250301":
+        sid, slab = "2024-w5", "2024·邪惡第五波"
+    elif ymd < "20250519":
+        sid, slab = "2025-drop", "2025·細微波主跌"
+    elif ymd < "20251201":
+        sid, slab = "2025-sh", "2025·右肩（細微波後）"
+    elif ymd < "20260701":
+        sid, slab = "2025-w5", "2025-26·第五波條件／失敗"
+    elif tag in {"第五波失敗", "大A-c", "波浪四", "A波低"}:
+        sid, slab = "2026-A", "2026·A波 6/23–7/29"
+    elif tag in {"C-3", "C-1", "第五波測底", "逃命波C-2"}:
+        sid, slab = "2026-C", "2026·可能的C（未確認）"
+    else:
+        sid, slab = "2026-d2", "2026·大一級右肩／位階二"
+    if tag == "A波低":
+        point = "2026·A波低7/29"
+    elif tag == "右肩" and sid == "2025-sh":
+        point = "2025·右肩"
+    elif tag == "右肩":
+        point = "2026·位階二右肩"
+    elif tag == "波浪四":
+        point = "2026·波浪四／A"
+    elif tag == "第4浪":
+        point = "2024·第4浪"
+    elif tag == "第五波失敗" and ymd.startswith("2026"):
+        point = "2026·第五波失敗改A"
+    else:
+        point = _PATH_SHORT.get(tag, tag)
+    return {
+        "span": sid,
+        "span_lab": slab,
+        "span_color": _SPAN_COLOR.get(sid, "#6a1b9a"),
+        "point_lab": point,
+    }
+
+
+def wave_path_segments(path_pts: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """同一區間連成一條；跨年／跨層不接在一起。"""
+    by: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for p in path_pts or []:
+        sid = str(p.get("span") or "_")
+        if sid not in by:
+            by[sid] = {
+                "span": sid,
+                "lab": str(p.get("span_lab") or ""),
+                "color": str(p.get("span_color") or "#6a1b9a"),
+                "pts": [],
+            }
+            order.append(sid)
+        by[sid]["pts"].append(p)
+    for sid in order:
+        by[sid]["pts"].sort(key=lambda x: (int(x.get("i") or 0), str(x.get("date") or "")))
+    return [by[s] for s in order]
+
+
 def wave_path_points(
     db_path: str, bars: Sequence[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
@@ -1051,6 +1144,7 @@ def wave_path_points(
             continue
         if y <= 0:
             continue
+        sp = span_of(str(turn.get("date") or ""), tag)
         raw.append(
             {
                 "i": i,
@@ -1060,6 +1154,10 @@ def wave_path_points(
                 "pinned": pinned,
                 "kind": kind,
                 "unconfirmed": tag in _UNCONFIRMED,
+                "span": sp["span"],
+                "span_lab": sp["span_lab"],
+                "span_color": sp["span_color"],
+                "point_lab": sp["point_lab"],
             }
         )
     raw.sort(key=lambda p: (int(p["i"]), -int(_TAG_RANK.get(p["tag"], 0))))
@@ -1071,6 +1169,95 @@ def wave_path_points(
             continue
         out.append(p)
     return out
+
+
+def _wave_label_keep(p: Dict[str, Any], j: int, n_pts: int) -> bool:
+    """點全畫；字只留關鍵＋最後兩點，避免 15 個全貼在 K 上。"""
+    if j >= n_pts - 2:
+        return True
+    if p.get("unconfirmed"):
+        return True
+    tag = str(p.get("tag") or "")
+    keys = (
+        "A波低",
+        "失敗",
+        "右肩",
+        "逃命",
+        "測底",
+        "C-3",
+        "C-2",
+        "C-1",
+        "頭肩",
+        "大B",
+        "波浪四",
+        "位階二",
+        "第4浪",
+    )
+    return any(k in tag for k in keys)
+
+
+def wave_extend_rays(
+    path_pts: Sequence[Any],
+    n: int,
+    last_tag: str = "",
+) -> List[Dict[str, Any]]:
+    """未出現的走法畫成延伸。只沿他自己點過的水平，不准發明 5／9。
+
+    逃命波C-2／C-3／C-1／細微波主跌／大A-c → 原文最差 43500
+    ＋分歧「若守住 9/3 低」45839.36。
+    第五波測底／修正末端／頭肩底 → 只射 9/3 低。
+    """
+    pts = list(path_pts or [])
+    if not pts or int(n or 0) < 2:
+        return []
+    last = pts[-1]
+    if isinstance(last, dict):
+        last_i = int(last.get("i") or 0)
+        try:
+            last_y = float(last.get("y") or 0)
+        except (TypeError, ValueError):
+            last_y = 0.0
+        tag = last_tag or str(last.get("tag") or "")
+    else:
+        try:
+            last_i = int(last[0])
+            last_y = float(last[1])
+        except (TypeError, ValueError, IndexError):
+            return []
+        tag = last_tag or (str(last[2]) if len(last) > 2 else "")
+    if last_y <= 0:
+        return []
+    worst = 43500.0
+    fork = 45839.36
+    x1 = last_i
+    x2 = int(n) - 1 + 8
+
+    def _ray(kind: str, y2: float, label: str) -> Dict[str, Any]:
+        return {
+            "kind": kind,
+            "x1": x1,
+            "y1": last_y,
+            "x2": x2,
+            "y2": y2,
+            "y": y2,
+            "label": label,
+        }
+
+    bear = any(
+        k in tag
+        for k in ("逃命波C-2", "逃命波C-3", "逃命波C-1", "C-3", "細微波主跌", "大A-c")
+    )
+    if (not bear) and ("C-1" in tag and "C-2" not in tag):
+        bear = True
+    bottom = any(k in tag for k in ("第五波測底", "修正末端", "頭肩底"))
+    if bear:
+        return [
+            _ray("worst", worst, "未確認延伸·原文最差"),
+            _ray("fork", fork, "若守住9/3低"),
+        ]
+    if bottom:
+        return [_ray("fork", fork, "未確認延伸·9/3低")]
+    return [_ray("hold", last_y, "未確認延伸·水平")]
 
 
 def render_twii_degree_png(db_path: str, save_path: str) -> str:
@@ -1089,9 +1276,16 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         return ""
 
     path_pts = wave_path_points(db_path, bars)
+    last_hit, _prev_hit = last_two(db_path)
+    last_tag = str((last_hit or {}).get("tag") or "")
+    if not last_tag and path_pts:
+        last_tag = str(path_pts[-1].get("tag") or "")
+    rays = wave_extend_rays(path_pts, len(bars), last_tag)
 
     @_mpl_serial
     def _draw() -> str:
+        from biaoke_chart import _callout, _halo_line
+
         n = len(bars)
         opens = [float(r.get("open") or r.get("close") or 0) for r in bars]
         highs = [float(r.get("high") or r.get("close") or 0) for r in bars]
@@ -1102,12 +1296,17 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             ys.append(lv)
         for p in path_pts:
             ys.append(float(p["y"]))
+        for r in rays:
+            ys.append(float(r.get("y2") or r.get("y") or 0))
+            ys.append(float(r.get("y1") or 0))
         ymin = min(ys) - 400
         ymax = max(ys) + 900
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         fig, ax = plt.subplots(figsize=(12.4, 7.2), dpi=NAV_CHART_DPI)
         fig.patch.set_facecolor("#ffffff")
         ax.set_facecolor("#ffffff")
+        ax.axvspan(n - 0.45, n + 10, facecolor="#fff6e0", alpha=0.95, zorder=0)
+        ax.axvline(n - 0.45, color="#ffcc80", linewidth=1.1, linestyle=":", zorder=2)
         for i in range(n):
             prev_c = closes[i - 1] if i else None
             up = candle_up_taiwan(closes[i], prev_c, opens[i])
@@ -1154,62 +1353,106 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
                 ha="left",
                 zorder=6,
             )
-        if len(path_pts) >= 2:
-            xs = [float(p["i"]) for p in path_pts]
-            ys_p = [float(p["y"]) for p in path_pts]
-            ax.plot(
-                xs,
-                ys_p,
-                color="#6a1b9a",
-                linewidth=1.85,
-                zorder=7,
-                solid_capstyle="round",
+        segs = wave_path_segments(path_pts)
+        for seg in segs:
+            pts = list(seg.get("pts") or [])
+            color = str(seg.get("color") or "#6a1b9a")
+            if len(pts) >= 2:
+                _halo_line(
+                    ax,
+                    [float(p["i"]) for p in pts],
+                    [float(p["y"]) for p in pts],
+                    color,
+                    lw=2.2,
+                    ls="-",
+                    z=7,
+                )
+            last_b = None
+            for j, p in enumerate(pts):
+                if p.get("tag") == "大B波":
+                    last_b = j
+            for j, p in enumerate(pts):
+                un = bool(p.get("unconfirmed"))
+                ax.scatter(
+                    [p["i"]],
+                    [p["y"]],
+                    s=42,
+                    facecolors="#ffffff" if un else color,
+                    edgecolors=color,
+                    linewidths=1.4,
+                    zorder=8,
+                )
+                if p.get("tag") == "大B波" and last_b is not None and j != last_b:
+                    continue
+                if not _wave_label_keep(p, j, len(pts)):
+                    continue
+                short = str(p.get("point_lab") or _PATH_SHORT.get(p["tag"], p["tag"]))
+                if p.get("pinned"):
+                    short += "·釘"
+                _callout(
+                    ax,
+                    float(p["i"]),
+                    float(p["y"]),
+                    short,
+                    color,
+                    dx=1.35,
+                    dy=280 if p.get("kind") != "low" else -280,
+                    size=8,
+                )
+            uniq_tags = {str(p.get("tag") or "") for p in pts}
+            if pts and seg.get("lab") and len(uniq_tags) > 1:
+                mid = pts[len(pts) // 2]
+                ax.text(
+                    float(mid["i"]) + 0.2,
+                    float(mid["y"]) + (420 if mid.get("kind") != "low" else -420),
+                    str(seg.get("lab") or ""),
+                    color=color,
+                    fontsize=8,
+                    fontproperties=_fp(8, "bold"),
+                    ha="left",
+                    va="center",
+                    zorder=9,
+                    bbox=dict(
+                        boxstyle="round,pad=0.18",
+                        facecolor="#ffffff",
+                        edgecolor=color,
+                        linewidth=0.7,
+                        alpha=0.94,
+                    ),
+                )
+        for r in rays:
+            _halo_line(
+                ax,
+                [r["x1"], r["x2"]],
+                [r["y1"], r["y2"]],
+                "#7b1fa2",
+                lw=2.0,
+                ls=(0, (4, 3)),
+                z=5,
             )
-        for p in path_pts:
-            un = bool(p.get("unconfirmed"))
-            ax.scatter(
-                [p["i"]],
-                [p["y"]],
-                s=42,
-                facecolors="#ffffff" if un else "#6a1b9a",
-                edgecolors="#6a1b9a",
-                linewidths=1.4,
-                zorder=8,
-            )
-            short = _PATH_SHORT.get(p["tag"], p["tag"])
-            if p.get("pinned"):
-                short += "·釘"
-            va = "top" if p.get("kind") == "low" else "bottom"
-            dy = -180 if va == "top" else 180
-            ax.annotate(
-                short,
-                xy=(p["i"], p["y"]),
-                xytext=(p["i"] + 0.15, p["y"] + dy),
-                textcoords="data",
-                color="#4a148c",
-                fontsize=8,
-                fontproperties=_fp(8, "bold"),
-                ha="left",
-                va=va,
-                zorder=9,
-                bbox=dict(
-                    boxstyle="round,pad=0.18",
-                    facecolor="#ffffff",
-                    edgecolor="#ce93d8",
-                    linewidth=0.7,
-                    alpha=0.94,
-                ),
-                arrowprops=dict(arrowstyle="-", color="#ce93d8", lw=0.6),
+            _callout(
+                ax,
+                float(r["x2"]),
+                float(r["y2"]),
+                str(r.get("label") or ""),
+                "#6a1b9a",
+                dx=-0.55,
+                dy=0.0,
+                size=8,
+                ha="right",
             )
         last = bars[-1]
+        as_of = _ymd(last.get("date"))
+        as_show = f"{as_of[:4]}-{as_of[4:6]}-{as_of[6:8]}" if len(as_of) == 8 else as_of
         ax.set_title(
-            f"加權官方日K　他自己的轉折線　{_ymd(last.get('date'))} 收 {_px(last.get('close'))}",
+            f"加權官方日K　他自己的轉折線　{as_show} 收 {_px(last.get('close'))}"
+            f"　{last_tag or '—'}",
             fontproperties=_fp(13, "bold"),
             color="#1f2933",
             loc="left",
             pad=8,
         )
-        ax.set_xlim(-0.6, n + 8)
+        ax.set_xlim(-0.6, n + 10)
         ax.set_ylim(ymin, ymax)
         ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
         step = max(n // 7, 4)
@@ -1221,6 +1464,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
             d = str(bars[i].get("date") or "")
             d = _ymd(d)
             labels.append(f"{d[4:6]}/{d[6:8]}" if len(d) == 8 else d)
+        ticks.append(n - 1 + 8)
+        labels.append("演算")
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels, fontproperties=_fp(10, "bold"))
         ax.tick_params(labelsize=10)
@@ -1230,7 +1475,8 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.text(
             0.07,
             0.03,
-            "轉折線＝他自己改口錨，不是 15 分、不數 5／9 段、不是買訊。43500 是他原文最差情境，不是官方收。",
+            "轉折線按區間拆開，不是 15 分、不發明段號、不是買訊。"
+            "五月到現在不是一路大B。延伸線已建檔，官方柱走完再對質。43500 是他原文最差情境。",
             fontproperties=_fp(9),
             color="#546e7a",
         )
@@ -1251,17 +1497,30 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
         pass
     path = render_twii_degree_png(db_path, save_path)
     last, prev = last_two(db_path)
+    try:
+        from biaoke_forecast import record_twii, verify_due
+
+        bars = _load_twii_bars(db_path, n=90)
+        pts = wave_path_points(db_path, bars)
+        tag = str((last or {}).get("tag") or "")
+        rays = wave_extend_rays(pts, len(bars), tag)
+        record_twii(db_path, bars, rays=rays, last_tag=tag)
+        verify_due(db_path, "TWII")
+    except Exception:
+        pass
     cap_bits = [
         "加權官方日K＋他自己點過的水平＋轉折線（不是15分、不是介紹圖／決策卡）",
+        "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
         format_wave_now(db_path, n=420),
     ]
     if last:
         cap_bits.append(f"最新標籤 {last.get('date')} {last.get('tag')}")
     if prev:
         cap_bits.append(f"再前 {prev.get('date')} {prev.get('tag')}")
-    cap_bits.append("轉折線＝他自己改口錨，不數 5／9 段。這不是買訊。")
+    cap_bits.append("對得上他原文的層級才畫。不數 5／9 段。這不是買訊。")
+    cap_bits.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": _clip("\n".join(cap_bits), 900),
+        "caption": _clip("\n".join(cap_bits), 1200),
     }

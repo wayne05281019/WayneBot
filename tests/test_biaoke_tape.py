@@ -150,5 +150,6 @@ def test_record_events_uses_last_official_when_intraday(tmp_path):
 def test_ingest_hooks_tape_immediately():
     src = inspect.getsource(_after_ingest_analyze)
     assert "record_events" in src
+    assert "record_from_events" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "_after_ingest_analyze" in ingest_src
