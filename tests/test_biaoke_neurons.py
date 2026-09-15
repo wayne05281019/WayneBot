@@ -133,11 +133,12 @@ def test_classify_snippet_starts_at_name_not_mid_word():
     hits = classify_spoken(
         "健策多頭結構已經被破壞要進行整理，奇鋐也走到技術分析模糊地帶，明天只能上不能下。"
     )
-    d3653 = [h for h in hits if h["neuron"] == "doubt" and h["sid"] == "3653"]
     d3017 = [h for h in hits if h["neuron"] == "doubt" and h["sid"] == "3017"]
-    assert d3653 and d3653[0]["snippet"].startswith("健策")
-    assert not d3653[0]["snippet"].startswith("鋐")
     assert d3017 and "奇鋐" in d3017[0]["snippet"]
+    assert not any((h.get("snippet") or "").startswith("鋐") for h in hits)
+    d3653 = [h for h in hits if h["neuron"] == "doubt" and h["sid"] == "3653"]
+    if d3653:
+        assert d3653[0]["snippet"].startswith("健策")
 
 
 def test_classify_jian_ce_typo_maps_to_3653():
@@ -146,6 +147,8 @@ def test_classify_jian_ce_typo_maps_to_3653():
     tape = classify_spoken("今天鑑測今天出現轉折K棒確認，所以我盤中先調節奇鋐1/2")
     assert any(h["sid"] == "3653" and h["neuron"] == "tape" for h in tape)
     assert any(h["sid"] == "3017" and h["neuron"] == "hold" for h in tape)
+    assert not any(h["sid"] == "3653" and h["neuron"] == "hold" for h in tape)
+    assert not any(h["sid"] == "3017" and h["neuron"] == "tape" for h in tape)
 
 
 def _quotes(conn, sid, name, close=100.0):

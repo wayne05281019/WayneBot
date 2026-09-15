@@ -55,6 +55,8 @@ _SPACE = re.compile(r"\s+")
 _PUNCT = re.compile(r"[。；！？\n，、]")
 # 沒點檔的 C 波調節／抽出是巢穴，不准當每檔 live hold。
 _INDEX_HOLD = re.compile(r"(C-[123]|逃命波|43500|46767|大盤|加權|夜盤|位階)")
+# 量價／進出／看錯跟最近那檔走；產業／龍頭一句可點多檔。
+_NEAR_NIDS = frozenset({"tape", "hold", "doubt"})
 
 
 def ensure_neuron_hits_table(db_path: str) -> None:
@@ -96,6 +98,40 @@ def _snip(text: str, needle: str = "", n: int = 96, *, near: str = "") -> str:
         last = m
     a = (max(0, i - 24) + last.end()) if last else i
     return blob[a : a + n].lstrip("，、；。 ")
+
+
+def _names_for_sid(sid: str, shown: str) -> List[str]:
+    names = [shown] if shown else []
+    try:
+        from biaoke_why import _NAME_SID
+
+        for n, s in _NAME_SID.items():
+            if str(s) == str(sid) and n and n not in names:
+                names.append(n)
+    except Exception:
+        pass
+    return names
+
+
+def _nearest_sid(
+    blob: str, pos: int, stocks: Sequence[Tuple[str, str]]
+) -> str:
+    """針落到哪、就只進那檔。鑑測轉折K 不准把調節奇鋐寫進健策 hold。"""
+    best_sid = ""
+    best_d = 10**9
+    for sid, shown in stocks:
+        for nm in _names_for_sid(sid, shown):
+            start = 0
+            while True:
+                k = blob.find(nm, start)
+                if k < 0:
+                    break
+                d = abs(k - pos)
+                if d < best_d:
+                    best_d = d
+                    best_sid = sid
+                start = k + max(1, len(nm))
+    return best_sid
 
 
 def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dict[str, str]]:
@@ -140,7 +176,18 @@ def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dic
         if nid == "hold" and not stocks and _INDEX_HOLD.search(spoken):
             continue
         targets = stocks or [("", "")]
+        multi = len(stocks) > 1
         for sid, name in targets:
+            use_needle = needle
+            if multi and name and nid in _NEAR_NIDS:
+                keep = False
+                for m2 in _PAT[nid].finditer(spoken):
+                    if _nearest_sid(spoken, m2.start(), stocks) == sid:
+                        keep = True
+                        use_needle = m2.group(0) or needle
+                        break
+                if not keep:
+                    continue
             key = (nid, sid)
             if key in seen:
                 continue
@@ -150,7 +197,7 @@ def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dic
                     "neuron": nid,
                     "sid": sid,
                     "name": name,
-                    "snippet": _snip(spoken, needle, near=name),
+                    "snippet": _snip(spoken, use_needle, near=name),
                 }
             )
     return out
@@ -211,7 +258,7 @@ def record_neuron_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     return len(rows)
 
 
-def latest_bundle(db_path: str, sid: str = "", *, n: int = 2) -> Dict[str, str]:
+def latest_bundle(db_path: str, sid: str = "", *, n: int = 3) -> Dict[str, str]:
     """開火一次讀六顆最近句。個股只收這檔；空 sid 不准蓋到健策／台光電。"""
     if not db_path or not os.path.isfile(db_path):
         return {}

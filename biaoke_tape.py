@@ -102,6 +102,11 @@ def named_pairs(text: str, tags: Optional[Sequence[Any]] = None) -> List[Tuple[s
             continue
         seen.add(sid)
         shown = "IET-KY" if sid == "4971" else name
+        if sid != "4971":
+            for alias, other in _NAME_SID.items():
+                if str(other) == sid:
+                    shown = alias
+                    break
         out.append((sid, shown))
     inv: Dict[str, str] = {}
     for name, sid in _NAME_SID.items():
