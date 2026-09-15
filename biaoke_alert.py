@@ -37,8 +37,9 @@ CREATE TABLE IF NOT EXISTS biaoke_alerts (
 # 族＝意圖，不是單一名詞。新詞只要落在同一族就會加分。
 _EXIT = re.compile(
     r"(出清|一股不留|全部賣|全部出|先回收|不要再碰|不要再布局|"
-    r"不要再介入|不要再買|停損|逃命|減碼一半|減碼\s*1\s*/\s*2|"
-    r"調節總持股|今天不要有動作|不能介入布局)"
+    r"不要再介入|不要再買|停損|減碼一半|減碼\s*1\s*/\s*2|"
+    r"調節總持股|今天不要有動作|不能介入布局|"
+    r"逃命(?!波))"
 )
 _ENTER = re.compile(
     r"(抄底|開始介入|分批布局|分三次|第一次抄|買跌不買漲|"
@@ -60,8 +61,8 @@ _LEADER = re.compile(
     r"護城河最高|倒了就是)"
 )
 _COMMAND = re.compile(
-    r"(一定要|立刻|全面|今天不要|不能介入|等盤後判斷|先不要|"
-    r"一股不留|趕快跑)"
+    r"(一定要|全面|今天不要|不能介入|等盤後判斷|先不要|"
+    r"一股不留|趕快跑|立刻(?!站))"
 )
 _INDEXISH = re.compile(r"(大盤|加權|台指|夜盤|細微波|波浪位階|下降軌)")
 _NIGHT_CRASH = re.compile(r"夜盤.{0,10}(大跌|崩|重挫|跳空)")
@@ -485,16 +486,23 @@ def format_alert(event: Dict[str, Any], judged: Dict[str, Any], move: Dict[str, 
     drop = float(move.get("drop") or 0)
     pct = float(move.get("pct") or 0)
     px = move.get("px") or ""
+    y = move.get("y") or ""
     bits = ["<b>飆大盤中重點（沒過按鈕）</b>"]
     if move.get("ok"):
+        way = "跌" if drop > 0 else ("漲" if drop < 0 else "平")
+        pts = abs(int(round(drop)))
+        y_s = html_escape(str(y))
+        px_s = html_escape(str(px))
+        pct_s = html_escape(str(pct))
         bits.append(
-            f"加權相對昨收 {html_escape(str(int(round(drop))))} 點"
-            f"（{html_escape(str(pct))}%／現 {html_escape(str(px))}）"
+            f"官方加權盤中現價（不是他講的，也不是昨天收盤跌幅）："
+            f"相對昨收 {y_s} {way} {pts} 點（{pct_s}%／現 {px_s}）"
         )
-    if judged.get("reasons"):
-        bits.append("研判：" + html_escape("、".join(judged["reasons"][:4])))
+    tags = [str(x) for x in (judged.get("reasons") or []) if x]
+    if tags:
+        bits.append("程式標籤（不是他原文）：" + html_escape("、".join(tags[:4])))
     bits.append(
-        f"{html_escape(str(event.get('date') or ''))} "
+        f"他原文 {html_escape(str(event.get('date') or ''))} "
         f"{html_escape(str(event.get('time') or ''))} {kind}："
     )
     bits.append(html_escape(_clip(str(event.get("text") or ""), 420)))

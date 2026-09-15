@@ -136,6 +136,49 @@ def test_triple_aux_without_naming_wave_still_confirms():
     assert st["confirmed"]
 
 
+def test_escape_wave_caution_is_not_exit_command():
+    from biaoke_alert import content_intents, format_alert, judge_emergency
+
+    text = "目前大盤漲不動我反而覺得比較好，我是怕開牌前主力作逃命波也就是C-2，開牌後變C-3下殺。"
+    score, why = content_intents(text)
+    blob = "、".join(why)
+    assert "出清" not in blob
+    j = judge_emergency(text, move=_move(294, y=45862.52))
+    assert "出清／逃命／先回收" not in "".join(j["reasons"])
+    html = format_alert(
+        {
+            "kind": "reply",
+            "date": "2026-09-15",
+            "time": "10:47",
+            "text": text,
+        },
+        j,
+        _move(294, y=45862.52),
+    )
+    assert "他原文" in html
+    assert "10:47" in html
+    assert "漲不動" in html
+    assert "不是他講的" in html
+    assert "不是昨天收盤跌幅" in html
+    assert "研判：" not in html
+    assert "程式標籤（不是他原文）" in html or "官方加權盤中現價" in html
+
+
+def test_stand_back_is_not_an_order():
+    from biaoke_alert import content_intents, judge_emergency
+
+    text = (
+        "穩懋就是昨天跌破支撐立刻站回去，從細微觀察近期會比台達電強，"
+        "今年年底或明年大盤漲完目標就是冊歷史高點。"
+    )
+    score, why = content_intents(text)
+    blob = "、".join(why)
+    assert "命令句" not in blob
+    assert "短句大盤命令" not in blob
+    j = judge_emergency(text, move=_move(294, y=45862.52))
+    assert not j["push"]
+
+
 def test_night_not_through_is_not_uptrend():
     j = judge_emergency(
         "夜盤沒突破下降壓，可能擴延。細微波走完 5 段看起來趨勢向上。",

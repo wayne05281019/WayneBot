@@ -187,7 +187,7 @@ def test_ingest_hook_is_on_product_clocks():
     assert "walk_biaoke_posts" in boot
     assert "enqueue_missing_quote_months" in boot
     assert "start_quote_month_backfill" in boot
-    assert SESSION_EVERY_SEC == 10 * 60
+    assert SESSION_EVERY_SEC == 5 * 60
     assert AFTER_EVERY_SEC == 1 * 60 * 60
     assert PREOPEN_EVERY_SEC == 5 * 60
     assert AFTER_UNTIL_HOUR == 3

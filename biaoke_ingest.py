@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """飆大公開發文＋最新文一二層回覆匯入。不進海選。
 
-盤中 10 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘。
+盤中 5 分。交易日開盤前一小時（08:00–09:00）每 5 分鐘。
 收盤後、凌晨、週末、國定假、颱風停市都每 1 小時。
 主文通常只改最新一篇；討論串也多半回在最新一篇，有時回在很早的留言裡（含回文裡的回文）。
 主文通常只改最新一篇。討論串每次都重讀最近兩則（含回在很早留言、回文裡的回文），因為樓下自回會改大盤位階與個股狀態。
@@ -50,7 +50,7 @@ _UA = {
     "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
 }
-SESSION_EVERY_SEC = 10 * 60
+SESSION_EVERY_SEC = 5 * 60
 AFTER_EVERY_SEC = 1 * 60 * 60
 NIGHT_EVERY_SEC = AFTER_EVERY_SEC  # 休市／週末／凌晨也每小時，不再等到開盤
 PREOPEN_EVERY_SEC = 5 * 60  # 交易日 08:00–09:00 每五分鐘
@@ -512,7 +512,7 @@ def _row_is_fresh(
 
 
 def poll_wait_seconds(now: Optional[datetime] = None) -> int:
-    """開市盤中 10 分；開盤前一小時每 5 分；其餘時間每 1 小時。
+    """開市盤中 5 分；開盤前一小時每 5 分；其餘時間每 1 小時。
 
     他週四／週五發文後，週末仍可能在最近幾篇樓下回別人、補觀點、或改主文。
     開盤前一小時（08:00–09:00）加密到 5 分鐘，免得樓中樓改口漏掉。
@@ -842,17 +842,13 @@ def _api_children(item: Any) -> List[Dict[str, Any]]:
 def _api_child_count(item: Any) -> int:
     if not isinstance(item, dict):
         return 0
-    kids = _api_children(item)
-    if kids:
-        return len(kids)
-    for key in ("replyCount", "repliesCount"):
+    n = len(_api_children(item))
+    for key in ("replyCount", "repliesCount", "commentCount"):
         try:
-            n = int(item.get(key) or 0)
+            n = max(n, int(item.get(key) or 0))
         except (TypeError, ValueError):
-            n = 0
-        if n:
-            return n
-    return 0
+            n = n
+    return n
 
 
 def _reply_row(
@@ -1492,7 +1488,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：開盤前一小時每 5 分；盤中 10 分；其餘每 1 小時。GHA --once 不開。"""
+    """常駐：開盤前一小時每 5 分；盤中 5 分；其餘每 1 小時。GHA --once 不開。"""
     import threading
     import time as _time
 
