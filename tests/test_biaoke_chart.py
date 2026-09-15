@@ -464,11 +464,21 @@ def test_locator_inset_marks_window():
 
     src = inspect.getsource(paint_locator_inset)
     assert "橙框" in src
-    assert "長軸定位" in src
+    assert "橫軸月份" in src
+    assert "legs" in src
     assert "win_from" in src
+    from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
+
+    assert _BARS >= 90
+    assert _STOCK_LOCATOR_RECT[0] <= 0.52
+    assert _STOCK_LOCATOR_RECT[2] >= 0.32
+    assert _STOCK_LOCATOR_RECT[3] >= 0.24
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
+    assert "locator_wave_legs" in wsrc
+    assert "_TWII_LOCATOR_RECT" in wsrc
+    assert "uniq_tags" not in wsrc
     assert "_place_right_notes" in wsrc
     assert "_place_band_notes" in wsrc
 
@@ -495,6 +505,46 @@ def test_caption_records_forecast_line():
 
 
 def test_axis_ticks_drop_near_last_bar():
+    ticks = _axis_ticks(60, extra=(12,))
+    assert 0 in ticks
+    assert 59 in ticks
+    assert 12 in ticks
+    assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
+    assert 56 not in ticks
+
+
+def test_major_swings_and_locator_legs():
+    from biaoke_chart import _major_swings, locator_legs_from_swings
+
+    rows = []
+    px = 100.0
+    for i in range(80):
+        if 20 <= i < 35:
+            px = 100 + (i - 20) * 3
+        elif 35 <= i < 50:
+            px = 145 - (i - 35) * 2.4
+        elif i >= 50:
+            px = 109 + (i - 50) * 1.6
+        else:
+            px = 100 + i * 0.2
+        d = (date(2025, 7, 1) + timedelta(days=i)).strftime("%Y%m%d")
+        rows.append(
+            {
+                "date": d,
+                "open": px,
+                "high": px + 4,
+                "low": px - 4,
+                "close": px + 1,
+                "volume": 1000,
+            }
+        )
+    swings = _major_swings(rows, left=5)
+    assert len(swings) >= 2
+    kinds = [k for _i, _y, k in swings]
+    assert all(a != b for a, b in zip(kinds, kinds[1:]))
+    legs = locator_legs_from_swings(rows, swings)
+    labs = [str(x.get("lab") or "") for x in legs]
+    assert any(x in labs for x in ("升", "回"))
     ticks = _axis_ticks(60, extra=(12,))
     assert 0 in ticks
     assert 59 in ticks

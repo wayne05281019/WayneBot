@@ -15,7 +15,9 @@ from biaoke_wave import (
     format_wave_path,
     is_wave_question,
     last_two,
+    locator_wave_legs,
     span_of,
+    wave_chart_mark,
     wave_extend_rays,
     wave_path_points,
     wave_path_segments,
@@ -292,6 +294,25 @@ def test_two_big_b_are_different_spans():
     assert span_of("2024-06-02", "大B波")["span"] == "2024-w4"
 
 
+def test_wave_chart_mark_is_short_abc():
+    assert wave_chart_mark("A波低", "2026-A") == "A"
+    assert wave_chart_mark("大B波", "2026-B") == "B"
+    assert wave_chart_mark("逃命波C-2", "2026-C") == "C-2"
+    assert wave_chart_mark("右肩", "2026-d2") == "2"
+    legs = locator_wave_legs(
+        [
+            {"i": 1, "y": 40000, "tag": "A波低", "span": "2026-A", "span_color": "#2e7d32"},
+            {"i": 8, "y": 46000, "tag": "大B波", "span": "2026-A", "span_color": "#2e7d32"},
+            {"i": 12, "y": 45500, "tag": "逃命波C-2", "span": "2026-C", "span_color": "#6a1b9a"},
+            {"i": 18, "y": 44000, "tag": "逃命波C-2", "span": "2026-C", "span_color": "#6a1b9a"},
+        ]
+    )
+    labs = {str(x.get("lab") or "") for x in legs}
+    assert "A" in labs
+    assert "C" in labs
+    assert "2026·第五波失敗改A" not in labs
+
+
 def test_wave_extend_rays_escape_c2_hits_worst():
     pts = [{"i": 10, "y": 45862.0, "tag": "逃命波C-2"}]
     rays = wave_extend_rays(pts, 12, "逃命波C-2")
@@ -300,7 +321,7 @@ def test_wave_extend_rays_escape_c2_hits_worst():
     worst = next(r for r in rays if r["kind"] == "worst")
     assert abs(float(worst["y"]) - 43500) < 1e-6
     labels = " ".join(str(r.get("label") or "") for r in rays)
-    assert "原文最差" in labels
+    assert "最差43500" in labels
     assert "1-2-3-4-5" not in labels
     assert not any(str(r.get("label") or "").isdigit() for r in rays)
     src = inspect.getsource(build_twii_degree_chart)
