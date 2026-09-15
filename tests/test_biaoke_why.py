@@ -155,6 +155,16 @@ def test_why_sep15_escape_wave():
     jian = lookup("健策盡然跌停")
     assert "難操作" in jian or "跌停" in jian
     assert "5820" in jian or "盤中" in jian
+    broken = lookup("健策多頭結構已經被破壞")
+    assert "14:52" in broken
+    assert "奇鋐" in broken
+    assert "不好的訊號" in broken
+    pull = lookup("該抽出")
+    assert "C-2" in pull and "C-3" in pull
+    assert "不是已確認" in pull
+    fu = lookup("初升段走完")
+    assert "富喬" in fu
+    assert "2整理" in fu or "2 整理" in fu
 
 
 def test_live_notes_puts_why_chain_first():
