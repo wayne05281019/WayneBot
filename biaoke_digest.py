@@ -276,6 +276,8 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
     tags: List[str] = []
     for p in posts:
         tags.extend(str(t) for t in (p.get("tags") or []) if t)
+    if "逃命波" in blob or "C-2" in blob:
+        asks.insert(0, "現在是逃命波嗎")
     if "夜盤" in blob or "46506" in blob:
         asks.append("夜盤過了沒")
     if "波浪" in blob or "位階" in blob or "細微波" in blob or "右肩" in blob:

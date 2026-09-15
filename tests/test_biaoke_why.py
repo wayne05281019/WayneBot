@@ -124,6 +124,16 @@ def test_why_sep14_important_comment_summary():
     assert "沒有不太妙" in retest
 
 
+def test_why_sep15_escape_wave():
+    body = lookup("今天強彈反而小心逃命波")
+    assert "184601742" in body or "09:02" in body
+    assert "逃命波" in body
+    assert "不是已確認" in body
+    assert "創意" in body
+    assert "台達電" in body
+    assert "證據" in body
+
+
 def test_live_notes_puts_why_chain_first():
     from biaoke_live import live_notes
 

@@ -147,13 +147,13 @@ def parse_published(raw: str) -> tuple[str, str]:
         return "", ""
     s = s.replace("Z", "+00:00")
     m = re.match(
-        r"(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})",
+        r"(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{1,2})",
         s,
     )
     if not m:
         return "", ""
     y, mo, d, hh, mm = m.groups()
-    return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}", f"{int(hh):02d}:{mm}"
+    return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}", f"{int(hh):02d}:{int(mm):02d}"
 
 
 def chart_urls(*blobs: str) -> List[str]:

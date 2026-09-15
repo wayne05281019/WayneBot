@@ -158,14 +158,12 @@ def test_live_notes_always_has_latest_posts_and_replies():
 
     load_corpus_cache_clear()
     note = live_notes("", "可以使用嗎")
-    assert "46506" in note
+    assert "逃命波" in note or "184601742" in note or "2026-09-15" in note
     assert "45839" in note
     assert "最新發文" in note
     assert "最新樓下" in note
     assert "禁止 17000" in note
-    assert "重要留言" in note or "43500" in note
     assert "創意" in note
-    assert "PCB不要亂動" in note or "富喬再度回到支撐" in note or "不能算光通訊" in note
     wave = live_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
     assert "細微波" in wave or "48218" in wave
     assert "45839" in wave

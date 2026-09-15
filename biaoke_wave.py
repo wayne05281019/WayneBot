@@ -16,7 +16,7 @@ _WAVE_ASK = re.compile(
     r"(現在波浪位階|哪個位階|波浪位階|以波浪|"
     r"細微波|右肩型態|大盤現在|現在大盤|"
     r"上昇|上升還是下降|升浪還是|哪一浪|哪一波|"
-    r"C-1|C-2|C-3|位階二|修正末端|測底)"
+    r"C-1|C-2|C-3|位階二|修正末端|測底|逃命波)"
 )
 _EYES_ASK = re.compile(
     r"(技術線圖|他看到什麼|看大盤轉折|轉折最準|沒人比|"
@@ -25,7 +25,8 @@ _EYES_ASK = re.compile(
 )
 _SKIP_FIFTH = re.compile(r"抱到.?2027|第五波漲勢結束")
 _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
-    ("C-3", "down", re.compile(r"C-2\s*轉\s*C-3|轉C-3")),
+    ("逃命波C-2", "down", re.compile(r"逃命波\s*C-2|做逃命波")),
+    ("C-3", "down", re.compile(r"小心C-2\s*轉\s*C-3|出現C-2\s*轉\s*C-3|轉C-3先")),
     ("C-1", "down", re.compile(r"C波下殺\s*C-1|走C波下殺|C-1")),
     ("第五波測底", "retest", re.compile(r"第五波.{0,8}測底|再一次測底|短線築底")),
     ("修正末端", "retest", re.compile(r"修正的?末端")),
@@ -37,6 +38,21 @@ _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
     ("頭肩底", "retest", re.compile(r"頭肩底")),
     ("第五波失敗", "down", re.compile(r"第五波.{0,10}(沒了|失敗|開始做頭)")),
 )
+_TAG_RANK = {
+    "逃命波C-2": 90,
+    "第五波測底": 80,
+    "修正末端": 70,
+    "頭肩底": 60,
+    "C-3": 50,
+    "位階二": 40,
+    "右肩": 35,
+    "C-1": 20,
+    "大B波": 15,
+    "A波低": 12,
+    "波浪四": 10,
+    "第五波失敗": 8,
+    "第五波條件": 5,
+}
 
 # 他自己點名過、能對上公開文的位階帶。更早沒寫死浪名的不加。
 _CURATED: Tuple[Dict[str, str], ...] = (
@@ -152,6 +168,14 @@ _CURATED: Tuple[Dict[str, str], ...] = (
         "direc": "retest",
         "quote": "目前是對第五波再一次測底；今天就是再一次測底（或稱短線築底，等反彈）。",
     },
+    {
+        "date": "2026-09-15",
+        "time": "09:02",
+        "aid": "184601742",
+        "tag": "逃命波C-2",
+        "direc": "down",
+        "quote": "今天大盤強彈，反而要提高警惕，小心市場黑手開始做逃命波C-2。不是已確認；創意連續漲勢才確認不會下殺43500。",
+    },
 )
 
 # 加權圖只畫他自己點過、能對官方柱的水平。46506 是台指日盤低，不畫在加權。
@@ -222,6 +246,9 @@ def _tags_in(text: str) -> List[Tuple[str, str]]:
         if pat.search(blob):
             seen.add(tag)
             out.append((tag, direc))
+    names = {t for t, _d in out}
+    if "逃命波C-2" in names:
+        out = [(t, d) for t, d in out if t != "C-1"]
     return out
 
 
@@ -229,8 +256,6 @@ def _merge(rows: List[Dict[str, str]], hit: Dict[str, str]) -> None:
     key = (hit.get("date") or "", hit.get("time") or "", hit.get("tag") or "")
     for old in rows:
         if (old.get("date") or "", old.get("time") or "", old.get("tag") or "") == key:
-            if len(str(hit.get("quote") or "")) > len(str(old.get("quote") or "")):
-                old.update(hit)
             return
     rows.append(hit)
 
@@ -284,7 +309,14 @@ def degree_hits(db_path: str = "") -> List[Dict[str, str]]:
     rows = [dict(x) for x in _CURATED]
     for hit in _live_hits(db_path):
         _merge(rows, hit)
-    rows.sort(key=lambda h: (h.get("date") or "", h.get("time") or "", h.get("aid") or ""))
+    rows.sort(
+        key=lambda h: (
+            h.get("date") or "",
+            h.get("time") or "",
+            _TAG_RANK.get(h.get("tag") or "", 0),
+            h.get("aid") or "",
+        )
+    )
     return rows
 
 
@@ -308,6 +340,11 @@ def _compare(prev: Optional[Dict[str, str]], last: Optional[Dict[str, str]]) -> 
         return "這是帶裡最早一筆他自己點名的位階，前面沒得對。"
     a, b = prev.get("tag") or "", last.get("tag") or ""
     pair = (a, b)
+    if pair == ("第五波測底", "逃命波C-2") or pair == ("頭肩底", "逃命波C-2"):
+        return (
+            f"先前 {prev.get('date')} 叫{a}等反彈，後來 {last.get('date')} 改口小心逃命波C-2："
+            "同一組最差情境還在 C-1，強彈他當提高警惕，不是已確認 C-2／C-3。"
+        )
     if pair == ("修正末端", "第五波測底") or pair == ("頭肩底", "第五波測底"):
         return (
             f"先前 {prev.get('date')} 叫{a}，後來 {last.get('date')} 收到{b}："
@@ -445,6 +482,11 @@ def _official_bits(db_path: str) -> List[str]:
 def _direc_line(last: Dict[str, str]) -> str:
     tag = last.get("tag") or ""
     direc = last.get("direc") or ""
+    if tag == "逃命波C-2":
+        return (
+            "方向：他點的是最差情境下小心逃命波 C-2，不是已確認下降浪。"
+            "強彈不追高。創意還沒連續漲勢，就不能說沒有下殺 43500 的危機。"
+        )
     if direc == "retest" or tag in {"第五波測底", "修正末端", "頭肩底"}:
         return (
             "方向：這一組細微波他點的是修正末端／測底等反彈，不是已確認大 3 推動，"

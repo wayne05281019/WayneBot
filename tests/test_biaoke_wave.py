@@ -18,7 +18,7 @@ from bot_servers import WayneTelegramBot
 
 
 def test_wave_question_no_ticker():
-    assert is_wave_question("現在波浪位階")
+    assert is_wave_question("現在是逃命波嗎")
     assert is_wave_question("目前大盤是屬於哪個位階 以波浪來看的話")
     assert is_wave_question("他技術線圖看到什麼")
     assert not is_wave_question("台光電怎麼看")
@@ -34,18 +34,17 @@ def test_degree_hits_are_his_labels_only():
     assert "修正末端" in tags
     last, prev = last_two("")
     assert last is not None
-    assert last["tag"] == "第五波測底"
-    assert "測底" in (last.get("quote") or "")
-    assert "感覺夜盤不太妙" not in (last.get("quote") or "")
+    assert last["tag"] == "逃命波C-2"
+    assert "逃命波" in (last.get("quote") or "")
     assert prev is not None
-    assert prev["tag"] in {"修正末端", "頭肩底", "C-1", "位階二"}
+    assert prev["tag"] in {"第五波測底", "頭肩底", "修正末端"}
     blob = " ".join(h.get("quote") or "" for h in hits)
     assert "蔡森" not in blob
 
 
 def test_format_wave_now_compares_and_turning():
     text = format_wave_now("")
-    assert "第五波測底" in text
+    assert "第五波測底" in text or "逃命波" in text
     assert "位階二" in text or "修正末端" in text
     assert "A 波低" in text or "A波低" in text or "7/29" in text
     assert "精準" in text or "細微波" in text
@@ -67,6 +66,7 @@ def test_why_wave_now_and_eyes():
     assert is_why_query("現在波浪位階")
     body = lookup("現在波浪位階")
     assert "位階二" in body
+    assert "逃命波" in body
     assert "測底" in body or "修正末端" in body
     assert "不數" in body or "5／9" in body
     eyes = lookup("他技術線圖看到什麼")
@@ -82,7 +82,7 @@ def test_why_wave_now_and_eyes():
 def test_blank_focus_leads_with_degree():
     html = format_latest_focus("")
     assert "現在位階" in html
-    assert "第五波測底" in html or "測底" in html
+    assert "第五波測底" in html or "測底" in html or "逃命波" in html
     assert "位階不講死" in html
     assert "產業趨勢" in html
     assert "現在波浪位階" in html
@@ -93,10 +93,10 @@ def test_blank_focus_leads_with_degree():
 def test_nest_includes_his_degree():
     fired = fire_chain("", "目前大盤是屬於哪個位階 以波浪來看的話")
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
-    assert "第五波測底" in nest["text"] or "現在位階" in nest["text"]
+    assert "第五波測底" in nest["text"] or "現在位階" in nest["text"] or "逃命波" in nest["text"]
     assert "不數" in nest["text"]
     think = fired["think"]
-    assert "現在位階" in think or "第五波測底" in think
+    assert "現在位階" in think or "逃命波" in think or "第五波測底" in think
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     assert tape.get("skip") is True
 

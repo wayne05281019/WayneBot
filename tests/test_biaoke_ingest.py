@@ -30,6 +30,9 @@ def test_parse_published_taipei():
     date, tm = parse_published("2026-9-10T9:51:28+08:00")
     assert date == "2026-09-10"
     assert tm == "09:51"
+    date2, tm2 = parse_published("2026-9-15T9:2:53+08:00")
+    assert date2 == "2026-09-15"
+    assert tm2 == "09:02"
 
 
 def test_split_author_cite_quote_is_bystander():

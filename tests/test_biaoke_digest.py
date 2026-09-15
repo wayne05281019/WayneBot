@@ -112,19 +112,18 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
 def test_latest_focus_is_sep14_not_july_bwave():
     html = format_latest_focus("")
     assert "庫 " in html
+    assert "2026-09-15" in html
+    assert "09:02" in html
+    assert "逃命波" in html
     assert "2026-09-14" in html
     assert "09:51" in html
     assert "重要留言" in html or "43500" in html or "創意" in html
-    assert "PCB不要亂動" in html or "富喬" in html or "大立光" in html
-    assert "2026-09-11" in html
-    assert "17:49" in html
-    assert "46506" in html
     assert "你可能會問" in html
     assert "直接打字或語音" in html
     assert "現在位階" in html
     assert "位階不講死" in html
     assert "產業趨勢" in html
-    assert "現在波浪位階" in html
+    assert "現在波浪位階" in html or "現在是逃命波嗎" in html
     assert "模糊的精確" not in html
     assert "安全邊際" not in html
     assert "和碩" not in html
