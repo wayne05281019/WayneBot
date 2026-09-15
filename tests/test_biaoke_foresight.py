@@ -111,6 +111,13 @@ def test_sep10_battlefield_quotes_flag_without_formula():
     assert "ASIC" in battle_line("3443")
     assert "43500" in battle_line("3443")
     assert "43500" in battle_line("3017")
+    assert "CPO" in battle_line("3363")
+    assert "上詮" in battle_line("6442")
+    assert "聯亞" in battle_line("6442")
+    assert "InP" in battle_line("3163")
+    assert "轉折K" in battle_line("3653")
+    assert "5310" in battle_line("3653")
+    assert "測前高" in battle_line("2368") or "底部" in battle_line("2368")
 
 
 def test_longhold_chain_why_not_f10_or_mediatek():

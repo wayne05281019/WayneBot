@@ -70,6 +70,8 @@ def test_named_pairs_maps_iet_to_iet_ky():
     assert "IET" not in names
     assert _NAME_SID.get("IET") == "4971"
     assert _NAME_SID.get("IET-KY") == "4971"
+    assert _NAME_SID.get("上詮") == "3363"
+    assert _NAME_SID.get("波若威") == "3163"
     quoted = named_pairs('"健策要跌停了" 沒有，大盤還好')
     assert all(s != "3653" for s, _n in quoted)
 

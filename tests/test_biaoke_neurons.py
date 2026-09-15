@@ -98,3 +98,21 @@ def test_bystander_kind_not_filed(tmp_path):
     )
     assert n == 0
     assert latest_bundle(db, "") == {}
+
+
+def test_classify_night_gold_uses_five_tools_not_keywords():
+    nest = classify_spoken(
+        "目前這兩天大盤(夜盤)在築底是好事，接下來看星期四或星期五反彈點位(夜盤)至少要46767。"
+    )
+    assert {h["neuron"] for h in nest} >= {"nest"}
+    assert any(h["sid"] in ("", "TWII") for h in nest if h["neuron"] == "nest")
+    tape = classify_spoken("後來收盤看到健策爆大量跌破平台，確認出現轉折，多頭結構被破壞的量價結構")
+    assert any(h["neuron"] == "tape" and h["sid"] == "3653" for h in tape)
+    hold = classify_spoken("我只要看到出現止漲整理K棒是一定會調節的。至於今天抽出的資金轉到創意，說實話，風險也很大。")
+    nids = {h["neuron"] for h in hold}
+    assert "hold" in nids
+    assert "doubt" in nids or "field" in nids
+    field = classify_spoken("上詮屬CPO／FAU，而聯亞屬光通訊 InP")
+    assert "field" in {h["neuron"] for h in field}
+    naked = classify_spoken("先要習慣裸K看盤，看股票要先看量再看價")
+    assert "tape" in {h["neuron"] for h in naked}

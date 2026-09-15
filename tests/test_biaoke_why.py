@@ -165,6 +165,17 @@ def test_why_sep15_escape_wave():
     fu = lookup("初升段走完")
     assert "富喬" in fu
     assert "2整理" in fu or "2 整理" in fu
+    night = lookup("46767")
+    assert "46767" in night
+    assert "築底" in night or "下降壓" in night
+    assert "碎形" in night or "關鍵K" in night
+    shang = lookup("上詮屬CPO")
+    assert "3363" in shang or "上詮" in shang
+    assert "InP" in shang
+    assert "聯亞" in shang
+    kbar = lookup("健策爆大量跌破平台")
+    assert "5310" in kbar or "2469" in kbar
+    assert "轉折" in kbar or "籌碼" in kbar
 
 
 def test_live_notes_puts_why_chain_first():

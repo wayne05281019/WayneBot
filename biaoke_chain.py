@@ -255,6 +255,22 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
         rf"\d\s*[~\-～]\s*{re.escape(sid)}(?!\d)", ask or ""
     ):
         return "", ""
+    # 他自己點過的大盤水平不是股票代號。
+    if sid in {
+        "43500",
+        "45415",
+        "45839",
+        "46250",
+        "46506",
+        "46767",
+        "47578",
+        "48218",
+        "19650",
+        "19844",
+        "19250",
+        "36000",
+    }:
+        return "", ""
     return sid, name
 
 
@@ -373,6 +389,13 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
     if cal:
         bits.append(cal)
     bits.append(
+        "9/15夜：夜盤築底是好事、蓄積過下降壓；周四／周五夜盤反彈至少 46767，不是官方收。"
+        "某商品量價說跌破 43500 非常難（成交金額失真、沒點名）。"
+        "C-2 轉 C-3 未確認；若發生仍先調節，C-3 末端他估 43500 附近。"
+        "沒破線續抱：轉折若不是 C 波下殺，2 天漲 1000 是基本。"
+        "真正有用＝波浪／形態／量價／關鍵K（碎形）；個股不數 5／9。"
+    )
+    bits.append(
         "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
         "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
         "確認要四路對質（加權、台積電量價、費半、台指期日／夜），沒疊滿不講已確認。"
@@ -392,9 +415,27 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
         _NEST_OFFICIAL.clear()
         _NEST_OFFICIAL[key] = core
     text = str(core.get("text") or "")
-    if not any(x in (ask or "") for x in ("45839", "46506", "右肩", "細微波", "波浪", "大盤", "夜盤")):
+    if not any(
+        x in (ask or "")
+        for x in (
+            "45839",
+            "46506",
+            "右肩",
+            "細微波",
+            "波浪",
+            "大盤",
+            "夜盤",
+            "46767",
+            "築底",
+            "43500",
+            "C-2",
+            "逃命波",
+            "碎形",
+            "關鍵K",
+        )
+    ):
         return core
-    extra = "大盤位階用他自己點過的 45839／46506／48218，禁止 17000。"
+    extra = "大盤位階用他自己點過的 45839／46506／48218／46767，禁止 17000。"
     out = dict(core)
     out["text"] = _clip(text + "。" + extra, 900)
     return out
@@ -426,6 +467,14 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             "光學",
             "殺低",
             "末端",
+            "CPO",
+            "FAU",
+            "上詮",
+            "碎形",
+            "關鍵K",
+            "裸K",
+            "築底",
+            "散熱轉弱",
         )
     )
     if named:
@@ -472,14 +521,32 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             )
         elif sid == "3653":
             bits.append(
-                "2026-09-14：健策比奇鋐強。2026-09-15 09:53 樓下：健策跌停、主力真狠、非常難操作。"
-                "14:52：健策多頭結構已經被破壞要進行整理。"
+                "散熱轉弱由健策關鍵K確認不是新聞。"
+                "官方 3653 20260915 開 5735 高 5765 低 5240 收 5310 量 2469："
+                "爆大量跌破平台＝轉折K、多頭量價破壞；籌碼交換至少 2 周；假跌破過幾天才知道。"
                 "噴出去才確認大盤不會 C 波下殺 43500 的那句還沒改口，難操作跟確認噴是兩件事。"
             )
         elif sid == "3017":
             bits.append(
-                "2026-09-14：位置如同 8/21、8/24，多頭沒破。"
-                "2026-09-15 14:52：奇鋐走到技術分析模糊地帶；明天只能上不能下，再下去拉長整理、對大盤是不好的訊號。"
+                "不看月線。2026-09-15 14:52：奇鋐走到技術分析模糊地帶；明天只能上不能下，再下去拉長整理、對大盤是不好的訊號。"
+                "夜：因健策轉折K盤中調奇鋐 1/2。官方 3017 收 3115。"
+            )
+        elif sid == "3443":
+            bits.append(
+                "ASIC 風向球，9/14 取代旺矽。散熱轉弱後資金轉來，但風險大；止漲整理K 一定調節。"
+                "官方 3443 20260915 收 6035＝當日低，還沒連續漲勢，不能說不會下殺 43500。"
+            )
+        elif sid in ("3363", "3163", "6442"):
+            bits.append(
+                "CPO／FAU ≠ InP。9/15：上詮、波若威、光聖／合聖是 CPO／FAU；聯亞才是 InP。"
+                "合聖這顆庫沒這列。上詮回測頸線、還在底部整理、光通訊僅次 InP。"
+                "跟漲先看上詮形態，不准把聯亞當這族龍頭。官方 3363 20260915 收 648。"
+            )
+        elif sid in ("2368", "6274"):
+            bits.append(
+                "PCB 長期趨勢向上、目前底部整理；金像電、台燿同一套。"
+                "3 個月回來看一定反彈一大段；會不會測前高主力也不敢保證。"
+                "官方 20260915 金像電收 972、台燿收 1370。"
             )
         elif sid == "1815":
             bits.append(
@@ -497,7 +564,14 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             from biaoke_mind import match_methods
 
             for title, body in match_methods(ask, limit=3):
-                if title in ("個股先看產業趨勢", "去年年底", "9/10 主戰場", "9/14 指數末端"):
+                if title in (
+                    "個股先看產業趨勢",
+                    "去年年底",
+                    "9/10 主戰場",
+                    "9/14 指數末端",
+                    "9/15夜思考",
+                    "真正有用的五件",
+                ):
                     bits.append(_clip(body, 280))
         except Exception:
             pass
@@ -894,6 +968,20 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
     view = _view_line("hold", n=150)
     if view:
         bits.append(view)
+    if sid == "3653":
+        bits.append(
+            "9/15 爆大量跌破平台＝轉折K確認；籌碼交換至少 2 周。"
+            "假跌破過幾天。止漲整理K 才調節。"
+        )
+    elif sid == "3017":
+        bits.append(
+            "不看月線。因健策轉折K盤中調 1/2。沒破線才續抱："
+            "轉折若不是 C 波下殺，2 天漲 1000 是基本。"
+        )
+    elif sid == "3443":
+        bits.append("散熱資金轉來風險大；止漲整理K 一定調節。還沒連續漲勢。")
+    elif sid in ("3363", "3163", "6442"):
+        bits.append("CPO／FAU 還在底部／回測頸線；沒破線續抱。合聖沒這列。")
     return _step("hold", " ".join(bits), ok=bool(hold or sid))
 
 
@@ -983,7 +1071,13 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；還在等他自己點的 9/16 Fed"
         elif "9/16 Fed 已過" in nest_t:
             nest_bit += "；他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤"
-        parts.append(nest_bit + "。")
+        if "46767" in nest_t:
+            nest_bit += "；周四／周五夜盤反彈至少 46767，不是官方收"
+        if "43500 非常難" in nest_t:
+            nest_bit += "；某商品量價說 43500 難破，不是已確認"
+        if "關鍵K" in nest_t or "碎形" in nest_t:
+            nest_bit += "；真正有用＝波浪／形態／量價／關鍵K（碎形）"
+        parts.append(_clip(nest_bit, 260) + "。")
         parts.append("產業有材料。" if field.get("ok") else "產業材料不夠，不要裝篤定。")
         lead_t = str(leader.get("text") or "")
         if "不另對" in lead_t or "自己就是" in lead_t:
@@ -1010,7 +1104,12 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         else:
             parts.append("這檔量價還沒齊，不准編壓撐。")
         if hold.get("text"):
-            parts.append(_clip(str(hold.get("text")), 180))
+            ht = str(hold.get("text") or "")
+            core = re.sub(r"他自己最新：[^。]*。?", "", ht)
+            core = re.sub(r"他的說法：.*", "", core)
+            if "勿輕易調節" in ht:
+                core = ("切勿輕易調節。" + core).strip()
+            parts.append(_clip(core.strip(" 。；") or ht, 160))
         verdict = str(doubt.get("text") or "")
         if "自問" in verdict:
             parts.append(_clip(verdict[verdict.find("自問") :], 220))
@@ -1046,7 +1145,11 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("還在等他自己點的 9/16 Fed，下一波主流不准裝已確認。")
     elif "9/16 Fed 已過" in nest_t:
         parts.append("他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤。")
-    parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。")
+    if "46767" in nest_t:
+        parts.append("周四／周五夜盤反彈至少 46767，不是官方收。")
+    if "43500 非常難" in nest_t:
+        parts.append("某商品量價說 43500 難破，不是已確認。")
+    parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。真正有用＝波浪／形態／量價／關鍵K（碎形）。")
     return _clip("".join(parts), 520)
 
 

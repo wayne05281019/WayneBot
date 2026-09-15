@@ -21,13 +21,16 @@ from biaoke_mind import (
 def test_neuron_views_reread_without_ask():
     nest = views_for_neuron("nest")
     titles = [t for t, _b in nest]
+    assert titles[0] == "9/15夜思考"
+    assert titles[1] == "真正有用的五件"
     assert "四路對質" in titles
     assert "波浪對大盤" in titles
     assert "右肩／45839" in titles
     assert "他點的日曆／國際局勢" in titles
     assert "9/14 指數末端" in titles
     field = views_for_neuron("field")
-    assert field and field[0][0] == "個股先看產業趨勢"
+    assert field and field[0][0] == "9/15夜思考"
+    assert any(t == "個股先看產業趨勢" for t, _b in field)
     assert any(t == "9/14 指數末端" for t, _b in field)
     assert any(t == "洞燭先機" for t, _b in field)
     assert "很少人提" in method_body("洞燭先機")
@@ -43,7 +46,19 @@ def test_neuron_views_reread_without_ask():
     assert "短期炒作" in method_body("9/14 指數末端")
     assert "500" in method_body("右肩／45839")
     assert "價穩量縮" in method_body("量先價行")
+    assert "先看量再看價" in method_body("量先價行")
+    assert "裸K" in method_body("量先價行")
+    five = method_body("真正有用的五件")
+    assert "碎形" in five
+    assert "關鍵K" in five
+    assert "接線" in five
+    night = method_body("9/15夜思考")
+    assert "46767" in night
+    assert "3363" in night
+    assert "5310" in night
+    assert "CPO" in night
     tape = views_for_neuron("tape")
+    assert any(t == "真正有用的五件" for t, _b in tape)
     assert any(t == "量先價行" for t, _b in tape)
 
 

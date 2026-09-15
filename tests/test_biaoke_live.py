@@ -218,6 +218,10 @@ def test_live_notes_reverse_think_emc_hold():
     assert "多頭結構已經被破壞" in SYSTEM
     assert "初升段" in SYSTEM
     assert "該抽出" in SYSTEM
+    assert "46767" in SYSTEM
+    assert "碎形" in SYSTEM
+    assert "CPO" in SYSTEM
+    assert "上詮" in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note

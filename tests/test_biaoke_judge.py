@@ -3,11 +3,22 @@ from biaoke_judge import format_judge_html, format_judge_notes, leader_of
 from biaoke_mind import match_methods
 
 
-def test_optical_followers_look_at_lianya():
+def test_optical_followers_look_at_shangquan_not_lianya():
     sid, name, why = leader_of("", "6442", "光聖")
-    assert sid == "3081"
-    assert name == "聯亞"
-    assert "龍頭" in why
+    assert sid == "3363"
+    assert name == "上詮"
+    poro, pname, _w = leader_of("", "3163", "波若威")
+    assert poro == "3363"
+    assert pname == "上詮"
+    self_sid, self_name, self_why = leader_of("", "3363", "上詮")
+    assert self_sid == "3363"
+    assert "自己就是" in self_why
+    win, wname, _ = leader_of("", "3105", "穩懋")
+    assert win == "3081"
+    assert wname == "聯亞"
+    asic, aname, awhy = leader_of("", "3443", "創意")
+    assert asic == "3443"
+    assert "自己就是" in awhy
 
 
 def test_zhiyuan_follows_mediatek():

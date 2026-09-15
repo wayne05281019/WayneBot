@@ -30,18 +30,25 @@ CREATE INDEX IF NOT EXISTS idx_biaoke_neuron_hits_nid
 _PAT: Dict[str, re.Pattern[str]] = {
     "nest": re.compile(
         r"(逃命波|C-2|C-3|C-1|位階二|右肩|修正末端|第五波測底|頭肩底|"
-        r"細微波|加權|大盤|夜盤|43500|45839|47578|46506|確認末端)"
+        r"細微波|加權|大盤|夜盤|43500|45839|47578|46506|確認末端|"
+        r"築底|46767|下降壓力線|成交金額|某商品|2天漲1000)"
     ),
     "field": re.compile(
         r"(產業|主戰場|CCL|InP|散熱|光通訊|光學|PCB|F10|ABF|記憶體|"
-        r"下飄旗|矽光子|高階測試)"
+        r"下飄旗|矽光子|高階測試|CPO|FAU|散熱轉弱|僅次於InP)"
     ),
-    "leader": re.compile(r"(龍頭|護城河|次族群|一軍|二軍|風向球|第一名)"),
-    "tape": re.compile(r"(破撐|跌破支撐|站回|洗盤|爆量|量縮|破線|支撐區|出貨)"),
-    "hold": re.compile(r"(長抱|調節|抽出|出清|勿輕易|可抱到|先賣|不用管)"),
+    "leader": re.compile(r"(龍頭|護城河|次族群|一軍|二軍|風向球|第一名|僅次於InP)"),
+    "tape": re.compile(
+        r"(破撐|跌破支撐|站回|洗盤|爆量|量縮|破線|支撐區|出貨|"
+        r"裸K|先看量|籌碼交換|假跌破|止漲整理|跌破平台|轉折K|"
+        r"碎形|關鍵K|爆大量|回測頸線)"
+    ),
+    "hold": re.compile(
+        r"(長抱|調節|抽出|出清|勿輕易|可抱到|先賣|不用管|沒破線|續抱|止漲整理)"
+    ),
     "doubt": re.compile(
         r"(不是已確認|言之過早|無法判斷|模糊|證據不足|不能保證|"
-        r"點到為止|還沒改口)"
+        r"點到為止|還沒改口|無法保證|風險也很大|過幾天|不敢保證)"
     ),
 }
 _SPACE = re.compile(r"\s+")
@@ -116,7 +123,7 @@ def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dic
                 out.append({"neuron": nid, "sid": sid, "name": name, "snippet": snip})
             continue
         if nid == "tape":
-            targets = stocks
+            targets = stocks or [("", "")]
         else:
             targets = stocks or [("", "")]
         for sid, name in targets:

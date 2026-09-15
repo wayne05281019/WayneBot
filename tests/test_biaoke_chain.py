@@ -583,3 +583,38 @@ def test_fortyfifth_chain_unnamed_tx_night_19650():
     night = fire_chain("", "破19844")
     nblob = "".join(s.get("text") or "" for s in night["steps"]) + night.get("think", "")
     assert "19844" in nblob
+
+
+def test_chain_sep15_night_five_tools_rewire():
+    nest = fire_chain("", "46767 怎麼看")
+    assert not nest.get("sid")
+    nest_t = next(s for s in nest["steps"] if s["id"] == "nest")["text"]
+    think = nest["think"]
+    assert "46767" in nest_t or "46767" in think
+    assert "碎形" in nest_t or "關鍵K" in nest_t or "碎形" in think
+    db = "data/wayne_market.db"
+    nest_db = fire_chain(db, "46767 怎麼看")
+    assert not nest_db.get("sid")
+    think = nest["think"]
+    assert "46767" in nest_t or "46767" in think
+    assert "碎形" in nest_t or "關鍵K" in nest_t or "碎形" in think
+    jian = fire_chain("data/wayne_market.db", "健策怎麼看")
+    assert jian["sid"] == "3653"
+    field = next(s for s in jian["steps"] if s["id"] == "field")
+    tape = next(s for s in jian["steps"] if s["id"] == "tape")
+    hold = next(s for s in jian["steps"] if s["id"] == "hold")
+    blob = field["text"] + tape["text"] + hold["text"] + jian["think"]
+    assert "5310" in blob or "2469" in blob
+    assert "轉折" in blob or "平台" in blob
+    shang = fire_chain("data/wayne_market.db", "上詮怎麼看")
+    assert shang["sid"] == "3363"
+    lead = next(s for s in shang["steps"] if s["id"] == "leader")
+    field_s = next(s for s in shang["steps"] if s["id"] == "field")
+    blob_s = lead["text"] + field_s["text"] + shang["think"]
+    assert "上詮" in blob_s
+    assert "CPO" in blob_s or "FAU" in blob_s
+    assert "這族龍頭是 3081" not in shang["think"]
+    gs = fire_chain("data/wayne_market.db", "光聖怎麼看")
+    assert gs["sid"] == "6442"
+    assert "這族龍頭是 3081" not in gs["think"]
+    assert "3363" in gs["think"] or "上詮" in next(s for s in gs["steps"] if s["id"] == "leader")["text"]
