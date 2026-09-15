@@ -40,6 +40,9 @@ def test_chain_six_neurons_in_order_for_emc():
     think = fired["think"]
     assert "巢穴" in think or "覆巢" in think or "大盤" in think
     assert "長抱" in think or "勿輕易調節" in hold["text"]
+    assert "先看大盤巢穴會不會覆巢" not in think
+    assert "再問產業趨勢還在不在" not in think
+    assert "問的是 2383" in think
 
 
 def test_chain_nanya_1303_is_not_nanya_tech():

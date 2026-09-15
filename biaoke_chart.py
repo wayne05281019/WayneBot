@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib
@@ -411,6 +412,7 @@ def render_biaoke_structure_png(
     *,
     sid: str = "",
     name: str = "",
+    glance: Optional[Dict[str, str]] = None,
 ) -> str:
     rows = list(bars or [])
     if len(rows) < 8 or not save_path:
@@ -679,6 +681,24 @@ def render_biaoke_structure_png(
     )
     fig.text(0.045, 0.928, ohlc_s, fontproperties=_fp(13, "bold"), color=_TEXT, va="top")
     fig.text(0.045, 0.896, spike_s, fontproperties=_fp(13, "bold"), color=_PRESS, va="top")
+    banner = "　".join(
+        x
+        for x in (
+            _short((glance or {}).get("nest") or "", 32),
+            _short((glance or {}).get("field") or "", 28),
+            _short((glance or {}).get("leader") or "", 22),
+        )
+        if x
+    )
+    if banner:
+        fig.text(
+            0.045,
+            0.858,
+            banner,
+            fontproperties=_fp(11, "bold"),
+            color="#37474f",
+            va="top",
+        )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
@@ -739,23 +759,128 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.045, right=0.87, top=0.78, bottom=0.08)
+    fig.subplots_adjust(left=0.045, right=0.87, top=0.72 if banner else 0.78, bottom=0.08)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
 
-def chart_caption(info: Dict[str, Any], *, sid: str = "", name: str = "") -> str:
+def _short(text: str, n: int) -> str:
+    s = " ".join(str(text or "").split())
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+_FIELD_LECTURE = "個股最重要是產業趨勢還在不在；技術分析最有用在大盤。"
+
+
+def neuron_glance(fired: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """圖上／說明用的六顆短句。不准開場念規則。"""
+    out: Dict[str, str] = {}
+    if not isinstance(fired, dict):
+        return out
+    by = {
+        str(s.get("id") or ""): s
+        for s in (fired.get("steps") or [])
+        if isinstance(s, dict)
+    }
+    nest = str((by.get("nest") or {}).get("text") or "")
+    m = re.search(r"現在位階[^。]+", nest)
+    if m:
+        out["nest"] = m.group(0).rstrip("。").split("；再前", 1)[0].strip()
+    elif "45839 之上" in nest:
+        out["nest"] = "大盤官方收還在 45839 之上"
+    elif "已低於他自己點的 9/3 低 45839" in nest:
+        out["nest"] = "大盤官方收已低於 45839，覆巢先當有事"
+    elif nest:
+        out["nest"] = _short(nest, 36)
+    field = str((by.get("field") or {}).get("text") or "").replace(_FIELD_LECTURE, "").strip(" ；。")
+    if "護城河最高" in field:
+        m = re.search(r"[^。]*護城河最高[^。]*", field)
+        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+    elif re.search(r"F[14]0?", field):
+        m = re.search(r"[^。]*F[14]0?[^。]*", field)
+        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+    elif "護城河" in field:
+        m = re.search(r"[^。]*護城河[^。]*", field)
+        out["field"] = _short((m.group(0) if m else field).split("；")[0].strip(" ；"), 48)
+    elif field:
+        out["field"] = _short(field.split("。")[0].strip(" ；"), 42)
+    lead = str((by.get("leader") or {}).get("text") or "")
+    if "自己就是" in lead:
+        out["leader"] = "自己就是這族龍頭"
+    elif lead:
+        out["leader"] = _short(lead.split("（", 1)[0], 36)
+    hold = str((by.get("hold") or {}).get("text") or "")
+    if "勿輕易調節" in hold and "可抱到明年" in hold:
+        out["hold"] = "長抱：可抱到明年，勿輕易調節"
+    elif "勿輕易調節" in hold:
+        out["hold"] = "長抱：勿輕易調節"
+    elif "可抱到明年" in hold:
+        out["hold"] = "長抱：可抱到明年"
+    elif "只當進出" in hold or "不要偷換成可抱到明年" in hold:
+        out["hold"] = "這檔先當進出，不是長抱名單"
+    elif hold:
+        out["hold"] = _short(hold, 72)
+    doubt = str((by.get("doubt") or {}).get("text") or "")
+    if "公開文沒點名" in doubt:
+        out["doubt"] = "公開文沒點名這檔，可能看錯"
+    elif "沒疊滿" in doubt:
+        out["doubt"] = "沒疊滿就不講死"
+    elif doubt:
+        out["doubt"] = _short(doubt, 48)
+    think = str(fired.get("think") or "").strip()
+    if think:
+        out["think"] = _short(think, 280)
+    return out
+
+
+def chart_caption(
+    info: Dict[str, Any],
+    *,
+    sid: str = "",
+    name: str = "",
+    glance: Optional[Dict[str, str]] = None,
+) -> str:
     head = f"{sid} {name}".strip()
     lines = [
         f"{head}　官方日K量先價行（不是15分、不是介紹圖／決策卡）".strip(),
-        "介入買點首先量先價行：爆大量那一天最高價當壓力、最低價當支撐；站上撐或壓力轉撐之後，等價穩量縮才進，否則放棄。",
     ]
-    for note in info.get("notes") or []:
-        lines.append(str(note))
-    lines.append("右灰區＝壓撐＋連點延長演算的後續，不是保證走勢、不是買訊。")
+    g = glance or {}
+    if g.get("nest"):
+        lines.append(g["nest"])
+    field_lead = " ".join(x for x in (g.get("field"), g.get("leader")) if x)
+    if field_lead:
+        lines.append(field_lead)
+    st = info.get("struct") or {}
+    last_bar = info.get("last_bar") or {}
+    spike_hi = st.get("spike_high")
+    spike_lo = st.get("spike_low")
+    if spike_hi and spike_lo:
+        tape = (
+            f"這檔收 {_px(last_bar.get('close'))}，爆大量那一天 "
+            f"{_ymd_full(st.get('spike_date'))} 高 {_px(spike_hi)}＝壓、"
+            f"低 {_px(spike_lo)}＝撐、量 {_vol(st.get('spike_volume') or (info.get('spike_bar') or {}).get('volume'))}。"
+        )
+        if info.get("wash"):
+            tape += "破撐之後又站回，比較像破線洗盤。"
+        elif info.get("distribution"):
+            tape += "過壓之後又掉回撐下，比較像出貨。"
+        elif info.get("under_support"):
+            tape += "收在爆大量日低之下，這次量價先放棄。"
+        elif info.get("over_press"):
+            tape += "已過爆大量日高，比較像半山腰。"
+        lines.append(tape)
+    proj = info.get("project") or {}
+    if proj.get("label"):
+        lines.append("圖上演算：" + str(proj.get("label")))
+    if g.get("hold"):
+        lines.append(g["hold"])
+    if g.get("doubt"):
+        lines.append(g["doubt"])
+    else:
+        lines.append("沒疊滿就不講死。")
     lines.append("連點只是輔助。不夠兩點就不畫。個股不數 5／9 段。這不是買訊。")
-    return "\n".join(x for x in lines if x)[:1200]
+    return "\n".join(x for x in lines if x)[:900]
 
 
 def build_biaoke_structure_chart(
@@ -764,6 +889,8 @@ def build_biaoke_structure_chart(
     save_path: str,
     *,
     name: str = "",
+    ask: str = "",
+    uid: str = "",
 ) -> Dict[str, Any]:
     from biaoke_brain import load_bars
 
@@ -773,15 +900,29 @@ def build_biaoke_structure_chart(
         return {"ok": False, "path": "", "caption": ""}
     nm = name or str(bars[-1].get("stock_name") or sid)
     info = analyze_structure(bars[-_BARS:])
-    path = render_biaoke_structure_png(bars, save_path, sid=sid, name=nm)
+    fired = None
+    q = (ask or "").strip()
+    if q:
+        try:
+            from biaoke_chain import fire_chain
+
+            fired = fire_chain(db_path, q, uid=uid)
+        except Exception:
+            logger.debug("飆大結構圖神經元略過", exc_info=True)
+            fired = None
+    glance = neuron_glance(fired)
+    path = render_biaoke_structure_png(
+        bars, save_path, sid=sid, name=nm, glance=glance
+    )
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": chart_caption(info, sid=sid, name=nm),
+        "caption": chart_caption(info, sid=sid, name=nm, glance=glance),
         "sid": sid,
         "name": nm,
         "wash": bool(info.get("wash")),
         "distribution": bool(info.get("distribution")),
         "project": dict(info.get("project") or {}),
         "notes": list(info.get("notes") or []),
+        "glance": glance,
     }

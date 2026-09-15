@@ -187,9 +187,12 @@ def test_biaoke_page_has_no_inside_menu():
     assert "_send_biaoke_structure_chart" in src
     assert "_send_biaoke_origin_charts" in src
     assert "_send_card_to" not in src
-    assert "build_biaoke_structure_chart" in inspect.getsource(
-        WayneTelegramBot._send_biaoke_structure_chart
-    )
+    struct_src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
+    assert "build_biaoke_structure_chart" in struct_src
+    assert "ask=q" in struct_src
+    assert "uid=uid" in struct_src
+    assert "is_wave_question" in struct_src
+    assert "_send_biaoke_twii_degree_chart" in struct_src
     origin = inspect.getsource(WayneTelegramBot._send_biaoke_origin_charts)
     assert "pick_charts" in origin
     assert "public_only" in origin

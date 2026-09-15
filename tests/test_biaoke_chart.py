@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from biaoke_chart import (
     analyze_structure,
     chart_caption,
+    neuron_glance,
     render_biaoke_structure_png,
 )
 
@@ -65,6 +66,7 @@ def test_structure_flags_wash_and_volume_lines():
     assert "爆大量那一天" in cap
     assert "演算" in cap
     assert "不是保證" in cap
+    assert "介入買點首先" not in cap
     proj = info.get("project") or {}
     assert proj.get("key") == "wash"
     assert abs(float(proj.get("target") or 0) - 148) < 1e-6
@@ -129,6 +131,45 @@ def test_render_structure_png(tmp_path):
     assert path and path == out
     assert Image.open(path).size[0] >= 1000
     assert (tmp_path / "biaoke.png").stat().st_size > 24_000
+
+
+def test_caption_and_chart_carry_six_neurons_without_lecture(tmp_path):
+    from PIL import Image
+
+    info = analyze_structure(_series())
+    fired = {
+        "think": "問的是 3035 智原。大盤官方收還在 45839 之上。",
+        "steps": [
+            {"id": "nest", "text": "現在位階 2026-09-15 逃命波C-2（未確認）。官方收還在 45839 之上。"},
+            {"id": "field", "text": "個股最重要是產業趨勢還在不在；技術分析最有用在大盤。 IC 設計這族材料還在。"},
+            {"id": "leader", "text": "自己就是這族龍頭（官方沒另點）。"},
+            {"id": "hold", "text": "4/16 可抱到明年。長線龍頭股切勿輕易調節。"},
+            {"id": "doubt", "text": "公開文沒點名這檔，可能看錯。"},
+        ],
+    }
+    glance = neuron_glance(fired)
+    assert glance.get("nest", "").startswith("現在位階")
+    assert "IC" in (glance.get("field") or "")
+    assert "個股最重要是產業趨勢" not in (glance.get("field") or "")
+    assert glance.get("leader") == "自己就是這族龍頭"
+    assert glance.get("hold") == "長抱：可抱到明年，勿輕易調節"
+    assert "公開文沒點名" in (glance.get("doubt") or "")
+    cap = chart_caption(info, sid="3035", name="智原", glance=glance)
+    assert "介入買點首先" not in cap
+    assert "先看大盤巢穴會不會覆巢" not in cap
+    assert "個股最重要是產業趨勢" not in cap
+    assert "現在位階" in cap
+    assert "自己就是這族龍頭" in cap
+    assert "勿輕易調節" in cap
+    assert "爆大量那一天" in cap
+    assert "量先價行" in cap
+    assert "這不是買訊" in cap
+    out = str(tmp_path / "biaoke-glance.png")
+    path = render_biaoke_structure_png(
+        _series(), out, sid="3035", name="智原", glance=glance
+    )
+    assert path and Image.open(path).size[0] >= 1000
+    assert (tmp_path / "biaoke-glance.png").stat().st_size > 24_000
 
 
 def test_real_daily_quotes_numbers_are_exact():

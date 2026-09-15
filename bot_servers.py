@@ -3437,6 +3437,8 @@ class WayneTelegramBot:
                     sid,
                     path,
                     name=name,
+                    ask=q,
+                    uid=uid,
                 ),
                 timeout=_CHART_RENDER_TIMEOUT,
             )

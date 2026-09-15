@@ -857,7 +857,6 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
     if sid:
         parts = [
             f"問的是 {sid} {name}。".strip(),
-            "先看大盤巢穴會不會覆巢，再問產業趨勢還在不在，再看這族龍頭，才輪到這檔官方日 K 量先價行；長抱跟進出分開，最後才講能不能篤定。",
         ]
         nest_t = str(nest.get("text") or "")
         if "45839 之上" in nest_t:
