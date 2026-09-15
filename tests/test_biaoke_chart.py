@@ -514,13 +514,14 @@ def test_locator_inset_marks_window():
     assert abs(_TWII_LOCATOR_RECT[0] + _TWII_LOCATOR_RECT[2] - _FIG_RIGHT) < 1e-9
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=_FIG_RIGHT" in rsrc
-    assert "quote=quote" in rsrc
-    assert "_paint_spot(ov, quote" not in rsrc
-    assert "_paint_locator_quote" in inspect.getsource(paint_locator_inset) or "_paint_locator_quote" in rsrc
+    assert "_paint_spot(ov, quote" in rsrc
+    assert "chip_y - 3.35" in rsrc or "標籤下面" in inspect.getsource(_paint_spot)
+    assert "quote=quote" not in rsrc.split("paint_locator_inset")[1][:400]
     qsrc = inspect.getsource(_paint_locator_quote)
     assert "匡外" in qsrc
-    assert 'ha="right"' in qsrc
-    assert "x + 0.012" not in qsrc
+    spot = inspect.getsource(_paint_spot)
+    assert "標籤下面" in spot or "ha=\"left\"" in spot
+    assert "較昨日" in inspect.getsource(_paint_spot)
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
@@ -828,3 +829,10 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     src = inspect.getsource(render_biaoke_structure_png)
     assert "BIAOKE_CHART_DPI" in src
     assert "NAV_CHART_DPI" not in src
+    assert "_add_ohlc_wicks" in src
+    assert "pil_kwargs" in src
+    from biaoke_chart import paint_locator_inset
+
+    lsrc = inspect.getsource(paint_locator_inset)
+    assert "_add_ohlc_wicks" in lsrc
+    assert "ax.vlines" not in lsrc

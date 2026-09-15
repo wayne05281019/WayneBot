@@ -21,6 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib import patches
+from matplotlib.collections import LineCollection, PolyCollection
 
 from wayne_navigator import _fp, _mpl_serial
 
@@ -579,6 +580,70 @@ def _circled_letter(ax, x, y, letter, color, *, dx=-1.8, dy=0.0, size=11):
             linewidth=1.45,
             alpha=0.97,
         ),
+    )
+
+
+def _add_ohlc_wicks(
+    ax,
+    xs: Sequence[float],
+    lows: Sequence[float],
+    highs: Sequence[float],
+    colors: Sequence[str],
+    *,
+    lw: Any = 0.9,
+    z: int = 3,
+) -> None:
+    """影線一次畫完，不准一根一根 vlines。"""
+    segs = [
+        ((float(x), float(lo)), (float(x), float(hi)))
+        for x, lo, hi in zip(xs, lows, highs)
+    ]
+    if not segs:
+        return
+    ax.add_collection(
+        LineCollection(
+            segs,
+            colors=list(colors),
+            linewidths=lw,
+            capstyle="round",
+            zorder=z,
+        ),
+        autolim=False,
+    )
+
+
+def _add_ohlc_bodies(
+    ax,
+    xs: Sequence[float],
+    opens: Sequence[float],
+    closes: Sequence[float],
+    colors: Sequence[str],
+    *,
+    widths: Sequence[float],
+    lws: Sequence[float],
+    edges: Sequence[str],
+    min_h: float,
+    z: int = 3,
+) -> None:
+    """實體一次畫完，不准一根一根 Rectangle。"""
+    verts = []
+    for x, o, c, w in zip(xs, opens, closes, widths):
+        y0 = min(float(o), float(c))
+        h = max(abs(float(c) - float(o)), min_h)
+        x0 = float(x) - float(w) / 2.0
+        x1 = float(x) + float(w) / 2.0
+        verts.append([(x0, y0), (x1, y0), (x1, y0 + h), (x0, y0 + h)])
+    if not verts:
+        return
+    ax.add_collection(
+        PolyCollection(
+            verts,
+            facecolors=list(colors),
+            edgecolors=list(edges),
+            linewidths=list(lws),
+            zorder=z,
+        ),
+        autolim=False,
     )
 
 
@@ -1278,27 +1343,26 @@ def paint_locator_inset(
 
     if not k_on_top:
         _draw_legs()
-    # 長軸縮圖 360 根：影線就看得懂，不逐根畫方塊，出圖比較快。
-    draw_body = m <= 200
+    colors = []
     for i in range(m):
         prev_c = closes[i - 1] if i else None
-        up = candle_up_taiwan(closes[i], prev_c, opens[i])
-        c = _UP if up else _DN
-        ax.vlines(i, lows[i], highs[i], color=c, linewidth=lw, zorder=k_z)
-        if not draw_body:
-            continue
-        body = max(abs(closes[i] - opens[i]), (hi_max - lo_min) * 0.0015)
-        ax.add_patch(
-            patches.Rectangle(
-                (i - w / 2, min(opens[i], closes[i])),
-                w,
-                body,
-                facecolor=c,
-                edgecolor=c,
-                linewidth=0.15,
-                zorder=k_z,
-                alpha=0.95,
-            )
+        colors.append(_UP if candle_up_taiwan(closes[i], prev_c, opens[i]) else _DN)
+    _add_ohlc_wicks(ax, range(m), lows, highs, colors, lw=lw, z=k_z)
+    # 長軸縮圖 360 根：影線就看得懂，不逐根畫方塊，出圖比較快。
+    if m <= 200:
+        widths = [w] * m
+        lws = [0.15] * m
+        _add_ohlc_bodies(
+            ax,
+            range(m),
+            opens,
+            closes,
+            colors,
+            widths=widths,
+            lws=lws,
+            edges=colors,
+            min_h=(hi_max - lo_min) * 0.0015,
+            z=k_z,
         )
     if k_on_top:
         _draw_legs()
@@ -1566,7 +1630,7 @@ def _spot_quote(
     prev_bar: Optional[Dict[str, Any]] = None,
     db_path: str = "",
 ) -> Dict[str, Any]:
-    """右上角現價／收盤。pytest 不打外網；沒即時就用最後官方收。"""
+    """右上角現價／收盤。個股改畫在左上標籤下面。pytest 不打外網；沒即時就用最後官方收。"""
     last = dict(last_bar or {})
     prev = dict(prev_bar or {})
     close = last.get("close")
@@ -1695,7 +1759,7 @@ def _paint_spot(
     align: str = "left",
     compact: bool = False,
 ) -> None:
-    """今K／現價／漲跌。compact＝縮圖匡內左邊置中。"""
+    """今K／現價／漲跌。個股畫在左上文字與標籤下面，不擋縮圖。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1850,30 +1914,21 @@ def render_biaoke_structure_png(
     if not plate.get("name"):
         plate["name"] = name
     quote = dict(quote or _spot_quote(sid, last_bar, prev_bar, db_path))
-    for i in range(n):
-        c = _UP if candle_up[i] else _DN
-        thick = 1.55 if i == spike_i else 1.15
-        ax1.plot(
-            [xs[i], xs[i]],
-            [lows[i], highs[i]],
-            color=c,
-            linewidth=thick,
-            zorder=3,
-            solid_capstyle="round",
-        )
-        body = max(abs(closes[i] - opens[i]), span * 0.0016)
-        w = 0.58 if i == spike_i else 0.46
-        ax1.add_patch(
-            patches.Rectangle(
-                (xs[i] - w / 2, min(opens[i], closes[i])),
-                w,
-                body,
-                facecolor=c,
-                edgecolor="#f9a825" if i == spike_i else c,
-                linewidth=1.35 if i == spike_i else 0.6,
-                zorder=3,
-            )
-        )
+    cols = [_UP if candle_up[i] else _DN for i in range(n)]
+    wick_lw = [1.55 if i == spike_i else 1.15 for i in range(n)]
+    _add_ohlc_wicks(ax1, xs, lows, highs, cols, lw=wick_lw, z=3)
+    _add_ohlc_bodies(
+        ax1,
+        xs,
+        opens,
+        closes,
+        cols,
+        widths=[0.58 if i == spike_i else 0.46 for i in range(n)],
+        lws=[1.35 if i == spike_i else 0.6 for i in range(n)],
+        edges=["#f9a825" if i == spike_i else cols[i] for i in range(n)],
+        min_h=span * 0.0016,
+        z=3,
+    )
     band_hi: List[Dict[str, Any]] = []
     band_lo: List[Dict[str, Any]] = []
     right_notes: List[Dict[str, Any]] = []
@@ -2114,13 +2169,15 @@ def render_biaoke_structure_png(
     for bit in banner_bits:
         need = _ow(f" {bit} ", 9) + 1.2
         if chip_x > _HEADER_X + 0.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 2.9 < 68:
+            if chip_y - 2.9 < 75:
                 break
             chip_x = _HEADER_X
             chip_y -= 2.9
         chip_x = _draw_chip(
             ov, chip_x, chip_y, bit, fc="#f4f6f8", ec="#90a4ae", tc="#37474f", size=9
         )
+    if quote:
+        _paint_spot(ov, quote, x=_HEADER_X, y=chip_y - 3.35, align="left")
     if len(rows) >= n + 8:
         loc_legs: List[Dict[str, Any]] = []
         loc_marks: List[Dict[str, Any]] = []
@@ -2167,7 +2224,6 @@ def render_biaoke_structure_png(
             legs=loc_legs,
             forecast_n=_FUTURE,
             marks=loc_marks,
-            quote=quote,
         )
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID, zorder=1)
     ax1.yaxis.tick_left()
@@ -2220,7 +2276,12 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
     )
-    fig.savefig(save_path, dpi=BIAOKE_CHART_DPI, facecolor=fig.get_facecolor())
+    fig.savefig(
+        save_path,
+        dpi=BIAOKE_CHART_DPI,
+        facecolor=fig.get_facecolor(),
+        pil_kwargs={"compress_level": 2, "optimize": False},
+    )
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
