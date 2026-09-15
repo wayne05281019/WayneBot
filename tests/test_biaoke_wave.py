@@ -9,7 +9,9 @@ from biaoke_wave import (
     EYES,
     build_twii_degree_chart,
     degree_hits,
+    degree_turns,
     format_wave_now,
+    format_wave_path,
     is_wave_question,
     last_two,
 )
@@ -28,10 +30,22 @@ def test_wave_question_no_ticker():
 def test_degree_hits_are_his_labels_only():
     hits = degree_hits("")
     tags = {h["tag"] for h in hits}
+    aids = {h.get("aid") or "" for h in hits}
+    dates = {h.get("date") or "" for h in hits}
     assert "A波低" in tags
     assert "位階二" in tags
     assert "第五波測底" in tags
     assert "修正末端" in tags
+    assert "3-3-4調整" in tags
+    assert "邪惡第五波" in tags
+    assert "細微波主跌" in tags
+    assert "160266701" not in aids
+    assert not any(d.startswith("2023") for d in dates)
+    assert any(h["date"] == "2024-03-19" and h["tag"] == "修正末端" for h in hits)
+    assert not any(
+        str(h.get("aid") or "").startswith("164375850") and h["tag"] == "逃命波C-2"
+        for h in hits
+    )
     last, prev = last_two("")
     assert last is not None
     assert last["tag"] == "逃命波C-2"
@@ -40,6 +54,26 @@ def test_degree_hits_are_his_labels_only():
     assert prev["tag"] in {"第五波測底", "頭肩底", "修正末端"}
     blob = " ".join(h.get("quote") or "" for h in hits)
     assert "蔡森" not in blob
+    assert "廣達從細微波" not in blob
+
+
+def test_degree_path_from_2024_not_invented_2023():
+    path = format_wave_path("")
+    assert "2023-12" in path
+    assert "沒寫死" in path
+    assert "2024-03-15" in path or "3-3-4" in path
+    assert "細微波主跌" in path or "2025-03-04" in path
+    assert "右肩" in path
+    assert "2025-05-19" in path or "位階二" in path
+    assert "A波低" in path
+    assert "逃命波C-2" in path
+    assert "17000" not in path
+    turns = degree_turns("")
+    assert turns
+    assert turns[0]["date"] >= "2024-03-15"
+    assert turns[-1]["tag"] == "逃命波C-2"
+    tags = [t["tag"] for t in turns]
+    assert tags == [t["tag"] for i, t in enumerate(turns) if i == 0 or t["tag"] != tags[i - 1]]
 
 
 def test_format_wave_now_compares_and_turning():
@@ -60,6 +94,8 @@ def test_format_wave_now_compares_and_turning():
     assert "47578" in live
     assert "39385" in live or "39384" in live
     assert "45398" in live or "低於 45839" in live
+    assert "22000" in live
+    assert "20250311" in live or "3/11" in live or "21770" in live or "21769" in live
 
 
 def test_why_wave_now_and_eyes():
@@ -69,6 +105,7 @@ def test_why_wave_now_and_eyes():
     assert "逃命波" in body
     assert "測底" in body or "修正末端" in body
     assert "不數" in body or "5／9" in body
+    assert "2023-12" in body or "沒寫死" in body
     eyes = lookup("他技術線圖看到什麼")
     assert "KD" in eyes or "均線" in eyes
     assert "台積電" in eyes

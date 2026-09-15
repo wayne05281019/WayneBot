@@ -24,20 +24,31 @@ _EYES_ASK = re.compile(
     r"大盤對比類股|類股對比個股)"
 )
 _SKIP_FIFTH = re.compile(r"抱到.?2027|第五波漲勢結束")
+_INDEX_CTX = re.compile(r"(大盤|加權|台指|指數|TWA00)")
+_NEG_FIFTH = re.compile(
+    r"(不會產生|不會有|有沒有|沒辦法).{0,16}(第五波|末升段第五波)"
+)
 _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
-    ("逃命波C-2", "down", re.compile(r"逃命波\s*C-2|做逃命波")),
+    ("逃命波C-2", "down", re.compile(r"逃命波\s*C-2|做逃命波\s*C-2")),
     ("C-3", "down", re.compile(r"小心C-2\s*轉\s*C-3|出現C-2\s*轉\s*C-3|轉C-3先")),
-    ("C-1", "down", re.compile(r"C波下殺\s*C-1|走C波下殺|C-1")),
+    ("C-1", "down", re.compile(r"C波下殺\s*C-1|走C波下殺|最差情境.{0,24}C-1")),
     ("第五波測底", "retest", re.compile(r"第五波.{0,8}測底|再一次測底|短線築底")),
     ("修正末端", "retest", re.compile(r"修正的?末端")),
+    ("3-3-4調整", "down", re.compile(r"3-3-3-4調整|3-3-4浪即將結束|進入3-3-3-4")),
     ("位階二", "side", re.compile(r"波浪位階二|位階二|波浪位階的\s*2")),
-    ("右肩", "side", re.compile(r"做右肩|右肩型態|持續做右肩|就是做右肩")),
-    ("A波低", "down_done", re.compile(r"A波低點|就是A波低")),
-    ("大B波", "up", re.compile(r"大B波|走大B波")),
+    ("右肩", "side", re.compile(r"做右肩|右肩型態|持續做右肩|就是做右肩|做型態右肩")),
+    ("A波低", "down_done", re.compile(r"A波低點|就是A波低|見A波低")),
+    ("大B波", "up", re.compile(r"走大B波|進行大B波|大B波反彈|就算走大B波|有大B波")),
     ("波浪四", "down", re.compile(r"來到波浪四|波浪四點位")),
     ("頭肩底", "retest", re.compile(r"頭肩底")),
     ("第五波失敗", "down", re.compile(r"第五波.{0,10}(沒了|失敗|開始做頭)")),
+    ("邪惡第五波", "up", re.compile(r"邪惡第五波")),
+    ("末升段", "up", re.compile(r"3-5末升|末升段推動|末升段第五波|第五波擴延")),
+    ("大A-c", "down", re.compile(r"大A-c|走大A-c|改\s*A-c")),
+    ("細微波主跌", "down", re.compile(r"主跌段跌完|細微波.{0,12}主跌")),
+    ("第4浪", "down", re.compile(r"要走第4浪|第4浪\s*abc|4浪\s*abc修正")),
 )
+_TAG_PAT = {name: pat for name, _d, pat in _TAGGERS}
 _TAG_RANK = {
     "逃命波C-2": 90,
     "第五波測底": 80,
@@ -46,16 +57,70 @@ _TAG_RANK = {
     "C-3": 50,
     "位階二": 40,
     "右肩": 35,
+    "3-3-4調整": 22,
     "C-1": 20,
+    "邪惡第五波": 18,
+    "末升段": 16,
     "大B波": 15,
+    "大A-c": 14,
     "A波低": 12,
+    "細微波主跌": 11,
     "波浪四": 10,
+    "第4浪": 9,
     "第五波失敗": 8,
     "第五波條件": 5,
 }
 
-# 他自己點名過、能對上公開文的位階帶。更早沒寫死浪名的不加。
+# 他自己點名過、能對上公開文的位階帶。2023-12 開示到 2024-03 沒寫死浪名，不加教科書浪。
 _CURATED: Tuple[Dict[str, str], ...] = (
+    {
+        "date": "2024-03-15",
+        "time": "00:28",
+        "aid": "160426431",
+        "tag": "3-3-4調整",
+        "direc": "down",
+        "quote": "台指期這一次推動脈動 3-3-3-3 上升軌道已破壞，將進入 3-3-3-4 調整，回測 19660。",
+    },
+    {
+        "date": "2024-03-19",
+        "time": "09:49",
+        "aid": "160518715",
+        "tag": "修正末端",
+        "direc": "retest",
+        "quote": "大盤及台指期已打到上升軌道臨界，應該到了修正末端，3-3-4 浪即將結束。",
+    },
+    {
+        "date": "2024-05-30",
+        "time": "00:12",
+        "aid": "162297588",
+        "tag": "第4浪",
+        "direc": "down",
+        "quote": "85% 確定 3-5 浪已經走完要走第 4 浪 abc 修正。",
+    },
+    {
+        "date": "2024-06-02",
+        "time": "11:47",
+        "aid": "162385525",
+        "tag": "大B波",
+        "direc": "up",
+        "quote": "大盤從 19291 到 21937 的 5 浪推升已經走完。最好情況是大 B 波假突破過 21937。",
+    },
+    {
+        "date": "2024-07-04",
+        "time": "00:09",
+        "aid": "163220935",
+        "tag": "邪惡第五波",
+        "direc": "up",
+        "quote": "台指期夜盤創新高，開始走 5-5 邪惡第五波最後第五小浪延升浪。七月最多 24730。",
+    },
+    {
+        "date": "2025-03-04",
+        "time": "21:20",
+        "aid": "169293290",
+        "tag": "細微波主跌",
+        "direc": "down",
+        "quote": "台指期細微波只是主跌段跌完，還會有末跌段；跌幅滿足超過九成會跌破 22000。不是抄底時機。",
+    },
     {
         "date": "2025-05-19",
         "time": "10:55",
@@ -234,6 +299,18 @@ def _spoken(raw: str) -> str:
         return str(raw or "")
 
 
+def _quote_near(text: str, tag: str) -> str:
+    blob = _spoken(text)
+    pat = _TAG_PAT.get(tag)
+    if pat is None:
+        return _clip(blob, 160)
+    m = pat.search(blob)
+    if not m:
+        return _clip(blob, 160)
+    i = max(0, m.start() - 24)
+    return _clip(blob[i : m.end() + 90], 160)
+
+
 def _tags_in(text: str) -> List[Tuple[str, str]]:
     blob = _spoken(text)
     if _SKIP_FIFTH.search(blob) and "測底" not in blob:
@@ -249,6 +326,8 @@ def _tags_in(text: str) -> List[Tuple[str, str]]:
     names = {t for t, _d in out}
     if "逃命波C-2" in names:
         out = [(t, d) for t, d in out if t != "C-1"]
+    if _NEG_FIFTH.search(blob):
+        out = [(t, d) for t, d in out if t not in {"末升段", "邪惡第五波"}]
     return out
 
 
@@ -264,6 +343,9 @@ def _from_rows(posts: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
     out: List[Dict[str, str]] = []
     for p in posts or []:
         raw = str(p.get("text") or "")
+        spoken = _spoken(raw)
+        if not _INDEX_CTX.search(spoken):
+            continue
         tags = _tags_in(raw)
         if not tags:
             continue
@@ -279,49 +361,75 @@ def _from_rows(posts: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
                     "aid": aid,
                     "tag": tag,
                     "direc": direc,
-                    "quote": _clip(_spoken(raw), 160),
+                    "quote": _quote_near(raw, tag),
                 },
             )
     return out
 
 
 def _live_hits(db_path: str = "") -> List[Dict[str, str]]:
-    rows: List[Dict[str, str]] = []
+    posts: List[Dict[str, Any]] = []
     try:
-        from biaoke_desk import catchup_seed_rows
+        from biaoke_desk import load_corpus
 
-        rows.extend(_from_rows(catchup_seed_rows() or []))
+        posts = list((load_corpus(db_path if db_path else None) or {}).get("posts") or [])
     except Exception:
-        pass
-    if db_path:
+        posts = []
+    if not posts:
         try:
-            from biaoke_desk import load_corpus
+            from biaoke_desk import catchup_seed_rows
 
-            posts = list((load_corpus(db_path) or {}).get("posts") or [])
-            rows.extend(_from_rows(posts[-80:]))
+            posts = list(catchup_seed_rows() or [])
         except Exception:
-            pass
-    return rows
+            posts = []
+    return _from_rows(posts)
 
 
-def degree_hits(db_path: str = "") -> List[Dict[str, str]]:
-    """時間序：他自己點過的位階。live 只補 catchup／overlay，不發明浪。"""
-    rows = [dict(x) for x in _CURATED]
-    for hit in _live_hits(db_path):
-        _merge(rows, hit)
-    rows.sort(
+def _sort_hits(rows: Sequence[Dict[str, str]]) -> List[Dict[str, str]]:
+    return sorted(
+        rows,
         key=lambda h: (
             h.get("date") or "",
             h.get("time") or "",
             _TAG_RANK.get(h.get("tag") or "", 0),
             h.get("aid") or "",
-        )
+        ),
     )
-    return rows
+
+
+def _one_per_stamp(rows: Sequence[Dict[str, str]]) -> List[Dict[str, str]]:
+    best: Dict[Tuple[str, str, str], Dict[str, str]] = {}
+    for h in rows:
+        key = (h.get("date") or "", h.get("time") or "", h.get("aid") or "")
+        old = best.get(key)
+        if old is None or _TAG_RANK.get(h.get("tag") or "", 0) >= _TAG_RANK.get(
+            old.get("tag") or "", 0
+        ):
+            best[key] = h
+    return _sort_hits(list(best.values()))
+
+
+def degree_hits(db_path: str = "") -> List[Dict[str, str]]:
+    """時間序：他自己點過的大盤位階。掃 1709＋catchup，不發明浪。"""
+    rows = [dict(x) for x in _CURATED]
+    for hit in _live_hits(db_path):
+        _merge(rows, hit)
+    return _sort_hits(rows)
+
+
+def degree_turns(db_path: str = "") -> List[Dict[str, str]]:
+    """只留改口：連續同一標籤壓成一筆。"""
+    out: List[Dict[str, str]] = []
+    for h in _one_per_stamp(degree_hits(db_path)):
+        if out and out[-1].get("tag") == h.get("tag"):
+            out[-1] = h
+            continue
+        out.append(h)
+    return out
 
 
 def last_two(db_path: str = "") -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
-    hits = degree_hits(db_path)
+    hits = _one_per_stamp(degree_hits(db_path))
     if not hits:
         return None, None
     last = hits[-1]
@@ -360,6 +468,16 @@ def _compare(prev: Optional[Dict[str, str]], last: Optional[Dict[str, str]]) -> 
         return (
             f"{prev.get('date')} 還在抄底／B 波框架，{last.get('date')} 收成 7/29 就是 A 波低——"
             "同向收斂。他自稱憑細微波抓轉折。"
+        )
+    if a == "細微波主跌" and b in {"右肩", "位階二"}:
+        return (
+            f"{prev.get('date')} 細微波主跌／估破 22000，後來 {last.get('date')} 改叫{b}："
+            "中間官方柱對得上先破 22000 再築右肩，不是發明中間數了幾段。"
+        )
+    if a in {"3-3-4調整", "第4浪", "邪惡第五波", "大A-c", "末升段"}:
+        return (
+            f"先前 {prev.get('date')} 點「{a}」，後來 {last.get('date')} 點「{b}」。"
+            "只記他自己的標籤，不准發明中間數了幾段。"
         )
     if a == "A波低" and b in {"位階二", "右肩", "修正末端"}:
         return (
@@ -479,6 +597,113 @@ def _official_bits(db_path: str) -> List[str]:
     return bits
 
 
+def _twii_span(db_path: str) -> Tuple[str, str]:
+    if not db_path or not os.path.isfile(db_path):
+        return "", ""
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT MIN(REPLACE(CAST(date AS TEXT),'-','')), "
+                "MAX(REPLACE(CAST(date AS TEXT),'-','')) "
+                "FROM index_daily WHERE symbol='TWII' OR symbol='^TWII'"
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+    except Exception:
+        return "", ""
+    if not row:
+        return "", ""
+    return _ymd(row[0]), _ymd(row[1])
+
+
+def _hist_bits(db_path: str) -> List[str]:
+    """沒講到的時間只拿官方柱對他點過的水平，不准補浪名。"""
+    bits: List[str] = []
+    start, _end = _twii_span(db_path)
+    if start:
+        bits.append(
+            f"這顆庫加權日K 從 {start[:4]}-{start[4:6]}-{start[6:8]} 起才有柱；"
+            "更早他點的 19660／21937／24730 沒柱就不對質"
+        )
+    else:
+        bits.append("這顆庫還沒加權日K，更早的點位不准自己寫")
+    d304 = _twii_bar(db_path, "20250304")
+    d311 = _twii_bar(db_path, "20250311")
+    d331 = _twii_bar(db_path, "20250331")
+    if d304 and d311 and d331:
+        bits.append(
+            f"2025-03-04 他估破 22000；當日官方低 {_px(d304.get('low'))} 還沒破，"
+            f"3/11 低 {_px(d311.get('low'))} 微破，3/31 低 {_px(d331.get('low'))}。"
+            "方向對，22000 偏高，他自己後來說跌到 21000／破 20000 言之過早"
+        )
+    return bits
+
+
+def format_wave_path(db_path: str = "", *, n: int = 14) -> str:
+    """從 2023 開示起，只排他自己改口過的大盤標籤。"""
+    turns = degree_turns(db_path)
+    if not turns:
+        return (
+            "2023-12 開示起公開文還沒寫死大盤浪名，不准補教科書浪。"
+            "不數 5／9 段。"
+        )
+    bits = ["時間線只記他自己改口的標籤"]
+    first = turns[0]
+    if not str(first.get("date") or "").startswith("2023"):
+        bits.append("2023-12 到第一筆之間公開文沒寫死浪名")
+    pinned: List[Dict[str, str]] = [turns[0]]
+    must = (
+        "3-3-4調整",
+        "第4浪",
+        "邪惡第五波",
+        "細微波主跌",
+        "右肩",
+        "A波低",
+        "位階二",
+        "第五波測底",
+        "逃命波C-2",
+    )
+    for tag in must:
+        seen_y = set()
+        last_hit = None
+        for t in turns:
+            if t.get("tag") != tag:
+                continue
+            last_hit = t
+            y = str(t.get("date") or "")[:4]
+            if y in seen_y:
+                continue
+            seen_y.add(y)
+            pinned.append(t)
+        if last_hit is not None and tag in {"逃命波C-2", "位階二", "第五波測底"}:
+            pinned.append(last_hit)
+    pinned.append(turns[-1])
+    uniq: List[Dict[str, str]] = []
+    seen = set()
+    for t in _sort_hits(pinned):
+        key = (t.get("date"), t.get("time"), t.get("tag"), t.get("aid"))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(t)
+    show = uniq
+    if len(show) > n:
+        keep = {id(turns[0]), id(turns[-1])}
+        for t in uniq:
+            if t.get("tag") in {"A波低", "右肩", "細微波主跌", "逃命波C-2"}:
+                keep.add(id(t))
+        core = [t for t in uniq if id(t) in keep]
+        extra = [t for t in uniq if id(t) not in keep]
+        show = _sort_hits(core + extra[: max(0, n - len(core))])
+        bits.append("中間改口有省略")
+    bits.append(" → ".join(f"{t.get('date')} {t.get('tag')}" for t in show))
+    bits.append("不准發明 5／9 段")
+    return "。".join(bits)
+
+
 def _direc_line(last: Dict[str, str]) -> str:
     tag = last.get("tag") or ""
     direc = last.get("direc") or ""
@@ -517,7 +742,7 @@ def format_wave_head(db_path: str = "") -> str:
     )
 
 
-def format_wave_now(db_path: str = "", *, n: int = 680) -> str:
+def format_wave_now(db_path: str = "", *, n: int = 900) -> str:
     """口語：現在位階＝他自己最近一次怎麼點＋再前一次＋官方對質。"""
     last, prev = last_two(db_path)
     bits: List[str] = [format_wave_head(db_path)]
@@ -531,6 +756,9 @@ def format_wave_now(db_path: str = "", *, n: int = 680) -> str:
         "官方加權當日低 39385 對得上。那次靠細微波＋台積電量價，不是發明公式。"
     )
     bits.extend(_official_bits(db_path))
+    if n >= 500:
+        bits.extend(_hist_bits(db_path))
+        bits.append(format_wave_path(db_path, n=14))
     bits.append("同一晚可並存多標籤，用點數一驗再驗。不是買訊。")
     return _clip("。".join(b.rstrip("。") for b in bits if b), n)
 
