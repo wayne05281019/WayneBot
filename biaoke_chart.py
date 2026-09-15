@@ -63,7 +63,7 @@ _STOCK_LOCATOR_RECT = (
     _STOCK_LOCATOR_HEIGHT,
 )
 _HEADER_X = 5.50
-_HEADER_CHIP_MAX = 48.0
+_HEADER_CHIP_MAX = 36.0
 
 
 def _style_frame(ax, *, hide_top=False) -> None:
@@ -1219,14 +1219,14 @@ def paint_locator_inset(
 
 
 def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Dict[str, Any]) -> None:
-    """今K／現價／漲跌：縮圖匡內左邊垂直置中。用 figure 座標，避免被縮圖裁切。"""
+    """今K／現價／漲跌：縮圖匡外左手邊，垂直對齊縮圖中線。不進匡內擋 K。"""
     close = quote.get("close")
     if close is None:
         return
     from decision_card_signals import candle_up_taiwan
     from wayne_navigator import _draw_mini_candle
 
-    x, y, w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
+    x, y, _w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
     prev = quote.get("prev")
     up = candle_up_taiwan(close, prev, quote.get("open"))
     color = _UP if up else _DN
@@ -1244,33 +1244,31 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
     except Exception:
         move = ""
     mid_y = y + h * 0.50
-    left = x + 0.012
+    edge = x - 0.008
     pad = dict(
         boxstyle="round,pad=0.18",
         facecolor="#ffffff",
         edgecolor="none",
-        alpha=0.90,
+        alpha=0.92,
     )
+    tx = edge
     if ohlc_ok:
-        cax = fig.add_axes([left, mid_y - 0.020, 0.015, 0.052], zorder=29)
+        cax = fig.add_axes([edge - 0.090, mid_y - 0.022, 0.016, 0.054], zorder=29)
         cax.set_xlim(0, 1)
         cax.set_ylim(0, 1)
         cax.axis("off")
         cax.set_facecolor("#ffffff")
-        cax.patch.set_alpha(0.90)
+        cax.patch.set_alpha(0.92)
         _draw_mini_candle(
             cax, 0.18, 0.08, 0.64, 0.84,
             float(o), float(hi), float(lo), float(close), prev,
         )
-        tx = left + 0.019
-    else:
-        tx = left
     fig.text(
         tx,
         mid_y + 0.036,
         "今K　" + label,
         transform=fig.transFigure,
-        ha="left",
+        ha="right",
         va="center",
         fontproperties=_fp(8, "bold"),
         color=_MUTED,
@@ -1282,7 +1280,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         mid_y,
         px,
         transform=fig.transFigure,
-        ha="left",
+        ha="right",
         va="center",
         fontproperties=_fp(15, "bold"),
         color=color,
@@ -1295,7 +1293,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
             mid_y - 0.032,
             "較昨日　" + move,
             transform=fig.transFigure,
-            ha="left",
+            ha="right",
             va="center",
             fontproperties=_fp(8, "bold"),
             color=color,
@@ -1347,11 +1345,39 @@ def stock_nameplate(sid: str, name: str = "", db_path: str = "") -> Dict[str, st
     }
 
 
-def header_banner_lines(glance: Optional[Dict[str, str]] = None) -> List[str]:
-    """圖上頭三顆短句，整句畫完，不准截成…。"""
-    g = glance or {}
+def stock_display_glance(
+    glance: Optional[Dict[str, str]] = None,
+    *,
+    sid: str = "",
+    plate: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """個股圖只留這檔用得上的句。大盤位階／別人的長抱不上這張。"""
+    g = {k: v for k, v in (glance or {}).items() if str(v or "").strip()}
+    g.pop("nest", None)
+    plate = plate or {}
+    long_ok = str(plate.get("leader") or "").strip() == "龍頭"
+    if not long_ok:
+        try:
+            from biaoke_judge import _LONG_HOLD
+
+            long_ok = str(sid or "").strip() in _LONG_HOLD
+        except Exception:
+            long_ok = False
+    if not long_ok:
+        g.pop("hold", None)
+    return g
+
+
+def header_banner_lines(
+    glance: Optional[Dict[str, str]] = None,
+    *,
+    sid: str = "",
+    plate: Optional[Dict[str, str]] = None,
+) -> List[str]:
+    """圖上頭短句，整句畫完，不准截成…。個股不放巢穴位階。"""
+    g = stock_display_glance(glance, sid=sid, plate=plate)
     out: List[str] = []
-    for key in ("nest", "field", "leader"):
+    for key in ("field", "leader"):
         bit = " ".join(str(g.get(key) or "").split())
         if bit:
             out.append(bit)
@@ -1830,7 +1856,7 @@ def render_biaoke_structure_png(
     elif info.get("over_press"):
         mark = "已過爆大量日高（半山腰／突破，長抱另論）"
         mc = _WASH
-    banner_bits = header_banner_lines(glance)
+    banner_bits = header_banner_lines(glance, sid=sid, plate=plate)
     ov = fig.add_axes([0, 0, 1, 1], facecolor="none", zorder=12)
     ov.set_xlim(0, 100)
     ov.set_ylim(0, 100)
@@ -2074,9 +2100,7 @@ def chart_caption(
     lines = [
         f"{head}　官方日K量先價行（不是15分、不是介紹圖／決策卡）".strip(),
     ]
-    g = glance or {}
-    if g.get("nest"):
-        lines.append(g["nest"])
+    g = stock_display_glance(glance, sid=sid, plate=plate)
     field_lead = " ".join(x for x in (g.get("field"), g.get("leader")) if x)
     if field_lead:
         lines.append(field_lead)

@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from biaoke_chart import (
     _axis_ticks,
+    _paint_locator_quote,
     _paint_spot,
     _spot_quote,
     analyze_structure,
@@ -10,6 +11,7 @@ from biaoke_chart import (
     header_banner_lines,
     neuron_glance,
     render_biaoke_structure_png,
+    stock_display_glance,
     stock_nameplate,
 )
 
@@ -160,16 +162,36 @@ def test_caption_and_chart_carry_six_neurons_without_lecture(tmp_path):
     assert glance.get("leader") == "自己就是這族龍頭"
     assert glance.get("hold") == "長抱：可抱到明年，勿輕易調節"
     assert "公開文沒點名" in (glance.get("doubt") or "")
+    shown_3035 = stock_display_glance(glance, sid="3035")
+    assert "nest" not in shown_3035
+    assert "hold" not in shown_3035
+    shown_2383 = stock_display_glance(glance, sid="2383")
+    assert "nest" not in shown_2383
+    assert shown_2383.get("hold") == "長抱：可抱到明年，勿輕易調節"
     cap = chart_caption(info, sid="3035", name="智原", glance=glance)
     assert "介入買點首先" not in cap
     assert "先看大盤巢穴會不會覆巢" not in cap
     assert "個股最重要是產業趨勢" not in cap
-    assert "現在位階" in cap
+    assert "現在位階" not in cap
+    assert "逃命波" not in cap
+    assert "勿輕易調節" not in cap
     assert "自己就是這族龍頭" in cap
-    assert "勿輕易調節" in cap
     assert "爆大量那一天" in cap
     assert "量先價行" in cap
     assert "這不是買訊" in cap
+    cap_hold = chart_caption(
+        info,
+        sid="2383",
+        name="台光電",
+        glance=glance,
+        plate={"leader": "龍頭"},
+    )
+    assert "現在位階" not in cap_hold
+    assert "逃命波" not in cap_hold
+    assert "勿輕易調節" in cap_hold
+    cap_other = chart_caption(info, sid="2466", name="冠西電", glance=glance)
+    assert "現在位階" not in cap_other
+    assert "勿輕易調節" not in cap_other
     out = str(tmp_path / "biaoke-glance.png")
     path = render_biaoke_structure_png(
         _series(), out, sid="3035", name="智原", glance=glance
@@ -403,10 +425,15 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
             "nest": "現在位階 2026-09-15 10:47 逃命波C-2",
             "field": "CCL 護城河還在",
             "leader": "自己就是這族龍頭",
-        }
+            "hold": "長抱：可抱到明年，勿輕易調節",
+        },
+        sid="2383",
+        plate=lead,
     )
-    assert bits[0].startswith("現在位階")
-    assert "逃命波C-2" in bits[0]
+    assert bits[0].startswith("CCL")
+    assert all("現在位階" not in x and "逃命波" not in x for x in bits)
+    assert all("勿輕易調節" not in x for x in bits)
+    assert "自己就是這族龍頭" in bits[1]
     assert all("…" not in x for x in bits)
     src = inspect.getsource(render_biaoke_structure_png)
     assert "_short(" not in src
@@ -437,9 +464,10 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
         plate=lead,
         quote=q,
         glance={
-            "nest": bits[0],
-            "field": bits[1],
-            "leader": bits[2],
+            "nest": "現在位階 2026-09-15 10:47 逃命波C-2",
+            "field": "CCL 護城河還在",
+            "leader": "自己就是這族龍頭",
+            "hold": "長抱：可抱到明年，勿輕易調節",
         },
     )
     assert path
@@ -488,6 +516,10 @@ def test_locator_inset_marks_window():
     assert "quote=quote" in rsrc
     assert "_paint_spot(ov, quote" not in rsrc
     assert "_paint_locator_quote" in inspect.getsource(paint_locator_inset) or "_paint_locator_quote" in rsrc
+    qsrc = inspect.getsource(_paint_locator_quote)
+    assert "匡外" in qsrc
+    assert 'ha="right"' in qsrc
+    assert "x + 0.012" not in qsrc
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
