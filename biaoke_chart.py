@@ -193,6 +193,96 @@ def _line_at(x1: float, y1: float, x2: float, y2: float, x: float) -> float:
     return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
 
 
+def _clip_line(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    *,
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """兩點連線拉到圖框左右，超出上下就裁。不准另造樞紐。"""
+    x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
+    x_lo, x_hi = float(x_lo), float(x_hi)
+    y_lo, y_hi = float(y_lo), float(y_hi)
+    if x_hi <= x_lo or y_hi <= y_lo:
+        return None
+    if abs(x2 - x1) < 1e-9:
+        if not (x_lo <= x1 <= x_hi):
+            return None
+        lo, hi = sorted((y1, y2))
+        a, b = max(y_lo, lo), min(y_hi, hi)
+        if b <= a:
+            return None
+        return x1, a, x1, b
+
+    def y_at(x: float) -> float:
+        return _line_at(x1, y1, x2, y2, x)
+
+    def x_at(y: float) -> float:
+        return x1 + (x2 - x1) * (y - y1) / (y2 - y1)
+
+    xl, xr = x_lo, x_hi
+    yl, yr = y_at(xl), y_at(xr)
+
+    def _fit(x: float, y: float) -> Optional[Tuple[float, float]]:
+        if y_lo <= y <= y_hi:
+            return x, y
+        if abs(y2 - y1) < 1e-9:
+            return None
+        yb = y_hi if y > y_hi else y_lo
+        xn = x_at(yb)
+        if xn < x_lo - 1e-6 or xn > x_hi + 1e-6:
+            return None
+        return max(x_lo, min(x_hi, xn)), yb
+
+    left = _fit(xl, yl)
+    right = _fit(xr, yr)
+    if left is None or right is None:
+        return None
+    xa, ya = left
+    xb, yb = right
+    if xa > xb:
+        xa, ya, xb, yb = xb, yb, xa, ya
+    if xb - xa < 0.6:
+        return None
+    return xa, ya, xb, yb
+
+
+def _paint_extended_rail(
+    ax,
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    *,
+    seam: float,
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+    color: str,
+) -> None:
+    """實線拉到最近一根，虛線進演算區。左緣有空間就延長，跟上升撐同一套。"""
+    clipped = _clip_line(
+        x1, y1, x2, y2, x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi
+    )
+    if not clipped:
+        return
+    xa, ya, xb, yb = clipped
+    if xa < seam:
+        xs = [xa, min(xb, seam)]
+        ys = [ya, _line_at(x1, y1, x2, y2, xs[1])]
+        _halo_line(ax, xs, ys, color, lw=1.35, halo=0.9, ls="-", z=5)
+    if xb > seam:
+        xs = [max(xa, seam), xb]
+        ys = [_line_at(x1, y1, x2, y2, xs[0]), yb]
+        _halo_line(ax, xs, ys, color, lw=1.35, halo=0.9, ls=(0, (4, 2.2)), z=5)
+
+
 def analyze_structure(bars: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """從官方日 K 還原他那套：量價高低、連點、破線洗盤。不數段。"""
     from biaoke_brain import volume_first_price
@@ -783,8 +873,8 @@ def infer_impulse_five(
 ) -> Dict[str, Any]:
     """已確認第 5 高，才把前面升段推成 1～4。推不出來就不畫，不准亂數。
 
-    規則跟他神經元同一套：1-4 重疊＝這組推動不算；3 不能是 1／3／5 最短的。
-    第 5 可以失敗（低於第 3）；第 3 要點在 2→5 之間真正的升段高，不准抄後面的小波。
+    點必須落在那根官方 K 的高或低：3＝起點到 5 之間真正最高；2／4＝該段真正最低。
+    1-4 重疊或 3 最短＝這組不算。第 5 可以失敗（低於第 3）。
     """
     n = len(rows)
     peak_i = int(peak_i)
@@ -807,20 +897,36 @@ def infer_impulse_five(
     start_y = lows[start_i]
     if start_y <= 0 or peak_y <= start_y * 1.02:
         return {}
-    mid_hi = max(range(start_i + 1, peak_i), key=lambda i: highs[i])
-    total = max(peak_y, highs[mid_hi] if highs[mid_hi] > 0 else peak_y) - start_y
-    left = max(3, min(7, (peak_i - start_i) // 18 or 3))
-    w_highs = highs[start_i : peak_i + 1]
-    w_lows = lows[start_i : peak_i + 1]
-    hi_p, lo_p = _pivots(w_highs, w_lows, left=left)
-    hi_abs = [start_i + i for i in hi_p if start_i + i < peak_i]
-    lo_abs = [start_i + i for i in lo_p if start_i + i < peak_i]
-    if highs[mid_hi] > 0 and mid_hi not in hi_abs:
-        hi_abs.append(mid_hi)
-    if len(hi_abs) < 2:
+    i3_hi = peak_i
+    if i3_hi <= start_i + 4:
+        return {}
+    i3 = max(range(start_i + 1, i3_hi), key=lambda i: highs[i] if highs[i] > 0 else -1e18)
+    # 5 左邊緊貼的高是同一座山，不能當 3。
+    if i3 >= peak_i - 3:
+        if start_i + 3 >= i3:
+            return {}
+        i3 = max(range(start_i + 1, i3), key=lambda i: highs[i] if highs[i] > 0 else -1e18)
+    if highs[i3] <= 0 or i3 >= peak_i - 2:
+        return {}
+    i4 = min(range(i3 + 1, peak_i), key=lambda i: lows[i] if lows[i] > 0 else 1e18)
+    if lows[i4] <= 0:
+        return {}
+    total = max(peak_y, highs[i3]) - start_y
+    left = max(2, min(6, (i3 - start_i) // 18 or 2))
+    hi_p, _ = _pivots(highs[start_i : i3 + 1], lows[start_i : i3 + 1], left=left)
+    hi_abs = [start_i + i for i in hi_p if start_i + i < i3 - 2]
+    mid1 = start_i + max(3, (i3 - start_i) // 2)
+    if start_i + 1 < min(mid1, i3 - 2):
+        alt = max(
+            range(start_i + 1, min(mid1, i3 - 2) + 1),
+            key=lambda i: highs[i] if highs[i] > 0 else -1e18,
+        )
+        if highs[alt] > 0 and alt not in hi_abs:
+            hi_abs.append(alt)
+    if not hi_abs:
         return {}
 
-    def _pack(i1: int, i2: int, i3: int, i4: int) -> Optional[Dict[str, Any]]:
+    def _pack(i1: int, i2: int) -> Optional[Dict[str, Any]]:
         if not (start_i < i1 < i2 < i3 < i4 < peak_i):
             return None
         if lows[i4] < highs[i1] * 0.998:
@@ -843,34 +949,17 @@ def infer_impulse_five(
                 {"n": "4", "i": i4, "y": lows[i4], "kind": "L"},
                 {"n": "5", "i": peak_i, "y": peak_y, "kind": "H"},
             ],
-            "score": (w3, w1, -abs(i4 - i3)),
+            "score": (w1, -abs(i2 - i1)),
         }
 
     best: Optional[Dict[str, Any]] = None
-    hi_rank = sorted(hi_abs, key=lambda i: -highs[i])
-    for i3 in hi_rank[:12]:
-        if i3 >= peak_i - 2:
+    for i1 in sorted(hi_abs, key=lambda i: -highs[i])[:10]:
+        i2 = min(range(i1 + 1, i3), key=lambda i: lows[i] if lows[i] > 0 else 1e18)
+        got = _pack(i1, i2)
+        if not got:
             continue
-        hi_before = [i for i in hi_abs if i < i3 - 2]
-        if not hi_before:
-            continue
-        i1_cands = sorted(hi_before, key=lambda i: -highs[i])[:8]
-        for i1 in i1_cands:
-            mid12 = [i for i in lo_abs if i1 < i < i3]
-            mid34 = [i for i in lo_abs if i3 < i < peak_i]
-            if not mid12:
-                mid12 = list(range(i1 + 1, i3))
-            if not mid34:
-                mid34 = list(range(i3 + 1, peak_i))
-            if not mid12 or not mid34:
-                continue
-            i2 = min(mid12, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
-            i4 = min(mid34, key=lambda i: lows[i] if lows[i] > 0 else 1e18)
-            got = _pack(i1, i2, i3, i4)
-            if not got:
-                continue
-            if best is None or got["score"] > best["score"]:
-                best = got
+        if best is None or got["score"] > best["score"]:
+            best = got
     if not best:
         return {}
     best.pop("score", None)
@@ -1189,11 +1278,15 @@ def paint_locator_inset(
 
     if not k_on_top:
         _draw_legs()
+    # 長軸縮圖 360 根：影線就看得懂，不逐根畫方塊，出圖比較快。
+    draw_body = m <= 200
     for i in range(m):
         prev_c = closes[i - 1] if i else None
         up = candle_up_taiwan(closes[i], prev_c, opens[i])
         c = _UP if up else _DN
         ax.vlines(i, lows[i], highs[i], color=c, linewidth=lw, zorder=k_z)
+        if not draw_body:
+            continue
         body = max(abs(closes[i] - opens[i]), (hi_max - lo_min) * 0.0015)
         ax.add_patch(
             patches.Rectangle(
@@ -1282,7 +1375,7 @@ def paint_locator_inset(
     ax.tick_params(left=False, labelleft=False, length=2, labelsize=8, colors="#546e7a")
     xt, xl = _locator_month_ticks(rows)
     ax.set_xticks(xt)
-    ax.set_xticklabels(xl, fontproperties=_fp(8), color=_MUTED)
+    ax.set_xticklabels(xl, fontproperties=_fp(9, "bold"), color=_MUTED)
     ax.set_title("")
     host = fig if fig is not None else getattr(ax, "figure", None)
     if host is not None and title:
@@ -1292,7 +1385,7 @@ def paint_locator_inset(
             title,
             ha="right",
             va="bottom",
-            fontproperties=_fp(7, "bold"),
+            fontproperties=_fp(8, "bold"),
             color=_MUTED,
             zorder=25,
         )
@@ -1809,11 +1902,19 @@ def render_biaoke_structure_png(
     x_fut = n - 1 + _FUTURE
     if down_pts:
         (x1, y1, d1), (x2, y2, d2) = down_pts
-        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
         y_end = _line_at(x1, y1, x2, y2, x_fut)
-        _halo_line(ax1, [x1, n - 1], [y1, y_now], _DOWN_TRACK, lw=1.35, halo=0.9, ls="-", z=5)
-        _halo_line(
-            ax1, [n - 1, x_fut], [y_now, y_end], _DOWN_TRACK, lw=1.35, halo=0.9, ls=(0, (4, 2.2)), z=5
+        _paint_extended_rail(
+            ax1,
+            x1,
+            y1,
+            x2,
+            y2,
+            seam=float(n - 1),
+            x_lo=0.0,
+            x_hi=x_fut,
+            y_lo=ymin,
+            y_hi=ymax,
+            color=_DOWN_TRACK,
         )
         ax1.scatter(
             [x1, x2],
@@ -1837,11 +1938,19 @@ def render_biaoke_structure_png(
             )
     if up_pts:
         (x1, y1, d1), (x2, y2, d2) = up_pts
-        y_now = _line_at(x1, y1, x2, y2, float(n - 1))
         y_end = _line_at(x1, y1, x2, y2, x_fut)
-        _halo_line(ax1, [x1, n - 1], [y1, y_now], _UP_TRACK, lw=1.35, halo=0.9, ls="-", z=5)
-        _halo_line(
-            ax1, [n - 1, x_fut], [y_now, y_end], _UP_TRACK, lw=1.35, halo=0.9, ls=(0, (4, 2.2)), z=5
+        _paint_extended_rail(
+            ax1,
+            x1,
+            y1,
+            x2,
+            y2,
+            seam=float(n - 1),
+            x_lo=0.0,
+            x_hi=x_fut,
+            y_lo=ymin,
+            y_hi=ymax,
+            color=_UP_TRACK,
         )
         ax1.scatter(
             [x1, x2],
@@ -2020,20 +2129,34 @@ def render_biaoke_structure_png(
             if not five:
                 five = infer_impulse_five(rows, peak_i=off + int(down_pts[0][0]))
             loc_legs.extend(impulse_five_legs(five))
-            loc_marks.extend(impulse_five_marks(five, size=11))
+            loc_marks.extend(impulse_five_marks(five, size=12))
             (x1, y1, _d1), (x2, y2, _d2) = down_pts
-            loc_legs.append(
-                {
-                    "xs": [float(off + x1), float(off + x2)],
-                    "ys": [float(y1), float(y2)],
-                    "color": _DOWN_TRACK,
-                    "lw": 1.25,
-                    "lab": "",
-                    "dots": False,
-                }
+            xa, ya = float(off + x1), float(y1)
+            xb, yb = float(off + x2), float(y2)
+            loc_hi = max(float(r.get("high") or 0) for r in rows) or y1
+            loc_lo = min(float(r.get("low") or 0) for r in rows if float(r.get("low") or 0) > 0) or y2
+            clipped = _clip_line(
+                xa,
+                ya,
+                xb,
+                yb,
+                x_lo=0.0,
+                x_hi=float(len(rows) - 1 + _FUTURE),
+                y_lo=loc_lo - (loc_hi - loc_lo) * 0.04,
+                y_hi=loc_hi + (loc_hi - loc_lo) * 0.08,
             )
-        if not five:
-            loc_legs = locator_legs_from_swings(rows, _major_swings(rows))
+            if clipped:
+                loc_legs.append(
+                    {
+                        "xs": [clipped[0], clipped[2]],
+                        "ys": [clipped[1], clipped[3]],
+                        "color": _DOWN_TRACK,
+                        "lw": 1.25,
+                        "lab": "",
+                        "dots": False,
+                    }
+                )
+        # 數得出 1～5 才標數字。數不出來不改寫升／回，那不是波浪。
         paint_locator_inset(
             fig,
             rows,
@@ -2245,7 +2368,8 @@ def build_biaoke_structure_chart(
     info = analyze_structure(bars[-_BARS:])
     fired = None
     q = (ask or "").strip()
-    if q:
+    # 代號出圖不重跑神經元：文字回覆已經跑過，這裡重跑會拖慢出圖。
+    if q and not re.fullmatch(r"\d{3,6}[A-Za-z]?", q):
         try:
             from biaoke_chain import fire_chain
 

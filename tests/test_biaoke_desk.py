@@ -180,8 +180,9 @@ def test_biaoke_page_has_no_inside_menu():
     assert "_biaoke_reply_menu" in src
     assert "reply_markup" in src
     assert "_mark_menu_layout_ok" in src
-    assert "send_action" in src
-    assert "typing" in src
+    assert "_start_plain_wait" in src
+    assert "_stop_plain_wait" in src
+    assert "_biaoke_progress_text" in src
     assert "format_latest_focus" in src
     assert "take_unread_digest" in src
     assert "reflow=False" in src
@@ -378,3 +379,19 @@ def test_biaoke_picker_callback_asks_biaoke_not_card():
     assert bot._send_biaoke_page.await_args.kwargs.get("ask") == "1303"
     assert bot._send_biaoke_page.await_args.kwargs.get("uid") == "11"
     bot._send_card_to.assert_not_awaited()
+
+
+def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
+    txt0 = WayneTelegramBot._biaoke_progress_text(0)
+    txt20 = WayneTelegramBot._biaoke_progress_text(20)
+    assert "飆大進行中" in txt0
+    assert "░░░░░░░░░░" in txt0
+    assert "▓▓▓" in txt20
+    assert "結構圖" in txt0
+    assert "回覆" in txt0
+    for ch in ("⏳", "🔄", "📊", "🔍"):
+        assert ch not in txt0
+        assert ch not in txt20
+    wait_src = __import__("inspect").getsource(WayneTelegramBot._start_plain_wait)
+    assert "reply_markup" not in wait_src
+    assert "edit_text" in wait_src

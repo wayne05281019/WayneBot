@@ -2894,6 +2894,68 @@ class WayneTelegramBot:
         return "\n".join(lines)
 
     @staticmethod
+    def _biaoke_progress_text(elapsed_sec: int, *, current: str = "chart") -> str:
+        """飆大查個股：跟查股同一種會一直更新的文字方塊，不用圖、不用表情。"""
+        labels = {"chart": "結構圖", "reply": "回覆", "stock": "對檔"}
+        now = labels.get(str(current or ""), "結構圖")
+        elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
+        width = 10
+        filled = int(round(min(1.0, max(0, int(elapsed_sec)) / 45.0) * width))
+        bar = "▓" * filled + "░" * (width - filled)
+        rest = "回覆" if now != "回覆" else "結構圖"
+        return (
+            f"飆大進行中　已 {elapsed}\n"
+            f"{bar}\n"
+            f"現在：{now}\n"
+            f"接著：{rest}\n"
+            "圖跟文字好了會自己送出"
+        )
+
+    async def _start_plain_wait(self, message, *, text_fn):
+        """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。"""
+        t0 = time.monotonic()
+        wait_msg = None
+        try:
+            wait_msg = await message.reply_text(text_fn(0))
+        except Exception:
+            return None, None, None
+        stop = asyncio.Event()
+
+        async def _tick() -> None:
+            while not stop.is_set():
+                try:
+                    await wait_msg.edit_text(text_fn(int(time.monotonic() - t0)))
+                except Exception:
+                    pass
+                try:
+                    chat = getattr(message, "chat", None)
+                    if chat is not None and hasattr(chat, "send_action"):
+                        await chat.send_action("typing")
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=2.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        return wait_msg, stop, asyncio.create_task(_tick())
+
+    async def _stop_plain_wait(self, wait_msg, stop, task) -> None:
+        if stop is not None:
+            stop.set()
+        if task is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=0.4)
+            except Exception:
+                task.cancel()
+        if wait_msg is not None:
+            try:
+                await wait_msg.delete()
+            except Exception:
+                pass
+
+    @staticmethod
     def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
         if not path or not os.path.exists(path):
             return False
@@ -3398,84 +3460,86 @@ class WayneTelegramBot:
         hist = list(self._biaoke_hist.get(actor) or [])
         mark_read = False
         chart_task = None
-        if q:
-            try:
-                chat = getattr(message, "chat", None)
-                if chat is not None and hasattr(chat, "send_action"):
-                    await chat.send_action("typing")
-            except Exception:
-                pass
-            picker = []
-            try:
-                from biaoke_brain import format_stock_picker_html, stock_picker_hits
-
-                picker = await asyncio.to_thread(stock_picker_hits, self.db_path, q)
-            except Exception:
-                logger.exception("飆大撞名選擇器略過")
+        wait_h = (None, None, None)
+        try:
+            if q:
                 picker = []
-            if picker:
-                html = format_stock_picker_html(picker)
-                await message.reply_html(
-                    html,
-                    disable_web_page_preview=True,
-                    reply_markup=self._biaoke_hits_keyboard(picker),
-                )
-                return
-            chart_task = asyncio.create_task(
-                self._send_biaoke_structure_chart(message, q, uid)
-            )
-            html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
-            bucket = self._biaoke_hist.setdefault(actor, [])
-            plain = re.sub(r"<[^>]+>", "", html)
-            bucket.append({"ask": q, "answer": plain[:900]})
-            del bucket[:-16]
-            mark_read = True
-        else:
-            html = ""
-            try:
-                from biaoke_digest import format_latest_focus, take_unread_digest
+                try:
+                    from biaoke_brain import format_stock_picker_html, stock_picker_hits
 
-                html = take_unread_digest(uid, self.db_path)
-                if not html:
-                    html = format_latest_focus(self.db_path)
-            except Exception:
-                html = ""
-            if html:
+                    picker = await asyncio.to_thread(stock_picker_hits, self.db_path, q)
+                except Exception:
+                    logger.exception("飆大撞名選擇器略過")
+                    picker = []
+                if picker:
+                    html = format_stock_picker_html(picker)
+                    await message.reply_html(
+                        html,
+                        disable_web_page_preview=True,
+                        reply_markup=self._biaoke_hits_keyboard(picker),
+                    )
+                    return
+                wait_h = await self._start_plain_wait(
+                    message,
+                    text_fn=lambda s: self._biaoke_progress_text(s, current="chart"),
+                )
+                chart_task = asyncio.create_task(
+                    self._send_biaoke_structure_chart(message, q, uid)
+                )
+                html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
+                bucket = self._biaoke_hist.setdefault(actor, [])
+                plain = re.sub(r"<[^>]+>", "", html)
+                bucket.append({"ask": q, "answer": plain[:900]})
+                del bucket[:-16]
                 mark_read = True
             else:
-                html = format_biaoke_html(q)
-        # 對話不要再切成 18 字講義行；Telegram 自己會折。
-        parts = chunk_telegram_html(html, reflow=False)
-        if parts and mark_read:
-            try:
-                from biaoke_digest import mark_biaoke_read
+                html = ""
+                try:
+                    from biaoke_digest import format_latest_focus, take_unread_digest
 
-                mark_biaoke_read(uid, self.db_path)
-            except Exception:
-                pass
-        kb = self._biaoke_reply_menu(uid)
-        if not parts:
+                    html = take_unread_digest(uid, self.db_path)
+                    if not html:
+                        html = format_latest_focus(self.db_path)
+                except Exception:
+                    html = ""
+                if html:
+                    mark_read = True
+                else:
+                    html = format_biaoke_html(q)
+            # 對話不要再切成 18 字講義行；Telegram 自己會折。
+            parts = chunk_telegram_html(html, reflow=False)
+            if parts and mark_read:
+                try:
+                    from biaoke_digest import mark_biaoke_read
+
+                    mark_biaoke_read(uid, self.db_path)
+                except Exception:
+                    pass
+            kb = self._biaoke_reply_menu(uid)
+            if not parts:
+                if chart_task is not None:
+                    try:
+                        await chart_task
+                    except Exception:
+                        logger.exception("飆大結構圖並行失敗")
+                await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
+                return
+            n = len(parts)
+            for i, part in enumerate(parts):
+                await message.reply_html(
+                    part,
+                    disable_web_page_preview=True,
+                    reply_markup=kb if i == n - 1 else None,
+                )
             if chart_task is not None:
                 try:
                     await chart_task
                 except Exception:
                     logger.exception("飆大結構圖並行失敗")
-            await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
-            return
-        n = len(parts)
-        for i, part in enumerate(parts):
-            await message.reply_html(
-                part,
-                disable_web_page_preview=True,
-                reply_markup=kb if i == n - 1 else None,
-            )
-        if chart_task is not None:
-            try:
-                await chart_task
-            except Exception:
-                logger.exception("飆大結構圖並行失敗")
-        if q:
-            await self._send_biaoke_origin_charts(message, q, uid)
+            if q:
+                await self._send_biaoke_origin_charts(message, q, uid)
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
         """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。"""

@@ -752,6 +752,33 @@ def test_infer_impulse_five_3105_wave3_is_april_mountain():
     assert d1 >= "20251201"
     assert float(pts["1"]["y"]) >= 180
     assert int(pts["3"]["i"]) < int(pts["5"]["i"])
+    last = _ymd8(bars[-1].get("date"))
+    from config import taipei_today_str
+    from trading_calendar import fuse_end_trading_date
+
+    if fuse_end_trading_date() == taipei_today_str() == last:
+        assert last == "20260915"
+        assert float(bars[-1].get("close") or 0) == 454.0
+
+
+def test_clip_line_extends_left_of_first_pivot():
+    from biaoke_chart import _clip_line
+
+    got = _clip_line(150, 492, 155, 478, x_lo=0, x_hi=177, y_lo=100, y_hi=700)
+    assert got is not None
+    xa, _ya, xb, _yb = got
+    assert xa < 150
+    assert xb > 155
+
+
+def test_locator_does_not_fallback_to_chinese_swing_labels_when_down_exists():
+    import inspect
+
+    from biaoke_chart import render_biaoke_structure_png
+
+    src = inspect.getsource(render_biaoke_structure_png)
+    assert "數得出 1～5 才標數字" in src
+    assert "locator_legs_from_swings(rows" not in src.split("數得出")[1][:400]
 
 
 def test_major_swings_and_locator_legs():
