@@ -283,5 +283,5 @@ def test_fire_named_does_not_splice_empty_sid(tmp_path):
     five = jian.get("five") or jian["think"]
     assert "輪動不是覆巢" in five
     emc_five = emc.get("five") or emc["think"]
-    assert "續抱" in emc_five or "沒破線" in emc_five
+    assert "續抱" in emc_five or "沒破線" in emc_five or "強勢整理" in emc_five
     assert "輪動不是覆巢" not in emc_five

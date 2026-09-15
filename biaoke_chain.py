@@ -199,6 +199,48 @@ def _clip(text: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+# 巢穴 900 字不准把 9/15 交叉擠掉。官方柱／日曆可短，這段必留。
+_NEST_KEY = (
+    "9/15夜：築底是形態蓄積過下降壓，不是已表態過線；高檔震盪沒表態可能性較大。"
+    "周四／周五夜盤至少46767，官方夜盤對46506／46767還沒走完。"
+    "C-2轉C-3未確認；末端估43500；某商品量價說43500 非常難，兩條不准合成。"
+    "9波擴延到36000約5%微乎其微，36000≠43500。"
+    "三種形態：強勢整理＝拉回淺等時間；破線1～3天站回＝洗盤；爆大量跌破平台＝轉折K。"
+    "真正有用＝波浪／形態／量價／關鍵K（碎形）。個股不數5／9。覆巢之下無完卵；確認要四路對質。"
+)
+
+
+def _fit_nest(body: str, extra: str = "") -> str:
+    """交叉鑰放最前，官方必留句次之，他自己最新最後；不准從尾巴把鑰裁掉。"""
+    key = _NEST_KEY
+    extra = _clip(str(extra or "").strip(), 140)
+    core = str(body or "")
+    if key in core:
+        core = core.replace(key, "").strip(" 。")
+    core = re.sub(r"他的說法：.*", "", core).strip(" 。")
+    must_need = ("45839", "47578", "費半", "那指", "9/16", "官方加權", "台積電官方")
+    must: List[str] = []
+    rest: List[str] = []
+    for sent in core.split("。"):
+        s = sent.strip()
+        if not s:
+            continue
+        if any(k in s for k in must_need):
+            must.append(s)
+        else:
+            rest.append(s)
+    must_t = "。".join(must)
+    rest_t = "。".join(rest)
+    extra_len = len(extra) + 1 if extra else 0
+    key_extra = len(key) + extra_len
+    if len(must_t) + key_extra + 2 > 900:
+        must_t = _clip(must_t, max(80, 900 - key_extra - 2))
+    used = key_extra + (len(must_t) + 1 if must_t else 0)
+    room = 900 - used - 2
+    rest_t = _clip(rest_t, room) if room > 24 else ""
+    return "。".join(p for p in (key, must_t, rest_t, extra) if p)
+
+
 def _step(nid: str, text: str, *, ok: bool = True, skip: bool = False) -> Dict[str, Any]:
     return {
         "id": nid,
@@ -387,23 +429,16 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
     )
     cal = _pointed_calendar(db_path, twii_ymd)
     if cal:
-        bits.append(cal)
-    bits.append(
-        "9/15夜：夜盤築底是好事、蓄積過下降壓；周四／周五夜盤反彈至少 46767，不是官方收。"
-        "某商品量價說跌破 43500 非常難（成交金額失真、沒點名）。"
-        "C-2 轉 C-3 未確認；若發生仍先調節，C-3 末端他估 43500 附近。"
-        "沒破線續抱：轉折若不是 C 波下殺，2 天漲 1000 是基本。"
-        "真正有用＝波浪／形態／量價／關鍵K（碎形）；個股不數 5／9。"
-    )
-    bits.append(
-        "覆巢之下無完卵：大盤不穩，個股先當會出問題。"
-        "波浪／細微波／15／60 只看大盤，個股不數 5／9 段。"
-        "確認要四路對質（加權、台積電量價、費半、台指期日／夜），沒疊滿不講已確認。"
-    )
-    view = _view_line("nest", n=140)
-    if view:
-        bits.append(view)
-    return _step("nest", "。".join(b.rstrip("。") for b in bits if b), ok=ok)
+        if "還在等 9/16" in cal:
+            bits.append(
+                "他自己點的日曆：還在等 9/16 Fed（9/15～9/16 利率決策），"
+                "不是看新聞做股票。升息結果不准編"
+            )
+        else:
+            bits.append(cal)
+    body = "。".join(b.rstrip("。") for b in bits if b)
+    out = _step("nest", _fit_nest(body), ok=ok)
+    return out
 
 
 def _nest(db_path: str, ask: str) -> Dict[str, Any]:
@@ -432,12 +467,16 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
             "逃命波",
             "碎形",
             "關鍵K",
+            "36000",
+            "9波",
+            "橫台",
+            "洗盤",
         )
     ):
         return core
     extra = "大盤位階用他自己點過的 45839／46506／48218／46767，禁止 17000。"
     out = dict(core)
-    out["text"] = _clip(text + "。" + extra, 900)
+    out["text"] = _fit_nest(text + "。" + extra)
     return out
 
 
@@ -500,6 +539,9 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
                 "純 AI 他看到台光電護城河最高，至少可抱到 2027 年大盤第五波結束；"
                 "這條第五波他改口過，9/11 沒標這級第 1 浪起點，不准編死。"
                 "2026-09-15 10:41：CCL 是前一波漲勢最後倒的，當然要整理比較久；AI 關鍵材料 InP 在前、CCL 在後。"
+                "09:27：一直都在支撐＝超強整理。12:24：漲太多又最後跌，拉回淺，整理時間要等。"
+                "12:30：想起 2024 年 9 月光聖非常強勢的整理，應該再整理 2 個月又有大行情。"
+                "10:28：台光電先不用管。13:37：強勢整理＝漲幅超大、拉回沒到正常修正，只是等待時間長。"
             )
         elif sid == "3081":
             bits.append(
@@ -517,6 +559,7 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
         elif sid == "4971":
             bits.append(
                 "IET＝IET-KY 4971。2026-09-15 10:24 樓下 InP 族還強，跟漲先看龍頭聯亞。"
+                "10:30：IET 做 abc 修正，昨天破線目前又站回支撐，尾盤才能確定。"
                 "不能保證 100%。官方 20260914 收 531。"
             )
         elif sid == "3653":
@@ -533,7 +576,8 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             )
         elif sid == "3443":
             bits.append(
-                "ASIC 風向球，9/14 取代旺矽。散熱轉弱後資金轉來，但風險大；止漲整理K 一定調節。"
+                "ASIC 風向球，9/14 取代旺矽。9/15 主文：創意從細微處觀察是目前台股精神指標，如同去年旺矽、台光電。"
+                "10:49：創意只是波動。散熱轉弱後資金轉來，但風險大；止漲整理K 一定調節。"
                 "官方 3443 20260915 收 6035＝當日低，還沒連續漲勢，不能說不會下殺 43500。"
             )
         elif sid in ("3363", "3163", "6442"):
@@ -965,10 +1009,12 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
                 bits.append(ch)
         except Exception:
             pass
-    view = _view_line("hold", n=150)
-    if view:
-        bits.append(view)
-    if sid == "3653":
+    if sid == "2383":
+        bits.append(
+            "9/15：台光電先不用管；一直都在支撐＝超強整理，拉回淺所以整理時間要等。"
+            "想起 2024/9 光聖非常強勢的整理，應該再整理 2 個月。不是轉折K。"
+        )
+    elif sid == "3653":
         bits.append(
             "9/15 爆大量跌破平台＝轉折K確認；籌碼交換至少 2 周。"
             "假跌破過幾天。止漲整理K 才調節。"
@@ -982,6 +1028,9 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
         bits.append("散熱資金轉來風險大；止漲整理K 一定調節。還沒連續漲勢。")
     elif sid in ("3363", "3163", "6442"):
         bits.append("CPO／FAU 還在底部／回測頸線；沒破線續抱。合聖沒這列。")
+    view = _view_line("hold", n=150)
+    if view:
+        bits.append(view)
     return _step("hold", " ".join(bits), ok=bool(hold or sid))
 
 
@@ -1047,7 +1096,7 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
     nest_c3 = "C-3" in nest or "C-2" in nest
     own_keyk = any(
         k in tape
-        for k in ("轉折K", "爆大量跌破平台", "爆大量破平台", "確認出現轉折", "跌破平台")
+        for k in ("轉折K", "爆大量跌破平台", "爆大量破平台", "確認出現轉折")
     )
     shown = str(name or "")
     if shown and re.search(rf"{re.escape(shown)}.{{0,16}}轉折", fh):
@@ -1058,10 +1107,26 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
         re.search(r"(因.{0,6}轉折K|健策轉折K|龍頭.{0,8}轉折)", fh)
         or (sid != "3653" and "轉折K" in fh and "健策" in fh)
     )
+    wash = (not own_keyk) and any(
+        k in (tape + fh)
+        for k in (
+            "重新站回支撐",
+            "立刻站回",
+            "站回支撐",
+            "下飄旗",
+            "1~3天又站回",
+            "隔個1~3天又站回",
+        )
+    )
+    strong = (not own_keyk) and (not wash) and any(
+        k in (tape + fh)
+        for k in ("強勢整理", "超強整理", "拉回淺", "再整理2個月", "一直都在支撐")
+    )
     stopk = "止漲整理" in (fh + tape)
     # 這檔形態才算。CCL 龍頭句裡「很多 PCB 還在底部」不是台光電自己回測頸線。
     neck = "回測頸線" in fh or "目前就是在底部" in fh
     longh = any(k in hold for k in ("勿輕易調節", "先不用管", "沒破線", "續抱"))
+    night_short = ("還沒過" in nest) and any(k in nest for k in ("46506", "46767"))
     if not sid:
         bits: List[str] = []
         if nest_build and nest_c3:
@@ -1070,6 +1135,12 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
             )
         elif nest_c3:
             bits.append("五件交叉：C-2轉C-3未確認，不是個股出清指令。")
+        if night_short or ("46767" in nest and "築底" in nest):
+            bits.append("官方夜盤還沒到他自己點的46767，築底不是已過下降壓。")
+        if "36000" in nest:
+            bits.append("36000是9波擴延極差、約5%微乎其微，不准跟43500混成一條C。")
+        if "沒表態" in nest or "高檔震盪" in nest:
+            bits.append("大盤沒表態＝高檔震盪整理，築底不是已開牌過下降壓。")
         if "43500" in nest and ("難" in nest or "非常難" in nest):
             bits.append("某商品量價說43500難破，不是官方收。")
         bits.append("個股不數5／9。")
@@ -1091,6 +1162,22 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
             + "五件交叉：同族龍頭已出轉折K，這檔跟漲先當轉弱，即使自己形態模糊。"
         )
         bits.append("這是碎形／關鍵K，不是C波出清。")
+    elif wash:
+        bits.append(
+            prefix
+            + "五件交叉：破線後站回／下飄旗＝洗盤量價，證據不足；不是轉折K，也不是C波出清。"
+        )
+        if longh:
+            bits.append("長抱另論，不要用這腳站回改寫切勿輕易調節。")
+    elif strong:
+        bits.append(
+            prefix
+            + "五件交叉：這檔強勢整理＝拉回淺等時間，不是轉折K，也不是C波出清。"
+        )
+        if longh:
+            bits.append("C-3如果句不准改寫成長抱出清。")
+        if "光聖" in (fh + leader) or "2個月" in (fh + tape + leader):
+            bits.append("想起2024/9光聖，時間換空間。")
     elif nest_build and neck:
         bits.append(
             prefix
@@ -1098,6 +1185,8 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
         )
     elif stopk:
         bits.append(prefix + "五件交叉：止漲整理K是這檔進出規則，不是C波出清。")
+        if "還沒連續漲勢" in (fh + leader) or "精神指標" in (fh + leader):
+            bits.append("風向球還沒連續漲勢，43500危機沒解除。")
         if nest_build:
             bits.append("夜盤仍在築底，C-3未確認末端。")
     elif (nest_build or nest_cover) and longh and not own_keyk:
@@ -1149,6 +1238,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；夜盤高已過 46506，確認仍要四路對質"
         elif "還沒過他自己點的 46506" in nest_t:
             nest_bit += "；夜盤高還沒過 46506"
+        elif "46506" in nest_t:
+            nest_bit += "；官方夜盤對 46506／46767 還沒走完"
         if "還沒過他自己點的前波高 47578" in nest_t:
             nest_bit += "；官方高還沒過 47578"
         elif "已過他自己點的前波高 47578" in nest_t:
@@ -1234,6 +1325,8 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("夜盤高已過 46506，確認仍要四路對質。")
     elif "還沒過他自己點的 46506" in nest_t:
         parts.append("夜盤高還沒過 46506。")
+    elif "46506" in nest_t:
+        parts.append("官方夜盤對 46506／46767 還沒走完。")
     if "還沒過他自己點的前波高 47578" in nest_t:
         parts.append("官方高還沒過 47578，右肩還沒做完。")
     elif "已過他自己點的前波高 47578" in nest_t:
@@ -1294,7 +1387,9 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
             if not extra:
                 continue
             body = str(step.get("text") or "")
-            if nid == "leader":
+            if nid == "nest":
+                step["text"] = _fit_nest(body, extra)
+            elif nid == "leader":
                 step["text"] = _clip(body + "。" + extra, 900)
             else:
                 step["text"] = _clip(extra + "。" + body, 900)

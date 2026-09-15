@@ -638,7 +638,7 @@ def test_five_cross_gives_different_insight_per_stock():
     mf = mkt.get("five") or mkt["think"]
     assert "輪動不是覆巢" in jf
     assert "形態真破" in jf or "假跌破" in jf
-    assert "續抱" in ef or "沒破線" in ef
+    assert "強勢整理" in ef or "續抱" in ef or "沒破線" in ef
     assert "輪動不是覆巢" not in ef
     assert "C-3如果句不准改寫成長抱出清" in ef
     assert "跟漲先當轉弱" in cf
@@ -648,6 +648,9 @@ def test_five_cross_gives_different_insight_per_stock():
     assert "止漲整理K" in af
     assert "如果句" in mf
     assert "已確認末端" in mf
+    assert "36000" in mf
+    assert "5%" in mf or "微乎其微" in mf
+    assert "沒表態" in mf or "高檔震盪" in mf
     clips = [_view_line(n) for n in NEURON_IDS]
     assert len({c for c in clips if c}) == 6
     assert not all("46767" in c for c in clips)
@@ -690,3 +693,69 @@ def test_five_cross_daily_break_does_not_wipe_stock_keyk():
     assert "續抱" in emc
     assert "輪動不是覆巢" not in emc
     assert jian != emc
+
+
+def test_five_cross_wash_is_not_turn_and_36000_not_43500():
+    """破線站回＝洗盤；爆大量才是轉折K。36000≠43500。"""
+    from biaoke_chain import _five_cross
+
+    nest = "夜盤築底是好事。C-2 轉 C-3 未確認。官方夜盤高還沒過他自己點的 46506。46767。"
+    wash = _five_cross(
+        [
+            {"id": "nest", "text": nest},
+            {"id": "field", "text": "前兩天破線，今天開始重新站回支撐。證據還不足。"},
+            {"id": "leader", "text": "自己就是長線龍頭"},
+            {"id": "tape", "text": "重新站回支撐"},
+            {"id": "hold", "text": "切勿輕易調節"},
+            {"id": "doubt", "text": ""},
+        ],
+        "2308",
+        "台達電",
+    )
+    assert "洗盤" in wash
+    assert "不是轉折K" in wash
+    assert "長抱另論" in wash
+    turn = _five_cross(
+        [
+            {"id": "nest", "text": nest},
+            {"id": "field", "text": "散熱轉弱由健策轉折K確認"},
+            {"id": "leader", "text": ""},
+            {"id": "tape", "text": "健策爆大量跌破平台，確認出現轉折"},
+            {"id": "hold", "text": ""},
+            {"id": "doubt", "text": ""},
+        ],
+        "3653",
+        "健策",
+    )
+    assert "輪動不是覆巢" in turn
+    assert "洗盤" not in turn
+    mkt = _five_cross(
+        [
+            {"id": "nest", "text": nest + "36000是9波擴延。某商品量價說43500非常難。"},
+            {"id": "field", "text": ""},
+            {"id": "leader", "text": ""},
+            {"id": "tape", "text": ""},
+            {"id": "hold", "text": ""},
+            {"id": "doubt", "text": ""},
+        ],
+        "",
+        "",
+    )
+    assert "36000" in mkt
+    assert "43500" in mkt
+    assert "46767" in mkt
+    assert "混" in mkt
+    asic = fire_chain("", "創意怎麼看")
+    af = asic.get("five") or asic["think"]
+    assert "止漲整理K" in af
+    assert "43500危機沒解除" in af or "連續漲勢" in af
+    emc = fire_chain("", "台光電怎麼看")
+    ef = emc.get("five") or emc["think"]
+    assert "強勢整理" in ef
+    assert "轉折K" not in ef or "不是轉折K" in ef
+    assert "光聖" in ef or "時間換空間" in ef
+    iet = fire_chain("", "IET怎麼看")
+    if iet.get("sid") == "4971":
+        it = iet.get("five") or iet["think"]
+        assert "洗盤" in it
+        assert "轉折K" not in it or "不是轉折K" in it
