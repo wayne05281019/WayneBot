@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 from biaoke_chart import (
+    _axis_ticks,
     _paint_spot,
     _spot_quote,
     analyze_structure,
@@ -491,3 +492,12 @@ def test_caption_records_forecast_line():
     assert "不是介紹圖" in cap
     assert "縮圖" in cap
     assert "5／9" in cap or "5/9" in cap
+
+
+def test_axis_ticks_drop_near_last_bar():
+    ticks = _axis_ticks(60, extra=(12,))
+    assert 0 in ticks
+    assert 59 in ticks
+    assert 12 in ticks
+    assert all(abs(i - 59) >= 4 or i in (0, 12, 59) for i in ticks)
+    assert 56 not in ticks

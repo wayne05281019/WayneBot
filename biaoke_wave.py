@@ -1472,10 +1472,9 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.set_xlim(-0.6, n + 22)
         ax.set_ylim(ymin, ymax)
         ax.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd")
-        step = max(n // 7, 4)
-        ticks = list(range(0, n, step))
-        if n - 1 not in ticks:
-            ticks.append(n - 1)
+        from biaoke_chart import _axis_ticks
+
+        ticks = _axis_ticks(n)
         labels = []
         for i in ticks:
             d = str(bars[i].get("date") or "")

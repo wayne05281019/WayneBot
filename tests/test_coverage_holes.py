@@ -172,3 +172,23 @@ def test_decision_card_table_keeps_halt_days():
     assert "高低／均線略過無量日" in src
     assert "as_of" in src
     assert "merge_live = False" in src
+
+
+def test_markets_for_ids_uses_universe_when_today_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(DataFetcher, "_ensure_database_ready", lambda self: None)
+    db = str(tmp_path / "mkt.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id, stock_name, market_type, asset_type, updated_at) VALUES (?,?,?,?,?)",
+        ("4971", "IET-KY", "TWO", "KY", "2026-09-15"),
+    )
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id, stock_name, market_type, asset_type, updated_at) VALUES (?,?,?,?,?)",
+        ("2383", "台光電", "TWSE", "STOCK", "2026-09-15"),
+    )
+    conn.commit()
+    conn.close()
+    sides = DataFetcher(db_path=db)._markets_for_ids("20260915", {"4971", "2383"})
+    assert "TWO" in sides
+    assert "TW" in sides

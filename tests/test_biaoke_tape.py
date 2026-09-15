@@ -153,3 +153,43 @@ def test_ingest_hooks_tape_immediately():
     assert "record_from_events" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "_after_ingest_analyze" in ingest_src
+    assert "refresh_published_official" in ingest_src
+
+
+def test_c2_c3_without_dapan_word_still_tapes_twii(tmp_path):
+    db = str(tmp_path / "t.db")
+    _seed(db)
+    n = record_events(
+        db,
+        [
+            {
+                "id": "184601742-209-1",
+                "date": "2026-09-15",
+                "time": "14:47",
+                "kind": "reply",
+                "text": "Yes 如果真的發生C-2 轉 C-3 布局股票該抽出的時候還是要抽出來",
+            }
+        ],
+    )
+    assert n >= 1
+    conn = sqlite3.connect(db)
+    tw = conn.execute(
+        "SELECT stock_id FROM biaoke_tape "
+        "WHERE post_id='184601742-209-1' AND stock_id='TWII'"
+    ).fetchone()
+    conn.close()
+    assert tw is not None
+
+
+def test_refresh_published_official_skips_before_close(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_tape import refresh_published_official
+
+    db = str(tmp_path / "t.db")
+    _seed(db)
+    st = refresh_published_official(
+        db, now=datetime(2026, 9, 15, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    )
+    assert st.get("skipped") == "session"

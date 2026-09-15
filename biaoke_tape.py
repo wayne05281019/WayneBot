@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _DDL = """
@@ -33,7 +35,7 @@ CREATE TABLE IF NOT EXISTS biaoke_tape (
 );
 CREATE INDEX IF NOT EXISTS idx_biaoke_tape_sid ON biaoke_tape(stock_id, post_date);
 """
-_IDX = re.compile(r"(大盤|加權|台指)")
+_IDX = re.compile(r"(大盤|加權|台指|C-2|C-3|逃命波)")
 _SPACE = re.compile(r"\s+")
 _TICKER = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 
@@ -250,6 +252,122 @@ def record_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     finally:
         conn.close()
     return len(rows)
+
+
+_CLOSE_MIN = 13 * 60 + 30
+_CORE_SIDS = (
+    "2383",
+    "2368",
+    "4971",
+    "3653",
+    "3017",
+    "1815",
+    "2408",
+    "3105",
+    "3081",
+    "2330",
+    "2308",
+    "3443",
+)
+
+
+def refresh_published_official(
+    db_path: str, *, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """收盤後證交所已公布＝寫今天官方柱並重對 tape。盤中／未公布不寫。不等 16:30 全表。"""
+    stats: Dict[str, Any] = {"ok": False}
+    path = str(db_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return {**stats, "skipped": "no_db"}
+    try:
+        from config import taipei_now
+        from trading_calendar import is_tw_open_calendar_day
+    except Exception:
+        return {**stats, "skipped": "cal"}
+    dt = now or taipei_now()
+    if dt.tzinfo is None:
+        from zoneinfo import ZoneInfo
+
+        dt = dt.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+    ymd = dt.strftime("%Y%m%d")
+    iso = dt.strftime("%Y-%m-%d")
+    if not is_tw_open_calendar_day(ymd):
+        return {**stats, "skipped": "holiday"}
+    if dt.hour * 60 + dt.minute < _CLOSE_MIN:
+        return {**stats, "skipped": "session"}
+    last = last_official_bar(path, "TWII")
+    last_d = _ymd((last or {}).get("date"))
+    if last_d >= ymd:
+        return {**stats, "ok": True, "skipped": "have_today", "date": ymd}
+    try:
+        from taiwan_market import _fetch_twse_index_close
+
+        off = _fetch_twse_index_close(ymd)
+    except Exception:
+        return {**stats, "skipped": "mi_index_err"}
+    if not off or float(off.get("close") or 0) <= 0:
+        return {**stats, "skipped": "not_published"}
+    try:
+        from taiwan_market import sync_index_daily
+
+        stats["index"] = sync_index_daily(path, range_="5d")
+    except Exception:
+        stats["index_err"] = True
+    want = set(_CORE_SIDS)
+    conn = sqlite3.connect(path, timeout=15.0)
+    try:
+        rows = conn.execute(
+            "SELECT tags, text FROM biaoke_posts WHERE date>=? AND date<=?",
+            (iso, iso),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    for tags, text in rows:
+        try:
+            tag_l = json.loads(tags) if tags else []
+        except Exception:
+            tag_l = []
+        for sid, _n in named_pairs(str(text or ""), tag_l):
+            if sid != "TWII":
+                want.add(sid)
+    try:
+        from data_fetcher import DataFetcher
+
+        n = DataFetcher(db_path=path)._upsert_named_quotes(ymd, want)
+        stats["quotes"] = int(n or 0)
+    except Exception:
+        stats["quotes_err"] = True
+    events = []
+    conn = sqlite3.connect(path, timeout=15.0)
+    try:
+        for pid, day, hm, kind, tags, text in conn.execute(
+            "SELECT id, date, time, kind, tags, text FROM biaoke_posts WHERE date=?",
+            (iso,),
+        ):
+            try:
+                tag_l = json.loads(tags) if tags else []
+            except Exception:
+                tag_l = []
+            events.append(
+                {
+                    "id": pid,
+                    "date": day,
+                    "time": hm,
+                    "kind": kind,
+                    "tags": tag_l,
+                    "text": text,
+                }
+            )
+    except sqlite3.Error:
+        events = []
+    finally:
+        conn.close()
+    if events:
+        stats["tape"] = record_events(path, events)
+    stats.update({"ok": True, "date": ymd, "close": off.get("close")})
+    return stats
 
 
 def glance_for(db_path: str, sid: str, *, n: int = 2) -> str:

@@ -52,6 +52,34 @@ def _md(raw: Any) -> str:
     return str(raw or "").strip()
 
 
+def _axis_ticks(n: int, extra: Sequence[int] = ()) -> List[int]:
+    """頭尾必留。靠近尾端或爆量日的中間刻度拿掉，避免 09/09 疊在 09/14 上。"""
+    n = int(n or 0)
+    if n <= 0:
+        return []
+    if n == 1:
+        return [0]
+    extras = [int(x) for x in extra if 0 <= int(x) < n]
+    step = max(n // 7, 4)
+    raw = list(range(0, n, step))
+    if n - 1 not in raw:
+        raw.append(n - 1)
+    for x in extras:
+        if x not in raw:
+            raw.append(x)
+    keep: List[int] = []
+    for i in sorted(set(raw)):
+        if i in (0, n - 1) or i in extras:
+            keep.append(i)
+            continue
+        if any(abs(i - e) < 3 for e in extras):
+            continue
+        if abs(i - (n - 1)) < 4:
+            continue
+        keep.append(i)
+    return keep
+
+
 def _ymd_full(raw: Any) -> str:
     t = str(raw or "").replace("-", "")[:8]
     if len(t) == 8 and t.isdigit():
@@ -1339,22 +1367,7 @@ def render_biaoke_structure_png(
     ax2.axvspan(n - 0.45, n + _FUTURE + 0.35, facecolor=_FUTURE_BG, edgecolor="none", zorder=0)
     ax2.axvline(n - 0.45, color="#b0bec5", linewidth=1.0, linestyle=":", zorder=2)
     ax2.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color=_GRID)
-    step = max(n // 7, 4)
-    tick_i = list(range(0, n, step))
-    if n - 1 not in tick_i:
-        tick_i.append(n - 1)
-    if 0 <= spike_i < n and spike_i not in tick_i:
-        tick_i.append(spike_i)
-    tick_i = sorted(set(tick_i))
-    keep = []
-    for i in tick_i:
-        if i in (0, n - 1) or i == spike_i:
-            keep.append(i)
-            continue
-        if 0 <= spike_i < n and abs(i - spike_i) < 3:
-            continue
-        keep.append(i)
-    tick_i = keep
+    tick_i = _axis_ticks(n, extra=(spike_i,))
     if n - 1 + _FUTURE not in tick_i:
         tick_i.append(n - 1 + _FUTURE)
     labels = []

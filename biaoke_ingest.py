@@ -1571,6 +1571,12 @@ def ingest_public_posts(
             stats["minutes"] = refresh_biaoke_minutes(dbp)
         except Exception:
             logger.exception("飆大日盤15分續補失敗")
+        try:
+            from biaoke_tape import refresh_published_official
+
+            stats["official"] = refresh_published_official(dbp)
+        except Exception:
+            logger.exception("飆大官方收盤補寫失敗")
         if uniq:
             try:
                 from biaoke_digest import record_ingest_events

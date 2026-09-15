@@ -831,16 +831,38 @@ class DataFetcher:
             """,
             [ds, *list(ids)],
         ).fetchall()
-        conn.close()
         out = set()
+        seen = set()
         for sid, market in rows:
+            seen.add(str(sid))
             m = str(market or "").upper()
             if m in ("TWO", "OTC", "ROCO"):
                 out.add("TWO")
             else:
                 out.add("TW")
+        miss = [str(s) for s in ids if str(s) not in seen]
+        if miss:
+            mq = ",".join("?" * len(miss))
+            try:
+                uni = conn.execute(
+                    f"SELECT stock_id, market_type FROM stock_universe WHERE stock_id IN ({mq})",
+                    miss,
+                ).fetchall()
+            except Exception:
+                uni = []
+            for sid, market in uni:
+                m = str(market or "").upper()
+                if m in ("TWO", "OTC", "ROCO", "TPEX"):
+                    out.add("TWO")
+                else:
+                    out.add("TW")
+                seen.add(str(sid))
+            still = [s for s in miss if s not in seen]
+            if still:
+                out.update({"TW", "TWO"})
+        conn.close()
         if not out:
-            out.add("TW")
+            out.update({"TW", "TWO"})
         return out
 
     def _upsert_named_quotes(self, target_date: str, want: set, ref_date: str = "") -> int:
