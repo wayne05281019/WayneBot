@@ -44,9 +44,9 @@ _PROJECT = "#e65100"
 _FORK = "#5d4037"
 _FUTURE_BG = "#fff6e0"
 _HALO = "#ffffff"
-# 左表頭＋現價；右上整塊給縮圖；主圖左右拉滿，K 才能加長。
-_HEADER_CHIP_MAX = 50.0
-_STOCK_LOCATOR_RECT = (0.54, 0.698, 0.445, 0.278)
+# 左表頭整疊（名、今K、開高低收）；右上整塊給縮圖。
+_HEADER_CHIP_MAX = 37.0
+_STOCK_LOCATOR_RECT = (0.40, 0.688, 0.58, 0.292)
 
 
 def _md(raw: Any) -> str:
@@ -1311,11 +1311,11 @@ def _paint_spot(
     ax,
     quote: Dict[str, Any],
     *,
-    x: float = 36.0,
-    y: float = 92.35,
+    x: float = 4.15,
+    y: float = 92.55,
     align: str = "left",
 ) -> None:
-    """現價區塊。預設貼左上介紹文字，把右上整塊留給縮圖。"""
+    """今K／現價／漲跌全部貼左上。右上不准再放這塊。"""
     close = quote.get("close")
     if close is None:
         return
@@ -1345,25 +1345,24 @@ def _paint_spot(
     )
     cursor += _ow("今K", 8) + 0.35
     if ohlc_ok:
-        cw, ch = 2.45, 4.6
+        cw, ch = 2.2, 4.1
         _draw_mini_candle(
             ax, cursor, y - ch * 0.5, cw, ch,
             float(o), float(hi), float(lo), float(close), prev,
         )
-        cursor += cw + 0.45
+        cursor += cw + 0.4
     ax.text(
         cursor, y, label, color="#546e7a", fontproperties=_fp(11, "bold"),
         va="center", ha="left", zorder=22,
     )
-    cursor += _ow(label, 11) + 0.45
+    cursor += _ow(label, 11) + 0.4
     ax.text(
         cursor, y, px, color=color, fontproperties=_fp(20, "bold"),
         va="center", ha="left", zorder=22,
     )
     if move and move != "—":
-        cursor += _ow(px, 20) + 0.8
         ax.text(
-            cursor, y, "較昨日　" + move, color=color,
+            x, y - 2.85, "較昨日　" + move, color=color,
             fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
         )
 
@@ -1636,59 +1635,59 @@ def render_biaoke_structure_png(
     ov.patch.set_alpha(0)
     ov.set_navigate(False)
     _paint_nameplate(ov, plate)
+    _paint_spot(ov, quote, x=4.15, y=92.55)
     date_line = f"最近收盤 {_ymd_full(last_bar.get('date'))}"
     ov.text(
         4.15,
-        92.35,
+        86.85,
         date_line,
         color=_TEXT,
-        fontproperties=_fp(12, "bold"),
+        fontproperties=_fp(11, "bold"),
         va="center",
         ha="left",
     )
-    _paint_spot(ov, quote, x=min(48.0, 4.15 + _ow(date_line, 12) + 1.6), y=92.35)
     ov.text(
         4.15,
-        89.7,
+        84.25,
         (
             f"開 {_px(last_bar.get('open'))}　高 {_px(last_bar.get('high'))}　"
             f"低 {_px(last_bar.get('low'))}　收 {_px(last_bar.get('close'))}　"
             f"量 {_vol(last_bar.get('volume'))}"
         ),
         color=_TEXT,
-        fontproperties=_fp(12, "bold"),
+        fontproperties=_fp(11, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         4.15,
-        87.05,
+        81.65,
         (
             f"爆大量日 {_ymd_full(spike_date)}　高 {_px(spike_hi)}＝壓　低 {_px(spike_lo)}＝撐　"
             f"量 {_vol(spike_bar.get('volume'))}"
         ),
         color=_PRESS,
-        fontproperties=_fp(12, "bold"),
+        fontproperties=_fp(11, "bold"),
         va="center",
         ha="left",
     )
     ov.text(
         4.15,
-        84.5,
+        79.15,
         "不是15分、不是介紹圖／決策卡",
         color="#546e7a",
-        fontproperties=_fp(11, "bold"),
+        fontproperties=_fp(10, "bold"),
         va="center",
         ha="left",
     )
-    chip_x, chip_y = 4.15, 81.7
+    chip_x, chip_y = 4.15, 76.4
     if mark:
         chip_x = _draw_chip(ov, chip_x, chip_y, mark, fc="#ffffff", ec=mc, tc=mc, size=10)
-        chip_x, chip_y = 4.15, 78.6
+        chip_x, chip_y = 4.15, 73.35
     for bit in banner_bits:
         need = _ow(f" {bit} ", 10) + 1.2
         if chip_x > 4.2 and chip_x + need > _HEADER_CHIP_MAX:
-            if chip_y - 3.05 < 73:
+            if chip_y - 3.05 < 68:
                 break
             chip_x = 4.15
             chip_y -= 3.05
@@ -1777,7 +1776,7 @@ def render_biaoke_structure_png(
         labels.append(d[5:].replace("-", "/") if d else _md(work[i].get("date")))
     ax2.set_xticks(tick_i)
     ax2.set_xticklabels(labels, fontproperties=_fp(11, "bold"))
-    fig.subplots_adjust(left=0.055, right=0.94, top=0.668, bottom=0.07)
+    fig.subplots_adjust(left=0.055, right=0.94, top=0.655, bottom=0.07)
     fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""

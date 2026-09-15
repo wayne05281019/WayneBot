@@ -1039,7 +1039,7 @@ _SPAN_MARK = {
 _TWII_MAIN_BARS = 168
 _TWII_LONG_BARS = 560
 _TWII_FUTURE = 8
-_TWII_LOCATOR_RECT = (0.50, 0.695, 0.48, 0.268)
+_TWII_LOCATOR_RECT = (0.40, 0.668, 0.58, 0.308)
 _ABC_A_START = "20260623"
 _ABC_A_END = "20260729"
 
@@ -1733,7 +1733,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.text(
             0.055,
             0.908,
-            "綠實線Ａ＝6/23第五波高跌到7/29低（Ａ完＝Ｂ起）　藍實線Ｂ＝同一7/29低反彈到9/8高　紫虛線Ｃ＝9/8後還沒確認",
+            "綠A＝5高→7/29　藍B＝同低→9/8　紫C虛線未確認",
             fontproperties=_fp(9, "bold"),
             color="#37474f",
             ha="left",
@@ -1757,7 +1757,7 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         ax.tick_params(labelsize=10)
         for lab in ax.get_yticklabels():
             lab.set_fontproperties(_fp(10, "bold"))
-        fig.subplots_adjust(left=0.055, right=0.935, top=0.64, bottom=0.10)
+        fig.subplots_adjust(left=0.055, right=0.935, top=0.62, bottom=0.10)
         if long_bars and len(long_bars) > n + 16:
             loc_legs = locator_abc_legs(long_story)
             loc_marks: list = []

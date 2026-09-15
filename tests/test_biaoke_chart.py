@@ -473,12 +473,12 @@ def test_locator_inset_marks_window():
     from biaoke_chart import _BARS, _STOCK_LOCATOR_RECT
 
     assert _BARS >= 140
-    assert _STOCK_LOCATOR_RECT[0] >= 0.50
-    assert _STOCK_LOCATOR_RECT[2] >= 0.40
+    assert _STOCK_LOCATOR_RECT[0] <= 0.42
+    assert _STOCK_LOCATOR_RECT[2] >= 0.52
     assert _STOCK_LOCATOR_RECT[3] >= 0.24
     rsrc = inspect.getsource(render_biaoke_structure_png)
     assert "right=0.94" in rsrc
-    assert "date_line" in rsrc
+    assert "_paint_spot(ov, quote, x=4.15" in rsrc or "x=4.15" in rsrc
     wsrc = inspect.getsource(render_twii_degree_png)
     assert "paint_locator_inset" in wsrc
     assert "560" in wsrc or "long_bars" in wsrc
