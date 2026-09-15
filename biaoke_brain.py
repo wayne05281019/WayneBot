@@ -560,6 +560,46 @@ def _load_mkt(db_path: str) -> Dict[str, Any]:
         return {}
 
 
+def stock_picker_hits(db_path: str, ask: str) -> List[Dict[str, Any]]:
+    """撞名／讀音沒打準：先讓人點一檔。有代號就直接問，不出選擇器。"""
+    q = (ask or "").strip()
+    if not q or _TICKER.search(q):
+        return []
+    if is_offtopic(q) or is_desk_query(q) or _HI.match(q):
+        return []
+    core = stock_query(q)
+    if not core:
+        return []
+    hits: List[Dict[str, Any]] = []
+    try:
+        from wayne_db import lookup_stocks
+
+        hits = list(lookup_stocks(db_path, core) or [])
+    except Exception:
+        hits = []
+    if not hits:
+        hits = resolve_stock(db_path, q)
+    from lookup_fuzzy import hits_need_picker
+
+    if not hits_need_picker(hits):
+        return []
+    return hits[:8]
+
+
+def format_stock_picker_html(hits: Sequence[Dict[str, Any]]) -> str:
+    rows = list(hits or [])[:8]
+    if len(rows) == 1:
+        lead = "沒打準，是不是這一檔？點了繼續問飆大，不是介紹圖。"
+    else:
+        lead = "對到多檔，點下面一檔再問飆大。不是介紹圖。"
+    lines = [DISCLAIMER, lead]
+    for h in rows:
+        lines.append(
+            f"{html_escape(h.get('stock_id'))} {html_escape(h.get('stock_name'))}"
+        )
+    return "\n".join(lines)
+
+
 def answer_biaoke(
     db_path: str,
     ask: str,
@@ -575,6 +615,9 @@ def answer_biaoke(
         from biaoke_desk import format_biaoke_html
 
         return format_biaoke_html("")
+    picker = stock_picker_hits(db_path, q)
+    if picker:
+        return format_stock_picker_html(picker)
     try:
         from biaoke_live import live_enabled, live_reply
 
@@ -582,9 +625,6 @@ def answer_biaoke(
         if live:
             return live
         if live_enabled():
-            live = live_reply(db_path, q, history, uid=uid)
-            if live:
-                return live
             return LIVE_MISS
     except Exception:
         try:
@@ -626,16 +666,6 @@ def answer_biaoke(
     want_mkt = is_market_question(q)
     stock_like = bool(stock_query(q)) and not want_mkt
     if hits and (stock_like or (not want_mkt) or len(stock_query(q)) >= 2):
-        if len(hits) > 1 and not _TICKER.search(q):
-            from lookup_fuzzy import hits_need_picker
-
-            if hits_need_picker(hits):
-                lines = [DISCLAIMER, "對到多檔，點名一檔再問。"]
-                for h in hits[:8]:
-                    lines.append(
-                        f"{html_escape(h.get('stock_id'))} {html_escape(h.get('stock_name'))}"
-                    )
-                return "\n".join(lines)
         hit = hits[0]
         sid = str(hit.get("stock_id") or "")
         bars = load_bars(db_path, sid)

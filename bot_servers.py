@@ -2079,6 +2079,24 @@ class WayneTelegramBot:
         rows.append([self._q("stock")])
         return InlineKeyboardMarkup(rows) if rows else None
 
+    def _biaoke_hits_keyboard(self, hits):
+        """飆大撞名選擇器：點了仍問飆大，不准走查股兩張圖。"""
+        rows = []
+        pair = []
+        for h in (hits or [])[:8]:
+            c = str(h.get("stock_id") or "").strip()
+            n = str(h.get("stock_name") or "").strip()
+            if not c:
+                continue
+            label = f"{c} {n}".strip()[:16] or c
+            pair.append(InlineKeyboardButton(label, callback_data=f"bkq:{c}"))
+            if len(pair) == 2:
+                rows.append(pair)
+                pair = []
+        if pair:
+            rows.append(pair)
+        return InlineKeyboardMarkup(rows) if rows else None
+
     def _hits_list_html(self, hits, lead: str = "") -> str:
         """多檔時訊息裡列出藍字股名，按鈕序號才對得上。"""
         try:
@@ -3379,6 +3397,7 @@ class WayneTelegramBot:
             self._biaoke_hist = {}
         hist = list(self._biaoke_hist.get(actor) or [])
         mark_read = False
+        chart_task = None
         if q:
             try:
                 chat = getattr(message, "chat", None)
@@ -3386,6 +3405,25 @@ class WayneTelegramBot:
                     await chat.send_action("typing")
             except Exception:
                 pass
+            picker = []
+            try:
+                from biaoke_brain import format_stock_picker_html, stock_picker_hits
+
+                picker = await asyncio.to_thread(stock_picker_hits, self.db_path, q)
+            except Exception:
+                logger.exception("飆大撞名選擇器略過")
+                picker = []
+            if picker:
+                html = format_stock_picker_html(picker)
+                await message.reply_html(
+                    html,
+                    disable_web_page_preview=True,
+                    reply_markup=self._biaoke_hits_keyboard(picker),
+                )
+                return
+            chart_task = asyncio.create_task(
+                self._send_biaoke_structure_chart(message, q, uid)
+            )
             html = await asyncio.to_thread(answer_biaoke, self.db_path, q, hist, uid)
             bucket = self._biaoke_hist.setdefault(actor, [])
             plain = re.sub(r"<[^>]+>", "", html)
@@ -3417,6 +3455,11 @@ class WayneTelegramBot:
                 pass
         kb = self._biaoke_reply_menu(uid)
         if not parts:
+            if chart_task is not None:
+                try:
+                    await chart_task
+                except Exception:
+                    logger.exception("飆大結構圖並行失敗")
             await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
             return
         n = len(parts)
@@ -3426,8 +3469,12 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
                 reply_markup=kb if i == n - 1 else None,
             )
+        if chart_task is not None:
+            try:
+                await chart_task
+            except Exception:
+                logger.exception("飆大結構圖並行失敗")
         if q:
-            await self._send_biaoke_structure_chart(message, q, uid)
             await self._send_biaoke_origin_charts(message, q, uid)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
@@ -5594,6 +5641,14 @@ class WayneTelegramBot:
             return
         if data.startswith("sc:"):
             await self._handle_screen_pick_callback(q, uid, data)
+            return
+        if data.startswith("bkq:"):
+            sid = data[4:].strip()
+            await q.answer("問飆大")
+            if not sid:
+                return
+            self._enter_biaoke_chat(q.message, uid)
+            await self._send_biaoke_page(q.message, ask=sid, uid=uid)
             return
         if data.startswith("bk:"):
             kind = data[3:]

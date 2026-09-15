@@ -187,6 +187,9 @@ def test_biaoke_page_has_no_inside_menu():
     assert "reflow=False" in src
     assert "_send_biaoke_structure_chart" in src
     assert "_send_biaoke_origin_charts" in src
+    assert "create_task" in src
+    assert "stock_picker_hits" in src
+    assert "_biaoke_hits_keyboard" in src
     assert "_send_card_to" not in src
     struct_src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "build_biaoke_structure_chart" in struct_src
@@ -332,3 +335,46 @@ def test_screen_from_biaoke_clears_pending():
     asyncio.run(bot.on_text(upd, MagicMock()))
     bot.screen_cmd.assert_awaited()
     assert "1:1" not in bot._pending
+
+
+def test_biaoke_hits_keyboard_stays_in_biaoke():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._biaoke_hits_keyboard(
+        [
+            {"stock_id": "1303", "stock_name": "南亞"},
+            {"stock_id": "2408", "stock_name": "南亞科"},
+            {"stock_id": "2330", "stock_name": "台積電"},
+        ]
+    )
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert datas == ["bkq:1303", "bkq:2408", "bkq:2330"]
+    assert all(d.startswith("bkq:") for d in datas)
+    assert not any(d.startswith("k:") for d in datas)
+    assert "1303 南亞" in texts
+    assert all(len(r) <= 2 for r in kb.inline_keyboard)
+
+
+def test_biaoke_picker_callback_asks_biaoke_not_card():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._enter_biaoke_chat = MagicMock()
+    bot._send_biaoke_page = AsyncMock()
+    bot._send_card_to = AsyncMock()
+    q = SimpleNamespace(
+        data="bkq:1303",
+        from_user=SimpleNamespace(id=11),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    asyncio.run(bot._on_callback_bound(None, None, q, "11"))
+    q.answer.assert_awaited()
+    bot._enter_biaoke_chat.assert_called()
+    bot._send_biaoke_page.assert_awaited()
+    assert bot._send_biaoke_page.await_args.kwargs.get("ask") == "1303"
+    assert bot._send_biaoke_page.await_args.kwargs.get("uid") == "11"
+    bot._send_card_to.assert_not_awaited()

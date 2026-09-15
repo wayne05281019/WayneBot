@@ -177,3 +177,33 @@ def test_desk_html_mentions_unmentioned_names():
     html = format_biaoke_desk_html()
     assert "藝舍" in html or "沒寫過" in html
     assert "不是買訊" in html
+
+
+def test_stock_picker_hits_ambiguous_name_not_ticker(tmp_path, monkeypatch):
+    from biaoke_brain import (
+        answer_biaoke,
+        format_stock_picker_html,
+        stock_picker_hits,
+    )
+    from tests.test_lookup_name_fuzzy import _seed
+
+    db = str(tmp_path / "pick.db")
+    _seed(db, monkeypatch)
+    monkeypatch.setattr(
+        "quote_integrity.db_as_of_trading_date",
+        lambda dp, now=None: "20260828",
+    )
+    hits = stock_picker_hits(db, "南亞")
+    ids = [str(h.get("stock_id")) for h in hits]
+    assert "1303" in ids
+    assert "2408" in ids
+    assert not stock_picker_hits(db, "1303")
+    assert not stock_picker_hits(db, "2330 怎麼看")
+    html = format_stock_picker_html(hits)
+    assert "點下面一檔再問飆大" in html
+    assert "不是介紹圖" in html
+    assert "對到多檔" in html
+    ans = answer_biaoke(db, "南亞")
+    assert "點下面一檔再問飆大" in ans
+    assert "1303" in ans
+    assert "2408" in ans
