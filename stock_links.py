@@ -129,11 +129,18 @@ def html_stock_anchor(stock_id: str, stock_name: str = "", db_path: Optional[str
     href = web.replace("&", "&amp;")
     tag = ""
     try:
-        from wayne_db import listing_zh
+        from universe import listing_industry_face
 
-        tag = listing_zh(quote_market(sid, db_path))
+        tag = listing_industry_face(sid, db_path)
     except Exception:
         tag = ""
+    if not tag:
+        try:
+            from wayne_db import listing_zh
+
+            tag = listing_zh(quote_market(sid, db_path))
+        except Exception:
+            tag = ""
     suffix = f"　{tag}" if tag else ""
     return f'<a href="{href}">{esc}</a>{suffix}'
 

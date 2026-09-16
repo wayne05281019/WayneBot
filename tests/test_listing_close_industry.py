@@ -61,9 +61,87 @@ def test_html_stock_anchor_appends_listing(tmp_path):
     conn.commit()
     conn.close()
     tw = html_stock_anchor("2330", "台積電", db)
-    assert ">2330 台積電</a>　上市" in tw
-    assert html_stock_anchor("3105", "穩懋", db).endswith("　上櫃")
-    assert html_stock_anchor("3644", "凌嘉科", db).endswith("　興櫃")
+    assert ">2330 台積電</a>　上市（半導體業）" in tw
+    assert html_stock_anchor("3105", "穩懋", db).endswith("　上櫃（半導體業）")
+    assert html_stock_anchor("3644", "凌嘉科", db).endswith("　興櫃（半導體業）")
+    assert "一線" not in tw and "二線" not in tw
+
+
+def test_listing_face_marks_turnover_leader_not_yi_er_xian(tmp_path):
+    from universe import listing_industry_face
+
+    db = str(tmp_path / "lead.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    for sid, name, mkt, turn in (
+        ("2330", "台積電", "TW", 90000),
+        ("2454", "聯發科", "TW", 1000),
+        ("3105", "穩懋", "TWO", 500),
+    ):
+        conn.execute(
+            "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,'t')",
+            (sid, name, mkt, "STOCK", "半導體業"),
+        )
+        conn.execute(
+            "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("20260909", sid, name, mkt, 1, 1, 1, 1, 1, turn, 0, 1),
+        )
+    conn.commit()
+    conn.close()
+    tsmc = listing_industry_face("2330", db)
+    mtk = listing_industry_face("2454", db)
+    otc = listing_industry_face("3105", db)
+    assert tsmc == "上市（半導體業）　龍頭"
+    assert mtk == "上市（半導體業）"
+    assert otc == "上櫃（半導體業）"
+    assert "一線" not in tsmc + mtk + otc
+    assert "二線" not in tsmc + mtk + otc
+    assert html_stock_anchor("2330", "台積電", db).endswith("　上市（半導體業）　龍頭")
+
+
+def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
+    from tests.card_face_audit import listing_face_ok
+
+    assert listing_face_ok("上市")
+    assert listing_face_ok("上市（半導體業）")
+    assert listing_face_ok("上市（半導體業）　龍頭")
+    assert listing_face_ok("上市（ETF）")
+    assert listing_face_ok("上櫃（半導體業）")
+    assert listing_face_ok("興櫃（半導體業）")
+    assert not listing_face_ok("一線")
+    assert not listing_face_ok("上市　一線")
+    assert not listing_face_ok("上市（半導體業）一線")
+
+
+def test_listing_face_emerging_not_overridden_by_stale_otc_quote(tmp_path):
+    """日 K 殘列上櫃、卡片走興櫃表 → 市場標仍是興櫃。"""
+    from emerging_quotes import ensure_emerging_table
+    from universe import listing_industry_face
+
+    db = str(tmp_path / "em.db")
+    ensure_core_schema(db)
+    ensure_emerging_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,'t')",
+        ("2938", "昶昕", "TWO", "STOCK", "居家生活"),
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("20260909", "2938", "昶昕", "TWO", 1, 1, 1, 1, 1, 10, 0, 1),
+    )
+    for i in range(8):
+        conn.execute(
+            "INSERT INTO emerging_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"2026090{i+1}" if i < 9 else f"202609{i+1}", "2938", "昶昕", "EM", 10, 11, 9, 10, 100, 1, 0.0, 10),
+        )
+    conn.commit()
+    conn.close()
+    face = listing_industry_face("2938", db)
+    assert face.startswith("興櫃")
+    assert "居家生活" in face
+    assert "上櫃" not in face
+    assert listing_industry_face("2938", db, quote_source="emerging_quotes").startswith("興櫃")
 
 
 def test_midday_line_tags_listing_when_row_has_market():

@@ -525,6 +525,117 @@ def card_industry_label(stock_id: str, db_path: str = None) -> str:
     return default_industry(row[1] or "", row[0] or "")
 
 
+def industry_turnover_leader_id(industry: str, db_path: str = None) -> str:
+    """該官方產業、最近一筆有成交額的收盤日，成交額最高的那檔。沒真數就空。"""
+    ind = str(industry or "").strip()
+    if not ind or ind in ("ETF", "興櫃"):
+        return ""
+    path = db_path or get_db_path()
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute(
+            """
+            SELECT q.date
+            FROM daily_quotes q
+            JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE u.industry = ?
+              AND IFNULL(q.turnover_k, 0) > 0
+            ORDER BY q.date DESC
+            LIMIT 1
+            """,
+            (ind,),
+        ).fetchone()
+        if not row:
+            conn.close()
+            return ""
+        ymd = str(row[0] or "")
+        top = conn.execute(
+            """
+            SELECT q.stock_id
+            FROM daily_quotes q
+            JOIN stock_universe u ON u.stock_id = q.stock_id
+            WHERE u.industry = ?
+              AND q.date = ?
+            ORDER BY IFNULL(q.turnover_k, 0) DESC, q.stock_id
+            LIMIT 1
+            """,
+            (ind, ymd),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return ""
+    return str(top[0] or "").strip() if top else ""
+
+
+def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
+    """日 K 不足、興櫃表夠長＝卡片走興櫃日均價。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return False
+    try:
+        conn = sqlite3.connect(db_path)
+        n_d = conn.execute(
+            "SELECT COUNT(*) FROM daily_quotes WHERE stock_id=?", (sid,)
+        ).fetchone()[0]
+        n_e = 0
+        try:
+            n_e = conn.execute(
+                "SELECT COUNT(*) FROM emerging_quotes WHERE stock_id=?", (sid,)
+            ).fetchone()[0]
+        except Exception:
+            n_e = 0
+        um = ""
+        try:
+            row = conn.execute(
+                "SELECT market_type FROM stock_universe WHERE stock_id=?", (sid,)
+            ).fetchone()
+            um = str(row[0] or "").upper() if row else ""
+        except Exception:
+            um = ""
+        conn.close()
+        if um in ("EM", "EMERGING"):
+            return True
+        return int(n_d or 0) < 5 and int(n_e or 0) >= 5
+    except Exception:
+        return False
+
+
+def listing_industry_face(
+    stock_id: str, db_path: str = None, *, quote_source: str = ""
+) -> str:
+    """上市／上櫃後接官方產業括號。龍頭＝該產業當日成交額第一。一線／二線官方沒這欄，不上。
+
+    卡片走興櫃日均價時市場標必須是興櫃，不准被 daily_quotes 殘列改成上櫃／上市。
+    """
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    listing = ""
+    src = str(quote_source or "").strip()
+    if src == "emerging_quotes" or _uses_emerging_bars(sid, path):
+        listing = "興櫃"
+    else:
+        try:
+            from stock_links import quote_market
+            from wayne_db import listing_zh
+
+            listing = listing_zh(quote_market(sid, path))
+        except Exception:
+            listing = ""
+    industry = card_industry_label(sid, path)
+    face = listing
+    if listing and industry:
+        face = f"{listing}（{industry}）"
+    elif industry:
+        face = f"（{industry}）"
+    if listing != "興櫃" and industry and industry != "ETF":
+        leader = industry_turnover_leader_id(industry, path)
+        if leader and leader == sid:
+            face = f"{face}　龍頭" if face else "龍頭"
+    return face
+
+
 def is_tradable(stock_id: str, stock_name: str = "") -> bool:
     _atype, keep = classify_target(stock_id, stock_name)
     return keep

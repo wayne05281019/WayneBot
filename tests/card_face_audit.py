@@ -223,13 +223,24 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
         except (TypeError, ValueError, KeyError):
             pass
     if str(card.get("quote_source") or "") == "emerging_quotes":
-        if listing and listing != "興櫃":
+        if listing and not listing.startswith("興櫃"):
             out.append(f"興櫃列成 {listing}")
         if "興櫃官方日均價" not in badges:
             out.append("興櫃沒有官方日均價徽章")
         if live:
             out.append("興櫃不該走上市櫃盤中現價")
-    if listing and listing not in ("上市", "上櫃", "興櫃"):
+    if listing and not listing_face_ok(listing):
         out.append(f"市場標異常 {listing}")
     del sid
     return out
+
+
+def listing_face_ok(listing: str) -> bool:
+    """上市／上櫃／興櫃，可接（官方產業）與　龍頭。一線／二線官方沒這欄，不上。"""
+    s = str(listing or "").strip()
+    if not s:
+        return True
+    if "一線" in s or "二線" in s:
+        return False
+    head = s.split("（", 1)[0].split("　", 1)[0]
+    return head in ("上市", "上櫃", "興櫃")
