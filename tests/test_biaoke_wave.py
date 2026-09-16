@@ -116,9 +116,11 @@ def test_format_wave_now_compares_and_turning():
     assert "不是買訊" in text
     assert "位階不講死" in text
     assert "17000" not in text
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    from tests.conftest import has_production_db, production_db_path
+
+    if not has_production_db():
         return
+    db = production_db_path()
     live = format_wave_now(db)
     assert "45839" in live
     assert "47578" in live
@@ -171,20 +173,21 @@ def test_nest_includes_his_degree():
 
 
 def test_twii_degree_chart_when_db_present(tmp_path):
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
-    dest = str(tmp_path / "twii-degree.png")
-    built = build_twii_degree_chart(db, dest)
-    assert built.get("ok")
-    assert os.path.isfile(built.get("path") or "")
-    assert os.path.getsize(built["path"]) > 12_000
-    cap = built.get("caption") or ""
-    assert "不是買訊" in cap
-    assert "如果句" in cap or "還沒確認" in cap
-    assert "45398" in cap
-    assert "給看不懂" not in cap
-    assert "不是一路大B" not in cap
+    from tests.conftest import has_production_db, production_db_path
+
+    if has_production_db():
+        db = production_db_path()
+        dest = str(tmp_path / "twii-degree.png")
+        built = build_twii_degree_chart(db, dest)
+        assert built.get("ok")
+        assert os.path.isfile(built.get("path") or "")
+        assert os.path.getsize(built["path"]) > 12_000
+        cap = built.get("caption") or ""
+        assert "不是買訊" in cap
+        assert "如果句" in cap or "還沒確認" in cap
+        assert "45398" in cap
+        assert "給看不懂" not in cap
+        assert "不是一路大B" not in cap
     src_w = inspect.getsource(__import__("biaoke_wave").render_twii_degree_png)
     assert "日成交量" in src_w
     assert "height_ratios" in src_w

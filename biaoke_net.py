@@ -36,7 +36,28 @@ def family_ids(text: str) -> List[str]:
 
 
 def _keys(ask: str) -> List[str]:
-    return [k for k in re.split(r"[\s,，、]+", ask or "") if k and k not in _SKIP]
+    """空白切開；黏在一起的「南亞科洗盤」也要拆出檔名與方法詞。"""
+    parts = [k for k in re.split(r"[\s,，、]+", ask or "") if k and k not in _SKIP]
+    out: List[str] = []
+    seen: set[str] = set()
+
+    def add(token: str) -> None:
+        t = (token or "").strip()
+        if not t or t in _SKIP or t in seen:
+            return
+        seen.add(t)
+        out.append(t)
+
+    for part in parts:
+        add(part)
+        blob = part
+        for _name, pat in FAMILIES:
+            for m in pat.finditer(blob):
+                hit = m.group(0)
+                add(hit)
+                blob = blob.replace(hit, " ", 1)
+        add(re.sub(r"\s+", "", blob))
+    return out
 
 
 def score_post(post: Dict[str, Any], keys: Sequence[str], ask_families: Sequence[str]) -> int:
