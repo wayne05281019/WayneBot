@@ -525,8 +525,11 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("┈┈┈", html)
             self.assertIn("較前日", html)
             for line in html.split("\n"):
-                if "半導體業" in line or "鋼鐵工業" in line:
+                if line.startswith("＝＝") and ("半導體業" in line or "鋼鐵工業" in line):
                     self.assertNotIn("張", line, line)
+            self.assertIn("上市（半導體業）", html)
+            self.assertNotIn("一線", html)
+            self.assertNotIn("二線", html)
             self.assertIn("+9,970張", html)
             self.assertIn("+8,450張", html)
             self.assertNotIn("</code>張", html)

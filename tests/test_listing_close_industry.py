@@ -99,6 +99,20 @@ def test_listing_face_marks_turnover_leader_not_yi_er_xian(tmp_path):
     assert html_stock_anchor("2330", "台積電", db).endswith("　上市（半導體業）　龍頭")
 
 
+def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
+    from tests.card_face_audit import listing_face_ok
+
+    assert listing_face_ok("上市")
+    assert listing_face_ok("上市（半導體業）")
+    assert listing_face_ok("上市（半導體業）　龍頭")
+    assert listing_face_ok("上市（ETF）")
+    assert listing_face_ok("上櫃（半導體業）")
+    assert listing_face_ok("興櫃（半導體業）")
+    assert not listing_face_ok("一線")
+    assert not listing_face_ok("上市　一線")
+    assert not listing_face_ok("上市（半導體業）一線")
+
+
 def test_midday_line_tags_listing_when_row_has_market():
     row = {
         "stock_id": "4915",
