@@ -77,6 +77,9 @@ def test_health_200_when_process_can_serve(serve):
     assert body["status"] == "healthy"
     assert body["db_ok"] is True
     assert "git_sha" in body
+    assert body["update"] == "更新完成"
+    assert body["update_note"]
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in body["update_note"])
     assert "stt_ok" in body
     assert body["stt_ok"] in (True, False)
     assert "biaoke_live_ok" in body

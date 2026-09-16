@@ -38,6 +38,11 @@ from config import (
     skip_telegram_polling,
     telegram_uid_allowed,
 )
+from phone_update import (
+    phone_code_reply,
+    phone_git_sha,
+    phone_update_notice,
+)
 from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
     init_database,
@@ -120,19 +125,11 @@ def html_escape(val) -> str:
     )
 
 
-def phone_git_sha() -> str:
-    """Render／GHA 注入的 commit。不 import main，避免 bot 啟動環狀依賴。"""
-    for key in ("RENDER_GIT_COMMIT", "GITHUB_SHA"):
-        raw = (os.getenv(key) or "").strip()
-        if raw:
-            return raw[:40]
-    return ""
-
-
-def phone_update_notice(sha: str) -> str:
-    """偉權／哥哥手機同一句：已更新＋短 SHA。"""
-    short = str(sha or "").strip()[:7]
-    return f"已更新 {short}" if short else "已更新"
+def is_phone_code_query(text: str) -> bool:
+    """整句問現在更新代碼。不要把「代碼」當子字去搶查股。"""
+    t = unicodedata.normalize("NFKC", str(text or "").strip())
+    t = t.lower().lstrip("/").replace(" ", "").replace("_", "")
+    return t in {"代碼", "更新代碼", "現在代碼", "版本代碼", "gitsha", "code"}
 
 
 def _notified_sha_path() -> str:
@@ -907,6 +904,7 @@ TELEGRAM_BOT_COMMANDS = (
     ("watch", "觀察"),
     ("flow", "資金移動"),
     ("industry", "產業說明"),
+    ("code", "現在更新說明"),
     ("start", "開始"),
 )
 
@@ -2813,6 +2811,12 @@ class WayneTelegramBot:
             caption="私人備份：持股／觀察／成交／AI倉。放自己電腦或加密雲端，不要上傳 GitHub。",
         )
 
+    async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """偉權／哥哥手機回目前這次更新：國字說明、更新完成、與畫面同一串代碼。"""
+        if not update.message:
+            return
+        await update.message.reply_text(phone_code_reply())
+
     async def menu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
         self._touch_user(uid, getattr(update.effective_user, "first_name", "") or "")
@@ -4690,6 +4694,10 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.backup_cmd(update, context)
             return
+        if is_phone_code_query(text):
+            self._pending.pop(actor, None)
+            await self.code_cmd(update, context)
+            return
         if text == MENU_BTN_BACK_MAIN:
             if str(self._pending.get(actor) or "") in ("biaoke:ask", "biaoke:chat"):
                 await self._leave_biaoke(update.message, uid)
@@ -6412,6 +6420,7 @@ class WayneTelegramBot:
         app.add_handler(CommandHandler("start", self._wrap_cmd(self.start_cmd)))
         app.add_handler(CommandHandler("menu", self._wrap_cmd(self.menu_cmd)))
         app.add_handler(CommandHandler("backup", self._wrap_cmd(self.backup_cmd)))
+        app.add_handler(CommandHandler("code", self._wrap_cmd(self.code_cmd)))
         app.add_handler(CommandHandler("why", self._wrap_cmd(self.why_cmd)))
         app.add_handler(CommandHandler("market", self._wrap_cmd(self.market_cmd)))
         app.add_handler(CommandHandler("help", self._wrap_cmd(self.help_cmd)))

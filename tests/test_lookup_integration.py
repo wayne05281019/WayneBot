@@ -146,7 +146,7 @@ class LookupIntegrationTests(unittest.TestCase):
         user_b = _message(100, 222)
         user_a_busy.reply_text = AsyncMock()
 
-        async def slow_locked(message, code, uid, actor, hits):
+        async def slow_locked(message, code, uid, actor, hits, wait_msg=None, **_k):
             if uid == "111":
                 started.set()
                 await gate.wait()
@@ -160,7 +160,8 @@ class LookupIntegrationTests(unittest.TestCase):
             await task_a
 
         asyncio.run(_run())
-        user_a_busy.reply_text.assert_not_awaited()
+        busy_a = [c for c in user_a_busy.reply_text.await_args_list if "上一檔還在出圖" in str(c)]
+        self.assertEqual(len(busy_a), 0)
         self.assertNotIn(
             "上一檔還在出圖",
             str(user_b.reply_text.await_args_list),
@@ -174,7 +175,7 @@ class LookupIntegrationTests(unittest.TestCase):
         message = _message(100, 111)
         message.reply_text = AsyncMock()
 
-        async def slow_locked(message, code, uid, actor, hits):
+        async def slow_locked(message, code, uid, actor, hits, wait_msg=None, **_k):
             started.set()
             await gate.wait()
 
@@ -195,7 +196,7 @@ class LookupIntegrationTests(unittest.TestCase):
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         photos: dict[str, list] = {"111": [], "222": []}
 
-        async def fake_locked(message, code, uid, actor, hits):
+        async def fake_locked(message, code, uid, actor, hits, wait_msg=None, **_k):
             photos[uid].append(code)
             await asyncio.sleep(0.05)
 
