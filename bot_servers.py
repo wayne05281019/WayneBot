@@ -2335,6 +2335,16 @@ class WayneTelegramBot:
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
             return "\n".join(lines), InlineKeyboardMarkup([[self._q("watch")]])
+        flows = {}
+        try:
+            from money_flow import industry_flows_for_stocks
+
+            flows = industry_flows_for_stocks(
+                self.db_path,
+                [str(r.get("stock_code") or "") for r in shown],
+            )
+        except Exception:
+            flows = {}
         for r in shown:
             c = str(r.get("stock_code") or "")
             n = str(r.get("stock_name") or "")
@@ -2344,6 +2354,9 @@ class WayneTelegramBot:
                 lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
             except Exception:
                 lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
+            flow = str((flows or {}).get(c) or "").strip()
+            if flow:
+                lines.append(html_escape(flow))
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
