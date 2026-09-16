@@ -334,7 +334,11 @@ def test_pointed_calendar_retracts_after_sep16():
     before = _pointed_calendar("", "20260911")
     assert "還在等 9/16" in before
     assert "不是看新聞" in before
-    after = _pointed_calendar("data/wayne_market.db", "20260916")
+    day = _pointed_calendar("", "20260916")
+    assert "還在等 9/16" in day
+    assert "已過" not in day
+    assert "兩個9/16" in day or "只能上不能下" in day
+    after = _pointed_calendar("data/wayne_market.db", "20260917")
     assert "已過" in after
     assert "不准編新聞" in after or "不准編" in after
     assert "回撤" in after
@@ -643,6 +647,8 @@ def test_five_cross_gives_different_insight_per_stock():
     assert "C-3如果句不准改寫成長抱出清" in ef
     assert "跟漲先當轉弱" in cf
     assert "不是C波出清" in cf
+    assert "碎形窗" in cf or "只能上不能下" in cf
+    assert "2天漲1000" not in (chi.get("five") or "")
     assert "頸線" in sf or "底部" in sf
     assert "還沒轉折K" in sf
     assert "止漲整理K" in af
@@ -651,6 +657,8 @@ def test_five_cross_gives_different_insight_per_stock():
     assert "36000" in mf
     assert "5%" in mf or "微乎其微" in mf
     assert "沒表態" in mf or "高檔震盪" in mf
+    assert "不是9/16日盤" in mf or "周四" in mf
+    assert "兩個9/16" in mf or "Fed" in mf
     clips = [_view_line(n) for n in NEURON_IDS]
     assert len({c for c in clips if c}) == 6
     assert not all("46767" in c for c in clips)
@@ -759,3 +767,25 @@ def test_five_cross_wash_is_not_turn_and_36000_not_43500():
         it = iet.get("five") or iet["think"]
         assert "洗盤" in it
         assert "轉折K" not in it or "不是轉折K" in it
+    chi = fire_chain("", "奇鋐怎麼看")
+    cf = chi.get("five") or chi["think"]
+    hold_c = next(s for s in chi["steps"] if s["id"] == "hold")["text"]
+    assert "碎形窗" in cf or "只能上不能下" in cf
+    assert "2天漲1000" not in hold_c.split("他的說法")[0]
+    jian = fire_chain("", "健策怎麼看")
+    jf = jian.get("five") or jian["think"]
+    assert "2周" in jf or "2 周" in jf
+    yong = fire_chain("", "雍智怎麼看")
+    yf = yong.get("five") or yong["think"]
+    assert "整理完成" in yf or "時間問題" in yf
+    assert "轉折K" not in yf or "不是轉折K" in yf
+    probe = fire_chain("", "精測怎麼看")
+    pf = probe.get("five") or probe["think"]
+    assert "洗盤" in pf
+    wei = fire_chain("", "穎崴怎麼看")
+    wf = wei.get("five") or wei["think"]
+    assert "時間問題" in wf
+    assert "出清" in wf
+    yao = fire_chain("", "台燿怎麼看")
+    yao_f = yao.get("five") or yao["think"]
+    assert "台光電表態" in yao_f or "等台光電" in yao_f
