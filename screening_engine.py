@@ -1157,6 +1157,8 @@ def _stock_card_html(
         notices.append(_hot("重點觀察"))
     if item.get("at_60_low") and not item.get("golden_buy"):
         notices.append(_hot("60低"))
+    if item.get("beta_downweighted"):
+        notices.append(html_escape("高β已降權"))
     if item.get("sector_inflow"):
         notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
     elif item.get("sector_outflow"):
