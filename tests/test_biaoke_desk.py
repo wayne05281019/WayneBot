@@ -7,6 +7,7 @@ from bot_servers import (
     MENU_BTN_SLOT,
     MENU_ROW1,
     MENU_ROW2,
+    TELEGRAM_BOT_COMMANDS,
     _normalize_menu_text,
     WayneTelegramBot,
 )
@@ -451,7 +452,9 @@ def test_biaoke_dayk_callback_sends_structure_not_card():
 
 def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     from bot_servers import (
+        is_phone_code_query,
         notified_sha_is,
+        phone_code_reply,
         phone_git_sha,
         phone_update_notice,
         remember_notified_sha,
@@ -461,7 +464,7 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
     sha = "abc123def4567890"
-    assert phone_update_notice(sha) == "已更新 abc123d"
+    assert phone_update_notice(sha) == "已更新\ngit_sha abc123def4567890"
     assert phone_update_notice("") == "已更新"
     assert not notified_sha_is(sha)
     remember_notified_sha(sha)
@@ -471,9 +474,23 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     assert phone_git_sha() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    assert phone_code_reply() == "git_sha ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    assert phone_update_notice(phone_git_sha()) == "已更新\ngit_sha ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    import main as main_mod
+
+    assert phone_git_sha() == main_mod._code_revision()
     src = __import__("inspect").getsource(WayneTelegramBot.run_polling)
     assert "_notify_phones_updated" in src
     assert should_notify_phone_update(sha) is False  # pytest 當下不准真送
+    assert is_phone_code_query("代碼")
+    assert is_phone_code_query("/code")
+    assert is_phone_code_query("git_sha")
+    assert is_phone_code_query("更新代碼")
+    assert not is_phone_code_query("2330")
+    assert not is_phone_code_query("代碼2330")
+    assert not is_phone_code_query("版本")
+    names = [name for name, _desc in TELEGRAM_BOT_COMMANDS]
+    assert "code" in names
 
 
 def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):
@@ -501,6 +518,46 @@ def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):
     monkeypatch.setattr("bot_servers.should_notify_phone_update", lambda *_a, **_k: False)
     asyncio.run(bot._notify_phones_updated(app))
     app.bot.send_message.assert_not_awaited()
+    notice = phone_update_notice("cafebabedeadbeef1234567890")
+    assert "cafebabedeadbeef1234567890" in notice
+    assert notice.startswith("已更新")
+    assert "git_sha " in notice
+
+
+def test_code_cmd_replies_same_sha_as_health(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import WayneTelegramBot, is_phone_code_query, phone_code_reply
+
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    import main as main_mod
+
+    expected = f"git_sha {main_mod._code_revision()}"
+    assert phone_code_reply() == expected
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._touch_user = MagicMock()
+    msg = MagicMock()
+    msg.reply_text = AsyncMock()
+    msg.chat_id = 99
+    msg.chat = SimpleNamespace(id=99)
+    msg.from_user = SimpleNamespace(id=9001, first_name="w")
+    update = SimpleNamespace(message=msg, effective_user=msg.from_user)
+    asyncio.run(bot.code_cmd(update, MagicMock()))
+    assert msg.reply_text.await_args.args[0] == expected
+    bot.code_cmd = AsyncMock()
+    asyncio.run(bot._on_text_bound(update, MagicMock(), raw="代碼", text="代碼", uid="9001"))
+    bot.code_cmd.assert_awaited()
+    bot.code_cmd.reset_mock()
+    asyncio.run(bot._on_text_bound(update, MagicMock(), raw="/code", text="/code", uid="9003"))
+    bot.code_cmd.assert_awaited()
+    assert is_phone_code_query("現在代碼")
+    assert not is_phone_code_query("2330")
 
 
 def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
