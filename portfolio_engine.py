@@ -608,6 +608,36 @@ class PortfolioEngine:
             )
         ids = [str(h.get("stock_code") or h.get("stock_id") or "") for h in holdings]
         quotes_map = self.load_quotes_for(ids, quotes_map)
+        flow_maps = None
+        flow_stamp = ""
+        industries: Dict[str, str] = {}
+        try:
+            from money_flow import (
+                industry_flow_from_maps,
+                industry_of,
+                resolve_flow_as_of,
+                sector_flow_maps,
+            )
+
+            ymd, _lag = resolve_flow_as_of(self.db_path)
+            ymd = str(ymd or "").replace("-", "")[:8]
+            if ymd:
+                flow_maps = sector_flow_maps(self.db_path, ymd)
+                try:
+                    from trading_calendar import format_trading_date_zh
+
+                    flow_stamp = format_trading_date_zh(ymd) or ymd
+                except Exception:
+                    flow_stamp = ymd
+                conn = sqlite3.connect(self.db_path)
+                try:
+                    for sid in ids:
+                        if sid:
+                            industries[sid] = industry_of(conn, sid)
+                finally:
+                    conn.close()
+        except Exception:
+            flow_maps = None
         sell_notes = {}
         readings = {}
         try:
@@ -659,6 +689,15 @@ class PortfolioEngine:
                 lines.append(kv_html_compact("現價", html_price(last, compact=True)))
             lines.append(kv_html_compact("未實現", html_num_paren(_plain_num(u_pnl, signed=True), u_pct, compact=True)))
             lines.append(kv_html_compact("市值", html_money(mkt, signed=False, compact=True)))
+            if flow_maps is not None:
+                try:
+                    flow = industry_flow_from_maps(
+                        flow_maps, industries.get(code) or "", flow_stamp
+                    )
+                except Exception:
+                    flow = ""
+                if flow:
+                    lines.append(html_escape(flow))
             note = sell_notes.get(code) or ""
             if note:
                 lines.append(kv_compact("紀律", note))

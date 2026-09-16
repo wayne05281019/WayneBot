@@ -431,8 +431,30 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
         conn.close()
 
 
+def industry_flow_from_maps(maps: Optional[Dict[str, Any]], industry: str, stamp: str) -> str:
+    """同一套 overlay 句。maps 算一次就能套查股／持股。"""
+    ind = str(industry or "").strip()
+    if not maps or not ind or ind in {"ETF", "未分類"}:
+        return ""
+    just = maps.get("just_rotated") or {}
+    inflow = maps.get("inflow") or {}
+    outflow = maps.get("outflow") or {}
+    if ind in just:
+        core = f"{ind}剛輪進"
+    elif ind in inflow:
+        core = f"{ind}在流入前段"
+    elif ind in outflow:
+        core = f"{ind}在流出前段"
+    else:
+        return ""
+    mark = str(stamp or "").strip()
+    if mark:
+        return f"官方法人 overlay：{core}（截至 {mark}）。"
+    return f"官方法人 overlay：{core}。"
+
+
 def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
-    """查股 overlay：這檔產業當日官方法人剛輪進／流出。不改溫度／買賣格。"""
+    """查股／持股 overlay：這檔產業當日官方法人剛輪進／流出。"""
     ind = str(industry or "").strip()
     if not db_path or not ind or ind in {"ETF", "未分類"}:
         return ""
@@ -449,17 +471,6 @@ def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
         maps = sector_flow_maps(db_path, key)
     except Exception:
         return ""
-    just = maps.get("just_rotated") or {}
-    inflow = maps.get("inflow") or {}
-    outflow = maps.get("outflow") or {}
-    if ind in just:
-        core = f"{ind}剛輪進"
-    elif ind in inflow:
-        core = f"{ind}在流入前段"
-    elif ind in outflow:
-        core = f"{ind}在流出前段"
-    else:
-        return ""
     stamp = key
     try:
         from trading_calendar import format_trading_date_zh
@@ -467,7 +478,7 @@ def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
         stamp = format_trading_date_zh(key) or key
     except Exception:
         stamp = key
-    return f"官方法人 overlay：{core}（截至 {stamp}）。不改溫度／買賣格。"
+    return industry_flow_from_maps(maps, ind, stamp)
 
 
 def industry_flow_tag(note: str) -> str:

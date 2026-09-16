@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股介紹圖／決策卡：產業法人 overlay。不改溫度／買賣格。"""
+"""查股介紹圖／決策卡／持股：產業法人 overlay。"""
 from __future__ import annotations
 
 import inspect
@@ -76,7 +76,8 @@ class LookupIndustryFlowTests(unittest.TestCase):
         just = industry_flow_overlay(self.path, "半導體業", "20260828")
         self.assertIn("半導體業剛輪進", just)
         self.assertIn("官方法人 overlay", just)
-        self.assertIn("不改溫度／買賣格", just)
+        self.assertNotIn("不改溫度", just)
+        self.assertNotIn("買賣格", just)
         self.assertIn("2026/08/28（五）", just)
         stay = industry_flow_overlay(self.path, "電腦及週邊設備業", "20260828")
         self.assertIn("電腦及週邊設備業在流入前段", stay)
@@ -105,6 +106,8 @@ class LookupIndustryFlowTests(unittest.TestCase):
         out = attach_industry_flow(card, self.path, ymd="20260828")
         self.assertIs(out, card)
         self.assertIn("半導體業剛輪進", card["industry_flow"])
+        self.assertNotIn("不改溫度", card["industry_flow"])
+        self.assertNotIn("買賣格", card["industry_flow"])
         self.assertEqual(card["temp_c"], "36.0 °C")
         self.assertEqual(card["stance"], "今天先看表，先等")
         self.assertEqual(card["stance_kind"], "wait")
@@ -145,6 +148,40 @@ class LookupIndustryFlowTests(unittest.TestCase):
         self.assertIn("chip_block", flow_bit)
         self.assertNotIn("pink_warning", flow_bit)
         self.assertNotIn("sell_action", flow_bit)
+
+    def test_holdings_html_overlay_not_in_discipline(self):
+        from unittest.mock import patch
+
+        from portfolio_engine import PortfolioEngine
+
+        eng = PortfolioEngine(self.path)
+        with patch("money_flow.resolve_flow_as_of", return_value=("20260828", None)):
+            html = eng.format_holdings_html(
+                [
+                    {"stock_code": "2330", "stock_name": "台積電", "shares": 1, "cost_price": 100},
+                    {"stock_code": "2002", "stock_name": "中鋼", "shares": 1, "cost_price": 30},
+                    {"stock_code": "0050", "stock_name": "元大台灣50", "shares": 1, "cost_price": 150},
+                ],
+                quotes_map={
+                    "2330": {"close": 110, "pct_change": 1.0},
+                    "2002": {"close": 29, "pct_change": -1.0},
+                    "0050": {"close": 151, "pct_change": 0.2},
+                },
+            )
+        self.assertIn("半導體業剛輪進", html)
+        self.assertIn("鋼鐵工業在流出前段", html)
+        self.assertEqual(html.count("官方法人 overlay"), 2)
+        self.assertNotIn("不改溫度", html)
+        self.assertNotIn("買賣格", html)
+        self.assertIn("未實現", html)
+        self.assertIn("市值", html)
+        hold_src = inspect.getsource(PortfolioEngine.format_holdings_html)
+        self.assertIn("industry_flow_from_maps", hold_src)
+        disc_idx = hold_src.find('kv_compact("紀律"')
+        flow_idx = hold_src.find("industry_flow_from_maps")
+        self.assertGreater(disc_idx, 0)
+        self.assertGreater(flow_idx, 0)
+        self.assertLess(flow_idx, disc_idx)
 
 
 if __name__ == "__main__":
