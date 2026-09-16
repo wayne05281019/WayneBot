@@ -1,6 +1,6 @@
 """手機 Telegram 與畫面 /health 同一份更新說明。
 
-國字敘述這次改了什麼，並標「更新完成」。git_sha 與畫面同一串。
+第一行是這次功能名＋「的更新」，第二行「全數完成」。git_sha 與畫面同一串。
 """
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ import os
 import re
 import subprocess
 
-UPDATE_DONE = "更新完成"
+UPDATE_DONE = "全數完成"
+_TITLE_TAIL = "的更新"
 _NOTE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone_update_note.txt")
 _COMMIT_PREFIX = re.compile(
     r"^(feat|fix|docs|test|chore|refactor|perf|build|ci)(\([^)]+\))?:\s*",
@@ -38,7 +39,7 @@ def _clean_note(raw: str) -> str:
 
 
 def phone_update_note() -> str:
-    """這次更新的國字一句。檔案優先，沒有再讀 git 標題。"""
+    """這次更新的功能名。檔案優先，沒有再讀 git 標題。"""
     env = _clean_note(os.getenv("WAYNE_UPDATE_NOTE") or "")
     if env and _has_han(env):
         return env
@@ -65,11 +66,22 @@ def phone_update_note() -> str:
     return ""
 
 
-def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> list[str]:
-    lines = [UPDATE_DONE]
+def phone_update_title(note: str | None = None) -> str:
+    """手機第一行：功能名的更新。檔裡已寫「的更新」就不再加。"""
     n = _clean_note(note if note is not None else phone_update_note())
-    if n:
-        lines.append(n)
+    if not n:
+        return ""
+    if n.endswith(_TITLE_TAIL):
+        return n
+    return f"{n}{_TITLE_TAIL}"
+
+
+def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> list[str]:
+    lines: list[str] = []
+    title = phone_update_title(note)
+    if title:
+        lines.append(title)
+    lines.append(UPDATE_DONE)
     full = str(sha if sha is not None else phone_git_sha() or "").strip()[:40]
     if full:
         lines.append(f"git_sha {full}")
@@ -77,7 +89,7 @@ def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> li
 
 
 def phone_update_notice(sha: str, *, note: str | None = None) -> str:
-    """偉權／哥哥手機與畫面同一份：更新完成＋國字說明＋完整 SHA。"""
+    """偉權／哥哥手機與畫面同一份：功能名的更新＋全數完成＋完整 SHA。"""
     return "\n".join(phone_update_lines(sha, note=note))
 
 
@@ -92,5 +104,5 @@ def phone_health_fields(sha: str | None = None) -> dict:
     return {
         "git_sha": full,
         "update": UPDATE_DONE,
-        "update_note": phone_update_note(),
+        "update_note": phone_update_title(),
     }
