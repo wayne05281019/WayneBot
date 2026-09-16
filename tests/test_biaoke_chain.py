@@ -22,11 +22,14 @@ def test_system_requires_neuron_chain():
     assert "演算" in SYSTEM
     assert "不是預測保證" in SYSTEM or "不是保證" in SYSTEM
     assert "重讀" in SYSTEM
+    assert "開口｜" in SYSTEM or "開口第一句" in SYSTEM
 
 
 def test_chain_six_neurons_in_order_for_emc():
     notes = format_chain_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "神經元鏈" in notes
+    assert notes.startswith("開口｜") or "開口｜" in notes[:80]
+    assert "不是買訊" in notes.split("\n", 1)[0]
     assert chain_order_ok(notes)
     fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
     assert fired["sid"] == "2383"
@@ -847,3 +850,31 @@ def test_nest_skips_incomplete_index_bar(tmp_path, monkeypatch):
     assert "45511" in nest or "45492" in nest
     assert "45398" in nest
     assert "如果句" in nest
+
+
+def test_five_lead_is_first_sentence_with_if_and_unclosed():
+    from biaoke_chain import attach_five_lead, format_five_lead
+    from biaoke_brain import OFFTOPIC, answer_biaoke
+
+    mkt = fire_chain("", "45398 怎麼看")
+    lead = mkt.get("lead") or format_five_lead(mkt)
+    assert "如果句" in lead
+    assert "未收" in lead
+    assert "不是買訊" in lead
+    assert "C-5" in lead or "45398" in lead
+    notes = format_chain_notes("", "45398 怎麼看")
+    assert notes.startswith("開口｜")
+    html = attach_five_lead("後面細節。", "", "45398 怎麼看")
+    assert html.startswith(lead[:12]) or "如果句" in html[:80]
+    assert html.index("如果句") < html.index("後面細節")
+    emc = fire_chain("", "台光電怎麼看")
+    el = emc.get("lead") or ""
+    assert "強勢整理" in el or "續抱" in el or "沒破線" in el
+    assert "不是買訊" in el
+    assert answer_biaoke(":memory:", "你好") == "在，你說。"
+    assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
+    from biaoke_digest import format_latest_focus
+
+    focus = format_latest_focus("")
+    assert "如果句" in focus or "未收" in focus
+    assert "不是買訊" in focus

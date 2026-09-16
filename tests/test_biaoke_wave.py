@@ -138,7 +138,8 @@ def test_blank_focus_leads_with_degree():
     assert "產業趨勢" in html
     assert "現在波浪位階" in html
     assert "位階他不講死" not in html
-    assert len(html) < 2800
+    assert "如果句" in html or "未收" in html
+    assert len(html) < 3000
 
 
 def test_nest_includes_his_degree():

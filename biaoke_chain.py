@@ -1492,9 +1492,65 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
     return _clip("".join(parts), 560)
 
 
+_FIRE_CACHE: Dict[Tuple[str, str, str], Tuple[float, Dict[str, Any]]] = {}
+_HI_ASK = re.compile(r"^(你好|哈囉|嗨|在嗎|hello)[。！!？\s]*$", re.I)
+
+
+def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
+    """話筒開口第一句：五件交叉收成一句，並標未收／如果句。"""
+    fired = fired or {}
+    five = " ".join(str(fired.get("five") or "").split())
+    nest = ""
+    for step in fired.get("steps") or []:
+        if str(step.get("id") or "") == "nest":
+            nest = str(step.get("text") or "")
+            break
+    blob = five + nest + str(fired.get("think") or "")
+    core = re.sub(r"五件交叉：", "", five)
+    parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
+    core = "。".join(parts[:2]) if parts else ""
+    if not core:
+        core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
+    core = _clip(core, 140).rstrip("。…")
+    flags: List[str] = []
+    if any(k in blob for k in ("如果句", "未確認", "還是如果")):
+        flags.append("如果句")
+    if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收")):
+        flags.append("未收")
+    flags.append("不是買訊")
+    return core + "。〔" + "／".join(flags) + "〕"
+
+
+def attach_five_lead(html: str, db_path: str, ask: str, uid: str = "") -> str:
+    """回覆最前鎖一句五件結論。已經有開口句就不再貼。"""
+    q = (ask or "").strip()
+    raw = str(html or "")
+    if not q or not raw or _HI_ASK.match(q):
+        return raw
+    fired = fire_chain(db_path, q, uid=uid)
+    lead = format_five_lead(fired)
+    if not lead:
+        return raw
+    plain = re.sub(r"<[^>]+>", "", raw)
+    if lead[:18] in plain[:220]:
+        return raw
+    try:
+        from tg_layout import html_escape
+
+        head = html_escape(lead)
+    except Exception:
+        head = lead
+    return head + "\n\n" + raw
+
+
 def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
     """對一句問話開火。uid 只讀這人持股，不改倉、不看別人倉。偉權哥哥功能全同。"""
     q = (ask or "").strip()
+    key = (str(db_path or ""), q, str(uid or ""))
+    now = time.time()
+    hit = _FIRE_CACHE.get(key)
+    if hit and now - hit[0] < 12:
+        return hit[1]
     sid, name = _resolve_sid(db_path, q)
     named = bool(sid)
     brief: Dict[str, Any] = {}
@@ -1545,15 +1601,21 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
             body = str(step.get("text") or "")
             if five[:18] not in body:
                 step["text"] = _clip(five + " " + body, 900)
-    return {
+    think = _think(steps, sid, name)
+    out = {
         "sid": sid,
         "name": name,
         "named": named,
         "steps": steps,
         "five": five,
-        "think": _think(steps, sid, name),
+        "think": think,
         "firm": bool((brief.get("audit") or {}).get("firm")),
     }
+    out["lead"] = format_five_lead(out)
+    if len(_FIRE_CACHE) > 4:
+        _FIRE_CACHE.clear()
+    _FIRE_CACHE[key] = (now, out)
+    return out
 
 
 def _reread_block() -> str:
@@ -1580,7 +1642,9 @@ def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
     if not q:
         return ""
     fired = fire_chain(db_path, q, uid=uid)
+    lead = str(fired.get("lead") or format_five_lead(fired))
     lines = [
+        "開口｜" + lead,
         "神經元鏈（必須按 1→6 串成一句推論，不准只抽一顆關鍵字答完；缺的標缺，不准編）："
     ]
     for i, step in enumerate(fired.get("steps") or [], 1):

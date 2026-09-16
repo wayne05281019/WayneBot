@@ -391,6 +391,14 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
         out.append(infer)
     if asks:
         out.append("你可能會問：" + "　".join(asks))
+    try:
+        from biaoke_chain import fire_chain, format_five_lead
+
+        lead = format_five_lead(fire_chain(db_path, "大盤現在"))
+        if lead:
+            out.insert(0, lead)
+    except Exception:
+        pass
     out.append("直接打字或語音。不是買訊。")
     return html_escape("\n\n".join(out))
 

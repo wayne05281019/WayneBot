@@ -618,6 +618,15 @@ def answer_biaoke(
     picker = stock_picker_hits(db_path, q)
     if picker:
         return format_stock_picker_html(picker)
+
+    def _done(html: str) -> str:
+        try:
+            from biaoke_chain import attach_five_lead
+
+            return attach_five_lead(html, db_path, q, uid)
+        except Exception:
+            return html
+
     try:
         from biaoke_live import live_enabled, live_reply
 
@@ -641,7 +650,7 @@ def answer_biaoke(
     if is_desk_query(q):
         from biaoke_desk import format_biaoke_html
 
-        return format_biaoke_html(q)
+        return _done(format_biaoke_html(q))
 
     fuse_html = ""
     try:
@@ -722,7 +731,7 @@ def answer_biaoke(
         if cite:
             chunks.append(cite)
         chunks.append(DISCLAIMER)
-        return "\n\n".join(chunks)
+        return _done("\n\n".join(chunks))
 
     if trace:
         cite = _cite_posts(posts)
@@ -739,19 +748,19 @@ def answer_biaoke(
                 mkt=_load_mkt(db_path),
                 night=_load_night(db_path),
             )
-        return "\n\n".join(x for x in (trace, extra, methods, cite, DISCLAIMER) if x)
+        return _done("\n\n".join(x for x in (trace, extra, methods, cite, DISCLAIMER) if x))
 
     if fuse_html and not hits:
         cite = _cite_posts(posts)
-        return "\n\n".join(x for x in (fuse_html, methods, cite, DISCLAIMER) if x)
+        return _done("\n\n".join(x for x in (fuse_html, methods, cite, DISCLAIMER) if x))
 
     if sox_html and not hits:
         cite = _cite_posts(posts)
-        return "\n\n".join(x for x in (sox_html, methods, cite, DISCLAIMER) if x)
+        return _done("\n\n".join(x for x in (sox_html, methods, cite, DISCLAIMER) if x))
 
     if methods and not hits and not want_mkt:
         cite = _cite_posts(posts)
-        return "\n\n".join(x for x in (methods, cite, DISCLAIMER) if x)
+        return _done("\n\n".join(x for x in (methods, cite, DISCLAIMER) if x))
 
     if want_mkt or not hits:
         if want_mkt or re.search(r"(止跌|連跌|美股|台股|大盤|費半)", q):
@@ -767,8 +776,8 @@ def answer_biaoke(
                 night=_load_night(db_path),
             )
             cite = _cite_posts(posts)
-            return "\n\n".join(x for x in (body, cite, DISCLAIMER) if x)
+            return _done("\n\n".join(x for x in (body, cite, DISCLAIMER) if x))
         if posts:
-            return "\n\n".join(x for x in (methods, _cite_posts(posts), DISCLAIMER) if x)
-        return "這句我沒對到檔。你直接說股名或大盤就好，也可以接著上一句問。\n" + DISCLAIMER
+            return _done("\n\n".join(x for x in (methods, _cite_posts(posts), DISCLAIMER) if x))
+        return _done("這句我沒對到檔。你直接說股名或大盤就好，也可以接著上一句問。\n" + DISCLAIMER)
     return DISCLAIMER
