@@ -38,6 +38,11 @@ from config import (
     skip_telegram_polling,
     telegram_uid_allowed,
 )
+from phone_update import (
+    phone_code_reply,
+    phone_git_sha,
+    phone_update_notice,
+)
 from lookup_fuzzy import hits_need_picker, lookup_picker_lead
 from wayne_db import (
     init_database,
@@ -118,27 +123,6 @@ def html_escape(val) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-
-
-def phone_git_sha() -> str:
-    """Render／GHA 注入的 commit。不 import main，避免 bot 啟動環狀依賴。"""
-    for key in ("RENDER_GIT_COMMIT", "GITHUB_SHA"):
-        raw = (os.getenv(key) or "").strip()
-        if raw:
-            return raw[:40]
-    return ""
-
-
-def phone_code_reply(sha: str | None = None) -> str:
-    """隨時查目前這顆程式的代碼，與 /health 的 git_sha 同一串。"""
-    full = str(sha if sha is not None else phone_git_sha() or "").strip()[:40]
-    return f"git_sha {full}" if full else "還沒有更新代碼"
-
-
-def phone_update_notice(sha: str) -> str:
-    """偉權／哥哥手機同一句：已更新＋完整 SHA，與 /health git_sha 同一串。"""
-    full = str(sha or "").strip()[:40]
-    return f"已更新\n{phone_code_reply(full)}" if full else "已更新"
 
 
 def is_phone_code_query(text: str) -> bool:
@@ -920,7 +904,7 @@ TELEGRAM_BOT_COMMANDS = (
     ("watch", "觀察"),
     ("flow", "資金移動"),
     ("industry", "產業說明"),
-    ("code", "現在更新代碼"),
+    ("code", "現在更新說明"),
     ("start", "開始"),
 )
 
@@ -2828,7 +2812,7 @@ class WayneTelegramBot:
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """偉權／哥哥手機回目前這顆程式的代碼，與 /health git_sha 同一串。"""
+        """偉權／哥哥手機回目前這次更新：國字說明、更新完成、與畫面同一串代碼。"""
         if not update.message:
             return
         await update.message.reply_text(phone_code_reply())

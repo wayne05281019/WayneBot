@@ -227,6 +227,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "uptime_s": live.get("uptime_s"),
                 "boot_grace_s": _boot_grace_seconds(),
                 "git_sha": _code_revision(),
+                "update": "更新完成",
+                "update_note": "",
                 "stt_ok": False,
                 "biaoke_live_ok": False,
                 "cmoney_ok": False,
@@ -248,6 +250,13 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "polling_age_s": live.get("polling_age_s"),
                 "serving_reasons": live.get("serving_reasons") or [],
             }
+            try:
+                from phone_update import phone_health_fields
+
+                payload.update(phone_health_fields(_code_revision()))
+            except Exception:
+                payload["update"] = "更新完成"
+                payload["update_note"] = str(payload.get("update_note") or "")
             # 庫還沒可讀才略過資料欄。可讀時用便宜查詢填 latest_complete，
             # 絕不在健檢路徑跑 run_automation_audit（會超過 Render 5s）。
             if live.get("booting") and not live.get("db_ok"):

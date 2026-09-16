@@ -460,12 +460,16 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
         remember_notified_sha,
         should_notify_phone_update,
     )
+    from phone_update import UPDATE_DONE, phone_health_fields, phone_update_note
 
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
+    note = phone_update_note()
+    assert note
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in note)
     sha = "abc123def4567890"
-    assert phone_update_notice(sha) == "已更新\ngit_sha abc123def4567890"
-    assert phone_update_notice("") == "已更新"
+    assert phone_update_notice(sha) == f"{UPDATE_DONE}\n{note}\ngit_sha abc123def4567890"
+    assert phone_update_notice("") == f"{UPDATE_DONE}\n{note}"
     assert not notified_sha_is(sha)
     remember_notified_sha(sha)
     assert (tmp_path / ".wayne_notified_sha").read_text(encoding="utf-8").strip() == sha
@@ -474,8 +478,13 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     assert phone_git_sha() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
-    assert phone_code_reply() == "git_sha ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
-    assert phone_update_notice(phone_git_sha()) == "已更新\ngit_sha ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    expected = f"{UPDATE_DONE}\n{note}\ngit_sha ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    assert phone_code_reply() == expected
+    assert phone_update_notice(phone_git_sha()) == expected
+    health = phone_health_fields()
+    assert health["update"] == UPDATE_DONE
+    assert health["update_note"] == note
+    assert health["git_sha"] == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
     import main as main_mod
 
     assert phone_git_sha() == main_mod._code_revision()
@@ -520,8 +529,9 @@ def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):
     app.bot.send_message.assert_not_awaited()
     notice = phone_update_notice("cafebabedeadbeef1234567890")
     assert "cafebabedeadbeef1234567890" in notice
-    assert notice.startswith("已更新")
+    assert notice.startswith("更新完成")
     assert "git_sha " in notice
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in notice)
 
 
 def test_code_cmd_replies_same_sha_as_health(tmp_path, monkeypatch):
@@ -530,6 +540,7 @@ def test_code_cmd_replies_same_sha_as_health(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
 
     from bot_servers import WayneTelegramBot, is_phone_code_query, phone_code_reply
+    from phone_update import UPDATE_DONE, phone_update_note
 
     monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
     monkeypatch.delenv("DB_PATH", raising=False)
@@ -537,7 +548,9 @@ def test_code_cmd_replies_same_sha_as_health(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     import main as main_mod
 
-    expected = f"git_sha {main_mod._code_revision()}"
+    expected = (
+        f"{UPDATE_DONE}\n{phone_update_note()}\ngit_sha {main_mod._code_revision()}"
+    )
     assert phone_code_reply() == expected
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._pending = {}
