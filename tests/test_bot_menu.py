@@ -34,7 +34,7 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_MARKET == "大盤"
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_REPORT == "回報"
-    assert MENU_LAYOUT_VERSION == "21"
+    assert MENU_LAYOUT_VERSION == "22"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -82,7 +82,7 @@ def test_help_guide_covers_all_main_buttons():
         "AI模擬倉",
         "AI操盤",
         "飆客",
-        "剛離零",
+        "剛脫離零",
     ):
         assert label in guide
     assert "預留" not in guide
@@ -469,11 +469,11 @@ def test_screening_progress_text():
 
     start = WayneTelegramBot._screening_progress_text(0)
     assert "海選進行中" in start
-    assert "┌" in start
+    assert "＋" in start
     assert "好了這則會消失" in start
     body = WayneTelegramBot._screening_progress_text(45)
-    assert "45 秒" in body
-    assert "▓" in body
+    assert "４５　秒" in body or "45" in body
+    assert "＝" in body
     assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
 

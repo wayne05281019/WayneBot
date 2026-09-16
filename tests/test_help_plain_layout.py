@@ -136,7 +136,7 @@ def test_row2_help_page_explains_help_button():
     assert "① 說明" in row1
     assert "⑦ 飆大" in row1
     assert "⑥ 連買區" in row2
-    assert "⑦ 剛離零" in row2
+    assert "⑦ 剛脫離零" in row2
     assert row2.index("① 大盤") < row2.index("⑥ 連買區")
     assert "/help" in row1
     assert "按錯" in row1

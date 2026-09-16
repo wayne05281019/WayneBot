@@ -698,15 +698,7 @@ def answer_biaoke(
                 body = judged
         except Exception:
             pass
-        cite = _cite_posts(posts)
         extra = ""
-        walk = ""
-        try:
-            from biaoke_walk import format_stock_walk
-
-            walk = format_stock_walk(db_path, sid, name=str(hit.get("stock_name") or ""))
-        except Exception:
-            walk = ""
         if want_mkt:
             twii = load_index_bars(db_path)
             tsmc = volume_first_price(load_bars(db_path, "2330"))
@@ -733,10 +725,6 @@ def answer_biaoke(
         chunks.append(body)
         if extra:
             chunks.append(extra)
-        if walk:
-            chunks.append(walk)
-        if cite:
-            chunks.append(cite)
         chunks.append(DISCLAIMER)
         return _done("\n\n".join(chunks))
 

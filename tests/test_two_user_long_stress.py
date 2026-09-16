@@ -152,7 +152,7 @@ def _bot(db: str) -> WayneTelegramBot:
     bot.flow_cmd = _bind_hit(hits, "資金")
     bot.daytrade_cmd = _bind_hit(hits, "當沖")
     bot.overnight_cmd = _bind_hit(hits, "隔日沖")
-    bot.leave_zero_cmd = _bind_hit(hits, "剛離零")
+    bot.leave_zero_cmd = _bind_hit(hits, "剛脫離零")
     bot.streak_cmd = _bind_hit(hits, "連買區")
     bot.menu_cmd = _bind_hit(hits, "選單")
 
@@ -356,7 +356,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛離零"):
+        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

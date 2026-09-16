@@ -35,7 +35,7 @@ MENU_BUTTONS = [
     (MENU_BTN_REPORT, "report_cmd"),
     ("飆客", "_send_biaoke_page"),
     (MENU_BTN_BIAOKE_FACE, "_send_biaoke_page"),
-    ("剛離零", "leave_zero_cmd"),
+    ("剛脫離零", "leave_zero_cmd"),
 ]
 
 

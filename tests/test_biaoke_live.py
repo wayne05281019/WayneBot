@@ -192,6 +192,8 @@ def test_live_notes_reverse_think_emc_hold():
     assert "融會貫通" in SYSTEM
     assert "自問" in SYSTEM
     assert "不是介紹圖" in SYSTEM
+    assert "不要貼舊文" in SYSTEM
+    assert "不要寫「他自己最新」" in SYSTEM or "他自己最新" in SYSTEM
     assert "出貨" in SYSTEM
     assert "量先價行" in SYSTEM
     assert "不是15分" in SYSTEM

@@ -207,3 +207,17 @@ def test_stock_picker_hits_ambiguous_name_not_ticker(tmp_path, monkeypatch):
     assert "點下面一檔再問飆大" in ans
     assert "1303" in ans
     assert "2408" in ans
+
+
+def test_stock_answer_skips_old_quote_dump():
+    import inspect
+
+    src = inspect.getsource(answer_biaoke)
+    stock_bit = src.split("if hits and (stock_like")[1].split("if trace:")[0]
+    assert "_cite_posts" not in stock_bit
+    assert "format_stock_walk" not in stock_bit
+    from bot_servers import WayneTelegramBot
+
+    page = inspect.getsource(WayneTelegramBot._send_biaoke_page)
+    assert "_send_biaoke_origin_charts" not in page
+    assert page.index("_start_plain_wait") < page.index("stock_picker_hits")

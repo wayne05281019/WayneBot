@@ -1610,6 +1610,9 @@ def stock_display_glance(
             long_ok = False
     if not long_ok:
         g.pop("hold", None)
+    for k, v in list(g.items()):
+        if "他自己最新" in str(v or ""):
+            g.pop(k, None)
     return g
 
 
@@ -2376,12 +2379,9 @@ def chart_caption(
     if extras:
         head = f"{head}　{extras}".strip()
     lines = [
-        f"{head}　官方日K量先價行（不是15分、不是介紹圖／決策卡）".strip(),
+        f"{head}　官方日K量先價行".strip(),
     ]
     g = stock_display_glance(glance, sid=sid, plate=plate)
-    field_lead = " ".join(x for x in (g.get("field"), g.get("leader")) if x)
-    if field_lead:
-        lines.append(field_lead)
     st = info.get("struct") or {}
     last_bar = info.get("last_bar") or {}
     spike_hi = st.get("spike_high")
@@ -2410,8 +2410,6 @@ def chart_caption(
         lines.append(g["doubt"])
     else:
         lines.append("沒疊滿就不講死。")
-    lines.append("右上縮圖：橙底＝大圖 K 同一段日期；黃底＝兩邊都是最後一根之後的演算（與大圖同一段）。1～5＝下降壓確認後把升段往前推，不是亂數教科書 5／9。這不是買訊。")
-    lines.append("延伸線已建檔，官方柱走完再對質。不是保證。")
     return "\n".join(x for x in lines if x)[:1100]
 
 

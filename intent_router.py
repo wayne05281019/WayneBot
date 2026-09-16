@@ -128,6 +128,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("獲利剛剛脫離零", "leave_zero"),
     ("獲利剛離零", "leave_zero"),
     ("盤中離零", "leave_zero"),
+    ("剛脫離零", "leave_zero"),
     ("剛離零", "leave_zero"),
     ("當沖", "daytrade"),
     ("連買", "streak"),

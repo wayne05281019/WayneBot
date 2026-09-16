@@ -64,18 +64,19 @@ def test_structure_flags_wash_and_volume_lines():
     assert "當撐" in notes
     assert "洗盤" in notes
     cap = chart_caption(info, sid="3035", name="智原")
-    assert "不是介紹圖" in cap
-    assert "決策卡" in cap
-    assert "這不是買訊" in cap
-    assert "5／9" in cap or "5/9" in cap
+    assert "不是介紹圖" not in cap
+    assert "決策卡" not in cap
+    assert "5／9" not in cap and "5/9" not in cap
     assert "日K" in cap or "日 K" in cap or "官方日K" in cap
-    assert "不是15分" in cap
+    assert "不是15分" not in cap
     assert "量先價行" in cap
     assert "爆大量那一天" in cap
     assert "演算" in cap
     assert "不是保證" in cap
-    assert "延伸線已建檔" in cap
+    assert "延伸線已建檔" not in cap
     assert "介入買點首先" not in cap
+    assert "橙底" not in cap
+    assert "這不是買訊" not in cap
     proj = info.get("project") or {}
     assert proj.get("key") == "wash"
     assert abs(float(proj.get("target") or 0) - 148) < 1e-6
@@ -176,10 +177,10 @@ def test_caption_and_chart_carry_six_neurons_without_lecture(tmp_path):
     assert "現在位階" not in cap
     assert "逃命波" not in cap
     assert "勿輕易調節" not in cap
-    assert "自己就是這族龍頭" in cap
+    assert "自己就是這族龍頭" not in cap
     assert "爆大量那一天" in cap
     assert "量先價行" in cap
-    assert "這不是買訊" in cap
+    assert "這不是買訊" not in cap
     cap_hold = chart_caption(
         info,
         sid="2383",
@@ -454,8 +455,8 @@ def test_nameplate_industry_leader_and_spot_quote(tmp_path):
     cap = chart_caption(analyze_structure(_series()), sid="2383", name="台光電", plate=lead)
     assert "電子零組件業" in cap
     assert "龍頭" in cap
-    assert "不是介紹圖" in cap
-    assert "這不是買訊" in cap
+    assert "不是介紹圖" not in cap
+    assert "這不是買訊" not in cap
     out = str(tmp_path / "nameplate.png")
     path = render_biaoke_structure_png(
         _series(),
@@ -596,12 +597,15 @@ def test_leader_notes_use_dashed_and_stagger():
 
 def test_caption_records_forecast_line():
     cap = chart_caption(analyze_structure(_series()), sid="3035", name="智原")
-    assert "延伸線已建檔" in cap
-    assert "官方柱走完再對質" in cap
-    assert "這不是買訊" in cap
-    assert "不是介紹圖" in cap
-    assert "縮圖" in cap
-    assert "5／9" in cap or "5/9" in cap
+    assert "延伸線已建檔" not in cap
+    assert "官方柱走完再對質" not in cap
+    assert "這不是買訊" not in cap
+    assert "不是介紹圖" not in cap
+    assert "縮圖" not in cap
+    assert "5／9" not in cap and "5/9" not in cap
+    assert "圖上演算" in cap
+    assert "不是保證" in cap
+    assert "沒疊滿就不講死" in cap
 
 
 def test_axis_ticks_drop_near_last_bar():

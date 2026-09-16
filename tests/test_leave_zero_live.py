@@ -179,7 +179,8 @@ def test_lookup_like_row_has_watch_and_buy():
 
 
 def test_intent_and_menu_label():
-    assert MENU_BTN_LEAVE_ZERO == "剛離零"
+    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
+    assert parse_intent("剛脫離零").kind == "leave_zero"
     assert parse_intent("剛離零").kind == "leave_zero"
     assert parse_intent("獲利剛剛脫離零").kind == "leave_zero"
 
@@ -209,3 +210,9 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     )
     assert "海選" in html
     assert "尚未就緒" in html
+    assert "🟥" in html
+    assert "剛脫離零" in html
+    wait0 = str(msg.reply_text.await_args_list[0].args[0]) if msg.reply_text.await_args_list else ""
+    assert "剛脫離零進行中" in wait0
+    assert wait0.startswith("<pre>")
+    assert "｜" in wait0 and wait0.count("｜") >= 8

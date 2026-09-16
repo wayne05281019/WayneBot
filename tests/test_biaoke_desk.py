@@ -24,7 +24,7 @@ def test_biaoke_button_is_plain_biaoda_top_right():
     assert _normalize_menu_text(MENU_BTN_BIAOKE_FACE) == "飆大"
     assert MENU_ROW1[-1] == MENU_BTN_BIAOKE_FACE
     assert MENU_ROW2[-1] == MENU_BTN_LEAVE_ZERO
-    assert MENU_BTN_LEAVE_ZERO == "剛離零"
+    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -188,7 +188,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert "take_unread_digest" in src
     assert "reflow=False" in src
     assert "_send_biaoke_structure_chart" in src
-    assert "_send_biaoke_origin_charts" in src
+    assert "_send_biaoke_origin_charts" not in src
     assert "create_task" in src
     assert "stock_picker_hits" in src
     assert "_biaoke_hits_keyboard" in src
@@ -219,7 +219,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "21"
+    assert MENU_LAYOUT_VERSION == "22"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
@@ -507,15 +507,33 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     txt0 = WayneTelegramBot._biaoke_progress_text(0)
     txt20 = WayneTelegramBot._biaoke_progress_text(20)
     assert "飆大進行中" in txt0
-    assert "░░░░░░░░░░" in txt0
-    assert "▓▓▓" in txt20
+    assert "－－－－－－－－－－" in txt0
+    assert "＝＝＝" in txt20
     assert "結構圖" in txt0
     assert "回覆" in txt0
-    assert "┌" in txt0
+    assert "＋" in txt0
     assert "好了這則會消失" in txt0
+    assert txt0.startswith("<pre>")
+    assert txt0.endswith("</pre>")
+    inner = WayneTelegramBot._WAIT_INNER
+    plain = txt0.replace("<pre>", "").replace("</pre>", "")
+    lines = [ln for ln in plain.splitlines() if ln]
+    assert lines[0].startswith("＋") and lines[0].endswith("＋")
+    assert lines[-1].startswith("＋") and lines[-1].endswith("＋")
+    assert len(lines[0]) == inner + 2
+    for ln in lines:
+        assert len(ln) == inner + 2, ln
+        assert all(WayneTelegramBot._visual_width(ch) >= 2 for ch in ln), ln
+    for ln in lines[1:-1]:
+        assert ln.startswith("｜") and ln.endswith("｜"), ln
     for ch in ("⏳", "🔄", "📊", "🔍"):
         assert ch not in txt0
         assert ch not in txt20
     wait_src = __import__("inspect").getsource(WayneTelegramBot._start_plain_wait)
     assert "reply_markup" not in wait_src
     assert "edit_text" in wait_src
+    assert 'parse_mode="HTML"' in wait_src
+    page = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_page)
+    assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
+    card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
+    assert card.index("_chart_progress_text") < card.index("lookup_stocks(")
