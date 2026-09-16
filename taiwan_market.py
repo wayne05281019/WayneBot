@@ -2965,19 +2965,20 @@ def apply_market_weights(
         m = float(mults.get(key, 1.0))
         if key in ("day_trade", "overnight") and falling_mult < 1.0:
             m *= falling_mult
-        scored = sorted(
-            (
+        scored = []
+        for it in items:
+            bm = beta_sort_multiplier(betas.get(str(it.get("stock_id")), 1.0), regime_plus)
+            if bm < 1.0:
+                it["beta_downweighted"] = True
+            else:
+                it.pop("beta_downweighted", None)
+            scored.append(
                 (
-                    float(_item_sort_score(key, it))
-                    * m
-                    * beta_sort_multiplier(betas.get(str(it.get("stock_id")), 1.0), regime_plus),
+                    float(_item_sort_score(key, it)) * m * bm,
                     it,
                 )
-                for it in items
-            ),
-            key=lambda x: x[0],
-            reverse=True,
-        )
+            )
+        scored.sort(key=lambda x: x[0], reverse=True)
         trimmed = [it for _, it in scored]
         cap = caps.get(key)
         if key in falling_caps:
