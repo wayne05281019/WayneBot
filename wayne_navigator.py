@@ -815,10 +815,9 @@ class NavigatorEngine:
             etf_kind = ""
         listing = ""
         try:
-            from stock_links import quote_market
-            from wayne_db import listing_zh
+            from universe import listing_industry_face
 
-            listing = listing_zh(quote_market(str(stock_id), self.db_path))
+            listing = listing_industry_face(str(stock_id), self.db_path)
         except Exception:
             listing = ""
         raw_name = str(latest.get("stock_name") or "")
@@ -2189,7 +2188,7 @@ def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: fl
     lead = str(lead or "").strip()
     event = str(event or "").strip()
     industry = str(industry or "").strip()
-    if lead and industry == lead:
+    if lead and industry and (industry == lead or industry in lead):
         industry = ""
     news = str(news or "").strip()
     if lead:
@@ -2958,7 +2957,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if listing:
         head = f"{head}　{html_escape(listing)}"
     industry = str(card.get("etf_kind") or card.get("industry") or "").strip()
-    if industry:
+    if industry and industry not in listing:
         head = f"{head}　{html_escape(industry)}"
     event = str(card.get("next_event") or "").strip()
     if event:
