@@ -211,6 +211,118 @@ def _clip(text: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _pin_tail(text: str, tail: str, n: int = 900) -> str:
+    """clip 之後若 overlay 被吃掉，釘回尾巴。不准用 overlay 改五件分支。"""
+    body = str(text or "").strip()
+    bit = str(tail or "").strip()
+    if not bit:
+        return body
+    if bit in body:
+        return body
+    if len(body) + 1 + len(bit) > n:
+        keep = max(0, n - len(bit) - 2)
+        body = body[:keep].rstrip() + "…"
+    return (body + " " + bit).strip()
+
+
+def _rail_from_brief(brief: Dict[str, Any]) -> str:
+    """官方結構 overlay：爆大量壓撐＋下降壓／上升撐。不改五件交叉分支。"""
+    st = brief.get("struct") or {}
+    info = brief.get("structure") if isinstance(brief.get("structure"), dict) else {}
+    sid = str(brief.get("sid") or "")
+    if not sid:
+        return ""
+    bits: List[str] = []
+    try:
+        close = float(st.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    try:
+        spike_lo = float(st.get("spike_low") or 0)
+    except (TypeError, ValueError):
+        spike_lo = 0.0
+    try:
+        spike_hi = float(st.get("spike_high") or 0)
+    except (TypeError, ValueError):
+        spike_hi = 0.0
+    if spike_lo and close:
+        bits.append("收在爆大量撐 " + _px(spike_lo) + (" 上" if close >= spike_lo else " 下"))
+    if spike_hi:
+        bits.append("壓 " + _px(spike_hi))
+    try:
+        down_now = float(info.get("down_now") or 0)
+    except (TypeError, ValueError):
+        down_now = 0.0
+    try:
+        up_now = float(info.get("up_now") or 0)
+    except (TypeError, ValueError):
+        up_now = 0.0
+    if down_now:
+        bits.append("下降壓 " + _px(down_now) + ("還壓著" if close and close < down_now else "收在上"))
+    if up_now:
+        bits.append("上升撐 " + _px(up_now) + ("收在上" if close and close > up_now else "收在下"))
+    if not bits:
+        return ""
+    return "官方結構：" + "，".join(bits) + "。"
+
+
+def _fill_structure(db_path: str, brief: Dict[str, Any]) -> None:
+    sid = str((brief or {}).get("sid") or "")
+    if not db_path or not sid:
+        return
+    try:
+        from biaoke_brain import load_bars
+        from biaoke_chart import analyze_structure
+
+        bars = load_bars(db_path, sid, n=80)
+        if len(bars) >= 8:
+            brief["structure"] = analyze_structure(bars[-60:]) or {}
+    except Exception:
+        pass
+    brief["rail"] = _rail_from_brief(brief)
+
+
+def _bt_if_clause() -> str:
+    """五件回測只加如果句，不准改這次交叉判斷、不准當勝率廣告。"""
+    cached = getattr(_bt_if_clause, "_cached", None)
+    if cached is not None:
+        return cached
+    text = ""
+    try:
+        from biaoke_five_bt import load_snapshot
+
+        snap = load_snapshot()
+    except Exception:
+        snap = {}
+    if snap and snap.get("ok"):
+        names = (
+            ("wave", "波浪"),
+            ("morph", "形態"),
+            ("vol", "量價"),
+            ("keyk", "關鍵K"),
+            ("leader", "龍頭碎形"),
+        )
+        weak: List[str] = []
+        tools = snap.get("tools") or {}
+        for key, title in names:
+            row = tools.get(key) or {}
+            try:
+                hit = int(row.get("hit") or 0)
+                miss = int(row.get("miss") or 0)
+            except (TypeError, ValueError):
+                continue
+            if hit + miss >= 8 and miss > hit:
+                weak.append(title)
+        if weak:
+            text = (
+                "五件回測 overlay："
+                + "、".join(weak)
+                + "近期對官方柱常偏，還是如果句。不改這次五件判斷。"
+            )
+    _bt_if_clause._cached = text  # type: ignore[attr-defined]
+    return text
+
+
 # 巢穴 900 字不准把 9/16 晨交叉擠掉。官方柱／日曆可短，這段必留。
 _NEST_KEY = (
     "9/16晨：收盤不破45398才是C-5低點確認，還是如果句；未收不當官方。"
@@ -581,6 +693,9 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
     )
     if named:
         bits.append("個股最重要是產業趨勢還在不在；技術分析最有用在大盤。")
+        rot0 = str(brief.get("rotation") or "").strip()
+        if rot0:
+            bits.append("官方法人 overlay：" + rot0 + "。不改他的產業句。")
         try:
             from biaoke_foresight import field_line
 
@@ -706,9 +821,11 @@ def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
             pass
     ind = str(brief.get("industry") or "")
     rot = str(brief.get("rotation") or "")
+    blob = " ".join(bits)
     if rot:
-        bits.append(rot)
-    elif ind:
+        if "官方法人 overlay：" not in blob:
+            bits.append("官方法人 overlay：" + rot + "。不改他的產業句。")
+    elif ind and ind not in blob:
         bits.append("這檔產業 " + ind)
     if named:
         return _step("field", " ".join(bits), ok=True)
@@ -809,19 +926,24 @@ def _tape(brief: Dict[str, Any], *, named: bool, db_path: str = "") -> Dict[str,
         "站上撐後等價穩量縮才像進，收在低下先放棄。個股不數 5／9 段。"
     )
     sid = str(brief.get("sid") or "")
-    if db_path and sid:
+    info = brief.get("structure") if isinstance(brief.get("structure"), dict) else None
+    if info is None and db_path and sid:
         try:
             from biaoke_brain import load_bars
             from biaoke_chart import analyze_structure
 
             bars = load_bars(db_path, sid, n=80)
             if len(bars) >= 8:
-                proj = (analyze_structure(bars[-60:]) or {}).get("project") or {}
-                label = str(proj.get("label") or "").strip()
-                if label:
-                    bit += " 圖上演算：" + label
+                info = analyze_structure(bars[-60:]) or {}
         except Exception:
-            pass
+            info = None
+    if info:
+        label = str(((info.get("project") or {}).get("label") or "")).strip()
+        if label:
+            bit += " 圖上演算：" + label
+    rail = str(brief.get("rail") or "").strip()
+    if rail and rail not in bit:
+        bit += " " + rail
     if sid:
         try:
             from biaoke_charts import format_charts_vs_official
@@ -1128,13 +1250,34 @@ def _hold(brief: Dict[str, Any], ask: str, *, named: bool, db_path: str = "", ui
     return _step("hold", " ".join(bits), ok=bool(hold or sid))
 
 
-def _doubt(brief: Dict[str, Any], nest_ok: bool, *, named: bool, nest_text: str = "") -> Dict[str, Any]:
+def _doubt(
+    brief: Dict[str, Any],
+    nest_ok: bool,
+    *,
+    named: bool,
+    nest_text: str = "",
+    db_path: str = "",
+) -> Dict[str, Any]:
     audit = brief.get("audit") or {}
     miss = [str(x) for x in (audit.get("miss") or [])]
     ok_bits = [str(x) for x in (audit.get("ok") or [])]
     bits: List[str] = []
     extra_miss: List[str] = []
     nt = nest_text or ""
+    cal = _bt_if_clause()
+    if cal:
+        bits.append(cal)
+    if db_path:
+        try:
+            from biaoke_forecast import glance_forecast
+
+            fc_sid = str(brief.get("sid") or "") or ("TWII" if not named else "")
+            if fc_sid:
+                fc = glance_forecast(db_path, fc_sid)
+                if fc:
+                    bits.append("演算對質 overlay：" + fc + "。未走完不准當已發生。")
+        except Exception:
+            pass
     if not nest_ok:
         bits.append("大盤官方點位沒齊，確認末端不准講死")
     if "費半這路先當缺" in nt or "四路先缺這路" in nt:
@@ -1501,22 +1644,31 @@ def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
     fired = fired or {}
     five = " ".join(str(fired.get("five") or "").split())
     nest = ""
+    doubt = ""
     for step in fired.get("steps") or []:
-        if str(step.get("id") or "") == "nest":
+        nid = str(step.get("id") or "")
+        if nid == "nest":
             nest = str(step.get("text") or "")
-            break
-    blob = five + nest + str(fired.get("think") or "")
+        elif nid == "doubt":
+            doubt = str(step.get("text") or "")
+    rail = str(fired.get("rail") or "").strip()
+    blob = five + nest + str(fired.get("think") or "") + doubt + rail
     core = re.sub(r"五件交叉：", "", five)
     parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
     core = "。".join(parts[:2]) if parts else ""
     if not core:
         core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
-    core = _clip(core, 140).rstrip("。…")
+    rail_bit = rail.rstrip("。")
+    if rail_bit:
+        core = core + "。" + rail_bit if core else rail_bit
+    core = _clip(core, 200 if rail_bit else 140).rstrip("。…")
     flags: List[str] = []
     if any(k in blob for k in ("如果句", "未確認", "還是如果")):
         flags.append("如果句")
     if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收")):
         flags.append("未收")
+    if any(k in blob for k in ("還沒走完", "未走完不准", "對質 偏", "演算對質 overlay")):
+        flags.append("對質")
     flags.append("不是買訊")
     return core + "。〔" + "／".join(flags) + "〕"
 
@@ -1577,6 +1729,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
             brief.setdefault("name", name or sid)
         except Exception:
             brief = {"sid": sid, "name": name or sid}
+        _fill_structure(db_path, brief)
     nest = _nest(db_path, q)
     steps = [
         nest,
@@ -1584,7 +1737,13 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         _leader(brief, named=named),
         _tape(brief, named=named, db_path=db_path),
         _hold(brief, q, named=named, db_path=db_path, uid=uid),
-        _doubt(brief, bool(nest.get("ok")), named=named, nest_text=str(nest.get("text") or "")),
+        _doubt(
+            brief,
+            bool(nest.get("ok")),
+            named=named,
+            nest_text=str(nest.get("text") or ""),
+            db_path=db_path,
+        ),
     ]
     live: Dict[str, str] = {}
     if db_path:
@@ -1615,6 +1774,33 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
             body = str(step.get("text") or "")
             if five[:18] not in body:
                 step["text"] = _clip(five + " " + body, 900)
+    cal = _bt_if_clause()
+    rail = str(brief.get("rail") or "")
+    rot = str(brief.get("rotation") or "").strip()
+    rot_bit = ("官方法人 overlay：" + rot + "。不改他的產業句。") if rot else ""
+    fc_bit = ""
+    if db_path:
+        try:
+            from biaoke_forecast import glance_forecast
+
+            fc = glance_forecast(db_path, sid or "TWII")
+            if fc:
+                fc_bit = "演算對質 overlay：" + fc + "。未走完不准當已發生。"
+        except Exception:
+            fc_bit = ""
+    for step in steps:
+        nid = str(step.get("id") or "")
+        body = str(step.get("text") or "")
+        if nid == "doubt":
+            if cal:
+                body = _pin_tail(body, cal)
+            if fc_bit:
+                body = _pin_tail(body, fc_bit)
+            step["text"] = body
+        elif nid == "tape" and rail:
+            step["text"] = _pin_tail(body, rail)
+        elif nid == "field" and rot_bit:
+            step["text"] = _pin_tail(body, rot_bit)
     think = _think(steps, sid, name)
     out = {
         "sid": sid,
@@ -1624,6 +1810,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         "five": five,
         "think": think,
         "firm": bool((brief.get("audit") or {}).get("firm")),
+        "rail": str(brief.get("rail") or ""),
     }
     out["lead"] = format_five_lead(out)
     if len(_FIRE_CACHE) > 4:

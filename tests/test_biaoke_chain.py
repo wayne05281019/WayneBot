@@ -886,3 +886,71 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     focus = format_latest_focus("")
     assert "如果句" in focus or "未收" in focus
     assert "不是買訊" in focus
+
+
+def test_overlays_do_not_change_five_cross_branches():
+    """官方結構／對質／回測／法人只 overlay，不准改五件交叉分支。"""
+    from biaoke_chain import (
+        _bt_if_clause,
+        _field,
+        _rail_from_brief,
+        format_five_lead,
+    )
+
+    jian = fire_chain("", "健策怎麼看")
+    emc = fire_chain("", "台光電怎麼看")
+    mkt = fire_chain("", "45398 怎麼看")
+    assert "輪動不是覆巢" in (jian.get("five") or "")
+    assert "強勢整理" in (emc.get("five") or "") or "沒破線" in (emc.get("five") or "")
+    assert "官方結構" not in (jian.get("five") or "")
+    assert "五件回測 overlay" not in (emc.get("five") or "")
+    assert "C-5" in (mkt.get("five") or "")
+    cal = _bt_if_clause()
+    assert "不改這次五件判斷" in cal
+    assert "形態" in cal
+    assert "%" not in cal
+    doubt = next(s for s in emc["steps"] if s["id"] == "doubt")
+    assert "不改這次五件判斷" in doubt["text"]
+    rail = _rail_from_brief(
+        {
+            "sid": "2383",
+            "struct": {"close": 4000, "spike_low": 3930, "spike_high": 4510},
+            "structure": {"down_now": 4100, "up_now": 3800},
+        }
+    )
+    assert rail.startswith("官方結構：")
+    assert "收在爆大量撐 3930 上" in rail
+    assert "下降壓 4100還壓著" in rail
+    assert "上升撐 3800收在上" in rail
+    lead = format_five_lead(
+        {
+            "five": emc["five"],
+            "steps": emc["steps"],
+            "think": emc.get("think") or "",
+            "rail": rail,
+        }
+    )
+    assert "強勢整理" in lead or "沒破線" in lead or "續抱" in lead
+    assert "官方結構" in lead
+    assert "不是買訊" in lead
+    field = _field(
+        "台光電怎麼看",
+        {"sid": "2383", "name": "台光電", "rotation": "電子零組件業在流出前段"},
+    )
+    assert field["text"].startswith("個股最重要是產業趨勢還在不在")
+    assert "官方法人 overlay：電子零組件業在流出前段" in field["text"]
+    assert "不改他的產業句" in field["text"]
+    db = "data/wayne_market.db"
+    if os.path.isfile(db):
+        live = fire_chain(db, "台光電怎麼看")
+        live_lead = live.get("lead") or ""
+        live_field = next(s for s in live["steps"] if s["id"] == "field")["text"]
+        live_doubt = next(s for s in live["steps"] if s["id"] == "doubt")["text"]
+        assert "強勢整理" in (live.get("five") or "") or "沒破線" in (live.get("five") or "")
+        assert "官方結構" in live_lead or "官方結構" in next(
+            s for s in live["steps"] if s["id"] == "tape"
+        )["text"]
+        assert "電子零組件" in live_field or "產業" in live_field
+        if "官方法人 overlay：" in live_field:
+            assert "不改他的產業句" in live_field
+        assert "不改這次五件判斷" in live_doubt
