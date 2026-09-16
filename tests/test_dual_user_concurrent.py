@@ -207,7 +207,7 @@ def test_parallel_lookup_two_users():
             return [{"stock_id": "3105", "stock_name": "穩懋", "close": 100.0, "market": "TWO"}]
         return [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "market": "TW"}]
 
-    async def fake_locked(message, code, uid, actor, hits):
+    async def fake_locked(message, code, uid, actor, hits, wait_msg=None, **_k):
         if str(uid) == str(WAYNE_UID):
             done["w"].append(code)
         elif str(uid) == str(BRO_UID):

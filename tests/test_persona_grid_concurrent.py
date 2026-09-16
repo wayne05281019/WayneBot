@@ -86,7 +86,7 @@ def test_100_parallel_lookups_each_get_own_code():
         c = str(code).strip()
         return [{"stock_id": c, "stock_name": f"N{c}", "close": 100.0, "market": "TW"}]
 
-    async def fake_locked(message, code, uid, actor, hits):
+    async def fake_locked(message, code, uid, actor, hits, wait_msg=None, **_k):
         results[int(uid)] = str(code).strip()
 
     async def run():
