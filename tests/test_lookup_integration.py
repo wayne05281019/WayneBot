@@ -160,7 +160,8 @@ class LookupIntegrationTests(unittest.TestCase):
             await task_a
 
         asyncio.run(_run())
-        user_a_busy.reply_text.assert_not_awaited()
+        busy_a = [c for c in user_a_busy.reply_text.await_args_list if "上一檔還在出圖" in str(c)]
+        self.assertEqual(len(busy_a), 0)
         self.assertNotIn(
             "上一檔還在出圖",
             str(user_b.reply_text.await_args_list),

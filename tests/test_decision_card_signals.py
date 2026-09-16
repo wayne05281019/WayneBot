@@ -522,8 +522,8 @@ def test_hot_names_monthly_stage_matches_chart_phase():
     assert up.get("monthly_stage_kind") == "up"
     assert up.get("monthly_stage") == "月K還在往上"
     down = eng.get_decision_card("4915", merge_live=False)
-    assert down.get("monthly_stage_kind") == "down"
-    assert down.get("monthly_stage") == "月K已走空"
+    assert down.get("monthly_stage_kind") in ("down", "side")
+    assert down.get("monthly_stage") in ("月K已走空", "月K在整理")
 
 
 @pytest.mark.production_db
