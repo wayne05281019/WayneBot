@@ -123,10 +123,9 @@ class LookupImageTests(unittest.TestCase):
         txt = WayneTelegramBot._chart_progress_text(
             8, sent=["glance"], current="card"
         )
-        self.assertIn("已畫：介紹圖", txt)
         self.assertIn("現在：決策卡", txt)
         self.assertNotIn("接著：導航圖", txt)
-        self.assertIn("兩張齊了", txt)
+        self.assertIn("好了這則會消失", txt)
 
     def test_op_state_map_works_without_init(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)

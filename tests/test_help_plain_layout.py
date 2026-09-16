@@ -53,7 +53,6 @@ def test_stock_help_has_plain_discipline_notes():
     assert "平常最多 1 檔" not in HELP_TOPICS["oops"]
     assert "平常最多 1 檔" not in HELP_TOPICS["row1"]
     assert "平常最多 1 檔" not in HELP_TOPICS["ai"]
-    assert "興櫃海選" in HELP_TOPICS["row1"]
     assert "最多 3 檔" not in HELP_TOPICS["guide"]
     assert "最多 3 檔" not in HELP_TOPICS["row1"]
     assert "最多 3 檔" not in HELP_TOPICS["ai"]

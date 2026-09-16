@@ -37,6 +37,23 @@ def test_wave_question_no_ticker():
     assert is_wave_question("現在是C-5低點嗎")
     assert not is_wave_question("台光電怎麼看")
     assert not is_wave_question("46506 怎麼來")
+    from biaoke_wave import format_twii_plain, is_twii_plain_ask
+
+    assert is_twii_plain_ask("大盤")
+    assert is_twii_plain_ask("大盤現在")
+    assert is_twii_plain_ask("現在波浪位階")
+    assert not is_twii_plain_ask("台光電怎麼看")
+    assert not is_twii_plain_ask("大盤散熱")
+    plain = format_twii_plain("")
+    assert plain.count("\n") <= 4
+    assert "不是買訊" in plain
+    assert "給看不懂" not in plain
+    from biaoke_brain import answer_biaoke
+
+    html = answer_biaoke(":memory:", "大盤")
+    assert "不是買訊" in html
+    assert html.count("\n") <= 4
+    assert "給看不懂波浪" not in html
 
 
 def test_degree_hits_are_his_labels_only():
@@ -163,13 +180,11 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     assert os.path.isfile(built.get("path") or "")
     assert os.path.getsize(built["path"]) > 12_000
     cap = built.get("caption") or ""
-    assert "不是15分" in cap or "不是 15" in cap
     assert "不是買訊" in cap
-    assert "轉折線" in cap
-    assert "不數" in cap or "5／9" in cap
-    assert "不是一路大B" in cap or "區間" in cap
-    assert "延伸線" in cap
-    assert "縮圖" in cap or "橙底" in cap or "橙框" in cap
+    assert "如果句" in cap or "還沒確認" in cap
+    assert "45398" in cap
+    assert "給看不懂" not in cap
+    assert "不是一路大B" not in cap
     src_w = inspect.getsource(__import__("biaoke_wave").render_twii_degree_png)
     assert "日成交量" in src_w
     assert "height_ratios" in src_w
@@ -181,8 +196,7 @@ def test_twii_degree_chart_when_db_present(tmp_path):
     assert "is_wave_question" in src
     assert "_send_biaoke_twii_degree_chart" in src
     origin = inspect.getsource(WayneTelegramBot._send_biaoke_origin_charts)
-    assert "is_wave_question" in origin
-    assert "TWII" in origin
+    assert "is_twii_plain_ask" in origin
 
 
 def test_ensure_wave_history_skips_in_pytest(tmp_path):

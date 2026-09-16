@@ -60,8 +60,8 @@ def test_welcome_teaches_chat_not_a_menu():
     assert html == WINDOW_OPEN
     assert "打字" in html
     assert "語音" in html or "麥克風" in html
-    assert "不必打字" in html
-    assert "我直接回" in html
+    assert "大盤" in html
+    assert "查個股" in html
     assert "離開飆大" in html
     assert "勤誠" not in html
     assert format_biaoke_html("") == html
@@ -191,7 +191,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert "create_task" in src
     assert "stock_picker_hits" in src
     assert "_biaoke_hits_keyboard" in src
-    assert "_biaoke_dayk_markup" in src
+    assert "_biaoke_hub_markup" in src
     assert "split_lead_detail" in src
     assert "bkdk:" in inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert "_send_card_to" not in src
@@ -402,6 +402,18 @@ def test_biaoke_dayk_markup_named_stock_not_card(monkeypatch):
     assert bot._biaoke_dayk_markup("你好") is None
 
 
+def test_biaoke_hub_has_market_and_stock_buttons(monkeypatch):
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
+    kb = bot._biaoke_hub_markup("大盤現在")
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert texts[:2] == ["大盤", "查個股"]
+    assert datas[:2] == ["bk:mkt", "bk:ask"]
+    assert any(d == "bkdk:TWII" for d in datas)
+
+
 def test_biaoke_dayk_callback_sends_structure_not_card():
     import asyncio
     from types import SimpleNamespace
@@ -498,6 +510,8 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     assert "▓▓▓" in txt20
     assert "結構圖" in txt0
     assert "回覆" in txt0
+    assert "┌" in txt0
+    assert "好了這則會消失" in txt0
     for ch in ("⏳", "🔄", "📊", "🔍"):
         assert ch not in txt0
         assert ch not in txt20

@@ -288,32 +288,21 @@ def test_streak_wizard_does_not_clone_reply_keyboard():
     em = [b.text for row in bot._streak_em_inline().inline_keyboard for b in row]
     assert "改看上市櫃" in em
     assert "興櫃海選" in em
-    screen = [b.text for row in bot._screen_uni_inline().inline_keyboard for b in row]
-    assert screen[:2] == ["上市櫃", "興櫃"]
+    assert bot._screen_uni_inline() is None
 
 
-def test_screen_start_picks_listed_or_emerging():
+def test_screen_start_runs_listed_directly():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
     from bot_servers import WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot._pending = {}
-    bot._actor_key = MagicMock(return_value="1:1")
+    bot._run_manual_screening = AsyncMock()
     msg = MagicMock()
-    msg.reply_html = AsyncMock()
-
     asyncio.run(bot._start_screen_pick(msg, "1"))
-    assert bot._pending["1:1"] == "screen:uni"
-    html = msg.reply_html.await_args.args[0]
-    assert "上市櫃" in html and "興櫃" in html
-    labels = [
-        b.text
-        for row in msg.reply_html.await_args.kwargs["reply_markup"].inline_keyboard
-        for b in row
-    ]
-    assert labels[:2] == ["上市櫃", "興櫃"]
+    bot._run_manual_screening.assert_awaited_once()
+    assert bot._run_manual_screening.await_args.args[0] is msg
 
 
 def test_help_nav_does_not_duplicate_reply_menu_labels():
@@ -474,7 +463,10 @@ def test_portfolio_keyboard_shows_stock_name():
 def test_screening_progress_text():
     from bot_servers import WayneTelegramBot
 
-    assert "海選開始" in WayneTelegramBot._screening_progress_text(0)
+    start = WayneTelegramBot._screening_progress_text(0)
+    assert "海選進行中" in start
+    assert "┌" in start
+    assert "好了這則會消失" in start
     body = WayneTelegramBot._screening_progress_text(45)
     assert "45 秒" in body
     assert "▓" in body

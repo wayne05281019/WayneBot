@@ -20,11 +20,11 @@ DISCLAIMER = (
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
 WINDOW_OPEN = (
-    "在。打字或按旁邊麥克風講都行，我直接回。不必打字才能問。"
+    "在。點下面「大盤」或「查個股」。也可以打字或按麥克風。"
     "用完按同一顆「離開飆大」回主選單。"
 )
 LIVE_MISS = "這句雲端沒接上。再說一次，打字或語音都可以。"
-CHAT_HINT = WINDOW_OPEN
+CHAT_HINT = "打代號或股名，我用飆大看這檔。"
 
 _TICKER = re.compile(r"\b(\d{3,6}[A-Za-z]?)\b", re.I)
 _OFF = re.compile(
@@ -618,6 +618,13 @@ def answer_biaoke(
     picker = stock_picker_hits(db_path, q)
     if picker:
         return format_stock_picker_html(picker)
+    try:
+        from biaoke_wave import format_twii_plain, is_twii_plain_ask
+
+        if is_twii_plain_ask(q):
+            return format_twii_plain(db_path)
+    except Exception:
+        pass
 
     def _done(html: str) -> str:
         try:

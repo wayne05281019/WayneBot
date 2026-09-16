@@ -276,6 +276,64 @@ def is_wave_question(ask: str) -> bool:
     return bool(_WAVE_ASK.search(q) or _EYES_ASK.search(q))
 
 
+def is_twii_plain_ask(ask: str) -> bool:
+    """純問大盤／位階：話筒只回短句＋加權圖，不塞長教學。"""
+    q = re.sub(r"\s+", "", (ask or "").strip())
+    if not q:
+        return False
+    if q in {
+        "大盤",
+        "加權",
+        "台指",
+        "指數",
+        "大盤現在",
+        "現在大盤",
+        "大盤現在怎樣",
+        "現在波浪位階",
+        "波浪位階",
+        "現在位階",
+    }:
+        return True
+    if is_wave_question(ask) and not re.search(r"\d{3,6}", q):
+        leftover = re.sub(r"(現在|怎樣|怎麼看|波浪|位階|大盤|加權|台指|指數)+", "", q)
+        return len(leftover) <= 2
+    return False
+
+
+def _complete_bar_ymd(db_path: str) -> str:
+    try:
+        from import_health import latest_complete_quote_date
+
+        return str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+    except Exception:
+        return ""
+
+
+def _md(ymd: str) -> str:
+    s = _ymd(ymd)
+    if len(s) != 8:
+        return s
+    return f"{int(s[4:6])}/{int(s[6:8])}"
+
+
+def format_twii_plain(db_path: str = "") -> str:
+    """話筒大盤：四句。未收不當收。"""
+    bars = _load_twii_bars(db_path, n=8)
+    if bars:
+        b = bars[-1]
+        close_bit = f"官方加權最近完整收是 {_md(b.get('date'))}，收 {_px(b.get('close'))}。"
+    else:
+        close_bit = "官方加權還沒有完整收。"
+    return "\n".join(
+        [
+            close_bit,
+            "C-5低點要收盤不破 45398 才算，現在還是如果句。",
+            "C-3 和 43500 都還沒確認。",
+            "這不是買訊。看圖上綠A藍B；紫C虛線還沒走完。",
+        ]
+    )
+
+
 def _clip(text: str, n: int) -> str:
     s = " ".join(str(text or "").split())
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -970,6 +1028,9 @@ def _load_twii_bars(db_path: str, n: int = 80) -> List[Dict[str, Any]]:
         return []
     out = [dict(r) for r in rows]
     out.reverse()
+    cap = _complete_bar_ymd(db_path)
+    if cap:
+        out = [r for r in out if _ymd(r.get("date")) <= cap]
     return out
 
 
@@ -1782,7 +1843,14 @@ def render_twii_degree_png(db_path: str, save_path: str) -> str:
         fig.text(
             _FIG_LEFT,
             0.938,
-            f"{as_show} 收 {_px(last.get('close'))}　現在標籤 {last_tag or '—'}",
+            (
+                f"{as_show} 收 {_px(last.get('close'))}（完整收）　"
+                + (
+                    f"{last_tag}還是如果句"
+                    if last_tag in _UNCONFIRMED
+                    else (last_tag or "—")
+                )
+            ),
             fontproperties=_fp(12, "bold"),
             color="#1f2933",
             ha="left",
@@ -1875,22 +1943,9 @@ def build_twii_degree_chart(db_path: str, save_path: str) -> Dict[str, Any]:
         verify_due(db_path, "TWII")
     except Exception:
         pass
-    cap_bits = [
-        "加權官方日K＋2026 ABC 轉折線（不是15分、不是介紹圖／決策卡）",
-        "A＝6/23第五波高跌到7/29低；7/29同一點＝A完也是B起；B＝反彈到9/8高；C虛線＝9/8後還沒確認。",
-            "黃底＝預估，與大圖同一段（最後一根之後）。橙底＝大圖 K 同一段日期。下方成交量（張）。",
-            "1～5＝6/23 第五波高確認後，把 4/9 主跌低之後的升段往前推；A 在綠線中間偏左，B 在藍線右手邊。",
-        "線按區間拆開：2024第4浪裡的大B ≠ 2026 A波後大B。五月到現在大一級是右肩／位階二，不是一路大B。",
-        format_wave_now(db_path, n=420),
-    ]
-    if last:
-        cap_bits.append(f"最新標籤 {last.get('date')} {last.get('tag')}")
-    if prev:
-        cap_bits.append(f"再前 {prev.get('date')} {prev.get('tag')}")
-        cap_bits.append("對得上他原文的層級才畫。1～5 是確認後往前推，不是亂數 5／9。這不是買訊。")
-    cap_bits.append("延伸線已建檔，官方柱走完再對質。不是保證。")
+    cap = format_twii_plain(db_path)
     return {
         "ok": bool(path),
         "path": path or "",
-        "caption": _clip("\n".join(cap_bits), 1200),
+        "caption": _clip(cap, 400),
     }

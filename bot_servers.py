@@ -341,8 +341,7 @@ HELP_TOPICS = {
         "名稱撞名、國字打不準、KY 沒寫對：會列出相近的；藍字＝奇摩，左邊＝看這檔，右 <b>➕</b>＝觀察。讀音猜中也要點確認才出圖。\n"
         "\n"
         "<b>海選怎麼用</b>\n"
-        "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。\n"
-        "興櫃：按「海選」後選興櫃（也可打「興櫃」／「興櫃海選」）。用櫃買官方日均價跑黃金買點／重點觀察，不進上市櫃海選桶。\n"
+        "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。直接掃上市＋上櫃。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
         "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
@@ -410,7 +409,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤版（現在要做的事先講）。\n"
-        "• 注意：不是盤中即時掃描；各桶須趨勢向上，不收空頭／下坡。當沖／隔日沖要另按主選單按鈕。興櫃請按「海選」後選興櫃（也可打「興櫃海選」／「興櫃名單」；獨立名單，不混進上市櫃海選）。\n"
+        "• 注意：不是盤中即時掃描；各桶須趨勢向上，不收空頭／下坡。當沖／隔日沖要另按主選單按鈕。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -439,7 +438,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 飆大</b>\n"
         "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
-        "• 怎麼用：按進去後打字或按麥克風講。同一顆會變成「離開飆大」，再按一次回兩排主選單；或直接按海選／持股／大盤。還在飆大時打字＝問飆大，不是查股兩張圖。\n"
+        "• 怎麼用：按進去後點「大盤」或「查個股」，也可打字或按麥克風。同一顆會變成「離開飆大」，再按一次回兩排主選單。還在飆大時打字＝問飆大，不是查股兩張圖。主選單第二排「大盤」仍是指數數字頁。\n"
         "• 精簡六顆沒這鈕：打「飆大」或「完整選單」。不是買訊。"
     ),
     "row2": (
@@ -474,7 +473,7 @@ HELP_TOPICS = {
         "\n"
         "<b>⑥ 連買區</b>\n"
         "• 是什麼：官方法人連續買超名單（不是下單訊號）。\n"
-        "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區；興櫃名單請按「海選」再選興櫃。\n"
+        "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區。\n"
         "• 按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
         "• 第二排最右一格是空白，還沒接功能；不要當成海選。\n"
@@ -558,7 +557,7 @@ HELP_TOPICS = {
         "晚間 20:00 只記台股收盤名單、不寄。【雙時段】＝晚間＋今早都在。\n"
         "06:30 早報第一則是大盤狀況（美股＋台指期夜盤＋白話連動），接著寄黃金買點／重點觀察（沒檔也寫今日沒有）／優先看／周帶量（優先看沒名單就跳過）；半年高／站上季線／止跌請按主選單「海選」看完整。\n"
         "海選＝依最近一次官方收盤掃的<b>佈局</b>名單，不是盤中即時掃描。\n"
-        "按下去先選<b>上市櫃</b>或<b>興櫃</b>。興櫃用櫃買官方日均價，只掃黃金買點／重點觀察，不混進上市櫃。\n"
+        "按下去直接掃上市＋上櫃，不必再選。\n"
         "\n"
         "<b>這頁按鈕</b>\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
@@ -569,7 +568,6 @@ HELP_TOPICS = {
         "\n"
         "<b>當沖／隔日沖不在晨間海選推播</b>，請按主選單「當沖」「隔日沖」。\n"
         "靠近 20 日收盤高會標<b>少追</b>。低買高賣：黃金買點／重點觀察只認決策卡表，不認圖上紅箭頭。\n"
-        "興櫃不混進這份名單。按「海選」後選興櫃（也可打「興櫃」）。\n"
         "其餘檔同樣是一檔一塊完整卡片。不是立即下單清單。\n"
         "美股看現金收盤；收盤後再看盤後。大跌會在 06:30 先單獨通知一則。\n"
         "隔日會用庫內收盤對昨天名單復盤；弱的類別只讓 AI 模擬倉少買。"
@@ -737,7 +735,7 @@ HELP_TOPICS = {
         "• <b>外資</b>＝外資連續買超\n"
         "• <b>投信</b>＝投信連續買超\n"
         "• <b>外資+投信</b>＝同一天兩家都買超才算一天\n"
-        "興櫃名單請按「海選」再選興櫃。\n"
+        "興櫃沒有官方法人表，這裡只看上市櫃。\n"
         "\n"
         "<b>第二步</b>：點連買天數（只列出剛好有股票的天數）。\n"
         "不要找「上市／上櫃」分開的按鈕。點 6 就只看剛好連買 6 天的股票。\n"
@@ -777,7 +775,7 @@ HELP_TOPICS = {
         "\n"
         "<b>連買選到一半按錯</b>\n"
         "連買區直接選外資／投信／外資+投信，再點天數。中途改按別顆就取消；再按「連買區」重來。\n"
-        "興櫃沒有連買，請按「海選」再選興櫃。按鈕只在訊息下面。\n"
+        "興櫃沒有連買。按鈕只在訊息下面。\n"
         "\n"
         "<b>「回報」按下去又反悔</b>\n"
         "改按其他按鈕即可，不會送出。不用給程式密鑰、不用給機器人密碼。\n"
@@ -2159,6 +2157,21 @@ class WayneTelegramBot:
             rows.append(pair)
         return InlineKeyboardMarkup(rows) if rows else None
 
+    def _biaoke_hub_markup(self, ask: str = ""):
+        """進去就能點：大盤、查個股。官方日K有檔才加一顆。"""
+        if not TELEGRAM_AVAILABLE:
+            return None
+        rows = [
+            [
+                InlineKeyboardButton("大盤", callback_data="bk:mkt"),
+                InlineKeyboardButton("查個股", callback_data="bk:ask"),
+            ]
+        ]
+        extra = self._biaoke_dayk_markup(ask)
+        if extra is not None:
+            rows.extend(list(extra.inline_keyboard or []))
+        return InlineKeyboardMarkup(rows)
+
     def _biaoke_dayk_markup(self, ask: str = ""):
         """開口那則下一顆：點了送官方日K結構圖，不走查股兩張圖。"""
         if not TELEGRAM_AVAILABLE:
@@ -2847,19 +2860,11 @@ class WayneTelegramBot:
     @classmethod
     def _screening_progress_text(cls, elapsed_sec: int, *, done: bool = False) -> str:
         if done:
-            return "✅ 海選完成，正在推送分類名單…"
-        if elapsed_sec <= 0:
-            return (
-                "⏳ 海選開始：載入資料、掃描全市場…\n"
-                "約需 2～5 分鐘，完成後會依序推送黃金買點／重點觀察等分類。\n"
-                "請勿重複按，以免排隊。"
-            )
-        spin = cls._screening_spinner(elapsed_sec)
-        bar = cls._screening_progress_bar(elapsed_sec)
-        return (
-            f"{spin} 海選進行中　已 {cls._format_elapsed(elapsed_sec)}\n"
-            f"{bar}\n"
-            "仍在掃描全市場，完成後會自動推送。"
+            return WayneTelegramBot._wait_bubble("海選完成", elapsed_sec, now="推送名單")
+        now = "掃描全市場"
+        rest = "黃金買點／重點觀察"
+        return WayneTelegramBot._wait_bubble(
+            "海選進行中", elapsed_sec, now=now, rest=rest, fill_sec=300.0
         )
 
     async def _run_manual_screening(self, message, uid: str = ""):
@@ -2959,6 +2964,34 @@ class WayneTelegramBot:
                 pass
 
     @staticmethod
+    def _wait_bubble(
+        title: str,
+        elapsed_sec: int,
+        *,
+        now: str = "",
+        rest: str = "",
+        fill_sec: float = 45.0,
+    ) -> str:
+        """產圖／海選進行中的方框；完成後會刪掉。"""
+        elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
+        width = 10
+        span = float(fill_sec or 45.0)
+        filled = int(round(min(1.0, max(0.0, float(elapsed_sec)) / span) * width))
+        bar = "▓" * filled + "░" * (width - filled)
+        lines = [
+            "┌──────────────┐",
+            f"│ {title}　已 {elapsed}",
+            f"│ {bar}",
+        ]
+        if now:
+            lines.append(f"│ 現在：{now}")
+        if rest:
+            lines.append(f"│ 接著：{rest}")
+        lines.append("│ 好了這則會消失")
+        lines.append("└──────────────┘")
+        return "\n".join(lines)
+
+    @staticmethod
     def _chart_progress_text(
         elapsed_sec: int,
         *,
@@ -2969,37 +3002,19 @@ class WayneTelegramBot:
         labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
         order = ("glance", "card")
         sent_ks = [str(k) for k in (sent or [])]
-        elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
         now = labels.get(str(current or ""), "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
-        done = [labels[k] for k in order if k in sent_ks]
-        rest = [labels[k] for k in order if k not in sent_ks and labels[k] != now]
-        lines = [f"查股進行中　已 {elapsed}", f"現在：{now}"]
-        if done:
-            lines.append("已畫：" + "、".join(done))
-        if rest:
-            lines.append("接著：" + "、".join(rest))
-        lines.append("兩張齊了一次送出")
-        return "\n".join(lines)
+        rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
+        return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
 
     @staticmethod
     def _biaoke_progress_text(elapsed_sec: int, *, current: str = "chart") -> str:
-        """飆大查個股：跟查股同一種會一直更新的文字方塊，不用圖、不用表情。"""
+        """飆大產圖：方框泡泡，好了刪掉。"""
         labels = {"chart": "結構圖", "reply": "回覆", "stock": "對檔"}
         now = labels.get(str(current or ""), "結構圖")
-        elapsed = WayneTelegramBot._format_elapsed(elapsed_sec)
-        width = 10
-        filled = int(round(min(1.0, max(0, int(elapsed_sec)) / 45.0) * width))
-        bar = "▓" * filled + "░" * (width - filled)
         rest = "回覆" if now != "回覆" else "結構圖"
-        return (
-            f"飆大進行中　已 {elapsed}\n"
-            f"{bar}\n"
-            f"現在：{now}\n"
-            f"接著：{rest}\n"
-            "圖跟文字好了會自己送出"
-        )
+        return WayneTelegramBot._wait_bubble("飆大進行中", elapsed_sec, now=now, rest=rest)
 
     async def _start_plain_wait(self, message, *, text_fn):
         """查股那種連續更新的方塊。不掛鍵盤，免得刪掉時把主選單收走。"""
@@ -3070,30 +3085,13 @@ class WayneTelegramBot:
 
     async def screen_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = str(update.effective_user.id)
-        await self._start_screen_pick(update.message, uid)
+        await self._run_manual_screening(update.message, uid)
 
     def _screen_uni_inline(self):
-        return InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("上市櫃", callback_data="sc:listed"),
-                    InlineKeyboardButton("興櫃", callback_data="sc:em"),
-                ],
-                [InlineKeyboardButton("回主選單", callback_data="sc:home")],
-            ]
-        )
+        return None
 
     async def _start_screen_pick(self, message, uid: str) -> None:
-        actor = self._actor_key(message, uid=uid)
-        self._pending[actor] = "screen:uni"
-        await message.reply_html(
-            "<b>海選</b>\n"
-            "先選<b>上市櫃</b>或<b>興櫃</b>（點訊息下方按鈕）。\n"
-            "• <b>上市櫃</b>＝上市＋上櫃，官方收盤掃黃金買點／重點觀察等\n"
-            "• <b>興櫃</b>＝櫃買官方日均價，只掃黃金買點／重點觀察，不混進上市櫃",
-            reply_markup=self._screen_uni_inline(),
-            disable_web_page_preview=True,
-        )
+        await self._run_manual_screening(message, uid)
 
     async def _handle_screen_pick(self, message, uid: str, text: str, *, actor: str) -> bool:
         from buy_streak import MARKET_ALL, MARKET_EM, MARKET_TW, MARKET_TWO, parse_universe
@@ -3605,26 +3603,23 @@ class WayneTelegramBot:
                     mark_biaoke_read(uid, self.db_path)
                 except Exception:
                     pass
-            kb = self._biaoke_reply_menu(uid)
+            kb = self._biaoke_hub_markup(q)
             if not parts:
                 if chart_task is not None:
                     try:
                         await chart_task
                     except Exception:
                         logger.exception("飆大結構圖並行失敗")
-                await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
+                await message.reply_text("飆客區讀取失敗。", reply_markup=self._biaoke_reply_menu(uid))
                 return
             from biaoke_chain import split_lead_detail
 
             lead_html, detail_html = split_lead_detail("\n\n".join(parts) if len(parts) == 1 else html)
             if lead_html and detail_html:
                 parts = [lead_html, *chunk_telegram_html(detail_html, reflow=False)]
-            dayk = self._biaoke_dayk_markup(q)
             n = len(parts)
             for i, part in enumerate(parts):
                 markup = kb if i == n - 1 else None
-                if i == 0 and dayk is not None:
-                    markup = dayk
                 await message.reply_html(
                     part,
                     disable_web_page_preview=True,
@@ -3646,9 +3641,9 @@ class WayneTelegramBot:
         if not q:
             return
         try:
-            from biaoke_wave import is_wave_question
+            from biaoke_wave import is_twii_plain_ask, is_wave_question
 
-            if is_wave_question(q):
+            if is_wave_question(q) or is_twii_plain_ask(q):
                 await self._send_biaoke_twii_degree_chart(message, uid)
                 return
         except Exception:
@@ -3759,11 +3754,11 @@ class WayneTelegramBot:
             return
         try:
             from biaoke_brain import is_market_question, resolve_stock
-            from biaoke_wave import is_wave_question
+            from biaoke_wave import is_twii_plain_ask, is_wave_question
 
-            if is_wave_question(q):
-                hits = [{"stock_id": "TWII", "stock_name": "加權"}]
-            elif is_market_question(q) and not resolve_stock(self.db_path, q):
+            if is_wave_question(q) or is_twii_plain_ask(q):
+                return
+            if is_market_question(q) and not resolve_stock(self.db_path, q):
                 return
             else:
                 hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
@@ -4492,6 +4487,11 @@ class WayneTelegramBot:
             await self._send_biaoke_page(update.message, uid=uid)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
+            if str(self._pending.get(actor) or "") in ("biaoke:ask", "biaoke:chat"):
+                await self._send_biaoke_page(
+                    update.message, ask="大盤現在", uid=uid
+                )
+                return
             logger.info("主選單：大盤 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.market_cmd(update, context)
@@ -5837,14 +5837,20 @@ class WayneTelegramBot:
                 await self._send_biaoke_page(q.message, ask="去年年底", uid=uid)
                 return
             if kind == "ask":
-                await q.answer("問一檔")
+                await q.answer("查個股")
                 from biaoke_brain import CHAT_HINT
 
                 self._enter_biaoke_chat(q.message, uid)
                 await q.message.reply_html(
                     CHAT_HINT,
                     disable_web_page_preview=True,
+                    reply_markup=self._biaoke_hub_markup(""),
                 )
+                return
+            if kind == "mkt":
+                await q.answer("大盤")
+                self._enter_biaoke_chat(q.message, uid)
+                await self._send_biaoke_page(q.message, ask="大盤現在", uid=uid)
                 return
             await q.answer()
             return
