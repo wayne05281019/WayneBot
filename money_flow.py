@@ -431,6 +431,68 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
         conn.close()
 
 
+def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
+    """查股 overlay：這檔產業當日官方法人剛輪進／流出。不改溫度／買賣格。"""
+    ind = str(industry or "").strip()
+    if not db_path or not ind or ind in {"ETF", "未分類"}:
+        return ""
+    key = str(ymd or "").replace("-", "")[:8]
+    if not key:
+        try:
+            key, _lag = resolve_flow_as_of(db_path)
+        except Exception:
+            key = ""
+    key = str(key or "").replace("-", "")[:8]
+    if not key:
+        return ""
+    try:
+        maps = sector_flow_maps(db_path, key)
+    except Exception:
+        return ""
+    just = maps.get("just_rotated") or {}
+    inflow = maps.get("inflow") or {}
+    outflow = maps.get("outflow") or {}
+    if ind in just:
+        core = f"{ind}剛輪進"
+    elif ind in inflow:
+        core = f"{ind}在流入前段"
+    elif ind in outflow:
+        core = f"{ind}在流出前段"
+    else:
+        return ""
+    stamp = key
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        stamp = format_trading_date_zh(key) or key
+    except Exception:
+        stamp = key
+    return f"官方法人 overlay：{core}（截至 {stamp}）。不改溫度／買賣格。"
+
+
+def industry_flow_tag(note: str) -> str:
+    raw = str(note or "")
+    if "剛輪進" in raw:
+        return "剛輪進"
+    if "流出前段" in raw:
+        return "流出前段"
+    if "流入前段" in raw:
+        return "流入前段"
+    return ""
+
+
+def attach_industry_flow(card: Dict[str, Any], db_path: str, *, ymd: str = "") -> Dict[str, Any]:
+    """寫入 card['industry_flow']。不准改溫度、stance、買賣格。"""
+    if not isinstance(card, dict) or card.get("error") or card.get("etf_kind"):
+        return card
+    if str(card.get("industry_flow") or "").strip():
+        return card
+    note = industry_flow_overlay(db_path, str(card.get("industry") or ""), ymd)
+    if note:
+        card["industry_flow"] = note
+    return card
+
+
 def just_rotated_names_in_results(
     results: Optional[Dict[str, Any]],
     keys: Optional[List[str]] = None,

@@ -915,6 +915,12 @@ class NavigatorEngine:
             attach_etf_price_nav(payload, self.db_path)
         except Exception:
             pass
+        try:
+            from money_flow import attach_industry_flow
+
+            attach_industry_flow(payload, self.db_path, ymd=str(as_of or ""))
+        except Exception:
+            pass
         return payload
 
     def scan_double_green_breakout(self) -> list:
@@ -2604,6 +2610,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    if not news:
+        from money_flow import industry_flow_tag
+
+        news = industry_flow_tag(card.get("industry_flow") or "")
     listing = str(card.get("listing") or "").strip()
     kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
     lead = "　".join(x for x in (listing, kind_lead) if x)
@@ -2983,6 +2993,10 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         chip_lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
     if chip_lines:
         chip_block = section(*chip_lines)
+    flow = str(card.get("industry_flow") or "").strip()
+    if flow:
+        flow_line = html_escape(flow)
+        chip_block = (flow_line + "\n" + chip_block) if chip_block else section(flow_line)
     vol_line = (tape.get("volume") or {}).get("line") or "—"
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
@@ -3285,6 +3299,10 @@ def render_first_glance_png(
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
+    if not news:
+        from money_flow import industry_flow_tag
+
+        news = industry_flow_tag(card.get("industry_flow") or "")
     listing = str(card.get("listing") or "").strip()
     kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
     lead = "　".join(x for x in (listing, kind_lead) if x)

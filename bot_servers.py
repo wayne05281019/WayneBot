@@ -204,6 +204,7 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
     cap = str(base or "").strip() or str(fallback or "").strip()
     if not card:
         return cap
+    short = ""
     try:
         from sell_discipline import attach_sell, sell_note_short
 
@@ -211,11 +212,15 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
             attach_sell(card)
         short = sell_note_short(card)
     except Exception:
-        return cap
-    if not short:
-        return cap
-    note = f"Ai建議　{html_escape(short)}"
-    return f"{cap}\n{note}" if cap else note
+        short = ""
+    if short:
+        note = f"Ai建議　{html_escape(short)}"
+        cap = f"{cap}\n{note}" if cap else note
+    flow = str((card or {}).get("industry_flow") or "").strip()
+    if flow:
+        bit = html_escape(flow)
+        cap = f"{cap}\n{bit}" if cap else bit
+    return cap
 
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:

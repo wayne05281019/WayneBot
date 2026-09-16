@@ -924,7 +924,15 @@ def test_4915_20260904_sync_has_no_sell_caption():
     assert card.get("sell_sync") is True
     assert card.get("sell_action") == ""
     assert sell_note_short(card) == ""
-    assert _photo_sell_caption("高低決策卡", card, fallback="高低決策卡") == "高低決策卡"
+    cap = _photo_sell_caption("高低決策卡", card, fallback="高低決策卡")
+    assert cap.startswith("高低決策卡")
+    assert "Ai建議" not in cap
+    assert "紀律" not in cap
+    flow = str(card.get("industry_flow") or "").strip()
+    if flow:
+        assert flow in cap
+    else:
+        assert cap == "高低決策卡"
 
 
 def test_sell_note_short_skips_when_table_reads_low():

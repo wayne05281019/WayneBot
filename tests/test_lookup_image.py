@@ -71,6 +71,15 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("先出一點、不要追", out)
         self.assertNotIn("買訊", out)
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
+        flow_card = {
+            "sell_action": "",
+            "industry_flow": "官方法人 overlay：半導體業剛輪進（截至 2026年8月28日）。不改溫度／買賣格。",
+        }
+        flowed = _photo_sell_caption("高低決策卡", flow_card, fallback="高低決策卡")
+        self.assertIn("半導體業剛輪進", flowed)
+        self.assertIn("不改溫度／買賣格", flowed)
+        self.assertNotIn("Ai建議", flowed)
+        self.assertNotIn("紀律　", flowed)
 
     def test_stock_caption_name_strips_code_prefix(self):
         from bot_servers import _stock_caption_name
