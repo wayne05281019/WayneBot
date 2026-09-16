@@ -190,6 +190,35 @@ def test_apply_market_weights_beta_reorders(tmp_path):
     }
     out = apply_market_weights(base, snap, db_path=db)
     assert out["day_trade"][0]["stock_id"] == "2317"
+    by_id = {it["stock_id"]: it for it in out["day_trade"]}
+    assert by_id["2330"].get("beta_downweighted") is True
+    assert not by_id["2317"].get("beta_downweighted")
+    html = __import__("screening_engine", fromlist=["_stock_card_html"])._stock_card_html(
+        by_id["2330"], 1, bucket_label="當沖"
+    )
+    assert "高β已降權" in html
+    plain = __import__("screening_engine", fromlist=["_stock_card_html"])._stock_card_html(
+        by_id["2317"], 2, bucket_label="當沖"
+    )
+    assert "高β已降權" not in plain
+    ranked = [it["stock_id"] for it in out["day_trade"]]
+    again = apply_market_weights(base, snap, db_path=db)
+    assert [it["stock_id"] for it in again["day_trade"]] == ranked
+
+
+def test_apply_market_weights_layout_orders_by_profit():
+    base = {
+        "select_02": [
+            {"stock_id": "2481", "profit_pct": 57.5, "chase_warning": True, "q60r": 2.2},
+            {"stock_id": "3718", "profit_pct": 8.9, "q60r": 1.0},
+            {"stock_id": "2330", "profit_pct": 32.1, "q60r": 3.0},
+        ]
+    }
+    out = apply_market_weights(base, {"ok": True, "regime": "neutral", "confidence": 50})
+    ids = [it["stock_id"] for it in out["select_02"]]
+    assert ids[0] == "3718"
+    assert ids[1] == "2330"
+    assert ids[-1] == "2481"
 
 
 def test_backtest_regime_plus_empty(tmp_path):

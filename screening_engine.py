@@ -412,23 +412,36 @@ class ScreeningEngine:
                 overnight_item["defense_price"] = round(min(o, avg_p), 2) # 保本防守價
                 res_overnight.append(overnight_item)
 
-        # 排序：少追（貼20日收盤高）排後面；S級與量比仍優先
-        sort_key = lambda x: (
+        # 排序：少追排最後。佈局桶按 60 日低獲利低→高（剛離基準在前）。
+        # 當沖／隔日沖仍看量比與 S 級，那是盤中節奏不是 60 日獲利。
+        def _nprofit(x):
+            try:
+                v = x.get("profit")
+                if v is None:
+                    v = x.get("profit_pct")
+                return float(v or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        layout_sort = lambda x: (
+            1 if x.get("chase_warning") else 0,
+            _nprofit(x),
+        )
+        session_sort = lambda x: (
             0 if x.get("chase_warning") else 1,
             1 if x.get("is_s_tier", False) else 0,
             x.get("q60r", 0.0),
         )
-        res_sel_01.sort(key=sort_key, reverse=True)
-        res_sel_02.sort(key=sort_key, reverse=True)
-        res_sel_03.sort(key=sort_key, reverse=True)
-        res_day_trade.sort(key=sort_key, reverse=True)
-        res_overnight.sort(key=sort_key, reverse=True)
+        res_sel_01.sort(key=layout_sort)
+        res_sel_02.sort(key=layout_sort)
+        res_sel_03.sort(key=layout_sort)
+        res_day_trade.sort(key=session_sort, reverse=True)
+        res_overnight.sort(key=session_sort, reverse=True)
         res_leave_zero.sort(
             key=lambda x: (
                 1 if x.get("chase_warning") else 0,
                 0 if x.get("leave_l20") else 1,
-                int(x.get("vol_rank_120") or 99),
-                -(x.get("q60r") or 0),
+                _nprofit(x),
             )
         )
 
@@ -436,12 +449,12 @@ class ScreeningEngine:
             key=lambda x: (
                 1 if x.get("chase_warning") else 0,
                 float(x.get("bias_monthly") or 0),
-                abs(float(x.get("profit_pct") or 0)),
+                _nprofit(x),
             )
         )
-        res_half_year_high.sort(key=sort_key, reverse=True)
+        res_half_year_high.sort(key=layout_sort)
 
-        return {
+        raw = {
             "select_01": res_sel_01,
             "select_02": res_sel_02,
             "select_03": res_sel_03,
@@ -449,8 +462,9 @@ class ScreeningEngine:
             "leave_zero": res_leave_zero,
             "golden_buy": res_golden_buy,
             "day_trade": res_day_trade,
-            "overnight": res_overnight
+            "overnight": res_overnight,
         }
+        return {key: stamp_entry_stars(rows, key) for key, rows in raw.items()}
 
     @staticmethod
     def _row_for_bot(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -735,7 +749,7 @@ class ScreeningEngine:
                 -(float(x.get("q60r") or 0)),
             )
         )
-        return [self._row_for_bot(x) for x in mark_leave_zero_stars(out)]
+        return [self._row_for_bot(x) for x in stamp_entry_stars(out, "leave_zero")]
 
     def run_emerging_screening(
         self, target_date: Optional[str] = None, sync: bool = False
@@ -766,20 +780,148 @@ class ScreeningEngine:
         return execute_full_screening(self.db_path, target_date)
 
 
-LEAVE_ZERO_STAR_N = 5
+ENTRY_STAR_N = 5
+LEAVE_ZERO_STAR_N = ENTRY_STAR_N
+
+_BUCKET_FROM_LABEL = {
+    "黃金買點": "leave_zero",
+    "重點觀察": "golden_buy",
+    "優先看": "revenue_cross",
+    "周帶量": "select_01",
+    "半年高": "half_year_high",
+    "站上季線": "select_02",
+    "止跌": "select_03",
+    "當沖": "day_trade",
+    "隔日沖": "overnight",
+    "剛離零": "leave_zero",
+    "剛脫離零": "leave_zero",
+}
+
+_STAR_BASE = {
+    "leave_zero": 3,
+    "golden_buy": 1,
+    "revenue_cross": 2,
+    "select_03": 2,
+    "select_02": 2,
+    "select_01": 1,
+    "half_year_high": 1,
+    "day_trade": 2,
+    "overnight": 2,
+}
+
+
+def _profit_num(item: Dict[str, Any]) -> Optional[float]:
+    for key in ("profit_pct", "profit"):
+        raw = item.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def bucket_key_of(
+    item: Optional[Dict[str, Any]] = None,
+    bucket_key: str = "",
+    bucket_label: str = "",
+) -> str:
+    key = str(bucket_key or "").strip()
+    if key:
+        return key
+    lab = str(bucket_label or "").strip()
+    for name, mapped in _BUCKET_FROM_LABEL.items():
+        if lab == name or lab.startswith(name):
+            return mapped
+    row = item or {}
+    if row.get("golden_buy"):
+        return "golden_buy"
+    return str(row.get("bucket_key") or "").strip()
+
+
+def entry_star_count(
+    item: Optional[Dict[str, Any]] = None,
+    bucket_key: str = "",
+    bucket_label: str = "",
+) -> int:
+    """海選切入星：0～5。滿五星＝黃金買點且高低卡欄對齊、這檔按表該買。
+
+    只疊既有欄：獲利剛離零、S級、輪動進、20低脫離、少追、高β、流出、隔夜逆風。
+    重點觀察不是買訊，最高四星。少追／流出／逆風／高β不能滿五星。
+    """
+    row = item or {}
+    key = bucket_key_of(row, bucket_key, bucket_label)
+    n = int(_STAR_BASE.get(key, 1))
+    profit = _profit_num(row)
+    if profit is not None:
+        if 0.0 < profit <= 3.0:
+            n += 1
+        elif profit > 8.0:
+            n -= 1
+    if row.get("is_s_tier"):
+        n += 1
+    if row.get("sector_inflow"):
+        n += 1
+    if row.get("leave_l20"):
+        n += 1
+    if row.get("revenue_hot") and key != "revenue_cross":
+        n += 1
+    if row.get("both_sessions"):
+        n += 1
+    if row.get("chase_warning"):
+        n -= 2
+    if row.get("beta_downweighted"):
+        n -= 1
+    if row.get("sector_outflow"):
+        n -= 1
+    if row.get("us_risk_off"):
+        n -= 1
+    if row.get("us_peer_headwind"):
+        n -= 1
+    n = max(0, min(ENTRY_STAR_N, n))
+    if n >= ENTRY_STAR_N:
+        must = (
+            key == "leave_zero"
+            and not row.get("chase_warning")
+            and not row.get("sector_outflow")
+            and not row.get("us_risk_off")
+            and not row.get("beta_downweighted")
+            and bool(row.get("is_s_tier") or row.get("sector_inflow"))
+            and (profit is None or profit <= 5.0)
+        )
+        if not must:
+            n = ENTRY_STAR_N - 1
+    return n
+
+
+def entry_star_glyphs(n: int) -> str:
+    filled = max(0, min(ENTRY_STAR_N, int(n)))
+    return "★" * filled + "☆" * (ENTRY_STAR_N - filled)
+
+
+def stamp_entry_stars(
+    rows: List[Dict[str, Any]], bucket_key: str = ""
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        item = dict(row)
+        key = str(bucket_key or item.get("bucket_key") or "").strip()
+        if key:
+            item["bucket_key"] = key
+        n = entry_star_count(item, bucket_key=key)
+        item["entry_stars"] = n
+        item["buy_star"] = n >= ENTRY_STAR_N
+        out.append(item)
+    return out
 
 
 def mark_leave_zero_stars(
     rows: List[Dict[str, Any]], n: int = LEAVE_ZERO_STAR_N
 ) -> List[Dict[str, Any]]:
-    """建議買入最佳五檔：名單已排好後，前 n 檔打 ★（超過五檔也只標五檔）。"""
-    cap = max(0, int(n))
-    out: List[Dict[str, Any]] = []
-    for i, row in enumerate(rows):
-        item = dict(row)
-        item["buy_star"] = i < cap
-        out.append(item)
-    return out
+    """相容舊名：改打 0～5 星，不再用名次只標五檔。"""
+    del n
+    return stamp_entry_stars(rows, "leave_zero")
 
 
 def _is_half_year_high_break(info: Dict[str, Any]) -> bool:
@@ -1056,8 +1198,13 @@ def _px_str(close) -> str:
 
 
 def _hot(text: str) -> str:
-    """Telegram HTML 不能指定紅色；該注意的數字／標籤用粗體當視覺錨點。"""
+    """Telegram HTML 不能指定紅色；一般數字用粗體。"""
     return f"<b>{html_escape(text)}</b>"
+
+
+def _flag(text: str) -> str:
+    """注意標（剛輪到／少追／S級）：不能上紅色，用 🔴＋粗體。"""
+    return f"🔴<b>{html_escape(text)}</b>"
 
 
 def _pct_html(pct) -> str:
@@ -1146,9 +1293,9 @@ def _stock_card_html(
     if item.get("both_sessions"):
         notices.append(_hot("雙時段"))
     if item.get("chase_warning"):
-        notices.append(_hot("少追"))
+        notices.append(_flag("少追"))
     if item.get("is_s_tier"):
-        notices.append(_hot("S級"))
+        notices.append(_flag("S級"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
@@ -1157,8 +1304,10 @@ def _stock_card_html(
         notices.append(_hot("重點觀察"))
     if item.get("at_60_low") and not item.get("golden_buy"):
         notices.append(_hot("60低"))
+    if item.get("beta_downweighted"):
+        notices.append(html_escape("高β已降權"))
     if item.get("sector_inflow"):
-        notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
+        notices.append(_flag(str(item.get("sector_flow_label") or "輪動進")))
     elif item.get("sector_outflow"):
         notices.append(html_escape(str(item.get("sector_flow_label") or "輪動出")))
     if item.get("us_peer_headwind"):
@@ -1174,9 +1323,11 @@ def _stock_card_html(
         to_s = format_yi(float(to_k), unit=False) if to_k is not None else ""
     except (TypeError, ValueError):
         to_s = ""
-    star = " ★" if item.get("buy_star") else ""
+    stars = entry_star_glyphs(
+        entry_star_count(item, bucket_label=bucket_label)
+    )
     body = [
-        f"<b>{idx}.</b> {stock_title}{star}",
+        f"<b>{idx}.</b> {stock_title}　{stars}",
     ]
     live = item.get("live")
     if live:
@@ -1192,7 +1343,10 @@ def _stock_card_html(
         f"格局　{geju_left}",
     ])
     if stance_title:
-        body.append(_hot(stance_title))
+        if item.get("chase_warning") or "別追" in stance_title:
+            body.append(_flag(stance_title))
+        else:
+            body.append(_hot(stance_title))
     note = str(explain or "").strip()
     if note and stance_title and note.startswith(stance_title):
         note = note[len(stance_title) :].lstrip("。").strip()
@@ -1266,11 +1420,11 @@ def _compact_line(item: Dict[str, Any]) -> str:
         t
         for t, on in (
             (_hot("雙時段"), item.get("both_sessions")),
-            (_hot("少追"), item.get("chase_warning")),
-            (_hot("S級"), item.get("is_s_tier")),
+            (_flag("少追"), item.get("chase_warning")),
+            (_flag("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
-            (_hot(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
+            (_flag(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
             (_hot("費半逆風"), item.get("us_peer_headwind")),
             (_hot("隔夜逆風"), item.get("us_risk_off")),
         )
@@ -1296,6 +1450,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
         title = html_stock_anchor(sid, sname)
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
+    stars = entry_star_glyphs(entry_star_count(item))
     from tg_layout import html_price, join_sections, kv_html, section
 
     rows = [
@@ -1310,7 +1465,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
     body = section(*rows)
     if plan:
         body = join_sections(body, plan.strip())
-    return f"{title}\n{body}"
+    return f"{title}　{stars}\n{body}"
 
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
@@ -1421,7 +1576,7 @@ def format_screening_payload(
         )
         first = False
     for key, emoji, label, subtitle, cap, skip_empty in specs:
-        items = results.get(key) or []
+        items = stamp_entry_stars(results.get(key) or [], key)
         if cap:
             items = items[: int(cap)]
         if skip_empty and not items:

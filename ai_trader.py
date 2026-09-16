@@ -631,6 +631,15 @@ def format_ai_desk_pages(
         except Exception:
             sell_notes = {}
             readings = {}
+        flows: Dict[str, str] = {}
+        try:
+            from money_flow import industry_flows_for_stocks
+
+            flows = industry_flows_for_stocks(
+                engine.db_path, [p.get("stock_id") for p in s["positions"]]
+            )
+        except Exception:
+            flows = {}
         pos_pages: List[str] = []
         for i, p in enumerate(s["positions"]):
             sid = p["stock_id"]
@@ -669,6 +678,9 @@ def format_ai_desk_pages(
             reason = reasons.get(sid) or "海選紀律"
             bought = _fmt_ymd(p.get("buy_date") or "")
             block.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
+            flow = str(flows.get(sid) or "").strip()
+            if flow:
+                block.extend(_ai_phone_lines(flow))
             note = sell_notes.get(sid) or ""
             if note:
                 block.extend(_ai_phone_lines(f"紀律：{note}"))

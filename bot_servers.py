@@ -341,7 +341,7 @@ HELP_TOPICS = {
         "海選＝依最近一次官方收盤掃全市場，按一次等 2～5 分鐘，勿連按。直接掃上市＋上櫃。\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
-        "靠近 20 日收盤高會標「少追」，不是叫立刻買。當沖／隔日沖請按主選單那兩顆。\n"
+        "靠近 20 日收盤高會標「少追」，不是立刻買。股名旁五角星＝值不值得買（滿五星＝按表該買）。當沖／隔日沖按主選單那兩顆。\n"
         "\n"
         "<b>三種清單不要搞混</b>\n"
         "• <b>觀察</b>＝自選，還沒買\n"
@@ -406,7 +406,7 @@ HELP_TOPICS = {
         "• 是什麼：依最近一次官方收盤掃全市場的佈局名單（黃金買點、重點觀察、優先看、周帶量等）。\n"
         "• 怎麼用：按一次等 2～5 分鐘，完成後分類推送；勿連按以免排隊。\n"
         "• 自動版：平日 06:30 寄黃金買點／重點觀察（沒檔也寫今日沒有）、優先看／周帶量（有名單才寄）；12:45 有尾盤版（現在要做的事先講）。\n"
-        "• 注意：不是盤中即時掃描；各桶須趨勢向上，不收空頭／下坡。當沖／隔日沖要另按主選單按鈕。\n"
+        "• 注意：不是盤中即時掃描；各桶須趨勢向上，不收空頭／下坡。股名旁五角星＝值不值得買（滿五星＝按表該買）。當沖／隔日沖要另按主選單按鈕。\n"
         "\n"
         "<b>③ 持股</b>\n"
         "• 是什麼：你自己手記的真實買入，不是觀察、也不是 AI 模擬倉。打「持倉」也來這裡。\n"
@@ -476,10 +476,10 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 剛脫離零</b>\n"
         "• 是什麼：收盤前看此刻獲利格剛離開 0 的上市櫃（近 60 個日曆天收盤低）。用證交所即時價複核，未收盤不寫進官方收。\n"
-        "• 怎麼用：平日盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛脫離零。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
+        "• 怎麼用：平日 09:00–13:30 盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛脫離零。股名旁五角星＝值不值得買（滿五星＝按表該買）。\n"
         "• 這頁按鈕：左鍵看這檔完整圖（跟查個股同一套兩張圖），觀察／記買入同查股。\n"
-        "• 沒名單：先按「海選」產出今早快取。收盤後按則顯示最近一次完整收的黃金買點，不是盤中現價。\n"
-        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
+        "• 非盤中：不提供現價複核。若要查請按「海選」看「黃金買點」。下個交易日 09:00–13:30 再按這顆。\n"
+        "• 沒名單：先按「海選」產出今早快取。鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
         "圖文在說明頁下方分類鈕。"
     ),
     "market": (
@@ -600,7 +600,7 @@ HELP_TOPICS = {
     "leave_zero": (
         "<b>剛脫離零怎麼用</b>\n"
         "收盤前按這顆，看此刻獲利格剛離開 0 的上市櫃（近 60 個日曆天收盤低）。用證交所即時價複核，未收盤不寫進官方收。\n"
-        "名單來自海選黃金買點＋重點觀察，不是再掃全市場。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
+        "名單來自海選黃金買點＋重點觀察，不是再掃全市場。股名旁五角星＝值不值得買（滿五星＝按表該買）。\n"
         "\n"
         "<b>這頁按鈕</b>\n"
         "• 左鍵（代號＋股名）＝看這檔完整圖（跟打代號同一套）\n"
@@ -2333,6 +2333,16 @@ class WayneTelegramBot:
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
             return "\n".join(lines), InlineKeyboardMarkup([[self._q("watch")]])
+        flows = {}
+        try:
+            from money_flow import industry_flows_for_stocks
+
+            flows = industry_flows_for_stocks(
+                self.db_path,
+                [str(r.get("stock_code") or "") for r in shown],
+            )
+        except Exception:
+            flows = {}
         for r in shown:
             c = str(r.get("stock_code") or "")
             n = str(r.get("stock_name") or "")
@@ -2342,6 +2352,9 @@ class WayneTelegramBot:
                 lines.append(f"• {html_stock_anchor(c, n, self.db_path)}")
             except Exception:
                 lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
+            flow = str((flows or {}).get(c) or "").strip()
+            if flow:
+                lines.append(html_escape(flow))
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
@@ -2812,7 +2825,7 @@ class WayneTelegramBot:
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """偉權／哥哥手機回目前這次更新：國字說明、更新完成、與畫面同一串代碼。"""
+        """偉權／哥哥手機回目前這次更新：功能名的更新、全數完成、與畫面同一串代碼。"""
         if not update.message:
             return
         await update.message.reply_text(phone_code_reply())
@@ -3498,6 +3511,25 @@ class WayneTelegramBot:
         self._trade_running.add(actor)
         wait_h = (None, None, None)
         try:
+            from trading_calendar import is_tw_equity_session, leave_zero_closed_message
+
+            await self._enter_main_menu(message, uid)
+            if not is_tw_equity_session():
+                html = self._leave_zero_case_html(
+                    "剛脫離零（非盤中）",
+                    "平日 09:00–13:30 才提供現價複核。",
+                    f"<i>{leave_zero_closed_message()}</i>",
+                )
+                kb = InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("海選", callback_data="screen")],
+                        [self._q("leave_zero")],
+                    ]
+                )
+                await message.reply_html(
+                    html, reply_markup=kb, disable_web_page_preview=True
+                )
+                return
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
@@ -3508,7 +3540,6 @@ class WayneTelegramBot:
                     fill_sec=20.0,
                 ),
             )
-            await self._enter_main_menu(message, uid)
             live_on = bool(is_live_merge_window())
             try:
                 rows = await asyncio.wait_for(
@@ -3534,14 +3565,14 @@ class WayneTelegramBot:
             if live_on:
                 title = "剛脫離零（盤中現價）"
                 subtitle = (
-                    "現價對近 60 個日曆天收盤低。股名旁 ★＝建議優先看的五檔。"
+                    "現價對近 60 個日曆天收盤低。股名旁五角星＝值不值得買（滿五星＝按表該買）。"
                     "未收盤不寫進官方收。"
                 )
             else:
                 title = "剛脫離零（最近完整收）"
                 subtitle = (
                     "盤中已過。以下是最近一次完整收盤的黃金買點，不是盤中現價。"
-                    "股名旁 ★＝建議優先看的五檔。"
+                    "股名旁五角星＝值不值得買（滿五星＝按表該買）。"
                 )
             if not rows:
                 from screen_sessions import screen_session_has_data
