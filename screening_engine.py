@@ -412,23 +412,36 @@ class ScreeningEngine:
                 overnight_item["defense_price"] = round(min(o, avg_p), 2) # 保本防守價
                 res_overnight.append(overnight_item)
 
-        # 排序：少追（貼20日收盤高）排後面；S級與量比仍優先
-        sort_key = lambda x: (
+        # 排序：少追排最後。佈局桶按 60 日低獲利低→高（剛離基準在前）。
+        # 當沖／隔日沖仍看量比與 S 級，那是盤中節奏不是 60 日獲利。
+        def _nprofit(x):
+            try:
+                v = x.get("profit")
+                if v is None:
+                    v = x.get("profit_pct")
+                return float(v or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        layout_sort = lambda x: (
+            1 if x.get("chase_warning") else 0,
+            _nprofit(x),
+        )
+        session_sort = lambda x: (
             0 if x.get("chase_warning") else 1,
             1 if x.get("is_s_tier", False) else 0,
             x.get("q60r", 0.0),
         )
-        res_sel_01.sort(key=sort_key, reverse=True)
-        res_sel_02.sort(key=sort_key, reverse=True)
-        res_sel_03.sort(key=sort_key, reverse=True)
-        res_day_trade.sort(key=sort_key, reverse=True)
-        res_overnight.sort(key=sort_key, reverse=True)
+        res_sel_01.sort(key=layout_sort)
+        res_sel_02.sort(key=layout_sort)
+        res_sel_03.sort(key=layout_sort)
+        res_day_trade.sort(key=session_sort, reverse=True)
+        res_overnight.sort(key=session_sort, reverse=True)
         res_leave_zero.sort(
             key=lambda x: (
                 1 if x.get("chase_warning") else 0,
                 0 if x.get("leave_l20") else 1,
-                int(x.get("vol_rank_120") or 99),
-                -(x.get("q60r") or 0),
+                _nprofit(x),
             )
         )
 
@@ -436,10 +449,10 @@ class ScreeningEngine:
             key=lambda x: (
                 1 if x.get("chase_warning") else 0,
                 float(x.get("bias_monthly") or 0),
-                abs(float(x.get("profit_pct") or 0)),
+                _nprofit(x),
             )
         )
-        res_half_year_high.sort(key=sort_key, reverse=True)
+        res_half_year_high.sort(key=layout_sort)
 
         return {
             "select_01": res_sel_01,
@@ -1056,8 +1069,13 @@ def _px_str(close) -> str:
 
 
 def _hot(text: str) -> str:
-    """Telegram HTML 不能指定紅色；該注意的數字／標籤用粗體當視覺錨點。"""
+    """Telegram HTML 不能指定紅色；一般數字用粗體。"""
     return f"<b>{html_escape(text)}</b>"
+
+
+def _flag(text: str) -> str:
+    """注意標（剛輪到／少追／S級）：不能上紅色，用 🔴＋粗體。"""
+    return f"🔴<b>{html_escape(text)}</b>"
 
 
 def _pct_html(pct) -> str:
@@ -1146,9 +1164,9 @@ def _stock_card_html(
     if item.get("both_sessions"):
         notices.append(_hot("雙時段"))
     if item.get("chase_warning"):
-        notices.append(_hot("少追"))
+        notices.append(_flag("少追"))
     if item.get("is_s_tier"):
-        notices.append(_hot("S級"))
+        notices.append(_flag("S級"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
@@ -1160,7 +1178,7 @@ def _stock_card_html(
     if item.get("beta_downweighted"):
         notices.append(html_escape("高β已降權"))
     if item.get("sector_inflow"):
-        notices.append(_hot(str(item.get("sector_flow_label") or "輪動進")))
+        notices.append(_flag(str(item.get("sector_flow_label") or "輪動進")))
     elif item.get("sector_outflow"):
         notices.append(html_escape(str(item.get("sector_flow_label") or "輪動出")))
     if item.get("us_peer_headwind"):
@@ -1194,7 +1212,10 @@ def _stock_card_html(
         f"格局　{geju_left}",
     ])
     if stance_title:
-        body.append(_hot(stance_title))
+        if item.get("chase_warning") or "別追" in stance_title:
+            body.append(_flag(stance_title))
+        else:
+            body.append(_hot(stance_title))
     note = str(explain or "").strip()
     if note and stance_title and note.startswith(stance_title):
         note = note[len(stance_title) :].lstrip("。").strip()
@@ -1268,11 +1289,11 @@ def _compact_line(item: Dict[str, Any]) -> str:
         t
         for t, on in (
             (_hot("雙時段"), item.get("both_sessions")),
-            (_hot("少追"), item.get("chase_warning")),
-            (_hot("S級"), item.get("is_s_tier")),
+            (_flag("少追"), item.get("chase_warning")),
+            (_flag("S級"), item.get("is_s_tier")),
             (_hot("20低脫離"), item.get("leave_l20")),
             (_hot("營收轉強"), item.get("revenue_hot")),
-            (_hot(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
+            (_flag(str(item.get("sector_flow_label") or "輪動進")), item.get("sector_inflow")),
             (_hot("費半逆風"), item.get("us_peer_headwind")),
             (_hot("隔夜逆風"), item.get("us_risk_off")),
         )

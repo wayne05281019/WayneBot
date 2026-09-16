@@ -206,6 +206,21 @@ def test_apply_market_weights_beta_reorders(tmp_path):
     assert [it["stock_id"] for it in again["day_trade"]] == ranked
 
 
+def test_apply_market_weights_layout_orders_by_profit():
+    base = {
+        "select_02": [
+            {"stock_id": "2481", "profit_pct": 57.5, "chase_warning": True, "q60r": 2.2},
+            {"stock_id": "3718", "profit_pct": 8.9, "q60r": 1.0},
+            {"stock_id": "2330", "profit_pct": 32.1, "q60r": 3.0},
+        ]
+    }
+    out = apply_market_weights(base, {"ok": True, "regime": "neutral", "confidence": 50})
+    ids = [it["stock_id"] for it in out["select_02"]]
+    assert ids[0] == "3718"
+    assert ids[1] == "2330"
+    assert ids[-1] == "2481"
+
+
 def test_backtest_regime_plus_empty(tmp_path):
     from taiwan_market import backtest_bucket_win_rate_by_regime_plus
 

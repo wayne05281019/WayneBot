@@ -203,7 +203,9 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     msg.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     msg.reply_html = AsyncMock()
     upd = SimpleNamespace(message=msg, effective_user=msg.from_user)
-    with patch("live_quote.is_live_merge_window", return_value=True):
+    with patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "trading_calendar.is_tw_equity_session", return_value=True
+    ):
         asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
@@ -216,3 +218,82 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     assert "剛脫離零進行中" in wait0
     assert wait0.startswith("<pre>")
     assert "｜" in wait0 and wait0.count("｜") >= 8
+
+
+def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
+    import asyncio
+
+    db = str(tmp_path / "off.db")
+    ensure_core_schema(db)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = db
+    bot.screener = ScreeningEngine(db)
+    bot._pending = {}
+    bot._trade_running = set()
+    bot._enter_main_menu = AsyncMock()
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._actor_key = lambda message, uid="": f"{uid}"
+    msg = MagicMock()
+    msg.from_user = SimpleNamespace(id=1)
+    msg.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=msg.from_user)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("非盤中不准掃現價")
+
+    with patch("trading_calendar.is_tw_equity_session", return_value=False), patch(
+        "screening_engine.ScreeningEngine.screen_leave_zero_now", _boom
+    ):
+        asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
+    html = "\n".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
+    assert "目前非盤中交易時間" in html
+    assert "不提供" in html
+    assert "海選" in html
+    assert "黃金買點" in html
+    assert "09:00" in html
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
+        "reply_markup"
+    )
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "screen" in datas
+    assert not msg.reply_text.await_args_list
+
+
+def test_stock_card_attention_flags_use_red_dot():
+    html = _stock_card_html(
+        {
+            "stock_id": "2481",
+            "stock_name": "強茂",
+            "close": 168.5,
+            "pct_change": 9.77,
+            "q60r": 2.24,
+            "volume": 62194,
+            "chase_warning": True,
+            "is_s_tier": True,
+            "sector_inflow": True,
+            "sector_flow_label": "剛輪到·半導體",
+            "profit": 57.5,
+        },
+        7,
+        bucket_label="站上季線",
+    )
+    assert "🔴<b>少追</b>" in html
+    assert "🔴<b>S級</b>" in html
+    assert "🔴<b>剛輪到·半導體</b>" in html
+    assert "🔴<b>漲多了，今天別追</b>" in html or "別追" in html
+    mild = _stock_card_html(
+        {
+            "stock_id": "3718",
+            "stock_name": "中光電投控",
+            "close": 64.9,
+            "volume": 5315,
+            "sector_inflow": True,
+            "sector_flow_label": "剛輪到·光電",
+            "profit": 8.9,
+        },
+        6,
+        bucket_label="站上季線",
+    )
+    assert "🔴<b>剛輪到·光電</b>" in mild
+    assert "少追" not in mild

@@ -479,10 +479,10 @@ HELP_TOPICS = {
         "\n"
         "<b>⑦ 剛脫離零</b>\n"
         "• 是什麼：收盤前看此刻獲利格剛離開 0 的上市櫃（近 60 個日曆天收盤低）。用證交所即時價複核，未收盤不寫進官方收。\n"
-        "• 怎麼用：平日盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛脫離零。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
+        "• 怎麼用：平日 09:00–13:30 盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛脫離零。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
         "• 這頁按鈕：左鍵看這檔完整圖（跟查個股同一套兩張圖），觀察／記買入同查股。\n"
-        "• 沒名單：先按「海選」產出今早快取。收盤後按則顯示最近一次完整收的黃金買點，不是盤中現價。\n"
-        "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
+        "• 非盤中：不提供現價複核。若要查請按「海選」看「黃金買點」。下個交易日 09:00–13:30 再按這顆。\n"
+        "• 沒名單：先按「海選」產出今早快取。鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
         "圖文在說明頁下方分類鈕。"
     ),
     "market": (
@@ -3559,6 +3559,25 @@ class WayneTelegramBot:
         self._trade_running.add(actor)
         wait_h = (None, None, None)
         try:
+            from trading_calendar import is_tw_equity_session, leave_zero_closed_message
+
+            await self._enter_main_menu(message, uid)
+            if not is_tw_equity_session():
+                html = self._leave_zero_case_html(
+                    "剛脫離零（非盤中）",
+                    "平日 09:00–13:30 才提供現價複核。",
+                    f"<i>{leave_zero_closed_message()}</i>",
+                )
+                kb = InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("海選", callback_data="screen")],
+                        [self._q("leave_zero")],
+                    ]
+                )
+                await message.reply_html(
+                    html, reply_markup=kb, disable_web_page_preview=True
+                )
+                return
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
@@ -3569,7 +3588,6 @@ class WayneTelegramBot:
                     fill_sec=20.0,
                 ),
             )
-            await self._enter_main_menu(message, uid)
             live_on = bool(is_live_merge_window())
             try:
                 rows = await asyncio.wait_for(
