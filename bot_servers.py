@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 介紹圖（上半資訊、下半高低導航）＋決策卡；圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝可滑動對價
-- 海選 / 當沖 / 隔日沖 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 剛離零 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -314,7 +314,7 @@ HELP_TOPICS = {
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>說明</b>｜<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>｜<b>飆大</b>\n"
-        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜（空白）\n"
+        "第二排：<b>大盤</b>｜<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜<b>剛離零</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。\n"
         "打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
         "\n"
@@ -322,7 +322,7 @@ HELP_TOPICS = {
         "早報／海選優先認<b>黃金買點</b>（這一欄以前叫「起漲」）：獲利格剛離開 0，或還在 <b>0.x%</b> 綠底。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
         "\n"
         "<b>重點觀察</b>（這一欄以前叫「黃金買點」）：還壓在近 60 個日曆天收盤低、獲利還在 0 附近。是叫你注意、觀察，不是已經起漲，也不是立刻買。空頭／下坡不進這欄。\n"
-        "盤中請打開該檔決策卡對獲利格。名單是官方收盤掃的，不是盤中即時。海選各桶都要趨勢向上，不收空頭。\n"
+        "盤中請打開該檔決策卡對獲利格。海選名單是官方收盤掃的。收盤前要看此刻剛離零，按第二排最右「剛離零」（現價複核，不寫未收盤）。海選各桶都要趨勢向上，不收空頭。\n"
         "\n"
         "<b>查某一檔</b>\n"
         "打股名或代號會<b>一次出兩張圖</b>：<b>介紹圖</b>（上半資訊、下半180日高低導航）→ 決策卡。要滑動對價按圖下<b>K線</b>。要跟高低卡同一套紫綠箭頭的原版 180 日圖，按<b>導航圖</b>。\n"
@@ -476,7 +476,12 @@ HELP_TOPICS = {
         "• 怎麼用：直接選外資／投信／外資+投信，再點天數。興櫃沒有官方法人表，不會出現在連買區。\n"
         "• 按鈕只在訊息下面，輸入列維持兩排主選單，不要找第二套相同按鈕。\n"
         "• 名單：代號、股名、N 日連買張數與佔成交％；點股名看出完整圖，按籌碼核對。\n"
-        "• 第二排最右一格是空白，還沒接功能；不要當成海選。\n"
+        "\n"
+        "<b>⑦ 剛離零</b>\n"
+        "• 是什麼：收盤前看此刻獲利格剛離開 0 的上市櫃（近 60 個日曆天收盤低）。用證交所即時價複核，未收盤不寫進官方收。\n"
+        "• 怎麼用：平日盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛離零。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
+        "• 這頁按鈕：左鍵看這檔完整圖（跟查個股同一套兩張圖），觀察／記買入同查股。\n"
+        "• 沒名單：先按「海選」產出今早快取。收盤後按則顯示最近一次完整收的黃金買點，不是盤中現價。\n"
         "• 鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
         "圖文在說明頁下方分類鈕。"
     ),
@@ -543,7 +548,7 @@ HELP_TOPICS = {
         "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
         "<b>第一排</b>：說明／海選／持股／觀察／刷新／<b>回報</b>／<b>飆大</b>\n"
-        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>／（空白）\n"
+        "<b>第二排</b>：大盤／資金／當沖／隔日沖／AI倉／<b>連買區</b>／<b>剛離零</b>\n"
         "打「精簡選單」只留六顆；「完整選單」恢復兩排（含飆大）。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
@@ -594,6 +599,18 @@ HELP_TOPICS = {
         "• 左鍵（代號＋股名）＝現價＋圖\n"
         "• 右 <b>➕</b>＝加入觀察\n"
         "• 藍字股名＝奇摩。"
+    ),
+    "leave_zero": (
+        "<b>剛離零怎麼用</b>\n"
+        "收盤前按這顆，看此刻獲利格剛離開 0 的上市櫃（近 60 個日曆天收盤低）。用證交所即時價複核，未收盤不寫進官方收。\n"
+        "名單來自海選黃金買點＋重點觀察，不是再掃全市場。股名旁 ★＝建議優先看的五檔（超過五檔也只標五檔）。\n"
+        "\n"
+        "<b>這頁按鈕</b>\n"
+        "• 左鍵（代號＋股名）＝看這檔完整圖（跟打代號同一套）\n"
+        "• <b>觀察</b>＝加入自選\n"
+        "• <b>記買入</b>＝記真實持股\n"
+        "圖出來後還有籌碼／營收／產業／K線／導航圖，跟查個股同一套。\n"
+        "沒名單時先按「海選」。收盤後按只顯示最近一次完整收的黃金買點。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -798,7 +815,7 @@ HELP_TOPICS = {
     ),
 }
 
-# 主選單兩排：原十二顆變窄，上排最右飆大、下排最右空白格。圈已拿掉。
+# 主選單兩排：上排最右飆大、下排最右剛離零。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
@@ -807,6 +824,14 @@ MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
 MENU_BTN_BIAOKE_FACE = MENU_BTN_BIAOKE
 MENU_BTN_SLOT = "\u3000"
+MENU_BTN_LEAVE_ZERO = "剛離零"
+MENU_BTN_LEAVE_ZERO_ALIASES = (
+    MENU_BTN_LEAVE_ZERO,
+    "離零",
+    "盤中離零",
+    "獲利剛離零",
+    "獲利剛剛脫離零",
+)
 MENU_BTN_BIAOKE_ALIASES = (
     MENU_BTN_BIAOKE,
     MENU_BTN_BIAOKE_FACE,
@@ -843,7 +868,7 @@ MENU_ROW2 = (
     "隔日沖",
     MENU_BTN_AI,
     MENU_BTN_STREAK,
-    MENU_BTN_SLOT,
+    MENU_BTN_LEAVE_ZERO,
 )
 MENU_COMPACT_ROWS = (
     ("說明", "海選", "持股"),
@@ -866,7 +891,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v18：v17 去圈後，只按飆大不會重掛 ReplyKeyboard，手機仍顯示舊圈圈。這版任何進飆大都會帶現在的兩排（沒圈）。
 # v19：進飆大時鍵盤最上加「離開飆大」，用完一鍵回兩排主選單，不必在十四顆裡找出口。
 # v20：離開不再多一排；上排最右同一顆由「飆大」改成「離開飆大」。
-MENU_LAYOUT_VERSION = "20"
+# v21：下排最右空白格改「剛離零」（盤中現價複核獲利剛離零；★ 最佳五檔）。
+MENU_LAYOUT_VERSION = "21"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1265,7 +1291,7 @@ class WayneTelegramBot:
         self._invalidate_menu_layout(uid)
 
     def _reply_menu(self, uid: str = ""):
-        """預設兩排各七格（十二顆＋飆客＋空白）；精簡模式每人六顆。"""
+        """預設兩排各七格（十二顆＋飆大＋剛離零）；精簡模式每人六顆。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -2065,6 +2091,35 @@ class WayneTelegramBot:
             InlineKeyboardButton(label, callback_data=f"k:{c}"),
             InlineKeyboardButton("➕", callback_data=f"w:{c}"),
         ]
+
+    def _lookup_like_action_row(self, code: str, name: str = ""):
+        """跟查個股同一套動作：看這檔／觀察／記買入。"""
+        from tg_layout import stock_btn_label
+
+        c = str(code or "").strip()[:6]
+        label = stock_btn_label(c, name or "")
+        return [
+            InlineKeyboardButton(label, callback_data=f"k:{c}"),
+            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+        ]
+
+    def _leave_zero_section_keyboard(self, picks=None, include_menu: bool = False):
+        rows = []
+        for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
+            if isinstance(pair, (list, tuple)):
+                code = str((pair[0] if pair else "") or "").strip()
+                name = str((pair[1] if len(pair) > 1 else "") or "")
+            else:
+                code = str(pair or "").strip()
+                name = ""
+            if code:
+                rows.append(self._lookup_like_action_row(code, name))
+        if include_menu or rows:
+            rows.append([self._q("leave_zero")])
+        if not rows:
+            return None
+        return InlineKeyboardMarkup(rows)
 
     def _screening_section_keyboard(
         self,
@@ -3404,6 +3459,144 @@ class WayneTelegramBot:
             loader=self.screener.screen_overnight,
         )
 
+    async def leave_zero_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await self._run_leave_zero_now(update.message)
+
+    async def _run_leave_zero_now(self, message):
+        from live_quote import is_live_merge_window
+        from screening_engine import _stock_card_html
+        from universe import is_screen_equity
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_trade_running"):
+            self._trade_running = set()
+        if actor in self._trade_running:
+            await message.reply_text(
+                "剛離零進行中，請稍候完成後再按。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        self._trade_running.add(actor)
+        status = None
+        try:
+            status = await message.reply_text(
+                self._wait_bubble(
+                    "剛離零進行中",
+                    0,
+                    now="讀海選快取",
+                    rest="盤中現價複核",
+                    fill_sec=20.0,
+                )
+            )
+            await self._enter_main_menu(message, uid)
+            live_on = bool(is_live_merge_window())
+            try:
+                rows = await asyncio.wait_for(
+                    asyncio.to_thread(self.screener.screen_leave_zero_now),
+                    timeout=45.0,
+                )
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    "⚠️ 剛離零查詢逾時。請稍後再按一次；若持續發生請回報。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            try:
+                await status.delete()
+            except Exception:
+                pass
+            status = None
+            rows = [
+                r
+                for r in list(rows or [])
+                if is_screen_equity(
+                    str(r.get("code") or r.get("stock_id") or ""),
+                    str(r.get("name") or r.get("stock_name") or ""),
+                )
+            ]
+            if live_on:
+                title = "🌱 剛離零（盤中現價）"
+                subtitle = (
+                    "現價對近 60 個日曆天收盤低。股名旁 ★＝建議優先看的五檔。"
+                    "未收盤不寫進官方收。"
+                )
+            else:
+                title = "🌱 剛離零（最近完整收）"
+                subtitle = (
+                    "盤中已過。以下是最近一次完整收盤的黃金買點，不是盤中現價。"
+                    "股名旁 ★＝建議優先看的五檔。"
+                )
+            if not rows:
+                from screen_sessions import screen_session_has_data
+
+                as_of = self.screener.get_latest_trading_date()
+                if not screen_session_has_data(self.db_path, as_of):
+                    from trading_calendar import format_trading_date_zh
+
+                    as_of_label = format_trading_date_zh(as_of)
+                    await message.reply_html(
+                        f"<b>{title}</b>\n"
+                        f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
+                        "請按主選單「海選」執行後再查；盤中會用即時現價複核，不寫未收盤。</i>",
+                        reply_markup=self._reply_menu(uid),
+                    )
+                else:
+                    empty = (
+                        "此刻沒有獲利剛離零的檔。"
+                        if live_on
+                        else "最近一次完整收沒有黃金買點。"
+                    )
+                    await message.reply_html(
+                        f"<b>{title}</b>\n<i>{empty}</i>",
+                        reply_markup=self._reply_menu(uid),
+                    )
+                return
+            live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
+            cards = [
+                _stock_card_html(r, i + 1, bucket_label="剛離零")
+                for i, r in enumerate(rows)
+            ]
+            head = f"<b>{title}</b>\n<i>{subtitle}</i>\n────────────────"
+            if live_skipped:
+                body = (
+                    head
+                    + "\n<i>⚠️ 盤中即時價暫時無法複核，以下為昨收黃金買點（請自行確認現價）。</i>\n"
+                    + "\n".join(cards)
+                )
+            else:
+                body = head + "\n" + "\n".join(cards)
+            picks = [
+                (r.get("code") or r.get("stock_id"), r.get("name") or r.get("stock_name"))
+                for r in rows[:MAX_PICK_INLINE_ROWS]
+            ]
+            chunks = chunk_telegram_html(body, 3500) or [body]
+            last = len(chunks) - 1
+            for j, chunk in enumerate(chunks):
+                kb = self._leave_zero_section_keyboard(
+                    picks, include_menu=(j == last)
+                )
+                await message.reply_html(
+                    chunk, reply_markup=kb, disable_web_page_preview=True
+                )
+        except Exception:
+            logger.exception("剛離零查詢失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+        finally:
+            self._trade_running.discard(actor)
+            if status is not None:
+                try:
+                    await status.delete()
+                except Exception:
+                    pass
+
     async def _send_market_page(self, message, *, status=None) -> None:
         """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
         if status is None:
@@ -4220,6 +4413,9 @@ class WayneTelegramBot:
         if kind == "overnight":
             await self.overnight_cmd(upd, ctx)
             return
+        if kind == "leave_zero":
+            await self.leave_zero_cmd(upd, ctx)
+            return
         if kind == "streak":
             await self.streak_cmd(upd, ctx)
             return
@@ -4505,6 +4701,11 @@ class WayneTelegramBot:
             logger.info("主選單：隔日沖 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.overnight_cmd(update, context)
+            return
+        if text in MENU_BTN_LEAVE_ZERO_ALIASES:
+            logger.info("主選單：剛離零 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.leave_zero_cmd(update, context)
             return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)

@@ -35,6 +35,7 @@ MENU_BUTTONS = [
     (MENU_BTN_REPORT, "report_cmd"),
     ("飆客", "_send_biaoke_page"),
     (MENU_BTN_BIAOKE_FACE, "_send_biaoke_page"),
+    ("剛離零", "leave_zero_cmd"),
 ]
 
 
@@ -93,7 +94,9 @@ def test_twelve_menu_buttons_exist_in_order():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE]
     assert row2[:6] == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
-    assert row2[6].strip() == ""
+    from bot_servers import MENU_BTN_LEAVE_ZERO
+
+    assert row2[6] == MENU_BTN_LEAVE_ZERO
 
 
 def test_help_script_ready_for_brother_video():

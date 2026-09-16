@@ -32,10 +32,12 @@ def test_compact_six_buttons_are_two_chars_no_wrap():
         assert len(row) == 3
         for t in row:
             assert len(t) == 2, t
-    assert MENU_LAYOUT_VERSION == "20"
+    assert MENU_LAYOUT_VERSION == "21"
     assert MENU_ROW1 == ("說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE)
     assert MENU_ROW2[:6] == (MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK)
-    assert MENU_ROW2[6].strip() == ""
+    from bot_servers import MENU_BTN_LEAVE_ZERO
+
+    assert MENU_ROW2[6] == MENU_BTN_LEAVE_ZERO
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[0]] == list(MENU_ROW1)

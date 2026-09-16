@@ -24,6 +24,7 @@ MENU_BUTTONS = [
     (MENU_BTN_MARKET, "market_cmd"),
     (MENU_BTN_REPORT, "report_cmd"),
     (MENU_BTN_BIAOKE_FACE, "_send_biaoke_page"),
+    ("剛離零", "leave_zero_cmd"),
 ]
 
 INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取大盤", "資金": "讀取當日資金移動"}

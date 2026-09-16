@@ -70,7 +70,9 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         kb = bot._reply_menu()
         row2 = [b.text for b in kb.keyboard[1]]
         assert row2[-2] == MENU_BTN_STREAK
-        assert row2[-1].strip() == ""
+        from bot_servers import MENU_BTN_LEAVE_ZERO
+
+        assert row2[-1] == MENU_BTN_LEAVE_ZERO
         await bot._reply_help_topic(msg, "guide")
         await bot._reply_help_topic(msg, "row2")
         return uid, bot._actor_key(msg)

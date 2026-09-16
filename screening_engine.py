@@ -11,7 +11,7 @@
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Sequence
 import pandas as pd
 import numpy as np
@@ -537,6 +537,206 @@ class ScreeningEngine:
         target_date = target_date or self.get_latest_trading_date()
         return self._screen_trade_bucket_from_cache("overnight", target_date)
 
+    def _load_close_frames(
+        self, codes: Sequence[str], as_of: str
+    ) -> Dict[str, pd.DataFrame]:
+        """讀候選檔最近約 90 曆日官方收（含 as_of），不寫入、不補未收盤。"""
+        codes = [str(c).strip() for c in codes if str(c).strip()]
+        if not codes:
+            return {}
+        as_of = str(as_of or "").replace("-", "")[:8]
+        lo = ""
+        if as_of:
+            try:
+                lo = (datetime.strptime(as_of, "%Y%m%d") - timedelta(days=90)).strftime(
+                    "%Y%m%d"
+                )
+            except ValueError:
+                lo = ""
+        conn = self._get_connection()
+        placeholders = ",".join("?" * len(codes))
+        params: List[Any] = list(codes)
+        extra = ""
+        if as_of:
+            extra += " AND REPLACE(date,'-','') <= ?"
+            params.append(as_of)
+        if lo:
+            extra += " AND REPLACE(date,'-','') >= ?"
+            params.append(lo)
+        df = pd.read_sql_query(
+            f"""
+            SELECT stock_id, date, open, high, low, close, volume, turnover_k
+            FROM daily_quotes
+            WHERE stock_id IN ({placeholders}){extra}
+            ORDER BY stock_id, date
+            """,
+            conn,
+            params=params,
+        )
+        conn.close()
+        if df is None or df.empty:
+            return {}
+        df["date"] = df["date"].astype(str).str.replace("-", "", regex=False)
+        out: Dict[str, pd.DataFrame] = {}
+        for sid, g in df.groupby("stock_id"):
+            out[str(sid)] = g.reset_index(drop=True)
+        return out
+
+    def screen_leave_zero_now(
+        self, target_date: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """主選單剛離零：海選黃金買點＋重點觀察快取，盤中現價複核獲利剛離零。
+
+        未收盤柱只活在記憶體，不准寫進 daily_quotes。
+        """
+        from decision_card_signals import (
+            cal60_low_close_at,
+            card_alerts_for_df,
+            leave_zero_screen_ok,
+            profit_pct_cal60_series,
+        )
+        from live_quote import is_live_merge_window
+        from screen_sessions import load_bucket_rows
+        from universe import is_screen_equity
+
+        as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
+        lz_rows = load_bucket_rows(self.db_path, "leave_zero", as_of)
+        if not lz_rows:
+            lz_rows = load_bucket_rows(self.db_path, "leave_zero", "")
+        gb_rows = load_bucket_rows(self.db_path, "golden_buy", as_of)
+        if not gb_rows:
+            gb_rows = load_bucket_rows(self.db_path, "golden_buy", "")
+        by_id: Dict[str, Dict[str, Any]] = {}
+        lz_ids = set()
+        for sr in lz_rows:
+            sid = str(sr.get("stock_id") or "").strip()
+            if not sid or not is_screen_equity(sid, str(sr.get("stock_name") or "")):
+                continue
+            lz_ids.add(sid)
+            by_id[sid] = sr
+        live_on = bool(is_live_merge_window())
+        if live_on:
+            for sr in gb_rows:
+                sid = str(sr.get("stock_id") or "").strip()
+                if not sid or sid in by_id:
+                    continue
+                if not is_screen_equity(sid, str(sr.get("stock_name") or "")):
+                    continue
+                by_id[sid] = sr
+        if not by_id:
+            return []
+        codes = list(by_id.keys())
+        frames = self._load_close_frames(codes, as_of)
+        quotes: Dict[str, Dict[str, Any]] = {}
+        live_skipped = False
+        if live_on:
+            try:
+                from midday_review import fetch_mis_batch
+
+                quotes = fetch_mis_batch(codes, self.db_path) or {}
+            except Exception:
+                quotes = {}
+            if not quotes:
+                live_skipped = True
+        out: List[Dict[str, Any]] = []
+        for sid, sr in by_id.items():
+            df = frames.get(sid)
+            if df is None or len(df) < 2:
+                continue
+            try:
+                profits = profit_pct_cal60_series(df)
+                floor = float(cal60_low_close_at(df, -1) or 0)
+                official_pt = float(profits.iloc[-1])
+                official_py = float(profits.iloc[-2]) if len(profits) >= 2 else 99.0
+                ya, ta_off = card_alerts_for_df(df)
+            except Exception:
+                continue
+            last_close = float(df["close"].iloc[-1] or 0)
+            last_vol = 0.0
+            item: Dict[str, Any] = {
+                "stock_id": sid,
+                "stock_name": sr.get("stock_name") or "",
+                "chase_warning": bool(sr.get("chase_warning")),
+                "cal60_low": floor,
+                "close": last_close,
+                "yest_profit_pct": official_pt if live_on and not live_skipped else official_py,
+            }
+            try:
+                vols = df["volume"].astype(float)
+                base = (
+                    float(vols.iloc[-61:-1].mean())
+                    if len(vols) >= 61
+                    else float(vols.iloc[:-1].mean())
+                    if len(vols) > 1
+                    else 0.0
+                )
+                last_vol = float(vols.iloc[-1] or 0)
+                item["volume"] = int(last_vol)
+                item["q60r"] = (last_vol / base) if base > 0 else 0.0
+            except Exception:
+                item["q60r"] = 0.0
+            if live_on and not live_skipped:
+                q = quotes.get(sid) or {}
+                raw_px = q.get("price") if q.get("price") is not None else q.get("close")
+                if raw_px is None or floor <= 0:
+                    continue
+                price = float(raw_px)
+                live_profit = round((price - floor) / floor * 100.0, 1)
+                today_alert = "60低" if price <= floor * 1.005 else "No"
+                ok, _reason = leave_zero_screen_ok(
+                    official_pt,
+                    live_profit,
+                    yest_alert=ta_off,
+                    today_alert=today_alert,
+                )
+                if not ok:
+                    continue
+                yest_c = q.get("yesterday_close")
+                pct = None
+                try:
+                    if yest_c:
+                        pct = (price - float(yest_c)) / float(yest_c) * 100.0
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pct = q.get("pct")
+                live_vol = int(q.get("volume") or 0)
+                if live_vol > 0:
+                    item["volume"] = live_vol
+                    if item.get("q60r") and last_vol > 0:
+                        item["q60r"] = item["q60r"] * (live_vol / last_vol)
+                item["profit"] = live_profit
+                item["profit_pct"] = live_profit
+                item["live"] = {
+                    "price": price,
+                    "change": q.get("change"),
+                    "pct": pct,
+                    "update_time": q.get("update_time", ""),
+                    "yesterday_close": yest_c,
+                }
+            else:
+                if sid not in lz_ids:
+                    continue
+                ok, _reason = leave_zero_screen_ok(
+                    official_py,
+                    official_pt,
+                    yest_alert=ya,
+                    today_alert=ta_off,
+                )
+                if not ok:
+                    continue
+                item["profit"] = official_pt
+                item["profit_pct"] = official_pt
+                if live_skipped:
+                    item["_live_skipped"] = True
+            out.append(item)
+        out.sort(
+            key=lambda x: (
+                1 if x.get("chase_warning") else 0,
+                float(x.get("profit_pct") if x.get("profit_pct") is not None else 99),
+                -(float(x.get("q60r") or 0)),
+            )
+        )
+        return [self._row_for_bot(x) for x in mark_leave_zero_stars(out)]
+
     def run_emerging_screening(
         self, target_date: Optional[str] = None, sync: bool = False
     ) -> Dict[str, Any]:
@@ -564,6 +764,22 @@ class ScreeningEngine:
 
     def run_full_screening(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         return execute_full_screening(self.db_path, target_date)
+
+
+LEAVE_ZERO_STAR_N = 5
+
+
+def mark_leave_zero_stars(
+    rows: List[Dict[str, Any]], n: int = LEAVE_ZERO_STAR_N
+) -> List[Dict[str, Any]]:
+    """建議買入最佳五檔：名單已排好後，前 n 檔打 ★（超過五檔也只標五檔）。"""
+    cap = max(0, int(n))
+    out: List[Dict[str, Any]] = []
+    for i, row in enumerate(rows):
+        item = dict(row)
+        item["buy_star"] = i < cap
+        out.append(item)
+    return out
 
 
 def _is_half_year_high_break(info: Dict[str, Any]) -> bool:
@@ -958,8 +1174,9 @@ def _stock_card_html(
         to_s = format_yi(float(to_k), unit=False) if to_k is not None else ""
     except (TypeError, ValueError):
         to_s = ""
+    star = " ★" if item.get("buy_star") else ""
     body = [
-        f"<b>{idx}.</b> {stock_title}",
+        f"<b>{idx}.</b> {stock_title}{star}",
     ]
     live = item.get("live")
     if live:
