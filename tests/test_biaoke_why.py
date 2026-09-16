@@ -176,6 +176,12 @@ def test_why_sep15_escape_wave():
     kbar = lookup("健策爆大量跌破平台")
     assert "5310" in kbar or "2469" in kbar
     assert "轉折" in kbar or "籌碼" in kbar
+    c5 = lookup("C-5低點確認了嗎")
+    assert "45398" in c5
+    assert "如果句" in c5
+    assert "頭肩底" in c5
+    assert "10月中" in c5
+    assert "不是買訊" in c5
 
 
 def test_live_notes_puts_why_chain_first():

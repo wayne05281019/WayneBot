@@ -107,6 +107,13 @@ def test_classify_night_gold_uses_five_tools_not_keywords():
     )
     assert {h["neuron"] for h in nest} >= {"nest"}
     assert any(h["sid"] in ("", "TWII") for h in nest if h["neuron"] == "nest")
+    c5 = classify_spoken(
+        "大盤今天觀察只要收盤不破3日低點45398代表C-5低點確認。"
+        "不能說沒反彈到46767就一定有C-3。頭肩底型態至少還要3周(鏡射理論)。"
+    )
+    assert "nest" in {h["neuron"] for h in c5}
+    assert all(h["sid"] in ("", "TWII") for h in c5 if h["neuron"] == "hold")
+
     tape = classify_spoken("後來收盤看到健策爆大量跌破平台，確認出現轉折，多頭結構被破壞的量價結構")
     assert any(h["neuron"] == "tape" and h["sid"] == "3653" for h in tape)
     hold = classify_spoken("我只要看到出現止漲整理K棒是一定會調節的。至於今天抽出的資金轉到創意，說實話，風險也很大。")

@@ -168,8 +168,9 @@ def _pointed_calendar(db_path: str, as_of: str) -> str:
     """
     ymd = "".join(ch for ch in str(as_of or "") if ch.isdigit())[:8]
     dual = (
-        "兩個9/16不准混：Fed升息結果不准編；"
-        "奇鋐「明天只能上不能下」的明天＝9/16、盤中未收不當官方收。"
+        "三個9/16不准混：Fed升息結果不准編；"
+        "奇鋐「明天只能上不能下」的明天＝9/16、盤中未收不當官方收；"
+        "C-5低點＝收盤不破45398，還是如果句。"
         "周四／周五夜盤才查46767，不是9/16日盤。"
     )
     if not ymd or ymd < "20260917":
@@ -210,12 +211,16 @@ def _clip(text: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-# 巢穴 900 字不准把 9/15 交叉擠掉。官方柱／日曆可短，這段必留。
+# 巢穴 900 字不准把 9/16 晨交叉擠掉。官方柱／日曆可短，這段必留。
 _NEST_KEY = (
+    "9/16晨：收盤不破45398才是C-5低點確認，還是如果句；未收不當官方。"
+    "不到46767≠一定C-3；夜盤不到則C-2可能性高。"
+    "頭肩底至少3周（鏡射）才可能主升段；10月中買回測支撐或起漲第一根，不是買訊。"
+    "45398≠45839。"
     "9/15夜：築底是形態蓄積過下降壓，不是已表態過線；高檔震盪沒表態可能性較大。"
     "周四／周五夜盤才查46767，不是9/16日盤；官方夜盤對46506／46767還沒走完。"
-    "兩個9/16：Fed不准編≠奇鋐只能上不能下（盤中未收不當官方）。"
-    "C-2轉C-3未確認；末端估43500；某商品量價說43500 非常難，兩條不准合成。"
+    "三個9/16不准混：還在等 9/16 Fed不准編≠奇鋐只能上不能下≠C-5低點45398。不是看新聞做股票。"
+    "C-2轉C-3未確認；末端估43500；某商品量價說43500非常難，兩條不准合成。"
     "9波擴延到36000約5%微乎其微，36000≠43500。"
     "三種形態：強勢整理＝拉回淺等時間；破線1～3天站回＝洗盤；爆大量跌破平台＝轉折K。"
     "形態沒爆大量不准升成轉折K。真正有用＝波浪／形態／量價／關鍵K（碎形）。"
@@ -320,6 +325,7 @@ def _resolve_sid(db_path: str, ask: str) -> Tuple[str, str]:
         "46767",
         "47578",
         "48218",
+        "45398",
         "19650",
         "19844",
         "19250",
@@ -344,7 +350,20 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
     try:
         from biaoke_brain import load_index_bars
 
-        bars = load_index_bars(db_path, n=2) if db_path else []
+        bars = load_index_bars(db_path, n=8) if db_path else []
+        cap = ""
+        try:
+            from import_health import latest_complete_quote_date
+
+            cap = str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+        except Exception:
+            cap = ""
+        if cap:
+            bars = [
+                b
+                for b in bars
+                if str(b.get("date") or "").replace("-", "")[:8] <= cap
+            ]
         if bars:
             last = bars[-1]
             twii_ymd = str(last.get("date") or "").replace("-", "")[:8]
@@ -377,6 +396,19 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
             elif hi > 0:
                 bits.append(
                     f"官方高 {_px(hi)} 還沒過他自己點的前波高 47578，右肩還沒做完"
+                )
+            lows: List[float] = []
+            for b in bars[-3:]:
+                try:
+                    v = float(b.get("low") or 0)
+                except (TypeError, ValueError):
+                    v = 0.0
+                if v > 0:
+                    lows.append(v)
+            three_low = min(lows) if lows else 0.0
+            if three_low > 0:
+                bits.append(
+                    f"官方3日低 {_px(three_low)}對C-5線45398，未收不當官方"
                 )
         else:
             bits.append("官方加權這顆庫還沒這列，不准自己寫點位")
@@ -455,9 +487,7 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
     if cal:
         if "還在等 9/16" in cal:
             bits.append(
-                "他自己點的日曆：還在等 9/16 Fed（9/15～9/16 利率決策），"
-                "不是看新聞做股票。升息結果不准編。"
-                "奇鋐只能上不能下的9/16盤中未收不當官方。周四／周五夜盤才查46767。"
+                "他自己點的日曆：還在等 9/16 Fed，不是看新聞做股票。升息結果不准編。"
             )
         else:
             bits.append(cal)
@@ -499,10 +529,15 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
             "只能上不能下",
             "周四",
             "Fed",
+            "C-5",
+            "45398",
+            "頭肩底",
+            "鏡射",
+            "10月中",
         )
     ):
         return core
-    extra = "大盤位階用他自己點過的 45839／46506／48218／46767，禁止 17000。"
+    extra = "大盤位階用他自己點過的 45839／46506／48218／46767／45398，禁止 17000。"
     out = dict(core)
     out["text"] = _fit_nest(text + "。" + extra)
     return out
@@ -1203,11 +1238,28 @@ def _five_cross(steps: List[Dict[str, Any]], sid: str, name: str = "") -> str:
             )
         elif nest_c3:
             bits.append("五件交叉：C-2轉C-3未確認，不是個股出清指令。")
+        if "C-5" in nest or "45398" in nest:
+            bits.append(
+                "五件交叉：收盤不破45398才是C-5低點確認，還是如果句；未收不當官方，不是已確認C-5，也不是主升段。"
+            )
+            bits.append("45398≠45839：C-5確認線不是右肩低。")
+        if "不到46767" in nest or "≠一定C-3" in nest or "一定C-3" in nest:
+            bits.append("不到46767≠一定C-3；夜盤不到則C-2可能性高。")
+        if "頭肩底至少3周" in nest or "鏡射" in nest:
+            bits.append(
+                "即使化解C波，頭肩底至少3周（鏡射）才可能主升段；"
+                "10月中買回測支撐或起漲第一根，不是買訊。"
+            )
         if night_short or ("46767" in nest and "築底" in nest):
             bits.append("官方夜盤還沒到他自己點的46767，築底不是已過下降壓。")
         if "不是9/16日盤" in nest or "周四" in nest:
             bits.append("周四／周五夜盤才查46767，不是9/16日盤。")
-        if "兩個9/16" in nest or "只能上不能下" in nest:
+        if "三個9/16" in nest:
+            bits.append(
+                "三個9/16不准混：Fed升息結果不准編，奇鋐只能上不能下盤中未收不當官方，"
+                "C-5低點45398也未收不當官方。"
+            )
+        elif "兩個9/16" in nest or "只能上不能下" in nest:
             bits.append("兩個9/16不准混：Fed升息結果不准編，奇鋐只能上不能下盤中未收不當官方。")
         if "36000" in nest:
             bits.append("36000是9波擴延極差、約5%微乎其微，不准跟43500混成一條C。")
@@ -1323,6 +1375,10 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit = "大盤官方收已低於 45839，覆巢先當有事"
         else:
             nest_bit = "大盤官方點位有了" if nest.get("ok") else "大盤官方點位還缺，確認末端不准講死"
+        if "還在等 9/16" in nest_t:
+            nest_bit += "；還在等他自己點的 9/16 Fed"
+        elif "9/16 Fed 已過" in nest_t:
+            nest_bit += "；他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤"
         live_m = re.search(r"他自己最新：[^。]+", nest_t)
         if live_m:
             nest_bit += "；" + _clip(live_m.group(0), 100)
@@ -1346,10 +1402,6 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
             nest_bit += "；那指這路缺官方"
         elif "那指隔夜官方" in nest_t:
             nest_bit += "；那指隔夜有官方"
-        if "還在等 9/16" in nest_t:
-            nest_bit += "；還在等他自己點的 9/16 Fed"
-        elif "9/16 Fed 已過" in nest_t:
-            nest_bit += "；他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤"
         if "46767" in nest_t:
             nest_bit += "；周四／周五夜盤反彈至少 46767，不是官方收"
         if "43500 非常難" in nest_t:
@@ -1406,9 +1458,6 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
     live_m = re.search(r"他自己最新：[^。]+", nest_t)
     if live_m:
         parts.append(_clip(live_m.group(0), 100) + "。")
-    cross = _five_cross(steps, "", "")
-    if cross:
-        parts.append(cross)
     if "45839 之上" in nest_t:
         parts.append("官方收還在 45839 之上，右肩低先當沒破。")
     elif "已低於他自己點的 9/3 低 45839" in nest_t:
@@ -1425,16 +1474,19 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         parts.append("官方高已過 47578。")
     if "費半這路先當缺" in nest_t or "四路先缺這路" in nest_t:
         parts.append("費半這路缺官方。")
+    elif "費半隔夜官方" in nest_t:
+        parts.append("費半隔夜有官方。")
     if "那指這路先當缺" in nest_t:
         parts.append("那指這路缺官方。")
+    elif "那指隔夜官方" in nest_t:
+        parts.append("那指隔夜有官方。")
+    cross = _five_cross(steps, "", "")
+    if cross:
+        parts.append(cross)
     if "還在等 9/16" in nest_t:
         parts.append("還在等他自己點的 9/16 Fed，下一波主流不准裝已確認。")
     elif "9/16 Fed 已過" in nest_t:
         parts.append("他自己點的 9/16 已過，升息結果不准編，用新高檔官方日K回撤。")
-    if "46767" in nest_t:
-        parts.append("周四／周五夜盤反彈至少 46767，不是官方收。")
-    if "43500 非常難" in nest_t:
-        parts.append("某商品量價說 43500 難破，不是已確認。")
     if "個股不數" not in "".join(parts):
         parts.append("個股不數浪。產業／長抱看法每顆都重讀，沒點檔就不套某一檔。真正有用＝波浪／形態／量價／關鍵K（碎形）。")
     return _clip("".join(parts), 560)

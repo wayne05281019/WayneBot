@@ -658,7 +658,12 @@ def test_five_cross_gives_different_insight_per_stock():
     assert "5%" in mf or "微乎其微" in mf
     assert "沒表態" in mf or "高檔震盪" in mf
     assert "不是9/16日盤" in mf or "周四" in mf
-    assert "兩個9/16" in mf or "Fed" in mf
+    assert "兩個9/16" in mf or "三個9/16" in mf or "Fed" in mf
+    assert "C-5" in mf
+    assert "45398" in mf
+    assert "頭肩底至少3周" in mf or "鏡射" in mf
+    assert "不是主升段" in mf or "不是買訊" in mf
+    assert "不到46767" in mf or "一定C-3" in mf
     clips = [_view_line(n) for n in NEURON_IDS]
     assert len({c for c in clips if c}) == 6
     assert not all("46767" in c for c in clips)
@@ -789,3 +794,56 @@ def test_five_cross_wash_is_not_turn_and_36000_not_43500():
     yao = fire_chain("", "台燿怎麼看")
     yao_f = yao.get("five") or yao["think"]
     assert "台光電表態" in yao_f or "等台光電" in yao_f
+
+
+def test_chain_c5_if_not_main_up_and_45398_not_sid():
+    fired = fire_chain("", "45398 怎麼看")
+    assert not fired.get("sid")
+    nest = next(s for s in fired["steps"] if s["id"] == "nest")["text"]
+    five = fired.get("five") or fired["think"]
+    think = fired["think"]
+    blob = nest + five + think
+    assert "45398" in blob
+    assert "C-5" in blob
+    assert "如果句" in blob
+    assert "頭肩底" in blob
+    assert "10月中" in blob or "不是買訊" in blob
+    assert "未收" in blob or "不當官方" in blob
+    c5 = fire_chain("", "C-5低點確認了嗎")
+    assert not c5.get("sid")
+    c5b = (c5.get("five") or "") + c5["think"]
+    assert "不是已確認C-5" in c5b or "如果句" in c5b
+    assert "主升段" in c5b or "10月中" in c5b
+
+
+def test_nest_skips_incomplete_index_bar(tmp_path, monkeypatch):
+    import sqlite3
+
+    from taiwan_market import ensure_index_daily_table
+
+    db = str(tmp_path / "c5-cap.db")
+    ensure_index_daily_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume,pct_change,updated_at) "
+        "VALUES ('20260915','TWII',45800,46010,45492,45511,1,0,'t')"
+    )
+    conn.execute(
+        "INSERT INTO index_daily(date,symbol,open,high,low,close,volume,pct_change,updated_at) "
+        "VALUES ('20260916','TWII',45500,45700,45200,45600,1,0,'t')"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260915"
+    )
+    from biaoke_chain import _NEST_OFFICIAL
+
+    _NEST_OFFICIAL.clear()
+    fired = fire_chain(db, "C-5低點怎麼看")
+    nest = next(s for s in fired["steps"] if s["id"] == "nest")["text"]
+    assert "20260916" not in nest.replace("-", "")
+    assert "45200" not in nest
+    assert "45511" in nest or "45492" in nest
+    assert "45398" in nest
+    assert "如果句" in nest

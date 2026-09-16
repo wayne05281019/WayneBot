@@ -34,6 +34,7 @@ def test_wave_question_no_ticker():
     assert is_wave_question("現在是逃命波嗎")
     assert is_wave_question("目前大盤是屬於哪個位階 以波浪來看的話")
     assert is_wave_question("他技術線圖看到什麼")
+    assert is_wave_question("現在是C-5低點嗎")
     assert not is_wave_question("台光電怎麼看")
     assert not is_wave_question("46506 怎麼來")
 
@@ -307,6 +308,7 @@ def test_wave_chart_mark_is_short_abc():
     assert wave_chart_mark("A波低", "2026-A") == "A"
     assert wave_chart_mark("大B波", "2026-B") == "B"
     assert wave_chart_mark("逃命波C-2", "2026-C") == "C-2"
+    assert wave_chart_mark("C-5低點", "2026-C") == "C-5"
     assert wave_chart_mark("右肩", "2026-d2") == "2"
     legs = locator_wave_legs(
         [
@@ -382,3 +384,13 @@ def test_wave_extend_rays_escape_c2_hits_worst():
     src = inspect.getsource(build_twii_degree_chart)
     assert "wave_extend_rays" in src
     assert "record_twii" in src
+
+
+def test_wave_extend_rays_c5_forks_45398():
+    pts = [{"i": 10, "y": 45511.0, "tag": "C-5低點"}]
+    rays = wave_extend_rays(pts, 12, "C-5低點")
+    labels = " ".join(str(r.get("label") or "") for r in rays)
+    assert "最差43500" in labels
+    assert "C-5若守45398" in labels
+    fork = next(r for r in rays if r["kind"] == "fork")
+    assert abs(float(fork["y"]) - 45398.43) < 1e-6

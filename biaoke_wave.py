@@ -16,7 +16,7 @@ _WAVE_ASK = re.compile(
     r"(現在波浪位階|哪個位階|波浪位階|以波浪|"
     r"細微波|右肩型態|大盤現在|現在大盤|"
     r"上昇|上升還是下降|升浪還是|哪一浪|哪一波|"
-    r"C-1|C-2|C-3|位階二|修正末端|測底|逃命波)"
+    r"C-1|C-2|C-3|C-5|位階二|修正末端|測底|逃命波)"
 )
 _EYES_ASK = re.compile(
     r"(技術線圖|他看到什麼|看大盤轉折|轉折最準|沒人比|"
@@ -30,6 +30,11 @@ _NEG_FIFTH = re.compile(
 )
 _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
     ("逃命波C-2", "down", re.compile(r"逃命波.{0,12}C-2|做逃命波\s*C-2")),
+    (
+        "C-5低點",
+        "retest",
+        re.compile(r"C-5\s*低點|C-5低點確認|收盤不破.{0,6}45398|3日低點\s*45398"),
+    ),
     ("C-3", "down", re.compile(r"小心C-2\s*轉\s*C-3|出現C-2\s*轉\s*C-3|轉C-3先")),
     ("C-1", "down", re.compile(r"C波下殺\s*C-1|走C波下殺|最差情境.{0,24}C-1")),
     ("第五波測底", "retest", re.compile(r"第五波.{0,8}測底|再一次測底|短線築底")),
@@ -50,6 +55,7 @@ _TAGGERS: Tuple[Tuple[str, str, re.Pattern[str]], ...] = (
 )
 _TAG_PAT = {name: pat for name, _d, pat in _TAGGERS}
 _TAG_RANK = {
+    "C-5低點": 95,
     "逃命波C-2": 90,
     "第五波測底": 80,
     "修正末端": 70,
@@ -448,6 +454,11 @@ def _compare(prev: Optional[Dict[str, str]], last: Optional[Dict[str, str]]) -> 
         return "這是帶裡最早一筆他自己點名的位階，前面沒得對。"
     a, b = prev.get("tag") or "", last.get("tag") or ""
     pair = (a, b)
+    if pair == ("逃命波C-2", "C-5低點") or b == "C-5低點":
+        return (
+            f"{last.get('date')} 收盤不破45398才是C-5低點確認，還是如果句；"
+            "盤中未收不當官方。不是已確認C-5，也不是主升段。"
+        )
     if pair == ("第五波測底", "逃命波C-2") or pair == ("頭肩底", "逃命波C-2"):
         return (
             f"先前 {prev.get('date')} 叫{a}等反彈，後來 {last.get('date')} 改口小心逃命波C-2："
@@ -966,6 +977,7 @@ _LOW_TAGS = {
     "A波低",
     "第五波測底",
     "逃命波C-2",
+    "C-5低點",
     "C-1",
     "細微波主跌",
     "波浪四",
@@ -974,9 +986,10 @@ _LOW_TAGS = {
 }
 _HIGH_TAGS = {"大B波", "邪惡第五波", "末升段"}
 _SKIP_PATH = {"第五波條件"}
-_UNCONFIRMED = {"C-3", "逃命波C-2"}
+_UNCONFIRMED = {"C-3", "逃命波C-2", "C-5低點"}
 _PATH_SHORT = {
     "逃命波C-2": "逃命C-2",
+    "C-5低點": "C-5低",
     "第五波測底": "測底",
     "修正末端": "末端",
     "A波低": "A波低",
@@ -993,6 +1006,7 @@ _PATH_SHORT = {
     "大A-c": "A-c",
     "第五波失敗": "五波失敗",
     "頭肩底": "頭肩底",
+    "C-5低點": "C-5低",
     "3-3-4調整": "3-3-4",
 }
 
@@ -1111,6 +1125,8 @@ def wave_chart_mark(tag: str = "", span: str = "") -> str:
     t = str(tag or "")
     if t == "逃命波C-2":
         return "C-2"
+    if t == "C-5低點":
+        return "C-5"
     if t in {"C-3", "C-1"}:
         return t
     if t in {"A波低", "第五波失敗", "大A-c", "波浪四"}:
@@ -1390,7 +1406,7 @@ def _wave_label_keep(p: Dict[str, Any], j: int, n_pts: int) -> bool:
     if p.get("unconfirmed"):
         return True
     tag = str(p.get("tag") or "")
-    return tag in {"A波低", "逃命波C-2", "C-3", "大B波", "右肩", "位階二"}
+    return tag in {"A波低", "逃命波C-2", "C-5低點", "C-3", "大B波", "右肩", "位階二"}
 
 
 def wave_extend_rays(
@@ -1402,6 +1418,7 @@ def wave_extend_rays(
 
     逃命波C-2／C-3／C-1／細微波主跌／大A-c → 原文最差 43500
     ＋分歧「若守住 9/3 低」45839.36。
+    C-5低點 → 最差仍 43500（未確認），確認線 45398。
     第五波測底／修正末端／頭肩底 → 只射 9/3 低。
     """
     pts = list(path_pts or [])
@@ -1446,6 +1463,11 @@ def wave_extend_rays(
     )
     if (not bear) and ("C-1" in tag and "C-2" not in tag):
         bear = True
+    if "C-5低點" in tag:
+        return [
+            _ray("worst", worst, "最差43500"),
+            _ray("fork", 45398.43, "C-5若守45398"),
+        ]
     bottom = any(k in tag for k in ("第五波測底", "修正末端", "頭肩底"))
     if bear:
         return [

@@ -29,10 +29,10 @@ CREATE INDEX IF NOT EXISTS idx_biaoke_neuron_hits_nid
 
 _PAT: Dict[str, re.Pattern[str]] = {
     "nest": re.compile(
-        r"(逃命波|C-2|C-3|C-1|位階二|右肩|修正末端|第五波測底|頭肩底|"
+        r"(逃命波|C-2|C-3|C-1|C-5|位階二|右肩|修正末端|第五波測底|頭肩底|"
         r"細微波|加權|大盤|夜盤|43500|45839|47578|46506|確認末端|"
-        r"築底|46767|下降壓力線|成交金額|某商品|2天漲1000|36000|9波|橫台|"
-        r"沒表態|高檔震盪|只能上不能下|周四)"
+        r"築底|46767|45398|下降壓力線|成交金額|某商品|2天漲1000|36000|9波|橫台|"
+        r"沒表態|高檔震盪|只能上不能下|周四|鏡射|10月中)"
     ),
     "field": re.compile(
         r"(產業|主戰場|CCL|InP|散熱|光通訊|光學|PCB|F10|ABF|記憶體|"
@@ -57,7 +57,7 @@ _PAT: Dict[str, re.Pattern[str]] = {
 _SPACE = re.compile(r"\s+")
 _PUNCT = re.compile(r"[。；！？\n，、]")
 # 沒點檔的 C 波調節／抽出是巢穴，不准當每檔 live hold。
-_INDEX_HOLD = re.compile(r"(C-[123]|逃命波|43500|46767|大盤|加權|夜盤|位階)")
+_INDEX_HOLD = re.compile(r"(C-[1235]|逃命波|43500|46767|45398|大盤|加權|夜盤|位階)")
 # 量價／進出／看錯跟最近那檔走；產業／龍頭一句可點多檔。
 _NEAR_NIDS = frozenset({"tape", "hold", "doubt"})
 

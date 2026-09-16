@@ -21,8 +21,9 @@ from biaoke_mind import (
 def test_neuron_views_reread_without_ask():
     nest = views_for_neuron("nest")
     titles = [t for t, _b in nest]
-    assert titles[0] == "9/15夜巢穴"
-    assert titles[1] == "真正有用的五件"
+    assert titles[0] == "9/16晨巢穴"
+    assert titles[1] == "9/15夜巢穴"
+    assert titles[2] == "真正有用的五件"
     assert "四路對質" in titles
     assert "波浪對大盤" in titles
     assert "右肩／45839" in titles
@@ -57,6 +58,15 @@ def test_neuron_views_reread_without_ask():
     assert "3363" in night
     assert "5310" in night
     assert "CPO" in night
+    dawn = method_body("9/16晨巢穴")
+    assert "45398" in dawn
+    assert "C-5" in dawn
+    assert "頭肩底" in dawn
+    assert "10月中" in dawn
+    five_x = method_body("五件交叉")
+    assert "C-5" in five_x
+    assert "45398" in five_x
+    assert "三個 9/16" in five_x or "三個9/16" in five_x
     tape = views_for_neuron("tape")
     assert any(t == "真正有用的五件" for t, _b in tape)
     assert any(t == "量先價行" for t, _b in tape)
