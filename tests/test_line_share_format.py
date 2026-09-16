@@ -34,7 +34,7 @@ def test_line_stock_headline_no_yahoo_url():
         1,
     )
     lines = block.split("\n")
-    assert lines[0] == "1. 台積電 (2330)"
+    assert lines[0] == "1. 台積電 (2330)　☆☆☆☆☆"
     assert "tw.stock.yahoo.com/quote/2330" in block
     assert "/y/2330" not in block
     two = ("格局", "收盤", "量能", "金額", "均線", "法人", "獲利", "產業")
