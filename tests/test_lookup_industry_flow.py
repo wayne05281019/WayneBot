@@ -176,11 +176,78 @@ class LookupIndustryFlowTests(unittest.TestCase):
         self.assertIn("未實現", html)
         self.assertIn("市值", html)
         hold_src = inspect.getsource(PortfolioEngine.format_holdings_html)
-        self.assertIn("industry_flow_from_maps", hold_src)
+        self.assertIn("industry_flows_for_stocks", hold_src)
         disc_idx = hold_src.find('kv_compact("紀律"')
-        flow_idx = hold_src.find("industry_flow_from_maps")
+        flow_idx = hold_src.find("industry_flows_for_stocks")
         self.assertGreater(disc_idx, 0)
         self.assertGreater(flow_idx, 0)
+        self.assertLess(flow_idx, disc_idx)
+
+    def test_flows_for_stocks_batch_and_skips_etf(self):
+        from money_flow import industry_flows_for_stocks
+
+        flows = industry_flows_for_stocks(
+            self.path, ["2330", "2002", "0050", "2330"], ymd="20260828"
+        )
+        self.assertIn("半導體業剛輪進", flows["2330"])
+        self.assertIn("鋼鐵工業在流出前段", flows["2002"])
+        self.assertNotIn("0050", flows)
+        self.assertEqual(industry_flows_for_stocks("", ["2330"], ymd="20260828"), {})
+        self.assertEqual(industry_flows_for_stocks(self.path, [], ymd="20260828"), {})
+
+    def test_watch_html_overlay_same_sentence(self):
+        from unittest.mock import patch
+
+        from bot_servers import WayneTelegramBot
+
+        bot = object.__new__(WayneTelegramBot)
+        bot.db_path = self.path
+        with patch("money_flow.resolve_flow_as_of", return_value=("20260828", None)):
+            html, kb = bot._render_watch(
+                [
+                    {"stock_code": "2330", "stock_name": "台積電"},
+                    {"stock_code": "2002", "stock_name": "中鋼"},
+                    {"stock_code": "0050", "stock_name": "元大台灣50"},
+                ]
+            )
+        self.assertIn("半導體業剛輪進", html)
+        self.assertIn("鋼鐵工業在流出前段", html)
+        self.assertEqual(html.count("官方法人 overlay"), 2)
+        self.assertNotIn("不改溫度", html)
+        self.assertNotIn("買賣格", html)
+        self.assertIn("觀察清單", html)
+        datas = [btn.callback_data for row in kb.inline_keyboard for btn in row]
+        self.assertIn("k:2330", datas)
+        self.assertIn("rw:2330", datas)
+        empty, _ = bot._render_watch([])
+        self.assertIn("目前是空的", empty)
+        self.assertNotIn("官方法人 overlay", empty)
+
+    def test_ai_desk_overlay_before_discipline(self):
+        from ai_trader import ensure_ai_user, format_ai_desk_html, format_ai_desk_pages
+        from portfolio_engine import PortfolioEngine
+
+        eng = PortfolioEngine(self.path)
+        uid = "1001"
+        user = ensure_ai_user(eng, uid)
+        bought = eng.buy(user, "20260828", "2330", "台積電", 100.0, 1000, reason="黃金買點")
+        self.assertTrue(bought.get("success"))
+        from unittest.mock import patch
+
+        with patch("money_flow.resolve_flow_as_of", return_value=("20260828", None)):
+            html = format_ai_desk_html(eng, uid)
+            pages = format_ai_desk_pages(eng, uid)
+        self.assertIn("半導體業剛輪進", html)
+        self.assertNotIn("不改溫度", html)
+        self.assertNotIn("買賣格", html)
+        held = next(p for p in pages if "第 1 槽" in p)
+        self.assertIn("半導體業剛輪進", held)
+        self.assertLess(held.find("進場"), held.find("官方法人 overlay"))
+        src = inspect.getsource(format_ai_desk_pages)
+        flow_idx = src.find("industry_flows_for_stocks")
+        disc_idx = src.find('sell_notes.get(sid)')
+        self.assertGreater(flow_idx, 0)
+        self.assertGreater(disc_idx, 0)
         self.assertLess(flow_idx, disc_idx)
 
 

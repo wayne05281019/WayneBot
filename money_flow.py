@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     from config import get_db_path
@@ -479,6 +479,53 @@ def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
     except Exception:
         stamp = key
     return industry_flow_from_maps(maps, ind, stamp)
+
+
+def industry_flows_for_stocks(
+    db_path: str,
+    stock_ids: Iterable[str],
+    ymd: str = "",
+) -> Dict[str, str]:
+    """觀察／持股／AI倉同一套 overlay。maps 只算一次；ETF／未分類省略。"""
+    ids = [str(s or "").strip() for s in (stock_ids or []) if str(s or "").strip()]
+    if not db_path or not ids:
+        return {}
+    key = str(ymd or "").replace("-", "")[:8]
+    if not key:
+        try:
+            key, _lag = resolve_flow_as_of(db_path)
+        except Exception:
+            key = ""
+    key = str(key or "").replace("-", "")[:8]
+    if not key:
+        return {}
+    try:
+        maps = sector_flow_maps(db_path, key)
+    except Exception:
+        return {}
+    stamp = key
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        stamp = format_trading_date_zh(key) or key
+    except Exception:
+        stamp = key
+    conn = sqlite3.connect(db_path)
+    out: Dict[str, str] = {}
+    try:
+        for sid in ids:
+            if sid in out:
+                continue
+            try:
+                ind = industry_of(conn, sid)
+            except Exception:
+                continue
+            note = industry_flow_from_maps(maps, ind, stamp)
+            if note:
+                out[sid] = note
+    finally:
+        conn.close()
+    return out
 
 
 def industry_flow_tag(note: str) -> str:
