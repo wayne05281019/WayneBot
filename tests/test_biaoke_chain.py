@@ -853,7 +853,7 @@ def test_nest_skips_incomplete_index_bar(tmp_path, monkeypatch):
 
 
 def test_five_lead_is_first_sentence_with_if_and_unclosed():
-    from biaoke_chain import attach_five_lead, format_five_lead
+    from biaoke_chain import attach_five_lead, format_five_lead, split_lead_detail
     from biaoke_brain import OFFTOPIC, answer_biaoke
 
     mkt = fire_chain("", "45398 怎麼看")
@@ -867,6 +867,14 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     html = attach_five_lead("後面細節。", "", "45398 怎麼看")
     assert html.startswith(lead[:12]) or "如果句" in html[:80]
     assert html.index("如果句") < html.index("後面細節")
+    lead, detail = split_lead_detail(html)
+    assert "不是買訊" in lead
+    assert "〔" in lead
+    assert "後面細節" in detail
+    assert "後面細節" not in lead
+    raw, empty = split_lead_detail("沒有開口句的整則")
+    assert raw == "沒有開口句的整則"
+    assert empty == ""
     emc = fire_chain("", "台光電怎麼看")
     el = emc.get("lead") or ""
     assert "強勢整理" in el or "續抱" in el or "沒破線" in el

@@ -30,6 +30,7 @@ _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
 
 from config import (
+    allowed_telegram_uids,
     get_charts_dir,
     get_db_path,
     get_telegram_config,
@@ -117,6 +118,62 @@ def html_escape(val) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def phone_git_sha() -> str:
+    """Render／GHA 注入的 commit。不 import main，避免 bot 啟動環狀依賴。"""
+    for key in ("RENDER_GIT_COMMIT", "GITHUB_SHA"):
+        raw = (os.getenv(key) or "").strip()
+        if raw:
+            return raw[:40]
+    return ""
+
+
+def phone_update_notice(sha: str) -> str:
+    """偉權／哥哥手機同一句：已更新＋短 SHA。"""
+    short = str(sha or "").strip()[:7]
+    return f"已更新 {short}" if short else "已更新"
+
+
+def _notified_sha_path() -> str:
+    db = get_db_path()
+    parent = os.path.dirname(os.path.abspath(db)) or "data"
+    return os.path.join(parent, ".wayne_notified_sha")
+
+
+def notified_sha_is(sha: str) -> bool:
+    s = str(sha or "").strip()[:40]
+    if not s:
+        return True
+    try:
+        with open(_notified_sha_path(), encoding="utf-8") as f:
+            return f.read().strip()[:40] == s
+    except Exception:
+        return False
+
+
+def remember_notified_sha(sha: str) -> None:
+    s = str(sha or "").strip()[:40]
+    if not s:
+        return
+    path = _notified_sha_path()
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(s + "\n")
+
+
+def should_notify_phone_update(sha: str) -> bool:
+    """同一 SHA 不重送；Cursor／略過輪詢不送。pytest 也不送真訊息。"""
+    if skip_telegram_polling():
+        return False
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    s = str(sha or "").strip()[:40]
+    if not s or notified_sha_is(s):
+        return False
+    return True
 
 
 def _http_url(url: str) -> str:
@@ -2097,6 +2154,34 @@ class WayneTelegramBot:
             rows.append(pair)
         return InlineKeyboardMarkup(rows) if rows else None
 
+    def _biaoke_dayk_markup(self, ask: str = ""):
+        """開口那則下一顆：點了送官方日K結構圖，不走查股兩張圖。"""
+        if not TELEGRAM_AVAILABLE:
+            return None
+        q = (ask or "").strip()
+        sid = ""
+        name = ""
+        try:
+            from biaoke_brain import is_market_question
+            from biaoke_chain import _resolve_sid
+            from biaoke_wave import is_wave_question
+
+            if q:
+                sid, name = _resolve_sid(self.db_path, q)
+            if sid:
+                name = name or sid
+            elif not q or is_wave_question(q) or is_market_question(q):
+                sid, name = "TWII", "加權"
+        except Exception:
+            logger.exception("官方日K鈕對檔略過")
+            return None
+        if not sid:
+            return None
+        label = f"官方日K {name}".strip()[:16]
+        return InlineKeyboardMarkup(
+            [[InlineKeyboardButton(label, callback_data=f"bkdk:{sid}")]]
+        )
+
     def _hits_list_html(self, hits, lead: str = "") -> str:
         """多檔時訊息裡列出藍字股名，按鈕序號才對得上。"""
         try:
@@ -3524,12 +3609,21 @@ class WayneTelegramBot:
                         logger.exception("飆大結構圖並行失敗")
                 await message.reply_text("飆客區讀取失敗。", reply_markup=kb)
                 return
+            from biaoke_chain import split_lead_detail
+
+            lead_html, detail_html = split_lead_detail("\n\n".join(parts) if len(parts) == 1 else html)
+            if lead_html and detail_html:
+                parts = [lead_html, *chunk_telegram_html(detail_html, reflow=False)]
+            dayk = self._biaoke_dayk_markup(q)
             n = len(parts)
             for i, part in enumerate(parts):
+                markup = kb if i == n - 1 else None
+                if i == 0 and dayk is not None:
+                    markup = dayk
                 await message.reply_html(
                     part,
                     disable_web_page_preview=True,
-                    reply_markup=kb if i == n - 1 else None,
+                    reply_markup=markup,
                 )
             if chart_task is not None:
                 try:
@@ -5706,6 +5800,15 @@ class WayneTelegramBot:
         if data.startswith("sc:"):
             await self._handle_screen_pick_callback(q, uid, data)
             return
+        if data.startswith("bkdk:"):
+            sid = data[5:].strip()
+            await q.answer("官方日K")
+            if not sid:
+                return
+            self._enter_biaoke_chat(q.message, uid)
+            ask = "現在波浪位階" if sid == "TWII" else sid
+            await self._send_biaoke_structure_chart(q.message, ask, uid)
+            return
         if data.startswith("bkq:"):
             sid = data[4:].strip()
             await q.answer("問飆大")
@@ -5914,6 +6017,29 @@ class WayneTelegramBot:
             self._pending[actor] = "sell"
             await q.message.reply_text("請輸入：代號 張數 價格\n例如：2330 1 520", reply_markup=self._keyboard())
 
+    async def _notify_phones_updated(self, app) -> None:
+        """新版上線才跟偉權／哥哥說已更新。同一 SHA 重開不重送。"""
+        sha = phone_git_sha()
+        if not should_notify_phone_update(sha):
+            return
+        uids = [str(u).strip() for u in allowed_telegram_uids() if str(u).strip()]
+        if not uids:
+            return
+        text = phone_update_notice(sha)
+        n = 0
+        for uid in uids:
+            try:
+                chat_id = int(uid) if str(uid).isdigit() else uid
+                await app.bot.send_message(chat_id=chat_id, text=text)
+                n += 1
+            except Exception:
+                logger.exception("已更新通知失敗 uid 略")
+        if n:
+            try:
+                remember_notified_sha(sha)
+            except Exception:
+                logger.exception("已更新 SHA 沒寫成")
+
     def run_polling(self):
         if not TELEGRAM_AVAILABLE:
             logger.error("未安裝 python-telegram-bot")
@@ -5954,6 +6080,10 @@ class WayneTelegramBot:
                 await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
             except Exception:
                 logger.exception("set_my_commands 失敗")
+            try:
+                await self._notify_phones_updated(app)
+            except Exception:
+                logger.exception("手機已更新通知失敗")
 
         app = (
             Application.builder()

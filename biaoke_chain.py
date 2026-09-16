@@ -1543,6 +1543,20 @@ def attach_five_lead(html: str, db_path: str, ask: str, uid: str = "") -> str:
     return head + "\n\n" + raw
 
 
+def split_lead_detail(html: str) -> Tuple[str, str]:
+    """開口一句單獨一則；其餘細節第二則。沒開口句就不拆。"""
+    raw = str(html or "").strip()
+    if not raw:
+        return "", ""
+    if "\n\n" not in raw:
+        return raw, ""
+    lead, rest = raw.split("\n\n", 1)
+    lead, rest = lead.strip(), rest.strip()
+    if "〔" in lead and "不是買訊" in lead:
+        return lead, rest
+    return raw, ""
+
+
 def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
     """對一句問話開火。uid 只讀這人持股，不改倉、不看別人倉。偉權哥哥功能全同。"""
     q = (ask or "").strip()

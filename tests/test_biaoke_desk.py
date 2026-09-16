@@ -191,6 +191,9 @@ def test_biaoke_page_has_no_inside_menu():
     assert "create_task" in src
     assert "stock_picker_hits" in src
     assert "_biaoke_hits_keyboard" in src
+    assert "_biaoke_dayk_markup" in src
+    assert "split_lead_detail" in src
+    assert "bkdk:" in inspect.getsource(WayneTelegramBot._on_callback_bound)
     assert "_send_card_to" not in src
     struct_src = inspect.getsource(WayneTelegramBot._send_biaoke_structure_chart)
     assert "build_biaoke_structure_chart" in struct_src
@@ -379,6 +382,112 @@ def test_biaoke_picker_callback_asks_biaoke_not_card():
     assert bot._send_biaoke_page.await_args.kwargs.get("ask") == "1303"
     assert bot._send_biaoke_page.await_args.kwargs.get("uid") == "11"
     bot._send_card_to.assert_not_awaited()
+
+
+def test_biaoke_dayk_markup_named_stock_not_card(monkeypatch):
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("3037", "威盛"))
+    kb = bot._biaoke_dayk_markup("威盛怎麼看")
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert datas == ["bkdk:3037"]
+    assert texts == ["官方日K 威盛"]
+    monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
+    wave = bot._biaoke_dayk_markup("現在波浪位階")
+    assert [b.callback_data for r in wave.inline_keyboard for b in r] == ["bkdk:TWII"]
+    assert "官方日K" in wave.inline_keyboard[0][0].text
+    blank = bot._biaoke_dayk_markup("")
+    assert [b.callback_data for r in blank.inline_keyboard for b in r] == ["bkdk:TWII"]
+    assert bot._biaoke_dayk_markup("你好") is None
+
+
+def test_biaoke_dayk_callback_sends_structure_not_card():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._enter_biaoke_chat = MagicMock()
+    bot._send_biaoke_page = AsyncMock()
+    bot._send_biaoke_structure_chart = AsyncMock()
+    bot._send_card_to = AsyncMock()
+    q = SimpleNamespace(
+        data="bkdk:2330",
+        from_user=SimpleNamespace(id=11),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    asyncio.run(bot._on_callback_bound(None, None, q, "11"))
+    q.answer.assert_awaited()
+    bot._enter_biaoke_chat.assert_called()
+    bot._send_biaoke_structure_chart.assert_awaited()
+    assert bot._send_biaoke_structure_chart.await_args.args[1] == "2330"
+    bot._send_biaoke_page.assert_not_awaited()
+    bot._send_card_to.assert_not_awaited()
+    q2 = SimpleNamespace(
+        data="bkdk:TWII",
+        from_user=SimpleNamespace(id=11),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    asyncio.run(bot._on_callback_bound(None, None, q2, "11"))
+    assert bot._send_biaoke_structure_chart.await_args.args[1] == "現在波浪位階"
+
+
+def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
+    from bot_servers import (
+        notified_sha_is,
+        phone_git_sha,
+        phone_update_notice,
+        remember_notified_sha,
+        should_notify_phone_update,
+    )
+
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    sha = "abc123def4567890"
+    assert phone_update_notice(sha) == "已更新 abc123d"
+    assert phone_update_notice("") == "已更新"
+    assert not notified_sha_is(sha)
+    remember_notified_sha(sha)
+    assert (tmp_path / ".wayne_notified_sha").read_text(encoding="utf-8").strip() == sha
+    assert notified_sha_is(sha)
+    assert not notified_sha_is("other")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    assert phone_git_sha() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
+    src = __import__("inspect").getsource(WayneTelegramBot.run_polling)
+    assert "_notify_phones_updated" in src
+    assert should_notify_phone_update(sha) is False  # pytest 當下不准真送
+
+
+def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from bot_servers import WayneTelegramBot, notified_sha_is, phone_update_notice, remember_notified_sha
+
+    monkeypatch.setenv("WAYNE_DB_PATH", str(tmp_path / "wayne_market.db"))
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "cafebabedeadbeef1234567890")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.setattr("bot_servers.should_notify_phone_update", lambda *_a, **_k: True)
+    monkeypatch.setattr("bot_servers.allowed_telegram_uids", lambda: ["9001", "9003"])
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    asyncio.run(bot._notify_phones_updated(app))
+    calls = app.bot.send_message.await_args_list
+    assert [c.kwargs["chat_id"] for c in calls] == [9001, 9003]
+    assert all(c.kwargs["text"] == phone_update_notice("cafebabedeadbeef1234567890") for c in calls)
+    assert notified_sha_is("cafebabedeadbeef1234567890")
+    app.bot.send_message.reset_mock()
+    remember_notified_sha("cafebabedeadbeef1234567890")
+    monkeypatch.setattr("bot_servers.should_notify_phone_update", lambda *_a, **_k: False)
+    asyncio.run(bot._notify_phones_updated(app))
+    app.bot.send_message.assert_not_awaited()
 
 
 def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
