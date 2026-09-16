@@ -113,6 +113,37 @@ def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
     assert not listing_face_ok("上市（半導體業）一線")
 
 
+def test_listing_face_emerging_not_overridden_by_stale_otc_quote(tmp_path):
+    """日 K 殘列上櫃、卡片走興櫃表 → 市場標仍是興櫃。"""
+    from emerging_quotes import ensure_emerging_table
+    from universe import listing_industry_face
+
+    db = str(tmp_path / "em.db")
+    ensure_core_schema(db)
+    ensure_emerging_table(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,'t')",
+        ("2938", "昶昕", "TWO", "STOCK", "居家生活"),
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("20260909", "2938", "昶昕", "TWO", 1, 1, 1, 1, 1, 10, 0, 1),
+    )
+    for i in range(8):
+        conn.execute(
+            "INSERT INTO emerging_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f"2026090{i+1}" if i < 9 else f"202609{i+1}", "2938", "昶昕", "EM", 10, 11, 9, 10, 100, 1, 0.0, 10),
+        )
+    conn.commit()
+    conn.close()
+    face = listing_industry_face("2938", db)
+    assert face.startswith("興櫃")
+    assert "居家生活" in face
+    assert "上櫃" not in face
+    assert listing_industry_face("2938", db, quote_source="emerging_quotes").startswith("興櫃")
+
+
 def test_midday_line_tags_listing_when_row_has_market():
     row = {
         "stock_id": "4915",

@@ -817,7 +817,9 @@ class NavigatorEngine:
         try:
             from universe import listing_industry_face
 
-            listing = listing_industry_face(str(stock_id), self.db_path)
+            listing = listing_industry_face(
+                str(stock_id), self.db_path, quote_source=quote_source
+            )
         except Exception:
             listing = ""
         raw_name = str(latest.get("stock_name") or "")
