@@ -149,9 +149,11 @@ def test_chain_market_skips_stock_tape():
     nest = next(s for s in fired["steps"] if s["id"] == "nest")
     assert "覆巢" in nest["text"]
     assert "不數" in nest["text"] or "個股" in nest["text"]
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
+    from tests.conftest import has_production_db, production_db_path
+
+    if not has_production_db():
         return
+    db = production_db_path()
     live = fire_chain(db, "目前大盤是屬於哪個位階 以波浪來看的話")
     think = live["think"]
     assert "45839" in think
@@ -179,9 +181,9 @@ def test_live_notes_puts_chain_before_keyword_hits():
 
 
 def test_chained_live_notes_skip_stale_keyword_hits():
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     note = live_notes(db, "台光電怎麼看")
     assert "神經元鏈" in note
     assert "關鍵字命中" not in note
@@ -189,9 +191,9 @@ def test_chained_live_notes_skip_stale_keyword_hits():
 
 
 def test_chain_real_quotes_when_db_present():
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     fired = fire_chain(db, "台光電怎麼看")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     if not tape.get("ok"):
@@ -231,9 +233,9 @@ def test_field_does_not_repeat_hold_neuron():
     emc_hold = next(s for s in emc["steps"] if s["id"] == "hold")
     assert "產業趨勢" in emc_field["text"]
     assert "勿輕易調節" in emc_hold["text"]
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     live = fire_chain(db, "聯發科怎麼看")
     live_field = next(s for s in live["steps"] if s["id"] == "field")
     live_hold = next(s for s in live["steps"] if s["id"] == "hold")
@@ -252,12 +254,14 @@ def test_field_does_not_repeat_hold_neuron():
 
 def test_self_leader_defers_ohlc_to_tape():
     """自己就是龍頭時，第 3 顆不重貼第 4 顆的官方高低。"""
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
-        leader = next(s for s in fired["steps"] if s["id"] == "leader")
-        assert "自己就是" in leader["text"]
+    from tests.conftest import has_production_db, production_db_path
+
+    fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
+    leader = next(s for s in fired["steps"] if s["id"] == "leader")
+    assert "自己就是" in leader["text"]
+    if not has_production_db():
         return
+    db = production_db_path()
     fired = fire_chain(db, "台光電怎麼看")
     leader = next(s for s in fired["steps"] if s["id"] == "leader")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
@@ -275,9 +279,9 @@ def test_self_leader_defers_ohlc_to_tape():
 
 def test_tape_does_not_repeat_hold_or_field():
     """第 4 顆只留官方量價／演算；長抱、半山腰、產業資金不重貼。"""
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     fired = fire_chain(db, "台光電怎麼看")
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     hold = next(s for s in fired["steps"] if s["id"] == "hold")
@@ -300,9 +304,9 @@ def test_tape_does_not_repeat_hold_or_field():
 
 def test_think_chains_45839_and_self_leader():
     """推論句要串巢穴官方 45839 和自己就是龍頭，不是只寫點位有了。"""
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     fired = fire_chain(db, "台光電怎麼看")
     think = fired["think"]
     assert "45839" in think
@@ -341,14 +345,15 @@ def test_pointed_calendar_retracts_after_sep16():
     assert "還在等 9/16" in day
     assert "已過" not in day
     assert "兩個9/16" in day or "只能上不能下" in day
-    after = _pointed_calendar("data/wayne_market.db", "20260917")
+    after = _pointed_calendar("", "20260917")
     assert "已過" in after
     assert "不准編新聞" in after or "不准編" in after
     assert "回撤" in after
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
-    assert "奇鋐" in after or "聯亞" in after or "新高檔官方日K" in after
+    from tests.conftest import has_production_db, production_db_path
+
+    if has_production_db():
+        after = _pointed_calendar(production_db_path(), "20260917")
+        assert "奇鋐" in after or "聯亞" in after or "新高檔官方日K" in after
 
 
 def test_chain_rereads_his_views_without_keyword_ask():
@@ -599,13 +604,16 @@ def test_chain_sep15_night_five_tools_rewire():
     think = nest["think"]
     assert "46767" in nest_t or "46767" in think
     assert "碎形" in nest_t or "關鍵K" in nest_t or "碎形" in think
-    db = "data/wayne_market.db"
-    nest_db = fire_chain(db, "46767 怎麼看")
+    from tests.conftest import has_production_db, production_db_path
+
+    if not has_production_db():
+        return
+    nest_db = fire_chain(production_db_path(), "46767 怎麼看")
     assert not nest_db.get("sid")
     think = nest["think"]
     assert "46767" in nest_t or "46767" in think
     assert "碎形" in nest_t or "關鍵K" in nest_t or "碎形" in think
-    jian = fire_chain("data/wayne_market.db", "健策怎麼看")
+    jian = fire_chain(production_db_path(), "健策怎麼看")
     assert jian["sid"] == "3653"
     field = next(s for s in jian["steps"] if s["id"] == "field")
     tape = next(s for s in jian["steps"] if s["id"] == "tape")
@@ -613,7 +621,7 @@ def test_chain_sep15_night_five_tools_rewire():
     blob = field["text"] + tape["text"] + hold["text"] + jian["think"]
     assert "5310" in blob or "2469" in blob
     assert "轉折" in blob or "平台" in blob
-    shang = fire_chain("data/wayne_market.db", "上詮怎麼看")
+    shang = fire_chain(production_db_path(), "上詮怎麼看")
     assert shang["sid"] == "3363"
     lead = next(s for s in shang["steps"] if s["id"] == "leader")
     field_s = next(s for s in shang["steps"] if s["id"] == "field")
@@ -621,7 +629,7 @@ def test_chain_sep15_night_five_tools_rewire():
     assert "上詮" in blob_s
     assert "CPO" in blob_s or "FAU" in blob_s
     assert "這族龍頭是 3081" not in shang["think"]
-    gs = fire_chain("data/wayne_market.db", "光聖怎麼看")
+    gs = fire_chain(production_db_path(), "光聖怎麼看")
     assert gs["sid"] == "6442"
     assert "這族龍頭是 3081" not in gs["think"]
     assert "3363" in gs["think"] or "上詮" in next(s for s in gs["steps"] if s["id"] == "leader")["text"]
@@ -940,8 +948,10 @@ def test_overlays_do_not_change_five_cross_branches():
     assert field["text"].startswith("個股最重要是產業趨勢還在不在")
     assert "官方法人 overlay：電子零組件業在流出前段" in field["text"]
     assert "不改他的產業句" in field["text"]
-    db = "data/wayne_market.db"
-    if os.path.isfile(db):
+    from tests.conftest import has_production_db, production_db_path
+
+    db = production_db_path()
+    if has_production_db():
         live = fire_chain(db, "台光電怎麼看")
         live_lead = live.get("lead") or ""
         live_field = next(s for s in live["steps"] if s["id"] == "field")["text"]

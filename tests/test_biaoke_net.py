@@ -24,6 +24,14 @@ def test_load_corpus_uses_full_archive_not_seed_520():
     assert "不要退回 520" in desk
 
 
+def test_keys_split_glued_name_and_method():
+    from biaoke_net import _keys
+
+    keys = _keys("南亞科洗盤")
+    assert "南亞科" in keys
+    assert any("洗盤" in k for k in keys)
+
+
 def test_match_posts_walks_neighbors_not_the_whole_pile():
     hits = match_posts("智原")
     assert hits

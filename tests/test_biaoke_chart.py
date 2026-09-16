@@ -207,9 +207,9 @@ def test_real_daily_quotes_numbers_are_exact():
 
     from biaoke_brain import load_bars
 
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     bars = load_bars(db, "2383", n=120)
     if len(bars) < 40:
         return
@@ -559,9 +559,9 @@ def test_locator_window_matches_main_time():
     )
     from biaoke_wave import _TWII_FUTURE, _TWII_LONG_BARS, _TWII_MAIN_BARS, _load_twii_bars
 
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     bars = load_bars(db, "2383", n=360)
     work = bars[-_BARS:]
     rows = locator_positive_rows(bars)
@@ -636,9 +636,9 @@ def test_impulse_support_after_down_pressure(tmp_path):
     from biaoke_brain import load_bars
     from biaoke_chart import _impulse_support_pair
 
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     bars = load_bars(db, "2383", n=168)
     info = analyze_structure(bars)
     assert info.get("down_pts")
@@ -785,9 +785,9 @@ def test_infer_impulse_five_3105_wave3_is_april_mountain():
     from biaoke_brain import load_bars
     from biaoke_chart import _ymd8, analyze_structure, infer_impulse_five
 
-    db = "data/wayne_market.db"
-    if not os.path.isfile(db):
-        return
+    from tests.conftest import require_production_db
+
+    db = require_production_db()
     bars = load_bars(db, "3105", n=360)
     if len(bars) < 80:
         return

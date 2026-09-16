@@ -128,15 +128,15 @@ def test_zhiyuan_in_biaoke_uses_main_db_not_lookup_miss(tmp_path):
     hits = resolve_stock(db, "你怎麼看智原")
     assert hits
     assert hits[0]["stock_id"] == "3035"
-    html = answer_biaoke(db, "你怎麼看智原", uid="9")
-    assert "智原" in html
-    assert "找不到這檔" not in html
-    assert "3035" in html
     pack = format_market_facts(db, "智原", uid="9")
     assert "3035" in pack
     assert "智原" in pack
     assert "外資" in pack
     assert "這個人持股" in pack
+    html = answer_biaoke(db, "你怎麼看智原", uid="9")
+    assert "智原" in html
+    assert "找不到這檔" not in html
+    assert "3035" in html
     assert "成本" in pack
     assert "官方加權" in pack
     assert "聯發科" in html or "聯發科" in pack
