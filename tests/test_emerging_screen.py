@@ -157,6 +157,10 @@ class EmergingScreenIsolationTests(unittest.TestCase):
                 "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 ("20260810", "2330", "台積電", "TW", 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0),
             )
+            conn.execute(
+                "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260810", "3595", "山太士", "TWO", 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0),
+            )
             conn.commit()
             conn.close()
             rows = []
@@ -185,6 +189,7 @@ class EmergingScreenIsolationTests(unittest.TestCase):
             card = NavigatorEngine(path).get_decision_card("3595", merge_live=False)
             self.assertNotIn("error", card)
             self.assertEqual(card.get("quote_source"), "emerging_quotes")
+            self.assertEqual(card.get("listing"), "興櫃")
             self.assertIn("興櫃官方日均價", card.get("badges") or [])
             last_em = max(d for d, _ in rows)
             self.assertEqual(str(card.get("latest_date")).replace("-", "")[:8], last_em)
