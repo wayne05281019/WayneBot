@@ -303,6 +303,8 @@ def format_line_stock_block(
         _regime_label,
         _safety_plan_plain,
         _share_notices_plain,
+        entry_star_count,
+        entry_star_glyphs,
     )
 
     regime_fn = regime_fn or _regime_label
@@ -339,6 +341,10 @@ def format_line_stock_block(
         pct = item.get("change_pct")
 
     lines = [line_stock_headline(rank, sid, sname, db_path)]
+    stars = entry_star_glyphs(
+        entry_star_count(item, bucket_key=str(bucket_key or item.get("bucket_key") or ""))
+    )
+    lines[0] = f"{lines[0]}　{stars}"
     bucket_title = ""
     key = str(bucket_key or item.get("bucket_key") or "").strip()
     if key:

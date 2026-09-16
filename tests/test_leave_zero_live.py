@@ -87,27 +87,39 @@ def _save_buckets(db: str, *, golden: list[str], leave: list[str]) -> None:
 
 
 def test_mark_leave_zero_stars_caps_at_five():
-    rows = [{"stock_id": str(i)} for i in range(8)]
+    rows = [
+        {"stock_id": "1", "profit_pct": 1.0, "is_s_tier": True},
+        {"stock_id": "2", "profit_pct": 1.0},
+        {"stock_id": "3", "profit_pct": 12.0, "chase_warning": True},
+    ]
     out = mark_leave_zero_stars(rows)
     assert LEAVE_ZERO_STAR_N == 5
-    assert [r["buy_star"] for r in out] == [True, True, True, True, True, False, False, False]
+    assert [r["entry_stars"] for r in out] == [5, 4, 0]
+    assert [r["buy_star"] for r in out] == [True, False, False]
     few = mark_leave_zero_stars([{"stock_id": "1"}, {"stock_id": "2"}])
-    assert [r["buy_star"] for r in few] == [True, True]
+    assert all(r["entry_stars"] == 3 and r["buy_star"] is False for r in few)
 
 
 def test_stock_card_html_stars_name():
     starred = _stock_card_html(
-        {"stock_id": "1101", "stock_name": "台泥", "buy_star": True, "close": 50.2},
+        {
+            "stock_id": "1101",
+            "stock_name": "台泥",
+            "close": 50.2,
+            "profit_pct": 1.0,
+            "is_s_tier": True,
+        },
         1,
         bucket_label="剛離零",
     )
     plain = _stock_card_html(
-        {"stock_id": "1101", "stock_name": "台泥", "buy_star": False, "close": 50.2},
+        {"stock_id": "1101", "stock_name": "台泥", "close": 50.2, "golden_buy": True},
         2,
-        bucket_label="剛離零",
+        bucket_label="重點觀察",
     )
-    assert "★" in starred
-    assert "★" not in plain
+    assert "★★★★★" in starred
+    assert "★★★★★" not in plain
+    assert "☆" in plain
 
 
 def test_live_leave_zero_stars_top_five_and_does_not_write_unclosed(tmp_path, monkeypatch):
@@ -131,9 +143,9 @@ def test_live_leave_zero_stars_top_five_and_does_not_write_unclosed(tmp_path, mo
     codes = [r["code"] for r in rows]
     assert "1402" not in codes
     assert codes[:5] == ["1101", "1102", "1201", "1216", "1301"]
-    assert sum(1 for r in rows if r.get("buy_star")) == 5
-    assert all(r.get("buy_star") for r in rows[:5])
-    assert all(not r.get("buy_star") for r in rows[5:])
+    assert all(1 <= int(r.get("entry_stars") or 0) <= 5 for r in rows)
+    html0 = _stock_card_html(rows[0], 1, bucket_label="剛離零")
+    assert "★" in html0 or "☆" in html0
     assert all(r.get("live") for r in rows)
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM daily_quotes").fetchone()[0]
@@ -161,7 +173,7 @@ def test_after_hours_uses_official_leave_zero_only(tmp_path, monkeypatch):
     rows = engine.screen_leave_zero_now(AS_OF)
     codes = [r["code"] for r in rows]
     assert codes == ["1101"]
-    assert rows[0].get("buy_star") is True
+    assert 3 <= int(rows[0].get("entry_stars") or 0) <= 5
     assert "live" not in rows[0]
 
 
