@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import unicodedata
 
 UPDATE_DONE = "更新完成"
 _NOTE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone_update_note.txt")
@@ -31,8 +30,7 @@ def _has_han(text: str) -> bool:
 
 
 def _clean_note(raw: str) -> str:
-    t = unicodedata.normalize("NFKC", str(raw or "")).strip()
-    t = t.replace("\r", "").split("\n", 1)[0].strip()
+    t = str(raw or "").replace("\r", "").split("\n", 1)[0].strip()
     t = _COMMIT_PREFIX.sub("", t).strip()
     if t.lower().startswith("merge "):
         return ""

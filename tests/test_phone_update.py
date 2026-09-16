@@ -14,6 +14,8 @@ def test_update_note_is_chinese():
     assert note
     assert any("\u4e00" <= ch <= "\u9fff" for ch in note)
     assert "feat:" not in note.lower()
+    assert "，" in note
+    assert "," not in note
 
 
 def test_notice_and_health_share_chinese_and_sha(monkeypatch):
