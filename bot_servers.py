@@ -2918,18 +2918,6 @@ class WayneTelegramBot:
         m, s = divmod(sec, 60)
         return f"{m}:{s:02d}" if m else f"{s} 秒"
 
-    @staticmethod
-    def _screening_spinner(sec: int) -> str:
-        icons = ("⏳", "🔄", "📊", "🔍")
-        return icons[(max(0, sec) // 3) % len(icons)]
-
-    @staticmethod
-    def _screening_progress_bar(sec: int, *, width: int = 10) -> str:
-        # 約 5 分鐘跑滿，讓使用者感受在推進（非真實百分比）
-        pct = min(1.0, max(0, sec) / 300.0)
-        filled = int(round(pct * width))
-        return "▓" * filled + "░" * (width - filled)
-
     @classmethod
     def _screening_progress_text(cls, elapsed_sec: int, *, done: bool = False) -> str:
         if done:
@@ -3042,37 +3030,7 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
-    _WAIT_INNER = 12
-
-    @staticmethod
-    def _visual_width(text: str) -> int:
-        n = 0
-        for ch in str(text or ""):
-            n += 2 if unicodedata.east_asian_width(ch) in ("F", "W", "A") else 1
-        return n
-
-    @staticmethod
-    def _to_fullwidth(text: str) -> str:
-        out = []
-        for ch in str(text or ""):
-            o = ord(ch)
-            if ch == " ":
-                out.append("\u3000")
-            elif 0x21 <= o <= 0x7E:
-                out.append(chr(o + 0xFEE0))
-            else:
-                out.append(ch)
-        return "".join(out)
-
-    @staticmethod
-    def _wait_fit(text: str, inner: int) -> list:
-        s = WayneTelegramBot._to_fullwidth(text)
-        lines = []
-        while len(s) > inner:
-            lines.append(s[:inner])
-            s = s[inner:]
-        lines.append(s + "\u3000" * (inner - len(s)))
-        return lines
+    _WAIT_SQUARES = 10
 
     @staticmethod
     def _wait_bubble(
@@ -3083,28 +3041,18 @@ class WayneTelegramBot:
         rest: str = "",
         fill_sec: float = 45.0,
     ) -> str:
-        """產圖／海選進行中的全形等寬方框；完成後會刪掉。半形會把右｜擠掉。"""
-        inner = WayneTelegramBot._WAIT_INNER
-        elapsed = WayneTelegramBot._to_fullwidth(
-            WayneTelegramBot._format_elapsed(elapsed_sec)
-        )
-        width = 10
+        """進行中只留一條小方塊進度條。不要＋－｜框、不要第二種轉圈樣式。好了會刪。"""
         span = float(fill_sec or 45.0)
+        width = int(WayneTelegramBot._WAIT_SQUARES)
         filled = int(round(min(1.0, max(0.0, float(elapsed_sec)) / span) * width))
-        bar = "＝" * filled + "－" * (width - filled)
-        raw = [str(title or "").strip(), f"已　{elapsed}", bar]
+        bar = "■" * filled + "□" * (width - filled)
+        lines = [str(title or "").strip(), bar, f"已 {WayneTelegramBot._format_elapsed(elapsed_sec)}"]
         if now:
-            raw.append(f"現在：{now}")
+            lines.append(f"現在：{now}")
         if rest:
-            raw.append(f"接著：{rest}")
-        raw.append("好了這則會消失")
-        body: list = []
-        for item in raw:
-            body.extend(WayneTelegramBot._wait_fit(item, inner))
-        top = "＋" + ("－" * inner) + "＋"
-        bot = "＋" + ("－" * inner) + "＋"
-        framed = [top] + [f"｜{line}｜" for line in body] + [bot]
-        return "<pre>" + html_escape("\n".join(framed)) + "</pre>"
+            lines.append(f"接著：{rest}")
+        lines.append("好了這則會消失")
+        return html_escape("\n".join(x for x in lines if x))
 
     @staticmethod
     def _chart_progress_text(

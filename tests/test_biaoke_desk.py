@@ -507,32 +507,24 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     txt0 = WayneTelegramBot._biaoke_progress_text(0)
     txt20 = WayneTelegramBot._biaoke_progress_text(20)
     assert "飆大進行中" in txt0
-    assert "－－－－－－－－－－" in txt0
-    assert "＝＝＝" in txt20
+    assert "□" * 10 in txt0
+    assert "■" in txt20
+    assert "□" in txt20
     assert "結構圖" in txt0
     assert "回覆" in txt0
-    assert "＋" in txt0
+    assert "＋" not in txt0
+    assert "｜" not in txt0
+    assert "<pre>" not in txt0
     assert "好了這則會消失" in txt0
-    assert txt0.startswith("<pre>")
-    assert txt0.endswith("</pre>")
-    inner = WayneTelegramBot._WAIT_INNER
-    plain = txt0.replace("<pre>", "").replace("</pre>", "")
-    lines = [ln for ln in plain.splitlines() if ln]
-    assert lines[0].startswith("＋") and lines[0].endswith("＋")
-    assert lines[-1].startswith("＋") and lines[-1].endswith("＋")
-    assert len(lines[0]) == inner + 2
-    for ln in lines:
-        assert len(ln) == inner + 2, ln
-        assert all(WayneTelegramBot._visual_width(ch) >= 2 for ch in ln), ln
-    for ln in lines[1:-1]:
-        assert ln.startswith("｜") and ln.endswith("｜"), ln
+    assert txt0.count("■") + txt0.count("□") == 10
+    assert txt20.count("■") + txt20.count("□") == 10
+    assert "＝" not in txt0 and "＝" not in txt20
     for ch in ("⏳", "🔄", "📊", "🔍"):
         assert ch not in txt0
         assert ch not in txt20
     wait_src = __import__("inspect").getsource(WayneTelegramBot._start_plain_wait)
     assert "reply_markup" not in wait_src
     assert "edit_text" in wait_src
-    assert 'parse_mode="HTML"' in wait_src
     page = __import__("inspect").getsource(WayneTelegramBot._send_biaoke_page)
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
     card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
