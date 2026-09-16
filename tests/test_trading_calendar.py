@@ -258,6 +258,26 @@ def test_daytrade_closed_title_not_intraday():
     assert "09:00" in msg
 
 
+def test_leave_zero_closed_message_points_to_screen():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from trading_calendar import leave_zero_closed_message, next_tw_session_when
+
+    tz = ZoneInfo("Asia/Taipei")
+    after = datetime(2026, 9, 16, 18, 0, tzinfo=tz)
+    msg = leave_zero_closed_message(after)
+    assert "目前非盤中交易時間" in msg
+    assert "不提供" in msg
+    assert "海選" in msg
+    assert "黃金買點" in msg
+    when = next_tw_session_when(after)
+    assert "09:00" in when
+    assert "2026/09/17" in when
+    pre = next_tw_session_when(datetime(2026, 9, 17, 8, 30, tzinfo=tz))
+    assert pre.startswith("今天")
+
+
 def test_daytrade_list_heading_tail_says_what_to_do_now():
     from datetime import datetime
     from zoneinfo import ZoneInfo

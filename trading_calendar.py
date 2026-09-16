@@ -188,6 +188,32 @@ def tw_session_phase(now=None) -> str:
     return "after"
 
 
+def next_tw_session_when(now=None) -> str:
+    """給人看：今天盤中或下個交易日 09:00–13:30。"""
+    from config import taipei_now
+
+    now = now or taipei_now()
+    if tw_session_phase(now) == "pre":
+        return f"今天 {format_trading_date_zh(now.strftime('%Y%m%d'))} 09:00–13:30"
+    d = now.date() + timedelta(days=1)
+    for _ in range(16):
+        ymd = d.strftime("%Y%m%d")
+        if is_tw_open_calendar_day(ymd):
+            return f"{format_trading_date_zh(ymd)} 09:00–13:30"
+        d += timedelta(days=1)
+    return "下個交易日 09:00–13:30"
+
+
+def leave_zero_closed_message(now=None) -> str:
+    """非盤中按剛脫離零：不提供現價，指向海選黃金買點。"""
+    when = next_tw_session_when(now)
+    return (
+        "目前非盤中交易時間，不提供現價複核。\n"
+        "若需查詢，請點選「<b>海選</b>」去看「<b>黃金買點</b>」（官方收盤、獲利剛離零）。\n"
+        f"{when} 再開盤時再按這顆，才用現價看誰剛脫離零。"
+    )
+
+
 def overnight_list_heading(phase: str) -> tuple[str, str]:
     """非盤中隔日沖標題／副標。盤中維持「盤中即時」。"""
     if phase == "pre":
