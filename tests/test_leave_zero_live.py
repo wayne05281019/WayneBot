@@ -214,5 +214,6 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     assert "剛脫離零" in html
     wait0 = str(msg.reply_text.await_args_list[0].args[0]) if msg.reply_text.await_args_list else ""
     assert "剛脫離零進行中" in wait0
-    assert wait0.startswith("<pre>")
-    assert "｜" in wait0 and wait0.count("｜") >= 8
+    assert "□" in wait0 or "■" in wait0
+    assert "｜" not in wait0
+    assert "<pre>" not in wait0

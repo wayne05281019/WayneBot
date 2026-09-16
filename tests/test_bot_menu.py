@@ -469,11 +469,12 @@ def test_screening_progress_text():
 
     start = WayneTelegramBot._screening_progress_text(0)
     assert "海選進行中" in start
-    assert "＋" in start
+    assert "□" in start
+    assert "＋" not in start
     assert "好了這則會消失" in start
     body = WayneTelegramBot._screening_progress_text(45)
-    assert "４５　秒" in body or "45" in body
-    assert "＝" in body
+    assert "1:00" in body or "45" in body or "４５" in body
+    assert "■" in body
     assert WayneTelegramBot._format_elapsed(95) == "1:35"
     assert "完成" in WayneTelegramBot._screening_progress_text(0, done=True)
 
