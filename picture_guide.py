@@ -9,7 +9,7 @@ import os
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
-CACHE_VER = "v49"
+CACHE_VER = "v50"
 # 九頁同一張 9:16 一屏。超長海報在話筒裡會整張縮小，字會小到不能看。
 # 1080×1920＝手機直式一屏；點開幾乎滿版。內文以 ≥50px 畫，390 寬話筒點開約 18–20 點。
 PAGE_WIDTH = 1080
