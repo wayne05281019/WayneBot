@@ -88,6 +88,46 @@ def classify_how_to_sell(
     return out
 
 
+def sell_action_series(
+    hl_tags: Sequence[Any],
+    temp_labels: Sequence[Any],
+    *,
+    linger: int = LINGER,
+) -> List[str]:
+    """逐日如何賣動作。一次掃完給來回測，不改海選。"""
+    n = min(
+        len(hl_tags) if hl_tags is not None else 0,
+        len(temp_labels) if temp_labels is not None else 0,
+    )
+    out: List[str] = [""] * n
+    for i in range(n):
+        flags = classify_how_to_sell(
+            hl_tags[: i + 1], temp_labels[: i + 1], linger=linger
+        )
+        out[i] = str(flags.get("sell_action") or "")
+    return out
+
+
+def first_direct_cut_after(
+    hl_tags: Sequence[Any],
+    temp_labels: Sequence[Any],
+    *,
+    entry_i: int,
+    max_hold: int = 60,
+    linger: int = LINGER,
+) -> Optional[int]:
+    """進場後第一根「直接減碼」索引。沒碰到回 None。不是下單。"""
+    acts = sell_action_series(hl_tags, temp_labels, linger=linger)
+    n = len(acts)
+    if n <= 0 or entry_i < 0:
+        return None
+    stop = min(n, int(entry_i) + 1 + int(max_hold))
+    for j in range(int(entry_i) + 1, stop):
+        if acts[j] == "直接減碼":
+            return j
+    return None
+
+
 def _chrono_table(tbl: Any):
     """決策卡 table 是新→舊；分類要依日期正序，否則會把最舊列當成今天。"""
     if tbl is None or not hasattr(tbl, "columns") or len(tbl) == 0:

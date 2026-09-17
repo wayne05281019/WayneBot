@@ -68,14 +68,57 @@ def test_stock_card_shows_mixed_stars():
         bucket_label="黃金買點",
     )
     assert "★★★★★" in html
+    assert "不同步就直接減碼" in html
+    assert "切入" in html and "100" in html
     watch = _stock_card_html(
         {"stock_id": "1101", "stock_name": "台泥", "close": 50.2, "golden_buy": True},
         2,
         bucket_label="重點觀察",
     )
     assert "★★★★★" not in watch
-    assert "☆" in watch
-    assert entry_star_glyphs(1) in watch or entry_star_glyphs(2) in watch
+    assert "不同步就直接減碼" not in watch
+
+
+def test_entry_watch_merged_one_list_two_tags():
+    from screening_engine import format_screening_payload, merge_entry_stage_rows
+
+    buy = {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "close": 100.0,
+        "profit_pct": 1.2,
+        "is_s_tier": True,
+        "sector_inflow": True,
+        "leave_l20": True,
+    }
+    watch = {
+        "stock_id": "1101",
+        "stock_name": "台泥",
+        "close": 50.2,
+        "golden_buy": True,
+        "profit_pct": 0.0,
+    }
+    rows = merge_entry_stage_rows(
+        {"leave_zero": [buy], "golden_buy": [watch, dict(buy)]},
+        buy_cap=8,
+        watch_cap=8,
+    )
+    assert [r["stock_id"] for r in rows] == ["2330", "1101"]
+    assert rows[0]["entry_stage_label"] == "買點"
+    assert rows[1]["entry_stage_label"] == "還在零"
+    payload = format_screening_payload(
+        {"leave_zero": [buy], "golden_buy": [watch], "select_01": []},
+        "20260904",
+        morning=True,
+    )
+    keys = [p.get("mark_key") for p in payload]
+    assert keys == ["leave_zero"]
+    html = payload[0]["html"]
+    assert "＝＝重點觀察" not in html
+    assert "買點" in html and "還在零" in html
+    assert "不同步就直接減碼" in html
+    assert html.index("台積電") < html.index("台泥")
+    assert "減碼" not in html.split("台泥", 1)[1]
 
 
 def test_stamp_sets_buy_star_only_for_five():
@@ -88,3 +131,29 @@ def test_stamp_sets_buy_star_only_for_five():
     )
     assert rows[0]["entry_stars"] == 5 and rows[0]["buy_star"] is True
     assert rows[1]["entry_stars"] == 4 and rows[1]["buy_star"] is False
+
+
+def test_nav_trade_marks_buy_up_sell_down_from_card():
+    import pandas as pd
+    from wayne_navigator import _NAV_TRADE_BUY, _NAV_TRADE_SELL, _nav_trade_marks
+
+    work = pd.DataFrame(
+        {
+            "close": [10.0, 11.0],
+            "high": [10.5, 11.2],
+            "low": [9.8, 10.8],
+            "ma20": [10.0, 10.5],
+        }
+    )
+    b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left"})
+    assert b == 1 and s is None
+    b, s = _nav_trade_marks(work, {"sell_action": "直接減碼"})
+    assert s == 1 and b is None
+    b, s = _nav_trade_marks(
+        work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
+    )
+    assert b is None and s is None
+    b, s = _nav_trade_marks(work, None)
+    assert b is None and s is None
+    assert _NAV_TRADE_BUY.startswith("#15")
+    assert _NAV_TRADE_SELL.startswith("#E6")

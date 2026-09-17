@@ -480,6 +480,7 @@ class NavigatorEngine:
             monthly_stage_from_ohlc,
             prev_close_from_change_pct,
             profit_floor_at,
+            relative_buy_kind,
             resolve_daily_change_pct,
             taipei_now,
             format_card_query_stamp,
@@ -770,6 +771,18 @@ class NavigatorEngine:
                 near_high = float(_dist_h(h20)) >= -1.5
             except (TypeError, ValueError):
                 near_high = False
+            prev_p = None
+            if len(table) >= 2:
+                try:
+                    prev_p = float(table.iloc[1].get("profit_pct") or 0)
+                except (TypeError, ValueError):
+                    prev_p = None
+            rel_kind, rel_txt = relative_buy_kind(
+                profit_pct=float(last_tbl.get("profit_pct") or 0),
+                hl=str(last_tbl.get("高低") or ""),
+                alert=str(last_tbl.get("預警") or ""),
+                prev_profit_pct=prev_p,
+            )
             stance, stance_kind = card_daily_stance(
                 profit_pct=float(last_tbl.get("profit_pct") or 0),
                 alert=str(last_tbl.get("預警") or ""),
@@ -779,9 +792,11 @@ class NavigatorEngine:
                 bias=float(last_tbl.get("bias_monthly") or 0),
                 badges=badges,
                 near_high=near_high,
+                prev_profit_pct=prev_p,
             )
         else:
             stance, stance_kind = "今天先看表，先等", "wait"
+            rel_kind, rel_txt = "", ""
         query_date, query_clock = format_card_query_stamp(
             is_live=is_live,
             latest_date=latest["date"],
@@ -822,6 +837,16 @@ class NavigatorEngine:
             )
         except Exception:
             listing = ""
+        fine_industry = ""
+        try:
+            from industry_fine import load_cached_fine_industry
+
+            rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
+                str(stock_id)
+            ) or {}
+            fine_industry = str(rec.get("chain") or "").strip()
+        except Exception:
+            fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")
         try:
             from universe import (
@@ -841,6 +866,7 @@ class NavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": face_name,
             "industry": industry,
+            "fine_industry": fine_industry,
             "listing": listing,
             "asset_type": asset_type,
             "etf_kind": etf_kind,
@@ -889,6 +915,8 @@ class NavigatorEngine:
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "stance": stance,
             "stance_kind": stance_kind,
+            "relative_buy_kind": rel_kind,
+            "relative_buy_note": rel_txt,
             "monthly_stage": monthly_stage,
             "monthly_stage_kind": monthly_kind,
             "monthly_stage_short": monthly_short,
@@ -2609,6 +2637,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
+    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
+    if fine and fine != industry:
+        industry = fine
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3298,6 +3329,9 @@ def render_first_glance_png(
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
+    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
+    if fine and fine != industry:
+        industry = fine
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3519,6 +3553,7 @@ def render_first_glance_png(
             str(card.get("stock_id") or stock_id),
             str(card.get("stock_name") or ""),
             compact=True,
+            card=card,
         )
     else:
         for a in (ax_px, ax_sig, ax_vol):
@@ -3858,7 +3893,32 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     return work
 
 
-def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str, *, compact: bool = False) -> None:
+# 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。比高低卡紫綠標清楚一點，不要巨大。
+_NAV_TRADE_BUY = "#1565C0"
+_NAV_TRADE_SELL = "#E64A19"
+
+
+def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
+    """只標黃金買點進出，不是每個綠低／紫高。無卡片就不算獲利（查股才快）。"""
+    n = 0 if work is None else len(work)
+    buy_i = sell_i = None
+    if n < 2 or not card:
+        return buy_i, sell_i
+    if str(card.get("sell_action") or "") == "直接減碼":
+        sell_i = n - 1
+    if str(card.get("relative_buy_kind") or "") == "just_left":
+        buy_i = n - 1
+    if str(card.get("entry_stage") or "") == "watch":
+        buy_i = None
+    if buy_i is not None and buy_i == sell_i:
+        buy_i = None
+    return buy_i, sell_i
+
+
+def _paint_nav_on_axes(
+    ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str,
+    *, compact: bool = False, card: Optional[dict] = None,
+) -> None:
     """同一套紫高／綠低箭頭。compact＝塞進介紹圖下半，圖例改一行標題，避免壓到 K。"""
     n = len(work)
     xs = np.arange(n, dtype=float)
@@ -3995,6 +4055,27 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
+    buy_i, sell_i = _nav_trade_marks(work, card)
+    trade_note = ""
+    if buy_i is not None:
+        i = int(buy_i)
+        lo = float(work["low"].iloc[i])
+        _nav_arrow(
+            ax1, lo - arrow_gap, xs[i], down=False,
+            face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
+            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+        )
+        trade_note = "　買↑藍"
+    if sell_i is not None:
+        i = int(sell_i)
+        hi = float(work["high"].iloc[i])
+        _nav_arrow(
+            ax1, hi + arrow_gap, xs[i], down=True,
+            face=_NAV_TRADE_SELL, ink=_NAV_TRADE_SELL,
+            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+        )
+        trade_note += "　賣↓橙"
+
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
     ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
     ax1.axhline(l60, color="#81c784", linewidth=1.35)
@@ -4021,9 +4102,9 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
         except Exception:
             stamp = ""
     title = (
-        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠"
+        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠{trade_note}"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}   WayneBot ® 2026"
+        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}{trade_note}   WayneBot ® 2026"
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
@@ -4299,7 +4380,7 @@ def generate_card_image(stock_id: str, db_path: str = None, save_path: str = Non
 
 
 def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None, *, uid: str = "") -> dict:
-    """看這檔：決策卡只算一次，介紹圖／高低卡／導航／籌碼一次產出。"""
+    """看這檔：決策卡只算一次，介紹圖＋高低卡一次產出。導航／籌碼按按鈕才畫。"""
     sid = str(stock_id).strip()
     db_path = db_path or get_db_path()
     charts_dir = charts_dir or get_charts_dir()
@@ -4334,23 +4415,14 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         sid, card, tape, unique_chart_path(charts_dir, sid, "glance", uid), db_path=db_path, ohlc=ohlc
     ) or ""
     card_path = render_decision_card_png(card, unique_chart_path(charts_dir, sid, "card", uid)) or ""
-    chart = generate_chart(
-        sid, "", db_path, unique_chart_path(charts_dir, sid, "nav", uid), ohlc, already_normalized=True
-    ) or ""
-    chips = ""
-    try:
-        from chips import generate_chips_image
-
-        chips = generate_chips_image(sid, db_path, unique_chart_path(charts_dir, sid, "chips", uid)) or ""
-    except Exception:
-        chips = ""
+    # 導航圖／籌碼改按鈕才產，查股一次只出介紹圖＋決策卡。
     return {
         "card": card,
         "tape": tape,
         "glance": glance,
         "cards": [card_path] if card_path else [],
-        "chart": chart,
-        "chips": chips,
+        "chart": "",
+        "chips": "",
     }
 
 

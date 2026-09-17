@@ -1649,6 +1649,70 @@ def ingest_public_posts(
     return stats
 
 
+def _carry_parent_names(
+    events: Sequence[Dict[str, Any]], db_path: str = ""
+) -> List[Dict[str, Any]]:
+    """樓中樓沒點檔名時，沿用主文已點的檔。同一串是同一條判斷。"""
+    rows = [dict(ev) for ev in (events or [])]
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for ev in rows:
+        pid = str(ev.get("id") or "")
+        if pid:
+            by_id[pid] = ev
+    if db_path:
+        try:
+            conn = sqlite3.connect(db_path, timeout=8.0)
+            try:
+                for ev in rows:
+                    par = str(ev.get("parent") or "")
+                    if not par or par in by_id:
+                        continue
+                    hit = conn.execute(
+                        "SELECT tags, text FROM biaoke_posts WHERE id=?",
+                        (par,),
+                    ).fetchone()
+                    if not hit:
+                        continue
+                    tags = hit[0]
+                    if isinstance(tags, str):
+                        try:
+                            tags = json.loads(tags)
+                        except Exception:
+                            tags = []
+                    by_id[par] = {
+                        "id": par,
+                        "tags": tags or [],
+                        "text": hit[1] or "",
+                    }
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
+    try:
+        from biaoke_tape import named_pairs
+    except Exception:
+        return rows
+    for ev in rows:
+        if str(ev.get("kind") or "post") != "reply":
+            continue
+        par = by_id.get(str(ev.get("parent") or ""))
+        if not par:
+            continue
+        spoken = str(ev.get("text") or "")
+        own = named_pairs(spoken, ev.get("tags"))
+        if own:
+            continue
+        names = [n for _s, n in named_pairs(str(ev.get("reply_to_text") or ""), None)]
+        if not names and re.search(r"(?<!\d)\d{4}(?!\d)", spoken) and not re.search(
+            r"\d{5}", spoken
+        ):
+            parent_pairs = named_pairs(str(par.get("text") or ""), par.get("tags"))
+            names = [parent_pairs[0][1]] if parent_pairs else []
+        if names:
+            ev["tags"] = names
+    return rows
+
+
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
     """抓到就存官方 tape、緊急推播、輔助匣。神經元等台北 02:00／開市日 13:00。"""
     try:
@@ -1657,7 +1721,7 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         load_corpus_cache_clear()
     except Exception:
         pass
-    packed = list(events or [])
+    packed = _carry_parent_names(list(events or []), db_path)
     try:
         from biaoke_tape import record_events
 
