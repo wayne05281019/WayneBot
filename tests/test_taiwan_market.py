@@ -1420,6 +1420,48 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     assert any("跳升" in ln for ln in lines)
 
 
+def test_outlook_keeps_tsm_cash_and_us_lead_group():
+    import re
+    from tg_layout import _disp_w
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260916",
+        snap={
+            "ok": True,
+            "as_of": "20260916",
+            "close": 45848.9,
+            "chg1_pct": 0.74,
+            "vs_ma20_pct": -0.5,
+            "regime": "neutral",
+            "falling_risk": 20,
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "ixic_pct": 0.21,
+            "sox_pct": 0.63,
+            "vix": 15.2,
+            "tsm_pct": 0.96,
+            "tsm_chg": 3.97,
+            "tsm_px": 417.72,
+            "us_lead_name": "光通訊",
+            "us_lead_pct": 2.19,
+        },
+        now=datetime(2026, 9, 17, 6, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert "台積美股" in html
+    assert "417.72" in html
+    assert "+0.96%" in html
+    assert "+3.97美元" in html
+    assert "光通訊族群，昨天在美股是領漲" in html
+    assert "1.23%" not in html
+    for ln in html.split("\n"):
+        plain = re.sub(r"<[^>]+>", "", ln)
+        assert _disp_w(plain) <= 40, plain
+
+
 def test_parse_taifex_tx_inst_oi_rows_picks_foreign():
     from taiwan_market import _parse_taifex_tx_inst_oi_rows
 

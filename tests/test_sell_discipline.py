@@ -921,6 +921,27 @@ def test_6547_20260909_author_desync_matches_gold_note():
 
 
 @pytest.mark.production_db
+def test_6547_20260910_official_desync_then_off_is_cut():
+    """Cary 9/10 09:58：昨天最高價沒最高溫要直接減碼。官方收 61.4 已脫離 → 不同步再脫離仍直接減碼。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "6547", merge_live=False, as_of="20260910"
+    )
+    assert str(card.get("latest_date")) == "20260910"
+    assert abs(float(card.get("close") or 0) - 61.4) < 0.05
+    row = card["table"].iloc[0]
+    assert str(row["高低"]) != "20高"
+    assert str(row["升降"]) != "最高溫"
+    attach_sell(card)
+    assert card.get("sell_action") == "直接減碼"
+    assert "不同步再脫離" in str(card.get("sell_why") or "")
+    note = sell_note_short(card)
+    assert "先出一點" in note
+
+
+@pytest.mark.production_db
 def test_4915_20260904_sync_has_no_sell_caption():
     """致伸 9/4 最高價與最高溫同步：不是減碼標，決策卡圖說不可多寫紀律。"""
     from bot_servers import _photo_sell_caption

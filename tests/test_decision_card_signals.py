@@ -55,6 +55,45 @@ def test_2383_carybot_profit_at_5295_vs_4100():
     assert not is_profit_display_zero(pct)
 
 
+def test_4739_cal60_profit_not_cary_green_zero():
+    """Cary 4739 9/15 表寫 0.0%＝貼 20 日低歸零；官方 76／60 曆日低 69.1 → 10.0%。
+
+    9/2 離 20 低時 Cary 也寫 23.6%，與 60 曆日低同一把尺。不准為綠標改回貼 20 低歸零。
+    """
+    at_l20 = (76.0 - 69.1) / 69.1 * 100.0
+    assert abs(at_l20 - 10.0) < 0.05
+    assert format_profit_pct(at_l20) == "10.0%"
+    assert not is_profit_display_zero(at_l20)
+    off_l20 = (85.4 - 69.1) / 69.1 * 100.0
+    assert abs(off_l20 - 23.6) < 0.05
+    assert format_profit_pct(off_l20) == "23.6%"
+    # Cary 9/16 劇本 0.0%→2.6% 會過黃金買點獲利型態；我方 9/15 已 10% 超過 5% 上限。
+    ok_cary, _ = leave_zero_screen_ok(0.0, 2.6)
+    assert ok_cary
+    ok_ours, reason = leave_zero_screen_ok(11.9, 10.0)
+    assert not ok_ours
+    assert "5" in reason
+
+
+def test_6547_sep9_profit_and_sep10_intraday_not_official():
+    """6547 9/9 68.10／45.05 → 51.2%。9/10 盤中 62.90／39.6% 不當收盤（官方 61.4／36.3%）。"""
+    sep9 = (68.10 - 45.05) / 45.05 * 100.0
+    assert abs(sep9 - 51.2) < 0.05
+    assert format_profit_pct(sep9) == "51.2%"
+    intra = (62.90 - 45.05) / 45.05 * 100.0
+    official = (61.4 - 45.05) / 45.05 * 100.0
+    assert abs(intra - 39.6) < 0.05
+    assert abs(official - 36.3) < 0.05
+    assert format_profit_pct(official) == "36.3%"
+
+
+def test_6227_red_arrow_day_fails_leave_zero_cap():
+    """6227 9/2 紅箭頭日：60 曆日低獲利 15.4%，超過黃金買點 5% 上限，不進海選。"""
+    ok, reason = leave_zero_screen_ok(12.9, 15.4)
+    assert not ok
+    assert "5" in reason
+
+
 def test_card_query_stamp_live_includes_seconds():
     from datetime import datetime
     from zoneinfo import ZoneInfo
