@@ -288,6 +288,104 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         r03 = self._row(card, "20260903")
         self.assertEqual(self._shown_alert(r03), "10低")
 
+    def test_4739_20260910_range_prior_low_ma20_match_cary_note(self):
+        """Cary 9/10 個人筆記：區間 77.6～90.2、前低 69.10、SMA20 84.71。只對卡，不當買訊。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "4739", lookback=40, merge_live=False, as_of="20260910"
+        )
+        self.assertAlmostEqual(float(card["close"]), 77.6, places=1)
+        self.assertAlmostEqual(float(card["h20"]), 90.2, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 77.6, places=1)
+        self.assertAlmostEqual(float(card["cal60_low"]), 69.1, places=1)
+        self.assertAlmostEqual(float(card["ma20"]), 84.71, places=2)
+        row = self._row(card, "20260910")
+        self.assertAlmostEqual(float(row["close"]), 77.6, places=1)
+        self.assertAlmostEqual(float(row["bias_monthly"]), -8.4, places=1)
+        self.assertEqual(str(row["高低"]), "20低")
+        self.assertEqual(str(row["升降"]), "最低溫")
+        # Cary 獲利欄寫 0.0%＝貼 20 日低歸零；我方鎖 60 曆日低 → 12.3%。
+        self.assertEqual(row["獲利"], "12.3%")
+
+    def test_4739_20260915_official_not_cary_zero_profit(self):
+        """Cary 9/17 表 9/15 寫 0.0% 綠標；官方收 76、60 曆日低 69.1 → 獲利 10.0%，月乖離／量對上。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "4739", lookback=40, merge_live=False, as_of="20260915"
+        )
+        self.assertAlmostEqual(float(card["close"]), 76.0, places=1)
+        self.assertAlmostEqual(float(card["cal60_low"]), 69.1, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 76.0, places=1)
+        row = self._row(card, "20260915")
+        self.assertAlmostEqual(float(row["close"]), 76.0, places=1)
+        self.assertEqual(row["獲利"], "10.0%")
+        self.assertEqual(str(row["預警"]), "K20低")
+        self.assertEqual(str(row["高低"]), "20低")
+        self.assertAlmostEqual(float(row["bias_monthly"]), -8.4, places=1)
+        self.assertEqual(str(row["120日量"]), "第120名")
+        r02 = self._row(card, "20260902")
+        self.assertAlmostEqual(float(r02["close"]), 85.4, places=1)
+        self.assertEqual(r02["獲利"], "23.6%")
+        self.assertEqual(self._shown_alert(r02), "5低")
+
+    def test_6227_20260903_price_matches_cary_not_red_arrow_or_120d_cost(self):
+        """Cary 9/4 文：9/2 紅箭頭＋120 日主力成本 114.55。價對官方；箭頭／推估成本不進卡。"""
+        from broker_points import attach_main_cost, visible_main_cost
+
+        db = get_db_path()
+        card = NavigatorEngine(db).get_decision_card(
+            "6227", lookback=40, merge_live=False, as_of="20260903"
+        )
+        self.assertAlmostEqual(float(card["close"]), 113.0, places=1)
+        r03 = self._row(card, "20260903")
+        self.assertAlmostEqual(float(r03["close"]), 113.0, places=1)
+        r02 = self._row(card, "20260902")
+        self.assertAlmostEqual(float(r02["close"]), 116.0, places=1)
+        r31 = self._row(card, "20260831")
+        self.assertAlmostEqual(float(r31["close"]), 111.0, places=1)
+        self.assertEqual(str(r31["高低"]), "20低")
+        self.assertEqual(str(r31["升降"]), "最低溫")
+        # 紅箭頭日獲利已離零很遠，黃金買點不收。
+        self.assertGreater(float(r02["profit_pct"]), 5.0)
+        attach_main_cost(card, db, fetch=False)
+        mc = visible_main_cost(card.get("main_cost"))
+        self.assertNotEqual(mc, 114.55)
+        self.assertNotEqual(mc, 108.33)
+
+    def test_6547_20260909_high_low_box_and_desync_cells(self):
+        """Cary 9/10 如何賣圈 9/9：收 68.10、獲利 51.2%、20 高、升溫；高低盒對官方。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "6547", lookback=40, merge_live=False, as_of="20260909"
+        )
+        self.assertAlmostEqual(float(card["close"]), 68.1, places=1)
+        self.assertAlmostEqual(float(card["h10"]), 68.1, places=1)
+        self.assertAlmostEqual(float(card["h20"]), 68.1, places=1)
+        self.assertAlmostEqual(float(card["h60"]), 68.1, places=1)
+        self.assertAlmostEqual(float(card["l10"]), 61.3, places=1)
+        self.assertAlmostEqual(float(card["l20"]), 50.4, places=1)
+        self.assertAlmostEqual(float(card["cal60_low"]), 45.05, places=2)
+        row = self._row(card, "20260909")
+        self.assertEqual(row["獲利"], "51.2%")
+        self.assertEqual(str(row["高低"]), "20高")
+        self.assertEqual(str(row["升降"]), "升溫")
+        self.assertAlmostEqual(float(row["bias_monthly"]), 16.0, places=1)
+        r28 = self._row(card, "20260828")
+        self.assertAlmostEqual(float(r28["close"]), 65.0, places=1)
+        self.assertEqual(r28["獲利"], "44.3%")
+        self.assertEqual(str(r28["高低"]), "20高")
+        self.assertAlmostEqual(float(r28["bias_monthly"]), 21.5, places=1)
+
+    def test_6547_20260910_official_close_not_intraday_6290(self):
+        """Cary 9/10 09:57 盤中 62.90／39.6% 不當收盤；官方收 61.4、獲利 36.3%。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "6547", lookback=40, merge_live=False, as_of="20260910"
+        )
+        self.assertEqual(str(card.get("latest_date")), "20260910")
+        self.assertAlmostEqual(float(card["close"]), 61.4, places=1)
+        self.assertNotAlmostEqual(float(card["close"]), 62.9, places=1)
+        row = self._row(card, "20260910")
+        self.assertEqual(row["獲利"], "36.3%")
+        self.assertEqual(str(row["高低"]), "10低")
+        self.assertAlmostEqual(float(row["bias_monthly"]), 3.8, places=1)
+
 
 if __name__ == "__main__":
     unittest.main()

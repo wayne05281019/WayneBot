@@ -1493,13 +1493,13 @@ def _watch_kv(name: str, value: str) -> str:
 
 
 def _watch_quote_rows(snap: Dict[str, Any], items) -> List[str]:
-    from us_overnight import _fmt_move
+    from us_overnight import format_quote_move
 
     rows: List[str] = []
     for pct_k, chg_k, name in items:
         if snap.get(pct_k) is None:
             continue
-        rows.append(_watch_kv(name, _fmt_move(snap.get(pct_k), snap.get(chg_k))))
+        rows.append(_watch_kv(name, format_quote_move(snap, pct_k, chg_k)))
     return rows
 
 
@@ -3584,7 +3584,7 @@ def format_screen_market_outlook_html(
     if not snap.get("ok") and not us_ok:
         return ""
 
-    from us_overnight import _fmt_vix, electronics_night_side, regime_face_label
+    from us_overnight import _fmt_vix, electronics_night_side, format_quote_move, format_us_lead_line, regime_face_label
 
     holiday_lines: List[str] = []
     try:
@@ -3666,6 +3666,12 @@ def format_screen_market_outlook_html(
             tail_bits.append(f"恐慌指數 {_fmt_vix(us)}")
         if tail_bits:
             body.append("　".join(tail_bits))
+        tsm_move = format_quote_move(us, "tsm_pct", "tsm_chg")
+        if us.get("tsm_pct") is not None:
+            body.append(f"台積美股　{html_escape(tsm_move)}")
+        lead = format_us_lead_line(us)
+        if lead:
+            body.append(html_escape(lead))
         side = electronics_night_side(us)
         if side and not holiday_lines and not tw_closed:
             body.append(f"電子鏈夜盤{html_escape(side)}")
