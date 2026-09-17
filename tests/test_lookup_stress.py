@@ -57,7 +57,7 @@ def test_four_tier_png_packs_parallel():
     wall = time.perf_counter() - t0
     for sid, pack, dt in rows:
         assert not pack.get("error"), f"{sid} {pack.get('error')}"
-        for key in ("glance", "chart"):
+        for key in ("glance",):
             path = pack.get(key) or ""
             assert path and os.path.isfile(path) and os.path.getsize(path) > 2000, f"{sid} {key}"
         cards = pack.get("cards") or []

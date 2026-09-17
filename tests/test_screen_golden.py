@@ -149,8 +149,9 @@ def test_golden_buy_in_screen_push_order():
     from line_share_format import LINE_BUCKET_META
 
     keys = [k for k, *_ in SCREEN_PUSH_SPECS]
-    assert keys.index("golden_buy") == keys.index("leave_zero") + 1
+    assert keys[0] == "leave_zero"
+    assert "golden_buy" not in keys
     specs = {k: hint for k, _, _, hint, *_ in SCREEN_PUSH_SPECS}
-    assert "不收空頭" in specs["golden_buy"]
-    assert "可收" not in specs["golden_buy"]
-    assert "不收空頭" in LINE_BUCKET_META["golden_buy"][1]
+    assert "還在零" in specs["leave_zero"]
+    assert "不是買" in specs["leave_zero"]
+    assert "觀察不是買" in LINE_BUCKET_META["golden_buy"][1]
