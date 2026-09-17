@@ -161,7 +161,7 @@ def test_trade_journal_callbacks():
         assert bot._send_trade_journal.await_args.kwargs.get("review") is review
 
 
-def test_help_callback_edits_in_place_not_new_message():
+def test_help_callback_is_cancelled_noop():
     bot = _bot()
     bot._reply_help_topic = AsyncMock()
     upd, msg = _cb("?:stock")
@@ -170,11 +170,13 @@ def test_help_callback_edits_in_place_not_new_message():
         await bot.on_callback(upd, MagicMock())
 
     asyncio.run(run())
-    bot._reply_help_topic.assert_awaited_once()
-    assert bot._reply_help_topic.await_args.kwargs.get("edit_target") is msg
+    bot._reply_help_topic.assert_not_awaited()
+    msg.delete.assert_not_awaited()
+    msg.edit_text.assert_not_awaited()
+    upd.callback_query.answer.assert_awaited()
 
 
-def test_help_callback_from_picture_does_not_edit_photo():
+def test_help_callback_from_picture_is_cancelled_noop():
     bot = _bot()
     bot._reply_help_topic = AsyncMock()
     upd, msg = _cb("?:stock")
@@ -184,10 +186,9 @@ def test_help_callback_from_picture_does_not_edit_photo():
         await bot.on_callback(upd, MagicMock())
 
     asyncio.run(run())
-    msg.delete.assert_awaited_once()
-    bot._reply_help_topic.assert_awaited_once()
-    assert bot._reply_help_topic.await_args.kwargs.get("edit_target") is None
-    assert bot._reply_help_topic.await_args.args[1] == "stock"
+    msg.delete.assert_not_awaited()
+    bot._reply_help_topic.assert_not_awaited()
+    upd.callback_query.answer.assert_awaited()
 
 
 def test_hx_deletes_help_message():
