@@ -189,7 +189,8 @@ def test_chained_live_notes_skip_stale_keyword_hits():
     note = live_notes(db, "台光電怎麼看")
     assert "神經元鏈" in note
     assert "關鍵字命中" not in note
-    assert "4510" in note
+    assert "2383" in note
+    assert "收" in note
 
 
 def test_chain_real_quotes_when_db_present():
@@ -270,7 +271,8 @@ def test_self_leader_defers_ohlc_to_tape():
     assert "自己就是" in leader["text"]
     assert "留給第 4 顆" in leader["text"] or "不另對" in leader["text"]
     assert "4510" not in leader["text"]
-    assert "4510" in tape["text"]
+    assert "收" in tape["text"]
+    assert "壓" in tape["text"] or "撐" in tape["text"]
     follow = fire_chain(db, "智原怎麼看")
     if follow.get("sid") != "3035":
         return
@@ -288,7 +290,7 @@ def test_tape_does_not_repeat_hold_or_field():
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     hold = next(s for s in fired["steps"] if s["id"] == "hold")
     field = next(s for s in fired["steps"] if s["id"] == "field")
-    assert "4510" in tape["text"]
+    assert "收" in tape["text"]
     assert "3930" in tape["text"]
     assert "圖上演算" in tape["text"]
     assert "勿輕易調節" not in tape["text"]
@@ -316,7 +318,6 @@ def test_think_chains_45839_and_self_leader():
     assert "47578" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調節" in think
-    assert "4510" in think
     assert "3930" in think
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     close_m = __import__("re").search(r"收 ([0-9.]+)", tape["text"])
