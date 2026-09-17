@@ -74,13 +74,14 @@ def test_record_and_fire_reads_latest(tmp_path):
     assert "這族龍頭是 他自己最新" not in think
 
 
-def test_ingest_hooks_neurons_immediately():
+def test_ingest_hooks_queue_neurons_for_absorb_slots():
     src = inspect.getsource(_after_ingest_analyze)
-    assert "record_neuron_events" in src
+    assert "queue_absorb_events" in src
     assert "record_events" in src
+    assert "record_neuron_events" not in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
-    assert "backfill_recent_neurons" in ingest_src
-    assert "n=160" in ingest_src or "n = 160" in ingest_src
+    assert "backfill_recent_neurons" not in ingest_src
+    assert "run_absorb" in ingest_src
 
 
 def test_bystander_kind_not_filed(tmp_path):
