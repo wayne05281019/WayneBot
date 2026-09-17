@@ -75,7 +75,8 @@ def test_record_and_latest_line(tmp_path):
     assert "09:47" in line
     assert "47548" in line
     assert "不是買訊" in line
-    assert "下一步" in line
+    assert "等待" in line or "如果" in line
+    assert "下一步" not in line
 
 
 def test_lookback_prefers_2025_plus_over_early_year(tmp_path):
@@ -105,3 +106,17 @@ def test_lookback_prefers_2025_plus_over_early_year(tmp_path):
     assert "2026-09-16" in line
     assert "早年方法" not in line
     assert "47548" in line
+
+
+def test_easing_c_is_revision_wait_not_new_price():
+    got = think_spoken(
+        "夜盤已經反彈超過0.75了，超過9成暫時化解C波下殺，"
+        "如果要再有 C波除非大盤沒辦法過前高47548",
+        prior="後期 2026-09-16 08:38 先想到：過不了前高47548才可能再走C波",
+    )
+    assert "改口" in got["because"]
+    assert "47548" in got["nxt"]
+    assert "不下判" in got["nxt"]
+    assert "46800" not in got["nxt"]
+    assert "5／9" not in got["because"]
+    assert "發明" not in got["because"]

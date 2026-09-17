@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""捕獲主文／自回後立刻想：他看到什麼才回、下一步盯什麼。
+"""捕獲主文／自回後立刻想：條件更新、改口、還在等哪個他自己的位。
 
-五件脊骨＝波浪／形態／量價／關鍵K／碎形。交叉才寫，不准六顆各貼一句。
-擴延只收他自己點過的位（如果句），不發明 5／9，盤中未收不當官方。
+五件脊骨＝波浪／形態／量價／關鍵K／碎形。要疊在同一個他點過的位才寫。
+想＝只更新他點過的條件；說＝可講還在等、未收不下判。不准新價、不准演浪。
 路人樓不收。IET＝IET-KY 4971。不是買訊。
 """
 from __future__ import annotations
@@ -39,13 +39,24 @@ _FRAC = re.compile(r"(碎形|細微波|只能上不能下)")
 _LATE = "2025-01-01"  # 後期思考權重大於 2023–2024
 _NUM = re.compile(r"(?<![\d.])(\d{4,5})(?![\d])")
 _HINT = re.compile(r"(C\s*波|C-[1235]|逃命波|細微波|洗盤|穿刺|45398|46626|46747|46767|47548|43500)")
+_POINTED = (
+    "47548",
+    "46747",
+    "46767",
+    "46626",
+    "45398",
+    "43500",
+    "45839",
+    "46506",
+    "48218",
+)
 _NEXT = (
-    (re.compile(r"46626"), "台指期先過46626＝防C-2轉C-3第一步"),
-    (re.compile(r"46747|46767"), "穿刺後看是否有效、能否漲開細微波；成功才當短線1"),
-    (re.compile(r"47548"), "過不了前高47548才可能再走C波／複式abc"),
-    (re.compile(r"45398"), "收盤不破45398才是C-5低點確認"),
+    (re.compile(r"46626"), "如果台指期先過他自己點的46626＝防C-2轉C-3第一步"),
+    (re.compile(r"46747|46767"), "如果穿刺有效、漲開細微波；成功才當短線1"),
+    (re.compile(r"47548"), "如果過不了前高47548才可能再走C波／複式abc"),
+    (re.compile(r"45398"), "如果收盤不破45398才是C-5低點確認"),
     (re.compile(r"不要去追高|絕對不要去追高"), "個股不追高、防逃命波"),
-    (re.compile(r"拉回2|支撐區再"), "沒進場的等拉回2或支撐區"),
+    (re.compile(r"拉回2|支撐區再"), "沒進場的等他自己說的拉回2或支撐區"),
 )
 
 
@@ -73,8 +84,31 @@ def _clip(text: str, n: int = 160) -> str:
     return t[: n - 1].rstrip() + "…"
 
 
-def think_spoken(text: str, *, tape_note: str = "") -> Dict[str, str]:
-    """一則主文／自回：看到什麼、為何這樣回、下一步盯什麼。沒交叉就不寫死。"""
+def _pointed_in(spoken: str) -> List[str]:
+    out: List[str] = []
+    blob = spoken or ""
+    for p in _POINTED:
+        if p in blob and p not in out:
+            out.append(p)
+    return out
+
+
+def _unclosed(spoken: str, tape_note: str = "") -> bool:
+    blob = (spoken or "") + " " + (tape_note or "")
+    return any(x in blob for x in ("未收", "夜盤", "盤中", "還沒收"))
+
+
+def _stance(text: str) -> str:
+    t = (text or "").replace(" ", "")
+    if "暫時化解C波" in t or "暫化解C波" in t or "暫時化解" in t:
+        return "c_ease"
+    if "C波" in t or "C-2" in t or "C-3" in t or "逃命波" in t:
+        return "c_risk"
+    return ""
+
+
+def think_spoken(text: str, *, tape_note: str = "", prior: str = "") -> Dict[str, str]:
+    """一則主文／自回：條件更新、改口、還在等哪個他自己的位。不准新價。"""
     spoken = _SPACE.sub(" ", str(text or "")).strip()
     if not spoken:
         return {}
@@ -89,13 +123,23 @@ def think_spoken(text: str, *, tape_note: str = "") -> Dict[str, str]:
         five.append("關鍵K")
     if _FRAC.search(spoken):
         five.append("碎形")
+    pointed = _pointed_in(spoken)
     nxt: List[str] = []
+    if _unclosed(spoken, tape_note):
+        if pointed:
+            nxt.append(
+                "他還在等自己點過的"
+                + "／".join(pointed[:3])
+                + "；官方還沒收，所以不下判"
+            )
+        else:
+            nxt.append("官方還沒收，所以不下判")
     for pat, line in _NEXT:
         if pat.search(spoken) and line not in nxt:
             nxt.append(line)
     if "有效穿刺" in spoken or ("穿刺" in spoken and "有效" in spoken):
         if not any("有效" in x for x in nxt):
-            nxt.append("穿刺後看是否有效、能否漲開細微波；成功才當短線1")
+            nxt.append("如果穿刺有效、漲開細微波；成功才當短線1")
     seen_bits: List[str] = []
     note = _clip(tape_note, 80)
     if note:
@@ -108,13 +152,19 @@ def think_spoken(text: str, *, tape_note: str = "") -> Dict[str, str]:
         seen_bits.append("他看到夜盤／美股震幅大，先當反彈不是主升")
     if not seen_bits:
         seen_bits.append("以他自己這句為觀察，尚未對上新官方收")
-    because = ""
-    if five:
-        because = "×".join(five) + "交叉；"
-    because += "他回這句是因為" + _clip(spoken, 72)
-    if len(five) < 2 and not nxt:
-        # 單件不夠交叉就不裝篤定，仍留下原文觀察
-        because = "五件還沒疊滿，不講死；" + _clip(spoken, 72)
+    st_now, st_old = _stance(spoken), _stance(prior)
+    if st_now and st_old and st_now != st_old:
+        because = "改口：條件仍是他自己點過的位，只更新機率；" + _clip(spoken, 64)
+    elif len(five) >= 2 and pointed:
+        because = (
+            "×".join(five)
+            + "疊在他點過的"
+            + pointed[0]
+            + "；他回這句是因為"
+            + _clip(spoken, 56)
+        )
+    else:
+        because = "五件還沒疊在同一個他點過的位，不講死；" + _clip(spoken, 72)
     return {
         "seen": _clip("；".join(seen_bits), 180),
         "because": _clip(because, 180),
@@ -198,12 +248,14 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
         for ev in pending:
             pid = str(ev.get("id") or ev.get("post_id") or "").strip()
             raw = str(ev.get("text") or "").strip()
-            thought = think_spoken(raw, tape_note=tape_by.get(pid, ""))
-            if not thought:
-                continue
             prior = lookback_prior(
                 conn, raw, str(ev.get("date") or ""), str(ev.get("time") or "")
             )
+            thought = think_spoken(
+                raw, tape_note=tape_by.get(pid, ""), prior=prior
+            )
+            if not thought:
+                continue
             rows.append(
                 (
                     pid,
@@ -274,6 +326,8 @@ def latest_watch_line(db_path: str) -> str:
     if because:
         bits.append(str(because))
     if nxt:
-        bits.append("下一步：" + str(nxt) + "（如果句，未收不當官方）")
+        wait = "不下判" in str(nxt) or "還沒收" in str(nxt) or "未收" in str(seen)
+        label = "等待：" if wait else "如果："
+        bits.append(label + str(nxt))
     bits.append("不是買訊")
     return _clip("。".join(bits), 320)
