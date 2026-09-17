@@ -1069,7 +1069,8 @@ class USOvernightTest(unittest.TestCase):
         }
         got = last_post_from_block(block)
         self.assertAlmostEqual(got["price"], 97.5)
-        self.assertAlmostEqual(got["pct"], -2.5)
+        self.assertAlmostEqual(got["pct"], (97.5 - 102.0) / 102.0 * 100.0)
+        self.assertAlmostEqual(got["previous_close"], 102.0)
         cash_only = {
             "meta": {
                 "previousClose": 100.0,
