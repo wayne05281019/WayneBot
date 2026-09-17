@@ -1665,6 +1665,12 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
     try:
+        from biaoke_watch import record_watch_events
+
+        record_watch_events(db_path, list(events or []))
+    except Exception:
+        logger.exception("飆大觀察／下一步思考失敗")
+    try:
         from biaoke_forecast import record_from_events
 
         record_from_events(db_path, list(events or []))

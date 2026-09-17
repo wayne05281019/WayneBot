@@ -57,8 +57,8 @@ def test_live_reply_posts_chat_and_escapes(monkeypatch):
     assert post.call_args.args[0].startswith("https://api.groq.com")
     body = kwargs["json"]
     assert body["messages"][0]["role"] == "system"
-    assert "認可" in body["messages"][0]["content"]
-    assert "課綱" in body["messages"][0]["content"]
+    assert "硬規則" in body["messages"][0]["content"]
+    assert "不是飆大本人" in body["messages"][0]["content"]
     assert body["messages"][-1]["content"] == "勤誠怎麼看"
     assert any(m.get("content") == "大盤" for m in body["messages"])
 
@@ -149,7 +149,7 @@ def test_live_grounding_includes_method_notes(monkeypatch):
     assert "方法" in sys_msg
     assert "2024-07-08" in sys_msg
     assert "語料" not in sys_msg
-    assert "認可" in sys_msg
+    assert "硬規則" in sys_msg
 
 
 def test_live_notes_always_has_latest_posts_and_replies():
@@ -183,51 +183,19 @@ def test_live_notes_reverse_think_emc_hold():
     from biaoke_desk import load_corpus_cache_clear
     from biaoke_live import live_notes, SYSTEM
 
-    assert "反向" in SYSTEM
-    assert "產業趨勢" in SYSTEM
-    assert "買跌不買漲" in SYSTEM
-    assert "只講飆客" in SYSTEM or "路人發文不是重點" in SYSTEM
-    assert "模糊的精確" in SYSTEM
-    assert "波浪沒辦法" in SYSTEM or "沒講完的輔助" in SYSTEM
-    assert "融會貫通" in SYSTEM
-    assert "自問" in SYSTEM
-    assert "不是介紹圖" in SYSTEM
-    assert "不要貼舊文" in SYSTEM
-    assert "不要寫「他自己最新」" in SYSTEM or "他自己最新" in SYSTEM
-    assert "出貨" in SYSTEM
-    assert "量先價行" in SYSTEM
-    assert "不是15分" in SYSTEM
     assert "神經元必須串" in SYSTEM
     assert "優先於舊文" in SYSTEM
-    assert "F10" in SYSTEM
-    assert "聯發科" in SYSTEM
-    assert "尚未納入 F 系列" in SYSTEM
-    assert "抱著波段賺更多" in SYSTEM
-    assert "9/16" in SYSTEM
-    assert "不要看新聞" in SYSTEM
-    assert "重要留言" in SYSTEM
-    assert "PCB不要亂動" in SYSTEM or "嚴格不能算光通訊" in SYSTEM
-    assert "43500" in SYSTEM
-    assert "雍智" in SYSTEM
-    assert "09:23" in SYSTEM
-    assert "10:47" in SYSTEM or "漲不動" in SYSTEM
-    assert "InP" in SYSTEM
+    assert "判斷｜" in SYSTEM or "一條判斷" in SYSTEM
+    assert "抽屜" in SYSTEM or "只當抽屜" in SYSTEM
+    assert "不准發明 5／9" in SYSTEM
+    assert "正文不當他的判斷" in SYSTEM
     assert "全部自回" in SYSTEM
     assert "路人樓下不收" not in SYSTEM
-    assert "正文不當他的判斷" in SYSTEM
-    assert "富喬" in SYSTEM and "正常修正" in SYSTEM
-    assert "14:52" in SYSTEM
-    assert "多頭結構已經被破壞" in SYSTEM
-    assert "初升段" in SYSTEM
-    assert "該抽出" in SYSTEM
-    assert "46767" in SYSTEM
-    assert "碎形" in SYSTEM
-    assert "CPO" in SYSTEM
-    assert "上詮" in SYSTEM
-    assert "破線當天不篤定" in SYSTEM or "五件回測" in SYSTEM
-    assert "45398" in SYSTEM
-    assert "C-5" in SYSTEM
-    assert "頭肩底至少3周" in SYSTEM or "鏡射" in SYSTEM
+    assert "09:23" not in SYSTEM
+    assert "雍智" not in SYSTEM
+    assert "14:52" not in SYSTEM
+    assert "買跌不買漲" not in SYSTEM
+    assert "尚未納入 F 系列" not in SYSTEM
     load_corpus_cache_clear()
     note = live_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "方法" in note
