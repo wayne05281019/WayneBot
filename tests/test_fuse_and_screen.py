@@ -193,7 +193,7 @@ class FuseAndScreenTest(unittest.TestCase):
 
         self.assertEqual(
             [k for k, *_ in MORNING_PUSH_SPECS],
-            ["leave_zero", "revenue_cross", "select_01"],
+            ["leave_zero"],
         )
         item = {
             "stock_id": "2330",
@@ -219,7 +219,7 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         morning = format_screening_payload(results, "20260904", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero", "select_01"])
+        self.assertEqual(keys, ["leave_zero"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertNotIn("＝＝半年高", blob)
         self.assertNotIn("＝＝站上季線", blob)
@@ -232,9 +232,8 @@ class FuseAndScreenTest(unittest.TestCase):
         packs = format_line_share_packs(results, "20260904", morning=True)
         layout = next(p["text"] for p in packs if p["id"] == "layout")
         self.assertIn("＝＝黃金買點＝＝", layout)
-        self.assertIn("＝＝周帶量＝＝", layout)
-        self.assertNotIn("＝＝站上季線＝＝", layout)
-        self.assertNotIn("＝＝止跌＝＝", layout)
+        self.assertNotIn("＝＝周帶量＝＝", layout)
+        self.assertNotIn("＝＝優先看＝＝", layout)
 
     def test_morning_keeps_empty_leave_zero_and_golden_buy(self):
         from screening_engine import format_line_share_packs, format_screening_payload
@@ -260,7 +259,7 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         morning = format_screening_payload(results, "20260907", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero", "revenue_cross", "select_01"])
+        self.assertEqual(keys, ["leave_zero"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertIn("＝＝黃金買點", blob)
         self.assertNotIn("＝＝重點觀察", blob)
@@ -270,7 +269,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("＝＝黃金買點＝＝", layout)
         self.assertNotIn("＝＝重點觀察＝＝", layout)
         self.assertIn("今日沒有符合高低卡條件的檔", layout)
-        self.assertLess(layout.find("＝＝黃金買點＝＝"), layout.find("＝＝優先看＝＝"))
+        self.assertNotIn("＝＝優先看＝＝", layout)
 
     def test_screening_payload_leads_with_market_outlook(self):
         from screening_engine import format_screening_payload
@@ -300,7 +299,7 @@ class FuseAndScreenTest(unittest.TestCase):
         )
         keys = [p.get("mark_key") for p in morning]
         self.assertEqual(keys[0], "market")
-        self.assertEqual(keys[1:], ["leave_zero", "select_01"])
+        self.assertEqual(keys[1:], ["leave_zero"])
         self.assertIn("大盤狀況", morning[0]["html"])
         self.assertNotIn("＝＝半年高", "\n".join(p["html"] for p in morning))
 

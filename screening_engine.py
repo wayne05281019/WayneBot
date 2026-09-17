@@ -1566,7 +1566,7 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
-# 晨間呈現：黃金買點一欄（買點＋還在零）／優先看／周帶量。計算端桶不變。
+# 晨間呈現：只寄大盤＋黃金買點一欄（買點＋還在零）。優先看／周帶量改海選按鈕。
 _ENTRY_HINT = "買點＝剛離零可切入；還在零＝觀察不是買（須趨勢向上）"
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
@@ -1578,8 +1578,6 @@ SCREEN_PUSH_SPECS = (
 )
 MORNING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上；不是買訊）", 8, True),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上；不是買訊）", 8, True),
 )
 MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
 EMERGING_PUSH_SPECS = (
@@ -1647,8 +1645,8 @@ def format_screening_payload(
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
-    morning=True：06:30 早報只出黃金買點（買點＋還在零）／優先看／周帶量。
-    黃金買點沒檔也留欄（寫今日沒有）；優先看／周帶量沒名單才整區省略。
+    morning=True：06:30 早報只出黃金買點（買點＋還在零）。
+    黃金買點沒檔也留欄（寫今日沒有）。優先看／周帶量改主選單海選。
     market_html：有內容時插在第一則當大盤狀況。
     """
     results = drop_non_equity_picks(results)
