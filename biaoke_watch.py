@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS biaoke_watch (
     seen TEXT NOT NULL DEFAULT '',
     because TEXT NOT NULL DEFAULT '',
     nxt TEXT NOT NULL DEFAULT '',
-    five TEXT NOT NULL DEFAULT ''
+    five TEXT NOT NULL DEFAULT '',
+    prior TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_biaoke_watch_dt
     ON biaoke_watch(post_date, post_time);
@@ -35,6 +36,9 @@ _SHAPE = re.compile(r"(洗盤|吸籌|反彈|假突破|頭肩|整理|築底)")
 _TAPE = re.compile(r"(量|吸籌|漲\s*1000|支撐區|先看量)")
 _KEYK = re.compile(r"(穿刺|有效|轉折K|破線|站回|關鍵K)")
 _FRAC = re.compile(r"(碎形|細微波|只能上不能下)")
+_LATE = "2025-01-01"  # 後期思考權重大於 2023–2024
+_NUM = re.compile(r"(?<![\d.])(\d{4,5})(?![\d])")
+_HINT = re.compile(r"(C\s*波|C-[1235]|逃命波|細微波|洗盤|穿刺|45398|46626|46747|46767|47548|43500)")
 _NEXT = (
     (re.compile(r"46626"), "台指期先過46626＝防C-2轉C-3第一步"),
     (re.compile(r"46747|46767"), "穿刺後看是否有效、能否漲開細微波；成功才當短線1"),
@@ -54,6 +58,9 @@ def ensure_watch_table(db_path: str) -> None:
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.executescript(_DDL)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(biaoke_watch)").fetchall()}
+        if "prior" not in cols:
+            conn.execute("ALTER TABLE biaoke_watch ADD COLUMN prior TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -116,26 +123,53 @@ def think_spoken(text: str, *, tape_note: str = "") -> Dict[str, str]:
     }
 
 
+def lookback_prior(
+    conn: sqlite3.Connection, spoken: str, day: str, hm: str
+) -> str:
+    """同一條判斷的先前句。2025–2026 優先；早年只當方法、不蓋後期。"""
+    tokens: List[str] = []
+    for n in _NUM.findall(spoken or ""):
+        if n not in tokens:
+            tokens.append(n)
+    for m in _HINT.findall(spoken or ""):
+        t = str(m).replace(" ", "")
+        if t and t not in tokens:
+            tokens.append(t)
+    if not tokens:
+        return ""
+    keys = tokens[:4]
+    where = " OR ".join(["ifnull(text,'') LIKE ?" for _ in keys])
+    day = str(day or "")
+    hm = str(hm or "")
+    try:
+        row = conn.execute(
+            f"""
+            SELECT date, time, substr(replace(ifnull(text,''), char(10), ' '), 1, 72)
+            FROM biaoke_posts
+            WHERE ifnull(kind,'post') != 'bystander'
+              AND (date < ? OR (date = ? AND ifnull(time,'') < ?))
+              AND ({where})
+            ORDER BY CASE WHEN date >= ? THEN 0 ELSE 1 END, date DESC, time DESC
+            LIMIT 1
+            """,
+            [day, day, hm] + [f"%{k}%" for k in keys] + [_LATE],
+        ).fetchone()
+    except sqlite3.Error:
+        return ""
+    if not row:
+        return ""
+    d, t, snip = row
+    era = "後期" if str(d or "") >= _LATE else "早年方法、後期五件為準"
+    return _clip(f"{era} {d} {t} 先想到：{snip}", 160)
+
+
 def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     """捕獲當下寫觀察／為何／下一步。路人略過。同一則覆蓋。"""
     if not db_path:
         return 0
     ensure_watch_table(db_path)
-    rows: List[Tuple[Any, ...]] = []
-    tape_by: Dict[str, str] = {}
-    try:
-        conn = sqlite3.connect(db_path, timeout=8.0)
-        try:
-            for (pid, note) in conn.execute(
-                "SELECT post_id, note FROM biaoke_tape"
-            ).fetchall():
-                tape_by[str(pid)] = str(note or "")
-        except sqlite3.Error:
-            pass
-        finally:
-            conn.close()
-    except Exception:
-        tape_by = {}
+    pending: List[Dict[str, Any]] = []
+    ids: List[str] = []
     for ev in events:
         if str(ev.get("kind") or "") == "bystander":
             continue
@@ -143,31 +177,53 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
         raw = str(ev.get("text") or "").strip()
         if not pid or not raw:
             continue
-        thought = think_spoken(raw, tape_note=tape_by.get(pid, ""))
-        if not thought:
-            continue
-        layer = int(ev.get("layer") or 0)
-        rows.append(
-            (
-                pid,
-                str(ev.get("date") or ""),
-                str(ev.get("time") or ""),
-                layer,
-                thought["seen"],
-                thought["because"],
-                thought["nxt"],
-                thought["five"],
-            )
-        )
-    if not rows:
+        ids.append(pid)
+        pending.append(ev)
+    if not pending:
         return 0
+    tape_by: Dict[str, str] = {}
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        if ids:
+            q = ",".join("?" * len(ids))
+            try:
+                for pid, note in conn.execute(
+                    f"SELECT post_id, note FROM biaoke_tape WHERE post_id IN ({q})",
+                    ids,
+                ):
+                    tape_by[str(pid)] = str(note or "")
+            except sqlite3.Error:
+                tape_by = {}
+        rows: List[Tuple[Any, ...]] = []
+        for ev in pending:
+            pid = str(ev.get("id") or ev.get("post_id") or "").strip()
+            raw = str(ev.get("text") or "").strip()
+            thought = think_spoken(raw, tape_note=tape_by.get(pid, ""))
+            if not thought:
+                continue
+            prior = lookback_prior(
+                conn, raw, str(ev.get("date") or ""), str(ev.get("time") or "")
+            )
+            rows.append(
+                (
+                    pid,
+                    str(ev.get("date") or ""),
+                    str(ev.get("time") or ""),
+                    int(ev.get("layer") or 0),
+                    thought["seen"],
+                    thought["because"],
+                    thought["nxt"],
+                    thought["five"],
+                    prior,
+                )
+            )
+        if not rows:
+            return 0
         conn.executemany(
             """
             INSERT INTO biaoke_watch(
-                post_id, post_date, post_time, layer, seen, because, nxt, five
-            ) VALUES (?,?,?,?,?,?,?,?)
+                post_id, post_date, post_time, layer, seen, because, nxt, five, prior
+            ) VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(post_id) DO UPDATE SET
                 post_date=excluded.post_date,
                 post_time=excluded.post_time,
@@ -175,7 +231,8 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
                 seen=excluded.seen,
                 because=excluded.because,
                 nxt=excluded.nxt,
-                five=excluded.five
+                five=excluded.five,
+                prior=excluded.prior
             """,
             rows,
         )
@@ -194,7 +251,7 @@ def latest_watch_line(db_path: str) -> str:
     try:
         row = conn.execute(
             """
-            SELECT post_date, post_time, seen, because, nxt, five
+            SELECT post_date, post_time, seen, because, nxt, five, prior
             FROM biaoke_watch
             ORDER BY post_date DESC, post_time DESC
             LIMIT 1
@@ -206,10 +263,12 @@ def latest_watch_line(db_path: str) -> str:
         conn.close()
     if not row:
         return ""
-    day, hm, seen, because, nxt, five = row
+    day, hm, seen, because, nxt, five, prior = (list(row) + [""])[:7]
     bits = [f"他自己最新 {day} {hm}".strip()]
     if five:
         bits.append(str(five))
+    if prior:
+        bits.append(str(prior))
     if seen:
         bits.append("看到：" + str(seen))
     if because:
@@ -217,4 +276,4 @@ def latest_watch_line(db_path: str) -> str:
     if nxt:
         bits.append("下一步：" + str(nxt) + "（如果句，未收不當官方）")
     bits.append("不是買訊")
-    return _clip("。".join(bits), 280)
+    return _clip("。".join(bits), 320)

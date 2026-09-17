@@ -1,6 +1,26 @@
 # -*- coding: utf-8 -*-
 """捕獲後同步想：看到什麼、為何這樣回、下一步盯什麼。"""
+import sqlite3
+
 from biaoke_watch import record_watch_events, think_spoken, latest_watch_line
+
+
+def _seed_posts(db: str, rows) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE biaoke_posts (
+            id TEXT PRIMARY KEY, n INTEGER, date TEXT, time TEXT, parent TEXT,
+            layer INTEGER, kind TEXT, tags TEXT, text TEXT, updated_at TEXT
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO biaoke_posts(id,date,time,kind,text) VALUES (?,?,?,?,?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
 
 
 def test_think_night_rebound_next_is_47548():
@@ -56,3 +76,32 @@ def test_record_and_latest_line(tmp_path):
     assert "47548" in line
     assert "不是買訊" in line
     assert "下一步" in line
+
+
+def test_lookback_prefers_2025_plus_over_early_year(tmp_path):
+    db = str(tmp_path / "w.db")
+    _seed_posts(
+        db,
+        [
+            ("old", "2024-03-01", "10:00", "post", "C波下殺先看45398"),
+            ("late", "2026-09-16", "08:38", "post", "過不了前高47548才可能再走C波"),
+        ],
+    )
+    record_watch_events(
+        db,
+        [
+            {
+                "id": "now",
+                "kind": "reply",
+                "layer": 1,
+                "date": "2026-09-17",
+                "time": "09:47",
+                "text": "夜盤已經反彈超過0.75了，如果要再有C波除非沒辦法過前高47548",
+            }
+        ],
+    )
+    line = latest_watch_line(db)
+    assert "後期" in line
+    assert "2026-09-16" in line
+    assert "早年方法" not in line
+    assert "47548" in line
