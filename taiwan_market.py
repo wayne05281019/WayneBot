@@ -3668,7 +3668,7 @@ def format_screen_market_outlook_html(
             body.append("　".join(tail_bits))
         tsm_move = format_quote_move(us, "tsm_pct", "tsm_chg")
         if us.get("tsm_pct") is not None:
-            body.append(f"台積美股收盤　{html_escape(tsm_move)}")
+            body.append(f"台積美股　{html_escape(tsm_move)}")
         lead = format_us_lead_line(us)
         if lead:
             body.append(html_escape(lead))
