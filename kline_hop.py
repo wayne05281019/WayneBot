@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股圖下「K線」：自家一頁。日K疊導航圖同一套高低箭頭，手指可對價。不是 TradingView。"""
+"""自家 /k/ 日K頁（書籤仍可用）。查股圖下「K線」鈕改開奇摩股市同一檔日K，不是 TradingView。"""
 from __future__ import annotations
 
 import json
