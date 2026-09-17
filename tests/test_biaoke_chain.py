@@ -964,3 +964,18 @@ def test_overlays_do_not_change_five_cross_branches():
         if "官方法人 overlay：" in live_field:
             assert "不改他的產業句" in live_field
         assert "不改這次五件判斷" in live_doubt
+
+
+def test_mouth_is_one_judgment_drawers_not_six_texts():
+    notes = format_chain_notes("", "台光電怎麼看")
+    assert "判斷｜" in notes
+    assert "抽屜" in notes
+    assert "神經元鏈" in notes
+    assert chain_order_ok(notes)
+    assert "他還在等自己點過的" not in notes
+    fired = fire_chain("", "台光電怎麼看")
+    assert "問的是 2383" in (fired.get("judge") or "")
+    assert "不數浪" in (fired.get("judge") or "")
+    mkt = format_chain_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
+    assert "判斷｜" in mkt
+    assert "這句沒點檔" in mkt or "大盤" in mkt
