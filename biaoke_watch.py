@@ -295,7 +295,7 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
 
 
 def latest_watch_line(db_path: str) -> str:
-    """開火巢穴用：最近一則他自己的觀察＋下一步。沒有就空。"""
+    """開火用：最近觀察＋他沒再回＝還在等。逃命／43500 只對官方收，不喊崩。"""
     if not db_path or not os.path.isfile(db_path):
         return ""
     ensure_watch_table(db_path)
@@ -309,14 +309,45 @@ def latest_watch_line(db_path: str) -> str:
             LIMIT 1
             """
         ).fetchone()
+        crash = ""
+        blob = " ".join(str(x or "") for x in (row or ()))
+        if row and ("43500" in blob or "逃命" in blob):
+            try:
+                bar = conn.execute(
+                    """
+                    SELECT date, close FROM index_daily
+                    WHERE symbol IN ('TWII','^TWII') AND close IS NOT NULL
+                    ORDER BY date DESC LIMIT 1
+                    """
+                ).fetchone()
+            except sqlite3.Error:
+                bar = None
+            if bar:
+                ymd, cl = str(bar[0] or "").replace("-", ""), bar[1]
+                try:
+                    c = float(cl)
+                    if c > 43500:
+                        crash = (
+                            f"官方收 {ymd} {c:.0f} 還在他自己點的43500之上，"
+                            "逃命／C波預告還沒走到（看錯抽屜，不是喊崩）"
+                        )
+                    else:
+                        crash = (
+                            f"官方收 {ymd} {c:.0f} 已低於他自己點的43500，"
+                            "對質偏（看錯抽屜，不是喊崩）"
+                        )
+                except (TypeError, ValueError):
+                    crash = ""
     except sqlite3.Error:
         row = None
+        crash = ""
     finally:
         conn.close()
     if not row:
         return ""
     day, hm, seen, because, nxt, five, prior = (list(row) + [""])[:7]
     bits = [f"他自己最新 {day} {hm}".strip()]
+    bits.append("這段沒再回＝還在等自己點過的位，不是沒想法")
     if five:
         bits.append(str(five))
     if prior:
@@ -325,9 +356,11 @@ def latest_watch_line(db_path: str) -> str:
         bits.append("看到：" + str(seen))
     if because:
         bits.append(str(because))
+    if crash:
+        bits.append(crash)
     if nxt:
         wait = "不下判" in str(nxt) or "還沒收" in str(nxt) or "未收" in str(seen)
         label = "等待：" if wait else "如果："
         bits.append(label + str(nxt))
     bits.append("不是買訊")
-    return _clip("。".join(bits), 320)
+    return _clip("。".join(bits), 360)

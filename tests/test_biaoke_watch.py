@@ -77,6 +77,7 @@ def test_record_and_latest_line(tmp_path):
     assert "不是買訊" in line
     assert "等待" in line or "如果" in line
     assert "下一步" not in line
+    assert "不是沒想法" in line
 
 
 def test_lookback_prefers_2025_plus_over_early_year(tmp_path):
@@ -120,3 +121,34 @@ def test_easing_c_is_revision_wait_not_new_price():
     assert "46800" not in got["nxt"]
     assert "5／9" not in got["because"]
     assert "發明" not in got["because"]
+
+
+def test_silence_and_crash_tape_vs_official_close(tmp_path):
+    db = str(tmp_path / "w.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily (date TEXT, symbol TEXT, close REAL)"
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES ('20260916','TWII',45848.9)"
+    )
+    conn.commit()
+    conn.close()
+    record_watch_events(
+        db,
+        [
+            {
+                "id": "c",
+                "kind": "reply",
+                "layer": 1,
+                "date": "2026-09-15",
+                "time": "09:02",
+                "text": "小心逃命波C-2，不是已確認，43500還是如果",
+            }
+        ],
+    )
+    line = latest_watch_line(db)
+    assert "不是沒想法" in line
+    assert "43500之上" in line or "還沒走到" in line
+    assert "不是喊崩" in line
+    assert "崩盤" not in line
