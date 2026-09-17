@@ -109,10 +109,20 @@ def test_carry_parent_names_gives_emc_to_nameless_reply():
 
 
 def test_all_self_replies_watch_tape_neurons(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_absorb import run_absorb
+
     db = str(tmp_path / "t.db")
     _seed_official(db)
     rows = _load()
     _after_ingest_analyze(db, rows)
+    run_absorb(
+        db,
+        now=datetime(2026, 9, 17, 2, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        slot="20260917-0200",
+    )
     conn = sqlite3.connect(db)
     packed = _carry_parent_names(rows, db)
     by = {str(r.get("id")): r for r in packed}

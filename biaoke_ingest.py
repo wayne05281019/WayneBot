@@ -603,9 +603,9 @@ def parse_author_replies(
     parent_id: str,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    """只收飆大自己的一、二層樓中樓。路人正文不收。
+    """只收飆大自己的一、二、三層樓中樓。路人正文不收。
 
-    第一層＝直接回主文。第二層＝回在別人留言裡。兩層都要。
+    第一層＝直接回主文。第二層＝回在別人留言裡。第三層＝回文裡的回文。三層都要。
     他自己附的 attachment 圖一併留下。公開頁沒 SSR 就空列表。
     認人只看會員號，不看正文有沒有他的名字。
     """
@@ -920,7 +920,10 @@ def parse_api_thread(
     nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
     keep_bystander: bool = True,
 ) -> List[Dict[str, Any]]:
-    """JSON 留言：他自己回、別人回他、他回別人。路人 kind=bystander，不當他的判斷。"""
+    """JSON 留言：他自己回、別人回他、他回別人。路人 kind=bystander，不當他的判斷。
+
+    一／二／三層都收。第四層起不往下走。
+    """
     nested_by_id = nested_by_id or {}
     out: List[Dict[str, Any]] = []
     seen = set()
@@ -962,8 +965,8 @@ def parse_api_thread(
                     if sid and sid in have:
                         continue
                     kids.append(sub)
-            if kids:
-                walk(kids, 2, cm)
+            if kids and layer < 3:
+                walk(kids, layer + 1, cm)
 
     walk(_comment_list(payload), 1, None)
     return out
@@ -976,7 +979,7 @@ def parse_api_author_replies(
     now: Optional[datetime] = None,
     nested_by_id: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
-    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，當二層。"""
+    """JSON 留言只收飆大本人。路人樓裡的自回、回文裡的回文都收，層數最多三。"""
     rows = parse_api_thread(
         payload,
         parent_id=parent_id,
@@ -1428,13 +1431,13 @@ def ingest_public_posts(
     max_ids: int = 12,
     refresh_latest: int = REFRESH_LATEST,
 ) -> Dict[str, Any]:
-    """抓公開個人頁最新文＋最新討論串的飆大一／二層回覆。失敗不改海選。
+    """抓公開個人頁最新文＋最新討論串的飆大一／二／三層回覆。失敗不改海選。
 
     融合基準永遠是 Drive 那一千七百多則公開主文（archive_1709.json.gz），
     不是 git 裡 520 篇種子。空檔／指定 dump 路徑也不能從 0 或 520 起算。
     正式碟：先把缺的 1709 列補進 biaoke_posts，再 UPSERT 盤中新文。
     corpus_index.json 不准當起點、不准寫回。
-    已知主文：只重讀最新一篇正文。討論串每次重讀最近兩則（含回在很早留言、回文裡的回文）。
+    已知主文：只重讀最新一篇正文。討論串每次重讀最近兩則（含回在很早留言、一／二／三層回文）。
     新 id 第一次進來連樓下也收。
     """
     dest = str(corpus_path or "").strip()
@@ -1609,11 +1612,13 @@ def ingest_public_posts(
             stats["skipped_walk"] = True
     if dbp:
         try:
-            from biaoke_neurons import backfill_recent_neurons
+            from biaoke_absorb import absorb_slot_id, run_absorb, taipei_now
 
-            stats["neurons"] = backfill_recent_neurons(dbp, n=160)
+            slot = absorb_slot_id(taipei_now())
+            if slot:
+                stats["absorb"] = run_absorb(dbp, slot=slot)
         except Exception:
-            logger.exception("飆大神經元近文補檔失敗")
+            logger.exception("飆大神經元彙整窗略過")
     if dest and not _is_git_seed_path(dest):
         _save_corpus(dest, blob, posts)
     else:
@@ -1709,7 +1714,7 @@ def _carry_parent_names(
 
 
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
-    """新文／樓下／改主文進庫後立刻建檔左證，不等下次開機。"""
+    """抓到就存官方 tape、緊急推播、輔助匣。神經元等台北 02:00／開市日 13:00。"""
     try:
         from biaoke_desk import load_corpus_cache_clear
 
@@ -1718,41 +1723,17 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         pass
     packed = _carry_parent_names(list(events or []), db_path)
     try:
-        from biaoke_why import ingest_why_events
-
-        ingest_why_events(packed, db_path)
-    except Exception:
-        logger.exception("飆大判斷鏈即時建檔失敗")
-    try:
         from biaoke_tape import record_events
 
         record_events(db_path, packed)
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
     try:
-        from biaoke_watch import record_watch_events
+        from biaoke_absorb import queue_absorb_events
 
-        record_watch_events(db_path, packed)
+        queue_absorb_events(db_path, packed)
     except Exception:
-        logger.exception("飆大觀察／下一步思考失敗")
-    try:
-        from biaoke_forecast import record_from_events
-
-        record_from_events(db_path, packed)
-    except Exception:
-        logger.exception("飆大演算建檔失敗")
-    try:
-        from biaoke_neurons import record_neuron_events
-
-        record_neuron_events(db_path, packed)
-    except Exception:
-        logger.exception("飆大神經元即時建檔失敗")
-    try:
-        from biaoke_weave import load_weave
-
-        load_weave.cache_clear()
-    except Exception:
-        pass
+        logger.exception("飆大輔助匣寫入失敗")
     try:
         from biaoke_alert import maybe_push_drop_alert
 
@@ -1775,7 +1756,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：08–09 每 10 分；09:01–收盤每 3 分；收～15:00 每 10 分；其餘每 1 小時。GHA --once 不開。"""
+    """常駐：抓文節奏不變；彙整另開台北 02:00／開市日 13:00。GHA --once 不開。"""
     import threading
     import time as _time
 
@@ -1800,4 +1781,10 @@ def start_biaoke_poller() -> Optional[Any]:
 
     t = threading.Thread(target=_loop, name="biaoke-poll", daemon=True)
     t.start()
+    try:
+        from biaoke_absorb import start_biaoke_absorb_scheduler
+
+        start_biaoke_absorb_scheduler()
+    except Exception:
+        logger.exception("飆大神經元彙整排程沒開起來")
     return t
