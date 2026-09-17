@@ -687,7 +687,7 @@ def test_parse_api_author_replies_keeps_reply_inside_reply():
     ]
     rows = parse_api_author_replies(payload, parent_id="184578674")
     assert len(rows) == 1
-    assert rows[0]["layer"] == 2
+    assert rows[0]["layer"] == 3
     assert "短線築底" in rows[0]["text"]
     assert "請問夜盤" not in " ".join(r["text"] for r in rows)
 
