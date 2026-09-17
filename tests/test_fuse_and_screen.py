@@ -193,7 +193,7 @@ class FuseAndScreenTest(unittest.TestCase):
 
         self.assertEqual(
             [k for k, *_ in MORNING_PUSH_SPECS],
-            ["leave_zero", "golden_buy", "revenue_cross", "select_01"],
+            ["leave_zero", "revenue_cross", "select_01"],
         )
         item = {
             "stock_id": "2330",
@@ -219,7 +219,7 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         morning = format_screening_payload(results, "20260904", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero", "golden_buy", "select_01"])
+        self.assertEqual(keys, ["leave_zero", "select_01"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertNotIn("＝＝半年高", blob)
         self.assertNotIn("＝＝站上季線", blob)
@@ -260,15 +260,15 @@ class FuseAndScreenTest(unittest.TestCase):
         }
         morning = format_screening_payload(results, "20260907", morning=True)
         keys = [p.get("mark_key") for p in morning]
-        self.assertEqual(keys, ["leave_zero", "golden_buy", "revenue_cross", "select_01"])
+        self.assertEqual(keys, ["leave_zero", "revenue_cross", "select_01"])
         blob = "\n".join(p["html"] for p in morning)
         self.assertIn("＝＝黃金買點", blob)
-        self.assertIn("＝＝重點觀察", blob)
-        self.assertGreaterEqual(blob.count("今日無符合條件標的"), 2)
+        self.assertNotIn("＝＝重點觀察", blob)
+        self.assertGreaterEqual(blob.count("今日無符合條件標的"), 1)
         packs = format_line_share_packs(results, "20260907", morning=True)
         layout = next(p["text"] for p in packs if p["id"] == "layout")
         self.assertIn("＝＝黃金買點＝＝", layout)
-        self.assertIn("＝＝重點觀察＝＝", layout)
+        self.assertNotIn("＝＝重點觀察＝＝", layout)
         self.assertIn("今日沒有符合高低卡條件的檔", layout)
         self.assertLess(layout.find("＝＝黃金買點＝＝"), layout.find("＝＝優先看＝＝"))
 
@@ -300,7 +300,7 @@ class FuseAndScreenTest(unittest.TestCase):
         )
         keys = [p.get("mark_key") for p in morning]
         self.assertEqual(keys[0], "market")
-        self.assertEqual(keys[1:], ["leave_zero", "golden_buy", "select_01"])
+        self.assertEqual(keys[1:], ["leave_zero", "select_01"])
         self.assertIn("大盤狀況", morning[0]["html"])
         self.assertNotIn("＝＝半年高", "\n".join(p["html"] for p in morning))
 
@@ -337,7 +337,7 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertIn("revenue_cross", keys)
         self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
         self.assertIn("黃金買點｜", payload[0]["html"])
-        self.assertIn("共 8 檔", payload[0]["html"])
+        self.assertIn("買點 8", payload[0]["html"])
         self.assertEqual(payload[0]["html"].count("<blockquote>"), 8)
         self.assertEqual(payload[0]["picks"][0][0], "2610")
         self.assertEqual(len(payload[0]["picks"]), 8)

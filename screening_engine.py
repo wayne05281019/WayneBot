@@ -786,7 +786,9 @@ LEAVE_ZERO_STAR_N = ENTRY_STAR_N
 
 _BUCKET_FROM_LABEL = {
     "黃金買點": "leave_zero",
+    "買點": "leave_zero",
     "重點觀察": "golden_buy",
+    "還在零": "golden_buy",
     "優先看": "revenue_cross",
     "周帶量": "select_01",
     "半年高": "half_year_high",
@@ -923,6 +925,47 @@ def mark_leave_zero_stars(
     """相容舊名：改打 0～5 星，不再用名次只標五檔。"""
     del n
     return stamp_entry_stars(rows, "leave_zero")
+
+
+def merge_entry_stage_rows(
+    results: Dict[str, List[Dict[str, Any]]],
+    *,
+    buy_cap: int = 8,
+    watch_cap: int = 8,
+) -> List[Dict[str, Any]]:
+    """畫面一欄兩個標。計算端 leave_zero／golden_buy 仍分開；同檔重疊只留買點。"""
+    buy = stamp_entry_stars(list(results.get("leave_zero") or []), "leave_zero")
+    watch = stamp_entry_stars(list(results.get("golden_buy") or []), "golden_buy")
+    if buy_cap:
+        buy = buy[: int(buy_cap)]
+    if watch_cap:
+        watch = watch[: int(watch_cap)]
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for raw in buy:
+        if not isinstance(raw, dict):
+            continue
+        sid = str(raw.get("stock_id") or raw.get("code") or "").strip()
+        item = dict(raw)
+        item["entry_stage"] = "buy"
+        item["entry_stage_label"] = "買點"
+        if sid:
+            seen.add(sid)
+        out.append(item)
+    for raw in watch:
+        if not isinstance(raw, dict):
+            continue
+        sid = str(raw.get("stock_id") or raw.get("code") or "").strip()
+        if sid and sid in seen:
+            continue
+        item = dict(raw)
+        item["entry_stage"] = "watch"
+        item["entry_stage_label"] = "還在零"
+        item["golden_buy"] = True
+        if sid:
+            seen.add(sid)
+        out.append(item)
+    return out
 
 
 def _is_half_year_high_break(info: Dict[str, Any]) -> bool:
@@ -1322,7 +1365,9 @@ def _stock_card_html(
         stock_title = f"{html_escape(sid)} {html_escape(sname)}"
     regime = html_escape(_regime_label(item))
     stance_title, explain = _line_stance_pair(item)
-    geju_left = html_escape(str(bucket_label or "").strip()) or regime
+    geju_left = html_escape(
+        str(item.get("entry_stage_label") or bucket_label or "").strip()
+    ) or regime
     close_s = _px_str(item.get("close"))
     vol = int(item.get("volume") or 0)
     notices: List[str] = []
@@ -1336,7 +1381,7 @@ def _stock_card_html(
         notices.append(_hot("20低脫離"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
-    if item.get("golden_buy"):
+    if item.get("golden_buy") and not item.get("entry_stage"):
         notices.append(_hot("重點觀察"))
     if item.get("at_60_low") and not item.get("golden_buy"):
         notices.append(_hot("60低"))
@@ -1359,8 +1404,9 @@ def _stock_card_html(
         to_s = format_yi(float(to_k), unit=False) if to_k is not None else ""
     except (TypeError, ValueError):
         to_s = ""
+    card_label = str(item.get("entry_stage_label") or bucket_label or "")
     stars = entry_star_glyphs(
-        entry_star_count(item, bucket_label=bucket_label)
+        entry_star_count(item, bucket_label=card_label)
     )
     body = [
         f"<b>{idx}.</b> {stock_title}　{stars}",
@@ -1427,7 +1473,11 @@ def _stock_card_html(
     try:
         from decision_card_signals import leave_zero_exit_hint
 
-        exit_hint = leave_zero_exit_hint(bucket_label=bucket_label)
+        exit_hint = leave_zero_exit_hint(
+            bucket_label=str(item.get("entry_stage_label") or bucket_label or "")
+        )
+        if str(item.get("entry_stage") or "") == "watch":
+            exit_hint = ""
     except Exception:
         exit_hint = ""
     if exit_hint:
@@ -1513,26 +1563,24 @@ def _compact_line(item: Dict[str, Any]) -> str:
 
 
 # 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
-# 晨間呈現只留四則；按鈕「海選」仍用完整 SCREEN_PUSH_SPECS。計算端桶不變。
+# 晨間呈現：黃金買點一欄（買點＋還在零）／優先看／周帶量。計算端桶不變。
+_ENTRY_HINT = "買點＝剛離零可切入；還在零＝觀察不是買（須趨勢向上）"
 SCREEN_PUSH_SPECS = (
-    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）", 8, False),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（須趨勢向上；不收空頭）", 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上）", 8, False),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上）", 8, True),
-    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5（須趨勢向上）", 8, True),
-    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線（須趨勢向上）", 8, True),
-    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上；不是買訊）", 8, False),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上；不是買訊）", 8, True),
+    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5（須趨勢向上；不是買訊）", 8, True),
+    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線（須趨勢向上；不是買訊）", 8, True),
+    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上；不是買訊）", 8, True),
 )
 MORNING_PUSH_SPECS = (
-    ("leave_zero", "🌱", "黃金買點", "高低卡獲利實綠／雙綠脫離（今≤5%；須趨勢向上）", 8, False),
-    ("golden_buy", "✨", "重點觀察", "60低＋獲利≈0＋月乖離<-10%（須趨勢向上；不收空頭）", 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上）", 8, True),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上）", 8, True),
+    ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
+    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上；不是買訊）", 8, True),
+    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上；不是買訊）", 8, True),
 )
 MORNING_LAYOUT_KEYS = tuple(s[0] for s in MORNING_PUSH_SPECS)
 EMERGING_PUSH_SPECS = (
-    ("leave_zero", "🌱", "黃金買點", "興櫃官方日均價；高低卡獲利實綠／雙綠脫離；須趨勢向上", 8, False),
-    ("golden_buy", "✨", "重點觀察", "興櫃 60 低＋獲利≈0＋月乖離<-10%；須趨勢向上", 8, False),
+    ("leave_zero", "🌱", "黃金買點", "興櫃官方日均價；買點＝剛離零；還在零＝觀察不是買", 8, False),
 )
 
 LINE_TRADE_POINTER = (
@@ -1596,8 +1644,8 @@ def format_screening_payload(
 ) -> List[Dict[str, Any]]:
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
-    morning=True：06:30 早報只出黃金買點／重點觀察／優先看／周帶量。
-    黃金買點／重點觀察沒檔也留欄（寫今日沒有）；優先看／周帶量沒名單才整區省略。
+    morning=True：06:30 早報只出黃金買點（買點＋還在零）／優先看／周帶量。
+    黃金買點沒檔也留欄（寫今日沒有）；優先看／周帶量沒名單才整區省略。
     market_html：有內容時插在第一則當大盤狀況。
     """
     results = drop_non_equity_picks(results)
@@ -1620,11 +1668,25 @@ def format_screening_payload(
         )
         first = False
     for key, emoji, label, subtitle, cap, skip_empty in specs:
-        items = stamp_entry_stars(results.get(key) or [], key)
-        if cap:
-            items = items[: int(cap)]
+        if key == "golden_buy" and any(s[0] == "leave_zero" for s in specs):
+            continue
+        if key == "leave_zero":
+            items = merge_entry_stage_rows(
+                results, buy_cap=int(cap or 8), watch_cap=int(cap or 8)
+            )
+        else:
+            items = stamp_entry_stars(results.get(key) or [], key)
+            if cap:
+                items = items[: int(cap)]
         if skip_empty and not items:
             continue
+        n_buy = sum(1 for it in items if str(it.get("entry_stage") or "") == "buy")
+        n_watch = sum(1 for it in items if str(it.get("entry_stage") or "") == "watch")
+        count_bit = (
+            f"買點 {n_buy}　還在零 {n_watch}"
+            if key == "leave_zero"
+            else f"共 {len(items)} 檔"
+        )
         head = f"＝＝{html_escape(label)}｜{html_escape(subtitle)}＝＝"
         if first:
             from trading_calendar import format_trading_date_zh
@@ -1634,11 +1696,11 @@ def format_screening_payload(
             head = headline_lines(
                 f"<b>{html_escape(title)}</b>　{html_escape(as_of_label)}",
                 head,
-                f"共 {len(items)} 檔",
+                count_bit,
             )
             first = False
         else:
-            head = f"{head}　共 {len(items)} 檔"
+            head = f"{head}　{count_bit}"
         part: Dict[str, Any] = {
             "mark_key": key,
             "line_pack_id": "",
@@ -1651,7 +1713,12 @@ def format_screening_payload(
             payload.append(part)
             continue
         cards = [
-            _stock_card_html(it, n + 1, show_line_link=False, bucket_label=label)
+            _stock_card_html(
+                it,
+                n + 1,
+                show_line_link=False,
+                bucket_label=str(it.get("entry_stage_label") or label),
+            )
             for n, it in enumerate(items)
         ]
         part["html"] = head + "\n" + "\n".join(cards)
@@ -1784,7 +1851,7 @@ def _share_stock_block(
 
 LINE_STOCK_BUCKETS = (
     ("leave_zero", "黃金買點"),
-    ("golden_buy", "重點觀察"),
+    ("golden_buy", "還在零"),
     ("revenue_cross", "優先看"),
     ("select_01", "周帶量"),
     ("half_year_high", "半年高"),
@@ -1836,7 +1903,7 @@ def build_line_stock_bodies(
 
 LINE_BUCKET_TITLES = {
     "leave_zero": "黃金買點",
-    "golden_buy": "重點觀察",
+    "golden_buy": "還在零",
     "revenue_cross": "優先看",
     "select_01": "周帶量",
     "half_year_high": "半年高",
@@ -1855,7 +1922,10 @@ def format_bucket_line_share_text(
 ) -> str:
     from line_share_format import format_line_bucket_body
 
-    items = results.get(bucket_key) or []
+    if bucket_key == "leave_zero":
+        items = merge_entry_stage_rows(results)
+    else:
+        items = results.get(bucket_key) or []
     block = format_line_bucket_body(items, bucket_key, db_path)
     if not block:
         return ""
@@ -1871,7 +1941,10 @@ def build_line_bucket_packs(
     packs: List[Dict[str, str]] = []
     keys = [k for k, *_ in SCREEN_PUSH_SPECS] + ["day_trade", "overnight"]
     for key in keys:
-        items = results.get(key) or []
+        if key == "leave_zero":
+            items = merge_entry_stage_rows(results)
+        else:
+            items = results.get(key) or []
         if not items:
             continue
         text = format_bucket_line_share_text(results, key, target_date, db_path)
@@ -1897,14 +1970,24 @@ def _share_bucket_block(
 ) -> str:
     from line_share_format import format_line_bucket_body, line_bucket_header
 
+    del title
+    us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
+    if key == "leave_zero":
+        items = merge_entry_stage_rows(
+            results,
+            buy_cap=_screen_push_cap("leave_zero") or 8,
+            watch_cap=_screen_push_cap("leave_zero") or 8,
+        )
+        if not items:
+            return f"{line_bucket_header(key, 0)}\n今日沒有符合高低卡條件的檔"
+        return format_line_bucket_body(
+            [it for it in items if isinstance(it, dict)], key, db_path
+        )
     items = results.get(key) or []
     cap = _screen_push_cap(key)
     if cap:
         items = items[:cap]
-    us_regime = results.get("_us_regime") if isinstance(results, dict) else ""
     if not items:
-        if key in ("leave_zero", "golden_buy"):
-            return f"{line_bucket_header(key, 0)}\n今日沒有符合高低卡條件的檔"
         if key in ("day_trade", "overnight") and us_regime == "risk_off":
             return f"{line_bucket_header(key, 0)}\n隔夜逆風：當沖／隔日沖今日不列"
         return ""
@@ -1927,8 +2010,7 @@ def format_line_share_packs(
 ) -> List[Dict[str, str]]:
     """三段 LINE：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
     specs_layout = [
-        ("leave_zero", "黃金買點　高低卡獲利剛離零且趨勢向上"),
-        ("golden_buy", "重點觀察　60低超跌且趨勢向上"),
+        ("leave_zero", "黃金買點　買點才切入；還在零只觀察"),
         ("revenue_cross", "優先看　營收轉強×量價"),
         ("select_01", "周帶量　短線轉強"),
         ("select_02", "站上季線　中線轉強第一天"),

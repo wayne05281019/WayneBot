@@ -152,27 +152,26 @@ def test_help_menu_topic_mentions_report_not_reserved():
 
 
 def test_help_bucket_display_names_leave_zero_is_golden_buy():
-    """對外：leave_zero＝黃金買點；golden_buy＝重點觀察。公式與 key 不變。"""
+    """對外：leave_zero＝黃金買點一欄；golden_buy 計算端仍在，畫面標還在零。"""
     from bot_servers import HELP_TOPICS
     from line_share_format import LINE_BUCKET_META
     from screening_engine import LINE_BUCKET_TITLES, MORNING_PUSH_SPECS, SCREEN_PUSH_SPECS
 
     guide = HELP_TOPICS["guide"]
     assert "優先認<b>黃金買點</b>" in guide
-    assert "這一欄以前叫「起漲」" in guide
-    assert "<b>重點觀察</b>" in guide
-    assert "這一欄以前叫「黃金買點」" in guide
+    assert "買點" in guide
+    assert "還在零" in guide
     assert "對照組" in guide
     specs = {k: label for k, _, label, *_ in SCREEN_PUSH_SPECS}
     assert specs["leave_zero"] == "黃金買點"
-    assert specs["golden_buy"] == "重點觀察"
+    assert "golden_buy" not in specs
     morning = {k: label for k, _, label, *_ in MORNING_PUSH_SPECS}
     assert morning["leave_zero"] == "黃金買點"
-    assert morning["golden_buy"] == "重點觀察"
+    assert "golden_buy" not in morning
     assert LINE_BUCKET_TITLES["leave_zero"] == "黃金買點"
-    assert LINE_BUCKET_TITLES["golden_buy"] == "重點觀察"
+    assert LINE_BUCKET_TITLES["golden_buy"] == "還在零"
     assert LINE_BUCKET_META["leave_zero"][0] == "黃金買點"
-    assert LINE_BUCKET_META["golden_buy"][0] == "重點觀察"
+    assert LINE_BUCKET_META["golden_buy"][0] == "還在零"
 
 
 def test_bucket_from_reason_accepts_old_and_new_labels():

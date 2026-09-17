@@ -523,7 +523,7 @@ def relative_buy_kind(
 # 黃金買點進場時預告如何賣。不是買訊、不改桶、不自動賣。
 LEAVE_ZERO_EXIT_HINT = "出場　最高價＝20高 vs 最高溫，不同步就直接減碼"
 LEAVE_ZERO_BUCKET_LABELS = frozenset(
-    {"黃金買點", "剛離零", "剛脫離零", "leave_zero"}
+    {"黃金買點", "剛離零", "剛脫離零", "leave_zero", "買點"}
 )
 
 

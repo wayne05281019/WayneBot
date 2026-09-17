@@ -239,9 +239,11 @@ def test_leave_zero_exit_hint_only_on_golden_buy_bucket():
 
     assert "直接減碼" in LEAVE_ZERO_EXIT_HINT
     assert leave_zero_exit_hint(bucket_label="黃金買點") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="買點") == LEAVE_ZERO_EXIT_HINT
     assert leave_zero_exit_hint(bucket_label="剛脫離零") == LEAVE_ZERO_EXIT_HINT
     assert leave_zero_exit_hint(bucket_label="leave_zero") == LEAVE_ZERO_EXIT_HINT
     assert leave_zero_exit_hint(bucket_label="重點觀察") == ""
+    assert leave_zero_exit_hint(bucket_label="還在零") == ""
     assert leave_zero_exit_hint(bucket_label="優先看") == ""
 
 
