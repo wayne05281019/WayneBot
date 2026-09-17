@@ -247,6 +247,25 @@ def test_leave_zero_exit_hint_only_on_golden_buy_bucket():
     assert leave_zero_exit_hint(bucket_label="優先看") == ""
 
 
+def test_leave_zero_trade_plan_buy_only():
+    from decision_card_signals import leave_zero_trade_plan
+
+    cut_in, cut_out = leave_zero_trade_plan(
+        close=100.0, hi20_close=120.0, bucket_label="買點", entry_stage="buy"
+    )
+    assert "切入" in cut_in and "100" in cut_in
+    assert "20高" in cut_out and "120" in cut_out
+    assert "直接減碼" in cut_out
+    empty_in, empty_out = leave_zero_trade_plan(
+        close=50.2, hi20_close=55.0, bucket_label="還在零", entry_stage="watch"
+    )
+    assert empty_in == "" and empty_out == ""
+    other_in, other_out = leave_zero_trade_plan(
+        close=80.0, hi20_close=90.0, bucket_label="優先看"
+    )
+    assert other_in == "" and other_out == ""
+
+
 def test_4739_sep15_pullback_not_relative_low():
     """康普 9/15：收 76 貼 20 低、60 曆日獲利 10.0%＝回檔，不是相對最低買點。"""
     from decision_card_signals import relative_buy_kind

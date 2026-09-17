@@ -69,6 +69,7 @@ def test_stock_card_shows_mixed_stars():
     )
     assert "★★★★★" in html
     assert "不同步就直接減碼" in html
+    assert "切入" in html and "100" in html
     watch = _stock_card_html(
         {"stock_id": "1101", "stock_name": "台泥", "close": 50.2, "golden_buy": True},
         2,
@@ -130,3 +131,27 @@ def test_stamp_sets_buy_star_only_for_five():
     )
     assert rows[0]["entry_stars"] == 5 and rows[0]["buy_star"] is True
     assert rows[1]["entry_stars"] == 4 and rows[1]["buy_star"] is False
+
+
+def test_nav_trade_marks_buy_up_sell_down_from_card():
+    import pandas as pd
+    from wayne_navigator import _NAV_TRADE_BUY, _NAV_TRADE_SELL, _nav_trade_marks
+
+    work = pd.DataFrame(
+        {
+            "close": [10.0, 11.0],
+            "high": [10.5, 11.2],
+            "low": [9.8, 10.8],
+            "ma20": [10.0, 10.5],
+        }
+    )
+    b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left"})
+    assert b == 1 and s is None
+    b, s = _nav_trade_marks(work, {"sell_action": "直接減碼"})
+    assert s == 1 and b is None
+    b, s = _nav_trade_marks(
+        work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
+    )
+    assert b is None and s is None
+    assert _NAV_TRADE_BUY.startswith("#15")
+    assert _NAV_TRADE_SELL.startswith("#E6")

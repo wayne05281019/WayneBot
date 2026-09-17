@@ -1471,17 +1471,20 @@ def _stock_card_html(
     if profit_val:
         body.append(f"獲利　{html_escape(profit_val)}")
     try:
-        from decision_card_signals import leave_zero_exit_hint
+        from decision_card_signals import leave_zero_trade_plan
 
-        exit_hint = leave_zero_exit_hint(
-            bucket_label=str(item.get("entry_stage_label") or bucket_label or "")
+        cut_in, cut_out = leave_zero_trade_plan(
+            close=item.get("close"),
+            hi20_close=item.get("hi20_close"),
+            bucket_label=str(item.get("entry_stage_label") or bucket_label or ""),
+            entry_stage=str(item.get("entry_stage") or ""),
         )
-        if str(item.get("entry_stage") or "") == "watch":
-            exit_hint = ""
     except Exception:
-        exit_hint = ""
-    if exit_hint:
-        body.append(html_escape(exit_hint))
+        cut_in, cut_out = "", ""
+    if cut_in:
+        body.append(html_escape(cut_in))
+    if cut_out:
+        body.append(html_escape(cut_out))
     rank_val = None
     if live and live.get("vol_rank_120") is not None:
         rank_val = int(live["vol_rank_120"])

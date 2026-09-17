@@ -3536,6 +3536,7 @@ def render_first_glance_png(
             str(card.get("stock_id") or stock_id),
             str(card.get("stock_name") or ""),
             compact=True,
+            card=card,
         )
     else:
         for a in (ax_px, ax_sig, ax_vol):
@@ -3875,7 +3876,59 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
     return work
 
 
-def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str, *, compact: bool = False) -> None:
+# 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。比高低卡紫綠標清楚一點，不要巨大。
+_NAV_TRADE_BUY = "#1565C0"
+_NAV_TRADE_SELL = "#E64A19"
+
+
+def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
+    """只標黃金買點進出，不是每個綠低／紫高。回傳 (buy_i, sell_i)。"""
+    n = 0 if work is None else len(work)
+    buy_i = sell_i = None
+    if n < 2:
+        return buy_i, sell_i
+    if card:
+        if str(card.get("sell_action") or "") == "直接減碼":
+            sell_i = n - 1
+        if str(card.get("relative_buy_kind") or "") == "just_left":
+            buy_i = n - 1
+        if str(card.get("entry_stage") or "") == "watch":
+            buy_i = None
+        if buy_i is not None and buy_i == sell_i:
+            buy_i = None
+        return buy_i, sell_i
+    try:
+        from decision_card_signals import (
+            card_alerts_for_df,
+            leave_zero_screen_ok,
+            profit_pct_cal60_series,
+        )
+
+        pct = profit_pct_cal60_series(work)
+        yest_a, today_a = card_alerts_for_df(work)
+        ok, _ = leave_zero_screen_ok(
+            float(pct.iloc[-2]),
+            float(pct.iloc[-1]),
+            yest_alert=yest_a,
+            today_alert=today_a,
+        )
+        if ok:
+            ma20_l = float(work["ma20"].iloc[-1] or 0) if "ma20" in work.columns else 0.0
+            cl = work["close"].astype(float)
+            ma60_l = float(cl.tail(60).mean()) if n >= 20 else 0.0
+            if not (ma20_l and ma60_l and ma20_l < ma60_l):
+                buy_i = n - 1
+    except Exception:
+        pass
+    if buy_i is not None and buy_i == sell_i:
+        buy_i = None
+    return buy_i, sell_i
+
+
+def _paint_nav_on_axes(
+    ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stock_name: str,
+    *, compact: bool = False, card: Optional[dict] = None,
+) -> None:
     """同一套紫高／綠低箭頭。compact＝塞進介紹圖下半，圖例改一行標題，避免壓到 K。"""
     n = len(work)
     xs = np.arange(n, dtype=float)
@@ -4012,6 +4065,27 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
         was_20h, was_20l, was_60l = is_20h, is_20l, is_60l
         was_near_h, was_near_l = near_h, near_l
 
+    buy_i, sell_i = _nav_trade_marks(work, card)
+    trade_note = ""
+    if buy_i is not None:
+        i = int(buy_i)
+        lo = float(work["low"].iloc[i])
+        _nav_arrow(
+            ax1, lo - arrow_gap, xs[i], down=False,
+            face=_NAV_TRADE_BUY, ink=_NAV_TRADE_BUY,
+            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+        )
+        trade_note = "　買↑藍"
+    if sell_i is not None:
+        i = int(sell_i)
+        hi = float(work["high"].iloc[i])
+        _nav_arrow(
+            ax1, hi + arrow_gap, xs[i], down=True,
+            face=_NAV_TRADE_SELL, ink=_NAV_TRADE_SELL,
+            arrow_h=arrow_h * 1.12, hw=0.88, z=8,
+        )
+        trade_note += "　賣↓橙"
+
     ax1.plot(xs, work["ma20"], color="#f9a825", linewidth=1.85, zorder=4)
     ax1.axhline(h60, color="#f48fb1", linewidth=1.35)
     ax1.axhline(l60, color="#81c784", linewidth=1.35)
@@ -4038,9 +4112,9 @@ def _paint_nav_on_axes(ax1, ax_sig, ax2, work: pd.DataFrame, stock_id: str, stoc
         except Exception:
             stamp = ""
     title = (
-        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠"
+        f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠{trade_note}"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}   WayneBot ® 2026"
+        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}{trade_note}   WayneBot ® 2026"
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)

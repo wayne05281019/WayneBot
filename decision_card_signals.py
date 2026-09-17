@@ -535,6 +535,42 @@ def leave_zero_exit_hint(*, bucket_label: str = "") -> str:
     return ""
 
 
+def _fmt_trade_px(val) -> str:
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if v <= 0:
+        return ""
+    if v >= 100:
+        return f"{v:.1f}".rstrip("0").rstrip(".")
+    return f"{v:.2f}"
+
+
+def leave_zero_trade_plan(
+    *,
+    close=None,
+    hi20_close=None,
+    bucket_label: str = "",
+    entry_stage: str = "",
+) -> tuple[str, str]:
+    """買點才給切入價／出場價。還在零與其他桶空。進場＝昨收限價；出場＝如何賣。"""
+    stage = str(entry_stage or "").strip()
+    if stage == "watch":
+        return "", ""
+    label = str(bucket_label or "").strip()
+    if stage != "buy" and label not in LEAVE_ZERO_BUCKET_LABELS:
+        return "", ""
+    entry = _fmt_trade_px(close)
+    hi20 = _fmt_trade_px(hi20_close)
+    cut_in = f"切入　≤ {entry}（昨收）" if entry else ""
+    if hi20:
+        cut_out = f"出場　20高 {hi20}；不同步就直接減碼"
+    else:
+        cut_out = leave_zero_exit_hint(bucket_label=label or "買點")
+    return cut_in, cut_out
+
+
 def card_daily_stance(
     *,
     profit_pct: float,
