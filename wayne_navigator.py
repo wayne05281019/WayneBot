@@ -837,6 +837,16 @@ class NavigatorEngine:
             )
         except Exception:
             listing = ""
+        fine_industry = ""
+        try:
+            from industry_fine import load_cached_fine_industry
+
+            rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
+                str(stock_id)
+            ) or {}
+            fine_industry = str(rec.get("chain") or "").strip()
+        except Exception:
+            fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")
         try:
             from universe import (
@@ -856,6 +866,7 @@ class NavigatorEngine:
             "stock_id": str(stock_id),
             "stock_name": face_name,
             "industry": industry,
+            "fine_industry": fine_industry,
             "listing": listing,
             "asset_type": asset_type,
             "etf_kind": etf_kind,
@@ -2626,6 +2637,9 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
+    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
+    if fine and fine != industry:
+        industry = fine
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3315,6 +3329,9 @@ def render_first_glance_png(
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
+    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
+    if fine and fine != industry:
+        industry = fine
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3882,44 +3899,17 @@ _NAV_TRADE_SELL = "#E64A19"
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
-    """只標黃金買點進出，不是每個綠低／紫高。回傳 (buy_i, sell_i)。"""
+    """只標黃金買點進出，不是每個綠低／紫高。無卡片就不算獲利（查股才快）。"""
     n = 0 if work is None else len(work)
     buy_i = sell_i = None
-    if n < 2:
+    if n < 2 or not card:
         return buy_i, sell_i
-    if card:
-        if str(card.get("sell_action") or "") == "直接減碼":
-            sell_i = n - 1
-        if str(card.get("relative_buy_kind") or "") == "just_left":
-            buy_i = n - 1
-        if str(card.get("entry_stage") or "") == "watch":
-            buy_i = None
-        if buy_i is not None and buy_i == sell_i:
-            buy_i = None
-        return buy_i, sell_i
-    try:
-        from decision_card_signals import (
-            card_alerts_for_df,
-            leave_zero_screen_ok,
-            profit_pct_cal60_series,
-        )
-
-        pct = profit_pct_cal60_series(work)
-        yest_a, today_a = card_alerts_for_df(work)
-        ok, _ = leave_zero_screen_ok(
-            float(pct.iloc[-2]),
-            float(pct.iloc[-1]),
-            yest_alert=yest_a,
-            today_alert=today_a,
-        )
-        if ok:
-            ma20_l = float(work["ma20"].iloc[-1] or 0) if "ma20" in work.columns else 0.0
-            cl = work["close"].astype(float)
-            ma60_l = float(cl.tail(60).mean()) if n >= 20 else 0.0
-            if not (ma20_l and ma60_l and ma20_l < ma60_l):
-                buy_i = n - 1
-    except Exception:
-        pass
+    if str(card.get("sell_action") or "") == "直接減碼":
+        sell_i = n - 1
+    if str(card.get("relative_buy_kind") or "") == "just_left":
+        buy_i = n - 1
+    if str(card.get("entry_stage") or "") == "watch":
+        buy_i = None
     if buy_i is not None and buy_i == sell_i:
         buy_i = None
     return buy_i, sell_i
@@ -4390,7 +4380,7 @@ def generate_card_image(stock_id: str, db_path: str = None, save_path: str = Non
 
 
 def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None, *, uid: str = "") -> dict:
-    """看這檔：決策卡只算一次，介紹圖／高低卡／導航／籌碼一次產出。"""
+    """看這檔：決策卡只算一次，介紹圖＋高低卡一次產出。導航／籌碼按按鈕才畫。"""
     sid = str(stock_id).strip()
     db_path = db_path or get_db_path()
     charts_dir = charts_dir or get_charts_dir()
@@ -4425,23 +4415,14 @@ def render_stock_pack(stock_id: str, db_path: str = None, charts_dir: str = None
         sid, card, tape, unique_chart_path(charts_dir, sid, "glance", uid), db_path=db_path, ohlc=ohlc
     ) or ""
     card_path = render_decision_card_png(card, unique_chart_path(charts_dir, sid, "card", uid)) or ""
-    chart = generate_chart(
-        sid, "", db_path, unique_chart_path(charts_dir, sid, "nav", uid), ohlc, already_normalized=True
-    ) or ""
-    chips = ""
-    try:
-        from chips import generate_chips_image
-
-        chips = generate_chips_image(sid, db_path, unique_chart_path(charts_dir, sid, "chips", uid)) or ""
-    except Exception:
-        chips = ""
+    # 導航圖／籌碼改按鈕才產，查股一次只出介紹圖＋決策卡。
     return {
         "card": card,
         "tape": tape,
         "glance": glance,
         "cards": [card_path] if card_path else [],
-        "chart": chart,
-        "chips": chips,
+        "chart": "",
+        "chips": "",
     }
 
 

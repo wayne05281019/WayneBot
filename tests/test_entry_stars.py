@@ -153,5 +153,7 @@ def test_nav_trade_marks_buy_up_sell_down_from_card():
         work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
     )
     assert b is None and s is None
+    b, s = _nav_trade_marks(work, None)
+    assert b is None and s is None
     assert _NAV_TRADE_BUY.startswith("#15")
     assert _NAV_TRADE_SELL.startswith("#E6")
