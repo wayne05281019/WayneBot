@@ -891,6 +891,8 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     assert "不數浪" in el
     assert "不是買訊" in el
     assert "他還在等自己點過的" not in el
+    assert "如果句" not in el
+    assert "未收" not in el
     assert answer_biaoke(":memory:", "你好") == "在，你說。"
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     from biaoke_digest import format_latest_focus
