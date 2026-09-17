@@ -1690,8 +1690,8 @@ def _judgment_line(fired: Dict[str, Any], ask: str, db_path: str) -> str:
     return _clip("。".join(b.rstrip("。") for b in bits if b), 320)
 
 
-def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
-    """話筒開口第一句＝判斷那一條，並標未收／如果句。"""
+def format_five_lead(fired: Optional[Dict[str, Any]], ask: str = "") -> str:
+    """話筒開口第一句＝判斷那一條。問個股不掛大盤未收／如果句旗標。"""
     fired = fired or {}
     core = str(fired.get("judge") or "").rstrip("。")
     five = " ".join(str(fired.get("five") or "").split())
@@ -1704,7 +1704,12 @@ def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
         elif nid == "doubt":
             doubt = str(step.get("text") or "")
     rail = str(fired.get("rail") or "").strip()
-    blob = core + five + nest + str(fired.get("think") or "") + doubt + rail
+    named = bool(fired.get("named"))
+    stage = _ask_wants_stage(ask, named)
+    if named and not stage:
+        blob = core
+    else:
+        blob = core + five + nest + str(fired.get("think") or "") + doubt + rail
     if not core:
         core = re.sub(r"五件交叉：", "", five)
         parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
@@ -1735,7 +1740,7 @@ def attach_five_lead(html: str, db_path: str, ask: str, uid: str = "") -> str:
     if not q or not raw or _HI_ASK.match(q):
         return raw
     fired = fire_chain(db_path, q, uid=uid)
-    lead = format_five_lead(fired)
+    lead = format_five_lead(fired, ask=q)
     if not lead:
         return raw
     plain = re.sub(r"<[^>]+>", "", raw)
@@ -1868,7 +1873,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         "rail": str(brief.get("rail") or ""),
     }
     out["judge"] = _judgment_line(out, q, db_path)
-    out["lead"] = format_five_lead(out)
+    out["lead"] = format_five_lead(out, ask=q)
     if len(_FIRE_CACHE) > 4:
         _FIRE_CACHE.clear()
     _FIRE_CACHE[key] = (now, out)

@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_watch (
@@ -294,8 +296,91 @@ def record_watch_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     return len(rows)
 
 
-def latest_watch_line(db_path: str) -> str:
-    """開火巢穴用：最近一則他自己的觀察＋下一步。沒有就空。"""
+def _bar_is_official_close(ymd: str, *, now: Optional[datetime] = None) -> bool:
+    """只有已收的官方日K才對質。當天 13:30 前那根不算官方收。"""
+    day = str(ymd or "").replace("-", "")[:8]
+    if len(day) != 8 or not day.isdigit():
+        return False
+    stamp = now or datetime.now(ZoneInfo("Asia/Taipei"))
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+    else:
+        stamp = stamp.astimezone(ZoneInfo("Asia/Taipei"))
+    today = stamp.strftime("%Y%m%d")
+    if day < today:
+        return True
+    if day > today:
+        return False
+    return (stamp.hour, stamp.minute) >= (13, 30)
+
+
+def _he_pointed_escape(conn: sqlite3.Connection) -> bool:
+    """逃命／43500 是他點過的位，不看最新一則有沒有再講。"""
+    blob = (
+        "ifnull(seen,'')||ifnull(because,'')||ifnull(nxt,'')||ifnull(prior,'')"
+    )
+    queries = (
+        f"SELECT 1 FROM biaoke_watch WHERE instr({blob},'43500') OR instr({blob},'逃命') LIMIT 1",
+        """
+        SELECT 1 FROM biaoke_posts
+        WHERE ifnull(kind,'post') != 'bystander'
+          AND (instr(ifnull(text,''),'43500') OR instr(ifnull(text,''),'逃命'))
+        LIMIT 1
+        """,
+    )
+    for sql in queries:
+        try:
+            if conn.execute(sql).fetchone():
+                return True
+        except sqlite3.Error:
+            continue
+    return False
+
+
+def _escape_crash_line(
+    conn: sqlite3.Connection, *, now: Optional[datetime] = None
+) -> str:
+    """他點過逃命／43500 才對官方收。後續自回不准蓋掉；未收不下判；不喊崩。"""
+    if not _he_pointed_escape(conn):
+        return ""
+    try:
+        bars = conn.execute(
+            """
+            SELECT date, close FROM index_daily
+            WHERE symbol IN ('TWII','^TWII') AND close IS NOT NULL
+            ORDER BY date DESC LIMIT 4
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return ""
+    ymd = ""
+    cl: Any = None
+    for raw_d, raw_c in bars:
+        day = str(raw_d or "").replace("-", "")[:8]
+        if _bar_is_official_close(day, now=now):
+            ymd, cl = day, raw_c
+            break
+    if not ymd:
+        return ""
+    try:
+        c = float(cl)
+    except (TypeError, ValueError):
+        return ""
+    if c > 43500:
+        return (
+            f"官方收 {ymd} {c:.0f} 還在他自己點的43500之上，"
+            "逃命／C波預告還沒走到（看錯抽屜，不是喊崩）"
+        )
+    return (
+        f"官方收 {ymd} {c:.0f} 已低於他自己點的43500，"
+        "對質偏（看錯抽屜，不是喊崩）"
+    )
+
+
+def latest_watch_line(
+    db_path: str, *, now: Optional[datetime] = None
+) -> str:
+    """開火用：最近觀察＋他沒再回＝還在等。逃命／43500 只對官方收，不喊崩。"""
     if not db_path or not os.path.isfile(db_path):
         return ""
     ensure_watch_table(db_path)
@@ -309,14 +394,19 @@ def latest_watch_line(db_path: str) -> str:
             LIMIT 1
             """
         ).fetchone()
+        crash = _escape_crash_line(conn, now=now) if row else ""
     except sqlite3.Error:
         row = None
+        crash = ""
     finally:
         conn.close()
     if not row:
         return ""
     day, hm, seen, because, nxt, five, prior = (list(row) + [""])[:7]
     bits = [f"他自己最新 {day} {hm}".strip()]
+    bits.append("這段沒再回＝還在等自己點過的位，不是沒想法")
+    if crash:
+        bits.append(crash)
     if five:
         bits.append(str(five))
     if prior:
@@ -330,4 +420,4 @@ def latest_watch_line(db_path: str) -> str:
         label = "等待：" if wait else "如果："
         bits.append(label + str(nxt))
     bits.append("不是買訊")
-    return _clip("。".join(bits), 320)
+    return _clip("。".join(bits), 360)
