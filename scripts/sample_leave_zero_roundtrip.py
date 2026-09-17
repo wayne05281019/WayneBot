@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """一次算出：黃金買點進場 + 如何賣直接減碼 的來回勝率／獲利％。
 
-三層樣本都跑，不准只留引擎閘那一層：
-- engine：對齊現在海選（月K往上、量熱或昨20低、擋5高／空頭）
-- wide：跳過月K（先前約 1512）
-- profit_only：獲利剛離零＋擋5高＋流動 STOCK/KY（更寬）
+進桶必須趨勢向上。寬樣本只對照、不上黃金買點桶。
+- monthly_up：月K往上＋月線≥季線＋擋空頭／破底（確認趨勢向上）
+- engine：現在海選閘（擋月K走空／整理；空白月K也過）
+- wide：跳過月K（對照，不上桶）
 
 出場＝作者如何賣「直接減碼」；最多抱 60 交易日。對照＝死抱 20 交易日。
 不是下單、不畫紅箭頭、不改海選桶。
@@ -266,31 +266,49 @@ def _stock_flags(g: pd.DataFrame) -> pd.DataFrame:
 
     trend_core = (~bear.fillna(False)) & (~break_low.fillna(False)) & (~ma20_lt_ma60.fillna(False)) & (ma20 > 0)
     mk_s = pd.Series(mk)
-    engine = (
-        profit_ok
-        & vol_hot.fillna(False)
-        & trend_core
-        & (~at_5hi.fillna(False))
-        & (mk_s == "up")
-        & liq
-    )
-    wide = (
+    mk_ok = ~mk_s.isin(["down", "side"])
+    base = (
         profit_ok
         & vol_hot.fillna(False)
         & trend_core
         & (~at_5hi.fillna(False))
         & liq
     )
-    profit_only = profit_ok & (~at_5hi.fillna(False)) & trend_core & liq
+    monthly_up = base & (mk_s == "up")
+    engine = base & mk_ok
+    wide = base
 
     out = g.copy()
     out["profit_ok"] = profit_ok
+    out["monthly_up"] = monthly_up.to_numpy()
     out["engine"] = engine.to_numpy()
     out["wide"] = wide.to_numpy()
-    out["profit_only"] = profit_only.to_numpy()
     out["sell_action"] = acts
     out["liq"] = liq.to_numpy()
     return out
+
+
+def _ensure_quote_coverage(db: str, start: str) -> list[str]:
+    """對照前先補缺日。發現全日不足就抓官方收，不准略過。"""
+    from config import fuse_end_date
+    from data_fetcher import DataFetcher
+    from import_health import list_coverage_issues
+
+    cap = str(fuse_end_date() or "").replace("-", "")[:8]
+    start = str(start or "").replace("-", "")[:8]
+    need = []
+    for it in list_coverage_issues(db):
+        d = str(it.get("date") or "").replace("-", "")[:8]
+        if len(d) == 8 and d >= start and d <= cap:
+            need.append(d)
+    if not need:
+        return []
+    fetcher = DataFetcher(db_path=db)
+    filled = []
+    for ds in need:
+        n = int(fetcher.update_daily_market_data(ds, skip_chips=True, skip_repair=True) or 0)
+        filled.append(f"{ds}:{n}")
+    return filled
 
 
 def _roundtrip(df: pd.DataFrame, mask_col: str, start: str, end: str) -> dict:
@@ -299,8 +317,8 @@ def _roundtrip(df: pd.DataFrame, mask_col: str, start: str, end: str) -> dict:
     holds = []
     n_cut = 0
     n_timeout = 0
-    n_skip = 0
-    for sid, g in df.groupby("stock_id", sort=False):
+    n_open = 0
+    for _sid, g in df.groupby("stock_id", sort=False):
         g = g.reset_index(drop=True)
         dates = g["date"].astype(str)
         close = g["close"].astype(float).to_numpy()
@@ -313,10 +331,10 @@ def _roundtrip(df: pd.DataFrame, mask_col: str, start: str, end: str) -> dict:
                 continue
             if not flags[i]:
                 continue
-            j20 = i + HOLD20
-            if j20 >= n:
-                n_skip += 1
+            if i + 1 >= n:
+                n_open += 1
                 continue
+            j20 = min(n - 1, i + HOLD20)
             hold20_rets.append(close[j20] / close[i] - 1.0)
             j_end = min(n - 1, i + HOLD_MAX)
             j_cut = None
@@ -325,12 +343,11 @@ def _roundtrip(df: pd.DataFrame, mask_col: str, start: str, end: str) -> dict:
                     j_cut = j
                     break
             if j_cut is None:
-                if (j_end - i) < HOLD_MAX:
-                    n_skip += 1
-                    hold20_rets.pop()
-                    continue
                 j_cut = j_end
-                n_timeout += 1
+                if (j_end - i) < HOLD_MAX:
+                    n_open += 1
+                else:
+                    n_timeout += 1
             else:
                 n_cut += 1
             cut_rets.append(close[j_cut] / close[i] - 1.0)
@@ -343,7 +360,7 @@ def _roundtrip(df: pd.DataFrame, mask_col: str, start: str, end: str) -> dict:
         "hold20": h20,
         "n_cut": n_cut,
         "n_timeout": n_timeout,
-        "n_skip": n_skip,
+        "n_open": n_open,
         "hold_med": hold_med,
     }
 
@@ -355,7 +372,7 @@ def main() -> int:
     ap.add_argument("--end", default="20260820")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
-
+    filled = _ensure_quote_coverage(args.db, args.start)
     q = _load(args.db)
     chunks = []
     for _sid, sg in q.groupby("stock_id", sort=False):
@@ -368,9 +385,9 @@ def main() -> int:
                     "stock_id",
                     "date",
                     "close",
+                    "monthly_up",
                     "engine",
                     "wide",
-                    "profit_only",
                     "sell_action",
                 ]
             ]
@@ -380,19 +397,29 @@ def main() -> int:
         return 1
     s = pd.concat(chunks, ignore_index=True)
     layers = (
-        ("engine", "引擎閘（月K+量熱）"),
-        ("wide", "寬樣本（跳過月K）"),
-        ("profit_only", "更寬（獲利離零+擋5高）"),
+        ("monthly_up", "確認趨勢向上（月K往上；進場用這層看勝率）"),
+        ("engine", "現在海選閘（擋走空／整理；月K空白也過）"),
+        ("wide", "對照：跳過月K（不上桶）"),
     )
     lines = [
         f"黃金買點進場 + 如何賣直接減碼（{args.start}–{args.end}，流動 STOCK/KY）",
+        "進桶必須趨勢向上。月K往上＝確認層；跳過月K只對照、不進黃金買點。",
         "出場＝不同步／不同步再脫離的直接減碼；最多 60 交易日。對照＝死抱 20 日。",
-        "不是下單、不畫紅箭頭。三層都算，不准只留一層 n。",
+        "缺日先補官方收，未到期用最後一根平，不准略過。",
+        "不是下單、不畫紅箭頭。",
+        f"本輪補日 {filled or '無'}",
         "",
     ]
+    in_win = (s["date"].astype(str) >= args.start) & (s["date"].astype(str) <= args.end)
     for col, lab in layers:
+        raw_n = int((in_win & s[col]).sum())
         pack = _roundtrip(s, col, args.start, args.end)
-        lines.append(f"【{lab}】 減碼{pack['n_cut']}／超時{pack['n_timeout']}／資料不足略過{pack['n_skip']}  抱中位 {pack['hold_med']:.0f} 日")
+        lines.append(
+            f"【{lab}】 區間進場 {raw_n} 次；"
+            f"來回 {pack['cut'].get('n', 0)}；"
+            f"減碼{pack['n_cut']}／超時{pack['n_timeout']}／未到期{pack['n_open']}；"
+            f"抱中位 {pack['hold_med']:.0f} 日"
+        )
         lines.append("  " + _fmt(pack["cut"], "進場＋直接減碼"))
         lines.append("  " + _fmt(pack["hold20"], "對照死抱20日"))
         if pack["cut"].get("n") and pack["hold20"].get("n"):
