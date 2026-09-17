@@ -480,6 +480,7 @@ class NavigatorEngine:
             monthly_stage_from_ohlc,
             prev_close_from_change_pct,
             profit_floor_at,
+            relative_buy_kind,
             resolve_daily_change_pct,
             taipei_now,
             format_card_query_stamp,
@@ -770,6 +771,18 @@ class NavigatorEngine:
                 near_high = float(_dist_h(h20)) >= -1.5
             except (TypeError, ValueError):
                 near_high = False
+            prev_p = None
+            if len(table) >= 2:
+                try:
+                    prev_p = float(table.iloc[1].get("profit_pct") or 0)
+                except (TypeError, ValueError):
+                    prev_p = None
+            rel_kind, rel_txt = relative_buy_kind(
+                profit_pct=float(last_tbl.get("profit_pct") or 0),
+                hl=str(last_tbl.get("高低") or ""),
+                alert=str(last_tbl.get("預警") or ""),
+                prev_profit_pct=prev_p,
+            )
             stance, stance_kind = card_daily_stance(
                 profit_pct=float(last_tbl.get("profit_pct") or 0),
                 alert=str(last_tbl.get("預警") or ""),
@@ -779,9 +792,11 @@ class NavigatorEngine:
                 bias=float(last_tbl.get("bias_monthly") or 0),
                 badges=badges,
                 near_high=near_high,
+                prev_profit_pct=prev_p,
             )
         else:
             stance, stance_kind = "今天先看表，先等", "wait"
+            rel_kind, rel_txt = "", ""
         query_date, query_clock = format_card_query_stamp(
             is_live=is_live,
             latest_date=latest["date"],
@@ -889,6 +904,8 @@ class NavigatorEngine:
             "bias_monthly": float(latest.get("bias_monthly") or 0),
             "stance": stance,
             "stance_kind": stance_kind,
+            "relative_buy_kind": rel_kind,
+            "relative_buy_note": rel_txt,
             "monthly_stage": monthly_stage,
             "monthly_stage_kind": monthly_kind,
             "monthly_stage_short": monthly_short,

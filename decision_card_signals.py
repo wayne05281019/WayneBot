@@ -483,6 +483,43 @@ def profit_left_zero_highlight(prev_profit_pct: float, today_profit_pct: float) 
     return prev <= 0.05 and today > 0.05
 
 
+def relative_buy_kind(
+    *,
+    profit_pct: float,
+    hl: str = "",
+    alert: str = "",
+    prev_profit_pct: float | None = None,
+) -> Tuple[str, str]:
+    """現在是不是相對最低買點帶。只認高低卡＋60曆日獲利，不是紅箭頭、不是下單。
+
+    kind：at_floor＝在谷底獲利還沒離零；just_left＝剛離零；pullback＝貼20低但離谷底已有一段；空字串＝不標。
+    """
+    hl = str(hl or "")
+    alert = str(alert or "")
+    try:
+        p = float(profit_pct or 0)
+    except (TypeError, ValueError):
+        p = 0.0
+    at_table_low = hl in ("20低", "10低") or alert in ("60低", "K20低")
+    at_short_high = hl in ("20高", "10高", "5高")
+    if at_short_high:
+        return "", ""
+    if at_table_low and p > 5.0:
+        return "pullback", "貼20低、不是相對最低"
+    just_left = False
+    if prev_profit_pct is not None:
+        just_left = bool(profit_left_zero_highlight(prev_profit_pct, p) and p <= LEAVE_ZERO_SCREEN_MAX_PCT)
+    if at_table_low and p <= 2.5:
+        if just_left:
+            return "just_left", "相對最低剛離零，先看表"
+        if is_profit_display_zero(p):
+            return "at_floor", "在相對最低，獲利還沒離零"
+        return "at_floor", "在相對最低帶，先看表"
+    if just_left:
+        return "just_left", "相對最低剛離零，先看表"
+    return "", ""
+
+
 def card_daily_stance(
     *,
     profit_pct: float,
@@ -493,6 +530,7 @@ def card_daily_stance(
     bias: float = 0.0,
     badges: list | None = None,
     near_high: bool = False,
+    prev_profit_pct: float | None = None,
 ) -> Tuple[str, str]:
     """今日態度：只認高低卡表，不複製 Cary 紅箭頭當買訊、也不是下單指令。
 
@@ -517,6 +555,9 @@ def card_daily_stance(
         b = 0.0
     at_high = bool(near_high) or hl in ("20高", "10高") or alert == "K20高"
     at_60_low = alert == "60低" or hl == "60低"
+    rel_kind, rel_txt = relative_buy_kind(
+        profit_pct=p, hl=hl, alert=alert, prev_profit_pct=prev_profit_pct
+    )
     if (
         any("溫度≥80" in x or "價溫背離" in x for x in badges)
         or (t >= TEMP_ATH_WATCH and at_high)
@@ -529,6 +570,10 @@ def card_daily_stance(
         return "漲多了，今天別追", "avoid"
     if at_high:
         return "貼著高檔，先等", "wait"
+    if rel_kind == "pullback" and rel_txt:
+        return rel_txt, "wait"
+    if rel_kind in ("at_floor", "just_left") and rel_txt:
+        return rel_txt, "watch"
     if at_60_low and -1.5 <= p <= 2.5 and b < -10:
         return "靠近低點，先看表", "watch"
     if at_60_low:

@@ -350,8 +350,9 @@ class ScreeningEngine:
                 golden["golden_buy"] = True
                 res_golden_buy.append(golden)
 
-            # 黃金買點（leave_zero）＝高低卡「獲利」格剛離開 0（近 60 曆日收盤低，跟決策卡同一條）。
-            # 量熱或昨收高低格還在 20 低，才算有人接；月K走空／下坡／空頭反彈不進桶。
+            # 黃金買點（leave_zero）＝高低卡獲利剛離 60 曆日低。
+            # 不走 layout_ok：那條擋「貼近20日低」且要收盤≥月線，會把相對最低濾掉。
+            # 量熱或昨收高低格還在 20 低，才算有人接；空頭／破底／月K走空不進桶。
             if len(df) >= 5:
                 from decision_card_signals import calc_volume_rank
 
@@ -377,10 +378,10 @@ class ScreeningEngine:
                 yest_hl_low = bool(yest_l20 > 0 and float(info["prev_close"]) <= yest_l20 * 1.002)
                 sid_s = str(info.get("stock_id") or "")
                 if (
-                    layout_ok
-                    and _leave_zero_profit_ok(df, info)
+                    _leave_zero_profit_ok(df, info)
                     and (vol_hot or yest_hl_low)
                     and _leave_zero_trend_ok(info)
+                    and not _leave_zero_at_short_high(info)
                     and len(sid_s) == 4
                     and sid_s.isdigit()
                 ):
@@ -1134,9 +1135,44 @@ def _screen_trend_up_ok(info: Dict[str, Any], *, block_monthly_side: bool = Fals
     return bool(ma60 > 0 and ma20 >= ma60)
 
 
+def _leave_zero_at_short_high(info: Dict[str, Any]) -> bool:
+    """剛離零當天若已貼 5 高，是短彈不是相對最低。
+
+    不用 20 高／chase_warning：底部盤整剛離零的第一根常常就是這段的 20 日收盤高。
+    """
+    try:
+        c = float(info.get("close") or 0)
+        hi5 = float(info.get("hi5") or 0)
+    except (TypeError, ValueError):
+        return False
+    return bool(hi5 > 0 and c >= hi5)
+
+
 def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
-    """黃金買點桶：趨勢向上，且月K整理也不進。"""
-    return _screen_trend_up_ok(info, block_monthly_side=True)
+    """黃金買點趨勢：擋空頭／破底／月K走空或整理；允許多頭回檔貼 20 低。
+
+    站上月線才收、或把貼 20 低當下坡，會把相對最低濾掉。
+    空頭排列（月線＜季線）與跌破前波低（弱勢破底）仍不收。
+    不用整份海選的 _is_downtrend_no_touch：那條把月線下＋貼 20 低標成下坡。
+    """
+    regime = _regime_label(info)
+    if regime in ("空頭排列", "弱勢破底"):
+        return False
+    mk = str(info.get("monthly_stage_kind") or "")
+    if mk == "down":
+        return False
+    if mk == "side":
+        return False
+    try:
+        ma20 = float(info.get("ma20") or 0)
+        ma60 = float(info.get("ma60") or 0)
+    except (TypeError, ValueError):
+        return False
+    if ma20 <= 0:
+        return False
+    if ma60 > 0 and ma20 < ma60:
+        return False
+    return True
 
 
 def _pct_str(pct) -> str:

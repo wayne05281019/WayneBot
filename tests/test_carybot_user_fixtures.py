@@ -288,6 +288,17 @@ class CaryBotUserFixtureTests(unittest.TestCase):
         r03 = self._row(card, "20260903")
         self.assertEqual(self._shown_alert(r03), "10低")
 
+    def test_4739_20260915_pullback_not_relative_low(self):
+        """康普 9/15：貼 20 低、獲利 10.0%，態度必須寫不是相對最低。"""
+        card = NavigatorEngine(get_db_path()).get_decision_card(
+            "4739", lookback=40, merge_live=False, as_of="20260915"
+        )
+        self.assertEqual(card.get("relative_buy_kind"), "pullback")
+        self.assertIn("不是相對最低", str(card.get("stance") or ""))
+        row = self._row(card, "20260915")
+        self.assertEqual(str(row["高低"]), "20低")
+        self.assertEqual(row["獲利"], "10.0%")
+
 
 if __name__ == "__main__":
     unittest.main()

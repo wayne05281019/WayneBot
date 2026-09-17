@@ -2220,6 +2220,23 @@ class LookupCardTest(unittest.TestCase):
                 {"close": 50, "ma20": 55, "ma60": 60, "low20": 50.2, "d20": 0.5, "pct_change": 0.8}
             )
         )
+        # 多頭回檔貼 20 低（收盤仍在月線下、月線≥季線）＝相對最低帶，要收。
+        self.assertTrue(
+            _leave_zero_trend_ok(
+                {"close": 92, "ma20": 95, "ma60": 90, "low20": 90.5, "d20": 1.0, "pct_change": 0.8}
+            )
+        )
+        from screening_engine import _leave_zero_at_short_high
+
+        self.assertTrue(
+            _leave_zero_at_short_high({"close": 100, "hi5": 99.5, "hi20_close": 105, "chase_warning": False})
+        )
+        self.assertFalse(
+            _leave_zero_at_short_high({"close": 100, "hi5": 110, "hi20_close": 100, "chase_warning": True})
+        )
+        self.assertFalse(
+            _leave_zero_at_short_high({"close": 92, "hi5": 100, "hi20_close": 108, "chase_warning": False})
+        )
         from screening_engine import _screen_trend_up_ok
 
         side_bull = {
