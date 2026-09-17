@@ -3438,6 +3438,56 @@ def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
     return wrap_cjk_lines(raw, width, unit="disp") or [raw]
 
 
+def _outlook_b(text: str) -> str:
+    from tg_layout import html_escape
+
+    return f"<b>{html_escape(str(text))}</b>"
+
+
+_OUTLOOK_ACTION_BOLD = (
+    "今天別追電子高檔",
+    "台股今天休市",
+    "不要追已經噴的",
+    "當沖不要硬沖",
+    "周帶量仍少追",
+    "周帶量少追",
+    "黃金買點",
+    "重點觀察",
+    "佈局先等",
+    "今天別追高",
+    "逆風",
+    "偏空",
+    "偏多",
+)
+
+
+def _outlook_embolden(plain: str, phrases: Tuple[str, ...] = _OUTLOOK_ACTION_BOLD) -> str:
+    """先折行再套粗體，避免 <b> 被算進行寬、也避免標籤被折斷。"""
+    from tg_layout import html_escape
+
+    raw = str(plain or "")
+    if not raw:
+        return ""
+    ordered = tuple(sorted((p for p in phrases if p), key=len, reverse=True))
+    i = 0
+    n = len(raw)
+    out: List[str] = []
+    while i < n:
+        hit = next((p for p in ordered if raw.startswith(p, i)), None)
+        if hit:
+            out.append(_outlook_b(hit))
+            i += len(hit)
+            continue
+        nxt = n
+        for p in ordered:
+            j = raw.find(p, i)
+            if j != -1:
+                nxt = min(nxt, j)
+        out.append(html_escape(raw[i:nxt]))
+        i = nxt
+    return "".join(out)
+
+
 def _outlook_night_plain_lines(
     night: Dict[str, Any],
     day: Optional[Dict[str, Any]] = None,
@@ -3449,20 +3499,18 @@ def _outlook_night_plain_lines(
     if not night or not night.get("close"):
         return []
     close = float(night["close"])
-    bits = [f"{label} <b>{close:,.0f}</b>"]
+    lines = [f"{label} {_outlook_b(f'{close:,.0f}')}"]
     extra: List[str] = []
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
         mag = abs(diff)
-        extra.append(f"比日盤收{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+        extra.append(f"比日盤收{'貴' if diff >= 0 else '便宜'} {_outlook_b(f'{mag:.2f}%')}")
     if spot_close > 0:
         diff = (close - spot_close) / spot_close * 100.0
         mag = abs(diff)
-        extra.append(f"比現貨{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
-    lines = list(bits)
-    if extra:
-        lines.extend(_outlook_wrap("　".join(extra)))
+        extra.append(f"比現貨{'貴' if diff >= 0 else '便宜'} {_outlook_b(f'{mag:.2f}%')}")
+    lines.extend(extra)
     return lines
 
 
@@ -3492,8 +3540,8 @@ def _outlook_tx_foreign_lines(
     d = _norm_ymd(info.get("date") or "")
     ref = _norm_ymd(as_of or "")
     out = [
-        f"外資台指期　買多 {oi_long:,}口",
-        f"　　　　　　買空 {oi_short:,}口",
+        f"外資台指期　買多 {_outlook_b(f'{oi_long:,}口')}",
+        f"　　　　　　買空 {_outlook_b(f'{oi_short:,}口')}",
     ]
     if d and ref and d != ref:
         from trading_calendar import format_trading_date_zh
@@ -3510,8 +3558,6 @@ def _outlook_flow_plain_lines(
     rotated_names: Optional[List[str]] = None,
 ) -> List[str]:
     """資金只寫剛到／輪出產業名；領買張數留給個股「剛輪到」標記。"""
-    from tg_layout import html_escape
-
     maps = flow_maps
     if maps is None:
         try:
@@ -3535,14 +3581,14 @@ def _outlook_flow_plain_lines(
         by_ind = {str(r.get("industry") or ""): r for r in (maps.get("inflow_rows") or [])}
         just_rows = [by_ind[k] for k in just if k in by_ind]
     just_names = [
-        html_escape(_sector_short_name(str(r.get("industry") or "")))
+        _sector_short_name(str(r.get("industry") or ""))
         for r in just_rows
         if str(r.get("industry") or "").strip()
     ]
     if not just_names:
-        just_names = [html_escape(n) for n in (rotated_names or []) if str(n).strip()][:3]
+        just_names = [str(n).strip() for n in (rotated_names or []) if str(n).strip()][:3]
     outflow_names = [
-        html_escape(_sector_short_name(str(r.get("industry") or "")))
+        _sector_short_name(str(r.get("industry") or ""))
         for r in list(maps.get("outflow_rows") or [])[:3]
         if str(r.get("industry") or "").strip()
     ]
@@ -3550,9 +3596,11 @@ def _outlook_flow_plain_lines(
         return []
     lines = [_TG_SECTION]
     if just_names:
-        lines.extend(_outlook_wrap("剛到　" + "、".join(just_names[:3])))
+        chunk = "剛到　" + "、".join(just_names[:3])
+        lines.extend(_outlook_embolden(ln, tuple(just_names[:3])) for ln in _outlook_wrap(chunk))
     if outflow_names:
-        lines.extend(_outlook_wrap("輪出　" + "、".join(outflow_names[:3])))
+        chunk = "輪出　" + "、".join(outflow_names[:3])
+        lines.extend(_outlook_embolden(ln, tuple(outflow_names[:3])) for ln in _outlook_wrap(chunk))
     if just_names:
         lines.extend(_outlook_wrap("對應個股已標剛輪到。"))
     return lines
@@ -3569,7 +3617,7 @@ def format_screen_market_outlook_html(
     now: Optional[datetime] = None,
 ) -> str:
     """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
-    from tg_layout import headline_lines, html_escape, wrap_cjk_lines
+    from tg_layout import headline_lines, html_escape
     from trading_calendar import format_trading_date_zh, taipei_calendar_ymd
 
     if snap is None:
@@ -3635,46 +3683,51 @@ def format_screen_market_outlook_html(
     body: List[str] = []
     body.extend(html_escape(x) for x in tw_banner)
     body.extend(html_escape(x) for x in holiday_lines)
-    body.extend(wrap_cjk_lines(action, 18, unit="chars"))
+    body.extend(_outlook_embolden(x) for x in _outlook_wrap(action))
     if snap.get("ok"):
         close = snap.get("close")
         chg1 = snap.get("chg1_pct")
         if close:
-            body.append(f"加權收盤 <b>{float(close):,.2f}</b>")
+            body.append(f"加權收盤 {_outlook_b(f'{float(close):,.2f}')}")
         pct_bits: List[str] = []
         if chg1 is not None:
-            pct_bits.append(html_escape(_fmt_signed_pct(chg1)))
+            pct_bits.append(_outlook_b(_fmt_signed_pct(chg1)))
         if vs20 is not None:
-            if float(vs20) >= 1.0:
-                pct_bits.append("月線上")
-            elif float(vs20) <= -1.0:
-                pct_bits.append("月線下")
+            vs = float(vs20)
+            if vs >= 1.0:
+                pct_bits.append(_outlook_b("月線上"))
+            elif vs <= -1.0:
+                pct_bits.append(_outlook_b("月線下"))
             else:
                 pct_bits.append("貼著月線")
         if pct_bits:
             body.append("　".join(pct_bits))
     if us_ok:
-        head_bits = [html_escape(us_label)]
+        body.append(_outlook_b(us_label))
         if ixic is not None:
-            head_bits.append(f"那斯達克 {float(ixic):+.2f}%")
-        body.append("　".join(head_bits))
-        tail_bits: List[str] = []
+            body.append(f"那斯達克 {_outlook_b(f'{float(ixic):+.2f}%')}")
         sox = us.get("sox_pct")
         if sox is not None:
-            tail_bits.append(f"費半 {float(sox):+.2f}%")
+            body.append(f"費半 {_outlook_b(f'{float(sox):+.2f}%')}")
         if us.get("vix") is not None:
-            tail_bits.append(f"恐慌指數 {_fmt_vix(us)}")
-        if tail_bits:
-            body.append("　".join(tail_bits))
+            vix_s = _fmt_vix(us)
+            if "　" in vix_s:
+                num, mood = vix_s.rsplit("　", 1)
+                body.append(f"恐慌指數 {_outlook_b(num)}　{html_escape(mood)}")
+            else:
+                body.append(f"恐慌指數 {_outlook_b(vix_s)}")
         tsm_move = format_quote_move(us, "tsm_pct", "tsm_chg")
         if us.get("tsm_pct") is not None:
-            body.append(f"台積美股　{html_escape(tsm_move)}")
+            body.append(f"台積美股　{_outlook_b(tsm_move)}")
         lead = format_us_lead_line(us)
-        if lead:
+        lead_name = str(us.get("us_lead_name") or "").strip()
+        if lead and lead_name:
+            body.append(lead.replace(lead_name, _outlook_b(lead_name), 1))
+        elif lead:
             body.append(html_escape(lead))
         side = electronics_night_side(us)
         if side and not holiday_lines and not tw_closed:
-            body.append(f"電子鏈夜盤{html_escape(side)}")
+            body.append(f"電子鏈夜盤{_outlook_b(side)}")
     body.extend(
         _outlook_night_plain_lines(
             snap.get("futures_night") or {},
@@ -3701,7 +3754,10 @@ def format_screen_market_outlook_html(
         and any(k in flow_blob for k in ("半導體", "電子零組件", "電子"))
         and "剛到" in flow_blob
     ):
-        body.extend(_outlook_wrap("昨天剛輪到、隔夜費半跌，今天別追電子高檔。"))
+        body.extend(
+            _outlook_embolden(x)
+            for x in _outlook_wrap("昨天剛輪到、隔夜費半跌，今天別追電子高檔。")
+        )
     return head + "\n" + "\n".join(body)
 
 
