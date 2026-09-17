@@ -118,9 +118,9 @@ def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
     assert "產業" in hub_w and "K線" in hub_w and "籌碼" in hub_w
 
 
-def test_owner_compact_menu_does_not_shrink_brother(tmp_path):
-    """偉權改精簡六顆，哥哥仍是完整十二顆。"""
-    from bot_servers import MENU_COMPACT_ROWS, MENU_ROW1, MENU_ROW2, WayneTelegramBot
+def test_owner_compact_flag_does_not_shrink_anyone(tmp_path):
+    """舊精簡旗打開也不准縮鍵盤；兩人都是完整兩排。"""
+    from bot_servers import MENU_ROW1, MENU_ROW2, WayneTelegramBot
     from wayne_db import init_database
 
     db = str(tmp_path / "compactiso.db")
@@ -128,10 +128,9 @@ def test_owner_compact_menu_does_not_shrink_brother(tmp_path):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     bot._set_menu_compact(str(WAYNE_UID), True)
-    wayne = [b.text for row in bot._reply_menu(str(WAYNE_UID)).keyboard for b in row]
+    wayne = [[b.text for b in row] for row in bot._reply_menu(str(WAYNE_UID)).keyboard]
     bro = [[b.text for b in row] for row in bot._reply_menu(str(BRO_UID)).keyboard]
-    assert wayne == [t for row in MENU_COMPACT_ROWS for t in row]
-    assert bro == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne == bro == [list(MENU_ROW1), list(MENU_ROW2)]
 
 
 @pytest.mark.parametrize("round_i", range(10))

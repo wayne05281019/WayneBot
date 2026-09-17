@@ -27,7 +27,6 @@ from bot_servers import (
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
-    MENU_COMPACT_ROWS,
     MENU_FULL_ALIASES,
     MENU_ROW1,
     MENU_ROW2,
@@ -381,10 +380,9 @@ def test_help_topics_and_compact_isolated(tmp_path):
         bot._set_menu_compact(BRO, False)
 
     asyncio.run(run())
-    wayne_kb = [b.text for row in bot._reply_menu(WAYNE).keyboard for b in row]
+    wayne_kb = [[b.text for b in row] for row in bot._reply_menu(WAYNE).keyboard]
     bro_kb = [[b.text for b in row] for row in bot._reply_menu(BRO).keyboard]
-    assert wayne_kb == [t for row in MENU_COMPACT_ROWS for t in row]
-    assert bro_kb == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne_kb == bro_kb == [list(MENU_ROW1), list(MENU_ROW2)]
     for alias in MENU_FULL_ALIASES:
         assert alias
 

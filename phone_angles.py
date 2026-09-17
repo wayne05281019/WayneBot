@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """一千種不同角度核對話筒（除飆大按鍵功能以外）。不是同一套重跑一千次。
 
-每一則都是獨立條件：十二鈕／精簡六顆、查股兩張圖、海選／興櫃／連買／
+每一則都是獨立條件：完整兩排、查股兩張圖、海選／興櫃／連買／
 持股／觀察／AI倉／資金／大盤／記買入、空狀態、例外不上話筒、雙人隔離。
 飆大鈕內部（抓文／對價／對話腦）不問。庫沒就標缺，不編。
 """
@@ -34,7 +34,7 @@ FEATURES: Tuple[str, ...] = (
     "查股兩張圖",
     "圖文",
     "興櫃海選",
-    "精簡六顆",
+    "空白格",
     "完整十二鈕",
     "語音聽寫",
     "剛脫離零",
@@ -113,8 +113,8 @@ _FEATURE_HELP = {
     "查股兩張圖": ("stock", "介紹圖"),
     "圖文": ("guide", "圖文"),
     "興櫃海選": ("screen", "興櫃"),
-    "精簡六顆": ("menu", "精簡選單"),
-    "完整十二鈕": ("menu", "完整選單"),
+    "空白格": ("menu", "留白"),
+    "完整十二鈕": ("menu", "兩排"),
     "語音聽寫": ("guide", "麥克風"),
     "剛脫離零": ("leave_zero", "剛脫離零"),
 }
@@ -136,7 +136,7 @@ _FEATURE_INTENT = {
     "查股兩張圖": "lookup",
     "圖文": "help",
     "興櫃海選": "emerging_screen",
-    "精簡六顆": None,
+    "空白格": None,
     "完整十二鈕": None,
     "語音聽寫": None,
     "剛脫離零": "leave_zero",
@@ -180,8 +180,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     kind = _FEATURE_INTENT[feature]
 
     if lens == "first_open_copy":
-        if feature == "精簡六顆":
-            return _ok("start") if "精簡選單" in src and "start_cmd" in src else _bad("start 沒提精簡")
+        if feature == "空白格":
+            return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
         if feature == "完整十二鈕":
             return _ok("兩排") if "兩排" in src and "start_cmd" in src else _bad("start 沒提兩排")
         if feature == "剛脫離零":
@@ -233,8 +233,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         block = src.split("def _reply_menu", 1)[-1][:500]
         if "_ACTIVE_PHONE_UID.get()" not in block:
             return _bad("_reply_menu 沒讀當下 uid")
-        if feature == "精簡六顆" and "MENU_COMPACT_ROWS" not in src:
-            return _bad("沒精簡六顆")
+        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
+            return _bad("沒留白格")
         return _ok("ctx")
 
     if lens == "full_kb_persist":
@@ -287,10 +287,10 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "intent_alias":
         if kind is None:
-            if feature == "精簡六顆":
-                return _ok("alias") if "MENU_COMPACT_ALIASES" in src else _bad("沒精簡別名")
+            if feature == "空白格":
+                return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
             if feature == "完整十二鈕":
-                return _ok("alias") if "MENU_FULL_ALIASES" in src else _bad("沒完整別名")
+                return _ok("alias") if "MENU_ROW1" in src and "MENU_ROW2" in src else _bad("沒完整兩排")
             if feature == "語音聽寫":
                 return _ok("voice") if "on_voice" in src else _bad("沒聽寫")
             if feature == "剛脫離零":
@@ -338,24 +338,24 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("no-invite")
 
     if lens == "restore_menu":
-        if "已回到主選單（精簡六顆）" not in src:
-            return _bad("精簡回主選單文案缺")
         if "已回到兩排主選單" not in src:
             return _bad("完整回主選單文案缺")
+        if "已回到主選單（精簡六顆）" in src:
+            return _bad("還在講精簡六顆")
         return _ok("restore")
 
     if lens == "placeholder":
         if "打股名／代號" not in src:
             return _bad("沒輸入列提示")
-        if feature == "精簡六顆" and "完整選單" not in src:
-            return _bad("精簡提示沒寫完整選單")
+        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
+            return _bad("沒留白格")
         return _ok("ph")
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "23":
-            return _bad("版面不是 23")
-        return _ok("v23")
+        if not m or m.group(1) != "24":
+            return _bad("版面不是 24")
+        return _ok("v24")
 
     if lens == "slot_noop":
         if "MENU_BTN_LEAVE_ZERO" not in src:
@@ -385,10 +385,12 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "start_copy":
         block = src.split("async def start_cmd", 1)[-1][:1200]
-        if "精簡選單" not in block:
-            return _bad("start 沒提精簡")
+        if "精簡選單" in block:
+            return _bad("start 還在講精簡")
         if "四格" not in block:
             return _bad("start 沒提四格鍵盤")
+        if "兩排" not in block:
+            return _bad("start 沒提兩排")
         return _ok("start")
 
     if lens == "picture_guide":
@@ -494,17 +496,12 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("streak-em")
 
     if lens == "compact_two_chars":
-        block = src.split("MENU_COMPACT_ROWS = (", 1)[-1][:400]
-        # 精簡六顆都是兩字：說明海選持股觀察刷新回報
-        for word in ("說明", "海選", "持股", "觀察"):
-            if word not in block:
-                return _bad(f"精簡列缺 {word}")
-        if "MENU_BTN_CARD" not in block or "MENU_BTN_REPORT" not in block:
-            return _bad("精簡列缺刷新／回報")
-        card = re.search(r'MENU_BTN_CARD = "([^"]+)"', src)
-        if not card or len(card.group(1)) != 2:
-            return _bad("刷新不是兩字")
-        return _ok("2char")
+        block = src.split("def _reply_menu", 1)[-1][:1400]
+        if "MENU_COMPACT_ROWS" in block:
+            return _bad("還有精簡六顆")
+        if "MENU_BTN_SLOT" not in src:
+            return _bad("沒留白格")
+        return _ok("no-compact")
 
     if lens == "menu_slot_empty":
         if "MENU_BTN_LEAVE_ZERO" not in src:
@@ -601,5 +598,5 @@ def format_angles(rows: Sequence[Dict[str, Any]] | None = None) -> str:
         for name, detail in zip(s["fail_names"], s["fail_details"]):
             lines.append(f"· {name}　{detail}")
     else:
-        lines.append("精簡六顆出錯不再被打回十二鈕；例外只記後台。")
+        lines.append("兩人同一套完整兩排；例外只記後台。")
     return "\n".join(lines)

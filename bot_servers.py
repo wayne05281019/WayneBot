@@ -19,7 +19,7 @@ from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Tuple
 
 # 當下一則是誰在按。asyncio 任務各自一份，不能用 instance 全域。
-# 精簡六顆／例外頁回鍵盤都靠這，才不會哥哥出錯把偉權的十二鈕蓋過去。
+# 例外頁回鍵盤也帶這，才不會哥哥出錯把偉權的兩排蓋過去。
 _ACTIVE_PHONE_UID: ContextVar[str] = ContextVar("wayne_phone_uid", default="")
 PHONE_BUSY = "這一步暫時沒跑完，請稍後再按一次。細節已記在後台，不會影響你其他按鈕。"
 
@@ -312,7 +312,7 @@ HELP_TOPICS = {
         "第一排：<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>｜<b>飆大</b>｜<b>大盤</b>\n"
         "第二排：<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜<b>剛脫離零</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。\n"
-        "打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
+        "兩人同一套完整兩排，沒有精簡鍵盤。\n"
         "\n"
         "<b>挑股認哪一欄（最重要）</b>\n"
         "早報／海選優先認<b>黃金買點</b>一欄兩個標：<b>買點</b>＝近 60 個日曆天收盤低、獲利剛離零，全市場現在最值得切入；<b>還在零</b>＝以前的重點觀察，獲利還沒離 0，只觀察不是買。認表、按表操課，不認圖上紅箭頭。低買高賣。\n"
@@ -428,7 +428,7 @@ HELP_TOPICS = {
         "<b>⑥ 飆大</b>\n"
         "• 是什麼：即時對話窗口。按進去就能一直聊，跟這邊暢談同一條路。不是海選、不改黃金買點。\n"
         "• 怎麼用：按進去後點「大盤」或「查個股」，也可打字或按麥克風。同一顆會變成「離開飆大」，再按一次回兩排主選單。還在飆大時打字＝問飆大，不是查股兩張圖。主選單第一排最右「大盤」仍是指數數字頁。\n"
-        "• 精簡六格沒這鈕：打「飆大」或「完整選單」。不是買訊。\n"
+        "• 不是買訊。\n"
         "\n"
         "<b>⑦ 大盤</b>\n"
         "• 是什麼：加權指數、漲跌家數、三大法人、台指期日盤／夜盤、美股上一收盤與盤後期貨，並附橫式日K。美股休市會寫日期與原因（例如勞動節），並附上一收盤日數字。台股國定假看證交所年曆；颱風看人事行政總處：北市全日或上午停班才休市。前一晚 19:00–22:00 公告、23:00 前播出；沒公告則當日 04:30 前補發。\n"
@@ -537,7 +537,7 @@ HELP_TOPICS = {
         "\n"
         "<b>第一排</b>：海選／持股／觀察／刷新／<b>回報</b>／<b>飆大</b>／<b>大盤</b>\n"
         "<b>第二排</b>：資金／當沖／隔日沖／AI倉／<b>連買區</b>／<b>剛脫離零</b>\n"
-        "打「精簡選單」只留五顆加一格空白；「完整選單」恢復兩排（含飆大）。\n"
+        "第二排最右一格留白，按了沒事。兩人同一套完整兩排，沒有精簡鍵盤。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。"
@@ -792,7 +792,7 @@ HELP_TOPICS = {
         "\n"
         "<b>主選單不見</b>\n"
         "點輸入列旁邊四格鍵盤圖示 ⌨️，或打 /menu。\n"
-        "按鈕太多打「精簡選單」只留六顆；「完整選單」恢復兩排。\n"
+        "兩人同一套完整兩排，沒有精簡鍵盤。\n"
         "\n"
         "<b>語音</b>\n"
         "按輸入列麥克風講代號或問題，會先聽寫再當文字處理。\n"
@@ -858,10 +858,6 @@ MENU_ROW2 = (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_SLOT,
 )
-MENU_COMPACT_ROWS = (
-    ("海選", "持股", "觀察"),
-    (MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_SLOT),
-)
 MENU_COMPACT_ALIASES = ("精簡選單", "精簡鍵盤")
 MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # 版面改版時遞增，讓舊客戶端自動強制刷新一次。
@@ -882,7 +878,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v21：下排最右空白格改「剛離零」（盤中現價複核獲利剛離零；★ 最佳五檔）。
 # v22：剛離零→剛脫離零；等待泡泡等寬框線；飆大個股不倒舊文舊圖。
 # v23：拿掉說明，整排往前；第一排最右大盤，第二排最右空白。說明／圖文／/help 取消。
-MENU_LAYOUT_VERSION = "23"
+# v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
+MENU_LAYOUT_VERSION = "24"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1251,37 +1248,17 @@ class WayneTelegramBot:
             await self._delete_message(status)
 
     def _menu_compact_on(self, uid: str) -> bool:
-        uid = str(uid or "")
-        if not uid:
-            return False
-        db = getattr(self, "db_path", None) or ""
-        if not db:
-            return False
-        try:
-            from wayne_db import get_cached_data
-
-            row = get_cached_data(f"tg_menu_compact:{uid}", db)
-            return str((row or {}).get("content") or "") == "1"
-        except Exception:
-            return False
+        """精簡鍵盤已取消；舊旗不論開過都當沒開。"""
+        _ = uid
+        return False
 
     def _set_menu_compact(self, uid: str, on: bool) -> None:
-        uid = str(uid or "")
-        db = getattr(self, "db_path", None) or ""
-        if not uid or not db:
-            return
-        from wayne_db import set_cached_data
-
-        set_cached_data(
-            f"tg_menu_compact:{uid}",
-            "menu",
-            "1" if on else "0",
-            db_path=db,
-        )
-        self._invalidate_menu_layout(uid)
+        """精簡鍵盤已取消；寫入無效。"""
+        _ = uid, on
+        return
 
     def _reply_menu(self, uid: str = ""):
-        """預設兩排各七格（拿掉說明後往前，下排最右空白）；精簡模式每人六格含空白。"""
+        """兩排各七格；下排最右空白。偉權與哥哥同一套，沒有精簡。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -1293,19 +1270,15 @@ class WayneTelegramBot:
             ) or MENU_BTN_BIAOKE_FACE
         except Exception:
             biaoke_face = MENU_BTN_BIAOKE_FACE
-        if self._menu_compact_on(uid):
-            rows = [[KeyboardButton(t) for t in row] for row in MENU_COMPACT_ROWS]
-            placeholder = "打股名／代號；「完整選單」恢復兩排"
-        else:
-            row1 = [
-                KeyboardButton(biaoke_face if t == MENU_BTN_BIAOKE_FACE else t)
-                for t in MENU_ROW1
-            ]
-            rows = [
-                row1,
-                [KeyboardButton(t) for t in MENU_ROW2],
-            ]
-            placeholder = "打股名／代號，或按「刷新」"
+        row1 = [
+            KeyboardButton(biaoke_face if t == MENU_BTN_BIAOKE_FACE else t)
+            for t in MENU_ROW1
+        ]
+        rows = [
+            row1,
+            [KeyboardButton(t) for t in MENU_ROW2],
+        ]
+        placeholder = "打股名／代號，或按「刷新」"
         try:
             return ReplyKeyboardMarkup(
                 rows,
@@ -1406,19 +1379,11 @@ class WayneTelegramBot:
         """
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
-        compact = self._menu_compact_on(uid)
-        if compact:
-            text = (
-                "精簡六顆已掛上。打「完整選單」恢復兩排。點輸入列旁邊四格 ⌨️。"
-                if silent
-                else "精簡六格：海選／持股／觀察／刷新／回報。打「完整選單」恢復兩排。"
-            )
-        else:
-            text = (
-                "兩排已更新：第一排海選…大盤，第二排資金…剛脫離零。點輸入列旁邊四格 ⌨️。"
-                if silent
-                else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右大盤）。打「精簡選單」可收成六格。"
-            )
+        text = (
+            "兩排已更新：第一排海選…大盤，第二排資金…剛脫離零。點輸入列旁邊四格 ⌨️。"
+            if silent
+            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右大盤）。"
+        )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
             actor = self._actor_key(message, uid=uid)
@@ -1572,10 +1537,7 @@ class WayneTelegramBot:
     async def _restore_main_menu(self, message, uid: str) -> None:
         actor = self._actor_key(message, uid=uid)
         self._pending.pop(actor, None)
-        if self._menu_compact_on(uid):
-            text = "已回到主選單（精簡六顆）。"
-        else:
-            text = "已回到兩排主選單。"
+        text = "已回到兩排主選單。"
         await message.reply_html(text, reply_markup=self._reply_menu(uid))
 
     async def _leave_biaoke(self, message, uid: str) -> None:
@@ -2784,7 +2746,6 @@ class WayneTelegramBot:
                 "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
                 "\n"
                 "亂了按「回報」。\n"
-                "打「精簡選單」可收成六顆；「完整選單」恢復兩排。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不必再分享邀請。\n"
             ),
         )
@@ -4680,14 +4641,8 @@ class WayneTelegramBot:
             logger.info("主選單：連買區 uid=%s", uid)
             await self.streak_cmd(update, context)
             return
-        if text in MENU_COMPACT_ALIASES:
+        if text in MENU_COMPACT_ALIASES or text in MENU_FULL_ALIASES:
             self._pending.pop(actor, None)
-            self._set_menu_compact(uid, True)
-            await self._force_reply_menu(update.message, uid)
-            return
-        if text in MENU_FULL_ALIASES:
-            self._pending.pop(actor, None)
-            self._set_menu_compact(uid, False)
             await self._force_reply_menu(update.message, uid)
             return
         if text in ("選單", "主選單") or text.lower().lstrip("/") == "menu":

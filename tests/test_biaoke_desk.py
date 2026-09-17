@@ -225,7 +225,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "23"
+    assert MENU_LAYOUT_VERSION == "24"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():

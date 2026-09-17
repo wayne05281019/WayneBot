@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""精簡六顆在出錯後仍在；例外不上話筒。"""
+"""例外不上話筒；兩人同一套完整兩排。"""
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from bot_servers import (
-    MENU_COMPACT_ROWS,
     MENU_ROW1,
     MENU_ROW2,
     PHONE_BUSY,
@@ -35,16 +34,16 @@ def test_phone_busy_has_no_exception_placeholder():
     assert "暫時沒跑完" in PHONE_BUSY
 
 
-def test_context_uid_keeps_compact_keyboard_without_arg(tmp_path):
+def test_context_uid_keeps_full_keyboard_without_arg(tmp_path):
     bot = _bot(tmp_path)
     bot._set_menu_compact("9", True)
     token = _ACTIVE_PHONE_UID.set("9")
     try:
         kb = bot._keyboard()
         labels = [b.text for row in kb.keyboard for b in row]
-        assert labels == [t for row in MENU_COMPACT_ROWS for t in row]
-        assert "當沖" not in labels
-        assert "大盤" not in labels
+        assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+        assert "當沖" in labels
+        assert "大盤" in labels
     finally:
         _ACTIVE_PHONE_UID.reset(token)
     kb2 = bot._keyboard()
@@ -52,8 +51,8 @@ def test_context_uid_keeps_compact_keyboard_without_arg(tmp_path):
     assert [b.text for b in kb2.keyboard[1]] == list(MENU_ROW2)
 
 
-def test_callback_bot_from_user_still_compact(tmp_path):
-    """Inline 回調的 message.from_user 是機器人；精簡旗要認按的人。"""
+def test_callback_bot_from_user_still_full(tmp_path):
+    """Inline 回調的 message.from_user 是機器人；鍵盤仍認按的人且是完整兩排。"""
     bot = _bot(tmp_path)
     bot._set_menu_compact("9001", True)
     bot_user = SimpleNamespace(id=555000, first_name="bot")
@@ -62,7 +61,7 @@ def test_callback_bot_from_user_still_compact(tmp_path):
     try:
         assert bot._menu_uid_from_message(msg) == "9001"
         labels = [b.text for row in bot._reply_menu().keyboard for b in row]
-        assert labels == [t for row in MENU_COMPACT_ROWS for t in row]
+        assert labels == list(MENU_ROW1) + list(MENU_ROW2)
         actor = bot._actor_key(msg)
         assert actor.startswith("9001:")
         assert actor.endswith(":9001")
@@ -70,7 +69,7 @@ def test_callback_bot_from_user_still_compact(tmp_path):
         _ACTIVE_PHONE_UID.reset(token)
 
 
-def test_restore_main_menu_compact_copy(tmp_path):
+def test_restore_main_menu_ignores_old_compact_flag(tmp_path):
     bot = _bot(tmp_path)
     bot._set_menu_compact("9", True)
     msg = MagicMock()
@@ -79,10 +78,11 @@ def test_restore_main_menu_compact_copy(tmp_path):
     msg.reply_html = AsyncMock()
     asyncio.run(bot._restore_main_menu(msg, "9"))
     html = msg.reply_html.await_args.args[0]
-    assert "精簡六顆" in html
+    assert "兩排主選單" in html
+    assert "精簡" not in html
     kb = msg.reply_html.await_args.kwargs["reply_markup"]
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == [t for row in MENU_COMPACT_ROWS for t in row]
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
 
 
 def test_restore_main_menu_full_copy(tmp_path):
@@ -97,7 +97,7 @@ def test_restore_main_menu_full_copy(tmp_path):
     assert "兩排主選單" in html
 
 
-def test_market_error_keeps_compact_and_hides_exception(tmp_path):
+def test_market_error_keeps_full_keyboard_and_hides_exception(tmp_path):
     from unittest.mock import patch
 
     bot = _bot(tmp_path)
@@ -130,7 +130,7 @@ def test_market_error_keeps_compact_and_hides_exception(tmp_path):
     assert "secret" not in text
     kb = msg.reply_text.await_args.kwargs["reply_markup"]
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == [t for row in MENU_COMPACT_ROWS for t in row]
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
 
 
 def test_source_hides_ops_and_tracebacks():
@@ -142,13 +142,15 @@ def test_source_hides_ops_and_tracebacks():
     assert "PHONE_BUSY" in src
     assert "_ACTIVE_PHONE_UID" in src
     assert "self._reply_menu(str(chat_id))" in src
-    assert "已回到主選單（精簡六顆）" in src
+    assert "已回到兩排主選單" in src
+    assert "已回到主選單（精簡六顆）" not in src
 
 
-def test_start_mentions_compact():
+def test_start_does_not_mention_compact():
     from bot_servers import WayneTelegramBot
     import inspect
 
     src = inspect.getsource(WayneTelegramBot.start_cmd)
-    assert "精簡選單" in src
-    assert "完整選單" in src
+    assert "精簡選單" not in src
+    assert "完整選單" not in src
+    assert "兩排" in src

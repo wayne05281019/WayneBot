@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""第一週選單順序、精簡六顆、持倉改去持股。"""
+"""主選單順序：完整兩排、沒有精簡鍵盤、持倉改去持股。"""
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +15,6 @@ from bot_servers import (
     MENU_BTN_REPORT,
     MENU_BTN_SLOT,
     MENU_BTN_STREAK,
-    MENU_COMPACT_ROWS,
-    MENU_FULL_ALIASES,
     MENU_LAYOUT_VERSION,
     MENU_ROW1,
     MENU_ROW2,
@@ -26,16 +24,11 @@ from intent_router import parse_intent
 from wayne_db import init_database
 
 
-def test_compact_six_buttons_are_two_chars_no_wrap():
-    from bot_servers import MENU_COMPACT_ROWS, MENU_BTN_CARD
+def test_full_menu_is_two_rows_no_compact():
+    from bot_servers import MENU_BTN_CARD
 
     assert MENU_BTN_CARD == "刷新"
-    for row in MENU_COMPACT_ROWS:
-        assert len(row) == 3
-        for t in row:
-            if str(t).strip():
-                assert len(t) == 2, t
-    assert MENU_LAYOUT_VERSION == "23"
+    assert MENU_LAYOUT_VERSION == "24"
     assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET)
     assert MENU_ROW2[:6] == ("資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO)
     assert MENU_ROW2[6] == MENU_BTN_SLOT
@@ -45,7 +38,7 @@ def test_compact_six_buttons_are_two_chars_no_wrap():
     assert [b.text for b in kb.keyboard[1]] == list(MENU_ROW2)
 
 
-def test_compact_menu_is_six_first_week_buttons(tmp_path):
+def test_old_compact_flag_cannot_shrink_keyboard(tmp_path):
     db = str(tmp_path / "m.db")
     init_database(db)
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -54,13 +47,10 @@ def test_compact_menu_is_six_first_week_buttons(tmp_path):
     kb = bot._reply_menu("9")
     assert len(kb.keyboard) == 2
     labels = [b.text for row in kb.keyboard for b in row]
-    assert labels == [t for row in MENU_COMPACT_ROWS for t in row]
-    assert "當沖" not in labels
-    assert MENU_BTN_AI not in labels
-    bot._set_menu_compact("9", False)
-    kb2 = bot._reply_menu("9")
-    assert [b.text for b in kb2.keyboard[0]] == list(MENU_ROW1)
-    assert [b.text for b in kb2.keyboard[1]] == list(MENU_ROW2)
+    assert labels == list(MENU_ROW1) + list(MENU_ROW2)
+    assert "當沖" in labels
+    assert MENU_BTN_AI in labels
+    assert bot._menu_compact_on("9") is False
 
 
 def test_holdings_intent_not_ai():
@@ -71,7 +61,7 @@ def test_holdings_intent_not_ai():
     assert parse_intent("模擬持倉報告").kind == "ai"
 
 
-def test_compact_and_full_aliases_refresh_keyboard(tmp_path):
+def test_typed_compact_alias_still_hangs_full_keyboard(tmp_path):
     db = str(tmp_path / "m.db")
     init_database(db)
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -92,9 +82,4 @@ def test_compact_and_full_aliases_refresh_keyboard(tmp_path):
 
     asyncio.run(bot.on_text(upd, MagicMock()))
     bot._force_reply_menu.assert_awaited()
-    assert bot._menu_compact_on("9") is True
-
-    bot._force_reply_menu.reset_mock()
-    msg.text = MENU_FULL_ALIASES[0]
-    asyncio.run(bot.on_text(upd, MagicMock()))
     assert bot._menu_compact_on("9") is False
