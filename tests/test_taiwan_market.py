@@ -1267,23 +1267,37 @@ def test_format_screen_market_outlook_html_plain_language():
             ],
         },
     )
+    import re
+    from tg_layout import _disp_w
+
+    def _plain(s: str) -> str:
+        return re.sub(r"<[^>]+>", "", s)
+
+    plain = _plain(html)
     assert "大盤狀況" in html
-    assert "可以照表看黃金買點" in html
+    assert "可以照表看黃金買點" in plain
+    assert "<b>黃金買點</b>" in html
+    assert "<b>重點觀察</b>" in html
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/04")
     assert "昨收" not in html.split("\n", 1)[0]
     assert "(20260904)" not in html
     assert "加權收盤" in html
+    assert "<b>46,551.12</b>" in html
+    assert "<b>+0.32%</b>" in html
+    assert "<b>月線上</b>" in html
     assert "那斯達克" in html
     assert "恐慌指數" in html
     assert "剛到" in html
-    assert "電腦" in html
+    assert "<b>電腦</b>" in html
     assert "輪出" in html
-    assert "半導體" in html
+    assert "<b>半導體</b>" in html
     assert "剛輪到" in html
     assert "────────────────" in html
     assert "外資台指期" in html
-    assert "買多 8,153口" in html
-    assert "買空 90,542口" in html
+    assert "買多 8,153口" in plain
+    assert "買空 90,542口" in plain
+    assert "<b>8,153口</b>" in html
+    assert "<b>90,542口</b>" in html
     assert "比日盤" in html
     assert "到期" not in html
     assert "領買" not in html
@@ -1295,12 +1309,101 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "VIX" not in html
     assert "基差" not in html
     assert "近月" not in html
-    from tg_layout import _disp_w
-    import re
-
     for ln in html.split("\n"):
-        plain = re.sub(r"<[^>]+>", "", ln)
-        assert _disp_w(plain) <= 40, plain
+        assert _disp_w(_plain(ln)) <= 40, ln
+
+
+def test_outlook_screenshot_one_fact_per_line_and_bold():
+    """截圖那則：判斷／收盤／美股各占一行，重要數字粗體，恐慌「正常」不孤行。"""
+    import re
+    from tg_layout import _disp_w
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260917",
+        snap={
+            "ok": True,
+            "as_of": "20260917",
+            "close": 46288.0,
+            "chg1_pct": 0.96,
+            "vs_ma20_pct": 0.2,
+            "regime": "neutral",
+            "falling_risk": 40,
+            "futures": {"close": 46447, "date": "20260917"},
+            "futures_night": {"close": 46382, "date": "20260917"},
+            "futures_te": {"close": 2933, "date": "20260917"},
+            "futures_te_night": {"close": 2921, "date": "20260917"},
+            "tx_foreign_oi": {
+                "date": "20260916",
+                "oi_long": 7805,
+                "oi_short": 84156,
+                "oi_net": -76351,
+            },
+        },
+        us_snap={
+            "ok": True,
+            "regime": "caution",
+            "ixic_pct": -0.01,
+            "sox_pct": 0.63,
+            "vix": 15.49,
+            "vix_pct": -12.54,
+            "tsm_pct": 0.96,
+            "tsm_chg": 3.97,
+            "tsm_px": 417.72,
+            "us_lead_name": "光通訊",
+            "us_lead_pct": 2.19,
+        },
+        now=datetime(2026, 9, 17, 20, 48, tzinfo=ZoneInfo("Asia/Taipei")),
+        flow_maps={
+            "just_rotated": {"塑膠工業": 1},
+            "just_rotated_rows": [{"industry": "塑膠工業", "three_net": 1000}],
+            "inflow_rows": [{"industry": "塑膠工業", "three_net": 1000}],
+            "outflow_rows": [
+                {"industry": "電子零組件業"},
+                {"industry": "居家生活"},
+                {"industry": "綠能環保"},
+            ],
+        },
+    )
+    lines = html.split("\n")
+    plain_lines = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
+    assert any(ln == "<b>偏空</b>，可以看<b>黃金買點</b>和<b>重點觀察</b>，" for ln in lines) or (
+        "<b>偏空</b>" in html and "<b>黃金買點</b>" in html
+    )
+    assert "<b>周帶量少追</b>" in html
+    assert "加權收盤 <b>46,288.00</b>" in html
+    assert "<b>+0.96%</b>　貼著月線" in html
+    assert any(ln.strip() == "<b>大盤偏空</b>" for ln in lines)
+    assert any(ln == "那斯達克 <b>-0.01%</b>" for ln in lines)
+    assert any(ln == "費半 <b>+0.63%</b>" for ln in lines)
+    panic = [ln for ln in lines if "恐慌指數" in ln]
+    assert len(panic) == 1
+    assert "<b>15.49（-12.54%）</b>" in panic[0]
+    assert "正常" in panic[0]
+    assert not any(p.strip() == "正常" for p in plain_lines)
+    assert "台積美股　<b>417.72　+0.96%（+3.97美元）</b>" in html
+    assert "<b>光通訊</b>族群，昨天在美股是領漲" in html
+    assert "電子鏈夜盤<b>平</b>" in html
+    assert "夜盤 <b>46,382</b>" in html
+    assert "電子期夜盤 <b>2,921</b>" in html
+    assert "買多 <b>7,805口</b>" in html
+    assert "買空 <b>84,156口</b>" in html
+    assert "剛到　<b>塑膠</b>" in html
+    assert "<b>電子零組件</b>" in html
+    for ln in lines:
+        assert _disp_w(re.sub(r"<[^>]+>", "", ln)) <= 40, ln
+
+
+def test_outlook_embolden_longest_phrase_first():
+    from taiwan_market import _outlook_embolden
+
+    assert _outlook_embolden("偏空，可以看黃金買點和重點觀察，周帶量少追。") == (
+        "<b>偏空</b>，可以看<b>黃金買點</b>和<b>重點觀察</b>，<b>周帶量少追</b>。"
+    )
+    assert _outlook_embolden("可以照表看黃金買點和重點觀察，周帶量仍少追。") == (
+        "可以照表看<b>黃金買點</b>和<b>重點觀察</b>，<b>周帶量仍少追</b>。"
+    )
 
 
 def test_outlook_tx_foreign_lagged_date_is_plain():
@@ -1415,9 +1518,10 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")
-    assert any("買多 8,153口" in ln for ln in lines)
-    assert any("買空 90,542口" in ln for ln in lines)
+    assert any("買多 <b>8,153口</b>" in ln for ln in lines)
+    assert any("買空 <b>90,542口</b>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
+    assert "<b>指數還中性，電子鏈逆風</b>" in html
 
 
 def test_outlook_keeps_tsm_cash_and_us_lead_group():
@@ -1455,7 +1559,7 @@ def test_outlook_keeps_tsm_cash_and_us_lead_group():
     assert "417.72" in html
     assert "+0.96%" in html
     assert "+3.97美元" in html
-    assert "光通訊族群，昨天在美股是領漲" in html
+    assert "<b>光通訊</b>族群，昨天在美股是領漲" in html
     assert "1.23%" not in html
     for ln in html.split("\n"):
         plain = re.sub(r"<[^>]+>", "", ln)
