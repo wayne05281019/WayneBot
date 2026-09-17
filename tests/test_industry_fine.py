@@ -202,3 +202,14 @@ def test_parse_category_index_and_bulk_sync(tmp_path, monkeypatch):
     assert cached["ok"] == 0
     assert set(calls) == {"2330", "2408", "9999"}
 
+
+def test_title_bar_shows_cmoney_fine_not_swallowed_by_official():
+    from wayne_navigator import fit_title_bar_extras
+
+    tw = lambda t, fs, weight=900: max(len(str(t)) * fs * 0.35, 1.0)
+    extras = fit_title_bar_extras(
+        "電子上游-IC-代工", "", 120, tw, lead="上市（半導體業）龍頭"
+    )
+    labels = [t for t, *_ in extras]
+    assert any("代工" in t or "IC" in t for t in labels)
+

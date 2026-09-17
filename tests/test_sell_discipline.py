@@ -38,6 +38,19 @@ def test_lianyi_desync_hi_price_not_hi_temp():
     assert "不是叫你買" in lines[0]
 
 
+def test_first_direct_cut_after_skips_entry_bar():
+    """進場當天即使已不同步也不算出場；下一根 20 高非最高溫才減碼。"""
+    from sell_discipline import first_direct_cut_after, sell_action_series
+
+    hl = ["No", "No", "20高", "20高", "No"]
+    temp = ["No", "No", "升溫", "升溫", "No"]
+    acts = sell_action_series(hl, temp)
+    assert acts[2] == "直接減碼"
+    assert first_direct_cut_after(hl, temp, entry_i=2, max_hold=60) == 3
+    assert first_direct_cut_after(hl, temp, entry_i=3, max_hold=60) == 4
+    assert first_direct_cut_after(hl, temp, entry_i=4, max_hold=60) is None
+
+
 def test_wanhai_desync_after_sync():
     """萬海 8/24 同步、8/25 最高價＋降溫 → 直接減碼。"""
     hl = ["No"] * 6 + ["20高", "20高"]

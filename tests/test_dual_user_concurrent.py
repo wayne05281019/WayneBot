@@ -562,6 +562,8 @@ def test_render_stock_pack_paths_include_uid_and_pid():
 
     src = inspect.getsource(render_stock_pack)
     assert "unique_chart_path" in src
+    assert "generate_chart(" not in src
+    assert "generate_chips_image" not in src
     assert "{sid}_glance.png" not in src
     assert "{sid}_card.png" not in src
     p1 = unique_chart_path("data/charts", "2330", "glance", str(WAYNE_UID))

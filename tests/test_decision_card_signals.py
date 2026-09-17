@@ -241,6 +241,81 @@ def test_card_daily_stance():
     assert "觀察" not in txt
 
 
+def test_relative_buy_kind_lowest_vs_pullback():
+    """貼 20 低＋獲利已高＝回檔；貼 20 低＋獲利≈0／剛離零＝相對最低帶。不是紅箭頭。"""
+    from decision_card_signals import relative_buy_kind
+
+    kind, txt = relative_buy_kind(profit_pct=10.0, hl="20低", alert="K20低")
+    assert kind == "pullback"
+    assert "不是相對最低" in txt
+    txt, sk = card_daily_stance(profit_pct=10.0, hl="20低", alert="K20低", temp=7.8)
+    assert sk == "wait"
+    assert "不是相對最低" in txt
+
+    kind, txt = relative_buy_kind(profit_pct=0.0, hl="20低", alert="K20低")
+    assert kind == "at_floor"
+    assert "還沒離零" in txt
+    txt, sk = card_daily_stance(profit_pct=0.0, hl="20低", alert="K20低", temp=3.0)
+    assert sk == "watch"
+    assert "還沒離零" in txt
+
+    kind, txt = relative_buy_kind(
+        profit_pct=1.2, hl="20低", alert="K20低", prev_profit_pct=0.0
+    )
+    assert kind == "just_left"
+    assert "剛離零" in txt
+    assert "減碼" in txt
+    txt, sk = card_daily_stance(
+        profit_pct=1.2, hl="20低", alert="K20低", temp=8.0, prev_profit_pct=0.0
+    )
+    assert sk == "watch"
+    assert "剛離零" in txt
+    assert "減碼" in txt
+
+
+def test_leave_zero_exit_hint_only_on_golden_buy_bucket():
+    from decision_card_signals import LEAVE_ZERO_EXIT_HINT, leave_zero_exit_hint
+
+    assert "直接減碼" in LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="黃金買點") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="買點") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="剛脫離零") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="leave_zero") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="重點觀察") == ""
+    assert leave_zero_exit_hint(bucket_label="還在零") == ""
+    assert leave_zero_exit_hint(bucket_label="優先看") == ""
+
+
+def test_leave_zero_trade_plan_buy_only():
+    from decision_card_signals import leave_zero_trade_plan
+
+    cut_in, cut_out = leave_zero_trade_plan(
+        close=100.0, hi20_close=120.0, bucket_label="買點", entry_stage="buy"
+    )
+    assert "切入" in cut_in and "100" in cut_in
+    assert "20高" in cut_out and "120" in cut_out
+    assert "直接減碼" in cut_out
+    empty_in, empty_out = leave_zero_trade_plan(
+        close=50.2, hi20_close=55.0, bucket_label="還在零", entry_stage="watch"
+    )
+    assert empty_in == "" and empty_out == ""
+    other_in, other_out = leave_zero_trade_plan(
+        close=80.0, hi20_close=90.0, bucket_label="優先看"
+    )
+    assert other_in == "" and other_out == ""
+
+
+def test_4739_sep15_pullback_not_relative_low():
+    """康普 9/15：收 76 貼 20 低、60 曆日獲利 10.0%＝回檔，不是相對最低買點。"""
+    from decision_card_signals import relative_buy_kind
+
+    kind, txt = relative_buy_kind(profit_pct=10.0, hl="20低", alert="K20低")
+    assert kind == "pullback"
+    assert "不是相對最低" in txt
+    pct = (76.0 - 69.1) / 69.1 * 100.0
+    assert abs(pct - 10.0) < 0.05
+
+
 def test_4915_sep4_leave_zero_is_wait_not_buy():
     """9/4 致伸：雙綠脫離可進起漲；貼 20 高、溫度未滿 80＝等待，不是買訊。"""
     ok, reason = leave_zero_screen_ok(0.3, 2.4, yest_alert="60低", today_alert="K20高")

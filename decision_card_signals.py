@@ -483,6 +483,94 @@ def profit_left_zero_highlight(prev_profit_pct: float, today_profit_pct: float) 
     return prev <= 0.05 and today > 0.05
 
 
+def relative_buy_kind(
+    *,
+    profit_pct: float,
+    hl: str = "",
+    alert: str = "",
+    prev_profit_pct: float | None = None,
+) -> Tuple[str, str]:
+    """現在是不是相對最低買點帶。只認高低卡＋60曆日獲利，不是紅箭頭、不是下單。
+
+    kind：at_floor＝在谷底獲利還沒離零；just_left＝剛離零；pullback＝貼20低但離谷底已有一段；空字串＝不標。
+    """
+    hl = str(hl or "")
+    alert = str(alert or "")
+    try:
+        p = float(profit_pct or 0)
+    except (TypeError, ValueError):
+        p = 0.0
+    at_table_low = hl in ("20低", "10低") or alert in ("60低", "K20低")
+    at_short_high = hl in ("20高", "10高", "5高")
+    if at_short_high:
+        return "", ""
+    if at_table_low and p > 5.0:
+        return "pullback", "貼20低、不是相對最低"
+    just_left = False
+    if prev_profit_pct is not None:
+        just_left = bool(profit_left_zero_highlight(prev_profit_pct, p) and p <= LEAVE_ZERO_SCREEN_MAX_PCT)
+    if at_table_low and p <= 2.5:
+        if just_left:
+            return "just_left", "相對最低剛離零，不同步就減碼"
+        if is_profit_display_zero(p):
+            return "at_floor", "在相對最低，獲利還沒離零"
+        return "at_floor", "在相對最低帶，先看表"
+    if just_left:
+        return "just_left", "相對最低剛離零，不同步就減碼"
+    return "", ""
+
+
+# 黃金買點進場時預告如何賣。不是買訊、不改桶、不自動賣。
+LEAVE_ZERO_EXIT_HINT = "出場　最高價＝20高 vs 最高溫，不同步就直接減碼"
+LEAVE_ZERO_BUCKET_LABELS = frozenset(
+    {"黃金買點", "剛離零", "剛脫離零", "leave_zero", "買點"}
+)
+
+
+def leave_zero_exit_hint(*, bucket_label: str = "") -> str:
+    """黃金買點名單才預告出場。其他桶空字串。"""
+    key = str(bucket_label or "").strip()
+    if key in LEAVE_ZERO_BUCKET_LABELS:
+        return LEAVE_ZERO_EXIT_HINT
+    return ""
+
+
+def _fmt_trade_px(val) -> str:
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if v <= 0:
+        return ""
+    if v >= 100:
+        return f"{v:.1f}".rstrip("0").rstrip(".")
+    return f"{v:.2f}"
+
+
+def leave_zero_trade_plan(
+    *,
+    close=None,
+    hi20_close=None,
+    bucket_label: str = "",
+    entry_stage: str = "",
+) -> tuple[str, str]:
+    """買點才給切入價／出場價。還在零與其他桶空。進場＝昨收限價；出場＝如何賣。"""
+    stage = str(entry_stage or "").strip()
+    if stage == "watch":
+        return "", ""
+    label = str(bucket_label or "").strip()
+    if stage != "buy" and label not in LEAVE_ZERO_BUCKET_LABELS:
+        return "", ""
+    entry = _fmt_trade_px(close)
+    hi20 = _fmt_trade_px(hi20_close)
+    cut_in = f"切入　≤ {entry}（昨收）" if entry else ""
+    if hi20:
+        cut_out = f"出場　20高 {hi20}；不同步就直接減碼"
+    else:
+        cut_out = leave_zero_exit_hint(bucket_label=label or "買點")
+    return cut_in, cut_out
+
+
 def card_daily_stance(
     *,
     profit_pct: float,
@@ -493,6 +581,7 @@ def card_daily_stance(
     bias: float = 0.0,
     badges: list | None = None,
     near_high: bool = False,
+    prev_profit_pct: float | None = None,
 ) -> Tuple[str, str]:
     """今日態度：只認高低卡表，不複製 Cary 紅箭頭當買訊、也不是下單指令。
 
@@ -517,6 +606,9 @@ def card_daily_stance(
         b = 0.0
     at_high = bool(near_high) or hl in ("20高", "10高") or alert == "K20高"
     at_60_low = alert == "60低" or hl == "60低"
+    rel_kind, rel_txt = relative_buy_kind(
+        profit_pct=p, hl=hl, alert=alert, prev_profit_pct=prev_profit_pct
+    )
     if (
         any("溫度≥80" in x or "價溫背離" in x for x in badges)
         or (t >= TEMP_ATH_WATCH and at_high)
@@ -529,6 +621,10 @@ def card_daily_stance(
         return "漲多了，今天別追", "avoid"
     if at_high:
         return "貼著高檔，先等", "wait"
+    if rel_kind == "pullback" and rel_txt:
+        return rel_txt, "wait"
+    if rel_kind in ("at_floor", "just_left") and rel_txt:
+        return rel_txt, "watch"
     if at_60_low and -1.5 <= p <= 2.5 and b < -10:
         return "靠近低點，先看表", "watch"
     if at_60_low:
