@@ -1652,6 +1652,28 @@ def _judgment_line(fired: Dict[str, Any], ask: str, db_path: str) -> str:
         bits.append("這檔不數浪，用自己的量價／關鍵K")
     else:
         bits.append("這句沒點檔：只走他自己點過的大盤位")
+    asked = [
+        p
+        for p in (
+            "47548",
+            "46747",
+            "46767",
+            "46626",
+            "45398",
+            "43500",
+            "45839",
+            "46506",
+            "48218",
+            "47578",
+        )
+        if p in (ask or "")
+    ]
+    if asked:
+        bits.append(
+            "這句問的是他自己點過的"
+            + "／".join(asked[:3])
+            + "，如果句，未收不當官方"
+        )
     watch = ""
     if _ask_wants_stage(ask, named) and db_path:
         try:
@@ -1669,8 +1691,9 @@ def _judgment_line(fired: Dict[str, Any], ask: str, db_path: str) -> str:
 
 
 def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
-    """話筒開口第一句：五件交叉收成一句，並標未收／如果句。"""
+    """話筒開口第一句＝判斷那一條，並標未收／如果句。"""
     fired = fired or {}
+    core = str(fired.get("judge") or "").rstrip("。")
     five = " ".join(str(fired.get("five") or "").split())
     nest = ""
     doubt = ""
@@ -1681,20 +1704,23 @@ def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
         elif nid == "doubt":
             doubt = str(step.get("text") or "")
     rail = str(fired.get("rail") or "").strip()
-    blob = five + nest + str(fired.get("think") or "") + doubt + rail
-    core = re.sub(r"五件交叉：", "", five)
-    parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
-    core = "。".join(parts[:2]) if parts else ""
+    blob = core + five + nest + str(fired.get("think") or "") + doubt + rail
     if not core:
-        core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
-    rail_bit = rail.rstrip("。")
-    if rail_bit:
-        core = core + "。" + rail_bit if core else rail_bit
-    core = _clip(core, 200 if rail_bit else 140).rstrip("。…")
+        core = re.sub(r"五件交叉：", "", five)
+        parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
+        core = "。".join(parts[:2]) if parts else ""
+        if not core:
+            core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
+        rail_bit = rail.rstrip("。")
+        if rail_bit:
+            core = core + "。" + rail_bit if core else rail_bit
+        core = _clip(core, 200 if rail_bit else 140).rstrip("。…")
+    else:
+        core = _clip(core, 220).rstrip("。…")
     flags: List[str] = []
     if any(k in blob for k in ("如果句", "未確認", "還是如果")):
         flags.append("如果句")
-    if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收")):
+    if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收", "不下判")):
         flags.append("未收")
     if any(k in blob for k in ("還沒走完", "未走完不准", "對質 偏", "演算對質 overlay")):
         flags.append("對質")
@@ -1841,8 +1867,8 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         "firm": bool((brief.get("audit") or {}).get("firm")),
         "rail": str(brief.get("rail") or ""),
     }
-    out["lead"] = format_five_lead(out)
     out["judge"] = _judgment_line(out, q, db_path)
+    out["lead"] = format_five_lead(out)
     if len(_FIRE_CACHE) > 4:
         _FIRE_CACHE.clear()
     _FIRE_CACHE[key] = (now, out)

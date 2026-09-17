@@ -22,7 +22,9 @@ def test_system_requires_neuron_chain():
     assert "演算" in SYSTEM
     assert "不是預測保證" in SYSTEM or "不是保證" in SYSTEM
     assert "重讀" in SYSTEM
-    assert "開口｜" in SYSTEM or "開口第一句" in SYSTEM
+    assert "開口第一句" in SYSTEM or "判斷｜" in SYSTEM
+    assert "09:23" not in SYSTEM
+    assert "雍智" not in SYSTEM
 
 
 def test_chain_six_neurons_in_order_for_emc():
@@ -885,8 +887,10 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     assert empty == ""
     emc = fire_chain("", "台光電怎麼看")
     el = emc.get("lead") or ""
-    assert "強勢整理" in el or "續抱" in el or "沒破線" in el
+    assert "問的是 2383" in el
+    assert "不數浪" in el
     assert "不是買訊" in el
+    assert "他還在等自己點過的" not in el
     assert answer_biaoke(":memory:", "你好") == "在，你說。"
     assert answer_biaoke(":memory:", "今晚吃什麼") == OFFTOPIC
     from biaoke_digest import format_latest_focus
