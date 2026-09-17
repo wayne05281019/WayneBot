@@ -75,7 +75,7 @@ def yahoo_exchange(stock_id: str, db_path: Optional[str] = None) -> str:
 
 
 def listed_kline_ok(stock_id: str, db_path: Optional[str] = None) -> bool:
-    """有代號就掛自家 /k/ 日K頁。興櫃用官方日均價，不是沒圖。"""
+    """有代號就掛奇摩日K。興櫃一樣開該檔技術分析頁。"""
     return bool(str(stock_id or "").strip())
 
 
@@ -86,25 +86,17 @@ def kline_page_url(
     *,
     span: int | None = None,
 ) -> str:
-    """查股圖下 K線：開自家可滑動日K（疊導航箭頭）。興櫃用官方日均價。不是外站圖表。"""
+    """查股圖下 K線：開奇摩股市同一檔日K（技術分析頁預設日線）。不是 TradingView。"""
     sid = str(stock_id or "").strip()
     if not sid or not listed_kline_ok(sid, db_path):
         return ""
-    from config import get_public_base_url
-
-    base = (base_url or get_public_base_url()).rstrip("/")
-    url = f"{base}/k/{sid}"
-    try:
-        n = int(span) if span is not None else 0
-    except (TypeError, ValueError):
-        n = 0
-    if n > 0:
-        url += f"?n={n}"
-    return url
+    _ = (base_url, span)
+    ex = yahoo_exchange(sid, db_path)
+    return f"https://tw.stock.yahoo.com/quote/{sid}.{ex}/technical-analysis"
 
 
 def yahoo_urls(stock_id: str, db_path: Optional[str] = None) -> Tuple[str, str]:
-    """兩個都回奇摩報價頁。K線走自家 /k/，不再另開奇摩技術分析。"""
+    """兩個都回奇摩報價頁。K線鈕另開技術分析日K。"""
     sid = str(stock_id or "").strip()
     ex = yahoo_exchange(sid, db_path)
     web = f"https://tw.stock.yahoo.com/quote/{sid}.{ex}"

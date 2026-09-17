@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""查股圖下「K線」＝自家這一檔圖。一進日K＋量，可改 15／60 分與五日／十日／月／季。興櫃用官方日均價。"""
+"""查股圖下「K線」＝奇摩股市同一檔日K。自家 /k/ 頁仍可開，不當按鈕。"""
 from __future__ import annotations
 
 import sqlite3
@@ -74,16 +74,20 @@ def test_no_tradingview_product_hooks():
         assert "tv.js" not in src, path
 
 
-def test_kline_url_is_own_page(tmp_path):
+def test_kline_url_is_yahoo_daily(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     assert yahoo_exchange("2330", db) == "TW"
     assert listed_kline_ok("2330", db) is True
-    assert kline_page_url("2330", db) == "https://waynebot-service.onrender.com/k/2330"
+    assert kline_page_url("2330", db) == (
+        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
+    )
     assert kline_page_url("2330", db, span=180) == (
-        "https://waynebot-service.onrender.com/k/2330?n=180"
+        "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
     )
     assert listed_kline_ok("6488", db) is True
-    assert kline_page_url("6488", db) == "https://waynebot-service.onrender.com/k/6488"
+    assert kline_page_url("6488", db) == (
+        "https://tw.stock.yahoo.com/quote/6488.TWO/technical-analysis"
+    )
     web, extra = yahoo_urls("2330", db)
     assert web.endswith("/quote/2330.TW")
     assert extra == web
@@ -93,8 +97,12 @@ def test_kline_url_is_own_page(tmp_path):
 def test_kline_includes_emerging(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     assert listed_kline_ok("3595", db) is True
-    assert kline_page_url("3595", db) == "https://waynebot-service.onrender.com/k/3595"
-    assert kline_page_url("3595", db, span=180).endswith("/k/3595?n=180")
+    assert kline_page_url("3595", db) == (
+        "https://tw.stock.yahoo.com/quote/3595.TWO/technical-analysis"
+    )
+    assert kline_page_url("3595", db, span=180).endswith(
+        "/quote/3595.TWO/technical-analysis"
+    )
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._hub_keyboard("3595", em=True)
@@ -119,7 +127,7 @@ def test_hub_kline_is_https_url_button(tmp_path):
     kb = bot._hub_keyboard("2330")
     kline = next(b for r in kb.inline_keyboard for b in r if b.text == "K線")
     assert kline.callback_data is None
-    assert kline.url == "https://waynebot-service.onrender.com/k/2330"
+    assert kline.url == "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
     assert kline.url.startswith("https://")
     nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
     assert nav.url is None
@@ -127,7 +135,7 @@ def test_hub_kline_is_https_url_button(tmp_path):
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 
-def test_etf_letter_suffix_stays_in_k_url(tmp_path):
+def test_etf_letter_suffix_stays_in_yahoo_k_url(tmp_path):
     db = _db(str(tmp_path / "m.db"))
     conn = sqlite3.connect(db)
     conn.execute(
@@ -138,7 +146,9 @@ def test_etf_letter_suffix_stays_in_k_url(tmp_path):
     conn.commit()
     conn.close()
     _EX_CACHE.clear()
-    assert kline_page_url("00631L", db).endswith("/k/00631L")
+    assert kline_page_url("00631L", db) == (
+        "https://tw.stock.yahoo.com/quote/00631L.TW/technical-analysis"
+    )
 
 
 def test_kline_page_defaults_daily_and_has_periods(tmp_path):
