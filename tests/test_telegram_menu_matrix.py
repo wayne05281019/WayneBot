@@ -19,7 +19,6 @@ MENU_BUTTONS = [
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
     ("資金", "flow_cmd"),
-    ("說明", "help_cmd"),
     (MENU_BTN_STREAK, "streak_cmd"),
     (MENU_BTN_MARKET, "market_cmd"),
     (MENU_BTN_REPORT, "report_cmd"),

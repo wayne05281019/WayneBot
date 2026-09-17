@@ -27,7 +27,6 @@ from bot_servers import (
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
     MENU_BTN_STREAK,
-    MENU_COMPACT_ROWS,
     MENU_FULL_ALIASES,
     MENU_ROW1,
     MENU_ROW2,
@@ -317,20 +316,19 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     db = str(tmp_path / "btns.db")
     bot = _bot(db)
     assert ALL_BUTTONS == [
-        "說明",
         "海選",
         "持股",
         "觀察",
         MENU_BTN_CARD,
         MENU_BTN_REPORT,
-        MENU_ROW1[-1],
+        "飆大",
         MENU_BTN_MARKET,
         "資金",
         "當沖",
         "隔日沖",
         MENU_BTN_AI,
         MENU_BTN_STREAK,
-        MENU_ROW2[-1],
+        "剛脫離零",
     ]
 
     async def run():
@@ -356,7 +354,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
+        for need in ("海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"
@@ -382,10 +380,9 @@ def test_help_topics_and_compact_isolated(tmp_path):
         bot._set_menu_compact(BRO, False)
 
     asyncio.run(run())
-    wayne_kb = [b.text for row in bot._reply_menu(WAYNE).keyboard for b in row]
+    wayne_kb = [[b.text for b in row] for row in bot._reply_menu(WAYNE).keyboard]
     bro_kb = [[b.text for b in row] for row in bot._reply_menu(BRO).keyboard]
-    assert wayne_kb == [t for row in MENU_COMPACT_ROWS for t in row]
-    assert bro_kb == [list(MENU_ROW1), list(MENU_ROW2)]
+    assert wayne_kb == bro_kb == [list(MENU_ROW1), list(MENU_ROW2)]
     for alias in MENU_FULL_ALIASES:
         assert alias
 

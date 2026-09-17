@@ -467,7 +467,7 @@ def test_l3_em_hub_omits_chips_fund_industry():
     assert "導航圖" in labels
     assert "籌碼" not in labels
     assert "營收" not in labels
-    assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入", "說明"]
+    assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入"]
 
 
 def test_l3_listed_hub_has_chips():
@@ -794,7 +794,7 @@ def test_l6_menu_row_has_streak_help_report():
     kb = WayneTelegramBot._reply_menu(bot)
     labels = [b.text for row in kb.keyboard for b in row]
     assert MENU_BTN_STREAK in labels
-    assert "說明" in labels
+    assert "海選" in labels
     assert MENU_BTN_REPORT in labels
 
 
@@ -1013,7 +1013,7 @@ def test_l9_menu_pops_pending():
 
     asyncio.run(run())
     assert actor not in bot._pending
-    bot.help_cmd.assert_awaited()
+    bot.help_cmd.assert_not_awaited()
 
 
 def test_l9_why_escapes_buy_pending():
@@ -1245,7 +1245,7 @@ def test_l9c_help_topic_layout_and_jargon(topic):
 
 @pytest.mark.parametrize(
     "label",
-    ["說明", "海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零"],
+    ["海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零"],
 )
 def test_l9c_twelve_buttons_named_in_guide_and_row_help(label):
     from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text

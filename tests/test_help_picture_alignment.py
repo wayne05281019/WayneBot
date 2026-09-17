@@ -7,16 +7,18 @@ from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_CARD,
+    MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
+    MENU_BTN_SLOT,
     MENU_BTN_STREAK,
     MENU_LAYOUT_VERSION,
     WayneTelegramBot,
 )
 from picture_guide import PAGE_SLUGS, page_copy_blob
 
-ROW1 = ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE]
-ROW2_LABELS = [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
+ROW1 = ["海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET]
+ROW2_LABELS = ["資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO]
 GUIDE_PAGE_ORDER = (
     "cover",
     "menu",
@@ -37,10 +39,8 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ROW1
     assert row2[:6] == ROW2_LABELS
-    from bot_servers import MENU_BTN_LEAVE_ZERO
-
-    assert row2[6] == MENU_BTN_LEAVE_ZERO
-    assert MENU_LAYOUT_VERSION == "22"
+    assert row2[6] == MENU_BTN_SLOT
+    assert MENU_LAYOUT_VERSION == "24"
 
     guide = HELP_TOPICS["guide"]
     menu = HELP_TOPICS["menu"]
@@ -48,11 +48,11 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     row2_help = HELP_TOPICS["row2"]
     blob = page_copy_blob()
     assert "連買區" in guide and "說明" in guide
-    assert "說明／海選" in menu or "說明／海選／持股" in menu
-    assert row1_help.index("① 說明") < row1_help.index("② 海選")
-    assert row2_help.index("① 大盤") < row2_help.index("⑥ 連買區")
-    assert "說明　海選　持股　觀察　刷新　回報　飆大" in blob
-    assert "大盤　資金　當沖　隔日沖　AI倉　連買區　剛脫離零" in blob
+    assert "海選／持股" in menu
+    assert row1_help.index("① 海選") < row1_help.index("② 持股")
+    assert row2_help.index("① 資金") < row2_help.index("⑤ 連買區")
+    assert "海選　持股　觀察　刷新　回報　飆大　大盤" in blob
+    assert "資金　當沖　隔日沖　AI倉　連買區　剛脫離零" in blob
     assert "一張圖卡" in blob
     assert "圖卡" in HELP_TOPICS["industry"]
     assert "小框" in HELP_TOPICS["industry"]

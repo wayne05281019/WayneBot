@@ -24,8 +24,11 @@ def test_refresh_last_button_keeps_decision_card_alias():
 def test_reply_menu_is_two_rows_not_three():
     from bot_servers import (
         MENU_BTN_AI,
+        MENU_BTN_BIAOKE_FACE,
+        MENU_BTN_LEAVE_ZERO,
         MENU_BTN_MARKET,
         MENU_BTN_REPORT,
+        MENU_BTN_SLOT,
         MENU_BTN_STREAK,
         MENU_LAYOUT_VERSION,
         WayneTelegramBot,
@@ -34,25 +37,21 @@ def test_reply_menu_is_two_rows_not_three():
     assert MENU_BTN_MARKET == "大盤"
     assert MENU_BTN_AI == "AI倉"
     assert MENU_BTN_REPORT == "回報"
-    assert MENU_LAYOUT_VERSION == "22"
+    assert MENU_LAYOUT_VERSION == "24"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
     row1 = [btn.text for btn in kb.keyboard[0]]
     row2 = [btn.text for btn in kb.keyboard[1]]
     assert len(row1) == 7 and len(row2) == 7
-    from bot_servers import MENU_BTN_BIAOKE_FACE
-
-    assert row1 == ["說明", "海選", "持股", "觀察", "刷新", MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE]
-    assert row2[:6] == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
-    from bot_servers import MENU_BTN_LEAVE_ZERO
-
-    assert row2[6] == MENU_BTN_LEAVE_ZERO
-    assert row1[0] == "說明"
-    assert row1[-1] == MENU_BTN_BIAOKE_FACE
-    assert row1[-2] == MENU_BTN_REPORT
-    assert row2[-1] == MENU_BTN_LEAVE_ZERO
-    assert row2[-2] == MENU_BTN_STREAK
+    assert row1 == ["海選", "持股", "觀察", "刷新", MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET]
+    assert row2[:6] == ["資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO]
+    assert row2[6] == MENU_BTN_SLOT
+    assert row1[0] == "海選"
+    assert row1[-1] == MENU_BTN_MARKET
+    assert row1[-2] == MENU_BTN_BIAOKE_FACE
+    assert row2[-1] == MENU_BTN_SLOT
+    assert row2[-2] == MENU_BTN_LEAVE_ZERO
 
 
 def test_help_guide_covers_all_main_buttons():
@@ -69,7 +68,6 @@ def test_help_guide_covers_all_main_buttons():
         "海選",
         "隔日沖",
         "資金",
-        "說明",
         "連買區",
         "回報",
         "大盤",
@@ -338,15 +336,15 @@ def test_pin_reply_menu_keeps_keyboard_message():
     assert "兩排主選單" not in sent
     markup = msg.reply_text.await_args.kwargs.get("reply_markup")
     assert markup is not None
-    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_CARD, MENU_BTN_LEAVE_ZERO, MENU_BTN_REPORT, MENU_BTN_STREAK
+    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_LEAVE_ZERO, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_SLOT, MENU_BTN_STREAK
 
     row1 = [b.text for b in markup.keyboard[0]]
     row2 = [b.text for b in markup.keyboard[1]]
-    assert row1[-1] == MENU_BTN_BIAOKE_FACE
-    assert row1[-2] == MENU_BTN_REPORT
-    assert row1[0] == "說明"
-    assert row2[-2] == MENU_BTN_STREAK
-    assert row2[-1] == MENU_BTN_LEAVE_ZERO
+    assert row1[-1] == MENU_BTN_MARKET
+    assert row1[-2] == MENU_BTN_BIAOKE_FACE
+    assert row1[0] == "海選"
+    assert row2[-2] == MENU_BTN_LEAVE_ZERO
+    assert row2[-1] == MENU_BTN_SLOT
 
 
 def test_pin_reply_menu_does_not_explain_keyboard_location():
@@ -364,7 +362,7 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
-    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_LEAVE_ZERO, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_STREAK, WayneTelegramBot
+    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_LEAVE_ZERO, MENU_BTN_MARKET, MENU_BTN_REPORT, MENU_BTN_SLOT, MENU_BTN_STREAK, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot._dismiss_menu_transients = AsyncMock()
@@ -383,12 +381,12 @@ def test_refresh_silent_sends_reply_keyboard_with_streak():
     assert "Remove" not in type(markup).__name__
     row1 = [b.text for b in markup.keyboard[0]]
     row2 = [b.text for b in markup.keyboard[1]]
-    assert row1[-1] == MENU_BTN_BIAOKE_FACE
-    assert row1[-2] == MENU_BTN_REPORT
-    assert row1[0] == "說明"
-    assert row2[-2] == MENU_BTN_STREAK
-    assert row2[-1] == MENU_BTN_LEAVE_ZERO
-    assert row2[0] == MENU_BTN_MARKET
+    assert row1[-1] == MENU_BTN_MARKET
+    assert row1[-2] == MENU_BTN_BIAOKE_FACE
+    assert row1[0] == "海選"
+    assert row2[-2] == MENU_BTN_LEAVE_ZERO
+    assert row2[-1] == MENU_BTN_SLOT
+    assert row2[0] == "資金"
     bot._mark_menu_layout_ok.assert_called_once_with("1")
 
 
@@ -424,14 +422,14 @@ def test_force_reply_menu_invalidates_layout_cache():
 
 
 def test_inline_fallback_keyboard_is_two_row_menu():
-    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_REPORT, WayneTelegramBot
+    from bot_servers import MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_REPORT, WayneTelegramBot
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._keyboard()
     assert kb is not None
     row1 = [b.text for b in kb.keyboard[0]]
-    assert row1[-1] == MENU_BTN_BIAOKE_FACE
-    assert row1[-2] == MENU_BTN_REPORT
+    assert row1[-1] == MENU_BTN_MARKET
+    assert row1[-2] == MENU_BTN_BIAOKE_FACE
 
 
 def test_streak_kind_inline_magic_three_choices():
