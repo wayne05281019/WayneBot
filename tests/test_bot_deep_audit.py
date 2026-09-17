@@ -191,6 +191,21 @@ def test_help_callback_from_picture_is_cancelled_noop():
     upd.callback_query.answer.assert_awaited()
 
 
+def test_picture_guide_callback_is_cancelled_noop():
+    bot = _bot()
+    bot._show_picture_guide_page = AsyncMock()
+    upd, msg = _cb("pg:2-3")
+
+    async def run():
+        await bot.on_callback(upd, MagicMock())
+
+    asyncio.run(run())
+    bot._show_picture_guide_page.assert_not_awaited()
+    msg.reply_photo.assert_not_awaited()
+    msg.edit_media = getattr(msg, "edit_media", AsyncMock())
+    upd.callback_query.answer.assert_awaited()
+
+
 def test_hx_deletes_help_message():
     bot = _bot()
     upd, msg = _cb("hx")

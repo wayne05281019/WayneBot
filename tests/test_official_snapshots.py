@@ -288,14 +288,7 @@ def test_increment_and_glance_wire_official():
     assert "drop_paused_daytrade" in scan
 
 
-def test_help_does_not_promise_main_cost():
+def test_help_topics_cancelled():
     from bot_servers import HELP_TOPICS
 
-    guide = HELP_TOPICS["guide"]
-    stock = HELP_TOPICS["stock"]
-    assert "就不會出現主力成本" in stock
-    assert "會畫主力成本" not in guide + stock
-    assert "本益" in stock
-    assert "融資融券餘額" in stock
-    assert "被動／主動／正2／反1" in stock
-    assert "折溢價" in stock
+    assert HELP_TOPICS == {}

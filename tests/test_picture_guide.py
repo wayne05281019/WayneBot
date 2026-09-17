@@ -206,86 +206,64 @@ def test_guide_assets_caption_bar_stripped():
         assert cream / n < 0.04, f"{name} leftover caption {cream}/{n}"
 
 
-def test_send_picture_guide_one_page_with_next_button(tmp_path):
+def test_send_picture_guide_is_cancelled_noop():
     import asyncio
     import inspect
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import AsyncMock, MagicMock
 
     from bot_servers import WayneTelegramBot
 
     src = inspect.getsource(WayneTelegramBot._send_picture_guide)
     assert "reply_media_group" not in src
-    dest = str(tmp_path / "g")
-    paths = render_picture_guide(dest, force=True)
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.charts_dir = dest
     msg = MagicMock()
-    status = MagicMock()
-    status.delete = AsyncMock()
-    msg.reply_text = AsyncMock(return_value=status)
+    msg.reply_text = AsyncMock()
     msg.reply_html = AsyncMock()
     msg.reply_media_group = AsyncMock()
     msg.reply_photo = AsyncMock()
     msg.edit_media = AsyncMock()
 
     async def _run():
-        with patch("picture_guide.render_picture_guide", return_value=paths):
-            await bot._send_picture_guide(msg)
+        await bot._send_picture_guide(msg)
 
     asyncio.run(_run())
-    msg.reply_photo.assert_awaited()
+    msg.reply_photo.assert_not_awaited()
+    msg.reply_text.assert_not_awaited()
+    msg.reply_html.assert_not_awaited()
     msg.reply_media_group.assert_not_called()
-    kwargs = msg.reply_photo.await_args.kwargs
-    assert not (kwargs.get("caption") or "")
-    assert "圖文 1／" not in str(kwargs)
-    labels = [b.text for row in kwargs["reply_markup"].inline_keyboard for b in row]
-    assert any("第 2 張 →" in t for t in labels)
-    assert not any("← 第" in t for t in labels)
 
 
-def test_picture_guide_keyboard_middle_and_last():
+def test_picture_guide_keyboard_is_empty():
     from bot_servers import WayneTelegramBot
     from picture_guide import PAGE_SLUGS
 
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     n = len(PAGE_SLUGS)
     mid = bot._picture_guide_keyboard(4, n)
-    labels = [b.text for row in mid.inline_keyboard for b in row]
-    assert any("← 第 4 張" in t for t in labels)
-    assert any("第 6 張 →" in t for t in labels)
     last = bot._picture_guide_keyboard(n - 1, n)
-    labels = [b.text for row in last.inline_keyboard for b in row]
-    assert any(f"← 第 {n - 1} 張" in t for t in labels)
-    assert not any("→" in t for t in labels if f"第 {n} 張" in t or t.startswith("第"))
+    assert not mid.inline_keyboard
+    assert not last.inline_keyboard
 
 
-def test_picture_guide_flip_edits_same_message(tmp_path):
+def test_picture_guide_flip_is_cancelled_noop(tmp_path):
     import asyncio
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import AsyncMock, MagicMock
 
     from bot_servers import WayneTelegramBot
 
-    dest = str(tmp_path / "g")
-    paths = render_picture_guide(dest, force=True)
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.charts_dir = dest
+    bot.charts_dir = str(tmp_path / "g")
     msg = MagicMock()
     msg.edit_media = AsyncMock()
     msg.reply_photo = AsyncMock()
     msg.delete = AsyncMock()
 
     async def _run():
-        with patch("picture_guide.render_picture_guide", return_value=paths):
-            await bot._show_picture_guide_page(msg, 1, edit=True)
+        await bot._show_picture_guide_page(msg, 1, edit=True)
 
     asyncio.run(_run())
-    msg.edit_media.assert_awaited()
+    msg.edit_media.assert_not_awaited()
     msg.reply_photo.assert_not_called()
-    media = msg.edit_media.await_args.kwargs["media"]
-    assert not (getattr(media, "caption", None) or "")
-    labels = [b.text for row in msg.edit_media.await_args.kwargs["reply_markup"].inline_keyboard for b in row]
-    assert any("← 第 1 張" in t for t in labels)
-    assert any("第 3 張 →" in t for t in labels)
 
 
 def test_pages_navy_white_and_utf8(tmp_path):
@@ -315,7 +293,7 @@ def test_ensure_page_does_not_render_all_nine(tmp_path):
 
 def test_flip_gif_then_photo_when_from_page_known(tmp_path):
     import asyncio
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import AsyncMock, MagicMock
 
     from bot_servers import WayneTelegramBot
     from picture_guide import ensure_page
@@ -331,13 +309,10 @@ def test_flip_gif_then_photo_when_from_page_known(tmp_path):
     msg.delete = AsyncMock()
 
     async def _run():
-        with patch("asyncio.sleep", new=AsyncMock()):
-            await bot._show_picture_guide_page(msg, 1, edit=True, from_page=0)
+        await bot._show_picture_guide_page(msg, 1, edit=True, from_page=0)
 
     asyncio.run(_run())
-    assert msg.edit_media.await_count == 1
-    last = msg.edit_media.await_args_list[0].kwargs["media"]
-    assert type(last).__name__ == "InputMediaPhoto"
+    msg.edit_media.assert_not_awaited()
     msg.reply_photo.assert_not_called()
 
 

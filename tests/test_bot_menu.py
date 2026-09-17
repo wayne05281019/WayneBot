@@ -54,112 +54,19 @@ def test_reply_menu_is_two_rows_not_three():
     assert row2[-2] == MENU_BTN_LEAVE_ZERO
 
 
-def test_help_guide_covers_all_main_buttons():
-    from bot_servers import HELP_TOPICS
+def test_help_topics_cancelled():
+    from bot_servers import HELP_TOPICS, WayneTelegramBot
 
-    guide = HELP_TOPICS["guide"]
-    for label in (
-        "刷新",
-        "刷新上一檔",
-        "決策卡",
-        "當沖",
-        "持股",
-        "觀察",
-        "海選",
-        "隔日沖",
-        "資金",
-        "連買區",
-        "回報",
-        "大盤",
-        "籌碼",
-        "營收",
-        "產業",
-        "導航圖",
-        "記買入",
-        "AI倉",
-        "AI模擬倉",
-        "AI操盤",
-        "飆客",
-        "剛脫離零",
-    ):
-        assert label in guide
-    assert "預留" not in guide
-    assert "按表操課" in guide
-    assert "回報" in guide
-    assert "不用給程式密鑰" in guide
-    assert "低買高賣" in guide
-    assert "介紹圖" in guide and "一次出兩張圖" in guide
-    assert "現價漲跌 → 決策卡圖 → 介紹圖" not in guide
-    assert "要再看才按" not in guide
-    assert "按錯了" in guide
-    assert "直接打代號" in guide
-    assert "00981A" in guide
-    assert "打「持倉」會開" in guide
-    assert "持股" in HELP_TOPICS["guide"]
-    stock = HELP_TOPICS["stock"]
-    assert "圖下方" in stock
-    assert "決策卡 → 介紹圖" not in stock
-    assert "奇摩股市" in stock
-    assert "日K" in stock
-    assert "TradingView" in stock
-
-
-def test_help_nav_keyboard_has_topic_buttons():
-    from bot_servers import WayneTelegramBot
-
+    assert HELP_TOPICS == {}
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    kb = bot._help_nav_keyboard()
-    labels = [btn.text for row in kb.inline_keyboard for btn in row]
-    assert "總覽" in labels
-    assert "查股" in labels
-    assert "圖文" in labels
-    assert "AI" not in labels
-    assert "第一排" in labels
-    assert "第二排" in labels
-    assert "連買" in labels
-    assert "記買入" in labels
-    assert "興櫃" not in labels
-    assert "原因" not in labels
-    assert "按錯" in labels
-    assert "✕" in labels
-    assert "海選" not in labels
-    assert "大盤" not in labels
-    assert "當沖" not in labels
-    assert "持股" not in labels
-    cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
-    assert "?:guide" in cbs
-    assert "?:stock" in cbs
-    assert "?:pics" in cbs
-    assert "?:streak" in cbs
-    assert "?:oops" in cbs
-    assert "em:go" not in cbs
-    assert "?:why" not in cbs
-    assert "?:screen" not in cbs
-    assert "?:market" not in cbs
-
-
-def test_help_menu_topic_mentions_report_not_reserved():
-    from bot_servers import HELP_TOPICS
-
-    menu = HELP_TOPICS["menu"]
-    assert "大盤" in menu
-    assert "連買區" in menu
-    assert "回報" in menu
-    assert "AI倉" in menu
-    assert "預留" not in menu
+    assert not bot._help_nav_keyboard().inline_keyboard
 
 
 def test_help_bucket_display_names_leave_zero_is_golden_buy():
     """對外：leave_zero＝黃金買點一欄；golden_buy 計算端仍在，畫面標還在零。"""
-    from bot_servers import HELP_TOPICS
     from line_share_format import LINE_BUCKET_META
     from screening_engine import LINE_BUCKET_TITLES, MORNING_PUSH_SPECS, SCREEN_PUSH_SPECS
 
-    guide = HELP_TOPICS["guide"]
-    assert "優先認<b>黃金買點</b>" in guide
-    assert "買點" in guide
-    assert "還在零" in guide
-    assert "對照組" in guide
     specs = {k: label for k, _, label, *_ in SCREEN_PUSH_SPECS}
     assert specs["leave_zero"] == "黃金買點"
     assert "golden_buy" not in specs
@@ -181,66 +88,9 @@ def test_bucket_from_reason_accepts_old_and_new_labels():
     assert bucket_from_reason("黃金買點：60低超跌") == "golden_buy"
 
 
-def test_help_and_menu_copy_uses_plain_chinese():
-    """用戶看得到的說明／選單文案不要留 MIS、VIX、OI、基差、近月、YoY 等行話。"""
-    from bot_servers import HELP_TOPICS
-
-    blob = "\n".join(HELP_TOPICS.values())
-    for junk in (
-        "MIS",
-        "VIX",
-        "Regime+",
-        "Regime ",
-        "YoY",
-        "MoM",
-        "那指期",
-        "台積ADR",
-        "基差",
-        "近月",
-        "OI ",
-        "sqlite",
-        "TWSE",
-        "貼月高",
-        "貼近月低",
-    ):
-        assert junk not in blob, junk
+def test_bot_copy_has_no_mis_subtitle():
     bot_src = open("bot_servers.py", encoding="utf-8").read()
     assert 'subtitle="盤中 MIS' not in bot_src
-    assert "恐慌指數" in blob
-    assert "即時現價" in blob or "證交所即時價" in blob
-
-
-def test_help_streak_does_not_split_listed_otc():
-    from bot_servers import HELP_TOPICS
-
-    blob = "\n".join(HELP_TOPICS.values())
-    assert "再選上市" not in blob
-    assert "再選<b>上市</b>" not in blob
-    assert "上市或上櫃" not in blob
-    assert "外資+投信" in HELP_TOPICS["streak"]
-    assert "只看上市櫃" in HELP_TOPICS["streak"]
-    assert "興櫃" in HELP_TOPICS["streak"]
-    assert "先選<b>上市櫃</b>或<b>興櫃</b>" not in HELP_TOPICS["streak"]
-    assert "上市櫃一起列" not in HELP_TOPICS["streak"]
-    assert "訊息下面" in HELP_TOPICS["streak"] or "訊息下方" in HELP_TOPICS["streak"]
-    assert "連買區" in HELP_TOPICS["row2"]
-    assert "曆日" not in blob
-    assert "日曆天" in HELP_TOPICS["guide"]
-    assert "日曆天" in HELP_TOPICS["stock"]
-    assert "成交" in HELP_TOPICS["portfolio"]
-    assert "復盤" in HELP_TOPICS["portfolio"]
-    assert "籌碼" in HELP_TOPICS["watch"]
-    assert "買入" in HELP_TOPICS["watch"]
-    assert "圖下方這一排" in HELP_TOPICS["stock"]
-    assert "這頁按鈕" in HELP_TOPICS["screen"]
-    assert "這頁按鈕" in HELP_TOPICS["daytrade"]
-    assert "這頁按鈕" in HELP_TOPICS["overnight"]
-    assert "這頁按鈕" in HELP_TOPICS["leave_zero"]
-    assert "這頁按鈕" in HELP_TOPICS["ai"]
-    assert "圖下方這一排" in HELP_TOPICS["stock"]
-    assert "不是盤中即時掃描。\n" in HELP_TOPICS["screen"]
-    assert HELP_TOPICS["industry"].count("\n") >= 4
-    assert "怎麼用" not in HELP_TOPICS["industry"] or "產業按鈕" in HELP_TOPICS["industry"]
 
 
 def test_streak_entry_title_matches_button():
@@ -312,6 +162,7 @@ def test_help_nav_does_not_duplicate_reply_menu_labels():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
     inline = {btn.text for row in bot._help_nav_keyboard().inline_keyboard for btn in row}
+    assert inline == set()
     overlap = reply & inline
     assert overlap == set(), f"直立式與兩排重複：{overlap}"
 
