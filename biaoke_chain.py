@@ -603,6 +603,14 @@ def _nest_compute(db_path: str) -> Dict[str, Any]:
             )
         else:
             bits.append(cal)
+    try:
+        from biaoke_watch import latest_watch_line
+
+        watch = latest_watch_line(db_path)
+        if watch:
+            bits.append(watch)
+    except Exception:
+        pass
     body = "。".join(b.rstrip("。") for b in bits if b)
     out = _step("nest", _fit_nest(body), ok=ok)
     return out
