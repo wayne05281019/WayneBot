@@ -317,20 +317,19 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     db = str(tmp_path / "btns.db")
     bot = _bot(db)
     assert ALL_BUTTONS == [
-        "說明",
         "海選",
         "持股",
         "觀察",
         MENU_BTN_CARD,
         MENU_BTN_REPORT,
-        MENU_ROW1[-1],
+        "飆大",
         MENU_BTN_MARKET,
         "資金",
         "當沖",
         "隔日沖",
         MENU_BTN_AI,
         MENU_BTN_STREAK,
-        MENU_ROW2[-1],
+        "剛脫離零",
     ]
 
     async def run():
@@ -356,7 +355,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("說明", "海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
+        for need in ("海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

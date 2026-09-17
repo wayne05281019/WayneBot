@@ -11,8 +11,10 @@ from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_CARD,
+    MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
+    MENU_BTN_SLOT,
     MENU_BTN_STREAK,
     WayneTelegramBot,
 )
@@ -29,7 +31,6 @@ MENU_BUTTONS = [
     (MENU_BTN_AI, "_send_ai_desk_view"),
     ("隔日沖", "overnight_cmd"),
     ("資金", "flow_cmd"),
-    ("說明", "help_cmd"),
     (MENU_BTN_STREAK, "streak_cmd"),
     (MENU_BTN_MARKET, "market_cmd"),
     (MENU_BTN_REPORT, "report_cmd"),
@@ -92,11 +93,9 @@ def test_twelve_menu_buttons_exist_in_order():
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["說明", "海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE]
-    assert row2[:6] == [MENU_BTN_MARKET, "資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK]
-    from bot_servers import MENU_BTN_LEAVE_ZERO
-
-    assert row2[6] == MENU_BTN_LEAVE_ZERO
+    assert row1 == ["海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET]
+    assert row2[:6] == ["資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO]
+    assert row2[6] == MENU_BTN_SLOT
 
 
 def test_help_script_ready_for_brother_video():
@@ -119,19 +118,20 @@ def test_help_script_ready_for_brother_video():
 
 
 def test_ten_personas_help_and_menu_clear_wrong_pending():
-    """十種熟悉度亂按回報／連買後，按說明或 /menu 能導回。"""
+    """十種熟悉度亂按回報／連買後，按海選或 /menu 能導回。"""
     bot = _bot()
     bot.menu_cmd = AsyncMock()
+    bot.screen_cmd = AsyncMock()
 
     async def run():
         for name, uid, _codes in PERSONAS_10:
             actor = f"99:{uid}"
             bot._pending[actor] = "report"
-            msg = _msg(99, uid, "說明")
+            msg = _msg(99, uid, "海選")
             await bot.on_text(_update(msg), MagicMock())
             assert actor not in bot._pending, name
-            bot.help_cmd.assert_awaited()
-            bot.help_cmd.reset_mock()
+            bot.screen_cmd.assert_awaited()
+            bot.screen_cmd.reset_mock()
 
             bot._pending[actor] = "fbuy:kind"
             menu_msg = _msg(99, uid, "/menu")

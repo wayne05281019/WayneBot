@@ -176,7 +176,6 @@ def test_newbie_menu_buttons_do_not_fall_through_to_stock_lookup():
             ("持股", bot._send_portfolio),
             ("觀察", bot._send_watch),
             ("海選", bot.screen_cmd),
-            ("說明", bot.help_cmd),
             ("連買區", bot.streak_cmd),
             ("AI倉", bot._send_ai_desk_view),
             ("回報", bot.report_cmd),

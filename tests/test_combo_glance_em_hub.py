@@ -127,7 +127,7 @@ def test_em_hub_has_kline_and_nav():
     assert nav.url is None
     assert nav.callback_data == "g:3595"
     assert "產業" in labels0
-    assert labels1 == ["觀察", "記買入", "說明"]
+    assert labels1 == ["觀察", "記買入"]
 
 
 def test_listed_hub_has_nav_button():

@@ -126,20 +126,19 @@ def test_help_nav_has_oops_and_no_reply_overlap():
     reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
     overlap = reply & set(labels)
     assert overlap == set(), overlap
-    assert "圖文" in HELP_TOPICS["row2"]
     assert "圖文" in HELP_TOPICS["guide"]
 
 
 def test_row2_help_page_explains_help_button():
     row1 = HELP_TOPICS["row1"]
     row2 = HELP_TOPICS["row2"]
-    assert "① 說明" in row1
-    assert "⑦ 飆大" in row1
-    assert "⑥ 連買區" in row2
-    assert "⑦ 剛脫離零" in row2
-    assert row2.index("① 大盤") < row2.index("⑥ 連買區")
-    assert "/help" in row1
-    assert "按錯" in row1
+    assert "① 海選" in row1
+    assert "⑥ 飆大" in row1
+    assert "⑦ 大盤" in row1
+    assert "⑤ 連買區" in row2
+    assert "⑥ 剛脫離零" in row2
+    assert row2.index("① 資金") < row2.index("⑤ 連買區")
+    assert "按錯" in HELP_TOPICS["oops"]
     assert row2.count("\n") >= 8
 
 
@@ -156,7 +155,6 @@ def test_start_cmd_leads_with_three_steps():
 
     assert "00981A" in LOOKUP_CODE_EXAMPLES_HTML
     assert "圖下面" in src
-    assert "圖文" in src
     assert "回報" in src
     assert "給家人用" not in src
     assert "對方用自己的帳號按開始" not in src
