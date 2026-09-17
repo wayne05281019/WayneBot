@@ -152,3 +152,92 @@ def test_silence_and_crash_tape_vs_official_close(tmp_path):
     assert "43500之上" in line or "還沒走到" in line
     assert "不是喊崩" in line
     assert "崩盤" not in line
+
+
+def test_later_reply_does_not_hide_escape_tape(tmp_path):
+    db = str(tmp_path / "w.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily (date TEXT, symbol TEXT, close REAL)"
+    )
+    conn.execute("INSERT INTO index_daily VALUES ('20260916','TWII',45848.9)")
+    conn.commit()
+    conn.close()
+    record_watch_events(
+        db,
+        [
+            {
+                "id": "c1",
+                "kind": "reply",
+                "layer": 1,
+                "date": "2026-09-15",
+                "time": "09:02",
+                "text": "小心逃命波C-2，不是已確認，43500還是如果",
+            },
+            {
+                "id": "c2",
+                "kind": "reply",
+                "layer": 1,
+                "date": "2026-09-17",
+                "time": "09:47",
+                "text": "夜盤已經反彈超過0.75了，如果要再有C波除非沒辦法過前高47548",
+            },
+        ],
+    )
+    line = latest_watch_line(db)
+    assert "09:47" in line
+    assert "不是沒想法" in line
+    assert "43500之上" in line
+    assert "不是喊崩" in line
+    assert "崩盤" not in line
+
+
+def test_intraday_index_bar_falls_back_to_last_close(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    db = str(tmp_path / "w.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE index_daily (date TEXT, symbol TEXT, close REAL)"
+    )
+    conn.execute("INSERT INTO index_daily VALUES ('20260917','TWII',43000)")
+    conn.execute("INSERT INTO index_daily VALUES ('20260916','TWII',45848.9)")
+    conn.commit()
+    conn.close()
+    record_watch_events(
+        db,
+        [
+            {
+                "id": "c",
+                "kind": "reply",
+                "layer": 1,
+                "date": "2026-09-15",
+                "time": "09:02",
+                "text": "小心逃命波C-2，不是已確認，43500還是如果",
+            }
+        ],
+    )
+    before = datetime(2026, 9, 17, 13, 9, tzinfo=ZoneInfo("Asia/Taipei"))
+    line = latest_watch_line(db, now=before)
+    assert "43500之上" in line
+    assert "20260916" in line
+    assert "43000" not in line
+    after = datetime(2026, 9, 17, 13, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    closed = latest_watch_line(db, now=after)
+    assert "43000" in closed
+    assert "已低於" in closed
+    assert "崩盤" not in closed
+
+
+def test_same_day_before_close_is_not_official():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_watch import _bar_is_official_close
+
+    now = datetime(2026, 9, 17, 13, 9, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _bar_is_official_close("20260916", now=now)
+    assert not _bar_is_official_close("20260917", now=now)
+    later = datetime(2026, 9, 17, 13, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+    assert _bar_is_official_close("20260917", now=later)
