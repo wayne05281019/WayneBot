@@ -68,12 +68,14 @@ def test_stock_card_shows_mixed_stars():
         bucket_label="黃金買點",
     )
     assert "★★★★★" in html
+    assert "不同步就直接減碼" in html
     watch = _stock_card_html(
         {"stock_id": "1101", "stock_name": "台泥", "close": 50.2, "golden_buy": True},
         2,
         bucket_label="重點觀察",
     )
     assert "★★★★★" not in watch
+    assert "不同步就直接減碼" not in watch
     assert "☆" in watch
     assert entry_star_glyphs(1) in watch or entry_star_glyphs(2) in watch
 

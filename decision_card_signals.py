@@ -511,13 +511,28 @@ def relative_buy_kind(
         just_left = bool(profit_left_zero_highlight(prev_profit_pct, p) and p <= LEAVE_ZERO_SCREEN_MAX_PCT)
     if at_table_low and p <= 2.5:
         if just_left:
-            return "just_left", "相對最低剛離零，先看表"
+            return "just_left", "相對最低剛離零，不同步就減碼"
         if is_profit_display_zero(p):
             return "at_floor", "在相對最低，獲利還沒離零"
         return "at_floor", "在相對最低帶，先看表"
     if just_left:
-        return "just_left", "相對最低剛離零，先看表"
+        return "just_left", "相對最低剛離零，不同步就減碼"
     return "", ""
+
+
+# 黃金買點進場時預告如何賣。不是買訊、不改桶、不自動賣。
+LEAVE_ZERO_EXIT_HINT = "出場　最高價＝20高 vs 最高溫，不同步就直接減碼"
+LEAVE_ZERO_BUCKET_LABELS = frozenset(
+    {"黃金買點", "剛離零", "剛脫離零", "leave_zero"}
+)
+
+
+def leave_zero_exit_hint(*, bucket_label: str = "") -> str:
+    """黃金買點名單才預告出場。其他桶空字串。"""
+    key = str(bucket_label or "").strip()
+    if key in LEAVE_ZERO_BUCKET_LABELS:
+        return LEAVE_ZERO_EXIT_HINT
+    return ""
 
 
 def card_daily_stance(

@@ -225,11 +225,24 @@ def test_relative_buy_kind_lowest_vs_pullback():
     )
     assert kind == "just_left"
     assert "剛離零" in txt
+    assert "減碼" in txt
     txt, sk = card_daily_stance(
         profit_pct=1.2, hl="20低", alert="K20低", temp=8.0, prev_profit_pct=0.0
     )
     assert sk == "watch"
     assert "剛離零" in txt
+    assert "減碼" in txt
+
+
+def test_leave_zero_exit_hint_only_on_golden_buy_bucket():
+    from decision_card_signals import LEAVE_ZERO_EXIT_HINT, leave_zero_exit_hint
+
+    assert "直接減碼" in LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="黃金買點") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="剛脫離零") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="leave_zero") == LEAVE_ZERO_EXIT_HINT
+    assert leave_zero_exit_hint(bucket_label="重點觀察") == ""
+    assert leave_zero_exit_hint(bucket_label="優先看") == ""
 
 
 def test_4739_sep15_pullback_not_relative_low():

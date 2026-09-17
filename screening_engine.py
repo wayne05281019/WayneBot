@@ -1424,6 +1424,14 @@ def _stock_card_html(
     profit_val = _line_profit_value(item)
     if profit_val:
         body.append(f"獲利　{html_escape(profit_val)}")
+    try:
+        from decision_card_signals import leave_zero_exit_hint
+
+        exit_hint = leave_zero_exit_hint(bucket_label=bucket_label)
+    except Exception:
+        exit_hint = ""
+    if exit_hint:
+        body.append(html_escape(exit_hint))
     rank_val = None
     if live and live.get("vol_rank_120") is not None:
         rank_val = int(live["vol_rank_120"])
