@@ -52,6 +52,27 @@ POST_NAMES = (
 CHIP_HINTS = ("半導體", "電子零組件", "電子工業", "光電", "電腦及週邊", "通信網路")
 NY = ZoneInfo("America/New_York")
 
+# 06:30 第一則「哪一類股領漲」：官方 Yahoo 日 K 收盤％。光通訊沒有單一 ETF，
+# 用 LITE／COHR／AAOI／CIEN 四檔日 K 等權（至少兩檔才算）。沒數字就不寫。
+_LEAD_GROUPS = (
+    ("半導體", ("SOXX",)),
+    ("光通訊", ("LITE", "COHR", "AAOI", "CIEN")),
+    ("科技", ("XLK",)),
+    ("通訊服務", ("XLC",)),
+    ("雲端", ("SKYY",)),
+    ("生技", ("XBI",)),
+    ("能源", ("XLE",)),
+    ("金融", ("XLF",)),
+    ("消費", ("XLY",)),
+    ("工業", ("XLI",)),
+)
+_STOCK_UNITS = {
+    "tsm_pct": "美元",
+    "tsm_post_pct": "美元",
+    "nvda_pct": "美元",
+    "nvda_post_pct": "美元",
+}
+
 _SESSION = requests.Session()
 _SESSION.headers.update(
     {
@@ -130,17 +151,40 @@ def _chart_url(sym: str, interval: str = "1d", range_: str = "10d", include_prep
 
 
 def _pct_from_closes(closes: List[Any], last_px: Optional[float]) -> Optional[float]:
+    _px, _chg, pct = _cash_move(closes, last_px, session_open=True)
+    return pct
+
+
+def _cash_move(
+    closes: List[Any],
+    last_px: Optional[float],
+    *,
+    session_open: bool = False,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """現金收盤價／點／％：用兩根完整日 K，不拿盤後 regularMarketChangePercent。
+
+    收盤後 Yahoo 常把 regularMarketPrice／％對到另一個昨收（台積 20260916
+    meta 1.23%、日 K 417.72 vs 413.75＝0.96%）。06:30 只認日 K。
+    """
     nums = [float(x) for x in closes if x is not None]
-    if last_px is not None and last_px > 0:
-        if len(nums) >= 2:
+    if not nums:
+        if last_px is None or last_px <= 0:
+            return None, None, None
+        return last_px, None, None
+    last_bar = nums[-1]
+    if session_open and last_px is not None and last_px > 0:
+        px = last_px
+        if len(nums) >= 2 and abs(last_bar - px) / max(abs(px), 1e-9) < 0.01:
             prev = nums[-2]
-            if prev:
-                return (last_px - prev) / prev * 100.0
-        if len(nums) >= 1 and nums[-1]:
-            return (last_px - nums[-1]) / nums[-1] * 100.0 if last_px != nums[-1] else 0.0
-    if len(nums) >= 2 and nums[-2]:
-        return (nums[-1] - nums[-2]) / nums[-2] * 100.0
-    return None
+        else:
+            prev = last_bar
+    else:
+        px = last_bar
+        prev = nums[-2] if len(nums) >= 2 else None
+    if px is None or not prev:
+        return px, None, None
+    chg = px - prev
+    return px, chg, chg / prev * 100.0
 
 
 def _as_float(val) -> Optional[float]:
@@ -186,13 +230,25 @@ def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         last_px, last_t = float(close), t
     if last_px is None:
         return None
-    prev = _as_float(meta.get("previousClose") or meta.get("chartPreviousClose"))
+    cash_px = None
+    reg_end = int(regular.get("end") or start)
+    for ts, close in zip(stamps, closes):
+        if close is None:
+            continue
+        t = int(ts)
+        if t < start:
+            cash_px = float(close)
+        elif cash_px is None and t <= reg_end:
+            cash_px = float(close)
+    prev = cash_px
+    if prev is None:
+        prev = _as_float(meta.get("previousClose") or meta.get("chartPreviousClose"))
     pct = (last_px - prev) / prev * 100.0 if prev else None
     chg = (last_px - prev) if prev is not None else None
     return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct, "chg": chg}
 
 
-def _fetch_symbol(sym: str) -> Dict[str, Any]:
+def _fetch_symbol(sym: str, *, session_open: bool = False) -> Dict[str, Any]:
     url = _chart_url(sym, interval="1d", range_="10d")
     resp = _SESSION.get(url, timeout=20)
     resp.raise_for_status()
@@ -203,15 +259,8 @@ def _fetch_symbol(sym: str) -> Dict[str, Any]:
     meta = block.get("meta") or {}
     qblock = ((block.get("indicators") or {}).get("quote") or [{}])[0]
     closes = qblock.get("close") or []
-    px = _as_float(meta.get("regularMarketPrice"))
-    pct = _as_float(meta.get("regularMarketChangePercent"))
-    chg = _as_float(meta.get("regularMarketChange"))
-    if pct is None:
-        pct = _pct_from_closes(closes, px)
-    if chg is None and px is not None and pct is not None:
-        prev = px / (1.0 + pct / 100.0) if pct != -100.0 else None
-        if prev:
-            chg = px - prev
+    last_px = _as_float(meta.get("regularMarketPrice"))
+    px, chg, pct = _cash_move(closes, last_px, session_open=session_open)
     ts = 0
     stamps = block.get("timestamp") or []
     if stamps:
@@ -243,9 +292,10 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
         "us_phase": phase,
     }
     sessions = []
+    session_open = phase == "regular"
     for key, sym, _label in SYMBOLS:
         try:
-            bar = _fetch_symbol(sym)
+            bar = _fetch_symbol(sym, session_open=session_open)
         except Exception:
             logger.exception("美股收盤抓不到 %s", sym)
             continue
@@ -262,7 +312,7 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
     if phase != "regular":
         for key, sym, _label in FUTURES:
             try:
-                bar = _fetch_symbol(sym)
+                bar = _fetch_symbol(sym, session_open=False)
             except Exception:
                 logger.exception("美股盤後期貨抓不到 %s", sym)
                 continue
@@ -284,9 +334,54 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
             time.sleep(0.05)
     if sessions:
         out["us_session"] = max(sessions)
+    lead = _fetch_lead_group(session_open=session_open)
+    if lead:
+        out["us_lead_name"] = lead[0]
+        out["us_lead_pct"] = lead[1]
     out["ok"] = any(out.get(k) is not None for k in ("vix", "ixic_pct", "spx_pct", "dji_pct", "nq_f_pct"))
     out["regime"] = classify_us_regime(out)
     return out
+
+
+def pick_us_lead_group(rows: List[tuple]) -> Optional[tuple]:
+    """領漲＝有官方％且最大者為正。全跌就不寫，不准發明。"""
+    got = [(str(n), float(p)) for n, p in rows if n and p is not None]
+    if not got:
+        return None
+    name, pct = max(got, key=lambda x: x[1])
+    if pct <= 0:
+        return None
+    return name, pct
+
+
+def format_us_lead_line(snap: Dict[str, Any]) -> str:
+    name = str((snap or {}).get("us_lead_name") or "").strip()
+    pct = _as_float((snap or {}).get("us_lead_pct"))
+    if not name or pct is None or pct <= 0:
+        return ""
+    return f"{name}族群，昨天在美股是領漲"
+
+
+def _fetch_lead_group(*, session_open: bool = False) -> Optional[tuple]:
+    rows = []
+    for name, members in _LEAD_GROUPS:
+        pcts: List[float] = []
+        for sym in members:
+            try:
+                bar = _fetch_symbol(sym, session_open=session_open)
+            except Exception:
+                logger.exception("美股類股抓不到 %s", sym)
+                continue
+            if bar.get("pct") is not None:
+                pcts.append(float(bar["pct"]))
+            time.sleep(0.05)
+        if len(members) == 1:
+            rows.append((name, pcts[0] if pcts else None))
+        elif len(pcts) >= 2:
+            rows.append((name, sum(pcts) / len(pcts)))
+        else:
+            rows.append((name, None))
+    return pick_us_lead_group(rows)
 
 
 def index_worst_pct(snap: Dict[str, Any]) -> Optional[float]:
@@ -572,21 +667,46 @@ def _fmt_pct(val) -> str:
         return "—"
 
 
-def _fmt_pts(chg, decimals: int = 2) -> str:
+def _fmt_pts(chg, decimals: int = 2, unit: str = "點") -> str:
     if chg is None:
         return ""
     try:
-        return f"{float(chg):+.{decimals}f}點"
+        return f"{float(chg):+.{decimals}f}{unit}"
     except (TypeError, ValueError):
         return ""
 
 
-def _fmt_move(pct, chg=None, *, pts_decimals: int = 2) -> str:
-    if pct is None:
+def _fmt_px(px) -> str:
+    if px is None:
+        return ""
+    try:
+        return f"{float(px):.2f}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _fmt_move(pct, chg=None, *, pts_decimals: int = 2, px=None, unit: str = "點") -> str:
+    if pct is None and px is None:
         return "—"
-    pct_s = _fmt_pct(pct)
-    pts_s = _fmt_pts(chg, pts_decimals)
-    return f"{pct_s}（{pts_s}）" if pts_s else pct_s
+    pct_s = _fmt_pct(pct) if pct is not None else ""
+    pts_s = _fmt_pts(chg, pts_decimals, unit=unit)
+    move = pct_s
+    if move and pts_s:
+        move = f"{move}（{pts_s}）"
+    elif pts_s:
+        move = pts_s
+    px_s = _fmt_px(px)
+    if px_s and move:
+        return f"{px_s}　{move}"
+    return px_s or move or "—"
+
+
+def format_quote_move(snap: Dict[str, Any], pct_k: str, chg_k: str) -> str:
+    unit = _STOCK_UNITS.get(pct_k, "點")
+    px = None
+    if unit == "美元" and pct_k.endswith("_pct"):
+        px = snap.get(pct_k[:-4] + "_px")
+    return _fmt_move(snap.get(pct_k), snap.get(chg_k), px=px, unit=unit)
 
 
 def _vix_mood(level, pct=None) -> str:
@@ -649,7 +769,7 @@ def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
     from tg_layout import html_escape
 
     _ = pts_decimals
-    return [(label, html_escape(_fmt_move(snap.get(pct_k), snap.get(chg_k)))) for pct_k, chg_k, label in items]
+    return [(label, html_escape(format_quote_move(snap, pct_k, chg_k))) for pct_k, chg_k, label in items]
 
 
 def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W) -> str:
@@ -657,7 +777,7 @@ def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W
 
     lines = []
     for pct_k, chg_k, label in items:
-        move = _fmt_move(snap.get(pct_k), snap.get(chg_k))
+        move = format_quote_move(snap, pct_k, chg_k)
         lines.append(f"{pad_label(label, label_width)}　{html_escape(move)}")
     return "\n".join(lines)
 
@@ -721,7 +841,7 @@ def _cash_indices_line(snap: Dict[str, Any]) -> str:
 
 def _plain_quote_rows(snap: Dict[str, Any], items) -> str:
     lines = [
-        f"{label}　{_fmt_move(snap.get(pct_k), snap.get(chg_k))}"
+        f"{label}　{format_quote_move(snap, pct_k, chg_k)}"
         for pct_k, chg_k, label in items
     ]
     return "\n".join(lines)
@@ -788,6 +908,9 @@ def format_us_html(snap: Dict[str, Any], now: Optional[datetime] = None) -> str:
         blocks.extend([_post_futures_block(snap), _post_adr_block(snap, with_cash=True)])
     else:
         blocks.append(_post_adr_block(snap))
+    lead = format_us_lead_line(snap)
+    if lead:
+        blocks.append(html_escape(lead))
     return join_sections(*blocks)
 
 
@@ -818,6 +941,9 @@ def format_night_plain(snap: Dict[str, Any], now: Optional[datetime] = None) -> 
         lines.extend(["【盤後期貨】", _post_futures_line(snap), "【台積美股】", _post_adr_line(snap, with_cash=True)])
     else:
         lines.extend(["【台積美股】", _post_adr_line(snap), "（美股現金收盤，盤中期貨不看）"])
+    lead = format_us_lead_line(snap)
+    if lead:
+        lines.append(lead)
     if holiday:
         return "\n".join(lines)
     side = electronics_night_side(snap)
