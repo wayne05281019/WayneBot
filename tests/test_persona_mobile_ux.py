@@ -19,7 +19,7 @@ def test_hub_keyboard_mobile_compact():
     assert "產業" in texts
     assert "K線" in texts
     kline = next(b for r in rows for b in r if b.text == "K線")
-    assert (kline.url or "").endswith("/k/2330")
+    assert (kline.url or "").endswith("/quote/2330.TW/technical-analysis")
     assert (kline.url or "").startswith("https://")
     assert "導航圖" in texts
     nav = next(b for r in rows for b in r if b.text == "導航圖")
