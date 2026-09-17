@@ -1,18 +1,9 @@
 # -*- coding: utf-8 -*-
-"""飆大視窗的思考鏈：六顆神經元按他的推論順序開火。
+"""飆大視窗的思考鏈：六顆是抽屜，開火只出一條判斷。
 
 不是 CNN、不是別人的 AGI 規格。材料只准官方庫＋他自己公開文。
-每句對話都要整條走完，不准只命中一個關鍵字就答。
-
-順序＝他真正在用的：
-  1 大盤巢穴（細微波／15／60／夜盤看大盤；覆巢之下無完卵；沒疊滿不篤定）
-  2 產業／主戰場還在不在（個股最重要是產業趨勢）
-  3 這族龍頭現在攻還是休（跟漲先看龍頭）
-  4 這檔官方日 K 量先價行（爆大量日高當壓、低當撐；個股不數浪）
-  5 長抱還是進出（7/24 切勿輕易調節 vs F10 等回測；聯發科不是 4/16）
-  6 可能看錯（沒疊滿、沒點名、改口一起留）
-
-圖是第 4 顆的眼睛，不是大腦。右灰區只演算最可能碰到哪，不是保證。不是買訊、不進海選。
+想＝他點過的條件更新與改口。說＝上一句的位 → 官方柱碰到沒 → 改口或還在等。
+六顆只歸檔。不准新價、不准演浪、個股不數浪。圖是第 4 顆的眼睛。不是買訊、不進海選。
 """
 from __future__ import annotations
 
@@ -1637,11 +1628,72 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
 
 _FIRE_CACHE: Dict[Tuple[str, str, str], Tuple[float, Dict[str, Any]]] = {}
 _HI_ASK = re.compile(r"^(你好|哈囉|嗨|在嗎|hello)[。！!？\s]*$", re.I)
+_STAGE_ASK = re.compile(
+    r"(位階|大盤|夜盤|加權|台指|C\s*波|C-[1235]|逃命|47548|45398|46747|"
+    r"46767|46626|45839|46506|巢穴|波浪|築底|碎形|細微波|前高)"
+)
+
+
+def _ask_wants_stage(ask: str, named: bool) -> bool:
+    """問到位階／他盯的位才講等待。點了個股且沒問大盤＝不硬套。"""
+    if _STAGE_ASK.search(ask or ""):
+        return True
+    return not named
+
+
+def _judgment_line(fired: Dict[str, Any], ask: str, db_path: str) -> str:
+    """開火嘴巴：上一句的位 → 官方柱 → 改口或等待。六顆全文不出口。"""
+    named = bool(fired.get("named"))
+    sid = str(fired.get("sid") or "")
+    name = str(fired.get("name") or "")
+    bits: List[str] = []
+    if named:
+        bits.append(f"問的是 {sid} {name}".strip())
+        bits.append("這檔不數浪，用自己的量價／關鍵K")
+    else:
+        bits.append("這句沒點檔：只走他自己點過的大盤位")
+    asked = [
+        p
+        for p in (
+            "47548",
+            "46747",
+            "46767",
+            "46626",
+            "45398",
+            "43500",
+            "45839",
+            "46506",
+            "48218",
+            "47578",
+        )
+        if p in (ask or "")
+    ]
+    if asked:
+        bits.append(
+            "這句問的是他自己點過的"
+            + "／".join(asked[:3])
+            + "，如果句，未收不當官方"
+        )
+    watch = ""
+    if _ask_wants_stage(ask, named) and db_path:
+        try:
+            from biaoke_watch import latest_watch_line
+
+            watch = latest_watch_line(db_path)
+        except Exception:
+            watch = ""
+    if watch:
+        bits.append(watch)
+    elif _ask_wants_stage(ask, named):
+        bits.append("問到位階就只講他自己點過的位；沒新官方收就不下判")
+    bits.append("不是買訊")
+    return _clip("。".join(b.rstrip("。") for b in bits if b), 320)
 
 
 def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
-    """話筒開口第一句：五件交叉收成一句，並標未收／如果句。"""
+    """話筒開口第一句＝判斷那一條，並標未收／如果句。"""
     fired = fired or {}
+    core = str(fired.get("judge") or "").rstrip("。")
     five = " ".join(str(fired.get("five") or "").split())
     nest = ""
     doubt = ""
@@ -1652,20 +1704,23 @@ def format_five_lead(fired: Optional[Dict[str, Any]]) -> str:
         elif nid == "doubt":
             doubt = str(step.get("text") or "")
     rail = str(fired.get("rail") or "").strip()
-    blob = five + nest + str(fired.get("think") or "") + doubt + rail
-    core = re.sub(r"五件交叉：", "", five)
-    parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
-    core = "。".join(parts[:2]) if parts else ""
+    blob = core + five + nest + str(fired.get("think") or "") + doubt + rail
     if not core:
-        core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
-    rail_bit = rail.rstrip("。")
-    if rail_bit:
-        core = core + "。" + rail_bit if core else rail_bit
-    core = _clip(core, 200 if rail_bit else 140).rstrip("。…")
+        core = re.sub(r"五件交叉：", "", five)
+        parts = [p.strip() for p in re.split(r"[。]", core) if p.strip()]
+        core = "。".join(parts[:2]) if parts else ""
+        if not core:
+            core = "波浪／形態／量價／關鍵K還沒疊滿，不講死"
+        rail_bit = rail.rstrip("。")
+        if rail_bit:
+            core = core + "。" + rail_bit if core else rail_bit
+        core = _clip(core, 200 if rail_bit else 140).rstrip("。…")
+    else:
+        core = _clip(core, 220).rstrip("。…")
     flags: List[str] = []
     if any(k in blob for k in ("如果句", "未確認", "還是如果")):
         flags.append("如果句")
-    if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收")):
+    if any(k in blob for k in ("未收", "不當官方", "還在等 9/16", "盤中未收", "不下判")):
         flags.append("未收")
     if any(k in blob for k in ("還沒走完", "未走完不准", "對質 偏", "演算對質 overlay")):
         flags.append("對質")
@@ -1812,6 +1867,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
         "firm": bool((brief.get("audit") or {}).get("firm")),
         "rail": str(brief.get("rail") or ""),
     }
+    out["judge"] = _judgment_line(out, q, db_path)
     out["lead"] = format_five_lead(out)
     if len(_FIRE_CACHE) > 4:
         _FIRE_CACHE.clear()
@@ -1838,25 +1894,21 @@ def _reread_block() -> str:
 
 
 def format_chain_notes(db_path: str, ask: str, uid: str = "") -> str:
-    """給對話線的材料：大腦先走這條，後面的原文／最新發文是記憶不是推論。"""
+    """給對話線的材料：嘴巴只出一條判斷；六顆標題只當抽屜。"""
     q = (ask or "").strip()
     if not q:
         return ""
     fired = fire_chain(db_path, q, uid=uid)
     lead = str(fired.get("lead") or format_five_lead(fired))
+    judge = str(fired.get("judge") or _judgment_line(fired, q, db_path))
     lines = [
         "開口｜" + lead,
-        "神經元鏈（必須按 1→6 串成一句推論，不准只抽一顆關鍵字答完；缺的標缺，不准編）："
+        "判斷｜" + judge,
+        "神經元鏈＝抽屜（歸檔不是嘴巴）：",
     ]
     for i, step in enumerate(fired.get("steps") or [], 1):
         flag = "〔缺〕" if not step.get("ok") and not step.get("skip") else ("〔此句不套〕" if step.get("skip") else "")
-        lines.append(f"{i} {step.get('title')}{flag}｜{step.get('text')}")
-    think = str(fired.get("think") or "").strip()
-    if think:
-        lines.append("推論｜" + think)
-    five = str(fired.get("five") or "").strip()
-    if five:
-        lines.append("五件交叉｜" + five)
+        lines.append(f"{i} {step.get('title')}{flag}")
     reread = _reread_block()
     if reread:
         lines.append(reread)
