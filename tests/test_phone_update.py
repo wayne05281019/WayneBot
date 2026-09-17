@@ -18,7 +18,7 @@ def test_update_note_is_feature_name():
     assert "," not in note
     title = phone_update_title()
     assert title.endswith("的更新")
-    assert title == "海選大盤狀況粗體排版的更新"
+    assert title == "法人張數對官方T86的更新"
 
 
 def test_notice_and_health_share_chinese_and_sha(monkeypatch):

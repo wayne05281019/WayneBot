@@ -36,9 +36,14 @@ def _clean_int(val) -> int:
 
 
 def _shares_to_lots(n: int) -> int:
-    if abs(n) >= 1000:
-        return int(n // 1000)
-    return int(n)
+    """T86／櫃買單位是股。1 張＝1000 股，四捨五入到張。
+
+    舊寫法把 |股|<1000 原樣當張，6526 自營 -65 股會畫成 -65 張。
+    """
+    n = int(n)
+    if n >= 0:
+        return (n + 500) // 1000
+    return -((-n + 500) // 1000)
 
 
 def _pick_col(headers: List[str], row: list, keywords: List[str], fallback: Optional[int] = None, forbid: str = "") -> int:
