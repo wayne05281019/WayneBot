@@ -1455,7 +1455,7 @@ def test_outlook_keeps_tsm_cash_and_us_lead_group():
     assert "417.72" in html
     assert "+0.96%" in html
     assert "+3.97美元" in html
-    assert "光通訊族群昨天是領漲（+2.19%）" in html
+    assert "光通訊族群，昨天在美股是領漲" in html
     assert "1.23%" not in html
     for ln in html.split("\n"):
         plain = re.sub(r"<[^>]+>", "", ln)

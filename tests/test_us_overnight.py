@@ -40,7 +40,7 @@ def test_pick_lead_group_requires_positive_max():
     )
     assert pick_us_lead_group([("半導體", -0.1), ("能源", -2.8)]) is None
     assert format_us_lead_line({"us_lead_name": "光通訊", "us_lead_pct": 2.19}) == (
-        "光通訊族群昨天是領漲（+2.19%）"
+        "光通訊族群，昨天在美股是領漲"
     )
     assert format_us_lead_line({"us_lead_name": "光通訊", "us_lead_pct": -0.2}) == ""
 

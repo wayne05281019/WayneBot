@@ -359,7 +359,7 @@ def format_us_lead_line(snap: Dict[str, Any]) -> str:
     pct = _as_float((snap or {}).get("us_lead_pct"))
     if not name or pct is None or pct <= 0:
         return ""
-    return f"{name}族群昨天是領漲（{_fmt_pct(pct)}）"
+    return f"{name}族群，昨天在美股是領漲"
 
 
 def _fetch_lead_group(*, session_open: bool = False) -> Optional[tuple]:
