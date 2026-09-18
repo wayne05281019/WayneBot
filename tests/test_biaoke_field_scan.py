@@ -493,9 +493,32 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     assert "record_dongzhu_flow" in runner
     assert "refresh_dongzhu_judgment" in runner
     assert "dongzhu_judge" in runner
+    assert "_refresh_dongzhu_after_close" in runner
+    assert "匯入可能延遲" in runner
     assert "recompute_sector_flow" in runner
     assert "from biaoke_" not in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
+
+
+def test_dongzhu_judgment_waits_for_late_import(tmp_path, monkeypatch):
+    db = str(tmp_path / "j.db")
+    sqlite3.connect(db).close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260916"
+    )
+    from dongzhu_judge import refresh_dongzhu_judgment
+
+    out = refresh_dongzhu_judgment(db, "20260917")
+    assert out.get("skipped") == "quotes_incomplete"
+    assert out.get("want") == "20260917"
+    assert out.get("complete") == "20260916"
+
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260917"
+    )
+    monkeypatch.setattr("biaoke_field_scan._chip_cap", lambda *_a, **_k: "")
+    out2 = refresh_dongzhu_judgment(db, "20260917")
+    assert out2.get("skipped") == "chips_incomplete"
 
 
 def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch):

@@ -978,7 +978,9 @@ def _chain_laggards(
     n: int = LAG_CAPTURE_N,
     group_last: int = 0,
 ) -> List[Dict[str, Any]]:
-    """細項內非龍頭、vs20≤−8% 且仍低於60高，距20高最深的 n 檔。不是教過名單、不是買訊。"""
+    """細項內非龍頭、vs20≤−8% 且仍低於60高，距20高最深的 n 檔。
+    不鎖矽格／欣銓；機制內任何一次級過門檻都能進捕捉名單。不是買訊。
+    """
     if not group or not db_path or n <= 0:
         return []
     g = _fill_leaders(db_path, group, cap)

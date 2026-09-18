@@ -1361,17 +1361,36 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
 
 
 def refresh_dongzhu_judgment(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """盤後官方收齊後重跑走查，寫回庫。n 不夠沿用上一筆旗標。"""
-    from biaoke_field_scan import load_dongzhu_precursor, store_dongzhu_precursor
+    """盤後日K＋法人齊了才重跑走查寫回庫。匯入晚到不准用未收完柱；n 不夠沿用上一筆旗標。"""
+    from biaoke_field_scan import _chip_cap, load_dongzhu_precursor, store_dongzhu_precursor
 
-    prev = load_dongzhu_precursor(db_path)
+    prev = load_dongzhu_precursor(db_path) or {}
+    complete = ""
+    try:
+        from import_health import latest_complete_quote_date
+
+        complete = str(latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+    except Exception:
+        complete = ""
+    want = str(cap or complete or "")[:8]
+    if want and complete and want > complete:
+        out = dict(prev)
+        out["skipped"] = "quotes_incomplete"
+        out["want"] = want
+        out["complete"] = complete
+        return out
+    chip = _chip_cap(db_path, complete or want)
+    if not chip:
+        out = dict(prev)
+        out["skipped"] = "chips_incomplete"
+        out["want"] = want
+        return out
     result = analyze(db_path)
     if result.get("skip_parking") is None:
         result["skip_parking"] = bool(prev.get("skip_parking", True))
-    as_of = str(cap or result.get("cap") or "")[:8]
-    result["cap"] = as_of or str(result.get("cap") or "")
-    if result.get("cap"):
-        store_dongzhu_precursor(db_path, result["cap"], result)
+    result["cap"] = chip
+    result.pop("skipped", None)
+    store_dongzhu_precursor(db_path, chip, result)
     return result
 
 
