@@ -96,11 +96,12 @@ _HOW = (
     "他教過怎麼找：①次族群還沒熱、很少人提；②次族群第一名誰先過前高，不比絕對漲跌；"
     "③高點整理的從底部找落後。不是猜新聞。"
 )
-# 五天漲停窗太薄（佔比起點中位 0%＝截斷，不是規則）。官方資金窗＝近 20 個有法人日。
-# 不鎖「起點必須 X%」。盤中未收、全日法人 0 不當資金日。
-FLOW_LOOKBACK = 20
+# 五天太薄。兩個月仍薄。官方資金窗＝近 100 個有法人日，每天只記流入／流出第一名。
+# 100 日簇內首漲停前一收：次級距20高中位 −8.6% → 簡化門檻 −8%。不鎖起點％、不發明 5／9。
+FLOW_LOOKBACK = 100
 SHARE_DAYS = 5
 MIN_CHAIN_N = 3
+PRE_VS20 = -8.0
 
 
 def want_field_scan(ask: str) -> bool:
@@ -544,7 +545,7 @@ def _chip_dates(conn: sqlite3.Connection, cap: str, n: int = FLOW_LOOKBACK) -> L
     return sorted(_ymd(r[0]) for r in rows if _ymd(r[0]))
 
 
-def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = FLOW_LOOKBACK) -> int:
+def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
     """把教過的次族群寫進膠帶：細項、三大法人張、佔當日買超／賣超％。來源＝日 K 的 T86，不抓分點。"""
     if not db_path:
         return 0
@@ -755,6 +756,69 @@ def _fill_leaders(db_path: str, group: Optional[Dict[str, Any]], cap: str) -> Di
     return g
 
 
+def _chain_pre_ok(
+    db_path: str, group: Optional[Dict[str, Any]], cap: str
+) -> Tuple[bool, float]:
+    """100日首漲停前：次級距20高中位 −8.6%。簡化＝至少一檔次級 vs20≤−8% 且仍低於60高。"""
+    if not group or not db_path:
+        return False, 0.0
+    g = _fill_leaders(db_path, group, cap)
+    leads = {str(x[0]) for x in (g.get("leaders") or ()) if x}
+    pool = list(g.get("laggards") or ())
+    if not pool:
+        pool = [(s, n) for s, n in list(g.get("members") or ()) if str(s) not in leads]
+    best: Optional[float] = None
+    seen = set()
+    n = 0
+    for sid, _name in pool:
+        sid = str(sid or "")
+        if not sid or sid in seen or sid in leads:
+            continue
+        seen.add(sid)
+        st = _stats(_bars_tail(db_path, sid, cap, 80))
+        n += 1
+        if not st or st.get("vs20") is None:
+            if n >= 8:
+                break
+            continue
+        vs20 = float(st["vs20"])
+        vs60 = float(st.get("vs60") or 0)
+        if vs60 < 0 and (best is None or vs20 < best):
+            best = vs20
+        if n >= 8:
+            break
+    if best is None:
+        return False, 0.0
+    return best <= PRE_VS20, best
+
+
+def _bars_tail(
+    db_path: str, sid: str, cap: str, n: int = 80
+) -> List[Tuple[str, float, float, float, float]]:
+    if not db_path or not sid:
+        return []
+    cap = _ymd(cap)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            "SELECT date, high, low, close, volume FROM daily_quotes "
+            "WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=? "
+            "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT ?",
+            (sid, cap, int(n)),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    out: List[Tuple[str, float, float, float, float]] = []
+    for d, h, l, c, v in reversed(rows):
+        try:
+            out.append((_ymd(d), float(h), float(l), float(c), float(v or 0)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _chain_is_named(spoken: str, parts: Sequence[str], named_keys: set) -> bool:
     taught = _taught_for_chain(parts)
     if taught and taught["key"] in named_keys:
@@ -846,7 +910,25 @@ def fine_share_table(
         ign["sids"] = list(sids)
         ign["layers"] = parts
         ign["chain"] = chain
+        ign["_shares_all"] = shares
         out[chain] = ign
+    lead_n: Dict[str, int] = defaultdict(int)
+    if dates:
+        for i in range(len(dates)):
+            best_ch = ""
+            best_sh = 0.0
+            for chain, ign in out.items():
+                sh = float((ign.get("_shares_all") or [0.0] * len(dates))[i] or 0)
+                if sh > best_sh:
+                    best_sh = sh
+                    best_ch = chain
+            if best_ch and best_sh > 0:
+                lead_n[best_ch] += 1
+    for ign in out.values():
+        series = list(ign.pop("_shares_all", []) or [])
+        ign["in_lead_n"] = int(lead_n.get(str(ign.get("chain") or ""), 0))
+        ign["share_pos_n"] = sum(1 for x in series if float(x or 0) > 0)
+        ign["lookback_n"] = len(dates)
     return out
 
 
@@ -1102,6 +1184,8 @@ def _flow_why(ign: Dict[str, Any]) -> str:
     share_bits = "→".join(f"{x:.1f}%" for x in shares) if shares else ""
     if ign.get("flowing_in") or ign.get("slow_in"):
         extra = "佔比在升＝資金流入這細項。"
+    elif float(ign.get("share_last") or 0) > 0:
+        extra = "買超佔比還在；次級仍低於20高才當先機。"
     elif float(ign.get("share_up") or 0) < 0 or int(ign.get("last") or 0) < 0:
         extra = "佔比在退＝資金流出，不當新點火。"
     else:
@@ -1399,11 +1483,32 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             unnamed_pos,
             key=lambda c: (
                 float(c["ign"].get("share_last") or 0.0),
+                int(c["ign"].get("in_lead_n") or 0),
                 float(c["ign"].get("share_up") or 0.0),
             ),
             reverse=True,
         )
-        flow_hit = ranked[0]
+        picked = None
+        for cand in ranked[:12]:
+            g0 = _fill_leaders(db_path, cand["group"], cap)
+            cand["group"] = g0
+            ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
+            cand["pre_ok"] = ok
+            cand["pre_vs20"] = best_vs20
+            if ok:
+                picked = cand
+                break
+        flow_hit = picked or ranked[0]
+        if picked is None:
+            g0 = _fill_leaders(db_path, flow_hit["group"], cap)
+            flow_hit["group"] = g0
+            ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
+            flow_hit["pre_ok"] = ok
+            flow_hit["pre_vs20"] = best_vs20
+            flow_hit["pre_late"] = True
+        else:
+            flow_hit["pre_late"] = False
+        ranked = [flow_hit] + [c for c in ranked if c is not flow_hit]
     else:
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
@@ -1436,6 +1541,11 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 + (f" 佔當日法人買超 {path}，資金流入。" if path else " 資金流入。")
                 + rot
                 + miss
+                + (
+                    f"次級距20高 {float(flow_hit.get('pre_vs20') or 0):+.1f}%≤{PRE_VS20:.0f}%（100日首漲停前中位）。"
+                    if flow_hit.get("pre_ok")
+                    else "次級已靠近20高＝偏晚，只參考佔比。"
+                )
                 + "不靠他有沒有說蠢蠢欲動。飆大點名只參考，不是唯一。"
             ),
             "named": spoken_named,
@@ -1448,6 +1558,11 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
     pick["chip_cap"] = chip_cap
     pick["flow_window"] = FLOW_LOOKBACK
+    pick["pre_ok"] = bool(flow_hit.get("pre_ok")) if flow_hit else False
+    pick["pre_vs20"] = float(flow_hit.get("pre_vs20") or 0) if flow_hit else 0.0
+    pick["pre_late"] = bool(flow_hit.get("pre_late")) if flow_hit else False
+    pick["in_lead_n"] = int((flow_hit["ign"] if flow_hit else {}).get("in_lead_n") or 0)
+    pick["share_pos_n"] = int((flow_hit["ign"] if flow_hit else {}).get("share_pos_n") or 0)
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
@@ -1609,7 +1724,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         chip = _esc(data.get("chip_cap") or "")
         win = int(data.get("flow_window") or FLOW_LOOKBACK)
         extra = f"　法人日 {chip}" if chip and chip != cap else ""
-        lines.append(f"官方收 {cap}{extra}　資金窗近{win}個有法人日")
+        lines.append(f"官方收 {cap}{extra}　資金窗近{win}個有法人日（每天流入／流出第一名）")
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")
@@ -1618,6 +1733,21 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             lines.append(_esc(_flow_why(flow)))
         return "\n".join(lines)
     lines.append(f"<b>此刻最像</b> {_esc(field)}")
+    lead_n = int(data.get("in_lead_n") or 0)
+    pos_n = int(data.get("share_pos_n") or 0)
+    win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
+    if lead_n or pos_n:
+        lines.append(
+            _esc(
+                f"近{win_n}個有法人日：這族當流入第一名 {lead_n} 天、有買超佔比 {pos_n} 天。"
+                + (
+                    f"次級距20高 {float(data.get('pre_vs20') or 0):+.1f}%（門檻 {PRE_VS20:.0f}%）。"
+                    if data.get("pre_vs20") is not None
+                    else ""
+                )
+                + ("偏晚。" if data.get("pre_late") else "")
+            )
+        )
     layer_txt = str(data.get("layer_txt") or "")
     if layer_txt:
         lines.append(_esc(layer_txt))

@@ -475,16 +475,17 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert empty.get("field") == "高階測試／封測"
 
 
-def test_dongzhu_window_is_20_chip_days_not_five():
+def test_dongzhu_window_is_100_chip_days():
     import biaoke_field_scan as m
-    from biaoke_field_scan import FLOW_LOOKBACK, SHARE_DAYS
+    from biaoke_field_scan import FLOW_LOOKBACK, PRE_VS20, SHARE_DAYS
 
-    assert FLOW_LOOKBACK == 20
+    assert FLOW_LOOKBACK == 100
     assert SHARE_DAYS == 5
+    assert PRE_VS20 == -8.0
     src = open(m.__file__, encoding="utf-8").read()
     assert "START_SHARE" not in src
     assert "START_PCT" not in src
-    assert "FLOW_LOOKBACK = 20" in src
+    assert "FLOW_LOOKBACK = 100" in src
 
 
 def test_dongzhu_chip_dates_skip_all_zero(tmp_path):
@@ -628,8 +629,100 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     html = dongzhu_page(db, spoken=spoken)
     assert "設計" in html
     assert "3228" in html
-    assert "資金窗近20個有法人日" in html
+    assert "資金窗近100個有法人日" in html
     assert "3443" not in html
     assert "不准發明切入" not in html
     assert "次熱" in html
     assert "6257" in html and "矽格" in html
+
+
+def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkeypatch):
+    """100日：電信佔比最高但次級已貼20高＝偏晚；封測次級距20高≤−8% 才是先機。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        try:
+            conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    last_day = datetime(2026, 9, 17)
+    n = 60
+
+    def add_flat(sid, name, px, vol):
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, px, px, px, px, int(vol), 0.0, 0, 0, 0),
+            )
+
+    add_flat("2412", "中華電", 128.0, 8000)
+    add_flat("3045", "台灣大", 124.5, 3000)
+    add_flat("4904", "遠傳", 105.0, 2500)
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    for sid, chain in (
+        ("2412", "電子下游-電信服務"),
+        ("3045", "電子下游-電信服務"),
+        ("4904", "電子下游-電信服務"),
+        ("6257", "電子上游-IC-封測"),
+        ("3264", "電子上游-IC-封測"),
+        ("2449", "電子上游-IC-封測"),
+    ):
+        conn.execute(
+            "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+            (sid, chain, "[]", "", "test", "2026-09-17"),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ]
+    chip_days = dates[-6:-1]
+    zero_day = dates[-1]
+    for i, day in enumerate(chip_days):
+        for sid, net in (("2412", 900), ("3045", 700), ("4904", 500)):
+            conn.execute(
+                "UPDATE daily_quotes SET foreign_net=? WHERE stock_id=? AND date=?",
+                (net + i * 40, sid, day),
+            )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (200 + i * 50, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2449' AND date=?",
+            (80 + i * 20, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (400, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=0, trust_net=0, dealer_net=0 WHERE date=?",
+        (zero_day,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_picks
+
+    data = dongzhu_picks(db, spoken="")
+    assert data.get("field") == "高階測試／封測"
+    assert data.get("pre_ok") is True
+    assert data.get("pre_late") is False
+    html = dongzhu_page(db, spoken="")
+    assert "高階測試／封測" in html
+    assert "電信服務" not in html.split("此刻最像")[-1][:80]
+    assert "6257" in html or "2449" in html
+    assert "資金窗近100個有法人日" in html
+    assert "流入第一名" in html

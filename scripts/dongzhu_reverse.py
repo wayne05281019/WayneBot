@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """從官方日 K 反推：漲停細項、法人佔比起點／斜率、龍頭 vs 次級誰先起漲。
 
-五天太薄（佔比起點中位 0%＝窗截斷，不是規則）。結果窗＝近 20 個交易日，
+五天／二十天太薄。結果窗＝近 100 個交易日，
 再往前 15 個有法人日看佔比路徑。不鎖「起點必須 X%」。盤中未收不當官方收。
 不進海選、不改黃金買點。
 """
@@ -29,7 +29,7 @@ except Exception:
         return os.path.join(ROOT, "data", "wayne_market.db")
 
 DB = os.environ.get("WAYNE_DB") or get_db_path()
-RESULT_N = 20  # 五天太薄；近 20 個交易日當結果窗
+RESULT_N = 100  # 五天／二十天太薄；近 100 個交易日
 FLOW_PRE = 15  # 再往前 15 日看佔比起點
 LIMIT_PCT = 9.5  # 上市櫃 10% 漲停；盤後未收不當日
 
