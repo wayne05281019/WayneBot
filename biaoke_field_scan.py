@@ -1227,6 +1227,24 @@ def _is_money_hot(ign: Dict[str, Any], all_igns: Sequence[Dict[str, Any]]) -> bo
     return last + 1e-9 >= mx
 
 
+def _inflow_board(all_igns: Sequence[Dict[str, Any]], n: int = 8) -> str:
+    """近窗每天流入第一名的天數。不是只有此刻那一族。"""
+    rows: List[Tuple[int, str]] = []
+    seen = set()
+    for ign in all_igns:
+        days = int(ign.get("in_lead_n") or 0)
+        if days <= 0:
+            continue
+        name = str(ign.get("_field") or ign.get("fine_tag") or ign.get("chain") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        rows.append((days, name))
+    rows.sort(key=lambda x: -x[0])
+    bits = [f"{name} {days}天" for days, name in rows[:n]]
+    return "｜".join(bits)
+
+
 def _hot_ref_line(hot: Dict[str, Any], spoken_named: Sequence[str]) -> str:
     if not hot.get("field"):
         named = "、".join(spoken_named)
@@ -1563,6 +1581,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     pick["pre_late"] = bool(flow_hit.get("pre_late")) if flow_hit else False
     pick["in_lead_n"] = int((flow_hit["ign"] if flow_hit else {}).get("in_lead_n") or 0)
     pick["share_pos_n"] = int((flow_hit["ign"] if flow_hit else {}).get("share_pos_n") or 0)
+    pick["inflow_board"] = _inflow_board(all_igns)
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
@@ -1725,6 +1744,10 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         win = int(data.get("flow_window") or FLOW_LOOKBACK)
         extra = f"　法人日 {chip}" if chip and chip != cap else ""
         lines.append(f"官方收 {cap}{extra}　資金窗近{win}個有法人日（每天流入／流出第一名）")
+    board = str(data.get("inflow_board") or "").strip()
+    if board:
+        win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
+        lines.append(_esc(f"近{win_n}日每天流入第一名：{board}"))
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")

@@ -371,7 +371,7 @@ def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
 
 
 def test_dongzhu_layers_and_parity_roles():
-    from biaoke_field_scan import _GROUPS, _layer_line, _parity_txt, _stock_role
+    from biaoke_field_scan import _GROUPS, _inflow_board, _layer_line, _parity_txt, _stock_role
 
     test_g = next(g for g in _GROUPS if g["key"] == "test")
     assert _stock_role(test_g, "6515") == "龍頭"
@@ -393,6 +393,18 @@ def test_dongzhu_layers_and_parity_roles():
         {"broke": False},
     )
     assert "不是替代買訊" in both
+    board = _inflow_board(
+        [
+            {"in_lead_n": 35, "_field": "金控"},
+            {"in_lead_n": 13, "_field": "LCD／TFT面板"},
+            {"in_lead_n": 4, "_field": "高階測試／封測"},
+            {"in_lead_n": 2, "_field": "電信服務"},
+        ]
+    )
+    assert "金控 35天" in board
+    assert "LCD／TFT面板 13天" in board
+    assert "電信服務" in board
+    assert "高階測試／封測" in board
 
 
 def test_dongzhu_flow_hooks_fuse_not_money_flow():
@@ -726,3 +738,4 @@ def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkey
     assert "6257" in html or "2449" in html
     assert "資金窗近100個有法人日" in html
     assert "流入第一名" in html
+    assert "每天流入第一名" in html
