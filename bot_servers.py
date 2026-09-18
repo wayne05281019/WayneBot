@@ -307,6 +307,13 @@ MENU_BTN_DONGZHU_ALIASES = (
     "洞燭",
     "先機",
 )
+MENU_BTN_LEAVE_DONGZHU = "離開洞燭先機"
+MENU_BTN_LEAVE_DONGZHU_ALIASES = (
+    MENU_BTN_LEAVE_DONGZHU,
+    "離開洞燭",
+    "退出洞燭先機",
+    "跳出洞燭先機",
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -375,7 +382,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
 # v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
 # v26：下排最右空白格改「洞燭先機」（族群＋黃金買點交集；沒買點不准發明）。
-MENU_LAYOUT_VERSION = "26"
+# v27：進洞燭後同一顆改「離開洞燭先機」，用完回兩排主選單（對齊離開飆大）。
+MENU_LAYOUT_VERSION = "27"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -801,6 +809,28 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
+    def _dongzhu_reply_menu(self, uid: str = ""):
+        """還在洞燭先機：下排最右同一顆改成「離開洞燭先機」。"""
+        _ = uid
+        row2 = [
+            KeyboardButton(MENU_BTN_LEAVE_DONGZHU if t == MENU_BTN_DONGZHU else t)
+            for t in MENU_ROW2
+        ]
+        rows = [
+            [KeyboardButton(t) for t in MENU_ROW1],
+            row2,
+        ]
+        placeholder = "還在洞燭。打代號＝能不能留。同一顆「離開洞燭先機」回主選單。"
+        try:
+            return ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=True,
+                is_persistent=True,
+                input_field_placeholder=placeholder,
+            )
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
     def _menu_uid_from_message(self, message, uid: str = "") -> str:
         if uid:
             return str(uid)
@@ -1042,6 +1072,20 @@ class WayneTelegramBot:
                 pass
         await message.reply_html(
             "已離開<b>飆大</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡。",
+            reply_markup=self._reply_menu(uid),
+        )
+
+    async def _leave_dongzhu(self, message, uid: str) -> None:
+        """用完洞燭先機：清 pending、把鍵盤換回兩排主選單。兩人同一顆。"""
+        actor = self._actor_key(message, uid=uid)
+        self._pending.pop(actor, None)
+        if uid:
+            try:
+                self._mark_menu_layout_ok(uid)
+            except Exception:
+                pass
+        await message.reply_html(
+            "已離開<b>洞燭先機</b>。下面兩排是主選單。打代號會出介紹圖＋決策卡。",
             reply_markup=self._reply_menu(uid),
         )
 
@@ -1517,28 +1561,39 @@ class WayneTelegramBot:
             InlineKeyboardButton("介紹卡", callback_data=f"i:{c}"),
         ]
 
-    def _dongzhu_pick_rows(self, code: str, name: str = ""):
+    def _dongzhu_pick_rows(self, code: str, name: str = "", *, win_btn: str = ""):
+        """一行四鈕：代號股名（買點可加勝％）｜產業｜高低溫度卡｜介紹卡。"""
         from tg_layout import stock_btn_label
 
         c = str(code or "").strip()[:6]
         if not c:
             return []
-        label = stock_btn_label(c, name or "")
+        # 四鈕並排：代號名略縮；買點才加短勝率標，觀察／落後不加。
+        win = str(win_btn or "").strip()
+        budget = 22 if win else 28
+        label = stock_btn_label(c, name or "", max_bytes=budget)
+        if win:
+            label = f"{label} {win}".strip()
         return [
-            [InlineKeyboardButton(label, callback_data=f"k:{c}")],
-            self._dongzhu_card_row(c),
+            [
+                InlineKeyboardButton(label, callback_data=f"k:{c}"),
+                *self._dongzhu_card_row(c),
+            ]
         ]
 
     def _dongzhu_picks_keyboard(self, picks=None):
         rows = []
         for pair in list(picks or [])[:MAX_PICK_INLINE_ROWS]:
+            win_btn = ""
             if isinstance(pair, (list, tuple)):
                 code = str((pair[0] if pair else "") or "").strip()
                 name = str((pair[1] if len(pair) > 1 else "") or "")
+                if len(pair) > 2 and pair[2]:
+                    win_btn = str(pair[2]).strip()
             else:
                 code = str(pair or "").strip()
                 name = ""
-            rows.extend(self._dongzhu_pick_rows(code, name))
+            rows.extend(self._dongzhu_pick_rows(code, name, win_btn=win_btn))
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -2875,8 +2930,8 @@ class WayneTelegramBot:
         if not hits:
             self._pending[actor] = "dongzhu"
             await message.reply_text(
-                "找不到這檔。打代號或股名，看這檔自己的產業鏈能不能留。",
-                reply_markup=self._reply_menu(uid),
+                "找不到這檔。打代號或股名，看這檔自己的產業鏈能不能留（不是整層電子）。",
+                reply_markup=self._dongzhu_reply_menu(uid),
             )
             return
         if hits_need_picker(hits):
@@ -2888,7 +2943,6 @@ class WayneTelegramBot:
             )
             return
         sid = str(hits[0].get("stock_id") or "").strip()
-        name = str(hits[0].get("stock_name") or "")
         wait_h = (None, None, None)
         try:
             wait_h = await self._start_plain_wait(
@@ -2896,7 +2950,7 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "洞燭先機進行中",
                     s,
-                    now="讀這產業鏈",
+                    now="讀這檔產業鏈",
                     rest="能不能留",
                     fill_sec=16.0,
                 ),
@@ -2909,14 +2963,14 @@ class WayneTelegramBot:
             except asyncio.TimeoutError:
                 await message.reply_text(
                     "⚠️ 洞燭先機查詢逾時。請稍後再打一次代號。",
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._dongzhu_reply_menu(uid),
                 )
                 return
             except Exception:
                 logger.exception("洞燭先機能不能留失敗")
                 await message.reply_text(
                     PHONE_BUSY,
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._dongzhu_reply_menu(uid),
                 )
                 return
             await self._stop_plain_wait(*wait_h)
@@ -2931,11 +2985,16 @@ class WayneTelegramBot:
                     reply_markup=kb if j == last else None,
                     disable_web_page_preview=True,
                 )
+            # ReplyKeyboard 與 Inline 不能同則；另發離開鈕鍵盤。
+            await message.reply_text(
+                "還在洞燭。同一顆「離開洞燭先機」回主選單。",
+                reply_markup=self._dongzhu_reply_menu(uid),
+            )
         finally:
             await self._stop_plain_wait(*wait_h)
 
     async def _send_dongzhu_page(self, message) -> None:
-        from biaoke_field_scan import dongzhu_page, dongzhu_picks
+        from biaoke_field_scan import PRE_BUY_WIN_BTN, dongzhu_page, dongzhu_picks
 
         uid = str(
             _ACTIVE_PHONE_UID.get()
@@ -2948,7 +3007,7 @@ class WayneTelegramBot:
         if actor in self._trade_running:
             await message.reply_text(
                 "洞燭先機進行中，請稍候完成後再按。",
-                reply_markup=self._reply_menu(uid),
+                reply_markup=self._dongzhu_reply_menu(uid),
             )
             return
         self._trade_running.add(actor)
@@ -2973,20 +3032,25 @@ class WayneTelegramBot:
             except asyncio.TimeoutError:
                 await message.reply_text(
                     "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._dongzhu_reply_menu(uid),
                 )
                 return
             except Exception:
                 logger.exception("洞燭先機查詢失敗")
                 await message.reply_text(
                     PHONE_BUSY,
-                    reply_markup=self._reply_menu(uid),
+                    reply_markup=self._dongzhu_reply_menu(uid),
                 )
                 return
             picks = []
             try:
                 data = dongzhu_picks(self.db_path)
                 seen = set()
+                buy_sids = {
+                    str(x.get("sid") or "")
+                    for x in list(data.get("buys") or [])
+                    if x.get("sid")
+                }
                 for item in (
                     list(data.get("buys") or [])
                     + list(data.get("watches") or [])
@@ -2996,7 +3060,9 @@ class WayneTelegramBot:
                     if not sid or sid in seen:
                         continue
                     seen.add(sid)
-                    picks.append((sid, item.get("name") or ""))
+                    # 只有黃金買點標這型勝率；觀察／落後不加，不准發明。
+                    win = PRE_BUY_WIN_BTN if sid in buy_sids else ""
+                    picks.append((sid, item.get("name") or "", win))
             except Exception:
                 picks = []
             await self._stop_plain_wait(*wait_h)
@@ -3010,6 +3076,11 @@ class WayneTelegramBot:
                     reply_markup=kb,
                     disable_web_page_preview=True,
                 )
+            # 內容／選檔用 Inline；離開鈕用 ReplyKeyboard 另發（對齊離開飆大）。
+            await message.reply_text(
+                "還在洞燭。同一顆「離開洞燭先機」回主選單。",
+                reply_markup=self._dongzhu_reply_menu(uid),
+            )
             self._pending[actor] = "dongzhu"
         finally:
             await self._stop_plain_wait(*wait_h)
@@ -4224,11 +4295,16 @@ class WayneTelegramBot:
         if text == MENU_BTN_BACK_MAIN:
             if str(self._pending.get(actor) or "") in ("biaoke:ask", "biaoke:chat"):
                 await self._leave_biaoke(update.message, uid)
+            elif str(self._pending.get(actor) or "") == "dongzhu":
+                await self._leave_dongzhu(update.message, uid)
             else:
                 await self._restore_main_menu(update.message, uid)
             return
         if text in MENU_BTN_LEAVE_BIAOKE_ALIASES:
             await self._leave_biaoke(update.message, uid)
+            return
+        if text in MENU_BTN_LEAVE_DONGZHU_ALIASES:
+            await self._leave_dongzhu(update.message, uid)
             return
         if text in (MENU_BTN_STREAK, "連買區域", "外資連買區域"):
             logger.info("主選單：連買區 uid=%s", uid)

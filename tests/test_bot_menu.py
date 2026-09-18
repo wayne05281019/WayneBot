@@ -35,7 +35,7 @@ def test_reply_menu_is_two_rows_not_three():
 
     assert MENU_BTN_MARKET == "大盤"
     assert MENU_BTN_AI == "AI倉"
-    assert MENU_LAYOUT_VERSION == "26"
+    assert MENU_LAYOUT_VERSION == "27"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2

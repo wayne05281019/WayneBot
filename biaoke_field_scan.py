@@ -124,6 +124,7 @@ _RULE_LINES = (
 # 軍工沒有 CMoney 細項，不發明一族。
 # 追當天流入第一名：29.7%／54.7% n=64
 # 昨天第一名今天佔比在退：29.1%／54.5% n=55＝人去樓空，不推買
+# 升還沒第一 ∩ 黃金買點：漲停或≥8% 70.8% ← 話筒買點旁標的勝率（型別鎖死，不是個股自己回測）
 # 未編碼（n≥20 但沒贏基線）：佔比升最多 67.1%；升≥1pt 67.1%；連升兩日 63.2%；volr≥1.2 51.1%；vs20≤−12 70.5%；龍頭未過20高 71.4%
 FLOW_LOOKBACK = 100
 SHARE_DAYS = 5
@@ -137,6 +138,9 @@ SKIP_PARKING = True
 PREFER_ELEC = True
 PREFER_TAUGHT = True
 PARKING_NEEDLES = ("金控", "銀行")
+PRE_BUY_WIN_PCT = 70.8  # 後10日漲停或≥8%；只標在先機∩黃金買點
+PRE_BUY_WIN_LABEL = f"勝率 {PRE_BUY_WIN_PCT:g}%"
+PRE_BUY_WIN_BTN = f"勝{PRE_BUY_WIN_PCT:.0f}%"
 # 話筒／海選共用：資金輪動要注意（100法人日走查鎖死）。
 ROTATION_NOTES = (
     "看主產業／次產業／產業鏈，不是整層電子。",
@@ -2082,7 +2086,11 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     volr = item.get("volr")
     role = str(item.get("role") or "").strip()
     tag_s = tag if not role else f"{tag}·{role}"
-    rows = [f"{idx}. {sid} {name}　{_esc(tag_s)}"]
+    # 買點才標這型鎖死勝率；觀察／落後不准發明買點勝率。
+    head = f"{idx}. {sid} {name}　{_esc(tag_s)}"
+    if str(tag or "").startswith("買點"):
+        head = f"{head}　<b>{_esc(PRE_BUY_WIN_LABEL)}</b>"
+    rows = [head]
     px_bits = []
     if close is not None:
         px_bits.append(f"收 {close_s}")
@@ -2106,6 +2114,8 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
         meta.append(f"佔這族 {_share_txt(float(item.get('group_share') or 0))}")
     if item.get("cum5"):
         meta.append(f"近5日法人 {_lots_txt(int(item.get('cum5') or 0))}")
+    if str(tag or "").startswith("買點"):
+        meta.append(_esc("後10日漲停或≥8%（這型回測，不是個股）"))
     if meta:
         rows.append("　".join(meta))
     return "\n".join(rows)
@@ -2117,7 +2127,7 @@ def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
     vs20 = item.get("vs20")
     vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
     return (
-        f"{field}佔比升還沒當第一（回測這型略過金控／銀行停車格後後10日漲停或≥8%約八成；電子細項約八成三）。"
+        f"{field}佔比升還沒當第一（回測這型後10日漲停或≥8% {PRE_BUY_WIN_LABEL}）。"
         f"{role}{vs_s}。這檔是黃金買點，點左邊選。"
     )
 
@@ -2485,7 +2495,10 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             ref_rows = _break_sentences(ref)
     if ref_rows:
         blocks.append(_blk(*(_esc(x) for x in ref_rows)))
-    rec_rows = ["<b>此刻推薦</b>", _esc("回測勝率最高這型 ∩ 黃金買點；點左邊選")]
+    rec_rows = [
+        "<b>此刻推薦</b>",
+        _esc(f"回測勝率最高這型 ∩ 黃金買點；{PRE_BUY_WIN_LABEL}（後10日漲停或≥8%）。點左邊選"),
+    ]
     parity = str(data.get("parity") or "")
     if parity:
         rec_rows.extend(f"<i>{_esc(x)}</i>" for x in _break_sentences(parity))

@@ -135,6 +135,12 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "不是整層電子" in html
     assert "人去樓空" in html
     assert "黃金買點" in html
+    assert "勝率 70.8%" in html
+    buy_lines = [
+        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln and "買點" in ln
+    ]
+    assert buy_lines
+    assert all("勝率 70.8%" in ln for ln in buy_lines)
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):

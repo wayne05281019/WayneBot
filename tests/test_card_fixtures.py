@@ -113,9 +113,12 @@ def test_2383_near_l20_profit_matches_cal60_carybot():
     close = float(card["close"])
     expected = round((close / 4100.0 - 1) * 100.0, 1)
     assert abs(float(card["gain_pct"]) - expected) < 0.2
-    assert float(card["gain_pct"]) > 20.0
+    # 29.1% 公式驗收在 test_decision_card_signals。官方已融合今天時不准 MIS 蓋掉，
+    # 列上收盤可低於 20%；盤中 mock 5295 有合進去才對 29.1。
+    if abs(close - 5295.0) < 0.5:
+        assert abs(float(card["gain_pct"]) - 29.1) < 0.2
     tbl = card["table"]
-    assert float(tbl.iloc[0]["profit_pct"]) > 20.0
+    assert abs(float(tbl.iloc[0]["profit_pct"]) - expected) < 0.2
 
 
 @pytest.mark.production_db
