@@ -42,7 +42,12 @@ def _num(val, default: float = 0.0) -> float:
 
 
 def _first_book(side: str) -> float:
-    return _num(str(side or "").split("_")[0])
+    """五檔第一口有效價。漲停時買盤常是 0.0000_7150_…，不可拿第一個 0。"""
+    for part in str(side or "").split("_"):
+        n = _num(part)
+        if n > 0:
+            return n
+    return 0.0
 
 
 def _last_price(item: dict, yesterday: float) -> float:
@@ -56,10 +61,8 @@ def _last_price(item: dict, yesterday: float) -> float:
         return ask
     if bid > 0:
         return bid
-    h, l = _num(item.get("h")), _num(item.get("l"))
-    if h > 0 and l > 0:
-        return round((h + l) / 2.0, 2)
-    return yesterday
+    # 漲停 z='-'、賣盤空：不要用（高+低）/2 當現價（3443 會變成 6830 而不是 7150）。
+    return 0.0
 
 
 _OTC_MARKETS = {"TWO", "OTC", "TPEX", "ROCO", "ROCC", "上櫃"}
