@@ -70,6 +70,14 @@ def test_stock_card_shows_mixed_stars():
     assert "★★★★★" in html
     assert "不同步就直接減碼" in html
     assert "切入" in html and "100" in html
+    lines = [
+        ln
+        for ln in html.replace("<blockquote>", "").replace("</blockquote>", "").split("\n")
+        if ln.strip()
+    ]
+    assert "2330" in lines[0] and "台積電" in lines[0]
+    assert "★" not in lines[0] and "☆" not in lines[0]
+    assert lines[1] == "★★★★★"
     watch = _stock_card_html(
         {"stock_id": "1101", "stock_name": "台泥", "close": 50.2, "golden_buy": True},
         2,
