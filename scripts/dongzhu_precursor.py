@@ -70,7 +70,7 @@ def main() -> None:
 
     print(f"LOOKBACK={LOOKBACK} FWD={FWD} PRE_VS20={PRE_VS20} LZ={LZ_MIN}..{LZ_MAX}")
     conn = sqlite3.connect(DB)
-    meta = load(conn)
+    meta = load(conn, lookback=0)
     conn.close()
     chip100: List[str] = meta["chip100"]
     by_sid = meta["by_sid"]
@@ -176,7 +176,9 @@ def main() -> None:
                 return False
         return True
 
-    def fwd(sids: Sequence[str], d: str) -> Tuple[bool, bool, Optional[float]]:
+    def fwd(
+        sids: Sequence[str], d: str, nfwd: int = FWD
+    ) -> Tuple[bool, bool, Optional[float]]:
         qi = quote_idx.get(d)
         if qi is None or not sids:
             return False, False, None
@@ -205,30 +207,22 @@ def main() -> None:
 
     test_days = chip100[SHARE_DAYS : -FWD] if len(chip100) > FWD + SHARE_DAYS else []
     yest = {chip100[i]: chip100[i - 1] for i in range(1, len(chip100))}
+    recent_from = chip100[-100] if len(chip100) >= 100 else (chip100[0] if chip100 else "")
+    print(f"全窗 {chip100[0]}..{chip100[-1]} n={len(chip100)} 近100起 {recent_from}")
 
     regimes = {
         "追當天第一名": [],
         "昨天第一名今天佔比在退": [],
         "佔比升還沒當第一": [],
-        "佔比升還沒當第一＋黃金買點": [],
-        "追第一名＋黃金買點": [],
-        "昨天第一名今天在退＋黃金買點": [],
-        "佔比升最多還沒第一": [],
-        "佔比升最多還沒第一＋黃金買點": [],
-        "佔比升≥1pt還沒第一": [],
-        "佔比升≥1pt還沒第一＋黃金買點": [],
-        "連升兩日還沒第一": [],
-        "連升兩日還沒第一＋黃金買點": [],
-        "升還沒第一且非金控銀行": [],
-        "升還沒第一且非金控銀行＋黃金買點": [],
-        "佔比升最多且非金控銀行": [],
-        "佔比升最多且非金控銀行＋黃金買點": [],
-        "升還沒第一＋vs20≤−12": [],
-        "升還沒第一＋vs20≤−12＋黃金買點": [],
-        "升還沒第一＋volr≥1.2": [],
-        "升還沒第一＋volr≥1.2＋黃金買點": [],
-        "升還沒第一＋龍頭未過20高": [],
-        "升還沒第一＋龍頭未過20高＋黃金買點": [],
+        "非金控": [],
+        "非金控＋連升兩日": [],
+        "非金控＋升≥1pt": [],
+        "非金控＋vs20≤−12": [],
+        "非金控＋volr≥1.2": [],
+        "非金控＋龍頭未過20高": [],
+        "非金控＋最落後1檔": [],
+        "非金控＋第2到4名": [],
+        "非金控＋黃金買點逐檔": [],
     }
 
     def take(
@@ -239,126 +233,134 @@ def main() -> None:
         *,
         vs20_max: float = PRE_VS20,
         volr_min: Optional[float] = None,
+        n_lag: int = 3,
+        each: bool = False,
     ) -> None:
         if not chain:
             return
-        sids = laggards(chain, d, lz=lz, vs20_max=vs20_max, volr_min=volr_min)
+        sids = laggards(chain, d, lz=lz, n=n_lag, vs20_max=vs20_max, volr_min=volr_min)
         if not sids:
             return
-        lu, gain, best = fwd(sids, d)
-        regimes[label].append(
-            {
-                "d": d,
-                "chain": chain,
-                "sids": sids,
-                "lu": lu,
-                "gain": gain or lu,
-                "best": best,
-                "names": ",".join(f"{s}{names.get(s, s)}" for s in sids),
-            }
-        )
+        win = "recent" if d >= recent_from else "prior"
+        groups = [[s] for s in sids] if each else [sids]
+        for group in groups:
+            lu, gain, best = fwd(group, d)
+            lu20 = gain20 = best20 = None
+            if each:
+                qi = quote_idx.get(d)
+                if qi is not None and qi + 20 < len(quotes):
+                    lu20, gain20, best20 = fwd(group, d, 20)
+            st0 = stats_at(by_sid.get(group[0]) or [], d) if len(group) == 1 else None
+            regimes[label].append(
+                {
+                    "d": d,
+                    "chain": chain,
+                    "sids": group,
+                    "lu": lu,
+                    "gain": gain or lu,
+                    "best": best,
+                    "win": win,
+                    "vs20": float((st0 or {}).get("vs20") or 0) if st0 else None,
+                    "volr": float((st0 or {}).get("volr") or 0) if st0 else None,
+                    "profit": profit_cal60(by_sid.get(group[0]) or [], d) if len(group) == 1 else None,
+                    "lead": group[0] in leads_of(chain, d) if len(group) == 1 else False,
+                    "lu20": lu20,
+                    "gain20": (gain20 or lu20) if lu20 is not None else None,
+                    "best20": best20,
+                    "names": ",".join(f"{s}{names.get(s, s)}" for s in group),
+                }
+            )
 
     for d in test_days:
         ranked = ranked_day(d)
         if not ranked:
             continue
-        hot_sh, hot = ranked[0]
+        hot = ranked[0][1]
         prev = yest.get(d)
         prev_ranked = ranked_day(prev) if prev else []
         y_hot = prev_ranked[0][1] if prev_ranked else ""
         y_sh = prev_ranked[0][0] if prev_ranked else 0.0
         leaving = y_hot and share(y_hot, d) + 1e-9 < y_sh
 
-        rising = []
-        for sh, chain in ranked[1:8]:
-            if prev and share(chain, prev) > sh + 1e-9:
-                continue
-            if sh <= 0:
-                continue
-            rising.append((sh, chain))
+        def _rising(rows: List[Tuple[float, str]]) -> List[Tuple[float, str]]:
+            out = []
+            for sh, chain in rows:
+                if prev and share(chain, prev) > sh + 1e-9:
+                    continue
+                if sh <= 0:
+                    continue
+                out.append((sh, chain))
+            return out
+
+        rising = _rising(ranked[1:8])
+        rising4 = _rising(ranked[1:4])
         pre = rising[0][1] if rising else ""
-        max_up = ""
-        if rising:
-            max_up = max(rising, key=lambda x: chg(x[1], d))[1]
-        up1 = ""
-        up1_rows = [(chg(c, d), c) for _sh, c in rising if chg(c, d) >= 1.0]
-        if up1_rows:
-            up1_rows.sort(reverse=True)
-            up1 = up1_rows[0][1]
-        rise2_c = ""
-        rise2_rows = [(sh, c) for sh, c in rising if rise2(c, d)]
-        if rise2_rows:
-            rise2_c = rise2_rows[0][1]
         no_park = ""
         for _sh, c in rising:
             if not is_parking(c):
                 no_park = c
                 break
-        max_up_np = ""
-        np_rising = [(sh, c) for sh, c in rising if not is_parking(c)]
-        if np_rising:
-            max_up_np = max(np_rising, key=lambda x: chg(x[1], d))[1]
+        no_park4 = ""
+        for _sh, c in rising4:
+            if not is_parking(c):
+                no_park4 = c
+                break
 
         take("追當天第一名", hot, d, False)
-        take("追第一名＋黃金買點", hot, d, True)
         if leaving:
             take("昨天第一名今天佔比在退", y_hot, d, False)
-            take("昨天第一名今天在退＋黃金買點", y_hot, d, True)
         if pre:
             take("佔比升還沒當第一", pre, d, False)
-            take("佔比升還沒當第一＋黃金買點", pre, d, True)
-            take("升還沒第一＋vs20≤−12", pre, d, False, vs20_max=-12.0)
-            take("升還沒第一＋vs20≤−12＋黃金買點", pre, d, True, vs20_max=-12.0)
-            take("升還沒第一＋volr≥1.2", pre, d, False, volr_min=1.2)
-            take("升還沒第一＋volr≥1.2＋黃金買點", pre, d, True, volr_min=1.2)
-            if leader_under_20(pre, d):
-                take("升還沒第一＋龍頭未過20高", pre, d, False)
-                take("升還沒第一＋龍頭未過20高＋黃金買點", pre, d, True)
-        if max_up:
-            take("佔比升最多還沒第一", max_up, d, False)
-            take("佔比升最多還沒第一＋黃金買點", max_up, d, True)
-        if up1:
-            take("佔比升≥1pt還沒第一", up1, d, False)
-            take("佔比升≥1pt還沒第一＋黃金買點", up1, d, True)
-        if rise2_c:
-            take("連升兩日還沒第一", rise2_c, d, False)
-            take("連升兩日還沒第一＋黃金買點", rise2_c, d, True)
         if no_park:
-            take("升還沒第一且非金控銀行", no_park, d, False)
-            take("升還沒第一且非金控銀行＋黃金買點", no_park, d, True)
-        if max_up_np:
-            take("佔比升最多且非金控銀行", max_up_np, d, False)
-            take("佔比升最多且非金控銀行＋黃金買點", max_up_np, d, True)
-        del hot_sh
+            take("非金控", no_park, d, False)
+            take("非金控＋最落後1檔", no_park, d, False, n_lag=1)
+            take("非金控＋黃金買點逐檔", no_park, d, True, each=True)
+            if rise2(no_park, d):
+                take("非金控＋連升兩日", no_park, d, False)
+            if chg(no_park, d) >= 1.0:
+                take("非金控＋升≥1pt", no_park, d, False)
+            take("非金控＋vs20≤−12", no_park, d, False, vs20_max=-12.0)
+            take("非金控＋volr≥1.2", no_park, d, False, volr_min=1.2)
+            if leader_under_20(no_park, d):
+                take("非金控＋龍頭未過20高", no_park, d, False)
+        if no_park4:
+            take("非金控＋第2到4名", no_park4, d, False)
 
     def summarize(label: str) -> None:
         rows = regimes[label]
         n = len(rows)
-        print(f"\n=== {label} 日={n} ===")
+        print(f"\n=== {label} n={n} ===")
         if not n:
             return
-        lu = sum(1 for r in rows if r["lu"])
-        gain = sum(1 for r in rows if r["gain"])
-        stuck = sum(
-            1 for r in rows if r["best"] is not None and r["best"] < 0 and not r["lu"]
-        )
-        print(
-            f"  次級後{FWD}日漲停 {lu}/{n}={100.0 * lu / n:.1f}%  "
-            f"漲停或漲≥8% {gain}/{n}={100.0 * gain / n:.1f}%  "
-            f"後十日最高仍虧 {stuck}/{n}={100.0 * stuck / n:.1f}%"
-        )
-        for r in rows[:6]:
-            best = r["best"]
-            bt = f"{best * 100:+.1f}%" if best is not None else "—"
-            print(f"   {r['d']} {r['chain']} {r['names']} {bt} {'漲停' if r['lu'] else ('漲8%' if r['gain'] else '沒')}")
 
-    print("\n=== 進場前徵兆走查（次級 vs20≤−8% 且仍低於60高） ===")
+        def _line(tag: str, part: List[dict]) -> None:
+            pn = len(part)
+            if not pn:
+                print(f"  {tag} n=0")
+                return
+            lu = sum(1 for r in part if r["lu"])
+            gain = sum(1 for r in part if r["gain"])
+            stuck = sum(
+                1 for r in part if r["best"] is not None and r["best"] < 0 and not r["lu"]
+            )
+            print(
+                f"  {tag} n={pn} 漲停 {lu}/{pn}={100.0 * lu / pn:.1f}%  "
+                f"漲停或≥8% {gain}/{pn}={100.0 * gain / pn:.1f}%  "
+                f"套 {stuck}/{pn}={100.0 * stuck / pn:.1f}%"
+            )
+
+        _line("全窗", rows)
+        _line("近100", [r for r in rows if r.get("win") == "recent"])
+        _line("前段", [r for r in rows if r.get("win") == "prior"])
+
+    print("\n=== 停車格之後增量（不重跑已否決切片） ===")
     for label in regimes:
         summarize(label)
 
-    # encode-ready one-liners
-    def rate(label: str) -> Tuple[int, float, float]:
+    def rate(label: str, win: Optional[str] = None) -> Tuple[int, float, float]:
         rows = regimes[label]
+        if win:
+            rows = [r for r in rows if r.get("win") == win]
         n = len(rows)
         if not n:
             return 0, 0.0, 0.0
@@ -368,50 +370,105 @@ def main() -> None:
         ) / n
         return n, gain, stuck
 
-    n1, g1, s1 = rate("追當天第一名")
-    n2, g2, s2 = rate("佔比升還沒當第一")
-    n3, g3, s3 = rate("昨天第一名今天佔比在退")
-    n4, g4, s4 = rate("佔比升還沒當第一＋黃金買點")
-    print("\n=== 規則（只留會改判斷的） ===")
-    print(f"追第一名 勝{g1:.1f}% 套{s1:.1f}% n={n1}")
-    print(f"升還沒第一 勝{g2:.1f}% 套{s2:.1f}% n={n2}")
-    print(f"昨天第一今天退 勝{g3:.1f}% 套{s3:.1f}% n={n3}")
-    print(f"升還沒第一∩黃金買點 勝{g4:.1f}% 套{s4:.1f}% n={n4}")
-    prefer_pre = n2 >= 20 and (g2 >= g1 or s2 + 0.5 < s1)
-    skip_leave = n3 >= 15 and (s3 > s2 or g3 + 1.0 < g2)
-    print(f"ENCODE prefer_rising_not_lead={prefer_pre} skip_leaving_hot={skip_leave}")
-
-    def beats(label: str, base_n: int, base_g: float, base_s: float, *, min_n: int = 20) -> bool:
-        n, g, s = rate(label)
+    def beats(
+        label: str,
+        base_g: float,
+        base_s: float,
+        *,
+        win: str = "recent",
+        min_n: int = 20,
+    ) -> bool:
+        n, g, s = rate(label, win)
+        pn, pg, ps = rate(label, "prior")
+        _bn, bg, _bs = rate("非金控", "prior")
         if n < min_n:
-            print(f"SKIP {label} n={n}<{min_n}")
+            print(f"SKIP {label} {win} n={n}<{min_n}")
             return False
         gain_ok = g + 1e-9 >= base_g
         better = g >= base_g + 1.0 or (gain_ok and s + 0.5 < base_s)
-        ok = gain_ok and better
-        delta = f"勝{g:.1f}({g - base_g:+.1f}) 套{s:.1f}({s - base_s:+.1f}) n={n}"
-        print(f"{'ENCODE' if ok else 'KEEP'} {label} {delta}")
+        oos_ok = pn < 15 or pg + 1e-9 >= bg - 5.0
+        ok = gain_ok and better and oos_ok
+        print(
+            f"{'ENCODE' if ok else 'KEEP'} {label} "
+            f"近100 勝{g:.1f}({g - base_g:+.1f}) 套{s:.1f}({s - base_s:+.1f}) n={n}  "
+            f"前段 勝{pg:.1f} 套{ps:.1f} n={pn} oos={oos_ok}"
+        )
         return ok
 
-    print("\n=== 額外切片 vs 升還沒第一 ===")
+    n_ch, g_ch, s_ch = rate("追當天第一名", "recent")
+    n_pre, g_pre, s_pre = rate("佔比升還沒當第一", "recent")
+    n_np, g_np, s_np = rate("非金控", "recent")
+    print("\n=== 近100基線 ===")
+    print(f"追第一 勝{g_ch:.1f} 套{s_ch:.1f} n={n_ch}")
+    print(f"升還沒第一 勝{g_pre:.1f} 套{s_pre:.1f} n={n_pre}")
+    print(f"非金控 勝{g_np:.1f} 套{s_np:.1f} n={n_np}")
+    print(f"ENCODE skip_parking={n_np >= 20 and g_np >= g_pre + 1.0}")
+
+    print("\n=== 增量 vs 非金控近100 ===")
     extras = [
-        "佔比升最多還沒第一",
-        "佔比升≥1pt還沒第一",
-        "連升兩日還沒第一",
-        "升還沒第一且非金控銀行",
-        "佔比升最多且非金控銀行",
-        "升還沒第一＋vs20≤−12",
-        "升還沒第一＋volr≥1.2",
-        "升還沒第一＋龍頭未過20高",
+        "非金控＋連升兩日",
+        "非金控＋升≥1pt",
+        "非金控＋vs20≤−12",
+        "非金控＋volr≥1.2",
+        "非金控＋龍頭未過20高",
+        "非金控＋最落後1檔",
+        "非金控＋第2到4名",
     ]
-    winners = [lab for lab in extras if beats(lab, n2, g2, s2)]
-    print("\n=== 額外切片 vs 升還沒第一∩黃金買點 ===")
-    lz_extras = [lab + "＋黃金買點" for lab in extras]
-    lz_winners = [lab for lab in lz_extras if beats(lab, n4, g4, s4)]
-    n5, g5, s5 = rate("升還沒第一且非金控銀行")
-    skip_park = n5 >= 20 and g5 >= g2 + 1.0
-    print(f"ENCODE skip_parking={skip_park} 勝{g5:.1f} 套{s5:.1f} n={n5}")
-    print(f"\nWINNERS chain={winners} leave_zero={lz_winners}")
+    winners = [lab for lab in extras if beats(lab, g_np, s_np)]
+    print("\n=== 黃金買點逐檔 vs 非金控近100 ===")
+    lz_ok = beats("非金控＋黃金買點逐檔", g_np, s_np, min_n=20)
+    print(f"\nWINNERS incr={winners} leave_zero_each={lz_ok}")
+
+    lz_recent = [r for r in regimes["非金控＋黃金買點逐檔"] if r.get("win") == "recent"]
+
+    def lz_rate(part: List[dict]) -> Tuple[int, float, float]:
+        n = len(part)
+        if not n:
+            return 0, 0.0, 0.0
+        g = 100.0 * sum(1 for r in part if r["gain"]) / n
+        s = 100.0 * sum(
+            1 for r in part if r["best"] is not None and r["best"] < 0 and not r["lu"]
+        ) / n
+        return n, g, s
+
+    print("\n=== 黃金買點逐檔近100內切片（n≥20才編碼排序） ===")
+    bn, bg, bs = lz_rate(lz_recent)
+    print(f"基線逐檔 勝{bg:.1f} 套{bs:.1f} n={bn}")
+    slices = [
+        ("次級", [r for r in lz_recent if not r.get("lead")]),
+        ("龍頭", [r for r in lz_recent if r.get("lead")]),
+        ("vs20≤−12", [r for r in lz_recent if r.get("vs20") is not None and r["vs20"] <= -12]),
+        ("獲利≤2%", [r for r in lz_recent if r.get("profit") is not None and r["profit"] <= 2.0]),
+        ("volr<1.2", [r for r in lz_recent if r.get("volr") is not None and r["volr"] < 1.2]),
+        ("次級且vs20≤−12", [
+            r for r in lz_recent
+            if not r.get("lead") and r.get("vs20") is not None and r["vs20"] <= -12
+        ]),
+    ]
+    lz_winners = []
+    for name, part in slices:
+        n, g, s = lz_rate(part)
+        if n < 20:
+            print(f"SKIP 買點/{name} n={n}<20")
+            continue
+        ok = (g >= bg + 1.0 and s + 1e-9 <= bs) or (g + 1e-9 >= bg and s + 0.5 < bs)
+        print(f"{'ENCODE' if ok else 'KEEP'} 買點/{name} 勝{g:.1f}({g - bg:+.1f}) 套{s:.1f}({s - bs:+.1f}) n={n}")
+        if ok:
+            lz_winners.append(name)
+    n20, g20, s20 = lz_rate(
+        [
+            {
+                **r,
+                "lu": bool(r.get("lu20")),
+                "gain": bool(r.get("gain20")),
+                "best": r.get("best20"),
+            }
+            for r in lz_recent
+            if r.get("gain20") is not None
+        ]
+    )
+    print(f"逐檔後20日 勝{g20:.1f} 套{s20:.1f} n={n20}")
+    print(f"WINNERS buys={lz_winners}")
 
 
 if __name__ == "__main__":
