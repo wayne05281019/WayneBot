@@ -190,8 +190,108 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert asic_ign["cum5"] > test_ign["cum5"]
     html = dongzhu_page(db)
     assert "高階測試／封測" in html
-    assert "慢慢匯入" in html or "準備點火" in html
-    assert "資金輪動" in html
+    assert "資金流入" in html or "佔比在升" in html or "流入這細項" in html
+    assert "資金進出" in html or "佔當日" in html or "細項" in html
     assert "6257" in html and "矽格" in html
     assert "3443" not in html
     assert "不當新族群" in html
+
+
+def test_ignite_share_in_not_lots_size():
+    from biaoke_field_scan import _ignite_from_nets
+
+    rising = _ignite_from_nets([80, 90, 100, 110, 120], [0.4, 0.7, 1.1, 1.6, 2.2])
+    assert rising["slow_in"] is True
+    assert rising["flowing_in"] is True
+    falling = _ignite_from_nets([80, 90, 100, 110, 120], [5.0, 4.0, 3.0, 2.0, 1.0])
+    assert falling["slow_in"] is False
+    assert falling["flowing_in"] is False
+    spike = _ignite_from_nets([0, 0, 0, 0, 20000], [0.1, 0.1, 0.1, 0.1, 8.0])
+    assert spike["slow_in"] is False
+
+
+def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
+    """封測張遠小於 ASIC／PCB，但佔比在升 → 仍選封測。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+    last_day = datetime(2026, 9, 17)
+    n = 60
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        h, c, v = 800.0, 720.0, 1000.0
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2383", "台光電", c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+        )
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+        ("6257", "電子上游-IC-封測", "[]", "", "test", "2026-09-17"),
+    )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ][-5:]
+    for i, day in enumerate(dates):
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (80 + i * 200, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2383' AND date=?",
+            (5000, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3443' AND date=?",
+            (8000, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (20000, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET volume=1000 WHERE stock_id='6257' AND date=?",
+        (dates[-1],),
+    )
+    conn.commit()
+    conn.close()
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {"leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "pick_close": 222.5}]},
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_picks, group_ignite, record_dongzhu_flow
+
+    assert record_dongzhu_flow(db, "20260917") > 0
+    test_ign = group_ignite(db, "test", "20260917")
+    pcb_ign = group_ignite(db, "pcb", "20260917")
+    asic_ign = group_ignite(db, "asic", "20260917")
+    assert test_ign["flowing_in"] is True
+    assert asic_ign["cum5"] > test_ign["cum5"]
+    assert pcb_ign["cum5"] > test_ign["cum5"]
+    assert test_ign["share_up"] > pcb_ign["share_up"]
+    data = dongzhu_picks(db)
+    assert data.get("field") == "高階測試／封測"
+    html = dongzhu_page(db)
+    assert "高階測試／封測" in html
+    assert "細項" in html
+    assert "%" in html
+    assert "pt" in html or "佔" in html
+    assert "對五件" in html
+    assert "6257" in html
+    assert "3443" not in html
+    assert "資金流入" in html or "佔比在升" in html
+    assert "不准發明切入" not in html
