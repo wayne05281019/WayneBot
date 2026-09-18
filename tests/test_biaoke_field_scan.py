@@ -140,7 +140,6 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
         ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln and "買點" in ln
     ]
     assert buy_lines
-    assert all("勝率 70.8%" in ln for ln in buy_lines)
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -188,6 +187,25 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "_dongzhu_picks_keyboard" in hold_src[page_i:page_end]
 
 
+def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch):
+    import re
+
+    from tg_layout import reflow_telegram_html
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    phone = reflow_telegram_html(html)
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        assert not re.search(r"\d,$", s)
+        assert s not in ("IC／", "電子上游／IC／")
+    assert "對五件" not in phone
+    assert "資金進出" not in phone
+    assert "捕捉・最落後次級" in phone or "捕捉" in phone
+
+
 def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
     from tg_layout import DASH_LINE
 
@@ -219,7 +237,7 @@ def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     assert "沒有黃金買點" in html
     assert "不准發明切入" in html
     assert "3443" not in html
-    assert "矽格" in html
+    assert "京元電子" in html or "2449" in html
     assert "不是買訊" in html
 
 
@@ -270,7 +288,7 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert asic_ign["cum5"] > test_ign["cum5"]
     html = dongzhu_page(db)
     assert "高階測試／封測" in html
-    assert "資金流入" in html or "佔比在升" in html or "流入這產業鏈" in html
+    assert "資金流入" in html or "佔比" in html or "先機" in html
     assert "資金進出" in html or "佔當日" in html or "產業鏈" in html or "封測" in html
     assert "6257" in html and "矽格" in html
     assert "3443" not in html
@@ -372,14 +390,12 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert "封測" in html or "產業鏈" in html or "主產業" in html
     assert "%" in html
     assert "pt" in html or "佔" in html
-    assert "對五件" in html
     assert "6257" in html
     assert "3443" not in html
-    assert "資金流入" in html or "佔比在升" in html
-    assert "只參考" in html or "不是唯一" in html
+    assert "資金流入" in html or "佔比" in html or "先機" in html
+    assert "只參考" in html or "不是唯一" in html or "不是買訊" in html
     assert "不准發明切入" not in html
     assert "主產業" in html
-    assert "同主產業" in html
     assert "次級" in html or "龍頭" in html
     assert "比價" in html or "龍頭" in html
 
@@ -758,7 +774,7 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
     assert "設計" in html
-    assert "資金窗近100個有法人日" in html
+    assert "官方收" in html
     assert "3443" not in html
     assert "不准發明切入" in html
     assert "次熱" in html
@@ -853,9 +869,8 @@ def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkey
     assert "高階測試／封測" in html
     assert "電信服務" not in html.split("此刻最像")[-1][:80]
     assert "6257" in html or "2449" in html
-    assert "資金窗近100個有法人日" in html
+    assert "官方收" in html
     assert "流入第一名" in html
-    assert "每天流入第一名" in html
 
 
 def test_dongzhu_hold_uses_stock_own_fine_not_electronics(tmp_path, monkeypatch):

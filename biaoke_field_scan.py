@@ -99,10 +99,21 @@ _HOW = (
 )
 _HOW_LINES = (
     "他教過怎麼找：",
-    "① 次族群還沒熱、很少人提",
-    "② 次族群第一名誰先過前高，不比絕對漲跌",
-    "③ 高點整理的從底部找落後",
+    "① 次族群還沒熱",
+    "② 第一名還沒過前高",
+    "③ 從底部找落後",
     "不是猜新聞。",
+)
+_PAGE_RULES = (
+    "佔比如實主判。不是買訊、不進海選。",
+    "龍頭來不及買。比價下次級黃金買點。",
+    "捕捉＝最落後次級兩到三檔。買只認黃金買點。",
+)
+_PAGE_NOTES = (
+    "不是整層電子。",
+    "追當天第一名容易人去樓空。",
+    "金控／銀行當停車格。",
+    "電子細項先機較穩。",
 )
 _RULE_LINES = (
     "佔比如實主判。飆大找法只參考、不是唯一。",
@@ -2120,7 +2131,7 @@ def _esc(val: Any) -> str:
     )
 
 
-def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
+def _stock_line(item: Dict[str, Any], idx: int, tag: str, *, compact: bool = False) -> str:
     sid = _esc(item.get("sid"))
     name = _esc(item.get("name"))
     close = item.get("close")
@@ -2130,6 +2141,16 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     volr = item.get("volr")
     role = str(item.get("role") or "").strip()
     tag_s = tag if not role else f"{tag}·{role}"
+    if compact:
+        head = f"{idx}. {sid} {name}"
+        if str(tag or "").startswith("買點"):
+            head = f"{head}　買點"
+        rows = [head]
+        if str(tag or "").startswith("買點"):
+            rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
+        if vs20 is not None:
+            rows.append(f"距20高 {_pct(float(vs20))}")
+        return "\n".join(rows)
     # 買點才標這型鎖死勝率；觀察／落後不准發明買點勝率。
     head = f"{idx}. {sid} {name}　{_esc(tag_s)}"
     if str(tag or "").startswith("買點"):
@@ -2392,8 +2413,8 @@ def _split_bar(text: str) -> List[str]:
     return [p.strip() for p in str(text or "").split("｜") if p.strip()]
 
 
-def _stock_blocks(items: Sequence[Dict[str, Any]], tag: str) -> str:
-    rows = [_stock_line(item, i, tag) for i, item in enumerate(items, start=1)]
+def _stock_blocks(items: Sequence[Dict[str, Any]], tag: str, *, compact: bool = False) -> str:
+    rows = [_stock_line(item, i, tag, compact=compact) for i, item in enumerate(items, start=1)]
     return "\n\n".join(r for r in rows if r)
 
 
@@ -2442,38 +2463,31 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
 
 
 def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
-    """主選單洞燭先機頁。飆大找法＋五件＋產業鏈佔比。切入只認高低卡黃金買點。"""
+    """主選單洞燭先機頁。手機氣泡約18字，短行、不重複。切入只認高低卡黃金買點。"""
     from tg_layout import join_dashed
 
     data = dongzhu_picks(db_path, spoken=spoken)
     cap = _esc(data.get("cap") or "")
     blocks: List[str] = [
         _blk("<b>洞燭先機</b>", *(_esc(x) for x in _HOW_LINES)),
-        _blk(*(_esc(x) for x in _RULE_LINES)),
+        _blk(*(_esc(x) for x in _PAGE_RULES)),
     ]
     if cap:
         chip = _esc(data.get("chip_cap") or "")
-        win = int(data.get("flow_window") or FLOW_LOOKBACK)
         date_rows = [f"官方收 {cap}"]
         if chip and chip != cap:
             date_rows.append(f"法人日 {chip}")
-        date_rows.append(f"資金窗近{win}個有法人日（每天流入／流出第一名）")
         blocks.append(_blk(*date_rows))
     board = str(data.get("inflow_board") or "").strip()
     if board:
         win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
         blocks.append(
             _blk(
-                f"<b>近{win_n}日每天流入第一名</b>",
+                f"<b>近{win_n}日流入第一名</b>",
                 *(_esc(x) for x in _split_bar(board)),
             )
         )
-    blocks.append(
-        _blk(
-            "<b>資金輪動要注意</b>",
-            *(_esc(x) for x in rotation_notice_lines(db_path)),
-        )
-    )
+    blocks.append(_blk("<b>資金輪動要注意</b>", *(_esc(x) for x in _PAGE_NOTES)))
     field = str(data.get("field") or "")
     if not field:
         blocks.append(
@@ -2481,78 +2495,43 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
                 f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>"
             )
         )
-        flow = data.get("flow") or {}
-        if flow.get("nets") or flow.get("shares"):
-            blocks.append(
-                _blk("<b>資金進出</b>", *(_esc(x) for x in _flow_why_lines(flow)))
-            )
         return join_dashed(*blocks)
-    now_rows = [f"<b>此刻最像</b>", _esc(field)]
-    lead_n = int(data.get("in_lead_n") or 0)
-    pos_n = int(data.get("share_pos_n") or 0)
-    win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
-    if lead_n or pos_n:
-        now_rows.append(_esc(f"近{win_n}個有法人日"))
-        now_rows.append(_esc(f"這族當流入第一名 {lead_n} 天"))
-        now_rows.append(_esc(f"有買超佔比 {pos_n} 天"))
-        if data.get("pre_vs20") is not None:
-            now_rows.append(
-                _esc(
-                    f"次級距20高 {float(data.get('pre_vs20') or 0):+.1f}%（門檻 {PRE_VS20:.0f}%）"
-                )
-            )
-        if data.get("pre_late"):
-            now_rows.append(_esc("偏晚。"))
+    now_rows = ["<b>此刻最像</b>", _esc(field)]
     parts = list(data.get("layers") or [])
     if parts:
         now_rows.extend(_esc(x) for x in _layer_lines(parts))
-    elif str(data.get("layer_txt") or "").strip():
-        now_rows.append(_esc(str(data.get("layer_txt"))))
+    ign = data.get("flow") or {}
+    path = _share_path(ign)
+    if path:
+        now_rows.append(_esc(f"佔比 {path}"))
+    if data.get("pre_sign") == "pre":
+        now_rows.append(_esc("佔比升還沒第一＝先機"))
+    elif data.get("pre_sign") == "chase":
+        now_rows.append(_esc("已是當天第一名，偏晚"))
+    elif data.get("pre_sign") == "leaving":
+        now_rows.append(_esc("佔比在退，人去樓空"))
+    cap_vs = None
+    for item in list(data.get("laggards") or []):
+        if item.get("vs20") is not None:
+            cap_vs = float(item["vs20"])
+            break
+    if cap_vs is not None:
+        now_rows.append(_esc(f"次級距20高 {_pct(cap_vs)}"))
+    elif data.get("pre_vs20") is not None:
+        now_rows.append(_esc(f"次級距20高 {_pct(float(data.get('pre_vs20') or 0))}"))
+    named = [str(x) for x in (data.get("named") or []) if x]
+    if field not in named:
+        now_rows.append(_esc("還沒點名"))
     blocks.append(_blk(*now_rows))
-    sib = str(data.get("sibling_txt") or "").strip()
-    if sib:
-        rest = sib
-        if rest.startswith("同主產業 "):
-            rest = rest[len("同主產業 ") :]
-        sib_items = _split_bar(rest)
-        if sib_items:
-            blocks.append(
-                _blk("<b>同主產業佔比</b>", *(_esc(x) for x in sib_items))
-            )
-    why = str(data.get("why") or "")
-    if why:
-        blocks.append(
-            _blk("<b>原因</b>", *(f"<i>{_esc(x)}</i>" for x in _break_sentences(why)))
-        )
-    five_rows = _five_lines(data, data.get("flow") or {}, data.get("flow_named_hot") or {})
-    if five_rows:
-        blocks.append(_blk("<b>對五件</b>（參考）", *(_esc(x) for x in five_rows)))
-    flow = data.get("flow") or {}
-    flow_rows = _flow_why_lines(flow) if (flow.get("nets") or flow.get("shares")) else []
-    if flow_rows:
-        blocks.append(_blk("<b>資金進出</b>", *(_esc(x) for x in flow_rows)))
-    hot = data.get("flow_named_hot") or {}
-    ref_rows = _hot_ref_lines(hot, data.get("named") or [])
-    if not ref_rows:
-        ref = str(data.get("hot_ref") or "").strip()
-        if ref:
-            ref_rows = _break_sentences(ref)
-    if ref_rows:
-        blocks.append(_blk(*(_esc(x) for x in ref_rows)))
-    rec_rows = [
-        "<b>此刻推薦</b>",
-        _esc(f"回測勝率最高這型 ∩ 黃金買點；{PRE_BUY_WIN_LABEL}（後10日漲停或≥8%）。點左邊選"),
-    ]
-    parity = str(data.get("parity") or "")
-    if parity:
-        rec_rows.extend(f"<i>{_esc(x)}</i>" for x in _break_sentences(parity))
+    rec_rows = ["<b>此刻推薦</b>"]
     buys = list(data.get("buys") or [])
     if buys:
-        rec_rows.append(_stock_blocks(buys, "買點"))
-        rec_rows.extend(f"<i>{_esc(_rec_why(data, item))}</i>" for item in buys)
+        rec_rows.append(_esc("點左邊選"))
+        rec_rows.append(_stock_blocks(buys, "買點", compact=True))
     else:
-        rec_rows.append(_esc("這型此刻沒有黃金買點，不准發明切入。"))
-        rec_rows.append(_esc("可打股名／代號看能不能留；沒打準會列出相近的請你點。"))
+        rec_rows.append(_esc("這型此刻沒有黃金買點"))
+        rec_rows.append(_esc("不准發明切入"))
+        rec_rows.append(_esc("可打股名看能不能留"))
     blocks.append(_blk(*rec_rows))
     watches = list(data.get("watches") or [])
     if watches:
@@ -2560,7 +2539,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             _blk(
                 "<b>還在零</b>",
                 _esc("只觀察，不是買"),
-                _stock_blocks(watches, "觀察"),
+                _stock_blocks(watches, "觀察", compact=True),
             )
         )
     shown = {str(x.get("sid") or "") for x in buys + watches}
@@ -2570,40 +2549,27 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         if str(x.get("sid") or "") and str(x.get("sid") or "") not in shown
     ]
     if lags:
-        n_lag = len(lags)
         blocks.append(
             _blk(
                 "<b>捕捉・最落後次級</b>",
-                _esc(
-                    f"這細項距20高最深的{n_lag}檔次級；回測2檔約七成、3檔約八成有人漲，1檔不到五成。"
-                    "沒黃金買點只觀察，不是買訊、不是單檔保證。"
-                ),
-                _stock_blocks(lags, "捕捉"),
+                _esc("沒買點只觀察，不是單檔保證"),
+                _stock_blocks(lags, "捕捉", compact=True),
             )
         )
     alts = list(data.get("alts") or [])
-    if alts:
-        bits = [
-            f"{a.get('field')} {_share_txt(float(a.get('share_last') or 0))}"
-            f"（{_pt_txt(float(a.get('share_up') or 0))}）"
-            for a in alts
-            if a.get("field")
-        ]
-        if bits:
-            blocks.append(
-                _blk("<b>次熱</b>", *(_esc(x) for x in bits), _esc("不是買訊。"))
-            )
-    for block in list(data.get("alt_laggards") or []):
-        alt_field = str(block.get("field") or "")
-        items = list(block.get("items") or [])
-        if not alt_field or not items:
+    alt_bits: List[str] = []
+    for a in alts:
+        name = str(a.get("field") or "")
+        if not name:
             continue
-        blocks.append(
-            _blk(
-                f"<b>次熱捕捉・{_esc(alt_field)}</b>",
-                _esc("沒黃金買點只觀察，不是買訊、不是單檔保證"),
-                _stock_blocks(items, "捕捉"),
+        alt_bits.append(_esc(name))
+        alt_bits.append(
+            _esc(
+                f"{_share_txt(float(a.get('share_last') or 0))}"
+                f"（{_pt_txt(float(a.get('share_up') or 0))}）"
             )
         )
-    blocks.append(_blk(_esc("紅箭頭不是買訊。"), _esc("飆大只參考，不是唯一。")))
+    if alt_bits:
+        blocks.append(_blk("<b>次熱</b>", *alt_bits, _esc("不是買訊。")))
+    blocks.append(_blk(_esc("紅箭頭不是買訊。"), _esc("飆大只參考。")))
     return join_dashed(*blocks)
