@@ -378,6 +378,153 @@ def sector_flow_maps(db_path: str, ymd: str) -> Dict[str, Any]:
     }
 
 
+_ENTRY_FLOW_KEYS = frozenset({"leave_zero", "golden_buy"})
+
+
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (name,),
+    ).fetchone()
+    return bool(row)
+
+
+def _market_chip_in_out(conn: sqlite3.Connection, ymd: str) -> Tuple[int, int]:
+    row = conn.execute(
+        """
+        SELECT
+          IFNULL(SUM(CASE WHEN t>0 THEN t ELSE 0 END),0),
+          IFNULL(SUM(CASE WHEN t<0 THEN -t ELSE 0 END),0)
+        FROM (
+          SELECT IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0) AS t
+          FROM daily_quotes
+          WHERE date=? AND length(stock_id)=4
+        )
+        """,
+        (ymd,),
+    ).fetchone()
+    return int(row[0] or 0), int(row[1] or 0)
+
+
+def _share_pct(three: int, market_in: int, market_out: int) -> float:
+    if three > 0 and market_in > 0:
+        return 100.0 * three / market_in
+    if three < 0 and market_out > 0:
+        return -100.0 * abs(three) / market_out
+    return 0.0
+
+
+def _fine_chain_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, Any]]:
+    """當日 CMoney 細項鏈加總三大法人。沒表就空。不抓分點。"""
+    if not _has_table(conn, "stock_fine_industry"):
+        return []
+    ymd = str(ymd or "").replace("-", "")
+    if not ymd:
+        return []
+    etf = _not_etf_clause()
+    agg = conn.execute(
+        f"""
+        SELECT f.chain AS chain,
+               COUNT(*) AS stock_n,
+               SUM(q.foreign_net+q.trust_net+q.dealer_net) AS three_net
+        FROM daily_quotes q
+        JOIN stock_fine_industry f ON f.stock_id = q.stock_id
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE q.date=? AND TRIM(IFNULL(f.chain,'')) != '' {etf}
+        GROUP BY f.chain
+        HAVING COUNT(*) >= 2
+        """,
+        (ymd,),
+    ).fetchall()
+    tops = conn.execute(
+        f"""
+        SELECT f.chain, q.stock_id,
+               (IFNULL(q.foreign_net,0)+IFNULL(q.trust_net,0)+IFNULL(q.dealer_net,0)) AS three_net
+        FROM daily_quotes q
+        JOIN stock_fine_industry f ON f.stock_id = q.stock_id
+        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+        WHERE q.date=? AND TRIM(IFNULL(f.chain,'')) != '' {etf}
+        """,
+        (ymd,),
+    ).fetchall()
+    best: Dict[str, Tuple[str, int]] = {}
+    for chain, sid, three in tops:
+        n = int(three or 0)
+        cur = best.get(str(chain))
+        if cur is None or n > cur[1]:
+            best[str(chain)] = (str(sid), n)
+    market_in, market_out = _market_chip_in_out(conn, ymd)
+    rows: List[Dict[str, Any]] = []
+    for chain, stock_n, three in agg:
+        three_n = int(three or 0)
+        leader, _lead_n = best.get(str(chain), ("", 0))
+        rows.append(
+            {
+                "chain": str(chain),
+                "stock_n": int(stock_n or 0),
+                "three_net": three_n,
+                "leader_id": leader,
+                "share_pct": _share_pct(three_n, market_in, market_out),
+            }
+        )
+    rows.sort(key=lambda r: r["three_net"], reverse=True)
+    return rows
+
+
+def fine_flow_maps(db_path: str, ymd: str) -> Dict[str, Any]:
+    """海選細項輪動：流入／流出前三細項鏈、剛輪到、細項龍頭、佔比。不改海選桶。"""
+    empty: Dict[str, Any] = {
+        "inflow": {},
+        "outflow": {},
+        "just_rotated": {},
+        "leader_id": {},
+        "share_pct": {},
+        "share_chg": {},
+    }
+    ymd = str(ymd or "").replace("-", "")
+    if not db_path or not ymd:
+        return empty
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = _fine_chain_rows(conn, ymd)
+        if not rows:
+            return empty
+        prev = _prev_quote_date(conn, ymd)
+        prev_share: Dict[str, float] = {}
+        prev_inflow: Dict[str, int] = {}
+        if prev:
+            prev_rows = _fine_chain_rows(conn, prev)
+            prev_share = {r["chain"]: float(r["share_pct"] or 0) for r in prev_rows}
+            prev_pos = [r for r in prev_rows if int(r["three_net"]) > 0][:3]
+            prev_inflow = {r["chain"]: i + 1 for i, r in enumerate(prev_pos)}
+    finally:
+        conn.close()
+    inflow = [r for r in rows if int(r["three_net"]) > 0][:3]
+    outflow = sorted([r for r in rows if int(r["three_net"]) < 0], key=lambda x: x["three_net"])[:3]
+    just: Dict[str, int] = {}
+    if prev:
+        for i, r in enumerate(inflow):
+            chain = r["chain"]
+            was_in = chain in prev_inflow
+            prev_net = 0
+            if chain in prev_share:
+                prev_net = 1 if prev_share[chain] > 0 else 0
+            if (not was_in) or prev_net <= 0:
+                just[chain] = i + 1
+    share_chg = {
+        r["chain"]: float(r["share_pct"] or 0) - float(prev_share.get(r["chain"]) or 0)
+        for r in rows
+    }
+    return {
+        "inflow": {r["chain"]: i + 1 for i, r in enumerate(inflow)},
+        "outflow": {r["chain"]: i + 1 for i, r in enumerate(outflow)},
+        "just_rotated": just,
+        "leader_id": {r["chain"]: r["leader_id"] for r in rows if r.get("leader_id")},
+        "share_pct": {r["chain"]: float(r["share_pct"] or 0) for r in rows},
+        "share_chg": share_chg,
+    }
+
+
 def annotate_items_with_sector_flow(db_path: str, ymd: str, items: List[Dict[str, Any]]) -> None:
     """海選／當沖名單標上當日產業輪動進／出，當佈局參考，不改排名公式。"""
     if not items:
@@ -386,11 +533,12 @@ def annotate_items_with_sector_flow(db_path: str, ymd: str, items: List[Dict[str
 
 
 def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> None:
-    """產業輪動只算一次，再批次標到所有名單。"""
+    """產業輪動只算一次，再批次標到所有名單。有細項就跟細項走，不改排名。"""
     lists = [lst for lst in (results or {}).values() if isinstance(lst, list) and lst]
     if not lists:
         return
     maps = sector_flow_maps(db_path, ymd)
+    fine_maps = fine_flow_maps(db_path, ymd)
     ids = []
     seen = set()
     for lst in lists:
@@ -409,15 +557,69 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
                 ids,
             ):
                 industries[str(sid)] = (str(ind or "").strip() or "未分類")
-        for lst in lists:
+        try:
+            from industry_fine import display_chain, load_fine_chains, split_chain
+
+            chains = load_fine_chains(db_path, ids)
+        except Exception:
+            chains = {}
+
+            def display_chain(chain: str) -> str:
+                return str(chain or "").replace("-", "／")
+
+            def split_chain(chain: str):
+                return [p for p in str(chain or "").split("-") if p]
+        just_coarse = maps.get("just_rotated") or {}
+        fine_just = fine_maps.get("just_rotated") or {}
+        fine_in = fine_maps.get("inflow") or {}
+        fine_out = fine_maps.get("outflow") or {}
+        fine_lead = fine_maps.get("leader_id") or {}
+        fine_share = fine_maps.get("share_pct") or {}
+        fine_chg = fine_maps.get("share_chg") or {}
+        for key, lst in (results or {}).items():
+            if not isinstance(lst, list):
+                continue
+            entry = str(key) in _ENTRY_FLOW_KEYS
             for item in lst:
                 sid = str(item.get("stock_id") or item.get("code") or "").strip()
                 if not sid:
                     continue
                 ind = industries.get(sid) or industry_of(conn, sid)
                 item["industry"] = ind
-                just = maps.get("just_rotated") or {}
-                if ind in just:
+                chain = str(chains.get(sid) or "").strip()
+                if chain:
+                    item["fine_industry"] = chain
+                    item["industry_face"] = display_chain(chain)
+                elif ind and ind not in {"未分類", "ETF"}:
+                    item["industry_face"] = ind
+                applied_fine = False
+                if chain:
+                    parts = split_chain(chain)
+                    short = parts[-1] if parts else chain
+                    if chain in fine_just:
+                        item["sector_inflow"] = True
+                        item["sector_just_rotated"] = True
+                        item["sector_flow_label"] = f"剛輪到·{short}"
+                        applied_fine = True
+                    elif chain in fine_in:
+                        item["sector_inflow"] = True
+                        item["sector_flow_label"] = f"輪動進·{short}"
+                        applied_fine = True
+                    elif chain in fine_out:
+                        item["sector_outflow"] = True
+                        item["sector_flow_label"] = f"輪動出·{short}"
+                        applied_fine = True
+                    if chain in fine_share:
+                        item["fine_share_pct"] = fine_share[chain]
+                        item["fine_share_chg"] = fine_chg.get(chain, 0.0)
+                    leader = str(fine_lead.get(chain) or "")
+                    if leader and leader == sid:
+                        item["industry_role"] = "龍頭"
+                    elif entry and leader and leader != sid:
+                        item["industry_role"] = "次級"
+                if applied_fine or chain:
+                    continue
+                if ind in just_coarse:
                     item["sector_inflow"] = True
                     item["sector_just_rotated"] = True
                     item["sector_flow_label"] = f"剛輪到·{_sector_short_name(ind)}"

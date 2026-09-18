@@ -406,9 +406,20 @@ def format_line_stock_block(
         else:
             for chunk in _wrap_plain_lines(raw, width=LINE_PHONE_WRAP):
                 lines.append(chunk)
-    industry = str(item.get("industry_plain") or "").strip()
-    if industry:
-        lines.extend(_kv_lines("產業", industry))
+    industry_lines = []
+    try:
+        from industry_fine import screen_industry_card_lines
+
+        industry_lines = screen_industry_card_lines(item)
+    except Exception:
+        industry_lines = []
+    if industry_lines:
+        for lab, val in industry_lines:
+            lines.extend(_kv_lines(lab, val, keep_units=True))
+    else:
+        industry = str(item.get("industry_plain") or "").strip()
+        if industry:
+            lines.extend(_kv_lines("產業", industry))
     try:
         from stock_links import yahoo_urls
 

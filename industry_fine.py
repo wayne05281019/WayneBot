@@ -40,6 +40,73 @@ def split_chain(chain: str) -> List[str]:
     return [p.strip() for p in str(chain or "").split("-") if p.strip()]
 
 
+def display_chain(chain: str) -> str:
+    """海選／卡片用：電子上游-IC-封測 → 電子上游／IC／封測。沒鏈就空。"""
+    parts = split_chain(chain)
+    return "／".join(parts)
+
+
+def load_fine_chains(db_path: str, stock_ids: Iterable[str]) -> Dict[str, str]:
+    """讀庫裡已有的細項鏈，不過期丟掉。沒表／沒鏈就空，不准自造。"""
+    ids = [str(s).strip() for s in stock_ids if str(s).strip()]
+    if not db_path or not ids:
+        return {}
+    conn = sqlite3.connect(db_path)
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_fine_industry'"
+        ).fetchone()
+        if not hit:
+            return {}
+        qmarks = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT stock_id, chain FROM stock_fine_industry "
+            f"WHERE stock_id IN ({qmarks}) AND TRIM(IFNULL(chain,'')) != ''",
+            ids,
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    return {str(sid): str(chain).strip() for sid, chain in rows if str(chain or "").strip()}
+
+
+def screen_share_text(item: Dict[str, Any]) -> str:
+    pct = item.get("fine_share_pct") if isinstance(item, dict) else None
+    if pct is None or pct == "":
+        return ""
+    try:
+        txt = f"{float(pct):.1f}%"
+    except (TypeError, ValueError):
+        return ""
+    chg = item.get("fine_share_chg") if isinstance(item, dict) else None
+    if chg is None or chg == "":
+        return txt
+    try:
+        c = float(chg)
+    except (TypeError, ValueError):
+        return txt
+    if c > 1e-9:
+        return txt + "　升"
+    if c < -1e-9:
+        return txt + "　降"
+    return txt
+
+
+def screen_industry_card_lines(item: Dict[str, Any]) -> List[tuple]:
+    """海選卡產業列：細項＋龍頭／次級；有佔比才第二列。沒真值就空。"""
+    row = item if isinstance(item, dict) else {}
+    face = str(row.get("industry_face") or "").strip()
+    role = str(row.get("industry_role") or "").strip()
+    out: List[tuple] = []
+    if face:
+        out.append(("產業", f"{face}　{role}".strip() if role else face))
+    share = screen_share_text(row)
+    if share:
+        out.append(("佔比", share))
+    return out
+
+
 def parse_cmoney_forum_industry(html: str) -> Optional[Dict[str, Any]]:
     """從籌碼K個股頁 JSON-LD 取出產業分類鏈，例如 電子上游-IC-代工。"""
     raw = str(html or "")
