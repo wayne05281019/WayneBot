@@ -138,10 +138,17 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "勝率 70.8%" in html
     assert "誰先過前高" in html
     assert "盤中未收不當官方收" in html
-    buy_lines = [
-        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln and "買點" in ln
-    ]
-    assert buy_lines
+    assert "每檔先寫買或不買" in html
+    assert "可買" in html
+    name_i = html.find("6257")
+    assert name_i >= 0
+    nearby = html[name_i : name_i + 80]
+    assert "可買" in nearby
+    assert "點左邊選" in nearby
+    watch_i = html.find("京元電子")
+    assert watch_i >= 0
+    watch_near = html[watch_i : watch_i + 80]
+    assert "不買" in watch_near or "只觀察" in watch_near
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -187,6 +194,9 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "洞燭先機進行中" in hold_src[hold_i:hold_end]
     assert "_leave_zero_section_keyboard" not in hold_src[page_i:page_end]
     assert "_dongzhu_picks_keyboard" in hold_src[page_i:page_end]
+    assert "held_sids" in hold_src[page_i:page_end]
+    assert "_dongzhu_held_sids" in hold_src[page_i:page_end]
+    assert "held=" in hold_src[hold_i:hold_end]
 
 
 def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch):
@@ -209,6 +219,61 @@ def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch)
     assert "第一名還沒過前高" not in phone
     assert "捕捉・最落後次級" in phone or "捕捉" in phone
     assert "佔比如實主判" in phone
+    assert "可買" in phone or "不買" in phone
+    assert "落後·次級" not in phone
+    assert "電子上游 / IC /" not in phone
+    assert "電子上游／IC／" not in phone
+
+
+def test_dongzhu_stock_card_held_says_keep_or_not(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "pick_close": 222.5}],
+            "golden_buy": [{"stock_id": "2449", "stock_name": "京元電子", "pick_close": 80.0}],
+        },
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db, held_sids=["6257", "2449"])
+    buy_chunk = html[html.find("6257") : html.find("6257") + 120]
+    watch_chunk = html[html.find("2449") : html.find("2449") + 120]
+    assert "已持有" in buy_chunk
+    assert "可留" in buy_chunk
+    assert "可加碼" in buy_chunk
+    assert "已持有" in watch_chunk
+    assert "不加碼" in watch_chunk
+    empty = dongzhu_page(db, held_sids=[])
+    assert "可加碼" not in empty
+    assert "\n已持有\n" not in empty
+
+
+def test_dongzhu_hold_page_action_before_numbers(tmp_path, monkeypatch):
+    from tg_layout import reflow_telegram_html
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_hold_page
+
+    html = dongzhu_hold_page(db, "6257", held=True)
+    phone = reflow_telegram_html(html)
+    lines = [ln.strip() for ln in phone.split("\n") if ln.strip()]
+    text = "\n".join(lines)
+    assert "已持有" in text
+    assert "不買" in text
+    assert "不加碼" in text
+    i_name = next(i for i, ln in enumerate(lines) if "6257" in ln)
+    i_act = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.replace("<b>", "").replace("</b>", "")
+        in ("還沒", "可留", "可留觀察", "不留", "偏晚")
+    )
+    assert i_name < i_act
 
 
 def test_flow_why_phone_lines_keep_lots_intact():
@@ -264,6 +329,7 @@ def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
     html = dongzhu_hold_page(db, "6257")
     assert DASH_LINE in html
     assert "能不能留" in html
+    assert "不買" in html or "可買" in html
     assert "判斷單位" not in html
     assert "沒打準" not in html
     assert "再打下一檔" not in html

@@ -107,6 +107,8 @@ _HOW_LINES = (
 )
 _PAGE_RULES = (
     "佔比如實主判。不是買訊、不進海選。",
+    "每檔先寫買或不買。",
+    "已持有寫留或不加碼。",
     "龍頭來不及買。比價下次級黃金買點。",
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
@@ -2196,58 +2198,57 @@ def _esc(val: Any) -> str:
     )
 
 
-def _stock_line(item: Dict[str, Any], idx: int, tag: str, *, compact: bool = False) -> str:
+def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -> List[str]:
+    """每檔先寫動作：可買／不買／已持有怎麼做。不是猜。"""
+    is_buy = str(tag or "").startswith("買點")
+    vs20 = item.get("vs20")
+    late = False
+    try:
+        late = vs20 is not None and float(vs20) >= -5.0
+    except (TypeError, ValueError):
+        late = False
+    lines: List[str] = []
+    if held:
+        lines.append("已持有")
+        if is_buy:
+            lines.append("可留")
+            lines.append("可加碼")
+        elif late:
+            lines.append("偏晚")
+            lines.append("不加碼")
+        else:
+            lines.append("可留觀察")
+            lines.append("不加碼")
+        return lines
+    if is_buy:
+        return ["可買", "點左邊選"]
+    return ["不買", "只觀察"]
+
+
+def _stock_line(
+    item: Dict[str, Any],
+    idx: int,
+    tag: str,
+    *,
+    compact: bool = True,
+    held: bool = False,
+) -> str:
+    del compact
     sid = _esc(item.get("sid"))
     name = _esc(item.get("name"))
-    close = item.get("close")
-    close_s = _px(float(close)) if close is not None else "—"
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
-    volr = item.get("volr")
     role = str(item.get("role") or "").strip()
-    tag_s = tag if not role else f"{tag}·{role}"
-    if compact:
-        head = f"{idx}. {sid} {name}"
-        if str(tag or "").startswith("買點"):
-            head = f"{head}　買點"
-        rows = [head]
-        if str(tag or "").startswith("買點"):
-            rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
-        if vs20 is not None:
-            rows.append(f"距20高 {_pct(float(vs20))}")
-        return "\n".join(rows)
-    # 買點才標這型鎖死勝率；觀察／落後不准發明買點勝率。
-    head = f"{idx}. {sid} {name}　{_esc(tag_s)}"
+    rows = [f"{idx}. {sid} {name}"]
+    rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
-        head = f"{head}　<b>{_esc(PRE_BUY_WIN_LABEL)}</b>"
-    rows = [head]
-    px_bits = []
-    if close is not None:
-        px_bits.append(f"收 {close_s}")
+        rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
+    if role:
+        rows.append(_esc(role))
     if vs20 is not None:
-        px_bits.append(f"距20高 {_pct(float(vs20))}")
+        rows.append(f"距20高 {_pct(float(vs20))}")
     if vs60 is not None:
-        px_bits.append(f"距60高 {_pct(float(vs60))}")
-    if volr is not None:
-        px_bits.append(f"量比 {float(volr):.2f}")
-    if px_bits:
-        rows.append("　".join(px_bits))
-    meta = []
-    layers = item.get("layers") or []
-    if layers:
-        meta.append(_esc(_layer_short(layers)))
-    else:
-        fine = str(item.get("fine") or "").strip()
-        if fine:
-            meta.append(_esc(fine))
-    if item.get("group_share"):
-        meta.append(f"佔這族 {_share_txt(float(item.get('group_share') or 0))}")
-    if item.get("cum5"):
-        meta.append(f"近5日法人 {_lots_txt(int(item.get('cum5') or 0))}")
-    if str(tag or "").startswith("買點"):
-        meta.append(_esc("後10日漲停或≥8%（這型回測，不是個股）"))
-    if meta:
-        rows.append("　".join(meta))
+        rows.append(f"距60高 {_pct(float(vs60))}")
     return "\n".join(rows)
 
 
@@ -2478,13 +2479,31 @@ def _split_bar(text: str) -> List[str]:
     return [p.strip() for p in str(text or "").split("｜") if p.strip()]
 
 
-def _stock_blocks(items: Sequence[Dict[str, Any]], tag: str, *, compact: bool = False) -> str:
-    rows = [_stock_line(item, i, tag, compact=compact) for i, item in enumerate(items, start=1)]
+def _stock_blocks(
+    items: Sequence[Dict[str, Any]],
+    tag: str,
+    *,
+    compact: bool = True,
+    held_sids: Optional[Sequence[str]] = None,
+) -> str:
+    held = {str(x) for x in (held_sids or ()) if str(x)}
+    rows = [
+        _stock_line(
+            item,
+            i,
+            tag,
+            compact=compact,
+            held=str(item.get("sid") or "") in held,
+        )
+        for i, item in enumerate(items, start=1)
+    ]
     return "\n\n".join(r for r in rows if r)
 
 
-def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -> str:
-    """打任一檔：用這檔自己的細項回答能不能留。"""
+def dongzhu_hold_page(
+    db_path: str, sid: str, *, spoken: Optional[str] = None, held: bool = False
+) -> str:
+    """打任一檔：用這檔自己的細項回答能不能留。動作寫在最前面。"""
     from tg_layout import join_dashed
 
     data = dongzhu_hold(db_path, sid, spoken=spoken)
@@ -2492,9 +2511,25 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
     name = _esc(data.get("name") or "")
     cap = _esc(data.get("cap") or "")
     chip = _esc(data.get("chip_cap") or "")
+    verdict = str(data.get("verdict") or "還沒")
+    buy = bool(data.get("buy"))
+    act_rows: List[str] = []
+    if held:
+        act_rows.append(_esc("已持有"))
+    act_rows.append(f"<b>{_esc(verdict)}</b>")
+    if buy:
+        act_rows.append(_esc("可買"))
+        act_rows.append(_esc("點左邊選"))
+    elif held:
+        act_rows.append(_esc("不買"))
+        act_rows.append(_esc("不加碼"))
+    else:
+        act_rows.append(_esc("不買"))
+        act_rows.append(_esc("只觀察"))
     head = [
         "<b>洞燭先機・能不能留</b>",
         f"{sid_s} {name}".strip(),
+        *act_rows,
     ]
     if cap:
         head.append(f"官方收 {cap}")
@@ -2504,34 +2539,35 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
     parts = list(data.get("layers") or [])
     if parts:
         blocks.append(_blk(*(_esc(x) for x in _layer_lines(parts))))
-    px_bits = []
+    px_rows: List[str] = []
     role = str(data.get("role") or "")
     if role:
-        px_bits.append(role)
+        px_rows.append(_esc(role))
     if data.get("vs20") is not None:
-        px_bits.append(f"距20高 {_pct(float(data['vs20']))}")
+        px_rows.append(_esc(f"距20高 {_pct(float(data['vs20']))}"))
     if data.get("vs60") is not None:
-        px_bits.append(f"距60高 {_pct(float(data['vs60']))}")
-    if px_bits:
-        blocks.append(_blk(_esc("　".join(px_bits))))
+        px_rows.append(_esc(f"距60高 {_pct(float(data['vs60']))}"))
+    if px_rows:
+        blocks.append(_blk(*px_rows))
     flow = data.get("flow") or {}
     if flow.get("shares") or flow.get("nets"):
         blocks.append(
             _blk("<b>資金進出</b>", *(_esc(x) for x in _flow_why_lines(flow)))
         )
-    verdict = str(data.get("verdict") or "還沒")
     why_lines = [_esc(x) for x in _break_sentences(str(data.get("why") or ""))]
-    v_rows = [f"<b>{_esc(verdict)}</b>"]
-    v_rows.extend(x for x in why_lines)
-    blocks.append(_blk(*v_rows))
+    if why_lines:
+        blocks.append(_blk(*why_lines))
     return join_dashed(*blocks)
 
 
-def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
-    """主選單洞燭先機頁。手機氣泡約18字，短行、不重複。切入只認高低卡黃金買點。"""
+def dongzhu_page(
+    db_path: str, *, spoken: Optional[str] = None, held_sids: Optional[Sequence[str]] = None
+) -> str:
+    """主選單洞燭先機頁。每檔先寫買或不買；已持有寫留或不加碼。"""
     from tg_layout import join_dashed
 
     data = dongzhu_picks(db_path, spoken=spoken)
+    held_sids = [str(x) for x in (held_sids or ()) if str(x)]
     cap = _esc(data.get("cap") or "")
     blocks: List[str] = [
         _blk("<b>洞燭先機</b>", *(_esc(x) for x in _HOW_LINES)),
@@ -2603,7 +2639,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     buys = list(data.get("buys") or [])
     if buys:
         rec_rows.append(_esc("點左邊選"))
-        rec_rows.append(_stock_blocks(buys, "買點", compact=True))
+        rec_rows.append(_stock_blocks(buys, "買點", compact=True, held_sids=held_sids))
     else:
         rec_rows.append(_esc("這型此刻沒有黃金買點"))
         rec_rows.append(_esc("不准發明切入"))
@@ -2615,7 +2651,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             _blk(
                 "<b>還在零</b>",
                 _esc("只觀察，不是買"),
-                _stock_blocks(watches, "觀察", compact=True),
+                _stock_blocks(watches, "觀察", compact=True, held_sids=held_sids),
             )
         )
     shown = {str(x.get("sid") or "") for x in buys + watches}
@@ -2629,7 +2665,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             _blk(
                 "<b>捕捉・最落後次級</b>",
                 _esc("沒買點只觀察，不是單檔保證"),
-                _stock_blocks(lags, "捕捉", compact=True),
+                _stock_blocks(lags, "捕捉", compact=True, held_sids=held_sids),
             )
         )
     alts = list(data.get("alts") or [])
