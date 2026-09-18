@@ -224,13 +224,29 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     )
     assert "海選" in html
     assert "尚未就緒" in html
-    assert "🟥" in html
+    assert "🟥" not in html
+    assert "────" not in html
     assert "剛脫離零" in html
     wait0 = str(msg.reply_text.await_args_list[0].args[0]) if msg.reply_text.await_args_list else ""
     assert "剛脫離零進行中" in wait0
     assert "□" in wait0 or "■" in wait0
     assert "｜" not in wait0
     assert "<pre>" not in wait0
+
+
+def test_leave_zero_case_html_has_no_red_polygon_frame():
+    empty = WayneTelegramBot._leave_zero_case_html(
+        "剛脫離零", "目前沒有符合", "<i>沒有符合條件的股票</i>"
+    )
+    picks = WayneTelegramBot._leave_zero_case_html(
+        "剛脫離零", "盤中複核", "1. 台泥 1101"
+    )
+    for html in (empty, picks):
+        assert "🟥" not in html
+        assert "────" not in html
+        assert "<b>剛脫離零</b>" in html
+    assert "沒有符合條件的股票" in empty
+    assert "台泥 1101" in picks
 
 
 def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
@@ -265,6 +281,8 @@ def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
     assert "海選" in html
     assert "黃金買點" in html
     assert "09:00" in html
+    assert "🟥" not in html
+    assert "────" not in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
         "reply_markup"
     )
