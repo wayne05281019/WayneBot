@@ -51,6 +51,7 @@ def _seed(db: str) -> None:
             )
 
     add("6257", (300.0, 228.0), 222.5, 2500.0)
+    add("3264", (300.0, 268.0), 244.5, 1200.0)
     add("2449", (150.0, 140.0), 100.0, 900.0)
     add("6515", (10180.0, 8260.0), 6120.0, 900.0)
     add("6223", (7700.0, 6060.0), 5500.0, 800.0)
@@ -289,10 +290,10 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert pcb_ign["cum5"] > test_ign["cum5"]
     assert test_ign["share_up"] > pcb_ign["share_up"]
     data = dongzhu_picks(
-        db, spoken="目前主戰場就是封測。根據我的指引去找。"
+        db, spoken="目前唯一在多頭格局的族群就是ASIC，再來是散熱。PCB全面走弱。"
     )
     assert data.get("field") == "高階測試／封測"
-    html = dongzhu_page(db, spoken="目前主戰場就是封測。根據我的指引去找。")
+    html = dongzhu_page(db, spoken="目前唯一在多頭格局的族群就是ASIC，再來是散熱。PCB全面走弱。")
     assert "高階測試／封測" in html
     assert "細項" in html
     assert "%" in html
@@ -358,7 +359,7 @@ def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
     assert record_dongzhu_flow(db, "20260917") > 0
     assert group_ignite(db, "test", "20260917")["flowing_in"] is False
     assert group_ignite(db, "pcb", "20260917")["flowing_in"] is True
-    spoken = "根據我的指引去找，新族群是封測。"
+    spoken = "目前唯一在多頭格局的族群就是ASIC。根據我的指引去找，新族群是封測。"
     data = dongzhu_picks(db, spoken=spoken)
     assert data.get("field") == "PCB"
     html = dongzhu_page(db, spoken=spoken)
@@ -403,3 +404,72 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     assert "from biaoke_field_scan import record_dongzhu_flow" not in money
     assert "record_dongzhu_flow" in runner
     assert "recompute_sector_flow" in runner
+
+
+def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch):
+    """他只講 ASIC 是主戰場、沒說蠢蠢欲動；封測佔比已經最高 → 仍抓矽格／欣銓。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        try:
+            conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    last_day = datetime(2026, 9, 17)
+    n = 60
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, 0, 0, 0),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ]
+    chip_days = dates[-6:-1]
+    zero_day = dates[-1]
+    for i, day in enumerate(chip_days):
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (400 + i * 80, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3264' AND date=?",
+            (200 + i * 40, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3443' AND date=?",
+            (40, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (800, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=0, trust_net=0, dealer_net=0 WHERE date=?",
+        (zero_day,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import _chip_cap, dongzhu_picks, record_dongzhu_flow
+
+    assert record_dongzhu_flow(db, "20260917") > 0
+    assert _chip_cap(db, "20260917") == chip_days[-1]
+    spoken = "目前唯一在多頭格局的族群就是ASIC，再來是散熱。"
+    assert "蠢蠢欲動" not in spoken
+    data = dongzhu_picks(db, spoken=spoken)
+    assert data.get("field") == "高階測試／封測"
+    sids = {x.get("sid") for x in (data.get("laggards") or [])}
+    assert "6257" in sids
+    assert "3264" in sids
+    html = dongzhu_page(db, spoken=spoken)
+    assert "高階測試／封測" in html
+    assert "6257" in html and "矽格" in html
+    assert "3264" in html and "欣銓" in html
+    assert "蠢蠢欲動" not in spoken
+    assert "不准發明切入" in html or "不是買訊" in html
+    empty = dongzhu_picks(db, spoken="")
+    assert empty.get("field") == "高階測試／封測"

@@ -110,6 +110,31 @@ def _cap(db_path: str) -> str:
         return ""
 
 
+def _chip_cap(db_path: str, cap: str = "") -> str:
+    """法人還沒寫進當日柱（全日 0）不當資金日。盤中未收不當官方收。"""
+    cap = _ymd(cap) or _cap(db_path)
+    if not db_path or not cap:
+        return cap
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        if not _has_chip_cols(conn):
+            return cap
+        row = conn.execute(
+            """
+            SELECT MAX(REPLACE(CAST(date AS TEXT),'-','')) FROM daily_quotes
+            WHERE REPLACE(CAST(date AS TEXT),'-','') <= ?
+              AND IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0) != 0
+            """,
+            (cap,),
+        ).fetchone()
+    except sqlite3.Error:
+        return cap
+    finally:
+        conn.close()
+    day = _ymd(row[0] if row else "")
+    return day or cap
+
+
 def _ymd(raw: Any) -> str:
     return str(raw or "").replace("-", "")[:8]
 
@@ -239,15 +264,16 @@ def _empty_pick(line: str, *, cap: str = "", named: Optional[set] = None, missin
     }
 
 
-def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: str = "") -> Dict[str, Any]:
-    """結構化找法。對不上就空 field，不准猜。"""
+def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = None) -> Dict[str, Any]:
+    """結構化找法。對不上就空 field，不准猜。spoken=None 才讀最新主文；空字＝他沒開口。"""
     del ask
     if not db_path:
         return _empty_pick(_HOW + " 官方日 K 還沒這列，不准猜。不是買訊。")
     cap = _cap(db_path)
     if not cap:
         return _empty_pick(_HOW + " 官方完整日還沒，盤中未收不當官方收。不是買訊。")
-    spoken = spoken or latest_spoken(db_path)
+    if spoken is None:
+        spoken = latest_spoken(db_path)
     named = _named_keys(spoken)
     hits: List[Tuple[float, Dict[str, Any], Dict[str, Any], Optional[Tuple[str, str, Dict[str, Any]]]]] = []
     missing = 0
@@ -327,7 +353,7 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: str = "") -> Dict
     }
 
 
-def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: str = "") -> str:
+def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = None) -> str:
     """回一句產業抽屜用的找法＋官方柱對質。對不上就寫還沒，不准猜。"""
     return str(pick_unnamed_field(db_path, ask=ask, spoken=spoken).get("line") or "")
 
@@ -992,17 +1018,20 @@ def _decorate(
     return item
 
 
-def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
+def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, Any]:
     """洞燭先機鈕：佔比如實主判，飆大找法只參考、不是唯一。切入＝這族 ∩ 黃金買點。"""
+    if spoken is None:
+        spoken = latest_spoken(db_path) if db_path else ""
+    spoken = str(spoken or "")
     pick = pick_unnamed_field(db_path, spoken=spoken)
     cap = str(pick.get("cap") or _cap(db_path) or "")
+    chip_cap = _chip_cap(db_path, cap) if db_path else cap
     if db_path and cap:
         try:
             record_dongzhu_flow(db_path, cap)
         except Exception:
             pass
-    spoken_blob = spoken or (latest_spoken(db_path) if db_path else "")
-    named_keys = _named_keys(spoken_blob)
+    named_keys = _named_keys(spoken)
     spoken_named = [g["field"] for g in _GROUPS if g["key"] in named_keys]
     flow_hit = None
     all_igns: List[Dict[str, Any]] = []
@@ -1015,8 +1044,9 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
         "fine_tag": "",
     }
     cands: List[Dict[str, Any]] = []
+    flow_cap = chip_cap or cap
     for g in _GROUPS:
-        ign = group_ignite(db_path, g["key"], cap) if db_path and cap else {}
+        ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
         ign = dict(ign or {})
         ign["_field"] = g["field"]
         ign["_key"] = g["key"]
@@ -1030,26 +1060,48 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
                 "share_chg": float(ign.get("share_chg") or 0),
                 "fine_tag": str(ign.get("fine_tag") or ""),
             }
-        if not (ign.get("flowing_in") or ign.get("slow_in")):
+        has_share = (
+            ign.get("flowing_in")
+            or ign.get("slow_in")
+            or float(ign.get("share_last") or 0) > 0
+            or float(ign.get("share_up") or 0) > 0
+        )
+        if not has_share:
             continue
-        lead_broke = False
         lead_st = None
         for sid, name in g["leaders"][:1]:
             st = _stats(_bars(db_path, sid, cap)) if db_path else None
             if st:
                 lead_st = {"sid": sid, "name": name, **st}
-                if st.get("broke"):
-                    lead_broke = True
-                    break
-        if lead_broke:
-            continue
-        cands.append({"group": g, "ign": ign, "leader": lead_st})
-    fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
-    pool = fresh if fresh else []
-    for cand in pool:
-        if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
-            flow_hit = cand
-    k_ign = group_ignite(db_path, pick.get("key") or "", cap) if pick.get("key") else {}
+                break
+        cands.append(
+            {
+                "group": g,
+                "ign": ign,
+                "leader": lead_st,
+                "named": g["key"] in named_keys,
+            }
+        )
+    unnamed_pos = [
+        c
+        for c in cands
+        if not c["named"] and float(c["ign"].get("share_last") or 0) > 0
+    ]
+    if unnamed_pos:
+        flow_hit = max(
+            unnamed_pos,
+            key=lambda c: (
+                float(c["ign"].get("share_last") or 0.0),
+                float(c["ign"].get("share_up") or 0.0),
+            ),
+        )
+    else:
+        fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
+        pool = fresh if fresh else cands
+        for cand in pool:
+            if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
+                flow_hit = cand
+    k_ign = group_ignite(db_path, pick.get("key") or "", flow_cap) if pick.get("key") else {}
     if flow_hit:
         g = flow_hit["group"]
         ign = flow_hit["ign"]
@@ -1057,6 +1109,7 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
         rot = ""
         if float(named_hot.get("share_up") or 0) < 0 and float(ign.get("share_up") or 0) > 0:
             rot = f"佔比最高的 {named_hot['field']} 在退、這族在升＝輪動。"
+        miss = "他沒點名這族。" if g["key"] not in named_keys else ""
         spoken_named = spoken_named or list(pick.get("named") or [])
         pick = {
             **pick,
@@ -1068,7 +1121,8 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
                 f"主判佔比；細項 {ign.get('fine_tag') or g['field']}"
                 + (f" 佔當日法人買超 {path}，資金流入。" if path else " 資金流入。")
                 + rot
-                + "飆大點名只參考，不是唯一。"
+                + miss
+                + "不靠他有沒有說蠢蠢欲動。飆大點名只參考，不是唯一。"
             ),
             "named": spoken_named,
         }
@@ -1123,11 +1177,23 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
         lag_item["role"] = _stock_role(group, str(laggard.get("sid") or ""))
         lag_item["layers"] = _chain_parts(db_path, str(laggard.get("sid") or "")) or layers
         pick["laggards_note"] = lag_item
+    taught: List[Dict[str, Any]] = []
+    if group:
+        for sid, name in list(group.get("laggards") or ()):
+            item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
+            if item.get("close") is None:
+                continue
+            item["role"] = _stock_role(group, sid)
+            item["layers"] = _chain_parts(db_path, sid) or layers
+            taught.append(item)
+        taught.sort(key=lambda x: _score_member(x, None), reverse=True)
+    pick["laggards"] = taught[:5]
     return {
         **pick,
         "members": members,
         "buys": buys[:5],
         "watches": watches[:5],
+        "laggards": pick.get("laggards") or [],
         "laggards_note": pick.get("laggards_note") or laggard,
     }
 
@@ -1172,7 +1238,7 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     return "　".join(bits)
 
 
-def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
+def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     """主選單洞燭先機頁。飆大找法＋五件＋細項佔比。切入只認高低卡黃金買點。"""
     data = dongzhu_picks(db_path, spoken=spoken)
     cap = _esc(data.get("cap") or "")
@@ -1226,9 +1292,19 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
         lines.append("<b>還在零</b>（只觀察，不是買）")
         for i, item in enumerate(watches, start=1):
             lines.append(_stock_line(item, i, "觀察"))
-    lag = data.get("laggards_note") or data.get("laggard")
-    if lag and str(lag.get("sid") or "") not in {x.get("sid") for x in buys}:
-        lines.append("<b>蠢蠢欲動的落後檔</b>（不是買訊）")
-        lines.append(_stock_line(lag, 1, "落後"))
+    shown = {str(x.get("sid") or "") for x in buys + watches}
+    lags = [
+        x
+        for x in list(data.get("laggards") or [])
+        if str(x.get("sid") or "") and str(x.get("sid") or "") not in shown
+    ]
+    if not lags:
+        lag = data.get("laggards_note") or data.get("laggard")
+        if isinstance(lag, dict) and str(lag.get("sid") or "") not in shown:
+            lags = [lag]
+    if lags:
+        lines.append("<b>落後檔</b>（從底部找；沒黃金買點只觀察，不是買訊）")
+        for i, item in enumerate(lags, start=1):
+            lines.append(_stock_line(item, i, "落後"))
     lines.append("紅箭頭不是買訊。飆大只參考，不是唯一。")
     return "\n".join(lines)
