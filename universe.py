@@ -603,8 +603,9 @@ def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
 def listing_industry_face(
     stock_id: str, db_path: str = None, *, quote_source: str = ""
 ) -> str:
-    """上市／上櫃後接官方產業括號。龍頭＝該產業當日成交額第一。一線／二線官方沒這欄，不上。
+    """上市／上櫃後接產業標。有籌碼K細項優先標「細項 …」；沒有才用證交所產業括號。
 
+    龍頭＝該（證交所）產業當日成交額第一。一線／二線官方沒這欄，不上。
     卡片走興櫃日均價時市場標必須是興櫃，不准被 daily_quotes 殘列改成上櫃／上市。
     """
     sid = str(stock_id or "").strip()
@@ -624,11 +625,22 @@ def listing_industry_face(
         except Exception:
             listing = ""
     industry = card_industry_label(sid, path)
-    face = listing
-    if listing and industry:
+    chain = ""
+    if industry != "ETF":
+        try:
+            from industry_fine import peek_cached_fine_chain
+
+            chain = peek_cached_fine_chain(path, sid, max_age_days=30)
+        except Exception:
+            chain = ""
+    if chain:
+        face = f"{listing}　細項 {chain}" if listing else f"細項 {chain}"
+    elif listing and industry:
         face = f"{listing}（{industry}）"
     elif industry:
         face = f"（{industry}）"
+    else:
+        face = listing
     if listing != "興櫃" and industry and industry != "ETF":
         leader = industry_turnover_leader_id(industry, path)
         if leader and leader == sid:

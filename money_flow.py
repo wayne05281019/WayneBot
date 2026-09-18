@@ -223,24 +223,27 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
         """,
         (ymd,),
     ).fetchall()
-    best: Dict[str, Tuple[str, str, int]] = {}
-    worst: Dict[str, Tuple[str, str, int]] = {}
+    by_ind: Dict[str, List[Tuple[int, str, str]]] = {}
     for r in tops:
         industry = str(r["industry"])
         three = int(r["three_net"] or 0)
-        cur = best.get(industry)
-        if cur is None or three > cur[2]:
-            best[industry] = (str(r["stock_id"]), str(r["stock_name"] or ""), three)
-        w = worst.get(industry)
-        if w is None or three < w[2]:
-            worst[industry] = (str(r["stock_id"]), str(r["stock_name"] or ""), three)
+        by_ind.setdefault(industry, []).append(
+            (three, str(r["stock_id"]), str(r["stock_name"] or ""))
+        )
     rows: List[Dict[str, Any]] = []
     for r in agg:
         industry = str(r["industry"])
         three = int(r["three_net"] or 0)
         prev_n = int(prev_map.get(industry, 0))
-        buy_id, buy_name, buy_three = best.get(industry, ("", "", 0))
-        sell_id, sell_name, sell_three = worst.get(industry, ("", "", 0))
+        items = list(by_ind.get(industry) or [])
+        buys = sorted(items, key=lambda x: (x[0], x[1]), reverse=True)[:3]
+        sells = sorted(items, key=lambda x: (x[0], x[1]))[:3]
+        buy_id = buys[0][1] if buys else ""
+        buy_name = buys[0][2] if buys else ""
+        buy_three = int(buys[0][0]) if buys else 0
+        sell_id = sells[0][1] if sells else ""
+        sell_name = sells[0][2] if sells else ""
+        sell_three = int(sells[0][0]) if sells else 0
         rows.append(
             {
                 "date": ymd,
@@ -261,6 +264,14 @@ def compute_sector_rows(conn: sqlite3.Connection, ymd: str) -> List[Dict[str, An
                 "top_sell_id": sell_id,
                 "top_sell_name": sell_name,
                 "top_sell_three": int(sell_three or 0),
+                "top_buys": [
+                    {"stock_id": sid, "stock_name": nm, "three_net": int(n)}
+                    for n, sid, nm in buys
+                ],
+                "top_sells": [
+                    {"stock_id": sid, "stock_name": nm, "three_net": int(n)}
+                    for n, sid, nm in sells
+                ],
             }
         )
     rows.sort(key=lambda x: x["three_net"], reverse=True)
@@ -594,6 +605,30 @@ def _yahoo(sid, name, db_path: str = None) -> str:
         return f"{html_escape(sid)} {html_escape(name)}".strip()
 
 
+def _flow_fine_map(db_path: str, stock_ids: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    """資金頁一次讀齊籌碼K細項；沒抓到就不標，不准自造。"""
+    ids = [str(s or "").strip() for s in (stock_ids or []) if str(s or "").strip()]
+    if not db_path or not ids:
+        return {}
+    try:
+        from industry_fine import load_cached_fine_industry
+
+        return load_cached_fine_industry(db_path, ids, max_age_days=30) or {}
+    except Exception:
+        return {}
+
+
+def _flow_stock_title(
+    sid: str,
+    name: str,
+    db_path: str = None,
+    fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
+    """資金頁個股標題：與查股／籌碼同一套 listing_industry_face（含細項）。"""
+    del fine_map  # face 自己讀庫；參數留給呼叫端批次相容
+    return _yahoo(sid, name, db_path)
+
+
 _SECTOR_SHORT = {
     "金融保險業": "金融",
     "半導體業": "半導體",
@@ -884,6 +919,7 @@ def format_sector_theme_brief(
     top_row: Dict[str, Any],
     *,
     mode: str = "",
+    fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """盤中／盤後最強族 + 族內代表股（Telegram HTML）。"""
     from tg_layout import html_metrics_tight, pct_text, qty_text, section
@@ -903,6 +939,10 @@ def format_sector_theme_brief(
         )
         if not reps:
             return ""
+        fmap = dict(fine_map or {})
+        need = [r["stock_id"] for r in reps if str(r["stock_id"]) not in fmap]
+        if need:
+            fmap.update(_flow_fine_map(db_path, need))
         headline = sector_theme_headline(top_row)
         n = int(top_row.get("sample_n") or 0)
         avg = float(top_row.get("avg_pct") or 0)
@@ -911,7 +951,8 @@ def format_sector_theme_brief(
             f"<i>{top_row['industry']}　均漲 {avg:+.2f}%（盤中 {n} 檔）</i>",
         ]
         for i, r in enumerate(reps, start=1):
-            title = _yahoo(r["stock_id"], r["stock_name"], db_path)
+            title = _flow_stock_title(r["stock_id"], r["stock_name"], db_path, fmap)
+            lines.append("")
             lines.append(
                 f"{i}. {title}\n"
                 + html_metrics_tight(
@@ -930,6 +971,10 @@ def format_sector_theme_brief(
         conn.close()
     if not reps:
         return ""
+    fmap = dict(fine_map or {})
+    need = [r["stock_id"] for r in reps if str(r["stock_id"]) not in fmap]
+    if need:
+        fmap.update(_flow_fine_map(db_path, need))
     headline = sector_theme_headline(top_row)
     three = int(top_row["three_net"])
     lines = [
@@ -938,7 +983,8 @@ def format_sector_theme_brief(
         html_metrics_tight("法人", qty_text(three)),
     ]
     for i, r in enumerate(reps, start=1):
-        title = _yahoo(r["stock_id"], r["stock_name"], db_path)
+        title = _flow_stock_title(r["stock_id"], r["stock_name"], db_path, fmap)
+        lines.append("")
         lines.append(
             f"{i}. {title}\n"
             + html_metrics_tight(
@@ -949,8 +995,12 @@ def format_sector_theme_brief(
     return section(*lines)
 
 
-def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
-    """一族用＝＝產業名＝＝當標題；買超／賣超那行加 ★，才跟張數列分開。"""
+def _sector_entry(
+    r: Dict[str, Any],
+    db_path: str = None,
+    fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
+    """一族用＝＝產業名＝＝當標題；前幾名個股統一細項標法，檔與檔空一行。"""
     from tg_layout import html_escape, html_metrics_tight, qty_text, pct_text
 
     three = int(r["three_net"])
@@ -962,17 +1012,37 @@ def _sector_entry(r: Dict[str, Any], db_path: str = None) -> str:
     d = int(r.get("three_delta") or 0)
     lines.append("較前日　持平" if d == 0 else f"較前日　{html_metrics_tight(qty_text(d))}")
     if three < 0:
-        sid = r.get("top_sell_id") or ""
-        sname = r.get("top_sell_name") or ""
-        lots = int(r.get("top_sell_three") or 0)
-        tag = "賣超最多"
+        picks = list(r.get("top_sells") or [])
+        if not picks and r.get("top_sell_id"):
+            picks = [
+                {
+                    "stock_id": r.get("top_sell_id") or "",
+                    "stock_name": r.get("top_sell_name") or "",
+                    "three_net": int(r.get("top_sell_three") or 0),
+                }
+            ]
+        head = "前幾名賣超"
     else:
-        sid = r.get("top_buy_id") or ""
-        sname = r.get("top_buy_name") or ""
-        lots = int(r.get("top_buy_three") or 0)
-        tag = "買超最多"
-    if sid:
-        lines.append(f"★ {tag}　{_yahoo(sid, sname, db_path)}　{html_metrics_tight(qty_text(lots))}")
+        picks = list(r.get("top_buys") or [])
+        if not picks and r.get("top_buy_id"):
+            picks = [
+                {
+                    "stock_id": r.get("top_buy_id") or "",
+                    "stock_name": r.get("top_buy_name") or "",
+                    "three_net": int(r.get("top_buy_three") or 0),
+                }
+            ]
+        head = "前幾名買超"
+    picks = [p for p in picks if str(p.get("stock_id") or "").strip()][:3]
+    if picks:
+        lines.append(head)
+        for i, p in enumerate(picks, start=1):
+            sid = str(p.get("stock_id") or "").strip()
+            sname = str(p.get("stock_name") or "")
+            lots = int(p.get("three_net") or 0)
+            title = _flow_stock_title(sid, sname, db_path, fine_map)
+            lines.append("")
+            lines.append(f"{i}. {title}\n{html_metrics_tight(qty_text(lots))}")
     return "\n".join(lines)
 
 
@@ -1026,6 +1096,20 @@ def format_sector_rotation_html(
     accel = sorted(rows, key=lambda x: int(x["three_delta"]), reverse=True)
     accel = [r for r in accel if int(r["three_delta"]) > 0 and int(r["three_net"]) > 0][:3]
 
+    sid_pool: List[str] = []
+    for pack in (inflow, outflow, accel, [top_row]):
+        for r in pack:
+            for key in ("top_buys", "top_sells"):
+                for p in list(r.get(key) or []):
+                    sid = str(p.get("stock_id") or "").strip()
+                    if sid:
+                        sid_pool.append(sid)
+            for key in ("top_buy_id", "top_sell_id"):
+                sid = str(r.get(key) or "").strip()
+                if sid:
+                    sid_pool.append(sid)
+    fine_map = _flow_fine_map(path, sid_pool)
+
     blocks = [
         title_line("盤後資金輪動", ymd_s, ""),
     ]
@@ -1034,7 +1118,7 @@ def format_sector_rotation_html(
     blocks.append(
         section(
             kv_compact("單位", "張（產業加總三大法人，非分點）"),
-            kv_compact("用途", "佈局對照：熱族＋族內代表股，不作單獨訊號"),
+            kv_compact("用途", "佈局對照：熱族＋前幾名個股；細項＝籌碼K，不作單獨訊號"),
         ),
     )
     if chip_abs == 0:
@@ -1047,32 +1131,45 @@ def format_sector_rotation_html(
         if is_live_merge_window(now):
             live_rows = compute_live_sector_rows(path, now=now)
             if live_rows:
-                theme = format_sector_theme_brief(path, ymd, live_rows[0], mode="live")
+                theme = format_sector_theme_brief(
+                    path, ymd, live_rows[0], mode="live", fine_map=fine_map
+                )
     except Exception:
         import logging
 
         logging.getLogger(__name__).debug("盤中最強族略過", exc_info=True)
     if not theme and int(top_row.get("three_net") or 0) > 0:
-        theme = format_sector_theme_brief(path, ymd, top_row, mode="post")
+        theme = format_sector_theme_brief(
+            path, ymd, top_row, mode="post", fine_map=fine_map
+        )
     if theme:
         blocks.append(theme)
     if inflow:
         blocks.append(
             section(
                 "<b>資金流入（法人買超最多的 3 族）</b>",
-                *_flow_stock_lines([_sector_entry(r, path) for r in inflow]),
+                *_flow_stock_lines(
+                    [_sector_entry(r, path, fine_map) for r in inflow]
+                ),
             )
         )
     if outflow:
         blocks.append(
             section(
                 "<b>資金流出（法人賣超最多的 3 族）</b>",
-                *_flow_stock_lines([_sector_entry(r, path) for r in outflow]),
+                *_flow_stock_lines(
+                    [_sector_entry(r, path, fine_map) for r in outflow]
+                ),
             )
         )
     if accel and {r["industry"] for r in accel} != {r["industry"] for r in inflow}:
         blocks.append(
-            section("<b>較前日加碼</b>", *_flow_stock_lines([_sector_entry(r, path) for r in accel]))
+            section(
+                "<b>較前日加碼</b>",
+                *_flow_stock_lines(
+                    [_sector_entry(r, path, fine_map) for r in accel]
+                ),
+            )
         )
     return join_dashed(*blocks)
 
@@ -1158,7 +1255,7 @@ def format_flow_html(
     def line(r, col: str, rank: int) -> str:
         n = int(r[col] or 0)
         pct = float(r["pct_change"] or 0)
-        title = _yahoo(r["stock_id"], r["stock_name"], path)
+        title = _flow_stock_title(r["stock_id"], r["stock_name"], path, fine_map)
         return f"{rank}. {title}\n{html_metrics_tight(qty_text(n), pct_text(pct))}"
 
     buy_f = _top(conn, ymd, "foreign_net", True)
@@ -1174,6 +1271,11 @@ def format_flow_html(
         """,
         (ymd,),
     ).fetchall()
+    sid_pool = []
+    for pack in (buy_f, sell_f, buy_t, hot):
+        for r in pack:
+            sid_pool.append(str(r["stock_id"]))
+    fine_map = _flow_fine_map(path, sid_pool)
     conn.close()
 
     ymd_s = format_trading_date_zh(ymd)
@@ -1186,7 +1288,11 @@ def format_flow_html(
     blocks.extend(
         [
             title_line("個股資金", ymd_s, ""),
-            section(kv_compact("覆蓋", cover), kv_compact("單位", "張（三大法人，非分點）")),
+            section(
+                kv_compact("覆蓋", cover),
+                kv_compact("單位", "張（三大法人，非分點）"),
+                kv_compact("細項", "籌碼K公開產業鏈；沒抓到就不標"),
+            ),
         ]
     )
     blocks.append(
@@ -1212,7 +1318,7 @@ def format_flow_html(
         bits = []
         for i, r in enumerate(hot, start=1):
             three = int(r["three_net"] or 0)
-            title = _yahoo(r["stock_id"], r["stock_name"], path)
+            title = _flow_stock_title(r["stock_id"], r["stock_name"], path, fine_map)
             bits.append(
                 f"{i}. {title}\n"
                 + html_metrics_tight(

@@ -152,6 +152,42 @@ def _row_to_rec(stock_id: str, chain: str, tags: List[str], cat_id: str, source:
     }
 
 
+def peek_cached_fine_chain(
+    db_path: str, stock_id: str, *, max_age_days: int = CACHE_DAYS
+) -> str:
+    """只讀庫裡已有細項鏈；表不在或過期就空。不准為了讀而去 seed／抓網。"""
+    sid = str(stock_id or "").strip()
+    if not sid or not db_path:
+        return ""
+    try:
+        conn = sqlite3.connect(db_path)
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_fine_industry'"
+        ).fetchone()
+        if not hit:
+            conn.close()
+            return ""
+        row = conn.execute(
+            "SELECT chain, fetched_at FROM stock_fine_industry WHERE stock_id=? LIMIT 1",
+            (sid,),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return ""
+    if not row:
+        return ""
+    chain = str(row[0] or "").strip()
+    if not chain:
+        return ""
+    try:
+        ts = datetime.fromisoformat(str(row[1] or ""))
+    except Exception:
+        return ""
+    if ts < datetime.now() - timedelta(days=max(1, int(max_age_days))):
+        return ""
+    return chain
+
+
 def load_cached_fine_industry(
     db_path: str, stock_ids: Iterable[str], *, max_age_days: int = CACHE_DAYS
 ) -> Dict[str, Dict[str, Any]]:

@@ -105,6 +105,8 @@ def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
     assert listing_face_ok("上市")
     assert listing_face_ok("上市（半導體業）")
     assert listing_face_ok("上市（半導體業）　龍頭")
+    assert listing_face_ok("上市　細項 電子上游-IC-代工")
+    assert listing_face_ok("上市　細項 電子上游-IC-代工　龍頭")
     assert listing_face_ok("上市（ETF）")
     assert listing_face_ok("上櫃（半導體業）")
     assert listing_face_ok("興櫃（半導體業）")

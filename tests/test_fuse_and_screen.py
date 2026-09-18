@@ -513,8 +513,8 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("盤後資金輪動", html)
             self.assertIn("＝＝半導體業＝＝", html)
             self.assertIn("＝＝鋼鐵工業＝＝", html)
-            self.assertIn("★ 買超最多", html)
-            self.assertIn("★ 賣超最多", html)
+            self.assertIn("前幾名買超", html)
+            self.assertIn("前幾名賣超", html)
             self.assertNotIn("分點不抓", html)
             self.assertNotIn("instant", html)
             self.assertNotIn("官方法人張數＋價量才進這張表", html)
@@ -526,7 +526,10 @@ class FuseAndScreenTest(unittest.TestCase):
             for line in html.split("\n"):
                 if line.startswith("＝＝") and ("半導體業" in line or "鋼鐵工業" in line):
                     self.assertNotIn("張", line, line)
-            self.assertIn("上市（半導體業）", html)
+            self.assertTrue(
+                ("上市（半導體業）" in html) or ("細項" in html),
+                html[:500],
+            )
             self.assertNotIn("一線", html)
             self.assertNotIn("二線", html)
             self.assertIn("+9,970張", html)

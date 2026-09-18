@@ -468,9 +468,21 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     sid = snap["stock_id"]
     name = snap["stock_name"]
     listing = str(snap.get("listing") or "").strip()
-    title_name = f"{name}　{listing}" if listing else name
+    face = ""
+    try:
+        from universe import listing_industry_face
+
+        face = listing_industry_face(sid, path)
+    except Exception:
+        face = ""
+    title_bit = face or listing
+    title_name = f"{name}　{title_bit}" if title_bit else name
     blocks = [title_line("產業說明", sid, title_name)]
-    if snap.get("fine_tags"):
+    if snap.get("fine_chain") and "細項" not in (title_bit or ""):
+        chips = "　".join(f"[{html_escape(t)}]" for t in (snap.get("fine_tags") or []))
+        if chips:
+            blocks[0] = blocks[0] + "　" + chips
+    elif snap.get("fine_tags") and "細項" not in (title_bit or ""):
         chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
         blocks[0] = blocks[0] + "　" + chips
 
@@ -491,10 +503,16 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     who_lines = [
         "<b>這檔是什麼</b>",
         kv_compact("產業", ind),
-        kv_compact("同業", peer_mix_label(snap)),
-        "產業名來自證交所／櫃買公司基本資料產業別。",
-        "同業＝同一官方產業別全組，不是更細的產品線。",
     ]
+    if snap.get("fine_chain"):
+        who_lines.append(kv_compact("細項", str(snap["fine_chain"])))
+    who_lines.extend(
+        [
+            kv_compact("同業", peer_mix_label(snap)),
+            "產業名來自證交所／櫃買公司基本資料產業別。",
+            "同業＝同一官方產業別全組，不是更細的產品線。",
+        ]
+    )
     if snap.get("fine_tags"):
         who_lines.append("細項來自籌碼K公開個股頁。")
     if ind == "半導體業":
