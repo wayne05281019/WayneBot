@@ -2638,15 +2638,18 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    if fine and fine != industry:
+    listing = str(card.get("listing") or "").strip()
+    # listing 已含產業鏈時標題列不要再貼一次。
+    if fine and fine != industry and fine not in listing:
         industry = fine
+    elif fine and fine in listing:
+        industry = ""
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag
 
         news = industry_flow_tag(card.get("industry_flow") or "")
-    listing = str(card.get("listing") or "").strip()
     kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
     lead = "　".join(x for x in (listing, kind_lead) if x)
     for text, fs, color in fit_title_bar_extras(
@@ -3330,15 +3333,18 @@ def render_first_glance_png(
     etf_kind = str(card.get("etf_kind") or "").strip()
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    if fine and fine != industry:
+    listing = str(card.get("listing") or "").strip()
+    # listing 已含產業鏈時標題列不要再貼一次。
+    if fine and fine != industry and fine not in listing:
         industry = fine
+    elif fine and fine in listing:
+        industry = ""
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
         from money_flow import industry_flow_tag
 
         news = industry_flow_tag(card.get("industry_flow") or "")
-    listing = str(card.get("listing") or "").strip()
     kind_lead = "" if (etf_kind and etf_kind in name) else etf_kind
     lead = "　".join(x for x in (listing, kind_lead) if x)
     for text, fs, color in fit_title_bar_extras(

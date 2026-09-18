@@ -415,6 +415,17 @@ def render_chips_png(
         n = max(len(rows), 1)
         sid = str(stock_id or rows[0].get("stock_id") or "").strip()
         name = str(rows[0].get("stock_name") or sid)
+        face = ""
+        try:
+            from universe import listing_industry_face
+            from config import get_db_path
+
+            face = listing_industry_face(sid, get_db_path())
+        except Exception:
+            face = ""
+        head_title = f"{sid}　{name}"
+        if face:
+            head_title = f"{head_title}　{face}"
         pad_x, m_top, m_bot = 2.4, 1.0, 1.2
         head_h, sub_h, hdr_h, body_h = 8.6, 3.4, 3.4, 3.25
         gap = 1.15
@@ -430,8 +441,9 @@ def render_chips_png(
         ax.add_patch(patches.FancyBboxPatch(
             (pad_x, y), 100 - 2 * pad_x, head_h, boxstyle="round,pad=0,rounding_size=0.95",
             facecolor=C["navy"], edgecolor="none", zorder=2))
-        ax.text(pad_x + 2.6, y + head_h - 2.9, f"{sid}　{name}",
-                fontproperties=_fp(18, "bold"), color="#FFFFFF", va="center", zorder=3)
+        title_fs = 15 if len(head_title) > 28 else 18
+        ax.text(pad_x + 2.6, y + head_h - 2.9, head_title,
+                fontproperties=_fp(title_fs, "bold"), color="#FFFFFF", va="center", zorder=3)
         tag = "三大法人買賣超（張）"
         tag_w = _text_w(tag, 11.2, fig_w, 900) + 3.2
         ax.add_patch(patches.FancyBboxPatch(
