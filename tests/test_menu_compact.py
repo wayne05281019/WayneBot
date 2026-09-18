@@ -9,10 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_BIAOKE_FACE,
-    MENU_BTN_CARD,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
-    MENU_BTN_REPORT,
     MENU_BTN_SLOT,
     MENU_BTN_STREAK,
     MENU_LAYOUT_VERSION,
@@ -25,13 +23,11 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    from bot_servers import MENU_BTN_CARD
-
-    assert MENU_BTN_CARD == "刷新"
-    assert MENU_LAYOUT_VERSION == "24"
-    assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET)
-    assert MENU_ROW2[:6] == ("資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO)
-    assert MENU_ROW2[6] == MENU_BTN_SLOT
+    assert MENU_LAYOUT_VERSION == "25"
+    assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, "資金")
+    assert MENU_ROW2 == ("當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_SLOT)
+    assert "刷新" not in MENU_ROW1 + MENU_ROW2
+    assert "回報" not in MENU_ROW1 + MENU_ROW2
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[0]] == list(MENU_ROW1)

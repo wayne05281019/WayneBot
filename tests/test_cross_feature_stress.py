@@ -12,7 +12,6 @@ from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
-    MENU_BTN_REPORT,
     MENU_BTN_SLOT,
     MENU_BTN_STREAK,
     WayneTelegramBot,

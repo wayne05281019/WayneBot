@@ -23,9 +23,7 @@ from ai_trader import ai_user_id
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
-    MENU_BTN_CARD,
     MENU_BTN_MARKET,
-    MENU_BTN_REPORT,
     MENU_BTN_STREAK,
     MENU_FULL_ALIASES,
     MENU_ROW1,
@@ -319,8 +317,6 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         "海選",
         "持股",
         "觀察",
-        MENU_BTN_CARD,
-        MENU_BTN_REPORT,
         "飆大",
         MENU_BTN_MARKET,
         "資金",
@@ -354,7 +350,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("海選", "持股", "觀察", "刷新", "回報", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
+        for need in ("海選", "持股", "觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

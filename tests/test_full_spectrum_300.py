@@ -779,15 +779,16 @@ def test_l6_temp_80_hot():
     assert fg.lower() in ("#ffffff", "#fff") or "fff" in fg.lower()
 
 
-def test_l6_menu_row_has_streak_help_report():
-    from bot_servers import MENU_BTN_REPORT, MENU_BTN_STREAK
+def test_l6_menu_row_has_streak_not_refresh_report():
+    from bot_servers import MENU_BTN_STREAK
 
     bot = _bot()
     kb = WayneTelegramBot._reply_menu(bot)
     labels = [b.text for row in kb.keyboard for b in row]
     assert MENU_BTN_STREAK in labels
     assert "海選" in labels
-    assert MENU_BTN_REPORT in labels
+    assert "刷新" not in labels
+    assert "回報" not in labels
 
 
 # ===========================================================================
@@ -1214,13 +1215,15 @@ def test_l9c_help_topics_cancelled():
 
 @pytest.mark.parametrize(
     "label",
-    ["海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零"],
+    ["海選", "持股", "觀察", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零"],
 )
 def test_l9c_twelve_buttons_named_on_menu(label):
     from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
 
     names = [_normalize_menu_text(t) for t in MENU_ROW1 + MENU_ROW2]
     assert label in names
+    assert "刷新" not in names
+    assert "回報" not in names
 
 
 def test_l9c_gha_morning_only_at_0630():

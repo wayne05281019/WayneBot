@@ -92,9 +92,8 @@ def test_twelve_menu_buttons_exist_in_order():
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
-    assert row1 == ["海選", "持股", "觀察", MENU_BTN_CARD, MENU_BTN_REPORT, MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET]
-    assert row2[:6] == ["資金", "當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO]
-    assert row2[6] == MENU_BTN_SLOT
+    assert row1 == ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, "資金"]
+    assert row2 == ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_SLOT]
 
 
 def test_help_script_ready_for_brother_video():
