@@ -80,6 +80,7 @@ def _bot():
         ("daytrade", "_run_trade_bucket"),
         ("overnight", "_run_trade_bucket"),
         ("k:", "_send_card_to"),
+        ("i:", "_send_card_to"),
         ("e:", "_send_etf_category_pick"),
         ("f:", "reply_html"),
         ("n:", "_send_industry"),
@@ -137,6 +138,8 @@ def test_callback_routes_to_expected_handler(prefix, handler_attr):
     elif prefix == "overnight":
         bot._run_trade_bucket.assert_awaited_once()
     elif prefix == "k:":
+        bot._send_card_to.assert_awaited_once()
+    elif prefix == "i:":
         bot._send_card_to.assert_awaited_once()
     elif prefix == "e:":
         bot._send_etf_category_pick.assert_awaited_once()

@@ -190,6 +190,29 @@ def test_lookup_like_row_has_watch_and_buy():
     assert "k:1101" in flat and "w:1101" in flat and "b:1101" in flat
 
 
+def test_dongzhu_keyboard_is_industry_temp_intro():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    rows = bot._dongzhu_pick_rows("2449", "京元電子")
+    texts = [b.text for r in rows for b in r]
+    assert any("2449" in t or "京元電子" in t for t in texts)
+    assert "觀察" not in texts
+    assert "記買入" not in texts
+    assert "產業" in texts
+    assert "高低溫度卡" in texts
+    assert "介紹卡" in texts
+    data = [b.callback_data for r in rows for b in r]
+    assert "k:2449" in data
+    assert "n:2449" in data
+    assert "d:2449" in data
+    assert "i:2449" in data
+    kb = bot._dongzhu_picks_keyboard([("2449", "京元電子"), ("6257", "矽格")])
+    flat = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert "i:6257" in flat and "n:6257" in flat and "d:6257" in flat
+    hold_kb = bot._dongzhu_hold_keyboard("2449")
+    hold_txt = [b.text for r in hold_kb.inline_keyboard for b in r]
+    assert hold_txt == ["產業", "高低溫度卡", "介紹卡"]
+
+
 def test_intent_and_menu_label():
     assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
     assert parse_intent("剛脫離零").kind == "leave_zero"
