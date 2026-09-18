@@ -372,6 +372,183 @@ def group_members(db_path: str, group: Optional[Dict[str, Any]]) -> List[Tuple[s
     return [(sid, out[sid]) for sid in sorted(out)]
 
 
+def _has_chip_cols(conn: sqlite3.Connection) -> bool:
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(daily_quotes)")}
+    return {"foreign_net", "trust_net", "dealer_net"} <= cols
+
+
+def ensure_dongzhu_flow_table(db_path: str) -> None:
+    if not db_path:
+        return
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dongzhu_flow_tape (
+                date TEXT NOT NULL,
+                group_key TEXT NOT NULL,
+                field TEXT NOT NULL,
+                three_net INTEGER DEFAULT 0,
+                member_n INTEGER DEFAULT 0,
+                PRIMARY KEY (date, group_key)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dongzhu_flow_key ON dongzhu_flow_tape(group_key, date)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _quote_dates(conn: sqlite3.Connection, cap: str, n: int = 10) -> List[str]:
+    cap = _ymd(cap)
+    if not cap:
+        return []
+    rows = conn.execute(
+        "SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') AS d FROM daily_quotes "
+        "WHERE REPLACE(CAST(date AS TEXT),'-','') <= ? ORDER BY d DESC LIMIT ?",
+        (cap, int(n)),
+    ).fetchall()
+    return sorted(_ymd(r[0]) for r in rows if _ymd(r[0]))
+
+
+def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
+    """把教過的次族群近幾日三大法人張寫進膠帶。來源＝日 K 的 T86，不抓分點。"""
+    if not db_path:
+        return 0
+    cap = _ymd(cap) or _cap(db_path)
+    if not cap:
+        return 0
+    ensure_dongzhu_flow_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    written = 0
+    try:
+        if not _has_chip_cols(conn):
+            return 0
+        dates = _quote_dates(conn, cap, lookback)
+        if not dates:
+            return 0
+        members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _GROUPS}
+        qmarks_by_key = {}
+        for key, sids in members.items():
+            if sids:
+                qmarks_by_key[key] = ",".join("?" * len(sids))
+        for day in dates:
+            for g in _GROUPS:
+                sids = members.get(g["key"]) or []
+                if not sids:
+                    continue
+                row = conn.execute(
+                    f"SELECT COUNT(*), IFNULL(SUM(IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0)),0) "
+                    f"FROM daily_quotes WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND stock_id IN ({qmarks_by_key[g['key']]})",
+                    [day, *sids],
+                ).fetchone()
+                n = int(row[0] or 0) if row else 0
+                three = int(row[1] or 0) if row else 0
+                conn.execute(
+                    """
+                    INSERT INTO dongzhu_flow_tape(date, group_key, field, three_net, member_n)
+                    VALUES (?,?,?,?,?)
+                    ON CONFLICT(date, group_key) DO UPDATE SET
+                        field=excluded.field,
+                        three_net=excluded.three_net,
+                        member_n=excluded.member_n
+                    """,
+                    (day, g["key"], g["field"], three, n),
+                )
+                written += 1
+        conn.commit()
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    return written
+
+
+def _ignite_from_nets(nets: Sequence[int]) -> Dict[str, Any]:
+    vals = [int(n) for n in nets][-5:]
+    pos = sum(1 for n in vals if n > 0)
+    cum = sum(vals)
+    last = vals[-1] if vals else 0
+    mx = max((abs(n) for n in vals), default=0)
+    slow = bool(vals) and pos >= 3 and cum > 0 and last > 0 and (pos >= 4 or mx * 10 <= abs(cum) * 8)
+    return {
+        "nets": vals,
+        "pos_days": pos,
+        "cum5": cum,
+        "last": last,
+        "slow_in": slow,
+    }
+
+
+def group_ignite(db_path: str, group_key: str, cap: str) -> Dict[str, Any]:
+    empty = {"nets": [], "pos_days": 0, "cum5": 0, "last": 0, "slow_in": False, "dates": []}
+    if not db_path or not group_key:
+        return empty
+    ensure_dongzhu_flow_table(db_path)
+    cap = _ymd(cap)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            "SELECT date, three_net FROM dongzhu_flow_tape "
+            "WHERE group_key=? AND date<=? ORDER BY date",
+            (group_key, cap),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    last = rows[-5:] if rows else []
+    ign = _ignite_from_nets([int(r[1] or 0) for r in last])
+    ign["dates"] = [_ymd(r[0]) for r in last]
+    return ign
+
+
+def member_cum5(db_path: str, sid: str, cap: str) -> int:
+    if not db_path or not sid:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        if not _has_chip_cols(conn):
+            return 0
+        rows = conn.execute(
+            "SELECT IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0) "
+            "FROM daily_quotes WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')<=? "
+            "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 5",
+            (sid, _ymd(cap)),
+        ).fetchall()
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    return int(sum(int(r[0] or 0) for r in rows))
+
+
+def _lots_txt(val: int) -> str:
+    n = int(val)
+    body = f"{abs(n):,}"
+    if n > 0:
+        return f"＋{body}張"
+    if n < 0:
+        return f"−{body}張"
+    return "0張"
+
+
+def _flow_why(ign: Dict[str, Any]) -> str:
+    nets = list(ign.get("nets") or [])
+    if not nets:
+        return "法人張還沒這列，資金輪動不准猜。"
+    bits = "/".join(_lots_txt(n).replace("張", "") for n in nets)
+    extra = (
+        f"{ign.get('pos_days') or 0}日買超＝慢慢匯入、準備點火。"
+        if ign.get("slow_in")
+        else "還沒連日匯入，不算點火。"
+    )
+    return f"近{len(nets)}日三大法人 {bits} 累計 {_lots_txt(int(ign.get('cum5') or 0))}。{extra}"
+
+
 def _bucket_by_id(db_path: str, bucket: str) -> Dict[str, Dict[str, Any]]:
     if not db_path:
         return {}
@@ -399,8 +576,8 @@ def _bucket_by_id(db_path: str, bucket: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def _score_member(st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]]) -> Tuple[float, float, float]:
-    """越高越值得：黃金買點列上的再比官方柱量比、距20高。"""
+def _score_member(st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]]) -> Tuple:
+    """越高越值得：先法人慢慢匯入，再蠢蠢欲動的量價，只在黃金買點列上排。"""
     del row
     st = st or {}
     try:
@@ -412,7 +589,11 @@ def _score_member(st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]]) -
     except (TypeError, ValueError):
         vs20 = -999.0
     stir = 1.0 if _stirring(st) else 0.0
-    return (stir, volr, vs20)
+    try:
+        cum = int(st.get("cum5") or 0)
+    except (TypeError, ValueError):
+        cum = 0
+    return (1.0 if cum > 0 else 0.0, float(cum), stir, volr, vs20)
 
 
 def _decorate(db_path: str, sid: str, name: str, cap: str, row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -428,6 +609,7 @@ def _decorate(db_path: str, sid: str, name: str, cap: str, row: Optional[Dict[st
         "stirring": bool(st) and _stirring(st),
         "broke": bool(st.get("broke")),
         "chase_warning": bool((row or {}).get("chase_warning")),
+        "cum5": member_cum5(db_path, sid, cap),
     }
     if row:
         item["pick_close"] = row.get("pick_close") or row.get("close")
@@ -436,9 +618,58 @@ def _decorate(db_path: str, sid: str, name: str, cap: str, row: Optional[Dict[st
 
 
 def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
-    """洞燭先機鈕：族群＋原因；切入＝這族 ∩ 黃金買點。沒買點不准發明。"""
+    """洞燭先機鈕：飆大找法當主因，資金輪動膠帶確認慢慢匯入，切入＝這族 ∩ 黃金買點。"""
     pick = pick_unnamed_field(db_path, spoken=spoken)
     cap = str(pick.get("cap") or _cap(db_path) or "")
+    if db_path and cap:
+        try:
+            record_dongzhu_flow(db_path, cap)
+        except Exception:
+            pass
+    named_keys = _named_keys(spoken or latest_spoken(db_path) if db_path else spoken)
+    flow_hit = None
+    named_hot_cum = 0
+    named_hot_field = ""
+    for g in _GROUPS:
+        ign = group_ignite(db_path, g["key"], cap) if db_path and cap else {}
+        if g["key"] in named_keys:
+            if int(ign.get("cum5") or 0) > named_hot_cum:
+                named_hot_cum = int(ign.get("cum5") or 0)
+                named_hot_field = g["field"]
+            continue
+        if not ign.get("slow_in"):
+            continue
+        lead_broke = False
+        for sid, _name in g["leaders"][:1]:
+            st = _stats(_bars(db_path, sid, cap)) if db_path else None
+            if st and st.get("broke"):
+                lead_broke = True
+                break
+        if lead_broke:
+            continue
+        cand = {"group": g, "ign": ign}
+        if flow_hit is None or int(ign.get("cum5") or 0) > int(flow_hit["ign"].get("cum5") or 0):
+            flow_hit = cand
+    k_group = pick.get("group")
+    k_ign = group_ignite(db_path, pick.get("key") or "", cap) if pick.get("key") else {}
+    if (not pick.get("field")) and flow_hit:
+        g = flow_hit["group"]
+        pick = {
+            **pick,
+            "field": g["field"],
+            "key": g["key"],
+            "group": g,
+            "why": (
+                f"還沒點名；資金近5日慢慢匯入 {_lots_txt(int(flow_hit['ign'].get('cum5') or 0))}，準備點火。"
+                + (("已點名的 " + "、".join(pick.get("named") or []) + " 不當新族群。") if pick.get("named") else "")
+                + "不是他當下點名。"
+            ),
+        }
+        k_ign = flow_hit["ign"]
+    elif k_group and k_ign:
+        pass
+    pick["flow"] = k_ign if pick.get("key") else (flow_hit["ign"] if flow_hit else {})
+    pick["flow_named_hot"] = {"field": named_hot_field, "cum5": named_hot_cum}
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
@@ -488,30 +719,42 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
         bits.append(f"距60高 {_pct(float(vs60))}")
     if volr is not None:
         bits.append(f"量比 {float(volr):.2f}")
+    if item.get("cum5"):
+        bits.append(f"近5日法人 {_lots_txt(int(item.get('cum5') or 0))}")
     return "　".join(bits)
 
 
 def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
-    """主選單洞燭先機頁。切入只認高低卡黃金買點。不是買訊、不進海選。"""
+    """主選單洞燭先機頁。飆大找法＋資金輪動膠帶。切入只認高低卡黃金買點。"""
     data = dongzhu_picks(db_path, spoken=spoken)
     cap = _esc(data.get("cap") or "")
     lines = [
         "<b>洞燭先機</b>",
         _esc(data.get("how") or _HOW),
-        "盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
+        "飆大找法當參考主因；資金輪動看三大法人張是否慢慢匯入、準備點火。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
     ]
     if cap:
         lines.append(f"官方收 {cap}")
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")
+        flow = data.get("flow") or {}
+        if flow.get("nets"):
+            lines.append(_esc(_flow_why(flow)))
         return "\n".join(lines)
     lines.append(f"<b>此刻最像</b> {_esc(field)}")
     why = str(data.get("why") or "")
     if why:
         lines.append(f"<i>原因：{_esc(why)}</i>")
+    flow = data.get("flow") or {}
+    lines.append(_esc("資金輪動（記在膠帶）" + _flow_why(flow)))
+    hot = data.get("flow_named_hot") or {}
+    if hot.get("field") and int(hot.get("cum5") or 0) > 0:
+        lines.append(
+            _esc(f"已點名的 {hot['field']} 近5日仍 {_lots_txt(int(hot['cum5']))}，當下熱門不當新族群。")
+        )
     buys = list(data.get("buys") or [])
-    lines.append("<b>這族最值得切入</b>（跟全市場黃金買點對過）")
+    lines.append("<b>這族最值得切入</b>（跟全市場黃金買點對過；同列再看法人是否匯入）")
     if buys:
         for i, item in enumerate(buys, start=1):
             lines.append(_stock_line(item, i, "買點"))

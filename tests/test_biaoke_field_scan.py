@@ -141,3 +141,57 @@ def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     assert "3443" not in html
     assert "矽格" in html
     assert "不是買訊" in html
+
+
+def test_ignite_needs_several_buy_days_not_one_spike():
+    from biaoke_field_scan import _ignite_from_nets
+
+    slow = _ignite_from_nets([80, 90, 100, 110, 120])
+    assert slow["slow_in"] is True
+    assert slow["pos_days"] == 5
+    spike = _ignite_from_nets([0, 0, 0, 0, 20000])
+    assert spike["slow_in"] is False
+
+
+def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ][-5:]
+    for i, day in enumerate(dates):
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (120 + i * 20, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3443' AND date=?",
+            (8000, day),
+        )
+    conn.commit()
+    conn.close()
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {"leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "pick_close": 222.5}]},
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import group_ignite, record_dongzhu_flow
+
+    assert record_dongzhu_flow(db, "20260917") > 0
+    test_ign = group_ignite(db, "test", "20260917")
+    asic_ign = group_ignite(db, "asic", "20260917")
+    assert test_ign["slow_in"] is True
+    assert asic_ign["cum5"] > test_ign["cum5"]
+    html = dongzhu_page(db)
+    assert "高階測試／封測" in html
+    assert "慢慢匯入" in html or "準備點火" in html
+    assert "資金輪動" in html
+    assert "6257" in html and "矽格" in html
+    assert "3443" not in html
+    assert "不當新族群" in html
