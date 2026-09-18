@@ -2,7 +2,7 @@
 """他教過怎麼找還沒點名的族群：洞燭先機＋次族群第一名誰先過前高＋從底部找落後。
 
 資金流騙不了人：單位＝CMoney 細項佔當日法人買超％、％怎麼變。流入＝佔比升，流出＝佔比降。
-張數會被當下熱門族蓋過，不拿來排名。對五件只落在族群：底部這層（不數浪）、形態還沒過前高、
+佔比如實主判，飆大找法只參考、不是唯一。張數會被當下熱門族蓋過，不拿來排名。對五件只落在族群：底部這層（不數浪）、形態還沒過前高、
 量價落後檔量起來、關鍵K＝官方收、碎形＝第一名還沒先過。個股不數 5／9。盤中未收不當官方收。
 不是買訊、不進海選。切入只認高低卡黃金買點。
 """
@@ -740,24 +740,50 @@ def _flow_why(ign: Dict[str, Any]) -> str:
 
 
 def _flow_rank(ign: Dict[str, Any]) -> Tuple[float, float, int]:
+    """先機＝佔比升最多；同分取還比較小的佔比。不拿張數壓過。"""
     return (
         float(ign.get("share_up") or 0.0),
-        float(ign.get("share_last") or 0.0),
+        -float(ign.get("share_last") or 0.0),
         int(ign.get("cum5") or 0),
     )
 
 
+def _is_money_hot(ign: Dict[str, Any], all_igns: Sequence[Dict[str, Any]]) -> bool:
+    """當下資金主戰場＝佔比最高的那族。用數字，不靠他有沒有點名。"""
+    last = float(ign.get("share_last") or 0)
+    if last <= 0:
+        return False
+    mx = max((float(x.get("share_last") or 0) for x in all_igns), default=0.0)
+    return last + 1e-9 >= mx
+
+
+def _hot_ref_line(hot: Dict[str, Any], spoken_named: Sequence[str]) -> str:
+    if not hot.get("field"):
+        named = "、".join(spoken_named)
+        return f"飆大點名 {named} 只參考。" if named else ""
+    bits = [
+        f"佔比最高的 {hot['field']} 佔當日買超 {_share_txt(float(hot.get('share_last') or 0))}"
+        f"（近5日 {_pt_txt(float(hot.get('share_up') or 0))}），當下資金主戰場。"
+    ]
+    named = [n for n in spoken_named if n and n != hot.get("field")]
+    if hot.get("field") in spoken_named or named:
+        bits.append("飆大點名 " + "、".join([hot["field"]] + named) + " 只參考，不是唯一。")
+    else:
+        bits.append("飆大只參考，不是唯一。")
+    return "".join(bits)
+
+
 def _five_line(pick: Dict[str, Any], ign: Dict[str, Any], named_hot: Dict[str, Any]) -> str:
-    """把飆大五件落到這次族群，不准數 5／9。"""
+    """官方柱＋佔比為主；飆大五件當參考骨架，不准數 5／9。"""
     lead = pick.get("leader") or {}
     lag = pick.get("laggard") or {}
     fine = str(ign.get("fine_tag") or pick.get("field") or "").strip()
-    bits = ["對五件：波浪不數在個股，這族還在底部這層。"]
+    bits = ["對五件（參考）：波浪不數在個股，這族還在底部這層。"]
     if lead:
         bits.append(
             "形態／碎形：龍頭 "
             + str(lead.get("name") or lead.get("sid") or "")
-            + (" 還沒先過前高。" if not lead.get("broke") else " 已先過前高＝不當新族群。")
+            + (" 還沒先過前高。" if not lead.get("broke") else " 已先過前高。")
         )
     else:
         bits.append("形態／碎形：次族群第一名還沒先過前高，才從底部找落後。")
@@ -770,15 +796,12 @@ def _five_line(pick: Dict[str, Any], ign: Dict[str, Any], named_hot: Dict[str, A
             bits.append("量價：落後檔量起來才算蠢蠢欲動。")
     path = _share_path(ign)
     if path:
-        bits.append(f"資金流騙不了人：細項{fine}佔法人買超 {path}。")
+        bits.append(f"主判是佔比：細項{fine}佔法人買超 {path}。")
     hot = named_hot or {}
     if hot.get("field"):
-        hot_bit = f"已點名 {hot['field']} 佔 {_share_txt(float(hot.get('share_last') or 0))}"
-        if float(hot.get("share_up") or 0) < 0 and float(ign.get("share_up") or 0) > 0:
-            hot_bit += "、佔比在退＝輪動。"
-        else:
-            hot_bit += "，當下熱門不當新族群。"
-        bits.append(hot_bit)
+        bits.append(
+            f"佔比最高 {hot['field']} {_share_txt(float(hot.get('share_last') or 0))} 當下資金主戰場，只參考點名。"
+        )
     bits.append("關鍵K只用官方收。")
     return "".join(bits)
 
@@ -868,7 +891,7 @@ def _decorate(
 
 
 def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
-    """洞燭先機鈕：飆大找法＋五件落到族群；資金看細項佔比升降。切入＝這族 ∩ 黃金買點。"""
+    """洞燭先機鈕：佔比如實主判，飆大找法只參考、不是唯一。切入＝這族 ∩ 黃金買點。"""
     pick = pick_unnamed_field(db_path, spoken=spoken)
     cap = str(pick.get("cap") or _cap(db_path) or "")
     if db_path and cap:
@@ -876,8 +899,11 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
             record_dongzhu_flow(db_path, cap)
         except Exception:
             pass
-    named_keys = _named_keys(spoken or latest_spoken(db_path) if db_path else spoken)
+    spoken_blob = spoken or (latest_spoken(db_path) if db_path else "")
+    named_keys = _named_keys(spoken_blob)
+    spoken_named = [g["field"] for g in _GROUPS if g["key"] in named_keys]
     flow_hit = None
+    all_igns: List[Dict[str, Any]] = []
     named_hot: Dict[str, Any] = {
         "field": "",
         "cum5": 0,
@@ -886,21 +912,22 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
         "share_chg": 0.0,
         "fine_tag": "",
     }
+    cands: List[Dict[str, Any]] = []
     for g in _GROUPS:
         ign = group_ignite(db_path, g["key"], cap) if db_path and cap else {}
-        if g["key"] in named_keys:
-            rank = (float(ign.get("share_last") or 0), int(ign.get("cum5") or 0))
-            prev = (float(named_hot.get("share_last") or 0), int(named_hot.get("cum5") or 0))
-            if rank > prev:
-                named_hot = {
-                    "field": g["field"],
-                    "cum5": int(ign.get("cum5") or 0),
-                    "share_last": float(ign.get("share_last") or 0),
-                    "share_up": float(ign.get("share_up") or 0),
-                    "share_chg": float(ign.get("share_chg") or 0),
-                    "fine_tag": str(ign.get("fine_tag") or ""),
-                }
-            continue
+        ign = dict(ign or {})
+        ign["_field"] = g["field"]
+        ign["_key"] = g["key"]
+        all_igns.append(ign)
+        if float(ign.get("share_last") or 0) > float(named_hot.get("share_last") or 0):
+            named_hot = {
+                "field": g["field"],
+                "cum5": int(ign.get("cum5") or 0),
+                "share_last": float(ign.get("share_last") or 0),
+                "share_up": float(ign.get("share_up") or 0),
+                "share_chg": float(ign.get("share_chg") or 0),
+                "fine_tag": str(ign.get("fine_tag") or ""),
+            }
         if not (ign.get("flowing_in") or ign.get("slow_in")):
             continue
         lead_broke = False
@@ -914,48 +941,40 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
                     break
         if lead_broke:
             continue
-        cand = {"group": g, "ign": ign, "leader": lead_st}
-        if flow_hit is None or _flow_rank(ign) > _flow_rank(flow_hit["ign"]):
+        cands.append({"group": g, "ign": ign, "leader": lead_st})
+    fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
+    pool = fresh if fresh else []
+    for cand in pool:
+        if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
             flow_hit = cand
     k_ign = group_ignite(db_path, pick.get("key") or "", cap) if pick.get("key") else {}
-    k_out = bool(k_ign) and float(k_ign.get("share_up") or 0) < 0
-    use_flow = False
     if flow_hit:
-        if not pick.get("field"):
-            use_flow = True
-        elif pick.get("key") != flow_hit["group"]["key"] and (
-            k_out or not (k_ign.get("flowing_in") or k_ign.get("slow_in"))
-        ):
-            use_flow = True
-    if use_flow:
         g = flow_hit["group"]
         ign = flow_hit["ign"]
-        named_bit = (
-            ("已點名的 " + "、".join(pick.get("named") or []) + " 不當新族群。")
-            if pick.get("named")
-            else ""
-        )
         path = _share_path(ign)
         rot = ""
         if float(named_hot.get("share_up") or 0) < 0 and float(ign.get("share_up") or 0) > 0:
-            rot = f"已點名的 {named_hot['field']} 佔比在退、這族佔比在升＝輪動。"
+            rot = f"佔比最高的 {named_hot['field']} 在退、這族在升＝輪動。"
+        spoken_named = spoken_named or list(pick.get("named") or [])
         pick = {
             **pick,
             "field": g["field"],
             "key": g["key"],
             "group": g,
-            "leader": pick.get("leader") or flow_hit.get("leader"),
+            "leader": flow_hit.get("leader") or pick.get("leader"),
             "why": (
-                f"還沒點名；細項 {ign.get('fine_tag') or g['field']}"
+                f"主判佔比；細項 {ign.get('fine_tag') or g['field']}"
                 + (f" 佔當日法人買超 {path}，資金流入。" if path else " 資金流入。")
                 + rot
-                + named_bit
-                + "不是他當下點名。"
+                + "飆大點名只參考，不是唯一。"
             ),
+            "named": spoken_named,
         }
         k_ign = ign
+    pick["named"] = spoken_named or list(pick.get("named") or [])
     pick["flow"] = k_ign if pick.get("key") else (flow_hit["ign"] if flow_hit else {})
     pick["flow_named_hot"] = named_hot
+    pick["hot_ref"] = _hot_ref_line(named_hot, pick.get("named") or [])
     pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
@@ -1039,7 +1058,7 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
     lines = [
         "<b>洞燭先機</b>",
         _esc(data.get("how") or _HOW),
-        "飆大找法當參考主因；對五件只落在這族（不數浪）。資金看細項佔當日法人買超％怎麼變，流入／流出騙不了人，不比張數。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
+        "佔比如實主判，飆大找法只參考、不是唯一。對五件只落在這族（不數浪）。資金看細項佔當日法人買超％怎麼變，流入／流出騙不了人，不比張數。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
     ]
     if cap:
         lines.append(f"官方收 {cap}")
@@ -1060,18 +1079,11 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
     flow = data.get("flow") or {}
     lines.append(_esc("資金進出（記在膠帶）" + _flow_why(flow)))
     hot = data.get("flow_named_hot") or {}
-    if hot.get("field") and (hot.get("share_last") or hot.get("cum5")):
-        hot_fine = f"細項 {hot['fine_tag']} " if hot.get("fine_tag") else ""
-        if hot.get("share_last") or hot.get("share_up"):
-            hot_txt = (
-                f"已點名的 {hot['field']} {hot_fine}佔當日買超 {_share_txt(float(hot.get('share_last') or 0))}"
-                f"（近5日 {_pt_txt(float(hot.get('share_up') or 0))}），當下熱門不當新族群。"
-            )
-        else:
-            hot_txt = (
-                f"已點名的 {hot['field']} 近5日仍 {_lots_txt(int(hot['cum5']))}，當下熱門不當新族群。"
-            )
-        lines.append(_esc(hot_txt))
+    ref = str(data.get("hot_ref") or "")
+    if ref:
+        lines.append(_esc(ref))
+    elif hot.get("field") and (hot.get("share_last") or hot.get("cum5")):
+        lines.append(_esc(_hot_ref_line(hot, data.get("named") or [])))
     buys = list(data.get("buys") or [])
     lines.append("<b>這族最值得切入</b>（跟全市場黃金買點對過；同列再看誰佔這族流入）")
     if buys:
@@ -1088,5 +1100,5 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
     if lag and str(lag.get("sid") or "") not in {x.get("sid") for x in buys}:
         lines.append("<b>蠢蠢欲動的落後檔</b>（不是買訊）")
         lines.append(_stock_line(lag, 1, "落後"))
-    lines.append("紅箭頭不是買訊。不是他當下點名。")
+    lines.append("紅箭頭不是買訊。飆大只參考，不是唯一。")
     return "\n".join(lines)

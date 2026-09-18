@@ -194,7 +194,7 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert "資金進出" in html or "佔當日" in html or "細項" in html
     assert "6257" in html and "矽格" in html
     assert "3443" not in html
-    assert "不當新族群" in html
+    assert "只參考" in html or "主戰場" in html
 
 
 def test_ignite_share_in_not_lots_size():
@@ -283,9 +283,11 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert asic_ign["cum5"] > test_ign["cum5"]
     assert pcb_ign["cum5"] > test_ign["cum5"]
     assert test_ign["share_up"] > pcb_ign["share_up"]
-    data = dongzhu_picks(db)
+    data = dongzhu_picks(
+        db, spoken="目前主戰場就是封測。根據我的指引去找。"
+    )
     assert data.get("field") == "高階測試／封測"
-    html = dongzhu_page(db)
+    html = dongzhu_page(db, spoken="目前主戰場就是封測。根據我的指引去找。")
     assert "高階測試／封測" in html
     assert "細項" in html
     assert "%" in html
@@ -294,4 +296,63 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert "6257" in html
     assert "3443" not in html
     assert "資金流入" in html or "佔比在升" in html
+    assert "只參考" in html or "不是唯一" in html
     assert "不准發明切入" not in html
+
+
+def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
+    """他點名去找封測，但封測佔比在退、PCB 佔比在升 → 主判 PCB。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+    last_day = datetime(2026, 9, 17)
+    n = 60
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        h, c, v = 800.0, 720.0, 1000.0
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2383", "台光電", c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+        )
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ][-5:]
+    for i, day in enumerate(dates):
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (800 - i * 120, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2383' AND date=?",
+            (80 + i * 220, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3443' AND date=?",
+            (8000, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (20000, day),
+        )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_picks, group_ignite, record_dongzhu_flow
+
+    assert record_dongzhu_flow(db, "20260917") > 0
+    assert group_ignite(db, "test", "20260917")["flowing_in"] is False
+    assert group_ignite(db, "pcb", "20260917")["flowing_in"] is True
+    spoken = "根據我的指引去找，新族群是封測。"
+    data = dongzhu_picks(db, spoken=spoken)
+    assert data.get("field") == "PCB"
+    html = dongzhu_page(db, spoken=spoken)
+    assert "PCB" in html
+    assert "主判佔比" in html or "只參考" in html
+    assert "3443" not in html
