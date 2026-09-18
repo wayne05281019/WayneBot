@@ -140,6 +140,10 @@ def _cheap_health_data() -> dict:
         "biaoke_replies": 0,
         "biaoke_latest_id": "",
         "biaoke_latest_at": "",
+        "biaoke_absorb_slot": "",
+        "biaoke_absorb_at": "",
+        "biaoke_absorb_posts": 0,
+        "biaoke_inbox_pending": 0,
         "tx_15_n": 0,
         "tx_zip_n": 0,
         "tx_15_from": "",
@@ -187,6 +191,9 @@ def _cheap_health_data() -> dict:
                     day = str(latest_post[1] or "").strip()
                     hm = str(latest_post[2] or "").strip()
                     out["biaoke_latest_at"] = (day + " " + hm).strip()
+            from biaoke_absorb import absorb_health_stats
+
+            out.update(absorb_health_stats(path))
         finally:
             conn.close()
     except Exception:
@@ -237,6 +244,10 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "biaoke_replies": 0,
                 "biaoke_latest_id": "",
                 "biaoke_latest_at": "",
+                "biaoke_absorb_slot": "",
+                "biaoke_absorb_at": "",
+                "biaoke_absorb_posts": 0,
+                "biaoke_inbox_pending": 0,
                 "tx_15_n": 0,
                 "tx_zip_n": 0,
                 "tx_15_from": "",
@@ -278,6 +289,18 @@ class HealthHandler(BaseHTTPRequestHandler):
                     )
                     payload["biaoke_latest_at"] = str(
                         data.get("biaoke_latest_at") or ""
+                    )
+                    payload["biaoke_absorb_slot"] = str(
+                        data.get("biaoke_absorb_slot") or ""
+                    )
+                    payload["biaoke_absorb_at"] = str(
+                        data.get("biaoke_absorb_at") or ""
+                    )
+                    payload["biaoke_absorb_posts"] = int(
+                        data.get("biaoke_absorb_posts") or 0
+                    )
+                    payload["biaoke_inbox_pending"] = int(
+                        data.get("biaoke_inbox_pending") or 0
                     )
                     payload["tx_15_n"] = int(data.get("tx_15_n") or 0)
                     payload["tx_zip_n"] = int(data.get("tx_zip_n") or 0)

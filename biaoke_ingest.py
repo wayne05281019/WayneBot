@@ -1612,11 +1612,18 @@ def ingest_public_posts(
             stats["skipped_walk"] = True
     if dbp:
         try:
-            from biaoke_absorb import absorb_slot_id, run_absorb, taipei_now
+            from biaoke_absorb import (
+                absorb_slot_id,
+                maybe_force_absorb_once,
+                run_absorb,
+                taipei_now,
+            )
 
             slot = absorb_slot_id(taipei_now())
             if slot:
                 stats["absorb"] = run_absorb(dbp, slot=slot)
+            else:
+                stats["absorb"] = maybe_force_absorb_once(dbp)
         except Exception:
             logger.exception("飆大神經元彙整窗略過")
     if dest and not _is_git_seed_path(dest):
