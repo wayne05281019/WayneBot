@@ -215,14 +215,14 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "昨天第一名今天佔比在退": [],
         "佔比升還沒當第一": [],
         "非金控": [],
-        "非金控＋連升兩日": [],
-        "非金控＋升≥1pt": [],
-        "非金控＋vs20≤−12": [],
-        "非金控＋volr≥1.2": [],
-        "非金控＋龍頭未過20高": [],
         "非金控＋最落後1檔": [],
-        "非金控＋第2到4名": [],
         "非金控＋黃金買點逐檔": [],
+        "非金控＋次產業未退": [],
+        "非金控＋次產業也升": [],
+        "非金控＋檔本身買超": [],
+        "非金控＋檔本身買超1檔": [],
+        "非金控＋買超剛轉正": [],
+        "非金控＋黃金買點＋買超逐檔": [],
     }
 
     def take(
@@ -235,10 +235,12 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         volr_min: Optional[float] = None,
         n_lag: int = 3,
         each: bool = False,
+        sids: Optional[List[str]] = None,
     ) -> None:
         if not chain:
             return
-        sids = laggards(chain, d, lz=lz, n=n_lag, vs20_max=vs20_max, volr_min=volr_min)
+        if sids is None:
+            sids = laggards(chain, d, lz=lz, n=n_lag, vs20_max=vs20_max, volr_min=volr_min)
         if not sids:
             return
         win = "recent" if d >= recent_from else "prior"
@@ -271,6 +273,29 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
                 }
             )
 
+    def parent_key(chain: str) -> str:
+        parts = [p for p in str(chain).split("-") if p]
+        return "-".join(parts[:-1]) if len(parts) >= 2 else ""
+
+    def parent_share(chain: str, d: str) -> float:
+        pk = parent_key(chain)
+        if not pk:
+            return 0.0
+        inn = mkt_in.get(d) or 0
+        if inn <= 0:
+            return 0.0
+        three = 0
+        for c, days in chain_three.items():
+            if c == pk or c.startswith(pk + "-"):
+                three += days.get(d) or 0
+        return 100.0 * three / inn if three > 0 else 0.0
+
+    def net_at(sid: str, d: str) -> int:
+        for rec in by_sid.get(sid) or []:
+            if rec[0] == d:
+                return int(rec[6] or 0)
+        return 0
+
     for d in test_days:
         ranked = ranked_day(d)
         if not ranked:
@@ -293,17 +318,11 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             return out
 
         rising = _rising(ranked[1:8])
-        rising4 = _rising(ranked[1:4])
         pre = rising[0][1] if rising else ""
         no_park = ""
         for _sh, c in rising:
             if not is_parking(c):
                 no_park = c
-                break
-        no_park4 = ""
-        for _sh, c in rising4:
-            if not is_parking(c):
-                no_park4 = c
                 break
 
         take("追當天第一名", hot, d, False)
@@ -315,16 +334,31 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             take("非金控", no_park, d, False)
             take("非金控＋最落後1檔", no_park, d, False, n_lag=1)
             take("非金控＋黃金買點逐檔", no_park, d, True, each=True)
-            if rise2(no_park, d):
-                take("非金控＋連升兩日", no_park, d, False)
-            if chg(no_park, d) >= 1.0:
-                take("非金控＋升≥1pt", no_park, d, False)
-            take("非金控＋vs20≤−12", no_park, d, False, vs20_max=-12.0)
-            take("非金控＋volr≥1.2", no_park, d, False, volr_min=1.2)
-            if leader_under_20(no_park, d):
-                take("非金控＋龍頭未過20高", no_park, d, False)
-        if no_park4:
-            take("非金控＋第2到4名", no_park4, d, False)
+            if prev and parent_share(no_park, d) + 1e-9 >= parent_share(no_park, prev):
+                take("非金控＋次產業未退", no_park, d, False)
+            if prev and parent_share(no_park, d) > parent_share(no_park, prev) + 1e-9:
+                take("非金控＋次產業也升", no_park, d, False)
+            pool = laggards(no_park, d, lz=False, n=8)
+            net_sids = [s for s in pool if net_at(s, d) > 0]
+            if net_sids:
+                take("非金控＋檔本身買超", no_park, d, False, sids=net_sids[:3])
+                take(
+                    "非金控＋檔本身買超1檔",
+                    no_park,
+                    d,
+                    False,
+                    sids=[max(net_sids, key=lambda s: net_at(s, d))],
+                )
+            turned = [
+                s
+                for s in pool
+                if prev and net_at(s, prev) <= 0 < net_at(s, d)
+            ]
+            if turned:
+                take("非金控＋買超剛轉正", no_park, d, False, sids=turned[:3])
+            lz_net = [s for s in laggards(no_park, d, lz=True, n=8) if net_at(s, d) > 0]
+            if lz_net:
+                take("非金控＋黃金買點＋買超逐檔", no_park, d, True, each=True, sids=lz_net)
 
     def summarize(label: str) -> None:
         rows = regimes[label]
@@ -406,18 +440,21 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
 
     print("\n=== 增量 vs 非金控近100 ===")
     extras = [
-        "非金控＋連升兩日",
-        "非金控＋升≥1pt",
-        "非金控＋vs20≤−12",
-        "非金控＋volr≥1.2",
-        "非金控＋龍頭未過20高",
-        "非金控＋最落後1檔",
-        "非金控＋第2到4名",
+        "非金控＋次產業未退",
+        "非金控＋次產業也升",
+        "非金控＋檔本身買超",
+        "非金控＋買超剛轉正",
     ]
     winners = [lab for lab in extras if beats(lab, g_np, s_np)]
+    n1, g1, s1 = rate("非金控＋最落後1檔", "recent")
+    print("\n=== 單檔 vs 最落後1檔近100 ===")
+    print(f"最落後1檔 勝{g1:.1f} 套{s1:.1f} n={n1}")
+    one_winners = [
+        lab for lab in ("非金控＋檔本身買超1檔",) if beats(lab, g1, s1)
+    ]
     print("\n=== 黃金買點逐檔 vs 非金控近100 ===")
     lz_ok = beats("非金控＋黃金買點逐檔", g_np, s_np, min_n=20)
-    print(f"\nWINNERS incr={winners} leave_zero_each={lz_ok}")
+    print(f"\nWINNERS incr={winners} one={one_winners} leave_zero_each={lz_ok}")
 
     lz_recent = [r for r in regimes["非金控＋黃金買點逐檔"] if r.get("win") == "recent"]
 
@@ -431,30 +468,9 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         ) / n
         return n, g, s
 
-    print("\n=== 黃金買點逐檔近100內切片（n≥20才編碼排序） ===")
+    print("\n=== 黃金買點逐檔近100 ===")
     bn, bg, bs = lz_rate(lz_recent)
     print(f"基線逐檔 勝{bg:.1f} 套{bs:.1f} n={bn}")
-    slices = [
-        ("次級", [r for r in lz_recent if not r.get("lead")]),
-        ("龍頭", [r for r in lz_recent if r.get("lead")]),
-        ("vs20≤−12", [r for r in lz_recent if r.get("vs20") is not None and r["vs20"] <= -12]),
-        ("獲利≤2%", [r for r in lz_recent if r.get("profit") is not None and r["profit"] <= 2.0]),
-        ("volr<1.2", [r for r in lz_recent if r.get("volr") is not None and r["volr"] < 1.2]),
-        ("次級且vs20≤−12", [
-            r for r in lz_recent
-            if not r.get("lead") and r.get("vs20") is not None and r["vs20"] <= -12
-        ]),
-    ]
-    lz_winners = []
-    for name, part in slices:
-        n, g, s = lz_rate(part)
-        if n < 20:
-            print(f"SKIP 買點/{name} n={n}<20")
-            continue
-        ok = (g >= bg + 1.0 and s + 1e-9 <= bs) or (g + 1e-9 >= bg and s + 0.5 < bs)
-        print(f"{'ENCODE' if ok else 'KEEP'} 買點/{name} 勝{g:.1f}({g - bg:+.1f}) 套{s:.1f}({s - bs:+.1f}) n={n}")
-        if ok:
-            lz_winners.append(name)
     n20, g20, s20 = lz_rate(
         [
             {
@@ -468,6 +484,21 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         ]
     )
     print(f"逐檔後20日 勝{g20:.1f} 套{s20:.1f} n={n20}")
+    n_lz_net, g_lz_net, s_lz_net = rate("非金控＋黃金買點＋買超逐檔", "recent")
+    print(
+        f"黃金買點∩買超 勝{g_lz_net:.1f}({g_lz_net - bg:+.1f}) 套{s_lz_net:.1f} n={n_lz_net}"
+    )
+    lz_net_ok = (
+        n_lz_net >= 20
+        and g_lz_net >= bg + 1.0
+        and s_lz_net + 1e-9 <= bs
+    )
+    print(
+        f"{'ENCODE' if lz_net_ok else 'KEEP'} 非金控＋黃金買點＋買超逐檔 "
+        f"近100 勝{g_lz_net:.1f}({g_lz_net - bg:+.1f}) 套{s_lz_net:.1f}({s_lz_net - bs:+.1f}) n={n_lz_net} "
+        f"（套沒降或前段太薄＝不編碼）"
+    )
+    lz_winners = ["黃金買點＋買超"] if lz_net_ok else []
     print(f"WINNERS buys={lz_winners}")
     n_lv, g_lv, s_lv = rate("昨天第一名今天佔比在退", "recent")
     skip_park = n_np >= 20 and g_np >= g_pre + 1.0
@@ -478,8 +509,13 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "prefer_rising_not_lead": n_pre >= 20 and g_pre >= g_ch,
         "skip_leaving_hot": n_lv >= 15 and (g_lv + 1.0 < g_pre or s_lv > s_pre),
         "skip_parking": skip_park if n_np >= 20 else None,
-        "incr_winners": winners,
-        "buy_winners": lz_winners,
+        "incr_winners": list(winners) + list(one_winners) + list(lz_winners),
+        "require_parent_hold": "非金控＋次產業未退" in winners,
+        "require_parent_up": "非金控＋次產業也升" in winners,
+        "require_own_net": "非金控＋檔本身買超" in winners,
+        "require_net_turn": "非金控＋買超剛轉正" in winners,
+        "pick_max_net": "非金控＋檔本身買超1檔" in one_winners,
+        "lz_require_net": bool(lz_net_ok),
         "rates": {
             "chase": {"n": n_ch, "gain": g_ch, "stuck": s_ch},
             "pre": {"n": n_pre, "gain": g_pre, "stuck": s_pre},
