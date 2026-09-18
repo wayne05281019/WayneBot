@@ -34,7 +34,7 @@ FEATURES: Tuple[str, ...] = (
     "查股兩張圖",
     "圖文",
     "興櫃海選",
-    "空白格",
+    "洞燭先機",
     "完整十二鈕",
     "語音聽寫",
     "剛脫離零",
@@ -113,7 +113,7 @@ _FEATURE_HELP = {
     "查股兩張圖": ("stock", "介紹圖"),
     "圖文": ("guide", "圖文"),
     "興櫃海選": ("screen", "興櫃"),
-    "空白格": ("menu", "留白"),
+    "洞燭先機": ("dongzhu", "洞燭先機"),
     "完整十二鈕": ("menu", "兩排"),
     "語音聽寫": ("guide", "麥克風"),
     "剛脫離零": ("leave_zero", "剛脫離零"),
@@ -136,7 +136,7 @@ _FEATURE_INTENT = {
     "查股兩張圖": "lookup",
     "圖文": "help",
     "興櫃海選": "emerging_screen",
-    "空白格": None,
+    "洞燭先機": "dongzhu",
     "完整十二鈕": None,
     "語音聽寫": None,
     "剛脫離零": "leave_zero",
@@ -180,8 +180,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     kind = _FEATURE_INTENT[feature]
 
     if lens == "first_open_copy":
-        if feature == "空白格":
-            return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
+        if feature == "洞燭先機":
+            return _ok("dongzhu") if "MENU_BTN_DONGZHU" in src else _bad("沒洞燭先機")
         if feature == "完整十二鈕":
             return _ok("兩排") if "兩排" in src and "start_cmd" in src else _bad("start 沒提兩排")
         if feature == "剛脫離零":
@@ -198,6 +198,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "刷新": "還沒查過股票",
             "AI倉": "format_ai_desk_pages",
             "剛脫離零": "此刻沒有獲利剛離零",
+            "洞燭先機": "沒有黃金買點",
             "興櫃海選": "目前沒有可用的官方日均價",
             "查股兩張圖": "找不到這檔",
             "圖文": "圖文說明暫時產不出來",
@@ -233,8 +234,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         block = src.split("def _reply_menu", 1)[-1][:500]
         if "_ACTIVE_PHONE_UID.get()" not in block:
             return _bad("_reply_menu 沒讀當下 uid")
-        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if feature == "洞燭先機" and "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("ctx")
 
     if lens == "full_kb_persist":
@@ -270,6 +271,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "興櫃海選": "興櫃海選逾時",
             "查股兩張圖": "_CARD_BUILD_TIMEOUT",
             "連買區": "timeout=25.0",
+            "洞燭先機": "洞燭先機查詢逾時",
         }
         n = needles.get(feature)
         if n:
@@ -287,8 +289,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "intent_alias":
         if kind is None:
-            if feature == "空白格":
-                return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
+            if feature == "洞燭先機":
+                return _ok("dongzhu") if "MENU_BTN_DONGZHU" in src else _bad("沒洞燭先機")
             if feature == "完整十二鈕":
                 return _ok("alias") if "MENU_ROW1" in src and "MENU_ROW2" in src else _bad("沒完整兩排")
             if feature == "語音聽寫":
@@ -347,15 +349,15 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     if lens == "placeholder":
         if "打股名／代號" not in src:
             return _bad("沒輸入列提示")
-        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if feature == "洞燭先機" and "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("ph")
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "24":
-            return _bad("版面不是 24")
-        return _ok("v24")
+        if not m or m.group(1) != "25":
+            return _bad("版面不是 25")
+        return _ok("v25")
 
     if lens == "slot_noop":
         if "MENU_BTN_LEAVE_ZERO" not in src:
@@ -499,8 +501,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         block = src.split("def _reply_menu", 1)[-1][:1400]
         if "MENU_COMPACT_ROWS" in block:
             return _bad("還有精簡六顆")
-        if "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("no-compact")
 
     if lens == "menu_slot_empty":
@@ -509,9 +511,9 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         if "MENU_ROW2" not in src:
             return _bad("沒第二排")
         row2 = src.split("MENU_ROW2 = (", 1)[-1][:500]
-        if "MENU_BTN_LEAVE_ZERO" not in row2:
-            return _bad("第二排最右沒剛脫離零")
-        return _ok("leave-zero-slot")
+        if "MENU_BTN_DONGZHU" not in row2:
+            return _bad("第二排最右沒洞燭先機")
+        return _ok("dongzhu-slot")
 
     if lens == "phone_busy_const":
         if 'PHONE_BUSY = "這一步暫時沒跑完' not in src:

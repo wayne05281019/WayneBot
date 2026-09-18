@@ -1245,7 +1245,7 @@ def test_l9c_help_topic_layout_and_jargon(topic):
 
 @pytest.mark.parametrize(
     "label",
-    ["海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零"],
+    ["海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零", "洞燭先機"],
 )
 def test_l9c_twelve_buttons_named_in_guide_and_row_help(label):
     from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text

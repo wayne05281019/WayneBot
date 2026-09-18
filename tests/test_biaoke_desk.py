@@ -3,6 +3,7 @@
 from bot_servers import (
     MENU_BTN_BIAOKE,
     MENU_BTN_BIAOKE_FACE,
+    MENU_BTN_DONGZHU,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_SLOT,
@@ -26,9 +27,10 @@ def test_biaoke_button_is_plain_biaoda_top_right():
     assert _normalize_menu_text(MENU_BTN_BIAOKE_FACE) == "飆大"
     assert MENU_ROW1[-1] == MENU_BTN_MARKET
     assert MENU_ROW1[-2] == MENU_BTN_BIAOKE_FACE
-    assert MENU_ROW2[-1] == MENU_BTN_SLOT
+    assert MENU_ROW2[-1] == MENU_BTN_DONGZHU
     assert MENU_ROW2[-2] == MENU_BTN_LEAVE_ZERO
     assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
+    assert MENU_BTN_DONGZHU == "洞燭先機"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -37,7 +39,7 @@ def test_biaoke_button_is_plain_biaoda_top_right():
     assert "\u20dd" not in face
     assert _normalize_menu_text(face) == "飆大"
     assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_MARKET
-    assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_SLOT
+    assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_DONGZHU
     assert [b.text for b in kb.keyboard[1]][-2] == MENU_BTN_LEAVE_ZERO
 
 
@@ -176,6 +178,28 @@ def test_circled_face_routes_like_biaoda():
     msg.reply_html.assert_not_awaited()
 
 
+def test_dongzhu_button_opens_page():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {}
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot.dongzhu_cmd = AsyncMock()
+    user = SimpleNamespace(id=1, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.text = MENU_BTN_DONGZHU
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    bot.dongzhu_cmd.assert_awaited()
+
+
 def test_biaoke_page_has_no_inside_menu():
     import inspect
 
@@ -225,7 +249,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "24"
+    assert MENU_LAYOUT_VERSION == "25"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():

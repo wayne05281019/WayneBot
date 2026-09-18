@@ -4,8 +4,9 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from biaoke_chain import _field
-from biaoke_field_scan import scan_unnamed_field, want_field_scan
+from biaoke_field_scan import dongzhu_page, scan_unnamed_field, want_field_scan
 from biaoke_mind import match_methods
+from screen_sessions import save_screen_session
 
 
 def _seed(db: str) -> None:
@@ -50,6 +51,7 @@ def _seed(db: str) -> None:
             )
 
     add("6257", (300.0, 228.0), 222.5, 2500.0)
+    add("2449", (150.0, 140.0), 100.0, 900.0)
     add("6515", (10180.0, 8260.0), 6120.0, 900.0)
     add("6223", (7700.0, 6060.0), 5500.0, 800.0)
     add("3443", (6610.0, 6610.0), 6500.0, 1200.0)
@@ -95,3 +97,47 @@ def test_field_neuron_runs_scan_without_stock_id(tmp_path, monkeypatch):
     assert step["ok"] is True
     assert "高階測試／封測" in step["text"]
     assert "洞燭先機" in step["text"] or "還沒熱" in step["text"]
+
+
+def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "pick_close": 222.5}],
+            "golden_buy": [{"stock_id": "2449", "stock_name": "京元電子", "pick_close": 80.0}],
+        },
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    assert "洞燭先機" in html
+    assert "高階測試／封測" in html
+    assert "還沒點名" in html
+    assert "6257" in html and "矽格" in html
+    assert "買點" in html
+    assert "京元電子" in html
+    assert "只觀察" in html or "觀察" in html
+    assert "不是買訊" in html
+    assert "不進海選" in html
+
+
+def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {"leave_zero": [{"stock_id": "3443", "stock_name": "創意", "pick_close": 6500.0}]},
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    assert "高階測試／封測" in html
+    assert "沒有黃金買點" in html
+    assert "不准發明切入" in html
+    assert "3443" not in html
+    assert "矽格" in html
+    assert "不是買訊" in html

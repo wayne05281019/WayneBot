@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 介紹圖（上半資訊、下半高低導航）＋決策卡；圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -310,7 +310,7 @@ HELP_TOPICS = {
         "\n"
         "<b>兩排按鈕（左→右）</b>\n"
         "第一排：<b>海選</b>｜<b>持股</b>｜<b>觀察</b>｜<b>刷新</b>｜<b>回報</b>｜<b>飆大</b>｜<b>大盤</b>\n"
-        "第二排：<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜<b>剛脫離零</b>\n"
+        "第二排：<b>資金</b>｜<b>當沖</b>｜<b>隔日沖</b>｜<b>AI倉</b>｜<b>連買區</b>｜<b>剛脫離零</b>｜<b>洞燭先機</b>\n"
         "點下方「第一排」「第二排」看每顆怎麼用。\n"
         "兩人同一套完整兩排，沒有精簡鍵盤。\n"
         "\n"
@@ -471,7 +471,12 @@ HELP_TOPICS = {
         "• 怎麼用：平日 09:00–13:30 盤中按。名單來自海選黃金買點＋重點觀察，再用現價看誰剛脫離零。股名旁五角星＝值不值得買（滿五星＝按表該買）。\n"
         "• 這頁按鈕：左鍵看這檔完整圖（跟查個股同一套兩張圖），觀察／記買入同查股。\n"
         "• 非盤中：不提供現價複核。若要查請按「海選」看「黃金買點」。下個交易日 09:00–13:30 再按這顆。\n"
-        "• 沒名單：先按「海選」產出今早快取。鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。"
+        "• 沒名單：先按「海選」產出今早快取。鍵盤被收掉時打 /menu 可重新釘住兩排。畫面怪按「回報」。\n"
+        "\n"
+        "<b>⑦ 洞燭先機</b>\n"
+        "• 是什麼：用飆大教過的找法（次族群還沒熱、第一名誰先過前高、從底部找落後）對官方完整日 K，指出此刻最像哪一族、為什麼。\n"
+        "• 怎麼用：按進去看族群＋原因；這族再跟全市場黃金買點對過，只推薦有買點的檔。沒有黃金買點不准發明切入。還在零只觀察。盤中未收不當官方收。\n"
+        "• 不是什麼：不是他當下點名、不是買訊、不進海選。紅箭頭不是買訊。打「洞燭」或「先機」也行。"
     ),
     "market": (
         "<b>大盤按鈕</b>\n"
@@ -536,8 +541,8 @@ HELP_TOPICS = {
         "<b>第一次用</b>：先叫出兩排 → 直接打代號看圖（股票或 ETF）→ 圖下方看籌碼／營收／產業。\n"
         "\n"
         "<b>第一排</b>：海選／持股／觀察／刷新／<b>回報</b>／<b>飆大</b>／<b>大盤</b>\n"
-        "<b>第二排</b>：資金／當沖／隔日沖／AI倉／<b>連買區</b>／<b>剛脫離零</b>\n"
-        "第二排最右一格留白，按了沒事。兩人同一套完整兩排，沒有精簡鍵盤。\n"
+        "<b>第二排</b>：資金／當沖／隔日沖／AI倉／<b>連買區</b>／<b>剛脫離零</b>／<b>洞燭先機</b>\n"
+        "兩人同一套完整兩排，沒有精簡鍵盤。\n"
         "\n"
         "手機打完字若只看到英文鍵盤：點輸入列旁邊<b>四格 ⌨️</b> 叫回兩排；或打 /menu 強制更新。\n"
         "訊息上的「➕」仍附在最後一則（Telegram 規定）；換頁主功能請用右側 ⌨️ 兩排。"
@@ -598,6 +603,13 @@ HELP_TOPICS = {
         "• <b>記買入</b>＝記真實持股\n"
         "圖出來後還有籌碼／營收／產業／K線／導航圖，跟查個股同一套。\n"
         "沒名單時先按「海選」。收盤後按只顯示最近一次完整收的黃金買點。"
+    ),
+    "dongzhu": (
+        "<b>洞燭先機怎麼用</b>\n"
+        "第二排最右。用飆大教過的找法：次族群還沒熱、第一名誰先過前高、從底部找落後。"
+        "對官方完整日 K，盤中未收不當官方收。\n"
+        "告訴你此刻最像哪一族、為什麼，再把這族跟全市場黃金買點對過。"
+        "切入只認黃金買點；這族沒有買點不准發明。還在零只觀察。不是他當下點名、不是買訊、不進海選。紅箭頭不是買訊。"
     ),
     "portfolio": (
         "<b>持股怎麼用</b>\n"
@@ -802,7 +814,7 @@ HELP_TOPICS = {
     ),
 }
 
-# 主選單兩排：拿掉說明後整排往前；上排最右大盤、下排最右空白格。圈已拿掉。
+# 主選單兩排：拿掉說明後整排往前；上排最右大盤、下排最右洞燭先機。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
@@ -811,6 +823,12 @@ MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
 MENU_BTN_BIAOKE_FACE = MENU_BTN_BIAOKE
 MENU_BTN_SLOT = "\u3000"
+MENU_BTN_DONGZHU = "洞燭先機"
+MENU_BTN_DONGZHU_ALIASES = (
+    MENU_BTN_DONGZHU,
+    "洞燭",
+    "先機",
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -856,7 +874,7 @@ MENU_ROW2 = (
     MENU_BTN_AI,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
-    MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
 )
 MENU_COMPACT_ALIASES = ("精簡選單", "精簡鍵盤")
 MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
@@ -879,7 +897,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v22：剛離零→剛脫離零；等待泡泡等寬框線；飆大個股不倒舊文舊圖。
 # v23：拿掉說明，整排往前；第一排最右大盤，第二排最右空白。說明／圖文／/help 取消。
 # v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
-MENU_LAYOUT_VERSION = "24"
+# v25：下排最右空白格改「洞燭先機」（族群＋黃金買點交集；沒買點不准發明）。
+MENU_LAYOUT_VERSION = "25"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
@@ -1258,7 +1277,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = ""):
-        """兩排各七格；下排最右空白。偉權與哥哥同一套，沒有精簡。"""
+        """兩排各七格；下排最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -1380,7 +1399,7 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…大盤，第二排資金…剛脫離零。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排海選…大盤，第二排資金…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右大盤）。"
         )
@@ -2075,7 +2094,9 @@ class WayneTelegramBot:
         bits.append("🟥────────────────────────🟥")
         return "\n".join(x for x in bits if x)
 
-    def _leave_zero_section_keyboard(self, picks=None, include_menu: bool = False):
+    def _leave_zero_section_keyboard(
+        self, picks=None, include_menu: bool = False, *, help_topic: str = "leave_zero"
+    ):
         rows = []
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
@@ -2086,8 +2107,9 @@ class WayneTelegramBot:
                 name = ""
             if code:
                 rows.append(self._lookup_like_action_row(code, name))
+        topic = help_topic if help_topic in HELP_TOPICS else "leave_zero"
         if include_menu or rows:
-            rows.append([self._q("leave_zero")])
+            rows.append([self._q(topic)])
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -3589,6 +3611,60 @@ class WayneTelegramBot:
             self._trade_running.discard(actor)
             await self._stop_plain_wait(*wait_h)
 
+    async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        del context
+        await self._send_dongzhu_page(update.message)
+
+    async def _send_dongzhu_page(self, message) -> None:
+        from biaoke_field_scan import dongzhu_page, dongzhu_picks
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        await self._enter_main_menu(message, uid)
+        try:
+            html = await asyncio.wait_for(
+                asyncio.to_thread(dongzhu_page, self.db_path),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        except Exception:
+            logger.exception("洞燭先機查詢失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        picks = []
+        try:
+            data = dongzhu_picks(self.db_path)
+            for item in list(data.get("buys") or []) + list(data.get("watches") or []):
+                sid = str(item.get("sid") or "")
+                if sid:
+                    picks.append((sid, item.get("name") or ""))
+        except Exception:
+            picks = []
+        chunks = chunk_telegram_html(html, 3500) or [html]
+        last = len(chunks) - 1
+        for j, chunk in enumerate(chunks):
+            kb = self._leave_zero_section_keyboard(
+                picks if j == last else None,
+                include_menu=(j == last),
+                help_topic="dongzhu",
+            )
+            await message.reply_html(
+                chunk,
+                reply_markup=kb or self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
+
     async def _send_market_page(self, message, *, status=None) -> None:
         """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
         if status is None:
@@ -4411,6 +4487,9 @@ class WayneTelegramBot:
         if kind == "leave_zero":
             await self.leave_zero_cmd(upd, ctx)
             return
+        if kind == "dongzhu":
+            await self.dongzhu_cmd(upd, ctx)
+            return
         if kind == "streak":
             await self.streak_cmd(upd, ctx)
             return
@@ -4696,6 +4775,11 @@ class WayneTelegramBot:
             logger.info("主選單：剛脫離零 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.leave_zero_cmd(update, context)
+            return
+        if text in MENU_BTN_DONGZHU_ALIASES:
+            logger.info("主選單：洞燭先機 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.dongzhu_cmd(update, context)
             return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)
