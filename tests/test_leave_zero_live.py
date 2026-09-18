@@ -120,6 +120,75 @@ def test_stock_card_html_stars_name():
     assert "★★★★★" in starred
     assert "★★★★★" not in plain
     assert "☆" in plain
+    star_lines = [
+        ln
+        for ln in starred.replace("<blockquote>", "").replace("</blockquote>", "").split("\n")
+        if ln.strip()
+    ]
+    assert "1101" in star_lines[0] and "台泥" in star_lines[0]
+    assert "★" not in star_lines[0] and "☆" not in star_lines[0]
+    assert star_lines[1] == "★★★★★"
+
+
+def test_stock_card_first_line_code_industry_role_stars_second(tmp_path, monkeypatch):
+    import sqlite3
+
+    from stock_links import _EX_CACHE
+
+    db = str(tmp_path / "card.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    for sid, name, turn in (("2330", "台積電", 90000), ("2454", "聯發科", 1000)):
+        conn.execute(
+            "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,'t')",
+            (sid, name, "TW", "STOCK", "半導體業"),
+        )
+        conn.execute(
+            "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("20260909", sid, name, "TW", 1, 1, 1, 1, 1, turn, 0, 1),
+        )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("config.get_db_path", lambda: db)
+    monkeypatch.setattr("universe.get_db_path", lambda: db)
+    monkeypatch.setattr("stock_links.get_db_path", lambda: db)
+    _EX_CACHE.clear()
+    lead = _stock_card_html(
+        {
+            "stock_id": "2330",
+            "stock_name": "台積電",
+            "close": 100.0,
+            "profit_pct": 1.2,
+            "is_s_tier": True,
+        },
+        1,
+        bucket_label="剛脫離零",
+    )
+    peer = _stock_card_html(
+        {"stock_id": "2454", "stock_name": "聯發科", "close": 80.0, "profit_pct": 0.8},
+        2,
+        bucket_label="剛脫離零",
+    )
+    lead_lines = [
+        ln
+        for ln in lead.replace("<blockquote>", "").replace("</blockquote>", "").split("\n")
+        if ln.strip()
+    ]
+    peer_lines = [
+        ln
+        for ln in peer.replace("<blockquote>", "").replace("</blockquote>", "").split("\n")
+        if ln.strip()
+    ]
+    assert "2330" in lead_lines[0] and "台積電" in lead_lines[0]
+    assert "上市（半導體業）" in lead_lines[0]
+    assert "龍頭" in lead_lines[0]
+    assert "★" not in lead_lines[0] and "☆" not in lead_lines[0]
+    assert lead_lines[1] == "★★★★★"
+    assert "2454" in peer_lines[0] and "聯發科" in peer_lines[0]
+    assert "上市（半導體業）" in peer_lines[0]
+    assert "龍頭" not in peer_lines[0]
+    assert "★" not in peer_lines[0] and "☆" not in peer_lines[0]
+    assert "★" in peer_lines[1] or "☆" in peer_lines[1]
 
 
 def test_live_leave_zero_stars_top_five_and_does_not_write_unclosed(tmp_path, monkeypatch):
@@ -224,13 +293,29 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     )
     assert "海選" in html
     assert "尚未就緒" in html
-    assert "🟥" in html
+    assert "🟥" not in html
+    assert "────" not in html
     assert "剛脫離零" in html
     wait0 = str(msg.reply_text.await_args_list[0].args[0]) if msg.reply_text.await_args_list else ""
     assert "剛脫離零進行中" in wait0
     assert "□" in wait0 or "■" in wait0
     assert "｜" not in wait0
     assert "<pre>" not in wait0
+
+
+def test_leave_zero_case_html_has_no_red_polygon_frame():
+    empty = WayneTelegramBot._leave_zero_case_html(
+        "剛脫離零", "目前沒有符合", "<i>沒有符合條件的股票</i>"
+    )
+    picks = WayneTelegramBot._leave_zero_case_html(
+        "剛脫離零", "盤中複核", "1. 台泥 1101"
+    )
+    for html in (empty, picks):
+        assert "🟥" not in html
+        assert "────" not in html
+        assert "<b>剛脫離零</b>" in html
+    assert "沒有符合條件的股票" in empty
+    assert "台泥 1101" in picks
 
 
 def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
@@ -265,6 +350,8 @@ def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
     assert "海選" in html
     assert "黃金買點" in html
     assert "09:00" in html
+    assert "🟥" not in html
+    assert "────" not in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
         "reply_markup"
     )

@@ -1409,7 +1409,8 @@ def _stock_card_html(
         entry_star_count(item, bucket_label=card_label)
     )
     body = [
-        f"<b>{idx}.</b> {stock_title}　{stars}",
+        f"<b>{idx}.</b> {stock_title}",
+        stars,
     ]
     live = item.get("live")
     if live:

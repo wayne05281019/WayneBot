@@ -1510,16 +1510,14 @@ class WayneTelegramBot:
     def _leave_zero_case_html(
         title: str, subtitle: str, cards: str, extra: str = ""
     ) -> str:
-        """案件紅邊框。Telegram 鍵盤不能上色，結果頁用紅角標示。"""
+        """剛脫離零結果頁：標題＋說明＋卡片，不加紅角框線。"""
         bits = [
-            "🟥────────────────────────🟥",
             f"<b>{html_escape(title)}</b>",
             f"<i>{html_escape(subtitle)}</i>",
         ]
         if extra:
             bits.append(extra)
         bits.append(cards)
-        bits.append("🟥────────────────────────🟥")
         return "\n".join(x for x in bits if x)
 
     def _leave_zero_section_keyboard(self, picks=None, include_menu: bool = False):
