@@ -2810,9 +2810,69 @@ class WayneTelegramBot:
     async def leave_zero_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_leave_zero_now(update.message)
 
-    async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE, code: str = ""):
         del context
+        q = str(code or "").strip()
+        if q:
+            await self._send_dongzhu_hold(update.message, q)
+            return
         await self._send_dongzhu_page(update.message)
+
+    async def _send_dongzhu_hold(self, message, query: str) -> None:
+        from biaoke_field_scan import dongzhu_hold_page
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        actor = self._actor_key(message, uid=uid)
+        q = str(query or "").strip()
+        hits = lookup_stocks(self.db_path, q.split()[0].strip() if q else "")
+        if not hits and q:
+            hits = lookup_stocks(self.db_path, q)
+        if not hits:
+            self._pending[actor] = "dongzhu"
+            await message.reply_text(
+                "找不到這檔。打代號或股名，看這檔自己的細項能不能留（不是整層電子）。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        if hits_need_picker(hits):
+            self._pending[actor] = "dongzhu"
+            await message.reply_html(
+                self._hits_list_html(hits, lead="多檔同名，點一檔看細項能不能留。"),
+                reply_markup=self._hits_keyboard(hits),
+                disable_web_page_preview=True,
+            )
+            return
+        sid = str(hits[0].get("stock_id") or "").strip()
+        try:
+            html = await asyncio.wait_for(
+                asyncio.to_thread(dongzhu_hold_page, self.db_path, sid),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 洞燭先機查詢逾時。請稍後再打一次代號。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        except Exception:
+            logger.exception("洞燭先機能不能留失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        self._pending[actor] = "dongzhu"
+        chunks = chunk_telegram_html(html, 3500) or [html]
+        for chunk in chunks:
+            await message.reply_html(
+                chunk,
+                reply_markup=self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
 
     async def _send_dongzhu_page(self, message) -> None:
         from biaoke_field_scan import dongzhu_page, dongzhu_picks
@@ -2862,6 +2922,7 @@ class WayneTelegramBot:
                 reply_markup=kb or self._reply_menu(uid),
                 disable_web_page_preview=True,
             )
+        self._pending[self._actor_key(message, uid=uid)] = "dongzhu"
 
     async def _run_leave_zero_now(self, message):
         from live_quote import is_live_merge_window
@@ -3850,7 +3911,7 @@ class WayneTelegramBot:
             await self.leave_zero_cmd(upd, ctx)
             return
         if kind == "dongzhu":
-            await self.dongzhu_cmd(upd, ctx)
+            await self.dongzhu_cmd(upd, ctx, code=code)
             return
         if kind == "streak":
             await self.streak_cmd(upd, ctx)
@@ -4220,6 +4281,10 @@ class WayneTelegramBot:
                 await self._send_biaoke_page(
                     update.message, ask=raw or text, uid=uid
                 )
+                return
+            if pending == "dongzhu":
+                self._pending[actor] = "dongzhu"
+                await self._send_dongzhu_hold(update.message, raw or text)
                 return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
@@ -5553,13 +5618,18 @@ class WayneTelegramBot:
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
+            code = data[2:].strip()
+            actor = self._actor_key(q.message, uid=uid)
+            if str(self._pending.get(actor) or "") == "dongzhu":
+                await self._send_dongzhu_hold(q.message, code)
+                return
             try:
-                await self._send_card_to(q.message, data[2:], uid)
+                await self._send_card_to(q.message, code, uid)
             except Exception:
                 logger.exception("callback 查股失敗")
                 try:
                     await q.message.reply_text(
-                        f"{data[2:]} 出圖失敗，請再打一次代號。"
+                        f"{code} 出圖失敗，請再打一次代號。"
                     )
                 except Exception:
                     pass

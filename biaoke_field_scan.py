@@ -98,10 +98,16 @@ _HOW = (
 )
 # 五天太薄。兩個月仍薄。官方資金窗＝近 100 個有法人日，每天只記流入／流出第一名。
 # 100 日簇內首漲停前一收：次級距20高中位 −8.6% → 簡化門檻 −8%。不鎖起點％、不發明 5／9。
+# 進場前徵兆（scripts/dongzhu_precursor.py，窗 20260424–20260915，次級 vs20≤−8% 且仍低於60高，後10個交易日官方收）：
+# 佔比升還沒當第一：漲停 54.2%／漲停或≥8% 70.8%
+# 追當天流入第一名：31.8%／56.1%
+# 昨天第一名今天佔比在退：30.4%／55.4%＝人去樓空，不推買
 FLOW_LOOKBACK = 100
 SHARE_DAYS = 5
 MIN_CHAIN_N = 3
 PRE_VS20 = -8.0
+PREFER_NOT_LEAD = True
+SKIP_LEAVING_HOT = True
 
 
 def want_field_scan(ask: str) -> bool:
@@ -913,6 +919,7 @@ def fine_share_table(
         ign["_shares_all"] = shares
         out[chain] = ign
     lead_n: Dict[str, int] = defaultdict(int)
+    daily: List[Tuple[str, str, float]] = []
     if dates:
         for i in range(len(dates)):
             best_ch = ""
@@ -924,11 +931,21 @@ def fine_share_table(
                     best_ch = chain
             if best_ch and best_sh > 0:
                 lead_n[best_ch] += 1
+                daily.append((dates[i], best_ch, best_sh))
+    today_ch = daily[-1][1] if daily else ""
+    yest_ch = daily[-2][1] if len(daily) >= 2 else ""
     for ign in out.values():
         series = list(ign.pop("_shares_all", []) or [])
-        ign["in_lead_n"] = int(lead_n.get(str(ign.get("chain") or ""), 0))
+        chain = str(ign.get("chain") or "")
+        ign["in_lead_n"] = int(lead_n.get(chain, 0))
         ign["share_pos_n"] = sum(1 for x in series if float(x or 0) > 0)
         ign["lookback_n"] = len(dates)
+        ign["is_lead_today"] = bool(chain and chain == today_ch)
+        ign["was_lead_yest"] = bool(chain and chain == yest_ch)
+        chg = float(ign.get("share_chg") or 0)
+        ign["leaving"] = bool(
+            ign["was_lead_yest"] and (not ign["is_lead_today"] or chg < -1e-9)
+        )
     return out
 
 
@@ -1227,6 +1244,26 @@ def _is_money_hot(ign: Dict[str, Any], all_igns: Sequence[Dict[str, Any]]) -> bo
     return last + 1e-9 >= mx
 
 
+def _share_falling(ign: Dict[str, Any]) -> bool:
+    return float(ign.get("share_chg") or 0) < -1e-9
+
+
+def _share_rotating_out(ign: Dict[str, Any]) -> bool:
+    """人去樓空：昨天第一名今天在退，或佔比單日掉超過 1pt。小數點稀釋不當流出。"""
+    if ign.get("leaving"):
+        return True
+    return float(ign.get("share_chg") or 0) <= -1.0
+
+
+def _precursor_sign(ign: Dict[str, Any], *, has_rival: bool) -> str:
+    """pre＝佔比升還沒當第一；chase＝已是當天第一；leaving＝人去樓空。"""
+    if ign.get("leaving"):
+        return "leaving"
+    if PREFER_NOT_LEAD and ign.get("is_lead_today") and has_rival:
+        return "chase"
+    return "pre"
+
+
 def _inflow_board(all_igns: Sequence[Dict[str, Any]], n: int = 8) -> str:
     """近窗每天流入第一名的天數。不是只有此刻那一族。"""
     rows: List[Tuple[int, str]] = []
@@ -1496,27 +1533,45 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         if not c["named"] and float(c["ign"].get("share_last") or 0) > 0
     ]
     ranked: List[Dict[str, Any]] = []
+    pre_sign = ""
+    has_rival = False
     if unnamed_pos:
-        ranked = sorted(
+        by_share = sorted(
             unnamed_pos,
-            key=lambda c: (
-                float(c["ign"].get("share_last") or 0.0),
-                int(c["ign"].get("in_lead_n") or 0),
-                float(c["ign"].get("share_up") or 0.0),
-            ),
+            key=lambda c: float(c["ign"].get("share_last") or 0.0),
             reverse=True,
         )
+        has_rival = len(by_share) >= 2
+        not_lead = by_share[1:8] if PREFER_NOT_LEAD else []
+        seen: set = set()
         picked = None
-        for cand in ranked[:12]:
-            g0 = _fill_leaders(db_path, cand["group"], cap)
-            cand["group"] = g0
-            ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
-            cand["pre_ok"] = ok
-            cand["pre_vs20"] = best_vs20
-            if ok:
-                picked = cand
-                break
-        flow_hit = picked or ranked[0]
+
+        def _consider(cands: Sequence[Dict[str, Any]], *, allow_leave: bool) -> None:
+            nonlocal picked
+            for cand in cands:
+                if picked is not None:
+                    return
+                cid = id(cand)
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                ign = cand["ign"]
+                if not allow_leave and SKIP_LEAVING_HOT and _share_rotating_out(ign):
+                    continue
+                g0 = _fill_leaders(db_path, cand["group"], cap)
+                cand["group"] = g0
+                ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
+                cand["pre_ok"] = ok
+                cand["pre_vs20"] = best_vs20
+                if ok:
+                    picked = cand
+
+        _consider(not_lead, allow_leave=False)
+        if picked is None:
+            _consider(by_share[:1], allow_leave=False)
+        if picked is None:
+            _consider(by_share, allow_leave=True)
+        flow_hit = picked or by_share[0]
         if picked is None:
             g0 = _fill_leaders(db_path, flow_hit["group"], cap)
             flow_hit["group"] = g0
@@ -1526,7 +1581,9 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             flow_hit["pre_late"] = True
         else:
             flow_hit["pre_late"] = False
-        ranked = [flow_hit] + [c for c in ranked if c is not flow_hit]
+        pre_sign = _precursor_sign(flow_hit["ign"], has_rival=has_rival)
+        flow_hit["pre_sign"] = pre_sign
+        ranked = [flow_hit] + [c for c in by_share if c is not flow_hit]
     else:
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
@@ -1560,9 +1617,17 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 + rot
                 + miss
                 + (
-                    f"次級距20高 {float(flow_hit.get('pre_vs20') or 0):+.1f}%≤{PRE_VS20:.0f}%（100日首漲停前中位）。"
-                    if flow_hit.get("pre_ok")
-                    else "次級已靠近20高＝偏晚，只參考佔比。"
+                    "昨天流入第一名今天佔比在退＝人去樓空，不推買。"
+                    if pre_sign == "leaving" or ign.get("leaving")
+                    else (
+                        "這族已是當天流入第一名；回測追第一名勝率較差，不推新買。"
+                        if pre_sign == "chase"
+                        else (
+                            f"次級距20高 {float(flow_hit.get('pre_vs20') or 0):+.1f}%≤{PRE_VS20:.0f}%（佔比升還沒當第一＝先機）。"
+                            if flow_hit.get("pre_ok")
+                            else "次級已靠近20高＝偏晚，只參考佔比。"
+                        )
+                    )
                 )
                 + "不靠他有沒有說蠢蠢欲動。飆大點名只參考，不是唯一。"
             ),
@@ -1582,6 +1647,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     pick["in_lead_n"] = int((flow_hit["ign"] if flow_hit else {}).get("in_lead_n") or 0)
     pick["share_pos_n"] = int((flow_hit["ign"] if flow_hit else {}).get("share_pos_n") or 0)
     pick["inflow_board"] = _inflow_board(all_igns)
+    pick["pre_sign"] = pre_sign or str((flow_hit or {}).get("pre_sign") or "")
+    pick["leaving"] = bool((flow_hit["ign"] if flow_hit else {}).get("leaving"))
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
@@ -1607,6 +1674,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             buys.append(item)
         else:
             watches.append(item)
+    if pick.get("leaving") or pick.get("pre_late") or pick.get("pre_sign") in ("leaving", "chase"):
+        buys = []
     buys.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
     watches.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
     pick["layers"] = layers
@@ -1730,6 +1799,193 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     return "　".join(bits)
 
 
+def _chain_key(parts: Sequence[str]) -> str:
+    return "-".join(str(p) for p in parts if str(p).strip())
+
+
+def _ign_for_parts(
+    fine: Dict[str, Dict[str, Any]], parts: Sequence[str]
+) -> Tuple[str, Optional[Dict[str, Any]]]:
+    key = _chain_key(parts)
+    if key and key in fine:
+        return key, fine[key]
+    last = str(parts[-1]) if parts else ""
+    hits = []
+    for k, ign in fine.items():
+        layers = [str(x) for x in (ign.get("layers") or _split_chain_text(k)) if x]
+        if last and layers and layers[-1] == last:
+            hits.append((k, ign))
+    if len(hits) == 1:
+        return hits[0]
+    if len(parts) >= 2:
+        tail = [str(x) for x in parts[-2:]]
+        hits = []
+        for k, ign in fine.items():
+            layers = [str(x) for x in (ign.get("layers") or _split_chain_text(k)) if x]
+            if layers[-2:] == tail:
+                hits.append((k, ign))
+        if len(hits) == 1:
+            return hits[0]
+    return key, None
+
+
+def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dict[str, Any]:
+    """任一檔：用它自己的主／次／細項看資金還在不在，不是整層電子。"""
+    del spoken
+    sid = str(sid or "").strip()
+    empty = {
+        "sid": sid,
+        "name": "",
+        "layers": [],
+        "verdict": "還沒",
+        "hold": False,
+        "buy": False,
+        "why": "這檔還沒細項鏈，不准猜能不能留。",
+        "role": "",
+        "pre_sign": "",
+        "pre_ok": False,
+        "leave_zero": False,
+        "flow": {},
+        "cap": "",
+        "chip_cap": "",
+    }
+    if not db_path or not sid:
+        return empty
+    name = _stock_name(db_path, sid, sid)
+    empty["name"] = name
+    parts = _chain_parts(db_path, sid)
+    cap = _chip_cap(db_path) or _cap(db_path)
+    chip_cap = _chip_cap(db_path, cap) if cap else ""
+    empty["cap"] = cap
+    empty["chip_cap"] = chip_cap or cap
+    if not parts:
+        empty["why"] = f"{sid} {name} 還沒主產業／次產業／細項鏈，不准猜能不能留。"
+        return empty
+    fine = fine_share_table(db_path, chip_cap or cap) if chip_cap or cap else {}
+    chain, ign = _ign_for_parts(fine, parts)
+    ign = dict(ign or {})
+    g = _group_from_chain(db_path, chain or _chain_key(parts), ign.get("sids") or [sid], cap)
+    g = _fill_leaders(db_path, g, cap)
+    role = _stock_role(g, sid)
+    st = _stats(_bars_tail(db_path, sid, cap, 80)) or {}
+    pre_ok, best_vs20 = _chain_pre_ok(db_path, g, cap)
+    leave_zero = sid in _bucket_by_id(db_path, "leave_zero")
+    sign = _precursor_sign(ign, has_rival=True) if ign else ""
+    vs20 = st.get("vs20")
+    vs60 = st.get("vs60")
+    hold = False
+    buy = False
+    verdict = "還沒"
+    if ign.get("leaving") or sign == "leaving" or _share_rotating_out(ign):
+        verdict = "不留"
+        why = "這檔細項昨天流入第一名、今天佔比在退＝人去樓空，不建議留，也不推新買。"
+        if not (ign.get("leaving") or sign == "leaving"):
+            why = "這檔細項佔比單日在退，資金不像要留下，不建議留，也不推新買。"
+    elif vs20 is not None and float(vs20) >= 0:
+        verdict = "偏晚"
+        why = "這檔已貼近或超過20高，不是先機。出場只看作者如何賣，不是買訊。"
+    elif sign == "chase":
+        verdict = "小心"
+        why = "這檔細項已是當天流入第一名；回測追第一名較容易接到要走的錢。不推新買；已抱看如何賣。"
+    elif sign == "pre" and (pre_ok or (vs20 is not None and float(vs20) <= PRE_VS20)):
+        hold = True
+        if leave_zero:
+            buy = True
+            verdict = "可留"
+            why = (
+                "這檔細項佔比升還沒當第一、次級距20高"
+                f"{float(best_vs20 or vs20 or 0):+.1f}%≤{PRE_VS20:.0f}%，且這檔是黃金買點。"
+                "已抱可留；新買只認這一條。"
+            )
+        else:
+            verdict = "可留觀察"
+            why = (
+                "這檔細項資金準備留下，這檔本身不是黃金買點。"
+                "已抱可留；不推新買。"
+            )
+    elif float(ign.get("share_last") or 0) > 0 and not _share_rotating_out(ign):
+        verdict = "還在"
+        why = "這檔細項還有買超佔比，但不是先機徵兆。不推新買；已抱自己看如何賣。"
+    elif ign:
+        verdict = "沒先機"
+        why = "這檔細項佔比沒升或在退，不當先機，不推留也不推買。"
+    else:
+        why = (
+            f"{sid} {name} 主產業／次產業／細項是 {_layer_short(parts)}，"
+            "但這細項還沒進佔比表（成員太少或法人日還沒這列），不准猜能不能留。"
+        )
+    return {
+        "sid": sid,
+        "name": name,
+        "layers": list(parts),
+        "layer_txt": _layer_line(parts),
+        "field": g.get("field") or (parts[-1] if parts else ""),
+        "role": role,
+        "verdict": verdict,
+        "hold": hold,
+        "buy": buy,
+        "why": why,
+        "pre_sign": sign,
+        "pre_ok": pre_ok,
+        "pre_vs20": best_vs20,
+        "leave_zero": leave_zero,
+        "vs20": vs20,
+        "vs60": vs60,
+        "volr": st.get("volr"),
+        "close": st.get("close"),
+        "flow": ign,
+        "cap": cap,
+        "chip_cap": chip_cap or cap,
+        "chain": chain,
+    }
+
+
+def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -> str:
+    """打任一檔：用這檔自己的細項回答能不能留。"""
+    data = dongzhu_hold(db_path, sid, spoken=spoken)
+    sid_s = _esc(data.get("sid") or sid)
+    name = _esc(data.get("name") or "")
+    lines = [
+        "<b>洞燭先機・能不能留</b>",
+        f"{sid_s} {name}".strip(),
+        _esc("判斷單位＝這檔的主產業／次產業／細項，不是整層電子。"),
+    ]
+    cap = _esc(data.get("cap") or "")
+    chip = _esc(data.get("chip_cap") or "")
+    if cap:
+        extra = f"　法人日 {chip}" if chip and chip != cap else ""
+        lines.append(f"官方收 {cap}{extra}")
+    layer_txt = str(data.get("layer_txt") or "")
+    if layer_txt:
+        lines.append(_esc(layer_txt))
+    role = str(data.get("role") or "")
+    bits = []
+    if role:
+        bits.append(role)
+    if data.get("vs20") is not None:
+        bits.append(f"距20高 {_pct(float(data['vs20']))}")
+    if data.get("vs60") is not None:
+        bits.append(f"距60高 {_pct(float(data['vs60']))}")
+    if bits:
+        lines.append(_esc("　".join(bits)))
+    flow = data.get("flow") or {}
+    if flow.get("shares") or flow.get("nets"):
+        lines.append(_esc(_flow_why(flow)))
+    verdict = str(data.get("verdict") or "還沒")
+    lines.append(f"<b>{_esc(verdict)}</b>")
+    why = str(data.get("why") or "")
+    if why:
+        lines.append(f"<i>{_esc(why)}</i>")
+    if data.get("buy"):
+        lines.append(_esc("這檔此刻是黃金買點，新買只認這一條。"))
+    elif data.get("hold"):
+        lines.append(_esc("已抱可留；這檔不是黃金買點，不准發明切入。"))
+    else:
+        lines.append(_esc("不推新買。紅箭頭不是買訊。切入只認高低卡黃金買點。"))
+    lines.append(_esc("再打下一檔代號或股名，可繼續看細項能不能留。"))
+    return "\n".join(lines)
+
+
 def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     """主選單洞燭先機頁。飆大找法＋五件＋細項佔比。切入只認高低卡黃金買點。"""
     data = dongzhu_picks(db_path, spoken=spoken)
@@ -1737,7 +1993,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     lines = [
         "<b>洞燭先機</b>",
         _esc(data.get("how") or _HOW),
-        "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
+        "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。打代號或股名，看這檔自己的細項能不能留；不是看整層電子。",
     ]
     if cap:
         chip = _esc(data.get("chip_cap") or "")
@@ -1748,6 +2004,12 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     if board:
         win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
         lines.append(_esc(f"近{win_n}日每天流入第一名：{board}"))
+    lines.append(
+        _esc(
+            "先機徵兆：佔比升且還沒當流入第一名、次級距20高≤−8%。"
+            "昨天第一名今天佔比在退＝人去樓空，不推買也不建議留。"
+        )
+    )
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")
