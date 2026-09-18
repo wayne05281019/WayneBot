@@ -73,7 +73,7 @@ def test_render_data_role_pushes_morning(monkeypatch):
     assert config.scheduler_may_push("evening") is False
 
 
-def test_main_scheduler_slots_match_help_clocks():
+def test_main_scheduler_slots_match_clocks():
     src = _read("main.py")
     assert '(6, 30, "morning")' in src
     assert '(12, 45, "midday")' in src
@@ -84,25 +84,11 @@ def test_main_scheduler_slots_match_help_clocks():
     header = _read("main_runner.py")[:2800]
     assert "WAYNE_SCREEN_NOTIFY=0 不寄" in header
     assert "Render 常駐 06:30" not in header
-    guide = HELP_TOPICS["guide"]
     blob = page_copy_blob()
     for clock in ("06:30", "12:45", "16:30", "20:00"):
-        assert clock in guide
         assert clock in blob
-    assert "人事行政總處" in HELP_TOPICS["market"]
-    assert "19:00" in HELP_TOPICS["market"] and "22:00" in HELP_TOPICS["market"]
-    assert "04:30" in HELP_TOPICS["market"]
-    assert "人事行政總處" in HELP_TOPICS["row1"]
-    assert "19:00" in HELP_TOPICS["row1"]
-    assert "22:00 前公告" not in HELP_TOPICS["row1"]
-    assert "人事行政總處" not in HELP_TOPICS["row2"]
-    assert "不寄 06:30 海選" in HELP_TOPICS["guide"]
-    assert "不寄今早海選" in HELP_TOPICS["screen"]
-    assert "台股休市當日" in HELP_TOPICS["screen"]
-    assert "台股休市" in HELP_TOPICS["daytrade"]
-    assert "齊了發一則" in guide
     assert "不是海選" in _read("main_runner.py")
-    assert "不寄" in guide or "不推播" in HELP_TOPICS["ai"]
+    assert HELP_TOPICS == {}
 
 
 def test_evening_ai_is_silent_and_uses_official_close():
@@ -111,6 +97,3 @@ def test_evening_ai_is_silent_and_uses_official_close():
     assert 'session="evening"' in src
     assert "apply_us=False" in src
     assert "apply_us=True, session=\"morning\"" in src or 'session="morning"' in src
-    ai = HELP_TOPICS["ai"]
-    assert "不推播" in ai
-    assert "16:30" in ai and "20:00" in ai

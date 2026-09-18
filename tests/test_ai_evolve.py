@@ -59,12 +59,7 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "notify: bool = True" in desk
 
 
-def test_help_evolve_does_not_inject_broker():
+def test_help_topics_cancelled():
     from bot_servers import HELP_TOPICS
 
-    ai = HELP_TOPICS["ai"]
-    assert "進化" in ai
-    assert "量化積木" in ai
-    assert "不能把這支程式塞進" in ai
-    assert "不會自動改程式" in ai
-    assert "高低卡" in ai
+    assert HELP_TOPICS == {}

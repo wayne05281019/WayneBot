@@ -164,27 +164,10 @@ def test_fetch_lookup_quote_yahoo_when_mis_empty():
     assert rt["source"] == "yahoo"
 
 
-def test_help_has_row1_row2_and_ai():
+def test_help_topics_cancelled():
     from bot_servers import HELP_TOPICS
 
-    for key in ("row1", "row2", "ai"):
-        assert key in HELP_TOPICS
-    assert "AI模擬倉" in HELP_TOPICS["ai"]
-    assert "AI倉" in HELP_TOPICS["ai"]
-    assert "20:00" in HELP_TOPICS["ai"]
-    assert "留現金" in HELP_TOPICS["ai"]
-    assert "3 等份" in HELP_TOPICS["ai"]
-    assert "決策卡" in HELP_TOPICS["row1"]
-    assert "AI倉" in HELP_TOPICS["row1"]
-    assert "隔日沖" in HELP_TOPICS["row2"]
-    assert "回報" in HELP_TOPICS["row2"]
-    assert "空白預留" not in HELP_TOPICS["row2"]
-    assert "按表操課" in HELP_TOPICS["guide"]
-    assert "紅箭頭" in HELP_TOPICS["screen"]
-    assert "溫度≥80" in HELP_TOPICS["stock"]
-    assert "價溫背離" in HELP_TOPICS["stock"]
-    assert "60日量" in HELP_TOPICS["stock"]
-    assert "露出高低" in HELP_TOPICS["stock"]
+    assert HELP_TOPICS == {}
 
 
 def test_us_alert_no_wide_rjust_padding():

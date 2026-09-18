@@ -1,168 +1,26 @@
 # -*- coding: utf-8 -*-
-"""說明書：第一次用三步、紀律白話、按錯導回、Telegram 切塊與 HTML。"""
+"""說明頁已取消；第一次用三步仍在 /start。"""
 from __future__ import annotations
 
-import re
-
-from bot_servers import HELP_TOPICS, WayneTelegramBot
-from tg_layout import chunk_telegram_html
+from bot_servers import HELP_TOPICS, LOOKUP_CODE_EXAMPLES_HTML, WayneTelegramBot
 
 
-def test_guide_starts_with_three_steps_in_first_chunk():
-    guide = HELP_TOPICS["guide"]
-    chunks = chunk_telegram_html(guide)
-    assert chunks, "總覽不該是空的"
-    first = chunks[0]
-    assert first.index("第一次用") < first.index("挑股")
-    assert "直接打代號" in first
-    assert "00981A" in first
-    assert "00631L" in first
-    assert "⌨️" in first
-    assert "四格" in first
-    assert "圖下面" in first or "圖下方" in first
-    assert "一次只出一張" in first
-    assert "第 2 張" in first
-    assert len(chunks) == 1, "總覽應一則看完，不要切成兩則"
-
-
-def test_stock_help_has_plain_discipline_notes():
-    stock = HELP_TOPICS["stock"]
-    assert "粉紅" in stock or "紀律" in stock
-    assert "先別追" in stock
-    assert "先出一點" in stock
-    assert "不是買訊" in stock
-    assert "現在高點跟熱度都退了" in stock
-    assert "現在價到高了" in stock
-    assert "現在很熱但價沒過前高" in stock
-    assert "現在高點跟熱度都沒了" in stock
-    assert "如何賣" in stock
-    assert "如何低買" in stock
-    assert "低點訊號" in stock
-    assert "獲利還沒離開" in stock
-    assert "最高價＝20日高" in stock
-    assert "粉紅底" in stock
-    assert "不自動賣" in stock
-    assert "月K一句" in stock
-    assert "不改海選" in stock
-    assert "200股" in HELP_TOPICS["buy"]
-    assert "留現金" in HELP_TOPICS["guide"]
-    assert "預留" not in HELP_TOPICS["guide"]
-    assert "官方收盤掃" in HELP_TOPICS["guide"]
-    assert "平常最多 1 份" in HELP_TOPICS["row1"]
-    assert "平常最多 1 檔" not in HELP_TOPICS["guide"]
-    assert "平常最多 1 檔" not in HELP_TOPICS["oops"]
-    assert "平常最多 1 檔" not in HELP_TOPICS["row1"]
-    assert "平常最多 1 檔" not in HELP_TOPICS["ai"]
-    assert "最多 3 檔" not in HELP_TOPICS["guide"]
-    assert "最多 3 檔" not in HELP_TOPICS["row1"]
-    assert "最多 3 檔" not in HELP_TOPICS["ai"]
-
-
-def test_screen_help_has_no_line_share():
-    screen = HELP_TOPICS["screen"]
-    assert "開 LINE" not in screen
-    assert "一鍵傳 LINE" not in screen
-    assert "傳這檔" not in screen
-    assert "選聯絡人" not in screen
-    assert "左鍵" in screen
-    assert "少追" in screen
-
-
-def test_oops_covers_streak_report_not_found_weekend():
-    oops = HELP_TOPICS["oops"]
-    assert "連買" in oops
-    assert "回報" in oops
-    assert "找不到股票" in oops
-    assert "國字打錯" in oops or "同音" in oops
-    assert "南亞科" in oops
-    assert "海選" in oops and "隔日沖" in oops
-    assert "當沖" in oops
-    assert "圖下面" in oops or "圖下方" in oops
-    assert "oops" in HELP_TOPICS
-    guide = HELP_TOPICS["guide"]
-    assert "連買選到一半" in guide
-    assert "改按其他按鈕即可" in guide
-
-
-def test_help_reflow_keeps_one_guide_chunk_and_no_orphan_lines():
-    from tg_layout import chunk_telegram_html, reflow_telegram_html
-
-    guide = reflow_telegram_html(HELP_TOPICS["guide"])
-    chunks = chunk_telegram_html(guide)
-    assert len(chunks) == 1, "總覽折行後仍應一則看完"
-    assert "第一次用" in guide
-    assert guide.count("<b>") == guide.count("</b>")
-    assert guide.count("<code>") == guide.count("</code>")
-    for ln in guide.split("\n"):
-        plain = re.sub(r"<[^>]+>", "", ln).strip()
-        if not plain:
-            continue
-        assert plain not in {"。", "、", "）", "報", "區", "盤"}, plain
-
-
-def test_help_html_tags_balanced_and_no_wide_pad():
-    pad = re.compile(r"^(產業|同業|單位|用途)\s{3,}", re.M)
-    for key, body in HELP_TOPICS.items():
-        for tag in ("b", "code", "i"):
-            open_n = len(re.findall(fr"<{tag}>", body))
-            close_n = len(re.findall(fr"</{tag}>", body))
-            assert open_n == close_n, f"{key} <{tag}> {open_n}/{close_n}"
-        assert pad.search(body) is None, key
-        assert "曆日" not in body
-        chunks = chunk_telegram_html(body)
-        assert all(len(c) <= 3500 for c in chunks), key
-
-
-def test_help_nav_has_oops_and_no_reply_overlap():
+def test_help_topics_cancelled():
+    assert HELP_TOPICS == {}
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    kb = bot._help_nav_keyboard()
-    labels = [btn.text for row in kb.inline_keyboard for btn in row]
-    assert labels.count("按錯") == 1
-    assert len(kb.inline_keyboard) == 3
-    assert [b.text for b in kb.inline_keyboard[0]] == ["總覽", "查股", "圖文"]
-    assert [b.text for b in kb.inline_keyboard[2]] == ["記買入", "按錯", "✕"]
-    cbs = [btn.callback_data for row in kb.inline_keyboard for btn in row]
-    assert "em:go" not in cbs
-    reply = {btn.text for row in bot._reply_menu().keyboard for btn in row}
-    overlap = reply & set(labels)
-    assert overlap == set(), overlap
-    assert "圖文" in HELP_TOPICS["guide"]
-
-
-def test_row2_help_page_explains_help_button():
-    row1 = HELP_TOPICS["row1"]
-    row2 = HELP_TOPICS["row2"]
-    assert "① 海選" in row1
-    assert "⑥ 飆大" in row1
-    assert "⑦ 大盤" in row1
-    assert "⑤ 連買區" in row2
-    assert "⑥ 剛脫離零" in row2
-    assert row2.index("① 資金") < row2.index("⑤ 連買區")
-    assert "按錯" in HELP_TOPICS["oops"]
-    assert row2.count("\n") >= 8
+    assert not bot._help_nav_keyboard().inline_keyboard
 
 
 def test_start_cmd_leads_with_three_steps():
     import inspect
 
-    from bot_servers import WayneTelegramBot
-
     src = inspect.getsource(WayneTelegramBot.start_cmd)
     assert "第一次用，先做這三步" in src
     assert "直接打代號" in src
     assert "LOOKUP_CODE_EXAMPLES_HTML" in src
-    from bot_servers import LOOKUP_CODE_EXAMPLES_HTML
-
     assert "00981A" in LOOKUP_CODE_EXAMPLES_HTML
     assert "圖下面" in src
     assert "回報" in src
     assert "給家人用" not in src
     assert "對方用自己的帳號按開始" not in src
     assert "不必再分享邀請" in src
-
-
-def test_pick_and_decision_are_first_time_friendly():
-    assert "不要先按" in HELP_TOPICS["pick"]
-    assert "直接打代號" in HELP_TOPICS["decision"]
-    assert "00981A" in HELP_TOPICS["pick"]
-    assert "第一次用" in HELP_TOPICS["menu"]

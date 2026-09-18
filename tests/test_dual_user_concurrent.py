@@ -528,9 +528,9 @@ def test_industry_scratch_path_uses_passed_uid_not_message_user():
 
     asyncio.run(run())
     assert len(captured) == 2
-    assert str(WAYNE_UID) in captured[0]
-    assert str(BRO_UID) in captured[1]
-    assert "555" not in captured[0]
+    assert f"_industry_{WAYNE_UID}_" in captured[0]
+    assert f"_industry_{BRO_UID}_" in captured[1]
+    assert f"_industry_555_" not in captured[0]
     assert captured[0] != captured[1]
 
 

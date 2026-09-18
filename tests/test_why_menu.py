@@ -76,9 +76,6 @@ def test_hamburger_omits_why():
     assert "_why_hub_keyboard" not in src
     assert "_send_why_hub" not in src
     assert "why" not in HELP_TOPICS
-    assert "三條槓「原因」" not in HELP_TOPICS["guide"]
-    assert "／why" not in HELP_TOPICS["guide"]
-    assert "／why" not in HELP_TOPICS["menu"]
 
 
 def test_stale_why_command_tells_user_to_type_ticker():
@@ -277,5 +274,4 @@ def test_daytrade_lock_blocks_second_press():
 
 def test_help_drops_why_topic():
     assert "why" not in HELP_TOPICS
-    assert "三條槓" not in HELP_TOPICS["guide"]
-    assert "三條槓" not in HELP_TOPICS["menu"]
+    assert HELP_TOPICS == {}

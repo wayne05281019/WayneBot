@@ -200,7 +200,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "剛脫離零": "此刻沒有獲利剛離零",
             "興櫃海選": "目前沒有可用的官方日均價",
             "查股兩張圖": "找不到這檔",
-            "圖文": "圖文說明暫時產不出來",
+            "圖文": "圖文說明已取消",
         }
         n = needles.get(feature)
         if n:
@@ -277,6 +277,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("timeout-n/a")
 
     if lens == "help_mentions":
+        if "HELP_TOPICS = {}" in src:
+            return _ok("cancelled")
         start = src.find("HELP_TOPICS = {")
         blob = src[start : start + 28000] if start >= 0 else src
         if help_word in blob or help_word in src:

@@ -31,6 +31,7 @@ def test_bot_has_no_line_share_buttons_or_copy():
     assert "開 LINE" not in blob
     assert "一鍵傳 LINE" not in blob
     assert "轉 LINE" not in blob
+    assert HELP_TOPICS == {}
 
 
 def test_screening_html_has_no_line_stock_link():

@@ -85,7 +85,7 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         assert MENU_BTN_MARKET in [b.text for b in bot._reply_menu().keyboard[0]]
 
     asyncio.run(run())
-    assert "⑤ 連買區" in HELP_TOPICS["row2"]
+    assert HELP_TOPICS == {}
 
 
 def test_screening_gate_blocks_second_family_member():

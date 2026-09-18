@@ -92,10 +92,10 @@ def test_last_card_per_user_not_shared():
     assert bot._last_card["u2"] == "2330"
 
 
-# --- 說明頁：換分類應原地改，不堆新訊息 ---
+# --- 說明頁已取消：舊氣泡靜音，不再原地改文 ---
 
 
-def test_help_topic_edits_in_place_on_callback():
+def test_help_topic_is_cancelled_noop():
     bot = _bot()
     message = _msg(1, 9)
     message.edit_text = AsyncMock()
@@ -104,7 +104,7 @@ def test_help_topic_edits_in_place_on_callback():
         await bot._reply_help_topic(message, "row1", edit_target=message)
 
     asyncio.run(run())
-    message.edit_text.assert_awaited_once()
+    message.edit_text.assert_not_awaited()
     message.reply_html.assert_not_awaited()
 
 
@@ -226,9 +226,9 @@ def test_help_keyboard_replaces_previous_message():
         await bot._reply_help_topic(message, "guide")
 
     asyncio.run(run())
-    old.delete.assert_awaited_once()
-    message.reply_html.assert_awaited()
-    assert "1:9" in bot._help_msgs
+    old.delete.assert_not_awaited()
+    message.reply_html.assert_not_awaited()
+    assert bot._help_msgs.get("1:9") == [old]
 
 
 def test_empty_input_is_silent():
@@ -302,15 +302,10 @@ def test_chips_callback_only_sends_photo_not_full_card():
 # --- 說明完整性：新手詞典與 AI 路徑 ---
 
 
-def test_help_guide_has_newbie_glossary_and_ai_path():
+def test_help_topics_cancelled():
     from bot_servers import HELP_TOPICS
 
-    guide = HELP_TOPICS["guide"]
-    assert "小詞典" in guide
-    assert "張" in guide
-    assert "AI" in guide
-    assert "持股" in HELP_TOPICS["ai"]
-    assert "20:00" in HELP_TOPICS["ai"]
+    assert HELP_TOPICS == {}
 
 
 def test_compact_holdings_no_wide_padding():
