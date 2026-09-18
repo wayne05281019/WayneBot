@@ -13,6 +13,11 @@ from wayne_db import ensure_core_schema
 def test_display_chain_splits_main_sub_fine():
     assert display_chain("電子上游-IC-封測") == "電子上游／IC／封測"
     assert display_chain("") == ""
+    from industry_fine import prefer_industry_face
+
+    assert prefer_industry_face(fine_chain="電子上游-IC-封測", exchange_industry="電子零組件業") == "電子上游／IC／封測"
+    assert prefer_industry_face(fine_chain="", exchange_industry="半導體業") == "半導體業"
+    assert prefer_industry_face(etf=True, fine_chain="x", exchange_industry="ETF") == ""
 
 
 def test_stock_card_shows_fine_industry_role_and_share():
@@ -146,6 +151,11 @@ def test_fine_chain_beats_coarse_industry_on_screen(tmp_path):
     html = _stock_card_html({**sil, "ma20": 78, "ma60": 77}, 1, bucket_label="黃金買點")
     assert "產業　電子上游／IC／封測　次級" in html
     assert "佔比　" in html and "升" in html
+
+    from universe import listing_industry_face
+
+    assert "電子上游／IC／封測" in listing_industry_face("6257", db)
+    assert "電子零組件業" not in listing_industry_face("6257", db)
 
 
 def test_no_fine_table_still_uses_exchange_industry(tmp_path):

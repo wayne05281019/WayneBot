@@ -488,15 +488,25 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         return join_sections(*blocks)
 
     ind = snap["industry"] or "未分類（母體還沒寫到產業）"
+    try:
+        from industry_fine import prefer_industry_face
+
+        face = prefer_industry_face(
+            fine_chain=str(snap.get("fine_chain") or ""),
+            exchange_industry=ind,
+        ) or ind
+    except Exception:
+        face = ind
     who_lines = [
         "<b>這檔是什麼</b>",
-        kv_compact("產業", ind),
+        kv_compact("產業", face),
         kv_compact("同業", peer_mix_label(snap)),
-        "產業名來自證交所／櫃買公司基本資料產業別。",
-        "同業＝同一官方產業別全組，不是更細的產品線。",
+        "同業＝證交所／櫃買同一產業別全組。",
     ]
     if snap.get("fine_tags"):
-        who_lines.append("細項來自籌碼K公開個股頁。")
+        who_lines.append("產業列是籌碼K細項；沒細項才寫證交所產業別。")
+    else:
+        who_lines.append("產業名來自證交所／櫃買公司基本資料產業別。")
     if ind == "半導體業":
         who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
     blocks.append(section(*who_lines))

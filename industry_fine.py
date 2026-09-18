@@ -46,6 +46,24 @@ def display_chain(chain: str) -> str:
     return "／".join(parts)
 
 
+def prefer_industry_face(
+    *,
+    fine_chain: str = "",
+    exchange_industry: str = "",
+    etf: bool = False,
+) -> str:
+    """高低卡／介紹圖／產業圖／海選同一套：有細項就細項，沒有才證交所產業。ETF 空（類型另標）。"""
+    if etf:
+        return ""
+    face = display_chain(fine_chain)
+    if face:
+        return face
+    ind = str(exchange_industry or "").strip()
+    if not ind or ind in {"未分類"}:
+        return ""
+    return ind
+
+
 def load_fine_chains(db_path: str, stock_ids: Iterable[str]) -> Dict[str, str]:
     """讀庫裡已有的細項鏈，不過期丟掉。沒表／沒鏈就空，不准自造。"""
     ids = [str(s).strip() for s in stock_ids if str(s).strip()]
@@ -319,7 +337,11 @@ def load_or_fetch_fine_industry(
         if sid and sid not in seen:
             seen.add(sid)
             ids.append(sid)
-    out = load_cached_fine_industry(path, ids)
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid, chain in load_fine_chains(path, ids).items():
+        tags = split_chain(chain)
+        out[sid] = _row_to_rec(sid, chain, tags, "", SOURCE)
+    out.update(load_cached_fine_industry(path, ids))
     if not allow_fetch:
         return out
     fetched = 0

@@ -861,6 +861,99 @@ def test_closed_cards_draw_industry_and_fixed_close_clock(tmp_path, monkeypatch)
     assert not any("23:22" in t for t in seen)
 
 
+def test_decision_and_glance_draw_fine_industry_slash(tmp_path, monkeypatch):
+    """高低卡／介紹圖標題跟海選同一套細項臉，不用證交所粗分類蓋過。"""
+    import os
+
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    import matplotlib.axes
+    import pandas as pd
+
+    from wayne_navigator import render_decision_card_png, render_first_glance_png
+
+    seen = []
+    orig = matplotlib.axes.Axes.text
+
+    def wrap(self, *args, **kwargs):
+        if len(args) >= 3:
+            seen.append(str(args[2]))
+        if "s" in kwargs:
+            seen.append(str(kwargs["s"]))
+        return orig(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    table = pd.DataFrame(
+        [
+            {
+                "date": "20260904",
+                "close": 80.0,
+                "獲利": "1.1%",
+                "高低": "No",
+                "預警": "No",
+                "溫度計": "20.0 °C",
+                "升降": "升溫",
+                "升降註": "",
+                "月乖離": "+0.5%",
+                "120日量": "第 80 名",
+                "profit_pct": 1.1,
+                "bias_monthly": 0.5,
+                "vol_rank_120": 80,
+                "temp_num": 20.0,
+            }
+        ]
+    )
+    card = {
+        "stock_id": "6257",
+        "stock_name": "矽格",
+        "industry": "電子零組件業",
+        "fine_industry": "電子上游-IC-封測",
+        "listing": "上市",
+        "latest_date": "20260904",
+        "is_live": False,
+        "generated_at": "2026-09-05 23:22:00",
+        "query_date": "2026/09/04",
+        "query_clock": "13:30收盤",
+        "next_event": "",
+        "close": 80.0,
+        "change_pct": 1.1,
+        "prev_close": 79.0,
+        "open": 79.5,
+        "high": 81.0,
+        "low": 78.5,
+        "h10": 82.0,
+        "dist_h10": -2.4,
+        "h20": 83.0,
+        "dist_h20": -3.6,
+        "h60": 90.0,
+        "dist_h60": -11.1,
+        "l10": 75.0,
+        "dist_l10": 6.7,
+        "l20": 70.0,
+        "dist_l20": 14.3,
+        "l60": 60.0,
+        "dist_l60": 33.3,
+        "space_20": 19,
+        "space_60": 50,
+        "ma60s": 0.1,
+        "qty60": 100,
+        "badges": ["整理格局"],
+        "stance": "等待・按表操課",
+        "stance_kind": "wait",
+        "table": table,
+    }
+    out = tmp_path / "fine_card.png"
+    assert render_decision_card_png(card, str(out))
+    blob = "\n".join(seen)
+    assert "電子上游／IC／封測" in blob
+    assert "電子零組件業" not in blob
+    seen.clear()
+    tape = {"last": {}, "move": {}, "volume": {}, "foreign": {}, "trust": {}, "dealer": {}, "three": {}, "inst_pct": 0}
+    assert render_first_glance_png("6257", card, tape, str(tmp_path / "fine_glance.png"))
+    glance = "\n".join(seen)
+    assert "電子上游／IC／封測" in glance
+    assert "電子零組件業" not in glance
+
+
 def test_kotei_wait_label_matches_cary_months():
     from decision_card_signals import format_kotei_note, kotei_to_window_extreme, kotei_wait_label
 
