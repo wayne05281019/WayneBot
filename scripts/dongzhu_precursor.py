@@ -34,6 +34,62 @@ from dongzhu_prerally import (  # noqa: E402
 LZ_MIN = 0.05
 LZ_MAX = 5.0
 
+# CMoney 鏈上對得上的族群。沒有的名不准發明一族。
+# 矽光子／Ochoa → 半導體元件；MLCC → 被動元件；光電 → LED／光學／LCD。
+# 塑化 → 塑膠＋化學工業；建築 → 營建；電信 → 電信服務。
+# 軍工：CMoney 沒有軍工／國防細項（漢翔在航運、長榮航太在電機、雷虎在消費電子）。
+BUCKETS = (
+    ("asic", ("電子上游-IP/ASIC",), "ASIC先機"),
+    ("cool", ("電子中游-散熱零組件",), "散熱先機"),
+    ("mem", ("電子上游-記憶體製造", "電子上游-記憶體IC設計", "電子上游-記憶體銷售"), "記憶體先機"),
+    ("abf", ("電子上游-ABF",), "ABF先機"),
+    ("pass", ("電子上游-被動元件",), "被動MLCC先機"),
+    ("test", ("電子上游-IC-封測",), "封測先機"),
+    ("pcb", ("電子上游-PCB",), "PCB先機"),
+    ("inp", ("電子上游-半導體元件",), "光通訊矽光子先機"),
+    ("opt", ("電子上游-LED照明及光元件", "電子中游-光學鏡片", "電子中游-LCD"), "光電先機"),
+    ("ship", ("傳產-航運",), "航運先機"),
+    ("chem", ("傳產-塑膠", "傳產-化學工業"), "塑化先機"),
+    ("tel", ("電子下游-電信服務",), "電信先機"),
+    ("build", ("傳產-營建",), "建築先機"),
+)
+MISSING_BUCKETS = (
+    "軍工：CMoney 沒有軍工／國防細項，不發明一族。漢翔在傳產-航運、長榮航太在傳產-電機、雷虎在電子下游-消費電子。",
+)
+BUCKET_LABEL = {k: lab for k, _p, lab in BUCKETS}
+
+
+def chain_bucket(chain: str) -> str:
+    s = str(chain or "")
+    for key, prefs, _lab in BUCKETS:
+        for p in prefs:
+            if s == p or s.startswith(p + "-"):
+                return key
+    return ""
+
+
+def is_elec_chain(chain: str) -> bool:
+    return str(chain or "").startswith("電子")
+
+
+def _empty_seq() -> Dict[str, int]:
+    return {
+        "n": 0,
+        "lag_first": 0,
+        "lead_first": 0,
+        "tie": 0,
+        "none": 0,
+        "lag_then_lead": 0,
+        "lead_then_lag": 0,
+        "lag_only": 0,
+        "lead_only": 0,
+        "recent_n": 0,
+        "recent_lag_first": 0,
+        "recent_lead_first": 0,
+        "recent_lag_then_lead": 0,
+        "recent_lead_then_lag": 0,
+    }
+
 
 def _ymd_dt(day: str) -> datetime:
     return datetime.strptime(day, "%Y%m%d")
@@ -112,9 +168,22 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         rows.sort(reverse=True)
         return rows
 
+    def sids_of(key: str) -> List[str]:
+        if key in members:
+            return list(members[key])
+        out: List[str] = []
+        seen = set()
+        for c, sids in members.items():
+            if c == key or c.startswith(str(key) + "-"):
+                for sid in sids:
+                    if sid not in seen:
+                        seen.add(sid)
+                        out.append(sid)
+        return out
+
     def leads_of(chain: str, d: str) -> set:
         tv = []
-        for sid in members.get(chain) or []:
+        for sid in sids_of(chain):
             tot = 0.0
             for rec in by_sid.get(sid) or []:
                 if rec[0] <= d:
@@ -134,7 +203,7 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         volr_min: Optional[float] = None,
     ) -> List[str]:
         lead = leads_of(chain, d)
-        rest = [sid for sid in (members.get(chain) or []) if sid not in lead]
+        rest = [sid for sid in sids_of(chain) if sid not in lead]
         scored = []
         for sid in rest:
             st = stats_at(by_sid.get(sid) or [], d)
@@ -209,6 +278,8 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
     yest = {chip100[i]: chip100[i - 1] for i in range(1, len(chip100))}
     recent_from = chip100[-100] if len(chip100) >= 100 else (chip100[0] if chip100 else "")
     print(f"全窗 {chip100[0]}..{chip100[-1]} n={len(chip100)} 近100起 {recent_from}")
+    for line in MISSING_BUCKETS:
+        print(line)
 
     regimes = {
         "追當天第一名": [],
@@ -223,6 +294,13 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "非金控＋檔本身買超1檔": [],
         "非金控＋買超剛轉正": [],
         "非金控＋黃金買點＋買超逐檔": [],
+        "主產業先機": [],
+        "次產業先機": [],
+        "電子細項先機": [],
+        "教過族群先機": [],
+        "細項剩餘第2": [],
+        "細項剩餘第3": [],
+        **{lab: [] for _k, _p, lab in BUCKETS},
     }
 
     def take(
@@ -296,6 +374,89 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
                 return int(rec[6] or 0)
         return 0
 
+    def layer_key(chain: str, depth: int) -> str:
+        parts = [p for p in str(chain).split("-") if p]
+        if len(parts) < depth:
+            return ""
+        return "-".join(parts[:depth])
+
+    def layer_keys(depth: int) -> List[str]:
+        keys = set()
+        for c in chains:
+            k = layer_key(c, depth)
+            if k:
+                keys.add(k)
+        return list(keys)
+
+    def layer_share(key: str, d: str) -> float:
+        inn = mkt_in.get(d) or 0
+        if inn <= 0 or not key:
+            return 0.0
+        three = 0
+        for c, days in chain_three.items():
+            if c == key or c.startswith(key + "-"):
+                three += days.get(d) or 0
+        return 100.0 * three / inn if three > 0 else 0.0
+
+    def ranked_layer(d: str, depth: int) -> List[Tuple[float, str]]:
+        rows = [(layer_share(k, d), k) for k in layer_keys(depth)]
+        rows = [(sh, k) for sh, k in rows if sh > 0]
+        rows.sort(reverse=True)
+        return rows
+
+    def pick_rising_layer(d: str, depth: int, prev_d: str) -> str:
+        ranked = ranked_layer(d, depth)
+        if len(ranked) < 2:
+            return ""
+        for sh, key in ranked[1:8]:
+            if is_parking(key) or key == "金融":
+                continue
+            if prev_d and layer_share(key, prev_d) > sh + 1e-9:
+                continue
+            if sh <= 0:
+                continue
+            return key
+        return ""
+
+    def first_gain_day(sid: str, d: str) -> Optional[int]:
+        qi = quote_idx.get(d)
+        if qi is None:
+            return None
+        future = quotes[qi + 1 : qi + 1 + FWD]
+        bars = by_sid.get(sid) or []
+        here = next((r for r in bars if r[0] == d), None)
+        px = here[3] if here else 0
+        for i, day in enumerate(future, 1):
+            rec = next((r for r in bars if r[0] == day), None)
+            if not rec:
+                continue
+            hit = is_lu(rec) or (px > 0 and rec[3] / px - 1.0 >= GAIN)
+            if hit:
+                return i
+        return None
+
+    seq = _empty_seq()
+    bucket_seq = {k: _empty_seq() for k, _p, _lab in BUCKETS}
+    elec_seq = _empty_seq()
+    fine_trans: Dict[Tuple[str, str], int] = defaultdict(int)
+    mid_trans: Dict[Tuple[str, str], int] = defaultdict(int)
+    taught_trans: Dict[Tuple[str, str], int] = defaultdict(int)
+    last_fine = last_mid = last_taught = ""
+    rev = {
+        "n": 0,
+        "rank1": 0,
+        "rank2_4": 0,
+        "rank5_8": 0,
+        "rank9": 0,
+        "rising_not1": 0,
+        "caught_nopark": 0,
+        "elec": 0,
+        "recent_n": 0,
+        "recent_rising_not1": 0,
+        "recent_caught": 0,
+        **{f"b_{k}": 0 for k, _p, _lab in BUCKETS},
+    }
+
     for d in test_days:
         ranked = ranked_day(d)
         if not ranked:
@@ -319,11 +480,8 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
 
         rising = _rising(ranked[1:8])
         pre = rising[0][1] if rising else ""
-        no_park = ""
-        for _sh, c in rising:
-            if not is_parking(c):
-                no_park = c
-                break
+        park_free = [(sh, c) for sh, c in rising if not is_parking(c)]
+        no_park = park_free[0][1] if park_free else ""
 
         take("追當天第一名", hot, d, False)
         if leaving:
@@ -359,6 +517,148 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             lz_net = [s for s in laggards(no_park, d, lz=True, n=8) if net_at(s, d) > 0]
             if lz_net:
                 take("非金控＋黃金買點＋買超逐檔", no_park, d, True, each=True, sids=lz_net)
+            if is_elec_chain(no_park):
+                take("電子細項先機", no_park, d, False)
+            if len(park_free) >= 2:
+                take("細項剩餘第2", park_free[1][1], d, False)
+            if len(park_free) >= 3:
+                take("細項剩餘第3", park_free[2][1], d, False)
+            taught_rising = []
+            for _sh, c in park_free:
+                b = chain_bucket(c)
+                if b:
+                    taught_rising.append((c, b))
+            if taught_rising:
+                take("教過族群先機", taught_rising[0][0], d, False)
+                seen_b = set()
+                for c, b in taught_rising:
+                    if b in seen_b:
+                        continue
+                    seen_b.add(b)
+                    take(BUCKET_LABEL[b], c, d, False)
+            main_pre = pick_rising_layer(d, 1, prev or "")
+            mid_pre = pick_rising_layer(d, 2, prev or "")
+            if main_pre:
+                take("主產業先機", main_pre, d, False)
+            if mid_pre:
+                take("次產業先機", mid_pre, d, False)
+            if last_fine and last_fine != no_park:
+                fine_trans[(last_fine, no_park)] += 1
+            last_fine = no_park
+            if mid_pre:
+                if last_mid and last_mid != mid_pre:
+                    mid_trans[(last_mid, mid_pre)] += 1
+                last_mid = mid_pre
+            taught_now = chain_bucket(no_park) or (
+                taught_rising[0][1] if taught_rising else ""
+            )
+            if taught_now:
+                if last_taught and last_taught != taught_now:
+                    taught_trans[(last_taught, taught_now)] += 1
+                last_taught = taught_now
+
+            def _bump(sc: Dict[str, int], lag_i, lead_i, recent: bool) -> None:
+                sc["n"] += 1
+                if recent:
+                    sc["recent_n"] += 1
+                if lead_i is None and lag_i is None:
+                    sc["none"] += 1
+                elif lead_i is None or (lag_i is not None and lag_i < lead_i):
+                    sc["lag_first"] += 1
+                    if recent:
+                        sc["recent_lag_first"] += 1
+                    if lead_i is not None:
+                        sc["lag_then_lead"] += 1
+                        if recent:
+                            sc["recent_lag_then_lead"] += 1
+                    else:
+                        sc["lag_only"] += 1
+                elif lag_i is None or (lead_i is not None and lead_i < lag_i):
+                    sc["lead_first"] += 1
+                    if recent:
+                        sc["recent_lead_first"] += 1
+                    if lag_i is not None:
+                        sc["lead_then_lag"] += 1
+                        if recent:
+                            sc["recent_lead_then_lag"] += 1
+                    else:
+                        sc["lead_only"] += 1
+                else:
+                    sc["tie"] += 1
+
+            leads = list(leads_of(no_park, d))
+            lags = laggards(no_park, d, lz=False, n=3)
+            if leads and lags:
+                lead_days = [first_gain_day(s, d) for s in leads]
+                lag_days = [first_gain_day(s, d) for s in lags]
+                lead_i = min((x for x in lead_days if x is not None), default=None)
+                lag_i = min((x for x in lag_days if x is not None), default=None)
+                recent = d >= recent_from
+                _bump(seq, lag_i, lead_i, recent)
+                if is_elec_chain(no_park):
+                    _bump(elec_seq, lag_i, lead_i, recent)
+                bk = chain_bucket(no_park)
+                if bk:
+                    _bump(bucket_seq[bk], lag_i, lead_i, recent)
+
+            rank_of = {c: i + 1 for i, (_sh, c) in enumerate(ranked)}
+            lead_cache: Dict[str, set] = {}
+
+            def _leads(ch: str) -> set:
+                got = lead_cache.get(ch)
+                if got is None:
+                    got = leads_of(ch, d)
+                    lead_cache[ch] = got
+                return got
+
+            qi = quote_idx.get(d)
+            px = {sid: rec[3] for sid, rec in by_day.get(d, [])}
+            hit_sids = set()
+            if qi is not None:
+                future = quotes[qi + 1 : qi + 1 + FWD]
+                for fd in future:
+                    for sid, rec in by_day.get(fd, []):
+                        p0 = px.get(sid) or 0
+                        if is_lu(rec) or (p0 > 0 and rec[3] / p0 - 1.0 >= GAIN):
+                            hit_sids.add(sid)
+            recent = d >= recent_from
+            for sid in hit_sids:
+                chain = meta["fine"].get(sid) or ""
+                if not chain or is_parking(chain):
+                    continue
+                st = stats_at(by_sid.get(sid) or [], d)
+                if not st:
+                    continue
+                if float(st.get("vs20") or 0) > PRE_VS20 or float(st.get("vs60") or 0) >= 0:
+                    continue
+                if sid in _leads(chain):
+                    continue
+                rk = int(rank_of.get(chain) or 99)
+                sh_up = (not prev) or share(chain, d) + 1e-9 >= share(chain, prev)
+                rev["n"] += 1
+                if recent:
+                    rev["recent_n"] += 1
+                if rk == 1:
+                    rev["rank1"] += 1
+                elif rk <= 4:
+                    rev["rank2_4"] += 1
+                elif rk <= 8:
+                    rev["rank5_8"] += 1
+                else:
+                    rev["rank9"] += 1
+                if sh_up and rk >= 2:
+                    rev["rising_not1"] += 1
+                    if recent:
+                        rev["recent_rising_not1"] += 1
+                if chain == no_park:
+                    rev["caught_nopark"] += 1
+                    if recent:
+                        rev["recent_caught"] += 1
+                if is_elec_chain(chain):
+                    rev["elec"] += 1
+                bk = chain_bucket(chain)
+                if bk:
+                    rev[f"b_{bk}"] += 1
 
     def summarize(label: str) -> None:
         rows = regimes[label]
@@ -390,6 +690,92 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
     print("\n=== 停車格之後增量（不重跑已否決切片） ===")
     for label in regimes:
         summarize(label)
+
+    def _seq_line(tag: str, sc: Dict[str, int], *, recent: bool = False) -> None:
+        n = sc["recent_n"] if recent else sc["n"]
+        if not n:
+            print(f"  {tag} n=0")
+            return
+        if recent:
+            print(
+                f"  {tag} n={n} 次級先 {100.0 * sc['recent_lag_first'] / n:.1f}% "
+                f"龍頭先 {100.0 * sc['recent_lead_first'] / n:.1f}% "
+                f"次級再龍頭 {100.0 * sc['recent_lag_then_lead'] / n:.1f}% "
+                f"龍頭再次級 {100.0 * sc['recent_lead_then_lag'] / n:.1f}%"
+            )
+            return
+        print(
+            f"  {tag} n={n} 次級先 {100.0 * sc['lag_first'] / n:.1f}% "
+            f"龍頭先 {100.0 * sc['lead_first'] / n:.1f}% "
+            f"次級再龍頭 {100.0 * sc['lag_then_lead'] / n:.1f}% "
+            f"龍頭再次級 {100.0 * sc['lead_then_lag'] / n:.1f}% "
+            f"只有次級 {100.0 * sc['lag_only'] / n:.1f}% "
+            f"只有龍頭 {100.0 * sc['lead_only'] / n:.1f}% "
+            f"都沒 {100.0 * sc['none'] / n:.1f}% 同日 {100.0 * sc['tie'] / n:.1f}%"
+        )
+
+    print("\n=== 龍頭／次級誰先動（細項非金控，後10日漲停或≥8%） ===")
+    _seq_line("全窗", seq)
+    _seq_line("近100", seq, recent=True)
+    _seq_line("電子全窗", elec_seq)
+    _seq_line("電子近100", elec_seq, recent=True)
+    for k, _p, lab in BUCKETS:
+        _seq_line(lab.replace("先機", "") + "全窗", bucket_seq[k])
+        _seq_line(lab.replace("先機", "") + "近100", bucket_seq[k], recent=True)
+
+    def _rev_line(tag: str, n: int, rising: int, caught: int) -> None:
+        if not n:
+            print(f"  {tag} n=0")
+            return
+        print(
+            f"  {tag} n={n} 佔比升還沒第一 {100.0 * rising / n:.1f}% "
+            f"當日非金控先機抓到 {100.0 * caught / n:.1f}%"
+        )
+
+    print("\n=== 從結果回推：次級後10日漲停或≥8% 當日細項排哪 ===")
+    nrev = rev["n"]
+    if nrev:
+        print(
+            f"  全窗 n={nrev} 已第一 {100.0 * rev['rank1'] / nrev:.1f}% "
+            f"2–4名 {100.0 * rev['rank2_4'] / nrev:.1f}% "
+            f"5–8名 {100.0 * rev['rank5_8'] / nrev:.1f}% "
+            f"9名外 {100.0 * rev['rank9'] / nrev:.1f}%"
+        )
+        _rev_line("全窗覆蓋", nrev, rev["rising_not1"], rev["caught_nopark"])
+        _rev_line(
+            "近100覆蓋",
+            rev["recent_n"],
+            rev["recent_rising_not1"],
+            rev["recent_caught"],
+        )
+        print(f"  電子 {rev['elec']}/{nrev}={100.0 * rev['elec'] / nrev:.1f}%")
+        for k, _p, lab in BUCKETS:
+            print(f"  {lab.replace('先機', '')} {rev[f'b_{k}']}/{nrev}")
+    else:
+        print("  n=0")
+
+    def _top_trans(tag: str, trans: Dict[Tuple[str, str], int], n: int = 12) -> None:
+        print(f"\n=== {tag} ===")
+        rows = sorted(trans.items(), key=lambda x: -x[1])[:n]
+        if not rows:
+            print("  n=0")
+            return
+        tot = sum(trans.values())
+        for (a, b), c in rows:
+            print(f"  {a} → {b}  {c}/{tot}={100.0 * c / tot:.1f}%")
+
+    _top_trans("細項輪動脈絡（非金控先機日切換）", fine_trans)
+    _top_trans("次產業輪動脈絡", mid_trans)
+    _top_trans(
+        "教過族群輪動脈絡",
+        {
+            (
+                BUCKET_LABEL.get(a, a).replace("先機", ""),
+                BUCKET_LABEL.get(b, b).replace("先機", ""),
+            ): c
+            for (a, b), c in taught_trans.items()
+        },
+    )
 
     def rate(label: str, win: Optional[str] = None) -> Tuple[int, float, float]:
         rows = regimes[label]
@@ -444,7 +830,13 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "非金控＋次產業也升",
         "非金控＋檔本身買超",
         "非金控＋買超剛轉正",
-    ]
+        "主產業先機",
+        "次產業先機",
+        "電子細項先機",
+        "教過族群先機",
+        "細項剩餘第2",
+        "細項剩餘第3",
+    ] + [lab for _k, _p, lab in BUCKETS]
     winners = [lab for lab in extras if beats(lab, g_np, s_np)]
     n1, g1, s1 = rate("非金控＋最落後1檔", "recent")
     print("\n=== 單檔 vs 最落後1檔近100 ===")
@@ -502,6 +894,33 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
     print(f"WINNERS buys={lz_winners}")
     n_lv, g_lv, s_lv = rate("昨天第一名今天佔比在退", "recent")
     skip_park = n_np >= 20 and g_np >= g_pre + 1.0
+    n_main, g_main, s_main = rate("主產業先機", "recent")
+    n_mid, g_mid, s_mid = rate("次產業先機", "recent")
+    n_el, g_el, s_el = rate("電子細項先機", "recent")
+    n_tg, g_tg, s_tg = rate("教過族群先機", "recent")
+    n_as, g_as, s_as = rate("ASIC先機", "recent")
+    rank_unit = "fine"
+    if "次產業先機" in winners:
+        rank_unit = "mid"
+    elif "主產業先機" in winners:
+        rank_unit = "main"
+    prefer_taught = "教過族群先機" in winners
+    prefer_asic = "ASIC先機" in winners
+    prefer_elec = "電子細項先機" in winners
+    lag_n = int(seq.get("recent_n") or 0)
+    lag_first_rate = (
+        100.0 * seq["recent_lag_first"] / lag_n if lag_n else 0.0
+    )
+    lead_first_rate = (
+        100.0 * seq["recent_lead_first"] / lag_n if lag_n else 0.0
+    )
+    rev_n = int(rev.get("recent_n") or 0)
+    rev_cover = (
+        100.0 * rev["recent_rising_not1"] / rev_n if rev_n else 0.0
+    )
+    rev_caught = (
+        100.0 * rev["recent_caught"] / rev_n if rev_n else 0.0
+    )
     return {
         "cap": chip100[-1] if chip100 else "",
         "window": [chip100[0], chip100[-1]] if len(chip100) >= 2 else list(chip100),
@@ -516,6 +935,12 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "require_net_turn": "非金控＋買超剛轉正" in winners,
         "pick_max_net": "非金控＋檔本身買超1檔" in one_winners,
         "lz_require_net": bool(lz_net_ok),
+        "rank_unit": rank_unit,
+        "prefer_taught": prefer_taught,
+        "prefer_asic": prefer_asic,
+        "prefer_elec": prefer_elec,
+        "seq": seq,
+        "rev": rev,
         "rates": {
             "chase": {"n": n_ch, "gain": g_ch, "stuck": s_ch},
             "pre": {"n": n_pre, "gain": g_pre, "stuck": s_pre},
@@ -523,6 +948,21 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             "no_park": {"n": n_np, "gain": g_np, "stuck": s_np},
             "lz_each": {"n": bn, "gain": bg, "stuck": bs},
             "lz_each_20": {"n": n20, "gain": g20, "stuck": s20},
+            "main": {"n": n_main, "gain": g_main, "stuck": s_main},
+            "mid": {"n": n_mid, "gain": g_mid, "stuck": s_mid},
+            "elec": {"n": n_el, "gain": g_el, "stuck": s_el},
+            "taught": {"n": n_tg, "gain": g_tg, "stuck": s_tg},
+            "asic": {"n": n_as, "gain": g_as, "stuck": s_as},
+            "seq_recent": {
+                "n": lag_n,
+                "lag_first": round(lag_first_rate, 1),
+                "lead_first": round(lead_first_rate, 1),
+            },
+            "rev_recent": {
+                "n": rev_n,
+                "rising_not1": round(rev_cover, 1),
+                "caught": round(rev_caught, 1),
+            },
         },
     }
 

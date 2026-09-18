@@ -985,6 +985,28 @@ def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
     assert "細項" in blob
 
 
+def test_dongzhu_chain_bucket_maps_asic_ship_chem_not_defense():
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts"))
+    from dongzhu_precursor import MISSING_BUCKETS, chain_bucket, is_elec_chain
+
+    assert chain_bucket("電子上游-IP/ASIC") == "asic"
+    assert chain_bucket("傳產-航運") == "ship"
+    assert chain_bucket("傳產-塑膠") == "chem"
+    assert chain_bucket("傳產-化學工業") == "chem"
+    assert chain_bucket("電子下游-電信服務") == "tel"
+    assert chain_bucket("傳產-營建") == "build"
+    assert chain_bucket("電子中游-散熱零組件") == "cool"
+    assert chain_bucket("電子上游-記憶體製造") == "mem"
+    assert chain_bucket("傳產-電機") == ""
+    assert chain_bucket("電子下游-消費電子") == ""
+    assert is_elec_chain("電子下游-電信服務")
+    assert not is_elec_chain("傳產-航運")
+    assert any("軍工" in x and "不發明" in x for x in MISSING_BUCKETS)
+
+
 def test_parking_chain_flags_holding_and_bank():
     from biaoke_field_scan import _is_parking_chain
 
