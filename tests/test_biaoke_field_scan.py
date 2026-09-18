@@ -482,6 +482,8 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     screen = (root / "screening_engine.py").read_text(encoding="utf-8")
     assert "from biaoke_field_scan import record_dongzhu_flow" not in money
     assert "record_dongzhu_flow" in runner
+    assert "refresh_dongzhu_judgment" in runner
+    assert "dongzhu_judge" in runner
     assert "recompute_sector_flow" in runner
     assert "from biaoke_" not in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
@@ -949,6 +951,38 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     assert "台股資金輪動" in html
     assert "不是整層電子" in html
     assert "人去樓空" in html
+
+
+def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
+    db = str(tmp_path / "p.db")
+    sqlite3.connect(db).close()
+    from biaoke_field_scan import (
+        live_dongzhu_flags,
+        rotation_notice_lines,
+        store_dongzhu_precursor,
+    )
+
+    store_dongzhu_precursor(
+        db,
+        "20260917",
+        {
+            "skip_parking": True,
+            "prefer_rising_not_lead": True,
+            "skip_leaving_hot": True,
+            "rates": {
+                "no_park": {"n": 80, "gain": 80.0, "stuck": 1.2},
+                "pre": {"n": 75, "gain": 70.7, "stuck": 4.0},
+                "chase": {"n": 68, "gain": 55.9, "stuck": 4.4},
+            },
+        },
+    )
+    flags = live_dongzhu_flags(db)
+    assert flags["skip_parking"] is True
+    assert flags["prefer_rising_not_lead"] is True
+    blob = "".join(rotation_notice_lines(db))
+    assert "約80%" in blob
+    assert "停車格" in blob
+    assert "細項" in blob
 
 
 def test_parking_chain_flags_holding_and_bank():

@@ -11,7 +11,7 @@ import os
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
@@ -65,11 +65,11 @@ def just_left_zero(bars: Sequence[Tuple], cap: str) -> bool:
     return prev <= LZ_MIN and LZ_MIN < today <= LZ_MAX
 
 
-def main() -> None:
+def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
     import sqlite3
 
     print(f"LOOKBACK={LOOKBACK} FWD={FWD} PRE_VS20={PRE_VS20} LZ={LZ_MIN}..{LZ_MAX}")
-    conn = sqlite3.connect(DB)
+    conn = sqlite3.connect(db_path or DB)
     meta = load(conn, lookback=0)
     conn.close()
     chip100: List[str] = meta["chip100"]
@@ -469,6 +469,45 @@ def main() -> None:
     )
     print(f"逐檔後20日 勝{g20:.1f} 套{s20:.1f} n={n20}")
     print(f"WINNERS buys={lz_winners}")
+    n_lv, g_lv, s_lv = rate("昨天第一名今天佔比在退", "recent")
+    skip_park = n_np >= 20 and g_np >= g_pre + 1.0
+    return {
+        "cap": chip100[-1] if chip100 else "",
+        "window": [chip100[0], chip100[-1]] if len(chip100) >= 2 else list(chip100),
+        "recent_from": recent_from,
+        "prefer_rising_not_lead": n_pre >= 20 and g_pre >= g_ch,
+        "skip_leaving_hot": n_lv >= 15 and (g_lv + 1.0 < g_pre or s_lv > s_pre),
+        "skip_parking": skip_park if n_np >= 20 else None,
+        "incr_winners": winners,
+        "buy_winners": lz_winners,
+        "rates": {
+            "chase": {"n": n_ch, "gain": g_ch, "stuck": s_ch},
+            "pre": {"n": n_pre, "gain": g_pre, "stuck": s_pre},
+            "leave": {"n": n_lv, "gain": g_lv, "stuck": s_lv},
+            "no_park": {"n": n_np, "gain": g_np, "stuck": s_np},
+            "lz_each": {"n": bn, "gain": bg, "stuck": bs},
+            "lz_each_20": {"n": n20, "gain": g20, "stuck": s20},
+        },
+    }
+
+
+def refresh_dongzhu_judgment(db_path: str, cap: str = "") -> Dict[str, Any]:
+    """盤後官方收齊後重跑走查，寫回庫。n 不夠沿用上一筆旗標。"""
+    from biaoke_field_scan import load_dongzhu_precursor, store_dongzhu_precursor
+
+    prev = load_dongzhu_precursor(db_path)
+    result = analyze(db_path)
+    if result.get("skip_parking") is None:
+        result["skip_parking"] = bool(prev.get("skip_parking", True))
+    as_of = str(cap or result.get("cap") or "")[:8]
+    result["cap"] = as_of or str(result.get("cap") or "")
+    if result.get("cap"):
+        store_dongzhu_precursor(db_path, result["cap"], result)
+    return result
+
+
+def main() -> None:
+    refresh_dongzhu_judgment(os.environ.get("WAYNE_DB") or DB)
 
 
 if __name__ == "__main__":

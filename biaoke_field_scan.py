@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from collections import defaultdict
@@ -138,8 +139,25 @@ ROTATION_NOTES = (
 )
 
 
-def rotation_notice_lines() -> List[str]:
-    return list(ROTATION_NOTES)
+def rotation_notice_lines(db_path: str = "") -> List[str]:
+    notes = list(ROTATION_NOTES)
+    d = load_dongzhu_precursor(db_path) if db_path else {}
+    rates = (d or {}).get("rates") or {}
+    np_ = rates.get("no_park") or {}
+    pre = rates.get("pre") or {}
+    ch = rates.get("chase") or {}
+    if int(np_.get("n") or 0) < 20:
+        return notes
+    g = float(np_.get("gain") or 0)
+    gpre = float(pre.get("gain") or 0)
+    gch = float(ch.get("gain") or 0)
+    notes[2] = (
+        "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機"
+        f"（回測略過停車格後細項次級有人後10日漲停或≥8%約{g:.0f}%；"
+        f"含停車格約{gpre:.0f}%；追第一名約{gch:.0f}%）。"
+        f"這{g:.0f}%是細項、不是單檔保證。"
+    )
+    return notes
 
 
 def want_field_scan(ask: str) -> bool:
@@ -545,6 +563,95 @@ def ensure_dongzhu_flow_table(db_path: str) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+_PRECURSOR_MEMO: Dict[str, Dict[str, Any]] = {}
+
+
+def ensure_dongzhu_precursor_table(db_path: str) -> None:
+    if not db_path:
+        return
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dongzhu_precursor (
+                cap TEXT PRIMARY KEY,
+                ran_at TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def store_dongzhu_precursor(db_path: str, cap: str, payload: Dict[str, Any]) -> None:
+    if not db_path or not cap:
+        return
+    ensure_dongzhu_precursor_table(db_path)
+    blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO dongzhu_precursor (cap, ran_at, payload) VALUES (?,?,?)",
+            (str(cap)[:8], datetime_now_iso(), blob),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    _PRECURSOR_MEMO.pop(str(db_path), None)
+
+
+def datetime_now_iso() -> str:
+    from datetime import datetime
+
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def load_dongzhu_precursor(db_path: str) -> Dict[str, Any]:
+    if not db_path:
+        return {}
+    hit = _PRECURSOR_MEMO.get(str(db_path))
+    if hit is not None:
+        return hit
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        row = conn.execute(
+            "SELECT cap, payload FROM dongzhu_precursor ORDER BY cap DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.Error:
+        _PRECURSOR_MEMO[str(db_path)] = {}
+        return {}
+    finally:
+        conn.close()
+    if not row:
+        _PRECURSOR_MEMO[str(db_path)] = {}
+        return {}
+    try:
+        data = json.loads(row[1] or "{}")
+    except (TypeError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["cap"] = str(row[0] or data.get("cap") or "")
+    _PRECURSOR_MEMO[str(db_path)] = data
+    return data
+
+
+def live_dongzhu_flags(db_path: str) -> Dict[str, bool]:
+    d = load_dongzhu_precursor(db_path)
+    def _flag(key: str, default: bool) -> bool:
+        if key in d and d[key] is not None:
+            return bool(d[key])
+        return default
+
+    return {
+        "prefer_rising_not_lead": _flag("prefer_rising_not_lead", PREFER_NOT_LEAD),
+        "skip_leaving_hot": _flag("skip_leaving_hot", SKIP_LEAVING_HOT),
+        "skip_parking": _flag("skip_parking", SKIP_PARKING),
+    }
 
 
 def _quote_dates(conn: sqlite3.Connection, cap: str, n: int = 10) -> List[str]:
@@ -1315,11 +1422,13 @@ def _is_parking_chain(ign: Dict[str, Any]) -> bool:
     return any(n in blob for n in PARKING_NEEDLES)
 
 
-def _precursor_sign(ign: Dict[str, Any], *, has_rival: bool) -> str:
+def _precursor_sign(
+    ign: Dict[str, Any], *, has_rival: bool, prefer_not_lead: bool = PREFER_NOT_LEAD
+) -> str:
     """pre＝佔比升還沒當第一；chase＝已是當天第一；leaving＝人去樓空。"""
     if ign.get("leaving"):
         return "leaving"
-    if PREFER_NOT_LEAD and ign.get("is_lead_today") and has_rival:
+    if prefer_not_lead and ign.get("is_lead_today") and has_rival:
         return "chase"
     return "pre"
 
@@ -1608,6 +1717,10 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     ranked: List[Dict[str, Any]] = []
     pre_sign = ""
     has_rival = False
+    flags = live_dongzhu_flags(db_path)
+    prefer_not = flags["prefer_rising_not_lead"]
+    skip_leave = flags["skip_leaving_hot"]
+    skip_park = flags["skip_parking"]
     if unnamed_pos:
         by_share = sorted(
             unnamed_pos,
@@ -1615,7 +1728,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             reverse=True,
         )
         has_rival = len(by_share) >= 2
-        not_lead = by_share[1:8] if PREFER_NOT_LEAD else []
+        not_lead = by_share[1:8] if prefer_not else []
         seen: set = set()
         picked = None
 
@@ -1629,9 +1742,9 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                     continue
                 seen.add(cid)
                 ign = cand["ign"]
-                if not allow_leave and SKIP_LEAVING_HOT and _share_rotating_out(ign):
+                if not allow_leave and skip_leave and _share_rotating_out(ign):
                     continue
-                if not allow_leave and SKIP_PARKING and _is_parking_chain(ign):
+                if not allow_leave and skip_park and _is_parking_chain(ign):
                     continue
                 g0 = _fill_leaders(db_path, cand["group"], cap)
                 cand["group"] = g0
@@ -1656,9 +1769,11 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             flow_hit["pre_late"] = True
         else:
             flow_hit["pre_late"] = False
-        pre_sign = _precursor_sign(flow_hit["ign"], has_rival=has_rival)
+        pre_sign = _precursor_sign(
+            flow_hit["ign"], has_rival=has_rival, prefer_not_lead=prefer_not
+        )
         flow_hit["pre_sign"] = pre_sign
-        skipped_park = SKIP_PARKING and any(
+        skipped_park = skip_park and any(
             _is_parking_chain(c["ign"]) for c in not_lead
         )
         flow_hit["skipped_park"] = skipped_park
@@ -1667,7 +1782,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
         for cand in pool:
-            if SKIP_PARKING and _is_parking_chain(cand["ign"]):
+            if skip_park and _is_parking_chain(cand["ign"]):
                 continue
             if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
                 flow_hit = cand
@@ -1917,7 +2032,7 @@ def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
     except Exception:
         return ""
     lines = ["＝＝台股資金輪動＝＝"]
-    lines.extend(_esc(x) for x in rotation_notice_lines())
+    lines.extend(_esc(x) for x in rotation_notice_lines(db_path))
     board = str(data.get("inflow_board") or "").strip()
     win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
     if board:
@@ -2203,7 +2318,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     blocks.append(
         _blk(
             "<b>資金輪動要注意</b>",
-            *(_esc(x) for x in rotation_notice_lines()),
+            *(_esc(x) for x in rotation_notice_lines(db_path)),
         )
     )
     field = str(data.get("field") or "")

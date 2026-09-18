@@ -19,6 +19,7 @@
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
+#      接著重跑洞燭先機走查（佔比升還沒第一 vs 停車格 vs 黃金買點），寫進 dongzhu_precursor
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
@@ -400,6 +401,21 @@ class MainRunner:
             logger.info("洞燭先機資金帶寫入 %s 列", n_dz)
         except Exception as e:
             logger.error("洞燭先機資金帶失敗: %s", e, exc_info=True)
+        try:
+            from dongzhu_judge import refresh_dongzhu_judgment
+
+            judged = refresh_dongzhu_judgment(self.db_path, fuse_to)
+            rates = (judged or {}).get("rates") or {}
+            np_ = rates.get("no_park") or {}
+            logger.info(
+                "洞燭先機走查 cap=%s skip_parking=%s 非金控勝%s n=%s",
+                judged.get("cap"),
+                judged.get("skip_parking"),
+                np_.get("gain"),
+                np_.get("n"),
+            )
+        except Exception as e:
+            logger.error("洞燭先機走查失敗: %s", e, exc_info=True)
 
         try:
             from emerging_quotes import sync_emerging_quotes
