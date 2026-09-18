@@ -418,9 +418,12 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     root = Path(__file__).resolve().parents[1]
     money = (root / "money_flow.py").read_text(encoding="utf-8")
     runner = (root / "main_runner.py").read_text(encoding="utf-8")
+    screen = (root / "screening_engine.py").read_text(encoding="utf-8")
     assert "from biaoke_field_scan import record_dongzhu_flow" not in money
     assert "record_dongzhu_flow" in runner
     assert "recompute_sector_flow" in runner
+    assert "from biaoke_" not in screen
+    assert "from dongzhu_screen import rotation_screen_block" in screen
 
 
 def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch):

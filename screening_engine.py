@@ -2265,7 +2265,7 @@ def execute_full_screening(
             rotated_names=just_rotated_names_in_results(results, rot_keys),
         )
         try:
-            from biaoke_field_scan import rotation_screen_block
+            from dongzhu_screen import rotation_screen_block
 
             rot = rotation_screen_block(engine.db_path)
             if rot:
