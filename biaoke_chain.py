@@ -646,11 +646,26 @@ def _nest(db_path: str, ask: str) -> Dict[str, Any]:
     return out
 
 
-def _field(ask: str, brief: Dict[str, Any]) -> Dict[str, Any]:
+def _field(ask: str, brief: Dict[str, Any], db_path: str = "") -> Dict[str, Any]:
     """第 2 顆只講產業／主戰場。長抱 vs 進出留給第 5 顆，不准兩顆各貼一次。"""
     bits: List[str] = []
     sid = str(brief.get("sid") or "")
     named = bool(sid)
+    try:
+        from biaoke_field_scan import scan_unnamed_field, want_field_scan
+
+        if want_field_scan(ask):
+            bits.append(scan_unnamed_field(db_path, ask=ask))
+            try:
+                from biaoke_mind import match_methods
+
+                for title, body in match_methods(ask, limit=2):
+                    if title in ("洞燭先機", "次族群第一名"):
+                        bits.append(_clip(body, 220))
+            except Exception:
+                pass
+    except Exception:
+        pass
     want_trend = any(
         k in (ask or "")
         for k in (
@@ -1793,7 +1808,7 @@ def fire_chain(db_path: str, ask: str, uid: str = "") -> Dict[str, Any]:
     nest = _nest(db_path, q)
     steps = [
         nest,
-        _field(q, brief),
+        _field(q, brief, db_path=db_path),
         _leader(brief, named=named),
         _tape(brief, named=named, db_path=db_path),
         _hold(brief, q, named=named, db_path=db_path, uid=uid),

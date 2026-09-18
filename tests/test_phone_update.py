@@ -18,7 +18,7 @@ def test_update_note_is_feature_name():
     assert "," not in note
     title = phone_update_title()
     assert title.endswith("的更新")
-    assert title == "主選單拿掉說明與精簡的更新"
+    assert title == "用他教過的方法找還沒點名的族群的更新"
 
 
 def test_notice_and_health_share_chinese_and_sha(monkeypatch):
