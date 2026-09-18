@@ -55,7 +55,7 @@ def equity_ok(sid: str, name: str) -> bool:
         return True
 
 
-def load(conn: sqlite3.Connection) -> Dict[str, Any]:
+def load(conn: sqlite3.Connection, lookback: Optional[int] = None) -> Dict[str, Any]:
     chip = [
         _ymd(r[0])
         for r in conn.execute(
@@ -75,8 +75,11 @@ def load(conn: sqlite3.Connection) -> Dict[str, Any]:
             "SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') d FROM daily_quotes ORDER BY d DESC"
         )
     ]
-    chip100 = sorted(chip[:LOOKBACK])
-    want_from = quotes[min(len(quotes) - 1, LOOKBACK + 80)]
+    take_n = LOOKBACK if lookback is None else int(lookback)
+    if take_n <= 0:
+        take_n = len(chip)
+    chip100 = sorted(chip[:take_n])
+    want_from = quotes[min(len(quotes) - 1, take_n + 80)]
     fine: Dict[str, str] = {}
     members: Dict[str, List[str]] = defaultdict(list)
     names: Dict[str, str] = {}

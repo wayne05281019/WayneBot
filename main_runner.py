@@ -19,6 +19,7 @@
 #   2. 上市 MI_INDEX ＋ 上櫃收盤 → daily_quotes 價量
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
+#      接著重跑洞燭先機走查（佔比升還沒第一 vs 停車格 vs 黃金買點），寫進 dongzhu_precursor
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
@@ -400,6 +401,16 @@ class MainRunner:
             logger.info("洞燭先機資金帶寫入 %s 列", n_dz)
         except Exception as e:
             logger.error("洞燭先機資金帶失敗: %s", e, exc_info=True)
+        try:
+            from import_health import audit_import
+
+            dz_health = audit_import(self.db_path, fuse_to)
+            if self._increment_ok(dz_health):
+                self._refresh_dongzhu_after_close(fuse_to)
+            else:
+                logger.info("洞燭先機走查等盤後齊（匯入可能延遲）：%s", dz_health)
+        except Exception as e:
+            logger.error("洞燭先機走查失敗: %s", e, exc_info=True)
 
         try:
             from emerging_quotes import sync_emerging_quotes
@@ -729,6 +740,30 @@ class MainRunner:
 
         return increment_health_ok(health)
 
+    def _refresh_dongzhu_after_close(self, cap: str = "") -> Dict[str, Any]:
+        """盤後日K＋法人齊了才重算洞燭。捕捉是機制內任何一檔，不鎖矽格。匯入晚到不准用未收完柱。"""
+        from dongzhu_judge import refresh_dongzhu_judgment
+
+        judged = refresh_dongzhu_judgment(self.db_path, cap) or {}
+        if judged.get("skipped"):
+            logger.info(
+                "洞燭先機走查略過 skipped=%s want=%s complete=%s",
+                judged.get("skipped"),
+                judged.get("want"),
+                judged.get("complete"),
+            )
+            return judged
+        rates = judged.get("rates") or {}
+        np_ = rates.get("no_park") or {}
+        logger.info(
+            "洞燭先機走查 cap=%s skip_parking=%s 非金控勝%s n=%s",
+            judged.get("cap"),
+            judged.get("skip_parking"),
+            np_.get("gain"),
+            np_.get("n"),
+        )
+        return judged
+
     @staticmethod
     def _screening_delivered(screening: Optional[Dict[str, Any]]) -> bool:
         """海選有產出可推播的 payload（成功或空桶），不是例外中斷。"""
@@ -998,6 +1033,13 @@ class MainRunner:
                 self.fetcher.update_daily_market_data(cap)
                 if hasattr(self.fetcher, "sync_paired_markets"):
                     self.fetcher.sync_paired_markets()
+                try:
+                    from chips import backfill_chips, update_chips_for_date
+
+                    update_chips_for_date(self.db_path, cap)
+                    backfill_chips(self.db_path, days=5)
+                except Exception as e_chip:
+                    logger.warning("補齊輪法人再抓略過：%s", e_chip)
                 health = audit_import(self.db_path, cap)
                 if self._increment_ok(health):
                     break
@@ -1017,6 +1059,10 @@ class MainRunner:
             f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
         )
         logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
+        try:
+            self._refresh_dongzhu_after_close(cap)
+        except Exception as e_dz:
+            logger.error("盤後齊了但洞燭走查失敗: %s", e_dz, exc_info=True)
         if notify:
             try:
                 self._broadcast_family(self._fuse_done_message(cap, health))

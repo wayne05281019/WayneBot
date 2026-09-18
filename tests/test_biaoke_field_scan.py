@@ -81,8 +81,8 @@ def test_scan_picks_test_laggard_not_named_asic(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     line = scan_unnamed_field(db, ask="根據我的指引去找")
     assert "高階測試／封測" in line
-    assert "矽格" in line
-    assert "6257" in line
+    assert "京元電子" in line or "2449" in line
+    assert "6257" not in line
     assert "穎崴" in line
     assert "還沒先過前高" in line
     assert "ASIC" in line and "不當新族群" in line
@@ -126,7 +126,8 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "主產業" in html and "電子上游" in html
     assert "次產業" in html and "IC" in html
     assert "封測" in html
-    assert "細項" not in html
+    assert "電子細項" in html
+    assert "判斷單位" not in html
     assert "次級" in html
     assert "比價" in html
     assert "此刻推薦" in html
@@ -135,11 +136,19 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "人去樓空" in html
     assert "黃金買點" in html
     assert "勝率 70.8%" in html
-    buy_lines = [
-        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln and "買點" in ln
-    ]
-    assert buy_lines
-    assert all("勝率 70.8%" in ln for ln in buy_lines)
+    assert "誰先過前高" in html
+    assert "盤中未收不當官方收" in html
+    assert "每檔先寫買或不買" in html
+    assert "可買" in html
+    name_i = html.find("6257")
+    assert name_i >= 0
+    nearby = html[name_i : name_i + 80]
+    assert "可買" in nearby
+    assert "點左邊選" in nearby
+    watch_i = html.find("京元電子")
+    assert watch_i >= 0
+    watch_near = html[watch_i : watch_i + 80]
+    assert "不買" in watch_near or "只觀察" in watch_near
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -165,7 +174,7 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "③ " in html
     assert "每天流入第一名：" not in html
     name_lines = [
-        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln
+        ln for ln in html.split("\n") if "2449" in ln and "京元電子" in ln
     ]
     assert name_lines
     assert all("近5日法人" not in ln for ln in name_lines)
@@ -185,6 +194,128 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "洞燭先機進行中" in hold_src[hold_i:hold_end]
     assert "_leave_zero_section_keyboard" not in hold_src[page_i:page_end]
     assert "_dongzhu_picks_keyboard" in hold_src[page_i:page_end]
+    assert "held_sids" in hold_src[page_i:page_end]
+    assert "_dongzhu_held_sids" in hold_src[page_i:page_end]
+    assert "held=" in hold_src[hold_i:hold_end]
+
+
+def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch):
+    import re
+
+    from tg_layout import reflow_telegram_html
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    phone = reflow_telegram_html(html)
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        assert not re.search(r"\d,$", s)
+        assert s not in ("IC／", "電子上游／IC／")
+        assert len(re.sub(r"<[^>]+>", "", s)) <= 18 or s.startswith("┈")
+    assert "對五件" not in phone
+    assert "誰先過前高" in phone
+    assert "第一名還沒過前高" not in phone
+    assert "捕捉・最落後次級" in phone or "捕捉" in phone
+    assert "佔比如實主判" in phone
+    assert "可買" in phone or "不買" in phone
+    assert "落後·次級" not in phone
+    assert "電子上游 / IC /" not in phone
+    assert "電子上游／IC／" not in phone
+
+
+def test_dongzhu_stock_card_held_says_keep_or_not(tmp_path, monkeypatch):
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "pick_close": 222.5}],
+            "golden_buy": [{"stock_id": "2449", "stock_name": "京元電子", "pick_close": 80.0}],
+        },
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db, held_sids=["6257", "2449"])
+    buy_chunk = html[html.find("6257") : html.find("6257") + 120]
+    watch_chunk = html[html.find("2449") : html.find("2449") + 120]
+    assert "已持有" in buy_chunk
+    assert "可留" in buy_chunk
+    assert "可加碼" in buy_chunk
+    assert "已持有" in watch_chunk
+    assert "不加碼" in watch_chunk
+    empty = dongzhu_page(db, held_sids=[])
+    assert "可加碼" not in empty
+    assert "\n已持有\n" not in empty
+
+
+def test_dongzhu_hold_page_action_before_numbers(tmp_path, monkeypatch):
+    from tg_layout import reflow_telegram_html
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_hold_page
+
+    html = dongzhu_hold_page(db, "6257", held=True)
+    phone = reflow_telegram_html(html)
+    lines = [ln.strip() for ln in phone.split("\n") if ln.strip()]
+    text = "\n".join(lines)
+    assert "已持有" in text
+    assert "不買" in text
+    assert "不加碼" in text
+    i_name = next(i for i, ln in enumerate(lines) if "6257" in ln)
+    i_act = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.replace("<b>", "").replace("</b>", "")
+        in ("還沒", "可留", "可留觀察", "不留", "偏晚")
+    )
+    assert i_name < i_act
+
+
+def test_flow_why_phone_lines_keep_lots_intact():
+    from tg_layout import reflow_telegram_html
+
+    from biaoke_field_scan import _flow_why_lines, _sibling_phone_lines
+
+    ign = {
+        "fine_tag": "封測",
+        "shares": [4.4, 4.8, 0.7, 2.5, 12.2],
+        "share_last": 12.2,
+        "share_chg": 9.7,
+        "share_up": 7.8,
+        "nets": [17714, 9461, 4288, 20712, 85409],
+        "cum5": 137584,
+        "pos_member": 23,
+        "member_n": 29,
+        "flowing_in": True,
+        "slow_in": True,
+        "last": 85409,
+    }
+    html = "\n".join(_flow_why_lines(ign))
+    phone = reflow_telegram_html(html)
+    plain = "\n".join(
+        ln.strip() for ln in phone.split("\n") if ln.strip()
+    )
+    assert "＋85,409張" in plain
+    assert "＋137,584張" in plain
+    assert "12.2" in plain
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        assert s not in ("＋85,40", "9")
+        assert not s.startswith("%")
+        assert len(s) <= 18 or s.startswith("┈")
+    sib = _sibling_phone_lines(
+        "同主產業 IC／代工 23.0%（升）｜記憶體製造 13.4%（升）｜IC／封測 12.2%（升）"
+        "｜被動元件 3.3%（升）｜LED照明及光元件 2.9%（升）"
+    )
+    sib_phone = reflow_telegram_html("\n".join(sib))
+    assert "IC／" not in sib_phone.split("\n")
+    assert "IC／代工 23.0%（升）" in sib_phone or "IC／代工" in sib_phone
+
 
 
 def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -198,6 +329,7 @@ def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
     html = dongzhu_hold_page(db, "6257")
     assert DASH_LINE in html
     assert "能不能留" in html
+    assert "不買" in html or "可買" in html
     assert "判斷單位" not in html
     assert "沒打準" not in html
     assert "再打下一檔" not in html
@@ -218,7 +350,7 @@ def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     assert "沒有黃金買點" in html
     assert "不准發明切入" in html
     assert "3443" not in html
-    assert "矽格" in html
+    assert "京元電子" in html or "2449" in html
     assert "不是買訊" in html
 
 
@@ -269,7 +401,7 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert asic_ign["cum5"] > test_ign["cum5"]
     html = dongzhu_page(db)
     assert "高階測試／封測" in html
-    assert "資金流入" in html or "佔比在升" in html or "流入這產業鏈" in html
+    assert "資金流入" in html or "佔比" in html or "先機" in html
     assert "資金進出" in html or "佔當日" in html or "產業鏈" in html or "封測" in html
     assert "6257" in html and "矽格" in html
     assert "3443" not in html
@@ -371,14 +503,12 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert "封測" in html or "產業鏈" in html or "主產業" in html
     assert "%" in html
     assert "pt" in html or "佔" in html
-    assert "對五件" in html
     assert "6257" in html
     assert "3443" not in html
-    assert "資金流入" in html or "佔比在升" in html
-    assert "只參考" in html or "不是唯一" in html
+    assert "資金流入" in html or "佔比" in html or "先機" in html
+    assert "只參考" in html or "不是唯一" in html or "不是買訊" in html
     assert "不准發明切入" not in html
     assert "主產業" in html
-    assert "同主產業" in html
     assert "次級" in html or "龍頭" in html
     assert "比價" in html or "龍頭" in html
 
@@ -490,13 +620,38 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     screen = (root / "screening_engine.py").read_text(encoding="utf-8")
     assert "from biaoke_field_scan import record_dongzhu_flow" not in money
     assert "record_dongzhu_flow" in runner
+    assert "refresh_dongzhu_judgment" in runner
+    assert "dongzhu_judge" in runner
+    assert "_refresh_dongzhu_after_close" in runner
+    assert "匯入可能延遲" in runner
     assert "recompute_sector_flow" in runner
     assert "from biaoke_" not in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
 
 
+def test_dongzhu_judgment_waits_for_late_import(tmp_path, monkeypatch):
+    db = str(tmp_path / "j.db")
+    sqlite3.connect(db).close()
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260916"
+    )
+    from dongzhu_judge import refresh_dongzhu_judgment
+
+    out = refresh_dongzhu_judgment(db, "20260917")
+    assert out.get("skipped") == "quotes_incomplete"
+    assert out.get("want") == "20260917"
+    assert out.get("complete") == "20260916"
+
+    monkeypatch.setattr(
+        "import_health.latest_complete_quote_date", lambda *_a, **_k: "20260917"
+    )
+    monkeypatch.setattr("biaoke_field_scan._chip_cap", lambda *_a, **_k: "")
+    out2 = refresh_dongzhu_judgment(db, "20260917")
+    assert out2.get("skipped") == "chips_incomplete"
+
+
 def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch):
-    """他只講 ASIC 是主戰場、沒說蠢蠢欲動；封測佔比已經最高 → 仍抓矽格／欣銓。"""
+    """他只講 ASIC 是主戰場、沒說蠢蠢欲動；封測佔比已經最高 → 主推封測，捕捉距20高最深次級。"""
     db = str(tmp_path / "f.db")
     _seed(db)
     conn = sqlite3.connect(db)
@@ -551,13 +706,22 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert "蠢蠢欲動" not in spoken
     data = dongzhu_picks(db, spoken=spoken)
     assert data.get("field") == "高階測試／封測"
-    sids = {x.get("sid") for x in (data.get("laggards") or [])}
-    assert "6257" in sids
-    assert "3264" in sids
+    lags = list(data.get("laggards") or [])
+    sids = [x.get("sid") for x in lags]
+    assert sids == ["2449", "3264"]
+    assert "6257" not in sids
+    assert "6515" not in sids and "6223" not in sids
+    assert all(str(x.get("role") or "") == "次級" for x in lags)
+    vs = [float(x["vs20"]) for x in lags]
+    assert vs == sorted(vs)
+    assert all(v <= -8.0 for v in vs)
+    assert len(lags) <= 3
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "6257" in html and "矽格" in html
+    assert "捕捉・最落後次級" in html
+    assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
+    assert "不是單檔保證" in html
     assert "蠢蠢欲動" not in spoken
     assert "不准發明切入" in html or "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
@@ -566,15 +730,17 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
 
 def test_dongzhu_window_is_100_chip_days():
     import biaoke_field_scan as m
-    from biaoke_field_scan import FLOW_LOOKBACK, PRE_VS20, SHARE_DAYS
+    from biaoke_field_scan import FLOW_LOOKBACK, LAG_CAPTURE_N, PRE_VS20, SHARE_DAYS
 
     assert FLOW_LOOKBACK == 100
     assert SHARE_DAYS == 5
     assert PRE_VS20 == -8.0
-    from biaoke_field_scan import PREFER_NOT_LEAD, SKIP_LEAVING_HOT
+    assert LAG_CAPTURE_N == 3
+    from biaoke_field_scan import PREFER_NOT_LEAD, SKIP_LEAVING_HOT, SKIP_PARKING
 
     assert PREFER_NOT_LEAD is True
     assert SKIP_LEAVING_HOT is True
+    assert SKIP_PARKING is True
     src = open(m.__file__, encoding="utf-8").read()
     assert "START_SHARE" not in src
     assert "START_PCT" not in src
@@ -721,7 +887,7 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
     assert "設計" in html
-    assert "資金窗近100個有法人日" in html
+    assert "官方收" in html
     assert "3443" not in html
     assert "不准發明切入" in html
     assert "次熱" in html
@@ -816,9 +982,8 @@ def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkey
     assert "高階測試／封測" in html
     assert "電信服務" not in html.split("此刻最像")[-1][:80]
     assert "6257" in html or "2449" in html
-    assert "資金窗近100個有法人日" in html
+    assert "官方收" in html
     assert "流入第一名" in html
-    assert "每天流入第一名" in html
 
 
 def test_dongzhu_hold_uses_stock_own_fine_not_electronics(tmp_path, monkeypatch):
@@ -957,3 +1122,214 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     assert "台股資金輪動" in html
     assert "不是整層電子" in html
     assert "人去樓空" in html
+
+
+def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
+    db = str(tmp_path / "p.db")
+    sqlite3.connect(db).close()
+    from biaoke_field_scan import (
+        live_dongzhu_flags,
+        rotation_notice_lines,
+        store_dongzhu_precursor,
+    )
+
+    store_dongzhu_precursor(
+        db,
+        "20260917",
+        {
+            "skip_parking": True,
+            "prefer_rising_not_lead": True,
+            "skip_leaving_hot": True,
+            "rates": {
+                "no_park": {"n": 80, "gain": 80.0, "stuck": 1.2},
+                "pre": {"n": 75, "gain": 70.7, "stuck": 4.0},
+                "chase": {"n": 68, "gain": 55.9, "stuck": 4.4},
+            },
+        },
+    )
+    flags = live_dongzhu_flags(db)
+    assert flags["skip_parking"] is True
+    assert flags["prefer_rising_not_lead"] is True
+    blob = "".join(rotation_notice_lines(db))
+    assert "約80%" in blob
+    assert "停車格" in blob
+    assert "細項" in blob
+
+
+def test_dongzhu_elec_pick_skips_shipping_plastic_build():
+    from biaoke_field_scan import _is_elec_pick
+
+    assert _is_elec_pick({"_layers": ("電子上游", "IC", "封測")})
+    assert _is_elec_pick({"_layers": ("電子下游", "電信服務")})
+    assert _is_elec_pick({"_layers": ("電子上游", "IP/ASIC")})
+    assert not _is_elec_pick({"_layers": ("傳產", "塑膠")})
+    assert not _is_elec_pick({"_layers": ("傳產", "航運")})
+    assert not _is_elec_pick({"_layers": ("傳產", "營建")})
+    assert not _is_elec_pick({"_layers": ("金融", "金控")})
+
+
+def test_dongzhu_taught_elec_excludes_shipping_plastic_telecom():
+    from biaoke_field_scan import _is_taught_elec
+
+    assert _is_taught_elec({"_layers": ("電子上游", "IP/ASIC")})
+    assert _is_taught_elec({"_layers": ("電子上游", "PCB", "製造")})
+    assert _is_taught_elec({"_layers": ("電子上游", "IC", "封測")})
+    assert not _is_taught_elec({"_layers": ("傳產", "航運")})
+    assert not _is_taught_elec({"_layers": ("傳產", "塑膠")})
+    assert not _is_taught_elec({"_layers": ("電子下游", "電信服務")})
+    assert not _is_taught_elec({"_layers": ("電子下游", "筆記型電腦")})
+
+
+def test_dongzhu_chain_bucket_maps_asic_ship_chem_not_defense():
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts"))
+    from dongzhu_precursor import MISSING_BUCKETS, chain_bucket, is_elec_chain
+
+    assert chain_bucket("電子上游-IP/ASIC") == "asic"
+    assert chain_bucket("傳產-航運") == "ship"
+    assert chain_bucket("傳產-塑膠") == "chem"
+    assert chain_bucket("傳產-化學工業") == "chem"
+    assert chain_bucket("電子下游-電信服務") == "tel"
+    assert chain_bucket("傳產-營建") == "build"
+    assert chain_bucket("電子中游-散熱零組件") == "cool"
+    assert chain_bucket("電子上游-記憶體製造") == "mem"
+    assert chain_bucket("傳產-電機") == ""
+    assert chain_bucket("電子下游-消費電子") == ""
+    assert is_elec_chain("電子下游-電信服務")
+    assert not is_elec_chain("傳產-航運")
+    assert any("軍工" in x and "不發明" in x for x in MISSING_BUCKETS)
+
+
+def test_parking_chain_flags_holding_and_bank():
+    from biaoke_field_scan import _is_parking_chain
+
+    assert _is_parking_chain(
+        {"fine_tag": "金控", "_field": "金控", "_layers": ("金融", "金控")}
+    )
+    assert _is_parking_chain(
+        {"fine_tag": "銀行", "_field": "銀行", "_layers": ("金融", "銀行")}
+    )
+    assert not _is_parking_chain(
+        {
+            "fine_tag": "封測",
+            "_field": "高階測試／封測",
+            "_layers": ("電子上游", "IC", "封測"),
+        }
+    )
+
+
+def test_dongzhu_skips_holding_company_parking(tmp_path, monkeypatch):
+    """金控佔比次高但當停車格；封測才是先機。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        try:
+            conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    last_day = datetime(2026, 9, 17)
+    n = 60
+
+    def add(sid, name, highs, last_close, last_vol, base_vol=1000.0):
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            if i < 40:
+                h, c, v = highs[0], highs[0] * 0.92, base_vol
+            elif i < n - 1:
+                h, c, v = highs[1], highs[1] * 0.96, base_vol
+            else:
+                h, c, v = highs[1] * 0.99, last_close, last_vol
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+            )
+
+    def add_flat(sid, name, px, vol):
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, px, px, px, px, int(vol), 0.0, 0, 0, 0),
+            )
+
+    add_flat("2412", "中華電", 128.0, 8000)
+    add_flat("3045", "台灣大", 124.5, 3000)
+    add_flat("4904", "遠傳", 105.0, 2500)
+    add("2881", "富邦金", (100.0, 95.0), 93.0, 8000.0, 4000.0)
+    add("2880", "華南金", (40.0, 38.0), 32.0, 2000.0)
+    add("2890", "永豐金", (50.0, 48.0), 42.0, 1500.0)
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    for sid, chain in (
+        ("2412", "電子下游-電信服務"),
+        ("3045", "電子下游-電信服務"),
+        ("4904", "電子下游-電信服務"),
+        ("2881", "金融-金控"),
+        ("2880", "金融-金控"),
+        ("2890", "金融-金控"),
+        ("6257", "電子上游-IC-封測"),
+        ("3264", "電子上游-IC-封測"),
+        ("2449", "電子上游-IC-封測"),
+    ):
+        conn.execute(
+            "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+            (sid, chain, "[]", "", "test", "2026-09-17"),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ]
+    chip_days = dates[-6:-1]
+    zero_day = dates[-1]
+    for i, day in enumerate(chip_days):
+        for sid, net in (("2412", 900), ("3045", 700), ("4904", 500)):
+            conn.execute(
+                "UPDATE daily_quotes SET foreign_net=? WHERE stock_id=? AND date=?",
+                (net + i * 40, sid, day),
+            )
+        for sid, net in (("2881", 400), ("2880", 250), ("2890", 180)):
+            conn.execute(
+                "UPDATE daily_quotes SET foreign_net=? WHERE stock_id=? AND date=?",
+                (net + i * 30, sid, day),
+            )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (200 + i * 50, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2449' AND date=?",
+            (80 + i * 20, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (400, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=0, trust_net=0, dealer_net=0 WHERE date=?",
+        (zero_day,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_picks
+
+    data = dongzhu_picks(db, spoken="")
+    assert data.get("field") == "高階測試／封測"
+    assert "金控" not in str(data.get("field") or "")
+    assert data.get("pre_ok") is True
+    html = dongzhu_page(db, spoken="")
+    assert "高階測試／封測" in html
+    assert "停車格" in html
+    assert "金控／銀行當停車格" in html or "不拿來當先機" in html

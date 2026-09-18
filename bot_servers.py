@@ -1581,6 +1581,21 @@ class WayneTelegramBot:
             ]
         ]
 
+    def _dongzhu_held_sids(self, uid: str):
+        """這人持股代號。偉權／哥哥分開，功能同一套。"""
+        try:
+            from wayne_db import get_user_portfolio
+
+            rows = get_user_portfolio(self.db_path, str(uid or "")) or []
+        except Exception:
+            return []
+        out = []
+        for r in rows:
+            sid = str((r or {}).get("stock_code") or (r or {}).get("stock_id") or "").strip()
+            if sid:
+                out.append(sid)
+        return out
+
     def _dongzhu_picks_keyboard(self, picks=None):
         rows = []
         for pair in list(picks or [])[:MAX_PICK_INLINE_ROWS]:
@@ -2956,8 +2971,9 @@ class WayneTelegramBot:
                 ),
             )
             try:
+                held = sid in set(self._dongzhu_held_sids(uid))
                 html = await asyncio.wait_for(
-                    asyncio.to_thread(dongzhu_hold_page, self.db_path, sid),
+                    asyncio.to_thread(dongzhu_hold_page, self.db_path, sid, held=held),
                     timeout=20.0,
                 )
             except asyncio.TimeoutError:
@@ -3025,8 +3041,9 @@ class WayneTelegramBot:
                 ),
             )
             try:
+                held_sids = self._dongzhu_held_sids(uid)
                 html = await asyncio.wait_for(
-                    asyncio.to_thread(dongzhu_page, self.db_path),
+                    asyncio.to_thread(dongzhu_page, self.db_path, held_sids=held_sids),
                     timeout=20.0,
                 )
             except asyncio.TimeoutError:
