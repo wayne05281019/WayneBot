@@ -114,22 +114,26 @@ _RULE_LINES = (
 )
 # 五天太薄。兩個月仍薄。官方資金窗＝近 100 個有法人日，每天只記流入／流出第一名。
 # 100 日簇內首漲停前一收：次級距20高中位 −8.6% → 簡化門檻 −8%。不鎖起點％、不發明 5／9。
-# 進場前徵兆（scripts/dongzhu_precursor.py，窗 20260424–20260915，次級 vs20≤−8% 且仍低於60高，後10個交易日官方收）：
-# 佔比升還沒當第一：漲停 54.2%／漲停或≥8% 70.8%
-# 追當天流入第一名：31.8%／56.1%
-# 昨天第一名今天佔比在退：30.4%／55.4%＝人去樓空，不推買
+# 進場前徵兆（scripts/dongzhu_precursor.py，窗 20260428–20260917，次級 vs20≤−8% 且仍低於60高，後10個交易日官方收）：
+# 佔比升還沒當第一：漲停 54.3%／漲停或≥8% 71.4% n=70 套 4.3%
+# 同上且略過金控／銀行停車格：62.7%／80.0% n=75 套 1.3% ← 編碼
+# 追當天流入第一名：29.7%／54.7% n=64
+# 昨天第一名今天佔比在退：29.1%／54.5% n=55＝人去樓空，不推買
+# 未編碼（n≥20 但沒贏基線）：佔比升最多 67.1%；升≥1pt 67.1%；連升兩日 63.2%；volr≥1.2 51.1%；vs20≤−12 70.5%；龍頭未過20高 71.4%
 FLOW_LOOKBACK = 100
 SHARE_DAYS = 5
 MIN_CHAIN_N = 3
 PRE_VS20 = -8.0
 PREFER_NOT_LEAD = True
 SKIP_LEAVING_HOT = True
+SKIP_PARKING = True
+PARKING_NEEDLES = ("金控", "銀行")
 # 話筒／海選共用：資金輪動要注意（100法人日走查鎖死）。
 ROTATION_NOTES = (
     "看主產業／次產業／細項，不是整層電子。",
     "近100日多數流入第一名只當1天；追當天第一名容易買在人去樓空。",
-    "先機＝佔比升還沒當第一、次級距20高≤−8%（回測這型後10日漲停或≥8%約七成；追第一名約五成六）。",
-    "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。金控常當停車格。",
+    "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後後10日漲停或≥8%約八成；含停車格約七成；追第一名約五成五）。",
+    "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。",
     "新買只認高低卡黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
 )
 
@@ -1298,6 +1302,19 @@ def _share_rotating_out(ign: Dict[str, Any]) -> bool:
     return float(ign.get("share_chg") or 0) <= -1.0
 
 
+def _is_parking_chain(ign: Dict[str, Any]) -> bool:
+    """金控／銀行常當法人停車格。回測略過後先機勝率 71.4%→80.0%，套 4.3%→1.3%。"""
+    blob = " ".join(
+        [
+            str(ign.get("fine_tag") or ""),
+            str(ign.get("_field") or ""),
+            "-".join(str(x) for x in (ign.get("_layers") or ())),
+            str(ign.get("chain") or ""),
+        ]
+    )
+    return any(n in blob for n in PARKING_NEEDLES)
+
+
 def _precursor_sign(ign: Dict[str, Any], *, has_rival: bool) -> str:
     """pre＝佔比升還沒當第一；chase＝已是當天第一；leaving＝人去樓空。"""
     if ign.get("leaving"):
@@ -1614,6 +1631,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 ign = cand["ign"]
                 if not allow_leave and SKIP_LEAVING_HOT and _share_rotating_out(ign):
                     continue
+                if not allow_leave and SKIP_PARKING and _is_parking_chain(ign):
+                    continue
                 g0 = _fill_leaders(db_path, cand["group"], cap)
                 cand["group"] = g0
                 ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
@@ -1639,11 +1658,17 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             flow_hit["pre_late"] = False
         pre_sign = _precursor_sign(flow_hit["ign"], has_rival=has_rival)
         flow_hit["pre_sign"] = pre_sign
+        skipped_park = SKIP_PARKING and any(
+            _is_parking_chain(c["ign"]) for c in not_lead
+        )
+        flow_hit["skipped_park"] = skipped_park
         ranked = [flow_hit] + [c for c in by_share if c is not flow_hit]
     else:
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
         for cand in pool:
+            if SKIP_PARKING and _is_parking_chain(cand["ign"]):
+                continue
             if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
                 flow_hit = cand
         if flow_hit:
@@ -1672,6 +1697,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 + (f" 佔當日法人買超 {path}，資金流入。" if path else " 資金流入。")
                 + rot
                 + miss
+                + ("金控／銀行當停車格，不拿來當先機。" if flow_hit.get("skipped_park") else "")
                 + (
                     "昨天流入第一名今天佔比在退＝人去樓空，不推買。"
                     if pre_sign == "leaving" or ign.get("leaving")
@@ -1877,7 +1903,7 @@ def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
     vs20 = item.get("vs20")
     vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
     return (
-        f"{field}佔比升還沒當第一（回測這型後10日漲停或≥8%約七成）。"
+        f"{field}佔比升還沒當第一（回測這型略過金控／銀行停車格後後10日漲停或≥8%約八成）。"
         f"{role}{vs_s}。這檔是黃金買點，點左邊選。"
     )
 

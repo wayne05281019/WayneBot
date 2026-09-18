@@ -563,10 +563,11 @@ def test_dongzhu_window_is_100_chip_days():
     assert FLOW_LOOKBACK == 100
     assert SHARE_DAYS == 5
     assert PRE_VS20 == -8.0
-    from biaoke_field_scan import PREFER_NOT_LEAD, SKIP_LEAVING_HOT
+    from biaoke_field_scan import PREFER_NOT_LEAD, SKIP_LEAVING_HOT, SKIP_PARKING
 
     assert PREFER_NOT_LEAD is True
     assert SKIP_LEAVING_HOT is True
+    assert SKIP_PARKING is True
     src = open(m.__file__, encoding="utf-8").read()
     assert "START_SHARE" not in src
     assert "START_PCT" not in src
@@ -948,3 +949,136 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     assert "台股資金輪動" in html
     assert "不是整層電子" in html
     assert "人去樓空" in html
+
+
+def test_parking_chain_flags_holding_and_bank():
+    from biaoke_field_scan import _is_parking_chain
+
+    assert _is_parking_chain(
+        {"fine_tag": "金控", "_field": "金控", "_layers": ("金融", "金控")}
+    )
+    assert _is_parking_chain(
+        {"fine_tag": "銀行", "_field": "銀行", "_layers": ("金融", "銀行")}
+    )
+    assert not _is_parking_chain(
+        {
+            "fine_tag": "封測",
+            "_field": "高階測試／封測",
+            "_layers": ("電子上游", "IC", "封測"),
+        }
+    )
+
+
+def test_dongzhu_skips_holding_company_parking(tmp_path, monkeypatch):
+    """金控佔比次高但當停車格；封測才是先機。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        try:
+            conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    last_day = datetime(2026, 9, 17)
+    n = 60
+
+    def add(sid, name, highs, last_close, last_vol, base_vol=1000.0):
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            if i < 40:
+                h, c, v = highs[0], highs[0] * 0.92, base_vol
+            elif i < n - 1:
+                h, c, v = highs[1], highs[1] * 0.96, base_vol
+            else:
+                h, c, v = highs[1] * 0.99, last_close, last_vol
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+            )
+
+    def add_flat(sid, name, px, vol):
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, px, px, px, px, int(vol), 0.0, 0, 0, 0),
+            )
+
+    add_flat("2412", "中華電", 128.0, 8000)
+    add_flat("3045", "台灣大", 124.5, 3000)
+    add_flat("4904", "遠傳", 105.0, 2500)
+    add("2881", "富邦金", (100.0, 95.0), 93.0, 8000.0, 4000.0)
+    add("2880", "華南金", (40.0, 38.0), 32.0, 2000.0)
+    add("2890", "永豐金", (50.0, 48.0), 42.0, 1500.0)
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    for sid, chain in (
+        ("2412", "電子下游-電信服務"),
+        ("3045", "電子下游-電信服務"),
+        ("4904", "電子下游-電信服務"),
+        ("2881", "金融-金控"),
+        ("2880", "金融-金控"),
+        ("2890", "金融-金控"),
+        ("6257", "電子上游-IC-封測"),
+        ("3264", "電子上游-IC-封測"),
+        ("2449", "電子上游-IC-封測"),
+    ):
+        conn.execute(
+            "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+            (sid, chain, "[]", "", "test", "2026-09-17"),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ]
+    chip_days = dates[-6:-1]
+    zero_day = dates[-1]
+    for i, day in enumerate(chip_days):
+        for sid, net in (("2412", 900), ("3045", 700), ("4904", 500)):
+            conn.execute(
+                "UPDATE daily_quotes SET foreign_net=? WHERE stock_id=? AND date=?",
+                (net + i * 40, sid, day),
+            )
+        for sid, net in (("2881", 400), ("2880", 250), ("2890", 180)):
+            conn.execute(
+                "UPDATE daily_quotes SET foreign_net=? WHERE stock_id=? AND date=?",
+                (net + i * 30, sid, day),
+            )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (200 + i * 50, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2449' AND date=?",
+            (80 + i * 20, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (400, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=0, trust_net=0, dealer_net=0 WHERE date=?",
+        (zero_day,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_picks
+
+    data = dongzhu_picks(db, spoken="")
+    assert data.get("field") == "高階測試／封測"
+    assert "金控" not in str(data.get("field") or "")
+    assert data.get("pre_ok") is True
+    html = dongzhu_page(db, spoken="")
+    assert "高階測試／封測" in html
+    assert "停車格" in html
+    assert "金控／銀行當停車格" in html or "不拿來當先機" in html

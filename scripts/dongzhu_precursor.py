@@ -124,7 +124,15 @@ def main() -> None:
         k = 1 if len(tv) <= 3 else 2
         return {sid for _t, sid in tv[:k]}
 
-    def laggards(chain: str, d: str, *, lz: bool, n: int = 3) -> List[str]:
+    def laggards(
+        chain: str,
+        d: str,
+        *,
+        lz: bool,
+        n: int = 3,
+        vs20_max: float = PRE_VS20,
+        volr_min: Optional[float] = None,
+    ) -> List[str]:
         lead = leads_of(chain, d)
         rest = [sid for sid in (members.get(chain) or []) if sid not in lead]
         scored = []
@@ -134,13 +142,39 @@ def main() -> None:
                 continue
             vs20 = float(st.get("vs20") or 0)
             vs60 = float(st.get("vs60") or 0)
-            if vs20 > PRE_VS20 or vs60 >= 0:
+            if vs20 > vs20_max or vs60 >= 0:
+                continue
+            if volr_min is not None and float(st.get("volr") or 0) < volr_min:
                 continue
             if lz and not just_left_zero(by_sid.get(sid) or [], d):
                 continue
             scored.append((vs20, sid))
         scored.sort()
         return [sid for _v, sid in scored[:n]]
+
+    def is_parking(chain: str) -> bool:
+        return "金控" in chain or "銀行" in chain
+
+    def chg(chain: str, d: str) -> float:
+        prev = yest.get(d)
+        if not prev:
+            return 0.0
+        return share(chain, d) - share(chain, prev)
+
+    def rise2(chain: str, d: str) -> bool:
+        p1 = yest.get(d)
+        p2 = yest.get(p1) if p1 else None
+        if not p1 or not p2:
+            return False
+        a, b, c = share(chain, p2), share(chain, p1), share(chain, d)
+        return c > b + 1e-9 and b > a + 1e-9
+
+    def leader_under_20(chain: str, d: str) -> bool:
+        for sid in leads_of(chain, d):
+            st = stats_at(by_sid.get(sid) or [], d)
+            if st and float(st.get("vs20") or 0) >= 0:
+                return False
+        return True
 
     def fwd(sids: Sequence[str], d: str) -> Tuple[bool, bool, Optional[float]]:
         qi = quote_idx.get(d)
@@ -179,12 +213,36 @@ def main() -> None:
         "佔比升還沒當第一＋黃金買點": [],
         "追第一名＋黃金買點": [],
         "昨天第一名今天在退＋黃金買點": [],
+        "佔比升最多還沒第一": [],
+        "佔比升最多還沒第一＋黃金買點": [],
+        "佔比升≥1pt還沒第一": [],
+        "佔比升≥1pt還沒第一＋黃金買點": [],
+        "連升兩日還沒第一": [],
+        "連升兩日還沒第一＋黃金買點": [],
+        "升還沒第一且非金控銀行": [],
+        "升還沒第一且非金控銀行＋黃金買點": [],
+        "佔比升最多且非金控銀行": [],
+        "佔比升最多且非金控銀行＋黃金買點": [],
+        "升還沒第一＋vs20≤−12": [],
+        "升還沒第一＋vs20≤−12＋黃金買點": [],
+        "升還沒第一＋volr≥1.2": [],
+        "升還沒第一＋volr≥1.2＋黃金買點": [],
+        "升還沒第一＋龍頭未過20高": [],
+        "升還沒第一＋龍頭未過20高＋黃金買點": [],
     }
 
-    def take(label: str, chain: str, d: str, lz: bool) -> None:
+    def take(
+        label: str,
+        chain: str,
+        d: str,
+        lz: bool,
+        *,
+        vs20_max: float = PRE_VS20,
+        volr_min: Optional[float] = None,
+    ) -> None:
         if not chain:
             return
-        sids = laggards(chain, d, lz=lz)
+        sids = laggards(chain, d, lz=lz, vs20_max=vs20_max, volr_min=volr_min)
         if not sids:
             return
         lu, gain, best = fwd(sids, d)
@@ -219,6 +277,27 @@ def main() -> None:
                 continue
             rising.append((sh, chain))
         pre = rising[0][1] if rising else ""
+        max_up = ""
+        if rising:
+            max_up = max(rising, key=lambda x: chg(x[1], d))[1]
+        up1 = ""
+        up1_rows = [(chg(c, d), c) for _sh, c in rising if chg(c, d) >= 1.0]
+        if up1_rows:
+            up1_rows.sort(reverse=True)
+            up1 = up1_rows[0][1]
+        rise2_c = ""
+        rise2_rows = [(sh, c) for sh, c in rising if rise2(c, d)]
+        if rise2_rows:
+            rise2_c = rise2_rows[0][1]
+        no_park = ""
+        for _sh, c in rising:
+            if not is_parking(c):
+                no_park = c
+                break
+        max_up_np = ""
+        np_rising = [(sh, c) for sh, c in rising if not is_parking(c)]
+        if np_rising:
+            max_up_np = max(np_rising, key=lambda x: chg(x[1], d))[1]
 
         take("追當天第一名", hot, d, False)
         take("追第一名＋黃金買點", hot, d, True)
@@ -228,6 +307,28 @@ def main() -> None:
         if pre:
             take("佔比升還沒當第一", pre, d, False)
             take("佔比升還沒當第一＋黃金買點", pre, d, True)
+            take("升還沒第一＋vs20≤−12", pre, d, False, vs20_max=-12.0)
+            take("升還沒第一＋vs20≤−12＋黃金買點", pre, d, True, vs20_max=-12.0)
+            take("升還沒第一＋volr≥1.2", pre, d, False, volr_min=1.2)
+            take("升還沒第一＋volr≥1.2＋黃金買點", pre, d, True, volr_min=1.2)
+            if leader_under_20(pre, d):
+                take("升還沒第一＋龍頭未過20高", pre, d, False)
+                take("升還沒第一＋龍頭未過20高＋黃金買點", pre, d, True)
+        if max_up:
+            take("佔比升最多還沒第一", max_up, d, False)
+            take("佔比升最多還沒第一＋黃金買點", max_up, d, True)
+        if up1:
+            take("佔比升≥1pt還沒第一", up1, d, False)
+            take("佔比升≥1pt還沒第一＋黃金買點", up1, d, True)
+        if rise2_c:
+            take("連升兩日還沒第一", rise2_c, d, False)
+            take("連升兩日還沒第一＋黃金買點", rise2_c, d, True)
+        if no_park:
+            take("升還沒第一且非金控銀行", no_park, d, False)
+            take("升還沒第一且非金控銀行＋黃金買點", no_park, d, True)
+        if max_up_np:
+            take("佔比升最多且非金控銀行", max_up_np, d, False)
+            take("佔比升最多且非金控銀行＋黃金買點", max_up_np, d, True)
         del hot_sh
 
     def summarize(label: str) -> None:
@@ -279,6 +380,38 @@ def main() -> None:
     prefer_pre = n2 >= 20 and (g2 >= g1 or s2 + 0.5 < s1)
     skip_leave = n3 >= 15 and (s3 > s2 or g3 + 1.0 < g2)
     print(f"ENCODE prefer_rising_not_lead={prefer_pre} skip_leaving_hot={skip_leave}")
+
+    def beats(label: str, base_n: int, base_g: float, base_s: float, *, min_n: int = 20) -> bool:
+        n, g, s = rate(label)
+        if n < min_n:
+            print(f"SKIP {label} n={n}<{min_n}")
+            return False
+        gain_ok = g + 1e-9 >= base_g
+        better = g >= base_g + 1.0 or (gain_ok and s + 0.5 < base_s)
+        ok = gain_ok and better
+        delta = f"勝{g:.1f}({g - base_g:+.1f}) 套{s:.1f}({s - base_s:+.1f}) n={n}"
+        print(f"{'ENCODE' if ok else 'KEEP'} {label} {delta}")
+        return ok
+
+    print("\n=== 額外切片 vs 升還沒第一 ===")
+    extras = [
+        "佔比升最多還沒第一",
+        "佔比升≥1pt還沒第一",
+        "連升兩日還沒第一",
+        "升還沒第一且非金控銀行",
+        "佔比升最多且非金控銀行",
+        "升還沒第一＋vs20≤−12",
+        "升還沒第一＋volr≥1.2",
+        "升還沒第一＋龍頭未過20高",
+    ]
+    winners = [lab for lab in extras if beats(lab, n2, g2, s2)]
+    print("\n=== 額外切片 vs 升還沒第一∩黃金買點 ===")
+    lz_extras = [lab + "＋黃金買點" for lab in extras]
+    lz_winners = [lab for lab in lz_extras if beats(lab, n4, g4, s4)]
+    n5, g5, s5 = rate("升還沒第一且非金控銀行")
+    skip_park = n5 >= 20 and g5 >= g2 + 1.0
+    print(f"ENCODE skip_parking={skip_park} 勝{g5:.1f} 套{s5:.1f} n={n5}")
+    print(f"\nWINNERS chain={winners} leave_zero={lz_winners}")
 
 
 if __name__ == "__main__":
