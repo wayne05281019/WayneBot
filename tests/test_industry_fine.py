@@ -96,6 +96,7 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
         {"stock_id": "5351", "chain": "電子上游-記憶體IC設計", "tags": ["電子上游", "記憶體IC設計"], "cat_id": "C30018"},
     )
     html = format_industry_html("2330", path, allow_fetch=False)
+    assert "電子上游／IC／代工" in html
     assert "[代工]" in html or "[IC]" in html
     assert "籌碼K" in html
     assert "[記憶體製造]" in html
@@ -208,7 +209,7 @@ def test_title_bar_shows_cmoney_fine_not_swallowed_by_official():
 
     tw = lambda t, fs, weight=900: max(len(str(t)) * fs * 0.35, 1.0)
     extras = fit_title_bar_extras(
-        "電子上游-IC-代工", "", 120, tw, lead="上市（半導體業）龍頭"
+        "電子上游／IC／代工", "", 120, tw, lead="上市（電子上游／IC／代工）龍頭"
     )
     labels = [t for t, *_ in extras]
     assert any("代工" in t or "IC" in t for t in labels)

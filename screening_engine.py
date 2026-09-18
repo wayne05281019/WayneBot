@@ -1411,6 +1411,13 @@ def _stock_card_html(
     body = [
         f"<b>{idx}.</b> {stock_title}　{stars}",
     ]
+    try:
+        from industry_fine import screen_industry_card_lines
+
+        for lab, val in screen_industry_card_lines(item):
+            body.append(f"{html_escape(lab)}　{html_escape(val)}")
+    except Exception:
+        pass
     live = item.get("live")
     if live:
         try:

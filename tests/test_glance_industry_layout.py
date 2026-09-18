@@ -164,7 +164,7 @@ def test_industry_html_one_metric_per_line():
         assert "也會幌" not in html
         assert "也會晃" not in html
         assert "半導體業含代工、記憶體、設計" in html
-        assert "同業＝同一官方產業別全組" in html
+        assert "同業＝證交所／櫃買同一產業別全組" in html
         lines = html.split("\n")
         for line in lines:
             plain = re.sub(r"<[^>]+>", "", line)

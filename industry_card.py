@@ -278,15 +278,25 @@ def render_industry_png(
         items.append(("p", "沒有單一公司的產業面。進場仍先看高低卡。成分股現在不畫。"))
     else:
         ind = snap["industry"] or "未分類（母體還沒寫到產業）"
+        try:
+            from industry_fine import prefer_industry_face
+
+            face = prefer_industry_face(
+                fine_chain=str(snap.get("fine_chain") or ""),
+                exchange_industry=ind,
+            ) or ind
+        except Exception:
+            face = ind
         items.append(("h", "這檔是什麼"))
-        items.append(("kv", "產業", ind))
+        items.append(("kv", "產業", face))
         items.append(
             ("kv", "同業", peer_mix_label(snap) if snap["peer_n"] else "名單不足")
         )
         if tags0:
-            items.append(("muted", "細項來自籌碼K公開個股頁"))
-        items.append(("muted", "產業名來自證交所／櫃買公司基本資料產業別。"))
-        items.append(("muted", "同業＝同一官方產業別全組，不是更細的產品線。"))
+            items.append(("muted", "產業列是籌碼K細項；沒細項才寫證交所產業別"))
+        else:
+            items.append(("muted", "產業名來自證交所／櫃買公司基本資料產業別。"))
+        items.append(("muted", "同業＝證交所／櫃買同一產業別全組。"))
         if ind == "半導體業":
             items.append(("muted", "半導體業含代工、記憶體、設計，不是只跟晶圓代工比。"))
 

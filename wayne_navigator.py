@@ -839,12 +839,12 @@ class NavigatorEngine:
             listing = ""
         fine_industry = ""
         try:
-            from industry_fine import load_cached_fine_industry
+            from industry_fine import load_fine_chains
 
-            rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
-                str(stock_id)
-            ) or {}
-            fine_industry = str(rec.get("chain") or "").strip()
+            fine_industry = str(
+                (load_fine_chains(self.db_path, [str(stock_id)]) or {}).get(str(stock_id))
+                or ""
+            ).strip()
         except Exception:
             fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")
@@ -2211,6 +2211,25 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
         return 0.0
 
 
+def _title_industry_label(card: dict) -> str:
+    """高低卡／介紹圖標題列產業：跟海選同一套細項臉。"""
+    etf = bool(str(card.get("etf_kind") or "").strip())
+    try:
+        from industry_fine import prefer_industry_face
+
+        return prefer_industry_face(
+            fine_chain="" if etf else str(card.get("fine_industry") or ""),
+            exchange_industry="" if etf else str(card.get("industry") or ""),
+            etf=etf,
+        )
+    except Exception:
+        if etf:
+            return ""
+        fine = str(card.get("fine_industry") or "").strip()
+        ind = str(card.get("industry") or "").strip()
+        return fine if fine and fine != ind else ind
+
+
 def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = "", lead: str = ""):
     """股名右側：ETF 類型固定先放；最近一件其次，產業、報導則數有空再放。報導不是買賣訊。"""
     out = []
@@ -2636,10 +2655,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
-    industry = "" if etf_kind else str(card.get("industry") or "").strip()
-    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    if fine and fine != industry:
-        industry = fine
+    industry = _title_industry_label(card)
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3328,10 +3344,7 @@ def render_first_glance_png(
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
     etf_kind = str(card.get("etf_kind") or "").strip()
-    industry = "" if etf_kind else str(card.get("industry") or "").strip()
-    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    if fine and fine != industry:
-        industry = fine
+    industry = _title_industry_label(card)
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
