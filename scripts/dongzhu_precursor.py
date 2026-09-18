@@ -38,7 +38,8 @@ LZ_MAX = 5.0
 # 矽光子／Ochoa → 半導體元件；MLCC → 被動元件；光電 → LED／光學／LCD。
 # 塑化 → 塑膠＋化學工業；建築 → 營建；電信 → 電信服務。
 # 軍工：CMoney 沒有軍工／國防細項（漢翔在航運、長榮航太在電機、雷虎在消費電子）。
-BUCKETS = (
+# 飆大教過的電子次族群 vs 使用者點名要量的傳產／電信。教過才進「教過族群先機」。
+TAUGHT_BUCKETS = (
     ("asic", ("電子上游-IP/ASIC",), "ASIC先機"),
     ("cool", ("電子中游-散熱零組件",), "散熱先機"),
     ("mem", ("電子上游-記憶體製造", "電子上游-記憶體IC設計", "電子上游-記憶體銷售"), "記憶體先機"),
@@ -48,11 +49,15 @@ BUCKETS = (
     ("pcb", ("電子上游-PCB",), "PCB先機"),
     ("inp", ("電子上游-半導體元件",), "光通訊矽光子先機"),
     ("opt", ("電子上游-LED照明及光元件", "電子中游-光學鏡片", "電子中游-LCD"), "光電先機"),
+)
+CYCLE_BUCKETS = (
     ("ship", ("傳產-航運",), "航運先機"),
     ("chem", ("傳產-塑膠", "傳產-化學工業"), "塑化先機"),
     ("tel", ("電子下游-電信服務",), "電信先機"),
     ("build", ("傳產-營建",), "建築先機"),
 )
+BUCKETS = TAUGHT_BUCKETS + CYCLE_BUCKETS
+TAUGHT_KEYS = {k for k, _p, _lab in TAUGHT_BUCKETS}
 MISSING_BUCKETS = (
     "軍工：CMoney 沒有軍工／國防細項，不發明一族。漢翔在傳產-航運、長榮航太在傳產-電機、雷虎在電子下游-消費電子。",
 )
@@ -524,18 +529,21 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             if len(park_free) >= 3:
                 take("細項剩餘第3", park_free[2][1], d, False)
             taught_rising = []
+            extra_rising = []
             for _sh, c in park_free:
                 b = chain_bucket(c)
-                if b:
+                if b in TAUGHT_KEYS:
                     taught_rising.append((c, b))
+                elif b:
+                    extra_rising.append((c, b))
             if taught_rising:
                 take("教過族群先機", taught_rising[0][0], d, False)
-                seen_b = set()
-                for c, b in taught_rising:
-                    if b in seen_b:
-                        continue
-                    seen_b.add(b)
-                    take(BUCKET_LABEL[b], c, d, False)
+            seen_b = set()
+            for c, b in taught_rising + extra_rising:
+                if b in seen_b:
+                    continue
+                seen_b.add(b)
+                take(BUCKET_LABEL[b], c, d, False)
             main_pre = pick_rising_layer(d, 1, prev or "")
             mid_pre = pick_rising_layer(d, 2, prev or "")
             if main_pre:
@@ -804,9 +812,14 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         if n < min_n:
             print(f"SKIP {label} {win} n={n}<{min_n}")
             return False
+        if pn < 15:
+            print(
+                f"KEEP {label} {win} 勝{g:.1f} n={n} 前段 n={pn}<15 不准自動過"
+            )
+            return False
         gain_ok = g + 1e-9 >= base_g
         better = g >= base_g + 1.0 or (gain_ok and s + 0.5 < base_s)
-        oos_ok = pn < 15 or pg + 1e-9 >= bg - 5.0
+        oos_ok = pg + 1e-9 >= bg - 5.0
         ok = gain_ok and better and oos_ok
         print(
             f"{'ENCODE' if ok else 'KEEP'} {label} "

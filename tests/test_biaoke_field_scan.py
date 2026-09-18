@@ -985,6 +985,30 @@ def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
     assert "細項" in blob
 
 
+def test_dongzhu_elec_pick_skips_shipping_plastic_build():
+    from biaoke_field_scan import _is_elec_pick
+
+    assert _is_elec_pick({"_layers": ("電子上游", "IC", "封測")})
+    assert _is_elec_pick({"_layers": ("電子下游", "電信服務")})
+    assert _is_elec_pick({"_layers": ("電子上游", "IP/ASIC")})
+    assert not _is_elec_pick({"_layers": ("傳產", "塑膠")})
+    assert not _is_elec_pick({"_layers": ("傳產", "航運")})
+    assert not _is_elec_pick({"_layers": ("傳產", "營建")})
+    assert not _is_elec_pick({"_layers": ("金融", "金控")})
+
+
+def test_dongzhu_taught_elec_excludes_shipping_plastic_telecom():
+    from biaoke_field_scan import _is_taught_elec
+
+    assert _is_taught_elec({"_layers": ("電子上游", "IP/ASIC")})
+    assert _is_taught_elec({"_layers": ("電子上游", "PCB", "製造")})
+    assert _is_taught_elec({"_layers": ("電子上游", "IC", "封測")})
+    assert not _is_taught_elec({"_layers": ("傳產", "航運")})
+    assert not _is_taught_elec({"_layers": ("傳產", "塑膠")})
+    assert not _is_taught_elec({"_layers": ("電子下游", "電信服務")})
+    assert not _is_taught_elec({"_layers": ("電子下游", "筆記型電腦")})
+
+
 def test_dongzhu_chain_bucket_maps_asic_ship_chem_not_defense():
     import os
     import sys

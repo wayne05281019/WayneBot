@@ -118,6 +118,9 @@ _RULE_LINES = (
 # 進場前徵兆（scripts/dongzhu_precursor.py，窗 20260428–20260917，次級 vs20≤−8% 且仍低於60高，後10個交易日官方收）：
 # 佔比升還沒當第一：漲停 54.3%／漲停或≥8% 71.4% n=70 套 4.3%
 # 同上且略過金控／銀行停車格：62.7%／80.0% n=75 套 1.3% ← 編碼
+# 電子細項：83.0% n=47 套 0；教過電子次族群：82.6% n=69 ← 編碼
+# 航運 50% n=20、塑化 74.3% n=35、建築 54.5% n=11、電信 n=2、ASIC／散熱近100 n=0 → 不編碼
+# 軍工沒有 CMoney 細項，不發明一族。
 # 追當天流入第一名：29.7%／54.7% n=64
 # 昨天第一名今天佔比在退：29.1%／54.5% n=55＝人去樓空，不推買
 # 未編碼（n≥20 但沒贏基線）：佔比升最多 67.1%；升≥1pt 67.1%；連升兩日 63.2%；volr≥1.2 51.1%；vs20≤−12 70.5%；龍頭未過20高 71.4%
@@ -128,12 +131,14 @@ PRE_VS20 = -8.0
 PREFER_NOT_LEAD = True
 SKIP_LEAVING_HOT = True
 SKIP_PARKING = True
+PREFER_ELEC = True
+PREFER_TAUGHT = True
 PARKING_NEEDLES = ("金控", "銀行")
 # 話筒／海選共用：資金輪動要注意（100法人日走查鎖死）。
 ROTATION_NOTES = (
     "看主產業／次產業／細項，不是整層電子。",
     "近100日多數流入第一名只當1天；追當天第一名容易買在人去樓空。",
-    "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後細項次級有人後10日漲停或≥8%約八成；含停車格約七成；追第一名約五成五）。這八成是細項、不是單檔保證。",
+    "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後細項次級有人後10日漲停或≥8%約八成；電子細項這型約八成三；含停車格約七成；追第一名約五成五）。這是細項、不是單檔保證。航運／塑化／建築當先機沒贏過電子細項。軍工沒有 CMoney 細項、不發明一族。",
     "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。",
     "新買只認高低卡黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
 )
@@ -146,6 +151,7 @@ def rotation_notice_lines(db_path: str = "") -> List[str]:
     np_ = rates.get("no_park") or {}
     pre = rates.get("pre") or {}
     ch = rates.get("chase") or {}
+    el = rates.get("elec") or {}
     if int(np_.get("n") or 0) < 20:
         return notes
     g = float(np_.get("gain") or 0)
@@ -154,8 +160,15 @@ def rotation_notice_lines(db_path: str = "") -> List[str]:
     notes[2] = (
         "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機"
         f"（回測略過停車格後細項次級有人後10日漲停或≥8%約{g:.0f}%；"
-        f"含停車格約{gpre:.0f}%；追第一名約{gch:.0f}%）。"
+        f"含停車格約{gpre:.0f}%；追第一名約{gch:.0f}%"
+        + (
+            f"；電子細項這型約{float(el.get('gain') or 0):.0f}%"
+            if int(el.get("n") or 0) >= 20
+            else ""
+        )
+        + "）。"
         f"這{g:.0f}%是細項、不是單檔保證。"
+        "航運／塑化／建築當先機沒贏過電子細項。軍工沒有 CMoney 細項、不發明一族。"
     )
     return notes
 
@@ -651,6 +664,8 @@ def live_dongzhu_flags(db_path: str) -> Dict[str, bool]:
         "prefer_rising_not_lead": _flag("prefer_rising_not_lead", PREFER_NOT_LEAD),
         "skip_leaving_hot": _flag("skip_leaving_hot", SKIP_LEAVING_HOT),
         "skip_parking": _flag("skip_parking", SKIP_PARKING),
+        "prefer_elec": _flag("prefer_elec", PREFER_ELEC),
+        "prefer_taught": _flag("prefer_taught", PREFER_TAUGHT),
     }
 
 
@@ -1422,6 +1437,39 @@ def _is_parking_chain(ign: Dict[str, Any]) -> bool:
     return any(n in blob for n in PARKING_NEEDLES)
 
 
+def _is_elec_pick(ign: Dict[str, Any]) -> bool:
+    """電子細項這型近100 勝83.0% 套0 n=47，贏全部非金控 80%。傳產航運塑化建築當先機沒贏。"""
+    chain = "-".join(str(x) for x in (ign.get("_layers") or ()) if str(x))
+    if chain.startswith("電子"):
+        return True
+    blob = str(ign.get("fine_tag") or ign.get("_field") or ign.get("chain") or "")
+    return blob.startswith("電子")
+
+
+_TAUGHT_FINE = (
+    "IP/ASIC",
+    "散熱零組件",
+    "記憶體製造",
+    "記憶體IC設計",
+    "記憶體銷售",
+    "ABF",
+    "被動元件",
+    "封測",
+    "PCB",
+    "半導體元件",
+    "LED照明及光元件",
+    "光學鏡片",
+    "LCD",
+)
+
+
+def _is_taught_elec(ign: Dict[str, Any]) -> bool:
+    """教過電子次族群先機近100 勝82.6% n=69。不含航運／塑化／建築／電信。"""
+    chain = "-".join(str(x) for x in (ign.get("_layers") or ()) if str(x))
+    blob = f"{chain} {ign.get('fine_tag') or ''} {ign.get('_field') or ''}"
+    return any(n in blob for n in _TAUGHT_FINE)
+
+
 def _precursor_sign(
     ign: Dict[str, Any], *, has_rival: bool, prefer_not_lead: bool = PREFER_NOT_LEAD
 ) -> str:
@@ -1721,6 +1769,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     prefer_not = flags["prefer_rising_not_lead"]
     skip_leave = flags["skip_leaving_hot"]
     skip_park = flags["skip_parking"]
+    prefer_elec = flags.get("prefer_elec", PREFER_ELEC)
+    prefer_taught = flags.get("prefer_taught", PREFER_TAUGHT)
     if unnamed_pos:
         by_share = sorted(
             unnamed_pos,
@@ -1746,6 +1796,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                     continue
                 if not allow_leave and skip_park and _is_parking_chain(ign):
                     continue
+                if not allow_leave and prefer_elec and not _is_elec_pick(ign):
+                    continue
                 g0 = _fill_leaders(db_path, cand["group"], cap)
                 cand["group"] = g0
                 ok, best_vs20 = _chain_pre_ok(db_path, g0, cap)
@@ -1754,7 +1806,17 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 if ok:
                     picked = cand
 
-        _consider(not_lead, allow_leave=False)
+        if prefer_taught:
+            _consider(
+                [c for c in not_lead if _is_taught_elec(c["ign"])],
+                allow_leave=False,
+            )
+            _consider(
+                [c for c in not_lead if not _is_taught_elec(c["ign"])],
+                allow_leave=False,
+            )
+        else:
+            _consider(not_lead, allow_leave=False)
         if picked is None:
             _consider(by_share[:1], allow_leave=False)
         if picked is None:
@@ -1776,13 +1838,19 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         skipped_park = skip_park and any(
             _is_parking_chain(c["ign"]) for c in not_lead
         )
+        skipped_trad = prefer_elec and any(
+            not _is_elec_pick(c["ign"]) for c in not_lead
+        )
         flow_hit["skipped_park"] = skipped_park
+        flow_hit["skipped_trad"] = skipped_trad
         ranked = [flow_hit] + [c for c in by_share if c is not flow_hit]
     else:
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
         for cand in pool:
             if skip_park and _is_parking_chain(cand["ign"]):
+                continue
+            if prefer_elec and not _is_elec_pick(cand["ign"]):
                 continue
             if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
                 flow_hit = cand
@@ -1813,6 +1881,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 + rot
                 + miss
                 + ("金控／銀行當停車格，不拿來當先機。" if flow_hit.get("skipped_park") else "")
+                + ("航運／塑化／建築當先機沒贏過電子細項，不拿來當先機。" if flow_hit.get("skipped_trad") else "")
                 + (
                     "昨天流入第一名今天佔比在退＝人去樓空，不推買。"
                     if pre_sign == "leaving" or ign.get("leaving")
@@ -2018,7 +2087,7 @@ def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
     vs20 = item.get("vs20")
     vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
     return (
-        f"{field}佔比升還沒當第一（回測這型略過金控／銀行停車格後後10日漲停或≥8%約八成）。"
+        f"{field}佔比升還沒當第一（回測這型略過金控／銀行停車格後後10日漲停或≥8%約八成；電子細項約八成三）。"
         f"{role}{vs_s}。這檔是黃金買點，點左邊選。"
     )
 
