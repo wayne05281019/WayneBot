@@ -100,20 +100,28 @@ _HOW = (
 _HOW_LINES = (
     "他教過怎麼找：",
     "① 次族群還沒熱",
-    "② 第一名還沒過前高",
+    "② 誰先過前高",
+    "不比絕對漲跌",
     "③ 從底部找落後",
     "不是猜新聞。",
 )
 _PAGE_RULES = (
     "佔比如實主判。不是買訊、不進海選。",
     "龍頭來不及買。比價下次級黃金買點。",
-    "捕捉＝最落後次級兩到三檔。買只認黃金買點。",
+    "捕捉＝最落後次級兩到三檔。",
+    "買只認黃金買點。",
+    "盤中未收不當官方收。",
 )
 _PAGE_NOTES = (
     "不是整層電子。",
+    "先機＝佔比升還沒第一",
+    "次級距20高≤−8%",
+    "這型勝率 70.8%",
+    "追第一名約五成六",
     "追當天第一名容易人去樓空。",
     "金控／銀行當停車格。",
     "電子細項先機較穩。",
+    "貼20高＝偏晚。",
 )
 _RULE_LINES = (
     "佔比如實主判。飆大找法只參考、不是唯一。",
@@ -1452,35 +1460,92 @@ def _share_path(ign: Dict[str, Any]) -> str:
     return ""
 
 
+_PHONE_W = 18
+
+
+def _pack_phone(bits: Sequence[str], sep: str = "→") -> List[str]:
+    """一行最多約 18 字；數字不從中間切開。"""
+    lines: List[str] = []
+    buf = ""
+    for bit in [str(x) for x in bits if str(x)]:
+        piece = bit if not buf else f"{sep}{bit}"
+        trial = bit if not buf else buf + piece
+        if buf and len(trial) > _PHONE_W:
+            lines.append(buf)
+            buf = bit
+        else:
+            buf = trial
+    if buf:
+        lines.append(buf)
+    return lines
+
+
+def _share_path_lines(ign: Dict[str, Any]) -> List[str]:
+    shares = list(ign.get("shares") or [])
+    if len(shares) >= 2:
+        body = f"{shares[0]:.1f}%→{shares[-1]:.1f}%"
+        pt = _pt_txt(shares[-1] - shares[0])
+        one = f"佔比 {body}（{pt}）"
+        if len(one) <= _PHONE_W:
+            return [one]
+        return [f"佔比 {body}", pt]
+    if shares:
+        return [f"佔比 {_share_txt(shares[-1])}"]
+    return []
+
+
+def _sibling_phone_lines(txt: str) -> List[str]:
+    raw = str(txt or "").strip()
+    if not raw:
+        return []
+    body = raw[len("同主產業 ") :] if raw.startswith("同主產業 ") else raw
+    out: List[str] = []
+    for item in _split_bar(body):
+        if len(item) <= _PHONE_W:
+            out.append(item)
+            continue
+        name, _, rest = item.rpartition(" ")
+        if name and rest and len(name) <= _PHONE_W and len(rest) <= _PHONE_W:
+            out.append(name)
+            out.append(rest)
+        else:
+            out.extend(_pack_phone(item.split(" "), sep=" "))
+    return out
+
+
 def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     nets = list(ign.get("nets") or [])
     shares = list(ign.get("shares") or [])
     if not nets and not shares:
-        return ["法人佔比還沒這列，資金進出不准猜。"]
-    bits = "/".join(_lots_txt(n).replace("張", "") for n in nets) if nets else ""
-    share_bits = "→".join(f"{x:.1f}%" for x in shares) if shares else ""
+        return ["法人佔比還沒這列", "資金進出不准猜。"]
     if ign.get("flowing_in") or ign.get("slow_in"):
-        extra = "佔比在升＝資金流入這產業鏈。"
+        extra = "佔比在升＝資金流入。"
     elif float(ign.get("share_last") or 0) > 0:
-        extra = "買超佔比還在；次級仍低於20高才當先機。"
+        extra = "買超佔比還在。"
     elif float(ign.get("share_up") or 0) < 0 or int(ign.get("last") or 0) < 0:
-        extra = "佔比在退＝資金流出，不當新點火。"
+        extra = "佔比在退＝資金流出。"
     else:
         extra = "佔比還沒升，不算流入。"
     lines: List[str] = []
     fine = str(ign.get("fine_tag") or "").strip()
     if fine:
-        lines.append(f"{fine}")
+        lines.append(fine)
     last_sh = float(ign.get("share_last") or 0)
     chg = float(ign.get("share_chg") or 0)
     if shares:
-        lines.append(f"佔當日法人買超 {_share_txt(last_sh)}（{_pt_txt(chg)}）")
-    if share_bits:
-        lines.append(f"近{len(shares)}日佔比 {share_bits}")
-    if bits:
-        lines.append(
-            f"近{len(nets)}日三大法人 {bits} 累計 {_lots_txt(int(ign.get('cum5') or 0))}"
-        )
+        one = f"佔當日買超 {_share_txt(last_sh)}"
+        pt = _pt_txt(chg)
+        if len(f"{one}（{pt}）") <= _PHONE_W:
+            lines.append(f"{one}（{pt}）")
+        else:
+            lines.append(one)
+            lines.append(pt)
+        lines.append(f"近{len(shares)}日佔比")
+        lines.extend(_pack_phone([f"{x:.1f}%" for x in shares]))
+    if nets:
+        lines.append(f"近{len(nets)}日法人")
+        lines.extend(_lots_txt(n) for n in nets)
+        lines.append(f"累計 {_lots_txt(int(ign.get('cum5') or 0))}")
     pos_n = int(ign.get("pos_member") or 0)
     mem_n = int(ign.get("member_n") or 0)
     if mem_n:
@@ -2501,9 +2566,13 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     if parts:
         now_rows.extend(_esc(x) for x in _layer_lines(parts))
     ign = data.get("flow") or {}
-    path = _share_path(ign)
-    if path:
-        now_rows.append(_esc(f"佔比 {path}"))
+    lead_n = int(data.get("in_lead_n") or 0)
+    pos_n = int(data.get("share_pos_n") or 0)
+    if lead_n:
+        now_rows.append(_esc(f"流入第一 {lead_n}天"))
+    if pos_n:
+        now_rows.append(_esc(f"買超佔比 {pos_n}天"))
+    now_rows.extend(_esc(x) for x in _share_path_lines(ign))
     if data.get("pre_sign") == "pre":
         now_rows.append(_esc("佔比升還沒第一＝先機"))
     elif data.get("pre_sign") == "chase":
@@ -2523,6 +2592,13 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     if field not in named:
         now_rows.append(_esc("還沒點名"))
     blocks.append(_blk(*now_rows))
+    sib_lines = _sibling_phone_lines(str(data.get("sibling_txt") or ""))
+    if sib_lines:
+        blocks.append(_blk("<b>同主產業佔比</b>", *(_esc(x) for x in sib_lines)))
+    if ign:
+        blocks.append(
+            _blk("<b>資金進出</b>", *(_esc(x) for x in _flow_why_lines(ign)))
+        )
     rec_rows = ["<b>此刻推薦</b>"]
     buys = list(data.get("buys") or [])
     if buys:

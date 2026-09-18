@@ -136,6 +136,8 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "人去樓空" in html
     assert "黃金買點" in html
     assert "勝率 70.8%" in html
+    assert "誰先過前高" in html
+    assert "盤中未收不當官方收" in html
     buy_lines = [
         ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln and "買點" in ln
     ]
@@ -201,9 +203,54 @@ def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch)
         s = ln.strip()
         assert not re.search(r"\d,$", s)
         assert s not in ("IC／", "電子上游／IC／")
+        assert len(re.sub(r"<[^>]+>", "", s)) <= 18 or s.startswith("┈")
     assert "對五件" not in phone
-    assert "資金進出" not in phone
+    assert "誰先過前高" in phone
+    assert "第一名還沒過前高" not in phone
     assert "捕捉・最落後次級" in phone or "捕捉" in phone
+    assert "佔比如實主判" in phone
+
+
+def test_flow_why_phone_lines_keep_lots_intact():
+    from tg_layout import reflow_telegram_html
+
+    from biaoke_field_scan import _flow_why_lines, _sibling_phone_lines
+
+    ign = {
+        "fine_tag": "封測",
+        "shares": [4.4, 4.8, 0.7, 2.5, 12.2],
+        "share_last": 12.2,
+        "share_chg": 9.7,
+        "share_up": 7.8,
+        "nets": [17714, 9461, 4288, 20712, 85409],
+        "cum5": 137584,
+        "pos_member": 23,
+        "member_n": 29,
+        "flowing_in": True,
+        "slow_in": True,
+        "last": 85409,
+    }
+    html = "\n".join(_flow_why_lines(ign))
+    phone = reflow_telegram_html(html)
+    plain = "\n".join(
+        ln.strip() for ln in phone.split("\n") if ln.strip()
+    )
+    assert "＋85,409張" in plain
+    assert "＋137,584張" in plain
+    assert "12.2" in plain
+    for ln in phone.split("\n"):
+        s = ln.strip()
+        assert s not in ("＋85,40", "9")
+        assert not s.startswith("%")
+        assert len(s) <= 18 or s.startswith("┈")
+    sib = _sibling_phone_lines(
+        "同主產業 IC／代工 23.0%（升）｜記憶體製造 13.4%（升）｜IC／封測 12.2%（升）"
+        "｜被動元件 3.3%（升）｜LED照明及光元件 2.9%（升）"
+    )
+    sib_phone = reflow_telegram_html("\n".join(sib))
+    assert "IC／" not in sib_phone.split("\n")
+    assert "IC／代工 23.0%（升）" in sib_phone or "IC／代工" in sib_phone
+
 
 
 def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
