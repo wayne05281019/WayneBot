@@ -431,7 +431,7 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
 def attach_fine_industry(
     snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
 ) -> Dict[str, Any]:
-    """把籌碼K細項掛上這檔與對照檔。沒抓到就空，不自造。"""
+    """把籌碼K產業鏈掛上這檔與對照檔。沒抓到就空，不自造。"""
     from industry_fine import load_or_fetch_fine_industry
 
     ids = [str(snap.get("stock_id") or "")]
@@ -448,7 +448,224 @@ def attach_fine_industry(
             rec = fine.get(str(row.get("stock_id") or "")) or {}
             row["fine_tags"] = list(rec.get("tags") or [])
             row["fine_finest"] = str(rec.get("finest") or "")
+    return attach_price_eps_bijia(snap, db_path)
+
+
+def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) -> Dict[str, Any]:
+    """近最多兩季 EPS 合計。官方常只有最新一期→n=1；有兩季才合計。不准自造。"""
+    rows = conn.execute(
+        """
+        SELECT year, season, eps FROM quarterly_income
+        WHERE stock_id=? ORDER BY year DESC, season DESC LIMIT ?
+        """,
+        (str(stock_id).strip(), int(max_n)),
+    ).fetchall()
+    seasons: List[str] = []
+    total = 0.0
+    n = 0
+    for r in rows:
+        try:
+            eps = float(r["eps"] if isinstance(r, sqlite3.Row) else r[2] or 0)
+            y = int(r["year"] if isinstance(r, sqlite3.Row) else r[0] or 0)
+            s = int(r["season"] if isinstance(r, sqlite3.Row) else r[1] or 0)
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        if y < 1990 or s not in (1, 2, 3, 4):
+            continue
+        seasons.append(f"{y}Q{s}")
+        total += eps
+        n += 1
+    return {"eps_sum": total if n else None, "eps_n": n, "eps_seasons": seasons}
+
+
+def _latest_close(conn: sqlite3.Connection, stock_id: str) -> Dict[str, Any]:
+    sid = str(stock_id).strip()
+    row = conn.execute(
+        "SELECT date, close FROM daily_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1",
+        (sid,),
+    ).fetchone()
+    if row:
+        close = float(row["close"] if isinstance(row, sqlite3.Row) else row[1] or 0)
+        if close > 0:
+            return {
+                "close": close,
+                "close_date": str(row["date"] if isinstance(row, sqlite3.Row) else row[0] or ""),
+            }
+    try:
+        row = conn.execute(
+            "SELECT date, avg_price FROM emerging_quotes WHERE stock_id=? ORDER BY date DESC LIMIT 1",
+            (sid,),
+        ).fetchone()
+    except Exception:
+        row = None
+    if row:
+        close = float(row["avg_price"] if isinstance(row, sqlite3.Row) else row[1] or 0)
+        if close > 0:
+            return {
+                "close": close,
+                "close_date": str(row["date"] if isinstance(row, sqlite3.Row) else row[0] or ""),
+            }
+    return {"close": None, "close_date": ""}
+
+
+def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]:
+    """同籌碼K產業鏈：股價 vs 近季 EPS。沒鏈／沒數就不畫；不同鏈不硬綁。不是買訊。"""
+    empty = {
+        "ok": False,
+        "chain": "",
+        "eps_label": "",
+        "close_date": "",
+        "rows": [],
+        "mine": None,
+        "mult_med": None,
+        "peer_n": 0,
+        "read": "",
+        "note": "",
+    }
+    snap["bijia"] = dict(empty)
+    if snap.get("is_etf"):
+        return snap
+    chain = str(snap.get("fine_chain") or "").strip()
+    sid = str(snap.get("stock_id") or "").strip()
+    if not chain or not sid:
+        snap["bijia"]["note"] = "還沒產業鏈"
+        return snap
+    path = db_path or get_db_path()
+    try:
+        from wayne_db import listing_zh
+    except Exception:
+
+        def listing_zh(market):  # type: ignore
+            return ""
+
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        peers = conn.execute(
+            """
+            SELECT f.stock_id, u.stock_name, u.market_type
+            FROM stock_fine_industry f
+            JOIN stock_universe u ON u.stock_id = f.stock_id
+            WHERE f.chain=? AND u.is_active=1 AND length(f.stock_id)=4
+              AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+            """,
+            (chain,),
+        ).fetchall()
+    except Exception:
+        conn.close()
+        snap["bijia"]["note"] = "產業鏈表未就緒"
+        return snap
+
+    rows_out: List[Dict[str, Any]] = []
+    close_dates: List[str] = []
+    eps_ns: List[int] = []
+    for r in peers:
+        psid = str(r["stock_id"])
+        px = _latest_close(conn, psid)
+        eps = _recent_eps_sum(conn, psid, max_n=2)
+        close = px.get("close")
+        eps_sum = eps.get("eps_sum")
+        eps_n = int(eps.get("eps_n") or 0)
+        if close is None or eps_sum is None or eps_n < 1 or float(eps_sum) <= 0:
+            continue
+        mult = float(close) / float(eps_sum)
+        if px.get("close_date"):
+            close_dates.append(str(px["close_date"]))
+        eps_ns.append(eps_n)
+        rows_out.append(
+            {
+                "stock_id": psid,
+                "stock_name": str(r["stock_name"] or psid),
+                "listing": listing_zh(r["market_type"]),
+                "close": float(close),
+                "eps_sum": float(eps_sum),
+                "eps_n": eps_n,
+                "eps_seasons": list(eps.get("eps_seasons") or []),
+                "mult": mult,
+                "is_mine": psid == sid,
+            }
+        )
+    conn.close()
+
+    if not any(r["is_mine"] for r in rows_out):
+        snap["bijia"].update({"chain": chain, "note": "缺收盤或EPS"})
+        return snap
+    if len(rows_out) < 2:
+        snap["bijia"].update({"chain": chain, "note": "同鏈可對照不足"})
+        return snap
+
+    rows_out.sort(key=lambda x: (float(x["mult"]), float(x["close"])))
+    mine = next(r for r in rows_out if r["is_mine"])
+    mult_med = _median([float(r["mult"]) for r in rows_out])
+    my_mult = float(mine["mult"])
+    cheaper = [r for r in rows_out if not r["is_mine"] and float(r["mult"]) < my_mult]
+    dearer = [r for r in rows_out if not r["is_mine"] and float(r["mult"]) > my_mult]
+    low_pick = sorted(cheaper, key=lambda r: float(r["mult"]), reverse=True)[:2]
+    high_pick = sorted(dearer, key=lambda r: float(r["mult"]))[:2]
+    keep = list(low_pick) + [mine] + list(high_pick)
+    if len(keep) < 5:
+        rest = [r for r in rows_out if r["stock_id"] not in {x["stock_id"] for x in keep}]
+        for r in rest:
+            keep.append(r)
+            if len(keep) >= 5:
+                break
+    keep.sort(key=lambda x: (float(x["mult"]), float(x["close"])))
+
+    max_eps_n = max(eps_ns) if eps_ns else 1
+    min_eps_n = min(eps_ns) if eps_ns else 1
+    if max_eps_n >= 2 and min_eps_n >= 2:
+        eps_label = "近2季EPS"
+    else:
+        eps_label = "近1季EPS"
+
+    if mult_med is not None and my_mult <= float(mult_med) * 0.92:
+        read = f"價／EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對便宜"
+        flag = "lag"
+        flag_text = "落後補漲對照"
+        top = max((float(r["mult"]) for r in rows_out if not r["is_mine"]), default=0.0)
+        if top >= my_mult * 1.8 and my_mult > 0:
+            flag_text = "落後補漲對照　遠低同鏈高檔"
+    elif mult_med is not None and my_mult >= float(mult_med) * 1.08:
+        read = f"價／EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對貴"
+        flag = "dear"
+        flag_text = "已偏貴"
+    else:
+        med_s = f"{float(mult_med):.0f}" if mult_med is not None else "—"
+        read = f"價／EPS {my_mult:.0f}　中位 {med_s}"
+        flag = ""
+        flag_text = ""
+
+    snap["bijia"] = {
+        "ok": True,
+        "chain": chain,
+        "eps_label": eps_label,
+        "close_date": max(close_dates) if close_dates else "",
+        "rows": keep,
+        "mine": mine,
+        "mult_med": mult_med,
+        "peer_n": len(rows_out),
+        "read": read,
+        "flag": flag,
+        "flag_text": flag_text,
+        "note": "",
+    }
     return snap
+
+
+def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
+    """圖卡／HTML 共用欄位字串。"""
+    mark = "這檔" if row.get("is_mine") else ""
+    name = str(row.get("stock_name") or "")
+    listing = str(row.get("listing") or "").strip()
+    eps_n = int(row.get("eps_n") or 1)
+    return {
+        "mark": mark,
+        "sid": str(row.get("stock_id") or ""),
+        "name": f"{name}　{listing}" if listing else name,
+        "close": f"{float(row.get('close') or 0):.0f}",
+        "eps": f"{float(row.get('eps_sum') or 0):.2f}" + (f"×{eps_n}" if eps_n > 1 else ""),
+        "mult": f"{float(row.get('mult') or 0):.0f}",
+    }
 
 
 def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: bool = False) -> str:
@@ -563,6 +780,40 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     else:
         rev_rows.append("這檔還沒有季報列")
     blocks.append(section(*rev_rows))
+
+    bijia = snap.get("bijia") or {}
+    if bijia.get("ok") and bijia.get("rows"):
+        bj_lines = [
+            "<b>同鏈比價</b>",
+            kv_compact("範圍", str(bijia.get("chain") or "")),
+            kv_compact("基準", str(bijia.get("eps_label") or "")),
+        ]
+        cd = str(bijia.get("close_date") or "")
+        if len(cd) == 8:
+            bj_lines.append(kv_compact("收盤日", f"{cd[:4]}/{cd[4:6]}/{cd[6:]}"))
+        elif cd:
+            bj_lines.append(kv_compact("收盤日", cd))
+        for r in bijia["rows"]:
+            c = format_bijia_cells(r)
+            tag = c["mark"] or "同鏈"
+            bj_lines.append(
+                f"{html_escape(tag)}　<code>{html_escape(c['sid'])}</code> "
+                f"{html_escape(c['name'])}　"
+                f"{html_escape(c['close'])}　"
+                f"EPS {html_escape(c['eps'])}　"
+                f"價/EPS <b>{html_escape(c['mult'])}</b>"
+            )
+        if bijia.get("read"):
+            bj_lines.append(html_escape(str(bijia["read"])))
+        flag = str(bijia.get("flag") or "")
+        flag_text = str(bijia.get("flag_text") or "").strip()
+        if flag == "lag" and flag_text:
+            bj_lines.append(f"<b>◆ {html_escape(flag_text)}</b>")
+        elif flag == "dear" and flag_text:
+            bj_lines.append(f"<b>◇ {html_escape(flag_text)}</b>")
+        blocks.append(section(*bj_lines))
+    elif str(bijia.get("note") or "").strip():
+        blocks.append(section("<b>同鏈比價</b>", html_escape(str(bijia["note"]))))
 
     as_of = snap["as_of"]
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
