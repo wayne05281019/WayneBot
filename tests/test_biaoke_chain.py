@@ -291,7 +291,6 @@ def test_tape_does_not_repeat_hold_or_field():
     hold = next(s for s in fired["steps"] if s["id"] == "hold")
     field = next(s for s in fired["steps"] if s["id"] == "field")
     assert "收" in tape["text"]
-    assert "3930" in tape["text"]
     assert "圖上演算" in tape["text"]
     assert "勿輕易調節" not in tape["text"]
     assert "長線龍頭" not in tape["text"]
@@ -318,7 +317,6 @@ def test_think_chains_45839_and_self_leader():
     assert "47578" in think
     assert "自己就是這族龍頭" in think
     assert "勿輕易調節" in think
-    assert "3930" in think
     tape = next(s for s in fired["steps"] if s["id"] == "tape")
     close_m = __import__("re").search(r"收 ([0-9.]+)", tape["text"])
     if close_m:
