@@ -6,6 +6,7 @@ from bot_servers import (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
     MENU_ROW1,
     MENU_ROW2,
     TELEGRAM_BOT_COMMANDS,
@@ -24,20 +25,23 @@ def test_biaoke_button_is_plain_biaoda_top_right():
 
     assert _circled_menu_label("飆大") in MENU_BTN_BIAOKE_ALIASES
     assert _normalize_menu_text(MENU_BTN_BIAOKE_FACE) == "飆大"
-    assert MENU_ROW1[-1] == MENU_BTN_MARKET
-    assert MENU_ROW1[-2] == MENU_BTN_BIAOKE_FACE
-    assert MENU_ROW2[-1] == MENU_BTN_SLOT
+    assert MENU_ROW1[-1] == "資金"
+    assert MENU_ROW1[-2] == MENU_BTN_MARKET
+    assert MENU_ROW1[-3] == MENU_BTN_BIAOKE_FACE
+    assert MENU_ROW2[-1] == MENU_BTN_DONGZHU
     assert MENU_ROW2[-2] == MENU_BTN_LEAVE_ZERO
     assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
+    assert MENU_BTN_DONGZHU == "洞燭先機"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
-    face = [b.text for b in kb.keyboard[0]][-2]
+    face = [b.text for b in kb.keyboard[0]][-3]
     assert face == "飆大"
     assert "\u20dd" not in face
     assert _normalize_menu_text(face) == "飆大"
-    assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_MARKET
-    assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_SLOT
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_MARKET
+    assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_DONGZHU
     assert [b.text for b in kb.keyboard[1]][-2] == MENU_BTN_LEAVE_ZERO
 
 
@@ -176,6 +180,28 @@ def test_circled_face_routes_like_biaoda():
     msg.reply_html.assert_not_awaited()
 
 
+def test_dongzhu_button_opens_page():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {}
+    bot._actor_key = MagicMock(return_value="1:1")
+    bot.dongzhu_cmd = AsyncMock()
+    user = SimpleNamespace(id=1, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.text = MENU_BTN_DONGZHU
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    bot.dongzhu_cmd.assert_awaited()
+
+
 def test_biaoke_page_has_no_inside_menu():
     import inspect
 
@@ -225,7 +251,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "24"
+    assert MENU_LAYOUT_VERSION == "26"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
@@ -273,19 +299,21 @@ def test_biaoke_keyboard_toggles_same_slot():
     main = bot._reply_menu()
     assert len(kb.keyboard) == 2
     assert len(main.keyboard) == 2
-    assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_LEAVE_BIAOKE
-    assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_MARKET
-    assert [b.text for b in main.keyboard[0]][-2] == "飆大"
-    assert [b.text for b in main.keyboard[0]][-1] == MENU_BTN_MARKET
-    assert [b.text for b in kb.keyboard[0]][:-2] == [b.text for b in main.keyboard[0]][:-2]
+    assert [b.text for b in kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
+    assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_MARKET
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in main.keyboard[0]][-3] == "飆大"
+    assert [b.text for b in main.keyboard[0]][-2] == MENU_BTN_MARKET
+    assert [b.text for b in main.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][:-3] == [b.text for b in main.keyboard[0]][:-3]
     assert [b.text for b in kb.keyboard[1]] == [b.text for b in main.keyboard[1]]
     compact_on = WayneTelegramBot.__new__(WayneTelegramBot)
     compact_on.db_path = ""
     compact_on._menu_compact_on = lambda uid="": True
     compact_kb = compact_on._biaoke_reply_menu()
     assert len(compact_kb.keyboard) == 2
-    assert [b.text for b in compact_kb.keyboard[0]][-2] == MENU_BTN_LEAVE_BIAOKE
-    assert [b.text for b in compact_kb.keyboard[0]][-1] == MENU_BTN_MARKET
+    assert [b.text for b in compact_kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
+    assert [b.text for b in compact_kb.keyboard[0]][-1] == "資金"
 
 
 def test_leave_biaoke_clears_only_that_uid():
@@ -509,7 +537,12 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     assert not is_phone_code_query("代碼2330")
     assert not is_phone_code_query("版本")
     names = [name for name, _desc in TELEGRAM_BOT_COMMANDS]
-    assert "code" in names
+    assert names == ["menu", "industry", "code", "start"]
+    assert "screen" not in names
+    assert "market" not in names
+    assert "portfolio" not in names
+    assert "watch" not in names
+    assert "flow" not in names
 
 
 def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):

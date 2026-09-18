@@ -22,8 +22,8 @@ FEATURES: Tuple[str, ...] = (
     "海選",
     "持股",
     "觀察",
-    "刷新",
-    "回報",
+    "出圖等待",
+    "左邊橫槓",
     "大盤",
     "資金",
     "當沖",
@@ -34,7 +34,7 @@ FEATURES: Tuple[str, ...] = (
     "查股兩張圖",
     "圖文",
     "興櫃海選",
-    "空白格",
+    "洞燭先機",
     "完整十二鈕",
     "語音聽寫",
     "剛脫離零",
@@ -101,8 +101,8 @@ _FEATURE_HELP = {
     "海選": ("screen", "海選"),
     "持股": ("portfolio", "持股"),
     "觀察": ("watch", "觀察"),
-    "刷新": ("decision", "刷新"),
-    "回報": ("guide", "回報"),
+    "出圖等待": ("stock", "_wait_bubble"),
+    "左邊橫槓": ("menu", "TELEGRAM_BOT_COMMANDS"),
     "大盤": ("market", "大盤"),
     "資金": ("flow", "資金"),
     "當沖": ("daytrade", "當沖"),
@@ -113,7 +113,7 @@ _FEATURE_HELP = {
     "查股兩張圖": ("stock", "介紹圖"),
     "圖文": ("guide", "圖文"),
     "興櫃海選": ("screen", "興櫃"),
-    "空白格": ("menu", "留白"),
+    "洞燭先機": ("dongzhu", "洞燭先機"),
     "完整十二鈕": ("menu", "兩排"),
     "語音聽寫": ("guide", "麥克風"),
     "剛脫離零": ("leave_zero", "剛脫離零"),
@@ -124,8 +124,8 @@ _FEATURE_INTENT = {
     "海選": "screen",
     "持股": "portfolio",
     "觀察": "watch",
-    "刷新": "card",
-    "回報": "report",
+    "出圖等待": None,
+    "左邊橫槓": None,
     "大盤": "market",
     "資金": "flow",
     "當沖": "daytrade",
@@ -136,7 +136,7 @@ _FEATURE_INTENT = {
     "查股兩張圖": "lookup",
     "圖文": "help",
     "興櫃海選": "emerging_screen",
-    "空白格": None,
+    "洞燭先機": "dongzhu",
     "完整十二鈕": None,
     "語音聽寫": None,
     "剛脫離零": "leave_zero",
@@ -147,7 +147,6 @@ _FEATURE_CMD = {
     "海選": "screen",
     "持股": "portfolio",
     "觀察": "watch",
-    "刷新": "card",
     "大盤": "market",
     "資金": "flow",
     "當沖": "daytrade",
@@ -180,8 +179,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     kind = _FEATURE_INTENT[feature]
 
     if lens == "first_open_copy":
-        if feature == "空白格":
-            return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
+        if feature == "洞燭先機":
+            return _ok("dongzhu") if "MENU_BTN_DONGZHU" in src else _bad("沒洞燭先機")
         if feature == "完整十二鈕":
             return _ok("兩排") if "兩排" in src and "start_cmd" in src else _bad("start 沒提兩排")
         if feature == "剛脫離零":
@@ -195,9 +194,10 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "當沖": "daytrade_closed",
             "隔日沖": "overnight_list_heading",
             "連買區": "目前沒有連續買超",
-            "刷新": "還沒查過股票",
+            "出圖等待": "_stop_plain_wait",
             "AI倉": "format_ai_desk_pages",
             "剛脫離零": "此刻沒有獲利剛離零",
+            "洞燭先機": "沒有黃金買點",
             "興櫃海選": "目前沒有可用的官方日均價",
             "查股兩張圖": "找不到這檔",
             "圖文": "圖文說明已取消",
@@ -233,8 +233,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         block = src.split("def _reply_menu", 1)[-1][:500]
         if "_ACTIVE_PHONE_UID.get()" not in block:
             return _bad("_reply_menu 沒讀當下 uid")
-        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if feature == "洞燭先機" and "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("ctx")
 
     if lens == "full_kb_persist":
@@ -252,8 +252,6 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok("iso")
 
     if lens == "pending_cancel":
-        if feature == "回報":
-            return _ok("cancel") if "要取消請按其他按鈕" in src else _bad("回報沒取消")
         if feature == "連買區":
             return _ok("esc") if "_text_escapes_pending" in src else _bad("連買不放行")
         if feature == "記買入":
@@ -270,6 +268,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "興櫃海選": "興櫃海選逾時",
             "查股兩張圖": "_CARD_BUILD_TIMEOUT",
             "連買區": "timeout=25.0",
+            "洞燭先機": "洞燭先機查詢逾時",
         }
         n = needles.get(feature)
         if n:
@@ -289,14 +288,18 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "intent_alias":
         if kind is None:
-            if feature == "空白格":
-                return _ok("slot") if "MENU_BTN_SLOT" in src else _bad("沒留白格")
+            if feature == "洞燭先機":
+                return _ok("dongzhu") if "MENU_BTN_DONGZHU" in src else _bad("沒洞燭先機")
             if feature == "完整十二鈕":
                 return _ok("alias") if "MENU_ROW1" in src and "MENU_ROW2" in src else _bad("沒完整兩排")
             if feature == "語音聽寫":
                 return _ok("voice") if "on_voice" in src else _bad("沒聽寫")
             if feature == "剛脫離零":
                 return _ok("leave-zero") if "MENU_BTN_LEAVE_ZERO" in src else _bad("沒剛脫離零")
+            if feature == "出圖等待":
+                return _ok("wait") if "_start_plain_wait" in src else _bad("沒等待泡")
+            if feature == "左邊橫槓":
+                return _ok("ham") if "TELEGRAM_BOT_COMMANDS" in src else _bad("沒橫槓指令")
             return _ok("n/a")
         token = f'("{feature}"' if feature in ("說明", "海選", "持股", "觀察", "大盤", "資金", "當沖", "隔日沖") else kind
         if kind not in intent_src and feature not in intent_src:
@@ -309,6 +312,14 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         return _ok(kind)
 
     if lens == "slash_command":
+        if feature == "左邊橫槓":
+            blob = src.split("TELEGRAM_BOT_COMMANDS = (", 1)[-1][:1200]
+            for name in ("market", "screen", "portfolio", "watch", "flow"):
+                if f'("{name}"' in blob:
+                    return _bad(f"橫槓還有 /{name}")
+            if '("menu"' not in blob or '("start"' not in blob:
+                return _bad("橫槓沒留 menu/start")
+            return _ok("ham-unique")
         cmd = _FEATURE_CMD.get(feature)
         if not cmd:
             return _ok("no-slash")
@@ -349,15 +360,15 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
     if lens == "placeholder":
         if "打股名／代號" not in src:
             return _bad("沒輸入列提示")
-        if feature == "空白格" and "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if feature == "洞燭先機" and "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("ph")
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "24":
-            return _bad("版面不是 24")
-        return _ok("v24")
+        if not m or m.group(1) != "26":
+            return _bad("版面不是 26")
+        return _ok("v26")
 
     if lens == "slot_noop":
         if "MENU_BTN_LEAVE_ZERO" not in src:
@@ -501,8 +512,8 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         block = src.split("def _reply_menu", 1)[-1][:1400]
         if "MENU_COMPACT_ROWS" in block:
             return _bad("還有精簡六顆")
-        if "MENU_BTN_SLOT" not in src:
-            return _bad("沒留白格")
+        if "MENU_BTN_DONGZHU" not in src:
+            return _bad("沒洞燭先機")
         return _ok("no-compact")
 
     if lens == "menu_slot_empty":
@@ -511,9 +522,9 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
         if "MENU_ROW2" not in src:
             return _bad("沒第二排")
         row2 = src.split("MENU_ROW2 = (", 1)[-1][:500]
-        if "MENU_BTN_LEAVE_ZERO" not in row2:
-            return _bad("第二排最右沒剛脫離零")
-        return _ok("leave-zero-slot")
+        if "MENU_BTN_DONGZHU" not in row2:
+            return _bad("第二排最右沒洞燭先機")
+        return _ok("dongzhu-slot")
 
     if lens == "phone_busy_const":
         if 'PHONE_BUSY = "這一步暫時沒跑完' not in src:

@@ -20,7 +20,8 @@ def test_start_cmd_leads_with_three_steps():
     assert "LOOKUP_CODE_EXAMPLES_HTML" in src
     assert "00981A" in LOOKUP_CODE_EXAMPLES_HTML
     assert "圖下面" in src
-    assert "回報" in src
+    assert "回報" not in src
+    assert "刷新" not in src
     assert "給家人用" not in src
     assert "對方用自己的帳號按開始" not in src
     assert "不必再分享邀請" in src

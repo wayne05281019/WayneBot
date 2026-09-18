@@ -2264,6 +2264,14 @@ def execute_full_screening(
             us_snap=us_snap if apply_us else None,
             rotated_names=just_rotated_names_in_results(results, rot_keys),
         )
+        try:
+            from dongzhu_screen import rotation_screen_block
+
+            rot = rotation_screen_block(engine.db_path)
+            if rot:
+                outlook = (outlook + "\n" if outlook else "") + rot
+        except Exception:
+            pass
     except Exception:
         outlook = ""
     payload = format_screening_payload(

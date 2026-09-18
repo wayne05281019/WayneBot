@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 介紹圖（上半資訊、下半高低導航）＋決策卡；圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -292,7 +292,7 @@ LOOKUP_CODE_EXAMPLES_HTML = (
 
 HELP_TOPICS = {}
 # 說明／圖文／介紹已取消。舊氣泡 ?:／pg:／/help／打「說明」「圖文」靜音。
-# 主選單兩排：拿掉說明後整排往前；上排最右大盤、下排最右空白格。圈已拿掉。
+# 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6；下排最右洞燭先機。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
@@ -301,6 +301,12 @@ MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
 MENU_BTN_BIAOKE_FACE = MENU_BTN_BIAOKE
 MENU_BTN_SLOT = "\u3000"
+MENU_BTN_DONGZHU = "洞燭先機"
+MENU_BTN_DONGZHU_ALIASES = (
+    MENU_BTN_DONGZHU,
+    "洞燭",
+    "先機",
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -334,19 +340,17 @@ MENU_ROW1 = (
     "海選",
     "持股",
     "觀察",
-    MENU_BTN_CARD,
-    MENU_BTN_REPORT,
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_MARKET,
+    "資金",
 )
 MENU_ROW2 = (
-    "資金",
     "當沖",
     "隔日沖",
     MENU_BTN_AI,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
-    MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
 )
 MENU_COMPACT_ALIASES = ("精簡選單", "精簡鍵盤")
 MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
@@ -369,18 +373,16 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v22：剛離零→剛脫離零；等待泡泡等寬框線；飆大個股不倒舊文舊圖。
 # v23：拿掉說明，整排往前；第一排最右大盤，第二排最右空白。說明／圖文／/help 取消。
 # v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
-MENU_LAYOUT_VERSION = "24"
+# v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
+# v26：下排最右空白格改「洞燭先機」（族群＋黃金買點交集；沒買點不准發明）。
+MENU_LAYOUT_VERSION = "26"
 MAX_PICK_INLINE_ROWS = 8
 
-# 輸入列左邊三條槓（Telegram BotCommand）。查股請直接打代號，不必先點選單。
+# 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
+# 兩排已有海選／持股／觀察／大盤／資金，橫槓不再放 screen／portfolio／watch／market／flow。
 TELEGRAM_BOT_COMMANDS = (
     ("menu", "回到主選單（下方兩排）"),
-    ("market", "大盤指數與風險"),
-    ("screen", "海選"),
-    ("portfolio", "持股"),
-    ("watch", "觀察"),
-    ("flow", "資金移動"),
-    ("industry", "產業說明"),
+    ("industry", "產業說明（先打代號）"),
     ("code", "現在更新說明"),
     ("start", "開始"),
 )
@@ -716,7 +718,7 @@ class WayneTelegramBot:
                 kb.append([InlineKeyboardButton(f"{c} {n}".strip()[:22], callback_data=f"d:{c}")])
         self._pending[self._pending_actor(message, uid=uid)] = "dcard"
         await message.reply_html(
-            "這顆會刷新<b>上一檔</b>。你這邊還沒查過股票，所以沒有上一檔。\n"
+            "還沒查過股票，沒有上一檔可重畫。\n"
             "請直接打代號，例如 "
             + LOOKUP_CODE_EXAMPLES_HTML
             + "；或點下面觀察清單。",
@@ -747,7 +749,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = ""):
-        """兩排各七格；下排最右空白。偉權與哥哥同一套，沒有精簡。"""
+        """兩排各六格；下排最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -767,7 +769,7 @@ class WayneTelegramBot:
             row1,
             [KeyboardButton(t) for t in MENU_ROW2],
         ]
-        placeholder = "打股名／代號，或按「刷新」"
+        placeholder = "打股名／代號"
         try:
             return ReplyKeyboardMarkup(
                 rows,
@@ -779,7 +781,7 @@ class WayneTelegramBot:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
     def _biaoke_reply_menu(self, uid: str = ""):
-        """還在飆大：上排「飆大」同一顆改成「離開飆大」，最右大盤不動。"""
+        """還在飆大：上排「飆大」同一顆改成「離開飆大」。"""
         row1 = [
             KeyboardButton(MENU_BTN_LEAVE_BIAOKE if t == MENU_BTN_BIAOKE_FACE else t)
             for t in MENU_ROW1
@@ -869,9 +871,9 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…大盤，第二排資金…剛脫離零。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排海選…資金，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
-            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右大盤）。"
+            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -2176,10 +2178,10 @@ class WayneTelegramBot:
                 "1　點輸入列旁邊四格 ⌨️ 叫出兩排（不見就打 /menu）\n"
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
-                + "（不要先按「刷新」）\n"
+                + "\n"
                 "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
                 "\n"
-                "亂了按「回報」。\n"
+                "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
             ),
         )
@@ -2808,6 +2810,127 @@ class WayneTelegramBot:
     async def leave_zero_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_leave_zero_now(update.message)
 
+    async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE, code: str = ""):
+        del context
+        q = str(code or "").strip()
+        if q:
+            await self._send_dongzhu_hold(update.message, q)
+            return
+        await self._send_dongzhu_page(update.message)
+
+    async def _send_dongzhu_hold(self, message, query: str) -> None:
+        from biaoke_field_scan import dongzhu_hold_page
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        actor = self._actor_key(message, uid=uid)
+        q = str(query or "").strip()
+        hits = lookup_stocks(self.db_path, q.split()[0].strip() if q else "")
+        if not hits and q:
+            hits = lookup_stocks(self.db_path, q)
+        if not hits:
+            self._pending[actor] = "dongzhu"
+            await message.reply_text(
+                "找不到這檔。打代號或股名，看這檔自己的細項能不能留（不是整層電子）。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        if hits_need_picker(hits):
+            self._pending[actor] = "dongzhu"
+            await message.reply_html(
+                self._hits_list_html(hits),
+                reply_markup=self._hits_keyboard(hits),
+                disable_web_page_preview=True,
+            )
+            return
+        sid = str(hits[0].get("stock_id") or "").strip()
+        try:
+            html = await asyncio.wait_for(
+                asyncio.to_thread(dongzhu_hold_page, self.db_path, sid),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 洞燭先機查詢逾時。請稍後再打一次代號。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        except Exception:
+            logger.exception("洞燭先機能不能留失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        self._pending[actor] = "dongzhu"
+        chunks = chunk_telegram_html(html, 3500) or [html]
+        for chunk in chunks:
+            await message.reply_html(
+                chunk,
+                reply_markup=self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
+
+    async def _send_dongzhu_page(self, message) -> None:
+        from biaoke_field_scan import dongzhu_page, dongzhu_picks
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        await self._enter_main_menu(message, uid)
+        try:
+            html = await asyncio.wait_for(
+                asyncio.to_thread(dongzhu_page, self.db_path),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        except Exception:
+            logger.exception("洞燭先機查詢失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        picks = []
+        try:
+            data = dongzhu_picks(self.db_path)
+            seen = set()
+            for item in (
+                list(data.get("buys") or [])
+                + list(data.get("watches") or [])
+                + list(data.get("laggards") or [])
+            ):
+                sid = str(item.get("sid") or "")
+                if not sid or sid in seen:
+                    continue
+                seen.add(sid)
+                picks.append((sid, item.get("name") or ""))
+        except Exception:
+            picks = []
+        chunks = chunk_telegram_html(html, 3500) or [html]
+        last = len(chunks) - 1
+        for j, chunk in enumerate(chunks):
+            kb = self._leave_zero_section_keyboard(
+                picks if j == last else None,
+                include_menu=(j == last),
+            )
+            await message.reply_html(
+                chunk,
+                reply_markup=kb or self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
+        self._pending[self._actor_key(message, uid=uid)] = "dongzhu"
+
     async def _run_leave_zero_now(self, message):
         from live_quote import is_live_merge_window
         from screening_engine import _stock_card_html
@@ -3052,12 +3175,12 @@ class WayneTelegramBot:
         except Exception:
             path = ""
             logger.exception("大盤日K圖失敗")
-        if wait is not None:
-            try:
-                await wait.delete()
-            except Exception:
-                pass
         if not path or not self._chart_png_looks_ok(path):
+            if wait is not None:
+                try:
+                    await wait.delete()
+                except Exception:
+                    pass
             return
         cap = "加權指數日K（K棒・MA5/20/60・量）"
         try:
@@ -3070,6 +3193,11 @@ class WayneTelegramBot:
                 )
         except Exception:
             logger.exception("大盤日K圖送出失敗")
+        if wait is not None:
+            try:
+                await wait.delete()
+            except Exception:
+                pass
 
     def _enter_biaoke_chat(self, message, uid: str = "") -> None:
         uid = str(uid or self._uid_from_message(message) or "")
@@ -3549,22 +3677,29 @@ class WayneTelegramBot:
                 disable_web_page_preview=True,
             )
             return
-        chip_img = await asyncio.to_thread(
-            generate_chips_image,
-            code,
-            self.db_path,
-            self._scratch_chart_path(self.charts_dir, code, "chips", uid),
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble("籌碼圖進行中", s, now="法人張數", fill_sec=20.0),
         )
-        if chip_img:
-            try:
-                with open(chip_img, "rb") as f:
-                    await message.reply_photo(
-                        photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
-                    )
-            except Exception:
-                await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
-        else:
-            await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
+        try:
+            chip_img = await asyncio.to_thread(
+                generate_chips_image,
+                code,
+                self.db_path,
+                self._scratch_chart_path(self.charts_dir, code, "chips", uid),
+            )
+            if chip_img:
+                try:
+                    with open(chip_img, "rb") as f:
+                        await message.reply_photo(
+                            photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
+                        )
+                except Exception:
+                    await message.reply_text("籌碼圖送出失敗", reply_markup=self._hub_keyboard(code))
+            else:
+                await message.reply_html("查無籌碼", reply_markup=self._hub_keyboard(code))
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def fund_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = context.args or []
@@ -3617,34 +3752,41 @@ class WayneTelegramBot:
         em = self._hit_is_emerging(code, hits)
         uid = str(uid or self._uid_from_message(message) or "0")
         png_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid)
+        wait_h = await self._start_plain_wait(
+            message,
+            text_fn=lambda s: self._wait_bubble("產業圖進行中", s, now="產業卡", fill_sec=20.0),
+        )
 
         def _build():
             return render_industry_png(code, self.db_path, png_path, allow_fetch=True, max_fetch=1)
 
         try:
-            out = await asyncio.to_thread(_build)
-        except Exception:
-            logger.exception("產業說明圖失敗 code=%s", code)
-            out = ""
-        if out and os.path.isfile(out):
             try:
-                with open(out, "rb") as f:
-                    await message.reply_photo(
-                        photo=f,
-                        caption=f"{html_escape(code)}　產業",
-                        reply_markup=self._hub_keyboard(code, em=em),
-                    )
-                return
+                out = await asyncio.to_thread(_build)
             except Exception:
-                logger.exception("產業圖送出失敗 code=%s", code)
-        try:
-            html = await asyncio.to_thread(format_industry_html, code, self.db_path)
-        except Exception:
-            logger.exception("產業說明失敗 code=%s", code)
-            html = PHONE_BUSY
-        await message.reply_html(
-            html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
-        )
+                logger.exception("產業說明圖失敗 code=%s", code)
+                out = ""
+            if out and os.path.isfile(out):
+                try:
+                    with open(out, "rb") as f:
+                        await message.reply_photo(
+                            photo=f,
+                            caption=f"{html_escape(code)}　產業",
+                            reply_markup=self._hub_keyboard(code, em=em),
+                        )
+                    return
+                except Exception:
+                    logger.exception("產業圖送出失敗 code=%s", code)
+            try:
+                html = await asyncio.to_thread(format_industry_html, code, self.db_path)
+            except Exception:
+                logger.exception("產業說明失敗 code=%s", code)
+                html = PHONE_BUSY
+            await message.reply_html(
+                html, reply_markup=self._hub_keyboard(code, em=em), disable_web_page_preview=True
+            )
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def why_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """舊版三條槓／why：已拿掉。舊客戶端還會送 /why，不能靜默。"""
@@ -3774,6 +3916,9 @@ class WayneTelegramBot:
             return
         if kind == "leave_zero":
             await self.leave_zero_cmd(upd, ctx)
+            return
+        if kind == "dongzhu":
+            await self.dongzhu_cmd(upd, ctx, code=code)
             return
         if kind == "streak":
             await self.streak_cmd(upd, ctx)
@@ -4057,6 +4202,11 @@ class WayneTelegramBot:
             self._pending.pop(actor, None)
             await self.leave_zero_cmd(update, context)
             return
+        if text in MENU_BTN_DONGZHU_ALIASES:
+            logger.info("主選單：洞燭先機 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.dongzhu_cmd(update, context)
+            return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)
             self._pending.pop(actor, None)
@@ -4138,6 +4288,10 @@ class WayneTelegramBot:
                 await self._send_biaoke_page(
                     update.message, ask=raw or text, uid=uid
                 )
+                return
+            if pending == "dongzhu":
+                self._pending[actor] = "dongzhu"
+                await self._send_dongzhu_hold(update.message, raw or text)
                 return
             pending = self._pending.pop(actor, "")
             if pending in ("card", "dcard", "chips", "fund", "industry", "watch"):
@@ -4777,32 +4931,34 @@ class WayneTelegramBot:
         except Exception:
             path = ""
             logger.exception("導航圖失敗 code=%s", code)
-        if wait is not None:
-            try:
-                await wait.delete()
-            except Exception:
-                pass
-        if not path or not self._chart_png_looks_ok(path):
-            await message.reply_html(
-                "導航圖產出失敗，請稍後再按一次「導航圖」。",
-                reply_markup=hub,
-                disable_web_page_preview=True,
-            )
-            return
-        cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
-        for attempt in range(3):
-            try:
-                with open(path, "rb") as f:
-                    await message.reply_photo(
-                        photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
-                    )
+        try:
+            if not path or not self._chart_png_looks_ok(path):
+                await message.reply_html(
+                    "導航圖產出失敗，請稍後再按一次「導航圖」。",
+                    reply_markup=hub,
+                    disable_web_page_preview=True,
+                )
                 return
-            except Exception as exc:
-                if attempt < 2 and type(exc).__name__ in ("TimedOut", "NetworkError", "RetryAfter"):
-                    await asyncio.sleep(1.5 * (attempt + 1))
-                    continue
-                logger.exception("導航圖送出失敗 code=%s", code)
-        await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
+            cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
+            for attempt in range(3):
+                try:
+                    with open(path, "rb") as f:
+                        await message.reply_photo(
+                            photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
+                        )
+                    return
+                except Exception as exc:
+                    if attempt < 2 and type(exc).__name__ in ("TimedOut", "NetworkError", "RetryAfter"):
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    logger.exception("導航圖送出失敗 code=%s", code)
+            await message.reply_html("導航圖送出失敗。", reply_markup=hub, disable_web_page_preview=True)
+        finally:
+            if wait is not None:
+                try:
+                    await wait.delete()
+                except Exception:
+                    pass
 
     async def _send_etf_category_pick(self, message, phrase: str, uid: str = ""):
         """分類詞還沒打完：先讓人點主動／被動／配息型，再列出成交量較大的幾檔。"""
@@ -5469,13 +5625,18 @@ class WayneTelegramBot:
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
+            code = data[2:].strip()
+            actor = self._actor_key(q.message, uid=uid)
+            if str(self._pending.get(actor) or "") == "dongzhu":
+                await self._send_dongzhu_hold(q.message, code)
+                return
             try:
-                await self._send_card_to(q.message, data[2:], uid)
+                await self._send_card_to(q.message, code, uid)
             except Exception:
                 logger.exception("callback 查股失敗")
                 try:
                     await q.message.reply_text(
-                        f"{data[2:]} 出圖失敗，請再打一次代號。"
+                        f"{code} 出圖失敗，請再打一次代號。"
                     )
                 except Exception:
                     pass

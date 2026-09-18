@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""進場前徵兆：追當天第一名 vs 佔比升還沒當第一 vs 昨天第一名今天在退。
+
+一次走查就收成規則，不鎖假起點％。盤中未收不當官方收。
+切入仍只認高低卡黃金買點（獲利 0.05%～5%）。
+"""
+from __future__ import annotations
+
+import os
+import sys
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Sequence, Tuple
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+for p in (ROOT, SCRIPTS):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from biaoke_field_scan import PRE_VS20, _split_chain_text, _taught_for_chain  # noqa: E402
+from dongzhu_prerally import (  # noqa: E402
+    DB,
+    FWD,
+    GAIN,
+    LOOKBACK,
+    SHARE_DAYS,
+    is_lu,
+    load,
+    stats_at,
+)
+
+LZ_MIN = 0.05
+LZ_MAX = 5.0
+
+
+def _ymd_dt(day: str) -> datetime:
+    return datetime.strptime(day, "%Y%m%d")
+
+
+def profit_cal60(bars: Sequence[Tuple], cap: str) -> Optional[float]:
+    rows = [r for r in bars if r[0] <= cap]
+    if not rows:
+        return None
+    last = rows[-1]
+    floor = (_ymd_dt(cap) - timedelta(days=60)).strftime("%Y%m%d")
+    lows = [r[3] for r in rows if r[0] >= floor]
+    if not lows:
+        lows = [r[3] for r in rows[-20:]]
+    lo = min(x for x in lows if x > 0) if any(x > 0 for x in lows) else 0.0
+    if lo <= 0 or last[3] <= 0:
+        return None
+    return (last[3] / lo - 1.0) * 100.0
+
+
+def just_left_zero(bars: Sequence[Tuple], cap: str) -> bool:
+    rows = [r for r in bars if r[0] <= cap]
+    if len(rows) < 2:
+        return False
+    today = profit_cal60(rows, cap)
+    prev = profit_cal60(rows[:-1], rows[-2][0])
+    if today is None or prev is None:
+        return False
+    return prev <= LZ_MIN and LZ_MIN < today <= LZ_MAX
+
+
+def main() -> None:
+    import sqlite3
+
+    print(f"LOOKBACK={LOOKBACK} FWD={FWD} PRE_VS20={PRE_VS20} LZ={LZ_MIN}..{LZ_MAX}")
+    conn = sqlite3.connect(DB)
+    meta = load(conn)
+    conn.close()
+    chip100: List[str] = meta["chip100"]
+    by_sid = meta["by_sid"]
+    by_day = meta["by_day"]
+    members: Dict[str, List[str]] = meta["members"]
+    names = meta["names"]
+    quotes: List[str] = meta["quotes"]
+    quote_idx = {d: i for i, d in enumerate(quotes)}
+    print(f"窗 {chip100[0]}..{chip100[-1]} chip={len(chip100)}")
+
+    mkt_in: Dict[str, int] = {}
+    for d, recs in by_day.items():
+        mkt_in[d] = sum(r[6] for _s, r in recs if r[6] > 0)
+
+    chain_three: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for sid, bars in by_sid.items():
+        chain = meta["fine"].get(sid)
+        if not chain:
+            continue
+        for rec in bars:
+            chain_three[chain][rec[0]] += rec[6]
+
+    chains = [
+        c
+        for c, sids in members.items()
+        if len(sids) >= 3 or _taught_for_chain(_split_chain_text(c))
+    ]
+
+    def share(chain: str, d: str) -> float:
+        inn = mkt_in.get(d) or 0
+        three = chain_three[chain].get(d) or 0
+        if inn > 0 and three > 0:
+            return 100.0 * three / inn
+        return 0.0
+
+    def ranked_day(d: str) -> List[Tuple[float, str]]:
+        rows = [(share(c, d), c) for c in chains]
+        rows = [(sh, c) for sh, c in rows if sh > 0]
+        rows.sort(reverse=True)
+        return rows
+
+    def leads_of(chain: str, d: str) -> set:
+        tv = []
+        for sid in members.get(chain) or []:
+            tot = 0.0
+            for rec in by_sid.get(sid) or []:
+                if rec[0] <= d:
+                    tot += rec[3] * rec[4]
+            tv.append((tot, sid))
+        tv.sort(reverse=True)
+        k = 1 if len(tv) <= 3 else 2
+        return {sid for _t, sid in tv[:k]}
+
+    def laggards(chain: str, d: str, *, lz: bool, n: int = 3) -> List[str]:
+        lead = leads_of(chain, d)
+        rest = [sid for sid in (members.get(chain) or []) if sid not in lead]
+        scored = []
+        for sid in rest:
+            st = stats_at(by_sid.get(sid) or [], d)
+            if not st:
+                continue
+            vs20 = float(st.get("vs20") or 0)
+            vs60 = float(st.get("vs60") or 0)
+            if vs20 > PRE_VS20 or vs60 >= 0:
+                continue
+            if lz and not just_left_zero(by_sid.get(sid) or [], d):
+                continue
+            scored.append((vs20, sid))
+        scored.sort()
+        return [sid for _v, sid in scored[:n]]
+
+    def fwd(sids: Sequence[str], d: str) -> Tuple[bool, bool, Optional[float]]:
+        qi = quote_idx.get(d)
+        if qi is None or not sids:
+            return False, False, None
+        future = set(quotes[qi + 1 : qi + 1 + FWD])
+        lu = False
+        gain = False
+        best = None
+        for sid in sids:
+            bars = by_sid.get(sid) or []
+            here = next((r for r in bars if r[0] == d), None)
+            px = here[3] if here else 0
+            mx = None
+            for rec in bars:
+                if rec[0] not in future:
+                    continue
+                if is_lu(rec):
+                    lu = True
+                if px > 0:
+                    g = rec[3] / px - 1.0
+                    mx = g if mx is None or g > mx else mx
+                    if g >= GAIN:
+                        gain = True
+            if mx is not None:
+                best = mx if best is None or mx > best else best
+        return lu, gain, best
+
+    test_days = chip100[SHARE_DAYS : -FWD] if len(chip100) > FWD + SHARE_DAYS else []
+    yest = {chip100[i]: chip100[i - 1] for i in range(1, len(chip100))}
+
+    regimes = {
+        "追當天第一名": [],
+        "昨天第一名今天佔比在退": [],
+        "佔比升還沒當第一": [],
+        "佔比升還沒當第一＋黃金買點": [],
+        "追第一名＋黃金買點": [],
+        "昨天第一名今天在退＋黃金買點": [],
+    }
+
+    def take(label: str, chain: str, d: str, lz: bool) -> None:
+        if not chain:
+            return
+        sids = laggards(chain, d, lz=lz)
+        if not sids:
+            return
+        lu, gain, best = fwd(sids, d)
+        regimes[label].append(
+            {
+                "d": d,
+                "chain": chain,
+                "sids": sids,
+                "lu": lu,
+                "gain": gain or lu,
+                "best": best,
+                "names": ",".join(f"{s}{names.get(s, s)}" for s in sids),
+            }
+        )
+
+    for d in test_days:
+        ranked = ranked_day(d)
+        if not ranked:
+            continue
+        hot_sh, hot = ranked[0]
+        prev = yest.get(d)
+        prev_ranked = ranked_day(prev) if prev else []
+        y_hot = prev_ranked[0][1] if prev_ranked else ""
+        y_sh = prev_ranked[0][0] if prev_ranked else 0.0
+        leaving = y_hot and share(y_hot, d) + 1e-9 < y_sh
+
+        rising = []
+        for sh, chain in ranked[1:8]:
+            if prev and share(chain, prev) > sh + 1e-9:
+                continue
+            if sh <= 0:
+                continue
+            rising.append((sh, chain))
+        pre = rising[0][1] if rising else ""
+
+        take("追當天第一名", hot, d, False)
+        take("追第一名＋黃金買點", hot, d, True)
+        if leaving:
+            take("昨天第一名今天佔比在退", y_hot, d, False)
+            take("昨天第一名今天在退＋黃金買點", y_hot, d, True)
+        if pre:
+            take("佔比升還沒當第一", pre, d, False)
+            take("佔比升還沒當第一＋黃金買點", pre, d, True)
+        del hot_sh
+
+    def summarize(label: str) -> None:
+        rows = regimes[label]
+        n = len(rows)
+        print(f"\n=== {label} 日={n} ===")
+        if not n:
+            return
+        lu = sum(1 for r in rows if r["lu"])
+        gain = sum(1 for r in rows if r["gain"])
+        stuck = sum(
+            1 for r in rows if r["best"] is not None and r["best"] < 0 and not r["lu"]
+        )
+        print(
+            f"  次級後{FWD}日漲停 {lu}/{n}={100.0 * lu / n:.1f}%  "
+            f"漲停或漲≥8% {gain}/{n}={100.0 * gain / n:.1f}%  "
+            f"後十日最高仍虧 {stuck}/{n}={100.0 * stuck / n:.1f}%"
+        )
+        for r in rows[:6]:
+            best = r["best"]
+            bt = f"{best * 100:+.1f}%" if best is not None else "—"
+            print(f"   {r['d']} {r['chain']} {r['names']} {bt} {'漲停' if r['lu'] else ('漲8%' if r['gain'] else '沒')}")
+
+    print("\n=== 進場前徵兆走查（次級 vs20≤−8% 且仍低於60高） ===")
+    for label in regimes:
+        summarize(label)
+
+    # encode-ready one-liners
+    def rate(label: str) -> Tuple[int, float, float]:
+        rows = regimes[label]
+        n = len(rows)
+        if not n:
+            return 0, 0.0, 0.0
+        gain = 100.0 * sum(1 for r in rows if r["gain"]) / n
+        stuck = 100.0 * sum(
+            1 for r in rows if r["best"] is not None and r["best"] < 0 and not r["lu"]
+        ) / n
+        return n, gain, stuck
+
+    n1, g1, s1 = rate("追當天第一名")
+    n2, g2, s2 = rate("佔比升還沒當第一")
+    n3, g3, s3 = rate("昨天第一名今天佔比在退")
+    n4, g4, s4 = rate("佔比升還沒當第一＋黃金買點")
+    print("\n=== 規則（只留會改判斷的） ===")
+    print(f"追第一名 勝{g1:.1f}% 套{s1:.1f}% n={n1}")
+    print(f"升還沒第一 勝{g2:.1f}% 套{s2:.1f}% n={n2}")
+    print(f"昨天第一今天退 勝{g3:.1f}% 套{s3:.1f}% n={n3}")
+    print(f"升還沒第一∩黃金買點 勝{g4:.1f}% 套{s4:.1f}% n={n4}")
+    prefer_pre = n2 >= 20 and (g2 >= g1 or s2 + 0.5 < s1)
+    skip_leave = n3 >= 15 and (s3 > s2 or g3 + 1.0 < g2)
+    print(f"ENCODE prefer_rising_not_lead={prefer_pre} skip_leaving_hot={skip_leave}")
+
+
+if __name__ == "__main__":
+    main()

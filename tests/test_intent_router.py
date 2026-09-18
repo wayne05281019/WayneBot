@@ -37,6 +37,11 @@ def test_plain_speech_maps_to_official_paths():
         "決策卡": "card",
         "刷新上一檔": "card",
         "刷新": "card",
+        "剛離零": "leave_zero",
+        "洞燭先機": "dongzhu",
+        "洞燭": "dongzhu",
+        "能不能留": "dongzhu",
+        "可不可以留": "dongzhu",
         "連買區": "streak",
         "飆客": "biaoke",
         "飆大": "biaoke",
@@ -70,6 +75,10 @@ def test_code_and_name_extracted():
     assert hit.kind == "sell" and hit.code == "00990A"
     hit = parse_intent("00706l籌碼")
     assert hit.kind == "chips" and hit.code == "00706L"
+    hit = parse_intent("6257能不能留")
+    assert hit.kind == "dongzhu" and hit.code == "6257"
+    hit = parse_intent("矽格可不可以留")
+    assert hit.kind == "dongzhu" and "矽格" in hit.query
 
 
 def test_bare_stock_name_is_not_intent():

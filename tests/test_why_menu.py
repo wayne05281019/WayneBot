@@ -69,8 +69,19 @@ def _bot():
 
 def test_hamburger_omits_why():
     names = [name for name, _desc in TELEGRAM_BOT_COMMANDS]
+    assert TELEGRAM_BOT_COMMANDS == (
+        ("menu", "回到主選單（下方兩排）"),
+        ("industry", "產業說明（先打代號）"),
+        ("code", "現在更新說明"),
+        ("start", "開始"),
+    )
+    assert names == ["menu", "industry", "code", "start"]
     assert "why" not in names
-    assert names[0] == "menu"
+    assert "screen" not in names
+    assert "portfolio" not in names
+    assert "watch" not in names
+    assert "market" not in names
+    assert "flow" not in names
     assert ("why", "原因：語音或打字對出官方資料") not in TELEGRAM_BOT_COMMANDS
     src = open("bot_servers.py", encoding="utf-8").read()
     assert "_why_hub_keyboard" not in src

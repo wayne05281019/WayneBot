@@ -45,7 +45,6 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "開 LINE" not in blob
     assert "一鍵傳 LINE" not in blob
     assert "傳這檔" not in blob
-    assert "回報" in blob
     assert "記買入" in blob
     assert "外資+投信" in blob
     assert "四格" in blob
@@ -58,7 +57,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "紅圈" in blob
     assert "連買區" in blob
     assert "說明　海選　持股" not in blob
-    assert "海選　持股　觀察　刷新　回報　飆大　大盤" in blob
+    assert "海選　持股　觀察　飆大　大盤　資金" in blob
     assert "如何賣" in blob
     assert "如何低買" in blob
     assert "趨勢向上" in blob
@@ -73,9 +72,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v54"
+    assert CACHE_VER == "v56"
     assert "不收空頭" in blob
-    assert "刷新上一檔" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
     assert "一張圖卡" in blob
@@ -176,7 +174,7 @@ def test_keyboard_shot_trimmed_to_buttons():
     assert trimmed.width < im.width
     assert trimmed.height < im.height
     assert trimmed.width / trimmed.height < 5.0
-    # 右側要留到「回報／AI倉」，不要裁掉第二排最右。
+    # 右側要留到第二排最右（洞燭先機），不要裁掉。
     assert trimmed.width / im.width >= 0.75
     cream = 0
     tw, th = trimmed.size
@@ -470,14 +468,14 @@ def test_wrap_line_keeps_period_and_closing_paren():
     max_w = PAGE_WIDTH - 2 * MARGIN
     a = _wrap_line(
         dr,
-        "打 2330、0050、00631L、00981A。不要先按「刷新」。國字打不準就點左邊確認。",
+        "打 2330、0050、00631L、00981A。國字打不準就點左邊確認。",
         font,
         max_w,
         max_w,
     )
     assert a
     assert not any(ln.lstrip()[:1] in "。、；：）)」" for ln in a)
-    assert any("刷新」。" in ln for ln in a)
+    assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
         "一次兩張：介紹圖（下半高低導航箭頭）／決策卡。圖下產業（一張圖卡，細項小框沒抓到不畫）。圖下 K線開奇摩股市同一檔日K。",

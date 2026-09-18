@@ -12,8 +12,7 @@ from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
-    MENU_BTN_REPORT,
-    MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
     MENU_BTN_STREAK,
     WayneTelegramBot,
 )
@@ -72,7 +71,7 @@ def test_twenty_users_menu_and_help_do_not_share_state():
         kb = bot._reply_menu()
         row2 = [b.text for b in kb.keyboard[1]]
         assert row2[-2] == MENU_BTN_LEAVE_ZERO
-        assert row2[-1] == MENU_BTN_SLOT
+        assert row2[-1] == MENU_BTN_DONGZHU
         await bot._reply_help_topic(msg, "guide")
         await bot._reply_help_topic(msg, "row2")
         return uid, bot._actor_key(msg)

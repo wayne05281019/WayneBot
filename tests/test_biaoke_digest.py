@@ -68,8 +68,9 @@ def test_button_face_and_normalize():
     assert _normalize_menu_text("飆大 3") == "飆大"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
-    assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_BIAOKE
-    assert [b.text for b in kb.keyboard[0]][-1] == "大盤"
+    assert [b.text for b in kb.keyboard[0]][-3] == MENU_BTN_BIAOKE
+    assert [b.text for b in kb.keyboard[0]][-2] == "大盤"
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
 
 
 def test_format_digest_empty():
@@ -110,8 +111,9 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = db
     kb = bot._reply_menu(uid)
-    assert [b.text for b in kb.keyboard[0]][-2] == "飆大 2"
-    assert [b.text for b in kb.keyboard[0]][-1] == "大盤"
+    assert [b.text for b in kb.keyboard[0]][-3] == "飆大 2"
+    assert [b.text for b in kb.keyboard[0]][-2] == "大盤"
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
 
 
 def test_latest_focus_is_sep14_not_july_bwave():
