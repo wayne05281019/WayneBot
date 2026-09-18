@@ -2930,13 +2930,8 @@ class WayneTelegramBot:
         if not hits:
             self._pending[actor] = "dongzhu"
             await message.reply_text(
-<<<<<<< HEAD
-                "找不到這檔。打代號或股名，看這檔自己的產業鏈能不能留。",
-                reply_markup=self._reply_menu(uid),
-=======
                 "找不到這檔。打代號或股名，看這檔自己的產業鏈能不能留（不是整層電子）。",
                 reply_markup=self._dongzhu_reply_menu(uid),
->>>>>>> ed3965b (feat: 進洞燭後同一顆改離開洞燭先機)
             )
             return
         if hits_need_picker(hits):
@@ -2955,11 +2950,7 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "洞燭先機進行中",
                     s,
-<<<<<<< HEAD
-                    now="讀這產業鏈",
-=======
                     now="讀這檔產業鏈",
->>>>>>> ed3965b (feat: 進洞燭後同一顆改離開洞燭先機)
                     rest="能不能留",
                     fill_sec=16.0,
                 ),
