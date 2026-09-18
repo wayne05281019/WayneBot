@@ -1,4 +1,4 @@
-"""產業說明圖卡：深底、大字、細項小框。話筒文字氣泡太擠時改送這張。"""
+"""產業說明圖卡：深底、大字、產業鏈小框、同鏈比價表。話筒文字氣泡太擠時改送這張。"""
 from __future__ import annotations
 
 import os
@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from industry_brief import (
     attach_fine_industry,
+    format_bijia_cells,
     format_month_zh,
     industry_snapshot,
     peer_mix_label,
@@ -329,6 +330,36 @@ def render_industry_png(
         else:
             items.append(("p", "這檔還沒有季報列"))
 
+        bijia = snap.get("bijia") or {}
+        items.append(("h", "同鏈比價"))
+        if bijia.get("ok") and bijia.get("rows"):
+            items.append(("kv", "範圍", str(bijia.get("chain") or "")))
+            items.append(("kv", "基準", str(bijia.get("eps_label") or "")))
+            cd = str(bijia.get("close_date") or "")
+            if len(cd) == 8:
+                items.append(("kv", "收盤日", f"{cd[:4]}/{cd[4:6]}/{cd[6:]}"))
+            elif cd:
+                items.append(("kv", "收盤日", cd))
+            items.append(("bijia_head",))
+            lag_mine = str(bijia.get("flag") or "") == "lag"
+            for r in bijia["rows"]:
+                items.append(
+                    (
+                        "bijia_row",
+                        format_bijia_cells(r),
+                        bool(r.get("is_mine")),
+                        lag_mine and bool(r.get("is_mine")),
+                    )
+                )
+            if bijia.get("read"):
+                items.append(("p", str(bijia["read"])))
+            flag = str(bijia.get("flag") or "")
+            flag_text = str(bijia.get("flag_text") or "").strip()
+            if flag and flag_text:
+                items.append(("bijia_flag", flag, flag_text))
+        else:
+            items.append(("muted", str(bijia.get("note") or "同鏈比價不足").strip()))
+
         items.append(("h", "本族群產業狀況簡述"))
         for ln in _flow_lines(snap):
             if "：" in ln:
@@ -382,6 +413,21 @@ def render_industry_png(
             x += w + CHIP_GAP
         return rows * (CHIP_H + 10)
 
+    # 同鏈比價表欄位（右緣對齊數字，左緣代號／名）
+    BIJIA_MARK_W = 72
+    BIJIA_SID_W = 100
+    BIJIA_CLOSE_W = 120
+    BIJIA_EPS_W = 140
+    BIJIA_MULT_W = 120
+    BIJIA_ROW_H = 52
+    MINE_BG = (36, 64, 88)
+    LAG_BG = (255, 214, 10)       # 高反差黃
+    LAG_FG = (12, 14, 18)         # 近黑字
+    DEAR_BG = (200, 36, 56)       # 高反差紅
+    DEAR_FG = (255, 245, 245)
+    LAG_ROW_BG = (72, 58, 8)      # 這檔列：深琥珀底
+    LAG_ROW_FG = (255, 230, 80)   # 這檔列：亮黃字
+
     y = 36
     measured: List[tuple] = []
     for item in items:
@@ -400,6 +446,15 @@ def render_industry_png(
             h = max(line_h, _chip_row_h(tags, pad_x + left_w + 14) or line_h)
             measured.append((kind, item, h + 10))
             y += h + 10
+        elif kind == "bijia_head":
+            measured.append((kind, item, BIJIA_ROW_H))
+            y += BIJIA_ROW_H
+        elif kind == "bijia_row":
+            measured.append((kind, item, BIJIA_ROW_H + 6))
+            y += BIJIA_ROW_H + 6
+        elif kind == "bijia_flag":
+            measured.append((kind, item, BIJIA_ROW_H + 16))
+            y += BIJIA_ROW_H + 16
         elif kind == "kv":
             lab, val = item[1], item[2]
             avail = max(80.0, max_w - body_f.getlength(lab) - 28)
@@ -504,6 +559,120 @@ def render_industry_png(
             else:
                 dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
                 cy += line_h
+        elif kind == "bijia_head":
+            # 欄：標記 | 代號 | 名稱…… | 收盤 | EPS | 價/EPS
+            x0 = pad_x
+            x_sid = x0 + BIJIA_MARK_W
+            x_name = x_sid + BIJIA_SID_W
+            x_mult_r = pad_x + max_w
+            x_eps_r = x_mult_r - BIJIA_MULT_W
+            x_close_r = x_eps_r - BIJIA_EPS_W
+            name_right = x_close_r - BIJIA_CLOSE_W - 12
+
+            def _col(label: str, x_left: float, x_right: float, *, right: bool = False):
+                if right:
+                    tw = body_f.getlength(label)
+                    tx, ty = centered_text_xy(
+                        body_f, label, (x_right - tw, cy, x_right, cy + BIJIA_ROW_H)
+                    )
+                else:
+                    tx, ty = centered_text_xy(
+                        body_f, label, (x_left, cy, x_left + body_f.getlength(label) + 2, cy + BIJIA_ROW_H)
+                    )
+                dr.text((tx, ty), label, font=body_f, fill=MUTED + (255,))
+
+            _col("", x0, x_sid)
+            _col("代號", x_sid, x_name)
+            _col("名稱", x_name, name_right)
+            _col("收盤", x_close_r - BIJIA_CLOSE_W, x_close_r, right=True)
+            _col("EPS", x_eps_r - BIJIA_EPS_W, x_eps_r, right=True)
+            _col("價/EPS", x_mult_r - BIJIA_MULT_W, x_mult_r, right=True)
+            # 底線
+            dr.line(
+                [(pad_x, cy + BIJIA_ROW_H - 6), (pad_x + max_w, cy + BIJIA_ROW_H - 6)],
+                fill=CARD_INNER + (255,),
+                width=1,
+            )
+            cy += BIJIA_ROW_H
+        elif kind == "bijia_row":
+            cells = item[1]
+            is_mine = bool(item[2])
+            lag_hi = bool(item[3]) if len(item) > 3 else False
+            row_top = cy
+            row_bot = cy + BIJIA_ROW_H
+            if is_mine:
+                bg = LAG_ROW_BG if lag_hi else MINE_BG
+                dr.rounded_rectangle(
+                    (pad_x - 8, row_top, pad_x + max_w + 8, row_bot),
+                    radius=12,
+                    fill=bg + (255,),
+                )
+            x0 = pad_x
+            x_sid = x0 + BIJIA_MARK_W
+            x_name = x_sid + BIJIA_SID_W
+            x_mult_r = pad_x + max_w
+            x_eps_r = x_mult_r - BIJIA_MULT_W
+            x_close_r = x_eps_r - BIJIA_EPS_W
+            name_right = x_close_r - BIJIA_CLOSE_W - 12
+            if lag_hi:
+                fill = LAG_ROW_FG
+            elif is_mine:
+                fill = HEAD
+            else:
+                fill = TEXT
+
+            def _draw_left(txt: str, x_left: float, x_right: float):
+                raw = str(txt or "")
+                limit = max(20.0, x_right - x_left - 4)
+                if body_f.getlength(raw) > limit:
+                    while len(raw) > 1 and body_f.getlength(raw + "…") > limit:
+                        raw = raw[:-1]
+                    raw = raw + "…"
+                tx, ty = centered_text_xy(
+                    body_f, raw, (x_left, row_top, x_left + body_f.getlength(raw) + 2, row_bot)
+                )
+                dr.text((tx, ty), raw, font=body_f, fill=fill + (255,))
+
+            def _draw_right(txt: str, x_left: float, x_right: float):
+                tw = body_f.getlength(txt)
+                tx, ty = centered_text_xy(
+                    body_f, txt, (x_right - tw, row_top, x_right, row_bot)
+                )
+                dr.text((tx, ty), txt, font=body_f, fill=fill + (255,))
+
+            _draw_left(cells.get("mark") or "", x0, x_sid)
+            _draw_left(cells.get("sid") or "", x_sid, x_name)
+            _draw_left(cells.get("name") or "", x_name, name_right)
+            _draw_right(cells.get("close") or "", x_close_r - BIJIA_CLOSE_W, x_close_r)
+            _draw_right(cells.get("eps") or "", x_eps_r - BIJIA_EPS_W, x_eps_r)
+            _draw_right(cells.get("mult") or "", x_mult_r - BIJIA_MULT_W, x_mult_r)
+            cy += BIJIA_ROW_H + 6
+        elif kind == "bijia_flag":
+            flag, text = item[1], item[2]
+            bar_h = BIJIA_ROW_H + 8
+            if flag == "lag":
+                bg, fg = LAG_BG, LAG_FG
+            else:
+                bg, fg = DEAR_BG, DEAR_FG
+            dr.rounded_rectangle(
+                (pad_x - 8, cy, pad_x + max_w + 8, cy + bar_h),
+                radius=14,
+                fill=bg + (255,),
+            )
+            # 黑／白字置中，字級略大
+            flag_f = head_f
+            wraps = _wrap_px(str(text), flag_f, max_w - 24) or [str(text)]
+            # 單行優先；過長縮成兩行仍置中
+            block_h = len(wraps) * (head_h - 10)
+            y0 = cy + (bar_h - block_h) / 2.0
+            for ln in wraps[:2]:
+                tw = flag_f.getlength(ln)
+                tx, ty = centered_text_xy(
+                    flag_f, ln, (pad_x + (max_w - tw) / 2.0, y0, pad_x + (max_w + tw) / 2.0, y0 + head_h - 10)
+                )
+                dr.text((tx, ty), ln, font=flag_f, fill=fg + (255,))
+                y0 += head_h - 10
+            cy += bar_h + 8
         elif kind == "kv":
             lab, val = item[1], item[2]
             avail = max(80.0, max_w - body_f.getlength(lab) - 28)
