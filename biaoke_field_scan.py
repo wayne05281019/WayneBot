@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 WANT_ASK = re.compile(
     r"(新族群|蠢蠢欲動|怎麼找|根據我的指引|找族群|還沒點名|底部蠢蠢|指引去找)"
 )
 
-# 只准他公開教過、有點過第一名的次族群。不准掃全市場發明一族。
+# 教過的次族群：名稱／龍頭／落後檔對得上才沿用。排名掃全部 CMoney 三層鏈，不准發明一族、不准發明 5／9。
 # needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。
 _GROUPS: Tuple[Dict[str, Any], ...] = (
     {
@@ -95,6 +96,11 @@ _HOW = (
     "他教過怎麼找：①次族群還沒熱、很少人提；②次族群第一名誰先過前高，不比絕對漲跌；"
     "③高點整理的從底部找落後。不是猜新聞。"
 )
+# 五天漲停窗太薄（佔比起點中位 0%＝截斷，不是規則）。官方資金窗＝近 20 個有法人日。
+# 不鎖「起點必須 X%」。盤中未收、全日法人 0 不當資金日。
+FLOW_LOOKBACK = 20
+SHARE_DAYS = 5
+MIN_CHAIN_N = 3
 
 
 def want_field_scan(ask: str) -> bool:
@@ -137,6 +143,22 @@ def _chip_cap(db_path: str, cap: str = "") -> str:
 
 def _ymd(raw: Any) -> str:
     return str(raw or "").replace("-", "")[:8]
+
+
+def _split_chain_text(chain: str) -> List[str]:
+    return [p.strip() for p in str(chain or "").replace("／", "-").split("-") if p.strip()]
+
+
+def _taught_for_chain(parts: Sequence[str]) -> Optional[Dict[str, Any]]:
+    """三層鏈對得上教過的次族群才沿用龍頭／落後檔名稱。對不上不准硬套。"""
+    want = [str(x) for x in parts if str(x)]
+    if not want:
+        return None
+    for g in _GROUPS:
+        layers = [str(x) for x in (g.get("layers") or ()) if str(x)]
+        if layers and want == layers:
+            return g
+    return None
 
 
 def _bars(db_path: str, sid: str, cap: str) -> List[Tuple[str, float, float, float, float]]:
@@ -359,7 +381,7 @@ def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
 
 
 def _stock_name(db_path: str, sid: str, fallback: str = "") -> str:
-    if fallback:
+    if fallback and fallback != sid:
         return fallback
     if not db_path or not sid:
         return sid
@@ -367,14 +389,25 @@ def _stock_name(db_path: str, sid: str, fallback: str = "") -> str:
     try:
         row = conn.execute(
             "SELECT stock_name FROM daily_quotes WHERE stock_id=? "
-            "AND IFNULL(stock_name,'')!='' ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1",
+            "AND IFNULL(stock_name,'')!='' AND stock_name!=stock_id "
+            "ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1",
             (sid,),
         ).fetchone()
+        if not row:
+            hit = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_universe'"
+            ).fetchone()
+            if hit:
+                row = conn.execute(
+                    "SELECT stock_name FROM stock_universe WHERE stock_id=? LIMIT 1",
+                    (sid,),
+                ).fetchone()
     except sqlite3.Error:
         row = None
     finally:
         conn.close()
-    return str(row[0] or sid) if row else sid
+    name = str(row[0] or "").strip() if row else ""
+    return name or fallback or sid
 
 
 def group_members(db_path: str, group: Optional[Dict[str, Any]]) -> List[Tuple[str, str]]:
@@ -382,21 +415,40 @@ def group_members(db_path: str, group: Optional[Dict[str, Any]]) -> List[Tuple[s
     if not group:
         return []
     out: Dict[str, str] = {}
-    for sid, name in list(group.get("leaders") or ()) + list(group.get("laggards") or ()):
-        out[str(sid)] = str(name)
+    for sid, name in (
+        list(group.get("leaders") or ())
+        + list(group.get("laggards") or ())
+        + list(group.get("members") or ())
+    ):
+        sid = str(sid or "").strip()
+        if sid:
+            out[sid] = str(name or sid)
     needles = tuple(group.get("needles") or ())
-    if db_path and needles:
+    chain = str(group.get("chain") or "").strip()
+    if db_path and (needles or chain):
         conn = sqlite3.connect(db_path, timeout=8.0)
         try:
             hit = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_fine_industry'"
             ).fetchone()
             if hit:
-                clauses = " OR ".join(["chain LIKE ?" for _ in needles])
-                rows = conn.execute(
-                    f"SELECT stock_id, chain FROM stock_fine_industry WHERE {clauses}",
-                    tuple(f"%{n}%" for n in needles),
-                ).fetchall()
+                rows: List[Any] = []
+                if chain:
+                    rows.extend(
+                        conn.execute(
+                            "SELECT stock_id, chain FROM stock_fine_industry "
+                            "WHERE REPLACE(chain,'／','-')=? OR chain=?",
+                            (chain, chain),
+                        ).fetchall()
+                    )
+                if needles:
+                    clauses = " OR ".join(["chain LIKE ?" for _ in needles])
+                    rows.extend(
+                        conn.execute(
+                            f"SELECT stock_id, chain FROM stock_fine_industry WHERE {clauses}",
+                            tuple(f"%{n}%" for n in needles),
+                        ).fetchall()
+                    )
                 for sid, _chain in rows:
                     sid = str(sid or "").strip()
                     if not sid or sid in out:
@@ -468,7 +520,31 @@ def _quote_dates(conn: sqlite3.Connection, cap: str, n: int = 10) -> List[str]:
     return sorted(_ymd(r[0]) for r in rows if _ymd(r[0]))
 
 
-def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
+def _chip_dates(conn: sqlite3.Connection, cap: str, n: int = FLOW_LOOKBACK) -> List[str]:
+    """近 n 個「有法人」交易日。全日 0 不當資金日。沒籌碼欄就退回日 K 日。"""
+    cap = _ymd(cap)
+    if not cap:
+        return []
+    if not _has_chip_cols(conn):
+        return _quote_dates(conn, cap, n)
+    rows = conn.execute(
+        """
+        SELECT d FROM (
+          SELECT REPLACE(CAST(date AS TEXT),'-','') AS d,
+                 SUM(IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0)) AS t
+          FROM daily_quotes
+          WHERE REPLACE(CAST(date AS TEXT),'-','') <= ?
+            AND length(stock_id)=4
+          GROUP BY 1
+          HAVING t != 0
+        ) ORDER BY d DESC LIMIT ?
+        """,
+        (cap, int(n)),
+    ).fetchall()
+    return sorted(_ymd(r[0]) for r in rows if _ymd(r[0]))
+
+
+def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = FLOW_LOOKBACK) -> int:
     """把教過的次族群寫進膠帶：細項、三大法人張、佔當日買超／賣超％。來源＝日 K 的 T86，不抓分點。"""
     if not db_path:
         return 0
@@ -481,7 +557,7 @@ def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
     try:
         if not _has_chip_cols(conn):
             return 0
-        dates = _quote_dates(conn, cap, lookback)
+        dates = _chip_dates(conn, cap, lookback)
         if not dates:
             return 0
         members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _GROUPS}
@@ -594,6 +670,184 @@ def _ignite_from_nets(nets: Sequence[int], shares: Optional[Sequence[float]] = N
         "flowing_in": flowing_in,
         "slow_in": flowing_in,
     }
+
+
+def _fine_members(conn: sqlite3.Connection) -> Dict[str, List[str]]:
+    hit = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_fine_industry'"
+    ).fetchone()
+    if not hit:
+        return {}
+    out: Dict[str, List[str]] = {}
+    for sid, chain in conn.execute("SELECT stock_id, chain FROM stock_fine_industry"):
+        sid = str(sid or "").strip()
+        parts = _split_chain_text(str(chain or ""))
+        if not sid or not parts or parts[-1] == "其他":
+            continue
+        out.setdefault("-".join(parts), []).append(sid)
+    return out
+
+
+def _turnover_leaders(
+    db_path: str, sids: Sequence[str], cap: str, n: int = 2
+) -> List[Tuple[str, str]]:
+    if not db_path or not sids:
+        return []
+    cap = _ymd(cap)
+    uniq = [str(s) for s in sids if str(s)]
+    if not uniq:
+        return []
+    k = 1 if len(uniq) <= 3 else min(int(n), 2)
+    q = ",".join("?" * len(uniq))
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT stock_id, SUM(IFNULL(close,0)*IFNULL(volume,0)) tv
+            FROM daily_quotes
+            WHERE stock_id IN ({q})
+              AND REPLACE(CAST(date AS TEXT),'-','')<=?
+            GROUP BY stock_id
+            ORDER BY tv DESC
+            LIMIT ?
+            """,
+            [*uniq, cap, k],
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    return [(str(r[0]), _stock_name(db_path, str(r[0]), "")) for r in rows]
+
+
+def _group_from_chain(
+    db_path: str,
+    chain: str,
+    sids: Sequence[str],
+    cap: str,
+) -> Dict[str, Any]:
+    del db_path, cap
+    parts = _split_chain_text(chain)
+    taught = _taught_for_chain(parts)
+    if taught:
+        g = dict(taught)
+        g["chain"] = chain
+        return g
+    field = "／".join(parts[1:]) if len(parts) > 1 else (parts[0] if parts else chain)
+    return {
+        "key": f"fine:{chain}",
+        "field": field,
+        "chain": chain,
+        "layers": tuple(parts),
+        "needles": (),
+        "leaders": (),
+        "laggards": (),
+        "members": [(str(s), "") for s in sids],
+    }
+
+
+def _fill_leaders(db_path: str, group: Optional[Dict[str, Any]], cap: str) -> Dict[str, Any]:
+    g = dict(group or {})
+    if g.get("leaders"):
+        return g
+    sids = [str(s) for s, _n in list(g.get("members") or ()) if s]
+    g["leaders"] = tuple(_turnover_leaders(db_path, sids, cap))
+    return g
+
+
+def _chain_is_named(spoken: str, parts: Sequence[str], named_keys: set) -> bool:
+    taught = _taught_for_chain(parts)
+    if taught and taught["key"] in named_keys:
+        return True
+    blob = spoken or ""
+    last = str(parts[-1]) if parts else ""
+    if last and len(last) >= 2 and last in blob:
+        return True
+    if taught and any(n and n in blob for n in (taught.get("names") or ())):
+        return True
+    return False
+
+
+def fine_share_table(
+    db_path: str, cap: str = "", lookback: int = FLOW_LOOKBACK
+) -> Dict[str, Dict[str, Any]]:
+    """全部 CMoney 三層鏈、近 lookback 個有法人日的佔比。沒細項表就空。"""
+    if not db_path:
+        return {}
+    cap = _ymd(cap) or _chip_cap(db_path) or _cap(db_path)
+    if not cap:
+        return {}
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        if not _has_chip_cols(conn):
+            return {}
+        dates = _chip_dates(conn, cap, lookback)
+        members = _fine_members(conn)
+        if not dates or not members:
+            return {}
+        sid_chain = {sid: chain for chain, sids in members.items() for sid in sids}
+        q = ",".join("?" * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT REPLACE(CAST(date AS TEXT),'-',''), stock_id,
+                   IFNULL(foreign_net,0)+IFNULL(trust_net,0)+IFNULL(dealer_net,0)
+            FROM daily_quotes
+            WHERE REPLACE(CAST(date AS TEXT),'-','') IN ({q})
+              AND length(stock_id)=4
+            """,
+            dates,
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    mkt_in: Dict[str, int] = defaultdict(int)
+    chain_net: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    chain_pos: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for day_raw, sid, three in rows:
+        day = _ymd(day_raw)
+        sid = str(sid or "").strip()
+        try:
+            three = int(three or 0)
+        except (TypeError, ValueError):
+            three = 0
+        if three > 0:
+            mkt_in[day] += three
+        chain = sid_chain.get(sid)
+        if not chain:
+            continue
+        chain_net[chain][day] += three
+        if three > 0:
+            chain_pos[chain][day] += 1
+    out: Dict[str, Dict[str, Any]] = {}
+    for chain, sids in members.items():
+        parts = _split_chain_text(chain)
+        taught = _taught_for_chain(parts)
+        if len(sids) < MIN_CHAIN_N and not taught:
+            continue
+        nets = [int(chain_net[chain].get(d) or 0) for d in dates]
+        shares: List[float] = []
+        for d, three in zip(dates, nets):
+            inn = int(mkt_in.get(d) or 0)
+            if inn > 0 and three > 0:
+                shares.append(100.0 * three / inn)
+            else:
+                shares.append(0.0)
+        last_n = nets[-SHARE_DAYS:]
+        last_s = shares[-SHARE_DAYS:]
+        last_d = dates[-SHARE_DAYS:]
+        ign = _ignite_from_nets(last_n, last_s)
+        last_day = last_d[-1] if last_d else ""
+        ign["dates"] = last_d
+        ign["fine_tag"] = parts[-1] if parts else chain
+        ign["pos_member"] = int(chain_pos[chain].get(last_day) or 0)
+        ign["member_n"] = len(sids)
+        ign["share_chg"] = (last_s[-1] - last_s[-2]) if len(last_s) >= 2 else 0.0
+        ign["sids"] = list(sids)
+        ign["layers"] = parts
+        ign["chain"] = chain
+        out[chain] = ign
+    return out
 
 
 def group_ignite(db_path: str, group_key: str, cap: str) -> Dict[str, Any]:
@@ -755,12 +1009,14 @@ def _sibling_txt(
         return ""
     main = layers[0]
     by_key = {str(g["key"]): g for g in _GROUPS}
-    bits: List[str] = []
+    scored: List[Tuple[float, str]] = []
     for ign in all_igns:
-        g = by_key.get(str(ign.get("_key") or ""))
-        if not g:
-            continue
-        gl = _group_layers(db_path, g)
+        gl = [str(x) for x in (ign.get("_layers") or []) if str(x)]
+        if not gl:
+            g = by_key.get(str(ign.get("_key") or ""))
+            if not g:
+                continue
+            gl = _group_layers(db_path, g)
         if not gl or gl[0] != main:
             continue
         last = float(ign.get("share_last") or 0)
@@ -769,7 +1025,9 @@ def _sibling_txt(
             continue
         sub = "／".join(gl[1:]) if len(gl) > 1 else gl[0]
         mark = "升" if up > 0 else ("退" if up < 0 else "平")
-        bits.append(f"{sub} {_share_txt(last)}（{mark}）")
+        scored.append((last, f"{sub} {_share_txt(last)}（{mark}）"))
+    scored.sort(key=lambda x: -x[0])
+    bits = [txt for _last, txt in scored[:8]]
     if len(bits) < 2:
         return ""
     return "同主產業 " + "｜".join(bits)
@@ -961,8 +1219,10 @@ def _bucket_by_id(db_path: str, bucket: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def _score_member(st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]]) -> Tuple:
-    """越高越值得：先這檔佔族流入，再蠢蠢欲動的量價，只在黃金買點列上排。"""
+def _score_member(
+    st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]], role: str = ""
+) -> Tuple:
+    """越高越值得：先這檔佔族流入，再次級落後檔，再蠢蠢欲動的量價，只在黃金買點列上排。"""
     del row
     st = st or {}
     try:
@@ -982,7 +1242,8 @@ def _score_member(st: Optional[Dict[str, Any]], row: Optional[Dict[str, Any]]) -
         cum = int(st.get("cum5") or 0)
     except (TypeError, ValueError):
         cum = 0
-    return (1.0 if gshare > 0 or cum > 0 else 0.0, gshare, float(cum), stir, volr, vs20)
+    lag = 1.0 if str(role or st.get("role") or "") == "次級" else 0.0
+    return (1.0 if gshare > 0 or cum > 0 else 0.0, gshare, float(cum), stir, lag, volr, vs20)
 
 
 def _decorate(
@@ -995,10 +1256,13 @@ def _decorate(
     group_last: int = 0,
 ) -> Dict[str, Any]:
     st = _stats(_bars(db_path, sid, cap)) or {}
+    shown = name or str((row or {}).get("stock_name") or "")
+    if not shown or shown == sid:
+        shown = _stock_name(db_path, sid, shown)
     last_net = member_last_net(db_path, sid, cap)
     item = {
         "sid": sid,
-        "name": name or str((row or {}).get("stock_name") or sid),
+        "name": shown or sid,
         "close": st.get("close"),
         "vs20": st.get("vs20"),
         "vs60": st.get("vs60"),
@@ -1045,71 +1309,121 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     }
     cands: List[Dict[str, Any]] = []
     flow_cap = chip_cap or cap
-    for g in _GROUPS:
-        ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
-        ign = dict(ign or {})
-        ign["_field"] = g["field"]
-        ign["_key"] = g["key"]
-        all_igns.append(ign)
+
+    def _note_hot(field: str, ign: Dict[str, Any]) -> None:
+        nonlocal named_hot
         if float(ign.get("share_last") or 0) > float(named_hot.get("share_last") or 0):
             named_hot = {
-                "field": g["field"],
+                "field": field,
                 "cum5": int(ign.get("cum5") or 0),
                 "share_last": float(ign.get("share_last") or 0),
                 "share_up": float(ign.get("share_up") or 0),
                 "share_chg": float(ign.get("share_chg") or 0),
                 "fine_tag": str(ign.get("fine_tag") or ""),
             }
-        has_share = (
+
+    def _lead_st(g: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        for sid, name in list(g.get("leaders") or ())[:1]:
+            st = _stats(_bars(db_path, sid, cap)) if db_path else None
+            if st:
+                return {"sid": sid, "name": name, **st}
+        return None
+
+    def _has_share(ign: Dict[str, Any]) -> bool:
+        return bool(
             ign.get("flowing_in")
             or ign.get("slow_in")
             or float(ign.get("share_last") or 0) > 0
             or float(ign.get("share_up") or 0) > 0
         )
-        if not has_share:
-            continue
-        lead_st = None
-        for sid, name in g["leaders"][:1]:
-            st = _stats(_bars(db_path, sid, cap)) if db_path else None
-            if st:
-                lead_st = {"sid": sid, "name": name, **st}
-                break
-        cands.append(
-            {
-                "group": g,
-                "ign": ign,
-                "leader": lead_st,
-                "named": g["key"] in named_keys,
-            }
-        )
+
+    fine = fine_share_table(db_path, flow_cap) if db_path and flow_cap else {}
+    if fine:
+        for chain, raw in fine.items():
+            parts = list(raw.get("layers") or _split_chain_text(chain))
+            g = _group_from_chain(db_path, chain, raw.get("sids") or [], cap)
+            ign = dict(raw)
+            ign["_field"] = g["field"]
+            ign["_key"] = g["key"]
+            ign["_layers"] = parts
+            all_igns.append(ign)
+            _note_hot(g["field"], ign)
+            if not _has_share(ign):
+                continue
+            cands.append(
+                {
+                    "group": g,
+                    "ign": ign,
+                    "leader": None,
+                    "named": _chain_is_named(spoken, parts, named_keys),
+                }
+            )
+        seen_keys = {str(ign.get("_key") or "") for ign in all_igns}
+        for g in _GROUPS:
+            if g["key"] in seen_keys:
+                continue
+            ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
+            ign = dict(ign or {})
+            ign["_field"] = g["field"]
+            ign["_key"] = g["key"]
+            ign["_layers"] = list(g.get("layers") or ())
+            all_igns.append(ign)
+            _note_hot(g["field"], ign)
+    else:
+        for g in _GROUPS:
+            ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
+            ign = dict(ign or {})
+            ign["_field"] = g["field"]
+            ign["_key"] = g["key"]
+            ign["_layers"] = list(g.get("layers") or ())
+            all_igns.append(ign)
+            _note_hot(g["field"], ign)
+            if not _has_share(ign):
+                continue
+            cands.append(
+                {
+                    "group": g,
+                    "ign": ign,
+                    "leader": _lead_st(g),
+                    "named": g["key"] in named_keys,
+                }
+            )
     unnamed_pos = [
         c
         for c in cands
         if not c["named"] and float(c["ign"].get("share_last") or 0) > 0
     ]
+    ranked: List[Dict[str, Any]] = []
     if unnamed_pos:
-        flow_hit = max(
+        ranked = sorted(
             unnamed_pos,
             key=lambda c: (
                 float(c["ign"].get("share_last") or 0.0),
                 float(c["ign"].get("share_up") or 0.0),
             ),
+            reverse=True,
         )
+        flow_hit = ranked[0]
     else:
         fresh = [c for c in cands if not _is_money_hot(c["ign"], all_igns)]
         pool = fresh if fresh else cands
         for cand in pool:
             if flow_hit is None or _flow_rank(cand["ign"]) > _flow_rank(flow_hit["ign"]):
                 flow_hit = cand
+        if flow_hit:
+            ranked = [flow_hit]
     k_ign = group_ignite(db_path, pick.get("key") or "", flow_cap) if pick.get("key") else {}
     if flow_hit:
-        g = flow_hit["group"]
+        g = _fill_leaders(db_path, flow_hit["group"], cap)
+        flow_hit["group"] = g
+        if not flow_hit.get("leader"):
+            flow_hit["leader"] = _lead_st(g)
         ign = flow_hit["ign"]
         path = _share_path(ign)
         rot = ""
         if float(named_hot.get("share_up") or 0) < 0 and float(ign.get("share_up") or 0) > 0:
             rot = f"佔比最高的 {named_hot['field']} 在退、這族在升＝輪動。"
-        miss = "他沒點名這族。" if g["key"] not in named_keys else ""
+        miss = "他沒點名這族。" if not flow_hit.get("named") else ""
         spoken_named = spoken_named or list(pick.get("named") or [])
         pick = {
             **pick,
@@ -1132,6 +1446,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     pick["flow_named_hot"] = named_hot
     pick["hot_ref"] = _hot_ref_line(named_hot, pick.get("named") or [])
     pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
+    pick["chip_cap"] = chip_cap
+    pick["flow_window"] = FLOW_LOOKBACK
     members = group_members(db_path, pick.get("group"))
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
@@ -1157,8 +1473,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             buys.append(item)
         else:
             watches.append(item)
-    buys.sort(key=lambda x: _score_member(x, None), reverse=True)
-    watches.sort(key=lambda x: _score_member(x, None), reverse=True)
+    buys.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
+    watches.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
     pick["layers"] = layers
     pick["layer_txt"] = _layer_line(layers)
     pick["sibling_txt"] = _sibling_txt(group, all_igns, db_path)
@@ -1186,8 +1502,48 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             item["role"] = _stock_role(group, sid)
             item["layers"] = _chain_parts(db_path, sid) or layers
             taught.append(item)
-        taught.sort(key=lambda x: _score_member(x, None), reverse=True)
+        taught.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
+    if not taught and group:
+        lead_sids = {str(x[0]) for x in (group.get("leaders") or ()) if x}
+        rest = [(sid, name) for sid, name in members if sid not in lead_sids]
+        rest.sort(key=lambda x: member_cum5(db_path, x[0], chip_cap or cap), reverse=True)
+        for sid, name in rest[:5]:
+            item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
+            if item.get("close") is None:
+                continue
+            item["role"] = _stock_role(group, sid)
+            item["layers"] = _chain_parts(db_path, sid) or layers
+            taught.append(item)
+    alts: List[Dict[str, Any]] = []
+    alt_lags: List[Dict[str, Any]] = []
+    primary_key = str((pick.get("group") or {}).get("key") or "")
+    for cand in ranked[1:3]:
+        ag = _fill_leaders(db_path, cand["group"], cap)
+        aign = cand["ign"]
+        alts.append(
+            {
+                "field": ag.get("field") or "",
+                "key": ag.get("key") or "",
+                "share_last": float(aign.get("share_last") or 0),
+                "share_up": float(aign.get("share_up") or 0),
+                "fine_tag": str(aign.get("fine_tag") or ""),
+            }
+        )
+        if str(ag.get("key") or "") == primary_key:
+            continue
+        rows: List[Dict[str, Any]] = []
+        for sid, name in list(ag.get("laggards") or ())[:5]:
+            item = _decorate(db_path, sid, name, cap, None, group_last=int(aign.get("last") or 0))
+            if item.get("close") is None:
+                continue
+            item["role"] = _stock_role(ag, sid)
+            item["layers"] = _chain_parts(db_path, sid) or list(ag.get("layers") or [])
+            rows.append(item)
+        if rows:
+            alt_lags.append({"field": ag.get("field") or "", "items": rows})
     pick["laggards"] = taught[:5]
+    pick["alts"] = alts
+    pick["alt_laggards"] = alt_lags
     return {
         **pick,
         "members": members,
@@ -1195,6 +1551,8 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         "watches": watches[:5],
         "laggards": pick.get("laggards") or [],
         "laggards_note": pick.get("laggards_note") or laggard,
+        "alts": alts,
+        "alt_laggards": alt_lags,
     }
 
 
@@ -1248,7 +1606,10 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
     ]
     if cap:
-        lines.append(f"官方收 {cap}")
+        chip = _esc(data.get("chip_cap") or "")
+        win = int(data.get("flow_window") or FLOW_LOOKBACK)
+        extra = f"　法人日 {chip}" if chip and chip != cap else ""
+        lines.append(f"官方收 {cap}{extra}　資金窗近{win}個有法人日")
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")
@@ -1305,6 +1666,24 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     if lags:
         lines.append("<b>落後檔</b>（從底部找；沒黃金買點只觀察，不是買訊）")
         for i, item in enumerate(lags, start=1):
+            lines.append(_stock_line(item, i, "落後"))
+    alts = list(data.get("alts") or [])
+    if alts:
+        bits = [
+            f"{a.get('field')} {_share_txt(float(a.get('share_last') or 0))}"
+            f"（{_pt_txt(float(a.get('share_up') or 0))}）"
+            for a in alts
+            if a.get("field")
+        ]
+        if bits:
+            lines.append(_esc("次熱 " + "；".join(bits) + "。不是買訊。"))
+    for block in list(data.get("alt_laggards") or []):
+        field = str(block.get("field") or "")
+        items = list(block.get("items") or [])
+        if not field or not items:
+            continue
+        lines.append(f"<b>次熱落後檔・{_esc(field)}</b>（沒黃金買點只觀察，不是買訊）")
+        for i, item in enumerate(items, start=1):
             lines.append(_stock_line(item, i, "落後"))
     lines.append("紅箭頭不是買訊。飆大只參考，不是唯一。")
     return "\n".join(lines)

@@ -473,3 +473,163 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert "不准發明切入" in html or "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
     assert empty.get("field") == "高階測試／封測"
+
+
+def test_dongzhu_window_is_20_chip_days_not_five():
+    import biaoke_field_scan as m
+    from biaoke_field_scan import FLOW_LOOKBACK, SHARE_DAYS
+
+    assert FLOW_LOOKBACK == 20
+    assert SHARE_DAYS == 5
+    src = open(m.__file__, encoding="utf-8").read()
+    assert "START_SHARE" not in src
+    assert "START_PCT" not in src
+    assert "FLOW_LOOKBACK = 20" in src
+
+
+def test_dongzhu_chip_dates_skip_all_zero(tmp_path):
+    from biaoke_field_scan import FLOW_LOOKBACK, _chip_dates
+
+    db = str(tmp_path / "c.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE daily_quotes (date TEXT, stock_id TEXT, stock_name TEXT, "
+        "open REAL, high REAL, low REAL, close REAL, volume INTEGER, pct_change REAL, "
+        "foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER, "
+        "PRIMARY KEY (date, stock_id))"
+    )
+    last = datetime(2026, 9, 17)
+    for i in range(25):
+        day = (last - timedelta(days=24 - i)).strftime("%Y%m%d")
+        net = 100 if i < 24 and i % 2 == 0 else 0
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, net, 0, 0),
+        )
+    conn.commit()
+    dates = _chip_dates(conn, "20260917", FLOW_LOOKBACK)
+    conn.close()
+    assert dates
+    assert "20260917" not in dates
+    assert all(d <= "20260916" for d in dates)
+    assert len(dates) <= FLOW_LOOKBACK
+    assert len(dates) > 5
+
+
+def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
+    """沒教過的三層鏈（IC／設計）佔比最高 → 仍抓次級，不靠蠢蠢欲動。"""
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    for col in ("foreign_net", "trust_net", "dealer_net"):
+        try:
+            conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+    last_day = datetime(2026, 9, 17)
+
+    def add(sid, name, highs, last_close, last_vol, base_vol=1000.0):
+        n = 60
+        for i in range(n):
+            day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+            if i < 40:
+                h, c, v = highs[0], highs[0] * 0.92, base_vol
+            elif i < n - 1:
+                h, c, v = highs[1], highs[1] * 0.96, base_vol
+            else:
+                h, c, v = highs[1] * 0.99, last_close, last_vol
+            conn.execute(
+                "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (day, sid, name, c, h, c * 0.98, c, int(v), 0.0, 0, 0, 0),
+            )
+
+    add("2454", "聯發科", (1600.0, 1500.0), 1480.0, 8000.0, 5000.0)
+    add("3228", "金麗科", (80.0, 70.0), 62.0, 2500.0)
+    add("3259", "鑫創", (90.0, 80.0), 71.0, 1800.0)
+    n = 60
+    for i in range(n):
+        day = (last_day - timedelta(days=n - 1 - i)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (day, "2330", "台積電", 1, 1, 1, 1, 1, 0.0, 0, 0, 0),
+        )
+    conn.execute(
+        "CREATE TABLE stock_fine_industry ("
+        "stock_id TEXT PRIMARY KEY, chain TEXT NOT NULL, tags_json TEXT NOT NULL, "
+        "cat_id TEXT DEFAULT '', source TEXT NOT NULL, fetched_at TEXT NOT NULL)"
+    )
+    for sid, chain in (
+        ("2454", "電子上游-IC-設計"),
+        ("3228", "電子上游-IC-設計"),
+        ("3259", "電子上游-IC-設計"),
+        ("6257", "電子上游-IC-封測"),
+        ("3443", "電子上游-IP/ASIC"),
+    ):
+        conn.execute(
+            "INSERT INTO stock_fine_industry VALUES (?,?,?,?,?,?)",
+            (sid, chain, "[]", "", "test", "2026-09-17"),
+        )
+    dates = [
+        str(r[0])
+        for r in conn.execute("SELECT DISTINCT date FROM daily_quotes ORDER BY date").fetchall()
+    ]
+    chip_days = dates[-6:-1]
+    zero_day = dates[-1]
+    for i, day in enumerate(chip_days):
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3228' AND date=?",
+            (500 + i * 120, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3259' AND date=?",
+            (300 + i * 80, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2454' AND date=?",
+            (200 + i * 40, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='3443' AND date=?",
+            (40, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='6257' AND date=?",
+            (10, day),
+        )
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=? WHERE stock_id='2330' AND date=?",
+            (800, day),
+        )
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=0, trust_net=0, dealer_net=0 WHERE date=?",
+        (zero_day,),
+    )
+    conn.commit()
+    conn.close()
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {"leave_zero": [{"stock_id": "3228", "stock_name": "金麗科", "pick_close": 62.0}]},
+    )
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import FLOW_LOOKBACK, dongzhu_picks
+
+    spoken = "目前唯一在多頭格局的族群就是ASIC，再來是散熱。"
+    assert "蠢蠢欲動" not in spoken
+    data = dongzhu_picks(db, spoken=spoken)
+    assert "設計" in str(data.get("field") or "")
+    assert data.get("flow_window") == FLOW_LOOKBACK
+    assert data.get("chip_cap") == chip_days[-1]
+    buy_sids = {x.get("sid") for x in (data.get("buys") or [])}
+    assert "3228" in buy_sids
+    roles = {x.get("sid"): x.get("role") for x in (data.get("buys") or [])}
+    assert roles.get("3228") == "次級"
+    html = dongzhu_page(db, spoken=spoken)
+    assert "設計" in html
+    assert "3228" in html
+    assert "資金窗近20個有法人日" in html
+    assert "3443" not in html
+    assert "不准發明切入" not in html
+    assert "次熱" in html
+    assert "6257" in html and "矽格" in html
