@@ -19,6 +19,8 @@ logger = logging.getLogger("WayneBot.BiaokeAbsorb")
 DAWN_HOUR = 2
 SESSION_HOUR = 13
 SLOT_GRACE_MIN = 8
+# 使用者點名「現在吸收」只跑這一次；之後仍只准 02:00／開市日 13:00。
+FORCE_ONCE_SLOT = "20260918-now"
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_absorb_inbox (
@@ -591,6 +593,70 @@ def _mark_absorbed(db_path: str, post_ids: Sequence[str], now: Optional[datetime
         conn.close()
 
 
+def maybe_force_absorb_once(
+    db_path: str,
+    *,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """立刻把匣裡未吸收的文丟進神經元。只記 FORCE_ONCE_SLOT 一次。"""
+    stats: Dict[str, Any] = {
+        "ok": False,
+        "slot": FORCE_ONCE_SLOT,
+        "skipped": True,
+        "tz": "Asia/Taipei",
+    }
+    if not db_path:
+        stats["reason"] = "no_db"
+        return stats
+    if _slot_ran(db_path, FORCE_ONCE_SLOT):
+        stats["ok"] = True
+        stats["reason"] = "already"
+        return stats
+    got = run_absorb(db_path, now=now, slot=FORCE_ONCE_SLOT, force=True)
+    got["skipped"] = False
+    return got
+
+
+def absorb_health_stats(db_path: str) -> Dict[str, Any]:
+    """給 /health：上次彙整窗、匣裡還沒進神經元的筆數。"""
+    out: Dict[str, Any] = {
+        "biaoke_absorb_slot": "",
+        "biaoke_absorb_at": "",
+        "biaoke_absorb_posts": 0,
+        "biaoke_inbox_pending": 0,
+    }
+    if not db_path:
+        return out
+    conn = sqlite3.connect(db_path, timeout=2.0)
+    try:
+        hit = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_absorb_runs'"
+        ).fetchone()
+        if hit:
+            row = conn.execute(
+                "SELECT slot_id, ran_at, posts FROM biaoke_absorb_runs "
+                "ORDER BY ran_at DESC, slot_id DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                out["biaoke_absorb_slot"] = str(row[0] or "")
+                out["biaoke_absorb_at"] = str(row[1] or "")
+                out["biaoke_absorb_posts"] = int(row[2] or 0)
+        hit_in = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='biaoke_absorb_inbox'"
+        ).fetchone()
+        if hit_in:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM biaoke_absorb_inbox "
+                "WHERE IFNULL(absorbed_at,'')=''"
+            ).fetchone()
+            out["biaoke_inbox_pending"] = int((n or [0])[0] or 0)
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+    return out
+
+
 def run_absorb(
     db_path: str,
     *,
@@ -673,6 +739,10 @@ def start_biaoke_absorb_scheduler() -> Optional[Any]:
 
     def _loop() -> None:
         _time.sleep(120)
+        try:
+            maybe_force_absorb_once(get_db_path())
+        except Exception:
+            logger.exception("飆大神經元立刻彙整失敗")
         while True:
             nxt = next_absorb_at()
             wait = max(5.0, (nxt - taipei_now()).total_seconds())

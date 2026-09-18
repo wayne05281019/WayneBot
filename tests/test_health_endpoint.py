@@ -90,6 +90,8 @@ def test_health_200_when_process_can_serve(serve):
     assert "biaoke_replies" in body
     assert "biaoke_latest_id" in body
     assert "biaoke_latest_at" in body
+    assert "biaoke_absorb_slot" in body
+    assert "biaoke_inbox_pending" in body
     assert "tx_15_n" in body
     assert "tx_zip_n" in body
     assert "tx_night_high" in body
@@ -137,6 +139,39 @@ def test_health_reports_latest_biaoke_post(serve):
     assert "17:49" in body["biaoke_latest_at"]
     dumped = json.dumps(body, ensure_ascii=False)
     assert "Bearer" not in dumped
+
+
+def test_health_reports_absorb_once_slot(serve):
+    get, db, main = serve
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from biaoke_absorb import FORCE_ONCE_SLOT, maybe_force_absorb_once, queue_absorb_events
+
+    taipei = ZoneInfo("Asia/Taipei")
+    queue_absorb_events(
+        db,
+        [
+            {
+                "id": "184802289",
+                "date": "2026-09-18",
+                "time": "08:58",
+                "kind": "post",
+                "layer": 0,
+                "text": "從夜盤反彈到47205，這次C波下殺已經沒了，要過前波高點47578",
+            }
+        ],
+        now=datetime(2026, 9, 18, 9, 10, tzinfo=taipei),
+    )
+    got = maybe_force_absorb_once(db, now=datetime(2026, 9, 18, 9, 10, tzinfo=taipei))
+    assert got["ok"] is True
+    main._HEALTH_DATA_CACHE["at"] = 0.0
+    main._HEALTH_DATA_CACHE["payload"] = None
+    code, body = get("/health")
+    assert code == 200
+    assert body["biaoke_absorb_slot"] == FORCE_ONCE_SLOT
+    assert body["biaoke_inbox_pending"] == 0
+    assert body["biaoke_absorb_posts"] >= 1
 
 
 def test_health_reports_tx_night_cover(serve):

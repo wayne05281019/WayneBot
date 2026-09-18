@@ -5,8 +5,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from biaoke_absorb import (
+    FORCE_ONCE_SLOT,
+    absorb_health_stats,
     absorb_slot_id,
     aux_for_post,
+    maybe_force_absorb_once,
     next_absorb_at,
     pending_events,
     queue_absorb_events,
@@ -147,3 +150,57 @@ def test_parse_api_thread_keeps_layer3():
     assert him
     assert any(int(r.get("layer") or 0) == 3 for r in him)
     assert all(int(r.get("layer") or 0) <= 3 for r in rows)
+
+
+def test_force_once_absorbs_off_slot_then_skips(tmp_path):
+    db = str(tmp_path / "c.db")
+    text = (
+        "從夜盤反彈到47205，這次C波下殺已經沒了。"
+        "不過這次大盤要漲到目標點位一定要過前波高點47578，"
+        "否則大盤頭部型態已經初步出現"
+    )
+    queue_absorb_events(
+        db,
+        [
+            {
+                "id": "184802289",
+                "date": "2026-09-18",
+                "time": "08:58",
+                "kind": "post",
+                "layer": 0,
+                "text": text,
+            }
+        ],
+        now=datetime(2026, 9, 18, 9, 10, tzinfo=TAIPEI),
+    )
+    morning = datetime(2026, 9, 18, 9, 10, tzinfo=TAIPEI)
+    assert absorb_slot_id(morning) == ""
+    skipped = run_absorb(db, now=morning)
+    assert skipped.get("reason") == "not_slot"
+    assert not pending_events(db) or pending_events(db)[0]["id"] == "184802289"
+    first = maybe_force_absorb_once(db, now=morning)
+    assert first["ok"] is True
+    assert first.get("skipped") is False
+    assert first["slot"] == FORCE_ONCE_SLOT
+    assert first["posts"] >= 1
+    conn = sqlite3.connect(db)
+    nids = [
+        r[0]
+        for r in conn.execute(
+            "SELECT neuron_id FROM biaoke_neuron_hits WHERE post_id='184802289'"
+        )
+    ]
+    absorbed = conn.execute(
+        "SELECT absorbed_at FROM biaoke_absorb_inbox WHERE post_id='184802289'"
+    ).fetchone()
+    conn.close()
+    assert "nest" in nids
+    assert absorbed and absorbed[0]
+    health = absorb_health_stats(db)
+    assert health["biaoke_absorb_slot"] == FORCE_ONCE_SLOT
+    assert health["biaoke_inbox_pending"] == 0
+    second = maybe_force_absorb_once(db, now=datetime(2026, 9, 18, 9, 20, tzinfo=TAIPEI))
+    assert second.get("reason") == "already"
+    assert second.get("skipped") is True
+    later = run_absorb(db, now=morning)
+    assert later.get("reason") == "not_slot"
