@@ -203,4 +203,4 @@ def test_force_once_absorbs_off_slot_then_skips(tmp_path):
     assert second.get("reason") == "already"
     assert second.get("skipped") is True
     later = run_absorb(db, now=morning)
-    assert later.get("reason") == "not_slot")
+    assert later.get("reason") == "not_slot"
