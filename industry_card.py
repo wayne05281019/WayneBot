@@ -284,7 +284,7 @@ def render_industry_png(
             ("kv", "同業", peer_mix_label(snap) if snap["peer_n"] else "名單不足")
         )
         if tags0:
-            items.append(("muted", "細項來自籌碼K公開個股頁"))
+            items.append(("muted", "產業鏈來自籌碼K公開個股頁"))
         items.append(("muted", "產業名來自證交所／櫃買公司基本資料產業別。"))
         items.append(("muted", "同業＝同一官方產業別全組，不是更細的產品線。"))
         if ind == "半導體業":
@@ -365,7 +365,7 @@ def render_industry_png(
             _peer_items("較強", snap["stronger"])
             _peer_items("較弱", snap["weaker"])
             if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
-                items.append(("muted", "小框是籌碼K細項；年增對照仍是證交所同一產業別全組。"))
+                items.append(("muted", "小框是籌碼K產業鏈；年增對照仍是證交所同一產業別全組。"))
 
     from industry_fine import chip_color
 

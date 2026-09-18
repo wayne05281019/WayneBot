@@ -236,7 +236,7 @@ def card_issues(card: dict, texts: Iterable[str] | None = None) -> list[str]:
 
 
 def listing_face_ok(listing: str) -> bool:
-    """上市／上櫃／興櫃，可接（官方產業）／細項 …／　龍頭。一線／二線官方沒這欄，不上。"""
+    """上市／上櫃／興櫃，可接（官方產業）／產業鏈／　龍頭。一線／二線官方沒這欄，不上。"""
     s = str(listing or "").strip()
     if not s:
         return True

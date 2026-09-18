@@ -2639,10 +2639,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
     listing = str(card.get("listing") or "").strip()
-    # listing 已含「細項 …」時標題列不要再貼一次鏈。
-    if fine and fine != industry and "細項" not in listing and fine not in listing:
+    # listing 已含產業鏈時標題列不要再貼一次。
+    if fine and fine != industry and fine not in listing:
         industry = fine
-    elif "細項" in listing or (fine and fine in listing):
+    elif fine and fine in listing:
         industry = ""
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
@@ -3334,10 +3334,10 @@ def render_first_glance_png(
     industry = "" if etf_kind else str(card.get("industry") or "").strip()
     fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
     listing = str(card.get("listing") or "").strip()
-    # listing 已含「細項 …」時標題列不要再貼一次鏈。
-    if fine and fine != industry and "細項" not in listing and fine not in listing:
+    # listing 已含產業鏈時標題列不要再貼一次。
+    if fine and fine != industry and fine not in listing:
         industry = fine
-    elif "細項" in listing or (fine and fine in listing):
+    elif fine and fine in listing:
         industry = ""
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()

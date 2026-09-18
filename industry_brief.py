@@ -478,11 +478,12 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     title_bit = face or listing
     title_name = f"{name}　{title_bit}" if title_bit else name
     blocks = [title_line("產業說明", sid, title_name)]
-    if snap.get("fine_chain") and "細項" not in (title_bit or ""):
+    chain = str(snap.get("fine_chain") or "").strip()
+    if chain and chain not in (title_bit or ""):
         chips = "　".join(f"[{html_escape(t)}]" for t in (snap.get("fine_tags") or []))
         if chips:
             blocks[0] = blocks[0] + "　" + chips
-    elif snap.get("fine_tags") and "細項" not in (title_bit or ""):
+    elif snap.get("fine_tags") and chain not in (title_bit or ""):
         chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
         blocks[0] = blocks[0] + "　" + chips
 
@@ -504,8 +505,8 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         "<b>這檔是什麼</b>",
         kv_compact("產業", ind),
     ]
-    if snap.get("fine_chain"):
-        who_lines.append(kv_compact("細項", str(snap["fine_chain"])))
+    if chain:
+        who_lines.append(kv_compact("產業鏈", chain))
     who_lines.extend(
         [
             kv_compact("同業", peer_mix_label(snap)),
@@ -514,7 +515,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         ]
     )
     if snap.get("fine_tags"):
-        who_lines.append("細項來自籌碼K公開個股頁。")
+        who_lines.append("產業鏈來自籌碼K公開個股頁。")
     if ind == "半導體業":
         who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
     blocks.append(section(*who_lines))
@@ -612,7 +613,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     if snap["stronger"] or snap["weaker"]:
         peer_note = []
         if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
-            peer_note.append("小框是籌碼K細項；年增對照仍是證交所同一產業別全組。")
+            peer_note.append("小框是籌碼K產業鏈；年增對照仍是證交所同一產業別全組。")
         blocks.append(
             section(
                 "<b>同業月營收對照</b>",

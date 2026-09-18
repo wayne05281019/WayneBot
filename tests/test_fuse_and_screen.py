@@ -527,7 +527,7 @@ class FuseAndScreenTest(unittest.TestCase):
                 if line.startswith("＝＝") and ("半導體業" in line or "鋼鐵工業" in line):
                     self.assertNotIn("張", line, line)
             self.assertTrue(
-                ("上市（半導體業）" in html) or ("細項" in html),
+                ("上市（半導體業）" in html) or ("電子上游" in html) or ("IC-" in html),
                 html[:500],
             )
             self.assertNotIn("一線", html)

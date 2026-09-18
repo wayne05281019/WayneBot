@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """他教過怎麼找還沒點名的族群：洞燭先機＋次族群第一名誰先過前高＋從底部找落後。
 
-資金流騙不了人：單位＝CMoney 細項佔當日法人買超％、％怎麼變。流入＝佔比升，流出＝佔比降。
+資金流騙不了人：單位＝CMoney 產業鏈佔當日法人買超％、％怎麼變。流入＝佔比升，流出＝佔比降。
 佔比如實主判，飆大找法只參考、不是唯一。張數會被當下熱門族蓋過，不拿來排名。對五件只落在族群：底部這層（不數浪）、形態還沒過前高、
 量價落後檔量起來、關鍵K＝官方收、碎形＝第一名還沒先過。個股不數 5／9。盤中未收不當官方收。
 不是買訊、不進海選。切入只認高低卡黃金買點。
@@ -105,7 +105,7 @@ _HOW_LINES = (
 )
 _RULE_LINES = (
     "佔比如實主判。飆大找法只參考、不是唯一。",
-    "資金輪動要比到主產業／次產業／細項，再分龍頭與次級。",
+    "資金輪動要比到主產業／次產業／產業鏈，再分龍頭與次級。",
     "龍頭來不及買，比價下次級有黃金買點才切入。",
     "盤中未收不當官方收。不是買訊、不進海選。",
     "切入只認高低卡黃金買點。",
@@ -126,7 +126,7 @@ PREFER_NOT_LEAD = True
 SKIP_LEAVING_HOT = True
 # 話筒／海選共用：資金輪動要注意（100法人日走查鎖死）。
 ROTATION_NOTES = (
-    "看主產業／次產業／細項，不是整層電子。",
+    "看主產業／次產業／產業鏈，不是整層電子。",
     "近100日多數流入第一名只當1天；追當天第一名容易買在人去樓空。",
     "先機＝佔比升還沒當第一、次級距20高≤−8%（回測這型後10日漲停或≥8%約七成；追第一名約五成六）。",
     "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。金控常當停車格。",
@@ -1102,7 +1102,7 @@ def _group_layers(db_path: str, group: Optional[Dict[str, Any]]) -> List[str]:
 
 
 def _layer_lines(layers: Sequence[str]) -> List[str]:
-    labs = ("主產業", "次產業", "細項")
+    labs = ("主產業", "次產業", "產業鏈")
     bits = []
     for i, part in enumerate(list(layers)[:3]):
         lab = labs[i] if i < len(labs) else "層"
@@ -1232,7 +1232,7 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     bits = "/".join(_lots_txt(n).replace("張", "") for n in nets) if nets else ""
     share_bits = "→".join(f"{x:.1f}%" for x in shares) if shares else ""
     if ign.get("flowing_in") or ign.get("slow_in"):
-        extra = "佔比在升＝資金流入這細項。"
+        extra = "佔比在升＝資金流入這產業鏈。"
     elif float(ign.get("share_last") or 0) > 0:
         extra = "買超佔比還在；次級仍低於20高才當先機。"
     elif float(ign.get("share_up") or 0) < 0 or int(ign.get("last") or 0) < 0:
@@ -1242,7 +1242,7 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     lines: List[str] = []
     fine = str(ign.get("fine_tag") or "").strip()
     if fine:
-        lines.append(f"細項 {fine}")
+        lines.append(f"{fine}")
     last_sh = float(ign.get("share_last") or 0)
     chg = float(ign.get("share_chg") or 0)
     if shares:
@@ -1373,7 +1373,7 @@ def _five_lines(pick: Dict[str, Any], ign: Dict[str, Any], named_hot: Dict[str, 
             bits.append("量價：落後檔量起來才算蠢蠢欲動。")
     path = _share_path(ign)
     if path:
-        bits.append(f"主判是佔比：細項{fine}佔法人買超 {path}。")
+        bits.append(f"主判是佔比：{fine}佔法人買超 {path}。")
     hot = named_hot or {}
     if hot.get("field"):
         bits.append(
@@ -1668,7 +1668,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             "group": g,
             "leader": flow_hit.get("leader") or pick.get("leader"),
             "why": (
-                f"主判佔比；細項 {ign.get('fine_tag') or g['field']}"
+                f"主判佔比；{ign.get('fine_tag') or g['field']}"
                 + (f" 佔當日法人買超 {path}，資金流入。" if path else " 資金流入。")
                 + rot
                 + miss
@@ -1861,7 +1861,7 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     else:
         fine = str(item.get("fine") or "").strip()
         if fine:
-            meta.append(f"細項 {_esc(fine)}")
+            meta.append(_esc(fine))
     if item.get("group_share"):
         meta.append(f"佔這族 {_share_txt(float(item.get('group_share') or 0))}")
     if item.get("cum5"):
@@ -1872,7 +1872,7 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
 
 
 def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
-    field = str(pick.get("field") or item.get("fine") or "這細項")
+    field = str(pick.get("field") or item.get("fine") or "這產業鏈")
     role = str(item.get("role") or "次級")
     vs20 = item.get("vs20")
     vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
@@ -1883,7 +1883,7 @@ def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
 
 
 def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
-    """海選大盤狀況末段：台股細項資金輪動＋注意事項。沒庫就空。"""
+    """海選大盤狀況末段：台股產業鏈資金輪動＋注意事項。沒庫就空。"""
     if not db_path:
         return ""
     try:
@@ -1904,7 +1904,7 @@ def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
             "chase": "已是當天第一名＝追了勝率較差",
             "leaving": "人去樓空",
         }.get(sign, "")
-        lines.append(_esc(f"此刻細項 {field}" + (f"　{tag}" if tag else "")))
+        lines.append(_esc(f"此刻 {field}" + (f"　{tag}" if tag else "")))
         if data.get("pre_ok") and data.get("pre_vs20") is not None:
             lines.append(
                 _esc(
@@ -1956,7 +1956,7 @@ def _ign_for_parts(
 
 
 def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dict[str, Any]:
-    """任一檔：用它自己的主／次／細項看資金還在不在，不是整層電子。"""
+    """任一檔：用它自己的主／次／產業鏈看資金還在不在，不是整層電子。"""
     del spoken
     sid = str(sid or "").strip()
     empty = {
@@ -1966,7 +1966,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
         "verdict": "還沒",
         "hold": False,
         "buy": False,
-        "why": "這檔還沒細項鏈，不准猜能不能留。",
+        "why": "這檔還沒產業鏈，不准猜能不能留。",
         "role": "",
         "pre_sign": "",
         "pre_ok": False,
@@ -1985,7 +1985,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     empty["cap"] = cap
     empty["chip_cap"] = chip_cap or cap
     if not parts:
-        empty["why"] = f"{sid} {name} 還沒主產業／次產業／細項鏈，不准猜能不能留。"
+        empty["why"] = f"{sid} {name} 還沒主產業／次產業／產業鏈，不准猜能不能留。"
         return empty
     fine = fine_share_table(db_path, chip_cap or cap) if chip_cap or cap else {}
     chain, ign = _ign_for_parts(fine, parts)
@@ -2004,37 +2004,37 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     verdict = "還沒"
     if ign.get("leaving") or sign == "leaving" or _share_rotating_out(ign):
         verdict = "不留"
-        why = "這檔細項昨天流入第一名、今天佔比在退＝人去樓空。"
+        why = "這產業鏈昨天流入第一名、今天佔比在退＝人去樓空。"
         if not (ign.get("leaving") or sign == "leaving"):
-            why = "這檔細項佔比單日在退，資金不像要留下。"
+            why = "這檔產業鏈佔比單日在退，資金不像要留下。"
     elif vs20 is not None and float(vs20) >= 0:
         verdict = "偏晚"
         why = "這檔已貼近或超過20高，不是先機。"
     elif sign == "chase":
         verdict = "小心"
-        why = "這檔細項已是當天流入第一名；回測追第一名較容易接到要走的錢。"
+        why = "這產業鏈已是當天流入第一名；回測追第一名較容易接到要走的錢。"
     elif sign == "pre" and (pre_ok or (vs20 is not None and float(vs20) <= PRE_VS20)):
         hold = True
         if leave_zero:
             buy = True
             verdict = "可留"
             why = (
-                "這檔細項佔比升還沒當第一、次級距20高"
+                "這產業鏈佔比升還沒當第一、次級距20高"
                 f"{float(best_vs20 or vs20 or 0):+.1f}%≤{PRE_VS20:.0f}%，且這檔是黃金買點。"
             )
         else:
             verdict = "可留觀察"
-            why = "這檔細項資金準備留下，這檔本身不是黃金買點。"
+            why = "這產業鏈資金準備留下，這檔本身不是黃金買點。"
     elif float(ign.get("share_last") or 0) > 0 and not _share_rotating_out(ign):
         verdict = "還在"
-        why = "這檔細項還有買超佔比，但不是先機徵兆。"
+        why = "這產業鏈還有買超佔比，但不是先機徵兆。"
     elif ign:
         verdict = "沒先機"
-        why = "這檔細項佔比沒升或在退，不當先機。"
+        why = "這檔產業鏈佔比沒升或在退，不當先機。"
     else:
         why = (
-            f"{sid} {name} 主產業／次產業／細項是 {_layer_short(parts)}，"
-            "但這細項還沒進佔比表（成員太少或法人日還沒這列），不准猜能不能留。"
+            f"{sid} {name} 主產業／次產業／產業鏈是 {_layer_short(parts)}，"
+            "但這產業鏈還沒進佔比表（成員太少或法人日還沒這列），不准猜能不能留。"
         )
     return {
         "sid": sid,
@@ -2148,7 +2148,7 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
 
 
 def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
-    """主選單洞燭先機頁。飆大找法＋五件＋細項佔比。切入只認高低卡黃金買點。"""
+    """主選單洞燭先機頁。飆大找法＋五件＋產業鏈佔比。切入只認高低卡黃金買點。"""
     from tg_layout import join_dashed
 
     data = dongzhu_picks(db_path, spoken=spoken)

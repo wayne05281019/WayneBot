@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""資金／籌碼／營收／產業標題：有籌碼K細項就標細項。"""
+"""資金／籌碼／營收／產業標題：有籌碼K產業鏈就標鏈。"""
 from __future__ import annotations
 
 import json
@@ -54,9 +54,10 @@ def _db_with_fine(tmp_path, *, sid="2303", name="聯電", ind="半導體業", ch
 def test_listing_industry_face_prefers_fine_chain(tmp_path):
     db = _db_with_fine(tmp_path)
     face = listing_industry_face("2303", db)
-    assert "細項 電子上游-IC-代工" in face
+    assert "電子上游-IC-代工" in face
     assert face.startswith("上市")
     assert "（半導體業）" not in face
+    assert "細項" not in face
 
 
 def test_listing_industry_face_falls_back_without_fine(tmp_path):
@@ -73,7 +74,7 @@ def test_flow_stock_title_and_sector_entry_show_fine(tmp_path):
     db = _db_with_fine(tmp_path)
     title = _flow_stock_title("2303", "聯電", db)
     assert "2303" in title and "聯電" in title
-    assert "細項 電子上游-IC-代工" in title
+    assert "電子上游-IC-代工" in title
     row = {
         "industry": "半導體業",
         "three_net": 40000,
@@ -84,7 +85,7 @@ def test_flow_stock_title_and_sector_entry_show_fine(tmp_path):
             {"stock_id": "2330", "stock_name": "台積電", "three_net": 10000},
         ],
     }
-    # 2330 沒細項表 → 退回證交所臉或空細項，不崩
+    # 2330 沒產業鏈表 → 退回證交所臉，不崩
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
@@ -95,7 +96,8 @@ def test_flow_stock_title_and_sector_entry_show_fine(tmp_path):
     conn.close()
     html = _sector_entry(row, db)
     assert "前幾名買超" in html
-    assert "細項 電子上游-IC-代工" in html
+    assert "電子上游-IC-代工" in html
+    assert "細項" not in html
     assert "1. " in html and "2. " in html
 
 
@@ -116,10 +118,12 @@ def test_fundamentals_and_industry_title_carry_fine(tmp_path):
     conn.close()
     fund = format_fundamentals_html("2303", db)
     assert "基本面" in fund
-    assert "細項 電子上游-IC-代工" in fund
+    assert "電子上游-IC-代工" in fund
+    assert "細項" not in fund
     ind = format_industry_html("2303", db, allow_fetch=False)
     assert "產業說明" in ind
-    assert "細項" in ind and "電子上游-IC-代工" in ind
+    assert "電子上游-IC-代工" in ind
+    assert "細項" not in ind
 
 
 def test_chips_html_title_carries_fine(tmp_path):
@@ -142,6 +146,7 @@ def test_chips_html_title_carries_fine(tmp_path):
             "ratio_pct": 10.0,
         }
     ]
-    with patch("stock_links.html_stock_anchor", side_effect=lambda s, n, p=None: f"{s} {n}　上市　細項 電子上游-IC-代工"):
+    with patch("stock_links.html_stock_anchor", side_effect=lambda s, n, p=None: f"{s} {n}　上市　電子上游-IC-代工"):
         html = format_major_player_html(rows, "2303")
-    assert "細項 電子上游-IC-代工" in html
+    assert "電子上游-IC-代工" in html
+    assert "細項" not in html

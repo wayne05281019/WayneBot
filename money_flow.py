@@ -1118,7 +1118,7 @@ def format_sector_rotation_html(
     blocks.append(
         section(
             kv_compact("單位", "張（產業加總三大法人，非分點）"),
-            kv_compact("用途", "佈局對照：熱族＋前幾名個股；細項＝籌碼K，不作單獨訊號"),
+            kv_compact("用途", "佈局對照：熱族＋前幾名個股；產業鏈＝籌碼K，不作單獨訊號"),
         ),
     )
     if chip_abs == 0:
@@ -1291,7 +1291,7 @@ def format_flow_html(
             section(
                 kv_compact("覆蓋", cover),
                 kv_compact("單位", "張（三大法人，非分點）"),
-                kv_compact("細項", "籌碼K公開產業鏈；沒抓到就不標"),
+                kv_compact("產業鏈", "籌碼K公開分類；沒抓到就不標"),
             ),
         ]
     )
