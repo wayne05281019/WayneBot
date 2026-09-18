@@ -208,6 +208,25 @@ def test_mis_ex_ch_otc_uses_tw_not_yahoo_two():
     assert all(not ch.endswith(".two") for ch in _channels("2330", "TW"))
 
 
+def test_mis_limit_up_blank_z_uses_first_positive_bid_not_hl_mid():
+    """3443 漲停：MIS z='-'、買盤 0_7150_…、賣盤空。舊邏輯 (高+低)/2＝6830。"""
+    from live_quote import _first_book, _last_price
+
+    assert _first_book("0.0000_7150.0000_7145.0000_7140.0000_7135.0000_") == 7150.0
+    assert _first_book("-") == 0.0
+    item = {
+        "z": "-",
+        "o": "6600.0000",
+        "h": "7150.0000",
+        "l": "6510.0000",
+        "y": "6500.0000",
+        "b": "0.0000_7150.0000_7145.0000_7140.0000_7135.0000_",
+        "a": "-",
+    }
+    assert _last_price(item, 6500.0) == 7150.0
+    assert _last_price(item, 6500.0) != 6830.0
+
+
 def test_fetch_mis_quote_skips_empty_channel_then_otc_tw(monkeypatch):
     import live_quote
 
