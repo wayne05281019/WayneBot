@@ -81,8 +81,8 @@ def test_scan_picks_test_laggard_not_named_asic(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     line = scan_unnamed_field(db, ask="根據我的指引去找")
     assert "高階測試／封測" in line
-    assert "矽格" in line
-    assert "6257" in line
+    assert "京元電子" in line or "2449" in line
+    assert "6257" not in line
     assert "穎崴" in line
     assert "還沒先過前高" in line
     assert "ASIC" in line and "不當新族群" in line

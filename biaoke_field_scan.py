@@ -464,8 +464,44 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
 
 
 def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = None) -> str:
-    """回一句產業抽屜用的找法＋官方柱對質。對不上就寫還沒，不准猜。"""
-    return str(pick_unnamed_field(db_path, ask=ask, spoken=spoken).get("line") or "")
+    """跟洞燭鈕同一套：主推細項＋最落後次級。矽格只是範例，不是固定名單。"""
+    del ask
+    data = dongzhu_picks(db_path, spoken=spoken)
+    field = str(data.get("field") or "")
+    if not field:
+        return str(
+            data.get("line")
+            or (_HOW + " 還沒對上底部蠢蠢的次族群，不准發明。不是買訊。")
+        )
+    cap = str(data.get("cap") or "")
+    lags = [x for x in list(data.get("laggards") or []) if x.get("sid")]
+    lag_txt = "還沒有過門檻的次級。"
+    if lags:
+        names = "、".join(f"{x.get('name')} {x.get('sid')}" for x in lags[:3])
+        lag_txt = f"捕捉最落後次級 {names}"
+        vs = lags[0].get("vs20")
+        if vs is not None:
+            lag_txt += f" 距20高 {_pct(float(vs))}"
+        lag_txt += "。"
+    lead = data.get("leader") if isinstance(data.get("leader"), dict) else None
+    lead_bit = ""
+    if lead and (lead.get("name") or lead.get("sid")):
+        close = lead.get("close")
+        close_s = _px(float(close)) if close is not None else "—"
+        lead_bit = (
+            f"龍頭 {lead.get('name') or ''} {lead.get('sid') or ''} 收 {close_s}"
+            f"{' 還沒先過前高' if not lead.get('broke') else ' 已先過前高'}。"
+        )
+    named = [str(x) for x in (data.get("named") or []) if x]
+    named_bit = ("已點名的 " + "、".join(named) + " 不當新族群。") if named else ""
+    return (
+        _HOW
+        + f" 官方收 {cap}：最像 {field}，"
+        + lag_txt
+        + lead_bit
+        + named_bit
+        + "不是他當下點名。不是買訊。"
+    )
 
 
 def _stock_name(db_path: str, sid: str, fallback: str = "") -> str:
@@ -1593,13 +1629,15 @@ def _five_lines(pick: Dict[str, Any], ign: Dict[str, Any], named_hot: Dict[str, 
         )
     else:
         bits.append("形態／碎形：次族群第一名還沒先過前高，才從底部找落後。")
-    if lag and lag.get("volr") is not None:
+    if lag and lag.get("vs20") is not None:
         try:
-            bits.append(
-                f"量價：落後檔量比 {float(lag.get('volr') or 0):.2f}、贴近20高。"
-            )
+            vs = float(lag["vs20"])
+            vol = lag.get("volr")
+            vol_s = f"、量比 {float(vol):.2f}" if vol is not None else ""
+            near = "贴近20高" if vs >= -5.0 else f"距20高 {_pct(vs)}"
+            bits.append(f"量價：捕捉次級{near}{vol_s}。")
         except (TypeError, ValueError):
-            bits.append("量價：落後檔量起來才算蠢蠢欲動。")
+            bits.append("量價：從底部找最落後次級，不是單檔買訊。")
     path = _share_path(ign)
     if path:
         bits.append(f"主判是佔比：{fine}佔法人買超 {path}。")
@@ -2055,6 +2093,10 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         if rows:
             alt_lags.append({"field": ag.get("field") or "", "items": rows})
     pick["laggards"] = capture
+    if capture:
+        pick["laggard"] = capture[0]
+        pick["laggards_note"] = capture[0]
+        pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
     pick["alts"] = alts
     pick["alt_laggards"] = alt_lags
     return {
