@@ -1497,7 +1497,7 @@ class WayneTelegramBot:
         ]
 
     def _lookup_like_action_row(self, code: str, name: str = ""):
-        """跟查個股同一套動作：看這檔／觀察／記買入。"""
+        """剛脫離零：看這檔／觀察／記買入。洞燭推薦列用 _dongzhu_pick_rows。"""
         from tg_layout import stock_btn_label
 
         c = str(code or "").strip()[:6]
@@ -1507,6 +1507,47 @@ class WayneTelegramBot:
             InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
             InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
         ]
+
+    def _dongzhu_card_row(self, code: str):
+        """產業／高低溫度卡／介紹卡。不是觀察、不是記買入。"""
+        c = str(code or "").strip()[:6]
+        return [
+            InlineKeyboardButton("產業", callback_data=f"n:{c}"),
+            InlineKeyboardButton("高低溫度卡", callback_data=f"d:{c}"),
+            InlineKeyboardButton("介紹卡", callback_data=f"i:{c}"),
+        ]
+
+    def _dongzhu_pick_rows(self, code: str, name: str = ""):
+        from tg_layout import stock_btn_label
+
+        c = str(code or "").strip()[:6]
+        if not c:
+            return []
+        label = stock_btn_label(c, name or "")
+        return [
+            [InlineKeyboardButton(label, callback_data=f"k:{c}")],
+            self._dongzhu_card_row(c),
+        ]
+
+    def _dongzhu_picks_keyboard(self, picks=None):
+        rows = []
+        for pair in list(picks or [])[:MAX_PICK_INLINE_ROWS]:
+            if isinstance(pair, (list, tuple)):
+                code = str((pair[0] if pair else "") or "").strip()
+                name = str((pair[1] if len(pair) > 1 else "") or "")
+            else:
+                code = str(pair or "").strip()
+                name = ""
+            rows.extend(self._dongzhu_pick_rows(code, name))
+        if not rows:
+            return None
+        return InlineKeyboardMarkup(rows)
+
+    def _dongzhu_hold_keyboard(self, code: str):
+        c = str(code or "").strip()[:6]
+        if not c:
+            return None
+        return InlineKeyboardMarkup([self._dongzhu_card_row(c)])
 
     @staticmethod
     def _leave_zero_case_html(
@@ -2834,7 +2875,7 @@ class WayneTelegramBot:
         if not hits:
             self._pending[actor] = "dongzhu"
             await message.reply_text(
-                "找不到這檔。打代號或股名，看這檔自己的細項能不能留（不是整層電子）。",
+                "找不到這檔。打代號或股名，看這檔自己的細項能不能留。",
                 reply_markup=self._reply_menu(uid),
             )
             return
@@ -2847,32 +2888,51 @@ class WayneTelegramBot:
             )
             return
         sid = str(hits[0].get("stock_id") or "").strip()
+        name = str(hits[0].get("stock_name") or "")
+        wait_h = (None, None, None)
         try:
-            html = await asyncio.wait_for(
-                asyncio.to_thread(dongzhu_hold_page, self.db_path, sid),
-                timeout=20.0,
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._wait_bubble(
+                    "洞燭先機進行中",
+                    s,
+                    now="讀這檔細項",
+                    rest="能不能留",
+                    fill_sec=16.0,
+                ),
             )
-        except asyncio.TimeoutError:
-            await message.reply_text(
-                "⚠️ 洞燭先機查詢逾時。請稍後再打一次代號。",
-                reply_markup=self._reply_menu(uid),
-            )
-            return
-        except Exception:
-            logger.exception("洞燭先機能不能留失敗")
-            await message.reply_text(
-                PHONE_BUSY,
-                reply_markup=self._reply_menu(uid),
-            )
-            return
-        self._pending[actor] = "dongzhu"
-        chunks = chunk_telegram_html(html, 3500) or [html]
-        for chunk in chunks:
-            await message.reply_html(
-                chunk,
-                reply_markup=self._reply_menu(uid),
-                disable_web_page_preview=True,
-            )
+            try:
+                html = await asyncio.wait_for(
+                    asyncio.to_thread(dongzhu_hold_page, self.db_path, sid),
+                    timeout=20.0,
+                )
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    "⚠️ 洞燭先機查詢逾時。請稍後再打一次代號。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            except Exception:
+                logger.exception("洞燭先機能不能留失敗")
+                await message.reply_text(
+                    PHONE_BUSY,
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
+            self._pending[actor] = "dongzhu"
+            chunks = chunk_telegram_html(html, 3500, reflow=True) or [html]
+            last = len(chunks) - 1
+            kb = self._dongzhu_hold_keyboard(sid)
+            for j, chunk in enumerate(chunks):
+                await message.reply_html(
+                    chunk,
+                    reply_markup=kb if j == last else None,
+                    disable_web_page_preview=True,
+                )
+        finally:
+            await self._stop_plain_wait(*wait_h)
 
     async def _send_dongzhu_page(self, message) -> None:
         from biaoke_field_scan import dongzhu_page, dongzhu_picks
@@ -2882,54 +2942,78 @@ class WayneTelegramBot:
             or getattr(getattr(message, "from_user", None), "id", "")
             or ""
         )
-        await self._enter_main_menu(message, uid)
-        try:
-            html = await asyncio.wait_for(
-                asyncio.to_thread(dongzhu_page, self.db_path),
-                timeout=20.0,
-            )
-        except asyncio.TimeoutError:
+        actor = self._actor_key(message, uid=uid)
+        if not hasattr(self, "_trade_running"):
+            self._trade_running = set()
+        if actor in self._trade_running:
             await message.reply_text(
-                "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
+                "洞燭先機進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
-        except Exception:
-            logger.exception("洞燭先機查詢失敗")
-            await message.reply_text(
-                PHONE_BUSY,
-                reply_markup=self._reply_menu(uid),
-            )
-            return
-        picks = []
+        self._trade_running.add(actor)
+        wait_h = (None, None, None)
         try:
-            data = dongzhu_picks(self.db_path)
-            seen = set()
-            for item in (
-                list(data.get("buys") or [])
-                + list(data.get("watches") or [])
-                + list(data.get("laggards") or [])
-            ):
-                sid = str(item.get("sid") or "")
-                if not sid or sid in seen:
-                    continue
-                seen.add(sid)
-                picks.append((sid, item.get("name") or ""))
-        except Exception:
+            await self._enter_main_menu(message, uid)
+            wait_h = await self._start_plain_wait(
+                message,
+                text_fn=lambda s: self._wait_bubble(
+                    "洞燭先機進行中",
+                    s,
+                    now="讀細項佔比",
+                    rest="排出推薦",
+                    fill_sec=20.0,
+                ),
+            )
+            try:
+                html = await asyncio.wait_for(
+                    asyncio.to_thread(dongzhu_page, self.db_path),
+                    timeout=20.0,
+                )
+            except asyncio.TimeoutError:
+                await message.reply_text(
+                    "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
+            except Exception:
+                logger.exception("洞燭先機查詢失敗")
+                await message.reply_text(
+                    PHONE_BUSY,
+                    reply_markup=self._reply_menu(uid),
+                )
+                return
             picks = []
-        chunks = chunk_telegram_html(html, 3500) or [html]
-        last = len(chunks) - 1
-        for j, chunk in enumerate(chunks):
-            kb = self._leave_zero_section_keyboard(
-                picks if j == last else None,
-                include_menu=(j == last),
-            )
-            await message.reply_html(
-                chunk,
-                reply_markup=kb or self._reply_menu(uid),
-                disable_web_page_preview=True,
-            )
-        self._pending[self._actor_key(message, uid=uid)] = "dongzhu"
+            try:
+                data = dongzhu_picks(self.db_path)
+                seen = set()
+                for item in (
+                    list(data.get("buys") or [])
+                    + list(data.get("watches") or [])
+                    + list(data.get("laggards") or [])
+                ):
+                    sid = str(item.get("sid") or "")
+                    if not sid or sid in seen:
+                        continue
+                    seen.add(sid)
+                    picks.append((sid, item.get("name") or ""))
+            except Exception:
+                picks = []
+            await self._stop_plain_wait(*wait_h)
+            wait_h = (None, None, None)
+            chunks = chunk_telegram_html(html, 3500, reflow=True) or [html]
+            last = len(chunks) - 1
+            for j, chunk in enumerate(chunks):
+                kb = self._dongzhu_picks_keyboard(picks if j == last else None)
+                await message.reply_html(
+                    chunk,
+                    reply_markup=kb,
+                    disable_web_page_preview=True,
+                )
+            self._pending[actor] = "dongzhu"
+        finally:
+            await self._stop_plain_wait(*wait_h)
+            self._trade_running.discard(actor)
 
     async def _run_leave_zero_now(self, message):
         from live_quote import is_live_merge_window
@@ -5660,6 +5744,10 @@ class WayneTelegramBot:
             return
         if data.startswith("n:"):
             await self._send_industry(q.message, data[2:].strip(), str(q.from_user.id))
+            return
+        if data.startswith("i:"):
+            uid = str(q.from_user.id)
+            await self._send_card_to(q.message, data[2:].strip(), uid)
             return
         if data.startswith("b:"):
             uid = str(q.from_user.id)

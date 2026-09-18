@@ -135,6 +135,67 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "黃金買點" in html
 
 
+def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from tg_layout import DASH_LINE, reflow_telegram_html
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = dongzhu_page(db)
+    assert DASH_LINE in html
+    parts = [p.strip() for p in html.split(DASH_LINE) if p.strip()]
+    assert len(parts) >= 6
+    heads = [p.split("\n", 1)[0] for p in parts]
+    blob = "\n".join(heads)
+    assert "洞燭先機" in blob
+    assert "資金輪動要注意" in html
+    assert "此刻最像" in html
+    assert "此刻推薦" in html
+    assert "① " in html
+    assert "② " in html
+    assert "③ " in html
+    assert "每天流入第一名：" not in html
+    name_lines = [
+        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln
+    ]
+    assert name_lines
+    assert all("近5日法人" not in ln for ln in name_lines)
+    phone = reflow_telegram_html(html)
+    assert DASH_LINE in phone
+    hold_src = Path("bot_servers.py").read_text(encoding="utf-8")
+    page_i = hold_src.find("async def _send_dongzhu_page")
+    hold_i = hold_src.find("async def _send_dongzhu_hold")
+    page_end = hold_src.find("\n    async def ", page_i + 10)
+    hold_end = hold_src.find("\n    async def ", hold_i + 10)
+    assert "reflow=True" in hold_src[page_i:page_end]
+    assert "reflow=True" in hold_src[hold_i:hold_end]
+    assert "_start_plain_wait" in hold_src[page_i:page_end]
+    assert "_start_plain_wait" in hold_src[hold_i:hold_end]
+    assert "_wait_bubble" in hold_src[page_i:page_end]
+    assert "洞燭先機進行中" in hold_src[page_i:page_end]
+    assert "洞燭先機進行中" in hold_src[hold_i:hold_end]
+    assert "_leave_zero_section_keyboard" not in hold_src[page_i:page_end]
+    assert "_dongzhu_picks_keyboard" in hold_src[page_i:page_end]
+
+
+def test_dongzhu_hold_page_uses_dashed_sections(tmp_path, monkeypatch):
+    from tg_layout import DASH_LINE
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    from biaoke_field_scan import dongzhu_hold_page
+
+    html = dongzhu_hold_page(db, "6257")
+    assert DASH_LINE in html
+    assert "能不能留" in html
+    assert "判斷單位" not in html
+    assert "沒打準" not in html
+    assert "再打下一檔" not in html
+
+
 def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     db = str(tmp_path / "f.db")
     _seed(db)
@@ -844,7 +905,10 @@ def test_dongzhu_hold_uses_stock_own_fine_not_electronics(tmp_path, monkeypatch)
     assert "主產業 電子上游" in html
     assert "次產業 IC" in html
     assert "細項 封測" in html
-    assert "整層電子" in html
+    assert "判斷單位" not in html
+    assert "沒打準" not in html
+    assert "再打下一檔" not in html
+    assert "整層電子" not in html
     assert data.get("verdict") in ("可留觀察", "可留", "還在")
     assert data.get("buy") is False
     tel = dongzhu_hold(db, "2412")
@@ -862,7 +926,8 @@ def test_dongzhu_hold_missing_chain_does_not_invent(tmp_path, monkeypatch):
 
     html = dongzhu_hold_page(db, "6257")
     assert "還沒" in html or "不准猜" in html
-    assert "不准發明" in html or "不准猜" in html
+    assert "判斷單位" not in html
+    assert "再打下一檔" not in html
 
 
 def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
