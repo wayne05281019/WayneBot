@@ -1561,15 +1561,19 @@ class WayneTelegramBot:
             InlineKeyboardButton("介紹卡", callback_data=f"i:{c}"),
         ]
 
-    def _dongzhu_pick_rows(self, code: str, name: str = ""):
-        """一行四鈕：代號股名｜產業｜高低溫度卡｜介紹卡。不要拆兩行。"""
+    def _dongzhu_pick_rows(self, code: str, name: str = "", *, win_btn: str = ""):
+        """一行四鈕：代號股名（買點可加勝％）｜產業｜高低溫度卡｜介紹卡。"""
         from tg_layout import stock_btn_label
 
         c = str(code or "").strip()[:6]
         if not c:
             return []
-        # 四鈕並排：代號名略縮，避免擠爆 Telegram 列寬。
-        label = stock_btn_label(c, name or "", max_bytes=28)
+        # 四鈕並排：代號名略縮；買點才加短勝率標，觀察／落後不加。
+        win = str(win_btn or "").strip()
+        budget = 22 if win else 28
+        label = stock_btn_label(c, name or "", max_bytes=budget)
+        if win:
+            label = f"{label} {win}".strip()
         return [
             [
                 InlineKeyboardButton(label, callback_data=f"k:{c}"),
@@ -1580,13 +1584,16 @@ class WayneTelegramBot:
     def _dongzhu_picks_keyboard(self, picks=None):
         rows = []
         for pair in list(picks or [])[:MAX_PICK_INLINE_ROWS]:
+            win_btn = ""
             if isinstance(pair, (list, tuple)):
                 code = str((pair[0] if pair else "") or "").strip()
                 name = str((pair[1] if len(pair) > 1 else "") or "")
+                if len(pair) > 2 and pair[2]:
+                    win_btn = str(pair[2]).strip()
             else:
                 code = str(pair or "").strip()
                 name = ""
-            rows.extend(self._dongzhu_pick_rows(code, name))
+            rows.extend(self._dongzhu_pick_rows(code, name, win_btn=win_btn))
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -2996,7 +3003,7 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
 
     async def _send_dongzhu_page(self, message) -> None:
-        from biaoke_field_scan import dongzhu_page, dongzhu_picks
+        from biaoke_field_scan import PRE_BUY_WIN_BTN, dongzhu_page, dongzhu_picks
 
         uid = str(
             _ACTIVE_PHONE_UID.get()
@@ -3048,6 +3055,11 @@ class WayneTelegramBot:
             try:
                 data = dongzhu_picks(self.db_path)
                 seen = set()
+                buy_sids = {
+                    str(x.get("sid") or "")
+                    for x in list(data.get("buys") or [])
+                    if x.get("sid")
+                }
                 for item in (
                     list(data.get("buys") or [])
                     + list(data.get("watches") or [])
@@ -3057,7 +3069,9 @@ class WayneTelegramBot:
                     if not sid or sid in seen:
                         continue
                     seen.add(sid)
-                    picks.append((sid, item.get("name") or ""))
+                    # 只有黃金買點標這型勝率；觀察／落後不加，不准發明。
+                    win = PRE_BUY_WIN_BTN if sid in buy_sids else ""
+                    picks.append((sid, item.get("name") or "", win))
             except Exception:
                 picks = []
             await self._stop_plain_wait(*wait_h)
