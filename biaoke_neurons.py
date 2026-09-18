@@ -37,7 +37,8 @@ _PAT: Dict[str, re.Pattern[str]] = {
     ),
     "field": re.compile(
         r"(產業|主戰場|CCL|InP|散熱|光通訊|光學|PCB|F10|ABF|記憶體|"
-        r"下飄旗|矽光子|高階測試|CPO|FAU|散熱轉弱|僅次於InP|ASIC)"
+        r"下飄旗|矽光子|高階測試|CPO|FAU|散熱轉弱|僅次於InP|ASIC|"
+        r"新族群|蠢蠢欲動|指引去找|從底部找落後|封測)"
     ),
     "leader": re.compile(r"(龍頭|護城河|次族群|一軍|二軍|風向球|第一名|僅次於InP)"),
     "tape": re.compile(

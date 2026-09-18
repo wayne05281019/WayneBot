@@ -20,7 +20,7 @@ def test_phone_angles_are_one_thousand_distinct():
     assert len(set(names)) == 1000
     assert names[0] == f"{FEATURES[0]}/{LENSES[0]}"
     assert "飆大/對價" not in names
-    assert any(n.startswith("空白格/") for n in names)
+    assert any(n.startswith("洞燭先機/") for n in names)
     assert any(n.startswith("查股兩張圖/") for n in names)
 
 

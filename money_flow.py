@@ -341,6 +341,12 @@ def recompute_sector_flow(db_path: str = None, ymd: str = None, lookback: int = 
         conn.commit()
     finally:
         conn.close()
+    try:
+        from biaoke_field_scan import record_dongzhu_flow
+
+        record_dongzhu_flow(path, cap)
+    except Exception:
+        pass
     return written
 
 
