@@ -138,9 +138,7 @@ def test_brother_report_does_not_steal_wayne_pending(tmp_path):
 def test_help_covers_report_and_no_secret():
     from bot_servers import HELP_TOPICS
 
-    blob = "\n".join(HELP_TOPICS.values())
-    assert "回報" in blob
-    assert "截圖" in blob
-    assert "程式密鑰" in blob
-    assert "TELEGRAM_BOT_TOKEN" not in blob
-    assert "getUpdates" not in blob
+    assert HELP_TOPICS == {}
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "回報" in src
+    assert "TELEGRAM_BOT_TOKEN" not in src or "不要把 token" in src

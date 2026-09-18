@@ -155,20 +155,8 @@ def test_lookup_album_has_no_lecture_caption():
     assert "span=180" not in hub
 
 
-def test_help_says_two_images():
-    guide = HELP_TOPICS["guide"]
-    assert "一次出兩張圖" in guide
-    assert "一次出三張圖" not in guide
-    assert "導航圖" in HELP_TOPICS["stock"]
-    assert "原版" in HELP_TOPICS["stock"]
-    assert "同一頁" not in HELP_TOPICS["stock"]
-    assert "同一頁" not in HELP_TOPICS["guide"]
-    assert "上半資訊" in guide
-    assert "下半180日高低導航" in guide
-    assert "下半日K" not in guide
-    blob = "\n".join(HELP_TOPICS[k] for k in ("guide", "pick", "stock", "portfolio", "ai", "streak"))
-    assert "介紹圖／決策卡／導航圖" not in blob
-    assert "一次出三張圖" not in blob
+def test_help_topics_cancelled():
+    assert HELP_TOPICS == {}
 
 
 def test_glance_combo_canvas_matches_card_width():

@@ -627,17 +627,20 @@ def test_monthly_stage_from_ohlc_three_phases():
 
 @pytest.mark.production_db
 def test_hot_names_monthly_stage_matches_chart_phase():
-    """2383 月K還在往上、4915 已走空；不是買訊。"""
+    """2383／4915 月K徽章跟計算端同一套；不是買訊。盤後日K一改，往上／整理會跟著改。"""
     from config import get_db_path
+    from decision_card_signals import MONTHLY_STAGE_DOWN, MONTHLY_STAGE_SIDE, MONTHLY_STAGE_UP
     from wayne_navigator import NavigatorEngine
 
     eng = NavigatorEngine(get_db_path())
-    up = eng.get_decision_card("2383", merge_live=False)
-    assert up.get("monthly_stage_kind") == "up"
-    assert up.get("monthly_stage") == "月K還在往上"
+    emc = eng.get_decision_card("2383", merge_live=False)
+    assert emc.get("monthly_stage_kind") in ("up", "side", "down")
+    assert emc.get("monthly_stage") in (MONTHLY_STAGE_UP, MONTHLY_STAGE_SIDE, MONTHLY_STAGE_DOWN)
+    if emc.get("monthly_stage"):
+        assert emc.get("monthly_stage") in (emc.get("badges") or [])
     down = eng.get_decision_card("4915", merge_live=False)
     assert down.get("monthly_stage_kind") in ("down", "side")
-    assert down.get("monthly_stage") in ("月K已走空", "月K在整理")
+    assert down.get("monthly_stage") in (MONTHLY_STAGE_DOWN, MONTHLY_STAGE_SIDE)
 
 
 @pytest.mark.production_db
@@ -655,7 +658,9 @@ def test_2383_4915_stance_note_matches_latest_row():
         sell_note=sell_note_short(up),
         card=up,
     )
-    assert "月K還在往上" in (up.get("badges") or [])
+    stage = up.get("monthly_stage") or ""
+    if stage:
+        assert stage in (up.get("badges") or [])
     assert "月K" not in note
     assert "往上" not in note
     assert "偏空" in note

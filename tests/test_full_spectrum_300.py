@@ -524,8 +524,9 @@ def test_l4_no_cost_html_honest():
     assert "三大法人不是主力" in html
 
 
-def test_l4_red_arrow_not_buy_in_help():
-    blob = HELP_TOPICS["guide"] + HELP_TOPICS["stock"] + HELP_TOPICS["screen"]
+def test_l4_red_arrow_not_buy():
+    src = open("screening_engine.py", encoding="utf-8").read()
+    blob = src + open("bot_servers.py", encoding="utf-8").read()
     assert "紅箭頭" in blob
     assert "不是買訊" in blob
     assert "黃金買點" in blob
@@ -678,17 +679,8 @@ def test_l6_picture_guide_no_emoji():
     assert "如何賣" in blob
 
 
-def test_l6_help_guide_one_chunk():
-    from tg_layout import chunk_telegram_html
-
-    chunks = chunk_telegram_html(HELP_TOPICS["guide"])
-    assert len(chunks) == 1
-
-
-def test_l6_help_no_wide_pad():
-    pad = re.compile(r"^(產業|同業|單位|用途)\s{3,}", re.M)
-    for key, body in HELP_TOPICS.items():
-        assert not pad.search(body), key
+def test_l6_help_topics_cancelled():
+    assert HELP_TOPICS == {}
 
 
 def test_l6_caption_sell_appended():
@@ -1171,11 +1163,9 @@ def test_l9b_voice_stt_not_required_for_text():
 
 
 def test_l9b_line_share_removed():
-    from bot_servers import HELP_TOPICS
-
-    assert "開 LINE" not in HELP_TOPICS.get("screen", "")
-    assert "開 LINE" not in HELP_TOPICS.get("guide", "")
-    assert "一鍵傳 LINE" not in HELP_TOPICS.get("screen", "")
+    src = open("bot_servers.py", encoding="utf-8").read()
+    assert "開 LINE" not in src
+    assert "一鍵傳 LINE" not in src
 
 
 def test_l9b_fake_units_empty_card_omits():
@@ -1203,77 +1193,34 @@ def test_l9b_fake_units_empty_card_omits():
     assert "None" not in card
 
 
-def test_l9b_brother_help_exists():
-    assert "guide" in HELP_TOPICS
-    assert "第一次用" in HELP_TOPICS["guide"] or "四碼" in HELP_TOPICS["guide"]
+def test_l9b_brother_help_cancelled():
+    assert HELP_TOPICS == {}
 
 
-def test_l9c_guide_family_no_invite_one_chunk():
-    from tg_layout import chunk_telegram_html
+def test_l9c_start_family_no_invite():
+    import inspect
 
-    guide = HELP_TOPICS["guide"]
-    chunks = chunk_telegram_html(guide)
-    assert len(chunks) == 1
-    assert "t.me/WC_ai_trade_bot" in guide
-    assert "不必再分享邀請" in guide
-    assert "對方按" not in guide
-    assert "給家人用" not in guide
-    assert "不要拉進同一個群組" in guide
-    assert "各看各的" in guide
-    assert "06:30" in guide and "各寄一份" in guide
-    assert "16:45" not in guide
+    src = inspect.getsource(WayneTelegramBot.start_cmd)
+    assert "不必再分享邀請" in src
+    assert "給家人用" not in src
+    assert "不要拉進同一個群組" in src
+    assert "各看各的" in src
+    assert "16:45" not in src
 
 
-@pytest.mark.parametrize("topic", sorted(HELP_TOPICS))
-def test_l9c_help_topic_layout_and_jargon(topic):
-    from tg_layout import chunk_telegram_html
-
-    body = HELP_TOPICS[topic]
-    assert body.strip()
-    assert "<b>" in body
-    assert "TWSE" not in body
-    assert "TPEX" not in body
-    for phrase in ("外資成本", "投信成本", "融資成本"):
-        if phrase in body:
-            assert "沒這欄" in body or "官方沒" in body, topic
-    chunks = chunk_telegram_html(body)
-    assert chunks
-    assert all(part.strip() for part in chunks)
-    if topic == "guide":
-        assert len(chunks) == 1
+def test_l9c_help_topics_cancelled():
+    assert HELP_TOPICS == {}
 
 
 @pytest.mark.parametrize(
     "label",
     ["海選", "持股", "觀察", "刷新", "回報", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "飆大", "剛脫離零", "洞燭先機"],
 )
-def test_l9c_twelve_buttons_named_in_guide_and_row_help(label):
+def test_l9c_twelve_buttons_named_on_menu(label):
     from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
 
     names = [_normalize_menu_text(t) for t in MENU_ROW1 + MENU_ROW2]
     assert label in names
-    assert label in HELP_TOPICS["guide"]
-    blob = HELP_TOPICS["row1"] + "\n" + HELP_TOPICS["row2"]
-    assert label in blob
-    assert "是什麼" in blob
-    assert "怎麼用" in blob or "怎麼加" in blob
-
-
-def _circled(i: int) -> str:
-    return "①②③④⑤⑥⑦⑧⑨⑩"[i - 1]
-
-
-def test_l9c_row_help_covers_each_button_intro():
-    from bot_servers import MENU_ROW1, MENU_ROW2, _normalize_menu_text
-
-    for rows, blob in ((MENU_ROW1, HELP_TOPICS["row1"]), (MENU_ROW2, HELP_TOPICS["row2"])):
-        labeled = [_normalize_menu_text(t) for t in rows if str(t).strip()]
-        for i, label in enumerate(labeled, start=1):
-            start = blob.index(f"<b>{_circled(i)} {label}</b>")
-            end = blob.index(f"<b>{_circled(i + 1)} ", start) if i < len(labeled) else len(blob)
-            section = blob[start:end]
-            assert "是什麼" in section
-            assert ("怎麼用" in section) or ("怎麼加" in section)
 
 
 def test_l9c_gha_morning_only_at_0630():

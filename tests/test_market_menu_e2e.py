@@ -95,14 +95,8 @@ class TestMarketMenuE2E:
         assert row2[6] == MENU_BTN_DONGZHU
         assert row1[-2] == MENU_BTN_BIAOKE_FACE
 
-    def test_help_no_reserved_slot_text(self):
-        assert "預留" not in HELP_TOPICS["menu"]
-        assert "回報" in HELP_TOPICS["menu"]
-        assert "AI倉" in HELP_TOPICS["menu"]
-        assert "大盤" in HELP_TOPICS["menu"]
-        assert "夜盤" in HELP_TOPICS["market"]
-        assert "橫式" in HELP_TOPICS["market"]
-        assert "夜盤" in HELP_TOPICS["row1"]
+    def test_help_topics_cancelled(self):
+        assert HELP_TOPICS == {}
 
     def test_market_page_db_only_no_yahoo(self, tmp_path):
         db = str(tmp_path / "m.db")

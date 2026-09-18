@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""說明書、圖文、兩排主選單必須講同一套按鈕與頁序。"""
+"""兩排主選單與本機圖文 9 頁仍對齊；話筒說明頁已取消。"""
 from __future__ import annotations
 
 from bot_servers import (
@@ -32,7 +32,8 @@ GUIDE_PAGE_ORDER = (
 )
 
 
-def test_reply_keyboard_matches_help_and_picture_copy():
+def test_reply_keyboard_matches_picture_copy():
+    assert HELP_TOPICS == {}
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     row1 = [b.text for b in kb.keyboard[0]]
@@ -41,22 +42,11 @@ def test_reply_keyboard_matches_help_and_picture_copy():
     assert row2 == ROW2_LABELS
     assert row2[6] == MENU_BTN_DONGZHU
     assert MENU_LAYOUT_VERSION == "25"
-
-    guide = HELP_TOPICS["guide"]
-    menu = HELP_TOPICS["menu"]
-    row1_help = HELP_TOPICS["row1"]
-    row2_help = HELP_TOPICS["row2"]
     blob = page_copy_blob()
-    assert "連買區" in guide and "說明" in guide
-    assert "海選／持股" in menu
-    assert row1_help.index("① 海選") < row1_help.index("② 持股")
-    assert row2_help.index("① 資金") < row2_help.index("⑤ 連買區")
     assert "海選　持股　觀察　刷新　回報　飆大　大盤" in blob
     assert "資金　當沖　隔日沖　AI倉　連買區　剛脫離零　洞燭先機" in blob
     assert "一張圖卡" in blob
-    assert "圖卡" in HELP_TOPICS["industry"]
-    assert "小框" in HELP_TOPICS["industry"]
-    assert "講人話" not in HELP_TOPICS["industry"]
+    assert "講人話" not in blob
 
 
 def test_picture_guide_page_order_is_first_use_then_lookup():
@@ -79,46 +69,18 @@ def test_picture_guide_page_order_is_first_use_then_lookup():
     assert blob.index("如何低買") < blob.index("大盤頁")
     assert blob.index("大盤頁") < blob.index("按錯了怎麼辦")
     assert "用平常話問原因" not in blob
-    assert "一共 9 張" in HELP_TOPICS["guide"] or "共 9 張" in blob
+    assert "一共 9 張" in blob or "共 9 張" in blob
     assert "現在共 9 張" in blob
 
 
-def test_how_to_sell_and_daily_clock_are_in_help_and_pictures():
-    stock = HELP_TOPICS["stock"]
-    guide = HELP_TOPICS["guide"]
+def test_how_to_sell_and_daily_clock_are_in_pictures():
     blob = page_copy_blob()
-    assert "如何賣" in stock and "如何賣" in blob
-    assert "如何低買" in stock and "如何低買" in blob
-    assert "低點訊號出現不是買" in stock
-    assert "獲利還沒離開 0" in stock
-    assert "最高價＝20日高" in stock and "最高價＝20日高" in blob
-    assert "不自動賣" in stock
+    assert "如何賣" in blob
+    assert "如何低買" in blob
+    assert "最高價＝20日高" in blob
     for clock in ("06:30", "12:45", "16:30", "20:00"):
-        assert clock in guide, clock
         assert clock in blob, clock
-    assert "16:45" not in guide
     assert "16:45" not in blob
-    assert "台股休市當日" in guide
     assert "台股休市當日" in blob
     assert "美股當天沒開" in blob
     assert "北市全日" in blob
-
-
-def test_ai_help_stays_simulated_not_broker_injection():
-    ai = HELP_TOPICS["ai"]
-    assert "不會真的下單" in ai
-    assert "量化積木" in ai
-    assert "不能把這支程式塞進" in ai
-    assert "place_order" not in ai
-    assert "Neo" not in ai
-
-
-def test_family_already_joined_no_invite():
-    guide = HELP_TOPICS["guide"]
-    assert "t.me/WC_ai_trade_bot" in guide
-    assert "不必再分享邀請" in guide
-    assert "對方按" not in guide
-    assert "給家人用" not in guide
-    assert "不要拉進同一個群組" in guide
-    assert "各看各的" in guide
-    assert "06:30" in guide and "各寄一份" in guide

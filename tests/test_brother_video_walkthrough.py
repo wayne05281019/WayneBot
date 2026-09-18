@@ -19,7 +19,6 @@ from bot_servers import (
     WayneTelegramBot,
 )
 from persona_grid import PERSONAS_10
-from tg_layout import chunk_telegram_html
 
 
 MENU_BUTTONS = [
@@ -100,14 +99,7 @@ def test_twelve_menu_buttons_exist_in_order():
 
 
 def test_help_script_ready_for_brother_video():
-    first = chunk_telegram_html(HELP_TOPICS["guide"])[0]
-    assert "第一次用" in first
-    assert "直接打代號" in first
-    assert "00981A" in first
-    assert "先別追" in HELP_TOPICS["stock"]
-    assert "開 LINE" not in HELP_TOPICS["screen"]
-    assert "一鍵傳 LINE" not in HELP_TOPICS["screen"]
-    assert "按錯" in HELP_TOPICS["oops"]
+    assert HELP_TOPICS == {}
     hub = WayneTelegramBot.__new__(WayneTelegramBot)._hub_keyboard("2330")
     texts = [b.text for r in hub.inline_keyboard for b in r]
     assert "籌碼" in texts and "營收" in texts and "產業" in texts
