@@ -702,6 +702,8 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
                 if len(sids) < 2:
                     continue
                 rk = int(rank_of.get(chain) or 99)
+                if rk > 8:
+                    continue
                 sh_up = (not prev) or share(chain, d) + 1e-9 >= share(chain, prev)
                 cluster["n"] += 1
                 if recent:
@@ -803,6 +805,8 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
                     if recent:
                         burst["recent_n"] += 1
                     rk = int(prev_rank.get(chain) or 99)
+                    if rk > 8:
+                        continue
                     sh_up = (not prev2) or share(chain, prev) + 1e-9 >= share(chain, prev2)
                     if 2 <= rk <= 8:
                         burst["t1_top8"] += 1
