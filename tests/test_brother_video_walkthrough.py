@@ -14,7 +14,7 @@ from bot_servers import (
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_REPORT,
-    MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
     MENU_BTN_STREAK,
     WayneTelegramBot,
 )
@@ -36,6 +36,7 @@ MENU_BUTTONS = [
     ("飆客", "_send_biaoke_page"),
     (MENU_BTN_BIAOKE_FACE, "_send_biaoke_page"),
     ("剛脫離零", "leave_zero_cmd"),
+    (MENU_BTN_DONGZHU, "dongzhu_cmd"),
 ]
 
 
@@ -93,7 +94,7 @@ def test_twelve_menu_buttons_exist_in_order():
     row1 = [b.text for b in kb.keyboard[0]]
     row2 = [b.text for b in kb.keyboard[1]]
     assert row1 == ["海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, "資金"]
-    assert row2 == ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_SLOT]
+    assert row2 == ["當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU]
 
 
 def test_help_script_ready_for_brother_video():

@@ -23,6 +23,7 @@ from ai_trader import ai_user_id
 from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
+    MENU_BTN_DONGZHU,
     MENU_BTN_MARKET,
     MENU_BTN_STREAK,
     MENU_FULL_ALIASES,
@@ -150,6 +151,7 @@ def _bot(db: str) -> WayneTelegramBot:
     bot.daytrade_cmd = _bind_hit(hits, "當沖")
     bot.overnight_cmd = _bind_hit(hits, "隔日沖")
     bot.leave_zero_cmd = _bind_hit(hits, "剛脫離零")
+    bot.dongzhu_cmd = _bind_hit(hits, MENU_BTN_DONGZHU)
     bot.streak_cmd = _bind_hit(hits, "連買區")
     bot.menu_cmd = _bind_hit(hits, "選單")
 
@@ -325,6 +327,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         MENU_BTN_AI,
         MENU_BTN_STREAK,
         "剛脫離零",
+        MENU_BTN_DONGZHU,
     ]
 
     async def run():
@@ -350,7 +353,7 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
     asyncio.run(run())
     for uid in (WAYNE, BRO):
         names = set(bot._stress_hits[uid])
-        for need in ("海選", "持股", "觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零"):
+        for need in ("海選", "持股", "觀察", "飆客", "大盤", "資金", "當沖", "隔日沖", "AI倉", "連買區", "剛脫離零", MENU_BTN_DONGZHU):
             assert need in names, (uid, need, names)
     assert bot._last_card[WAYNE] == "2330"
     assert bot._last_card[BRO] == "2317"

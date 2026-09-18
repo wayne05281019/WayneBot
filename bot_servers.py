@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 介紹圖（上半資訊、下半高低導航）＋決策卡；圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -292,7 +292,7 @@ LOOKUP_CODE_EXAMPLES_HTML = (
 
 HELP_TOPICS = {}
 # 說明／圖文／介紹已取消。舊氣泡 ?:／pg:／/help／打「說明」「圖文」靜音。
-# 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6（下排最右空白）。圈已拿掉。
+# 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6；下排最右洞燭先機。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
@@ -301,6 +301,12 @@ MENU_BTN_CARD = "刷新"
 MENU_BTN_BIAOKE = "飆大"
 MENU_BTN_BIAOKE_FACE = MENU_BTN_BIAOKE
 MENU_BTN_SLOT = "\u3000"
+MENU_BTN_DONGZHU = "洞燭先機"
+MENU_BTN_DONGZHU_ALIASES = (
+    MENU_BTN_DONGZHU,
+    "洞燭",
+    "先機",
+)
 MENU_BTN_LEAVE_ZERO = "剛脫離零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
@@ -344,7 +350,7 @@ MENU_ROW2 = (
     MENU_BTN_AI,
     MENU_BTN_STREAK,
     MENU_BTN_LEAVE_ZERO,
-    MENU_BTN_SLOT,
+    MENU_BTN_DONGZHU,
 )
 MENU_COMPACT_ALIASES = ("精簡選單", "精簡鍵盤")
 MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
@@ -368,7 +374,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v23：拿掉說明，整排往前；第一排最右大盤，第二排最右空白。說明／圖文／/help 取消。
 # v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
 # v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
-MENU_LAYOUT_VERSION = "25"
+# v26：下排最右空白格改「洞燭先機」（族群＋黃金買點交集；沒買點不准發明）。
+MENU_LAYOUT_VERSION = "26"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -742,7 +749,7 @@ class WayneTelegramBot:
         return
 
     def _reply_menu(self, uid: str = ""):
-        """兩排各六格；下排最右空白。偉權與哥哥同一套，沒有精簡。"""
+        """兩排各六格；下排最右洞燭先機。偉權與哥哥同一套，沒有精簡。"""
         uid = str(uid or _ACTIVE_PHONE_UID.get() or "")
         biaoke_face = MENU_BTN_BIAOKE_FACE
         try:
@@ -864,9 +871,9 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…資金，第二排當沖…剛脫離零。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排海選…資金，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
-            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第一排最右資金）。"
+            else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
         try:
             pin = await message.reply_text(text, reply_markup=self._reply_menu(uid))
@@ -2803,6 +2810,59 @@ class WayneTelegramBot:
     async def leave_zero_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._run_leave_zero_now(update.message)
 
+    async def dongzhu_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        del context
+        await self._send_dongzhu_page(update.message)
+
+    async def _send_dongzhu_page(self, message) -> None:
+        from biaoke_field_scan import dongzhu_page, dongzhu_picks
+
+        uid = str(
+            _ACTIVE_PHONE_UID.get()
+            or getattr(getattr(message, "from_user", None), "id", "")
+            or ""
+        )
+        await self._enter_main_menu(message, uid)
+        try:
+            html = await asyncio.wait_for(
+                asyncio.to_thread(dongzhu_page, self.db_path),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            await message.reply_text(
+                "⚠️ 洞燭先機查詢逾時。請稍後再按一次；若持續發生請回報。",
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        except Exception:
+            logger.exception("洞燭先機查詢失敗")
+            await message.reply_text(
+                PHONE_BUSY,
+                reply_markup=self._reply_menu(uid),
+            )
+            return
+        picks = []
+        try:
+            data = dongzhu_picks(self.db_path)
+            for item in list(data.get("buys") or []) + list(data.get("watches") or []):
+                sid = str(item.get("sid") or "")
+                if sid:
+                    picks.append((sid, item.get("name") or ""))
+        except Exception:
+            picks = []
+        chunks = chunk_telegram_html(html, 3500) or [html]
+        last = len(chunks) - 1
+        for j, chunk in enumerate(chunks):
+            kb = self._leave_zero_section_keyboard(
+                picks if j == last else None,
+                include_menu=(j == last),
+            )
+            await message.reply_html(
+                chunk,
+                reply_markup=kb or self._reply_menu(uid),
+                disable_web_page_preview=True,
+            )
+
     async def _run_leave_zero_now(self, message):
         from live_quote import is_live_merge_window
         from screening_engine import _stock_card_html
@@ -3789,6 +3849,9 @@ class WayneTelegramBot:
         if kind == "leave_zero":
             await self.leave_zero_cmd(upd, ctx)
             return
+        if kind == "dongzhu":
+            await self.dongzhu_cmd(upd, ctx)
+            return
         if kind == "streak":
             await self.streak_cmd(upd, ctx)
             return
@@ -4070,6 +4133,11 @@ class WayneTelegramBot:
             logger.info("主選單：剛脫離零 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.leave_zero_cmd(update, context)
+            return
+        if text in MENU_BTN_DONGZHU_ALIASES:
+            logger.info("主選單：洞燭先機 uid=%s", uid)
+            self._pending.pop(actor, None)
+            await self.dongzhu_cmd(update, context)
             return
         if text in ("AI模擬倉", "模擬倉", "AI倉"):
             logger.info("主選單：AI模擬倉 uid=%s", uid)

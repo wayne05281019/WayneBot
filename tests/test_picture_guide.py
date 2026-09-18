@@ -72,7 +72,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v55"
+    assert CACHE_VER == "v56"
     assert "不收空頭" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
@@ -174,7 +174,7 @@ def test_keyboard_shot_trimmed_to_buttons():
     assert trimmed.width < im.width
     assert trimmed.height < im.height
     assert trimmed.width / trimmed.height < 5.0
-    # 右側要留到第二排最右（空白格／剛脫離零），不要裁掉。
+    # 右側要留到第二排最右（洞燭先機），不要裁掉。
     assert trimmed.width / im.width >= 0.75
     cream = 0
     tw, th = trimmed.size

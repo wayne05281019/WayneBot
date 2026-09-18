@@ -393,6 +393,13 @@ class MainRunner:
             logger.info("盤後產業資金輪動寫入 %s 列", n_sec)
         except Exception as e:
             logger.error("產業資金輪動失敗: %s", e, exc_info=True)
+        try:
+            from biaoke_field_scan import record_dongzhu_flow
+
+            n_dz = record_dongzhu_flow(self.db_path, fuse_to)
+            logger.info("洞燭先機資金帶寫入 %s 列", n_dz)
+        except Exception as e:
+            logger.error("洞燭先機資金帶失敗: %s", e, exc_info=True)
 
         try:
             from emerging_quotes import sync_emerging_quotes
