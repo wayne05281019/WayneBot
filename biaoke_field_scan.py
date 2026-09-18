@@ -108,6 +108,7 @@ _RULE_LINES = (
     "佔比如實主判。飆大找法只參考、不是唯一。",
     "資金輪動要比到主產業／次產業／產業鏈，再分龍頭與次級。",
     "龍頭來不及買，比價下次級有黃金買點才切入。",
+    "捕捉名單＝最落後次級兩到三檔，不是單檔買訊。",
     "盤中未收不當官方收。不是買訊、不進海選。",
     "切入只認高低卡黃金買點。",
     "按這顆會推出勝率最高這型的黃金買點給你選。",
@@ -128,6 +129,8 @@ FLOW_LOOKBACK = 100
 SHARE_DAYS = 5
 MIN_CHAIN_N = 3
 PRE_VS20 = -8.0
+# 確定細項後捕捉名單＝距20高最深次級 n 檔。回測 1 檔約四成四、2 檔約七成、3 檔約八成有人漲；1 檔不准當買訊。
+LAG_CAPTURE_N = 3
 PREFER_NOT_LEAD = True
 SKIP_LEAVING_HOT = True
 SKIP_PARKING = True
@@ -961,6 +964,41 @@ def _chain_pre_ok(
     if best is None:
         return False, 0.0
     return best <= PRE_VS20, best
+
+
+def _chain_laggards(
+    db_path: str,
+    group: Optional[Dict[str, Any]],
+    cap: str,
+    *,
+    n: int = LAG_CAPTURE_N,
+    group_last: int = 0,
+) -> List[Dict[str, Any]]:
+    """細項內非龍頭、vs20≤−8% 且仍低於60高，距20高最深的 n 檔。不是教過名單、不是買訊。"""
+    if not group or not db_path or n <= 0:
+        return []
+    g = _fill_leaders(db_path, group, cap)
+    leads = {str(x[0]) for x in (g.get("leaders") or ()) if x}
+    scored: List[Tuple[float, Dict[str, Any]]] = []
+    seen = set()
+    layers = list(g.get("layers") or [])
+    for sid, name in group_members(db_path, g):
+        sid = str(sid or "")
+        if not sid or sid in seen or sid in leads:
+            continue
+        seen.add(sid)
+        item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
+        if item.get("close") is None or item.get("vs20") is None:
+            continue
+        vs20 = float(item["vs20"])
+        vs60 = float(item.get("vs60") or 0)
+        if vs20 > PRE_VS20 or vs60 >= 0:
+            continue
+        item["role"] = _stock_role(g, sid)
+        item["layers"] = _chain_parts(db_path, sid) or layers
+        scored.append((vs20, item))
+    scored.sort(key=lambda x: x[0])
+    return [item for _v, item in scored[:n]]
 
 
 def _bars_tail(
@@ -1981,27 +2019,9 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         lag_item["role"] = _stock_role(group, str(laggard.get("sid") or ""))
         lag_item["layers"] = _chain_parts(db_path, str(laggard.get("sid") or "")) or layers
         pick["laggards_note"] = lag_item
-    taught: List[Dict[str, Any]] = []
-    if group:
-        for sid, name in list(group.get("laggards") or ()):
-            item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
-            if item.get("close") is None:
-                continue
-            item["role"] = _stock_role(group, sid)
-            item["layers"] = _chain_parts(db_path, sid) or layers
-            taught.append(item)
-        taught.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
-    if not taught and group:
-        lead_sids = {str(x[0]) for x in (group.get("leaders") or ()) if x}
-        rest = [(sid, name) for sid, name in members if sid not in lead_sids]
-        rest.sort(key=lambda x: member_cum5(db_path, x[0], chip_cap or cap), reverse=True)
-        for sid, name in rest[:5]:
-            item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
-            if item.get("close") is None:
-                continue
-            item["role"] = _stock_role(group, sid)
-            item["layers"] = _chain_parts(db_path, sid) or layers
-            taught.append(item)
+    capture = _chain_laggards(
+        db_path, group, cap, n=LAG_CAPTURE_N, group_last=group_last
+    )
     alts: List[Dict[str, Any]] = []
     alt_lags: List[Dict[str, Any]] = []
     primary_key = str((pick.get("group") or {}).get("key") or "")
@@ -2019,17 +2039,16 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
         )
         if str(ag.get("key") or "") == primary_key:
             continue
-        rows: List[Dict[str, Any]] = []
-        for sid, name in list(ag.get("laggards") or ())[:5]:
-            item = _decorate(db_path, sid, name, cap, None, group_last=int(aign.get("last") or 0))
-            if item.get("close") is None:
-                continue
-            item["role"] = _stock_role(ag, sid)
-            item["layers"] = _chain_parts(db_path, sid) or list(ag.get("layers") or [])
-            rows.append(item)
+        rows = _chain_laggards(
+            db_path,
+            ag,
+            cap,
+            n=LAG_CAPTURE_N,
+            group_last=int(aign.get("last") or 0),
+        )
         if rows:
             alt_lags.append({"field": ag.get("field") or "", "items": rows})
-    pick["laggards"] = taught[:5]
+    pick["laggards"] = capture
     pick["alts"] = alts
     pick["alt_laggards"] = alt_lags
     return {
@@ -2493,16 +2512,16 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         for x in list(data.get("laggards") or [])
         if str(x.get("sid") or "") and str(x.get("sid") or "") not in shown
     ]
-    if not lags:
-        lag = data.get("laggards_note") or data.get("laggard")
-        if isinstance(lag, dict) and str(lag.get("sid") or "") not in shown:
-            lags = [lag]
     if lags:
+        n_lag = len(lags)
         blocks.append(
             _blk(
-                "<b>落後檔</b>",
-                _esc("從底部找；沒黃金買點只觀察，不是買訊"),
-                _stock_blocks(lags, "落後"),
+                "<b>捕捉・最落後次級</b>",
+                _esc(
+                    f"這細項距20高最深的{n_lag}檔次級；回測2檔約七成、3檔約八成有人漲，1檔不到五成。"
+                    "沒黃金買點只觀察，不是買訊、不是單檔保證。"
+                ),
+                _stock_blocks(lags, "捕捉"),
             )
         )
     alts = list(data.get("alts") or [])
@@ -2524,9 +2543,9 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
             continue
         blocks.append(
             _blk(
-                f"<b>次熱落後檔・{_esc(alt_field)}</b>",
-                _esc("沒黃金買點只觀察，不是買訊"),
-                _stock_blocks(items, "落後"),
+                f"<b>次熱捕捉・{_esc(alt_field)}</b>",
+                _esc("沒黃金買點只觀察，不是買訊、不是單檔保證"),
+                _stock_blocks(items, "捕捉"),
             )
         )
     blocks.append(_blk(_esc("紅箭頭不是買訊。"), _esc("飆大只參考，不是唯一。")))

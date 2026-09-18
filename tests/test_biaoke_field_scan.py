@@ -160,7 +160,7 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "③ " in html
     assert "每天流入第一名：" not in html
     name_lines = [
-        ln for ln in html.split("\n") if "6257" in ln and "矽格" in ln
+        ln for ln in html.split("\n") if "2449" in ln and "京元電子" in ln
     ]
     assert name_lines
     assert all("近5日法人" not in ln for ln in name_lines)
@@ -493,7 +493,7 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
 
 
 def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch):
-    """他只講 ASIC 是主戰場、沒說蠢蠢欲動；封測佔比已經最高 → 仍抓矽格／欣銓。"""
+    """他只講 ASIC 是主戰場、沒說蠢蠢欲動；封測佔比已經最高 → 主推封測，捕捉距20高最深次級。"""
     db = str(tmp_path / "f.db")
     _seed(db)
     conn = sqlite3.connect(db)
@@ -548,13 +548,22 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert "蠢蠢欲動" not in spoken
     data = dongzhu_picks(db, spoken=spoken)
     assert data.get("field") == "高階測試／封測"
-    sids = {x.get("sid") for x in (data.get("laggards") or [])}
-    assert "6257" in sids
-    assert "3264" in sids
+    lags = list(data.get("laggards") or [])
+    sids = [x.get("sid") for x in lags]
+    assert sids == ["2449", "3264"]
+    assert "6257" not in sids
+    assert "6515" not in sids and "6223" not in sids
+    assert all(str(x.get("role") or "") == "次級" for x in lags)
+    vs = [float(x["vs20"]) for x in lags]
+    assert vs == sorted(vs)
+    assert all(v <= -8.0 for v in vs)
+    assert len(lags) <= 3
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "6257" in html and "矽格" in html
+    assert "捕捉・最落後次級" in html
+    assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
+    assert "不是單檔保證" in html
     assert "蠢蠢欲動" not in spoken
     assert "不准發明切入" in html or "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
@@ -563,11 +572,12 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
 
 def test_dongzhu_window_is_100_chip_days():
     import biaoke_field_scan as m
-    from biaoke_field_scan import FLOW_LOOKBACK, PRE_VS20, SHARE_DAYS
+    from biaoke_field_scan import FLOW_LOOKBACK, LAG_CAPTURE_N, PRE_VS20, SHARE_DAYS
 
     assert FLOW_LOOKBACK == 100
     assert SHARE_DAYS == 5
     assert PRE_VS20 == -8.0
+    assert LAG_CAPTURE_N == 3
     from biaoke_field_scan import PREFER_NOT_LEAD, SKIP_LEAVING_HOT, SKIP_PARKING
 
     assert PREFER_NOT_LEAD is True
