@@ -1562,15 +1562,19 @@ class WayneTelegramBot:
         ]
 
     def _dongzhu_pick_rows(self, code: str, name: str = ""):
+        """一行四鈕：代號股名｜產業｜高低溫度卡｜介紹卡。不要拆兩行。"""
         from tg_layout import stock_btn_label
 
         c = str(code or "").strip()[:6]
         if not c:
             return []
-        label = stock_btn_label(c, name or "")
+        # 四鈕並排：代號名略縮，避免擠爆 Telegram 列寬。
+        label = stock_btn_label(c, name or "", max_bytes=28)
         return [
-            [InlineKeyboardButton(label, callback_data=f"k:{c}")],
-            self._dongzhu_card_row(c),
+            [
+                InlineKeyboardButton(label, callback_data=f"k:{c}"),
+                *self._dongzhu_card_row(c),
+            ]
         ]
 
     def _dongzhu_picks_keyboard(self, picks=None):
