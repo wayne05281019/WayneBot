@@ -202,6 +202,60 @@ def test_dongzhu_button_opens_page():
     bot.dongzhu_cmd.assert_awaited()
 
 
+def test_dongzhu_keyboard_toggles_same_slot():
+    from bot_servers import MENU_BTN_LEAVE_DONGZHU
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    bot._menu_compact_on = lambda uid="": False
+    kb = bot._dongzhu_reply_menu()
+    main = bot._reply_menu()
+    assert len(kb.keyboard) == 2
+    assert len(main.keyboard) == 2
+    assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_LEAVE_DONGZHU
+    assert [b.text for b in main.keyboard[1]][-1] == MENU_BTN_DONGZHU
+    assert [b.text for b in kb.keyboard[1]][:-1] == [b.text for b in main.keyboard[1]][:-1]
+    assert [b.text for b in kb.keyboard[0]] == [b.text for b in main.keyboard[0]]
+    assert MENU_BTN_LEAVE_DONGZHU == "離開洞燭先機"
+
+
+def test_leave_dongzhu_clears_only_that_uid():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from bot_servers import MENU_BTN_LEAVE_DONGZHU
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._reject_stranger = AsyncMock(return_value=False)
+    bot._touch_user = MagicMock()
+    bot._pending = {"11:11": "dongzhu", "22:22": "dongzhu"}
+    bot._pending_locks = {}
+    bot._menu_compact_on = MagicMock(return_value=False)
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._mark_menu_layout_ok = MagicMock()
+
+    def _actor(message, uid=""):
+        return f"{message.chat_id}:{uid or message.from_user.id}"
+
+    bot._actor_key = _actor
+
+    user = SimpleNamespace(id=11, first_name="u")
+    msg = MagicMock()
+    msg.from_user = user
+    msg.chat_id = 11
+    msg.text = MENU_BTN_LEAVE_DONGZHU
+    msg.reply_text = AsyncMock()
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=user)
+    asyncio.run(bot.on_text(upd, MagicMock()))
+    assert "11:11" not in bot._pending
+    assert bot._pending["22:22"] == "dongzhu"
+    html = msg.reply_html.await_args.args[0]
+    assert "已離開" in html
+    assert "洞燭先機" in html
+
+
 def test_biaoke_page_has_no_inside_menu():
     import inspect
 
@@ -251,7 +305,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "26"
+    assert MENU_LAYOUT_VERSION == "27"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
