@@ -122,6 +122,11 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "只觀察" in html or "觀察" in html
     assert "不是買訊" in html
     assert "不進海選" in html
+    assert "主產業" in html and "電子上游" in html
+    assert "次產業" in html and "IC" in html
+    assert "細項" in html and "封測" in html
+    assert "次級" in html
+    assert "比價" in html
 
 
 def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
@@ -298,6 +303,10 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert "資金流入" in html or "佔比在升" in html
     assert "只參考" in html or "不是唯一" in html
     assert "不准發明切入" not in html
+    assert "主產業" in html
+    assert "同主產業" in html
+    assert "次級" in html or "龍頭" in html
+    assert "比價" in html or "龍頭" in html
 
 
 def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
@@ -356,3 +365,30 @@ def test_dongzhu_share_beats_his_named_field(tmp_path, monkeypatch):
     assert "PCB" in html
     assert "主判佔比" in html or "只參考" in html
     assert "3443" not in html
+    assert "主產業" in html
+    assert "次產業" in html
+
+
+def test_dongzhu_layers_and_parity_roles():
+    from biaoke_field_scan import _GROUPS, _layer_line, _parity_txt, _stock_role
+
+    test_g = next(g for g in _GROUPS if g["key"] == "test")
+    assert _stock_role(test_g, "6515") == "龍頭"
+    assert _stock_role(test_g, "6257") == "次級"
+    line = _layer_line(("電子上游", "IC", "封測"))
+    assert "主產業 電子上游" in line
+    assert "次產業 IC" in line
+    assert "細項 封測" in line
+    missed = _parity_txt(
+        test_g,
+        [{"sid": "6257", "role": "次級"}],
+        {"broke": True},
+    )
+    assert "來不及買" in missed
+    assert "比價" in missed
+    both = _parity_txt(
+        test_g,
+        [{"sid": "6515", "role": "龍頭"}, {"sid": "6257", "role": "次級"}],
+        {"broke": False},
+    )
+    assert "不是替代買訊" in both

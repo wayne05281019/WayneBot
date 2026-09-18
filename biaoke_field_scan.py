@@ -24,6 +24,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "ASIC",
         "names": ("ASIC", "創意", "世芯", "智原"),
         "needles": ("IP/ASIC", "ASIC"),
+        "layers": ("電子上游", "IP/ASIC"),
         "leaders": (("3443", "創意"), ("3661", "世芯-KY"), ("3035", "智原")),
     },
     {
@@ -31,6 +32,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "散熱",
         "names": ("散熱", "健策", "奇鋐"),
         "needles": ("散熱",),
+        "layers": ("電子中游", "散熱零組件"),
         "leaders": (("3653", "健策"), ("3017", "奇鋐")),
     },
     {
@@ -38,6 +40,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "光通訊 InP",
         "names": ("光通訊", "InP", "聯亞", "全新", "穩懋"),
         "needles": (),
+        "layers": ("電子上游", "半導體元件"),
         "leaders": (("3081", "聯亞"), ("2455", "全新"), ("3105", "穩懋")),
     },
     {
@@ -45,6 +48,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "記憶體",
         "names": ("記憶體", "南亞科"),
         "needles": ("記憶體",),
+        "layers": ("電子上游", "記憶體製造"),
         "leaders": (("2408", "南亞科"),),
     },
     {
@@ -52,6 +56,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "PCB",
         "names": ("PCB", "台光電", "CCL"),
         "needles": ("PCB",),
+        "layers": ("電子上游", "PCB", "材料設備"),
         "leaders": (("2383", "台光電"),),
     },
     {
@@ -59,6 +64,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "ABF",
         "names": ("ABF", "欣興", "南電"),
         "needles": ("ABF",),
+        "layers": ("電子上游", "ABF"),
         "leaders": (("3037", "欣興"),),
     },
     {
@@ -66,6 +72,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "被動元件",
         "names": ("被動元件", "被動", "國巨"),
         "needles": ("被動元件",),
+        "layers": ("電子上游", "被動元件"),
         "leaders": (("2327", "國巨"),),
     },
     {
@@ -73,6 +80,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "field": "高階測試／封測",
         "names": ("高階測試", "封測", "穎崴", "旺矽", "汎銓"),
         "needles": ("封測",),
+        "layers": ("電子上游", "IC", "封測"),
         "leaders": (("6515", "穎崴"), ("6223", "旺矽")),
         "laggards": (
             ("6257", "矽格"),
@@ -647,27 +655,121 @@ def member_last_net(db_path: str, sid: str, cap: str) -> int:
 
 
 def _fine_chain(db_path: str, sid: str) -> str:
+    parts = _chain_parts(db_path, sid)
+    return parts[-1] if parts else ""
+
+
+def _chain_parts(db_path: str, sid: str) -> List[str]:
     if not db_path or not sid:
-        return ""
+        return []
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:
         hit = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='stock_fine_industry'"
         ).fetchone()
         if not hit:
-            return ""
+            return []
         row = conn.execute(
             "SELECT chain FROM stock_fine_industry WHERE stock_id=? LIMIT 1", (sid,)
         ).fetchone()
     except sqlite3.Error:
-        return ""
+        return []
     finally:
         conn.close()
     chain = str(row[0] or "").strip() if row else ""
     if not chain:
+        return []
+    return [p.strip() for p in chain.replace("／", "-").split("-") if p.strip()]
+
+
+def _group_layers(db_path: str, group: Optional[Dict[str, Any]]) -> List[str]:
+    if not group:
+        return []
+    declared = [str(x) for x in (group.get("layers") or ()) if str(x)]
+    sid = ""
+    leads = list(group.get("leaders") or ())
+    if leads:
+        sid = str(leads[0][0] or "")
+    parts = _chain_parts(db_path, sid) if sid else []
+    return parts or declared
+
+
+def _layer_line(layers: Sequence[str]) -> str:
+    labs = ("主產業", "次產業", "細項")
+    bits = []
+    for i, part in enumerate(list(layers)[:3]):
+        lab = labs[i] if i < len(labs) else "層"
+        bits.append(f"{lab} {part}")
+    return " → ".join(bits)
+
+
+def _layer_short(layers: Sequence[str]) -> str:
+    return "／".join(str(x) for x in layers if x)
+
+
+def _stock_role(group: Optional[Dict[str, Any]], sid: str) -> str:
+    sid = str(sid or "")
+    if not group or not sid:
         return ""
-    parts = [p.strip() for p in chain.replace("／", "-").split("-") if p.strip()]
-    return parts[-1] if parts else chain
+    leads = [str(x[0]) for x in (group.get("leaders") or ()) if x]
+    if sid in leads:
+        return "龍頭"
+    return "次級"
+
+
+def _sibling_txt(
+    group: Optional[Dict[str, Any]],
+    all_igns: Sequence[Dict[str, Any]],
+    db_path: str = "",
+) -> str:
+    if not group or not all_igns:
+        return ""
+    layers = _group_layers(db_path, group)
+    if not layers:
+        return ""
+    main = layers[0]
+    by_key = {str(g["key"]): g for g in _GROUPS}
+    bits: List[str] = []
+    for ign in all_igns:
+        g = by_key.get(str(ign.get("_key") or ""))
+        if not g:
+            continue
+        gl = _group_layers(db_path, g)
+        if not gl or gl[0] != main:
+            continue
+        last = float(ign.get("share_last") or 0)
+        up = float(ign.get("share_up") or 0)
+        if last == 0 and abs(up) < 1e-9:
+            continue
+        sub = "／".join(gl[1:]) if len(gl) > 1 else gl[0]
+        mark = "升" if up > 0 else ("退" if up < 0 else "平")
+        bits.append(f"{sub} {_share_txt(last)}（{mark}）")
+    if len(bits) < 2:
+        return ""
+    return "同主產業 " + "｜".join(bits)
+
+
+def _parity_txt(
+    group: Optional[Dict[str, Any]],
+    buys: Sequence[Dict[str, Any]],
+    leader: Optional[Dict[str, Any]],
+) -> str:
+    if not group:
+        return ""
+    lead_sids = {str(x[0]) for x in (group.get("leaders") or ()) if x}
+    buy_sids = {str(x.get("sid") or "") for x in buys}
+    lead_bought = bool(lead_sids & buy_sids)
+    sec_bought = any(str(x.get("role") or "") == "次級" for x in buys)
+    broke = bool((leader or {}).get("broke"))
+    if broke and sec_bought:
+        return "龍頭已先過前高＝來不及買；比價下次級有黃金買點才切入。"
+    if not lead_bought and sec_bought:
+        return "龍頭這刻沒有黃金買點；比價下次級有買點才切入。"
+    if lead_bought and sec_bought:
+        return "龍頭有買點；次級只當比價，不是替代買訊。"
+    if lead_bought:
+        return "先看龍頭。次級還沒買點，不准發明比價切入。"
+    return ""
 
 
 def _lots_txt(val: int) -> str:
@@ -980,22 +1082,33 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
     buys_map = _bucket_by_id(db_path, "leave_zero")
     watch_map = _bucket_by_id(db_path, "golden_buy")
     group_last = int((pick.get("flow") or {}).get("last") or 0)
+    group = pick.get("group")
+    layers = _group_layers(db_path, group)
     buys: List[Dict[str, Any]] = []
     watches: List[Dict[str, Any]] = []
     for sid, name in members:
         if sid in buys_map:
-            buys.append(
-                _decorate(db_path, sid, name, cap, buys_map[sid], group_last=group_last)
-            )
+            item = _decorate(db_path, sid, name, cap, buys_map[sid], group_last=group_last)
         elif sid in watch_map:
             item = _decorate(
                 db_path, sid, name, cap, watch_map[sid], group_last=group_last
             )
             if item.get("close") is None:
                 continue
+        else:
+            continue
+        item["role"] = _stock_role(group, sid)
+        item["layers"] = _chain_parts(db_path, sid) or layers
+        if sid in buys_map:
+            buys.append(item)
+        else:
             watches.append(item)
     buys.sort(key=lambda x: _score_member(x, None), reverse=True)
     watches.sort(key=lambda x: _score_member(x, None), reverse=True)
+    pick["layers"] = layers
+    pick["layer_txt"] = _layer_line(layers)
+    pick["sibling_txt"] = _sibling_txt(group, all_igns, db_path)
+    pick["parity"] = _parity_txt(group, buys, pick.get("leader") if isinstance(pick.get("leader"), dict) else None)
     laggard = pick.get("laggard")
     if isinstance(laggard, dict) and laggard.get("sid"):
         lag_item = _decorate(
@@ -1007,6 +1120,8 @@ def dongzhu_picks(db_path: str, *, spoken: str = "") -> Dict[str, Any]:
             group_last=group_last,
         )
         lag_item.update({k: laggard[k] for k in ("vs20", "vs60", "volr", "close", "broke") if k in laggard})
+        lag_item["role"] = _stock_role(group, str(laggard.get("sid") or ""))
+        lag_item["layers"] = _chain_parts(db_path, str(laggard.get("sid") or "")) or layers
         pick["laggards_note"] = lag_item
     return {
         **pick,
@@ -1034,16 +1149,22 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
     volr = item.get("volr")
-    bits = [f"{idx}. {sid} {name}　{_esc(tag)}　收 {close_s}"]
+    role = str(item.get("role") or "").strip()
+    tag_s = tag if not role else f"{tag}·{role}"
+    bits = [f"{idx}. {sid} {name}　{_esc(tag_s)}　收 {close_s}"]
     if vs20 is not None:
         bits.append(f"距20高 {_pct(float(vs20))}")
     if vs60 is not None:
         bits.append(f"距60高 {_pct(float(vs60))}")
     if volr is not None:
         bits.append(f"量比 {float(volr):.2f}")
-    fine = str(item.get("fine") or "").strip()
-    if fine:
-        bits.append(f"細項 { _esc(fine) }")
+    layers = item.get("layers") or []
+    if layers:
+        bits.append(_esc(_layer_short(layers)))
+    else:
+        fine = str(item.get("fine") or "").strip()
+        if fine:
+            bits.append(f"細項 {_esc(fine)}")
     if item.get("group_share"):
         bits.append(f"佔這族 {_share_txt(float(item.get('group_share') or 0))}")
     if item.get("cum5"):
@@ -1058,7 +1179,7 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
     lines = [
         "<b>洞燭先機</b>",
         _esc(data.get("how") or _HOW),
-        "佔比如實主判，飆大找法只參考、不是唯一。對五件只落在這族（不數浪）。資金看細項佔當日法人買超％怎麼變，流入／流出騙不了人，不比張數。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
+        "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。",
     ]
     if cap:
         lines.append(f"官方收 {cap}")
@@ -1070,6 +1191,12 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
             lines.append(_esc(_flow_why(flow)))
         return "\n".join(lines)
     lines.append(f"<b>此刻最像</b> {_esc(field)}")
+    layer_txt = str(data.get("layer_txt") or "")
+    if layer_txt:
+        lines.append(_esc(layer_txt))
+    sib = str(data.get("sibling_txt") or "")
+    if sib:
+        lines.append(_esc(sib))
     why = str(data.get("why") or "")
     if why:
         lines.append(f"<i>原因：{_esc(why)}</i>")
@@ -1085,7 +1212,10 @@ def dongzhu_page(db_path: str, *, spoken: str = "") -> str:
     elif hot.get("field") and (hot.get("share_last") or hot.get("cum5")):
         lines.append(_esc(_hot_ref_line(hot, data.get("named") or [])))
     buys = list(data.get("buys") or [])
-    lines.append("<b>這族最值得切入</b>（跟全市場黃金買點對過；同列再看誰佔這族流入）")
+    parity = str(data.get("parity") or "")
+    lines.append("<b>這族最值得切入</b>（龍頭先看；來不及買才比價次級。都要有黃金買點）")
+    if parity:
+        lines.append(f"<i>{_esc(parity)}</i>")
     if buys:
         for i, item in enumerate(buys, start=1):
             lines.append(_stock_line(item, i, "買點"))
