@@ -2841,7 +2841,7 @@ class WayneTelegramBot:
         if hits_need_picker(hits):
             self._pending[actor] = "dongzhu"
             await message.reply_html(
-                self._hits_list_html(hits, lead="多檔同名，點一檔看細項能不能留。"),
+                self._hits_list_html(hits),
                 reply_markup=self._hits_keyboard(hits),
                 disable_web_page_preview=True,
             )
@@ -2904,10 +2904,17 @@ class WayneTelegramBot:
         picks = []
         try:
             data = dongzhu_picks(self.db_path)
-            for item in list(data.get("buys") or []) + list(data.get("watches") or []):
+            seen = set()
+            for item in (
+                list(data.get("buys") or [])
+                + list(data.get("watches") or [])
+                + list(data.get("laggards") or [])
+            ):
                 sid = str(item.get("sid") or "")
-                if sid:
-                    picks.append((sid, item.get("name") or ""))
+                if not sid or sid in seen:
+                    continue
+                seen.add(sid)
+                picks.append((sid, item.get("name") or ""))
         except Exception:
             picks = []
         chunks = chunk_telegram_html(html, 3500) or [html]

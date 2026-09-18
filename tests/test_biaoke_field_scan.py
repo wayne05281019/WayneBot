@@ -128,6 +128,11 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "細項" in html and "封測" in html
     assert "次級" in html
     assert "比價" in html
+    assert "此刻推薦" in html
+    assert "資金輪動要注意" in html
+    assert "不是整層電子" in html
+    assert "人去樓空" in html
+    assert "黃金買點" in html
 
 
 def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
@@ -648,7 +653,7 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     assert "3443" not in html
     assert "不准發明切入" in html
     assert "次熱" in html
-    assert "打代號或股名" in html
+    assert "沒打準" in html or "打股名" in html
 
 
 def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkeypatch):
@@ -855,3 +860,23 @@ def test_dongzhu_hold_missing_chain_does_not_invent(tmp_path, monkeypatch):
     html = dongzhu_hold_page(db, "6257")
     assert "還沒" in html or "不准猜" in html
     assert "不准發明" in html or "不准猜" in html
+
+
+def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
+    from biaoke_field_scan import ROTATION_NOTES, rotation_notice_lines, rotation_screen_block
+
+    notes = rotation_notice_lines()
+    blob = "".join(notes)
+    assert notes == list(ROTATION_NOTES)
+    assert "不是整層電子" in blob
+    assert "人去樓空" in blob
+    assert "停車格" in blob
+    assert "黃金買點" in blob
+    assert "紅箭頭不是買訊" in blob
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = rotation_screen_block(db)
+    assert "台股資金輪動" in html
+    assert "不是整層電子" in html
+    assert "人去樓空" in html

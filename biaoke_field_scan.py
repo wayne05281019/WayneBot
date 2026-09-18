@@ -108,6 +108,18 @@ MIN_CHAIN_N = 3
 PRE_VS20 = -8.0
 PREFER_NOT_LEAD = True
 SKIP_LEAVING_HOT = True
+# 話筒／海選共用：資金輪動要注意（100法人日走查鎖死）。
+ROTATION_NOTES = (
+    "看主產業／次產業／細項，不是整層電子。",
+    "近100日多數流入第一名只當1天；追當天第一名容易買在人去樓空。",
+    "先機＝佔比升還沒當第一、次級距20高≤−8%（回測這型後10日漲停或≥8%約七成；追第一名約五成六）。",
+    "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。金控常當停車格。",
+    "新買只認高低卡黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
+)
+
+
+def rotation_notice_lines() -> List[str]:
+    return list(ROTATION_NOTES)
 
 
 def want_field_scan(ask: str) -> bool:
@@ -1676,7 +1688,15 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             watches.append(item)
     if pick.get("leaving") or pick.get("pre_late") or pick.get("pre_sign") in ("leaving", "chase"):
         buys = []
-    buys.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
+    if pick.get("pre_sign") == "pre":
+        buys.sort(
+            key=lambda x: (
+                0 if str(x.get("role") or "") == "次級" else 1,
+                float(x["vs20"]) if x.get("vs20") is not None else 0.0,
+            )
+        )
+    else:
+        buys.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
     watches.sort(key=lambda x: _score_member(x, None, str(x.get("role") or "")), reverse=True)
     pick["layers"] = layers
     pick["layer_txt"] = _layer_line(layers)
@@ -1797,6 +1817,60 @@ def _stock_line(item: Dict[str, Any], idx: int, tag: str) -> str:
     if item.get("cum5"):
         bits.append(f"近5日法人 {_lots_txt(int(item.get('cum5') or 0))}")
     return "　".join(bits)
+
+
+def _rec_why(pick: Dict[str, Any], item: Dict[str, Any]) -> str:
+    field = str(pick.get("field") or item.get("fine") or "這細項")
+    role = str(item.get("role") or "次級")
+    vs20 = item.get("vs20")
+    vs_s = f"、距20高 {_pct(float(vs20))}" if vs20 is not None else ""
+    return (
+        f"{field}佔比升還沒當第一（回測這型後10日漲停或≥8%約七成）。"
+        f"{role}{vs_s}。這檔是黃金買點，點左邊選。"
+    )
+
+
+def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
+    """海選大盤狀況末段：台股細項資金輪動＋注意事項。沒庫就空。"""
+    if not db_path:
+        return ""
+    try:
+        data = dongzhu_picks(db_path, spoken=spoken)
+    except Exception:
+        return ""
+    lines = ["＝＝台股資金輪動＝＝"]
+    lines.extend(_esc(x) for x in rotation_notice_lines())
+    board = str(data.get("inflow_board") or "").strip()
+    win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
+    if board:
+        lines.append(_esc(f"近{win_n}日每天流入第一名：{board}"))
+    field = str(data.get("field") or "").strip()
+    sign = str(data.get("pre_sign") or "")
+    if field:
+        tag = {
+            "pre": "先機（佔比升還沒當第一）",
+            "chase": "已是當天第一名＝追了勝率較差",
+            "leaving": "人去樓空",
+        }.get(sign, "")
+        lines.append(_esc(f"此刻細項 {field}" + (f"　{tag}" if tag else "")))
+        if data.get("pre_ok") and data.get("pre_vs20") is not None:
+            lines.append(
+                _esc(
+                    f"次級距20高 {float(data.get('pre_vs20') or 0):+.1f}%（門檻 {PRE_VS20:.0f}%）。"
+                )
+            )
+        buys = list(data.get("buys") or [])
+        if buys and sign == "pre":
+            bits = [
+                f"{x.get('sid')} {x.get('name')}".strip()
+                for x in buys[:3]
+                if x.get("sid")
+            ]
+            if bits:
+                lines.append(_esc("這族黃金買點：" + "、".join(bits) + "。按洞燭先機可選。"))
+        else:
+            lines.append(_esc("這族此刻沒有黃金買點；海選買點仍只認剛離零，不准發明。"))
+    return "\n".join(lines)
 
 
 def _chain_key(parts: Sequence[str]) -> str:
@@ -1949,6 +2023,7 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
         "<b>洞燭先機・能不能留</b>",
         f"{sid_s} {name}".strip(),
         _esc("判斷單位＝這檔的主產業／次產業／細項，不是整層電子。"),
+        _esc("沒打準會列出相近的請你點。"),
     ]
     cap = _esc(data.get("cap") or "")
     chip = _esc(data.get("chip_cap") or "")
@@ -1982,7 +2057,7 @@ def dongzhu_hold_page(db_path: str, sid: str, *, spoken: Optional[str] = None) -
         lines.append(_esc("已抱可留；這檔不是黃金買點，不准發明切入。"))
     else:
         lines.append(_esc("不推新買。紅箭頭不是買訊。切入只認高低卡黃金買點。"))
-    lines.append(_esc("再打下一檔代號或股名，可繼續看細項能不能留。"))
+    lines.append(_esc("再打下一檔代號或股名，可繼續看細項能不能留。沒打準會列出相近的請你點。"))
     return "\n".join(lines)
 
 
@@ -1993,7 +2068,7 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     lines = [
         "<b>洞燭先機</b>",
         _esc(data.get("how") or _HOW),
-        "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。打代號或股名，看這檔自己的細項能不能留；不是看整層電子。",
+        "佔比如實主判，飆大找法只參考、不是唯一。資金輪動要比到主產業／次產業／細項，再分龍頭與次級：龍頭來不及買，比價下次級有黃金買點才切入。盤中未收不當官方收。不是買訊、不進海選。切入只認高低卡黃金買點。按這顆會推出勝率最高這型的黃金買點給你選；打股名沒打準會列出相近的請你點。",
     ]
     if cap:
         chip = _esc(data.get("chip_cap") or "")
@@ -2004,12 +2079,9 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
     if board:
         win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
         lines.append(_esc(f"近{win_n}日每天流入第一名：{board}"))
-    lines.append(
-        _esc(
-            "先機徵兆：佔比升且還沒當流入第一名、次級距20高≤−8%。"
-            "昨天第一名今天佔比在退＝人去樓空，不推買也不建議留。"
-        )
-    )
+    lines.append("<b>資金輪動要注意</b>")
+    for note in rotation_notice_lines():
+        lines.append(_esc(note))
     field = str(data.get("field") or "")
     if not field:
         lines.append(f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>")
@@ -2055,14 +2127,17 @@ def dongzhu_page(db_path: str, *, spoken: Optional[str] = None) -> str:
         lines.append(_esc(_hot_ref_line(hot, data.get("named") or [])))
     buys = list(data.get("buys") or [])
     parity = str(data.get("parity") or "")
-    lines.append("<b>這族最值得切入</b>（龍頭先看；來不及買才比價次級。都要有黃金買點）")
+    lines.append("<b>此刻推薦</b>（回測勝率最高這型 ∩ 黃金買點；點左邊選）")
     if parity:
         lines.append(f"<i>{_esc(parity)}</i>")
     if buys:
         for i, item in enumerate(buys, start=1):
             lines.append(_stock_line(item, i, "買點"))
+            lines.append(f"<i>{_esc(_rec_why(data, item))}</i>")
     else:
-        lines.append("<i>這族此刻沒有黃金買點，不准發明切入。</i>")
+        lines.append(
+            "<i>這型此刻沒有黃金買點，不准發明切入。可打股名／代號看能不能留；沒打準會列出相近的請你點。</i>"
+        )
     watches = list(data.get("watches") or [])
     if watches:
         lines.append("<b>還在零</b>（只觀察，不是買）")
