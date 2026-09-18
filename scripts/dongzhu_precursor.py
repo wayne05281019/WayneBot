@@ -760,10 +760,16 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
                 if vs20 > PRE_VS20 or vs60 >= 0:
                     continue
                 lu, gain, best = fwd([sid], d)
+                vs20_prev = None
+                if prev:
+                    st_p = stats_at(by_sid.get(sid) or [], prev)
+                    if st_p:
+                        vs20_prev = float(st_p.get("vs20") or 0)
                 day_lags.append(
                     {
                         "sid": sid,
                         "vs20": vs20,
+                        "vs20_prev": vs20_prev,
                         "volr": float(st.get("volr") or 0),
                         "lz": just_left_zero(by_sid.get(sid) or [], d),
                         "net": net_at(sid, d),
@@ -1028,6 +1034,67 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             f"{100.0 * nh / len(all_recent):.1f}%（母體，不是1檔）"
         )
 
+    def _any_of(k: int, win: str, pred=None) -> Tuple[int, float, float]:
+        recs = []
+        for _d, lags in stock_by_day:
+            use = [r for r in lags if r.get("win") == win]
+            if pred is not None:
+                use = [r for r in use if pred(r)]
+            if not use:
+                continue
+            use = sorted(use, key=lambda r: r["vs20"])[:k]
+            lu = any(r["lu"] for r in use)
+            hit = any(r["hit"] for r in use)
+            bests = [r["best"] for r in use if r["best"] is not None]
+            best = max(bests) if bests else None
+            recs.append({"lu": lu, "hit": hit, "best": best})
+        n = len(recs)
+        if not n:
+            return 0, 0.0, 0.0
+        g = 100.0 * sum(1 for r in recs if r["hit"]) / n
+        s = 100.0 * sum(
+            1 for r in recs if r["best"] is not None and r["best"] < 0 and not r["lu"]
+        ) / n
+        return n, g, s
+
+    def _turn(r: dict) -> bool:
+        prev_v = r.get("vs20_prev")
+        return prev_v is not None and r["vs20"] > prev_v + 1e-9
+
+    print("\n=== 確定細項後推幾檔次級（有人漲＝日勝） ===")
+    k_recent = {}
+    for tag, pred in (
+        ("全部次級", None),
+        ("非黃金買點", lambda r: not r["lz"]),
+        ("距20高在收回", _turn),
+    ):
+        print(f"  [{tag}]")
+        for k in (1, 2, 3):
+            n, g, s = _any_of(k, "recent", pred)
+            pn, pg, ps = _any_of(k, "prior", pred)
+            k_recent[f"{tag}{k}"] = (n, g, s, pn, pg, ps)
+            print(
+                f"    {k}檔 近100 n={n} 勝{g:.1f}% 套{s:.1f}%  前段 n={pn} 勝{pg:.1f}%"
+            )
+
+    print("\n=== 距20高在收回的1檔 vs 最落後1檔 ===")
+    n_t, g_t, s_t = _stock_pick_rate(
+        lambda rows: min(
+            [r for r in rows if _turn(r)] or rows,
+            key=lambda r: r["vs20"],
+        )["sid"],
+        "recent",
+    )
+    pn_t, pg_t, ps_t = _stock_pick_rate(
+        lambda rows: min(
+            [r for r in rows if _turn(r)] or rows,
+            key=lambda r: r["vs20"],
+        )["sid"],
+        "prior",
+    )
+    print(f"  收回中最落後 近100 n={n_t} 勝{g_t:.1f}% 套{s_t:.1f}%  前段 n={pn_t} 勝{pg_t:.1f}%")
+    k_recent["收回中最落後"] = (n_t, g_t, s_t, pn_t, pg_t, ps_t)
+
     def rate(label: str, win: Optional[str] = None) -> Tuple[int, float, float]:
         rows = regimes[label]
         if win:
@@ -1127,6 +1194,41 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             if ok and not stock_winner:
                 stock_winner = name
     print(f"WINNERS stock={stock_winner or []}")
+    print("\n=== 推幾檔 vs 細項3檔 ===")
+    pick_lag_n = 3
+    n3, g3, s3, pn3, pg3, _ps3 = k_recent.get("全部次級3", (0, 0.0, 0.0, 0, 0.0, 0.0))
+    n2, g2, s2, pn2, pg2, _ps2 = k_recent.get("全部次級2", (0, 0.0, 0.0, 0, 0.0, 0.0))
+    n1k, g1k, s1k, pn1k, pg1k, _ps1k = k_recent.get("全部次級1", (0, 0.0, 0.0, 0, 0.0, 0.0))
+    print(f"  1檔 勝{g1k:.1f} n={n1k}  2檔 勝{g2:.1f} n={n2}  3檔 勝{g3:.1f} n={n3}")
+    two_ok = (
+        n2 >= 20
+        and pn2 >= 15
+        and g2 + 1e-9 >= g3 - 1.0
+        and g2 >= g1k + 5.0
+        and pg2 + 1e-9 >= pg3 - 5.0
+    )
+    print(
+        f"{'ENCODE' if two_ok else 'KEEP'} 改推2檔 "
+        f"近100 勝{g2:.1f}({g2 - g3:+.1f} vs3) n={n2} 前段 勝{pg2:.1f} n={pn2}"
+    )
+    if two_ok:
+        pick_lag_n = 2
+    n_turn, g_turn, s_turn, pn_turn, pg_turn, _ = k_recent.get(
+        "收回中最落後", (0, 0.0, 0.0, 0, 0.0, 0.0)
+    )
+    turn_ok = False
+    if n_turn >= 20 and pn_turn >= 15 and base_st:
+        _sn, sg, ss, _spn, spg, _sps = base_st
+        turn_ok = (
+            g_turn + 1e-9 >= sg
+            and (g_turn >= sg + 1.0 or s_turn + 0.5 < ss)
+            and pg_turn + 1e-9 >= spg - 5.0
+        )
+        print(
+            f"{'ENCODE' if turn_ok else 'KEEP'} 收回中最落後 "
+            f"近100 勝{g_turn:.1f}({g_turn - sg:+.1f}) n={n_turn} 前段 勝{pg_turn:.1f} n={pn_turn}"
+        )
+    print(f"WINNERS lag_n={pick_lag_n} turn={turn_ok}")
     print("\n=== 黃金買點逐檔 vs 非金控近100 ===")
     lz_ok = beats("非金控＋黃金買點逐檔", g_np, s_np, min_n=20)
     print(f"\nWINNERS incr={winners} one={one_winners} leave_zero_each={lz_ok}")
@@ -1227,6 +1329,8 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
         "cluster": cluster,
         "burst": burst,
         "stock_pick": stock_winner,
+        "pick_lag_n": pick_lag_n,
+        "stock_turn": bool(turn_ok),
         "rates": {
             "chase": {"n": n_ch, "gain": g_ch, "stuck": s_ch},
             "pre": {"n": n_pre, "gain": g_pre, "stuck": s_pre},
@@ -1239,6 +1343,9 @@ def analyze(db_path: Optional[str] = None) -> Dict[str, Any]:
             "elec": {"n": n_el, "gain": g_el, "stuck": s_el},
             "taught": {"n": n_tg, "gain": g_tg, "stuck": s_tg},
             "asic": {"n": n_as, "gain": g_as, "stuck": s_as},
+            "lag1": {"n": n1k, "gain": g1k, "stuck": s1k},
+            "lag2": {"n": n2, "gain": g2, "stuck": s2},
+            "lag3": {"n": n3, "gain": g3, "stuck": s3},
             "seq_recent": {
                 "n": lag_n,
                 "lag_first": round(lag_first_rate, 1),
