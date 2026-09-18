@@ -125,7 +125,9 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "不進海選" in html
     assert "主產業" in html and "電子上游" in html
     assert "次產業" in html and "IC" in html
-    assert "細項" in html and "封測" in html
+    assert "封測" in html
+    assert "電子細項" in html
+    assert "判斷單位" not in html
     assert "次級" in html
     assert "比價" in html
     assert "此刻推薦" in html
@@ -262,8 +264,8 @@ def test_dongzhu_records_slow_inflow_skips_named_hot(tmp_path, monkeypatch):
     assert asic_ign["cum5"] > test_ign["cum5"]
     html = dongzhu_page(db)
     assert "高階測試／封測" in html
-    assert "資金流入" in html or "佔比在升" in html or "流入這細項" in html
-    assert "資金進出" in html or "佔當日" in html or "細項" in html
+    assert "資金流入" in html or "佔比在升" in html or "流入這產業鏈" in html
+    assert "資金進出" in html or "佔當日" in html or "產業鏈" in html or "封測" in html
     assert "6257" in html and "矽格" in html
     assert "3443" not in html
     assert "只參考" in html or "主戰場" in html
@@ -361,7 +363,7 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert data.get("field") == "高階測試／封測"
     html = dongzhu_page(db, spoken="目前唯一在多頭格局的族群就是ASIC，再來是散熱。PCB全面走弱。")
     assert "高階測試／封測" in html
-    assert "細項" in html
+    assert "封測" in html or "產業鏈" in html or "主產業" in html
     assert "%" in html
     assert "pt" in html or "佔" in html
     assert "對五件" in html
@@ -445,7 +447,8 @@ def test_dongzhu_layers_and_parity_roles():
     line = _layer_line(("電子上游", "IC", "封測"))
     assert "主產業 電子上游" in line
     assert "次產業 IC" in line
-    assert "細項 封測" in line
+    assert "產業鏈 封測" in line
+    assert "細項" not in line
     missed = _parity_txt(
         test_g,
         [{"sid": "6257", "role": "次級"}],
@@ -907,7 +910,8 @@ def test_dongzhu_hold_uses_stock_own_fine_not_electronics(tmp_path, monkeypatch)
     assert "能不能留" in html
     assert "主產業 電子上游" in html
     assert "次產業 IC" in html
-    assert "細項 封測" in html
+    assert "封測" in html
+    assert "細項" not in html
     assert "判斷單位" not in html
     assert "沒打準" not in html
     assert "再打下一檔" not in html

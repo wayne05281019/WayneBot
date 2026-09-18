@@ -691,15 +691,22 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
     if not m and not q:
         return f"⚠️ 尚無 <code>{sid}</code> 月營收／季報（等盤後流水線寫入；按鈕路徑不再現場全市場同步）。"
     name = (m or q or {}).get("stock_name") or sid
-    listing = ""
+    face = ""
     try:
-        from stock_links import quote_market
-        from wayne_db import listing_zh
+        from universe import listing_industry_face
 
-        listing = listing_zh(quote_market(sid, path))
+        face = listing_industry_face(sid, path)
     except Exception:
-        listing = ""
-    title_name = f"{name}　{listing}" if listing else name
+        face = ""
+    if not face:
+        try:
+            from stock_links import quote_market
+            from wayne_db import listing_zh
+
+            face = listing_zh(quote_market(sid, path))
+        except Exception:
+            face = ""
+    title_name = f"{name}　{face}" if face else name
     from tg_layout import title_line, kv_compact, section, join_sections
 
     blocks = [title_line("基本面", sid, title_name)]

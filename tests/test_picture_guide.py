@@ -72,12 +72,12 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert CACHE_VER == "v56"
+    assert CACHE_VER == "v57"
     assert "不收空頭" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob
     assert "一張圖卡" in blob
-    assert "細項小框" in blob
+    assert "產業鏈小框" in blob
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920
     assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
@@ -478,7 +478,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "一次兩張：介紹圖（下半高低導航箭頭）／決策卡。圖下產業（一張圖卡，細項小框沒抓到不畫）。圖下 K線開奇摩股市同一檔日K。",
+        "一次兩張：介紹圖（下半高低導航箭頭）／決策卡。圖下產業（一張圖卡，產業鏈小框沒抓到不畫）。圖下 K線開奇摩股市同一檔日K。",
         font,
         520,
         520,
