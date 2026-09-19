@@ -21,6 +21,7 @@
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
 #      接著重跑洞燭先機走查（佔比升還沒第一 vs 停車格 vs 黃金買點），寫進 dongzhu_precursor
 #      盤後齊了就自己落當日洞燭名單（不必按鈕、不推話筒），之後連續對 1／5／10 個交易日；不改黃金買點
+#      加權寫入後默默落大盤演算／內部試畫，官方柱走完對質；不推話筒；現在不在話筒發明 5／9
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
@@ -503,6 +504,10 @@ class MainRunner:
         except Exception as e:
             logger.warning("加權指數同步略過：%s", e)
         try:
+            self._refresh_twii_forecast_after_close(fuse_to)
+        except Exception as e_fc:
+            logger.error("大盤默默落檔失敗: %s", e_fc, exc_info=True)
+        try:
             from official_snapshots import sync_official_snapshots
 
             extra = sync_official_snapshots(self.db_path)
@@ -792,6 +797,20 @@ class MainRunner:
         except Exception as e:
             logger.error("洞燭每日落檔失敗: %s", e, exc_info=True)
         return judged
+
+    def _refresh_twii_forecast_after_close(self, cap: str = "") -> Dict[str, Any]:
+        """盤後官方加權齊了才落演算／試畫。不推話筒。現在不在話筒發明 5／9。"""
+        from biaoke_forecast import snapshot_and_score_twii
+
+        out = snapshot_and_score_twii(self.db_path, cap) or {}
+        logger.info(
+            "大盤默默落檔 twii=%s try=%s scored=%s cap=%s",
+            out.get("twii"),
+            out.get("try"),
+            out.get("scored"),
+            out.get("cap"),
+        )
+        return out
 
     @staticmethod
     def _screening_delivered(screening: Optional[Dict[str, Any]]) -> bool:
@@ -1092,6 +1111,10 @@ class MainRunner:
             self._refresh_dongzhu_after_close(cap)
         except Exception as e_dz:
             logger.error("盤後齊了但洞燭走查失敗: %s", e_dz, exc_info=True)
+        try:
+            self._refresh_twii_forecast_after_close(cap)
+        except Exception as e_fc:
+            logger.error("盤後齊了但大盤默默落檔失敗: %s", e_fc, exc_info=True)
         if notify:
             try:
                 self._broadcast_family(self._fuse_done_message(cap, health))

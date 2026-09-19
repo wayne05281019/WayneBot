@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """演算延伸建檔：當下把未出現的走勢存下來，官方柱走完再對質。
 
-個股＝量先價行壓撐＋連點延長。大盤＝他自己改口錨往原文水平延伸。
-不數 5／9 段、不准把未出現的線當已經發生。不是買訊。
+個股＝量先價行壓撐＋連點延長。大盤＝他自己改口錨往原文水平延伸；
+盤後另外內部試畫，不進話筒、不把練習段號寫進回覆。
+不准把未出現的線當已經發生。不是買訊。
 """
 from __future__ import annotations
 
@@ -14,6 +15,10 @@ from typing import Any, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+KIND_TWII = "twii"
+KIND_TWII_TRY = "twii_try"
+TWII_TRY_HORIZON = 10
+TWII_WORST = 43500.0
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_forecast (
@@ -62,6 +67,28 @@ def _px(val: Any) -> str:
 
 def _now() -> str:
     return datetime.now(TAIPEI).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _evolve_store(market_db: str) -> str:
+    """內部試畫寫另一顆檔，不進問位階表、不跟洞燭／海選／AI倉混勝率。"""
+    path = os.path.abspath(str(market_db or "data/wayne_market.db"))
+    root = os.path.dirname(path) or "."
+    name = os.path.basename(path)
+    if name == "wayne_evolve.db":
+        return path
+    return os.path.join(root, "wayne_evolve.db")
+
+
+_TRY_RATES_DDL = """
+CREATE TABLE IF NOT EXISTS silent_twii_rates (
+    kind TEXT PRIMARY KEY,
+    n INTEGER NOT NULL DEFAULT 0,
+    hit INTEGER NOT NULL DEFAULT 0,
+    miss INTEGER NOT NULL DEFAULT 0,
+    pending INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+"""
 
 
 def ensure_forecast_table(db_path: str) -> None:
@@ -236,7 +263,7 @@ def record_twii(
                 target = None
             break
     rec = {
-        "kind": "twii",
+        "kind": KIND_TWII,
         "stock_id": "TWII",
         "as_of": as_of,
         "horizon": 10,
@@ -249,12 +276,114 @@ def record_twii(
         "up_fut": None,
         "mark": "未確認延伸" + (f" {last_tag}" if last_tag else ""),
         "label": "轉折線往他自己點過的水平延伸，不數 5／9 段。不是保證。",
-        "path_json": "[]",
+        "path_json": json.dumps(
+            [{"y": r.get("y"), "lab": r.get("label") or r.get("kind") or ""} for r in ray_rows],
+            ensure_ascii=False,
+        ),
         "rays_json": json.dumps(ray_rows, ensure_ascii=False),
         "verdict": "",
         "created_at": _now(),
     }
     _upsert(db_path, rec)
+    return rec
+
+
+def _try_impulse(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """內部試畫：官方柱夠才推。推不出來就空，不准亂數。不進話筒。"""
+    bars = list(rows or [])
+    n = len(bars)
+    if n < 20:
+        return {}
+    try:
+        highs = [float(r.get("high") or 0) for r in bars]
+    except (TypeError, ValueError):
+        return {}
+    end = n - 3
+    if end < 12:
+        return {}
+    peak_i = max(range(10, end), key=lambda i: highs[i] if highs[i] > 0 else -1e18)
+    if highs[peak_i] <= 0:
+        return {}
+    try:
+        from biaoke_chart import infer_impulse_five
+
+        return infer_impulse_five(bars, peak_i=peak_i) or {}
+    except Exception:
+        return {}
+
+
+def record_twii_try(
+    db_path: str,
+    bars: Sequence[Dict[str, Any]],
+    *,
+    last_tag: str = "",
+    direc: str = "",
+) -> Dict[str, Any]:
+    """大盤內部試畫。寫另一顆檔。不進話筒、不把段號寫進回覆。不是買訊。"""
+    rows = list(bars or [])
+    if not db_path or len(rows) < 8:
+        return {}
+    last = rows[-1]
+    as_of = _ymd(last.get("date"))
+    if not as_of:
+        return {}
+    try:
+        last_c = float(last.get("close") or 0)
+    except (TypeError, ValueError):
+        last_c = 0.0
+    if last_c <= 0:
+        return {}
+    five = _try_impulse(rows)
+    path: List[Dict[str, Any]] = []
+    target = None
+    start = (five or {}).get("start") or {}
+    pts = list((five or {}).get("pts") or [])
+    if start and start.get("y"):
+        try:
+            path.append({"off": int(start.get("i") or 0), "y": float(start.get("y") or 0)})
+        except (TypeError, ValueError):
+            pass
+    p4 = p5 = None
+    for p in pts:
+        try:
+            path.append({"off": int(p.get("i") or 0), "y": float(p.get("y") or 0)})
+        except (TypeError, ValueError):
+            continue
+        if str(p.get("n") or "") == "4":
+            p4 = p
+        elif str(p.get("n") or "") == "5":
+            p5 = p
+    last_i = len(rows) - 1
+    if p5 and p4 and int(p5.get("i") or 0) < last_i - 1:
+        try:
+            target = float(p4.get("y") or 0) or None
+        except (TypeError, ValueError):
+            target = None
+    d = str(direc or "").strip().lower()
+    if target is None and d in {"down", "retest"} and last_c > TWII_WORST:
+        target = TWII_WORST
+    rec = {
+        "kind": KIND_TWII_TRY,
+        "stock_id": "TWII",
+        "as_of": as_of,
+        "horizon": TWII_TRY_HORIZON,
+        "key": d or (last_tag or "try"),
+        "last_close": last_c,
+        "target": target,
+        "spike_high": None,
+        "spike_low": None,
+        "down_fut": None,
+        "up_fut": None,
+        "mark": "內部試畫",
+        "label": "不進話筒。不是保證。",
+        "path_json": json.dumps(path, ensure_ascii=False),
+        "rays_json": "[]",
+        "verdict": "",
+        "created_at": _now(),
+    }
+    store = _evolve_store(db_path)
+    _upsert(store, rec)
+    _refresh_twii_try_rates(store)
     return rec
 
 
@@ -379,6 +508,60 @@ def _judge_twii(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
     return bit
 
 
+def _judge_twii_try(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
+    if not later:
+        return "還沒走完（之後還沒官方加權柱）"
+    hi = max(float(b.get("high") or 0) for b in later)
+    lo = min(float(b.get("low") or 0) for b in later)
+    close = float(later[-1].get("close") or 0)
+    need = int(row.get("horizon") or TWII_TRY_HORIZON)
+    done = len(later) >= max(1, need)
+    head = "" if done else f"已走{len(later)}/{need}根，"
+    tgt = row.get("target")
+    last0 = row.get("last_close")
+    key = str(row.get("key") or "")
+    bits: List[str] = []
+    try:
+        t = float(tgt) if tgt is not None else 0.0
+        a = float(last0 or 0)
+    except (TypeError, ValueError):
+        t, a = 0.0, 0.0
+    if t and a:
+        if t < a:
+            if lo <= t * 1.001:
+                bits.append(f"對得上碰到目標{_px(t)}：後來低{_px(lo)}")
+            else:
+                bits.append(f"還沒碰到目標{_px(t)}：後來低{_px(lo)}收{_px(close)}")
+        else:
+            if hi >= t * 0.999:
+                bits.append(f"對得上碰到目標{_px(t)}：後來高{_px(hi)}")
+            else:
+                bits.append(f"還沒碰到目標{_px(t)}：後來高{_px(hi)}收{_px(close)}")
+    elif a:
+        going_down = key in {"down", "retest"} or "C-" in key or "逃命" in key
+        going_up = key in {"up"} or "大B" in key or "末升" in key
+        if going_down:
+            if close < a:
+                bits.append(f"對得上往下：收{_px(close)}")
+            elif close > a * 1.01:
+                bits.append(f"偏了沒往下：收{_px(close)}")
+            else:
+                bits.append(f"後來收{_px(close)}")
+        elif going_up:
+            if close > a:
+                bits.append(f"對得上往上：收{_px(close)}")
+            elif close < a * 0.99:
+                bits.append(f"偏了沒往上：收{_px(close)}")
+            else:
+                bits.append(f"後來收{_px(close)}")
+        else:
+            bits.append(f"後來高{_px(hi)}低{_px(lo)}收{_px(close)}")
+    bit = "；".join(bits) if bits else f"後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
+    if not done:
+        bit = head + bit + "。還沒走完"
+    return bit
+
+
 def verify_due(db_path: str, sid: str = "") -> int:
     """官方柱夠了就對質當初建檔的演算。盤中未收不當官方收。"""
     if not db_path or not os.path.isfile(db_path):
@@ -409,7 +592,10 @@ def verify_due(db_path: str, sid: str = "") -> int:
         later = _later_bars(
             db_path, str(row.get("stock_id") or ""), str(row.get("as_of") or ""), int(row.get("horizon") or 0)
         )
-        if str(row.get("kind") or "") == "twii":
+        kind = str(row.get("kind") or "")
+        if kind == KIND_TWII_TRY:
+            continue
+        if kind == KIND_TWII:
             verdict = _judge_twii(row, later)
         else:
             verdict = _judge_stock(row, later)
@@ -442,8 +628,109 @@ def verify_due(db_path: str, sid: str = "") -> int:
     return n
 
 
+def verify_twii_try(db_path: str) -> int:
+    """只對質內部試畫。寫另一顆檔，不碰問位階、洞燭、海選、AI倉。"""
+    store = _evolve_store(db_path)
+    if not store or not os.path.isfile(store):
+        return 0
+    ensure_forecast_table(store)
+    conn = sqlite3.connect(store, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+    except sqlite3.Error:
+        conn.close()
+        return 0
+    n = 0
+    stamp = _now()
+    for raw in rows:
+        row = dict(raw)
+        if "對得上" in (row.get("verdict") or "") and "還沒走完" not in (row.get("verdict") or ""):
+            if "偏了" in (row.get("verdict") or ""):
+                pass
+            elif int(row.get("check_n") or 0) >= int(row.get("horizon") or 0):
+                continue
+        later = _later_bars(
+            db_path,
+            str(row.get("stock_id") or ""),
+            str(row.get("as_of") or ""),
+            int(row.get("horizon") or 0),
+        )
+        verdict = _judge_twii_try(row, later)
+        hi = lo = cl = None
+        if later:
+            hi = max(float(b.get("high") or 0) for b in later)
+            lo = min(float(b.get("low") or 0) for b in later)
+            cl = float(later[-1].get("close") or 0)
+        conn.execute(
+            """
+            UPDATE biaoke_forecast
+            SET verdict=?, check_n=?, check_high=?, check_low=?, check_close=?, checked_at=?
+            WHERE kind=? AND stock_id=? AND as_of=?
+            """,
+            (
+                verdict,
+                len(later),
+                hi,
+                lo,
+                cl,
+                stamp,
+                row.get("kind"),
+                row.get("stock_id"),
+                row.get("as_of"),
+            ),
+        )
+        n += 1
+    conn.commit()
+    conn.close()
+    _refresh_twii_try_rates(store)
+    return n
+
+
+def _refresh_twii_try_rates(store: str) -> None:
+    if not store:
+        return
+    parent = os.path.dirname(os.path.abspath(store))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(store, timeout=8.0)
+    try:
+        conn.executescript(_TRY_RATES_DDL)
+        rows = conn.execute(
+            "SELECT verdict FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+        hit = miss = pending = 0
+        for (verdict,) in rows:
+            t = str(verdict or "")
+            if "還沒走完" in t or not t:
+                pending += 1
+            elif "偏了" in t:
+                miss += 1
+            elif "對得上" in t:
+                hit += 1
+            else:
+                pending += 1
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO silent_twii_rates(
+                kind, n, hit, miss, pending, updated_at
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            (KIND_TWII_TRY, hit + miss + pending, hit, miss, pending, _now()),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+
+
 def glance_forecast(db_path: str, sid: str) -> str:
-    """第④顆讀最近一次演算建檔＋對質。"""
+    """第④顆讀最近一次演算建檔＋對質。內部試畫不讀出來。"""
     if not db_path or not os.path.isfile(db_path) or not sid:
         return ""
     ensure_forecast_table(db_path)
@@ -451,8 +738,8 @@ def glance_forecast(db_path: str, sid: str) -> str:
     try:
         row = conn.execute(
             "SELECT as_of, mark, verdict FROM biaoke_forecast "
-            "WHERE stock_id=? ORDER BY as_of DESC LIMIT 1",
-            (sid,),
+            "WHERE stock_id=? AND kind!=? ORDER BY as_of DESC LIMIT 1",
+            (sid, KIND_TWII_TRY),
         ).fetchone()
     except sqlite3.Error:
         row = None
@@ -518,3 +805,89 @@ def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     except Exception:
         pass
     return n
+
+
+def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
+    """盤後齊了：內部試畫＋覆盤包。不寫問位階、不改洞燭名單／海選／AI倉／黃金買點、不推話筒。"""
+    cap_ymd = _ymd(cap)
+    if not db_path:
+        return {"twii": 0, "try": 0, "scored": 0, "cap": cap_ymd}
+    scored = 0
+    try:
+        scored = int(verify_twii_try(db_path) or 0)
+    except Exception:
+        scored = 0
+    rec: Dict[str, Any] = {}
+    try_rec: Dict[str, Any] = {}
+    try:
+        from biaoke_wave import _complete_bar_ymd, _load_twii_bars, last_two, wave_extend_rays, wave_path_points
+
+        complete = _complete_bar_ymd(db_path) or cap_ymd
+        bars = _load_twii_bars(db_path, n=220)
+        if complete:
+            bars = [b for b in bars if _ymd(b.get("date")) <= complete]
+        if cap_ymd:
+            bars = [b for b in bars if _ymd(b.get("date")) <= cap_ymd]
+        if not bars:
+            return {
+                "twii": 0,
+                "try": 0,
+                "scored": scored,
+                "cap": cap_ymd or complete,
+                "skipped": "no_bars",
+            }
+        last = bars[-1]
+        try:
+            last_c = float(last.get("close") or 0)
+        except (TypeError, ValueError):
+            last_c = 0.0
+        if last_c <= 0:
+            return {
+                "twii": 0,
+                "try": 0,
+                "scored": scored,
+                "cap": cap_ymd or complete,
+                "skipped": "zero_close",
+            }
+        last_turn, _prev = last_two(db_path)
+        tag = str((last_turn or {}).get("tag") or "")
+        direc = str((last_turn or {}).get("direc") or "")
+        pts = wave_path_points(db_path, bars)
+        rays = wave_extend_rays(pts, len(bars), tag)
+        from silent_progress import capture_review_context, simulate_next_legs
+
+        legs = simulate_next_legs(tag, last_c, rays)
+        extra = {
+            "twii": {
+                k: last.get(k)
+                for k in ("date", "open", "high", "low", "close", "volume")
+                if last.get(k) not in (None, "")
+            },
+            "biaoke": {
+                k: (last_turn or {}).get(k)
+                for k in ("tag", "direc", "date")
+                if (last_turn or {}).get(k)
+            },
+            "legs": legs,
+        }
+        try:
+            capture_review_context(db_path, as_of=_ymd(last.get("date")) or cap_ymd, extra=extra)
+        except Exception:
+            pass
+        try_rec = record_twii_try(db_path, bars, last_tag=tag, direc=direc) or {}
+    except Exception:
+        try:
+            from biaoke_brain import load_index_bars
+
+            bars = load_index_bars(db_path, n=220)
+            if cap_ymd:
+                bars = [b for b in bars if _ymd(b.get("date")) <= cap_ymd]
+            try_rec = record_twii_try(db_path, bars) or {}
+        except Exception:
+            rec, try_rec = {}, {}
+    return {
+        "twii": 0,
+        "try": 1 if try_rec else 0,
+        "scored": scored,
+        "cap": cap_ymd or _ymd((try_rec or {}).get("as_of")),
+    }
