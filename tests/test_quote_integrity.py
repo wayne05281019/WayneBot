@@ -279,3 +279,93 @@ def test_audit_reports_stub_without_mutating(tmp_path):
     ensure_quote_integrity(str(db))
     after = audit_untrusted_quotes(str(db))
     assert after["stub_bar"] == 0
+
+
+def test_filter_trusted_drops_zero_close():
+    row = (
+        "20260706",
+        "2438",
+        "翔耀",
+        "TW",
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0,
+        0.0,
+        0.0,
+        0.0,
+        0,
+        0,
+        0,
+    )
+    kept, dropped = filter_trusted_quote_tuples([row])
+    assert kept == []
+    assert dropped == 1
+    assert quote_tuple_trusted(0, 0, 0, 0, 0, 0) is False
+
+
+def test_scrub_deletes_zero_close_bar(tmp_path, monkeypatch):
+    monkeypatch.setattr("import_health.sides_complete", lambda tw, two, **kw: True)
+    db = tmp_path / "z.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO daily_quotes VALUES
+        ('20260703','2438','翔耀','TW',21.3,22.0,21.3,21.9,238,0,2.58,21.9,0,0,0),
+        ('20260706','2438','翔耀','TW',0,0,0,0,0,0,0,0,0,0,0)"""
+    )
+    conn.commit()
+    conn.close()
+    stats = scrub_untrusted_quotes(str(db), now=None)
+    assert stats["zero_bar"] >= 1
+    conn = sqlite3.connect(db)
+    n0 = conn.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='2438' AND date='20260706'"
+    ).fetchone()[0]
+    n1 = conn.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='2438' AND date='20260703'"
+    ).fetchone()[0]
+    conn.close()
+    assert n0 == 0
+    assert n1 == 1
+
+
+def test_scrub_deletes_prev_close_halt_copy(tmp_path, monkeypatch):
+    monkeypatch.setattr("import_health.sides_complete", lambda tw, two, **kw: True)
+    db = tmp_path / "h.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT, market TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            turnover_k REAL, pct_change REAL, avg_price REAL,
+            foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO daily_quotes VALUES
+        ('20260908','1470','大統新創','TW',24.3,24.3,24.3,24.3,8,0,0,24.3,0,0,0),
+        ('20260909','1470','大統新創','TW',24.3,24.3,24.3,24.3,0,0,0,24.3,0,0,0)"""
+    )
+    conn.commit()
+    conn.close()
+    stats = scrub_untrusted_quotes(str(db), now=None)
+    assert stats["halt_copy"] >= 1
+    conn = sqlite3.connect(db)
+    gone = conn.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE stock_id='1470' AND date='20260909'"
+    ).fetchone()[0]
+    kept = conn.execute(
+        "SELECT close FROM daily_quotes WHERE stock_id='1470' AND date='20260908'"
+    ).fetchone()
+    conn.close()
+    assert gone == 0
+    assert float(kept[0]) == 24.3

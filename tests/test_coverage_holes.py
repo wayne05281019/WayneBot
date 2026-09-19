@@ -85,6 +85,8 @@ def test_parse_twse_halt_dash_ohlc_is_halt_not_quote():
     recs, halts = DataFetcher._parse_twse_close_rows(fetcher, rows, "20260903")
     assert recs == []
     assert halts == [("1470", "大統新創", 0)]
+    filled = DataFetcher._fill_tw_halts(fetcher, recs, halts, "20260903")
+    assert filled == []
 
 
 def test_list_missing_equities_finds_thin_gap(tmp_path, monkeypatch):
@@ -111,7 +113,7 @@ def test_list_missing_equities_finds_thin_gap(tmp_path, monkeypatch):
     assert "2330" not in miss
 
 
-def test_patch_missing_writes_halt_from_prev_close(tmp_path, monkeypatch):
+def test_patch_missing_skips_halt_without_official_close(tmp_path, monkeypatch):
     monkeypatch.setattr(DataFetcher, "_ensure_database_ready", lambda self: None)
     db = str(tmp_path / "halt.db")
     ensure_core_schema(db)
@@ -153,15 +155,13 @@ def test_patch_missing_writes_halt_from_prev_close(tmp_path, monkeypatch):
     monkeypatch.setattr(fetcher.session, "get", lambda *a, **k: _Resp())
     monkeypatch.setattr(fetcher, "_fetch_tpex_daily", lambda *a, **k: [])
     n = fetcher._upsert_named_quotes("20260903", {"1470"}, ref_date="20260904")
-    assert n == 1
+    assert n == 0
     conn = sqlite3.connect(db)
     row = conn.execute(
         "SELECT close, volume, open, high, low FROM daily_quotes WHERE stock_id='1470' AND date='20260903'"
     ).fetchone()
     conn.close()
-    assert row is not None
-    assert float(row[0]) == 24.3
-    assert int(row[1]) == 0
+    assert row is None
 
 
 def test_decision_card_table_keeps_halt_days():
