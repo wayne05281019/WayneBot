@@ -584,17 +584,8 @@ class DataFetcher:
             if turnover_ntd <= 0:
                 turnover_ntd = self.clean_num(col(r, "成交金額", 8), True)
             if close_p <= 0:
-                # 無量日官方收盤是 ----，用最後買價當參考價寫停市列，20 日表才不會跳日期
-                bid = self.clean_num(col(r, "最後買價", 10), True)
-                if bid <= 0:
-                    bid = self.clean_num(col(r, "最後賣價", 12), True)
-                if bid <= 0:
-                    continue
-                close_p = open_p = high_p = low_p = bid
-                volume_shares = 0
-                turnover_ntd = 0.0
-                diff = 0.0
-                avg_p = bid
+                # 官方 ---- 沒有收盤。最後買／賣價不是收盤，不准寫成已知價。
+                continue
             ref_p = close_p - diff if close_p > 0 else 0.0
             pct = round((diff / ref_p * 100.0), 2) if ref_p > 0 else 0.0
             avg_p = self.coerce_avg_price(
@@ -691,7 +682,7 @@ class DataFetcher:
             elif "+" in str(sign_raw) or "漲" in str(sign_raw):
                 diff = abs(diff)
             if close_p <= 0:
-                # 無量／僅零股：OHLC 是 --，用上一交易日收盤補停市列
+                # 官方 -- 沒有收盤。不准用昨收冒充今天。
                 halts.append(
                     (
                         str(sid).strip(),
@@ -712,23 +703,11 @@ class DataFetcher:
         return records, halts
 
     def _fill_tw_halts(self, records: list, halts: list, target_date: str) -> list:
-        if not halts:
-            return records
-        prev_map = self._prev_closes_for_date(target_date)
-        have = {q["stock_id"] for q in records}
-        out = list(records)
-        for sid, sname, vol_lots in halts:
-            if sid in have:
-                continue
-            prev = float(prev_map.get(sid) or 0)
-            if prev <= 0:
-                continue
-            out.append({
-                "date": target_date, "stock_id": sid, "stock_name": sname,
-                "market": "TW", "open": prev, "high": prev, "low": prev, "close": prev,
-                "volume": int(vol_lots or 0), "turnover_k": 0.0, "pct_change": 0.0, "avg_price": prev,
-            })
-        return out
+        """官方 -- 沒有收盤。不准用昨收冒充今天已知價。"""
+        del target_date
+        if halts:
+            print(f"⚠️ 略過 {len(halts)} 檔上市無官方收盤，不上庫")
+        return records
 
     def _is_equity_id(self, stock_id: str, stock_name: str = "") -> bool:
         sid = str(stock_id or "").strip()
@@ -791,6 +770,16 @@ class DataFetcher:
                 int(q.get("foreign_net") or 0), int(q.get("trust_net") or 0), int(q.get("dealer_net") or 0),
                 str(q.get("source") or "patch_missing"), fetched_at,
             ))
+        try:
+            from quote_integrity import filter_trusted_quote_tuples
+
+            rows, dropped = filter_trusted_quote_tuples(rows)
+            if dropped:
+                print(f"⚠️ 補列略過 {dropped} 筆無官方開高低收")
+        except Exception:
+            return 0
+        if not rows:
+            return 0
         conn = self.get_db_connection()
         cur = conn.cursor()
         cur.executemany(

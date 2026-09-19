@@ -118,8 +118,8 @@ def test_tpex_thin_print_5276_0902_kept():
     assert row["pct_change"] == -1.09
 
 
-def test_tpex_halt_day_uses_bid_not_skipped():
-    """達輝-KY 20260903 官方收盤 ----、最後買價 18.10，要寫無量列。"""
+def test_tpex_halt_day_without_official_close_is_skipped():
+    """達輝-KY 20260903 官方收盤 ----：最後買價不是收盤，不上庫。"""
     from data_fetcher import DataFetcher
 
     payload = {
@@ -163,13 +163,7 @@ def test_tpex_halt_day_uses_bid_not_skipped():
         ],
     }
     rows = DataFetcher()._parse_tpex_payload(payload, "20260903")
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["stock_id"] == "5276"
-    assert row["close"] == 18.1
-    assert row["open"] == 18.1
-    assert row["volume"] == 0
-    assert row["pct_change"] == 0.0
+    assert rows == []
 
 
 def test_tpex_odd_lot_only_is_zero_lots_not_shares():

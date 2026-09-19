@@ -88,6 +88,7 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
     conn.close()
     for i, vol in enumerate([10, 12, 11, 13, 20, 18, 22, 30], start=1):
         d = f"202608{i:02d}"
+        close = 10.5 + i * 0.1
         upsert_emerging_rows(
             path,
             d,
@@ -97,9 +98,9 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
                     "stock_name": "山太士",
                     "market": "EM",
                     "open": 10.0,
-                    "high": 11.0,
-                    "low": 9.5,
-                    "close": 10.5 + i * 0.1,
+                    "high": max(11.0, close),
+                    "low": min(9.5, close, 10.0),
+                    "close": close,
                     "volume": vol,
                     "turnover_k": vol * 10,
                     "pct_change": 1.0,

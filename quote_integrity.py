@@ -94,18 +94,82 @@ def filter_trusted_quote_tuples(records: Sequence[Tuple]) -> Tuple[List[Tuple], 
     return kept, dropped
 
 
+def _scrub_zero_ohlc(cur: sqlite3.Cursor, table: str) -> int:
+    """收盤／開高低任一 <= 0 不是官方價。"""
+    if table not in ("daily_quotes", "emerging_quotes"):
+        return 0
+    try:
+        cur.execute(
+            f"""
+            DELETE FROM {table}
+            WHERE COALESCE(close, 0) <= 0
+               OR COALESCE(open, 0) <= 0
+               OR COALESCE(high, 0) <= 0
+               OR COALESCE(low, 0) <= 0
+            """
+        )
+        return int(cur.rowcount or 0)
+    except sqlite3.OperationalError:
+        return 0
+
+
+def _scrub_invented_halt_copies(cur: sqlite3.Cursor) -> int:
+    """無量、開高低收同價、漲跌 0、收盤＝前一日收：昨收冒充今天。"""
+    n = 0
+    try:
+        sids = [str(r[0]) for r in cur.execute("SELECT DISTINCT stock_id FROM daily_quotes")]
+    except sqlite3.OperationalError:
+        return 0
+    for sid in sids:
+        rows = cur.execute(
+            """
+            SELECT rowid, replace(date,'-','') AS d, open, high, low, close, volume, pct_change
+            FROM daily_quotes
+            WHERE stock_id=?
+            ORDER BY d
+            """,
+            (sid,),
+        ).fetchall()
+        prev_close: Optional[float] = None
+        for rowid, _d, open_p, high, low, close, volume, pct in rows:
+            try:
+                c = float(close or 0)
+            except (TypeError, ValueError):
+                c = 0.0
+            if (
+                _halt_copy_bar(volume, open_p, high, low, c, pct)
+                and prev_close
+                and prev_close > 0
+                and abs(c - prev_close) <= _EPS
+            ):
+                cur.execute("DELETE FROM daily_quotes WHERE rowid=?", (rowid,))
+                n += 1
+                continue
+            if c > 0:
+                prev_close = c
+    return n
+
+
 def scrub_untrusted_quotes(db_path: str, now=None) -> Dict[str, int]:
     """
     啟動／融合後清庫：
     - 刪除晚於 fuse 上限的日曆日（盤中不得有「今天收盤」）
     - 刪除週末殘列
     - 刪除上市或上櫃未齊的交易日
-    - 刪除平盤假 K 列
+    - 刪除 0 元／缺開高低收（不是官方價）
+    - 刪除用昨收冒充今天的無量複製列
     """
     if not db_path:
         return {}
     cap = fuse_end_trading_date(now)
-    stats = {"after_cap": 0, "weekend": 0, "incomplete_day": 0, "stub_bar": 0}  # stub_bar 固定 0，相容舊日誌
+    stats = {
+        "after_cap": 0,
+        "weekend": 0,
+        "incomplete_day": 0,
+        "stub_bar": 0,
+        "zero_bar": 0,
+        "halt_copy": 0,
+    }
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
@@ -153,6 +217,9 @@ def scrub_untrusted_quotes(db_path: str, now=None) -> Dict[str, int]:
         pass
 
     stats["stub_bar"] = 0
+    stats["zero_bar"] = _scrub_zero_ohlc(cur, "daily_quotes")
+    stats["zero_bar"] += _scrub_zero_ohlc(cur, "emerging_quotes")
+    stats["halt_copy"] = _scrub_invented_halt_copies(cur)
 
     conn.commit()
     conn.close()

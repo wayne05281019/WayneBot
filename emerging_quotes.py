@@ -201,6 +201,38 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
     conn = sqlite3.connect(db_path)
     n = 0
     try:
+        from quote_integrity import ohlc_consistent
+
+        payload = []
+        for r in rows:
+            try:
+                o = float(r["open"] or 0)
+                h = float(r["high"] or 0)
+                l = float(r["low"] or 0)
+                c = float(r["close"] or 0)
+            except (TypeError, ValueError, KeyError):
+                continue
+            if not ohlc_consistent(o, h, l, c):
+                continue
+            payload.append(
+                (
+                    as_of,
+                    r["stock_id"],
+                    r["stock_name"],
+                    "EM",
+                    o,
+                    h,
+                    l,
+                    c,
+                    r["volume"],
+                    r["turnover_k"],
+                    r["pct_change"],
+                    r["avg_price"],
+                    r.get("source") or "",
+                )
+            )
+        if not payload:
+            return 0
         conn.executemany(
             """
             INSERT INTO emerging_quotes(
@@ -220,24 +252,7 @@ def upsert_emerging_rows(db_path: str, as_of: str, rows: List[dict]) -> int:
                 avg_price=excluded.avg_price,
                 source=excluded.source;
             """,
-            [
-                (
-                    as_of,
-                    r["stock_id"],
-                    r["stock_name"],
-                    "EM",
-                    r["open"],
-                    r["high"],
-                    r["low"],
-                    r["close"],
-                    r["volume"],
-                    r["turnover_k"],
-                    r["pct_change"],
-                    r["avg_price"],
-                    r.get("source") or "",
-                )
-                for r in rows
-            ],
+            payload,
         )
         n = conn.total_changes
         conn.commit()
