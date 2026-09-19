@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋決策卡＋產業圖同一則相簿；點開是原圖像素。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋決策卡＋產業圖同一則相簿；點開是 Telegram 允許的最高像素。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -28,9 +28,12 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
-_LOOKUP_ALBUM_MIN_W = 2160
+# Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。三張都拉到這個上限。
 _LOOKUP_TG_MAX_WH = 10000
+_LOOKUP_TG_MAX_RATIO = 20.0
+_LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 _LOOKUP_JPEG_QUALITY = 95
+_LOOKUP_JPEG_QUALITY_FLOOR = 78
 
 from config import (
     allowed_telegram_uids,
@@ -2598,8 +2601,46 @@ class WayneTelegramBot:
             return False
 
     @staticmethod
+    def _fit_lookup_photo_wh(w: int, h: int) -> tuple:
+        """Telegram 相簿點開上限：寬+高=10000、長寬比≤20。三張都拉滿，不准先縮小。"""
+        w = max(1, int(w))
+        h = max(1, int(h))
+        total = w + h
+        if total != _LOOKUP_TG_MAX_WH:
+            scale = _LOOKUP_TG_MAX_WH / float(total)
+            w = max(1, int(round(w * scale)))
+            h = max(1, int(round(h * scale)))
+        while w + h > _LOOKUP_TG_MAX_WH:
+            if w >= h and w > 1:
+                w -= 1
+            elif h > 1:
+                h -= 1
+            else:
+                break
+        while w + h < _LOOKUP_TG_MAX_WH:
+            if w >= h:
+                w += 1
+            else:
+                h += 1
+        long_s, short_s = (w, h) if w >= h else (h, w)
+        if short_s > 0 and long_s / float(short_s) > _LOOKUP_TG_MAX_RATIO:
+            long_s = max(1, int(_LOOKUP_TG_MAX_RATIO * short_s))
+            if w >= h:
+                w = long_s
+            else:
+                h = long_s
+            while w + h > _LOOKUP_TG_MAX_WH:
+                if w >= h and w > 1:
+                    w -= 1
+                elif h > 1:
+                    h -= 1
+                else:
+                    break
+        return w, h
+
+    @staticmethod
     def _prepare_lookup_album_photo(path: str) -> str:
-        """相簿點開用 JPEG 原像素。窄圖才放到 2160 寬；介紹圖／決策卡不准縮小。"""
+        """相簿點開用 JPEG，三張都拉到 Telegram 允許的最高像素。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -2616,24 +2657,27 @@ class WayneTelegramBot:
             w, h = im.size
             if w <= 0 or h <= 0:
                 return path
-            if w < _LOOKUP_ALBUM_MIN_W:
-                nh = max(1, int(round(h * (_LOOKUP_ALBUM_MIN_W / float(w)))))
-                im = im.resize((_LOOKUP_ALBUM_MIN_W, nh), Image.Resampling.LANCZOS)
-                w, h = im.size
-            if w + h > _LOOKUP_TG_MAX_WH:
-                scale = _LOOKUP_TG_MAX_WH / float(w + h)
-                im = im.resize(
-                    (max(1, int(w * scale)), max(1, int(h * scale))),
-                    Image.Resampling.LANCZOS,
-                )
+            tw, th = WayneTelegramBot._fit_lookup_photo_wh(w, h)
+            if (tw, th) != (w, h):
+                im = im.resize((tw, th), Image.Resampling.LANCZOS)
             out = path + ".hq.jpg"
-            im.save(
-                out,
-                "JPEG",
-                quality=_LOOKUP_JPEG_QUALITY,
-                subsampling=0,
-                optimize=True,
-            )
+            limit = _LOOKUP_TG_MAX_BYTES - 64
+            for q in (
+                _LOOKUP_JPEG_QUALITY,
+                92,
+                88,
+                84,
+                _LOOKUP_JPEG_QUALITY_FLOOR,
+            ):
+                im.save(
+                    out,
+                    "JPEG",
+                    quality=int(q),
+                    subsampling=0,
+                    optimize=True,
+                )
+                if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
+                    return out
             if os.path.isfile(out) and os.path.getsize(out) > 0:
                 return out
         except Exception:
