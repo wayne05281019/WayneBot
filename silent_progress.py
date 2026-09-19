@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """默默畫、覆盤、檢討。不到能講的那天不准開口。
 
-大盤／洞燭／黃金買點各做各的。不推話筒、不改黃金買點、現在不在話筒發明 5／9。
+大盤／洞燭／海選／AI倉各做各的、各自對質、勝率不准混。
+AI倉假錢對照組保留。不推話筒、不改黃金買點、現在不在話筒發明 5／9。
 """
 from __future__ import annotations
 
@@ -51,7 +52,6 @@ REVIEW_STEPS = (
     "freeze_us",
     "write_pack",
     "record_forecast",
-    "score_dongzhu",
     "never_speak",
 )
 
@@ -422,6 +422,8 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         "try": 0,
         "scored": 0,
         "dongzhu": 0,
+        "screen": 0,
+        "ai": 0,
         "ctx": 0,
         "holes": [],
         "speak": False,
@@ -432,12 +434,8 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         return stats
     stats["step"] = "score_old"
     try:
-        from biaoke_forecast import snapshot_and_score_twii, verify_due
+        from biaoke_forecast import snapshot_and_score_twii
 
-        try:
-            verify_due(db_path, "TWII")
-        except Exception:
-            pass
         stats["step"] = "record_forecast"
         got = snapshot_and_score_twii(db_path, cap) or {}
         stats["twii"] = int(got.get("twii") or 0)
@@ -456,18 +454,6 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         stats["holes"] = list(ctx.get("holes") or pack_holes(ctx))
     except Exception:
         pass
-    stats["step"] = "score_dongzhu"
-    try:
-        from dongzhu_tape import score_dongzhu_picks, score_screen_picks
-        from import_health import latest_complete_quote_date
-
-        dz_day = str(day or cap or latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
-        if dz_day:
-            stats["dongzhu"] = int(score_dongzhu_picks(db_path, dz_day) or 0) + int(
-                score_screen_picks(db_path, dz_day) or 0
-            )
-    except Exception:
-        pass
     stats["step"] = "never_speak"
     stats["speak"] = bool(
         speak_ready("twii", db_path)
@@ -478,13 +464,15 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
 
 
 def _forecast_n(db_path: str, kind: str) -> int:
-    if not db_path or not os.path.isfile(db_path):
+    store = _store_path(db_path)
+    if not store or not os.path.isfile(store):
         return 0
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    qkind = "twii_try" if str(kind or "") == "twii" else str(kind or "")
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         row = conn.execute(
             "SELECT COUNT(*) FROM biaoke_forecast WHERE kind=? AND check_n>=horizon AND horizon>0",
-            (kind,),
+            (qkind,),
         ).fetchone()
         return int(row[0] if row else 0)
     except sqlite3.Error:

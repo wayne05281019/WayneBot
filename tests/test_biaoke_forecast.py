@@ -132,9 +132,16 @@ def _twii_rows(n=24, start=None, base=45000.0):
 
 
 def test_twii_snapshot_hides_try_from_glance_and_scores(tmp_path):
-    from biaoke_forecast import KIND_TWII_TRY, glance_forecast, snapshot_and_score_twii, verify_due
+    from biaoke_forecast import (
+        KIND_TWII_TRY,
+        glance_forecast,
+        snapshot_and_score_twii,
+        verify_due,
+        verify_twii_try,
+    )
 
     db = str(tmp_path / "tw.db")
+    store = str(tmp_path / "wayne_evolve.db")
     rows = _twii_rows()
     _seed_twii(db, rows)
     out = snapshot_and_score_twii(db, rows[-1][0])
@@ -145,16 +152,27 @@ def test_twii_snapshot_hides_try_from_glance_and_scores(tmp_path):
     assert "1-2-3-4-5" not in g
     assert "演算建檔" not in g
     conn = sqlite3.connect(db)
-    kinds = {r[0] for r in conn.execute("SELECT kind FROM biaoke_forecast").fetchall()}
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    kinds = set()
+    if "biaoke_forecast" in names:
+        kinds = {r[0] for r in conn.execute("SELECT kind FROM biaoke_forecast").fetchall()}
+    conn.close()
     assert "twii" not in kinds
-    assert KIND_TWII_TRY in kinds
+    assert KIND_TWII_TRY not in kinds
+    conn = sqlite3.connect(store)
     try_mark = conn.execute(
         "SELECT mark, label FROM biaoke_forecast WHERE kind=?",
         (KIND_TWII_TRY,),
     ).fetchone()
     assert try_mark[0] == "內部試畫"
     assert "不進話筒" in try_mark[1]
+    rate_n = conn.execute(
+        "SELECT n FROM silent_twii_rates WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()
+    conn.close()
     last = date(int(rows[-1][0][:4]), int(rows[-1][0][4:6]), int(rows[-1][0][6:8]))
+    conn = sqlite3.connect(db)
     for i in range(10):
         d = (last + timedelta(days=i + 1)).strftime("%Y%m%d")
         conn.execute(
@@ -164,14 +182,78 @@ def test_twii_snapshot_hides_try_from_glance_and_scores(tmp_path):
     conn.commit()
     conn.close()
     verify_due(db, "TWII")
-    conn = sqlite3.connect(db)
-    try_v = conn.execute(
+    conn = sqlite3.connect(store)
+    try_v0 = conn.execute(
         "SELECT verdict FROM biaoke_forecast WHERE kind=?",
         (KIND_TWII_TRY,),
     ).fetchone()[0]
     conn.close()
+    assert not try_v0 or "對得上" not in try_v0 or "還沒走完" in (try_v0 or "")
+    verify_twii_try(db)
+    conn = sqlite3.connect(store)
+    try_v = conn.execute(
+        "SELECT verdict FROM biaoke_forecast WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()[0]
+    hit = conn.execute(
+        "SELECT hit FROM silent_twii_rates WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()[0]
+    dz = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dongzhu_pick_rates'"
+    ).fetchone()
+    ai = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_fills'"
+    ).fetchone()
+    conn.close()
     assert "對得上" in try_v
     assert "還沒走完" not in try_v
+    assert int(hit) >= 1
+    assert dz is None
+    assert ai is None
+    assert rate_n is not None
+    assert int(rate_n[0]) >= 1
+
+
+def test_silent_snapshot_does_not_touch_product_forecast(tmp_path):
+    from biaoke_forecast import KIND_TWII_TRY, glance_forecast, record_twii, snapshot_and_score_twii
+
+    db = str(tmp_path / "tw.db")
+    store = str(tmp_path / "wayne_evolve.db")
+    rows = _twii_rows()
+    _seed_twii(db, rows)
+    bars = [
+        {"date": d, "open": o, "high": h, "low": lo, "close": c}
+        for d, o, h, lo, c in rows
+    ]
+    rec = record_twii(db, bars, last_tag="逃命波C-2")
+    assert rec
+    g0 = glance_forecast(db, "TWII")
+    assert "演算建檔" in g0
+    assert "內部試畫" not in g0
+    conn = sqlite3.connect(db)
+    before = conn.execute(
+        "SELECT created_at, mark, verdict, kind FROM biaoke_forecast WHERE kind='twii'"
+    ).fetchone()
+    conn.close()
+    snapshot_and_score_twii(db, rows[-1][0])
+    conn = sqlite3.connect(db)
+    kinds = {r[0] for r in conn.execute("SELECT kind FROM biaoke_forecast").fetchall()}
+    after = conn.execute(
+        "SELECT created_at, mark, verdict, kind FROM biaoke_forecast WHERE kind='twii'"
+    ).fetchone()
+    conn.close()
+    assert kinds == {"twii"}
+    assert after == before
+    g1 = glance_forecast(db, "TWII")
+    assert g1 == g0
+    conn = sqlite3.connect(store)
+    try_n = conn.execute(
+        "SELECT COUNT(*) FROM biaoke_forecast WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()[0]
+    conn.close()
+    assert try_n == 1
 
 
 def test_twii_snapshot_skips_zero_close(tmp_path):
@@ -205,6 +287,7 @@ def test_twii_forecast_hooks_fuse_not_telegram():
     assert "不進話筒" in body
     assert "1-2-3-4-5" not in body
     assert "第5波" not in body
+    assert "_evolve_store" in body
     from biaoke_wave import format_twii_plain
     import inspect
 

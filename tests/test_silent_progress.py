@@ -61,11 +61,19 @@ def test_night_review_does_not_speak(tmp_path):
     Path(db).write_text("")
     out = night_review(db)
     assert out.get("speak") is False
+    assert out.get("dongzhu") == 0
+    assert out.get("screen") == 0
+    assert out.get("ai") == 0
     src = Path("silent_progress.py").read_text(encoding="utf-8")
     assert "send_telegram" not in src
     assert "TELEGRAM_BOT_TOKEN" not in src
     assert "snapshot_and_score_dongzhu" not in src
     assert "write_snapshot" not in src
+    assert "score_dongzhu_picks" not in src
+    assert "score_screen_picks" not in src
+    assert "score_ai_fills" not in src
+    assert "run_ai_desk" not in src
+    assert "verify_due" not in src
     absorb = Path("biaoke_absorb.py").read_text(encoding="utf-8")
     assert "night_review" in absorb
     i = absorb.find("night_review")
@@ -144,7 +152,8 @@ def test_capture_review_context_freezes_then_fills_missing(tmp_path):
     assert "requests" not in src
     assert "refresh_us_overnight" not in src
     assert "yahoo" not in src.lower()
-    assert src.find('"score_old"') < src.find('"record_forecast"') < src.find('"score_dongzhu"') < src.find('"never_speak"')
+    assert src.find('"score_old"') < src.find('"record_forecast"') < src.find('"never_speak"')
+    assert '"score_dongzhu"' not in src
 
 
 def test_pack_holes_lists_missing_slots():
@@ -235,6 +244,8 @@ def test_silent_does_not_import_product_paths():
         "biaoke_field_scan",
         "record_twii(",
         "snapshot_and_score_dongzhu",
+        "score_ai_fills",
+        "run_ai_desk",
     ):
         assert banned not in src
     for path in (
@@ -245,6 +256,7 @@ def test_silent_does_not_import_product_paths():
         "wayne_navigator.py",
         "dongzhu_judge.py",
         "biaoke_field_scan.py",
+        "ai_trader.py",
     ):
         text = Path(path).read_text(encoding="utf-8")
         assert "silent_progress" not in text

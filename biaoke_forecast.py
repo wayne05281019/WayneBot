@@ -69,6 +69,28 @@ def _now() -> str:
     return datetime.now(TAIPEI).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _evolve_store(market_db: str) -> str:
+    """內部試畫寫另一顆檔，不進問位階表、不跟洞燭／海選／AI倉混勝率。"""
+    path = os.path.abspath(str(market_db or "data/wayne_market.db"))
+    root = os.path.dirname(path) or "."
+    name = os.path.basename(path)
+    if name == "wayne_evolve.db":
+        return path
+    return os.path.join(root, "wayne_evolve.db")
+
+
+_TRY_RATES_DDL = """
+CREATE TABLE IF NOT EXISTS silent_twii_rates (
+    kind TEXT PRIMARY KEY,
+    n INTEGER NOT NULL DEFAULT 0,
+    hit INTEGER NOT NULL DEFAULT 0,
+    miss INTEGER NOT NULL DEFAULT 0,
+    pending INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+"""
+
+
 def ensure_forecast_table(db_path: str) -> None:
     if not db_path:
         return
@@ -297,7 +319,7 @@ def record_twii_try(
     last_tag: str = "",
     direc: str = "",
 ) -> Dict[str, Any]:
-    """大盤內部試畫。不進話筒、不把段號寫進回覆。不是買訊。"""
+    """大盤內部試畫。寫另一顆檔。不進話筒、不把段號寫進回覆。不是買訊。"""
     rows = list(bars or [])
     if not db_path or len(rows) < 8:
         return {}
@@ -359,7 +381,9 @@ def record_twii_try(
         "verdict": "",
         "created_at": _now(),
     }
-    _upsert(db_path, rec)
+    store = _evolve_store(db_path)
+    _upsert(store, rec)
+    _refresh_twii_try_rates(store)
     return rec
 
 
@@ -568,9 +592,10 @@ def verify_due(db_path: str, sid: str = "") -> int:
         later = _later_bars(
             db_path, str(row.get("stock_id") or ""), str(row.get("as_of") or ""), int(row.get("horizon") or 0)
         )
-        if str(row.get("kind") or "") == KIND_TWII_TRY:
-            verdict = _judge_twii_try(row, later)
-        elif str(row.get("kind") or "") == KIND_TWII:
+        kind = str(row.get("kind") or "")
+        if kind == KIND_TWII_TRY:
+            continue
+        if kind == KIND_TWII:
             verdict = _judge_twii(row, later)
         else:
             verdict = _judge_stock(row, later)
@@ -601,6 +626,107 @@ def verify_due(db_path: str, sid: str = "") -> int:
     conn.commit()
     conn.close()
     return n
+
+
+def verify_twii_try(db_path: str) -> int:
+    """只對質內部試畫。寫另一顆檔，不碰問位階、洞燭、海選、AI倉。"""
+    store = _evolve_store(db_path)
+    if not store or not os.path.isfile(store):
+        return 0
+    ensure_forecast_table(store)
+    conn = sqlite3.connect(store, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+    except sqlite3.Error:
+        conn.close()
+        return 0
+    n = 0
+    stamp = _now()
+    for raw in rows:
+        row = dict(raw)
+        if "對得上" in (row.get("verdict") or "") and "還沒走完" not in (row.get("verdict") or ""):
+            if "偏了" in (row.get("verdict") or ""):
+                pass
+            elif int(row.get("check_n") or 0) >= int(row.get("horizon") or 0):
+                continue
+        later = _later_bars(
+            db_path,
+            str(row.get("stock_id") or ""),
+            str(row.get("as_of") or ""),
+            int(row.get("horizon") or 0),
+        )
+        verdict = _judge_twii_try(row, later)
+        hi = lo = cl = None
+        if later:
+            hi = max(float(b.get("high") or 0) for b in later)
+            lo = min(float(b.get("low") or 0) for b in later)
+            cl = float(later[-1].get("close") or 0)
+        conn.execute(
+            """
+            UPDATE biaoke_forecast
+            SET verdict=?, check_n=?, check_high=?, check_low=?, check_close=?, checked_at=?
+            WHERE kind=? AND stock_id=? AND as_of=?
+            """,
+            (
+                verdict,
+                len(later),
+                hi,
+                lo,
+                cl,
+                stamp,
+                row.get("kind"),
+                row.get("stock_id"),
+                row.get("as_of"),
+            ),
+        )
+        n += 1
+    conn.commit()
+    conn.close()
+    _refresh_twii_try_rates(store)
+    return n
+
+
+def _refresh_twii_try_rates(store: str) -> None:
+    if not store:
+        return
+    parent = os.path.dirname(os.path.abspath(store))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(store, timeout=8.0)
+    try:
+        conn.executescript(_TRY_RATES_DDL)
+        rows = conn.execute(
+            "SELECT verdict FROM biaoke_forecast WHERE kind=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+        hit = miss = pending = 0
+        for (verdict,) in rows:
+            t = str(verdict or "")
+            if "還沒走完" in t or not t:
+                pending += 1
+            elif "偏了" in t:
+                miss += 1
+            elif "對得上" in t:
+                hit += 1
+            else:
+                pending += 1
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO silent_twii_rates(
+                kind, n, hit, miss, pending, updated_at
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            (KIND_TWII_TRY, hit + miss + pending, hit, miss, pending, _now()),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
 
 
 def glance_forecast(db_path: str, sid: str) -> str:
@@ -682,13 +808,13 @@ def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
 
 
 def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """盤後齊了：內部試畫＋覆盤包。不寫問位階那條演算、不推話筒、不改黃金買點。"""
+    """盤後齊了：內部試畫＋覆盤包。不寫問位階、不改洞燭名單／海選／AI倉／黃金買點、不推話筒。"""
     cap_ymd = _ymd(cap)
     if not db_path:
         return {"twii": 0, "try": 0, "scored": 0, "cap": cap_ymd}
     scored = 0
     try:
-        scored = int(verify_due(db_path, "TWII") or 0)
+        scored = int(verify_twii_try(db_path) or 0)
     except Exception:
         scored = 0
     rec: Dict[str, Any] = {}
