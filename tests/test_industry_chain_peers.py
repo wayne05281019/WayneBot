@@ -89,22 +89,43 @@ def test_extra_tags_win_spans_optical_and_satellite():
         "4971",
         "3363",
         "4977",
+        "3450",
     }
     for sid in optical:
         assert "光通訊" in extra_tags_for(sid), sid
     assert extra_tags_for("3105") == ["光通訊", "低軌衛星"]
     assert extra_tags_for("3491") == ["低軌衛星"]
     assert extra_tags_for("3062") == []  # 建漢，不是昇達科
-    assert extra_tags_for("3450") == []
+    assert extra_tags_for("3450") == ["光通訊"]
     assert extra_tags_for("2303") == ["成熟製程"]
     assert extra_tags_for("2330") == []
     assert extra_tags_for("2408") == ["記憶體製造"]
-    assert extra_tags_for("3006") == ["記憶體製造"]
+    assert extra_tags_for("3006") == []
+    assert extra_tags_for("5351") == []
     assert extra_tags_for("8299") == ["記憶體控制"]
     assert extra_tags_for("2049") == ["機器人"]
     assert extra_tags_for("2313") == ["低軌衛星"]
     assert extra_tags_for("2367") == ["低軌衛星"]
-    assert extra_tags_for("3588") == ["記憶體控制"]
+    assert extra_tags_for("3588") == []
+    assert extra_tags_for("2451") == ["記憶體模組"]
+    assert extra_tags_for("5269") == []
+    assert extra_tags_for("2233") == []
+    assert extra_tags_for("1802") == []
+    assert extra_tags_for("2308") == []
+    assert extra_tags_for("3673") == []
+    assert extra_tags_for("6805") == []
+    assert extra_tags_for("7751") == []
+    assert extra_tags_for("2397") == []
+    assert extra_tags_for("3324") == ["散熱"]
+    assert extra_tags_for("8046") == ["ABF"]
+    assert extra_tags_for("4958") == ["PCB"]
+    assert extra_tags_for("6830") == ["檢測驗證"]
+    assert extra_tags_for("6223") == ["高階測試"]
+    assert extra_tags_for("6239") == ["記憶體封測"]
+    assert extra_tags_for("6443") == ["低軌衛星", "太陽能"]
+    assert extra_tags_for("1519") == ["重電"]
+    assert extra_tags_for("2610") == ["航空"]
+    assert extra_tags_for("4772") == ["特用化學"]
     assert membership_face("2303", chain="電子上游-IC-代工") == "成熟製程"
     assert membership_face("3105", chain="電子上游-IC-代工") == "代工／光通訊／低軌衛星"
     assert membership_face("2049") == "機器人"
@@ -112,7 +133,15 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert membership_face("2412", chain="電子下游-電信") == "電子下游-電信"
     assert ("fine", "代工") in membership_keys("3105", "代工")
     assert ("fine", "代工") not in membership_keys("2303", "代工")
-    assert membership_keys("2408", "記憶體製造") & membership_keys("3006", "記憶體IC設計")
+    assert not (membership_keys("2408", "記憶體製造") & membership_keys("3006", "記憶體IC設計"))
+    assert membership_keys("2408", "記憶體製造") & membership_keys("2344", "記憶體製造")
+    assert ("fine", "封測") in membership_keys("3450", "封測")
+    assert ("x", "光通訊") in membership_keys("3450", "封測")
+    assert ("fine", "封測") not in membership_keys("6223", "封測")
+    assert ("x", "高階測試") in membership_keys("6223", "封測")
+    assert ("fine", "封測") not in membership_keys("6239", "封測")
+    assert ("x", "記憶體封測") in membership_keys("6239", "封測")
+    assert not (membership_keys("6223", "封測") & membership_keys("6239", "封測"))
     assert not (membership_keys("2408", "記憶體製造") & membership_keys("8299", "IC設計"))
     assert ("x", "光通訊") in membership_keys("3081", "半導體元件")
     assert ("fine", "半導體元件") not in membership_keys("3081", "半導體元件")
@@ -290,7 +319,8 @@ def test_retail_groups_do_not_mix_foundry_or_memory_buckets(tmp_path):
     assert "2330" not in umc
     nanya = format_industry_html("2408", db, allow_fetch=False)
     assert "記憶體製造" in nanya
-    assert "3006" in nanya and "晶豪科" in nanya
+    assert "2344" in nanya and "華邦電" in nanya
+    assert "3006" not in nanya and "晶豪科" not in nanya
     assert "8299" not in nanya
     phison = format_industry_html("8299", db, allow_fetch=False)
     assert "記憶體控制" in phison
@@ -353,3 +383,50 @@ def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
     assert "低軌衛星" in win_blob
     robot_face = listing_industry_face("2049", db)
     assert "機器人" in robot_face
+
+
+def test_phone_groups_keep_cmoney_buckets_and_drop_misclass(tmp_path):
+    db = str(tmp_path / "phone.db")
+    _seed(
+        db,
+        [
+            ("2383", "台光電", "電子零組件業", "TW", "電子上游-PCB-材料設備", 30.0, 900.0, 12.0),
+            ("2368", "金像電", "電子零組件業", "TW", "電子上游-PCB-製造", 20.0, 200.0, 4.0),
+            ("4958", "臻鼎-KY", "電子零組件業", "TW", "電子上游-PCB-製造", 10.0, 100.0, 2.0),
+            ("1802", "台玻", "玻璃陶瓷", "TW", "傳產-玻璃陶瓷", 2.0, 50.0, 1.0),
+            ("3037", "欣興", "電子零組件業", "TW", "電子上游-ABF", 15.0, 300.0, 5.0),
+            ("8046", "南電", "電子零組件業", "TW", "電子上游-ABF", 12.0, 250.0, 4.0),
+            ("6223", "旺矽", "半導體業", "TWO", "電子上游-IC-封測", 8.0, 400.0, 6.0),
+            ("6515", "穎崴", "半導體業", "TW", "電子上游-IC-封測", 9.0, 500.0, 7.0),
+            ("6239", "力成", "半導體業", "TW", "電子上游-IC-封測", 7.0, 80.0, 2.0),
+            ("6257", "矽格", "半導體業", "TW", "電子上游-IC-封測", 6.0, 70.0, 1.5),
+            ("6830", "汎銓", "其他電子業", "TW", "電子上游-IC-其他", 11.0, 90.0, 2.0),
+            ("3587", "閎康", "其他電子業", "TWO", "電子上游-IC-其他", 5.0, 40.0, 1.0),
+            ("2308", "台達電", "電子零組件業", "TW", "電子中游-電源供應器", 4.0, 1600.0, 20.0),
+            ("1519", "華城", "電機機械", "TW", "傳產-電機", 6.0, 200.0, 3.0),
+        ],
+    )
+    pcb = format_industry_html("2383", db, allow_fetch=False)
+    assert "2368" in pcb and "金像電" in pcb
+    assert "4958" in pcb
+    assert "1802" not in pcb and "台玻" not in pcb
+    assert "3037" not in pcb and "欣興" not in pcb
+    abf = format_industry_html("3037", db, allow_fetch=False)
+    assert "8046" in abf and "南電" in abf
+    assert "4958" not in abf
+    probe = format_industry_html("6223", db, allow_fetch=False)
+    assert "高階測試" in probe
+    assert "6515" in probe
+    assert "6239" not in probe and "力成" not in probe
+    assert "6257" not in probe
+    mempack = format_industry_html("6239", db, allow_fetch=False)
+    assert "記憶體封測" in mempack
+    assert "6223" not in mempack
+    lab = format_industry_html("6830", db, allow_fetch=False)
+    assert "檢測驗證" in lab
+    assert "3587" in lab
+    assert "6223" not in lab
+    power = format_industry_html("1519", db, allow_fetch=False)
+    assert "重電" in power
+    assert "2308" not in power and "台達電" not in power
+

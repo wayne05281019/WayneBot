@@ -622,6 +622,12 @@ def test_dongzhu_layers_and_parity_roles():
     assert not _is_flow_group(robot)
     mem = next(g for g in _GROUPS if g["key"] == "mem")
     assert _is_flow_group(mem)
+    solar = next(g for g in _GROUPS if g["key"] == "solar")
+    assert _is_flow_group(solar)
+    memmod = next(g for g in _GROUPS if g["key"] == "memmod")
+    assert _is_flow_group(memmod)
+    for key in ("hitest", "mempack", "lab", "air", "power", "chem", "fab"):
+        assert not _is_flow_group(next(g for g in _GROUPS if g["key"] == key)), key
     from biaoke_field_scan import _stock_line
 
     lead_line = _stock_line(
