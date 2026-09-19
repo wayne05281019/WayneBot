@@ -138,15 +138,15 @@ def test_twii_snapshot_hides_try_from_glance_and_scores(tmp_path):
     rows = _twii_rows()
     _seed_twii(db, rows)
     out = snapshot_and_score_twii(db, rows[-1][0])
-    assert out.get("twii") == 1
+    assert out.get("twii") == 0
     assert out.get("try") == 1
     g = glance_forecast(db, "TWII")
     assert "內部試畫" not in g
     assert "1-2-3-4-5" not in g
-    assert "演算建檔" in g
+    assert "演算建檔" not in g
     conn = sqlite3.connect(db)
     kinds = {r[0] for r in conn.execute("SELECT kind FROM biaoke_forecast").fetchall()}
-    assert "twii" in kinds
+    assert "twii" not in kinds
     assert KIND_TWII_TRY in kinds
     try_mark = conn.execute(
         "SELECT mark, label FROM biaoke_forecast WHERE kind=?",

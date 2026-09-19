@@ -682,7 +682,7 @@ def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
 
 
 def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """盤後齊了：大盤演算延伸＋內部試畫。不推話筒。現在不在話筒發明 5／9。"""
+    """盤後齊了：內部試畫＋覆盤包。不寫問位階那條演算、不推話筒、不改黃金買點。"""
     cap_ymd = _ymd(cap)
     if not db_path:
         return {"twii": 0, "try": 0, "scored": 0, "cap": cap_ymd}
@@ -731,12 +731,6 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
         from silent_progress import capture_review_context, simulate_next_legs
 
         legs = simulate_next_legs(tag, last_c, rays)
-        rec = record_twii(db_path, bars, rays=rays, last_tag=tag) or {}
-        if legs and rec:
-            rec["path_json"] = json.dumps(legs, ensure_ascii=False)
-            if not rec.get("rays_json") or rec.get("rays_json") == "[]":
-                rec["rays_json"] = json.dumps(legs, ensure_ascii=False)
-            _upsert(db_path, rec)
         extra = {
             "twii": {
                 k: last.get(k)
@@ -762,13 +756,12 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
             bars = load_index_bars(db_path, n=220)
             if cap_ymd:
                 bars = [b for b in bars if _ymd(b.get("date")) <= cap_ymd]
-            rec = record_twii(db_path, bars, last_tag="TWII") or {}
             try_rec = record_twii_try(db_path, bars) or {}
         except Exception:
             rec, try_rec = {}, {}
     return {
-        "twii": 1 if rec else 0,
+        "twii": 0,
         "try": 1 if try_rec else 0,
         "scored": scored,
-        "cap": cap_ymd or _ymd((rec or try_rec).get("as_of")),
+        "cap": cap_ymd or _ymd((try_rec or {}).get("as_of")),
     }

@@ -475,10 +475,6 @@ class MainRunner:
             ix = sync_index_daily(self.db_path)
             logger.info("加權指數寫入 index_daily：%s", ix)
             try:
-                self._refresh_twii_forecast_after_close(fuse_to)
-            except Exception as e_fc:
-                logger.error("大盤默默落檔失敗: %s", e_fc, exc_info=True)
-            try:
                 from taiwan_market import sync_index_breadth_daily
 
                 br = sync_index_breadth_daily(self.db_path)
@@ -507,6 +503,10 @@ class MainRunner:
                 logger.warning("大盤 regime AI 權重略過：%s", e2)
         except Exception as e:
             logger.warning("加權指數同步略過：%s", e)
+        try:
+            self._refresh_twii_forecast_after_close(fuse_to)
+        except Exception as e_fc:
+            logger.error("大盤默默落檔失敗: %s", e_fc, exc_info=True)
         try:
             from official_snapshots import sync_official_snapshots
 

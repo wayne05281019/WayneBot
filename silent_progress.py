@@ -176,13 +176,24 @@ def _fill_missing(old: Dict[str, Any], fresh: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _store_path(market_db: str) -> str:
+    """默默覆盤寫另一顆檔，不進行情庫、不進公開 zip、不跟查股海選共用表。"""
+    path = os.path.abspath(str(market_db or "data/wayne_market.db"))
+    root = os.path.dirname(path) or "."
+    name = os.path.basename(path)
+    if name == "wayne_evolve.db":
+        return path
+    return os.path.join(root, "wayne_evolve.db")
+
+
 def ensure_review_ctx(db_path: str) -> None:
-    if not db_path:
+    store = _store_path(db_path)
+    if not store:
         return
-    parent = os.path.dirname(os.path.abspath(db_path))
+    parent = os.path.dirname(os.path.abspath(store))
     if parent:
         os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    conn = sqlite3.connect(store, timeout=30.0)
     try:
         conn.executescript(_CTX_DDL)
         conn.commit()
@@ -192,9 +203,10 @@ def ensure_review_ctx(db_path: str) -> None:
 
 def load_review_context(db_path: str, as_of: str) -> Dict[str, Any]:
     day = _ymd(as_of)
-    if not db_path or not os.path.isfile(db_path) or not day:
+    store = _store_path(db_path)
+    if not store or not os.path.isfile(store) or not day:
         return {}
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         row = conn.execute(
             "SELECT payload FROM silent_review_ctx WHERE as_of=?", (day,)
@@ -387,7 +399,8 @@ def capture_review_context(
     merged["steps"] = list(REVIEW_STEPS)
     if old and core == old_core:
         return {**old, "holes": merged["holes"], "steps": merged["steps"]}
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    store = _store_path(db_path)
+    conn = sqlite3.connect(store, timeout=30.0)
     try:
         conn.execute(
             """
@@ -422,7 +435,7 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         from biaoke_forecast import snapshot_and_score_twii, verify_due
 
         try:
-            verify_due(db_path)
+            verify_due(db_path, "TWII")
         except Exception:
             pass
         stats["step"] = "record_forecast"
@@ -445,13 +458,14 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         pass
     stats["step"] = "score_dongzhu"
     try:
-        from dongzhu_tape import snapshot_and_score_dongzhu
+        from dongzhu_tape import score_dongzhu_picks, score_screen_picks
         from import_health import latest_complete_quote_date
 
         dz_day = str(day or cap or latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
         if dz_day:
-            dz = snapshot_and_score_dongzhu(db_path, dz_day) or {}
-            stats["dongzhu"] = int(dz.get("snap") or 0) + int(dz.get("scored") or 0)
+            stats["dongzhu"] = int(score_dongzhu_picks(db_path, dz_day) or 0) + int(
+                score_screen_picks(db_path, dz_day) or 0
+            )
     except Exception:
         pass
     stats["step"] = "never_speak"

@@ -64,6 +64,8 @@ def test_night_review_does_not_speak(tmp_path):
     src = Path("silent_progress.py").read_text(encoding="utf-8")
     assert "send_telegram" not in src
     assert "TELEGRAM_BOT_TOKEN" not in src
+    assert "snapshot_and_score_dongzhu" not in src
+    assert "write_snapshot" not in src
     absorb = Path("biaoke_absorb.py").read_text(encoding="utf-8")
     assert "night_review" in absorb
     i = absorb.find("night_review")
@@ -201,3 +203,49 @@ def test_capture_freezes_twii_bar_for_review(tmp_path):
     assert "legs" not in holes
     assert "te_night" in holes
     assert "us" in holes
+
+
+def test_silent_pack_stays_off_product_db(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "wayne_market.db")
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE index_daily (date TEXT)")
+    conn.commit()
+    conn.close()
+    capture_review_context(
+        db, "20260918", extra={"legs": [{"y": 43500}], "biaoke": {"tag": "逃命波C-2"}}
+    )
+    conn = sqlite3.connect(db)
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    assert "silent_review_ctx" not in names
+    pack = load_review_context(db, "20260918")
+    assert pack.get("biaoke", {}).get("tag") == "逃命波C-2"
+
+
+def test_silent_does_not_import_product_paths():
+    src = Path("silent_progress.py").read_text(encoding="utf-8")
+    for banned in (
+        "screening_engine",
+        "bot_servers",
+        "decision_card",
+        "industry_card",
+        "wayne_navigator",
+        "biaoke_field_scan",
+        "record_twii(",
+        "snapshot_and_score_dongzhu",
+    ):
+        assert banned not in src
+    for path in (
+        "screening_engine.py",
+        "bot_servers.py",
+        "decision_card_signals.py",
+        "industry_card.py",
+        "wayne_navigator.py",
+        "dongzhu_judge.py",
+        "biaoke_field_scan.py",
+    ):
+        text = Path(path).read_text(encoding="utf-8")
+        assert "silent_progress" not in text
+        assert "snapshot_and_score_twii" not in text
