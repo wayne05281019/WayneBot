@@ -61,6 +61,27 @@ def _seed(db: str) -> None:
     add("6515", (10180.0, 8260.0), 6120.0, 900.0)
     add("6223", (7700.0, 6060.0), 5500.0, 800.0)
     add("3443", (6610.0, 6610.0), 6500.0, 1200.0)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS quarterly_income ("
+        "stock_id TEXT NOT NULL, year INTEGER NOT NULL, season INTEGER NOT NULL, "
+        "stock_name TEXT DEFAULT '', market TEXT DEFAULT '', revenue REAL DEFAULT 0, "
+        "cogs REAL DEFAULT 0, gross_profit REAL DEFAULT 0, gross_margin_pct REAL DEFAULT 0, "
+        "operating_income REAL DEFAULT 0, net_income REAL DEFAULT 0, eps REAL DEFAULT 0, "
+        "published_roc TEXT DEFAULT '', updated_at TEXT DEFAULT '', "
+        "PRIMARY KEY (stock_id, year, season))"
+    )
+    for sid, eps in (
+        ("6257", 1.20),
+        ("3264", 0.80),
+        ("2449", 0.50),
+        ("6515", 4.00),
+        ("6223", 3.00),
+        ("3443", 2.00),
+    ):
+        conn.execute(
+            "INSERT INTO quarterly_income(stock_id,year,season,eps) VALUES (?,?,?,?)",
+            (sid, 2026, 2, eps),
+        )
     conn.commit()
     conn.close()
 
@@ -785,6 +806,30 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert "不准發明切入" in html or "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
     assert empty.get("field") == "高階測試／封測"
+
+
+def test_chain_laggards_skip_loss_makers(tmp_path):
+    """落後補漲要能做價／EPS：近季虧損不上捕捉。"""
+    db = str(tmp_path / "loss.db")
+    _seed(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE quarterly_income SET eps=? WHERE stock_id=?",
+        (-0.45, "2449"),
+    )
+    conn.commit()
+    conn.close()
+    from biaoke_field_scan import _GROUPS, _PAGE_RULES, _chain_laggards
+    from industry_brief import has_positive_eps
+
+    assert has_positive_eps(db, "3264") is True
+    assert has_positive_eps(db, "2449") is False
+    assert has_positive_eps(db, "2429") is False
+    g = next(x for x in _GROUPS if x["key"] == "test")
+    sids = [x.get("sid") for x in _chain_laggards(db, g, "20260917", n=3)]
+    assert "2449" not in sids
+    assert "3264" in sids
+    assert any("捕捉只收近季有賺" in x for x in _PAGE_RULES)
 
 
 def test_dongzhu_window_is_100_chip_days():

@@ -268,6 +268,7 @@ _PAGE_RULES = (
     "龍頭來不及買。比價下次級黃金買點。",
     "股民追漲不追跌。先機不追當天第一名。",
     "點火後抓同鏈比價落後。",
+    "捕捉只收近季有賺的。",
     "60低當嚴重低估觀察，不是買訊。",
     "連動名單只認對得上籌碼K的龍頭／落後。",
     "自選歸類只參考，不准整份覆蓋。",
@@ -331,7 +332,7 @@ ROTATION_NOTES = (
     "近100日多數流入第一名只當1天；追當天第一名容易買在人去樓空。",
     "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後細項次級有人後10日漲停或≥8%約八成；電子細項這型約八成三；含停車格約七成；追第一名約五成五）。這是細項、不是單檔保證。航運／塑化／建築當先機沒贏過電子細項。軍工沒有 CMoney 細項、不發明一族。",
     "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。",
-    "確定細項後看最落後次級兩到三檔（2檔約七成、3檔約八成有人漲）；1檔不到五成，不准當買訊。",
+    "確定細項後看最落後次級兩到三檔（2檔約七成、3檔約八成有人漲）；1檔不到五成，不准當買訊。虧損／沒季報不能比價／EPS，不上捕捉。",
     "新買只認高低卡黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
 )
 
@@ -1254,8 +1255,8 @@ def _chain_laggards(
     n: int = LAG_CAPTURE_N,
     group_last: int = 0,
 ) -> List[Dict[str, Any]]:
-    """細項內非龍頭、vs20≤−8% 且仍低於60高，距20高最深的 n 檔。
-    不鎖矽格／欣銓；機制內任何一次級過門檻都能進捕捉名單。不是買訊。
+    """細項內非龍頭、近季有賺、vs20≤−8% 且仍低於60高，距20高最深的 n 檔。
+    虧損／沒季報不能做價／EPS 比價，不上捕捉。不鎖矽格／欣銓。不是買訊。
     """
     if not group or not db_path or n <= 0:
         return []
@@ -1264,11 +1265,19 @@ def _chain_laggards(
     scored: List[Tuple[float, Dict[str, Any]]] = []
     seen = set()
     layers = list(g.get("layers") or [])
+    try:
+        from industry_brief import has_positive_eps as _eps_ok
+    except Exception:
+
+        def _eps_ok(_path, _sid):
+            return False
     for sid, name in group_members(db_path, g):
         sid = str(sid or "")
         if not sid or sid in seen or sid in leads:
             continue
         seen.add(sid)
+        if not _eps_ok(db_path, sid):
+            continue
         item = _decorate(db_path, sid, name, cap, None, group_last=group_last)
         if item.get("close") is None or item.get("vs20") is None:
             continue
