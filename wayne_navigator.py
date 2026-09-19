@@ -78,8 +78,8 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
-# 介紹圖與高低卡同寬。上半用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）；
-# 下半是 180 日高低導航（紫高／綠低箭頭）。可滑 180 根走圖下「導航圖」。
+# 介紹圖與高低卡同寬。用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）。
+# 180 日高低導航改獨立第四張，不畫在介紹圖下半。
 CARD_PNG_DPI = 360
 GLANCE_PNG_DPI = 360
 CARD_FIG_W = 7.1
@@ -3149,7 +3149,8 @@ def render_first_glance_png(
     db_path: str = None,
     ohlc=None,
 ) -> str:
-    """上半＝高低卡同一套堆疊（高度跟內容走，字不壓線）；下半＝180日高低導航箭頭。"""
+    """高低卡同一套堆疊（高度跟內容走，字不壓線）。180日導航改獨立第四張。"""
+    _ = ohlc
     if not card or card.get("error"):
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
@@ -3310,18 +3311,12 @@ def render_first_glance_png(
         + m_bot
     )
     info_inch = max(H * inch, 4.8)
-    nav_inch = 5.05
-    fig = plt.figure(figsize=(fig_w, info_inch + nav_inch), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
-    gs = fig.add_gridspec(2, 1, height_ratios=(info_inch, nav_inch), hspace=0.055)
-    ax = fig.add_subplot(gs[0])
+    fig = plt.figure(figsize=(fig_w, info_inch), dpi=GLANCE_PNG_DPI, facecolor=C["page"])
+    ax = fig.add_subplot(111)
     ax.set_xlim(0, 100)
     ax.set_ylim(0, H)
     ax.axis("off")
-    gs_n = gs[1].subgridspec(3, 1, height_ratios=(5.15, 0.95, 1.55), hspace=0.08)
-    ax_px = fig.add_subplot(gs_n[0])
-    ax_sig = fig.add_subplot(gs_n[1], sharex=ax_px)
-    ax_vol = fig.add_subplot(gs_n[2], sharex=ax_px)
-    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.058)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.988, bottom=0.024)
 
     def pane(x, y, w, h, ec=C["line"], fc=C["panel"], r=0.9):
         ax.add_patch(patches.FancyBboxPatch(
@@ -3562,29 +3557,6 @@ def render_first_glance_png(
                 facecolor=wash, edgecolor="none", zorder=3))
             ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
-
-    bars = ohlc
-    if bars is None or getattr(bars, "empty", True):
-        try:
-            bars = _load_ohlc(stock_id, db_path or get_db_path(), 180)
-        except Exception:
-            bars = None
-    work = _nav_work_or_none(bars, already_normalized=ohlc is not None) if bars is not None else None
-    if work is not None and len(work) < 5:
-        work = None
-    if work is not None:
-        _paint_nav_on_axes(
-            ax_px, ax_sig, ax_vol, work.tail(180).copy(),
-            str(card.get("stock_id") or stock_id),
-            str(card.get("stock_name") or ""),
-            compact=True,
-            card=card,
-        )
-    else:
-        for a in (ax_px, ax_sig, ax_vol):
-            a.axis("off")
-        ax_px.text(0.5, 0.5, "尚無日K，導航暫缺", transform=ax_px.transAxes,
-                   ha="center", va="center", fontproperties=_fp(12, "bold"), color=C["ink_soft"])
 
     fig.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
     plt.close(fig)

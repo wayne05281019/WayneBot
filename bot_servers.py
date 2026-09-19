@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋決策卡＋產業圖同一則相簿；點開是 Telegram 允許的最高像素。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋決策卡＋產業圖＋導航圖同一則四格相簿；點開是 Telegram 允許的最高像素。圖下「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -697,7 +697,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就一次出介紹圖／高低卡／產業圖／導航圖。要看日K按「K線」（奇摩股市同一檔）。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1464,7 +1464,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """興櫃兩排：K線／導航圖／產業，再觀察／記買入。上市櫃最多三顆一排。"""
+        """查股圖下鈕：K線／籌碼／營收／觀察／記買入。產業圖與導航圖已在四格相簿，不再放鈕。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -1478,26 +1478,21 @@ class WayneTelegramBot:
             k_url = _http_url(kline_page_url(c, dbp))
         except Exception:
             k_url = ""
-        nav = InlineKeyboardButton("導航圖", callback_data=f"g:{c}")
-        actions = [
-            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-            InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-        ]
+        kline = InlineKeyboardButton("K線", url=k_url) if k_url else None
+        news_btn = (
+            InlineKeyboardButton(news_label[:16], url=news_url)
+            if news_label and news_url
+            else None
+        )
+        watch = InlineKeyboardButton("觀察", callback_data=f"w:{c}")
+        buy = InlineKeyboardButton("記買入", callback_data=f"b:{c}")
+        actions = [watch, buy]
         if em:
-            top = []
-            if k_url:
-                top.append(InlineKeyboardButton("K線", url=k_url))
-            top.append(nav)
-            top.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
-            return InlineKeyboardMarkup(
-                [
-                    top[:3],
-                    [
-                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
-                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
-                    ],
-                ]
-            )
+            rows = []
+            if kline:
+                rows.append([kline])
+            rows.append(actions)
+            return InlineKeyboardMarkup(rows)
         etf = False
         try:
             from universe import is_etf_asset
@@ -1505,35 +1500,23 @@ class WayneTelegramBot:
             etf = is_etf_asset(stock_id=c)
         except Exception:
             etf = False
-        top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
-        if news_label and news_url:
-            top.append(InlineKeyboardButton(news_label[:16], url=news_url))
-        if k_url:
-            top.append(InlineKeyboardButton("K線", url=k_url))
-        listed = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
-        if not etf:
-            listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
-        if len(top) >= 3:
-            listed.append(nav)
-            return InlineKeyboardMarkup([top, listed, actions])
-        if len(top) >= 2:
-            top.append(nav)
-            return InlineKeyboardMarkup([top, listed, actions])
-        row1 = [
-            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
-        ]
-        if not etf:
-            row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
-        row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
-        if etf and len(row1) < 3:
-            row1.append(nav)
-            return InlineKeyboardMarkup([row1, [actions[0], actions[1]]])
-        return InlineKeyboardMarkup(
-            [
-                row1,
-                [nav, actions[0], actions[1]],
-            ]
-        )
+        chips = InlineKeyboardButton("籌碼", callback_data=f"h:{c}")
+        fund = None if etf else InlineKeyboardButton("營收", callback_data=f"f:{c}")
+        row1 = []
+        if news_btn:
+            row1.append(news_btn)
+        if kline:
+            row1.append(kline)
+        row1.append(chips)
+        if fund and len(row1) < 3:
+            row1.append(fund)
+            return InlineKeyboardMarkup([row1, actions])
+        rows = [row1]
+        if fund:
+            rows.append([fund, watch, buy])
+        else:
+            rows.append(actions)
+        return InlineKeyboardMarkup(rows)
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -2298,7 +2281,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　籌碼／營收／產業／K線／導航圖在圖下面，不在右側四格鍵盤\n"
+                "3　四張圖同一則；圖下剩籌碼／營收／K線，不在右側四格鍵盤\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -2520,7 +2503,7 @@ class WayneTelegramBot:
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
         labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
-        order = ("glance", "card", "industry")
+        order = ("glance", "card", "industry", "chart")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -5204,7 +5187,7 @@ class WayneTelegramBot:
         try:
             if not path or not self._chart_png_looks_ok(path):
                 await message.reply_html(
-                    "導航圖產出失敗，請稍後再按一次「導航圖」。",
+                    "導航圖產出失敗，請再打一次代號。",
                     reply_markup=hub,
                     disable_web_page_preview=True,
                 )
@@ -5212,7 +5195,7 @@ class WayneTelegramBot:
             cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
             for attempt in range(3):
                 try:
-                    with open(path, "rb") as f:
+                    with open(self._prepare_lookup_album_photo(path), "rb") as f:
                         await message.reply_photo(
                             photo=f, caption=cap, parse_mode="HTML", reply_markup=hub
                         )
@@ -5571,6 +5554,7 @@ class WayneTelegramBot:
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
             card_path_f = self._scratch_chart_path(self.charts_dir, code, "card", uid_key)
             industry_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid_key)
+            chart_path_f = self._scratch_chart_path(self.charts_dir, code, "nav", uid_key)
             ohlc = ohlc if ohlc is not None else card.get("_ohlc")
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
@@ -5585,22 +5569,36 @@ class WayneTelegramBot:
             card_cap = _decision_card_photo_caption(card, code)
             name_cap = html_escape(_stock_caption_name(card, code) or code)
             industry_cap = f"{name_cap}　產業"
+            chart_cap = f"{name_cap}　導航"
 
             def _render_industry():
                 return render_industry_png(
                     code, self.db_path, industry_path, allow_fetch=True, max_fetch=1
                 )
 
+            def _render_chart():
+                from wayne_navigator import generate_chart
+
+                return generate_chart(
+                    code,
+                    "",
+                    self.db_path,
+                    chart_path_f,
+                    ohlc,
+                    already_normalized=True,
+                )
+
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
                 ("industry", _render_industry, _LOOKUP_PNG_TIMEOUT, industry_cap, None),
+                ("chart", _render_chart, _LOOKUP_PNG_TIMEOUT, chart_cap, None),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 三張畫完一次送相簿；180 日導航改圖下「導航圖」。
+            # 四張畫完一次送相簿（2×2 縮圖，點開最高像素）。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -5736,7 +5734,7 @@ class WayneTelegramBot:
         self._remember_card(uid, code)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """三張一次送，Telegram 一則三個縮圖。圖說不講義。"""
+        """四張一次送，Telegram 一則四格縮圖。圖說不講義。"""
         from telegram import InputFile, InputMediaPhoto
 
         if len(items) < 2:

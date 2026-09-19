@@ -98,6 +98,8 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("_decision_card_photo_caption", src)
         self.assertIn("render_industry_png", src)
         self.assertIn('"industry"', src)
+        self.assertIn("generate_chart", src)
+        self.assertIn('"chart"', src)
 
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)
@@ -152,7 +154,7 @@ class LookupImageTests(unittest.TestCase):
         txt = WayneTelegramBot._chart_progress_text(3, current="glance")
         self.assertIn("介紹圖", txt)
         self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
-        self.assertNotIn("導航", txt)
+        self.assertIn("導航圖", txt)
         self.assertIn("產業圖", txt)
 
     def test_chart_progress_records_sent_stage(self):
@@ -160,8 +162,8 @@ class LookupImageTests(unittest.TestCase):
             8, sent=["glance"], current="card"
         )
         self.assertIn("現在：決策卡", txt)
-        self.assertNotIn("接著：導航圖", txt)
         self.assertIn("接著：產業圖", txt)
+        self.assertIn("導航圖", txt)
         self.assertIn("好了這則會消失", txt)
 
     def test_op_state_map_works_without_init(self):
