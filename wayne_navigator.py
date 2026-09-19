@@ -3566,6 +3566,8 @@ def render_first_glance_png(
         except Exception:
             bars = None
     work = _nav_work_or_none(bars, already_normalized=ohlc is not None) if bars is not None else None
+    if work is not None and len(work) < 5:
+        work = None
     if work is not None:
         _paint_nav_on_axes(
             ax_px, ax_sig, ax_vol, work.tail(180).copy(),

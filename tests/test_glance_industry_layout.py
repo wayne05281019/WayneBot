@@ -107,6 +107,82 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
         assert sum(im.size) < 10000
 
 
+def test_glance_nav_skips_single_bar_and_paints_180(tmp_path, monkeypatch):
+    """日 K 只有一根時不准把那根拉成整幅導航；夠 180 根才畫。"""
+    import sqlite3
+    from datetime import date, timedelta
+
+    import matplotlib
+    import matplotlib.axes
+
+    matplotlib.use("Agg")
+    from tests.test_sell_discipline import _mini_card_for_png
+    from wayne_db import ensure_core_schema
+    from wayne_navigator import render_first_glance_png
+
+    db = str(tmp_path / "nav.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+        "VALUES ('2303','聯電','TW','STOCK','半導體業',1,'t')"
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,"
+        "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("20260918", "2303", "聯電", "TW", 147, 148, 146, 147, 1000, 100, 0, 147),
+    )
+    conn.commit()
+    conn.close()
+    card = _mini_card_for_png(stock_id="2303", stock_name="聯電", listing="上市　成熟製程")
+    tape = {"last": {}, "move": {}, "volume": {}, "foreign": {}, "trust": {}, "dealer": {}, "three": {}, "inst_pct": 0}
+    seen = []
+    orig = matplotlib.axes.Axes.text
+    orig_title = matplotlib.axes.Axes.set_title
+
+    def wrap(self, *args, **kwargs):
+        text = str(args[2]) if len(args) >= 3 else str(kwargs.get("s") or "")
+        seen.append(text)
+        return orig(self, *args, **kwargs)
+
+    def wrap_title(self, s, *args, **kwargs):
+        seen.append(str(s))
+        return orig_title(self, s, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    monkeypatch.setattr(matplotlib.axes.Axes, "set_title", wrap_title)
+    one = tmp_path / "one.png"
+    render_first_glance_png("2303", card, tape, str(one), db_path=db)
+    assert any("尚無日K" in t for t in seen)
+
+    conn = sqlite3.connect(db)
+    d = date(2025, 1, 2)
+    px = 140.0
+    n = 0
+    while n < 180:
+        if d.weekday() < 5:
+            ymd = d.strftime("%Y%m%d")
+            o = px
+            hi = px + 1.2
+            lo = px - 1.1
+            cl = px + ((n % 9) - 4) * 0.35
+            conn.execute(
+                "INSERT OR REPLACE INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ymd, "2303", "聯電", "TW", o, hi, lo, cl, 1000 + n, 100, 0.1, cl),
+            )
+            px = cl
+            n += 1
+        d += timedelta(days=1)
+    conn.commit()
+    conn.close()
+    seen.clear()
+    many = tmp_path / "many.png"
+    render_first_glance_png("2303", card, tape, str(many), db_path=db)
+    assert not any("尚無日K" in t for t in seen)
+    assert any("180日高低導航" in t for t in seen)
+
+
 def test_industry_html_one_metric_per_line():
     import sqlite3
     import tempfile
