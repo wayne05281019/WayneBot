@@ -267,8 +267,10 @@ _PAGE_RULES = (
     "已持有寫留或不加碼。",
     "龍頭來不及買。比價下次級黃金買點。",
     "股民追漲不追跌。先機不追當天第一名。",
-    "點火後抓同鏈落後補漲／低估。",
+    "點火後抓同鏈比價落後。",
+    "60低當嚴重低估觀察，不是買訊。",
     "連動名單只認對得上籌碼K的龍頭／落後。",
+    "自選歸類只參考，不准整份覆蓋。",
     "聯想名單不當流入主判。",
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
@@ -2033,7 +2035,14 @@ def _decorate(
         "last_net": last_net,
         "group_share": (100.0 * last_net / group_last) if group_last > 0 else 0.0,
         "fine": _fine_chain(db_path, sid),
+        "face": "",
     }
+    try:
+        from industry_fine import membership_face
+
+        item["face"] = membership_face(sid, chain=str(item.get("fine") or ""))
+    except Exception:
+        item["face"] = str(item.get("fine") or "")
     if row:
         item["pick_close"] = row.get("pick_close") or row.get("close")
         item["entry_price"] = row.get("entry_price")
@@ -2457,10 +2466,13 @@ def _stock_line(
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
     role = str(item.get("role") or "").strip()
+    face = str(item.get("face") or "").strip()
     if role == "龍頭":
         rows = [f"{idx}. <b>龍頭</b> {sid} {name}"]
     else:
         rows = [f"{idx}. {sid} {name}"]
+    if face:
+        rows.append(_esc(face))
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
         rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
@@ -2564,6 +2576,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     empty = {
         "sid": sid,
         "name": "",
+        "face": "",
         "layers": [],
         "verdict": "還沒",
         "hold": False,
@@ -2582,6 +2595,12 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     name = _stock_name(db_path, sid, sid)
     empty["name"] = name
     parts = _chain_parts(db_path, sid)
+    try:
+        from industry_fine import membership_face
+
+        empty["face"] = membership_face(sid, chain=_chain_key(parts))
+    except Exception:
+        empty["face"] = ""
     cap = _chip_cap(db_path) or _cap(db_path)
     chip_cap = _chip_cap(db_path, cap) if cap else ""
     empty["cap"] = cap
@@ -2641,6 +2660,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     return {
         "sid": sid,
         "name": name,
+        "face": str(empty.get("face") or ""),
         "layers": list(parts),
         "layer_txt": _layer_line(parts),
         "field": g.get("field") or (parts[-1] if parts else ""),
@@ -2750,6 +2770,7 @@ def dongzhu_hold_page(
     head = [
         "<b>洞燭先機・能不能留</b>",
         f"{sid_s} {name}".strip(),
+        *([_esc(data.get("face"))] if str(data.get("face") or "").strip() else []),
         *act_rows,
     ]
     if cap:
@@ -2870,8 +2891,8 @@ def dongzhu_page(
     if watches:
         blocks.append(
             _blk(
-                "<b>還在零</b>",
-                _esc("只觀察，不是買"),
+                "<b>還在零・嚴重低估觀察</b>",
+                _esc("60低超跌，只觀察不是買"),
                 _stock_blocks(watches, "觀察", compact=True, held_sids=held_sids),
             )
         )
@@ -2884,7 +2905,7 @@ def dongzhu_page(
     if lags:
         blocks.append(
             _blk(
-                "<b>捕捉・落後補漲／低估</b>",
+                "<b>捕捉・同鏈比價落後</b>",
                 _esc("沒買點只觀察，不是單檔保證"),
                 _stock_blocks(lags, "捕捉", compact=True, held_sids=held_sids),
             )

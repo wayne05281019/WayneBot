@@ -682,6 +682,8 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     assert "_refresh_dongzhu_after_close" in runner
     assert "匯入可能延遲" in runner
     assert "recompute_sector_flow" in runner
+    assert runner.find("sync_all_fine_industry") < runner.find("recompute_sector_flow")
+    assert runner.find("sync_all_fine_industry") < runner.find("record_dongzhu_flow")
     assert "from biaoke_" not in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
 
@@ -775,7 +777,7 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert len(lags) <= 3
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "捕捉・落後補漲／低估" in html
+    assert "捕捉・同鏈比價落後" in html
     assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
     assert "不是單檔保證" in html
