@@ -82,6 +82,27 @@ def test_template_2633_8_11_profit_is_cal60_not_l20_floor():
 
 
 @pytest.mark.production_db
+def test_2438_fake_zero_bar_does_not_zero_profit_column():
+    """翔耀 20260706 close=0 假 K：9/4 收 21.9、預警 K20高，獲利不得整格 0.0%。"""
+    from config import get_db_path
+    from wayne_navigator import NavigatorEngine
+
+    card = NavigatorEngine(get_db_path()).get_decision_card(
+        "2438", lookback=20, merge_live=False, as_of="20260917"
+    )
+    tbl = card["table"]
+    row = tbl[tbl["date"].astype(str).str.replace("-", "", regex=False) == "20260904"]
+    assert not row.empty
+    profit = float(row.iloc[0]["profit_pct"])
+    assert profit > 20.0, f"9/4 獲利被假K洗成 {profit}"
+    assert abs(profit - 33.1) < 0.2
+    assert str(row.iloc[0]["預警"]) in ("K20高", "20高")
+    row7 = tbl[tbl["date"].astype(str).str.replace("-", "", regex=False) == "20260907"]
+    assert not row7.empty
+    assert abs(float(row7.iloc[0]["profit_pct"]) - 26.7) < 0.2
+
+
+@pytest.mark.production_db
 def test_2383_near_l20_profit_matches_cal60_carybot():
     """台光電獲利＝相對 60 曆日低 4100，貼 20 日低不歸零。
 

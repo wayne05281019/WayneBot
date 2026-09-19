@@ -146,10 +146,13 @@ def _cal60_lows_array(df, *, close_col: str = "close") -> np.ndarray:
     window_lo = d - np.timedelta64(60, "D")
     dj = d[None, :]
     mask = (dj >= window_lo[:, None]) & (dj <= d[:, None])
-    cj = np.where(np.isfinite(closes), closes, np.nan)[None, :]
+    # 無量 0 元假 K 不能當 60 曆日低。算進 min 會得到 0，後面再把壞地板改成
+    # 當天收盤，整段獲利變 0.0%（2438 翔耀 7/6 假K → 9/4 以前全綠零）。
+    valid = np.isfinite(closes) & (closes > 0)
+    cj = np.where(valid, closes, np.nan)[None, :]
     with np.errstate(all="ignore"):
         floors = np.nanmin(np.where(mask, cj, np.nan), axis=1)
-    row_close = np.where(np.isfinite(closes), closes, 0.0)
+    row_close = np.where(valid, closes, 0.0)
     bad = ~np.isfinite(floors) | (floors <= 0)
     floors = np.where(bad, row_close, floors)
     return floors.astype(float)

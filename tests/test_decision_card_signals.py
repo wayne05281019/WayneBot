@@ -47,6 +47,34 @@ def test_leave_zero_screen_caps_runners():
     assert "5" in reason
 
 
+def test_cal60_skips_zero_close_fake_bar():
+    """2438 型：窗內一根 close=0 假 K 不得把獲利洗成 0.0%。"""
+    import pandas as pd
+
+    from decision_card_signals import cal60_profit_bundle
+
+    df = pd.DataFrame(
+        {
+            "date": [
+                "20260703",
+                "20260706",
+                "20260730",
+                "20260825",
+                "20260904",
+                "20260907",
+            ],
+            "close": [21.9, 0.0, 16.45, 17.7, 21.9, 20.85],
+        }
+    )
+    floors, pct = cal60_profit_bundle(df)
+    i4 = int(df.index[df["date"] == "20260904"][0])
+    i7 = int(df.index[df["date"] == "20260907"][0])
+    assert abs(float(floors[i4]) - 16.45) < 1e-6
+    assert abs(float(pct.iloc[i4]) - round((21.9 - 16.45) / 16.45 * 100.0, 1)) < 0.05
+    assert abs(float(floors[i7]) - 16.45) < 1e-6
+    assert abs(float(pct.iloc[i7]) - round((20.85 - 16.45) / 16.45 * 100.0, 1)) < 0.05
+
+
 def test_2383_carybot_profit_at_5295_vs_4100():
     """2026-09-04 Cary：收 5295、60曆日低 4100 → 獲利 29.1%，不得因貼20低歸零。"""
     pct = (5295.0 - 4100.0) / 4100.0 * 100.0
