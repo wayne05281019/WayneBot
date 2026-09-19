@@ -275,6 +275,8 @@ _PAGE_RULES = (
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
     "盤中未收不當官方收。",
+    "盤後自己落檔。隔日官方收對質。",
+    "對質不改黃金買點。",
 )
 _PAGE_NOTES = (
     "不是整層電子。",
@@ -2821,6 +2823,14 @@ def dongzhu_page(
         if chip and chip != cap:
             date_rows.append(f"法人日 {chip}")
         blocks.append(_blk(*date_rows))
+    try:
+        from dongzhu_tape import scoreboard_lines
+
+        sb = scoreboard_lines(db_path, cap)
+    except Exception:
+        sb = []
+    if sb:
+        blocks.append(_blk("<b>昨日對質</b>", *(_esc(x) for x in sb)))
     board = str(data.get("inflow_board") or "").strip()
     if board:
         win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
