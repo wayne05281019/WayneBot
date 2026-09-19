@@ -651,6 +651,28 @@ def listing_industry_face(
     return face
 
 
+def split_listing_face(listing: str) -> tuple:
+    """圖卡標題把市場別（可含龍頭）與產業標拆開，長跨族標才縮得下、不壓日期。"""
+    s = str(listing or "").strip()
+    for head in ("上市", "上櫃", "興櫃"):
+        if s == head:
+            return head, ""
+        if s.startswith(head + "（"):
+            return s, ""
+        if s.startswith(head + "　") or s.startswith(head + " "):
+            rest = s[len(head) :].lstrip("　 ")
+            dragon = False
+            if rest.endswith("　龍頭"):
+                rest = rest[: -len("　龍頭")].rstrip("　")
+                dragon = True
+            elif rest == "龍頭":
+                rest = ""
+                dragon = True
+            lead = head + ("　龍頭" if dragon else "")
+            return lead, rest
+    return s, ""
+
+
 def is_tradable(stock_id: str, stock_name: str = "") -> bool:
     _atype, keep = classify_target(stock_id, stock_name)
     return keep

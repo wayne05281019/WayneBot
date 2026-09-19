@@ -119,6 +119,35 @@ def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
     assert not listing_face_ok("上市（半導體業）一線")
 
 
+def test_split_listing_face_keeps_market_and_tags_apart():
+    from universe import split_listing_face
+    from wayne_navigator import _title_listing_and_industry
+
+    assert split_listing_face("上櫃　代工／光通訊／低軌衛星") == (
+        "上櫃",
+        "代工／光通訊／低軌衛星",
+    )
+    assert split_listing_face("上市　成熟製程") == ("上市", "成熟製程")
+    assert split_listing_face("上市　機器人　龍頭") == ("上市　龍頭", "機器人")
+    assert split_listing_face("上市　電子上游-IC-代工　龍頭") == (
+        "上市　龍頭",
+        "電子上游-IC-代工",
+    )
+    assert split_listing_face("上市（半導體業）　龍頭") == (
+        "上市（半導體業）　龍頭",
+        "",
+    )
+    listing, industry, _kind = _title_listing_and_industry(
+        {
+            "listing": "上櫃　代工／光通訊／低軌衛星",
+            "fine_industry": "電子上游-IC-代工",
+            "industry": "半導體業",
+        }
+    )
+    assert listing == "上櫃"
+    assert industry == "代工／光通訊／低軌衛星"
+
+
 def test_listing_face_emerging_not_overridden_by_stale_otc_quote(tmp_path):
     """日 K 殘列上櫃、卡片走興櫃表 → 市場標仍是興櫃。"""
     from emerging_quotes import ensure_emerging_table
