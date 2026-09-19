@@ -232,7 +232,7 @@ _LISTING_WORDS = ("上市", "上櫃", "興櫃")
 
 # 1080 是排版底圖；×2 用原像素畫字，送相簿再拉到 Telegram 寬+高上限。
 INDUSTRY_BASE_W = 1080
-INDUSTRY_PX_SCALE = 2
+INDUSTRY_PX_SCALE = 3
 
 
 def name_listing_layout(font, names, *, avail: float = None) -> dict:
