@@ -652,7 +652,12 @@ def _field(ask: str, brief: Dict[str, Any], db_path: str = "") -> Dict[str, Any]
     sid = str(brief.get("sid") or "")
     named = bool(sid)
     try:
-        from biaoke_field_scan import scan_unnamed_field, want_field_scan
+        from biaoke_field_scan import (
+            format_share_cross,
+            scan_unnamed_field,
+            want_field_scan,
+            want_share_cross,
+        )
 
         if want_field_scan(ask):
             bits.append(scan_unnamed_field(db_path, ask=ask))
@@ -664,6 +669,10 @@ def _field(ask: str, brief: Dict[str, Any], db_path: str = "") -> Dict[str, Any]
                         bits.append(_clip(body, 220))
             except Exception:
                 pass
+        elif want_share_cross(ask):
+            cross = format_share_cross(db_path)
+            if cross:
+                bits.append(cross)
     except Exception:
         pass
     want_trend = any(

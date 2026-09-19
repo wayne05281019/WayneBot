@@ -221,3 +221,18 @@ def test_stock_answer_skips_old_quote_dump():
     page = inspect.getsource(WayneTelegramBot._send_biaoke_page)
     assert "_send_biaoke_origin_charts" not in page
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
+
+
+def test_answer_biaoke_which_field_carries_share_not_buy(tmp_path, monkeypatch):
+    from tests.test_biaoke_field_scan import _seed
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    html = answer_biaoke(db, "現在哪族先機")
+    assert "官方佔比" in html
+    assert "不進海選" in html
+    assert "不是買訊" in html
+    assert "可買" not in html
+    look = answer_biaoke(db, "台光電怎麼看")
+    assert "官方佔比（洞燭同一套）" not in look

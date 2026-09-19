@@ -4,7 +4,12 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from biaoke_chain import _field
-from biaoke_field_scan import dongzhu_page, scan_unnamed_field, want_field_scan
+from biaoke_field_scan import (
+    dongzhu_page,
+    scan_unnamed_field,
+    want_field_scan,
+    want_share_cross,
+)
 from biaoke_mind import match_methods
 from screen_sessions import save_screen_session
 
@@ -64,6 +69,29 @@ def test_want_scan_on_his_find_words():
     assert want_field_scan("根據我的指引去找新族群")
     assert want_field_scan("底部蠢蠢欲動是哪個")
     assert not want_field_scan("台光電怎麼看")
+
+
+def test_want_share_cross_on_which_field_not_stock_look():
+    assert want_share_cross("現在哪族先機")
+    assert want_share_cross("資金輪動現在看哪")
+    assert want_share_cross("根據我的指引去找")
+    assert not want_share_cross("台光電怎麼看")
+    assert not want_share_cross("洗盤跟出貨怎麼分")
+
+
+def test_share_cross_is_not_a_buy_list(tmp_path, monkeypatch):
+    from biaoke_field_scan import share_cross_lines
+
+    db = str(tmp_path / "f.db")
+    _seed(db)
+    monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    blob = "\n".join(share_cross_lines(db))
+    assert "官方佔比" in blob
+    assert "不是買訊" in blob
+    assert "不進海選" in blob
+    assert "黃金買點" in blob
+    assert "可買" not in blob
+    assert "leave_zero" not in blob
 
 
 def test_dongzhu_method_hits_find_words():
