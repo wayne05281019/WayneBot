@@ -2049,7 +2049,7 @@ def _decorate(
     return item
 
 
-def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, Any]:
+def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bool = True) -> Dict[str, Any]:
     """洞燭先機鈕：佔比如實主判，飆大找法只參考、不是唯一。切入＝這族 ∩ 黃金買點。"""
     if spoken is None:
         spoken = latest_spoken(db_path) if db_path else ""
@@ -2057,7 +2057,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
     pick = pick_unnamed_field(db_path, spoken=spoken)
     cap = str(pick.get("cap") or _cap(db_path) or "")
     chip_cap = _chip_cap(db_path, cap) if db_path else cap
-    if db_path and cap:
+    if db_path and cap and record_flow:
         try:
             record_dongzhu_flow(db_path, cap)
         except Exception:

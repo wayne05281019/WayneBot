@@ -4,7 +4,10 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from dongzhu_tape import (
+    KIND_SCREEN,
+    optimize_ready,
     score_dongzhu_picks,
+    score_screen_picks,
     scoreboard_lines,
     snapshot_and_score_dongzhu,
     snapshot_dongzhu_picks,
@@ -59,6 +62,11 @@ def test_pick_tables_are_public_not_private():
         "dongzhu_pick_score",
         "dongzhu_pick_rates",
         "dongzhu_pick_rule",
+        "screen_pick_run",
+        "screen_pick_tape",
+        "screen_pick_score",
+        "screen_pick_rates",
+        "screen_pick_rule",
     ):
         assert name not in PRIVATE_USER_TABLES
 
@@ -95,11 +103,13 @@ def test_snapshot_skips_zero_close(tmp_path):
     ).fetchone()
     run_enc = conn.execute("SELECT encoding FROM dongzhu_pick_run").fetchone()[0]
     conn.close()
-    assert enc_id == "leave_zero.cal60_leave0_max5"
+    assert enc_id == "dongzhu.leave_zero.cal60_leave0_max5"
     assert "222.5" in encoding and "vs20" in encoding
+    assert "先機∩高低卡" in encoding
     assert field == "高階測試／封測"
-    assert rules[0] == "leave_zero.cal60_leave0_max5"
+    assert rules[0] == "dongzhu.leave_zero.cal60_leave0_max5"
     assert "近60曆日收盤低" in rules[1]
+    assert "先機∩高低卡" in rules[1]
     assert "leave_zero" in run_enc
 
 
@@ -181,8 +191,9 @@ def test_snapshot_uses_empty_spoken(tmp_path, monkeypatch):
     db = str(tmp_path / "t.db")
     seen = {}
 
-    def fake_picks(_db, *, spoken="x"):
+    def fake_picks(_db, *, spoken="x", record_flow=True):
         seen["spoken"] = spoken
+        seen["record_flow"] = record_flow
         return {
             "cap": "20260917",
             "field": "封測",
@@ -193,9 +204,11 @@ def test_snapshot_uses_empty_spoken(tmp_path, monkeypatch):
     n = snapshot_dongzhu_picks(db, "20260917", spoken="")
     assert n == 1
     assert seen["spoken"] == ""
+    assert seen["record_flow"] is False
     out = snapshot_and_score_dongzhu(db, "20260918")
     assert out["scored"] == 0
     assert seen["spoken"] == ""
+    assert seen["record_flow"] is False
 
 
 def test_runner_skips_tape_until_quotes_complete(tmp_path, monkeypatch):
@@ -260,7 +273,7 @@ def test_dongzhu_page_hides_scoreboard(tmp_path, monkeypatch):
     assert "盤後自己落檔" not in html
 
 
-def test_screen_leave_zero_scores_like_dongzhu(tmp_path):
+def test_screen_leave_zero_scores_on_its_own_tables(tmp_path):
     from screen_sessions import save_screen_session
 
     db = str(tmp_path / "t.db")
@@ -285,38 +298,39 @@ def test_screen_leave_zero_scores_like_dongzhu(tmp_path):
         },
     )
     conn = sqlite3.connect(_store(db))
-    tags = {
-        r[0]
-        for r in conn.execute(
-            "SELECT tag FROM dongzhu_pick_tape WHERE kind='screen'"
-        ).fetchall()
-    }
+    tags = {r[0] for r in conn.execute("SELECT tag FROM screen_pick_tape").fetchall()}
+    mixed = conn.execute(
+        "SELECT COUNT(*) FROM dongzhu_pick_tape WHERE kind='screen'"
+    ).fetchone()[0]
     conn.close()
     assert tags == {"leave_zero", "golden_buy", "select_01"}
+    assert mixed == 0
     conn = sqlite3.connect(_store(db))
     enc_id, encoding = conn.execute(
-        "SELECT enc_id, encoding FROM dongzhu_pick_tape WHERE sid='6257' AND kind='screen'"
+        "SELECT enc_id, encoding FROM screen_pick_tape WHERE sid='6257'"
     ).fetchone()
     conn.close()
-    assert enc_id == "leave_zero.cal60_leave0_max5"
+    assert enc_id == "screen.leave_zero.cal60_leave0_max5"
     assert "1.2" in encoding
     assert "獲利格實綠" in encoding
+    assert "海選全市場" in encoding
     _put(db, "6257", "20260918", 101.0)
     _put(db, "2449", "20260918", 99.0)
     _put(db, "2330", "20260918", 100.2)
-    n = score_dongzhu_picks(db, "20260918")
+    assert score_dongzhu_picks(db, "20260918") == 0
+    n = score_screen_picks(db, "20260918")
     assert n == 3
     conn = sqlite3.connect(_store(db))
     got = {
         r[0]: r[1]
-        for r in conn.execute(
-            "SELECT sid, verdict FROM dongzhu_pick_score WHERE kind='screen'"
-        ).fetchall()
+        for r in conn.execute("SELECT sid, verdict FROM screen_pick_score").fetchall()
     }
+    dongzhu_n = conn.execute("SELECT COUNT(*) FROM dongzhu_pick_score").fetchone()[0]
     conn.close()
     assert got["6257"] == "對"
     assert got["2449"] == "偏"
     assert got["2330"] == "還沒走完"
+    assert dongzhu_n == 0
 
 
 def test_evolve_file_not_in_public_zip():
@@ -377,8 +391,9 @@ def test_scores_1_5_10_trade_days_without_button(tmp_path, monkeypatch):
     assert rows[10][0] == "20260911" and rows[10][2] == "對"
     seen = {}
 
-    def fake_picks(_db, *, spoken="x"):
+    def fake_picks(_db, *, spoken="x", record_flow=True):
         seen["spoken"] = spoken
+        seen["record_flow"] = record_flow
         return {
             "cap": "20260911",
             "buys": [{"sid": "6257", "name": "矽格", "close": 108.0}],
@@ -387,6 +402,7 @@ def test_scores_1_5_10_trade_days_without_button(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan.dongzhu_picks", fake_picks)
     out = snapshot_and_score_dongzhu(db, "20260911")
     assert seen["spoken"] == ""
+    assert seen["record_flow"] is False
     assert out["scored"] == 3
     assert out["snap"] == 1
 
@@ -398,3 +414,190 @@ def test_tape_does_not_push_telegram():
     i = src.find("snapshot_and_score_dongzhu")
     assert i > 0
     assert "send_telegram" not in src[i : i + 500]
+
+
+def test_write_snapshot_refuses_screen_kind(tmp_path):
+    from dongzhu_tape import ensure_dongzhu_tape_tables
+
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    ensure_dongzhu_tape_tables(db)
+    n = write_snapshot(
+        db,
+        {
+            "cap": "20260917",
+            "buys": [{"sid": "6257", "name": "矽格", "close": 100.0}],
+        },
+        kind=KIND_SCREEN,
+    )
+    assert n == 0
+    conn = sqlite3.connect(_store(db))
+    assert conn.execute("SELECT COUNT(*) FROM dongzhu_pick_tape").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM screen_pick_tape").fetchone()[0] == 0
+    conn.close()
+
+
+def test_features_keep_separate_encodings_and_rates(tmp_path):
+    from screen_sessions import save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    write_snapshot(
+        db,
+        {
+            "cap": "20260917",
+            "field": "封測",
+            "pre_sign": "pre",
+            "buys": [{"sid": "6257", "name": "矽格", "close": 100.0, "vs20": -8.0}],
+        },
+    )
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {
+            "leave_zero": [
+                {"stock_id": "6257", "stock_name": "矽格", "close": 100.0, "profit_pct": 2.0}
+            ]
+        },
+    )
+    conn = sqlite3.connect(_store(db))
+    d_enc = conn.execute(
+        "SELECT enc_id FROM dongzhu_pick_tape WHERE sid='6257'"
+    ).fetchone()[0]
+    s_enc = conn.execute(
+        "SELECT enc_id FROM screen_pick_tape WHERE sid='6257'"
+    ).fetchone()[0]
+    conn.close()
+    assert d_enc == "dongzhu.leave_zero.cal60_leave0_max5"
+    assert s_enc == "screen.leave_zero.cal60_leave0_max5"
+    _put(db, "6257", "20260918", 101.0)
+    assert score_dongzhu_picks(db, "20260918") == 1
+    assert score_screen_picks(db, "20260918") == 1
+    conn = sqlite3.connect(_store(db))
+    d_hit = conn.execute(
+        "SELECT hit FROM dongzhu_pick_rates WHERE tag='leave_zero' AND horizon=1"
+    ).fetchone()[0]
+    s_hit = conn.execute(
+        "SELECT hit FROM screen_pick_rates WHERE tag='leave_zero' AND horizon=1"
+    ).fetchone()[0]
+    conn.close()
+    assert d_hit == 1
+    assert s_hit == 1
+
+
+def test_old_encoding_survives_rule_change(tmp_path, monkeypatch):
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    write_snapshot(
+        db,
+        {"cap": "20260917", "buys": [{"sid": "6257", "name": "矽格", "close": 100.0}]},
+    )
+    conn = sqlite3.connect(_store(db))
+    old = conn.execute(
+        "SELECT enc_id, encoding FROM dongzhu_pick_tape WHERE as_of='20260917'"
+    ).fetchone()
+    conn.close()
+    monkeypatch.setattr(
+        "dongzhu_tape.frozen_dongzhu_catalog",
+        lambda: {
+            "leave_zero": {
+                "enc_id": "dongzhu.leave_zero.changed",
+                "scope": "先機∩高低卡",
+                "max_pct": 9.0,
+            }
+        },
+    )
+    write_snapshot(
+        db,
+        {"cap": "20260918", "buys": [{"sid": "2330", "name": "台積電", "close": 200.0}]},
+    )
+    conn = sqlite3.connect(_store(db))
+    still = conn.execute(
+        "SELECT enc_id, encoding FROM dongzhu_pick_tape WHERE as_of='20260917'"
+    ).fetchone()
+    new = conn.execute(
+        "SELECT enc_id FROM dongzhu_pick_tape WHERE as_of='20260918'"
+    ).fetchone()[0]
+    old_n = conn.execute(
+        "SELECT COUNT(*) FROM dongzhu_pick_tape WHERE as_of='20260917'"
+    ).fetchone()[0]
+    conn.close()
+    assert still == old
+    assert new == "dongzhu.leave_zero.changed"
+    assert old_n == 1
+
+
+def test_mixed_screen_copied_not_deleted(tmp_path):
+    from dongzhu_tape import ensure_dongzhu_tape_tables
+
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    ensure_dongzhu_tape_tables(db)
+    store = _store(db)
+    conn = sqlite3.connect(store)
+    conn.execute(
+        "INSERT INTO dongzhu_pick_tape(kind, as_of, sid, tag, name, close, enc_id) "
+        "VALUES ('screen','20260917','6257','leave_zero','矽格',100.0,'old.screen')"
+    )
+    conn.commit()
+    conn.close()
+    ensure_dongzhu_tape_tables(db)
+    conn = sqlite3.connect(store)
+    leftover = conn.execute(
+        "SELECT enc_id FROM dongzhu_pick_tape WHERE kind='screen' AND sid='6257'"
+    ).fetchone()[0]
+    copied = conn.execute(
+        "SELECT enc_id FROM screen_pick_tape WHERE sid='6257'"
+    ).fetchone()[0]
+    conn.close()
+    assert leftover == "old.screen"
+    assert copied == "old.screen"
+
+
+def test_optimize_ready_does_not_mutate_leave_zero():
+    assert optimize_ready(19) is False
+    assert optimize_ready(20) is True
+    from pathlib import Path
+
+    src = Path("dongzhu_tape.py").read_text(encoding="utf-8")
+    assert "LEAVE_ZERO_SCREEN_MAX_PCT" in src
+    assert "LEAVE_ZERO_SCREEN_MAX_PCT =" not in src.split("def optimize_ready", 1)[1]
+
+
+def test_screen_session_survives_tape_error(tmp_path, monkeypatch):
+    from screen_sessions import save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("tape down")
+
+    monkeypatch.setattr("dongzhu_tape.snapshot_screen_picks", boom)
+    n = save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {"leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "close": 100.0}]},
+    )
+    assert n == 1
+    conn = sqlite3.connect(db)
+    sid = conn.execute(
+        "SELECT stock_id FROM screen_sessions WHERE bucket='leave_zero'"
+    ).fetchone()[0]
+    conn.close()
+    assert sid == "6257"
+
+
+def test_dongzhu_picks_default_still_records_flow():
+    from pathlib import Path
+
+    src = Path("biaoke_field_scan.py").read_text(encoding="utf-8")
+    i = src.find("def dongzhu_picks")
+    chunk = src[i : i + 900]
+    assert "record_flow: bool = True" in chunk
+    assert "if db_path and cap and record_flow:" in chunk
+    assert "record_dongzhu_flow(db_path, cap)" in chunk
+    tape = Path("dongzhu_tape.py").read_text(encoding="utf-8")
+    assert "dongzhu_picks(db_path, spoken=spoken, record_flow=False)" in tape
