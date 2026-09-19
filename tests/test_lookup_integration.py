@@ -100,13 +100,13 @@ class LookupIntegrationTests(unittest.TestCase):
                     f"{kind} failed png check size={os.path.getsize(path)}",
                 )
 
-            # 相簿只送介紹圖＋決策卡；介紹圖下半已含 compact 導航，不再跟獨立導航圖比誰快。
+            # 相簿送介紹圖＋決策卡＋產業圖；介紹圖下半已含 compact 導航。
             self.assertLess(timings["glance"], 20.0)
             self.assertLess(timings["card"], 20.0)
             self.assertLess(timings["chart"], 20.0)
 
     def test_send_card_to_locked_posts_album_not_three_bubbles(self):
-        """兩張畫完走 reply_media_group：話筒上一則兩個縮圖。"""
+        """兩張畫完走 reply_media_group：話筒上一則三個縮圖。"""
         bot = _bare_bot(self.db, tempfile.mkdtemp())
         message = _message(999001, 111)
 

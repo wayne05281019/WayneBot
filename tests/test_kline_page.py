@@ -108,8 +108,8 @@ def test_kline_includes_emerging(tmp_path):
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
     assert "K線" in texts
-    assert "導航圖" in texts
-    assert "產業" in texts
+    assert "導航圖" not in texts
+    assert "產業" not in texts
     page = render_kline_html("3595", db_path=db)
     assert "興櫃" in page
     assert '"D":[' in page
@@ -129,9 +129,9 @@ def test_hub_kline_is_https_url_button(tmp_path):
     assert kline.callback_data is None
     assert kline.url == "https://tw.stock.yahoo.com/quote/2330.TW/technical-analysis"
     assert kline.url.startswith("https://")
-    nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
-    assert nav.url is None
-    assert nav.callback_data == "g:2330"
+    labels = [b.text for r in kb.inline_keyboard for b in r]
+    assert "導航圖" not in labels
+    assert "產業" not in labels
     assert all(len(r) <= 3 for r in kb.inline_keyboard)
 
 

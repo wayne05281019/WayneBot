@@ -51,7 +51,7 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
 
     from fundamentals import ensure_fundamentals_tables
     from industry_brief import format_industry_html
-    from industry_card import render_industry_png
+    from industry_card import INDUSTRY_BASE_W, INDUSTRY_PX_SCALE, render_industry_png
     from wayne_db import ensure_core_schema
 
     path = str(tmp_path / "ind.db")
@@ -115,18 +115,19 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
     out = render_industry_png("2330", path, png, allow_fetch=False)
     assert out and os.path.isfile(out)
     with Image.open(out) as im:
-        assert im.size[0] == 1080
-        assert im.size[1] >= 900
-        assert im.size[0] + im.size[1] < 10000
+        assert im.size[0] == INDUSTRY_BASE_W * INDUSTRY_PX_SCALE
+        assert im.size[1] >= 900 * INDUSTRY_PX_SCALE
+        k0 = 44 * INDUSTRY_PX_SCALE
+        k1 = 90 * INDUSTRY_PX_SCALE
         xs = []
-        for y in range(44, 90):
-            for x in range(30, im.width - 30, 2):
+        for y in range(k0, k1):
+            for x in range(30 * INDUSTRY_PX_SCALE, im.width - 30 * INDUSTRY_PX_SCALE, 2):
                 r, g, b = im.getpixel((x, y))[:3]
                 if b >= 180 and g >= 150 and r <= 210:
                     xs.append(x)
         assert xs, "產業說明 kicker missing"
         cx = sum(xs) / len(xs)
-        assert abs(cx - im.width / 2) < 48, cx
+        assert abs(cx - im.width / 2) < 48 * INDUSTRY_PX_SCALE, cx
     assert os.path.getsize(out) > 20_000
 
 

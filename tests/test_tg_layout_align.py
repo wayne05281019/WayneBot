@@ -210,9 +210,9 @@ class TgLayoutAlignTests(unittest.TestCase):
     def test_reflow_does_not_split_inside_bold_slash(self):
         from tg_layout import reflow_telegram_html
 
-        html = "3　兩張圖出來後，<b>籌碼／營收／產業／K線／導航圖</b>在圖下面，不在右側四格鍵盤"
+        html = "3　四張圖同一則；<b>圖下剩籌碼／營收／K線</b>，不在右側四格鍵盤"
         out = reflow_telegram_html(html, width=18)
-        self.assertIn("<b>籌碼／營收／產業／K線／導航圖</b>", out.replace("\n", ""))
+        self.assertIn("<b>圖下剩籌碼／營收／K線</b>", out.replace("\n", ""))
         self.assertEqual(out.count("<b>"), out.count("</b>"))
         self.assertGreaterEqual(out.count("\n"), 1)
 

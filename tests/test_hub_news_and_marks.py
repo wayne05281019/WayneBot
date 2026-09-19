@@ -36,23 +36,24 @@ def test_hub_news_url_button_on_top():
     }
     kb = bot._hub_keyboard("2330", news=news)
     rows = kb.inline_keyboard
-    assert rows[0][0].text == "產業"
-    assert isinstance(rows[0][1], InlineKeyboardButton)
-    assert rows[0][1].text == "報導12↑"
-    assert (rows[0][1].url or "").startswith("https://news.google.com")
+    assert rows[0][0].text == "報導12↑"
+    assert isinstance(rows[0][0], InlineKeyboardButton)
+    assert (rows[0][0].url or "").startswith("https://news.google.com")
     assert any(b.text == "K線" for b in rows[0])
     kline = next(b for b in rows[0] if b.text == "K線")
     assert (kline.url or "").endswith("/quote/2330.TW/technical-analysis")
     texts = [b.text for r in rows for b in r]
-    assert "籌碼" in texts and "產業" in texts
+    assert "籌碼" in texts
+    assert "產業" not in texts
+    assert "導航圖" not in texts
 
 
 def test_em_hub_has_industry_omits_chips():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert "產業" in texts
+    assert "產業" not in texts
     assert "籌碼" not in texts
     assert "營收" not in texts
-    assert "導航圖" in texts
+    assert "導航圖" not in texts
     assert [b.text for b in kb.inline_keyboard[1]] == ["觀察", "記買入"]

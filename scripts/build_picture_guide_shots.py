@@ -170,7 +170,7 @@ def build(src: str = SRC) -> list[str]:
         _ring(d, 360, 410, 180, 48, 8)  # 介紹／決策卡縮圖
         paths.append(
             _save(
-                _caption_bar(sl, "紅圈：介紹／決策卡縮圖　點開放大；一次兩張"),
+                _caption_bar(sl, "紅圈：介紹／決策／產業／導航縮圖　點開原圖；一次四張"),
                 "charts.png",
             )
         )
@@ -180,7 +180,7 @@ def build(src: str = SRC) -> list[str]:
         _ring(d, 325, 155, 160, 52, 8)  # 籌碼／營收／產業（兩排都圈）
         paths.append(
             _save(
-                _caption_bar(bot, "紅圈：圖下面這一排（籌碼／營收／產業），不在右側四格鍵盤"),
+                _caption_bar(bot, "紅圈：圖下面這一排（籌碼／營收／K線），不在右側四格鍵盤"),
                 "hub.png",
             )
         )

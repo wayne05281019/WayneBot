@@ -103,12 +103,12 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     assert disc_y > note_y
     with __import__("PIL").Image.open(out) as im:
         assert im.size[0] >= 2000
-        assert im.size[1] >= 2200
+        assert im.size[1] >= 1600
         assert sum(im.size) < 10000
 
 
-def test_glance_nav_skips_single_bar_and_paints_180(tmp_path, monkeypatch):
-    """日 K 只有一根時不准把那根拉成整幅導航；夠 180 根才畫。"""
+def test_glance_omits_nav_now_in_album(tmp_path, monkeypatch):
+    """介紹圖不再畫下半導航；完整 180 日高低改獨立第四張。"""
     import sqlite3
     from datetime import date, timedelta
 
@@ -153,7 +153,8 @@ def test_glance_nav_skips_single_bar_and_paints_180(tmp_path, monkeypatch):
     monkeypatch.setattr(matplotlib.axes.Axes, "set_title", wrap_title)
     one = tmp_path / "one.png"
     render_first_glance_png("2303", card, tape, str(one), db_path=db)
-    assert any("尚無日K" in t for t in seen)
+    assert not any("尚無日K" in t for t in seen)
+    assert not any("180日高低導航" in t for t in seen)
 
     conn = sqlite3.connect(db)
     d = date(2025, 1, 2)
@@ -180,7 +181,7 @@ def test_glance_nav_skips_single_bar_and_paints_180(tmp_path, monkeypatch):
     many = tmp_path / "many.png"
     render_first_glance_png("2303", card, tape, str(many), db_path=db)
     assert not any("尚無日K" in t for t in seen)
-    assert any("180日高低導航" in t for t in seen)
+    assert not any("180日高低導航" in t for t in seen)
 
 
 def test_industry_html_one_metric_per_line():
