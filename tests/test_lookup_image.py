@@ -93,7 +93,10 @@ class LookupImageTests(unittest.TestCase):
     def test_send_card_uses_lookup_album(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_send_lookup_album", src)
-        self.assertIn("ready_items", src)
+        self.assertIn("rest_items", src)
+        self.assertIn("industry_task", src)
+        self.assertIn("高低溫度卡", src)
+        self.assertLess(src.index("card_path"), src.index("rest_items"))
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
         self.assertIn("render_industry_png", src)
@@ -104,6 +107,8 @@ class LookupImageTests(unittest.TestCase):
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)
         self.assertIn("_prepare_lookup_album_photo", src)
+        self.assertIn("write_timeout", src)
+        self.assertIn("BytesIO", src)
 
     def test_prepare_lookup_album_photo_fills_telegram_max(self):
         from PIL import Image
@@ -150,21 +155,19 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
-    def test_chart_progress_mentions_glance_first(self):
-        txt = WayneTelegramBot._chart_progress_text(3, current="glance")
-        self.assertIn("介紹圖", txt)
-        self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
-        self.assertIn("導航圖", txt)
-        self.assertIn("產業圖", txt)
-
-    def test_chart_progress_records_sent_stage(self):
-        txt = WayneTelegramBot._chart_progress_text(
-            8, sent=["glance"], current="card"
+    def test_chart_progress_card_first_then_rest(self):
+        waiting = WayneTelegramBot._chart_progress_text(3, current="card")
+        self.assertIn("高低溫度卡", waiting)
+        self.assertIn("其餘三張", waiting)
+        after = WayneTelegramBot._chart_progress_text(
+            8, sent=["card"], current="glance"
         )
-        self.assertIn("現在：決策卡", txt)
-        self.assertIn("接著：產業圖", txt)
-        self.assertIn("導航圖", txt)
-        self.assertIn("好了這則會消失", txt)
+        self.assertIn("其餘三張", after)
+        self.assertIn("一次送出", after)
+
+    def test_chart_progress_table_stage(self):
+        txt = WayneTelegramBot._chart_progress_text(1, current="table")
+        self.assertIn("讀高低卡", txt)
 
     def test_op_state_map_works_without_init(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)
