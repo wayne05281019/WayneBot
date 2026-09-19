@@ -150,8 +150,10 @@ def _cal60_lows_array(df, *, close_col: str = "close") -> np.ndarray:
     # 當天收盤，整段獲利變 0.0%（2438 翔耀 7/6 假K → 9/4 以前全綠零）。
     valid = np.isfinite(closes) & (closes > 0)
     cj = np.where(valid, closes, np.nan)[None, :]
-    with np.errstate(all="ignore"):
-        floors = np.nanmin(np.where(mask, cj, np.nan), axis=1)
+    usable = mask & np.isfinite(cj)
+    filled = np.where(usable, cj, np.inf)
+    floors = filled.min(axis=1)
+    floors = np.where(np.isfinite(floors), floors, np.nan)
     row_close = np.where(valid, closes, 0.0)
     bad = ~np.isfinite(floors) | (floors <= 0)
     floors = np.where(bad, row_close, floors)
