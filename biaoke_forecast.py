@@ -254,7 +254,10 @@ def record_twii(
         "up_fut": None,
         "mark": "未確認延伸" + (f" {last_tag}" if last_tag else ""),
         "label": "轉折線往他自己點過的水平延伸，不數 5／9 段。不是保證。",
-        "path_json": "[]",
+        "path_json": json.dumps(
+            [{"y": r.get("y"), "lab": r.get("label") or r.get("kind") or ""} for r in ray_rows],
+            ensure_ascii=False,
+        ),
         "rays_json": json.dumps(ray_rows, ensure_ascii=False),
         "verdict": "",
         "created_at": _now(),
@@ -726,6 +729,14 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
         pts = wave_path_points(db_path, bars)
         rays = wave_extend_rays(pts, len(bars), tag)
         rec = record_twii(db_path, bars, rays=rays, last_tag=tag) or {}
+        if not rays:
+            from silent_progress import simulate_next_legs
+
+            legs = simulate_next_legs(tag, last_c, rays)
+            if legs and rec:
+                rec["path_json"] = json.dumps(legs, ensure_ascii=False)
+                rec["rays_json"] = json.dumps(legs, ensure_ascii=False)
+                _upsert(db_path, rec)
         try_rec = record_twii_try(db_path, bars, last_tag=tag, direc=direc) or {}
     except Exception:
         try:
