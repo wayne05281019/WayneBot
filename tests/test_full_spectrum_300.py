@@ -1079,10 +1079,11 @@ def test_l9_streak_days_does_not_reprint_number_list():
 def test_l9_etf_callback_code_not_truncated():
     bot = _bot()
     kb = bot._hub_keyboard("00706L")
-    data = [b.callback_data for row in kb.inline_keyboard for b in row]
+    data = [b.callback_data for row in kb.inline_keyboard for b in row if b.callback_data]
     assert any(d.endswith("00706L") or d.endswith("00706") for d in data)
     # 六碼含字母不可被切成 00706
     assert any("00706L" in d for d in data)
+    assert any(d.endswith("00706L") for d in data)
 
 
 def test_l9_holdings_alias_portfolio_not_ai():
