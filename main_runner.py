@@ -20,7 +20,7 @@
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
 #      接著重跑洞燭先機走查（佔比升還沒第一 vs 停車格 vs 黃金買點），寫進 dongzhu_precursor
-#      盤後齊了就落當日洞燭名單（不必等人按鈕），隔日官方收對質前一天；不改黃金買點
+#      盤後齊了就自己落當日洞燭名單（不必按鈕、不推話筒），之後連續對 1／5／10 個交易日；不改黃金買點
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）

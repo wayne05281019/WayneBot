@@ -108,7 +108,7 @@ def test_next_official_close_scores_hit_miss_pending(tmp_path):
     rates = {
         r[0]: (r[1], r[2], r[3])
         for r in conn.execute(
-            "SELECT tag, hit, miss, pending FROM dongzhu_pick_rates"
+            "SELECT tag, hit, miss, pending FROM dongzhu_pick_rates WHERE horizon=1"
         ).fetchall()
     }
     conn.close()
@@ -119,7 +119,7 @@ def test_next_official_close_scores_hit_miss_pending(tmp_path):
     assert rates["golden_buy"] == (0, 1, 0)
     assert rates["capture"] == (1, 0, 0)
     lines = scoreboard_lines(db, "20260918")
-    assert lines[0] == "官方收 09/18"
+    assert lines[0].startswith("1日對質")
     assert "6257 矽格 對" in lines
     assert "2449 京元電子 偏" in lines
     assert "3264 欣銓 對" in lines
@@ -236,7 +236,8 @@ def test_dongzhu_page_shows_yesterday_scoreboard(tmp_path, monkeypatch):
         lambda *_a, **_k: {"cap": "20260917", "field": "", "line": "還沒對上"},
     )
     html = dongzhu_page(db)
-    assert "昨日對質" in html
+    assert "對質自記" in html
+    assert "日對質" in html
     assert "9999" in html and "對質股" in html
     assert "不是改黃金買點" in html
     assert "盤後自己落檔" in html
@@ -248,3 +249,57 @@ def test_dongzhu_page_shows_yesterday_scoreboard(tmp_path, monkeypatch):
             continue
         plain = re.sub(r"<[^>]+>", "", s)
         assert len(plain) <= 18
+
+
+def test_scores_1_5_10_trade_days_without_button(tmp_path, monkeypatch):
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    start = datetime(2026, 9, 1)
+    closes = [100.0, 101.0, 101.2, 100.8, 100.4, 99.0, 99.2, 99.4, 99.6, 99.8, 108.0]
+    for i, px in enumerate(closes):
+        day = (start + timedelta(days=i)).strftime("%Y%m%d")
+        _put(db, "6257", day, px)
+    write_snapshot(
+        db,
+        {
+            "cap": "20260901",
+            "buys": [{"sid": "6257", "name": "矽格", "close": 100.0, "vs20": -8.0}],
+        },
+    )
+    n = score_dongzhu_picks(db, "20260911")
+    assert n == 3
+    conn = sqlite3.connect(db)
+    rows = {
+        int(r[0]): (r[1], r[2], r[3])
+        for r in conn.execute(
+            "SELECT horizon, check_as_of, fwd_pct, verdict "
+            "FROM dongzhu_pick_score WHERE sid='6257'"
+        ).fetchall()
+    }
+    conn.close()
+    assert rows[1][0] == "20260902" and rows[1][2] == "對"
+    assert rows[5][0] == "20260906" and rows[5][2] == "偏"
+    assert rows[10][0] == "20260911" and rows[10][2] == "對"
+    seen = {}
+
+    def fake_picks(_db, *, spoken="x"):
+        seen["spoken"] = spoken
+        return {
+            "cap": "20260911",
+            "buys": [{"sid": "6257", "name": "矽格", "close": 108.0}],
+        }
+
+    monkeypatch.setattr("biaoke_field_scan.dongzhu_picks", fake_picks)
+    out = snapshot_and_score_dongzhu(db, "20260911")
+    assert seen["spoken"] == ""
+    assert out["scored"] == 3
+    assert out["snap"] == 1
+
+
+def test_tape_does_not_push_telegram():
+    from pathlib import Path
+
+    src = Path("main_runner.py").read_text(encoding="utf-8")
+    i = src.find("snapshot_and_score_dongzhu")
+    assert i > 0
+    assert "send_telegram" not in src[i : i + 500]
