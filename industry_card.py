@@ -9,11 +9,12 @@ from industry_brief import (
     flow_story_lines,
     format_bijia_cells,
     format_month_zh,
+    industry_card_spec,
     industry_snapshot,
-    peer_mix_label,
     peer_note_line,
     _vs_peer,
 )
+from industry_fine import chip_color, peer_chip_tags
 
 try:
     from config import get_charts_dir, get_db_path
@@ -252,7 +253,8 @@ def render_industry_png(
     TEXT = (236, 242, 248)
     HEAD = (132, 208, 255)
     MUTED = (168, 186, 204)
-    tags0 = list(snap.get("fine_tags") or [])
+    spec = industry_card_spec(snap)
+    tags0 = list(spec["tags"])
     items: List[tuple] = [("banner", sid, name_disp, tags0)]
     if snap.get("is_etf"):
         from universe import etf_card_kind_label
@@ -265,22 +267,18 @@ def render_industry_png(
         ind = snap["industry"] or "未分類（母體還沒寫到產業）"
         items.append(("h", "這檔是什麼"))
         items.append(("kv", "官方產業別", ind))
-        chain = str(snap.get("fine_chain") or "").strip()
+        chain = spec["chain"]
         if chain:
             items.append(("kv", "產業鏈", chain))
-        extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
+        extras = spec["extras"]
         if extras:
             items.append(("kv", "跨族", "／".join(extras)))
-        peer_lab = peer_mix_label(snap) if snap["peer_n"] else "名單不足"
-        finest = str(snap.get("fine_finest") or "").strip()
-        if finest and snap.get("peer_source") == "chain" and snap["peer_n"]:
-            peer_lab = f"{peer_lab}（{finest}）"
-        items.append(("kv", "同業", peer_lab))
+        items.append(("kv", "同業", spec["peer_lab"]))
         if tags0:
-            items.append(("muted", "產業鏈來自籌碼K公開個股頁"))
-            items.append(("muted", "同業＝同一產業鏈才比；跨族檔另標他還有的鏈。"))
+            items.append(("muted", spec["copy_src"]))
+            items.append(("muted", spec["copy_rule"]))
         elif snap.get("peer_source") == "none":
-            items.append(("muted", "還沒產業鏈，不拿證交所粗分類硬比。"))
+            items.append(("muted", spec["copy_none"]))
 
         mlabel = str(snap.get("month_label") or "").strip()
         if not mlabel:
@@ -369,7 +367,7 @@ def render_industry_png(
                     items.append(("muted", "—"))
                     return
                 for r in rows:
-                    tags = [str(t) for t in list(r.get("fine_tags") or []) if str(t)]
+                    tags = peer_chip_tags(list(r.get("fine_tags") or []))
                     if not tags:
                         tag = str(r.get("fine_finest") or "").strip()
                         tags = [tag] if tag else []
@@ -383,7 +381,7 @@ def render_industry_png(
                             str(r["stock_id"]),
                             pname,
                             float(r.get("yoy") or 0),
-                            tags[-3:],
+                            tags,
                         )
                     )
 
@@ -392,8 +390,6 @@ def render_industry_png(
             note = peer_note_line(snap)
             if note:
                 items.append(("muted", note))
-
-    from industry_fine import chip_color
 
     def _chip_row_h(tags: List[str], start_x: float) -> int:
         if not tags:

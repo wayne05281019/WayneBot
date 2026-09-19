@@ -23,10 +23,29 @@ logger = logging.getLogger("WayneBot.IndustryFine")
 
 SOURCE = "cmoney_forum"
 CACHE_DAYS = 7
-# 教過、對得上檔號才加第二標。不准發明低軌衛星／軍工（沒名單）。
-# 對齊 biaoke_field_scan._GROUPS 龍頭／落後檔。跨族＝有一樣標籤才進同一張卡。
+# 教過、對得上檔號才加最細標。比對只認這層：封測對封測、光通訊對光通訊。
+# 籌碼K「通訊設備／半導體元件／網通」太粗，有跨族標就不要再用粗桶去混。
+# 代工／封測仍是準的細項，穩懋／環宇-KY 這種橫跨的要兩邊都進。
+# 低軌衛星＝穩懋 3105／昇達科 3491（不是建漢 3062）。不准發明軍工。
+# 光通訊（矽光子）＝使用者點名檔號；IET＝IET-KY 4971。
 _TAUGHT_CROSS = (
-    ("光通訊", ("3081", "2455", "3105")),
+    (
+        "光通訊",
+        (
+            "3081",  # 聯亞
+            "2455",  # 全新
+            "3105",  # 穩懋
+            "6442",  # 光聖
+            "3163",  # 波若威
+            "3234",  # 光環
+            "4979",  # 華星光
+            "4991",  # 環宇-KY
+            "4971",  # IET-KY
+            "3363",  # 上詮
+            "4977",  # 眾達-KY
+        ),
+    ),
+    ("低軌衛星", ("3105", "3491")),
     ("ASIC", ("3443", "3661", "3035")),
     ("散熱", ("3653", "3017")),
     ("封測", ("6515", "6223", "6257", "3264", "2449", "2441", "6830")),
@@ -35,6 +54,8 @@ _TAUGHT_CROSS = (
     ("ABF", ("3037",)),
     ("被動元件", ("2327",)),
 )
+# 有跨族標時，這些籌碼K細項仍算同一條真鏈，不要丟掉。
+_KEEP_FINEST = frozenset({"代工", "封測", "記憶體製造", "記憶體IC設計"})
 SEED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "cmoney_fine_industry.json")
 HEADERS = {
     "User-Agent": (
@@ -53,7 +74,7 @@ def split_chain(chain: str) -> List[str]:
 
 
 def extra_tags_for(stock_id: str) -> List[str]:
-    """這檔除了籌碼K麵包屑，還被點名在哪個族。沒檔號就不加。"""
+    """這檔除了籌碼K麵包屑，還被點名在哪個族。沒檔號就不加。穩懋可同時有光通訊＋低軌衛星。"""
     sid = str(stock_id or "").strip()
     if not sid:
         return []
@@ -65,16 +86,24 @@ def extra_tags_for(stock_id: str) -> List[str]:
 
 
 def membership_keys(stock_id: str, finest: str = "") -> set:
+    """最細標籤才拿來比。有光通訊／低軌衛星就用那層；代工／封測這種準細項可並存。"""
+    extras = extra_tags_for(stock_id)
     keys = set()
-    fine = str(finest or "").strip()
-    if fine:
-        keys.add(("fine", fine))
-    for tag in extra_tags_for(stock_id):
+    for tag in extras:
         keys.add(("x", tag))
+    fine = str(finest or "").strip()
+    if not fine:
+        return keys
+    if extras:
+        if fine in _KEEP_FINEST:
+            keys.add(("fine", fine))
+        return keys
+    keys.add(("fine", fine))
     return keys
 
 
 def display_tags(tags: List[str], stock_id: str) -> List[str]:
+    """族群 → 次族群 → 產業鏈 → 跨族，全部留下。圖卡／HTML 不准再截最後三個。"""
     out: List[str] = []
     for t in list(tags or []) + extra_tags_for(stock_id):
         s = str(t or "").strip()
@@ -83,8 +112,18 @@ def display_tags(tags: List[str], stock_id: str) -> List[str]:
     return out
 
 
+def peer_chip_tags(tags: Iterable[str]) -> List[str]:
+    """同業列小框：完整標籤。HTML 與 PNG 同一套。"""
+    out: List[str] = []
+    for t in list(tags or []):
+        s = str(t or "").strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
 def chain_peer_ids(db_path: str, stock_id: str) -> List[str]:
-    """有同一細項或同一跨族標籤才算同業。封測對封測；穩懋光通訊兩邊都進。"""
+    """有同一最細標籤才算同業。封測對封測；光通訊對光通訊；穩懋跨族兩邊都進。上市／上櫃／興櫃同一套。"""
     sid = str(stock_id or "").strip()
     if not sid or not db_path:
         return []
@@ -418,6 +457,7 @@ def chip_color(tag: str) -> tuple:
         "led": ((12, 78, 40), (86, 210, 128), (220, 255, 230)),
         "pack": ((86, 32, 60), (230, 138, 186), (255, 230, 244)),
         "pcb": ((72, 48, 16), (214, 164, 82), (255, 232, 200)),
+        "sat": ((18, 44, 92), (96, 168, 255), (214, 232, 255)),
         "other": ((48, 56, 70), (160, 176, 196), (230, 236, 242)),
     }
     if any(k in t for k in ("記憶體", "DRAM", "NAND", "Flash")):
@@ -428,6 +468,10 @@ def chip_color(tag: str) -> tuple:
         return palettes["led"]
     if "光通訊" in t or t in ("InP", "InP族"):
         return palettes["led"]
+    if "低軌" in t or "衛星" in t:
+        return palettes["sat"]
+    if "網通" in t:
+        return palettes["ic"]
     if "封測" in t or "封裝" in t or "測試" in t:
         return palettes["pack"]
     if "PCB" in t:

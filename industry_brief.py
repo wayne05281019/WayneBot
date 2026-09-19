@@ -75,6 +75,59 @@ def _universe_row(conn: sqlite3.Connection, sid: str) -> Dict[str, Any]:
     }
 
 
+COPY_CHAIN_SRC = "產業鏈來自籌碼K公開個股頁。"
+COPY_PEER_RULE = "同業＝同一產業鏈才比；跨族檔另標他還有的鏈。"
+COPY_PEER_NOTE = "小框是產業鏈／跨族標籤。有一樣才比，不是證交所半導體業全組。"
+COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
+
+
+def membership_label(snap: Dict[str, Any]) -> str:
+    """這檔拿來比對的最細標。圖卡／HTML 同業括號同一句，跟 membership_keys 對齊。"""
+    from industry_fine import _KEEP_FINEST
+
+    bits: List[str] = []
+    extras = [str(t).strip() for t in list(snap.get("extra_tags") or []) if str(t).strip()]
+    finest = str(snap.get("fine_finest") or "").strip()
+    if extras:
+        if finest in _KEEP_FINEST and finest not in bits:
+            bits.append(finest)
+        for t in extras:
+            if t not in bits:
+                bits.append(t)
+        return "／".join(bits)
+    if finest:
+        bits.append(finest)
+    return "／".join(bits)
+
+
+def peer_scope_label(snap: Dict[str, Any]) -> str:
+    lab = peer_mix_label(snap)
+    mem = membership_label(snap)
+    if mem and snap.get("peer_source") == "chain" and int(snap.get("peer_n") or 0):
+        return f"{lab}（{mem}）"
+    return lab
+
+
+def industry_card_spec(snap: Dict[str, Any]) -> Dict[str, Any]:
+    """圖卡 PNG 與 Telegram HTML 同一套規格。不准兩邊各寫一套。"""
+    from industry_fine import peer_chip_tags
+
+    extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t).strip()]
+    tags = peer_chip_tags(list(snap.get("fine_tags") or []))
+    return {
+        "tags": tags,
+        "extras": extras,
+        "chain": str(snap.get("fine_chain") or "").strip(),
+        "finest": str(snap.get("fine_finest") or "").strip(),
+        "membership": membership_label(snap),
+        "peer_lab": peer_scope_label(snap) if snap.get("peer_n") else "名單不足",
+        "copy_src": COPY_CHAIN_SRC,
+        "copy_rule": COPY_PEER_RULE,
+        "copy_note": COPY_PEER_NOTE,
+        "copy_none": COPY_NO_CHAIN,
+    }
+
+
 def _vs_peer(mine: Optional[float], med: Optional[float], unit: str = "pt") -> str:
     if mine is None or med is None:
         return "同業數字不夠，先看這檔自己的。"
@@ -88,7 +141,7 @@ def _vs_peer(mine: Optional[float], med: Optional[float], unit: str = "pt") -> s
         return f"比同業略強（高 {diff:.1f}{unit}）"
     if ad >= 15:
         return f"比同業明顯較弱（低 {ad:.1f}{unit}）"
-        return f"比同業略弱（低 {ad:.1f}{unit}）"
+    return f"比同業略弱（低 {ad:.1f}{unit}）"
 
 
 def flow_story_lines(snap: Dict[str, Any]) -> List[str]:
@@ -96,14 +149,14 @@ def flow_story_lines(snap: Dict[str, Any]) -> List[str]:
     three = int(snap.get("three_net") or 0)
     chain = bool(snap.get("peer_source") == "chain")
     unit = "本鏈" if chain else "本產業"
-    finest = str(snap.get("fine_finest") or "").strip()
-    if chain and finest:
+    mem = membership_label(snap)
+    if chain and mem:
         if three > 0:
-            flow_story = f"{unit}（{finest}）法人合計買超。"
+            flow_story = f"{unit}（{mem}）法人合計買超。"
         elif three < 0:
-            flow_story = f"{unit}（{finest}）法人合計賣超。"
+            flow_story = f"{unit}（{mem}）法人合計賣超。"
         else:
-            flow_story = f"{unit}（{finest}）法人加總接近 0，或法人還沒寫進這天。"
+            flow_story = f"{unit}（{mem}）法人加總接近 0，或法人還沒寫進這天。"
     elif three > 0:
         flow_story = f"{unit}法人合計買超。"
     elif three < 0:
@@ -124,7 +177,7 @@ def flow_story_lines(snap: Dict[str, Any]) -> List[str]:
 
 def peer_note_line(snap: Dict[str, Any]) -> str:
     if snap.get("peer_source") == "chain":
-        return "小框是產業鏈／跨族標籤。有一樣才比，不是證交所半導體業全組。"
+        return COPY_PEER_NOTE
     return ""
 
 
@@ -683,11 +736,11 @@ def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
                 [r for r in others if float(r["yoy_pct"] or 0) > my_y],
                 key=lambda r: float(r["yoy_pct"] or 0),
                 reverse=True,
-            )[:2]
+            )[:8]
             weaker_rows = sorted(
                 [r for r in others if float(r["yoy_pct"] or 0) < my_y],
                 key=lambda r: float(r["yoy_pct"] or 0),
-            )[:2]
+            )[:8]
             stronger = [
                 {
                     "stock_id": str(r["stock_id"]),
@@ -991,6 +1044,7 @@ def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
 
 
 def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: bool = False) -> str:
+    from industry_fine import peer_chip_tags
     from tg_layout import (
         html_escape,
         html_pct_tight,
@@ -1017,14 +1071,12 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     title_bit = face or listing
     title_name = f"{name}　{title_bit}" if title_bit else name
     blocks = [title_line("產業說明", sid, title_name)]
-    chain = str(snap.get("fine_chain") or "").strip()
-    if chain and chain not in (title_bit or ""):
-        chips = "　".join(f"[{html_escape(t)}]" for t in (snap.get("fine_tags") or []))
+    spec = industry_card_spec(snap)
+    chain = spec["chain"]
+    if spec["tags"] and chain not in (title_bit or ""):
+        chips = "　".join(f"[{html_escape(t)}]" for t in spec["tags"])
         if chips:
             blocks[0] = blocks[0] + "　" + chips
-    elif snap.get("fine_tags") and chain not in (title_bit or ""):
-        chips = "　".join(f"[{html_escape(t)}]" for t in snap["fine_tags"])
-        blocks[0] = blocks[0] + "　" + chips
 
     if snap["is_etf"]:
         from universe import etf_card_kind_label
@@ -1046,19 +1098,15 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     ]
     if chain:
         who_lines.append(kv_compact("產業鏈", chain))
-    extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
+    extras = spec["extras"]
     if extras:
         who_lines.append(kv_compact("跨族", "／".join(extras)))
-    finest = str(snap.get("fine_finest") or "").strip()
-    peer_lab = peer_mix_label(snap)
-    if finest and snap.get("peer_source") == "chain":
-        peer_lab = f"{peer_lab}（{finest}）"
-    who_lines.append(kv_compact("同業", peer_lab))
-    if snap.get("fine_tags"):
-        who_lines.append("產業鏈來自籌碼K公開個股頁。")
-        who_lines.append("同業＝同一產業鏈才比；跨族檔另標他還有的鏈。")
+    who_lines.append(kv_compact("同業", spec["peer_lab"]))
+    if spec["tags"]:
+        who_lines.append(spec["copy_src"])
+        who_lines.append(spec["copy_rule"])
     elif snap.get("peer_source") == "none":
-        who_lines.append("還沒產業鏈，不拿證交所粗分類硬比。")
+        who_lines.append(spec["copy_none"])
     else:
         who_lines.append("產業名來自證交所／櫃買公司基本資料產業別。")
     blocks.append(section(*who_lines))
@@ -1160,11 +1208,11 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
             return [f"{title}　—"]
         out = [title]
         for r in rows:
-            tags = [str(t) for t in list(r.get("fine_tags") or []) if str(t)]
+            tags = peer_chip_tags(list(r.get("fine_tags") or []))
             if not tags:
                 fine = str(r.get("fine_finest") or "").strip()
                 tags = [fine] if fine else []
-            tag_bit = "".join(f" [{html_escape(t)}]" for t in tags[-3:])
+            tag_bit = "".join(f" [{html_escape(t)}]" for t in tags)
             listing_bit = f"　{html_escape(r['listing'])}" if str(r.get("listing") or "").strip() else ""
             out.append(
                 f"<code>{html_escape(r['stock_id'])}</code> "

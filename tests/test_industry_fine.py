@@ -108,6 +108,8 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
 
     assert chip_color("代工") != chip_color("記憶體製造")
     assert chip_color("LED照明及光元件") != chip_color("代工")
+    assert chip_color("光通訊") != chip_color("低軌衛星")
+    assert chip_color("低軌衛星") != chip_color("代工")
 
     png = str(tmp_path / "2330_industry.png")
     out = render_industry_png("2330", path, png, allow_fetch=False)

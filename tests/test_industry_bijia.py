@@ -77,6 +77,7 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
         [
             ("3081", "聯亞", "通信網路業", "TWO", "電子上游-半導體元件", 2720.0, 7.75),
             ("2455", "全新", "通信網路業", "TW", "電子上游-半導體元件", 534.0, 2.20),
+            ("6442", "光聖", "通信網路業", "TW", "電子中游-通訊設備", 400.0, 2.00),
             ("5434", "崇越", "電子通路業", "TW", "電子上游-半導體元件", 530.0, 4.00),
             ("2330", "台積電", "半導體業", "TW", "電子上游-IC-代工", 2425.0, 10.0),
         ],
@@ -87,7 +88,9 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
     assert bj["chain"] == "電子上游-半導體元件"
     ids = [r["stock_id"] for r in bj["rows"]]
     assert "3081" in ids and "2455" in ids
+    assert "6442" in ids
     assert "2330" not in ids
+    assert "5434" not in ids
     assert bj["mine"]["mult"] > 300
     assert "相對貴" in bj["read"]
     assert bj.get("flag") == "dear"
@@ -111,20 +114,20 @@ def test_bijia_lag_flag_when_cheap(tmp_path):
     _seed(
         db,
         [
-            ("6208", "日揚", "半導體業", "TWO", "電子上游-半導體元件", 74.0, 3.12),
+            ("3163", "波若威", "通信網路業", "TWO", "電子中游-通訊設備", 74.0, 3.12),
             ("2455", "全新", "通信網路業", "TW", "電子上游-半導體元件", 534.0, 2.20),
             ("3081", "聯亞", "通信網路業", "TWO", "電子上游-半導體元件", 2720.0, 7.75),
         ],
     )
-    snap = attach_fine_industry(industry_snapshot(db, "6208"), db, allow_fetch=False)
+    snap = attach_fine_industry(industry_snapshot(db, "3163"), db, allow_fetch=False)
     bj = snap["bijia"]
     assert bj["ok"] is True
     assert bj["flag"] == "lag"
     assert "落後補漲" in bj["flag_text"]
     assert "相對便宜" in bj["read"]
-    html = format_industry_html("6208", db, allow_fetch=False)
+    html = format_industry_html("3163", db, allow_fetch=False)
     assert "落後補漲" in html
-    png = str(tmp_path / "6208_industry.png")
+    png = str(tmp_path / "3163_industry.png")
     out = render_industry_png("6208", db, png, allow_fetch=False)
     assert Path(out).is_file() and Path(out).stat().st_size > 1000
 
