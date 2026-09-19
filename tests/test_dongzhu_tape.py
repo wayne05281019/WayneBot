@@ -58,6 +58,7 @@ def test_pick_tables_are_public_not_private():
         "dongzhu_pick_tape",
         "dongzhu_pick_score",
         "dongzhu_pick_rates",
+        "dongzhu_pick_rule",
     ):
         assert name not in PRIVATE_USER_TABLES
 
@@ -85,6 +86,21 @@ def test_snapshot_skips_zero_close(tmp_path):
     rows = conn.execute("SELECT sid, why FROM dongzhu_pick_tape").fetchall()
     conn.close()
     assert rows == [("6257", "黃金買點獲利剛離零；高階測試／封測；佔比升還沒第一；距20高 -8.1%")]
+    conn = sqlite3.connect(_store(db))
+    enc_id, encoding, field = conn.execute(
+        "SELECT enc_id, encoding, field FROM dongzhu_pick_tape WHERE sid='6257'"
+    ).fetchone()
+    rules = conn.execute(
+        "SELECT enc_id, spec FROM dongzhu_pick_rule WHERE tag='leave_zero'"
+    ).fetchone()
+    run_enc = conn.execute("SELECT encoding FROM dongzhu_pick_run").fetchone()[0]
+    conn.close()
+    assert enc_id == "leave_zero.cal60_leave0_max5"
+    assert "222.5" in encoding and "vs20" in encoding
+    assert field == "高階測試／封測"
+    assert rules[0] == "leave_zero.cal60_leave0_max5"
+    assert "近60曆日收盤低" in rules[1]
+    assert "leave_zero" in run_enc
 
 
 def test_next_official_close_scores_hit_miss_pending(tmp_path):
@@ -254,7 +270,15 @@ def test_screen_leave_zero_scores_like_dongzhu(tmp_path):
         "20260917",
         "morning",
         {
-            "leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "close": 100.0}],
+            "leave_zero": [
+                {
+                    "stock_id": "6257",
+                    "stock_name": "矽格",
+                    "close": 100.0,
+                    "profit_pct": 1.2,
+                    "reason": "獲利格實綠（剛離零）",
+                }
+            ],
             "golden_buy": [{"stock_id": "2449", "stock_name": "京元電子", "close": 100.0}],
             "select_01": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
             "day_trade": [{"stock_id": "1101", "stock_name": "台泥", "close": 100.0}],
@@ -269,6 +293,14 @@ def test_screen_leave_zero_scores_like_dongzhu(tmp_path):
     }
     conn.close()
     assert tags == {"leave_zero", "golden_buy", "select_01"}
+    conn = sqlite3.connect(_store(db))
+    enc_id, encoding = conn.execute(
+        "SELECT enc_id, encoding FROM dongzhu_pick_tape WHERE sid='6257' AND kind='screen'"
+    ).fetchone()
+    conn.close()
+    assert enc_id == "leave_zero.cal60_leave0_max5"
+    assert "1.2" in encoding
+    assert "獲利格實綠" in encoding
     _put(db, "6257", "20260918", 101.0)
     _put(db, "2449", "20260918", 99.0)
     _put(db, "2330", "20260918", 100.2)

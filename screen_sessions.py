@@ -123,7 +123,7 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
     try:
         from dongzhu_tape import snapshot_screen_picks
 
-        snapshot_screen_picks(db_path, as_of)
+        snapshot_screen_picks(db_path, as_of, results=results)
     except Exception:
         pass
     return n

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -71,6 +72,7 @@ def ensure_dongzhu_tape_tables(db_path: str) -> None:
                 capture_n INTEGER DEFAULT 0,
                 ran_at TEXT DEFAULT '',
                 sha TEXT DEFAULT '',
+                encoding TEXT DEFAULT '',
                 PRIMARY KEY (kind, as_of)
             )
             """
@@ -90,7 +92,22 @@ def ensure_dongzhu_tape_tables(db_path: str) -> None:
                 vs60 REAL,
                 volr REAL,
                 why TEXT DEFAULT '',
+                enc_id TEXT DEFAULT '',
+                encoding TEXT DEFAULT '',
                 PRIMARY KEY (kind, as_of, sid, tag)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dongzhu_pick_rule (
+                kind TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                enc_id TEXT NOT NULL,
+                spec TEXT DEFAULT '',
+                sha TEXT DEFAULT '',
+                PRIMARY KEY (kind, as_of, tag)
             )
             """
         )
@@ -147,7 +164,10 @@ def _migrate_tape_schema(conn: sqlite3.Connection) -> None:
     for table, col, spec in (
         ("dongzhu_pick_run", "kind", "TEXT DEFAULT 'dongzhu'"),
         ("dongzhu_pick_run", "sha", "TEXT DEFAULT ''"),
+        ("dongzhu_pick_run", "encoding", "TEXT DEFAULT ''"),
         ("dongzhu_pick_tape", "kind", "TEXT DEFAULT 'dongzhu'"),
+        ("dongzhu_pick_tape", "enc_id", "TEXT DEFAULT ''"),
+        ("dongzhu_pick_tape", "encoding", "TEXT DEFAULT ''"),
         ("dongzhu_pick_score", "kind", "TEXT DEFAULT 'dongzhu'"),
         ("dongzhu_pick_score", "horizon", "INTEGER DEFAULT 1"),
         ("dongzhu_pick_rates", "kind", "TEXT DEFAULT 'dongzhu'"),
@@ -170,6 +190,117 @@ def _sha() -> str:
         if val:
             return val[:12]
     return ""
+
+
+def frozen_rule_catalog() -> Dict[str, Any]:
+    """當下程式裡的選股編碼。落檔時整份凍住，之後改碼也不回寫舊列。"""
+    max_pct = 5.0
+    pre_vs20 = -8.0
+    lag_n = 3
+    lookback = 100
+    win = 70.8
+    try:
+        from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
+
+        max_pct = float(LEAVE_ZERO_SCREEN_MAX_PCT)
+    except Exception:
+        pass
+    try:
+        from biaoke_field_scan import FLOW_LOOKBACK, LAG_CAPTURE_N, PRE_BUY_WIN_PCT, PRE_VS20
+
+        pre_vs20 = float(PRE_VS20)
+        lag_n = int(LAG_CAPTURE_N)
+        lookback = int(FLOW_LOOKBACK)
+        win = float(PRE_BUY_WIN_PCT)
+    except Exception:
+        pass
+    return {
+        "leave_zero": {
+            "enc_id": "leave_zero.cal60_leave0_max5",
+            "profit": "近60曆日收盤低",
+            "just_left": "昨<=0.05今>0.05",
+            "max_pct": max_pct,
+            "not": "紅箭頭不是買訊",
+        },
+        "golden_buy": {
+            "enc_id": "golden_buy.cal60_floor_observe",
+            "at_60_low": True,
+            "profit": [-1.5, 2.5],
+            "bias_monthly_lt": -10.0,
+            "not_buy": True,
+        },
+        "capture": {
+            "enc_id": "dongzhu.chain_lag_vs20",
+            "pre_vs20": pre_vs20,
+            "n": lag_n,
+            "not_buy": True,
+        },
+        "dongzhu_pre": {
+            "enc_id": "dongzhu.share_up_not_first",
+            "flow_lookback": lookback,
+            "win": win,
+        },
+        "revenue_cross": {"enc_id": "screen.revenue_cross", "not_buy": True},
+        "select_01": {"enc_id": "screen.select_01", "not_buy": True},
+        "half_year_high": {"enc_id": "screen.half_year_high", "not_buy": True},
+        "select_02": {"enc_id": "screen.select_02", "not_buy": True},
+        "select_03": {"enc_id": "screen.select_03", "not_buy": True},
+    }
+
+
+def _enc_id_for(tag: str) -> str:
+    spec = frozen_rule_catalog().get(str(tag) or "") or {}
+    return str(spec.get("enc_id") or tag or "")
+
+
+def _item_encoding(
+    tag: str, item: Dict[str, Any], field: str, pre_sign: str
+) -> Tuple[str, str]:
+    enc_id = _enc_id_for(tag)
+    payload: Dict[str, Any] = {
+        "enc_id": enc_id,
+        "sha": _sha(),
+        "close": _f(item.get("close") or item.get("pick_close")),
+        "profit": _f(item.get("profit") or item.get("profit_pct")),
+        "yest_profit": _f(item.get("yest_profit_pct") or item.get("yest_profit")),
+        "vs20": _f(item.get("vs20")),
+        "vs60": _f(item.get("vs60")),
+        "volr": _f(item.get("volr")),
+        "vol_rank_120": _f(item.get("vol_rank_120")),
+        "bias_monthly": _f(item.get("bias_monthly")),
+        "at_60_low": item.get("at_60_low"),
+        "field": field or str(item.get("field") or ""),
+        "pre_sign": pre_sign or str(item.get("pre_sign") or ""),
+        "role": str(item.get("role") or ""),
+        "hl": str(item.get("hl") or item.get("hl_tag") or ""),
+        "alert": str(item.get("alert") or item.get("today_alert") or ""),
+        "reason": str(item.get("reason") or item.get("lz_reason") or ""),
+        "leave_l20": item.get("leave_l20"),
+        "chip_cap": str(item.get("chip_cap") or ""),
+    }
+    slim = {k: v for k, v in payload.items() if v is not None and v != ""}
+    return enc_id, json.dumps(slim, ensure_ascii=False, separators=(",", ":"))
+
+
+def _write_rule_catalog(conn: sqlite3.Connection, kind: str, cap: str) -> None:
+    sha = _sha()
+    catalog = frozen_rule_catalog()
+    for tag, spec in catalog.items():
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO dongzhu_pick_rule(
+                kind, as_of, tag, enc_id, spec, sha
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            (
+                kind,
+                cap,
+                str(tag),
+                str(spec.get("enc_id") or tag),
+                json.dumps(spec, ensure_ascii=False, separators=(",", ":")),
+                sha,
+            ),
+        )
 
 
 def _why(tag: str, item: Dict[str, Any], field: str, pre_sign: str) -> str:
@@ -237,10 +368,23 @@ def write_snapshot(db_path: str, data: Dict[str, Any], *, kind: str = KIND_DONGZ
         conn.execute(
             """
             INSERT OR REPLACE INTO dongzhu_pick_run(
-                kind, as_of, field, pre_sign, share_last, buy_n, watch_n, capture_n, ran_at, sha
-            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                kind, as_of, field, pre_sign, share_last, buy_n, watch_n, capture_n,
+                ran_at, sha, encoding
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (kind, cap, field, pre_sign, share_last, buy_n, watch_n, cap_n, _now_iso(), _sha()),
+            (
+                kind,
+                cap,
+                field,
+                pre_sign,
+                share_last,
+                buy_n,
+                watch_n,
+                cap_n,
+                _now_iso(),
+                _sha(),
+                json.dumps(frozen_rule_catalog(), ensure_ascii=False, separators=(",", ":")),
+            ),
         )
         conn.execute(
             "DELETE FROM dongzhu_pick_tape WHERE kind=? AND as_of=?",
@@ -248,11 +392,13 @@ def write_snapshot(db_path: str, data: Dict[str, Any], *, kind: str = KIND_DONGZ
         )
         for tag, item in rows:
             sid = str(item.get("sid") or "").strip()
+            enc_id, enc_js = _item_encoding(tag, item, field, pre_sign)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO dongzhu_pick_tape(
-                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr, why
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr,
+                    why, enc_id, encoding
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     kind,
@@ -267,8 +413,11 @@ def write_snapshot(db_path: str, data: Dict[str, Any], *, kind: str = KIND_DONGZ
                     _f(item.get("vs60")),
                     _f(item.get("volr")),
                     _why(tag, item, field, pre_sign),
+                    enc_id,
+                    enc_js,
                 ),
             )
+        _write_rule_catalog(conn, kind, cap)
         conn.commit()
     finally:
         conn.close()
@@ -289,53 +438,67 @@ def snapshot_dongzhu_picks(db_path: str, cap: str = "", *, spoken: str = "") -> 
     return write_snapshot(db_path, data, kind=KIND_DONGZHU)
 
 
-def snapshot_screen_picks(db_path: str, cap: str = "") -> int:
+def snapshot_screen_picks(
+    db_path: str, cap: str = "", *, results: Optional[Dict[str, Any]] = None
+) -> int:
     """海選黃金買點與其他選股桶，不必等人看海選。當沖／隔日沖不收。"""
     cap = _ymd(cap)
     if not db_path or not cap:
         return 0
-    from screen_sessions import ensure_screen_session_table
-
-    ensure_screen_session_table(db_path)
-    conn = sqlite3.connect(db_path, timeout=8.0)
-    try:
-        sess_row = conn.execute(
-            """
-            SELECT session FROM screen_sessions
-            WHERE as_of=? AND session IN ('morning','evening')
-            ORDER BY CASE session WHEN 'morning' THEN 0 ELSE 1 END
-            LIMIT 1
-            """,
-            (cap,),
-        ).fetchone()
-        session = str(sess_row[0] if sess_row else "")
-        if not session:
-            return 0
-        marks = ",".join("?" * len(SCREEN_TAGS))
-        rows = conn.execute(
-            f"""
-            SELECT bucket, stock_id, stock_name, pick_close
-            FROM screen_sessions
-            WHERE as_of=? AND session=? AND bucket IN ({marks})
-            """,
-            (cap, session, *SCREEN_TAGS),
-        ).fetchall()
-    except sqlite3.Error:
-        return 0
-    finally:
-        conn.close()
     items: List[Tuple[str, Dict[str, Any]]] = []
-    for bucket, sid, name, close in rows:
-        px = _f(close)
-        s = str(sid or "").strip()
-        if not s or px is None or px <= 0:
-            continue
-        items.append(
-            (
-                str(bucket or ""),
-                {"sid": s, "name": str(name or s), "close": px},
+    if isinstance(results, dict):
+        for tag in SCREEN_TAGS:
+            for raw in list(results.get(tag) or []):
+                if not isinstance(raw, dict):
+                    continue
+                sid = str(raw.get("sid") or raw.get("stock_id") or raw.get("code") or "").strip()
+                px = _f(raw.get("close") or raw.get("pick_close"))
+                if not sid or px is None or px <= 0:
+                    continue
+                item = dict(raw)
+                item["sid"] = sid
+                item["name"] = str(raw.get("name") or raw.get("stock_name") or sid)
+                item["close"] = px
+                items.append((tag, item))
+    else:
+        from screen_sessions import ensure_screen_session_table
+
+        ensure_screen_session_table(db_path)
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            sess_row = conn.execute(
+                """
+                SELECT session FROM screen_sessions
+                WHERE as_of=? AND session IN ('morning','evening')
+                ORDER BY CASE session WHEN 'morning' THEN 0 ELSE 1 END
+                LIMIT 1
+                """,
+                (cap,),
+            ).fetchone()
+            session = str(sess_row[0] if sess_row else "")
+            if not session:
+                return 0
+            marks = ",".join("?" * len(SCREEN_TAGS))
+            rows = conn.execute(
+                f"""
+                SELECT bucket, stock_id, stock_name, pick_close
+                FROM screen_sessions
+                WHERE as_of=? AND session=? AND bucket IN ({marks})
+                """,
+                (cap, session, *SCREEN_TAGS),
+            ).fetchall()
+        except sqlite3.Error:
+            return 0
+        finally:
+            conn.close()
+        for bucket, sid, name, close in rows:
+            px = _f(close)
+            s = str(sid or "").strip()
+            if not s or px is None or px <= 0:
+                continue
+            items.append(
+                (str(bucket or ""), {"sid": s, "name": str(name or s), "close": px})
             )
-        )
     data: Dict[str, Any] = {
         "cap": cap,
         "field": "",
@@ -352,12 +515,13 @@ def snapshot_screen_picks(db_path: str, cap: str = "") -> int:
     conn = sqlite3.connect(store, timeout=8.0)
     try:
         for tag, item in extras:
-            why = "海選選股不是買訊"
+            enc_id, enc_js = _item_encoding(tag, item, "", "")
             conn.execute(
                 """
                 INSERT OR REPLACE INTO dongzhu_pick_tape(
-                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr, why
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr,
+                    why, enc_id, encoding
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     KIND_SCREEN,
@@ -368,10 +532,12 @@ def snapshot_screen_picks(db_path: str, cap: str = "") -> int:
                     "",
                     "",
                     item["close"],
-                    None,
-                    None,
-                    None,
-                    why,
+                    _f(item.get("vs20")),
+                    _f(item.get("vs60")),
+                    _f(item.get("volr")),
+                    "海選選股不是買訊",
+                    enc_id,
+                    enc_js,
                 ),
             )
             n += 1
