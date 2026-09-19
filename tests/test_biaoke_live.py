@@ -179,6 +179,21 @@ def test_live_notes_always_has_latest_posts_and_replies():
     assert "指紋全同" in audit
 
 
+def test_live_notes_share_cross_only_on_which_field(monkeypatch):
+    from biaoke_live import live_notes
+
+    monkeypatch.setattr(
+        "biaoke_field_scan.format_share_cross",
+        lambda *_a, **_k: "官方佔比（洞燭同一套）\n此刻最像 封測\n不是買訊、不進海選",
+    )
+    note = live_notes("", "現在哪族先機")
+    assert "官方佔比" in note
+    assert "封測" in note
+    assert "不改黃金買點" in note
+    other = live_notes("", "洗盤跟出貨怎麼分")
+    assert "此刻最像 封測" not in other
+
+
 def test_live_notes_reverse_think_emc_hold():
     from biaoke_desk import load_corpus_cache_clear
     from biaoke_live import live_notes, SYSTEM
