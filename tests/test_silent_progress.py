@@ -68,3 +68,73 @@ def test_night_review_does_not_speak(tmp_path):
     from dongzhu_tape import optimize_ready
 
     assert optimize_ready(19) is False
+
+
+def test_capture_review_context_freezes_then_fills_missing(tmp_path):
+    import sqlite3
+
+    from silent_progress import capture_review_context, load_review_context
+
+    db = str(tmp_path / "c.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE futures_daily (
+            date TEXT, symbol TEXT, session TEXT, open REAL, high REAL,
+            low REAL, close REAL, volume INTEGER, pct_change REAL,
+            source TEXT, updated_at TEXT,
+            PRIMARY KEY (date, symbol, session)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO futures_daily VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            "20260918",
+            "TE",
+            "night",
+            100.0,
+            102.0,
+            99.0,
+            101.0,
+            10,
+            1.0,
+            "taifex",
+            "2026-09-18T20:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    a = capture_review_context(db, "20260918")
+    assert a.get("te_night", {}).get("close") == 101.0
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE futures_daily SET close=999 WHERE symbol='TE'")
+    conn.commit()
+    conn.close()
+    b = capture_review_context(db, "20260918")
+    assert b.get("te_night", {}).get("close") == 101.0
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE us_overnight (
+            as_of TEXT PRIMARY KEY,
+            ixic_pct REAL, sox_pct REAL, dji_pct REAL, spx_pct REAL,
+            vix REAL, tsm_pct REAL, nvda_pct REAL, nq_f_pct REAL, regime TEXT
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO us_overnight VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ("20260918", -1.2, -0.8, None, None, None, -0.5, None, None, "caution"),
+    )
+    conn.commit()
+    conn.close()
+    c = capture_review_context(db, "20260918")
+    assert c.get("te_night", {}).get("close") == 101.0
+    assert c.get("us", {}).get("ixic_pct") == -1.2
+    assert c.get("us", {}).get("tsm_pct") == -0.5
+    assert load_review_context(db, "20260918") == c
+    src = Path("silent_progress.py").read_text(encoding="utf-8")
+    assert "requests" not in src
+    assert "refresh_us_overnight" not in src
+    assert "yahoo" not in src.lower()

@@ -5,7 +5,36 @@
 """
 from __future__ import annotations
 
+import json
+import os
+import sqlite3
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
+from zoneinfo import ZoneInfo
+
+TAIPEI = ZoneInfo("Asia/Taipei")
+
+_CTX_DDL = """
+CREATE TABLE IF NOT EXISTS silent_review_ctx (
+    as_of TEXT PRIMARY KEY,
+    payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+"""
+
+_US_KEEP = (
+    "as_of",
+    "ixic_pct",
+    "sox_pct",
+    "dji_pct",
+    "spx_pct",
+    "vix",
+    "tsm_pct",
+    "nvda_pct",
+    "nq_f_pct",
+    "regime",
+)
+_FUT_KEEP = ("date", "symbol", "session", "close", "high", "low", "pct_change")
 
 # 現在還沒到：神經元還沒對上飆大，話筒不准畫 5／9，也不准主動講大盤預測。
 WAVE_NEURONS_MATCH = False
@@ -80,6 +109,214 @@ def simulate_next_legs(
     return out
 
 
+def _ymd(raw: Any) -> str:
+    t = str(raw or "").replace("-", "")[:8]
+    return t if len(t) == 8 and t.isdigit() else ""
+
+
+def _now() -> str:
+    return datetime.now(TAIPEI).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _num(val: Any) -> Optional[float]:
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return None
+    return n
+
+
+def _pick(row: Optional[Dict[str, Any]], keys: Sequence[str]) -> Dict[str, Any]:
+    if not row:
+        return {}
+    out: Dict[str, Any] = {}
+    for k in keys:
+        v = row.get(k)
+        if v is None or v == "":
+            continue
+        if k.endswith("_pct") or k in {"close", "high", "low", "vix"}:
+            n = _num(v)
+            if n is None:
+                continue
+            out[k] = n
+        else:
+            out[k] = v
+    return out
+
+
+def _fill_missing(old: Dict[str, Any], fresh: Dict[str, Any]) -> Dict[str, Any]:
+    """已凍的數不准改；缺的欄才補，事後覆盤才不用重抓。"""
+    out = dict(old or {})
+    for k, v in (fresh or {}).items():
+        if v in (None, "", {}, []):
+            continue
+        if isinstance(v, dict):
+            out[k] = _fill_missing(out.get(k) if isinstance(out.get(k), dict) else {}, v)
+        elif k not in out or out.get(k) in (None, "", {}, []):
+            out[k] = v
+    return out
+
+
+def ensure_review_ctx(db_path: str) -> None:
+    if not db_path:
+        return
+    parent = os.path.dirname(os.path.abspath(db_path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.executescript(_CTX_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_review_context(db_path: str, as_of: str) -> Dict[str, Any]:
+    day = _ymd(as_of)
+    if not db_path or not os.path.isfile(db_path) or not day:
+        return {}
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        row = conn.execute(
+            "SELECT payload FROM silent_review_ctx WHERE as_of=?", (day,)
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        conn.close()
+    if not row:
+        return {}
+    try:
+        data = json.loads(row[0] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
+    """只讀已經進庫的官方欄。沒有就不寫。不准現場打外網。"""
+    day = _ymd(as_of)
+    out: Dict[str, Any] = {"as_of": day} if day else {}
+    if not db_path or not os.path.isfile(db_path):
+        return out
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        for sym, key in (("TX", "tx_night"), ("TE", "te_night")):
+            try:
+                if day:
+                    row = conn.execute(
+                        """
+                        SELECT date, symbol, session, close, high, low, pct_change
+                        FROM futures_daily
+                        WHERE symbol=? AND session='night' AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                        ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
+                        """,
+                        (sym, day),
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        """
+                        SELECT date, symbol, session, close, high, low, pct_change
+                        FROM futures_daily
+                        WHERE symbol=? AND session='night'
+                        ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
+                        """,
+                        (sym,),
+                    ).fetchone()
+            except sqlite3.Error:
+                row = None
+            if not row:
+                continue
+            bit = _pick(
+                {
+                    "date": row[0],
+                    "symbol": row[1],
+                    "session": row[2],
+                    "close": row[3],
+                    "high": row[4],
+                    "low": row[5],
+                    "pct_change": row[6],
+                },
+                _FUT_KEEP,
+            )
+            if bit.get("close"):
+                out[key] = bit
+        us_row = None
+        try:
+            if day:
+                us_row = conn.execute(
+                    "SELECT as_of, ixic_pct, sox_pct, dji_pct, spx_pct, vix, "
+                    "tsm_pct, nvda_pct, nq_f_pct, regime FROM us_overnight WHERE as_of=?",
+                    (day,),
+                ).fetchone()
+            if not us_row:
+                us_row = conn.execute(
+                    "SELECT as_of, ixic_pct, sox_pct, dji_pct, spx_pct, vix, "
+                    "tsm_pct, nvda_pct, nq_f_pct, regime FROM us_overnight "
+                    "ORDER BY as_of DESC LIMIT 1"
+                ).fetchone()
+        except sqlite3.Error:
+            us_row = None
+        if us_row:
+            us_b = _pick(
+                {
+                    "as_of": us_row[0],
+                    "ixic_pct": us_row[1],
+                    "sox_pct": us_row[2],
+                    "dji_pct": us_row[3],
+                    "spx_pct": us_row[4],
+                    "vix": us_row[5],
+                    "tsm_pct": us_row[6],
+                    "nvda_pct": us_row[7],
+                    "nq_f_pct": us_row[8],
+                    "regime": us_row[9],
+                },
+                _US_KEEP,
+            )
+            if us_b:
+                out["us"] = us_b
+    finally:
+        conn.close()
+    return out
+
+
+def capture_review_context(db_path: str, as_of: str = "") -> Dict[str, Any]:
+    """當下把夜盤／美指／美股已進庫的數凍住，給之後覆盤。已有的數不重抓不覆蓋。"""
+    if not db_path:
+        return {}
+    day = _ymd(as_of)
+    if not day:
+        try:
+            from import_health import latest_complete_quote_date
+
+            day = _ymd(latest_complete_quote_date(db_path))
+        except Exception:
+            day = ""
+    if not day:
+        return {}
+    ensure_review_ctx(db_path)
+    old = load_review_context(db_path, day)
+    fresh = _read_live_context(db_path, day)
+    merged = _fill_missing(old, fresh)
+    if not merged.get("as_of"):
+        merged["as_of"] = day
+    if merged == old:
+        return old
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO silent_review_ctx(as_of, payload, created_at)
+            VALUES (?,?,?)
+            """,
+            (day, json.dumps(merged, ensure_ascii=False, separators=(",", ":")), _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return merged
+
+
 def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
     """台北 02:00：覆盤官方柱、對他的畫、再試畫明天。不推話筒、不主動講。"""
     stats: Dict[str, Any] = {
@@ -87,10 +324,16 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
         "try": 0,
         "scored": 0,
         "dongzhu": 0,
+        "ctx": 0,
         "speak": False,
     }
     if not db_path:
         return stats
+    try:
+        ctx = capture_review_context(db_path, cap)
+        stats["ctx"] = 1 if ctx else 0
+    except Exception:
+        pass
     try:
         from biaoke_forecast import snapshot_and_score_twii, verify_due
 
@@ -123,12 +366,7 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
 
 
 def _forecast_n(db_path: str, kind: str) -> int:
-    if not db_path:
-        return 0
-    import os
-    import sqlite3
-
-    if not os.path.isfile(db_path):
+    if not db_path or not os.path.isfile(db_path):
         return 0
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:

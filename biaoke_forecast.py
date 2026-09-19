@@ -737,6 +737,12 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
                 rec["path_json"] = json.dumps(legs, ensure_ascii=False)
                 rec["rays_json"] = json.dumps(legs, ensure_ascii=False)
                 _upsert(db_path, rec)
+        try:
+            from silent_progress import capture_review_context
+
+            capture_review_context(db_path, as_of=_ymd(last.get("date")) or cap_ymd)
+        except Exception:
+            pass
         try_rec = record_twii_try(db_path, bars, last_tag=tag, direc=direc) or {}
     except Exception:
         try:
