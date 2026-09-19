@@ -91,6 +91,43 @@ def _vs_peer(mine: Optional[float], med: Optional[float], unit: str = "pt") -> s
         return f"比同業略弱（低 {ad:.1f}{unit}）"
 
 
+def flow_story_lines(snap: Dict[str, Any]) -> List[str]:
+    """法人簡述：本鏈合計。HTML／圖卡同一套。"""
+    three = int(snap.get("three_net") or 0)
+    chain = bool(snap.get("peer_source") == "chain")
+    unit = "本鏈" if chain else "本產業"
+    finest = str(snap.get("fine_finest") or "").strip()
+    if chain and finest:
+        if three > 0:
+            flow_story = f"{unit}（{finest}）法人合計買超。"
+        elif three < 0:
+            flow_story = f"{unit}（{finest}）法人合計賣超。"
+        else:
+            flow_story = f"{unit}（{finest}）法人加總接近 0，或法人還沒寫進這天。"
+    elif three > 0:
+        flow_story = f"{unit}法人合計買超。"
+    elif three < 0:
+        flow_story = f"{unit}法人合計賣超。"
+    else:
+        flow_story = "還沒產業鏈，不拿證交所粗分類硬加總。" if snap.get("peer_source") == "none" else f"{unit}法人加總接近 0，或法人還沒寫進這天。"
+    streak_line = ""
+    if int(snap.get("buy_streak") or 0) >= 2:
+        streak_line = f"{unit}法人連 {int(snap['buy_streak'])} 個交易日合計買超"
+    elif int(snap.get("sell_streak") or 0) >= 2:
+        streak_line = f"{unit}法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
+    elif int(snap.get("buy_streak") or 0) == 1:
+        streak_line = f"{unit}今天合計買超（尚未連兩日）"
+    elif int(snap.get("sell_streak") or 0) == 1:
+        streak_line = f"{unit}今天合計賣超（尚未連兩日）"
+    return [flow_story, streak_line]
+
+
+def peer_note_line(snap: Dict[str, Any]) -> str:
+    if snap.get("peer_source") == "chain":
+        return "小框是產業鏈／跨族標籤。有一樣才比，不是證交所半導體業全組。"
+    return ""
+
+
 def format_month_zh(yyyymm: str) -> str:
     s = str(yyyymm or "").replace("-", "")[:6]
     if len(s) != 6 or not s.isdigit():
@@ -428,26 +465,289 @@ def industry_snapshot(db_path: str, stock_id: str) -> Dict[str, Any]:
     }
 
 
+def _peer_listing_counts(conn: sqlite3.Connection, ids: List[str], listing_zh) -> Dict[str, int]:
+    if not ids:
+        return {"n": 0, "tw": 0, "two": 0, "em": 0}
+    q = ",".join("?" * len(ids))
+    n = tw = two = em = 0
+    for mkt, c in conn.execute(
+        f"""
+        SELECT market_type, COUNT(*) FROM stock_universe
+        WHERE stock_id IN ({q}) AND is_active=1 AND length(stock_id)=4
+          AND COALESCE(asset_type,'') NOT LIKE 'ETF%'
+        GROUP BY 1
+        """,
+        ids,
+    ):
+        c = int(c or 0)
+        n += c
+        zh = listing_zh(mkt)
+        if zh == "上市":
+            tw += c
+        elif zh == "上櫃":
+            two += c
+        elif zh == "興櫃":
+            em += c
+    return {"n": n, "tw": tw, "two": two, "em": em}
+
+
+def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
+    """同業改成產業鏈細項／跨族標籤。不准再用證交所半導體業 241 家硬灌。"""
+    from industry_fine import chain_peer_ids, extra_tags_for, display_tags
+
+    sid = str(snap.get("stock_id") or "")
+    peer_ids = chain_peer_ids(db_path, sid) if not snap.get("is_etf") else []
+    snap["peer_ids"] = list(peer_ids)
+    snap["extra_tags"] = extra_tags_for(sid)
+    snap["fine_tags"] = display_tags(list(snap.get("fine_tags") or []), sid)
+    snap["peer_source"] = "chain" if peer_ids else "none"
+    if snap.get("is_etf"):
+        return
+    try:
+        from wayne_db import listing_zh
+    except Exception:
+
+        def listing_zh(market):  # type: ignore
+            return ""
+
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        counts = _peer_listing_counts(conn, peer_ids, listing_zh)
+        snap["peer_n"] = int(counts["n"] or 0)
+        snap["peer_tw"] = int(counts["tw"] or 0)
+        snap["peer_two"] = int(counts["two"] or 0)
+        snap["peer_em"] = int(counts["em"] or 0)
+        if not peer_ids:
+            snap["yoy_med"] = None
+            snap["yoy_n"] = 0
+            snap["gm_med"] = None
+            snap["vol_med"] = None
+            snap["vol_n"] = 0
+            snap["vol_em_n"] = 0
+            snap["three_net"] = 0
+            snap["buy_streak"] = 0
+            snap["sell_streak"] = 0
+            snap["inflow"] = []
+            snap["outflow"] = []
+            snap["stronger"] = []
+            snap["weaker"] = []
+            return
+
+        q = ",".join("?" * len(peer_ids))
+        peer_month = str(snap.get("month") or snap.get("latest_month") or "")
+        peers_m: List[sqlite3.Row] = []
+        if peer_month:
+            peers_m = list(
+                conn.execute(
+                    f"""
+                    SELECT m.stock_id, m.stock_name, m.yoy_pct, m.mom_pct, u.market_type
+                    FROM monthly_revenue m
+                    JOIN stock_universe u ON u.stock_id = m.stock_id
+                    WHERE m.yyyymm=? AND m.stock_id IN ({q}) AND length(m.stock_id)=4
+                      AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                    """,
+                    (peer_month, *peer_ids),
+                )
+            )
+        snap["yoy_med"] = _median([float(r["yoy_pct"] or 0) for r in peers_m])
+        snap["yoy_n"] = len(peers_m)
+
+        peer_year = int(snap.get("year") or 0)
+        peer_season = int(snap.get("season") or 0)
+        peers_q: List[sqlite3.Row] = []
+        if peer_year:
+            peers_q = list(
+                conn.execute(
+                    f"""
+                    SELECT q.stock_id, q.gross_margin_pct
+                    FROM quarterly_income q
+                    JOIN stock_universe u ON u.stock_id = q.stock_id
+                    WHERE q.year=? AND q.season=? AND q.stock_id IN ({q})
+                      AND length(q.stock_id)=4
+                      AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                    """,
+                    (peer_year, peer_season, *peer_ids),
+                )
+            )
+        snap["gm_med"] = _median(
+            [float(r["gross_margin_pct"] or 0) for r in peers_q if r["gross_margin_pct"] is not None]
+        )
+
+        as_of = str(snap.get("as_of") or "")
+        vols: List[float] = []
+        vol_em_n = 0
+        if as_of:
+            seen: Dict[str, tuple] = {}
+            for r in conn.execute(
+                f"""
+                SELECT q.stock_id, q.volume, u.market_type
+                FROM daily_quotes q
+                JOIN stock_universe u ON u.stock_id = q.stock_id
+                WHERE q.date=? AND q.stock_id IN ({q}) AND length(q.stock_id)=4
+                  AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                """,
+                (as_of, *peer_ids),
+            ):
+                seen[str(r[0])] = (float(r[1] or 0), str(r[2] or ""))
+            try:
+                for r in conn.execute(
+                    f"""
+                    SELECT e.stock_id, e.volume, u.market_type
+                    FROM emerging_quotes e
+                    JOIN stock_universe u ON u.stock_id = e.stock_id
+                    WHERE e.date=? AND e.stock_id IN ({q}) AND length(e.stock_id)=4
+                      AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                    """,
+                    (as_of, *peer_ids),
+                ):
+                    seen.setdefault(str(r[0]), (float(r[1] or 0), str(r[2] or "")))
+            except sqlite3.Error:
+                pass
+            vols = [v for v, _m in seen.values()]
+            vol_em_n = sum(1 for _v, m in seen.values() if listing_zh(m) == "興櫃")
+            mine_vol = seen.get(sid)
+            if mine_vol:
+                snap["vol"] = mine_vol[0]
+        snap["vol_med"] = _median(vols) if vols else None
+        snap["vol_n"] = len(vols)
+        snap["vol_em_n"] = vol_em_n
+
+        three = 0
+        buy_streak = sell_streak = 0
+        if as_of:
+            three = int(
+                conn.execute(
+                    f"""
+                    SELECT COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
+                    FROM daily_quotes q
+                    WHERE q.date=? AND q.stock_id IN ({q}) AND length(q.stock_id)=4
+                    """,
+                    (as_of, *peer_ids),
+                ).fetchone()[0]
+                or 0
+            )
+            dates = [
+                str(r[0])
+                for r in conn.execute(
+                    """
+                    SELECT DISTINCT date AS d FROM daily_quotes
+                    WHERE date <= ? ORDER BY d DESC LIMIT 8
+                    """,
+                    (as_of,),
+                )
+            ]
+            net_by: Dict[str, int] = {}
+            if dates:
+                dq = ",".join("?" * len(dates))
+                for d, net in conn.execute(
+                    f"""
+                    SELECT q.date AS d,
+                           COALESCE(SUM(q.foreign_net+q.trust_net+q.dealer_net),0)
+                    FROM daily_quotes q
+                    WHERE q.date IN ({dq}) AND q.stock_id IN ({q})
+                      AND length(q.stock_id)=4
+                    GROUP BY 1
+                    """,
+                    (*dates, *peer_ids),
+                ):
+                    net_by[str(d)] = int(net or 0)
+            for i, d in enumerate(dates):
+                net = int(net_by.get(d) or 0)
+                if i == 0:
+                    if net > 0:
+                        buy_streak = 1
+                    elif net < 0:
+                        sell_streak = 1
+                    else:
+                        break
+                    continue
+                if buy_streak and net > 0:
+                    buy_streak += 1
+                elif sell_streak and net < 0:
+                    sell_streak += 1
+                else:
+                    break
+        snap["three_net"] = three
+        snap["buy_streak"] = buy_streak
+        snap["sell_streak"] = sell_streak
+        snap["inflow"] = []
+        snap["outflow"] = []
+
+        stronger: List[Dict[str, Any]] = []
+        weaker: List[Dict[str, Any]] = []
+        if snap.get("my_yoy") is not None and peers_m:
+            my_y = float(snap["my_yoy"] or 0)
+            others = [r for r in peers_m if str(r["stock_id"]) != sid]
+            stronger_rows = sorted(
+                [r for r in others if float(r["yoy_pct"] or 0) > my_y],
+                key=lambda r: float(r["yoy_pct"] or 0),
+                reverse=True,
+            )[:2]
+            weaker_rows = sorted(
+                [r for r in others if float(r["yoy_pct"] or 0) < my_y],
+                key=lambda r: float(r["yoy_pct"] or 0),
+            )[:2]
+            stronger = [
+                {
+                    "stock_id": str(r["stock_id"]),
+                    "stock_name": str(r["stock_name"] or ""),
+                    "yoy": float(r["yoy_pct"] or 0),
+                    "listing": listing_zh(r["market_type"] if "market_type" in r.keys() else ""),
+                }
+                for r in stronger_rows
+            ]
+            weaker = [
+                {
+                    "stock_id": str(r["stock_id"]),
+                    "stock_name": str(r["stock_name"] or ""),
+                    "yoy": float(r["yoy_pct"] or 0),
+                    "listing": listing_zh(r["market_type"] if "market_type" in r.keys() else ""),
+                }
+                for r in weaker_rows
+            ]
+        snap["stronger"] = stronger
+        snap["weaker"] = weaker
+    finally:
+        conn.close()
+
+
 def attach_fine_industry(
     snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
 ) -> Dict[str, Any]:
-    """把籌碼K產業鏈掛上這檔與對照檔。沒抓到就空，不自造。"""
-    from industry_fine import load_or_fetch_fine_industry
+    """把籌碼K產業鏈掛上這檔與對照檔。沒抓到就空，不自造。同業改走細項／跨族。"""
+    from industry_fine import (
+        display_tags,
+        extra_tags_for,
+        load_or_fetch_fine_industry,
+    )
 
-    ids = [str(snap.get("stock_id") or "")]
-    for row in list(snap.get("stronger") or []) + list(snap.get("weaker") or []):
-        ids.append(str(row.get("stock_id") or ""))
-    fine = load_or_fetch_fine_industry(db_path, ids, allow_fetch=allow_fetch, max_fetch=max_fetch)
-    snap["fine"] = fine
-    mine = fine.get(str(snap.get("stock_id") or "")) or {}
-    snap["fine_tags"] = list(mine.get("tags") or [])
+    sid = str(snap.get("stock_id") or "")
+    fine = load_or_fetch_fine_industry(
+        db_path, [sid], allow_fetch=allow_fetch, max_fetch=max_fetch
+    )
+    mine = fine.get(sid) or {}
+    snap["fine_tags"] = display_tags(list(mine.get("tags") or []), sid)
     snap["fine_chain"] = str(mine.get("chain") or "")
     snap["fine_finest"] = str(mine.get("finest") or "")
+    snap["extra_tags"] = extra_tags_for(sid)
+    _rebuild_peers_from_chain(snap, db_path)
+    ids = [sid] + [
+        str(row.get("stock_id") or "")
+        for row in list(snap.get("stronger") or []) + list(snap.get("weaker") or [])
+    ]
+    ids.extend(list(snap.get("peer_ids") or [])[:80])
+    fine = load_or_fetch_fine_industry(
+        db_path, ids, allow_fetch=allow_fetch, max_fetch=max_fetch
+    )
+    snap["fine"] = fine
     for key in ("stronger", "weaker"):
         for row in snap.get(key) or []:
             rec = fine.get(str(row.get("stock_id") or "")) or {}
-            row["fine_tags"] = list(rec.get("tags") or [])
+            psid = str(row.get("stock_id") or "")
+            row["fine_tags"] = display_tags(list(rec.get("tags") or []), psid)
             row["fine_finest"] = str(rec.get("finest") or "")
+            row["extra_tags"] = extra_tags_for(psid)
     return attach_price_eps_bijia(snap, db_path)
 
 
@@ -527,7 +827,11 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
         return snap
     chain = str(snap.get("fine_chain") or "").strip()
     sid = str(snap.get("stock_id") or "").strip()
-    if not chain or not sid:
+    peer_ids = [str(x) for x in list(snap.get("peer_ids") or []) if str(x)]
+    if not sid:
+        snap["bijia"]["note"] = "還沒產業鏈"
+        return snap
+    if not chain and not peer_ids:
         snap["bijia"]["note"] = "還沒產業鏈"
         return snap
     path = db_path or get_db_path()
@@ -541,16 +845,28 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
-        peers = conn.execute(
-            """
-            SELECT f.stock_id, u.stock_name, u.market_type
-            FROM stock_fine_industry f
-            JOIN stock_universe u ON u.stock_id = f.stock_id
-            WHERE f.chain=? AND u.is_active=1 AND length(f.stock_id)=4
-              AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
-            """,
-            (chain,),
-        ).fetchall()
+        if peer_ids:
+            q = ",".join("?" * len(peer_ids))
+            peers = conn.execute(
+                f"""
+                SELECT u.stock_id, u.stock_name, u.market_type
+                FROM stock_universe u
+                WHERE u.stock_id IN ({q}) AND u.is_active=1 AND length(u.stock_id)=4
+                  AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                """,
+                peer_ids,
+            ).fetchall()
+        else:
+            peers = conn.execute(
+                """
+                SELECT f.stock_id, u.stock_name, u.market_type
+                FROM stock_fine_industry f
+                JOIN stock_universe u ON u.stock_id = f.stock_id
+                WHERE f.chain=? AND u.is_active=1 AND length(f.stock_id)=4
+                  AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                """,
+                (chain,),
+            ).fetchall()
     except Exception:
         conn.close()
         snap["bijia"]["note"] = "產業鏈表未就緒"
@@ -618,6 +934,11 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
     else:
         eps_label = "近1季EPS"
 
+    extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
+    chain_label = chain
+    if extras:
+        chain_label = f"{chain}；跨族 {'／'.join(extras)}" if chain else "跨族 " + "／".join(extras)
+
     if mult_med is not None and my_mult <= float(mult_med) * 0.92:
         read = f"價／EPS {my_mult:.0f}　中位 {float(mult_med):.0f}　相對便宜"
         flag = "lag"
@@ -638,6 +959,7 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
     snap["bijia"] = {
         "ok": True,
         "chain": chain,
+        "scope": chain_label,
         "eps_label": eps_label,
         "close_date": max(close_dates) if close_dates else "",
         "rows": keep,
@@ -720,21 +1042,25 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     ind = snap["industry"] or "未分類（母體還沒寫到產業）"
     who_lines = [
         "<b>這檔是什麼</b>",
-        kv_compact("產業", ind),
+        kv_compact("官方產業別", ind),
     ]
     if chain:
         who_lines.append(kv_compact("產業鏈", chain))
-    who_lines.extend(
-        [
-            kv_compact("同業", peer_mix_label(snap)),
-            "產業名來自證交所／櫃買公司基本資料產業別。",
-            "同業＝同一官方產業別全組，不是更細的產品線。",
-        ]
-    )
+    extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
+    if extras:
+        who_lines.append(kv_compact("跨族", "／".join(extras)))
+    finest = str(snap.get("fine_finest") or "").strip()
+    peer_lab = peer_mix_label(snap)
+    if finest and snap.get("peer_source") == "chain":
+        peer_lab = f"{peer_lab}（{finest}）"
+    who_lines.append(kv_compact("同業", peer_lab))
     if snap.get("fine_tags"):
         who_lines.append("產業鏈來自籌碼K公開個股頁。")
-    if ind == "半導體業":
-        who_lines.append("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。")
+        who_lines.append("同業＝同一產業鏈才比；跨族檔另標他還有的鏈。")
+    elif snap.get("peer_source") == "none":
+        who_lines.append("還沒產業鏈，不拿證交所粗分類硬比。")
+    else:
+        who_lines.append("產業名來自證交所／櫃買公司基本資料產業別。")
     blocks.append(section(*who_lines))
 
     mlabel = str(snap.get("month_label") or "").strip()
@@ -785,7 +1111,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     if bijia.get("ok") and bijia.get("rows"):
         bj_lines = [
             "<b>同鏈比價</b>",
-            kv_compact("範圍", str(bijia.get("chain") or "")),
+            kv_compact("範圍", str(bijia.get("scope") or bijia.get("chain") or "")),
             kv_compact("基準", str(bijia.get("eps_label") or "")),
         ]
         cd = str(bijia.get("close_date") or "")
@@ -818,32 +1144,14 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     as_of = snap["as_of"]
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
     three = int(snap["three_net"] or 0)
-    if three > 0 and snap["industry"] in (snap.get("inflow") or []):
-        flow_story = "本產業今天在法人買超最多的前3大族群產業裡。"
-    elif three < 0 and snap["industry"] in (snap.get("outflow") or []):
-        flow_story = "本產業今天在法人賣超最多的前3大族群產業裡。"
-    elif three > 0:
-        flow_story = "本產業法人合計買超，但還不是當日最熱的前3大族群產業。"
-    elif three < 0:
-        flow_story = "本產業法人合計賣超。"
-    else:
-        flow_story = "本產業法人加總接近 0，或法人還沒寫進這天。"
-    streak_line = "—"
-    if int(snap.get("buy_streak") or 0) >= 2:
-        streak_line = f"本產業法人連 {int(snap['buy_streak'])} 個交易日合計買超"
-    elif int(snap.get("sell_streak") or 0) >= 2:
-        streak_line = f"本產業法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
-    elif int(snap.get("buy_streak") or 0) == 1:
-        streak_line = "本產業今天合計買超（尚未連兩日）"
-    elif int(snap.get("sell_streak") or 0) == 1:
-        streak_line = "本產業今天合計賣超（尚未連兩日）"
+    flow_story, streak_line = flow_story_lines(snap)
     blocks.append(
         section(
             "<b>本族群產業狀況簡述</b>",
             kv_compact("基準日", as_s),
             kv_html_compact("法人合計", html_qty_tight(three)),
             flow_story,
-            streak_line,
+            streak_line or "—",
         )
     )
 
@@ -852,8 +1160,11 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
             return [f"{title}　—"]
         out = [title]
         for r in rows:
-            tag = str(r.get("fine_finest") or "").strip()
-            tag_bit = f" [{html_escape(tag)}]" if tag else ""
+            tags = [str(t) for t in list(r.get("fine_tags") or []) if str(t)]
+            if not tags:
+                fine = str(r.get("fine_finest") or "").strip()
+                tags = [fine] if fine else []
+            tag_bit = "".join(f" [{html_escape(t)}]" for t in tags[-3:])
             listing_bit = f"　{html_escape(r['listing'])}" if str(r.get("listing") or "").strip() else ""
             out.append(
                 f"<code>{html_escape(r['stock_id'])}</code> "
@@ -862,15 +1173,13 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         return out
 
     if snap["stronger"] or snap["weaker"]:
-        peer_note = []
-        if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
-            peer_note.append("小框是籌碼K產業鏈；年增對照仍是證交所同一產業別全組。")
+        note = peer_note_line(snap)
         blocks.append(
             section(
                 "<b>同業月營收對照</b>",
                 *_peer_rows("較強", snap["stronger"]),
                 *_peer_rows("較弱", snap["weaker"]),
-                *peer_note,
+                *([note] if note else []),
             )
         )
     return join_sections(*blocks)

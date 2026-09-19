@@ -6,10 +6,12 @@ from typing import Any, Dict, List
 
 from industry_brief import (
     attach_fine_industry,
+    flow_story_lines,
     format_bijia_cells,
     format_month_zh,
     industry_snapshot,
     peer_mix_label,
+    peer_note_line,
     _vs_peer,
 )
 
@@ -198,25 +200,7 @@ def _flow_lines(snap: Dict[str, Any]) -> List[str]:
     except Exception:
         produced = ""
     three = int(snap["three_net"] or 0)
-    if three > 0 and snap["industry"] in (snap.get("inflow") or []):
-        flow_story = "本產業今天在法人買超最多的前3大族群產業裡。"
-    elif three < 0 and snap["industry"] in (snap.get("outflow") or []):
-        flow_story = "本產業今天在法人賣超最多的前3大族群產業裡。"
-    elif three > 0:
-        flow_story = "本產業法人合計買超，但還不是當日最熱的前3大族群產業。"
-    elif three < 0:
-        flow_story = "本產業法人合計賣超。"
-    else:
-        flow_story = "本產業法人加總接近 0，或法人還沒寫進這天。"
-    streak_line = ""
-    if int(snap.get("buy_streak") or 0) >= 2:
-        streak_line = f"本產業法人連 {int(snap['buy_streak'])} 個交易日合計買超"
-    elif int(snap.get("sell_streak") or 0) >= 2:
-        streak_line = f"本產業法人連 {int(snap['sell_streak'])} 個交易日合計賣超"
-    elif int(snap.get("buy_streak") or 0) == 1:
-        streak_line = "本產業今天合計買超（尚未連兩日）"
-    elif int(snap.get("sell_streak") or 0) == 1:
-        streak_line = "本產業今天合計賣超（尚未連兩日）"
+    flow_story, streak_line = flow_story_lines(snap)
     sign = "+" if three > 0 else ""
     lines = [f"基準日：{as_s}"]
     if produced:
@@ -280,16 +264,23 @@ def render_industry_png(
     else:
         ind = snap["industry"] or "未分類（母體還沒寫到產業）"
         items.append(("h", "這檔是什麼"))
-        items.append(("kv", "產業", ind))
-        items.append(
-            ("kv", "同業", peer_mix_label(snap) if snap["peer_n"] else "名單不足")
-        )
+        items.append(("kv", "官方產業別", ind))
+        chain = str(snap.get("fine_chain") or "").strip()
+        if chain:
+            items.append(("kv", "產業鏈", chain))
+        extras = [str(t) for t in list(snap.get("extra_tags") or []) if str(t)]
+        if extras:
+            items.append(("kv", "跨族", "／".join(extras)))
+        peer_lab = peer_mix_label(snap) if snap["peer_n"] else "名單不足"
+        finest = str(snap.get("fine_finest") or "").strip()
+        if finest and snap.get("peer_source") == "chain" and snap["peer_n"]:
+            peer_lab = f"{peer_lab}（{finest}）"
+        items.append(("kv", "同業", peer_lab))
         if tags0:
             items.append(("muted", "產業鏈來自籌碼K公開個股頁"))
-        items.append(("muted", "產業名來自證交所／櫃買公司基本資料產業別。"))
-        items.append(("muted", "同業＝同一官方產業別全組，不是更細的產品線。"))
-        if ind == "半導體業":
-            items.append(("muted", "半導體業含代工、記憶體、設計，不是只跟晶圓代工比。"))
+            items.append(("muted", "同業＝同一產業鏈才比；跨族檔另標他還有的鏈。"))
+        elif snap.get("peer_source") == "none":
+            items.append(("muted", "還沒產業鏈，不拿證交所粗分類硬比。"))
 
         mlabel = str(snap.get("month_label") or "").strip()
         if not mlabel:
@@ -333,7 +324,7 @@ def render_industry_png(
         bijia = snap.get("bijia") or {}
         items.append(("h", "同鏈比價"))
         if bijia.get("ok") and bijia.get("rows"):
-            items.append(("kv", "範圍", str(bijia.get("chain") or "")))
+            items.append(("kv", "範圍", str(bijia.get("scope") or bijia.get("chain") or "")))
             items.append(("kv", "基準", str(bijia.get("eps_label") or "")))
             cd = str(bijia.get("close_date") or "")
             if len(cd) == 8:
@@ -378,7 +369,10 @@ def render_industry_png(
                     items.append(("muted", "—"))
                     return
                 for r in rows:
-                    tag = str(r.get("fine_finest") or "").strip()
+                    tags = [str(t) for t in list(r.get("fine_tags") or []) if str(t)]
+                    if not tags:
+                        tag = str(r.get("fine_finest") or "").strip()
+                        tags = [tag] if tag else []
                     pname = str(r["stock_name"])
                     listing_p = str(r.get("listing") or "").strip()
                     if listing_p:
@@ -389,14 +383,15 @@ def render_industry_png(
                             str(r["stock_id"]),
                             pname,
                             float(r.get("yoy") or 0),
-                            [tag] if tag else [],
+                            tags[-3:],
                         )
                     )
 
             _peer_items("較強", snap["stronger"])
             _peer_items("較弱", snap["weaker"])
-            if any((r.get("fine_finest") or "") for r in (snap["stronger"] + snap["weaker"])):
-                items.append(("muted", "小框是籌碼K產業鏈；年增對照仍是證交所同一產業別全組。"))
+            note = peer_note_line(snap)
+            if note:
+                items.append(("muted", note))
 
     from industry_fine import chip_color
 

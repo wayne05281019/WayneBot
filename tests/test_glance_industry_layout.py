@@ -124,6 +124,7 @@ def test_industry_html_one_metric_per_line():
         now = "2026-08-31T00:00:00"
         for sid, name, mkt, atype, ind in (
             ("3035", "智原", "TWSE", "STOCK", "半導體業"),
+            ("3443", "創意", "TWSE", "STOCK", "半導體業"),
             ("2408", "南亞科", "TWSE", "STOCK", "半導體業"),
             ("6854", "錼創科技-KY", "TWSE", "KY", "半導體業"),
             ("7770", "君曜", "TWSE", "STOCK", "半導體業"),
@@ -134,6 +135,7 @@ def test_industry_html_one_metric_per_line():
             )
         for sid, name, yoy, mom, gm in (
             ("3035", "智原", 10.0, -25.0, 46.1),
+            ("3443", "創意", 80.0, 1.0, 40.0),
             ("2408", "南亞科", 719.6, 1.0, 20.0),
             ("6854", "錼創科技-KY", -46.7, 0.0, 10.0),
             ("7770", "君曜", -58.2, 0.0, 8.0),
@@ -163,8 +165,9 @@ def test_industry_html_one_metric_per_line():
         assert "年增特別大" not in html
         assert "也會幌" not in html
         assert "也會晃" not in html
-        assert "半導體業含代工、記憶體、設計" in html
-        assert "同業＝同一官方產業別全組" in html
+        assert "半導體業含代工、記憶體、設計" not in html
+        assert "同業＝同一官方產業別全組" not in html
+        assert "同一產業鏈才比" in html
         lines = html.split("\n")
         for line in lines:
             plain = re.sub(r"<[^>]+>", "", line)
@@ -175,19 +178,16 @@ def test_industry_html_one_metric_per_line():
             if "同業中位毛利率" in plain:
                 assert "%" in plain
         codes = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
-        peer_lines = [ln for ln in codes if re.search(r"\b(2408|6854|7770)\b", ln)]
-        for ln in peer_lines:
-            found = re.findall(r"\b(?:2408|6854|7770|3035)\b", ln)
-            assert len(found) <= 1, ln
-        assert any("2408" in ln and "南亞科" in ln for ln in codes)
-        assert any("6854" in ln and "錼創科技-KY" in ln for ln in codes)
+        assert not any("2408" in ln and "南亞科" in ln for ln in codes)
+        assert not any("6854" in ln and "錼創" in ln for ln in codes)
+        assert any("3443" in ln and "創意" in ln for ln in codes)
     finally:
         os.remove(path)
 
 
 @pytest.mark.production_db
-def test_tsmc_peers_share_twse_semiconductor_bucket(production_db):
-    """台積電不是記憶體；南亞科／鈺創出現是因為證交所半導體業太粗。"""
+def test_tsmc_peers_are_foundry_not_memory_bucket(production_db):
+    """台積電同業是代工細項，不是證交所半導體業把南亞科灌進來。"""
     import sqlite3
 
     from industry_brief import format_industry_html
@@ -204,14 +204,15 @@ def test_tsmc_peers_share_twse_semiconductor_bucket(production_db):
         conn.close()
     assert rows["2330"][1] == "半導體業"
     assert rows["2408"][1] == "半導體業"
-    assert rows["5351"][1] == "半導體業"
     html = format_industry_html("2330", production_db)
     assert "半導體業" in html
+    assert "代工" in html
+    assert "同一產業鏈才比" in html
+    assert "半導體業含代工、記憶體、設計" not in html
     assert "本族群產業狀況簡述" in html
-    assert "這族資金" not in html
     assert "這族" not in html
-    assert "不是論壇分類" not in html
-    assert "年增特別大" not in html
-    assert "也會幌" not in html
-    assert "半導體業含代工、記憶體、設計" in html
-    assert "本產業" in html
+    blob = html
+    if "同業月營收對照" in blob:
+        tail = blob.split("同業月營收對照", 1)[-1]
+        assert "南亞科" not in tail
+        assert "2408" not in tail

@@ -23,6 +23,18 @@ logger = logging.getLogger("WayneBot.IndustryFine")
 
 SOURCE = "cmoney_forum"
 CACHE_DAYS = 7
+# 教過、對得上檔號才加第二標。不准發明低軌衛星／軍工（沒名單）。
+# 對齊 biaoke_field_scan._GROUPS 龍頭／落後檔。跨族＝有一樣標籤才進同一張卡。
+_TAUGHT_CROSS = (
+    ("光通訊", ("3081", "2455", "3105")),
+    ("ASIC", ("3443", "3661", "3035")),
+    ("散熱", ("3653", "3017")),
+    ("封測", ("6515", "6223", "6257", "3264", "2449", "2441", "6830")),
+    ("記憶體", ("2408",)),
+    ("PCB", ("2383",)),
+    ("ABF", ("3037",)),
+    ("被動元件", ("2327",)),
+)
 SEED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "cmoney_fine_industry.json")
 HEADERS = {
     "User-Agent": (
@@ -38,6 +50,83 @@ _LD_RE = re.compile(
 
 def split_chain(chain: str) -> List[str]:
     return [p.strip() for p in str(chain or "").split("-") if p.strip()]
+
+
+def extra_tags_for(stock_id: str) -> List[str]:
+    """這檔除了籌碼K麵包屑，還被點名在哪個族。沒檔號就不加。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return []
+    out: List[str] = []
+    for tag, members in _TAUGHT_CROSS:
+        if sid in members and tag not in out:
+            out.append(tag)
+    return out
+
+
+def membership_keys(stock_id: str, finest: str = "") -> set:
+    keys = set()
+    fine = str(finest or "").strip()
+    if fine:
+        keys.add(("fine", fine))
+    for tag in extra_tags_for(stock_id):
+        keys.add(("x", tag))
+    return keys
+
+
+def display_tags(tags: List[str], stock_id: str) -> List[str]:
+    out: List[str] = []
+    for t in list(tags or []) + extra_tags_for(stock_id):
+        s = str(t or "").strip()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def chain_peer_ids(db_path: str, stock_id: str) -> List[str]:
+    """有同一細項或同一跨族標籤才算同業。封測對封測；穩懋光通訊兩邊都進。"""
+    sid = str(stock_id or "").strip()
+    if not sid or not db_path:
+        return []
+    ensure_fine_industry_table(db_path)
+    mine = load_cached_fine_industry(db_path, [sid]).get(sid) or {}
+    mine_keys = membership_keys(sid, str(mine.get("finest") or ""))
+    if not mine_keys:
+        return []
+    extra_sids = set()
+    for tag, members in _TAUGHT_CROSS:
+        if ("x", tag) in mine_keys:
+            extra_sids.update(members)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT f.stock_id, f.chain, f.tags_json
+            FROM stock_fine_industry f
+            JOIN stock_universe u ON u.stock_id = f.stock_id
+            WHERE u.is_active=1 AND length(f.stock_id)=4
+              AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    out = set()
+    for psid, chain, tags_json in rows:
+        psid = str(psid or "").strip()
+        if not psid:
+            continue
+        try:
+            tags = json.loads(tags_json) if tags_json else split_chain(chain)
+        except Exception:
+            tags = split_chain(chain)
+        finest = str(tags[-1] if tags else "")
+        if mine_keys & membership_keys(psid, finest):
+            out.add(psid)
+    out.update(extra_sids)
+    out.add(sid)
+    return sorted(out)
 
 
 def parse_cmoney_forum_industry(html: str) -> Optional[Dict[str, Any]]:
@@ -336,6 +425,8 @@ def chip_color(tag: str) -> tuple:
     if "代工" in t or "晶圓製造" in t:
         return palettes["foundry"]
     if "LED" in t or "光元件" in t or t.startswith("照明"):
+        return palettes["led"]
+    if "光通訊" in t or t in ("InP", "InP族"):
         return palettes["led"]
     if "封測" in t or "封裝" in t or "測試" in t:
         return palettes["pack"]

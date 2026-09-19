@@ -223,7 +223,8 @@ def test_industry_mix_volume_and_lag_month(tmp_path):
     assert "上市" in html
     assert "2026年8月" in html
     assert "量比" in html
-    assert "興櫃" in html
+    assert "同一產業鏈才比" in html
+    assert "聯發科" not in html
 
     late = industry_snapshot(db, "2454")
     assert late["month"] == "202607"
