@@ -443,7 +443,7 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
 
 
 def industry_flow_from_maps(maps: Optional[Dict[str, Any]], industry: str, stamp: str) -> str:
-    """同一套 overlay 句。maps 算一次就能套查股／持股。"""
+    """資金頁證交所粗組仍用這句。個股查股不准走這條。"""
     ind = str(industry or "").strip()
     if not maps or not ind or ind in {"ETF", "未分類"}:
         return ""
@@ -464,32 +464,18 @@ def industry_flow_from_maps(maps: Optional[Dict[str, Any]], industry: str, stamp
     return f"官方法人 overlay：{core}。"
 
 
-def industry_flow_overlay(db_path: str, industry: str, ymd: str = "") -> str:
-    """查股／持股 overlay：這檔產業當日官方法人剛輪進／流出。"""
-    ind = str(industry or "").strip()
-    if not db_path or not ind or ind in {"ETF", "未分類"}:
-        return ""
-    key = str(ymd or "").replace("-", "")[:8]
-    if not key:
-        try:
-            key, _lag = resolve_flow_as_of(db_path)
-        except Exception:
-            key = ""
-    key = str(key or "").replace("-", "")[:8]
-    if not key:
+def industry_flow_overlay(db_path: str, industry: str = "", ymd: str = "", *, stock_id: str = "") -> str:
+    """個股這句＝本鏈法人＋佔比進出，與產業卡／洞燭同一套。不是證交所半導體業。"""
+    del industry
+    sid = str(stock_id or "").strip()
+    if not db_path or not sid:
         return ""
     try:
-        maps = sector_flow_maps(db_path, key)
-    except Exception:
-        return ""
-    stamp = key
-    try:
-        from trading_calendar import format_trading_date_zh
+        from industry_brief import stock_flow_overlay
 
-        stamp = format_trading_date_zh(key) or key
+        return stock_flow_overlay(sid, db_path, ymd=ymd)
     except Exception:
-        stamp = key
-    return industry_flow_from_maps(maps, ind, stamp)
+        return ""
 
 
 def industry_flows_for_stocks(
@@ -497,50 +483,28 @@ def industry_flows_for_stocks(
     stock_ids: Iterable[str],
     ymd: str = "",
 ) -> Dict[str, str]:
-    """觀察／持股／AI倉同一套 overlay。maps 只算一次；ETF／未分類省略。"""
+    """觀察／持股／AI倉與查股同一套本鏈資金句。ETF 省略。"""
     ids = [str(s or "").strip() for s in (stock_ids or []) if str(s or "").strip()]
     if not db_path or not ids:
         return {}
-    key = str(ymd or "").replace("-", "")[:8]
-    if not key:
-        try:
-            key, _lag = resolve_flow_as_of(db_path)
-        except Exception:
-            key = ""
-    key = str(key or "").replace("-", "")[:8]
-    if not key:
-        return {}
-    try:
-        maps = sector_flow_maps(db_path, key)
-    except Exception:
-        return {}
-    stamp = key
-    try:
-        from trading_calendar import format_trading_date_zh
-
-        stamp = format_trading_date_zh(key) or key
-    except Exception:
-        stamp = key
-    conn = sqlite3.connect(db_path)
     out: Dict[str, str] = {}
-    try:
-        for sid in ids:
-            if sid in out:
-                continue
-            try:
-                ind = industry_of(conn, sid)
-            except Exception:
-                continue
-            note = industry_flow_from_maps(maps, ind, stamp)
-            if note:
-                out[sid] = note
-    finally:
-        conn.close()
+    for sid in ids:
+        if sid in out:
+            continue
+        note = industry_flow_overlay(db_path, ymd=ymd, stock_id=sid)
+        if note:
+            out[sid] = note
     return out
 
 
 def industry_flow_tag(note: str) -> str:
     raw = str(note or "")
+    if "資金流入" in raw or "佔比在升" in raw:
+        return "資金流入"
+    if "資金流出" in raw or "佔比在退" in raw:
+        return "資金流出"
+    if "買超佔比還在" in raw:
+        return "佔比還在"
     if "剛輪進" in raw:
         return "剛輪進"
     if "流出前段" in raw:
@@ -556,7 +520,9 @@ def attach_industry_flow(card: Dict[str, Any], db_path: str, *, ymd: str = "") -
         return card
     if str(card.get("industry_flow") or "").strip():
         return card
-    note = industry_flow_overlay(db_path, str(card.get("industry") or ""), ymd)
+    note = industry_flow_overlay(
+        db_path, str(card.get("industry") or ""), ymd, stock_id=str(card.get("stock_id") or "")
+    )
     if note:
         card["industry_flow"] = note
     return card

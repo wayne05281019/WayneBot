@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from industry_brief import (
     attach_fine_industry,
+    chain_flow_overlay,
     flow_story_lines,
     format_bijia_cells,
     format_month_zh,
@@ -298,11 +299,15 @@ def _flow_lines(snap: Dict[str, Any]) -> List[str]:
         produced = ""
     three = int(snap["three_net"] or 0)
     flow_story, streak_line = flow_story_lines(snap)
+    overlay = chain_flow_overlay(snap).rstrip("。")
     sign = "+" if three > 0 else ""
     lines = [f"基準日：{as_s}"]
     if produced:
         lines.append(f"產出：{produced}")
-    lines.extend([f"法人合計：{sign}{three:,}張", flow_story])
+    lines.extend([f"法人合計：{sign}{three:,}張", overlay or flow_story])
+    extra = str(snap.get("share_line") or "").strip()
+    if extra and extra.rstrip("。") not in (overlay or flow_story):
+        lines.append(extra.rstrip("。"))
     if streak_line:
         lines.append(streak_line)
     return lines

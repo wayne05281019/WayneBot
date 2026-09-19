@@ -3047,12 +3047,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         mc = None
     if mc is not None:
         chip_lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
-    if chip_lines:
-        chip_block = section(*chip_lines)
     flow = str(card.get("industry_flow") or "").strip()
     if flow:
-        flow_line = html_escape(flow)
-        chip_block = (flow_line + "\n" + chip_block) if chip_block else section(flow_line)
+        chip_lines = [kv_compact("資金", flow.rstrip("。"))] + chip_lines
+    if chip_lines:
+        chip_block = section(*chip_lines)
     vol_line = (tape.get("volume") or {}).get("line") or "—"
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
@@ -3073,7 +3072,12 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     try:
         from fundamentals import glance_fundamentals_rows
 
-        fund_block = section(*glance_fundamentals_rows(sid, db_path or get_db_path()))
+        skip = ("資金", "同業法人") if flow else ()
+        fund_block = section(
+            *glance_fundamentals_rows(
+                sid, db_path or get_db_path(), skip_labels=skip
+            )
+        )
     except Exception:
         fund_block = ""
     try:

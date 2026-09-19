@@ -365,6 +365,7 @@ def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
     assert "同業年增" in labs
     assert "同業毛利" in labs
     assert "同鏈比價" in labs
+    assert "資金" in labs
     assert "台積" not in blob
     from fundamentals import format_fundamentals_html, glance_fundamentals_plain
 

@@ -159,10 +159,9 @@ def stock_peer_plain_rows(stock_id: str, db_path: str = None) -> List[tuple]:
         if flag:
             val = f"{val}　{flag}"
         rows.append(("同鏈比價", val))
-    if snap.get("peer_source") == "chain":
-        story = [x for x in flow_story_lines(snap) if str(x or "").strip()]
-        if story:
-            rows.append(("同業法人", str(story[0]).rstrip("。")))
+    overlay = chain_flow_overlay(snap).rstrip("。")
+    if overlay:
+        rows.append(("資金", overlay))
     return rows
 
 
@@ -200,6 +199,89 @@ def _vs_peer(mine: Optional[float], med: Optional[float], unit: str = "pt") -> s
     if ad >= 15:
         return f"比同業明顯較弱（低 {ad:.1f}{unit}）"
     return f"比同業略弱（低 {ad:.1f}{unit}）"
+
+
+def share_flow_extra(
+    *,
+    flowing_in: bool = False,
+    slow_in: bool = False,
+    share_last: float = 0.0,
+    share_up: float = 0.0,
+    last_net: int = 0,
+) -> str:
+    """洞燭／查股／持股／產業卡同一句。流入＝佔比升，流出＝佔比退。"""
+    if flowing_in or slow_in:
+        return "佔比在升＝資金流入。"
+    if float(share_last or 0) > 0:
+        return "買超佔比還在。"
+    if float(share_up or 0) < 0 or int(last_net or 0) < 0:
+        return "佔比在退＝資金流出。"
+    return "佔比還沒升，不算流入。"
+
+
+def _chain_share_state(nets: List[int], shares: List[float]) -> Dict[str, Any]:
+    vals = [int(n) for n in (nets or [])][-5:]
+    sh = [float(x) for x in (shares or [])][-5:]
+    last = vals[-1] if vals else 0
+    rise = sum(1 for i in range(1, len(sh)) if sh[i] > sh[i - 1] + 1e-9)
+    up = (sh[-1] - sh[0]) if len(sh) >= 2 else 0.0
+    share_in = len(sh) >= 3 and rise >= 2 and up > 0 and sh[-1] > 0
+    share_out = len(sh) >= 2 and up < -1e-9
+    flowing_in = bool(share_in and not share_out) if sh else False
+    extra = share_flow_extra(
+        flowing_in=flowing_in,
+        share_last=sh[-1] if sh else 0.0,
+        share_up=up,
+        last_net=last,
+    )
+    return {
+        "share_last": sh[-1] if sh else 0.0,
+        "share_up": up,
+        "share_line": extra if sh else "",
+        "flowing_in": flowing_in,
+    }
+
+
+def chain_flow_overlay(snap: Dict[str, Any]) -> str:
+    """個股資金句：本鏈法人＋佔比進出。查股／持股／觀察／AI倉／產業卡同一句。"""
+    if not isinstance(snap, dict) or snap.get("is_etf") or snap.get("peer_source") != "chain":
+        return ""
+    story, _streak = flow_story_lines(snap)
+    bits: List[str] = []
+    s = str(story or "").strip().rstrip("。")
+    if s:
+        bits.append(s)
+    extra = str(snap.get("share_line") or "").strip().rstrip("。")
+    if extra:
+        bits.append(extra)
+    if not bits:
+        return ""
+    return "。".join(bits) + "。"
+
+
+def stock_flow_overlay(stock_id: str, db_path: str = None, ymd: str = "") -> str:
+    """查股 overlay 入口。ymd 只當快取鍵備註，數字仍吃庫裡官方收。"""
+    del ymd
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return ""
+    path = db_path or get_db_path()
+    try:
+        from universe import card_asset_type, is_etf_asset
+
+        if is_etf_asset(card_asset_type(sid, path), sid):
+            return ""
+    except Exception:
+        pass
+    try:
+        snap = attach_fine_industry(
+            industry_snapshot(path, sid), path, allow_fetch=False
+        )
+    except Exception:
+        return ""
+    if snap.get("is_etf"):
+        return ""
+    return chain_flow_overlay(snap)
 
 
 def flow_story_lines(snap: Dict[str, Any]) -> List[str]:
@@ -639,6 +721,9 @@ def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
             snap["three_net"] = 0
             snap["buy_streak"] = 0
             snap["sell_streak"] = 0
+            snap["share_last"] = 0.0
+            snap["share_up"] = 0.0
+            snap["share_line"] = ""
             snap["inflow"] = []
             snap["outflow"] = []
             snap["stronger"] = []
@@ -779,6 +864,46 @@ def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
                     sell_streak += 1
                 else:
                     break
+            chrono = list(reversed([str(d) for d in dates if str(d)]))
+            nets_ch = [int(net_by.get(d) or 0) for d in chrono]
+            shares: List[float] = []
+            mkt_in: Dict[str, int] = {}
+            if chrono:
+                dq = ",".join("?" * len(chrono))
+                try:
+                    for d, inn in conn.execute(
+                        f"""
+                        SELECT q.date,
+                               COALESCE(SUM(
+                                 CASE WHEN IFNULL(q.foreign_net,0)+IFNULL(q.trust_net,0)+IFNULL(q.dealer_net,0) > 0
+                                      THEN IFNULL(q.foreign_net,0)+IFNULL(q.trust_net,0)+IFNULL(q.dealer_net,0)
+                                      ELSE 0 END
+                               ), 0)
+                        FROM daily_quotes q
+                        LEFT JOIN stock_universe u ON u.stock_id = q.stock_id
+                        WHERE q.date IN ({dq}) AND length(q.stock_id)=4
+                          AND COALESCE(u.asset_type,'') NOT LIKE 'ETF%'
+                        GROUP BY 1
+                        """,
+                        chrono,
+                    ):
+                        mkt_in[str(d)] = int(inn or 0)
+                except sqlite3.Error:
+                    mkt_in = {}
+            for d, n3 in zip(chrono, nets_ch):
+                inn = int(mkt_in.get(d) or 0)
+                if inn > 0 and n3 > 0:
+                    shares.append(100.0 * n3 / inn)
+                else:
+                    shares.append(0.0)
+            st = _chain_share_state(nets_ch, shares)
+            snap["share_last"] = float(st.get("share_last") or 0.0)
+            snap["share_up"] = float(st.get("share_up") or 0.0)
+            snap["share_line"] = str(st.get("share_line") or "")
+        else:
+            snap["share_last"] = 0.0
+            snap["share_up"] = 0.0
+            snap["share_line"] = ""
         snap["three_net"] = three
         snap["buy_streak"] = buy_streak
         snap["sell_streak"] = sell_streak
@@ -1274,12 +1399,13 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
     as_s = f"{as_of[:4]}/{as_of[4:6]}/{as_of[6:]}" if len(as_of) == 8 else (as_of or "—")
     three = int(snap["three_net"] or 0)
     flow_story, streak_line = flow_story_lines(snap)
+    overlay = chain_flow_overlay(snap).rstrip("。")
     blocks.append(
         section(
             "<b>本族群產業狀況簡述</b>",
             kv_compact("基準日", as_s),
             kv_html_compact("法人合計", html_qty_tight(three)),
-            flow_story,
+            kv_compact("資金", overlay) if overlay else flow_story,
             streak_line or "—",
         )
     )

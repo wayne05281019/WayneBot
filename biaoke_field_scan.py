@@ -1739,14 +1739,14 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     shares = list(ign.get("shares") or [])
     if not nets and not shares:
         return ["法人佔比還沒這列", "資金進出不准猜。"]
-    if ign.get("flowing_in") or ign.get("slow_in"):
-        extra = "佔比在升＝資金流入。"
-    elif float(ign.get("share_last") or 0) > 0:
-        extra = "買超佔比還在。"
-    elif float(ign.get("share_up") or 0) < 0 or int(ign.get("last") or 0) < 0:
-        extra = "佔比在退＝資金流出。"
-    else:
-        extra = "佔比還沒升，不算流入。"
+    from industry_brief import share_flow_extra
+
+    extra = share_flow_extra(
+        flowing_in=bool(ign.get("flowing_in") or ign.get("slow_in")),
+        share_last=float(ign.get("share_last") or 0),
+        share_up=float(ign.get("share_up") or 0),
+        last_net=int(ign.get("last") or 0),
+    )
     lines: List[str] = []
     fine = str(ign.get("fine_tag") or "").strip()
     if fine:

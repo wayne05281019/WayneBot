@@ -73,10 +73,11 @@ class LookupImageTests(unittest.TestCase):
         self.assertEqual(_photo_sell_caption("高低決策卡", {"sell_action": ""}, fallback="高低決策卡"), "高低決策卡")
         flow_card = {
             "sell_action": "",
-            "industry_flow": "官方法人 overlay：半導體業剛輪進（截至 2026/08/28（五））。",
+            "industry_flow": "本鏈（代工）法人合計買超。佔比在升＝資金流入。",
         }
         flowed = _photo_sell_caption("高低決策卡", flow_card, fallback="高低決策卡")
-        self.assertIn("半導體業剛輪進", flowed)
+        self.assertIn("資金流入", flowed)
+        self.assertNotIn("半導體業剛輪進", flowed)
         self.assertNotIn("不改溫度", flowed)
         self.assertNotIn("買賣格", flowed)
         self.assertNotIn("Ai建議", flowed)

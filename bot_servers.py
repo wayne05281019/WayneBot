@@ -1858,7 +1858,9 @@ class WayneTelegramBot:
                 lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
             flow = str((flows or {}).get(c) or "").strip()
             if flow:
-                lines.append(html_escape(flow))
+                from tg_layout import kv_compact
+
+                lines.append(kv_compact("資金", flow.rstrip("。")))
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
