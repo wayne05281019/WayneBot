@@ -112,6 +112,60 @@ def peer_scope_label(snap: Dict[str, Any]) -> str:
     return lab
 
 
+def stock_peer_plain_rows(stock_id: str, db_path: str = None) -> List[tuple]:
+    """查股／第一眼／基本面可套用的同鏈數字。沒真數就不上，不另開證交所粗組。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return []
+    path = db_path or get_db_path()
+    try:
+        from universe import card_asset_type, is_etf_asset
+
+        if is_etf_asset(card_asset_type(sid, path), sid):
+            return []
+    except Exception:
+        pass
+    try:
+        snap = attach_fine_industry(
+            industry_snapshot(path, sid), path, allow_fetch=False
+        )
+    except Exception:
+        return []
+    if snap.get("is_etf"):
+        return []
+    spec = industry_card_spec(snap)
+    rows: List[tuple] = []
+    if snap.get("peer_source") == "chain" and int(snap.get("peer_n") or 0):
+        lab = str(spec.get("peer_lab") or "").strip()
+        if lab and lab != "名單不足":
+            rows.append(("同業", lab))
+    if snap.get("my_yoy") is not None and snap.get("yoy_med") is not None:
+        rows.append(("同業年增", _vs_peer(snap["my_yoy"], snap["yoy_med"], "%")))
+    if snap.get("my_gm") is not None and snap.get("gm_med") is not None:
+        rows.append(("同業毛利", _vs_peer(snap["my_gm"], snap["gm_med"], "pt")))
+    if (
+        snap.get("vol") is not None
+        and snap.get("vol_med") is not None
+        and float(snap["vol_med"] or 0) > 0
+    ):
+        ratio = float(snap["vol"]) / float(snap["vol_med"])
+        rows.append(
+            ("同業量比", f"{ratio:.1f}（中位 {int(round(float(snap['vol_med']))):,}張）")
+        )
+    bijia = snap.get("bijia") or {}
+    if bijia.get("ok") and str(bijia.get("read") or "").strip():
+        val = str(bijia["read"]).strip()
+        flag = str(bijia.get("flag_text") or "").strip()
+        if flag:
+            val = f"{val}　{flag}"
+        rows.append(("同鏈比價", val))
+    if snap.get("peer_source") == "chain":
+        story = [x for x in flow_story_lines(snap) if str(x or "").strip()]
+        if story:
+            rows.append(("同業法人", str(story[0]).rstrip("。")))
+    return rows
+
+
 def industry_card_spec(snap: Dict[str, Any]) -> Dict[str, Any]:
     """圖卡 PNG 與 Telegram HTML 同一套規格。不准兩邊各寫一套。"""
     from industry_fine import peer_chip_tags

@@ -628,6 +628,12 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.extend(valuation_plain_rows(sid, path))
     except Exception:
         pass
+    try:
+        from industry_brief import stock_peer_plain_rows
+
+        rows.extend(stock_peer_plain_rows(sid, path))
+    except Exception:
+        pass
     if not rows:
         rows.append(("基本面", "尚無月營收／季報"))
     return rows
@@ -752,6 +758,14 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
                 kv_compact("稅後淨利", format_yi(q.get("net_income") or 0)),
             )
         )
+    try:
+        from industry_brief import stock_peer_plain_rows
+
+        peer_rows = stock_peer_plain_rows(sid, path)
+    except Exception:
+        peer_rows = []
+    if peer_rows:
+        blocks.append(section(*[kv_compact(a, b) for a, b in peer_rows]))
     try:
         from stock_links import yahoo_income_url
 

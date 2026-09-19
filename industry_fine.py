@@ -133,6 +133,29 @@ def extra_tags_for(stock_id: str) -> List[str]:
     return out
 
 
+def membership_face(stock_id: str, finest: str = "", chain: str = "") -> str:
+    """個股標題用的最細標。有跨族就跟產業卡同業括號同一句；沒有才寫籌碼K整條鏈。"""
+    extras = extra_tags_for(stock_id)
+    bits: List[str] = []
+    fine = str(finest or "").strip()
+    if not fine:
+        parts = split_chain(chain)
+        fine = parts[-1] if parts else ""
+    extra_set = set(extras)
+    if extras:
+        if fine in _KEEP_FINEST or (fine == "代工" and (extra_set & _KEEP_FOUNDRY_WITH)):
+            if fine and fine not in bits:
+                bits.append(fine)
+        for t in extras:
+            if t not in bits:
+                bits.append(t)
+        return "／".join(bits)
+    raw = str(chain or "").strip()
+    if raw:
+        return raw
+    return fine
+
+
 def membership_keys(stock_id: str, finest: str = "") -> set:
     """最細標籤才拿來比。有光通訊／低軌衛星就用那層；代工／封測這種準細項可並存。"""
     extras = extra_tags_for(stock_id)

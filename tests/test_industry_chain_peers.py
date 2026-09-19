@@ -13,8 +13,10 @@ from industry_brief import (
     format_industry_html,
     industry_card_spec,
     industry_snapshot,
+    stock_peer_plain_rows,
 )
-from industry_fine import extra_tags_for, membership_keys
+from industry_fine import extra_tags_for, membership_face, membership_keys
+from universe import listing_industry_face
 from wayne_db import ensure_core_schema
 
 
@@ -103,6 +105,11 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("2313") == ["低軌衛星"]
     assert extra_tags_for("2367") == ["低軌衛星"]
     assert extra_tags_for("3588") == ["記憶體控制"]
+    assert membership_face("2303", chain="電子上游-IC-代工") == "成熟製程"
+    assert membership_face("3105", chain="電子上游-IC-代工") == "代工／光通訊／低軌衛星"
+    assert membership_face("2049") == "機器人"
+    assert membership_face("2330", chain="電子上游-IC-代工") == "電子上游-IC-代工"
+    assert membership_face("2412", chain="電子下游-電信") == "電子下游-電信"
     assert ("fine", "代工") in membership_keys("3105", "代工")
     assert ("fine", "代工") not in membership_keys("2303", "代工")
     assert membership_keys("2408", "記憶體製造") & membership_keys("3006", "記憶體IC設計")
@@ -295,3 +302,54 @@ def test_retail_groups_do_not_mix_foundry_or_memory_buckets(tmp_path):
     robot = format_industry_html("2049", db, allow_fetch=False)
     assert "機器人" in robot
     assert "2395" in robot and "研華" in robot
+
+
+def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
+    db = str(tmp_path / "stock-apply.db")
+    _seed(
+        db,
+        [
+            ("2303", "聯電", "半導體業", "TW", "電子上游-IC-代工", 5.0, 147.0, 1.20),
+            ("6770", "力積電", "半導體業", "TW", "電子上游-IC-代工", 8.0, 40.0, 0.50),
+            ("5347", "世界", "半導體業", "TWO", "電子上游-IC-代工", 6.0, 90.0, 1.00),
+            ("2330", "台積電", "半導體業", "TW", "電子上游-IC-代工", 40.0, 2425.0, 14.0),
+            ("3105", "穩懋", "半導體業", "TWO", "電子上游-IC-代工", 12.0, 300.0, 4.00),
+            ("3081", "聯亞", "半導體業", "TWO", "電子上游-光通訊", 20.0, 200.0, 2.00),
+            ("2049", "上銀", "電機機械", "TW", "傳產-電機", 10.0, 400.0, 5.00),
+            ("2395", "研華", "電腦及週邊設備業", "TW", "電子下游-工業電腦", 12.0, 350.0, 8.00),
+        ],
+    )
+    umc = listing_industry_face("2303", db)
+    assert umc.startswith("上市") and "成熟製程" in umc
+    assert "2330" not in umc
+    win = listing_industry_face("3105", db)
+    assert "光通訊" in win and "低軌衛星" in win and "代工" in win
+    tsmc = listing_industry_face("2330", db)
+    assert "電子上游-IC-代工" in tsmc
+    assert "成熟製程" not in tsmc
+    rows = stock_peer_plain_rows("2303", db)
+    labs = [a for a, _ in rows]
+    blob = " ".join(f"{a} {b}" for a, b in rows)
+    assert "同業" in labs
+    assert "成熟製程" in blob
+    assert "同業年增" in labs
+    assert "同業毛利" in labs
+    assert "同鏈比價" in labs
+    assert "台積" not in blob
+    from fundamentals import format_fundamentals_html, glance_fundamentals_plain
+
+    glance = glance_fundamentals_plain("2303", db)
+    glance_blob = " ".join(f"{a} {b}" for a, b in glance)
+    assert "成熟製程" in glance_blob
+    assert "同業年增" in glance_blob
+    assert "同鏈比價" in glance_blob
+    html = format_fundamentals_html("2303", db)
+    assert "成熟製程" in html
+    assert "同業年增" in html
+    assert "同鏈比價" in html
+    win_rows = stock_peer_plain_rows("3105", db)
+    win_blob = " ".join(f"{a} {b}" for a, b in win_rows)
+    assert "光通訊" in win_blob
+    assert "低軌衛星" in win_blob
+    robot_face = listing_industry_face("2049", db)
+    assert "機器人" in robot_face

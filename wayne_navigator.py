@@ -839,12 +839,18 @@ class NavigatorEngine:
             listing = ""
         fine_industry = ""
         try:
-            from industry_fine import load_cached_fine_industry
+            from industry_fine import load_cached_fine_industry, membership_face
 
             rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
                 str(stock_id)
             ) or {}
-            fine_industry = str(rec.get("chain") or "").strip()
+            chain = str(rec.get("chain") or "").strip()
+            mem = membership_face(str(stock_id), chain=chain)
+            # 標題列 listing 已含跨族／最細標時，這裡只留籌碼K整條鏈當備援，避免再貼一次。
+            if mem and mem in str(listing or ""):
+                fine_industry = chain if chain and chain not in str(listing or "") else ""
+            else:
+                fine_industry = mem or chain
         except Exception:
             fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")
