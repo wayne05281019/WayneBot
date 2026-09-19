@@ -17,6 +17,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 WANT_ASK = re.compile(
     r"(新族群|蠢蠢欲動|怎麼找|根據我的指引|找族群|還沒點名|底部蠢蠢|指引去找)"
 )
+SHARE_ASK = re.compile(
+    r"(哪族|哪個族群|現在哪族|什麼族|先機|資金輪動|佔比|洞燭|"
+    r"還沒當第一|升還沒第一)"
+)
 
 # 教過的次族群：名稱／龍頭／落後檔對得上才沿用。排名掃全部 CMoney 三層鏈，不准發明一族、不准發明 5／9。
 # needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。
@@ -214,6 +218,14 @@ def rotation_notice_lines(db_path: str = "") -> List[str]:
 
 def want_field_scan(ask: str) -> bool:
     return bool(WANT_ASK.search(str(ask or "")))
+
+
+def want_share_cross(ask: str) -> bool:
+    """飆大問哪族／先機才帶官方佔比。個股怎麼看不灌。"""
+    q = str(ask or "")
+    if want_field_scan(q):
+        return True
+    return bool(SHARE_ASK.search(q))
 
 
 def _cap(db_path: str) -> str:
@@ -522,6 +534,54 @@ def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
         + lead_bit
         + named_bit
         + "不是他當下點名。不是買訊。"
+    )
+
+
+def share_cross_lines(db_path: str, *, spoken: Optional[str] = None) -> List[str]:
+    """飆大對話用：洞燭同一套佔比短列。不是買訊、不進海選、不改黃金買點。"""
+    data = dongzhu_picks(db_path, spoken=spoken) if db_path else {}
+    lines = ["官方佔比（洞燭同一套）"]
+    field = str((data or {}).get("field") or "")
+    if not field:
+        lines.append("還沒對上先機細項")
+        lines.append("不是買訊、不進海選")
+        return lines
+    lines.append(f"此刻最像 {field}")
+    parts = [str(x) for x in list((data or {}).get("layers") or []) if str(x)]
+    if parts:
+        lines.append(f"產業鏈 {parts[-1]}")
+    sign = str((data or {}).get("pre_sign") or "")
+    if sign == "pre":
+        lines.append("佔比升還沒第一＝先機")
+    elif sign == "chase":
+        lines.append("已是當天第一名，偏晚")
+    elif sign == "leaving":
+        lines.append("佔比在退，人去樓空")
+    vs = (data or {}).get("pre_vs20")
+    if vs is not None and (data or {}).get("pre_ok"):
+        try:
+            lines.append(f"次級距20高 {_pct(float(vs))}")
+        except (TypeError, ValueError):
+            pass
+    elif vs is not None:
+        try:
+            fv = float(vs)
+            if abs(fv) > 1e-9:
+                lines.append(f"次級距20高 {_pct(fv)}")
+        except (TypeError, ValueError):
+            pass
+    lines.extend(_share_path_lines((data or {}).get("flow") or {}))
+    lines.append("點名只參考，不是唯一")
+    lines.append("不是買訊、不進海選")
+    lines.append("買只認黃金買點")
+    return lines
+
+
+def format_share_cross(db_path: str, *, spoken: Optional[str] = None) -> str:
+    from tg_layout import html_escape
+
+    return "\n".join(
+        html_escape(x) for x in share_cross_lines(db_path, spoken=spoken) if x
     )
 
 
