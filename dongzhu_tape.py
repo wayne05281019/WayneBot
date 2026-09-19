@@ -1,16 +1,37 @@
 # -*- coding: utf-8 -*-
-"""洞燭先機每日落檔與連續官方收對質。
+"""洞燭／黃金買點／海選落檔與 1／5／10 日官方收對質。
 
-不必等人按鈕、不必看頁。盤後齊了就寫當日名單＋判斷依據；之後每個交易日自己對 1／5／10 日窗。
-10 日對齊先機原本後10日。不准發明收盤、不准改黃金買點。進化＝累計對質，n 夠且贏基線才考慮編碼。
+寫在與行情庫同碟的另一檔，公開 zip 帶不走。軟體更新不准 DROP。
+不准話筒講、不准當買訊、不准改黃金買點。
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 SCORE_HORIZONS: Tuple[int, ...] = (1, 5, 10)
 AS_OF_KEEP = 30
+KIND_DONGZHU = "dongzhu"
+KIND_SCREEN = "screen"
+SCREEN_TAGS = (
+    "leave_zero",
+    "golden_buy",
+    "revenue_cross",
+    "select_01",
+    "half_year_high",
+    "select_02",
+    "select_03",
+)
+
+
+def tape_store_path(market_db: str) -> str:
+    path = os.path.abspath(str(market_db or "data/wayne_market.db"))
+    root = os.path.dirname(path) or "."
+    name = os.path.basename(path)
+    if name == "wayne_evolve.db":
+        return path
+    return os.path.join(root, "wayne_evolve.db")
 
 
 def _ymd(raw: Any) -> str:
@@ -29,27 +50,35 @@ def _f(val: Any) -> Optional[float]:
 
 
 def ensure_dongzhu_tape_tables(db_path: str) -> None:
-    if not db_path:
+    store = tape_store_path(db_path) if db_path else ""
+    if not store:
         return
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    parent = os.path.dirname(store)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS dongzhu_pick_run (
-                as_of TEXT PRIMARY KEY,
+                kind TEXT NOT NULL DEFAULT 'dongzhu',
+                as_of TEXT NOT NULL,
                 field TEXT DEFAULT '',
                 pre_sign TEXT DEFAULT '',
                 share_last REAL DEFAULT 0,
                 buy_n INTEGER DEFAULT 0,
                 watch_n INTEGER DEFAULT 0,
                 capture_n INTEGER DEFAULT 0,
-                ran_at TEXT DEFAULT ''
+                ran_at TEXT DEFAULT '',
+                sha TEXT DEFAULT '',
+                PRIMARY KEY (kind, as_of)
             )
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS dongzhu_pick_tape (
+                kind TEXT NOT NULL DEFAULT 'dongzhu',
                 as_of TEXT NOT NULL,
                 sid TEXT NOT NULL,
                 tag TEXT NOT NULL,
@@ -61,13 +90,14 @@ def ensure_dongzhu_tape_tables(db_path: str) -> None:
                 vs60 REAL,
                 volr REAL,
                 why TEXT DEFAULT '',
-                PRIMARY KEY (as_of, sid, tag)
+                PRIMARY KEY (kind, as_of, sid, tag)
             )
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS dongzhu_pick_score (
+                kind TEXT NOT NULL DEFAULT 'dongzhu',
                 as_of TEXT NOT NULL,
                 check_as_of TEXT NOT NULL,
                 sid TEXT NOT NULL,
@@ -80,13 +110,14 @@ def ensure_dongzhu_tape_tables(db_path: str) -> None:
                 vs20_now REAL,
                 verdict TEXT NOT NULL,
                 note TEXT DEFAULT '',
-                PRIMARY KEY (as_of, check_as_of, sid, tag)
+                PRIMARY KEY (kind, as_of, check_as_of, sid, tag)
             )
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS dongzhu_pick_rates (
+                kind TEXT NOT NULL DEFAULT 'dongzhu',
                 tag TEXT NOT NULL,
                 horizon INTEGER NOT NULL DEFAULT 1,
                 n INTEGER DEFAULT 0,
@@ -94,7 +125,7 @@ def ensure_dongzhu_tape_tables(db_path: str) -> None:
                 miss INTEGER DEFAULT 0,
                 pending INTEGER DEFAULT 0,
                 updated_at TEXT DEFAULT '',
-                PRIMARY KEY (tag, horizon)
+                PRIMARY KEY (kind, tag, horizon)
             )
             """
         )
@@ -112,34 +143,33 @@ def _table_cols(conn: sqlite3.Connection, name: str) -> set:
 
 
 def _migrate_tape_schema(conn: sqlite3.Connection) -> None:
-    cols = _table_cols(conn, "dongzhu_pick_score")
-    if cols and "horizon" not in cols:
-        conn.execute(
-            "ALTER TABLE dongzhu_pick_score ADD COLUMN horizon INTEGER DEFAULT 1"
-        )
-    rates_cols = _table_cols(conn, "dongzhu_pick_rates")
-    if rates_cols and "horizon" not in rates_cols:
-        conn.execute("DROP TABLE dongzhu_pick_rates")
-        conn.execute(
-            """
-            CREATE TABLE dongzhu_pick_rates (
-                tag TEXT NOT NULL,
-                horizon INTEGER NOT NULL DEFAULT 1,
-                n INTEGER DEFAULT 0,
-                hit INTEGER DEFAULT 0,
-                miss INTEGER DEFAULT 0,
-                pending INTEGER DEFAULT 0,
-                updated_at TEXT DEFAULT '',
-                PRIMARY KEY (tag, horizon)
-            )
-            """
-        )
+    """只加欄，不准 DROP 對質列。"""
+    for table, col, spec in (
+        ("dongzhu_pick_run", "kind", "TEXT DEFAULT 'dongzhu'"),
+        ("dongzhu_pick_run", "sha", "TEXT DEFAULT ''"),
+        ("dongzhu_pick_tape", "kind", "TEXT DEFAULT 'dongzhu'"),
+        ("dongzhu_pick_score", "kind", "TEXT DEFAULT 'dongzhu'"),
+        ("dongzhu_pick_score", "horizon", "INTEGER DEFAULT 1"),
+        ("dongzhu_pick_rates", "kind", "TEXT DEFAULT 'dongzhu'"),
+        ("dongzhu_pick_rates", "horizon", "INTEGER DEFAULT 1"),
+    ):
+        cols = _table_cols(conn, table)
+        if cols and col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
 
 
 def _now_iso() -> str:
     from datetime import datetime
 
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _sha() -> str:
+    for key in ("RENDER_GIT_COMMIT", "WAYNE_GIT_SHA", "GITHUB_SHA"):
+        val = str(os.environ.get(key) or "").strip()
+        if val:
+            return val[:12]
+    return ""
 
 
 def _why(tag: str, item: Dict[str, Any], field: str, pre_sign: str) -> str:
@@ -185,14 +215,16 @@ def _iter_pick_rows(data: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
     return out
 
 
-def write_snapshot(db_path: str, data: Dict[str, Any]) -> int:
-    """把當日洞燭名單寫進庫。沒官方收盤的不上。"""
+def write_snapshot(db_path: str, data: Dict[str, Any], *, kind: str = KIND_DONGZHU) -> int:
+    """把當日名單寫進進化庫。沒官方收盤的不上。不准刪舊日。"""
     if not db_path or not isinstance(data, dict):
         return 0
     cap = _ymd(data.get("cap") or data.get("chip_cap"))
     if not cap:
         return 0
+    kind = str(kind or KIND_DONGZHU)
     ensure_dongzhu_tape_tables(db_path)
+    store = tape_store_path(db_path)
     field = str(data.get("field") or "")
     pre_sign = str(data.get("pre_sign") or "")
     share_last = _f((data.get("flow") or {}).get("share_last")) or 0.0
@@ -200,26 +232,30 @@ def write_snapshot(db_path: str, data: Dict[str, Any]) -> int:
     buy_n = sum(1 for t, _ in rows if t == "leave_zero")
     watch_n = sum(1 for t, _ in rows if t == "golden_buy")
     cap_n = sum(1 for t, _ in rows if t == "capture")
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         conn.execute(
             """
             INSERT OR REPLACE INTO dongzhu_pick_run(
-                as_of, field, pre_sign, share_last, buy_n, watch_n, capture_n, ran_at
-            ) VALUES (?,?,?,?,?,?,?,?)
+                kind, as_of, field, pre_sign, share_last, buy_n, watch_n, capture_n, ran_at, sha
+            ) VALUES (?,?,?,?,?,?,?,?,?,?)
             """,
-            (cap, field, pre_sign, share_last, buy_n, watch_n, cap_n, _now_iso()),
+            (kind, cap, field, pre_sign, share_last, buy_n, watch_n, cap_n, _now_iso(), _sha()),
         )
-        conn.execute("DELETE FROM dongzhu_pick_tape WHERE as_of=?", (cap,))
+        conn.execute(
+            "DELETE FROM dongzhu_pick_tape WHERE kind=? AND as_of=?",
+            (kind, cap),
+        )
         for tag, item in rows:
             sid = str(item.get("sid") or "").strip()
             conn.execute(
                 """
                 INSERT OR REPLACE INTO dongzhu_pick_tape(
-                    as_of, sid, tag, name, field, role, close, vs20, vs60, volr, why
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr, why
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
+                    kind,
                     cap,
                     sid,
                     tag,
@@ -250,7 +286,99 @@ def snapshot_dongzhu_picks(db_path: str, cap: str = "", *, spoken: str = "") -> 
         data["cap"] = _ymd(cap) or data.get("cap")
     elif not _ymd(data.get("cap")):
         data["cap"] = _cap(db_path)
-    return write_snapshot(db_path, data)
+    return write_snapshot(db_path, data, kind=KIND_DONGZHU)
+
+
+def snapshot_screen_picks(db_path: str, cap: str = "") -> int:
+    """海選黃金買點與其他選股桶，不必等人看海選。當沖／隔日沖不收。"""
+    cap = _ymd(cap)
+    if not db_path or not cap:
+        return 0
+    from screen_sessions import ensure_screen_session_table
+
+    ensure_screen_session_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        sess_row = conn.execute(
+            """
+            SELECT session FROM screen_sessions
+            WHERE as_of=? AND session IN ('morning','evening')
+            ORDER BY CASE session WHEN 'morning' THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            (cap,),
+        ).fetchone()
+        session = str(sess_row[0] if sess_row else "")
+        if not session:
+            return 0
+        marks = ",".join("?" * len(SCREEN_TAGS))
+        rows = conn.execute(
+            f"""
+            SELECT bucket, stock_id, stock_name, pick_close
+            FROM screen_sessions
+            WHERE as_of=? AND session=? AND bucket IN ({marks})
+            """,
+            (cap, session, *SCREEN_TAGS),
+        ).fetchall()
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    items: List[Tuple[str, Dict[str, Any]]] = []
+    for bucket, sid, name, close in rows:
+        px = _f(close)
+        s = str(sid or "").strip()
+        if not s or px is None or px <= 0:
+            continue
+        items.append(
+            (
+                str(bucket or ""),
+                {"sid": s, "name": str(name or s), "close": px},
+            )
+        )
+    data: Dict[str, Any] = {
+        "cap": cap,
+        "field": "",
+        "pre_sign": "",
+        "buys": [it for tag, it in items if tag == "leave_zero"],
+        "watches": [it for tag, it in items if tag == "golden_buy"],
+        "laggards": [],
+    }
+    n = write_snapshot(db_path, data, kind=KIND_SCREEN)
+    extras = [(tag, it) for tag, it in items if tag not in ("leave_zero", "golden_buy")]
+    if not extras:
+        return n
+    store = tape_store_path(db_path)
+    conn = sqlite3.connect(store, timeout=8.0)
+    try:
+        for tag, item in extras:
+            why = "海選選股不是買訊"
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO dongzhu_pick_tape(
+                    kind, as_of, sid, tag, name, field, role, close, vs20, vs60, volr, why
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    KIND_SCREEN,
+                    cap,
+                    item["sid"],
+                    tag,
+                    item["name"],
+                    "",
+                    "",
+                    item["close"],
+                    None,
+                    None,
+                    None,
+                    why,
+                ),
+            )
+            n += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return n
 
 
 def _quote_days(db_path: str, cap: str) -> List[str]:
@@ -351,30 +479,31 @@ def score_dongzhu_picks(db_path: str, check_as_of: str) -> int:
     if not db_path or not cap:
         return 0
     ensure_dongzhu_tape_tables(db_path)
+    store = tape_store_path(db_path)
     days = _quote_days(db_path, cap)
     if not days:
         return 0
     floor = days[-AS_OF_KEEP] if len(days) > AS_OF_KEEP else ""
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         runs = [
-            _ymd(r[0])
+            (str(r[0] or KIND_DONGZHU), _ymd(r[1]))
             for r in conn.execute(
-                "SELECT as_of FROM dongzhu_pick_run WHERE as_of < ? ORDER BY as_of",
+                "SELECT kind, as_of FROM dongzhu_pick_run WHERE as_of < ? ORDER BY as_of",
                 (cap,),
             ).fetchall()
         ]
     finally:
         conn.close()
     scored = 0
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
-        for as_of in runs:
-            if not as_of or as_of < floor:
+        for kind, as_of in runs:
+            if not as_of or (floor and as_of < floor):
                 continue
             picks = conn.execute(
-                "SELECT sid, tag, close, vs20 FROM dongzhu_pick_tape WHERE as_of=?",
-                (as_of,),
+                "SELECT sid, tag, close, vs20 FROM dongzhu_pick_tape WHERE kind=? AND as_of=?",
+                (kind, as_of),
             ).fetchall()
             if not picks:
                 continue
@@ -383,7 +512,7 @@ def score_dongzhu_picks(db_path: str, check_as_of: str) -> int:
                 if not target or target > cap:
                     continue
                 scored += _score_rows(
-                    conn, db_path, as_of, target, int(horizon), picks
+                    conn, db_path, kind, as_of, target, int(horizon), picks
                 )
         conn.commit()
     finally:
@@ -395,6 +524,7 @@ def score_dongzhu_picks(db_path: str, check_as_of: str) -> int:
 def _score_rows(
     conn: sqlite3.Connection,
     db_path: str,
+    kind: str,
     as_of: str,
     check_as_of: str,
     horizon: int,
@@ -420,11 +550,12 @@ def _score_rows(
         conn.execute(
             """
             INSERT OR REPLACE INTO dongzhu_pick_score(
-                as_of, check_as_of, sid, tag, horizon, pick_close, now_close,
+                kind, as_of, check_as_of, sid, tag, horizon, pick_close, now_close,
                 fwd_pct, vs20_then, vs20_now, verdict, note
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
+                kind,
                 as_of,
                 check_as_of,
                 sid,
@@ -445,29 +576,31 @@ def _score_rows(
 
 def _refresh_rates(db_path: str) -> None:
     """各窗累計對質。這是紀錄，不是改黃金買點。"""
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    store = tape_store_path(db_path)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         rows = conn.execute(
             """
-            SELECT tag, horizon,
+            SELECT kind, tag, horizon,
                    SUM(CASE WHEN verdict='對' THEN 1 ELSE 0 END),
                    SUM(CASE WHEN verdict='偏' THEN 1 ELSE 0 END),
                    SUM(CASE WHEN verdict='還沒走完' THEN 1 ELSE 0 END),
                    COUNT(*)
             FROM dongzhu_pick_score
-            GROUP BY tag, horizon
+            GROUP BY kind, tag, horizon
             """
         ).fetchall()
         now = _now_iso()
         conn.execute("DELETE FROM dongzhu_pick_rates")
-        for tag, horizon, hit, miss, pending, n in rows:
+        for kind, tag, horizon, hit, miss, pending, n in rows:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO dongzhu_pick_rates(
-                    tag, horizon, n, hit, miss, pending, updated_at
-                ) VALUES (?,?,?,?,?,?,?)
+                    kind, tag, horizon, n, hit, miss, pending, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
+                    str(kind or KIND_DONGZHU),
                     str(tag),
                     int(horizon or 1),
                     int(n or 0),
@@ -483,22 +616,24 @@ def _refresh_rates(db_path: str) -> None:
 
 
 def snapshot_and_score_dongzhu(db_path: str, cap: str) -> Dict[str, Any]:
-    """盤後齊了：先對近期落檔的 1／5／10 日，再寫當日檔。不推話筒。"""
+    """盤後齊了：先對近期落檔的 1／5／10 日，再寫洞燭＋海選檔。不推話筒。"""
     cap = _ymd(cap)
     if not db_path or not cap:
-        return {"snap": 0, "scored": 0, "cap": cap}
+        return {"snap": 0, "scored": 0, "cap": cap, "screen": 0}
     scored = score_dongzhu_picks(db_path, cap)
     snap = snapshot_dongzhu_picks(db_path, cap, spoken="")
-    return {"snap": int(snap), "scored": int(scored), "cap": cap}
+    screen = snapshot_screen_picks(db_path, cap)
+    return {"snap": int(snap), "scored": int(scored), "screen": int(screen), "cap": cap}
 
 
 def scoreboard_lines(db_path: str, cap: str = "") -> List[str]:
-    """洞燭頁可看的對質摘要。沒有就不寫。不靠人來看才會記。"""
+    """內部對質摘要。頁面不顯示。"""
     if not db_path:
         return []
     ensure_dongzhu_tape_tables(db_path)
+    store = tape_store_path(db_path)
     cap = _ymd(cap)
-    conn = sqlite3.connect(db_path, timeout=8.0)
+    conn = sqlite3.connect(store, timeout=8.0)
     try:
         if not cap:
             row = conn.execute(
@@ -511,7 +646,7 @@ def scoreboard_lines(db_path: str, cap: str = "") -> List[str]:
             """
             SELECT sid, name, tag, verdict, COALESCE(s.horizon, 1)
             FROM dongzhu_pick_score s
-            JOIN dongzhu_pick_tape t USING (as_of, sid, tag)
+            JOIN dongzhu_pick_tape t USING (kind, as_of, sid, tag)
             WHERE s.check_as_of=?
             ORDER BY COALESCE(s.horizon, 1),
                      CASE s.tag WHEN 'leave_zero' THEN 0 WHEN 'capture' THEN 1 ELSE 2 END,

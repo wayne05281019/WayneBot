@@ -97,6 +97,12 @@ class MainRunner:
         self.today_str = taipei_today_str()
         logger.info(f"🚀 初始化 WayneBot 主排程 (DB: {self.db_path}, 日期: {self.today_str})")
         ensure_core_schema(self.db_path)
+        try:
+            from dongzhu_tape import ensure_dongzhu_tape_tables, tape_store_path
+
+            ensure_dongzhu_tape_tables(tape_store_path(self.db_path))
+        except Exception:
+            logger.debug("進化落檔表略過", exc_info=True)
 
         try:
             from quote_integrity import ensure_quote_integrity

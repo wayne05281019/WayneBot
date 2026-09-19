@@ -120,6 +120,12 @@ def save_screen_session(db_path: str, as_of: str, session: str, results: Dict[st
             n += 1
     conn.commit()
     conn.close()
+    try:
+        from dongzhu_tape import snapshot_screen_picks
+
+        snapshot_screen_picks(db_path, as_of)
+    except Exception:
+        pass
     return n
 
 

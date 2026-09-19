@@ -8,6 +8,8 @@ from dongzhu_tape import (
     scoreboard_lines,
     snapshot_and_score_dongzhu,
     snapshot_dongzhu_picks,
+    snapshot_screen_picks,
+    tape_store_path,
     write_snapshot,
 )
 from wayne_db import PRIVATE_USER_TABLES
@@ -46,6 +48,10 @@ def _bars(db: str, sid: str, last: str, n: int, last_close: float, high: float) 
         _put(db, sid, day, close, high)
 
 
+def _store(db: str) -> str:
+    return tape_store_path(db)
+
+
 def test_pick_tables_are_public_not_private():
     for name in (
         "dongzhu_pick_run",
@@ -75,7 +81,7 @@ def test_snapshot_skips_zero_close(tmp_path):
         },
     )
     assert n == 1
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(_store(db))
     rows = conn.execute("SELECT sid, why FROM dongzhu_pick_tape").fetchall()
     conn.close()
     assert rows == [("6257", "黃金買點獲利剛離零；高階測試／封測；佔比升還沒第一；距20高 -8.1%")]
@@ -100,7 +106,7 @@ def test_next_official_close_scores_hit_miss_pending(tmp_path):
     _bars(db, "3264", "20260918", 25, 93.0, 100.0)
     n = score_dongzhu_picks(db, "20260918")
     assert n == 3
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(_store(db))
     got = {
         r[0]: r[1]
         for r in conn.execute("SELECT sid, verdict FROM dongzhu_pick_score").fetchall()
@@ -145,7 +151,7 @@ def test_score_skips_missing_or_zero_official_close(tmp_path):
     _put(db, "2330", "20260918", 100.2)
     n = score_dongzhu_picks(db, "20260918")
     assert n == 1
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(_store(db))
     sids = [r[0] for r in conn.execute("SELECT sid FROM dongzhu_pick_score").fetchall()]
     verdict = conn.execute(
         "SELECT verdict FROM dongzhu_pick_score WHERE sid='2330'"
@@ -214,11 +220,8 @@ def test_runner_tapes_after_complete_judgment(tmp_path, monkeypatch):
     assert out["tape"]["snap"] == 2
 
 
-def test_dongzhu_page_shows_yesterday_scoreboard(tmp_path, monkeypatch):
-    import re
-
+def test_dongzhu_page_hides_scoreboard(tmp_path, monkeypatch):
     from biaoke_field_scan import dongzhu_page
-    from tg_layout import reflow_telegram_html
 
     db = str(tmp_path / "f.db")
     _quotes(db)
@@ -236,19 +239,79 @@ def test_dongzhu_page_shows_yesterday_scoreboard(tmp_path, monkeypatch):
         lambda *_a, **_k: {"cap": "20260917", "field": "", "line": "還沒對上"},
     )
     html = dongzhu_page(db)
-    assert "對質自記" in html
-    assert "日對質" in html
-    assert "9999" in html and "對質股" in html
-    assert "不是改黃金買點" in html
-    assert "盤後自己落檔" in html
-    assert "對質不改黃金買點" in html
-    phone = reflow_telegram_html(html)
-    for ln in phone.split("\n"):
-        s = ln.strip()
-        if s.startswith("┈"):
-            continue
-        plain = re.sub(r"<[^>]+>", "", s)
-        assert len(plain) <= 18
+    assert "對質自記" not in html
+    assert "對質股" not in html
+    assert "盤後自己落檔" not in html
+
+
+def test_screen_leave_zero_scores_like_dongzhu(tmp_path):
+    from screen_sessions import save_screen_session
+
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    save_screen_session(
+        db,
+        "20260917",
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "6257", "stock_name": "矽格", "close": 100.0}],
+            "golden_buy": [{"stock_id": "2449", "stock_name": "京元電子", "close": 100.0}],
+            "select_01": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+            "day_trade": [{"stock_id": "1101", "stock_name": "台泥", "close": 100.0}],
+        },
+    )
+    conn = sqlite3.connect(_store(db))
+    tags = {
+        r[0]
+        for r in conn.execute(
+            "SELECT tag FROM dongzhu_pick_tape WHERE kind='screen'"
+        ).fetchall()
+    }
+    conn.close()
+    assert tags == {"leave_zero", "golden_buy", "select_01"}
+    _put(db, "6257", "20260918", 101.0)
+    _put(db, "2449", "20260918", 99.0)
+    _put(db, "2330", "20260918", 100.2)
+    n = score_dongzhu_picks(db, "20260918")
+    assert n == 3
+    conn = sqlite3.connect(_store(db))
+    got = {
+        r[0]: r[1]
+        for r in conn.execute(
+            "SELECT sid, verdict FROM dongzhu_pick_score WHERE kind='screen'"
+        ).fetchall()
+    }
+    conn.close()
+    assert got["6257"] == "對"
+    assert got["2449"] == "偏"
+    assert got["2330"] == "還沒走完"
+
+
+def test_evolve_file_not_in_public_zip():
+    from pathlib import Path
+
+    daily = Path(".github/workflows/daily_run.yml").read_text(encoding="utf-8")
+    assert "zip -1 -j waynebot_production_complete.zip data/wayne_market.db" in daily
+    assert "wayne_evolve.db" not in daily
+
+
+def test_schema_migrate_does_not_drop_scores(tmp_path):
+    db = str(tmp_path / "t.db")
+    _quotes(db)
+    write_snapshot(
+        db,
+        {"cap": "20260917", "buys": [{"sid": "6257", "name": "矽格", "close": 100.0}]},
+    )
+    _put(db, "6257", "20260918", 101.0)
+    score_dongzhu_picks(db, "20260918")
+    from dongzhu_tape import ensure_dongzhu_tape_tables
+
+    ensure_dongzhu_tape_tables(db)
+    ensure_dongzhu_tape_tables(db)
+    conn = sqlite3.connect(_store(db))
+    n = conn.execute("SELECT COUNT(*) FROM dongzhu_pick_score").fetchone()[0]
+    conn.close()
+    assert n == 1
 
 
 def test_scores_1_5_10_trade_days_without_button(tmp_path, monkeypatch):
@@ -268,7 +331,7 @@ def test_scores_1_5_10_trade_days_without_button(tmp_path, monkeypatch):
     )
     n = score_dongzhu_picks(db, "20260911")
     assert n == 3
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(_store(db))
     rows = {
         int(r[0]): (r[1], r[2], r[3])
         for r in conn.execute(
