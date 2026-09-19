@@ -1014,6 +1014,28 @@ def _recent_eps_sum(conn: sqlite3.Connection, stock_id: str, *, max_n: int = 2) 
     return {"eps_sum": total if n else None, "eps_n": n, "eps_seasons": seasons}
 
 
+def has_positive_eps(db_path: str, stock_id: str) -> bool:
+    """同鏈比價同一條：近季官方 EPS 合計 > 0 才算賺到錢。虧損／沒季報不上。"""
+    sid = str(stock_id or "").strip()
+    if not db_path or not sid:
+        return False
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            rec = _recent_eps_sum(conn, sid, max_n=2)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    try:
+        n = int(rec.get("eps_n") or 0)
+        total = rec.get("eps_sum")
+        return n >= 1 and total is not None and float(total) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _latest_close(conn: sqlite3.Connection, stock_id: str) -> Dict[str, Any]:
     sid = str(stock_id).strip()
     row = conn.execute(
