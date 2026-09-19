@@ -3,9 +3,13 @@
 from pathlib import Path
 
 from silent_progress import (
+    REVIEW_STEPS,
     WAVE_NEURONS_MATCH,
+    capture_review_context,
+    load_review_context,
     maybe_speak,
     night_review,
+    pack_holes,
     simulate_next_legs,
     speak_line,
     speak_ready,
@@ -138,3 +142,62 @@ def test_capture_review_context_freezes_then_fills_missing(tmp_path):
     assert "requests" not in src
     assert "refresh_us_overnight" not in src
     assert "yahoo" not in src.lower()
+    assert src.find('"score_old"') < src.find('"record_forecast"') < src.find('"score_dongzhu"') < src.find('"never_speak"')
+
+
+def test_pack_holes_lists_missing_slots():
+    holes = pack_holes({"te_night": {"close": 101.0}})
+    assert "twii" in holes
+    assert "biaoke" in holes
+    assert "legs" in holes
+    assert "tx_night" in holes
+    assert "us" in holes
+    assert "te_night" not in holes
+    full = pack_holes(
+        {
+            "twii": {"close": 45800},
+            "biaoke": {"tag": "逃命波C-2", "direc": "down"},
+            "legs": [{"y": 43500}],
+            "tx_night": {"close": 45700},
+            "te_night": {"close": 2100},
+            "us": {"ixic_pct": -1.0},
+        }
+    )
+    assert full == []
+    assert list(REVIEW_STEPS)[-1] == "never_speak"
+    assert REVIEW_STEPS[0] == "complete_as_of"
+
+
+def test_capture_freezes_twii_bar_for_review(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "t.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL,
+            close REAL, volume REAL, pct_change REAL
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?)",
+        ("20260918", "TWII", 45700, 45900, 45600, 45820, 1, 0),
+    )
+    conn.commit()
+    conn.close()
+    pack = capture_review_context(
+        db,
+        "20260918",
+        extra={"biaoke": {"tag": "逃命波C-2", "direc": "down"}, "legs": [{"y": 43500}]},
+    )
+    assert pack["twii"]["close"] == 45820
+    assert pack["biaoke"]["tag"] == "逃命波C-2"
+    assert pack["legs"][0]["y"] == 43500
+    holes = pack_holes(pack)
+    assert "twii" not in holes
+    assert "biaoke" not in holes
+    assert "legs" not in holes
+    assert "te_night" in holes
+    assert "us" in holes

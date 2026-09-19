@@ -34,7 +34,26 @@ _US_KEEP = (
     "nq_f_pct",
     "regime",
 )
-_FUT_KEEP = ("date", "symbol", "session", "close", "high", "low", "pct_change")
+_TWII_KEEP = ("date", "open", "high", "low", "close", "volume")
+_FUT_KEEP = ("date", "symbol", "session", "open", "high", "low", "close", "pct_change")
+_BIAOKE_KEEP = ("tag", "direc", "date")
+
+# 覆盤要的欄：缺了當下就跳過，不准補假數、不准現場重抓。
+REVIEW_SLOTS = ("twii", "biaoke", "legs", "tx_night", "te_night", "us")
+REVIEW_STEPS = (
+    "complete_as_of",
+    "score_old",
+    "freeze_twii",
+    "freeze_biaoke",
+    "freeze_legs",
+    "freeze_tx_night",
+    "freeze_te_night",
+    "freeze_us",
+    "write_pack",
+    "record_forecast",
+    "score_dongzhu",
+    "never_speak",
+)
 
 # 現在還沒到：神經元還沒對上飆大，話筒不准畫 5／9，也不准主動講大盤預測。
 WAVE_NEURONS_MATCH = False
@@ -134,7 +153,7 @@ def _pick(row: Optional[Dict[str, Any]], keys: Sequence[str]) -> Dict[str, Any]:
         v = row.get(k)
         if v is None or v == "":
             continue
-        if k.endswith("_pct") or k in {"close", "high", "low", "vix"}:
+        if k.endswith("_pct") or k in {"close", "high", "low", "open", "volume", "vix"}:
             n = _num(v)
             if n is None:
                 continue
@@ -193,6 +212,29 @@ def load_review_context(db_path: str, as_of: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def pack_holes(ctx: Optional[Dict[str, Any]]) -> List[str]:
+    """覆盤前先看缺哪一欄。缺的跳過，不准補。"""
+    pack = ctx or {}
+    missing: List[str] = []
+    tw = pack.get("twii") if isinstance(pack.get("twii"), dict) else {}
+    if not tw.get("close"):
+        missing.append("twii")
+    bk = pack.get("biaoke") if isinstance(pack.get("biaoke"), dict) else {}
+    if not (bk.get("tag") or bk.get("direc")):
+        missing.append("biaoke")
+    legs = pack.get("legs") if isinstance(pack.get("legs"), list) else []
+    if not legs:
+        missing.append("legs")
+    for slot in ("tx_night", "te_night"):
+        row = pack.get(slot) if isinstance(pack.get(slot), dict) else {}
+        if not row.get("close"):
+            missing.append(slot)
+    us = pack.get("us") if isinstance(pack.get("us"), dict) else {}
+    if not any(us.get(k) is not None for k in ("ixic_pct", "sox_pct", "tsm_pct", "dji_pct", "spx_pct")):
+        missing.append("us")
+    return missing
+
+
 def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
     """只讀已經進庫的官方欄。沒有就不寫。不准現場打外網。"""
     day = _ymd(as_of)
@@ -206,7 +248,7 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
                 if day:
                     row = conn.execute(
                         """
-                        SELECT date, symbol, session, close, high, low, pct_change
+                        SELECT date, symbol, session, open, high, low, close, pct_change
                         FROM futures_daily
                         WHERE symbol=? AND session='night' AND REPLACE(CAST(date AS TEXT),'-','')<=?
                         ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
@@ -216,7 +258,7 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
                 else:
                     row = conn.execute(
                         """
-                        SELECT date, symbol, session, close, high, low, pct_change
+                        SELECT date, symbol, session, open, high, low, close, pct_change
                         FROM futures_daily
                         WHERE symbol=? AND session='night'
                         ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
@@ -232,15 +274,45 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
                     "date": row[0],
                     "symbol": row[1],
                     "session": row[2],
-                    "close": row[3],
+                    "open": row[3],
                     "high": row[4],
                     "low": row[5],
-                    "pct_change": row[6],
+                    "close": row[6],
+                    "pct_change": row[7],
                 },
                 _FUT_KEEP,
             )
             if bit.get("close"):
                 out[key] = bit
+        try:
+            tw = None
+            if day:
+                tw = conn.execute(
+                    """
+                    SELECT date, open, high, low, close, volume
+                    FROM index_daily
+                    WHERE (symbol='TWII' OR symbol='^TWII')
+                      AND REPLACE(CAST(date AS TEXT),'-','')=?
+                    LIMIT 1
+                    """,
+                    (day,),
+                ).fetchone()
+            if tw:
+                tw_b = _pick(
+                    {
+                        "date": tw[0],
+                        "open": tw[1],
+                        "high": tw[2],
+                        "low": tw[3],
+                        "close": tw[4],
+                        "volume": tw[5],
+                    },
+                    _TWII_KEEP,
+                )
+                if tw_b.get("close"):
+                    out["twii"] = tw_b
+        except sqlite3.Error:
+            pass
         us_row = None
         try:
             if day:
@@ -280,8 +352,12 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
     return out
 
 
-def capture_review_context(db_path: str, as_of: str = "") -> Dict[str, Any]:
-    """當下把夜盤／美指／美股已進庫的數凍住，給之後覆盤。已有的數不重抓不覆蓋。"""
+def capture_review_context(
+    db_path: str,
+    as_of: str = "",
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """按 REVIEW_STEPS 把覆盤要的欄一次凍住。已有的數不重抓不覆蓋；缺的記在 holes。"""
     if not db_path:
         return {}
     day = _ymd(as_of)
@@ -297,11 +373,20 @@ def capture_review_context(db_path: str, as_of: str = "") -> Dict[str, Any]:
     ensure_review_ctx(db_path)
     old = load_review_context(db_path, day)
     fresh = _read_live_context(db_path, day)
+    extras = extra if isinstance(extra, dict) else {}
+    for key in REVIEW_SLOTS:
+        if extras.get(key) in (None, "", {}, []):
+            continue
+        fresh[key] = extras[key]
     merged = _fill_missing(old, fresh)
     if not merged.get("as_of"):
         merged["as_of"] = day
-    if merged == old:
-        return old
+    core = {k: v for k, v in merged.items() if k not in {"holes", "steps"}}
+    old_core = {k: v for k, v in old.items() if k not in {"holes", "steps"}}
+    merged["holes"] = pack_holes(core)
+    merged["steps"] = list(REVIEW_STEPS)
+    if old and core == old_core:
+        return {**old, "holes": merged["holes"], "steps": merged["steps"]}
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         conn.execute(
@@ -318,22 +403,21 @@ def capture_review_context(db_path: str, as_of: str = "") -> Dict[str, Any]:
 
 
 def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """台北 02:00：覆盤官方柱、對他的畫、再試畫明天。不推話筒、不主動講。"""
+    """台北 02:00 按 REVIEW_STEPS 走完。缺欄跳過。不推話筒、不主動講。"""
     stats: Dict[str, Any] = {
         "twii": 0,
         "try": 0,
         "scored": 0,
         "dongzhu": 0,
         "ctx": 0,
+        "holes": [],
         "speak": False,
+        "step": "",
     }
     if not db_path:
+        stats["step"] = "complete_as_of"
         return stats
-    try:
-        ctx = capture_review_context(db_path, cap)
-        stats["ctx"] = 1 if ctx else 0
-    except Exception:
-        pass
+    stats["step"] = "score_old"
     try:
         from biaoke_forecast import snapshot_and_score_twii, verify_due
 
@@ -341,22 +425,36 @@ def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
             verify_due(db_path)
         except Exception:
             pass
+        stats["step"] = "record_forecast"
         got = snapshot_and_score_twii(db_path, cap) or {}
         stats["twii"] = int(got.get("twii") or 0)
         stats["try"] = int(got.get("try") or 0)
         stats["scored"] = int(got.get("scored") or 0)
+        day = str(got.get("cap") or cap or "")
+    except Exception:
+        day = str(cap or "")
+        got = {}
+    stats["step"] = "write_pack"
+    try:
+        ctx = load_review_context(db_path, day) if day else {}
+        if not ctx:
+            ctx = capture_review_context(db_path, day or cap)
+        stats["ctx"] = 1 if ctx else 0
+        stats["holes"] = list(ctx.get("holes") or pack_holes(ctx))
     except Exception:
         pass
+    stats["step"] = "score_dongzhu"
     try:
         from dongzhu_tape import snapshot_and_score_dongzhu
         from import_health import latest_complete_quote_date
 
-        day = str(cap or latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
-        if day:
-            dz = snapshot_and_score_dongzhu(db_path, day) or {}
+        dz_day = str(day or cap or latest_complete_quote_date(db_path) or "").replace("-", "")[:8]
+        if dz_day:
+            dz = snapshot_and_score_dongzhu(db_path, dz_day) or {}
             stats["dongzhu"] = int(dz.get("snap") or 0) + int(dz.get("scored") or 0)
     except Exception:
         pass
+    stats["step"] = "never_speak"
     stats["speak"] = bool(
         speak_ready("twii", db_path)
         or speak_ready("dongzhu", db_path)

@@ -728,19 +728,30 @@ def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
         direc = str((last_turn or {}).get("direc") or "")
         pts = wave_path_points(db_path, bars)
         rays = wave_extend_rays(pts, len(bars), tag)
+        from silent_progress import capture_review_context, simulate_next_legs
+
+        legs = simulate_next_legs(tag, last_c, rays)
         rec = record_twii(db_path, bars, rays=rays, last_tag=tag) or {}
-        if not rays:
-            from silent_progress import simulate_next_legs
-
-            legs = simulate_next_legs(tag, last_c, rays)
-            if legs and rec:
-                rec["path_json"] = json.dumps(legs, ensure_ascii=False)
+        if legs and rec:
+            rec["path_json"] = json.dumps(legs, ensure_ascii=False)
+            if not rec.get("rays_json") or rec.get("rays_json") == "[]":
                 rec["rays_json"] = json.dumps(legs, ensure_ascii=False)
-                _upsert(db_path, rec)
+            _upsert(db_path, rec)
+        extra = {
+            "twii": {
+                k: last.get(k)
+                for k in ("date", "open", "high", "low", "close", "volume")
+                if last.get(k) not in (None, "")
+            },
+            "biaoke": {
+                k: (last_turn or {}).get(k)
+                for k in ("tag", "direc", "date")
+                if (last_turn or {}).get(k)
+            },
+            "legs": legs,
+        }
         try:
-            from silent_progress import capture_review_context
-
-            capture_review_context(db_path, as_of=_ymd(last.get("date")) or cap_ymd)
+            capture_review_context(db_path, as_of=_ymd(last.get("date")) or cap_ymd, extra=extra)
         except Exception:
             pass
         try_rec = record_twii_try(db_path, bars, last_tag=tag, direc=direc) or {}
