@@ -95,6 +95,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("_send_lookup_album", src)
         self.assertIn("rest_items", src)
         self.assertIn("industry_task", src)
+        self.assertIn("card_send_task", src)
         self.assertIn("高低溫度卡", src)
         self.assertLess(src.index("card_path"), src.index("rest_items"))
         self.assertIn("_glance_photo_caption", src)
@@ -103,6 +104,15 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn('"industry"', src)
         self.assertIn("generate_chart", src)
         self.assertIn('"chart"', src)
+
+    def test_lookup_native_dpi_higher_than_360(self):
+        from industry_card import INDUSTRY_PX_SCALE
+        from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI
+
+        self.assertGreaterEqual(CARD_PNG_DPI, 420)
+        self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
+        self.assertGreaterEqual(NAV_CHART_DPI, 420)
+        self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)
 
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)

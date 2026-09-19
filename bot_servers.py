@@ -5613,7 +5613,7 @@ class WayneTelegramBot:
                 st["sent"] = list(sent_kinds)
                 st["current"] = kind
 
-            # 產業圖走 PIL，與高低溫度卡同時畫。卡一好就先送出頂著。
+            # 產業圖走 PIL，與高低溫度卡同時畫。卡一好就邊轉高畫質邊上，後面三張繼續畫。
             industry_task = asyncio.create_task(
                 _render_one("industry", _render_industry, _LOOKUP_PNG_TIMEOUT)
             )
@@ -5622,16 +5622,23 @@ class WayneTelegramBot:
             st0["current"] = "card"
             card_path = await _render_one("card", card_fn, _LOOKUP_PNG_TIMEOUT)
             card_sent = False
+            card_send_task = None
             if card_path:
                 ready_by["card"] = card_path
                 _mark("card")
-                card_sent = await send_photo(card_path, card_cap, hub, kind="card")
-                if card_sent:
-                    sent_any = True
-                    hub_on = True
-                    if not lookup_faded:
-                        lookup_faded = True
-                        await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
+
+                async def _send_card_hold() -> bool:
+                    nonlocal sent_any, hub_on, lookup_faded
+                    ok = await send_photo(card_path, card_cap, hub, kind="card")
+                    if ok:
+                        sent_any = True
+                        hub_on = True
+                        if not lookup_faded:
+                            lookup_faded = True
+                            await self._dismiss_lookup_fades(actor, roles={"ack", "header"})
+                    return ok
+
+                card_send_task = asyncio.create_task(_send_card_hold())
 
             for kind, fn, timeout_s, _cap, _mk in render_plan:
                 if kind in ("card", "industry"):
@@ -5654,6 +5661,12 @@ class WayneTelegramBot:
             if ind_path:
                 ready_by["industry"] = ind_path
                 _mark("industry")
+            if card_send_task is not None:
+                try:
+                    card_sent = bool(await card_send_task)
+                except Exception:
+                    logger.exception("高低溫度卡先送失敗 code=%s", code)
+                    card_sent = False
 
             rest_items = [
                 (kind, ready_by[kind], cap, mk)
