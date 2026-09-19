@@ -20,6 +20,7 @@
 #   3. 三大法人 T86／櫃買 → daily_quotes.foreign_net / trust_net / dealer_net（張）
 #      並依產業加總寫入 daily_sector_flow（盤後資金輪動，佈局參考）
 #      接著重跑洞燭先機走查（佔比升還沒第一 vs 停車格 vs 黃金買點），寫進 dongzhu_precursor
+#      盤後齊了就自己落當日洞燭名單（不必按鈕、不推話筒），之後連續對 1／5／10 個交易日；不改黃金買點
 #   4. 缺日／上市櫃缺邊重抓（假日官方回空則略過）
 #   5. 月營收 monthly_revenue（OpenAPI 全市場同期＋公開資訊觀測站 NAS 已先公告）、季報 quarterly_income（OpenAPI 最新一期；無免驗證碼 NAS 彙總表）
 #   6. 除權息 ex_rights（證交所 TWT49U、櫃買 exDailyQ；決策卡還原優先用此表）
@@ -96,6 +97,12 @@ class MainRunner:
         self.today_str = taipei_today_str()
         logger.info(f"🚀 初始化 WayneBot 主排程 (DB: {self.db_path}, 日期: {self.today_str})")
         ensure_core_schema(self.db_path)
+        try:
+            from dongzhu_tape import ensure_dongzhu_tape_tables, tape_store_path
+
+            ensure_dongzhu_tape_tables(tape_store_path(self.db_path))
+        except Exception:
+            logger.debug("進化落檔表略過", exc_info=True)
 
         try:
             from quote_integrity import ensure_quote_integrity
@@ -770,6 +777,20 @@ class MainRunner:
             np_.get("gain"),
             np_.get("n"),
         )
+        try:
+            from dongzhu_tape import snapshot_and_score_dongzhu
+
+            tape_cap = str(cap or judged.get("cap") or "")
+            tape = snapshot_and_score_dongzhu(self.db_path, tape_cap)
+            judged["tape"] = tape
+            logger.info(
+                "洞燭每日落檔 snap=%s scored=%s cap=%s",
+                tape.get("snap"),
+                tape.get("scored"),
+                tape.get("cap"),
+            )
+        except Exception as e:
+            logger.error("洞燭每日落檔失敗: %s", e, exc_info=True)
         return judged
 
     @staticmethod

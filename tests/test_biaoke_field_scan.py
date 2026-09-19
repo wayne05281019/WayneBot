@@ -701,6 +701,11 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     assert "refresh_dongzhu_judgment" in runner
     assert "dongzhu_judge" in runner
     assert "_refresh_dongzhu_after_close" in runner
+    assert "snapshot_and_score_dongzhu" in runner
+    assert runner.find('if judged.get("skipped")') < runner.find(
+        "snapshot_and_score_dongzhu"
+    )
+    assert "from dongzhu_tape import" not in money
     assert "匯入可能延遲" in runner
     assert "recompute_sector_flow" in runner
     assert runner.find("sync_all_fine_industry") < runner.find("recompute_sector_flow")
