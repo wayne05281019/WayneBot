@@ -107,6 +107,82 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
         assert sum(im.size) < 10000
 
 
+def test_glance_nav_skips_single_bar_and_paints_180(tmp_path, monkeypatch):
+    """日 K 只有一根時不准把那根拉成整幅導航；夠 180 根才畫。"""
+    import sqlite3
+    from datetime import date, timedelta
+
+    import matplotlib
+    import matplotlib.axes
+
+    matplotlib.use("Agg")
+    from tests.test_sell_discipline import _mini_card_for_png
+    from wayne_db import ensure_core_schema
+    from wayne_navigator import render_first_glance_png
+
+    db = str(tmp_path / "nav.db")
+    ensure_core_schema(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+        "VALUES ('2303','聯電','TW','STOCK','半導體業',1,'t')"
+    )
+    conn.execute(
+        "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,"
+        "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("20260918", "2303", "聯電", "TW", 147, 148, 146, 147, 1000, 100, 0, 147),
+    )
+    conn.commit()
+    conn.close()
+    card = _mini_card_for_png(stock_id="2303", stock_name="聯電", listing="上市　成熟製程")
+    tape = {"last": {}, "move": {}, "volume": {}, "foreign": {}, "trust": {}, "dealer": {}, "three": {}, "inst_pct": 0}
+    seen = []
+    orig = matplotlib.axes.Axes.text
+    orig_title = matplotlib.axes.Axes.set_title
+
+    def wrap(self, *args, **kwargs):
+        text = str(args[2]) if len(args) >= 3 else str(kwargs.get("s") or "")
+        seen.append(text)
+        return orig(self, *args, **kwargs)
+
+    def wrap_title(self, s, *args, **kwargs):
+        seen.append(str(s))
+        return orig_title(self, s, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", wrap)
+    monkeypatch.setattr(matplotlib.axes.Axes, "set_title", wrap_title)
+    one = tmp_path / "one.png"
+    render_first_glance_png("2303", card, tape, str(one), db_path=db)
+    assert any("尚無日K" in t for t in seen)
+
+    conn = sqlite3.connect(db)
+    d = date(2025, 1, 2)
+    px = 140.0
+    n = 0
+    while n < 180:
+        if d.weekday() < 5:
+            ymd = d.strftime("%Y%m%d")
+            o = px
+            hi = px + 1.2
+            lo = px - 1.1
+            cl = px + ((n % 9) - 4) * 0.35
+            conn.execute(
+                "INSERT OR REPLACE INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ymd, "2303", "聯電", "TW", o, hi, lo, cl, 1000 + n, 100, 0.1, cl),
+            )
+            px = cl
+            n += 1
+        d += timedelta(days=1)
+    conn.commit()
+    conn.close()
+    seen.clear()
+    many = tmp_path / "many.png"
+    render_first_glance_png("2303", card, tape, str(many), db_path=db)
+    assert not any("尚無日K" in t for t in seen)
+    assert any("180日高低導航" in t for t in seen)
+
+
 def test_industry_html_one_metric_per_line():
     import sqlite3
     import tempfile
@@ -124,6 +200,7 @@ def test_industry_html_one_metric_per_line():
         now = "2026-08-31T00:00:00"
         for sid, name, mkt, atype, ind in (
             ("3035", "智原", "TWSE", "STOCK", "半導體業"),
+            ("3443", "創意", "TWSE", "STOCK", "半導體業"),
             ("2408", "南亞科", "TWSE", "STOCK", "半導體業"),
             ("6854", "錼創科技-KY", "TWSE", "KY", "半導體業"),
             ("7770", "君曜", "TWSE", "STOCK", "半導體業"),
@@ -134,6 +211,7 @@ def test_industry_html_one_metric_per_line():
             )
         for sid, name, yoy, mom, gm in (
             ("3035", "智原", 10.0, -25.0, 46.1),
+            ("3443", "創意", 80.0, 1.0, 40.0),
             ("2408", "南亞科", 719.6, 1.0, 20.0),
             ("6854", "錼創科技-KY", -46.7, 0.0, 10.0),
             ("7770", "君曜", -58.2, 0.0, 8.0),
@@ -163,8 +241,9 @@ def test_industry_html_one_metric_per_line():
         assert "年增特別大" not in html
         assert "也會幌" not in html
         assert "也會晃" not in html
-        assert "半導體業含代工、記憶體、設計" in html
-        assert "同業＝同一官方產業別全組" in html
+        assert "半導體業含代工、記憶體、設計" not in html
+        assert "同業＝同一官方產業別全組" not in html
+        assert "同一產業鏈才比" in html
         lines = html.split("\n")
         for line in lines:
             plain = re.sub(r"<[^>]+>", "", line)
@@ -175,19 +254,16 @@ def test_industry_html_one_metric_per_line():
             if "同業中位毛利率" in plain:
                 assert "%" in plain
         codes = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
-        peer_lines = [ln for ln in codes if re.search(r"\b(2408|6854|7770)\b", ln)]
-        for ln in peer_lines:
-            found = re.findall(r"\b(?:2408|6854|7770|3035)\b", ln)
-            assert len(found) <= 1, ln
-        assert any("2408" in ln and "南亞科" in ln for ln in codes)
-        assert any("6854" in ln and "錼創科技-KY" in ln for ln in codes)
+        assert not any("2408" in ln and "南亞科" in ln for ln in codes)
+        assert not any("6854" in ln and "錼創" in ln for ln in codes)
+        assert any("3443" in ln and "創意" in ln for ln in codes)
     finally:
         os.remove(path)
 
 
 @pytest.mark.production_db
-def test_tsmc_peers_share_twse_semiconductor_bucket(production_db):
-    """台積電不是記憶體；南亞科／鈺創出現是因為證交所半導體業太粗。"""
+def test_tsmc_peers_are_foundry_not_memory_bucket(production_db):
+    """台積電同業是代工細項，不是證交所半導體業把南亞科灌進來。"""
     import sqlite3
 
     from industry_brief import format_industry_html
@@ -204,14 +280,15 @@ def test_tsmc_peers_share_twse_semiconductor_bucket(production_db):
         conn.close()
     assert rows["2330"][1] == "半導體業"
     assert rows["2408"][1] == "半導體業"
-    assert rows["5351"][1] == "半導體業"
     html = format_industry_html("2330", production_db)
     assert "半導體業" in html
+    assert "代工" in html
+    assert "同一產業鏈才比" in html
+    assert "半導體業含代工、記憶體、設計" not in html
     assert "本族群產業狀況簡述" in html
-    assert "這族資金" not in html
     assert "這族" not in html
-    assert "不是論壇分類" not in html
-    assert "年增特別大" not in html
-    assert "也會幌" not in html
-    assert "半導體業含代工、記憶體、設計" in html
-    assert "本產業" in html
+    blob = html
+    if "同業月營收對照" in blob:
+        tail = blob.split("同業月營收對照", 1)[-1]
+        assert "南亞科" not in tail
+        assert "2408" not in tail

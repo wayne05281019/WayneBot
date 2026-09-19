@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""查股介紹圖／決策卡／持股：產業法人 overlay。"""
+"""查股介紹圖／決策卡／持股：本鏈資金句，與產業卡／洞燭同一套。"""
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import sqlite3
 import tempfile
@@ -21,21 +22,40 @@ def _flow_db():
     os.close(fd)
     ensure_core_schema(path)
     conn = sqlite3.connect(path)
-    now = "2026-08-31T00:00:00"
+    import datetime as _dt
+
+    now = _dt.datetime.now().isoformat(timespec="seconds")
     univ = [
-        ("2330", "台積電", "TWSE", "STOCK", "半導體業"),
-        ("2454", "聯發科", "TWSE", "STOCK", "半導體業"),
-        ("2382", "廣達", "TWSE", "STOCK", "電腦及週邊設備業"),
-        ("3231", "緯創", "TWSE", "STOCK", "電腦及週邊設備業"),
-        ("2002", "中鋼", "TWSE", "STOCK", "鋼鐵工業"),
-        ("2027", "大成鋼", "TWSE", "STOCK", "鋼鐵工業"),
-        ("0050", "元大台灣50", "TWSE", "ETF_PASSIVE", "ETF"),
+        ("2330", "台積電", "TWSE", "STOCK", "半導體業", "電子上游-IC-代工"),
+        ("2454", "聯發科", "TWSE", "STOCK", "半導體業", "電子上游-IC-代工"),
+        ("2002", "中鋼", "TWSE", "STOCK", "鋼鐵工業", "傳產-鋼鐵"),
+        ("2027", "大成鋼", "TWSE", "STOCK", "鋼鐵工業", "傳產-鋼鐵"),
+        ("1101", "台泥", "TWSE", "STOCK", "水泥工業", "傳產-水泥"),
+        ("0050", "元大台灣50", "TWSE", "ETF_PASSIVE", "ETF", ""),
     ]
-    for sid, name, mkt, atype, ind in univ:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_fine_industry (
+            stock_id TEXT PRIMARY KEY,
+            chain TEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            cat_id TEXT DEFAULT '',
+            source TEXT NOT NULL,
+            fetched_at TEXT NOT NULL
+        )
+        """
+    )
+    for sid, name, mkt, atype, ind, chain in univ:
         conn.execute(
             "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
             (sid, name, mkt, atype, ind, now),
         )
+        if chain:
+            tags = chain.split("-")
+            conn.execute(
+                "INSERT INTO stock_fine_industry(stock_id,chain,tags_json,cat_id,source,fetched_at) VALUES (?,?,?,?,?,?)",
+                (sid, chain, json.dumps(tags, ensure_ascii=False), "", "test", now),
+            )
 
     def q(date, sid, name, market, pct, vol, fn, tn, dn):
         conn.execute(
@@ -43,20 +63,23 @@ def _flow_db():
             (date, sid, name, market, 100, 101, 99, 100, vol, 50000, pct, 100, fn, tn, dn),
         )
 
-    # 8/27：電腦流入、半導體流出；8/28：半導體剛輪進、電腦續流入、鋼鐵流出。
-    q("20260827", "2330", "台積電", "TW", -0.5, 40000, -500, -100, 0)
-    q("20260827", "2454", "聯發科", "TW", -0.2, 8000, -80, -20, 0)
-    q("20260827", "2382", "廣達", "TW", 0.4, 20000, 400, 80, 0)
-    q("20260827", "3231", "緯創", "TW", 0.3, 9000, 90, 20, 0)
+    # 代工佔比連三日升；鋼鐵連三日退。
+    q("20260826", "2330", "台積電", "TW", 0.2, 30000, 80, 20, 0)
+    q("20260826", "2454", "聯發科", "TW", 0.1, 7000, 40, 10, 0)
+    q("20260826", "2002", "中鋼", "TW", 0.1, 18000, 40, 10, 0)
+    q("20260826", "2027", "大成鋼", "TW", 0.1, 4000, 20, 5, 0)
+    q("20260826", "1101", "台泥", "TW", 0.2, 20000, 8000, 2000, 0)
+    q("20260827", "2330", "台積電", "TW", 0.4, 35000, 160, 40, 0)
+    q("20260827", "2454", "聯發科", "TW", 0.3, 8000, 80, 20, 0)
     q("20260827", "2002", "中鋼", "TW", -0.3, 20000, -200, -50, 0)
     q("20260827", "2027", "大成鋼", "TW", -0.1, 5000, -40, -10, 0)
-    q("20260828", "2330", "台積電", "TW", 1.2, 50000, 8000, 400, 50)
-    q("20260828", "2454", "聯發科", "TW", 0.8, 9000, 1200, 300, 20)
-    q("20260828", "2382", "廣達", "TW", 0.5, 18000, 600, 90, 10)
-    q("20260828", "3231", "緯創", "TW", 0.4, 8000, 120, 30, 5)
+    q("20260827", "1101", "台泥", "TW", 0.1, 18000, 3000, 500, 0)
+    q("20260828", "2330", "台積電", "TW", 1.2, 50000, 320, 80, 10)
+    q("20260828", "2454", "聯發科", "TW", 0.8, 9000, 160, 40, 5)
     q("20260828", "2002", "中鋼", "TW", -1.5, 18000, -3000, -400, -50)
     q("20260828", "2027", "大成鋼", "TW", -0.8, 4000, -500, -80, -10)
-    q("20260828", "0050", "元大台灣50", "TW", 0.4, 20000, 90000, 0, 0)
+    q("20260828", "1101", "台泥", "TW", -0.2, 16000, 400, 100, 0)
+    q("20260828", "0050", "元大台灣50", "TW", 0.4, 20000, 0, 0, 0)
     conn.commit()
     conn.close()
     return path
@@ -72,22 +95,26 @@ class LookupIndustryFlowTests(unittest.TestCase):
         except OSError:
             pass
 
-    def test_overlay_just_inflow_outflow_and_stamp(self):
-        just = industry_flow_overlay(self.path, "半導體業", "20260828")
-        self.assertIn("半導體業剛輪進", just)
-        self.assertIn("官方法人 overlay", just)
+    def test_overlay_uses_chain_not_twse_bucket(self):
+        just = industry_flow_overlay(self.path, ymd="20260828", stock_id="2330")
+        self.assertIn("本鏈", just)
+        self.assertIn("資金流入", just)
+        self.assertNotIn("半導體業", just)
+        self.assertNotIn("官方法人 overlay", just)
         self.assertNotIn("不改溫度", just)
         self.assertNotIn("買賣格", just)
-        self.assertIn("2026/08/28（五）", just)
-        stay = industry_flow_overlay(self.path, "電腦及週邊設備業", "20260828")
-        self.assertIn("電腦及週邊設備業在流入前段", stay)
-        out = industry_flow_overlay(self.path, "鋼鐵工業", "20260828")
-        self.assertIn("鋼鐵工業在流出前段", out)
-        self.assertEqual(industry_flow_overlay(self.path, "ETF", "20260828"), "")
-        self.assertEqual(industry_flow_overlay(self.path, "未分類", "20260828"), "")
-        self.assertEqual(industry_flow_overlay(self.path, "", "20260828"), "")
+        out = industry_flow_overlay(self.path, ymd="20260828", stock_id="2002")
+        self.assertIn("本鏈", out)
+        self.assertIn("資金流出", out)
+        self.assertNotIn("鋼鐵工業", out)
+        self.assertEqual(industry_flow_overlay(self.path, "半導體業", "20260828"), "")
+        self.assertEqual(industry_flow_overlay(self.path, ymd="20260828", stock_id="0050"), "")
+        self.assertEqual(industry_flow_overlay(self.path, ymd="20260828", stock_id=""), "")
 
     def test_tag_short_and_empty(self):
+        self.assertEqual(industry_flow_tag("本鏈（代工）法人合計買超。佔比在升＝資金流入。"), "資金流入")
+        self.assertEqual(industry_flow_tag("佔比在退＝資金流出。"), "資金流出")
+        self.assertEqual(industry_flow_tag("買超佔比還在。"), "佔比還在")
         self.assertEqual(industry_flow_tag("官方法人 overlay：半導體業剛輪進（截至 x）。"), "剛輪進")
         self.assertEqual(industry_flow_tag("…在流出前段…"), "流出前段")
         self.assertEqual(industry_flow_tag("…在流入前段…"), "流入前段")
@@ -105,7 +132,9 @@ class LookupIndustryFlowTests(unittest.TestCase):
         table_before = card["table"]
         out = attach_industry_flow(card, self.path, ymd="20260828")
         self.assertIs(out, card)
-        self.assertIn("半導體業剛輪進", card["industry_flow"])
+        self.assertIn("本鏈", card["industry_flow"])
+        self.assertIn("資金流入", card["industry_flow"])
+        self.assertNotIn("半導體業剛輪進", card["industry_flow"])
         self.assertNotIn("不改溫度", card["industry_flow"])
         self.assertNotIn("買賣格", card["industry_flow"])
         self.assertEqual(card["temp_c"], "36.0 °C")
@@ -115,16 +144,29 @@ class LookupIndustryFlowTests(unittest.TestCase):
         self.assertEqual(card["table"][0]["高低"], "No")
 
     def test_attach_skips_etf_and_keeps_existing(self):
-        etf = {"etf_kind": "被動", "industry": "半導體業", "temp_c": "12.0 °C"}
+        etf = {"etf_kind": "被動", "stock_id": "0050", "industry": "半導體業", "temp_c": "12.0 °C"}
         attach_industry_flow(etf, self.path, ymd="20260828")
         self.assertNotIn("industry_flow", etf)
         self.assertEqual(etf["temp_c"], "12.0 °C")
-        kept = {"industry": "鋼鐵工業", "industry_flow": "已有"}
+        kept = {"stock_id": "2002", "industry": "鋼鐵工業", "industry_flow": "已有"}
         attach_industry_flow(kept, self.path, ymd="20260828")
         self.assertEqual(kept["industry_flow"], "已有")
-        err = {"error": "no", "industry": "半導體業"}
+        err = {"error": "no", "stock_id": "2330", "industry": "半導體業"}
         attach_industry_flow(err, self.path, ymd="20260828")
         self.assertNotIn("industry_flow", err)
+
+    def test_same_sentence_on_peers_industry_and_lookup(self):
+        from industry_brief import format_industry_html, stock_flow_overlay, stock_peer_plain_rows
+
+        overlay = stock_flow_overlay("2330", self.path, ymd="20260828")
+        rows = dict(stock_peer_plain_rows("2330", self.path))
+        html = format_industry_html("2330", self.path, allow_fetch=False)
+        self.assertTrue(overlay)
+        self.assertEqual(rows.get("資金"), overlay.rstrip("。"))
+        self.assertIn("資金：", html)
+        self.assertIn(overlay.rstrip("。"), html)
+        self.assertIn("本鏈", overlay)
+        self.assertIn("資金流入", overlay)
 
     def test_html_and_png_sources_carry_overlay(self):
         from wayne_navigator import (
@@ -168,9 +210,11 @@ class LookupIndustryFlowTests(unittest.TestCase):
                     "0050": {"close": 151, "pct_change": 0.2},
                 },
             )
-        self.assertIn("半導體業剛輪進", html)
-        self.assertIn("鋼鐵工業在流出前段", html)
-        self.assertEqual(html.count("官方法人 overlay"), 2)
+        self.assertIn("資金：", html)
+        self.assertIn("資金流入", html)
+        self.assertIn("資金流出", html)
+        self.assertNotIn("半導體業剛輪進", html)
+        self.assertNotIn("官方法人 overlay", html)
         self.assertNotIn("不改溫度", html)
         self.assertNotIn("買賣格", html)
         self.assertIn("未實現", html)
@@ -189,8 +233,9 @@ class LookupIndustryFlowTests(unittest.TestCase):
         flows = industry_flows_for_stocks(
             self.path, ["2330", "2002", "0050", "2330"], ymd="20260828"
         )
-        self.assertIn("半導體業剛輪進", flows["2330"])
-        self.assertIn("鋼鐵工業在流出前段", flows["2002"])
+        self.assertIn("資金流入", flows["2330"])
+        self.assertIn("本鏈", flows["2330"])
+        self.assertIn("資金流出", flows["2002"])
         self.assertNotIn("0050", flows)
         self.assertEqual(industry_flows_for_stocks("", ["2330"], ymd="20260828"), {})
         self.assertEqual(industry_flows_for_stocks(self.path, [], ymd="20260828"), {})
@@ -210,9 +255,10 @@ class LookupIndustryFlowTests(unittest.TestCase):
                     {"stock_code": "0050", "stock_name": "元大台灣50"},
                 ]
             )
-        self.assertIn("半導體業剛輪進", html)
-        self.assertIn("鋼鐵工業在流出前段", html)
-        self.assertEqual(html.count("官方法人 overlay"), 2)
+        self.assertIn("資金：", html)
+        self.assertIn("資金流入", html)
+        self.assertIn("資金流出", html)
+        self.assertNotIn("官方法人 overlay", html)
         self.assertNotIn("不改溫度", html)
         self.assertNotIn("買賣格", html)
         self.assertIn("觀察清單", html)
@@ -221,7 +267,7 @@ class LookupIndustryFlowTests(unittest.TestCase):
         self.assertIn("rw:2330", datas)
         empty, _ = bot._render_watch([])
         self.assertIn("目前是空的", empty)
-        self.assertNotIn("官方法人 overlay", empty)
+        self.assertNotIn("資金：", empty)
 
     def test_ai_desk_overlay_before_discipline(self):
         from ai_trader import ensure_ai_user, format_ai_desk_html, format_ai_desk_pages
@@ -237,12 +283,13 @@ class LookupIndustryFlowTests(unittest.TestCase):
         with patch("money_flow.resolve_flow_as_of", return_value=("20260828", None)):
             html = format_ai_desk_html(eng, uid)
             pages = format_ai_desk_pages(eng, uid)
-        self.assertIn("半導體業剛輪進", html)
+        self.assertIn("資金流入", html)
         self.assertNotIn("不改溫度", html)
         self.assertNotIn("買賣格", html)
         held = next(p for p in pages if "第 1 槽" in p)
-        self.assertIn("半導體業剛輪進", held)
-        self.assertLess(held.find("進場"), held.find("官方法人 overlay"))
+        self.assertIn("資金流入", held)
+        self.assertIn("資金：", held)
+        self.assertLess(held.find("進場"), held.find("資金"))
         src = inspect.getsource(format_ai_desk_pages)
         flow_idx = src.find("industry_flows_for_stocks")
         disc_idx = src.find('sell_notes.get(sid)')

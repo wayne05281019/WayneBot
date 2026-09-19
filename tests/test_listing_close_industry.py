@@ -62,7 +62,9 @@ def test_html_stock_anchor_appends_listing(tmp_path):
     conn.close()
     tw = html_stock_anchor("2330", "台積電", db)
     assert ">2330 台積電</a>　上市（半導體業）" in tw
-    assert html_stock_anchor("3105", "穩懋", db).endswith("　上櫃（半導體業）")
+    win = html_stock_anchor("3105", "穩懋", db)
+    assert "上櫃" in win and "光通訊" in win and "低軌衛星" in win
+    assert "（半導體業）" not in win
     assert html_stock_anchor("3644", "凌嘉科", db).endswith("　興櫃（半導體業）")
     assert "一線" not in tw and "二線" not in tw
 
@@ -93,7 +95,7 @@ def test_listing_face_marks_turnover_leader_not_yi_er_xian(tmp_path):
     otc = listing_industry_face("3105", db)
     assert tsmc == "上市（半導體業）　龍頭"
     assert mtk == "上市（半導體業）"
-    assert otc == "上櫃（半導體業）"
+    assert otc == "上櫃　光通訊／低軌衛星"
     assert "一線" not in tsmc + mtk + otc
     assert "二線" not in tsmc + mtk + otc
     assert html_stock_anchor("2330", "台積電", db).endswith("　上市（半導體業）　龍頭")
@@ -107,12 +109,43 @@ def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():
     assert listing_face_ok("上市（半導體業）　龍頭")
     assert listing_face_ok("上市　電子上游-IC-代工")
     assert listing_face_ok("上市　電子上游-IC-代工　龍頭")
+    assert listing_face_ok("上市　成熟製程")
+    assert listing_face_ok("上櫃　代工／光通訊／低軌衛星")
     assert listing_face_ok("上市（ETF）")
     assert listing_face_ok("上櫃（半導體業）")
     assert listing_face_ok("興櫃（半導體業）")
     assert not listing_face_ok("一線")
     assert not listing_face_ok("上市　一線")
     assert not listing_face_ok("上市（半導體業）一線")
+
+
+def test_split_listing_face_keeps_market_and_tags_apart():
+    from universe import split_listing_face
+    from wayne_navigator import _title_listing_and_industry
+
+    assert split_listing_face("上櫃　代工／光通訊／低軌衛星") == (
+        "上櫃",
+        "代工／光通訊／低軌衛星",
+    )
+    assert split_listing_face("上市　成熟製程") == ("上市", "成熟製程")
+    assert split_listing_face("上市　機器人　龍頭") == ("上市　龍頭", "機器人")
+    assert split_listing_face("上市　電子上游-IC-代工　龍頭") == (
+        "上市　龍頭",
+        "電子上游-IC-代工",
+    )
+    assert split_listing_face("上市（半導體業）　龍頭") == (
+        "上市（半導體業）　龍頭",
+        "",
+    )
+    listing, industry, _kind = _title_listing_and_industry(
+        {
+            "listing": "上櫃　代工／光通訊／低軌衛星",
+            "fine_industry": "電子上游-IC-代工",
+            "industry": "半導體業",
+        }
+    )
+    assert listing == "上櫃"
+    assert industry == "代工／光通訊／低軌衛星"
 
 
 def test_listing_face_emerging_not_overridden_by_stale_otc_quote(tmp_path):
@@ -223,7 +256,8 @@ def test_industry_mix_volume_and_lag_month(tmp_path):
     assert "上市" in html
     assert "2026年8月" in html
     assert "量比" in html
-    assert "興櫃" in html
+    assert "同一產業鏈才比" in html
+    assert "聯發科" not in html
 
     late = industry_snapshot(db, "2454")
     assert late["month"] == "202607"

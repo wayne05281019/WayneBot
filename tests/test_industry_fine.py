@@ -98,7 +98,8 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
     html = format_industry_html("2330", path, allow_fetch=False)
     assert ("代工" in html or "[代工]" in html or "[IC]" in html)
     assert "籌碼K" in html
-    assert "[記憶體製造]" in html or "記憶體製造" in html
+    assert "記憶體製造" not in html
+    assert "同一產業鏈才比" in html
     assert "這族" not in html
     html_title = html.split("\n", 1)[0]
     assert "台積電" in html_title
@@ -107,6 +108,8 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
 
     assert chip_color("代工") != chip_color("記憶體製造")
     assert chip_color("LED照明及光元件") != chip_color("代工")
+    assert chip_color("光通訊") != chip_color("低軌衛星")
+    assert chip_color("低軌衛星") != chip_color("代工")
 
     png = str(tmp_path / "2330_industry.png")
     out = render_industry_png("2330", path, png, allow_fetch=False)

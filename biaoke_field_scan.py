@@ -14,6 +14,8 @@ import sqlite3
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from industry_fine import TAUGHT_GROUPS
+
 WANT_ASK = re.compile(
     r"(新族群|蠢蠢欲動|怎麼找|根據我的指引|找族群|還沒點名|底部蠢蠢|指引去找)"
 )
@@ -22,8 +24,12 @@ SHARE_ASK = re.compile(
     r"還沒當第一|升還沒第一)"
 )
 
+def _gmem(tag: str) -> Tuple[Tuple[str, str], ...]:
+    return tuple((str(sid), "") for sid in (TAUGHT_GROUPS.get(tag) or ()))
+
+
 # 教過的次族群：名稱／龍頭／落後檔對得上才沿用。排名掃全部 CMoney 三層鏈，不准發明一族、不准發明 5／9。
-# needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。
+# needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。沒有準字就空，不准拿代工／通訊設備去灌。
 _GROUPS: Tuple[Dict[str, Any], ...] = (
     {
         "key": "asic",
@@ -40,22 +46,79 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "needles": ("散熱",),
         "layers": ("電子中游", "散熱零組件"),
         "leaders": (("3653", "健策"), ("3017", "奇鋐")),
+        "members": _gmem("散熱"),
     },
     {
         "key": "inp",
-        "field": "光通訊 InP",
-        "names": ("光通訊", "InP", "聯亞", "全新", "穩懋"),
+        "field": "光通訊",
+        "names": ("光通訊", "矽光子", "InP", "聯亞", "光聖", "波若威", "穩懋"),
         "needles": (),
-        "layers": ("電子上游", "半導體元件"),
-        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("3105", "穩懋")),
+        "layers": (),
+        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("6442", "光聖")),
+        "members": _gmem("光通訊"),
+    },
+    {
+        "key": "sat",
+        "field": "低軌衛星",
+        "names": ("低軌衛星", "低軌", "昇達科", "耀登", "華通", "穩懋"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("3491", "昇達科"), ("3105", "穩懋")),
+        "members": _gmem("低軌衛星"),
+    },
+    {
+        "key": "mature",
+        "field": "成熟製程",
+        "names": ("成熟製程", "聯電", "力積電", "世界"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("2303", "聯電"),),
+        "members": _gmem("成熟製程"),
+    },
+    {
+        "key": "robot",
+        "field": "機器人",
+        "names": ("機器人", "上銀", "研華", "精銳", "工業電腦"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("2049", "上銀"), ("2395", "研華")),
+        "members": _gmem("機器人"),
     },
     {
         "key": "mem",
-        "field": "記憶體",
-        "names": ("記憶體", "南亞科"),
-        "needles": ("記憶體",),
+        "field": "記憶體製造",
+        "names": ("記憶體製造", "記憶體原料", "南亞科", "華邦電", "旺宏"),
+        "needles": ("記憶體製造",),
         "layers": ("電子上游", "記憶體製造"),
         "leaders": (("2408", "南亞科"),),
+        "members": _gmem("記憶體製造"),
+    },
+    {
+        "key": "memctl",
+        "field": "記憶體控制",
+        "names": ("記憶體控制", "控制晶片", "群聯", "點序"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("8299", "群聯"),),
+        "members": _gmem("記憶體控制"),
+    },
+    {
+        "key": "memmod",
+        "field": "記憶體模組",
+        "names": ("記憶體模組", "宜鼎", "威剛", "創見"),
+        "needles": ("記憶體銷售",),
+        "layers": ("電子上游", "記憶體銷售"),
+        "leaders": (("5289", "宜鼎"),),
+        "members": _gmem("記憶體模組"),
+    },
+    {
+        "key": "memdist",
+        "field": "記憶體通路",
+        "names": ("記憶體通路", "至上", "增你強"),
+        "needles": (),
+        "layers": ("電子上游", "IC", "通路"),
+        "leaders": (("8112", "至上"),),
+        "members": _gmem("記憶體通路"),
     },
     {
         "key": "pcb",
@@ -64,14 +127,16 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "needles": ("PCB",),
         "layers": ("電子上游", "PCB", "材料設備"),
         "leaders": (("2383", "台光電"),),
+        "members": _gmem("PCB"),
     },
     {
         "key": "abf",
         "field": "ABF",
-        "names": ("ABF", "欣興", "南電"),
+        "names": ("ABF", "欣興", "南電", "景碩"),
         "needles": ("ABF",),
         "layers": ("電子上游", "ABF"),
         "leaders": (("3037", "欣興"),),
+        "members": _gmem("ABF"),
     },
     {
         "key": "pass",
@@ -93,10 +158,95 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
             ("3264", "欣銓"),
             ("2449", "京元電子"),
             ("2441", "超豐"),
-            ("6830", "汎銓"),
         ),
     },
+    {
+        "key": "hitest",
+        "field": "高階測試",
+        "names": ("高階測試", "F4", "穎崴", "旺矽", "精測"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("6515", "穎崴"), ("6223", "旺矽")),
+        "members": _gmem("高階測試"),
+    },
+    {
+        "key": "mempack",
+        "field": "記憶體封測",
+        "names": ("記憶體封測", "力成", "南茂"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("6239", "力成"),),
+        "members": _gmem("記憶體封測"),
+    },
+    {
+        "key": "lab",
+        "field": "檢測驗證",
+        "names": ("檢測驗證", "汎銓", "閎康", "宜特"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("6830", "汎銓"),),
+        "members": _gmem("檢測驗證"),
+    },
+    {
+        "key": "solar",
+        "field": "太陽能",
+        "names": ("太陽能", "元晶", "茂迪"),
+        "needles": ("太陽能",),
+        "layers": ("電子下游", "太陽能"),
+        "leaders": (("6443", "元晶"),),
+        "members": _gmem("太陽能"),
+    },
+    {
+        "key": "chem",
+        "field": "特用化學",
+        "names": ("特用化學", "台特化", "新應材"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("4772", "台特化"),),
+        "members": _gmem("特用化學"),
+    },
+    {
+        "key": "fab",
+        "field": "無塵室",
+        "names": ("無塵室", "聖暉", "漢唐", "亞翔"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("5536", "聖暉*"), ("2404", "漢唐")),
+        "members": _gmem("無塵室"),
+    },
+    {
+        "key": "air",
+        "field": "航空",
+        "names": ("航空", "華航", "長榮航", "星宇"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("2610", "華航"),),
+        "members": _gmem("航空"),
+    },
+    {
+        "key": "power",
+        "field": "重電",
+        "names": ("重電", "華城", "中興電", "士電"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("1519", "華城"),),
+        "members": _gmem("重電"),
+    },
 )
+
+
+def _is_flow_group(g: Dict[str, Any]) -> bool:
+    """流入只認對得上 CMoney 三層的。機器人／低軌等聯想族不當另一套掃描。"""
+    return bool(
+        tuple(x for x in (g.get("layers") or ()) if str(x).strip())
+        or tuple(x for x in (g.get("needles") or ()) if str(x).strip())
+    )
+
+
+def _flow_groups() -> Tuple[Dict[str, Any], ...]:
+    return tuple(g for g in _GROUPS if _is_flow_group(g))
+
+
 _HOW = (
     "他教過怎麼找：①次族群還沒熱、很少人提；②次族群第一名誰先過前高，不比絕對漲跌；"
     "③高點整理的從底部找落後。不是猜新聞。"
@@ -111,9 +261,17 @@ _HOW_LINES = (
 )
 _PAGE_RULES = (
     "佔比如實主判。不是買訊、不進海選。",
+    "每天資金進哪條主／次／細項。",
+    "微弱可察也算進駐。",
     "每檔先寫買或不買。",
     "已持有寫留或不加碼。",
     "龍頭來不及買。比價下次級黃金買點。",
+    "股民追漲不追跌。先機不追當天第一名。",
+    "點火後抓同鏈比價落後。",
+    "60低當嚴重低估觀察，不是買訊。",
+    "連動名單只認對得上籌碼K的龍頭／落後。",
+    "自選歸類只參考，不准整份覆蓋。",
+    "聯想名單不當流入主判。",
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
     "盤中未收不當官方收。",
@@ -125,6 +283,7 @@ _PAGE_NOTES = (
     "這型勝率 70.8%",
     "追第一名約五成六",
     "追當天第一名容易人去樓空。",
+    "抓資金脈絡，不是猜新聞。",
     "金控／銀行當停車格。",
     "電子細項先機較穩。",
     "貼20高＝偏晚。",
@@ -420,7 +579,7 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
     named = _named_keys(spoken)
     hits: List[Tuple[float, Dict[str, Any], Dict[str, Any], Optional[Tuple[str, str, Dict[str, Any]]]]] = []
     missing = 0
-    for g in _GROUPS:
+    for g in _flow_groups():
         if g["key"] in named:
             continue
         leaders = []
@@ -856,7 +1015,7 @@ def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
         dates = _chip_dates(conn, cap, lookback)
         if not dates:
             return 0
-        members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _GROUPS}
+        members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _flow_groups()}
         qmarks_by_key = {}
         for key, sids in members.items():
             if sids:
@@ -878,9 +1037,9 @@ def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
             ).fetchone()
             market_in = int(mkt[0] or 0) if mkt else 0
             market_out = int(mkt[1] or 0) if mkt else 0
-            for g in _GROUPS:
+            for g in _flow_groups():
                 sids = members.get(g["key"]) or []
-                if not sids:
+                if not sids or g["key"] not in qmarks_by_key:
                     continue
                 row = conn.execute(
                     f"""
@@ -1580,14 +1739,14 @@ def _flow_why_lines(ign: Dict[str, Any]) -> List[str]:
     shares = list(ign.get("shares") or [])
     if not nets and not shares:
         return ["法人佔比還沒這列", "資金進出不准猜。"]
-    if ign.get("flowing_in") or ign.get("slow_in"):
-        extra = "佔比在升＝資金流入。"
-    elif float(ign.get("share_last") or 0) > 0:
-        extra = "買超佔比還在。"
-    elif float(ign.get("share_up") or 0) < 0 or int(ign.get("last") or 0) < 0:
-        extra = "佔比在退＝資金流出。"
-    else:
-        extra = "佔比還沒升，不算流入。"
+    from industry_brief import share_flow_extra
+
+    extra = share_flow_extra(
+        flowing_in=bool(ign.get("flowing_in") or ign.get("slow_in")),
+        share_last=float(ign.get("share_last") or 0),
+        share_up=float(ign.get("share_up") or 0),
+        last_net=int(ign.get("last") or 0),
+    )
     lines: List[str] = []
     fine = str(ign.get("fine_tag") or "").strip()
     if fine:
@@ -1689,6 +1848,7 @@ _TAUGHT_FINE = (
     "LED照明及光元件",
     "光學鏡片",
     "LCD",
+    "太陽能",
 )
 
 
@@ -1875,7 +2035,14 @@ def _decorate(
         "last_net": last_net,
         "group_share": (100.0 * last_net / group_last) if group_last > 0 else 0.0,
         "fine": _fine_chain(db_path, sid),
+        "face": "",
     }
+    try:
+        from industry_fine import membership_face
+
+        item["face"] = membership_face(sid, chain=str(item.get("fine") or ""))
+    except Exception:
+        item["face"] = str(item.get("fine") or "")
     if row:
         item["pick_close"] = row.get("pick_close") or row.get("close")
         item["entry_price"] = row.get("entry_price")
@@ -1959,7 +2126,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 }
             )
         seen_keys = {str(ign.get("_key") or "") for ign in all_igns}
-        for g in _GROUPS:
+        for g in _flow_groups():
             if g["key"] in seen_keys:
                 continue
             ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
@@ -1970,7 +2137,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             all_igns.append(ign)
             _note_hot(g["field"], ign)
     else:
-        for g in _GROUPS:
+        for g in _flow_groups():
             ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
             ign = dict(ign or {})
             ign["_field"] = g["field"]
@@ -2299,11 +2466,17 @@ def _stock_line(
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
     role = str(item.get("role") or "").strip()
-    rows = [f"{idx}. {sid} {name}"]
+    face = str(item.get("face") or "").strip()
+    if role == "龍頭":
+        rows = [f"{idx}. <b>龍頭</b> {sid} {name}"]
+    else:
+        rows = [f"{idx}. {sid} {name}"]
+    if face:
+        rows.append(_esc(face))
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
         rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
-    if role:
+    if role and role != "龍頭":
         rows.append(_esc(role))
     if vs20 is not None:
         rows.append(f"距20高 {_pct(float(vs20))}")
@@ -2403,6 +2576,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     empty = {
         "sid": sid,
         "name": "",
+        "face": "",
         "layers": [],
         "verdict": "還沒",
         "hold": False,
@@ -2421,6 +2595,12 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     name = _stock_name(db_path, sid, sid)
     empty["name"] = name
     parts = _chain_parts(db_path, sid)
+    try:
+        from industry_fine import membership_face
+
+        empty["face"] = membership_face(sid, chain=_chain_key(parts))
+    except Exception:
+        empty["face"] = ""
     cap = _chip_cap(db_path) or _cap(db_path)
     chip_cap = _chip_cap(db_path, cap) if cap else ""
     empty["cap"] = cap
@@ -2480,6 +2660,7 @@ def dongzhu_hold(db_path: str, sid: str, *, spoken: Optional[str] = None) -> Dic
     return {
         "sid": sid,
         "name": name,
+        "face": str(empty.get("face") or ""),
         "layers": list(parts),
         "layer_txt": _layer_line(parts),
         "field": g.get("field") or (parts[-1] if parts else ""),
@@ -2589,6 +2770,7 @@ def dongzhu_hold_page(
     head = [
         "<b>洞燭先機・能不能留</b>",
         f"{sid_s} {name}".strip(),
+        *([_esc(data.get("face"))] if str(data.get("face") or "").strip() else []),
         *act_rows,
     ]
     if cap:
@@ -2709,8 +2891,8 @@ def dongzhu_page(
     if watches:
         blocks.append(
             _blk(
-                "<b>還在零</b>",
-                _esc("只觀察，不是買"),
+                "<b>還在零・嚴重低估觀察</b>",
+                _esc("60低超跌，只觀察不是買"),
                 _stock_blocks(watches, "觀察", compact=True, held_sids=held_sids),
             )
         )
@@ -2723,7 +2905,7 @@ def dongzhu_page(
     if lags:
         blocks.append(
             _blk(
-                "<b>捕捉・最落後次級</b>",
+                "<b>捕捉・同鏈比價落後</b>",
                 _esc("沒買點只觀察，不是單檔保證"),
                 _stock_blocks(lags, "捕捉", compact=True, held_sids=held_sids),
             )

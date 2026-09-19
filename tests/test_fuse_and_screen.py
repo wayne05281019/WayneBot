@@ -624,6 +624,7 @@ class FuseAndScreenTest(unittest.TestCase):
                 ("2330", "台積電", "TWSE", "STOCK", "半導體業"),
                 ("2454", "聯發科", "TWSE", "STOCK", "半導體業"),
                 ("2303", "聯電", "TWSE", "STOCK", "半導體業"),
+                ("3711", "日月光投控", "TWSE", "STOCK", "半導體業"),
                 ("2002", "中鋼", "TWSE", "STOCK", "鋼鐵工業"),
                 ("2027", "大成鋼", "TWSE", "STOCK", "鋼鐵工業"),
                 ("0050", "元大台灣50", "TWSE", "ETF_PASSIVE", "ETF"),
@@ -633,11 +634,39 @@ class FuseAndScreenTest(unittest.TestCase):
                     "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) VALUES (?,?,?,?,?,1,?)",
                     (sid, name, mkt, atype, ind, now),
                 )
+            from datetime import datetime as _dt
+            import json as _json
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS stock_fine_industry (
+                    stock_id TEXT PRIMARY KEY,
+                    chain TEXT NOT NULL,
+                    tags_json TEXT NOT NULL,
+                    cat_id TEXT DEFAULT '',
+                    source TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL
+                )
+                """
+            )
+            fetched = _dt.now().isoformat(timespec="seconds")
+            for sid, chain in (
+                ("2330", "電子上游-IC-代工"),
+                ("3711", "電子上游-IC-代工"),
+                ("2454", "電子上游-IC-設計"),
+                ("2303", "電子上游-IC-代工"),
+            ):
+                tags = chain.split("-")
+                conn.execute(
+                    "INSERT OR REPLACE INTO stock_fine_industry(stock_id,chain,tags_json,cat_id,source,fetched_at) VALUES (?,?,?,?,?,?)",
+                    (sid, chain, _json.dumps(tags, ensure_ascii=False), "", "test", fetched),
+                )
             month = "202607"
             for sid, name, yoy, mom in (
                 ("2330", "台積電", 40.0, 5.0),
                 ("2454", "聯發科", 8.0, 1.0),
                 ("2303", "聯電", 5.0, 0.0),
+                ("3711", "日月光投控", 5.0, 0.0),
                 ("2002", "中鋼", -10.0, -2.0),
                 ("2027", "大成鋼", -8.0, 0.0),
             ):
@@ -657,10 +686,14 @@ class FuseAndScreenTest(unittest.TestCase):
                 "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,gross_profit,gross_margin_pct,operating_income,net_income,eps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 ("2303", 2026, 2, "聯電", "TW", 4000, 800, 20.0, 200, 150, 1.0),
             )
+            conn.execute(
+                "INSERT INTO quarterly_income(stock_id,year,season,stock_name,market,revenue,gross_profit,gross_margin_pct,operating_income,net_income,eps) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("3711", 2026, 2, "日月光投控", "TW", 4000, 800, 20.0, 200, 150, 1.0),
+            )
             q = (
                 "INSERT INTO daily_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price,foreign_net,trust_net,dealer_net) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )
-            for sid, name, fn in (("2330", "台積電", 8000), ("2454", "聯發科", 1200), ("2303", "聯電", 500)):
+            for sid, name, fn in (("2330", "台積電", 8000), ("2454", "聯發科", 1200), ("2303", "聯電", 500), ("3711", "日月光投控", 400)):
                 conn.execute(q, ("20260828", sid, name, "TW", 100, 101, 99, 100, 10000, 50000, 1.0, 100, fn, 0, 0))
             for sid, name, fn in (("2002", "中鋼", -3000), ("2027", "大成鋼", -500)):
                 conn.execute(q, ("20260828", sid, name, "TW", 30, 31, 29, 30, 8000, 20000, -1.0, 30, fn, 0, 0))
@@ -671,9 +704,12 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertIn("半導體業", html)
             self.assertIn("比同業明顯較強", html)
             self.assertIn("本族群產業狀況簡述", html)
-            self.assertIn("本產業", html)
-            self.assertIn("前3大族群產業", html)
-            self.assertIn("半導體業含代工、記憶體、設計", html)
+            self.assertIn("資金：", html)
+            self.assertIn("本鏈", html)
+            self.assertNotIn("官方法人 overlay", html)
+            self.assertIn("同一產業鏈才比", html)
+            self.assertNotIn("半導體業含代工、記憶體、設計", html)
+            self.assertNotIn("同一官方產業別全組", html)
             self.assertNotIn("這族", html)
             self.assertNotIn("不是論壇分類", html)
             self.assertNotIn("年增特別大", html)

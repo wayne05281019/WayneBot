@@ -52,29 +52,75 @@ def _db_with_fine(tmp_path, *, sid="2303", name="聯電", ind="半導體業", ch
 
 
 def test_listing_industry_face_prefers_fine_chain(tmp_path):
-    db = _db_with_fine(tmp_path)
-    face = listing_industry_face("2303", db)
-    assert "電子上游-IC-代工" in face
+    db = _db_with_fine(
+        tmp_path, sid="2412", name="中華電", ind="通信網路業", chain="電子下游-電信"
+    )
+    face = listing_industry_face("2412", db)
+    assert "電子下游-電信" in face
     assert face.startswith("上市")
-    assert "（半導體業）" not in face
+    assert "（通信網路業）" not in face
     assert "細項" not in face
 
 
-def test_listing_industry_face_falls_back_without_fine(tmp_path):
+def test_listing_industry_face_uses_taught_membership(tmp_path):
     db = _db_with_fine(tmp_path)
+    face = listing_industry_face("2303", db)
+    assert "成熟製程" in face
+    assert face.startswith("上市")
+    assert "電子上游-IC-代工" not in face
+    assert "（半導體業）" not in face
+    conn = sqlite3.connect(db)
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+        "VALUES (?,?,?,?,?,1,?)",
+        ("3105", "穩懋", "TWO", "STOCK", "半導體業", now),
+    )
+    conn.execute(
+        "INSERT INTO stock_fine_industry(stock_id,chain,tags_json,cat_id,source,fetched_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (
+            "3105",
+            "電子上游-IC-代工",
+            json.dumps(["電子上游", "IC", "代工"], ensure_ascii=False),
+            "",
+            "cmoney_forum",
+            now,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO stock_universe(stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at) "
+        "VALUES (?,?,?,?,?,1,?)",
+        ("2049", "上銀", "TW", "STOCK", "電機機械", now),
+    )
+    conn.commit()
+    conn.close()
+    win = listing_industry_face("3105", db)
+    assert win.startswith("上櫃")
+    assert "代工" in win and "光通訊" in win and "低軌衛星" in win
+    robot = listing_industry_face("2049", db)
+    assert robot.startswith("上市")
+    assert "機器人" in robot
+
+
+def test_listing_industry_face_falls_back_without_fine(tmp_path):
+    db = _db_with_fine(
+        tmp_path, sid="2412", name="中華電", ind="通信網路業", chain="電子下游-電信"
+    )
     conn = sqlite3.connect(db)
     conn.execute("DELETE FROM stock_fine_industry")
     conn.commit()
     conn.close()
-    face = listing_industry_face("2303", db)
-    assert face == "上市（半導體業）" or face.startswith("上市（半導體業）")
+    face = listing_industry_face("2412", db)
+    assert face == "上市（通信網路業）" or face.startswith("上市（通信網路業）")
 
 
 def test_flow_stock_title_and_sector_entry_show_fine(tmp_path):
     db = _db_with_fine(tmp_path)
     title = _flow_stock_title("2303", "聯電", db)
     assert "2303" in title and "聯電" in title
-    assert "電子上游-IC-代工" in title
+    assert "成熟製程" in title
+    assert "電子上游-IC-代工" not in title
     row = {
         "industry": "半導體業",
         "three_net": 40000,
@@ -96,7 +142,7 @@ def test_flow_stock_title_and_sector_entry_show_fine(tmp_path):
     conn.close()
     html = _sector_entry(row, db)
     assert "前幾名買超" in html
-    assert "電子上游-IC-代工" in html
+    assert "成熟製程" in html
     assert "細項" not in html
     assert "1. " in html and "2. " in html
 
@@ -118,11 +164,12 @@ def test_fundamentals_and_industry_title_carry_fine(tmp_path):
     conn.close()
     fund = format_fundamentals_html("2303", db)
     assert "基本面" in fund
-    assert "電子上游-IC-代工" in fund
+    assert "成熟製程" in fund
     assert "細項" not in fund
     ind = format_industry_html("2303", db, allow_fetch=False)
     assert "產業說明" in ind
     assert "電子上游-IC-代工" in ind
+    assert "成熟製程" in ind
     assert "細項" not in ind
 
 

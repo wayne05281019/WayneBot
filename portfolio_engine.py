@@ -668,7 +668,7 @@ class PortfolioEngine:
             lines.append(kv_html_compact("市值", html_money(mkt, signed=False, compact=True)))
             flow = flows.get(code) or ""
             if flow:
-                lines.append(html_escape(flow))
+                lines.append(kv_compact("資金", flow.rstrip("。")))
             note = sell_notes.get(code) or ""
             if note:
                 lines.append(kv_compact("紀律", note))

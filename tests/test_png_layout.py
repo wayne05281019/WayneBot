@@ -104,7 +104,7 @@ def test_industry_kv_uses_right_edge():
     from industry_card import _card_font, _wrap_px
 
     font = _card_font(32)
-    lines = _wrap_px("半導體業含代工、記憶體、設計，不是只跟晶圓代工比。", font, 984)
+    lines = _wrap_px("同業＝同一產業鏈才比；跨族檔另標他還有的鏈。", font, 984)
     assert lines
     assert not any(ln[:1] in "。、；：）" for ln in lines)
     assert max(font.getlength(ln) for ln in lines) <= 984 + 1.0
@@ -114,7 +114,7 @@ def test_industry_kv_uses_right_edge():
     from industry_card import render_industry_png as _fn
 
     src = inspect.getsource(_fn)
-    assert '("kv", "產業"' in src
+    assert '("kv", "官方產業別"' in src
     assert '("kv", "這檔年增"' in src
     assert "pad_x + max_w - ln_w" in src
 

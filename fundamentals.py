@@ -628,16 +628,27 @@ def glance_fundamentals_plain(stock_id: str, db_path: str = None) -> list:
         rows.extend(valuation_plain_rows(sid, path))
     except Exception:
         pass
+    try:
+        from industry_brief import stock_peer_plain_rows
+
+        rows.extend(stock_peer_plain_rows(sid, path))
+    except Exception:
+        pass
     if not rows:
         rows.append(("基本面", "尚無月營收／季報"))
     return rows
 
 
-def glance_fundamentals_rows(stock_id: str, db_path: str = None) -> list:
+def glance_fundamentals_rows(stock_id: str, db_path: str = None, *, skip_labels=()) -> list:
     """第一眼用的短基本面：月營收／增減（億元）、季報營收毛利。"""
     from tg_layout import kv_compact
 
-    return [kv_compact(lab, val) for lab, val in glance_fundamentals_plain(stock_id, db_path)]
+    skip = {str(x) for x in (skip_labels or ())}
+    return [
+        kv_compact(lab, val)
+        for lab, val in glance_fundamentals_plain(stock_id, db_path)
+        if lab not in skip
+    ]
 
 
 def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
@@ -752,6 +763,14 @@ def format_fundamentals_html(stock_id: str, db_path: str = None) -> str:
                 kv_compact("稅後淨利", format_yi(q.get("net_income") or 0)),
             )
         )
+    try:
+        from industry_brief import stock_peer_plain_rows
+
+        peer_rows = stock_peer_plain_rows(sid, path)
+    except Exception:
+        peer_rows = []
+    if peer_rows:
+        blocks.append(section(*[kv_compact(a, b) for a, b in peer_rows]))
     try:
         from stock_links import yahoo_income_url
 

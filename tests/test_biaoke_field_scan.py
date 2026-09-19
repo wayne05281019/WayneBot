@@ -195,6 +195,8 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     blob = "\n".join(heads)
     assert "洞燭先機" in blob
     assert "資金輪動要注意" in html
+    assert "資金進哪條" in html
+    assert "追漲不追跌" in html
     assert "此刻最像" in html
     assert "此刻推薦" in html
     assert "① " in html
@@ -607,6 +609,33 @@ def test_dongzhu_layers_and_parity_roles():
     test_g = next(g for g in _GROUPS if g["key"] == "test")
     assert _stock_role(test_g, "6515") == "龍頭"
     assert _stock_role(test_g, "6257") == "次級"
+    mature = next(g for g in _GROUPS if g["key"] == "mature")
+    assert _stock_role(mature, "2303") == "龍頭"
+    sat = next(g for g in _GROUPS if g["key"] == "sat")
+    assert _stock_role(sat, "3491") == "龍頭"
+    from biaoke_field_scan import _is_flow_group
+
+    assert _is_flow_group(test_g)
+    assert not _is_flow_group(mature)
+    assert not _is_flow_group(sat)
+    robot = next(g for g in _GROUPS if g["key"] == "robot")
+    assert not _is_flow_group(robot)
+    mem = next(g for g in _GROUPS if g["key"] == "mem")
+    assert _is_flow_group(mem)
+    solar = next(g for g in _GROUPS if g["key"] == "solar")
+    assert _is_flow_group(solar)
+    memmod = next(g for g in _GROUPS if g["key"] == "memmod")
+    assert _is_flow_group(memmod)
+    for key in ("hitest", "mempack", "lab", "air", "power", "chem", "fab"):
+        assert not _is_flow_group(next(g for g in _GROUPS if g["key"] == key)), key
+    from biaoke_field_scan import _stock_line
+
+    lead_line = _stock_line(
+        {"sid": "2303", "name": "聯電", "role": "龍頭", "vs20": -10.0, "vs60": -20.0},
+        1,
+        "買點",
+    )
+    assert lead_line.startswith("1. <b>龍頭</b> 2303 聯電")
     line = _layer_line(("電子上游", "IC", "封測"))
     assert "主產業 電子上游" in line
     assert "次產業 IC" in line
@@ -653,6 +682,8 @@ def test_dongzhu_flow_hooks_fuse_not_money_flow():
     assert "_refresh_dongzhu_after_close" in runner
     assert "匯入可能延遲" in runner
     assert "recompute_sector_flow" in runner
+    assert runner.find("sync_all_fine_industry") < runner.find("recompute_sector_flow")
+    assert runner.find("sync_all_fine_industry") < runner.find("record_dongzhu_flow")
     assert "from biaoke_" not in screen
     assert "from dongzhu_screen import rotation_screen_block" in screen
 
@@ -746,7 +777,7 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert len(lags) <= 3
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "捕捉・最落後次級" in html
+    assert "捕捉・同鏈比價落後" in html
     assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
     assert "不是單檔保證" in html

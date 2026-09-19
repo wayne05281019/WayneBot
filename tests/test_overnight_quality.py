@@ -241,6 +241,9 @@ def test_title_bar_prefers_event_over_long_industry():
     flow = fit_title_bar_extras("半導體業", "", 40.0, tw, news="剛輪進")
     assert "剛輪進" in [t[0] for t in flow]
     assert any(t[0] == "剛輪進" and t[2] == "#B3E5FC" for t in flow)
+    cash = fit_title_bar_extras("代工", "", 40.0, tw, news="資金流入")
+    assert "資金流入" in [t[0] for t in cash]
+    assert any(t[0] == "資金流入" and t[2] == "#B3E5FC" for t in cash)
 
 
 def test_decision_card_png_renders_next_event():

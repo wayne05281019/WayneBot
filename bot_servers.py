@@ -1858,7 +1858,9 @@ class WayneTelegramBot:
                 lines.append(f"• {html_escape(c)} {html_escape(n)}".rstrip())
             flow = str((flows or {}).get(c) or "").strip()
             if flow:
-                lines.append(html_escape(flow))
+                from tg_layout import kv_compact
+
+                lines.append(kv_compact("資金", flow.rstrip("。")))
         extra = len(rows or []) - len(shown)
         if extra > 0:
             lines.append(f"<i>只顯示前 {self.WATCH_LIST_LIMIT} 檔，其餘 {extra} 檔請先刪再加。</i>")
@@ -3787,7 +3789,7 @@ class WayneTelegramBot:
             "card": "看這檔：請先打代號（例 2330、0050、00631L、00981A）或點觀察清單。會一次出介紹圖、決策卡。",
             "chips": "籌碼：請先選一檔。打名稱或代號，或點下面觀察清單。",
             "fund": "營收毛利：請先選一檔。打名稱或代號，或點下面觀察清單。",
-            "industry": "產業說明：請先選一檔。會送一張圖卡，用官方營收／毛利跟同業比。",
+            "industry": "產業說明：請先選一檔。會送一張圖卡。同業＝同一產業鏈才比；跨族檔另標他還有的鏈。",
             "buy": "記買入：請先選一檔，或直接打「2330 1 500」（代號 張數 價格）。",
         }
         rows = get_user_watchlist(self.db_path, uid)

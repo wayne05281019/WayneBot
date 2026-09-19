@@ -839,12 +839,18 @@ class NavigatorEngine:
             listing = ""
         fine_industry = ""
         try:
-            from industry_fine import load_cached_fine_industry
+            from industry_fine import load_cached_fine_industry, membership_face
 
             rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
                 str(stock_id)
             ) or {}
-            fine_industry = str(rec.get("chain") or "").strip()
+            chain = str(rec.get("chain") or "").strip()
+            mem = membership_face(str(stock_id), chain=chain)
+            # 標題列 listing 已含跨族／最細標時，這裡只留籌碼K整條鏈當備援，避免再貼一次。
+            if mem and mem in str(listing or ""):
+                fine_industry = ""
+            else:
+                fine_industry = mem or chain
         except Exception:
             fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")
@@ -2211,6 +2217,28 @@ def _glyph_w_pt(text: str, fs: float, weight: int) -> float:
         return 0.0
 
 
+def _title_listing_and_industry(card: dict):
+    """市場別當 lead、跨族／最細標當產業；長標不要跟籌碼K整條鏈疊在同一列。"""
+    etf_kind = str(card.get("etf_kind") or "").strip()
+    industry = "" if etf_kind else str(card.get("industry") or "").strip()
+    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
+    listing = str(card.get("listing") or "").strip()
+    try:
+        from universe import split_listing_face
+
+        lead, rest = split_listing_face(listing)
+    except Exception:
+        lead, rest = listing, ""
+    if rest:
+        listing = lead
+        industry = rest
+    elif fine and fine != industry and fine not in listing:
+        industry = fine
+    elif fine and fine in listing:
+        industry = ""
+    return listing, industry, etf_kind
+
+
 def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: float = 1.8, news: str = "", lead: str = ""):
     """股名右側：ETF 類型固定先放；最近一件其次，產業、報導則數有空再放。報導不是買賣訊。"""
     out = []
@@ -2237,7 +2265,7 @@ def fit_title_bar_extras(industry: str, event: str, avail: float, tw, *, gap: fl
             remaining -= tw(event, fs) + gap
     if industry:
         fs = 12.0
-        while fs >= 9.0 and tw(industry, fs) + 0.2 > remaining:
+        while fs >= 8.0 and tw(industry, fs) + 0.2 > remaining:
             fs -= 0.5
         if tw(industry, fs) + 0.2 <= remaining:
             out.append((industry, fs, "#FFE082"))
@@ -2635,15 +2663,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
-    etf_kind = str(card.get("etf_kind") or "").strip()
-    industry = "" if etf_kind else str(card.get("industry") or "").strip()
-    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    listing = str(card.get("listing") or "").strip()
-    # listing 已含產業鏈時標題列不要再貼一次。
-    if fine and fine != industry and fine not in listing:
-        industry = fine
-    elif fine and fine in listing:
-        industry = ""
+    listing, industry, etf_kind = _title_listing_and_industry(card)
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -2989,12 +3009,13 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
     head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
-    listing = str(card.get("listing") or "").strip()
+    listing, industry, etf_kind = _title_listing_and_industry(card)
     if listing:
         head = f"{head}　{html_escape(listing)}"
-    industry = str(card.get("etf_kind") or card.get("industry") or "").strip()
-    if industry and industry not in listing:
-        head = f"{head}　{html_escape(industry)}"
+    kind_lead = "" if (etf_kind and etf_kind in str(name)) else etf_kind
+    extra = kind_lead or industry
+    if extra and extra not in listing:
+        head = f"{head}　{html_escape(extra)}"
     event = str(card.get("next_event") or "").strip()
     if event:
         head = f"{head}　{html_escape(event)}"
@@ -3026,12 +3047,11 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         mc = None
     if mc is not None:
         chip_lines.append(kv_compact("主力成本", f"{float(mc):.2f}（分點平均買超）"))
-    if chip_lines:
-        chip_block = section(*chip_lines)
     flow = str(card.get("industry_flow") or "").strip()
     if flow:
-        flow_line = html_escape(flow)
-        chip_block = (flow_line + "\n" + chip_block) if chip_block else section(flow_line)
+        chip_lines = [kv_compact("資金", flow.rstrip("。"))] + chip_lines
+    if chip_lines:
+        chip_block = section(*chip_lines)
     vol_line = (tape.get("volume") or {}).get("line") or "—"
     extra_flags = tape.get("conflict") or ""
     bias = card.get("bias_monthly")
@@ -3052,7 +3072,12 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     try:
         from fundamentals import glance_fundamentals_rows
 
-        fund_block = section(*glance_fundamentals_rows(sid, db_path or get_db_path()))
+        skip = ("資金", "同業法人") if flow else ()
+        fund_block = section(
+            *glance_fundamentals_rows(
+                sid, db_path or get_db_path(), skip_labels=skip
+            )
+        )
     except Exception:
         fund_block = ""
     try:
@@ -3330,15 +3355,7 @@ def render_first_glance_png(
     stamp = f"{date_line}  {clock_line}".strip() if clock_line else (date_line or _fmt_md(card.get("latest_date")))
     cursor = name_x + tw(name, 20) + 1.8
     right_limit = brand_x - tw(stamp, 11.2) - 3.4
-    etf_kind = str(card.get("etf_kind") or "").strip()
-    industry = "" if etf_kind else str(card.get("industry") or "").strip()
-    fine = "" if etf_kind else str(card.get("fine_industry") or "").strip()
-    listing = str(card.get("listing") or "").strip()
-    # listing 已含產業鏈時標題列不要再貼一次。
-    if fine and fine != industry and fine not in listing:
-        industry = fine
-    elif fine and fine in listing:
-        industry = ""
+    listing, industry, etf_kind = _title_listing_and_industry(card)
     event = str(card.get("next_event") or "").strip()
     news = str(card.get("news_label") or "").strip()
     if not news:
@@ -3553,6 +3570,8 @@ def render_first_glance_png(
         except Exception:
             bars = None
     work = _nav_work_or_none(bars, already_normalized=ohlc is not None) if bars is not None else None
+    if work is not None and len(work) < 5:
+        work = None
     if work is not None:
         _paint_nav_on_axes(
             ax_px, ax_sig, ax_vol, work.tail(180).copy(),

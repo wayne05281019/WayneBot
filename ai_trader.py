@@ -680,7 +680,7 @@ def format_ai_desk_pages(
             block.extend(_ai_phone_lines(f"進場　{reason} {bought}".strip()))
             flow = str(flows.get(sid) or "").strip()
             if flow:
-                block.extend(_ai_phone_lines(flow))
+                block.extend(_ai_phone_lines(kv_compact("資金", flow.rstrip("。"))))
             note = sell_notes.get(sid) or ""
             if note:
                 block.extend(_ai_phone_lines(f"紀律：{note}"))
