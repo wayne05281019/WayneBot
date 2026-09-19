@@ -148,7 +148,7 @@ def test_lookup_album_has_no_lecture_caption():
     locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "點縮圖可放大" not in locked
     assert "網頁走勢" not in locked
-    assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡"}' in locked
+    assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖"}' in locked
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
     assert 'callback_data=f"g:{c}"' in hub
     assert "url=nav_url" not in hub

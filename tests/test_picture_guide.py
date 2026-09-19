@@ -105,8 +105,8 @@ def test_shot_builder_swaps_help_and_streak():
     assert "_swap_row2_streak_help" in src
     assert "第二排資金右邊" in src
     assert "第二排右二" not in src
-    assert "一次三張" not in src
-    assert "一次兩張" in src
+    assert "一次三張" in src
+    assert "一次兩張" not in src
 
 
 def test_assets_crop_sidebar_and_no_pii():
@@ -478,7 +478,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "一次兩張：介紹圖（下半高低導航箭頭）／決策卡。圖下產業（一張圖卡，產業鏈小框沒抓到不畫）。圖下 K線開奇摩股市同一檔日K。",
+        "一次三張：介紹圖（下半高低導航箭頭）／決策卡／產業圖，同一則縮圖，點開是原圖像素。圖下可再要完整導航。圖下 K線開奇摩股市同一檔日K。",
         font,
         520,
         520,

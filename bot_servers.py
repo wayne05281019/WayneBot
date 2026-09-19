@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖（上半資訊、下半高低導航）＋決策卡；圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋決策卡＋產業圖同一則相簿；點開是原圖像素。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -26,8 +26,11 @@ PHONE_BUSY = "這一步暫時沒跑完，請稍後再按一次。細節已記在
 # Render 免費方案冷啟＋行情庫索引期間，第一檔查詢常超過 45s。
 _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
-# 介紹圖／決策卡與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
+# 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
+_LOOKUP_ALBUM_MIN_W = 2160
+_LOOKUP_TG_MAX_WH = 10000
+_LOOKUP_JPEG_QUALITY = 95
 
 from config import (
     allowed_telegram_uids,
@@ -2513,8 +2516,8 @@ class WayneTelegramBot:
         current: str = "",
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
-        labels = {"glance": "介紹圖", "card": "決策卡", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
-        order = ("glance", "card")
+        labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
+        order = ("glance", "card", "industry")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -2593,6 +2596,49 @@ class WayneTelegramBot:
                 return w >= min_w and h >= min_h
         except Exception:
             return False
+
+    @staticmethod
+    def _prepare_lookup_album_photo(path: str) -> str:
+        """相簿點開用 JPEG 原像素。窄圖才放到 2160 寬；介紹圖／決策卡不准縮小。"""
+        from PIL import Image
+
+        if not path or not os.path.isfile(path):
+            return path
+        try:
+            im = Image.open(path)
+            im.load()
+            if im.mode == "RGBA":
+                bg = Image.new("RGB", im.size, (12, 18, 28))
+                bg.paste(im, mask=im.split()[-1])
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                return path
+            if w < _LOOKUP_ALBUM_MIN_W:
+                nh = max(1, int(round(h * (_LOOKUP_ALBUM_MIN_W / float(w)))))
+                im = im.resize((_LOOKUP_ALBUM_MIN_W, nh), Image.Resampling.LANCZOS)
+                w, h = im.size
+            if w + h > _LOOKUP_TG_MAX_WH:
+                scale = _LOOKUP_TG_MAX_WH / float(w + h)
+                im = im.resize(
+                    (max(1, int(w * scale)), max(1, int(h * scale))),
+                    Image.Resampling.LANCZOS,
+                )
+            out = path + ".hq.jpg"
+            im.save(
+                out,
+                "JPEG",
+                quality=_LOOKUP_JPEG_QUALITY,
+                subsampling=0,
+                optimize=True,
+            )
+            if os.path.isfile(out) and os.path.getsize(out) > 0:
+                return out
+        except Exception:
+            logger.exception("查股相簿轉高解析失敗 path=%s", path)
+        return path
 
     @staticmethod
     def _chart_png_looks_ok(path: str) -> bool:
@@ -3942,7 +3988,8 @@ class WayneTelegramBot:
                 out = ""
             if out and os.path.isfile(out):
                 try:
-                    with open(out, "rb") as f:
+                    send_path = self._prepare_lookup_album_photo(out)
+                    with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f,
                             caption=f"{html_escape(code)}　產業",
@@ -4535,7 +4582,7 @@ class WayneTelegramBot:
                     return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
-            # 一般功能：代號／股名出兩張圖卡。沒按飆大就不進 overlay。
+            # 一般功能：代號／股名出三張圖卡（一則相簿）。沒按飆大就不進 overlay。
             handled = await self._dispatch_intent(
                 update.message, uid, text, update=update, context=context
             )
@@ -5322,7 +5369,7 @@ class WayneTelegramBot:
                 return False
             for attempt in range(3):
                 try:
-                    with open(path, "rb") as f:
+                    with open(self._prepare_lookup_album_photo(path), "rb") as f:
                         await message.reply_photo(
                             photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
                         )
@@ -5428,6 +5475,7 @@ class WayneTelegramBot:
                 render_decision_card_png,
                 render_first_glance_png,
             )
+            from industry_card import render_industry_png
 
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
@@ -5478,6 +5526,7 @@ class WayneTelegramBot:
             uid_key = uid or self._uid_from_message(message)
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
             card_path_f = self._scratch_chart_path(self.charts_dir, code, "card", uid_key)
+            industry_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid_key)
             ohlc = ohlc if ohlc is not None else card.get("_ohlc")
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
@@ -5490,15 +5539,24 @@ class WayneTelegramBot:
 
             glance_cap = _glance_photo_caption("", card)
             card_cap = _decision_card_photo_caption(card, code)
+            name_cap = html_escape(_stock_caption_name(card, code) or code)
+            industry_cap = f"{name_cap}　產業"
+
+            def _render_industry():
+                return render_industry_png(
+                    code, self.db_path, industry_path, allow_fetch=True, max_fetch=1
+                )
+
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
+                ("industry", _render_industry, _LOOKUP_PNG_TIMEOUT, industry_cap, None),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 兩張畫完一次送相簿；180 日導航改圖下「導航圖」。
+            # 三張畫完一次送相簿；180 日導航改圖下「導航圖」。
             for kind, fn, timeout_s, caption, markup in render_plan:
                 st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
                 st["current"] = kind
@@ -5634,8 +5692,8 @@ class WayneTelegramBot:
         self._remember_card(uid, code)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """兩張一次送，Telegram 一則兩個縮圖。圖說不講義。"""
-        from telegram import InputMediaPhoto
+        """三張一次送，Telegram 一則三個縮圖。圖說不講義。"""
+        from telegram import InputFile, InputMediaPhoto
 
         if len(items) < 2:
             return False
@@ -5650,17 +5708,24 @@ class WayneTelegramBot:
                         continue
                 elif not self._png_looks_ok(path):
                     continue
-                fh = open(path, "rb")
+                send_path = self._prepare_lookup_album_photo(path)
+                fh = open(send_path, "rb")
                 handles.append(fh)
+                fname = os.path.basename(send_path)
+                if not fname.lower().endswith((".jpg", ".jpeg")):
+                    fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
+                file_obj = InputFile(fh, filename=fname)
                 if not media:
                     if album_cap:
                         media.append(
-                            InputMediaPhoto(media=fh, caption=album_cap[:1024], parse_mode="HTML")
+                            InputMediaPhoto(
+                                media=file_obj, caption=album_cap[:1024], parse_mode="HTML"
+                            )
                         )
                     else:
-                        media.append(InputMediaPhoto(media=fh))
+                        media.append(InputMediaPhoto(media=file_obj))
                 else:
-                    media.append(InputMediaPhoto(media=fh))
+                    media.append(InputMediaPhoto(media=file_obj))
             if len(media) < 2:
                 return False
             await message.reply_media_group(media=media)

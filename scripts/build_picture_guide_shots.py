@@ -170,7 +170,7 @@ def build(src: str = SRC) -> list[str]:
         _ring(d, 360, 410, 180, 48, 8)  # 介紹／決策卡縮圖
         paths.append(
             _save(
-                _caption_bar(sl, "紅圈：介紹／決策卡縮圖　點開放大；一次兩張"),
+                _caption_bar(sl, "紅圈：介紹／決策／產業縮圖　點開原圖；一次三張"),
                 "charts.png",
             )
         )

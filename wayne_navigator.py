@@ -80,12 +80,12 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 # 排版（figsize／字級）鎖定；只加輸出像素，讓縮圖與點開都比較銳。
 # 介紹圖與高低卡同寬。上半用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）；
 # 下半是 180 日高低導航（紫高／綠低箭頭）。可滑 180 根走圖下「導航圖」。
-CARD_PNG_DPI = 320
-GLANCE_PNG_DPI = 320
+CARD_PNG_DPI = 360
+GLANCE_PNG_DPI = 360
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
-NAV_CHART_DPI = 320
+NAV_CHART_DPI = 360
 # 上下疊字行距（資料座標）。13pt 字高約 2.54，舊 2.25 會黏成一行。
 _OHLC_STACK = 2.95
 _NAV_STACK = 2.80

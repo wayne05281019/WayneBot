@@ -96,6 +96,29 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
+        self.assertIn("render_industry_png", src)
+        self.assertIn('"industry"', src)
+
+    def test_lookup_album_sends_hq_jpeg(self):
+        src = inspect.getsource(WayneTelegramBot._send_lookup_album)
+        self.assertIn("_prepare_lookup_album_photo", src)
+
+    def test_prepare_lookup_album_photo_upsizes_narrow_keeps_wide(self):
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as td:
+            narrow = os.path.join(td, "n.png")
+            Image.new("RGB", (1080, 1400), (12, 18, 28)).save(narrow, "PNG")
+            out = WayneTelegramBot._prepare_lookup_album_photo(narrow)
+            with Image.open(out) as im:
+                self.assertEqual(im.size[0], 2160)
+                self.assertEqual(im.format, "JPEG")
+            wide = os.path.join(td, "w.png")
+            Image.new("RGB", (2272, 2800), (12, 18, 28)).save(wide, "PNG")
+            out2 = WayneTelegramBot._prepare_lookup_album_photo(wide)
+            with Image.open(out2) as im:
+                self.assertEqual(im.size[0], 2272)
+                self.assertEqual(im.format, "JPEG")
 
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
@@ -119,6 +142,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("介紹圖", txt)
         self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
         self.assertNotIn("導航", txt)
+        self.assertIn("產業圖", txt)
 
     def test_chart_progress_records_sent_stage(self):
         txt = WayneTelegramBot._chart_progress_text(
@@ -126,6 +150,7 @@ class LookupImageTests(unittest.TestCase):
         )
         self.assertIn("現在：決策卡", txt)
         self.assertNotIn("接著：導航圖", txt)
+        self.assertIn("接著：產業圖", txt)
         self.assertIn("好了這則會消失", txt)
 
     def test_op_state_map_works_without_init(self):
