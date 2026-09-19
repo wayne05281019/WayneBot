@@ -141,6 +141,20 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         ),
     },
 )
+
+
+def _is_flow_group(g: Dict[str, Any]) -> bool:
+    """流入只認對得上 CMoney 三層的。機器人／低軌等聯想族不當另一套掃描。"""
+    return bool(
+        tuple(x for x in (g.get("layers") or ()) if str(x).strip())
+        or tuple(x for x in (g.get("needles") or ()) if str(x).strip())
+    )
+
+
+def _flow_groups() -> Tuple[Dict[str, Any], ...]:
+    return tuple(g for g in _GROUPS if _is_flow_group(g))
+
+
 _HOW = (
     "他教過怎麼找：①次族群還沒熱、很少人提；②次族群第一名誰先過前高，不比絕對漲跌；"
     "③高點整理的從底部找落後。不是猜新聞。"
@@ -155,10 +169,14 @@ _HOW_LINES = (
 )
 _PAGE_RULES = (
     "佔比如實主判。不是買訊、不進海選。",
+    "每天資金進哪條主／次／細項。",
+    "微弱可察也算進駐。",
     "每檔先寫買或不買。",
     "已持有寫留或不加碼。",
     "龍頭來不及買。比價下次級黃金買點。",
     "股民追漲不追跌。先機不追當天第一名。",
+    "點火後抓同鏈落後補漲／低估。",
+    "聯想名單不當流入主判。",
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
     "盤中未收不當官方收。",
@@ -170,7 +188,7 @@ _PAGE_NOTES = (
     "這型勝率 70.8%",
     "追第一名約五成六",
     "追當天第一名容易人去樓空。",
-    "抓的是股民心態，不是猜新聞。",
+    "抓資金脈絡，不是猜新聞。",
     "金控／銀行當停車格。",
     "電子細項先機較穩。",
     "貼20高＝偏晚。",
@@ -466,7 +484,7 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
     named = _named_keys(spoken)
     hits: List[Tuple[float, Dict[str, Any], Dict[str, Any], Optional[Tuple[str, str, Dict[str, Any]]]]] = []
     missing = 0
-    for g in _GROUPS:
+    for g in _flow_groups():
         if g["key"] in named:
             continue
         leaders = []
@@ -902,7 +920,7 @@ def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
         dates = _chip_dates(conn, cap, lookback)
         if not dates:
             return 0
-        members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _GROUPS}
+        members = {g["key"]: [sid for sid, _n in group_members(db_path, g)] for g in _flow_groups()}
         qmarks_by_key = {}
         for key, sids in members.items():
             if sids:
@@ -924,9 +942,9 @@ def record_dongzhu_flow(db_path: str, cap: str = "", lookback: int = 10) -> int:
             ).fetchone()
             market_in = int(mkt[0] or 0) if mkt else 0
             market_out = int(mkt[1] or 0) if mkt else 0
-            for g in _GROUPS:
+            for g in _flow_groups():
                 sids = members.get(g["key"]) or []
-                if not sids:
+                if not sids or g["key"] not in qmarks_by_key:
                     continue
                 row = conn.execute(
                     f"""
@@ -2005,7 +2023,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
                 }
             )
         seen_keys = {str(ign.get("_key") or "") for ign in all_igns}
-        for g in _GROUPS:
+        for g in _flow_groups():
             if g["key"] in seen_keys:
                 continue
             ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
@@ -2016,7 +2034,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None) -> Dict[str, An
             all_igns.append(ign)
             _note_hot(g["field"], ign)
     else:
-        for g in _GROUPS:
+        for g in _flow_groups():
             ign = group_ignite(db_path, g["key"], flow_cap) if db_path and flow_cap else {}
             ign = dict(ign or {})
             ign["_field"] = g["field"]
@@ -2772,7 +2790,7 @@ def dongzhu_page(
     if lags:
         blocks.append(
             _blk(
-                "<b>捕捉・最落後次級</b>",
+                "<b>捕捉・落後補漲／低估</b>",
                 _esc("沒買點只觀察，不是單檔保證"),
                 _stock_blocks(lags, "捕捉", compact=True, held_sids=held_sids),
             )

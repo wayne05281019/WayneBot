@@ -195,6 +195,7 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     blob = "\n".join(heads)
     assert "洞燭先機" in blob
     assert "資金輪動要注意" in html
+    assert "資金進哪條" in html
     assert "追漲不追跌" in html
     assert "此刻最像" in html
     assert "此刻推薦" in html
@@ -612,6 +613,15 @@ def test_dongzhu_layers_and_parity_roles():
     assert _stock_role(mature, "2303") == "龍頭"
     sat = next(g for g in _GROUPS if g["key"] == "sat")
     assert _stock_role(sat, "3491") == "龍頭"
+    from biaoke_field_scan import _is_flow_group
+
+    assert _is_flow_group(test_g)
+    assert not _is_flow_group(mature)
+    assert not _is_flow_group(sat)
+    robot = next(g for g in _GROUPS if g["key"] == "robot")
+    assert not _is_flow_group(robot)
+    mem = next(g for g in _GROUPS if g["key"] == "mem")
+    assert _is_flow_group(mem)
     from biaoke_field_scan import _stock_line
 
     lead_line = _stock_line(
@@ -759,7 +769,7 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert len(lags) <= 3
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "捕捉・最落後次級" in html
+    assert "捕捉・落後補漲／低估" in html
     assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
     assert "不是單檔保證" in html
