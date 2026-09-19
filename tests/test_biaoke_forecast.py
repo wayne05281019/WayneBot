@@ -95,3 +95,118 @@ def test_record_stock_pending_then_hits_target(tmp_path):
     g1 = glance_forecast(db, "3035")
     assert "對得上" in g1
     assert "還沒走完" not in g1
+
+
+def _seed_twii(db: str, rows, *, close_last=None):
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT, symbol TEXT, open REAL, high REAL, low REAL, close REAL,
+            volume REAL, pct_change REAL
+        )
+        """
+    )
+    conn.execute("DELETE FROM index_daily")
+    for i, (d, o, h, lo, c) in enumerate(rows):
+        if close_last is not None and i == len(rows) - 1:
+            c = close_last
+        conn.execute(
+            "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?)",
+            (d, "TWII", o, h, lo, c, 1, 0),
+        )
+    conn.commit()
+    conn.close()
+
+
+def _twii_rows(n=24, start=None, base=45000.0):
+    day = start or date(2026, 8, 1)
+    rows = []
+    px = base
+    for i in range(n):
+        d = (day + timedelta(days=i)).strftime("%Y%m%d")
+        o, h, lo, c = px, px + 120, px - 80, px + 40
+        rows.append((d, o, h, lo, c))
+        px += 30
+    return rows
+
+
+def test_twii_snapshot_hides_try_from_glance_and_scores(tmp_path):
+    from biaoke_forecast import KIND_TWII_TRY, glance_forecast, snapshot_and_score_twii, verify_due
+
+    db = str(tmp_path / "tw.db")
+    rows = _twii_rows()
+    _seed_twii(db, rows)
+    out = snapshot_and_score_twii(db, rows[-1][0])
+    assert out.get("twii") == 1
+    assert out.get("try") == 1
+    g = glance_forecast(db, "TWII")
+    assert "內部試畫" not in g
+    assert "1-2-3-4-5" not in g
+    assert "演算建檔" in g
+    conn = sqlite3.connect(db)
+    kinds = {r[0] for r in conn.execute("SELECT kind FROM biaoke_forecast").fetchall()}
+    assert "twii" in kinds
+    assert KIND_TWII_TRY in kinds
+    try_mark = conn.execute(
+        "SELECT mark, label FROM biaoke_forecast WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()
+    assert try_mark[0] == "內部試畫"
+    assert "不進話筒" in try_mark[1]
+    last = date(int(rows[-1][0][:4]), int(rows[-1][0][4:6]), int(rows[-1][0][6:8]))
+    for i in range(10):
+        d = (last + timedelta(days=i + 1)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO index_daily VALUES (?,?,?,?,?,?,?,?)",
+            (d, "TWII", 44000, 44200, 43000, 43100, 1, 0),
+        )
+    conn.commit()
+    conn.close()
+    verify_due(db, "TWII")
+    conn = sqlite3.connect(db)
+    try_v = conn.execute(
+        "SELECT verdict FROM biaoke_forecast WHERE kind=?",
+        (KIND_TWII_TRY,),
+    ).fetchone()[0]
+    conn.close()
+    assert "對得上" in try_v
+    assert "還沒走完" not in try_v
+
+
+def test_twii_snapshot_skips_zero_close(tmp_path):
+    from biaoke_forecast import snapshot_and_score_twii
+
+    db = str(tmp_path / "z.db")
+    rows = _twii_rows()
+    _seed_twii(db, rows, close_last=0)
+    out = snapshot_and_score_twii(db, rows[-1][0])
+    assert out.get("skipped") == "zero_close"
+    assert out.get("twii") == 0
+    assert out.get("try") == 0
+
+
+def test_twii_forecast_hooks_fuse_not_telegram():
+    from pathlib import Path
+
+    src = Path("main_runner.py").read_text(encoding="utf-8")
+    assert "snapshot_and_score_twii" in src
+    i = src.find("def _refresh_twii_forecast_after_close")
+    assert i > 0
+    chunk = src[i : i + 700]
+    assert "send_telegram" not in chunk
+    assert "snapshot_and_score_twii" in chunk
+    assert src.find("sync_index_daily") < src.find("_refresh_twii_forecast_after_close")
+    try_src = Path("biaoke_forecast.py").read_text(encoding="utf-8")
+    a = try_src.find("def record_twii_try")
+    b = try_src.find("def _judge_stock", a)
+    body = try_src[a:b]
+    assert "內部試畫" in body
+    assert "不進話筒" in body
+    assert "1-2-3-4-5" not in body
+    assert "第5波" not in body
+    from biaoke_wave import format_twii_plain
+    import inspect
+
+    cap = inspect.getsource(format_twii_plain)
+    assert "內部試畫" not in cap
