@@ -410,11 +410,51 @@ def frozen_screen_catalog() -> Dict[str, Any]:
         "golden_buy": _golden_buy_spec(
             scope="海選全市場", enc_id="screen.golden_buy.cal60_floor_observe"
         ),
-        "revenue_cross": {"enc_id": "screen.revenue_cross", "scope": "海選", "not_buy": True},
-        "select_01": {"enc_id": "screen.select_01", "scope": "海選", "not_buy": True},
-        "half_year_high": {"enc_id": "screen.half_year_high", "scope": "海選", "not_buy": True},
-        "select_02": {"enc_id": "screen.select_02", "scope": "海選", "not_buy": True},
-        "select_03": {"enc_id": "screen.select_03", "scope": "海選", "not_buy": True},
+        "revenue_cross": {
+            "enc_id": "screen.revenue_cross",
+            "scope": "海選",
+            "need": "營收轉強×量價突破",
+            "trend_up": True,
+            "not_buy": True,
+        },
+        "select_01": {
+            "enc_id": "screen.select_01",
+            "scope": "海選",
+            "break_hi5": True,
+            "q60r_ge": 2.0,
+            "pct_gt": 0.5,
+            "trend_up": True,
+            "not_buy": True,
+        },
+        "half_year_high": {
+            "enc_id": "screen.half_year_high",
+            "scope": "海選",
+            "c_ge_hi120": True,
+            "q60r_ge": 2.5,
+            "pct_ge": 3.0,
+            "trend_up": True,
+            "not_buy": True,
+        },
+        "select_02": {
+            "enc_id": "screen.select_02",
+            "scope": "海選",
+            "prev_below_ma60": True,
+            "close_ge_ma60": True,
+            "pct_gt": 0,
+            "q60r_ge": 1.0,
+            "trend_up": True,
+            "not_buy": True,
+        },
+        "select_03": {
+            "enc_id": "screen.select_03",
+            "scope": "海選",
+            "near_low20_max": 1.06,
+            "q60r_ge": 1.0,
+            "pct_gt": 0,
+            "ma5_hook_or_red": True,
+            "trend_up": True,
+            "not_buy": True,
+        },
     }
 
 
@@ -462,6 +502,16 @@ def _item_encoding(
         "entry": _f(item.get("entry_price")),
         "defense": _f(item.get("defense_price")),
         "chase_warning": item.get("chase_warning"),
+        "q60r": _f(item.get("q60r")),
+        "hi5": _f(item.get("hi5")),
+        "hi120": _f(item.get("hi120")),
+        "hi480": _f(item.get("hi480")),
+        "pct_change": _f(item.get("pct_change")),
+        "ma20": _f(item.get("ma20")),
+        "ma60": _f(item.get("ma60")),
+        "low20": _f(item.get("low20")),
+        "d20": _f(item.get("d20")),
+        "pattern": str(item.get("pattern") or ""),
     }
     slim = {k: v for k, v in payload.items() if v is not None and v != ""}
     return enc_id, json.dumps(slim, ensure_ascii=False, separators=(",", ":"))

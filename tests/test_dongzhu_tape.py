@@ -590,6 +590,21 @@ def test_screen_session_survives_tape_error(tmp_path, monkeypatch):
     assert sid == "6257"
 
 
+def test_screen_catalog_freezes_engine_thresholds():
+    from pathlib import Path
+
+    from dongzhu_tape import frozen_screen_catalog
+
+    src = Path("screening_engine.py").read_text(encoding="utf-8")
+    cat = frozen_screen_catalog()
+    assert "q >= 2.0" in src and cat["select_01"]["q60r_ge"] == 2.0
+    assert "q >= 2.5" in src and cat["half_year_high"]["q60r_ge"] == 2.5
+    assert "pct >= 3.0" in src and cat["half_year_high"]["pct_ge"] == 3.0
+    assert "* 1.06" in src and cat["select_03"]["near_low20_max"] == 1.06
+    assert cat["select_02"]["q60r_ge"] == 1.0
+    assert "not_buy" in cat["revenue_cross"]
+
+
 def test_dongzhu_picks_default_still_records_flow():
     from pathlib import Path
 
