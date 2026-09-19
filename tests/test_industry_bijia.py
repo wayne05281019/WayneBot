@@ -153,10 +153,41 @@ def test_bijia_png_layout_short(tmp_path):
     assert "價／EPS" in bj["read"] or "價/EPS" in bj["read"] or "中位" in bj["read"]
     html = format_industry_html("3105", db, allow_fetch=False)
     assert "怎麼做" not in html and "勝率" not in html
+    from industry_brief import format_bijia_cells, pad_listing_slot, pad_stock_name, widest_stock_name
+
+    cells = format_bijia_cells(bj["rows"][0])
+    assert "listing" in cells
+    assert cells["name"]
+    assert "上市" not in cells["name"] and "上櫃" not in cells["name"]
 
     png = str(tmp_path / "3105_industry.png")
     out = render_industry_png("3105", db, png, allow_fetch=False)
     assert Path(out).is_file() and Path(out).stat().st_size > 1000
+
+
+def test_listing_slot_aligns_to_longest_name():
+    from industry_brief import pad_listing_slot, pad_stock_name, widest_stock_name
+    from industry_card import _card_font, name_listing_layout, pick_chip_font, _wrap_px
+
+    names = ["研華", "直得", "大銀微系統"]
+    w = widest_stock_name(names)
+    a = pad_stock_name("研華", w) + pad_listing_slot("上市")
+    b = pad_stock_name("大銀微系統", w) + pad_listing_slot("上櫃")
+    assert a.index("上市") == b.index("上櫃") == w
+    font = _card_font(32)
+    lay = name_listing_layout(font, names)
+    assert abs(lay["name_w"] - font.getlength("大銀微系統")) < 1.0
+    assert abs(lay["listing_w"] - max(font.getlength(s) for s in ("上市", "上櫃", "興櫃"))) < 1.0
+    ch = "中"
+    text = ch * 10
+    lines = _wrap_px(text, font, font.getlength(ch * 9) + 0.5)
+    if len(lines) >= 2:
+        assert len(lines[-1].strip()) >= 3
+    tags = ["電子上游", "IC", "代工", "光通訊", "低軌衛星"]
+    _f_wide, _h_wide, rows_wide = pick_chip_font(tags, 2400)
+    _f_tight, _h_tight, rows_tight = pick_chip_font(tags, 520)
+    assert rows_wide == 1
+    assert int(getattr(_f_tight, "size", 26) or 26) <= int(getattr(_f_wide, "size", 26) or 26)
 
 
 def test_bijia_skips_nonpositive_eps(tmp_path):

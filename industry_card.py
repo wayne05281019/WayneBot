@@ -79,6 +79,30 @@ def _chip_wh(font, tag: str, *, pad_x: int = 18, height: int = 46) -> tuple:
     return int(round((r - l) + pad_x * 2)), height
 
 
+def _chips_one_row_w(tags: List[str], font, *, height: int, gap: int = 12) -> float:
+    if not tags:
+        return 0.0
+    total = 0.0
+    for i, tag in enumerate(tags):
+        w, _h = _chip_wh(font, tag, height=height)
+        total += w + (gap if i else 0)
+    return total
+
+
+def pick_chip_font(tags: List[str], avail: float, *, base_size: int = 26, base_h: int = 48):
+    """標籤太長就縮字，盡量同一列。看得清楚就好，不要下一行只剩一顆短標。"""
+    tags = [str(t) for t in (tags or []) if str(t)]
+    if not tags:
+        return _card_font(base_size, bold=True), base_h, 1
+    gap = 12
+    for size in range(int(base_size), 17, -2):
+        font = _card_font(size, bold=True)
+        h = max(32, int(round(base_h * size / float(base_size))))
+        if _chips_one_row_w(tags, font, height=h, gap=gap) <= float(avail) + 0.5:
+            return font, h, 1
+    return _card_font(18, bold=True), max(32, int(round(base_h * 18 / float(base_size)))), 0
+
+
 def draw_fine_chip(im, box, text: str, bg, bd, fg, font) -> None:
     """膠囊小框：外光＋陰影＋垂直漸層＋內高光，文字用 mm 錨點上下左右居中。"""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -183,7 +207,55 @@ def _wrap_px(text: str, font, max_w: float) -> List[str]:
                 out[k] = out[k - 1][-1] + cur
                 out[k - 1] = out[k - 1][:-1]
         k += 1
+    # 下一行只剩一到兩個字＝浪費。能從上一行借就借到至少三字。
+    while len(out) >= 2:
+        last = out[-1].strip()
+        prev = out[-2]
+        if len(last) >= 3 or len(prev) <= 3:
+            break
+        out[-1] = prev[-1] + out[-1]
+        out[-2] = prev[:-1]
     return out or [""]
+
+
+_LISTING_WORDS = ("上市", "上櫃", "興櫃")
+
+
+def name_listing_layout(font, names, *, avail: float = None) -> dict:
+    """名稱欄用本表最長股名；上市／上櫃／興櫃預留同一格寬，全部對齊。"""
+    names = [str(n or "") for n in names]
+    gap = 16.0
+    listing_w = max(font.getlength(s) for s in _LISTING_WORDS)
+    name_w = max((font.getlength(n) for n in names), default=0.0)
+    used = font
+    ellipsis = False
+    if avail is not None and name_w + gap + listing_w > float(avail) + 0.5:
+        try:
+            start = int(getattr(font, "size", 32) or 32)
+        except (TypeError, ValueError):
+            start = 32
+        picked = None
+        for size in range(start, 21, -1):
+            f = _card_font(size)
+            nw = max((f.getlength(n) for n in names), default=0.0)
+            lw = max(f.getlength(s) for s in _LISTING_WORDS)
+            if nw + gap + lw <= float(avail) + 0.5:
+                picked = (f, nw, lw)
+                break
+        if picked:
+            used, name_w, listing_w = picked
+        else:
+            used = _card_font(22)
+            listing_w = max(used.getlength(s) for s in _LISTING_WORDS)
+            name_w = max(0.0, float(avail) - gap - listing_w)
+            ellipsis = True
+    return {
+        "font": used,
+        "name_w": float(name_w),
+        "listing_w": float(listing_w),
+        "gap": gap,
+        "ellipsis": ellipsis,
+    }
 
 
 def _flow_lines(snap: Dict[str, Any]) -> List[str]:
@@ -371,15 +443,12 @@ def render_industry_png(
                     if not tags:
                         tag = str(r.get("fine_finest") or "").strip()
                         tags = [tag] if tag else []
-                    pname = str(r["stock_name"])
-                    listing_p = str(r.get("listing") or "").strip()
-                    if listing_p:
-                        pname = f"{pname}　{listing_p}"
                     items.append(
                         (
                             "peer_inline",
                             str(r["stock_id"]),
-                            pname,
+                            str(r["stock_name"]),
+                            str(r.get("listing") or "").strip(),
                             float(r.get("yoy") or 0),
                             tags,
                         )
@@ -391,26 +460,49 @@ def render_industry_png(
             if note:
                 items.append(("muted", note))
 
-    def _chip_row_h(tags: List[str], start_x: float) -> int:
+    def _chip_row_h(tags: List[str], start_x: float, max_right: float) -> int:
         if not tags:
             return 0
+        avail = max(40.0, float(max_right) - float(start_x))
+        _font, h, rows = pick_chip_font(tags, avail, base_size=26, base_h=CHIP_H)
+        if rows == 1:
+            return h + 10
         x = start_x
-        rows = 1
+        n_rows = 1
         for tag in tags:
-            w, _h = _chip_wh(chip_f, tag, height=CHIP_H)
-            if x > start_x and x + w > pad_x + max_w:
+            w, _h = _chip_wh(_font, tag, height=h)
+            if x > start_x and x + w > max_right:
                 x = start_x
-                rows += 1
+                n_rows += 1
             x += w + CHIP_GAP
-        return rows * (CHIP_H + 10)
+        return n_rows * (h + 10)
 
-    # 同鏈比價表欄位（右緣對齊數字，左緣代號／名）
+    # 同鏈比價表欄位（右緣對齊數字；名稱用最長股名，上市／上櫃預留同寬格）
     BIJIA_MARK_W = 72
     BIJIA_SID_W = 100
     BIJIA_CLOSE_W = 120
     BIJIA_EPS_W = 140
     BIJIA_MULT_W = 120
     BIJIA_ROW_H = 52
+    x0_b = pad_x
+    x_sid_b = x0_b + BIJIA_MARK_W
+    x_name_b = x_sid_b + BIJIA_SID_W
+    x_mult_r_b = pad_x + max_w
+    x_eps_r_b = x_mult_r_b - BIJIA_MULT_W
+    x_close_r_b = x_eps_r_b - BIJIA_EPS_W
+    bijia_name_right = x_close_r_b - BIJIA_CLOSE_W - 12
+    bijia_names = [str((it[1] or {}).get("name") or "") for it in items if it[0] == "bijia_row"]
+    bijia_lay = name_listing_layout(
+        body_f, bijia_names, avail=max(80.0, bijia_name_right - x_name_b)
+    )
+    bijia_nf = bijia_lay["font"]
+    x_listing_b = x_name_b + bijia_lay["name_w"] + bijia_lay["gap"]
+    peer_names = [str(it[2] or "") for it in items if it[0] == "peer_inline"]
+    peer_lay = name_listing_layout(body_f, peer_names)
+    peer_nf = peer_lay["font"]
+    sid_w = body_f.getlength("0000  ")
+    peer_list_x = pad_x + sid_w + peer_lay["name_w"] + peer_lay["gap"]
+    peer_chip_x = peer_list_x + peer_lay["listing_w"] + 14
     MINE_BG = (36, 64, 88)
     LAG_BG = (255, 214, 10)       # 高反差黃
     LAG_FG = (12, 14, 18)         # 近黑字
@@ -427,14 +519,15 @@ def render_industry_png(
             tags = item[3]
             name_txt = f"{item[1]} {item[2]}"
             name_w = title_f.getlength(name_txt)
-            h = 62 + 14 + max(62, _chip_row_h(tags, pad_x + name_w + 18) or 62)
+            h = 62 + 14 + max(62, _chip_row_h(tags, pad_x + name_w + 18, pad_x + max_w) or 62)
             measured.append((kind, item, h))
             y += h
         elif kind == "peer_inline":
-            tags = item[4]
-            left = f"{item[1]}  {item[2]}"
-            left_w = body_f.getlength(left)
-            h = max(line_h, _chip_row_h(tags, pad_x + left_w + 14) or line_h)
+            tags = item[5]
+            pct = f"{item[4]:+.1f}%"
+            pct_w = body_f.getlength(pct)
+            chip_right = pad_x + max_w - pct_w - 16
+            h = max(line_h, _chip_row_h(tags, peer_chip_x, chip_right) or line_h)
             measured.append((kind, item, h + 10))
             y += h + 10
         elif kind == "bijia_head":
@@ -471,17 +564,19 @@ def render_industry_png(
     cy = 42
 
     def _chips_at(x0: float, mid_y: float, tags: List[str], max_right: float) -> float:
-        """mid_y＝列的垂直中線；小框貼齊這條中線。"""
+        """mid_y＝列的垂直中線；小框貼齊這條中線。太長先縮字再換行。"""
+        avail = max(40.0, float(max_right) - float(x0))
+        font, chip_h, _rows = pick_chip_font(tags, avail, base_size=26, base_h=CHIP_H)
         x = x0
-        y = mid_y - CHIP_H / 2.0
-        row_bottom = y + CHIP_H
+        y = mid_y - chip_h / 2.0
+        row_bottom = y + chip_h
         for tag in tags:
-            w, h = _chip_wh(chip_f, tag, height=CHIP_H)
+            w, h = _chip_wh(font, tag, height=chip_h)
             if x > x0 and x + w > max_right:
                 x = x0
                 y = row_bottom + 10
             bg, bd, fg = chip_color(tag)
-            draw_fine_chip(im, (x, y, x + w, y + h), tag, bg, bd, fg, chip_f)
+            draw_fine_chip(im, (x, y, x + w, y + h), tag, bg, bd, fg, font)
             x += w + CHIP_GAP
             row_bottom = max(row_bottom, y + h)
         return row_bottom if tags else mid_y + CHIP_H / 2.0
@@ -526,21 +621,35 @@ def render_industry_png(
             dr.text((hx, hy), item[1], font=head_f, fill=HEAD + (255,))
             cy += head_h
         elif kind == "peer_inline":
-            left = f"{item[1]}  {item[2]}"
-            pct = f"{item[3]:+.1f}%"
+            sid = str(item[1] or "")
+            name = str(item[2] or "")
+            listing = str(item[3] or "").strip()
+            pct = f"{item[4]:+.1f}%"
+            tags = item[5]
+            sid_txt = f"{sid}  "
             lx, ly = centered_text_xy(
-                body_f, left, (pad_x, cy, pad_x + body_f.getlength(left) + 2, cy + line_h)
+                body_f, sid_txt, (pad_x, cy, pad_x + body_f.getlength(sid_txt) + 2, cy + line_h)
             )
-            dr.text((lx, ly), left, font=body_f, fill=TEXT + (255,))
+            dr.text((lx, ly), sid_txt, font=body_f, fill=TEXT + (255,))
+            nx, ny = centered_text_xy(
+                peer_nf, name, (pad_x + sid_w, cy, pad_x + sid_w + peer_lay["name_w"], cy + line_h)
+            )
+            dr.text((nx, ny), name, font=peer_nf, fill=TEXT + (255,))
+            if listing:
+                lx2, ly2 = centered_text_xy(
+                    peer_nf,
+                    listing,
+                    (peer_list_x, cy, peer_list_x + peer_lay["listing_w"], cy + line_h),
+                )
+                dr.text((lx2, ly2), listing, font=peer_nf, fill=MUTED + (255,))
             pct_w = body_f.getlength(pct)
             px, py = centered_text_xy(
                 body_f, pct, (pad_x + max_w - pct_w, cy, pad_x + max_w, cy + line_h)
             )
-            tags = item[4]
             if tags:
-                mid = _text_mid_y(body_f, left, ly)
+                mid = _text_mid_y(peer_nf, name, ny)
                 end_y = _chips_at(
-                    pad_x + body_f.getlength(left) + 14,
+                    peer_chip_x,
                     mid,
                     tags,
                     pad_x + max_w - pct_w - 16,
@@ -551,34 +660,34 @@ def render_industry_png(
                 dr.text((px, py), pct, font=body_f, fill=TEXT + (255,))
                 cy += line_h
         elif kind == "bijia_head":
-            # 欄：標記 | 代號 | 名稱…… | 收盤 | EPS | 價/EPS
-            x0 = pad_x
-            x_sid = x0 + BIJIA_MARK_W
-            x_name = x_sid + BIJIA_SID_W
-            x_mult_r = pad_x + max_w
-            x_eps_r = x_mult_r - BIJIA_MULT_W
-            x_close_r = x_eps_r - BIJIA_EPS_W
-            name_right = x_close_r - BIJIA_CLOSE_W - 12
+            # 欄：標記 | 代號 | 名稱 | 上市／上櫃 | 收盤 | EPS | 價/EPS
+            x0 = x0_b
+            x_sid = x_sid_b
+            x_name = x_name_b
+            x_mult_r = x_mult_r_b
+            x_eps_r = x_eps_r_b
+            x_close_r = x_close_r_b
 
-            def _col(label: str, x_left: float, x_right: float, *, right: bool = False):
+            def _col(label: str, x_left: float, x_right: float, *, right: bool = False, font=None):
+                font = font or body_f
                 if right:
-                    tw = body_f.getlength(label)
+                    tw = font.getlength(label)
                     tx, ty = centered_text_xy(
-                        body_f, label, (x_right - tw, cy, x_right, cy + BIJIA_ROW_H)
+                        font, label, (x_right - tw, cy, x_right, cy + BIJIA_ROW_H)
                     )
                 else:
                     tx, ty = centered_text_xy(
-                        body_f, label, (x_left, cy, x_left + body_f.getlength(label) + 2, cy + BIJIA_ROW_H)
+                        font, label, (x_left, cy, x_left + font.getlength(label) + 2, cy + BIJIA_ROW_H)
                     )
-                dr.text((tx, ty), label, font=body_f, fill=MUTED + (255,))
+                dr.text((tx, ty), label, font=font, fill=MUTED + (255,))
 
             _col("", x0, x_sid)
             _col("代號", x_sid, x_name)
-            _col("名稱", x_name, name_right)
+            _col("名稱", x_name, x_listing_b, font=bijia_nf)
+            _col("上市", x_listing_b, x_listing_b + bijia_lay["listing_w"], font=bijia_nf)
             _col("收盤", x_close_r - BIJIA_CLOSE_W, x_close_r, right=True)
             _col("EPS", x_eps_r - BIJIA_EPS_W, x_eps_r, right=True)
             _col("價/EPS", x_mult_r - BIJIA_MULT_W, x_mult_r, right=True)
-            # 底線
             dr.line(
                 [(pad_x, cy + BIJIA_ROW_H - 6), (pad_x + max_w, cy + BIJIA_ROW_H - 6)],
                 fill=CARD_INNER + (255,),
@@ -598,13 +707,12 @@ def render_industry_png(
                     radius=12,
                     fill=bg + (255,),
                 )
-            x0 = pad_x
-            x_sid = x0 + BIJIA_MARK_W
-            x_name = x_sid + BIJIA_SID_W
-            x_mult_r = pad_x + max_w
-            x_eps_r = x_mult_r - BIJIA_MULT_W
-            x_close_r = x_eps_r - BIJIA_EPS_W
-            name_right = x_close_r - BIJIA_CLOSE_W - 12
+            x0 = x0_b
+            x_sid = x_sid_b
+            x_name = x_name_b
+            x_mult_r = x_mult_r_b
+            x_eps_r = x_eps_r_b
+            x_close_r = x_close_r_b
             if lag_hi:
                 fill = LAG_ROW_FG
             elif is_mine:
@@ -612,17 +720,18 @@ def render_industry_png(
             else:
                 fill = TEXT
 
-            def _draw_left(txt: str, x_left: float, x_right: float):
+            def _draw_left(txt: str, x_left: float, x_right: float, font=None):
+                font = font or body_f
                 raw = str(txt or "")
                 limit = max(20.0, x_right - x_left - 4)
-                if body_f.getlength(raw) > limit:
-                    while len(raw) > 1 and body_f.getlength(raw + "…") > limit:
+                if font.getlength(raw) > limit:
+                    while len(raw) > 1 and font.getlength(raw + "…") > limit:
                         raw = raw[:-1]
                     raw = raw + "…"
                 tx, ty = centered_text_xy(
-                    body_f, raw, (x_left, row_top, x_left + body_f.getlength(raw) + 2, row_bot)
+                    font, raw, (x_left, row_top, x_left + font.getlength(raw) + 2, row_bot)
                 )
-                dr.text((tx, ty), raw, font=body_f, fill=fill + (255,))
+                dr.text((tx, ty), raw, font=font, fill=fill + (255,))
 
             def _draw_right(txt: str, x_left: float, x_right: float):
                 tw = body_f.getlength(txt)
@@ -633,7 +742,18 @@ def render_industry_png(
 
             _draw_left(cells.get("mark") or "", x0, x_sid)
             _draw_left(cells.get("sid") or "", x_sid, x_name)
-            _draw_left(cells.get("name") or "", x_name, name_right)
+            _draw_left(
+                cells.get("name") or "",
+                x_name,
+                x_name + bijia_lay["name_w"] + 4,
+                font=bijia_nf,
+            )
+            _draw_left(
+                cells.get("listing") or "",
+                x_listing_b,
+                x_listing_b + bijia_lay["listing_w"] + 4,
+                font=bijia_nf,
+            )
             _draw_right(cells.get("close") or "", x_close_r - BIJIA_CLOSE_W, x_close_r)
             _draw_right(cells.get("eps") or "", x_eps_r - BIJIA_EPS_W, x_eps_r)
             _draw_right(cells.get("mult") or "", x_mult_r - BIJIA_MULT_W, x_mult_r)

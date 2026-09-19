@@ -1031,8 +1031,27 @@ def attach_price_eps_bijia(snap: Dict[str, Any], db_path: str) -> Dict[str, Any]
     return snap
 
 
+LISTING_SLOT_WORDS = ("上市", "上櫃", "興櫃")
+
+
+def widest_stock_name(names) -> int:
+    return max((len(str(n or "")) for n in names), default=0)
+
+
+def pad_stock_name(name: str, widest: int) -> str:
+    """股名欄以本表最長名為寬，後面預留上市／上櫃格子。"""
+    raw = str(name or "")
+    return raw + "　" * max(0, int(widest) - len(raw))
+
+
+def pad_listing_slot(listing: str) -> str:
+    raw = str(listing or "").strip()
+    widest = max(len(w) for w in LISTING_SLOT_WORDS)
+    return raw + "　" * max(0, widest - len(raw))
+
+
 def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
-    """圖卡／HTML 共用欄位字串。"""
+    """圖卡／HTML 共用欄位字串。名稱與上市／上櫃分開，預留對齊格。"""
     mark = "這檔" if row.get("is_mine") else ""
     name = str(row.get("stock_name") or "")
     listing = str(row.get("listing") or "").strip()
@@ -1040,7 +1059,8 @@ def format_bijia_cells(row: Dict[str, Any]) -> Dict[str, str]:
     return {
         "mark": mark,
         "sid": str(row.get("stock_id") or ""),
-        "name": f"{name}　{listing}" if listing else name,
+        "name": name,
+        "listing": listing,
         "close": f"{float(row.get('close') or 0):.0f}",
         "eps": f"{float(row.get('eps_sum') or 0):.2f}" + (f"×{eps_n}" if eps_n > 1 else ""),
         "mult": f"{float(row.get('mult') or 0):.0f}",
@@ -1171,12 +1191,15 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
             bj_lines.append(kv_compact("收盤日", f"{cd[:4]}/{cd[4:6]}/{cd[6:]}"))
         elif cd:
             bj_lines.append(kv_compact("收盤日", cd))
+        nw = widest_stock_name(str(r.get("stock_name") or "") for r in bijia["rows"])
         for r in bijia["rows"]:
             c = format_bijia_cells(r)
             tag = c["mark"] or "同鏈"
+            name_bit = pad_stock_name(c["name"], nw)
+            list_bit = pad_listing_slot(c["listing"])
             bj_lines.append(
                 f"{html_escape(tag)}　<code>{html_escape(c['sid'])}</code> "
-                f"{html_escape(c['name'])}　"
+                f"{html_escape(name_bit)}{html_escape(list_bit)}　"
                 f"{html_escape(c['close'])}　"
                 f"EPS {html_escape(c['eps'])}　"
                 f"價/EPS <b>{html_escape(c['mult'])}</b>"
@@ -1207,7 +1230,7 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
         )
     )
 
-    def _peer_rows(title: str, rows: List[Dict[str, Any]]) -> List[str]:
+    def _peer_rows(title: str, rows: List[Dict[str, Any]], *, name_w: int) -> List[str]:
         if not rows:
             return [f"{title}　—"]
         out = [title]
@@ -1217,20 +1240,23 @@ def format_industry_html(stock_id: str, db_path: str = None, *, allow_fetch: boo
                 fine = str(r.get("fine_finest") or "").strip()
                 tags = [fine] if fine else []
             tag_bit = "".join(f" [{html_escape(t)}]" for t in tags)
-            listing_bit = f"　{html_escape(r['listing'])}" if str(r.get("listing") or "").strip() else ""
+            name_bit = pad_stock_name(str(r.get("stock_name") or ""), name_w)
+            list_bit = pad_listing_slot(str(r.get("listing") or "").strip())
             out.append(
                 f"<code>{html_escape(r['stock_id'])}</code> "
-                f"{html_escape(r['stock_name'])}{listing_bit}{tag_bit} {html_pct_tight(r['yoy'])}"
+                f"{html_escape(name_bit)}{html_escape(list_bit)}{tag_bit} {html_pct_tight(r['yoy'])}"
             )
         return out
 
     if snap["stronger"] or snap["weaker"]:
         note = peer_note_line(snap)
+        all_peer = list(snap["stronger"] or []) + list(snap["weaker"] or [])
+        name_w = widest_stock_name(str(r.get("stock_name") or "") for r in all_peer)
         blocks.append(
             section(
                 "<b>同業月營收對照</b>",
-                *_peer_rows("較強", snap["stronger"]),
-                *_peer_rows("較弱", snap["weaker"]),
+                *_peer_rows("較強", snap["stronger"], name_w=name_w),
+                *_peer_rows("較弱", snap["weaker"], name_w=name_w),
                 *([note] if note else []),
             )
         )
