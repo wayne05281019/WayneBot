@@ -83,14 +83,18 @@ COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
 
 def membership_label(snap: Dict[str, Any]) -> str:
     """這檔拿來比對的最細標。圖卡／HTML 同業括號同一句，跟 membership_keys 對齊。"""
-    from industry_fine import _KEEP_FINEST
+    from industry_fine import _KEEP_FINEST, _KEEP_FOUNDRY_WITH
 
     bits: List[str] = []
     extras = [str(t).strip() for t in list(snap.get("extra_tags") or []) if str(t).strip()]
     finest = str(snap.get("fine_finest") or "").strip()
+    extra_set = set(extras)
     if extras:
-        if finest in _KEEP_FINEST and finest not in bits:
-            bits.append(finest)
+        if finest in _KEEP_FINEST or (
+            finest == "代工" and (extra_set & _KEEP_FOUNDRY_WITH)
+        ):
+            if finest and finest not in bits:
+                bits.append(finest)
         for t in extras:
             if t not in bits:
                 bits.append(t)

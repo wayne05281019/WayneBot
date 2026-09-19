@@ -14,6 +14,8 @@ import sqlite3
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from industry_fine import TAUGHT_GROUPS
+
 WANT_ASK = re.compile(
     r"(新族群|蠢蠢欲動|怎麼找|根據我的指引|找族群|還沒點名|底部蠢蠢|指引去找)"
 )
@@ -22,8 +24,12 @@ SHARE_ASK = re.compile(
     r"還沒當第一|升還沒第一)"
 )
 
+def _gmem(tag: str) -> Tuple[Tuple[str, str], ...]:
+    return tuple((str(sid), "") for sid in (TAUGHT_GROUPS.get(tag) or ()))
+
+
 # 教過的次族群：名稱／龍頭／落後檔對得上才沿用。排名掃全部 CMoney 三層鏈，不准發明一族、不准發明 5／9。
-# needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。
+# needles＝籌碼K細項鏈裡他教過的次族群字，用來把族內成員從庫裡補齊。沒有準字就空，不准拿代工／通訊設備去灌。
 _GROUPS: Tuple[Dict[str, Any], ...] = (
     {
         "key": "asic",
@@ -43,19 +49,57 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
     },
     {
         "key": "inp",
-        "field": "光通訊 InP",
-        "names": ("光通訊", "InP", "聯亞", "全新", "穩懋"),
+        "field": "光通訊",
+        "names": ("光通訊", "矽光子", "InP", "聯亞", "光聖", "波若威", "穩懋"),
         "needles": (),
-        "layers": ("電子上游", "半導體元件"),
-        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("3105", "穩懋")),
+        "layers": (),
+        "leaders": (("3081", "聯亞"), ("2455", "全新"), ("6442", "光聖")),
+        "members": _gmem("光通訊"),
+    },
+    {
+        "key": "sat",
+        "field": "低軌衛星",
+        "names": ("低軌衛星", "低軌", "昇達科", "耀登", "華通", "穩懋"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("3491", "昇達科"), ("3105", "穩懋")),
+        "members": _gmem("低軌衛星"),
+    },
+    {
+        "key": "mature",
+        "field": "成熟製程",
+        "names": ("成熟製程", "聯電", "力積電", "世界"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("2303", "聯電"),),
+        "members": _gmem("成熟製程"),
+    },
+    {
+        "key": "robot",
+        "field": "機器人",
+        "names": ("機器人", "上銀", "研華", "精銳", "工業電腦"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("2049", "上銀"), ("2395", "研華")),
+        "members": _gmem("機器人"),
     },
     {
         "key": "mem",
-        "field": "記憶體",
-        "names": ("記憶體", "南亞科"),
-        "needles": ("記憶體",),
+        "field": "記憶體製造",
+        "names": ("記憶體製造", "記憶體原料", "南亞科", "華邦電", "旺宏", "晶豪科"),
+        "needles": ("記憶體製造",),
         "layers": ("電子上游", "記憶體製造"),
         "leaders": (("2408", "南亞科"),),
+        "members": _gmem("記憶體製造"),
+    },
+    {
+        "key": "memctl",
+        "field": "記憶體控制",
+        "names": ("記憶體控制", "控制晶片", "群聯", "點序", "祥碩"),
+        "needles": (),
+        "layers": (),
+        "leaders": (("8299", "群聯"),),
+        "members": _gmem("記憶體控制"),
     },
     {
         "key": "pcb",
@@ -114,6 +158,7 @@ _PAGE_RULES = (
     "每檔先寫買或不買。",
     "已持有寫留或不加碼。",
     "龍頭來不及買。比價下次級黃金買點。",
+    "股民追漲不追跌。先機不追當天第一名。",
     "捕捉＝最落後次級兩到三檔。",
     "買只認黃金買點。",
     "盤中未收不當官方收。",
@@ -125,6 +170,7 @@ _PAGE_NOTES = (
     "這型勝率 70.8%",
     "追第一名約五成六",
     "追當天第一名容易人去樓空。",
+    "抓的是股民心態，不是猜新聞。",
     "金控／銀行當停車格。",
     "電子細項先機較穩。",
     "貼20高＝偏晚。",
@@ -2299,11 +2345,14 @@ def _stock_line(
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
     role = str(item.get("role") or "").strip()
-    rows = [f"{idx}. {sid} {name}"]
+    if role == "龍頭":
+        rows = [f"{idx}. <b>龍頭</b> {sid} {name}"]
+    else:
+        rows = [f"{idx}. {sid} {name}"]
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
     if str(tag or "").startswith("買點"):
         rows.append(f"<b>{_esc(PRE_BUY_WIN_LABEL)}</b>")
-    if role:
+    if role and role != "龍頭":
         rows.append(_esc(role))
     if vs20 is not None:
         rows.append(f"距20高 {_pct(float(vs20))}")

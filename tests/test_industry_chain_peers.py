@@ -94,6 +94,19 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("3491") == ["低軌衛星"]
     assert extra_tags_for("3062") == []  # 建漢，不是昇達科
     assert extra_tags_for("3450") == []
+    assert extra_tags_for("2303") == ["成熟製程"]
+    assert extra_tags_for("2330") == []
+    assert extra_tags_for("2408") == ["記憶體製造"]
+    assert extra_tags_for("3006") == ["記憶體製造"]
+    assert extra_tags_for("8299") == ["記憶體控制"]
+    assert extra_tags_for("2049") == ["機器人"]
+    assert extra_tags_for("2313") == ["低軌衛星"]
+    assert extra_tags_for("2367") == ["低軌衛星"]
+    assert extra_tags_for("3588") == ["記憶體控制"]
+    assert ("fine", "代工") in membership_keys("3105", "代工")
+    assert ("fine", "代工") not in membership_keys("2303", "代工")
+    assert membership_keys("2408", "記憶體製造") & membership_keys("3006", "記憶體IC設計")
+    assert not (membership_keys("2408", "記憶體製造") & membership_keys("8299", "IC設計"))
     assert ("x", "光通訊") in membership_keys("3081", "半導體元件")
     assert ("fine", "半導體元件") not in membership_keys("3081", "半導體元件")
     assert ("fine", "通訊設備") not in membership_keys("3491", "通訊設備")
@@ -240,3 +253,45 @@ def test_html_and_png_share_card_spec(tmp_path):
     png = str(tmp_path / "3105_industry.png")
     out = render_industry_png("3105", db, png, allow_fetch=False)
     assert out and os.path.isfile(out)
+
+
+def test_retail_groups_do_not_mix_foundry_or_memory_buckets(tmp_path):
+    db = str(tmp_path / "retail.db")
+    _seed(
+        db,
+        [
+            ("2303", "聯電", "半導體業", "TW", "電子上游-IC-代工", 5.0, 147.0, 1.20),
+            ("6770", "力積電", "半導體業", "TW", "電子上游-IC-代工", 8.0, 40.0, 0.50),
+            ("5347", "世界", "半導體業", "TWO", "電子上游-IC-代工", 6.0, 90.0, 1.00),
+            ("2330", "台積電", "半導體業", "TW", "電子上游-IC-代工", 40.0, 2425.0, 14.0),
+            ("2408", "南亞科", "半導體業", "TW", "電子上游-記憶體製造", 50.0, 80.0, 1.00),
+            ("2344", "華邦電", "半導體業", "TW", "電子上游-記憶體製造", 20.0, 30.0, 0.80),
+            ("3006", "晶豪科", "半導體業", "TW", "電子上游-記憶體IC設計", 80.0, 100.0, 1.00),
+            ("8299", "群聯", "半導體業", "TWO", "電子上游-記憶體IC設計", 15.0, 500.0, 8.00),
+            ("6485", "點序", "半導體業", "TWO", "電子上游-IC-設計", 12.0, 80.0, 2.00),
+            ("2049", "上銀", "電機機械", "TW", "傳產-電機", 10.0, 400.0, 5.00),
+            ("2395", "研華", "電腦及週邊設備業", "TW", "電子下游-工業電腦", 12.0, 350.0, 8.00),
+            ("3491", "昇達科", "通信網路業", "TWO", "電子中游-通訊設備", 10.0, 180.0, 1.50),
+            ("2313", "華通", "電子零組件業", "TW", "電子上游-PCB-製造", 18.0, 70.0, 2.00),
+            ("2383", "台光電", "電子零組件業", "TW", "電子上游-PCB-材料設備", 30.0, 900.0, 12.0),
+        ],
+    )
+    umc = format_industry_html("2303", db, allow_fetch=False)
+    assert "成熟製程" in umc
+    assert "6770" in umc and "力積電" in umc
+    assert "5347" in umc
+    assert "2330" not in umc
+    nanya = format_industry_html("2408", db, allow_fetch=False)
+    assert "記憶體製造" in nanya
+    assert "3006" in nanya and "晶豪科" in nanya
+    assert "8299" not in nanya
+    phison = format_industry_html("8299", db, allow_fetch=False)
+    assert "記憶體控制" in phison
+    assert "6485" in phison and "點序" in phison
+    assert "2408" not in phison
+    sat = format_industry_html("3491", db, allow_fetch=False)
+    assert "2313" in sat and "華通" in sat
+    assert "2383" not in sat
+    robot = format_industry_html("2049", db, allow_fetch=False)
+    assert "機器人" in robot
+    assert "2395" in robot and "研華" in robot

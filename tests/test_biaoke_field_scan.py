@@ -195,6 +195,7 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     blob = "\n".join(heads)
     assert "洞燭先機" in blob
     assert "資金輪動要注意" in html
+    assert "追漲不追跌" in html
     assert "此刻最像" in html
     assert "此刻推薦" in html
     assert "① " in html
@@ -607,6 +608,18 @@ def test_dongzhu_layers_and_parity_roles():
     test_g = next(g for g in _GROUPS if g["key"] == "test")
     assert _stock_role(test_g, "6515") == "龍頭"
     assert _stock_role(test_g, "6257") == "次級"
+    mature = next(g for g in _GROUPS if g["key"] == "mature")
+    assert _stock_role(mature, "2303") == "龍頭"
+    sat = next(g for g in _GROUPS if g["key"] == "sat")
+    assert _stock_role(sat, "3491") == "龍頭"
+    from biaoke_field_scan import _stock_line
+
+    lead_line = _stock_line(
+        {"sid": "2303", "name": "聯電", "role": "龍頭", "vs20": -10.0, "vs60": -20.0},
+        1,
+        "買點",
+    )
+    assert lead_line.startswith("1. <b>龍頭</b> 2303 聯電")
     line = _layer_line(("電子上游", "IC", "封測"))
     assert "主產業 電子上游" in line
     assert "次產業 IC" in line
