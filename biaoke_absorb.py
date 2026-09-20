@@ -646,6 +646,13 @@ def run_absorb(
         except Exception:
             pass
         _mark_absorbed(db_path, [str(ev.get("id") or "") for ev in events], now=dt)
+    if str(slot_id).endswith("-0200"):
+        try:
+            from silent_progress import night_review
+
+            night_review(db_path)
+        except Exception:
+            logger.exception("凌晨默默覆盤失敗")
     if slot_id:
         aux_n = 0
         conn = sqlite3.connect(db_path, timeout=8.0)
