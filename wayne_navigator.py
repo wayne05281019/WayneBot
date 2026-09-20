@@ -95,14 +95,16 @@ _LR_PRIM_DY = 1.78
 _LR_SEC_DY = 1.92
 
 
-def _savefig_lookup_png(fig, save_path: str, dpi: int) -> None:
-    """查股圖快存 PNG：少壓一檔，相簿再轉原像素 JPEG。"""
+def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
+    """查股直出 JPEG（路徑可仍叫 .png）。少一趟 PNG 壓縮，相簿再裁 4:5。"""
     fig.savefig(
         save_path,
+        format="jpeg",
         dpi=dpi,
         facecolor=fig.get_facecolor(),
-        pil_kwargs={"compress_level": 1, "optimize": False},
+        pil_kwargs={"quality": 88, "optimize": False, "subsampling": 0},
     )
+    return save_path
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -2946,7 +2948,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
-    _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
+    save_path = _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
     plt.close(fig)
     return save_path
 
@@ -3569,7 +3571,7 @@ def render_first_glance_png(
             ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
 
-    _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
+    save_path = _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
     plt.close(fig)
     return save_path
 
