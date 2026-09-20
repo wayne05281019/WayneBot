@@ -911,8 +911,10 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     from biaoke_digest import format_latest_focus
 
     focus = format_latest_focus("")
-    assert "如果句" in focus or "未收" in focus
+    assert "飆大現在在講" in focus
     assert "不是買訊" in focus
+    assert "這句沒點檔" not in focus
+    assert "現在位階" not in focus
 
 
 def test_overlays_do_not_change_five_cross_branches():
