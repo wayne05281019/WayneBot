@@ -119,3 +119,15 @@ def test_official_stock_name_skips_yahoo_english(tmp_path):
     conn.commit()
     conn.close()
     assert official_stock_name("2330", db) == "台積電"
+
+
+def test_source_files_have_no_replacement_char():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    bad = []
+    for path in list(root.glob("*.py")) + list((root / "tests").glob("*.py")):
+        blob = path.read_text(encoding="utf-8")
+        if "�" in blob and 'assert "�" not in blob' not in blob:
+            bad.append(str(path.relative_to(root)))
+    assert bad == []

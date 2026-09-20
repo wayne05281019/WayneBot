@@ -30,7 +30,6 @@ GIF_VER = "pulse2"
 SET_NAME = "waynebot_marks_by_WC_ai_trade_bot"
 BAR_SET_NAME = "waynebot_bars_by_WC_ai_trade_bot"
 IDS_PATH = os.path.join(os.path.dirname(__file__), "telegram_cat_mark_ids.json")
-STICKER_IDS_PATH = os.path.join(os.path.dirname(__file__), "telegram_cat_sticker_ids.json")
 
 
 def load_mark_ids() -> Dict[str, str]:
@@ -49,21 +48,6 @@ def tg_mark(key: str, fallback: str) -> str:
     if not eid:
         return fallback
     return f'<tg-emoji emoji-id="{eid}">{fallback}</tg-emoji>'
-
-
-def load_sticker_ids() -> Dict[str, str]:
-    if not os.path.isfile(STICKER_IDS_PATH):
-        return {}
-    try:
-        with open(STICKER_IDS_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-        return {
-            k: str(v)
-            for k, v in data.items()
-            if v and k != "set" and str(v).startswith("CAAC")
-        }
-    except Exception:
-        return {}
 
 
 def _rot(cx, cy, x, y, a):

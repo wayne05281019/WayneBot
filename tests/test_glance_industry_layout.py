@@ -108,7 +108,7 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
 
 
 def test_glance_omits_nav_now_in_album(tmp_path, monkeypatch):
-    """介紹圖不再畫下半導航；完整 180 日高低改獨立第四張。"""
+    """介紹圖不再畫下半導航；完整 180 日高低改獨立鈕。"""
     import sqlite3
     from datetime import date, timedelta
 

@@ -900,19 +900,18 @@ class USOvernightTest(unittest.TestCase):
         self.assertIn("【盤後期貨】", night)
         self.assertIn("台指期", night)
 
-    def test_line_share_persists_for_forward_button(self):
-        from screen_sessions import load_line_share, save_line_share
-        from wayne_db import ensure_core_schema
+    def test_line_share_persist_helpers_are_gone(self):
+        import screen_sessions
 
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        try:
-            ensure_core_schema(path)
-            save_line_share(path, "20260828", "WayneBot 海選　2026/08/28\n1. 2330 台積電")
-            self.assertIn("2330", load_line_share(path, "20260828"))
-            self.assertIn("2330", load_line_share(path))
-        finally:
-            os.remove(path)
+        for name in (
+            "save_line_share",
+            "load_line_share",
+            "save_line_packs",
+            "save_line_stocks",
+            "load_line_stock",
+            "upsert_line_pack",
+        ):
+            self.assertFalse(hasattr(screen_sessions, name), name)
 
     def test_risk_off_clears_intraday_and_tags_chips(self):
         from screening_engine import format_screening_payload
