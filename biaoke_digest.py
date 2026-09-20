@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from tg_layout import html_escape
@@ -211,52 +211,243 @@ def _oral_body(text: str, limit: int = 280) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+_NOISE = re.compile(
+    r"(打錯|很有心|出書|90%\s*老師|碩哥和我|蕭明道|楊少凱)"
+)
+_BOARD = re.compile(r"(夜盤|47578|C\s*波|頭部型態|大盤要漲|前波高點|加權|逃命|45398)")
+_FIELD = re.compile(r"(ASIC|散熱|光通訊|記憶體|多頭格局的族群)")
+_PCB = re.compile(r"(PCB|台光電|金像電|台燿|富喬|金居|ABF)")
+_PREVIEW = re.compile(r"(星期[日天]晚上|技術分析看法)")
+_NOISE_ONLY = re.compile(r"(出書|90%\s*老師|我自己都沒|說實話|看盤當下寫|很有心)")
+
+
+def _speak(text: str, limit: int = 220) -> str:
+    """口語重述：像當面講一遍，重點留著，不倒時間牆、不砍條件句。"""
+    s = _CHART.sub("（有圖）", text or "")
+    s = _SPACE.sub(" ", s).strip()
+    s = s.replace("2024/10~2025/02", "2024年10月到2025年2月")
+    s = s.replace("2024/10～2025/02", "2024年10月到2025年2月")
+    s = re.sub(r"我這周末比較忙", "這周末比較忙", s)
+    s = re.sub(r"星期[日天]晚上我發一篇", "星期天晚上會發一篇", s)
+    s = re.sub(r"^從夜盤反彈", "夜盤已經彈", s)
+    s = re.sub(r"不過這次大盤要漲到目標點位一定要過", "不過要漲到他講的目標，一定要過", s)
+    s = re.sub(r"目前唯一在多頭格局的族群就是", "現在唯一還在多頭的是", s)
+    s = re.sub(
+        r"因為現在追蹤我的人數過多，我已經無法像以前那樣公開點名",
+        "追的人太多就不再公開點名",
+        s,
+    )
+    s = re.sub(r"未來不是再一次出現這一次大修正，或者走", "後面不是再來一次大修正，就是走出", s)
+    s = re.sub(r"做一個大的頭部型態出來", "那種大頭部", s)
+    s = _SPACE.sub(" ", s).strip()
+    s = re.sub(r"^我+", "", s)
+    parts = [p.strip(" ，、") for p in re.split(r"[。！？；]", s) if p.strip()]
+    keep: List[str] = []
+    for p in parts:
+        if _NOISE_ONLY.search(p) and not re.search(r"(47578|ASIC|PCB|台光電|夜盤|頭部)", p):
+            continue
+        if len(p) < 6:
+            continue
+        keep.append(p)
+        if len(keep) >= 4:
+            break
+    out = "。".join(keep)
+    if out and not out.endswith("。"):
+        out += "。"
+    return _oral_body(out or s, limit)
+
+
+def _when_short(date: str, time_s: str) -> str:
+    d = str(date or "").strip()
+    t = str(time_s or "").strip()
+    day = d
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})$", d)
+    if m:
+        day = f"{int(m.group(2))}/{int(m.group(3))}"
+    if not t:
+        return day
+    try:
+        h = int(t[:2])
+    except ValueError:
+        h = -1
+    if h >= 18:
+        tod = "晚上"
+    elif h >= 12:
+        tod = "下午"
+    elif h >= 5:
+        tod = "早上"
+    elif h >= 0:
+        tod = "凌晨"
+    else:
+        tod = ""
+    clock = t[:5] if len(t) >= 5 else t
+    bits = [x for x in (day, tod, clock) if x]
+    return " ".join(bits)
+
+
+def _row_key(p: Dict[str, Any]) -> Tuple[str, str, str]:
+    return (
+        str(p.get("date") or ""),
+        str(p.get("time") or ""),
+        str(p.get("post_id") or p.get("id") or ""),
+    )
+
+
+def _noise_reply(text: str) -> bool:
+    s = _SPACE.sub(" ", text or "").strip()
+    if len(s) < 6:
+        return True
+    if _NOISE.search(s) and not re.search(r"(PCB|台光電|夜盤|47578|ASIC|整理|錯殺)", s):
+        return True
+    return False
+
+
+def _numbered_bits(text: str) -> List[str]:
+    raw = _SPACE.sub(" ", text or "").strip()
+    raw = re.sub(r"^重要留言看法分享\s*", "", raw)
+    parts = re.split(r"(?:^|\s)\d+\.\s+", raw)
+    bits = [p.strip().rstrip("。") for p in parts if p and len(p.strip()) >= 12]
+    if len(bits) >= 2:
+        return bits
+    return [raw] if raw else []
+
+
+def format_focus_oral(
+    mains: Sequence[Dict[str, Any]],
+    replies: Sequence[Dict[str, Any]],
+    *,
+    now: Optional[datetime] = None,
+) -> str:
+    """空白按飆大：口語重述最新重點。不准倒原文、不准時間跳來跳去。"""
+    mains = [dict(p) for p in mains if str(p.get("text") or "").strip()]
+    if not mains:
+        return ""
+    mains = sorted(mains, key=_row_key, reverse=True)
+    replies = [
+        dict(p)
+        for p in replies
+        if str(p.get("text") or "").strip() and not _noise_reply(str(p.get("text") or ""))
+    ]
+    replies = sorted(replies, key=_row_key, reverse=True)
+    latest = mains[0]
+    when_p = latest
+    if replies and _row_key(replies[0]) > _row_key(latest):
+        when_p = replies[0]
+    when = _when_short(str(when_p.get("date") or ""), str(when_p.get("time") or ""))
+    board = ""
+    field = ""
+    pcb = ""
+    preview = ""
+    spare: List[str] = []
+    extra: List[str] = []
+    older_long = False
+    newer_short = False
+    for bit in _numbered_bits(str(latest.get("text") or "")):
+        if not board and _BOARD.search(bit):
+            board = _speak(bit, 260)
+        elif not field and _FIELD.search(bit):
+            field = _speak(bit, 140)
+        elif not pcb and _PCB.search(bit):
+            pcb = _speak(bit, 140)
+        else:
+            spare.append(_speak(bit, 140))
+    for p in mains[1:]:
+        t = str(p.get("text") or "")
+        if re.search(r"整理三個月|全面減碼", t):
+            older_long = True
+        if not board and _BOARD.search(t):
+            board = _speak(t, 200)
+        if not field and _FIELD.search(t):
+            field = _speak(t, 120)
+    latest_day = str(latest.get("date") or "")
+    for p in replies:
+        t = str(p.get("text") or "")
+        if _PREVIEW.search(t) and not preview:
+            preview = _speak(t, 140)
+            continue
+        if re.search(r"比ABF短|錯殺", t):
+            newer_short = True
+            pcb = _speak(t, 140)
+            continue
+        if not pcb and _PCB.search(t):
+            pcb = _speak(t, 140)
+            continue
+        day = str(p.get("date") or "")
+        if day and latest_day and day < latest_day:
+            continue
+        extra.append(_speak(t, 100))
+    if older_long and newer_short:
+        pcb = (
+            "前一天還說台光電至少整理三個月、PCB 全面減碼；"
+            "晚上改口，整理時間會比 ABF 短很多，昨天錯殺居多，下波可能還是漲的主流。"
+        )
+    if not board:
+        board = _speak(str(latest.get("text") or ""), 260)
+    latest_t = str(latest.get("text") or "")
+    if board and re.search(r"(否則|如果|一定要過)", board + latest_t) and "如果句" not in board:
+        board = board.rstrip("。") + "。這句還是如果句，不是已確認主升。"
+    said = " ".join(
+        x.rstrip("。") + "。"
+        for x in ([preview] + spare[:1] + extra[:2])
+        if x
+    ).strip()
+    blocks: List[str] = [
+        "<b>飆大現在在講</b>",
+        html_escape(f"最新　{when}" if when else "最新"),
+    ]
+
+    def _add(title: str, body: str) -> None:
+        if not body:
+            return
+        blocks.append("")
+        blocks.append(f"<b>{html_escape(title)}</b>")
+        blocks.append(html_escape(body))
+
+    _add("大盤", board)
+    _add("族群", field)
+    _add("PCB", pcb)
+    _add("他還說", said)
+    asks = _likely_asks(list(mains[:2]) + replies[:8])
+    if asks:
+        blocks.append("")
+        blocks.append("<b>還能問</b>")
+        blocks.extend(html_escape(a) for a in asks[:3])
+    clock = ""
+    if now is not None:
+        dt = now if now.tzinfo else now.replace(tzinfo=TAIPEI)
+        clock = dt.astimezone(TAIPEI).strftime("%H:%M")
+    tail = "不是買訊。直接打字或語音。"
+    if clock:
+        tail = f"看到這裡是 {clock}。{tail}"
+    blocks.append("")
+    blocks.append(html_escape(tail))
+    return "\n".join(blocks)
+
+
 def format_unread_digest(
     events: Sequence[Dict[str, Any]],
     *,
     now: Optional[datetime] = None,
 ) -> str:
-    """未讀期間同一篇抓很多次，這裡只留最新再一起顯示。按飆大才看。"""
-    dt = now or taipei_now()
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=TAIPEI)
-    clock = dt.astimezone(TAIPEI).strftime("%H:%M")
+    """未讀期間同一篇抓很多次，只留最新再口語重述。按飆大才看。"""
     uniq: Dict[str, Dict[str, Any]] = {}
     for ev in events:
         pid = str(ev.get("post_id") or "")
         if pid:
             uniq[pid] = dict(ev)
     rows = list(uniq.values())
-    rows.sort(
-        key=lambda x: (
-            str(x.get("date") or ""),
-            str(x.get("time") or ""),
-            str(x.get("post_id") or ""),
-        ),
-        reverse=True,
-    )
-    bits: List[str] = []
-    for ev in rows[:12]:
-        body = _oral_body(str(ev.get("text") or ""), 360)
-        if not body:
-            continue
-        day = str(ev.get("date") or "").strip()
-        when = str(ev.get("time") or "").strip()
-        stamp = " ".join(x for x in (day, when) if x)
-        if ev.get("kind") == "reply":
-            head = f"他自己樓下補{'（' + stamp + '）' if stamp else ''}："
-        else:
-            head = f"新發／改寫{'（' + stamp + '）' if stamp else ''}："
-        bits.append(head + body)
-    if not bits:
+    mains = [
+        r
+        for r in rows
+        if str(r.get("kind") or "post") not in ("reply", "bystander")
+    ]
+    replies = [r for r in rows if str(r.get("kind") or "") == "reply"]
+    if not mains and replies:
+        mains = [replies[0]]
+        replies = replies[1:]
+    if not mains:
         return ""
-    blob = "\n\n".join(bits)
-    return (
-        "今天飆大重點就是：\n\n"
-        + html_escape(blob)
-        + f"\n\n（以上資料更新至 {clock}）"
-        + "\n對原文用。不是買訊。"
-    )
+    return format_focus_oral(mains, replies, now=now)
 
 
 _ASK_SKIP = {
@@ -309,7 +500,7 @@ def _likely_asks(posts: Sequence[Dict[str, Any]]) -> List[str]:
 
 
 def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16) -> str:
-    """按飆大空白進去：現況推論＋你可能會問的。不倒原文、不念課綱。"""
+    """按飆大空白進去：口語重述最新重點。不准倒原文、不念課綱、不疊舊位階。"""
     try:
         from biaoke_desk import load_corpus
     except Exception:
@@ -335,72 +526,7 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
         return ""
     latest = list(reversed(mains[-max(1, int(n_main)) :]))
     latest_replies = list(reversed(replies[-max(0, int(n_reply)) :])) if n_reply else []
-    lines: List[str] = []
-    for i, p in enumerate(latest):
-        raw = str(p.get("text") or "")
-        body = _oral_body(raw, 220 if i == 0 else 96)
-        if i == 0 and "重要留言看法分享" in raw:
-            extra = raw.split("重要留言看法分享", 1)[-1]
-            body = (body + " 重要留言看法分享 " + _oral_body(extra, 260)).strip()
-        if not body:
-            continue
-        day = str(p.get("date") or "").strip()
-        when = str(p.get("time") or "").strip()
-        stamp = " ".join(x for x in (day, when) if x)
-        lines.append((stamp + " " + body).strip())
-    main_blob = " ".join(str(p.get("text") or "") for p in latest)
-    for p in latest_replies:
-        raw = str(p.get("text") or "")
-        stem = raw.strip().lstrip(".").strip()
-        if len(stem) >= 20 and stem[:20] in main_blob:
-            continue
-        body = _oral_body(raw, 80)
-        if not body:
-            continue
-        day = str(p.get("date") or "").strip()
-        when = str(p.get("time") or "").strip()
-        stamp = " ".join(x for x in (day, when) if x)
-        lines.append(("樓下 " + stamp + " " + body).strip())
-        if sum(1 for x in lines if x.startswith("樓下 ")) >= 8:
-            break
-    if not lines:
-        return ""
-    stamp = " ".join(
-        x
-        for x in (
-            str(latest[0].get("date") or "").strip(),
-            str(latest[0].get("time") or "").strip(),
-        )
-        if x
-    )
-    blob_l = " ".join(str(p.get("text") or "") for p in latest + latest_replies)
-    infer = ""
-    if re.search(r"(夜盤|細微波|15\s*分|60\s*分|波浪|右肩|位階)", blob_l):
-        infer = "個股先看產業趨勢，很少用波浪硬套；大盤不穩先想資金規劃。"
-    asks = _likely_asks(latest + latest_replies)
-    out = [f"庫 {stamp}。", *lines]
-    try:
-        from biaoke_wave import format_wave_now
-
-        wave = format_wave_now(db_path, n=360)
-        if wave:
-            out.insert(1, wave)
-    except Exception:
-        pass
-    if infer:
-        out.append(infer)
-    if asks:
-        out.append("你可能會問：" + "　".join(asks))
-    try:
-        from biaoke_chain import fire_chain, format_five_lead
-
-        lead = format_five_lead(fire_chain(db_path, "大盤現在"))
-        if lead:
-            out.insert(0, lead)
-    except Exception:
-        pass
-    out.append("直接打字或語音。不是買訊。")
-    return html_escape("\n\n".join(out))
+    return format_focus_oral(latest, latest_replies, now=taipei_now())
 
 
 def take_unread_digest(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> str:

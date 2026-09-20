@@ -149,16 +149,16 @@ def test_why_wave_now_and_eyes():
     assert EYES
 
 
-def test_blank_focus_leads_with_degree():
+def test_blank_focus_is_oral_not_wave_dump():
     html = format_latest_focus("")
-    assert "現在位階" in html
-    assert "第五波測底" in html or "測底" in html or "逃命波" in html
-    assert "位階不講死" in html
-    assert "產業趨勢" in html
-    assert "現在波浪位階" in html
+    assert "飆大現在在講" in html
+    assert "不是買訊" in html
+    assert "現在位階" not in html
+    assert "位階不講死" not in html
+    assert "這句沒點檔" not in html
+    assert "你可能會問" not in html
     assert "位階他不講死" not in html
-    assert "如果句" in html or "未收" in html
-    assert len(html) < 3000
+    assert len(html) < 1800
 
 
 def test_nest_includes_his_degree():

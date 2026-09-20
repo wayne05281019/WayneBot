@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from biaoke_digest import (
     biaoke_button_label,
+    format_focus_oral,
     format_latest_focus,
     format_unread_digest,
     mark_biaoke_read,
@@ -46,14 +47,17 @@ def test_unread_dedupes_same_post_and_splits_users(tmp_path):
     assert unread_count(wayne, db) == 2
     assert unread_count(bro, db) == 2
     html = take_unread_digest(wayne, db, now=datetime(2026, 9, 11, 11, 43, tzinfo=ZoneInfo("Asia/Taipei")))
-    assert html.startswith("今天飆大重點就是")
+    assert "飆大現在在講" in html
     assert "散熱還在" in html
     assert "散熱最強" not in html
     assert "不是南亞科" in html
-    assert "更新至 11:43" in html
-    assert "對原文用" in html
+    assert "11:43" in html
+    assert "不是買訊" in html
+    assert "今天飆大重點就是" not in html
     assert "官方加權盤中現價" not in html
     assert "程式標籤" not in html
+    assert "這句沒點檔" not in html
+    assert "現在位階" not in html
     mark_biaoke_read(wayne, db, now=datetime(2026, 9, 11, 11, 44, tzinfo=ZoneInfo("Asia/Taipei")))
     assert unread_count(wayne, db) == 0
     assert unread_count(bro, db) == 2
@@ -116,22 +120,115 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
     assert [b.text for b in kb.keyboard[0]][-1] == "資金"
 
 
-def test_latest_focus_is_sep14_not_july_bwave():
+def test_focus_oral_sep18_not_timestamp_wall():
+    mains = [
+        {
+            "id": "m918",
+            "date": "2026-09-18",
+            "time": "08:58",
+            "text": (
+                "1. 從夜盤反彈到47205，這次C波下殺已經沒了。不過這次大盤要漲到目標點位"
+                "一定要過前波高點47578，否則大盤頭部型態已經初步出現，未來不是再一次"
+                "出現這一次大修正，或者走2024/10~2025/02 做一個大的頭部型態出來。"
+                " 2. 目前唯一在多頭格局的族群就是ASIC，再來是散熱，再次之就是光通訊、記憶體，依照強弱排序。"
+                " 3. 有一個新族群目前在底部蠢蠢欲動，因為現在追蹤我的人數過多，我已經無法像以前那樣公開點名。"
+            ),
+        },
+        {
+            "id": "m917",
+            "date": "2026-09-17",
+            "time": "10:42",
+            "text": "1. 台光電至少要整理三個月 ，和 ABF一樣 。 2. PCB全面走弱 ，建議全面減碼。",
+        },
+    ]
+    replies = [
+        {
+            "id": "r1",
+            "kind": "reply",
+            "date": "2026-09-18",
+            "time": "22:44",
+            "text": "PCB整理時間會比ABF短很多，昨天錯殺成分居多，應該是下波會漲主流族群",
+        },
+        {
+            "id": "r2",
+            "kind": "reply",
+            "date": "2026-09-18",
+            "time": "22:40",
+            "text": "我這周末比較忙，星期日晚上我發一篇對台光電、金像電、台燿、富喬、金居 的技術分析看法。",
+        },
+        {
+            "id": "r3",
+            "kind": "reply",
+            "date": "2026-09-18",
+            "time": "19:26",
+            "text": "很有心 我很多都是看盤當下寫的，我自己都沒有備份，而且說實話，就算出書 也不可能寫這麼細。",
+        },
+        {
+            "id": "r4",
+            "kind": "reply",
+            "date": "2026-09-18",
+            "time": "16:20",
+            "text": "全新 打錯",
+        },
+        {
+            "id": "r5",
+            "kind": "reply",
+            "date": "2026-09-16",
+            "time": "09:21",
+            "text": "大盤今天觀察只要收盤不破3日低點45398代表C-5低點確認",
+        },
+    ]
+    html = format_focus_oral(
+        mains,
+        replies,
+        now=datetime(2026, 9, 20, 11, 35, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+    assert html.startswith("<b>飆大現在在講</b>")
+    assert "9/18 晚上 22:44" in html
+    assert "47578" in html
+    assert "如果句" in html
+    assert "ASIC" in html
+    assert "比 ABF 短" in html or "比ABF短" in html
+    assert "整理三個月" in html
+    assert "星期日晚上" in html or "星期天晚上" in html
+    assert "11:35" in html
+    assert "不是買訊" in html
+    assert "還能問" in html
+    assert "47578過了沒" in html
+    board_html = html.split("<b>族群</b>")[0] if "<b>族群</b>" in html else html
+    assert "47205" in board_html
+    assert "47578" in board_html
+    assert "頭部型態" in board_html
+    assert "如果句" in board_html
+    assert "一定要過" in board_html
+    assert "2024年10月" in board_html or "2024/10" in board_html
+    assert "樓下 2026-09-18" not in html
+    assert "2026-09-17" not in html
+    assert "2026-09-16" not in html
+    assert "C-5低點確認" not in html
+    assert "出書" not in html
+    assert "打錯" not in html
+    assert "你可能會問" not in html
+    assert "這句沒點檔" not in html
+    assert "現在位階" not in html
+    assert "庫 " not in html
+    assert html.count("9/17") == 0
+    assert html.count("9/16") == 0
+    assert len(html) < 1800
+
+
+def test_latest_focus_is_oral_not_july_bwave():
     html = format_latest_focus("")
-    assert "庫 " in html
-    assert "2026-09-15" in html
-    assert "09:02" in html
-    assert "逃命波" in html
-    assert "雍智" in html or "精測" in html or "台達電" in html or "漲不動" in html or "InP" in html or "穩懋" in html or "健策" in html
-    assert "2026-09-14" in html
-    assert "09:51" in html
-    assert "重要留言" in html or "43500" in html or "創意" in html
-    assert "你可能會問" in html
+    assert "飆大現在在講" in html
+    assert "不是買訊" in html
     assert "直接打字或語音" in html
-    assert "現在位階" in html
-    assert "位階不講死" in html
-    assert "產業趨勢" in html
-    assert "現在波浪位階" in html or "現在是逃命波嗎" in html
+    assert "這句沒點檔" not in html
+    assert "現在位階" not in html
+    assert "位階不講死" not in html
+    assert "庫 " not in html
+    assert "你可能會問" not in html
+    assert "今天飆大重點就是" not in html
+    assert "樓下 2026-" not in html
     assert "模糊的精確" not in html
     assert "安全邊際" not in html
     assert "和碩" not in html
@@ -139,10 +236,9 @@ def test_latest_focus_is_sep14_not_july_bwave():
     assert "新發：" not in html
     assert "45000" not in html
     assert "46000" not in html
-    assert "今天飆大重點就是" not in html
     assert "語料" not in html
     assert "量先價行" not in html
-    assert len(html) < 2800
+    assert len(html) < 1800
 
 
 def test_old_inbox_not_counted_as_unread(tmp_path):
@@ -179,4 +275,6 @@ def test_old_inbox_not_counted_as_unread(tmp_path):
     html = take_unread_digest(uid, db, now=datetime(2026, 9, 11, 22, 3, tzinfo=tz))
     assert "46506" in html
     assert "45000" not in html
-    assert "2026-09-11 17:49" in html
+    assert "17:49" in html
+    assert "樓下 2026-09-11" not in html
+    assert "飆大現在在講" in html
