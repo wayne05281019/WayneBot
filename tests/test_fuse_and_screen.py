@@ -2655,6 +2655,64 @@ class AIDeskTest(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_core_slot_does_not_buy_other_buckets(self):
+        """第一份沒有黃金買點就不買；周帶量／營收轉強／隔日沖不是進場。"""
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [],
+                "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
+                "revenue_cross": [{"stock_id": "3037", "stock_name": "欣興", "close": 80.0}],
+                "overnight": [{"stock_id": "2303", "stock_name": "聯電", "close": 50.0}],
+                "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
+            }
+            ai = run_ai_desk(path, "1001", results, "20260831")
+            eng = PortfolioEngine(path)
+            ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
+            self.assertFalse(ai.get("bought"))
+            self.assertEqual(ids, set())
+        finally:
+            os.remove(path)
+
+    def test_core_slot_buys_four_star_leave_zero(self):
+        """四星黃金買點仍買；不看滿五星／buy_star。"""
+        import os
+        import tempfile
+        from ai_trader import ai_user_id, run_ai_desk
+        from portfolio_engine import PortfolioEngine
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            results = {
+                "leave_zero": [
+                    {
+                        "stock_id": "4915",
+                        "stock_name": "致伸",
+                        "close": 60.8,
+                        "profit_pct": 0.8,
+                        "entry_stars": 4,
+                        "buy_star": False,
+                    }
+                ],
+                "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
+            }
+            ai = run_ai_desk(path, "1001", results, "20260831")
+            blob = " ".join(ai.get("bought") or [])
+            self.assertIn("4915", blob)
+            self.assertNotIn("2412", blob)
+            eng = PortfolioEngine(path)
+            ids = {p["stock_id"] for p in eng.get_portfolio_summary(ai_user_id("1001"))["positions"]}
+            self.assertEqual(ids, {"4915"})
+        finally:
+            os.remove(path)
+
     def test_ensure_ai_user_does_not_copy_legacy_book(self):
         import os
         import tempfile

@@ -151,18 +151,13 @@ def _quotes_from_results(results: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
 def _candidates(
     results: Dict[str, List[Dict[str, Any]]], db_path: str = "", *, dip_only: bool = False
 ) -> List[Dict[str, Any]]:
-    """隔夜模擬倉：佈局／隔日沖，不拿當沖名單去隔夜。貼月高、美股電子逆風不買。
+    """隔夜模擬倉：第一份只買黃金買點整張表（含四星）。不拿周帶量／營收轉強／隔日沖去隔夜。
 
-    dip_only：第二份只准抄低（重點觀察／黃金買點），不准拿周帶量去填。
+    dip_only：第二份只准抄低（重點觀察／黃金買點）。貼月高、美股逆風不買。
+    不看五角星當買閘：滿五星門檻比表更嚴，四星已在進場表上。
     """
     out, seen = [], set()
-    keys = (
-        ("leave_zero", "黃金買點：獲利離零"),
-        ("golden_buy", "重點觀察：60低超跌"),
-        ("revenue_cross", "優先看：營收轉強×突破"),
-        ("overnight", "隔日沖佈局"),
-        ("select_01", "周帶量突破"),
-    )
+    keys = (("leave_zero", "黃金買點：獲利離零"),)
     if dip_only:
         keys = (
             ("golden_buy", "重點觀察：60低超跌"),
@@ -192,6 +187,7 @@ def _candidates(
                 continue
             if float(it.get("close") or 0) <= 0:
                 continue
+            # 四星黃金買點仍買；不准用 buy_star／滿五星擋表上的檔。
             seen.add(sid)
             row = dict(it)
             row["ai_reason"] = reason
@@ -418,7 +414,7 @@ def format_evolve_report_html(db_path: str, user_id: str = AI_USER_LEGACY) -> st
         "進場只認高低卡表的黃金買點。紅箭頭不是買訊。不會改程式，也不能塞進富邦量化積木。",
         "",
         "<b>目前編碼</b>",
-        "進場＝高低卡黃金買點（獲利剛離 0）",
+        "進場＝高低卡黃金買點整張表（含四星，不看滿五星閘）",
         "第二份＝大盤偏空才買重點觀察／黃金買點",
         f"停損 {STOP_PCT:.0f}%　停利 ＋{TAKE_PCT:.0f}%　平常 {CORE_SLOTS} 份、永遠留 1 份現金",
         f"單筆倍數 {size_mult:.2f}（0.40～1.20，依近況勝率縮放）",
