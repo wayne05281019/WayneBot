@@ -116,8 +116,8 @@ def test_owner_and_family_default_same_twelve_buttons_and_hub(tmp_path):
     hub_b = [b.text for r in bot._hub_keyboard("2330").inline_keyboard for b in r]
     assert hub_w == hub_b
     assert "K線" in hub_w and "籌碼" in hub_w
-    assert "產業" not in hub_w
-    assert "導航圖" not in hub_w
+    assert "產業" in hub_w
+    assert "導航圖" in hub_w
 
 
 def test_owner_compact_flag_does_not_shrink_anyone(tmp_path):

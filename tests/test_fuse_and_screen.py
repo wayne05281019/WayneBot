@@ -1946,7 +1946,7 @@ class LookupCardTest(unittest.TestCase):
         import pandas as pd
         from PIL import Image
 
-        from wayne_navigator import render_decision_card_png
+        from wayne_navigator import CARD_PNG_DPI, render_decision_card_png
 
         def row(date):
             return {
@@ -2018,10 +2018,10 @@ class LookupCardTest(unittest.TestCase):
                 with Image.open(path) as im:
                     heights.append(im.size[1])
             h1, h8, h20 = heights
-            # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。
+            # 列高固定：加幾列就長幾列的高度，1 列不會被拉滿整頁。上限跟繪圖 DPI 走，不准為了過測把畫質拉低。
             per_row = (h8 - h1) / 7.0
             self.assertGreater(per_row, 20)
-            self.assertLess(per_row, 150)
+            self.assertLess(per_row, CARD_PNG_DPI * 0.5)
             self.assertAlmostEqual((h20 - h8) / 12.0, per_row, delta=2.0)
             overhead = h1 - per_row
             self.assertGreater(overhead, per_row * 8)

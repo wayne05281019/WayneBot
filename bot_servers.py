@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋決策卡＋產業圖＋導航圖同一則四格相簿；點開是 Telegram 允許的最高像素。圖下「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
-# Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。三張都拉到這個上限。
+# Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。源圖原尺寸送，超過才縮小。
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
@@ -697,7 +697,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就一次出介紹圖／高低卡／產業圖／導航圖。要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -1464,7 +1464,7 @@ class WayneTelegramBot:
         em: bool = False,
         news: dict | None = None,
     ):
-        """查股圖下鈕：K線／籌碼／營收／觀察／記買入。產業圖與導航圖已在四格相簿，不再放鈕。"""
+        """興櫃兩排：K線／導航圖／產業，再觀察／記買入。上市櫃最多三顆一排。"""
         _ = topic
         c = str(code).strip()[:6]
         news = news or {}
@@ -1478,21 +1478,26 @@ class WayneTelegramBot:
             k_url = _http_url(kline_page_url(c, dbp))
         except Exception:
             k_url = ""
-        kline = InlineKeyboardButton("K線", url=k_url) if k_url else None
-        news_btn = (
-            InlineKeyboardButton(news_label[:16], url=news_url)
-            if news_label and news_url
-            else None
-        )
-        watch = InlineKeyboardButton("觀察", callback_data=f"w:{c}")
-        buy = InlineKeyboardButton("記買入", callback_data=f"b:{c}")
-        actions = [watch, buy]
+        nav = InlineKeyboardButton("導航圖", callback_data=f"g:{c}")
+        actions = [
+            InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+            InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+        ]
         if em:
-            rows = []
-            if kline:
-                rows.append([kline])
-            rows.append(actions)
-            return InlineKeyboardMarkup(rows)
+            top = []
+            if k_url:
+                top.append(InlineKeyboardButton("K線", url=k_url))
+            top.append(nav)
+            top.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
+            return InlineKeyboardMarkup(
+                [
+                    top[:3],
+                    [
+                        InlineKeyboardButton("觀察", callback_data=f"w:{c}"),
+                        InlineKeyboardButton("記買入", callback_data=f"b:{c}"),
+                    ],
+                ]
+            )
         etf = False
         try:
             from universe import is_etf_asset
@@ -1500,23 +1505,35 @@ class WayneTelegramBot:
             etf = is_etf_asset(stock_id=c)
         except Exception:
             etf = False
-        chips = InlineKeyboardButton("籌碼", callback_data=f"h:{c}")
-        fund = None if etf else InlineKeyboardButton("營收", callback_data=f"f:{c}")
-        row1 = []
-        if news_btn:
-            row1.append(news_btn)
-        if kline:
-            row1.append(kline)
-        row1.append(chips)
-        if fund and len(row1) < 3:
-            row1.append(fund)
-            return InlineKeyboardMarkup([row1, actions])
-        rows = [row1]
-        if fund:
-            rows.append([fund, watch, buy])
-        else:
-            rows.append(actions)
-        return InlineKeyboardMarkup(rows)
+        top = [InlineKeyboardButton("產業", callback_data=f"n:{c}")]
+        if news_label and news_url:
+            top.append(InlineKeyboardButton(news_label[:16], url=news_url))
+        if k_url:
+            top.append(InlineKeyboardButton("K線", url=k_url))
+        listed = [InlineKeyboardButton("籌碼", callback_data=f"h:{c}")]
+        if not etf:
+            listed.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+        if len(top) >= 3:
+            listed.append(nav)
+            return InlineKeyboardMarkup([top, listed, actions])
+        if len(top) >= 2:
+            top.append(nav)
+            return InlineKeyboardMarkup([top, listed, actions])
+        row1 = [
+            InlineKeyboardButton("籌碼", callback_data=f"h:{c}"),
+        ]
+        if not etf:
+            row1.append(InlineKeyboardButton("營收", callback_data=f"f:{c}"))
+        row1.append(InlineKeyboardButton("產業", callback_data=f"n:{c}"))
+        if etf and len(row1) < 3:
+            row1.append(nav)
+            return InlineKeyboardMarkup([row1, [actions[0], actions[1]]])
+        return InlineKeyboardMarkup(
+            [
+                row1,
+                [nav, actions[0], actions[1]],
+            ]
+        )
 
     def _stock_action_row(self, code: str, name: str = "", idx: int = 0):
         """左鍵寫代號＋股名（點下去看這檔）；右鍵加觀察。"""
@@ -2281,7 +2298,7 @@ class WayneTelegramBot:
                 "2　直接打代號看圖，例如 "
                 + LOOKUP_CODE_EXAMPLES_HTML
                 + "\n"
-                "3　四張圖同一則；圖下剩籌碼／營收／K線，不在右側四格鍵盤\n"
+                "3　一次出介紹圖＋高低溫度卡，點開高畫質。圖下有產業／導航／籌碼／營收／K線\n"
                 "\n"
                 "主選單不見就打 /menu。\n"
                 "這是私人 Bot，只認指定帳號。偉權與哥哥已各用各的，持股各看各的。不要拉進同一個群組。不必再分享邀請。\n"
@@ -2502,8 +2519,14 @@ class WayneTelegramBot:
         current: str = "",
     ) -> str:
         """查股進度：跟實際階段同步，不要只停在 0 秒。"""
-        labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖", "table": "讀高低卡", "album": "一次送出"}
-        order = ("glance", "card", "industry", "chart")
+        labels = {
+            "glance": "介紹圖",
+            "card": "決策卡",
+            "chart": "導航圖",
+            "table": "讀高低卡",
+            "album": "一次送出",
+        }
+        order = ("glance", "card")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
@@ -2585,26 +2608,9 @@ class WayneTelegramBot:
 
     @staticmethod
     def _fit_lookup_photo_wh(w: int, h: int) -> tuple:
-        """Telegram 相簿點開上限：寬+高=10000、長寬比≤20。三張都拉滿，不准先縮小。"""
+        """源圖像素夠就原尺寸送。只在超過 Telegram 寬+高 10000 或長寬比 20 時縮小。不准硬拉大。"""
         w = max(1, int(w))
         h = max(1, int(h))
-        total = w + h
-        if total != _LOOKUP_TG_MAX_WH:
-            scale = _LOOKUP_TG_MAX_WH / float(total)
-            w = max(1, int(round(w * scale)))
-            h = max(1, int(round(h * scale)))
-        while w + h > _LOOKUP_TG_MAX_WH:
-            if w >= h and w > 1:
-                w -= 1
-            elif h > 1:
-                h -= 1
-            else:
-                break
-        while w + h < _LOOKUP_TG_MAX_WH:
-            if w >= h:
-                w += 1
-            else:
-                h += 1
         long_s, short_s = (w, h) if w >= h else (h, w)
         if short_s > 0 and long_s / float(short_s) > _LOOKUP_TG_MAX_RATIO:
             long_s = max(1, int(_LOOKUP_TG_MAX_RATIO * short_s))
@@ -2612,6 +2618,11 @@ class WayneTelegramBot:
                 w = long_s
             else:
                 h = long_s
+        total = w + h
+        if total > _LOOKUP_TG_MAX_WH:
+            scale = _LOOKUP_TG_MAX_WH / float(total)
+            w = max(1, int(w * scale))
+            h = max(1, int(h * scale))
             while w + h > _LOOKUP_TG_MAX_WH:
                 if w >= h and w > 1:
                     w -= 1
@@ -2623,7 +2634,7 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str) -> str:
-        """相簿點開用 JPEG，三張都拉到 Telegram 允許的最高像素。"""
+        """點開用 JPEG q95。源圖像素原樣送，超過上限才縮小。optimize 關閉只為加快存檔。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -2657,7 +2668,7 @@ class WayneTelegramBot:
                     "JPEG",
                     quality=int(q),
                     subsampling=0,
-                    optimize=True,
+                    optimize=False,
                 )
                 if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
                     return out
@@ -5361,27 +5372,19 @@ class WayneTelegramBot:
             except Exception:
                 return None
 
-        news_stats, live_rt = await asyncio.gather(_fetch_news(), _fetch_mis())
-        hub = self._hub_keyboard(code, em=is_em, news=news_stats)
+        news_task = asyncio.create_task(_fetch_news())
+        live_rt = await _fetch_mis()
 
-        async def _header_bg() -> None:
+        def _news_ready():
+            if not news_task.done():
+                return None
             try:
-                header = await asyncio.wait_for(
-                    asyncio.to_thread(self._quote_header_html, code, live_rt, hits),
-                    timeout=4.0,
-                )
-                header_msg = await message.reply_html(header, disable_web_page_preview=True)
-                self._track_lookup_fade(actor, header_msg, "header")
-            except asyncio.TimeoutError:
-                logger.warning("現價列逾時 code=%s", code)
-                fallback = await message.reply_text(f"查詢 {code}…（盤中報價較慢，繼續出圖）")
-                self._track_lookup_fade(actor, fallback, "header")
+                return news_task.result()
             except Exception:
-                logger.exception("現價列失敗 code=%s", code)
-                fallback = await message.reply_text(f"查詢 {code}…")
-                self._track_lookup_fade(actor, fallback, "header")
+                return None
 
-        header_task = asyncio.create_task(_header_bg())
+        news_stats = _news_ready()
+        hub = self._hub_keyboard(code, em=is_em, news=news_stats)
 
         async def send_photo(path, caption, markup=None, *, kind: str = ""):
             nonlocal sent_any, lookup_faded
@@ -5502,8 +5505,6 @@ class WayneTelegramBot:
                 render_decision_card_png,
                 render_first_glance_png,
             )
-            from industry_card import render_industry_png
-
             def _build_card():
                 engine = NavigatorEngine(self.db_path)
                 card = engine.get_decision_card(
@@ -5532,29 +5533,30 @@ class WayneTelegramBot:
                 except Exception:
                     return {}
 
+            tape_task = asyncio.create_task(asyncio.to_thread(_build_tape))
             t0 = time.monotonic()
-            (card, ohlc), tape = await asyncio.gather(
-                asyncio.wait_for(asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT),
-                asyncio.to_thread(_build_tape),
+            card, ohlc = await asyncio.wait_for(
+                asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
             )
-            logger.info("看這檔 card+tape %.1fs code=%s", time.monotonic() - t0, code)
-            try:
-                await asyncio.wait_for(header_task, timeout=6.0)
-            except Exception:
-                logger.debug("現價列背景任務未完成 code=%s", code, exc_info=True)
+            logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
             if card.get("error"):
+                tape_task.cancel()
                 await _reply_visible(
                     f"⚠️ {html_escape(card.get('error'))}",
                     html=True,
                     markup=hub,
                 )
                 return
+            try:
+                tape = await tape_task
+            except Exception:
+                tape = {}
+            if not isinstance(tape, dict):
+                tape = {}
             os.makedirs(self.charts_dir, exist_ok=True)
             uid_key = uid or self._uid_from_message(message)
             glance_path = self._scratch_chart_path(self.charts_dir, code, "glance", uid_key)
             card_path_f = self._scratch_chart_path(self.charts_dir, code, "card", uid_key)
-            industry_path = self._scratch_chart_path(self.charts_dir, code, "industry", uid_key)
-            chart_path_f = self._scratch_chart_path(self.charts_dir, code, "nav", uid_key)
             ohlc = ohlc if ohlc is not None else card.get("_ohlc")
             if isinstance(card, dict):
                 card.pop("_ohlc", None)
@@ -5565,57 +5567,32 @@ class WayneTelegramBot:
                     code, card, tape, glance_path, self.db_path, ohlc=ohlc
                 )
 
+            ns = _news_ready()
+            if ns is not None:
+                news_stats = ns
+                hub = self._hub_keyboard(code, em=is_em, news=news_stats)
             glance_cap = _glance_photo_caption("", card)
             card_cap = _decision_card_photo_caption(card, code)
-            name_cap = html_escape(_stock_caption_name(card, code) or code)
-            industry_cap = f"{name_cap}　產業"
-            chart_cap = f"{name_cap}　導航"
-
-            def _render_industry():
-                return render_industry_png(
-                    code, self.db_path, industry_path, allow_fetch=True, max_fetch=1
-                )
-
-            def _render_chart():
-                from wayne_navigator import generate_chart
-
-                return generate_chart(
-                    code,
-                    "",
-                    self.db_path,
-                    chart_path_f,
-                    ohlc,
-                    already_normalized=True,
-                )
-
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
-                ("industry", _render_industry, _LOOKUP_PNG_TIMEOUT, industry_cap, None),
-                ("chart", _render_chart, _LOOKUP_PNG_TIMEOUT, chart_cap, None),
             ]
-            kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖"}
+            kind_labels = {"glance": "介紹圖", "card": "決策卡"}
             sent_kinds: list[str] = []
             ready_items: list = []
 
-            # 四張畫完一次送相簿（2×2 縮圖，點開最高像素）。
-            for kind, fn, timeout_s, caption, markup in render_plan:
-                st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
-                st["current"] = kind
-                logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
-                path = ""
+            async def _render_one(kind, fn, timeout_s) -> str:
                 attempts = 2
+                path = ""
                 for attempt in range(attempts):
                     try:
                         path = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout_s)
                     except asyncio.TimeoutError:
                         logger.warning("看這檔 %s 逾時 code=%s attempt=%s", kind, code, attempt + 1)
-                        path = ""
-                        break
+                        return ""
                     except Exception:
                         logger.exception("看這檔 %s 產圖失敗 code=%s", kind, code)
-                        path = ""
-                        break
+                        return ""
                     looks_ok = (
                         self._chart_png_looks_ok(path)
                         if kind == "chart"
@@ -5631,24 +5608,31 @@ class WayneTelegramBot:
                         )
                         path = ""
                         continue
-                    break
+                    return path
+                return path
+
+            for kind, fn, timeout_s, caption, markup in render_plan:
+                st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
+                st["current"] = kind
+                logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
+                path = await _render_one(kind, fn, timeout_s)
                 logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
                 if path:
                     ready_items.append((kind, path, caption, markup))
                     sent_kinds.append(kind)
                     st = self._op_state_map().setdefault(actor, {"sent": [], "current": ""})
                     st["sent"] = list(sent_kinds)
-                    nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "")
+                    nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "album")
                     st["current"] = nxt
-                    logger.info("查股階段已畫 %s code=%s", sent_kinds, code)
                     if wait_msg is not None:
                         try:
                             await wait_msg.edit_text(
                                 self._chart_progress_text(
                                     int(time.monotonic() - op_t0),
                                     sent=sent_kinds,
-                                    current=nxt or "album",
-                                )
+                                    current=nxt,
+                                ),
+                                parse_mode="HTML",
                             )
                         except Exception:
                             pass
@@ -5734,54 +5718,59 @@ class WayneTelegramBot:
         self._remember_card(uid, code)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """四張一次送，Telegram 一則四格縮圖。圖說不講義。"""
+        """介紹圖＋高低溫度卡一次送成相簿。點開高畫質 JPEG。產業／導航改圖下鈕。"""
+        from io import BytesIO
+
         from telegram import InputFile, InputMediaPhoto
 
         if len(items) < 2:
             return False
-        handles = []
         try:
-            media = []
-            first_cap = str(items[0][2] or "").strip()
-            album_cap = first_cap
-            for kind, path, _caption, _markup in items:
+            ok_items = []
+            for kind, path, caption, _markup in items:
                 if kind == "chart":
                     if not self._chart_png_looks_ok(path):
                         continue
                 elif not self._png_looks_ok(path):
                     continue
-                send_path = self._prepare_lookup_album_photo(path)
-                fh = open(send_path, "rb")
-                handles.append(fh)
+                ok_items.append((kind, path, caption))
+            if len(ok_items) < 2:
+                return False
+            send_paths = await asyncio.gather(
+                *[
+                    asyncio.to_thread(self._prepare_lookup_album_photo, path)
+                    for _kind, path, _cap in ok_items
+                ]
+            )
+            media = []
+            first_cap = str(ok_items[0][2] or "").strip()
+            for send_path in send_paths:
+                with open(send_path, "rb") as fh:
+                    blob = fh.read()
+                bio = BytesIO(blob)
                 fname = os.path.basename(send_path)
                 if not fname.lower().endswith((".jpg", ".jpeg")):
                     fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
-                file_obj = InputFile(fh, filename=fname)
-                if not media:
-                    if album_cap:
-                        media.append(
-                            InputMediaPhoto(
-                                media=file_obj, caption=album_cap[:1024], parse_mode="HTML"
-                            )
+                file_obj = InputFile(bio, filename=fname)
+                if not media and first_cap:
+                    media.append(
+                        InputMediaPhoto(
+                            media=file_obj, caption=first_cap[:1024], parse_mode="HTML"
                         )
-                    else:
-                        media.append(InputMediaPhoto(media=file_obj))
+                    )
                 else:
                     media.append(InputMediaPhoto(media=file_obj))
-            if len(media) < 2:
-                return False
-            await message.reply_media_group(media=media)
+            await message.reply_media_group(
+                media=media,
+                read_timeout=60,
+                write_timeout=120,
+                connect_timeout=30,
+            )
             logger.info("送相簿成功 n=%s", len(media))
             return True
         except Exception:
             logger.exception("送相簿失敗，改逐張")
             return False
-        finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
 
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         q = update.callback_query

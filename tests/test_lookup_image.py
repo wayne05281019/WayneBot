@@ -96,42 +96,67 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
-        self.assertIn("render_industry_png", src)
-        self.assertIn('"industry"', src)
-        self.assertIn("generate_chart", src)
-        self.assertIn('"chart"', src)
+        self.assertNotIn("industry_task", src)
+        self.assertNotIn("card_send_task", src)
+        self.assertNotIn("render_industry_png", src)
+        self.assertNotIn('"industry"', src)
+        self.assertNotIn("generate_chart", src)
+
+    def test_lookup_native_dpi_higher_than_360(self):
+        from industry_card import INDUSTRY_PX_SCALE
+        from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI
+
+        self.assertGreaterEqual(CARD_PNG_DPI, 420)
+        self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
+        self.assertGreaterEqual(NAV_CHART_DPI, 420)
+        self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)
 
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)
         self.assertIn("_prepare_lookup_album_photo", src)
+        self.assertIn("write_timeout", src)
+        self.assertIn("BytesIO", src)
 
-    def test_prepare_lookup_album_photo_fills_telegram_max(self):
+    def test_prepare_lookup_album_photo_keeps_native_pixels(self):
         from PIL import Image
 
         from bot_servers import _LOOKUP_TG_MAX_BYTES, _LOOKUP_TG_MAX_WH
 
         with tempfile.TemporaryDirectory() as td:
-            narrow = os.path.join(td, "n.png")
-            Image.new("RGB", (1080, 1400), (12, 18, 28)).save(narrow, "PNG")
-            out = WayneTelegramBot._prepare_lookup_album_photo(narrow)
+            native = os.path.join(td, "n.png")
+            Image.new("RGB", (1080, 1400), (12, 18, 28)).save(native, "PNG")
+            out = WayneTelegramBot._prepare_lookup_album_photo(native)
             with Image.open(out) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
-                self.assertGreaterEqual(im.size[0], 4000)
+                self.assertEqual(im.size, (1080, 1400))
                 self.assertEqual(im.format, "JPEG")
             self.assertLessEqual(os.path.getsize(out), _LOOKUP_TG_MAX_BYTES)
             wide = os.path.join(td, "w.png")
             Image.new("RGB", (2272, 2800), (12, 18, 28)).save(wide, "PNG")
             out2 = WayneTelegramBot._prepare_lookup_album_photo(wide)
             with Image.open(out2) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertEqual(im.size, (2272, 2800))
                 self.assertEqual(im.format, "JPEG")
-            already = os.path.join(td, "max.png")
-            Image.new("RGB", (4000, 6000), (12, 18, 28)).save(already, "PNG")
-            out3 = WayneTelegramBot._prepare_lookup_album_photo(already)
+            over = os.path.join(td, "over.png")
+            Image.new("RGB", (5000, 6000), (12, 18, 28)).save(over, "PNG")
+            out3 = WayneTelegramBot._prepare_lookup_album_photo(over)
             with Image.open(out3) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertEqual(im.format, "JPEG")
             nw, nh = WayneTelegramBot._fit_lookup_photo_wh(1080, 1400)
-            self.assertEqual(nw + nh, _LOOKUP_TG_MAX_WH)
+            self.assertEqual((nw, nh), (1080, 1400))
+            ow, oh = WayneTelegramBot._fit_lookup_photo_wh(5000, 6000)
+            self.assertLessEqual(ow + oh, _LOOKUP_TG_MAX_WH)
+            self.assertLess(ow, 5000)
+
+    def test_two_image_album_does_not_upscale(self):
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("tape_task", src)
+        self.assertLess(src.find("tape_task"), src.find("to_thread(_build_card)"))
+        self.assertNotIn("card_send_task", src)
+        self.assertIn("ready_items", src)
+        fit = inspect.getsource(WayneTelegramBot._fit_lookup_photo_wh)
+        self.assertIn("不准硬拉大", fit)
+        self.assertNotIn("拉滿維持高畫質", fit)
 
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
@@ -154,17 +179,21 @@ class LookupImageTests(unittest.TestCase):
         txt = WayneTelegramBot._chart_progress_text(3, current="glance")
         self.assertIn("介紹圖", txt)
         self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
-        self.assertIn("導航圖", txt)
-        self.assertIn("產業圖", txt)
+        self.assertNotIn("導航", txt)
+        self.assertNotIn("其餘三張", txt)
 
     def test_chart_progress_records_sent_stage(self):
         txt = WayneTelegramBot._chart_progress_text(
             8, sent=["glance"], current="card"
         )
         self.assertIn("現在：決策卡", txt)
-        self.assertIn("接著：產業圖", txt)
-        self.assertIn("導航圖", txt)
+        self.assertNotIn("接著：導航圖", txt)
+        self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
+
+    def test_chart_progress_table_stage(self):
+        txt = WayneTelegramBot._chart_progress_text(1, current="table")
+        self.assertIn("讀高低卡", txt)
 
     def test_op_state_map_works_without_init(self):
         bot = WayneTelegramBot.__new__(WayneTelegramBot)

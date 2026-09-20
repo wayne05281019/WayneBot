@@ -102,8 +102,8 @@ def test_help_script_ready_for_brother_video():
     hub = WayneTelegramBot.__new__(WayneTelegramBot)._hub_keyboard("2330")
     texts = [b.text for r in hub.inline_keyboard for b in r]
     assert "籌碼" in texts and "營收" in texts
-    assert "產業" not in texts
-    assert "導航圖" not in texts
+    assert "產業" in texts
+    assert "導航圖" in texts
     assert "觀察" in texts and "記買入" in texts
     assert "K線" in texts
     kline = next(b for r in hub.inline_keyboard for b in r if b.text == "K線")
