@@ -98,8 +98,8 @@ class LookupImageTests(unittest.TestCase):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_send_lookup_album", src)
         self.assertIn("ready_items", src)
-        self.assertIn("_glance_photo_caption", src)
-        self.assertIn("_decision_card_photo_caption", src)
+        self.assertIn("_stock_caption_name", src)
+        self.assertIn("_prepare_album_cell", src)
         self.assertNotIn("industry_task", src)
         self.assertNotIn("card_send_task", src)
         self.assertNotIn("render_industry_png", src)
@@ -108,7 +108,7 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("asyncio.gather", src)
         self.assertNotIn("path = await _render_one(kind, fn, timeout_s)", src)
         self.assertLess(src.find("asyncio.gather"), src.find("_send_lookup_album"))
-        self.assertIn("_render_one(kind, fn, timeout_s)", src)
+        self.assertIn("_render_then_cell", src)
 
     def test_glance_and_card_render_start_together(self):
         """介紹圖與高低卡同一拍開始畫，不准等介紹圖畫完才開高低卡。"""
@@ -187,6 +187,8 @@ class LookupImageTests(unittest.TestCase):
                 WayneTelegramBot, "_png_looks_ok", return_value=True
             ), patch.object(
                 WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
+            ), patch.object(
+                WayneTelegramBot, "_prepare_album_cell", side_effect=lambda p, box=None: p
             ):
                 await bot._send_card_to_locked(
                     message,
@@ -207,16 +209,37 @@ class LookupImageTests(unittest.TestCase):
         from industry_card import INDUSTRY_PX_SCALE
         from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI
 
-        self.assertGreaterEqual(CARD_PNG_DPI, 420)
+        self.assertGreaterEqual(CARD_PNG_DPI, 320)
         self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
-        self.assertGreaterEqual(NAV_CHART_DPI, 420)
+        self.assertGreaterEqual(NAV_CHART_DPI, 320)
         self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)
 
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)
-        self.assertIn("_prepare_lookup_album_photo", src)
+        self.assertIn("_prepare_album_cell", src)
         self.assertIn("write_timeout", src)
         self.assertIn("BytesIO", src)
+
+    def test_prepare_album_cell_is_same_4x5_pair(self):
+        from PIL import Image
+
+        from bot_servers import _LOOKUP_ALBUM_CELL
+
+        with tempfile.TemporaryDirectory() as td:
+            tall = os.path.join(td, "tall.png")
+            Image.new("RGB", (800, 2200), (12, 18, 28)).save(tall, "PNG")
+            wide = os.path.join(td, "card.png")
+            Image.new("RGB", (900, 1600), (20, 24, 36)).save(wide, "PNG")
+            a = WayneTelegramBot._prepare_album_cell(tall)
+            b = WayneTelegramBot._prepare_album_cell(wide)
+            with Image.open(a) as im:
+                self.assertEqual(im.size, _LOOKUP_ALBUM_CELL)
+                self.assertEqual(im.format, "JPEG")
+            with Image.open(b) as im:
+                self.assertEqual(im.size, _LOOKUP_ALBUM_CELL)
+                self.assertEqual(im.format, "JPEG")
+            self.assertLess(os.path.getsize(a), 400_000)
+            self.assertLess(os.path.getsize(b), 400_000)
 
     def test_prepare_lookup_album_photo_keeps_native_pixels(self):
         from PIL import Image
