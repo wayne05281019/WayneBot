@@ -211,8 +211,17 @@ def page_is_author_article(html_text: str) -> bool:
     """只認這篇的 author meta／主文區。側欄、推薦文、別人主文不要。"""
     raw = html_text or ""
     meta = _meta_author(raw)
-    if meta:
-        return AUTHOR_NAME in meta
+    if meta and AUTHOR_NAME in meta:
+        return True
+    if meta and any("\u4e00" <= ch <= "\u9fff" for ch in meta) and AUTHOR_NAME not in meta:
+        return False
+    art = re.search(r"<article[^>]*>(.*)</article>", raw, re.S | re.I)
+    raw = html_text or ""
+    meta = _meta_author(raw)
+    if meta and AUTHOR_NAME in meta:
+        return True
+    if meta and any("\u4e00" <= ch <= "\u9fff" for ch in meta) and AUTHOR_NAME not in meta:
+        return False
     art = re.search(r"<article[^>]*>(.*)</article>", raw, re.S | re.I)
     head = art.group(1) if art else raw
     head = re.split(
@@ -449,13 +458,35 @@ def parse_article_html(aid: str, html_text: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def decode_cmoney_html(raw: bytes, apparent: str = "") -> str:
+    """公開頁標 charset=utf-8。chardet 有時把繁中誤判 ptcp154，硬解會把「期股多空雙飆客」變亂碼，主文就被丟掉。"""
+    blob = raw or b""
+    if not blob:
+        return ""
+    for enc in ("utf-8-sig", "utf-8"):
+        try:
+            return blob.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    for enc in (str(apparent or "").strip(), "cp950", "big5"):
+        if not enc:
+            continue
+        try:
+            return blob.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return blob.decode("utf-8", "replace")
+
+
 def fetch_html(url: str, session: Optional[requests.Session] = None, timeout: int = 12) -> str:
     sess = session or _session()
     resp = sess.get(url, timeout=timeout)
     if getattr(resp, "status_code", 200) == 404:
         return ""
     resp.raise_for_status()
-    resp.encoding = resp.apparent_encoding or "utf-8"
+    raw = getattr(resp, "content", b"") or b""
+    if raw:
+        return decode_cmoney_html(raw, getattr(resp, "apparent_encoding", "") or "")
     return resp.text or ""
 
 
@@ -1714,7 +1745,7 @@ def _carry_parent_names(
 
 
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
-    """抓到就存官方 tape、緊急推播、輔助匣。神經元等台北 02:00／開市日 13:00。"""
+    """抓到就存官方 tape、六顆神經元、緊急推播、輔助匣。彙整窗還會再跑 why／觀察。"""
     try:
         from biaoke_desk import load_corpus_cache_clear
 
@@ -1728,6 +1759,18 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_events(db_path, packed)
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
+    try:
+        from biaoke_neurons import record_neuron_events
+
+        record_neuron_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大神經元即時分類失敗")
+    try:
+        from biaoke_why import ingest_why_events
+
+        ingest_why_events(packed, db_path)
+    except Exception:
+        logger.exception("飆大判斷鏈即時寫入失敗")
     try:
         from biaoke_absorb import queue_absorb_events
 

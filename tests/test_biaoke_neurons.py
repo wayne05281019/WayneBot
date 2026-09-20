@@ -8,6 +8,42 @@ from biaoke_ingest import _after_ingest_analyze
 from biaoke_neurons import classify_spoken, latest_bundle, record_neuron_events
 
 
+def test_classify_sunday_pcb_files_to_tape_hold_field():
+    """9/20 主文：量價／進出跟檔走；ABF三雄不當南電；樓中樓轉弱K進金像電。"""
+    main = (
+        "1.\t富喬：目前多頭結構勉強維持，明天不能再下，若往下多頭結構被破壞\n"
+        "2.\t金居、金像電：如果明天收紅K棒，則確認開始反彈，會去測前波高點，"
+        "如在前波高點附近再出現轉弱K棒，要立刻出清持股。\n"
+        "3.\t台光電、台燿：原本台燿最弱，現在和台光電相同位階，只要這兩檔股票持續量縮，"
+        "不破9/17低點，則底部確認可開始布局，但要立馬發動有相當難度。"
+        "不過，這兩檔技術面來看比ABF三雄要強。"
+    )
+    tags = ["台光電", "金像電", "台燿", "富喬", "金居"]
+    hits = classify_spoken(main, tags)
+    by = {(h["neuron"], h["sid"]) for h in hits}
+    assert ("tape", "1815") in by
+    assert ("doubt", "1815") in by
+    assert ("hold", "2368") in by
+    assert ("tape", "2368") in by
+    assert ("tape", "2383") in by
+    assert ("tape", "6274") in by
+    assert ("hold", "2383") in by or ("hold", "6274") in by
+    assert ("hold", "8358") in by
+    assert ("field", "2383") in by
+    assert all(h["sid"] != "8046" for h in hits)
+    hold_emc = next(h for h in hits if h["neuron"] == "hold" and h["sid"] == "2383")
+    assert "布局" in hold_emc["snippet"]
+    assert "出清" not in hold_emc["snippet"]
+    hold_gce = next(h for h in hits if h["neuron"] == "hold" and h["sid"] == "2368")
+    assert "出清" in hold_gce["snippet"]
+    reply = classify_spoken(
+        "金像電 這波反彈高點一定要過1245，如果在1245附近出現轉弱K棒(常上影線、吞噬黑K棒 則先走一趟)",
+        ["金像電"],
+    )
+    assert any(h["neuron"] == "tape" and h["sid"] == "2368" for h in reply)
+    assert any(h["neuron"] == "hold" and h["sid"] == "2368" for h in reply)
+
+
 def test_classify_c2_goes_to_nest():
     hits = classify_spoken("今天強彈反而提高警惕，小心逃命波C-2，不是已確認。")
     nids = {h["neuron"] for h in hits}
@@ -78,7 +114,8 @@ def test_ingest_hooks_queue_neurons_for_absorb_slots():
     src = inspect.getsource(_after_ingest_analyze)
     assert "queue_absorb_events" in src
     assert "record_events" in src
-    assert "record_neuron_events" not in src
+    assert "record_neuron_events" in src
+    assert "ingest_why_events" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "backfill_recent_neurons" not in ingest_src
     assert "run_absorb" in ingest_src

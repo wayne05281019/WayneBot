@@ -174,6 +174,26 @@ def test_parse_article_html_rejects_other_author_even_if_sidebar_names_him():
     assert is_biaoke_voice("1. 台指期夜盤15分鐘線細微波修正走了5段")
 
 
+def test_parse_article_html_accepts_garbled_author_meta_if_body_is_his():
+    from biaoke_ingest import decode_cmoney_html, parse_article_html
+
+    html = (
+        '<meta name="author" content="期股多空雙飆客">'
+        '<meta property="article:published_time" content="2026-9-20T21:28:17+08:00">'
+        "<article><div>期股多空雙飆客</div>"
+        "<div>1.\t富喬：目前多頭結構勉強維持。</div></article>"
+    )
+    garbled_meta = html.replace(
+        'content="期股多空雙飆客"',
+        'content="' + "期股多空雙飆客".encode("utf-8").decode("ptcp154", errors="replace") + '"',
+        1,
+    )
+    row = parse_article_html("184841864", garbled_meta)
+    assert row is not None
+    assert "富喬" in row["text"]
+    assert decode_cmoney_html(html.encode("utf-8"), apparent="ptcp154").count("富喬") == 1
+
+
 def test_ingest_hook_is_on_product_clocks():
     import inspect
     import main

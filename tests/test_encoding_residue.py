@@ -121,6 +121,26 @@ def test_official_stock_name_skips_yahoo_english(tmp_path):
     assert official_stock_name("2330", db) == "台積電"
 
 
+def test_cmoney_html_utf8_not_mojibake_as_ptcp154():
+    from biaoke_ingest import decode_cmoney_html, parse_article_html
+
+    html = (
+        '<meta name="author" content="期股多空雙飆客">'
+        '<meta property="article:published_time" content="2026-9-20T21:28:17+08:00">'
+        "<article><div>期股多空雙飆客</div>"
+        "<div>1.\t從技術面看台光電量價結構。</div></article>"
+    )
+    raw = html.encode("utf-8")
+    assert "期股多空雙飆客" not in raw.decode("ptcp154", errors="replace")
+    text = decode_cmoney_html(raw, apparent="ptcp154")
+    assert "期股多空雙飆客" in text
+    assert "台光電" in text
+    row = parse_article_html("184841864", text)
+    assert row is not None
+    assert row["date"] == "2026-09-20"
+    assert "台光電" in row["text"]
+
+
 def test_source_files_have_no_replacement_char():
     from pathlib import Path
 

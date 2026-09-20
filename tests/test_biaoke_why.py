@@ -184,6 +184,20 @@ def test_why_sep15_escape_wave():
     assert "不是買訊" in c5
 
 
+def test_why_sunday_pcb_1245_is_sep1_high():
+    body = lookup("金像電 1245")
+    assert "184841864" in body
+    assert "1245" in body
+    assert "20260901" in body
+    assert "4635" in body
+    assert "不是點名南電" in body or "族群對照" in body
+    assert "不是買訊" in body
+    assert "5／9" in body or "5/9" in body
+    abf = lookup("ABF三雄")
+    assert "族群對照" in abf or "不是點名南電" in abf
+    assert "8046" in abf
+
+
 def test_live_notes_puts_why_chain_first():
     from biaoke_live import live_notes
 
