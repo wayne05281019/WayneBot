@@ -197,7 +197,8 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     watch_i = html.find("京元電子")
     assert watch_i >= 0
     watch_near = html[watch_i : watch_i + 80]
-    assert "不買" in watch_near or "只觀察" in watch_near
+    assert "不買" in watch_near or "只觀察" in watch_near or "可看" in watch_near
+    assert "不是買訊" in watch_near or "只觀察" in watch_near or "不買" in watch_near
 
 
 def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
@@ -398,11 +399,11 @@ def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     html = dongzhu_page(db)
     assert "高階測試／封測" in html
-    assert "沒有黃金買點" in html
-    assert "不准發明切入" in html
     assert "3443" not in html
     assert "京元電子" in html or "2449" in html
     assert "不是買訊" in html
+    assert "沒有可捕捉的次級" in html or "這型最落後次級" in html
+    assert "不准發明切入" not in html
 
 
 def test_ignite_needs_several_buy_days_not_one_spike():
@@ -549,12 +550,19 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
         db, spoken="目前唯一在多頭格局的族群就是ASIC，再來是散熱。PCB全面走弱。"
     )
     assert data.get("field") == "高階測試／封測"
+    rec_sids = [x.get("sid") for x in list(data.get("recs") or [])]
+    lag_sids = [x.get("sid") for x in list(data.get("laggards") or [])]
+    assert rec_sids == lag_sids
+    assert rec_sids
+    assert "6257" not in rec_sids
     html = dongzhu_page(db, spoken="目前唯一在多頭格局的族群就是ASIC，再來是散熱。PCB全面走弱。")
     assert "高階測試／封測" in html
     assert "封測" in html or "產業鏈" in html or "主產業" in html
     assert "%" in html
     assert "pt" in html or "佔" in html
     assert "6257" in html
+    assert "這族黃金買點" in html
+    assert "這型最落後次級" in html
     assert "3443" not in html
     assert "資金流入" in html or "佔比" in html or "先機" in html
     assert "只參考" in html or "不是唯一" in html or "不是買訊" in html
@@ -801,14 +809,18 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert vs == sorted(vs)
     assert all(v <= -8.0 for v in vs)
     assert len(lags) <= 3
+    rec_sids = [x.get("sid") for x in list(data.get("recs") or [])]
+    assert rec_sids == sids
     html = dongzhu_page(db, spoken=spoken)
     assert "高階測試／封測" in html
-    assert "捕捉・同鏈比價落後" in html
+    assert "此刻推薦" in html
+    assert "這型最落後次級" in html
+    assert "捕捉・同鏈比價落後" not in html
     assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
     assert "不是單檔保證" in html
     assert "蠢蠢欲動" not in spoken
-    assert "不准發明切入" in html or "不是買訊" in html
+    assert "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
     assert empty.get("field") == "高階測試／封測"
 
@@ -997,10 +1009,15 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     assert "高階測試／封測" in html
     assert "設計" in html
     assert "官方收" in html
+    rec_sids = [x.get("sid") for x in list(data.get("recs") or [])]
+    assert rec_sids
+    assert "3228" not in rec_sids
     assert "3443" not in html
-    assert "不准發明切入" in html
+    assert "3228" not in html
+    assert "不准發明切入" not in html
+    assert "這型最落後次級" in html or "不是買訊" in html
     assert "次熱" in html
-    assert "沒打準" in html or "打股名" in html
+    assert "點左邊選" in html or "打股名" in html
 
 
 def test_dongzhu_100d_skips_telecom_at_20high_for_test_laggards(tmp_path, monkeypatch):
