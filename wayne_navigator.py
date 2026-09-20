@@ -77,21 +77,34 @@ def unique_chart_path(charts_dir: str, stock_id: str, kind: str, uid: str = "") 
 
 
 # Telegram 會把圖拉到對話框寬；來源 DPI 太低就糊。字級相對圖寬不變，只加像素。
-# 排版（figsize／字級）鎖定；只加輸出像素。420＝比 360 更銳，仍一次畫完，點開再拉到 Telegram 上限。
+# 排版（figsize／字級）鎖定。320 DPI 原像素送出（不准再縮成 1200 格）。
+# PNG 快存（compress 1）只為加快，點開畫質走原像素 JPEG。
 # 介紹圖與高低卡同寬。用決策卡同一套堆疊（高度跟內容走，禁止字疊字／字壓線）。
 # 180 日高低導航改獨立第四張，不畫在介紹圖下半。
-CARD_PNG_DPI = 420
-GLANCE_PNG_DPI = 420
+CARD_PNG_DPI = 320
+GLANCE_PNG_DPI = 320
 CARD_FIG_W = 7.1
 GLANCE_FIG_W = CARD_FIG_W
 GLANCE_FIG_H = 12.4
-NAV_CHART_DPI = 420
+NAV_CHART_DPI = 320
 # 上下疊字行距（資料座標）。13pt 字高約 2.54，舊 2.25 會黏成一行。
 _OHLC_STACK = 2.95
 _NAV_STACK = 2.80
 _STANCE_NOTE_STACK = 2.58
 _LR_PRIM_DY = 1.78
 _LR_SEC_DY = 1.92
+
+
+def _savefig_lookup_png(fig, save_path: str, dpi: int) -> str:
+    """查股直出 JPEG（路徑可仍叫 .png）。少一趟 PNG 壓縮，相簿再裁 4:5。"""
+    fig.savefig(
+        save_path,
+        format="jpeg",
+        dpi=dpi,
+        facecolor=fig.get_facecolor(),
+        pil_kwargs={"quality": 88, "optimize": False, "subsampling": 0},
+    )
+    return save_path
 
 # 靜態字重打進 fonts/，Render 開機不必再壓可變字型（那一步會讓第一檔查詢空等一兩分鐘）。
 _WEIGHT_TEXT, _WEIGHT_BOLD = 560, 860
@@ -2935,7 +2948,7 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     ax.add_patch(patches.Rectangle((pad_x, ry), span, tbl_top - ry, facecolor="none",
                                    edgecolor=C["tbl_line"], lw=1.1, zorder=4))
 
-    fig.savefig(save_path, dpi=CARD_PNG_DPI, facecolor=fig.get_facecolor())
+    save_path = _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
     plt.close(fig)
     return save_path
 
@@ -3558,7 +3571,7 @@ def render_first_glance_png(
             ax.text(inner_l, ny, ln, fontproperties=_fp(12.5, "bold"), color="#AD1457", va="center", zorder=4)
             ny -= 2.55
 
-    fig.savefig(save_path, dpi=GLANCE_PNG_DPI, facecolor=fig.get_facecolor())
+    save_path = _savefig_lookup_png(fig, save_path, GLANCE_PNG_DPI)
     plt.close(fig)
     return save_path
 

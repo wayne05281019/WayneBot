@@ -32,8 +32,14 @@ _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_REN
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 95
+_LOOKUP_JPEG_QUALITY = 88
 _LOOKUP_JPEG_QUALITY_FLOOR = 78
+# 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
+_LOOKUP_ALBUM_RATIO = (4, 5)
+_LOOKUP_ALBUM_CELL = (1200, 1500)
+_LOOKUP_ALBUM_MAX = (1920, 2400)
+_LOOKUP_ALBUM_BG = (12, 18, 28)
+_LOOKUP_MIS_TIMEOUT = 2.0
 
 from config import (
     allowed_telegram_uids,
@@ -2334,7 +2340,7 @@ class WayneTelegramBot:
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """偉權／哥哥手機回目前這次更新：功能名的更新、全數完成、與畫面同一串代碼。"""
+        """偉權／哥哥手機回這次改了什麼；不准貼程式代碼。"""
         if not update.message:
             return
         await update.message.reply_text(phone_code_reply())
@@ -2522,16 +2528,20 @@ class WayneTelegramBot:
         labels = {
             "glance": "介紹圖",
             "card": "決策卡",
+            "both": "介紹圖＋高低卡",
             "chart": "導航圖",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("glance", "card")
+        order = ("both", "album")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
-        rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
+        if str(current or "") == "both":
+            rest = labels["album"]
+        else:
+            rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
 
     @staticmethod
@@ -2590,19 +2600,29 @@ class WayneTelegramBot:
 
     @staticmethod
     def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
+        """PNG 或 JPEG 都算有效圖。查股相簿格是 .album.jpg，只認 PNG 魔術字會整組改送文字。"""
         if not path or not os.path.exists(path):
             return False
         try:
             if os.path.getsize(path) < min_bytes:
                 return False
             with open(path, "rb") as f:
-                if f.read(8) != b"\x89PNG\r\n\x1a\n":
-                    return False
-                f.read(4)
-                if f.read(4) != b"IHDR":
-                    return False
-                w, h = struct.unpack(">II", f.read(8))
+                head = f.read(8)
+            if head == b"\x89PNG\r\n\x1a\n":
+                with open(path, "rb") as f:
+                    f.read(8)
+                    f.read(4)
+                    if f.read(4) != b"IHDR":
+                        return False
+                    w, h = struct.unpack(">II", f.read(8))
                 return w >= min_w and h >= min_h
+            if head[:3] == b"\xff\xd8\xff":
+                from PIL import Image
+
+                with Image.open(path) as im:
+                    w, h = im.size
+                return w >= min_w and h >= min_h
+            return False
         except Exception:
             return False
 
@@ -2633,8 +2653,101 @@ class WayneTelegramBot:
         return w, h
 
     @staticmethod
+    def _album_ratio_box(w: int, h: int) -> tuple[int, int]:
+        """包住這張圖的最小 4:5，不拉大源圖像素。"""
+        w = max(1, int(w))
+        h = max(1, int(h))
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if w * rh >= h * rw:
+            cw, ch = w, int(round(w * rh / float(rw)))
+        else:
+            ch, cw = h, int(round(h * rw / float(rh)))
+        return WayneTelegramBot._cap_album_box(cw, ch)
+
+    @staticmethod
+    def _cap_album_box(cw: int, ch: int) -> tuple[int, int]:
+        """超過 1920×2400 就等比縮小，維持 4:5。手機夠銳，傳檔才快。"""
+        cw = max(1, int(cw))
+        ch = max(1, int(ch))
+        mw, mh = _LOOKUP_ALBUM_MAX
+        scale = min(mw / float(cw), mh / float(ch), 1.0)
+        if scale < 1.0:
+            cw = max(1, int(round(cw * scale)))
+            ch = max(1, int(round(ch * scale)))
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if cw * rh > ch * rw:
+            ch = int(round(cw * rh / float(rw)))
+        else:
+            cw = int(round(ch * rw / float(rh)))
+        if cw > mw or ch > mh:
+            scale = min(mw / float(cw), mh / float(ch), 1.0)
+            cw = max(1, int(round(cw * scale)))
+            ch = max(1, int(round(ch * scale)))
+        return WayneTelegramBot._fit_lookup_photo_wh(cw, ch)
+
+    @staticmethod
+    def _album_pair_box(paths: list) -> tuple[int, int]:
+        """兩張同一格 4:5；大圖收到手機銳度上限再送。"""
+        from PIL import Image
+
+        cw = ch = 0
+        for path in paths:
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                with Image.open(path) as im:
+                    w, h = im.size
+            except Exception:
+                continue
+            a, b = WayneTelegramBot._album_ratio_box(w, h)
+            cw, ch = max(cw, a), max(ch, b)
+        if cw <= 0 or ch <= 0:
+            return _LOOKUP_ALBUM_CELL
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if cw * rh > ch * rw:
+            ch = int(round(cw * rh / float(rw)))
+        else:
+            cw = int(round(ch * rw / float(rh)))
+        return WayneTelegramBot._cap_album_box(cw, ch)
+
+    @staticmethod
+    def _prepare_album_cell(path: str, box: tuple[int, int] | None = None) -> str:
+        """兩張裁成同一格 4:5 JPEG，對話框左右並排；點開原像素。不准拉大。"""
+        from PIL import Image
+
+        if not path or not os.path.isfile(path):
+            return path
+        try:
+            im = Image.open(path)
+            im.load()
+            if im.mode == "RGBA":
+                bg = Image.new("RGB", im.size, _LOOKUP_ALBUM_BG)
+                bg.paste(im, mask=im.split()[-1])
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                return path
+            cw, ch = box or WayneTelegramBot._album_ratio_box(w, h)
+            scale = min(cw / float(w), ch / float(h), 1.0)
+            nw = max(1, int(w * scale))
+            nh = max(1, int(h * scale))
+            if (nw, nh) != (w, h):
+                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", (cw, ch), _LOOKUP_ALBUM_BG)
+            canvas.paste(im, ((cw - nw) // 2, (ch - nh) // 2))
+            out = path + ".album.jpg"
+            canvas.save(out, "JPEG", quality=_LOOKUP_JPEG_QUALITY, subsampling=0, optimize=False)
+            if os.path.isfile(out) and os.path.getsize(out) > 0:
+                return out
+        except Exception:
+            logger.exception("查股相簿並排格失敗 path=%s", path)
+        return WayneTelegramBot._prepare_lookup_album_photo(path)
+
+    @staticmethod
     def _prepare_lookup_album_photo(path: str) -> str:
-        """點開用 JPEG q95。源圖像素原樣送，超過上限才縮小。optimize 關閉只為加快存檔。"""
+        """點開用 JPEG。源圖像素原樣送，超過上限才縮小。optimize 關閉只為加快存檔。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -2658,7 +2771,6 @@ class WayneTelegramBot:
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
                 _LOOKUP_JPEG_QUALITY,
-                92,
                 88,
                 84,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
@@ -5000,7 +5112,7 @@ class WayneTelegramBot:
         try:
             live_rt = await asyncio.wait_for(
                 asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                timeout=6.0,
+                timeout=_LOOKUP_MIS_TIMEOUT,
             )
         except Exception:
             live_rt = None
@@ -5367,7 +5479,7 @@ class WayneTelegramBot:
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                    timeout=6.0,
+                    timeout=_LOOKUP_MIS_TIMEOUT,
                 )
             except Exception:
                 return None
@@ -5397,9 +5509,12 @@ class WayneTelegramBot:
                     os.path.getsize(path) if path and os.path.exists(path) else 0,
                 )
                 return False
+            send_path = path
+            if not str(path).lower().endswith((".jpg", ".jpeg")):
+                send_path = self._prepare_lookup_album_photo(path)
             for attempt in range(3):
                 try:
-                    with open(self._prepare_lookup_album_photo(path), "rb") as f:
+                    with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
                         )
@@ -5571,8 +5686,8 @@ class WayneTelegramBot:
             if ns is not None:
                 news_stats = ns
                 hub = self._hub_keyboard(code, em=is_em, news=news_stats)
-            glance_cap = _glance_photo_caption("", card)
-            card_cap = _decision_card_photo_caption(card, code)
+            glance_cap = ""
+            card_cap = _stock_caption_name(card, code)
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
                 ("card", lambda: render_decision_card_png(card, card_path_f), _LOOKUP_PNG_TIMEOUT, card_cap, hub),
@@ -5611,31 +5726,43 @@ class WayneTelegramBot:
                     return path
                 return path
 
-            for kind, fn, timeout_s, caption, markup in render_plan:
-                st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
-                st["current"] = kind
-                logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
-                path = await _render_one(kind, fn, timeout_s)
+            async def _render_ready(kind, fn, timeout_s, caption, markup):
+                png = await _render_one(kind, fn, timeout_s)
+                if not png:
+                    return None
+                return (kind, png, caption, markup)
+
+            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
+            st["current"] = "both"
+            st["sent"] = []
+            logger.info("查股階段 current=both sent=[] code=%s", code)
+            packed = await asyncio.gather(
+                *[
+                    _render_ready(kind, fn, timeout_s, cap, mk)
+                    for kind, fn, timeout_s, cap, mk in render_plan
+                ]
+            )
+            png_items = [item for item in packed if item]
+            pair_box = await asyncio.to_thread(
+                self._album_pair_box, [p for _k, p, _c, _m in png_items]
+            )
+
+            async def _to_cell(item):
+                kind, png, caption, markup = item
+                jpeg = await asyncio.to_thread(self._prepare_album_cell, png, pair_box)
+                return (kind, jpeg or png, caption, markup)
+
+            cell_items = await asyncio.gather(*[_to_cell(item) for item in png_items])
+            for item in cell_items:
+                if not item:
+                    continue
+                kind, path, caption, markup = item
                 logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
-                if path:
-                    ready_items.append((kind, path, caption, markup))
-                    sent_kinds.append(kind)
-                    st = self._op_state_map().setdefault(actor, {"sent": [], "current": ""})
-                    st["sent"] = list(sent_kinds)
-                    nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "album")
-                    st["current"] = nxt
-                    if wait_msg is not None:
-                        try:
-                            await wait_msg.edit_text(
-                                self._chart_progress_text(
-                                    int(time.monotonic() - op_t0),
-                                    sent=sent_kinds,
-                                    current=nxt,
-                                ),
-                                parse_mode="HTML",
-                            )
-                        except Exception:
-                            pass
+                ready_items.append((kind, path, caption, markup))
+                sent_kinds.append(kind)
+            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "album"})
+            st["sent"] = list(sent_kinds)
+            st["current"] = "album"
 
             try:
                 gc.collect()
@@ -5718,56 +5845,80 @@ class WayneTelegramBot:
         self._remember_card(uid, code)
 
     async def _send_lookup_album(self, message, items: list) -> bool:
-        """介紹圖＋高低溫度卡一次送成相簿。點開高畫質 JPEG。產業／導航改圖下鈕。"""
-        from io import BytesIO
-
-        from telegram import InputFile, InputMediaPhoto
-
+        """介紹圖＋高低溫度卡一次送成相簿，兩張同格所以左右並排。點開高畫質 JPEG。"""
         if len(items) < 2:
             return False
         try:
+            from telegram import InputFile, InputMediaPhoto
+
             ok_items = []
             for kind, path, caption, _markup in items:
-                if kind == "chart":
-                    if not self._chart_png_looks_ok(path):
-                        continue
-                elif not self._png_looks_ok(path):
+                if not path or not os.path.isfile(path):
                     continue
                 ok_items.append((kind, path, caption))
             if len(ok_items) < 2:
                 return False
-            send_paths = await asyncio.gather(
-                *[
-                    asyncio.to_thread(self._prepare_lookup_album_photo, path)
-                    for _kind, path, _cap in ok_items
-                ]
-            )
-            media = []
-            first_cap = str(ok_items[0][2] or "").strip()
-            for send_path in send_paths:
-                with open(send_path, "rb") as fh:
-                    blob = fh.read()
-                bio = BytesIO(blob)
-                fname = os.path.basename(send_path)
-                if not fname.lower().endswith((".jpg", ".jpeg")):
-                    fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
-                file_obj = InputFile(bio, filename=fname)
-                if not media and first_cap:
-                    media.append(
-                        InputMediaPhoto(
-                            media=file_obj, caption=first_cap[:1024], parse_mode="HTML"
-                        )
+
+            async def _cell(path: str) -> str:
+                low = str(path).lower()
+                if low.endswith(".album.jpg") or low.endswith(".jpg") or low.endswith(".jpeg"):
+                    return path
+                return await asyncio.to_thread(self._prepare_album_cell, path)
+
+            send_paths = [
+                p
+                for p in await asyncio.gather(*[_cell(path) for _kind, path, _cap in ok_items])
+                if p and os.path.isfile(p)
+            ]
+            if len(send_paths) < 2:
+                return False
+            name_cap = ""
+            for _kind, _path, cap in ok_items:
+                if str(cap or "").strip():
+                    name_cap = str(cap).strip()
+                    break
+
+            async def _post(caption: str) -> None:
+                handles = []
+                try:
+                    media = []
+                    for i, send_path in enumerate(send_paths):
+                        fh = open(send_path, "rb")
+                        handles.append(fh)
+                        fname = os.path.basename(send_path)
+                        if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                            fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
+                        file_obj = InputFile(fh, filename=fname)
+                        if i == 0 and caption:
+                            media.append(
+                                InputMediaPhoto(media=file_obj, caption=caption[:1024])
+                            )
+                        else:
+                            media.append(InputMediaPhoto(media=file_obj))
+                    await message.reply_media_group(
+                        media=media,
+                        read_timeout=45,
+                        write_timeout=60,
+                        connect_timeout=20,
                     )
-                else:
-                    media.append(InputMediaPhoto(media=file_obj))
-            await message.reply_media_group(
-                media=media,
-                read_timeout=60,
-                write_timeout=120,
-                connect_timeout=30,
-            )
-            logger.info("送相簿成功 n=%s", len(media))
-            return True
+                finally:
+                    for fh in handles:
+                        try:
+                            fh.close()
+                        except Exception:
+                            pass
+
+            try:
+                await _post(name_cap)
+                logger.info("送相簿成功 n=%s", len(send_paths))
+                return True
+            except Exception:
+                logger.exception("送相簿失敗，改無說明再試")
+            if name_cap:
+                await _post("")
+                logger.info("送相簿成功(無說明) n=%s", len(send_paths))
+                return True
+            return False
         except Exception:
             logger.exception("送相簿失敗，改逐張")
             return False
