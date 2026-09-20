@@ -34,7 +34,8 @@ _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
 _LOOKUP_JPEG_QUALITY = 92
 _LOOKUP_JPEG_QUALITY_FLOOR = 78
-# 兩張同尺寸 4:5，Telegram 才會左右並排縮圖，而不是上下疊一張一張載入。
+# 兩張同尺寸 4:5 才並排。格大小跟源圖走，不准先縮成 1200 再送。
+_LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
 _LOOKUP_ALBUM_BG = (12, 18, 28)
 
@@ -2650,13 +2651,49 @@ class WayneTelegramBot:
         return w, h
 
     @staticmethod
+    def _album_ratio_box(w: int, h: int) -> tuple[int, int]:
+        """包住這張圖的最小 4:5，不拉大源圖像素。"""
+        w = max(1, int(w))
+        h = max(1, int(h))
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if w * rh >= h * rw:
+            cw, ch = w, int(round(w * rh / float(rw)))
+        else:
+            ch, cw = h, int(round(h * rw / float(rh)))
+        return WayneTelegramBot._fit_lookup_photo_wh(cw, ch)
+
+    @staticmethod
+    def _album_pair_box(paths: list) -> tuple[int, int]:
+        """兩張同一格 4:5，格跟較大那張走，點開仍是原像素。"""
+        from PIL import Image
+
+        cw = ch = 0
+        for path in paths:
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                with Image.open(path) as im:
+                    w, h = im.size
+            except Exception:
+                continue
+            a, b = WayneTelegramBot._album_ratio_box(w, h)
+            cw, ch = max(cw, a), max(ch, b)
+        if cw <= 0 or ch <= 0:
+            return _LOOKUP_ALBUM_CELL
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if cw * rh > ch * rw:
+            ch = int(round(cw * rh / float(rw)))
+        else:
+            cw = int(round(ch * rw / float(rh)))
+        return WayneTelegramBot._fit_lookup_photo_wh(cw, ch)
+
+    @staticmethod
     def _prepare_album_cell(path: str, box: tuple[int, int] | None = None) -> str:
-        """兩張裁成同一格 4:5 JPEG，對話框左右並排；點開仍是這張高畫質。"""
+        """兩張裁成同一格 4:5 JPEG，對話框左右並排；點開原像素。不准拉大。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
             return path
-        cw, ch = box or _LOOKUP_ALBUM_CELL
         try:
             im = Image.open(path)
             im.load()
@@ -2669,7 +2706,8 @@ class WayneTelegramBot:
             w, h = im.size
             if w <= 0 or h <= 0:
                 return path
-            scale = min(cw / float(w), ch / float(h))
+            cw, ch = box or WayneTelegramBot._album_ratio_box(w, h)
+            scale = min(cw / float(w), ch / float(h), 1.0)
             nw = max(1, int(w * scale))
             nh = max(1, int(h * scale))
             if (nw, nh) != (w, h):
@@ -5665,12 +5703,11 @@ class WayneTelegramBot:
                     return path
                 return path
 
-            async def _render_then_cell(kind, fn, timeout_s, caption, markup):
+            async def _render_ready(kind, fn, timeout_s, caption, markup):
                 png = await _render_one(kind, fn, timeout_s)
                 if not png:
                     return None
-                jpeg = await asyncio.to_thread(self._prepare_album_cell, png)
-                return (kind, jpeg or png, caption, markup)
+                return (kind, png, caption, markup)
 
             st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
             st["current"] = "both"
@@ -5678,11 +5715,22 @@ class WayneTelegramBot:
             logger.info("查股階段 current=both sent=[] code=%s", code)
             packed = await asyncio.gather(
                 *[
-                    _render_then_cell(kind, fn, timeout_s, cap, mk)
+                    _render_ready(kind, fn, timeout_s, cap, mk)
                     for kind, fn, timeout_s, cap, mk in render_plan
                 ]
             )
-            for item in packed:
+            png_items = [item for item in packed if item]
+            pair_box = await asyncio.to_thread(
+                self._album_pair_box, [p for _k, p, _c, _m in png_items]
+            )
+
+            async def _to_cell(item):
+                kind, png, caption, markup = item
+                jpeg = await asyncio.to_thread(self._prepare_album_cell, png, pair_box)
+                return (kind, jpeg or png, caption, markup)
+
+            cell_items = await asyncio.gather(*[_to_cell(item) for item in png_items])
+            for item in cell_items:
                 if not item:
                     continue
                 kind, path, caption, markup = item

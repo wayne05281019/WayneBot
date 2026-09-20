@@ -130,7 +130,9 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("asyncio.gather", src)
         self.assertNotIn("path = await _render_one(kind, fn, timeout_s)", src)
         self.assertLess(src.find("asyncio.gather"), src.find("_send_lookup_album"))
-        self.assertIn("_render_then_cell", src)
+        self.assertIn("_render_ready", src)
+        self.assertIn("_album_pair_box", src)
+        self.assertNotIn("_render_then_cell", src)
 
     def test_glance_and_card_render_start_together(self):
         """介紹圖與高低卡同一拍開始畫，不准等介紹圖畫完才開高低卡。"""
@@ -229,12 +231,18 @@ class LookupImageTests(unittest.TestCase):
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
-        from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI
+        from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI, _savefig_lookup_png
 
         self.assertGreaterEqual(CARD_PNG_DPI, 320)
         self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
         self.assertGreaterEqual(NAV_CHART_DPI, 320)
         self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)
+        src = inspect.getsource(_savefig_lookup_png)
+        self.assertIn("compress_level", src)
+        card_src = inspect.getsource(__import__("wayne_navigator").render_decision_card_png)
+        glance_src = inspect.getsource(__import__("wayne_navigator").render_first_glance_png)
+        self.assertIn("_savefig_lookup_png", card_src)
+        self.assertIn("_savefig_lookup_png", glance_src)
 
     def test_lookup_album_sends_hq_jpeg(self):
         src = inspect.getsource(WayneTelegramBot._send_lookup_album)
@@ -247,23 +255,43 @@ class LookupImageTests(unittest.TestCase):
     def test_prepare_album_cell_is_same_4x5_pair(self):
         from PIL import Image
 
-        from bot_servers import _LOOKUP_ALBUM_CELL
+        from bot_servers import _LOOKUP_TG_MAX_WH
 
         with tempfile.TemporaryDirectory() as td:
             tall = os.path.join(td, "tall.png")
             Image.new("RGB", (800, 2200), (12, 18, 28)).save(tall, "PNG")
             wide = os.path.join(td, "card.png")
             Image.new("RGB", (900, 1600), (20, 24, 36)).save(wide, "PNG")
-            a = WayneTelegramBot._prepare_album_cell(tall)
-            b = WayneTelegramBot._prepare_album_cell(wide)
+            box = WayneTelegramBot._album_pair_box([tall, wide])
+            self.assertEqual(box[0] * 5, box[1] * 4)
+            self.assertLessEqual(sum(box), _LOOKUP_TG_MAX_WH)
+            a = WayneTelegramBot._prepare_album_cell(tall, box)
+            b = WayneTelegramBot._prepare_album_cell(wide, box)
             with Image.open(a) as im:
-                self.assertEqual(im.size, _LOOKUP_ALBUM_CELL)
+                self.assertEqual(im.size, box)
                 self.assertEqual(im.format, "JPEG")
             with Image.open(b) as im:
-                self.assertEqual(im.size, _LOOKUP_ALBUM_CELL)
+                self.assertEqual(im.size, box)
                 self.assertEqual(im.format, "JPEG")
-            self.assertLess(os.path.getsize(a), 400_000)
-            self.assertLess(os.path.getsize(b), 400_000)
+            self.assertLessEqual(os.path.getsize(a), 2_500_000)
+            self.assertLessEqual(os.path.getsize(b), 2_500_000)
+
+    def test_album_pair_keeps_native_pixels(self):
+        """並排格跟源圖走，不准先縮成 1200×1500。"""
+        from PIL import Image
+
+        from bot_servers import _LOOKUP_ALBUM_CELL
+
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "card.png")
+            Image.new("RGB", (2272, 2432), (12, 18, 28)).save(src, "PNG")
+            box = WayneTelegramBot._album_pair_box([src])
+            self.assertGreaterEqual(box[0], 2272)
+            self.assertGreater(box[0], _LOOKUP_ALBUM_CELL[0])
+            out = WayneTelegramBot._prepare_album_cell(src, box)
+            with Image.open(out) as im:
+                self.assertEqual(im.size, box)
+            self.assertGreaterEqual(min(box), 2272)
 
     def test_prepare_lookup_album_photo_keeps_native_pixels(self):
         from PIL import Image
