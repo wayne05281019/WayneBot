@@ -2334,7 +2334,7 @@ class WayneTelegramBot:
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """偉權／哥哥手機回目前這次更新：功能名的更新、全數完成、與畫面同一串代碼。"""
+        """偉權／哥哥手機回這次改了什麼；不准貼程式代碼。"""
         if not update.message:
             return
         await update.message.reply_text(phone_code_reply())
@@ -2522,16 +2522,20 @@ class WayneTelegramBot:
         labels = {
             "glance": "介紹圖",
             "card": "決策卡",
+            "both": "介紹圖＋高低卡",
             "chart": "導航圖",
             "table": "讀高低卡",
             "album": "一次送出",
         }
-        order = ("glance", "card")
+        order = ("both", "album")
         sent_ks = [str(k) for k in (sent or [])]
         now = labels.get(str(current or ""), "")
         if not now:
             now = next((labels[k] for k in order if k not in sent_ks), "出圖")
-        rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
+        if str(current or "") == "both":
+            rest = labels["album"]
+        else:
+            rest = "、".join(labels[k] for k in order if k not in sent_ks and labels[k] != now)
         return WayneTelegramBot._wait_bubble("查股進行中", elapsed_sec, now=now, rest=rest)
 
     @staticmethod
@@ -5611,31 +5615,24 @@ class WayneTelegramBot:
                     return path
                 return path
 
-            for kind, fn, timeout_s, caption, markup in render_plan:
-                st = self._op_state_map().setdefault(actor, {"sent": [], "current": kind})
-                st["current"] = kind
-                logger.info("查股階段 current=%s sent=%s code=%s", kind, st.get("sent"), code)
-                path = await _render_one(kind, fn, timeout_s)
+            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
+            st["current"] = "both"
+            st["sent"] = []
+            logger.info("查股階段 current=both sent=[] code=%s", code)
+            paths = await asyncio.gather(
+                *[
+                    _render_one(kind, fn, timeout_s)
+                    for kind, fn, timeout_s, _cap, _mk in render_plan
+                ]
+            )
+            for (kind, _fn, _timeout_s, caption, markup), path in zip(render_plan, paths):
                 logger.info("看這檔 %s ready code=%s path=%s", kind, code, bool(path))
                 if path:
                     ready_items.append((kind, path, caption, markup))
                     sent_kinds.append(kind)
-                    st = self._op_state_map().setdefault(actor, {"sent": [], "current": ""})
-                    st["sent"] = list(sent_kinds)
-                    nxt = next((k for k, *_ in render_plan if k not in sent_kinds), "album")
-                    st["current"] = nxt
-                    if wait_msg is not None:
-                        try:
-                            await wait_msg.edit_text(
-                                self._chart_progress_text(
-                                    int(time.monotonic() - op_t0),
-                                    sent=sent_kinds,
-                                    current=nxt,
-                                ),
-                                parse_mode="HTML",
-                            )
-                        except Exception:
-                            pass
+            st = self._op_state_map().setdefault(actor, {"sent": [], "current": "album"})
+            st["sent"] = list(sent_kinds)
+            st["current"] = "album"
 
             try:
                 gc.collect()

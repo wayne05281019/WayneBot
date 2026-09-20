@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """查股出圖：PNG 驗證與產圖順序。"""
+import asyncio
 import inspect
 import os
 import tempfile
+import time
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -101,6 +105,103 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("render_industry_png", src)
         self.assertNotIn('"industry"', src)
         self.assertNotIn("generate_chart", src)
+        self.assertIn("asyncio.gather", src)
+        self.assertNotIn("path = await _render_one(kind, fn, timeout_s)", src)
+        self.assertLess(src.find("asyncio.gather"), src.find("_send_lookup_album"))
+        self.assertIn("_render_one(kind, fn, timeout_s)", src)
+
+    def test_glance_and_card_render_start_together(self):
+        """介紹圖與高低卡同一拍開始畫，不准等介紹圖畫完才開高低卡。"""
+        from PIL import Image
+
+        td = tempfile.mkdtemp()
+        bot = WayneTelegramBot.__new__(WayneTelegramBot)
+        bot.db_path = os.path.join(td, "x.db")
+        bot.charts_dir = td
+        bot._lookup_ctx = {}
+        bot._lookup_fade_msgs = {}
+        bot._menu_fade_msgs = {}
+        bot._screening_msgs = {}
+        bot._line_pack_status_msgs = {}
+        bot._help_msgs = {}
+        bot._last_card = {}
+        bot._pending = {}
+        bot._lookup_locks = {}
+        bot._lookup_op_state = {}
+        started = {}
+
+        def _png(name: str) -> str:
+            path = os.path.join(td, name)
+            Image.new("RGB", (800, 900), (12, 18, 28)).save(path, "PNG")
+            return path
+
+        def _glance(*_a, **_k):
+            started["glance"] = time.monotonic()
+            time.sleep(0.25)
+            return _png("g.png")
+
+        def _card(*_a, **_k):
+            started["card"] = time.monotonic()
+            time.sleep(0.25)
+            return _png("c.png")
+
+        class _Engine:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def get_decision_card(self, *_a, **_k):
+                return {"stock_id": "2330", "stock_name": "台積電", "table": []}
+
+        message = MagicMock()
+        message.from_user = SimpleNamespace(id=111, first_name="u")
+        message.chat_id = 999
+        message.reply_html = AsyncMock(return_value=MagicMock())
+        message.reply_text = AsyncMock(return_value=MagicMock())
+        message.reply_photo = AsyncMock()
+        message.reply_media_group = AsyncMock(return_value=[MagicMock(), MagicMock()])
+
+        async def _run():
+            with patch("wayne_navigator.NavigatorEngine", _Engine), patch(
+                "chip_tape.build_tape", return_value={}
+            ), patch(
+                "stock_news.fetch_stock_news_stats", return_value=None
+            ), patch(
+                "wayne_navigator.render_first_glance_png", side_effect=_glance
+            ), patch(
+                "wayne_navigator.render_decision_card_png", side_effect=_card
+            ), patch.object(
+                bot, "_prefetch_mis_quote", return_value=None
+            ), patch.object(
+                bot, "_quote_header_html", return_value="<b>2330</b>"
+            ), patch.object(
+                bot, "_hub_keyboard", return_value=None
+            ), patch.object(
+                bot, "_track_lookup_fade"
+            ), patch.object(
+                bot, "_dismiss_lookup_fades", new_callable=AsyncMock
+            ), patch.object(
+                bot, "_cache_lookup_ctx"
+            ), patch.object(
+                bot, "_remember_card"
+            ), patch.object(
+                WayneTelegramBot, "_png_looks_ok", return_value=True
+            ), patch.object(
+                WayneTelegramBot, "_prepare_lookup_album_photo", side_effect=lambda p: p
+            ):
+                await bot._send_card_to_locked(
+                    message,
+                    "2330",
+                    "111",
+                    "999:111",
+                    [{"stock_id": "2330", "close": 100}],
+                )
+
+        asyncio.run(_run())
+        self.assertIn("glance", started)
+        self.assertIn("card", started)
+        self.assertLess(abs(started["glance"] - started["card"]), 0.12)
+        self.assertGreaterEqual(message.reply_media_group.await_count, 1)
+        self.assertEqual(message.reply_photo.await_count, 0)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -175,18 +276,17 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
-    def test_chart_progress_mentions_glance_first(self):
-        txt = WayneTelegramBot._chart_progress_text(3, current="glance")
-        self.assertIn("介紹圖", txt)
-        self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
+    def test_chart_progress_both_images_at_once(self):
+        txt = WayneTelegramBot._chart_progress_text(3, current="both")
+        self.assertIn("介紹圖＋高低卡", txt)
+        self.assertIn("一次送出", txt)
         self.assertNotIn("導航", txt)
         self.assertNotIn("其餘三張", txt)
+        self.assertLess(txt.index("介紹圖＋高低卡"), txt.index("一次送出"))
 
     def test_chart_progress_records_sent_stage(self):
-        txt = WayneTelegramBot._chart_progress_text(
-            8, sent=["glance"], current="card"
-        )
-        self.assertIn("現在：決策卡", txt)
+        txt = WayneTelegramBot._chart_progress_text(8, sent=["glance", "card"], current="album")
+        self.assertIn("現在：一次送出", txt)
         self.assertNotIn("接著：導航圖", txt)
         self.assertNotIn("其餘三張", txt)
         self.assertIn("好了這則會消失", txt)
