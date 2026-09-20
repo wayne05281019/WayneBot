@@ -32,12 +32,14 @@ _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_REN
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 92
+_LOOKUP_JPEG_QUALITY = 88
 _LOOKUP_JPEG_QUALITY_FLOOR = 78
-# 兩張同尺寸 4:5 才並排。格大小跟源圖走，不准先縮成 1200 再送。
+# 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
+_LOOKUP_ALBUM_MAX = (1920, 2400)
 _LOOKUP_ALBUM_BG = (12, 18, 28)
+_LOOKUP_MIS_TIMEOUT = 2.0
 
 from config import (
     allowed_telegram_uids,
@@ -2660,11 +2662,32 @@ class WayneTelegramBot:
             cw, ch = w, int(round(w * rh / float(rw)))
         else:
             ch, cw = h, int(round(h * rw / float(rh)))
+        return WayneTelegramBot._cap_album_box(cw, ch)
+
+    @staticmethod
+    def _cap_album_box(cw: int, ch: int) -> tuple[int, int]:
+        """超過 1920×2400 就等比縮小，維持 4:5。手機夠銳，傳檔才快。"""
+        cw = max(1, int(cw))
+        ch = max(1, int(ch))
+        mw, mh = _LOOKUP_ALBUM_MAX
+        scale = min(mw / float(cw), mh / float(ch), 1.0)
+        if scale < 1.0:
+            cw = max(1, int(round(cw * scale)))
+            ch = max(1, int(round(ch * scale)))
+        rw, rh = _LOOKUP_ALBUM_RATIO
+        if cw * rh > ch * rw:
+            ch = int(round(cw * rh / float(rw)))
+        else:
+            cw = int(round(ch * rw / float(rh)))
+        if cw > mw or ch > mh:
+            scale = min(mw / float(cw), mh / float(ch), 1.0)
+            cw = max(1, int(round(cw * scale)))
+            ch = max(1, int(round(ch * scale)))
         return WayneTelegramBot._fit_lookup_photo_wh(cw, ch)
 
     @staticmethod
     def _album_pair_box(paths: list) -> tuple[int, int]:
-        """兩張同一格 4:5，格跟較大那張走，點開仍是原像素。"""
+        """兩張同一格 4:5；大圖收到手機銳度上限再送。"""
         from PIL import Image
 
         cw = ch = 0
@@ -2685,7 +2708,7 @@ class WayneTelegramBot:
             ch = int(round(cw * rh / float(rw)))
         else:
             cw = int(round(ch * rw / float(rh)))
-        return WayneTelegramBot._fit_lookup_photo_wh(cw, ch)
+        return WayneTelegramBot._cap_album_box(cw, ch)
 
     @staticmethod
     def _prepare_album_cell(path: str, box: tuple[int, int] | None = None) -> str:
@@ -5089,7 +5112,7 @@ class WayneTelegramBot:
         try:
             live_rt = await asyncio.wait_for(
                 asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                timeout=6.0,
+                timeout=_LOOKUP_MIS_TIMEOUT,
             )
         except Exception:
             live_rt = None
@@ -5456,7 +5479,7 @@ class WayneTelegramBot:
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(self._prefetch_mis_quote, code, hits),
-                    timeout=6.0,
+                    timeout=_LOOKUP_MIS_TIMEOUT,
                 )
             except Exception:
                 return None

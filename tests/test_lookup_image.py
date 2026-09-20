@@ -238,7 +238,8 @@ class LookupImageTests(unittest.TestCase):
         self.assertGreaterEqual(NAV_CHART_DPI, 320)
         self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)
         src = inspect.getsource(_savefig_lookup_png)
-        self.assertIn("compress_level", src)
+        self.assertIn("format=\"jpeg\"", src)
+        self.assertNotIn("compress_level", src)
         card_src = inspect.getsource(__import__("wayne_navigator").render_decision_card_png)
         glance_src = inspect.getsource(__import__("wayne_navigator").render_first_glance_png)
         self.assertIn("_savefig_lookup_png", card_src)
@@ -276,22 +277,30 @@ class LookupImageTests(unittest.TestCase):
             self.assertLessEqual(os.path.getsize(a), 2_500_000)
             self.assertLessEqual(os.path.getsize(b), 2_500_000)
 
-    def test_album_pair_keeps_native_pixels(self):
-        """並排格跟源圖走，不准先縮成 1200×1500。"""
+    def test_album_pair_caps_phone_grid(self):
+        """大圖收到 1920×2400，仍比舊 1200 格銳，檔比較小所以傳得快。"""
         from PIL import Image
 
-        from bot_servers import _LOOKUP_ALBUM_CELL
+        from bot_servers import _LOOKUP_ALBUM_CELL, _LOOKUP_ALBUM_MAX
 
         with tempfile.TemporaryDirectory() as td:
             src = os.path.join(td, "card.png")
-            Image.new("RGB", (2272, 2432), (12, 18, 28)).save(src, "PNG")
+            Image.new("RGB", (2272, 4238), (12, 18, 28)).save(src, "PNG")
             box = WayneTelegramBot._album_pair_box([src])
-            self.assertGreaterEqual(box[0], 2272)
+            self.assertEqual(box, _LOOKUP_ALBUM_MAX)
             self.assertGreater(box[0], _LOOKUP_ALBUM_CELL[0])
             out = WayneTelegramBot._prepare_album_cell(src, box)
             with Image.open(out) as im:
                 self.assertEqual(im.size, box)
-            self.assertGreaterEqual(min(box), 2272)
+                self.assertEqual(im.format, "JPEG")
+
+    def test_lookup_mis_does_not_block_six_seconds(self):
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertIn("_LOOKUP_MIS_TIMEOUT", src)
+        self.assertNotIn("timeout=6.0", src)
+        import bot_servers
+
+        self.assertLessEqual(bot_servers._LOOKUP_MIS_TIMEOUT, 2.0)
 
     def test_prepare_lookup_album_photo_keeps_native_pixels(self):
         from PIL import Image

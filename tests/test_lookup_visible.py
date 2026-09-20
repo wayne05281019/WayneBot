@@ -62,7 +62,8 @@ def test_send_card_locked_source_keeps_visible_fallback():
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "_reply_visible" in src
     assert "卡片沒送出" in src
-    assert "timeout=6.0" in src
+    assert "_LOOKUP_MIS_TIMEOUT" in src
+    assert "timeout=6.0" not in src
     assert src.index("reply_text") < src.index("fetch_stock_news_stats")
     assert "_pin_reply_menu" not in src
     assert "兩排主選單在輸入列旁邊四格" not in src
