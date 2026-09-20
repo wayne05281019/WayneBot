@@ -432,7 +432,6 @@ class WayneTelegramBot:
         self._lookup_fade_msgs: Dict[str, list] = {}
         # actor_key → pack_id → 海選分類訊息
         self._screening_msgs: Dict[str, Dict[str, list]] = {}
-        self._line_pack_status_msgs: Dict[str, list] = {}
         self._help_msgs: Dict[str, list] = {}
         self._lookup_locks: Dict[str, asyncio.Lock] = {}
         # actor → 查股進行到哪（介紹圖／決策卡），進度泡泡跟這裡同步
@@ -535,20 +534,6 @@ class WayneTelegramBot:
         if msg is None or not pack_id:
             return
         self._screening_msgs.setdefault(str(actor_key), {}).setdefault(str(pack_id), []).append(msg)
-
-    def _track_line_pack_status(self, actor_key: str, msg) -> None:
-        """海選生成中進度；完成後刪除。"""
-        if msg is None:
-            return
-        self._line_pack_status_msgs.setdefault(str(actor_key), []).append(msg)
-
-    async def _dismiss_line_pack_status(self, actor_key: str) -> None:
-        msgs = self._line_pack_status_msgs.pop(str(actor_key), [])
-        for msg in msgs:
-            try:
-                await msg.delete()
-            except Exception:
-                pass
 
     async def _dismiss_screening_section(self, actor_key: str, pack_id: str) -> None:
         """海選該分類的貼紙＋文字塊。"""
@@ -1700,9 +1685,6 @@ class WayneTelegramBot:
             return None
         return InlineKeyboardMarkup(rows)
 
-    def _persist_bucket_line_pack(self, bucket_key: str, rows: list) -> None:
-        return
-
     def _hits_keyboard(self, hits):
         """名稱撞名時當選擇器：按鈕寫代號＋股名（不是奇摩連結）。"""
         rows = []
@@ -2087,10 +2069,6 @@ class WayneTelegramBot:
             return ensure_mark_gif(key) or ""
         except Exception:
             return ""
-
-    def _cat_sticker_id(self, key: str) -> str:
-        """舊椅子貼紙不再送。保留函式以免測試／排程舊呼叫炸掉。"""
-        return ""
 
     def _send_animation(self, chat_id: str, path: str):
         try:
@@ -4732,7 +4710,7 @@ class WayneTelegramBot:
                     return
         logger.info("收到文字 uid=%s 字數=%s", uid, len(text))
         try:
-            # 一般功能：代號／股名出三張圖卡（一則相簿）。沒按飆大就不進 overlay。
+            # 一般功能：代號／股名出兩張圖卡（一則相簿）。沒按飆大就不進 overlay。
             handled = await self._dispatch_intent(
                 update.message, uid, text, update=update, context=context
             )

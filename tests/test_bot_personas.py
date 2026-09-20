@@ -84,25 +84,7 @@ def test_explicit_menu_cmd_not_silent():
     assert kwargs.get("silent") is not True
 
 
-# --- 哥哥 vs 偉權：LINE 進度、海選區塊互不干擾 ---
-
-
-def test_brother_line_pack_status_isolated():
-    bot = _bot()
-    m_wayne = MagicMock()
-    m_wayne.delete = AsyncMock()
-    m_bro = MagicMock()
-    m_bro.delete = AsyncMock()
-    bot._track_line_pack_status("99:111", m_wayne)
-    bot._track_line_pack_status("99:222", m_bro)
-
-    async def run():
-        await bot._dismiss_line_pack_status("99:111")
-
-    asyncio.run(run())
-    m_wayne.delete.assert_awaited_once()
-    m_bro.delete.assert_not_awaited()
-    assert "99:222" in bot._line_pack_status_msgs
+# --- 哥哥 vs 偉權：海選區塊互不干擾 ---
 
 
 def test_brother_screening_section_isolated():

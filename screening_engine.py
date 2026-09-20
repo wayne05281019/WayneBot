@@ -1591,7 +1591,7 @@ LINE_TRADE_POINTER = (
 
 
 def _screen_push_cap(key: str) -> Optional[int]:
-    """晨間推播／LINE 佈局桶上限；規格寫 8，先前沒套到 payload。"""
+    """晨間推播／海選佈局桶上限；規格寫 8，先前沒套到 payload。"""
     for spec in SCREEN_PUSH_SPECS:
         if spec[0] == key:
             cap = spec[4]
@@ -1842,66 +1842,6 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
     return bits
 
 
-def _share_stock_block(
-    it: Dict[str, Any], idx: int, db_path: Optional[str] = None, *, bucket_key: str = ""
-) -> str:
-    from line_share_format import format_line_stock_block
-
-    return format_line_stock_block(it, idx, db_path, bucket_key=bucket_key)
-
-
-LINE_STOCK_BUCKETS = (
-    ("leave_zero", "黃金買點"),
-    ("golden_buy", "還在零"),
-    ("revenue_cross", "優先看"),
-    ("select_01", "周帶量"),
-    ("half_year_high", "半年高"),
-    ("select_02", "站上季線"),
-    ("select_03", "止跌"),
-    ("day_trade", "當沖"),
-    ("overnight", "隔日沖"),
-)
-
-
-def format_stock_line_share_text(
-    item: Dict[str, Any],
-    target_date: str,
-    db_path: Optional[str] = None,
-    bucket_label: str = "",
-    bucket_key: str = "",
-) -> str:
-    sid = str(item.get("stock_id") or item.get("code") or "").strip()
-    sname = str(item.get("stock_name") or item.get("name") or "").strip()
-    tag = f"【{bucket_label}】" if bucket_label else ""
-    return "\n".join(
-        [
-            f"WayneBot 海選　{_date_slash(target_date)}",
-            f"{tag}{sid} {sname}".strip(),
-            SHARE_SEP,
-            _share_stock_block(item, 1, db_path, bucket_key=bucket_key),
-        ]
-    )
-
-
-def build_line_stock_bodies(
-    results: Dict[str, List[Dict[str, Any]]],
-    target_date: str,
-    db_path: Optional[str] = None,
-) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    for key, label in LINE_STOCK_BUCKETS:
-        for it in results.get(key) or []:
-            if not isinstance(it, dict):
-                continue
-            sid = str(it.get("stock_id") or it.get("code") or "").strip()
-            if not sid:
-                continue
-            out[sid] = format_stock_line_share_text(
-                it, target_date, db_path, bucket_label=label, bucket_key=key
-            )
-    return out
-
-
 LINE_BUCKET_TITLES = {
     "leave_zero": "黃金買點",
     "golden_buy": "還在零",
@@ -1913,54 +1853,6 @@ LINE_BUCKET_TITLES = {
     "day_trade": "當沖",
     "overnight": "隔日沖",
 }
-
-
-def format_bucket_line_share_text(
-    results: Dict[str, List[Dict[str, Any]]],
-    bucket_key: str,
-    target_date: str,
-    db_path: Optional[str] = None,
-) -> str:
-    from line_share_format import format_line_bucket_body
-
-    if bucket_key == "leave_zero":
-        items = merge_entry_stage_rows(results)
-    else:
-        items = results.get(bucket_key) or []
-    block = format_line_bucket_body(items, bucket_key, db_path)
-    if not block:
-        return ""
-    return f"WayneBot 海選　{_date_slash(target_date)}\n{block}"
-
-
-def build_line_bucket_packs(
-    results: Dict[str, List[Dict[str, Any]]],
-    target_date: str,
-    db_path: Optional[str] = None,
-) -> List[Dict[str, str]]:
-    """每個海選分類一則 LINE 稿（整區一次轉）。"""
-    packs: List[Dict[str, str]] = []
-    keys = [k for k, *_ in SCREEN_PUSH_SPECS] + ["day_trade", "overnight"]
-    for key in keys:
-        if key == "leave_zero":
-            items = merge_entry_stage_rows(results)
-        else:
-            items = results.get(key) or []
-        if not items:
-            continue
-        text = format_bucket_line_share_text(results, key, target_date, db_path)
-        if not text:
-            continue
-        label = LINE_BUCKET_TITLES.get(key) or key
-        packs.append(
-            {
-                "id": key,
-                "label": label,
-                "title": f"傳 {label} 到 LINE",
-                "text": text,
-            }
-        )
-    return packs
 
 
 def _share_bucket_block(
@@ -2009,7 +1901,7 @@ def format_line_share_packs(
     morning: bool = False,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, str]]:
-    """三段 LINE：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
+    """三段海選純文字：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
     specs_layout = [
         ("leave_zero", "黃金買點　買點才切入；還在零只觀察"),
         ("revenue_cross", "優先看　營收轉強×量價"),
