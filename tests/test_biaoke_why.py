@@ -196,6 +196,19 @@ def test_why_sunday_pcb_1245_is_sep1_high():
     abf = lookup("ABF三雄")
     assert "族群對照" in abf or "不是點名南電" in abf
     assert "8046" in abf
+    dead = lookup("ABF目前是死水嗎")
+    assert "一攤死水" in dead
+    assert "爆量長紅" in dead
+    assert "下殺取量" in dead
+    assert "不是點名南電" in dead
+    assert "週日沒官方柱" in dead
+    vol = lookup("他怎麼只看量價就知道多空")
+    assert "量價結構" in vol
+    assert "均線" in vol
+    assert "KD" in vol
+    assert "MACD" in vol
+    assert "分點" in vol
+    assert "防守點" in vol
 
 
 def test_live_notes_puts_why_chain_first():

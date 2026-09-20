@@ -44,6 +44,26 @@ def test_classify_sunday_pcb_files_to_tape_hold_field():
     assert any(h["neuron"] == "hold" and h["sid"] == "2368" for h in reply)
 
 
+def test_classify_abf_dead_water_is_group_tape_not_nandian():
+    """9/20 22:57：ABF 死水跟族群走，不准跳南電 8046。"""
+    hits = classify_spoken(
+        "ABF目前就是一攤死水，要等一根爆量長紅出來 才有進一步觀察要件成立，"
+        "否則再下跌出現爆量，就非常有可能最後下殺取量。"
+    )
+    nids = {h["neuron"] for h in hits}
+    assert "tape" in nids
+    assert "field" in nids
+    assert all(h["sid"] != "8046" for h in hits)
+    tape = next(h for h in hits if h["neuron"] == "tape")
+    assert "死水" in tape["snippet"] or "爆量" in tape["snippet"]
+    method = classify_spoken(
+        "最重要 要能解讀我的發文中量價結構的重要性，我完全沒看均線、技術指標 KD、MACD，"
+        "還有卷商分點 大戶籌碼 就可以很清楚知道多空 防守點位。"
+    )
+    assert any(h["neuron"] == "tape" and h["sid"] == "" for h in method)
+    assert all(h["sid"] != "8046" for h in method)
+
+
 def test_classify_c2_goes_to_nest():
     hits = classify_spoken("今天強彈反而提高警惕，小心逃命波C-2，不是已確認。")
     nids = {h["neuron"] for h in hits}

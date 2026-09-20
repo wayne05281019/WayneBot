@@ -49,10 +49,13 @@ def test_neuron_views_reread_without_ask():
     assert "價穩量縮" in method_body("量先價行")
     assert "先看量再看價" in method_body("量先價行")
     assert "裸K" in method_body("量先價行")
+    assert "死水" in method_body("量先價行")
+    assert "防守點" in method_body("量先價行")
     five = method_body("真正有用的五件")
     assert "碎形" in five
     assert "關鍵K" in five
     assert "接線" in five
+    assert "死水" in five
     night = method_body("9/15夜思考")
     assert "46767" in night
     assert "3363" in night

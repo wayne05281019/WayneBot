@@ -84,6 +84,8 @@ def names_in_ask(ask: str) -> List[Tuple[str, str]]:
             continue
         if any(name != longer and name in longer for longer in used):
             continue
+        if name == "ABF":
+            continue
         used.append(name)
         sid = str(_NAME_SID.get(name) or "")
         if not sid or sid in seen:
