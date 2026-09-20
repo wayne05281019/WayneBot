@@ -59,6 +59,35 @@ def test_evening_desk_stays_silent_and_digest_is_separate():
     assert "notify: bool = True" in desk
 
 
+def test_core_candidates_are_leave_zero_only():
+    import inspect
+
+    from ai_trader import _candidates
+
+    src = inspect.getsource(_candidates)
+    assert 'keys = (("leave_zero", "黃金買點：獲利離零"),)' in src
+    assert "revenue_cross" not in src
+    assert "select_01" not in src
+    assert '"overnight"' not in src
+    assert "buy_star" in src
+    cands = _candidates(
+        {
+            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0, "buy_star": False}],
+            "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
+        }
+    )
+    assert [x["stock_id"] for x in cands] == ["2330"]
+    dip = _candidates(
+        {
+            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 100.0}],
+            "golden_buy": [{"stock_id": "4127", "stock_name": "天鈺", "close": 50.0}],
+            "select_01": [{"stock_id": "2412", "stock_name": "中華電", "close": 120.0}],
+        },
+        dip_only=True,
+    )
+    assert [x["stock_id"] for x in dip] == ["4127", "2330"]
+
+
 def test_help_topics_cancelled():
     from bot_servers import HELP_TOPICS
 
