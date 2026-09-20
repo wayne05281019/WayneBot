@@ -1,6 +1,6 @@
-"""手機 Telegram 與畫面 /health 同一份更新說明。
+"""手機 Telegram 更新說明：這次實際改了什麼，口語一句。
 
-第一行是這次功能名＋「的更新」，第二行「全數完成」。git_sha 與畫面同一串。
+程式代碼只留在 /health，不准貼到偉權／哥哥手機。
 """
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import os
 import re
 import subprocess
 
-UPDATE_DONE = "全數完成"
-_TITLE_TAIL = "的更新"
+UPDATE_DONE = "更新完成"
 _NOTE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "phone_update_note.txt")
 _COMMIT_PREFIX = re.compile(
     r"^(feat|fix|docs|test|chore|refactor|perf|build|ci)(\([^)]+\))?:\s*",
     re.I,
 )
+_HEX = re.compile(r"\b[0-9a-f]{12,}\b", re.I)
 
 
 def phone_git_sha() -> str:
@@ -35,11 +35,13 @@ def _clean_note(raw: str) -> str:
     t = _COMMIT_PREFIX.sub("", t).strip()
     if t.lower().startswith("merge "):
         return ""
+    t = _HEX.sub("", t)
+    t = re.sub(r"\s+", " ", t).strip(" ，,")
     return t[:80]
 
 
 def phone_update_note() -> str:
-    """這次更新的功能名。檔案優先，沒有再讀 git 標題。"""
+    """這次更新在講什麼。檔案優先，沒有再讀 git 標題。"""
     env = _clean_note(os.getenv("WAYNE_UPDATE_NOTE") or "")
     if env and _has_han(env):
         return env
@@ -67,39 +69,34 @@ def phone_update_note() -> str:
 
 
 def phone_update_title(note: str | None = None) -> str:
-    """手機第一行：功能名的更新。檔裡已寫「的更新」就不再加。"""
-    n = _clean_note(note if note is not None else phone_update_note())
-    if not n:
-        return ""
-    if n.endswith(_TITLE_TAIL):
-        return n
-    return f"{n}{_TITLE_TAIL}"
+    """手機第一行：這次改了什麼。"""
+    return _clean_note(note if note is not None else phone_update_note())
 
 
 def phone_update_lines(sha: str | None = None, *, note: str | None = None) -> list[str]:
-    lines: list[str] = []
+    _ = sha
     title = phone_update_title(note)
+    if title.endswith("完成"):
+        return [title] if title else [UPDATE_DONE]
+    lines: list[str] = []
     if title:
         lines.append(title)
     lines.append(UPDATE_DONE)
-    full = str(sha if sha is not None else phone_git_sha() or "").strip()[:40]
-    if full:
-        lines.append(f"git_sha {full}")
     return lines
 
 
 def phone_update_notice(sha: str, *, note: str | None = None) -> str:
-    """偉權／哥哥手機與畫面同一份：功能名的更新＋全數完成＋完整 SHA。"""
+    """偉權／哥哥手機：這次改了什麼＋更新完成。不准貼程式代碼。"""
     return "\n".join(phone_update_lines(sha, note=note))
 
 
 def phone_code_reply(sha: str | None = None) -> str:
-    """隨時查目前這顆程式：與開機通知、/health 同一份國字＋代碼。"""
-    return phone_update_notice(sha if sha is not None else phone_git_sha())
+    """打「代碼」也只回口語更新，不回 SHA。"""
+    return phone_update_notice(sha if sha is not None else phone_git_sha() or "")
 
 
 def phone_health_fields(sha: str | None = None) -> dict:
-    """畫面 /health 與手機同一組欄。"""
+    """畫面 /health 另留 git_sha 給核對；手機文案不含這欄。"""
     full = str(sha if sha is not None else phone_git_sha() or "").strip()[:40]
     return {
         "git_sha": full,

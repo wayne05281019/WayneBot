@@ -2334,7 +2334,7 @@ class WayneTelegramBot:
         )
 
     async def code_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """偉權／哥哥手機回目前這次更新：功能名的更新、全數完成、與畫面同一串代碼。"""
+        """偉權／哥哥手機回這次改了什麼；不准貼程式代碼。"""
         if not update.message:
             return
         await update.message.reply_text(phone_code_reply())
