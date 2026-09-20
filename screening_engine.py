@@ -2246,6 +2246,9 @@ def execute_full_screening(
         try:
             from screen_review import save_screen_picks
 
+            for key, rows in list(results.items()):
+                if isinstance(rows, list) and not str(key).startswith("_"):
+                    results[key] = stamp_entry_stars(rows, key)
             save_screen_picks(engine.db_path, target_date, results)
         except Exception:
             pass
