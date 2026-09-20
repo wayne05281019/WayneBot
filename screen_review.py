@@ -28,6 +28,9 @@ BUCKET_CAP = 8
 WEAK_AVG = -1.0
 WEAK_N = 5
 FILL_WEAK_N = 3
+# 黃金買點星級隔日對質：5／4／3 分開記；2＝二星內（含 0）。不改評選、不進桶權重、不推話筒。
+LEAVE_ZERO_STAR_BANDS = (5, 4, 3, 2)
+LEAVE_ZERO_STAR_LABELS = {5: "五星", 4: "四星", 3: "三星", 2: "二星內"}
 
 
 def _win_count(n: int, hit_rate: float) -> int:
@@ -78,11 +81,27 @@ def ensure_screen_review_table(db_path: str = None) -> None:
             next_date TEXT,
             next_close REAL,
             next_pct REAL,
+            entry_stars INTEGER,
             PRIMARY KEY (as_of, bucket, stock_id)
         );
         """
     )
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(screen_picks)")}
+    if "entry_stars" not in cols:
+        conn.execute("ALTER TABLE screen_picks ADD COLUMN entry_stars INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_screen_picks_next ON screen_picks(next_date);")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS leave_zero_star_tape (
+            as_of TEXT NOT NULL,
+            stars INTEGER NOT NULL,
+            n INTEGER NOT NULL DEFAULT 0,
+            avg_pct REAL,
+            hits INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (as_of, stars)
+        );
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -124,15 +143,23 @@ def save_screen_picks(db_path: str, as_of: str, results: Dict[str, Any]) -> int:
                 close = 0.0
             if close <= 0:
                 continue
-            kept.append((sid, str(it.get("stock_name") or it.get("name") or ""), close))
-        for sid, name, close in kept[:BUCKET_CAP]:
+            kept.append(
+                (
+                    sid,
+                    str(it.get("stock_name") or it.get("name") or ""),
+                    close,
+                    _entry_stars_value(it),
+                )
+            )
+        for sid, name, close, stars in kept[:BUCKET_CAP]:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO screen_picks(
-                    as_of, bucket, stock_id, stock_name, pick_close, next_date, next_close, next_pct
-                ) VALUES (?,?,?,?,?,?,?,?)
+                    as_of, bucket, stock_id, stock_name, pick_close,
+                    next_date, next_close, next_pct, entry_stars
+                ) VALUES (?,?,?,?,?,?,?,?,?)
                 """,
-                (as_of, key, sid, name, close, None, None, None),
+                (as_of, key, sid, name, close, None, None, None, stars),
             )
             n += 1
     conn.commit()
@@ -192,6 +219,7 @@ def score_screen_picks(db_path: str, next_date: str = None) -> int:
     conn.close()
     if filled:
         adapt_bucket_weights(db_path)
+    record_leave_zero_star_tape(db_path)
     return filled
 
 
@@ -202,6 +230,156 @@ def _pick_is_equity(stock_id: str, stock_name: str = "") -> bool:
         return is_screen_equity(stock_id, stock_name)
     except Exception:
         return True
+
+
+def _entry_stars_value(it: Dict[str, Any]) -> Optional[int]:
+    raw = it.get("entry_stars") if isinstance(it, dict) else None
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _star_band(stars: Any) -> Optional[int]:
+    """5／4／3 原樣；≤2 收成 2。沒星級不發明。"""
+    if stars is None or stars == "":
+        return None
+    try:
+        n = int(stars)
+    except (TypeError, ValueError):
+        return None
+    if n >= 5:
+        return 5
+    if n == 4:
+        return 4
+    if n == 3:
+        return 3
+    if n <= 2:
+        return 2
+    return None
+
+
+def record_leave_zero_star_tape(db_path: str, as_of: str = None) -> int:
+    """黃金買點已對到隔日收的，依寄出時星級分帶落檔。不改桶權重。"""
+    ensure_screen_review_table(db_path)
+    day = str(as_of or "").replace("-", "")
+    conn = sqlite3.connect(db_path)
+    if day:
+        days = [day]
+    else:
+        days = [
+            str(r[0])
+            for r in conn.execute(
+                """
+                SELECT DISTINCT as_of FROM screen_picks
+                WHERE bucket='leave_zero' AND next_pct IS NOT NULL AND entry_stars IS NOT NULL
+                ORDER BY as_of
+                """
+            ).fetchall()
+        ]
+    written = 0
+    for pick_asof in days:
+        rows = conn.execute(
+            """
+            SELECT stock_id, stock_name, entry_stars, next_pct
+            FROM screen_picks
+            WHERE as_of=? AND bucket='leave_zero' AND next_pct IS NOT NULL
+            """,
+            (pick_asof,),
+        ).fetchall()
+        rows = [r for r in rows if _pick_is_equity(str(r[0] or ""), str(r[1] or ""))]
+        bands: Dict[int, List[float]] = {k: [] for k in LEAVE_ZERO_STAR_BANDS}
+        for _sid, _name, stars, pct in rows:
+            band = _star_band(stars)
+            if band is None:
+                continue
+            try:
+                bands[band].append(float(pct))
+            except (TypeError, ValueError):
+                continue
+        if not any(bands[k] for k in LEAVE_ZERO_STAR_BANDS):
+            continue
+        for star in LEAVE_ZERO_STAR_BANDS:
+            pcts = bands[star]
+            n = len(pcts)
+            avg = (sum(pcts) / n) if n else None
+            hits = sum(1 for p in pcts if p > 0)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO leave_zero_star_tape(as_of, stars, n, avg_pct, hits)
+                VALUES (?,?,?,?,?)
+                """,
+                (pick_asof, star, n, avg, hits),
+            )
+            written += 1
+    conn.commit()
+    conn.close()
+    return written
+
+
+def leave_zero_star_stats(
+    db_path: str, limit_days: int = 10
+) -> List[Tuple[int, int, float, int]]:
+    """近幾日黃金買點星級隔日：星帶、檔數、均％、上漲檔。"""
+    ensure_screen_review_table(db_path)
+    conn = sqlite3.connect(db_path)
+    days = [
+        r[0]
+        for r in conn.execute(
+            """
+            SELECT DISTINCT as_of FROM leave_zero_star_tape
+            WHERE n > 0
+            ORDER BY as_of DESC LIMIT ?
+            """,
+            (limit_days,),
+        ).fetchall()
+    ]
+    out: List[Tuple[int, int, float, int]] = []
+    for star in LEAVE_ZERO_STAR_BANDS:
+        if not days:
+            out.append((star, 0, 0.0, 0))
+            continue
+        qmarks = ",".join("?" * len(days))
+        row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(n),0), COALESCE(SUM(avg_pct * n),0), COALESCE(SUM(hits),0)
+            FROM leave_zero_star_tape
+            WHERE stars=? AND as_of IN ({qmarks})
+            """,
+            (star, *days),
+        ).fetchone()
+        n = int(row[0] or 0) if row else 0
+        if not n:
+            out.append((star, 0, 0.0, 0))
+            continue
+        avg = float(row[1] or 0) / n
+        hits = int(row[2] or 0)
+        out.append((star, n, avg, hits))
+    conn.close()
+    return out
+
+
+def format_leave_zero_star_html(db_path: str) -> str:
+    """本機／測試看星級隔日。不准接到海選復盤頁或話筒。"""
+    stats = leave_zero_star_stats(db_path)
+    if not any(n > 0 for _s, n, _a, _h in stats):
+        return (
+            "<b>黃金買點星級隔日</b>\n"
+            "還沒有「寄出時帶星級、且隔一日已收」的名單。"
+        )
+    lines = [
+        "<b>黃金買點星級隔日</b>",
+        "用庫內日 K。只對質，不改評選、不改海選權重。",
+    ]
+    for star, n, avg, hits in stats:
+        if n <= 0:
+            continue
+        hit_rate = hits / n if n else 0.0
+        label = LEAVE_ZERO_STAR_LABELS.get(star, f"{star}星")
+        lines.append(fmt_review_stat_line(label, n, avg, hit_rate))
+    return "\n".join(lines)
 
 
 def _bucket_stats(db_path: str, limit_days: int = 10) -> List[Tuple[str, int, float, float]]:
