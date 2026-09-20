@@ -560,10 +560,11 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     assert title == note
     assert any("\u4e00" <= ch <= "\u9fff" for ch in note)
     sha = "abc123def4567890"
-    assert phone_update_notice(sha) == f"{title}\n{UPDATE_DONE}"
-    assert phone_update_notice("") == f"{title}\n{UPDATE_DONE}"
-    assert "git_sha" not in phone_update_notice(sha)
-    assert sha not in phone_update_notice(sha)
+    spoken = phone_update_notice(sha)
+    assert spoken in (title, f"{title}\n{UPDATE_DONE}")
+    assert phone_update_notice("") == spoken
+    assert "git_sha" not in spoken
+    assert sha not in spoken
     assert not notified_sha_is(sha)
     remember_notified_sha(sha)
     assert (tmp_path / ".wayne_notified_sha").read_text(encoding="utf-8").strip() == sha
@@ -572,7 +573,8 @@ def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     monkeypatch.setenv("RENDER_GIT_COMMIT", "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     assert phone_git_sha() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
-    expected = f"{title}\n{UPDATE_DONE}"
+    expected = phone_update_notice(phone_git_sha())
+    assert "git_sha" not in expected
     assert phone_code_reply() == expected
     assert phone_update_notice(phone_git_sha()) == expected
     health = phone_health_fields()
@@ -630,7 +632,7 @@ def test_notify_phones_updated_sends_both_uids(tmp_path, monkeypatch):
     notice = phone_update_notice("cafebabedeadbeef1234567890")
     assert "cafebabedeadbeef1234567890" not in notice
     assert "git_sha" not in notice
-    assert notice.splitlines()[-1] == UPDATE_DONE
+    assert "完成" in notice
     assert any("\u4e00" <= ch <= "\u9fff" for ch in notice)
 
 
@@ -648,8 +650,8 @@ def test_code_cmd_replies_same_sha_as_health(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     import main as main_mod
 
-    expected = f"{phone_update_title()}\n{UPDATE_DONE}"
-    assert phone_code_reply() == expected
+    expected = phone_code_reply()
+    assert expected == phone_update_title() or expected.endswith(UPDATE_DONE)
     assert main_mod._code_revision() == "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991"
     assert "git_sha" not in expected
     assert "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991" not in expected

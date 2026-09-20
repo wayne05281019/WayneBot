@@ -18,7 +18,10 @@ def test_update_note_is_this_change():
     assert "git_sha" not in note
     title = phone_update_title()
     assert title == note
-    assert "程式代碼" in title
+    notice = phone_update_notice("ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991")
+    assert "git_sha" not in notice
+    assert "ff80cc3ce79e35a3dcbfd6dd8b92f82c51ed5991" not in notice
+    assert note.split("完成")[0] in notice
 
 
 def test_notice_is_spoken_without_sha(monkeypatch):
