@@ -28,7 +28,7 @@ _CARD_BUILD_TIMEOUT = float(os.getenv("WAYNE_CARD_BUILD_TIMEOUT", "90"))
 _CHART_RENDER_TIMEOUT = float(os.getenv("WAYNE_CHART_RENDER_TIMEOUT", "120"))
 # 介紹圖／決策卡／產業圖與導航圖同一逾時。醒機時 matplotlib 冷啟，60s 會只送到介紹圖。
 _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_RENDER_TIMEOUT)))
-# Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。拉滿維持高畫質，不准先縮小。
+# Telegram 相簿點開上限：寬+高 ≤10000、檔 ≤10MB、長寬比 ≤20。源圖原尺寸送，超過才縮小。
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
@@ -2586,26 +2586,9 @@ class WayneTelegramBot:
 
     @staticmethod
     def _fit_lookup_photo_wh(w: int, h: int) -> tuple:
-        """Telegram 點開上限：寬+高=10000、長寬比≤20。拉滿維持高畫質，不准先縮小。"""
+        """源圖像素夠就原尺寸送。只在超過 Telegram 寬+高 10000 或長寬比 20 時縮小。不准硬拉大。"""
         w = max(1, int(w))
         h = max(1, int(h))
-        total = w + h
-        if total != _LOOKUP_TG_MAX_WH:
-            scale = _LOOKUP_TG_MAX_WH / float(total)
-            w = max(1, int(round(w * scale)))
-            h = max(1, int(round(h * scale)))
-        while w + h > _LOOKUP_TG_MAX_WH:
-            if w >= h and w > 1:
-                w -= 1
-            elif h > 1:
-                h -= 1
-            else:
-                break
-        while w + h < _LOOKUP_TG_MAX_WH:
-            if w >= h:
-                w += 1
-            else:
-                h += 1
         long_s, short_s = (w, h) if w >= h else (h, w)
         if short_s > 0 and long_s / float(short_s) > _LOOKUP_TG_MAX_RATIO:
             long_s = max(1, int(_LOOKUP_TG_MAX_RATIO * short_s))
@@ -2613,6 +2596,11 @@ class WayneTelegramBot:
                 w = long_s
             else:
                 h = long_s
+        total = w + h
+        if total > _LOOKUP_TG_MAX_WH:
+            scale = _LOOKUP_TG_MAX_WH / float(total)
+            w = max(1, int(w * scale))
+            h = max(1, int(h * scale))
             while w + h > _LOOKUP_TG_MAX_WH:
                 if w >= h and w > 1:
                     w -= 1
@@ -2624,7 +2612,7 @@ class WayneTelegramBot:
 
     @staticmethod
     def _prepare_lookup_album_photo(path: str) -> str:
-        """點開用 JPEG，拉到 Telegram 允許的最高像素。optimize 關閉只為加快存檔，畫質仍 q95。"""
+        """點開用 JPEG q95。源圖像素原樣送，超過上限才縮小。optimize 關閉只為加快存檔。"""
         from PIL import Image
 
         if not path or not os.path.isfile(path):
@@ -5362,7 +5350,18 @@ class WayneTelegramBot:
             except Exception:
                 return None
 
-        news_stats, live_rt = await asyncio.gather(_fetch_news(), _fetch_mis())
+        news_task = asyncio.create_task(_fetch_news())
+        live_rt = await _fetch_mis()
+
+        def _news_ready():
+            if not news_task.done():
+                return None
+            try:
+                return news_task.result()
+            except Exception:
+                return None
+
+        news_stats = _news_ready()
         hub = self._hub_keyboard(code, em=is_em, news=news_stats)
 
         async def send_photo(path, caption, markup=None, *, kind: str = ""):
@@ -5514,13 +5513,15 @@ class WayneTelegramBot:
                 except Exception:
                     return {}
 
+            tape_task = asyncio.create_task(asyncio.to_thread(_build_tape))
             t0 = time.monotonic()
-            (card, ohlc), tape = await asyncio.gather(
-                asyncio.wait_for(asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT),
-                asyncio.to_thread(_build_tape),
+            card, ohlc = await asyncio.wait_for(
+                asyncio.to_thread(_build_card), timeout=_CARD_BUILD_TIMEOUT
             )
-            logger.info("看這檔 card+tape %.1fs code=%s", time.monotonic() - t0, code)
+            logger.info("看這檔 card %.1fs code=%s", time.monotonic() - t0, code)
+            tape = {}
             if card.get("error"):
+                tape_task.cancel()
                 await _reply_visible(
                     f"⚠️ {html_escape(card.get('error'))}",
                     html=True,
@@ -5626,6 +5627,10 @@ class WayneTelegramBot:
             if card_path:
                 ready_by["card"] = card_path
                 _mark("card")
+                ns = _news_ready()
+                if ns is not None:
+                    news_stats = ns
+                    hub = self._hub_keyboard(code, em=is_em, news=news_stats)
 
                 async def _send_card_hold() -> bool:
                     nonlocal sent_any, hub_on, lookup_faded
@@ -5639,6 +5644,13 @@ class WayneTelegramBot:
                     return ok
 
                 card_send_task = asyncio.create_task(_send_card_hold())
+
+            try:
+                tape = await tape_task
+            except Exception:
+                tape = {}
+            if not isinstance(tape, dict):
+                tape = {}
 
             for kind, fn, timeout_s, _cap, _mk in render_plan:
                 if kind in ("card", "industry"):

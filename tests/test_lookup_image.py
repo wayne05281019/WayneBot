@@ -120,33 +120,49 @@ class LookupImageTests(unittest.TestCase):
         self.assertIn("write_timeout", src)
         self.assertIn("BytesIO", src)
 
-    def test_prepare_lookup_album_photo_fills_telegram_max(self):
+    def test_prepare_lookup_album_photo_keeps_native_pixels(self):
         from PIL import Image
 
         from bot_servers import _LOOKUP_TG_MAX_BYTES, _LOOKUP_TG_MAX_WH
 
         with tempfile.TemporaryDirectory() as td:
-            narrow = os.path.join(td, "n.png")
-            Image.new("RGB", (1080, 1400), (12, 18, 28)).save(narrow, "PNG")
-            out = WayneTelegramBot._prepare_lookup_album_photo(narrow)
+            native = os.path.join(td, "n.png")
+            Image.new("RGB", (1080, 1400), (12, 18, 28)).save(native, "PNG")
+            out = WayneTelegramBot._prepare_lookup_album_photo(native)
             with Image.open(out) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
-                self.assertGreaterEqual(im.size[0], 4000)
+                self.assertEqual(im.size, (1080, 1400))
                 self.assertEqual(im.format, "JPEG")
             self.assertLessEqual(os.path.getsize(out), _LOOKUP_TG_MAX_BYTES)
             wide = os.path.join(td, "w.png")
             Image.new("RGB", (2272, 2800), (12, 18, 28)).save(wide, "PNG")
             out2 = WayneTelegramBot._prepare_lookup_album_photo(wide)
             with Image.open(out2) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertEqual(im.size, (2272, 2800))
                 self.assertEqual(im.format, "JPEG")
-            already = os.path.join(td, "max.png")
-            Image.new("RGB", (4000, 6000), (12, 18, 28)).save(already, "PNG")
-            out3 = WayneTelegramBot._prepare_lookup_album_photo(already)
+            over = os.path.join(td, "over.png")
+            Image.new("RGB", (5000, 6000), (12, 18, 28)).save(over, "PNG")
+            out3 = WayneTelegramBot._prepare_lookup_album_photo(over)
             with Image.open(out3) as im:
-                self.assertEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertLessEqual(sum(im.size), _LOOKUP_TG_MAX_WH)
+                self.assertEqual(im.format, "JPEG")
             nw, nh = WayneTelegramBot._fit_lookup_photo_wh(1080, 1400)
-            self.assertEqual(nw + nh, _LOOKUP_TG_MAX_WH)
+            self.assertEqual((nw, nh), (1080, 1400))
+            ow, oh = WayneTelegramBot._fit_lookup_photo_wh(5000, 6000)
+            self.assertLessEqual(ow + oh, _LOOKUP_TG_MAX_WH)
+            self.assertLess(ow, 5000)
+
+    def test_card_first_does_not_wait_tape_or_upscale(self):
+        src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
+        self.assertNotIn("card+tape", src)
+        self.assertIn("tape_task", src)
+        self.assertLess(src.find("tape_task"), src.find("to_thread(_build_card)"))
+        send_i = src.find("card_send_task")
+        tape_await = src.find("await tape_task")
+        self.assertGreater(send_i, 0)
+        self.assertGreater(tape_await, send_i)
+        fit = inspect.getsource(WayneTelegramBot._fit_lookup_photo_wh)
+        self.assertIn("不准硬拉大", fit)
+        self.assertNotIn("拉滿維持高畫質", fit)
 
     def test_lookup_retries_truncated_png_for_all_kinds(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
