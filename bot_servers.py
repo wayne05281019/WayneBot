@@ -393,7 +393,7 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v23：拿掉說明，整排往前；第一排最右大盤，第二排最右空白。說明／圖文／/help 取消。
 # v24：取消精簡鍵盤；偉權與哥哥都固定完整兩排。
 # v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
-# v26：下排最右空白格改「洞燭先機」（族群＋黃金買點交集；沒買點不准發明）。
+# v26：下排最右空白格改「洞燭先機」（這型次級落後檔；剛好剛離零才標買點）。
 # v27：進洞燭後同一顆改「離開洞燭先機」，用完回兩排主選單（對齊離開飆大）。
 MENU_LAYOUT_VERSION = "27"
 MAX_PICK_INLINE_ROWS = 8
@@ -3252,7 +3252,8 @@ class WayneTelegramBot:
                     if x.get("sid")
                 }
                 for item in (
-                    list(data.get("buys") or [])
+                    list(data.get("recs") or [])
+                    + list(data.get("buys") or [])
                     + list(data.get("watches") or [])
                     + list(data.get("laggards") or [])
                 ):
@@ -3260,7 +3261,7 @@ class WayneTelegramBot:
                     if not sid or sid in seen:
                         continue
                     seen.add(sid)
-                    # 只有黃金買點標這型勝率；觀察／落後不加，不准發明。
+                    # 這型勝率只標在剛好也是黃金買點的檔；先機落後不加，不准發明買訊。
                     win = PRE_BUY_WIN_BTN if sid in buy_sids else ""
                     picks.append((sid, item.get("name") or "", win))
             except Exception:

@@ -4,7 +4,7 @@
 資金流騙不了人：單位＝CMoney 產業鏈佔當日法人買超％、％怎麼變。流入＝佔比升，流出＝佔比降。
 佔比如實主判，飆大找法只參考、不是唯一。張數會被當下熱門族蓋過，不拿來排名。對五件只落在族群：底部這層（不數浪）、形態還沒過前高、
 量價落後檔量起來、關鍵K＝官方收、碎形＝第一名還沒先過。個股不數 5／9。盤中未收不當官方收。
-不是買訊、不進海選。切入只認高低卡黃金買點。
+不是買訊、不進海選。這顆推出這型最落後次級兩到三檔；真正下單進場仍只認高低卡黃金買點。
 """
 from __future__ import annotations
 
@@ -265,7 +265,7 @@ _PAGE_RULES = (
     "微弱可察也算進駐。",
     "每檔先寫買或不買。",
     "已持有寫留或不加碼。",
-    "龍頭來不及買。比價下次級黃金買點。",
+    "龍頭來不及買。比價下次級落後檔。",
     "股民追漲不追跌。先機不追當天第一名。",
     "點火後抓同鏈比價落後。",
     "捕捉只收近季有賺的。",
@@ -273,15 +273,15 @@ _PAGE_RULES = (
     "連動名單只認對得上籌碼K的龍頭／落後。",
     "自選歸類只參考，不准整份覆蓋。",
     "聯想名單不當流入主判。",
-    "捕捉＝最落後次級兩到三檔。",
-    "買只認黃金買點。",
+    "推薦＝最落後次級兩到三檔，不是單檔買訊。",
+    "剛好剛離零才標黃金買點。",
     "盤中未收不當官方收。",
 )
 _PAGE_NOTES = (
     "不是整層電子。",
     "先機＝佔比升還沒第一",
     "次級距20高≤−8%",
-    "這型勝率 70.8%",
+    "這型次級2～3檔約八成有人漲",
     "追第一名約五成六",
     "追當天第一名容易人去樓空。",
     "抓資金脈絡，不是猜新聞。",
@@ -292,11 +292,11 @@ _PAGE_NOTES = (
 _RULE_LINES = (
     "佔比如實主判。飆大找法只參考、不是唯一。",
     "資金輪動要比到主產業／次產業／產業鏈，再分龍頭與次級。",
-    "龍頭來不及買，比價下次級有黃金買點才切入。",
+    "龍頭來不及買，比價下次級落後檔。",
     "捕捉名單＝最落後次級兩到三檔，不是單檔買訊。",
     "盤中未收不當官方收。不是買訊、不進海選。",
-    "切入只認高低卡黃金買點。",
-    "按這顆會推出勝率最高這型的黃金買點給你選。",
+    "這顆推出這型最落後次級兩到三檔給你選。",
+    "剛好剛離零才標黃金買點。下單進場仍認剛離零。",
     "打股名沒打準會列出相近的請你點。",
 )
 # 五天太薄。兩個月仍薄。官方資金窗＝近 100 個有法人日，每天只記流入／流出第一名。
@@ -333,7 +333,7 @@ ROTATION_NOTES = (
     "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後細項次級有人後10日漲停或≥8%約八成；電子細項這型約八成三；含停車格約七成；追第一名約五成五）。這是細項、不是單檔保證。航運／塑化／建築當先機沒贏過電子細項。軍工沒有 CMoney 細項、不發明一族。",
     "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。",
     "確定細項後看最落後次級兩到三檔（2檔約七成、3檔約八成有人漲）；1檔不到五成，不准當買訊。虧損／沒季報不能比價／EPS，不上捕捉。",
-    "新買只認高低卡黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
+    "洞燭推薦＝這型次級落後檔，不是單檔保證。剛好剛離零才標黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
 )
 
 
@@ -2059,7 +2059,7 @@ def _decorate(
 
 
 def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bool = True) -> Dict[str, Any]:
-    """洞燭先機鈕：佔比如實主判，飆大找法只參考、不是唯一。切入＝這族 ∩ 黃金買點。"""
+    """洞燭先機鈕：佔比如實主判，飆大找法只參考、不是唯一。推薦＝這型最落後次級兩到三檔；剛好剛離零才標黃金買點。"""
     if spoken is None:
         spoken = latest_spoken(db_path) if db_path else ""
     spoken = str(spoken or "")
@@ -2411,6 +2411,14 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
         pick["laggard"] = capture[0]
         pick["laggards_note"] = capture[0]
         pick["five"] = _five_line(pick, pick.get("flow") or {}, named_hot)
+    recs: List[Dict[str, Any]] = []
+    if (
+        str(pick.get("pre_sign") or "") == "pre"
+        and not pick.get("leaving")
+        and not pick.get("pre_late")
+    ):
+        recs = list(capture)
+    pick["recs"] = recs
     pick["alts"] = alts
     pick["alt_laggards"] = alt_lags
     return {
@@ -2420,6 +2428,7 @@ def dongzhu_picks(db_path: str, *, spoken: Optional[str] = None, record_flow: bo
         "watches": watches[:5],
         "laggards": pick.get("laggards") or [],
         "laggards_note": pick.get("laggards_note") or laggard,
+        "recs": recs,
         "alts": alts,
         "alt_laggards": alt_lags,
     }
@@ -2458,6 +2467,8 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
         return lines
     if is_buy:
         return ["可買", "點左邊選"]
+    if str(tag or "").startswith("先機"):
+        return ["可看", "點左邊選", "不是買訊"]
     return ["不買", "只觀察"]
 
 
@@ -2535,16 +2546,24 @@ def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
                 )
             )
         buys = list(data.get("buys") or [])
-        if buys and sign == "pre":
+        recs = list(data.get("recs") or [])
+        if recs and sign == "pre":
             bits = [
+                f"{x.get('sid')} {x.get('name')}".strip()
+                for x in recs[:3]
+                if x.get("sid")
+            ]
+            if bits:
+                lines.append(_esc("這型次級落後：" + "、".join(bits) + "。按洞燭先機可選。"))
+            buy_bits = [
                 f"{x.get('sid')} {x.get('name')}".strip()
                 for x in buys[:3]
                 if x.get("sid")
             ]
-            if bits:
-                lines.append(_esc("這族黃金買點：" + "、".join(bits) + "。按洞燭先機可選。"))
+            if buy_bits:
+                lines.append(_esc("其中黃金買點：" + "、".join(buy_bits) + "。"))
         else:
-            lines.append(_esc("這族此刻沒有黃金買點；海選買點仍只認剛離零，不准發明。"))
+            lines.append(_esc("這型此刻沒有可捕捉的次級；下單進場仍只認剛離零。"))
     return "\n".join(lines)
 
 
@@ -2888,15 +2907,45 @@ def dongzhu_page(
         )
     rec_rows = ["<b>此刻推薦</b>"]
     buys = list(data.get("buys") or [])
-    if buys:
+    recs = list(data.get("recs") or [])
+    buy_sids = {str(x.get("sid") or "") for x in buys if x.get("sid")}
+    rec_sids = {str(x.get("sid") or "") for x in recs if x.get("sid")}
+    if recs:
+        rec_rows.append(_esc("這型最落後次級兩到三檔"))
+        rec_rows.append(_esc("不是單檔保證"))
         rec_rows.append(_esc("點左邊選"))
+        rec_rows.append(_esc("剛好剛離零才標買點"))
+        rec_bits: List[str] = []
+        for i, item in enumerate(recs, start=1):
+            tag = "買點" if str(item.get("sid") or "") in buy_sids else "先機"
+            rec_bits.append(
+                _stock_line(
+                    item,
+                    i,
+                    tag,
+                    compact=True,
+                    held=str(item.get("sid") or "") in set(held_sids),
+                )
+            )
+        rec_rows.append("\n\n".join(rec_bits))
+        extra_buys = [x for x in buys if str(x.get("sid") or "") not in rec_sids]
+        if extra_buys:
+            rec_rows.append(_esc("這族黃金買點（剛離零，另表）"))
+            rec_rows.append(
+                _stock_blocks(extra_buys, "買點", compact=True, held_sids=held_sids)
+            )
+    elif buys:
+        rec_rows.append(_esc("這型此刻沒有可捕捉的次級"))
+        rec_rows.append(_esc("這族黃金買點（剛離零，另表）"))
+        rec_rows.append(_esc("下單進場仍只認剛離零"))
         rec_rows.append(_stock_blocks(buys, "買點", compact=True, held_sids=held_sids))
     else:
-        rec_rows.append(_esc("這型此刻沒有黃金買點"))
-        rec_rows.append(_esc("不准發明切入"))
-        rec_rows.append(_esc("可打股名看能不能留"))
+        rec_rows.append(_esc("這型此刻沒有可捕捉的次級"))
+        rec_rows.append(_esc("近季要有賺才上捕捉"))
+        rec_rows.append(_esc("下單進場仍只認剛離零"))
     blocks.append(_blk(*rec_rows))
     watches = list(data.get("watches") or [])
+    watches = [x for x in watches if str(x.get("sid") or "") not in rec_sids]
     if watches:
         blocks.append(
             _blk(
@@ -2905,7 +2954,9 @@ def dongzhu_page(
                 _stock_blocks(watches, "觀察", compact=True, held_sids=held_sids),
             )
         )
-    shown = {str(x.get("sid") or "") for x in buys + watches}
+    shown = rec_sids | {
+        str(x.get("sid") or "") for x in buys + watches if x.get("sid")
+    }
     lags = [
         x
         for x in list(data.get("laggards") or [])
