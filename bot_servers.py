@@ -2597,19 +2597,29 @@ class WayneTelegramBot:
 
     @staticmethod
     def _png_looks_ok(path: str, *, min_bytes: int = 24_000, min_w: int = 400, min_h: int = 500) -> bool:
+        """PNG 或 JPEG 都算有效圖。查股相簿格是 .album.jpg，只認 PNG 魔術字會整組改送文字。"""
         if not path or not os.path.exists(path):
             return False
         try:
             if os.path.getsize(path) < min_bytes:
                 return False
             with open(path, "rb") as f:
-                if f.read(8) != b"\x89PNG\r\n\x1a\n":
-                    return False
-                f.read(4)
-                if f.read(4) != b"IHDR":
-                    return False
-                w, h = struct.unpack(">II", f.read(8))
+                head = f.read(8)
+            if head == b"\x89PNG\r\n\x1a\n":
+                with open(path, "rb") as f:
+                    f.read(8)
+                    f.read(4)
+                    if f.read(4) != b"IHDR":
+                        return False
+                    w, h = struct.unpack(">II", f.read(8))
                 return w >= min_w and h >= min_h
+            if head[:3] == b"\xff\xd8\xff":
+                from PIL import Image
+
+                with Image.open(path) as im:
+                    w, h = im.size
+                return w >= min_w and h >= min_h
+            return False
         except Exception:
             return False
 
@@ -5438,9 +5448,12 @@ class WayneTelegramBot:
                     os.path.getsize(path) if path and os.path.exists(path) else 0,
                 )
                 return False
+            send_path = path
+            if not str(path).lower().endswith((".jpg", ".jpeg")):
+                send_path = self._prepare_lookup_album_photo(path)
             for attempt in range(3):
                 try:
-                    with open(self._prepare_lookup_album_photo(path), "rb") as f:
+                    with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
                         )
@@ -5762,13 +5775,11 @@ class WayneTelegramBot:
 
     async def _send_lookup_album(self, message, items: list) -> bool:
         """介紹圖＋高低溫度卡一次送成相簿，兩張同格所以左右並排。點開高畫質 JPEG。"""
-        from io import BytesIO
-
-        from telegram import InputFile, InputMediaPhoto
-
         if len(items) < 2:
             return False
         try:
+            from telegram import InputFile, InputMediaPhoto
+
             ok_items = []
             for kind, path, caption, _markup in items:
                 if not path or not os.path.isfile(path):
@@ -5778,37 +5789,65 @@ class WayneTelegramBot:
                 return False
 
             async def _cell(path: str) -> str:
-                if str(path).endswith(".album.jpg"):
+                low = str(path).lower()
+                if low.endswith(".album.jpg") or low.endswith(".jpg") or low.endswith(".jpeg"):
                     return path
                 return await asyncio.to_thread(self._prepare_album_cell, path)
 
-            send_paths = await asyncio.gather(*[_cell(path) for _kind, path, _cap in ok_items])
+            send_paths = [
+                p
+                for p in await asyncio.gather(*[_cell(path) for _kind, path, _cap in ok_items])
+                if p and os.path.isfile(p)
+            ]
+            if len(send_paths) < 2:
+                return False
             name_cap = ""
             for _kind, _path, cap in ok_items:
                 if str(cap or "").strip():
                     name_cap = str(cap).strip()
                     break
-            media = []
-            for send_path in send_paths:
-                with open(send_path, "rb") as fh:
-                    blob = fh.read()
-                bio = BytesIO(blob)
-                fname = os.path.basename(send_path)
-                if not fname.lower().endswith((".jpg", ".jpeg")):
-                    fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
-                file_obj = InputFile(bio, filename=fname)
-                if not media and name_cap:
-                    media.append(InputMediaPhoto(media=file_obj, caption=name_cap[:1024]))
-                else:
-                    media.append(InputMediaPhoto(media=file_obj))
-            await message.reply_media_group(
-                media=media,
-                read_timeout=45,
-                write_timeout=60,
-                connect_timeout=20,
-            )
-            logger.info("送相簿成功 n=%s", len(media))
-            return True
+
+            async def _post(caption: str) -> None:
+                handles = []
+                try:
+                    media = []
+                    for i, send_path in enumerate(send_paths):
+                        fh = open(send_path, "rb")
+                        handles.append(fh)
+                        fname = os.path.basename(send_path)
+                        if not fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                            fname = (os.path.splitext(fname)[0] or "photo") + ".jpg"
+                        file_obj = InputFile(fh, filename=fname)
+                        if i == 0 and caption:
+                            media.append(
+                                InputMediaPhoto(media=file_obj, caption=caption[:1024])
+                            )
+                        else:
+                            media.append(InputMediaPhoto(media=file_obj))
+                    await message.reply_media_group(
+                        media=media,
+                        read_timeout=45,
+                        write_timeout=60,
+                        connect_timeout=20,
+                    )
+                finally:
+                    for fh in handles:
+                        try:
+                            fh.close()
+                        except Exception:
+                            pass
+
+            try:
+                await _post(name_cap)
+                logger.info("送相簿成功 n=%s", len(send_paths))
+                return True
+            except Exception:
+                logger.exception("送相簿失敗，改無說明再試")
+            if name_cap:
+                await _post("")
+                logger.info("送相簿成功(無說明) n=%s", len(send_paths))
+                return True
+            return False
         except Exception:
             logger.exception("送相簿失敗，改逐張")
             return False
