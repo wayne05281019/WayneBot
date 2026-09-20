@@ -1745,7 +1745,7 @@ def _carry_parent_names(
 
 
 def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> None:
-    """抓到就存官方 tape、緊急推播、輔助匣。神經元等台北 02:00／開市日 13:00。"""
+    """抓到就存官方 tape、六顆神經元、緊急推播、輔助匣。彙整窗還會再跑 why／觀察。"""
     try:
         from biaoke_desk import load_corpus_cache_clear
 
@@ -1759,6 +1759,18 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
         record_events(db_path, packed)
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
+    try:
+        from biaoke_neurons import record_neuron_events
+
+        record_neuron_events(db_path, packed)
+    except Exception:
+        logger.exception("飆大神經元即時分類失敗")
+    try:
+        from biaoke_why import ingest_why_events
+
+        ingest_why_events(packed, db_path)
+    except Exception:
+        logger.exception("飆大判斷鏈即時寫入失敗")
     try:
         from biaoke_absorb import queue_absorb_events
 

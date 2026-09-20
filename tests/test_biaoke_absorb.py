@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""抓文先入匣；台北 02:00／開市日 13:00 才進神經元。輔助底料當下存好。"""
+"""抓文立刻寫六顆；why／觀察／演算仍台北 02:00／開市日 13:00。輔助底料當下存好。"""
 import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -68,12 +68,10 @@ def test_queue_saves_aux_before_neurons(tmp_path):
         ],
     )
     conn = sqlite3.connect(db)
-    hits = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='biaoke_neuron_hits'").fetchone()
-    if hits and hits[0]:
-        n = conn.execute("SELECT COUNT(*) FROM biaoke_neuron_hits").fetchone()[0]
-        assert n == 0
+    n = conn.execute("SELECT COUNT(*) FROM biaoke_neuron_hits WHERE stock_id='3105'").fetchone()[0]
     tape = conn.execute("SELECT COUNT(*) FROM biaoke_tape WHERE stock_id='3105'").fetchone()[0]
     conn.close()
+    assert n >= 1
     assert tape >= 1
     pending = pending_events(db)
     assert pending and pending[0]["id"] == "p1"

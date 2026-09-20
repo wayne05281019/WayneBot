@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""新文／自回先入匣，台北 02:00／開市日 13:00 才分進六顆神經元。開火只讀最近一句。
+"""新文／自回捕獲後立刻寫進六顆。開火只讀最近一句。彙整窗再補 why／觀察／演算。
 
 不是 CNN。不准等 Cursor 改 SYSTEM。路人引號不收。IET＝IET-KY 4971。
+編號項一則一檔判斷：出清不准跳到下一則台光電。
 """
 from __future__ import annotations
 
@@ -46,20 +47,22 @@ _PAT: Dict[str, re.Pattern[str]] = {
         r"裸K|先看量|籌碼交換|假跌破|止漲整理|跌破平台|轉折K|"
         r"碎形|關鍵K|爆大量|回測頸線|頸線|強勢整理|超強整理|拉回淺|"
         r"整理完成|回測洗盤|只能上不能下|模糊地帶|三日低點|跌到|"
-        r"調整持股|主力|非常嚴重)"
+        r"調整持股|主力|非常嚴重|轉弱K|收紅K|長上影|常上影|吞噬|"
+        r"多頭結構|底部確認|不破)"
     ),
     "hold": re.compile(
         r"(長抱|調節|抽出|出清|勿輕易|可抱到|先賣|不用管|沒破線|續抱|止漲整理|"
-        r"只能上不能下|減碼|抽回|不能買)"
+        r"只能上不能下|減碼|抽回|不能買|布局|先走)"
     ),
     "doubt": re.compile(
         r"(不是已確認|言之過早|無法判斷|模糊|證據不足|不能保證|"
         r"點到為止|還沒改口|無法保證|風險也很大|過幾天|不敢保證|"
-        r"非常不正常)"
+        r"非常不正常|勉強維持|有相當難度)"
     ),
 }
 _SPACE = re.compile(r"\s+")
 _PUNCT = re.compile(r"[。；！？\n，、]")
+_ITEM_MARK = re.compile(r"(?:^|\n)\s*\d+[.\、．]\s*")
 # 沒點檔的 C 波調節／抽出是巢穴，不准當每檔 live hold。
 _INDEX_HOLD = re.compile(r"(C-[1235]|逃命波|43500|46767|45398|大盤|加權|夜盤|位階)")
 # 量價／進出／看錯跟最近那檔走；產業／龍頭一句可點多檔。
@@ -120,17 +123,49 @@ def _names_for_sid(sid: str, shown: str) -> List[str]:
     return names
 
 
-def _nearest_sid(
-    blob: str, pos: int, stocks: Sequence[Tuple[str, str]]
+def _clause_span(blob: str, pos: int) -> Tuple[int, int, bool]:
+    """編號項先鎖死；否則用句號／換行。回 (lo, hi, numbered)。"""
+    starts = [m.start() for m in _ITEM_MARK.finditer(blob or "")]
+    if starts:
+        left = starts[0]
+        right = len(blob)
+        hit = False
+        for i, s in enumerate(starts):
+            if s <= pos:
+                left = s
+                right = starts[i + 1] if i + 1 < len(starts) else len(blob)
+                hit = True
+            else:
+                break
+        if hit:
+            return left, right, True
+    left = 0
+    for sep in ("。", "！", "？", "\n"):
+        k = blob.rfind(sep, 0, pos)
+        if k >= left:
+            left = k + 1
+    right = len(blob)
+    for sep in ("。", "！", "？", "\n"):
+        k = blob.find(sep, pos)
+        if 0 <= k < right:
+            right = k + 1
+    return left, right, False
+
+
+def _nearest_in(
+    blob: str,
+    pos: int,
+    stocks: Sequence[Tuple[str, str]],
+    lo: int,
+    hi: int,
 ) -> str:
-    """針落到哪、就只進那檔。鑑測轉折K 不准把調節奇鋐寫進健策 hold。"""
     best_sid = ""
     best_d = 10**9
     for sid, shown in stocks:
         for nm in _names_for_sid(sid, shown):
-            start = 0
+            start = lo
             while True:
-                k = blob.find(nm, start)
+                k = blob.find(nm, start, hi)
                 if k < 0:
                     break
                 d = abs(k - pos)
@@ -139,6 +174,44 @@ def _nearest_sid(
                     best_sid = sid
                 start = k + max(1, len(nm))
     return best_sid
+
+
+def _sids_in_span(
+    blob: str, lo: int, hi: int, stocks: Sequence[Tuple[str, str]]
+) -> List[str]:
+    found: List[str] = []
+    seen = set()
+    for sid, shown in stocks:
+        for nm in _names_for_sid(sid, shown):
+            if blob.find(nm, lo, hi) >= 0 and sid not in seen:
+                seen.add(sid)
+                found.append(sid)
+                break
+    return found
+
+
+def _nearest_sid(
+    blob: str, pos: int, stocks: Sequence[Tuple[str, str]]
+) -> str:
+    """針落到哪、就只進那檔。鑑測轉折K 不准把調節奇鋐寫進健策 hold。"""
+    lo, hi, _numbered = _clause_span(blob, pos)
+    sid = _nearest_in(blob, pos, stocks, lo, hi)
+    if sid:
+        return sid
+    return _nearest_in(blob, pos, stocks, 0, len(blob))
+
+
+def _target_sids(
+    blob: str, pos: int, stocks: Sequence[Tuple[str, str]]
+) -> List[str]:
+    """編號項：項內點到的檔共用這句；其餘仍只跟最近那檔。"""
+    lo, hi, numbered = _clause_span(blob, pos)
+    if numbered:
+        named = _sids_in_span(blob, lo, hi, stocks)
+        if named:
+            return named
+    sid = _nearest_sid(blob, pos, stocks)
+    return [sid] if sid else []
 
 
 def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dict[str, str]]:
@@ -196,7 +269,7 @@ def classify_spoken(text: str, tags: Optional[Sequence[Any]] = None) -> List[Dic
             if multi and name and nid in _NEAR_NIDS:
                 keep = False
                 for m2 in _PAT[nid].finditer(spoken):
-                    if _nearest_sid(spoken, m2.start(), stocks) == sid:
+                    if sid in _target_sids(spoken, m2.start(), stocks):
                         keep = True
                         use_needle = m2.group(0) or needle
                         break
