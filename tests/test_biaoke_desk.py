@@ -265,6 +265,8 @@ def test_biaoke_page_has_no_inside_menu():
     assert "怎麼觀察" not in src
     assert "問一檔" not in src
     assert "_biaoke_reply_menu" in src
+    assert "_show_biaoke_leave_key" in src
+    assert "還在飆大" in inspect.getsource(WayneTelegramBot._show_biaoke_leave_key)
     assert "reply_markup" in src
     assert "_mark_menu_layout_ok" in src
     assert "_start_plain_wait" in src
@@ -368,6 +370,44 @@ def test_biaoke_keyboard_toggles_same_slot():
     assert len(compact_kb.keyboard) == 2
     assert [b.text for b in compact_kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
     assert [b.text for b in compact_kb.keyboard[0]][-1] == "資金"
+
+
+def test_send_biaoke_page_pushes_leave_key():
+    """按飆大進去：最後一則必須掛「離開飆大」，不能只丟 Inline。"""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from bot_servers import MENU_BTN_LEAVE_BIAOKE
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = ""
+    bot._pending = {}
+    bot._biaoke_hist = {}
+    bot._enter_biaoke_chat = MagicMock()
+    bot._mark_menu_layout_ok = MagicMock()
+    bot._uid_from_message = MagicMock(return_value="11")
+    bot._actor_key = MagicMock(return_value="11:11")
+    bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+    bot._stop_plain_wait = AsyncMock()
+    bot._menu_compact_on = lambda uid="": False
+    msg = MagicMock()
+    msg.reply_html = AsyncMock()
+    msg.reply_text = AsyncMock()
+    html = "<b>飆大現在在講</b> 測試重點。不是買訊。"
+    with patch("biaoke_digest.take_unread_digest", return_value=""), patch(
+        "biaoke_digest.format_latest_focus", return_value=html
+    ):
+        asyncio.run(bot._send_biaoke_page(msg, uid="11"))
+    assert msg.reply_html.await_count >= 1
+    last_html_kb = msg.reply_html.await_args.kwargs.get("reply_markup")
+    assert last_html_kb is not None
+    assert getattr(last_html_kb, "inline_keyboard", None)
+    assert msg.reply_text.await_count >= 1
+    leave = msg.reply_text.await_args
+    assert "離開飆大" in str(leave.args[0])
+    kb = leave.kwargs.get("reply_markup")
+    assert kb is not None
+    assert [b.text for b in kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
 
 
 def test_leave_biaoke_clears_only_that_uid():

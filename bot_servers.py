@@ -806,6 +806,13 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
+    async def _show_biaoke_leave_key(self, message, uid: str) -> None:
+        """內容／大盤鈕用 Inline；離開鈕必須另發 ReplyKeyboard，edit 換不了兩排。"""
+        await message.reply_text(
+            "還在飆大。同一顆「離開飆大」回主選單。",
+            reply_markup=self._biaoke_reply_menu(uid),
+        )
+
     def _dongzhu_reply_menu(self, uid: str = ""):
         """還在洞燭先機：下排最右同一顆改成「離開洞燭先機」。"""
         _ = uid
@@ -3601,6 +3608,7 @@ class WayneTelegramBot:
                         disable_web_page_preview=True,
                         reply_markup=self._biaoke_hits_keyboard(picker),
                     )
+                    await self._show_biaoke_leave_key(message, uid)
                     return
                 chart_task = asyncio.create_task(
                     self._send_biaoke_structure_chart(message, q, uid)
@@ -3661,6 +3669,8 @@ class WayneTelegramBot:
                     await chart_task
                 except Exception:
                     logger.exception("飆大結構圖並行失敗")
+            # 內容／大盤用 Inline；離開鈕用 ReplyKeyboard 另發（Telegram edit 換不了兩排）。
+            await self._show_biaoke_leave_key(message, uid)
         finally:
             await self._stop_plain_wait(*wait_h)
 
