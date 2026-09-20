@@ -117,13 +117,16 @@ def test_chip_tape_reads_emerging_quotes_not_listed_collision(tmp_path):
     assert abs(float(tape["last"]["volume"]) - 30) < 1e-6
 
 
-def test_em_hub_has_kline_no_nav_industry():
+def test_em_hub_has_kline_and_nav_industry():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("3595", em=True)
     labels0 = [b.text for b in kb.inline_keyboard[0]]
     labels1 = [b.text for b in kb.inline_keyboard[1]]
-    assert "導航圖" not in labels0
-    assert "產業" not in labels0
+    assert "導航圖" in labels0
+    nav = next(b for b in kb.inline_keyboard[0] if b.text == "導航圖")
+    assert nav.url is None
+    assert nav.callback_data == "g:3595"
+    assert "產業" in labels0
     assert "K線" in labels0
     assert labels1 == ["觀察", "記買入"]
     texts = labels0 + labels1
@@ -131,12 +134,15 @@ def test_em_hub_has_kline_no_nav_industry():
     assert "營收" not in texts
 
 
-def test_listed_hub_omits_nav_and_industry():
+def test_listed_hub_has_nav_and_industry():
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._hub_keyboard("2330")
     labels = [b.text for r in kb.inline_keyboard for b in r]
-    assert "導航圖" not in labels
-    assert "產業" not in labels
+    assert "導航圖" in labels
+    nav = next(b for r in kb.inline_keyboard for b in r if b.text == "導航圖")
+    assert nav.url is None
+    assert nav.callback_data == "g:2330"
+    assert "產業" in labels
     assert "K線" in labels
     assert "籌碼" in labels
     assert "營收" in labels
@@ -152,11 +158,11 @@ def test_lookup_album_has_no_lecture_caption():
     locked = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "點縮圖可放大" not in locked
     assert "網頁走勢" not in locked
-    assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡", "industry": "產業圖", "chart": "導航圖"}' in locked
-    assert "generate_chart" in locked
+    assert 'kind_labels = {"glance": "介紹圖", "card": "決策卡"}' in locked
+    assert "generate_chart" not in locked
     hub = inspect.getsource(WayneTelegramBot._hub_keyboard)
-    assert 'callback_data=f"g:{c}"' not in hub
-    assert 'callback_data=f"n:{c}"' not in hub
+    assert 'callback_data=f"g:{c}"' in hub
+    assert 'callback_data=f"n:{c}"' in hub
     assert "url=nav_url" not in hub
     assert "span=180" not in hub
 

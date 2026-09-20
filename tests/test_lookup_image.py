@@ -93,17 +93,14 @@ class LookupImageTests(unittest.TestCase):
     def test_send_card_uses_lookup_album(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
         self.assertIn("_send_lookup_album", src)
-        self.assertIn("rest_items", src)
-        self.assertIn("industry_task", src)
-        self.assertIn("card_send_task", src)
-        self.assertIn("高低溫度卡", src)
-        self.assertLess(src.index("card_path"), src.index("rest_items"))
+        self.assertIn("ready_items", src)
         self.assertIn("_glance_photo_caption", src)
         self.assertIn("_decision_card_photo_caption", src)
-        self.assertIn("render_industry_png", src)
-        self.assertIn('"industry"', src)
-        self.assertIn("generate_chart", src)
-        self.assertIn('"chart"', src)
+        self.assertNotIn("industry_task", src)
+        self.assertNotIn("card_send_task", src)
+        self.assertNotIn("render_industry_png", src)
+        self.assertNotIn('"industry"', src)
+        self.assertNotIn("generate_chart", src)
 
     def test_lookup_native_dpi_higher_than_360(self):
         from industry_card import INDUSTRY_PX_SCALE
@@ -151,15 +148,12 @@ class LookupImageTests(unittest.TestCase):
             self.assertLessEqual(ow + oh, _LOOKUP_TG_MAX_WH)
             self.assertLess(ow, 5000)
 
-    def test_card_first_does_not_wait_tape_or_upscale(self):
+    def test_two_image_album_does_not_upscale(self):
         src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
-        self.assertNotIn("card+tape", src)
         self.assertIn("tape_task", src)
         self.assertLess(src.find("tape_task"), src.find("to_thread(_build_card)"))
-        send_i = src.find("card_send_task")
-        tape_await = src.find("await tape_task")
-        self.assertGreater(send_i, 0)
-        self.assertGreater(tape_await, send_i)
+        self.assertNotIn("card_send_task", src)
+        self.assertIn("ready_items", src)
         fit = inspect.getsource(WayneTelegramBot._fit_lookup_photo_wh)
         self.assertIn("不准硬拉大", fit)
         self.assertNotIn("拉滿維持高畫質", fit)
@@ -181,15 +175,21 @@ class LookupImageTests(unittest.TestCase):
         self.assertNotIn("60.0, cap_links", src)
         self.assertNotIn('60.0, "高低決策卡"', src)
 
-    def test_chart_progress_card_first_then_rest(self):
-        waiting = WayneTelegramBot._chart_progress_text(3, current="card")
-        self.assertIn("高低溫度卡", waiting)
-        self.assertIn("其餘三張", waiting)
-        after = WayneTelegramBot._chart_progress_text(
-            8, sent=["card"], current="glance"
+    def test_chart_progress_mentions_glance_first(self):
+        txt = WayneTelegramBot._chart_progress_text(3, current="glance")
+        self.assertIn("介紹圖", txt)
+        self.assertLess(txt.index("介紹圖"), txt.index("決策卡"))
+        self.assertNotIn("導航", txt)
+        self.assertNotIn("其餘三張", txt)
+
+    def test_chart_progress_records_sent_stage(self):
+        txt = WayneTelegramBot._chart_progress_text(
+            8, sent=["glance"], current="card"
         )
-        self.assertIn("其餘三張", after)
-        self.assertIn("一次送出", after)
+        self.assertIn("現在：決策卡", txt)
+        self.assertNotIn("接著：導航圖", txt)
+        self.assertNotIn("其餘三張", txt)
+        self.assertIn("好了這則會消失", txt)
 
     def test_chart_progress_table_stage(self):
         txt = WayneTelegramBot._chart_progress_text(1, current="table")
