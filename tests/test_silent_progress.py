@@ -78,7 +78,7 @@ def test_night_review_does_not_speak(tmp_path):
     assert "night_review" in absorb
     i = absorb.find("night_review")
     assert "send_telegram" not in absorb[i : i + 400]
-    assert absorb.find('endswith("-0200")') < absorb.find("night_review")
+    assert absorb.find('endswith("-0100")') < absorb.find("night_review")
     from dongzhu_tape import optimize_ready
 
     assert optimize_ready(19) is False

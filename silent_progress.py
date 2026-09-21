@@ -423,7 +423,7 @@ def capture_review_context(
 
 
 def night_review(db_path: str, cap: str = "") -> Dict[str, Any]:
-    """台北 02:00 按 REVIEW_STEPS 走完。缺欄跳過。不推話筒、不主動講。"""
+    """台北 01:00 按 REVIEW_STEPS 走完。缺欄跳過。不推話筒、不主動講。"""
     stats: Dict[str, Any] = {
         "twii": 0,
         "try": 0,

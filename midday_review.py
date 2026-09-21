@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List
 
 import requests
@@ -48,6 +49,8 @@ def fetch_mis_batch(
     stock_ids: List[str], db_path: str, *, timeout: float = 12.0
 ) -> Dict[str, Dict[str, Any]]:
     """每批最多 40 檔，跟現有盤中報價同一支 MIS。"""
+    if os.environ.get("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_ALLOW_MIS") != "1":
+        return {}
     import sqlite3
     import time
 
