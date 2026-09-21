@@ -804,6 +804,8 @@ def hot_revenue_names(db_path: str, min_yoy: float = 20.0, min_mom: float = 0.0,
 
 
 def format_hot_revenue_html(db_path: str) -> str:
+    from tg_layout import join_dashed
+
     rows = hot_revenue_names(db_path)
     if not rows:
         return ""
@@ -814,12 +816,18 @@ def format_hot_revenue_html(db_path: str) -> str:
         label = format_month_zh(yyyymm)
     except Exception:
         label = f"{yyyymm[:4]}/{yyyymm[4:]}"
-    lines = [f"🔥 <b>【月營收轉強】{label} 年增≥20% 且月增≥0</b>"]
+    head = "\n".join(
+        [
+            "＝＝月營收轉強＝＝",
+            str(label),
+            "年增≥20%　且月增≥0",
+        ]
+    )
+    body: list = []
     for r in rows:
-        lines.append(
-            f"• <code>{r['stock_id']}</code> {r['stock_name']} 年增 {r['yoy_pct']:+.1f}% 月增 {r['mom_pct']:+.1f}%"
-        )
-    return "\n".join(lines)
+        body.append(f"• <code>{r['stock_id']}</code> {r['stock_name']}")
+        body.append(f"年增 {r['yoy_pct']:+.1f}%　月增 {r['mom_pct']:+.1f}%")
+    return join_dashed(head, "\n".join(body))
 
 
 if __name__ == "__main__":

@@ -538,6 +538,51 @@ def _html_plain(s: str) -> str:
     return _HTML_TAG_RE.sub("", str(s or ""))
 
 
+def pack_phone_bits(*bits: str, width: int = 0, sep: str = "　") -> List[str]:
+    """能一行就一行；超過手機字寬才在分隔符切開。不拆單一片段裡的數字。"""
+    w = max(8, int(width or _PHONE_CHARS))
+    lines: List[str] = []
+    buf = ""
+    for bit in bits:
+        s = str(bit or "").strip()
+        if not s:
+            continue
+        trial = f"{buf}{sep}{s}" if buf else s
+        if buf and len(_html_plain(trial)) > w:
+            lines.append(buf)
+            buf = s
+        else:
+            buf = trial
+    if buf:
+        lines.append(buf)
+    return lines
+
+
+def wrap_phone_html_lines(text: str, *, width: int = 0) -> List[str]:
+    """早報附註折行：先保短行，長行只在全形空切開；沒有標籤的白話才 wrap。"""
+    w = max(8, int(width or _PHONE_CHARS))
+    out: List[str] = []
+    for raw in str(text or "").replace("\r", "").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if len(_html_plain(line)) <= w:
+            out.append(line)
+            continue
+        if "　" in line:
+            packed = pack_phone_bits(
+                *[p for p in line.split("　") if p.strip()],
+                width=w,
+            )
+            out.extend(packed or [line])
+            continue
+        if "<" not in line:
+            out.extend(wrap_cjk_lines(line, w, unit="chars") or [line])
+            continue
+        out.append(line)
+    return out
+
+
 def _html_stream(s: str):
     """逐字：(字, 在標籤內, 開著的元素層數)。層數>0 表示還在 <b>/<code> 裡。"""
     in_tag = False

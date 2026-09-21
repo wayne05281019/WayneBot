@@ -904,12 +904,12 @@ class MainRunner:
                 extra_bits.append(hot)
         except Exception:
             pass
-        extra_text = "\n".join(x for x in extra_bits if x)
+        extra_bits = [x for x in extra_bits if x]
         owner = str(getattr(self, "chat_id", None) or "").strip()
         targets = ids or ([owner] if owner else [])
         if not targets:
-            if extra_text:
-                self.send_telegram_message(extra_text)
+            for html in extra_bits:
+                self._send_screening_extra(html)
         else:
             for cid in targets:
                 try:
@@ -917,11 +917,24 @@ class MainRunner:
                 except Exception as e:
                     logger.warning("自選雷達略過 uid=%s: %s", cid, e)
                     radar = ""
-                text = "\n".join(x for x in (extra_text, radar) if x)
-                if text:
-                    self.send_telegram_message(text, chat_id=cid)
+                for html in extra_bits:
+                    self._send_screening_extra(html, chat_id=cid)
+                if radar:
+                    self._send_screening_extra(radar, chat_id=cid)
         self._run_ai_desk(as_of or self.today_str, results=(screening or {}).get("results") or {}, notify=False)
         return True
+
+    def _send_screening_extra(self, html: str, chat_id: Optional[str] = None) -> bool:
+        """海選附註一則一則寄：加權研究／資金輪動／月營收／雷達分開，切塊不拆標籤。"""
+        if not html:
+            return True
+        from tg_layout import chunk_telegram_html
+
+        ok = True
+        for part in chunk_telegram_html(html, 3500, reflow=False) or [html]:
+            if self.send_telegram_message(part, chat_id=chat_id) is False:
+                ok = False
+        return ok
 
     def _run_ai_desk(
         self,
