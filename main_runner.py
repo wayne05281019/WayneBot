@@ -881,8 +881,9 @@ class MainRunner:
             score_screen_picks(self.db_path, as_of or "")
             score_ai_fills(self.db_path, as_of or "")
             try:
-                from judge_tape import score_live_judges
+                from judge_tape import score_live_judges, snapshot_button_lists
 
+                snapshot_button_lists(self.db_path, as_of or "")
                 score_live_judges(self.db_path, as_of or "")
             except Exception:
                 pass
@@ -1161,8 +1162,9 @@ class MainRunner:
             n = score_screen_picks(self.db_path, cap)
             nf = score_ai_fills(self.db_path, cap)
             try:
-                from judge_tape import score_live_judges
+                from judge_tape import score_live_judges, snapshot_button_lists
 
+                snapshot_button_lists(self.db_path, cap)
                 nj = score_live_judges(self.db_path, cap)
             except Exception:
                 nj = 0

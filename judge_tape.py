@@ -94,6 +94,75 @@ def _as_of(market_db: str, hint: str = "") -> str:
         return ""
 
 
+_SCREEN_BUCKETS = (
+    "leave_zero",
+    "golden_buy",
+    "revenue_cross",
+    "select_01",
+    "select_02",
+    "select_03",
+    "day_trade",
+    "overnight",
+)
+_BAR_KEYS = ("o", "h", "l", "c", "v")
+_EXTRA_KEEP = ("live", "chase_warning", "entry_stars", "stance", "rel_kind", "src")
+
+
+def _bars_on(market_db: str, sids: Sequence[str], day: str) -> Dict[str, Dict[str, float]]:
+    """只讀已進庫的官方柱數字。沒有就不寫。不准產圖。"""
+    day = _ymd(day)
+    want = [str(s).strip() for s in sids if str(s or "").strip()]
+    if not market_db or not os.path.isfile(market_db) or not day or not want:
+        return {}
+    conn = sqlite3.connect(market_db, timeout=8.0)
+    out: Dict[str, Dict[str, float]] = {}
+    try:
+        chunk = 400
+        for i in range(0, len(want), chunk):
+            part = want[i : i + chunk]
+            marks = ",".join("?" * len(part))
+            rows = conn.execute(
+                f"""
+                SELECT stock_id, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND stock_id IN ({marks})
+                """,
+                [day, *part],
+            ).fetchall()
+            for sid, o, h, lo, c, v in rows:
+                bar = {}
+                for key, raw in (("o", o), ("h", h), ("l", lo), ("c", c), ("v", v)):
+                    n = _num(raw)
+                    if n is None:
+                        continue
+                    bar[key] = n
+                if bar.get("c"):
+                    out[str(sid)] = bar
+    except sqlite3.Error:
+        return out
+    finally:
+        conn.close()
+    return out
+
+
+def _row_bar(raw: Dict[str, Any]) -> Dict[str, float]:
+    bar: Dict[str, float] = {}
+    mapping = (
+        ("o", ("open", "o")),
+        ("h", ("high", "h")),
+        ("l", ("low", "l")),
+        ("c", ("close", "c", "price", "px", "pick_close")),
+        ("v", ("volume", "v")),
+    )
+    for key, aliases in mapping:
+        for a in aliases:
+            n = _num(raw.get(a))
+            if n is not None:
+                bar[key] = n
+                break
+    return bar
+
+
 def remember_rows(
     market_db: str,
     kind: str,
@@ -101,6 +170,7 @@ def remember_rows(
     *,
     as_of: str = "",
     pick: str = "",
+    src: str = "",
 ) -> int:
     """記下此刻秀出的判斷。失敗當沒發生，不准影響原功能。"""
     kind = str(kind or "").strip()
@@ -117,17 +187,28 @@ def remember_rows(
     items = list(rows or [])
     ran = _now()
     tag = str(pick or "")
+    sids = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        sid = str(raw.get("stock_id") or raw.get("code") or raw.get("sid") or "").strip()
+        if sid:
+            sids.append(sid)
+    bars = _bars_on(market_db, sids, day)
     conn = sqlite3.connect(store, timeout=30.0)
     n = 0
     try:
         if not items:
+            empty_extra = {"n": 0}
+            if src:
+                empty_extra["src"] = str(src)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO live_judge(
                     as_of, kind, pick, sid, name, px, profit, extra, ran_at
                 ) VALUES (?,?,?,?,?,?,?,?,?)
                 """,
-                (day, kind, tag, "", "", None, None, json.dumps({"n": 0}, ensure_ascii=False), ran),
+                (day, kind, tag, "", "", None, None, json.dumps(empty_extra, ensure_ascii=False), ran),
             )
             n = 1
         for raw in items:
@@ -136,10 +217,20 @@ def remember_rows(
             sid = str(raw.get("stock_id") or raw.get("code") or raw.get("sid") or "").strip()
             if not sid:
                 continue
-            extra = {}
-            for key in ("live", "chase_warning", "entry_stars", "stance", "rel_kind"):
+            extra: Dict[str, Any] = {}
+            for key in _EXTRA_KEEP:
+                if key == "src":
+                    continue
                 if raw.get(key) not in (None, "", {}, []):
                     extra[key] = raw.get(key) if key != "live" else True
+            if src:
+                extra["src"] = str(src)
+            bar = dict(bars.get(sid) or {})
+            bar.update(_row_bar(raw))
+            for key in _BAR_KEYS:
+                if key in bar:
+                    extra[key] = bar[key]
+            px = _num(raw.get("close") or raw.get("price") or raw.get("px") or extra.get("c"))
             conn.execute(
                 """
                 INSERT OR REPLACE INTO live_judge(
@@ -152,7 +243,7 @@ def remember_rows(
                     tag,
                     sid,
                     str(raw.get("stock_name") or raw.get("name") or "")[:40],
-                    _num(raw.get("close") or raw.get("price") or raw.get("px")),
+                    px,
                     _num(raw.get("profit_pct") if raw.get("profit_pct") is not None else raw.get("profit")),
                     json.dumps(extra, ensure_ascii=False) if extra else "",
                     ran,
@@ -165,6 +256,78 @@ def remember_rows(
     finally:
         conn.close()
     return n
+
+
+def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
+    """當天規則名單沒按也落檔。只留代號＋官方柱數字，不准渲圖、不推話筒。"""
+    stats: Dict[str, int] = {}
+    if not market_db:
+        return stats
+    day = _as_of(market_db, as_of)
+    if not day:
+        return stats
+    results: Dict[str, Any] = {}
+    src = "none"
+    try:
+        from screen_sessions import load_session_results, screen_session_has_data
+
+        results = load_session_results(market_db, day, "morning") or {}
+        if not any(results.values()):
+            results = load_session_results(market_db, day, "evening") or {}
+        if any(results.values()) or screen_session_has_data(market_db, day):
+            src = "session"
+    except Exception:
+        results = {}
+    for bucket in _SCREEN_BUCKETS:
+        rows = results.get(bucket) if isinstance(results.get(bucket), list) else []
+        stats[bucket] = remember_rows(
+            market_db, bucket, rows, as_of=day, pick="rule", src=src
+        )
+    try:
+        from buy_streak import KIND_BOTH, KIND_FOREIGN, KIND_TRUST, MARKET_ALL, MIN_STREAK, load_snapshot
+
+        for kind in (KIND_FOREIGN, KIND_TRUST, KIND_BOTH):
+            snap = load_snapshot(market_db, kind, MARKET_ALL, as_of=day, use_cache=True)
+            key = f"streak_{kind}"
+            days_map = getattr(snap, "by_days", None) or {}
+            if not days_map:
+                stats[key] = remember_rows(
+                    market_db, key, [], as_of=day, pick="rule", src="streak"
+                )
+                continue
+            n = 0
+            for days, rows in days_map.items():
+                if int(days) < int(MIN_STREAK) or not rows:
+                    continue
+                payload = [
+                    {"stock_id": r.stock_id, "stock_name": getattr(r, "name", "")}
+                    for r in rows
+                ]
+                n += remember_rows(
+                    market_db,
+                    key,
+                    payload,
+                    as_of=day,
+                    pick=str(int(days)),
+                    src="streak",
+                )
+            stats[key] = n
+    except Exception:
+        pass
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        try:
+            from screening_engine import ScreeningEngine
+
+            em = ScreeningEngine(market_db).run_emerging_screening(day, sync=False) or {}
+            em_day = str(em.get("as_of") or day)
+            for bucket, kind in (("leave_zero", "em_leave_zero"), ("golden_buy", "em_golden_buy")):
+                rows = em.get(bucket) if isinstance(em.get(bucket), list) else []
+                stats[kind] = remember_rows(
+                    market_db, kind, rows, as_of=em_day, pick="rule", src="emerging"
+                )
+        except Exception:
+            pass
+    return stats
 
 
 def _quote_dates(market_db: str, cap: str) -> List[str]:

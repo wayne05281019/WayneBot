@@ -2,6 +2,7 @@
 """當下判斷默默落檔：不改畫面、不寫未收盤、官方收才對隔日／五日。"""
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -126,7 +127,70 @@ def test_leave_zero_now_still_returns_same_and_remembers(tmp_path, monkeypatch):
     assert sids == ["1101"]
 
 
-def test_no_telegram_and_silent_progress_untouched():
+def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
+    from judge_tape import snapshot_button_lists
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4, "1102": 51.0}, "20260915")
+    save_screen_session(
+        db,
+        "20260915",
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}],
+            "day_trade": [{"stock_id": "1102", "stock_name": "亞泥", "close": 51.0}],
+        },
+    )
+    stats = snapshot_button_lists(db, "20260915")
+    assert stats.get("leave_zero") == 1
+    assert stats.get("day_trade") == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    rows = conn.execute(
+        "SELECT kind, sid, extra FROM live_judge WHERE pick='rule' AND sid!=''"
+    ).fetchall()
+    conn.close()
+    by_kind = {k: (sid, extra) for k, sid, extra in rows}
+    assert by_kind["leave_zero"][0] == "1101"
+    extra = json.loads(by_kind["leave_zero"][1])
+    assert extra["c"] == 50.4
+    assert extra["o"] == 50.4
+    assert extra["h"] == 50.4
+    assert extra["l"] == 50.4
+    assert extra["v"] == 8000
+    assert extra.get("src") == "session"
+    blob = json.dumps(extra)
+    assert "png" not in blob.lower()
+    assert "jpeg" not in blob.lower()
+    assert "image" not in blob.lower()
+    conn = sqlite3.connect(db)
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    assert "live_judge" not in names
+
+
+def test_agents_silent_record_is_rank_three():
+    text = Path("AGENTS.md").read_text(encoding="utf-8")
+    assert "默默落檔（2026-09-21 鎖死）" in text
+    assert "沒按也一樣" in text
+    assert "佐證同時留（數字，不是每檔截圖）" in text
+    assert "每檔每天 K 圖 PNG" in text
+    i3 = text.find("## 3. 能量化就直接量化")
+    i4 = text.find("## 4. 不准假資料")
+    i_silent = text.find("### 默默落檔")
+    assert 0 < i3 < i_silent < i4
+
+
+def test_snapshot_skips_screenshot_and_telegram():
+    src = Path("judge_tape.py").read_text(encoding="utf-8")
+    assert "snapshot_button_lists" in src
+    assert "savefig" not in src
+    assert "Image.save" not in src
+    assert "send_telegram" not in src
+    assert "render_twii" not in src
+    fc = Path("biaoke_forecast.py").read_text(encoding="utf-8")
+    assert "ensure_wave_inputs" in fc
+    assert 'os.getenv("PYTEST_CURRENT_TEST")' in fc
     src = Path("judge_tape.py").read_text(encoding="utf-8")
     assert "send_telegram" not in src
     assert "TELEGRAM_BOT_TOKEN" not in src

@@ -807,11 +807,58 @@ def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
     return n
 
 
+def ensure_wave_inputs(db_path: str, as_of: str = "") -> Dict[str, Any]:
+    """波浪圖要的料：缺完整官方收才去同步，寫進程情庫。pytest 不打外網。未收不當收。"""
+    stats: Dict[str, Any] = {"twii": 0, "fut": 0, "us": 0}
+    if not db_path:
+        return stats
+    if os.getenv("PYTEST_CURRENT_TEST") and os.getenv("WAYNE_ALLOW_WAVE_SYNC") != "1":
+        return {**stats, "skipped": "pytest"}
+    day = _ymd(as_of)
+    holes: List[str] = []
+    try:
+        from silent_progress import _read_live_context, pack_holes
+
+        holes = pack_holes(_read_live_context(db_path, day))
+    except Exception:
+        holes = ["twii", "tx_day", "tx_night", "te_day", "te_night", "us"]
+    if "twii" in holes:
+        try:
+            from taiwan_market import sync_index_daily
+
+            sync_index_daily(db_path)
+            stats["twii"] = 1
+        except Exception:
+            pass
+    if any(k in holes for k in ("tx_day", "tx_night", "te_day", "te_night")):
+        try:
+            from taiwan_market import sync_futures_daily
+
+            sync_futures_daily(db_path, dates=[day] if day else None)
+            stats["fut"] = 1
+        except Exception:
+            pass
+    if "us" in holes:
+        try:
+            from us_overnight import refresh_us_overnight, us_tape_phase
+
+            if us_tape_phase() != "regular":
+                refresh_us_overnight(db_path, day or as_of)
+                stats["us"] = 1
+        except Exception:
+            pass
+    return stats
+
+
 def snapshot_and_score_twii(db_path: str, cap: str = "") -> Dict[str, Any]:
     """盤後齊了：內部試畫＋覆盤包。不寫問位階、不改洞燭名單／海選／AI倉／黃金買點、不推話筒。"""
     cap_ymd = _ymd(cap)
     if not db_path:
         return {"twii": 0, "try": 0, "scored": 0, "cap": cap_ymd}
+    try:
+        ensure_wave_inputs(db_path, cap_ymd)
+    except Exception:
+        pass
     scored = 0
     try:
         scored = int(verify_twii_try(db_path) or 0)

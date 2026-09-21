@@ -161,7 +161,9 @@ def test_pack_holes_lists_missing_slots():
     assert "twii" in holes
     assert "biaoke" in holes
     assert "legs" in holes
+    assert "tx_day" in holes
     assert "tx_night" in holes
+    assert "te_day" in holes
     assert "us" in holes
     assert "te_night" not in holes
     full = pack_holes(
@@ -169,7 +171,9 @@ def test_pack_holes_lists_missing_slots():
             "twii": {"close": 45800},
             "biaoke": {"tag": "逃命波C-2", "direc": "down"},
             "legs": [{"y": 43500}],
+            "tx_day": {"close": 45750},
             "tx_night": {"close": 45700},
+            "te_day": {"close": 2090},
             "te_night": {"close": 2100},
             "us": {"ixic_pct": -1.0},
         }

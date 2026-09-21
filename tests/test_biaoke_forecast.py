@@ -293,3 +293,16 @@ def test_twii_forecast_hooks_fuse_not_telegram():
 
     cap = inspect.getsource(format_twii_plain)
     assert "內部試畫" not in cap
+
+
+def test_ensure_wave_inputs_skips_under_pytest(tmp_path, monkeypatch):
+    from biaoke_forecast import ensure_wave_inputs
+
+    called = []
+    monkeypatch.setattr(
+        "taiwan_market.sync_index_daily",
+        lambda *a, **k: called.append("twii"),
+    )
+    out = ensure_wave_inputs(str(tmp_path / "w.db"), "20260918")
+    assert out.get("skipped") == "pytest"
+    assert called == []

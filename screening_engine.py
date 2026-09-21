@@ -2156,6 +2156,12 @@ def execute_full_screening(
                 mark_both_sessions(results, both)
         except Exception:
             pass
+        try:
+            from judge_tape import snapshot_button_lists
+
+            snapshot_button_lists(engine.db_path, target_date)
+        except Exception:
+            pass
 
     if session == "morning" or not session:
         try:
