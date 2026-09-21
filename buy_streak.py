@@ -282,7 +282,33 @@ def format_list_html(
         "股名＝看這檔；旁「籌碼」核對法人買賣超。按鈕只在這則訊息下面，輸入列維持兩排主選單。"
     )
     if not chunk:
+        try:
+            from judge_tape import remember_rows
+
+            if db_path:
+                remember_rows(
+                    db_path,
+                    f"streak_{snap.kind}",
+                    [],
+                    as_of=snap.as_of,
+                    pick=str(int(days)),
+                )
+        except Exception:
+            pass
         return head + "\n\n<i>這個天數目前沒有股票。</i>"
+    try:
+        from judge_tape import remember_rows
+
+        if db_path:
+            remember_rows(
+                db_path,
+                f"streak_{snap.kind}",
+                [{"stock_id": r.stock_id, "stock_name": r.name} for r in chunk],
+                as_of=snap.as_of,
+                pick=str(int(days)),
+            )
+    except Exception:
+        pass
     blocks = [head, ""]
     for i, row in enumerate(chunk, start=offset + 1):
         blocks.append(f"{i}. {format_stock_html(row, snap.kind, db_path)}")

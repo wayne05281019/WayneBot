@@ -24,6 +24,23 @@ except Exception:
         return os.getenv("WAYNE_DB_PATH") or os.getenv("DB_PATH") or "data/wayne_market.db"
 
 
+def _remember_live_judges(
+    db_path: str,
+    kind: str,
+    rows: Optional[Sequence[Dict[str, Any]]],
+    *,
+    as_of: str = "",
+    pick: str = "",
+) -> None:
+    """當下判斷默默落檔。失敗略過，不准影響原功能。"""
+    try:
+        from judge_tape import remember_rows
+
+        remember_rows(db_path, kind, rows, as_of=as_of, pick=pick)
+    except Exception:
+        pass
+
+
 class ScreeningEngine:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or get_db_path()
@@ -538,9 +555,12 @@ class ScreeningEngine:
         if not rows:
             rows = load_bucket_rows(self.db_path, bucket_key, "")
         if not rows:
+            _remember_live_judges(self.db_path, bucket_key, [], as_of=str(target_date or ""))
             return []
         enriched = self._enrich_session_trade_rows(rows, target_date)
-        return [self._row_for_bot(x) for x in enriched]
+        bot_rows = [self._row_for_bot(x) for x in enriched]
+        _remember_live_judges(self.db_path, bucket_key, bot_rows, as_of=str(target_date or ""))
+        return bot_rows
 
     def screen_daytrade(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """主選單當沖：只讀海選快取 + 盤中 MIS 複核，不跑全市場掃描。"""
@@ -639,6 +659,7 @@ class ScreeningEngine:
                     continue
                 by_id[sid] = sr
         if not by_id:
+            _remember_live_judges(self.db_path, "leave_zero", [], as_of=as_of)
             return []
         codes = list(by_id.keys())
         frames = self._load_close_frames(codes, as_of)
@@ -750,7 +771,9 @@ class ScreeningEngine:
                 -(float(x.get("q60r") or 0)),
             )
         )
-        return [self._row_for_bot(x) for x in stamp_entry_stars(out, "leave_zero")]
+        bot_rows = [self._row_for_bot(x) for x in stamp_entry_stars(out, "leave_zero")]
+        _remember_live_judges(self.db_path, "leave_zero", bot_rows, as_of=as_of)
+        return bot_rows
 
     def run_emerging_screening(
         self, target_date: Optional[str] = None, sync: bool = False
@@ -2131,6 +2154,12 @@ def execute_full_screening(
             if session == "morning":
                 both = overlap_ids(engine.db_path, target_date)
                 mark_both_sessions(results, both)
+        except Exception:
+            pass
+        try:
+            from judge_tape import snapshot_button_lists
+
+            snapshot_button_lists(engine.db_path, target_date)
         except Exception:
             pass
 
