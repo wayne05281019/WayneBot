@@ -71,9 +71,9 @@ def test_welcome_teaches_chat_not_a_menu():
     assert html == WINDOW_OPEN
     assert "打字" in html
     assert "語音" in html or "麥克風" in html
-    assert "大盤" in html
     assert "查個股" in html
     assert "離開飆大" in html
+    assert "點下面「大盤」" not in html
     assert "勤誠" not in html
     assert format_biaoke_html("") == html
     assert format_biaoke_html() == html
@@ -526,24 +526,31 @@ def test_biaoke_dayk_markup_named_stock_not_card(monkeypatch):
     assert datas == ["bkdk:3037"]
     assert texts == ["官方日K 威盛"]
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
-    wave = bot._biaoke_dayk_markup("現在波浪位階")
-    assert [b.callback_data for r in wave.inline_keyboard for b in r] == ["bkdk:TWII"]
-    assert "官方日K" in wave.inline_keyboard[0][0].text
-    blank = bot._biaoke_dayk_markup("")
-    assert [b.callback_data for r in blank.inline_keyboard for b in r] == ["bkdk:TWII"]
+    assert bot._biaoke_dayk_markup("現在波浪位階") is None
+    assert bot._biaoke_dayk_markup("") is None
+    assert bot._biaoke_dayk_markup("大盤現在") is None
     assert bot._biaoke_dayk_markup("你好") is None
+    monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("TWII", "加權"))
+    assert bot._biaoke_dayk_markup("加權") is None
 
 
-def test_biaoke_hub_has_market_and_stock_buttons(monkeypatch):
+def test_biaoke_hub_has_stock_not_market_buttons(monkeypatch):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ""
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
     kb = bot._biaoke_hub_markup("大盤現在")
     texts = [b.text for r in kb.inline_keyboard for b in r]
     datas = [b.callback_data for r in kb.inline_keyboard for b in r]
-    assert texts[:2] == ["大盤", "查個股"]
-    assert datas[:2] == ["bk:mkt", "bk:ask"]
-    assert any(d == "bkdk:TWII" for d in datas)
+    assert texts == ["查個股"]
+    assert datas == ["bk:ask"]
+    blank = bot._biaoke_hub_markup("")
+    assert [b.callback_data for r in blank.inline_keyboard for b in r] == ["bk:ask"]
+    monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("3037", "威盛"))
+    named = bot._biaoke_hub_markup("威盛怎麼看")
+    named_d = [b.callback_data for r in named.inline_keyboard for b in r]
+    named_t = [b.text for r in named.inline_keyboard for b in r]
+    assert named_d == ["bk:ask", "bkdk:3037"]
+    assert named_t == ["查個股", "官方日K 威盛"]
 
 
 def test_biaoke_dayk_callback_sends_structure_not_card():
@@ -742,3 +749,31 @@ def test_biaoke_wait_box_matches_lookup_blocks_without_emoji():
     assert page.index("_start_plain_wait") < page.index("stock_picker_hits")
     card = __import__("inspect").getsource(WayneTelegramBot._send_card_to)
     assert card.index("_chart_progress_text") < card.index("lookup_stocks(")
+
+
+def test_shared_button_surfaces_use_same_formatters():
+    """同一資訊只走一顆最新函式：大盤頁／海選末段輪動／資金頁不各寫一套。"""
+    from pathlib import Path
+
+    import inspect
+
+    mkt = inspect.getsource(WayneTelegramBot._send_market_page)
+    assert "format_taiwan_market_page_html" in mkt
+    assert "format_screen_market_outlook_html" not in mkt
+    flow = inspect.getsource(WayneTelegramBot.flow_cmd)
+    assert "format_flow_html" in flow
+    hub = inspect.getsource(WayneTelegramBot._biaoke_hub_markup)
+    assert "bk:mkt" not in hub
+    assert 'InlineKeyboardButton("查個股"' in hub
+    dayk = inspect.getsource(WayneTelegramBot._biaoke_dayk_markup)
+    assert 'sid, name = "TWII", "加權"' not in dayk
+    screen = Path("screening_engine.py").read_text(encoding="utf-8")
+    assert "format_screen_market_outlook_html" in screen
+    assert "from dongzhu_screen import rotation_screen_block" in screen
+    dz = Path("dongzhu_screen.py").read_text(encoding="utf-8")
+    assert "from biaoke_field_scan import rotation_screen_block" in dz
+    tm = Path("taiwan_market.py").read_text(encoding="utf-8")
+    assert tm.index("def _outlook_action_plain") < tm.index(
+        "def format_screen_market_outlook_html"
+    )
+    assert "format_us_lead_line" in tm
