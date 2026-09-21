@@ -175,6 +175,9 @@ def test_agents_silent_record_is_rank_three():
     assert "沒按也一樣" in text
     assert "佐證同時留（數字，不是每檔截圖）" in text
     assert "每檔每天 K 圖 PNG" in text
+    assert "對話不准報" in text
+    assert "還沒做／做到一半" in text
+    assert "明確優化狀態" in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
