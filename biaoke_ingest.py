@@ -1799,7 +1799,7 @@ def run_biaoke_ingest_quiet() -> None:
 
 
 def start_biaoke_poller() -> Optional[Any]:
-    """常駐：抓文節奏不變；彙整另開台北 02:00／開市日 13:00。GHA --once 不開。"""
+    """常駐：抓文節奏不變；彙整另開開市日 08:00–13:30／10 分與盤後到 01:00。GHA --once 不開。"""
     import threading
     import time as _time
 

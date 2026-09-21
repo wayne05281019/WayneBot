@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""飆大神經元彙整：抓文節奏不變；輔助先存；台北 02:00／盤中 13:00 才吸收。
+"""飆大神經元彙整：抓文節奏不變；輔助先存。
 
-所有時間以 Asia/Taipei 為準。路人樓不進神經元。不是買訊。
+開市日台北 08:00–13:30 每 10 分、盤後 16:30／19:30／22:30，
+隔日 01:00（僅前一日曆日開市）才吸收。路人樓不進神經元。不是買訊。
 """
 from __future__ import annotations
 
@@ -16,9 +17,34 @@ from trading_calendar import TAIPEI, is_tw_open_calendar_day
 
 logger = logging.getLogger("WayneBot.BiaokeAbsorb")
 
-DAWN_HOUR = 2
-SESSION_HOUR = 13
 SLOT_GRACE_MIN = 8
+_OPEN_START_MIN = 8 * 60
+_OPEN_END_MIN = 13 * 60 + 30
+_OPEN_STEP_MIN = 10
+_AFTER_CLOSE_HMS = ((16, 30), (19, 30), (22, 30))
+_NIGHT_HM = (1, 0)
+
+
+def _open_session_hms() -> tuple:
+    out = []
+    t = _OPEN_START_MIN
+    while t <= _OPEN_END_MIN:
+        out.append((t // 60, t % 60))
+        t += _OPEN_STEP_MIN
+    return tuple(out)
+
+
+OPEN_SESSION_HMS = _open_session_hms()
+
+
+def _slot_label(ymd: str, hour: int, minute: int) -> str:
+    return f"{ymd}-{hour:02d}{minute:02d}"
+
+
+def _in_grace(hm: int, hour: int, minute: int) -> bool:
+    start = hour * 60 + minute
+    return start <= hm < start + SLOT_GRACE_MIN
+
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS biaoke_absorb_inbox (
@@ -76,46 +102,70 @@ def ensure_absorb_tables(db_path: str) -> None:
         conn.close()
 
 
+def _yesterday_open(dt: datetime) -> bool:
+    yest = (dt - timedelta(days=1)).strftime("%Y%m%d")
+    return is_tw_open_calendar_day(yest)
+
+
+def _slot_datetimes_on(day: datetime) -> List[datetime]:
+    """該台北日曆日會醒的彙整點（尚未跟 now 比）。"""
+    day = taipei_now(day).replace(second=0, microsecond=0)
+    ymd = day.strftime("%Y%m%d")
+    out: List[datetime] = []
+    if _yesterday_open(day):
+        out.append(day.replace(hour=_NIGHT_HM[0], minute=_NIGHT_HM[1]))
+    if is_tw_open_calendar_day(ymd):
+        for hour, minute in OPEN_SESSION_HMS:
+            out.append(day.replace(hour=hour, minute=minute))
+        for hour, minute in _AFTER_CLOSE_HMS:
+            out.append(day.replace(hour=hour, minute=minute))
+    return out
+
+
 def absorb_slot_id(now: Optional[datetime] = None) -> str:
     """正在彙整窗才回 slot。抓文輪詢不走這條。"""
     dt = taipei_now(now)
     ymd = dt.strftime("%Y%m%d")
     hm = dt.hour * 60 + dt.minute
-    if DAWN_HOUR * 60 <= hm < DAWN_HOUR * 60 + SLOT_GRACE_MIN:
-        return f"{ymd}-0200"
-    if (
-        SESSION_HOUR * 60 <= hm < SESSION_HOUR * 60 + SLOT_GRACE_MIN
-        and is_tw_open_calendar_day(ymd)
-    ):
-        return f"{ymd}-1300"
+    if _in_grace(hm, *_NIGHT_HM) and _yesterday_open(dt):
+        return _slot_label(ymd, *_NIGHT_HM)
+    if is_tw_open_calendar_day(ymd):
+        slot_start = (hm // _OPEN_STEP_MIN) * _OPEN_STEP_MIN
+        if (
+            _OPEN_START_MIN <= slot_start <= _OPEN_END_MIN
+            and hm < slot_start + SLOT_GRACE_MIN
+        ):
+            return _slot_label(ymd, slot_start // 60, slot_start % 60)
+        for hour, minute in _AFTER_CLOSE_HMS:
+            if _in_grace(hm, hour, minute):
+                return _slot_label(ymd, hour, minute)
     return ""
 
 
 def planned_slot_id(when: datetime) -> str:
     dt = taipei_now(when)
     ymd = dt.strftime("%Y%m%d")
-    if dt.hour == DAWN_HOUR and dt.minute == 0:
-        return f"{ymd}-0200"
-    if dt.hour == SESSION_HOUR and dt.minute == 0 and is_tw_open_calendar_day(ymd):
-        return f"{ymd}-1300"
+    pair = (dt.hour, dt.minute)
+    if pair == _NIGHT_HM and _yesterday_open(dt):
+        return _slot_label(ymd, *_NIGHT_HM)
+    if is_tw_open_calendar_day(ymd):
+        if pair in OPEN_SESSION_HMS or pair in _AFTER_CLOSE_HMS:
+            return _slot_label(ymd, dt.hour, dt.minute)
     return absorb_slot_id(dt)
 
 
 def next_absorb_at(now: Optional[datetime] = None) -> datetime:
-    """下一檔台北彙整：每天 02:00；台股開市日再加 13:00。"""
+    """下一檔台北彙整：開市日 08:00–13:30／10 分、盤後三小時、隔日 01:00。"""
     dt = taipei_now(now)
     best: Optional[datetime] = None
-    for day_off in range(0, 4):
+    for day_off in range(0, 16):
         day = dt + timedelta(days=day_off)
-        dawn = day.replace(hour=DAWN_HOUR, minute=0, second=0, microsecond=0)
-        if dawn > dt and (best is None or dawn < best):
-            best = dawn
-        ymd = day.strftime("%Y%m%d")
-        if is_tw_open_calendar_day(ymd):
-            noon = day.replace(hour=SESSION_HOUR, minute=0, second=0, microsecond=0)
-            if noon > dt and (best is None or noon < best):
-                best = noon
-    return best or (dt + timedelta(hours=12))
+        for cand in _slot_datetimes_on(day):
+            if cand > dt and (best is None or cand < best):
+                best = cand
+        if best is not None:
+            break
+    return best or (dt + timedelta(minutes=_OPEN_STEP_MIN))
 
 
 def _slot_ran(db_path: str, slot_id: str) -> bool:
@@ -598,7 +648,7 @@ def run_absorb(
     slot: str = "",
     force: bool = False,
 ) -> Dict[str, Any]:
-    """只在台北 02:00 或開市日 13:00 把匣裡的文＋已存輔助丟進神經元。"""
+    """只在台北開市日 08:00–13:30／10 分、盤後三小時、隔日 01:00 把匣丟進神經元。"""
     dt = taipei_now(now)
     slot_id = str(slot or planned_slot_id(dt) or absorb_slot_id(dt))
     stats: Dict[str, Any] = {"ok": False, "slot": slot_id, "posts": 0, "neurons": 0, "tz": "Asia/Taipei"}
@@ -646,7 +696,7 @@ def run_absorb(
         except Exception:
             pass
         _mark_absorbed(db_path, [str(ev.get("id") or "") for ev in events], now=dt)
-    if str(slot_id).endswith("-0200"):
+    if str(slot_id).endswith("-0100"):
         try:
             from silent_progress import night_review
 
@@ -669,7 +719,7 @@ def run_absorb(
 
 
 def start_biaoke_absorb_scheduler() -> Optional[Any]:
-    """與抓文輪詢分開：只在台北 02:00、開市日 13:00 醒。GHA --once 不開。"""
+    """與抓文輪詢分開：開市日 08:00–13:30／10 分、盤後到 01:00。GHA --once 不開。"""
     import threading
     import time as _time
 
