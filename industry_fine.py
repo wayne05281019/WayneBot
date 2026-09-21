@@ -120,7 +120,13 @@ TAUGHT_GROUPS: Dict[str, tuple] = {
     ),
     "檢測驗證": ("6830", "3587", "3289"),  # 汎銓、閎康、宜特
     "ASIC": ("3443", "3661", "3035"),
-    "散熱": ("3653", "3017", "3324"),  # 健策、奇鋐、雙鴻；富世達＝連接元件、竑騰＝半導體設備，不收
+    "散熱": (
+        "3653",  # 健策
+        "3017",  # 奇鋐
+        "3324",  # 雙鴻
+        "6933",  # AMAX-KY 客製化冷卻；不是傳產-其他／電子中游-其他
+        # 富世達＝連接元件、竑騰＝半導體設備，不收
+    ),
     "PCB": (
         "2383",  # 台光電
         "2368",  # 金像電
@@ -163,6 +169,13 @@ _LD_RE = re.compile(
 
 def split_chain(chain: str) -> List[str]:
     return [p.strip() for p in str(chain or "").split("-") if p.strip()]
+
+
+def is_catchall_finest(name: str) -> bool:
+    """「其他」不是細項。傳產-其他與電子中游-其他不准互相比。"""
+    from tpex_industry_chain import is_catchall_label
+
+    return is_catchall_label(name)
 
 
 def extra_tags_for(stock_id: str) -> List[str]:
@@ -211,7 +224,7 @@ def membership_keys(stock_id: str, finest: str = "") -> set:
     for tag in extras:
         keys.add(("x", tag))
     fine = str(finest or "").strip()
-    if not fine:
+    if not fine or is_catchall_finest(fine):
         return keys
     if extras:
         extra_set = set(extras)
@@ -365,6 +378,12 @@ def ensure_fine_industry_table(db_path: str) -> None:
     conn.close()
     if int(n or 0) == 0:
         seed_fine_industry_table(db_path)
+    try:
+        from tpex_industry_chain import apply_tpex_overlay
+
+        apply_tpex_overlay(db_path)
+    except Exception:
+        logger.info("櫃買產業鏈 overlay 略過", exc_info=True)
 
 
 def seed_fine_industry_table(db_path: str) -> int:
@@ -728,6 +747,13 @@ def sync_all_fine_industry(
                 buf = []
     if buf:
         save_fine_industry_many(path, buf)
+    try:
+        from tpex_industry_chain import apply_tpex_overlay
+
+        overlay = apply_tpex_overlay(path)
+        stats["tpex"] = int(overlay.get("write") or 0)
+    except Exception:
+        stats["tpex"] = 0
     logger.info("籌碼K細項全市場同步：%s", stats)
     return stats
 

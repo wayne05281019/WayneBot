@@ -99,7 +99,9 @@ def membership_label(snap: Dict[str, Any]) -> str:
             if t not in bits:
                 bits.append(t)
         return "／".join(bits)
-    if finest:
+    from industry_fine import is_catchall_finest
+
+    if finest and not is_catchall_finest(finest):
         bits.append(finest)
     return "／".join(bits)
 

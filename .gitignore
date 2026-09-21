@@ -8,6 +8,7 @@ waynebot_cache/
 data/*
 !data/.gitkeep
 !data/cmoney_fine_industry.json
+!data/tpex_industry_chain.json
 raw_cache/
 logs/
 __pycache__/
