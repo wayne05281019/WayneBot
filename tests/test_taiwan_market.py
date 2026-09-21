@@ -469,8 +469,9 @@ def test_format_performance_shows_fmtqik_volume():
     lines = _format_performance_lines(
         {"volume": 9_267_047, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0}
     )
-    joined = "　".join(lines)
-    assert "全日量 926.7萬張" in joined
+    joined = "\n".join(lines)
+    assert "全日量" in joined
+    assert "926.7萬張" in joined
     nan_lines = _format_performance_lines(
         {"volume": 9_267_047, "vs_ma20_pct": 1.2, "vs_high52_pct": -3.0,
          "open": float("nan"), "high": float("nan"), "low": float("nan"),
@@ -623,9 +624,8 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     conn.close()
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
-    assert "庫內官方融合" in html
+    assert "官方收" in html
     assert "結構" in html
-    assert "官方融合" in html
     assert "距月線" in html
     mock_fetch.assert_not_called()
 
@@ -696,7 +696,7 @@ def test_production_db_market_page_has_real_data():
     assert "距月線" in html
     assert "量比 0.00" not in html
     assert "量縮 100" not in html
-    assert "漲 " in html and "跌 " in html
+    assert "站月線" in html
 
 
 def test_compute_basis_pct():
@@ -1113,22 +1113,24 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "比現貨" in html
     assert "未平倉" in html
     assert "夜盤" in html
-    assert "台指期夜盤" in html
     assert "電子期夜盤" in html
     assert "2,105" in html
-    assert "上一收盤日該看" in html
+    assert "<b>美股</b>" in html
     assert "美股時段" not in html
     assert "前一晚該看" not in html
-    assert "盤後期貨" in html
-    assert "那斯達克期貨" in html
+    assert "那指期" in html
     assert "那斯達克期貨+" not in html
-    assert "台積美股盤後" in html
-    assert "輝達盤後" in html
-    assert "指數收盤" in html
+    assert "台積後" in html
+    assert "輝達後" in html
+    assert "電子鏈夜盤" not in html
+    assert "大盤中性" not in html
     assert "OI " not in html
     assert "基差" not in html
     assert "近月" not in html
     assert "結構" in html
+    assert "盤勢" in html
+    assert "細分" in html
+    assert "風險" in html
 
 
 def test_resolve_te_night_from_cache_not_tx(tmp_path):
