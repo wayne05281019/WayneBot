@@ -1183,8 +1183,9 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=0.8,
         ixic_pct=0.21,
     )
-    assert "照表看黃金買點" in hold
-    assert "周帶量" in hold
+    assert "黃金買點" in hold
+    assert "重點觀察照表" in hold
+    assert "周帶量" not in hold
     cheap_night = _outlook_action_plain(
         us_regime="ok",
         night_vs_day=-0.46,
@@ -1193,8 +1194,9 @@ def test_outlook_action_plain_risk_off_and_neutral():
         vs_ma20=1.2,
         ixic_pct=1.4,
     )
-    assert "照表看黃金買點" in cheap_night
+    assert "黃金買點" in cheap_night
     assert "夜盤比日盤便宜" in cheap_night
+    assert "周帶量" not in cheap_night
     assert "逆風" not in cheap_night
 
 
@@ -1275,7 +1277,9 @@ def test_format_screen_market_outlook_html_plain_language():
 
     plain = _plain(html)
     assert "大盤狀況" in html
-    assert "可以照表看黃金買點" in plain
+    assert "黃金買點" in plain
+    assert "重點觀察照表" in plain
+    assert "周帶量" not in plain
     assert "<b>黃金買點</b>" in html
     assert "<b>重點觀察</b>" in html
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/04")
@@ -1291,7 +1295,7 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "<b>電腦</b>" in html
     assert "輪出" in html
     assert "<b>半導體</b>" in html
-    assert "剛輪到" in html
+    assert "對應個股已標剛輪到" not in html
     assert "────────────────" in html
     assert "外資台指期" in html
     assert "買多 8,153口" in plain
@@ -1368,10 +1372,11 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     )
     lines = html.split("\n")
     plain_lines = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
-    assert any(ln == "<b>偏空</b>，可以看<b>黃金買點</b>和<b>重點觀察</b>，" for ln in lines) or (
-        "<b>偏空</b>" in html and "<b>黃金買點</b>" in html
-    )
-    assert "<b>周帶量少追</b>" in html
+    assert "<b>偏空</b>" in html
+    assert "<b>黃金買點</b>" in html
+    assert "<b>重點觀察</b>" in html
+    assert "<b>別追高</b>" in html
+    assert "周帶量" not in html
     assert "加權收盤 <b>46,288.00</b>" in html
     assert "<b>+0.96%</b>　貼著月線" in html
     assert any(ln.strip() == "<b>大盤偏空</b>" for ln in lines)
@@ -1383,8 +1388,9 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "正常" in panic[0]
     assert not any(p.strip() == "正常" for p in plain_lines)
     assert "台積美股　<b>417.72　+0.96%（+3.97美元）</b>" in html
-    assert "<b>光通訊</b>族群，昨天在美股是領漲" in html
-    assert "電子鏈夜盤<b>平</b>" in html
+    assert "美股昨漲較多　<b>光通訊</b>" in html
+    assert "電子鏈夜盤" not in html
+    assert "族群，昨天在美股是領漲" not in html
     assert "夜盤 <b>46,382</b>" in html
     assert "電子期夜盤 <b>2,921</b>" in html
     assert "買多 <b>7,805口</b>" in html
@@ -1398,11 +1404,11 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
 def test_outlook_embolden_longest_phrase_first():
     from taiwan_market import _outlook_embolden
 
-    assert _outlook_embolden("偏空，可以看黃金買點和重點觀察，周帶量少追。") == (
-        "<b>偏空</b>，可以看<b>黃金買點</b>和<b>重點觀察</b>，<b>周帶量少追</b>。"
+    assert _outlook_embolden("偏空。黃金買點、重點觀察照表，別追高。") == (
+        "<b>偏空</b>。<b>黃金買點</b>、<b>重點觀察</b>照表，<b>別追高</b>。"
     )
-    assert _outlook_embolden("可以照表看黃金買點和重點觀察，周帶量仍少追。") == (
-        "可以照表看<b>黃金買點</b>和<b>重點觀察</b>，<b>周帶量仍少追</b>。"
+    assert _outlook_embolden("夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。") == (
+        "<b>夜盤比日盤便宜</b>。<b>黃金買點</b>、<b>重點觀察</b>照表，<b>別追高</b>。"
     )
 
 
@@ -1559,7 +1565,8 @@ def test_outlook_keeps_tsm_cash_and_us_lead_group():
     assert "417.72" in html
     assert "+0.96%" in html
     assert "+3.97美元" in html
-    assert "<b>光通訊</b>族群，昨天在美股是領漲" in html
+    assert "美股昨漲較多　<b>光通訊</b>" in html
+    assert "電子鏈夜盤" not in html
     assert "1.23%" not in html
     for ln in html.split("\n"):
         plain = re.sub(r"<[^>]+>", "", ln)

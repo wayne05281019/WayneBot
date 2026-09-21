@@ -355,11 +355,12 @@ def pick_us_lead_group(rows: List[tuple]) -> Optional[tuple]:
 
 
 def format_us_lead_line(snap: Dict[str, Any]) -> str:
+    """對照類股裡昨漲最多且為正的那族。不是全美板塊第一名。"""
     name = str((snap or {}).get("us_lead_name") or "").strip()
     pct = _as_float((snap or {}).get("us_lead_pct"))
     if not name or pct is None or pct <= 0:
         return ""
-    return f"{name}族群，昨天在美股是領漲"
+    return f"美股昨漲較多　{name}"
 
 
 def _fetch_lead_group(*, session_open: bool = False) -> Optional[tuple]:

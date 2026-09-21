@@ -3416,16 +3416,16 @@ def _outlook_action_plain(
     if us == "risk_off" or tw == "bear" or fr >= 60:
         return "逆風，佈局先等、當沖不要硬沖。"
     if us_down and night_firm:
-        return "美股弱、夜盤沒跟崩；今天別追高，黃金買點仍按表。"
+        return "美股弱、夜盤沒跟崩。今天別追高，黃金買點仍按表。"
     if us == "caution" or fr >= 35:
-        return "偏空，可以看黃金買點和重點觀察，周帶量少追。"
+        return "偏空。黃金買點、重點觀察照表，別追高。"
     if us_up and night_firm:
-        return "隔夜偏多，台股容易開高；黃金買點仍按表，不要追已經噴的。"
+        return "隔夜偏多，台股容易開高。黃金買點仍按表，不要追已經噴的。"
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
-        return "加權還在月線下，可以照表看黃金買點和重點觀察，少追周帶量。"
+        return "加權還在月線下。黃金買點、重點觀察照表，別追高。"
     if night_weak:
-        return "可以照表看黃金買點和重點觀察；夜盤比日盤便宜，周帶量少追。"
-    return "可以照表看黃金買點和重點觀察，周帶量仍少追。"
+        return "夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。"
+    return "黃金買點、重點觀察照表，別追高。"
 
 
 def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
@@ -3449,12 +3449,12 @@ _OUTLOOK_ACTION_BOLD = (
     "台股今天休市",
     "不要追已經噴的",
     "當沖不要硬沖",
-    "周帶量仍少追",
-    "周帶量少追",
+    "夜盤比日盤便宜",
     "黃金買點",
     "重點觀察",
     "佈局先等",
     "今天別追高",
+    "別追高",
     "逆風",
     "偏空",
     "偏多",
@@ -3601,8 +3601,6 @@ def _outlook_flow_plain_lines(
     if outflow_names:
         chunk = "輪出　" + "、".join(outflow_names[:3])
         lines.extend(_outlook_embolden(ln, tuple(outflow_names[:3])) for ln in _outlook_wrap(chunk))
-    if just_names:
-        lines.extend(_outlook_wrap("對應個股已標剛輪到。"))
     return lines
 
 
@@ -3725,9 +3723,6 @@ def format_screen_market_outlook_html(
             body.append(lead.replace(lead_name, _outlook_b(lead_name), 1))
         elif lead:
             body.append(html_escape(lead))
-        side = electronics_night_side(us)
-        if side and not holiday_lines and not tw_closed:
-            body.append(f"電子鏈夜盤{_outlook_b(side)}")
     body.extend(
         _outlook_night_plain_lines(
             snap.get("futures_night") or {},

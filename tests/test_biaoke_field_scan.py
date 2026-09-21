@@ -1244,24 +1244,55 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     db = str(tmp_path / "f.db")
     _seed(db)
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
+    monkeypatch.setattr(
+        "biaoke_field_scan.dongzhu_picks",
+        lambda *_a, **_k: {
+            "field": "LCD / TFT面板",
+            "pre_sign": "chase",
+            "pre_ok": True,
+            "pre_vs20": -18.5,
+            "recs": [],
+            "buys": [],
+        },
+    )
     html = rotation_screen_block(db)
     from tg_layout import DASH_LINE, _html_plain
 
-    assert "台股資金輪動" in html
-    assert "不是整層電子" in html
-    assert "人去樓空" in html
-    assert DASH_LINE in html
-    now_i = html.find("此刻")
-    note_i = html.find("不是整層電子")
-    if now_i >= 0 and note_i >= 0:
-        assert now_i < note_i
+    assert "LCD / TFT面板" in html
+    assert "當天第一" in html
+    assert "追了勝率較差" in html
+    assert "進場只認剛離零" in html
+    assert "此刻" not in html
+    assert "不是整層電子" not in html
+    assert "台股資金輪動" not in html
+    assert "門檻" not in html
+    assert "近100日" not in html
+    assert "次級距20高" not in html
+    assert "這型此刻沒有" not in html
+    assert DASH_LINE not in html
     for ln in html.split("\n"):
-        if DASH_LINE in ln or ln.startswith("＝＝"):
-            continue
         plain = _html_plain(ln)
-        if "次級距20高" in plain or "近" in plain[:2]:
-            continue
         assert len(plain) <= 20, plain
+
+    monkeypatch.setattr(
+        "biaoke_field_scan.dongzhu_picks",
+        lambda *_a, **_k: {
+            "field": "封測",
+            "pre_sign": "pre",
+            "pre_ok": True,
+            "pre_vs20": -12.0,
+            "recs": [{"sid": "6257", "name": "矽格"}],
+            "buys": [{"sid": "6257", "name": "矽格"}],
+        },
+    )
+    pre_html = rotation_screen_block(db)
+    assert "封測" in pre_html
+    assert "先機" in pre_html
+    assert "次級距20高 -12.0%" in pre_html
+    assert "6257" in pre_html
+    assert "門檻" not in pre_html
+    assert "此刻" not in pre_html
+    assert "不是整層電子" not in pre_html
 
 
 def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
