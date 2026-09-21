@@ -1797,44 +1797,34 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows) if rows else None
 
     def _biaoke_hub_markup(self, ask: str = ""):
-        """進去就能點：大盤、查個股。官方日K有檔才加一顆。"""
+        """進去只留查個股。指數數字頁走主選單大盤，不在這裡再放一顆。"""
         if not TELEGRAM_AVAILABLE:
             return None
-        rows = [
-            [
-                InlineKeyboardButton("大盤", callback_data="bk:mkt"),
-                InlineKeyboardButton("查個股", callback_data="bk:ask"),
-            ]
-        ]
+        rows = [[InlineKeyboardButton("查個股", callback_data="bk:ask")]]
         extra = self._biaoke_dayk_markup(ask)
         if extra is not None:
             rows.extend(list(extra.inline_keyboard or []))
         return InlineKeyboardMarkup(rows)
 
     def _biaoke_dayk_markup(self, ask: str = ""):
-        """開口那則下一顆：點了送官方日K結構圖，不走查股兩張圖。"""
+        """點名個股才加官方日K結構圖。空問／大盤／波浪不加權，避免跟主選單大盤疊。"""
         if not TELEGRAM_AVAILABLE:
             return None
         q = (ask or "").strip()
+        if not q:
+            return None
         sid = ""
         name = ""
         try:
-            from biaoke_brain import is_market_question
             from biaoke_chain import _resolve_sid
-            from biaoke_wave import is_wave_question
 
-            if q:
-                sid, name = _resolve_sid(self.db_path, q)
-            if sid:
-                name = name or sid
-            elif not q or is_wave_question(q) or is_market_question(q):
-                sid, name = "TWII", "加權"
+            sid, name = _resolve_sid(self.db_path, q)
         except Exception:
             logger.exception("官方日K鈕對檔略過")
             return None
-        if not sid:
+        if not sid or sid.upper() == "TWII":
             return None
-        label = f"官方日K {name}".strip()[:16]
+        label = f"官方日K {(name or sid)}".strip()[:16]
         return InlineKeyboardMarkup(
             [[InlineKeyboardButton(label, callback_data=f"bkdk:{sid}")]]
         )
@@ -6097,6 +6087,7 @@ class WayneTelegramBot:
                 )
                 return
             if kind == "mkt":
+                # 舊訊息還可能有這顆；新鍵盤不再放。指數數字頁請按主選單大盤。
                 await q.answer("大盤")
                 self._enter_biaoke_chat(q.message, uid)
                 await self._send_biaoke_page(q.message, ask="大盤現在", uid=uid)
