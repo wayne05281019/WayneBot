@@ -810,6 +810,31 @@ class NavigatorEngine:
         else:
             stance, stance_kind = "今天先看表，先等", "wait"
             rel_kind, rel_txt = "", ""
+        try:
+            from judge_tape import remember_rows
+
+            remember_rows(
+                self.db_path,
+                "lookup",
+                [
+                    {
+                        "stock_id": str(stock_id),
+                        "stock_name": str(latest.get("stock_name") or ""),
+                        "close": float(latest.get("close") or 0),
+                        "profit_pct": (
+                            float(last_tbl.get("profit_pct") or 0)
+                            if last_tbl is not None
+                            else None
+                        ),
+                        "rel_kind": rel_kind,
+                        "stance": stance_kind,
+                    }
+                ],
+                as_of=str(latest.get("date") or ""),
+                pick=str(rel_kind or stance_kind or ""),
+            )
+        except Exception:
+            pass
         query_date, query_clock = format_card_query_stamp(
             is_live=is_live,
             latest_date=latest["date"],

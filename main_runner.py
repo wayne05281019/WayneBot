@@ -880,6 +880,12 @@ class MainRunner:
 
             score_screen_picks(self.db_path, as_of or "")
             score_ai_fills(self.db_path, as_of or "")
+            try:
+                from judge_tape import score_live_judges
+
+                score_live_judges(self.db_path, as_of or "")
+            except Exception:
+                pass
             snap = analyze_taiwan_market(self.db_path, as_of or "")
             adapt_bucket_weights(
                 self.db_path,
@@ -1154,7 +1160,13 @@ class MainRunner:
 
             n = score_screen_picks(self.db_path, cap)
             nf = score_ai_fills(self.db_path, cap)
-            logger.info("海選復盤已對帳 %s 檔、AI 成交 %s 筆（隔日＝%s）", n, nf, cap)
+            try:
+                from judge_tape import score_live_judges
+
+                nj = score_live_judges(self.db_path, cap)
+            except Exception:
+                nj = 0
+            logger.info("海選復盤已對帳 %s 檔、AI 成交 %s 筆、當下判斷 %s（隔日＝%s）", n, nf, nj, cap)
         except Exception:
             logger.exception("海選復盤對帳失敗")
         # 盤後這份庫會打進 Release zip：模擬倉也要在這裡成交，下次開機才看得到持倉。
