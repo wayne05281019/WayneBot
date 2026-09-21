@@ -470,3 +470,71 @@ class TestMarketMenuE2E:
         assert _row("風險")
         assert "電子鏈夜盤" not in phone
         assert "大盤中性" not in phone
+
+    def test_circled_index_chip_futures_not_jammed(self):
+        """話筒紅圈：開高低、法人、台指期不准再擠一行被折斷。"""
+        from taiwan_market import (
+            _format_chips_rows,
+            _format_futures_page_rows,
+            _format_performance_lines,
+        )
+        from tg_layout import _html_plain, reflow_telegram_html
+
+        snap = {
+            "open": 45936.11,
+            "high": 46874.84,
+            "low": 45936.11,
+            "prev_close": 45848.90,
+            "amplitude_pct": 2.05,
+            "hl_spread": 938.73,
+            "vs_ma20_pct": 0.28,
+            "vs_high52_pct": -3.04,
+            "chips_foreign": 499283,
+            "chips_trust": 119026,
+            "chips_dealer": -488030,
+            "futures": {"close": 46445, "open_interest": 99476},
+            "basis_pct": 0.34,
+            "futures_lead": {
+                "sample_n": 8,
+                "label": "期貨領跌",
+                "futures_lead_down": 5,
+                "spot_lead_down": 3,
+            },
+        }
+        html = "\n".join(
+            [
+                "<b>加權指數</b>",
+                *_format_performance_lines(snap),
+                "<b>三大法人</b>",
+                *_format_chips_rows(snap),
+                "<b>台指期</b>",
+                *_format_futures_page_rows(snap),
+            ]
+        )
+        phone = reflow_telegram_html(html)
+        plains = [_html_plain(ln) for ln in phone.split("\n") if _html_plain(ln).strip()]
+
+        def _row(prefix):
+            hits = [ln for ln in plains if ln.startswith(prefix)]
+            assert hits, prefix
+            return hits[0]
+
+        open_ln = _row("開盤")
+        assert "最高" not in open_ln and "最低" not in open_ln and "昨收" not in open_ln
+        hi = _row("最高")
+        assert "最低" not in hi and "昨收" not in hi
+        amp = _row("振幅")
+        assert "高低差" not in amp
+        vs20 = _row("距月線")
+        assert "距年高" not in vs20
+        wai = _row("外資")
+        assert "投信" not in wai and "自營" not in wai
+        assert _row("投信")
+        assert _row("自營")
+        close = _row("收盤")
+        assert "比現貨" not in close and "未平倉" not in close
+        basis = _row("比現貨")
+        assert "未平倉" not in basis
+        lead = _row("領跌")
+        assert "現貨3" in lead or "現貨 3" in lead
+        assert "／" not in lead
