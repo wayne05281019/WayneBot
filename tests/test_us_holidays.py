@@ -127,9 +127,9 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
     )
     assert "20260907 美股勞動節休市" in html
     assert "上一收盤 20260904" in html
-    assert "上一收盤日該看" in html
-    assert "上一收盤指數" in html
-    assert "上一收盤判斷" in html
+    assert "<b>美股</b>" in html
+    assert "上一收盤日該看" not in html
+    assert "上一收盤判斷" not in html
     assert "美股時段" not in html
     assert "前一晚該看" not in html
     assert "道瓊" in html
@@ -140,7 +140,7 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
         db, as_of, now=datetime(2026, 9, 8, 10, 0, tzinfo=NY)
     )
     assert "勞動節休市" not in open_html
-    assert "指數收盤" in open_html
+    assert "道瓊" in open_html
 
 
 def test_format_us_html_holiday_then_prior_tape():

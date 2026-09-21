@@ -104,10 +104,9 @@ class TestMarketMenuE2E:
             snap = analyze_taiwan_market(db, as_of, db_only=True)
             mock_yahoo.assert_not_called()
         assert "台股大盤" in html
-        assert "庫內官方融合" in html
+        assert "官方收" in html
         assert "漲跌家數" in html
         assert "距月線" in html
-        assert "三大法人" in html
         assert snap.get("ok")
         assert snap.get("falling_risk") is not None
         br = load_index_breadth_daily(db, as_of)
@@ -146,7 +145,9 @@ class TestMarketMenuE2E:
         assert snap.get("sector_flow_net") == 0
         assert snap.get("sector_flow_as_of") == as_of
         html = format_taiwan_market_page_html(db, as_of)
-        assert "合計 +0 張" in html or "合計 0 張" in html
+        assert "合計" in html
+        assert "+0" in html
+        assert "張" in html
 
 
     def test_market_page_shows_sector_leaders(self, tmp_path):
@@ -199,11 +200,11 @@ class TestMarketMenuE2E:
         conn.commit()
         conn.close()
         html = format_taiwan_market_page_html(db, as_of)
-        assert "外資 +1,000" in html
-        assert "投信 +200" in html
-        assert "自營 -50" in html
-        assert "合計 +1,150 張" in html
-        assert "合計 +3 張" not in html
+        assert "外資" in html and "+1,000" in html
+        assert "投信" in html and "+200" in html
+        assert "自營" in html and "-50" in html
+        assert "合計" in html and "+1,150" in html
+        assert "+3" not in html.split("合計")[-1][:40]
 
     def test_market_page_rebuilds_sector_flow_when_chips_exist(self, tmp_path):
         """日 K 已有法人張、產業表卻停在前一日時，大盤頁要補寫當日，不要默默用舊日。"""
@@ -424,3 +425,116 @@ class TestMarketMenuE2E:
         for line in html.splitlines():
             if "上市" in line and "上櫃" in line:
                 pytest.fail(f"overlong breadth line: {line!r}")
+
+    def test_market_page_reflow_keeps_chip_and_structure_rows(self, tmp_path):
+        """法人／結構一欄一行，reflow 不准把投信、自營拆到數字後面。"""
+        from tg_layout import _html_plain, reflow_telegram_html
+
+        db = str(tmp_path / "align.db")
+        as_of = _seed_market_db(db)
+        conn = sqlite3.connect(db, timeout=30)
+        for col, spec in (
+            ("foreign_net", "INTEGER"),
+            ("trust_net", "INTEGER"),
+            ("dealer_net", "INTEGER"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE daily_quotes ADD COLUMN {col} {spec}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute(
+            "UPDATE daily_quotes SET foreign_net=1000, trust_net=200, dealer_net=-50 WHERE date=?",
+            (as_of,),
+        )
+        conn.commit()
+        conn.close()
+        html = format_taiwan_market_page_html(db, as_of)
+        phone = reflow_telegram_html(html)
+        plains = [_html_plain(ln) for ln in phone.split("\n") if _html_plain(ln).strip()]
+        def _row(prefix):
+            hits = [ln for ln in plains if ln.startswith(prefix)]
+            assert hits, prefix
+            return hits[0]
+        wai = _row("外資")
+        xin = _row("投信")
+        ying = _row("自營")
+        tot = _row("合計")
+        assert "投信" not in wai
+        assert "自營" not in xin
+        assert "+1,000" in wai and "投信" not in wai
+        assert "+200" in xin
+        assert "-50" in ying
+        assert "+1,150" in tot
+        assert _row("盤勢")
+        assert _row("細分")
+        assert _row("風險")
+        assert "電子鏈夜盤" not in phone
+        assert "大盤中性" not in phone
+
+    def test_circled_index_chip_futures_not_jammed(self):
+        """話筒紅圈：開高低、法人、台指期不准再擠一行被折斷。"""
+        from taiwan_market import (
+            _format_chips_rows,
+            _format_futures_page_rows,
+            _format_performance_lines,
+        )
+        from tg_layout import _html_plain, reflow_telegram_html
+
+        snap = {
+            "open": 45936.11,
+            "high": 46874.84,
+            "low": 45936.11,
+            "prev_close": 45848.90,
+            "amplitude_pct": 2.05,
+            "hl_spread": 938.73,
+            "vs_ma20_pct": 0.28,
+            "vs_high52_pct": -3.04,
+            "chips_foreign": 499283,
+            "chips_trust": 119026,
+            "chips_dealer": -488030,
+            "futures": {"close": 46445, "open_interest": 99476},
+            "basis_pct": 0.34,
+            "futures_lead": {
+                "sample_n": 8,
+                "label": "期貨領跌",
+                "futures_lead_down": 5,
+                "spot_lead_down": 3,
+            },
+        }
+        html = "\n".join(
+            [
+                "<b>加權指數</b>",
+                *_format_performance_lines(snap),
+                "<b>三大法人</b>",
+                *_format_chips_rows(snap),
+                "<b>台指期</b>",
+                *_format_futures_page_rows(snap),
+            ]
+        )
+        phone = reflow_telegram_html(html)
+        plains = [_html_plain(ln) for ln in phone.split("\n") if _html_plain(ln).strip()]
+
+        def _row(prefix):
+            hits = [ln for ln in plains if ln.startswith(prefix)]
+            assert hits, prefix
+            return hits[0]
+
+        open_ln = _row("開盤")
+        assert "最高" not in open_ln and "最低" not in open_ln and "昨收" not in open_ln
+        hi = _row("最高")
+        assert "最低" not in hi and "昨收" not in hi
+        amp = _row("振幅")
+        assert "高低差" not in amp
+        vs20 = _row("距月線")
+        assert "距年高" not in vs20
+        wai = _row("外資")
+        assert "投信" not in wai and "自營" not in wai
+        assert _row("投信")
+        assert _row("自營")
+        close = _row("收盤")
+        assert "比現貨" not in close and "未平倉" not in close
+        basis = _row("比現貨")
+        assert "未平倉" not in basis
+        lead = _row("領跌")
+        assert "現貨3" in lead or "現貨 3" in lead
+        assert "／" not in lead

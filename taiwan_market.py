@@ -1425,6 +1425,36 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
     return line
 
 
+def _format_futures_page_rows(snap: Dict[str, Any]) -> List[str]:
+    """台指期日盤一欄一行。"""
+    fut = snap.get("futures")
+    if not fut:
+        return []
+    rows = [_page_kv("收盤", _page_b(f"{fut['close']:,.0f}"))]
+    basis = snap.get("basis_pct")
+    if basis is not None:
+        mag = abs(float(basis))
+        side = "貴" if float(basis) >= 0 else "便宜"
+        rows.append(_page_kv("比現貨", f"{side} {_page_b(f'{mag:.2f}%')}"))
+    oi = int(fut.get("open_interest") or 0)
+    if oi > 0:
+        rows.append(_page_kv("未平倉", f"{oi:,}口"))
+    f_date = str(snap.get("futures_as_of") or fut.get("date") or "")
+    ref = str(snap.get("as_of") or "")
+    if f_date and f_date != ref:
+        rows.append(_page_kv("日期", f_date))
+    lead = snap.get("futures_lead") or {}
+    if lead.get("sample_n", 0) >= 5:
+        rows.append(_page_kv("近20跌", str(lead.get("label") or "同步")))
+        rows.append(
+            _page_kv(
+                "領跌",
+                f"期貨{lead.get('futures_lead_down', 0)}　現貨{lead.get('spot_lead_down', 0)}",
+            )
+        )
+    return rows
+
+
 def _format_futures_night_line(
     night: Dict[str, Any],
     day: Optional[Dict[str, Any]] = None,
@@ -1486,31 +1516,72 @@ def _latest_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
     return us or {}
 
 
-def _watch_kv(name: str, value: str) -> str:
-    from tg_layout import html_escape, pad_label
+def _page_b(text: str) -> str:
+    from tg_layout import html_escape
 
-    return f"{pad_label(name, 12)}　{html_escape(value)}"
+    return f"<b>{html_escape(str(text))}</b>"
 
 
-def _watch_quote_rows(snap: Dict[str, Any], items) -> List[str]:
-    from us_overnight import format_quote_move
+def _page_kv(label: str, value_html: str) -> str:
+    """大盤小區一欄一行：標籤對齊，值從同一直欄開始。"""
+    from tg_layout import pad_label
 
+    return f"{pad_label(label, 8)}　{value_html}"
+
+
+def _page_pct(val: Optional[float]) -> str:
+    if val is None:
+        return "—"
+    return _page_b(f"{float(val):+.2f}%")
+
+
+def _us_face_short(us: Dict[str, Any]) -> str:
+    """台股大盤頁不要寫「大盤中性」——那是美股判斷。"""
+    from us_overnight import classify_us_regime, effective_sox_pct
+
+    regime = str((us or {}).get("regime") or classify_us_regime(us) or "unknown")
+    sox = effective_sox_pct(us)
+    if regime == "ok" and sox is not None and sox <= -1.5:
+        return "中性、費半弱"
+    return {"ok": "中性", "caution": "偏空", "risk_off": "逆風"}.get(regime, "沒接到")
+
+
+_US_NAME_SHORT = {
+    "那斯達克期貨": "那指期",
+    "標普期貨": "標指期",
+    "道瓊期貨": "道指期",
+    "台積美股收盤": "台積",
+    "台積美股盤後": "台積後",
+    "輝達收盤": "輝達",
+    "輝達盤後": "輝達後",
+    "費半盤後": "費半後",
+    "台積美股": "台積",
+    "恐慌指數": "恐慌",
+}
+_US_PHASE_SHORT = {
+    "regular": "現金盤中",
+    "post": "已收＋盤後",
+    "overnight": "已收＋隔夜",
+}
+
+
+def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
     rows: List[str] = []
-    for pct_k, chg_k, name in items:
+    for pct_k, _chg_k, name in items:
         if snap.get(pct_k) is None:
             continue
-        rows.append(_watch_kv(name, format_quote_move(snap, pct_k, chg_k)))
+        label = _US_NAME_SHORT.get(name, name)
+        rows.append(_page_kv(label, _page_pct(snap.get(pct_k))))
     return rows
 
 
 def _format_overnight_watch_lines(
     db_path: str, as_of: str, snap: Dict[str, Any], now: Optional[datetime] = None
 ) -> List[str]:
-    """開盤前該看：美股收盤／盤後期貨／台積美股盤後＋台指期夜盤。沒數字就整段省略。"""
+    """美股一欄一行。台指期夜盤歸台指期區，不塞在美股底下。盤中期貨不看。"""
     from tg_layout import html_escape
 
     us = _latest_us_overnight(db_path, as_of)
-    night = snap.get("futures_night") or resolve_futures_night(db_path, as_of)
     bits: List[str] = []
     holiday_lines: List[str] = []
     try:
@@ -1521,83 +1592,91 @@ def _format_overnight_watch_lines(
         logger.debug("美股休市年曆讀不到", exc_info=True)
     if holiday_lines:
         bits.extend(html_escape(x) for x in holiday_lines)
+    live_phase = ""
+    try:
+        from us_overnight import us_tape_phase
+
+        live_phase = us_tape_phase(now)
+    except Exception:
+        live_phase = ""
+    skip_post = live_phase == "regular"
     if us.get("ok") or us.get("vix") is not None:
         from us_overnight import (
             _ADR_CASH_ITEMS,
+            _ADR_ITEMS,
             _CASH_ITEMS,
             _FUTURES_ITEMS,
-            _PHASE_LABEL,
-            _fmt_vix,
             _session_label,
-            electronics_night_side,
-            regime_face_label,
         )
 
-        label = regime_face_label(us)
-        head = (
-            f"上一收盤判斷　{html_escape(label)}"
-            if holiday_lines
-            else f"判斷　{html_escape(label)}"
-        )
-        phase = _PHASE_LABEL.get(str(us.get("us_phase") or ""), "")
-        if phase and not holiday_lines:
-            head += f"　{html_escape(phase)}"
+        cached_phase = str(us.get("us_phase") or "")
+        phase_s = _US_PHASE_SHORT.get(live_phase or cached_phase, "")
+        if phase_s:
+            bits.append(_page_kv("時段", phase_s))
         sess = _session_label(us)
-        if sess and sess != "—" and not holiday_lines:
-            head += f"　交易日 {html_escape(sess)}"
-        bits.append(head)
-        cash = _watch_quote_rows(us, _CASH_ITEMS)
+        if sess and sess != "—":
+            bits.append(_page_kv("交易日", sess))
+        bits.append(_page_kv("判斷", _page_b(_us_face_short(us))))
+        cash = _us_quote_rows(us, _CASH_ITEMS)
         if cash:
-            bits.append("上一收盤指數" if holiday_lines else "指數收盤")
             bits.extend(cash)
         if us.get("vix") is not None:
-            bits.append(_watch_kv("恐慌指數", _fmt_vix(us)))
-        fut = _watch_quote_rows(us, _FUTURES_ITEMS)
-        if fut:
-            bits.append("盤後期貨")
+            from us_overnight import _vix_mood
+
+            mood = _vix_mood(us.get("vix"), us.get("vix_pct"))
+            vix_s = f"{float(us['vix']):.2f}"
+            bits.append(_page_kv("恐慌", f"{_page_b(vix_s)}" + (f"　{mood}" if mood else "")))
+        if not skip_post:
+            fut = _us_quote_rows(us, _FUTURES_ITEMS)
             bits.extend(fut)
-        adr = _watch_quote_rows(
-            us,
-            (
+            adr_items = (
                 *_ADR_CASH_ITEMS,
                 ("soxx_post_pct", "soxx_post_chg", "費半盤後"),
-            ),
-        )
-        if adr:
-            bits.append("台積／輝達")
-            bits.extend(adr)
-        side = electronics_night_side(us)
-        if side and not holiday_lines:
-            bits.append(_watch_kv("電子鏈夜盤", side))
-    night_line = _format_futures_night_line(
-        night or {},
-        snap.get("futures"),
-        spot_close=float(snap.get("close") or 0),
-    )
-    if night_line:
-        bits.append("台指期夜盤")
-        bits.append(night_line)
-    te_night = snap.get("futures_te_night") or resolve_futures_night(db_path, as_of, symbol="TE")
-    te_line = _format_futures_night_line(
-        te_night or {},
-        snap.get("futures_te"),
-        spot_close=0.0,
-    )
-    if te_line:
-        bits.append("電子期夜盤")
-        bits.append(te_line)
+            )
+            bits.extend(_us_quote_rows(us, adr_items))
+        else:
+            bits.extend(_us_quote_rows(us, _ADR_ITEMS))
     if not bits:
         return []
-    title = "<b>上一收盤日該看</b>"
-    if not holiday_lines:
-        try:
-            from us_overnight import us_tape_phase
+    return ["", _TG_SECTION, "<b>美股</b>", *bits]
 
-            if us_tape_phase(now) == "regular":
-                title = "<b>美股盤中該看</b>"
-        except Exception:
-            pass
-    return ["", _TG_SECTION, title, *bits]
+
+def _fmt_night_page_rows(
+    night: Dict[str, Any],
+    day: Optional[Dict[str, Any]] = None,
+    *,
+    spot_close: float = 0.0,
+    heading: str,
+) -> List[str]:
+    """夜盤一欄一行，不把開高低跟比價塞同一句。"""
+    if not night or not night.get("close"):
+        return []
+    close = float(night["close"])
+    rows = [f"<b>{heading}</b>", _page_kv("收盤", _page_b(f"{close:,.0f}"))]
+    day_close = float((day or {}).get("close") or 0)
+    if day_close > 0:
+        diff = (close - day_close) / day_close * 100.0
+        side = "貴" if diff >= 0 else "便宜"
+        rows.append(_page_kv("比日盤", f"{side} {_page_b(f'{abs(diff):.2f}%')}"))
+    if spot_close > 0:
+        diff = (close - spot_close) / spot_close * 100.0
+        side = "貴" if diff >= 0 else "便宜"
+        rows.append(_page_kv("比現貨", f"{side} {_page_b(f'{abs(diff):.2f}%')}"))
+    op, hi, lo = float(night.get("open") or 0), float(night.get("high") or 0), float(night.get("low") or 0)
+    if op > 0:
+        rows.append(_page_kv("開盤", f"{op:,.0f}"))
+    if hi > 0:
+        rows.append(_page_kv("最高", f"{hi:,.0f}"))
+    if lo > 0:
+        rows.append(_page_kv("最低", f"{lo:,.0f}"))
+    vol = int(night.get("volume") or 0)
+    if vol > 0:
+        rows.append(_page_kv("成交", f"{vol:,}口"))
+    n_date = str(night.get("date") or "")
+    d_date = str((day or {}).get("date") or "")
+    if n_date and d_date and n_date != d_date:
+        rows.append(_page_kv("日期", n_date))
+    return rows
 
 
 def _merge_index_closes(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
@@ -3230,13 +3309,17 @@ def _fmt_lots(val: Optional[float]) -> str:
 
 
 def _format_chips_line(snap: Dict[str, Any]) -> str:
-    bits = []
+    return "\n".join(_format_chips_rows(snap))
+
+
+def _format_chips_rows(snap: Dict[str, Any]) -> List[str]:
+    rows: List[str] = []
     for key, name in (("chips_foreign", "外資"), ("chips_trust", "投信"), ("chips_dealer", "自營")):
         val = snap.get(key)
         if val is None:
             continue
-        bits.append(f"{name} {_fmt_lots(val).replace(' 張', '')}")
-    return "　".join(bits) + " 張" if bits else ""
+        rows.append(_page_kv(name, f"{_page_b(f'{float(val):+,.0f}')}張"))
+    return rows
 
 
 def _ohlc_from_live_or_snap(snap: Dict[str, Any], live: Optional[Dict[str, Any]]) -> Dict[str, Optional[float]]:
@@ -3274,18 +3357,17 @@ def _ohlc_from_live_or_snap(snap: Dict[str, Any], live: Optional[Dict[str, Any]]
 
 
 def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any]] = None) -> List[str]:
-    """只放會改判斷的欄：開高低、振幅、量對昨、距月線／年高。"""
+    """只放會改判斷的欄：開高低、振幅、量對昨、距月線／年高。一欄一行。"""
     ohlc = _ohlc_from_live_or_snap(snap, live)
     lines: List[str] = []
-    if ohlc.get("open") and ohlc.get("high") and ohlc.get("low"):
-        prev = ohlc.get("prev_close")
-        prev_s = f"{prev:,.2f}" if prev else "—"
-        lines.append(
-            f"開 {ohlc['open']:,.2f}　高 {ohlc['high']:,.2f}　"
-            f"低 {ohlc['low']:,.2f}　昨收 {prev_s}"
-        )
-    amp = ohlc.get("amplitude_pct")
-    spread = ohlc.get("hl_spread")
+    if ohlc.get("open"):
+        lines.append(_page_kv("開盤", f"{ohlc['open']:,.2f}"))
+    if ohlc.get("high"):
+        lines.append(_page_kv("最高", f"{ohlc['high']:,.2f}"))
+    if ohlc.get("low"):
+        lines.append(_page_kv("最低", f"{ohlc['low']:,.2f}"))
+    if ohlc.get("prev_close"):
+        lines.append(_page_kv("昨收", f"{ohlc['prev_close']:,.2f}"))
 
     def _finite(v) -> bool:
         try:
@@ -3294,16 +3376,19 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
             return False
         return x == x
 
-    if _finite(amp) and _finite(spread):
-        lines.append(f"振幅 {amp:.2f}%　高低差 {spread:,.2f}")
+    amp = ohlc.get("amplitude_pct")
+    spread = ohlc.get("hl_spread")
+    if _finite(amp):
+        lines.append(_page_kv("振幅", f"{float(amp):.2f}%"))
+    if _finite(spread):
+        lines.append(_page_kv("高低差", f"{float(spread):,.2f}"))
     vol_chg = snap.get("vol_chg_pct")
-    vol_r = snap.get("vol_ratio")
-    vol_bits = []
     if vol_chg is not None:
         tag = "量增" if vol_chg > 0 else ("量縮" if vol_chg < 0 else "量平")
-        vol_bits.append(f"{tag} {abs(vol_chg):.1f}%")
+        lines.append(_page_kv(tag, f"{abs(vol_chg):.1f}%"))
+    vol_r = snap.get("vol_ratio")
     if vol_r is not None:
-        vol_bits.append(f"量比 {float(vol_r):.2f}")
+        lines.append(_page_kv("量比", f"{float(vol_r):.2f}"))
     last_vol = snap.get("volume")
     if last_vol is not None:
         try:
@@ -3311,16 +3396,14 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
         except (TypeError, ValueError):
             lots = 0.0
         if lots > 0:
-            if lots >= 10000:
-                vol_bits.append(f"全日量 {lots / 10000.0:.1f}萬張")
-            else:
-                vol_bits.append(f"全日量 {lots:,.0f}張")
-    if vol_bits:
-        lines.append("　".join(vol_bits))
-    lines.append(
-        f"距月線 {_fmt_signed_pct(snap.get('vs_ma20_pct'))}　"
-        f"距年高 {_fmt_signed_pct(snap.get('vs_high52_pct'))}"
-    )
+            vol_s = f"{lots / 10000.0:.1f}萬張" if lots >= 10000 else f"{lots:,.0f}張"
+            lines.append(_page_kv("全日量", vol_s))
+    vs20 = snap.get("vs_ma20_pct")
+    if vs20 is not None:
+        lines.append(_page_kv("距月線", _page_b(_fmt_signed_pct(vs20))))
+    vs_hi = snap.get("vs_high52_pct")
+    if vs_hi is not None:
+        lines.append(_page_kv("距年高", _page_b(_fmt_signed_pct(vs_hi))))
     return lines or ["—"]
 
 
@@ -3883,89 +3966,106 @@ def format_taiwan_market_page_html(
     except Exception:
         tw_closed = None
         tw_banner = []
-    yest = float((live or {}).get("yesterday_close") or snap.get("prev_close") or 0)
     show_px = live_px if live_px > 0 else float(snap.get("close") or 0)
     show_pct = float((live or {}).get("pct_change") or day_pct or snap.get("chg1_pct") or 0)
-    chg_pts = (show_px - yest) if show_px and yest else None
     clock = str((live or {}).get("update_time") or "")[:5]
+    ref8 = str(ref).replace("-", "")[:8]
+    ref_zh = f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
     if live_px > 0:
-        as_of_note = f"截至 <b>{ref}</b>　盤中即時（漲跌家數／法人仍依庫內最近完整日）"
-        px_line = f"<b>{show_px:,.2f}</b>"
-        if chg_pts is not None:
-            px_line += f"　{chg_pts:+,.2f}（{show_pct:+.2f}%）"
-        else:
-            px_line += f"（{show_pct:+.2f}%）"
-        if clock:
-            px_line += f"　{clock}"
+        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　盤中")
+        extra_note = "漲跌家數、法人仍依庫內最近完整日"
+    elif tw_banner:
+        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　休市上一收")
+        extra_note = ""
     else:
-        as_of_note = (
-            f"截至 <b>{ref}</b>　台股休市，庫內上一收盤"
-            if tw_banner
-            else f"截至 <b>{ref}</b>　庫內官方融合收盤"
-        )
-        pct_bit = f"（{day_pct:+.2f}%）" if day_pct is not None else ""
-        px_line = f"收盤 <b>{float(snap['close']):,.2f}</b>{pct_bit}"
-        if chg_pts is not None:
-            px_line += f"　{chg_pts:+,.2f}"
+        as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　官方收")
+        extra_note = ""
     lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
-    lines.extend(
-        [
-            "",
-            "<b>加權指數</b>",
-            px_line,
-            *_format_performance_lines(snap, live),
-            "",
-            _TG_SECTION,
-            "<b>漲跌家數</b>",
-        ]
-    )
+    if extra_note:
+        lines.append(extra_note)
+    lines.extend(["", "<b>加權指數</b>"])
+    if show_px:
+        lines.append(_page_kv("收盤", _page_b(f"{show_px:,.2f}")))
+    if show_pct or show_pct == 0:
+        lines.append(_page_kv("漲跌", _page_b(f"{show_pct:+.2f}%")))
+    if live_px > 0 and clock:
+        lines.append(_page_kv("時間", clock))
+    lines.extend(_format_performance_lines(snap, live))
+    lines.extend(["", _TG_SECTION, "<b>漲跌家數</b>"])
     qb = _quote_up_down_counts(db_path, ref)
+    up_n = down_n = flat_n = 0
     if int(qb.get("n") or 0) > 0 and int(qb.get("up") or 0) + int(qb.get("down") or 0) > 0:
-        line = f"漲 {qb['up']}　跌 {qb['down']}"
-        if int(qb.get("flat") or 0) > 0:
-            line += f"　平 {qb['flat']}"
-        lines.append(line)
+        up_n, down_n, flat_n = int(qb["up"]), int(qb["down"]), int(qb.get("flat") or 0)
     ob = snap.get("official_breadth")
     ob_same_day = bool(ob) and str(ob.get("date") or "") == ref
-    if (not qb or int(qb.get("n") or 0) <= 0) and ob_same_day:
+    if up_n + down_n <= 0 and ob_same_day:
         up_n = int(ob.get("up_count") or 0)
         down_n = int(ob.get("down_count") or 0)
         # 證交所新表含權證，家數會到數千；那種數字不當「漲跌家數」。
-        if 0 < up_n + down_n <= 2500:
-            lines.append(f"漲 {up_n}　跌 {down_n}")
+        if up_n + down_n > 2500:
+            up_n = down_n = 0
+    if up_n + down_n > 0:
+        lines.append(_page_kv("漲", _page_b(str(up_n))))
+        lines.append(_page_kv("跌", _page_b(str(down_n))))
+        if flat_n > 0:
+            lines.append(_page_kv("平", str(flat_n)))
     if ob_same_day:
         lu, ld = int(ob.get("limit_up") or 0), int(ob.get("limit_down") or 0)
         if lu + ld > 0:
-            lines.append(f"漲停 {lu}　跌停 {ld}")
+            lines.append(_page_kv("漲停", str(lu)))
+            lines.append(_page_kv("跌停", str(ld)))
     if int(snap.get("sample_n") or 0) > 0:
-        lines.append(f"站上月線 {snap['breadth_above_ma20']:.1f}%")
+        lines.append(_page_kv("站月線", f"{snap['breadth_above_ma20']:.1f}%"))
     flow_date = str(snap.get("sector_flow_as_of") or ref)
     flow_net = snap.get("sector_flow_net")
-    lines.extend(["", _TG_SECTION, "<b>三大法人</b>"])
-    chips_line = _format_chips_line(snap)
-    if chips_line:
-        lines.append(chips_line)
+    chips_rows = _format_chips_rows(snap)
     chips_net = snap.get("chips_net")
     chips_date = str(snap.get("chips_as_of") or flow_date or ref)
     total = chips_net if chips_net is not None else flow_net
-    if total is not None:
-        f_note = f"（{chips_date}）" if chips_date and chips_date != ref else ""
-        lines.append(f"合計 {float(total):+,.0f} 張{f_note}")
-    fut_line = _format_futures_line(snap)
-    if fut_line:
+    if chips_rows or total is not None:
+        lines.extend(["", _TG_SECTION, "<b>三大法人</b>"])
+        lines.extend(chips_rows)
+        if total is not None:
+            tot_html = f"{_page_b(f'{float(total):+,.0f}')}張"
+            lines.append(_page_kv("合計", tot_html))
+            if chips_date and chips_date != ref:
+                lines.append(_page_kv("日期", chips_date))
+    fut_rows = _format_futures_page_rows(snap)
+    night = snap.get("futures_night") or resolve_futures_night(db_path, ref)
+    night_rows = _fmt_night_page_rows(
+        night or {},
+        snap.get("futures"),
+        spot_close=float(snap.get("close") or 0),
+        heading="夜盤",
+    )
+    te_night = snap.get("futures_te_night") or resolve_futures_night(db_path, ref, symbol="TE")
+    te_rows = _fmt_night_page_rows(
+        te_night or {},
+        snap.get("futures_te"),
+        spot_close=0.0,
+        heading="電子期夜盤",
+    )
+    if fut_rows or night_rows or te_rows:
         lines.extend(["", _TG_SECTION, "<b>台指期</b>"])
-        for piece in fut_line.split("\n"):
-            if piece.strip():
-                lines.append(piece)
+        lines.extend(fut_rows)
+        if night_rows:
+            if fut_rows:
+                lines.append("")
+            lines.extend(night_rows)
+        if te_rows:
+            lines.append("")
+            lines.extend(te_rows)
     lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now))
+    plus_light = _regime_plus_traffic_light(snap.get("regime_plus"))
+    plus_lab = str(snap.get("regime_plus_label") or "—")
     lines.extend(
         [
             "",
             _TG_SECTION,
             "<b>結構</b>",
-            f"{light} {snap['regime_label']}　"
-            f"{_regime_plus_traffic_light(snap.get('regime_plus'))} {snap.get('regime_plus_label', '—')}　"
-            f"風險 {fr_light}{snap.get('falling_risk', 0)}",
+            _page_kv("盤勢", f"{light} {_page_b(str(snap.get('regime_label') or '—'))}"),
+            _page_kv("細分", f"{plus_light} {_page_b(plus_lab)}"),
+            _page_kv("風險", f"{fr_light} {_page_b(str(snap.get('falling_risk', 0)))}"),
         ]
     )
     read = _market_read_note(snap)
