@@ -117,6 +117,10 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("7751") == []
     assert extra_tags_for("2397") == ["機器人"]
     assert extra_tags_for("3324") == ["散熱"]
+    assert extra_tags_for("6933") == ["散熱"]
+    assert extra_tags_for("6199") == []
+    assert membership_face("6199", chain="傳產-其他") == ""
+    assert membership_face("6933", chain="電子中游-其他") == "散熱"
     assert extra_tags_for("8046") == ["ABF"]
     assert extra_tags_for("4958") == ["PCB"]
     assert extra_tags_for("6830") == ["檢測驗證"]

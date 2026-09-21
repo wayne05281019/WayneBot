@@ -75,7 +75,7 @@ def _universe_row(conn: sqlite3.Connection, sid: str) -> Dict[str, Any]:
     }
 
 
-COPY_CHAIN_SRC = "產業鏈來自籌碼K公開個股頁。"
+COPY_CHAIN_SRC = "產業鏈來自櫃買價值鏈；「其他」不當同業。已教過的跨族仍用點名檔。"
 COPY_PEER_RULE = "同業＝同一產業鏈才比；跨族檔另標他還有的鏈。"
 COPY_PEER_NOTE = "小框是產業鏈／跨族標籤。有一樣才比，不是證交所半導體業全組。"
 COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
@@ -99,7 +99,9 @@ def membership_label(snap: Dict[str, Any]) -> str:
             if t not in bits:
                 bits.append(t)
         return "／".join(bits)
-    if finest:
+    from industry_fine import is_catchall_finest
+
+    if finest and not is_catchall_finest(finest):
         bits.append(finest)
     return "／".join(bits)
 
@@ -951,10 +953,11 @@ def _rebuild_peers_from_chain(snap: Dict[str, Any], db_path: str) -> None:
 def attach_fine_industry(
     snap: Dict[str, Any], db_path: str, *, allow_fetch: bool = False, max_fetch: int = 1
 ) -> Dict[str, Any]:
-    """把籌碼K產業鏈掛上這檔與對照檔。沒抓到就空，不自造。同業改走細項／跨族。"""
+    """把櫃買／籌碼K產業鏈掛上這檔與對照檔。其他桶不拿來比。同業改走最細標／跨族。"""
     from industry_fine import (
         display_tags,
         extra_tags_for,
+        is_catchall_finest,
         load_or_fetch_fine_industry,
     )
 
@@ -963,10 +966,23 @@ def attach_fine_industry(
         db_path, [sid], allow_fetch=allow_fetch, max_fetch=max_fetch
     )
     mine = fine.get(sid) or {}
-    snap["fine_tags"] = display_tags(list(mine.get("tags") or []), sid)
-    snap["fine_chain"] = str(mine.get("chain") or "")
-    snap["fine_finest"] = str(mine.get("finest") or "")
-    snap["extra_tags"] = extra_tags_for(sid)
+    extras = extra_tags_for(sid)
+    tags = display_tags(list(mine.get("tags") or []), sid)
+    chain = str(mine.get("chain") or "")
+    finest = str(mine.get("finest") or "")
+    if is_catchall_finest(finest):
+        if extras:
+            chain = "／".join(extras)
+            finest = extras[0]
+            tags = display_tags(extras, sid)
+        else:
+            chain = ""
+            finest = ""
+            tags = extras
+    snap["fine_tags"] = tags
+    snap["fine_chain"] = chain
+    snap["fine_finest"] = finest
+    snap["extra_tags"] = extras
     _rebuild_peers_from_chain(snap, db_path)
     ids = [sid] + [
         str(row.get("stock_id") or "")
