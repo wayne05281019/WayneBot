@@ -778,7 +778,7 @@ class ScreeningEngine:
     def screen_leave_zero_pick(
         self, target_date: Optional[str] = None, *, pick: str = "0"
     ) -> List[Dict[str, Any]]:
-        """剛離／脫離1–3／剛為零。不改海選黃金買點公式。未收盤不寫庫。"""
+        """剛離1／2／3／獲利為零。不改海選黃金買點公式。未收盤不寫庫。"""
         token = str(pick or "0").strip().lower()
         if token in ("z", "zero", "at0"):
             return self._screen_leave_zero_from_bucket(
@@ -798,7 +798,7 @@ class ScreeningEngine:
             target_date,
             bucket="leave_zero",
             days_ago=days,
-            mode="band",
+            mode="ago",
             star_key="leave_zero",
         )
 
@@ -1328,8 +1328,8 @@ def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
 
 
 def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
-    """脫離1–3＝還在黃金買點獲利帶；剛為零＝獲利欄仍是 0.0%。"""
-    from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT, is_profit_display_zero
+    """獲利為零＝獲利欄仍是 0.0%。剛離1–3＝那天剛離零、現在不是 0 就列出（不卡 5%）。"""
+    from decision_card_signals import is_profit_display_zero
 
     try:
         profit = float(profit_pct)
@@ -1337,8 +1337,8 @@ def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
         return False
     if mode == "zero":
         return is_profit_display_zero(profit)
-    if mode == "band":
-        return (not is_profit_display_zero(profit)) and profit <= LEAVE_ZERO_SCREEN_MAX_PCT
+    if mode in ("ago", "band"):
+        return not is_profit_display_zero(profit)
     return False
 
 
