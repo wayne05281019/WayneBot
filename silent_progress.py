@@ -39,15 +39,17 @@ _TWII_KEEP = ("date", "open", "high", "low", "close", "volume")
 _FUT_KEEP = ("date", "symbol", "session", "open", "high", "low", "close", "pct_change")
 _BIAOKE_KEEP = ("tag", "direc", "date")
 
-# 覆盤要的欄：缺了當下就跳過，不准補假數、不准現場重抓。
-REVIEW_SLOTS = ("twii", "biaoke", "legs", "tx_night", "te_night", "us")
+# 覆盤要的欄：缺完整官方收可以之後補；盤中未收不准凍。
+REVIEW_SLOTS = ("twii", "biaoke", "legs", "tx_day", "tx_night", "te_day", "te_night", "us")
 REVIEW_STEPS = (
     "complete_as_of",
     "score_old",
     "freeze_twii",
     "freeze_biaoke",
     "freeze_legs",
+    "freeze_tx_day",
     "freeze_tx_night",
+    "freeze_te_day",
     "freeze_te_night",
     "freeze_us",
     "write_pack",
@@ -237,7 +239,7 @@ def pack_holes(ctx: Optional[Dict[str, Any]]) -> List[str]:
     legs = pack.get("legs") if isinstance(pack.get("legs"), list) else []
     if not legs:
         missing.append("legs")
-    for slot in ("tx_night", "te_night"):
+    for slot in ("tx_day", "tx_night", "te_day", "te_night"):
         row = pack.get(slot) if isinstance(pack.get(slot), dict) else {}
         if not row.get("close"):
             missing.append(slot)
@@ -255,27 +257,32 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
         return out
     conn = sqlite3.connect(db_path, timeout=8.0)
     try:
-        for sym, key in (("TX", "tx_night"), ("TE", "te_night")):
+        for sym, sess, key in (
+            ("TX", "regular", "tx_day"),
+            ("TX", "night", "tx_night"),
+            ("TE", "regular", "te_day"),
+            ("TE", "night", "te_night"),
+        ):
             try:
                 if day:
                     row = conn.execute(
                         """
                         SELECT date, symbol, session, open, high, low, close, pct_change
                         FROM futures_daily
-                        WHERE symbol=? AND session='night' AND REPLACE(CAST(date AS TEXT),'-','')<=?
+                        WHERE symbol=? AND session=? AND REPLACE(CAST(date AS TEXT),'-','')<=?
                         ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
                         """,
-                        (sym, day),
+                        (sym, sess, day),
                     ).fetchone()
                 else:
                     row = conn.execute(
                         """
                         SELECT date, symbol, session, open, high, low, close, pct_change
                         FROM futures_daily
-                        WHERE symbol=? AND session='night'
+                        WHERE symbol=? AND session=?
                         ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT 1
                         """,
-                        (sym,),
+                        (sym, sess),
                     ).fetchone()
             except sqlite3.Error:
                 row = None
