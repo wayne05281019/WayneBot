@@ -2526,8 +2526,8 @@ def _phone_note_lines(text: str) -> List[str]:
 
 
 def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
-    """海選大盤狀況末段：台股產業鏈資金輪動＋注意事項。沒庫就空。"""
-    from tg_layout import join_dashed, pack_phone_bits, wrap_cjk_lines
+    """海選末段只寫這型是先機還是已當第一。方法論、近100日板、門檻不進話筒。"""
+    from tg_layout import pack_phone_bits
 
     if not db_path:
         return ""
@@ -2535,60 +2535,40 @@ def rotation_screen_block(db_path: str, *, spoken: Optional[str] = None) -> str:
         data = dongzhu_picks(db_path, spoken=spoken)
     except Exception:
         return ""
-    now_rows = ["＝＝台股資金輪動＝＝"]
     field = str(data.get("field") or "").strip()
+    if not field:
+        return ""
     sign = str(data.get("pre_sign") or "")
-    if field:
-        tag = {
-            "pre": "先機（佔比升還沒當第一）",
-            "chase": "已是當天第一名＝追了勝率較差",
-            "leaving": "人去樓空",
-        }.get(sign, "")
-        now_rows.extend(
-            pack_phone_bits(_esc(f"此刻 {field}"), _esc(tag) if tag else "")
-        )
-        if data.get("pre_ok") and data.get("pre_vs20") is not None:
-            now_rows.append(
-                _esc(
-                    f"次級距20高 {float(data.get('pre_vs20') or 0):+.1f}%（門檻 {PRE_VS20:.0f}%）。"
-                )
+    tag = {
+        "pre": "先機，還沒當第一",
+        "chase": "當天第一，追了勝率較差",
+        "leaving": "人去樓空",
+    }.get(sign, "")
+    now_rows = pack_phone_bits(_esc(field), _esc(tag) if tag else "")
+    if sign == "pre" and data.get("pre_ok") and data.get("pre_vs20") is not None:
+        now_rows.append(_esc(f"次級距20高 {float(data.get('pre_vs20') or 0):+.1f}%。"))
+    recs = list(data.get("recs") or [])
+    buys = list(data.get("buys") or [])
+    if recs and sign == "pre":
+        bits = [
+            f"{x.get('sid')} {x.get('name')}".strip()
+            for x in recs[:3]
+            if x.get("sid")
+        ]
+        if bits:
+            now_rows.extend(
+                _phone_note_lines("這型次級落後：" + "、".join(bits) + "。按洞燭先機可選。")
             )
-        buys = list(data.get("buys") or [])
-        recs = list(data.get("recs") or [])
-        if recs and sign == "pre":
-            bits = [
-                f"{x.get('sid')} {x.get('name')}".strip()
-                for x in recs[:3]
-                if x.get("sid")
-            ]
-            if bits:
-                now_rows.extend(
-                    _phone_note_lines("這型次級落後：" + "、".join(bits) + "。按洞燭先機可選。")
-                )
-            buy_bits = [
-                f"{x.get('sid')} {x.get('name')}".strip()
-                for x in buys[:3]
-                if x.get("sid")
-            ]
-            if buy_bits:
-                now_rows.extend(_phone_note_lines("其中黃金買點：" + "、".join(buy_bits) + "。"))
-        else:
-            now_rows.extend(_phone_note_lines("這型此刻沒有可捕捉的次級；下單進場仍只認剛離零。"))
-    board = str(data.get("inflow_board") or "").strip()
-    win_n = int(data.get("flow_window") or FLOW_LOOKBACK)
-    board_rows: List[str] = []
-    if board:
-        board_line = _esc(f"近{win_n}日每天流入第一名：{board}")
-        board_rows.extend(wrap_cjk_lines(board_line, 18, unit="chars") or [board_line])
-    note_rows: List[str] = []
-    for n in rotation_notice_lines(db_path):
-        note_rows.extend(_phone_note_lines(n))
-    blocks = [_blk(*now_rows)]
-    if board_rows:
-        blocks.append(_blk(*board_rows))
-    if note_rows:
-        blocks.append(_blk(*note_rows))
-    return join_dashed(*blocks)
+        buy_bits = [
+            f"{x.get('sid')} {x.get('name')}".strip()
+            for x in buys[:3]
+            if x.get("sid")
+        ]
+        if buy_bits:
+            now_rows.extend(_phone_note_lines("其中黃金買點：" + "、".join(buy_bits) + "。"))
+    else:
+        now_rows.extend(_phone_note_lines("進場只認剛離零。"))
+    return _blk(*now_rows)
 
 
 def _chain_key(parts: Sequence[str]) -> str:
