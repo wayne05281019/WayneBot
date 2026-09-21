@@ -603,7 +603,7 @@ def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
 def listing_industry_face(
     stock_id: str, db_path: str = None, *, quote_source: str = ""
 ) -> str:
-    """上市／上櫃後接產業標。跨族／最細標跟產業卡同一套；沒有才寫籌碼K鏈或證交所括號。
+    """上市／上櫃後接產業標。跨族／最細標跟產業卡同一套；「其他」不寫。沒有才寫證交所括號。
 
     龍頭＝該（證交所）產業當日成交額第一。一線／二線官方沒這欄，不上。
     卡片走興櫃日均價時市場標必須是興櫃，不准被 daily_quotes 殘列改成上櫃／上市。
@@ -631,7 +631,8 @@ def listing_industry_face(
         try:
             from industry_fine import membership_face, peek_cached_fine_chain
 
-            chain = peek_cached_fine_chain(path, sid, max_age_days=30)
+            # 只讀庫：開機／ensure 已灌櫃買 overlay。這裡不准 seed，否則空測庫會被 1929 列蓋掉證交所備援。
+            chain = peek_cached_fine_chain(path, sid, max_age_days=365)
             face_ind = membership_face(sid, chain=chain)
         except Exception:
             chain = ""

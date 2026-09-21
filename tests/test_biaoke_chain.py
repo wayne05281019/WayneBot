@@ -224,7 +224,7 @@ def test_chain_real_quotes_when_db_present():
     assert "46184" in nest["text"] or "官方收" in nest["text"]
     assert "46506" in nest["text"]
     assert "47578" in nest["text"]
-    assert "單靠" in nest["text"] or "還沒過" in nest["text"]
+    assert "單靠" in nest["text"] or "還沒過" in nest["text"] or "還沒走完" in nest["text"]
     assert "台積電官方" in nest["text"]
     assert "不數這檔段" in nest["text"]
     assert "費半" in nest["text"]

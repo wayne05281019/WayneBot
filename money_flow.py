@@ -572,7 +572,7 @@ def _yahoo(sid, name, db_path: str = None) -> str:
 
 
 def _flow_fine_map(db_path: str, stock_ids: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-    """資金頁一次讀齊籌碼K細項；沒抓到就不標，不准自造。"""
+    """資金頁一次讀齊產業鏈（櫃買蓋其他桶後）；沒抓到就不標，不准自造。"""
     ids = [str(s or "").strip() for s in (stock_ids or []) if str(s or "").strip()]
     if not db_path or not ids:
         return {}
@@ -590,7 +590,7 @@ def _flow_stock_title(
     db_path: str = None,
     fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
-    """資金頁個股標題：與查股／籌碼同一套 listing_industry_face（含細項）。"""
+    """資金頁個股標題：與查股／籌碼同一套 listing_industry_face（含跨族／最細標）。"""
     del fine_map  # face 自己讀庫；參數留給呼叫端批次相容
     return _yahoo(sid, name, db_path)
 
@@ -1084,7 +1084,7 @@ def format_sector_rotation_html(
     blocks.append(
         section(
             kv_compact("單位", "張（產業加總三大法人，非分點）"),
-            kv_compact("用途", "佈局對照：熱族＋前幾名個股；產業鏈＝籌碼K，不作單獨訊號"),
+            kv_compact("用途", "佈局對照：熱族＋前幾名個股；產業鏈＝櫃買價值鏈／已教過跨族，不作單獨訊號"),
         ),
     )
     if chip_abs == 0:
@@ -1257,7 +1257,7 @@ def format_flow_html(
             section(
                 kv_compact("覆蓋", cover),
                 kv_compact("單位", "張（三大法人，非分點）"),
-                kv_compact("產業鏈", "籌碼K公開分類；沒抓到就不標"),
+                kv_compact("產業鏈", "櫃買價值鏈／已教過跨族；其他桶不拿來比"),
             ),
         ]
     )

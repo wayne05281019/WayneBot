@@ -124,7 +124,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "key": "pcb",
         "field": "PCB",
         "names": ("PCB", "台光電", "CCL"),
-        "needles": ("PCB",),
+        "needles": ("PCB", "印刷電路板", "銅箔基板"),
         "layers": ("電子上游", "PCB", "材料設備"),
         "leaders": (("2383", "台光電"),),
         "members": _gmem("PCB"),
@@ -133,7 +133,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "key": "abf",
         "field": "ABF",
         "names": ("ABF", "欣興", "南電", "景碩"),
-        "needles": ("ABF",),
+        "needles": ("ABF", "載板", "IC載板"),
         "layers": ("電子上游", "ABF"),
         "leaders": (("3037", "欣興"),),
         "members": _gmem("ABF"),
@@ -150,7 +150,7 @@ _GROUPS: Tuple[Dict[str, Any], ...] = (
         "key": "test",
         "field": "高階測試／封測",
         "names": ("高階測試", "封測", "穎崴", "旺矽", "汎銓"),
-        "needles": ("封測",),
+        "needles": ("封測", "IC封裝測試"),
         "layers": ("電子上游", "IC", "封測"),
         "leaders": (("6515", "穎崴"), ("6223", "旺矽")),
         "laggards": (
@@ -814,9 +814,14 @@ def group_members(db_path: str, group: Optional[Dict[str, Any]]) -> List[Tuple[s
                             tuple(f"%{n}%" for n in needles),
                         ).fetchall()
                     )
-                for sid, _chain in rows:
+                from industry_fine import is_catchall_finest
+
+                for sid, raw_chain in rows:
                     sid = str(sid or "").strip()
                     if not sid or sid in out:
+                        continue
+                    parts = _split_chain_text(str(raw_chain or ""))
+                    if parts and is_catchall_finest(parts[-1]):
                         continue
                     out[sid] = _stock_name(db_path, sid, "")
         except sqlite3.Error:
@@ -1134,11 +1139,13 @@ def _fine_members(conn: sqlite3.Connection) -> Dict[str, List[str]]:
     ).fetchone()
     if not hit:
         return {}
+    from industry_fine import is_catchall_finest
+
     out: Dict[str, List[str]] = {}
     for sid, chain in conn.execute("SELECT stock_id, chain FROM stock_fine_industry"):
         sid = str(sid or "").strip()
         parts = _split_chain_text(str(chain or ""))
-        if not sid or not parts or parts[-1] == "其他":
+        if not sid or not parts or is_catchall_finest(parts[-1]):
             continue
         out.setdefault("-".join(parts), []).append(sid)
     return out
@@ -1552,7 +1559,18 @@ def _chain_parts(db_path: str, sid: str) -> List[str]:
     chain = str(row[0] or "").strip() if row else ""
     if not chain:
         return []
-    return [p.strip() for p in chain.replace("／", "-").split("-") if p.strip()]
+    try:
+        from industry_fine import is_catchall_finest
+    except Exception:
+
+        def is_catchall_finest(name: str) -> bool:  # type: ignore
+            return str(name or "").strip() in ("其他", "其他業") or str(name or "").startswith("其他")
+
+    return [
+        p.strip()
+        for p in chain.replace("／", "-").split("-")
+        if p.strip() and not is_catchall_finest(p.strip())
+    ]
 
 
 def _group_layers(db_path: str, group: Optional[Dict[str, Any]]) -> List[str]:

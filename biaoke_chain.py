@@ -339,7 +339,7 @@ def _fit_nest(body: str, extra: str = "") -> str:
     if key in core:
         core = core.replace(key, "").strip(" 。")
     core = re.sub(r"他的說法：.*", "", core).strip(" 。")
-    must_need = ("45839", "47578", "費半", "那指", "9/16", "官方加權", "台積電官方")
+    must_need = ("45839", "47578", "46506", "46767", "費半", "那指", "9/16", "官方加權", "台積電官方")
     must: List[str] = []
     rest: List[str] = []
     for sent in core.split("。"):
