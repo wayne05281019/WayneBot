@@ -66,7 +66,8 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
     assert "同一盤勢隔日" in html
     assert "黃金買點　隔日+0.8%（勝60%）" in html
     assert "重點觀察　隔日+0.2%（勝50%）" in html
-    assert "同一盤勢、海選隔日表現：" not in html
+    assert "箱型震盪：偏選股，不賭方向。" in html
+    assert sum(1 for ln in html.split("\n") if ln.startswith("盤勢　")) == 1
     joined = html.replace("\n", "")
     assert "（勝60%）" in joined
     for ln in html.split("\n"):

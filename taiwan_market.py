@@ -3761,6 +3761,17 @@ def format_screen_market_outlook_html(
     return head + "\n" + "\n".join(body)
 
 
+def _brief_note_tail(note: str) -> str:
+    """盤勢標題已寫過，附註只留白話尾句。"""
+    raw = str(note or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("盤勢"):
+        bits = [b for b in raw.split("　") if b and not b.startswith("盤勢")]
+        return bits[-1] if bits else ""
+    return raw
+
+
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
     from tg_layout import join_dashed, pack_phone_bits, wrap_phone_html_lines
 
@@ -3815,7 +3826,7 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
         f"細分盤勢　{_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
         f"下跌風險　{fr_light} <b>{snap.get('falling_risk', 0)}</b>",
         f"高檔區　{_risk_zone_label(snap.get('risk_zone'))}",
-        *wrap_phone_html_lines(market_screening_note(snap)),
+        *wrap_phone_html_lines(_brief_note_tail(market_screening_note(snap))),
     ]
     blocks = ["\n".join(x for x in nums if x), "\n".join(x for x in regime if x)]
     bt = snap.get("backtest") or []
