@@ -267,10 +267,11 @@ def test_leave_zero_closed_message_points_to_screen():
     tz = ZoneInfo("Asia/Taipei")
     after = datetime(2026, 9, 16, 18, 0, tzinfo=tz)
     msg = leave_zero_closed_message(after)
-    assert "目前非盤中交易時間" in msg
-    assert "不提供" in msg
-    assert "海選" in msg
-    assert "黃金買點" in msg
+    assert "目前非盤中" in msg
+    assert "不抓現價" in msg
+    assert "脫離1" in msg
+    assert "剛為零" in msg
+    assert "觀察不是買" in msg
     when = next_tw_session_when(after)
     assert "09:00" in when
     assert "2026/09/17" in when

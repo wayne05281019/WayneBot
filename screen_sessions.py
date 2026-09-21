@@ -254,6 +254,61 @@ def load_bucket_rows(
         conn.close()
 
 
+def list_session_as_of(db_path: str, limit: int = 12) -> List[str]:
+    """已存海選基準日，新到舊。"""
+    ensure_screen_session_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT as_of FROM screen_sessions ORDER BY as_of DESC LIMIT ?",
+            (max(1, int(limit)),),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: List[str] = []
+    for row in rows:
+        day = str(row[0] or "").replace("-", "")[:8]
+        if day:
+            out.append(day)
+    return out
+
+
+def session_as_of_n_ago(db_path: str, cap: str, days: int) -> str:
+    """days=0＝cap；days=1＝再上一根交易日（先看日 K，沒柱再看海選日）。"""
+    cap = str(cap or "").replace("-", "")[:8]
+    want = int(days)
+    dates: List[str] = []
+    conn = sqlite3.connect(db_path)
+    try:
+        if cap:
+            rows = conn.execute(
+                "SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') AS d FROM daily_quotes "
+                "WHERE REPLACE(CAST(date AS TEXT),'-','') <= ? ORDER BY d DESC LIMIT 16",
+                (cap,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT DISTINCT REPLACE(CAST(date AS TEXT),'-','') AS d FROM daily_quotes "
+                "ORDER BY d DESC LIMIT 16"
+            ).fetchall()
+        dates = [str(r[0] or "")[:8] for r in rows if str(r[0] or "").strip()]
+    except sqlite3.Error:
+        dates = []
+    finally:
+        conn.close()
+    if not dates:
+        dates = list_session_as_of(db_path, 16)
+        if cap:
+            dates = [d for d in dates if d <= cap] or dates
+    if not dates:
+        return cap if want <= 0 else ""
+    if want <= 0:
+        return cap if cap else dates[0]
+    if want >= len(dates):
+        return ""
+    return dates[want]
+
+
 def screen_session_has_data(db_path: str, as_of: str = "") -> bool:
     """該基準日是否已跑過海選（任一桶有存檔）。"""
     ensure_screen_session_table(db_path)
