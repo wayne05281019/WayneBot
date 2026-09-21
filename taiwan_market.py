@@ -3762,73 +3762,83 @@ def format_screen_market_outlook_html(
 
 
 def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -> str:
+    from tg_layout import join_dashed, pack_phone_bits, wrap_phone_html_lines
+
     snap = analyze_taiwan_market(db_path, as_of)
     if not snap.get("ok"):
         return ""
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
-    lines = [
-        "<b>📊 台灣加權指數研究</b>",
-        f"收盤 <b>{snap['close']}</b>",
-        f"5日均 {snap.get('ma5') or snap['ma20']}　月線 {snap['ma20']}　季線 {snap['ma60']}",
-        f"日 {_fmt_signed_pct(snap.get('chg1_pct'))}　5日 {snap['chg5_pct']:+.2f}%　20日 {_fmt_signed_pct(snap.get('chg20_pct'))}",
-        f"距月線 {_fmt_signed_pct(snap.get('vs_ma20_pct'))}　距年高 {_fmt_signed_pct(snap.get('vs_high52_pct'))}",
-        *(
-            [line]
-            if (line := _format_futures_line(snap))
-            else []
+    nums = [
+        "＝＝台灣加權指數研究＝＝",
+        f"收盤　<b>{snap['close']}</b>",
+        *pack_phone_bits(
+            f"5日均　{snap.get('ma5') or snap['ma20']}",
+            f"月線　{snap['ma20']}",
+            f"季線　{snap['ma60']}",
         ),
-        *(
-            [line]
-            if (
-                line := _format_futures_night_line(
-                    snap.get("futures_night") or {},
-                    snap.get("futures"),
-                    spot_close=float(snap.get("close") or 0),
-                )
+        *pack_phone_bits(
+            f"日　{_fmt_signed_pct(snap.get('chg1_pct'))}",
+            f"5日　{snap['chg5_pct']:+.2f}%",
+            f"20日　{_fmt_signed_pct(snap.get('chg20_pct'))}",
+        ),
+        *pack_phone_bits(
+            f"距月線　{_fmt_signed_pct(snap.get('vs_ma20_pct'))}",
+            f"距年高　{_fmt_signed_pct(snap.get('vs_high52_pct'))}",
+        ),
+        *wrap_phone_html_lines(_format_futures_line(snap) or ""),
+        *wrap_phone_html_lines(
+            _format_futures_night_line(
+                snap.get("futures_night") or {},
+                snap.get("futures"),
+                spot_close=float(snap.get("close") or 0),
             )
-            else []
+            or ""
         ),
-        *(
-            [line]
-            if (
-                line := _format_futures_night_line(
-                    snap.get("futures_te_night") or {},
-                    snap.get("futures_te"),
-                    spot_close=0.0,
-                    label="電子期夜盤",
-                )
+        *wrap_phone_html_lines(
+            _format_futures_night_line(
+                snap.get("futures_te_night") or {},
+                snap.get("futures_te"),
+                spot_close=0.0,
+                label="電子期夜盤",
             )
-            else []
+            or ""
         ),
-        f"站上月線 {snap['breadth_above_ma20']:.1f}%（{snap['sample_n']} 檔）",
+        f"站上月線　{snap['breadth_above_ma20']:.1f}%（{snap['sample_n']}檔）",
         *(
-            [f"產業法人 {snap['sector_flow_net']:+,.0f} 張"]
+            [f"產業法人　{snap['sector_flow_net']:+,.0f}張"]
             if snap.get("sector_flow_net") is not None
             else []
         ),
-        _TG_SECTION,
-        f"盤勢 <b>{snap['regime_label']}</b>（把握 {snap['confidence']}%）",
-        f"細分盤勢 {_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
-        f"下跌風險 {fr_light} <b>{snap.get('falling_risk', 0)}</b>",
-        f"高檔區 {_risk_zone_label(snap.get('risk_zone'))}",
-        market_screening_note(snap),
     ]
+    regime = [
+        f"盤勢　<b>{snap['regime_label']}</b>（把握 {snap['confidence']}%）",
+        f"細分盤勢　{_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
+        f"下跌風險　{fr_light} <b>{snap.get('falling_risk', 0)}</b>",
+        f"高檔區　{_risk_zone_label(snap.get('risk_zone'))}",
+        *wrap_phone_html_lines(market_screening_note(snap)),
+    ]
+    blocks = ["\n".join(x for x in nums if x), "\n".join(x for x in regime if x)]
     bt = snap.get("backtest") or []
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
     if hits:
-        bits = [f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）" for b in hits[:3]]
-        lines.append("同一盤勢、海選隔日表現：" + "　".join(bits))
+        bt_lines = ["同一盤勢隔日"]
+        for b in hits[:3]:
+            bt_lines.append(
+                f"{b['bucket']}　隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
+            )
+        blocks.append("\n".join(bt_lines))
     bt_rp = snap.get("backtest_regime_plus") or []
     cur_rp = snap.get("regime_plus")
     hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 3]
     if hits_rp:
-        bits_rp = [
-            f"{b['bucket']} 隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
-            for b in hits_rp[:3]
-        ]
-        lines.append("同一細分盤勢、海選隔日表現：" + "　".join(bits_rp))
-    return "\n".join(lines)
+        rp_lines = ["同一細分盤勢隔日"]
+        for b in hits_rp[:3]:
+            rp_lines.append(
+                f"{b['bucket']}　隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
+            )
+        blocks.append("\n".join(rp_lines))
+    return join_dashed(*blocks)
 
 
 def format_taiwan_market_page_html(

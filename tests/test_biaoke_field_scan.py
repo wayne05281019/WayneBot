@@ -1245,9 +1245,23 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     _seed(db)
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     html = rotation_screen_block(db)
+    from tg_layout import DASH_LINE, _html_plain
+
     assert "台股資金輪動" in html
     assert "不是整層電子" in html
     assert "人去樓空" in html
+    assert DASH_LINE in html
+    now_i = html.find("此刻")
+    note_i = html.find("不是整層電子")
+    if now_i >= 0 and note_i >= 0:
+        assert now_i < note_i
+    for ln in html.split("\n"):
+        if DASH_LINE in ln or ln.startswith("＝＝"):
+            continue
+        plain = _html_plain(ln)
+        if "次級距20高" in plain or "近" in plain[:2]:
+            continue
+        assert len(plain) <= 20, plain
 
 
 def test_dongzhu_precursor_store_feeds_notes_and_flags(tmp_path):
