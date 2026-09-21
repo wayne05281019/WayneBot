@@ -131,3 +131,81 @@ def test_lookup_face_uses_taught_not_other_bucket(tmp_path):
     assert "電子中游-其他" not in amax
     assert "散熱" in amax
     assert "其他業" in tian or tian.startswith("上櫃")
+
+
+def test_overlay_does_not_put_tpex_chain_on_emerging(tmp_path):
+    from emerging_quotes import ensure_emerging_table
+    from universe import listing_industry_face
+
+    db = str(tmp_path / "em.db")
+    _fine(
+        db,
+        [
+            ("3644", "凌嘉科", "電子上游-IC-封測"),
+            ("2938", "昶昕", "傳產-其他"),
+            ("2330", "台積電", "電子上游-IC-代工"),
+        ],
+    )
+    conn = sqlite3.connect(db)
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE stock_universe SET market_type=?, industry=? WHERE stock_id=?",
+        ("EM", "半導體業", "3644"),
+    )
+    conn.execute(
+        "UPDATE stock_universe SET market_type=?, industry=? WHERE stock_id=?",
+        ("TWO", "居家生活", "2938"),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_fine_industry"
+        "(stock_id,chain,tags_json,cat_id,source,fetched_at) VALUES (?,?,?,?,?,?)",
+        (
+            "3644",
+            "印刷電路板-生產製程及檢測設備",
+            json.dumps(["印刷電路板", "生產製程及檢測設備"], ensure_ascii=False),
+            "L000",
+            "tpex_ic",
+            now,
+        ),
+    )
+    ensure_emerging_table(db)
+    for i in range(8):
+        conn.execute(
+            "INSERT INTO emerging_quotes(date,stock_id,stock_name,market,open,high,low,close,volume,turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"2026090{i+1}" if i < 9 else f"202609{i+1}",
+                "2938",
+                "昶昕",
+                "EM",
+                10,
+                11,
+                9,
+                10,
+                100,
+                1,
+                0.0,
+                10,
+            ),
+        )
+    conn.commit()
+    conn.close()
+    stats = apply_tpex_overlay(db, force=True)
+    assert stats["em_skip"] >= 1
+    assert stats["em_clear"] >= 1
+    conn = sqlite3.connect(db)
+    rows = {
+        r[0]: (r[1], r[2])
+        for r in conn.execute("SELECT stock_id, chain, source FROM stock_fine_industry")
+    }
+    conn.close()
+    assert "3644" not in rows or rows["3644"][1] != "tpex_ic"
+    assert rows["2330"][0] == "電子上游-IC-代工"
+    tian = listing_industry_face("2938", db)
+    ling = listing_industry_face("3644", db)
+    assert tian.startswith("興櫃")
+    assert "居家生活" in tian
+    assert "貿易百貨" not in tian
+    assert ling.startswith("興櫃")
+    assert "半導體業" in ling
+    assert "印刷電路板" not in ling
+    assert chain_peer_ids(db, "3644") == []

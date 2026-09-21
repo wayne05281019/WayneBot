@@ -261,10 +261,17 @@ def peer_chip_tags(tags: Iterable[str]) -> List[str]:
 
 
 def chain_peer_ids(db_path: str, stock_id: str) -> List[str]:
-    """有同一最細標籤才算同業。封測對封測；光通訊對光通訊；穩懋跨族兩邊都進。上市／上櫃／興櫃同一套。"""
+    """有同一最細標籤才算同業。封測對封測；光通訊對光通訊；穩懋跨族兩邊都進。興櫃不進上市櫃同業。"""
     sid = str(stock_id or "").strip()
     if not sid or not db_path:
         return []
+    try:
+        from universe import stock_is_emerging
+
+        if stock_is_emerging(sid, db_path):
+            return []
+    except Exception:
+        pass
     ensure_fine_industry_table(db_path)
     mine = load_cached_fine_industry(db_path, [sid]).get(sid) or {}
     mine_keys = membership_keys(sid, str(mine.get("finest") or ""))
