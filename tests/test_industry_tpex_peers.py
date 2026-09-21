@@ -99,7 +99,7 @@ def test_tpex_overlay_only_replaces_catchall(tmp_path):
             ("6199", "天品", "傳產-其他"),
         ],
     )
-    stats = apply_tpex_overlay(db)
+    stats = apply_tpex_overlay(db, force=True)
     assert stats["seed"] >= 2000
     conn = sqlite3.connect(db)
     rows = {
@@ -112,3 +112,22 @@ def test_tpex_overlay_only_replaces_catchall(tmp_path):
     assert rows["2459"][1] == "tpex_ic"
     assert "其他" not in rows["2459"][0]
     assert rows["6199"][0] == "傳產-其他"
+
+
+def test_lookup_face_uses_taught_not_other_bucket(tmp_path):
+    from universe import listing_industry_face
+
+    db = str(tmp_path / "face.db")
+    _fine(
+        db,
+        [
+            ("6199", "天品", "傳產-其他"),
+            ("6933", "AMAX-KY", "電子中游-其他"),
+        ],
+    )
+    tian = listing_industry_face("6199", db)
+    amax = listing_industry_face("6933", db)
+    assert "傳產-其他" not in tian
+    assert "電子中游-其他" not in amax
+    assert "散熱" in amax
+    assert "其他業" in tian or tian.startswith("上櫃")

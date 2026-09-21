@@ -6306,6 +6306,17 @@ class WayneTelegramBot:
             except Exception:
                 logger.exception("字型預熱失敗")
             try:
+                from industry_fine import ensure_fine_industry_table
+                from tpex_industry_chain import apply_tpex_overlay
+
+                def _boot_industry(path=self.db_path):
+                    ensure_fine_industry_table(path)
+                    apply_tpex_overlay(path, force=True)
+
+                await asyncio.to_thread(_boot_industry)
+            except Exception:
+                logger.exception("櫃買產業鏈 overlay 失敗")
+            try:
                 await app.bot.set_my_commands(
                     [BotCommand(name, desc) for name, desc in TELEGRAM_BOT_COMMANDS]
                 )

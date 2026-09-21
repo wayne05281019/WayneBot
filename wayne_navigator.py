@@ -884,11 +884,11 @@ class NavigatorEngine:
             ) or {}
             chain = str(rec.get("chain") or "").strip()
             mem = membership_face(str(stock_id), chain=chain)
-            # 標題列 listing 已含跨族／最細標時，這裡只留籌碼K整條鏈當備援，避免再貼一次。
+            # 標題列 listing 已含跨族／最細標時不再貼一次。「其他」不當產業鏈備援。
             if mem and mem in str(listing or ""):
                 fine_industry = ""
             else:
-                fine_industry = mem or chain
+                fine_industry = mem
         except Exception:
             fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")

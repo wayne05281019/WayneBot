@@ -97,7 +97,7 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
     )
     html = format_industry_html("2330", path, allow_fetch=False)
     assert ("代工" in html or "[代工]" in html or "[IC]" in html)
-    assert "籌碼K" in html
+    assert "櫃買" in html
     assert "記憶體製造" not in html
     assert "同一產業鏈才比" in html
     assert "這族" not in html

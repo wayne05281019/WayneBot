@@ -212,6 +212,8 @@ def membership_face(stock_id: str, finest: str = "", chain: str = "") -> str:
                 bits.append(t)
         return "／".join(bits)
     raw = str(chain or "").strip()
+    if is_catchall_finest(fine) or is_catchall_finest(split_chain(raw)[-1] if split_chain(raw) else ""):
+        return ""
     if raw:
         return raw
     return fine

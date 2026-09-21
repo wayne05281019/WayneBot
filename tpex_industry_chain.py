@@ -19,6 +19,7 @@ SEED_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "tpex_industry_chain.json"
 )
 CATCHALL_LABELS = frozenset({"其他", "其他業"})
+_OVERLAID: set = set()
 
 
 def is_catchall_label(name: str) -> bool:
@@ -60,8 +61,14 @@ def load_tpex_seed() -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def apply_tpex_overlay(db_path: str, ids: Optional[Iterable[str]] = None) -> Dict[str, int]:
-    """只蓋籌碼K「其他」或還沒細項的檔。已有水泥／代工／散熱零組件這種真細項不改。"""
+def apply_tpex_overlay(
+    db_path: str, ids: Optional[Iterable[str]] = None, *, force: bool = False
+) -> Dict[str, int]:
+    """只蓋籌碼K「其他」或還沒產業鏈的檔。已有水泥／代工／散熱零組件這種真分類不改。
+
+    開機／ensure 會跑；同一行程同一顆庫只寫一次，查股不會每次重灌。
+    庫裡已有列優先；沒列才補 universe 現股（興櫃測庫沒灌 overlay 時仍走證交所備援）。
+    """
     from industry_fine import save_fine_industry_many, split_chain
 
     path = str(db_path or "")
@@ -69,6 +76,10 @@ def apply_tpex_overlay(db_path: str, ids: Optional[Iterable[str]] = None) -> Dic
     seed = load_tpex_seed()
     stats["seed"] = len(seed)
     if not path or not seed:
+        return stats
+    key = os.path.abspath(path)
+    if not force and ids is None and key in _OVERLAID:
+        stats["skip"] = 1
         return stats
     want = [str(s).strip() for s in (ids or seed.keys()) if str(s).strip()]
     conn = sqlite3.connect(path)
@@ -125,5 +136,7 @@ def apply_tpex_overlay(db_path: str, ids: Optional[Iterable[str]] = None) -> Dic
     if buf:
         save_fine_industry_many(path, buf)
         stats["write"] = len(buf)
+    if ids is None:
+        _OVERLAID.add(key)
     logger.info("櫃買產業鏈 overlay：%s", stats)
     return stats
