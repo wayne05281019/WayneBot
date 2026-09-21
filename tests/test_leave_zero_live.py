@@ -15,7 +15,7 @@ from screening_engine import (
     _stock_card_html,
     mark_leave_zero_stars,
 )
-from screen_sessions import save_screen_session
+from screen_sessions import save_screen_session, session_as_of_n_ago
 from wayne_db import ensure_core_schema
 
 AS_OF = "20260915"
@@ -188,6 +188,10 @@ def test_lookup_like_row_has_watch_and_buy():
     kb = bot._leave_zero_section_keyboard([("1101", "台泥")], include_menu=True)
     flat = [b.callback_data for r in kb.inline_keyboard for b in r]
     assert "k:1101" in flat and "w:1101" in flat and "b:1101" in flat
+    assert "lz:0" in flat and "lz:1" in flat and "lz:2" in flat and "lz:3" in flat
+    assert "lz:z" in flat
+    texts = [b.text for r in kb.inline_keyboard for b in r]
+    assert "脫離1" in texts and "剛為零" in texts and "·剛離" in texts
 
 
 def test_dongzhu_keyboard_is_industry_temp_intro():
@@ -218,10 +222,68 @@ def test_dongzhu_keyboard_is_industry_temp_intro():
 
 
 def test_intent_and_menu_label():
+    from bot_servers import leave_zero_pick_from_text
+
     assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
     assert parse_intent("剛脫離零").kind == "leave_zero"
     assert parse_intent("剛離零").kind == "leave_zero"
     assert parse_intent("獲利剛剛脫離零").kind == "leave_zero"
+    assert parse_intent("脫離1").kind == "leave_zero"
+    assert parse_intent("脫離3").kind == "leave_zero"
+    assert parse_intent("剛為零").kind == "leave_zero"
+    assert leave_zero_pick_from_text("剛脫離零") == ""
+    assert leave_zero_pick_from_text("脫離2") == "2"
+    assert leave_zero_pick_from_text("剛為零") == "z"
+
+
+def _bare_leave_zero_bot(db: str) -> WayneTelegramBot:
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = db
+    bot.screener = ScreeningEngine(db)
+    bot._pending = {}
+    bot._trade_running = set()
+    bot._enter_main_menu = AsyncMock()
+    bot._reply_menu = MagicMock(return_value=None)
+    bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
+    bot._stop_plain_wait = AsyncMock()
+    bot._actor_key = lambda message, uid="": f"{uid}"
+    return bot
+
+
+def test_leave_zero_cmd_shows_day_picker(tmp_path):
+    import asyncio
+
+    db = str(tmp_path / "empty.db")
+    ensure_core_schema(db)
+    bot = _bare_leave_zero_bot(db)
+    msg = MagicMock()
+    msg.from_user = SimpleNamespace(id=1)
+    msg.text = "剛脫離零"
+    msg.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
+    msg.reply_html = AsyncMock()
+    upd = SimpleNamespace(message=msg, effective_user=msg.from_user)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("先選天數，不要直接掃")
+
+    with patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "trading_calendar.is_tw_equity_session", return_value=True
+    ), patch("screening_engine.ScreeningEngine.screen_leave_zero_now", _boom), patch(
+        "screening_engine.ScreeningEngine.screen_leave_zero_pick", _boom
+    ):
+        asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
+    html = "\n".join(
+        str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
+    )
+    assert "脫離1" in html
+    assert "剛為零" in html
+    assert "觀察不是買" in html
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
+        "reply_markup"
+    )
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert datas == ["lz:0", "lz:1", "lz:2", "lz:3", "lz:z"]
+    assert not bot._start_plain_wait.await_args_list
 
 
 def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
@@ -229,74 +291,59 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
 
     db = str(tmp_path / "empty.db")
     ensure_core_schema(db)
-    bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = db
-    bot.screener = ScreeningEngine(db)
-    bot._pending = {}
-    bot._trade_running = set()
-    bot._enter_main_menu = AsyncMock()
-    bot._reply_menu = MagicMock(return_value=None)
-    bot._actor_key = lambda message, uid="": f"{uid}"
+    bot = _bare_leave_zero_bot(db)
     msg = MagicMock()
     msg.from_user = SimpleNamespace(id=1)
     msg.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     msg.reply_html = AsyncMock()
-    upd = SimpleNamespace(message=msg, effective_user=msg.from_user)
     with patch("live_quote.is_live_merge_window", return_value=True), patch(
         "trading_calendar.is_tw_equity_session", return_value=True
     ):
-        asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
+        asyncio.run(bot._run_leave_zero_now(msg, pick="0"))
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
     assert "海選" in html
     assert "尚未就緒" in html
     assert "🟥" in html
-    assert "剛脫離零" in html
-    wait0 = str(msg.reply_text.await_args_list[0].args[0]) if msg.reply_text.await_args_list else ""
-    assert "剛脫離零進行中" in wait0
-    assert "□" in wait0 or "■" in wait0
-    assert "｜" not in wait0
-    assert "<pre>" not in wait0
+    assert "剛離" in html
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
+        "reply_markup"
+    )
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "lz:1" in datas and "lz:z" in datas
 
 
-def test_leave_zero_cmd_off_hours_points_to_screen(tmp_path):
+def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):
     import asyncio
 
     db = str(tmp_path / "off.db")
     ensure_core_schema(db)
-    bot = WayneTelegramBot.__new__(WayneTelegramBot)
-    bot.db_path = db
-    bot.screener = ScreeningEngine(db)
-    bot._pending = {}
-    bot._trade_running = set()
-    bot._enter_main_menu = AsyncMock()
-    bot._reply_menu = MagicMock(return_value=None)
-    bot._actor_key = lambda message, uid="": f"{uid}"
+    bot = _bare_leave_zero_bot(db)
     msg = MagicMock()
     msg.from_user = SimpleNamespace(id=1)
+    msg.text = "剛脫離零"
     msg.reply_text = AsyncMock(return_value=MagicMock(delete=AsyncMock()))
     msg.reply_html = AsyncMock()
     upd = SimpleNamespace(message=msg, effective_user=msg.from_user)
 
     def _boom(*_a, **_k):
-        raise AssertionError("非盤中不准掃現價")
+        raise AssertionError("先選天數，非盤中也不准直接掃現價")
 
     with patch("trading_calendar.is_tw_equity_session", return_value=False), patch(
         "screening_engine.ScreeningEngine.screen_leave_zero_now", _boom
-    ):
+    ), patch("screening_engine.ScreeningEngine.screen_leave_zero_pick", _boom):
         asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
     html = "\n".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
-    assert "目前非盤中交易時間" in html
-    assert "不提供" in html
-    assert "海選" in html
-    assert "黃金買點" in html
-    assert "09:00" in html
+    assert "目前非盤中" in html
+    assert "不抓現價" in html
+    assert "脫離1" in html
+    assert "剛為零" in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
         "reply_markup"
     )
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert "screen" in datas
+    assert "lz:0" in datas and "lz:3" in datas and "lz:z" in datas
     assert not msg.reply_text.await_args_list
 
 
@@ -337,3 +384,112 @@ def test_stock_card_attention_flags_use_red_dot():
     )
     assert "🔴<b>剛輪到·光電</b>" in mild
     assert "少追" not in mild
+
+
+def _set_close(db: str, sid: str, ymd: str, close: float) -> None:
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE daily_quotes SET close=?, open=?, high=?, low=?, avg_price=? "
+        "WHERE stock_id=? AND REPLACE(CAST(date AS TEXT),'-','')=?",
+        (close, close, close, close, close, sid, ymd),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
+    db = str(tmp_path / "lz_days.db")
+    _seed_quotes(
+        db,
+        {"1101": 50.5, "1102": 50.4, "1201": 50.6, "1303": 50.0, "1216": 53.0},
+    )
+    _set_close(db, "1101", "20260914", 50.4)
+    _set_close(db, "1201", "20260913", 50.4)
+    _set_close(db, "1201", "20260914", 50.5)
+    save_screen_session(
+        db,
+        "20260913",
+        "morning",
+        {"leave_zero": [{"stock_id": "1201", "stock_name": "味全", "close": 50.4}]},
+    )
+    save_screen_session(
+        db,
+        "20260914",
+        "morning",
+        {"leave_zero": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]},
+    )
+    save_screen_session(
+        db,
+        AS_OF,
+        "morning",
+        {
+            "leave_zero": [{"stock_id": "1102", "stock_name": "亞泥", "close": 50.4}],
+            "golden_buy": [
+                {"stock_id": "1303", "stock_name": "南亞", "close": 50.0},
+                {"stock_id": "1216", "stock_name": "統一", "close": 53.0},
+            ],
+        },
+    )
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    engine = ScreeningEngine(db)
+    assert session_as_of_n_ago(db, AS_OF, 1) == "20260914"
+    assert session_as_of_n_ago(db, AS_OF, 2) == "20260913"
+    just = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="0")]
+    d1 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="1")]
+    d2 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="2")]
+    zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
+    zero_codes = [r["code"] for r in zero]
+    assert just == ["1102"]
+    assert d1 == ["1101"]
+    assert d2 == ["1201"]
+    assert zero_codes == ["1303"]
+    assert "1216" not in zero_codes
+    assert all(int(r.get("entry_stars") or 0) <= 4 for r in zero)
+    assert d1 and float(engine.screen_leave_zero_pick(AS_OF, pick="1")[0]["profit_pct"]) <= 5.0
+
+
+def test_live_leave_days_keeps_band_and_does_not_write(tmp_path, monkeypatch):
+    db = str(tmp_path / "lz_live_days.db")
+    before = _seed_quotes(db, {"1101": 50.5})
+    _set_close(db, "1101", "20260914", 50.4)
+    save_screen_session(
+        db,
+        "20260914",
+        "morning",
+        {"leave_zero": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]},
+    )
+    save_screen_session(
+        db,
+        AS_OF,
+        "morning",
+        {"leave_zero": [], "golden_buy": []},
+    )
+    live = {
+        "1101": {
+            "price": 50.55,
+            "yesterday_close": 50.5,
+            "update_time": "13:10:00",
+            "volume": 9000,
+        }
+    }
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr("midday_review.fetch_mis_batch", lambda codes, db_path, timeout=12.0: live)
+    engine = ScreeningEngine(db)
+    rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    assert [r["code"] for r in rows] == ["1101"]
+    assert rows[0].get("live")
+    live["1101"]["price"] = 50.0
+    gone = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    assert gone == []
+    live["1101"]["price"] = 53.0
+    ran = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    assert ran == []
+    conn = sqlite3.connect(db)
+    extra = conn.execute(
+        "SELECT COUNT(*) FROM daily_quotes WHERE REPLACE(CAST(date AS TEXT),'-','') > ?",
+        (AS_OF,),
+    ).fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM daily_quotes").fetchone()[0]
+    conn.close()
+    assert extra == 0
+    assert n == before
