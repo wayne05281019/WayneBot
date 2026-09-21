@@ -570,6 +570,35 @@ def stock_picker_hits(db_path: str, ask: str) -> List[Dict[str, Any]]:
     core = stock_query(q)
     if not core:
         return []
+    try:
+        from lookup_fuzzy import cjk_only, name_is_exact_hit, strip_lookup_name
+
+        needle = strip_lookup_name(core)
+        if needle and db_path and os.path.isfile(db_path):
+            conn = sqlite3.connect(db_path, timeout=8.0)
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT stock_id, stock_name FROM daily_quotes "
+                    "WHERE stock_name IS NOT NULL AND stock_name != ''"
+                ).fetchall()
+            except sqlite3.Error:
+                rows = []
+            finally:
+                conn.close()
+            qc = cjk_only(needle)
+            exact = []
+            related = []
+            for sid, name in rows:
+                nm = str(name or "")
+                if name_is_exact_hit(needle, nm):
+                    exact.append({"stock_id": str(sid), "stock_name": nm})
+                nc = cjk_only(nm)
+                if qc and qc in nc:
+                    related.append(sid)
+            if len(exact) == 1 and len(set(related)) <= 1:
+                return []
+    except Exception:
+        pass
     hits: List[Dict[str, Any]] = []
     try:
         from wayne_db import lookup_stocks
