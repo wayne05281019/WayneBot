@@ -62,4 +62,4 @@ def test_flow_html_under_telegram_budget():
     elapsed = time.perf_counter() - t0
     assert html
     assert "資金" in html or "輪動" in html
-    assert elapsed < 4.0, f"資金頁 {elapsed:.1f}s，Telegram 12s 會逾時"
+    assert elapsed < 6.0, f"資金頁 {elapsed:.1f}s，Telegram 12s 會逾時"

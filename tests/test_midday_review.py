@@ -89,3 +89,17 @@ def test_main_runner_midday_does_not_send_copy_paste():
     assert "下面這一則可整段複製" not in src
     assert "現在／今早價分開寫，先講現在要做什麼" in src
     assert "要轉 LINE 自己選聯絡人" not in src
+
+
+def test_fetch_mis_batch_skips_network_in_pytest(monkeypatch, tmp_path):
+    from midday_review import fetch_mis_batch
+
+    calls = []
+
+    def boom(*_a, **_k):
+        calls.append(1)
+        raise AssertionError("pytest 不准打 MIS")
+
+    monkeypatch.setattr("midday_review._SESSION.get", boom)
+    assert fetch_mis_batch(["2330"], str(tmp_path / "x.db")) == {}
+    assert calls == []
