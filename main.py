@@ -481,7 +481,11 @@ def catch_up_missed_jobs(now=None) -> None:
     mins = now.hour * 60 + now.minute
     need_fuse = scheduler_owns("fuse") and mins >= 16 * 60 + 30
     need_morning = scheduler_owns("morning") and mins >= 6 * 60 + 30
-    need_midday = scheduler_owns("midday") and mins >= 12 * 60 + 45
+    # 尾盤只在 12:45–13:30 補寄。過了尾盤「現在要做的事」已過期；晚上重開不准再丟。
+    need_midday = (
+        scheduler_owns("midday")
+        and (12 * 60 + 45) <= mins < (13 * 60 + 30)
+    )
     need_evening = scheduler_owns("evening") and mins >= 20 * 60
     if not any((need_fuse, need_morning, need_midday, need_evening)):
         return
@@ -543,6 +547,11 @@ def retry_missed_owned_jobs(now=None) -> list:
         if kind == "morning_screen":
             runner.run_morning_screen(skip_if_done=True)
         elif kind == "midday_review":
+            now = now or _taipei_now()
+            mins = now.hour * 60 + now.minute
+            if mins >= 13 * 60 + 30:
+                logger.info("尾盤已過 13:30，死人開關不補寄 12:45")
+                continue
             runner.run_midday_review(skip_if_done=True)
         else:
             runner.run_increment_job(skip_if_done=True, notify=scheduler_may_push("fuse"))
