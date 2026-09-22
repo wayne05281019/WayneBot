@@ -643,7 +643,9 @@ def test_dongzhu_layers_and_parity_roles():
         1,
         "買點",
     )
-    assert lead_line.startswith("1. <b>龍頭</b> 2303 聯電")
+    assert lead_line.startswith("1. <code>龍頭</code> ")
+    assert "2303" in lead_line and "聯電" in lead_line
+    assert "href=" in lead_line
     line = _layer_line(("電子上游", "IC", "封測"))
     assert "主產業 電子上游" in line
     assert "次產業 IC" in line

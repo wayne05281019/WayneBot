@@ -332,6 +332,6 @@ def test_market_page_us_regular_heading_when_tw_open(tmp_path):
     html = format_taiwan_market_page_html(
         db, as_of, now=datetime(2026, 9, 1, 22, 0, tzinfo=TW)
     )
-    assert "<b>美股</b>" in html
+    assert "美股" in html
     assert "現金盤中" in html
     assert "上一收盤日該看" not in html

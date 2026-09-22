@@ -98,7 +98,7 @@ def test_listing_face_marks_turnover_leader_not_yi_er_xian(tmp_path):
     assert otc == "上櫃　光通訊／低軌衛星"
     assert "一線" not in tsmc + mtk + otc
     assert "二線" not in tsmc + mtk + otc
-    assert html_stock_anchor("2330", "台積電", db).endswith("　上市（半導體業）　龍頭")
+    assert html_stock_anchor("2330", "台積電", db).endswith("　上市（半導體業）　<code>龍頭</code>")
 
 
 def test_listing_face_ok_accepts_industry_leader_rejects_yi_er():

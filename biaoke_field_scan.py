@@ -2499,16 +2499,18 @@ def _stock_line(
     held: bool = False,
 ) -> str:
     del compact
-    sid = _esc(item.get("sid"))
-    name = _esc(item.get("name"))
+    from stock_links import html_stock_anchor
+    from tg_layout import html_face
+
+    title = html_stock_anchor(item.get("sid"), item.get("name"))
     vs20 = item.get("vs20")
     vs60 = item.get("vs60")
     role = str(item.get("role") or "").strip()
     face = str(item.get("face") or "").strip()
     if role == "龍頭":
-        rows = [f"{idx}. <b>龍頭</b> {sid} {name}"]
+        rows = [f"{idx}. {html_face('龍頭')} {title}"]
     else:
-        rows = [f"{idx}. {sid} {name}"]
+        rows = [f"{idx}. {title}"]
     if face:
         rows.append(_esc(face))
     rows.extend(_esc(x) for x in _stock_action_lines(item, tag, held=held))
@@ -2517,9 +2519,9 @@ def _stock_line(
     if role and role != "龍頭":
         rows.append(_esc(role))
     if vs20 is not None:
-        rows.append(f"距20高 {_pct(float(vs20))}")
+        rows.append(f"距20高 {html_face(_pct(float(vs20)))}")
     if vs60 is not None:
-        rows.append(f"距60高 {_pct(float(vs60))}")
+        rows.append(f"距60高 {html_face(_pct(float(vs60)))}")
     return "\n".join(rows)
 
 

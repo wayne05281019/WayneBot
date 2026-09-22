@@ -1631,6 +1631,8 @@ def _avg_price_for_safety(item: Dict[str, Any]) -> float:
 
 
 def _px_str(close) -> str:
+    from tg_layout import html_face
+
     if close is None or close == "":
         return "—"
     try:
@@ -1641,12 +1643,14 @@ def _px_str(close) -> str:
         s = f"{v:.1f}".rstrip("0").rstrip(".")
     else:
         s = f"{v:.2f}"
-    return html_escape(s)
+    return html_face(s)
 
 
 def _hot(text: str) -> str:
-    """Telegram HTML 不能指定紅色；一般數字用粗體。"""
-    return f"<b>{html_escape(text)}</b>"
+    """數字／％走橘等寬；Telegram 不能指定任意紅色。"""
+    from tg_layout import html_face
+
+    return html_face(text)
 
 
 def _flag(text: str) -> str:

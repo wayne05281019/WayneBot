@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -49,7 +50,7 @@ class UsAlertFormatTests(unittest.TestCase):
         self.assertIn("== 美股盤後期貨 ==", html)
         self.assertIn("那斯達克期貨", html)
         self.assertIn("恐慌指數", html)
-        self.assertNotIn("VIX", html)
+        self.assertNotIn("VIX", re.sub(r"<[^>]+>", "", html))
         self.assertNotIn("那指期", html)
         self.assertNotIn("台積ADR", html)
         self.assertNotIn("｜", html)

@@ -137,8 +137,11 @@ def kv_compact(label: str, value) -> str:
 
 
 def kv_html_compact(label: str, html_value) -> str:
-    """標籤：HTML 內容，緊湊不補寬欄。"""
-    return f"{html_escape(label)}：{html_value}"
+    """標籤：HTML 內容，緊湊不補寬欄。標籤已含連結就不再跳脫。"""
+    lab = str(label or "")
+    if "<" in lab:
+        return f"{lab}：{html_value}"
+    return f"{html_escape(lab)}：{html_value}"
 
 
 def kv_html(label: str, html_value, width: int = 10) -> str:
@@ -396,14 +399,40 @@ def format_move_plain(change, pct) -> str:
     return f"{arrow}（{p:+.2f}%）"
 
 
+def html_face(val) -> str:
+    """Telegram 橘等寬：數字、％、龍頭、要一眼掃到的水位。"""
+    s = str(val if val is not None else "").strip()
+    if not s:
+        return "<code>—</code>"
+    return f"<code>{html_escape(s)}</code>"
+
+
+def html_href(url: str, label: str) -> str:
+    """藍字超連結。"""
+    href = str(url or "").replace("&", "&amp;").replace('"', "&quot;")
+    if not href or not str(label or "").strip():
+        return html_escape(label)
+    return f'<a href="{href}">{html_escape(label)}</a>'
+
+
+def html_listing_suffix(tag: str) -> str:
+    """上市／產業黑字；龍頭走橘 <code>。"""
+    t = str(tag or "").strip()
+    if not t:
+        return ""
+    if t.endswith("龍頭"):
+        head = t[:-2].rstrip("　 ")
+        lead = html_face("龍頭")
+        return f"　{html_escape(head)}　{lead}" if head else f"　{lead}"
+    return f"　{html_escape(t)}"
+
+
 def html_move(change, pct) -> str:
     """奇摩式漲跌：先金額再％。下跌 ▼ 5.50（-3.05%），上漲 ▲。"""
     body = format_move_plain(change, pct)
     if body == "—":
         return "—"
-    if body == "0.00（0.00%）":
-        return html_escape(body)
-    return f"<b>{html_escape(body)}</b>"
+    return html_face(body)
 
 
 def title_line(kind: str, code: str, name: str = "", extra: str = "") -> str:
