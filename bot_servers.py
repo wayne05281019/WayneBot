@@ -3618,7 +3618,8 @@ class WayneTelegramBot:
             return
         cap = "加權指數日K（K棒・MA5/20/60・量）"
         try:
-            with open(path, "rb") as f:
+            send_path = self._prepare_lookup_album_photo(path)
+            with open(send_path, "rb") as f:
                 await message.reply_photo(
                     photo=f,
                     caption=cap,
@@ -4126,7 +4127,8 @@ class WayneTelegramBot:
             )
             if chip_img:
                 try:
-                    with open(chip_img, "rb") as f:
+                    send_path = self._prepare_lookup_album_photo(chip_img)
+                    with open(send_path, "rb") as f:
                         await message.reply_photo(
                             photo=f, caption="籌碼（張）", reply_markup=self._hub_keyboard(code)
                         )

@@ -397,6 +397,19 @@ def _cap(db_path: str) -> str:
         return ""
 
 
+def _day_zh(ymd: str) -> str:
+    raw = str(ymd or "").replace("-", "")[:8]
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        s = format_trading_date_zh(raw)
+        if s:
+            return s
+    except Exception:
+        pass
+    return str(ymd or "")
+
+
 def _chip_cap(db_path: str, cap: str = "") -> str:
     """法人還沒寫進當日柱（全日 0）不當資金日。盤中未收不當官方收。"""
     cap = _ymd(cap) or _cap(db_path)
@@ -2820,9 +2833,9 @@ def dongzhu_hold_page(
         *act_rows,
     ]
     if cap:
-        head.append(f"官方收 {cap}")
+        head.append(f"官方收 {_day_zh(cap)}")
         if chip and chip != cap:
-            head.append(f"法人日 {chip}")
+            head.append(f"法人日 {_day_zh(chip)}")
     blocks = [_blk(*head)]
     parts = list(data.get("layers") or [])
     if parts:
@@ -2868,9 +2881,9 @@ def dongzhu_page(
     ]
     if cap:
         chip = _esc(data.get("chip_cap") or "")
-        date_rows = [f"官方收 {cap}"]
+        date_rows = [f"官方收 {_day_zh(cap)}"]
         if chip and chip != cap:
-            date_rows.append(f"法人日 {chip}")
+            date_rows.append(f"法人日 {_day_zh(chip)}")
         blocks.append(_blk(*date_rows))
     board = str(data.get("inflow_board") or "").strip()
     if board:

@@ -348,7 +348,9 @@ def render_index_kline_png(
         fontproperties=_fp(9, "bold"),
         color="#263238",
     )
-    fig.savefig(save_path, dpi=NAV_CHART_DPI, facecolor=_BG)
+    from wayne_navigator import _savefig_lookup_png
+
+    _savefig_lookup_png(fig, save_path, NAV_CHART_DPI)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 

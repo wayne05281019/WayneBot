@@ -854,6 +854,8 @@ def render_industry_png(
                 )
                 dr.text((tx, ty), ln, font=body_f, fill=fill + (255,))
                 cy += line_h
-    im.convert("RGB").save(out, "PNG", optimize=True)
+    im.convert("RGB").save(
+        out, "JPEG", quality=88, optimize=False, subsampling=0
+    )
     return out
 

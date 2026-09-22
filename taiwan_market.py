@@ -1909,26 +1909,25 @@ def _max_index_daily_date(db_path: str) -> Optional[str]:
 
 
 def resolve_market_as_of(db_path: str, hint: Optional[str] = None) -> str:
-    """大盤／海選共用基準日：index_daily 最新完整日優先，再對齊 screen/import 基準日。"""
-    hint_d = _norm_ymd(hint)
-    max_idx = _max_index_daily_date(db_path)
-    if max_idx:
-        if hint_d and hint_d <= max_idx:
-            return hint_d
-        return max_idx
-    for resolver in (
-        lambda: __import__("trading_calendar", fromlist=["resolve_screen_as_of"]).resolve_screen_as_of(db_path),
-        lambda: __import__("import_health", fromlist=["latest_complete_quote_date"]).latest_complete_quote_date(db_path),
-    ):
-        try:
-            d = resolver()
-            if d:
-                return _norm_ymd(d)
-        except Exception:
-            pass
-    from trading_calendar import fuse_end_trading_date
+    """話筒各區共用官方基準日：完整收盤。不准用 index_daily 搶在日 K 齊之前。"""
+    from trading_calendar import fuse_end_trading_date, resolve_screen_as_of
 
-    return fuse_end_trading_date()
+    hint_d = _norm_ymd(hint)
+    complete = ""
+    try:
+        complete = _norm_ymd(resolve_screen_as_of(db_path))
+    except Exception:
+        try:
+            from import_health import latest_complete_quote_date
+
+            complete = _norm_ymd(latest_complete_quote_date(db_path))
+        except Exception:
+            complete = ""
+    cap = fuse_end_trading_date()
+    limit = complete or cap
+    if hint_d:
+        return hint_d if hint_d <= limit else limit
+    return limit
 
 
 def _prior_quote_dates(db_path: str, as_of: str, limit: int = 12) -> List[str]:
@@ -2626,14 +2625,17 @@ def analyze_taiwan_market(
     ref_date = resolve_market_as_of(db_path, as_of)
     idx = load_index_daily(db_path, ref_date or None, db_only=db_only)
     if idx.empty and db_only:
-        idx = load_index_daily(db_path, None, db_only=True)
-        ref_date = _max_index_daily_date(db_path) or ref_date
+        raw = load_index_daily(db_path, None, db_only=True)
+        if not raw.empty and ref_date:
+            sliced = raw[raw["date"].astype(str) <= str(ref_date)]
+            idx = sliced.reset_index(drop=True) if not sliced.empty else raw
+        else:
+            idx = raw
     if idx.empty and ref_date:
         for d in _prior_quote_dates(db_path, ref_date, 8):
             trial = load_index_daily(db_path, d, db_only=db_only)
             if not trial.empty:
                 idx = trial
-                ref_date = d
                 break
     if idx.empty:
         return {"ok": False, "regime": "unknown", "brief": "加權指數讀取異常"}
@@ -3965,7 +3967,7 @@ def format_taiwan_market_page_html(
     snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> str:
-    """Telegram「大盤」專頁：只讀庫內；基準日自動對齊 index_daily／官股日 K。"""
+    """Telegram「大盤」專頁：只讀庫內；基準日與海選／資金同一套完整收盤。"""
     from tg_layout import html_escape
 
     ref_hint = resolve_market_as_of(db_path, as_of)
@@ -3997,7 +3999,14 @@ def format_taiwan_market_page_html(
     show_pct = float((live or {}).get("pct_change") or day_pct or snap.get("chg1_pct") or 0)
     clock = str((live or {}).get("update_time") or "")[:5]
     ref8 = str(ref).replace("-", "")[:8]
-    ref_zh = f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
+    try:
+        from trading_calendar import format_trading_date_zh
+
+        ref_zh = format_trading_date_zh(ref8) or (
+            f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
+        )
+    except Exception:
+        ref_zh = f"{ref8[:4]}/{ref8[4:6]}/{ref8[6:8]}" if len(ref8) == 8 else str(ref)
     if live_px > 0:
         as_of_note = _page_kv("截至", f"{_page_b(ref_zh)}　盤中")
         extra_note = "漲跌家數、法人仍依庫內最近完整日"

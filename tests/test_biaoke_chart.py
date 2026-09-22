@@ -880,7 +880,7 @@ def test_biaoke_chart_dpi_is_lighter_than_nav():
     assert "BIAOKE_CHART_DPI" in src
     assert "NAV_CHART_DPI" not in src
     assert "_add_ohlc_wicks" in src
-    assert "pil_kwargs" in src
+    assert "_savefig_lookup_png" in src
     from biaoke_chart import paint_locator_inset
 
     lsrc = inspect.getsource(paint_locator_inset)
