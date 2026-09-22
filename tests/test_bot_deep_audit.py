@@ -249,7 +249,8 @@ def test_us_overnight_blocks_no_code_columns():
         "us_session": "20260901",
     }
     html = format_us_drop_alert(snap)
-    assert "<code>" not in html
+    assert "<code>" in html
+    assert not re.search(r"<code>\s{3,}", html)
 
 
 def test_lookup_quote_reconcile_pct_from_db_prior():
