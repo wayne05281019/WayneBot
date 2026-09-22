@@ -256,6 +256,135 @@ def attach_hold_prior_wave(
         dates,
     )
     card.update(flags)
+    attach_buy_verdict(card)
+    return card
+
+
+def _table_profit_pair(card: Dict[str, Any]) -> tuple:
+    tbl = card.get("table")
+    today_p = card.get("gain_pct", card.get("profit_pct"))
+    today_a = ""
+    yest_p = None
+    yest_a = ""
+    try:
+        from sell_discipline import _chrono_table
+
+        src = _chrono_table(tbl)
+        if src is not None and hasattr(src, "iloc") and len(src):
+            last = src.iloc[-1]
+            today_p = last.get("profit_pct", today_p)
+            today_a = str(last.get("預警") or "")
+            if len(src) >= 2:
+                prev = src.iloc[-2]
+                yest_p = prev.get("profit_pct")
+                yest_a = str(prev.get("預警") or "")
+    except Exception:
+        pass
+    try:
+        today_p = float(today_p) if today_p is not None else None
+    except (TypeError, ValueError):
+        today_p = None
+    try:
+        yest_p = float(yest_p) if yest_p is not None else None
+    except (TypeError, ValueError):
+        yest_p = None
+    return yest_p, today_p, yest_a, today_a
+
+
+def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
+    """查股買點一句。只認高低卡表＋前次底，不改海選桶、不是紅箭頭。"""
+    empty = {"buy_verdict": "watch", "buy_verdict_note": "現在先看表。不是買點。"}
+    if not card or card.get("error"):
+        return {"buy_verdict": "", "buy_verdict_note": ""}
+    hold = str(card.get("hold_prior_state") or "")
+    sell = str(card.get("sell_action") or "")
+    hl = ""
+    alert = ""
+    try:
+        from decision_card_signals import last_table_facts, leave_zero_screen_ok, table_reads_as_low
+
+        facts = last_table_facts(card)
+        hl = str(facts.get("hl") or "")
+        alert = str(facts.get("alert") or "")
+        low_table = table_reads_as_low(card)
+    except Exception:
+        facts = {}
+        low_table = False
+        try:
+            from decision_card_signals import leave_zero_screen_ok
+        except Exception:
+            leave_zero_screen_ok = None  # type: ignore
+    yest_p, today_p, yest_a, today_a = _table_profit_pair(card)
+    lz_ok, lz_why = False, ""
+    if leave_zero_screen_ok is not None and today_p is not None:
+        lz_ok, lz_why = leave_zero_screen_ok(
+            float(yest_p if yest_p is not None else 0.0),
+            float(today_p),
+            yest_alert=yest_a,
+            today_alert=today_a or alert,
+        )
+    if hold == "broke":
+        return {
+            "buy_verdict": "no",
+            "buy_verdict_note": "現在不是買點。回測已破前次底。",
+        }
+    if sell in ("直接減碼", "準備減碼") and not low_table:
+        return {
+            "buy_verdict": "no",
+            "buy_verdict_note": "現在不是買點。高低卡要減碼，別買。",
+        }
+    if hl in ("20高", "10高") or alert == "K20高":
+        return {
+            "buy_verdict": "no",
+            "buy_verdict_note": "現在不是買點。價在高檔，別追。",
+        }
+    if hold == "new_high":
+        return {
+            "buy_verdict": "no",
+            "buy_verdict_note": "現在不是買點。剛創區間新高，先等回測。",
+        }
+    if hold == "nick":
+        return {
+            "buy_verdict": "watch",
+            "buy_verdict_note": "現在先看。回測略破前次底，等翻上來。不是買點。",
+        }
+    if lz_ok and hold in ("", "holds", "wash"):
+        tail = ""
+        if hold == "holds":
+            tail = "回測幾乎不破前波高。"
+        elif hold == "wash":
+            tail = "洗盤過了前波高，前次底還在。"
+        return {
+            "buy_verdict": "buy",
+            "buy_verdict_note": f"現在是買點。表上黃金買點（{lz_why}）。{tail}".strip(),
+        }
+    rel = str(card.get("relative_buy_kind") or "")
+    try:
+        g = float(today_p) if today_p is not None else None
+    except (TypeError, ValueError):
+        g = None
+    if rel == "at_floor" or (g is not None and g <= 0.05):
+        return {
+            "buy_verdict": "watch",
+            "buy_verdict_note": "現在先看。獲利還沒離零。不是買點。",
+        }
+    if hold in ("holds", "wash"):
+        return {
+            "buy_verdict": "watch",
+            "buy_verdict_note": "現在先看。回測結構還在，表上不是黃金買點。",
+        }
+    if g is not None and g > 5:
+        return {
+            "buy_verdict": "no",
+            "buy_verdict_note": "現在不是買點。獲利已離黃金買點帶。",
+        }
+    return empty
+
+
+def attach_buy_verdict(card: Dict[str, Any]) -> Dict[str, Any]:
+    if not card or card.get("error"):
+        return card
+    card.update(judge_buy_point(card))
     return card
 
 
@@ -266,5 +395,14 @@ def hold_note_short(card: Dict[str, Any] | None) -> str:
 
 
 def hold_note_lines(card: Dict[str, Any] | None) -> List[str]:
+    """協助判斷：先買點一句，再回測細節。"""
+    if card:
+        attach_buy_verdict(card)
+    lines: List[str] = []
+    verdict = str((card or {}).get("buy_verdict_note") or "").strip()
+    if verdict:
+        lines.append(verdict)
     note = hold_note_short(card)
-    return [note] if note else []
+    if note and note not in lines:
+        lines.append(note)
+    return lines

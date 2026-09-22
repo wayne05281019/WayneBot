@@ -49,7 +49,8 @@ def test_retest_almost_holds_like_2409_feb3():
     floor = 13.85 * (1.0 - ALMOST_FRAC)
     assert 13.3 + 1e-9 >= floor
     assert "幾乎不破前波高" in got["hold_prior_note"]
-    assert hold_note_lines(got)[0] == got["hold_prior_note"]
+    lines = hold_note_lines(got)
+    assert got["hold_prior_note"] in lines
 
 
 def test_retest_past_high_still_above_prior_low():
@@ -86,7 +87,9 @@ def test_retest_broke_prior_low():
 def test_short_series_blank():
     got = classify_hold_prior_wave([10.0] * 20, [9.0] * 20)
     assert got["hold_prior_state"] == ""
-    assert hold_note_lines(got) == []
+    lines = hold_note_lines(got)
+    assert lines and "不是買點" in lines[0]
+    assert all("浪" not in x for x in lines)
 
 
 def test_attach_writes_card_not_buy_fields():
@@ -141,3 +144,67 @@ def test_2409_official_as_of_if_db_has_rows():
     jul = eng.get_decision_card("2409", merge_live=False, as_of="20260731")
     assert jul.get("hold_prior_state") == "holds"
     assert abs(float(jul.get("hold_prior_retest_low") or 0) - 22.0) < 1e-6
+    assert jan.get("buy_verdict") == "no"
+    assert "不是買點" in (jan.get("buy_verdict_note") or "")
+
+
+def _lz_table(yest: float, today: float, hl="No", alert="No"):
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"date": "20260106", "profit_pct": yest, "預警": "60低" if yest <= 0.05 else "No", "高低": "20低"},
+            {"date": "20260107", "profit_pct": today, "預警": alert, "高低": hl},
+        ]
+    )
+
+
+def test_buy_verdict_leave_zero_with_base_still_ok():
+    from hold_prior_wave import judge_buy_point
+
+    card = {
+        "table": _lz_table(0.0, 1.2),
+        "hold_prior_state": "holds",
+        "gain_pct": 1.2,
+    }
+    got = judge_buy_point(card)
+    assert got["buy_verdict"] == "buy"
+    assert "黃金買點" in got["buy_verdict_note"]
+
+
+def test_buy_verdict_wash_can_still_be_buy_if_table_says_so():
+    from hold_prior_wave import judge_buy_point
+
+    got = judge_buy_point(
+        {"table": _lz_table(0.0, 0.8), "hold_prior_state": "wash", "gain_pct": 0.8}
+    )
+    assert got["buy_verdict"] == "buy"
+    assert "前次底還在" in got["buy_verdict_note"]
+
+
+def test_buy_verdict_nick_is_watch_not_buy():
+    from hold_prior_wave import judge_buy_point
+
+    got = judge_buy_point(
+        {"table": _lz_table(0.0, 1.0), "hold_prior_state": "nick", "gain_pct": 1.0}
+    )
+    assert got["buy_verdict"] == "watch"
+    assert "不是買點" in got["buy_verdict_note"]
+
+
+def test_buy_verdict_broke_never_buy():
+    from hold_prior_wave import judge_buy_point
+
+    got = judge_buy_point(
+        {"table": _lz_table(0.0, 1.0), "hold_prior_state": "broke", "gain_pct": 1.0}
+    )
+    assert got["buy_verdict"] == "no"
+    assert "前次底" in got["buy_verdict_note"]
+
+
+def test_buy_verdict_new_high_not_buy():
+    from hold_prior_wave import judge_buy_point
+
+    got = judge_buy_point({"hold_prior_state": "new_high", "gain_pct": 20.0})
+    assert got["buy_verdict"] == "no"
+    assert "創區間新高" in got["buy_verdict_note"]

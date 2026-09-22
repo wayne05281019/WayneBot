@@ -3158,7 +3158,7 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
         hold_lines = hold_note_lines(card)
     except Exception:
         hold_lines = []
-    setup_bits = [x for x in list(sell_lines) + list(hold_lines) if x]
+    setup_bits = [x for x in list(hold_lines) + list(sell_lines) if x]
     setup_block = section("<b>協助判斷</b>", *setup_bits) if setup_bits else ""
     tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
     try:
@@ -3266,8 +3266,12 @@ def render_first_glance_png(
         from hold_prior_wave import hold_note_short
 
         hold_n = str(hold_note_short(card) or "").strip()
-        if hold_n and hold_n not in footer_src:
-            footer_src = list(footer_src) + [hold_n]
+        from hold_prior_wave import attach_buy_verdict
+
+        attach_buy_verdict(card)
+        verdict = str(card.get("buy_verdict_note") or "").strip()
+        extra = [x for x in (verdict, hold_n) if x]
+        footer_src = extra + [n for n in list(footer_src) if n not in extra]
     except Exception:
         pass
 
@@ -3976,7 +3980,12 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
         return buy_i, sell_i
     if str(card.get("sell_action") or "") == "直接減碼":
         sell_i = n - 1
-    if str(card.get("relative_buy_kind") or "") == "just_left":
+    verdict = str(card.get("buy_verdict") or "")
+    if verdict == "buy":
+        buy_i = n - 1
+    elif verdict in ("watch", "no"):
+        buy_i = None
+    elif str(card.get("relative_buy_kind") or "") == "just_left":
         buy_i = n - 1
     if str(card.get("entry_stage") or "") == "watch":
         buy_i = None

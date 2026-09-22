@@ -149,6 +149,10 @@ def test_nav_trade_marks_buy_up_sell_down_from_card():
     assert b == 1 and s is None
     b, s = _nav_trade_marks(work, {"sell_action": "直接減碼"})
     assert s == 1 and b is None
+    b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left", "buy_verdict": "no"})
+    assert b is None and s is None
+    b, s = _nav_trade_marks(work, {"buy_verdict": "buy"})
+    assert b == 1 and s is None
     b, s = _nav_trade_marks(
         work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
     )
