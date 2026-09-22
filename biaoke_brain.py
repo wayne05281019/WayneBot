@@ -657,10 +657,16 @@ def answer_biaoke(
     def _done(html: str) -> str:
         try:
             from biaoke_chain import attach_five_lead
+            from biaoke_mind import strip_boilerplate
 
-            return attach_five_lead(html, db_path, q, uid)
+            return strip_boilerplate(attach_five_lead(html, db_path, q, uid))
         except Exception:
-            return html
+            try:
+                from biaoke_mind import strip_boilerplate
+
+                return strip_boilerplate(html)
+            except Exception:
+                return html
 
     try:
         from biaoke_live import live_enabled, live_reply

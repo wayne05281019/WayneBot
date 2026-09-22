@@ -38,6 +38,8 @@ def test_five_stars_only_leave_zero_aligned():
     assert entry_star_count(late, bucket_key="leave_zero") <= 4
     beta = dict(must, beta_downweighted=True)
     assert entry_star_count(beta, bucket_key="leave_zero") <= 4
+    broke = dict(must, buy_gate="no")
+    assert entry_star_count(broke, bucket_key="leave_zero") <= 2
 
 
 def test_leave_zero_without_s_or_inflow_is_four():

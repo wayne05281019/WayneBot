@@ -189,7 +189,7 @@ def test_live_notes_share_cross_only_on_which_field(monkeypatch):
     note = live_notes("", "現在哪族先機")
     assert "官方佔比" in note
     assert "封測" in note
-    assert "不改黃金買點" in note
+    assert "不進海選" not in note
     other = live_notes("", "洗盤跟出貨怎麼分")
     assert "此刻最像 封測" not in other
 

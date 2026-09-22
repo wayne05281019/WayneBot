@@ -236,6 +236,37 @@ def classify_hold_prior_wave(
     return out
 
 
+def stamp_buy_gate(item: Dict[str, Any], df: Any = None) -> Dict[str, Any]:
+    """海選列可寫破低點線；不從黃金買點桶拿掉。"""
+    if not item or df is None or not hasattr(df, "columns"):
+        return item
+    try:
+        hi_col = "high_raw" if "high_raw" in df.columns else "high"
+        lo_col = "low_raw" if "low_raw" in df.columns else "low"
+        if hi_col not in df.columns or lo_col not in df.columns:
+            return item
+        vols = list(df["volume"]) if "volume" in df.columns else None
+        flags = classify_hold_prior_wave(
+            list(df[hi_col]),
+            list(df[lo_col]),
+            volumes=vols,
+        )
+    except Exception:
+        return item
+    st = str(flags.get("hold_prior_state") or "")
+    if st:
+        item["hold_prior_state"] = st
+    if flags.get("hold_prior_heavy"):
+        item["hold_prior_heavy"] = True
+    if st == "broke":
+        item["buy_gate"] = "no"
+        if flags.get("hold_prior_heavy"):
+            item["buy_gate_note"] = "低點線被帶量跌破，現在不要買"
+        else:
+            item["buy_gate_note"] = "低點線破了，現在不要買"
+    return item
+
+
 def attach_hold_prior_wave(
     card: Dict[str, Any],
     dates: Optional[Sequence[Any]] = None,

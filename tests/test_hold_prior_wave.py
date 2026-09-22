@@ -124,7 +124,7 @@ def test_module_stays_on_high_low_card_not_biaoke():
     assert "attach_hold_prior_wave" in nav
     assert "hold_note_lines" in nav
     screen = (root / "screening_engine.py").read_text(encoding="utf-8")
-    assert "hold_prior_wave" not in screen
+    assert "stamp_buy_gate" in screen
     facts = (root / "biaoke_facts.py").read_text(encoding="utf-8")
     assert "hold_prior_wave.py" in facts
 
@@ -244,3 +244,31 @@ def test_buy_verdict_new_high_not_buy():
     got = judge_buy_point({"hold_prior_state": "new_high", "gain_pct": 20.0})
     assert got["buy_verdict"] == "no"
     assert "剛創" in got["buy_verdict_note"] and "新高" in got["buy_verdict_note"]
+
+
+def test_stamp_buy_gate_broke_stays_in_bucket_but_not_buy():
+    import pandas as pd
+
+    from hold_prior_wave import stamp_buy_gate
+    from screening_engine import _stock_card_html, entry_star_count
+
+    highs, lows = _series_auo_like(retest_low=8.0)
+    df = pd.DataFrame({"high": highs, "low": lows, "volume": [1000] * len(highs)})
+    item = {
+        "stock_id": "2409",
+        "stock_name": "友達",
+        "close": 8.0,
+        "profit_pct": 1.2,
+        "is_s_tier": True,
+        "sector_inflow": True,
+        "leave_l20": True,
+        "entry_stage": "buy",
+        "entry_stage_label": "買點",
+    }
+    stamp_buy_gate(item, df)
+    assert item["buy_gate"] == "no"
+    assert "現在不要買" in item["buy_gate_note"]
+    assert entry_star_count(item, bucket_key="leave_zero") <= 2
+    html = _stock_card_html(item, 1, bucket_label="買點")
+    assert "現在不要買" in html
+    assert "切入" not in html

@@ -416,7 +416,7 @@ def format_focus_oral(
     if now is not None:
         dt = now if now.tzinfo else now.replace(tzinfo=TAIPEI)
         clock = dt.astimezone(TAIPEI).strftime("%H:%M")
-    tail = "不是買訊。直接打字或語音。"
+    tail = "直接打字或語音。"
     if clock:
         tail = f"看到這裡是 {clock}。{tail}"
     blocks.append("")

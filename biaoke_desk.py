@@ -374,7 +374,7 @@ def format_biaoke_desk_html() -> str:
     return (
         "<b>飆客獨立區</b>\n"
         "這區跟海選／高低卡無關，也不改黃金買點。來源是 CMoney「期股多空雙飆客」公開發文"
-        f"（{span}）。不是買訊。\n"
+        f"（{span}）。\n"
         "\n"
         "<b>兩年進步在哪</b>\n"
         "2025 夏：點族群、半山腰用隔日沖、漲一倍見好就收。\n"
@@ -473,7 +473,7 @@ def search_biaoke(ask: str, *, limit: int = 6, db_path: Optional[str] = None) ->
     if not scored:
         return (
             f"<b>{title}</b>\n"
-            "資料庫沒對上這句。會改用官方 K＋飆大框架來看；不是買訊。"
+            "資料庫沒對上這句。會改用官方 K＋飆大框架來看。"
         )
     lines = [f"<b>{title}</b>", head] if head else [f"<b>{title}</b>"]
     for _sc, p in scored[:limit]:

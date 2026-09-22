@@ -328,7 +328,7 @@ def render_sox_md(snap: Dict[str, Any]) -> str:
             f"- {e.get('date')} 加權20根 {((e.get('twii20') or {}).get('ret'))}% "
             f"{tag}：{_plain(e.get('snip') or '')[:80]}"
         )
-    lines.extend(["", "這份表不是買賣清單，也不進海選。", ""])
+    lines.extend(["", "這份表對的是他原文「重疊」後加權還破不破低。", ""])
     return "\n".join(lines) + "\n"
 
 
@@ -337,7 +337,7 @@ def format_sox_html(snap: Optional[Dict[str, Any]] = None) -> str:
     if not data:
         return (
             "1-4 重疊＝下跌趨勢化解。費半若出現，他當台股先行。"
-            "沒費半 15 分就不數段，只看收盤還破不破低。不是買訊、不進海選。"
+            "沒費半 15 分就不數段，只看收盤還破不破低。"
         )
     ov = data.get("overlap_twii20") or {}
     sx = data.get("overlap_sox20") or {}
@@ -348,7 +348,7 @@ def format_sox_html(snap: Optional[Dict[str, Any]] = None) -> str:
         "日 K 代理偏弱，他真正看的是 15／60 分；日線重疊不能當低點保證。",
         "2026-06-15 他說費半 1-4 重疊＝下跌趨勢化解、台股跟隨；6/16 說幾乎不會再測 42000，"
         "7/29 加權低 39385，這條「不再測」後來錯。重疊≠低點保證。",
-        "沒有費半 15 分就不數段。不是買訊、不進海選。",
+        "沒有費半 15 分就不數段。",
     ]
     return html_escape(" ".join(lines))
 

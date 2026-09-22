@@ -81,7 +81,7 @@ def test_methods_cover_industry_trend_hold_to_next_year():
     assert "2026-04-16" in html
     assert "3930" in html
     html2 = answer_biaoke(":memory:", "台光電為何能這麼篤定")
-    assert "不是買訊" in html2
+    assert "不是買訊" not in html2
     assert "抱到明年" in html2 or "產業趨勢" in html2
     assert "不猜" not in html2
     assert "現況／量價" not in html2
@@ -99,7 +99,7 @@ def test_methods_cover_nanya_1303_not_office_worker_hold():
     assert "217" not in tech
     html2 = answer_biaoke(":memory:", "南亞怎麼看")
     assert "1303" in html2
-    assert "不是買訊" in html2
+    assert "不是買訊" not in html2
     assert "217" in html2
 
 
@@ -166,7 +166,7 @@ def test_sep14_index_end_not_optical_comm():
     html6 = format_methods_html("感覺夜盤不太妙")
     assert "測底" in html6
     assert "短線築底" in html6
-    assert "不是買訊" in html6
+    assert "不是買訊" not in html6
 
 
 def test_methods_cover_wash_three_days_and_right_shoulder():
@@ -184,7 +184,7 @@ def test_methods_cover_wash_three_days_and_right_shoulder():
     assert "右肩" in hold
     assert "語料" not in hold
     html = answer_biaoke(":memory:", "洗盤跟出貨怎麼分")
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "語料" not in html
 
 
@@ -213,11 +213,11 @@ def test_method_curriculum_is_100_and_answers():
         assert body, q
         assert "海選" not in body or "不" in body
     html = answer_biaoke(":memory:", "量先價行怎麼看")
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "爆大量" in html
     html2 = answer_biaoke(":memory:", "大概何時止跌")
     assert "不猜日曆" in html2 or "費半" in html2
-    assert "不是買訊" in html2
+    assert "不是買訊" not in html2
 
 
 def test_corpus_curriculum_has_300_from_1709():

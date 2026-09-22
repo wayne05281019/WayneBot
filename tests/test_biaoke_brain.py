@@ -169,13 +169,13 @@ def test_volume_first_price_spike_is_high_volume_day():
 def test_search_miss_does_not_say_wont_guess():
     html = search_biaoke("這個代號絕對不存在xyzzy")
     assert "不猜" not in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
 
 
 def test_desk_html_mentions_unmentioned_names():
     html = format_biaoke_desk_html()
     assert "藝舍" in html or "沒寫過" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
 
 
 def test_stock_picker_hits_ambiguous_name_not_ticker(tmp_path, monkeypatch):

@@ -533,7 +533,7 @@ def format_fuse_html(snap: Optional[Dict[str, Any]] = None) -> str:
     if not data:
         return (
             "課綱是三百則公開文融會 → 一百則判斷問句 → 再三百則融會並對官方日 K。"
-            "本輪數字還沒收進庫。不是買訊、不進海選。"
+            "本輪數字還沒收進庫。"
         )
     a = data.get("round_a") or {}
     b = data.get("round_b") or {}
@@ -563,7 +563,7 @@ def format_fuse_html(snap: Optional[Dict[str, Any]] = None) -> str:
     names = data.get("top_names") or []
     if names:
         lines.append("這兩輪點名較多：" + "、".join(str(x) for x in names[:5]) + "。")
-    lines.append("這不是買訊，也不進海選。語料沒點名的檔仍用同一套量先價行套官方 K。")
+        lines.append("語料沒點名的檔仍用同一套量先價行套官方 K。")
     return html_escape(" ".join(lines))
 
 

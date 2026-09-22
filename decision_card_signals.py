@@ -926,17 +926,17 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
 
     if long_low and g < 15:
         if has_space and space < 8:
-            return f"表還壓在長線低附近{_paren(gbit, sbit)}，這段空間很小。低點訊號不是買訊。先看、先別急著買。"
-        return f"表還壓在長線低附近{_paren(gbit, mark)}。低點訊號不是買訊。先看、先別急著買。"
+            return f"表還壓在長線低附近{_paren(gbit, sbit)}，這段空間很小。先看、先別急著買。"
+        return f"表還壓在長線低附近{_paren(gbit, mark)}。先看、先別急著買。"
 
     if at_near_low and g < 8:
         if g < 1.0:
-            return f"表壓在低附近{_paren(mark)}、獲利還沒離開0{_paren(gbit)}。低點訊號不是買訊。先看、先別急著買。"
+            return f"表壓在低附近{_paren(mark)}、獲利還沒離開0{_paren(gbit)}。先看、先別急著買。"
         if has_bias and bias < -8:
-            return f"表壓在低檔{_paren(mark, gbit)}、{bbit}偏負。低點訊號不是買訊。先看、先別急著買。"
+            return f"表壓在低檔{_paren(mark, gbit)}、{bbit}偏負。先看、先別急著買。"
         if bear or (has_bias and bias < -3):
-            return f"日線偏空、表壓在低附近{_paren(mark, gbit, bbit)}。低點訊號不是買訊。先看、先別急著買。"
-        return f"表還壓在低附近{_paren(mark, gbit)}。低點訊號不是買訊。先看、先別急著買。"
+            return f"日線偏空、表壓在低附近{_paren(mark, gbit, bbit)}。先看、先別急著買。"
+        return f"表還壓在低附近{_paren(mark, gbit)}。先看、先別急著買。"
 
     if k == "avoid" or g >= 40:
         if has_bias and bias >= 8:
@@ -971,20 +971,20 @@ def _stance_from_table(kind: str, card: Dict[str, Any] | None, *, on_list: bool 
     extra = _paren(gbit, tbit, heat)
     if extra:
         if on_list:
-            return f"今天沒有急著買或賣{extra}。紅箭頭不是買進訊號。"
-        return f"今天沒有急著買或賣{extra}。看下面這張20日表再決定。紅箭頭不是買進訊號。"
+            return f"今天沒有急著買或賣{extra}。"
+        return f"今天沒有急著買或賣{extra}。看下面這張20日表再決定。"
     return _stance_kind_fallback(k, on_list=on_list)
 
 
 def _stance_kind_fallback(kind: str, *, on_list: bool = False) -> str:
     k = str(kind or "wait")
     if k == "avoid":
-        return "現在偏高或過熱，追進去容易挨打。不是叫你賣光，也不是下單指令。"
+        return "現在偏高或過熱，追進去容易挨打。"
     if k == "watch":
-        return "靠近低點可以放進觀察。低點訊號不是買訊，先別急著買。"
+        return "靠近低點可以放進觀察，先別急著買。"
     if on_list:
-        return "今天沒有急著買或賣。紅箭頭不是買進訊號。"
-    return "今天沒有急著買或賣。看下面這張20日表再決定。紅箭頭不是買進訊號。"
+        return "今天沒有急著買或賣。"
+    return "今天沒有急著買或賣。看下面這張20日表再決定。"
 
 
 def kotei_to_window_extreme(
@@ -1090,7 +1090,7 @@ def format_kotei_note(
     except (TypeError, ValueError):
         rh = None
     if above_q and near_high and rh is not None and 0 < rh <= 15:
-        return f"季線扣抵{kotei_wait_label(rh)}過高點。只是說明，進場仍看表。"
+        return f"季線扣抵{kotei_wait_label(rh)}過高點。"
     bits: List[str] = []
     try:
         rq = int(m60_low) if m60_low is not None else None
@@ -1112,8 +1112,8 @@ def format_kotei_note(
     except (TypeError, ValueError):
         g = None
     if g is not None and g >= 12:
-        return body + "這是均線把舊高低扣掉的時間，不是買訊。"
-    return body + "這是等多久打底，不是買訊。"
+        return body + "這是均線把舊高低扣掉的時間。"
+    return body + "這是等多久打底。"
 
 
 def attach_kotei_note(

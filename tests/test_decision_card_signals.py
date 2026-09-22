@@ -425,13 +425,14 @@ def test_priority_watch_near_high_html_matches_chase_tag():
 def test_stance_explain_is_plain_speech():
     wait = stance_explain("wait")
     assert "20日表" in wait
-    assert "紅箭頭不是買進訊號" in wait
+    assert "紅箭頭不是買進訊號" not in wait
     assert "按表操課" not in wait
     avoid = stance_explain("avoid")
     assert "追進去容易挨打" in avoid
+    assert "不是下單指令" not in avoid
     watch = stance_explain("watch")
     assert "先別急著買" in watch
-    assert "低點訊號不是買訊" in watch
+    assert "低點訊號不是買訊" not in watch
     sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
     assert "先出一點" in sell
     assert "不是叫你買" not in sell
@@ -490,7 +491,7 @@ def test_stance_explain_follows_table_colors():
     assert "高點" not in txt
     assert "長線低" in txt
     assert "空間很小" in txt
-    assert "低點訊號不是買訊" in txt
+    assert "低點訊號不是買訊" not in txt
 
     # 康普型：貼低、獲利還在 0 附近 → 低點訊號不是買、先不要動作
     card_4739 = {
@@ -508,7 +509,7 @@ def test_stance_explain_follows_table_colors():
         ],
     }
     txt = stance_explain("watch", card=card_4739)
-    assert "低點訊號不是買訊" in txt
+    assert "低點訊號不是買訊" not in txt
     assert "獲利還沒離開0" in txt
     assert "0.1%" in txt
     assert "先別急著買" in txt
@@ -601,7 +602,7 @@ def test_stance_explain_missing_bias_does_not_invent_monthly():
     txt = stance_explain("wait", card={"profit": 12.3, "close": 100.0}, surface="list")
     assert "貼著月線" not in txt
     assert "月線" not in txt
-    assert "紅箭頭不是買進訊號" in txt
+    assert "紅箭頭不是買進訊號" not in txt
     assert "看下面這張" not in txt
 
 
@@ -898,7 +899,7 @@ def test_kotei_wait_label_matches_cary_months():
     note = format_kotei_note(m20_low=19, m60_low=30)
     assert "月線還有19個交易日（約1個月）" in note
     assert "季線扣抵距低點還有30個交易日（約2個月）" in note
-    assert "不是買訊" in note
+    assert "不是買訊" not in note
     assert "還有再" not in format_kotei_note(m20_low=3, m60_low=29)
     assert "月線還有3個交易日" in format_kotei_note(m20_low=3, m60_low=29)
     far = format_kotei_note(m20_low=3, m60_low=29, gain_pct=26.6)
@@ -908,7 +909,7 @@ def test_kotei_wait_label_matches_cary_months():
     assert "打底" in near
     hi = format_kotei_note(close=30, ma60=28, hl="20高", m60_high=5)
     assert "再5個交易日過高點" in hi
-    assert "進場仍看表" in hi
+    assert "進場仍看表" not in hi
     noisy = {
         "kotei_note": "季線扣抵距低點還有30個交易日（約2個月）。這是等多久打底，不是買訊。",
         "close": 107.3,
@@ -945,7 +946,7 @@ def test_4739_kotei_matches_cary_sep10():
     note = card.get("kotei_note") or ""
     assert "約1個月" in note
     assert "約2個月" in note
-    assert "不是買訊" in note
+    assert "不是買訊" not in note
     html = stance_explain(card.get("stance_kind") or "wait", card=card)
     assert "約2個月" not in html
     assert "扣抵" not in html

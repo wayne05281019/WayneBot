@@ -31,7 +31,6 @@ def test_chain_six_neurons_in_order_for_emc():
     notes = format_chain_notes("", "台光電 7 月抄底為什麼能抱到明年")
     assert "神經元鏈" in notes
     assert notes.startswith("開口｜") or "開口｜" in notes[:80]
-    assert "不是買訊" in notes.split("\n", 1)[0]
     assert chain_order_ok(notes)
     fired = fire_chain("", "台光電 7 月抄底為什麼能抱到明年")
     assert fired["sid"] == "2383"
@@ -882,7 +881,7 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     lead = mkt.get("lead") or format_five_lead(mkt)
     assert "如果句" in lead
     assert "未收" in lead
-    assert "不是買訊" in lead
+    assert "不是買訊" not in lead
     assert "C-5" in lead or "45398" in lead
     notes = format_chain_notes("", "45398 怎麼看")
     assert notes.startswith("開口｜")
@@ -890,7 +889,7 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     assert html.startswith(lead[:12]) or "如果句" in html[:80]
     assert html.index("如果句") < html.index("後面細節")
     lead, detail = split_lead_detail(html)
-    assert "不是買訊" in lead
+    assert "不是買訊" not in lead
     assert "〔" in lead
     assert "後面細節" in detail
     assert "後面細節" not in lead
@@ -901,7 +900,7 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
     el = emc.get("lead") or ""
     assert "問的是 2383" in el
     assert "不數浪" in el
-    assert "不是買訊" in el
+    assert "不是買訊" not in el
     assert "他還在等自己點過的" not in el
     assert "如果句" not in el
     assert "未收" not in el
@@ -911,7 +910,7 @@ def test_five_lead_is_first_sentence_with_if_and_unclosed():
 
     focus = format_latest_focus("")
     assert "飆大現在在講" in focus
-    assert "不是買訊" in focus
+    assert "不是買訊" not in focus
     assert "這句沒點檔" not in focus
     assert "現在位階" not in focus
 
@@ -960,7 +959,7 @@ def test_overlays_do_not_change_five_cross_branches():
     )
     assert "強勢整理" in lead or "沒破線" in lead or "續抱" in lead
     assert "官方結構" in lead
-    assert "不是買訊" in lead
+    assert "不是買訊" not in lead
     field = _field(
         "台光電怎麼看",
         {"sid": "2383", "name": "台光電", "rotation": "電子零組件業在流出前段"},
