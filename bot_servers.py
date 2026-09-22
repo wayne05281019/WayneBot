@@ -3279,12 +3279,7 @@ class WayneTelegramBot:
                     for x in list(data.get("buys") or [])
                     if x.get("sid")
                 }
-                for item in (
-                    list(data.get("recs") or [])
-                    + list(data.get("buys") or [])
-                    + list(data.get("watches") or [])
-                    + list(data.get("laggards") or [])
-                ):
+                for item in list(data.get("recs") or []):
                     sid = str(item.get("sid") or "")
                     if not sid or sid in seen:
                         continue
