@@ -260,7 +260,7 @@ def test_dongzhu_keyboard_is_industry_temp_intro():
     assert "記買入" not in texts
     assert texts[1:] == ["產業", "高低溫度卡", "介紹卡"]
     data = [b.callback_data for r in rows for b in r]
-    assert data == ["k:2449", "n:2449", "d:2449", "i:2449"]
+    assert data == ["dzq:2449", "n:2449", "d:2449", "i:2449"]
     kb = bot._dongzhu_picks_keyboard(
         [("2449", "京元電子", "勝71%"), ("6257", "矽格", "")]
     )
@@ -273,6 +273,43 @@ def test_dongzhu_keyboard_is_industry_temp_intro():
     hold_kb = bot._dongzhu_hold_keyboard("2449")
     hold_txt = [b.text for r in hold_kb.inline_keyboard for b in r]
     assert hold_txt == ["產業", "高低溫度卡", "介紹卡"]
+
+
+def test_dongzhu_hits_keyboard_stays_in_dongzhu():
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._dongzhu_hits_keyboard(
+        [
+            {"stock_id": "1303", "stock_name": "南亞"},
+            {"stock_id": "2408", "stock_name": "南亞科"},
+        ]
+    )
+    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
+    assert datas == ["dzq:1303", "dzq:2408"]
+    assert not any(d.startswith("k:") or d.startswith("w:") for d in datas)
+
+
+def test_dongzhu_picker_callback_opens_hold_not_card():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot._pending = {}
+    bot._actor_key = lambda message, uid="": f"{uid}"
+    bot._send_dongzhu_hold = AsyncMock()
+    bot._send_card_to = AsyncMock()
+    q = SimpleNamespace(
+        data="dzq:1303",
+        from_user=SimpleNamespace(id=11),
+        message=MagicMock(),
+        answer=AsyncMock(),
+    )
+    asyncio.run(bot._on_callback_bound(None, None, q, "11"))
+    q.answer.assert_awaited()
+    bot._send_dongzhu_hold.assert_awaited()
+    assert bot._send_dongzhu_hold.await_args.args[1] == "1303"
+    bot._send_card_to.assert_not_awaited()
+    assert bot._pending.get("11") == "dongzhu"
 
 
 def test_intent_and_menu_label():

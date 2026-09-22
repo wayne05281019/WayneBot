@@ -230,7 +230,8 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "data=data" in hold_src[page_i:page_end]
     assert "held_sids" in hold_src[page_i:page_end]
     assert "_dongzhu_held_sids" in hold_src[page_i:page_end]
-    assert "held=" in hold_src[hold_i:hold_end]
+    assert "_dongzhu_hits_keyboard" in hold_src[hold_i:hold_end]
+    assert "self._hits_keyboard(" not in hold_src[hold_i:hold_end]
 
 
 def test_dongzhu_page_phone_reflow_does_not_split_numbers(tmp_path, monkeypatch):

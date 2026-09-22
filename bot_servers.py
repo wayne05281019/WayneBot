@@ -1119,6 +1119,16 @@ class WayneTelegramBot:
             reply_markup=self._reply_menu(uid),
         )
 
+    async def _keep_dongzhu_shell(self, message, uid: str) -> None:
+        """看產業／高低卡／介紹卡後仍留在洞燭，不准跳去查股狀態。"""
+        actor = self._actor_key(message, uid=uid)
+        if str(self._pending.get(actor) or "") != "dongzhu":
+            return
+        await message.reply_text(
+            "還在洞燭。同一顆「離開洞燭先機」回主選單。",
+            reply_markup=self._dongzhu_reply_menu(uid),
+        )
+
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
     ) -> bool:
@@ -1606,7 +1616,7 @@ class WayneTelegramBot:
             label = f"{label} {win}".strip()
         return [
             [
-                InlineKeyboardButton(label, callback_data=f"k:{c}"),
+                InlineKeyboardButton(label, callback_data=f"dzq:{c}"),
                 *self._dongzhu_card_row(c),
             ]
         ]
@@ -1752,6 +1762,24 @@ class WayneTelegramBot:
                     InlineKeyboardButton("➕", callback_data=f"w:{c}"),
                 ]
             )
+        return InlineKeyboardMarkup(rows) if rows else None
+
+    def _dongzhu_hits_keyboard(self, hits):
+        """洞燭撞名選擇器：點了仍能不能留，不准走查股／觀察。"""
+        rows = []
+        pair = []
+        for h in (hits or [])[:8]:
+            c = str(h.get("stock_id") or "").strip()
+            n = str(h.get("stock_name") or "").strip()
+            if not c:
+                continue
+            label = f"{c} {n}".strip()[:16] or c
+            pair.append(InlineKeyboardButton(label, callback_data=f"dzq:{c}"))
+            if len(pair) == 2:
+                rows.append(pair)
+                pair = []
+        if pair:
+            rows.append(pair)
         return InlineKeyboardMarkup(rows) if rows else None
 
     def _biaoke_hits_keyboard(self, hits):
@@ -3163,8 +3191,8 @@ class WayneTelegramBot:
         if hits_need_picker(hits):
             self._pending[actor] = "dongzhu"
             await message.reply_html(
-                self._hits_list_html(hits),
-                reply_markup=self._hits_keyboard(hits),
+                self._hits_list_html(hits, lead="打股名沒打準。點左邊選這檔能不能留。"),
+                reply_markup=self._dongzhu_hits_keyboard(hits),
                 disable_web_page_preview=True,
             )
             return
@@ -6097,10 +6125,20 @@ class WayneTelegramBot:
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)
             await self._send_decision_card_quick(q.message, data[2:].strip(), uid)
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("e:"):
             uid = str(q.from_user.id)
             await self._send_etf_category_pick(q.message, data[2:].strip(), uid)
+            return
+        if data.startswith("dzq:"):
+            sid = data[4:].strip()
+            await q.answer("能不能留")
+            if not sid:
+                return
+            actor = self._actor_key(q.message, uid=uid)
+            self._pending[actor] = "dongzhu"
+            await self._send_dongzhu_hold(q.message, sid)
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
@@ -6138,11 +6176,14 @@ class WayneTelegramBot:
             await self._send_fund_to(q.message, data[2:].strip())
             return
         if data.startswith("n:"):
-            await self._send_industry(q.message, data[2:].strip(), str(q.from_user.id))
+            uid = str(q.from_user.id)
+            await self._send_industry(q.message, data[2:].strip(), uid)
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("i:"):
             uid = str(q.from_user.id)
             await self._send_card_to(q.message, data[2:].strip(), uid)
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("b:"):
             uid = str(q.from_user.id)
