@@ -85,7 +85,7 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
     snap = attach_fine_industry(industry_snapshot(db, "3081"), db, allow_fetch=False)
     bj = snap["bijia"]
     assert bj["ok"] is True
-    assert bj["chain"] == "電子上游-半導體元件"
+    assert bj["chain"] == "光通訊"
     ids = [r["stock_id"] for r in bj["rows"]]
     assert "3081" in ids and "2455" in ids
     assert "6442" in ids
@@ -138,8 +138,8 @@ def test_bijia_png_layout_short(tmp_path):
         db,
         [
             ("3105", "穩懋", "半導體業", "TWO", "電子上游-IC-代工", 471.0, 3.56),
-            ("8086", "宏捷科", "半導體業", "TWO", "電子上游-IC-代工", 108.0, 2.93),
-            ("2303", "聯電", "半導體業", "TW", "電子上游-IC-代工", 147.5, 1.20),
+            ("3081", "聯亞", "通信網路業", "TWO", "電子上游-半導體元件", 2720.0, 7.75),
+            ("3491", "昇達科", "通信網路業", "TWO", "電子中游-通訊設備", 180.0, 1.50),
             ("2330", "台積電", "半導體業", "TW", "電子上游-IC-代工", 2425.0, 14.0),
         ],
     )

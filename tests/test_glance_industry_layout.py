@@ -265,7 +265,7 @@ def test_industry_html_one_metric_per_line():
 
 @pytest.mark.production_db
 def test_tsmc_peers_are_foundry_not_memory_bucket(production_db):
-    """台積電同業是代工細項，不是證交所半導體業把南亞科灌進來。"""
+    """台積電不准拿證交所半導體業把南亞科灌進來。籌碼K代工太粗，可以沒鏈。"""
     import sqlite3
 
     from industry_brief import format_industry_html
@@ -284,7 +284,6 @@ def test_tsmc_peers_are_foundry_not_memory_bucket(production_db):
     assert rows["2408"][1] == "半導體業"
     html = format_industry_html("2330", production_db)
     assert "半導體業" in html
-    assert "代工" in html
     assert ("同一產業鏈才比" in html) or ("還沒產業鏈，不拿證交所粗分類硬比" in html)
     assert "半導體業含代工、記憶體、設計" not in html
     assert "本族群產業狀況簡述" in html

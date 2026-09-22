@@ -15,7 +15,7 @@ from industry_brief import (
     industry_snapshot,
     stock_peer_plain_rows,
 )
-from industry_fine import extra_tags_for, membership_face, membership_keys
+from industry_fine import extra_tags_for, is_catchall_finest, link_tags_for, membership_face, membership_keys
 from universe import listing_industry_face
 from wayne_db import ensure_core_schema
 
@@ -106,7 +106,7 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("2049") == ["機器人"]
     assert extra_tags_for("2313") == ["低軌衛星"]
     assert extra_tags_for("2367") == ["低軌衛星"]
-    assert extra_tags_for("3588") == []
+    assert extra_tags_for("3588") == ["電源管理"]
     assert extra_tags_for("2451") == ["記憶體模組"]
     assert extra_tags_for("5269") == []
     assert extra_tags_for("2233") == []
@@ -115,7 +115,10 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("3673") == []
     assert extra_tags_for("6805") == []
     assert extra_tags_for("7751") == []
-    assert extra_tags_for("2397") == ["機器人"]
+    assert extra_tags_for("2397") == []
+    assert extra_tags_for("2395") == []
+    assert link_tags_for("2397") == ["機器人"]
+    assert link_tags_for("6443") == ["低軌衛星"]
     assert extra_tags_for("3324") == ["散熱"]
     assert extra_tags_for("6933") == ["散熱"]
     assert extra_tags_for("6199") == []
@@ -126,16 +129,21 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert extra_tags_for("6830") == ["檢測驗證"]
     assert extra_tags_for("6223") == ["高階測試"]
     assert extra_tags_for("6239") == ["記憶體封測"]
-    assert extra_tags_for("6443") == ["低軌衛星", "太陽能"]
+    assert extra_tags_for("6443") == ["太陽能"]
     assert extra_tags_for("1519") == ["重電"]
     assert extra_tags_for("2610") == ["航空"]
     assert extra_tags_for("4772") == ["特用化學"]
     assert membership_face("2303", chain="電子上游-IC-代工") == "成熟製程"
-    assert membership_face("3105", chain="電子上游-IC-代工") == "代工／光通訊／低軌衛星"
+    assert membership_face("3105", chain="電子上游-IC-代工") == "光通訊／低軌衛星"
     assert membership_face("2049") == "機器人"
-    assert membership_face("2330", chain="電子上游-IC-代工") == "電子上游-IC-代工"
+    assert membership_face("2330", chain="電子上游-IC-代工") == ""
+    assert is_catchall_finest("代工")
+    assert is_catchall_finest("通訊設備")
+    assert is_catchall_finest("半導體元件")
+    assert is_catchall_finest("網通")
+    assert not is_catchall_finest("光通訊")
     assert membership_face("2412", chain="電子下游-電信") == "電子下游-電信"
-    assert ("fine", "代工") in membership_keys("3105", "代工")
+    assert ("fine", "代工") not in membership_keys("3105", "代工")
     assert ("fine", "代工") not in membership_keys("2303", "代工")
     assert not (membership_keys("2408", "記憶體製造") & membership_keys("3006", "記憶體IC設計"))
     assert membership_keys("2408", "記憶體製造") & membership_keys("2344", "記憶體製造")
@@ -150,7 +158,7 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert ("x", "光通訊") in membership_keys("3081", "半導體元件")
     assert ("fine", "半導體元件") not in membership_keys("3081", "半導體元件")
     assert ("fine", "通訊設備") not in membership_keys("3491", "通訊設備")
-    assert ("fine", "代工") in membership_keys("3105", "代工")
+    assert ("fine", "代工") not in membership_keys("3105", "代工")
     assert membership_keys("3081", "半導體元件") & membership_keys("3163", "通訊設備")
     assert membership_keys("3081", "半導體元件") & membership_keys("6442", "通訊設備")
     assert membership_keys("3081", "半導體元件") & membership_keys("4971", "晶圓材料")
@@ -158,6 +166,10 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert not (membership_keys("3081", "半導體元件") & membership_keys("3491", "通訊設備"))
     assert not (membership_keys("3163", "通訊設備") & membership_keys("3491", "通訊設備"))
     assert not (membership_keys("3450", "封測") & membership_keys("3006", "記憶體IC設計"))
+    assert not (membership_keys("2330", "代工") & membership_keys("3105", "代工"))
+    assert not (membership_keys("2049", "電機") & membership_keys("2395", "工業電腦"))
+    assert not (membership_keys("6443", "太陽能") & membership_keys("3491", "通訊設備"))
+    assert not (membership_keys("3588", "設計") & membership_keys("2454", "設計"))
 
 
 def test_packaging_card_excludes_memory_names(tmp_path):
@@ -223,8 +235,9 @@ def test_optical_page_includes_win_semiconductor_not_tsmc(tmp_path):
     assert "光通訊" in win
     assert "低軌衛星" in win
     assert "3081" in win
-    assert "2330" in win
-    for tag in ("電子上游", "IC", "代工", "光通訊", "低軌衛星"):
+    assert "2330" not in win
+    assert "台積電" not in win
+    for tag in ("光通訊", "低軌衛星"):
         assert tag in win
 
 
@@ -277,8 +290,9 @@ def test_html_and_png_share_card_spec(tmp_path):
     snap = attach_fine_industry(industry_snapshot(db, "3105"), db, allow_fetch=False)
     spec = industry_card_spec(snap)
     assert spec["extras"] == ["光通訊", "低軌衛星"]
-    assert spec["tags"] == ["電子上游", "IC", "代工", "光通訊", "低軌衛星"]
-    assert "代工／光通訊／低軌衛星" in spec["peer_lab"]
+    assert spec["tags"] == ["光通訊", "低軌衛星"]
+    assert "光通訊／低軌衛星" in spec["peer_lab"]
+    assert "代工／光通訊" not in spec["peer_lab"]
     assert spec["copy_rule"] == COPY_PEER_RULE
     html = format_industry_html("3105", db, allow_fetch=False)
     assert COPY_PEER_RULE in html
@@ -335,7 +349,7 @@ def test_retail_groups_do_not_mix_foundry_or_memory_buckets(tmp_path):
     assert "2383" not in sat
     robot = format_industry_html("2049", db, allow_fetch=False)
     assert "機器人" in robot
-    assert "2395" in robot and "研華" in robot
+    assert "2395" not in robot and "研華" not in robot
 
 
 def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
@@ -357,9 +371,11 @@ def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
     assert umc.startswith("上市") and "成熟製程" in umc
     assert "2330" not in umc
     win = listing_industry_face("3105", db)
-    assert "光通訊" in win and "低軌衛星" in win and "代工" in win
+    assert "光通訊" in win and "低軌衛星" in win
+    assert "代工／光通訊" not in win
     tsmc = listing_industry_face("2330", db)
-    assert "電子上游-IC-代工" in tsmc
+    assert "半導體業" in tsmc
+    assert "電子上游-IC-代工" not in tsmc
     assert "成熟製程" not in tsmc
     rows = stock_peer_plain_rows("2303", db)
     labs = [a for a, _ in rows]

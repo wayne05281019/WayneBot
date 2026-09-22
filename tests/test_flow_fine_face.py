@@ -97,7 +97,8 @@ def test_listing_industry_face_uses_taught_membership(tmp_path):
     conn.close()
     win = listing_industry_face("3105", db)
     assert win.startswith("上櫃")
-    assert "代工" in win and "光通訊" in win and "低軌衛星" in win
+    assert "光通訊" in win and "低軌衛星" in win
+    assert "代工／光通訊" not in win
     robot = listing_industry_face("2049", db)
     assert robot.startswith("上市")
     assert "機器人" in robot
@@ -168,7 +169,6 @@ def test_fundamentals_and_industry_title_carry_fine(tmp_path):
     assert "細項" not in fund
     ind = format_industry_html("2303", db, allow_fetch=False)
     assert "產業說明" in ind
-    assert "電子上游-IC-代工" in ind
     assert "成熟製程" in ind
     assert "細項" not in ind
 
