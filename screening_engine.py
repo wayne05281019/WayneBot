@@ -1188,6 +1188,8 @@ def entry_star_count(
             and not row.get("sector_outflow")
             and not row.get("us_risk_off")
             and not row.get("beta_downweighted")
+            and str(row.get("buy_gate") or "") != "no"
+            and str(row.get("hold_prior_state") or "") != "broke"
             and profit is not None
             and 0.0 < profit <= 5.0
         )

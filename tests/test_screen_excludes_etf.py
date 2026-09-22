@@ -91,7 +91,19 @@ class ScreenExcludesEtfTests(unittest.TestCase):
             cleaned = drop_non_equity_picks(mixed)
             self.assertEqual([x["stock_id"] for x in cleaned["day_trade"]], ["1597"])
             self.assertEqual([x["stock_id"] for x in cleaned["select_01"]], ["3591"])
-            html = "\n".join(p["html"] for p in format_screening_payload(mixed, "20260904"))
+            html = "\n".join(
+                p["html"]
+                for p in format_screening_payload(
+                    {
+                        **mixed,
+                        "leave_zero": [
+                            {"stock_id": "3591", "stock_name": "艾笛森", "close": 24.9},
+                            {"stock_id": "00962", "stock_name": "台新AI優息動能", "close": 15.66},
+                        ],
+                    },
+                    "20260904",
+                )
+            )
             self.assertIn("3591", html)
             self.assertIn("艾笛森", html)
             self.assertNotIn("00962", html)

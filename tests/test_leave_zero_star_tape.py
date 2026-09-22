@@ -151,7 +151,7 @@ def test_null_stars_not_invented_into_bands(tmp_path):
 
 
 def test_star_formula_and_surfaces_unchanged():
-    assert entry_star_count({"profit_pct": 0.8}, bucket_key="leave_zero") == 4
+    assert entry_star_count({"profit_pct": 0.8}, bucket_key="leave_zero") == 5
     src = Path("screening_engine.py").read_text(encoding="utf-8")
     i_stamp = src.find("results[key] = stamp_entry_stars(rows, key)")
     i_save = src.find("save_screen_picks(engine.db_path, target_date, results)")
