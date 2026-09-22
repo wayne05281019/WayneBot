@@ -96,14 +96,14 @@ def test_industry_html_and_png_show_fine_chips(tmp_path):
         {"stock_id": "5351", "chain": "電子上游-記憶體IC設計", "tags": ["電子上游", "記憶體IC設計"], "cat_id": "C30018"},
     )
     html = format_industry_html("2330", path, allow_fetch=False)
-    assert ("代工" in html or "[代工]" in html or "[IC]" in html)
-    assert "櫃買" in html
+    assert "半導體業" in html
+    assert "不拿證交所粗分類" in html
     assert "記憶體製造" not in html
-    assert "同一產業鏈才比" in html
     assert "這族" not in html
     html_title = html.split("\n", 1)[0]
     assert "台積電" in html_title
-    assert ("電子上游-IC-代工" in html_title) or ("代工" in html_title) or "[代工]" in html_title
+    assert "電子上游-IC-代工" not in html_title
+    assert "代工" not in html_title
     from industry_fine import chip_color
 
     assert chip_color("代工") != chip_color("記憶體製造")

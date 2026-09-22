@@ -412,7 +412,7 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
     if not ids:
         return
     del ymd
-    from industry_fine import extra_tags_for, load_cached_fine_industry, membership_face
+    from industry_fine import load_cached_fine_industry, membership_face
 
     fine = load_cached_fine_industry(db_path, ids, max_age_days=365)
     conn = sqlite3.connect(db_path)
@@ -423,11 +423,8 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
                 if not sid:
                     continue
                 rec = fine.get(sid) or {}
-                extras = extra_tags_for(sid)
                 mem = membership_face(sid, str(rec.get("finest") or ""), str(rec.get("chain") or ""))
-                if extras:
-                    item["industry"] = extras[0]
-                elif mem:
+                if mem:
                     item["industry"] = mem
                 else:
                     item["industry"] = industry_of(conn, sid)

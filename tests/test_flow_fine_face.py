@@ -169,7 +169,6 @@ def test_fundamentals_and_industry_title_carry_fine(tmp_path):
     assert "細項" not in fund
     ind = format_industry_html("2303", db, allow_fetch=False)
     assert "產業說明" in ind
-    assert "電子上游-IC-代工" in ind
     assert "成熟製程" in ind
     assert "細項" not in ind
 

@@ -179,11 +179,18 @@ def split_chain(chain: str) -> List[str]:
     return [p.strip() for p in str(chain or "").split("-") if p.strip()]
 
 
+# 籌碼K 這幾層太粗：成熟製程≠台積、低軌≠全部通訊設備。沒點名族就回證交所，不准拿去當最細標。
+_COARSE_CMONEY_FINEST = frozenset({"代工", "通訊設備", "半導體元件", "網通"})
+
+
 def is_catchall_finest(name: str) -> bool:
-    """「其他」不是細項。傳產-其他與電子中游-其他不准互相比。"""
+    """「其他」與籌碼K過粗層不是細項。傳產-其他與電子中游-其他不准互相比。"""
     from tpex_industry_chain import is_catchall_label
 
-    return is_catchall_label(name)
+    s = str(name or "").strip()
+    if is_catchall_label(s):
+        return True
+    return s in _COARSE_CMONEY_FINEST
 
 
 def extra_tags_for(stock_id: str) -> List[str]:

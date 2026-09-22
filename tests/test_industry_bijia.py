@@ -85,7 +85,7 @@ def test_bijia_ranks_and_skips_cross_chain(tmp_path):
     snap = attach_fine_industry(industry_snapshot(db, "3081"), db, allow_fetch=False)
     bj = snap["bijia"]
     assert bj["ok"] is True
-    assert bj["chain"] == "電子上游-半導體元件"
+    assert bj["chain"] == "光通訊"
     ids = [r["stock_id"] for r in bj["rows"]]
     assert "3081" in ids and "2455" in ids
     assert "6442" in ids

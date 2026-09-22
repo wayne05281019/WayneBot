@@ -97,16 +97,12 @@ class LookupIndustryFlowTests(unittest.TestCase):
 
     def test_overlay_uses_chain_not_twse_bucket(self):
         just = industry_flow_overlay(self.path, ymd="20260828", stock_id="2330")
-        self.assertIn("本鏈", just)
-        self.assertIn("資金流入", just)
-        self.assertNotIn("半導體業", just)
-        self.assertNotIn("官方法人 overlay", just)
-        self.assertNotIn("不改溫度", just)
-        self.assertNotIn("買賣格", just)
+        self.assertEqual(just, "")
         out = industry_flow_overlay(self.path, ymd="20260828", stock_id="2002")
         self.assertIn("本鏈", out)
         self.assertIn("資金流出", out)
         self.assertNotIn("鋼鐵工業", out)
+        self.assertNotIn("官方法人 overlay", out)
         self.assertEqual(industry_flow_overlay(self.path, "半導體業", "20260828"), "")
         self.assertEqual(industry_flow_overlay(self.path, ymd="20260828", stock_id="0050"), "")
         self.assertEqual(industry_flow_overlay(self.path, ymd="20260828", stock_id=""), "")
@@ -122,8 +118,8 @@ class LookupIndustryFlowTests(unittest.TestCase):
 
     def test_attach_does_not_change_temp_or_stance(self):
         card = {
-            "stock_id": "2330",
-            "industry": "半導體業",
+            "stock_id": "2002",
+            "industry": "鋼鐵工業",
             "temp_c": "36.0 °C",
             "stance": "今天先看表，先等",
             "stance_kind": "wait",
@@ -133,8 +129,8 @@ class LookupIndustryFlowTests(unittest.TestCase):
         out = attach_industry_flow(card, self.path, ymd="20260828")
         self.assertIs(out, card)
         self.assertIn("本鏈", card["industry_flow"])
-        self.assertIn("資金流入", card["industry_flow"])
-        self.assertNotIn("半導體業剛輪進", card["industry_flow"])
+        self.assertIn("資金流出", card["industry_flow"])
+        self.assertNotIn("鋼鐵工業剛輪", card["industry_flow"])
         self.assertNotIn("不改溫度", card["industry_flow"])
         self.assertNotIn("買賣格", card["industry_flow"])
         self.assertEqual(card["temp_c"], "36.0 °C")
@@ -158,15 +154,16 @@ class LookupIndustryFlowTests(unittest.TestCase):
     def test_same_sentence_on_peers_industry_and_lookup(self):
         from industry_brief import format_industry_html, stock_flow_overlay, stock_peer_plain_rows
 
-        overlay = stock_flow_overlay("2330", self.path, ymd="20260828")
-        rows = dict(stock_peer_plain_rows("2330", self.path))
-        html = format_industry_html("2330", self.path, allow_fetch=False)
+        overlay = stock_flow_overlay("2002", self.path, ymd="20260828")
+        rows = dict(stock_peer_plain_rows("2002", self.path))
+        html = format_industry_html("2002", self.path, allow_fetch=False)
         self.assertTrue(overlay)
         self.assertEqual(rows.get("資金"), overlay.rstrip("。"))
         self.assertIn("資金：", html)
         self.assertIn(overlay.rstrip("。"), html)
         self.assertIn("本鏈", overlay)
-        self.assertIn("資金流入", overlay)
+        self.assertIn("資金流出", overlay)
+        self.assertEqual(stock_flow_overlay("2330", self.path, ymd="20260828"), "")
 
     def test_html_and_png_sources_carry_overlay(self):
         from wayne_navigator import (
@@ -211,7 +208,7 @@ class LookupIndustryFlowTests(unittest.TestCase):
                 },
             )
         self.assertIn("資金：", html)
-        self.assertIn("資金流入", html)
+        self.assertNotIn("資金流入", html)
         self.assertIn("資金流出", html)
         self.assertNotIn("半導體業剛輪進", html)
         self.assertNotIn("官方法人 overlay", html)
@@ -233,8 +230,7 @@ class LookupIndustryFlowTests(unittest.TestCase):
         flows = industry_flows_for_stocks(
             self.path, ["2330", "2002", "0050", "2330"], ymd="20260828"
         )
-        self.assertIn("資金流入", flows["2330"])
-        self.assertIn("本鏈", flows["2330"])
+        self.assertNotIn("2330", flows)
         self.assertIn("資金流出", flows["2002"])
         self.assertNotIn("0050", flows)
         self.assertEqual(industry_flows_for_stocks("", ["2330"], ymd="20260828"), {})
@@ -256,7 +252,7 @@ class LookupIndustryFlowTests(unittest.TestCase):
                 ]
             )
         self.assertIn("資金：", html)
-        self.assertIn("資金流入", html)
+        self.assertNotIn("資金流入", html)
         self.assertIn("資金流出", html)
         self.assertNotIn("官方法人 overlay", html)
         self.assertNotIn("不改溫度", html)
@@ -276,18 +272,18 @@ class LookupIndustryFlowTests(unittest.TestCase):
         eng = PortfolioEngine(self.path)
         uid = "1001"
         user = ensure_ai_user(eng, uid)
-        bought = eng.buy(user, "20260828", "2330", "台積電", 100.0, 1000, reason="黃金買點")
+        bought = eng.buy(user, "20260828", "2002", "中鋼", 100.0, 1000, reason="黃金買點")
         self.assertTrue(bought.get("success"))
         from unittest.mock import patch
 
         with patch("money_flow.resolve_flow_as_of", return_value=("20260828", None)):
             html = format_ai_desk_html(eng, uid)
             pages = format_ai_desk_pages(eng, uid)
-        self.assertIn("資金流入", html)
+        self.assertIn("資金流出", html)
         self.assertNotIn("不改溫度", html)
         self.assertNotIn("買賣格", html)
         held = next(p for p in pages if "第 1 槽" in p)
-        self.assertIn("資金流入", held)
+        self.assertIn("資金流出", held)
         self.assertIn("資金：", held)
         self.assertLess(held.find("進場"), held.find("資金"))
         src = inspect.getsource(format_ai_desk_pages)

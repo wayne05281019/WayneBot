@@ -15,7 +15,7 @@ from industry_brief import (
     industry_snapshot,
     stock_peer_plain_rows,
 )
-from industry_fine import extra_tags_for, link_tags_for, membership_face, membership_keys
+from industry_fine import extra_tags_for, is_catchall_finest, link_tags_for, membership_face, membership_keys
 from universe import listing_industry_face
 from wayne_db import ensure_core_schema
 
@@ -136,7 +136,12 @@ def test_extra_tags_win_spans_optical_and_satellite():
     assert membership_face("2303", chain="電子上游-IC-代工") == "成熟製程"
     assert membership_face("3105", chain="電子上游-IC-代工") == "光通訊／低軌衛星"
     assert membership_face("2049") == "機器人"
-    assert membership_face("2330", chain="電子上游-IC-代工") == "電子上游-IC-代工"
+    assert membership_face("2330", chain="電子上游-IC-代工") == ""
+    assert is_catchall_finest("代工")
+    assert is_catchall_finest("通訊設備")
+    assert is_catchall_finest("半導體元件")
+    assert is_catchall_finest("網通")
+    assert not is_catchall_finest("光通訊")
     assert membership_face("2412", chain="電子下游-電信") == "電子下游-電信"
     assert ("fine", "代工") not in membership_keys("3105", "代工")
     assert ("fine", "代工") not in membership_keys("2303", "代工")
@@ -232,7 +237,7 @@ def test_optical_page_includes_win_semiconductor_not_tsmc(tmp_path):
     assert "3081" in win
     assert "2330" not in win
     assert "台積電" not in win
-    for tag in ("電子上游", "IC", "代工", "光通訊", "低軌衛星"):
+    for tag in ("光通訊", "低軌衛星"):
         assert tag in win
 
 
@@ -285,7 +290,7 @@ def test_html_and_png_share_card_spec(tmp_path):
     snap = attach_fine_industry(industry_snapshot(db, "3105"), db, allow_fetch=False)
     spec = industry_card_spec(snap)
     assert spec["extras"] == ["光通訊", "低軌衛星"]
-    assert spec["tags"] == ["電子上游", "IC", "代工", "光通訊", "低軌衛星"]
+    assert spec["tags"] == ["光通訊", "低軌衛星"]
     assert "光通訊／低軌衛星" in spec["peer_lab"]
     assert "代工／光通訊" not in spec["peer_lab"]
     assert spec["copy_rule"] == COPY_PEER_RULE
@@ -369,7 +374,8 @@ def test_stock_surfaces_reuse_industry_membership_and_peers(tmp_path):
     assert "光通訊" in win and "低軌衛星" in win
     assert "代工／光通訊" not in win
     tsmc = listing_industry_face("2330", db)
-    assert "電子上游-IC-代工" in tsmc
+    assert "半導體業" in tsmc
+    assert "電子上游-IC-代工" not in tsmc
     assert "成熟製程" not in tsmc
     rows = stock_peer_plain_rows("2303", db)
     labs = [a for a, _ in rows]

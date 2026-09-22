@@ -2890,7 +2890,7 @@ class SpeedOptTest(unittest.TestCase):
             }
             annotate_screen_results(path, "20260828", results)
             self.assertEqual(calls["n"], 0)
-            self.assertEqual(results["leave_zero"][0].get("industry"), "電子上游-IC-代工")
+            self.assertEqual(results["leave_zero"][0].get("industry"), "半導體業")
             self.assertFalse(results["leave_zero"][0].get("sector_flow_label"))
         finally:
             money_flow.compute_sector_rows = orig
