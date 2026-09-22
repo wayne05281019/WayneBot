@@ -1402,7 +1402,8 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
         return None
     basis = snap.get("basis_pct")
     lead = snap.get("futures_lead") or {}
-    parts = [f"台指期 <b>{fut['close']:,.0f}</b>"]
+    fut_close = float(fut["close"])
+    parts = [f"台指期 {_page_b(f'{fut_close:,.0f}')}"]
     if basis is not None:
         mag = abs(float(basis))
         if float(basis) >= 0:
@@ -1438,7 +1439,7 @@ def _format_futures_page_rows(snap: Dict[str, Any]) -> List[str]:
         rows.append(_page_kv("比現貨", f"{side} {_page_b(f'{mag:.2f}%')}"))
     oi = int(fut.get("open_interest") or 0)
     if oi > 0:
-        rows.append(_page_kv("未平倉", f"{oi:,}口"))
+        rows.append(_page_kv("未平倉", _page_b(f"{oi:,}口")))
     f_date = str(snap.get("futures_as_of") or fut.get("date") or "")
     ref = str(snap.get("as_of") or "")
     if f_date and f_date != ref:
@@ -1465,7 +1466,7 @@ def _format_futures_night_line(
     if not night or not night.get("close"):
         return None
     close = float(night["close"])
-    parts = [f"{label} <b>{close:,.0f}</b>"]
+    parts = [f"{label} {_page_b(f'{close:,.0f}')}"]
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
@@ -1517,16 +1518,19 @@ def _latest_us_overnight(db_path: str, as_of: str) -> Dict[str, Any]:
 
 
 def _page_b(text: str) -> str:
-    from tg_layout import html_escape
+    from tg_layout import html_face
 
-    return f"<b>{html_escape(str(text))}</b>"
+    return html_face(text)
 
 
 def _page_kv(label: str, value_html: str) -> str:
-    """大盤小區一欄一行：標籤對齊，值從同一直欄開始。"""
+    """大盤小區一欄一行：標籤對齊，值從同一直欄開始。連結標籤不再補寬。"""
     from tg_layout import pad_label
 
-    return f"{pad_label(label, 8)}　{value_html}"
+    lab = str(label or "")
+    if "<" in lab:
+        return f"{lab}　{value_html}"
+    return f"{pad_label(lab, 8)}　{value_html}"
 
 
 def _page_pct(val: Optional[float]) -> str:
@@ -1571,7 +1575,9 @@ def _us_quote_rows(snap: Dict[str, Any], items) -> List[str]:
         if snap.get(pct_k) is None:
             continue
         label = _US_NAME_SHORT.get(name, name)
-        rows.append(_page_kv(label, _page_pct(snap.get(pct_k))))
+        from stock_links import html_named
+
+        rows.append(_page_kv(html_named(label), _page_pct(snap.get(pct_k))))
     return rows
 
 
@@ -1638,7 +1644,9 @@ def _format_overnight_watch_lines(
             bits.extend(_us_quote_rows(us, _ADR_ITEMS))
     if not bits:
         return []
-    return ["", _TG_SECTION, "<b>美股</b>", *bits]
+    from stock_links import html_named
+
+    return ["", _TG_SECTION, html_named("美股"), *bits]
 
 
 def _fmt_night_page_rows(
@@ -1651,8 +1659,11 @@ def _fmt_night_page_rows(
     """夜盤一欄一行，不把開高低跟比價塞同一句。"""
     if not night or not night.get("close"):
         return []
+    from stock_links import html_tx_anchor
+
     close = float(night["close"])
-    rows = [f"<b>{heading}</b>", _page_kv("收盤", _page_b(f"{close:,.0f}"))]
+    nightish = "夜盤" in str(heading or "")
+    rows = [html_tx_anchor(heading, night=nightish), _page_kv("收盤", _page_b(f"{close:,.0f}"))]
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
@@ -1664,14 +1675,14 @@ def _fmt_night_page_rows(
         rows.append(_page_kv("比現貨", f"{side} {_page_b(f'{abs(diff):.2f}%')}"))
     op, hi, lo = float(night.get("open") or 0), float(night.get("high") or 0), float(night.get("low") or 0)
     if op > 0:
-        rows.append(_page_kv("開盤", f"{op:,.0f}"))
+        rows.append(_page_kv("開盤", _page_b(f"{op:,.0f}")))
     if hi > 0:
-        rows.append(_page_kv("最高", f"{hi:,.0f}"))
+        rows.append(_page_kv("最高", _page_b(f"{hi:,.0f}")))
     if lo > 0:
-        rows.append(_page_kv("最低", f"{lo:,.0f}"))
+        rows.append(_page_kv("最低", _page_b(f"{lo:,.0f}")))
     vol = int(night.get("volume") or 0)
     if vol > 0:
-        rows.append(_page_kv("成交", f"{vol:,}口"))
+        rows.append(_page_kv("成交", _page_b(f"{vol:,}口")))
     n_date = str(night.get("date") or "")
     d_date = str((day or {}).get("date") or "")
     if n_date and d_date and n_date != d_date:
@@ -3313,12 +3324,14 @@ def _format_chips_line(snap: Dict[str, Any]) -> str:
 
 
 def _format_chips_rows(snap: Dict[str, Any]) -> List[str]:
+    from stock_links import html_named
+
     rows: List[str] = []
     for key, name in (("chips_foreign", "外資"), ("chips_trust", "投信"), ("chips_dealer", "自營")):
         val = snap.get(key)
         if val is None:
             continue
-        rows.append(_page_kv(name, f"{_page_b(f'{float(val):+,.0f}')}張"))
+        rows.append(_page_kv(html_named(name), _page_b(f"{float(val):+,.0f}張")))
     return rows
 
 
@@ -3361,13 +3374,13 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
     ohlc = _ohlc_from_live_or_snap(snap, live)
     lines: List[str] = []
     if ohlc.get("open"):
-        lines.append(_page_kv("開盤", f"{ohlc['open']:,.2f}"))
+        lines.append(_page_kv("開盤", _page_b(f"{ohlc['open']:,.2f}")))
     if ohlc.get("high"):
-        lines.append(_page_kv("最高", f"{ohlc['high']:,.2f}"))
+        lines.append(_page_kv("最高", _page_b(f"{ohlc['high']:,.2f}")))
     if ohlc.get("low"):
-        lines.append(_page_kv("最低", f"{ohlc['low']:,.2f}"))
+        lines.append(_page_kv("最低", _page_b(f"{ohlc['low']:,.2f}")))
     if ohlc.get("prev_close"):
-        lines.append(_page_kv("昨收", f"{ohlc['prev_close']:,.2f}"))
+        lines.append(_page_kv("昨收", _page_b(f"{ohlc['prev_close']:,.2f}")))
 
     def _finite(v) -> bool:
         try:
@@ -3379,16 +3392,16 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
     amp = ohlc.get("amplitude_pct")
     spread = ohlc.get("hl_spread")
     if _finite(amp):
-        lines.append(_page_kv("振幅", f"{float(amp):.2f}%"))
+        lines.append(_page_kv("振幅", _page_b(f"{float(amp):.2f}%")))
     if _finite(spread):
-        lines.append(_page_kv("高低差", f"{float(spread):,.2f}"))
+        lines.append(_page_kv("高低差", _page_b(f"{float(spread):,.2f}")))
     vol_chg = snap.get("vol_chg_pct")
     if vol_chg is not None:
         tag = "量增" if vol_chg > 0 else ("量縮" if vol_chg < 0 else "量平")
-        lines.append(_page_kv(tag, f"{abs(vol_chg):.1f}%"))
+        lines.append(_page_kv(tag, _page_b(f"{abs(vol_chg):.1f}%")))
     vol_r = snap.get("vol_ratio")
     if vol_r is not None:
-        lines.append(_page_kv("量比", f"{float(vol_r):.2f}"))
+        lines.append(_page_kv("量比", _page_b(f"{float(vol_r):.2f}")))
     last_vol = snap.get("volume")
     if last_vol is not None:
         try:
@@ -3397,7 +3410,7 @@ def _format_performance_lines(snap: Dict[str, Any], live: Optional[Dict[str, Any
             lots = 0.0
         if lots > 0:
             vol_s = f"{lots / 10000.0:.1f}萬張" if lots >= 10000 else f"{lots:,.0f}張"
-            lines.append(_page_kv("全日量", vol_s))
+            lines.append(_page_kv("全日量", _page_b(vol_s)))
     vs20 = snap.get("vs_ma20_pct")
     if vs20 is not None:
         lines.append(_page_kv("距月線", _page_b(_fmt_signed_pct(vs20))))
@@ -3522,9 +3535,9 @@ def _outlook_wrap(text: str, *, width: int = 40) -> List[str]:
 
 
 def _outlook_b(text: str) -> str:
-    from tg_layout import html_escape
+    from tg_layout import html_face
 
-    return f"<b>{html_escape(str(text))}</b>"
+    return html_face(text)
 
 
 _OUTLOOK_ACTION_BOLD = (
@@ -3545,7 +3558,7 @@ _OUTLOOK_ACTION_BOLD = (
 
 
 def _outlook_embolden(plain: str, phrases: Tuple[str, ...] = _OUTLOOK_ACTION_BOLD) -> str:
-    """先折行再套粗體，避免 <b> 被算進行寬、也避免標籤被折斷。"""
+    """先折行再套橘字，避免 <code> 被算進行寬、也避免標籤被折斷。"""
     from tg_layout import html_escape
 
     raw = str(plain or "")
@@ -3581,8 +3594,10 @@ def _outlook_night_plain_lines(
     """夜盤只寫收盤與相對日盤／現貨；到期月、開高低留給大盤專頁。"""
     if not night or not night.get("close"):
         return []
+    from stock_links import html_named
+
     close = float(night["close"])
-    lines = [f"{label} {_outlook_b(f'{close:,.0f}')}"]
+    lines = [f"{html_named(label)} {_outlook_b(f'{close:,.0f}')}"]
     extra: List[str] = []
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
@@ -3622,8 +3637,10 @@ def _outlook_tx_foreign_lines(
         return []
     d = _norm_ymd(info.get("date") or "")
     ref = _norm_ymd(as_of or "")
+    from stock_links import html_named
+
     out = [
-        f"外資台指期　買多 {_outlook_b(f'{oi_long:,}口')}",
+        f"{html_named('外資台指期')}　買多 {_outlook_b(f'{oi_long:,}口')}",
         f"　　　　　　買空 {_outlook_b(f'{oi_short:,}口')}",
     ]
     if d and ref and d != ref:
@@ -3698,6 +3715,7 @@ def format_screen_market_outlook_html(
     now: Optional[datetime] = None,
 ) -> str:
     """海選／早報第一則：美股＋台股＋夜盤白話總覽。沒真數就整則省略。"""
+    from stock_links import html_named
     from tg_layout import headline_lines, html_escape
     from trading_calendar import format_trading_date_zh, taipei_calendar_ymd
 
@@ -3769,7 +3787,7 @@ def format_screen_market_outlook_html(
         close = snap.get("close")
         chg1 = snap.get("chg1_pct")
         if close:
-            body.append(f"加權收盤 {_outlook_b(f'{float(close):,.2f}')}")
+            body.append(f"{html_named('加權收盤')} {_outlook_b(f'{float(close):,.2f}')}")
         pct_bits: List[str] = []
         if chg1 is not None:
             pct_bits.append(_outlook_b(_fmt_signed_pct(chg1)))
@@ -3786,20 +3804,20 @@ def format_screen_market_outlook_html(
     if us_ok:
         body.append(_outlook_b(us_label))
         if ixic is not None:
-            body.append(f"那斯達克 {_outlook_b(f'{float(ixic):+.2f}%')}")
+            body.append(f"{html_named('那斯達克')} {_outlook_b(f'{float(ixic):+.2f}%')}")
         sox = us.get("sox_pct")
         if sox is not None:
-            body.append(f"費半 {_outlook_b(f'{float(sox):+.2f}%')}")
+            body.append(f"{html_named('費半')} {_outlook_b(f'{float(sox):+.2f}%')}")
         if us.get("vix") is not None:
             vix_s = _fmt_vix(us)
             if "　" in vix_s:
                 num, mood = vix_s.rsplit("　", 1)
-                body.append(f"恐慌指數 {_outlook_b(num)}　{html_escape(mood)}")
+                body.append(f"{html_named('恐慌指數')} {_outlook_b(num)}　{html_escape(mood)}")
             else:
-                body.append(f"恐慌指數 {_outlook_b(vix_s)}")
+                body.append(f"{html_named('恐慌指數')} {_outlook_b(vix_s)}")
         tsm_move = format_quote_move(us, "tsm_pct", "tsm_chg")
         if us.get("tsm_pct") is not None:
-            body.append(f"台積美股　{_outlook_b(tsm_move)}")
+            body.append(f"{html_named('台積美股')}　{_outlook_b(tsm_move)}")
         lead = format_us_lead_line(us)
         lead_name = str(us.get("us_lead_name") or "").strip()
         if lead and lead_name:
@@ -3859,20 +3877,20 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     nums = [
         "＝＝台灣加權指數研究＝＝",
-        f"收盤　<b>{snap['close']}</b>",
+        f"收盤　{_page_b(snap['close'])}",
         *pack_phone_bits(
-            f"5日均　{snap.get('ma5') or snap['ma20']}",
-            f"月線　{snap['ma20']}",
-            f"季線　{snap['ma60']}",
+            f"5日均　{_page_b(snap.get('ma5') or snap['ma20'])}",
+            f"月線　{_page_b(snap['ma20'])}",
+            f"季線　{_page_b(snap['ma60'])}",
         ),
         *pack_phone_bits(
-            f"日　{_fmt_signed_pct(snap.get('chg1_pct'))}",
-            f"5日　{snap['chg5_pct']:+.2f}%",
-            f"20日　{_fmt_signed_pct(snap.get('chg20_pct'))}",
+            f"日　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
+            "5日　" + _page_b(f"{float(snap.get('chg5_pct') or 0):+.2f}%"),
+            f"20日　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
         ),
         *pack_phone_bits(
-            f"距月線　{_fmt_signed_pct(snap.get('vs_ma20_pct'))}",
-            f"距年高　{_fmt_signed_pct(snap.get('vs_high52_pct'))}",
+            f"距月線　{_page_b(_fmt_signed_pct(snap.get('vs_ma20_pct')))}",
+            f"距年高　{_page_b(_fmt_signed_pct(snap.get('vs_high52_pct')))}",
         ),
         *wrap_phone_html_lines(_format_futures_line(snap) or ""),
         *wrap_phone_html_lines(
@@ -3892,17 +3910,21 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             )
             or ""
         ),
-        f"站上月線　{snap['breadth_above_ma20']:.1f}%（{snap['sample_n']}檔）",
+        "站上月線　"
+        + _page_b(f"{float(snap['breadth_above_ma20']):.1f}%")
+        + "（"
+        + _page_b(str(snap["sample_n"]))
+        + "檔）",
         *(
-            [f"產業法人　{snap['sector_flow_net']:+,.0f}張"]
+            ["產業法人　" + _page_b(f"{float(snap['sector_flow_net']):+,.0f}張")]
             if snap.get("sector_flow_net") is not None
             else []
         ),
     ]
     regime = [
-        f"盤勢　<b>{snap['regime_label']}</b>（把握 {snap['confidence']}%）",
-        f"細分盤勢　{_regime_plus_traffic_light(snap.get('regime_plus'))} <b>{snap.get('regime_plus_label', '—')}</b>",
-        f"下跌風險　{fr_light} <b>{snap.get('falling_risk', 0)}</b>",
+        f"盤勢　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
+        f"細分盤勢　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
+        f"下跌風險　{fr_light} {_page_b(snap.get('falling_risk', 0))}",
         f"高檔區　{_risk_zone_label(snap.get('risk_zone'))}",
         *wrap_phone_html_lines(_brief_note_tail(market_screening_note(snap))),
     ]
@@ -3983,7 +4005,9 @@ def format_taiwan_market_page_html(
     lines = ["<b>📊 台股大盤</b>", *tw_banner, as_of_note]
     if extra_note:
         lines.append(extra_note)
-    lines.extend(["", "<b>加權指數</b>"])
+    from stock_links import html_index_anchor, html_named
+
+    lines.extend(["", html_index_anchor("加權指數")])
     if show_px:
         lines.append(_page_kv("收盤", _page_b(f"{show_px:,.2f}")))
     if show_pct or show_pct == 0:
@@ -3991,7 +4015,7 @@ def format_taiwan_market_page_html(
     if live_px > 0 and clock:
         lines.append(_page_kv("時間", clock))
     lines.extend(_format_performance_lines(snap, live))
-    lines.extend(["", _TG_SECTION, "<b>漲跌家數</b>"])
+    lines.extend(["", _TG_SECTION, html_named("漲跌家數")])
     qb = _quote_up_down_counts(db_path, ref)
     up_n = down_n = flat_n = 0
     if int(qb.get("n") or 0) > 0 and int(qb.get("up") or 0) + int(qb.get("down") or 0) > 0:
@@ -4008,14 +4032,14 @@ def format_taiwan_market_page_html(
         lines.append(_page_kv("漲", _page_b(str(up_n))))
         lines.append(_page_kv("跌", _page_b(str(down_n))))
         if flat_n > 0:
-            lines.append(_page_kv("平", str(flat_n)))
+            lines.append(_page_kv("平", _page_b(str(flat_n))))
     if ob_same_day:
         lu, ld = int(ob.get("limit_up") or 0), int(ob.get("limit_down") or 0)
         if lu + ld > 0:
-            lines.append(_page_kv("漲停", str(lu)))
-            lines.append(_page_kv("跌停", str(ld)))
+            lines.append(_page_kv("漲停", _page_b(str(lu))))
+            lines.append(_page_kv("跌停", _page_b(str(ld))))
     if int(snap.get("sample_n") or 0) > 0:
-        lines.append(_page_kv("站月線", f"{snap['breadth_above_ma20']:.1f}%"))
+        lines.append(_page_kv("站月線", _page_b(f"{snap['breadth_above_ma20']:.1f}%")))
     flow_date = str(snap.get("sector_flow_as_of") or ref)
     flow_net = snap.get("sector_flow_net")
     chips_rows = _format_chips_rows(snap)
@@ -4023,10 +4047,10 @@ def format_taiwan_market_page_html(
     chips_date = str(snap.get("chips_as_of") or flow_date or ref)
     total = chips_net if chips_net is not None else flow_net
     if chips_rows or total is not None:
-        lines.extend(["", _TG_SECTION, "<b>三大法人</b>"])
+        lines.extend(["", _TG_SECTION, html_named("三大法人")])
         lines.extend(chips_rows)
         if total is not None:
-            tot_html = f"{_page_b(f'{float(total):+,.0f}')}張"
+            tot_html = _page_b(f"{float(total):+,.0f}張")
             lines.append(_page_kv("合計", tot_html))
             if chips_date and chips_date != ref:
                 lines.append(_page_kv("日期", chips_date))
@@ -4046,7 +4070,9 @@ def format_taiwan_market_page_html(
         heading="電子期夜盤",
     )
     if fut_rows or night_rows or te_rows:
-        lines.extend(["", _TG_SECTION, "<b>台指期</b>"])
+        from stock_links import html_tx_anchor
+
+        lines.extend(["", _TG_SECTION, html_tx_anchor("台指期")])
         lines.extend(fut_rows)
         if night_rows:
             if fut_rows:

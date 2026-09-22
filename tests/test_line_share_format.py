@@ -159,6 +159,8 @@ def test_line_notice_wrap_keeps_industry_tag():
 
 
 def test_line_phone_bubble_width():
+    import re
+
     from line_share_format import LINE_PHONE_LINE_MAX, format_line_stock_block
 
     block = format_line_stock_block(
@@ -184,7 +186,8 @@ def test_line_phone_bubble_width():
     for ln in block.split("\n"):
         if "http" in ln:
             continue
-        assert len(ln) <= LINE_PHONE_LINE_MAX, ln
+        vis = re.sub(r"<[^>]+>", "", ln)
+        assert len(vis) <= LINE_PHONE_LINE_MAX, ln
     assert "今天先看表，先等" in block
     assert "近一日　09-04" in block
     assert "外資+32張" in block

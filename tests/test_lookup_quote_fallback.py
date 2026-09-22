@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 from unittest.mock import patch
 
 
@@ -192,5 +193,8 @@ def test_us_alert_no_wide_rjust_padding():
     }
     html = format_us_drop_alert(snap)
     assert "    -0.79%" not in html
-    assert "<code>" not in html
-    assert max(len(line) for line in html.splitlines()) <= 36
+    assert "<code>" in html
+    assert not re.search(r"<code>\s{3,}", html)
+    vis = [re.sub(r"<[^>]+>", "", ln) for ln in html.splitlines() if "http" not in ln]
+    assert vis
+    assert max(len(ln) for ln in vis) <= 36

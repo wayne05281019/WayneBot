@@ -3062,7 +3062,8 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     chg = float(card.get("change_pct") or 0)
     prev_c = float(card.get("prev_close") or 0)
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
-    from tg_layout import format_move_plain, kv_compact, section, join_sections
+    from stock_links import html_named, html_stock_anchor
+    from tg_layout import format_move_plain, html_escape, html_face, kv_compact, kv_html_compact, section, join_sections
     from chip_tape import build_tape, fmt_lots
 
     tape = build_tape(db_path or get_db_path(), sid) or {}
@@ -3072,14 +3073,17 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     if last:
         ohlc = f"{_fmt_price(last.get('open'))} / {_fmt_price(last.get('high'))} / {_fmt_price(last.get('low'))}"
     badge = "　".join(str(x) for x in (card.get("badges") or []) if x)
-    head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
-    listing, industry, etf_kind = _title_listing_and_industry(card)
-    if listing:
-        head = f"{head}　{html_escape(listing)}"
-    kind_lead = "" if (etf_kind and etf_kind in str(name)) else etf_kind
-    extra = kind_lead or industry
-    if extra and extra not in listing:
-        head = f"{head}　{html_escape(extra)}"
+    try:
+        head = html_stock_anchor(sid, name, db_path)
+    except Exception:
+        head = f"<b>{html_escape(sid)} {html_escape(name)}</b>"
+        listing, industry, etf_kind = _title_listing_and_industry(card)
+        if listing:
+            head = f"{head}　{html_escape(listing)}"
+        kind_lead = "" if (etf_kind and etf_kind in str(name)) else etf_kind
+        extra = kind_lead or industry
+        if extra and extra not in listing:
+            head = f"{head}　{html_escape(extra)}"
     event = str(card.get("next_event") or "").strip()
     if event:
         head = f"{head}　{html_escape(event)}"
@@ -3088,19 +3092,27 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     chip_lines = []
     tape_has_chips = bool((tape or {}).get("has_chips")) and not bool((tape or {}).get("emerging"))
     if tape_has_chips:
+        def _chip_row(lab: str, key: str) -> str:
+            blob = tape.get(key) or {}
+            phrase = html_escape(str(blob.get("phrase") or ""))
+            lots = html_face(fmt_lots(blob.get("net", 0)))
+            right = f"{lots}　{phrase}".strip()
+            return kv_html_compact(html_named(lab), right)
+
         chip_lines = [
-            kv_compact("外資", f"{fmt_lots(tape.get('foreign', {}).get('net', 0))}　{tape.get('foreign', {}).get('phrase', '')}"),
-            kv_compact("投信", f"{fmt_lots(tape.get('trust', {}).get('net', 0))}　{tape.get('trust', {}).get('phrase', '')}"),
-            kv_compact("自營", f"{fmt_lots(tape.get('dealer', {}).get('net', 0))}　{tape.get('dealer', {}).get('phrase', '')}"),
-            kv_compact("法人", f"{fmt_lots(tape.get('three', {}).get('net', 0))}　{tape.get('three', {}).get('phrase', '')}"),
-            kv_compact(
+            _chip_row("外資", "foreign"),
+            _chip_row("投信", "trust"),
+            _chip_row("自營", "dealer"),
+            _chip_row("法人", "three"),
+            kv_html_compact(
                 "籌碼佔量",
                 (
-                    f"截至 {tape.get('chip_asof_label')}　"
+                    f"截至 {html_escape(tape.get('chip_asof_label'))}　"
                     if str(tape.get("chip_asof_label") or "").strip()
                     else ""
                 )
-                + f"{tape.get('inst_pct', 0):+.1f}%（法人買賣超÷成交量）",
+                + html_face(f"{tape.get('inst_pct', 0):+.1f}%")
+                + "（法人買賣超÷成交量）",
             ),
         ]
     try:

@@ -1115,7 +1115,7 @@ def test_market_page_includes_futures_section(tmp_path):
     assert "夜盤" in html
     assert "電子期夜盤" in html
     assert "2,105" in html
-    assert "<b>美股</b>" in html
+    assert "美股" in html
     assert "美股時段" not in html
     assert "前一晚該看" not in html
     assert "那指期" in html
@@ -1282,28 +1282,28 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "黃金買點" in plain
     assert "重點觀察照表" in plain
     assert "周帶量" not in plain
-    assert "<b>黃金買點</b>" in html
-    assert "<b>重點觀察</b>" in html
+    assert "<code>黃金買點</code>" in html
+    assert "<code>重點觀察</code>" in html
     assert html.split("\n", 1)[0].startswith("<b>WayneBot 海選</b>　2026/09/04")
     assert "昨收" not in html.split("\n", 1)[0]
     assert "(20260904)" not in html
     assert "加權收盤" in html
-    assert "<b>46,551.12</b>" in html
-    assert "<b>+0.32%</b>" in html
-    assert "<b>月線上</b>" in html
+    assert "<code>46,551.12</code>" in html
+    assert "<code>+0.32%</code>" in html
+    assert "<code>月線上</code>" in html
     assert "那斯達克" in html
     assert "恐慌指數" in html
     assert "剛到" in html
-    assert "<b>電腦</b>" in html
+    assert "<code>電腦</code>" in html
     assert "輪出" in html
-    assert "<b>半導體</b>" in html
+    assert "<code>半導體</code>" in html
     assert "對應個股已標剛輪到" not in html
     assert "────────────────" in html
     assert "外資台指期" in html
     assert "買多 8,153口" in plain
     assert "買空 90,542口" in plain
-    assert "<b>8,153口</b>" in html
-    assert "<b>90,542口</b>" in html
+    assert "<code>8,153口</code>" in html
+    assert "<code>90,542口</code>" in html
     assert "比日盤" in html
     assert "到期" not in html
     assert "領買" not in html
@@ -1312,7 +1312,7 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "力積電" not in html
     assert "+192,637張" not in html
     assert "Regime" not in html
-    assert "VIX" not in html
+    assert "VIX" not in _plain(html)
     assert "基差" not in html
     assert "近月" not in html
     for ln in html.split("\n"):
@@ -1374,31 +1374,31 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     )
     lines = html.split("\n")
     plain_lines = [re.sub(r"<[^>]+>", "", ln) for ln in lines]
-    assert "<b>偏空</b>" in html
-    assert "<b>黃金買點</b>" in html
-    assert "<b>重點觀察</b>" in html
-    assert "<b>別追高</b>" in html
+    assert "<code>偏空</code>" in html
+    assert "<code>黃金買點</code>" in html
+    assert "<code>重點觀察</code>" in html
+    assert "<code>別追高</code>" in html
     assert "周帶量" not in html
-    assert "加權收盤 <b>46,288.00</b>" in html
-    assert "<b>+0.96%</b>　貼著月線" in html
-    assert any(ln.strip() == "<b>大盤偏空</b>" for ln in lines)
-    assert any(ln == "那斯達克 <b>-0.01%</b>" for ln in lines)
-    assert any(ln == "費半 <b>+0.63%</b>" for ln in lines)
+    assert "加權收盤" in html and "<code>46,288.00</code>" in html
+    assert "<code>+0.96%</code>　貼著月線" in html
+    assert any(ln.strip() == "<code>大盤偏空</code>" for ln in lines)
+    assert any("那斯達克" in ln and "<code>-0.01%</code>" in ln for ln in lines)
+    assert any("費半" in ln and "<code>+0.63%</code>" in ln for ln in lines)
     panic = [ln for ln in lines if "恐慌指數" in ln]
     assert len(panic) == 1
-    assert "<b>15.49（-12.54%）</b>" in panic[0]
+    assert "<code>15.49（-12.54%）</code>" in panic[0]
     assert "正常" in panic[0]
     assert not any(p.strip() == "正常" for p in plain_lines)
-    assert "台積美股　<b>417.72　+0.96%（+3.97美元）</b>" in html
-    assert "美股昨漲較多　<b>光通訊</b>" in html
+    assert "台積美股" in html and "<code>417.72　+0.96%（+3.97美元）</code>" in html
+    assert "美股昨漲較多　<code>光通訊</code>" in html
     assert "電子鏈夜盤" not in html
     assert "族群，昨天在美股是領漲" not in html
-    assert "夜盤 <b>46,382</b>" in html
-    assert "電子期夜盤 <b>2,921</b>" in html
-    assert "買多 <b>7,805口</b>" in html
-    assert "買空 <b>84,156口</b>" in html
-    assert "剛到　<b>塑膠</b>" in html
-    assert "<b>電子零組件</b>" in html
+    assert "夜盤" in html and "<code>46,382</code>" in html
+    assert "電子期夜盤" in html and "<code>2,921</code>" in html
+    assert "買多 <code>7,805口</code>" in html
+    assert "買空 <code>84,156口</code>" in html
+    assert "剛到　<code>塑膠</code>" in html
+    assert "<code>電子零組件</code>" in html
     for ln in lines:
         assert _disp_w(re.sub(r"<[^>]+>", "", ln)) <= 40, ln
 
@@ -1407,10 +1407,10 @@ def test_outlook_embolden_longest_phrase_first():
     from taiwan_market import _outlook_embolden
 
     assert _outlook_embolden("偏空。黃金買點、重點觀察照表，別追高。") == (
-        "<b>偏空</b>。<b>黃金買點</b>、<b>重點觀察</b>照表，<b>別追高</b>。"
+        "<code>偏空</code>。<code>黃金買點</code>、<code>重點觀察</code>照表，<code>別追高</code>。"
     )
     assert _outlook_embolden("夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。") == (
-        "<b>夜盤比日盤便宜</b>。<b>黃金買點</b>、<b>重點觀察</b>照表，<b>別追高</b>。"
+        "<code>夜盤比日盤便宜</code>。<code>黃金買點</code>、<code>重點觀察</code>照表，<code>別追高</code>。"
     )
 
 
@@ -1526,10 +1526,10 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     assert "昨天剛輪到、隔夜費半跌" in html
     assert "今天別追電子高檔" in html
     lines = html.split("\n")
-    assert any("買多 <b>8,153口</b>" in ln for ln in lines)
-    assert any("買空 <b>90,542口</b>" in ln for ln in lines)
+    assert any("買多 <code>8,153口</code>" in ln for ln in lines)
+    assert any("買空 <code>90,542口</code>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
-    assert "<b>指數還中性，電子鏈逆風</b>" in html
+    assert "<code>指數還中性，電子鏈逆風</code>" in html
 
 
 def test_outlook_keeps_tsm_cash_and_us_lead_group():
@@ -1567,7 +1567,7 @@ def test_outlook_keeps_tsm_cash_and_us_lead_group():
     assert "417.72" in html
     assert "+0.96%" in html
     assert "+3.97美元" in html
-    assert "美股昨漲較多　<b>光通訊</b>" in html
+    assert "美股昨漲較多　<code>光通訊</code>" in html
     assert "電子鏈夜盤" not in html
     assert "1.23%" not in html
     for ln in html.split("\n"):

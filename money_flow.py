@@ -918,7 +918,6 @@ def format_sector_theme_brief(
         ]
         for i, r in enumerate(reps, start=1):
             title = _flow_stock_title(r["stock_id"], r["stock_name"], db_path, fmap)
-            lines.append("")
             lines.append(
                 f"{i}. {title}\n"
                 + html_metrics_tight(
@@ -950,7 +949,6 @@ def format_sector_theme_brief(
     ]
     for i, r in enumerate(reps, start=1):
         title = _flow_stock_title(r["stock_id"], r["stock_name"], db_path, fmap)
-        lines.append("")
         lines.append(
             f"{i}. {title}\n"
             + html_metrics_tight(
@@ -966,7 +964,7 @@ def _sector_entry(
     db_path: str = None,
     fine_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
-    """一族用＝＝產業名＝＝當標題；前幾名個股統一細項標法，檔與檔空一行。"""
+    """一族用＝＝產業名＝＝當標題；前幾名個股統一細項標法。"""
     from tg_layout import html_escape, html_metrics_tight, qty_text, pct_text
 
     three = int(r["three_net"])
@@ -1007,19 +1005,13 @@ def _sector_entry(
             sname = str(p.get("stock_name") or "")
             lots = int(p.get("three_net") or 0)
             title = _flow_stock_title(sid, sname, db_path, fine_map)
-            lines.append("")
             lines.append(f"{i}. {title}\n{html_metrics_tight(qty_text(lots))}")
     return "\n".join(lines)
 
 
 def _flow_stock_lines(items: List[str]) -> List[str]:
-    """族與族、檔與檔之間空一行，才不會糊成一塊。"""
-    out: List[str] = []
-    for i, bit in enumerate(items):
-        if i:
-            out.append("")
-        out.append(bit)
-    return out
+    """檔與檔緊貼；藍連結＋橘數字已夠分，不再多空一行。"""
+    return [bit for bit in items if bit]
 
 
 def format_sector_rotation_html(
@@ -1208,6 +1200,7 @@ def format_flow_html(
         return "⚠️ 還沒有日 K，無法看資金移動。"
 
     from import_health import audit_import
+    from stock_links import html_named
     from tg_layout import kv_compact, section, join_dashed, title_line, html_metrics_tight, qty_text, pct_text
     from trading_calendar import format_trading_date_zh
 
@@ -1263,20 +1256,20 @@ def format_flow_html(
     )
     blocks.append(
         section(
-            "<b>外資買超</b>",
+            "<b>" + html_named("外資") + "買超</b>",
             *_flow_stock_lines([line(r, "foreign_net", i) for i, r in enumerate(buy_f, start=1)]),
         )
     )
     blocks.append(
         section(
-            "<b>外資賣超</b>",
+            "<b>" + html_named("外資") + "賣超</b>",
             *_flow_stock_lines([line(r, "foreign_net", i) for i, r in enumerate(sell_f, start=1)]),
         )
     )
     trust_rows = [r for r in buy_t if int(r["trust_net"] or 0) > 0][:6]
     blocks.append(
         section(
-            "<b>投信買超</b>",
+            "<b>" + html_named("投信") + "買超</b>",
             *_flow_stock_lines([line(r, "trust_net", i) for i, r in enumerate(trust_rows, start=1)]),
         )
     )

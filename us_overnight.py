@@ -774,12 +774,17 @@ def _quote_rows(snap: Dict[str, Any], items, *, pts_decimals: int = 2) -> list:
 
 
 def _quote_row_lines(snap: Dict[str, Any], items, *, label_width: int = _LABEL_W) -> str:
-    from tg_layout import html_escape, pad_label
+    from stock_links import html_named
+    from tg_layout import html_face, pad_label
 
     lines = []
     for pct_k, chg_k, label in items:
-        move = format_quote_move(snap, pct_k, chg_k)
-        lines.append(f"{pad_label(label, label_width)}　{html_escape(move)}")
+        move = html_face(format_quote_move(snap, pct_k, chg_k))
+        name = html_named(label)
+        if name.startswith("<a "):
+            lines.append(f"{name}　{move}")
+        else:
+            lines.append(f"{pad_label(label, label_width)}　{move}")
     return "\n".join(lines)
 
 
@@ -823,9 +828,16 @@ def _tw_open_ref_block(snap: Dict[str, Any]) -> str:
 
 
 def _vix_row(snap: Dict[str, Any]) -> str:
-    from tg_layout import html_escape, pad_label
+    from stock_links import html_named
+    from tg_layout import html_escape, html_face
 
-    return f"{pad_label('恐慌指數', _LABEL_W)}　{html_escape(_fmt_vix(snap))}"
+    raw = _fmt_vix(snap)
+    mood = ""
+    num = raw
+    if "　" in raw:
+        num, mood = raw.rsplit("　", 1)
+    right = html_face(num) + (f"　{html_escape(mood)}" if mood else "")
+    return f"{html_named('恐慌指數')}　{right}"
 
 
 def _session_label(snap: Dict[str, Any]) -> str:

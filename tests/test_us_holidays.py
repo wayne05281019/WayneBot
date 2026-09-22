@@ -127,7 +127,7 @@ def test_market_page_holiday_keeps_prior_close(tmp_path):
     )
     assert "20260907 美股勞動節休市" in html
     assert "上一收盤 20260904" in html
-    assert "<b>美股</b>" in html
+    assert "美股" in html
     assert "上一收盤日該看" not in html
     assert "上一收盤判斷" not in html
     assert "美股時段" not in html
