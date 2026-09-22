@@ -76,7 +76,10 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "獲利為零" in blob
     assert "觀察不是買" in blob
     assert "不卡 5%" in blob
-    assert CACHE_VER == "v63"
+    assert "不限海選桶" in blob
+    assert "含興櫃" in blob
+    assert CACHE_VER == "v65"
+    assert "不滿五星" in blob
     assert "不收空頭" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob

@@ -209,7 +209,7 @@ def leave_zero_closed_message(now=None) -> str:
     when = next_tw_session_when(now)
     return (
         "目前非盤中，不抓現價，名單用官方收。\n"
-        "可選剛離1／2／3。獲利為零＝獲利還是 0，觀察不是買。\n"
+        "可選剛離1／2／3。獲利為零＝獲利還是 0，觀察不是買。含興櫃，不限海選桶。\n"
         f"{when} 開盤後再按，才用現價複核。"
     )
 

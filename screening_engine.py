@@ -12,7 +12,7 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Sequence
+from typing import Dict, List, Any, Optional, Sequence, Set, Tuple
 import pandas as pd
 import numpy as np
 
@@ -617,6 +617,81 @@ class ScreeningEngine:
             out[str(sid)] = g.reset_index(drop=True)
         return out
 
+    def _load_profit_scan_frames(
+        self, as_of: str
+    ) -> Tuple[Dict[str, pd.DataFrame], Set[str]]:
+        """剛脫離零名單：上市櫃＋興櫃 90 曆日官方收。興櫃撞號用 emerging_quotes。"""
+        as_of = str(as_of or "").replace("-", "")[:8]
+        if not as_of:
+            return {}, set()
+        lo = ""
+        try:
+            lo = (datetime.strptime(as_of, "%Y%m%d") - timedelta(days=90)).strftime(
+                "%Y%m%d"
+            )
+        except ValueError:
+            lo = ""
+        conn = self._get_connection()
+        frames: Dict[str, pd.DataFrame] = {}
+        em_ids: Set[str] = set()
+
+        def _window_sql(table: str, hi: str) -> Tuple[str, List[Any]]:
+            extra = " AND REPLACE(date,'-','') <= ?"
+            params: List[Any] = [hi]
+            if lo:
+                extra += " AND REPLACE(date,'-','') >= ?"
+                params.append(lo)
+            sql = f"""
+            SELECT stock_id, stock_name, date, open, high, low, close, volume, turnover_k
+            FROM {table}
+            WHERE close > 0{extra}
+            ORDER BY stock_id, date
+            """
+            return sql, params
+
+        try:
+            sql, params = _window_sql("daily_quotes", as_of)
+            df = pd.read_sql_query(sql, conn, params=params)
+        except Exception:
+            df = pd.DataFrame()
+        if df is not None and not df.empty:
+            df["date"] = df["date"].astype(str).str.replace("-", "", regex=False)
+            for sid, g in df.groupby("stock_id"):
+                g = g.reset_index(drop=True)
+                if str(g["date"].iloc[-1] or "")[:8] != as_of:
+                    continue
+                frames[str(sid)] = g
+        em_as_of = ""
+        try:
+            from emerging_quotes import ensure_emerging_table
+
+            ensure_emerging_table(self.db_path)
+            row = conn.execute(
+                "SELECT MAX(REPLACE(date,'-','')) FROM emerging_quotes "
+                "WHERE REPLACE(date,'-','') <= ?",
+                (as_of,),
+            ).fetchone()
+            em_as_of = str(row[0] or "").replace("-", "")[:8] if row and row[0] else ""
+        except Exception:
+            em_as_of = ""
+        if em_as_of:
+            try:
+                sql, params = _window_sql("emerging_quotes", em_as_of)
+                edf = pd.read_sql_query(sql, conn, params=params)
+            except Exception:
+                edf = pd.DataFrame()
+            if edf is not None and not edf.empty:
+                edf["date"] = edf["date"].astype(str).str.replace("-", "", regex=False)
+                for sid, g in edf.groupby("stock_id"):
+                    g = g.reset_index(drop=True)
+                    if str(g["date"].iloc[-1] or "")[:8] != em_as_of:
+                        continue
+                    key = str(sid)
+                    frames[key] = g
+                    em_ids.add(key)
+        conn.close()
+        return frames, em_ids
+
     def screen_leave_zero_now(
         self, target_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
@@ -778,12 +853,11 @@ class ScreeningEngine:
     def screen_leave_zero_pick(
         self, target_date: Optional[str] = None, *, pick: str = "0"
     ) -> List[Dict[str, Any]]:
-        """剛離1／2／3／獲利為零。不改海選黃金買點公式。未收盤不寫庫。"""
+        """剛離1／2／3／獲利為零。掃高低卡獲利（含興櫃），不改海選黃金買點公式。未收盤不寫庫。"""
         token = str(pick or "0").strip().lower()
         if token in ("z", "zero", "at0"):
-            return self._screen_leave_zero_from_bucket(
+            return self._screen_leave_zero_from_profit(
                 target_date,
-                bucket="golden_buy",
                 days_ago=0,
                 mode="zero",
                 star_key="golden_buy",
@@ -794,63 +868,75 @@ class ScreeningEngine:
             days = 0
         if days <= 0:
             return self.screen_leave_zero_now(target_date)
-        return self._screen_leave_zero_from_bucket(
+        return self._screen_leave_zero_from_profit(
             target_date,
-            bucket="leave_zero",
             days_ago=days,
             mode="ago",
             star_key="leave_zero",
         )
 
-    def _screen_leave_zero_from_bucket(
+    def _screen_leave_zero_from_profit(
         self,
         target_date: Optional[str],
         *,
-        bucket: str,
         days_ago: int,
         mode: str,
         star_key: str,
     ) -> List[Dict[str, Any]]:
-        """用已存海選桶＋今日官方收／盤中現價複核。盤中未收不當官方收。"""
+        """全市場高低卡獲利序列：獲利為零＝今天 0.0%；剛離N＝那根第一天離零。含興櫃。"""
         from decision_card_signals import (
             cal60_low_close_at,
             profit_pct_cal60_series,
         )
         from live_quote import is_live_merge_window
-        from screen_sessions import load_bucket_rows, session_as_of_n_ago
         from universe import is_screen_equity
 
         as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
-        src_as_of = session_as_of_n_ago(self.db_path, as_of, int(days_ago))
-        if not src_as_of:
+        frames, em_ids = self._load_profit_scan_frames(as_of)
+        if not frames:
             return []
-        raw_rows = load_bucket_rows(self.db_path, bucket, src_as_of)
-        if not raw_rows and int(days_ago) <= 0:
-            raw_rows = load_bucket_rows(self.db_path, bucket, "")
-        by_id: Dict[str, Dict[str, Any]] = {}
-        for sr in raw_rows:
-            sid = str(sr.get("stock_id") or "").strip()
-            if not sid or not is_screen_equity(sid, str(sr.get("stock_name") or "")):
+        types: Dict[str, str] = {}
+        try:
+            conn = self._get_connection()
+            types = {
+                str(sid): str(atype or "")
+                for sid, atype in conn.execute(
+                    "SELECT stock_id, asset_type FROM stock_universe"
+                )
+            }
+            conn.close()
+        except Exception:
+            types = {}
+        codes: List[str] = []
+        names: Dict[str, str] = {}
+        for sid, df in frames.items():
+            name = ""
+            try:
+                name = str(df["stock_name"].iloc[-1] or "")
+            except Exception:
+                name = ""
+            if not is_screen_equity(sid, name, types.get(sid)):
                 continue
-            by_id[sid] = sr
-        if not by_id:
+            codes.append(sid)
+            names[sid] = name
+        if not codes:
             return []
-        codes = list(by_id.keys())
-        frames = self._load_close_frames(codes, as_of)
         quotes: Dict[str, Dict[str, Any]] = {}
         live_skipped = False
         live_on = bool(is_live_merge_window())
-        if live_on:
+        listed_codes = [c for c in codes if c not in em_ids]
+        if live_on and listed_codes:
             try:
                 from midday_review import fetch_mis_batch
 
-                quotes = fetch_mis_batch(codes, self.db_path) or {}
+                quotes = fetch_mis_batch(listed_codes, self.db_path) or {}
             except Exception:
                 quotes = {}
             if not quotes:
                 live_skipped = True
         out: List[Dict[str, Any]] = []
-        for sid, sr in by_id.items():
+        n_ago = int(days_ago or 0)
+        for sid in codes:
             df = frames.get(sid)
             if df is None or len(df) < 2:
                 continue
@@ -860,16 +946,22 @@ class ScreeningEngine:
                 official_pt = float(profits.iloc[-1])
             except Exception:
                 continue
+            if mode == "ago" and not _leave_zero_left_n_ago(profits, n_ago):
+                continue
             last_close = float(df["close"].iloc[-1] or 0)
             last_vol = 0.0
+            leave_date = as_of
+            if n_ago > 0 and len(df) >= n_ago + 1:
+                leave_date = str(df["date"].iloc[-(n_ago + 1)] or "")[:8] or as_of
             item: Dict[str, Any] = {
                 "stock_id": sid,
-                "stock_name": sr.get("stock_name") or "",
-                "chase_warning": bool(sr.get("chase_warning")),
+                "stock_name": names.get(sid) or "",
+                "chase_warning": False,
                 "cal60_low": floor,
                 "close": last_close,
-                "leave_days": int(days_ago),
-                "src_as_of": src_as_of,
+                "leave_days": n_ago,
+                "src_as_of": leave_date,
+                "quote_source": "emerging_quotes" if sid in em_ids else "daily_quotes",
             }
             try:
                 vols = df["volume"].astype(float)
@@ -885,46 +977,60 @@ class ScreeningEngine:
                 item["q60r"] = (last_vol / base) if base > 0 else 0.0
             except Exception:
                 item["q60r"] = 0.0
-            if live_on and not live_skipped:
+            used_live = False
+            if live_on and not live_skipped and sid not in em_ids:
                 q = quotes.get(sid) or {}
                 raw_px = q.get("price") if q.get("price") is not None else q.get("close")
-                if raw_px is None or floor <= 0:
-                    continue
-                price = float(raw_px)
-                live_profit = round((price - floor) / floor * 100.0, 1)
-                if not _leave_zero_pick_ok(mode, live_profit):
-                    continue
-                yest_c = q.get("yesterday_close")
-                pct = None
-                try:
-                    if yest_c:
-                        pct = (price - float(yest_c)) / float(yest_c) * 100.0
-                except (TypeError, ValueError, ZeroDivisionError):
-                    pct = q.get("pct")
-                live_vol = int(q.get("volume") or 0)
-                if live_vol > 0:
-                    item["volume"] = live_vol
-                    if item.get("q60r") and last_vol > 0:
-                        item["q60r"] = item["q60r"] * (live_vol / last_vol)
-                item["profit"] = live_profit
-                item["profit_pct"] = live_profit
-                item["live"] = {
-                    "price": price,
-                    "change": q.get("change"),
-                    "pct": pct,
-                    "update_time": q.get("update_time", ""),
-                    "yesterday_close": yest_c,
-                }
-            else:
+                if raw_px is not None and floor > 0:
+                    price = float(raw_px)
+                    live_profit = round((price - floor) / floor * 100.0, 1)
+                    if not _leave_zero_pick_ok(mode, live_profit):
+                        continue
+                    yest_c = q.get("yesterday_close")
+                    pct = None
+                    try:
+                        if yest_c:
+                            pct = (price - float(yest_c)) / float(yest_c) * 100.0
+                    except (TypeError, ValueError, ZeroDivisionError):
+                        pct = q.get("pct")
+                    live_vol = int(q.get("volume") or 0)
+                    if live_vol > 0:
+                        item["volume"] = live_vol
+                        if item.get("q60r") and last_vol > 0:
+                            item["q60r"] = item["q60r"] * (live_vol / last_vol)
+                    item["profit"] = live_profit
+                    item["profit_pct"] = live_profit
+                    item["live"] = {
+                        "price": price,
+                        "change": q.get("change"),
+                        "pct": pct,
+                        "update_time": q.get("update_time", ""),
+                        "yesterday_close": yest_c,
+                    }
+                    used_live = True
+            if not used_live:
                 if not _leave_zero_pick_ok(mode, official_pt):
                     continue
                 item["profit"] = official_pt
                 item["profit_pct"] = official_pt
-                if live_skipped:
+                if live_skipped and sid not in em_ids:
                     item["_live_skipped"] = True
+            if mode == "ago":
+                live_px = None
+                if item.get("live"):
+                    live_px = item["live"].get("price")
+                info = _leave_zero_now_trend_info(df, last_close=live_px)
+                info["stock_id"] = sid
+                ok = bool(info) and _leave_zero_trend_ok(info)
+                item["trend_up_now"] = bool(ok)
+                item["trend_now_label"] = "趨勢已向上" if ok else "趨勢還沒向上"
+                for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
+                    if key in info:
+                        item[key] = info[key]
             out.append(item)
         out.sort(
             key=lambda x: (
+                0 if x.get("trend_up_now") else 1,
                 1 if x.get("chase_warning") else 0,
                 float(x.get("profit_pct") if x.get("profit_pct") is not None else 99),
                 -(float(x.get("q60r") or 0)),
@@ -1075,6 +1181,8 @@ def entry_star_count(
         )
         if not must:
             n = ENTRY_STAR_N - 1
+    if "trend_up_now" in row and not row.get("trend_up_now"):
+        n = min(n, ENTRY_STAR_N - 1)
     return n
 
 
@@ -1342,6 +1450,21 @@ def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
     return False
 
 
+def _leave_zero_left_n_ago(profits: pd.Series, days_ago: int) -> bool:
+    """N 個交易日前那一根是第一天脫離零（昨貼零、那日 >0.05%）。不卡海選 5%。"""
+    from decision_card_signals import profit_left_zero_highlight
+
+    n = int(days_ago or 0)
+    if n <= 0 or profits is None or len(profits) < n + 2:
+        return False
+    try:
+        prev = float(profits.iloc[-(n + 2)])
+        left = float(profits.iloc[-(n + 1)])
+    except (TypeError, ValueError, IndexError):
+        return False
+    return bool(profit_left_zero_highlight(prev, left))
+
+
 def _screen_trend_up_ok(info: Dict[str, Any], *, block_monthly_side: bool = False) -> bool:
     """整份海選共用：必須不是空頭。下坡、月K走空、空頭反彈不進桶。
 
@@ -1411,6 +1534,56 @@ def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
     if ma60 > 0 and ma20 < ma60:
         return False
     return True
+
+
+def _leave_zero_now_trend_info(
+    df: pd.DataFrame, *, last_close: Optional[float] = None
+) -> Dict[str, Any]:
+    """剛離1–3「現在」趨勢欄：同一條 _leave_zero_trend_ok，不改海選公式。資料不足＝還沒過關。"""
+    if df is None or len(df) < 5:
+        return {}
+    close_s = pd.to_numeric(df["close"], errors="coerce")
+    if last_close is not None:
+        try:
+            close_s = close_s.copy()
+            close_s.iloc[-1] = float(last_close)
+        except (TypeError, ValueError):
+            pass
+    low_s = (
+        pd.to_numeric(df["low"], errors="coerce")
+        if "low" in df.columns
+        else close_s
+    )
+    c = float(close_s.iloc[-1] or 0)
+    ma20 = float(close_s.rolling(20, min_periods=5).mean().iloc[-1] or 0)
+    ma60 = (
+        float(close_s.rolling(60, min_periods=20).mean().iloc[-1] or 0)
+        if len(df) >= 20
+        else ma20
+    )
+    if len(low_s) >= 21:
+        low20 = float(low_s.iloc[-21:-1].min() or 0)
+    elif len(low_s) > 1:
+        low20 = float(low_s.iloc[:-1].min() or 0)
+    else:
+        low20 = 0.0
+    d20 = round((c - low20) / low20 * 100.0, 2) if low20 > 0 else 0.0
+    info: Dict[str, Any] = {
+        "close": c,
+        "ma20": ma20,
+        "ma60": ma60,
+        "low20": low20,
+        "d20": d20,
+    }
+    try:
+        from decision_card_signals import monthly_stage_from_ohlc
+
+        dates = df["date"].astype(str).str.replace("-", "", regex=False).tolist()
+        mk, _lab, _short = monthly_stage_from_ohlc(dates, close_s.tolist())
+        info["monthly_stage_kind"] = mk
+    except Exception:
+        info["monthly_stage_kind"] = ""
+    return info
 
 
 def _pct_str(pct) -> str:
@@ -1574,6 +1747,11 @@ def _stock_card_html(
         notices.append(_flag("S級"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
+    if item.get("trend_now_label"):
+        if item.get("trend_up_now"):
+            notices.append(_hot("趨勢已向上"))
+        else:
+            notices.append(html_escape("趨勢還沒向上"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
     if item.get("golden_buy") and not item.get("entry_stage"):
