@@ -705,12 +705,10 @@ class FuseAndScreenTest(unittest.TestCase):
             html = format_industry_html("2330", path)
             self.assertIn("產業說明", html)
             self.assertIn("半導體業", html)
-            self.assertIn("比同業明顯較強", html)
+            self.assertIn("還沒產業鏈，不拿證交所粗分類硬比", html)
+            self.assertNotIn("比同業明顯較強", html)
             self.assertIn("本族群產業狀況簡述", html)
-            self.assertIn("資金：", html)
-            self.assertIn("本鏈", html)
             self.assertNotIn("官方法人 overlay", html)
-            self.assertIn("同一產業鏈才比", html)
             self.assertNotIn("半導體業含代工、記憶體、設計", html)
             self.assertNotIn("同一官方產業別全組", html)
             self.assertNotIn("這族", html)
@@ -721,6 +719,8 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertNotIn("不能替代高低卡", html)
             self.assertIn("<code>", html)
             self.assertIn("張", html)
+            self.assertNotIn("聯發科", html)
+            self.assertNotIn("中鋼", html)
             for line in html.split("\n"):
                 if "這檔月增" in line:
                     self.assertNotIn("同業中位", line)
