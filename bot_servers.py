@@ -3729,33 +3729,32 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
-        """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。"""
+        """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。
+
+        點了個股就出該檔第④顆眼睛。波浪字不把個股問句改成加權圖。
+        """
         q = (ask or "").strip()
         if not q:
             return
+        hits: list = []
         try:
-            from biaoke_wave import is_twii_plain_ask, is_wave_question
+            from biaoke_brain import resolve_stock
 
-            if is_wave_question(q) or is_twii_plain_ask(q):
-                await self._send_biaoke_twii_degree_chart(message, uid)
-                return
-        except Exception:
-            logger.exception("飆大加權位階圖判斷略過")
-        try:
-            from biaoke_brain import is_market_question, resolve_stock
-
-            if is_market_question(q) and not resolve_stock(self.db_path, q):
-                return
-            hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
+            hits = await asyncio.to_thread(resolve_stock, self.db_path, q) or []
         except Exception:
             logger.exception("飆大結構圖對檔略過")
-            return
-        if not hits:
-            return
-        sid = str(hits[0].get("stock_id") or "")
-        name = str(hits[0].get("stock_name") or sid)
+            hits = []
+        sid = str((hits[0] or {}).get("stock_id") or "") if hits else ""
         if not sid:
+            try:
+                from biaoke_wave import is_twii_plain_ask, is_wave_question
+
+                if is_wave_question(q) or is_twii_plain_ask(q):
+                    await self._send_biaoke_twii_degree_chart(message, uid)
+            except Exception:
+                logger.exception("飆大加權位階圖判斷略過")
             return
+        name = str(hits[0].get("stock_name") or sid)
         os.makedirs(self.charts_dir, exist_ok=True)
         path = self._scratch_chart_path(self.charts_dir, sid, "biaoke", uid)
         try:

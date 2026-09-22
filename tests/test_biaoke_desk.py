@@ -587,6 +587,47 @@ def test_biaoke_dayk_callback_sends_structure_not_card():
     assert bot._send_biaoke_structure_chart.await_args.args[1] == "現在波浪位階"
 
 
+def test_stock_wave_ask_sends_stock_chart_not_twii(tmp_path, monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    png = tmp_path / "s.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 30_000)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "x.db")
+    bot.charts_dir = str(tmp_path)
+    bot._scratch_chart_path = MagicMock(return_value=str(png))
+    bot._png_looks_ok = MagicMock(return_value=True)
+    bot._biaoke_reply_menu = MagicMock(return_value=None)
+    bot._send_biaoke_twii_degree_chart = AsyncMock()
+    msg = MagicMock()
+    msg.chat = None
+    msg.reply_photo = AsyncMock()
+
+    def fake_resolve(_db, q):
+        if "2330" in str(q):
+            return [{"stock_id": "2330", "stock_name": "台積電"}]
+        return []
+
+    def fake_build(*_a, **_k):
+        return {"path": str(png), "caption": "結構圖"}
+
+    with patch("biaoke_brain.resolve_stock", fake_resolve), patch(
+        "biaoke_chart.build_biaoke_structure_chart", fake_build
+    ):
+        asyncio.run(bot._send_biaoke_structure_chart(msg, "2330細微波", "1"))
+    bot._send_biaoke_twii_degree_chart.assert_not_awaited()
+    msg.reply_photo.assert_awaited()
+    bot._send_biaoke_twii_degree_chart.reset_mock()
+    msg.reply_photo.reset_mock()
+    with patch("biaoke_brain.resolve_stock", fake_resolve), patch(
+        "biaoke_chart.build_biaoke_structure_chart", fake_build
+    ):
+        asyncio.run(bot._send_biaoke_structure_chart(msg, "現在波浪位階", "1"))
+    bot._send_biaoke_twii_degree_chart.assert_awaited()
+    msg.reply_photo.assert_not_awaited()
+
+
 def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
     from bot_servers import (
         is_phone_code_query,
