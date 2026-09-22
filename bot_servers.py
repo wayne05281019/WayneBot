@@ -3355,7 +3355,7 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "剛脫離零進行中",
                     s,
-                    now="讀海選快取",
+                    now="讀高低卡獲利" if pick in ("z", "1", "2", "3") else "讀海選快取",
                     rest="複核獲利",
                     fill_sec=20.0,
                 ),
@@ -3366,7 +3366,7 @@ class WayneTelegramBot:
                     asyncio.to_thread(
                         lambda: self.screener.screen_leave_zero_pick(pick=pick)
                     ),
-                    timeout=45.0,
+                    timeout=60.0 if pick in ("z", "1", "2", "3") else 45.0,
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
@@ -3387,10 +3387,10 @@ class WayneTelegramBot:
             if pick == "z":
                 title = f"{pick_label}（觀察不是買）"
                 subtitle = (
-                    "獲利欄還是 0.0%。這是重點觀察，不是黃金買點，不是買訊。"
-                    "股名旁五角星不是叫你買。"
+                    "高低卡獲利欄還是 0.0%，含上市櫃與興櫃，不限海選桶。"
+                    "這是觀察，不是黃金買點，不是買訊。股名旁五角星不是叫你買。"
                 )
-                empty = "此刻沒有獲利還在 0 的觀察檔。" if live_on else "最近完整收沒有獲利還在 0 的觀察檔。"
+                empty = "此刻沒有獲利還在 0 的檔。" if live_on else "最近完整收沒有獲利還在 0 的檔。"
                 bucket_label = pick_label
             elif pick == "0":
                 if live_on:
@@ -3414,9 +3414,9 @@ class WayneTelegramBot:
             else:
                 title = f"{pick_label}（{pick} 個交易日前剛離零）"
                 subtitle = (
-                    f"剛好 {pick} 個交易日前剛離零的檔，現在獲利不是 0 就列出，不卡 5%。"
-                    "不是今天的黃金買點表。股名旁五角星＝值不值得買（滿五星＝按表現在該買）。"
-                    "未收盤不寫進官方收。"
+                    f"高低卡剛好 {pick} 個交易日前第一天離零，含上市櫃與興櫃，不限海選桶。"
+                    "現在獲利不是 0 就列出，不卡 5%。不是今天的黃金買點表。"
+                    "股名旁五角星＝值不值得買（滿五星＝按表現在該買）。未收盤不寫進官方收。"
                 )
                 empty = f"沒有剛離{pick}、現在獲利不是 0 的檔。"
                 bucket_label = pick_label

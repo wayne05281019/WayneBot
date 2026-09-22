@@ -272,6 +272,8 @@ def test_leave_zero_closed_message_points_to_screen():
     assert "剛離1" in msg
     assert "獲利為零" in msg
     assert "觀察不是買" in msg
+    assert "興櫃" in msg
+    assert "海選桶" in msg
     when = next_tw_session_when(after)
     assert "09:00" in when
     assert "2026/09/17" in when

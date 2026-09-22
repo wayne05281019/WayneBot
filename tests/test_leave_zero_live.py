@@ -12,6 +12,7 @@ from intent_router import parse_intent
 from screening_engine import (
     LEAVE_ZERO_STAR_N,
     ScreeningEngine,
+    _leave_zero_left_n_ago,
     _leave_zero_pick_ok,
     _stock_card_html,
     mark_leave_zero_stars,
@@ -94,6 +95,13 @@ def test_leave_days_pick_not_capped_at_five_pct():
     assert not _leave_zero_pick_ok("ago", 0.0)
     assert _leave_zero_pick_ok("zero", 0.0)
     assert not _leave_zero_pick_ok("zero", 0.1)
+    import pandas as pd
+
+    first_leave_yest = pd.Series([0.0, 0.0, 0.8, 1.2])
+    assert _leave_zero_left_n_ago(first_leave_yest, 1)
+    assert not _leave_zero_left_n_ago(first_leave_yest, 2)
+    still_zero = pd.Series([0.0, 0.0, 0.0, 0.0])
+    assert not _leave_zero_left_n_ago(still_zero, 1)
     from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
 
     assert LEAVE_ZERO_SCREEN_MAX_PCT == 5.0
@@ -459,8 +467,11 @@ def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
     assert just == ["1102"]
     assert d1 == ["1101"]
     assert d2 == ["1201"]
-    assert zero_codes == ["1303"]
+    assert "1303" in zero_codes
+    assert "1301" in zero_codes
+    assert "1402" in zero_codes
     assert "1216" not in zero_codes
+    assert "1101" not in zero_codes
     assert all(int(r.get("entry_stars") or 0) <= 4 for r in zero)
     over = engine.screen_leave_zero_pick(AS_OF, pick="1")
     assert over and float(over[0]["profit_pct"]) > 5.0
@@ -512,3 +523,152 @@ def test_live_leave_days_keeps_band_and_does_not_write(tmp_path, monkeypatch):
     conn.close()
     assert extra == 0
     assert n == before
+
+
+def _seed_one_listed(db: str, sid: str, name: str, last_close: float, *, market: str = "TW") -> None:
+    ensure_core_schema(db)
+    start = datetime(2026, 8, 1)
+    end = datetime.strptime(AS_OF, "%Y%m%d")
+    conn = sqlite3.connect(db)
+    d = start
+    while d <= end:
+        ymd = d.strftime("%Y%m%d")
+        last = d == end
+        close = float(last_close if last else 50.0 if sid != "8069" else 100.0)
+        if sid == "8069":
+            close = 100.0
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_quotes("
+            "date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ymd,
+                sid,
+                name,
+                market,
+                close,
+                close,
+                close,
+                close,
+                8000,
+                400000,
+                0.0,
+                close,
+            ),
+        )
+        d += timedelta(days=1)
+    conn.commit()
+    conn.close()
+
+
+def _seed_emerging_leave_yesterday(db: str) -> None:
+    from emerging_quotes import ensure_emerging_table
+
+    ensure_core_schema(db)
+    ensure_emerging_table(db)
+    start = datetime(2026, 8, 1)
+    end = datetime.strptime(AS_OF, "%Y%m%d")
+    leave_day = "20260914"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_universe("
+        "stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("3595", "山太士", "EM", "STOCK", "", 1, AS_OF),
+    )
+    d = start
+    while d <= end:
+        ymd = d.strftime("%Y%m%d")
+        if ymd == leave_day:
+            close = 10.08
+        elif ymd == AS_OF:
+            close = 10.10
+        else:
+            close = 10.00
+        conn.execute(
+            "INSERT OR REPLACE INTO emerging_quotes("
+            "date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ymd,
+                "3595",
+                "山太士",
+                "EM",
+                close,
+                close,
+                close,
+                close,
+                120,
+                1200,
+                0.0,
+                close,
+                "tpex_esb_csv",
+            ),
+        )
+        # 上市櫃撞號：若誤用 daily_quotes 會變成今天才離零，剛離1找不到。
+        listed_close = 20.0 if ymd == AS_OF else 10.0
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_quotes("
+            "date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ymd,
+                "3595",
+                "撞號",
+                "TW",
+                listed_close,
+                listed_close,
+                listed_close,
+                listed_close,
+                8000,
+                400000,
+                0.0,
+                listed_close,
+            ),
+        )
+        d += timedelta(days=1)
+    conn.commit()
+    conn.close()
+
+
+def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
+    db = str(tmp_path / "lz_profit_scan.db")
+    ensure_core_schema(db)
+    _seed_one_listed(db, "8069", "元太", 100.0)
+    _seed_one_listed(db, "0050", "元大台灣50", 50.0)
+    _seed_emerging_leave_yesterday(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_universe("
+        "stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("8069", "元太", "TW", "STOCK", "", 1, AS_OF),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_universe("
+        "stock_id,stock_name,market_type,asset_type,industry,is_active,updated_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("0050", "元大台灣50", "TW", "ETF_PASSIVE", "", 1, AS_OF),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    engine = ScreeningEngine(db)
+    zero = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="z")]
+    d1 = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    d1_codes = [r["code"] for r in d1]
+    d2 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="2")]
+    assert "8069" in zero
+    assert "3595" not in zero
+    assert "0050" not in zero
+    assert d1_codes == ["3595"]
+    assert d1[0]["name"] == "山太士"
+    assert d1[0].get("quote_source") == "emerging_quotes"
+    assert "3595" not in d2
+    assert "8069" not in d1_codes
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
+    monkeypatch.setattr("midday_review.fetch_mis_batch", lambda *a, **k: {})
+    live_d1 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="1")]
+    assert live_d1 == ["3595"]
+    live_zero = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="z")]
+    assert "8069" in live_zero
