@@ -169,6 +169,88 @@ def test_snapshot_button_lists_without_press_freezes_bar_not_png(tmp_path):
     assert "live_judge" not in names
 
 
+def test_remember_keeps_why_and_official_chips(tmp_path):
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4}, "20260915")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE daily_quotes SET foreign_net=120, trust_net=30, dealer_net=-10, pct_change=1.5 "
+        "WHERE stock_id='1101' AND date='20260915'"
+    )
+    conn.commit()
+    conn.close()
+    n = remember_rows(
+        db,
+        "leave_zero",
+        [
+            {
+                "stock_id": "1101",
+                "stock_name": "台泥",
+                "close": 50.4,
+                "profit_pct": 0.8,
+                "why": "獲利剛離零且趨勢向上",
+                "q": 2.1,
+            }
+        ],
+        as_of="20260915",
+    )
+    assert n == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    extra = json.loads(
+        conn.execute("SELECT extra FROM live_judge WHERE sid='1101'").fetchone()[0]
+    )
+    conn.close()
+    assert extra["why"] == "獲利剛離零且趨勢向上"
+    assert extra["q"] == 2.1
+    assert extra["fn"] == 120
+    assert extra["tn"] == 30
+    assert extra["dn"] == -10
+    assert extra["pct"] == 1.5
+    assert extra["v"] == 8000
+
+
+def test_snapshot_dongzhu_without_press(tmp_path, monkeypatch):
+    from judge_tape import snapshot_button_lists
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"2408": 56.0}, "20260915")
+
+    def fake_picks(_db, *, spoken=None, record_flow=True):
+        del spoken
+        assert record_flow is False
+        return {
+            "field": "記憶體製造",
+            "why": "佔比升還沒當第一",
+            "five": "量價結構：量起來。",
+            "recs": [
+                {
+                    "sid": "2408",
+                    "name": "南亞科",
+                    "close": 56.0,
+                    "role": "次級",
+                    "vs20": -8.0,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("biaoke_field_scan.dongzhu_picks", fake_picks)
+    stats = snapshot_button_lists(db, "20260915")
+    assert stats.get("dongzhu") == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    row = conn.execute(
+        "SELECT sid, extra FROM live_judge WHERE kind='dongzhu' AND sid!=''"
+    ).fetchone()
+    conn.close()
+    assert row[0] == "2408"
+    extra = json.loads(row[1])
+    assert extra["why"] == "佔比升還沒當第一"
+    assert extra["five"] == "量價結構：量起來。"
+    assert extra["field"] == "記憶體製造"
+    assert extra["src"] == "dongzhu"
+
+
 def test_agents_silent_record_is_rank_three():
     text = Path("AGENTS.md").read_text(encoding="utf-8")
     assert "默默落檔（2026-09-21 鎖死）" in text
