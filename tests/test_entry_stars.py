@@ -38,6 +38,8 @@ def test_five_stars_only_leave_zero_aligned():
     assert entry_star_count(late, bucket_key="leave_zero") <= 4
     beta = dict(must, beta_downweighted=True)
     assert entry_star_count(beta, bucket_key="leave_zero") <= 4
+    broke = dict(must, buy_gate="no")
+    assert entry_star_count(broke, bucket_key="leave_zero") <= 2
 
 
 def test_leave_zero_without_s_or_inflow_is_four():
@@ -149,6 +151,10 @@ def test_nav_trade_marks_buy_up_sell_down_from_card():
     assert b == 1 and s is None
     b, s = _nav_trade_marks(work, {"sell_action": "直接減碼"})
     assert s == 1 and b is None
+    b, s = _nav_trade_marks(work, {"relative_buy_kind": "just_left", "buy_verdict": "no"})
+    assert b is None and s is None
+    b, s = _nav_trade_marks(work, {"buy_verdict": "buy"})
+    assert b == 1 and s is None
     b, s = _nav_trade_marks(
         work, {"relative_buy_kind": "just_left", "entry_stage": "watch"}
     )

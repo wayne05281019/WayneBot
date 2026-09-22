@@ -371,7 +371,7 @@ def test_leave_zero_cmd_opens_profit_zero(tmp_path):
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
     assert "獲利為零" in html
-    assert "觀察不是買" in html
+    assert "先觀察" in html
     assert "🟥" not in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
         "reply_markup"

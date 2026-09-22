@@ -1323,7 +1323,7 @@ def _doubt(
     if view:
         bits.append(view)
     if not bits:
-        bits.append("沒疊滿就不講死。對跟錯一起留。這不是買訊。")
+        bits.append("沒疊滿就不講死。對跟錯一起留。")
     return _step("doubt", " ".join(bits), ok=not miss and not extra_miss)
 
 
@@ -1605,7 +1605,7 @@ def _think(steps: List[Dict[str, Any]], sid: str, name: str) -> str:
         if "自問" in verdict:
             parts.append(_clip(verdict[verdict.find("自問") :], 220))
         else:
-            parts.append("沒疊滿就不講死。這不是買訊。")
+            parts.append("沒疊滿就不講死。")
         return _clip("".join(parts), 900)
     nest_t = str(nest.get("text") or "")
     parts = ["這句沒點檔：先把大盤巢穴走完。"]
@@ -1710,7 +1710,6 @@ def _judgment_line(fired: Dict[str, Any], ask: str, db_path: str) -> str:
         bits.append(watch)
     elif _ask_wants_stage(ask, named):
         bits.append("問到位階就只講他自己點過的位；沒新官方收就不下判")
-    bits.append("不是買訊")
     return _clip("。".join(b.rstrip("。") for b in bits if b), 320)
 
 
@@ -1753,7 +1752,8 @@ def format_five_lead(fired: Optional[Dict[str, Any]], ask: str = "") -> str:
         flags.append("未收")
     if any(k in blob for k in ("還沒走完", "未走完不准", "對質 偏", "演算對質 overlay")):
         flags.append("對質")
-    flags.append("不是買訊")
+    if not flags:
+        return core + "。"
     return core + "。〔" + "／".join(flags) + "〕"
 
 
@@ -1788,7 +1788,7 @@ def split_lead_detail(html: str) -> Tuple[str, str]:
         return raw, ""
     lead, rest = raw.split("\n\n", 1)
     lead, rest = lead.strip(), rest.strip()
-    if "〔" in lead and "不是買訊" in lead:
+    if "〔" in lead and "〕" in lead:
         return lead, rest
     return raw, ""
 

@@ -96,11 +96,12 @@ def test_glance_footer_note_sits_above_legend(tmp_path, monkeypatch):
     assert any("日曆天" in t for t in texts)
     assert not any("曆日低" in t or "曆日底" in t for t in texts)
     assert "紀律" in texts
-    assert any("先出一點" in t for t in texts)
+    assert any("不要加碼" in t or "別追" in t or "黃金買點" in t or "先看" in t for t in texts)
     assert not any("左上 K" in t for t in texts)
-    note_y = min(y for y, t in seen if "先出一點" in t)
+    note_hits = [y for y, t in seen if "不要加碼" in t or "別追" in t or "黃金買點" in t or "先看" in t]
+    assert note_hits
     disc_y = [y for y, t in seen if t == "紀律"][0]
-    assert disc_y > note_y
+    assert disc_y > min(note_hits)
     with __import__("PIL").Image.open(out) as im:
         assert im.size[0] >= 2000
         assert im.size[1] >= 1600

@@ -13,8 +13,36 @@ from tg_layout import html_escape
 from biaoke_chrono import auto_slice_methods, method_from_event
 
 DISCLAIMER_LINE = (
-    "⚠️ 這不是買訊。不是飆大本人；是把他公開文的思考在這邊彙整後回你。"
+    "不是飆大本人；是把他公開文的思考在這邊彙整後回你。"
 )
+
+_BOILER_RES = (
+    re.compile(r"⚠️\s*這不是買訊。?"),
+    re.compile(r"這不是買訊，也不進海選。?"),
+    re.compile(r"這份表不是買賣清單，也不進海選。?"),
+    re.compile(r"〔不是買訊〕"),
+    re.compile(r"不是買訊、不進海選、不改黃金買點。?"),
+    re.compile(r"不是買訊、不進海選。?"),
+    re.compile(r"不是買訊。不進海選。?"),
+    re.compile(r"這不是買訊。?"),
+    re.compile(r"不上買訊。?"),
+    re.compile(r"不是買訊。?"),
+    re.compile(r"也不進海選。?"),
+    re.compile(r"不進海選、不改黃金買點。?"),
+    re.compile(r"不改黃金買點。?"),
+    re.compile(r"不進海選。?"),
+)
+
+
+def strip_boilerplate(text: str) -> str:
+    s = str(text or "")
+    for pat in _BOILER_RES:
+        s = pat.sub("", s)
+    s = re.sub(r"[ \t]+\n", "\n", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = re.sub(r"、{2,}", "、", s)
+    s = re.sub(r"。{2,}", "。", s)
+    return s.strip()
 
 # 問句 → 彙整答案。社團規則寫成公開能講的句子，不貼社團連結。
 _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
@@ -22,7 +50,7 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
         re.compile(r"(融會貫通|三百.*一百|課綱|七百次|700.?次|全部貫通|怎麼串)"),
         "三百／一百／三百",
         "課綱是先融會 300 則公開文，再練 100 則判斷問句，再拿另外 300 則對官方日 K 回測。"
-        "底圖是 Drive 1709 主文＋他自己的一／二層樓中樓。不進海選、不是買訊。"
+        "底圖是 Drive 1709 主文＋他自己的一／二層樓中樓。"
         "問『融會貫通』時對話腦會帶本輪回測數字。",
     ),
     (
@@ -76,8 +104,7 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
         "費半先行",
         "2026 他常用費半當台股先行。費半／那指還在逆風、夜盤再破，日盤先當擴延，不談止跌完成。"
         "2025-05-09 他說費半、那指早就 14 重疊，4/9 低當今年低點候選。"
-        "2026-06-15 費半 1-4 重疊後他當下跌趨勢化解；7 月底加權仍探 39385，先行不是保證。"
-        "不是買訊、不進海選。",
+        "2026-06-15 費半 1-4 重疊後他當下跌趨勢化解；7 月底加權仍探 39385，先行不是保證。",
     ),
     (
         re.compile(r"(台積電量價|多標籤|決勝|B-a-2|A-c-3|恐慌下殺|三種波浪)"),
@@ -93,8 +120,7 @@ _METHODS: List[Tuple[re.Pattern[str], str, str]] = [
         "2024-07-08 樓中樓原文：整理完成起漲突然跌停＝洗盤；漲很多的飆股跌停＝出貨。"
         "破線翻＝跌破支撐當日站回（2023-12-14 小時線；2024-12-17 均豪跌破頸線隔日站回＝洗盤）。"
         "2025-08-21：要看到主力作價洗盤痕跡＝洗盤型態＋作量 K 棒；帶量突破要站上帶量高點。"
-        "2026-03-06 南亞科洗盤痕跡明顯、群聯用型態。2026-09-08 聯亞、9/3 南亞科他當破線洗盤。"
-        "不是買訊、不進海選。",
+        "2026-03-06 南亞科洗盤痕跡明顯、群聯用型態。2026-09-08 聯亞、9/3 南亞科他當破線洗盤。",
     ),
     (
         re.compile(r"(連三天|連三日|三日不破|三日之內|三日內站回|三日不回補|破三日低|假跌破)"),
@@ -1739,7 +1765,7 @@ def format_methods_html(ask: str) -> str:
             chunks.append(format_witness_html(ask))
     except Exception:
         pass
-    return "\n".join(chunks)
+    return strip_boilerplate("\n".join(chunks))
 
 
 def is_method_query(ask: str) -> bool:

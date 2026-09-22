@@ -60,7 +60,7 @@ def test_progress_page_is_independent():
     assert "費半" in html or "1-4" in html
     assert "量先價行" in html
     assert "量價背離" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
 
 
 def test_welcome_teaches_chat_not_a_menu():

@@ -15,8 +15,7 @@ from tg_layout import html_escape
 
 PENDING = "biaoke:chat"
 DISCLAIMER = (
-    "這不是買訊。按了飆大之後打字或語音都由即時對話線回你。"
-    "依據是把他公開文加官方數字彙整，不是飆大本人。"
+    "打字或語音問。依據是公開文加官方數字彙整，不是他本人。"
 )
 OFFTOPIC = "這區只談台股／美股／大盤／個股結構。食衣住行不問這邊。"
 WINDOW_OPEN = (
@@ -658,10 +657,16 @@ def answer_biaoke(
     def _done(html: str) -> str:
         try:
             from biaoke_chain import attach_five_lead
+            from biaoke_mind import strip_boilerplate
 
-            return attach_five_lead(html, db_path, q, uid)
+            return strip_boilerplate(attach_five_lead(html, db_path, q, uid))
         except Exception:
-            return html
+            try:
+                from biaoke_mind import strip_boilerplate
+
+                return strip_boilerplate(html)
+            except Exception:
+                return html
 
     try:
         from biaoke_live import live_enabled, live_reply

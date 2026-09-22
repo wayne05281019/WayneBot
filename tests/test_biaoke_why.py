@@ -242,7 +242,8 @@ def test_why_qincheng_60m_has_official_high_low():
     assert "海選" in body
     html = format_methods_html("勤誠 6/19 60分")
     assert "479" in html
-    assert "不是買訊" in html or "這不是買訊" in html
+    assert "不是買訊" not in html
+    assert "這不是買訊" not in html
 
 
 def test_why_hi_test_dark_horses_are_6683_and_6830():
@@ -254,7 +255,7 @@ def test_why_hi_test_dark_horses_are_6683_and_6830():
     html = format_methods_html("高階測試兩檔黑馬")
     assert "6683" in html
     assert "汎銓" in html or "泛銓" in html
-    assert "這不是買訊" in html or "不是買訊" in html
+    assert "不是買訊" not in html
 
 
 def test_why_broker_points_not_his_method():

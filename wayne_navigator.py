@@ -460,6 +460,8 @@ class NavigatorEngine:
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
+        high_raw = df["high"].astype(float).copy() if "high" in df.columns else close_raw
+        low_raw = df["low"].astype(float).copy() if "low" in df.columns else close_raw
         live_time = ""
         is_live = False
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
@@ -977,6 +979,18 @@ class NavigatorEngine:
             from sell_discipline import attach_sell
 
             attach_sell(payload, hl_tags, trend_labels)
+        except Exception:
+            pass
+        try:
+            from hold_prior_wave import attach_hold_prior_wave
+
+            attach_hold_prior_wave(
+                payload,
+                df["date"].tolist(),
+                high_raw.tolist(),
+                low_raw.tolist(),
+                df["volume"].tolist() if "volume" in df.columns else None,
+            )
         except Exception:
             pass
         try:
@@ -2574,15 +2588,22 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
     except Exception:
         sell_sub = ""
     try:
+        from hold_prior_wave import attach_buy_verdict
+
+        attach_buy_verdict(card)
+        verdict = str(card.get("buy_verdict_note") or "").strip()
+    except Exception:
+        verdict = ""
+    try:
         from decision_card_signals import stance_explain, trim_stance_echo
 
-        stance_note = stance_explain(
+        stance_note = verdict or stance_explain(
             str(card.get("stance_kind") or "wait"),
             sell_note=sell_sub,
             card=card,
         )
     except Exception:
-        stance_note = sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
+        stance_note = verdict or sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
     stance_txt_plan = str(card.get("stance") or "今天先看表，先等")
     try:
         stance_note = trim_stance_echo(stance_txt_plan, stance_note)
@@ -3038,7 +3059,6 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     except Exception:
         pass
     name = card.get("stock_name") or str(df["stock_name"].iloc[-1] or sid)
-    pink_note = pink_warning_note(card)
     chg = float(card.get("change_pct") or 0)
     prev_c = float(card.get("prev_close") or 0)
     chg_amt = (float(card["close"]) - prev_c) if prev_c else None
@@ -3125,21 +3145,20 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
     except Exception:
         fund_block = ""
     try:
-        from sell_discipline import attach_sell, sell_note_lines
+        from sell_discipline import attach_sell
 
         attach_sell(card)
-        sell_lines = sell_note_lines(card)
-        try:
-            from sell_discipline import sell_highlight_kind
-
-            if sell_highlight_kind(card) and sell_lines:
-                sell_lines = [f"<b>作者提醒</b>　{sell_lines[0]}"] + sell_lines[1:]
-        except Exception:
-            pass
     except Exception:
-        sell_lines = []
-    setup_block = section("<b>協助判斷</b>", *sell_lines) if sell_lines else ""
-    tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
+        pass
+    hold_lines = []
+    try:
+        from hold_prior_wave import hold_note_lines
+
+        hold_lines = hold_note_lines(card)
+    except Exception:
+        hold_lines = []
+    setup_block = section("<b>協助判斷</b>", *hold_lines) if hold_lines else ""
+    tail = section(*[x for x in (extra_flags, fund_block) if x])
     try:
         from live_quote import live_clock_suffix
 
@@ -3241,6 +3260,14 @@ def render_first_glance_png(
         footer_src = discipline_box_notes(card, pink_note)
     except Exception:
         footer_src = [n for n in (sell_note, pink_note) if n]
+    try:
+        from hold_prior_wave import attach_buy_verdict
+
+        attach_buy_verdict(card)
+        verdict = str(card.get("buy_verdict_note") or "").strip()
+        footer_src = [verdict] if verdict else list(footer_src)
+    except Exception:
+        pass
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -3947,7 +3974,12 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
         return buy_i, sell_i
     if str(card.get("sell_action") or "") == "直接減碼":
         sell_i = n - 1
-    if str(card.get("relative_buy_kind") or "") == "just_left":
+    verdict = str(card.get("buy_verdict") or "")
+    if verdict == "buy":
+        buy_i = n - 1
+    elif verdict in ("watch", "no"):
+        buy_i = None
+    elif str(card.get("relative_buy_kind") or "") == "just_left":
         buy_i = n - 1
     if str(card.get("entry_stage") or "") == "watch":
         buy_i = None

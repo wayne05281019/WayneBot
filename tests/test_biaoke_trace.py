@@ -34,7 +34,7 @@ def test_fancheng_timeline_not_a_lecture():
     assert "語料" not in html
     assert "6830" in html or "泛銓" in html
     assert "新聞變多" in html
-    assert "這不是買訊" in html
+    assert "不是買訊" not in html
     assert "6683" in html or "雍智" in html
 
 
@@ -43,7 +43,7 @@ def test_yongzhi_timeline_names_both_dark_horses():
     assert "語料" not in html
     assert "6683" in html
     assert "6830" in html or "汎銓" in html or "泛銓" in html
-    assert "這不是買訊" in html
+    assert "不是買訊" not in html
 
 
 @pytest.mark.production_db
@@ -76,7 +76,7 @@ def test_wave_question_uses_sep11_levels():
     assert "語料" not in text
     html = answer_biaoke(":memory:", "右肩型態 45839")
     assert "45839" in html
-    assert "這不是買訊" in html
+    assert "不是買訊" not in html
     assert "語料" not in html
 
 
@@ -93,7 +93,7 @@ def test_nanya_1303_timeline_is_not_nanya_tech():
     assert "217" not in tech
     html = answer_biaoke(":memory:", "南亞怎麼看")
     assert "1303" in html
-    assert "這不是買訊" in html
+    assert "不是買訊" not in html
     assert "語料" not in html
 
 
@@ -106,7 +106,7 @@ def test_mediatek_timeline_is_ic_design_not_april16_hold():
     assert "語料" not in text
     html = answer_biaoke(":memory:", "聯發科他有看好嗎")
     assert "2454" in html
-    assert "這不是買訊" in html
+    assert "不是買訊" not in html
     assert "語料" not in html
 
 

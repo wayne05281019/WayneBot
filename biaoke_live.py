@@ -141,8 +141,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             if cross:
                 bits.append(
                     "官方佔比材料（與洞燭先機同一套法人買超％）。"
-                    "講哪族／先機用這列。點名只參考。不准發明一族。"
-                    "不是買訊、不進海選、不改黃金買點。\n"
+                    "講哪族／先機用這列。點名只參考。不准發明一族。\n"
                     + cross
                 )
     except Exception:
@@ -356,7 +355,9 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             pass
     except Exception:
         logger.debug("飆大即時參考略過", exc_info=True)
-    return "筆記（不要照抄格式）：\n" + "\n".join(bits[:64])
+    from biaoke_mind import strip_boilerplate
+
+    return "筆記（不要照抄格式）：\n" + strip_boilerplate("\n".join(bits[:64]))
 
 
 def _grounding(db_path: str, ask: str, uid: str = "") -> str:

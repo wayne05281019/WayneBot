@@ -406,6 +406,12 @@ class ScreeningEngine:
                     item["profit"] = float(info.get("profit_pct") or 0)
                     item["vol_rank_120"] = rank
                     item["leave_l20"] = leave_l20 or yest_hl_low
+                    try:
+                        from hold_prior_wave import stamp_buy_gate
+
+                        stamp_buy_gate(item, df)
+                    except Exception:
+                        pass
                     res_leave_zero.append(item)
 
             # ------------------------------------------------------------------
@@ -1027,6 +1033,12 @@ class ScreeningEngine:
                 for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
                     if key in info:
                         item[key] = info[key]
+            try:
+                from hold_prior_wave import stamp_buy_gate
+
+                stamp_buy_gate(item, df)
+            except Exception:
+                pass
             out.append(item)
         out.sort(
             key=lambda x: (
@@ -1168,6 +1180,8 @@ def entry_star_count(
         n -= 1
     if row.get("us_peer_headwind"):
         n -= 1
+    if str(row.get("buy_gate") or "") == "no" or str(row.get("hold_prior_state") or "") == "broke":
+        n = min(n, 2)
     n = max(0, min(ENTRY_STAR_N, n))
     if n >= ENTRY_STAR_N:
         must = (
@@ -1236,7 +1250,7 @@ def merge_entry_stage_rows(
         sid = str(raw.get("stock_id") or raw.get("code") or "").strip()
         item = dict(raw)
         item["entry_stage"] = "buy"
-        item["entry_stage_label"] = "買點"
+        item["entry_stage_label"] = "剛離零" if str(item.get("buy_gate") or "") == "no" else "買點"
         if sid:
             seen.add(sid)
         out.append(item)
@@ -1770,6 +1784,8 @@ def _stock_card_html(
         notices.append(_hot("隔夜逆風"))
     elif item.get("us_caution"):
         notices.append(html_escape("隔夜偏空"))
+    if item.get("buy_gate") == "no":
+        notices.append(_flag(str(item.get("buy_gate_note") or "低點線破了，現在不要買")))
     to_k = item.get("turnover_k")
     try:
         from fundamentals import format_yi
@@ -1846,12 +1862,15 @@ def _stock_card_html(
     try:
         from decision_card_signals import leave_zero_trade_plan
 
-        cut_in, cut_out = leave_zero_trade_plan(
-            close=item.get("close"),
-            hi20_close=item.get("hi20_close"),
-            bucket_label=str(item.get("entry_stage_label") or bucket_label or ""),
-            entry_stage=str(item.get("entry_stage") or ""),
-        )
+        if str(item.get("buy_gate") or "") == "no":
+            cut_in, cut_out = "", ""
+        else:
+            cut_in, cut_out = leave_zero_trade_plan(
+                close=item.get("close"),
+                hi20_close=item.get("hi20_close"),
+                bucket_label=str(item.get("entry_stage_label") or bucket_label or ""),
+                entry_stage=str(item.get("entry_stage") or ""),
+            )
     except Exception:
         cut_in, cut_out = "", ""
     if cut_in:
@@ -2054,7 +2073,12 @@ def format_screening_payload(
                 items = items[: int(cap)]
         if skip_empty and not items:
             continue
-        n_buy = sum(1 for it in items if str(it.get("entry_stage") or "") == "buy")
+        n_buy = sum(
+            1
+            for it in items
+            if str(it.get("entry_stage") or "") == "buy"
+            and str(it.get("buy_gate") or "") != "no"
+        )
         n_watch = sum(1 for it in items if str(it.get("entry_stage") or "") == "watch")
         count_bit = (
             f"買點 {n_buy}　還在零 {n_watch}"
@@ -2212,6 +2236,8 @@ def _share_notices_plain(item: Dict[str, Any]) -> List[str]:
         bits.append("隔夜逆風")
     elif item.get("us_caution"):
         bits.append("隔夜偏空")
+    if item.get("buy_gate") == "no":
+        bits.append(str(item.get("buy_gate_note") or "低點線破了，現在不要買"))
     return bits
 
 

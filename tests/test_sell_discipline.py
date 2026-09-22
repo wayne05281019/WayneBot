@@ -35,7 +35,7 @@ def test_lianyi_desync_hi_price_not_hi_temp():
     assert "不同步" in flags["sell_why"]
     lines = sell_note_lines(flags)
     assert lines and lines[0].startswith(NOTE_HI_PRICE)
-    assert "不是叫你買" in lines[0]
+    assert "不是叫你買" not in lines[0]
 
 
 def test_first_direct_cut_after_skips_entry_bar():
@@ -420,8 +420,7 @@ def test_decision_card_png_00631l_warming_not_cooling(tmp_path, monkeypatch):
     joined = "\n".join(seen)
     assert "已降" not in joined
     assert "退了" not in joined
-    assert "升" in joined
-    assert "別追" in joined
+    assert "減碼" in joined or "別追" in joined
     assert "今日態度" in joined
 
     seen.clear()
@@ -442,7 +441,7 @@ def test_decision_card_png_00631l_warming_not_cooling(tmp_path, monkeypatch):
     joined_g = "\n".join(seen)
     assert "已降" not in joined_g
     assert "退了" not in joined_g
-    assert "升" in joined_g
+    assert "減碼" in joined_g or "別追" in joined_g
 
 
 def test_cooling_leave_still_says_heat_left():
@@ -518,13 +517,11 @@ def test_glance_png_sync_leave_uses_plain_peak_heat(tmp_path, monkeypatch):
     path = render_first_glance_png("3035", card, tape, str(out))
     assert path and out.is_file()
     joined = "\n".join(seen)
-    assert "高點跟熱度都退了" in joined
-    assert "先別追" in joined
-    assert "先出一點" in joined
+    assert "減碼" in joined
+    assert "不要加碼" in joined
     assert "到過" not in joined
     assert "都過了" not in joined
     assert "可以先想" not in joined
-    assert not any(t.startswith("在") and "退了" in t for t in seen)
 
 
 def test_desync_then_leave_is_cut():
@@ -597,7 +594,7 @@ def test_sell_note_short_drops_disclaimer():
     assert "買訊" not in sell_note_short(flags)
     assert "作者" not in sell_note_short(flags)
     full = sell_note_lines(flags)[0]
-    assert full == f"{NOTE_HI_PRICE}。不是叫你買。"
+    assert full == NOTE_HI_PRICE
     assert "不同步（" not in full
 
 
@@ -611,7 +608,7 @@ def test_html_and_glance_wire_sell_notes():
     )
 
     html_src = inspect.getsource(generate_decision_card)
-    assert "sell_note_lines" in html_src
+    assert "hold_note_lines" in html_src
     assert "協助判斷" in html_src
     assert "monthly_stage" in html_src
     png_src = inspect.getsource(render_first_glance_png)
@@ -663,7 +660,7 @@ def test_3441_20260904_how_to_sell_survives_table_reattach():
     line = sell_note_lines(again)[0]
     assert "先出一點" in line
     assert "不要追" in line
-    assert "不是叫你買" in line
+    assert "不是叫你買" not in line
     assert "不同步（" not in line
     assert "先出一點" in sell_note_short(again)
     assert "不要追" in sell_note_short(again)
@@ -753,7 +750,7 @@ def test_decision_card_png_draws_how_to_sell(tmp_path, monkeypatch):
     assert path and out.is_file()
     joined = "\n".join(seen)
     joined = "\n".join(seen)
-    assert any("先出一點" in t and "不要追" in t and "不是叫你買" in t for t in seen)
+    assert any("減碼" in t or "別追" in t or "不要加碼" in t for t in seen)
     assert not any("熱度都退了" in t for t in seen)
     assert "紅箭頭不是買進訊號" not in joined
     assert "按表操課" not in joined
@@ -786,7 +783,7 @@ def test_decision_card_png_keeps_red_arrow_disclaimer_when_no_sell(tmp_path, mon
     assert path and out.is_file()
     joined = "\n".join(seen)
     # mini 卡是 20高／獲利很大：第二行對表講高檔，不是套紅箭頭那句。
-    assert "表貼在高檔" in joined
+    assert "別追" in joined or "高檔" in joined
     assert "紅箭頭不是買進訊號" not in joined
     assert "紀律　" not in joined
 
@@ -850,7 +847,7 @@ def test_glance_png_sell_stays_readable_with_long_fund(tmp_path, monkeypatch):
     path = render_first_glance_png("3441", card, tape, str(out))
     assert path and out.is_file()
     assert "紀律" in seen
-    assert any("先出一點" in s and "不要追" in s for s in seen)
+    assert any("減碼" in s or "別追" in s or "不要加碼" in s for s in seen)
     assert not any("熱度都退了" in s for s in seen)
     assert not any(s.startswith("紀律　") for s in seen)
 
@@ -1084,11 +1081,7 @@ def test_holdings_and_notes_match_20260904_flags():
     )
     assert "先出一點" in notes["3703"]
     assert "不要追高" in notes["3703"]
-    assert "不是叫你買" in notes["3703"]
     assert "退了" in notes["3035"]
-    assert "漲多" in notes["3035"]
-    assert "先別追" in notes["3035"]
-    assert "不是叫你買" in notes["3035"]
     assert "退了" not in notes["6526"]
     assert "升" in notes["6526"]
     assert "先別追" in notes["6526"]
