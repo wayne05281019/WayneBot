@@ -1461,7 +1461,7 @@ def _format_futures_night_line(
     day: Optional[Dict[str, Any]] = None,
     *,
     spot_close: float = 0.0,
-    label: str = "夜盤",
+    label: str = "台指期夜盤",
 ) -> Optional[str]:
     if not night or not night.get("close"):
         return None
@@ -1541,13 +1541,17 @@ def _page_pct(val: Optional[float]) -> str:
 
 def _us_face_short(us: Dict[str, Any]) -> str:
     """台股大盤頁不要寫「大盤中性」——那是美股判斷。"""
-    from us_overnight import classify_us_regime, effective_sox_pct
+    from us_overnight import regime_face_label
 
-    regime = str((us or {}).get("regime") or classify_us_regime(us) or "unknown")
-    sox = effective_sox_pct(us)
-    if regime == "ok" and sox is not None and sox <= -1.5:
-        return "中性、費半弱"
-    return {"ok": "中性", "caution": "偏空", "risk_off": "逆風"}.get(regime, "沒接到")
+    face = regime_face_label(us)
+    return {
+        "大盤中性": "中性",
+        "大盤偏多": "偏多",
+        "大盤偏空": "偏空",
+        "大盤逆風": "逆風",
+        "指數還中性，電子鏈逆風": "中性、費半弱",
+        "美股收盤沒接到": "沒接到",
+    }.get(face, face)
 
 
 _US_NAME_SHORT = {
@@ -3512,7 +3516,7 @@ def _outlook_action_plain(
     if us == "risk_off" or tw == "bear" or fr >= 60:
         return "逆風，佈局先等、當沖不要硬沖。"
     if us_down and night_firm:
-        return "美股弱、夜盤沒跟崩。今天別追高，黃金買點仍按表。"
+        return "美股弱、台指期夜盤沒跟崩。今天別追高，黃金買點仍按表。"
     if us == "caution" or fr >= 35:
         return "偏空。黃金買點、重點觀察照表，別追高。"
     if us_up and night_firm:
@@ -3520,7 +3524,7 @@ def _outlook_action_plain(
     if vs_ma20 is not None and float(vs_ma20) < -1.0:
         return "加權還在月線下。黃金買點、重點觀察照表，別追高。"
     if night_weak:
-        return "夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。"
+        return "台指期夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。"
     return "黃金買點、重點觀察照表，別追高。"
 
 
@@ -3545,6 +3549,7 @@ _OUTLOOK_ACTION_BOLD = (
     "台股今天休市",
     "不要追已經噴的",
     "當沖不要硬沖",
+    "台指期夜盤比日盤便宜",
     "夜盤比日盤便宜",
     "黃金買點",
     "重點觀察",
@@ -3589,9 +3594,9 @@ def _outlook_night_plain_lines(
     day: Optional[Dict[str, Any]] = None,
     *,
     spot_close: float = 0.0,
-    label: str = "夜盤",
+    label: str = "台指期夜盤",
 ) -> List[str]:
-    """夜盤只寫收盤與相對日盤／現貨；到期月、開高低留給大盤專頁。"""
+    """台指期夜盤只寫收盤與相對日盤／現貨；到期月、開高低留給大盤專頁。"""
     if not night or not night.get("close"):
         return []
     from stock_links import html_named
@@ -3802,7 +3807,7 @@ def format_screen_market_outlook_html(
         if pct_bits:
             body.append("　".join(pct_bits))
     if us_ok:
-        body.append(_outlook_b(us_label))
+        body.append(f"美股　{_outlook_b(us_label)}")
         if ixic is not None:
             body.append(f"{html_named('那斯達克')} {_outlook_b(f'{float(ixic):+.2f}%')}")
         sox = us.get("sox_pct")

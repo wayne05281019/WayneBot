@@ -1197,9 +1197,57 @@ def test_outlook_action_plain_risk_off_and_neutral():
         ixic_pct=1.4,
     )
     assert "黃金買點" in cheap_night
-    assert "夜盤比日盤便宜" in cheap_night
+    assert "台指期夜盤比日盤便宜" in cheap_night
     assert "周帶量" not in cheap_night
     assert "逆風" not in cheap_night
+
+
+def test_outlook_action_names_tx_night_not_us():
+    from taiwan_market import _outlook_action_plain
+
+    msg = _outlook_action_plain(
+        us_regime="ok",
+        night_vs_day=-0.46,
+        tw_regime="bull",
+        falling_risk=15,
+        vs_ma20=1.2,
+        ixic_pct=1.4,
+    )
+    assert "台指期夜盤" in msg
+    assert "美股夜盤" not in msg
+
+
+def test_screen_outlook_us_strong_says_firm_not_neutral():
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260921",
+        snap={
+            "ok": True,
+            "as_of": "20260921",
+            "close": 46000.0,
+            "chg1_pct": 0.4,
+            "vs_ma20_pct": 1.2,
+            "regime": "neutral",
+            "falling_risk": 20,
+            "futures": {"close": 26500, "date": "20260921"},
+            "futures_night": {"close": 26380, "date": "20260921"},
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "dji_pct": 0.8,
+            "spx_pct": 1.0,
+            "ixic_pct": 1.4,
+            "sox_pct": 1.2,
+            "vix": 15.0,
+        },
+    )
+    assert "美股" in html and "<code>大盤偏多</code>" in html
+    assert "大盤中性" not in html
+    assert "台指期夜盤比日盤便宜" in html
+    assert "台指期夜盤" in html
 
 
 def test_format_screen_market_outlook_html_plain_language():
@@ -1292,6 +1340,8 @@ def test_format_screen_market_outlook_html_plain_language():
     assert "<code>+0.32%</code>" in html
     assert "<code>月線上</code>" in html
     assert "那斯達克" in html
+    assert "美股" in html and "<code>大盤中性</code>" in html
+    assert "台指期夜盤" in html
     assert "恐慌指數" in html
     assert "剛到" in html
     assert "<code>電腦</code>" in html
@@ -1381,7 +1431,7 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "周帶量" not in html
     assert "加權收盤" in html and "<code>46,288.00</code>" in html
     assert "<code>+0.96%</code>　貼著月線" in html
-    assert any(ln.strip() == "<code>大盤偏空</code>" for ln in lines)
+    assert "美股" in html and "<code>大盤偏空</code>" in html
     assert any("那斯達克" in ln and "<code>-0.01%</code>" in ln for ln in lines)
     assert any("費半" in ln and "<code>+0.63%</code>" in ln for ln in lines)
     panic = [ln for ln in lines if "恐慌指數" in ln]
@@ -1393,7 +1443,7 @@ def test_outlook_screenshot_one_fact_per_line_and_bold():
     assert "美股昨漲較多　<code>光通訊</code>" in html
     assert "電子鏈夜盤" not in html
     assert "族群，昨天在美股是領漲" not in html
-    assert "夜盤" in html and "<code>46,382</code>" in html
+    assert "台指期夜盤" in html and "<code>46,382</code>" in html
     assert "電子期夜盤" in html and "<code>2,921</code>" in html
     assert "買多 <code>7,805口</code>" in html
     assert "買空 <code>84,156口</code>" in html
@@ -1409,8 +1459,8 @@ def test_outlook_embolden_longest_phrase_first():
     assert _outlook_embolden("偏空。黃金買點、重點觀察照表，別追高。") == (
         "<code>偏空</code>。<code>黃金買點</code>、<code>重點觀察</code>照表，<code>別追高</code>。"
     )
-    assert _outlook_embolden("夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。") == (
-        "<code>夜盤比日盤便宜</code>。<code>黃金買點</code>、<code>重點觀察</code>照表，<code>別追高</code>。"
+    assert _outlook_embolden("台指期夜盤比日盤便宜。黃金買點、重點觀察照表，別追高。") == (
+        "<code>台指期夜盤比日盤便宜</code>。<code>黃金買點</code>、<code>重點觀察</code>照表，<code>別追高</code>。"
     )
 
 
@@ -1529,7 +1579,7 @@ def test_outlook_just_rotated_chips_vs_electronics_drop():
     assert any("買多 <code>8,153口</code>" in ln for ln in lines)
     assert any("買空 <code>90,542口</code>" in ln for ln in lines)
     assert any("跳升" in ln for ln in lines)
-    assert "<code>指數還中性，電子鏈逆風</code>" in html
+    assert "美股" in html and "<code>指數還中性，電子鏈逆風</code>" in html
 
 
 def test_outlook_keeps_tsm_cash_and_us_lead_group():
