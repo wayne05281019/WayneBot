@@ -226,6 +226,8 @@ def test_dongzhu_page_uses_dashed_sections(tmp_path, monkeypatch):
     assert "洞燭先機進行中" in hold_src[hold_i:hold_end]
     assert "_leave_zero_section_keyboard" not in hold_src[page_i:page_end]
     assert "_dongzhu_picks_keyboard" in hold_src[page_i:page_end]
+    assert hold_src[page_i:page_end].count("dongzhu_picks(") == 1
+    assert "data=data" in hold_src[page_i:page_end]
     assert "held_sids" in hold_src[page_i:page_end]
     assert "_dongzhu_held_sids" in hold_src[page_i:page_end]
     assert "held=" in hold_src[hold_i:hold_end]

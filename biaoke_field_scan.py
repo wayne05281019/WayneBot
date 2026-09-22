@@ -2853,12 +2853,17 @@ def dongzhu_hold_page(
 
 
 def dongzhu_page(
-    db_path: str, *, spoken: Optional[str] = None, held_sids: Optional[Sequence[str]] = None
+    db_path: str,
+    *,
+    spoken: Optional[str] = None,
+    held_sids: Optional[Sequence[str]] = None,
+    data: Optional[Dict[str, Any]] = None,
 ) -> str:
     """主選單洞燭先機頁。每檔先寫買或不買；已持有寫留或不加碼。"""
     from tg_layout import join_dashed
 
-    data = dongzhu_picks(db_path, spoken=spoken)
+    if data is None:
+        data = dongzhu_picks(db_path, spoken=spoken)
     held_sids = [str(x) for x in (held_sids or ()) if str(x)]
     cap = _esc(data.get("cap") or "")
     blocks: List[str] = [

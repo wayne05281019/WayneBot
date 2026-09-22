@@ -3253,8 +3253,16 @@ class WayneTelegramBot:
             )
             try:
                 held_sids = self._dongzhu_held_sids(uid)
-                html = await asyncio.wait_for(
-                    asyncio.to_thread(dongzhu_page, self.db_path, held_sids=held_sids),
+
+                def _bundle():
+                    data = dongzhu_picks(self.db_path)
+                    html = dongzhu_page(
+                        self.db_path, held_sids=held_sids, data=data
+                    )
+                    return html, data
+
+                html, data = await asyncio.wait_for(
+                    asyncio.to_thread(_bundle),
                     timeout=20.0,
                 )
             except asyncio.TimeoutError:
@@ -3272,14 +3280,13 @@ class WayneTelegramBot:
                 return
             picks = []
             try:
-                data = dongzhu_picks(self.db_path)
                 seen = set()
                 buy_sids = {
                     str(x.get("sid") or "")
-                    for x in list(data.get("buys") or [])
+                    for x in list((data or {}).get("buys") or [])
                     if x.get("sid")
                 }
-                for item in list(data.get("recs") or []):
+                for item in list((data or {}).get("recs") or []):
                     sid = str(item.get("sid") or "")
                     if not sid or sid in seen:
                         continue
