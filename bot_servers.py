@@ -6177,7 +6177,7 @@ class WayneTelegramBot:
             return
         if data.startswith("n:"):
             uid = str(q.from_user.id)
-            await self._send_industry(q.message, data[2:].strip(), uid)
+            await self._send_industry(q.message, data[2:].strip(), str(q.from_user.id))
             await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("i:"):
