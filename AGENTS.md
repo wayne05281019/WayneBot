@@ -31,7 +31,7 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 違反＝做錯。壓過「比較難」、壓過開 LINE／看片子／對圖。
 
 - 全部工作只准紅框**上方** Cursor Models。不准紅框**下方** Other Models。
-- **禁止** Task／子代理／computerUse／Cursor 話筒代理。那些會吃 Other Models。卡住用本機渲圖、pytest、curl。
+- **子代理可開。能自己做就不開。** 開了 `model` 只能省略或 `inherit`，必須仍是 Cursor Models。不准為了看起來忙而開。會吃 Other Models 的 computerUse／Cursor 話筒代理仍不准開。卡住用本機渲圖、pytest、curl。
 - **禁止**指定 opus、sonnet、gpt、grok-high、grok-xhigh、claude 或其他 listed slug。`model` 只能省略或 `inherit`（必須仍是 Cursor Models）。
 - 不能用換模型打斷 CI。不准用正式 `TELEGRAM_BOT_TOKEN` 搶 `getUpdates`（跟 Render 搶輪詢）。本機 `WAYNE_SKIP_POLLING=1`。
 
@@ -41,7 +41,7 @@ Cursor 帳單「Included in Pro+」紅框裡有兩條：
 
 - 能一次做完就一次。看不懂、蓋住數字、沒對質＝沒做完。
 - 該做的動作仍要做：推 `main`、建檔、對質、有需要再開 PR。省錢≠少做該做的。
-- 不准為了看起來忙而多跑、多讀、多渲、再開子代理。
+- 不准為了看起來忙而多跑、多讀、多渲。子代理能自己做就不開。
 
 ## 3. 能量化就直接量化（2026-09-19 升成最高；2026-09-21 補默默落檔）
 
