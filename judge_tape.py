@@ -105,7 +105,30 @@ _SCREEN_BUCKETS = (
     "overnight",
 )
 _BAR_KEYS = ("o", "h", "l", "c", "v")
-_EXTRA_KEEP = ("live", "chase_warning", "entry_stars", "stance", "rel_kind", "src")
+_CHIP_KEYS = ("fn", "tn", "dn", "pct")
+_EXTRA_KEEP = (
+    "live",
+    "chase_warning",
+    "entry_stars",
+    "stance",
+    "rel_kind",
+    "src",
+    "why",
+    "five",
+    "field",
+    "fine",
+    "role",
+    "q",
+    "pct_change",
+    "vol_rank_120",
+    "leave_l20",
+    "vs20",
+    "vs60",
+    "d20",
+    "foreign_net",
+    "trust_net",
+    "dealer_net",
+)
 
 
 def _bars_on(market_db: str, sids: Sequence[str], day: str) -> Dict[str, Dict[str, float]]:
@@ -117,27 +140,55 @@ def _bars_on(market_db: str, sids: Sequence[str], day: str) -> Dict[str, Dict[st
     conn = sqlite3.connect(market_db, timeout=8.0)
     out: Dict[str, Dict[str, float]] = {}
     try:
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(daily_quotes)")}
+        chip = all(
+            c in cols for c in ("foreign_net", "trust_net", "dealer_net", "pct_change")
+        )
+        sql = (
+            "SELECT stock_id, open, high, low, close, volume, "
+            "foreign_net, trust_net, dealer_net, pct_change"
+            if chip
+            else "SELECT stock_id, open, high, low, close, volume"
+        )
         chunk = 400
         for i in range(0, len(want), chunk):
             part = want[i : i + chunk]
             marks = ",".join("?" * len(part))
             rows = conn.execute(
                 f"""
-                SELECT stock_id, open, high, low, close, volume
+                {sql}
                 FROM daily_quotes
                 WHERE REPLACE(CAST(date AS TEXT),'-','')=? AND stock_id IN ({marks})
                 """,
                 [day, *part],
             ).fetchall()
-            for sid, o, h, lo, c, v in rows:
+            for row in rows:
+                sid = str(row[0])
                 bar = {}
-                for key, raw in (("o", o), ("h", h), ("l", lo), ("c", c), ("v", v)):
+                for key, raw in (
+                    ("o", row[1]),
+                    ("h", row[2]),
+                    ("l", row[3]),
+                    ("c", row[4]),
+                    ("v", row[5]),
+                ):
                     n = _num(raw)
                     if n is None:
                         continue
                     bar[key] = n
+                if chip and len(row) >= 10:
+                    for key, raw in (
+                        ("fn", row[6]),
+                        ("tn", row[7]),
+                        ("dn", row[8]),
+                        ("pct", row[9]),
+                    ):
+                        n = _num(raw)
+                        if n is None:
+                            continue
+                        bar[key] = n
                 if bar.get("c"):
-                    out[str(sid)] = bar
+                    out[sid] = bar
     except sqlite3.Error:
         return out
     finally:
@@ -227,9 +278,15 @@ def remember_rows(
                 extra["src"] = str(src)
             bar = dict(bars.get(sid) or {})
             bar.update(_row_bar(raw))
-            for key in _BAR_KEYS:
+            for key in _BAR_KEYS + _CHIP_KEYS:
                 if key in bar:
                     extra[key] = bar[key]
+            if extra.get("fn") is not None and extra.get("foreign_net") is None:
+                extra["foreign_net"] = extra["fn"]
+            if extra.get("tn") is not None and extra.get("trust_net") is None:
+                extra["trust_net"] = extra["tn"]
+            if extra.get("dn") is not None and extra.get("dealer_net") is None:
+                extra["dealer_net"] = extra["dn"]
             px = _num(raw.get("close") or raw.get("price") or raw.get("px") or extra.get("c"))
             conn.execute(
                 """
@@ -259,7 +316,7 @@ def remember_rows(
 
 
 def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
-    """當天規則名單沒按也落檔。只留代號＋官方柱數字，不准渲圖、不推話筒。"""
+    """當天規則名單沒按也落檔。代號＋為什麼選＋官方柱／量／法人。不准渲圖、不推話筒。"""
     stats: Dict[str, int] = {}
     if not market_db:
         return stats
@@ -327,7 +384,46 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
                 )
         except Exception:
             pass
+    stats["dongzhu"] = _snapshot_dongzhu(market_db, day)
     return stats
+
+
+def _snapshot_dongzhu(market_db: str, day: str) -> int:
+    """洞燭先機沒按也落檔。只記推薦檔＋為什麼選＋官方柱／法人。不推話筒。"""
+    try:
+        from biaoke_field_scan import dongzhu_picks
+
+        data = dongzhu_picks(market_db, record_flow=False) or {}
+    except Exception:
+        return remember_rows(market_db, "dongzhu", [], as_of=day, pick="rule", src="dongzhu")
+    why = str(data.get("why") or "").strip()
+    five = str(data.get("five") or "").strip()
+    field = str(data.get("field") or "").strip()
+    rows = []
+    for raw in list(data.get("recs") or []):
+        if not isinstance(raw, dict):
+            continue
+        sid = str(raw.get("sid") or raw.get("stock_id") or "").strip()
+        if not sid:
+            continue
+        rows.append(
+            {
+                "stock_id": sid,
+                "stock_name": str(raw.get("name") or raw.get("stock_name") or ""),
+                "close": raw.get("close") or raw.get("px"),
+                "why": str(raw.get("why") or why),
+                "five": five,
+                "field": field or str(raw.get("fine") or ""),
+                "fine": raw.get("fine"),
+                "role": raw.get("role"),
+                "vs20": raw.get("vs20"),
+                "vs60": raw.get("vs60"),
+                "q": raw.get("volr") or raw.get("q"),
+            }
+        )
+    return remember_rows(
+        market_db, "dongzhu", rows, as_of=day, pick="rule", src="dongzhu"
+    )
 
 
 def _quote_dates(market_db: str, cap: str) -> List[str]:
