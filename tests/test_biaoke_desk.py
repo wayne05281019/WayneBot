@@ -71,7 +71,7 @@ def test_welcome_teaches_chat_not_a_menu():
     assert html == WINDOW_OPEN
     assert "打字" in html
     assert "語音" in html or "麥克風" in html
-    assert "查個股" in html
+    assert "查個股" not in html
     assert "離開飆大" in html
     assert "點下面「大盤」" not in html
     assert "勤誠" not in html
@@ -400,8 +400,7 @@ def test_send_biaoke_page_pushes_leave_key():
         asyncio.run(bot._send_biaoke_page(msg, uid="11"))
     assert msg.reply_html.await_count >= 1
     last_html_kb = msg.reply_html.await_args.kwargs.get("reply_markup")
-    assert last_html_kb is not None
-    assert getattr(last_html_kb, "inline_keyboard", None)
+    assert last_html_kb is None
     assert msg.reply_text.await_count >= 1
     leave = msg.reply_text.await_args
     assert "離開飆大" in str(leave.args[0])
@@ -538,19 +537,10 @@ def test_biaoke_hub_has_stock_not_market_buttons(monkeypatch):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ""
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
-    kb = bot._biaoke_hub_markup("大盤現在")
-    texts = [b.text for r in kb.inline_keyboard for b in r]
-    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
-    assert texts == ["查個股"]
-    assert datas == ["bk:ask"]
-    blank = bot._biaoke_hub_markup("")
-    assert [b.callback_data for r in blank.inline_keyboard for b in r] == ["bk:ask"]
+    assert bot._biaoke_hub_markup("大盤現在") is None
+    assert bot._biaoke_hub_markup("") is None
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("3037", "威盛"))
-    named = bot._biaoke_hub_markup("威盛怎麼看")
-    named_d = [b.callback_data for r in named.inline_keyboard for b in r]
-    named_t = [b.text for r in named.inline_keyboard for b in r]
-    assert named_d == ["bk:ask", "bkdk:3037"]
-    assert named_t == ["查個股", "官方日K 威盛"]
+    assert bot._biaoke_hub_markup("威盛怎麼看") is None
 
 
 def test_biaoke_dayk_callback_sends_structure_not_card():
@@ -805,7 +795,7 @@ def test_shared_button_surfaces_use_same_formatters():
     assert "format_flow_html" in flow
     hub = inspect.getsource(WayneTelegramBot._biaoke_hub_markup)
     assert "bk:mkt" not in hub
-    assert 'InlineKeyboardButton("查個股"' in hub
+    assert 'InlineKeyboardButton("查個股"' not in hub
     dayk = inspect.getsource(WayneTelegramBot._biaoke_dayk_markup)
     assert 'sid, name = "TWII", "加權"' not in dayk
     screen = Path("screening_engine.py").read_text(encoding="utf-8")

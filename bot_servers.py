@@ -1773,14 +1773,9 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows) if rows else None
 
     def _biaoke_hub_markup(self, ask: str = ""):
-        """進去只留查個股。指數數字頁走主選單大盤，不在這裡再放一顆。"""
-        if not TELEGRAM_AVAILABLE:
-            return None
-        rows = [[InlineKeyboardButton("查個股", callback_data="bk:ask")]]
-        extra = self._biaoke_dayk_markup(ask)
-        if extra is not None:
-            rows.extend(list(extra.inline_keyboard or []))
-        return InlineKeyboardMarkup(rows)
+        """進去就是對話，裡面沒有選單。舊訊息的查個股／官方日K 回調仍能答。"""
+        del ask
+        return None
 
     def _biaoke_dayk_markup(self, ask: str = ""):
         """點名個股才加官方日K結構圖。空問／大盤／波浪不加權，避免跟主選單大盤疊。"""
