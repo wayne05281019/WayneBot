@@ -460,6 +460,8 @@ class NavigatorEngine:
         except Exception:
             pass
         close_raw = df["close"].astype(float).copy()
+        high_raw = df["high"].astype(float).copy() if "high" in df.columns else close_raw
+        low_raw = df["low"].astype(float).copy() if "low" in df.columns else close_raw
         live_time = ""
         is_live = False
         if "is_live" in df.columns and bool(df["is_live"].iloc[-1]):
@@ -977,6 +979,17 @@ class NavigatorEngine:
             from sell_discipline import attach_sell
 
             attach_sell(payload, hl_tags, trend_labels)
+        except Exception:
+            pass
+        try:
+            from hold_prior_wave import attach_hold_prior_wave
+
+            attach_hold_prior_wave(
+                payload,
+                df["date"].tolist(),
+                high_raw.tolist(),
+                low_raw.tolist(),
+            )
         except Exception:
             pass
         try:
@@ -3138,7 +3151,15 @@ def generate_decision_card(stock_id: str, db_path: str = None, lookback: int = 2
             pass
     except Exception:
         sell_lines = []
-    setup_block = section("<b>協助判斷</b>", *sell_lines) if sell_lines else ""
+    hold_lines = []
+    try:
+        from hold_prior_wave import hold_note_lines
+
+        hold_lines = hold_note_lines(card)
+    except Exception:
+        hold_lines = []
+    setup_bits = [x for x in list(sell_lines) + list(hold_lines) if x]
+    setup_block = section("<b>協助判斷</b>", *setup_bits) if setup_bits else ""
     tail = section(*[x for x in (extra_flags, fund_block, pink_note) if x])
     try:
         from live_quote import live_clock_suffix
@@ -3241,6 +3262,14 @@ def render_first_glance_png(
         footer_src = discipline_box_notes(card, pink_note)
     except Exception:
         footer_src = [n for n in (sell_note, pink_note) if n]
+    try:
+        from hold_prior_wave import hold_note_short
+
+        hold_n = str(hold_note_short(card) or "").strip()
+        if hold_n and hold_n not in footer_src:
+            footer_src = list(footer_src) + [hold_n]
+    except Exception:
+        pass
 
     last = (tape or {}).get("last") or {}
     C = _CARD

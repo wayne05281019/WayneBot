@@ -35,6 +35,7 @@ MAIN_FEATURE_MODULES: Tuple[str, ...] = (
     "wayne_navigator.py",
     "buy_streak.py",
     "sell_discipline.py",
+    "hold_prior_wave.py",
     "live_quote.py",
 )
 
