@@ -878,17 +878,23 @@ class NavigatorEngine:
         fine_industry = ""
         try:
             from industry_fine import load_cached_fine_industry, membership_face
+            from universe import stock_is_emerging
 
-            rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
-                str(stock_id)
-            ) or {}
-            chain = str(rec.get("chain") or "").strip()
-            mem = membership_face(str(stock_id), chain=chain)
-            # 標題列 listing 已含跨族／最細標時不再貼一次。「其他」不當產業鏈備援。
-            if mem and mem in str(listing or ""):
+            if str(listing or "").startswith("興櫃") or stock_is_emerging(
+                str(stock_id), self.db_path, quote_source=quote_source
+            ):
                 fine_industry = ""
             else:
-                fine_industry = mem
+                rec = (load_cached_fine_industry(self.db_path, [str(stock_id)]) or {}).get(
+                    str(stock_id)
+                ) or {}
+                chain = str(rec.get("chain") or "").strip()
+                mem = membership_face(str(stock_id), chain=chain)
+                # 標題列 listing 已含跨族／最細標時不再貼一次。「其他」不當產業鏈備援。
+                if mem and mem in str(listing or ""):
+                    fine_industry = ""
+                else:
+                    fine_industry = mem
         except Exception:
             fine_industry = ""
         raw_name = str(latest.get("stock_name") or "")

@@ -567,6 +567,16 @@ def industry_turnover_leader_id(industry: str, db_path: str = None) -> str:
     return str(top[0] or "").strip() if top else ""
 
 
+def stock_is_emerging(
+    stock_id: str, db_path: str = None, *, quote_source: str = ""
+) -> bool:
+    """興櫃＝ISIN 興櫃、或卡片走興櫃日均價。不准拿上櫃價值鏈去標。"""
+    if str(quote_source or "").strip() == "emerging_quotes":
+        return True
+    path = db_path or get_db_path()
+    return _uses_emerging_bars(str(stock_id or "").strip(), path)
+
+
 def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
     """日 K 不足、興櫃表夠長＝卡片走興櫃日均價。"""
     sid = str(stock_id or "").strip()
@@ -593,7 +603,7 @@ def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
         except Exception:
             um = ""
         conn.close()
-        if um in ("EM", "EMERGING"):
+        if um in ("EM", "EMERGING", "ESB"):
             return True
         return int(n_d or 0) < 5 and int(n_e or 0) >= 5
     except Exception:
@@ -603,7 +613,7 @@ def _uses_emerging_bars(stock_id: str, db_path: str) -> bool:
 def listing_industry_face(
     stock_id: str, db_path: str = None, *, quote_source: str = ""
 ) -> str:
-    """上市／上櫃後接產業標。跨族／最細標跟產業卡同一套；「其他」不寫。沒有才寫證交所括號。
+    """上市／上櫃後接產業標。跨族／最細標跟產業卡同一套；「其他」不寫。興櫃只寫 ISIN 官方產業。
 
     龍頭＝該（證交所）產業當日成交額第一。一線／二線官方沒這欄，不上。
     卡片走興櫃日均價時市場標必須是興櫃，不准被 daily_quotes 殘列改成上櫃／上市。
@@ -627,7 +637,10 @@ def listing_industry_face(
     industry = card_industry_label(sid, path)
     chain = ""
     face_ind = ""
-    if industry != "ETF":
+    if listing == "興櫃":
+        # 興櫃只認 ISIN 官方產業。櫃買價值鏈是上櫃鏈，不准蓋過來。
+        face_ind = ""
+    elif industry != "ETF":
         try:
             from industry_fine import membership_face, peek_cached_fine_chain
 

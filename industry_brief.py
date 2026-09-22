@@ -970,15 +970,22 @@ def attach_fine_industry(
     tags = display_tags(list(mine.get("tags") or []), sid)
     chain = str(mine.get("chain") or "")
     finest = str(mine.get("finest") or "")
-    if is_catchall_finest(finest):
-        if extras:
+    try:
+        from universe import stock_is_emerging
+
+        emerging = stock_is_emerging(sid, db_path)
+    except Exception:
+        emerging = False
+    if emerging or is_catchall_finest(finest):
+        if extras and not emerging:
             chain = "／".join(extras)
             finest = extras[0]
             tags = display_tags(extras, sid)
         else:
             chain = ""
             finest = ""
-            tags = extras
+            tags = extras if extras and not emerging else []
+            extras = extras if not emerging else []
     snap["fine_tags"] = tags
     snap["fine_chain"] = chain
     snap["fine_finest"] = finest

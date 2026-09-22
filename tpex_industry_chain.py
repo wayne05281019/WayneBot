@@ -61,18 +61,51 @@ def load_tpex_seed() -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _emerging_ids(conn: sqlite3.Connection) -> set:
+    """ISIN 興櫃，或興櫃日均價夠、上市櫃日 K 不夠。"""
+    out = set()
+    try:
+        for (sid,) in conn.execute(
+            """
+            SELECT stock_id FROM stock_universe
+            WHERE UPPER(COALESCE(market_type,'')) IN ('EM','EMERGING','ESB')
+            """
+        ):
+            if sid:
+                out.add(str(sid))
+    except sqlite3.Error:
+        pass
+    try:
+        for (sid,) in conn.execute(
+            """
+            SELECT e.stock_id
+            FROM emerging_quotes e
+            GROUP BY e.stock_id
+            HAVING COUNT(*) >= 5
+               AND (
+                   SELECT COUNT(*) FROM daily_quotes d WHERE d.stock_id = e.stock_id
+               ) < 5
+            """
+        ):
+            if sid:
+                out.add(str(sid))
+    except sqlite3.Error:
+        pass
+    return out
+
+
 def apply_tpex_overlay(
     db_path: str, ids: Optional[Iterable[str]] = None, *, force: bool = False
 ) -> Dict[str, int]:
     """只蓋籌碼K「其他」或還沒產業鏈的檔。已有水泥／代工／散熱零組件這種真分類不改。
 
     開機／ensure 會跑；同一行程同一顆庫只寫一次，查股不會每次重灌。
-    庫裡已有列優先；沒列才補 universe 現股（興櫃測庫沒灌 overlay 時仍走證交所備援）。
+    庫裡已有列優先；沒列才補上市櫃現股。興櫃不寫、已寫的櫃買鏈刪掉，改走 ISIN 官方產業。
     """
     from industry_fine import save_fine_industry_many, split_chain
 
     path = str(db_path or "")
-    stats = {"seed": 0, "write": 0, "keep": 0}
+    stats = {"seed": 0, "write": 0, "keep": 0, "em_skip": 0, "em_clear": 0}
     seed = load_tpex_seed()
     stats["seed"] = len(seed)
     if not path or not seed:
@@ -109,6 +142,20 @@ def apply_tpex_overlay(
         except Exception:
             tags = split_chain(chain)
         current[str(sid)] = str(tags[-1] if tags else "")
+    emerging = _emerging_ids(conn)
+    if emerging:
+        try:
+            q = ",".join("?" * len(emerging))
+            cur = conn.execute(
+                f"DELETE FROM stock_fine_industry WHERE source=? AND stock_id IN ({q})",
+                (SOURCE, *sorted(emerging)),
+            )
+            stats["em_clear"] = int(cur.rowcount or 0)
+            conn.commit()
+        except sqlite3.Error:
+            stats["em_clear"] = 0
+        for sid in emerging:
+            current.pop(sid, None)
     live = set(current)
     try:
         for (sid,) in conn.execute(
@@ -116,15 +163,20 @@ def apply_tpex_overlay(
             SELECT stock_id FROM stock_universe
             WHERE is_active=1 AND length(stock_id)=4
               AND COALESCE(asset_type,'') NOT LIKE 'ETF%'
+              AND UPPER(COALESCE(market_type,'')) NOT IN ('EM','EMERGING','ESB')
             """
         ):
             live.add(str(sid))
     except sqlite3.Error:
         pass
     conn.close()
+    live -= emerging
     buf: List[Dict[str, Any]] = []
     for sid, rec in seed.items():
         if ids is not None and sid not in set(want):
+            continue
+        if sid in emerging:
+            stats["em_skip"] += 1
             continue
         if sid not in live:
             continue
