@@ -1169,8 +1169,6 @@ def stance_explain(
     on_list = str(surface or "card") == "list"
     note = str(sell_note or "").strip()
     if note and not table_reads_as_low(card):
-        if "不是叫你買" not in note:
-            note = note.rstrip("。") + "。不是叫你買。"
         return note
     if card:
         return _stance_from_table(kind, card, on_list=on_list)

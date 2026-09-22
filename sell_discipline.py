@@ -443,11 +443,7 @@ def _note_from_face(card: Dict[str, Any]) -> str:
 
 def sell_note_lines(card: Dict[str, Any]) -> List[str]:
     short = sell_note_short(card)
-    if not short:
-        return []
-    if "不是叫你買" in short:
-        return [short]
-    return [f"{short}。不是叫你買。"]
+    return [short] if short else []
 
 
 def sell_note_short(card: Dict[str, Any]) -> str:

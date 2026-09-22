@@ -108,9 +108,6 @@ def test_share_cross_is_not_a_buy_list(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     blob = "\n".join(share_cross_lines(db))
     assert "官方佔比" in blob
-    assert "不是買訊" in blob
-    assert "不進海選" in blob
-    assert "黃金買點" in blob
     assert "可買" not in blob
     assert "leave_zero" not in blob
 
@@ -135,7 +132,6 @@ def test_scan_picks_test_laggard_not_named_asic(tmp_path, monkeypatch):
     assert "穎崴" in line
     assert "還沒先過前高" in line
     assert "ASIC" in line and "不當新族群" in line
-    assert "不是買訊" in line
     assert "不是他當下點名" in line
 
 
@@ -170,9 +166,6 @@ def test_dongzhu_page_recommends_leave_zero_in_field(tmp_path, monkeypatch):
     assert "還在零・嚴重低估" not in html
     assert "捕捉・同鏈比價落後" not in html
     assert "此刻推薦" in html
-    assert "下單進場仍只認剛離零" in html or "這型最落後次級" in html
-    assert "不是買訊" in html
-    assert "不進海選" in html
     assert "主產業" in html and "電子上游" in html
     assert "次產業" in html and "IC" in html
     assert "資金輪動要注意" in html
@@ -381,7 +374,6 @@ def test_dongzhu_page_does_not_invent_buy_or_named_asic(tmp_path, monkeypatch):
     assert "3443" not in html
     assert "這族黃金買點" not in html
     assert "還在零・嚴重低估" not in html
-    assert "不是買訊" in html
     assert "沒有可捕捉的次級" in html or "這型最落後次級" in html
     assert "不准發明切入" not in html
 
@@ -544,8 +536,6 @@ def test_dongzhu_ranks_rising_share_not_named_lots(tmp_path, monkeypatch):
     assert "這型最落後次級" in html
     assert "3443" not in html
     assert "資金流入" in html or "佔比" in html or "先機" in html
-    assert "只參考" in html or "不是唯一" in html or "不是買訊" in html
-    assert "不准發明切入" not in html
     assert "主產業" in html
     assert "次級" in html or "龍頭" in html
     assert "比價" in html or "龍頭" in html
@@ -797,9 +787,7 @@ def test_dongzhu_catches_test_laggards_without_stir_words(tmp_path, monkeypatch)
     assert "捕捉・同鏈比價落後" not in html
     assert "2449" in html and "京元電子" in html
     assert "3264" in html and "欣銓" in html
-    assert "不是單檔保證" in html
     assert "蠢蠢欲動" not in spoken
-    assert "不是買訊" in html
     empty = dongzhu_picks(db, spoken="")
     assert empty.get("field") == "高階測試／封測"
 
@@ -994,7 +982,7 @@ def test_dongzhu_ranks_untaught_ic_design_chain(tmp_path, monkeypatch):
     assert "3443" not in html
     assert "3228" not in html
     assert "不准發明切入" not in html
-    assert "這型最落後次級" in html or "不是買訊" in html
+    assert "這型最落後次級" in html
     assert "次熱" in html
     assert "點左邊選" in html or "打股名" in html
 
@@ -1219,7 +1207,6 @@ def test_rotation_notice_and_screen_block(tmp_path, monkeypatch):
     assert "人去樓空" in blob
     assert "停車格" in blob
     assert "黃金買點" in blob
-    assert "紅箭頭不是買訊" in blob
     db = str(tmp_path / "f.db")
     _seed(db)
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")

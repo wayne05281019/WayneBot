@@ -36,7 +36,7 @@ def test_new_high_points_at_prior_wave_high():
     assert got["hold_prior_high"] == 13.85
     assert "前波高 13.85" in got["hold_prior_note"]
     assert "前次底" in got["hold_prior_note"]
-    assert "不是買訊" in got["hold_prior_note"]
+    assert "不是買訊" not in got["hold_prior_note"]
     assert "浪" not in got["hold_prior_note"]
 
 
@@ -50,7 +50,9 @@ def test_retest_almost_holds_like_2409_feb3():
     assert 13.3 + 1e-9 >= floor
     assert "幾乎不破前波高" in got["hold_prior_note"]
     lines = hold_note_lines(got)
-    assert got["hold_prior_note"] in lines
+    assert len(lines) == 1
+    assert "13.85" in lines[0] and "13.3" in lines[0]
+    assert "不是買訊" not in lines[0]
 
 
 def test_retest_past_high_still_above_prior_low():
@@ -62,8 +64,7 @@ def test_retest_past_high_still_above_prior_low():
     assert got["hold_prior_base"] is not None
     assert 12.0 > float(got["hold_prior_base"])
     assert "前次底還在" in got["hold_prior_note"]
-    assert "壞了" not in got["hold_prior_note"]
-    assert "不是買訊" in got["hold_prior_note"]
+    assert "不是買訊" not in got["hold_prior_note"]
 
 
 def test_retest_nicks_then_still_not_buy():
@@ -71,8 +72,7 @@ def test_retest_nicks_then_still_not_buy():
     got = classify_hold_prior_wave(highs, lows)
     assert got["hold_prior_state"] == "nick"
     assert "略破前次底" in got["hold_prior_note"]
-    assert "翻上來" in got["hold_prior_note"]
-    assert "不是買訊" in got["hold_prior_note"]
+    assert "不是買訊" not in got["hold_prior_note"]
 
 
 def test_retest_broke_prior_low():
@@ -80,15 +80,15 @@ def test_retest_broke_prior_low():
     got = classify_hold_prior_wave(highs, lows)
     assert got["hold_prior_state"] == "broke"
     assert "已破前次底" in got["hold_prior_note"]
-    assert "底底低" in got["hold_prior_note"]
-    assert "不是買訊" in got["hold_prior_note"]
+    assert "不是買訊" not in got["hold_prior_note"]
 
 
 def test_short_series_blank():
     got = classify_hold_prior_wave([10.0] * 20, [9.0] * 20)
     assert got["hold_prior_state"] == ""
     lines = hold_note_lines(got)
-    assert lines and "不是買點" in lines[0]
+    assert lines and "高低卡" in lines[0]
+    assert "不是買訊" not in lines[0]
     assert all("浪" not in x for x in lines)
 
 
@@ -145,7 +145,13 @@ def test_2409_official_as_of_if_db_has_rows():
     assert jul.get("hold_prior_state") == "holds"
     assert abs(float(jul.get("hold_prior_retest_low") or 0) - 22.0) < 1e-6
     assert jan.get("buy_verdict") == "no"
-    assert "不是買點" in (jan.get("buy_verdict_note") or "")
+    note = jan.get("buy_verdict_note") or ""
+    assert "別追" in note
+    assert "不是買訊" not in note
+    feb_note = feb.get("buy_verdict_note") or ""
+    assert feb_note != note
+    assert "13.3" in feb_note
+    assert "13.85" in feb_note
 
 
 def _lz_table(yest: float, today: float, hl="No", alert="No"):
@@ -189,7 +195,7 @@ def test_buy_verdict_nick_is_watch_not_buy():
         {"table": _lz_table(0.0, 1.0), "hold_prior_state": "nick", "gain_pct": 1.0}
     )
     assert got["buy_verdict"] == "watch"
-    assert "不是買點" in got["buy_verdict_note"]
+    assert "不要下手" in got["buy_verdict_note"]
 
 
 def test_buy_verdict_broke_never_buy():
@@ -207,4 +213,4 @@ def test_buy_verdict_new_high_not_buy():
 
     got = judge_buy_point({"hold_prior_state": "new_high", "gain_pct": 20.0})
     assert got["buy_verdict"] == "no"
-    assert "創區間新高" in got["buy_verdict_note"]
+    assert "剛創" in got["buy_verdict_note"] and "新高" in got["buy_verdict_note"]

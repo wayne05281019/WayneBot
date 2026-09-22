@@ -99,7 +99,8 @@ def _db(tmp_path):
 def test_yishe_not_in_corpus_still_answers(tmp_path):
     db = _db(tmp_path)
     html = answer_biaoke(db, "藝舍-KY")
-    assert "這不是買訊" in html
+    assert "不是他本人" in html
+    assert "這不是買訊" not in html
     assert "藝舍" in html
     assert "資料庫從頭到尾沒點名" in html
     assert "不猜" not in html
@@ -119,7 +120,6 @@ def test_hello_is_short_not_a_lecture():
 def test_stop_drop_uses_conditions_not_a_date(tmp_path):
     db = _db(tmp_path)
     html = answer_biaoke(db, "台股美股連跌 晚上又大跌 大概何時止跌")
-    assert "這不是買訊" in html
     assert "不猜日曆" in html
     assert "費半" in html
     assert "夜盤" in html
@@ -143,7 +143,6 @@ def test_desk_query_still_rules():
     assert not is_desk_query("去年年底")
     assert not is_desk_query("藝舍-KY")
     html = answer_biaoke(":memory:", "怎麼觀察")
-    assert "這不是買訊" in html
     assert "細微波" in html
     assert "兩年進步在哪" not in html
     assert "在。打字" not in html
@@ -231,8 +230,6 @@ def test_answer_biaoke_which_field_carries_share_not_buy(tmp_path, monkeypatch):
     monkeypatch.setattr("biaoke_field_scan._cap", lambda *_a, **_k: "20260917")
     html = answer_biaoke(db, "現在哪族先機")
     assert "官方佔比" in html
-    assert "不進海選" in html
-    assert "不是買訊" in html
     assert "可買" not in html
     look = answer_biaoke(db, "台光電怎麼看")
     assert "官方佔比（洞燭同一套）" not in look

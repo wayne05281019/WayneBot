@@ -1,13 +1,6 @@
-"""高低卡：創區間新高後，回測對前波高／前次底。
+"""高低卡：創區間新高後，回測對前波高／前次底，查股只出一句綜合判斷。
 
-用官方 OHLC 高低重述（友達 2409：20260107 創 60／180 日新高，
-20260203 回測低 13.30 vs 起漲前高 13.85、前次底 11.10）。
-查股／決策卡協助判斷顯示，不是買訊、不改黃金買點、不進海選、不進飆大。
-
-區間＝既有 60 根（季）高低；若同日也是 180 根導航新高就一併標。
-前波高＝這波 60 日新高起漲前 5 根的最高。4% 只描述友達那次貼前波高，
-不是判死線。洗盤可以過前波高、甚至略破前次底再翻；底底低才先當這波壞了。
-前次底＝起漲前最近一個局部低。略破＝低於前次底但不超過 8%。
+用這檔自己的收盤、獲利、前波高、前次底組句；介紹圖／協助判斷／今日態度同一句。
 """
 from __future__ import annotations
 
@@ -186,7 +179,7 @@ def classify_hold_prior_wave(
         out["hold_prior_state"] = "new_high"
         out["hold_prior_why"] = f"創{win_lab}新高"
         out["hold_prior_note"] = (
-            f"創{win_lab}新高，回測先看前波高 {_px(prior)}{base_txt}。不是買訊"
+            f"創{win_lab}新高，回測先看前波高 {_px(prior)}{base_txt}"
         )
         return out
     r0 = peak + 1
@@ -201,33 +194,27 @@ def classify_hold_prior_wave(
     if retest + 1e-12 >= high_floor:
         out["hold_prior_state"] = "holds"
         out["hold_prior_why"] = "回測幾乎不破前波高"
-        out["hold_prior_note"] = f"回測幾乎不破前波高（{trio}）。不是買訊"
+        out["hold_prior_note"] = f"回測幾乎不破前波高（{trio}）"
         return out
     if base is None or base <= 0:
         out["hold_prior_state"] = "wash"
         out["hold_prior_why"] = "回測過了前波高"
-        out["hold_prior_note"] = (
-            f"回測過了前波高（{trio}）。洗盤可以比4%深。不是買訊"
-        )
+        out["hold_prior_note"] = f"回測過了前波高（{trio}）"
         return out
     wash_floor = base * (1.0 - float(WASH_FRAC))
     if retest + 1e-12 >= base:
         out["hold_prior_state"] = "wash"
         out["hold_prior_why"] = "過了前波高，前次底還在"
-        out["hold_prior_note"] = (
-            f"回測過了前波高，前次底還在（{trio}）。洗盤可以比4%深。不是買訊"
-        )
+        out["hold_prior_note"] = f"回測過了前波高，前次底還在（{trio}）"
         return out
     if retest + 1e-12 >= wash_floor:
         out["hold_prior_state"] = "nick"
         out["hold_prior_why"] = "回測略破前次底"
-        out["hold_prior_note"] = (
-            f"回測略破前次底（{trio}）。先看有沒有翻上來。不是買訊"
-        )
+        out["hold_prior_note"] = f"回測略破前次底（{trio}）"
         return out
     out["hold_prior_state"] = "broke"
     out["hold_prior_why"] = "回測已破前次底"
-    out["hold_prior_note"] = f"回測已破前次底（{trio}）。底底低先當這波壞了。不是買訊"
+    out["hold_prior_note"] = f"回測已破前次底（{trio}）"
     return out
 
 
@@ -291,13 +278,113 @@ def _table_profit_pair(card: Dict[str, Any]) -> tuple:
     return yest_p, today_p, yest_a, today_a
 
 
+def _md(val: Any) -> str:
+    d = _ymd(val)
+    if len(d) == 8:
+        return f"{int(d[4:6])}/{int(d[6:8])}"
+    return ""
+
+
+def _gain_txt(val: Any) -> str:
+    try:
+        x = float(val)
+    except (TypeError, ValueError):
+        return ""
+    return f"{x:+.1f}%"
+
+
+def _who(card: Dict[str, Any]) -> str:
+    sid = str(card.get("stock_id") or "").strip()
+    name = str(card.get("stock_name") or "").strip()
+    if name and sid and name != sid:
+        return f"{name}{sid}"
+    return name or sid
+
+
+def _close_txt(card: Dict[str, Any]) -> str:
+    try:
+        c = float(card.get("close") or 0)
+    except (TypeError, ValueError):
+        return ""
+    return _px(c) if c > 0 else ""
+
+
+def _vs(low: Any, ref: Any) -> str:
+    try:
+        a, b = float(low), float(ref)
+    except (TypeError, ValueError):
+        return ""
+    if b <= 0:
+        return ""
+    pct = (a / b - 1.0) * 100.0
+    if abs(pct) < 0.08:
+        return "幾乎貼齊"
+    if pct >= 0:
+        return f"還高出 {pct:.1f}%"
+    return f"低了 {abs(pct):.1f}%"
+
+
+def _lead(card: Dict[str, Any], today_p: Optional[float]) -> str:
+    bits: List[str] = []
+    who = _who(card)
+    if who:
+        bits.append(who)
+    cl = _close_txt(card)
+    if cl:
+        bits.append(f"收 {cl}")
+    g = _gain_txt(today_p if today_p is not None else card.get("gain_pct", card.get("profit_pct")))
+    if g:
+        bits.append(f"獲利 {g}")
+    return "，".join(bits) if bits else "這檔"
+
+
+def _retest_clause(card: Dict[str, Any]) -> str:
+    prior = card.get("hold_prior_high")
+    base = card.get("hold_prior_base")
+    retest = card.get("hold_prior_retest_low")
+    pd, bd, rd = _md(card.get("hold_prior_date")), _md(card.get("hold_prior_base_date")), _md(
+        card.get("hold_prior_retest_date")
+    )
+    if retest is None:
+        bits = []
+        if prior is not None:
+            bits.append(f"前波高 {_px(prior)}" + (f"（{pd}）" if pd else ""))
+        if base is not None:
+            bits.append(f"前次底 {_px(base)}" + (f"（{bd}）" if bd else ""))
+        return "、".join(bits)
+    bits = [f"回測低 {_px(retest)}" + (f"（{rd}）" if rd else "")]
+    if prior is not None:
+        vs = _vs(retest, prior)
+        bits.append(
+            f"對前波高 {_px(prior)}" + (f"（{pd}）" if pd else "") + (f" {vs}" if vs else "")
+        )
+    if base is not None:
+        vs = _vs(retest, base)
+        bits.append(
+            f"對前次底 {_px(base)}" + (f"（{bd}）" if bd else "") + (f" {vs}" if vs else "")
+        )
+    return "，".join(bits)
+
+
+def _k20_clause(card: Dict[str, Any]) -> str:
+    try:
+        n = int(card.get("k20_high_streak") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n >= 2:
+        return f"已經連 {n} 天貼高檔"
+    if n == 1:
+        return "剛貼到高檔"
+    return ""
+
+
 def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
-    """查股買點一句。只認高低卡表＋前次底，不改海選桶、不是紅箭頭。"""
-    empty = {"buy_verdict": "watch", "buy_verdict_note": "現在先看表。不是買點。"}
+    """每檔一句綜合判斷：用這檔自己的收盤、獲利、前波高／前次底。"""
     if not card or card.get("error"):
         return {"buy_verdict": "", "buy_verdict_note": ""}
     hold = str(card.get("hold_prior_state") or "")
     sell = str(card.get("sell_action") or "")
+    sell_why = str(card.get("sell_why") or "").strip()
     hl = ""
     alert = ""
     try:
@@ -308,7 +395,6 @@ def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
         alert = str(facts.get("alert") or "")
         low_table = table_reads_as_low(card)
     except Exception:
-        facts = {}
         low_table = False
         try:
             from decision_card_signals import leave_zero_screen_ok
@@ -323,40 +409,60 @@ def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
             yest_alert=yest_a,
             today_alert=today_a or alert,
         )
+    lead = _lead(card, today_p)
+    rt = _retest_clause(card)
+    k20 = _k20_clause(card)
+    win = "60／180日" if card.get("hold_prior_also_180") else "60日"
+
+    def _sent(*parts: str) -> str:
+        out: List[str] = []
+        for p in parts:
+            s = str(p or "").strip().strip("。")
+            if s:
+                out.append(s)
+        text = "。".join(out)
+        return (text + "。") if text else ""
+
     if hold == "broke":
         return {
             "buy_verdict": "no",
-            "buy_verdict_note": "現在不是買點。回測已破前次底。",
+            "buy_verdict_note": _sent(lead, rt, "前次底被洗破了，現在不要買"),
         }
     if sell in ("直接減碼", "準備減碼") and not low_table:
+        why = sell_why or sell
         return {
             "buy_verdict": "no",
-            "buy_verdict_note": "現在不是買點。高低卡要減碼，別買。",
+            "buy_verdict_note": _sent(lead, f"高低卡要{sell}（{why}）", "現在不要加碼"),
         }
     if hl in ("20高", "10高") or alert == "K20高":
-        return {
-            "buy_verdict": "no",
-            "buy_verdict_note": "現在不是買點。價在高檔，別追。",
-        }
+        bits = [lead, f"高低格 {hl or alert}"]
+        if k20:
+            bits.append(k20)
+        if hold == "new_high":
+            bits.append(f"剛創{win}新高")
+            if rt:
+                bits.append("回測先盯 " + rt)
+        bits.append("價在高檔，現在別追")
+        return {"buy_verdict": "no", "buy_verdict_note": _sent(*bits)}
     if hold == "new_high":
         return {
             "buy_verdict": "no",
-            "buy_verdict_note": "現在不是買點。剛創區間新高，先等回測。",
+            "buy_verdict_note": _sent(lead, f"剛創{win}新高", "回測先盯 " + rt if rt else "先等回測", "現在別追"),
         }
     if hold == "nick":
         return {
             "buy_verdict": "watch",
-            "buy_verdict_note": "現在先看。回測略破前次底，等翻上來。不是買點。",
+            "buy_verdict_note": _sent(lead, rt, "略破前次底，等站回來再看，現在先不要下手"),
         }
     if lz_ok and hold in ("", "holds", "wash"):
-        tail = ""
-        if hold == "holds":
-            tail = "回測幾乎不破前波高。"
-        elif hold == "wash":
-            tail = "洗盤過了前波高，前次底還在。"
+        extra = rt if hold else (lz_why or "獲利剛離零")
+        if hold == "wash":
+            extra = (rt + "。" if rt else "") + "洗過前波高但前次底還在"
+        elif hold == "holds":
+            extra = rt
         return {
             "buy_verdict": "buy",
-            "buy_verdict_note": f"現在是買點。表上黃金買點（{lz_why}）。{tail}".strip(),
+            "buy_verdict_note": _sent(lead, extra, "表上剛離零，現在算黃金買點"),
         }
     rel = str(card.get("relative_buy_kind") or "")
     try:
@@ -366,19 +472,27 @@ def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
     if rel == "at_floor" or (g is not None and g <= 0.05):
         return {
             "buy_verdict": "watch",
-            "buy_verdict_note": "現在先看。獲利還沒離零。不是買點。",
+            "buy_verdict_note": _sent(lead, "獲利還貼在零附近，先等離零再動手"),
         }
     if hold in ("holds", "wash"):
+        hint = "回測還在、前次底沒破" if hold == "wash" else "回測貼著前波高"
+        gtxt = _gain_txt(g) if g is not None else ""
+        mid = f"獲利 {gtxt} 已不在剛離零" if gtxt else "表上還不是剛離零"
         return {
             "buy_verdict": "watch",
-            "buy_verdict_note": "現在先看。回測結構還在，表上不是黃金買點。",
+            "buy_verdict_note": _sent(lead, rt or hint, mid, "現在先看，不要當黃金買點"),
         }
     if g is not None and g > 5:
         return {
             "buy_verdict": "no",
-            "buy_verdict_note": "現在不是買點。獲利已離黃金買點帶。",
+            "buy_verdict_note": _sent(
+                lead, f"獲利 {_gain_txt(g)} 已離開剛離零那一帶", "現在不要當黃金買點"
+            ),
         }
-    return empty
+    return {
+        "buy_verdict": "watch",
+        "buy_verdict_note": _sent(lead, "先看這張高低卡，還沒到能下手的位置"),
+    }
 
 
 def attach_buy_verdict(card: Dict[str, Any]) -> Dict[str, Any]:
@@ -395,14 +509,8 @@ def hold_note_short(card: Dict[str, Any] | None) -> str:
 
 
 def hold_note_lines(card: Dict[str, Any] | None) -> List[str]:
-    """協助判斷：先買點一句，再回測細節。"""
+    """查股／介紹圖／協助判斷共用同一句。"""
     if card:
         attach_buy_verdict(card)
-    lines: List[str] = []
-    verdict = str((card or {}).get("buy_verdict_note") or "").strip()
-    if verdict:
-        lines.append(verdict)
-    note = hold_note_short(card)
-    if note and note not in lines:
-        lines.append(note)
-    return lines
+    note = str((card or {}).get("buy_verdict_note") or "").strip()
+    return [note] if note else []

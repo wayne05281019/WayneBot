@@ -260,7 +260,7 @@ _HOW_LINES = (
     "不是猜新聞。",
 )
 _PAGE_RULES = (
-    "佔比如實主判。不是買訊、不進海選。",
+    "佔比如實主判。",
     "每天資金進哪條主／次／細項。",
     "微弱可察也算進駐。",
     "每檔先寫買或不買。",
@@ -269,11 +269,11 @@ _PAGE_RULES = (
     "股民追漲不追跌。先機不追當天第一名。",
     "點火後抓同鏈比價落後。",
     "捕捉只收近季有賺的。",
-    "60低當嚴重低估觀察，不是買訊。",
+    "60低當嚴重低估觀察。",
     "連動名單只認對得上籌碼K的龍頭／落後。",
     "自選歸類只參考，不准整份覆蓋。",
     "聯想名單不當流入主判。",
-    "推薦＝最落後次級兩到三檔，不是單檔買訊。",
+    "推薦＝最落後次級兩到三檔。",
     "剛好剛離零才標黃金買點。",
     "盤中未收不當官方收。",
 )
@@ -290,13 +290,13 @@ _PAGE_NOTES = (
     "貼20高＝偏晚。",
 )
 _RULE_LINES = (
-    "佔比如實主判。飆大找法只參考、不是唯一。",
+    "佔比如實主判。",
     "資金輪動要比到主產業／次產業／產業鏈，再分龍頭與次級。",
     "龍頭來不及買，比價下次級落後檔。",
-    "捕捉名單＝最落後次級兩到三檔，不是單檔買訊。",
-    "盤中未收不當官方收。不是買訊、不進海選。",
+    "捕捉名單＝最落後次級兩到三檔。",
+    "盤中未收不當官方收。",
     "這顆推出這型最落後次級兩到三檔給你選。",
-    "剛好剛離零才標黃金買點。下單進場仍認剛離零。",
+    "剛好剛離零才標黃金買點。",
     "打股名沒打準會列出相近的請你點。",
 )
 # 五天太薄。兩個月仍薄。官方資金窗＝近 100 個有法人日，每天只記流入／流出第一名。
@@ -333,7 +333,7 @@ ROTATION_NOTES = (
     "先機＝佔比升還沒當第一、次級距20高≤−8%，金控／銀行當停車格不拿來當先機（回測略過停車格後細項次級有人後10日漲停或≥8%約八成；電子細項這型約八成三；含停車格約七成；追第一名約五成五）。這是細項、不是單檔保證。航運／塑化／建築當先機沒贏過電子細項。軍工沒有 CMoney 細項、不發明一族。",
     "昨天第一名今天佔比在退，或單日掉超過1pt＝不留不買。貼20高＝偏晚。",
     "確定細項後看最落後次級兩到三檔（2檔約七成、3檔約八成有人漲）；1檔不到五成，不准當買訊。虧損／沒季報不能比價／EPS，不上捕捉。",
-    "洞燭推薦＝這型次級落後檔，不是單檔保證。剛好剛離零才標黃金買點。紅箭頭不是買訊。盤中未收不當官方收。",
+    "洞燭推薦＝這型次級落後檔。剛好剛離零才標黃金買點。盤中未收不當官方收。",
 )
 
 
@@ -632,7 +632,7 @@ def pick_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
         + f" 官方收 {st['date']}：最像 {g['field']}，落後檔 {st['name']} {st['sid']}"
         f" 收 {_px(st['close'])} 距20高 {_pct(st['vs20'])} 距60高 {_pct(st['vs60'])}"
         f" 量比 {st['volr']:.2f}。{lead_bit}{named_bit}"
-        "不是他當下點名。不是買訊。"
+        "不是他當下點名。"
     )
     why = (
         f"還沒點名；落後檔 {st['name']} 贴近20高、60高仍明顯在上、量起來。"
@@ -664,7 +664,7 @@ def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
     if not field:
         return str(
             data.get("line")
-            or (_HOW + " 還沒對上底部蠢蠢的次族群，不准發明。不是買訊。")
+            or (_HOW + " 還沒對上底部蠢蠢的次族群，不准發明。")
         )
     cap = str(data.get("cap") or "")
     lags = [x for x in list(data.get("laggards") or []) if x.get("sid")]
@@ -693,7 +693,7 @@ def scan_unnamed_field(db_path: str, *, ask: str = "", spoken: Optional[str] = N
         + lag_txt
         + lead_bit
         + named_bit
-        + "不是他當下點名。不是買訊。"
+        + "不是他當下點名。"
     )
 
 
@@ -704,7 +704,6 @@ def share_cross_lines(db_path: str, *, spoken: Optional[str] = None) -> List[str
     field = str((data or {}).get("field") or "")
     if not field:
         lines.append("還沒對上先機細項")
-        lines.append("不是買訊、不進海選")
         return lines
     lines.append(f"此刻最像 {field}")
     parts = [str(x) for x in list((data or {}).get("layers") or []) if str(x)]
@@ -731,9 +730,6 @@ def share_cross_lines(db_path: str, *, spoken: Optional[str] = None) -> List[str
         except (TypeError, ValueError):
             pass
     lines.extend(_share_path_lines((data or {}).get("flow") or {}))
-    lines.append("點名只參考，不是唯一")
-    lines.append("不是買訊、不進海選")
-    lines.append("買只認黃金買點")
     return lines
 
 
@@ -1918,7 +1914,7 @@ def _inflow_board(all_igns: Sequence[Dict[str, Any]], n: int = 8) -> str:
 def _hot_ref_lines(hot: Dict[str, Any], spoken_named: Sequence[str]) -> List[str]:
     if not hot.get("field"):
         named = "、".join(spoken_named)
-        return [f"飆大點名 {named} 只參考。"] if named else []
+        return [f"{named} 點名對過佔比。"] if named else []
     lines = [
         f"佔比最高的 {hot['field']} 佔當日買超 {_share_txt(float(hot.get('share_last') or 0))}"
         f"（近5日 {_pt_txt(float(hot.get('share_up') or 0))}）",
@@ -1926,9 +1922,7 @@ def _hot_ref_lines(hot: Dict[str, Any], spoken_named: Sequence[str]) -> List[str
     ]
     named = [n for n in spoken_named if n and n != hot.get("field")]
     if hot.get("field") in spoken_named or named:
-        lines.append("飆大點名 " + "、".join([hot["field"]] + named) + " 只參考，不是唯一。")
-    else:
-        lines.append("飆大只參考，不是唯一。")
+        lines.append("點名 " + "、".join([hot["field"]] + named) + " 對過佔比。")
     return lines
 
 
@@ -2486,7 +2480,7 @@ def _stock_action_lines(item: Dict[str, Any], tag: str, *, held: bool = False) -
     if is_buy:
         return ["可買", "點左邊選"]
     if str(tag or "").startswith("先機"):
-        return ["可看", "點左邊選", "不是買訊"]
+        return ["可看", "點左邊選"]
     return ["不買", "只觀察"]
 
 
@@ -2890,7 +2884,7 @@ def dongzhu_page(
     if not field:
         blocks.append(
             _blk(
-                f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。不是買訊。')}</i>"
+                f"<i>{_esc(data.get('line') or '還沒對上底部蠢蠢的次族群，不准發明。')}</i>"
             )
         )
         return join_dashed(*blocks)
@@ -2957,7 +2951,6 @@ def dongzhu_page(
     else:
         rec_rows.append(_esc("這型此刻沒有可捕捉的次級"))
         rec_rows.append(_esc("近季要有賺才上捕捉"))
-        rec_rows.append(_esc("下單進場仍只認剛離零"))
     blocks.append(_blk(*rec_rows))
     alts = list(data.get("alts") or [])
     alt_bits: List[str] = []
@@ -2973,6 +2966,5 @@ def dongzhu_page(
             )
         )
     if alt_bits:
-        blocks.append(_blk("<b>次熱</b>", *alt_bits, _esc("不是買訊。")))
-    blocks.append(_blk(_esc("紅箭頭不是買訊。"), _esc("飆大只參考。")))
+        blocks.append(_blk("<b>次熱</b>", *alt_bits))
     return join_dashed(*blocks)

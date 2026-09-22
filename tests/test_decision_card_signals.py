@@ -433,8 +433,8 @@ def test_stance_explain_is_plain_speech():
     assert "先別急著買" in watch
     assert "低點訊號不是買訊" in watch
     sell = stance_explain("avoid", sell_note="現在價到高了、熱度沒跟上，先出一點、不要追")
-    assert "不是叫你買" in sell
-    assert "買訊" not in sell
+    assert "先出一點" in sell
+    assert "不是叫你買" not in sell
     # 月K不寫進第二行，避免跟表上月乖離撞名。
     staged = stance_explain("wait", monthly_stage="月K還在往上")
     assert not staged.startswith("月K")

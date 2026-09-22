@@ -3410,10 +3410,10 @@ class WayneTelegramBot:
                 )
             ]
             if pick == "z":
-                title = f"{pick_label}（觀察不是買）"
+                title = f"{pick_label}（還在零）"
                 subtitle = (
-                    "高低卡獲利欄還是 0.0%，含上市櫃與興櫃，不限海選桶。"
-                    "這是觀察，不是黃金買點，不是買訊。股名旁五角星不是叫你買。"
+                    "高低卡獲利欄還是 0.0%，上市櫃興櫃都算。"
+                    "股名旁星星＝值不值得買；還在零就先觀察。"
                 )
                 empty = "此刻沒有獲利還在 0 的檔。" if live_on else "最近完整收沒有獲利還在 0 的檔。"
                 bucket_label = pick_label
@@ -3439,9 +3439,9 @@ class WayneTelegramBot:
             else:
                 title = f"{pick_label}（{pick} 個交易日前剛離零）"
                 subtitle = (
-                    f"高低卡剛好 {pick} 個交易日前第一天離零，含上市櫃與興櫃，不限海選桶。"
-                    "現在獲利不是 0 就列出，不卡 5%。現在趨勢已向上排前面；還沒向上仍列出，不滿五星、不是買訊。"
-                    "下單仍認海選黃金買點。未收盤不寫進官方收。"
+                    f"高低卡剛好 {pick} 個交易日前第一天離零，上市櫃興櫃都算。"
+                    "現在獲利不是 0 就列出；趨勢已向上的排前面。"
+                    "未收盤不寫進官方收。"
                 )
                 empty = f"沒有剛離{pick}、現在獲利不是 0 的檔。"
                 bucket_label = pick_label
@@ -3812,7 +3812,7 @@ class WayneTelegramBot:
         png = str((built or {}).get("path") or "")
         if not png or not self._png_looks_ok(png, min_bytes=24_000, min_w=800, min_h=500):
             return
-        cap = str((built or {}).get("caption") or "飆大結構圖。這不是買訊。")
+        cap = str((built or {}).get("caption") or "飆大結構圖")
         try:
             with open(png, "rb") as f:
                 await message.reply_photo(
@@ -3853,7 +3853,7 @@ class WayneTelegramBot:
         png = str((built or {}).get("path") or "")
         if not png or not self._png_looks_ok(png, min_bytes=12_000, min_w=600, min_h=360):
             return
-        cap = str((built or {}).get("caption") or "加權位階圖。這不是買訊。")
+        cap = str((built or {}).get("caption") or "加權位階圖")
         try:
             with open(png, "rb") as f:
                 await message.reply_photo(
