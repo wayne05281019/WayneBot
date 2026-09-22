@@ -34,10 +34,12 @@ def _asof(db_path: str) -> str:
             return str(d).replace("-", "")
     except Exception:
         pass
-    conn = sqlite3.connect(db_path)
-    row = conn.execute("SELECT MAX(date) FROM daily_quotes").fetchone()
-    conn.close()
-    return str(row[0] or "").replace("-", "")
+    try:
+        from trading_calendar import fuse_end_trading_date
+
+        return str(fuse_end_trading_date() or "").replace("-", "")
+    except Exception:
+        return ""
 
 
 def _universe_row(conn: sqlite3.Connection, sid: str) -> Dict[str, Any]:

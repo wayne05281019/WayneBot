@@ -202,10 +202,12 @@ def test_month_season_labels_are_human():
     assert month_display("202608", "202608") == "2026年8月"
 
 
-def test_industry_mix_volume_and_lag_month(tmp_path):
+def test_industry_mix_volume_and_lag_month(tmp_path, monkeypatch):
     from emerging_quotes import ensure_emerging_table
     from fundamentals import ensure_fundamentals_tables
     from industry_brief import format_industry_html
+
+    monkeypatch.setattr("industry_brief._asof", lambda _p: "20260909")
 
     db = str(tmp_path / "ind.db")
     ensure_core_schema(db)

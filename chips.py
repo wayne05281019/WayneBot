@@ -405,7 +405,14 @@ def render_chips_png(
     if not rows:
         return ""
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    from wayne_navigator import CARD_PNG_DPI, _CARD, _fp, _text_w, mpl_render
+    from wayne_navigator import (
+        CARD_PNG_DPI,
+        _CARD,
+        _fp,
+        _savefig_lookup_png,
+        _text_w,
+        mpl_render,
+    )
 
     with mpl_render():
         import matplotlib.pyplot as plt
@@ -521,7 +528,7 @@ def render_chips_png(
         ax.add_patch(patches.Rectangle(
             (pad_x, ry), span, tbl_top - ry, facecolor="none",
             edgecolor=C["tbl_line"], lw=1.1, zorder=4))
-        fig.savefig(save_path, dpi=CARD_PNG_DPI, facecolor=fig.get_facecolor())
+        _savefig_lookup_png(fig, save_path, CARD_PNG_DPI)
         plt.close(fig)
     return save_path
 

@@ -2284,12 +2284,9 @@ def render_biaoke_structure_png(
     fig.subplots_adjust(
         left=_FIG_LEFT, right=_FIG_RIGHT, top=_STOCK_MAIN_TOP, bottom=_FIG_BOTTOM
     )
-    fig.savefig(
-        save_path,
-        dpi=BIAOKE_CHART_DPI,
-        facecolor=fig.get_facecolor(),
-        pil_kwargs={"compress_level": 2, "optimize": False},
-    )
+    from wayne_navigator import _savefig_lookup_png
+
+    _savefig_lookup_png(fig, save_path, BIAOKE_CHART_DPI)
     plt.close(fig)
     return save_path if os.path.isfile(save_path) else ""
 
