@@ -71,7 +71,7 @@ def test_welcome_teaches_chat_not_a_menu():
     assert html == WINDOW_OPEN
     assert "打字" in html
     assert "語音" in html or "麥克風" in html
-    assert "查個股" in html
+    assert "查個股" not in html
     assert "離開飆大" in html
     assert "點下面「大盤」" not in html
     assert "勤誠" not in html
@@ -400,8 +400,7 @@ def test_send_biaoke_page_pushes_leave_key():
         asyncio.run(bot._send_biaoke_page(msg, uid="11"))
     assert msg.reply_html.await_count >= 1
     last_html_kb = msg.reply_html.await_args.kwargs.get("reply_markup")
-    assert last_html_kb is not None
-    assert getattr(last_html_kb, "inline_keyboard", None)
+    assert last_html_kb is None
     assert msg.reply_text.await_count >= 1
     leave = msg.reply_text.await_args
     assert "離開飆大" in str(leave.args[0])
@@ -538,19 +537,10 @@ def test_biaoke_hub_has_stock_not_market_buttons(monkeypatch):
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     bot.db_path = ""
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("", ""))
-    kb = bot._biaoke_hub_markup("大盤現在")
-    texts = [b.text for r in kb.inline_keyboard for b in r]
-    datas = [b.callback_data for r in kb.inline_keyboard for b in r]
-    assert texts == ["查個股"]
-    assert datas == ["bk:ask"]
-    blank = bot._biaoke_hub_markup("")
-    assert [b.callback_data for r in blank.inline_keyboard for b in r] == ["bk:ask"]
+    assert bot._biaoke_hub_markup("大盤現在") is None
+    assert bot._biaoke_hub_markup("") is None
     monkeypatch.setattr("biaoke_chain._resolve_sid", lambda *_a, **_k: ("3037", "威盛"))
-    named = bot._biaoke_hub_markup("威盛怎麼看")
-    named_d = [b.callback_data for r in named.inline_keyboard for b in r]
-    named_t = [b.text for r in named.inline_keyboard for b in r]
-    assert named_d == ["bk:ask", "bkdk:3037"]
-    assert named_t == ["查個股", "官方日K 威盛"]
+    assert bot._biaoke_hub_markup("威盛怎麼看") is None
 
 
 def test_biaoke_dayk_callback_sends_structure_not_card():
@@ -585,6 +575,47 @@ def test_biaoke_dayk_callback_sends_structure_not_card():
     )
     asyncio.run(bot._on_callback_bound(None, None, q2, "11"))
     assert bot._send_biaoke_structure_chart.await_args.args[1] == "現在波浪位階"
+
+
+def test_stock_wave_ask_sends_stock_chart_not_twii(tmp_path, monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    png = tmp_path / "s.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 30_000)
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    bot.db_path = str(tmp_path / "x.db")
+    bot.charts_dir = str(tmp_path)
+    bot._scratch_chart_path = MagicMock(return_value=str(png))
+    bot._png_looks_ok = MagicMock(return_value=True)
+    bot._biaoke_reply_menu = MagicMock(return_value=None)
+    bot._send_biaoke_twii_degree_chart = AsyncMock()
+    msg = MagicMock()
+    msg.chat = None
+    msg.reply_photo = AsyncMock()
+
+    def fake_resolve(_db, q):
+        if "2330" in str(q):
+            return [{"stock_id": "2330", "stock_name": "台積電"}]
+        return []
+
+    def fake_build(*_a, **_k):
+        return {"path": str(png), "caption": "結構圖"}
+
+    with patch("biaoke_brain.resolve_stock", fake_resolve), patch(
+        "biaoke_chart.build_biaoke_structure_chart", fake_build
+    ):
+        asyncio.run(bot._send_biaoke_structure_chart(msg, "2330細微波", "1"))
+    bot._send_biaoke_twii_degree_chart.assert_not_awaited()
+    msg.reply_photo.assert_awaited()
+    bot._send_biaoke_twii_degree_chart.reset_mock()
+    msg.reply_photo.reset_mock()
+    with patch("biaoke_brain.resolve_stock", fake_resolve), patch(
+        "biaoke_chart.build_biaoke_structure_chart", fake_build
+    ):
+        asyncio.run(bot._send_biaoke_structure_chart(msg, "現在波浪位階", "1"))
+    bot._send_biaoke_twii_degree_chart.assert_awaited()
+    msg.reply_photo.assert_not_awaited()
 
 
 def test_phone_update_notice_persists_beside_db(tmp_path, monkeypatch):
@@ -764,7 +795,7 @@ def test_shared_button_surfaces_use_same_formatters():
     assert "format_flow_html" in flow
     hub = inspect.getsource(WayneTelegramBot._biaoke_hub_markup)
     assert "bk:mkt" not in hub
-    assert 'InlineKeyboardButton("查個股"' in hub
+    assert 'InlineKeyboardButton("查個股"' not in hub
     dayk = inspect.getsource(WayneTelegramBot._biaoke_dayk_markup)
     assert 'sid, name = "TWII", "加權"' not in dayk
     screen = Path("screening_engine.py").read_text(encoding="utf-8")

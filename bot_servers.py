@@ -1119,6 +1119,16 @@ class WayneTelegramBot:
             reply_markup=self._reply_menu(uid),
         )
 
+    async def _keep_dongzhu_shell(self, message, uid: str) -> None:
+        """看產業／高低卡／介紹卡後仍留在洞燭，不准跳去查股狀態。"""
+        actor = self._actor_key(message, uid=uid)
+        if str(self._pending.get(actor) or "") != "dongzhu":
+            return
+        await message.reply_text(
+            "還在洞燭。同一顆「離開洞燭先機」回主選單。",
+            reply_markup=self._dongzhu_reply_menu(uid),
+        )
+
     async def _handle_buy_streak(
         self, message, uid: str, pending: str, text: str, *, actor: str
     ) -> bool:
@@ -1606,7 +1616,7 @@ class WayneTelegramBot:
             label = f"{label} {win}".strip()
         return [
             [
-                InlineKeyboardButton(label, callback_data=f"k:{c}"),
+                InlineKeyboardButton(label, callback_data=f"dzq:{c}"),
                 *self._dongzhu_card_row(c),
             ]
         ]
@@ -1754,6 +1764,24 @@ class WayneTelegramBot:
             )
         return InlineKeyboardMarkup(rows) if rows else None
 
+    def _dongzhu_hits_keyboard(self, hits):
+        """洞燭撞名選擇器：點了仍能不能留，不准走查股／觀察。"""
+        rows = []
+        pair = []
+        for h in (hits or [])[:8]:
+            c = str(h.get("stock_id") or "").strip()
+            n = str(h.get("stock_name") or "").strip()
+            if not c:
+                continue
+            label = f"{c} {n}".strip()[:16] or c
+            pair.append(InlineKeyboardButton(label, callback_data=f"dzq:{c}"))
+            if len(pair) == 2:
+                rows.append(pair)
+                pair = []
+        if pair:
+            rows.append(pair)
+        return InlineKeyboardMarkup(rows) if rows else None
+
     def _biaoke_hits_keyboard(self, hits):
         """飆大撞名選擇器：點了仍問飆大，不准走查股兩張圖。"""
         rows = []
@@ -1773,14 +1801,9 @@ class WayneTelegramBot:
         return InlineKeyboardMarkup(rows) if rows else None
 
     def _biaoke_hub_markup(self, ask: str = ""):
-        """進去只留查個股。指數數字頁走主選單大盤，不在這裡再放一顆。"""
-        if not TELEGRAM_AVAILABLE:
-            return None
-        rows = [[InlineKeyboardButton("查個股", callback_data="bk:ask")]]
-        extra = self._biaoke_dayk_markup(ask)
-        if extra is not None:
-            rows.extend(list(extra.inline_keyboard or []))
-        return InlineKeyboardMarkup(rows)
+        """進去就是對話，裡面沒有選單。舊訊息的查個股／官方日K 回調仍能答。"""
+        del ask
+        return None
 
     def _biaoke_dayk_markup(self, ask: str = ""):
         """點名個股才加官方日K結構圖。空問／大盤／波浪不加權，避免跟主選單大盤疊。"""
@@ -3168,8 +3191,8 @@ class WayneTelegramBot:
         if hits_need_picker(hits):
             self._pending[actor] = "dongzhu"
             await message.reply_html(
-                self._hits_list_html(hits),
-                reply_markup=self._hits_keyboard(hits),
+                self._hits_list_html(hits, lead="打股名沒打準。點左邊選這檔能不能留。"),
+                reply_markup=self._dongzhu_hits_keyboard(hits),
                 disable_web_page_preview=True,
             )
             return
@@ -3258,8 +3281,16 @@ class WayneTelegramBot:
             )
             try:
                 held_sids = self._dongzhu_held_sids(uid)
-                html = await asyncio.wait_for(
-                    asyncio.to_thread(dongzhu_page, self.db_path, held_sids=held_sids),
+
+                def _bundle():
+                    data = dongzhu_picks(self.db_path)
+                    html = dongzhu_page(
+                        self.db_path, held_sids=held_sids, data=data
+                    )
+                    return html, data
+
+                html, data = await asyncio.wait_for(
+                    asyncio.to_thread(_bundle),
                     timeout=20.0,
                 )
             except asyncio.TimeoutError:
@@ -3277,19 +3308,13 @@ class WayneTelegramBot:
                 return
             picks = []
             try:
-                data = dongzhu_picks(self.db_path)
                 seen = set()
                 buy_sids = {
                     str(x.get("sid") or "")
-                    for x in list(data.get("buys") or [])
+                    for x in list((data or {}).get("buys") or [])
                     if x.get("sid")
                 }
-                for item in (
-                    list(data.get("recs") or [])
-                    + list(data.get("buys") or [])
-                    + list(data.get("watches") or [])
-                    + list(data.get("laggards") or [])
-                ):
+                for item in list((data or {}).get("recs") or []):
                     sid = str(item.get("sid") or "")
                     if not sid or sid in seen:
                         continue
@@ -3729,33 +3754,32 @@ class WayneTelegramBot:
             await self._stop_plain_wait(*wait_h)
 
     async def _send_biaoke_structure_chart(self, message, ask: str, uid: str) -> None:
-        """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。"""
+        """飆大視窗才附量價／連點圖。不是介紹圖、不是決策卡。
+
+        點了個股就出該檔第④顆眼睛。波浪字不把個股問句改成加權圖。
+        """
         q = (ask or "").strip()
         if not q:
             return
+        hits: list = []
         try:
-            from biaoke_wave import is_twii_plain_ask, is_wave_question
+            from biaoke_brain import resolve_stock
 
-            if is_wave_question(q) or is_twii_plain_ask(q):
-                await self._send_biaoke_twii_degree_chart(message, uid)
-                return
-        except Exception:
-            logger.exception("飆大加權位階圖判斷略過")
-        try:
-            from biaoke_brain import is_market_question, resolve_stock
-
-            if is_market_question(q) and not resolve_stock(self.db_path, q):
-                return
-            hits = await asyncio.to_thread(resolve_stock, self.db_path, q)
+            hits = await asyncio.to_thread(resolve_stock, self.db_path, q) or []
         except Exception:
             logger.exception("飆大結構圖對檔略過")
-            return
-        if not hits:
-            return
-        sid = str(hits[0].get("stock_id") or "")
-        name = str(hits[0].get("stock_name") or sid)
+            hits = []
+        sid = str((hits[0] or {}).get("stock_id") or "") if hits else ""
         if not sid:
+            try:
+                from biaoke_wave import is_twii_plain_ask, is_wave_question
+
+                if is_wave_question(q) or is_twii_plain_ask(q):
+                    await self._send_biaoke_twii_degree_chart(message, uid)
+            except Exception:
+                logger.exception("飆大加權位階圖判斷略過")
             return
+        name = str(hits[0].get("stock_name") or sid)
         os.makedirs(self.charts_dir, exist_ok=True)
         path = self._scratch_chart_path(self.charts_dir, sid, "biaoke", uid)
         try:
@@ -6101,10 +6125,20 @@ class WayneTelegramBot:
         if data.startswith("d:") or data.startswith("r:"):
             uid = str(q.from_user.id)
             await self._send_decision_card_quick(q.message, data[2:].strip(), uid)
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("e:"):
             uid = str(q.from_user.id)
             await self._send_etf_category_pick(q.message, data[2:].strip(), uid)
+            return
+        if data.startswith("dzq:"):
+            sid = data[4:].strip()
+            await q.answer("能不能留")
+            if not sid:
+                return
+            actor = self._actor_key(q.message, uid=uid)
+            self._pending[actor] = "dongzhu"
+            await self._send_dongzhu_hold(q.message, sid)
             return
         if data.startswith("k:"):
             uid = str(q.from_user.id)
@@ -6142,11 +6176,14 @@ class WayneTelegramBot:
             await self._send_fund_to(q.message, data[2:].strip())
             return
         if data.startswith("n:"):
+            uid = str(q.from_user.id)
             await self._send_industry(q.message, data[2:].strip(), str(q.from_user.id))
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("i:"):
             uid = str(q.from_user.id)
             await self._send_card_to(q.message, data[2:].strip(), uid)
+            await self._keep_dongzhu_shell(q.message, uid)
             return
         if data.startswith("b:"):
             uid = str(q.from_user.id)

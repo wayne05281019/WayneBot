@@ -2853,12 +2853,17 @@ def dongzhu_hold_page(
 
 
 def dongzhu_page(
-    db_path: str, *, spoken: Optional[str] = None, held_sids: Optional[Sequence[str]] = None
+    db_path: str,
+    *,
+    spoken: Optional[str] = None,
+    held_sids: Optional[Sequence[str]] = None,
+    data: Optional[Dict[str, Any]] = None,
 ) -> str:
     """主選單洞燭先機頁。每檔先寫買或不買；已持有寫留或不加碼。"""
     from tg_layout import join_dashed
 
-    data = dongzhu_picks(db_path, spoken=spoken)
+    if data is None:
+        data = dongzhu_picks(db_path, spoken=spoken)
     held_sids = [str(x) for x in (held_sids or ()) if str(x)]
     cap = _esc(data.get("cap") or "")
     blocks: List[str] = [
@@ -2931,7 +2936,6 @@ def dongzhu_page(
     buys = list(data.get("buys") or [])
     recs = list(data.get("recs") or [])
     buy_sids = {str(x.get("sid") or "") for x in buys if x.get("sid")}
-    rec_sids = {str(x.get("sid") or "") for x in recs if x.get("sid")}
     if recs:
         rec_rows.append(_esc("這型最落後次級兩到三檔"))
         rec_rows.append(_esc("不是單檔保證"))
@@ -2950,48 +2954,11 @@ def dongzhu_page(
                 )
             )
         rec_rows.append("\n\n".join(rec_bits))
-        extra_buys = [x for x in buys if str(x.get("sid") or "") not in rec_sids]
-        if extra_buys:
-            rec_rows.append(_esc("這族黃金買點（剛離零，另表）"))
-            rec_rows.append(
-                _stock_blocks(extra_buys, "買點", compact=True, held_sids=held_sids)
-            )
-    elif buys:
-        rec_rows.append(_esc("這型此刻沒有可捕捉的次級"))
-        rec_rows.append(_esc("這族黃金買點（剛離零，另表）"))
-        rec_rows.append(_esc("下單進場仍只認剛離零"))
-        rec_rows.append(_stock_blocks(buys, "買點", compact=True, held_sids=held_sids))
     else:
         rec_rows.append(_esc("這型此刻沒有可捕捉的次級"))
         rec_rows.append(_esc("近季要有賺才上捕捉"))
         rec_rows.append(_esc("下單進場仍只認剛離零"))
     blocks.append(_blk(*rec_rows))
-    watches = list(data.get("watches") or [])
-    watches = [x for x in watches if str(x.get("sid") or "") not in rec_sids]
-    if watches:
-        blocks.append(
-            _blk(
-                "<b>還在零・嚴重低估觀察</b>",
-                _esc("60低超跌，只觀察不是買"),
-                _stock_blocks(watches, "觀察", compact=True, held_sids=held_sids),
-            )
-        )
-    shown = rec_sids | {
-        str(x.get("sid") or "") for x in buys + watches if x.get("sid")
-    }
-    lags = [
-        x
-        for x in list(data.get("laggards") or [])
-        if str(x.get("sid") or "") and str(x.get("sid") or "") not in shown
-    ]
-    if lags:
-        blocks.append(
-            _blk(
-                "<b>捕捉・同鏈比價落後</b>",
-                _esc("沒買點只觀察，不是單檔保證"),
-                _stock_blocks(lags, "捕捉", compact=True, held_sids=held_sids),
-            )
-        )
     alts = list(data.get("alts") or [])
     alt_bits: List[str] = []
     for a in alts:
