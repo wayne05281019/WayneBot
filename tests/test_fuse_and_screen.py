@@ -2855,7 +2855,7 @@ class SpeedOptTest(unittest.TestCase):
         finally:
             os.remove(path)
 
-    def test_annotate_screen_computes_sector_once(self):
+    def test_annotate_screen_skips_twse_sector_compute(self):
         import money_flow
         from money_flow import annotate_screen_results
         from wayne_db import ensure_core_schema
@@ -2889,8 +2889,9 @@ class SpeedOptTest(unittest.TestCase):
                 "day_trade": [{"stock_id": "2330", "stock_name": "台積電", "close": 100}],
             }
             annotate_screen_results(path, "20260828", results)
-            self.assertEqual(calls["n"], 1)
-            self.assertEqual(results["leave_zero"][0].get("industry"), "半導體業")
+            self.assertEqual(calls["n"], 0)
+            self.assertEqual(results["leave_zero"][0].get("industry"), "電子上游-IC-代工")
+            self.assertFalse(results["leave_zero"][0].get("sector_flow_label"))
         finally:
             money_flow.compute_sector_rows = orig
             os.remove(path)
