@@ -180,7 +180,7 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     now = datetime(2026, 9, 4, 20, 16, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
     kinds = [c[0] for c in recorder.calls]
-    assert kinds == ["fuse", "morning", "midday", "evening"]
+    assert kinds == ["fuse", "morning", "evening"]
     eve = [c for c in recorder.calls if c[0] == "evening"][0]
     assert eve[1]["skip_if_done"] is True
     assert eve[1]["notify"] is False
@@ -189,8 +189,7 @@ def test_catch_up_after_2000_runs_evening_on_data_role(monkeypatch, recorder):
     fuse = [c for c in recorder.calls if c[0] == "fuse"][0]
     assert fuse[1]["skip_if_done"] is True
     assert fuse[1]["notify"] is False
-    mid = [c for c in recorder.calls if c[0] == "midday"][0]
-    assert mid[1]["skip_if_done"] is True
+    assert "midday" not in kinds
 
 
 def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
@@ -200,7 +199,7 @@ def test_catch_up_before_2000_skips_evening(monkeypatch, recorder):
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     now = datetime(2026, 9, 4, 19, 50, tzinfo=ZoneInfo("Asia/Taipei"))
     main.catch_up_missed_jobs(now)
-    assert [c[0] for c in recorder.calls] == ["fuse", "morning", "midday"]
+    assert [c[0] for c in recorder.calls] == ["fuse", "morning"]
     assert recorder.calls[0][1]["skip_if_done"] is True
     assert recorder.calls[1][1]["skip_if_done"] is True
 
@@ -294,16 +293,47 @@ def test_watchdog_retry_fuses_before_morning(monkeypatch, recorder):
 
 
 def test_watchdog_retry_runs_midday_before_alert(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
     monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
     monkeypatch.setattr(
         "ops_watchdog.missed_jobs",
         lambda *_a, **_k: [{"kind": "midday_review", "run_date": "midday-20260908"}],
     )
-    ran = main.retry_missed_owned_jobs()
+    now = datetime(2026, 9, 22, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    ran = main.retry_missed_owned_jobs(now)
     assert ran == ["midday_review"]
     assert [c[0] for c in recorder.calls] == ["midday"]
     assert recorder.calls[0][1]["skip_if_done"] is True
+
+
+def test_watchdog_retry_skips_midday_after_1330(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    monkeypatch.setattr("config.get_db_path", lambda: "unused.db")
+    monkeypatch.setattr(
+        "ops_watchdog.missed_jobs",
+        lambda *_a, **_k: [{"kind": "midday_review", "run_date": "midday-20260908"}],
+    )
+    now = datetime(2026, 9, 22, 20, 47, tzinfo=ZoneInfo("Asia/Taipei"))
+    ran = main.retry_missed_owned_jobs(now)
+    assert ran == []
+    assert recorder.calls == []
+
+
+def test_catch_up_midday_only_in_tail_window(monkeypatch, recorder):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setenv("WAYNE_SCHEDULER_ROLE", "data")
+    now = datetime(2026, 9, 22, 13, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    main.catch_up_missed_jobs(now)
+    assert [c[0] for c in recorder.calls] == ["morning", "midday"]
+    assert recorder.calls[-1][1]["skip_if_done"] is True
 
 
 def test_watchdog_retry_skips_release(monkeypatch, recorder):

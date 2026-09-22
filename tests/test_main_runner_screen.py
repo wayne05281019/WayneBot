@@ -679,3 +679,4 @@ def test_catch_up_skips_morning_on_as_of_day(monkeypatch):
     kinds = [c[0] for c in calls]
     assert "morning" not in kinds
     assert "fuse" in kinds
+    assert "midday" not in kinds
