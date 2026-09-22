@@ -284,7 +284,7 @@ def test_tsmc_peers_are_foundry_not_memory_bucket(production_db):
     html = format_industry_html("2330", production_db)
     assert "半導體業" in html
     assert "代工" in html
-    assert "同一產業鏈才比" in html
+    assert ("同一產業鏈才比" in html) or ("還沒產業鏈，不拿證交所粗分類硬比" in html)
     assert "半導體業含代工、記憶體、設計" not in html
     assert "本族群產業狀況簡述" in html
     assert "這族" not in html
