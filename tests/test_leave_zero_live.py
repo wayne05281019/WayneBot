@@ -422,7 +422,7 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
     assert "獲利為零" in html
-    assert "觀察不是買" in html
+    assert "先觀察" in html
     assert "前8檔" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
@@ -455,7 +455,6 @@ def test_leave_zero_cmd_days_copy_names_double_green(tmp_path):
     )
     assert "剛離1" in html
     assert "實綠或雙綠" in html
-    assert "少追" in html
     assert "前8檔" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html

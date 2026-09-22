@@ -196,15 +196,19 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "連買區": "目前沒有連續買超",
             "出圖等待": "_stop_plain_wait",
             "AI倉": "format_ai_desk_pages",
-            "剛脫離零": "此刻沒有獲利剛離零",
-            "洞燭先機": "沒有黃金買點",
+            "剛脫離零": "此刻沒有獲利還在 0",
+            "洞燭先機": "這型此刻沒有可捕捉的次級",
             "興櫃海選": "目前沒有可用的官方日均價",
             "查股兩張圖": "找不到這檔",
             "圖文": "圖文說明已取消",
         }
         n = needles.get(feature)
         if n:
-            return _ok(n) if n in src else _bad(f"空狀態缺 {n}")
+            blob = src
+            if feature == "洞燭先機":
+                with open("biaoke_field_scan.py", encoding="utf-8") as fh:
+                    blob = fh.read()
+            return _ok(n) if n in blob else _bad(f"空狀態缺 {n}")
         return _ok("empty-n/a")
 
     if lens == "error_no_traceback":
