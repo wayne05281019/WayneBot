@@ -1015,9 +1015,22 @@ class ScreeningEngine:
                 item["profit_pct"] = official_pt
                 if live_skipped and sid not in em_ids:
                     item["_live_skipped"] = True
+            if mode == "ago":
+                live_px = None
+                if item.get("live"):
+                    live_px = item["live"].get("price")
+                info = _leave_zero_now_trend_info(df, last_close=live_px)
+                info["stock_id"] = sid
+                ok = bool(info) and _leave_zero_trend_ok(info)
+                item["trend_up_now"] = bool(ok)
+                item["trend_now_label"] = "趨勢已向上" if ok else "趨勢還沒向上"
+                for key in ("ma20", "ma60", "low20", "d20", "monthly_stage_kind"):
+                    if key in info:
+                        item[key] = info[key]
             out.append(item)
         out.sort(
             key=lambda x: (
+                0 if x.get("trend_up_now") else 1,
                 1 if x.get("chase_warning") else 0,
                 float(x.get("profit_pct") if x.get("profit_pct") is not None else 99),
                 -(float(x.get("q60r") or 0)),
@@ -1168,6 +1181,8 @@ def entry_star_count(
         )
         if not must:
             n = ENTRY_STAR_N - 1
+    if "trend_up_now" in row and not row.get("trend_up_now"):
+        n = min(n, ENTRY_STAR_N - 1)
     return n
 
 
@@ -1521,6 +1536,56 @@ def _leave_zero_trend_ok(info: Dict[str, Any]) -> bool:
     return True
 
 
+def _leave_zero_now_trend_info(
+    df: pd.DataFrame, *, last_close: Optional[float] = None
+) -> Dict[str, Any]:
+    """剛離1–3「現在」趨勢欄：同一條 _leave_zero_trend_ok，不改海選公式。資料不足＝還沒過關。"""
+    if df is None or len(df) < 5:
+        return {}
+    close_s = pd.to_numeric(df["close"], errors="coerce")
+    if last_close is not None:
+        try:
+            close_s = close_s.copy()
+            close_s.iloc[-1] = float(last_close)
+        except (TypeError, ValueError):
+            pass
+    low_s = (
+        pd.to_numeric(df["low"], errors="coerce")
+        if "low" in df.columns
+        else close_s
+    )
+    c = float(close_s.iloc[-1] or 0)
+    ma20 = float(close_s.rolling(20, min_periods=5).mean().iloc[-1] or 0)
+    ma60 = (
+        float(close_s.rolling(60, min_periods=20).mean().iloc[-1] or 0)
+        if len(df) >= 20
+        else ma20
+    )
+    if len(low_s) >= 21:
+        low20 = float(low_s.iloc[-21:-1].min() or 0)
+    elif len(low_s) > 1:
+        low20 = float(low_s.iloc[:-1].min() or 0)
+    else:
+        low20 = 0.0
+    d20 = round((c - low20) / low20 * 100.0, 2) if low20 > 0 else 0.0
+    info: Dict[str, Any] = {
+        "close": c,
+        "ma20": ma20,
+        "ma60": ma60,
+        "low20": low20,
+        "d20": d20,
+    }
+    try:
+        from decision_card_signals import monthly_stage_from_ohlc
+
+        dates = df["date"].astype(str).str.replace("-", "", regex=False).tolist()
+        mk, _lab, _short = monthly_stage_from_ohlc(dates, close_s.tolist())
+        info["monthly_stage_kind"] = mk
+    except Exception:
+        info["monthly_stage_kind"] = ""
+    return info
+
+
 def _pct_str(pct) -> str:
     try:
         p = float(pct)
@@ -1682,6 +1747,11 @@ def _stock_card_html(
         notices.append(_flag("S級"))
     if item.get("leave_l20"):
         notices.append(_hot("20低脫離"))
+    if item.get("trend_now_label"):
+        if item.get("trend_up_now"):
+            notices.append(_hot("趨勢已向上"))
+        else:
+            notices.append(html_escape("趨勢還沒向上"))
     if item.get("revenue_hot"):
         notices.append(_hot("營收轉強"))
     if item.get("golden_buy") and not item.get("entry_stage"):

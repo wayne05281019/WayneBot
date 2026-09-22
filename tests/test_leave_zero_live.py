@@ -143,6 +143,39 @@ def test_stock_card_html_stars_name():
     assert "☆" in plain
 
 
+def test_trend_not_up_caps_stars_and_shows_label():
+    from screening_engine import mark_leave_zero_stars
+
+    capped = mark_leave_zero_stars(
+        [
+            {
+                "stock_id": "1201",
+                "profit_pct": 1.0,
+                "is_s_tier": True,
+                "trend_up_now": False,
+                "trend_now_label": "趨勢還沒向上",
+            }
+        ]
+    )
+    assert capped[0]["entry_stars"] <= 4
+    assert capped[0]["buy_star"] is False
+    html = _stock_card_html(capped[0], 1, bucket_label="剛離1")
+    assert "趨勢還沒向上" in html
+    up = _stock_card_html(
+        {
+            "stock_id": "1101",
+            "stock_name": "台泥",
+            "close": 51.0,
+            "profit_pct": 1.0,
+            "trend_up_now": True,
+            "trend_now_label": "趨勢已向上",
+        },
+        1,
+        bucket_label="剛離1",
+    )
+    assert "趨勢已向上" in up
+
+
 def test_live_leave_zero_stars_top_five_and_does_not_write_unclosed(tmp_path, monkeypatch):
     db = str(tmp_path / "lz.db")
     before = _seed_quotes(db, {sid: 50.0 for sid in NAMES})
@@ -664,6 +697,7 @@ def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
     assert d1_codes == ["3595"]
     assert d1[0]["name"] == "山太士"
     assert d1[0].get("quote_source") == "emerging_quotes"
+    assert d1[0].get("trend_now_label")
     assert "3595" not in d2
     assert "8069" not in d1_codes
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
@@ -672,3 +706,39 @@ def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
     assert live_d1 == ["3595"]
     live_zero = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="z")]
     assert "8069" in live_zero
+
+
+def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
+    import screening_engine as se
+
+    db = str(tmp_path / "lz_trend.db")
+    _seed_quotes(db, {"1101": 51.0, "1201": 50.8})
+    _set_close(db, "1101", "20260914", 50.4)
+    _set_close(db, "1201", "20260914", 50.4)
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    real = se._leave_zero_trend_ok
+
+    def fake(info):
+        sid = str(info.get("stock_id") or "")
+        if sid == "1101":
+            return True
+        if sid == "1201":
+            return False
+        return real(info)
+
+    monkeypatch.setattr("screening_engine._leave_zero_trend_ok", fake)
+    engine = ScreeningEngine(db)
+    rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    codes = [r["code"] for r in rows]
+    assert "1101" in codes and "1201" in codes
+    assert codes.index("1101") < codes.index("1201")
+    by = {r["code"]: r for r in rows}
+    assert by["1101"]["trend_up_now"] is True
+    assert by["1201"]["trend_up_now"] is False
+    assert int(by["1201"].get("entry_stars") or 0) <= 4
+    assert by["1201"].get("buy_star") is False
+    assert "趨勢已向上" in _stock_card_html(by["1101"], 1, bucket_label="剛離1")
+    assert "趨勢還沒向上" in _stock_card_html(by["1201"], 2, bucket_label="剛離1")
+    from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
+
+    assert LEAVE_ZERO_SCREEN_MAX_PCT == 5.0
