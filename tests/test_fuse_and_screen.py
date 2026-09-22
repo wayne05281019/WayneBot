@@ -510,7 +510,8 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertGreaterEqual(n, 2)
             with patch("live_quote.is_live_merge_window", return_value=False):
                 html = format_sector_rotation_html(path, "20260828")
-            self.assertIn("盤後資金輪動", html)
+            self.assertIn("證交所產業別", html)
+            self.assertIn("不是個股同業鏈", html)
             self.assertIn("＝＝半導體業＝＝", html)
             self.assertIn("＝＝鋼鐵工業＝＝", html)
             self.assertIn("前幾名買超", html)
@@ -551,10 +552,12 @@ class FuseAndScreenTest(unittest.TestCase):
             self.assertNotIn("觀察清單", flow)
             items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
             annotate_items_with_sector_flow(path, "20260828", items)
-            self.assertTrue(items[0].get("sector_inflow"))
-            self.assertIn("半導體", items[0].get("sector_flow_label") or "")
+            self.assertFalse(items[0].get("sector_inflow"))
+            self.assertFalse(items[0].get("sector_just_rotated"))
+            self.assertFalse(items[0].get("sector_flow_label"))
             card = _stock_card_html({**items[0], "ma20": 98, "ma60": 95}, 1)
-            self.assertIn("輪動進", card)
+            self.assertNotIn("輪動進", card)
+            self.assertNotIn("剛輪到", card)
         finally:
             os.remove(path)
 
@@ -598,14 +601,13 @@ class FuseAndScreenTest(unittest.TestCase):
             conn.close()
             items = [{"stock_id": "2330", "stock_name": "台積電", "close": 100, "pct_change": 1.2, "volume": 50000}]
             annotate_items_with_sector_flow(path, "20260828", items)
-            self.assertTrue(items[0].get("sector_just_rotated"))
-            self.assertTrue(items[0].get("sector_inflow"))
-            self.assertIn("剛輪到", items[0].get("sector_flow_label") or "")
-            self.assertIn("半導體", items[0].get("sector_flow_label") or "")
+            self.assertFalse(items[0].get("sector_just_rotated"))
+            self.assertFalse(items[0].get("sector_inflow"))
+            self.assertFalse(items[0].get("sector_flow_label"))
             card = _stock_card_html({**items[0], "ma20": 98, "ma60": 95}, 1)
-            self.assertIn("剛輪到", card)
+            self.assertNotIn("剛輪到", card)
             names = just_rotated_names_in_results({"leave_zero": items}, ["leave_zero"])
-            self.assertEqual(names, ["半導體"])
+            self.assertEqual(names, [])
         finally:
             os.remove(path)
 

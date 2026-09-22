@@ -551,3 +551,32 @@ def test_flow_timeout_hint_not_always_intraday_mis():
     src = inspect.getsource(WayneTelegramBot.flow_cmd)
     assert "is_tw_equity_session" in src
     assert "請稍後再按一次「資金」" in src
+
+
+def test_market_button_always_opens_market_page():
+    import inspect
+
+    from bot_servers import MENU_BTN_MARKET, WayneTelegramBot
+
+    src = inspect.getsource(WayneTelegramBot._on_text_bound)
+    assert "ask=\"大盤現在\"" not in src
+    assert "market_cmd" in src
+    idx = src.find("text == MENU_BTN_MARKET")
+    assert idx > 0
+    chunk = src[idx : idx + 400]
+    assert "_send_biaoke_page" not in chunk
+    assert "market_cmd" in chunk
+
+
+def test_daytrade_picks_keyboard_has_no_watch_plus():
+    from bot_servers import WayneTelegramBot
+
+    bot = WayneTelegramBot.__new__(WayneTelegramBot)
+    kb = bot._picks_keyboard([("2330", "台積電")], topic="daytrade", line_pack_id="day_trade")
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "k:2330" in datas
+    assert "w:2330" not in datas
+    assert "b:2330" not in datas
+    screen = bot._picks_keyboard([("2330", "台積電")], topic="screen", line_pack_id="leave_zero")
+    screen_d = [b.callback_data for row in screen.inline_keyboard for b in row]
+    assert "w:2330" in screen_d

@@ -238,7 +238,8 @@ def test_overnight_list_heading_not_intraday_after_hours():
     assert "盤中即時" not in pre_t
     after_t, after_s = overnight_list_heading("after")
     assert "收盤後參考" in after_t
-    assert "不是叫你再買" in after_s
+    assert "不是進場表" in after_s
+    assert "盤中即時" not in after_t
     week_t, week_s = overnight_list_heading("weekend")
     assert "休市參考" in week_t
     assert "不是叫你現在買" in week_s

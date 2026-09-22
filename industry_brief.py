@@ -85,16 +85,13 @@ COPY_NO_CHAIN = "還沒產業鏈，不拿證交所粗分類硬比。"
 
 def membership_label(snap: Dict[str, Any]) -> str:
     """這檔拿來比對的最細標。圖卡／HTML 同業括號同一句，跟 membership_keys 對齊。"""
-    from industry_fine import _KEEP_FINEST, _KEEP_FOUNDRY_WITH
+    from industry_fine import _KEEP_FINEST
 
     bits: List[str] = []
     extras = [str(t).strip() for t in list(snap.get("extra_tags") or []) if str(t).strip()]
     finest = str(snap.get("fine_finest") or "").strip()
-    extra_set = set(extras)
     if extras:
-        if finest in _KEEP_FINEST or (
-            finest == "代工" and (extra_set & _KEEP_FOUNDRY_WITH)
-        ):
+        if finest in _KEEP_FINEST:
             if finest and finest not in bits:
                 bits.append(finest)
         for t in extras:
@@ -972,22 +969,36 @@ def attach_fine_industry(
     tags = display_tags(list(mine.get("tags") or []), sid)
     chain = str(mine.get("chain") or "")
     finest = str(mine.get("finest") or "")
+    source = str(mine.get("source") or "")
     try:
         from universe import stock_is_emerging
 
         emerging = stock_is_emerging(sid, db_path)
     except Exception:
         emerging = False
-    if emerging or is_catchall_finest(finest):
-        if extras and not emerging:
+    if emerging:
+        # 臉仍是 ISIN。比價：點名跨族，或庫裡非櫃買上櫃鏈的最細標。
+        from tpex_industry_chain import SOURCE as TPEX_SRC
+
+        if extras:
+            chain = "／".join(extras)
+            finest = extras[0]
+            tags = display_tags(extras, sid)
+        elif finest and not is_catchall_finest(finest) and source != TPEX_SRC:
+            tags = display_tags(list(mine.get("tags") or []), sid)
+        else:
+            chain = ""
+            finest = ""
+            tags = extras
+    elif is_catchall_finest(finest):
+        if extras:
             chain = "／".join(extras)
             finest = extras[0]
             tags = display_tags(extras, sid)
         else:
             chain = ""
             finest = ""
-            tags = extras if extras and not emerging else []
-            extras = extras if not emerging else []
+            tags = extras
     snap["fine_tags"] = tags
     snap["fine_chain"] = chain
     snap["fine_finest"] = finest

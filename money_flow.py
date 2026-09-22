@@ -390,18 +390,17 @@ def sector_flow_maps(db_path: str, ymd: str) -> Dict[str, Any]:
 
 
 def annotate_items_with_sector_flow(db_path: str, ymd: str, items: List[Dict[str, Any]]) -> None:
-    """海選／當沖名單標上當日產業輪動進／出，當佈局參考，不改排名公式。"""
+    """海選名單寫產業鏈標籤。證交所輪動只留在資金頁。"""
     if not items:
         return
     annotate_screen_results(db_path, ymd, {"_": items})
 
 
 def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> None:
-    """產業輪動只算一次，再批次標到所有名單。"""
+    """個股輪動標走產業鏈／點名族，不准把證交所半導體業貼到光通訊檔。資金頁粗組另算。"""
     lists = [lst for lst in (results or {}).values() if isinstance(lst, list) and lst]
     if not lists:
         return
-    maps = sector_flow_maps(db_path, ymd)
     ids = []
     seen = set()
     for lst in lists:
@@ -410,34 +409,32 @@ def annotate_screen_results(db_path: str, ymd: str, results: Dict[str, Any]) -> 
             if sid and sid not in seen:
                 seen.add(sid)
                 ids.append(sid)
-    industries: Dict[str, str] = {}
+    if not ids:
+        return
+    del ymd
+    from industry_fine import extra_tags_for, load_cached_fine_industry, membership_face
+
+    fine = load_cached_fine_industry(db_path, ids, max_age_days=365)
     conn = sqlite3.connect(db_path)
     try:
-        if ids:
-            qmarks = ",".join("?" * len(ids))
-            for sid, ind in conn.execute(
-                f"SELECT stock_id, industry FROM stock_universe WHERE stock_id IN ({qmarks})",
-                ids,
-            ):
-                industries[str(sid)] = (str(ind or "").strip() or "未分類")
         for lst in lists:
             for item in lst:
                 sid = str(item.get("stock_id") or item.get("code") or "").strip()
                 if not sid:
                     continue
-                ind = industries.get(sid) or industry_of(conn, sid)
-                item["industry"] = ind
-                just = maps.get("just_rotated") or {}
-                if ind in just:
-                    item["sector_inflow"] = True
-                    item["sector_just_rotated"] = True
-                    item["sector_flow_label"] = f"剛輪到·{_sector_short_name(ind)}"
-                elif ind in maps["inflow"]:
-                    item["sector_inflow"] = True
-                    item["sector_flow_label"] = f"輪動進·{ind}"
-                elif ind in maps["outflow"]:
-                    item["sector_outflow"] = True
-                    item["sector_flow_label"] = f"輪動出·{ind}"
+                rec = fine.get(sid) or {}
+                extras = extra_tags_for(sid)
+                mem = membership_face(sid, str(rec.get("finest") or ""), str(rec.get("chain") or ""))
+                if extras:
+                    item["industry"] = extras[0]
+                elif mem:
+                    item["industry"] = mem
+                else:
+                    item["industry"] = industry_of(conn, sid)
+                item.pop("sector_inflow", None)
+                item.pop("sector_outflow", None)
+                item.pop("sector_just_rotated", None)
+                item.pop("sector_flow_label", None)
     finally:
         conn.close()
 
@@ -1075,8 +1072,8 @@ def format_sector_rotation_html(
         blocks.append(lag)
     blocks.append(
         section(
-            kv_compact("單位", "張（產業加總三大法人，非分點）"),
-            kv_compact("用途", "佈局對照：熱族＋前幾名個股；產業鏈＝櫃買價值鏈／已教過跨族，不作單獨訊號"),
+            kv_compact("單位", "張（證交所產業別加總三大法人，非分點）"),
+            kv_compact("用途", "大盤輪動對照，不是個股同業鏈；個股比價請看產業卡"),
         ),
     )
     if chip_abs == 0:
@@ -1250,7 +1247,7 @@ def format_flow_html(
             section(
                 kv_compact("覆蓋", cover),
                 kv_compact("單位", "張（三大法人，非分點）"),
-                kv_compact("產業鏈", "櫃買價值鏈／已教過跨族；其他桶不拿來比"),
+                kv_compact("產業鏈", "個股標題＝產業鏈／點名族；下面輪動表＝證交所產業別，不是同業比價"),
             ),
         ]
     )
@@ -1286,7 +1283,7 @@ def format_flow_html(
                     f"法人 {qty_text(three)}",
                 )
             )
-        blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖）</b>", *_flow_stock_lines(bits)))
+        blocks.append(section("<b>短線熱（量大＋波動，對照當沖／隔日沖節奏，不是買訊）</b>", *_flow_stock_lines(bits)))
 
     return join_dashed(*blocks)
 

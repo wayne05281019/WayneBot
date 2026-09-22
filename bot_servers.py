@@ -1731,11 +1731,21 @@ class WayneTelegramBot:
         line_pack_id: str = None,
     ):
         rows = []
+        pack = str(line_pack_id or "").strip()
+        topic_s = str(topic or "").strip()
+        rhythm = pack in ("day_trade", "overnight") or topic_s in ("daytrade", "overnight")
         for i, (code, name) in enumerate((picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             c = str(code or "").strip()
             if not c:
                 continue
-            rows.append(self._stock_action_row(c, name or "", idx=i))
+            if rhythm:
+                from tg_layout import stock_btn_label
+
+                rows.append(
+                    [InlineKeyboardButton(stock_btn_label(c, name or ""), callback_data=f"k:{c}")]
+                )
+            else:
+                rows.append(self._stock_action_row(c, name or "", idx=i))
         if not rows:
             return None
         return InlineKeyboardMarkup(rows)
@@ -1884,7 +1894,7 @@ class WayneTelegramBot:
         shown = list(rows or [])[: self.WATCH_LIST_LIMIT]
         lines = [
             "<b>觀察清單（自選，還沒買也可以）</b>",
-            "加入：打股名按 ➕，或海選／當沖旁的 ➕。刪除：按該檔「刪」。",
+            "加入：打股名按 ➕，或海選名單旁的 ➕。刪除：按該檔「刪」。",
         ]
         if not shown:
             lines.append("<i>目前是空的，這很正常。請先打一檔股票名稱。</i>")
@@ -3132,7 +3142,7 @@ class WayneTelegramBot:
             bucket_key="day_trade",
             live_bucket="daytrade",
             title="⚡ 當沖候選（盤中）",
-            subtitle="現在盤中。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
+            subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
             topic="daytrade",
             status_text="⚡ 當沖查詢中（盤中現價複核）…",
             menu_label="當沖",
@@ -3145,7 +3155,7 @@ class WayneTelegramBot:
             bucket_key="overnight",
             live_bucket="overnight",
             title="⚡ 隔日沖候選（盤中即時）",
-            subtitle="盤中即時複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
+            subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；現價旁小字＝報價時間。不是記買入建議。",
             topic="overnight",
             status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
             menu_label="隔日沖",
@@ -4622,11 +4632,6 @@ class WayneTelegramBot:
             await self._send_biaoke_page(update.message, uid=uid)
             return
         if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
-            if str(self._pending.get(actor) or "") in ("biaoke:ask", "biaoke:chat"):
-                await self._send_biaoke_page(
-                    update.message, ask="大盤現在", uid=uid
-                )
-                return
             logger.info("主選單：大盤 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.market_cmd(update, context)
@@ -6019,8 +6024,8 @@ class WayneTelegramBot:
                 "select_01": "周帶量：短線轉強且趨勢向上，靠近20日高少追",
                 "select_02": "站上季線：昨收在季線下、今日站上；空頭反彈不進",
                 "select_03": "止跌：月低附近有人接、量沒死；空頭反彈不進",
-                "day_trade": "當沖：進場 / 停利 / 停損",
-                "overnight": "隔日沖：尾盤佈局",
+                "day_trade": "當沖：盤中節奏，不是黃金買點",
+                "overnight": "隔日沖：盤中節奏，不是黃金買點",
             }
             await q.answer(hints.get(data.split(":", 1)[-1], "分類標記")[:200])
             return
@@ -6087,10 +6092,9 @@ class WayneTelegramBot:
                 )
                 return
             if kind == "mkt":
-                # 舊訊息還可能有這顆；新鍵盤不再放。指數數字頁請按主選單大盤。
                 await q.answer("大盤")
-                self._enter_biaoke_chat(q.message, uid)
-                await self._send_biaoke_page(q.message, ask="大盤現在", uid=uid)
+                await self._enter_main_menu(q.message, uid)
+                await self._send_market_page(q.message)
                 return
             await q.answer()
             return
@@ -6232,7 +6236,7 @@ class WayneTelegramBot:
                 bucket_key="day_trade",
                 live_bucket="daytrade",
                 title="⚡ 當沖候選（盤中）",
-                subtitle="現在盤中。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
+                subtitle="盤中節奏名單，不是黃金買點、不是記買入建議。沒進場：不要貴過「現在不要貴過」那一價。已進場：漲 3% 先出一部分，跌破均價先走。",
                 topic="daytrade",
                 status_text="⚡ 當沖查詢中（盤中現價複核）…",
                 menu_label="當沖",
@@ -6244,7 +6248,7 @@ class WayneTelegramBot:
                 bucket_key="overnight",
                 live_bucket="overnight",
                 title="⚡ 隔日沖候選（盤中即時）",
-                subtitle="盤中即時複核：只列此刻漲幅≥2.5% 的標的；現價旁小字＝報價時間。尾盤保險買進；明早開高+3.5～4.8%；防守跌破先走。",
+                subtitle="盤中節奏名單，不是黃金買點。只列此刻漲幅≥2.5%；現價旁小字＝報價時間。不是記買入建議。",
                 topic="overnight",
                 status_text="⚡ 隔日沖查詢中（盤中現價複核）…",
                 menu_label="隔日沖",

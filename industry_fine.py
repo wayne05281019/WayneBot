@@ -26,8 +26,9 @@ CACHE_DAYS = 7
 # 教過、對得上檔號才加最細標。比對只認這層。
 # 自選名單只參考，不准整份覆蓋。中心＝籌碼K最細項＋同鏈比價；錯桶（台玻當PCB、通嘉當控制、台達電當重電）不收。
 # 籌碼K「通訊設備／半導體元件／網通／代工」太粗：成熟製程≠台積；低軌≠全部通訊設備。
-# 代工只在光通訊／低軌這種化合物廠並存。封測、記憶體製造仍是準細項。
+# 化合物代工（穩懋／環宇）比價走光通訊／低軌，不准再拿「代工」去跟台積比。
 # 低軌衛星＝點名檔（昇達科 3491，不是建漢 3062）。不准發明軍工。
+# 連動標（工業電腦↔機器人、元晶↔低軌）只顯示，不進同業集合。
 # 光通訊（矽光子）＝點名檔；IET＝IET-KY 4971。啞光＝亞光；啟基＝啟碁；耀華＝燿華。
 # 通嘉 3588＝電源管理，不是記憶體控制。創見＝模組。晶豪科／鈺創＝記憶體IC設計，不是製造。
 TAUGHT_GROUPS: Dict[str, tuple] = {
@@ -54,8 +55,8 @@ TAUGHT_GROUPS: Dict[str, tuple] = {
         "2367",  # 燿華
         "6285",  # 啟碁
         "2313",  # 華通
-        "6443",  # 元晶
         "6271",  # 同欣電
+        # 元晶 6443＝太陽能比價，低軌只連動
     ),
     "成熟製程": ("2303", "6770", "5347"),  # 聯電、力積電、世界
     "機器人": (
@@ -67,32 +68,7 @@ TAUGHT_GROUPS: Dict[str, tuple] = {
         "6188",  # 廣明
         "2359",  # 所羅門
         "3019",  # 亞光
-        "2395",  # 研華
-        "8234",  # 新漢
-        "3088",  # 艾訊
-        # 工業電腦同鏈觸類旁通（比價仍在工業電腦；機器人是連動標）
-        "2397",
-        "3022",
-        "3046",
-        "3416",
-        "3652",
-        "4916",
-        "6166",
-        "6414",
-        "6579",
-        "6928",
-        "7821",
-        "3479",
-        "3564",
-        "3577",
-        "3594",
-        "3611",
-        "6161",
-        "6441",
-        "6570",
-        "6680",
-        "6922",
-        "8050",
+        # 研華／新漢／艾訊與工業電腦＝連動，不進機器人比價
         # 宇隆 2233＝汽車零組件，不收
     ),
     "記憶體製造": ("2408", "2344", "2337"),  # 南亞科、華邦電、旺宏；晶豪科／鈺創不收
@@ -142,6 +118,7 @@ TAUGHT_GROUPS: Dict[str, tuple] = {
     ),
     "ABF": ("8046", "3037", "3189"),  # 南電、欣興、景碩；臻鼎是 PCB 製造不是載板
     "被動元件": ("2327",),
+    "電源管理": ("3588",),  # 通嘉；不是記憶體控制、不是整桶 IC 設計
     "特用化學": ("4772", "4749", "4722"),  # 台特化、新應材、國精化
     "無塵室": ("5536", "2404", "6139", "6691", "6196", "6903", "3402"),  # 聖暉、漢唐、亞翔、洋基、帆宣、巨漢、漢科
     "太陽能": ("6443", "6244", "3576", "6477", "4934"),  # 元晶、茂迪、聯合再生、安集、太極
@@ -149,9 +126,40 @@ TAUGHT_GROUPS: Dict[str, tuple] = {
     "重電": ("1519", "1503", "1513", "2371", "1514", "4588"),  # 華城、士電、中興電、大同、亞力、玖鼎；台達電＝電源供應器，不收
 }
 _TAUGHT_CROSS = tuple(TAUGHT_GROUPS.items())
-# 有跨族標時，這些籌碼K細項仍算同一條真鏈。代工要另外看是不是化合物廠。
+# 連動不是同業。圖卡可寫，membership_keys 不收。
+TAUGHT_LINK_GROUPS: Dict[str, tuple] = {
+    "機器人": (
+        "2395",  # 研華
+        "8234",  # 新漢
+        "3088",  # 艾訊
+        "2397",
+        "3022",
+        "3046",
+        "3416",
+        "3652",
+        "4916",
+        "6166",
+        "6414",
+        "6579",
+        "6928",
+        "7821",
+        "3479",
+        "3564",
+        "3577",
+        "3594",
+        "3611",
+        "6161",
+        "6441",
+        "6570",
+        "6680",
+        "6922",
+        "8050",
+    ),
+    "低軌衛星": ("6443",),  # 元晶：太陽能比價
+}
+# 有跨族標時，這些籌碼K細項仍算同一條真鏈。化合物代工不再跟台積共用「代工」。
 _KEEP_FINEST = frozenset({"封測", "記憶體製造"})
-_KEEP_FOUNDRY_WITH = frozenset({"光通訊", "低軌衛星"})
+_KEEP_FOUNDRY_WITH = frozenset()
 # 高階測試／記憶體封測是封測的更細拆，不能再跟矽格整桶比。
 _SPLIT_FINEST = {"高階測試": "封測", "記憶體封測": "封測"}
 SEED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "cmoney_fine_industry.json")
@@ -190,6 +198,18 @@ def extra_tags_for(stock_id: str) -> List[str]:
     return out
 
 
+def link_tags_for(stock_id: str) -> List[str]:
+    """連動標：畫面可寫，不進同業集合。"""
+    sid = str(stock_id or "").strip()
+    if not sid:
+        return []
+    out: List[str] = []
+    for tag, members in TAUGHT_LINK_GROUPS.items():
+        if sid in members and tag not in out:
+            out.append(tag)
+    return out
+
+
 def membership_face(stock_id: str, finest: str = "", chain: str = "") -> str:
     """個股標題用的最細標。有跨族就跟產業卡同業括號同一句；沒有才寫籌碼K整條鏈。"""
     extras = extra_tags_for(stock_id)
@@ -198,12 +218,9 @@ def membership_face(stock_id: str, finest: str = "", chain: str = "") -> str:
     if not fine:
         parts = split_chain(chain)
         fine = parts[-1] if parts else ""
-    extra_set = set(extras)
     if extras:
         split_away = {_SPLIT_FINEST[t] for t in extras if t in _SPLIT_FINEST}
-        keep_fine = (fine in _KEEP_FINEST and fine not in split_away) or (
-            fine == "代工" and (extra_set & _KEEP_FOUNDRY_WITH)
-        )
+        keep_fine = fine in _KEEP_FINEST and fine not in split_away
         if keep_fine:
             if fine and fine not in bits:
                 bits.append(fine)
@@ -220,7 +237,7 @@ def membership_face(stock_id: str, finest: str = "", chain: str = "") -> str:
 
 
 def membership_keys(stock_id: str, finest: str = "") -> set:
-    """最細標籤才拿來比。有光通訊／低軌衛星就用那層；代工／封測這種準細項可並存。"""
+    """最細標籤才拿來比。有光通訊／低軌衛星就用那層；封測／記憶體製造可並存。化合物代工不再跟台積共用代工。"""
     extras = extra_tags_for(stock_id)
     keys = set()
     for tag in extras:
@@ -229,11 +246,8 @@ def membership_keys(stock_id: str, finest: str = "") -> set:
     if not fine or is_catchall_finest(fine):
         return keys
     if extras:
-        extra_set = set(extras)
         split_away = {_SPLIT_FINEST[t] for t in extras if t in _SPLIT_FINEST}
         if fine in _KEEP_FINEST and fine not in split_away:
-            keys.add(("fine", fine))
-        elif fine == "代工" and (extra_set & _KEEP_FOUNDRY_WITH):
             keys.add(("fine", fine))
         return keys
     keys.add(("fine", fine))
@@ -241,9 +255,9 @@ def membership_keys(stock_id: str, finest: str = "") -> set:
 
 
 def display_tags(tags: List[str], stock_id: str) -> List[str]:
-    """族群 → 次族群 → 產業鏈 → 跨族，全部留下。圖卡／HTML 不准再截最後三個。"""
+    """族群 → 次族群 → 產業鏈 → 跨族／連動，全部留下。圖卡／HTML 不准再截最後三個。"""
     out: List[str] = []
-    for t in list(tags or []) + extra_tags_for(stock_id):
+    for t in list(tags or []) + extra_tags_for(stock_id) + link_tags_for(stock_id):
         s = str(t or "").strip()
         if s and s not in out:
             out.append(s)
@@ -261,19 +275,12 @@ def peer_chip_tags(tags: Iterable[str]) -> List[str]:
 
 
 def chain_peer_ids(db_path: str, stock_id: str) -> List[str]:
-    """有同一最細標籤才算同業。封測對封測；光通訊對光通訊；穩懋跨族兩邊都進。興櫃不進上市櫃同業。"""
+    """有同一最細標籤才算同業。封測對封測；光通訊對光通訊；穩懋跨族兩邊都進。興櫃可進點名／非櫃買鏈同業。"""
     sid = str(stock_id or "").strip()
     if not sid or not db_path:
         return []
-    try:
-        from universe import stock_is_emerging
-
-        if stock_is_emerging(sid, db_path):
-            return []
-    except Exception:
-        pass
     ensure_fine_industry_table(db_path)
-    mine = load_cached_fine_industry(db_path, [sid]).get(sid) or {}
+    mine = load_cached_fine_industry(db_path, [sid], max_age_days=365).get(sid) or {}
     mine_keys = membership_keys(sid, str(mine.get("finest") or ""))
     if not mine_keys:
         return []
