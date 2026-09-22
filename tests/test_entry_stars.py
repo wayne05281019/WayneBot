@@ -42,9 +42,18 @@ def test_five_stars_only_leave_zero_aligned():
     assert entry_star_count(broke, bucket_key="leave_zero") <= 2
 
 
-def test_leave_zero_without_s_or_inflow_is_four():
+def test_leave_zero_on_table_is_five_without_s_or_inflow():
     n = entry_star_count({"profit_pct": 0.8}, bucket_key="leave_zero")
-    assert n == 4
+    assert n == 5
+    assert entry_star_glyphs(n) == "★★★★★"
+
+
+def test_leave_zero_trend_not_up_now_caps_four():
+    n = entry_star_count(
+        {"profit_pct": 0.8, "trend_up_now": False},
+        bucket_key="leave_zero",
+    )
+    assert n <= 4
     assert entry_star_glyphs(n) == "★★★★☆"
 
 
@@ -126,13 +135,13 @@ def test_entry_watch_merged_one_list_two_tags():
 def test_stamp_sets_buy_star_only_for_five():
     rows = stamp_entry_stars(
         [
-            {"stock_id": "1", "profit_pct": 1.0, "is_s_tier": True},
-            {"stock_id": "2", "profit_pct": 1.0},
+            {"stock_id": "1", "profit_pct": 1.0},
+            {"stock_id": "2", "profit_pct": 1.0, "chase_warning": True},
         ],
         "leave_zero",
     )
     assert rows[0]["entry_stars"] == 5 and rows[0]["buy_star"] is True
-    assert rows[1]["entry_stars"] == 4 and rows[1]["buy_star"] is False
+    assert rows[1]["entry_stars"] <= 4 and rows[1]["buy_star"] is False
 
 
 def test_nav_trade_marks_buy_up_sell_down_from_card():

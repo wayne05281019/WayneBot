@@ -115,8 +115,8 @@ def test_mark_leave_zero_stars_caps_at_five():
     ]
     out = mark_leave_zero_stars(rows)
     assert LEAVE_ZERO_STAR_N == 5
-    assert [r["entry_stars"] for r in out] == [5, 4, 0]
-    assert [r["buy_star"] for r in out] == [True, False, False]
+    assert [r["entry_stars"] for r in out] == [5, 5, 0]
+    assert [r["buy_star"] for r in out] == [True, True, False]
     few = mark_leave_zero_stars([{"stock_id": "1"}, {"stock_id": "2"}])
     assert all(r["entry_stars"] == 3 and r["buy_star"] is False for r in few)
 

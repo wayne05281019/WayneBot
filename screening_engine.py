@@ -1146,9 +1146,8 @@ def entry_star_count(
     bucket_key: str = "",
     bucket_label: str = "",
 ) -> int:
-    """海選切入星：0～5。滿五星＝黃金買點且高低卡欄對齊、這檔按表該買。
+    """海選切入星：0～5。滿五星＝黃金買點按表該買，不靠投信連買或輪動進。
 
-    只疊既有欄：獲利剛離零、S級、輪動進、20低脫離、少追、高β、流出、隔夜逆風。
     重點觀察不是買訊，最高四星。少追／流出／逆風／高β不能滿五星。
     """
     row = item or {}
@@ -1183,20 +1182,21 @@ def entry_star_count(
     if str(row.get("buy_gate") or "") == "no" or str(row.get("hold_prior_state") or "") == "broke":
         n = min(n, 2)
     n = max(0, min(ENTRY_STAR_N, n))
-    if n >= ENTRY_STAR_N:
-        must = (
-            key == "leave_zero"
-            and not row.get("chase_warning")
+    if key == "leave_zero":
+        table_ok = (
+            not row.get("chase_warning")
             and not row.get("sector_outflow")
             and not row.get("us_risk_off")
             and not row.get("beta_downweighted")
-            and bool(row.get("is_s_tier") or row.get("sector_inflow"))
-            and (profit is None or profit <= 5.0)
+            and profit is not None
+            and 0.0 < profit <= 5.0
         )
-        if not must:
-            n = ENTRY_STAR_N - 1
-    if "trend_up_now" in row and not row.get("trend_up_now"):
-        n = min(n, ENTRY_STAR_N - 1)
+        n = ENTRY_STAR_N if table_ok else min(n, ENTRY_STAR_N - 1)
+        if "trend_up_now" in row and not row.get("trend_up_now"):
+            n = min(n, ENTRY_STAR_N - 1)
+        return n
+    if n >= ENTRY_STAR_N:
+        n = ENTRY_STAR_N - 1
     return n
 
 
