@@ -43,11 +43,15 @@ def _bars(closes, *, stock_id="2330", vol=12000, last_vol=None):
     return pd.DataFrame(rows)
 
 
-def test_golden_buy_downtrend_oversold_not_in_bucket():
-    """60低超跌公式仍可能成立，但整份海選不收空頭，下坡不進桶。"""
-    closes = [70.0] * 45 + [62.0] * 8 + [55.0] * 7 + [48.0] * 5 + [42.0] * 10
-    out = ScreeningEngine(db_path=":memory:").execute_all_strategies({"2330": _bars(closes)})
-    assert out["golden_buy"] == []
+def test_golden_buy_oversold_enters_watch_not_buy():
+    """還在零＝60低超跌觀察，不走月線上閘；不是買訊、不進黃金買點。"""
+    closes = [100.0] * 40 + [float(90 - i) for i in range(30)]
+    out = ScreeningEngine(db_path=":memory:").execute_all_strategies(
+        {"2330": _bars(closes)}
+    )
+    assert out["golden_buy"]
+    assert out["golden_buy"][0]["stock_id"] == "2330"
+    assert out["golden_buy"][0].get("golden_buy") is True
     assert out["leave_zero"] == []
     assert out["select_03"] == []
 

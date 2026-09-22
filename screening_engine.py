@@ -360,9 +360,9 @@ class ScreeningEngine:
             ):
                 res_sel_03.append(info)
 
-            # 重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位）。
-            # 公式仍可在月線下成立；整份海選另須趨勢向上，空頭／下坡不進桶。
-            if layout_ok and _golden_buy_ok(info):
+            # 重點觀察（golden_buy／還在零）：60低 + 獲利≈0 + 月乖離超跌。
+            # 觀察不是買。不走 layout_ok：那條要收盤≥月線，月乖離<-10% 必然互斥，桶會永遠空。
+            if _golden_buy_ok(info):
                 golden = dict(info)
                 golden["golden_buy"] = True
                 res_golden_buy.append(golden)
@@ -1146,9 +1146,8 @@ def entry_star_count(
     bucket_key: str = "",
     bucket_label: str = "",
 ) -> int:
-    """海選切入星：0～5。滿五星＝黃金買點且高低卡欄對齊、這檔按表該買。
+    """海選切入星：0～5。滿五星＝黃金買點按表該買，不靠投信連買或輪動進。
 
-    只疊既有欄：獲利剛離零、S級、輪動進、20低脫離、少追、高β、流出、隔夜逆風。
     重點觀察不是買訊，最高四星。少追／流出／逆風／高β不能滿五星。
     """
     row = item or {}
@@ -1183,20 +1182,23 @@ def entry_star_count(
     if str(row.get("buy_gate") or "") == "no" or str(row.get("hold_prior_state") or "") == "broke":
         n = min(n, 2)
     n = max(0, min(ENTRY_STAR_N, n))
-    if n >= ENTRY_STAR_N:
-        must = (
-            key == "leave_zero"
-            and not row.get("chase_warning")
+    if key == "leave_zero":
+        table_ok = (
+            not row.get("chase_warning")
             and not row.get("sector_outflow")
             and not row.get("us_risk_off")
             and not row.get("beta_downweighted")
-            and bool(row.get("is_s_tier") or row.get("sector_inflow"))
-            and (profit is None or profit <= 5.0)
+            and str(row.get("buy_gate") or "") != "no"
+            and str(row.get("hold_prior_state") or "") != "broke"
+            and profit is not None
+            and 0.0 < profit <= 5.0
         )
-        if not must:
-            n = ENTRY_STAR_N - 1
-    if "trend_up_now" in row and not row.get("trend_up_now"):
-        n = min(n, ENTRY_STAR_N - 1)
+        n = ENTRY_STAR_N if table_ok else min(n, ENTRY_STAR_N - 1)
+        if "trend_up_now" in row and not row.get("trend_up_now"):
+            n = min(n, ENTRY_STAR_N - 1)
+        return n
+    if n >= ENTRY_STAR_N:
+        n = ENTRY_STAR_N - 1
     return n
 
 
@@ -1402,7 +1404,10 @@ def _is_downtrend_no_touch(info: Dict[str, Any]) -> bool:
 
 
 def _golden_buy_ok(info: Dict[str, Any]) -> bool:
-    """重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離 < -10%。公式不含趨勢；海選另須 _screen_trend_up_ok。"""
+    """重點觀察（golden_buy／還在零）：60低 + 獲利≈0 + 月乖離 < -10%。
+
+    觀察不是買。海選不要再套 _screen_trend_up_ok（收盤≥月線）；那條跟超跌互斥。
+    """
     if not info.get("at_60_low"):
         return False
     try:
@@ -1961,16 +1966,12 @@ def _compact_line(item: Dict[str, Any]) -> str:
     return f"{title}　{stars}\n{body}"
 
 
-# 06:30 海選推播只推佈局桶；當沖／隔日沖改主選單單獨查。
-# 晨間呈現：只寄大盤＋黃金買點一欄（買點＋還在零）。優先看／周帶量改海選按鈕。
-_ENTRY_HINT = "買點＝剛離零可切入；還在零＝觀察不是買（須趨勢向上）"
+# 海選畫面（早報＋手動）只出黃金買點一欄（買點＋還在零）。
+# 周帶量／半年高／站上季線／止跌／優先看仍計算，不是買訊、不進海選卡片。
+# 當沖／隔日沖改主選單單獨查。
+_ENTRY_HINT = "買點＝剛離零可切入；還在零＝觀察不是買"
 SCREEN_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
-    ("revenue_cross", "📈", "優先看", "營收轉強 × 量價突破（須趨勢向上；不是買訊）", 8, False),
-    ("select_01", "🔥", "周帶量", "突破5日高＋60日量比≥2（須趨勢向上；不是買訊）", 8, True),
-    ("half_year_high", "📊", "半年高", "收盤創120日新高且量比≥2.5（須趨勢向上；不是買訊）", 8, True),
-    ("select_02", "🏆", "站上季線", "昨收在季線下、今日站上季線（須趨勢向上；不是買訊）", 8, True),
-    ("select_03", "💎", "止跌", "月低附近有人接、量比≥1、今日翻紅（須趨勢向上；不是買訊）", 8, True),
 )
 MORNING_PUSH_SPECS = (
     ("leave_zero", "🌱", "黃金買點", _ENTRY_HINT, 8, False),
@@ -2042,7 +2043,8 @@ def format_screening_payload(
     """每個分類一則訊息；標題由左邊小動圖 + 分類名的貼紙呈現。
 
     morning=True：06:30 早報只出黃金買點（買點＋還在零）。
-    黃金買點沒檔也留欄（寫今日沒有）。優先看／周帶量改主選單海選。
+    手動海選同一欄。周帶量等仍計算、不進畫面。
+    黃金買點沒檔也留欄（寫今日沒有）。
     market_html：有內容時插在第一則當大盤狀況。
     """
     results = drop_non_equity_picks(results)
@@ -2304,13 +2306,9 @@ def format_line_share_packs(
     morning: bool = False,
     now: Optional[datetime] = None,
 ) -> List[Dict[str, str]]:
-    """三段海選純文字：夜盤、黃金買點／佈局、短線說明（當沖改主選單查）。"""
+    """三段海選純文字：夜盤、黃金買點（買點／還在零）、短線說明（當沖改主選單查）。"""
     specs_layout = [
         ("leave_zero", "黃金買點　買點才切入；還在零只觀察"),
-        ("revenue_cross", "優先看　營收轉強×量價"),
-        ("select_01", "周帶量　短線轉強"),
-        ("select_02", "站上季線　中線轉強第一天"),
-        ("select_03", "止跌　月低有人接"),
     ]
     if morning:
         specs_layout = [pair for pair in specs_layout if pair[0] in MORNING_LAYOUT_KEYS]
