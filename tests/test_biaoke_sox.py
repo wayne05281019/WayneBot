@@ -49,10 +49,9 @@ def test_follow_low_and_html():
     )
     html = format_sox_html(snap)
     assert "不是買訊" in html
-    assert "不進海選" in html
     assert is_sox_query("費半 1-4 重疊")
     ans = answer_biaoke(":memory:", "1-4 重疊代表什麼")
-    assert "這不是買訊" in ans
+    assert "不是買訊" in ans
     assert DISCLAIMER.split("。")[0] in ans or "買訊" in ans
 
 

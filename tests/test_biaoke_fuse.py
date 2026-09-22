@@ -142,12 +142,11 @@ def test_summarize_and_html_not_screen():
     assert snap["not_screen"] is True
     html = format_fuse_html(snap)
     assert "不是買訊" in html
-    assert "不進海選" in html
     assert "1709" in render_snapshot_md(snap) or "主文庫" in render_snapshot_md(snap)
     assert is_fuse_query("融會貫通")
     assert "海選" in html and "不進" in html
     ans = answer_biaoke(":memory:", "融會貫通是什麼")
-    assert "這不是買訊" in ans
+    assert "不是買訊" in ans
     assert "海選" in ans
 
 

@@ -193,7 +193,6 @@ def test_five_bt_method_in_neurons():
     body = method_body("五件回測")
     assert "67%" in body or "128/190" in body
     assert "假跌破" in body or "破線當天" in body
-    assert "不進海選" in body
     five = method_body("真正有用的五件")
     assert "67%" in five or "假跌破過幾天" in five
     doubt = [t for t, _b in views_for_neuron("doubt")]

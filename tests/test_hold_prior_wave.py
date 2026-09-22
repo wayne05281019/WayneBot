@@ -80,7 +80,20 @@ def test_retest_broke_prior_low():
     got = classify_hold_prior_wave(highs, lows)
     assert got["hold_prior_state"] == "broke"
     assert "已破前次底" in got["hold_prior_note"]
+    assert "相對危險" not in got["hold_prior_note"]
     assert "不是買訊" not in got["hold_prior_note"]
+
+
+def test_retest_broke_with_heavy_volume_marks_danger():
+    highs, lows = _series_auo_like(retest_low=8.0)
+    vols = [1000.0] * (len(highs) - 1) + [4000.0]
+    got = classify_hold_prior_wave(highs, lows, volumes=vols)
+    assert got["hold_prior_state"] == "broke"
+    assert got["hold_prior_heavy"] is True
+    assert "相對危險" in got["hold_prior_note"]
+    note = hold_note_lines({**got, "stock_id": "2409"})[0]
+    assert "相對危險" in note
+    assert "均線" not in note
 
 
 def test_short_series_blank():
@@ -205,7 +218,24 @@ def test_buy_verdict_broke_never_buy():
         {"table": _lz_table(0.0, 1.0), "hold_prior_state": "broke", "gain_pct": 1.0}
     )
     assert got["buy_verdict"] == "no"
-    assert "前次底" in got["buy_verdict_note"]
+    assert "低點線" in got["buy_verdict_note"]
+    assert "相對危險" not in got["buy_verdict_note"]
+
+
+def test_buy_verdict_broke_heavy_volume_is_danger():
+    from hold_prior_wave import judge_buy_point
+
+    got = judge_buy_point(
+        {
+            "table": _lz_table(0.0, 1.0),
+            "hold_prior_state": "broke",
+            "hold_prior_heavy": True,
+            "gain_pct": 1.0,
+        }
+    )
+    assert got["buy_verdict"] == "no"
+    assert "相對危險" in got["buy_verdict_note"]
+    assert "帶量" in got["buy_verdict_note"]
 
 
 def test_buy_verdict_new_high_not_buy():

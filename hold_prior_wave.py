@@ -12,6 +12,7 @@ PRIOR_BARS = 5
 MERGE_GAP = 15
 ALMOST_FRAC = 0.04  # 友達 2/3 貼前波高的距離；過了還看前次底
 WASH_FRAC = 0.08  # 略破前次底；再深才寫底底低
+HEAVY_VOL = 1.5  # 破低點線那根量 ≥ 近20根均量：帶量，相對危險
 SWING = 5
 FRESH_BARS = 90
 
@@ -103,6 +104,7 @@ def classify_hold_prior_wave(
     lows: Sequence[Any],
     dates: Optional[Sequence[Any]] = None,
     *,
+    volumes: Optional[Sequence[Any]] = None,
     window: int = WINDOW,
     prior_bars: int = PRIOR_BARS,
     almost: float = ALMOST_FRAC,
@@ -123,6 +125,8 @@ def classify_hold_prior_wave(
         "hold_prior_new_date": "",
         "hold_prior_retest_low": None,
         "hold_prior_retest_date": "",
+        "hold_prior_heavy": False,
+        "hold_prior_vol_ratio": None,
     }
     hs = _fseq(highs)
     ls = _fseq(lows)
@@ -130,6 +134,7 @@ def classify_hold_prior_wave(
     if n < int(window) + int(prior_bars) + 1:
         return empty
     hs, ls = hs[:n], ls[:n]
+    vs = _fseq(volumes)[:n] if volumes is not None else []
     ds = [_ymd(d) for d in (dates or [])]
     if len(ds) < n:
         ds = ds + [""] * (n - len(ds))
@@ -173,6 +178,8 @@ def classify_hold_prior_wave(
         "hold_prior_new_date": ds[peak],
         "hold_prior_retest_low": None,
         "hold_prior_retest_date": "",
+        "hold_prior_heavy": False,
+        "hold_prior_vol_ratio": None,
     }
     base_txt = f"、前次底 {_px(base)}" if base and base > 0 else ""
     if last_i <= peak:
@@ -187,6 +194,13 @@ def classify_hold_prior_wave(
     retest = float(ls[rj])
     out["hold_prior_retest_low"] = round(retest, 4)
     out["hold_prior_retest_date"] = ds[rj]
+    if vs and len(vs) > rj:
+        w0 = max(0, rj - 20)
+        prior_v = vs[w0:rj]
+        avg = (sum(prior_v) / len(prior_v)) if prior_v else 0.0
+        ratio = (float(vs[rj]) / avg) if avg > 0 else None
+        out["hold_prior_vol_ratio"] = round(ratio, 2) if ratio is not None else None
+        out["hold_prior_heavy"] = bool(ratio is not None and ratio >= HEAVY_VOL)
     high_floor = prior * (1.0 - float(almost))
     trio = f"前波高 {_px(prior)}／前次底 {_px(base)}／回測低 {_px(retest)}" if base else (
         f"前波高 {_px(prior)}／回測低 {_px(retest)}"
@@ -213,8 +227,12 @@ def classify_hold_prior_wave(
         out["hold_prior_note"] = f"回測略破前次底（{trio}）"
         return out
     out["hold_prior_state"] = "broke"
-    out["hold_prior_why"] = "回測已破前次底"
-    out["hold_prior_note"] = f"回測已破前次底（{trio}）"
+    if out.get("hold_prior_heavy"):
+        out["hold_prior_why"] = "低點線被帶量跌破"
+        out["hold_prior_note"] = f"低點線被帶量跌破，相對危險（{trio}）"
+    else:
+        out["hold_prior_why"] = "回測已破前次底"
+        out["hold_prior_note"] = f"回測已破前次底（{trio}）"
     return out
 
 
@@ -223,8 +241,9 @@ def attach_hold_prior_wave(
     dates: Optional[Sequence[Any]] = None,
     highs: Optional[Sequence[Any]] = None,
     lows: Optional[Sequence[Any]] = None,
+    volumes: Optional[Sequence[Any]] = None,
 ) -> Dict[str, Any]:
-    """寫入決策卡。沒有區間新高就空白。不改黃金買點。"""
+    """寫入決策卡。沒有區間新高就空白。不改黃金買點。均線不當支撐壓力。"""
     if not card or card.get("error"):
         return card
     if highs is None or lows is None:
@@ -235,12 +254,15 @@ def attach_hold_prior_wave(
             lows = list(df["low"])
             if dates is None and "date" in df.columns:
                 dates = list(df["date"])
+            if volumes is None and "volume" in df.columns:
+                volumes = list(df["volume"])
         elif src is not None and hasattr(src, "columns"):
             return card
     flags = classify_hold_prior_wave(
         highs if highs is not None else [],
         lows if lows is not None else [],
         dates,
+        volumes=volumes,
     )
     card.update(flags)
     attach_buy_verdict(card)
@@ -348,20 +370,20 @@ def _retest_clause(card: Dict[str, Any]) -> str:
     if retest is None:
         bits = []
         if prior is not None:
-            bits.append(f"前波高 {_px(prior)}" + (f"（{pd}）" if pd else ""))
+            bits.append(f"高點線 {_px(prior)}" + (f"（{pd}）" if pd else ""))
         if base is not None:
-            bits.append(f"前次底 {_px(base)}" + (f"（{bd}）" if bd else ""))
+            bits.append(f"低點線 {_px(base)}" + (f"（{bd}）" if bd else ""))
         return "、".join(bits)
     bits = [f"回測低 {_px(retest)}" + (f"（{rd}）" if rd else "")]
     if prior is not None:
         vs = _vs(retest, prior)
         bits.append(
-            f"對前波高 {_px(prior)}" + (f"（{pd}）" if pd else "") + (f" {vs}" if vs else "")
+            f"對高點線 {_px(prior)}" + (f"（{pd}）" if pd else "") + (f" {vs}" if vs else "")
         )
     if base is not None:
         vs = _vs(retest, base)
         bits.append(
-            f"對前次底 {_px(base)}" + (f"（{bd}）" if bd else "") + (f" {vs}" if vs else "")
+            f"對低點線 {_px(base)}" + (f"（{bd}）" if bd else "") + (f" {vs}" if vs else "")
         )
     return "，".join(bits)
 
@@ -424,9 +446,13 @@ def judge_buy_point(card: Dict[str, Any] | None) -> Dict[str, str]:
         return (text + "。") if text else ""
 
     if hold == "broke":
+        if card.get("hold_prior_heavy"):
+            danger = "低點線被帶量跌破，相對危險，現在不要買"
+        else:
+            danger = "低點線破了，現在不要買"
         return {
             "buy_verdict": "no",
-            "buy_verdict_note": _sent(lead, rt, "前次底被洗破了，現在不要買"),
+            "buy_verdict_note": _sent(lead, rt, danger),
         }
     if sell in ("直接減碼", "準備減碼") and not low_table:
         why = sell_why or sell

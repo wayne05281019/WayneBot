@@ -989,6 +989,7 @@ class NavigatorEngine:
                 df["date"].tolist(),
                 high_raw.tolist(),
                 low_raw.tolist(),
+                df["volume"].tolist() if "volume" in df.columns else None,
             )
         except Exception:
             pass
