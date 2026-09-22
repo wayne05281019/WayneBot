@@ -226,9 +226,10 @@ class FuseAndScreenTest(unittest.TestCase):
         self.assertNotIn("＝＝止跌", blob)
         full = format_screening_payload(results, "20260904", morning=False)
         full_keys = [p.get("mark_key") for p in full]
-        self.assertIn("half_year_high", full_keys)
-        self.assertIn("select_02", full_keys)
-        self.assertIn("select_03", full_keys)
+        self.assertEqual(full_keys, ["leave_zero"])
+        self.assertNotIn("half_year_high", full_keys)
+        self.assertNotIn("select_02", full_keys)
+        self.assertNotIn("select_03", full_keys)
         packs = format_line_share_packs(results, "20260904", morning=True)
         layout = next(p["text"] for p in packs if p["id"] == "layout")
         self.assertIn("＝＝黃金買點＝＝", layout)
@@ -333,8 +334,7 @@ class FuseAndScreenTest(unittest.TestCase):
         )
         keys = [p.get("mark_key") for p in payload]
         self.assertEqual(keys[0], "leave_zero")
-        self.assertIn("revenue_cross", keys)
-        self.assertLess(keys.index("leave_zero"), keys.index("revenue_cross"))
+        self.assertNotIn("revenue_cross", keys)
         self.assertIn("黃金買點｜", payload[0]["html"])
         self.assertIn("買點 8", payload[0]["html"])
         self.assertEqual(payload[0]["html"].count("<blockquote>"), 8)
@@ -344,7 +344,8 @@ class FuseAndScreenTest(unittest.TestCase):
             {"leave_zero": [leave], "revenue_cross": [hot]},
             "20260828",
         )
-        self.assertLess(line.find("＝＝黃金買點＝＝"), line.find("＝＝優先看＝＝"))
+        self.assertIn("＝＝黃金買點＝＝", line)
+        self.assertNotIn("＝＝優先看＝＝", line)
         from config import scheduled_job_kind
         from screening_engine import format_line_share_packs
 
@@ -982,7 +983,8 @@ class USOvernightTest(unittest.TestCase):
         blob = "\n".join(p["html"] for p in payload)
         self.assertNotIn("美股收盤", blob)
         self.assertNotIn("＝＝當沖", blob)
-        self.assertIn("隔夜逆風", blob)
+        self.assertNotIn("＝＝周帶量", blob)
+        self.assertTrue(any(x.get("us_risk_off") for x in results["select_01"]))
 
     def test_caution_drops_chase_and_chip_headwind(self):
         from us_overnight import apply_us_overnight
@@ -2180,7 +2182,7 @@ class LookupCardTest(unittest.TestCase):
         out = engine.execute_all_strategies({"2330": bars(cross)})
         self.assertTrue(out["select_02"])
         line = format_line_share_text(out, "20260828")
-        self.assertIn("站上季線", line)
+        self.assertNotIn("站上季線", line)
         self.assertNotIn("半年高", line)
         self.assertNotIn("兩年高", line)
 
