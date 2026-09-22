@@ -360,9 +360,9 @@ class ScreeningEngine:
             ):
                 res_sel_03.append(info)
 
-            # 重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離超跌（決策卡同一套欄位）。
-            # 公式仍可在月線下成立；整份海選另須趨勢向上，空頭／下坡不進桶。
-            if layout_ok and _golden_buy_ok(info):
+            # 重點觀察（golden_buy／還在零）：60低 + 獲利≈0 + 月乖離超跌。
+            # 觀察不是買。不走 layout_ok：那條要收盤≥月線，月乖離<-10% 必然互斥，桶會永遠空。
+            if _golden_buy_ok(info):
                 golden = dict(info)
                 golden["golden_buy"] = True
                 res_golden_buy.append(golden)
@@ -1402,7 +1402,10 @@ def _is_downtrend_no_touch(info: Dict[str, Any]) -> bool:
 
 
 def _golden_buy_ok(info: Dict[str, Any]) -> bool:
-    """重點觀察（golden_buy）：60低 + 獲利≈0 + 月乖離 < -10%。公式不含趨勢；海選另須 _screen_trend_up_ok。"""
+    """重點觀察（golden_buy／還在零）：60低 + 獲利≈0 + 月乖離 < -10%。
+
+    觀察不是買。海選不要再套 _screen_trend_up_ok（收盤≥月線）；那條跟超跌互斥。
+    """
     if not info.get("at_60_low"):
         return False
     try:
