@@ -1,11 +1,13 @@
-"""高低卡：創區間新高後，回測幾乎不破前波高。
+"""高低卡：創區間新高後，回測對前波高／前次底。
 
 用官方 OHLC 高低重述（友達 2409：20260107 創 60／180 日新高，
-20260203 回測低 13.30 vs 起漲前高 13.85）。查股／決策卡協助判斷顯示，
-不是買訊、不改黃金買點、不進海選、不進飆大。
+20260203 回測低 13.30 vs 起漲前高 13.85、前次底 11.10）。
+查股／決策卡協助判斷顯示，不是買訊、不改黃金買點、不進海選、不進飆大。
 
 區間＝既有 60 根（季）高低；若同日也是 180 根導航新高就一併標。
-前波高＝這波 60 日新高起漲前 5 根的最高。幾乎不破＝回測低不低於前波高 4%。
+前波高＝這波 60 日新高起漲前 5 根的最高。4% 只描述友達那次貼前波高，
+不是判死線。洗盤可以過前波高、甚至略破前次底再翻；底底低才先當這波壞了。
+前次底＝起漲前最近一個局部低。略破＝低於前次底但不超過 8%。
 """
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ WINDOW = 60
 NAV_WINDOW = 180  # 與 180 日高低導航同一視窗；不另開 240
 PRIOR_BARS = 5
 MERGE_GAP = 15
-ALMOST_FRAC = 0.04
+ALMOST_FRAC = 0.04  # 友達 2/3 貼前波高的距離；過了還看前次底
+WASH_FRAC = 0.08  # 略破前次底；再深才寫底底低
+SWING = 5
 FRESH_BARS = 90
 
 
@@ -79,6 +83,28 @@ def _clusters(highs: Sequence[float], *, window: int = WINDOW, merge_gap: int = 
     return clusters
 
 
+def _last_swing_low(
+    lows: Sequence[float],
+    exclusive_end: int,
+    *,
+    swing: int = SWING,
+) -> Optional[int]:
+    """起漲前最近局部低。右側只看到起漲前，避免用到這波低。"""
+    n = min(int(exclusive_end), len(lows))
+    L = int(swing)
+    if n <= L:
+        return None
+    for i in range(n - 1, L - 1, -1):
+        left = [float(lows[j]) for j in range(max(0, i - L), i)]
+        right = [float(lows[j]) for j in range(i + 1, min(n, i + L + 1))]
+        lo = float(lows[i])
+        if left and lo <= min(left) and (not right or lo <= min(right)):
+            return i
+    if n > 0:
+        return min(range(n), key=lambda j: float(lows[j]))
+    return None
+
+
 def classify_hold_prior_wave(
     highs: Sequence[Any],
     lows: Sequence[Any],
@@ -89,7 +115,7 @@ def classify_hold_prior_wave(
     almost: float = ALMOST_FRAC,
     fresh: int = FRESH_BARS,
 ) -> Dict[str, Any]:
-    """最新一根：創區間新高／回測不破／已破。空狀態不上句。"""
+    """最新一根：創區間新高／貼前波高／前次底還在／略破前次底／底底低。"""
     empty = {
         "hold_prior_state": "",
         "hold_prior_why": "",
@@ -98,6 +124,8 @@ def classify_hold_prior_wave(
         "hold_prior_also_180": False,
         "hold_prior_high": None,
         "hold_prior_date": "",
+        "hold_prior_base": None,
+        "hold_prior_base_date": "",
         "hold_prior_new_high": None,
         "hold_prior_new_date": "",
         "hold_prior_retest_low": None,
@@ -136,6 +164,8 @@ def classify_hold_prior_wave(
     new_h = float(hs[peak])
     also_180 = n >= NAV_WINDOW and _is_window_high(hs, peak, NAV_WINDOW)
     win_lab = "60／180日" if also_180 else "60日"
+    bj = _last_swing_low(ls, start)
+    base = float(ls[bj]) if bj is not None else None
     out = {
         "hold_prior_state": "",
         "hold_prior_why": "",
@@ -144,16 +174,19 @@ def classify_hold_prior_wave(
         "hold_prior_also_180": bool(also_180),
         "hold_prior_high": round(prior, 4),
         "hold_prior_date": ds[pj],
+        "hold_prior_base": round(base, 4) if base is not None else None,
+        "hold_prior_base_date": ds[bj] if bj is not None else "",
         "hold_prior_new_high": round(new_h, 4),
         "hold_prior_new_date": ds[peak],
         "hold_prior_retest_low": None,
         "hold_prior_retest_date": "",
     }
+    base_txt = f"、前次底 {_px(base)}" if base and base > 0 else ""
     if last_i <= peak:
         out["hold_prior_state"] = "new_high"
         out["hold_prior_why"] = f"創{win_lab}新高"
         out["hold_prior_note"] = (
-            f"創{win_lab}新高，回測先看前波高 {_px(prior)}。不是買訊"
+            f"創{win_lab}新高，回測先看前波高 {_px(prior)}{base_txt}。不是買訊"
         )
         return out
     r0 = peak + 1
@@ -161,16 +194,40 @@ def classify_hold_prior_wave(
     retest = float(ls[rj])
     out["hold_prior_retest_low"] = round(retest, 4)
     out["hold_prior_retest_date"] = ds[rj]
-    floor = prior * (1.0 - float(almost))
-    pair = f"前波高 {_px(prior)}／回測低 {_px(retest)}"
-    if retest + 1e-12 >= floor:
+    high_floor = prior * (1.0 - float(almost))
+    trio = f"前波高 {_px(prior)}／前次底 {_px(base)}／回測低 {_px(retest)}" if base else (
+        f"前波高 {_px(prior)}／回測低 {_px(retest)}"
+    )
+    if retest + 1e-12 >= high_floor:
         out["hold_prior_state"] = "holds"
         out["hold_prior_why"] = "回測幾乎不破前波高"
-        out["hold_prior_note"] = f"回測幾乎不破前波高（{pair}）。不是買訊"
-    else:
-        out["hold_prior_state"] = "broke"
-        out["hold_prior_why"] = "回測已破前波高"
-        out["hold_prior_note"] = f"回測已破前波高（{pair}）。這波先當壞了。不是買訊"
+        out["hold_prior_note"] = f"回測幾乎不破前波高（{trio}）。不是買訊"
+        return out
+    if base is None or base <= 0:
+        out["hold_prior_state"] = "wash"
+        out["hold_prior_why"] = "回測過了前波高"
+        out["hold_prior_note"] = (
+            f"回測過了前波高（{trio}）。洗盤可以比4%深。不是買訊"
+        )
+        return out
+    wash_floor = base * (1.0 - float(WASH_FRAC))
+    if retest + 1e-12 >= base:
+        out["hold_prior_state"] = "wash"
+        out["hold_prior_why"] = "過了前波高，前次底還在"
+        out["hold_prior_note"] = (
+            f"回測過了前波高，前次底還在（{trio}）。洗盤可以比4%深。不是買訊"
+        )
+        return out
+    if retest + 1e-12 >= wash_floor:
+        out["hold_prior_state"] = "nick"
+        out["hold_prior_why"] = "回測略破前次底"
+        out["hold_prior_note"] = (
+            f"回測略破前次底（{trio}）。先看有沒有翻上來。不是買訊"
+        )
+        return out
+    out["hold_prior_state"] = "broke"
+    out["hold_prior_why"] = "回測已破前次底"
+    out["hold_prior_note"] = f"回測已破前次底（{trio}）。底底低先當這波壞了。不是買訊"
     return out
 
 

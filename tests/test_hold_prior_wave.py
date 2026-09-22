@@ -35,6 +35,7 @@ def test_new_high_points_at_prior_wave_high():
     assert got["hold_prior_state"] == "new_high"
     assert got["hold_prior_high"] == 13.85
     assert "前波高 13.85" in got["hold_prior_note"]
+    assert "前次底" in got["hold_prior_note"]
     assert "不是買訊" in got["hold_prior_note"]
     assert "浪" not in got["hold_prior_note"]
 
@@ -51,11 +52,34 @@ def test_retest_almost_holds_like_2409_feb3():
     assert hold_note_lines(got)[0] == got["hold_prior_note"]
 
 
-def test_retest_broke_when_low_cuts_prior():
+def test_retest_past_high_still_above_prior_low():
+    """過了前波高 4%，前次底還在：洗盤可以比較深，不判死。"""
     highs, lows = _series_auo_like(retest_low=12.0)
     got = classify_hold_prior_wave(highs, lows)
+    assert got["hold_prior_state"] == "wash"
+    assert got["hold_prior_retest_low"] == 12.0
+    assert got["hold_prior_base"] is not None
+    assert 12.0 > float(got["hold_prior_base"])
+    assert "前次底還在" in got["hold_prior_note"]
+    assert "壞了" not in got["hold_prior_note"]
+    assert "不是買訊" in got["hold_prior_note"]
+
+
+def test_retest_nicks_then_still_not_buy():
+    highs, lows = _series_auo_like(retest_low=9.2)
+    got = classify_hold_prior_wave(highs, lows)
+    assert got["hold_prior_state"] == "nick"
+    assert "略破前次底" in got["hold_prior_note"]
+    assert "翻上來" in got["hold_prior_note"]
+    assert "不是買訊" in got["hold_prior_note"]
+
+
+def test_retest_broke_prior_low():
+    highs, lows = _series_auo_like(retest_low=8.0)
+    got = classify_hold_prior_wave(highs, lows)
     assert got["hold_prior_state"] == "broke"
-    assert "已破前波高" in got["hold_prior_note"]
+    assert "已破前次底" in got["hold_prior_note"]
+    assert "底底低" in got["hold_prior_note"]
     assert "不是買訊" in got["hold_prior_note"]
 
 
@@ -110,6 +134,7 @@ def test_2409_official_as_of_if_db_has_rows():
     feb = eng.get_decision_card("2409", merge_live=False, as_of="20260203")
     assert feb.get("hold_prior_state") == "holds"
     assert abs(float(feb.get("hold_prior_retest_low") or 0) - 13.3) < 1e-6
+    assert abs(float(feb.get("hold_prior_base") or 0) - 11.1) < 1e-6
     assert "幾乎不破" in (feb.get("hold_prior_note") or "")
     apr = eng.get_decision_card("2409", merge_live=False, as_of="20260414")
     assert apr.get("hold_prior_state") == "new_high"
