@@ -336,15 +336,14 @@ MENU_BTN_LEAVE_ZERO_ALIASES = (
     "獲利剛剛脫離零",
 )
 LEAVE_ZERO_PICK_LABELS = (
-    ("0", "剛離"),
+    ("z", "獲利為零"),
     ("1", "剛離1"),
     ("2", "剛離2"),
     ("3", "剛離3"),
-    ("z", "獲利為零"),
 )
-LEAVE_ZERO_ROW_KEYS = ("1", "2", "3")
+LEAVE_ZERO_ROW_KEYS = ("z", "1", "2", "3")
 LEAVE_ZERO_PICK_BY_TEXT = {
-    "剛離": "0",
+    "剛離": "z",
     "剛離1": "1",
     "剛離2": "2",
     "剛離3": "3",
@@ -3361,7 +3360,9 @@ class WayneTelegramBot:
         from universe import is_screen_equity
 
         pick = str(pick or "z").strip().lower()
-        if pick not in ("0", "1", "2", "3", "z"):
+        if pick == "0":
+            pick = "z"
+        if pick not in ("1", "2", "3", "z"):
             pick = "z"
         labels = dict(LEAVE_ZERO_PICK_LABELS)
         pick_label = labels.get(pick, "剛離")
@@ -3390,7 +3391,7 @@ class WayneTelegramBot:
                 text_fn=lambda s: self._wait_bubble(
                     "剛脫離零進行中",
                     s,
-                    now="讀高低卡獲利" if pick in ("z", "1", "2", "3") else "讀海選快取",
+                    now="讀高低卡獲利",
                     rest="複核獲利",
                     fill_sec=20.0,
                 ),
@@ -3401,7 +3402,7 @@ class WayneTelegramBot:
                     asyncio.to_thread(
                         lambda: self.screener.screen_leave_zero_pick(pick=pick)
                     ),
-                    timeout=60.0 if pick in ("z", "1", "2", "3") else 45.0,
+                    timeout=60.0,
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
@@ -3423,35 +3424,17 @@ class WayneTelegramBot:
                 title = f"{pick_label}（還在零）"
                 subtitle = (
                     "高低卡獲利欄還是 0.0%，上市櫃興櫃都算。"
-                    "股名旁星星＝值不值得買；還在零就先觀察。"
+                    "只列有量、均線跟得上的前8檔（超跌較深在前）。"
+                    "還在零就先觀察。"
                 )
                 empty = "此刻沒有獲利還在 0 的檔。" if live_on else "最近完整收沒有獲利還在 0 的檔。"
                 bucket_label = pick_label
-            elif pick == "0":
-                if live_on:
-                    title = f"{pick_label}（盤中現價）"
-                    subtitle = (
-                        "現價對近 60 個日曆天收盤低。股名旁五角星＝值不值得買（滿五星＝按表該買）。"
-                        "未收盤不寫進官方收。"
-                    )
-                else:
-                    title = f"{pick_label}（最近完整收）"
-                    subtitle = (
-                        "以下是最近一次完整收盤的黃金買點，不是盤中現價。"
-                        "股名旁五角星＝值不值得買（滿五星＝按表該買）。"
-                    )
-                empty = (
-                    "此刻沒有獲利剛離零的檔。"
-                    if live_on
-                    else "最近一次完整收沒有黃金買點。"
-                )
-                bucket_label = MENU_BTN_LEAVE_ZERO
             else:
                 title = f"{pick_label}（{pick} 個交易日前剛離零）"
                 subtitle = (
-                    f"高低卡剛好 {pick} 個交易日前第一天離零，上市櫃興櫃都算。"
+                    f"高低卡剛好 {pick} 個交易日前第一天離零（實綠或雙綠），上市櫃興櫃都算。"
                     "現在獲利不是 0 就列出；趨勢已向上的排前面。"
-                    "未收盤不寫進官方收。"
+                    "只列前8檔。未收盤不寫進官方收。"
                 )
                 empty = f"沒有剛離{pick}、現在獲利不是 0 的檔。"
                 bucket_label = pick_label
@@ -3459,30 +3442,13 @@ class WayneTelegramBot:
             if not is_tw_equity_session():
                 extra = f"<i>{leave_zero_closed_message()}</i>"
             if not rows:
-                from screen_sessions import screen_session_has_data
-
-                as_of = self.screener.get_latest_trading_date()
-                if pick != "z" and not screen_session_has_data(self.db_path, as_of) and pick == "0":
-                    from trading_calendar import format_trading_date_zh
-
-                    as_of_label = format_trading_date_zh(as_of)
-                    inner = (
-                        f"<i>今日名單尚未就緒（今早海選未完成，基準日 {html_escape(as_of_label)}）。"
-                        "請按主選單「海選」執行後再查；盤中會用即時現價複核，不寫未收盤。</i>"
-                    )
-                    await message.reply_html(
-                        self._leave_zero_case_html(title, subtitle, inner, extra=extra),
-                        reply_markup=self._leave_zero_pick_keyboard(pick),
-                        disable_web_page_preview=True,
-                    )
-                else:
-                    await message.reply_html(
-                        self._leave_zero_case_html(
-                            title, subtitle, f"<i>{empty}</i>", extra=extra
-                        ),
-                        reply_markup=self._leave_zero_pick_keyboard(pick),
-                        disable_web_page_preview=True,
-                    )
+                await message.reply_html(
+                    self._leave_zero_case_html(
+                        title, subtitle, f"<i>{empty}</i>", extra=extra
+                    ),
+                    reply_markup=self._leave_zero_pick_keyboard(pick),
+                    disable_web_page_preview=True,
+                )
                 return
             live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
             cards = [

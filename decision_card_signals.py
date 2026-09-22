@@ -1353,8 +1353,8 @@ def leave_zero_screen_ok(
     return False, "未達黃金買點獲利條件"
 
 
-def card_alerts_for_df(df) -> Tuple[str, str]:
-    """回傳 (昨預警, 今預警)，對齊決策卡預警欄。"""
+def card_alerts_for_df(df, today_iloc: int = -1) -> Tuple[str, str]:
+    """回傳 (昨預警, 今預警)，對齊決策卡預警欄。today_iloc 可指歷史那一根。"""
     import pandas as pd
 
     close_s = df["close"].astype(float)
@@ -1380,4 +1380,13 @@ def card_alerts_for_df(df) -> Tuple[str, str]:
             rsv=float(rsv.iloc[i]) if pd.notna(rsv.iloc[i]) else None,
         )
 
-    return tag_at(-2), tag_at(-1)
+    try:
+        t = int(today_iloc)
+    except (TypeError, ValueError):
+        t = -1
+    n = len(close_s)
+    ti = t if t >= 0 else n + t
+    yi = ti - 1
+    if yi < 0 or ti >= n:
+        return "No", "No"
+    return tag_at(yi), tag_at(ti)
