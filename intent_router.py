@@ -137,6 +137,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("剛離1", "leave_zero"),
     ("剛離2", "leave_zero"),
     ("剛離3", "leave_zero"),
+    ("剛離", "leave_zero"),
     ("脫離1", "leave_zero"),
     ("脫離2", "leave_zero"),
     ("脫離3", "leave_zero"),

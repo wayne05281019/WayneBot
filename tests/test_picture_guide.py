@@ -78,7 +78,9 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "不卡 5%" in blob
     assert "不限海選桶" in blob
     assert "含興櫃" in blob
-    assert CACHE_VER == "v66"
+    assert CACHE_VER == "v67"
+    assert "前8檔" in blob
+    assert "實綠或雙綠" in blob
     assert "不滿五星" in blob
     assert "不收空頭" in blob
     assert "國字打不準" in blob

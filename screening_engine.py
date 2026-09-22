@@ -857,11 +857,11 @@ class ScreeningEngine:
         return bot_rows
 
     def screen_leave_zero_pick(
-        self, target_date: Optional[str] = None, *, pick: str = "0"
+        self, target_date: Optional[str] = None, *, pick: str = "z"
     ) -> List[Dict[str, Any]]:
         """剛離1／2／3／獲利為零。掃高低卡獲利（含興櫃），不改海選黃金買點公式。未收盤不寫庫。"""
-        token = str(pick or "0").strip().lower()
-        if token in ("z", "zero", "at0"):
+        token = str(pick or "z").strip().lower()
+        if token in ("0", "z", "zero", "at0"):
             return self._screen_leave_zero_from_profit(
                 target_date,
                 days_ago=0,
@@ -873,7 +873,12 @@ class ScreeningEngine:
         except ValueError:
             days = 0
         if days <= 0:
-            return self.screen_leave_zero_now(target_date)
+            return self._screen_leave_zero_from_profit(
+                target_date,
+                days_ago=0,
+                mode="zero",
+                star_key="golden_buy",
+            )
         return self._screen_leave_zero_from_profit(
             target_date,
             days_ago=days,
@@ -952,22 +957,52 @@ class ScreeningEngine:
                 official_pt = float(profits.iloc[-1])
             except Exception:
                 continue
-            if mode == "ago" and not _leave_zero_left_n_ago(profits, n_ago):
+            if mode == "ago" and not _leave_zero_left_n_ago(profits, n_ago, df=df):
                 continue
             last_close = float(df["close"].iloc[-1] or 0)
+            prev_close = float(df["close"].iloc[-2] or 0) if len(df) >= 2 else last_close
+            try:
+                ma20 = float(
+                    pd.to_numeric(df["close"], errors="coerce")
+                    .rolling(20, min_periods=5)
+                    .mean()
+                    .iloc[-1]
+                    or 0
+                )
+            except Exception:
+                ma20 = 0.0
+            try:
+                last_vol_chk = float(df["volume"].iloc[-1] or 0)
+            except Exception:
+                last_vol_chk = 0.0
+            if not _leave_zero_radar_row_ok(
+                close=last_close,
+                prev_close=prev_close,
+                ma20=ma20,
+                volume=last_vol_chk,
+            ):
+                continue
             last_vol = 0.0
             leave_date = as_of
             if n_ago > 0 and len(df) >= n_ago + 1:
                 leave_date = str(df["date"].iloc[-(n_ago + 1)] or "")[:8] or as_of
+            try:
+                hi20 = float(pd.to_numeric(df["close"], errors="coerce").iloc[-20:].max() or 0)
+            except Exception:
+                hi20 = 0.0
             item: Dict[str, Any] = {
                 "stock_id": sid,
                 "stock_name": names.get(sid) or "",
-                "chase_warning": False,
+                "chase_warning": bool(hi20 > 0 and last_close >= hi20 * 0.985),
                 "cal60_low": floor,
                 "close": last_close,
                 "leave_days": n_ago,
                 "src_as_of": leave_date,
                 "quote_source": "emerging_quotes" if sid in em_ids else "daily_quotes",
+                "bias_monthly": (
+                    round((last_close - ma20) / ma20 * 100.0, 1) if ma20 > 0 else 0.0
+                ),
+                "ma20": ma20,
             }
             try:
                 vols = df["volume"].astype(float)
@@ -981,6 +1016,8 @@ class ScreeningEngine:
                 last_vol = float(vols.iloc[-1] or 0)
                 item["volume"] = int(last_vol)
                 item["q60r"] = (last_vol / base) if base > 0 else 0.0
+                if "turnover_k" in df.columns:
+                    item["turnover_k"] = float(df["turnover_k"].iloc[-1] or 0)
             except Exception:
                 item["q60r"] = 0.0
             used_live = False
@@ -1014,6 +1051,8 @@ class ScreeningEngine:
                         "yesterday_close": yest_c,
                     }
                     used_live = True
+                    if hi20 > 0:
+                        item["chase_warning"] = bool(price >= hi20 * 0.985)
             if not used_live:
                 if not _leave_zero_pick_ok(mode, official_pt):
                     continue
@@ -1040,14 +1079,24 @@ class ScreeningEngine:
             except Exception:
                 pass
             out.append(item)
-        out.sort(
-            key=lambda x: (
-                0 if x.get("trend_up_now") else 1,
-                1 if x.get("chase_warning") else 0,
-                float(x.get("profit_pct") if x.get("profit_pct") is not None else 99),
-                -(float(x.get("q60r") or 0)),
+        if mode == "zero":
+            out.sort(
+                key=lambda x: (
+                    float(x.get("bias_monthly") or 0),
+                    -float(x.get("turnover_k") or 0),
+                )
             )
-        )
+        else:
+            out.sort(
+                key=lambda x: (
+                    0 if x.get("trend_up_now") else 1,
+                    1 if x.get("chase_warning") else 0,
+                    float(x.get("profit_pct") if x.get("profit_pct") is not None else 99),
+                    -(float(x.get("q60r") or 0)),
+                )
+            )
+        if LEAVE_ZERO_RADAR_CAP:
+            out = out[: int(LEAVE_ZERO_RADAR_CAP)]
         return [self._row_for_bot(x) for x in stamp_entry_stars(out, star_key)]
 
     def run_emerging_screening(
@@ -1081,6 +1130,7 @@ class ScreeningEngine:
 
 ENTRY_STAR_N = 5
 LEAVE_ZERO_STAR_N = ENTRY_STAR_N
+LEAVE_ZERO_RADAR_CAP = 8
 
 _BUCKET_FROM_LABEL = {
     "黃金買點": "leave_zero",
@@ -1454,6 +1504,28 @@ def _leave_zero_profit_ok(df: pd.DataFrame, info: Dict[str, Any]) -> bool:
     return ok
 
 
+def _leave_zero_radar_row_ok(
+    *,
+    close: float,
+    prev_close: float,
+    ma20: float,
+    volume: float,
+) -> bool:
+    """獲利為零／剛離N 品質閘：有量、均線跟得上現價、不是缺列跳空。不改海選公式。"""
+    from decision_card_signals import close_gap_broken, ma_matches_price
+
+    try:
+        if float(volume or 0) <= 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    if not ma_matches_price(close, ma20):
+        return False
+    if close_gap_broken(prev_close, close):
+        return False
+    return True
+
+
 def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
     """獲利為零＝獲利欄仍是 0.0%。剛離1–3＝那天剛離零、現在不是 0 就列出（不卡 5%）。"""
     from decision_card_signals import is_profit_display_zero
@@ -1469,9 +1541,11 @@ def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
     return False
 
 
-def _leave_zero_left_n_ago(profits: pd.Series, days_ago: int) -> bool:
-    """N 個交易日前那一根是第一天脫離零（昨貼零、那日 >0.05%）。不卡海選 5%。"""
-    from decision_card_signals import profit_left_zero_highlight
+def _leave_zero_left_n_ago(
+    profits: pd.Series, days_ago: int, df=None
+) -> bool:
+    """N 個交易日前那一根是高低卡第一天離零（實綠或雙綠）。不卡海選 5%。"""
+    from decision_card_signals import card_alerts_for_df, card_row_leave_zero, profit_left_zero_highlight
 
     n = int(days_ago or 0)
     if n <= 0 or profits is None or len(profits) < n + 2:
@@ -1481,7 +1555,16 @@ def _leave_zero_left_n_ago(profits: pd.Series, days_ago: int) -> bool:
         left = float(profits.iloc[-(n + 1)])
     except (TypeError, ValueError, IndexError):
         return False
-    return bool(profit_left_zero_highlight(prev, left))
+    if profit_left_zero_highlight(prev, left):
+        return True
+    if df is None:
+        return False
+    try:
+        ya, ta = card_alerts_for_df(df, today_iloc=-(n + 1))
+    except Exception:
+        return False
+    hit, _reason = card_row_leave_zero(prev, left, yest_alert=ya, today_alert=ta)
+    return bool(hit)
 
 
 def _screen_trend_up_ok(info: Dict[str, Any], *, block_monthly_side: bool = False) -> bool:

@@ -10,10 +10,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bot_servers import MENU_BTN_LEAVE_ZERO, WayneTelegramBot
 from intent_router import parse_intent
 from screening_engine import (
+    LEAVE_ZERO_RADAR_CAP,
     LEAVE_ZERO_STAR_N,
     ScreeningEngine,
     _leave_zero_left_n_ago,
     _leave_zero_pick_ok,
+    _leave_zero_radar_row_ok,
     _stock_card_html,
     mark_leave_zero_stars,
 )
@@ -105,6 +107,16 @@ def test_leave_days_pick_not_capped_at_five_pct():
     from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
 
     assert LEAVE_ZERO_SCREEN_MAX_PCT == 5.0
+    assert LEAVE_ZERO_RADAR_CAP == 8
+    assert _leave_zero_radar_row_ok(close=50.0, prev_close=50.0, ma20=50.0, volume=100)
+    assert not _leave_zero_radar_row_ok(close=50.0, prev_close=50.0, ma20=50.0, volume=0)
+    assert not _leave_zero_radar_row_ok(close=80.0, prev_close=50.0, ma20=50.0, volume=100)
+    closes = [80.0] * 10 + [100.0] * 22 + [90.0, 95.0, 96.0]
+    dg = pd.DataFrame({"close": closes})
+    profits = pd.Series([round((c - 80.0) / 80.0 * 100.0, 1) for c in closes])
+    assert profits.iloc[-3] > 0.05
+    assert _leave_zero_left_n_ago(profits, 1, df=dg)
+    assert not _leave_zero_left_n_ago(profits, 1)
 
 
 def test_mark_leave_zero_stars_caps_at_five():
@@ -242,10 +254,15 @@ def test_lookup_like_row_has_watch_and_buy():
     kb = bot._leave_zero_section_keyboard([("1101", "台泥")], include_menu=True)
     flat = [b.callback_data for r in kb.inline_keyboard for b in r]
     assert "k:1101" in flat and "w:1101" in flat and "b:1101" in flat
-    assert [b.callback_data for b in kb.inline_keyboard[0]] == ["lz:1", "lz:2", "lz:3"]
-    assert "lz:0" not in flat and "lz:z" not in flat
+    assert [b.callback_data for b in kb.inline_keyboard[0]] == [
+        "lz:z",
+        "lz:1",
+        "lz:2",
+        "lz:3",
+    ]
+    assert "lz:0" not in flat
     texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert texts[:3] == ["剛離1", "剛離2", "剛離3"]
+    assert texts[:4] == ["獲利為零", "剛離1", "剛離2", "剛離3"]
 
 
 def test_dongzhu_keyboard_is_industry_temp_intro():
@@ -319,6 +336,7 @@ def test_intent_and_menu_label():
     assert parse_intent("剛脫離零").kind == "leave_zero"
     assert parse_intent("剛離零").kind == "leave_zero"
     assert parse_intent("獲利剛剛脫離零").kind == "leave_zero"
+    assert parse_intent("剛離").kind == "leave_zero"
     assert parse_intent("剛離1").kind == "leave_zero"
     assert parse_intent("剛離3").kind == "leave_zero"
     assert parse_intent("獲利為零").kind == "leave_zero"
@@ -326,6 +344,7 @@ def test_intent_and_menu_label():
     assert parse_intent("脫離3").kind == "leave_zero"
     assert parse_intent("剛為零").kind == "leave_zero"
     assert leave_zero_pick_from_text("剛脫離零") == ""
+    assert leave_zero_pick_from_text("剛離") == "z"
     assert leave_zero_pick_from_text("剛離2") == "2"
     assert leave_zero_pick_from_text("脫離2") == "2"
     assert leave_zero_pick_from_text("獲利為零") == "z"
@@ -377,11 +396,11 @@ def test_leave_zero_cmd_opens_profit_zero(tmp_path):
         "reply_markup"
     )
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:1", "lz:2", "lz:3"]
+    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
     assert bot._start_plain_wait.await_args_list
 
 
-def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
+def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
     import asyncio
 
     db = str(tmp_path / "empty.db")
@@ -393,20 +412,52 @@ def test_leave_zero_cmd_empty_cache_asks_for_screen(tmp_path):
     msg.reply_html = AsyncMock()
     with patch("live_quote.is_live_merge_window", return_value=True), patch(
         "trading_calendar.is_tw_equity_session", return_value=True
-    ):
+    ), patch(
+        "screening_engine.ScreeningEngine.screen_leave_zero_pick",
+        return_value=[],
+    ) as pick_fn:
         asyncio.run(bot._run_leave_zero_now(msg, pick="0"))
+    assert pick_fn.call_args.kwargs.get("pick") == "z"
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "海選" in html
-    assert "尚未就緒" in html
+    assert "獲利為零" in html
+    assert "先觀察" in html
+    assert "前8檔" in html
+    assert "尚未就緒" not in html
+    assert "請按主選單「海選」" not in html
     assert "🟥" not in html
-    assert "剛離" in html
     kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
         "reply_markup"
     )
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:1", "lz:2", "lz:3"]
+    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
+
+
+def test_leave_zero_cmd_days_copy_names_double_green(tmp_path):
+    import asyncio
+
+    db = str(tmp_path / "empty.db")
+    ensure_core_schema(db)
+    bot = _bare_leave_zero_bot(db)
+    msg = MagicMock()
+    msg.from_user = SimpleNamespace(id=1)
+    msg.reply_html = AsyncMock()
+    with patch("live_quote.is_live_merge_window", return_value=True), patch(
+        "trading_calendar.is_tw_equity_session", return_value=True
+    ), patch(
+        "screening_engine.ScreeningEngine.screen_leave_zero_pick",
+        return_value=[],
+    ):
+        asyncio.run(bot._run_leave_zero_now(msg, pick="1"))
+    html = "\n".join(
+        str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
+    )
+    assert "剛離1" in html
+    assert "實綠或雙綠" in html
+    assert "前8檔" in html
+    assert "尚未就緒" not in html
+    assert "請按主選單「海選」" not in html
 
 
 def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):
@@ -438,7 +489,7 @@ def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):
         "reply_markup"
     )
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:1", "lz:2", "lz:3"]
+    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
     assert not msg.reply_text.await_args_list
 
 
@@ -530,12 +581,15 @@ def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
     assert session_as_of_n_ago(db, AS_OF, 1) == "20260914"
     assert session_as_of_n_ago(db, AS_OF, 2) == "20260913"
     just = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="0")]
-    d1 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="1")]
+    d1_rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    d1 = [r["code"] for r in d1_rows]
     d2 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="2")]
     zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
     zero_codes = [r["code"] for r in zero]
-    assert just == ["1102"]
+    assert just == zero_codes
+    assert "1102" not in just
     assert d1 == ["1101"]
+    assert d1_rows[0].get("chase_warning") is True
     assert d2 == ["1201"]
     assert "1303" in zero_codes
     assert "1301" in zero_codes
@@ -779,3 +833,86 @@ def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
     from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
 
     assert LEAVE_ZERO_SCREEN_MAX_PCT == 5.0
+
+
+def _seed_close_series(db: str, sid: str, name: str, closes_by_ymd: dict[str, float], default: float) -> None:
+    ensure_core_schema(db)
+    start = datetime(2026, 8, 1)
+    end = datetime.strptime(AS_OF, "%Y%m%d")
+    conn = sqlite3.connect(db)
+    d = start
+    while d <= end:
+        ymd = d.strftime("%Y%m%d")
+        close = float(closes_by_ymd.get(ymd, default))
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_quotes("
+            "date,stock_id,stock_name,market,open,high,low,close,volume,"
+            "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ymd,
+                sid,
+                name,
+                "TW",
+                close,
+                close,
+                close,
+                close,
+                8000,
+                400000,
+                0.0,
+                close,
+            ),
+        )
+        d += timedelta(days=1)
+    conn.commit()
+    conn.close()
+
+
+def test_leave_zero_radar_double_green_gap_and_cap(tmp_path, monkeypatch):
+    db = str(tmp_path / "lz_radar.db")
+    ensure_core_schema(db)
+    start = datetime(2026, 8, 1)
+    end = datetime.strptime(AS_OF, "%Y%m%d")
+    dg_closes = {}
+    d = start
+    n = 0
+    while d <= end:
+        ymd = d.strftime("%Y%m%d")
+        if ymd == "20260913":
+            dg_closes[ymd] = 90.0
+        elif ymd == "20260914":
+            dg_closes[ymd] = 95.0
+        elif ymd == AS_OF:
+            dg_closes[ymd] = 96.0
+        elif n < 10:
+            dg_closes[ymd] = 80.0
+        else:
+            dg_closes[ymd] = 100.0
+        n += 1
+        d += timedelta(days=1)
+    _seed_close_series(db, "2330", "台積電", dg_closes, 100.0)
+    _seed_close_series(
+        db,
+        "6949",
+        "缺列",
+        {"20260914": 50.4, AS_OF: 80.0},
+        50.0,
+    )
+    for i in range(9):
+        sid = f"241{i}"
+        _seed_close_series(db, sid, f"零{i}", {}, 50.0)
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    engine = ScreeningEngine(db)
+    d1 = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    d1_codes = [r["code"] for r in d1]
+    assert "2330" in d1_codes
+    assert "6949" not in d1_codes
+    by = {r["code"]: r for r in d1}
+    assert by["2330"].get("chase_warning") is False
+    zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
+    zero_codes = [r["code"] for r in zero]
+    assert "6949" not in zero_codes
+    assert "2330" not in zero_codes
+    assert len(zero) <= LEAVE_ZERO_RADAR_CAP
+    assert len(zero) == 8
+    assert all(c.startswith("241") for c in zero_codes)
