@@ -815,6 +815,30 @@ class USOvernightTest(unittest.TestCase):
         self.assertIn("指數還中性，電子鏈逆風", html)
         self.assertNotIn("判斷　大盤中性", html)
 
+    def test_regime_face_label_cash_up_is_firm_not_neutral(self):
+        from us_overnight import classify_us_regime, regime_face_label
+
+        snap = {
+            "regime": "ok",
+            "vix": 15.0,
+            "dji_pct": 0.8,
+            "spx_pct": 1.0,
+            "ixic_pct": 1.4,
+            "sox_pct": 1.2,
+            "us_phase": "overnight",
+        }
+        self.assertEqual(classify_us_regime(snap), "ok")
+        self.assertEqual(regime_face_label(snap), "大盤偏多")
+        flat = {
+            "regime": "ok",
+            "vix": 15.0,
+            "dji_pct": 0.1,
+            "spx_pct": 0.0,
+            "ixic_pct": 0.2,
+            "sox_pct": 0.1,
+        }
+        self.assertEqual(regime_face_label(flat), "大盤中性")
+
     def test_vix_mood_jump_not_normal(self):
         from us_overnight import _vix_mood, format_us_html
 

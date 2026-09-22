@@ -592,13 +592,19 @@ REGIME_LABEL = {
 
 
 def regime_face_label(snap: Dict[str, Any] | None) -> str:
-    """畫面用的判斷句。指數中性但費半大跌時，不要只寫大盤中性。"""
+    """畫面用的判斷句。指數明顯上漲寫偏多；指數中性但費半大跌時，不要只寫大盤中性。"""
     snap = snap or {}
     regime = str(snap.get("regime") or classify_us_regime(snap) or "unknown")
     base = REGIME_LABEL.get(regime, "美股收盤")
     sox = effective_sox_pct(snap)
     if regime == "ok" and sox is not None and sox <= -1.5:
         return "指數還中性，電子鏈逆風"
+    if regime == "ok":
+        cash = _floats(snap, ("dji_pct", "spx_pct", "ixic_pct"))
+        if cash:
+            worst_c, best_c = min(cash), max(cash)
+            if best_c >= 0.6 and worst_c >= -0.3:
+                return "大盤偏多"
     return base
 
 _PHASE_LABEL = {
