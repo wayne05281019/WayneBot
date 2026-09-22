@@ -52,7 +52,7 @@ def test_unread_dedupes_same_post_and_splits_users(tmp_path):
     assert "散熱最強" not in html
     assert "不是南亞科" in html
     assert "11:43" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "今天飆大重點就是" not in html
     assert "官方加權盤中現價" not in html
     assert "程式標籤" not in html
@@ -192,7 +192,7 @@ def test_focus_oral_sep18_not_timestamp_wall():
     assert "整理三個月" in html
     assert "星期日晚上" in html or "星期天晚上" in html
     assert "11:35" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "還能問" in html
     assert "47578過了沒" in html
     board_html = html.split("<b>族群</b>")[0] if "<b>族群</b>" in html else html
@@ -220,7 +220,7 @@ def test_focus_oral_sep18_not_timestamp_wall():
 def test_latest_focus_is_oral_not_july_bwave():
     html = format_latest_focus("")
     assert "飆大現在在講" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "直接打字或語音" in html
     assert "這句沒點檔" not in html
     assert "現在位階" not in html

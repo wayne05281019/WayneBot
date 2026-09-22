@@ -152,7 +152,7 @@ def test_why_wave_now_and_eyes():
 def test_blank_focus_is_oral_not_wave_dump():
     html = format_latest_focus("")
     assert "飆大現在在講" in html
-    assert "不是買訊" in html
+    assert "不是買訊" not in html
     assert "現在位階" not in html
     assert "位階不講死" not in html
     assert "這句沒點檔" not in html
