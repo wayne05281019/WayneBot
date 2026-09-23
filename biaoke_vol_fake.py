@@ -4,8 +4,10 @@
 2026-09-23 16:50 樓下自回：懂量假結構，久了就自然會將穩定性差的技術指標拿掉，
 而且 K 棒更清楚，慢慢就會發現隱藏的主力意圖的細節。自行去挖掘體會。
 同一串精神他 9/15 夜（裸K、三種形態不准混）、9/20（不看 KD／均線／分點）、
-2024-07-08（洗盤 vs 出貨）、2024-04 協易機爆大量要整理、2025-04 鴻海爆大量還要再跌
+2024-07-08（洗盤 vs 出貨）、2024-04-15 協易機 4533 爆大量要整理、
+2025-01-13 鴻海 2317 爆大量還要再跌、2026-08-31 金像電 2368 前波高長上影轉弱K
 已經講過。個股不數 5／9。盤中未收不當官方收。不是買訊。
+3167 是大量不是協易機。
 """
 from __future__ import annotations
 
@@ -71,12 +73,16 @@ def classify_volume_fake(rows: Sequence[Bar]) -> Dict[str, Any]:
         return out
     if volr < 1.5:
         return out
-    # 收在當日下半＝大陰／還要再跌；長上影但沒貼低＝轉弱K。沒開盤價時兩種用收的位置拆。
-    if close_from_low <= 0.35:
+    # 沒開盤價時用收的位置拆。貼當日低＝協易機整理／鴻海還要再跌（pause），
+    # 即使上影看起來很長也不當轉弱K。沒貼低的長上影＝金像電前波高 dump。
+    if close_from_low <= 0.18:
         out["kind"] = "pause"
         return out
     if up_shadow >= 0.55:
         out["kind"] = "dump"
+        return out
+    if close_from_low <= 0.35:
+        out["kind"] = "pause"
         return out
     if close_from_low >= 0.60:
         out["kind"] = "hold"
