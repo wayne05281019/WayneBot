@@ -53,7 +53,11 @@ NAMED_URLS = {
     "自營": T86_URL,
     "法人": T86_URL,
     "漲跌家數": MI_INDEX_URL,
-    "外資台指期": "https://www.taifex.com.tw/cht/3/futContractsDate",
+    "布蘭特": _YQ + "BZ%3DF",
+    "美元指數": _YQ + "DX-Y.NYB",
+    "美元期貨": _YQ + "DX-Y.NYB",
+    "美元兌台幣": _YQ + "TWD%3DX",
+    "台幣匯率": _YQ + "TWD%3DX",
 }
 
 try:

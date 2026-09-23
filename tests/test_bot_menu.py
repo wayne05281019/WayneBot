@@ -33,9 +33,9 @@ def test_reply_menu_is_two_rows_not_three():
         WayneTelegramBot,
     )
 
-    assert MENU_BTN_MARKET == "大盤"
+    assert MENU_BTN_MARKET == "台股大盤"
     assert MENU_BTN_AI == "AI倉"
-    assert MENU_LAYOUT_VERSION == "27"
+    assert MENU_LAYOUT_VERSION == "28"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
     assert len(kb.keyboard) == 2
@@ -561,7 +561,7 @@ def test_market_button_always_opens_market_page():
     src = inspect.getsource(WayneTelegramBot._on_text_bound)
     assert "ask=\"大盤現在\"" not in src
     assert "market_cmd" in src
-    idx = src.find("text == MENU_BTN_MARKET")
+    idx = src.find("MENU_BTN_MARKET_ALIASES")
     assert idx > 0
     chunk = src[idx : idx + 400]
     assert "_send_biaoke_page" not in chunk

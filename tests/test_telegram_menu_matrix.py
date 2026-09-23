@@ -27,7 +27,7 @@ MENU_BUTTONS = [
     (MENU_BTN_DONGZHU, "dongzhu_cmd"),
 ]
 
-INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取大盤", "資金": "讀取當日資金移動"}
+INSTANT_ACK_BUTTONS = {MENU_BTN_MARKET: "讀取台股大盤", "資金": "讀取當日資金移動"}
 
 
 def _msg(uid: int, text: str):

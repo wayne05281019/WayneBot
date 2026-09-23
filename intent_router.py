@@ -173,6 +173,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("期股多空雙飆客", "biaoke"),
     ("飆大", "biaoke"),
     ("飆客", "biaoke"),
+    ("台股大盤", "market"),
     ("大盤", "market"),
     ("加權", "market"),
     ("指數", "market"),

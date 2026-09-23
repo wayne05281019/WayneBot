@@ -61,3 +61,27 @@ def test_last_post_pct_vs_cash_close_not_previous_close():
     assert got["price"] == 97.5
     assert got["previous_close"] == 102.0
     assert abs(got["pct"] - (97.5 - 102.0) / 102.0 * 100.0) < 1e-9
+
+
+def test_outer_rows_brent_dx_twd():
+    from us_overnight import outer_rows
+
+    rows = dict(
+        outer_rows(
+            {
+                "brent_px": 78.5,
+                "brent_pct": 1.2,
+                "dx_f_px": 104.2,
+                "dx_f_pct": -0.31,
+                "usdtwd_px": 31.45,
+                "usdtwd_pct": 0.22,
+            }
+        )
+    )
+    assert rows["布蘭特"].startswith("78.50美元/桶")
+    assert "+1.20%" in rows["布蘭特"]
+    assert "104.20" in rows["美元指數"]
+    assert "台幣貶" in rows["美元兌台幣"]
+    assert outer_rows({}) == []
+    weak = dict(outer_rows({"usdtwd_px": 32.1, "usdtwd_pct": -0.18}))
+    assert "台幣升" in weak["美元兌台幣"]

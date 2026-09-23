@@ -43,6 +43,24 @@ FUTURES = (
     ("nq_f", "NQ=F", "那斯達克期貨"),
     ("ym_f", "YM=F", "道瓊期貨"),
 )
+# 海選／台股大盤外圍：布蘭特原油、美元指數、美元兌台幣。沒真數不上。
+OUTER_SYMBOLS = (
+    ("brent", "BZ=F", "布蘭特"),
+    ("dx_f", "DX-Y.NYB", "美元指數"),
+    ("usdtwd", "TWD=X", "美元兌台幣"),
+)
+_OUTER_CACHE: Dict[str, Any] = {"t": 0.0, "data": {}}
+_OUTER_KEYS = (
+    "brent_px",
+    "brent_pct",
+    "brent_chg",
+    "dx_f_px",
+    "dx_f_pct",
+    "dx_f_chg",
+    "usdtwd_px",
+    "usdtwd_pct",
+    "usdtwd_chg",
+)
 POST_NAMES = (
     ("tsm", "TSM"),
     ("nvda", "NVDA"),
@@ -248,9 +266,9 @@ def last_post_from_block(block: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return {"price": last_px, "ts": last_t, "previous_close": prev, "pct": pct, "chg": chg}
 
 
-def _fetch_symbol(sym: str, *, session_open: bool = False) -> Dict[str, Any]:
+def _fetch_symbol(sym: str, *, session_open: bool = False, timeout: float = 20) -> Dict[str, Any]:
     url = _chart_url(sym, interval="1d", range_="10d")
-    resp = _SESSION.get(url, timeout=20)
+    resp = _SESSION.get(url, timeout=timeout)
     resp.raise_for_status()
     result = (resp.json().get("chart") or {}).get("result") or []
     if not result:
@@ -281,6 +299,64 @@ def _fetch_post_last(sym: str) -> Optional[Dict[str, Any]]:
     if not result:
         return None
     return last_post_from_block(result[0])
+
+
+def fetch_outer_tape(*, force: bool = False) -> Dict[str, Any]:
+    """布蘭特／美元指數／美元兌台幣。15 分鐘內沿用；沒真數就空。"""
+    now = time.monotonic()
+    cached = _OUTER_CACHE.get("data") or {}
+    if (
+        not force
+        and cached
+        and now - float(_OUTER_CACHE.get("t") or 0) < 900
+    ):
+        return dict(cached)
+    out: Dict[str, Any] = {}
+    for key, sym, _lab in OUTER_SYMBOLS:
+        try:
+            bar = _fetch_symbol(sym, session_open=False, timeout=8)
+        except Exception:
+            logger.exception("外圍抓不到 %s", sym)
+            continue
+        out[f"{key}_px"] = bar.get("price")
+        out[f"{key}_pct"] = bar.get("pct")
+        out[f"{key}_chg"] = bar.get("chg")
+        time.sleep(0.05)
+    _OUTER_CACHE["t"] = now
+    _OUTER_CACHE["data"] = out
+    return dict(out)
+
+
+def outer_rows(snap: Optional[Dict[str, Any]]) -> List[tuple]:
+    """海選／台股大盤外圍列。沒有官方價就不上。"""
+    snap = snap or {}
+    rows: List[tuple] = []
+    px = _as_float(snap.get("brent_px"))
+    pct = _as_float(snap.get("brent_pct"))
+    if px is not None and px > 0:
+        bit = f"{px:.2f}美元/桶"
+        if pct is not None:
+            bit += f"　{pct:+.2f}%"
+        rows.append(("布蘭特", bit))
+    px = _as_float(snap.get("dx_f_px"))
+    pct = _as_float(snap.get("dx_f_pct"))
+    if px is not None and px > 0:
+        bit = f"{px:.2f}"
+        if pct is not None:
+            bit += f"　{pct:+.2f}%"
+        rows.append(("美元指數", bit))
+    px = _as_float(snap.get("usdtwd_px"))
+    pct = _as_float(snap.get("usdtwd_pct"))
+    if px is not None and px > 0:
+        bit = f"{px:.3f}"
+        if pct is not None:
+            bit += f"　{pct:+.2f}%"
+            if pct >= 0.05:
+                bit += "　台幣貶"
+            elif pct <= -0.05:
+                bit += "　台幣升"
+        rows.append(("美元兌台幣", bit))
+    return rows
 
 
 def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
@@ -340,6 +416,10 @@ def fetch_us_tape(now: Optional[datetime] = None) -> Dict[str, Any]:
         out["us_lead_pct"] = lead[1]
     out["ok"] = any(out.get(k) is not None for k in ("vix", "ixic_pct", "spx_pct", "dji_pct", "nq_f_pct"))
     out["regime"] = classify_us_regime(out)
+    try:
+        out.update({k: v for k, v in fetch_outer_tape(force=True).items() if v is not None})
+    except Exception:
+        logger.exception("外圍原油／匯率抓不到")
     return out
 
 

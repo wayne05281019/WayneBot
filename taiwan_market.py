@@ -3711,12 +3711,69 @@ def _outlook_flow_plain_lines(
     return lines
 
 
+def _resolve_outer_snap(
+    us: Optional[Dict[str, Any]], outer_snap: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """外圍：呼叫方有給就用；否則吃美股快取欄。測不打 Yahoo。沒真數就空。"""
+    from us_overnight import _OUTER_KEYS
+
+    merged: Dict[str, Any] = {}
+    if isinstance(outer_snap, dict):
+        for k in _OUTER_KEYS:
+            if outer_snap.get(k) is not None:
+                merged[k] = outer_snap[k]
+        return merged
+    for src in (us,):
+        if not isinstance(src, dict):
+            continue
+        for k in _OUTER_KEYS:
+            if merged.get(k) is None and src.get(k) is not None:
+                merged[k] = src[k]
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return merged
+    try:
+        from us_overnight import fetch_outer_tape
+
+        extra = fetch_outer_tape() or {}
+        for k in _OUTER_KEYS:
+            if merged.get(k) is None and extra.get(k) is not None:
+                merged[k] = extra[k]
+    except Exception:
+        logger.debug("外圍原油／匯率讀不到", exc_info=True)
+    return merged
+
+
+def _outlook_outer_lines(outer: Optional[Dict[str, Any]]) -> List[str]:
+    from us_overnight import outer_rows
+    from stock_links import html_named
+
+    lines: List[str] = []
+    for lab, val in outer_rows(outer):
+        lines.append(f"{html_named(lab)} {_outlook_b(val)}")
+    return lines
+
+
+def _page_outer_lines(outer: Optional[Dict[str, Any]]) -> List[str]:
+    from us_overnight import outer_rows
+
+    rows = outer_rows(outer)
+    if not rows:
+        return []
+    lines = ["", _TG_SECTION, "<b>外圍</b>"]
+    for lab, val in rows:
+        from stock_links import html_named
+
+        lines.append(_page_kv(html_named(lab), _page_b(val)))
+    return lines
+
+
 def format_screen_market_outlook_html(
     db_path: str,
     as_of: Optional[str] = None,
     *,
     snap: Optional[Dict[str, Any]] = None,
     us_snap: Optional[Dict[str, Any]] = None,
+    outer_snap: Optional[Dict[str, Any]] = None,
     rotated_names: Optional[List[str]] = None,
     flow_maps: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
@@ -3845,6 +3902,7 @@ def format_screen_market_outlook_html(
         label="電子期夜盤",
     )
     body.extend(te_night_lines)
+    body.extend(_outlook_outer_lines(_resolve_outer_snap(us, outer_snap)))
     body.extend(_outlook_tx_foreign_lines(db_path, ref, snap))
     flow_lines = _outlook_flow_plain_lines(
         db_path, ref, flow_maps=flow_maps, rotated_names=rotated_names
@@ -3965,6 +4023,7 @@ def format_taiwan_market_page_html(
     *,
     live: Optional[Dict[str, Any]] = None,
     snap: Optional[Dict[str, Any]] = None,
+    outer_snap: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> str:
     """Telegram「大盤」專頁：只讀庫內；基準日與海選／資金同一套完整收盤。"""
@@ -4096,6 +4155,7 @@ def format_taiwan_market_page_html(
             lines.append("")
             lines.extend(te_rows)
     lines.extend(_format_overnight_watch_lines(db_path, ref, snap, now=now))
+    lines.extend(_page_outer_lines(_resolve_outer_snap(_latest_us_overnight(db_path, ref), outer_snap)))
     plus_light = _regime_plus_traffic_light(snap.get("regime_plus"))
     plus_lab = str(snap.get("regime_plus_label") or "—")
     lines.extend(

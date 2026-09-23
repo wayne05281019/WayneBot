@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from bot_servers import (
+    MENU_BTN_MARKET,
     MENU_ROW1,
     MENU_ROW2,
     PHONE_BUSY,
@@ -43,7 +44,7 @@ def test_context_uid_keeps_full_keyboard_without_arg(tmp_path):
         labels = [b.text for row in kb.keyboard for b in row]
         assert labels == list(MENU_ROW1) + list(MENU_ROW2)
         assert "當沖" in labels
-        assert "大盤" in labels
+        assert MENU_BTN_MARKET in labels
     finally:
         _ACTIVE_PHONE_UID.reset(token)
     kb2 = bot._keyboard()
