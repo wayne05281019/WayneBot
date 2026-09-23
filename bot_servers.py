@@ -338,6 +338,8 @@ MENU_BTN_LEAVE_ZERO_ALIASES = (
     "盤中離零",
     "獲利剛離零",
     "獲利剛剛脫離零",
+    "獲利為零",
+    "獲利爲零",
 )
 LEAVE_ZERO_PICK_LABELS = (
     ("z", "獲利為零"),
@@ -4592,7 +4594,7 @@ class WayneTelegramBot:
         if text == "選股":
             self._pending.pop(actor, None)
             return
-        if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
+        if text in ("資金", "資金移動", "資金輪動") or text.lower().lstrip("/") == "flow":
             logger.info("主選單：資金 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.flow_cmd(update, context)

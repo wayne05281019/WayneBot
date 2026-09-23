@@ -34,6 +34,12 @@ _US_KEEP = (
     "nvda_pct",
     "nq_f_pct",
     "regime",
+    "brent_px",
+    "brent_pct",
+    "dx_f_px",
+    "dx_f_pct",
+    "usdtwd_px",
+    "usdtwd_pct",
 )
 _TWII_KEEP = ("date", "open", "high", "low", "close", "volume")
 _FUT_KEEP = ("date", "symbol", "session", "open", "high", "low", "close", "pct_change")
@@ -364,6 +370,31 @@ def _read_live_context(db_path: str, as_of: str) -> Dict[str, Any]:
                 },
                 _US_KEEP,
             )
+            try:
+                pay_row = None
+                if day:
+                    pay_row = conn.execute(
+                        "SELECT payload FROM us_overnight WHERE as_of=?",
+                        (day,),
+                    ).fetchone()
+                if not pay_row:
+                    pay_row = conn.execute(
+                        "SELECT payload FROM us_overnight ORDER BY as_of DESC LIMIT 1"
+                    ).fetchone()
+                extra = json.loads((pay_row[0] if pay_row else "") or "{}")
+            except (sqlite3.Error, TypeError, json.JSONDecodeError):
+                extra = {}
+            if isinstance(extra, dict):
+                for key in (
+                    "brent_px",
+                    "brent_pct",
+                    "dx_f_px",
+                    "dx_f_pct",
+                    "usdtwd_px",
+                    "usdtwd_pct",
+                ):
+                    if extra.get(key) is not None:
+                        us_b[key] = extra.get(key)
             if us_b:
                 out["us"] = us_b
     finally:

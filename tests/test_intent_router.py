@@ -23,7 +23,9 @@ def test_plain_speech_maps_to_official_paths():
         "月營收": "fund",
         "大盤": "market",
         "加權指數": "market",
+        "台股大盤": "market",
         "資金移動": "flow",
+        "資金輪動": "flow",
         "產業輪動": "flow",
         "今日海選名單": "screen",
         "興櫃": "emerging_screen",
@@ -38,6 +40,10 @@ def test_plain_speech_maps_to_official_paths():
         "刷新上一檔": "card",
         "刷新": "card",
         "剛離零": "leave_zero",
+        "獲利為零": "leave_zero",
+        "脫離1": "leave_zero",
+        "脫離2": "leave_zero",
+        "脫離3": "leave_zero",
         "洞燭先機": "dongzhu",
         "洞燭": "dongzhu",
         "能不能留": "dongzhu",
@@ -69,6 +75,14 @@ def test_code_and_name_extracted():
     assert hit.kind == "sell" and hit.query == "台積電"
     hit = parse_intent("2330資金")
     assert hit.kind == "chips" and hit.code == "2330"
+    hit = parse_intent("資金輪動")
+    assert hit.kind == "flow"
+    hit = parse_intent("台股大盤")
+    assert hit.kind == "market"
+    hit = parse_intent("海選")
+    assert hit.kind == "screen"
+    hit = parse_intent("連買區")
+    assert hit.kind == "streak"
     hit = parse_intent("00631L為什麼跌")
     assert hit.kind == "lookup" and hit.code == "00631L"
     hit = parse_intent("00990A怎麼賣")

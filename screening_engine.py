@@ -893,6 +893,8 @@ class ScreeningEngine:
         days_ago: int,
         mode: str,
         star_key: str,
+        frames: Optional[Dict[str, pd.DataFrame]] = None,
+        em_ids: Optional[Set[str]] = None,
     ) -> List[Dict[str, Any]]:
         """全市場高低卡獲利序列：獲利為零＝今天 0.0%；剛離N＝那根實綠第一天離零。含興櫃。"""
         from decision_card_signals import (
@@ -903,8 +905,14 @@ class ScreeningEngine:
         from universe import is_screen_equity
 
         as_of = str(target_date or self.get_latest_trading_date() or "").replace("-", "")[:8]
-        frames, em_ids = self._load_profit_scan_frames(as_of)
+        pick = "z" if str(mode or "") == "zero" else str(int(days_ago or 0))
+        if frames is None:
+            frames, em_ids = self._load_profit_scan_frames(as_of)
+        em_ids = em_ids or set()
         if not frames:
+            _remember_live_judges(
+                self.db_path, "leave_zero", [], as_of=as_of, pick=pick
+            )
             return []
         types: Dict[str, str] = {}
         try:
@@ -931,6 +939,9 @@ class ScreeningEngine:
             codes.append(sid)
             names[sid] = name
         if not codes:
+            _remember_live_judges(
+                self.db_path, "leave_zero", [], as_of=as_of, pick=pick
+            )
             return []
         quotes: Dict[str, Dict[str, Any]] = {}
         live_skipped = False
@@ -1097,7 +1108,11 @@ class ScreeningEngine:
             )
         if LEAVE_ZERO_RADAR_CAP:
             out = out[: int(LEAVE_ZERO_RADAR_CAP)]
-        return [self._row_for_bot(x) for x in stamp_entry_stars(out, star_key)]
+        bot_rows = [self._row_for_bot(x) for x in stamp_entry_stars(out, star_key)]
+        _remember_live_judges(
+            self.db_path, "leave_zero", bot_rows, as_of=as_of, pick=pick
+        )
+        return bot_rows
 
     def run_emerging_screening(
         self, target_date: Optional[str] = None, sync: bool = False
