@@ -371,6 +371,21 @@ def test_4915_sep4_leave_zero_is_wait_not_buy():
     assert "離低點" not in txt
 
 
+def test_clip_stance_note_keeps_one_sentence():
+    from decision_card_signals import clip_stance_note
+
+    short = "表貼在高檔（獲利 23.1%）。今天別追。"
+    assert clip_stance_note(short) == short
+    long = (
+        "奇偶3356，收 66.45，獲利 +23.1%。回測低 59.4（9/9），對高點線 68.6（9/21）低了 3.2%，"
+        "對低點線 54（8/？）還高出 11%。現在不要當黃金買點。"
+    )
+    out = clip_stance_note(long)
+    assert "回測低" not in out
+    assert len(out) <= 42
+    assert out.endswith("。")
+
+
 def test_trim_stance_echo_drops_title_lead_and_dont_chase_tail():
     from decision_card_signals import trim_stance_echo
 
