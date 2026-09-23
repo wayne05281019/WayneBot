@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""量假結構：官方柱重述他已講過的，不發明指標、不進海選。"""
+"""量價結構：官方柱重述他已講過的，不發明指標、不進海選。"""
 from biaoke_field_scan import _stirring
 from biaoke_mind import method_body, views_for_neuron
 from biaoke_neurons import classify_spoken
@@ -77,16 +77,20 @@ def test_quote_files_to_tape_neuron():
 
 def test_mind_and_why_carry_sep23_quote():
     body = method_body("量先價行")
-    assert "量假結構" in body
+    assert "量價結構" in body
+    assert "打成「量假結構」" in body or "打成量假" in body
     assert "主力意圖" in body
     assert "協易機" in body or "鴻海" in body
     wash = method_body("洗盤還是出貨")
-    assert "量假結構" in wash
+    assert "量價結構" in wash
     five = method_body("真正有用的五件")
-    assert "量假結構" in five
+    assert "量價結構" in five
     tape = views_for_neuron("tape")
-    assert any("量假結構" in b for _t, b in tape)
+    assert any("量價結構" in b and "打成" in b for _t, b in tape)
     why = lookup("量假結構是什麼")
     assert "16:50" in why
+    assert "打成" in why
+    assert "量價結構" in why
     assert "不進海選" in why
     assert "黃金買點" in why
+    assert "打成" in lookup("懂量價結構")
