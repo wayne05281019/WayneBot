@@ -1498,9 +1498,10 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         alpha=0.92,
     )
     px_pad = pad
+    px_color = color
     if chip:
         bg, fg = chip
-        color = fg
+        px_color = fg
         px_pad = dict(
             boxstyle="square,pad=0.18",
             facecolor=bg,
@@ -1539,7 +1540,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         ha="right",
         va="center",
         fontproperties=_fp(15, "bold"),
-        color=color,
+        color=px_color,
         zorder=29,
         bbox=px_pad,
     )
@@ -1554,7 +1555,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
             fontproperties=_fp(8, "bold"),
             color=color,
             zorder=29,
-            bbox=px_pad,
+            bbox=pad,
         )
 
 
@@ -1803,9 +1804,10 @@ def _paint_spot(
     except Exception:
         move = ""
     px_kw = {}
+    px_color = color
     if chip:
         bg, fg = chip
-        color = fg
+        px_color = fg
         px_kw = dict(bbox=dict(boxstyle="square,pad=0.18", facecolor=bg, edgecolor="none"))
     if compact:
         ax.text(
@@ -1822,7 +1824,7 @@ def _paint_spot(
             va="center", ha="left", zorder=22,
         )
         ax.text(
-            x + _ow(label, 9) + 1.2, 42, px, color=color,
+            x + _ow(label, 9) + 1.2, 42, px, color=px_color,
             fontproperties=_fp(18, "bold"), va="center", ha="left", zorder=22,
             **px_kw,
         )
@@ -1830,7 +1832,6 @@ def _paint_spot(
             ax.text(
                 x, 16, "較昨日　" + move, color=color,
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
-                **px_kw,
             )
         return
     cursor = float(x)
@@ -1852,14 +1853,13 @@ def _paint_spot(
     )
     cursor += _ow(label, 11) + 0.4
     ax.text(
-        cursor, y, px, color=color, fontproperties=_fp(20, "bold"),
+        cursor, y, px, color=px_color, fontproperties=_fp(20, "bold"),
         va="center", ha="left", zorder=22, **px_kw,
     )
     if move and move != "—":
         ax.text(
             x, y - 2.85, "較昨日　" + move, color=color,
             fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
-            **px_kw,
         )
 
 

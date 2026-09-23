@@ -1802,18 +1802,9 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
         move_prefix = "較昨日　"
         if tw(move_prefix + move_body, 15.5) > 36.0:
             chg_fs = 13.5
-    if chip:
-        bg, fg = chip
-        if move_prefix:
-            ax.text(
-                px_right - tw(move_body, chg_fs) - 2.2, chg_y, move_prefix.rstrip(),
-                fontproperties=_fp(chg_fs, "bold"), color=C["ink_soft"],
-                ha="right", va="center", zorder=3,
-            )
-        _paint_limit_square_right(ax, px_right, chg_y, move_body, chg_fs, bg, fg, tw, pad_x=0.45)
-    else:
-        ax.text(px_right, chg_y, move_prefix + move_body,
-                fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    # 漲跌金額／幅度不加方底，方底只套當下股價。
+    ax.text(px_right, chg_y, move_prefix + move_body,
+            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
 
 
 def _paint_price_left(ax, tw, C, x, y, price_h, card, last, prev_c, mc_val):
@@ -4575,18 +4566,8 @@ def render_decision_summary_png(card: dict, save_path: str) -> str:
         )
         ax.text(0.08, 0.58, close_s, transform=ax.transAxes, fontproperties=_fp(48, "bold"),
                 color=fg, ha="left", va="center", zorder=3)
-        chg_s = _fmt_pct(chg)
-        cw = _glyph_w_pt(chg_s, 28, 800) / 72.0 / fw + 0.03
-        ch = 28 / 72.0 / fh + 0.03
-        ax.add_patch(
-            patches.Rectangle(
-                (0.06, 0.34 - ch / 2), cw, ch,
-                facecolor=bg, edgecolor=bg, linewidth=0,
-                transform=ax.transAxes, zorder=2,
-            )
-        )
-        ax.text(0.08, 0.34, chg_s, transform=ax.transAxes, fontproperties=_fp(28, "bold"),
-                color=fg, ha="left", va="center", zorder=3)
+        ax.text(0.08, 0.34, _fmt_pct(chg), transform=ax.transAxes, fontproperties=_fp(28, "bold"),
+                color=_chg_color(chg), ha="left", va="center")
     else:
         ax.text(0.08, 0.58, close_s, transform=ax.transAxes, fontproperties=_fp(48, "bold"),
                 color="#111827", ha="left", va="center")

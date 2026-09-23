@@ -301,8 +301,8 @@ def test_close_paint_uses_triangle_and_color(tmp_path, monkeypatch):
     texts = [t for t, _c in seen]
     assert any("▲ 13.00（+10.00%）" in t for t in texts)
     assert any("上櫃" in t for t in texts)
-    # 漲停：方紅底白字，不要再用普通上漲紅字。
-    assert any(c == _CARD["limit_fg"] for t, c in seen if "▲" in t)
+    assert any(c == _CARD["up"] for t, c in seen if "▲" in t)
+    assert any(t.strip() == "143" and c == _CARD["limit_fg"] for t, c in seen)
 
     seen.clear()
     down = _mini_card_for_png(prev_close=150.0, close=143.0, change_pct=-4.67, listing="上市")

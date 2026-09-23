@@ -67,3 +67,4 @@ def test_paint_close_right_limit_chip_in_source():
     assert "quote_limit_chip_colors" in src
     assert "較昨日" in src
     assert "今K" in src
+    assert "chg_y, move_body" not in src
