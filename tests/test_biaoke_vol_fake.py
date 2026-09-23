@@ -16,7 +16,7 @@ def _bars(last_h, last_l, last_c, last_v, n=25, base_v=100.0):
 
 
 def test_dump_pause_hold_from_named_shapes():
-    """金像電型長上影＝dump；協易機／鴻海型收在下半＝pause；收撐＝hold。"""
+    """金像電型長上影＝dump；協易機／鴻海型收貼低＝pause；收撐＝hold。"""
     dump = classify_volume_fake(_bars(120, 100, 108, 300))
     assert dump["kind"] == "dump"
     pause = classify_volume_fake(_bars(110, 90, 93, 300))
@@ -25,6 +25,22 @@ def test_dump_pause_hold_from_named_shapes():
     assert hold["kind"] == "hold"
     quiet = classify_volume_fake(_bars(110, 90, 108, 80))
     assert quiet["kind"] == "none"
+
+
+def test_named_official_bars_match_spoken():
+    """他點過的官方柱：協易機／鴻海 pause、金像電 8/31 dump、9/1 不是轉弱K。"""
+    # 4533 20240415 開 40.25 高 42.5 低 38.3 收 38.85；櫃買量張，Yahoo 全日約 85303。
+    xieyi = classify_volume_fake(_bars(42.5, 38.3, 38.85, 85303, base_v=13700))
+    assert xieyi["kind"] == "pause"
+    # 2317 20250113 開 180 高 180.5 低 171.5 收 171.5 量約 148207 張。
+    fox = classify_volume_fake(_bars(180.5, 171.5, 171.5, 148207, base_v=45200))
+    assert fox["kind"] == "pause"
+    # 2368 20260831 高 1240 低 1140 收 1165 量 20981＝前波高長上影。
+    dump = classify_volume_fake(_bars(1240, 1140, 1165, 20981, base_v=10700))
+    assert dump["kind"] == "dump"
+    # 2368 20260901 高 1245 低 1155 收 1225 量 12953＝收在上半，不是轉弱K。
+    nxt = classify_volume_fake(_bars(1245, 1155, 1225, 12953, base_v=11500))
+    assert nxt["kind"] == "none"
 
 
 def test_wash_break_then_stand_back():
