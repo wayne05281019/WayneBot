@@ -75,7 +75,7 @@ def _update(message):
 
 
 def _bind_hit(hits: dict[str, list[str]], name: str):
-    async def _cmd(update, context):
+    async def _cmd(update, context, **_kw):
         uid = str(update.effective_user.id)
         hits.setdefault(uid, []).append(name)
 
