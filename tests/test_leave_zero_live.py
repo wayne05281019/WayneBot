@@ -113,10 +113,13 @@ def test_leave_days_pick_not_capped_at_five_pct():
     assert not _leave_zero_radar_row_ok(close=80.0, prev_close=50.0, ma20=50.0, volume=100)
     closes = [80.0] * 10 + [100.0] * 22 + [90.0, 95.0, 96.0]
     dg = pd.DataFrame({"close": closes})
-    profits = pd.Series([round((c - 80.0) / 80.0 * 100.0, 1) for c in closes])
-    assert profits.iloc[-3] > 0.05
-    assert _leave_zero_left_n_ago(profits, 1, df=dg)
-    assert not _leave_zero_left_n_ago(profits, 1)
+    bounce = pd.Series([round((c - 80.0) / 80.0 * 100.0, 1) for c in closes])
+    assert bounce.iloc[-3] > 0.05
+    assert not _leave_zero_left_n_ago(bounce, 1, df=dg)
+    k20_like = pd.Series([3.3, 1.4, 4.9, 5.8])
+    assert not _leave_zero_left_n_ago(k20_like, 1)
+    halt_gap = pd.Series([10.0, 27.0, 24.1])
+    assert not _leave_zero_left_n_ago(halt_gap, 1)
 
 
 def test_mark_leave_zero_stars_caps_at_five():
@@ -434,7 +437,7 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
     assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
 
 
-def test_leave_zero_cmd_days_copy_names_double_green(tmp_path):
+def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
     import asyncio
 
     db = str(tmp_path / "empty.db")
@@ -454,7 +457,8 @@ def test_leave_zero_cmd_days_copy_names_double_green(tmp_path):
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
     assert "剛離1" in html
-    assert "實綠或雙綠" in html
+    assert "實綠：昨獲利貼零、今離開 0" in html
+    assert "雙綠" not in html
     assert "前8檔" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
@@ -893,6 +897,13 @@ def test_leave_zero_radar_double_green_gap_and_cap(tmp_path, monkeypatch):
     _seed_close_series(db, "2330", "台積電", dg_closes, 100.0)
     _seed_close_series(
         db,
+        "2303",
+        "聯電",
+        {"20260914": 50.4, AS_OF: 50.5},
+        50.0,
+    )
+    _seed_close_series(
+        db,
         "6949",
         "缺列",
         {"20260914": 50.4, AS_OF: 80.0},
@@ -905,10 +916,11 @@ def test_leave_zero_radar_double_green_gap_and_cap(tmp_path, monkeypatch):
     engine = ScreeningEngine(db)
     d1 = engine.screen_leave_zero_pick(AS_OF, pick="1")
     d1_codes = [r["code"] for r in d1]
-    assert "2330" in d1_codes
+    assert "2303" in d1_codes
+    assert "2330" not in d1_codes
     assert "6949" not in d1_codes
     by = {r["code"]: r for r in d1}
-    assert by["2330"].get("chase_warning") is False
+    assert abs(float(by["2303"]["profit_pct"]) - 1.0) < 0.2
     zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
     zero_codes = [r["code"] for r in zero]
     assert "6949" not in zero_codes

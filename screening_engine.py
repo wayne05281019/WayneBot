@@ -894,7 +894,7 @@ class ScreeningEngine:
         mode: str,
         star_key: str,
     ) -> List[Dict[str, Any]]:
-        """全市場高低卡獲利序列：獲利為零＝今天 0.0%；剛離N＝那根第一天離零。含興櫃。"""
+        """全市場高低卡獲利序列：獲利為零＝今天 0.0%；剛離N＝那根實綠第一天離零。含興櫃。"""
         from decision_card_signals import (
             cal60_low_close_at,
             profit_pct_cal60_series,
@@ -1544,8 +1544,11 @@ def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
 def _leave_zero_left_n_ago(
     profits: pd.Series, days_ago: int, df=None
 ) -> bool:
-    """N 個交易日前那一根是高低卡第一天離零（實綠或雙綠）。不卡海選 5%。"""
-    from decision_card_signals import card_alerts_for_df, card_row_leave_zero, profit_left_zero_highlight
+    """N 個交易日前那一根是高低卡第一天離零（實綠：昨獲利貼零、今離開 0）。不卡海選 5%。
+
+    不吃雙綠／K20低反彈：獲利早已離開 0 又碰到 20 低再彈，不是剛離零。df 只為舊呼叫相容。
+    """
+    from decision_card_signals import profit_left_zero_highlight
 
     n = int(days_ago or 0)
     if n <= 0 or profits is None or len(profits) < n + 2:
@@ -1555,16 +1558,7 @@ def _leave_zero_left_n_ago(
         left = float(profits.iloc[-(n + 1)])
     except (TypeError, ValueError, IndexError):
         return False
-    if profit_left_zero_highlight(prev, left):
-        return True
-    if df is None:
-        return False
-    try:
-        ya, ta = card_alerts_for_df(df, today_iloc=-(n + 1))
-    except Exception:
-        return False
-    hit, _reason = card_row_leave_zero(prev, left, yest_alert=ya, today_alert=ta)
-    return bool(hit)
+    return bool(profit_left_zero_highlight(prev, left))
 
 
 def _screen_trend_up_ok(info: Dict[str, Any], *, block_monthly_side: bool = False) -> bool:
