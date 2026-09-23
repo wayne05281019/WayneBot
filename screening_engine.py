@@ -1161,6 +1161,13 @@ _BUCKET_FROM_LABEL = {
     "隔日沖": "overnight",
     "剛離零": "leave_zero",
     "剛脫離零": "leave_zero",
+    "獲利為零": "golden_buy",
+    "脫離1": "leave_zero",
+    "脫離2": "leave_zero",
+    "脫離3": "leave_zero",
+    "剛離1": "leave_zero",
+    "剛離2": "leave_zero",
+    "剛離3": "leave_zero",
 }
 
 _STAR_BASE = {
@@ -1214,6 +1221,7 @@ def entry_star_count(
     """海選切入星：0～5。滿五星＝黃金買點按表該買，不靠投信連買或輪動進。
 
     重點觀察不是買訊，最高四星。少追／流出／逆風／高β不能滿五星。
+    剛離／脫離名單：還沒向上最高兩星。四星＝趨勢已向上、獲利還在 0～5%、沒少追沒破線。
     """
     row = item or {}
     key = bucket_key_of(row, bucket_key, bucket_label)
@@ -1258,13 +1266,26 @@ def entry_star_count(
             and profit is not None
             and 0.0 < profit <= 5.0
         )
-        n = ENTRY_STAR_N if table_ok else min(n, ENTRY_STAR_N - 1)
-        if "trend_up_now" in row and not row.get("trend_up_now"):
-            n = min(n, ENTRY_STAR_N - 1)
-        return n
-    if n >= ENTRY_STAR_N:
-        n = ENTRY_STAR_N - 1
-    return n
+        trend_known = "trend_up_now" in row
+        trend_up = bool(row.get("trend_up_now"))
+        broke = (
+            str(row.get("buy_gate") or "") == "no"
+            or str(row.get("hold_prior_state") or "") == "broke"
+        )
+        if table_ok and (not trend_known or trend_up):
+            return ENTRY_STAR_N
+        if trend_known and not trend_up:
+            return min(n, 2)
+        if (
+            (not trend_known or trend_up)
+            and profit is not None
+            and 0.0 < profit <= 5.0
+            and not row.get("chase_warning")
+            and not broke
+        ):
+            return 4
+        return min(n, 2)
+    return min(n, 2)
 
 
 def entry_star_glyphs(n: int) -> str:
@@ -1895,9 +1916,18 @@ def _stock_card_html(
     except (TypeError, ValueError):
         to_s = ""
     card_label = str(item.get("entry_stage_label") or bucket_label or "")
-    stars = entry_star_glyphs(
-        entry_star_count(item, bucket_label=card_label)
-    )
+    stamped = item.get("entry_stars")
+    try:
+        n_star = int(stamped) if stamped is not None and stamped != "" else None
+    except (TypeError, ValueError):
+        n_star = None
+    if n_star is None:
+        n_star = entry_star_count(
+            item,
+            bucket_key=str(item.get("bucket_key") or ""),
+            bucket_label=card_label,
+        )
+    stars = entry_star_glyphs(n_star)
     body = [
         f"<b>{idx}.</b> {stock_title}　{stars}",
     ]
@@ -2040,7 +2070,13 @@ def _compact_line(item: Dict[str, Any]) -> str:
         title = html_stock_anchor(sid, sname)
     except Exception:
         title = f"{html_escape(sid)} {html_escape(sname)}"
-    stars = entry_star_glyphs(entry_star_count(item))
+    try:
+        n_star = int(item["entry_stars"]) if item.get("entry_stars") not in (None, "") else None
+    except (TypeError, ValueError):
+        n_star = None
+    if n_star is None:
+        n_star = entry_star_count(item, bucket_key=str(item.get("bucket_key") or ""))
+    stars = entry_star_glyphs(n_star)
     from tg_layout import html_price, join_sections, kv_html, section
 
     rows = [

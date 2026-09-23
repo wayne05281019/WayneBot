@@ -57,7 +57,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "紅圈" in blob
     assert "連買區" in blob
     assert "說明　海選　持股" not in blob
-    assert "海選　持股　觀察　飆大　台股大盤　資金" in blob
+    assert "海選　持股　觀察　飆大　台股大盤　資金輪動" in blob
     assert "如何賣" in blob
     assert "如何低買" in blob
     assert "趨勢向上" in blob
@@ -72,16 +72,16 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "進化" in blob
     assert "直接打代號" in blob
     assert "00981A" in blob
-    assert "剛離1" in blob
+    assert "脫離1" in blob
     assert "獲利為零" in blob
     assert "觀察不是買" in blob
     assert "不卡 5%" in blob
     assert "不限海選桶" in blob
     assert "含興櫃" in blob
-    assert CACHE_VER == "v69"
+    assert CACHE_VER == "v70"
     assert "前8檔" in blob
     assert "實綠：昨獲利貼零、今離開 0" in blob
-    assert "不滿五星" in blob
+    assert "還沒向上最高兩星" in blob
     assert "不收空頭" in blob
     assert "國字打不準" in blob
     assert "點左邊確認" in blob

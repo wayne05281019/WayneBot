@@ -24,6 +24,8 @@ from bot_servers import (
     HELP_TOPICS,
     MENU_BTN_AI,
     MENU_BTN_DONGZHU,
+    MENU_BTN_FLOW,
+    MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_STREAK,
     MENU_FULL_ALIASES,
@@ -321,12 +323,12 @@ def test_two_users_all_buttons_and_help_topics_interleaved(tmp_path):
         "觀察",
         "飆大",
         MENU_BTN_MARKET,
-        "資金",
+        MENU_BTN_FLOW,
         "當沖",
         "隔日沖",
         MENU_BTN_AI,
         MENU_BTN_STREAK,
-        "剛脫離零",
+        MENU_BTN_LEAVE_ZERO,
         MENU_BTN_DONGZHU,
     ]
 
