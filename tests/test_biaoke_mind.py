@@ -51,7 +51,8 @@ def test_neuron_views_reread_without_ask():
     assert "裸K" in method_body("量先價行")
     assert "死水" in method_body("量先價行")
     assert "防守點" in method_body("量先價行")
-    assert "量假結構" in method_body("量先價行")
+    assert "量價結構" in method_body("量先價行")
+    assert "量假" in method_body("量先價行")
     five = method_body("真正有用的五件")
     assert "碎形" in five
     assert "關鍵K" in five

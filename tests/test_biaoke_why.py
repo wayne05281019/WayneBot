@@ -213,9 +213,12 @@ def test_why_sunday_pcb_1245_is_sep1_high():
 
 def test_why_volume_fake_structure():
     body = lookup("量假結構是什麼")
+    assert "打成" in body
+    assert "量價結構" in body
     assert "主力意圖" in body
     assert "長上影" in body
     assert "不進海選" in body
+    assert "打成" in lookup("懂量價結構")
 
 
 def test_live_notes_puts_why_chain_first():
