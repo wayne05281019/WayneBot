@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from bot_servers import (
     MENU_BTN_AI,
     MENU_BTN_BIAOKE_FACE,
+    MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_DONGZHU,
@@ -23,8 +24,8 @@ from wayne_db import init_database
 
 
 def test_full_menu_is_two_rows_no_compact():
-    assert MENU_LAYOUT_VERSION == "27"
-    assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, "資金")
+    assert MENU_LAYOUT_VERSION == "28"
+    assert MENU_ROW1 == ("海選", "持股", "觀察", MENU_BTN_BIAOKE_FACE, MENU_BTN_MARKET, MENU_BTN_FLOW)
     assert MENU_ROW2 == ("當沖", "隔日沖", MENU_BTN_AI, MENU_BTN_STREAK, MENU_BTN_LEAVE_ZERO, MENU_BTN_DONGZHU)
     assert "刷新" not in MENU_ROW1 + MENU_ROW2
     assert "回報" not in MENU_ROW1 + MENU_ROW2
@@ -55,6 +56,8 @@ def test_holdings_intent_not_ai():
     assert parse_intent("持倉報告").kind == "ai"
     assert parse_intent("模擬持倉").kind == "ai"
     assert parse_intent("模擬持倉報告").kind == "ai"
+    assert parse_intent("資金輪動").kind == "flow"
+    assert parse_intent("資金").kind == "flow"
 
 
 def test_typed_compact_alias_still_hangs_full_keyboard(tmp_path):

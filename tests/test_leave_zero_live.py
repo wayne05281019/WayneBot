@@ -133,7 +133,7 @@ def test_mark_leave_zero_stars_caps_at_five():
     assert [r["entry_stars"] for r in out] == [5, 5, 0]
     assert [r["buy_star"] for r in out] == [True, True, False]
     few = mark_leave_zero_stars([{"stock_id": "1"}, {"stock_id": "2"}])
-    assert all(r["entry_stars"] == 3 and r["buy_star"] is False for r in few)
+    assert all(r["entry_stars"] <= 2 and r["buy_star"] is False for r in few)
 
 
 def test_stock_card_html_stars_name():
@@ -172,7 +172,7 @@ def test_trend_not_up_caps_stars_and_shows_label():
             }
         ]
     )
-    assert capped[0]["entry_stars"] <= 4
+    assert capped[0]["entry_stars"] <= 2
     assert capped[0]["buy_star"] is False
     html = _stock_card_html(capped[0], 1, bucket_label="剛離1")
     assert "趨勢還沒向上" in html
@@ -257,15 +257,12 @@ def test_lookup_like_row_has_watch_and_buy():
     kb = bot._leave_zero_section_keyboard([("1101", "台泥")], include_menu=True)
     flat = [b.callback_data for r in kb.inline_keyboard for b in r]
     assert "k:1101" in flat and "w:1101" in flat and "b:1101" in flat
-    assert [b.callback_data for b in kb.inline_keyboard[0]] == [
-        "lz:z",
-        "lz:1",
-        "lz:2",
-        "lz:3",
-    ]
     assert "lz:0" not in flat
-    texts = [b.text for r in kb.inline_keyboard for b in r]
-    assert texts[:4] == ["獲利為零", "剛離1", "剛離2", "剛離3"]
+    assert "lz:z" not in flat
+    keys = bot._leave_zero_reply_menu()
+    texts = [b.text for r in keys.keyboard for b in r]
+    assert texts[:3] == ["脫離1", "脫離2", "脫離3"]
+    assert "回主選單" in texts
 
 
 def test_dongzhu_keyboard_is_industry_temp_intro():
@@ -335,7 +332,8 @@ def test_dongzhu_picker_callback_opens_hold_not_card():
 def test_intent_and_menu_label():
     from bot_servers import leave_zero_pick_from_text
 
-    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
+    assert MENU_BTN_LEAVE_ZERO == "獲利為零"
+    assert parse_intent("獲利為零").kind == "leave_zero"
     assert parse_intent("剛脫離零").kind == "leave_zero"
     assert parse_intent("剛離零").kind == "leave_zero"
     assert parse_intent("獲利剛剛脫離零").kind == "leave_zero"
@@ -362,6 +360,8 @@ def _bare_leave_zero_bot(db: str) -> WayneTelegramBot:
     bot._trade_running = set()
     bot._enter_main_menu = AsyncMock()
     bot._reply_menu = MagicMock(return_value=None)
+    bot._leave_zero_reply_menu = MagicMock(return_value="lz-keys")
+    bot._show_leave_zero_keys = AsyncMock()
     bot._start_plain_wait = AsyncMock(return_value=(None, None, None))
     bot._stop_plain_wait = AsyncMock()
     bot._actor_key = lambda message, uid="": f"{uid}"
@@ -395,11 +395,9 @@ def test_leave_zero_cmd_opens_profit_zero(tmp_path):
     assert "獲利為零" in html
     assert "先觀察" in html
     assert "🟥" not in html
-    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
-        "reply_markup"
-    )
-    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
+    assert bot._show_leave_zero_keys.await_count == 1
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup")
+    assert kb is None
     assert bot._start_plain_wait.await_args_list
 
 
@@ -430,11 +428,9 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
     assert "🟥" not in html
-    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
-        "reply_markup"
-    )
-    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
+    assert bot._show_leave_zero_keys.await_count == 1
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup")
+    assert kb is None
 
 
 def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
@@ -456,7 +452,7 @@ def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "剛離1" in html
+    assert "脫離1" in html
     assert "實綠：昨獲利貼零、今離開 0" in html
     assert "雙綠" not in html
     assert "前8檔" in html
@@ -486,14 +482,12 @@ def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):
     html = "\n".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
     assert "目前非盤中" in html
     assert "不抓現價" in html
-    assert "剛離1" in html
+    assert "脫離1" in html
     assert "獲利為零" in html
     assert "🟥" not in html
-    kb = msg.reply_html.await_args.kwargs.get("reply_markup") or msg.reply_html.await_args[1].get(
-        "reply_markup"
-    )
-    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert datas == ["lz:z", "lz:1", "lz:2", "lz:3"]
+    assert bot._show_leave_zero_keys.await_count == 1
+    kb = msg.reply_html.await_args.kwargs.get("reply_markup")
+    assert kb is None
     assert not msg.reply_text.await_args_list
 
 
@@ -600,7 +594,7 @@ def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
     assert "1402" in zero_codes
     assert "1216" not in zero_codes
     assert "1101" not in zero_codes
-    assert all(int(r.get("entry_stars") or 0) <= 4 for r in zero)
+    assert all(int(r.get("entry_stars") or 0) <= 2 for r in zero)
     over = engine.screen_leave_zero_pick(AS_OF, pick="1")
     assert over and float(over[0]["profit_pct"]) > 5.0
 
@@ -830,7 +824,7 @@ def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
     by = {r["code"]: r for r in rows}
     assert by["1101"]["trend_up_now"] is True
     assert by["1201"]["trend_up_now"] is False
-    assert int(by["1201"].get("entry_stars") or 0) <= 4
+    assert int(by["1201"].get("entry_stars") or 0) <= 2
     assert by["1201"].get("buy_star") is False
     assert "趨勢已向上" in _stock_card_html(by["1101"], 1, bucket_label="剛離1")
     assert "趨勢還沒向上" in _stock_card_html(by["1201"], 2, bucket_label="剛離1")
