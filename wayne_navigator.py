@@ -1084,6 +1084,117 @@ def format_nav_volume_label(volume_lots) -> str:
     return f"量 {n:,}張"
 
 
+def _tw_tick(px) -> float:
+    """證交所現股升降單位。漲跌停價四捨五入用這一檔。"""
+    try:
+        p = abs(float(px))
+    except (TypeError, ValueError):
+        return 0.01
+    if p < 10:
+        return 0.01
+    if p < 50:
+        return 0.05
+    if p < 100:
+        return 0.10
+    if p < 500:
+        return 0.50
+    if p < 1000:
+        return 1.0
+    return 5.0
+
+
+def _round_tw_tick(px) -> float:
+    try:
+        v = float(px)
+    except (TypeError, ValueError):
+        return 0.0
+    tick = _tw_tick(v)
+    if tick <= 0:
+        return v
+    return round(int(v / tick + 0.5) * tick, 6)
+
+
+def _limit_band_px(prev, band: float):
+    try:
+        p = float(prev)
+    except (TypeError, ValueError):
+        return None
+    if p <= 0:
+        return None
+    raw = p * (1.0 + float(band))
+    out = _round_tw_tick(raw)
+    if band > 0 and out <= p:
+        out = _round_tw_tick(p + _tw_tick(p))
+    if band < 0 and out >= p:
+        t = _tw_tick(p)
+        out = _round_tw_tick(p - t) if p > t else out
+    return out
+
+
+def quote_limit_side(close, prev=None, pct=None):
+    """只認漲停／跌停。普通漲跌回 None，畫面維持原本紅綠字。"""
+    try:
+        c = float(close)
+    except (TypeError, ValueError):
+        return None
+    if c <= 0:
+        return None
+    prev_f = None
+    try:
+        if prev not in (None, "", 0, 0.0):
+            prev_f = float(prev)
+            if prev_f <= 0:
+                prev_f = None
+    except (TypeError, ValueError):
+        prev_f = None
+    pct_f = None
+    try:
+        if pct not in (None, ""):
+            pct_f = float(pct)
+    except (TypeError, ValueError):
+        pct_f = None
+    if pct_f is None and prev_f:
+        pct_f = (c - prev_f) / prev_f * 100.0
+
+    def _hit(limit_px, want_up: bool) -> bool:
+        if limit_px is None:
+            return False
+        tick = _tw_tick(limit_px)
+        if abs(c - limit_px) <= 1e-6:
+            return True
+        # 官方％已貼板、價差不超過一檔：安瑞-KY 9.88% 對 8.34 vs 計算 8.35。
+        if pct_f is None:
+            return False
+        if want_up and pct_f >= 9.85 and abs(c - limit_px) <= tick + 1e-9:
+            return True
+        if (not want_up) and pct_f <= -9.85 and abs(c - limit_px) <= tick + 1e-9:
+            return True
+        return False
+
+    if prev_f:
+        up10, dn10 = _limit_band_px(prev_f, 0.10), _limit_band_px(prev_f, -0.10)
+        up20, dn20 = _limit_band_px(prev_f, 0.20), _limit_band_px(prev_f, -0.20)
+        if _hit(up10, True) or _hit(up20, True):
+            return "up"
+        if _hit(dn10, False) or _hit(dn20, False):
+            return "down"
+    if pct_f is None:
+        return None
+    a = abs(pct_f)
+    if 9.85 <= a <= 10.55 or 19.50 <= a <= 21.0:
+        return "up" if pct_f > 0 else "down"
+    return None
+
+
+def quote_limit_chip_colors(side, C=None):
+    pal = C or _CARD
+    if side == "up":
+        return pal.get("limit_up_bg", "#C62828"), pal.get("limit_fg", "#FFFFFF")
+    if side == "down":
+        return pal.get("limit_down_bg", "#2E7D32"), pal.get("limit_fg", "#FFFFFF")
+    return None
+
+
 def _fmt_price(p) -> str:
     """股價顯示：千元以上不要小數，避免萬元股把獲利欄擠爆。"""
     try:
@@ -1583,15 +1694,87 @@ def _close_move_bits(chg, chg_amt) -> list:
     return [format_move_plain(chg_amt, chg)]
 
 
+def _card_quote_limit_side(card, last=None, close=None, chg=None, prev=None):
+    src = last if isinstance(last, dict) else {}
+    c = close
+    if c is None:
+        c = src.get("close") if src else None
+    if c is None and card:
+        c = card.get("close")
+    p = prev
+    if p is None:
+        p = src.get("yesterday_close") if src else None
+    if p is None and card:
+        p = card.get("prev_close")
+    pct = chg
+    if pct is None and card:
+        pct = card.get("change_pct")
+    if pct is None and src:
+        pct = src.get("pct_change") or src.get("change_pct")
+    return quote_limit_side(c, p, pct)
+
+
+def _paint_limit_square_right(ax, x_right, y_mid, text, fs, bg, fg, tw, *, pad_x=0.55):
+    """看盤軟體漲停／跌停：直角方底白字。"""
+    s = str(text or "")
+    if not s:
+        return
+    tws = tw(s, fs)
+    h = max(3.4, fs * 0.24)
+    ax.add_patch(
+        patches.Rectangle(
+            (x_right - tws - pad_x, y_mid - h / 2),
+            tws + pad_x * 2,
+            h,
+            facecolor=bg,
+            edgecolor=bg,
+            linewidth=0,
+            zorder=2,
+        )
+    )
+    ax.text(
+        x_right, y_mid, s, fontproperties=_fp(fs, "bold"),
+        color=fg, ha="right", va="center", zorder=3,
+    )
+
+
+def _paint_limit_square_center(ax, cx, cy, text, fs, bg, fg, tw, *, pad_x=0.42, h=2.55):
+    s = str(text or "")
+    if not s:
+        return
+    tws = tw(s, fs) if callable(tw) else _text_w(s, fs, CARD_FIG_W, 900)
+    box_w = tws + pad_x * 2
+    ax.add_patch(
+        patches.Rectangle(
+            (cx - box_w / 2, cy - h / 2),
+            box_w,
+            h,
+            facecolor=bg,
+            edgecolor=bg,
+            linewidth=0,
+            zorder=3,
+        )
+    )
+    ax.text(
+        cx, cy, s, fontproperties=_fp(fs, "bold"),
+        color=fg, ha="center", va="center", zorder=4,
+    )
+
+
 def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits, card, last=None):
     """右欄現價或收盤／較昨日漲跌。今日小 K 畫在標籤左邊。淨值改畫左欄。"""
     close_y = y + price_h * 0.70
     chg_y = y + price_h * 0.24
     chg_fs = 15.5
-    ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
-            color=chg_c, ha="right", va="center", zorder=3)
+    chip = quote_limit_chip_colors(_card_quote_limit_side(card, last), C)
+    if chip:
+        bg, fg = chip
+        _paint_limit_square_right(ax, px_right, close_y, close_s, 28, bg, fg, tw)
+    else:
+        ax.text(px_right, close_y, close_s, fontproperties=_fp(28, "bold"),
+                color=chg_c, ha="right", va="center", zorder=3)
     label = session_price_label(card)
-    label_x = px_right - tw(close_s, 28) - 2.0
+    label_x = px_right - tw(close_s, 28) - (2.7 if chip else 2.0)
     ax.text(label_x, close_y, label,
             fontproperties=_fp(11.0), color=C["ink_soft"], ha="right", va="center", zorder=3)
     ohlc = _card_ohlc_tuple(card, last)
@@ -1613,13 +1796,24 @@ def _paint_close_right(ax, tw, C, px_right, y, price_h, close_s, chg_c, chg_bits
             va="center",
             zorder=3,
         )
-    move_s = "　".join(chg_bits)
+    move_body = "　".join(chg_bits)
+    move_prefix = ""
     if ohlc and ohlc[4]:
-        move_s = "較昨日　" + move_s
-        if tw(move_s, 15.5) > 36.0:
+        move_prefix = "較昨日　"
+        if tw(move_prefix + move_body, 15.5) > 36.0:
             chg_fs = 13.5
-    ax.text(px_right, chg_y, move_s,
-            fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
+    if chip:
+        bg, fg = chip
+        if move_prefix:
+            ax.text(
+                px_right - tw(move_body, chg_fs) - 2.2, chg_y, move_prefix.rstrip(),
+                fontproperties=_fp(chg_fs, "bold"), color=C["ink_soft"],
+                ha="right", va="center", zorder=3,
+            )
+        _paint_limit_square_right(ax, px_right, chg_y, move_body, chg_fs, bg, fg, tw, pad_x=0.45)
+    else:
+        ax.text(px_right, chg_y, move_prefix + move_body,
+                fontproperties=_fp(chg_fs, "bold"), color=chg_c, ha="right", va="center", zorder=3)
 
 
 def _paint_price_left(ax, tw, C, x, y, price_h, card, last, prev_c, mc_val):
@@ -1938,6 +2132,9 @@ _CARD = {
     "lo_hit_line": "#4CAF50",
     "up": "#D81B60",
     "down": "#00695C",
+    "limit_up_bg": "#C62828",
+    "limit_down_bg": "#2E7D32",
+    "limit_fg": "#FFFFFF",
     # 白字要壓在上面的底色壓深一階，對白色至少 5:1 對比。
     "pill_hi": "#AD1457",
     "pill_lo": "#2E7D32",
@@ -2938,6 +3135,13 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
             al = "No"
         base = C["white"]
         nxt = table.iloc[row_i + 1] if row_i + 1 < len(table) else None
+        nxt_close = None
+        if nxt is not None:
+            try:
+                nxt_close = float(nxt["close"])
+            except (TypeError, ValueError, KeyError):
+                nxt_close = None
+        limit_chip = quote_limit_chip_colors(quote_limit_side(r["close"], nxt_close), C)
         p_bg, p_fg = _profit_heat_draw(_row_profit(r), _row_profit(nxt), base)
         px_bg, px_fg = price_cell_style(hl, base, al)
         al_bg, al_fg = alert_cell_style(al, base)
@@ -3005,6 +3209,12 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
                             ha="center", va="center", color=C["pill_hi"], zorder=3)
                     continue
                 px_fs = 10.5 if (i == 1 and len(str(val)) >= 7) else 12
+                if i == 1 and limit_chip:
+                    bg, fg = limit_chip
+                    _paint_limit_square_center(
+                        ax, cx, cy, val, px_fs, bg, fg, tw, h=body_h * 0.72,
+                    )
+                    continue
                 ink = _fg_on_panel(fgs[i], fills[i], wash or C["white"])
                 ax.text(cx, cy, val, fontproperties=_fp(px_fs, "bold" if i != 0 else "normal"),
                         ha="center", va="center", color=ink, zorder=3)
@@ -4349,10 +4559,39 @@ def render_decision_summary_png(card: dict, save_path: str) -> str:
     )
     ax.text(0.08, 0.86, f"{code}  {name}", transform=ax.transAxes, fontproperties=_fp(20, "bold"),
             color="#111827", ha="left", va="center")
-    ax.text(0.08, 0.58, _fmt_num(close, 2), transform=ax.transAxes, fontproperties=_fp(48, "bold"),
-            color="#111827", ha="left", va="center")
-    ax.text(0.08, 0.34, _fmt_pct(chg), transform=ax.transAxes, fontproperties=_fp(28, "bold"),
-            color=_chg_color(chg), ha="left", va="center")
+    close_s = _fmt_num(close, 2)
+    chip = quote_limit_chip_colors(quote_limit_side(close, card.get("prev_close"), chg))
+    if chip:
+        bg, fg = chip
+        fw, fh = float(fig.get_figwidth() or 4.4), float(fig.get_figheight() or 3.7)
+        w = _glyph_w_pt(close_s, 48, 800) / 72.0 / fw + 0.04
+        h = 48 / 72.0 / fh + 0.04
+        ax.add_patch(
+            patches.Rectangle(
+                (0.06, 0.58 - h / 2), w, h,
+                facecolor=bg, edgecolor=bg, linewidth=0,
+                transform=ax.transAxes, zorder=2,
+            )
+        )
+        ax.text(0.08, 0.58, close_s, transform=ax.transAxes, fontproperties=_fp(48, "bold"),
+                color=fg, ha="left", va="center", zorder=3)
+        chg_s = _fmt_pct(chg)
+        cw = _glyph_w_pt(chg_s, 28, 800) / 72.0 / fw + 0.03
+        ch = 28 / 72.0 / fh + 0.03
+        ax.add_patch(
+            patches.Rectangle(
+                (0.06, 0.34 - ch / 2), cw, ch,
+                facecolor=bg, edgecolor=bg, linewidth=0,
+                transform=ax.transAxes, zorder=2,
+            )
+        )
+        ax.text(0.08, 0.34, chg_s, transform=ax.transAxes, fontproperties=_fp(28, "bold"),
+                color=fg, ha="left", va="center", zorder=3)
+    else:
+        ax.text(0.08, 0.58, close_s, transform=ax.transAxes, fontproperties=_fp(48, "bold"),
+                color="#111827", ha="left", va="center")
+        ax.text(0.08, 0.34, _fmt_pct(chg), transform=ax.transAxes, fontproperties=_fp(28, "bold"),
+                color=_chg_color(chg), ha="left", va="center")
     ax.text(0.08, 0.16, f"獲利 {_fmt_pct(profit)}", transform=ax.transAxes, fontproperties=_fp(18, "bold"),
             color=_chg_color(profit), ha="left", va="center")
     ax.text(0.08, 0.07, f"距20日高 {_fmt_pct(dist)}", transform=ax.transAxes, fontproperties=_fp(18, "bold"),
@@ -4438,25 +4677,44 @@ def render_decision_table_png(card: dict, save_path: str, part: int = 1) -> str:
         if part == 1:
             base = _CARD["white"]
             _, warn_fg = alert_cell_style(warn, base)
+            nxt = rows[r + 1] if r + 1 < len(rows) else None
+            prev_px = nxt.get("close") if nxt else None
+            chip = quote_limit_chip_colors(quote_limit_side(row.get("close"), prev_px))
+            close_txt = _fmt_num(row.get("close"), 2)
+            close_fg = chip[1] if chip else _CARD["ink"]
             vals = [
-                (date_s, _CARD["ink"]),
-                (_fmt_num(row.get("close"), 2), _CARD["ink"]),
-                (_fmt_pct(profit), signed_pct_ink(profit)),
-                (warn, warn_fg),
+                (date_s, _CARD["ink"], None),
+                (close_txt, close_fg, chip),
+                (_fmt_pct(profit), signed_pct_ink(profit), None),
+                (warn, warn_fg, None),
             ]
         else:
             base = _CARD["white"]
             _, bias_fg = bias_cell_style(bias, base)
             _, vol_fg = vol_rank_cell_style(volr, base)
             vals = [
-                (date_s, _CARD["ink"]),
-                (_fmt_num(temp, 0) if temp is not None else "—", temp_cell_style(temp, base)[1]),
-                (_fmt_pct(bias), bias_fg),
-                (_fmt_num(volr, 0) if volr is not None else "—", vol_fg),
+                (date_s, _CARD["ink"], None),
+                (_fmt_num(temp, 0) if temp is not None else "—", temp_cell_style(temp, base)[1], None),
+                (_fmt_pct(bias), bias_fg, None),
+                (_fmt_num(volr, 0) if volr is not None else "—", vol_fg, None),
             ]
-        for i, (txt, color) in enumerate(vals):
+        for i, item in enumerate(vals):
+            txt, color, chip = item
+            if chip:
+                bg, fg = chip
+                fw, fh = float(fig.get_figwidth() or 4.5), float(fig.get_figheight() or 4.0)
+                w = _glyph_w_pt(str(txt), 20, 800) / 72.0 / fw + 0.028
+                hh = max(row_h * 0.62, 20 / 72.0 / fh + 0.01)
+                ax.add_patch(
+                    patches.Rectangle(
+                        (col_x[i] - w / 2, y - hh / 2), w, hh,
+                        facecolor=bg, edgecolor=bg, linewidth=0,
+                        transform=ax.transAxes, zorder=1,
+                    )
+                )
+                color = fg
             ax.text(col_x[i], y, txt, transform=ax.transAxes, fontproperties=_fp(20, "bold"),
-                    color=color, ha="center", va="center", zorder=1)
+                    color=color, ha="center", va="center", zorder=2)
 
     fig.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0.06, facecolor=fig.get_facecolor())
     plt.close(fig)

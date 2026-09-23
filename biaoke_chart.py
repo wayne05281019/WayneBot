@@ -1469,12 +1469,13 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
     if close is None:
         return
     from decision_card_signals import candle_up_taiwan
-    from wayne_navigator import _draw_mini_candle
+    from wayne_navigator import _draw_mini_candle, quote_limit_chip_colors, quote_limit_side
 
     x, y, _w, h = (float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
     prev = quote.get("prev")
     up = candle_up_taiwan(close, prev, quote.get("open"))
     color = _UP if up else _DN
+    chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
     px = _px(close)
     o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
@@ -1496,6 +1497,16 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         edgecolor="none",
         alpha=0.92,
     )
+    px_pad = pad
+    if chip:
+        bg, fg = chip
+        color = fg
+        px_pad = dict(
+            boxstyle="square,pad=0.18",
+            facecolor=bg,
+            edgecolor="none",
+            alpha=1.0,
+        )
     tx = edge
     if ohlc_ok:
         cax = fig.add_axes([edge - 0.090, mid_y - 0.022, 0.016, 0.054], zorder=29)
@@ -1530,7 +1541,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
         fontproperties=_fp(15, "bold"),
         color=color,
         zorder=29,
-        bbox=pad,
+        bbox=px_pad,
     )
     if move and move != "—":
         fig.text(
@@ -1543,7 +1554,7 @@ def _paint_locator_quote(fig, rect: Tuple[float, float, float, float], quote: Di
             fontproperties=_fp(8, "bold"),
             color=color,
             zorder=29,
-            bbox=pad,
+            bbox=px_pad,
         )
 
 
@@ -1772,11 +1783,12 @@ def _paint_spot(
     if close is None:
         return
     from decision_card_signals import candle_up_taiwan
-    from wayne_navigator import _draw_mini_candle
+    from wayne_navigator import _draw_mini_candle, quote_limit_chip_colors, quote_limit_side
 
     prev = quote.get("prev")
     up = candle_up_taiwan(close, prev, quote.get("open"))
     color = _UP if up else _DN
+    chip = quote_limit_chip_colors(quote_limit_side(close, prev, quote.get("pct")))
     label = str(quote.get("label") or "收盤")
     px = _px(close)
     o, hi, lo = quote.get("open"), quote.get("high"), quote.get("low")
@@ -1790,6 +1802,11 @@ def _paint_spot(
         move = format_move_plain(quote.get("change"), quote.get("pct"))
     except Exception:
         move = ""
+    px_kw = {}
+    if chip:
+        bg, fg = chip
+        color = fg
+        px_kw = dict(bbox=dict(boxstyle="square,pad=0.18", facecolor=bg, edgecolor="none"))
     if compact:
         ax.text(
             x, 90, "今K", color="#546e7a", fontproperties=_fp(8, "bold"),
@@ -1807,11 +1824,13 @@ def _paint_spot(
         ax.text(
             x + _ow(label, 9) + 1.2, 42, px, color=color,
             fontproperties=_fp(18, "bold"), va="center", ha="left", zorder=22,
+            **px_kw,
         )
         if move and move != "—":
             ax.text(
                 x, 16, "較昨日　" + move, color=color,
                 fontproperties=_fp(10, "bold"), va="center", ha="left", zorder=22,
+                **px_kw,
             )
         return
     cursor = float(x)
@@ -1834,12 +1853,13 @@ def _paint_spot(
     cursor += _ow(label, 11) + 0.4
     ax.text(
         cursor, y, px, color=color, fontproperties=_fp(20, "bold"),
-        va="center", ha="left", zorder=22,
+        va="center", ha="left", zorder=22, **px_kw,
     )
     if move and move != "—":
         ax.text(
             x, y - 2.85, "較昨日　" + move, color=color,
             fontproperties=_fp(11, "bold"), va="center", ha="left", zorder=22,
+            **px_kw,
         )
 
 
