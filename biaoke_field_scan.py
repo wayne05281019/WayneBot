@@ -3,7 +3,8 @@
 
 資金流騙不了人：單位＝CMoney 產業鏈佔當日法人買超％、％怎麼變。流入＝佔比升，流出＝佔比降。
 佔比如實主判，飆大找法只參考、不是唯一。張數會被當下熱門族蓋過，不拿來排名。對五件只落在族群：底部這層（不數浪）、形態還沒過前高、
-量價落後檔量起來、關鍵K＝官方收、碎形＝第一名還沒先過。個股不數 5／9。盤中未收不當官方收。
+量價落後檔量起來、關鍵K＝官方收、碎形＝第一名還沒先過。
+量起來若是量假結構（爆量長上影／爆量收在當日下半）不准當發動。個股不數 5／9。盤中未收不當官方收。
 不是買訊、不進海選。這顆推出這型最落後次級兩到三檔；真正下單進場仍只認高低卡黃金買點。
 """
 from __future__ import annotations
@@ -493,6 +494,13 @@ def _stats(rows: Sequence[Tuple[str, float, float, float, float]]) -> Optional[D
     prior = rows[-45:-5] if len(rows) >= 25 else rows[:-5]
     prior_h = max(x[1] for x in prior) if prior else h60
     last5_h = max(x[1] for x in rows[-5:])
+    fake = {}
+    try:
+        from biaoke_vol_fake import classify_volume_fake
+
+        fake = classify_volume_fake(rows) or {}
+    except Exception:
+        fake = {}
     return {
         "date": last[0],
         "close": last[3],
@@ -500,6 +508,7 @@ def _stats(rows: Sequence[Tuple[str, float, float, float, float]]) -> Optional[D
         "vs60": (last[3] / h60 - 1.0) * 100.0 if h60 else 0.0,
         "volr": (last[4] / avg_v) if avg_v else 0.0,
         "broke": last5_h > prior_h,
+        "vol_fake": str(fake.get("kind") or "none"),
     }
 
 
@@ -551,7 +560,8 @@ def _named_keys(spoken: str) -> set:
 
 
 def _stirring(st: Dict[str, Any]) -> bool:
-    """底部蠢蠢：贴近 20 高、60 高仍明顯在上、量起來。不是已先過前高的主戰場。"""
+    """底部蠢蠢：贴近 20 高、60 高仍明顯在上、量起來。不是已先過前高的主戰場。
+    量假結構（爆量長上影／收在當日下半）不准當發動。"""
     try:
         vs20 = float(st["vs20"])
         vs60 = float(st["vs60"])
@@ -559,6 +569,13 @@ def _stirring(st: Dict[str, Any]) -> bool:
         broke = bool(st["broke"])
     except (KeyError, TypeError, ValueError):
         return False
+    try:
+        from biaoke_vol_fake import is_fake_stir
+
+        if is_fake_stir(st):
+            return False
+    except Exception:
+        pass
     return vs20 >= -5.0 and vs60 <= -8.0 and volr >= 1.5 and not broke
 
 
@@ -2062,6 +2079,7 @@ def _decorate(
         "vs60": st.get("vs60"),
         "volr": st.get("volr"),
         "date": st.get("date") or cap,
+        "vol_fake": str(st.get("vol_fake") or "none"),
         "stirring": bool(st) and _stirring(st),
         "broke": bool(st.get("broke")),
         "chase_warning": bool((row or {}).get("chase_warning")),

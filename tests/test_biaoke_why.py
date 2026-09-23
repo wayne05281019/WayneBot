@@ -211,6 +211,13 @@ def test_why_sunday_pcb_1245_is_sep1_high():
     assert "防守點" in vol
 
 
+def test_why_volume_fake_structure():
+    body = lookup("量假結構是什麼")
+    assert "主力意圖" in body
+    assert "長上影" in body
+    assert "不進海選" in body
+
+
 def test_live_notes_puts_why_chain_first():
     from biaoke_live import live_notes
 
