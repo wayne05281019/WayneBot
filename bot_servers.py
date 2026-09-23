@@ -2,7 +2,7 @@
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
 - 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
-- 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
+- 海選 / 當沖 / 隔日沖 / 獲利為零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
 
@@ -306,6 +306,13 @@ HELP_TOPICS = {}
 # 說明／圖文／介紹已取消。舊氣泡 ?:／pg:／/help／打「說明」「圖文」靜音。
 # 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6；下排最右洞燭先機。圈已拿掉。
 MENU_BTN_MARKET = "大盤"
+MENU_BTN_FLOW = "資金輪動"
+MENU_BTN_FLOW_ALIASES = (
+    MENU_BTN_FLOW,
+    "資金",
+    "資金移動",
+    "產業輪動",
+)
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
@@ -326,9 +333,10 @@ MENU_BTN_LEAVE_DONGZHU_ALIASES = (
     "退出洞燭先機",
     "跳出洞燭先機",
 )
-MENU_BTN_LEAVE_ZERO = "剛脫離零"
+MENU_BTN_LEAVE_ZERO = "獲利為零"
 MENU_BTN_LEAVE_ZERO_ALIASES = (
     MENU_BTN_LEAVE_ZERO,
+    "剛脫離零",
     "剛離零",
     "離零",
     "盤中離零",
@@ -337,10 +345,11 @@ MENU_BTN_LEAVE_ZERO_ALIASES = (
 )
 LEAVE_ZERO_PICK_LABELS = (
     ("z", "獲利為零"),
-    ("1", "剛離1"),
-    ("2", "剛離2"),
-    ("3", "剛離3"),
+    ("1", "脫離1"),
+    ("2", "脫離2"),
+    ("3", "脫離3"),
 )
+LEAVE_ZERO_HUB_KEYS = ("1", "2", "3")
 LEAVE_ZERO_ROW_KEYS = ("z", "1", "2", "3")
 LEAVE_ZERO_PICK_BY_TEXT = {
     "剛離": "z",
@@ -386,7 +395,7 @@ MENU_ROW1 = (
     "觀察",
     MENU_BTN_BIAOKE_FACE,
     MENU_BTN_MARKET,
-    "資金",
+    MENU_BTN_FLOW,
 )
 MENU_ROW2 = (
     "當沖",
@@ -420,7 +429,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
 # v26：下排最右空白格改「洞燭先機」（這型次級落後檔；剛好剛離零才標買點）。
 # v27：進洞燭後同一顆改「離開洞燭先機」，用完回兩排主選單（對齊離開飆大）。
-MENU_LAYOUT_VERSION = "27"
+# v28：下排「剛脫離零」改「獲利為零」；進去先出獲利 0；下方鍵盤左到右脫離1／2／3。上排「資金」改「資金輪動」。
+MENU_LAYOUT_VERSION = "28"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -860,6 +870,28 @@ class WayneTelegramBot:
         except TypeError:
             return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
+    def _leave_zero_reply_menu(self, uid: str = ""):
+        """獲利為零進去後：左到右脫離1／2／3，下一排回主選單。"""
+        _ = uid
+        row = [KeyboardButton(lab) for _k, lab in LEAVE_ZERO_PICK_LABELS if _k in LEAVE_ZERO_HUB_KEYS]
+        rows = [row, [KeyboardButton(MENU_BTN_BACK_MAIN)]]
+        placeholder = "還在獲利為零。脫離1／2／3＝前幾日剛離零。回主選單離開。"
+        try:
+            return ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=True,
+                is_persistent=True,
+                input_field_placeholder=placeholder,
+            )
+        except TypeError:
+            return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+    async def _show_leave_zero_keys(self, message, uid: str) -> None:
+        await message.reply_text(
+            "脫離1／脫離2／脫離3在下面。回主選單離開。",
+            reply_markup=self._leave_zero_reply_menu(uid),
+        )
+
     def _menu_uid_from_message(self, message, uid: str = "") -> str:
         if uid:
             return str(uid)
@@ -930,7 +962,7 @@ class WayneTelegramBot:
         await self._dismiss_menu_transients(self._actor_key(message, uid=uid))
         uid = str(uid or self._menu_uid_from_message(message))
         text = (
-            "兩排已更新：第一排海選…資金，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
+            "兩排已更新：第一排海選…資金輪動，第二排當沖…洞燭先機。點輸入列旁邊四格 ⌨️。"
             if silent
             else "主選單已掛上（輸入列旁邊四格鍵盤圖示展開兩排；第二排最右洞燭先機）。"
         )
@@ -1677,7 +1709,7 @@ class WayneTelegramBot:
         labels = dict(LEAVE_ZERO_PICK_LABELS)
         row = []
         for key in LEAVE_ZERO_ROW_KEYS:
-            label = labels.get(key, f"剛離{key}")
+            label = labels.get(key, f"脫離{key}")
             text = f"·{label}" if sel == key else label
             row.append(InlineKeyboardButton(text, callback_data=f"lz:{key}"))
         return [row] if row else []
@@ -1688,7 +1720,8 @@ class WayneTelegramBot:
     def _leave_zero_section_keyboard(
         self, picks=None, include_menu: bool = False, selected: str = ""
     ):
-        rows = list(self._leave_zero_pick_rows(selected))
+        rows = []
+        _ = include_menu, selected
         for i, pair in enumerate(list(picks or [])[:MAX_PICK_INLINE_ROWS], start=1):
             if isinstance(pair, (list, tuple)):
                 code = str((pair[0] if pair else "") or "").strip()
@@ -1698,7 +1731,8 @@ class WayneTelegramBot:
                 name = ""
             if code:
                 rows.append(self._lookup_like_action_row(code, name))
-        del include_menu
+        if not rows:
+            return None
         return InlineKeyboardMarkup(rows)
 
     def _screening_section_keyboard(
@@ -2949,7 +2983,7 @@ class WayneTelegramBot:
         topic: str,
         live_bucket: str | None = None,
     ):
-        from screening_engine import LINE_BUCKET_TITLES, _stock_card_html
+        from screening_engine import LINE_BUCKET_TITLES, _stock_card_html, stamp_entry_stars
         from trade_live import apply_trade_live
         from universe import is_screen_equity
 
@@ -2980,6 +3014,7 @@ class WayneTelegramBot:
                 live_filtered = bool(rows) and bool(rows[0].get("_live_filtered"))
 
         label = LINE_BUCKET_TITLES.get(bucket_key, "")
+        rows = stamp_entry_stars(list(rows or []), bucket_key)
         cards = [_stock_card_html(r, i + 1, bucket_label=label) for i, r in enumerate(rows)]
         head = f"<b>{title}</b>\n<i>{subtitle}</i>\n────────────────"
         if cards and live_skipped:
@@ -3365,7 +3400,7 @@ class WayneTelegramBot:
         if pick not in ("1", "2", "3", "z"):
             pick = "z"
         labels = dict(LEAVE_ZERO_PICK_LABELS)
-        pick_label = labels.get(pick, "剛離")
+        pick_label = labels.get(pick, "脫離")
         uid = str(
             _ACTIVE_PHONE_UID.get()
             or getattr(getattr(message, "from_user", None), "id", "")
@@ -3376,7 +3411,7 @@ class WayneTelegramBot:
             self._trade_running = set()
         if actor in self._trade_running:
             await message.reply_text(
-                "剛脫離零進行中，請稍候完成後再按。",
+                "獲利為零進行中，請稍候完成後再按。",
                 reply_markup=self._reply_menu(uid),
             )
             return
@@ -3389,7 +3424,7 @@ class WayneTelegramBot:
             wait_h = await self._start_plain_wait(
                 message,
                 text_fn=lambda s: self._wait_bubble(
-                    "剛脫離零進行中",
+                    "獲利為零進行中",
                     s,
                     now="讀高低卡獲利",
                     rest="複核獲利",
@@ -3406,7 +3441,7 @@ class WayneTelegramBot:
                 )
             except asyncio.TimeoutError:
                 await message.reply_text(
-                    "⚠️ 剛脫離零查詢逾時。請稍後再按一次；若持續發生請回報。",
+                    "⚠️ 獲利為零查詢逾時。請稍後再按一次；若持續發生請回報。",
                     reply_markup=self._reply_menu(uid),
                 )
                 return
@@ -3430,13 +3465,14 @@ class WayneTelegramBot:
                 empty = "此刻沒有獲利還在 0 的檔。" if live_on else "最近完整收沒有獲利還在 0 的檔。"
                 bucket_label = pick_label
             else:
-                title = f"{pick_label}（{pick} 個交易日前剛離零）"
+                title = f"{pick_label}（{pick} 個交易日前離零）"
                 subtitle = (
                     f"高低卡剛好 {pick} 個交易日前第一天離零（實綠：昨獲利貼零、今離開 0），上市櫃興櫃都算。"
                     "現在獲利不是 0 就列出；趨勢已向上的排前面。"
+                    "滿五星＝按表該買。四星＝趨勢已向上且獲利還在帶、沒少追。還沒向上最高兩星。"
                     "只列前8檔。未收盤不寫進官方收。"
                 )
-                empty = f"沒有剛離{pick}、現在獲利不是 0 的檔。"
+                empty = f"沒有脫離{pick}、現在獲利不是 0 的檔。"
                 bucket_label = pick_label
             extra = ""
             if not is_tw_equity_session():
@@ -3446,9 +3482,9 @@ class WayneTelegramBot:
                     self._leave_zero_case_html(
                         title, subtitle, f"<i>{empty}</i>", extra=extra
                     ),
-                    reply_markup=self._leave_zero_pick_keyboard(pick),
                     disable_web_page_preview=True,
                 )
+                await self._show_leave_zero_keys(message, uid)
                 return
             live_skipped = bool(rows) and bool(rows[0].get("_live_skipped"))
             cards = [
@@ -3478,8 +3514,9 @@ class WayneTelegramBot:
                 await message.reply_html(
                     chunk, reply_markup=kb, disable_web_page_preview=True
                 )
+            await self._show_leave_zero_keys(message, uid)
         except Exception:
-            logger.exception("剛脫離零查詢失敗")
+            logger.exception("獲利為零查詢失敗")
             await message.reply_text(
                 PHONE_BUSY,
                 reply_markup=self._reply_menu(uid),
@@ -4587,8 +4624,8 @@ class WayneTelegramBot:
         if text == "選股":
             self._pending.pop(actor, None)
             return
-        if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
-            logger.info("主選單：資金 uid=%s", uid)
+        if text in MENU_BTN_FLOW_ALIASES or text.lower().lstrip("/") == "flow":
+            logger.info("主選單：資金輪動 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.flow_cmd(update, context)
             return

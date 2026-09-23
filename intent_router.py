@@ -61,6 +61,7 @@ _PHRASES: Tuple[Tuple[str, str], ...] = (
     ("連買區域", "streak"),
     ("連買區", "streak"),
     ("資金移動", "flow"),
+    ("資金輪動", "flow"),
     ("產業輪動", "flow"),
     ("產業說明", "industry"),
     ("如何賣", "sell"),

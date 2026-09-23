@@ -33,7 +33,7 @@ def test_five_stars_only_leave_zero_aligned():
     assert entry_star_count(chased, bucket_key="leave_zero") <= 4
     assert entry_star_count(chased, bucket_key="leave_zero") < 5
     watch = dict(must)
-    assert entry_star_count(watch, bucket_key="golden_buy") <= 4
+    assert entry_star_count(watch, bucket_key="golden_buy") <= 2
     late = dict(must, profit_pct=12.0)
     assert entry_star_count(late, bucket_key="leave_zero") <= 4
     beta = dict(must, beta_downweighted=True)
@@ -48,12 +48,25 @@ def test_leave_zero_on_table_is_five_without_s_or_inflow():
     assert entry_star_glyphs(n) == "★★★★★"
 
 
-def test_leave_zero_trend_not_up_now_caps_four():
+def test_leave_zero_trend_not_up_now_caps_two():
     n = entry_star_count(
         {"profit_pct": 0.8, "trend_up_now": False},
         bucket_key="leave_zero",
     )
-    assert n <= 4
+    assert n <= 2
+    assert entry_star_glyphs(n) == "★★☆☆☆"
+
+
+def test_leave_zero_four_stars_need_trend_and_band():
+    n = entry_star_count(
+        {
+            "profit_pct": 0.8,
+            "trend_up_now": True,
+            "sector_outflow": True,
+        },
+        bucket_key="leave_zero",
+    )
+    assert n == 4
     assert entry_star_glyphs(n) == "★★★★☆"
 
 
@@ -141,7 +154,42 @@ def test_stamp_sets_buy_star_only_for_five():
         "leave_zero",
     )
     assert rows[0]["entry_stars"] == 5 and rows[0]["buy_star"] is True
-    assert rows[1]["entry_stars"] <= 4 and rows[1]["buy_star"] is False
+    assert rows[1]["entry_stars"] <= 2 and rows[1]["buy_star"] is False
+
+
+def test_screen_watch_and_day_trade_cannot_look_like_buy():
+    watch = stamp_entry_stars(
+        [{"stock_id": "1101", "profit_pct": 0.0, "is_s_tier": True, "sector_inflow": True}],
+        "golden_buy",
+    )[0]
+    assert watch["entry_stars"] <= 2 and watch["buy_star"] is False
+    html = _stock_card_html(watch, 1, bucket_label="還在零")
+    assert "★★★★★" not in html
+    assert "★★★★☆" not in html
+    day = stamp_entry_stars(
+        [{"stock_id": "2330", "profit_pct": 1.2, "is_s_tier": True, "sector_inflow": True}],
+        "day_trade",
+    )[0]
+    assert day["entry_stars"] <= 2 and day["buy_star"] is False
+    night = stamp_entry_stars(
+        [{"stock_id": "2317", "profit_pct": 2.0, "is_s_tier": True}],
+        "overnight",
+    )[0]
+    assert night["entry_stars"] <= 2
+    buy = stamp_entry_stars([{"stock_id": "2330", "profit_pct": 1.2}], "leave_zero")[0]
+    assert buy["entry_stars"] == 5
+    html_buy = _stock_card_html(buy, 1, bucket_label="買點")
+    assert "★★★★★" in html_buy
+
+
+def test_card_keeps_stamped_stars_not_relabel():
+    html = _stock_card_html(
+        {"stock_id": "1101", "stock_name": "台泥", "profit_pct": 1.0, "entry_stars": 2},
+        1,
+        bucket_label="黃金買點",
+    )
+    assert "★★☆☆☆" in html
+    assert "★★★★★" not in html
 
 
 def test_nav_trade_marks_buy_up_sell_down_from_card():
