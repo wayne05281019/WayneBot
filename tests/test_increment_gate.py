@@ -97,10 +97,11 @@ def test_verify_increment_import_passes_when_sides_full():
 def test_fuse_done_message_is_not_a_screen_or_buy_signal():
     from main_runner import MainRunner
 
-    msg = MainRunner._fuse_done_message("20260907", {"tw": 980, "two": 720})
+    msg = MainRunner._fuse_done_message("20260907", {"tw": 980, "two": 720, "em": 180})
     assert "2026/09/07" in msg
     assert "上市 980" in msg
     assert "上櫃 720" in msg
+    assert "興櫃 180" in msg
     assert "官方收盤已寫進庫" in msg
     assert "不是海選" in msg
     assert "不是買訊" in msg

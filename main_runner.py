@@ -431,7 +431,7 @@ class MainRunner:
         try:
             from emerging_quotes import sync_emerging_quotes
 
-            em = sync_emerging_quotes(self.db_path)
+            em = sync_emerging_quotes(self.db_path, cap=fuse_to)
             logger.info("興櫃官方日均價寫入：%s", em)
         except Exception as e:
             logger.warning("興櫃日均價同步略過：%s", e)
@@ -1045,9 +1045,10 @@ class MainRunner:
             pretty = ymd or "—"
         tw = int((health or {}).get("tw") or 0)
         two = int((health or {}).get("two") or 0)
+        em = int((health or {}).get("em") or 0)
         return (
             f"📦 官方收盤已寫進庫（{pretty}）\n"
-            f"上市 {tw}　上櫃 {two}\n"
+            f"上市 {tw}　上櫃 {two}　興櫃 {em}\n"
             "不是海選、不是買訊。明早 06:30 才寄海選。"
         )
 
@@ -1108,6 +1109,13 @@ class MainRunner:
                     backfill_chips(self.db_path, days=5)
                 except Exception as e_chip:
                     logger.warning("補齊輪法人再抓略過：%s", e_chip)
+                try:
+                    from emerging_quotes import sync_emerging_quotes
+
+                    em = sync_emerging_quotes(self.db_path, cap=cap)
+                    logger.info("興櫃補齊寫入：%s", em)
+                except Exception as e_em:
+                    logger.warning("興櫃補齊略過：%s", e_em)
                 health = audit_import(self.db_path, cap)
                 if self._increment_ok(health):
                     break
@@ -1122,11 +1130,28 @@ class MainRunner:
                 except Exception:
                     pass
             return False
+        try:
+            from emerging_quotes import emerging_rows_on, sync_emerging_quotes
+
+            ems = sync_emerging_quotes(self.db_path, cap=cap)
+            logger.info("興櫃收盤再寫：%s", ems)
+            health = dict(health or {})
+            health["em"] = emerging_rows_on(self.db_path, cap)
+        except Exception as e_em:
+            logger.warning("興櫃收盤再寫略過：%s", e_em)
+            health = dict(health or {})
+            health.setdefault("em", 0)
         self._mark_pipeline(
             "success",
-            f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')}",
+            f"increment elapsed={elapsed:.1f}s tw={health.get('tw')} two={health.get('two')} em={health.get('em')}",
         )
-        logger.info("🎉 === 盤後融合完畢 上市%s 上櫃%s（%.1fs）===", health.get("tw"), health.get("two"), elapsed)
+        logger.info(
+            "🎉 === 盤後融合完畢 上市%s 上櫃%s 興櫃%s（%.1fs）===",
+            health.get("tw"),
+            health.get("two"),
+            health.get("em"),
+            elapsed,
+        )
         try:
             self._refresh_dongzhu_after_close(cap)
         except Exception as e_dz:

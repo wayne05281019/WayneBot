@@ -297,41 +297,89 @@ def emerging_date_count(db_path: str) -> int:
         conn.close()
 
 
+def emerging_rows_on(db_path: str, ymd: str) -> int:
+    day = str(ymd or "").replace("-", "")[:8]
+    if len(day) != 8 or not day.isdigit():
+        return 0
+    ensure_emerging_table(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM emerging_quotes WHERE date=?", (day,)
+        ).fetchone()
+        return int(row[0] or 0) if row else 0
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+
+
+def _listed_quote_cap(db_path: str) -> str:
+    if not db_path:
+        return ""
+    try:
+        conn = sqlite3.connect(db_path, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT MAX(REPLACE(CAST(date AS TEXT),'-','')) FROM daily_quotes"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return ""
+    day = str(row[0] or "").replace("-", "")[:8] if row else ""
+    return day if len(day) == 8 and day.isdigit() else ""
+
+
+def _weekdays_after(start_ymd: str, cap: str, *, limit: int = 15) -> List[str]:
+    cap = str(cap or "").replace("-", "")[:8]
+    start = str(start_ymd or "").replace("-", "")[:8]
+    if len(cap) != 8 or not cap.isdigit():
+        return []
+    try:
+        end = datetime.strptime(cap, "%Y%m%d")
+        if len(start) == 8 and start.isdigit():
+            cur = datetime.strptime(start, "%Y%m%d") + timedelta(days=1)
+        else:
+            cur = end - timedelta(days=14)
+    except ValueError:
+        return []
+    out: List[str] = []
+    while cur <= end:
+        if cur.weekday() < 5:
+            out.append(cur.strftime("%Y%m%d"))
+        cur += timedelta(days=1)
+    if len(out) > int(limit):
+        out = out[-int(limit) :]
+    return out
+
+
 def sync_emerging_quotes(
     db_path: str,
     *,
     lookback_days: int = 90,
     session: Optional[requests.Session] = None,
     sleep_s: float = 0.2,
+    cap: str = "",
 ) -> Dict[str, int]:
-    """補齊近 lookback 曆日官方興櫃日表。已有 ≥40 個交易日時只抓最新。"""
+    """補齊官方興櫃日表到上市櫃已收那日。庫裡已有很多天時，缺的近期日仍要抓。"""
     ensure_emerging_table(db_path)
     sess = session or _session()
-    stats = {"latest": 0, "hist": 0, "days": 0}
+    stats = {"latest": 0, "hist": 0, "days": 0, "gaps": 0}
     try:
         as_of, rows = fetch_emerging_openapi(sess)
         if as_of and rows:
             stats["latest"] = upsert_emerging_rows(db_path, as_of, rows)
     except Exception:
         logger.exception("興櫃 OpenAPI 當日行情失敗")
-    have = emerging_date_count(db_path)
-    if have >= 40:
-        stats["days"] = have
-        return stats
-    today = datetime.utcnow() + timedelta(hours=8)
-    for i in range(int(lookback_days)):
-        day = today - timedelta(days=i)
-        if day.weekday() >= 5:
-            continue
-        ymd = day.strftime("%Y%m%d")
-        conn = sqlite3.connect(db_path)
-        try:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM emerging_quotes WHERE date=?", (ymd,)
-            ).fetchone()[0]
-        finally:
-            conn.close()
-        if int(n or 0) >= 50:
+    listed = _listed_quote_cap(db_path)
+    want_cap = str(cap or "").replace("-", "")[:8] or listed
+    last_em = latest_emerging_date(db_path)
+    gap_days = _weekdays_after(last_em, want_cap)
+    if want_cap and emerging_rows_on(db_path, want_cap) < 50 and want_cap not in gap_days:
+        gap_days.append(want_cap)
+    for ymd in gap_days:
+        if emerging_rows_on(db_path, ymd) >= 50:
             continue
         try:
             as_of, rows = fetch_emerging_csv_day(ymd, sess)
@@ -340,8 +388,26 @@ def sync_emerging_quotes(
             continue
         if as_of and rows:
             stats["hist"] += upsert_emerging_rows(db_path, as_of, rows)
-            stats["days"] += 1
+            stats["gaps"] += 1
         time.sleep(max(0.0, float(sleep_s)))
+    have = emerging_date_count(db_path)
+    if have < 40:
+        today = datetime.utcnow() + timedelta(hours=8)
+        for i in range(int(lookback_days)):
+            day = today - timedelta(days=i)
+            if day.weekday() >= 5:
+                continue
+            ymd = day.strftime("%Y%m%d")
+            if emerging_rows_on(db_path, ymd) >= 50:
+                continue
+            try:
+                as_of, rows = fetch_emerging_csv_day(ymd, sess)
+            except Exception:
+                logger.info("興櫃 CSV %s 失敗", ymd)
+                continue
+            if as_of and rows:
+                stats["hist"] += upsert_emerging_rows(db_path, as_of, rows)
+            time.sleep(max(0.0, float(sleep_s)))
     stats["days"] = emerging_date_count(db_path)
     return stats
 

@@ -11,6 +11,9 @@ from emerging_quotes import (
     roc_yyyymmdd,
     upsert_emerging_rows,
     load_emerging_frames,
+    sync_emerging_quotes,
+    latest_emerging_date,
+    emerging_rows_on,
 )
 from wayne_db import ensure_core_schema
 
@@ -58,6 +61,76 @@ class EmergingQuotesParseTests(unittest.TestCase):
         self.assertEqual(rows[0]["stock_name"], "山太士")
         self.assertEqual(rows[0]["close"], 10.2)
         self.assertEqual(rows[0]["source"], "tpex_esb_openapi")
+
+    def test_sync_fills_recent_gap_when_history_already_long(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+
+        from emerging_quotes import ensure_emerging_table
+
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            ensure_core_schema(path)
+            ensure_emerging_table(path)
+            conn = sqlite3.connect(path)
+            d = datetime(2026, 9, 21)
+            n = 0
+            while n < 40:
+                if d.weekday() < 5:
+                    ymd = d.strftime("%Y%m%d")
+                    conn.execute(
+                        "INSERT INTO emerging_quotes("
+                        "date,stock_id,stock_name,market,open,high,low,close,"
+                        "volume,turnover_k,pct_change,avg_price,source) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (ymd, "3595", "山太士", "EM", 10, 11, 9, 10, 1, 1, 0, 10, "seed"),
+                    )
+                    n += 1
+                d -= timedelta(days=1)
+            conn.execute(
+                "INSERT INTO daily_quotes("
+                "date,stock_id,stock_name,market,open,high,low,close,volume,"
+                "turnover_k,pct_change,avg_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("20260923", "2330", "台積電", "TW", 1, 1, 1, 1, 1, 1, 0, 1),
+            )
+            conn.commit()
+            conn.close()
+            self.assertEqual(latest_emerging_date(path), "20260921")
+            fetched = []
+
+            def fake_open(*_a, **_k):
+                return "", []
+
+            def fake_csv(ymd, session=None):
+                fetched.append(ymd)
+                return ymd, [
+                    {
+                        "stock_id": "3595",
+                        "stock_name": "山太士",
+                        "open": 12.0,
+                        "high": 13.0,
+                        "low": 11.0,
+                        "close": 12.5,
+                        "volume": 10,
+                        "turnover_k": 12.5,
+                        "pct_change": 1.0,
+                        "avg_price": 12.5,
+                        "source": "tpex_esb_csv",
+                    }
+                ]
+
+            with patch("emerging_quotes.fetch_emerging_openapi", fake_open), patch(
+                "emerging_quotes.fetch_emerging_csv_day", fake_csv
+            ):
+                stats = sync_emerging_quotes(path, cap="20260923", sleep_s=0)
+            self.assertIn("20260922", fetched)
+            self.assertIn("20260923", fetched)
+            self.assertGreaterEqual(stats.get("gaps") or 0, 1)
+            self.assertEqual(latest_emerging_date(path), "20260923")
+            self.assertGreaterEqual(emerging_rows_on(path, "20260923"), 1)
+        finally:
+            os.remove(path)
 
 
 class EmergingScreenIsolationTests(unittest.TestCase):
@@ -205,6 +278,12 @@ class EmergingScreenIsolationTests(unittest.TestCase):
     def test_increment_job_syncs_emerging_not_into_daily_quotes(self):
         src = open("main_runner.py", encoding="utf-8").read()
         self.assertIn("sync_emerging_quotes", src)
+        self.assertIn("cap=fuse_to", src)
+        self.assertIn("興櫃補齊寫入", src)
+        self.assertIn("興櫃收盤再寫", src)
+        emsrc = open("emerging_quotes.py", encoding="utf-8").read()
+        self.assertNotIn("if have >= 40:", emsrc)
+        self.assertIn("_weekdays_after", emsrc)
         nav = open("wayne_navigator.py", encoding="utf-8").read()
         self.assertIn("load_stock_bars", nav)
         self.assertIn("興櫃官方日均價", nav)
