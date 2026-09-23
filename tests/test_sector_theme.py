@@ -192,6 +192,7 @@ class SectorThemeTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertEqual(rows[0]["industry"], "金融保險業")
             self.assertGreater(float(rows[0]["avg_pct"]), 0)
+            self.assertIn("share_chg", rows[0])
         finally:
             os.remove(path)
 
@@ -251,14 +252,29 @@ class SectorThemeTests(unittest.TestCase):
                         "mode": "live",
                         "avg_pct": 1.5,
                         "sample_n": 5,
+                        "share_yest": 40.0,
+                        "share_live": 55.0,
+                        "share_chg": 15.0,
                         "_live_meta": meta,
                         "_live_quotes": live_quotes,
-                    }
+                    },
+                    {
+                        "industry": "金融保險業",
+                        "mode": "live",
+                        "avg_pct": -0.4,
+                        "sample_n": 3,
+                        "share_yest": 45.0,
+                        "share_live": 28.0,
+                        "share_chg": -17.0,
+                    },
                 ]
                 html = format_sector_rotation_html(
                     path, "20260902", now=datetime(2026, 9, 2, 10, 0)
                 )
             self.assertIn("盤中最強族", html)
+            self.assertIn("盤中成交佔比升", html)
+            self.assertIn("盤中成交佔比降", html)
+            self.assertIn("不是法人", html)
             mock_live.assert_called_once()
         finally:
             os.remove(path)

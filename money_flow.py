@@ -716,21 +716,28 @@ def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
                 "three_net": 0,
                 "sample_n": 0,
                 "turn_sum": 0.0,
+                "yest_turn": 0.0,
                 "pct_sum": 0.0,
                 "up_n": 0,
             },
         )
         b["sample_n"] += 1
         b["turn_sum"] += turn
+        b["yest_turn"] = float(b.get("yest_turn") or 0) + float(info.get("turnover_k") or 0)
         b["pct_sum"] += pct * turn
         if pct > 0:
             b["up_n"] += 1
+    yest_all = sum(float(b.get("yest_turn") or 0) for b in buckets.values())
+    live_all = sum(float(b.get("turn_sum") or 0) for b in buckets.values())
     rows: List[Dict[str, Any]] = []
     for b in buckets.values():
         if int(b["sample_n"]) < 3:
             continue
         turn_sum = float(b["turn_sum"] or 0)
         avg_pct = round(float(b["pct_sum"]) / turn_sum, 2) if turn_sum > 0 else 0.0
+        yest_turn = float(b.get("yest_turn") or 0)
+        share_yest = round(100.0 * yest_turn / yest_all, 2) if yest_all > 0 else 0.0
+        share_live = round(100.0 * turn_sum / live_all, 2) if live_all > 0 else 0.0
         rows.append(
             {
                 "industry": b["industry"],
@@ -739,6 +746,9 @@ def compute_live_sector_rows(db_path: str, now=None) -> List[Dict[str, Any]]:
                 "avg_pct": avg_pct,
                 "sample_n": int(b["sample_n"]),
                 "up_ratio": round(int(b["up_n"]) / int(b["sample_n"]), 2),
+                "share_yest": share_yest,
+                "share_live": share_live,
+                "share_chg": round(share_live - share_yest, 2),
                 "_live_meta": meta,
                 "_live_quotes": live,
             }
@@ -1008,6 +1018,44 @@ def _flow_stock_lines(items: List[str]) -> List[str]:
     return [bit for bit in items if bit]
 
 
+def format_live_share_section(rows: List[Dict[str, Any]]) -> str:
+    """盤中成交佔比升／降。不是三大法人。"""
+    from tg_layout import section
+
+    up = [r for r in rows if float(r.get("share_chg") or 0) >= 0.3]
+    down = [r for r in rows if float(r.get("share_chg") or 0) <= -0.3]
+    up.sort(key=lambda r: float(r.get("share_chg") or 0), reverse=True)
+    down.sort(key=lambda r: float(r.get("share_chg") or 0))
+
+    def _line(r: Dict[str, Any]) -> str:
+        short = _sector_short_name(str(r.get("industry") or ""))
+        yest = float(r.get("share_yest") or 0)
+        now = float(r.get("share_live") or 0)
+        chg = float(r.get("share_chg") or 0)
+        return f"{short}　昨 {yest:.1f}% → {now:.1f}%（{chg:+.1f}pt）"
+
+    bits: List[str] = []
+    if up[:3]:
+        bits.append(
+            section(
+                "<b>盤中成交佔比升（不是法人）</b>",
+                *[ _line(r) for r in up[:3] ],
+            )
+        )
+    if down[:3]:
+        bits.append(
+            section(
+                "<b>盤中成交佔比降（不是法人）</b>",
+                *[ _line(r) for r in down[:3] ],
+            )
+        )
+    if not bits:
+        return ""
+    from tg_layout import join_dashed
+
+    return join_dashed(*bits)
+
+
 def format_sector_rotation_html(
     db_path: str = None,
     yyyymmdd: str = None,
@@ -1077,11 +1125,12 @@ def format_sector_rotation_html(
         blocks.append("當日法人張數加總為 0，先等盤後法人寫進庫再看輪動。")
         return join_dashed(*blocks)
     theme = ""
+    live_rows: List[Dict[str, Any]] = []
     try:
         from live_quote import is_live_merge_window
 
         if is_live_merge_window(now):
-            live_rows = compute_live_sector_rows(path, now=now)
+            live_rows = compute_live_sector_rows(path, now=now) or []
             if live_rows:
                 theme = format_sector_theme_brief(
                     path, ymd, live_rows[0], mode="live", fine_map=fine_map
@@ -1096,6 +1145,14 @@ def format_sector_rotation_html(
         )
     if theme:
         blocks.append(theme)
+    live_share = ""
+    try:
+        if live_rows:
+            live_share = format_live_share_section(live_rows)
+    except Exception:
+        live_share = ""
+    if live_share:
+        blocks.append(live_share)
     if inflow:
         blocks.append(
             section(
