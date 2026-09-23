@@ -305,7 +305,11 @@ LOOKUP_CODE_EXAMPLES_HTML = (
 HELP_TOPICS = {}
 # 說明／圖文／介紹已取消。舊氣泡 ?:／pg:／/help／打「說明」「圖文」靜音。
 # 主選單兩排：拿掉刷新／回報後整排往前，平均 6+6；下排最右洞燭先機。圈已拿掉。
-MENU_BTN_MARKET = "大盤"
+MENU_BTN_MARKET = "台股大盤"
+MENU_BTN_MARKET_ALIASES = (
+    MENU_BTN_MARKET,
+    "大盤",
+)
 MENU_BTN_STREAK = "連買區"
 MENU_BTN_AI = "AI倉"
 MENU_BTN_REPORT = "回報"
@@ -334,6 +338,8 @@ MENU_BTN_LEAVE_ZERO_ALIASES = (
     "盤中離零",
     "獲利剛離零",
     "獲利剛剛脫離零",
+    "獲利為零",
+    "獲利爲零",
 )
 LEAVE_ZERO_PICK_LABELS = (
     ("z", "獲利為零"),
@@ -420,7 +426,8 @@ MENU_FULL_ALIASES = ("完整選單", "完整鍵盤")
 # v25：拿掉刷新／回報，後面鈕往前；兩排各六格。舊鍵盤「刷新」「回報」仍認。
 # v26：下排最右空白格改「洞燭先機」（這型次級落後檔；剛好剛離零才標買點）。
 # v27：進洞燭後同一顆改「離開洞燭先機」，用完回兩排主選單（對齊離開飆大）。
-MENU_LAYOUT_VERSION = "27"
+# v28：第一排「大盤」改「台股大盤」。
+MENU_LAYOUT_VERSION = "28"
 MAX_PICK_INLINE_ROWS = 8
 
 # 輸入列左邊三條槓（Telegram BotCommand）。跟下方兩排重複的不放，避免兩套入口。
@@ -3491,7 +3498,7 @@ class WayneTelegramBot:
     async def _send_market_page(self, message, *, status=None) -> None:
         """大盤專頁：庫內結構 + 盤中 MIS 指數（不寫庫）。"""
         if status is None:
-            status = await self._transient_status(message, "讀取大盤…")
+            status = await self._transient_status(message, "讀取台股大盤…")
         html = ""
         live_quote = None
         try:
@@ -3896,7 +3903,7 @@ class WayneTelegramBot:
     async def market_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """大盤專頁：只讀庫內指數／廣度／regime，不觸發匯入或寫入。"""
         uid = str(update.effective_user.id)
-        status = await self._transient_status(update.message, "讀取大盤…")
+        status = await self._transient_status(update.message, "讀取台股大盤…")
         try:
             await self._enter_main_menu(update.message, uid)
             await self._send_market_page(update.message, status=status)
@@ -4587,7 +4594,7 @@ class WayneTelegramBot:
         if text == "選股":
             self._pending.pop(actor, None)
             return
-        if text in ("資金", "資金移動") or text.lower().lstrip("/") == "flow":
+        if text in ("資金", "資金移動", "資金輪動") or text.lower().lstrip("/") == "flow":
             logger.info("主選單：資金 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.flow_cmd(update, context)
@@ -4597,8 +4604,8 @@ class WayneTelegramBot:
             self._enter_biaoke_chat(update.message, uid)
             await self._send_biaoke_page(update.message, uid=uid)
             return
-        if text == MENU_BTN_MARKET or text.lower().lstrip("/") == "market":
-            logger.info("主選單：大盤 uid=%s", uid)
+        if text in MENU_BTN_MARKET_ALIASES or text.lower().lstrip("/") == "market":
+            logger.info("主選單：台股大盤 uid=%s", uid)
             self._pending.pop(actor, None)
             await self.market_cmd(update, context)
             return
@@ -6058,7 +6065,7 @@ class WayneTelegramBot:
                 )
                 return
             if kind == "mkt":
-                await q.answer("大盤")
+                await q.answer("台股大盤")
                 await self._enter_main_menu(q.message, uid)
                 await self._send_market_page(q.message)
                 return

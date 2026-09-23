@@ -251,6 +251,156 @@ def test_snapshot_dongzhu_without_press(tmp_path, monkeypatch):
     assert extra["src"] == "dongzhu"
 
 
+def test_leave_zero_pick_remembers_stable_pick_not_button_label(tmp_path, monkeypatch):
+    db = str(tmp_path / "lz.db")
+    _seed(db, {"1101": 50.0}, "20260915")
+    monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
+    engine = ScreeningEngine(db)
+    monkeypatch.setattr(engine, "_load_profit_scan_frames", lambda as_of: ({}, set()))
+    assert engine.screen_leave_zero_pick("20260915", pick="z") == []
+    assert engine.screen_leave_zero_pick("20260915", pick="2") == []
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    picks = {
+        str(p): str(k)
+        for k, p in conn.execute(
+            "SELECT kind, pick FROM live_judge WHERE kind='leave_zero'"
+        )
+    }
+    conn.close()
+    assert picks["z"] == "leave_zero"
+    assert picks["2"] == "leave_zero"
+    assert "獲利為零" not in picks
+    assert "脫離2" not in picks
+    assert "剛脫離零" not in picks
+
+
+def test_remember_keeps_star_trend_and_buy_gate(tmp_path):
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4}, "20260915")
+    n = remember_rows(
+        db,
+        "leave_zero",
+        [
+            {
+                "stock_id": "1101",
+                "stock_name": "台泥",
+                "close": 50.4,
+                "profit_pct": 0.8,
+                "entry_stars": 5,
+                "buy_star": True,
+                "bucket_key": "leave_zero",
+                "buy_gate": "ok",
+                "trend_up_now": True,
+                "trend_now_label": "趨勢已向上",
+                "leave_days": 1,
+            }
+        ],
+        as_of="20260915",
+        pick="1",
+    )
+    assert n == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    kind, pick, extra_raw = conn.execute(
+        "SELECT kind, pick, extra FROM live_judge WHERE sid='1101'"
+    ).fetchone()
+    conn.close()
+    assert kind == "leave_zero"
+    assert pick == "1"
+    extra = json.loads(extra_raw)
+    assert extra["entry_stars"] == 5
+    assert extra["buy_star"] is True
+    assert extra["bucket_key"] == "leave_zero"
+    assert extra["buy_gate"] == "ok"
+    assert extra["trend_up_now"] is True
+    assert extra["leave_days"] == 1
+
+
+def test_snapshot_outer_and_market_without_yahoo(tmp_path):
+    from judge_tape import snapshot_button_lists
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4}, "20260915")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_daily (
+            date TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT 'TWII',
+            close REAL NOT NULL,
+            volume REAL DEFAULT 0,
+            pct_change REAL DEFAULT 0,
+            ma20 REAL,
+            ma60 REAL,
+            regime TEXT,
+            updated_at TEXT NOT NULL DEFAULT '',
+            open REAL,
+            high REAL,
+            low REAL,
+            PRIMARY KEY (date, symbol)
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO index_daily(
+            date, symbol, open, high, low, close, volume, pct_change, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?)
+        """,
+        ("20260915", "TWII", 27000.0, 27100.0, 26900.0, 27050.0, 8e10, 0.2, "t"),
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS us_overnight (
+            as_of TEXT PRIMARY KEY, payload TEXT DEFAULT '{}'
+        )
+        """
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO us_overnight(as_of, payload) VALUES (?,?)",
+        (
+            "20260915",
+            json.dumps(
+                {
+                    "brent_px": 97.47,
+                    "brent_pct": -1.79,
+                    "dx_f_px": 101.06,
+                    "dx_f_pct": 0.62,
+                    "usdtwd_px": 31.763,
+                    "usdtwd_pct": 0.08,
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    stats = snapshot_button_lists(db, "20260915")
+    assert stats.get("market") == 1
+    assert stats.get("outer") == 3
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    tw = conn.execute(
+        "SELECT sid, px, extra FROM live_judge WHERE kind='market' AND sid!=''"
+    ).fetchone()
+    outer = conn.execute(
+        "SELECT sid, px, extra FROM live_judge WHERE kind='outer' AND sid!='' ORDER BY sid"
+    ).fetchall()
+    conn.close()
+    assert tw[0] == "TWII"
+    assert abs(float(tw[1]) - 27050.0) < 0.01
+    sids = [r[0] for r in outer]
+    assert sids == ["_BRENT", "_DXY", "_USDTWD"]
+    brent = json.loads(outer[0][2])
+    assert abs(float(brent["c"]) - 97.47) < 0.01
+    assert brent.get("src") == "outer"
+    src = Path("judge_tape.py").read_text(encoding="utf-8")
+    assert "query1.finance" not in src
+    assert "fetch_outer_tape" not in src
+    assert score_live_judges(db, "20260916") == 0
+
+
 def test_agents_silent_record_is_rank_three():
     text = Path("AGENTS.md").read_text(encoding="utf-8")
     assert "默默落檔（2026-09-21 鎖死）" in text

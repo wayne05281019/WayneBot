@@ -335,3 +335,40 @@ def test_market_page_us_regular_heading_when_tw_open(tmp_path):
     assert "美股" in html
     assert "現金盤中" in html
     assert "上一收盤日該看" not in html
+
+
+def test_outlook_shows_brent_usd_twd_from_snap():
+    from taiwan_market import format_screen_market_outlook_html
+
+    html = format_screen_market_outlook_html(
+        ":memory:",
+        "20260923",
+        snap={
+            "ok": True,
+            "as_of": "20260923",
+            "close": 26500.0,
+            "chg1_pct": 0.4,
+            "vs_ma20_pct": 1.2,
+            "regime": "neutral",
+            "falling_risk": 10,
+        },
+        us_snap={
+            "ok": True,
+            "regime": "ok",
+            "ixic_pct": 0.8,
+            "sox_pct": 0.4,
+            "vix": 14.0,
+            "brent_px": 80.25,
+            "brent_pct": -0.5,
+            "dx_f_px": 97.8,
+            "dx_f_pct": 0.12,
+            "usdtwd_px": 31.2,
+            "usdtwd_pct": -0.2,
+        },
+        now=datetime(2026, 9, 23, 16, 0, tzinfo=TW),
+    )
+    assert "布蘭特" in html
+    assert "80.25美元/桶" in html
+    assert "美元指數" in html
+    assert "美元兌台幣" in html
+    assert "台幣升" in html

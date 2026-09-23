@@ -110,6 +110,16 @@ _EXTRA_KEEP = (
     "live",
     "chase_warning",
     "entry_stars",
+    "buy_star",
+    "bucket_key",
+    "buy_gate",
+    "buy_gate_note",
+    "hold_prior_state",
+    "trend_up_now",
+    "trend_now_label",
+    "leave_days",
+    "src_as_of",
+    "q60r",
     "stance",
     "rel_kind",
     "src",
@@ -129,6 +139,13 @@ _EXTRA_KEEP = (
     "trust_net",
     "dealer_net",
 )
+# 話筒按鍵改名不准改 kind。pick 才分同一顆鈕底下的子名單。
+_OUTER_MARKS = (
+    ("_BRENT", "布蘭特", "brent_px", "brent_pct"),
+    ("_DXY", "美元指數", "dx_f_px", "dx_f_pct"),
+    ("_USDTWD", "美元兌台幣", "usdtwd_px", "usdtwd_pct"),
+)
+_LEAVE_ZERO_PICKS = ("z", "1", "2", "3")
 
 
 def _bars_on(market_db: str, sids: Sequence[str], day: str) -> Dict[str, Dict[str, float]]:
@@ -385,6 +402,10 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
         except Exception:
             pass
     stats["dongzhu"] = _snapshot_dongzhu(market_db, day)
+    stats["market"] = _snapshot_market(market_db, day)
+    stats["outer"] = _snapshot_outer(market_db, day)
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        stats.update(_snapshot_leave_zero_picks(market_db, day))
     return stats
 
 
@@ -424,6 +445,145 @@ def _snapshot_dongzhu(market_db: str, day: str) -> int:
     return remember_rows(
         market_db, "dongzhu", rows, as_of=day, pick="rule", src="dongzhu"
     )
+
+
+def _snapshot_market(market_db: str, day: str) -> int:
+    """台股大盤沒按也落檔。只凍官方加權柱，不產圖。"""
+    day = _ymd(day)
+    bar: Dict[str, Any] = {}
+    if market_db and os.path.isfile(market_db) and day:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            row = conn.execute(
+                """
+                SELECT open, high, low, close, volume
+                FROM index_daily
+                WHERE (symbol='TWII' OR symbol='^TWII')
+                  AND REPLACE(CAST(date AS TEXT),'-','')=?
+                LIMIT 1
+                """,
+                (day,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+        if row:
+            for key, raw in (
+                ("open", row[0]),
+                ("high", row[1]),
+                ("low", row[2]),
+                ("close", row[3]),
+                ("volume", row[4]),
+            ):
+                n = _num(raw)
+                if n is not None:
+                    bar[key] = n
+    if not bar.get("close"):
+        return remember_rows(market_db, "market", [], as_of=day, pick="rule", src="market")
+    return remember_rows(
+        market_db,
+        "market",
+        [
+            {
+                "stock_id": "TWII",
+                "stock_name": "加權",
+                "open": bar.get("open"),
+                "high": bar.get("high"),
+                "low": bar.get("low"),
+                "close": bar.get("close"),
+                "volume": bar.get("volume"),
+            }
+        ],
+        as_of=day,
+        pick="rule",
+        src="market",
+    )
+
+
+def _snapshot_outer(market_db: str, day: str) -> int:
+    """外圍沒按也落檔。只讀已進庫 payload，不准現場打 Yahoo。"""
+    snap: Dict[str, Any] = {}
+    if market_db and os.path.isfile(market_db) and day:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            row = conn.execute(
+                "SELECT payload FROM us_overnight WHERE as_of=?",
+                (day,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+        finally:
+            conn.close()
+        if row and row[0]:
+            try:
+                blob = json.loads(row[0])
+            except (TypeError, json.JSONDecodeError):
+                blob = {}
+            if isinstance(blob, dict):
+                snap = blob
+    rows: List[Dict[str, Any]] = []
+    for sid, name, px_key, pct_key in _OUTER_MARKS:
+        px = _num(snap.get(px_key))
+        if px is None or px <= 0:
+            continue
+        item: Dict[str, Any] = {
+            "stock_id": sid,
+            "stock_name": name,
+            "close": px,
+            "px": px,
+        }
+        pct = _num(snap.get(pct_key))
+        if pct is not None:
+            item["pct_change"] = pct
+        rows.append(item)
+    if not rows:
+        return remember_rows(market_db, "outer", [], as_of=day, pick="rule", src="outer")
+    return remember_rows(
+        market_db, "outer", rows, as_of=day, pick="rule", src="outer"
+    )
+
+
+def _snapshot_leave_zero_picks(market_db: str, day: str) -> Dict[str, int]:
+    """獲利為零／脫離1–3 沒按也落檔。一次載框、四個子名單。不改海選黃金買點。"""
+    stats: Dict[str, int] = {}
+    try:
+        from screening_engine import ScreeningEngine
+
+        engine = ScreeningEngine(market_db)
+        frames, em_ids = engine._load_profit_scan_frames(day)
+    except Exception:
+        for token in _LEAVE_ZERO_PICKS:
+            stats[f"leave_zero_{token}"] = remember_rows(
+                market_db, "leave_zero", [], as_of=day, pick=token, src="radar"
+            )
+        return stats
+    for token in _LEAVE_ZERO_PICKS:
+        try:
+            if token == "z":
+                rows = engine._screen_leave_zero_from_profit(
+                    day,
+                    days_ago=0,
+                    mode="zero",
+                    star_key="golden_buy",
+                    frames=frames,
+                    em_ids=em_ids,
+                )
+            else:
+                rows = engine._screen_leave_zero_from_profit(
+                    day,
+                    days_ago=int(token),
+                    mode="ago",
+                    star_key="leave_zero",
+                    frames=frames,
+                    em_ids=em_ids,
+                )
+            stats[f"leave_zero_{token}"] = len(rows or [])
+        except Exception:
+            stats[f"leave_zero_{token}"] = remember_rows(
+                market_db, "leave_zero", [], as_of=day, pick=token, src="radar"
+            )
+    return stats
 
 
 def _quote_dates(market_db: str, cap: str) -> List[str]:
@@ -504,7 +664,7 @@ def score_live_judges(market_db: str, cap: str = "") -> int:
         for row in rows:
             as_of = str(row["as_of"] or "")
             sid = str(row["sid"] or "")
-            if as_of not in by_i or not sid:
+            if as_of not in by_i or not sid or sid.startswith("_"):
                 continue
             start = by_i[as_of]
             pick_px = _num(row["px"])

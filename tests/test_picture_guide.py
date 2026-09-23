@@ -57,7 +57,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "紅圈" in blob
     assert "連買區" in blob
     assert "說明　海選　持股" not in blob
-    assert "海選　持股　觀察　飆大　大盤　資金" in blob
+    assert "海選　持股　觀察　飆大　台股大盤　資金" in blob
     assert "如何賣" in blob
     assert "如何低買" in blob
     assert "趨勢向上" in blob
@@ -87,6 +87,8 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "點左邊確認" in blob
     assert "一張圖卡" in blob
     assert "產業鏈小框" in blob
+    assert "布蘭特原油" in blob
+    assert "美元/桶" in blob
     assert PAGE_WIDTH == 1080
     assert PAGE_HEIGHT == 1920
     assert PAGE_WIDTH / PAGE_HEIGHT == 1080 / 1920
