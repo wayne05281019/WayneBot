@@ -74,7 +74,7 @@ def test_button_face_and_normalize():
     kb = bot._reply_menu()
     assert [b.text for b in kb.keyboard[0]][-3] == MENU_BTN_BIAOKE
     assert [b.text for b in kb.keyboard[0]][-2] == "台股大盤"
-    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金輪動"
 
 
 def test_format_digest_empty():
@@ -117,7 +117,7 @@ def test_reply_menu_badge_uses_unread_count(tmp_path):
     kb = bot._reply_menu(uid)
     assert [b.text for b in kb.keyboard[0]][-3] == "飆大 2"
     assert [b.text for b in kb.keyboard[0]][-2] == "台股大盤"
-    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][-1] == "資金輪動"
 
 
 def test_focus_oral_sep18_not_timestamp_wall():

@@ -370,7 +370,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "28":
+        if not m or m.group(1) != "29":
             return _bad("版面不是 28")
         return _ok("v28")
 

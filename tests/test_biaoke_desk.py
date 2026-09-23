@@ -3,6 +3,7 @@
 from bot_servers import (
     MENU_BTN_BIAOKE,
     MENU_BTN_BIAOKE_FACE,
+    MENU_BTN_FLOW,
     MENU_BTN_LEAVE_ZERO,
     MENU_BTN_MARKET,
     MENU_BTN_SLOT,
@@ -25,12 +26,12 @@ def test_biaoke_button_is_plain_biaoda_top_right():
 
     assert _circled_menu_label("飆大") in MENU_BTN_BIAOKE_ALIASES
     assert _normalize_menu_text(MENU_BTN_BIAOKE_FACE) == "飆大"
-    assert MENU_ROW1[-1] == "資金"
+    assert MENU_ROW1[-1] == MENU_BTN_FLOW
     assert MENU_ROW1[-2] == MENU_BTN_MARKET
     assert MENU_ROW1[-3] == MENU_BTN_BIAOKE_FACE
     assert MENU_ROW2[-1] == MENU_BTN_DONGZHU
     assert MENU_ROW2[-2] == MENU_BTN_LEAVE_ZERO
-    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
+    assert MENU_BTN_LEAVE_ZERO == "獲利為零"
     assert MENU_BTN_DONGZHU == "洞燭先機"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
@@ -39,7 +40,7 @@ def test_biaoke_button_is_plain_biaoda_top_right():
     assert face == "飆大"
     assert "\u20dd" not in face
     assert _normalize_menu_text(face) == "飆大"
-    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_FLOW
     assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_MARKET
     assert [b.text for b in kb.keyboard[1]][-1] == MENU_BTN_DONGZHU
     assert [b.text for b in kb.keyboard[1]][-2] == MENU_BTN_LEAVE_ZERO
@@ -307,7 +308,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "28"
+    assert MENU_LAYOUT_VERSION == "29"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
@@ -357,10 +358,10 @@ def test_biaoke_keyboard_toggles_same_slot():
     assert len(main.keyboard) == 2
     assert [b.text for b in kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
     assert [b.text for b in kb.keyboard[0]][-2] == MENU_BTN_MARKET
-    assert [b.text for b in kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in kb.keyboard[0]][-1] == MENU_BTN_FLOW
     assert [b.text for b in main.keyboard[0]][-3] == "飆大"
     assert [b.text for b in main.keyboard[0]][-2] == MENU_BTN_MARKET
-    assert [b.text for b in main.keyboard[0]][-1] == "資金"
+    assert [b.text for b in main.keyboard[0]][-1] == MENU_BTN_FLOW
     assert [b.text for b in kb.keyboard[0]][:-3] == [b.text for b in main.keyboard[0]][:-3]
     assert [b.text for b in kb.keyboard[1]] == [b.text for b in main.keyboard[1]]
     compact_on = WayneTelegramBot.__new__(WayneTelegramBot)
@@ -369,7 +370,7 @@ def test_biaoke_keyboard_toggles_same_slot():
     compact_kb = compact_on._biaoke_reply_menu()
     assert len(compact_kb.keyboard) == 2
     assert [b.text for b in compact_kb.keyboard[0]][-3] == MENU_BTN_LEAVE_BIAOKE
-    assert [b.text for b in compact_kb.keyboard[0]][-1] == "資金"
+    assert [b.text for b in compact_kb.keyboard[0]][-1] == MENU_BTN_FLOW
 
 
 def test_send_biaoke_page_pushes_leave_key():
