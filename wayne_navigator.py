@@ -2468,7 +2468,7 @@ def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w
             same_row = first
         else:
             blob = _join_cjk_paras(note)
-            below = _wrap_fit(blob, 11.2, full_w, fig_w, weight=700, min_fill=0.84) or [blob]
+            below = (_wrap_fit(blob, 11.2, full_w, fig_w, weight=700, min_fill=0.84) or [blob])[:2]
     note_dy = _STANCE_NOTE_STACK
     if same_row and not below:
         h = 4.6
@@ -2487,6 +2487,32 @@ def _stance_pane_plan(stance_txt: str, stance_note: str, tw, pad_x: float, fig_w
         "note_dy": note_dy,
         "full_w": full_w,
     }
+
+
+def _face_stance_note(card: dict, sell_sub: str = "") -> str:
+    """查股圖「今日態度」正文：對表的短句。不把前波高低日期整段塞進格子。"""
+    try:
+        from decision_card_signals import clip_stance_note, stance_explain, trim_stance_echo
+    except Exception:
+        return str(sell_sub or "").strip()
+    title = str((card or {}).get("stance") or "")
+    try:
+        body = stance_explain(
+            str((card or {}).get("stance_kind") or "wait"),
+            sell_note=str(sell_sub or "").strip(),
+            card=card,
+        )
+    except Exception:
+        body = str(sell_sub or "").strip()
+    vkind = str((card or {}).get("buy_verdict") or "")
+    vnote = str((card or {}).get("buy_verdict_note") or "")
+    if vkind == "no" and "低點線" in vnote and "低點線" not in str(body):
+        body = "低點線破了，現在不要買。"
+    try:
+        body = trim_stance_echo(title, body)
+    except Exception:
+        pass
+    return clip_stance_note(body)
 
 
 def fit_label_value(labels, value, row_w, fig_w, *, fa=12.0, fb=15.0, gap=5.5,
@@ -2591,24 +2617,10 @@ def render_decision_card_png(card: dict, save_path: str) -> str:
         from hold_prior_wave import attach_buy_verdict
 
         attach_buy_verdict(card)
-        verdict = str(card.get("buy_verdict_note") or "").strip()
-    except Exception:
-        verdict = ""
-    try:
-        from decision_card_signals import stance_explain, trim_stance_echo
-
-        stance_note = verdict or stance_explain(
-            str(card.get("stance_kind") or "wait"),
-            sell_note=sell_sub,
-            card=card,
-        )
-    except Exception:
-        stance_note = verdict or sell_sub or "今天沒有急著買或賣。看下面這張20日表再決定。"
-    stance_txt_plan = str(card.get("stance") or "今天先看表，先等")
-    try:
-        stance_note = trim_stance_echo(stance_txt_plan, stance_note)
     except Exception:
         pass
+    stance_txt_plan = str(card.get("stance") or "今天先看表，先等")
+    stance_note = _face_stance_note(card, sell_sub)
     stance_plan = _stance_pane_plan(
         stance_txt_plan,
         stance_note,
@@ -3272,14 +3284,12 @@ def render_first_glance_png(
         footer_src = discipline_box_notes(card, pink_note)
     except Exception:
         footer_src = [n for n in (sell_note, pink_note) if n]
-    try:
-        from hold_prior_wave import attach_buy_verdict
-
-        attach_buy_verdict(card)
-        verdict = str(card.get("buy_verdict_note") or "").strip()
-        footer_src = [verdict] if verdict else list(footer_src)
-    except Exception:
-        pass
+    sa = str((card or {}).get("sell_action") or "")
+    if "減碼" in sa:
+        footer_src = [f"高低卡要{sa}，現在不要加碼。"]
+        if pink_note:
+            footer_src.append(pink_note)
+    footer_src = [n for n in footer_src if n][:2]
 
     last = (tape or {}).get("last") or {}
     C = _CARD
@@ -3368,7 +3378,7 @@ def render_first_glance_png(
     conflict_lines = _wrap_fit(str(note), 13, row_w, fig_w) if note else []
     wrapped_notes = []
     for n in footer_src:
-        wrapped_notes.extend(_wrap_fit(n, 12.5, row_w, fig_w) or [n])
+        wrapped_notes.extend((_wrap_fit(n, 12.5, row_w, fig_w) or [n])[:2])
 
     lr_box_h, lr_gap = 7.4, 0.95
     space_n_rows = 2 if long_lows else 1

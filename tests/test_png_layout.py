@@ -158,3 +158,34 @@ def test_stance_note_fills_pane_not_left_cluster():
     widths = [_text_w(ln, 11.2, CARD_FIG_W, 700) for ln in below]
     for w in widths[:-1]:
         assert w >= full_w * 0.72, (below, widths, full_w)
+    huge = _stance_pane_plan(
+        "今天先看表，先等",
+        "回測低 59.4（9/9），對高點線 68.6（9/21）低了 3.2%，對低點線 54 還高出 11%。"
+        "獲利已經 23%，現在不要當黃金買點。這句後面再堆一段日期也不要畫出格子。",
+        tw,
+        2.6,
+        CARD_FIG_W,
+    )
+    assert len(huge["below"]) <= 2
+
+
+def test_face_stance_note_skips_retest_dates():
+    from wayne_navigator import _face_stance_note
+
+    card = {
+        "stance": "今天先看表，先等",
+        "stance_kind": "wait",
+        "profit": 23.1,
+        "gain_pct": 23.1,
+        "close": 66.45,
+        "buy_verdict": "no",
+        "buy_verdict_note": (
+            "奇偶3356，收 66.45，獲利 +23.1%。回測低 59.4（9/9），"
+            "對高點線 68.6（9/21）低了 3.2%。現在不要當黃金買點。"
+        ),
+        "table": None,
+    }
+    out = _face_stance_note(card, "")
+    assert "回測低" not in out
+    assert "9/21" not in out
+    assert len(out) <= 42

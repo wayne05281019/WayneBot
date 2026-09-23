@@ -620,7 +620,7 @@ def test_html_and_glance_wire_sell_notes():
     assert "cut_fill" in card_src
     assert "sell_highlight_kind" in card_src
     assert "cut_fill" in png_src
-    assert "stance_explain" in card_src
+    assert "_face_stance_note" in card_src
     assert "今日態度" in card_src
     assert "monthly_stage" in card_src
     from sell_discipline import attach_sell as attach_fn

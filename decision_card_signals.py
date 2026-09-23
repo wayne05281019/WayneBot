@@ -829,6 +829,26 @@ def _look_table(on_list: bool) -> str:
     return "先看高低卡再決定。" if on_list else "看下面這張表再決定。"
 
 
+def clip_stance_note(note: str, *, max_chars: int = 42) -> str:
+    """今日態度正文：一句為主，超過格子就切。數字在下面表，這裡不堆前波高低日期。"""
+    note = str(note or "").strip()
+    if not note:
+        return ""
+    if len(note) <= int(max_chars):
+        return note
+    cap = int(max_chars)
+    for sep in ("。", "；"):
+        i = note.find(sep)
+        if 8 <= i + 1 <= cap:
+            return note[: i + 1]
+    cut = note[:cap]
+    for sep in ("，", "、", " "):
+        j = cut.rfind(sep)
+        if j >= 16:
+            return cut[:j].rstrip("，、 ") + "。"
+    return cut.rstrip("，、 ") + "。"
+
+
 def trim_stance_echo(title: str, note: str) -> str:
     """標題已講的開頭／結尾，正文不要再抄一次。"""
     title = str(title or "").strip()
