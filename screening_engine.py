@@ -857,31 +857,13 @@ class ScreeningEngine:
         return bot_rows
 
     def screen_leave_zero_pick(
-        self, target_date: Optional[str] = None, *, pick: str = "z"
+        self, target_date: Optional[str] = None, *, pick: str = "0"
     ) -> List[Dict[str, Any]]:
-        """剛離1／2／3／獲利為零。掃高低卡獲利（含興櫃），不改海選黃金買點公式。未收盤不寫庫。"""
-        token = str(pick or "z").strip().lower()
-        if token in ("0", "z", "zero", "at0"):
-            return self._screen_leave_zero_from_profit(
-                target_date,
-                days_ago=0,
-                mode="zero",
-                star_key="golden_buy",
-            )
-        try:
-            days = int(token)
-        except ValueError:
-            days = 0
-        if days <= 0:
-            return self._screen_leave_zero_from_profit(
-                target_date,
-                days_ago=0,
-                mode="zero",
-                star_key="golden_buy",
-            )
+        """剛脫離零：昨獲利貼零、今離開 0。掃高低卡（含興櫃），不改海選黃金買點公式。未收盤不寫庫。"""
+        del pick
         return self._screen_leave_zero_from_profit(
             target_date,
-            days_ago=days,
+            days_ago=0,
             mode="ago",
             star_key="leave_zero",
         )
@@ -896,7 +878,7 @@ class ScreeningEngine:
         frames: Optional[Dict[str, pd.DataFrame]] = None,
         em_ids: Optional[Set[str]] = None,
     ) -> List[Dict[str, Any]]:
-        """全市場高低卡獲利序列：獲利為零＝今天 0.0%；剛離N＝那根實綠第一天離零。含興櫃。"""
+        """全市場高低卡獲利序列：剛脫離零＝今天這根是實綠第一天離零。含興櫃。"""
         from decision_card_signals import (
             cal60_low_close_at,
             profit_pct_cal60_series,
@@ -1547,7 +1529,7 @@ def _leave_zero_radar_row_ok(
     ma20: float,
     volume: float,
 ) -> bool:
-    """獲利為零／剛離N 品質閘：有量、均線跟得上現價、不是缺列跳空。不改海選公式。"""
+    """剛脫離零品質閘：有量、均線跟得上現價、不是缺列跳空。不改海選公式。"""
     from decision_card_signals import close_gap_broken, ma_matches_price
 
     try:
@@ -1563,7 +1545,7 @@ def _leave_zero_radar_row_ok(
 
 
 def _leave_zero_pick_ok(mode: str, profit_pct: float) -> bool:
-    """獲利為零＝獲利欄仍是 0.0%。剛離1–3＝那天剛離零、現在不是 0 就列出（不卡 5%）。"""
+    """獲利為零＝獲利欄仍是 0.0%。剛離＝那天剛離零、現在不是 0 就列出（不卡 5%）。"""
     from decision_card_signals import is_profit_display_zero
 
     try:
@@ -1587,7 +1569,7 @@ def _leave_zero_left_n_ago(
     from decision_card_signals import profit_left_zero_highlight
 
     n = int(days_ago or 0)
-    if n <= 0 or profits is None or len(profits) < n + 2:
+    if n < 0 or profits is None or len(profits) < n + 2:
         return False
     try:
         prev = float(profits.iloc[-(n + 2)])

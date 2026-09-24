@@ -524,14 +524,14 @@ def test_leave_zero_radar_snapshot_remembers_real_sids(tmp_path, monkeypatch):
             return ({"1101": None}, set())
 
         def _screen_leave_zero_from_profit(self, _day, **kwargs):
-            if kwargs.get("mode") == "zero":
+            if kwargs.get("mode") == "ago" and kwargs.get("days_ago") == 0:
                 return [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]
             return []
 
     monkeypatch.setattr("screening_engine.ScreeningEngine", FakeEngine)
     stats = _snapshot_leave_zero_picks(db, "20260915")
-    assert stats.get("leave_zero_z") == 1
-    assert stats.get("leave_zero_1") == 0
+    assert stats.get("leave_zero_0") == 1
+    assert stats.get("leave_zero_z") is None
     store = store_path(db)
     conn = sqlite3.connect(store)
     row = conn.execute(
@@ -542,7 +542,7 @@ def test_leave_zero_radar_snapshot_remembers_real_sids(tmp_path, monkeypatch):
     ).fetchone()[0]
     conn.close()
     assert row[0] == "1101"
-    assert row[1] == "z"
+    assert row[1] == "0"
     extra = json.loads(row[2])
     assert extra["c"] == 50.4
     assert extra["v"] == 8000

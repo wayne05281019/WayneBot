@@ -270,9 +270,11 @@ def test_leave_zero_closed_message_points_to_screen():
     msg = leave_zero_closed_message(after)
     assert "目前非盤中" in msg
     assert "不抓現價" in msg
-    assert "剛離1" in msg or "脫離1" in msg
-    assert "獲利為零" in msg
-    assert "觀察不是買" in msg
+    assert "剛離1" not in msg
+    assert "脫離1" not in msg
+    assert "獲利為零" not in msg
+    assert "昨獲利貼零" in msg
+    assert "離開 0" in msg
     assert "興櫃" in msg
     assert "海選桶" in msg
     when = next_tw_session_when(after)

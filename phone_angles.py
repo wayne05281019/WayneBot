@@ -196,7 +196,7 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
             "連買區": "目前沒有連續買超",
             "出圖等待": "_stop_plain_wait",
             "AI倉": "format_ai_desk_pages",
-            "剛脫離零": "此刻沒有獲利還在 0",
+            "剛脫離零": "此刻沒有昨零今離的檔",
             "洞燭先機": "這型此刻沒有可捕捉的次級",
             "興櫃海選": "目前沒有可用的官方日均價",
             "查股兩張圖": "找不到這檔",
@@ -370,9 +370,9 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "29":
-            return _bad("版面不是 28")
-        return _ok("v28")
+        if not m or m.group(1) != "30":
+            return _bad("版面不是 30")
+        return _ok("v30")
 
     if lens == "slot_noop":
         if "MENU_BTN_LEAVE_ZERO" not in src:

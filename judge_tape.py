@@ -157,7 +157,7 @@ _US_LEAD_MARKS = (
     ("_SOX", "費半", "sox_px", "sox_pct"),
     ("_TSMUS", "台積美股", "tsm_px", "tsm_pct"),
 )
-_LEAVE_ZERO_PICKS = ("z", "1", "2", "3")
+_LEAVE_ZERO_PICKS = ("0",)
 
 
 def _bars_on(market_db: str, sids: Sequence[str], day: str) -> Dict[str, Dict[str, float]]:
@@ -697,7 +697,7 @@ def _snapshot_us_lead(market_db: str, day: str) -> int:
 
 
 def _snapshot_leave_zero_picks(market_db: str, day: str) -> Dict[str, int]:
-    """獲利為零／脫離1–3 沒按也落檔。一次載框、四個子名單。不改海選黃金買點。"""
+    """剛脫離零沒按也落檔：昨獲利貼零、今離開 0。不改海選黃金買點。"""
     stats: Dict[str, int] = {}
     try:
         from screening_engine import ScreeningEngine
@@ -712,24 +712,14 @@ def _snapshot_leave_zero_picks(market_db: str, day: str) -> Dict[str, int]:
         return stats
     for token in _LEAVE_ZERO_PICKS:
         try:
-            if token == "z":
-                rows = engine._screen_leave_zero_from_profit(
-                    day,
-                    days_ago=0,
-                    mode="zero",
-                    star_key="golden_buy",
-                    frames=frames,
-                    em_ids=em_ids,
-                )
-            else:
-                rows = engine._screen_leave_zero_from_profit(
-                    day,
-                    days_ago=int(token),
-                    mode="ago",
-                    star_key="leave_zero",
-                    frames=frames,
-                    em_ids=em_ids,
-                )
+            rows = engine._screen_leave_zero_from_profit(
+                day,
+                days_ago=0,
+                mode="ago",
+                star_key="leave_zero",
+                frames=frames,
+                em_ids=em_ids,
+            )
             stats[f"leave_zero_{token}"] = remember_rows(
                 market_db, "leave_zero", rows or [], as_of=day, pick=token, src="radar"
             )

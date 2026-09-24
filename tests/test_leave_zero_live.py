@@ -99,8 +99,12 @@ def test_leave_days_pick_not_capped_at_five_pct():
     assert not _leave_zero_pick_ok("zero", 0.1)
     import pandas as pd
 
+    first_leave_today = pd.Series([0.0, 0.0, 0.0, 0.8])
+    assert _leave_zero_left_n_ago(first_leave_today, 0)
+    assert not _leave_zero_left_n_ago(first_leave_today, 1)
     first_leave_yest = pd.Series([0.0, 0.0, 0.8, 1.2])
     assert _leave_zero_left_n_ago(first_leave_yest, 1)
+    assert not _leave_zero_left_n_ago(first_leave_yest, 0)
     assert not _leave_zero_left_n_ago(first_leave_yest, 2)
     still_zero = pd.Series([0.0, 0.0, 0.0, 0.0])
     assert not _leave_zero_left_n_ago(still_zero, 1)
@@ -261,8 +265,11 @@ def test_lookup_like_row_has_watch_and_buy():
     assert "lz:z" not in flat
     keys = bot._leave_zero_reply_menu()
     texts = [b.text for r in keys.keyboard for b in r]
-    assert texts[:3] == ["脫離1", "脫離2", "脫離3"]
-    assert "回主選單" in texts
+    assert "脫離1" not in texts
+    assert "脫離2" not in texts
+    assert "脫離3" not in texts
+    assert MENU_BTN_LEAVE_ZERO in texts
+    assert "回主選單" not in texts
 
 
 def test_dongzhu_keyboard_is_industry_temp_intro():
@@ -332,7 +339,7 @@ def test_dongzhu_picker_callback_opens_hold_not_card():
 def test_intent_and_menu_label():
     from bot_servers import leave_zero_pick_from_text
 
-    assert MENU_BTN_LEAVE_ZERO == "獲利為零"
+    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
     assert parse_intent("獲利為零").kind == "leave_zero"
     assert parse_intent("剛脫離零").kind == "leave_zero"
     assert parse_intent("剛離零").kind == "leave_zero"
@@ -345,11 +352,11 @@ def test_intent_and_menu_label():
     assert parse_intent("脫離3").kind == "leave_zero"
     assert parse_intent("剛為零").kind == "leave_zero"
     assert leave_zero_pick_from_text("剛脫離零") == ""
-    assert leave_zero_pick_from_text("剛離") == "z"
-    assert leave_zero_pick_from_text("剛離2") == "2"
-    assert leave_zero_pick_from_text("脫離2") == "2"
-    assert leave_zero_pick_from_text("獲利為零") == "z"
-    assert leave_zero_pick_from_text("剛為零") == "z"
+    assert leave_zero_pick_from_text("剛離") == ""
+    assert leave_zero_pick_from_text("剛離2") == ""
+    assert leave_zero_pick_from_text("脫離2") == ""
+    assert leave_zero_pick_from_text("獲利為零") == ""
+    assert leave_zero_pick_from_text("剛為零") == ""
 
 
 def _bare_leave_zero_bot(db: str) -> WayneTelegramBot:
@@ -388,14 +395,15 @@ def test_leave_zero_cmd_opens_profit_zero(tmp_path):
         return_value=[],
     ) as pick_fn:
         asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
-    assert pick_fn.call_args.kwargs.get("pick") == "z"
+    assert pick_fn.call_args.kwargs.get("pick") == "0"
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "獲利為零" in html
-    assert "先觀察" in html
+    assert "剛脫離零" in html
+    assert "昨獲利貼零" in html
+    assert "獲利為零" not in html
     assert "🟥" not in html
-    assert bot._show_leave_zero_keys.await_count == 1
+    assert bot._show_leave_zero_keys.await_count == 0
     kb = msg.reply_html.await_args.kwargs.get("reply_markup")
     assert kb is None
     assert bot._start_plain_wait.await_args_list
@@ -418,17 +426,18 @@ def test_leave_zero_cmd_pick_zero_is_profit_zero(tmp_path):
         return_value=[],
     ) as pick_fn:
         asyncio.run(bot._run_leave_zero_now(msg, pick="0"))
-    assert pick_fn.call_args.kwargs.get("pick") == "z"
+    assert pick_fn.call_args.kwargs.get("pick") == "0"
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "獲利為零" in html
-    assert "先觀察" in html
+    assert "剛脫離零" in html
+    assert "昨獲利貼零" in html
     assert "前8檔" in html
     assert "尚未就緒" not in html
     assert "請按主選單「海選」" not in html
+    assert "獲利為零" not in html
     assert "🟥" not in html
-    assert bot._show_leave_zero_keys.await_count == 1
+    assert bot._show_leave_zero_keys.await_count == 0
     kb = msg.reply_html.await_args.kwargs.get("reply_markup")
     assert kb is None
 
@@ -452,8 +461,10 @@ def test_leave_zero_cmd_days_copy_names_real_green(tmp_path):
     html = "\n".join(
         str(c.args[0]) for c in msg.reply_html.await_args_list if c.args
     )
-    assert "脫離1" in html
-    assert "實綠：昨獲利貼零、今離開 0" in html
+    assert "剛脫離零" in html
+    assert "昨獲利貼零" in html
+    assert "今天離開 0" in html
+    assert "脫離1" not in html
     assert "雙綠" not in html
     assert "前8檔" in html
     assert "尚未就緒" not in html
@@ -478,14 +489,16 @@ def test_leave_zero_cmd_off_hours_still_picks_days(tmp_path):
         return_value=[],
     ) as pick_fn:
         asyncio.run(bot.leave_zero_cmd(upd, MagicMock()))
-    assert pick_fn.call_args.kwargs.get("pick") == "z"
+    assert pick_fn.call_args.kwargs.get("pick") == "0"
     html = "\n".join(str(c.args[0]) for c in msg.reply_html.await_args_list if c.args)
     assert "目前非盤中" in html
     assert "不抓現價" in html
-    assert "脫離1" in html
-    assert "獲利為零" in html
+    assert "剛脫離零" in html
+    assert "昨獲利貼零" in html
+    assert "脫離1" not in html
+    assert "獲利為零" not in html
     assert "🟥" not in html
-    assert bot._show_leave_zero_keys.await_count == 1
+    assert bot._show_leave_zero_keys.await_count == 0
     kb = msg.reply_html.await_args.kwargs.get("reply_markup")
     assert kb is None
     assert not msg.reply_text.await_args_list
@@ -578,36 +591,39 @@ def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
     engine = ScreeningEngine(db)
     assert session_as_of_n_ago(db, AS_OF, 1) == "20260914"
     assert session_as_of_n_ago(db, AS_OF, 2) == "20260913"
-    just = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="0")]
-    d1_rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
-    d1 = [r["code"] for r in d1_rows]
-    d2 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="2")]
-    zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
-    zero_codes = [r["code"] for r in zero]
-    assert just == zero_codes
-    assert "1102" not in just
-    assert d1 == ["1101"]
-    assert d1_rows[0].get("chase_warning") is True
-    assert d2 == ["1201"]
-    assert "1303" in zero_codes
-    assert "1301" in zero_codes
-    assert "1402" in zero_codes
-    assert "1216" not in zero_codes
-    assert "1101" not in zero_codes
-    assert all(int(r.get("entry_stars") or 0) <= 2 for r in zero)
-    over = engine.screen_leave_zero_pick(AS_OF, pick="1")
-    assert over and float(over[0]["profit_pct"]) > 5.0
+    today = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="0")]
+    same = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="1")]
+    still_zero = engine._screen_leave_zero_from_profit(
+        AS_OF, days_ago=0, mode="zero", star_key="golden_buy"
+    )
+    still_codes = [r["code"] for r in still_zero]
+    assert "1102" in today
+    assert "1216" in today
+    assert same == today
+    assert "1101" not in today
+    assert "1201" not in today
+    assert "1303" not in today
+    assert "1303" in still_codes
+    assert "1301" in still_codes
+    assert "1402" in still_codes
+    assert "1216" not in still_codes
+    assert "1101" not in still_codes
+    d1 = engine._screen_leave_zero_from_profit(
+        AS_OF, days_ago=1, mode="ago", star_key="leave_zero"
+    )
+    assert [r["code"] for r in d1] == ["1101"]
+    assert float(d1[0]["profit_pct"]) > 5.0
 
 
 def test_live_leave_days_keeps_band_and_does_not_write(tmp_path, monkeypatch):
     db = str(tmp_path / "lz_live_days.db")
     before = _seed_quotes(db, {"1101": 50.5})
-    _set_close(db, "1101", "20260914", 50.4)
+    _set_close(db, "1101", "20260914", 50.0)
     save_screen_session(
         db,
         "20260914",
         "morning",
-        {"leave_zero": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]},
+        {"golden_buy": [{"stock_id": "1101", "stock_name": "台泥", "close": 50.0}]},
     )
     save_screen_session(
         db,
@@ -626,14 +642,14 @@ def test_live_leave_days_keeps_band_and_does_not_write(tmp_path, monkeypatch):
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
     monkeypatch.setattr("midday_review.fetch_mis_batch", lambda codes, db_path, timeout=12.0: live)
     engine = ScreeningEngine(db)
-    rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    rows = engine.screen_leave_zero_pick(AS_OF, pick="0")
     assert [r["code"] for r in rows] == ["1101"]
     assert rows[0].get("live")
     live["1101"]["price"] = 50.0
-    gone = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    gone = engine.screen_leave_zero_pick(AS_OF, pick="0")
     assert gone == []
     live["1101"]["price"] = 53.0
-    ran = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    ran = engine.screen_leave_zero_pick(AS_OF, pick="0")
     assert [r["code"] for r in ran] == ["1101"]
     assert float(ran[0]["profit_pct"]) > 5.0
     conn = sqlite3.connect(db)
@@ -690,7 +706,6 @@ def _seed_emerging_leave_yesterday(db: str) -> None:
     ensure_emerging_table(db)
     start = datetime(2026, 8, 1)
     end = datetime.strptime(AS_OF, "%Y%m%d")
-    leave_day = "20260914"
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT OR REPLACE INTO stock_universe("
@@ -701,10 +716,8 @@ def _seed_emerging_leave_yesterday(db: str) -> None:
     d = start
     while d <= end:
         ymd = d.strftime("%Y%m%d")
-        if ymd == leave_day:
+        if ymd == AS_OF:
             close = 10.08
-        elif ymd == AS_OF:
-            close = 10.10
         else:
             close = 10.00
         conn.execute(
@@ -727,7 +740,7 @@ def _seed_emerging_leave_yesterday(db: str) -> None:
                 "tpex_esb_csv",
             ),
         )
-        # 上市櫃撞號：若誤用 daily_quotes 會變成今天才離零，剛離1找不到。
+        # 上市櫃撞號：興櫃要用 emerging_quotes，不能吃 daily_quotes。
         listed_close = 20.0 if ymd == AS_OF else 10.0
         conn.execute(
             "INSERT OR REPLACE INTO daily_quotes("
@@ -776,25 +789,20 @@ def test_leave_zero_pick_scans_profit_including_emerging(tmp_path, monkeypatch):
     conn.close()
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
     engine = ScreeningEngine(db)
-    zero = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="z")]
-    d1 = engine.screen_leave_zero_pick(AS_OF, pick="1")
-    d1_codes = [r["code"] for r in d1]
-    d2 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="2")]
-    assert "8069" in zero
-    assert "3595" not in zero
-    assert "0050" not in zero
-    assert d1_codes == ["3595"]
-    assert d1[0]["name"] == "山太士"
-    assert d1[0].get("quote_source") == "emerging_quotes"
-    assert d1[0].get("trend_now_label")
-    assert "3595" not in d2
-    assert "8069" not in d1_codes
+    rows = engine.screen_leave_zero_pick(AS_OF)
+    codes = [r["code"] for r in rows]
+    assert "3595" in codes
+    assert "8069" not in codes
+    assert "0050" not in codes
+    by = {r["code"]: r for r in rows}
+    assert by["3595"]["name"] == "山太士"
+    assert by["3595"].get("quote_source") == "emerging_quotes"
+    assert by["3595"].get("trend_now_label")
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: True)
     monkeypatch.setattr("midday_review.fetch_mis_batch", lambda *a, **k: {})
-    live_d1 = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="1")]
-    assert live_d1 == ["3595"]
-    live_zero = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF, pick="z")]
-    assert "8069" in live_zero
+    live_rows = [r["code"] for r in engine.screen_leave_zero_pick(AS_OF)]
+    assert "3595" in live_rows
+    assert "8069" not in live_rows
 
 
 def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
@@ -802,8 +810,8 @@ def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
 
     db = str(tmp_path / "lz_trend.db")
     _seed_quotes(db, {"1101": 51.0, "1201": 50.8})
-    _set_close(db, "1101", "20260914", 50.4)
-    _set_close(db, "1201", "20260914", 50.4)
+    _set_close(db, "1101", "20260914", 50.0)
+    _set_close(db, "1201", "20260914", 50.0)
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
     real = se._leave_zero_trend_ok
 
@@ -817,7 +825,7 @@ def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
 
     monkeypatch.setattr("screening_engine._leave_zero_trend_ok", fake)
     engine = ScreeningEngine(db)
-    rows = engine.screen_leave_zero_pick(AS_OF, pick="1")
+    rows = engine.screen_leave_zero_pick(AS_OF, pick="0")
     codes = [r["code"] for r in rows]
     assert "1101" in codes and "1201" in codes
     assert codes.index("1101") < codes.index("1201")
@@ -826,8 +834,8 @@ def test_leave_days_keeps_no_trend_and_sorts_up_first(tmp_path, monkeypatch):
     assert by["1201"]["trend_up_now"] is False
     assert int(by["1201"].get("entry_stars") or 0) <= 2
     assert by["1201"].get("buy_star") is False
-    assert "趨勢已向上" in _stock_card_html(by["1101"], 1, bucket_label="剛離1")
-    assert "趨勢還沒向上" in _stock_card_html(by["1201"], 2, bucket_label="剛離1")
+    assert "趨勢已向上" in _stock_card_html(by["1101"], 1, bucket_label="剛脫離零")
+    assert "趨勢還沒向上" in _stock_card_html(by["1201"], 2, bucket_label="剛脫離零")
     from decision_card_signals import LEAVE_ZERO_SCREEN_MAX_PCT
 
     assert LEAVE_ZERO_SCREEN_MAX_PCT == 5.0
@@ -903,22 +911,18 @@ def test_leave_zero_radar_double_green_gap_and_cap(tmp_path, monkeypatch):
         {"20260914": 50.4, AS_OF: 80.0},
         50.0,
     )
-    for i in range(9):
+    for i in range(8):
         sid = f"241{i}"
-        _seed_close_series(db, sid, f"零{i}", {}, 50.0)
+        _seed_close_series(db, sid, f"離{i}", {AS_OF: 50.4}, 50.0)
     monkeypatch.setattr("live_quote.is_live_merge_window", lambda now=None: False)
     engine = ScreeningEngine(db)
-    d1 = engine.screen_leave_zero_pick(AS_OF, pick="1")
-    d1_codes = [r["code"] for r in d1]
-    assert "2303" in d1_codes
-    assert "2330" not in d1_codes
-    assert "6949" not in d1_codes
-    by = {r["code"]: r for r in d1}
-    assert abs(float(by["2303"]["profit_pct"]) - 1.0) < 0.2
-    zero = engine.screen_leave_zero_pick(AS_OF, pick="z")
-    zero_codes = [r["code"] for r in zero]
-    assert "6949" not in zero_codes
-    assert "2330" not in zero_codes
-    assert len(zero) <= LEAVE_ZERO_RADAR_CAP
-    assert len(zero) == 8
-    assert all(c.startswith("241") for c in zero_codes)
+    today = engine.screen_leave_zero_pick(AS_OF)
+    codes = [r["code"] for r in today]
+    assert "2303" not in codes
+    assert "2330" not in codes
+    assert "6949" not in codes
+    by = {r["code"]: r for r in today}
+    assert all(c.startswith("241") for c in codes)
+    assert abs(float(by["2410"]["profit_pct"]) - 0.8) < 0.2
+    assert len(today) <= LEAVE_ZERO_RADAR_CAP
+    assert len(today) == 8
