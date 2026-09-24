@@ -1760,6 +1760,13 @@ def _after_ingest_analyze(db_path: str, events: Sequence[Dict[str, Any]]) -> Non
     except Exception:
         logger.exception("飆大官方K即時建檔失敗")
     try:
+        from biaoke_forecast import record_from_events, verify_due
+
+        record_from_events(db_path, packed)
+        verify_due(db_path)
+    except Exception:
+        logger.exception("飆大演算即時建檔／對質失敗")
+    try:
         from biaoke_neurons import record_neuron_events
 
         record_neuron_events(db_path, packed)

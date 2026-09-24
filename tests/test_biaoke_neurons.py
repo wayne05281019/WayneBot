@@ -136,6 +136,7 @@ def test_ingest_hooks_queue_neurons_for_absorb_slots():
     assert "record_events" in src
     assert "record_neuron_events" in src
     assert "ingest_why_events" in src
+    assert "verify_due" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "backfill_recent_neurons" not in ingest_src
     assert "run_absorb" in ingest_src

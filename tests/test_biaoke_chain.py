@@ -801,6 +801,7 @@ def test_five_cross_wash_is_not_turn_and_36000_not_43500():
     hold_c = next(s for s in chi["steps"] if s["id"] == "hold")["text"]
     assert "碎形窗" in cf or "只能上不能下" in cf
     assert "2天漲1000" not in hold_c.split("他的說法")[0]
+    assert "3595" in cf
     jian = fire_chain("", "健策怎麼看")
     jf = jian.get("five") or jian["think"]
     assert "2周" in jf or "2 周" in jf

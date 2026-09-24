@@ -155,9 +155,120 @@ def test_ingest_hooks_tape_immediately():
     assert "queue_absorb_events" in src
     assert "record_neuron_events" in src
     assert "ingest_why_events" in src
+    assert "verify_due" in src
+    assert "record_from_events" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "_after_ingest_analyze" in ingest_src
     assert "refresh_published_official" in ingest_src
+
+
+def _chi_bars():
+    rows = []
+    for d, o, h, l, c, v in [
+        ("20260826", 2880, 3155, 2850, 3155, 5242),
+        ("20260827", 3305, 3440, 3265, 3340, 6114),
+        ("20260828", 3360, 3450, 3320, 3360, 4035),
+        ("20260831", 3280, 3425, 3250, 3425, 4468),
+        ("20260901", 3435, 3465, 3350, 3410, 3084),
+        ("20260902", 3365, 3490, 3280, 3310, 3136),
+        ("20260903", 3395, 3525, 3290, 3300, 4418),
+        ("20260904", 3465, 3570, 3410, 3570, 4515),
+        ("20260907", 3595, 3595, 3410, 3420, 3303),
+        ("20260908", 3455, 3455, 3245, 3285, 3350),
+        ("20260915", 3265, 3300, 3100, 3115, 3217),
+        ("20260917", 3285, 3350, 3175, 3185, 3034),
+        ("20260923", 3425, 3590, 3410, 3470, 2649),
+    ]:
+        rows.append(
+            {
+                "date": d,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": c,
+                "volume": v,
+            }
+        )
+    return rows
+
+
+def test_chi_gate_structure_vs_official_and_forecast(tmp_path):
+    from biaoke_forecast import glance_forecast
+    from biaoke_tape import structure_vs_spoken
+
+    db = str(tmp_path / "chi.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        CREATE TABLE daily_quotes (
+            date TEXT, stock_id TEXT, stock_name TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume INTEGER,
+            pct_change REAL,
+            PRIMARY KEY (date, stock_id)
+        )
+        """
+    )
+    for r in _chi_bars():
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,0)",
+            (
+                r["date"],
+                "3017",
+                "奇鋐",
+                r["open"],
+                r["high"],
+                r["low"],
+                r["close"],
+                r["volume"],
+            ),
+        )
+    conn.commit()
+    conn.close()
+    spoken = "奇鋐已經出現股票噴出前 關前整理量價結構確認完成訊號，下星期就開啟主升段。"
+    extra = structure_vs_spoken(spoken, "3017", _chi_bars())
+    assert "近窗" in extra
+    assert "3595" in extra
+    assert "關前" in extra
+    assert "不是轉弱K" in extra or "量縮" in extra
+    assert "待驗證" in extra
+    assert "不是買訊" in extra
+    n = record_events(
+        db,
+        [
+            {
+                "id": "184931175",
+                "date": "2026-09-24",
+                "time": "08:57",
+                "kind": "post",
+                "text": spoken,
+            }
+        ],
+    )
+    assert n >= 1
+    conn = sqlite3.connect(db)
+    note = conn.execute(
+        "SELECT note FROM biaoke_tape WHERE post_id='184931175' AND stock_id='3017'"
+    ).fetchone()[0]
+    conn.close()
+    assert "3590" in note
+    assert "3470" in note
+    assert "2649" in note
+    assert "未收盤" in note
+    assert "3595" in note
+    fc = glance_forecast(db, "3017")
+    assert "關前" in fc
+    assert "對質" in fc or "還沒" in fc
+
+
+def test_named_stock_always_gets_window_even_without_keyword():
+    from biaoke_tape import structure_vs_spoken, window_vs_bars
+
+    win = window_vs_bars(_chi_bars())
+    assert "近窗" in win
+    assert "3595" in win
+    generic = structure_vs_spoken("今天特別關注這檔", "3017", _chi_bars())
+    assert "近窗" in generic
+    assert "不是買訊" in generic
 
 
 def test_c2_c3_without_dapan_word_still_tapes_twii(tmp_path):

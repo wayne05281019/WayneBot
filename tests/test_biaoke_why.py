@@ -325,27 +325,53 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "不准當已確認" in body or "如果句" in body
     assert "5／9" in body or "不數" in body
     assert "48157" in body
-    assert "未收" in body
+    assert "48024" in body
     assert "不是買訊" in body
+    assert "未收" not in body or "還沒這列" in body
     jian = lookup("健策是真突破")
     assert "3653" in jian
     assert "6410" in jian
     assert "滾量" in jian or "all in" in jian
-    chi = lookup("奇鋐關前整理")
+    chi = lookup("為何奇鋐下週要進入主升段")
     assert "3017" in chi
-    assert "3470" in chi
-    assert "下周二" in chi or "下星期二" in chi
+    assert "3595" in chi
+    assert "2649" in chi or "3470" in chi
+    assert "待驗證" in chi
+    assert "不是買訊" in chi
+    jian2 = lookup("健策是真突破")
+    assert "6095" in jian2
+    assert "6410" in jian2
+    yao = lookup("不太可能像聯發科一樣直接噴")
+    assert "1275" in yao
+    assert "1730" in yao or "1485" in yao
+    xin = lookup("全新並沒有這麼快")
+    assert "28618" in xin
+    assert "3310" in xin
     ccl = lookup("聯茂跳空漲停")
     assert "90%" in ccl or "90" in ccl
     assert "還沒這列" in ccl
     assert "台光電" in ccl
     assert "台燿" in ccl
+    yao = lookup("不太可能像聯發科一樣直接噴")
+    assert "台燿" in yao
+    assert "前高" in yao
+    xin = lookup("全新並沒有這麼快")
+    assert "全新" in xin
+    assert "ASIC" in xin or "散熱" in xin
     fake = lookup("跌到47000以下都是最後假跌破")
     assert "47000" in fake
     assert "44000" in fake
     four = lookup("四檔股票 2~3成")
     assert "中秋" in four
     assert "不是買訊" in four
+
+
+def test_why_accuracy_question_does_not_wait_for_reminder():
+    body = lookup("這次對質結果準確度如何")
+    assert "還沒到能講的那天" in body
+    assert "高低卡" in body
+    assert "不是買訊" in body
+    assert "5／9" in body or "不數" in body
 
 
 def test_catchup_has_sep23_main_not_passerby():
@@ -379,7 +405,10 @@ def test_catchup_has_sep24_main_not_passerby():
     assert "184931175" in ids
     assert "184931175:c184931175-117" in ids
     assert "184931175:c184931175-148" in ids
-    assert "184931175:c184931175-224" in ids
+    assert "184931175:c184931175-228-1" in ids
+    assert "184931175:c184931175-226-1" in ids
+    assert "184902216:c184902216-266" in ids
+    assert "184902216:c184902216-69-5" not in ids
     main = next(p for p in blob["posts"] if p["id"] == "184931175")
     assert "緩步上攻" in main["text"]
     assert "九組推升" in main["text"]

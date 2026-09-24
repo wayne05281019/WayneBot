@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
@@ -472,6 +473,11 @@ def _judge_stock(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
             bit = f"偏了：過了連點延長{_px(d)}，高{_px(hi)}"
         else:
             bit = f"後來收{_px(close)}"
+    elif key == "gate_break":
+        if hit_tgt():
+            bit = f"對得上：後來高{_px(hi)}有效碰到關前高{_px(target)}"
+        else:
+            bit = f"還沒過關前高{_px(target)}：後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
     else:
         bit = f"後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
     if not done:
@@ -729,6 +735,123 @@ def _refresh_twii_try_rates(store: str) -> None:
         conn.close()
 
 
+def record_spoken_path(
+    db_path: str,
+    sid: str,
+    *,
+    spoken: str,
+    bar: Dict[str, Any],
+    bars: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """把他還沒走完的關前／前高整理寫進演算，官方柱走完再對質。不是買訊。"""
+    sid = str(sid or "").strip()
+    blob = spoken or ""
+    as_of = _ymd((bar or {}).get("date"))
+    if not db_path or not sid or not as_of:
+        return {}
+    try:
+        last_c = float((bar or {}).get("close") or 0)
+    except (TypeError, ValueError):
+        last_c = 0.0
+    gate_h = 0.0
+    gate_l = 0.0
+    for b in list(bars or [])[:-1]:
+        try:
+            h = float(b.get("high") or 0)
+            lo = float(b.get("low") or 0)
+        except (TypeError, ValueError):
+            continue
+        if h > gate_h:
+            gate_h = h
+        if lo > 0 and (gate_l <= 0 or lo < gate_l):
+            gate_l = lo
+    rec: Dict[str, Any] = {}
+    if sid == "3017" and re.search(r"(關前整理|主升段)", blob) and gate_h > 0:
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 5,
+            "key": "gate_break",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "關前近高待有效過",
+            "label": "他原文關前整理完成、下星期二主升。待驗證有效過近高，不是保證、不是買訊。",
+        }
+    elif sid == "6274" and re.search(r"(前高|聯發科|噴)", blob) and gate_h > 0:
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 10,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "到前高後整理",
+            "label": "他原文不太可能像聯發科直接噴。待驗證，不是買訊。",
+        }
+    elif sid == "2455" and re.search(r"(沒有這麼快|沒這麼快)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 8,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h or None,
+            "spike_high": gate_h or None,
+            "spike_low": gate_l or None,
+            "mark": "還沒這麼快整理完成",
+            "label": "回測量縮買點要尾盤才知道。待驗證，不是買訊。",
+        }
+    elif gate_h > 0 and re.search(r"(主升|真突破|歷史新高|有效過)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 5,
+            "key": "gate_break",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "近高待有效過",
+            "label": "他原文過高／主升／突破。待驗證，不是保證、不是買訊。",
+        }
+    elif gate_h > 0 and re.search(r"(整理完成|關前|前高|量縮|不破|支撐|回測)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 8,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "整理／回測待驗證",
+            "label": "他原文整理或回測支撐。待驗證，不是買訊。",
+        }
+    if not rec:
+        return {}
+    rec.update(
+        {
+            "down_fut": None,
+            "up_fut": None,
+            "path_json": "[]",
+            "rays_json": "[]",
+            "verdict": "",
+            "created_at": _now(),
+        }
+    )
+    _upsert(db_path, rec)
+    return rec
+
+
 def glance_forecast(db_path: str, sid: str) -> str:
     """第④顆讀最近一次演算建檔＋對質。內部試畫不讀出來。"""
     if not db_path or not os.path.isfile(db_path) or not sid:
@@ -754,6 +877,41 @@ def glance_forecast(db_path: str, sid: str) -> str:
     else:
         bit += "；之後官方柱走完再對質"
     return bit
+
+
+def score_line(db_path: str) -> str:
+    """對質已走完的對／偏。內部試畫不計。不是買訊。"""
+    if not db_path or not os.path.isfile(db_path):
+        return ""
+    ensure_forecast_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            "SELECT verdict FROM biaoke_forecast WHERE kind!=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    hit = miss = pending = 0
+    for (ver,) in rows:
+        t = str(ver or "")
+        if "偏了" in t:
+            miss += 1
+        elif "對得上" in t and "還沒走完" not in t:
+            hit += 1
+        else:
+            pending += 1
+    n = hit + miss + pending
+    if n <= 0:
+        return ""
+    done = hit + miss
+    acc = f"{100.0 * hit / done:.0f}%" if done else "還沒有走完的樣本"
+    return (
+        f"演算對質 {hit}對／{miss}偏／{pending}還沒走完（n={n}，走完準確度{acc}）。"
+        "不是買訊，不准發明 5／9。"
+    )
 
 
 def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:

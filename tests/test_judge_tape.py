@@ -261,15 +261,12 @@ def test_leave_zero_pick_remembers_stable_pick_not_button_label(tmp_path, monkey
     assert engine.screen_leave_zero_pick("20260915", pick="2") == []
     store = store_path(db)
     conn = sqlite3.connect(store)
-    picks = {
-        str(p): str(k)
-        for k, p in conn.execute(
-            "SELECT kind, pick FROM live_judge WHERE kind='leave_zero'"
-        )
-    }
+    rows = conn.execute(
+        "SELECT kind, pick, sid FROM live_judge WHERE kind='leave_zero'"
+    ).fetchall()
     conn.close()
-    assert picks["z"] == "leave_zero"
-    assert picks["2"] == "leave_zero"
+    assert all(str(r[2] or "").strip() for r in rows)
+    picks = {str(p): str(k) for k, p, _sid in rows}
     assert "獲利為零" not in picks
     assert "脫離2" not in picks
     assert "剛脫離零" not in picks
@@ -369,16 +366,48 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
                     "dx_f_pct": 0.62,
                     "usdtwd_px": 31.763,
                     "usdtwd_pct": 0.08,
+                    "ixic_px": 22000.0,
+                    "ixic_pct": 0.8,
+                    "sox_px": 5400.0,
+                    "sox_pct": -0.4,
+                    "tsm_px": 185.0,
+                    "tsm_pct": 1.2,
                 },
                 ensure_ascii=False,
             ),
         ),
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS futures_daily (
+            date TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT 'TX',
+            session TEXT NOT NULL DEFAULT 'regular',
+            open REAL, high REAL, low REAL, close REAL NOT NULL,
+            volume INTEGER DEFAULT 0, pct_change REAL DEFAULT 0,
+            PRIMARY KEY (date, symbol, session)
+        )
+        """
+    )
+    for sid, sess, px in (
+        ("TX", "regular", 24000.0),
+        ("TX", "night", 23900.0),
+        ("TE", "regular", 15000.0),
+        ("TE", "night", 14950.0),
+    ):
+        conn.execute(
+            "INSERT OR REPLACE INTO futures_daily("
+            "date,symbol,session,open,high,low,close,volume,pct_change) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("20260915", sid, sess, px, px, px, px, 100, 0.1),
+        )
     conn.commit()
     conn.close()
     stats = snapshot_button_lists(db, "20260915")
     assert stats.get("market") == 1
     assert stats.get("outer") == 3
+    assert stats.get("fut") == 4
+    assert stats.get("us") == 3
     store = store_path(db)
     conn = sqlite3.connect(store)
     tw = conn.execute(
@@ -386,6 +415,12 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
     ).fetchone()
     outer = conn.execute(
         "SELECT sid, px, extra FROM live_judge WHERE kind='outer' AND sid!='' ORDER BY sid"
+    ).fetchall()
+    fut = conn.execute(
+        "SELECT sid, px FROM live_judge WHERE kind='fut' AND sid!='' ORDER BY sid"
+    ).fetchall()
+    us = conn.execute(
+        "SELECT sid, px, extra FROM live_judge WHERE kind='us' AND sid!='' ORDER BY sid"
     ).fetchall()
     conn.close()
     assert tw[0] == "TWII"
@@ -395,6 +430,13 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
     brent = json.loads(outer[0][2])
     assert abs(float(brent["c"]) - 97.47) < 0.01
     assert brent.get("src") == "outer"
+    assert [r[0] for r in fut] == ["_TE_D", "_TE_N", "_TX_D", "_TX_N"]
+    assert abs(float(fut[2][1]) - 24000.0) < 0.01
+    assert [r[0] for r in us] == ["_IXIC", "_SOX", "_TSMUS"]
+    ixic = json.loads(us[0][2])
+    assert abs(float(ixic["c"]) - 22000.0) < 0.01
+    assert abs(float(ixic["pct"]) - 0.8) < 0.01
+    assert ixic.get("src") == "us"
     src = Path("judge_tape.py").read_text(encoding="utf-8")
     assert "query1.finance" not in src
     assert "fetch_outer_tape" not in src
@@ -410,10 +452,102 @@ def test_agents_silent_record_is_rank_three():
     assert "對話不准報" in text
     assert "還沒做／做到一半" in text
     assert "明確優化狀態" in text
+    assert "近窗" in text
+    assert "不准等使用者提醒才記" in text
+    assert "能講才講（B）" in text
+    assert "空名單／空代號不算有記" in text
+    assert "對後續判斷／對質有幫助的官方收才凍" in text
+    assert "對質結果要講" not in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
     assert 0 < i3 < i_silent < i4
+
+
+def test_empty_list_is_not_a_recorded_day(tmp_path):
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.0}, "20260915")
+    n = remember_rows(db, "leave_zero", [], as_of="20260915", pick="z", src="radar")
+    assert n == 0
+    store = store_path(db)
+    assert not Path(store).is_file() or sqlite3.connect(store).execute(
+        "SELECT COUNT(*) FROM live_judge"
+    ).fetchone()[0] == 0
+
+
+def test_snapshot_falls_back_to_screen_picks_with_real_sids(tmp_path):
+    from judge_tape import snapshot_button_lists
+    from screen_review import save_screen_picks
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"2330": 900.0, "2454": 1400.0}, "20260915")
+    save_screen_picks(
+        db,
+        "20260915",
+        {
+            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 900.0}],
+            "golden_buy": [{"stock_id": "2454", "stock_name": "聯發科", "close": 1400.0}],
+        },
+    )
+    stats = snapshot_button_lists(db, "20260915")
+    assert stats.get("leave_zero") == 1
+    assert stats.get("golden_buy") == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    rows = conn.execute(
+        "SELECT kind, sid, extra FROM live_judge WHERE pick='rule' AND sid!=''"
+    ).fetchall()
+    conn.close()
+    by_kind = {k: (sid, extra) for k, sid, extra in rows}
+    assert by_kind["leave_zero"][0] == "2330"
+    extra = json.loads(by_kind["leave_zero"][1])
+    assert extra["c"] == 900.0
+    assert extra["o"] == 900.0
+    assert extra["h"] == 900.0
+    assert extra["l"] == 900.0
+    assert extra["v"] == 8000
+    assert extra.get("src") == "picks"
+    assert by_kind["golden_buy"][0] == "2454"
+
+
+def test_leave_zero_radar_snapshot_remembers_real_sids(tmp_path, monkeypatch):
+    from judge_tape import _snapshot_leave_zero_picks
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4}, "20260915")
+
+    class FakeEngine:
+        def __init__(self, _db):
+            pass
+
+        def _load_profit_scan_frames(self, _day):
+            return ({"1101": None}, set())
+
+        def _screen_leave_zero_from_profit(self, _day, **kwargs):
+            if kwargs.get("mode") == "zero":
+                return [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]
+            return []
+
+    monkeypatch.setattr("screening_engine.ScreeningEngine", FakeEngine)
+    stats = _snapshot_leave_zero_picks(db, "20260915")
+    assert stats.get("leave_zero_z") == 1
+    assert stats.get("leave_zero_1") == 0
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    row = conn.execute(
+        "SELECT sid, pick, extra FROM live_judge WHERE kind='leave_zero' AND sid!=''"
+    ).fetchone()
+    blanks = conn.execute(
+        "SELECT COUNT(*) FROM live_judge WHERE sid=''"
+    ).fetchone()[0]
+    conn.close()
+    assert row[0] == "1101"
+    assert row[1] == "z"
+    extra = json.loads(row[2])
+    assert extra["c"] == 50.4
+    assert extra["v"] == 8000
+    assert extra.get("src") == "radar"
+    assert blanks == 0
 
 
 def test_snapshot_skips_screenshot_and_telegram():

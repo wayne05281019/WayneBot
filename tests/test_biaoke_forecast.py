@@ -97,6 +97,30 @@ def test_record_stock_pending_then_hits_target(tmp_path):
     assert "還沒走完" not in g1
 
 
+def test_score_line_counts_hit_miss_pending(tmp_path):
+    from biaoke_forecast import score_line
+
+    rows = _wash_rows()
+    db = str(tmp_path / "sc.db")
+    _seed_quotes(db, rows)
+    rec = record_stock(db, "3035", rows)
+    last = date(int(rec["as_of"][:4]), int(rec["as_of"][4:6]), int(rec["as_of"][6:8]))
+    conn = sqlite3.connect(db)
+    for i in range(10):
+        d = (last + timedelta(days=i + 1)).strftime("%Y%m%d")
+        conn.execute(
+            "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,0)",
+            (d, "3035", "智原", 140, 150, 138, 149, 1800),
+        )
+    conn.commit()
+    conn.close()
+    verify_due(db, "3035")
+    line = score_line(db)
+    assert "對" in line
+    assert "n=" in line
+    assert "不是買訊" in line
+
+
 def _seed_twii(db: str, rows, *, close_last=None):
     conn = sqlite3.connect(db)
     conn.execute(
