@@ -1255,14 +1255,19 @@ class DataFetcher:
             holes = self.refill_coverage_holes(lookback=25)
             missing = self.patch_missing_equity_quotes(lookback=20)
             paired = self.sync_paired_markets()
+            cal = self._fill_missing_weekdays(end_date, lookback=40, min_rows=1500)
             filled = list(thin)
             for ds in holes:
+                if ds not in filled:
+                    filled.append(ds)
+            for ds in cal:
                 if ds not in filled:
                     filled.append(ds)
             return {
                 "from": latest, "to": end_date, "filled": filled, "skipped": [],
                 "note": "已是最新", "refilled_thin": thin, "coverage_holes": holes,
                 "missing_equities": missing,
+                "calendar_gaps": cal,
                 "paired": paired,
             }
         days = 0
@@ -1287,6 +1292,10 @@ class DataFetcher:
                 filled.append(ds)
         holes = self.refill_coverage_holes(lookback=25)
         for ds in holes:
+            if ds not in filled:
+                filled.append(ds)
+        cal = self._fill_missing_weekdays(end_date, lookback=40, min_rows=1500)
+        for ds in cal:
             if ds not in filled:
                 filled.append(ds)
         missing = self.patch_missing_equity_quotes(lookback=20)
@@ -1445,6 +1454,50 @@ class DataFetcher:
             if got > 50:
                 filled.append(ds)
             time.sleep(0.4)
+        return filled
+
+    def _list_missing_weekday_dates(self, end_date: str, lookback: int = 40, min_rows: int = 1500) -> list:
+        """平日整日沒列或檔數過少。最新日已在也不准跳過中間洞（9/24 有、9/22 沒有）。"""
+        end_date = str(end_date or "").replace("-", "")[:8]
+        if len(end_date) != 8 or not end_date.isdigit():
+            return []
+        try:
+            cur = datetime.strptime(end_date, "%Y%m%d")
+        except ValueError:
+            return []
+        want: list = []
+        lim = max(3, int(lookback))
+        while len(want) < lim:
+            if cur.weekday() < 5:
+                want.append(cur.strftime("%Y%m%d"))
+            cur -= timedelta(days=1)
+            if cur.year < 2020:
+                break
+        want.reverse()
+        conn = self.get_db_connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT replace(date,'-','') AS d, COUNT(*) AS n
+                FROM daily_quotes
+                WHERE replace(date,'-','') >= ? AND replace(date,'-','') <= ?
+                GROUP BY d
+                """,
+                (want[0], want[-1]),
+            ).fetchall() if want else []
+        finally:
+            conn.close()
+        have = {str(d): int(n or 0) for d, n in rows}
+        return [d for d in want if have.get(d, 0) < int(min_rows)]
+
+    def _fill_missing_weekdays(self, end_date: str, lookback: int = 40, min_rows: int = 1500) -> list:
+        holes = self._list_missing_weekday_dates(end_date, lookback=lookback, min_rows=min_rows)
+        filled = []
+        for ds in holes:
+            got = int(self.update_daily_market_data(ds) or 0)
+            if got > 50:
+                filled.append(ds)
+            time.sleep(0.35)
         return filled
 
     def _refill_thin_days(self, end_date: str, lookback: int = 25, min_rows: int = 1500) -> list:
