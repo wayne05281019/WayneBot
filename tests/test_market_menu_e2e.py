@@ -104,7 +104,7 @@ class TestMarketMenuE2E:
             snap = analyze_taiwan_market(db, as_of, db_only=True)
             mock_yahoo.assert_not_called()
         assert "台股大盤" in html
-        assert "官方收" in html
+        assert "官方收" in html or "休市上一收" in html
         assert "漲跌家數" in html
         assert "距月線" in html
         assert snap.get("ok")

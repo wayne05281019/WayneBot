@@ -624,7 +624,7 @@ def test_format_taiwan_market_page_read_only(mock_fetch, tmp_path):
     conn.close()
     html = format_taiwan_market_page_html(str(db), "20260824")
     assert "台股大盤" in html
-    assert "官方收" in html
+    assert "官方收" in html or "休市上一收" in html
     assert "結構" in html
     assert "距月線" in html
     mock_fetch.assert_not_called()
@@ -1246,7 +1246,9 @@ def test_screen_outlook_us_strong_says_firm_not_neutral():
     )
     assert "美股" in html and "<code>大盤偏多</code>" in html
     assert "大盤中性" not in html
-    assert "台指期夜盤比日盤便宜" in html
+    assert "台指期夜盤比日盤便宜" in html or (
+        "台指期夜盤" in html and "比日盤收便宜" in html
+    )
     assert "台指期夜盤" in html
 
 

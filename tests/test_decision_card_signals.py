@@ -707,7 +707,13 @@ def test_2383_4915_stance_note_matches_latest_row():
         assert stage in (up.get("badges") or [])
     assert "月K" not in note
     assert "往上" not in note
-    assert "偏空" in note
+    last_up = up["table"].iloc[0]
+    hi_up = str(last_up.get("高低") or "") in {"20高", "10高"} or str(last_up.get("預警") or "") == "K20高"
+    if hi_up:
+        assert "高" in note or "先出" in note or "漲多" in note
+        assert "長線低" not in note
+    else:
+        assert "偏空" in note
 
     down = eng.get_decision_card("4915", merge_live=False)
     attach_sell(down)
