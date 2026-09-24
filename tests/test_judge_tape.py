@@ -410,6 +410,9 @@ def test_agents_silent_record_is_rank_three():
     assert "對話不准報" in text
     assert "還沒做／做到一半" in text
     assert "明確優化狀態" in text
+    assert "近窗" in text
+    assert "不准等使用者提醒才記" in text
+    assert "對質結果要講" in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")

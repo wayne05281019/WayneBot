@@ -808,6 +808,34 @@ def record_spoken_path(
             "mark": "還沒這麼快整理完成",
             "label": "回測量縮買點要尾盤才知道。待驗證，不是買訊。",
         }
+    elif gate_h > 0 and re.search(r"(主升|真突破|歷史新高|有效過)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 5,
+            "key": "gate_break",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "近高待有效過",
+            "label": "他原文過高／主升／突破。待驗證，不是保證、不是買訊。",
+        }
+    elif gate_h > 0 and re.search(r"(整理完成|關前|前高|量縮|不破|支撐|回測)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 8,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "整理／回測待驗證",
+            "label": "他原文整理或回測支撐。待驗證，不是買訊。",
+        }
     if not rec:
         return {}
     rec.update(
@@ -849,6 +877,41 @@ def glance_forecast(db_path: str, sid: str) -> str:
     else:
         bit += "；之後官方柱走完再對質"
     return bit
+
+
+def score_line(db_path: str) -> str:
+    """對質已走完的對／偏。內部試畫不計。不是買訊。"""
+    if not db_path or not os.path.isfile(db_path):
+        return ""
+    ensure_forecast_table(db_path)
+    conn = sqlite3.connect(db_path, timeout=8.0)
+    try:
+        rows = conn.execute(
+            "SELECT verdict FROM biaoke_forecast WHERE kind!=?",
+            (KIND_TWII_TRY,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    hit = miss = pending = 0
+    for (ver,) in rows:
+        t = str(ver or "")
+        if "偏了" in t:
+            miss += 1
+        elif "對得上" in t and "還沒走完" not in t:
+            hit += 1
+        else:
+            pending += 1
+    n = hit + miss + pending
+    if n <= 0:
+        return ""
+    done = hit + miss
+    acc = f"{100.0 * hit / done:.0f}%" if done else "還沒有走完的樣本"
+    return (
+        f"演算對質 {hit}對／{miss}偏／{pending}還沒走完（n={n}，走完準確度{acc}）。"
+        "不是買訊，不准發明 5／9。"
+    )
 
 
 def record_from_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:

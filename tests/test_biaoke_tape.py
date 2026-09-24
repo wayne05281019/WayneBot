@@ -155,6 +155,8 @@ def test_ingest_hooks_tape_immediately():
     assert "queue_absorb_events" in src
     assert "record_neuron_events" in src
     assert "ingest_why_events" in src
+    assert "verify_due" in src
+    assert "record_from_events" in src
     ingest_src = inspect.getsource(__import__("biaoke_ingest").ingest_public_posts)
     assert "_after_ingest_analyze" in ingest_src
     assert "refresh_published_official" in ingest_src
@@ -224,6 +226,7 @@ def test_chi_gate_structure_vs_official_and_forecast(tmp_path):
     conn.close()
     spoken = "奇鋐已經出現股票噴出前 關前整理量價結構確認完成訊號，下星期就開啟主升段。"
     extra = structure_vs_spoken(spoken, "3017", _chi_bars())
+    assert "近窗" in extra
     assert "3595" in extra
     assert "關前" in extra
     assert "不是轉弱K" in extra or "量縮" in extra
@@ -255,6 +258,17 @@ def test_chi_gate_structure_vs_official_and_forecast(tmp_path):
     fc = glance_forecast(db, "3017")
     assert "關前" in fc
     assert "對質" in fc or "還沒" in fc
+
+
+def test_named_stock_always_gets_window_even_without_keyword():
+    from biaoke_tape import structure_vs_spoken, window_vs_bars
+
+    win = window_vs_bars(_chi_bars())
+    assert "近窗" in win
+    assert "3595" in win
+    generic = structure_vs_spoken("今天特別關注這檔", "3017", _chi_bars())
+    assert "近窗" in generic
+    assert "不是買訊" in generic
 
 
 def test_c2_c3_without_dapan_word_still_tapes_twii(tmp_path):

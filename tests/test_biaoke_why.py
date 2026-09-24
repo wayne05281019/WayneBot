@@ -366,6 +366,12 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "不是買訊" in four
 
 
+def test_why_accuracy_question_does_not_wait_for_reminder():
+    body = lookup("這次對質結果準確度如何")
+    assert "不是買訊" in body
+    assert "5／9" in body or "不數" in body
+
+
 def test_catchup_has_sep23_main_not_passerby():
     import json
     from pathlib import Path

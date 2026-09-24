@@ -1424,6 +1424,22 @@ def lookup(ask: str, *, limit: int = 4) -> str:
     if _ALIEN.search(q) and not re.search(r"(46506|47578|台光電|聯亞|細微波|飆客)", q):
         return "這不是飆客本人的聲音，不拿來當他的判斷。"
     bits: List[str] = []
+    if re.search(r"(準確度|對質結果|這次對了沒|學到什麼)", q):
+        try:
+            from config import get_db_path
+
+            from biaoke_forecast import score_line
+
+            line = score_line(get_db_path() or "")
+            if line:
+                bits.append(line)
+            else:
+                bits.append(
+                    "演算還沒有走完的對質樣本。抓文當下就對近窗官方柱，不准等提醒。"
+                    "不是買訊，不准發明 5／9。"
+                )
+        except Exception:
+            bits.append("演算對質這次讀不到。不是買訊。")
     try:
         from biaoke_wave import format_wave_eyes, format_wave_now, is_wave_question
 
