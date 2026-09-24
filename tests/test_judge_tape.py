@@ -261,15 +261,12 @@ def test_leave_zero_pick_remembers_stable_pick_not_button_label(tmp_path, monkey
     assert engine.screen_leave_zero_pick("20260915", pick="2") == []
     store = store_path(db)
     conn = sqlite3.connect(store)
-    picks = {
-        str(p): str(k)
-        for k, p in conn.execute(
-            "SELECT kind, pick FROM live_judge WHERE kind='leave_zero'"
-        )
-    }
+    rows = conn.execute(
+        "SELECT kind, pick, sid FROM live_judge WHERE kind='leave_zero'"
+    ).fetchall()
     conn.close()
-    assert picks["z"] == "leave_zero"
-    assert picks["2"] == "leave_zero"
+    assert all(str(r[2] or "").strip() for r in rows)
+    picks = {str(p): str(k) for k, p, _sid in rows}
     assert "獲利為零" not in picks
     assert "脫離2" not in picks
     assert "剛脫離零" not in picks
@@ -413,11 +410,98 @@ def test_agents_silent_record_is_rank_three():
     assert "近窗" in text
     assert "不准等使用者提醒才記" in text
     assert "能講才講（B）" in text
+    assert "空名單／空代號不算有記" in text
     assert "對質結果要講" not in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
     i_silent = text.find("### 默默落檔")
     assert 0 < i3 < i_silent < i4
+
+
+def test_empty_list_is_not_a_recorded_day(tmp_path):
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.0}, "20260915")
+    n = remember_rows(db, "leave_zero", [], as_of="20260915", pick="z", src="radar")
+    assert n == 0
+    store = store_path(db)
+    assert not Path(store).is_file() or sqlite3.connect(store).execute(
+        "SELECT COUNT(*) FROM live_judge"
+    ).fetchone()[0] == 0
+
+
+def test_snapshot_falls_back_to_screen_picks_with_real_sids(tmp_path):
+    from judge_tape import snapshot_button_lists
+    from screen_review import save_screen_picks
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"2330": 900.0, "2454": 1400.0}, "20260915")
+    save_screen_picks(
+        db,
+        "20260915",
+        {
+            "leave_zero": [{"stock_id": "2330", "stock_name": "台積電", "close": 900.0}],
+            "golden_buy": [{"stock_id": "2454", "stock_name": "聯發科", "close": 1400.0}],
+        },
+    )
+    stats = snapshot_button_lists(db, "20260915")
+    assert stats.get("leave_zero") == 1
+    assert stats.get("golden_buy") == 1
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    rows = conn.execute(
+        "SELECT kind, sid, extra FROM live_judge WHERE pick='rule' AND sid!=''"
+    ).fetchall()
+    conn.close()
+    by_kind = {k: (sid, extra) for k, sid, extra in rows}
+    assert by_kind["leave_zero"][0] == "2330"
+    extra = json.loads(by_kind["leave_zero"][1])
+    assert extra["c"] == 900.0
+    assert extra["o"] == 900.0
+    assert extra["h"] == 900.0
+    assert extra["l"] == 900.0
+    assert extra["v"] == 8000
+    assert extra.get("src") == "picks"
+    assert by_kind["golden_buy"][0] == "2454"
+
+
+def test_leave_zero_radar_snapshot_remembers_real_sids(tmp_path, monkeypatch):
+    from judge_tape import _snapshot_leave_zero_picks
+
+    db = str(tmp_path / "wayne_market.db")
+    _seed(db, {"1101": 50.4}, "20260915")
+
+    class FakeEngine:
+        def __init__(self, _db):
+            pass
+
+        def _load_profit_scan_frames(self, _day):
+            return ({"1101": None}, set())
+
+        def _screen_leave_zero_from_profit(self, _day, **kwargs):
+            if kwargs.get("mode") == "zero":
+                return [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]
+            return []
+
+    monkeypatch.setattr("screening_engine.ScreeningEngine", FakeEngine)
+    stats = _snapshot_leave_zero_picks(db, "20260915")
+    assert stats.get("leave_zero_z") == 1
+    assert stats.get("leave_zero_1") == 0
+    store = store_path(db)
+    conn = sqlite3.connect(store)
+    row = conn.execute(
+        "SELECT sid, pick, extra FROM live_judge WHERE kind='leave_zero' AND sid!=''"
+    ).fetchone()
+    blanks = conn.execute(
+        "SELECT COUNT(*) FROM live_judge WHERE sid=''"
+    ).fetchone()[0]
+    conn.close()
+    assert row[0] == "1101"
+    assert row[1] == "z"
+    extra = json.loads(row[2])
+    assert extra["c"] == 50.4
+    assert extra["v"] == 8000
+    assert extra.get("src") == "radar"
+    assert blanks == 0
 
 
 def test_snapshot_skips_screenshot_and_telegram():

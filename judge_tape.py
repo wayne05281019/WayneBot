@@ -262,23 +262,12 @@ def remember_rows(
         sid = str(raw.get("stock_id") or raw.get("code") or raw.get("sid") or "").strip()
         if sid:
             sids.append(sid)
+    if not sids:
+        return 0
     bars = _bars_on(market_db, sids, day)
     conn = sqlite3.connect(store, timeout=30.0)
     n = 0
     try:
-        if not items:
-            empty_extra = {"n": 0}
-            if src:
-                empty_extra["src"] = str(src)
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO live_judge(
-                    as_of, kind, pick, sid, name, px, profit, extra, ran_at
-                ) VALUES (?,?,?,?,?,?,?,?,?)
-                """,
-                (day, kind, tag, "", "", None, None, json.dumps(empty_extra, ensure_ascii=False), ran),
-            )
-            n = 1
         for raw in items:
             if not isinstance(raw, dict):
                 continue
@@ -352,6 +341,11 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
             src = "session"
     except Exception:
         results = {}
+    if not any(isinstance(results.get(b), list) and results.get(b) for b in _SCREEN_BUCKETS):
+        picked = _rows_from_screen_picks(market_db, day)
+        if picked:
+            results = picked
+            src = "picks"
     for bucket in _SCREEN_BUCKETS:
         rows = results.get(bucket) if isinstance(results.get(bucket), list) else []
         stats[bucket] = remember_rows(
@@ -407,6 +401,40 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     if not os.getenv("PYTEST_CURRENT_TEST"):
         stats.update(_snapshot_leave_zero_picks(market_db, day))
     return stats
+
+
+def _rows_from_screen_picks(market_db: str, day: str) -> Dict[str, List[Dict[str, Any]]]:
+    """海選當日有寄出／展示的名單。session 空時仍要確實記代號。"""
+    day = _ymd(day)
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    if not market_db or not os.path.isfile(market_db) or not day:
+        return out
+    conn = sqlite3.connect(market_db, timeout=8.0)
+    try:
+        rows = conn.execute(
+            """
+            SELECT bucket, stock_id, stock_name, pick_close
+            FROM screen_picks WHERE REPLACE(CAST(as_of AS TEXT),'-','')=?
+            """,
+            (day,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    for bucket, sid, name, close in rows:
+        key = str(bucket or "")
+        sid_s = str(sid or "").strip()
+        if key not in _SCREEN_BUCKETS or not sid_s:
+            continue
+        out.setdefault(key, []).append(
+            {
+                "stock_id": sid_s,
+                "stock_name": str(name or ""),
+                "close": close,
+            }
+        )
+    return out
 
 
 def _snapshot_dongzhu(market_db: str, day: str) -> int:
@@ -578,7 +606,9 @@ def _snapshot_leave_zero_picks(market_db: str, day: str) -> Dict[str, int]:
                     frames=frames,
                     em_ids=em_ids,
                 )
-            stats[f"leave_zero_{token}"] = len(rows or [])
+            stats[f"leave_zero_{token}"] = remember_rows(
+                market_db, "leave_zero", rows or [], as_of=day, pick=token, src="radar"
+            )
         except Exception:
             stats[f"leave_zero_{token}"] = remember_rows(
                 market_db, "leave_zero", [], as_of=day, pick=token, src="radar"
