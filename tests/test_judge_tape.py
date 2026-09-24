@@ -524,7 +524,7 @@ def test_leave_zero_radar_snapshot_remembers_real_sids(tmp_path, monkeypatch):
             return ({"1101": None}, set())
 
         def _screen_leave_zero_from_profit(self, _day, **kwargs):
-            if kwargs.get("mode") == "ago" and int(kwargs.get("days_ago") or -1) == 0:
+            if kwargs.get("mode") == "ago" and kwargs.get("days_ago") == 0:
                 return [{"stock_id": "1101", "stock_name": "台泥", "close": 50.4}]
             return []
 

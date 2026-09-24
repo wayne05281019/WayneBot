@@ -370,9 +370,9 @@ def _check_lens(feature: str, lens: str, src: str, intent_src: str) -> Dict[str,
 
     if lens == "layout_version":
         m = re.search(r'MENU_LAYOUT_VERSION = "(\d+)"', src)
-        if not m or m.group(1) != "29":
-            return _bad("版面不是 28")
-        return _ok("v28")
+        if not m or m.group(1) != "30":
+            return _bad("版面不是 30")
+        return _ok("v30")
 
     if lens == "slot_noop":
         if "MENU_BTN_LEAVE_ZERO" not in src:

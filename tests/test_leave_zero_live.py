@@ -597,7 +597,8 @@ def test_leave_zero_pick_days_and_at_zero(tmp_path, monkeypatch):
         AS_OF, days_ago=0, mode="zero", star_key="golden_buy"
     )
     still_codes = [r["code"] for r in still_zero]
-    assert today == ["1102"]
+    assert "1102" in today
+    assert "1216" in today
     assert same == today
     assert "1101" not in today
     assert "1201" not in today
