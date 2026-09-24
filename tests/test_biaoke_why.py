@@ -317,7 +317,7 @@ def test_why_sep23_asic_thread_vs_official_bars():
     assert "不是買訊" in hold
 
 
-def test_why_sep24_slow_up_vs_sep23_official_bars():
+def test_why_sep24_slow_up_vs_official_bars():
     body = lookup("目前大盤看起來是走緩步上攻")
     assert "184931175" in body
     assert "證據不夠" in body
@@ -327,15 +327,17 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "48157" in body
     assert "48024" in body
     assert "不是買訊" in body
-    assert "未收" not in body or "還沒這列" in body
+    assert "未收" not in body
     jian = lookup("健策是真突破")
     assert "3653" in jian
     assert "6410" in jian
+    assert "6920" in jian
     assert "滾量" in jian or "all in" in jian
     chi = lookup("為何奇鋐下週要進入主升段")
     assert "3017" in chi
     assert "3595" in chi
-    assert "2649" in chi or "3470" in chi
+    assert "3600" in chi
+    assert "3555" in chi
     assert "待驗證" in chi
     assert "不是買訊" in chi
     jian2 = lookup("健策是真突破")
@@ -343,13 +345,14 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "6410" in jian2
     yao = lookup("不太可能像聯發科一樣直接噴")
     assert "1275" in yao
-    assert "1730" in yao or "1485" in yao
+    assert "1730" in yao or "1530" in yao
     xin = lookup("全新並沒有這麼快")
     assert "28618" in xin
     assert "3310" in xin
     ccl = lookup("聯茂跳空漲停")
     assert "90%" in ccl or "90" in ccl
-    assert "還沒這列" in ccl
+    assert "595" in ccl
+    assert "6213" in ccl
     assert "台光電" in ccl
     assert "台燿" in ccl
     yao = lookup("不太可能像聯發科一樣直接噴")
@@ -364,6 +367,57 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     four = lookup("四檔股票 2~3成")
     assert "中秋" in four
     assert "不是買訊" in four
+    hold = lookup("抱ASIC、散熱過中秋")
+    assert "過中秋" in hold
+    assert "光通訊" in hold
+    fus = lookup("富世達沒有放入新F")
+    assert "6805" in fus
+    assert "2530" in fus
+    assert "畫線" in fus or "新 F" in fus or "新F" in fus
+    core = lookup("量價結構核心裸K看盤")
+    assert "裸K" in core
+    assert "量價結構" in core
+
+
+def test_why_sep21_rotate_vs_official_bars():
+    body = lookup("184846750 族群輪動")
+    assert "184846750" in body
+    assert "47718" in body
+    assert "3037" in body
+    assert "1020" in body
+    assert "7615" in body
+    assert "5010" in body
+    assert "不要亂追" in body or "空手" in body
+    assert "不是買訊" in body
+    assert "5／9" in body or "不數" in body
+    nest = lookup("最差就是三還在運行中")
+    assert "三還在運行" in nest
+    assert "不准發明" in nest or "5／9" in nest
+    wave = lookup("不要用無用的波浪")
+    assert "全新" in wave
+    assert "波浪" in wave
+
+
+def test_why_sep22_asic_ip_vs_official_bars():
+    body = lookup("創意今天一字鎖")
+    assert "184874343" in body
+    assert "8375" in body
+    assert "711" in body
+    assert "47800" in body
+    assert "如果句" in body
+    assert "不是買訊" in body
+    assert "5／9" in body or "不數" in body
+    ip = lookup("炒ASIC而不是其他IC設計")
+    assert "IP" in ip
+    assert "M31" in ip
+    rot = lookup("3轉4可能性最大")
+    assert "如果句" in rot
+    assert "不准當已確認" in rot
+    assert "abc" in rot
+    pcb = lookup("台光電整理時間縮短")
+    assert "下殺取量" in pcb
+    assert "2383" in pcb
+    assert "4860" in pcb
 
 
 def test_why_accuracy_question_does_not_wait_for_reminder():
