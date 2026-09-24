@@ -90,6 +90,9 @@ def test_agents_rank12_absorb_slots():
     assert "16:30、19:30、22:30" in blob
     assert "隔日 01:00" in blob
     assert "沒有 02:00 窗" in blob
+    assert "他自己講的全部都記" in blob
+    assert "不管在第幾層" in blob
+    assert "一／二／三層自回" not in blob
 
 
 def test_queue_saves_aux_before_neurons(tmp_path):
