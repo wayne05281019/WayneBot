@@ -317,6 +317,37 @@ def test_why_sep23_asic_thread_vs_official_bars():
     assert "不是買訊" in hold
 
 
+def test_why_sep24_slow_up_vs_sep23_official_bars():
+    body = lookup("目前大盤看起來是走緩步上攻")
+    assert "184931175" in body
+    assert "證據不夠" in body
+    assert "九組" in body
+    assert "不准當已確認" in body or "如果句" in body
+    assert "5／9" in body or "不數" in body
+    assert "48157" in body
+    assert "未收" in body
+    assert "不是買訊" in body
+    jian = lookup("健策是真突破")
+    assert "3653" in jian
+    assert "6410" in jian
+    assert "滾量" in jian or "all in" in jian
+    chi = lookup("奇鋐關前整理")
+    assert "3017" in chi
+    assert "3470" in chi
+    assert "下周二" in chi or "下星期二" in chi
+    ccl = lookup("聯茂跳空漲停")
+    assert "90%" in ccl or "90" in ccl
+    assert "還沒這列" in ccl
+    assert "台光電" in ccl
+    assert "台燿" in ccl
+    fake = lookup("跌到47000以下都是最後假跌破")
+    assert "47000" in fake
+    assert "44000" in fake
+    four = lookup("四檔股票 2~3成")
+    assert "中秋" in four
+    assert "不是買訊" in four
+
+
 def test_catchup_has_sep23_main_not_passerby():
     import json
     from pathlib import Path
@@ -335,3 +366,32 @@ def test_catchup_has_sep23_main_not_passerby():
     assert "步步大" not in "".join(
         str(p.get("text") or "") for p in blob["posts"] if str(p.get("id") or "").startswith("184902216")
     )
+
+
+def test_catchup_has_sep24_main_not_passerby():
+    import json
+    from pathlib import Path
+
+    blob = json.loads(
+        Path("docs/expert_notes/飆客/catchup.json").read_text(encoding="utf-8")
+    )
+    ids = [str(p.get("id") or "") for p in blob.get("posts") or []]
+    assert "184931175" in ids
+    assert "184931175:c184931175-117" in ids
+    assert "184931175:c184931175-148" in ids
+    assert "184931175:c184931175-224" in ids
+    main = next(p for p in blob["posts"] if p["id"] == "184931175")
+    assert "緩步上攻" in main["text"]
+    assert "九組推升" in main["text"]
+    assert main["layer"] == 0
+    thread = [
+        str(p.get("text") or "")
+        for p in blob["posts"]
+        if str(p.get("id") or "").startswith("184931175")
+    ]
+    joined = "".join(thread)
+    assert "47000" in joined
+    assert "聯茂" in joined
+    assert len(thread) >= 38
+    assert "建策噴了 直接飆大跪了" not in joined
+    assert "令媛復健" not in joined
