@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
@@ -472,6 +473,11 @@ def _judge_stock(row: Dict[str, Any], later: Sequence[Dict[str, Any]]) -> str:
             bit = f"偏了：過了連點延長{_px(d)}，高{_px(hi)}"
         else:
             bit = f"後來收{_px(close)}"
+    elif key == "gate_break":
+        if hit_tgt():
+            bit = f"對得上：後來高{_px(hi)}有效碰到關前高{_px(target)}"
+        else:
+            bit = f"還沒過關前高{_px(target)}：後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
     else:
         bit = f"後來高{_px(hi)}低{_px(lo)}收{_px(close)}"
     if not done:
@@ -727,6 +733,95 @@ def _refresh_twii_try_rates(store: str) -> None:
         pass
     finally:
         conn.close()
+
+
+def record_spoken_path(
+    db_path: str,
+    sid: str,
+    *,
+    spoken: str,
+    bar: Dict[str, Any],
+    bars: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """把他還沒走完的關前／前高整理寫進演算，官方柱走完再對質。不是買訊。"""
+    sid = str(sid or "").strip()
+    blob = spoken or ""
+    as_of = _ymd((bar or {}).get("date"))
+    if not db_path or not sid or not as_of:
+        return {}
+    try:
+        last_c = float((bar or {}).get("close") or 0)
+    except (TypeError, ValueError):
+        last_c = 0.0
+    gate_h = 0.0
+    gate_l = 0.0
+    for b in list(bars or [])[:-1]:
+        try:
+            h = float(b.get("high") or 0)
+            lo = float(b.get("low") or 0)
+        except (TypeError, ValueError):
+            continue
+        if h > gate_h:
+            gate_h = h
+        if lo > 0 and (gate_l <= 0 or lo < gate_l):
+            gate_l = lo
+    rec: Dict[str, Any] = {}
+    if sid == "3017" and re.search(r"(關前整理|主升段)", blob) and gate_h > 0:
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 5,
+            "key": "gate_break",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "關前近高待有效過",
+            "label": "他原文關前整理完成、下星期二主升。待驗證有效過近高，不是保證、不是買訊。",
+        }
+    elif sid == "6274" and re.search(r"(前高|聯發科|噴)", blob) and gate_h > 0:
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 10,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h,
+            "spike_high": gate_h,
+            "spike_low": gate_l or None,
+            "mark": "到前高後整理",
+            "label": "他原文不太可能像聯發科直接噴。待驗證，不是買訊。",
+        }
+    elif sid == "2455" and re.search(r"(沒有這麼快|沒這麼快)", blob):
+        rec = {
+            "kind": "stock",
+            "stock_id": sid,
+            "as_of": as_of,
+            "horizon": 8,
+            "key": "wait",
+            "last_close": last_c or None,
+            "target": gate_h or None,
+            "spike_high": gate_h or None,
+            "spike_low": gate_l or None,
+            "mark": "還沒這麼快整理完成",
+            "label": "回測量縮買點要尾盤才知道。待驗證，不是買訊。",
+        }
+    if not rec:
+        return {}
+    rec.update(
+        {
+            "down_fut": None,
+            "up_fut": None,
+            "path_json": "[]",
+            "rays_json": "[]",
+            "verdict": "",
+            "created_at": _now(),
+        }
+    )
+    _upsert(db_path, rec)
+    return rec
 
 
 def glance_forecast(db_path: str, sid: str) -> str:

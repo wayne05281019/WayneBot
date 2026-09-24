@@ -169,7 +169,155 @@ def official_for_post(db_path: str, sid: str, post_date: str) -> Tuple[Optional[
     return None, bool(day)
 
 
-def _note(name: str, spoken: str, bar: Optional[Dict[str, Any]], pinned: bool) -> str:
+def recent_quote_bars(db_path: str, sid: str, n: int = 30) -> List[Dict[str, Any]]:
+    """舊→新官方日 K。缺日不編。櫃買量欄失真的檔仍回高低收。"""
+    if not db_path or not os.path.isfile(db_path) or not sid or sid == "TWII":
+        return []
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    try:
+        rows = conn.execute(
+            "SELECT date, open, high, low, close, volume FROM daily_quotes "
+            "WHERE stock_id=? ORDER BY REPLACE(CAST(date AS TEXT),'-','') DESC LIMIT ?",
+            (sid, max(8, int(n))),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+    out: List[Dict[str, Any]] = []
+    for r in reversed(rows):
+        try:
+            out.append(
+                {
+                    "date": str(r[0] or ""),
+                    "open": float(r[1] or 0),
+                    "high": float(r[2] or 0),
+                    "low": float(r[3] or 0),
+                    "close": float(r[4] or 0),
+                    "volume": float(r[5] or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _fake_kind(bars: Sequence[Dict[str, Any]]) -> str:
+    if len(bars) < 8:
+        return ""
+    try:
+        from biaoke_vol_fake import classify_volume_fake
+
+        rows = [
+            (
+                str(b.get("date") or ""),
+                float(b.get("high") or 0),
+                float(b.get("low") or 0),
+                float(b.get("close") or 0),
+                float(b.get("volume") or 0),
+            )
+            for b in bars
+        ]
+        return str(classify_volume_fake(rows).get("kind") or "")
+    except Exception:
+        return ""
+
+
+def _prior_high(bars: Sequence[Dict[str, Any]]) -> Tuple[str, float]:
+    best_d, best_h = "", 0.0
+    for b in bars[:-1]:
+        try:
+            h = float(b.get("high") or 0)
+        except (TypeError, ValueError):
+            continue
+        if h > best_h:
+            best_h = h
+            best_d = str(b.get("date") or "")
+    return best_d, best_h
+
+
+def structure_vs_spoken(
+    spoken: str, sid: str, bars: Sequence[Dict[str, Any]], *, skip_vol: bool = False
+) -> str:
+    """用官方高低量重述他為何能這樣說。不准發明 5／9。不是買訊。"""
+    blob = spoken or ""
+    if len(bars) < 8:
+        return ""
+    last = bars[-1]
+    last_d = str(last.get("date") or "")
+    last_h = float(last.get("high") or 0)
+    last_l = float(last.get("low") or 0)
+    last_c = float(last.get("close") or 0)
+    last_v = last.get("volume")
+    gate_d, gate_h = _prior_high(bars)
+    kind = "" if skip_vol else _fake_kind(bars)
+    bits: List[str] = []
+    if sid == "3017" and re.search(r"(關前整理|主升段|下星期)", blob):
+        bits.append(
+            f"關前近高 {gate_d} 高{_px(gate_h)}；這根高{_px(last_h)}收{_px(last_c)}量"
+            f"{int(last_v) if last_v is not None else '—'}，還沒有效過那根高"
+        )
+        if kind == "dump":
+            bits.append("這根是爆量長上影＝轉弱K候選，關前完成這句對不上")
+        elif kind == "pause":
+            bits.append("這根爆量收在下半＝還要整理，主升還沒")
+        else:
+            bits.append("量沒爆、不是轉弱K，回測近高量縮＝他說的關前整理")
+        bits.append("下星期二主升＝待驗證有效過近高，不是保證")
+    elif sid == "3653" and re.search(r"(真突破|滾量上攻|整理完成)", blob):
+        bits.append(
+            f"前平台高 {gate_d} 高{_px(gate_h)}；這根高{_px(last_h)}收{_px(last_c)}"
+            + (
+                "收在當日高且收過前高＝他後來說的真突破"
+                if last_c >= gate_h * 0.997 and last_c >= last_h * 0.997
+                else "還沒用收盤確認過前高"
+            )
+        )
+        bits.append("盤中改口滾量上攻／不好操作，待驗證不是保證")
+    elif sid == "6274" and re.search(r"(前高|初步整理|聯發科|噴)", blob):
+        bits.append(
+            f"近窗高 {gate_d} 高{_px(gate_h)}；這根高{_px(last_h)}收{_px(last_c)}還在前高下"
+            "＝到前高後整理，不像聯發科已過高後噴。櫃買量欄不採"
+        )
+    elif sid == "2455" and re.search(r"(沒有這麼快|沒這麼快|量縮買點)", blob):
+        prior_v = [float(b.get("volume") or 0) for b in bars[-4:-1]]
+        peak_v = max(prior_v) if prior_v else 0
+        bits.append(
+            f"近幾根量高{_px(peak_v)}、這根量{_px(last_v)}收{_px(last_c)}高{_px(last_h)}"
+            "＝回測有沒有量縮還要看尾盤，他說還沒這麼快整理完成"
+        )
+    elif sid == "2368" and re.search(r"(整理完成|1245)", blob):
+        bits.append(
+            f"他點過的前高 1245；這根高{_px(last_h)}收{_px(last_c)}"
+            + ("還沒過 1245" if last_h < 1245 else "高已碰到 1245 附近再對轉弱K")
+        )
+    elif sid == "2383" and re.search(r"(不破|支撐|布局|整理)", blob):
+        low_d, low_v = "", 1e18
+        for b in bars:
+            try:
+                lv = float(b.get("low") or 0)
+            except (TypeError, ValueError):
+                continue
+            if 0 < lv < low_v:
+                low_v = lv
+                low_d = str(b.get("date") or "")
+        bits.append(
+            f"近窗低 {low_d} 低{_px(low_v)}；這根低{_px(last_l)}收{_px(last_c)}"
+            + ("沒破那根低" if last_l >= low_v * 0.998 else "這根低已低於近窗低")
+        )
+    if bits:
+        bits.append("不是買訊")
+    return "；".join(bits)
+
+
+def _note(
+    name: str,
+    spoken: str,
+    bar: Optional[Dict[str, Any]],
+    pinned: bool,
+    *,
+    extra: str = "",
+) -> str:
     bits: List[str] = []
     if pinned:
         bits.append(
@@ -191,6 +339,8 @@ def _note(name: str, spoken: str, bar: Optional[Dict[str, Any]], pinned: bool) -
         bits.append("原文跌破／站回，對這根官方高低收")
     if "跌停" in blob and pinned:
         bits.append("原文跌停是盤中說法，未收盤不當官方收")
+    if extra:
+        bits.append(extra)
     return "；".join(bits)
 
 
@@ -219,7 +369,24 @@ def record_events(db_path: str, events: Sequence[Dict[str, Any]]) -> int:
         hm = str(ev.get("time") or "")
         for sid, name in pairs:
             bar, pinned = official_for_post(db_path, sid, day)
-            note = _note(name, spoken, bar, pinned)
+            hist = recent_quote_bars(db_path, sid, 30) if sid != "TWII" else []
+            extra = structure_vs_spoken(
+                spoken, sid, hist, skip_vol=(sid == "6274")
+            )
+            note = _note(name, spoken, bar, pinned, extra=extra)
+            if extra and bar:
+                try:
+                    from biaoke_forecast import record_spoken_path
+
+                    record_spoken_path(
+                        db_path,
+                        sid,
+                        spoken=spoken,
+                        bar=bar,
+                        bars=hist,
+                    )
+                except Exception:
+                    pass
             rows.append(
                 (
                     pid,

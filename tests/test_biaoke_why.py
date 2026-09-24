@@ -332,10 +332,21 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "3653" in jian
     assert "6410" in jian
     assert "滾量" in jian or "all in" in jian
-    chi = lookup("奇鋐關前整理")
+    chi = lookup("為何奇鋐下週要進入主升段")
     assert "3017" in chi
-    assert "3470" in chi
-    assert "下周二" in chi or "下星期二" in chi
+    assert "3595" in chi
+    assert "2649" in chi or "3470" in chi
+    assert "待驗證" in chi
+    assert "不是買訊" in chi
+    jian2 = lookup("健策是真突破")
+    assert "6095" in jian2
+    assert "6410" in jian2
+    yao = lookup("不太可能像聯發科一樣直接噴")
+    assert "1275" in yao
+    assert "1730" in yao or "1485" in yao
+    xin = lookup("全新並沒有這麼快")
+    assert "28618" in xin
+    assert "3310" in xin
     ccl = lookup("聯茂跳空漲停")
     assert "90%" in ccl or "90" in ccl
     assert "還沒這列" in ccl
