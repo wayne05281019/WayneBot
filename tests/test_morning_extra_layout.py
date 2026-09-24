@@ -118,7 +118,9 @@ def test_hot_revenue_dashed_two_line_rows(monkeypatch):
     assert "＝＝月營收轉強＝＝" in html
     assert DASH_LINE in html
     assert "年增≥20%　且月增≥0" in html
-    assert "<code>2330</code> 台積電" in html
+    assert "<code>2330</code>" not in html
+    assert 'href="https://tw.stock.yahoo.com/quote/2330.TW"' in html
+    assert ">2330 台積電</a>" in html
     assert "年增 +25.5%　月增 +3.2%" in html
     assert "🔥" not in html
     title_lines = [ln for ln in html.split("\n") if "月營收轉強" in ln]
