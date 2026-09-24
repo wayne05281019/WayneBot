@@ -217,6 +217,28 @@ def test_classify_jian_ce_typo_maps_to_3653():
     assert not any(h["sid"] == "3017" and h["neuron"] == "tape" for h in tape)
 
 
+def test_classify_sep24_fushi_and_midautumn():
+    hits = classify_spoken(
+        "富世達我剛剛看了一下，應該是奇鋐、建策、富世達 最難報得住的股票，"
+        "因此我昨天有想過此一問題，沒有將牠放入新F系列名單中，"
+        "因為連我都很難抱住，很明顯有點主力畫線讓他走，無法用技術分析抓波段買賣點。"
+    )
+    assert any(h["sid"] == "6805" and h["neuron"] == "hold" for h in hits)
+    assert any(h["sid"] == "6805" and h["neuron"] == "tape" for h in hits)
+    assert any(h["neuron"] == "field" and "新F" in (h.get("snippet") or "新F系列") for h in hits) or any(
+        h["neuron"] == "field" for h in hits
+    )
+    mid = classify_spoken("抱ASIC、散熱過中秋 就不用煩惱連假後可能會震盪，但光通訊就未必")
+    nids = {h["neuron"] for h in mid}
+    assert "hold" in nids
+    assert "field" in nids
+    rot = classify_spoken(
+        "先看 這波起漲9/15到今天應該是3轉4可能性最大(最差規劃波浪位階)，所以明天開始進行abc之後，還有最後的5要完成。"
+    )
+    assert any(h["neuron"] == "nest" for h in rot)
+    assert all(h["sid"] in ("", "TWII") for h in rot if h["neuron"] == "nest")
+
+
 def _quotes(conn, sid, name, close=100.0):
     conn.execute(
         "INSERT INTO daily_quotes VALUES (?,?,?,?,?,?,?,?,?)",
