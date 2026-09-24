@@ -145,6 +145,18 @@ _OUTER_MARKS = (
     ("_DXY", "美元指數", "dx_f_px", "dx_f_pct"),
     ("_USDTWD", "美元兌台幣", "usdtwd_px", "usdtwd_pct"),
 )
+# 大盤／飆大對質用：台指電子日夜盤＋那指／費半／台積已收。沒官方數就不寫。
+_FUT_MARKS = (
+    ("_TX_D", "TX", "regular", "台指日盤"),
+    ("_TX_N", "TX", "night", "台指夜盤"),
+    ("_TE_D", "TE", "regular", "電子日盤"),
+    ("_TE_N", "TE", "night", "電子夜盤"),
+)
+_US_LEAD_MARKS = (
+    ("_IXIC", "那指", "ixic_px", "ixic_pct"),
+    ("_SOX", "費半", "sox_px", "sox_pct"),
+    ("_TSMUS", "台積美股", "tsm_px", "tsm_pct"),
+)
 _LEAVE_ZERO_PICKS = ("z", "1", "2", "3")
 
 
@@ -221,6 +233,7 @@ def _row_bar(raw: Dict[str, Any]) -> Dict[str, float]:
         ("l", ("low", "l")),
         ("c", ("close", "c", "price", "px", "pick_close")),
         ("v", ("volume", "v")),
+        ("pct", ("pct_change", "pct", "pct_chg")),
     )
     for key, aliases in mapping:
         for a in aliases:
@@ -398,6 +411,8 @@ def snapshot_button_lists(market_db: str, as_of: str = "") -> Dict[str, int]:
     stats["dongzhu"] = _snapshot_dongzhu(market_db, day)
     stats["market"] = _snapshot_market(market_db, day)
     stats["outer"] = _snapshot_outer(market_db, day)
+    stats["fut"] = _snapshot_futures(market_db, day)
+    stats["us"] = _snapshot_us_lead(market_db, day)
     if not os.getenv("PYTEST_CURRENT_TEST"):
         stats.update(_snapshot_leave_zero_picks(market_db, day))
     return stats
@@ -570,6 +585,115 @@ def _snapshot_outer(market_db: str, day: str) -> int:
     return remember_rows(
         market_db, "outer", rows, as_of=day, pick="rule", src="outer"
     )
+
+
+def _snapshot_futures(market_db: str, day: str) -> int:
+    """台指／電子日盤＋夜盤。只讀已進庫官方柱，不准現場抓。缺就不寫。"""
+    day = _ymd(day)
+    rows: List[Dict[str, Any]] = []
+    if market_db and os.path.isfile(market_db) and day:
+        conn = sqlite3.connect(market_db, timeout=8.0)
+        try:
+            for sid, sym, sess, name in _FUT_MARKS:
+                try:
+                    hit = conn.execute(
+                        """
+                        SELECT open, high, low, close, volume, pct_change
+                        FROM futures_daily
+                        WHERE symbol=? AND session=?
+                          AND REPLACE(CAST(date AS TEXT),'-','')=?
+                        LIMIT 1
+                        """,
+                        (sym, sess, day),
+                    ).fetchone()
+                except sqlite3.Error:
+                    hit = None
+                if not hit:
+                    continue
+                close = _num(hit[3])
+                if close is None or close <= 0:
+                    continue
+                item: Dict[str, Any] = {
+                    "stock_id": sid,
+                    "stock_name": name,
+                    "open": hit[0],
+                    "high": hit[1],
+                    "low": hit[2],
+                    "close": close,
+                    "volume": hit[4],
+                }
+                pct = _num(hit[5])
+                if pct is not None:
+                    item["pct_change"] = pct
+                rows.append(item)
+        finally:
+            conn.close()
+    if not rows:
+        return remember_rows(market_db, "fut", [], as_of=day, pick="rule", src="fut")
+    return remember_rows(market_db, "fut", rows, as_of=day, pick="rule", src="fut")
+
+
+def _us_overnight_blob(market_db: str, day: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not market_db or not os.path.isfile(market_db) or not day:
+        return out
+    conn = sqlite3.connect(market_db, timeout=8.0)
+    try:
+        row = conn.execute(
+            "SELECT payload FROM us_overnight WHERE as_of=?",
+            (day,),
+        ).fetchone()
+        if row and row[0]:
+            try:
+                blob = json.loads(row[0])
+            except (TypeError, json.JSONDecodeError):
+                blob = {}
+            if isinstance(blob, dict):
+                out.update(blob)
+        try:
+            cols = conn.execute(
+                "SELECT ixic_pct, sox_pct, tsm_pct FROM us_overnight WHERE as_of=?",
+                (day,),
+            ).fetchone()
+        except sqlite3.Error:
+            cols = None
+        if cols:
+            if out.get("ixic_pct") is None and cols[0] is not None:
+                out["ixic_pct"] = cols[0]
+            if out.get("sox_pct") is None and cols[1] is not None:
+                out["sox_pct"] = cols[1]
+            if out.get("tsm_pct") is None and cols[2] is not None:
+                out["tsm_pct"] = cols[2]
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+    return out
+
+
+def _snapshot_us_lead(market_db: str, day: str) -> int:
+    """那指／費半／台積已收。對大盤與飆大隔夜說法。沒官方數就不寫。"""
+    day = _ymd(day)
+    snap = _us_overnight_blob(market_db, day)
+    rows: List[Dict[str, Any]] = []
+    for sid, name, px_key, pct_key in _US_LEAD_MARKS:
+        px = _num(snap.get(px_key))
+        pct = _num(snap.get(pct_key))
+        if (px is None or px <= 0) and pct is None:
+            continue
+        item: Dict[str, Any] = {
+            "stock_id": sid,
+            "stock_name": name,
+        }
+        if px is not None and px > 0:
+            item["close"] = px
+            item["px"] = px
+        if pct is not None:
+            item["pct_change"] = pct
+        rows.append(item)
+    if not rows:
+        return remember_rows(market_db, "us", [], as_of=day, pick="rule", src="us")
+    return remember_rows(market_db, "us", rows, as_of=day, pick="rule", src="us")
 
 
 def _snapshot_leave_zero_picks(market_db: str, day: str) -> Dict[str, int]:

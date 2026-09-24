@@ -366,16 +366,48 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
                     "dx_f_pct": 0.62,
                     "usdtwd_px": 31.763,
                     "usdtwd_pct": 0.08,
+                    "ixic_px": 22000.0,
+                    "ixic_pct": 0.8,
+                    "sox_px": 5400.0,
+                    "sox_pct": -0.4,
+                    "tsm_px": 185.0,
+                    "tsm_pct": 1.2,
                 },
                 ensure_ascii=False,
             ),
         ),
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS futures_daily (
+            date TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT 'TX',
+            session TEXT NOT NULL DEFAULT 'regular',
+            open REAL, high REAL, low REAL, close REAL NOT NULL,
+            volume INTEGER DEFAULT 0, pct_change REAL DEFAULT 0,
+            PRIMARY KEY (date, symbol, session)
+        )
+        """
+    )
+    for sid, sess, px in (
+        ("TX", "regular", 24000.0),
+        ("TX", "night", 23900.0),
+        ("TE", "regular", 15000.0),
+        ("TE", "night", 14950.0),
+    ):
+        conn.execute(
+            "INSERT OR REPLACE INTO futures_daily("
+            "date,symbol,session,open,high,low,close,volume,pct_change) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("20260915", sid, sess, px, px, px, px, 100, 0.1),
+        )
     conn.commit()
     conn.close()
     stats = snapshot_button_lists(db, "20260915")
     assert stats.get("market") == 1
     assert stats.get("outer") == 3
+    assert stats.get("fut") == 4
+    assert stats.get("us") == 3
     store = store_path(db)
     conn = sqlite3.connect(store)
     tw = conn.execute(
@@ -383,6 +415,12 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
     ).fetchone()
     outer = conn.execute(
         "SELECT sid, px, extra FROM live_judge WHERE kind='outer' AND sid!='' ORDER BY sid"
+    ).fetchall()
+    fut = conn.execute(
+        "SELECT sid, px FROM live_judge WHERE kind='fut' AND sid!='' ORDER BY sid"
+    ).fetchall()
+    us = conn.execute(
+        "SELECT sid, px, extra FROM live_judge WHERE kind='us' AND sid!='' ORDER BY sid"
     ).fetchall()
     conn.close()
     assert tw[0] == "TWII"
@@ -392,6 +430,13 @@ def test_snapshot_outer_and_market_without_yahoo(tmp_path):
     brent = json.loads(outer[0][2])
     assert abs(float(brent["c"]) - 97.47) < 0.01
     assert brent.get("src") == "outer"
+    assert [r[0] for r in fut] == ["_TE_D", "_TE_N", "_TX_D", "_TX_N"]
+    assert abs(float(fut[2][1]) - 24000.0) < 0.01
+    assert [r[0] for r in us] == ["_IXIC", "_SOX", "_TSMUS"]
+    ixic = json.loads(us[0][2])
+    assert abs(float(ixic["c"]) - 22000.0) < 0.01
+    assert abs(float(ixic["pct"]) - 0.8) < 0.01
+    assert ixic.get("src") == "us"
     src = Path("judge_tape.py").read_text(encoding="utf-8")
     assert "query1.finance" not in src
     assert "fetch_outer_tape" not in src
@@ -411,6 +456,7 @@ def test_agents_silent_record_is_rank_three():
     assert "不准等使用者提醒才記" in text
     assert "能講才講（B）" in text
     assert "空名單／空代號不算有記" in text
+    assert "對後續判斷／對質有幫助的官方收才凍" in text
     assert "對質結果要講" not in text
     i3 = text.find("## 3. 能量化就直接量化")
     i4 = text.find("## 4. 不准假資料")
