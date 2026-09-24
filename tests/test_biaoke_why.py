@@ -325,8 +325,9 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "不准當已確認" in body or "如果句" in body
     assert "5／9" in body or "不數" in body
     assert "48157" in body
-    assert "未收" in body
+    assert "48024" in body
     assert "不是買訊" in body
+    assert "未收" not in body or "還沒這列" in body
     jian = lookup("健策是真突破")
     assert "3653" in jian
     assert "6410" in jian
@@ -340,6 +341,12 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
     assert "還沒這列" in ccl
     assert "台光電" in ccl
     assert "台燿" in ccl
+    yao = lookup("不太可能像聯發科一樣直接噴")
+    assert "台燿" in yao
+    assert "前高" in yao
+    xin = lookup("全新並沒有這麼快")
+    assert "全新" in xin
+    assert "ASIC" in xin or "散熱" in xin
     fake = lookup("跌到47000以下都是最後假跌破")
     assert "47000" in fake
     assert "44000" in fake
@@ -379,7 +386,10 @@ def test_catchup_has_sep24_main_not_passerby():
     assert "184931175" in ids
     assert "184931175:c184931175-117" in ids
     assert "184931175:c184931175-148" in ids
-    assert "184931175:c184931175-224" in ids
+    assert "184931175:c184931175-228-1" in ids
+    assert "184931175:c184931175-226-1" in ids
+    assert "184902216:c184902216-266" in ids
+    assert "184902216:c184902216-69-5" not in ids
     main = next(p for p in blob["posts"] if p["id"] == "184931175")
     assert "緩步上攻" in main["text"]
     assert "九組推升" in main["text"]

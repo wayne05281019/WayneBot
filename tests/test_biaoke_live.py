@@ -163,10 +163,12 @@ def test_live_notes_always_has_latest_posts_and_replies():
     assert "金像電" in note or "台光電" in note or "聯亞" in note or "奇鋐" in note
     assert "創意" in note or "健策" in note or "聯發科" in note
     assert "45839" in note
-    assert "最新發文" in note
-    assert "最新樓下" in note
     assert "禁止 17000" in note
     assert "創意" in note
+    assert "緩步上攻" in note or "緩步攻堅" in note
+    dump = note.count("最新發文") + note.count("最新樓下")
+    assert dump >= 1
+    assert note.count("關前整理量價結構確認完成") <= 1
     wave = live_notes("", "目前大盤是屬於哪個位階 以波浪來看的話")
     assert "細微波" in wave or "48218" in wave
     assert "45839" in wave

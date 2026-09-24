@@ -96,6 +96,26 @@ def _clip(text: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _norm_spoken(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _already_said(text: str, seen: List[str]) -> bool:
+    """上半判斷鏈已寫過的原句，下半不准再貼一次。"""
+    n = _norm_spoken(text)
+    if len(n) < 16:
+        return False
+    windows = {n[i : i + 16] for i in range(0, len(n) - 15, 8)}
+    for prev in seen:
+        if not prev:
+            continue
+        if n in prev or (len(prev) >= 16 and prev in n):
+            return True
+        if any(w in prev for w in windows):
+            return True
+    return False
+
+
 def _clip_talk(text: str, n: int) -> str:
     """上一句給模型看時保留換行，才不會學成一長段講義。"""
     s = re.sub(r"[ \t]+", " ", str(text or "")).strip()
@@ -179,8 +199,12 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
             shown_replies.extend(rs[-per:])
         if len(shown_replies) > keep_r:
             shown_replies = shown_replies[-keep_r:]
+        seen_txt = [_norm_spoken("\n".join(bits))]
         for i, p in enumerate(latest_mains):
-            charts = post_chart_urls(str(p.get("text") or ""))
+            raw = str(p.get("text") or "")
+            if _already_said(raw, seen_txt):
+                continue
+            charts = post_chart_urls(raw)
             extra = f" 附圖{len(charts)}" if charts else ""
             clip_n = 980 if i == len(latest_mains) - 1 else 420
             bits.append(
@@ -190,19 +214,27 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 + str(p.get("time") or "")
                 + extra
                 + " "
-                + _clip(p.get("text") or "", clip_n)
+                + _clip(raw, clip_n)
             )
+            seen_txt.append(_norm_spoken(raw))
         for p in shown_replies:
+            raw = str(p.get("text") or "")
+            if _already_said(raw, seen_txt):
+                continue
             bits.append(
                 "最新樓下 "
                 + str(p.get("date") or "")
                 + " "
                 + str(p.get("time") or "")
                 + " "
-                + _clip(p.get("text") or "", 280)
+                + _clip(raw, 280)
             )
+            seen_txt.append(_norm_spoken(raw))
         for p in list(latest_mains) + list(shown_replies):
-            for hit in extract_index_levels(str(p.get("text") or "")):
+            raw = str(p.get("text") or "")
+            if _already_said(raw, seen_txt[1:]):
+                continue
+            for hit in extract_index_levels(raw):
                 bits.append(
                     "他原文點位 "
                     + str(p.get("date") or "")
