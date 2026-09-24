@@ -171,6 +171,14 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
         )
         keep_m, keep_r = (2, 16) if chained else (3, 16)
         latest_mains = list(mains[-keep_m:])
+        main_ids = [str(p.get("id") or "") for p in latest_mains if p.get("id")]
+        shown_replies: List[Any] = []
+        per = max(4, keep_r // max(1, len(main_ids)))
+        for mid in main_ids:
+            rs = [p for p in replies if str(p.get("parent") or "") == mid]
+            shown_replies.extend(rs[-per:])
+        if len(shown_replies) > keep_r:
+            shown_replies = shown_replies[-keep_r:]
         for i, p in enumerate(latest_mains):
             charts = post_chart_urls(str(p.get("text") or ""))
             extra = f" 附圖{len(charts)}" if charts else ""
@@ -184,7 +192,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 + " "
                 + _clip(p.get("text") or "", clip_n)
             )
-        for p in replies[-keep_r:]:
+        for p in shown_replies:
             bits.append(
                 "最新樓下 "
                 + str(p.get("date") or "")
@@ -193,7 +201,7 @@ def live_notes(db_path: str, ask: str, uid: str = "") -> str:
                 + " "
                 + _clip(p.get("text") or "", 280)
             )
-        for p in list(mains[-keep_m:]) + list(replies[-keep_r:]):
+        for p in list(latest_mains) + list(shown_replies):
             for hit in extract_index_levels(str(p.get("text") or "")):
                 bits.append(
                     "他原文點位 "
