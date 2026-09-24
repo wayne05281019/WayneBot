@@ -40,6 +40,10 @@ def test_named_market_links():
     assert "%5EIXIC" in html_named("那斯達克")
     assert html_named("沒這名") == "沒這名"
     assert NAMED_URLS["加權指數"].endswith("%5ETWII")
+    assert html_named("收盤").startswith("<a href=")
+    assert "%5ETWII" in html_named("收盤")
+    assert html_named("當沖").startswith("<a href=")
+    assert html_named("黃金買點").startswith("<a href=")
     assert html_href("https://example.com/x", "夜盤") == '<a href="https://example.com/x">夜盤</a>'
 
 

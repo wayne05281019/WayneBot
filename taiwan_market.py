@@ -1403,16 +1403,14 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
     basis = snap.get("basis_pct")
     lead = snap.get("futures_lead") or {}
     fut_close = float(fut["close"])
-    parts = [f"台指期 {_page_b(f'{fut_close:,.0f}')}"]
+    parts = [f"{_brief_lab('台指期', kind='tx')} {_page_b(f'{fut_close:,.0f}')}"]
     if basis is not None:
         mag = abs(float(basis))
-        if float(basis) >= 0:
-            parts.append(f"比現貨貴 {mag:.2f}%")
-        else:
-            parts.append(f"比現貨便宜 {mag:.2f}%")
+        side = "比現貨貴" if float(basis) >= 0 else "比現貨便宜"
+        parts.append(f"{_brief_lab(side, kind='tx')} {_page_b(f'{mag:.2f}%')}")
     oi = int(fut.get("open_interest") or 0)
     if oi > 0:
-        parts.append(f"未平倉 {oi:,}口")
+        parts.append(f"{_brief_lab('未平倉', kind='tx')} {_page_b(f'{oi:,}口')}")
     line = "　".join(parts)
     f_date = str(snap.get("futures_as_of") or fut.get("date") or "")
     ref = str(snap.get("as_of") or "")
@@ -1420,7 +1418,8 @@ def _format_futures_line(snap: Dict[str, Any]) -> Optional[str]:
         line += f"（{f_date}）"
     if lead.get("sample_n", 0) >= 5:
         line += (
-            f"\n近20個下跌日　{lead.get('label', '同步')}"
+            f"\n{_brief_lab('近20個下跌日', kind='tx')}　"
+            f"{_brief_lab(str(lead.get('label') or '同步'), kind='tx')}"
             f"（期貨{lead.get('futures_lead_down', 0)}／現貨{lead.get('spot_lead_down', 0)}）"
         )
     return line
@@ -1466,25 +1465,32 @@ def _format_futures_night_line(
     if not night or not night.get("close"):
         return None
     close = float(night["close"])
-    parts = [f"{label} {_page_b(f'{close:,.0f}')}"]
+    kind = "txn" if "夜" in str(label or "") else "tx"
+    parts = [f"{_brief_lab(label, kind=kind)} {_page_b(f'{close:,.0f}')}"]
     day_close = float((day or {}).get("close") or 0)
     if day_close > 0:
         diff = (close - day_close) / day_close * 100.0
         mag = abs(diff)
-        parts.append(f"比日盤收{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+        side = "比日盤收貴" if diff >= 0 else "比日盤收便宜"
+        parts.append(f"{_brief_lab(side, kind=kind)} {_page_b(f'{mag:.2f}%')}")
     if spot_close > 0:
         diff = (close - spot_close) / spot_close * 100.0
         mag = abs(diff)
-        parts.append(f"比現貨{'貴' if diff >= 0 else '便宜'} {mag:.2f}%")
+        side = "比現貨貴" if diff >= 0 else "比現貨便宜"
+        parts.append(f"{_brief_lab(side, kind=kind)} {_page_b(f'{mag:.2f}%')}")
     op, hi, lo = float(night.get("open") or 0), float(night.get("high") or 0), float(night.get("low") or 0)
     if op > 0 and hi > 0 and lo > 0:
-        parts.append(f"開 {op:,.0f}　高 {hi:,.0f}　低 {lo:,.0f}")
+        parts.append(
+            f"{_brief_lab('開', kind=kind)} {_page_b(f'{op:,.0f}')}　"
+            f"{_brief_lab('高', kind=kind)} {_page_b(f'{hi:,.0f}')}　"
+            f"{_brief_lab('低', kind=kind)} {_page_b(f'{lo:,.0f}')}"
+        )
     vol = int(night.get("volume") or 0)
     if vol > 0:
-        parts.append(f"成交 {vol:,}口")
+        parts.append(f"{_brief_lab('成交', kind=kind)} {_page_b(f'{vol:,}口')}")
     oi = int(night.get("open_interest") or 0)
     if oi > 0:
-        parts.append(f"未平倉 {oi:,}口")
+        parts.append(f"{_brief_lab('未平倉', kind=kind)} {_page_b(f'{oi:,}口')}")
     line = "　".join(parts)
     n_date = str(night.get("date") or "")
     d_date = str((day or {}).get("date") or "")
@@ -1521,6 +1527,54 @@ def _page_b(text: str) -> str:
     from tg_layout import html_face
 
     return html_face(text)
+
+
+def _brief_lab(label: str, *, kind: str = "twii") -> str:
+    """加權研究左邊名稱＝藍字超連結。已登錄走 NAMED_URLS，其餘對官方頁。"""
+    from stock_links import (
+        MI_INDEX_URL,
+        NAMED_URLS,
+        T86_URL,
+        TWII_QUOTE_URL,
+        TX_DAY_URL,
+        TX_NIGHT_URL,
+        html_named,
+    )
+    from tg_layout import html_href
+
+    lab = str(label or "").strip()
+    if not lab:
+        return ""
+    if lab in NAMED_URLS:
+        return html_named(lab)
+    url = {
+        "twii": TWII_QUOTE_URL,
+        "tx": TX_DAY_URL,
+        "txn": TX_NIGHT_URL,
+        "t86": T86_URL,
+        "mi": MI_INDEX_URL,
+    }.get(kind) or TWII_QUOTE_URL
+    return html_href(url, lab)
+
+
+def _market_bucket_face(bucket: str) -> str:
+    """海選桶內部鍵改畫面中文，再掛藍連結。不准把 day_trade 原文丟上話筒。"""
+    from screening_engine import LINE_BUCKET_TITLES
+
+    raw = str(bucket or "").strip()
+    aliases = {
+        "重點觀察": "還在零",
+        "隔夜": "隔日沖",
+        "overnight": "隔日沖",
+        "day_trade": "當沖",
+        "golden_buy": "還在零",
+        "leave_zero": "黃金買點",
+    }
+    zh = LINE_BUCKET_TITLES.get(raw) or aliases.get(raw) or raw
+    zh = aliases.get(zh, zh)
+    if re.fullmatch(r"[A-Za-z0-9_]+", zh):
+        zh = aliases.get(zh, zh)
+    return _brief_lab(zh, kind="twii")
 
 
 def _page_kv(label: str, value_html: str) -> str:
@@ -3942,20 +3996,20 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     fr_light = _falling_risk_light(int(snap.get("falling_risk") or 0))
     nums = [
         "＝＝台灣加權指數研究＝＝",
-        f"收盤　{_page_b(snap['close'])}",
+        f"{_brief_lab('收盤')}　{_page_b(snap['close'])}",
         *pack_phone_bits(
-            f"5日均　{_page_b(snap.get('ma5') or snap['ma20'])}",
-            f"月線　{_page_b(snap['ma20'])}",
-            f"季線　{_page_b(snap['ma60'])}",
+            f"{_brief_lab('5日均')}　{_page_b(snap.get('ma5') or snap['ma20'])}",
+            f"{_brief_lab('月線')}　{_page_b(snap['ma20'])}",
+            f"{_brief_lab('季線')}　{_page_b(snap['ma60'])}",
         ),
         *pack_phone_bits(
-            f"日　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
-            "5日　" + _page_b(f"{float(snap.get('chg5_pct') or 0):+.2f}%"),
-            f"20日　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
+            f"{_brief_lab('日')}　{_page_b(_fmt_signed_pct(snap.get('chg1_pct')))}",
+            f"{_brief_lab('5日')}　{_page_b(f'{float(snap.get('chg5_pct') or 0):+.2f}%')}",
+            f"{_brief_lab('20日')}　{_page_b(_fmt_signed_pct(snap.get('chg20_pct')))}",
         ),
         *pack_phone_bits(
-            f"距月線　{_page_b(_fmt_signed_pct(snap.get('vs_ma20_pct')))}",
-            f"距年高　{_page_b(_fmt_signed_pct(snap.get('vs_high52_pct')))}",
+            f"{_brief_lab('距月線')}　{_page_b(_fmt_signed_pct(snap.get('vs_ma20_pct')))}",
+            f"{_brief_lab('距年高')}　{_page_b(_fmt_signed_pct(snap.get('vs_high52_pct')))}",
         ),
         *wrap_phone_html_lines(_format_futures_line(snap) or ""),
         *wrap_phone_html_lines(
@@ -3975,22 +4029,23 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
             )
             or ""
         ),
-        "站上月線　"
+        _brief_lab("站上月線", kind="mi")
+        + "　"
         + _page_b(f"{float(snap['breadth_above_ma20']):.1f}%")
         + "（"
         + _page_b(str(snap["sample_n"]))
         + "檔）",
         *(
-            ["產業法人　" + _page_b(f"{float(snap['sector_flow_net']):+,.0f}張")]
+            [_brief_lab("產業法人", kind="t86") + "　" + _page_b(f"{float(snap['sector_flow_net']):+,.0f}張")]
             if snap.get("sector_flow_net") is not None
             else []
         ),
     ]
     regime = [
-        f"盤勢　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
-        f"細分盤勢　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
-        f"下跌風險　{fr_light} {_page_b(snap.get('falling_risk', 0))}",
-        f"高檔區　{_risk_zone_label(snap.get('risk_zone'))}",
+        f"{_brief_lab('盤勢')}　{_page_b(snap['regime_label'])}（把握 {_page_b(str(snap['confidence']) + '%')}）",
+        f"{_brief_lab('細分盤勢')}　{_regime_plus_traffic_light(snap.get('regime_plus'))} {_page_b(snap.get('regime_plus_label', '—'))}",
+        f"{_brief_lab('下跌風險')}　{fr_light} {_page_b(snap.get('falling_risk', 0))}",
+        f"{_brief_lab('高檔區')}　{_risk_zone_label(snap.get('risk_zone'))}",
         *wrap_phone_html_lines(_brief_note_tail(market_screening_note(snap))),
     ]
     blocks = ["\n".join(x for x in nums if x), "\n".join(x for x in regime if x)]
@@ -3998,20 +4053,20 @@ def format_taiwan_market_brief_html(db_path: str, as_of: Optional[str] = None) -
     cur = snap.get("regime")
     hits = [b for b in bt if b.get("regime") == cur and b.get("n", 0) >= 5]
     if hits:
-        bt_lines = ["同一盤勢隔日"]
+        bt_lines = [_brief_lab("同一盤勢隔日")]
         for b in hits[:3]:
             bt_lines.append(
-                f"{b['bucket']}　隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
             )
         blocks.append("\n".join(bt_lines))
     bt_rp = snap.get("backtest_regime_plus") or []
     cur_rp = snap.get("regime_plus")
     hits_rp = [b for b in bt_rp if b.get("regime_plus") == cur_rp and b.get("n", 0) >= 3]
     if hits_rp:
-        rp_lines = ["同一細分盤勢隔日"]
+        rp_lines = [_brief_lab("同一細分盤勢隔日")]
         for b in hits_rp[:3]:
             rp_lines.append(
-                f"{b['bucket']}　隔日{b['avg_next_pct']:+.1f}%（勝{b['hit_rate']:.0%}）"
+                f"{_market_bucket_face(b['bucket'])}　隔日{_page_b(f'{b['avg_next_pct']:+.1f}%')}（勝{b['hit_rate']:.0%}）"
             )
         blocks.append("\n".join(rp_lines))
     return join_dashed(*blocks)
