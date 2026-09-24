@@ -285,3 +285,53 @@ def test_why_unspoken_aux_stack():
     assert "不准寫死" in body
     assert "初步止訊號" in body or "還不到確認" in body
     assert is_why_query("有緣人那則在講什麼")
+
+
+def test_why_sep23_asic_thread_vs_official_bars():
+    body = lookup("目前台股最強主流是ASIC")
+    assert "184902216" in body
+    assert "創意" in body
+    assert "聯發科" in body
+    assert "8385" in body
+    assert "5185" in body
+    assert "48157" in body
+    assert "波浪理論" in body or "不准套個股" in body
+    assert "不是買訊" in body
+    assert "5／9" in body or "不數" in body
+    fser = lookup("新F系列名單")
+    assert "台積電" in fser
+    assert "台燿" in fser
+    assert "1440" in fser
+    assert "1460" in fser
+    jian = lookup("健策量價結構告訴我整理完成了")
+    assert "6410" in jian
+    assert "3653" in jian
+    cpo = lookup("CPO現在的主角是大立光")
+    assert "上詮" in cpo
+    assert "6190" in cpo or "6470" in cpo
+    kin = lookup("金像電量價結構就是告訴我已經整理完成")
+    assert "1140" in kin
+    assert "1245" in kin
+    hold = lookup("不太可能整理超過2個月")
+    assert "2～3" in hold or "2~3" in hold
+    assert "不是買訊" in hold
+
+
+def test_catchup_has_sep23_main_not_passerby():
+    import json
+    from pathlib import Path
+
+    blob = json.loads(
+        Path("docs/expert_notes/飆客/catchup.json").read_text(encoding="utf-8")
+    )
+    ids = [str(p.get("id") or "") for p in blob.get("posts") or []]
+    assert "184902216" in ids
+    assert "184902216:c184902216-244" in ids
+    assert "184902216:c184902216-238" in ids
+    assert "184902216:c184902216-69-5" not in ids
+    main = next(p for p in blob["posts"] if p["id"] == "184902216")
+    assert "ASIC" in main["text"]
+    assert main["layer"] == 0
+    assert "步步大" not in "".join(
+        str(p.get("text") or "") for p in blob["posts"] if str(p.get("id") or "").startswith("184902216")
+    )
