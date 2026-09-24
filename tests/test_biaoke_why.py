@@ -407,11 +407,16 @@ def test_catchup_has_sep24_main_not_passerby():
     assert "184931175:c184931175-148" in ids
     assert "184931175:c184931175-228-1" in ids
     assert "184931175:c184931175-226-1" in ids
+    assert "184931175:c184931175-248" in ids
+    assert "184931175:c184931175-254-2" in ids
+    assert "184846750" in ids
+    assert "184874343:c184874343-143" in ids
     assert "184902216:c184902216-266" in ids
     assert "184902216:c184902216-69-5" not in ids
     main = next(p for p in blob["posts"] if p["id"] == "184931175")
     assert "緩步上攻" in main["text"]
     assert "九組推升" in main["text"]
+    assert "量價結構" in main["text"]
     assert main["layer"] == 0
     thread = [
         str(p.get("text") or "")
@@ -421,6 +426,7 @@ def test_catchup_has_sep24_main_not_passerby():
     joined = "".join(thread)
     assert "47000" in joined
     assert "聯茂" in joined
-    assert len(thread) >= 38
+    assert "富世達" in joined
+    assert len(thread) >= 44
     assert "建策噴了 直接飆大跪了" not in joined
     assert "令媛復健" not in joined
