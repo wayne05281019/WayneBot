@@ -56,18 +56,35 @@ def test_taiwan_market_brief_uses_dashed_phone_lines(monkeypatch):
             {"regime": "neutral", "bucket": "黃金買點", "n": 20, "avg_next_pct": 0.8, "hit_rate": 0.6},
             {"regime": "neutral", "bucket": "重點觀察", "n": 20, "avg_next_pct": 0.2, "hit_rate": 0.5},
         ],
+        "backtest_regime_plus": [
+            {"regime_plus": "range", "bucket": "day_trade", "n": 10, "avg_next_pct": 1.0, "hit_rate": 0.55},
+            {"regime_plus": "range", "bucket": "golden_buy", "n": 10, "avg_next_pct": -0.0, "hit_rate": 0.40},
+            {"regime_plus": "range", "bucket": "overnight", "n": 10, "avg_next_pct": 0.9, "hit_rate": 0.51},
+            {"regime_plus": "range", "bucket": "leave_zero", "n": 10, "avg_next_pct": -0.2, "hit_rate": 0.33},
+        ],
     }
     monkeypatch.setattr("taiwan_market.analyze_taiwan_market", lambda *_a, **_k: snap)
     html = format_taiwan_market_brief_html(":memory:", "20260919")
     assert "＝＝台灣加權指數研究＝＝" in html
     assert "📊" not in html
     assert DASH_LINE in html
-    assert "收盤　" in html
+    assert ">收盤</a>" in html
+    assert "href=" in html
     assert "同一盤勢隔日" in html
-    assert "黃金買點　隔日+0.8%（勝60%）" in html
-    assert "重點觀察　隔日+0.2%（勝50%）" in html
+    assert "day_trade" not in _plain(html)
+    assert "golden_buy" not in _plain(html)
+    assert "leave_zero" not in _plain(html)
+    assert "overnight" not in _plain(html)
+    assert "當沖" in html
+    assert "隔日沖" in html
+    assert "還在零" in html
+    assert "黃金買點" in html
+    assert ">黃金買點</a>" in html
+    assert re.search(r"黃金買點.*隔日", _plain(html))
+    assert re.search(r"還在零.*隔日", _plain(html))
+    assert "重點觀察" not in _plain(html)
     assert "箱型震盪：偏選股，不賭方向。" in html
-    assert sum(1 for ln in html.split("\n") if ln.startswith("盤勢　")) == 1
+    assert sum(1 for ln in html.split("\n") if ">盤勢</a>" in ln) == 1
     joined = html.replace("\n", "")
     assert "（勝60%）" in joined
     for ln in html.split("\n"):
@@ -101,7 +118,9 @@ def test_hot_revenue_dashed_two_line_rows(monkeypatch):
     assert "＝＝月營收轉強＝＝" in html
     assert DASH_LINE in html
     assert "年增≥20%　且月增≥0" in html
-    assert "<code>2330</code> 台積電" in html
+    assert "<code>2330</code>" not in html
+    assert 'href="https://tw.stock.yahoo.com/quote/2330.TW"' in html
+    assert ">2330 台積電</a>" in html
     assert "年增 +25.5%　月增 +3.2%" in html
     assert "🔥" not in html
     title_lines = [ln for ln in html.split("\n") if "月營收轉強" in ln]

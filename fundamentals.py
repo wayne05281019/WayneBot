@@ -804,6 +804,7 @@ def hot_revenue_names(db_path: str, min_yoy: float = 20.0, min_mom: float = 0.0,
 
 
 def format_hot_revenue_html(db_path: str) -> str:
+    from stock_links import html_stock_anchor
     from tg_layout import join_dashed
 
     rows = hot_revenue_names(db_path)
@@ -825,7 +826,7 @@ def format_hot_revenue_html(db_path: str) -> str:
     )
     body: list = []
     for r in rows:
-        body.append(f"• <code>{r['stock_id']}</code> {r['stock_name']}")
+        body.append("• " + html_stock_anchor(r["stock_id"], r["stock_name"], db_path))
         body.append(f"年增 {r['yoy_pct']:+.1f}%　月增 {r['mom_pct']:+.1f}%")
     return join_dashed(head, "\n".join(body))
 
