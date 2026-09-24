@@ -368,6 +368,8 @@ def test_why_sep24_slow_up_vs_sep23_official_bars():
 
 def test_why_accuracy_question_does_not_wait_for_reminder():
     body = lookup("這次對質結果準確度如何")
+    assert "還沒到能講的那天" in body
+    assert "高低卡" in body
     assert "不是買訊" in body
     assert "5／9" in body or "不數" in body
 
