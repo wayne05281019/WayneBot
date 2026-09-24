@@ -205,11 +205,11 @@ def next_tw_session_when(now=None) -> str:
 
 
 def leave_zero_closed_message(now=None) -> str:
-    """非盤中按獲利為零：不抓現價，改用官方收；可選脫離1–3。"""
+    """非盤中按剛脫離零：不抓現價，改用官方收。"""
     when = next_tw_session_when(now)
     return (
         "目前非盤中，不抓現價，名單用官方收。\n"
-        "可選脫離1／2／3。獲利為零＝獲利還是 0，觀察不是買。含興櫃，不限海選桶。\n"
+        "剛脫離零＝昨獲利貼零、今天離開 0。含興櫃，不限海選桶。\n"
         f"{when} 開盤後再按，才用現價複核。"
     )
 

@@ -31,7 +31,7 @@ def test_biaoke_button_is_plain_biaoda_top_right():
     assert MENU_ROW1[-3] == MENU_BTN_BIAOKE_FACE
     assert MENU_ROW2[-1] == MENU_BTN_DONGZHU
     assert MENU_ROW2[-2] == MENU_BTN_LEAVE_ZERO
-    assert MENU_BTN_LEAVE_ZERO == "獲利為零"
+    assert MENU_BTN_LEAVE_ZERO == "剛脫離零"
     assert MENU_BTN_DONGZHU == "洞燭先機"
     bot = WayneTelegramBot.__new__(WayneTelegramBot)
     kb = bot._reply_menu()
@@ -308,7 +308,7 @@ def test_biaoke_page_has_no_inside_menu():
     assert MENU_BTN_BIAOKE_FACE == "飆大"
     assert MENU_BTN_LEAVE_BIAOKE == "離開飆大"
     assert "\u20dd" not in MENU_BTN_BIAOKE_FACE
-    assert MENU_LAYOUT_VERSION == "29"
+    assert MENU_LAYOUT_VERSION == "30"
 
 
 def test_two_uids_both_enter_biaoke_chat_without_submenu():
