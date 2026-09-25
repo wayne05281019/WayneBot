@@ -64,17 +64,20 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
     conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute("PRAGMA busy_timeout=10000;")
-        df = pd.read_sql_query(
-            """
-            SELECT date, stock_name, open, high, low, close, volume
-            FROM daily_quotes
-            WHERE stock_id = ?
-            ORDER BY date DESC
-            LIMIT ?
-            """,
-            conn,
-            params=(sid, lim),
-        )
+        try:
+            df = pd.read_sql_query(
+                """
+                SELECT date, stock_name, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE stock_id = ?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                conn,
+                params=(sid, lim),
+            )
+        except Exception:
+            df = pd.DataFrame()
     finally:
         conn.close()
     source = "daily_quotes"
