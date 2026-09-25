@@ -30,7 +30,7 @@ from ex_rights import (
     latest_scale_ex as _latest_ex_event,
     load_scale_ex_events,
     official_scale_events,
-    scale_ex_verb as _ex_kind_verb,
+    phone_ex_verb,
     unexplained_gap_dates,
 )
 
@@ -183,8 +183,8 @@ def find_volume_zone(
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
     5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
-    6. 官方除權／除息／減資把價位尺度切開：壓撐只在最近一次除權息（含當日）之後的原柱裡找，
-       不准拿除息前的高去壓除息後的收。
+    6. 官方除權／除息把價位尺度切開：壓撐只在最近一次證交所／櫃買完成稿（含當日）之後的原柱裡找，
+       不准拿除息前的高去壓除息後的收。啟發式跳空不准當除權息切窗。
     """
     if work is None or getattr(work, "empty", True):
         return None
@@ -542,8 +542,8 @@ def vol_zone_photo_caption(
     on_ex = False
     last_d = _bar_ymd((last or {}).get("date"))
     zd = _bar_ymd((zone or {}).get("date"))
-    ev = _latest_ex_event(events, last_d or zd)
-    if ev and _bar_ymd(ev.get("ex_date")) in {zd, last_d}:
+    ev = _latest_ex_event(official_scale_events(events), last_d or zd)
+    if ev and phone_ex_verb((ev or {}).get("kind")) and _bar_ymd(ev.get("ex_date")) in {zd, last_d}:
         on_ex = True
     note = _ex_gap_note(events, gaps, last_d or zd, zd, voice="zone")
     pos = vol_zone_position_line(zone, last, card, bars=bars, on_ex=on_ex)
@@ -663,7 +663,9 @@ def _paint_volume_zone(
         ev = ex_by_date.get(_bar_ymd(view["date"].iloc[i]))
         if not ev:
             continue
-        verb = _ex_kind_verb(ev.get("kind")) or "除權息"
+        verb = phone_ex_verb(ev.get("kind"))
+        if not verb:
+            continue
         amt = 0.0
         try:
             amt = float(ev.get("right_plus_div") or 0)
@@ -847,16 +849,17 @@ def _paint_volume_zone(
     recent_days = {_bar_ymd(x) for x in view["date"].iloc[-5:].tolist()} if n else set()
     show_ex = bool(last_ev and ev_d and (ev_d in {spike_date, last_d} or ev_d in recent_days))
     if show_ex:
-        verb = _ex_kind_verb(last_ev.get("kind")) or "除權息"
-        amt = 0.0
-        try:
-            amt = float(last_ev.get("right_plus_div") or 0)
-        except (TypeError, ValueError):
+        verb = phone_ex_verb(last_ev.get("kind"))
+        if verb:
             amt = 0.0
-        ex_title = f"　{verb} {_md(last_ev.get('ex_date'))}"
-        if amt > 0:
-            ex_title += f" {_fmt_price(amt)}元"
-        ex_title += "（原柱不還原）"
+            try:
+                amt = float(last_ev.get("right_plus_div") or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+            ex_title = f"　{verb} {_md(last_ev.get('ex_date'))}"
+            if amt > 0:
+                ex_title += f" {_fmt_price(amt)}元"
+            ex_title += "（原柱不還原）"
     title = (
         f"{sid} {name}　大量區專圖（非買訊・{src_note}）　"
         f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
@@ -869,7 +872,7 @@ def _paint_volume_zone(
     fig.text(
         0.5,
         0.012,
-        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息／減資缺口是息差不是崩。"
+        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。除權／除息缺口是息差不是崩。"
         "高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
         ha="center",
         va="bottom",

@@ -40,6 +40,8 @@ def test_heuristic_split_persisted(tmp_path):
     upsert_heuristic_event(db, "1234", "20260815", 2.0, kind="分割")
     rows = load_ex_rights("1234", db)
     assert rows and float(rows[0]["factor"]) == 2.0
+    assert rows[0]["kind"] == "啟發式"
+    assert rows[0]["source"] == "heuristic_gap"
 
 
 def test_normalize_mild_split_gap():
@@ -57,6 +59,8 @@ def test_normalize_mild_split_gap():
     out, notes = normalize_ohlc(df, None)
     assert any("跳空還原" in n or "還原" in n for n in notes)
     assert not any("分割" in n for n in notes)
+    assert not any("官方除權息" in n for n in notes)
+    assert not any("除息" in n or "除權" in n for n in notes)
     assert float(out["close"].iloc[0]) > 150
 
 
@@ -87,3 +91,39 @@ def test_heuristic_does_not_clobber_official_ex(tmp_path):
     assert kind == "息"
     assert float(amt) == 4.0
     assert src == "TWT49U"
+
+
+def test_normalize_ohlc_heuristic_db_row_not_official_copy(tmp_path):
+    from ex_rights import upsert_events
+
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "9999",
+                "ex_date": "20260811",
+                "kind": "分割",
+                "factor": 2.0,
+                "source": "heuristic_gap",
+            }
+        ],
+    )
+    df = pd.DataFrame(
+        {
+            "date": ["20260810", "20260811", "20260812"],
+            "stock_id": ["9999"] * 3,
+            "open": [100.0, 200.0, 205.0],
+            "high": [102.0, 205.0, 208.0],
+            "low": [98.0, 198.0, 202.0],
+            "close": [100.0, 200.0, 206.0],
+            "volume": [1000.0, 500.0, 520.0],
+        }
+    )
+    _out, notes = normalize_ohlc(df, db)
+    blob = " ".join(notes)
+    assert "官方除權息" not in blob
+    assert "分割" not in blob
+    assert "除息" not in blob
+    assert "除權" not in blob
