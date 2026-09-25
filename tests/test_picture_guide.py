@@ -79,7 +79,7 @@ def test_nine_pages_large_type_and_no_emoji(tmp_path):
     assert "不卡 5%" in blob
     assert "不限海選桶" in blob
     assert "含興櫃" in blob
-    assert CACHE_VER == "v71"
+    assert CACHE_VER == "v72"
     assert "前8檔" in blob
     assert "昨獲利貼零" in blob
     assert "今天離開 0" in blob or "今離開 0" in blob
@@ -493,7 +493,7 @@ def test_wrap_line_keeps_period_and_closing_paren():
     assert any("00981A" in ln for ln in a)
     b = _wrap_line(
         dr,
-        "一次兩張放同一則縮圖（一張圖卡）：介紹圖／高低溫度卡。點開高畫質。產業鈕出產業圖（產業鏈小框）；導航圖鈕出 180 日高低。K線開奇摩股市同一檔日K。",
+        "一次兩張放同一則縮圖（一張圖卡）：介紹圖／高低溫度卡。點開高畫質。產業鈕出產業圖（產業鏈小框）；導航圖鈕出 180 日高低＋大量區（近窗爆大量日高低，非買訊）。K線開奇摩股市同一檔日K。",
         font,
         520,
         520,

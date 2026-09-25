@@ -1,7 +1,7 @@
 """
 WayneBot Telegram 操作層
 - 兩排主選單（輸入列旁邊四格鍵盤圖示）；直立式不再重複主選單按鈕
-- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝原版 180 日高低 PNG，「K線」＝奇摩股市同一檔日K
+- 打股票代號 → 介紹圖＋高低溫度卡一次兩張、點開高畫質。圖下「導航圖」＝180 日高低＋大量區（近窗爆大量日高低，非買訊），「K線」＝奇摩股市同一檔日K
 - 海選 / 當沖 / 隔日沖 / 剛脫離零 / 洞燭先機 / 持股 / 觀察 / 資金 / 連買區
 """
 from __future__ import annotations
@@ -722,7 +722,7 @@ class WayneTelegramBot:
             f"{title}\n此檔是<b>興櫃</b>（市場 {mkt}）。"
             "沒有上市櫃集合競價日 K，線圖用櫃買官方<b>日均價</b>／日最高／日最低。"
             "盤後 16:30 會把當天興櫃日表寫進獨立表，不混進上市櫃海選。"
-            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是原版 180 日高低圖，要看日K按「K線」（奇摩股市同一檔）。"
+            "三大法人表興櫃沒有就不顯示。有日均價序列就出介紹圖／高低卡；圖下「導航圖」是 180 日高低＋大量區（非買訊），要看日K按「K線」（奇摩股市同一檔）。"
         )
 
     def _cache_lookup_ctx(self, uid: str, code: str, ohlc) -> None:
@@ -5278,13 +5278,13 @@ class WayneTelegramBot:
                 await self._dismiss_lookup_fades(actor, roles={"ack", "wait"})
 
     async def _send_navigation_chart(self, message, code: str, uid: str = ""):
-        """按需產 180 日高低導航（重用剛查過的 _ohlc，免重跑決策卡）。"""
+        """按需產 180 日高低導航＋大量區（重用剛查過的 _ohlc，免重跑決策卡）。"""
         code = str(code or "").strip()
         uid = uid or self._uid_from_message(message)
         wait = None
         try:
             wait = await message.reply_text(
-                self._wait_bubble("導航圖進行中", 0, now="180日高低", fill_sec=30.0),
+                self._wait_bubble("導航圖進行中", 0, now="180日高低＋大量區", fill_sec=30.0),
                 parse_mode="HTML",
             )
         except Exception:
@@ -5350,7 +5350,10 @@ class WayneTelegramBot:
                     disable_web_page_preview=True,
                 )
                 return
-            cap = "180日高低導航：實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
+            cap = (
+                "180日高低導航＋大量區（近窗爆大量日高低＝壓／撐；桃色帶；非買訊）。"
+                "實心＝當日觸發；空心＝接近。高點紫／低點綠。要看日K按圖下「K線」（奇摩股市）。"
+            )
             for attempt in range(3):
                 try:
                     with open(self._prepare_lookup_album_photo(path), "rb") as f:

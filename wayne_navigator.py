@@ -4187,6 +4187,12 @@ def _nav_work_or_none(df: pd.DataFrame, already_normalized: bool = False):
 # 黃金買點進出箭頭：買＝藍向上、賣＝橙向下。比高低卡紫綠標清楚一點，不要巨大。
 _NAV_TRADE_BUY = "#1565C0"
 _NAV_TRADE_SELL = "#E64A19"
+# 大量區（近窗爆大量日高低）：桃色帶＋洋紅壓／綠撐。不是買訊。
+_NAV_VOL_ZONE_FILL = "#ffe0b2"
+_NAV_VOL_ZONE_PRESS = "#ad1457"
+_NAV_VOL_ZONE_HOLD = "#1b5e20"
+_NAV_VOL_ZONE_SPIKE = "#f9a825"
+_NAV_VOL_ZONE_LOOKBACK = 40
 
 
 def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
@@ -4209,6 +4215,119 @@ def _nav_trade_marks(work: pd.DataFrame, card: Optional[dict] = None):
     if buy_i is not None and buy_i == sell_i:
         buy_i = None
     return buy_i, sell_i
+
+
+def _nav_volume_zone(work: pd.DataFrame, *, lookback: int = _NAV_VOL_ZONE_LOOKBACK):
+    """近窗成交量最大那一根的高低＝大量區。官方柱；不是買訊、不發明 5／9。"""
+    if work is None or getattr(work, "empty", True):
+        return None
+    n = len(work)
+    if n < 1:
+        return None
+    halt = (
+        work["is_halt"].fillna(False).astype(bool)
+        if "is_halt" in work.columns
+        else pd.Series(False, index=work.index)
+    )
+    start = max(0, n - max(int(lookback or 0), 1))
+    best_i = None
+    best_v = -1.0
+    for i in range(start, n):
+        if bool(halt.iloc[i]):
+            continue
+        if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
+            continue
+        v = float(work["volume"].iloc[i] or 0)
+        if v > best_v:
+            best_v = v
+            best_i = i
+    if best_i is None or best_v <= 0:
+        return None
+    hi = float(work["high"].iloc[best_i] or 0)
+    lo = float(work["low"].iloc[best_i] or 0)
+    if hi <= 0 or lo <= 0 or hi < lo:
+        return None
+    return {
+        "i": int(best_i),
+        "date": str(work["date"].iloc[best_i] or ""),
+        "high": hi,
+        "low": lo,
+        "volume": best_v,
+    }
+
+
+def _paint_nav_volume_zone(ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = False) -> str:
+    """桃色大量區＋壓／撐標。回傳圖說短句（空＝沒畫）。ax2 有值才標量柱爆大量那一根。"""
+    zone = _nav_volume_zone(work)
+    if not zone:
+        return ""
+    i = int(zone["i"])
+    hi = float(zone["high"])
+    lo = float(zone["low"])
+    d = str(zone["date"] or "")
+    md = f"{d[4:6]}/{d[6:8]}" if len(d) >= 8 and d[:8].isdigit() else d
+    x0 = float(xs[i]) if i < len(xs) else 0.0
+    if ax1 is not None:
+        ax1.axhspan(lo, hi, color=_NAV_VOL_ZONE_FILL, alpha=0.38, zorder=1)
+        ax1.axhline(hi, color=_NAV_VOL_ZONE_PRESS, linewidth=1.55, zorder=5)
+        ax1.axhline(lo, color=_NAV_VOL_ZONE_HOLD, linewidth=1.55, zorder=5)
+        ax1.axvline(x0, color=_NAV_VOL_ZONE_SPIKE, linewidth=1.05, alpha=0.55, zorder=2)
+        lab_sz = 7.5 if compact else 9
+        ax1.text(
+            0.012,
+            hi,
+            f"大量區壓 {_fmt_price(hi)}",
+            transform=ax1.get_yaxis_transform(),
+            ha="left",
+            va="bottom",
+            fontproperties=_fp(lab_sz, "bold"),
+            color=_NAV_VOL_ZONE_PRESS,
+            zorder=8,
+            bbox=dict(
+                boxstyle="round,pad=0.15",
+                facecolor="#ffffff",
+                edgecolor=_NAV_VOL_ZONE_PRESS,
+                linewidth=0.55,
+                alpha=0.92,
+            ),
+        )
+        ax1.text(
+            0.012,
+            lo,
+            f"大量區撐 {_fmt_price(lo)}",
+            transform=ax1.get_yaxis_transform(),
+            ha="left",
+            va="top",
+            fontproperties=_fp(lab_sz, "bold"),
+            color=_NAV_VOL_ZONE_HOLD,
+            zorder=8,
+            bbox=dict(
+                boxstyle="round,pad=0.15",
+                facecolor="#ffffff",
+                edgecolor=_NAV_VOL_ZONE_HOLD,
+                linewidth=0.55,
+                alpha=0.92,
+            ),
+        )
+    if ax2 is not None and 0 <= i < len(work):
+        ax2.bar(
+            [x0],
+            [float(work["volume"].iloc[i] or 0)],
+            color=_NAV_VOL_ZONE_SPIKE,
+            width=0.78,
+            zorder=4,
+        )
+        ax2.text(
+            x0,
+            float(work["volume"].iloc[i] or 0),
+            f"爆大量 {md}",
+            ha="center",
+            va="bottom",
+            fontproperties=_fp(7 if compact else 8, "bold"),
+            color="#5d4037",
+            zorder=5,
+        )
+    return f"大量區 {md}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}（非買訊）"
 
 
 def _paint_nav_on_axes(
@@ -4246,6 +4365,7 @@ def _paint_nav_on_axes(
     ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
+    vol_zone_note = _paint_nav_volume_zone(ax1, None, work, xs, compact=compact)
 
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
@@ -4400,7 +4520,12 @@ def _paint_nav_on_axes(
     title = (
         f"180日高低導航{live_note}　實心＝當日　空心＝接近　高紫／低綠{trade_note}"
         if compact
-        else f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航{live_note}{stamp}{trade_note}   WayneBot ® 2026"
+        else (
+            f"{stock_id} {stock_name} (日K線) 180日區間 (季) 絕對高低點導航"
+            f"{live_note}{stamp}{trade_note}"
+            + (f"　{vol_zone_note}" if vol_zone_note else "")
+            + "   WayneBot ® 2026"
+        )
     )
     ax1.set_title(title, fontproperties=_fp(10 if compact else 14, "bold"), pad=8 if compact else 38)
     ax1.grid(True, linestyle=(0, (1.2, 1.6)), linewidth=0.5, color="#bdbdbd", zorder=1)
@@ -4437,6 +4562,8 @@ def _paint_nav_on_axes(
     ax_sig.tick_params(axis="x", labelbottom=False, length=0)
     vol_colors = ["#ef5350" if candle_up[i] else "#26a69a" for i in range(n)]
     ax2.bar(xs, work["volume"], color=vol_colors, width=0.72, zorder=3)
+    if vol_zone_note:
+        _paint_nav_volume_zone(None, ax2, work, xs, compact=compact)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.tick_params(labelsize=8 if compact else 9)
@@ -4486,7 +4613,8 @@ def draw_from_ohlc(
     fig.text(
         0.50, 0.015,
         "K 線紅漲綠跌＝相對昨收（台股慣例）；價格列箭頭見圖上方圖例；實心＝當日觸發、空心＝接近；高點紫／低點青綠，不跟底帶同色　　"
-        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低",
+        "量能列：紫↑量能異常　紅↑警告　淺紫↑月波動低　　"
+        "桃色帶＝大量區（近窗爆大量日高低；壓洋紅／撐綠；非買訊）",
         ha="center", va="bottom", fontproperties=_fp(9, "bold"), color="#263238",
     )
     plt.savefig(save_path, dpi=NAV_CHART_DPI, facecolor="#ffffff")
