@@ -112,6 +112,7 @@ def test_lookup_sends_volzone_third_photo():
 
     src = inspect.getsource(WayneTelegramBot._send_card_to_locked)
     assert "render_volume_zone_png" in src
+    assert "vol_zone_photo_caption" in src
     assert "volzone" in src
     assert "大量區" in src
     assert src.find("_send_lookup_album") < src.find("await volzone_task")

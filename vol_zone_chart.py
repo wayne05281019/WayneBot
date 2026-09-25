@@ -211,6 +211,104 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
     }
 
 
+VOL_ZONE_CAPTION_HEAD = "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）"
+_PRESS_TOUCH = 0.997
+_VOL_REAL = 0.70
+_VOL_THIN = 0.35
+_HEAT_BIT = {
+    "peak": "溫度最高溫",
+    "up": "溫度升",
+    "down": "溫度降",
+    "floor": "溫度最低溫",
+    "flat": "溫度平",
+    "diverge": "價溫背離",
+}
+
+
+def _px(val: Any) -> float:
+    try:
+        return float(val or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def vol_zone_position_line(
+    zone: Optional[Dict[str, Any]],
+    last: Optional[Dict[str, Any]],
+    card: Optional[Dict[str, Any]] = None,
+) -> str:
+    """現價對壓撐、量對爆大量日、溫度：只陳述。不寫抱、不寫賣、不改如何賣。"""
+    if not zone or not last:
+        return ""
+    hi = _px(zone.get("high"))
+    lo = _px(zone.get("low"))
+    cl = _px(last.get("close"))
+    last_hi = _px(last.get("high") or cl)
+    if hi <= 0 or lo <= 0 or hi < lo or cl <= 0:
+        return ""
+    bits: list[str] = []
+    if cl >= hi:
+        bits.append("收過壓")
+    elif cl < lo:
+        bits.append("跌破撐")
+    else:
+        bits.append("現價在帶內")
+        if last_hi >= hi * _PRESS_TOUCH and cl < hi:
+            bits.append("測壓未過")
+    zvol = _px(zone.get("volume"))
+    lvol = _px(last.get("volume"))
+    if zvol > 0 and lvol > 0:
+        ratio = lvol / zvol
+        if ratio >= _VOL_REAL:
+            bits.append("量對爆大量日仍真")
+        elif ratio < _VOL_THIN:
+            bits.append("量縮對爆大量日")
+        else:
+            bits.append("量未到爆大量日")
+    heat = ""
+    if card:
+        try:
+            from sell_discipline import card_discipline_face
+
+            heat = str(card_discipline_face(card).get("heat") or "")
+        except Exception:
+            heat = ""
+    heat_bit = _HEAT_BIT.get(heat, "")
+    if heat_bit:
+        bits.append(heat_bit)
+    return "　".join(bits)
+
+
+def vol_zone_photo_caption(
+    stock_id: str = "",
+    db_path: str = "",
+    card: Optional[Dict[str, Any]] = None,
+    *,
+    zone: Optional[Dict[str, Any]] = None,
+    last: Optional[Dict[str, Any]] = None,
+) -> str:
+    """第三張圖說：原句＋位置句。如何賣仍只在介紹圖／高低卡。"""
+    if zone is None or last is None:
+        sid = str(stock_id or "").strip()
+        path = str(db_path or "").strip()
+        if sid and path:
+            raw = load_official_ohlc(sid, path, max(VOL_ZONE_BARS + VOL_ZONE_LOOKBACK + 5, 120))
+            work = official_work(raw)
+            if work is not None and not work.empty:
+                zone = find_volume_zone(work)
+                row = work.iloc[-1]
+                last = {
+                    "high": row.get("high"),
+                    "low": row.get("low"),
+                    "close": row.get("close"),
+                    "volume": row.get("volume"),
+                }
+    pos = vol_zone_position_line(zone, last, card)
+    if pos:
+        return f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
+    return VOL_ZONE_CAPTION_HEAD
+
+
 def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
     try:
         from decision_card_signals import candle_up_taiwan
