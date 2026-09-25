@@ -39,6 +39,8 @@ class NavChartRenderTests(unittest.TestCase):
         self.assertNotIn("dn_stack.append", src)
         self.assertIn("_paint_nav_volume_zone", src)
         self.assertIn("vol_zone_note", src)
+        self.assertIn("zone_hi", src)
+        self.assertIn("測壓", inspect.getsource(__import__("wayne_navigator")._paint_nav_volume_zone))
         zone_src = inspect.getsource(__import__("wayne_navigator")._paint_nav_volume_zone)
         self.assertIn("大量區", zone_src)
         db = get_db_path()

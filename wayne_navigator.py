@@ -4276,9 +4276,11 @@ def _nav_volume_zone(work: pd.DataFrame, *, lookback: int = _NAV_VOL_ZONE_LOOKBA
     }
 
 
-def _paint_nav_volume_zone(ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = False) -> str:
+def _paint_nav_volume_zone(
+    ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = False, zone: Optional[dict] = None
+) -> str:
     """桃色大量區＋壓／撐標。回傳圖說短句（空＝沒畫）。ax2 有值才標量柱爆大量那一根。"""
-    zone = _nav_volume_zone(work)
+    zone = zone if zone is not None else _nav_volume_zone(work)
     if not zone:
         return ""
     i = int(zone["i"])
@@ -4288,10 +4290,13 @@ def _paint_nav_volume_zone(ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = 
     md = f"{d[4:6]}/{d[6:8]}" if len(d) >= 8 and d[:8].isdigit() else d
     x0 = float(xs[i]) if i < len(xs) else 0.0
     if ax1 is not None:
-        ax1.axhspan(lo, hi, color=_NAV_VOL_ZONE_FILL, alpha=0.38, zorder=1)
-        ax1.axhline(hi, color=_NAV_VOL_ZONE_PRESS, linewidth=1.55, zorder=5)
-        ax1.axhline(lo, color=_NAV_VOL_ZONE_HOLD, linewidth=1.55, zorder=5)
-        ax1.axvline(x0, color=_NAV_VOL_ZONE_SPIKE, linewidth=1.05, alpha=0.55, zorder=2)
+        # 桃色帶要蓋過 20 高粉紅底，才不會看起來像「站上粉紅＝突破」
+        ax1.axhspan(lo, hi, color=_NAV_VOL_ZONE_FILL, alpha=0.52, zorder=1)
+        ymax = ax1.get_ylim()[1]
+        ax1.axhspan(hi, ymax, color="#ffffff", alpha=0.42, zorder=1)
+        ax1.axvline(x0, color=_NAV_VOL_ZONE_SPIKE, linewidth=1.15, alpha=0.65, zorder=2)
+        ax1.axhline(hi, color=_NAV_VOL_ZONE_PRESS, linewidth=2.05, zorder=7)
+        ax1.axhline(lo, color=_NAV_VOL_ZONE_HOLD, linewidth=2.05, zorder=7)
         lab_sz = 7.5 if compact else 9
         ax1.text(
             0.012,
@@ -4302,13 +4307,13 @@ def _paint_nav_volume_zone(ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = 
             va="bottom",
             fontproperties=_fp(lab_sz, "bold"),
             color=_NAV_VOL_ZONE_PRESS,
-            zorder=8,
+            zorder=9,
             bbox=dict(
                 boxstyle="round,pad=0.15",
                 facecolor="#ffffff",
                 edgecolor=_NAV_VOL_ZONE_PRESS,
                 linewidth=0.55,
-                alpha=0.92,
+                alpha=0.95,
             ),
         )
         ax1.text(
@@ -4320,15 +4325,48 @@ def _paint_nav_volume_zone(ax1, ax2, work: pd.DataFrame, xs, *, compact: bool = 
             va="top",
             fontproperties=_fp(lab_sz, "bold"),
             color=_NAV_VOL_ZONE_HOLD,
-            zorder=8,
+            zorder=9,
             bbox=dict(
                 boxstyle="round,pad=0.15",
                 facecolor="#ffffff",
                 edgecolor=_NAV_VOL_ZONE_HOLD,
                 linewidth=0.55,
-                alpha=0.92,
+                alpha=0.95,
             ),
         )
+        # 最後一根：高觸壓、收在壓下 → 標「測壓未過」，不要看起來像假突破
+        last_i = len(work) - 1
+        if last_i >= 0:
+            lhi = float(work["high"].iloc[last_i] or 0)
+            lcl = float(work["close"].iloc[last_i] or 0)
+            ld = str(work["date"].iloc[last_i] or "")
+            lmd = f"{ld[4:6]}/{ld[6:8]}" if len(ld) >= 8 and ld[:8].isdigit() else ld
+            if hi > 0 and lhi >= hi * 0.997 and lcl < hi:
+                ax1.annotate(
+                    f"{lmd} 高{_fmt_price(lhi)}＝測壓　收{_fmt_price(lcl)}未過",
+                    xy=(float(xs[last_i]), lhi),
+                    xytext=(-18 if compact else -28, 18 if compact else 26),
+                    textcoords="offset points",
+                    ha="right",
+                    va="bottom",
+                    fontproperties=_fp(7.5 if compact else 9, "bold"),
+                    color="#e65100",
+                    zorder=10,
+                    arrowprops=dict(
+                        arrowstyle="->",
+                        color="#e65100",
+                        lw=1.1,
+                        shrinkA=0,
+                        shrinkB=2,
+                    ),
+                    bbox=dict(
+                        boxstyle="round,pad=0.25",
+                        facecolor="#fff8e1",
+                        edgecolor="#ef6c00",
+                        linewidth=0.8,
+                        alpha=0.96,
+                    ),
+                )
     if ax2 is not None and 0 <= i < len(work):
         ax2.bar(
             [x0],
@@ -4385,7 +4423,9 @@ def _paint_nav_on_axes(
     ax1.axhspan(ymin, l20, color="#c8e6c9", alpha=0.16, zorder=0)
     ax1.set_ylim(ymin, ymax)
     ax1.set_xlim(-0.8, n - 0.2)
-    vol_zone_note = _paint_nav_volume_zone(ax1, None, work, xs, compact=compact)
+    zone = _nav_volume_zone(work)
+    zone_hi = float(zone["high"]) if zone else 0.0
+    vol_zone_note = ""
 
     was_20h = was_20l = was_60l = was_near_h = was_near_l = False
     last_dn_i = last_up_i = -9
@@ -4459,6 +4499,9 @@ def _paint_nav_on_axes(
             dn_pick = None
         if up_pick and up_pick[0] in ("l20_near", "l20_leave") and i - last_up_i < 2:
             up_pick = None
+        # 高觸大量區壓、收未過＝測壓，不要紫箭插到線上像假突破
+        if dn_pick and zone_hi > 0 and hi >= zone_hi * 0.997 and cl < zone_hi:
+            dn_pick = None
         if dn_pick:
             kind, sc, hollow = dn_pick
             tip = hi + arrow_gap
@@ -4517,6 +4560,8 @@ def _paint_nav_on_axes(
     ax1.axhline(l60, color="#81c784", linewidth=1.35)
     ax1.axhline(h20, color="#f8bbd0", linewidth=1.05, linestyle="--")
     ax1.axhline(l20, color="#80deea", linewidth=1.05, linestyle="--")
+    # 大量區最後疊：壓線蓋過 20 高虛線，測壓標蓋過紫箭
+    vol_zone_note = _paint_nav_volume_zone(ax1, None, work, xs, compact=compact, zone=zone)
     live_note = ""
     if "is_live" in work.columns and bool(pd.Series(work["is_live"]).fillna(False).iloc[-1]):
         t = str(work["_live_time"].iloc[-1] or "") if "_live_time" in work.columns else ""
