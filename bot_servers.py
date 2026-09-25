@@ -5730,13 +5730,12 @@ class WayneTelegramBot:
             def _render_volzone():
                 from vol_zone_chart import render_volume_zone_png
 
+                # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc
                 return render_volume_zone_png(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
                     vol_path_f,
-                    ohlc,
-                    already_normalized=True,
                 )
 
             render_plan = [

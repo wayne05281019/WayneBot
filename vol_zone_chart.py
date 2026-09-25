@@ -3,11 +3,15 @@
 
 獨立一張，不改導航圖。不是買訊、不發明 5／9。
 畫法對齊教學圖：白底雙欄、桃色帶、洋紅壓／綠撐、量柱黃標爆大量日。
+
+K 棒只認官方日表原柱（daily_quotes／emerging_quotes）：
+不准除權還原、不准 MIS 盤中假柱、不准 sanitize 改高低、不准飆大疊加柱。
 """
 from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from typing import Any, Dict, Optional
 
 import matplotlib
@@ -18,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches
 
-from wayne_navigator import _fp, _fmt_price, _load_ohlc, _mpl_serial, _nav_work_or_none
+from wayne_navigator import _fp, _fmt_price, _mpl_serial
 
 logger = logging.getLogger("WayneBot.VolZone")
 
@@ -46,15 +50,110 @@ def _md(raw: Any) -> str:
     return str(raw or "").strip()
 
 
+def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataFrame:
+    """只讀官方日表原柱。上市櫃 daily_quotes；不足再讀興櫃 emerging_quotes。
+
+    不除權還原、不合併 MIS、不改開高低收。
+    """
+    sid = str(stock_id or "").strip()
+    path = str(db_path or "").strip()
+    if not sid or not path:
+        return pd.DataFrame()
+    lim = max(int(days or 0), 30)
+    conn = sqlite3.connect(path, timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=10000;")
+        df = pd.read_sql_query(
+            """
+            SELECT date, stock_name, open, high, low, close, volume
+            FROM daily_quotes
+            WHERE stock_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            conn,
+            params=(sid, lim),
+        )
+    finally:
+        conn.close()
+    source = "daily_quotes"
+    if df is None or df.empty or len(df) < 5:
+        try:
+            from emerging_quotes import load_stock_bars
+
+            em = load_stock_bars(path, sid, lim)
+        except Exception:
+            em = None
+        if em is not None and not em.empty:
+            keep = [
+                c
+                for c in ("date", "stock_name", "open", "high", "low", "close", "volume")
+                if c in em.columns
+            ]
+            df = em[keep].copy()
+            source = "emerging_quotes"
+    if df is None or df.empty:
+        return pd.DataFrame()
+    # DB／興櫃常 DESC → 左舊右新
+    dnorm = df["date"].astype(str).str.replace("-", "", regex=False)
+    df = (
+        df.assign(_d=dnorm)
+        .sort_values("_d", kind="mergesort")
+        .drop(columns="_d")
+        .reset_index(drop=True)
+    )
+    if len(df) > lim:
+        df = df.iloc[-lim:].reset_index(drop=True)
+    df["stock_id"] = sid
+    df["quote_source"] = source
+    return df
+
+
+def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """整理官方柱給選區／畫圖：升冪、標停牌、丟掉缺價。不准 normalize／sanitize／live。"""
+    if df is None or getattr(df, "empty", True):
+        return None
+    work = df.copy()
+    # 丟掉盤中未收／疊加假來源
+    if "is_live" in work.columns:
+        work = work.loc[~work["is_live"].fillna(False).astype(bool)].copy()
+    if "source" in work.columns:
+        work = work.loc[work["source"].astype(str) != "biaoke_stock_day"].copy()
+    for col in ("open", "high", "low", "close", "volume"):
+        if col not in work.columns:
+            return None
+        work[col] = pd.to_numeric(work[col], errors="coerce")
+    work["date"] = work["date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    work["dt"] = pd.to_datetime(work["date"], format="%Y%m%d", errors="coerce")
+    work = work.dropna(subset=["dt", "open", "high", "low", "close"]).reset_index(drop=True)
+    if work.empty:
+        return None
+    work = work.sort_values("dt", kind="mergesort").reset_index(drop=True)
+    # 缺價／非正數收＝不成柱
+    ok = (
+        (work["close"] > 0)
+        & (work["high"] > 0)
+        & (work["low"] > 0)
+        & (work["high"] >= work["low"])
+    )
+    work = work.loc[ok].reset_index(drop=True)
+    if work.empty:
+        return None
+    vol = work["volume"].fillna(0.0)
+    flat = (vol <= 0) & ((work["high"] - work["low"]).abs() <= 1e-8)
+    work["is_halt"] = flat.fillna(False)
+    return work
+
+
 def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -> Optional[Dict[str, Any]]:
     """近窗仍對現價有效的爆大量日。壓還在頭上才認；已全部站上才退回絕對最大量。
 
     準則（鎖死）：
-    1. 只用官方日 K；略過停牌、略過 biaoke_stock_day 疊加柱。
+    1. 只用官方日 K 原柱；略過停牌、略過 biaoke_stock_day／is_live。
     2. 近窗＝最近 lookback 根（預設 40），不含「最後一根」（大量區＝過去參考日）。
     3. 候選＝當日高 ≥ 最近收（壓還在頭上／還在區內）；其中取成交量最大。
     4. 若近窗已全部站上那些高 → 退回近窗（不含最後一根）絕對最大量。
-    5. 壓＝該日高、撐＝該日低。不是買訊、不發明 5／9。
+    5. 壓＝該日官方高、撐＝該日官方低。不是買訊、不發明 5／9。
     """
     if work is None or getattr(work, "empty", True):
         return None
@@ -78,6 +177,8 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
         if bool(halt.iloc[i]):
             continue
         if "source" in work.columns and str(work["source"].iloc[i] or "") == "biaoke_stock_day":
+            continue
+        if "is_live" in work.columns and bool(work["is_live"].iloc[i]):
             continue
         v = float(work["volume"].iloc[i] or 0)
         if v <= 0:
@@ -128,18 +229,25 @@ def render_volume_zone_png(
     save_path: str = None,
     df=None,
     *,
-    already_normalized: bool = False,
+    already_normalized: bool = False,  # 保留參數相容；大量區一律當官方原柱處理
     lookback: int = VOL_ZONE_LOOKBACK,
     bars: int = VOL_ZONE_BARS,
 ) -> str:
-    """畫大量區專圖。失敗回空字串。"""
+    """畫大量區專圖。有 db 就只吃官方原柱；失敗回空字串。"""
+    del already_normalized  # 相容舊呼叫；不准用還原柱
     sid = str(stock_id or "").strip()
     if not sid:
         return ""
-    if df is None or getattr(df, "empty", True):
-        df = _load_ohlc(sid, db_path, max(int(bars) + int(lookback) + 5, 120))
-        already_normalized = False
-    work = _nav_work_or_none(df, already_normalized=already_normalized)
+    work = None
+    # 有庫＝強制官方原柱，忽略決策卡還原／盤中合併的 df
+    if db_path:
+        raw = load_official_ohlc(sid, db_path, max(int(bars) + int(lookback) + 5, 120))
+        work = official_work(raw)
+    if work is None or work.empty:
+        if df is None or getattr(df, "empty", True):
+            return ""
+        # 測試／無庫：仍不准走除權還原，只做官方整理
+        work = official_work(df)
     if work is None or work.empty:
         return ""
     zone = find_volume_zone(work, lookback=lookback)
@@ -191,13 +299,12 @@ def render_volume_zone_png(
     ax1.axhline(lo, color=_HOLD, linewidth=2.0, zorder=5)
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.7, zorder=1)
 
-    from decision_card_signals import candle_up_taiwan  # noqa: F401 — used via _candle_up
-
     for i in range(n):
         op = float(view["open"].iloc[i])
         cl = float(view["close"].iloc[i])
         h = float(view["high"].iloc[i])
         l = float(view["low"].iloc[i])
+        # 興櫃：開＝前日均價，可能落在當日高低外；影線用官方高低，不改價
         prev = float(view["close"].iloc[i - 1]) if i else None
         up = _candle_up(cl, prev, op)
         color = "#bdbdbd" if bool(halt.iloc[i]) else (_UP if up else _DN)
@@ -308,8 +415,6 @@ def render_volume_zone_png(
         lab.set_fontproperties(_fp(9))
 
     # 底軸日期：與 K／量同一根 index；月標寫「08月」避免 08/26 被看成 8 月 26 日
-    tick_pos: list[int] = []
-    tick_lab: list[str] = []
     tick_at: dict[int, str] = {}
 
     def _put_tick(i: int, lab: str, *, prefer: bool = False) -> None:
@@ -333,11 +438,12 @@ def render_volume_zone_png(
     tick_lab = [tick_at[i] for i in tick_pos]
     ax2.set_xticks(tick_pos)
     ax2.set_xticklabels(tick_lab, fontproperties=_fp(9))
-    # sharex：上圖 K 與下圖量同一套 x；刻度只標在量圖，避免重複壓字
     ax1.tick_params(labelbottom=False)
 
+    src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")
+    src_note = "興櫃日均價／高低" if src == "emerging_quotes" else "官方日K原柱"
     title = (
-        f"{sid} {name}　大量區專圖（非買訊）　"
+        f"{sid} {name}　大量區專圖（非買訊・{src_note}）　"
         f"爆大量 {_md(spike_date)}　壓 {_fmt_price(hi)}／撐 {_fmt_price(lo)}　"
         f"最近 {_md(last.get('date'))} "
         f"開{_fmt_price(last['open'])} 高{_fmt_price(last['high'])} "
@@ -347,7 +453,7 @@ def render_volume_zone_png(
     fig.text(
         0.5,
         0.012,
-        "桃色帶＝大量區（近窗仍有效爆大量日高低）。高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
+        "桃色帶＝大量區（近窗仍有效爆大量日官方高低）。高觸壓、收未過＝測壓，不是站上、不是買訊。導航圖另按。",
         ha="center",
         va="bottom",
         fontproperties=_fp(9, "bold"),
