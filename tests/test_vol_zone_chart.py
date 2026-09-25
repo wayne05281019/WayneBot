@@ -235,6 +235,18 @@ def test_vol_zone_xaxis_matches_k_and_volume_index():
         assert path and os.path.isfile(path)
 
 
+def test_vol_zone_press_hold_tags_are_large():
+    """話筒紅圈：大量區壓／撐要比標題更容易讀。"""
+    import inspect
+
+    from vol_zone_chart import VOL_ZONE_TAG_PT, render_volume_zone_png
+
+    assert VOL_ZONE_TAG_PT >= 14
+    src = inspect.getsource(render_volume_zone_png)
+    assert "VOL_ZONE_TAG_PT" in src
+    assert src.count("VOL_ZONE_TAG_PT") >= 2
+
+
 def test_emerging_help_mentions_volzone():
     import inspect
 

@@ -29,6 +29,7 @@ logger = logging.getLogger("WayneBot.VolZone")
 VOL_ZONE_DPI = 200
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
+VOL_ZONE_TAG_PT = 15  # 壓／撐標要比標題更容易讀（話筒紅圈）
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -366,10 +367,10 @@ def render_volume_zone_png(
         transform=ax1.transAxes,
         ha="left",
         va="top",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_PRESS,
         zorder=8,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#ffffff", edgecolor=_PRESS, linewidth=0.7),
+        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_PRESS, linewidth=1.15),
     )
     ax1.text(
         0.01,
@@ -378,10 +379,10 @@ def render_volume_zone_png(
         transform=ax1.transAxes,
         ha="left",
         va="bottom",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_HOLD,
         zorder=8,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#ffffff", edgecolor=_HOLD, linewidth=0.7),
+        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_HOLD, linewidth=1.15),
     )
 
     vol_colors = []
