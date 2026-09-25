@@ -111,7 +111,9 @@ def record_ingest_events(
     return n
 
 
-def unread_events(user_id: str, db_path: str) -> List[Dict[str, Any]]:
+def unread_events(
+    user_id: str, db_path: str, *, now: Optional[datetime] = None
+) -> List[Dict[str, Any]]:
     uid = str(user_id or "").strip()
     if not uid or not db_path:
         return []
@@ -123,7 +125,10 @@ def unread_events(user_id: str, db_path: str) -> List[Dict[str, Any]]:
             (uid,),
         ).fetchone()
         last = str(row[0] or "") if row else ""
-        floor = (taipei_now() - timedelta(days=14)).strftime("%Y-%m-%d")
+        clock = now or taipei_now()
+        if clock.tzinfo is None:
+            clock = clock.replace(tzinfo=TAIPEI)
+        floor = (clock.astimezone(TAIPEI) - timedelta(days=14)).strftime("%Y-%m-%d")
         if last:
             rows = conn.execute(
                 """
@@ -531,7 +536,7 @@ def format_latest_focus(db_path: str = "", *, n_main: int = 2, n_reply: int = 16
 
 def take_unread_digest(user_id: str, db_path: str, *, now: Optional[datetime] = None) -> str:
     """讀出未讀彙整。不在這裡標記已讀，等訊息真的送出。"""
-    events = unread_events(user_id, db_path)
+    events = unread_events(user_id, db_path, now=now)
     if not events:
         return ""
     return format_unread_digest(events, now=now)

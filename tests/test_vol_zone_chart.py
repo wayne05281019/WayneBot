@@ -136,10 +136,13 @@ def test_vol_zone_http_not_inside_mpl_lock():
 
     from vol_zone_chart import prepare_volume_zone, render_volume_zone_png, render_volume_zone_result
 
-    src = inspect.getsource(render_volume_zone_png) + inspect.getsource(render_volume_zone_result) + inspect.getsource(prepare_volume_zone)
-    assert src.find("hydrate_official_ex_for_gaps") < src.find("mpl_render")
-    assert src.find("load_official_ohlc") < src.find("mpl_render")
-    assert "_paint_volume_zone" in src
+    prep = inspect.getsource(prepare_volume_zone)
+    assert "hydrate_official_ex_for_gaps" in prep
+    assert "load_official_ohlc" in prep
+    assert "mpl_render" not in prep
+    res = inspect.getsource(render_volume_zone_result)
+    assert res.find("prepare_volume_zone") < res.find("mpl_render")
+    assert "_paint_volume_zone" in inspect.getsource(render_volume_zone_png) + res
 
 
 def test_vol_zone_ignores_adjusted_card_ohlc():
