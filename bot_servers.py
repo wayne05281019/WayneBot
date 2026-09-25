@@ -237,7 +237,7 @@ def _photo_sell_caption(base: str, card: dict | None, *, fallback: str = "當日
 
 def _decision_card_photo_caption(card: dict | None, code: str = "", live_note: str = "") -> str:
     title = f"{_stock_caption_name(card, code)}{live_note}"
-    return _photo_sell_caption(title, card, fallback=title)
+    return html_escape(_photo_sell_caption(title, card, fallback=title))
 
 
 def _glance_photo_caption(base: str, card: dict | None) -> str:
@@ -2833,6 +2833,9 @@ class WayneTelegramBot:
             if w <= 0 or h <= 0:
                 return path
             tw, th = WayneTelegramBot._fit_lookup_photo_wh(w, h)
+            if (tw, th) == (w, h) and str(path).lower().endswith((".jpg", ".jpeg")):
+                im.close()
+                return path
             if (tw, th) != (w, h):
                 im = im.resize((tw, th), Image.Resampling.BILINEAR)
             out = path + ".hq.jpg"
@@ -5558,11 +5561,12 @@ class WayneTelegramBot:
             send_path = path
             if not str(path).lower().endswith((".jpg", ".jpeg")):
                 send_path = self._prepare_lookup_album_photo(path)
+            html_cap = html_escape(caption) if caption else ""
             for attempt in range(3):
                 try:
                     with open(send_path, "rb") as f:
                         await message.reply_photo(
-                            photo=f, caption=caption, parse_mode="HTML", reply_markup=markup
+                            photo=f, caption=html_cap, parse_mode="HTML", reply_markup=markup
                         )
                     logger.info(
                         "送圖成功 kind=%s code=%s bytes=%s attempt=%s",
@@ -5661,6 +5665,7 @@ class WayneTelegramBot:
 
         try:
             from chip_tape import build_tape
+            from vol_zone_chart import VOL_ZONE_CAPTION_HEAD
             from wayne_navigator import (
                 NavigatorEngine,
                 render_decision_card_png,
@@ -5735,17 +5740,22 @@ class WayneTelegramBot:
             glance_cap = ""
             card_cap = _stock_caption_name(card, code)
             vol_path_f = self._scratch_chart_path(self.charts_dir, code, "volzone", uid_key)
+            vz_face = [VOL_ZONE_CAPTION_HEAD]
 
             def _render_volzone():
-                from vol_zone_chart import render_volume_zone_png
+                from vol_zone_chart import render_volume_zone_result
 
                 # 大量區只吃官方原柱；不准用決策卡除權還原／盤中合併的 ohlc
-                return render_volume_zone_png(
+                path, cap = render_volume_zone_result(
                     code,
                     _stock_caption_name(card, code),
                     self.db_path,
                     vol_path_f,
+                    card=card,
                 )
+                if cap:
+                    vz_face[0] = cap
+                return path
 
             render_plan = [
                 ("glance", _render_glance, _LOOKUP_PNG_TIMEOUT, glance_cap, None),
@@ -5791,20 +5801,11 @@ class WayneTelegramBot:
                     return None
                 return (kind, png, caption, markup)
 
-            from vol_zone_chart import VOL_ZONE_CAPTION_HEAD, vol_zone_photo_caption
-
             vz_cap = VOL_ZONE_CAPTION_HEAD
 
             async def _volzone_item():
                 png = await _render_one("volzone", _render_volzone, _LOOKUP_PNG_TIMEOUT)
-                cap = vz_cap
-                try:
-                    cap = await asyncio.to_thread(
-                        vol_zone_photo_caption, code, self.db_path, card
-                    )
-                except Exception:
-                    logger.debug("大量區圖說失敗 code=%s", code, exc_info=True)
-                    cap = VOL_ZONE_CAPTION_HEAD
+                cap = vz_face[0] if vz_face and vz_face[0] else vz_cap
                 if not png:
                     return None
                 return ("volzone", png, cap, None)
@@ -5820,6 +5821,8 @@ class WayneTelegramBot:
                 ]
             )
             png_items = [item for item in packed if item]
+            # 介紹／高低卡已畫完，mpl 鎖空了。大量區跟相簿傳送同時走，少等一輪重抓日K。
+            volzone_task = asyncio.create_task(_volzone_item())
             pair_box = await asyncio.to_thread(
                 self._album_pair_box, [p for _k, p, _c, _m in png_items]
             )
@@ -5862,8 +5865,6 @@ class WayneTelegramBot:
             except Exception:
                 pass
 
-            # 第三張等相簿送出再畫：mpl 一把鎖，提早畫會卡住介紹／高低卡。
-            volzone_task = asyncio.create_task(_volzone_item())
             try:
                 st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
                 st["current"] = "volzone"
