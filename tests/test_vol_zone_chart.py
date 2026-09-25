@@ -116,6 +116,7 @@ def test_lookup_sends_volzone_third_photo():
     assert "volzone" in src
     assert "大量區" in src
     assert src.find("_send_lookup_album") < src.find("await volzone_task")
+    assert src.find("create_task(_volzone_item") < src.find("packed = await asyncio.gather")
     # 不准把決策卡還原 ohlc 塞進大量區
     assert "already_normalized=True" not in src
     assert "不准用決策卡除權還原" in src or "只吃官方原柱" in src

@@ -160,12 +160,14 @@ def parse_tpex_row(fields: Sequence[str], row: Sequence[Any]) -> Optional[Dict[s
     }
 
 
-def fetch_twse_month(session: requests.Session, start: str, end: str) -> List[Dict[str, Any]]:
+def fetch_twse_month(
+    session: requests.Session, start: str, end: str, timeout: float = 40
+) -> List[Dict[str, Any]]:
     url = (
         "https://www.twse.com.tw/rwd/zh/exRight/TWT49U"
         f"?response=json&startDate={start}&endDate={end}"
     )
-    resp = session.get(url, timeout=40)
+    resp = session.get(url, timeout=float(timeout or 40))
     resp.raise_for_status()
     payload = resp.json() or {}
     fields = payload.get("fields") or []
@@ -177,14 +179,16 @@ def fetch_twse_month(session: requests.Session, start: str, end: str) -> List[Di
     return out
 
 
-def fetch_tpex_month(session: requests.Session, start: str, end: str) -> List[Dict[str, Any]]:
+def fetch_tpex_month(
+    session: requests.Session, start: str, end: str, timeout: float = 40
+) -> List[Dict[str, Any]]:
     a = f"{start[:4]}/{start[4:6]}/{start[6:]}"
     b = f"{end[:4]}/{end[4:6]}/{end[6:]}"
     url = (
         "https://www.tpex.org.tw/www/zh-tw/bulletin/exDailyQ"
         f"?startDate={a}&endDate={b}&response=json"
     )
-    resp = session.get(url, timeout=40)
+    resp = session.get(url, timeout=float(timeout or 40))
     resp.raise_for_status()
     payload = resp.json() or {}
     tables = payload.get("tables") or []
@@ -534,6 +538,8 @@ def nearest_event_label(stock_id: str, db_path: str = None, today: str = "") -> 
 
 OFFICIAL_EX_SRC = frozenset({"TWT49U", "tpex_exDailyQ"})
 _GAP_PCT = 0.05
+_HYDRATE_HTTP_TIMEOUT = 5.0
+_hydrate_month_cache: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 
 
 def bar_ymd(val: Any) -> str:
@@ -728,18 +734,30 @@ def hydrate_official_ex_for_gaps(
         sess = requests.Session()
         sess.headers.update(HEADERS)
         packed: List[Dict[str, Any]] = []
-        for ym in months:
+        tout = _HYDRATE_HTTP_TIMEOUT
+
+        def _month(src: str, ym: str, fn) -> List[Dict[str, Any]]:
+            key = (src, ym)
+            hit = _hydrate_month_cache.get(key)
+            if hit is not None:
+                return hit
             y, m = int(ym[:4]), int(ym[4:6])
             last = calendar.monthrange(y, m)[1]
             a, b = f"{ym}01", f"{ym}{last:02d}"
             try:
-                packed.extend(fetch_twse_month(sess, a, b))
+                rows = fn(sess, a, b, timeout=tout)
             except Exception:
-                logger.warning("補抓上市除權息 %s 失敗", ym)
-            try:
-                packed.extend(fetch_tpex_month(sess, a, b))
-            except Exception:
-                logger.warning("補抓上櫃除權息 %s 失敗", ym)
+                logger.warning("補抓%s除權息 %s 失敗", src, ym)
+                return []
+            _hydrate_month_cache[key] = rows
+            return rows
+
+        for ym in months:
+            tw = _month("twse", ym, fetch_twse_month)
+            packed.extend(tw)
+            if any(str(x.get("stock_id") or "") == sid for x in tw):
+                continue
+            packed.extend(_month("tpex", ym, fetch_tpex_month))
         mine = [x for x in packed if str(x.get("stock_id") or "") == sid]
         if mine:
             upsert_events(path, mine)
@@ -823,7 +841,7 @@ def recent_ex_face(
     start = bar_ymd(rows[0].get("date")) if rows else (last[:6] + "01" if len(last) == 8 else "19000101")
     events = load_scale_ex_events(sid, path, start, last) if sid and path else []
     if rows and sid and path:
-        events = hydrate_official_ex_for_gaps(sid, path, rows, events)
+        events = hydrate_official_ex_for_gaps(sid, path, rows[-5:], events)
     recent = rows[-5:] if rows else []
     win0 = bar_ymd(recent[0].get("date")) if recent else last
     events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events

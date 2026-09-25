@@ -527,8 +527,8 @@ def vol_zone_photo_caption(
                 start = _bar_ymd(work["date"].iloc[0])
                 end = _bar_ymd(work["date"].iloc[-1])
                 events = load_scale_ex_events(sid, path, start, end)
-                events = hydrate_official_ex_for_gaps(sid, path, work, events)
-                recent = work.tail(5) if hasattr(work, "tail") else work
+                recent = work.tail(8) if hasattr(work, "tail") else work
+                events = hydrate_official_ex_for_gaps(sid, path, recent, events)
                 gaps = unexplained_gap_dates(recent, way="down")
                 zone = find_volume_zone(work, ex_events=events)
                 bars = [
@@ -602,7 +602,8 @@ def render_volume_zone_png(
         start_d = _bar_ymd(work["date"].iloc[0])
         end_d = _bar_ymd(work["date"].iloc[-1])
         ex_events = load_scale_ex_events(sid, str(db_path), start_d, end_d)
-        ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), work, ex_events)
+        recent = work.tail(8) if hasattr(work, "tail") else work
+        ex_events = hydrate_official_ex_for_gaps(sid, str(db_path), recent, ex_events)
     zone = find_volume_zone(work, lookback=lookback, ex_events=ex_events)
     if not zone:
         return ""
