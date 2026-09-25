@@ -355,35 +355,46 @@ def vol_zone_position_line(
 
     if n == 1:
         if test_press:
-            body = f"今天剛站上支撐，收盤還沒過{hi_s}上緣"
+            body = f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，還沒過{hi_s}上緣"
             return _end(body, test=True)
-        body = f"今天剛站上支撐，收盤仍沒有突破{hi_s}上緣壓力"
+        body = (
+            f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，"
+            f"仍沒有突破{hi_s}上緣壓力"
+        )
         return _end(body)
 
     if rising:
         body = (
-            f"今天是第{n_zh}天站上支撐，且{n_zh}天收盤價持續攀高，"
+            f"今天是第{n_zh}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
             f"收盤仍沒有突破{hi_s}上緣壓力"
         )
         return _end(body, nice=nice, test=test_press and not nice)
 
     if last_down:
         body = (
-            f"今天是第{n_zh}天站上支撐，但今天收盤比昨天低，"
-            f"{n_zh}天收盤價沒有一路攀高，收盤仍沒有突破{hi_s}上緣壓力"
+            f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
+            f"但今天收盤比昨天低，這{n_zh}天收盤價沒有持續攀高，"
+            f"收盤仍沒有突破{hi_s}上緣壓力"
         )
+        prev_hi = _px(streak[-2].get("high")) if n >= 2 else 0
+        if prev_hi >= hi * _PRESS_TOUCH:
+            body = (
+                f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
+                f"但今天收盤比昨天低；昨天高有碰到{hi_s}上緣、收沒過，"
+                f"這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
+            )
         return _end(body, test=test_press)
 
     if near_press:
         body = (
-            f"今天是第{n_zh}天站上支撐，收盤靠近{hi_s}上緣但沒過，"
-            f"這{n_zh}天收盤價沒有一路攀高"
+            f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
+            f"仍在撐{lo_s}之上，這{n_zh}天收盤價沒有持續攀高"
         )
         return _end(body, test=test_press)
 
     body = (
-        f"今天是第{n_zh}天站上支撐，但這{n_zh}天收盤價沒有一路攀高，"
-        f"收盤仍沒有突破{hi_s}上緣壓力"
+        f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
+        f"但這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
     )
     return _end(body, test=test_press)
 

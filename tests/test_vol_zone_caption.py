@@ -25,7 +25,7 @@ def _card_heat(trend: str) -> dict:
 
 def test_chi_yuan_close_voice():
     line = vol_zone_position_line(_ZONE, _CHI_BARS[-1], _card_heat("升溫"), bars=_CHI_BARS)
-    assert "今天是第三天站上支撐" in line
+    assert "今天是第三天站在支撐線上" in line
     assert "三天收盤價持續攀高" in line
     assert "低點" not in line
     assert "收盤仍沒有突破210上緣壓力" in line
@@ -59,7 +59,7 @@ def test_photo_caption_keeps_head():
         zone=_ZONE, last=_CHI_BARS[-1], bars=_CHI_BARS, card=_card_heat("升溫")
     )
     assert cap.startswith(VOL_ZONE_CAPTION_HEAD)
-    assert "第三天站上支撐" in cap
+    assert "第三天站在支撐線上" in cap
     assert "非買訊" in cap
     for w in _NO_HOLD_SELL:
         assert w not in cap.split("\n", 1)[-1]
@@ -90,16 +90,16 @@ def test_closes_not_rising_skips_climb_phrase():
         {"high": 207, "low": 199, "close": 204, "volume": 4000},
     ]
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("升溫"), bars=bars)
-    assert "今天是第三天站上支撐" in line
+    assert "今天是第三天站在支撐線上" in line
     assert "收盤價持續攀高" not in line
-    assert "沒有一路攀高" in line
+    assert "沒有持續攀高" in line
     assert "看起來不錯" not in line
 
 
 def test_first_day_on_support():
     last = {"high": 200, "low": 196, "close": 198, "volume": 4000}
     line = vol_zone_position_line(_ZONE, last, _card_heat("升溫"), bars=[last])
-    assert "今天剛站上支撐" in line
+    assert "今天剛站在支撐線上" in line
     assert "第三天" not in line
     assert "看起來不錯" not in line
 
@@ -112,6 +112,23 @@ def test_today_close_down_not_climb():
     ]
     line = vol_zone_position_line(_ZONE, bars[-1], _card_heat("降溫"), bars=bars)
     assert "今天收盤比昨天低" in line
+    assert "看起來不錯" not in line
+
+
+def test_tsmc_fourth_day_still_on_support_line():
+    zone = {"high": 2505, "low": 2460, "volume": 28931}
+    bars = [
+        {"high": 2485, "low": 2445, "close": 2480, "volume": 16086},
+        {"high": 2510, "low": 2460, "close": 2460, "volume": 22009},
+        {"high": 2505, "low": 2475, "close": 2500, "volume": 22817},
+        {"high": 2490, "low": 2470, "close": 2475, "volume": 14557},
+    ]
+    line = vol_zone_position_line(zone, bars[-1], _card_heat("升溫"), bars=bars)
+    assert "今天是第四天站在支撐線上" in line
+    assert "仍在撐2,460之上" in line
+    assert "今天收盤比昨天低" in line
+    assert "沒有持續攀高" in line
+    assert "昨天高有碰到2,505上緣" in line
     assert "看起來不錯" not in line
 
 
