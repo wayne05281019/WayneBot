@@ -561,6 +561,15 @@ def is_scale_ex(ev: Dict[str, Any]) -> bool:
     return scale_ex_verb((ev or {}).get("kind")) in ("除息", "除權", "除權息", "減資", "分割")
 
 
+def is_official_ex(ev: Optional[Dict[str, Any]]) -> bool:
+    """話筒除息／除權／減資／分割只認證交所 TWT49U、櫃買 exDailyQ。啟發式不准寫上圖。"""
+    return str((ev or {}).get("source") or "") in OFFICIAL_EX_SRC
+
+
+def official_scale_events(events: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    return [e for e in (events or []) if is_scale_ex(e) and is_official_ex(e)]
+
+
 def _fmt_px(p: Any) -> str:
     try:
         v = float(p)
@@ -782,7 +791,7 @@ def ex_gap_note(
 
     voice=zone：大量區原柱圖。voice=card：介紹圖／高低卡（可能已還原），不准寫原柱／測壓。
     """
-    ev = latest_scale_ex(events, last_date)
+    ev = latest_scale_ex(official_scale_events(events), last_date)
     last = bar_ymd(last_date)
     zd = bar_ymd(zone_date)
     zone = str(voice or "card") == "zone"
@@ -842,6 +851,7 @@ def recent_ex_face(
     events = load_scale_ex_events(sid, path, start, last) if sid and path else []
     if rows and sid and path:
         events = hydrate_official_ex_for_gaps(sid, path, rows[-5:], events)
+    events = official_scale_events(events)
     recent = rows[-5:] if rows else []
     win0 = bar_ymd(recent[0].get("date")) if recent else last
     events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events

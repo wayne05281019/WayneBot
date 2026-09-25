@@ -250,3 +250,79 @@ def test_hydrate_http_timeout_is_short():
     assert "tpex" in src
     face_src = inspect.getsource(recent_ex_face)
     assert "rows[-5:]" in face_src
+    assert "official_scale_events" in face_src
+
+
+def test_heuristic_split_never_written_on_face(tmp_path):
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_heuristic_event(db, "2383", "20260803", 1.15, kind="分割")
+    bars = [
+        {"date": "20260730", "open": 4005, "high": 4510, "low": 3930, "close": 4315},
+        {"date": "20260803", "open": 5135, "high": 5195, "low": 4930, "close": 4980},
+        {"date": "20260804", "open": 4995, "high": 5210, "low": 4875, "close": 5140},
+        {"date": "20260805", "open": 5425, "high": 5425, "low": 5165, "close": 5245},
+        {"date": "20260806", "open": 5200, "high": 5380, "low": 5105, "close": 5305},
+    ]
+    face = recent_ex_face("2383", db, "20260806", bars)
+    assert "分割" not in (face["label"] or "")
+    assert "分割" not in (face["note"] or "")
+
+
+def test_official_div_date_and_amount_chi_hua_and_el(tmp_path):
+    """奇鋐／台光電除息只認 TWT49U：日期＋權值+息值。"""
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    upsert_events(
+        db,
+        [
+            {
+                "stock_id": "3017",
+                "ex_date": "20260819",
+                "kind": "息",
+                "close_before": 3035.0,
+                "ref_price": 3014.11,
+                "right_plus_div": 20.881604,
+                "factor": 0.9931169686985173,
+                "source": "TWT49U",
+            },
+            {
+                "stock_id": "2383",
+                "ex_date": "20260828",
+                "kind": "息",
+                "close_before": 5500.0,
+                "ref_price": 5475.0,
+                "right_plus_div": 25.0,
+                "factor": 0.9954545454545455,
+                "source": "TWT49U",
+            },
+        ],
+    )
+    chi = recent_ex_face(
+        "3017",
+        db,
+        "20260819",
+        [
+            {"date": "20260818", "open": 3150, "close": 3035},
+            {"date": "20260819", "open": 2915, "high": 3160, "low": 2900, "close": 3095},
+        ],
+    )
+    assert chi["label"] == "08/19除息20.88元"
+    assert "08/19除息20.88元" in chi["note"]
+    assert "前收3,035" in chi["note"]
+    assert "參考價3,014" in chi["note"]
+    el = recent_ex_face(
+        "2383",
+        db,
+        "20260828",
+        [
+            {"date": "20260827", "open": 5960, "close": 5500},
+            {"date": "20260828", "open": 5480, "high": 5620, "low": 5425, "close": 5490},
+        ],
+    )
+    assert el["label"] == "08/28除息25元"
+    assert "分割" not in el["label"]
+    assert "分割" not in el["note"]
+

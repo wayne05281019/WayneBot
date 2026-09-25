@@ -24,13 +24,12 @@ from matplotlib import patches
 
 from wayne_navigator import _fp, _fmt_price, mpl_render
 from ex_rights import (
-    OFFICIAL_EX_SRC as _OFFICIAL_EX_SRC,
     bar_ymd as _bar_ymd,
     ex_gap_note as _ex_gap_note,
     hydrate_official_ex_for_gaps,
-    is_scale_ex as _is_scale_ex,
     latest_scale_ex as _latest_ex_event,
     load_scale_ex_events,
+    official_scale_events,
     scale_ex_verb as _ex_kind_verb,
     unexplained_gap_dates,
 )
@@ -163,9 +162,7 @@ def official_work(df: pd.DataFrame) -> Optional[pd.DataFrame]:
 def _scale_cut_date(ex_events: Optional[List[Dict[str, Any]]], last_date: str) -> str:
     last = _bar_ymd(last_date)
     cut = ""
-    for ev in ex_events or []:
-        if not _is_scale_ex(ev):
-            continue
+    for ev in official_scale_events(ex_events):
         d = _bar_ymd(ev.get("ex_date") or ev.get("date"))
         if d and last and d <= last and d >= cut:
             cut = d
@@ -661,7 +658,7 @@ def _paint_volume_zone(
     ax1.axhline(lo, color=_HOLD, linewidth=2.0, zorder=5)
     ax1.axvline(spike_i, color=_SPIKE, linewidth=1.2, alpha=0.7, zorder=1)
 
-    ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in ex_events}
+    ex_by_date = {_bar_ymd(e.get("ex_date")): e for e in official_scale_events(ex_events)}
     for i in range(n):
         ev = ex_by_date.get(_bar_ymd(view["date"].iloc[i]))
         if not ev:
@@ -843,7 +840,7 @@ def _paint_volume_zone(
 
     src = str(view["quote_source"].iloc[-1] if "quote_source" in view.columns else "")
     src_note = "興櫃日均價／高低" if src == "emerging_quotes" else "官方日K原柱"
-    last_ev = _latest_ex_event(ex_events, last.get("date"))
+    last_ev = _latest_ex_event(official_scale_events(ex_events), last.get("date"))
     ex_title = ""
     ev_d = _bar_ymd((last_ev or {}).get("ex_date"))
     last_d = _bar_ymd(last.get("date"))

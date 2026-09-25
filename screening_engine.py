@@ -1419,13 +1419,14 @@ def _ex_close_inside_flag(
     if not sid:
         return False
     try:
-        from ex_rights import bar_ymd, close_inside_ex_bar, latest_scale_ex, load_scale_ex_events
+        from ex_rights import bar_ymd, close_inside_ex_bar, latest_scale_ex, load_scale_ex_events, official_scale_events
 
         events = (
             list((cache or {}).get(sid) or [])
             if cache is not None
             else (load_scale_ex_events(sid, db_path) if db_path else [])
         )
+        events = official_scale_events(events)
         last = ""
         try:
             if bars is not None and hasattr(bars, "iloc") and "date" in getattr(bars, "columns", []):
