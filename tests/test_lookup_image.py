@@ -241,7 +241,8 @@ class LookupImageTests(unittest.TestCase):
         from industry_card import INDUSTRY_PX_SCALE
         from wayne_navigator import CARD_PNG_DPI, GLANCE_PNG_DPI, NAV_CHART_DPI, _savefig_lookup_png
 
-        self.assertGreaterEqual(CARD_PNG_DPI, 320)
+        self.assertGreaterEqual(CARD_PNG_DPI, 200)
+        self.assertLessEqual(CARD_PNG_DPI, 220)
         self.assertEqual(GLANCE_PNG_DPI, CARD_PNG_DPI)
         self.assertGreaterEqual(NAV_CHART_DPI, 320)
         self.assertGreaterEqual(INDUSTRY_PX_SCALE, 3)

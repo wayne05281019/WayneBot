@@ -32,8 +32,8 @@ _LOOKUP_PNG_TIMEOUT = float(os.getenv("WAYNE_LOOKUP_PNG_TIMEOUT", str(_CHART_REN
 _LOOKUP_TG_MAX_WH = 10000
 _LOOKUP_TG_MAX_RATIO = 20.0
 _LOOKUP_TG_MAX_BYTES = 10 * 1024 * 1024
-_LOOKUP_JPEG_QUALITY = 88
-_LOOKUP_JPEG_QUALITY_FLOOR = 78
+_LOOKUP_JPEG_QUALITY = 82
+_LOOKUP_JPEG_QUALITY_FLOOR = 72
 # 兩張同尺寸 4:5 才並排。格上限 1920×2400：手機點開夠銳，檔比 3390 格小很多所以傳得快。
 _LOOKUP_ALBUM_RATIO = (4, 5)
 _LOOKUP_ALBUM_CELL = (1200, 1500)
@@ -2795,12 +2795,18 @@ class WayneTelegramBot:
             scale = min(cw / float(w), ch / float(h), 1.0)
             nw = max(1, int(w * scale))
             nh = max(1, int(h * scale))
+            if (nw, nh) == (w, h) and (cw, ch) == (w, h) and str(path).lower().endswith(
+                (".jpg", ".jpeg", ".album.jpg")
+            ):
+                im.close()
+                return path
             if (nw, nh) != (w, h):
-                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+                im = im.resize((nw, nh), Image.Resampling.BILINEAR)
             canvas = Image.new("RGB", (cw, ch), _LOOKUP_ALBUM_BG)
             canvas.paste(im, ((cw - nw) // 2, (ch - nh) // 2))
+            im.close()
             out = path + ".album.jpg"
-            canvas.save(out, "JPEG", quality=_LOOKUP_JPEG_QUALITY, subsampling=0, optimize=False)
+            canvas.save(out, "JPEG", quality=_LOOKUP_JPEG_QUALITY, subsampling=2, optimize=False)
             if os.path.isfile(out) and os.path.getsize(out) > 0:
                 return out
         except Exception:
@@ -2828,20 +2834,20 @@ class WayneTelegramBot:
                 return path
             tw, th = WayneTelegramBot._fit_lookup_photo_wh(w, h)
             if (tw, th) != (w, h):
-                im = im.resize((tw, th), Image.Resampling.LANCZOS)
+                im = im.resize((tw, th), Image.Resampling.BILINEAR)
             out = path + ".hq.jpg"
             limit = _LOOKUP_TG_MAX_BYTES - 64
             for q in (
                 _LOOKUP_JPEG_QUALITY,
-                88,
-                84,
+                78,
+                74,
                 _LOOKUP_JPEG_QUALITY_FLOOR,
             ):
                 im.save(
                     out,
                     "JPEG",
                     quality=int(q),
-                    subsampling=0,
+                    subsampling=2,
                     optimize=False,
                 )
                 if os.path.isfile(out) and 0 < os.path.getsize(out) <= limit:
@@ -5803,8 +5809,6 @@ class WayneTelegramBot:
                     return None
                 return ("volzone", png, cap, None)
 
-            volzone_task = asyncio.create_task(_volzone_item())
-
             st = self._op_state_map().setdefault(actor, {"sent": [], "current": "both"})
             st["current"] = "both"
             st["sent"] = []
@@ -5837,11 +5841,6 @@ class WayneTelegramBot:
             st["sent"] = list(sent_kinds)
             st["current"] = "album"
 
-            try:
-                gc.collect()
-            except Exception:
-                pass
-
             album_ok = False
             if len(ready_items) >= 2:
                 album_ok = await self._send_lookup_album(message, ready_items)
@@ -5858,7 +5857,13 @@ class WayneTelegramBot:
                     if ok:
                         sent_any = True
 
-            # 第三張：大量區專圖（不改導航；跟介紹／決策卡分開送）
+            try:
+                gc.collect()
+            except Exception:
+                pass
+
+            # 第三張等相簿送出再畫：mpl 一把鎖，提早畫會卡住介紹／高低卡。
+            volzone_task = asyncio.create_task(_volzone_item())
             try:
                 st = self._op_state_map().setdefault(actor, {"sent": list(sent_kinds), "current": "volzone"})
                 st["current"] = "volzone"

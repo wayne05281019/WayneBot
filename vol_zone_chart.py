@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches
 
-from wayne_navigator import _fp, _fmt_price, _mpl_serial
+from wayne_navigator import _fp, _fmt_price, mpl_render
 from ex_rights import (
     OFFICIAL_EX_SRC as _OFFICIAL_EX_SRC,
     bar_ymd as _bar_ymd,
@@ -568,7 +568,6 @@ def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
         return float(close) >= float(prev_close)
 
 
-@_mpl_serial
 def render_volume_zone_png(
     stock_id: str,
     stock_name: str = "",
@@ -635,6 +634,15 @@ def render_volume_zone_png(
         else pd.Series(False, index=view.index)
     )
 
+    with mpl_render():
+        return _paint_volume_zone(
+            sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+        )
+
+
+def _paint_volume_zone(
+    sid, name, view, zone, spike_i, spike_date, hi, lo, halt, xs, n, ex_events, out
+):
     fig, (ax1, ax2) = plt.subplots(
         2,
         1,
