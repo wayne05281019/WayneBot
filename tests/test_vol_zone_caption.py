@@ -151,6 +151,44 @@ def test_wick_test_press_not_breakout():
     assert "看起來不錯" not in line
 
 
+def test_gap_into_zone_does_not_count_days_above_band():
+    """2542 類：人在 45 不算站 39 撐；缺口砸進帶才開始數。"""
+    zone = {"date": "20260923", "high": 40.45, "low": 39.0, "volume": 47140}
+    bars = [{"high": 46.8, "low": 45.4, "close": 45.45, "volume": 22311}]
+    bars.extend(
+        {"high": 48.0, "low": 47.0, "close": 47.5, "volume": 8000} for _ in range(40)
+    )
+    bars.append(
+        {"date": "20260923", "high": 40.45, "low": 39.0, "close": 39.55, "volume": 47140}
+    )
+    bars.append(
+        {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468}
+    )
+    line = vol_zone_position_line(zone, bars[-1], _card_heat("持平"), bars=bars)
+    assert "今天是第二天站在支撐線上" in line
+    assert "106" not in line
+    assert "第百" not in line
+    assert "但今天收盤 39.5 比昨天低" in line
+    assert "碰到上緣" not in line
+    assert "這兩天收盤價沒有持續攀高" in line
+    assert "看起來不錯" not in line
+
+
+def test_photo_caption_keeps_zone_date_skips_own_rim():
+    from vol_zone_chart import VOL_ZONE_CAPTION_HEAD, vol_zone_photo_caption
+
+    zone = {"date": "20260923", "high": 40.45, "low": 39.0, "volume": 47140}
+    bars = [
+        {"date": "20260922", "high": 46.8, "low": 45.4, "close": 45.45, "volume": 22311},
+        {"date": "20260923", "high": 40.45, "low": 39.0, "close": 39.55, "volume": 47140},
+        {"date": "20260924", "high": 39.5, "low": 38.8, "close": 39.5, "volume": 12468},
+    ]
+    cap = vol_zone_photo_caption(zone=zone, last=bars[-1], bars=bars, card=_card_heat("持平"))
+    assert cap.startswith(VOL_ZONE_CAPTION_HEAD)
+    assert "第二天" in cap
+    assert "碰到上緣" not in cap
+
+
 def test_rising_with_real_volume():
     bars = [
         {"high": 204, "low": 196, "close": 200, "volume": 8000},

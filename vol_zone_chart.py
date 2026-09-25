@@ -238,6 +238,7 @@ _ZH_N = {
     9: "九",
     10: "十",
 }
+_ZH_ORD = {**_ZH_N, 2: "二"}
 
 
 def _px(val: Any) -> float:
@@ -247,18 +248,35 @@ def _px(val: Any) -> float:
         return 0.0
 
 
-def _zh_days(n: int) -> str:
-    return _ZH_N.get(int(n), str(int(n)))
+def _zh_days(n: int, *, ordinal: bool = False) -> str:
+    table = _ZH_ORD if ordinal else _ZH_N
+    return table.get(int(n), str(int(n)))
 
 
 def _rows_from_last(last: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [last]
 
 
-def _stand_streak(rows: List[Dict[str, Any]], lo: float) -> List[Dict[str, Any]]:
+def _trade_day(val: Any) -> str:
+    s = str(val or "").replace("-", "").replace("/", "")[:8]
+    return s if s.isdigit() and len(s) == 8 else ""
+
+
+def _is_zone_bar(row: Dict[str, Any], zone: Dict[str, Any]) -> bool:
+    """爆大量參考日本身的高低＝壓撐定義，不能當成『昨天碰到上緣』。"""
+    zd = _trade_day(zone.get("date"))
+    rd = _trade_day(row.get("date"))
+    if zd and rd:
+        return zd == rd
+    return False
+
+
+def _stand_streak(rows: List[Dict[str, Any]], lo: float, hi: float) -> List[Dict[str, Any]]:
+    """連站＝收還在桃色帶裡。人在帶上方時不算站在這條撐上。"""
     streak: List[Dict[str, Any]] = []
     for row in reversed(rows):
-        if _px(row.get("close")) >= lo:
+        c = _px(row.get("close"))
+        if lo <= c < hi:
             streak.append(row)
         else:
             break
@@ -387,9 +405,10 @@ def vol_zone_position_line(
     if cl >= hi:
         return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
 
-    streak = _stand_streak(rows, lo)
+    streak = _stand_streak(rows, lo, hi)
     n = len(streak) or 1
     n_zh = _zh_days(n)
+    n_ord = _zh_days(n, ordinal=True)
     closes = [_px(r.get("close")) for r in streak]
     rising = _closes_rising(closes)
     last_down = n >= 2 and closes[-1] < closes[-2]
@@ -407,15 +426,16 @@ def vol_zone_position_line(
 
     if rising:
         body = (
-            f"今天是第{n_zh}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
+            f"今天是第{n_ord}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
             f"收盤仍沒有突破{hi_s}上緣壓力"
         )
         return _end(body, nice=nice, test=test_press and not nice)
 
     if last_down:
-        body = f"今天是第{n_zh}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
-        prev_hi = _px(streak[-2].get("high")) if n >= 2 else 0
-        if prev_hi >= hi * _PRESS_TOUCH:
+        body = f"今天是第{n_ord}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
+        prev = streak[-2] if n >= 2 else {}
+        prev_hi = _px(prev.get("high")) if n >= 2 else 0
+        if prev_hi >= hi * _PRESS_TOUCH and not _is_zone_bar(prev, zone):
             body += f"；昨天盤中高點有碰到上緣 {hi_s}，這{n_zh}天收盤價沒有持續攀高"
             return _end(body, test=False)
         body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
@@ -423,13 +443,13 @@ def vol_zone_position_line(
 
     if near_press:
         body = (
-            f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
+            f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
             f"仍在撐{lo_s}之上，這{n_zh}天收盤價沒有持續攀高"
         )
         return _end(body, test=test_press)
 
     body = (
-        f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
+        f"今天是第{n_ord}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
         f"但這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
     )
     return _end(body, test=test_press)
@@ -455,6 +475,7 @@ def vol_zone_photo_caption(
                 zone = find_volume_zone(work)
                 bars = [
                     {
+                        "date": r.get("date"),
                         "high": r.get("high"),
                         "low": r.get("low"),
                         "close": r.get("close"),
