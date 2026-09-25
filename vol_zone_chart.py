@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import matplotlib
 
@@ -215,13 +215,25 @@ VOL_ZONE_CAPTION_HEAD = "大量區（近窗仍有效爆大量日高低＝壓／�
 _PRESS_TOUCH = 0.997
 _VOL_REAL = 0.70
 _VOL_THIN = 0.35
-_HEAT_BIT = {
-    "peak": "溫度最高溫",
-    "up": "溫度升",
-    "down": "溫度降",
-    "floor": "溫度最低溫",
-    "flat": "溫度平",
+_HEAT_CLAUSE = {
+    "peak": "溫度在最高溫",
+    "up": "溫度上升中",
+    "down": "溫度下降中",
+    "floor": "溫度在最低溫",
+    "flat": "溫度沒再走",
     "diverge": "價溫背離",
+}
+_ZH_N = {
+    1: "一",
+    2: "兩",
+    3: "三",
+    4: "四",
+    5: "五",
+    6: "六",
+    7: "七",
+    8: "八",
+    9: "九",
+    10: "十",
 }
 
 
@@ -232,51 +244,118 @@ def _px(val: Any) -> float:
         return 0.0
 
 
+def _zh_days(n: int) -> str:
+    return _ZH_N.get(int(n), str(int(n)))
+
+
+def _rows_from_last(last: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [last]
+
+
+def _stand_streak(rows: List[Dict[str, Any]], lo: float) -> List[Dict[str, Any]]:
+    streak: List[Dict[str, Any]] = []
+    for row in reversed(rows):
+        if _px(row.get("close")) >= lo:
+            streak.append(row)
+        else:
+            break
+    streak.reverse()
+    return streak
+
+
+def _heat_key(card: Optional[Dict[str, Any]]) -> str:
+    if not card:
+        return ""
+    try:
+        from sell_discipline import card_discipline_face
+
+        return str(card_discipline_face(card).get("heat") or "")
+    except Exception:
+        return ""
+
+
+def _vol_clause(last_vol: float, zone_vol: float) -> str:
+    if zone_vol <= 0 or last_vol <= 0:
+        return ""
+    ratio = last_vol / zone_vol
+    if ratio >= _VOL_REAL:
+        return "今天成交量對比前次大量那天仍真"
+    if ratio < _VOL_THIN:
+        return "今天成交量對比前次大量那天是量縮"
+    return "今天成交量對比前次大量那天還沒回到那樣"
+
+
 def vol_zone_position_line(
     zone: Optional[Dict[str, Any]],
     last: Optional[Dict[str, Any]],
     card: Optional[Dict[str, Any]] = None,
+    bars: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """現價對壓撐、量對爆大量日、溫度：只陳述。不寫抱、不寫賣、不改如何賣。"""
+    """收盤後口吻：第幾天站上撐、收盤有沒有一路墊高、收有沒有過壓、量、溫度。
+
+    不寫抱、不寫賣、不改如何賣。看起來不錯只在帶內且收盤攀高時出現，不是買訊。
+    """
     if not zone or not last:
         return ""
     hi = _px(zone.get("high"))
     lo = _px(zone.get("low"))
     cl = _px(last.get("close"))
-    last_hi = _px(last.get("high") or cl)
     if hi <= 0 or lo <= 0 or hi < lo or cl <= 0:
         return ""
-    bits: list[str] = []
-    if cl >= hi:
-        bits.append("收過壓")
-    elif cl < lo:
-        bits.append("跌破撐")
-    else:
-        bits.append("現價在帶內")
-        if last_hi >= hi * _PRESS_TOUCH and cl < hi:
-            bits.append("測壓未過")
-    zvol = _px(zone.get("volume"))
-    lvol = _px(last.get("volume"))
-    if zvol > 0 and lvol > 0:
-        ratio = lvol / zvol
-        if ratio >= _VOL_REAL:
-            bits.append("量對爆大量日仍真")
-        elif ratio < _VOL_THIN:
-            bits.append("量縮對爆大量日")
-        else:
-            bits.append("量未到爆大量日")
-    heat = ""
-    if card:
-        try:
-            from sell_discipline import card_discipline_face
+    from wayne_navigator import _fmt_price
 
-            heat = str(card_discipline_face(card).get("heat") or "")
-        except Exception:
-            heat = ""
-    heat_bit = _HEAT_BIT.get(heat, "")
-    if heat_bit:
-        bits.append(heat_bit)
-    return "　".join(bits)
+    hi_s = _fmt_price(hi)
+    lo_s = _fmt_price(lo)
+    rows = [dict(x) for x in (bars or _rows_from_last(last)) if isinstance(x, dict)]
+    if not rows:
+        rows = _rows_from_last(last)
+    heat = _heat_key(card)
+    heat_c = _HEAT_CLAUSE.get(heat, "")
+    vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
+
+    def _tail(vol_first: bool = True) -> str:
+        bits: List[str] = []
+        if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
+            bits.append(f"{vol_c}，但{heat_c}")
+        else:
+            if vol_c:
+                bits.append(vol_c)
+            if heat_c:
+                bits.append(heat_c)
+        return "，".join(bits)
+
+    if cl < lo:
+        body = f"收盤跌破撐{lo_s}，不是站上支撐"
+        extra = _tail()
+        if extra:
+            body = f"{body}，{extra}"
+        return body + "。"
+    if cl >= hi:
+        body = f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊"
+        extra = _tail()
+        if extra:
+            body = f"{body}，{extra}"
+        return body + "。"
+
+    streak = _stand_streak(rows, lo)
+    n = len(streak) or 1
+    n_zh = _zh_days(n)
+    bits = [f"今天是第{n_zh}天站上支撐"]
+    closes = [_px(r.get("close")) for r in streak]
+    rising = n >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
+    if rising:
+        bits.append(f"且{n_zh}天收盤價持續攀高")
+    bits.append(f"收盤仍沒有突破{hi_s}上緣壓力")
+    extra = _tail()
+    if extra:
+        bits.append(extra)
+    text = "，".join(bits) + "。"
+    last_hi = _px(last.get("high") or cl)
+    if rising and heat in ("up", "peak", ""):
+        text += "看起來不錯！"
+    elif last_hi >= hi * _PRESS_TOUCH:
+        text += "高碰到壓、收沒過只是測壓，不是站上。"
+    return text
 
 
 def vol_zone_photo_caption(
@@ -286,9 +365,10 @@ def vol_zone_photo_caption(
     *,
     zone: Optional[Dict[str, Any]] = None,
     last: Optional[Dict[str, Any]] = None,
+    bars: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
-    """第三張圖說：原句＋位置句。如何賣仍只在介紹圖／高低卡。"""
-    if zone is None or last is None:
+    """第三張圖說：原句＋收盤口吻位置句。如何賣仍只在介紹圖／高低卡。"""
+    if zone is None or last is None or bars is None:
         sid = str(stock_id or "").strip()
         path = str(db_path or "").strip()
         if sid and path:
@@ -296,14 +376,17 @@ def vol_zone_photo_caption(
             work = official_work(raw)
             if work is not None and not work.empty:
                 zone = find_volume_zone(work)
-                row = work.iloc[-1]
-                last = {
-                    "high": row.get("high"),
-                    "low": row.get("low"),
-                    "close": row.get("close"),
-                    "volume": row.get("volume"),
-                }
-    pos = vol_zone_position_line(zone, last, card)
+                bars = [
+                    {
+                        "high": r.get("high"),
+                        "low": r.get("low"),
+                        "close": r.get("close"),
+                        "volume": r.get("volume"),
+                    }
+                    for r in work.to_dict("records")
+                ]
+                last = bars[-1] if bars else last
+    pos = vol_zone_position_line(zone, last, card, bars=bars)
     if pos:
         return f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
     return VOL_ZONE_CAPTION_HEAD
