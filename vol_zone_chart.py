@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import matplotlib
 
@@ -29,6 +29,7 @@ logger = logging.getLogger("WayneBot.VolZone")
 VOL_ZONE_DPI = 200
 VOL_ZONE_LOOKBACK = 40
 VOL_ZONE_BARS = 78  # 只畫近窗，跟教學圖一樣清楚，不塞 180 日雜訊
+VOL_ZONE_TAG_PT = 15  # 壓／撐標要比標題更容易讀（話筒紅圈）
 
 _BG = "#ffffff"
 _UP = "#e53935"
@@ -63,17 +64,20 @@ def load_official_ohlc(stock_id: str, db_path: str, days: int = 120) -> pd.DataF
     conn = sqlite3.connect(path, timeout=30.0)
     try:
         conn.execute("PRAGMA busy_timeout=10000;")
-        df = pd.read_sql_query(
-            """
-            SELECT date, stock_name, open, high, low, close, volume
-            FROM daily_quotes
-            WHERE stock_id = ?
-            ORDER BY date DESC
-            LIMIT ?
-            """,
-            conn,
-            params=(sid, lim),
-        )
+        try:
+            df = pd.read_sql_query(
+                """
+                SELECT date, stock_name, open, high, low, close, volume
+                FROM daily_quotes
+                WHERE stock_id = ?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                conn,
+                params=(sid, lim),
+            )
+        except Exception:
+            df = pd.DataFrame()
     finally:
         conn.close()
     source = "daily_quotes"
@@ -208,6 +212,261 @@ def find_volume_zone(work: pd.DataFrame, *, lookback: int = VOL_ZONE_LOOKBACK) -
         "volume": float(work["volume"].iloc[pick] or 0),
         "active": bool(active_i is not None and pick == active_i),
     }
+
+
+VOL_ZONE_CAPTION_HEAD = "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）"
+_PRESS_TOUCH = 0.997
+_VOL_REAL = 0.70
+_VOL_THIN = 0.35
+_HEAT_CLAUSE = {
+    "peak": "溫度在最高溫",
+    "up": "溫度上升中",
+    "down": "溫度下降中",
+    "floor": "溫度在最低溫",
+    "flat": "溫度沒再走",
+    "diverge": "價溫背離",
+}
+_ZH_N = {
+    1: "一",
+    2: "兩",
+    3: "三",
+    4: "四",
+    5: "五",
+    6: "六",
+    7: "七",
+    8: "八",
+    9: "九",
+    10: "十",
+}
+
+
+def _px(val: Any) -> float:
+    try:
+        return float(val or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _zh_days(n: int) -> str:
+    return _ZH_N.get(int(n), str(int(n)))
+
+
+def _rows_from_last(last: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [last]
+
+
+def _stand_streak(rows: List[Dict[str, Any]], lo: float) -> List[Dict[str, Any]]:
+    streak: List[Dict[str, Any]] = []
+    for row in reversed(rows):
+        if _px(row.get("close")) >= lo:
+            streak.append(row)
+        else:
+            break
+    streak.reverse()
+    return streak
+
+
+def _heat_key(card: Optional[Dict[str, Any]]) -> str:
+    if not card:
+        return ""
+    try:
+        from sell_discipline import card_discipline_face
+
+        return str(card_discipline_face(card).get("heat") or "")
+    except Exception:
+        return ""
+
+
+def _vol_clause(last_vol: float, zone_vol: float) -> str:
+    if zone_vol <= 0 or last_vol <= 0:
+        return ""
+    ratio = last_vol / zone_vol
+    if ratio >= _VOL_REAL:
+        return "今天成交量對比前次大量那天仍真"
+    if ratio < _VOL_THIN:
+        return "今天成交量對比前次大量那天是量縮"
+    return "今天成交量對比前次大量那天還是少了點"
+
+
+def _today_yest_temp(card: Optional[Dict[str, Any]]) -> tuple:
+    if not card:
+        return None, None
+    try:
+        tbl = card.get("table")
+        rows: List[Dict[str, Any]] = []
+        if tbl is not None and hasattr(tbl, "columns"):
+            from sell_discipline import _chrono_table
+
+            src = _chrono_table(tbl)
+            rows = [dict(x) for x in src.to_dict("records")]
+        elif isinstance(tbl, (list, tuple)):
+            rows = [dict(x) for x in tbl if isinstance(x, dict)]
+            rows.sort(key=lambda r: str(r.get("date") or ""))
+        if len(rows) < 2:
+            return None, None
+        today = _px(rows[-1].get("temp_num"))
+        yest = _px(rows[-2].get("temp_num"))
+        if today <= 0 or yest <= 0:
+            return None, None
+        return today, yest
+    except Exception:
+        return None, None
+
+
+def _heat_clause(card: Optional[Dict[str, Any]], heat: str) -> str:
+    today, yest = _today_yest_temp(card)
+    if today is not None and yest is not None:
+        if today < yest - 0.05:
+            return "溫度比昨天低"
+        if today > yest + 0.05:
+            if heat in ("up", "peak"):
+                return "溫度上升中"
+            return "溫度比昨天高"
+    return _HEAT_CLAUSE.get(heat, "")
+
+
+def _vol_heat_tail(vol_c: str, heat_c: str, heat: str) -> str:
+    if vol_c and heat_c and "比昨天低" in heat_c:
+        return f"{vol_c}，且{heat_c}"
+    if vol_c and heat_c and heat in ("up", "peak") and "量縮" in vol_c:
+        return f"{vol_c}，但{heat_c}"
+    if vol_c and heat_c and heat in ("down", "floor") and "仍真" in vol_c:
+        return f"{vol_c}，但{heat_c}"
+    if vol_c and heat_c and heat in ("down", "floor") and "量縮" in vol_c:
+        return f"{vol_c}，溫度也在退"
+    bits = [x for x in (vol_c, heat_c) if x]
+    return "，".join(bits)
+
+
+def _closes_rising(closes: List[float]) -> bool:
+    return len(closes) >= 2 and all(closes[i] > closes[i - 1] for i in range(1, len(closes)))
+
+
+def vol_zone_position_line(
+    zone: Optional[Dict[str, Any]],
+    last: Optional[Dict[str, Any]],
+    card: Optional[Dict[str, Any]] = None,
+    bars: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """依這檔在帶裡的現況換句，不是同一套填空。不寫抱、不寫賣、不改如何賣。"""
+    if not zone or not last:
+        return ""
+    hi = _px(zone.get("high"))
+    lo = _px(zone.get("low"))
+    cl = _px(last.get("close"))
+    if hi <= 0 or lo <= 0 or hi < lo or cl <= 0:
+        return ""
+    from wayne_navigator import _fmt_price
+
+    hi_s = _fmt_price(hi)
+    lo_s = _fmt_price(lo)
+    rows = [dict(x) for x in (bars or _rows_from_last(last)) if isinstance(x, dict)]
+    if not rows:
+        rows = _rows_from_last(last)
+    heat = _heat_key(card)
+    heat_c = _heat_clause(card, heat)
+    vol_c = _vol_clause(_px(last.get("volume")), _px(zone.get("volume")))
+    tail = _vol_heat_tail(vol_c, heat_c, heat)
+    last_hi = _px(last.get("high") or cl)
+    test_press = last_hi >= hi * _PRESS_TOUCH and cl < hi
+    near_press = cl < hi and hi > 0 and (hi - cl) / hi <= 0.015
+
+    def _end(body: str, *, nice: bool = False, test: bool = False) -> str:
+        if tail:
+            body = f"{body}，{tail}" if not body.endswith("。") else body[:-1] + f"，{tail}。"
+        if not body.endswith("。"):
+            body += "。"
+        if nice:
+            body += "看起來不錯！"
+        elif test:
+            body += "今天高碰到上緣、收沒過，只是測壓不是站上。"
+        return body
+
+    if cl < lo:
+        return _end(f"收盤跌破撐{lo_s}，這根大量區撐先不當還在")
+    if cl >= hi:
+        return _end(f"收盤已過壓{hi_s}上緣。測壓才算碰到、收過仍不是買訊")
+
+    streak = _stand_streak(rows, lo)
+    n = len(streak) or 1
+    n_zh = _zh_days(n)
+    closes = [_px(r.get("close")) for r in streak]
+    rising = _closes_rising(closes)
+    last_down = n >= 2 and closes[-1] < closes[-2]
+    nice = rising and heat in ("up", "peak", "") and not test_press
+
+    if n == 1:
+        if test_press:
+            body = f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，還沒過{hi_s}上緣"
+            return _end(body, test=True)
+        body = (
+            f"今天剛站在支撐線上，收盤{_fmt_price(cl)}還在撐{lo_s}之上，"
+            f"仍沒有突破{hi_s}上緣壓力"
+        )
+        return _end(body)
+
+    if rising:
+        body = (
+            f"今天是第{n_zh}天站在支撐線上，且{n_zh}天收盤價持續攀高，"
+            f"收盤仍沒有突破{hi_s}上緣壓力"
+        )
+        return _end(body, nice=nice, test=test_press and not nice)
+
+    if last_down:
+        body = f"今天是第{n_zh}天站在支撐線上，但今天收盤 {_fmt_price(cl)} 比昨天低"
+        prev_hi = _px(streak[-2].get("high")) if n >= 2 else 0
+        if prev_hi >= hi * _PRESS_TOUCH:
+            body += f"；昨天盤中高點有碰到上緣 {hi_s}，這{n_zh}天收盤價沒有持續攀高"
+            return _end(body, test=False)
+        body += f"，這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
+        return _end(body, test=test_press)
+
+    if near_press:
+        body = (
+            f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}靠近{hi_s}上緣但沒過，"
+            f"仍在撐{lo_s}之上，這{n_zh}天收盤價沒有持續攀高"
+        )
+        return _end(body, test=test_press)
+
+    body = (
+        f"今天是第{n_zh}天站在支撐線上，收盤{_fmt_price(cl)}仍在撐{lo_s}之上，"
+        f"但這{n_zh}天收盤價沒有持續攀高，收盤仍沒有突破{hi_s}上緣壓力"
+    )
+    return _end(body, test=test_press)
+
+
+def vol_zone_photo_caption(
+    stock_id: str = "",
+    db_path: str = "",
+    card: Optional[Dict[str, Any]] = None,
+    *,
+    zone: Optional[Dict[str, Any]] = None,
+    last: Optional[Dict[str, Any]] = None,
+    bars: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """第三張圖說：原句＋收盤口吻位置句。如何賣仍只在介紹圖／高低卡。"""
+    if zone is None or last is None or bars is None:
+        sid = str(stock_id or "").strip()
+        path = str(db_path or "").strip()
+        if sid and path:
+            raw = load_official_ohlc(sid, path, max(VOL_ZONE_BARS + VOL_ZONE_LOOKBACK + 5, 120))
+            work = official_work(raw)
+            if work is not None and not work.empty:
+                zone = find_volume_zone(work)
+                bars = [
+                    {
+                        "high": r.get("high"),
+                        "low": r.get("low"),
+                        "close": r.get("close"),
+                        "volume": r.get("volume"),
+                    }
+                    for r in work.to_dict("records")
+                ]
+                last = bars[-1] if bars else last
+    pos = vol_zone_position_line(zone, last, card, bars=bars)
+    if pos:
+        return f"{VOL_ZONE_CAPTION_HEAD}\n{pos}"
+    return VOL_ZONE_CAPTION_HEAD
 
 
 def _candle_up(close: float, prev_close: Optional[float], open_: float) -> bool:
@@ -366,10 +625,10 @@ def render_volume_zone_png(
         transform=ax1.transAxes,
         ha="left",
         va="top",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_PRESS,
         zorder=8,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#ffffff", edgecolor=_PRESS, linewidth=0.7),
+        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_PRESS, linewidth=1.15),
     )
     ax1.text(
         0.01,
@@ -378,10 +637,10 @@ def render_volume_zone_png(
         transform=ax1.transAxes,
         ha="left",
         va="bottom",
-        fontproperties=_fp(10, "bold"),
+        fontproperties=_fp(VOL_ZONE_TAG_PT, "bold"),
         color=_HOLD,
         zorder=8,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#ffffff", edgecolor=_HOLD, linewidth=0.7),
+        bbox=dict(boxstyle="round,pad=0.38", facecolor="#ffffff", edgecolor=_HOLD, linewidth=1.15),
     )
 
     vol_colors = []

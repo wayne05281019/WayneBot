@@ -5782,12 +5782,21 @@ class WayneTelegramBot:
                     return None
                 return (kind, png, caption, markup)
 
+            from vol_zone_chart import VOL_ZONE_CAPTION_HEAD, vol_zone_photo_caption
+
+            try:
+                vz_cap = await asyncio.to_thread(
+                    vol_zone_photo_caption, code, self.db_path, card
+                )
+            except Exception:
+                logger.debug("大量區圖說失敗 code=%s", code, exc_info=True)
+                vz_cap = VOL_ZONE_CAPTION_HEAD
             volzone_task = asyncio.create_task(
                 _render_ready(
                     "volzone",
                     _render_volzone,
                     _LOOKUP_PNG_TIMEOUT,
-                    "大量區（近窗仍有效爆大量日高低＝壓／撐；測壓≠站上；非買訊）",
+                    vz_cap,
                     None,
                 )
             )
