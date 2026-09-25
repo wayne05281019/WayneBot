@@ -173,3 +173,67 @@ def test_old_ex_div_not_pasted_on_later_week(tmp_path):
     face = recent_ex_face("2330", db, "20260924", bars)
     assert face["label"] == ""
     assert "除息" not in (face["note"] or "")
+
+
+def test_latest_scale_ex_picks_newest_date_not_list_order():
+    from ex_rights import latest_scale_ex
+
+    events = [
+        {
+            "ex_date": "20260923",
+            "kind": "息",
+            "source": "TWT49U",
+            "right_plus_div": 4.0,
+        },
+        {
+            "ex_date": "20260424",
+            "kind": "分割",
+            "source": "heuristic_gap",
+        },
+    ]
+    ev = latest_scale_ex(events, "20260924")
+    assert ev["ex_date"] == "20260923"
+    assert ev["kind"] == "息"
+    mixed = list(events) + [
+        {
+            "ex_date": "20260923",
+            "kind": "減資",
+            "source": "heuristic_gap",
+        }
+    ]
+    ev2 = latest_scale_ex(mixed, "20260924")
+    assert ev2["kind"] == "息"
+    assert ev2["source"] == "TWT49U"
+
+
+def test_gap_up_without_ex_is_not_crash_copy(tmp_path):
+    os.environ["WAYNE_SKIP_EX_FETCH"] = "1"
+    db = str(tmp_path / "x.db")
+    ensure_ex_rights_table(db)
+    bars = [
+        {"date": "20260917", "open": 179, "high": 180, "low": 178, "close": 179},
+        {"date": "20260921", "open": 194.5, "high": 196, "low": 190, "close": 193},
+        {"date": "20260922", "open": 192, "high": 193, "low": 190, "close": 191},
+        {"date": "20260923", "open": 190, "high": 191, "low": 188, "close": 189},
+        {"date": "20260924", "open": 188, "high": 189, "low": 186, "close": 187},
+    ]
+    face = recent_ex_face("3035", db, "20260924", bars)
+    assert face["label"] == ""
+    assert "不當崩" not in (face["note"] or "")
+    assert "跳空超過五％" not in (face["note"] or "")
+
+
+def test_regime_skips_breakdown_inside_ex_bar():
+    from screening_engine import _regime_label
+
+    item = {
+        "close": 39.55,
+        "ma20": 44.0,
+        "ma60": 46.0,
+        "low20": 43.0,
+        "d20": -8.0,
+        "ex_close_inside": True,
+    }
+    assert _regime_label(item) != "弱勢破底"
+    assert _regime_label(item) != "貼近20日低"
+    assert _regime_label({**item, "ex_close_inside": False}) == "弱勢破底"

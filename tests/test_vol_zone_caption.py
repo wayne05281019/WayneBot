@@ -284,6 +284,26 @@ def test_unexplained_gap_is_called_out():
     assert "測壓" in note
 
 
+def test_unexplained_gap_up_is_not_called_crash():
+    from ex_rights import unexplained_gap_dates
+
+    bars = [
+        {"date": "20260917", "open": 179, "close": 179},
+        {"date": "20260921", "open": 194.5, "close": 193},
+        {"date": "20260922", "open": 192, "close": 191},
+        {"date": "20260923", "open": 190, "close": 189},
+        {"date": "20260924", "open": 188, "close": 187},
+    ]
+    assert unexplained_gap_dates(bars, way="any") == ["20260921"]
+    assert unexplained_gap_dates(bars, way="up") == ["20260921"]
+    assert unexplained_gap_dates(bars, way="down") == []
+    from vol_zone_chart import _ex_gap_note
+
+    note = _ex_gap_note([], unexplained_gap_dates(bars, way="down"), "20260924", "20260924")
+    assert note == ""
+    assert "不當崩" not in note
+
+
 def test_render_mentions_ex_div_not_crash():
     import inspect
 

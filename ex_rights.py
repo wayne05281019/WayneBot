@@ -614,8 +614,14 @@ def load_scale_ex_events(
     return [dict(r) for r in rows if is_scale_ex(dict(r))]
 
 
-def unexplained_gap_dates(work: Any, thresh: float = _GAP_PCT) -> List[str]:
+def unexplained_gap_dates(
+    work: Any, thresh: float = _GAP_PCT, *, way: str = "any"
+) -> List[str]:
+    """開盤相對昨收跳超過 thresh。way=any 給補抓官方列；down／up 給圖說文案。"""
     rows = _as_bar_rows(work)
+    want = str(way or "any").strip().lower()
+    if want not in ("any", "down", "up"):
+        want = "any"
     out: List[str] = []
     prev_c = 0.0
     for row in rows:
@@ -626,13 +632,52 @@ def unexplained_gap_dates(work: Any, thresh: float = _GAP_PCT) -> List[str]:
             cl = float(row.get("close") or 0)
         except (TypeError, ValueError):
             pass
-        if prev_c > 0 and op > 0 and abs(op - prev_c) / prev_c >= float(thresh):
-            d = bar_ymd(row.get("date"))
-            if d:
-                out.append(d)
+        if prev_c > 0 and op > 0:
+            move = (op - prev_c) / prev_c
+            hit = abs(move) >= float(thresh)
+            if hit and want == "down":
+                hit = move < 0
+            elif hit and want == "up":
+                hit = move > 0
+            if hit:
+                d = bar_ymd(row.get("date"))
+                if d:
+                    out.append(d)
         if cl > 0:
             prev_c = cl
     return out
+
+
+def close_inside_ex_bar(raw_bars: Any, ex_date: str, close: float) -> bool:
+    """收盤還在官方除息／除權當日高低裡（息差帶，不是破底）。"""
+    d0 = bar_ymd(ex_date)
+    try:
+        c = float(close or 0)
+    except (TypeError, ValueError):
+        c = 0.0
+    if not d0 or c <= 0 or raw_bars is None:
+        return False
+    lo = 0.0
+    hi = 0.0
+    try:
+        if hasattr(raw_bars, "empty"):
+            if getattr(raw_bars, "empty", True) or "date" not in getattr(raw_bars, "columns", []):
+                return False
+            days = raw_bars["date"].astype(str).str.replace("-", "", regex=False)
+            hit = raw_bars.loc[days == d0]
+            if hit.empty:
+                return False
+            lo = float(hit["low"].iloc[-1] or 0)
+            hi = float(hit["high"].iloc[-1] or 0)
+        else:
+            for row in _as_bar_rows(raw_bars):
+                if bar_ymd(row.get("date")) != d0:
+                    continue
+                lo = float(row.get("low") or 0)
+                hi = float(row.get("high") or 0)
+    except (TypeError, ValueError, KeyError):
+        return False
+    return lo > 0 and hi >= lo and lo * 0.998 <= c <= hi * 1.002
 
 
 def latest_scale_ex(
@@ -640,11 +685,17 @@ def latest_scale_ex(
 ) -> Optional[Dict[str, Any]]:
     last = bar_ymd(last_date)
     best = None
+    best_d = ""
     for ev in events or []:
         if not is_scale_ex(ev):
             continue
         d = bar_ymd(ev.get("ex_date") or ev.get("date"))
-        if d and last and d <= last:
+        if not (d and last and d <= last):
+            continue
+        if d > best_d:
+            best, best_d = ev, d
+            continue
+        if d == best_d and str((ev or {}).get("source") or "") in OFFICIAL_EX_SRC:
             best = ev
     return best
 
@@ -776,7 +827,7 @@ def recent_ex_face(
     recent = rows[-5:] if rows else []
     win0 = bar_ymd(recent[0].get("date")) if recent else last
     events_r = [e for e in events if bar_ymd(e.get("ex_date")) >= win0] if win0 else events
-    gaps = unexplained_gap_dates(recent)
+    gaps = unexplained_gap_dates(recent, way="down")
     note = ex_gap_note(events_r, gaps, last, last, voice=voice)
     ev = latest_scale_ex(events_r, last)
     label = ""

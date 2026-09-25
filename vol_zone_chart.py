@@ -528,7 +528,8 @@ def vol_zone_photo_caption(
                 end = _bar_ymd(work["date"].iloc[-1])
                 events = load_scale_ex_events(sid, path, start, end)
                 events = hydrate_official_ex_for_gaps(sid, path, work, events)
-                gaps = unexplained_gap_dates(work)
+                recent = work.tail(5) if hasattr(work, "tail") else work
+                gaps = unexplained_gap_dates(recent, way="down")
                 zone = find_volume_zone(work, ex_events=events)
                 bars = [
                     {
@@ -835,7 +836,11 @@ def render_volume_zone_png(
     src_note = "興櫃日均價／高低" if src == "emerging_quotes" else "官方日K原柱"
     last_ev = _latest_ex_event(ex_events, last.get("date"))
     ex_title = ""
-    if last_ev:
+    ev_d = _bar_ymd((last_ev or {}).get("ex_date"))
+    last_d = _bar_ymd(last.get("date"))
+    recent_days = {_bar_ymd(x) for x in view["date"].iloc[-5:].tolist()} if n else set()
+    show_ex = bool(last_ev and ev_d and (ev_d in {spike_date, last_d} or ev_d in recent_days))
+    if show_ex:
         verb = _ex_kind_verb(last_ev.get("kind")) or "除權息"
         amt = 0.0
         try:
